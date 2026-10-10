@@ -4,13 +4,16 @@ import { View } from 'react-native';
 
 import { useRepository, useSnapshot } from '@/data';
 import { HEALTH_LABELS } from '@/data/catalogue';
-import { formatUkCompact, formatUkDate, formatUkLong, isoDay } from '@/domain/dates';
+import { correctedSoberStart } from '@/domain/correctStart';
+import { formatUkCompact, formatUkDate, formatUkLong, isoDay, startOfLocalDay } from '@/domain/dates';
 import { earnedMilestones, MILESTONES, milestoneReachedOn } from '@/domain/milestones';
 import { formatGbp, savingsFromTypicalWeek } from '@/domain/savings';
 import { shownError } from '@/domain/errors';
 import { soberElapsed } from '@/domain/sober';
 import { daysUntil, drinkFreeThisWeek, showsSoberRecord, SUDDEN_STOP_WARNING, toggleDrinkFreeDay } from '@/domain/stage';
-import { Button, Card, ErrorNote, Field, Meter, Screen, T } from '@/ui/ui';
+import { UnitsGuide } from '@/ui/UnitsGuide';
+import { DateField } from '@/ui/DateField';
+import { Button, Card, EditMark, EditSheet, ErrorNote, Field, Meter, Screen, T } from '@/ui/ui';
 import { radius, useAppTheme } from '@/ui/theme';
 
 function greeting(date: Date) {
@@ -36,11 +39,63 @@ export default function Home() {
   const [relapseOpen, setRelapseOpen] = useState(false);
   const [note, setNote] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [edit, setEdit] = useState<null | 'sober' | 'week'>(null);
+  const [draftDate, setDraftDate] = useState(() => startOfLocalDay(new Date()));
+  const [draftSpend, setDraftSpend] = useState('');
+  const [draftUnits, setDraftUnits] = useState('');
+  const [pending, setPending] = useState(false);
 
   useEffect(() => {
     const timer = setInterval(() => setNow(new Date()), 30_000);
     return () => clearInterval(timer);
   }, []);
+
+  function openCorrection() {
+    if (!profile?.sobrietyStartedAt) return;
+    setError(null);
+    setDraftDate(new Date(profile.sobrietyStartedAt));
+    setEdit('sober');
+  }
+
+  function openWeek() {
+    setError(null);
+    setDraftSpend(profile?.weeklySpendGbp?.toString() ?? '');
+    setDraftUnits(profile?.weeklyUnits?.toString() ?? '');
+    setEdit('week');
+  }
+
+  async function saveCorrection() {
+    if (!profile) return;
+    setPending(true);
+    setError(null);
+    try {
+      await repo.updateProfile({ sobrietyStartedAt: correctedSoberStart(draftDate, profile.sobrietyStartedAt) });
+      setEdit(null);
+    } catch (err) {
+      setError(shownError(err, 'Could not save the date.'));
+    } finally {
+      setPending(false);
+    }
+  }
+
+  async function saveWeek() {
+    const weeklySpendGbp = Number(draftSpend);
+    const weeklyUnits = Number(draftUnits);
+    if (!Number.isFinite(weeklySpendGbp) || weeklySpendGbp < 0 || !Number.isFinite(weeklyUnits) || weeklyUnits < 0) {
+      setError('Spend and units need to be zero or more.');
+      return;
+    }
+    setPending(true);
+    setError(null);
+    try {
+      await repo.updateProfile({ weeklySpendGbp, weeklyUnits });
+      setEdit(null);
+    } catch (err) {
+      setError(shownError(err, 'Could not save.'));
+    } finally {
+      setPending(false);
+    }
+  }
 
   if (!profile) return null;
   const sober = showsSoberRecord(profile.stage);
@@ -63,8 +118,8 @@ export default function Home() {
   return (
     <Screen eyebrow={greeting(now)} title={profile.displayName || 'Friend'}>
       {sober ? (
-      <Card>
-        <T variant="label">Sober</T>
+      <Card onPress={openCorrection} accessibilityLabel="Correct the sober start date">
+        <EditMark label="Sober" />
         <T variant="hero">{elapsed ? elapsed.days : '—'}</T>
         <T variant="title">{elapsed ? (elapsed.days === 1 ? 'day' : 'days') : 'Set a start date'}</T>
         {elapsed ? (
@@ -115,17 +170,17 @@ export default function Home() {
         ) : null}
       </Card>
       )}
-      {saved ? (
+      {sober ? (
         <View style={{ flexDirection: 'row', gap: 12 }}>
-          <Card style={{ flex: 1 }}>
-            <T variant="label">Saved</T>
-            <T variant="title">{formatGbp(saved.moneyGbp)}</T>
-            <T variant="muted">from £{profile.weeklySpendGbp} a week</T>
+          <Card style={{ flex: 1 }} onPress={openWeek} accessibilityLabel="Edit weekly spend">
+            <EditMark label="Saved" />
+            <T variant="title">{saved ? formatGbp(saved.moneyGbp) : '—'}</T>
+            <T variant="muted">{profile.weeklySpendGbp != null ? `from £${profile.weeklySpendGbp} a week` : 'Add your usual spend'}</T>
           </Card>
-          <Card style={{ flex: 1 }}>
-            <T variant="label">Units avoided</T>
-            <T variant="title">{saved.units}</T>
-            <T variant="muted">from {profile.weeklyUnits} a week</T>
+          <Card style={{ flex: 1 }} onPress={openWeek} accessibilityLabel="Edit weekly units">
+            <EditMark label="Units avoided" />
+            <T variant="title">{saved ? saved.units : '—'}</T>
+            <T variant="muted">{profile.weeklyUnits != null ? `from ${profile.weeklyUnits} a week` : 'Add your usual units'}</T>
           </Card>
         </View>
       ) : null}
@@ -195,6 +250,32 @@ export default function Home() {
         {snap.relapses[0] ? <T variant="muted">Last reset {formatUkDate(snap.relapses[0].occurredAt)}, kept {snap.relapses[0].daysKept} days before it.</T> : null}
       </Card> : null}
       <ErrorNote>{error}</ErrorNote>
+      <EditSheet
+        visible={edit === 'sober'}
+        title="Correct the start date"
+        intro="This fixes the day you stopped. It is a correction, not a relapse, and it does not add a reset to your history."
+        saveLabel="Save the correction"
+        pending={pending}
+        onClose={() => { if (!pending) setEdit(null); }}
+        onSave={() => void saveCorrection()}
+      >
+        <DateField label="Date you stopped" value={draftDate} onChange={setDraftDate} maximumDate={new Date()} hint="Today or an earlier day." />
+        <ErrorNote>{edit === 'sober' ? error : null}</ErrorNote>
+      </EditSheet>
+      <EditSheet
+        visible={edit === 'week'}
+        title="Your usual week"
+        intro="An estimate from what you tell us. Savings and units avoided use these figures."
+        saveLabel="Save spend and units"
+        pending={pending}
+        onClose={() => { if (!pending) setEdit(null); }}
+        onSave={() => void saveWeek()}
+      >
+        <Field label="Typical spend per week (£)" value={draftSpend} onChangeText={setDraftSpend} keyboardType="decimal-pad" />
+        <Field label="Typical units per week" value={draftUnits} onChangeText={setDraftUnits} keyboardType="decimal-pad" />
+        <UnitsGuide onChange={setDraftUnits} />
+        <ErrorNote>{edit === 'week' ? error : null}</ErrorNote>
+      </EditSheet>
     </Screen>
   );
 }

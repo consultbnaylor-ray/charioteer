@@ -2,6 +2,7 @@ import { createContext, useContext, useState, type ReactNode } from 'react';
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
+  Modal,
   Platform,
   Pressable,
   ScrollView,
@@ -154,12 +155,103 @@ export function Screen({
   );
 }
 
-export function Card({ children, style }: { children: ReactNode; style?: StyleProp<ViewStyle> }) {
+export function Card({
+  children,
+  style,
+  onPress,
+  accessibilityLabel,
+}: {
+  children: ReactNode;
+  style?: StyleProp<ViewStyle>;
+  onPress?: () => void;
+  accessibilityLabel?: string;
+}) {
+  const theme = useAppTheme();
+  const box = [styles.card, { backgroundColor: theme.colors.surface, borderColor: theme.colors.line }, style];
+  if (!onPress) return <View style={box}>{children}</View>;
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel}
+      onPress={onPress}
+      style={({ pressed }) => [box, { opacity: pressed ? 0.86 : 1 }]}
+    >
+      {children}
+    </Pressable>
+  );
+}
+
+export function Pencil({ color }: { color: string }) {
+  return (
+    <Svg width={18} height={18} viewBox="0 0 24 24" fill="none" accessibilityElementsHidden>
+      <Path d="M4 16.5V20h3.5L18.8 8.7a2.1 2.1 0 0 0 0-3L18.3 4.2a2.1 2.1 0 0 0-3 0L4 15.5v1z" stroke={color} strokeWidth={1.6} strokeLinejoin="round" />
+      <Path d="M13.8 6.2l4 4" stroke={color} strokeWidth={1.6} />
+    </Svg>
+  );
+}
+
+/** Small edit mark. The surrounding card is the button, so the icon itself is not a second control. */
+export function EditMark({ label }: { label: string }) {
   const theme = useAppTheme();
   return (
-    <View style={[styles.card, { backgroundColor: theme.colors.surface, borderColor: theme.colors.line }, style]}>
-      {children}
+    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+      <T variant="label">{label}</T>
+      <View accessibilityElementsHidden style={{ width: 28, height: 28, alignItems: 'center', justifyContent: 'center' }}>
+        <Pencil color={theme.colors.ink} />
+      </View>
     </View>
+  );
+}
+
+export function EditSheet({
+  visible,
+  title,
+  intro,
+  children,
+  onClose,
+  onSave,
+  pending,
+  saveLabel,
+}: {
+  visible: boolean;
+  title: string;
+  intro?: string;
+  children: ReactNode;
+  onClose: () => void;
+  onSave: () => void;
+  pending?: boolean;
+  saveLabel: string;
+}) {
+  const theme = useAppTheme();
+  const insets = useSafeAreaInsets();
+  return (
+    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
+      <View style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.45)' }}>
+        <Pressable accessibilityRole="button" accessibilityLabel="Close editor" style={{ flex: 1 }} onPress={onClose} />
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+          <View
+            style={{
+              backgroundColor: theme.colors.bg,
+              borderTopLeftRadius: 16,
+              borderTopRightRadius: 16,
+              paddingHorizontal: 20,
+              paddingTop: 20,
+              paddingBottom: 16 + insets.bottom,
+              gap: 12,
+              maxHeight: 640,
+            }}
+          >
+            <T variant="title">{title}</T>
+            {intro ? <T>{intro}</T> : null}
+            <ScrollView keyboardShouldPersistTaps="handled" style={{ flexGrow: 0, maxHeight: 420 }} contentContainerStyle={{ gap: 12 }}>
+              {children}
+            </ScrollView>
+            <Button label={saveLabel} pending={pending} onPress={onSave} />
+            <Button label="Cancel" tone="quiet" onPress={onClose} disabled={pending} />
+          </View>
+        </KeyboardAvoidingView>
+      </View>
+    </Modal>
   );
 }
 

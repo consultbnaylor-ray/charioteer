@@ -5,9 +5,11 @@ import { Platform, Share, View } from 'react-native';
 
 import { useRepository, useSnapshot } from '@/data';
 import type { TextScale, ThemePreference } from '@/data/types';
+import { correctedSoberStart } from '@/domain/correctStart';
 import { formatUkDate, isoDay, parseIsoDay, startOfLocalDay } from '@/domain/dates';
-import { parseDrinkFreeGoal, parseUnitsGoal, showsSoberRecord, STAGE_LABELS, STAGES, SUDDEN_STOP_WARNING, type Stage } from '@/domain/stage';
+import { parseDrinkFreeGoal, parseUnitsGoal, showsSoberRecord, STAGE_LABELS, STAGES, SUDDEN_STOP_WARNING, validateStageStep, type Stage } from '@/domain/stage';
 import { shownError } from '@/domain/errors';
+import { ConsentChoices } from '@/ui/ConsentChoices';
 import { UnitsGuide } from '@/ui/UnitsGuide';
 import { DateField } from '@/ui/DateField';
 import { Button, Card, Choice, ErrorNote, Field, Screen, T } from '@/ui/ui';
@@ -17,10 +19,15 @@ export default function Profile() {
   const repo = useRepository();
   const router = useRouter();
   const profile = snap.profile;
+  const [name, setName] = useState(profile?.displayName ?? '');
   const [reasons, setReasons] = useState(snap.reasons.map((reason) => reason.body).join('\n'));
   const [town, setTown] = useState(profile?.town ?? '');
   const [spend, setSpend] = useState(profile?.weeklySpendGbp?.toString() ?? '');
   const [units, setUnits] = useState(profile?.weeklyUnits?.toString() ?? '');
+  const [interestIds, setInterestIds] = useState(profile?.interestIds ?? []);
+  const [community, setCommunity] = useState(profile?.communityVisible ?? false);
+  const [health, setHealth] = useState(profile?.consentHealth ?? false);
+  const [ai, setAi] = useState(profile?.consentAi ?? false);
   const [confirm, setConfirm] = useState('');
   const [stage, setStage] = useState<Stage>(profile?.stage ?? 'exploring');
   const [soberDate, setSoberDate] = useState(() => profile?.sobrietyStartedAt ? new Date(profile.sobrietyStartedAt) : startOfLocalDay(new Date()));
@@ -39,17 +46,54 @@ export default function Profile() {
     { id: 'extra', label: 'Extra large' },
   ];
 
-  async function saveBasics() {
+  function toggleInterest(id: string) {
+    setInterestIds((current) => (current.includes(id) ? current.filter((item) => item !== id) : [...current, id]));
+  }
+
+  async function saveDetails() {
+    if (!profile) return;
     setError(null);
+    setMessage(null);
+    if (!name.trim()) {
+      setError('Add your name.');
+      return;
+    }
     const weeklySpendGbp = Number(spend);
     const weeklyUnits = Number(units);
     if (!Number.isFinite(weeklySpendGbp) || weeklySpendGbp < 0 || !Number.isFinite(weeklyUnits) || weeklyUnits < 0) {
       setError('Spend and units need to be zero or more.');
       return;
     }
+    const stageError = validateStageStep({
+      stage,
+      soberDay: isoDay(soberDate),
+      today: isoDay(new Date()),
+      plannedQuit: isoDay(plannedQuit),
+      quitUnsure,
+      unitsGoal,
+      drinkFreeGoal,
+    });
+    if (stageError) {
+      setError(stageError);
+      return;
+    }
+    const parsedUnits = parseUnitsGoal(unitsGoal);
+    const parsedDays = parseDrinkFreeGoal(drinkFreeGoal);
     try {
-      await repo.updateProfile({ town, weeklySpendGbp, weeklyUnits });
+      await repo.updateProfile({
+        displayName: name.trim(),
+        town,
+        weeklySpendGbp,
+        weeklyUnits,
+        interestIds,
+        stage,
+        sobrietyStartedAt: stage === 'stopped' ? correctedSoberStart(soberDate, profile.sobrietyStartedAt) : null,
+        plannedQuitAt: stage === 'trying_to_stop' && !quitUnsure ? isoDay(plannedQuit) : null,
+        weeklyUnitsGoal: stage === 'cutting_down' && parsedUnits.ok ? parsedUnits.value : null,
+        drinkFreeDaysGoal: stage === 'cutting_down' && parsedDays.ok ? parsedDays.value : null,
+      });
       await repo.setReasons(reasons.split('\n'));
+      await repo.saveConsents({ communityVisible: community, consentHealth: health, consentAi: ai });
       setMessage('Saved.');
     } catch (err) {
       setError(shownError(err, 'Could not save.'));
@@ -80,15 +124,17 @@ export default function Profile() {
 
   return (
     <Screen eyebrow="You" title={profile.displayName} intro={profile.email}>
-      {showsSoberRecord(profile.stage) && profile.sobrietyStartedAt ? <T variant="muted">Sober since {formatUkDate(profile.sobrietyStartedAt)}.</T> : null}
+      <T variant="label">Your details</T>
+      <T>Name, where you are, the sober date, your usual week, reasons, interests, town, and consents. A new sober date is a correction, not a relapse.</T>
       <Card>
+        <Field label="Name" value={name} onChangeText={setName} placeholder="What should we call you?" />
         <T variant="label">Where you are</T>
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
           {STAGES.map((item) => (
             <Choice key={item} label={STAGE_LABELS[item]} selected={stage === item} onPress={() => setStage(item)} />
           ))}
         </View>
-        {stage === 'stopped' ? <DateField label="Sober since" value={soberDate} onChange={setSoberDate} maximumDate={new Date()} /> : null}
+        {stage === 'stopped' ? <DateField label="Sober since" value={soberDate} onChange={setSoberDate} maximumDate={new Date()} hint="Today or an earlier day. Saving this does not record a relapse." /> : null}
         {stage === 'trying_to_stop' ? (
           <View style={{ gap: 8 }}>
             <T>{SUDDEN_STOP_WARNING}</T>
@@ -103,20 +149,25 @@ export default function Profile() {
             <Field label="Drink-free days a week" value={drinkFreeGoal} onChangeText={setDrinkFreeGoal} keyboardType="number-pad" placeholder="0 to 7, optional" />
           </View>
         ) : null}
-        <Button label="Save where I am" tone="quiet" onPress={() => {
-          const parsedUnits = parseUnitsGoal(unitsGoal);
-          const parsedDays = parseDrinkFreeGoal(drinkFreeGoal);
-          if (stage === 'cutting_down' && !parsedUnits.ok) return setError(parsedUnits.message);
-          if (stage === 'cutting_down' && !parsedDays.ok) return setError(parsedDays.message);
-          setError(null);
-          void repo.updateProfile({
-            stage,
-            sobrietyStartedAt: stage === 'stopped' ? soberDate.toISOString() : null,
-            plannedQuitAt: stage === 'trying_to_stop' && !quitUnsure ? isoDay(plannedQuit) : null,
-            weeklyUnitsGoal: stage === 'cutting_down' && parsedUnits.ok ? parsedUnits.value : null,
-            drinkFreeDaysGoal: stage === 'cutting_down' && parsedDays.ok ? parsedDays.value : null,
-          }).then(() => setMessage('Saved.')).catch((err: unknown) => setError(shownError(err, 'Could not save.')));
-        }} />
+        <Field label="Typical spend per week (£)" value={spend} onChangeText={setSpend} keyboardType="decimal-pad" />
+        <Field label="Typical units per week" value={units} onChangeText={setUnits} keyboardType="decimal-pad" />
+        <UnitsGuide onChange={setUnits} />
+        <Field label="Town or area" value={town} onChangeText={setTown} placeholder="Bristol, or leave blank" />
+        <Field label="Reasons, one per line" value={reasons} onChangeText={setReasons} multiline />
+        <T variant="label">Interests</T>
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+          {snap.interests.filter((interest) => !interest.custom || interestIds.includes(interest.id)).map((interest) => (
+            <Choice
+              key={interest.id}
+              label={interest.label}
+              selected={interestIds.includes(interest.id)}
+              onPress={() => toggleInterest(interest.id)}
+            />
+          ))}
+        </View>
+        <T variant="label">Consent</T>
+        <ConsentChoices community={community} health={health} ai={ai} onCommunity={setCommunity} onHealth={setHealth} onAi={setAi} />
+        <Button label="Save your details" onPress={() => void saveDetails()} />
       </Card>
       <Card>
         <T variant="label">Appearance</T>
@@ -131,38 +182,7 @@ export default function Profile() {
           ))}
         </View>
       </Card>
-      <Field label="Town or area" value={town} onChangeText={setTown} />
-      <Field label="Typical spend per week (£)" value={spend} onChangeText={setSpend} keyboardType="decimal-pad" />
-      <Field label="Typical units per week" value={units} onChangeText={setUnits} keyboardType="decimal-pad" />
-      <UnitsGuide onChange={setUnits} />
-      <Field label="Reasons, one per line" value={reasons} onChangeText={setReasons} multiline />
-      <Button label="Save" onPress={() => void saveBasics()} />
-      <Card>
-        <T variant="label">Interests</T>
-        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-          {snap.interests.filter((interest) => !interest.custom || profile.interestIds.includes(interest.id)).map((interest) => (
-            <Choice
-              key={interest.id}
-              label={interest.label}
-              selected={profile.interestIds.includes(interest.id)}
-              onPress={() => {
-                const next = profile.interestIds.includes(interest.id)
-                  ? profile.interestIds.filter((id) => id !== interest.id)
-                  : [...profile.interestIds, interest.id];
-                void repo.updateProfile({ interestIds: next }).catch((err: unknown) => setError(shownError(err, 'Could not save.')));
-              }}
-            />
-          ))}
-        </View>
-      </Card>
-      <Card>
-        <T variant="label">Consent</T>
-        <T variant="muted">Health data {profile.consentHealth ? 'on' : 'off'} · Coach {profile.consentAi ? 'on' : 'off'} · Community {profile.communityVisible ? 'on' : 'off'}</T>
-        <Button label={profile.consentHealth ? 'Turn health data off' : 'Allow health data'} tone="quiet" onPress={() => void repo.updateProfile({ consentHealth: !profile.consentHealth }).catch((err: unknown) => setError(shownError(err, 'Could not save.')))} />
-        <Button label={profile.consentAi ? 'Turn the coach off' : 'Allow the coach'} tone="quiet" onPress={() => void repo.updateProfile({ consentAi: !profile.consentAi }).catch((err: unknown) => setError(shownError(err, 'Could not save.')))} />
-        <Button label={profile.communityVisible ? 'Hide me from community' : 'Show me in community'} tone="quiet" onPress={() => void repo.updateProfile({ communityVisible: !profile.communityVisible }).catch((err: unknown) => setError(shownError(err, 'Could not save.')))} />
-        <Button label="Health readings" tone="quiet" onPress={() => router.push('/health' as never)} />
-      </Card>
+      <Button label="Health readings" tone="quiet" onPress={() => router.push('/health' as never)} />
       {profile.isModerator ? (
         <Card>
           <T variant="label">Moderation queue</T>
