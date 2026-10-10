@@ -4,6 +4,7 @@ import { View } from 'react-native';
 
 import { useRepository, useSnapshot } from '@/data';
 import { shownError } from '@/domain/errors';
+import { CommunityProfile } from '@/ui/CommunityProfile';
 import { Button, Card, Choice, ErrorNote, Screen, T } from '@/ui/ui';
 
 export default function People() {
@@ -11,6 +12,7 @@ export default function People() {
   const repo = useRepository();
   const router = useRouter();
   const [tab, setTab] = useState<'discover' | 'requests' | 'chats'>('discover');
+  const [profileId, setProfileId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const me = snap.profile;
   if (!me) return null;
@@ -57,6 +59,12 @@ export default function People() {
                 void repo.requestConnection(card.id).catch((err: unknown) => setError(shownError(err, 'Could not send that.')));
               }}
             />
+            <Button
+              label={profileId === card.id ? 'Hide profile' : 'Profile'}
+              tone="quiet"
+              onPress={() => setProfileId((current) => (current === card.id ? null : card.id))}
+            />
+            {profileId === card.id ? <CommunityProfile userId={card.id} name={card.displayName} /> : null}
           </Card>
         );
       }) : null}

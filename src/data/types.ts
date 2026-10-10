@@ -42,13 +42,17 @@ export type Profile = {
   createdAt: string;
 };
 
+export type ProgressVisibility = 'private' | 'community';
+
 export type ProgressPhoto = {
   id: string;
+  userId: string;
   takenOn: string;
   monthIndex: number;
   note: string;
   storagePath: string;
   createdAt: string;
+  visibility: ProgressVisibility;
   /** Short-lived signed URL, or a demo data URL. Never a public object URL. */
   previewUrl: string | null;
 };
@@ -154,6 +158,8 @@ export type AppSnapshot = {
   thumos: ThumosMessage[];
   consents: StoredConsent[];
   progressPhotos: ProgressPhoto[];
+  /** Other people's photos that they have chosen to share. Private photos are never included. */
+  communityPhotos: ProgressPhoto[];
 };
 
 export type OnboardingInput = {
@@ -256,6 +262,7 @@ export interface Repository {
   mintVoiceToken(): Promise<VoiceMint>;
   addProgressPhoto(input: NewProgressPhoto): Promise<void>;
   deleteProgressPhoto(id: string): Promise<void>;
+  setProgressPhotoVisibility(ids: string[], visibility: ProgressVisibility): Promise<void>;
   exportData(): Promise<Record<string, unknown>>;
   deleteAccount(): Promise<void>;
 }

@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
-import { planProgressPhoto, progressMonthIndex, progressPhotoLabel, progressResize, progressStoragePath } from './progressPhotos';
+import { planProgressPhoto, progressMonthIndex, progressPhotoLabel, progressResize, progressStoragePath, progressVisibility, PROGRESS_SHARE_WARNING, PROGRESS_SHARED_URL_SECONDS } from './progressPhotos';
 
 describe('progress photo months', () => {
   const anchor = new Date(2026, 10, 2);
@@ -63,26 +63,52 @@ describe('progress photo files', () => {
   });
 });
 
+describe('progress photo sharing', () => {
+  it('treats every value except community as private', () => {
+    expect(progressVisibility('community')).toBe('community');
+    expect(progressVisibility('private')).toBe('private');
+    expect(progressVisibility(undefined)).toBe('private');
+    expect(progressVisibility('public')).toBe('private');
+    expect(PROGRESS_SHARE_WARNING).toBe('Anyone in the Charioteer community will be able to see this photo');
+    expect(PROGRESS_SHARED_URL_SECONDS).toBeLessThanOrEqual(60);
+  });
+});
+
 describe('progress photos stay private', () => {
   const quiet = [
     'src/app/(main)/thumos.tsx',
-    'src/app/(main)/people.tsx',
     'src/voice/openVoice.ts',
     'supabase/functions/thumos-chat/index.ts',
     'supabase/functions/_shared/thumos.ts',
   ];
 
-  it('is absent from the directory, Thumos, and voice', () => {
+  it('is absent from Thumos and voice', () => {
     for (const path of quiet) {
       const source = readFileSync(path, 'utf8');
       expect(source).not.toMatch(/progress_photos|progressPhotos|progress-photos/);
     }
   });
 
+  it('shows a shared photo on a community profile and reports it through the existing queue', () => {
+    const people = readFileSync('src/app/(main)/people.tsx', 'utf8');
+    const profile = readFileSync('src/ui/CommunityProfile.tsx', 'utf8');
+    const you = readFileSync('src/ui/ProgressPhotos.tsx', 'utf8');
+    expect(people).toContain('<CommunityProfile');
+    expect(people).not.toMatch(/thumos|xai|progress-photos/i);
+    expect(profile).toContain('reportUser');
+    expect(profile).toContain('Shared progress photo');
+    expect(profile).toContain('Shared');
+    expect(profile).not.toMatch(/thumos|xai|progress-photos/i);
+    expect(you).toContain('{PROGRESS_SHARE_WARNING}');
+    expect(you).toContain('Only me');
+    expect(you).toContain('Share with community');
+    expect(you).toContain('>Shared<');
+  });
+
   it('selects only the granted columns and does not send a photo to Thumos', () => {
     const repo = readFileSync('src/data/supabase-repository.ts', 'utf8');
     const refresh = repo.slice(repo.indexOf('private async refresh'), repo.indexOf('private async userId'));
-    expect(refresh).toContain(".from('progress_photos').select('id, taken_on, month_index, note, storage_path, created_at')");
+    expect(refresh).toContain(".from('progress_photos').select('id, user_id, taken_on, month_index, note, storage_path, created_at, visibility')");
     expect(refresh.indexOf("from('consents')")).toBeLessThan(refresh.indexOf("from('progress_photos')"));
     const add = repo.slice(repo.indexOf('async addProgressPhoto'), repo.indexOf('async deleteProgressPhoto'));
     expect(add).toContain(".from('progress_photos').insert");
@@ -104,5 +130,22 @@ describe('progress photos stay private', () => {
     expect(handler.indexOf('removeProgressPhotos')).toBeLessThan(handler.indexOf('deleteUser'));
     expect(deleted).toContain('.remove(');
     expect(deleted).toContain('bucket not found');
+  });
+
+  it('signs a shared photo only after the visibility check, and leaves storage owner-only', () => {
+    const signer = readFileSync('supabase/functions/progress-photo-url/index.ts', 'utf8');
+    const migration = readFileSync('supabase/migrations/20261010190000_progress_photo_visibility.sql', 'utf8');
+    expect(signer.indexOf(".select('id, user_id, storage_path, visibility')")).toBeLessThan(signer.indexOf('createSignedUrl'));
+    expect(signer).toContain("row.visibility === 'community'");
+    expect(signer).toContain('SHARED_SECONDS = 60');
+    expect(signer).not.toMatch(/thumos|xai/i);
+    expect(migration).toContain("visibility in ('private', 'community')");
+    expect(migration).toContain("default 'private'");
+    expect(migration).toContain('progress_photos_community_read');
+    expect(migration).toContain("using (visibility = 'community')");
+    expect(migration).toContain('grant select (visibility) on public.progress_photos to authenticated');
+    expect(migration).toContain('grant update (visibility) on public.progress_photos to authenticated');
+    expect(migration).not.toMatch(/grant update on public\.progress_photos/i);
+    expect(migration).not.toContain('storage.objects');
   });
 });

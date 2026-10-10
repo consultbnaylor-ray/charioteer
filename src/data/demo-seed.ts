@@ -94,14 +94,24 @@ function profile(
 const SAMPLE_JPEG =
   'data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAP//////////////////////////////////////////////////////////////////////////////////////2wBDAf//////////////////////////////////////////////////////////////////////////////////////wAARCAABAAEDASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAb/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/8QAFQEBAQAAAAAAAAAAAAAAAAAAAAX/xAAUEQEAAAAAAAAAAAAAAAAAAAAA/9oADAMBAAIQAxAAAAGf/9k=';
 
-function samplePhoto(userId: string, photoId: string, takenOn: string, monthIndex: number, note: string, createdAt: string): ProgressPhoto {
+function samplePhoto(
+  userId: string,
+  photoId: string,
+  takenOn: string,
+  monthIndex: number,
+  note: string,
+  createdAt: string,
+  visibility: ProgressPhoto['visibility'] = 'private',
+): ProgressPhoto {
   return {
     id: photoId,
+    userId,
     takenOn,
     monthIndex,
     note,
     storagePath: progressStoragePath(userId, photoId),
     createdAt,
+    visibility,
     previewUrl: SAMPLE_JPEG,
   };
 }
@@ -207,13 +217,34 @@ export function createDemoDb(now = new Date()): DemoDb {
     progressPhotos: [],
   });
 
+  const jordan = other(PEOPLE.jordan, 'jordan.ellis@example.com', 'Jordan Ellis', 'Manchester', [HIKING, SWIMMING]);
+  const jordanAnchor = new Date('2026-01-01T00:00:00.000Z');
+  const sharedPlan = planProgressPhoto({
+    takenOn: isoDay(now),
+    startingPoint: false,
+    note: 'Out on the canal.',
+    anchor: jordanAnchor,
+    today: isoDay(now),
+  });
+  if (sharedPlan.ok) {
+    jordan.progressPhotos.push(samplePhoto(
+      PEOPLE.jordan,
+      'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb6',
+      sharedPlan.takenOn,
+      sharedPlan.monthIndex,
+      sharedPlan.note,
+      now.toISOString(),
+      'community',
+    ));
+  }
+
   const connectionId = 'cccccccc-cccc-4ccc-8ccc-ccccccccccc1';
   const requestId = 'cccccccc-cccc-4ccc-8ccc-ccccccccccc2';
 
   return {
     accounts: {
       [PEOPLE.alex]: alex,
-      [PEOPLE.jordan]: other(PEOPLE.jordan, 'jordan.ellis@example.com', 'Jordan Ellis', 'Manchester', [HIKING, SWIMMING]),
+      [PEOPLE.jordan]: jordan,
       [PEOPLE.sam]: other(PEOPLE.sam, 'sam.okonkwo@example.com', 'Sam Okonkwo', 'Leeds', [RAVING, NIGHTS]),
       [PEOPLE.priya]: other(PEOPLE.priya, 'priya.shah@example.com', 'Priya Shah', 'London', [DANCING, CINEMA]),
       [PEOPLE.rowan]: other(PEOPLE.rowan, 'rowan.blake@example.com', 'Rowan Blake', 'Glasgow', [COOKING, READING], {

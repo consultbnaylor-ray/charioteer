@@ -6,6 +6,16 @@ export const PROGRESS_JPEG_QUALITY = 0.8;
 export const PROGRESS_MAX_BYTES = 2_097_152;
 export const PROGRESS_NOTE_LIMIT = 280;
 export const PROGRESS_SIGNED_URL_SECONDS = 600;
+/** Other people only ever receive a URL this short. Unsharing or deletion stops new ones at once. */
+export const PROGRESS_SHARED_URL_SECONDS = 60;
+export const PROGRESS_SHARE_WARNING = 'Anyone in the Charioteer community will be able to see this photo';
+
+export type ProgressVisibility = 'private' | 'community';
+
+/** Anything other than an explicit community share stays private. */
+export function progressVisibility(value: unknown): ProgressVisibility {
+  return value === 'community' ? 'community' : 'private';
+}
 
 export type ProgressPlan =
   | { ok: true; takenOn: string; monthIndex: number; note: string; label: string }

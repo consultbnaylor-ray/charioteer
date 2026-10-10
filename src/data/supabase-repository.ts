@@ -23,6 +23,7 @@ import {
   planProgressPhoto,
   progressAnchor,
   progressStoragePath,
+  progressVisibility,
 } from '@/domain/progressPhotos';
 import { planCustomInterest, validateTown } from '@/domain/privacy';
 import { fetchWithOneRetry } from '@/domain/retryFetch';
@@ -46,6 +47,7 @@ import type {
   NewProgressPhoto,
   NewReport,
   ProgressPhoto,
+  ProgressVisibility,
   OnboardingInput,
   Profile,
   ProfilePatch,
@@ -95,6 +97,7 @@ function emptySnapshot(): AppSnapshot {
     thumos: [],
     consents: [],
     progressPhotos: [],
+    communityPhotos: [],
   };
 }
 
@@ -183,7 +186,7 @@ export class SupabaseRepository implements Repository {
         this.client.from('connections').select('*').order('created_at', { ascending: false }),
         this.client.from('reports').select('*').order('created_at', { ascending: false }),
         this.client.from('consents').select('kind, granted, version').eq('user_id', userId),
-        this.client.from('progress_photos').select('id, taken_on, month_index, note, storage_path, created_at').eq('user_id', userId).order('month_index').order('taken_on'),
+        this.client.from('progress_photos').select('id, user_id, taken_on, month_index, note, storage_path, created_at, visibility').eq('user_id', userId).order('month_index').order('taken_on'),
       ]);
 
     const profileRow = profileRes.data as Row | null;
@@ -250,11 +253,12 @@ export class SupabaseRepository implements Repository {
       reports: ((reportsRes.data ?? []) as Row[]).map(mapReport),
       thumos: ((thumosRes.data ?? []) as Row[]).map(mapThumos),
       consents: ((consentsRes.data ?? []) as Row[]).map(mapConsent),
-      progressPhotos: await this.signedProgressPhotos(photosRes.error ? null : ((photosRes.data ?? []) as Row[]), photosRes.error?.message),
+      progressPhotos: await this.signedProgressPhotos(photosRes.error ? null : ((photosRes.data ?? []) as Row[]), photosRes.error?.message, userId),
+      communityPhotos: photosRes.error ? [] : await this.communityProgressPhotos(userId),
     });
   }
 
-  private async signedProgressPhotos(rows: Row[] | null, queryError?: string): Promise<ProgressPhoto[]> {
+  private async signedProgressPhotos(rows: Row[] | null, queryError: string | undefined, userId: string): Promise<ProgressPhoto[]> {
     if (queryError || !rows) {
       if (queryError) console.error(queryError);
       return [];
@@ -277,12 +281,56 @@ export class SupabaseRepository implements Repository {
       const path = String(row.storage_path ?? '');
       return {
         id: String(row.id),
+        userId: String(row.user_id ?? userId),
         takenOn: /^\d{4}-\d{2}-\d{2}/.test(taken) ? taken.slice(0, 10) : taken,
         monthIndex: Number(row.month_index ?? 0),
         note: String(row.note ?? ''),
         storagePath: path,
         createdAt: String(row.created_at ?? ''),
+        visibility: progressVisibility(row.visibility),
         previewUrl: signedByPath.get(path) ?? null,
+      };
+    });
+  }
+
+  /** Shared photos only. The edge function signs a URL after row-level security has allowed the row. */
+  private async communityProgressPhotos(userId: string): Promise<ProgressPhoto[]> {
+    const shared = await this.client
+      .from('progress_photos')
+      .select('id, user_id, taken_on, month_index, note, storage_path, created_at, visibility')
+      .eq('visibility', 'community')
+      .neq('user_id', userId);
+    if (shared.error || !shared.data?.length) {
+      if (shared.error) console.error(shared.error.message);
+      return [];
+    }
+    const rows = shared.data as Row[];
+    const urls = new Map<string, string>();
+    try {
+      const invoked = await this.client.functions.invoke('progress-photo-url', {
+        body: { ids: rows.map((row) => String(row.id)) },
+      });
+      const list = invoked.data?.photos;
+      if (Array.isArray(list)) {
+        for (const item of list) {
+          if (item && typeof item.id === 'string' && typeof item.signed_url === 'string') urls.set(item.id, item.signed_url);
+        }
+      }
+    } catch (error) {
+      console.error(error);
+    }
+    return rows.filter((row) => progressVisibility(row.visibility) === 'community').map((row) => {
+      const taken = String(row.taken_on ?? '');
+      return {
+        id: String(row.id),
+        userId: String(row.user_id ?? ''),
+        takenOn: /^\d{4}-\d{2}-\d{2}/.test(taken) ? taken.slice(0, 10) : taken,
+        monthIndex: Number(row.month_index ?? 0),
+        note: String(row.note ?? ''),
+        storagePath: String(row.storage_path ?? ''),
+        createdAt: String(row.created_at ?? ''),
+        visibility: 'community' as const,
+        previewUrl: urls.get(String(row.id)) ?? null,
       };
     });
   }
@@ -795,6 +843,17 @@ export class SupabaseRepository implements Repository {
       await this.client.storage.from(PROGRESS_BUCKET).remove([path]);
       throw asUserFacing(inserted.error, 'general');
     }
+    await this.refresh();
+  }
+
+  async setProgressPhotoVisibility(ids: string[], visibility: ProgressVisibility): Promise<void> {
+    const next = progressVisibility(visibility);
+    if (!ids.length || (visibility !== 'private' && visibility !== 'community')) {
+      throw new UserFacingError('Could not update that photo.', 'generic');
+    }
+    const userId = await this.userId();
+    const { error } = await this.client.from('progress_photos').update({ visibility: next }).in('id', ids).eq('user_id', userId);
+    if (error) throw asUserFacing(error, 'general');
     await this.refresh();
   }
 

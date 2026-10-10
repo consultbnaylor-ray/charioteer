@@ -24,7 +24,7 @@ export function ConsentChoices({
     <View style={{ gap: 16 }}>
       <ConsentRow
         title="Community"
-        body="Other adults can see your name, town or area, and interests. They cannot see your reasons, check-ins, money, units, health, or progress photos."
+        body="Other adults can see your name, town or area, and interests. They cannot see your reasons, check-ins, money, units, or health. A progress photo stays hidden unless you choose Share with community on that photo."
         value={community}
         onChange={onCommunity}
       />
@@ -40,7 +40,7 @@ export function ConsentChoices({
         value={ai}
         onChange={onAi}
       />
-      <T>Progress photos, if you add them, stay private to you. They are not shown to other people, and they are not sent to Thumos.</T>
+      <T>Progress photos stay private unless you share one. Anyone in the Charioteer community can then see that photo. Photos are not sent to Thumos.</T>
       <T variant="muted">This consent screen is plain language, not a solicitor’s privacy notice. Have it reviewed before a public launch. Version {formatUkLong(parseIsoDay(CONSENT_VERSION))}.</T>
     </View>
   );

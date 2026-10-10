@@ -3,10 +3,10 @@ import { useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 
 import { useRepository, useSnapshot } from '@/data';
-import type { ProgressPhoto } from '@/data/types';
+import type { ProgressPhoto, ProgressVisibility } from '@/data/types';
 import { isoDay, startOfLocalDay } from '@/domain/dates';
 import { shownError } from '@/domain/errors';
-import { planProgressPhoto, progressAnchor, progressPhotoLabel, PROGRESS_NOTE_LIMIT } from '@/domain/progressPhotos';
+import { planProgressPhoto, PROGRESS_SHARE_WARNING, progressAnchor, progressPhotoLabel, PROGRESS_NOTE_LIMIT } from '@/domain/progressPhotos';
 import { DateField } from '@/ui/DateField';
 import { pickProgressPhoto } from '@/ui/prepareProgressPhoto';
 import { radius, useAppTheme } from '@/ui/theme';
@@ -25,7 +25,8 @@ export function ProgressPhotos() {
   const [beforeId, setBeforeId] = useState<string | null>(null);
   const [nowId, setNowId] = useState<string | null>(null);
   const [confirmId, setConfirmId] = useState<string | null>(null);
-  const [pending, setPending] = useState<'camera' | 'library' | 'save' | 'delete' | null>(null);
+  const [shareIds, setShareIds] = useState<string[] | null>(null);
+  const [pending, setPending] = useState<'camera' | 'library' | 'save' | 'delete' | 'share' | null>(null);
   const [error, setError] = useState<string | null>(null);
   if (!profile) return null;
 
@@ -86,11 +87,24 @@ export function ProgressPhotos() {
     }
   }
 
+  async function applyVisibility(ids: string[], visibility: ProgressVisibility) {
+    setError(null);
+    setPending('share');
+    try {
+      await repo.setProgressPhotoVisibility(ids, visibility);
+      setShareIds(null);
+    } catch (err) {
+      setError(shownError(err, 'Could not update that photo.'));
+    } finally {
+      setPending(null);
+    }
+  }
+
   return (
     <View style={{ gap: 14 }}>
       <T variant="label">Progress photos</T>
       <T>A starting point, then photos through the months. Counted from your sober date, or from the day you joined.</T>
-      <T>These stay private to you. They are not shown in the directory, and they are not sent to Thumos.</T>
+      <T>Photos stay private unless you choose Share with community. They are not sent to Thumos. Only me puts a shared photo back to just you.</T>
       {error ? <ErrorNote>{error}</ErrorNote> : null}
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
         <Button label="Take a photo" pending={pending === 'camera'} disabled={pending != null && pending !== 'camera'} onPress={() => void choose('camera')} />
@@ -131,7 +145,20 @@ export function ProgressPhotos() {
                     setConfirmId(null);
                   }}
                 />
+                {photo.visibility === 'community' ? <T variant="label">Shared</T> : null}
                 {photo.note ? <T variant="muted">{photo.note}</T> : null}
+                {shareIds?.length === 1 && shareIds[0] === photo.id ? (
+                  <View style={{ gap: 8 }}>
+                    <T>{PROGRESS_SHARE_WARNING}</T>
+                    <Button label="Share this photo" pending={pending === 'share'} onPress={() => void applyVisibility([photo.id], 'community')} />
+                    <Button label="Keep it private" tone="quiet" disabled={pending != null} onPress={() => setShareIds(null)} />
+                  </View>
+                ) : (
+                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+                    <Choice label="Only me" selected={photo.visibility !== 'community'} onPress={() => { if (photo.visibility === 'community') void applyVisibility([photo.id], 'private'); }} />
+                    <Choice label="Share with community" selected={photo.visibility === 'community'} onPress={() => { if (photo.visibility !== 'community') setShareIds([photo.id]); }} />
+                  </View>
+                )}
                 {confirmId === photo.id ? (
                   <View style={{ gap: 8 }}>
                     <Button label="Delete this photo" tone="sos" pending={pending === 'delete'} onPress={() => void remove(photo.id)} />
@@ -164,6 +191,26 @@ export function ProgressPhotos() {
               onPress={() => selected && setNowId(selected.id)}
             />
           </View>
+          {shareIds && shareIds.length > 1 ? (
+            <View style={{ gap: 8 }}>
+              <T>{PROGRESS_SHARE_WARNING}</T>
+              <Button label="Share this comparison" pending={pending === 'share'} onPress={() => void applyVisibility(shareIds, 'community')} />
+              <Button label="Keep it private" tone="quiet" disabled={pending != null} onPress={() => setShareIds(null)} />
+            </View>
+          ) : (
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+              <Choice
+                label="Only me"
+                selected={before.visibility !== 'community' && now.visibility !== 'community'}
+                onPress={() => void applyVisibility([before.id, now.id], 'private')}
+              />
+              <Choice
+                label="Share with community"
+                selected={before.visibility === 'community' && now.visibility === 'community'}
+                onPress={() => setShareIds([...new Set([before.id, now.id])])}
+              />
+            </View>
+          )}
           <View style={{ flexDirection: 'row', gap: 10 }}>
             <View style={{ flex: 1, gap: 6 }}>
               <T variant="label">Before</T>

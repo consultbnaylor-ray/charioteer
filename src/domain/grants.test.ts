@@ -8,6 +8,7 @@ const addInterest = readFileSync('supabase/migrations/20261010150000_add_interes
 const consentReread = readFileSync('supabase/migrations/20261010160000_consent_reread.sql', 'utf8');
 const profileStage = readFileSync('supabase/migrations/20261010170000_profile_stage.sql', 'utf8');
 const progressPhotos = readFileSync('supabase/migrations/20261010180000_progress_photos.sql', 'utf8');
+const progressVisibility = readFileSync('supabase/migrations/20261010190000_progress_photo_visibility.sql', 'utf8');
 
 function updateColumnsIn(source: string, table: string): string[] {
   const match = source.match(new RegExp(`grant update \\(([^)]+)\\) on public\\.${table} to authenticated`, 'i'));
@@ -178,6 +179,16 @@ describe('progress photos', () => {
     expect(progressPhotos.toLowerCase()).not.toMatch(/grant update/);
     expect(progressPhotos).toContain("'progress_photos'");
     expect(progressPhotos).not.toMatch(/grant update on public\.progress_photos/i);
+  });
+
+  it('lets the owner change visibility and lets everyone else read only a shared row', () => {
+    expect(progressVisibility).toContain("default 'private'");
+    expect(progressVisibility).toContain("visibility in ('private', 'community')");
+    expect(progressVisibility).toContain('for select to authenticated');
+    expect(progressVisibility).toContain("using (visibility = 'community')");
+    expect(progressVisibility).toContain('grant update (visibility) on public.progress_photos to authenticated');
+    expect(progressVisibility).not.toMatch(/grant update on public\.progress_photos/i);
+    expect(progressVisibility).not.toContain('storage.objects');
   });
 });
 

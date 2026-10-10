@@ -8,7 +8,7 @@ import {
   WRONG_PASSWORD_MESSAGE,
 } from '@/domain/errors';
 import { randomId } from '@/domain/id';
-import { planProgressPhoto, progressAnchor, progressPhotoLabel, progressStoragePath, PROGRESS_MAX_BYTES } from '@/domain/progressPhotos';
+import { planProgressPhoto, progressAnchor, progressPhotoLabel, progressStoragePath, progressVisibility, PROGRESS_MAX_BYTES } from '@/domain/progressPhotos';
 import { planCustomInterest, validateTown } from '@/domain/privacy';
 import { planRelapse } from '@/domain/sober';
 import { detectSafety, ensureSafetyNotices } from '@/domain/safety';
@@ -25,6 +25,8 @@ import type {
   NewHealthSample,
   NewProgressPhoto,
   NewReport,
+  ProgressPhoto,
+  ProgressVisibility,
   OnboardingInput,
   ProfilePatch,
   Repository,
@@ -51,6 +53,15 @@ function readyProfile(profile: DemoAccount['profile']): DemoAccount['profile'] {
     drinkFreeDaysGoal: profile.drinkFreeDaysGoal ?? null,
     drinkFreeOn: profile.drinkFreeOn ?? [],
     createdAt: profile.createdAt || '2026-01-01T00:00:00.000Z',
+  };
+}
+
+function readyPhoto(photo: ProgressPhoto, userId: string): ProgressPhoto {
+  return {
+    ...photo,
+    userId: photo.userId || userId,
+    visibility: progressVisibility(photo.visibility),
+    previewUrl: photo.previewUrl ?? null,
   };
 }
 
@@ -147,7 +158,12 @@ export class DemoRepository implements Repository {
       thumos: account ? [...account.thumos] : [],
       consents: account?.consents ?? [],
       progressPhotos: account
-        ? [...(account.progressPhotos ?? [])].sort((a, b) => a.monthIndex - b.monthIndex || a.takenOn.localeCompare(b.takenOn))
+        ? [...(account.progressPhotos ?? [])].map((photo) => readyPhoto(photo, account.profile.id)).sort((a, b) => a.monthIndex - b.monthIndex || a.takenOn.localeCompare(b.takenOn))
+        : [],
+      communityPhotos: account
+        ? Object.values(this.db.accounts)
+            .filter((other) => other.profile.id !== account.profile.id && !blocked(this.db, account.profile.id, other.profile.id))
+            .flatMap((other) => (other.progressPhotos ?? []).map((photo) => readyPhoto(photo, other.profile.id)).filter((photo) => photo.visibility === 'community'))
         : [],
       profile: account ? readyProfile(account.profile) : null,
     };
@@ -582,14 +598,33 @@ export class DemoRepository implements Repository {
     const photos = next.progressPhotos ?? [];
     photos.push({
       id,
+      userId: account.profile.id,
       takenOn: plan.takenOn,
       monthIndex: plan.monthIndex,
       note: plan.note,
       storagePath: progressStoragePath(account.profile.id, id),
       createdAt: new Date().toISOString(),
+      visibility: 'private',
       previewUrl: bytesToDataUrl(input.bytes),
     });
     next.progressPhotos = photos;
+    this.commit(db);
+  }
+
+  async setProgressPhotoVisibility(ids: string[], visibility: ProgressVisibility): Promise<void> {
+    const next = progressVisibility(visibility);
+    if (visibility !== 'private' && visibility !== 'community') throw new UserFacingError('Could not update that photo.', 'generic');
+    const account = this.me();
+    const db = clone(this.db);
+    const photos = db.accounts[account.profile.id].progressPhotos ?? [];
+    const wanted = new Set(ids);
+    let changed = 0;
+    for (const photo of photos) {
+      if (!wanted.has(photo.id)) continue;
+      photo.visibility = next;
+      changed += 1;
+    }
+    if (!changed) throw new UserFacingError('Could not update that photo.', 'generic');
     this.commit(db);
   }
 
@@ -624,6 +659,7 @@ export class DemoRepository implements Repository {
         note: photo.note,
         storage_path: photo.storagePath,
         created_at: photo.createdAt,
+        visibility: progressVisibility(photo.visibility),
         label: progressPhotoLabel(photo.monthIndex, photo.takenOn),
         signed_url: photo.previewUrl,
       })),
