@@ -9,6 +9,7 @@ import {
   buildThumosContext,
   completionDeltaText,
   OFFLINE_COACH_MESSAGE,
+  resolveThumosMode,
   safetyFromText,
   THUMOS_CHAT,
   type CheckInSummary,
@@ -65,13 +66,7 @@ Deno.serve(async (req) => {
   }
 
   const safety = safetyFromText(content);
-  const requested = body.mode;
-  const mode: ThumosMode =
-    safety.selfHarm || safety.withdrawal
-      ? 'support'
-      : requested === 'support' || requested === 'growth' || requested === 'opening' || requested === 'steady'
-        ? requested
-        : 'steady';
+  const mode = resolveThumosMode({ requested: body.mode, userText: content, safety });
 
   const byKind = new Map<string, { value: number; unit: string; recordedOn: string }[]>();
   for (const row of healthRes.data ?? []) {

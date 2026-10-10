@@ -6,6 +6,7 @@ export {
   CRAVING_LINE,
   inferThumosMode,
   OFFLINE_COACH_MESSAGE,
+  resolveThumosMode,
   OPENING_LINE,
   safetyFromText,
   THUMOS_CHAT,

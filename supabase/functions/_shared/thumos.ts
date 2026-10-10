@@ -51,31 +51,48 @@ export function inferThumosMode(input: {
   return 'steady';
 }
 
+const CLIENT_MODES: readonly ThumosMode[] = ['support', 'growth', 'opening', 'steady'];
+
+/**
+ * The edge function decides the prompt. A client `mode` flag is a hint.
+ * Craving language in the message, and any safety flag, force support even
+ * when the client asked for steady or growth. A client support flag is kept
+ * when the text itself is ordinary, so SOS still opens the support prompt.
+ */
+export function resolveThumosMode(input: {
+  requested?: string | null;
+  userText?: string;
+  safety: { selfHarm: boolean; withdrawal: boolean };
+}): ThumosMode {
+  if (input.safety.selfHarm || input.safety.withdrawal) return 'support';
+  const fromText = inferThumosMode({ sos: false, hasHistory: true, userText: input.userText });
+  if (fromText === 'support') return 'support';
+  if (input.requested && (CLIENT_MODES as readonly string[]).includes(input.requested)) {
+    return input.requested as ThumosMode;
+  }
+  return 'steady';
+}
+
 /**
  * Text model for Thumos. Checked against xAI public docs on 10 October 2026.
  *
- * Live replies used grok-4.7 on POST /v1/chat/completions with no reasoning_effort.
- * grok-4.7, grok-4.6, and grok-4.5 default that parameter to "high", and reasoning
- * cannot be turned off (docs.x.ai/developers/model-capabilities/text/reasoning).
- * The model thinks before the first answer token, which is the 40–50 second wait.
+ * grok-4.7, grok-4.6, and grok-4.5 default reasoning_effort to "high", and
+ * reasoning cannot be turned off (docs.x.ai/developers/model-capabilities/text/reasoning).
+ * That thinking pass is the 40–50 second wait. Those models stay on "low".
  *
- * grok-4.3 is the fast model that supports reasoning effort "none" (no reasoning
- * at all), plus low, medium, high, and xhigh. Its default is low.
+ * grok-4.3 supports none, low, medium, high, and xhigh. The documented default
+ * is low: some reasoning tokens, still the fast setting.
  * https://docs.x.ai/developers/models/grok-4.3
- * Non-reasoning workloads are directed at grok-4.3 with none:
- * https://docs.x.ai/developers/migration/may-15-retirement
+ * "none" is no reasoning at all. A live pass with none was quick (about 1–1.4s
+ * to the first token) and the replies collapsed to one generic line, so the
+ * default here is low. Low was not timed in this environment. Do not set
+ * max_tokens when effort is low: reasoning tokens share that budget and can
+ * starve the answer.
  *
- * Chat Completions takes reasoning_effort as a top-level field (the xAI chat
- * SDK sends it that way). The Responses API uses reasoning.effort instead.
- * This app stays on the chat completions call that was already verified.
- * Streaming is stream: true on that same endpoint
+ * Chat Completions takes reasoning_effort as a top-level field. The Responses
+ * API uses reasoning.effort. This app stays on chat completions.
+ * Streaming is stream: true
  * (docs.x.ai/developers/model-capabilities/text/streaming).
- *
- * xAI does not publish a latency SLO. With reasoning off, there is no hidden
- * thinking pass: a short reply is ordinary token generation, and stream: true
- * shows it as it is written. That is seconds, not the 40–50s high-effort wait.
- * If THUMOS_MODEL is set back to grok-4.7, 4.6, or 4.5, effort falls back to
- * "low" (the fastest setting those models allow).
  */
 export const THUMOS_CHAT = {
   completionsUrl: 'https://api.x.ai/v1/chat/completions',
@@ -87,7 +104,15 @@ export const THUMOS_CHAT = {
 } as const;
 
 export function thumosReasoningEffort(model: string): 'none' | 'low' {
-  if (model === 'grok-4.7' || model === 'grok-4.6' || model === 'grok-4.5') return 'low';
+  if (
+    model === 'grok-4.3' ||
+    model === 'grok-4.3-latest' ||
+    model === 'grok-4.7' ||
+    model === 'grok-4.6' ||
+    model === 'grok-4.5'
+  ) {
+    return 'low';
+  }
   return 'none';
 }
 
@@ -147,12 +172,18 @@ const MODE_GUIDANCE: Record<ThumosMode, string> = {
   opening:
     'This is the start of the conversation, or the person has not yet said how they feel. Ask how they are feeling. Do not launch into advice.',
   steady:
-    'Stay with what they actually said. Be warm and brief. Do not perform cheerfulness.',
+    'Stay with what they actually said. Write 3 to 6 sentences. Be warm and specific. End with one question. Do not answer in a single generic line.',
   growth:
-    'They seem to be doing all right. Acknowledge it without gushing, then offer one or two next steps among exercise, sleep, nutrition, connection, and purpose. Ask what they want. Do not lecture.',
+    'They seem to be doing all right. Write 3 to 6 sentences. Acknowledge the specific thing they said, without gushing, and do not reply with only "That is good" or "Keep going". Then offer one or two next steps among exercise, sleep, nutrition, connection, and purpose, tied to their recent check-ins or health readings when CONTEXT has them. End with one question about what they want to try. Do not lecture.',
   support:
-    'They are craving, or they opened SOS. Ask what they think will happen if they drink, and whether those consequences are worth it. Remind them that cravings rise, peak, and pass, often within 20 to 30 minutes — present this as coaching guidance, not as a cited statistic. Offer the in-app breathing exercise and the 10-minute urge timer. Suggest a walk, jog, or run if they are able. Remind them of their own reasons, in their words. You may offer one fact from CURATED FACTS, or a plain consequence (sleep, money, relationships, the next morning). Offer it. If they do not want it, leave it.',
+    'They are craving, or they opened SOS. Write 3 to 6 sentences, in this order, and do not collapse it into one generic line. (1) Acknowledge the urge in their own words. (2) Remind them a craving rises, peaks, and passes, often within 20 to 30 minutes. Present that as coaching guidance, not as a cited statistic. (3) Ask what they think will happen if they drink, and whether that is worth it. (4) Bring in their sober time and one of their personal reasons from CONTEXT, in their words. If CONTEXT says those are not set, say so rather than inventing them. (5) Offer the in-app breathing exercise, the 10-minute urge timer, and a walk, jog, or run if they are able. You may add one fact from CURATED FACTS, quoted faithfully with its source, or leave it out. End with one question.',
 };
+
+const SHAPE_EXAMPLES = [
+  'EXAMPLES OF SHAPE ONLY. Do not copy a day count, a reason, or a fact from an example unless CONTEXT has that same detail.',
+  'Example, craving. Person: "The urge is loud tonight. I keep thinking about the off-licence." Reply: "That pull towards the off-licence is real, and it is loud right now. A craving like this rises, peaks, and usually eases within 20 to 30 minutes. What do you think happens if you drink tonight, and is that worth the morning you are trying to keep? You have been sober for the stretch shown in CONTEXT, and the reason you wrote there still stands. The breathing exercise or the 10-minute urge timer is on this screen, and a short walk would use the same half hour. What will you do for the next ten minutes?"',
+  'Example, a good day. Person: "I slept properly and went for a walk. I feel all right." Reply: "Sleeping properly and getting out for a walk is a solid day, and it shows in how you feel. A next step that fits is keeping that walk, or protecting the bedtime that gave you the sleep. Where CONTEXT has a recent check-in or a step reading, use that rather than a general pep talk. What do you want tomorrow to include?"',
+].join('\n');
 
 export function buildThumosContext(input: ThumosContextInput): string {
   const started = input.sobrietyStartedAt ? new Date(input.sobrietyStartedAt) : null;
@@ -206,9 +237,11 @@ export function buildSystemPrompt(context: string, mode: ThumosMode, facts: read
     'Charioteer is named for Plato\'s charioteer of the soul. You are the spirited horse: courage, heart, and forward motion.',
     'Your job is to help this person stay sober and get healthier.',
     'You are not a doctor, therapist, or emergency service. Say so when the conversation touches physical health, withdrawal, or mental health.',
-    'Use UK English. Be calm, plain, and adult. Never punitive about a lapse. Short paragraphs. Keep the reply under 120 words. No emoji unless the person uses them first.',
+    'Use UK English. Be calm, plain, and adult. Never punitive about a lapse. Write 3 to 6 sentences and end with one question. Do not answer in a single generic line. No emoji unless the person uses them first.',
+    'When you mention sober time, a personal reason, a check-in, or a health reading, take it from CONTEXT. Do not invent those details.',
     'Do not invent statistics, study names, or citations. If you share a number about alcohol harm, use only CURATED FACTS, quote it faithfully, and name the source. If you do not have a verified figure, say so.',
     MODE_GUIDANCE[mode],
+    SHAPE_EXAMPLES,
     'Safety rules, follow exactly:',
     '- If they describe heavy daily drinking and wanting to stop abruptly, or withdrawal symptoms (shakes, sweating, hallucinations, confusion, seizures, or feeling very unwell when not drinking): tell them alcohol withdrawal can be dangerous and they should not detox alone. Advise their GP, NHS 111, or 999 in an emergency. Do not give a taper schedule, doses, or medication advice.',
     '- If they express suicidal thoughts or self-harm: take it seriously. Encourage the Samaritans on 116 123 (free, 24 hours) and 999 if they are in immediate danger. Stay supportive. Do not debate whether they should live. Do not describe methods.',

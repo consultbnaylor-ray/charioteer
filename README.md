@@ -25,14 +25,14 @@ Domain rules (the sober counter, savings, milestones, safety detection, and the 
 - SOS on Today. One tap opens craving support with a 10-minute urge timer, breathing, and the person’s reasons.
 - Library: quit lit, sober groups, UK helplines, and general health, stored as data in `src/data/catalogue.ts` and `supabase/seed.sql`. The sign-in screen has “Need help now?” so Samaritans and Drinkline are visible before an account exists.
 - Community: interests (including custom ones), town or area only, discovery by shared interests, connection requests, and private 1:1 chat. Block and report. Moderators see a reports queue on You. Rowan Blake is a moderator in the sample.
-- Account export (JSON download on the web) and account deletion. Explicit consent, RLS on every table, and grants that stop a user promoting themselves to moderator. Hosted Supabase gives `authenticated` full UPDATE on new public tables. `20261010130000_tighten_grants.sql` revokes that and grants back only the columns the app writes. `is_moderator` is not one of them. The init migration’s statements are unchanged because they are already applied; a comment there records this intent.
+- Account export (JSON download on the web) and account deletion. Explicit consent, RLS on every table, and grants that stop a user promoting themselves to moderator. Hosted Supabase gives `authenticated` full UPDATE on new public tables. `20261010130000_tighten_grants.sql` revokes that, revokes default privileges for new public tables, and grants back only the columns the app writes. `is_moderator` is not one of them. Because those default privileges are gone, every future table needs its own explicit grants. The init migration’s statements are unchanged because they are already applied; a comment there records this intent. Health upserts also update `user_id`, `kind`, `recorded_on`, and `source`. `20261010140000_health_upsert_grant.sql` grants UPDATE on those columns. `health_own` still requires `user_id = auth.uid()` before and after the write.
 - Dark is the default. Light, and matching the device, stay available under You, with three text sizes. Colour and type are tokens in `src/ui/theme.tsx`: near-black and off-white, grey for hierarchy, Oswald for headings, Barlow for text, square corners. The only hue is a deep red, for SOS and safety notices. The mark is a winged Greek helmet (`assets/brand/helmet.svg`), used on the icon, splash, header, and sign-in screen.
 - A demo mode that runs the whole app without Docker or Supabase, with seed people, check-ins, health readings, a sample conversation, and a chat.
 
 ## What is stubbed
 
 - **Grok Voice audio.** The ephemeral token request and `session.update` follow the public xAI docs (retrieved 10 October 2026). Voice is Leo, with “Speak British English.” in the instructions, because `en-GB` is not a supported language hint and would be ignored. English is `en`. Microphone capture, PCM framing, and playback of `response.output_audio.delta` are not implemented. The adapter opens the socket, sends the session update, and closes it. See the TODO in `supabase/functions/_shared/voice.ts`.
-- **Text model.** Chat uses the verified Chat Completions call: `POST https://api.x.ai/v1/chat/completions`. The default model is `grok-4.3` with `reasoning_effort` set to `none` (no reasoning pass). xAI’s docs (retrieved 10 October 2026) say `grok-4.7` cannot disable reasoning and defaults to `high`, which is the 40–50 second wait. `grok-4.3` is the fast model that supports `none`. The reply is streamed. xAI does not publish a latency figure; with reasoning off, the wait is ordinary generation of a short reply rather than a high-effort thinking pass. Override the model with `THUMOS_MODEL`. On `grok-4.7`, `grok-4.6`, or `grok-4.5` the function uses `low`, the fastest effort those models allow.
+- **Text model.** Chat uses the verified Chat Completions call: `POST https://api.x.ai/v1/chat/completions`. The default model is `grok-4.3` with `reasoning_effort` set to `low`. xAI’s docs (retrieved 10 October 2026) say that is the fast setting which still spends a few reasoning tokens, and that `none` is no reasoning at all. A live pass with `none` answered in about 1–1.4 seconds to the first token, but the replies were a single generic line, so the function now uses `low`. `low` has not been timed here. `grok-4.7` cannot disable reasoning and defaults to `high`, which is the 40–50 second wait. The reply is streamed. The server reads craving language in the message and uses the support prompt even if the client sent another mode. Override the model with `THUMOS_MODEL`. On `grok-4.7`, `grok-4.6`, or `grok-4.5` the function uses `low`, the fastest effort those models allow. `max_tokens` is sent only when effort is `none`, because a low-effort budget is shared with the reasoning tokens.
 - **Demo mode does not call xAI**, even if a key is present in the environment. Live replies exist only when the app points at Supabase and the edge function has `XAI_API_KEY`. Without the key, the function stores a clear offline message and still adds safety notices.
 - **Sign in with Apple** needs an Apple Services ID, a Supabase provider secret, and a dev build on iOS. The button explains that when those are missing.
 - **Apple Health** reads steps, sleep, resting heart rate, HRV (SDNN), workouts, and weight for the last 14 days, read-only. It runs only in an iOS dev build (`src/health/sync.ios.ts`). Web and Android show a message and the manually logged readings.
@@ -86,7 +86,7 @@ Copy `.env.example`. Never commit a real key, and never prefix the xAI key with 
 | `EXPO_PUBLIC_SUPABASE_ANON_KEY` | Client | Legacy anon key. Used only when the publishable key is empty. |
 | `EXPO_PUBLIC_DATA_MODE` | Client | Set to `demo` for the on-device sample. Unset uses Supabase. |
 | `XAI_API_KEY` | Edge function only | `supabase secrets set XAI_API_KEY=…` |
-| `THUMOS_MODEL` | Edge function | Optional. Default `grok-4.3` with `reasoning_effort` `none`. |
+| `THUMOS_MODEL` | Edge function | Optional. Default `grok-4.3` with `reasoning_effort` `low`. |
 
 Supabase injects `SUPABASE_URL`, `SUPABASE_ANON_KEY`, and `SUPABASE_SERVICE_ROLE_KEY` into functions. Do not put those in the client.
 
@@ -105,7 +105,20 @@ Copy the local API URL and anon key into `.env` as `EXPO_PUBLIC_SUPABASE_URL` an
 
 Seed data is `supabase/seed.sql`: the catalogue, then five auth users. If a future CLI changes `auth.users` columns, the user insert is inside an exception handler so the catalogue still commits, and the notice explains the skip. Demo mode has the same people either way.
 
-Apply a hosted migration with `supabase db push` or your usual pipeline. The first migration is `supabase/migrations/20261010120000_init.sql`. The grant fix is `supabase/migrations/20261010130000_tighten_grants.sql`. Apply that on the live project; this repository does not connect to it. The signed-out “Need help now?” link reads helplines once that grant is in place, and falls back to the bundled list until then.
+Apply a hosted migration with `supabase db push` or your usual pipeline. The first migration is `supabase/migrations/20261010120000_init.sql`. The grant fix is `supabase/migrations/20261010130000_tighten_grants.sql`. The health upsert fix is `supabase/migrations/20261010140000_health_upsert_grant.sql`. Apply those on the live project; this repository does not connect to it. The signed-out “Need help now?” link reads helplines once the grant fix is in place, and falls back to the bundled list until then.
+
+`tighten_grants` revokes default privileges in schema `public` from `public`, `anon`, and `authenticated` (and from `supabase_admin` when that role can be altered). A new public table therefore has no client privileges until a later migration grants them. Grant the columns the app actually writes. A table-level `UPDATE` left in place makes a later column grant additive, which is how `is_moderator` stayed writable.
+
+## Auth redirect allow-list
+
+The app does not put a path on the custom scheme.
+
+- Sign in with Apple on the web sets `redirectTo` to `window.location.origin`, with no path. Locally that origin is `http://127.0.0.1:43127` or `http://localhost:43127`.
+- Sign in with Apple outside the web (the shared OAuth helper, used on Android) sets `redirectTo` to exactly `charioteer://`.
+- Sign in with Apple on iOS uses the native identity token and does not redirect.
+- Email sign-up does not set `emailRedirectTo`. Confirmation uses the project Site URL. In `config.toml` that is `http://127.0.0.1:43127`.
+
+An allow-list entry of exactly `charioteer://` matches the redirect this app sends today. If a redirect ever includes a path, such as `charioteer://auth/callback`, that exact entry does not cover it. The allow-list then needs `charioteer://**`.
 
 ## Edge functions
 

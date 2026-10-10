@@ -4,7 +4,7 @@ import { planRelapse, soberElapsed } from './sober';
 import { formatGbp, savingsFromTypicalWeek } from './savings';
 import { detectSafety, ensureSafetyNotices, firstSafetyHit, pinnedSafetyNotices, SELF_HARM_NOTICE, WITHDRAWAL_NOTICE } from './safety';
 import { encodeSse, parseSseBuffer } from './sse';
-import { buildChatCompletionBody, buildSystemPrompt, buildThumosContext, completionDeltaText, inferThumosMode, OFFLINE_COACH_MESSAGE, THUMOS_CHAT, thumosReasoningEffort } from './thumos';
+import { buildChatCompletionBody, buildSystemPrompt, buildThumosContext, completionDeltaText, inferThumosMode, OFFLINE_COACH_MESSAGE, resolveThumosMode, THUMOS_CHAT, thumosReasoningEffort } from './thumos';
 import { ALCOHOL_FACTS } from './facts';
 import { browserSocketProtocols, buildVoiceSessionUpdate, GROK_VOICE } from './voice';
 
@@ -165,11 +165,58 @@ describe('Thumos context', () => {
     expect(prompt).toContain('CURATED FACTS');
     expect(prompt).toContain(ALCOHOL_FACTS[0].text.slice(0, 40));
     expect(buildSystemPrompt(context, 'opening')).toContain('Ask how they are feeling');
-    expect(buildSystemPrompt(context, 'support')).toContain('120 words');
+    expect(prompt).toContain('47 days, 6 hours');
     expect(OFFLINE_COACH_MESSAGE).toContain('not a reply from the model');
   });
 
-  it('asks grok-4.3 for no reasoning and streams the answer', () => {
+  it('treats craving language as support even when the client asked for another mode', () => {
+    const safety = { selfHarm: false, withdrawal: false };
+    expect(resolveThumosMode({
+      requested: 'steady',
+      userText: 'The urge is loud tonight. I keep thinking about the off-licence.',
+      safety,
+    })).toBe('support');
+    expect(resolveThumosMode({
+      requested: 'growth',
+      userText: 'I slept properly and went for a walk. I feel all right.',
+      safety,
+    })).toBe('growth');
+    expect(resolveThumosMode({
+      requested: 'growth',
+      userText: 'I feel shaky and I had a seizure when I stopped.',
+      safety: { selfHarm: false, withdrawal: true },
+    })).toBe('support');
+    expect(resolveThumosMode({
+      requested: 'support',
+      userText: 'Hello',
+      safety,
+    })).toBe('support');
+    expect(resolveThumosMode({ requested: 'nope', userText: 'Hello', safety })).toBe('steady');
+  });
+
+  it('asks a craving reply to follow the support shape and a good day to ask a question', () => {
+    const context = buildThumosContext(base);
+    const support = buildSystemPrompt(context, 'support');
+    expect(support).toContain('3 to 6 sentences');
+    expect(support).toContain('end with one question');
+    expect(support).toContain('breathing exercise');
+    expect(support).toContain('10-minute urge timer');
+    expect(support).toContain('what they think will happen if they drink');
+    expect(support).toContain('sober time');
+    expect(support).toContain('walk, jog, or run');
+    expect(support).toContain('I want to remember my evenings.');
+    expect(support).toContain('47 days, 6 hours');
+    expect(support).toContain('mood 4/5');
+    expect(support).toContain('8400 steps');
+    expect(support).not.toContain('120 words');
+    const growth = buildSystemPrompt(context, 'growth');
+    expect(growth).toContain('next steps');
+    expect(growth).toContain('End with one question');
+    expect(growth).not.toContain('120 words');
+    expect(growth).toContain('That is good');
+  });
+
+  it('asks grok-4.3 for low reasoning and streams the answer', () => {
     const body = buildChatCompletionBody({
       system: 'Be brief.',
       history: Array.from({ length: 12 }, (_, index) => ({ role: 'user' as const, content: `turn ${index}` })),
@@ -178,12 +225,19 @@ describe('Thumos context', () => {
     });
     expect(body.model).toBe('grok-4.3');
     expect(body.model).toBe(THUMOS_CHAT.model);
-    expect(body.reasoning_effort).toBe('none');
+    expect(body.reasoning_effort).toBe('low');
     expect(body.stream).toBe(true);
-    expect(body.max_tokens).toBe(THUMOS_CHAT.maxTokens);
+    expect(body.max_tokens).toBeUndefined();
     expect(body.messages.filter((message) => message.role === 'user')).toHaveLength(THUMOS_CHAT.historyLimit + 1);
+    expect(thumosReasoningEffort('grok-4.3')).toBe('low');
+    expect(thumosReasoningEffort('grok-4.3-latest')).toBe('low');
     expect(thumosReasoningEffort('grok-4.7')).toBe('low');
-    expect(buildChatCompletionBody({ model: 'grok-4.7', system: 'Be brief.', history: [], user: 'Hi', stream: true }).reasoning_effort).toBe('low');
+    const older = buildChatCompletionBody({ model: 'grok-4.7', system: 'Be brief.', history: [], user: 'Hi', stream: true });
+    expect(older.reasoning_effort).toBe('low');
+    expect(older.max_tokens).toBeUndefined();
+    const unknown = buildChatCompletionBody({ model: 'grok-other', system: 'Be brief.', history: [], user: 'Hi', stream: false });
+    expect(unknown.reasoning_effort).toBe('none');
+    expect(unknown.max_tokens).toBe(THUMOS_CHAT.maxTokens);
     expect(GROK_VOICE.chatModel).toBe('grok-4.3');
   });
 

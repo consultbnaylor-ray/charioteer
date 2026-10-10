@@ -3,7 +3,7 @@
  *
  * Verified from xAI public docs (docs.x.ai, retrieved 10 October 2026):
  * - Text chat: POST https://api.x.ai/v1/chat/completions.
- *   Thumos uses grok-4.3 with reasoning_effort "none" (see THUMOS_CHAT in thumos.ts).
+ *   Thumos uses grok-4.3 with reasoning_effort "low" (see THUMOS_CHAT in thumos.ts).
  *   grok-4.7 remains available but defaults to high reasoning effort, which cannot
  *   be disabled, and is too slow for a craving. Chat Completions is the legacy
  *   endpoint; the docs also recommend the newer Responses API.

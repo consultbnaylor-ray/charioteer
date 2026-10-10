@@ -3,11 +3,16 @@ import { describe, expect, it } from 'vitest';
 
 const sql = readFileSync('supabase/migrations/20261010130000_tighten_grants.sql', 'utf8');
 const init = readFileSync('supabase/migrations/20261010120000_init.sql', 'utf8');
+const healthUpsert = readFileSync('supabase/migrations/20261010140000_health_upsert_grant.sql', 'utf8');
 
-function updateColumns(table: string): string[] {
-  const match = sql.match(new RegExp(`grant update \\(([^)]+)\\) on public\\.${table} to authenticated`, 'i'));
+function updateColumnsIn(source: string, table: string): string[] {
+  const match = source.match(new RegExp(`grant update \\(([^)]+)\\) on public\\.${table} to authenticated`, 'i'));
   if (!match) return [];
   return match[1].split(',').map((column) => column.trim()).filter(Boolean);
+}
+
+function updateColumns(table: string): string[] {
+  return updateColumnsIn(sql, table);
 }
 
 describe('tighten_grants migration', () => {
@@ -52,5 +57,20 @@ describe('tighten_grants migration', () => {
     expect(init).toContain('20261010130000_tighten_grants.sql');
     expect(init).toContain('revoke all on public.profiles from anon');
     expect(init).not.toContain('revoke all privileges on all tables in schema public from public, anon, authenticated');
+  });
+});
+
+describe('health upsert grant', () => {
+  it('adds the conflict columns and checks the full set plus health_own', () => {
+    expect(updateColumns('health_samples')).toEqual(['value', 'unit']);
+    expect(updateColumnsIn(healthUpsert, 'health_samples')).toEqual(['user_id', 'kind', 'recorded_on', 'source']);
+    expect(healthUpsert).not.toMatch(/grant update on public\.health_samples/i);
+    expect(healthUpsert).toContain("column_name in ('user_id', 'kind', 'recorded_on', 'source', 'value', 'unit')");
+    expect(healthUpsert).toContain("column_name in ('id', 'created_at')");
+    expect(healthUpsert).toContain('health_own');
+    expect(healthUpsert).toContain('user_id = auth.uid()');
+    expect(healthUpsert).toContain('health_samples still has table-level UPDATE');
+    const intended = [...updateColumns('health_samples'), ...updateColumnsIn(healthUpsert, 'health_samples')].sort();
+    expect(intended).toEqual(['kind', 'recorded_on', 'source', 'unit', 'user_id', 'value']);
   });
 });
