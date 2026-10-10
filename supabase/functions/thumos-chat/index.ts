@@ -8,6 +8,9 @@ import {
   buildSystemPrompt,
   buildThumosContext,
   completionDeltaText,
+  detectRisk,
+  historyTurnsForModel,
+  isThumosFollowUp,
   OFFLINE_COACH_MESSAGE,
   resolveThumosMode,
   safetyFromText,
@@ -104,12 +107,17 @@ Deno.serve(async (req) => {
 
   const admin = createClient(url, service, { auth: { persistSession: false } });
   const apiKey = Deno.env.get('XAI_API_KEY');
-  const history = [...(historyRes.data ?? [])].reverse().map((row) => ({
-    role: row.role === 'user' ? 'user' as const : 'assistant' as const,
+  const historyRows = (historyRes.data ?? []).map((row) => ({
+    role: row.role as string,
     content: row.content as string,
+    createdAt: row.created_at as string,
   }));
+  const history = historyTurnsForModel(historyRows);
   const model = Deno.env.get('THUMOS_MODEL') || THUMOS_CHAT.model;
-  const system = buildSystemPrompt(context, mode, ALCOHOL_FACTS);
+  const system = buildSystemPrompt(context, mode, ALCOHOL_FACTS, {
+    followUp: mode === 'support' && isThumosFollowUp(historyRows),
+    supportShape: detectRisk(content) === 'planning' ? 'planning' : 'acute',
+  });
 
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {

@@ -34,7 +34,58 @@ export type ThumosContextInput = {
   safety: SafetyHit;
 };
 
-const CRAVING_TEXT = /\b(crav\w*|urge|want a drink|need a drink|off[-\s]?licence|really want (?:a |to )?drink)\b/i;
+const APOSTROPHE = "['’]";
+
+/** A drink they want now, or a thought that gives them permission to have one. */
+const ACUTE_TEXT = new RegExp(
+  [
+    String.raw`\bcrav\w*`,
+    String.raw`\burge\b`,
+    String.raw`\b(?:really )?(?:want|need|fancy) (?:a |another |to )?drink\b`,
+    String.raw`\boff[-\s]?licence\b`,
+    String.raw`\bdeserve (?:a |that )?drink\b`,
+    String.raw`\bjust one\b`,
+    String.raw`\bone won${APOSTROPHE}t hurt\b`,
+    String.raw`\bone will not hurt\b`,
+    String.raw`\ba few won${APOSTROPHE}t matter\b`,
+    String.raw`\ba few will not matter\b`,
+    String.raw`\bwon${APOSTROPHE}t hurt to (?:have|drink)\b`,
+  ].join('|'),
+  'i',
+);
+
+/**
+ * A situation still ahead: the pub, a party, other people drinking, or doubt
+ * they can get through it. Not the same as a craving that is happening now.
+ */
+const PLANNING_TEXT = new RegExp(
+  [
+    String.raw`\bpub\b`,
+    String.raw`\bbar\b`,
+    String.raw`\bparty\b`,
+    String.raw`\bwedding\b`,
+    String.raw`\bstag\b`,
+    String.raw`\bhen (?:do|party|night)\b`,
+    String.raw`\b(?:can${APOSTROPHE}t|cannot|cant) handle\b`,
+    String.raw`\bif i can handle\b`,
+    String.raw`\bnot sure (?:if |that )?i can handle\b`,
+    String.raw`\b(?:mates|friends) drinking\b`,
+    String.raw`\bdrinking with (?:my )?(?:mates|friends)\b`,
+    String.raw`\b(?:mates|friends) (?:are |were )?(?:all )?(?:going|out)\b`,
+  ].join('|'),
+  'i',
+);
+
+export type SupportShape = 'acute' | 'planning';
+
+/** Acute wins when the same message is both a craving now and a plan ahead. */
+export function detectRisk(userText: string | undefined | null): 'acute' | 'planning' | 'none' {
+  const text = userText ?? '';
+  if (!text.trim()) return 'none';
+  if (ACUTE_TEXT.test(text)) return 'acute';
+  if (PLANNING_TEXT.test(text)) return 'planning';
+  return 'none';
+}
 
 export function inferThumosMode(input: {
   sos: boolean;
@@ -44,7 +95,7 @@ export function inferThumosMode(input: {
   hasHistory: boolean;
 }): ThumosMode {
   if (input.sos) return 'support';
-  if (input.userText && CRAVING_TEXT.test(input.userText)) return 'support';
+  if (detectRisk(input.userText) !== 'none') return 'support';
   if ((input.latestCraving ?? 0) >= 6) return 'support';
   if (!input.hasHistory && !input.userText) return 'opening';
   if ((input.latestMood ?? 0) >= 4 && (input.latestCraving ?? 0) <= 3) return 'growth';
@@ -118,6 +169,32 @@ export function thumosReasoningEffort(model: string): 'none' | 'low' {
 
 export type ChatTurn = { role: 'user' | 'assistant'; content: string };
 
+export type HistoryRow = { role: string; content: string; createdAt?: string };
+
+/** True once the person has already spoken. A guide line alone is not a follow-up. */
+export function isThumosFollowUp(rows: { role: string }[]): boolean {
+  return rows.some((row) => row.role === 'user');
+}
+
+/**
+ * Recent turns for the model, oldest first. Rows may arrive newest-first from
+ * the database; createdAt puts them back in order. Guide and offline lines
+ * are assistant turns, which is what the chat API accepts.
+ */
+export function historyTurnsForModel(rows: HistoryRow[]): ChatTurn[] {
+  const ordered = [...rows].sort((a, b) => {
+    if (!a.createdAt || !b.createdAt || a.createdAt === b.createdAt) return 0;
+    return a.createdAt < b.createdAt ? -1 : 1;
+  });
+  return ordered
+    .filter((row) => row.content.trim())
+    .slice(-THUMOS_CHAT.historyLimit)
+    .map((row) => ({
+      role: row.role === 'user' ? 'user' : 'assistant',
+      content: row.content,
+    }));
+}
+
 export function buildChatCompletionBody(input: {
   model?: string;
   system: string;
@@ -133,6 +210,9 @@ export function buildChatCompletionBody(input: {
 } {
   const model = input.model || THUMOS_CHAT.model;
   const reasoning_effort = thumosReasoningEffort(model);
+  const prior = input.history.slice(-THUMOS_CHAT.historyLimit);
+  const last = prior[prior.length - 1];
+  const history = last && last.role === 'user' && last.content.trim() === input.user.trim() ? prior.slice(0, -1) : prior;
   return {
     model,
     reasoning_effort,
@@ -140,7 +220,7 @@ export function buildChatCompletionBody(input: {
     ...(reasoning_effort === 'none' ? { max_tokens: THUMOS_CHAT.maxTokens } : {}),
     messages: [
       { role: 'system', content: input.system },
-      ...input.history.slice(-THUMOS_CHAT.historyLimit),
+      ...history,
       { role: 'user', content: input.user },
     ],
   };
@@ -168,22 +248,55 @@ export const OFFLINE_COACH_MESSAGE = [
   'Thumos is not a medical professional.',
 ].join(' ');
 
-const MODE_GUIDANCE: Record<ThumosMode, string> = {
+const ACUTE_SUPPORT = [
+  'This is the first support turn. They are in a craving, or they are talking themselves into a drink, right now.',
+  'Weave the aims below into natural speech. There is no set order. Do not number them, do not give each aim its own line, and do not produce a template.',
+  'Aims, use the ones that fit this message:',
+  '- Acknowledge the specific thing they just said, in fresh words.',
+  '- When it helps, remind them a craving rises, peaks, and passes, often within about 20 to 30 minutes. That is coaching guidance, not a cited statistic.',
+  '- Ask what they think will happen if they drink, and whether that is worth it.',
+  '- Mention sober time from CONTEXT and the one personal reason that best fits this message. If several reasons are listed, rotate them and do not keep using the same one. If none are written, do not invent one.',
+  '- Offer one in-the-moment step that fits them: the breathing exercise, the 10-minute urge timer, or a walk, jog, or run. One offer is enough.',
+  '- A single CURATED FACT, with its source, is optional.',
+  'If they are giving themselves permission for just one, or saying one won\'t hurt, or that they deserve a drink, or that a few won\'t matter, challenge that gently: the craving usually wants more than one. Use their own history and reasons.',
+].join('\n');
+
+const PLANNING_SUPPORT = [
+  'This is the first support turn. They are looking at a situation ahead, such as a pub, a bar, a party, a wedding, or other people drinking. They may not be craving this minute.',
+  'Help them make a plan, in natural speech, with no set order and no stack of one-line paragraphs.',
+  'Draw on whichever of these fits: a way to leave, a soft drink they can order without a debate, one friend who knows they are not drinking, arriving later or leaving earlier, and a short reply ready for someone who says go on, have one.',
+  'Bring in sober time from CONTEXT and the personal reason that best fits. Rotate reasons across turns. Do not invent one.',
+  'Do not mention the breathing exercise or the 10-minute urge timer unless they say they are craving now.',
+].join('\n');
+
+const FOLLOW_UP_SUPPORT = [
+  'This is a follow-up. The earlier turns are in the messages after this system prompt. Read them.',
+  'Do not repeat an earlier reply. Do not ask the same question again. Do not run back through the support aims.',
+  'Respond to their latest thought and move the conversation forward.',
+  'If they say just one, one won\'t hurt, they deserve a drink, or a few won\'t matter, challenge that gently with their sober time and a reason from CONTEXT you have not already leaned on, and say that the craving usually wants more than one.',
+  'If they are still facing a pub, a bar, or another plan, stay on that plan and take the next practical step. Do not restart the plan from the top.',
+].join('\n');
+
+const OTHER_GUIDANCE: Record<Exclude<ThumosMode, 'support'>, string> = {
   opening:
     'This is the start of the conversation, or the person has not yet said how they feel. Ask how they are feeling. Do not launch into advice.',
   steady:
-    'Stay with what they actually said. Write 3 to 6 sentences. Be warm and specific. End with one question. Do not answer in a single generic line.',
+    'Stay with what they actually said. Be warm and specific. End with one question. Do not answer in a single generic line.',
   growth:
-    'They seem to be doing all right. Write 3 to 6 sentences. Acknowledge the specific thing they said, without gushing, and do not reply with only "That is good" or "Keep going". Then offer one or two next steps among exercise, sleep, nutrition, connection, and purpose, tied to their recent check-ins or health readings when CONTEXT has them. End with one question about what they want to try. Do not lecture.',
-  support:
-    'They are craving, or they opened SOS. Write 3 to 6 sentences, in this order, and do not collapse it into one generic line. (1) Acknowledge the urge in their own words. (2) Remind them a craving rises, peaks, and passes, often within 20 to 30 minutes. Present that as coaching guidance, not as a cited statistic. (3) Ask what they think will happen if they drink, and whether that is worth it. (4) Bring in their sober time and one of their personal reasons from CONTEXT, in their words. If CONTEXT says those are not set, say so rather than inventing them. (5) Offer the in-app breathing exercise, the 10-minute urge timer, and a walk, jog, or run if they are able. You may add one fact from CURATED FACTS, quoted faithfully with its source, or leave it out. End with one question.',
+    'They seem to be doing all right. Acknowledge the specific thing they said, without gushing, and do not reply with only "That is good" or "Keep going". Then offer one or two next steps among exercise, sleep, nutrition, connection, and purpose, tied to their recent check-ins or health readings when CONTEXT has them. End with one question about what they want to try. Do not lecture.',
 };
 
-const SHAPE_EXAMPLES = [
-  'EXAMPLES OF SHAPE ONLY. Do not copy a day count, a reason, or a fact from an example unless CONTEXT has that same detail.',
-  'Example, craving. Person: "The urge is loud tonight. I keep thinking about the off-licence." Reply: "That pull towards the off-licence is real, and it is loud right now. A craving like this rises, peaks, and usually eases within 20 to 30 minutes. What do you think happens if you drink tonight, and is that worth the morning you are trying to keep? You have been sober for the stretch shown in CONTEXT, and the reason you wrote there still stands. The breathing exercise or the 10-minute urge timer is on this screen, and a short walk would use the same half hour. What will you do for the next ten minutes?"',
-  'Example, a good day. Person: "I slept properly and went for a walk. I feel all right." Reply: "Sleeping properly and getting out for a walk is a solid day, and it shows in how you feel. A next step that fits is keeping that walk, or protecting the bedtime that gave you the sleep. Where CONTEXT has a recent check-in or a step reading, use that rather than a general pep talk. What do you want tomorrow to include?"',
-].join('\n');
+export type PromptTurn = {
+  followUp?: boolean;
+  supportShape?: SupportShape;
+};
+
+function modeGuidance(mode: ThumosMode, turn: PromptTurn): string {
+  if (mode !== 'support') return OTHER_GUIDANCE[mode];
+  if (turn.followUp) return FOLLOW_UP_SUPPORT;
+  if (turn.supportShape === 'planning') return PLANNING_SUPPORT;
+  return ACUTE_SUPPORT;
+}
 
 export function buildThumosContext(input: ThumosContextInput): string {
   const started = input.sobrietyStartedAt ? new Date(input.sobrietyStartedAt) : null;
@@ -230,18 +343,23 @@ export function buildThumosContext(input: ThumosContextInput): string {
   ].join('\n');
 }
 
-export function buildSystemPrompt(context: string, mode: ThumosMode, facts: readonly CitedFact[] = ALCOHOL_FACTS): string {
+export function buildSystemPrompt(
+  context: string,
+  mode: ThumosMode,
+  facts: readonly CitedFact[] = ALCOHOL_FACTS,
+  turn: PromptTurn = {},
+): string {
   const factText = facts === ALCOHOL_FACTS ? factsBlock() : facts.map((fact) => `- [${fact.id}] ${fact.text} (${fact.source})`).join('\n');
   return [
     'You are Thumos, the spirited companion in Charioteer.',
     'Charioteer is named for Plato\'s charioteer of the soul. You are the spirited horse: courage, heart, and forward motion.',
     'Your job is to help this person stay sober and get healthier.',
     'You are not a doctor, therapist, or emergency service. Say so when the conversation touches physical health, withdrawal, or mental health.',
-    'Use UK English. Be calm, plain, and adult. Never punitive about a lapse. Write 3 to 6 sentences and end with one question. Do not answer in a single generic line. No emoji unless the person uses them first.',
+    'Use UK English. Be calm, plain, and adult. Never punitive about a lapse. Write 3 to 6 sentences of connected prose and end with one question. Do not answer in a single generic line, and do not put each point on its own line. No emoji unless the person uses them first.',
+    'The messages after this system prompt are the conversation so far, oldest first, then their latest line. Use that history. Never repeat a sentence you have already sent. Vary your wording from turn to turn.',
     'When you mention sober time, a personal reason, a check-in, or a health reading, take it from CONTEXT. Do not invent those details.',
     'Do not invent statistics, study names, or citations. If you share a number about alcohol harm, use only CURATED FACTS, quote it faithfully, and name the source. If you do not have a verified figure, say so.',
-    MODE_GUIDANCE[mode],
-    SHAPE_EXAMPLES,
+    modeGuidance(mode, turn),
     'Safety rules, follow exactly:',
     '- If they describe heavy daily drinking and wanting to stop abruptly, or withdrawal symptoms (shakes, sweating, hallucinations, confusion, seizures, or feeling very unwell when not drinking): tell them alcohol withdrawal can be dangerous and they should not detox alone. Advise their GP, NHS 111, or 999 in an emergency. Do not give a taper schedule, doses, or medication advice.',
     '- If they express suicidal thoughts or self-harm: take it seriously. Encourage the Samaritans on 116 123 (free, 24 hours) and 999 if they are in immediate danger. Stay supportive. Do not debate whether they should live. Do not describe methods.',

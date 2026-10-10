@@ -4,7 +4,7 @@ import { planRelapse, soberElapsed } from './sober';
 import { formatGbp, savingsFromTypicalWeek } from './savings';
 import { detectSafety, ensureSafetyNotices, firstSafetyHit, pinnedSafetyNotices, SELF_HARM_NOTICE, WITHDRAWAL_NOTICE } from './safety';
 import { encodeSse, parseSseBuffer } from './sse';
-import { buildChatCompletionBody, buildSystemPrompt, buildThumosContext, completionDeltaText, inferThumosMode, OFFLINE_COACH_MESSAGE, resolveThumosMode, THUMOS_CHAT, thumosReasoningEffort } from './thumos';
+import { buildChatCompletionBody, buildSystemPrompt, buildThumosContext, completionDeltaText, detectRisk, historyTurnsForModel, inferThumosMode, isThumosFollowUp, OFFLINE_COACH_MESSAGE, resolveThumosMode, THUMOS_CHAT, thumosReasoningEffort } from './thumos';
 import { ALCOHOL_FACTS } from './facts';
 import { browserSocketProtocols, buildVoiceSessionUpdate, GROK_VOICE } from './voice';
 
@@ -149,6 +149,13 @@ describe('Thumos context', () => {
     expect(inferThumosMode({ sos: true, hasHistory: true })).toBe('support');
     expect(inferThumosMode({ sos: false, hasHistory: true, latestCraving: 8, latestMood: 2 })).toBe('support');
     expect(inferThumosMode({ sos: false, hasHistory: true, userText: 'The urge is loud', latestMood: 4 })).toBe('support');
+    expect(inferThumosMode({
+      sos: false,
+      hasHistory: true,
+      latestMood: 5,
+      latestCraving: 1,
+      userText: 'Mates are all going to the pub after football and I do not know if I can handle it.',
+    })).toBe('support');
     expect(inferThumosMode({ sos: false, hasHistory: true, latestMood: 5, latestCraving: 1 })).toBe('growth');
     expect(inferThumosMode({ sos: false, hasHistory: false })).toBe('opening');
   });
@@ -199,21 +206,94 @@ describe('Thumos context', () => {
     const support = buildSystemPrompt(context, 'support');
     expect(support).toContain('3 to 6 sentences');
     expect(support).toContain('end with one question');
+    expect(support).toContain('Weave the aims below');
     expect(support).toContain('breathing exercise');
     expect(support).toContain('10-minute urge timer');
     expect(support).toContain('what they think will happen if they drink');
     expect(support).toContain('sober time');
+    expect(support).toContain('rotate them');
     expect(support).toContain('walk, jog, or run');
     expect(support).toContain('I want to remember my evenings.');
     expect(support).toContain('47 days, 6 hours');
     expect(support).toContain('mood 4/5');
     expect(support).toContain('8400 steps');
     expect(support).not.toContain('120 words');
+    expect(support).not.toContain('What will you do for the next ten minutes?');
     const growth = buildSystemPrompt(context, 'growth');
     expect(growth).toContain('next steps');
     expect(growth).toContain('End with one question');
     expect(growth).not.toContain('120 words');
     expect(growth).toContain('That is good');
+  });
+
+  it('uses a different instruction for a follow-up, and a plan when the risk is still ahead', () => {
+    const context = buildThumosContext(base);
+    const first = buildSystemPrompt(context, 'support', undefined, { followUp: false, supportShape: 'acute' });
+    const follow = buildSystemPrompt(context, 'support', undefined, { followUp: true, supportShape: 'acute' });
+    const plan = buildSystemPrompt(context, 'support', undefined, { followUp: false, supportShape: 'planning' });
+    expect(first).not.toBe(follow);
+    expect(first).toContain('Weave the aims below');
+    expect(follow).toContain('This is a follow-up');
+    expect(follow).toContain('usually wants more than one');
+    expect(follow).not.toContain('Weave the aims below');
+    expect(plan).toContain('soft drink');
+    expect(plan).toContain('way to leave');
+    expect(plan).toContain('Do not mention the breathing exercise');
+    expect(plan).not.toContain('Weave the aims below');
+    expect(follow).not.toContain('soft drink they can order');
+  });
+
+  it('treats social pressure and permission-giving as support, and keeps a good day in growth', () => {
+    const safety = { selfHarm: false, withdrawal: false };
+    const pub = 'Mates are all going to the pub after football Saturday and I don\'t know if I can handle it.';
+    expect(detectRisk(pub)).toBe('planning');
+    expect(resolveThumosMode({ requested: 'growth', userText: pub, safety })).toBe('support');
+    expect(detectRisk('The wedding is on Saturday and there will be a bar.')).toBe('planning');
+    expect(detectRisk('It is a stag do and I am not sure I can handle it.')).toBe('planning');
+    expect(detectRisk('I really want a drink tonight, it\'s been a rough day at work.')).toBe('acute');
+    expect(detectRisk('I just think one won\'t hurt.')).toBe('acute');
+    expect(detectRisk('I deserve a drink.')).toBe('acute');
+    expect(detectRisk('A few won\'t matter.')).toBe('acute');
+    expect(detectRisk('I slept properly and went for a walk. I feel all right.')).toBe('none');
+    expect(resolveThumosMode({
+      requested: 'growth',
+      userText: 'I slept properly and went for a walk. I feel all right.',
+      safety,
+    })).toBe('growth');
+  });
+
+  it('sends the recent conversation, oldest first, and does not repeat the latest line', () => {
+    const rows = [
+      { role: 'assistant', content: 'Earlier reply about the rough day.', createdAt: '2026-03-02T18:01:00.000Z' },
+      { role: 'user', content: 'I really want a drink tonight, it has been a rough day at work.', createdAt: '2026-03-02T18:00:00.000Z' },
+      { role: 'guide', content: 'How are you feeling?', createdAt: '2026-03-02T17:00:00.000Z' },
+    ];
+    expect(isThumosFollowUp(rows)).toBe(true);
+    expect(isThumosFollowUp([{ role: 'guide' }])).toBe(false);
+    const history = historyTurnsForModel(rows);
+    expect(history.map((turn) => turn.content)).toEqual([
+      'How are you feeling?',
+      'I really want a drink tonight, it has been a rough day at work.',
+      'Earlier reply about the rough day.',
+    ]);
+    expect(history.map((turn) => turn.role)).toEqual(['assistant', 'user', 'assistant']);
+    const body = buildChatCompletionBody({
+      system: 'Stay with them.',
+      history,
+      user: 'I just think one won\'t hurt.',
+      stream: true,
+    });
+    expect(body.messages.map((message) => message.role)).toEqual(['system', 'assistant', 'user', 'assistant', 'user']);
+    expect(body.messages[2].content).toContain('rough day');
+    expect(body.messages[3].content).toContain('Earlier reply');
+    expect(body.messages[4].content).toBe('I just think one won\'t hurt.');
+    const duplicated = buildChatCompletionBody({
+      system: 'Stay with them.',
+      history: [...history, { role: 'user', content: 'I just think one won\'t hurt.' }],
+      user: 'I just think one won\'t hurt.',
+      stream: true,
+    });
+    expect(duplicated.messages.filter((message) => message.content === 'I just think one won\'t hurt.')).toHaveLength(1);
   });
 
   it('asks grok-4.3 for low reasoning and streams the answer', () => {
