@@ -34,9 +34,11 @@ describe('reason examples', () => {
     expect(onboarding).toContain("useState(['', '', ''])");
     expect(onboarding).toContain('placeholder={reasonPlaceholder(index)}');
     expect(onboarding).not.toContain('I want to be as healthy as I can be');
-    expect(field).toContain('placeholderTextColor={placeholderColor}');
+    expect(field).toContain('placeholderTextColor={theme.colors.placeholder}');
+    expect(field).toContain('const textColor = value ? theme.colors.ink : theme.colors.placeholder');
     expect(field).not.toContain('placeholderTextColor={theme.colors.muted}');
     expect(field).not.toContain('placeholderTextColor={theme.colors.ink}');
+    expect(field).not.toContain('usePlaceholderColor');
   });
 });
 

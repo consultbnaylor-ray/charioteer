@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
+import { createContext, useContext, useState, type ReactNode } from 'react';
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -200,20 +200,6 @@ export function Button({
   );
 }
 
-/**
- * iOS ignores placeholderTextColor on the first field until the prop changes.
- * The first paint is another AA grey, then the theme hint colour, so every box matches.
- */
-function usePlaceholderColor(color: string, scheme: 'light' | 'dark'): string {
-  const [settled, setSettled] = useState(false);
-  useEffect(() => {
-    const frame = requestAnimationFrame(() => setSettled(true));
-    return () => cancelAnimationFrame(frame);
-  }, [color]);
-  if (settled) return color;
-  return scheme === 'dark' ? '#9A9A93' : '#5C5C56';
-}
-
 export function Field({
   label,
   value,
@@ -238,8 +224,11 @@ export function Field({
 }) {
   const theme = useAppTheme();
   const [revealed, setRevealed] = useState(false);
-  const placeholderColor = usePlaceholderColor(theme.colors.placeholder, theme.scheme);
   const password = Boolean(secureTextEntry);
+  // iOS paints the first TextInput placeholder with `color` when a custom font
+  // is set, and ignores placeholderTextColor. An empty field uses the hint
+  // colour for both, so an example never looks like something already typed.
+  const textColor = value ? theme.colors.ink : theme.colors.placeholder;
   const contentType = password ? (textContentType ?? 'password') : undefined;
   const input = (
     <TextInput
@@ -247,7 +236,7 @@ export function Field({
       value={value}
       onChangeText={onChangeText}
       placeholder={placeholder}
-      placeholderTextColor={placeholderColor}
+      placeholderTextColor={theme.colors.placeholder}
       secureTextEntry={password && !revealed}
       textContentType={contentType}
       autoComplete={contentType === 'newPassword' ? 'password-new' : contentType === 'password' ? 'password' : undefined}
@@ -258,7 +247,7 @@ export function Field({
       style={[
         password ? styles.passwordInput : styles.input,
         {
-          color: theme.colors.ink,
+          color: textColor,
           borderColor: theme.colors.line,
           backgroundColor: theme.colors.surface,
           fontFamily: theme.font.body,
