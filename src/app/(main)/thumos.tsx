@@ -77,13 +77,13 @@ export default function Thumos() {
         : 'Thumos helps you stay sober and get healthier. It is not a doctor.'}
     >
       {sos ? (
-        <Card style={{ backgroundColor: theme.colors.copperSoft, borderColor: theme.colors.copper }}>
+        <Card style={{ backgroundColor: theme.colors.surface, borderColor: theme.colors.ink, borderWidth: 2 }}>
           <T variant="label">Urge timer</T>
           <T variant="hero">{formatClock(remaining)}</T>
           <T>Cravings rise, peak, and pass. Many people find the sharpest part eases within about 20 to 30 minutes. That is a guide, not a measurement.</T>
           {remaining === 0 ? <T>The ten minutes are up. How do you feel now?</T> : null}
           <Button label="Start the ten minutes again" tone="quiet" onPress={() => { setUrgeStart(restartUrge()); setNow(Date.now()); }} />
-          <Button label="Breathe" tone="sage" onPress={() => router.push('/breathe?exercise=sigh' as never)} />
+          <Button label="Breathe" onPress={() => router.push('/breathe?exercise=sigh' as never)} />
           <T variant="label">What happens if you drink?</T>
           <T>Ask it plainly: what do you think will happen, and is it worth it? A walk, jog, or run can carry you through the peak if you are able.</T>
           <T variant="label">Your reasons</T>
@@ -98,13 +98,13 @@ export default function Thumos() {
         </Card>
       ) : null}
       {(safety.selfHarm || safety.withdrawal) ? (
-        <Card style={{ backgroundColor: theme.colors.dangerSoft, borderColor: theme.colors.danger }}>
-          <T>{safety.selfHarm ? SELF_HARM_NOTICE : null}</T>
-          <T>{safety.withdrawal ? WITHDRAWAL_NOTICE : null}</T>
+        <Card style={{ backgroundColor: theme.colors.dangerSoft, borderColor: theme.colors.danger, borderLeftWidth: 3 }}>
+          <T style={{ color: theme.colors.danger }}>{safety.selfHarm ? SELF_HARM_NOTICE : null}</T>
+          <T style={{ color: theme.colors.danger }}>{safety.withdrawal ? WITHDRAWAL_NOTICE : null}</T>
         </Card>
       ) : null}
       {snap.thumos.map((message) => (
-        <Card key={message.id} style={{ backgroundColor: message.role === 'user' ? theme.colors.sunken : theme.colors.surface }}>
+        <Card key={message.id} style={{ backgroundColor: message.role === 'user' ? theme.colors.emphasisSoft : theme.colors.surface }}>
           <T variant="label">{message.role === 'user' ? 'You' : message.role === 'offline' ? 'Charioteer' : 'Thumos'}</T>
           <T>{message.content}</T>
         </Card>

@@ -3,44 +3,52 @@ import { useColorScheme } from 'react-native';
 
 import type { TextScale, ThemePreference } from '@/data/types';
 
+/**
+ * Monochrome system. Near-black and off-white, grey for hierarchy.
+ * danger* is the only hue, reserved for SOS and safety notices.
+ */
 const light = {
-  bg: '#F3EEE6',
-  sunken: '#E7E0D4',
-  surface: '#FBF7F1',
-  ink: '#1C1712',
-  muted: '#5E564C',
-  line: '#DDD4C6',
-  copper: '#8C3F24',
-  copperInk: '#FFF8F4',
-  copperSoft: '#F4E4D8',
-  sage: '#1F5C45',
-  sageSoft: '#E4F1EA',
-  gold: '#8A5A12',
-  danger: '#8C2F2A',
-  dangerSoft: '#F8E6E3',
-  shadow: 'rgba(48, 32, 18, 0.08)',
+  bg: '#F2F2EE',
+  sunken: '#E4E4DE',
+  surface: '#FFFFFF',
+  ink: '#111111',
+  muted: '#4C4C47',
+  line: '#D0D0C8',
+  emphasis: '#111111',
+  emphasisSoft: '#E4E4DE',
+  danger: '#8C1D18',
+  dangerInk: '#FFF8F6',
+  dangerSoft: '#E8E8E3',
+  dangerFill: '#8C1D18',
+  shadow: 'rgba(0, 0, 0, 0.08)',
 };
 
 const dark = {
-  bg: '#12100E',
-  sunken: '#0C0B0A',
-  surface: '#1C1916',
-  ink: '#F6F1EA',
-  muted: '#B7AFA3',
-  line: '#322C26',
-  copper: '#E2A78A',
-  copperInk: '#2A150E',
-  copperSoft: '#3A2820',
-  sage: '#8FCBB3',
-  sageSoft: '#173028',
-  gold: '#E2C48A',
-  danger: '#F0B2AC',
-  dangerSoft: '#3A2220',
-  shadow: 'rgba(0, 0, 0, 0.35)',
+  bg: '#0C0C0C',
+  sunken: '#171717',
+  surface: '#1A1A1A',
+  ink: '#F3F3EE',
+  muted: '#B3B3AC',
+  line: '#3A3A3A',
+  emphasis: '#F3F3EE',
+  emphasisSoft: '#2A2A2A',
+  danger: '#F07167',
+  dangerInk: '#FFF8F6',
+  dangerSoft: '#242424',
+  dangerFill: '#9E221C',
+  shadow: 'rgba(0, 0, 0, 0.5)',
 };
 
 export type Palette = typeof light;
 export type Scheme = 'light' | 'dark';
+
+export const radius = { sm: 2, md: 4 } as const;
+
+export const font = {
+  display: 'Oswald_700Bold',
+  body: 'Barlow_400Regular',
+  bodyStrong: 'Barlow_600SemiBold',
+} as const;
 
 const scales: Record<TextScale, number> = { default: 1, large: 1.15, extra: 1.32 };
 
@@ -48,7 +56,8 @@ type ThemeValue = {
   scheme: Scheme;
   colors: Palette;
   scale: number;
-  font: { display: string; body: string; bodyStrong: string };
+  radius: typeof radius;
+  font: typeof font;
 };
 
 const ThemeContext = createContext<ThemeValue | null>(null);
@@ -69,11 +78,8 @@ export function ThemeProvider({
       scheme,
       colors: scheme === 'dark' ? dark : light,
       scale: scales[textScale],
-      font: {
-        display: 'Fraunces_600SemiBold',
-        body: 'SourceSans3_400Regular',
-        bodyStrong: 'SourceSans3_600SemiBold',
-      },
+      radius,
+      font,
     }),
     [scheme, textScale],
   );

@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="120" viewBox="0 0 640 120">
+  <rect width="640" height="120" fill="#F2F2EE"/>
+  <g fill="#111111" transform="translate(24 20) scale(1)">
+  
+  <path d="M29 28L16 20L10 10L20 18L16 6L28 18L33 26Z"/>
+  <path d="M51 28L64 20L70 10L60 18L64 6L52 18L47 26Z"/>
+  <path fill-rule="evenodd" d="M28 22C28 12 33 6 40 6C47 6 52 12 52 22L56 58C56 66 50 70 44 70L40 64L36 70C30 70 24 66 24 58ZM33 24H47V32H43V44H37V32H33Z"/>
+</g>
+  <text x="128" y="78" fill="#111111" font-family="Oswald" font-size="42" letter-spacing="6">CHARIOTEER</text>
+</svg>

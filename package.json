@@ -3,8 +3,8 @@
   "main": "expo-router/entry",
   "version": "1.0.0",
   "dependencies": {
-    "@expo-google-fonts/fraunces": "^0.4.1",
-    "@expo-google-fonts/source-sans-3": "^0.4.2",
+    "@expo-google-fonts/barlow": "^0.4.1",
+    "@expo-google-fonts/oswald": "^0.4.2",
     "@expo/ui": "~57.0.22",
     "@kingstinct/react-native-healthkit": "^16.1.0",
     "@react-native-async-storage/async-storage": "2.2.0",
@@ -34,11 +34,13 @@
     "react-native-reanimated": "4.5.1",
     "react-native-safe-area-context": "~5.7.0",
     "react-native-screens": "~4.26.0",
+    "react-native-svg": "15.15.4",
     "react-native-web": "~0.21.0",
     "react-native-worklets": "0.10.1",
     "vitest": "^5.0.3"
   },
   "devDependencies": {
+    "@resvg/resvg-js": "^2.6.2",
     "@types/react": "~19.2.2",
     "typescript": "~6.0.3"
   },

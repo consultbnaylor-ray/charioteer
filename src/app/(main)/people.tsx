@@ -63,7 +63,7 @@ export default function People() {
         <Card key={connection.id}>
           <T variant="title">{nameOf(connection.requesterId)} would like to connect</T>
           <View style={{ flexDirection: 'row', gap: 10 }}>
-            <View style={{ flex: 1 }}><Button label="Accept" tone="sage" onPress={() => void repo.respondConnection(connection.id, true)} /></View>
+            <View style={{ flex: 1 }}><Button label="Accept" onPress={() => void repo.respondConnection(connection.id, true)} /></View>
             <View style={{ flex: 1 }}><Button label="Decline" tone="quiet" onPress={() => void repo.respondConnection(connection.id, false)} /></View>
           </View>
         </Card>

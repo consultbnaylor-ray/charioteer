@@ -97,7 +97,7 @@ export default function Onboarding() {
       {step === 0 ? <Field label="Your name" value={name} onChangeText={setName} placeholder="Alex" /> : null}
       {step === 1 ? (
         <View style={{ gap: 10 }}>
-          <Button label="I am 18 or over" tone={adult === true ? 'sage' : 'quiet'} onPress={() => setAdult(true)} />
+          <Button label="I am 18 or over" tone={adult === true ? 'primary' : 'quiet'} onPress={() => setAdult(true)} />
           <Button label="I am under 18" tone={adult === false ? 'primary' : 'quiet'} onPress={() => setAdult(false)} />
           {adult === false ? (
             <T>Charioteer is only for adults. If you are worried about your own or someone else’s drinking, an adult can help you contact Drinkline on 0300 123 1110, or the Samaritans on 116 123.</T>
@@ -246,7 +246,7 @@ function Consent({ title, body, value, onChange }: { title: string; body: string
     <View style={{ gap: 8 }}>
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 12, alignItems: 'center' }}>
         <T variant="title" style={{ fontSize: 20, flex: 1 }}>{title}</T>
-        <Switch accessibilityLabel={title} value={value} onValueChange={onChange} trackColor={{ true: theme.colors.sage, false: theme.colors.line }} />
+        <Switch accessibilityLabel={title} value={value} onValueChange={onChange} trackColor={{ true: theme.colors.ink, false: theme.colors.line }} thumbColor={theme.colors.surface} />
       </View>
       <T variant="muted">{body}</T>
     </View>

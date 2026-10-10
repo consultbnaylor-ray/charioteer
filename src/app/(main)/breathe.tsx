@@ -72,9 +72,9 @@ function BreathRunner({ exercise }: { exercise: BreathExercise }) {
       <T variant="title">{exercise.title}</T>
       <T variant="muted">{exercise.summary}</T>
       <View style={{ alignItems: 'center', paddingVertical: 18 }}>
-        <Animated.View style={{ width: size, height: size, borderRadius: 200, backgroundColor: theme.colors.copperSoft, borderWidth: 1, borderColor: theme.colors.copper, alignItems: 'center', justifyContent: 'center' }}>
-          <T variant="title">{running ? phase.label : 'Ready'}</T>
-          <T variant="muted">{running ? `${left}s` : `${phase.seconds}s`}</T>
+        <Animated.View style={{ width: size, height: size, borderRadius: 999, backgroundColor: theme.colors.ink, alignItems: 'center', justifyContent: 'center' }}>
+          <T variant="title" style={{ color: theme.colors.bg, textAlign: 'center' }}>{running ? phase.label : 'Ready'}</T>
+          <T variant="label" style={{ color: theme.colors.bg }}>{running ? `${left}s` : `${phase.seconds}s`}</T>
         </Animated.View>
       </View>
       <Button label={running ? 'Pause' : 'Begin'} onPress={() => setRunning((value) => !value)} />

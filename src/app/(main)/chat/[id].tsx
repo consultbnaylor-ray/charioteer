@@ -30,7 +30,7 @@ export default function Chat() {
   return (
     <Screen eyebrow="Private chat" title={other} intro="Only the two of you can read this. Blocking hides them from you.">
       {messages.map((message) => (
-        <Card key={message.id} style={{ backgroundColor: message.senderId === me.id ? theme.colors.copperSoft : theme.colors.surface }}>
+        <Card key={message.id} style={{ backgroundColor: message.senderId === me.id ? theme.colors.emphasisSoft : theme.colors.surface }}>
           <T variant="label">{message.senderId === me.id ? 'You' : other}</T>
           <T>{message.body}</T>
         </Card>

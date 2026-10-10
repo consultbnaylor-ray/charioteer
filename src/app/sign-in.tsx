@@ -4,7 +4,7 @@ import { View } from 'react-native';
 
 import { useRepository } from '@/data';
 import { DEMO_PASSWORD } from '@/data/demo-seed';
-import { Button, Card, ErrorNote, Field, Mark, Screen, T } from '@/ui/ui';
+import { Button, Card, ErrorNote, Field, Mark, Screen, T, Wordmark } from '@/ui/ui';
 
 export default function SignIn() {
   const repo = useRepository();
@@ -26,16 +26,16 @@ export default function SignIn() {
   }
 
   return (
-    <Screen eyebrow="Charioteer" title="Hold the reins." intro="A quieter place to stay sober, or simply to live with a bit more care. Thumos is the spirited horse: courage, not a telling-off.">
+    <Screen title="Hold the reins." intro="A quieter place to stay sober, or simply to live with a bit more care. Thumos is the spirited horse: courage, not a telling-off.">
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14 }}>
+        <Mark size={64} />
+        <Wordmark size={28} />
+      </View>
       <Card>
-        <View style={{ flexDirection: 'row', gap: 12, alignItems: 'center' }}>
-          <Mark />
-          <T variant="body">For anyone stepping back from alcohol, and anyone building a clearer life.</T>
-        </View>
+        <T variant="body">For anyone stepping back from alcohol, and anyone building a clearer life.</T>
       </Card>
       <Button
         label="Explore the sample account"
-        tone="sage"
         pending={pending}
         onPress={() => submit('alex.hart@example.com', DEMO_PASSWORD)}
       />

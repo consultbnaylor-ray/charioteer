@@ -11,8 +11,11 @@ import {
   type TextStyle,
   type ViewStyle,
 } from 'react-native';
+import Svg, { Path } from 'react-native-svg';
 
-import { useAppTheme } from '@/ui/theme';
+import type { Verification } from '@/data/types';
+import { HELMET_BODY, HELMET_VIEWBOX, HELMET_WING_LEFT, HELMET_WING_RIGHT } from '@/ui/helmet';
+import { radius, useAppTheme } from '@/ui/theme';
 
 type Variant = 'hero' | 'display' | 'title' | 'body' | 'muted' | 'label';
 
@@ -28,17 +31,17 @@ export function T({
   const theme = useAppTheme();
   const size = theme.scale;
   const styles: Record<Variant, TextStyle> = {
-    hero: { fontFamily: theme.font.display, fontSize: 64 * size, lineHeight: 68 * size, color: theme.colors.ink, letterSpacing: -1.5 },
-    display: { fontFamily: theme.font.display, fontSize: 34 * size, lineHeight: 40 * size, color: theme.colors.ink },
-    title: { fontFamily: theme.font.display, fontSize: 26 * size, lineHeight: 32 * size, color: theme.colors.ink },
+    hero: { fontFamily: theme.font.display, fontSize: 64 * size, lineHeight: 72 * size, color: theme.colors.ink, letterSpacing: -0.5 },
+    display: { fontFamily: theme.font.display, fontSize: 34 * size, lineHeight: 40 * size, color: theme.colors.ink, letterSpacing: 0.2 },
+    title: { fontFamily: theme.font.display, fontSize: 24 * size, lineHeight: 30 * size, color: theme.colors.ink, letterSpacing: 0.2 },
     body: { fontFamily: theme.font.body, fontSize: 17 * size, lineHeight: 25 * size, color: theme.colors.ink },
     muted: { fontFamily: theme.font.body, fontSize: 15 * size, lineHeight: 22 * size, color: theme.colors.muted },
     label: {
       fontFamily: theme.font.bodyStrong,
-      fontSize: 13 * size,
-      lineHeight: 18 * size,
+      fontSize: 12 * size,
+      lineHeight: 16 * size,
       color: theme.colors.muted,
-      letterSpacing: 0.6,
+      letterSpacing: 1.2,
       textTransform: 'uppercase',
     },
   };
@@ -46,6 +49,30 @@ export function T({
     <Text maxFontSizeMultiplier={2} style={[styles[variant], style]}>
       {children}
     </Text>
+  );
+}
+
+export function Wordmark({ size = 22 }: { size?: number }) {
+  const theme = useAppTheme();
+  return (
+    <T
+      variant="title"
+      style={{ fontSize: size * theme.scale, lineHeight: size * theme.scale * 1.15, letterSpacing: 1.8, textTransform: 'uppercase' }}
+    >
+      Charioteer
+    </T>
+  );
+}
+
+export function Mark({ size = 28 }: { size?: number }) {
+  const theme = useAppTheme();
+  const color = theme.colors.ink;
+  return (
+    <Svg width={size} height={size} viewBox={HELMET_VIEWBOX} accessibilityRole="image" accessibilityLabel="Winged helmet">
+      <Path d={HELMET_WING_LEFT} fill={color} />
+      <Path d={HELMET_WING_RIGHT} fill={color} />
+      <Path d={HELMET_BODY} fill={color} fillRule="evenodd" />
+    </Svg>
   );
 }
 
@@ -95,17 +122,16 @@ export function Button({
 }: {
   label: string;
   onPress: () => void;
-  tone?: 'primary' | 'quiet' | 'sos' | 'sage';
+  tone?: 'primary' | 'quiet' | 'sos';
   disabled?: boolean;
   pending?: boolean;
   accessibilityLabel?: string;
 }) {
   const theme = useAppTheme();
   const tones = {
-    primary: { bg: theme.colors.ink, fg: theme.scheme === 'dark' ? theme.colors.bg : '#FBF7F1' },
+    primary: { bg: theme.colors.ink, fg: theme.colors.bg },
     quiet: { bg: theme.colors.sunken, fg: theme.colors.ink },
-    sos: { bg: theme.colors.copper, fg: theme.colors.copperInk },
-    sage: { bg: theme.colors.sage, fg: theme.scheme === 'dark' ? '#10241C' : '#F4FBF7' },
+    sos: { bg: theme.colors.dangerFill, fg: theme.colors.dangerInk },
   }[tone];
   return (
     <Pressable
@@ -193,8 +219,8 @@ export function Choice({
       style={[
         styles.choice,
         {
-          borderColor: selected ? theme.colors.copper : theme.colors.line,
-          backgroundColor: selected ? theme.colors.copperSoft : theme.colors.surface,
+          borderColor: selected ? theme.colors.ink : theme.colors.line,
+          backgroundColor: selected ? theme.colors.emphasisSoft : theme.colors.surface,
         },
       ]}
     >
@@ -207,17 +233,55 @@ export function ErrorNote({ children }: { children: string | null }) {
   const theme = useAppTheme();
   if (!children) return null;
   return (
-    <View style={[styles.note, { backgroundColor: theme.colors.dangerSoft }]}>
+    <View style={[styles.note, { backgroundColor: theme.colors.dangerSoft, borderLeftColor: theme.colors.danger }]}>
       <T variant="body" style={{ color: theme.colors.danger }}>{children}</T>
     </View>
   );
 }
 
-export function Mark() {
+export function Stamp({ kind }: { kind: Verification }) {
+  const theme = useAppTheme();
+  const solid = kind === 'verified';
+  const label = kind === 'verified' ? 'Checked' : kind === 'partial' ? 'Partly checked' : 'Not linked';
+  return (
+    <View
+      style={{
+        alignSelf: 'flex-start',
+        paddingVertical: 4,
+        paddingHorizontal: 8,
+        borderWidth: 1,
+        borderColor: solid ? theme.colors.ink : theme.colors.line,
+        backgroundColor: solid ? theme.colors.ink : 'transparent',
+      }}
+    >
+      <T variant="label" style={{ color: solid ? theme.colors.bg : theme.colors.muted }}>{label}</T>
+    </View>
+  );
+}
+
+export function Meter({
+  label,
+  points,
+  max,
+}: {
+  label: string;
+  points: { id: string; value: number }[];
+  max: number;
+}) {
   const theme = useAppTheme();
   return (
-    <View style={[styles.mark, { borderColor: theme.colors.copper }]}>
-      <View style={[styles.rein, { backgroundColor: theme.colors.copper }]} />
+    <View accessibilityLabel={`${label} chart`} style={{ gap: 8 }}>
+      <T variant="label">{label}</T>
+      <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 6, height: 72 }}>
+        {points.map((point) => {
+          const ratio = Math.max(0, Math.min(1, point.value / max));
+          return (
+            <View key={point.id} style={{ flex: 1, height: 72, justifyContent: 'flex-end', backgroundColor: theme.colors.sunken }}>
+              <View style={{ height: Math.max(3, Math.round(ratio * 72)), backgroundColor: theme.colors.ink }} />
+            </View>
+          );
+        })}
+      </View>
     </View>
   );
 }
@@ -225,12 +289,10 @@ export function Mark() {
 const styles = StyleSheet.create({
   page: { width: '100%', maxWidth: 760, alignSelf: 'center', paddingHorizontal: 20, paddingTop: 18, paddingBottom: 40 },
   footer: { borderTopWidth: StyleSheet.hairlineWidth, padding: 16 },
-  card: { borderWidth: 1, borderRadius: 22, padding: 18, gap: 8 },
-  button: { minHeight: 52, borderRadius: 16, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 18 },
-  buttonText: { letterSpacing: 0.2 },
-  input: { borderWidth: 1, borderRadius: 16, paddingHorizontal: 14, paddingVertical: 12 },
-  choice: { borderWidth: 1, borderRadius: 999, paddingHorizontal: 14, paddingVertical: 10, minHeight: 44, justifyContent: 'center' },
-  note: { borderRadius: 16, padding: 14 },
-  mark: { width: 36, height: 36, borderRadius: 18, borderWidth: 1.5, alignItems: 'center', justifyContent: 'center' },
-  rein: { width: 14, height: 2, borderRadius: 1 },
+  card: { borderWidth: 1, borderRadius: radius.md, padding: 18, gap: 8 },
+  button: { minHeight: 52, borderRadius: radius.md, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 18 },
+  buttonText: { letterSpacing: 0.4 },
+  input: { borderWidth: 1, borderRadius: radius.md, paddingHorizontal: 14, paddingVertical: 12 },
+  choice: { borderWidth: 1, borderRadius: radius.md, paddingHorizontal: 14, paddingVertical: 10, minHeight: 44, justifyContent: 'center' },
+  note: { borderRadius: radius.sm, borderLeftWidth: 3, padding: 14 },
 });

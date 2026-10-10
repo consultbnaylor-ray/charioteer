@@ -28,7 +28,7 @@ create table public.profiles (
   onboarding_complete boolean not null default false,
   is_moderator boolean not null default false,
   text_scale text not null default 'default' check (text_scale in ('default', 'large', 'extra')),
-  theme_preference text not null default 'system' check (theme_preference in ('system', 'light', 'dark')),
+  theme_preference text not null default 'dark' check (theme_preference in ('system', 'light', 'dark')),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );

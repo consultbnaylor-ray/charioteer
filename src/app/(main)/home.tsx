@@ -7,8 +7,8 @@ import { HEALTH_LABELS } from '@/data/catalogue';
 import { earnedMilestones, MILESTONES } from '@/domain/milestones';
 import { formatGbp, savingsFromTypicalWeek } from '@/domain/savings';
 import { soberElapsed } from '@/domain/sober';
-import { Button, Card, ErrorNote, Field, Screen, T } from '@/ui/ui';
-import { useAppTheme } from '@/ui/theme';
+import { Button, Card, ErrorNote, Field, Meter, Screen, T } from '@/ui/ui';
+import { radius, useAppTheme } from '@/ui/theme';
 
 function greeting(date: Date) {
   const hour = date.getHours();
@@ -46,6 +46,7 @@ export default function Home() {
     ? savingsFromTypicalWeek(profile.weeklySpendGbp, profile.weeklyUnits, elapsed.totalMs)
     : null;
   const earned = new Set((started ? earnedMilestones(started, now) : []).map((item) => item.key));
+  const trend = [...snap.checkIns].slice(0, 7).reverse();
   const checkedToday = snap.checkIns.some((item) => localDay(new Date(item.createdAt)) === localDay(now));
   const latestHealth = new Map<string, (typeof snap.health)[number]>();
   for (const sample of snap.health) {
@@ -95,13 +96,20 @@ export default function Home() {
           {MILESTONES.map((milestone) => {
             const on = earned.has(milestone.key);
             return (
-              <View key={milestone.key} style={{ paddingVertical: 8, paddingHorizontal: 12, borderRadius: 999, backgroundColor: on ? theme.colors.sageSoft : theme.colors.sunken }}>
-                <T variant="muted" style={{ color: on ? theme.colors.sage : theme.colors.muted, fontFamily: theme.font.bodyStrong }}>{milestone.badge}</T>
+              <View key={milestone.key} style={{ paddingVertical: 6, paddingHorizontal: 10, borderRadius: radius.sm, borderWidth: 1, borderColor: on ? theme.colors.ink : theme.colors.line, backgroundColor: on ? theme.colors.ink : theme.colors.sunken }}>
+                <T variant="label" style={{ color: on ? theme.colors.bg : theme.colors.muted }}>{milestone.badge}</T>
               </View>
             );
           })}
         </View>
       </Card>
+      {trend.length > 0 ? (
+        <Card>
+          <T variant="label">Recent check-ins</T>
+          <Meter label="Mood" max={5} points={trend.map((item) => ({ id: item.id, value: item.mood }))} />
+          <Meter label="Craving" max={10} points={trend.map((item) => ({ id: `${item.id}-craving`, value: item.craving }))} />
+        </Card>
+      ) : null}
       <Card>
         <T variant="label">Today</T>
         <T>{checkedToday ? 'Check-in done. You can add another if the day changed shape.' : 'A check-in takes a few seconds: mood, sleep, craving.'}</T>

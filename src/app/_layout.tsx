@@ -1,5 +1,5 @@
-import { Fraunces_600SemiBold } from '@expo-google-fonts/fraunces';
-import { SourceSans3_400Regular, SourceSans3_600SemiBold } from '@expo-google-fonts/source-sans-3';
+import { Oswald_700Bold } from '@expo-google-fonts/oswald';
+import { Barlow_400Regular, Barlow_600SemiBold } from '@expo-google-fonts/barlow';
 import { useFonts } from 'expo-font';
 import { Stack, usePathname, useRouter } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
@@ -9,16 +9,16 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 
 import { RepoProvider, useSnapshot } from '@/data';
-import { ThemeProvider, useAppTheme } from '@/ui/theme';
-import { Mark, T } from '@/ui/ui';
+import { font, ThemeProvider, useAppTheme } from '@/ui/theme';
+import { Mark, T, Wordmark } from '@/ui/ui';
 
 SplashScreen.preventAutoHideAsync().catch(() => undefined);
 
 export default function RootLayout() {
   const [loaded, error] = useFonts({
-    Fraunces_600SemiBold,
-    SourceSans3_400Regular,
-    SourceSans3_600SemiBold,
+    [font.display]: Oswald_700Bold,
+    [font.body]: Barlow_400Regular,
+    [font.bodyStrong]: Barlow_600SemiBold,
   });
 
   useEffect(() => {
@@ -39,7 +39,7 @@ export default function RootLayout() {
 function ThemedShell() {
   const snap = useSnapshot();
   return (
-    <ThemeProvider preference={snap.profile?.themePreference ?? 'system'} textScale={snap.profile?.textScale ?? 'default'}>
+    <ThemeProvider preference={snap.profile?.themePreference ?? 'dark'} textScale={snap.profile?.textScale ?? 'default'}>
       <Chrome />
     </ThemeProvider>
   );
@@ -78,8 +78,8 @@ function Chrome() {
   if (!snap.ready) {
     return (
       <View style={{ flex: 1, backgroundColor: theme.colors.bg, alignItems: 'center', justifyContent: 'center', gap: 14 }}>
-        <Mark />
-        <T variant="title">Charioteer</T>
+        <Mark size={48} />
+        <Wordmark size={28} />
         <T variant="muted">Opening your day…</T>
       </View>
     );

@@ -5,7 +5,7 @@ import { Pressable, View } from 'react-native';
 import { useSnapshot } from '@/data';
 import { CATEGORY_LABELS } from '@/data/catalogue';
 import type { ResourceCategory } from '@/data/types';
-import { Card, Choice, Screen, T } from '@/ui/ui';
+import { Card, Choice, Screen, Stamp, T } from '@/ui/ui';
 import { useAppTheme } from '@/ui/theme';
 
 const ORDER: ResourceCategory[] = ['helplines', 'groups', 'quit_lit', 'health'];
@@ -31,18 +31,16 @@ export default function Library() {
           <T>{item.detail}</T>
           {item.phone ? (
             <Pressable accessibilityRole="link" onPress={() => void Linking.openURL(`tel:${item.phone?.replace(/\s/g, '')}`)}>
-              <T style={{ color: theme.colors.copper, fontFamily: theme.font.bodyStrong }}>{item.phone}</T>
+              <T style={{ color: theme.colors.danger, fontFamily: theme.font.bodyStrong }}>{item.phone}</T>
             </Pressable>
           ) : null}
           {item.url ? (
             <Pressable accessibilityRole="link" onPress={() => void Linking.openURL(item.url!)}>
-              <T style={{ color: theme.colors.copper, textDecorationLine: 'underline' }}>Open link</T>
+              <T style={{ color: theme.colors.ink, fontFamily: theme.font.bodyStrong, textDecorationLine: 'underline' }}>Open link</T>
             </Pressable>
           ) : null}
-          <T variant="muted">
-            {item.verification === 'verified' ? 'Checked. ' : item.verification === 'partial' ? 'Partly checked. ' : 'Not linked. '}
-            {item.verificationNote}
-          </T>
+          <Stamp kind={item.verification} />
+          <T variant="muted">{item.verificationNote}</T>
         </Card>
       ))}
       {items.length === 0 ? <T variant="muted">Nothing in this category yet.</T> : null}

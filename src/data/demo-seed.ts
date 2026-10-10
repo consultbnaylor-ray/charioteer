@@ -72,7 +72,7 @@ function profile(
     onboardingComplete: true,
     isModerator: false,
     textScale: 'default',
-    themePreference: 'system',
+    themePreference: 'dark',
     interestIds,
     ...extra,
   };

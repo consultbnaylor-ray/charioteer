@@ -170,7 +170,7 @@ export class DemoRepository implements Repository {
         onboardingComplete: false,
         isModerator: false,
         textScale: 'default',
-        themePreference: 'system',
+        themePreference: 'dark',
         interestIds: [],
       },
       reasons: [],

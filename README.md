@@ -26,7 +26,7 @@ Domain rules (the sober counter, savings, milestones, safety detection, and the 
 - Library: quit lit, sober groups, UK helplines, and general health, stored as data in `src/data/catalogue.ts` and `supabase/seed.sql`.
 - Community: interests (including custom ones), town or area only, discovery by shared interests, connection requests, and private 1:1 chat. Block and report. Moderators see a reports queue on You. Rowan Blake is a moderator in the sample.
 - Account export (JSON download on the web) and account deletion. Explicit consent, RLS on every table, and a column grant that stops a user promoting themselves to moderator.
-- Light, dark, and match-device themes, and three text sizes.
+- Dark is the default. Light, and matching the device, stay available under You, with three text sizes. Colour and type are tokens in `src/ui/theme.tsx`: near-black and off-white, grey for hierarchy, Oswald for headings, Barlow for text, square corners. The only hue is a deep red, for SOS and safety notices. The mark is a winged Greek helmet (`assets/brand/helmet.svg`), used on the icon, splash, header, and sign-in screen.
 - A demo mode that runs the whole app without Docker or Supabase, with seed people, check-ins, health readings, a sample conversation, and a chat.
 
 ## What is stubbed

@@ -550,7 +550,7 @@ function mapProfile(row: Row, email: string, interestIds: string[]): Profile {
     onboardingComplete: Boolean(row.onboarding_complete),
     isModerator: Boolean(row.is_moderator),
     textScale: (row.text_scale as Profile['textScale']) ?? 'default',
-    themePreference: (row.theme_preference as Profile['themePreference']) ?? 'system',
+    themePreference: (row.theme_preference as Profile['themePreference']) ?? 'dark',
     interestIds,
   };
 }
