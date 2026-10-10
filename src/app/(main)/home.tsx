@@ -251,30 +251,26 @@ export default function Home() {
       </Card> : null}
       <ErrorNote>{error}</ErrorNote>
       <EditSheet
-        visible={edit === 'sober'}
-        title="Correct the start date"
-        intro="This fixes the day you stopped. It is a correction, not a relapse, and it does not add a reset to your history."
-        saveLabel="Save the correction"
+        visible={edit != null}
+        title={edit === 'week' ? 'Your usual week' : 'Correct the start date'}
+        intro={edit === 'week'
+          ? 'An estimate from what you tell us. Savings and units avoided use these figures.'
+          : 'This fixes the day you stopped. It is a correction, not a relapse, and it does not add a reset to your history.'}
+        saveLabel={edit === 'week' ? 'Save spend and units' : 'Save the correction'}
         pending={pending}
         onClose={() => { if (!pending) setEdit(null); }}
-        onSave={() => void saveCorrection()}
+        onSave={() => void (edit === 'week' ? saveWeek() : saveCorrection())}
       >
-        <DateField label="Date you stopped" value={draftDate} onChange={setDraftDate} maximumDate={new Date()} hint="Today or an earlier day." />
-        <ErrorNote>{edit === 'sober' ? error : null}</ErrorNote>
-      </EditSheet>
-      <EditSheet
-        visible={edit === 'week'}
-        title="Your usual week"
-        intro="An estimate from what you tell us. Savings and units avoided use these figures."
-        saveLabel="Save spend and units"
-        pending={pending}
-        onClose={() => { if (!pending) setEdit(null); }}
-        onSave={() => void saveWeek()}
-      >
-        <Field label="Typical spend per week (£)" value={draftSpend} onChangeText={setDraftSpend} keyboardType="decimal-pad" />
-        <Field label="Typical units per week" value={draftUnits} onChangeText={setDraftUnits} keyboardType="decimal-pad" />
-        <UnitsGuide onChange={setDraftUnits} />
-        <ErrorNote>{edit === 'week' ? error : null}</ErrorNote>
+        {edit === 'week' ? (
+          <>
+            <Field label="Typical spend per week (£)" value={draftSpend} onChangeText={setDraftSpend} keyboardType="decimal-pad" />
+            <Field label="Typical units per week" value={draftUnits} onChangeText={setDraftUnits} keyboardType="decimal-pad" />
+            <UnitsGuide onChange={setDraftUnits} />
+          </>
+        ) : (
+          <DateField label="Date you stopped" value={draftDate} onChange={setDraftDate} maximumDate={new Date()} hint="Today or an earlier day." />
+        )}
+        <ErrorNote>{error}</ErrorNote>
       </EditSheet>
     </Screen>
   );
