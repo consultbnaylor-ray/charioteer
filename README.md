@@ -11,7 +11,7 @@ It is for people who are alcohol-dependent and for people who simply want a quie
 - Thumos talks to the xAI Grok API only from the `thumos-chat` edge function. The client never sees `XAI_API_KEY`.
 - Apple Health on iOS uses `@kingstinct/react-native-healthkit`. It is a maintained package with an Expo config plugin. `react-native-health` was not used because it has no first-party Expo plugin and is less actively maintained. HealthKit needs a development build. Expo Go cannot load it.
 
-Domain rules (the sober counter, savings, milestones, safety detection, and the Thumos prompt) live in `supabase/functions/_shared/`. The app re-exports them from `src/domain/` so the tests, the screens, and the edge functions cannot drift apart. Shared files import each other without a `.ts` suffix, so Metro can bundle them. Deno entrypoints keep the `.ts` suffix.
+Domain rules (the sober counter, savings, milestones, safety detection, and the Thumos prompt) live in `supabase/functions/_shared/`. The app re-exports them from `src/domain/` so the tests, the screens, and the edge functions cannot drift apart. Relative imports inside that folder use a `.ts` suffix, which Deno requires when deploying functions. Metro strips the suffix (`metro.config.js`). Typecheck allows it (`allowImportingTsExtensions` in `tsconfig.json`).
 
 ## What works in V1
 
@@ -21,18 +21,18 @@ Domain rules (the sober counter, savings, milestones, safety detection, and the 
 - Daily check-in: mood, sleep, craving from 0 to 10, optional note, and history.
 - Breathing: box breathing, 4-7-8, and a physiological sigh, with an animated guide. Haptics play on a phone. A short urge-surfing exercise sits beside them.
 - Thumos text chat. The system prompt is about staying sober and getting healthier. It opens by asking how the person is feeling. Context includes days sober, recent check-ins, health trends, personal reasons, and milestones. Feeling well leads to next steps (exercise, sleep, nutrition, connection, purpose). A craving switches to support: what happens if they drink, whether it is worth it, the 20–30 minute peak as coaching guidance, an in-app breathing exercise, a walk or run, their own reasons, and one cited fact if they want it. Conversation history is stored per account.
-- Safety: heavy daily drinking plus wanting to stop abruptly, or withdrawal symptoms (shakes, sweating, hallucinations, seizures), adds advice to contact a GP, NHS 111, or 999. Suicidal thoughts or self-harm add the Samaritans on 116 123 and 999. Those notices are appended in code if the model reply omits them. Thumos says it is not a medical professional.
+- Safety: heavy daily drinking plus wanting to stop abruptly, or withdrawal symptoms (shakes, sweating, hallucinations, seizures), adds advice to contact a GP, NHS 111, or 999. Suicidal thoughts or self-harm add the Samaritans on 116 123 and 999. Whenever that detector fires, the fixed notice is pinned at the top of the chat, whatever the model wrote. The same text is stored on the reply. Thumos says it is not a medical professional.
 - SOS on Today. One tap opens craving support with a 10-minute urge timer, breathing, and the person’s reasons.
-- Library: quit lit, sober groups, UK helplines, and general health, stored as data in `src/data/catalogue.ts` and `supabase/seed.sql`.
+- Library: quit lit, sober groups, UK helplines, and general health, stored as data in `src/data/catalogue.ts` and `supabase/seed.sql`. The sign-in screen has “Need help now?” so Samaritans and Drinkline are visible before an account exists.
 - Community: interests (including custom ones), town or area only, discovery by shared interests, connection requests, and private 1:1 chat. Block and report. Moderators see a reports queue on You. Rowan Blake is a moderator in the sample.
-- Account export (JSON download on the web) and account deletion. Explicit consent, RLS on every table, and a column grant that stops a user promoting themselves to moderator.
+- Account export (JSON download on the web) and account deletion. Explicit consent, RLS on every table, and grants that stop a user promoting themselves to moderator. Hosted Supabase gives `authenticated` full UPDATE on new public tables. `20261010130000_tighten_grants.sql` revokes that and grants back only the columns the app writes. `is_moderator` is not one of them. The init migration’s statements are unchanged because they are already applied; a comment there records this intent.
 - Dark is the default. Light, and matching the device, stay available under You, with three text sizes. Colour and type are tokens in `src/ui/theme.tsx`: near-black and off-white, grey for hierarchy, Oswald for headings, Barlow for text, square corners. The only hue is a deep red, for SOS and safety notices. The mark is a winged Greek helmet (`assets/brand/helmet.svg`), used on the icon, splash, header, and sign-in screen.
 - A demo mode that runs the whole app without Docker or Supabase, with seed people, check-ins, health readings, a sample conversation, and a chat.
 
 ## What is stubbed
 
 - **Grok Voice audio.** The ephemeral token request and `session.update` follow the public xAI docs (retrieved 10 October 2026). Voice is Leo, with “Speak British English.” in the instructions, because `en-GB` is not a supported language hint and would be ignored. English is `en`. Microphone capture, PCM framing, and playback of `response.output_audio.delta` are not implemented. The adapter opens the socket, sends the session update, and closes it. See the TODO in `supabase/functions/_shared/voice.ts`.
-- **Text model.** Chat uses the verified Chat Completions call: `POST https://api.x.ai/v1/chat/completions` with `grok-4.7`. xAI’s docs also recommend the newer Responses API. V1 stays on the curl shape that was verified. Override the model with `THUMOS_MODEL`.
+- **Text model.** Chat uses the verified Chat Completions call: `POST https://api.x.ai/v1/chat/completions`. The default model is `grok-4.3` with `reasoning_effort` set to `none` (no reasoning pass). xAI’s docs (retrieved 10 October 2026) say `grok-4.7` cannot disable reasoning and defaults to `high`, which is the 40–50 second wait. `grok-4.3` is the fast model that supports `none`. The reply is streamed. xAI does not publish a latency figure; with reasoning off, the wait is ordinary generation of a short reply rather than a high-effort thinking pass. Override the model with `THUMOS_MODEL`. On `grok-4.7`, `grok-4.6`, or `grok-4.5` the function uses `low`, the fastest effort those models allow.
 - **Demo mode does not call xAI**, even if a key is present in the environment. Live replies exist only when the app points at Supabase and the edge function has `XAI_API_KEY`. Without the key, the function stores a clear offline message and still adds safety notices.
 - **Sign in with Apple** needs an Apple Services ID, a Supabase provider secret, and a dev build on iOS. The button explains that when those are missing.
 - **Apple Health** reads steps, sleep, resting heart rate, HRV (SDNN), workouts, and weight for the last 14 days, read-only. It runs only in an iOS dev build (`src/health/sync.ios.ts`). Web and Android show a message and the manually logged readings.
@@ -48,14 +48,20 @@ Domain rules (the sober counter, savings, milestones, safety detection, and the 
 4. Have a solicitor review the privacy notice, retention, and the lawful basis for special category data.
 5. Add Android health (Health Connect) and, later, an Apple Watch complication for the sober counter.
 
-## Run the web app (no Supabase)
+## Run the web app
 
 ```bash
 npm install
 npm run web
 ```
 
-That starts Expo web on port **43127**. Leave `EXPO_PUBLIC_SUPABASE_ANON_KEY` empty, or set `EXPO_PUBLIC_DATA_MODE=demo`. The sample is stored in the browser under the AsyncStorage key `charioteer.demo.v1`. You → Reset sample data clears it.
+That starts Expo web on port **43127** and talks to the live Supabase project. No `.env` file is required for that. The sample, with no network account, is an explicit flag:
+
+```bash
+EXPO_PUBLIC_DATA_MODE=demo npm run web
+```
+
+The sample is stored in the browser under the AsyncStorage key `charioteer.demo.v1`. You → Reset sample data clears it. The “Explore the sample account” button is shown only in demo mode.
 
 Open the sample as Alex Hart from the sign-in screen. Password for every sample account: `Charioteer-demo-1`.
 
@@ -75,11 +81,12 @@ Copy `.env.example`. Never commit a real key, and never prefix the xAI key with 
 
 | Variable | Where | Purpose |
 | --- | --- | --- |
-| `EXPO_PUBLIC_SUPABASE_URL` | Client | Local default `http://127.0.0.1:54321`. |
-| `EXPO_PUBLIC_SUPABASE_ANON_KEY` | Client | Public anon key from `supabase status`. Empty keeps demo mode. |
-| `EXPO_PUBLIC_DATA_MODE` | Client | `demo` or `supabase`. Demo wins when the URL or anon key is empty. |
+| `EXPO_PUBLIC_SUPABASE_URL` | Client | Live project `https://jvmmuhljklkahebxdsah.supabase.co`. This is the default when unset. |
+| `EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Client | Public publishable key. Preferred. Default is the live project key. |
+| `EXPO_PUBLIC_SUPABASE_ANON_KEY` | Client | Legacy anon key. Used only when the publishable key is empty. |
+| `EXPO_PUBLIC_DATA_MODE` | Client | Set to `demo` for the on-device sample. Unset uses Supabase. |
 | `XAI_API_KEY` | Edge function only | `supabase secrets set XAI_API_KEY=…` |
-| `THUMOS_MODEL` | Edge function | Optional. Default `grok-4.7`. |
+| `THUMOS_MODEL` | Edge function | Optional. Default `grok-4.3` with `reasoning_effort` `none`. |
 
 Supabase injects `SUPABASE_URL`, `SUPABASE_ANON_KEY`, and `SUPABASE_SERVICE_ROLE_KEY` into functions. Do not put those in the client.
 
@@ -92,13 +99,13 @@ supabase start
 supabase status
 ```
 
-Copy the API URL and anon key into `.env`, set `EXPO_PUBLIC_DATA_MODE=supabase`, and restart Expo.
+Copy the local API URL and anon key into `.env` as `EXPO_PUBLIC_SUPABASE_URL` and `EXPO_PUBLIC_SUPABASE_ANON_KEY`, leave `EXPO_PUBLIC_DATA_MODE` unset, and restart Expo. Pointing back at the hosted project means deleting those overrides.
 
 `supabase/config.toml` targets the CLI this schema was written against (Postgres 15, API on 54321, auth site `http://127.0.0.1:43127`, email confirmations off, Apple provider present but disabled). If `supabase start` rejects the file, compare it with a fresh `supabase init` from your CLI and keep the project id, ports, seed path, and function `verify_jwt` flags.
 
 Seed data is `supabase/seed.sql`: the catalogue, then five auth users. If a future CLI changes `auth.users` columns, the user insert is inside an exception handler so the catalogue still commits, and the notice explains the skip. Demo mode has the same people either way.
 
-Apply a hosted migration with `supabase db push` or your usual pipeline. The first migration is `supabase/migrations/20261010120000_init.sql`.
+Apply a hosted migration with `supabase db push` or your usual pipeline. The first migration is `supabase/migrations/20261010120000_init.sql`. The grant fix is `supabase/migrations/20261010130000_tighten_grants.sql`. Apply that on the live project; this repository does not connect to it. The signed-out “Need help now?” link reads helplines once that grant is in place, and falls back to the bundled list until then.
 
 ## Edge functions
 

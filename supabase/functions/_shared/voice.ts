@@ -2,8 +2,11 @@
  * Grok Voice session shape.
  *
  * Verified from xAI public docs (docs.x.ai, retrieved 10 October 2026):
- * - Text chat: POST https://api.x.ai/v1/chat/completions with model grok-4.7
- *   (legacy Chat Completions; the docs also recommend the newer Responses API).
+ * - Text chat: POST https://api.x.ai/v1/chat/completions.
+ *   Thumos uses grok-4.3 with reasoning_effort "none" (see THUMOS_CHAT in thumos.ts).
+ *   grok-4.7 remains available but defaults to high reasoning effort, which cannot
+ *   be disabled, and is too slow for a craving. Chat Completions is the legacy
+ *   endpoint; the docs also recommend the newer Responses API.
  * - Ephemeral browser token: POST https://api.x.ai/v1/realtime/client_secrets
  *   body { expires_after: { seconds } }. Response includes value and expires_at.
  *   The docs say the body must not include session or expires_after.anchor.
@@ -30,7 +33,7 @@ export const GROK_VOICE = {
   socketUrl: 'wss://api.x.ai/v1/realtime?model=grok-voice-latest',
   clientSecretUrl: 'https://api.x.ai/v1/realtime/client_secrets',
   chatCompletionsUrl: 'https://api.x.ai/v1/chat/completions',
-  chatModel: 'grok-4.7',
+  chatModel: 'grok-4.3',
 } as const;
 
 export function browserSocketProtocols(ephemeralToken: string): string[] {

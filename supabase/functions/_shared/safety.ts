@@ -59,13 +59,26 @@ export function detectSafety(text: string): SafetyHit {
   return { selfHarm, withdrawal, reasons };
 }
 
+/** Fixed notices for a hit. The model reply is irrelevant: the card always uses this list. */
+export function pinnedSafetyNotices(hit: SafetyHit): string[] {
+  const notices: string[] = [];
+  if (hit.selfHarm) notices.push(SELF_HARM_NOTICE);
+  if (hit.withdrawal) notices.push(WITHDRAWAL_NOTICE);
+  return notices;
+}
+
+export function firstSafetyHit(texts: string[]): SafetyHit {
+  for (const text of texts) {
+    const hit = detectSafety(text);
+    if (hit.selfHarm || hit.withdrawal) return hit;
+  }
+  return { selfHarm: false, withdrawal: false, reasons: [] };
+}
+
 export function ensureSafetyNotices(reply: string, hit: SafetyHit): string {
   let next = reply.trim();
-  if (hit.selfHarm && !/116\s*123/.test(next)) {
-    next = `${next}\n\n${SELF_HARM_NOTICE}`;
-  }
-  if (hit.withdrawal && !/\b111\b/.test(next)) {
-    next = `${next}\n\n${WITHDRAWAL_NOTICE}`;
+  for (const notice of pinnedSafetyNotices(hit)) {
+    if (!next.includes(notice)) next = `${next}\n\n${notice}`.trim();
   }
   return next.trim();
 }

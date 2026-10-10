@@ -260,6 +260,13 @@ export const RESOURCE_CATALOGUE: Resource[] = [
   },
 ];
 
+/** Helplines for the signed-out screen. Uses the database when it returned any, otherwise the bundled list. */
+export function crisisHelplines(resources: Resource[]): Resource[] {
+  const live = resources.filter((item) => item.category === 'helplines');
+  if (live.length > 0) return live;
+  return RESOURCE_CATALOGUE.filter((item) => item.category === 'helplines');
+}
+
 export const CATEGORY_LABELS: Record<Resource['category'], string> = {
   quit_lit: 'Quit lit',
   groups: 'Groups',

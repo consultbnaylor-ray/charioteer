@@ -204,7 +204,7 @@ export interface Repository {
   reportUser(input: NewReport): Promise<void>;
   reviewReport(id: string): Promise<void>;
   ensureThumosGuide(kind: 'opening' | 'craving'): Promise<void>;
-  sendThumos(content: string, mode: ThumosMode): Promise<void>;
+  sendThumos(content: string, mode: ThumosMode, onDelta?: (text: string) => void): Promise<void>;
   mintVoiceToken(): Promise<VoiceMint>;
   exportData(): Promise<Record<string, unknown>>;
   deleteAccount(): Promise<void>;

@@ -360,6 +360,17 @@ alter table public.blocks enable row level security;
 alter table public.reports enable row level security;
 alter table public.resources enable row level security;
 
+-- INTENT, documented here and enforced by 20261010130000_tighten_grants.sql.
+-- These statements were applied before that follow-up. Do not edit them:
+-- rewriting this file changes migration history on a database that already ran it.
+-- On hosted Supabase, anon and authenticated receive ALL on new public tables
+-- from default privileges. Revoking from anon alone leaves authenticated with
+-- table-level UPDATE, so the column grants below are additive and do not stop
+-- a user setting is_moderator. The follow-up migration revokes that broad
+-- access and re-grants only the privileges this block intended:
+-- profiles UPDATE of the listed columns only (never is_moderator),
+-- connections and reports UPDATE of status only, and no table-level UPDATE.
+
 revoke all on public.profiles from anon;
 revoke all on public.directory from anon;
 revoke all on public.consents from anon;

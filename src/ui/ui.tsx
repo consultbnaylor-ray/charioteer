@@ -81,16 +81,19 @@ export function Screen({
   title,
   intro,
   footer,
+  banner,
 }: {
   children: ReactNode;
   eyebrow?: string;
   title?: string;
   intro?: string;
   footer?: ReactNode;
+  banner?: ReactNode;
 }) {
   const theme = useAppTheme();
   return (
     <View style={{ flex: 1, backgroundColor: theme.colors.bg }}>
+      {banner ? <View style={[styles.page, { paddingBottom: 0 }]}>{banner}</View> : null}
       <ScrollView contentContainerStyle={styles.page} keyboardShouldPersistTaps="handled">
         {eyebrow ? <T variant="label">{eyebrow}</T> : null}
         {title ? <T variant="display" style={{ marginTop: eyebrow ? 6 : 0 }}>{title}</T> : null}

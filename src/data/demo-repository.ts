@@ -434,7 +434,7 @@ export class DemoRepository implements Repository {
     this.commit(db);
   }
 
-  async sendThumos(content: string, mode: ThumosMode): Promise<void> {
+  async sendThumos(content: string, mode: ThumosMode, onDelta?: (text: string) => void): Promise<void> {
     const text = content.trim();
     if (!text) return;
     const account = this.me();
@@ -443,6 +443,7 @@ export class DemoRepository implements Repository {
     }
     const safety = detectSafety(text);
     const reply = ensureSafetyNotices(OFFLINE_COACH_MESSAGE, safety);
+    onDelta?.(reply);
     const db = clone(this.db);
     const thread = db.accounts[account.profile.id].thumos;
     const stamp = new Date();

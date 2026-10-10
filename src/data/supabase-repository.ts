@@ -5,6 +5,7 @@ import { Platform } from 'react-native';
 import { signInWithApple as nativeApple } from '@/auth/appleSignIn';
 import { slugifyInterest, validateTown } from '@/domain/privacy';
 import { planRelapse } from '@/domain/sober';
+import { parseSseBuffer } from '@/domain/sse';
 import { detectSafety } from '@/domain/safety';
 import { CRAVING_LINE, OFFLINE_COACH_MESSAGE, OPENING_LINE, type ThumosMode } from '@/domain/thumos';
 import { CONSENT_VERSION } from '@/data/catalogue';
@@ -65,11 +66,15 @@ function emptySnapshot(): AppSnapshot {
 
 export class SupabaseRepository implements Repository {
   private client: SupabaseClient;
+  private url: string;
+  private anonKey: string;
   private snapshot: AppSnapshot = emptySnapshot();
   private listeners = new Set<() => void>();
   private started = false;
 
   constructor(url: string, anonKey: string) {
+    this.url = url;
+    this.anonKey = anonKey;
     this.client = createClient(url, anonKey, {
       auth: {
         storage: AsyncStorage,
@@ -450,21 +455,99 @@ export class SupabaseRepository implements Repository {
     await this.refresh();
   }
 
-  async sendThumos(content: string, mode: ThumosMode): Promise<void> {
+  async sendThumos(content: string, mode: ThumosMode, onDelta?: (text: string) => void): Promise<void> {
     const text = content.trim();
     if (!text) return;
     if (!this.snapshot.profile?.consentAi) throw new Error('Agree to the coach consent before sending a message to Thumos.');
     const safety = detectSafety(text);
-    const { data, error } = await this.client.functions.invoke('thumos-chat', { body: { content: text, mode } });
-    if (!error && data) {
+    const effectiveMode: ThumosMode = safety.selfHarm || safety.withdrawal ? 'support' : mode;
+
+    let response: Response;
+    try {
+      const { data: sessionData } = await this.client.auth.getSession();
+      const token = sessionData.session?.access_token;
+      if (!token) throw new Error('Sign in first.');
+      response = await fetch(`${this.url}/functions/v1/thumos-chat`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          apikey: this.anonKey,
+          'Content-Type': 'application/json',
+          Accept: 'text/event-stream',
+        },
+        body: JSON.stringify({ content: text, mode: effectiveMode }),
+      });
+    } catch {
+      await this.insertOfflinePair(text, effectiveMode);
+      return;
+    }
+
+    if (!response.ok) {
+      if (response.status >= 500) {
+        await this.insertOfflinePair(text, effectiveMode);
+        return;
+      }
+      const body = (await response.json().catch(() => null)) as { message?: string } | null;
+      throw new Error(body?.message ?? 'Could not send that.');
+    }
+
+    const contentType = response.headers.get('content-type') ?? '';
+    if (!contentType.includes('text/event-stream')) {
       await this.refresh();
       return;
     }
+
+    let accumulated = '';
+    let failed: string | null = null;
+    const apply = (chunk: string) => {
+      parseSseBuffer(chunk, (event) => {
+        if (event.type === 'delta') {
+          accumulated += event.text;
+          onDelta?.(accumulated);
+        } else if (event.type === 'done') {
+          accumulated = event.reply;
+          onDelta?.(event.reply);
+        } else if (event.type === 'error') {
+          failed = event.message;
+        }
+      });
+    };
+
+    if (response.body && typeof response.body.getReader === 'function') {
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const leftover = parseSseBuffer(buffer, (event) => {
+          if (event.type === 'delta') {
+            accumulated += event.text;
+            onDelta?.(accumulated);
+          } else if (event.type === 'done') {
+            accumulated = event.reply;
+            onDelta?.(event.reply);
+          } else if (event.type === 'error') {
+            failed = event.message;
+          }
+        });
+        buffer = leftover;
+      }
+      if (buffer.trim()) apply(`${buffer}\n\n`);
+    } else {
+      apply(`${await response.text()}\n\n`);
+    }
+
+    if (failed) throw new Error(failed);
+    await this.refresh();
+  }
+
+  private async insertOfflinePair(text: string, mode: ThumosMode) {
     const userId = await this.userId();
-    const reply = OFFLINE_COACH_MESSAGE;
     const { error: insertError } = await this.client.from('thumos_messages').insert([
-      { user_id: userId, role: 'user', content: text, mode: safety.selfHarm || safety.withdrawal ? 'support' : mode },
-      { user_id: userId, role: 'offline', content: reply, mode: 'support' },
+      { user_id: userId, role: 'user', content: text, mode },
+      { user_id: userId, role: 'offline', content: OFFLINE_COACH_MESSAGE, mode: 'support' },
     ]);
     if (insertError) throw new Error(insertError.message);
     await this.refresh();

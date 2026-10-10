@@ -2,8 +2,9 @@ import { describe, expect, it } from 'vitest';
 import { earnedMilestones, milestoneReached } from './milestones';
 import { planRelapse, soberElapsed } from './sober';
 import { formatGbp, savingsFromTypicalWeek } from './savings';
-import { detectSafety, ensureSafetyNotices, SELF_HARM_NOTICE, WITHDRAWAL_NOTICE } from './safety';
-import { buildSystemPrompt, buildThumosContext, inferThumosMode, OFFLINE_COACH_MESSAGE } from './thumos';
+import { detectSafety, ensureSafetyNotices, firstSafetyHit, pinnedSafetyNotices, SELF_HARM_NOTICE, WITHDRAWAL_NOTICE } from './safety';
+import { encodeSse, parseSseBuffer } from './sse';
+import { buildChatCompletionBody, buildSystemPrompt, buildThumosContext, completionDeltaText, inferThumosMode, OFFLINE_COACH_MESSAGE, THUMOS_CHAT, thumosReasoningEffort } from './thumos';
 import { ALCOHOL_FACTS } from './facts';
 import { browserSocketProtocols, buildVoiceSessionUpdate, GROK_VOICE } from './voice';
 
@@ -114,6 +115,18 @@ describe('safety triggers', () => {
     expect(crisis).toContain(SELF_HARM_NOTICE);
     expect(crisis).toContain('116 123');
   });
+
+  it('still shows the fixed notice when the model already named the helpline', () => {
+    const hit = detectSafety('I want to kill myself. I am shaking and sweating because I stopped drinking.');
+    const model = 'Please call the Samaritans on 116 123, NHS 111, or 999.';
+    const reply = ensureSafetyNotices(model, hit);
+    expect(reply).toContain(SELF_HARM_NOTICE);
+    expect(reply).toContain(WITHDRAWAL_NOTICE);
+    expect(reply).toContain('Contact your GP');
+    expect(pinnedSafetyNotices(hit)).toEqual([SELF_HARM_NOTICE, WITHDRAWAL_NOTICE]);
+    expect(firstSafetyHit(['I am fine', model, 'I want to die'])).toMatchObject({ selfHarm: true });
+    expect(pinnedSafetyNotices({ selfHarm: false, withdrawal: false, reasons: [] })).toEqual([]);
+  });
 });
 
 describe('Thumos context', () => {
@@ -152,7 +165,39 @@ describe('Thumos context', () => {
     expect(prompt).toContain('CURATED FACTS');
     expect(prompt).toContain(ALCOHOL_FACTS[0].text.slice(0, 40));
     expect(buildSystemPrompt(context, 'opening')).toContain('Ask how they are feeling');
+    expect(buildSystemPrompt(context, 'support')).toContain('120 words');
     expect(OFFLINE_COACH_MESSAGE).toContain('not a reply from the model');
+  });
+
+  it('asks grok-4.3 for no reasoning and streams the answer', () => {
+    const body = buildChatCompletionBody({
+      system: 'Be brief.',
+      history: Array.from({ length: 12 }, (_, index) => ({ role: 'user' as const, content: `turn ${index}` })),
+      user: 'The urge is loud',
+      stream: true,
+    });
+    expect(body.model).toBe('grok-4.3');
+    expect(body.model).toBe(THUMOS_CHAT.model);
+    expect(body.reasoning_effort).toBe('none');
+    expect(body.stream).toBe(true);
+    expect(body.max_tokens).toBe(THUMOS_CHAT.maxTokens);
+    expect(body.messages.filter((message) => message.role === 'user')).toHaveLength(THUMOS_CHAT.historyLimit + 1);
+    expect(thumosReasoningEffort('grok-4.7')).toBe('low');
+    expect(buildChatCompletionBody({ model: 'grok-4.7', system: 'Be brief.', history: [], user: 'Hi', stream: true }).reasoning_effort).toBe('low');
+    expect(GROK_VOICE.chatModel).toBe('grok-4.3');
+  });
+
+  it('streams answer text and ignores a reasoning trace', () => {
+    expect(completionDeltaText({ choices: [{ delta: { reasoning_content: 'thinking', content: 'Hello' } }] })).toBe('Hello');
+    expect(completionDeltaText({ choices: [{ delta: { reasoning_content: 'only thinking' } }] })).toBe('');
+    const events: string[] = [];
+    const first = parseSseBuffer(encodeSse({ type: 'delta', text: 'Hel' }), (event) => {
+      if (event.type === 'delta') events.push(event.text);
+    });
+    expect(first).toBe('');
+    expect(events).toEqual(['Hel']);
+    const rest = parseSseBuffer(`data: ${JSON.stringify({ type: 'delta', text: 'lo' })}\n\ndata: {"type":"done","reply":"Hello","role":"assistant","ok":true}`, () => undefined);
+    expect(rest.startsWith('data:')).toBe(true);
   });
 
   it('does not ask the model to invent numbers', () => {

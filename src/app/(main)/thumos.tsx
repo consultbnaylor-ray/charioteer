@@ -5,7 +5,7 @@ import { View } from 'react-native';
 import { useRepository, useSnapshot } from '@/data';
 import { ALCOHOL_FACTS } from '@/domain/facts';
 import { earnedMilestones } from '@/domain/milestones';
-import { detectSafety, SELF_HARM_NOTICE, WITHDRAWAL_NOTICE } from '@/domain/safety';
+import { firstSafetyHit, pinnedSafetyNotices } from '@/domain/safety';
 import { inferThumosMode, type ThumosMode } from '@/domain/thumos';
 import { formatClock, urgeRemainingSeconds } from '@/domain/urge';
 import { ensureUrge, restartUrge } from '@/features/urgeSession';
@@ -24,6 +24,9 @@ export default function Thumos() {
   const [draft, setDraft] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
+  const [liveReply, setLiveReply] = useState('');
+  const [outgoing, setOutgoing] = useState<string | null>(null);
+  const [supportLatch, setSupportLatch] = useState(sos);
   const [factOpen, setFactOpen] = useState(false);
   const [voiceNote, setVoiceNote] = useState<string | null>(null);
   const [now, setNow] = useState(() => Date.now());
@@ -34,14 +37,6 @@ export default function Thumos() {
     void repo.ensureThumosGuide(sos ? 'craving' : 'opening').catch(() => undefined);
   }, [profile, repo, sos]);
 
-  useEffect(() => {
-    if (!sos) return;
-    setUrgeStart(ensureUrge());
-    const timer = setInterval(() => setNow(Date.now()), 250);
-    return () => clearInterval(timer);
-  }, [sos]);
-
-  if (!profile) return null;
   const latest = snap.checkIns[0];
   const mode: ThumosMode = inferThumosMode({
     sos,
@@ -50,23 +45,52 @@ export default function Thumos() {
     latestMood: latest?.mood,
     userText: draft,
   });
+  const showSupport = sos || supportLatch || mode === 'support';
+
+  useEffect(() => {
+    if (!showSupport) return;
+    setUrgeStart((current) => current ?? ensureUrge());
+    const timer = setInterval(() => setNow(Date.now()), 250);
+    return () => clearInterval(timer);
+  }, [showSupport]);
+
+  if (!profile) return null;
   const lastUser = [...snap.thumos].reverse().find((message) => message.role === 'user');
-  const safety = detectSafety(lastUser?.content ?? '');
+  const safety = firstSafetyHit([draft, outgoing ?? '', lastUser?.content ?? '']);
+  const notices = pinnedSafetyNotices(safety);
   const remaining = urgeStart == null ? 0 : urgeRemainingSeconds(urgeStart, now);
   const fact = ALCOHOL_FACTS[0];
 
   async function send(text = draft) {
+    const trimmed = text.trim();
+    if (!trimmed) return;
+    const support = sos || mode === 'support' || inferThumosMode({ sos, hasHistory: true, userText: trimmed }) === 'support';
+    setSupportLatch(support);
     setPending(true);
+    setLiveReply('');
+    setOutgoing(trimmed);
     setError(null);
+    setDraft('');
     try {
-      await repo.sendThumos(text, sos || mode === 'support' ? 'support' : mode === 'opening' ? 'steady' : mode);
-      setDraft('');
+      await repo.sendThumos(trimmed, support ? 'support' : mode === 'opening' ? 'steady' : mode, (next) => setLiveReply(next));
     } catch (err) {
+      setDraft(trimmed);
       setError(err instanceof Error ? err.message : 'Could not send that.');
     } finally {
       setPending(false);
+      setLiveReply('');
+      setOutgoing(null);
     }
   }
+
+  const safetyBanner = notices.length ? (
+    <Card style={{ backgroundColor: theme.colors.dangerSoft, borderColor: theme.colors.danger, borderLeftWidth: 3 }}>
+      <T variant="label" style={{ color: theme.colors.danger }}>Safety</T>
+      {notices.map((notice) => (
+        <T key={notice.slice(0, 24)} style={{ color: theme.colors.danger }}>{notice}</T>
+      ))}
+    </Card>
+  ) : null;
 
   return (
     <Screen
@@ -75,8 +99,9 @@ export default function Thumos() {
       intro={snap.mode === 'demo'
         ? 'Earlier replies in the sample are stored examples, so you can see the shape of a conversation. A new message explains, clearly, when the live coach is not connected.'
         : 'Thumos helps you stay sober and get healthier. It is not a doctor.'}
+      banner={safetyBanner}
     >
-      {sos ? (
+      {showSupport ? (
         <Card style={{ backgroundColor: theme.colors.surface, borderColor: theme.colors.ink, borderWidth: 2 }}>
           <T variant="label">Urge timer</T>
           <T variant="hero">{formatClock(remaining)}</T>
@@ -97,18 +122,24 @@ export default function Thumos() {
           ) : null}
         </Card>
       ) : null}
-      {(safety.selfHarm || safety.withdrawal) ? (
-        <Card style={{ backgroundColor: theme.colors.dangerSoft, borderColor: theme.colors.danger, borderLeftWidth: 3 }}>
-          <T style={{ color: theme.colors.danger }}>{safety.selfHarm ? SELF_HARM_NOTICE : null}</T>
-          <T style={{ color: theme.colors.danger }}>{safety.withdrawal ? WITHDRAWAL_NOTICE : null}</T>
-        </Card>
-      ) : null}
       {snap.thumos.map((message) => (
         <Card key={message.id} style={{ backgroundColor: message.role === 'user' ? theme.colors.emphasisSoft : theme.colors.surface }}>
           <T variant="label">{message.role === 'user' ? 'You' : message.role === 'offline' ? 'Charioteer' : 'Thumos'}</T>
           <T>{message.content}</T>
         </Card>
       ))}
+      {pending && outgoing ? (
+        <Card style={{ backgroundColor: theme.colors.emphasisSoft }}>
+          <T variant="label">You</T>
+          <T>{outgoing}</T>
+        </Card>
+      ) : null}
+      {pending ? (
+        <Card>
+          <T variant="label">Thumos</T>
+          <T>{liveReply || 'Thumos is thinking'}</T>
+        </Card>
+      ) : null}
       {!profile.consentAi ? (
         <Card>
           <T>Thumos stays quiet until you agree that messages can be sent to the coach.</T>
@@ -149,7 +180,7 @@ export default function Thumos() {
                     note: item.note,
                   })),
                   health: [],
-                  mode: sos ? 'support' : 'steady',
+                  mode: showSupport ? 'support' : 'steady',
                   safety,
                 }));
                 setVoiceNote(result.message);

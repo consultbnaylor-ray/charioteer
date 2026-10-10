@@ -1,8 +1,8 @@
-import { factsBlock, type CitedFact, ALCOHOL_FACTS } from './facts';
-import { earnedMilestones } from './milestones';
-import { savingsFromTypicalWeek } from './savings';
-import { formatSoberElapsed, soberElapsed } from './sober';
-import { detectSafety, type SafetyHit } from './safety';
+import { factsBlock, type CitedFact, ALCOHOL_FACTS } from './facts.ts';
+import { earnedMilestones } from './milestones.ts';
+import { savingsFromTypicalWeek } from './savings.ts';
+import { formatSoberElapsed, soberElapsed } from './sober.ts';
+import { detectSafety, type SafetyHit } from './safety.ts';
 
 export type ThumosMode = 'opening' | 'steady' | 'growth' | 'support';
 
@@ -51,6 +51,84 @@ export function inferThumosMode(input: {
   return 'steady';
 }
 
+/**
+ * Text model for Thumos. Checked against xAI public docs on 10 October 2026.
+ *
+ * Live replies used grok-4.7 on POST /v1/chat/completions with no reasoning_effort.
+ * grok-4.7, grok-4.6, and grok-4.5 default that parameter to "high", and reasoning
+ * cannot be turned off (docs.x.ai/developers/model-capabilities/text/reasoning).
+ * The model thinks before the first answer token, which is the 40–50 second wait.
+ *
+ * grok-4.3 is the fast model that supports reasoning effort "none" (no reasoning
+ * at all), plus low, medium, high, and xhigh. Its default is low.
+ * https://docs.x.ai/developers/models/grok-4.3
+ * Non-reasoning workloads are directed at grok-4.3 with none:
+ * https://docs.x.ai/developers/migration/may-15-retirement
+ *
+ * Chat Completions takes reasoning_effort as a top-level field (the xAI chat
+ * SDK sends it that way). The Responses API uses reasoning.effort instead.
+ * This app stays on the chat completions call that was already verified.
+ * Streaming is stream: true on that same endpoint
+ * (docs.x.ai/developers/model-capabilities/text/streaming).
+ *
+ * xAI does not publish a latency SLO. With reasoning off, there is no hidden
+ * thinking pass: a short reply is ordinary token generation, and stream: true
+ * shows it as it is written. That is seconds, not the 40–50s high-effort wait.
+ * If THUMOS_MODEL is set back to grok-4.7, 4.6, or 4.5, effort falls back to
+ * "low" (the fastest setting those models allow).
+ */
+export const THUMOS_CHAT = {
+  completionsUrl: 'https://api.x.ai/v1/chat/completions',
+  model: 'grok-4.3',
+  historyLimit: 8,
+  checkInLimit: 4,
+  noteLimit: 160,
+  maxTokens: 450,
+} as const;
+
+export function thumosReasoningEffort(model: string): 'none' | 'low' {
+  if (model === 'grok-4.7' || model === 'grok-4.6' || model === 'grok-4.5') return 'low';
+  return 'none';
+}
+
+export type ChatTurn = { role: 'user' | 'assistant'; content: string };
+
+export function buildChatCompletionBody(input: {
+  model?: string;
+  system: string;
+  history: ChatTurn[];
+  user: string;
+  stream: boolean;
+}): {
+  model: string;
+  reasoning_effort: 'none' | 'low';
+  stream: boolean;
+  max_tokens?: number;
+  messages: { role: 'system' | 'user' | 'assistant'; content: string }[];
+} {
+  const model = input.model || THUMOS_CHAT.model;
+  const reasoning_effort = thumosReasoningEffort(model);
+  return {
+    model,
+    reasoning_effort,
+    stream: input.stream,
+    ...(reasoning_effort === 'none' ? { max_tokens: THUMOS_CHAT.maxTokens } : {}),
+    messages: [
+      { role: 'system', content: input.system },
+      ...input.history.slice(-THUMOS_CHAT.historyLimit),
+      { role: 'user', content: input.user },
+    ],
+  };
+}
+
+/** Answer text from one chat-completions stream chunk. Reasoning traces are ignored. */
+export function completionDeltaText(payload: unknown): string {
+  if (!payload || typeof payload !== 'object') return '';
+  const choices = (payload as { choices?: { delta?: { content?: unknown; reasoning_content?: unknown } }[] }).choices;
+  const content = choices?.[0]?.delta?.content;
+  return typeof content === 'string' ? content : '';
+}
+
 export const OPENING_LINE = 'How are you feeling?';
 
 export const CRAVING_LINE =
@@ -86,11 +164,11 @@ export function buildThumosContext(input: ThumosContextInput): string {
       : null;
 
   const checkIns = input.checkIns
-    .slice(0, 7)
-    .map(
-      (item) =>
-        `- ${item.createdAt}: mood ${item.mood}/5, sleep ${item.sleepHours}h, craving ${item.craving}/10${item.note ? `. Note: ${item.note}` : ''}`,
-    )
+    .slice(0, THUMOS_CHAT.checkInLimit)
+    .map((item) => {
+      const note = item.note.trim().slice(0, THUMOS_CHAT.noteLimit);
+      return `- ${item.createdAt}: mood ${item.mood}/5, sleep ${item.sleepHours}h, craving ${item.craving}/10${note ? `. Note: ${note}` : ''}`;
+    })
     .join('\n');
 
   const health = input.health
@@ -128,7 +206,7 @@ export function buildSystemPrompt(context: string, mode: ThumosMode, facts: read
     'Charioteer is named for Plato\'s charioteer of the soul. You are the spirited horse: courage, heart, and forward motion.',
     'Your job is to help this person stay sober and get healthier.',
     'You are not a doctor, therapist, or emergency service. Say so when the conversation touches physical health, withdrawal, or mental health.',
-    'Use UK English. Be calm, plain, and adult. Never punitive about a lapse. Short paragraphs. No emoji unless the person uses them first.',
+    'Use UK English. Be calm, plain, and adult. Never punitive about a lapse. Short paragraphs. Keep the reply under 120 words. No emoji unless the person uses them first.',
     'Do not invent statistics, study names, or citations. If you share a number about alcohol harm, use only CURATED FACTS, quote it faithfully, and name the source. If you do not have a verified figure, say so.',
     MODE_GUIDANCE[mode],
     'Safety rules, follow exactly:',
