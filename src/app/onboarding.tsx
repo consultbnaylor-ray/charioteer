@@ -1,11 +1,13 @@
 import { useRef, useState } from 'react';
-import { Switch, View } from 'react-native';
+import { View } from 'react-native';
 
 import { useRepository, useSnapshot } from '@/data';
-import { formatUkLong, isoDay, parseIsoDay, startOfLocalDay } from '@/domain/dates';
+import { isoDay, startOfLocalDay } from '@/domain/dates';
 import { shownError } from '@/domain/errors';
 import { planCustomInterest, validateTown } from '@/domain/privacy';
 import { reasonPlaceholder } from '@/domain/reasons';
+import { parseDrinkFreeGoal, parseUnitsGoal, STAGE_LABELS, STAGES, SUDDEN_STOP_WARNING, validateStageStep, type Stage } from '@/domain/stage';
+import { ConsentChoices } from '@/ui/ConsentChoices';
 import { DateField } from '@/ui/DateField';
 import { UnitsGuide } from '@/ui/UnitsGuide';
 import { Button, Choice, ErrorNote, Field, Screen, T } from '@/ui/ui';
@@ -33,7 +35,12 @@ export default function Onboarding() {
   const [step, setStep] = useState(0);
   const [name, setName] = useState(snap.profile?.displayName ?? '');
   const [adult, setAdult] = useState<boolean | null>(null);
+  const [stage, setStage] = useState<Stage | null>(null);
   const [start, setStart] = useState(() => startOfLocalDay(new Date()));
+  const [plannedQuit, setPlannedQuit] = useState(() => startOfLocalDay(new Date()));
+  const [quitUnsure, setQuitUnsure] = useState(true);
+  const [unitsGoal, setUnitsGoal] = useState('');
+  const [drinkFreeGoal, setDrinkFreeGoal] = useState('');
   const [reasons, setReasons] = useState(['', '', '']);
   const [spend, setSpend] = useState('40');
   const [units, setUnits] = useState('20');
@@ -101,9 +108,15 @@ export default function Onboarding() {
     setPending(true);
     setError(null);
     try {
+      const units = parseUnitsGoal(unitsGoal);
+      const days = parseDrinkFreeGoal(drinkFreeGoal);
       await repo.completeOnboarding({
         displayName: name,
-        sobrietyStartedAt: toInstant(start),
+        stage: stage ?? 'exploring',
+        sobrietyStartedAt: stage === 'stopped' ? toInstant(start) : null,
+        plannedQuitAt: stage === 'trying_to_stop' && !quitUnsure ? isoDay(plannedQuit) : null,
+        weeklyUnitsGoal: stage === 'cutting_down' && units.ok ? units.value : null,
+        drinkFreeDaysGoal: stage === 'cutting_down' && days.ok ? days.value : null,
         reasons,
         weeklySpendGbp,
         weeklyUnits,
@@ -136,12 +149,36 @@ export default function Onboarding() {
       ) : null}
       {step === 2 ? (
         <View style={{ gap: 10 }}>
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-            <Choice label="Today" selected={isoDay(start) === isoDay(new Date())} onPress={() => setStart(startOfLocalDay(new Date()))} />
-            <Choice label="Yesterday" selected={isoDay(start) === isoDay(daysAgo(1))} onPress={() => setStart(daysAgo(1))} />
-            <Choice label="A week ago" selected={isoDay(start) === isoDay(daysAgo(7))} onPress={() => setStart(daysAgo(7))} />
-          </View>
-          <DateField label="Or a date" value={start} onChange={setStart} maximumDate={new Date()} hint="Use the day you stopped, or today if you are starting now." />
+          {STAGES.map((item) => (
+            <Choice key={item} label={STAGE_LABELS[item]} selected={stage === item} onPress={() => setStage(item)} />
+          ))}
+          {stage === 'stopped' ? (
+            <View style={{ gap: 10 }}>
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+                <Choice label="Today" selected={isoDay(start) === isoDay(new Date())} onPress={() => setStart(startOfLocalDay(new Date()))} />
+                <Choice label="Yesterday" selected={isoDay(start) === isoDay(daysAgo(1))} onPress={() => setStart(daysAgo(1))} />
+                <Choice label="A week ago" selected={isoDay(start) === isoDay(daysAgo(7))} onPress={() => setStart(daysAgo(7))} />
+              </View>
+              <DateField label="Or a date" value={start} onChange={setStart} maximumDate={new Date()} hint="Use the day you stopped, or today if you are starting now." />
+            </View>
+          ) : null}
+          {stage === 'trying_to_stop' ? (
+            <View style={{ gap: 10 }}>
+              <T>{SUDDEN_STOP_WARNING}</T>
+              <Choice label="Not sure yet" selected={quitUnsure} onPress={() => setQuitUnsure(true)} />
+              <Choice label="Pick a date" selected={!quitUnsure} onPress={() => setQuitUnsure(false)} />
+              {quitUnsure ? null : (
+                <DateField label="Planned quit date" value={plannedQuit} onChange={setPlannedQuit} earliestDate={new Date()} hint="Today or a later day." />
+              )}
+            </View>
+          ) : null}
+          {stage === 'cutting_down' ? (
+            <View style={{ gap: 10 }}>
+              <Field label="Weekly units goal, if you want one" value={unitsGoal} onChangeText={setUnitsGoal} keyboardType="decimal-pad" placeholder="Optional" />
+              <Field label="Drink-free days a week, if you want a number" value={drinkFreeGoal} onChangeText={setDrinkFreeGoal} keyboardType="number-pad" placeholder="0 to 7, optional" />
+            </View>
+          ) : null}
+          {stage === 'exploring' ? <T>No date needed. You can decide later, and change this in You.</T> : null}
         </View>
       ) : null}
       {step === 3 ? (
@@ -192,27 +229,7 @@ export default function Onboarding() {
         <Field label="Town or area" value={town} onChangeText={setTown} placeholder="Bristol, or leave blank" hint="Never a street or postcode. Other people only see this if you turn community on." />
       ) : null}
       {step === 7 ? (
-        <View style={{ gap: 16 }}>
-          <Consent
-            title="Community"
-            body="Other adults can see your name, town or area, and interests. They cannot see your reasons, check-ins, money, units, or health."
-            value={community}
-            onChange={setCommunity}
-          />
-          <Consent
-            title="Health data"
-            body="Steps, sleep, heart rate, heart-rate variability, workouts, and weight are special category data under UK GDPR. Stored so you and Thumos can see trends. Quantica Labs Ltd is the controller. You can export or delete them with your account."
-            value={health}
-            onChange={setHealth}
-          />
-          <Consent
-            title="Thumos, the coach"
-            body="What you type, plus days sober, check-ins, reasons, and health summaries, is sent to xAI to write a reply. Thumos is not a doctor."
-            value={ai}
-            onChange={setAi}
-          />
-          <T variant="muted">This consent screen is plain language, not a solicitor’s privacy notice. Have it reviewed before a public launch. Version {formatUkLong(parseIsoDay('2026-10-10'))}.</T>
-        </View>
+        <ConsentChoices community={community} health={health} ai={ai} onCommunity={setCommunity} onHealth={setHealth} onAi={setAi} />
       ) : null}
       <ErrorNote>{error}</ErrorNote>
       <View style={{ flexDirection: 'row', gap: 10 }}>
@@ -226,7 +243,18 @@ export default function Onboarding() {
               setError(null);
               if (step === 0 && !name.trim()) return setError('Add your name.');
               if (step === 1 && adult !== true) return setError('Charioteer is for adults aged 18 and over.');
-              if (step === 2 && isoDay(start) > isoDay(new Date())) return setError('Choose today or an earlier day.');
+              if (step === 2) {
+                const stageError = validateStageStep({
+                  stage,
+                  soberDay: isoDay(start),
+                  today: isoDay(new Date()),
+                  plannedQuit: isoDay(plannedQuit),
+                  quitUnsure,
+                  unitsGoal,
+                  drinkFreeGoal,
+                });
+                if (stageError) return setError(stageError);
+              }
               if (step === 3 && !reasons.some((reason) => reason.trim())) return setError('One reason is enough.');
               if (step === 6) {
                 const townError = validateTown(town);
@@ -246,7 +274,7 @@ export default function Onboarding() {
 const titles = [
   'What should we call you?',
   'This app is for adults.',
-  'When did you stop?',
+  'Where are you right now?',
   'Why does this matter?',
   'Your usual week',
   'What do you like doing?',
@@ -257,23 +285,11 @@ const titles = [
 const intros = [
   'This is the name other people will see if you join the community.',
   'Confirm you are 18 or over. Charioteer is not for children.',
-  'If you drank today, you can still begin now. A later lapse does not wipe the record of the days you kept.',
+  'Stopped, trying to stop, cutting down, or just looking. You can change this later.',
   'Thumos will remind you of these in your own words, and only when it helps.',
-  'Used for money saved and units avoided. It is an estimate from what you tell us, not a medical calculation.',
+  'Your own usual week. It is an estimate from what you tell us, not a medical calculation.',
   'Swimming, hiking, dancing, sober raving, cinema and meals, nights in — or something of your own.',
   'Optional. Town or area only.',
   'Health and drinking data are sensitive. Nothing is turned on unless you agree.',
 ];
 
-function Consent({ title, body, value, onChange }: { title: string; body: string; value: boolean; onChange: (value: boolean) => void }) {
-  const theme = useAppTheme();
-  return (
-    <View style={{ gap: 8 }}>
-      <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 12, alignItems: 'center' }}>
-        <T variant="title" style={{ fontSize: 20, flex: 1 }}>{title}</T>
-        <Switch accessibilityLabel={title} value={value} onValueChange={onChange} trackColor={{ true: theme.colors.ink, false: theme.colors.line }} thumbColor={theme.colors.surface} />
-      </View>
-      <T variant="muted">{body}</T>
-    </View>
-  );
-}

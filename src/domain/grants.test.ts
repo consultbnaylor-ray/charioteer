@@ -5,6 +5,8 @@ const sql = readFileSync('supabase/migrations/20261010130000_tighten_grants.sql'
 const init = readFileSync('supabase/migrations/20261010120000_init.sql', 'utf8');
 const healthUpsert = readFileSync('supabase/migrations/20261010140000_health_upsert_grant.sql', 'utf8');
 const addInterest = readFileSync('supabase/migrations/20261010150000_add_interest.sql', 'utf8');
+const consentReread = readFileSync('supabase/migrations/20261010160000_consent_reread.sql', 'utf8');
+const profileStage = readFileSync('supabase/migrations/20261010170000_profile_stage.sql', 'utf8');
 
 function updateColumnsIn(source: string, table: string): string[] {
   const match = source.match(new RegExp(`grant update \\(([^)]+)\\) on public\\.${table} to authenticated`, 'i'));
@@ -72,7 +74,7 @@ describe('client writes against the live grants', () => {
   });
 
   it('only updates profile columns the signed-in user may write', () => {
-    const granted = new Set(updateColumns('profiles'));
+    const granted = new Set([...updateColumns('profiles'), ...updateColumnsIn(profileStage, 'profiles')]);
     const written = [
       'display_name',
       'sobriety_started_at',
@@ -86,6 +88,11 @@ describe('client writes against the live grants', () => {
       'onboarding_complete',
       'text_scale',
       'theme_preference',
+      'stage',
+      'planned_quit_at',
+      'weekly_units_goal',
+      'drink_free_days_goal',
+      'drink_free_on',
     ];
     for (const column of written) expect(granted.has(column)).toBe(true);
     expect(granted.has('is_moderator')).toBe(false);
@@ -96,6 +103,31 @@ describe('client writes against the live grants', () => {
     for (const column of ['user_id', 'kind', 'value', 'unit', 'recorded_on', 'source']) {
       expect(granted.has(column)).toBe(true);
     }
+  });
+});
+
+describe('consent reread', () => {
+  it('lets the signed-in user read their own rows and ignore a repeat insert', () => {
+    expect(consentReread).toContain('grant select on public.consents to authenticated');
+    expect(consentReread).toContain('consents_user_kind_version_key');
+    expect(consentReread).toContain('on public.consents (user_id, kind, version)');
+    expect(consentReread.toLowerCase()).not.toContain('grant update');
+  });
+});
+
+describe('profile stage', () => {
+  it('backfills stopped when a sober date exists and grants only the new columns', () => {
+    expect(profileStage).toContain("stage in ('stopped', 'trying_to_stop', 'cutting_down', 'exploring')");
+    expect(profileStage).toContain('set stage = \'stopped\'');
+    expect(profileStage).toContain('sobriety_started_at is not null');
+    expect(updateColumnsIn(profileStage, 'profiles')).toEqual([
+      'stage',
+      'planned_quit_at',
+      'weekly_units_goal',
+      'drink_free_days_goal',
+      'drink_free_on',
+    ]);
+    expect(profileStage.toLowerCase()).not.toMatch(/grant update on public\.profiles/i);
   });
 });
 

@@ -12,6 +12,7 @@ export {
   isThumosFollowUp,
   OFFLINE_COACH_MESSAGE,
   resolveThumosMode,
+  stageGuidance,
   OPENING_LINE,
   safetyFromText,
   THUMOS_CHAT,
@@ -21,4 +22,5 @@ export {
   type HealthTrend,
   type ThumosContextInput,
   type ThumosMode,
+  type ThumosStage,
 } from '../../supabase/functions/_shared/thumos';

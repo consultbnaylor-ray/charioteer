@@ -24,6 +24,18 @@ import {
 
 type Body = { content?: string; mode?: ThumosMode };
 
+function drinkFreeCount(dates: unknown, now: Date): number {
+  if (!Array.isArray(dates)) return 0;
+  const weekday = now.getUTCDay();
+  const mondayOffset = (weekday + 6) % 7;
+  const monday = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - mondayOffset));
+  const start = monday.toISOString().slice(0, 10);
+  const endDate = new Date(monday);
+  endDate.setUTCDate(endDate.getUTCDate() + 7);
+  const end = endDate.toISOString().slice(0, 10);
+  return new Set(dates.map(String).filter((item) => item >= start && item < end)).size;
+}
+
 Deno.serve(async (req) => {
   const early = preflight(req);
   if (early) return early;
@@ -94,17 +106,26 @@ Deno.serve(async (req) => {
     note: row.note ?? '',
   }));
 
+  const profile = profileRes.data;
+  const stage = profile.stage === 'trying_to_stop' || profile.stage === 'cutting_down' || profile.stage === 'exploring' || profile.stage === 'stopped'
+    ? profile.stage
+    : profile.sobriety_started_at ? 'stopped' : 'exploring';
   const context = buildThumosContext({
     now: new Date(),
-    displayName: profileRes.data.display_name ?? '',
-    sobrietyStartedAt: profileRes.data.sobriety_started_at,
+    displayName: profile.display_name ?? '',
+    sobrietyStartedAt: profile.sobriety_started_at,
     reasons: (reasonsRes.data ?? []).map((row) => row.body),
-    weeklySpendGbp: profileRes.data.weekly_spend_gbp == null ? null : Number(profileRes.data.weekly_spend_gbp),
-    weeklyUnits: profileRes.data.weekly_units == null ? null : Number(profileRes.data.weekly_units),
+    weeklySpendGbp: profile.weekly_spend_gbp == null ? null : Number(profile.weekly_spend_gbp),
+    weeklyUnits: profile.weekly_units == null ? null : Number(profile.weekly_units),
     checkIns,
     health,
     mode,
     safety,
+    stage,
+    plannedQuitAt: profile.planned_quit_at ?? null,
+    weeklyUnitsGoal: profile.weekly_units_goal == null ? null : Number(profile.weekly_units_goal),
+    drinkFreeDaysGoal: profile.drink_free_days_goal == null ? null : Number(profile.drink_free_days_goal),
+    drinkFreeThisWeek: drinkFreeCount(profile.drink_free_on, new Date()),
   });
 
   const admin = createClient(url, service, { auth: { persistSession: false } });
@@ -128,6 +149,7 @@ Deno.serve(async (req) => {
     selfHarm: safety.selfHarm,
     soberTimeAlreadySaid: cues.soberTimeAlreadySaid,
     reasonsAlreadyUsed: cues.reasonsAlreadyUsed,
+    stage,
   });
 
   const stream = new ReadableStream<Uint8Array>({

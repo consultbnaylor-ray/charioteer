@@ -1,4 +1,6 @@
 import { CONSENT_VERSION, INTEREST_CATALOGUE, RESOURCE_CATALOGUE } from '@/data/catalogue';
+import { consentRows } from '@/domain/consents';
+import type { StoredConsent } from '@/domain/consents';
 import type { CheckIn, Connection, DirectMessage, HealthSample, Profile, Reason, Relapse, ThumosMessage } from '@/data/types';
 
 export const DEMO_PASSWORD = 'Charioteer-demo-1';
@@ -29,6 +31,7 @@ export type DemoAccount = {
   relapses: Relapse[];
   health: HealthSample[];
   thumos: ThumosMessage[];
+  consents: StoredConsent[];
 };
 
 export type DemoDb = {
@@ -74,6 +77,11 @@ function profile(
     textScale: 'default',
     themePreference: 'dark',
     interestIds,
+    stage: 'stopped',
+    plannedQuitAt: null,
+    weeklyUnitsGoal: null,
+    drinkFreeDaysGoal: null,
+    drinkFreeOn: [],
     ...extra,
   };
 }
@@ -134,6 +142,7 @@ export function createDemoDb(now = new Date()): DemoDb {
     relapses: [],
     health,
     thumos,
+    consents: consentRows(CONSENT_VERSION, { consentHealth: true, communityVisible: true, consentAi: true }),
   };
 
   const other = (
@@ -152,6 +161,7 @@ export function createDemoDb(now = new Date()): DemoDb {
     relapses: [],
     health: [],
     thumos: [],
+    consents: consentRows(CONSENT_VERSION, { consentHealth: true, communityVisible: true, consentAi: true }),
   });
 
   const connectionId = 'cccccccc-cccc-4ccc-8ccc-ccccccccccc1';

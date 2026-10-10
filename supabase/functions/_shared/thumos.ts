@@ -21,6 +21,8 @@ export type HealthTrend = {
   unit: string;
 };
 
+export type ThumosStage = 'stopped' | 'trying_to_stop' | 'cutting_down' | 'exploring';
+
 export type ThumosContextInput = {
   now: Date;
   displayName: string;
@@ -32,7 +34,37 @@ export type ThumosContextInput = {
   health: HealthTrend[];
   mode: ThumosMode;
   safety: SafetyHit;
+  stage?: ThumosStage;
+  plannedQuitAt?: string | null;
+  weeklyUnitsGoal?: number | null;
+  drinkFreeDaysGoal?: number | null;
+  drinkFreeThisWeek?: number | null;
 };
+
+const STAGE_LABEL: Record<ThumosStage, string> = {
+  stopped: 'stopped',
+  trying_to_stop: 'trying to stop',
+  cutting_down: 'trying to cut down',
+  exploring: 'still drinking, just exploring',
+};
+
+export function stageGuidance(stage: ThumosStage): string {
+  if (stage === 'stopped') {
+    return 'They have stopped. Help them stay sober. Do not talk as if they are still drinking unless they say so.';
+  }
+  if (stage === 'trying_to_stop') {
+    return 'They are trying to stop and have not stopped yet. Help them plan. Do not say they are already sober, and do not count sober days or savings. If they have been drinking heavily every day, stopping suddenly can be dangerous. Speak to a GP, or call NHS 111, before you stop. Do not give a taper, doses, or medication advice.';
+  }
+  if (stage === 'cutting_down') {
+    return 'They are trying to cut down, not saying they have stopped. Be curious and non-judgemental. Reflect what they want. Do not congratulate them on sober days or savings. You may talk about a units goal or drink-free days when CONTEXT includes them.';
+  }
+  return 'They are still drinking and just exploring. Be curious and non-judgemental. Do not push them to stop, do not invent sober time, and do not treat a hope as already met.';
+}
+
+function resolvedStage(input: ThumosContextInput): ThumosStage {
+  if (input.stage) return input.stage;
+  return input.sobrietyStartedAt ? 'stopped' : 'exploring';
+}
 
 const APOSTROPHE = "['’]";
 
@@ -380,6 +412,7 @@ export type PromptTurn = {
   selfHarm?: boolean;
   soberTimeAlreadySaid?: boolean;
   reasonsAlreadyUsed?: string[];
+  stage?: ThumosStage;
 };
 
 function modeGuidance(mode: ThumosMode, turn: PromptTurn): string {
@@ -412,7 +445,9 @@ function repetitionLine(turn: PromptTurn): string {
 }
 
 export function buildThumosContext(input: ThumosContextInput): string {
-  const started = input.sobrietyStartedAt ? new Date(input.sobrietyStartedAt) : null;
+  const stage = resolvedStage(input);
+  const sober = stage === 'stopped';
+  const started = sober && input.sobrietyStartedAt ? new Date(input.sobrietyStartedAt) : null;
   const elapsed = started ? soberElapsed(started, input.now) : null;
   const milestones = started ? earnedMilestones(started, input.now).map((item) => item.badge) : [];
   const saved =
@@ -452,17 +487,30 @@ export function buildThumosContext(input: ThumosContextInput): string {
     ].join('\n');
   }
 
+  const stageLines = [
+    `Stage: ${STAGE_LABEL[stage]}`,
+    stage === 'trying_to_stop'
+      ? `Planned quit date: ${input.plannedQuitAt ?? 'not sure yet'}`
+      : '',
+    stage === 'cutting_down' && input.weeklyUnitsGoal != null ? `Units goal: ${input.weeklyUnitsGoal} a week` : '',
+    stage === 'cutting_down' && input.drinkFreeDaysGoal != null
+      ? `Drink-free days this week: ${input.drinkFreeThisWeek ?? 0} of ${input.drinkFreeDaysGoal}`
+      : '',
+    sober ? '' : 'Do not invent sober time, savings, or milestones.',
+  ].filter(Boolean);
+
   return [
     `Name: ${input.displayName || 'Friend'}`,
-    elapsed ? `Sober time: ${formatSoberElapsed(elapsed)} (since ${input.sobrietyStartedAt})` : 'Sober time: not set',
-    saved ? `From their own typical week: about ${saved.moneyGbp} GBP and ${saved.units} units not consumed.` : 'Savings inputs: not set',
-    `Milestones reached: ${milestones.length ? milestones.join(', ') : 'none yet'}`,
+    ...stageLines,
+    elapsed ? `Sober time: ${formatSoberElapsed(elapsed)} (since ${input.sobrietyStartedAt})` : sober ? 'Sober time: not set' : '',
+    sober ? (saved ? `From their own typical week: about ${saved.moneyGbp} GBP and ${saved.units} units not consumed.` : 'Savings inputs: not set') : '',
+    sober ? `Milestones reached: ${milestones.length ? milestones.join(', ') : 'none yet'}` : '',
     `Personal reasons:\n${input.reasons.length ? input.reasons.map((reason) => `- ${reason}`).join('\n') : '- none written yet'}`,
     `Recent check-ins (newest first):\n${checkIns || '- none yet'}`,
     `Health readings:\n${health || '- none shared'}`,
     `Mode: ${input.mode}`,
     `Safety flags: self-harm ${input.safety.selfHarm ? 'YES' : 'no'}, withdrawal ${input.safety.withdrawal ? 'YES' : 'no'}`,
-  ].join('\n');
+  ].filter(Boolean).join('\n');
 }
 
 export function buildSystemPrompt(
@@ -477,7 +525,9 @@ export function buildSystemPrompt(
     'Charioteer is named for Plato\'s charioteer of the soul. You are the spirited horse: courage, heart, and forward motion.',
     turn.selfHarm
       ? 'On this turn your only job is to stay with this person and help them reach help now.'
-      : 'Your job is to help this person stay sober and get healthier.',
+      : (turn.stage && turn.stage !== 'stopped')
+        ? stageGuidance(turn.stage)
+        : 'Your job is to help this person stay sober and get healthier.',
     'You are not a doctor, therapist, or emergency service. Say so when the conversation touches physical health, withdrawal, or mental health.',
     styleLine(turn),
     'The messages after this system prompt are the conversation so far, oldest first, then their latest line. Use that history. Never repeat a sentence you have already sent. Vary your wording from turn to turn.',

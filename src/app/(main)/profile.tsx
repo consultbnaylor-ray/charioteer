@@ -5,9 +5,11 @@ import { Platform, Share, View } from 'react-native';
 
 import { useRepository, useSnapshot } from '@/data';
 import type { TextScale, ThemePreference } from '@/data/types';
-import { formatUkDate } from '@/domain/dates';
+import { formatUkDate, isoDay, parseIsoDay, startOfLocalDay } from '@/domain/dates';
+import { parseDrinkFreeGoal, parseUnitsGoal, showsSoberRecord, STAGE_LABELS, STAGES, SUDDEN_STOP_WARNING, type Stage } from '@/domain/stage';
 import { shownError } from '@/domain/errors';
 import { UnitsGuide } from '@/ui/UnitsGuide';
+import { DateField } from '@/ui/DateField';
 import { Button, Card, Choice, ErrorNote, Field, Screen, T } from '@/ui/ui';
 
 export default function Profile() {
@@ -20,6 +22,12 @@ export default function Profile() {
   const [spend, setSpend] = useState(profile?.weeklySpendGbp?.toString() ?? '');
   const [units, setUnits] = useState(profile?.weeklyUnits?.toString() ?? '');
   const [confirm, setConfirm] = useState('');
+  const [stage, setStage] = useState<Stage>(profile?.stage ?? 'exploring');
+  const [soberDate, setSoberDate] = useState(() => profile?.sobrietyStartedAt ? new Date(profile.sobrietyStartedAt) : startOfLocalDay(new Date()));
+  const [plannedQuit, setPlannedQuit] = useState(() => profile?.plannedQuitAt ? parseIsoDay(profile.plannedQuitAt) : startOfLocalDay(new Date()));
+  const [quitUnsure, setQuitUnsure] = useState(!profile?.plannedQuitAt);
+  const [unitsGoal, setUnitsGoal] = useState(profile?.weeklyUnitsGoal?.toString() ?? '');
+  const [drinkFreeGoal, setDrinkFreeGoal] = useState(profile?.drinkFreeDaysGoal?.toString() ?? '');
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   if (!profile) return null;
@@ -72,7 +80,44 @@ export default function Profile() {
 
   return (
     <Screen eyebrow="You" title={profile.displayName} intro={profile.email}>
-      {profile.sobrietyStartedAt ? <T variant="muted">Sober since {formatUkDate(profile.sobrietyStartedAt)}.</T> : null}
+      {showsSoberRecord(profile.stage) && profile.sobrietyStartedAt ? <T variant="muted">Sober since {formatUkDate(profile.sobrietyStartedAt)}.</T> : null}
+      <Card>
+        <T variant="label">Where you are</T>
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+          {STAGES.map((item) => (
+            <Choice key={item} label={STAGE_LABELS[item]} selected={stage === item} onPress={() => setStage(item)} />
+          ))}
+        </View>
+        {stage === 'stopped' ? <DateField label="Sober since" value={soberDate} onChange={setSoberDate} maximumDate={new Date()} /> : null}
+        {stage === 'trying_to_stop' ? (
+          <View style={{ gap: 8 }}>
+            <T>{SUDDEN_STOP_WARNING}</T>
+            <Choice label="Not sure yet" selected={quitUnsure} onPress={() => setQuitUnsure(true)} />
+            <Choice label="Pick a date" selected={!quitUnsure} onPress={() => setQuitUnsure(false)} />
+            {quitUnsure ? null : <DateField label="Planned quit date" value={plannedQuit} onChange={setPlannedQuit} earliestDate={new Date()} />}
+          </View>
+        ) : null}
+        {stage === 'cutting_down' ? (
+          <View style={{ gap: 8 }}>
+            <Field label="Weekly units goal" value={unitsGoal} onChangeText={setUnitsGoal} keyboardType="decimal-pad" placeholder="Optional" />
+            <Field label="Drink-free days a week" value={drinkFreeGoal} onChangeText={setDrinkFreeGoal} keyboardType="number-pad" placeholder="0 to 7, optional" />
+          </View>
+        ) : null}
+        <Button label="Save where I am" tone="quiet" onPress={() => {
+          const parsedUnits = parseUnitsGoal(unitsGoal);
+          const parsedDays = parseDrinkFreeGoal(drinkFreeGoal);
+          if (stage === 'cutting_down' && !parsedUnits.ok) return setError(parsedUnits.message);
+          if (stage === 'cutting_down' && !parsedDays.ok) return setError(parsedDays.message);
+          setError(null);
+          void repo.updateProfile({
+            stage,
+            sobrietyStartedAt: stage === 'stopped' ? soberDate.toISOString() : null,
+            plannedQuitAt: stage === 'trying_to_stop' && !quitUnsure ? isoDay(plannedQuit) : null,
+            weeklyUnitsGoal: stage === 'cutting_down' && parsedUnits.ok ? parsedUnits.value : null,
+            drinkFreeDaysGoal: stage === 'cutting_down' && parsedDays.ok ? parsedDays.value : null,
+          }).then(() => setMessage('Saved.')).catch((err: unknown) => setError(shownError(err, 'Could not save.')));
+        }} />
+      </Card>
       <Card>
         <T variant="label">Appearance</T>
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
@@ -142,7 +187,7 @@ export default function Profile() {
       <Card>
         <T variant="label">Download</T>
         <T>The file is the stored record. Dates on this screen stay in UK form.</T>
-        {profile.sobrietyStartedAt ? <T variant="muted">Sober since {formatUkDate(profile.sobrietyStartedAt)}.</T> : null}
+        {showsSoberRecord(profile.stage) && profile.sobrietyStartedAt ? <T variant="muted">Sober since {formatUkDate(profile.sobrietyStartedAt)}.</T> : null}
         <Button label="Download my data" tone="quiet" onPress={() => void download()} />
       </Card>
       <Field label="Type DELETE to remove the account" value={confirm} onChangeText={setConfirm} />

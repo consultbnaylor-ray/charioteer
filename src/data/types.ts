@@ -1,3 +1,5 @@
+import type { StoredConsent } from '@/domain/consents';
+import type { Stage } from '@/domain/stage';
 import type { ThumosMode } from '@/domain/thumos';
 
 export type TextScale = 'default' | 'large' | 'extra';
@@ -32,6 +34,11 @@ export type Profile = {
   textScale: TextScale;
   themePreference: ThemePreference;
   interestIds: string[];
+  stage: Stage;
+  plannedQuitAt: string | null;
+  weeklyUnitsGoal: number | null;
+  drinkFreeDaysGoal: number | null;
+  drinkFreeOn: string[];
 };
 
 export type Reason = { id: string; body: string; sortOrder: number };
@@ -126,16 +133,27 @@ export type AppSnapshot = {
   messages: DirectMessage[];
   reports: Report[];
   thumos: ThumosMessage[];
+  consents: StoredConsent[];
 };
 
 export type OnboardingInput = {
   displayName: string;
-  sobrietyStartedAt: string;
+  stage: Stage;
+  sobrietyStartedAt: string | null;
+  plannedQuitAt: string | null;
+  weeklyUnitsGoal: number | null;
+  drinkFreeDaysGoal: number | null;
   reasons: string[];
   weeklySpendGbp: number;
   weeklyUnits: number;
   interestIds: string[];
   town: string;
+  communityVisible: boolean;
+  consentHealth: boolean;
+  consentAi: boolean;
+};
+
+export type ConsentInput = {
   communityVisible: boolean;
   consentHealth: boolean;
   consentAi: boolean;
@@ -154,6 +172,12 @@ export type ProfilePatch = Partial<
     | 'textScale'
     | 'themePreference'
     | 'interestIds'
+    | 'stage'
+    | 'sobrietyStartedAt'
+    | 'plannedQuitAt'
+    | 'weeklyUnitsGoal'
+    | 'drinkFreeDaysGoal'
+    | 'drinkFreeOn'
   >
 >;
 
@@ -193,6 +217,7 @@ export interface Repository {
   completeAuthRedirect(url: string): Promise<void>;
   signOut(): Promise<void>;
   completeOnboarding(input: OnboardingInput): Promise<void>;
+  saveConsents(input: ConsentInput): Promise<void>;
   updateProfile(patch: ProfilePatch): Promise<void>;
   setReasons(bodies: string[]): Promise<void>;
   addCheckIn(input: NewCheckIn): Promise<void>;

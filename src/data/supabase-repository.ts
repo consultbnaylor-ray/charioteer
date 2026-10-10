@@ -22,10 +22,13 @@ import { parseSseBuffer } from '@/domain/sse';
 import { detectSafety } from '@/domain/safety';
 import { CRAVING_LINE, OFFLINE_COACH_MESSAGE, OPENING_LINE, type ThumosMode } from '@/domain/thumos';
 import { CONSENT_VERSION } from '@/data/catalogue';
+import { consentRows, missingConsentRows, type StoredConsent } from '@/domain/consents';
+import { stageFromRecord } from '@/domain/stage';
 import type {
   AppSnapshot,
   CheckIn,
   Connection,
+  ConsentInput,
   DirectoryCard,
   HealthSample,
   Interest,
@@ -79,6 +82,7 @@ function emptySnapshot(): AppSnapshot {
     messages: [],
     reports: [],
     thumos: [],
+    consents: [],
   };
 }
 
@@ -153,7 +157,7 @@ export class SupabaseRepository implements Repository {
 
     const userId = session.user.id;
     const email = session.user.email ?? '';
-    const [profileRes, reasonsRes, checkRes, relapseRes, healthRes, mineRes, thumosRes, directoryRes, interestLinks, connectionsRes, reportsRes] =
+    const [profileRes, reasonsRes, checkRes, relapseRes, healthRes, mineRes, thumosRes, directoryRes, interestLinks, connectionsRes, reportsRes, consentsRes] =
       await Promise.all([
         this.client.from('profiles').select('*').eq('id', userId).maybeSingle(),
         this.client.from('reasons').select('*').eq('user_id', userId).order('sort_order'),
@@ -166,6 +170,7 @@ export class SupabaseRepository implements Repository {
         this.client.from('profile_interests').select('user_id, interest_id'),
         this.client.from('connections').select('*').order('created_at', { ascending: false }),
         this.client.from('reports').select('*').order('created_at', { ascending: false }),
+        this.client.from('consents').select('kind, granted, version').eq('user_id', userId),
       ]);
 
     const profileRow = profileRes.data as Row | null;
@@ -231,6 +236,7 @@ export class SupabaseRepository implements Repository {
       messages,
       reports: ((reportsRes.data ?? []) as Row[]).map(mapReport),
       thumos: ((thumosRes.data ?? []) as Row[]).map(mapThumos),
+      consents: ((consentsRes.data ?? []) as Row[]).map(mapConsent),
     });
   }
 
@@ -368,7 +374,11 @@ export class SupabaseRepository implements Repository {
       .from('profiles')
       .update({
         display_name: input.displayName.trim(),
+        stage: input.stage,
         sobriety_started_at: input.sobrietyStartedAt,
+        planned_quit_at: input.plannedQuitAt,
+        weekly_units_goal: input.weeklyUnitsGoal,
+        drink_free_days_goal: input.drinkFreeDaysGoal,
         weekly_spend_gbp: input.weeklySpendGbp,
         weekly_units: input.weeklyUnits,
         town: input.town.trim() || null,
@@ -408,6 +418,12 @@ export class SupabaseRepository implements Repository {
     if (patch.consentAi !== undefined) column.consent_ai = patch.consentAi;
     if (patch.textScale !== undefined) column.text_scale = patch.textScale;
     if (patch.themePreference !== undefined) column.theme_preference = patch.themePreference;
+    if (patch.stage !== undefined) column.stage = patch.stage;
+    if (patch.sobrietyStartedAt !== undefined) column.sobriety_started_at = patch.sobrietyStartedAt;
+    if (patch.plannedQuitAt !== undefined) column.planned_quit_at = patch.plannedQuitAt;
+    if (patch.weeklyUnitsGoal !== undefined) column.weekly_units_goal = patch.weeklyUnitsGoal;
+    if (patch.drinkFreeDaysGoal !== undefined) column.drink_free_days_goal = patch.drinkFreeDaysGoal;
+    if (patch.drinkFreeOn !== undefined) column.drink_free_on = patch.drinkFreeOn;
     if (Object.keys(column).length) {
       const { error } = await this.client.from('profiles').update(column).eq('id', userId);
       if (error) throw asUserFacing(error, 'general');
@@ -725,14 +741,28 @@ export class SupabaseRepository implements Repository {
     if (error) throw asUserFacing(error, 'general');
   }
 
-  private async insertConsents(userId: string, input: OnboardingInput) {
-    const { error } = await this.client.from('consents').insert([
-      { user_id: userId, kind: 'age_18', granted: true, version: CONSENT_VERSION },
-      { user_id: userId, kind: 'health', granted: input.consentHealth, version: CONSENT_VERSION },
-      { user_id: userId, kind: 'community', granted: input.communityVisible, version: CONSENT_VERSION },
-      { user_id: userId, kind: 'ai_coach', granted: input.consentAi, version: CONSENT_VERSION },
-    ]);
+  async saveConsents(input: ConsentInput): Promise<void> {
+    const userId = await this.userId();
+    const { error } = await this.client.from('profiles').update({
+      community_visible: input.communityVisible,
+      consent_health: input.consentHealth,
+      consent_ai: input.consentAi,
+    }).eq('id', userId);
     if (error) throw asUserFacing(error, 'general');
+    await this.insertConsents(userId, input);
+    await this.refresh();
+  }
+
+  private async insertConsents(userId: string, input: ConsentInput) {
+    const next = missingConsentRows(this.snapshot.consents, consentRows(CONSENT_VERSION, input));
+    if (!next.length) return;
+    const { error } = await this.client.from('consents').insert(next.map((row) => ({
+      user_id: userId,
+      kind: row.kind,
+      granted: row.granted,
+      version: row.version,
+    })));
+    if (error && !/duplicate|23505/i.test(`${error.code ?? ''} ${error.message}`)) throw asUserFacing(error, 'general');
   }
 }
 
@@ -771,6 +801,19 @@ function mapProfile(row: Row, email: string, interestIds: string[]): Profile {
     textScale: (row.text_scale as Profile['textScale']) ?? 'default',
     themePreference: (row.theme_preference as Profile['themePreference']) ?? 'dark',
     interestIds,
+    stage: stageFromRecord(row.stage, (row.sobriety_started_at as string | null) ?? null),
+    plannedQuitAt: (row.planned_quit_at as string | null) ?? null,
+    weeklyUnitsGoal: row.weekly_units_goal == null ? null : Number(row.weekly_units_goal),
+    drinkFreeDaysGoal: row.drink_free_days_goal == null ? null : Number(row.drink_free_days_goal),
+    drinkFreeOn: Array.isArray(row.drink_free_on) ? row.drink_free_on.map(String) : [],
+  };
+}
+
+function mapConsent(row: Row): StoredConsent {
+  return {
+    kind: row.kind as StoredConsent['kind'],
+    granted: Boolean(row.granted),
+    version: String(row.version),
   };
 }
 

@@ -63,5 +63,5 @@ export function openVoiceSession(token: string, instructions: string): Promise<V
 }
 
 export function voiceInstructions(input: ThumosContextInput): string {
-  return buildSystemPrompt(buildThumosContext(input), input.mode);
+  return buildSystemPrompt(buildThumosContext(input), input.mode, undefined, { stage: input.stage });
 }

@@ -7,6 +7,7 @@ import { ALCOHOL_FACTS } from '@/domain/facts';
 import { earnedMilestones } from '@/domain/milestones';
 import { firstSafetyHit, pinnedSafetyNotices } from '@/domain/safety';
 import { asUserFacing, shownError } from '@/domain/errors';
+import { drinkFreeThisWeek, showsSoberRecord } from '@/domain/stage';
 import { inferThumosMode, type ThumosMode } from '@/domain/thumos';
 import { formatClock, urgeRemainingSeconds } from '@/domain/urge';
 import { ensureUrge, restartUrge } from '@/features/urgeSession';
@@ -169,7 +170,12 @@ export default function Thumos() {
                 const result = await openVoiceSession(mint.token, voiceInstructions({
                   now: new Date(),
                   displayName: profile.displayName,
-                  sobrietyStartedAt: profile.sobrietyStartedAt,
+                  sobrietyStartedAt: showsSoberRecord(profile.stage) ? profile.sobrietyStartedAt : null,
+                  stage: profile.stage,
+                  plannedQuitAt: profile.plannedQuitAt,
+                  weeklyUnitsGoal: profile.weeklyUnitsGoal,
+                  drinkFreeDaysGoal: profile.drinkFreeDaysGoal,
+                  drinkFreeThisWeek: drinkFreeThisWeek(profile.drinkFreeOn, new Date()),
                   reasons: snap.reasons.map((reason) => reason.body),
                   weeklySpendGbp: profile.weeklySpendGbp,
                   weeklyUnits: profile.weeklyUnits,
@@ -190,7 +196,7 @@ export default function Thumos() {
           />
         </View>
       </View>
-      <T variant="muted">Milestones in view: {(profile.sobrietyStartedAt ? earnedMilestones(new Date(profile.sobrietyStartedAt), new Date()) : []).map((item) => item.badge).join(', ') || 'none yet'}.</T>
+      {showsSoberRecord(profile.stage) ? <T variant="muted">Milestones in view: {(profile.sobrietyStartedAt ? earnedMilestones(new Date(profile.sobrietyStartedAt), new Date()) : []).map((item) => item.badge).join(', ') || 'none yet'}.</T> : null}
     </Screen>
   );
 }

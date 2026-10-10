@@ -12,27 +12,35 @@ export function DateField({
   onChange,
   hint,
   maximumDate,
+  earliestDate,
 }: {
   label: string;
   value: Date;
   onChange: (value: Date) => void;
   hint?: string;
   maximumDate?: Date;
+  /** When set, the day cannot be earlier than this. Future days stay available. */
+  earliestDate?: Date;
 }) {
   const theme = useAppTheme();
   const [open, setOpen] = useState(Platform.OS === 'ios');
-  const limit = endOfLocalDay(maximumDate ?? new Date());
+  const latest = maximumDate ? endOfLocalDay(maximumDate) : earliestDate ? null : endOfLocalDay(new Date());
+  const earliest = earliestDate ? startOfLocalDay(earliestDate) : null;
   const shown = formatUkLong(value);
 
   function commit(next: Date) {
-    onChange(clampToPast(startOfLocalDay(next), limit));
+    let day = startOfLocalDay(next);
+    if (latest && day.getTime() > startOfLocalDay(latest).getTime()) day = startOfLocalDay(latest);
+    if (earliest && day.getTime() < earliest.getTime()) day = earliest;
+    if (!earliest && latest) day = clampToPast(day, latest);
+    onChange(day);
   }
 
   return (
     <View style={{ gap: 6 }}>
       <T variant="label">{label}</T>
       {Platform.OS === 'web' ? (
-        <WebDateInput label={label} value={value} shown={shown} maximumDate={limit} onCommit={commit} />
+        <WebDateInput label={label} value={value} shown={shown} maximumDate={latest} earliestDate={earliest} onCommit={commit} />
       ) : (
         <>
           {Platform.OS === 'android' ? (
@@ -62,7 +70,8 @@ export function DateField({
               value={value}
               mode="date"
               display={Platform.OS === 'ios' ? 'inline' : 'default'}
-              maximumDate={limit}
+              maximumDate={latest ?? undefined}
+              minimumDate={earliest ?? undefined}
               themeVariant={theme.scheme}
               accentColor={theme.colors.ink}
               onChange={(event, next) => {
@@ -88,12 +97,14 @@ function WebDateInput({
   value,
   shown,
   maximumDate,
+  earliestDate,
   onCommit,
 }: {
   label: string;
   value: Date;
   shown: string;
-  maximumDate: Date;
+  maximumDate: Date | null;
+  earliestDate: Date | null;
   onCommit: (value: Date) => void;
 }) {
   const theme = useAppTheme();
@@ -125,7 +136,8 @@ function WebDateInput({
         type: 'date',
         'aria-label': label,
         value: isoDay(value),
-        max: isoDay(maximumDate),
+        max: maximumDate ? isoDay(maximumDate) : undefined,
+        min: earliestDate ? isoDay(earliestDate) : undefined,
         tabIndex: -1,
         onChange: (event: { target: { value: string } }) => {
           const next = event.target.value;

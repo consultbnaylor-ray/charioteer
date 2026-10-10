@@ -10,6 +10,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 
 import { RepoProvider, useSnapshot } from '@/data';
+import { CONSENT_VERSION } from '@/data/catalogue';
+import { hasCurrentConsents } from '@/domain/consents';
 import { font, ThemeProvider, useAppTheme } from '@/ui/theme';
 import { topSafeInset } from '@/ui/safeArea';
 import { Mark, T, Wordmark } from '@/ui/ui';
@@ -78,6 +80,7 @@ function Chrome() {
     if (pathname === '/set-password') return;
     const authed = Boolean(snap.session);
     const onboarded = Boolean(snap.profile?.onboardingComplete);
+    const consentDue = onboarded && !hasCurrentConsents(snap.consents, CONSENT_VERSION);
     const authRoute = pathname === '/sign-in' || pathname === '/sign-up';
     const onboarding = pathname === '/onboarding';
     if (!authed) {
@@ -88,8 +91,12 @@ function Chrome() {
       if (!onboarding) router.replace('/onboarding');
       return;
     }
-    if (authRoute || onboarding || pathname === '/') router.replace('/home');
-  }, [snap.ready, snap.session, snap.profile?.onboardingComplete, pathname, router]);
+    if (consentDue) {
+      if (pathname !== '/consent') router.replace('/consent');
+      return;
+    }
+    if (authRoute || onboarding || pathname === '/consent' || pathname === '/') router.replace('/home');
+  }, [snap.ready, snap.session, snap.profile?.onboardingComplete, snap.consents, pathname, router]);
 
   if (!snap.ready) {
     return <OpeningDay background={theme.colors.bg} />;

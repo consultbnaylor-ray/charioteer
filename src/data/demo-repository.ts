@@ -13,9 +13,12 @@ import { planRelapse } from '@/domain/sober';
 import { detectSafety, ensureSafetyNotices } from '@/domain/safety';
 import { CRAVING_LINE, OFFLINE_COACH_MESSAGE, OPENING_LINE, type ThumosMode } from '@/domain/thumos';
 import { CONSENT_VERSION } from '@/data/catalogue';
+import { consentRows, missingConsentRows } from '@/domain/consents';
+import { stageFromRecord } from '@/domain/stage';
 import { createDemoDb, type DemoAccount, type DemoDb } from '@/data/demo-seed';
 import type {
   AppSnapshot,
+  ConsentInput,
   DirectoryCard,
   NewCheckIn,
   NewHealthSample,
@@ -30,6 +33,22 @@ const STORAGE_KEY = 'charioteer.demo.v1';
 
 function uid(): string {
   return randomId();
+}
+
+function mergeConsents(existing: DemoAccount['consents'] | undefined, input: ConsentInput): DemoAccount['consents'] {
+  const kept = existing ?? [];
+  return [...kept, ...missingConsentRows(kept, consentRows(CONSENT_VERSION, input))];
+}
+
+function readyProfile(profile: DemoAccount['profile']): DemoAccount['profile'] {
+  return {
+    ...profile,
+    stage: stageFromRecord(profile.stage, profile.sobrietyStartedAt),
+    plannedQuitAt: profile.plannedQuitAt ?? null,
+    weeklyUnitsGoal: profile.weeklyUnitsGoal ?? null,
+    drinkFreeDaysGoal: profile.drinkFreeDaysGoal ?? null,
+    drinkFreeOn: profile.drinkFreeOn ?? [],
+  };
 }
 
 function clone<T>(value: T): T {
@@ -103,7 +122,6 @@ export class DemoRepository implements Repository {
       mode: 'demo',
       error: null,
       session: account ? { userId: account.profile.id, email: account.email } : null,
-      profile: account ? clone(account.profile) : null,
       reasons: account ? [...account.reasons].sort((a, b) => a.sortOrder - b.sortOrder) : [],
       checkIns: account ? [...account.checkIns].sort((a, b) => b.createdAt.localeCompare(a.createdAt)) : [],
       relapses: account ? [...account.relapses] : [],
@@ -115,6 +133,8 @@ export class DemoRepository implements Repository {
       messages: this.db.messages.filter((message) => connectionIds.has(message.connectionId)),
       reports,
       thumos: account ? [...account.thumos] : [],
+      consents: account?.consents ?? [],
+      profile: account ? readyProfile(account.profile) : null,
     };
   }
 
@@ -180,12 +200,18 @@ export class DemoRepository implements Repository {
         textScale: 'default',
         themePreference: 'dark',
         interestIds: [],
+        stage: 'exploring',
+        plannedQuitAt: null,
+        weeklyUnitsGoal: null,
+        drinkFreeDaysGoal: null,
+        drinkFreeOn: [],
       },
       reasons: [],
       checkIns: [],
       relapses: [],
       health: [],
       thumos: [],
+      consents: [],
     };
     const db = clone(this.db);
     db.accounts[id] = account;
@@ -232,7 +258,11 @@ export class DemoRepository implements Repository {
     next.profile = {
       ...next.profile,
       displayName: input.displayName.trim(),
+      stage: input.stage,
       sobrietyStartedAt: input.sobrietyStartedAt,
+      plannedQuitAt: input.plannedQuitAt,
+      weeklyUnitsGoal: input.weeklyUnitsGoal,
+      drinkFreeDaysGoal: input.drinkFreeDaysGoal,
       weeklySpendGbp: input.weeklySpendGbp,
       weeklyUnits: input.weeklyUnits,
       town: input.town.trim() || null,
@@ -243,10 +273,25 @@ export class DemoRepository implements Repository {
       onboardingComplete: true,
       interestIds: input.interestIds,
     };
+    next.consents = mergeConsents(next.consents, input);
     next.reasons = input.reasons
       .map((body) => body.trim())
       .filter(Boolean)
       .map((body, sortOrder) => ({ id: uid(), body, sortOrder }));
+    this.commit(db);
+  }
+
+  async saveConsents(input: ConsentInput): Promise<void> {
+    const account = this.me();
+    const db = clone(this.db);
+    const next = db.accounts[account.profile.id];
+    next.profile = {
+      ...next.profile,
+      communityVisible: input.communityVisible,
+      consentHealth: input.consentHealth,
+      consentAi: input.consentAi,
+    };
+    next.consents = mergeConsents(next.consents, input);
     this.commit(db);
   }
 

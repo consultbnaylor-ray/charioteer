@@ -106,7 +106,7 @@ Copy the local API URL and anon key into `.env` as `EXPO_PUBLIC_SUPABASE_URL` an
 
 Seed data is `supabase/seed.sql`: the catalogue, then five auth users. If a future CLI changes `auth.users` columns, the user insert is inside an exception handler so the catalogue still commits, and the notice explains the skip. Demo mode has the same people either way.
 
-Apply a hosted migration with `supabase db push` or your usual pipeline. The first migration is `supabase/migrations/20261010120000_init.sql`. The grant fix is `supabase/migrations/20261010130000_tighten_grants.sql`. The health upsert fix is `supabase/migrations/20261010140000_health_upsert_grant.sql`. Custom interests reuse an existing slug through `supabase/migrations/20261010150000_add_interest.sql` (`add_interest(label)`). Apply those on the live project; this repository does not connect to it. The signed-out “Need help now?” link reads helplines once the grant fix is in place, and falls back to the bundled list until then.
+Apply a hosted migration with `supabase db push` or your usual pipeline. The first migration is `supabase/migrations/20261010120000_init.sql`. The grant fix is `supabase/migrations/20261010130000_tighten_grants.sql`. The health upsert fix is `supabase/migrations/20261010140000_health_upsert_grant.sql`. Custom interests reuse an existing slug through `supabase/migrations/20261010150000_add_interest.sql` (`add_interest(label)`). `supabase/migrations/20261010160000_consent_reread.sql` grants SELECT on the caller’s own consents and ignores a repeat insert. `supabase/migrations/20261010170000_profile_stage.sql` adds the stage columns and grants UPDATE on those columns only. Apply those on the live project; this repository does not connect to it. The signed-out “Need help now?” link reads helplines once the grant fix is in place, and falls back to the bundled list until then.
 
 `tighten_grants` revokes default privileges in schema `public` from `public`, `anon`, and `authenticated` (and from `supabase_admin` when that role can be altered). A new public table therefore has no client privileges until a later migration grants them. Grant the columns the app actually writes. A table-level `UPDATE` left in place makes a later column grant additive, which is how `is_moderator` stayed writable.
 
@@ -169,7 +169,7 @@ On a Mac with Xcode, enable the HealthKit and Sign in with Apple capabilities if
 
 ## TestFlight from a Mac
 
-Build 3 is the TestFlight build already on Ben's iPhone. `expo.ios.buildNumber` is now `"4"` for the next upload. From the repo on a Mac, signed into Xcode as Quantica Labs Ltd:
+Build 4 is the TestFlight archive from commit `054cf18`. `expo.ios.buildNumber` is `"5"` for the next upload. From the repo on a Mac, signed into Xcode as Quantica Labs Ltd:
 
 ```bash
 npx expo prebuild --platform ios
