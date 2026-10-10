@@ -8,7 +8,7 @@ It is for people who are alcohol-dependent and for people who simply want a quie
 
 - Expo SDK 57, React Native, TypeScript, and Expo Router. One codebase runs on the web and on iOS.
 - Supabase for email auth, Sign in with Apple, Postgres with row-level security, realtime chat, and edge functions. Schema lives in `supabase/migrations/`.
-- Thumos talks to the xAI Grok API only from the `thumos-chat` edge function. The client never sees `XAI_API_KEY`.
+- Thumos talks to the xAI Grok API only from edge functions. Text uses `thumos-chat`. Voice uses `thumos-voice-token` to mint an ephemeral client secret, then the phone opens the realtime socket itself. The client never sees `XAI_API_KEY`.
 - Apple Health on iOS uses `@kingstinct/react-native-healthkit`. It is a maintained package with an Expo config plugin. `react-native-health` was not used because it has no first-party Expo plugin and is less actively maintained. HealthKit needs a development build. Expo Go cannot load it.
 
 Domain rules (the sober counter, savings, milestones, safety detection, and the Thumos prompt) live in `supabase/functions/_shared/`. The app re-exports them from `src/domain/` so the tests, the screens, and the edge functions cannot drift apart. Relative imports inside that folder use a `.ts` suffix, which Deno requires when deploying functions. Metro strips the suffix (`metro.config.js`). Typecheck allows it (`allowImportingTsExtensions` in `tsconfig.json`).
@@ -20,6 +20,7 @@ Domain rules (the sober counter, savings, milestones, safety detection, and the 
 - Sober tracker: days and hours, money saved, units avoided, milestones (24 hours, 7 days, 30 days, 90 days, 6 months, 1 year) with badges. A lapse resets the clock and keeps the length of the previous stretch. The copy is compassionate.
 - Daily check-in: mood, sleep, craving from 0 to 10, optional note, and history.
 - Breathing: box breathing, 4-7-8, and a physiological sigh, with an animated guide. Haptics play on a phone. A short urge-surfing exercise sits beside them.
+- Thumos voice on iOS. The Voice button opens a spoken conversation: the phone sends 24 kHz PCM to Grok Voice and plays the reply as it arrives. Server-side voice detection lets the person interrupt. Both sides are stored with the text history. A safety hit is spoken and shown as the fixed notice. It needs a dev or TestFlight build, not Expo Go, and it has not been heard on a device from this environment. Web can start a call in a browser that allows the microphone.
 - Thumos text chat. The system prompt is about staying sober and getting healthier. It opens by asking how the person is feeling. Context includes days sober, recent check-ins, health trends, personal reasons, and milestones. Feeling well leads to next steps (exercise, sleep, nutrition, connection, purpose). A craving, a permission-giving thought (“just one”, “one won’t hurt”), or a situation ahead (the pub, a party, a wedding, mates drinking) switches to support. The first support turn weaves those aims into ordinary speech, names the breathing exercise with the timer and a walk, and uses at most one reason. Sober time is mentioned at most once in the conversation. A later turn answers the new thought. If they commit to breathing, the timer, or a walk, the reply is one or two sentences and does not ask for more. A self-harm message stays on them and on getting help, and the prompt withholds the sober count and their reasons. The fixed safety notice is unchanged. The recent messages are sent to the model, oldest first. Conversation history is stored per account.
 - Safety: heavy daily drinking plus wanting to stop abruptly, or withdrawal symptoms (shakes, sweating, hallucinations, seizures), adds advice to contact a GP, NHS 111, or 999. Suicidal thoughts or self-harm add the Samaritans on 116 123 and 999. Whenever that detector fires, the fixed notice is pinned at the top of the chat, whatever the model wrote. The same text is stored on the reply. Thumos says it is not a medical professional.
 - SOS on Today. One tap opens craving support with a 10-minute urge timer, breathing, and the person’s reasons.
@@ -31,7 +32,6 @@ Domain rules (the sober counter, savings, milestones, safety detection, and the 
 
 ## What is stubbed
 
-- **Grok Voice audio.** The ephemeral token request and `session.update` follow the public xAI docs (retrieved 10 October 2026). Voice is Leo, with “Speak British English.” in the instructions, because `en-GB` is not a supported language hint and would be ignored. English is `en`. Microphone capture, PCM framing, and playback of `response.output_audio.delta` are not implemented. The adapter opens the socket, sends the session update, and closes it. See the TODO in `supabase/functions/_shared/voice.ts`.
 - **Text model.** Chat uses the verified Chat Completions call: `POST https://api.x.ai/v1/chat/completions`. The default model is `grok-4.3` with `reasoning_effort` set to `low`. xAI’s docs (retrieved 10 October 2026) say that is the fast setting which still spends a few reasoning tokens, and that `none` is no reasoning at all. A live pass with `none` answered in about 1–1.4 seconds to the first token, but the replies were a single generic line, so the function now uses `low`. `low` has not been timed here. `grok-4.7` cannot disable reasoning and defaults to `high`, which is the 40–50 second wait. The reply is streamed. The server reads the message for a craving, a permission-giving thought, or a social risk, and uses the matching support prompt even if the client sent another mode. A follow-up in the same conversation gets a different instruction from the first support turn. Override the model with `THUMOS_MODEL`. On `grok-4.7`, `grok-4.6`, or `grok-4.5` the function uses `low`, the fastest effort those models allow. `max_tokens` is sent only when effort is `none`, because a low-effort budget is shared with the reasoning tokens.
 - **Demo mode does not call xAI**, even if a key is present in the environment. Live replies exist only when the app points at Supabase and the edge function has `XAI_API_KEY`. Without the key, the function stores a clear offline message and still adds safety notices.
 - **Sign in with Apple** needs an Apple Services ID, a Supabase provider secret, and a dev build on iOS. The button stays in the code and is hidden until `EXPO_PUBLIC_APPLE_SIGN_IN_ENABLED=true`.
@@ -43,7 +43,7 @@ Domain rules (the sober counter, savings, milestones, safety detection, and the 
 ## Recommended next steps
 
 1. Run the schema against a current Supabase CLI (`supabase start`) and adjust `config.toml` if that CLI’s template has moved.
-2. Set `XAI_API_KEY` and confirm a live Thumos reply, then finish the voice audio path on a real device.
+2. Set `XAI_API_KEY`, deploy `thumos-chat`, `thumos-voice-token`, and `thumos-voice-turn`, then try a voice call on a real iPhone.
 3. Create an iOS development build and test HealthKit and Sign in with Apple.
 4. Have a solicitor review the privacy notice, retention, and the lawful basis for special category data.
 5. Add Android health (Health Connect) and, later, an Apple Watch complication for the sober counter.
@@ -136,13 +136,14 @@ An allow-list entry of exactly `charioteer://` does not cover `charioteer://set-
 supabase secrets set XAI_API_KEY=your-key
 supabase functions serve
 # or, for a hosted project:
-supabase functions deploy thumos-chat thumos-voice-token account-export account-delete
+supabase functions deploy thumos-chat thumos-voice-token thumos-voice-turn account-export account-delete
 ```
 
 | Function | Role |
 | --- | --- |
 | `thumos-chat` | Rebuilds context from the database, calls Grok, stores the user line and the reply with the service role. Refuses the call without coach consent. Missing key stores the offline message. |
-| `thumos-voice-token` | Mints an ephemeral realtime client secret. Missing key returns a graceful message. |
+| `thumos-voice-token` | Mints an ephemeral realtime client secret and returns the same Thumos instructions and recent history used for text, adapted for speech. Missing key returns a graceful message. |
+| `thumos-voice-turn` | Stores one spoken turn in `thumos_messages` and pins the fixed safety notice when the user’s transcript trips the detector. |
 | `account-export` | Calls `export_my_data()`. |
 | `account-delete` | Deletes the auth user. The SQL function `delete_my_account()` is the fallback. |
 
@@ -159,7 +160,7 @@ npx expo run:ios
 
 Or use EAS: `eas build --profile development --platform ios`.
 
-The bundle id is `uk.co.quanticalabs.charioteer`. `app.json` sets Sign in with Apple, the microphone string (for a future voice pass), and the HealthKit plugin. The share string covers steps, sleep, resting heart rate, HRV, workouts, and weight. The update string says the app does not write to Apple Health; the capability still asks for it. The Apple team is Quantica Labs Ltd, `5FMDXKAX7V`. `ios.config.usesNonExemptEncryption` is `false`.
+The bundle id is `uk.co.quanticalabs.charioteer`. `app.json` sets Sign in with Apple, the microphone string, the `react-native-audio-api` plugin, and the HealthKit plugin. The share string covers steps, sleep, resting heart rate, HRV, workouts, and weight. The update string says the app does not write to Apple Health; the capability still asks for it. The Apple team is Quantica Labs Ltd, `5FMDXKAX7V`. `ios.config.usesNonExemptEncryption` is `false`. `expo.ios.buildNumber` is `"6"` for the next upload, because voice adds a native module.
 
 The home-screen name is `Charioteer` (`expo.name`). The App Store Connect listing name is `Charioteer Sober Coach` (app id `6821371422`).
 
@@ -169,7 +170,7 @@ On a Mac with Xcode, enable the HealthKit and Sign in with Apple capabilities if
 
 ## TestFlight from a Mac
 
-Build 4 is the TestFlight archive from commit `054cf18`. `expo.ios.buildNumber` is `"5"` for the next upload. From the repo on a Mac, signed into Xcode as Quantica Labs Ltd:
+Build 4 is the TestFlight archive from commit `054cf18`. `expo.ios.buildNumber` is `"6"` for the voice upload. From the repo on a Mac, signed into Xcode as Quantica Labs Ltd:
 
 ```bash
 npx expo prebuild --platform ios
@@ -204,7 +205,7 @@ npm test
 npm run typecheck
 ```
 
-Tests cover the sober counter, savings, milestones (including calendar months for 6 months and 1 year), the Thumos context builder, safety triggers (withdrawal and self-harm, and ordinary lines that must not fire), town validation, the urge timer, and the voice session payload.
+Tests cover the sober counter, savings, milestones (including calendar months for 6 months and 1 year), the Thumos context builder, safety triggers (withdrawal and self-harm, and ordinary lines that must not fire), town validation, the urge timer, the voice session payload, PCM conversion, transcript assembly, and safety on a voice transcript. They do not open a microphone or a socket.
 
 ## Library verification
 

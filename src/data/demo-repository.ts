@@ -27,6 +27,7 @@ import type {
   ProfilePatch,
   Repository,
   VoiceMint,
+  VoiceTurnInput,
 } from '@/data/types';
 
 const STORAGE_KEY = 'charioteer.demo.v1';
@@ -533,6 +534,22 @@ export class DemoRepository implements Repository {
       code: 'missing_key',
       message: 'Voice needs XAI_API_KEY on the Supabase edge function. The sample on this device does not call xAI.',
     };
+  }
+
+  async saveVoiceTurn(input: VoiceTurnInput): Promise<void> {
+    const account = this.me();
+    const db = clone(this.db);
+    const thread = db.accounts[account.profile.id].thumos;
+    const stamp = new Date();
+    thread.push({ id: uid(), role: 'user', content: input.user, mode: input.mode, createdAt: stamp.toISOString() });
+    thread.push({
+      id: uid(),
+      role: 'assistant',
+      content: input.assistant,
+      mode: input.mode,
+      createdAt: new Date(stamp.getTime() + 1).toISOString(),
+    });
+    this.commit(db);
   }
 
   async exportData(): Promise<Record<string, unknown>> {

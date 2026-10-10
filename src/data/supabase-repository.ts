@@ -45,6 +45,7 @@ import type {
   Resource,
   ThumosMessage,
   VoiceMint,
+  VoiceTurnInput,
 } from '@/data/types';
 
 type Row = Record<string, unknown>;
@@ -703,16 +704,48 @@ export class SupabaseRepository implements Repository {
     await this.refresh();
   }
 
-  async mintVoiceToken(): Promise<VoiceMint> {
-    const { data, error } = await this.client.functions.invoke('thumos-voice-token', { body: {} });
-    if (error || !data?.ok) {
+  async mintVoiceToken(mode?: ThumosMode): Promise<VoiceMint> {
+    const { data, error } = await this.client.functions.invoke('thumos-voice-token', { body: { mode } });
+    if (error || !data?.ok || typeof data?.token !== 'string') {
+      const message = typeof data?.message === 'string' ? data.message : '';
       return {
         ok: false,
-        code: data?.code ?? 'missing_key',
-        message: data?.message ?? 'Voice is unavailable until the edge function and XAI_API_KEY are set.',
+        code: typeof data?.code === 'string' ? data.code : 'missing_key',
+        message: message && message.length < 180 ? message : 'Voice is unavailable just now. Text chat is still here.',
       };
     }
-    return { ok: true, token: data.token, expiresAt: Number(data.expiresAt ?? 0) };
+    const history = Array.isArray(data.history)
+      ? data.history.flatMap((turn: { role?: string; content?: string }) => (
+          (turn?.role === 'user' || turn?.role === 'assistant') && typeof turn.content === 'string'
+            ? [{ role: turn.role, content: turn.content }]
+            : []
+        ))
+      : [];
+    return {
+      ok: true,
+      token: data.token,
+      expiresAt: Number(data.expiresAt ?? 0),
+      instructions: typeof data.instructions === 'string' ? data.instructions : null,
+      crisisInstructions: typeof data.crisisInstructions === 'string' ? data.crisisInstructions : null,
+      history,
+      greeting: typeof data.greeting === 'string' ? data.greeting : null,
+      mode: data.mode === 'support' || data.mode === 'growth' || data.mode === 'opening' || data.mode === 'steady' ? data.mode : null,
+    };
+  }
+
+  async saveVoiceTurn(input: VoiceTurnInput): Promise<void> {
+    const invoked = await this.client.functions.invoke('thumos-voice-turn', { body: input });
+    if (!invoked.error && invoked.data?.ok) {
+      await this.refresh();
+      return;
+    }
+    const userId = await this.userId();
+    const { error } = await this.client.from('thumos_messages').insert([
+      { user_id: userId, role: 'user', content: input.user, mode: input.mode },
+      { user_id: userId, role: 'assistant', content: input.assistant, mode: input.mode },
+    ]);
+    if (error) throw asUserFacing(error, 'thumos');
+    await this.refresh();
   }
 
   async exportData(): Promise<Record<string, unknown>> {

@@ -404,17 +404,20 @@ describe('Thumos context', () => {
 });
 
 describe('voice session adapter', () => {
-  it('uses the verified British voice and browser auth protocol', () => {
+  it('uses the verified British voice, PCM rate, and browser auth protocol', () => {
     expect(GROK_VOICE.voice).toBe('leo');
     expect(GROK_VOICE.languageHint).toBe('en');
+    expect(GROK_VOICE.sampleRate).toBe(24000);
     expect(browserSocketProtocols('abc')).toEqual(['xai-client-secret.abc']);
-    expect(buildVoiceSessionUpdate('Stay steady.')).toMatchObject({
-      type: 'session.update',
-      session: {
-        voice: 'leo',
-        instructions: 'Stay steady.\n\nSpeak British English.',
-        turn_detection: { type: 'server_vad' },
-      },
-    });
+    const update = buildVoiceSessionUpdate('Stay steady.');
+    expect(update.type).toBe('session.update');
+    expect(update.session.voice).toBe('leo');
+    expect(update.session.turn_detection).toEqual({ type: 'server_vad' });
+    expect(update.session.instructions).toContain('Stay steady.');
+    expect(update.session.instructions).toContain('Speak British English.');
+    expect(update.session.audio.input.format).toEqual({ type: 'audio/pcm', rate: 24000 });
+    expect(update.session.audio.output.format).toEqual({ type: 'audio/pcm', rate: 24000 });
+    expect(update.session.audio.input.transcription.language_hint).toBe('en');
+    expect(JSON.stringify(update)).not.toContain('en-GB');
   });
 });
