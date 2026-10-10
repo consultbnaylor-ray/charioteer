@@ -4,6 +4,8 @@ export {
   buildThumosContext,
   completionDeltaText,
   CRAVING_LINE,
+  conversationCues,
+  detectCommittedAction,
   detectRisk,
   historyTurnsForModel,
   inferThumosMode,

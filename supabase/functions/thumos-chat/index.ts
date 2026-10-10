@@ -8,6 +8,8 @@ import {
   buildSystemPrompt,
   buildThumosContext,
   completionDeltaText,
+  conversationCues,
+  detectCommittedAction,
   detectRisk,
   historyTurnsForModel,
   isThumosFollowUp,
@@ -114,9 +116,18 @@ Deno.serve(async (req) => {
   }));
   const history = historyTurnsForModel(historyRows);
   const model = Deno.env.get('THUMOS_MODEL') || THUMOS_CHAT.model;
+  const cues = conversationCues({
+    history: historyRows,
+    reasons: (reasonsRes.data ?? []).map((row) => row.body),
+  });
+  const committedAction = safety.selfHarm ? null : detectCommittedAction(content);
   const system = buildSystemPrompt(context, mode, ALCOHOL_FACTS, {
     followUp: mode === 'support' && isThumosFollowUp(historyRows),
     supportShape: detectRisk(content) === 'planning' ? 'planning' : 'acute',
+    committedAction,
+    selfHarm: safety.selfHarm,
+    soberTimeAlreadySaid: cues.soberTimeAlreadySaid,
+    reasonsAlreadyUsed: cues.reasonsAlreadyUsed,
   });
 
   const stream = new ReadableStream<Uint8Array>({

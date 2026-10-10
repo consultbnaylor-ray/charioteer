@@ -4,7 +4,7 @@ import { planRelapse, soberElapsed } from './sober';
 import { formatGbp, savingsFromTypicalWeek } from './savings';
 import { detectSafety, ensureSafetyNotices, firstSafetyHit, pinnedSafetyNotices, SELF_HARM_NOTICE, WITHDRAWAL_NOTICE } from './safety';
 import { encodeSse, parseSseBuffer } from './sse';
-import { buildChatCompletionBody, buildSystemPrompt, buildThumosContext, completionDeltaText, detectRisk, historyTurnsForModel, inferThumosMode, isThumosFollowUp, OFFLINE_COACH_MESSAGE, resolveThumosMode, THUMOS_CHAT, thumosReasoningEffort } from './thumos';
+import { buildChatCompletionBody, buildSystemPrompt, buildThumosContext, completionDeltaText, conversationCues, detectCommittedAction, detectRisk, historyTurnsForModel, inferThumosMode, isThumosFollowUp, OFFLINE_COACH_MESSAGE, resolveThumosMode, THUMOS_CHAT, thumosReasoningEffort } from './thumos';
 import { ALCOHOL_FACTS } from './facts';
 import { browserSocketProtocols, buildVoiceSessionUpdate, GROK_VOICE } from './voice';
 
@@ -211,8 +211,11 @@ describe('Thumos context', () => {
     expect(support).toContain('10-minute urge timer');
     expect(support).toContain('what they think will happen if they drink');
     expect(support).toContain('sober time');
-    expect(support).toContain('rotate them');
-    expect(support).toContain('walk, jog, or run');
+    expect(support).toContain('at most one personal reason');
+    expect(support).toContain('Name the breathing exercise, the 10-minute urge timer, and a walk, jog, or run');
+    expect(support).toContain('Do not guess he or she');
+    expect(support).toContain('not a result already achieved');
+    expect(support).toContain('undo their progress');
     expect(support).toContain('I want to remember my evenings.');
     expect(support).toContain('47 days, 6 hours');
     expect(support).toContain('mood 4/5');
@@ -220,7 +223,9 @@ describe('Thumos context', () => {
     expect(support).not.toContain('120 words');
     expect(support).not.toContain('What will you do for the next ten minutes?');
     const growth = buildSystemPrompt(context, 'growth');
-    expect(growth).toContain('next steps');
+    expect(growth).toContain('Cite one real figure');
+    expect(growth).toContain('one specific next step');
+    expect(growth).toContain('8400 steps');
     expect(growth).toContain('End with one question');
     expect(growth).not.toContain('120 words');
     expect(growth).toContain('That is good');
@@ -235,12 +240,69 @@ describe('Thumos context', () => {
     expect(first).toContain('Weave the aims below');
     expect(follow).toContain('This is a follow-up');
     expect(follow).toContain('usually wants more than one');
+    expect(follow).toContain('one concrete thing to do now');
+    expect(follow).toContain('breathing exercise');
     expect(follow).not.toContain('Weave the aims below');
     expect(plan).toContain('soft drink');
     expect(plan).toContain('way to leave');
     expect(plan).toContain('Do not mention the breathing exercise');
     expect(plan).not.toContain('Weave the aims below');
     expect(follow).not.toContain('soft drink they can order');
+  });
+
+  it('lets a committed action go without another question', () => {
+    expect(detectCommittedAction('Fine. I\'ll do the breathing thing')).toBe('breathe');
+    expect(detectCommittedAction('going for a walk')).toBe('walk');
+    expect(detectCommittedAction('I\'ll set the timer')).toBe('timer');
+    expect(detectCommittedAction('I went for a walk. I feel all right.')).toBeNull();
+    expect(detectCommittedAction('I just think one won\'t hurt.')).toBeNull();
+    const context = buildThumosContext(base);
+    const sendOff = buildSystemPrompt(context, 'support', undefined, { followUp: true, committedAction: 'breathe' });
+    expect(sendOff).toContain('1 or 2 sentences');
+    expect(sendOff).toContain('Do not ask a question');
+    expect(sendOff).toContain('breathing exercise on this screen');
+    expect(sendOff).toContain('you will be here after');
+    expect(sendOff).not.toContain('end with one question');
+    expect(sendOff).toContain('Do not invite another activity');
+    expect(sendOff).not.toContain('What else might you try');
+    expect(buildSystemPrompt(context, 'support', undefined, { committedAction: 'walk' })).toContain('Affirm the walk');
+    expect(buildSystemPrompt(context, 'support', undefined, { committedAction: 'timer' })).toContain('10-minute urge timer on this screen');
+  });
+
+  it('keeps a self-harm reply on the person and help, and withholds the sober count', () => {
+    const crisisContext = buildThumosContext({ ...base, safety: { selfHarm: true, withdrawal: false, reasons: ['self-harm or suicidal language'] } });
+    expect(crisisContext).not.toContain('47 days');
+    expect(crisisContext).not.toContain('I want to remember my evenings.');
+    const prompt = buildSystemPrompt(crisisContext, 'support', undefined, { selfHarm: true, supportShape: 'acute' });
+    expect(prompt).toContain('getting help now');
+    expect(prompt).toContain('116 123');
+    expect(prompt).toContain('999');
+    expect(prompt).toContain('someone they trust');
+    expect(prompt).toContain('Do not mention sober time');
+    expect(prompt).not.toContain('Weave the aims below');
+    expect(prompt).not.toContain('47 days');
+    expect(prompt).not.toContain('end with one question');
+  });
+
+  it('tells a later turn which sober count and reasons were already used', () => {
+    const cues = conversationCues({
+      history: [
+        { role: 'assistant', content: 'You have nineteen days and three hours sober, for your kids.' },
+        { role: 'user', content: 'I just think one won\'t hurt.' },
+        { role: 'assistant', content: 'One usually turns into more. Your sleep is a reason to leave it.' },
+      ],
+      reasons: ['kids', 'sleep', 'anxiety'],
+    });
+    expect(cues.soberTimeAlreadySaid).toBe(true);
+    expect(cues.reasonsAlreadyUsed).toEqual(['kids', 'sleep']);
+    const prompt = buildSystemPrompt('CONTEXT', 'support', undefined, {
+      followUp: true,
+      soberTimeAlreadySaid: true,
+      reasonsAlreadyUsed: cues.reasonsAlreadyUsed,
+    });
+    expect(prompt).toContain('already stated the sober time');
+    expect(prompt).toContain('kids; sleep');
+    expect(prompt).toContain('at most once in the whole conversation');
   });
 
   it('treats social pressure and permission-giving as support, and keeps a good day in growth', () => {

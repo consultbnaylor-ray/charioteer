@@ -78,6 +78,71 @@ const PLANNING_TEXT = new RegExp(
 
 export type SupportShape = 'acute' | 'planning';
 
+export type CommittedAction = 'breathe' | 'walk' | 'timer';
+
+const FUTURE_COMMITMENT = new RegExp(
+  [
+    String.raw`\bi${APOSTROPHE}ll\b`,
+    String.raw`\bi will\b`,
+    String.raw`\bi${APOSTROPHE}m going to\b`,
+    String.raw`\bi am going to\b`,
+    String.raw`\blet me\b`,
+  ].join('|'),
+  'i',
+);
+
+const HEADING_OUT = /\b(?:going|off|heading) (?:for|on|out for) (?:a |the )?(?:walk|jog|run)\b/i;
+
+/**
+ * They have picked the breathing exercise, the timer, or a walk and are about
+ * to do it. A past report ("I went for a walk") is not a commitment.
+ */
+export function detectCommittedAction(userText: string | undefined | null): CommittedAction | null {
+  const text = (userText ?? '').trim();
+  if (!text) return null;
+  const headingOut = HEADING_OUT.test(text);
+  if (!FUTURE_COMMITMENT.test(text) && !headingOut) return null;
+  const marks: { index: number; action: CommittedAction }[] = [];
+  const breatheAt = text.search(/\bbreath/i);
+  const timerAt = text.search(/\b(?:timer|ten minutes|10 minutes)\b/i);
+  const walkAt = text.search(/\b(?:walk|jog|run)\b/i);
+  if (breatheAt >= 0) marks.push({ index: breatheAt, action: 'breathe' });
+  if (timerAt >= 0) marks.push({ index: timerAt, action: 'timer' });
+  if (walkAt >= 0) marks.push({ index: walkAt, action: 'walk' });
+  marks.sort((left, right) => left.index - right.index);
+  return marks[0]?.action ?? null;
+}
+
+const DAY_COUNT = new RegExp(
+  String.raw`\b(?:\d+|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety)(?:[-\s](?:one|two|three|four|five|six|seven|eight|nine))? days?\b`,
+  'i',
+);
+
+const REASON_STOP = new Set([
+  'want', 'have', 'with', 'that', 'this', 'they', 'them', 'your', 'from', 'been',
+  'keep', 'more', 'when', 'what', 'just', 'about', 'their', 'there', 'into',
+  'because', 'would', 'could', 'should', 'really', 'going', 'stop', 'stay',
+]);
+
+function reasonMentioned(content: string, reason: string): boolean {
+  const tokens = reason.toLowerCase().match(/[a-z][a-z']{3,}/g) ?? [];
+  const distinctive = tokens.filter((token) => !REASON_STOP.has(token));
+  if (!distinctive.length) return content.toLowerCase().includes(reason.trim().toLowerCase());
+  return distinctive.some((token) => new RegExp(`\\b${token.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i').test(content));
+}
+
+/** What earlier replies already spent, so this turn can leave it alone. */
+export function conversationCues(input: {
+  history: { role: string; content: string }[];
+  reasons: string[];
+}): { soberTimeAlreadySaid: boolean; reasonsAlreadyUsed: string[] } {
+  const replies = input.history.filter((row) => row.role === 'assistant' || row.role === 'offline');
+  const soberTimeAlreadySaid = replies.some((row) => DAY_COUNT.test(row.content) && /\b(?:sober|sobriety|hours?)\b/i.test(row.content));
+  const recent = replies.slice(-2);
+  const reasonsAlreadyUsed = input.reasons.filter((reason) => recent.some((row) => reasonMentioned(row.content, reason)));
+  return { soberTimeAlreadySaid, reasonsAlreadyUsed };
+}
+
 /** Acute wins when the same message is both a craving now and a plan ahead. */
 export function detectRisk(userText: string | undefined | null): 'acute' | 'planning' | 'none' {
   const text = userText ?? '';
@@ -255,8 +320,8 @@ const ACUTE_SUPPORT = [
   '- Acknowledge the specific thing they just said, in fresh words.',
   '- When it helps, remind them a craving rises, peaks, and passes, often within about 20 to 30 minutes. That is coaching guidance, not a cited statistic.',
   '- Ask what they think will happen if they drink, and whether that is worth it.',
-  '- Mention sober time from CONTEXT and the one personal reason that best fits this message. If several reasons are listed, rotate them and do not keep using the same one. If none are written, do not invent one.',
-  '- Offer one in-the-moment step that fits them: the breathing exercise, the 10-minute urge timer, or a walk, jog, or run. One offer is enough.',
+  '- Mention sober time from CONTEXT only if no earlier reply in this conversation has already said it. Use at most one personal reason, the one that best fits, and do not use a reason already used in the last couple of turns. If none are written, do not invent one.',
+  '- Name the breathing exercise, the 10-minute urge timer, and a walk, jog, or run. Those are the options on screen. Mention all three, briefly.',
   '- A single CURATED FACT, with its source, is optional.',
   'If they are giving themselves permission for just one, or saying one won\'t hurt, or that they deserve a drink, or that a few won\'t matter, challenge that gently: the craving usually wants more than one. Use their own history and reasons.',
 ].join('\n');
@@ -265,7 +330,7 @@ const PLANNING_SUPPORT = [
   'This is the first support turn. They are looking at a situation ahead, such as a pub, a bar, a party, a wedding, or other people drinking. They may not be craving this minute.',
   'Help them make a plan, in natural speech, with no set order and no stack of one-line paragraphs.',
   'Draw on whichever of these fits: a way to leave, a soft drink they can order without a debate, one friend who knows they are not drinking, arriving later or leaving earlier, and a short reply ready for someone who says go on, have one.',
-  'Bring in sober time from CONTEXT and the personal reason that best fits. Rotate reasons across turns. Do not invent one.',
+  'You may mention sober time only if no earlier reply has already said it. Use at most one personal reason, and not one used in the last couple of turns. Do not invent one.',
   'Do not mention the breathing exercise or the 10-minute urge timer unless they say they are craving now.',
 ].join('\n');
 
@@ -273,7 +338,7 @@ const FOLLOW_UP_SUPPORT = [
   'This is a follow-up. The earlier turns are in the messages after this system prompt. Read them.',
   'Do not repeat an earlier reply. Do not ask the same question again. Do not run back through the support aims.',
   'Respond to their latest thought and move the conversation forward.',
-  'If they say just one, one won\'t hurt, they deserve a drink, or a few won\'t matter, challenge that gently with their sober time and a reason from CONTEXT you have not already leaned on, and say that the craving usually wants more than one.',
+  'If they say just one, one won\'t hurt, they deserve a drink, or a few won\'t matter, challenge that gently and say that the craving usually wants more than one. Do not repeat sober time if an earlier reply already said it. Use at most one reason, and not one used in the last couple of turns. Then give one concrete thing to do now: the breathing exercise, the 10-minute urge timer, or a short walk.',
   'If they are still facing a pub, a bar, or another plan, stay on that plan and take the next practical step. Do not restart the plan from the top.',
 ].join('\n');
 
@@ -283,19 +348,67 @@ const OTHER_GUIDANCE: Record<Exclude<ThumosMode, 'support'>, string> = {
   steady:
     'Stay with what they actually said. Be warm and specific. End with one question. Do not answer in a single generic line.',
   growth:
-    'They seem to be doing all right. Acknowledge the specific thing they said, without gushing, and do not reply with only "That is good" or "Keep going". Then offer one or two next steps among exercise, sleep, nutrition, connection, and purpose, tied to their recent check-ins or health readings when CONTEXT has them. End with one question about what they want to try. Do not lecture.',
+    'They seem to be doing all right. Acknowledge the specific thing they said, without gushing, and do not reply with only "That is good" or "Keep going". Cite one real figure from Health readings or Recent check-ins in CONTEXT, with its unit, such as a step count or hours of sleep. If CONTEXT has no figure, do not invent one. Then suggest one specific next step tied to that figure, among exercise, sleep, nutrition, connection, and purpose. End with one question about what they want to try. Do not lecture.',
 };
+
+const CRISIS_SUPPORT = [
+  'They have said something about suicide or self-harm. Keep the focus solely on the person and getting help now.',
+  'Be warm and brief. Encourage them to contact the Samaritans on 116 123, to call 999 if they are in immediate danger, or to reach someone they trust.',
+  'Do not mention sober time, day counts, personal reasons, savings, milestones, check-ins, or health readings. Do not debate whether they should live. Do not describe methods.',
+  'A fixed safety notice is added after your reply. Say the invitation to get help in your own words as well.',
+].join('\n');
+
+function committedGuidance(action: CommittedAction): string {
+  const where = action === 'breathe'
+    ? 'Point them to the breathing exercise on this screen.'
+    : action === 'timer'
+      ? 'Point them to the 10-minute urge timer on this screen.'
+      : 'Affirm the walk, jog, or run. Do not send them to a different tool.';
+  return [
+    'They have committed to an action. Let them go and do it.',
+    'Write 1 or 2 sentences. Affirm the choice.',
+    where,
+    'Say you will be here after.',
+    'Do not ask a question. Do not invite another activity. Do not add another suggestion, a reason, or their sober time.',
+  ].join(' ');
+}
 
 export type PromptTurn = {
   followUp?: boolean;
   supportShape?: SupportShape;
+  committedAction?: CommittedAction | null;
+  selfHarm?: boolean;
+  soberTimeAlreadySaid?: boolean;
+  reasonsAlreadyUsed?: string[];
 };
 
 function modeGuidance(mode: ThumosMode, turn: PromptTurn): string {
+  if (turn.selfHarm) return CRISIS_SUPPORT;
+  if (turn.committedAction) return committedGuidance(turn.committedAction);
   if (mode !== 'support') return OTHER_GUIDANCE[mode];
   if (turn.followUp) return FOLLOW_UP_SUPPORT;
   if (turn.supportShape === 'planning') return PLANNING_SUPPORT;
   return ACUTE_SUPPORT;
+}
+
+function styleLine(turn: PromptTurn): string {
+  const voice = 'Use UK English. Be calm, plain, and adult. Never punitive about a lapse. No emoji unless the person uses them first. When you mention someone they talk about, use they, unless the user has already used a pronoun for that person. Do not guess he or she.';
+  if (turn.selfHarm) return `${voice} Be warm and brief: 2 to 4 sentences.`;
+  if (turn.committedAction) return `${voice} Write 1 or 2 sentences. Do not ask a question.`;
+  return `${voice} Write 3 to 6 sentences of connected prose and end with one question. Do not answer in a single generic line, and do not put each point on its own line.`;
+}
+
+function repetitionLine(turn: PromptTurn): string {
+  if (turn.selfHarm || turn.committedAction) return '';
+  const lines = [
+    'Mention sober time at most once in the whole conversation, unless they ask or the count itself is the new point. Use at most one personal reason in a reply. Do not repeat a reason already used in the last couple of turns.',
+    'A personal reason is a hope they wrote, not a result already achieved. Do not say the hope is already happening, for example that anxiety is already down, unless their message or a check-in says so. Do not say a drink would undo their progress, or any claim like that. Stay with what they said and what CONTEXT records.',
+  ];
+  if (turn.soberTimeAlreadySaid) lines.push('This conversation already stated the sober time. Do not state it in this reply.');
+  if (turn.reasonsAlreadyUsed?.length) {
+    lines.push(`Do not use these reasons in this reply; a recent reply already used them: ${turn.reasonsAlreadyUsed.join('; ')}.`);
+  }
+  return lines.join('\n');
 }
 
 export function buildThumosContext(input: ThumosContextInput): string {
@@ -330,6 +443,15 @@ export function buildThumosContext(input: ThumosContextInput): string {
     })
     .join('\n');
 
+  if (input.safety.selfHarm) {
+    return [
+      `Name: ${input.displayName || 'Friend'}`,
+      'Sober time, personal reasons, savings, milestones, check-ins, and health readings are withheld on this turn. Do not mention them or invent them.',
+      `Mode: ${input.mode}`,
+      `Safety flags: self-harm YES, withdrawal ${input.safety.withdrawal ? 'YES' : 'no'}`,
+    ].join('\n');
+  }
+
   return [
     `Name: ${input.displayName || 'Friend'}`,
     elapsed ? `Sober time: ${formatSoberElapsed(elapsed)} (since ${input.sobrietyStartedAt})` : 'Sober time: not set',
@@ -353,12 +475,17 @@ export function buildSystemPrompt(
   return [
     'You are Thumos, the spirited companion in Charioteer.',
     'Charioteer is named for Plato\'s charioteer of the soul. You are the spirited horse: courage, heart, and forward motion.',
-    'Your job is to help this person stay sober and get healthier.',
+    turn.selfHarm
+      ? 'On this turn your only job is to stay with this person and help them reach help now.'
+      : 'Your job is to help this person stay sober and get healthier.',
     'You are not a doctor, therapist, or emergency service. Say so when the conversation touches physical health, withdrawal, or mental health.',
-    'Use UK English. Be calm, plain, and adult. Never punitive about a lapse. Write 3 to 6 sentences of connected prose and end with one question. Do not answer in a single generic line, and do not put each point on its own line. No emoji unless the person uses them first.',
+    styleLine(turn),
     'The messages after this system prompt are the conversation so far, oldest first, then their latest line. Use that history. Never repeat a sentence you have already sent. Vary your wording from turn to turn.',
-    'When you mention sober time, a personal reason, a check-in, or a health reading, take it from CONTEXT. Do not invent those details.',
+    turn.selfHarm
+      ? 'Do not mention sober time, day counts, personal reasons, savings, or health readings on this turn.'
+      : 'When you mention sober time, a personal reason, a check-in, or a health reading, take it from CONTEXT. Do not invent those details.',
     'Do not invent statistics, study names, or citations. If you share a number about alcohol harm, use only CURATED FACTS, quote it faithfully, and name the source. If you do not have a verified figure, say so.',
+    repetitionLine(turn),
     modeGuidance(mode, turn),
     'Safety rules, follow exactly:',
     '- If they describe heavy daily drinking and wanting to stop abruptly, or withdrawal symptoms (shakes, sweating, hallucinations, confusion, seizures, or feeling very unwell when not drinking): tell them alcohol withdrawal can be dangerous and they should not detox alone. Advise their GP, NHS 111, or 999 in an emergency. Do not give a taper schedule, doses, or medication advice.',
