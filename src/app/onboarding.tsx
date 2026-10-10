@@ -6,6 +6,7 @@ import { formatUkLong, isoDay, parseIsoDay, startOfLocalDay } from '@/domain/dat
 import { shownError } from '@/domain/errors';
 import { validateTown } from '@/domain/privacy';
 import { DateField } from '@/ui/DateField';
+import { UnitsGuide } from '@/ui/UnitsGuide';
 import { Button, Choice, ErrorNote, Field, Screen, T } from '@/ui/ui';
 import { useAppTheme } from '@/ui/theme';
 
@@ -128,8 +129,9 @@ export default function Onboarding() {
             value={units}
             onChangeText={setUnits}
             keyboardType="decimal-pad"
-            hint="A unit is 10ml of pure alcohol. The NHS formula is strength (ABV) × volume (ml) ÷ 1,000. This is your own usual week, used only for your savings counter."
+            hint="Your own usual week, used only for your savings counter."
           />
+          <UnitsGuide onChange={setUnits} />
         </View>
       ) : null}
       {step === 5 ? (

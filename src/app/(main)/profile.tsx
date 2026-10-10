@@ -7,6 +7,7 @@ import { useRepository, useSnapshot } from '@/data';
 import type { TextScale, ThemePreference } from '@/data/types';
 import { formatUkDate } from '@/domain/dates';
 import { shownError } from '@/domain/errors';
+import { UnitsGuide } from '@/ui/UnitsGuide';
 import { Button, Card, Choice, ErrorNote, Field, Screen, T } from '@/ui/ui';
 
 export default function Profile() {
@@ -88,6 +89,7 @@ export default function Profile() {
       <Field label="Town or area" value={town} onChangeText={setTown} />
       <Field label="Typical spend per week (£)" value={spend} onChangeText={setSpend} keyboardType="decimal-pad" />
       <Field label="Typical units per week" value={units} onChangeText={setUnits} keyboardType="decimal-pad" />
+      <UnitsGuide onChange={setUnits} />
       <Field label="Reasons, one per line" value={reasons} onChangeText={setReasons} multiline />
       <Button label="Save" onPress={() => void saveBasics()} />
       <Card>
