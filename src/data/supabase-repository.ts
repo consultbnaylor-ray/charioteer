@@ -43,6 +43,15 @@ function localToday(date = new Date()): string {
   return `${date.getFullYear()}-${month}-${day}`;
 }
 
+/** Expo's static web render has no window. iOS does not either, and must still start the client. */
+const staticWebRender = Platform.OS === 'web' && typeof window === 'undefined';
+
+const serverStorage = {
+  getItem: (_key: string) => Promise.resolve(null),
+  setItem: (_key: string, _value: string) => Promise.resolve(),
+  removeItem: (_key: string) => Promise.resolve(),
+};
+
 function emptySnapshot(): AppSnapshot {
   return {
     ready: false,
@@ -77,13 +86,13 @@ export class SupabaseRepository implements Repository {
     this.anonKey = anonKey;
     this.client = createClient(url, anonKey, {
       auth: {
-        storage: AsyncStorage,
-        autoRefreshToken: true,
-        persistSession: true,
-        detectSessionInUrl: Platform.OS === 'web',
+        storage: staticWebRender ? serverStorage : AsyncStorage,
+        autoRefreshToken: !staticWebRender,
+        persistSession: !staticWebRender,
+        detectSessionInUrl: Platform.OS === 'web' && !staticWebRender,
       },
     });
-    void this.start();
+    if (!staticWebRender) void this.start();
   }
 
   subscribe(listener: () => void): () => void {
