@@ -4,7 +4,8 @@ import { View } from 'react-native';
 
 import { useRepository, useSnapshot } from '@/data';
 import { HEALTH_LABELS } from '@/data/catalogue';
-import { earnedMilestones, MILESTONES } from '@/domain/milestones';
+import { formatUkCompact, formatUkDate } from '@/domain/dates';
+import { earnedMilestones, MILESTONES, milestoneReachedOn } from '@/domain/milestones';
 import { formatGbp, savingsFromTypicalWeek } from '@/domain/savings';
 import { shownError } from '@/domain/errors';
 import { soberElapsed } from '@/domain/sober';
@@ -69,6 +70,7 @@ export default function Home() {
                 : `and ${elapsed.hours} hours`}
           </T>
         ) : null}
+        {started ? <T variant="muted">Since {formatUkDate(started)}</T> : null}
       </Card>
       {saved ? (
         <View style={{ flexDirection: 'row', gap: 12 }}>
@@ -99,6 +101,9 @@ export default function Home() {
             return (
               <View key={milestone.key} style={{ paddingVertical: 6, paddingHorizontal: 10, borderRadius: radius.sm, borderWidth: 1, borderColor: on ? theme.colors.ink : theme.colors.line, backgroundColor: on ? theme.colors.ink : theme.colors.sunken }}>
                 <T variant="label" style={{ color: on ? theme.colors.bg : theme.colors.muted }}>{milestone.badge}</T>
+                {on && started ? (
+                  <T style={{ color: theme.colors.bg, fontFamily: theme.font.body, fontSize: 12 * theme.scale, letterSpacing: 0 }}>{formatUkCompact(milestoneReachedOn(milestone.key, started))}</T>
+                ) : null}
               </View>
             );
           })}
@@ -144,7 +149,7 @@ export default function Home() {
         ) : (
           <Button label="I need to reset the clock" tone="quiet" onPress={() => setRelapseOpen(true)} />
         )}
-        {snap.relapses[0] ? <T variant="muted">Last reset kept {snap.relapses[0].daysKept} days before it.</T> : null}
+        {snap.relapses[0] ? <T variant="muted">Last reset {formatUkDate(snap.relapses[0].occurredAt)}, kept {snap.relapses[0].daysKept} days before it.</T> : null}
       </Card>
       <ErrorNote>{error}</ErrorNote>
     </Screen>

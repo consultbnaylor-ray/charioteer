@@ -4,8 +4,10 @@ import { View } from 'react-native';
 import { useRepository, useSnapshot } from '@/data';
 import { HEALTH_LABELS } from '@/data/catalogue';
 import type { HealthKind } from '@/data/types';
+import { formatUkCompact, isoDay, startOfLocalDay } from '@/domain/dates';
 import { shownError } from '@/domain/errors';
 import { syncAppleHealth } from '@/health/sync';
+import { DateField } from '@/ui/DateField';
 import { Button, Card, Choice, ErrorNote, Field, Screen, T } from '@/ui/ui';
 
 const KINDS: { id: HealthKind; unit: string; label: string }[] = [
@@ -17,19 +19,12 @@ const KINDS: { id: HealthKind; unit: string; label: string }[] = [
   { id: 'weight_kg', unit: 'kg', label: 'Weight (kg)' },
 ];
 
-function today() {
-  const now = new Date();
-  const month = String(now.getMonth() + 1).padStart(2, '0');
-  const day = String(now.getDate()).padStart(2, '0');
-  return `${now.getFullYear()}-${month}-${day}`;
-}
-
 export default function Health() {
   const snap = useSnapshot();
   const repo = useRepository();
   const [kind, setKind] = useState<HealthKind>('steps');
   const [value, setValue] = useState('');
-  const [day, setDay] = useState(today());
+  const [day, setDay] = useState(() => startOfLocalDay(new Date()));
   const [error, setError] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
@@ -53,7 +48,7 @@ export default function Health() {
         ))}
       </View>
       <Field label={`Value (${chosen.unit})`} value={value} onChangeText={setValue} keyboardType="decimal-pad" />
-      <Field label="Date" value={day} onChangeText={setDay} placeholder="YYYY-MM-DD" />
+      <DateField label="Date" value={day} onChange={setDay} maximumDate={new Date()} />
       <ErrorNote>{error}</ErrorNote>
       {note ? <T variant="muted">{note}</T> : null}
       <Button
@@ -65,12 +60,12 @@ export default function Health() {
             setError('Enter a number that is zero or more.');
             return;
           }
-          if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) {
-            setError('Use a date like 2026-10-10.');
+          if (isoDay(day) > isoDay(new Date())) {
+            setError('Choose today or an earlier day.');
             return;
           }
           setError(null);
-          void repo.saveHealth([{ kind, value: amount, unit: chosen.unit, recordedOn: day, source: 'manual' }])
+          void repo.saveHealth([{ kind, value: amount, unit: chosen.unit, recordedOn: isoDay(day), source: 'manual' }])
             .then(() => {
               setValue('');
               setNote('Saved.');
@@ -101,7 +96,7 @@ export default function Health() {
       {snap.health.map((sample) => (
         <Card key={sample.id}>
           <T>{HEALTH_LABELS[sample.kind] ?? sample.kind}</T>
-          <T variant="muted">{sample.value} {sample.unit} · {sample.recordedOn} · {sample.source === 'healthkit' ? 'Apple Health' : 'Logged here'}</T>
+          <T variant="muted">{sample.value} {sample.unit} · {formatUkCompact(sample.recordedOn)} · {sample.source === 'healthkit' ? 'Apple Health' : 'Logged here'}</T>
         </Card>
       ))}
     </Screen>

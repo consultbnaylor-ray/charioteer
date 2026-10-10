@@ -5,6 +5,7 @@ import { Platform, Share, View } from 'react-native';
 
 import { useRepository, useSnapshot } from '@/data';
 import type { TextScale, ThemePreference } from '@/data/types';
+import { formatUkDate } from '@/domain/dates';
 import { shownError } from '@/domain/errors';
 import { Button, Card, Choice, ErrorNote, Field, Screen, T } from '@/ui/ui';
 
@@ -70,6 +71,7 @@ export default function Profile() {
 
   return (
     <Screen eyebrow="You" title={profile.displayName} intro={profile.email}>
+      {profile.sobrietyStartedAt ? <T variant="muted">Sober since {formatUkDate(profile.sobrietyStartedAt)}.</T> : null}
       <Card>
         <T variant="label">Appearance</T>
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
@@ -121,6 +123,7 @@ export default function Profile() {
           {snap.reports.map((report) => (
             <View key={report.id} style={{ gap: 4, marginTop: 8 }}>
               <T>{report.reportedName} — {report.reason} ({report.status})</T>
+              <T variant="muted">{formatUkDate(report.createdAt)}</T>
               {report.details ? <T variant="muted">{report.details}</T> : null}
               {report.status === 'open' ? <Button label="Mark reviewed" tone="quiet" onPress={() => void repo.reviewReport(report.id)} /> : null}
             </View>
@@ -130,11 +133,16 @@ export default function Profile() {
         <Card>
           <T variant="label">Reports you have sent</T>
           {snap.reports.length === 0 ? <T variant="muted">None.</T> : snap.reports.map((report) => (
-            <T key={report.id}>{report.reportedName}: {report.reason} · {report.status}</T>
+            <T key={report.id}>{report.reportedName}: {report.reason} · {report.status} · {formatUkDate(report.createdAt)}</T>
           ))}
         </Card>
       )}
-      <Button label="Download my data" tone="quiet" onPress={() => void download()} />
+      <Card>
+        <T variant="label">Download</T>
+        <T>The file is the stored record. Dates on this screen stay in UK form.</T>
+        {profile.sobrietyStartedAt ? <T variant="muted">Sober since {formatUkDate(profile.sobrietyStartedAt)}.</T> : null}
+        <Button label="Download my data" tone="quiet" onPress={() => void download()} />
+      </Card>
       <Field label="Type DELETE to remove the account" value={confirm} onChangeText={setConfirm} />
       <Button
         label="Delete account and data"

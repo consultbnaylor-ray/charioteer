@@ -2,34 +2,25 @@ import { useState } from 'react';
 import { Switch, View } from 'react-native';
 
 import { useRepository, useSnapshot } from '@/data';
+import { formatUkLong, isoDay, parseIsoDay, startOfLocalDay } from '@/domain/dates';
 import { shownError } from '@/domain/errors';
 import { validateTown } from '@/domain/privacy';
+import { DateField } from '@/ui/DateField';
 import { Button, Choice, ErrorNote, Field, Screen, T } from '@/ui/ui';
 import { useAppTheme } from '@/ui/theme';
 
 const STEPS = 8;
 
-function todayIso() {
-  const now = new Date();
-  const month = String(now.getMonth() + 1).padStart(2, '0');
-  const day = String(now.getDate()).padStart(2, '0');
-  return `${now.getFullYear()}-${month}-${day}`;
+function daysAgo(days: number): Date {
+  const date = startOfLocalDay(new Date());
+  date.setDate(date.getDate() - days);
+  return date;
 }
 
-function shiftDays(days: number) {
+function toInstant(day: Date): string {
+  const chosen = startOfLocalDay(day);
   const now = new Date();
-  now.setDate(now.getDate() - days);
-  const month = String(now.getMonth() + 1).padStart(2, '0');
-  const day = String(now.getDate()).padStart(2, '0');
-  return `${now.getFullYear()}-${month}-${day}`;
-}
-
-function toInstant(isoDay: string): string {
-  const [year, month, day] = isoDay.split('-').map(Number);
-  const chosen = new Date(year, (month ?? 1) - 1, day ?? 1);
-  const now = new Date();
-  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  if (chosen.getTime() === today.getTime()) return now.toISOString();
+  if (isoDay(chosen) === isoDay(now)) return now.toISOString();
   return chosen.toISOString();
 }
 
@@ -40,7 +31,7 @@ export default function Onboarding() {
   const [step, setStep] = useState(0);
   const [name, setName] = useState(snap.profile?.displayName ?? '');
   const [adult, setAdult] = useState<boolean | null>(null);
-  const [start, setStart] = useState(todayIso());
+  const [start, setStart] = useState(() => startOfLocalDay(new Date()));
   const [reasons, setReasons] = useState(['', '', '']);
   const [spend, setSpend] = useState('40');
   const [units, setUnits] = useState('20');
@@ -108,11 +99,11 @@ export default function Onboarding() {
       {step === 2 ? (
         <View style={{ gap: 10 }}>
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-            <Choice label="Today" selected={start === todayIso()} onPress={() => setStart(todayIso())} />
-            <Choice label="Yesterday" selected={start === shiftDays(1)} onPress={() => setStart(shiftDays(1))} />
-            <Choice label="A week ago" selected={start === shiftDays(7)} onPress={() => setStart(shiftDays(7))} />
+            <Choice label="Today" selected={isoDay(start) === isoDay(new Date())} onPress={() => setStart(startOfLocalDay(new Date()))} />
+            <Choice label="Yesterday" selected={isoDay(start) === isoDay(daysAgo(1))} onPress={() => setStart(daysAgo(1))} />
+            <Choice label="A week ago" selected={isoDay(start) === isoDay(daysAgo(7))} onPress={() => setStart(daysAgo(7))} />
           </View>
-          <Field label="Or a date" value={start} onChangeText={setStart} placeholder="YYYY-MM-DD" hint="Use the day you stopped, or today if you are starting now." />
+          <DateField label="Or a date" value={start} onChange={setStart} maximumDate={new Date()} hint="Use the day you stopped, or today if you are starting now." />
         </View>
       ) : null}
       {step === 3 ? (
@@ -187,7 +178,7 @@ export default function Onboarding() {
             value={ai}
             onChange={setAi}
           />
-          <T variant="muted">This consent screen is plain language, not a solicitor’s privacy notice. Have it reviewed before a public launch. Version 2026-10-10.</T>
+          <T variant="muted">This consent screen is plain language, not a solicitor’s privacy notice. Have it reviewed before a public launch. Version {formatUkLong(parseIsoDay('2026-10-10'))}.</T>
         </View>
       ) : null}
       <ErrorNote>{error}</ErrorNote>
@@ -202,7 +193,7 @@ export default function Onboarding() {
               setError(null);
               if (step === 0 && !name.trim()) return setError('Add your name.');
               if (step === 1 && adult !== true) return setError('Charioteer is for adults aged 18 and over.');
-              if (step === 2 && !/^\d{4}-\d{2}-\d{2}$/.test(start)) return setError('Use a date like 2026-04-02.');
+              if (step === 2 && isoDay(start) > isoDay(new Date())) return setError('Choose today or an earlier day.');
               if (step === 3 && !reasons.some((reason) => reason.trim())) return setError('One reason is enough.');
               if (step === 6) {
                 const townError = validateTown(town);

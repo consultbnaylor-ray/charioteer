@@ -5,6 +5,7 @@ import { View } from 'react-native';
 import { useRepository, useSnapshot } from '@/data';
 import { MOODS } from '@/data/catalogue';
 import type { Mood } from '@/data/types';
+import { formatUkWhen } from '@/domain/dates';
 import { shownError } from '@/domain/errors';
 import { Button, Card, Choice, ErrorNote, Field, Screen, T } from '@/ui/ui';
 
@@ -65,7 +66,7 @@ export default function CheckIn() {
       {snap.checkIns.length === 0 ? <T variant="muted">No check-ins yet.</T> : null}
       {snap.checkIns.slice(0, 8).map((item) => (
         <Card key={item.id}>
-          <T>{new Date(item.createdAt).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</T>
+          <T>{formatUkWhen(item.createdAt)}</T>
           <T variant="muted">Mood {item.mood}/5 · sleep {item.sleepHours}h · craving {item.craving}/10</T>
           {item.note ? <T>{item.note}</T> : null}
         </Card>
