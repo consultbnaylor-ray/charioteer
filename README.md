@@ -149,9 +149,43 @@ npx expo run:ios
 
 Or use EAS: `eas build --profile development --platform ios`.
 
-The bundle id is `uk.co.quanticalabs.charioteer`. `app.json` sets Sign in with Apple, the microphone string (for a future voice pass), and the HealthKit plugin. The share string covers steps, sleep, resting heart rate, HRV, workouts, and weight. The update string says the app does not write to Apple Health; the capability still asks for it.
+The bundle id is `uk.co.quanticalabs.charioteer`. `app.json` sets Sign in with Apple, the microphone string (for a future voice pass), and the HealthKit plugin. The share string covers steps, sleep, resting heart rate, HRV, workouts, and weight. The update string says the app does not write to Apple Health; the capability still asks for it. The Apple team is Quantica Labs Ltd, `5FMDXKAX7V`. `ios.config.usesNonExemptEncryption` is `false`.
+
+The home-screen name is `Charioteer` (`expo.name`). The App Store Connect listing name is `Charioteer Sober Coach` (app id `6821371422`).
 
 On a Mac with Xcode, enable the HealthKit and Sign in with Apple capabilities if prebuild has not already. Add the same bundle id in the Apple Developer portal, then turn on the Apple provider in Supabase.
+
+`ios/` and `build/` are generated and gitignored. This project uses continuous native generation, so commit `app.json` and leave the Xcode project out of the repo.
+
+## TestFlight from a Mac
+
+Build 1 (`1.0.0`, build number `1`) is the archive already uploaded. From the repo on a Mac, signed into Xcode as Quantica Labs Ltd:
+
+```bash
+npx expo prebuild --platform ios
+xcodebuild \
+  -workspace ios/Charioteer.xcworkspace \
+  -scheme Charioteer \
+  -configuration Release \
+  -destination 'generic/platform=iOS' \
+  -archivePath build/Charioteer.xcarchive \
+  -allowProvisioningUpdates \
+  DEVELOPMENT_TEAM=5FMDXKAX7V \
+  archive
+```
+
+Write `ExportOptions.plist` (it can live outside the repo) with `method` set to `app-store-connect`, `destination` set to `upload`, and `teamID` set to `5FMDXKAX7V`. Then upload:
+
+```bash
+xcodebuild \
+  -exportArchive \
+  -archivePath build/Charioteer.xcarchive \
+  -exportPath build/export \
+  -exportOptionsPlist ExportOptions.plist \
+  -allowProvisioningUpdates
+```
+
+App Store Connect rejects a second upload that reuses a build number. Before the next archive, raise `expo.ios.buildNumber` in `app.json` (`"1"`, then `"2"`, and so on) and run prebuild again so the new value is in the generated project.
 
 ## Tests
 
