@@ -1,0 +1,56 @@
+{
+  "expo": {
+    "name": "Charioteer",
+    "slug": "charioteer",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/brand/ios/icon-1024.png",
+    "scheme": "charioteer",
+    "userInterfaceStyle": "dark",
+    "ios": {
+      "bundleIdentifier": "uk.co.quanticalabs.charioteer",
+      "usesAppleSignIn": true,
+      "icon": "./assets/brand/ios/icon-1024.png",
+      "infoPlist": {
+        "NSMicrophoneUsageDescription": "Charioteer uses the microphone if you start a voice conversation with Thumos. Full voice is not finished in this version."
+      }
+    },
+    "android": {
+      "package": "uk.co.quanticalabs.charioteer",
+      "adaptiveIcon": {
+        "backgroundColor": "#0C0C0C",
+        "foregroundImage": "./assets/brand/adaptive-foreground.png",
+        "monochromeImage": "./assets/brand/adaptive-monochrome.png"
+      },
+      "predictiveBackGestureEnabled": false
+    },
+    "web": {
+      "output": "static",
+      "favicon": "./assets/brand/favicon-32.png"
+    },
+    "plugins": [
+      "expo-router",
+      "expo-apple-authentication",
+      "expo-secure-store",
+      [
+        "expo-splash-screen",
+        {
+          "backgroundColor": "#0C0C0C",
+          "image": "./assets/brand/splash-icon.png",
+          "imageWidth": 76
+        }
+      ],
+      [
+        "@kingstinct/react-native-healthkit",
+        {
+          "NSHealthShareUsageDescription": "Charioteer reads steps, sleep, resting heart rate, heart rate variability, workouts, and weight so you and Thumos can see how your body is doing. Other people cannot see this.",
+          "NSHealthUpdateUsageDescription": "Charioteer does not write to Apple Health. This message is required because the app includes the HealthKit capability."
+        }
+      ]
+    ],
+    "experiments": {
+      "typedRoutes": false,
+      "reactCompiler": false
+    }
+  }
+}
