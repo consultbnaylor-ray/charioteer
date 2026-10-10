@@ -15,7 +15,7 @@ import {
 } from '@/domain/errors';
 import { passwordResetRedirect, recoveryLink } from '@/domain/passwordReset';
 import { createUtf8Decoder } from '@/domain/utf8';
-import { slugifyInterest, validateTown } from '@/domain/privacy';
+import { planCustomInterest, validateTown } from '@/domain/privacy';
 import { fetchWithOneRetry } from '@/domain/retryFetch';
 import { planRelapse } from '@/domain/sober';
 import { parseSseBuffer } from '@/domain/sse';
@@ -89,6 +89,7 @@ export class SupabaseRepository implements Repository {
   private snapshot: AppSnapshot = emptySnapshot();
   private listeners = new Set<() => void>();
   private started = false;
+  private interestWrites = new Map<string, Promise<void>>();
 
   constructor(url: string, anonKey: string) {
     this.url = url;
@@ -477,20 +478,35 @@ export class SupabaseRepository implements Repository {
   }
 
   async addCustomInterest(label: string): Promise<void> {
-    const name = label.trim();
-    const slug = slugifyInterest(name);
-    if (!slug) throw new Error('Use letters or numbers.');
-    const userId = await this.userId();
-    let interest = this.snapshot.interests.find((item) => item.slug === slug);
-    if (!interest) {
-      const { data, error } = await this.client.from('interests').insert({ slug, label: name, created_by: userId }).select('id, slug, label, created_by').single();
-      if (error) throw asUserFacing(error, 'general');
-      interest = mapInterest(data as Row);
+    const plan = planCustomInterest(label);
+    if (!plan.ok) throw new Error(plan.message);
+    const pending = this.interestWrites.get(plan.slug);
+    if (pending) return pending;
+    const run = this.writeInterest(plan.label, plan.slug);
+    this.interestWrites.set(plan.slug, run);
+    try {
+      await run;
+    } finally {
+      if (this.interestWrites.get(plan.slug) === run) this.interestWrites.delete(plan.slug);
     }
-    const ids = new Set(this.snapshot.profile?.interestIds ?? []);
-    ids.add(interest.id);
-    await this.replaceInterests(userId, [...ids]);
-    await this.refresh();
+  }
+
+  /**
+   * One round trip. A matching slug is reused, including a repeat tap.
+   * The catalogue updates in memory so onboarding does not reload the whole account.
+   */
+  private async writeInterest(label: string, slug: string): Promise<void> {
+    if (this.snapshot.interests.some((item) => item.slug === slug)) return;
+    const { data, error } = await this.client.rpc('add_interest', { label });
+    if (error) throw asUserFacing(error, 'general');
+    const row = (Array.isArray(data) ? data[0] : data) as Row | null;
+    if (!row?.id) throw new Error('Could not add that.');
+    const interest = mapInterest(row);
+    if (this.snapshot.interests.some((item) => item.id === interest.id || item.slug === interest.slug)) return;
+    this.emit({
+      ...this.snapshot,
+      interests: [...this.snapshot.interests, interest].sort((a, b) => a.label.localeCompare(b.label)),
+    });
   }
 
   async requestConnection(userId: string): Promise<void> {

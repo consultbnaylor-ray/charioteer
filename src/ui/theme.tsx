@@ -13,6 +13,8 @@ const light = {
   surface: '#FFFFFF',
   ink: '#111111',
   muted: '#4C4C47',
+  /** Empty-field hint. Lighter than ink, still 4.5:1 on the white field. */
+  placeholder: '#6B6B64',
   line: '#D0D0C8',
   emphasis: '#111111',
   emphasisSoft: '#E4E4DE',
@@ -29,6 +31,8 @@ const dark = {
   surface: '#1A1A1A',
   ink: '#F3F3EE',
   muted: '#B3B3AC',
+  /** Empty-field hint. Darker than ink, still 4.5:1 on the dark field. */
+  placeholder: '#8E8E86',
   line: '#3A3A3A',
   emphasis: '#F3F3EE',
   emphasisSoft: '#2A2A2A',

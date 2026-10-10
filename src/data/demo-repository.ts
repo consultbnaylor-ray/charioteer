@@ -8,7 +8,7 @@ import {
   WRONG_PASSWORD_MESSAGE,
 } from '@/domain/errors';
 import { randomId } from '@/domain/id';
-import { slugifyInterest, validateTown } from '@/domain/privacy';
+import { planCustomInterest, validateTown } from '@/domain/privacy';
 import { planRelapse } from '@/domain/sober';
 import { detectSafety, ensureSafetyNotices } from '@/domain/safety';
 import { CRAVING_LINE, OFFLINE_COACH_MESSAGE, OPENING_LINE, type ThumosMode } from '@/domain/thumos';
@@ -322,15 +322,13 @@ export class DemoRepository implements Repository {
   }
 
   async addCustomInterest(label: string): Promise<void> {
-    const name = label.trim();
-    if (name.length < 2) throw new Error('Give the interest a name.');
-    const slug = slugifyInterest(name);
-    if (!slug) throw new Error('Use letters or numbers.');
+    const plan = planCustomInterest(label);
+    if (!plan.ok) throw new Error(plan.message);
     const account = this.me();
     const db = clone(this.db);
-    let interest = db.interests.find((item) => item.slug === slug);
+    let interest = db.interests.find((item) => item.slug === plan.slug);
     if (!interest) {
-      interest = { id: uid(), slug, label: name, custom: true };
+      interest = { id: uid(), slug: plan.slug, label: plan.label, custom: true };
       db.interests.push(interest);
     }
     const ids = new Set(db.accounts[account.profile.id].profile.interestIds);

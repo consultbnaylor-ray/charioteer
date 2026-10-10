@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 const sql = readFileSync('supabase/migrations/20261010130000_tighten_grants.sql', 'utf8');
 const init = readFileSync('supabase/migrations/20261010120000_init.sql', 'utf8');
 const healthUpsert = readFileSync('supabase/migrations/20261010140000_health_upsert_grant.sql', 'utf8');
+const addInterest = readFileSync('supabase/migrations/20261010150000_add_interest.sql', 'utf8');
 
 function updateColumnsIn(source: string, table: string): string[] {
   const match = source.match(new RegExp(`grant update \\(([^)]+)\\) on public\\.${table} to authenticated`, 'i'));
@@ -95,6 +96,33 @@ describe('client writes against the live grants', () => {
     for (const column of ['user_id', 'kind', 'value', 'unit', 'recorded_on', 'source']) {
       expect(granted.has(column)).toBe(true);
     }
+  });
+});
+
+describe('add interest function', () => {
+  it('reuses a slug, attaches it to the caller, and grants execute only to signed-in users', () => {
+    expect(addInterest).toContain('create or replace function public.add_interest(label text)');
+    expect(addInterest).toContain('security definer');
+    expect(addInterest).toContain('set search_path = public');
+    expect(addInterest).toContain('on conflict (slug) do nothing');
+    expect(addInterest).toContain('insert into public.profile_interests (user_id, interest_id)');
+    expect(addInterest).toContain('auth.uid()');
+    expect(addInterest.toLowerCase()).toContain('revoke all on function public.add_interest(text) from public, anon, authenticated');
+    expect(addInterest.toLowerCase()).toContain('grant execute on function public.add_interest(text) to authenticated');
+    expect(addInterest.toLowerCase()).not.toContain('grant execute on function public.add_interest(text) to anon');
+  });
+});
+
+describe('client interest write', () => {
+  const repo = readFileSync('src/data/supabase-repository.ts', 'utf8');
+
+  it('calls add_interest once and does not insert the slug or reload the account', () => {
+    const method = repo.slice(repo.indexOf('async addCustomInterest'), repo.indexOf('async requestConnection'));
+    expect(method).toContain("rpc('add_interest'");
+    expect(method).not.toContain(".from('interests').insert");
+    expect(method).not.toContain('this.refresh()');
+    expect(method).not.toContain('replaceInterests');
+    expect(method).toContain('interestWrites');
   });
 });
 

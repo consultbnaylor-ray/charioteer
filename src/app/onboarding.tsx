@@ -1,10 +1,11 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { Switch, View } from 'react-native';
 
 import { useRepository, useSnapshot } from '@/data';
 import { formatUkLong, isoDay, parseIsoDay, startOfLocalDay } from '@/domain/dates';
 import { shownError } from '@/domain/errors';
-import { validateTown } from '@/domain/privacy';
+import { planCustomInterest, validateTown } from '@/domain/privacy';
+import { reasonPlaceholder } from '@/domain/reasons';
 import { DateField } from '@/ui/DateField';
 import { UnitsGuide } from '@/ui/UnitsGuide';
 import { Button, Choice, ErrorNote, Field, Screen, T } from '@/ui/ui';
@@ -44,9 +45,45 @@ export default function Onboarding() {
   const [ai, setAi] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
+  const [addingInterest, setAddingInterest] = useState(false);
+  const addingInterestRef = useRef(false);
 
   function toggleInterest(id: string) {
     setInterestIds((current) => (current.includes(id) ? current.filter((item) => item !== id) : [...current, id]));
+  }
+
+  function selectInterest(id: string) {
+    setInterestIds((current) => (current.includes(id) ? current : [...current, id]));
+    setCustom('');
+  }
+
+  async function addInterest() {
+    if (addingInterestRef.current) return;
+    const plan = planCustomInterest(custom);
+    if (!plan.ok) {
+      setError(plan.message);
+      return;
+    }
+    const known = repo.getSnapshot().interests.find((item) => item.slug === plan.slug);
+    if (known) {
+      setError(null);
+      selectInterest(known.id);
+      return;
+    }
+    addingInterestRef.current = true;
+    setAddingInterest(true);
+    setError(null);
+    try {
+      await repo.addCustomInterest(plan.label);
+      const match = repo.getSnapshot().interests.find((item) => item.slug === plan.slug);
+      if (match) selectInterest(match.id);
+      else setCustom('');
+    } catch (err) {
+      setError(shownError(err, 'Could not add that.'));
+    } finally {
+      addingInterestRef.current = false;
+      setAddingInterest(false);
+    }
   }
 
   async function finish() {
@@ -115,7 +152,7 @@ export default function Onboarding() {
               label={`Reason ${index + 1}`}
               value={reason}
               onChangeText={(value) => setReasons((current) => current.map((item, itemIndex) => (itemIndex === index ? value : item)))}
-              placeholder="In your own words"
+              placeholder={reasonPlaceholder(index)}
             />
           ))}
           <Button label="Add another reason" tone="quiet" onPress={() => setReasons((current) => [...current, ''])} />
@@ -145,15 +182,9 @@ export default function Onboarding() {
           <Button
             label="Add interest"
             tone="quiet"
-            onPress={() => {
-              const label = custom.trim();
-              if (!label) return;
-              void repo.addCustomInterest(label).then(() => {
-                const match = repo.getSnapshot().interests.find((item) => item.label.toLowerCase() === label.toLowerCase());
-                if (match) setInterestIds((current) => (current.includes(match.id) ? current : [...current, match.id]));
-                setCustom('');
-              }).catch((err: unknown) => setError(shownError(err, 'Could not add that.')));
-            }}
+            pending={addingInterest}
+            disabled={addingInterest || !custom.trim()}
+            onPress={() => void addInterest()}
           />
         </View>
       ) : null}

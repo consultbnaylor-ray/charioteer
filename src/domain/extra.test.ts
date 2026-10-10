@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { crisisHelplines, RESOURCE_CATALOGUE } from '../data/catalogue';
-import { slugifyInterest, validateTown } from './privacy';
+import { planCustomInterest, slugifyInterest, validateTown } from './privacy';
 import { formatClock, urgeRemainingSeconds } from './urge';
 
 describe('town privacy', () => {
@@ -13,6 +13,20 @@ describe('town privacy', () => {
 
   it('slugifies custom interests', () => {
     expect(slugifyInterest('Five-a-side')).toBe('five-a-side');
+  });
+
+  it('treats a repeated interest name as the same slug', () => {
+    const first = planCustomInterest('Comedy');
+    const again = planCustomInterest('  comedy ');
+    const shout = planCustomInterest('COMEDY');
+    expect(first).toEqual({ ok: true, slug: 'comedy', label: 'Comedy' });
+    expect(again).toEqual({ ok: true, slug: 'comedy', label: 'comedy' });
+    expect(shout).toEqual({ ok: true, slug: 'comedy', label: 'COMEDY' });
+    expect(planCustomInterest('Gym')).toMatchObject({ slug: 'gym' });
+    expect(planCustomInterest('!!')).toEqual({ ok: false, message: 'Use letters or numbers.' });
+    const long = planCustomInterest('a'.repeat(41));
+    expect(long.ok).toBe(false);
+    if (!long.ok) expect(long.message).toMatch(/40 characters/);
   });
 });
 

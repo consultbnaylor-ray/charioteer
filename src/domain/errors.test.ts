@@ -42,6 +42,7 @@ describe('user facing errors', () => {
     const postgres = asUserFacing(new Error('permission denied for table consents'), 'general');
     expect(postgres.message).not.toMatch(/permission denied|consents/i);
     expect(asUserFacing(new Error('duplicate key value violates unique constraint "consents_pkey"'), 'general').message).not.toMatch(/duplicate|violates/i);
+    expect(asUserFacing(new Error('duplicate key value violates unique constraint "interests_slug_key"'), 'general').message).not.toMatch(/duplicate|violates|interests_slug/i);
     expect(asUserFacing(new Error('Set a start date first.'), 'general').message).toBe('Set a start date first.');
     error.mockRestore();
   });
