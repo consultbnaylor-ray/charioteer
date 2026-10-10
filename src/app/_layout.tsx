@@ -56,7 +56,7 @@ function Chrome() {
   const router = useRouter();
 
   useEffect(() => {
-    if (Platform.OS === 'web') {
+    if (Platform.OS === 'web' && typeof document !== 'undefined') {
       document.title = 'Charioteer';
       document.body.style.backgroundColor = theme.colors.bg;
     }

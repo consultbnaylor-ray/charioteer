@@ -52,7 +52,7 @@ export default function Profile() {
     try {
       const data = await repo.exportData();
       const text = JSON.stringify(data, null, 2);
-      if (Platform.OS === 'web') {
+      if (Platform.OS === 'web' && typeof document !== 'undefined') {
         const blob = new Blob([text], { type: 'application/json' });
         const url = URL.createObjectURL(blob);
         const anchor = document.createElement('a');
@@ -158,7 +158,7 @@ export default function Profile() {
           tone="quiet"
           onPress={() => {
             void AsyncStorage.removeItem('charioteer.demo.v1').then(() => {
-              if (Platform.OS === 'web') window.location.reload();
+              if (Platform.OS === 'web' && typeof window !== 'undefined') window.location.reload();
             });
           }}
         />

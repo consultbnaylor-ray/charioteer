@@ -7,6 +7,7 @@ import {
   WEAK_PASSWORD_MESSAGE,
   WRONG_PASSWORD_MESSAGE,
 } from '@/domain/errors';
+import { randomId } from '@/domain/id';
 import { slugifyInterest, validateTown } from '@/domain/privacy';
 import { planRelapse } from '@/domain/sober';
 import { detectSafety, ensureSafetyNotices } from '@/domain/safety';
@@ -28,7 +29,7 @@ import type {
 const STORAGE_KEY = 'charioteer.demo.v1';
 
 function uid(): string {
-  return globalThis.crypto.randomUUID();
+  return randomId();
 }
 
 function clone<T>(value: T): T {

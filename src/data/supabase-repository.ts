@@ -14,6 +14,7 @@ import {
   isTransientNetworkError,
 } from '@/domain/errors';
 import { passwordResetRedirect, recoveryLink } from '@/domain/passwordReset';
+import { createUtf8Decoder } from '@/domain/utf8';
 import { slugifyInterest, validateTown } from '@/domain/privacy';
 import { fetchWithOneRetry } from '@/domain/retryFetch';
 import { planRelapse } from '@/domain/sober';
@@ -44,10 +45,6 @@ import type {
 } from '@/data/types';
 
 type Row = Record<string, unknown>;
-
-function uid(): string {
-  return globalThis.crypto.randomUUID();
-}
 
 function localToday(date = new Date()): string {
   const month = String(date.getMonth() + 1).padStart(2, '0');
@@ -630,12 +627,12 @@ export class SupabaseRepository implements Repository {
 
     if (response.body && typeof response.body.getReader === 'function') {
       const reader = response.body.getReader();
-      const decoder = new TextDecoder();
+      const decoder = createUtf8Decoder();
       let buffer = '';
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
-        buffer += decoder.decode(value, { stream: true });
+        buffer += decoder.decode(value);
         const leftover = parseSseBuffer(buffer, (event) => {
           if (event.type === 'delta') {
             accumulated += event.text;
@@ -649,6 +646,7 @@ export class SupabaseRepository implements Repository {
         });
         buffer = leftover;
       }
+      buffer += decoder.flush();
       if (buffer.trim()) apply(`${buffer}\n\n`);
     } else {
       apply(`${await response.text()}\n\n`);
@@ -706,12 +704,13 @@ export class SupabaseRepository implements Repository {
   }
 
   private async insertConsents(userId: string, input: OnboardingInput) {
-    await this.client.from('consents').insert([
-      { id: uid(), user_id: userId, kind: 'age_18', granted: true, version: CONSENT_VERSION },
-      { id: uid(), user_id: userId, kind: 'health', granted: input.consentHealth, version: CONSENT_VERSION },
-      { id: uid(), user_id: userId, kind: 'community', granted: input.communityVisible, version: CONSENT_VERSION },
-      { id: uid(), user_id: userId, kind: 'ai_coach', granted: input.consentAi, version: CONSENT_VERSION },
+    const { error } = await this.client.from('consents').insert([
+      { user_id: userId, kind: 'age_18', granted: true, version: CONSENT_VERSION },
+      { user_id: userId, kind: 'health', granted: input.consentHealth, version: CONSENT_VERSION },
+      { user_id: userId, kind: 'community', granted: input.communityVisible, version: CONSENT_VERSION },
+      { user_id: userId, kind: 'ai_coach', granted: input.consentAi, version: CONSENT_VERSION },
     ]);
+    if (error) throw asUserFacing(error, 'general');
   }
 }
 
