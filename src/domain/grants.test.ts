@@ -7,6 +7,7 @@ const healthUpsert = readFileSync('supabase/migrations/20261010140000_health_ups
 const addInterest = readFileSync('supabase/migrations/20261010150000_add_interest.sql', 'utf8');
 const consentReread = readFileSync('supabase/migrations/20261010160000_consent_reread.sql', 'utf8');
 const profileStage = readFileSync('supabase/migrations/20261010170000_profile_stage.sql', 'utf8');
+const progressPhotos = readFileSync('supabase/migrations/20261010180000_progress_photos.sql', 'utf8');
 
 function updateColumnsIn(source: string, table: string): string[] {
   const match = source.match(new RegExp(`grant update \\(([^)]+)\\) on public\\.${table} to authenticated`, 'i'));
@@ -155,6 +156,28 @@ describe('client interest write', () => {
     expect(method).not.toContain('this.refresh()');
     expect(method).not.toContain('replaceInterests');
     expect(method).toContain('interestWrites');
+  });
+});
+
+describe('progress photos', () => {
+  it('keeps the bucket private and grants the owner columns only', () => {
+    expect(progressPhotos).toContain('create table public.progress_photos');
+    expect(progressPhotos).toContain("storage_path = user_id::text || '/' || id::text || '.jpg'");
+    expect(progressPhotos).toContain("values ('progress-photos', 'progress-photos', false, 2097152");
+    expect(progressPhotos).toContain('set public = false');
+    expect(progressPhotos).toContain('progress_photos_storage_read');
+    expect(progressPhotos).toContain('progress_photos_storage_insert');
+    expect(progressPhotos).toContain('progress_photos_storage_delete');
+    expect(progressPhotos).toContain('for select to authenticated');
+    expect(progressPhotos).toContain('for insert to authenticated');
+    expect(progressPhotos).toContain('for delete to authenticated');
+    expect(progressPhotos).not.toMatch(/to anon/);
+    expect(progressPhotos).toContain('grant select (id, user_id, taken_on, month_index, note, storage_path, created_at) on public.progress_photos to authenticated');
+    expect(progressPhotos).toContain('grant insert (id, user_id, taken_on, month_index, note, storage_path) on public.progress_photos to authenticated');
+    expect(progressPhotos).toContain('grant delete on public.progress_photos to authenticated');
+    expect(progressPhotos.toLowerCase()).not.toMatch(/grant update/);
+    expect(progressPhotos).toContain("'progress_photos'");
+    expect(progressPhotos).not.toMatch(/grant update on public\.progress_photos/i);
   });
 });
 

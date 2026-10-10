@@ -106,7 +106,7 @@ Copy the local API URL and anon key into `.env` as `EXPO_PUBLIC_SUPABASE_URL` an
 
 Seed data is `supabase/seed.sql`: the catalogue, then five auth users. If a future CLI changes `auth.users` columns, the user insert is inside an exception handler so the catalogue still commits, and the notice explains the skip. Demo mode has the same people either way.
 
-Apply a hosted migration with `supabase db push` or your usual pipeline. The first migration is `supabase/migrations/20261010120000_init.sql`. The grant fix is `supabase/migrations/20261010130000_tighten_grants.sql`. The health upsert fix is `supabase/migrations/20261010140000_health_upsert_grant.sql`. Custom interests reuse an existing slug through `supabase/migrations/20261010150000_add_interest.sql` (`add_interest(label)`). `supabase/migrations/20261010160000_consent_reread.sql` grants SELECT on the caller’s own consents and ignores a repeat insert. `supabase/migrations/20261010170000_profile_stage.sql` adds the stage columns and grants UPDATE on those columns only. Apply those on the live project; this repository does not connect to it. The signed-out “Need help now?” link reads helplines once the grant fix is in place, and falls back to the bundled list until then.
+Apply a hosted migration with `supabase db push` or your usual pipeline. The first migration is `supabase/migrations/20261010120000_init.sql`. The grant fix is `supabase/migrations/20261010130000_tighten_grants.sql`. The health upsert fix is `supabase/migrations/20261010140000_health_upsert_grant.sql`. Custom interests reuse an existing slug through `supabase/migrations/20261010150000_add_interest.sql` (`add_interest(label)`). `supabase/migrations/20261010160000_consent_reread.sql` grants SELECT on the caller’s own consents and ignores a repeat insert. `supabase/migrations/20261010170000_profile_stage.sql` adds the stage columns and grants UPDATE on those columns only. `supabase/migrations/20261010180000_progress_photos.sql` adds the private progress-photo table, the private `progress-photos` storage bucket, and owner-only storage policies. Apply those on the live project; this repository does not connect to it. The signed-out “Need help now?” link reads helplines once the grant fix is in place, and falls back to the bundled list until then.
 
 `tighten_grants` revokes default privileges in schema `public` from `public`, `anon`, and `authenticated` (and from `supabase_admin` when that role can be altered). A new public table therefore has no client privileges until a later migration grants them. Grant the columns the app actually writes. A table-level `UPDATE` left in place makes a later column grant additive, which is how `is_moderator` stayed writable.
 
@@ -143,8 +143,8 @@ supabase functions deploy thumos-chat thumos-voice-token account-export account-
 | --- | --- |
 | `thumos-chat` | Rebuilds context from the database, calls Grok, stores the user line and the reply with the service role. Refuses the call without coach consent. Missing key stores the offline message. |
 | `thumos-voice-token` | Mints an ephemeral realtime client secret. Missing key returns a graceful message. |
-| `account-export` | Calls `export_my_data()`. |
-| `account-delete` | Deletes the auth user. The SQL function `delete_my_account()` is the fallback. |
+| `account-export` | Calls `export_my_data()` and adds a one-hour signed link for each private progress photo. The file does not contain the image bytes. |
+| `account-delete` | Removes the caller’s objects in the private `progress-photos` bucket, then deletes the auth user. `delete_my_account()` is the fallback, and the app removes those objects before it uses the fallback. |
 
 The client tries the function first, then the SQL function, for export and deletion.
 

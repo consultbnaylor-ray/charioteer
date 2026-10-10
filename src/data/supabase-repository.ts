@@ -13,8 +13,17 @@ import {
   asUserFacing,
   isTransientNetworkError,
 } from '@/domain/errors';
+import { randomId } from '@/domain/id';
 import { passwordResetRedirect, recoveryLink } from '@/domain/passwordReset';
 import { createUtf8Decoder } from '@/domain/utf8';
+import {
+  PROGRESS_BUCKET,
+  PROGRESS_MAX_BYTES,
+  PROGRESS_SIGNED_URL_SECONDS,
+  planProgressPhoto,
+  progressAnchor,
+  progressStoragePath,
+} from '@/domain/progressPhotos';
 import { planCustomInterest, validateTown } from '@/domain/privacy';
 import { fetchWithOneRetry } from '@/domain/retryFetch';
 import { planRelapse } from '@/domain/sober';
@@ -34,7 +43,9 @@ import type {
   Interest,
   NewCheckIn,
   NewHealthSample,
+  NewProgressPhoto,
   NewReport,
+  ProgressPhoto,
   OnboardingInput,
   Profile,
   ProfilePatch,
@@ -83,6 +94,7 @@ function emptySnapshot(): AppSnapshot {
     reports: [],
     thumos: [],
     consents: [],
+    progressPhotos: [],
   };
 }
 
@@ -157,7 +169,7 @@ export class SupabaseRepository implements Repository {
 
     const userId = session.user.id;
     const email = session.user.email ?? '';
-    const [profileRes, reasonsRes, checkRes, relapseRes, healthRes, mineRes, thumosRes, directoryRes, interestLinks, connectionsRes, reportsRes, consentsRes] =
+    const [profileRes, reasonsRes, checkRes, relapseRes, healthRes, mineRes, thumosRes, directoryRes, interestLinks, connectionsRes, reportsRes, consentsRes, photosRes] =
       await Promise.all([
         this.client.from('profiles').select('*').eq('id', userId).maybeSingle(),
         this.client.from('reasons').select('*').eq('user_id', userId).order('sort_order'),
@@ -171,6 +183,7 @@ export class SupabaseRepository implements Repository {
         this.client.from('connections').select('*').order('created_at', { ascending: false }),
         this.client.from('reports').select('*').order('created_at', { ascending: false }),
         this.client.from('consents').select('kind, granted, version').eq('user_id', userId),
+        this.client.from('progress_photos').select('id, taken_on, month_index, note, storage_path, created_at').eq('user_id', userId).order('month_index').order('taken_on'),
       ]);
 
     const profileRow = profileRes.data as Row | null;
@@ -237,6 +250,40 @@ export class SupabaseRepository implements Repository {
       reports: ((reportsRes.data ?? []) as Row[]).map(mapReport),
       thumos: ((thumosRes.data ?? []) as Row[]).map(mapThumos),
       consents: ((consentsRes.data ?? []) as Row[]).map(mapConsent),
+      progressPhotos: await this.signedProgressPhotos(photosRes.error ? null : ((photosRes.data ?? []) as Row[]), photosRes.error?.message),
+    });
+  }
+
+  private async signedProgressPhotos(rows: Row[] | null, queryError?: string): Promise<ProgressPhoto[]> {
+    if (queryError || !rows) {
+      if (queryError) console.error(queryError);
+      return [];
+    }
+    const paths = rows.map((row) => String(row.storage_path)).filter((path) => path && !path.includes('..'));
+    const signedByPath = new Map<string, string>();
+    if (paths.length) {
+      try {
+        const signed = await this.client.storage.from(PROGRESS_BUCKET).createSignedUrls(paths, PROGRESS_SIGNED_URL_SECONDS);
+        if (signed.error) console.error(signed.error.message);
+        for (const item of signed.data ?? []) {
+          if (item.path && item.signedUrl) signedByPath.set(item.path, item.signedUrl);
+        }
+      } catch (error) {
+        console.error(error);
+      }
+    }
+    return rows.map((row) => {
+      const taken = String(row.taken_on ?? '');
+      const path = String(row.storage_path ?? '');
+      return {
+        id: String(row.id),
+        takenOn: /^\d{4}-\d{2}-\d{2}/.test(taken) ? taken.slice(0, 10) : taken,
+        monthIndex: Number(row.month_index ?? 0),
+        note: String(row.note ?? ''),
+        storagePath: path,
+        createdAt: String(row.created_at ?? ''),
+        previewUrl: signedByPath.get(path) ?? null,
+      };
     });
   }
 
@@ -715,22 +762,122 @@ export class SupabaseRepository implements Repository {
     return { ok: true, token: data.token, expiresAt: Number(data.expiresAt ?? 0) };
   }
 
+  async addProgressPhoto(input: NewProgressPhoto): Promise<void> {
+    if (input.bytes.byteLength > PROGRESS_MAX_BYTES) throw new UserFacingError('That photo is still too large.', 'generic');
+    const profile = this.snapshot.profile;
+    if (!profile) throw new UserFacingError('Sign in first.', 'generic');
+    const plan = planProgressPhoto({
+      takenOn: input.takenOn,
+      startingPoint: input.startingPoint,
+      note: input.note,
+      anchor: progressAnchor(profile.sobrietyStartedAt, profile.createdAt),
+    });
+    if (!plan.ok) throw new UserFacingError(plan.message, 'generic');
+    const userId = await this.userId();
+    const photoId = randomId();
+    const path = progressStoragePath(userId, photoId);
+    const body = new Uint8Array(input.bytes.byteLength);
+    body.set(input.bytes);
+    const uploaded = await this.client.storage.from(PROGRESS_BUCKET).upload(path, body, {
+      contentType: 'image/jpeg',
+      upsert: false,
+    });
+    if (uploaded.error) throw asUserFacing(uploaded.error, 'general');
+    const inserted = await this.client.from('progress_photos').insert({
+      id: photoId,
+      user_id: userId,
+      taken_on: plan.takenOn,
+      month_index: plan.monthIndex,
+      note: plan.note,
+      storage_path: path,
+    });
+    if (inserted.error) {
+      await this.client.storage.from(PROGRESS_BUCKET).remove([path]);
+      throw asUserFacing(inserted.error, 'general');
+    }
+    await this.refresh();
+  }
+
+  async deleteProgressPhoto(id: string): Promise<void> {
+    const userId = await this.userId();
+    const known = this.snapshot.progressPhotos.find((photo) => photo.id === id);
+    const path = known?.storagePath ?? progressStoragePath(userId, id);
+    const removed = await this.client.storage.from(PROGRESS_BUCKET).remove([path]);
+    if (removed.error && !/not found/i.test(removed.error.message)) throw asUserFacing(removed.error, 'general');
+    const { error } = await this.client.from('progress_photos').delete().eq('id', id).eq('user_id', userId);
+    if (error) throw asUserFacing(error, 'general');
+    await this.refresh();
+  }
+
   async exportData(): Promise<Record<string, unknown>> {
     const invoked = await this.client.functions.invoke('account-export', { body: {} });
     if (!invoked.error && invoked.data?.data) return invoked.data.data as Record<string, unknown>;
     const { data, error } = await this.client.rpc('export_my_data');
     if (error) throw asUserFacing(error, 'general');
-    return data as Record<string, unknown>;
+    return this.attachProgressLinks(data as Record<string, unknown>, 3600);
   }
 
   async deleteAccount(): Promise<void> {
+    const removed = await this.removeOwnProgressPhotos();
     const invoked = await this.client.functions.invoke('account-delete', { body: {} });
-    if (invoked.error) {
+    if (invoked.error || invoked.data?.ok === false) {
+      if (!removed) throw new UserFacingError('Could not remove the private photos, so the account was left in place.', 'generic');
       const { error } = await this.client.rpc('delete_my_account');
       if (error) throw asUserFacing(error, 'general');
     }
     await this.client.auth.signOut();
     await this.refresh();
+  }
+
+  private async attachProgressLinks(record: Record<string, unknown>, seconds: number): Promise<Record<string, unknown>> {
+    const photos = Array.isArray(record.progress_photos) ? (record.progress_photos as Record<string, unknown>[]) : [];
+    if (!photos.length) return { ...record, progress_photos: photos };
+    const paths = photos
+      .map((photo) => (typeof photo.storage_path === 'string' ? photo.storage_path : ''))
+      .filter((path) => path && !path.includes('..'));
+    const signedByPath = new Map<string, string>();
+    if (paths.length) {
+      const signed = await this.client.storage.from(PROGRESS_BUCKET).createSignedUrls(paths, seconds);
+      if (signed.error) console.error(signed.error.message);
+      for (const item of signed.data ?? []) {
+        if (item.path && item.signedUrl) signedByPath.set(item.path, item.signedUrl);
+      }
+    }
+    return {
+      ...record,
+      progress_photos: photos.map((photo) => ({
+        ...photo,
+        signed_url: typeof photo.storage_path === 'string' ? (signedByPath.get(photo.storage_path) ?? null) : null,
+      })),
+    };
+  }
+
+  /** Clears the signed-in folder before the SQL fallback, which cannot see Storage. */
+  private async removeOwnProgressPhotos(): Promise<boolean> {
+    const userId = this.snapshot.session?.userId;
+    if (!userId) return true;
+    const paths = new Set(this.snapshot.progressPhotos.map((photo) => photo.storagePath).filter(Boolean));
+    try {
+      for (let offset = 0; offset < 10000; offset += 100) {
+        const listed = await this.client.storage.from(PROGRESS_BUCKET).list(userId, { limit: 100, offset });
+        if (listed.error) {
+          if (/bucket not found/i.test(listed.error.message)) return true;
+          break;
+        }
+        const page = listed.data ?? [];
+        for (const item of page) {
+          if (!item.name || item.name.includes('/') || item.name.includes('..') || !item.name.toLowerCase().endsWith('.jpg')) continue;
+          paths.add(`${userId}/${item.name}`);
+        }
+        if (page.length < 100) break;
+      }
+    } catch (error) {
+      console.error(error);
+    }
+    if (!paths.size) return true;
+    const { error } = await this.client.storage.from(PROGRESS_BUCKET).remove([...paths]);
+    if (!error || /not found|bucket/i.test(error.message)) return true;
+    return false;
   }
 
   private async replaceInterests(userId: string, interestIds: string[]) {
@@ -806,6 +953,7 @@ function mapProfile(row: Row, email: string, interestIds: string[]): Profile {
     weeklyUnitsGoal: row.weekly_units_goal == null ? null : Number(row.weekly_units_goal),
     drinkFreeDaysGoal: row.drink_free_days_goal == null ? null : Number(row.drink_free_days_goal),
     drinkFreeOn: Array.isArray(row.drink_free_on) ? row.drink_free_on.map(String) : [],
+    createdAt: row.created_at ? String(row.created_at) : '1970-01-01T00:00:00.000Z',
   };
 }
 

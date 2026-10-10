@@ -39,6 +39,25 @@ export type Profile = {
   weeklyUnitsGoal: number | null;
   drinkFreeDaysGoal: number | null;
   drinkFreeOn: string[];
+  createdAt: string;
+};
+
+export type ProgressPhoto = {
+  id: string;
+  takenOn: string;
+  monthIndex: number;
+  note: string;
+  storagePath: string;
+  createdAt: string;
+  /** Short-lived signed URL, or a demo data URL. Never a public object URL. */
+  previewUrl: string | null;
+};
+
+export type NewProgressPhoto = {
+  bytes: Uint8Array;
+  takenOn: string;
+  startingPoint: boolean;
+  note: string;
 };
 
 export type Reason = { id: string; body: string; sortOrder: number };
@@ -134,6 +153,7 @@ export type AppSnapshot = {
   reports: Report[];
   thumos: ThumosMessage[];
   consents: StoredConsent[];
+  progressPhotos: ProgressPhoto[];
 };
 
 export type OnboardingInput = {
@@ -234,6 +254,8 @@ export interface Repository {
   ensureThumosGuide(kind: 'opening' | 'craving'): Promise<void>;
   sendThumos(content: string, mode: ThumosMode, onDelta?: (text: string) => void): Promise<void>;
   mintVoiceToken(): Promise<VoiceMint>;
+  addProgressPhoto(input: NewProgressPhoto): Promise<void>;
+  deleteProgressPhoto(id: string): Promise<void>;
   exportData(): Promise<Record<string, unknown>>;
   deleteAccount(): Promise<void>;
 }

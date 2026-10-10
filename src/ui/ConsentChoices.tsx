@@ -24,7 +24,7 @@ export function ConsentChoices({
     <View style={{ gap: 16 }}>
       <ConsentRow
         title="Community"
-        body="Other adults can see your name, town or area, and interests. They cannot see your reasons, check-ins, money, units, or health."
+        body="Other adults can see your name, town or area, and interests. They cannot see your reasons, check-ins, money, units, health, or progress photos."
         value={community}
         onChange={onCommunity}
       />
@@ -36,10 +36,11 @@ export function ConsentChoices({
       />
       <ConsentRow
         title="Thumos, the coach"
-        body="What you type, plus check-ins, reasons, and health summaries, is sent to xAI to write a reply. Thumos is not a doctor."
+        body="What you type, plus check-ins, reasons, and health summaries, is sent to xAI to write a reply. Progress photos are not sent. Thumos is not a doctor."
         value={ai}
         onChange={onAi}
       />
+      <T>Progress photos, if you add them, stay private to you. They are not shown to other people, and they are not sent to Thumos.</T>
       <T variant="muted">This consent screen is plain language, not a solicitor’s privacy notice. Have it reviewed before a public launch. Version {formatUkLong(parseIsoDay(CONSENT_VERSION))}.</T>
     </View>
   );

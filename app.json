@@ -17,7 +17,9 @@
         "usesNonExemptEncryption": false
       },
       "infoPlist": {
-        "NSMicrophoneUsageDescription": "Charioteer uses the microphone if you start a voice conversation with Thumos. Full voice is not finished in this version."
+        "NSMicrophoneUsageDescription": "Charioteer uses the microphone if you start a voice conversation with Thumos. Full voice is not finished in this version.",
+        "NSCameraUsageDescription": "Charioteer uses the camera so you can take a private progress photo. Other people cannot see it, and it is not sent to the coach.",
+        "NSPhotoLibraryUsageDescription": "Charioteer uses your photo library so you can add a private progress photo. Other people cannot see it, and it is not sent to the coach."
       }
     },
     "android": {
@@ -36,6 +38,13 @@
     "plugins": [
       "expo-router",
       "expo-apple-authentication",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Charioteer uses your photo library so you can add a private progress photo. Other people cannot see it, and it is not sent to the coach.",
+          "cameraPermission": "Charioteer uses the camera so you can take a private progress photo. Other people cannot see it, and it is not sent to the coach."
+        }
+      ],
       "expo-secure-store",
       [
         "expo-splash-screen",

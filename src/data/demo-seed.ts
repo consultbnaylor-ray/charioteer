@@ -1,7 +1,9 @@
 import { CONSENT_VERSION, INTEREST_CATALOGUE, RESOURCE_CATALOGUE } from '@/data/catalogue';
 import { consentRows } from '@/domain/consents';
 import type { StoredConsent } from '@/domain/consents';
-import type { CheckIn, Connection, DirectMessage, HealthSample, Profile, Reason, Relapse, ThumosMessage } from '@/data/types';
+import type { CheckIn, Connection, DirectMessage, HealthSample, Profile, ProgressPhoto, Reason, Relapse, ThumosMessage } from '@/data/types';
+import { isoDay } from '@/domain/dates';
+import { planProgressPhoto, progressStoragePath } from '@/domain/progressPhotos';
 
 export const DEMO_PASSWORD = 'Charioteer-demo-1';
 
@@ -32,6 +34,7 @@ export type DemoAccount = {
   health: HealthSample[];
   thumos: ThumosMessage[];
   consents: StoredConsent[];
+  progressPhotos: ProgressPhoto[];
 };
 
 export type DemoDb = {
@@ -82,7 +85,24 @@ function profile(
     weeklyUnitsGoal: null,
     drinkFreeDaysGoal: null,
     drinkFreeOn: [],
+    createdAt: '2026-01-01T00:00:00.000Z',
     ...extra,
+  };
+}
+
+/** A tiny grey JPEG so the sample timeline can render without a camera. */
+const SAMPLE_JPEG =
+  'data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAP//////////////////////////////////////////////////////////////////////////////////////2wBDAf//////////////////////////////////////////////////////////////////////////////////////wAARCAABAAEDASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAb/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/8QAFQEBAQAAAAAAAAAAAAAAAAAAAAX/xAAUEQEAAAAAAAAAAAAAAAAAAAAA/9oADAMBAAIQAxAAAAGf/9k=';
+
+function samplePhoto(userId: string, photoId: string, takenOn: string, monthIndex: number, note: string, createdAt: string): ProgressPhoto {
+  return {
+    id: photoId,
+    takenOn,
+    monthIndex,
+    note,
+    storagePath: progressStoragePath(userId, photoId),
+    createdAt,
+    previewUrl: SAMPLE_JPEG,
   };
 }
 
@@ -143,7 +163,29 @@ export function createDemoDb(now = new Date()): DemoDb {
     health,
     thumos,
     consents: consentRows(CONSENT_VERSION, { consentHealth: true, communityVisible: true, consentAi: true }),
+    progressPhotos: [],
   };
+  const anchor = new Date(started);
+  const startPlan = planProgressPhoto({
+    takenOn: isoDay(anchor),
+    startingPoint: true,
+    note: 'Where I began.',
+    anchor,
+    today: isoDay(now),
+  });
+  const nowPlan = planProgressPhoto({
+    takenOn: isoDay(now),
+    startingPoint: false,
+    note: '',
+    anchor,
+    today: isoDay(now),
+  });
+  if (startPlan.ok) {
+    alex.progressPhotos.push(samplePhoto(PEOPLE.alex, 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb1', startPlan.takenOn, startPlan.monthIndex, startPlan.note, started));
+  }
+  if (nowPlan.ok) {
+    alex.progressPhotos.push(samplePhoto(PEOPLE.alex, 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb2', nowPlan.takenOn, nowPlan.monthIndex, nowPlan.note, now.toISOString()));
+  }
 
   const other = (
     id: string,
@@ -162,6 +204,7 @@ export function createDemoDb(now = new Date()): DemoDb {
     health: [],
     thumos: [],
     consents: consentRows(CONSENT_VERSION, { consentHealth: true, communityVisible: true, consentAi: true }),
+    progressPhotos: [],
   });
 
   const connectionId = 'cccccccc-cccc-4ccc-8ccc-ccccccccccc1';

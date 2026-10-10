@@ -8,6 +8,7 @@ import {
   WRONG_PASSWORD_MESSAGE,
 } from '@/domain/errors';
 import { randomId } from '@/domain/id';
+import { planProgressPhoto, progressAnchor, progressPhotoLabel, progressStoragePath, PROGRESS_MAX_BYTES } from '@/domain/progressPhotos';
 import { planCustomInterest, validateTown } from '@/domain/privacy';
 import { planRelapse } from '@/domain/sober';
 import { detectSafety, ensureSafetyNotices } from '@/domain/safety';
@@ -22,6 +23,7 @@ import type {
   DirectoryCard,
   NewCheckIn,
   NewHealthSample,
+  NewProgressPhoto,
   NewReport,
   OnboardingInput,
   ProfilePatch,
@@ -48,7 +50,17 @@ function readyProfile(profile: DemoAccount['profile']): DemoAccount['profile'] {
     weeklyUnitsGoal: profile.weeklyUnitsGoal ?? null,
     drinkFreeDaysGoal: profile.drinkFreeDaysGoal ?? null,
     drinkFreeOn: profile.drinkFreeOn ?? [],
+    createdAt: profile.createdAt || '2026-01-01T00:00:00.000Z',
   };
+}
+
+function bytesToDataUrl(bytes: Uint8Array): string {
+  let binary = '';
+  const size = 0x8000;
+  for (let index = 0; index < bytes.length; index += size) {
+    binary += String.fromCharCode(...bytes.subarray(index, index + size));
+  }
+  return `data:image/jpeg;base64,${btoa(binary)}`;
 }
 
 function clone<T>(value: T): T {
@@ -134,6 +146,9 @@ export class DemoRepository implements Repository {
       reports,
       thumos: account ? [...account.thumos] : [],
       consents: account?.consents ?? [],
+      progressPhotos: account
+        ? [...(account.progressPhotos ?? [])].sort((a, b) => a.monthIndex - b.monthIndex || a.takenOn.localeCompare(b.takenOn))
+        : [],
       profile: account ? readyProfile(account.profile) : null,
     };
   }
@@ -152,9 +167,22 @@ export class DemoRepository implements Repository {
     } catch {
       this.db = createDemoDb();
     }
+    this.backfillProgressPhotos();
     this.ready = true;
     this.snapshot = this.derive();
     this.listeners.forEach((listener) => listener());
+  }
+
+  /** Sample photos for a demo account saved before this field existed. An empty list stays empty. */
+  private backfillProgressPhotos() {
+    const fresh = createDemoDb();
+    for (const [id, account] of Object.entries(this.db.accounts)) {
+      if (account.progressPhotos) continue;
+      account.progressPhotos = fresh.accounts[id]?.progressPhotos ?? [];
+      if (!account.profile.createdAt) {
+        account.profile.createdAt = fresh.accounts[id]?.profile.createdAt ?? new Date(0).toISOString();
+      }
+    }
   }
 
   private me(): DemoAccount {
@@ -205,6 +233,7 @@ export class DemoRepository implements Repository {
         weeklyUnitsGoal: null,
         drinkFreeDaysGoal: null,
         drinkFreeOn: [],
+        createdAt: new Date().toISOString(),
       },
       reasons: [],
       checkIns: [],
@@ -212,6 +241,7 @@ export class DemoRepository implements Repository {
       health: [],
       thumos: [],
       consents: [],
+      progressPhotos: [],
     };
     const db = clone(this.db);
     db.accounts[id] = account;
@@ -535,6 +565,42 @@ export class DemoRepository implements Repository {
     };
   }
 
+  async addProgressPhoto(input: NewProgressPhoto): Promise<void> {
+    const account = this.me();
+    if (input.bytes.byteLength > PROGRESS_MAX_BYTES) throw new UserFacingError('That photo is still too large.', 'generic');
+    const anchor = progressAnchor(account.profile.sobrietyStartedAt, account.profile.createdAt);
+    const plan = planProgressPhoto({
+      takenOn: input.takenOn,
+      startingPoint: input.startingPoint,
+      note: input.note,
+      anchor,
+    });
+    if (!plan.ok) throw new UserFacingError(plan.message, 'generic');
+    const id = uid();
+    const db = clone(this.db);
+    const next = db.accounts[account.profile.id];
+    const photos = next.progressPhotos ?? [];
+    photos.push({
+      id,
+      takenOn: plan.takenOn,
+      monthIndex: plan.monthIndex,
+      note: plan.note,
+      storagePath: progressStoragePath(account.profile.id, id),
+      createdAt: new Date().toISOString(),
+      previewUrl: bytesToDataUrl(input.bytes),
+    });
+    next.progressPhotos = photos;
+    this.commit(db);
+  }
+
+  async deleteProgressPhoto(id: string): Promise<void> {
+    const account = this.me();
+    const db = clone(this.db);
+    const next = db.accounts[account.profile.id];
+    next.progressPhotos = (next.progressPhotos ?? []).filter((photo) => photo.id !== id);
+    this.commit(db);
+  }
+
   async exportData(): Promise<Record<string, unknown>> {
     const account = this.me();
     const id = account.profile.id;
@@ -551,6 +617,16 @@ export class DemoRepository implements Repository {
       messages: this.snapshot.messages,
       reports: this.db.reports.filter((report) => report.reporterId === id),
       consentVersion: CONSENT_VERSION,
+      progress_photos: (account.progressPhotos ?? []).map((photo) => ({
+        id: photo.id,
+        taken_on: photo.takenOn,
+        month_index: photo.monthIndex,
+        note: photo.note,
+        storage_path: photo.storagePath,
+        created_at: photo.createdAt,
+        label: progressPhotoLabel(photo.monthIndex, photo.takenOn),
+        signed_url: photo.previewUrl,
+      })),
     };
   }
 

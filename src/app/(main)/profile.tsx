@@ -10,6 +10,7 @@ import { formatUkDate, isoDay, parseIsoDay, startOfLocalDay } from '@/domain/dat
 import { parseDrinkFreeGoal, parseUnitsGoal, showsSoberRecord, STAGE_LABELS, STAGES, SUDDEN_STOP_WARNING, validateStageStep, type Stage } from '@/domain/stage';
 import { shownError } from '@/domain/errors';
 import { ConsentChoices } from '@/ui/ConsentChoices';
+import { ProgressPhotos } from '@/ui/ProgressPhotos';
 import { UnitsGuide } from '@/ui/UnitsGuide';
 import { DateField } from '@/ui/DateField';
 import { Button, Card, Choice, ErrorNote, Field, Screen, T } from '@/ui/ui';
@@ -169,6 +170,7 @@ export default function Profile() {
         <ConsentChoices community={community} health={health} ai={ai} onCommunity={setCommunity} onHealth={setHealth} onAi={setAi} />
         <Button label="Save your details" onPress={() => void saveDetails()} />
       </Card>
+      <ProgressPhotos />
       <Card>
         <T variant="label">Appearance</T>
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
