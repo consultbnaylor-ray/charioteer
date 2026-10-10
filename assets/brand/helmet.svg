@@ -1,6 +1,8 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 80 80" fill="currentColor" role="img" aria-label="Winged charioteer helmet">
   <title>Charioteer</title>
-  <path d="M29 28L16 20L10 10L20 18L16 6L28 18L33 26Z"/>
-  <path d="M51 28L64 20L70 10L60 18L64 6L52 18L47 26Z"/>
-  <path fill-rule="evenodd" d="M28 22C28 12 33 6 40 6C47 6 52 12 52 22L56 58C56 66 50 70 44 70L40 64L36 70C30 70 24 66 24 58ZM33 24H47V32H43V44H37V32H33Z"/>
+  <path d="M28 12L8 2L14 2L30 14Z"/>
+  <path d="M34 20L6 8L12 12L36 24Z"/>
+  <path d="M32 28L4 22L6 30L34 34Z"/>
+  <path d="M30 38L8 38L10 46L32 44Z"/>
+  <path fill-rule="evenodd" d="M72 34L62 26L54 18L42 14L36 6L20 6L26 16L18 22L16 36L6 44L10 56L24 48L32 58L64 66L70 54L58 48L50 42L56 34L66 36ZM42 22H56V28H52V36H46V28H42Z"/>
 </svg>

@@ -3,11 +3,17 @@ import { dirname, resolve } from 'node:path';
 import { Resvg } from '@resvg/resvg-js';
 
 const root = resolve(import.meta.dirname, '..');
-const markPaths = readFileSync(resolve(root, 'assets/brand/helmet.svg'), 'utf8')
-  .replace(/<title>[\s\S]*?<\/title>/, '')
-  .replace(/^[\s\S]*?<svg[^>]*>/, '')
-  .replace(/<\/svg>\s*$/, '')
-  .replaceAll('currentColor', 'inherit');
+
+function pathsFrom(file) {
+  return readFileSync(resolve(root, file), 'utf8')
+    .replace(/<title>[\s\S]*?<\/title>/, '')
+    .replace(/^[\s\S]*?<svg[^>]*>/, '')
+    .replace(/<\/svg>\s*$/, '')
+    .replaceAll('currentColor', 'inherit');
+}
+
+const detailedPaths = pathsFrom('assets/brand/helmet.svg');
+const iconPaths = pathsFrom('assets/brand/helmet-icon.svg');
 
 const ink = '#111111';
 const paper = '#F2F2EE';
@@ -21,8 +27,8 @@ ${inner}
 </svg>`;
 }
 
-function markGroup(fill, transform) {
-  return `<g fill="${fill}" transform="${transform}">${markPaths}</g>`;
+function markGroup(fill, transform, paths = detailedPaths) {
+  return `<g fill="${fill}" transform="${transform}">${paths}</g>`;
 }
 
 function png(svg, width) {
@@ -43,26 +49,27 @@ function write(file, svg, width) {
   writeFileSync(file, png(svg, width));
 }
 
-function icon(fill, background, paddingRatio) {
+function plain(fill, paths = detailedPaths) {
+  return svgWrap(markGroup(fill, '', paths));
+}
+
+function iconArt(fill, background, paddingRatio, paths) {
   const pad = 80 * paddingRatio;
   const scale = (80 - pad * 2) / 80;
   return svgWrap(
-    `<rect width="80" height="80" fill="${background}"/>${markGroup(fill, `translate(${pad} ${pad}) scale(${scale})`)}`,
+    `<rect width="80" height="80" fill="${background}"/>${markGroup(fill, `translate(${pad} ${pad}) scale(${scale})`, paths)}`,
   );
-}
-
-function plain(fill) {
-  return svgWrap(markGroup(fill, ''));
 }
 
 const ios = [1024, 180, 167, 152, 120, 87, 80, 76, 60, 58, 40, 29, 20];
 for (const size of ios) {
-  write(resolve(root, `assets/brand/ios/icon-${size}.png`), icon(white, black, 0.12), size);
+  const paths = size <= 40 ? iconPaths : detailedPaths;
+  write(resolve(root, `assets/brand/ios/icon-${size}.png`), iconArt(white, black, 0.14, paths), size);
 }
 
-write(resolve(root, 'assets/brand/favicon-16.png'), icon(white, black, 0.1), 16);
-write(resolve(root, 'assets/brand/favicon-32.png'), icon(white, black, 0.1), 32);
-write(resolve(root, 'assets/brand/favicon-48.png'), icon(white, black, 0.1), 48);
+write(resolve(root, 'assets/brand/favicon-16.png'), iconArt(white, black, 0.08, iconPaths), 16);
+write(resolve(root, 'assets/brand/favicon-32.png'), iconArt(white, black, 0.08, iconPaths), 32);
+write(resolve(root, 'assets/brand/favicon-48.png'), iconArt(white, black, 0.1, detailedPaths), 48);
 write(resolve(root, 'assets/brand/splash-icon.png'), plain(white), 512);
 write(resolve(root, 'assets/brand/adaptive-foreground.png'), plain(white).replace(
   'viewBox="0 0 80 80"',
@@ -72,8 +79,8 @@ write(resolve(root, 'assets/brand/adaptive-monochrome.png'), plain('#000').repla
   'viewBox="0 0 80 80"',
   'viewBox="-18 -18 116 116"',
 ), 1024);
-write(resolve(root, 'assets/brand/helmet-on-light.png'), icon(ink, paper, 0.08), 512);
-write(resolve(root, 'assets/brand/helmet-on-dark.png'), icon(white, black, 0.08), 512);
+write(resolve(root, 'assets/brand/helmet-on-light.png'), iconArt(ink, paper, 0.06, detailedPaths), 512);
+write(resolve(root, 'assets/brand/helmet-on-dark.png'), iconArt(white, black, 0.06, detailedPaths), 512);
 
 const lockup = (fill, background) => `<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" width="640" height="120" viewBox="0 0 640 120">
@@ -94,10 +101,11 @@ const board = `<?xml version="1.0" encoding="UTF-8"?>
   <text x="80" y="430" fill="${ink}" font-family="Oswald" font-size="54" letter-spacing="8">CHARIOTEER</text>
   <text x="780" y="430" fill="${white}" font-family="Oswald" font-size="54" letter-spacing="8">CHARIOTEER</text>
   ${[16, 24, 32, 48, 64].map((size, index) => {
+    const paths = size <= 32 ? iconPaths : detailedPaths;
     const x = 80 + index * 110;
-    return `${markGroup(ink, `translate(${x} 490) scale(${size / 80})`)}
+    return `${markGroup(ink, `translate(${x} 490) scale(${size / 80})`, paths)}
       <text x="${x}" y="590" fill="#4C4C47" font-family="Oswald" font-size="16">${size}</text>
-      ${markGroup(white, `translate(${x + 700} 490) scale(${size / 80})`)}
+      ${markGroup(white, `translate(${x + 700} 490) scale(${size / 80})`, paths)}
       <text x="${x + 700}" y="590" fill="#B3B3AC" font-family="Oswald" font-size="16">${size}</text>`;
   }).join('\n')}
   <rect x="80" y="640" width="160" height="160" fill="${black}"/>
