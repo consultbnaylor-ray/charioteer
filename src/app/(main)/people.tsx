@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { View } from 'react-native';
 
 import { useRepository, useSnapshot } from '@/data';
+import { shownError } from '@/domain/errors';
 import { Button, Card, Choice, ErrorNote, Screen, T } from '@/ui/ui';
 
 export default function People() {
@@ -52,7 +53,7 @@ export default function People() {
               disabled={linked}
               onPress={() => {
                 setError(null);
-                void repo.requestConnection(card.id).catch((err: unknown) => setError(err instanceof Error ? err.message : 'Could not send that.'));
+                void repo.requestConnection(card.id).catch((err: unknown) => setError(shownError(err, 'Could not send that.')));
               }}
             />
           </Card>

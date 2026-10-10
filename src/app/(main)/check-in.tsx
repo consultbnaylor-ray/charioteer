@@ -5,6 +5,7 @@ import { View } from 'react-native';
 import { useRepository, useSnapshot } from '@/data';
 import { MOODS } from '@/data/catalogue';
 import type { Mood } from '@/data/types';
+import { shownError } from '@/domain/errors';
 import { Button, Card, Choice, ErrorNote, Field, Screen, T } from '@/ui/ui';
 
 export default function CheckIn() {
@@ -50,7 +51,7 @@ export default function CheckIn() {
           void repo.addCheckIn({ mood, sleepHours, craving, note }).then(() => {
             setSavedCraving(craving);
             setNote('');
-          }).catch((err: unknown) => setError(err instanceof Error ? err.message : 'Could not save.')).finally(() => setPending(false));
+          }).catch((err: unknown) => setError(shownError(err, 'Could not save.'))).finally(() => setPending(false));
         }}
       />
       {savedCraving != null && savedCraving >= 6 ? (

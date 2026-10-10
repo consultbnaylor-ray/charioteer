@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Switch, View } from 'react-native';
 
 import { useRepository, useSnapshot } from '@/data';
+import { shownError } from '@/domain/errors';
 import { validateTown } from '@/domain/privacy';
 import { Button, Choice, ErrorNote, Field, Screen, T } from '@/ui/ui';
 import { useAppTheme } from '@/ui/theme';
@@ -84,7 +85,7 @@ export default function Onboarding() {
         consentAi: ai,
       });
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not save.');
+      setError(shownError(err, 'Could not save.'));
     } finally {
       setPending(false);
     }
@@ -158,7 +159,7 @@ export default function Onboarding() {
                 const match = repo.getSnapshot().interests.find((item) => item.label.toLowerCase() === label.toLowerCase());
                 if (match) setInterestIds((current) => (current.includes(match.id) ? current : [...current, match.id]));
                 setCustom('');
-              }).catch((err: unknown) => setError(err instanceof Error ? err.message : 'Could not add that.'));
+              }).catch((err: unknown) => setError(shownError(err, 'Could not add that.')));
             }}
           />
         </View>

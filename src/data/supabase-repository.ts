@@ -3,7 +3,19 @@ import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { Platform } from 'react-native';
 
 import { signInWithApple as nativeApple } from '@/auth/appleSignIn';
+import {
+  CONFIRM_EMAIL_MESSAGE,
+  EMAIL_TAKEN_MESSAGE,
+  OFFLINE_MESSAGE,
+  RESET_NEEDS_EMAIL,
+  UserFacingError,
+  WEAK_PASSWORD_MESSAGE,
+  asUserFacing,
+  isTransientNetworkError,
+} from '@/domain/errors';
+import { passwordResetRedirect, recoveryLink } from '@/domain/passwordReset';
 import { slugifyInterest, validateTown } from '@/domain/privacy';
+import { fetchWithOneRetry } from '@/domain/retryFetch';
 import { planRelapse } from '@/domain/sober';
 import { parseSseBuffer } from '@/domain/sse';
 import { detectSafety } from '@/domain/safety';
@@ -90,7 +102,9 @@ export class SupabaseRepository implements Repository {
         autoRefreshToken: !staticWebRender,
         persistSession: !staticWebRender,
         detectSessionInUrl: Platform.OS === 'web' && !staticWebRender,
+        flowType: 'implicit',
       },
+      global: { fetch: fetchWithOneRetry() },
     });
     if (!staticWebRender) void this.start();
   }
@@ -229,26 +243,118 @@ export class SupabaseRepository implements Repository {
   }
 
   async signIn(email: string, password: string): Promise<void> {
-    const { error } = await this.client.auth.signInWithPassword({ email: email.trim(), password });
-    if (error) throw new Error(error.message);
-    await this.refresh();
+    try {
+      const { error } = await this.client.auth.signInWithPassword({ email: email.trim(), password });
+      if (error) throw error;
+      await this.refresh();
+    } catch (error) {
+      throw asUserFacing(error, 'sign-in');
+    }
   }
 
   async signUp(email: string, password: string, displayName: string): Promise<void> {
-    const { error } = await this.client.auth.signUp({
-      email: email.trim(),
-      password,
-      options: { data: { display_name: displayName.trim() } },
-    });
-    if (error) throw new Error(error.message);
-    const { data } = await this.client.auth.getSession();
-    if (!data.session) throw new Error('Check your email to confirm the account, then sign in.');
-    await this.refresh();
+    if (password.length < 8) throw new UserFacingError(WEAK_PASSWORD_MESSAGE, 'weak_password');
+    const normalised = email.trim();
+    try {
+      const { data, error } = await this.client.auth.signUp({
+        email: normalised,
+        password,
+        options: { data: { display_name: displayName.trim() } },
+      });
+      if (error) throw error;
+      if (data.user && Array.isArray(data.user.identities) && data.user.identities.length === 0) {
+        throw new UserFacingError(EMAIL_TAKEN_MESSAGE, 'email_taken');
+      }
+      const session = data.session ?? (await this.client.auth.getSession()).data.session;
+      if (!session) throw new UserFacingError(CONFIRM_EMAIL_MESSAGE, 'confirm_email');
+      await this.refresh();
+    } catch (error) {
+      if (error instanceof UserFacingError) throw error;
+      if (isTransientNetworkError(error)) {
+        console.error('sign-up failed', error);
+        const recovered = await this.probeSignUp(normalised, password);
+        if (recovered === 'signed-in') return;
+        if (recovered === 'confirm') throw new UserFacingError(CONFIRM_EMAIL_MESSAGE, 'confirm_email');
+        if (recovered === 'unreachable') throw new UserFacingError(OFFLINE_MESSAGE, 'offline');
+        throw new UserFacingError('Could not create the account. Try again.', 'generic');
+      }
+      throw asUserFacing(error, 'sign-up');
+    }
+  }
+
+  /**
+   * Sign-up itself is not retried. If the response was lost, a sign-in tells us
+   * whether that password now belongs to an account.
+   */
+  private async probeSignUp(email: string, password: string): Promise<'signed-in' | 'confirm' | 'unreachable' | 'answered'> {
+    try {
+      const { error } = await this.client.auth.signInWithPassword({ email, password });
+      if (!error) {
+        await this.refresh();
+        return 'signed-in';
+      }
+      const faced = asUserFacing(error, 'sign-in');
+      if (faced.code === 'confirm_email') return 'confirm';
+      return 'answered';
+    } catch (error) {
+      console.error('sign-up existence check failed', error);
+      return isTransientNetworkError(error) ? 'unreachable' : 'answered';
+    }
+  }
+
+  async requestPasswordReset(email: string): Promise<void> {
+    const trimmed = email.trim();
+    if (!trimmed || !trimmed.includes('@')) throw new UserFacingError(RESET_NEEDS_EMAIL, 'generic');
+    const redirectTo = passwordResetRedirect(
+      Platform.OS === 'web' ? 'web' : 'native',
+      Platform.OS === 'web' && typeof window !== 'undefined' ? window.location.origin : undefined,
+    );
+    try {
+      const { error } = await this.client.auth.resetPasswordForEmail(trimmed, { redirectTo });
+      if (error) throw error;
+    } catch (error) {
+      throw asUserFacing(error, 'reset');
+    }
+  }
+
+  async updatePassword(password: string): Promise<void> {
+    if (password.length < 8) throw new UserFacingError(WEAK_PASSWORD_MESSAGE, 'weak_password');
+    try {
+      const { error } = await this.client.auth.updateUser({ password });
+      if (error) throw error;
+      await this.refresh();
+    } catch (error) {
+      throw asUserFacing(error, 'reset');
+    }
+  }
+
+  async completeAuthRedirect(url: string): Promise<void> {
+    const link = recoveryLink(url);
+    if (!link) return;
+    try {
+      if (link.kind === 'code') {
+        const { error } = await this.client.auth.exchangeCodeForSession(link.code);
+        if (error) throw error;
+      } else {
+        const { error } = await this.client.auth.setSession({
+          access_token: link.accessToken,
+          refresh_token: link.refreshToken,
+        });
+        if (error) throw error;
+      }
+      await this.refresh();
+    } catch (error) {
+      throw asUserFacing(error, 'reset');
+    }
   }
 
   async signInWithApple(): Promise<void> {
-    await nativeApple(this.client);
-    await this.refresh();
+    try {
+      await nativeApple(this.client);
+      await this.refresh();
+    } catch (error) {
+      throw asUserFacing(error, 'sign-in');
+    }
   }
 
   async signOut(): Promise<void> {
@@ -497,7 +603,7 @@ export class SupabaseRepository implements Repository {
         return;
       }
       const body = (await response.json().catch(() => null)) as { message?: string } | null;
-      throw new Error(body?.message ?? 'Could not send that.');
+      throw asUserFacing(new Error(body?.message ?? 'Could not send that.'), 'thumos');
     }
 
     const contentType = response.headers.get('content-type') ?? '';
@@ -548,7 +654,7 @@ export class SupabaseRepository implements Repository {
       apply(`${await response.text()}\n\n`);
     }
 
-    if (failed) throw new Error(failed);
+    if (failed) throw asUserFacing(new Error(failed), 'thumos');
     await this.refresh();
   }
 
@@ -558,7 +664,7 @@ export class SupabaseRepository implements Repository {
       { user_id: userId, role: 'user', content: text, mode },
       { user_id: userId, role: 'offline', content: OFFLINE_COACH_MESSAGE, mode: 'support' },
     ]);
-    if (insertError) throw new Error(insertError.message);
+    if (insertError) throw asUserFacing(insertError, 'thumos');
     await this.refresh();
   }
 

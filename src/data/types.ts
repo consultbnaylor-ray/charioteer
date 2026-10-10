@@ -188,6 +188,9 @@ export interface Repository {
   signIn(email: string, password: string): Promise<void>;
   signUp(email: string, password: string, displayName: string): Promise<void>;
   signInWithApple(): Promise<void>;
+  requestPasswordReset(email: string): Promise<void>;
+  updatePassword(password: string): Promise<void>;
+  completeAuthRedirect(url: string): Promise<void>;
   signOut(): Promise<void>;
   completeOnboarding(input: OnboardingInput): Promise<void>;
   updateProfile(patch: ProfilePatch): Promise<void>;

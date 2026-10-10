@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { View } from 'react-native';
 
 import { useRepository, useSnapshot } from '@/data';
+import { shownError } from '@/domain/errors';
 import { Button, Card, Choice, ErrorNote, Field, Screen, T } from '@/ui/ui';
 import { useAppTheme } from '@/ui/theme';
 
@@ -40,7 +41,7 @@ export default function Chat() {
       <ErrorNote>{error}</ErrorNote>
       <Button label="Send" onPress={() => {
         setError(null);
-        void repo.sendDirectMessage(connection.id, draft).then(() => setDraft('')).catch((err: unknown) => setError(err instanceof Error ? err.message : 'Could not send.'));
+        void repo.sendDirectMessage(connection.id, draft).then(() => setDraft('')).catch((err: unknown) => setError(shownError(err, 'Could not send.')));
       }} />
       <View style={{ flexDirection: 'row', gap: 10 }}>
         <View style={{ flex: 1 }}><Button label="Block" tone="quiet" onPress={() => void repo.blockUser(otherId)} /></View>
@@ -57,7 +58,7 @@ export default function Chat() {
             void repo.reportUser({ reportedUserId: otherId, reason, details }).then(() => {
               setReporting(false);
               setDetails('');
-            }).catch((err: unknown) => setError(err instanceof Error ? err.message : 'Could not send the report.'));
+            }).catch((err: unknown) => setError(shownError(err, 'Could not send the report.')));
           }} />
           <T variant="muted">Reports go to a moderation queue. In this version that queue is the reports table, visible to moderators.</T>
         </Card>

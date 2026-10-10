@@ -2,6 +2,7 @@ import { Oswald_700Bold } from '@expo-google-fonts/oswald';
 import { Barlow_400Regular, Barlow_400Regular_Italic, Barlow_600SemiBold } from '@expo-google-fonts/barlow';
 import { useFonts } from 'expo-font';
 import { Stack, usePathname, useRouter } from 'expo-router';
+import * as Linking from 'expo-linking';
 import * as SplashScreen from 'expo-splash-screen';
 import { useEffect } from 'react';
 import { Platform, View } from 'react-native';
@@ -13,6 +14,8 @@ import { font, ThemeProvider, useAppTheme } from '@/ui/theme';
 import { Mark, T, Wordmark } from '@/ui/ui';
 
 SplashScreen.preventAutoHideAsync().catch(() => undefined);
+
+let handledResetUrl: string | null = null;
 
 export default function RootLayout() {
   const [loaded, error] = useFonts({
@@ -60,7 +63,20 @@ function Chrome() {
   }, [theme.colors.bg]);
 
   useEffect(() => {
+    const openReset = (url: string | null) => {
+      if (!url || !url.includes('set-password') || handledResetUrl === url) return;
+      handledResetUrl = url;
+      if (Platform.OS === 'web' && typeof window !== 'undefined' && window.location.pathname.includes('set-password')) return;
+      router.replace('/set-password');
+    };
+    void Linking.getInitialURL().then(openReset);
+    const subscription = Linking.addEventListener('url', (event) => openReset(event.url));
+    return () => subscription.remove();
+  }, [router]);
+
+  useEffect(() => {
     if (!snap.ready) return;
+    if (pathname === '/set-password') return;
     const authed = Boolean(snap.session);
     const onboarded = Boolean(snap.profile?.onboardingComplete);
     const authRoute = pathname === '/sign-in' || pathname === '/sign-up';

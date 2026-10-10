@@ -1,25 +1,38 @@
-import { Link } from 'expo-router';
+import { Link, useLocalSearchParams } from 'expo-router';
 import * as Linking from 'expo-linking';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Pressable, View } from 'react-native';
 
 import { appleSignInEnabled } from '@/config/publicEnv';
 import { useRepository, useSnapshot } from '@/data';
 import { crisisHelplines } from '@/data/catalogue';
 import { DEMO_PASSWORD } from '@/data/demo-seed';
+import { RESET_SENT_MESSAGE, asUserFacing } from '@/domain/errors';
 import { Button, Card, ErrorNote, Field, Mark, Screen, T, Wordmark } from '@/ui/ui';
 import { useAppTheme } from '@/ui/theme';
+
+function firstParam(value: string | string[] | undefined): string {
+  return Array.isArray(value) ? value[0] ?? '' : value ?? '';
+}
 
 export default function SignIn() {
   const repo = useRepository();
   const snap = useSnapshot();
   const theme = useAppTheme();
-  const [email, setEmail] = useState('');
+  const params = useLocalSearchParams<{ email?: string | string[] }>();
+  const [email, setEmail] = useState(() => firstParam(params.email));
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
+  const [resetPending, setResetPending] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
   const helplines = crisisHelplines(snap.resources);
+
+  useEffect(() => {
+    const next = firstParam(params.email);
+    if (next) setEmail(next);
+  }, [params.email]);
 
   async function submit(nextEmail: string, nextPassword: string) {
     setPending(true);
@@ -27,9 +40,23 @@ export default function SignIn() {
     try {
       await repo.signIn(nextEmail, nextPassword);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not sign in.');
+      setError(asUserFacing(err, 'sign-in').message);
     } finally {
       setPending(false);
+    }
+  }
+
+  async function sendReset() {
+    setError(null);
+    setNotice(null);
+    setResetPending(true);
+    try {
+      await repo.requestPasswordReset(email);
+      setNotice(RESET_SENT_MESSAGE);
+    } catch (err) {
+      setError(asUserFacing(err, 'reset').message);
+    } finally {
+      setResetPending(false);
     }
   }
 
@@ -82,12 +109,17 @@ export default function SignIn() {
       ) : null}
       <Field label="Email" value={email} onChangeText={setEmail} keyboardType="email-address" placeholder="you@example.com" />
       <Field label="Password" value={password} onChangeText={setPassword} secureTextEntry textContentType="password" placeholder="Your password" />
+      <Pressable accessibilityRole="button" accessibilityLabel="Forgot password?" onPress={() => void sendReset()} disabled={pending || resetPending}>
+        <T variant="body" style={{ textDecorationLine: 'underline' }}>Forgot password?</T>
+      </Pressable>
       <ErrorNote>{error}</ErrorNote>
+      {notice ? <T variant="muted">{notice}</T> : null}
       <Button label="Sign in" pending={pending} onPress={() => submit(email, password)} />
       {appleSignInEnabled() ? (
         <Button label="Sign in with Apple" tone="quiet" onPress={() => {
           setError(null);
-          void repo.signInWithApple().catch((err: unknown) => setError(err instanceof Error ? err.message : 'Apple sign-in failed.'));
+          setNotice(null);
+          void repo.signInWithApple().catch((err: unknown) => setError(asUserFacing(err, 'sign-in').message));
         }} />
       ) : null}
       <Link href="/sign-up">

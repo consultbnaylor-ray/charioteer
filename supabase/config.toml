@@ -31,7 +31,7 @@ enabled = true
 [auth]
 enabled = true
 site_url = "http://127.0.0.1:43127"
-additional_redirect_urls = ["http://127.0.0.1:43127", "http://localhost:43127", "charioteer://"]
+additional_redirect_urls = ["http://127.0.0.1:43127", "http://127.0.0.1:43127/set-password", "http://localhost:43127", "http://localhost:43127/set-password", "charioteer://", "charioteer://set-password"]
 jwt_expiry = 3600
 enable_signup = true
 enable_anonymous_sign_ins = false

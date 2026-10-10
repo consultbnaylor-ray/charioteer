@@ -1,5 +1,12 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
+import {
+  EMAIL_TAKEN_MESSAGE,
+  RESET_NEEDS_EMAIL,
+  UserFacingError,
+  WEAK_PASSWORD_MESSAGE,
+  WRONG_PASSWORD_MESSAGE,
+} from '@/domain/errors';
 import { slugifyInterest, validateTown } from '@/domain/privacy';
 import { planRelapse } from '@/domain/sober';
 import { detectSafety, ensureSafetyNotices } from '@/domain/safety';
@@ -138,7 +145,7 @@ export class DemoRepository implements Repository {
 
   async signIn(email: string, password: string): Promise<void> {
     const account = Object.values(this.db.accounts).find((item) => item.email.toLowerCase() === email.trim().toLowerCase());
-    if (!account || account.password !== password) throw new Error('Those details do not match a Charioteer account.');
+    if (!account || account.password !== password) throw new UserFacingError(WRONG_PASSWORD_MESSAGE, 'wrong_password');
     const db = clone(this.db);
     db.sessionUserId = account.profile.id;
     this.commit(db);
@@ -146,10 +153,10 @@ export class DemoRepository implements Repository {
 
   async signUp(email: string, password: string, displayName: string): Promise<void> {
     const normalised = email.trim().toLowerCase();
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalised)) throw new Error('Enter a valid email address.');
-    if (password.length < 8) throw new Error('Use at least 8 characters.');
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalised)) throw new UserFacingError('Enter a valid email address.', 'generic');
+    if (password.length < 8) throw new UserFacingError(WEAK_PASSWORD_MESSAGE, 'weak_password');
     if (Object.values(this.db.accounts).some((account) => account.email === normalised)) {
-      throw new Error('That email already has an account.');
+      throw new UserFacingError(EMAIL_TAKEN_MESSAGE, 'email_taken');
     }
     const id = uid();
     const account: DemoAccount = {
@@ -186,7 +193,25 @@ export class DemoRepository implements Repository {
   }
 
   async signInWithApple(): Promise<void> {
-    throw new Error('Sign in with Apple needs Supabase and the Apple provider. Use email in the sample for now.');
+    throw new UserFacingError('Sign in with Apple needs Supabase and the Apple provider. Use email in the sample for now.', 'generic');
+  }
+
+  async requestPasswordReset(email: string): Promise<void> {
+    const trimmed = email.trim();
+    if (!trimmed || !trimmed.includes('@')) throw new UserFacingError(RESET_NEEDS_EMAIL, 'generic');
+    throw new UserFacingError('Password reset emails are not sent for the sample account.', 'generic');
+  }
+
+  async updatePassword(password: string): Promise<void> {
+    if (password.length < 8) throw new UserFacingError(WEAK_PASSWORD_MESSAGE, 'weak_password');
+    const account = this.me();
+    const db = clone(this.db);
+    db.accounts[account.profile.id].password = password;
+    this.commit(db);
+  }
+
+  async completeAuthRedirect(_url: string): Promise<void> {
+    return undefined;
   }
 
   async signOut(): Promise<void> {

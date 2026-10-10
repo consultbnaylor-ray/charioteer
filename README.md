@@ -112,14 +112,23 @@ Apply a hosted migration with `supabase db push` or your usual pipeline. The fir
 
 ## Auth redirect allow-list
 
-The app does not put a path on the custom scheme.
+Add these redirect URLs on the hosted project (Authentication → URL configuration → Redirect URLs). The app sends them exactly, with no extra query string. The reset email then appends the session in the fragment.
+
+- `charioteer://set-password`
+- `http://127.0.0.1:43127/set-password`
+- `http://localhost:43127/set-password`
+
+`charioteer://set-password` is the in-app “set a new password” screen on a device. The two http URLs are the same screen on the local web app. If the web app is opened on another origin, that origin plus `/set-password` has to be listed too, because the web reset uses `window.location.origin`.
+
+Other redirects this app already sends:
 
 - Sign in with Apple on the web sets `redirectTo` to `window.location.origin`, with no path. Locally that origin is `http://127.0.0.1:43127` or `http://localhost:43127`.
 - Sign in with Apple outside the web (the shared OAuth helper, used on Android) sets `redirectTo` to exactly `charioteer://`.
 - Sign in with Apple on iOS uses the native identity token and does not redirect.
 - Email sign-up does not set `emailRedirectTo`. Confirmation uses the project Site URL. In `config.toml` that is `http://127.0.0.1:43127`.
+- Forgot password calls `resetPasswordForEmail` with the set-password URLs above. The client uses the implicit flow, so the return link carries `access_token` and `refresh_token` in the fragment. The app opens `set-password` and saves the new password there.
 
-An allow-list entry of exactly `charioteer://` matches the redirect this app sends today. If a redirect ever includes a path, such as `charioteer://auth/callback`, that exact entry does not cover it. The allow-list then needs `charioteer://**`.
+An allow-list entry of exactly `charioteer://` does not cover `charioteer://set-password`. Add the path itself, or `charioteer://**`.
 
 ## Edge functions
 
@@ -160,7 +169,7 @@ On a Mac with Xcode, enable the HealthKit and Sign in with Apple capabilities if
 
 ## TestFlight from a Mac
 
-Build 1 (`1.0.0`, build number `1`) is the archive already on TestFlight. `expo.ios.buildNumber` is now `"3"` for the next upload. From the repo on a Mac, signed into Xcode as Quantica Labs Ltd:
+Build 3 is the TestFlight build already on Ben's iPhone. `expo.ios.buildNumber` is now `"4"` for the next upload. From the repo on a Mac, signed into Xcode as Quantica Labs Ltd:
 
 ```bash
 npx expo prebuild --platform ios
@@ -186,7 +195,7 @@ xcodebuild \
   -allowProvisioningUpdates
 ```
 
-App Store Connect rejects a second upload that reuses a build number. Before each archive after this one, raise `expo.ios.buildNumber` in `app.json` (`"4"`, then `"5"`, and so on) and run prebuild again so the new value is in the generated project.
+App Store Connect rejects a second upload that reuses a build number. Before each archive after this one, raise `expo.ios.buildNumber` in `app.json` (`"5"`, then `"6"`, and so on) and run prebuild again so the new value is in the generated project.
 
 ## Tests
 

@@ -6,6 +6,7 @@ import { useRepository, useSnapshot } from '@/data';
 import { ALCOHOL_FACTS } from '@/domain/facts';
 import { earnedMilestones } from '@/domain/milestones';
 import { firstSafetyHit, pinnedSafetyNotices } from '@/domain/safety';
+import { asUserFacing } from '@/domain/errors';
 import { inferThumosMode, type ThumosMode } from '@/domain/thumos';
 import { formatClock, urgeRemainingSeconds } from '@/domain/urge';
 import { ensureUrge, restartUrge } from '@/features/urgeSession';
@@ -75,7 +76,7 @@ export default function Thumos() {
       await repo.sendThumos(trimmed, support ? 'support' : mode === 'opening' ? 'steady' : mode, (next) => setLiveReply(next));
     } catch (err) {
       setDraft(trimmed);
-      setError(err instanceof Error ? err.message : 'Could not send that.');
+      setError(asUserFacing(err, 'thumos').message);
     } finally {
       setPending(false);
       setLiveReply('');

@@ -5,6 +5,7 @@ import { Platform, Share, View } from 'react-native';
 
 import { useRepository, useSnapshot } from '@/data';
 import type { TextScale, ThemePreference } from '@/data/types';
+import { shownError } from '@/domain/errors';
 import { Button, Card, Choice, ErrorNote, Field, Screen, T } from '@/ui/ui';
 
 export default function Profile() {
@@ -41,7 +42,7 @@ export default function Profile() {
       await repo.setReasons(reasons.split('\n'));
       setMessage('Saved.');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not save.');
+      setError(shownError(err, 'Could not save.'));
     }
   }
 
@@ -63,7 +64,7 @@ export default function Profile() {
       }
       await Share.share({ message: text });
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not export.');
+      setError(shownError(err, 'Could not export.'));
     }
   }
 
@@ -140,7 +141,7 @@ export default function Profile() {
         tone="sos"
         disabled={confirm !== 'DELETE'}
         onPress={() => {
-          void repo.deleteAccount().catch((err: unknown) => setError(err instanceof Error ? err.message : 'Could not delete the account.'));
+          void repo.deleteAccount().catch((err: unknown) => setError(shownError(err, 'Could not delete the account.')));
         }}
       />
       {snap.mode === 'demo' ? (

@@ -6,6 +6,7 @@ import { useRepository, useSnapshot } from '@/data';
 import { HEALTH_LABELS } from '@/data/catalogue';
 import { earnedMilestones, MILESTONES } from '@/domain/milestones';
 import { formatGbp, savingsFromTypicalWeek } from '@/domain/savings';
+import { shownError } from '@/domain/errors';
 import { soberElapsed } from '@/domain/sober';
 import { Button, Card, ErrorNote, Field, Meter, Screen, T } from '@/ui/ui';
 import { radius, useAppTheme } from '@/ui/theme';
@@ -136,7 +137,7 @@ export default function Home() {
                 void repo.recordRelapse(note).then(() => {
                   setNote('');
                   setRelapseOpen(false);
-                }).catch((err: unknown) => setError(err instanceof Error ? err.message : 'Could not save that.'));
+                }).catch((err: unknown) => setError(shownError(err, 'Could not save that.')));
               }}
             />
           </View>

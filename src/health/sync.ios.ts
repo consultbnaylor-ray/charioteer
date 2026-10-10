@@ -9,6 +9,7 @@ import {
 } from '@kingstinct/react-native-healthkit';
 
 import type { HealthKind, NewHealthSample } from '@/data/types';
+import { shownError } from '@/domain/errors';
 
 export type HealthSyncResult =
   | { ok: true; samples: NewHealthSample[] }
@@ -132,7 +133,7 @@ export async function syncAppleHealth(): Promise<HealthSyncResult> {
 
     return { ok: true, samples };
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Apple Health could not be read.';
+    const message = shownError(error, 'Apple Health could not be read.');
     return { ok: false, message };
   }
 }

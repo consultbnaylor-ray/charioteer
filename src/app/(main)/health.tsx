@@ -4,6 +4,7 @@ import { View } from 'react-native';
 import { useRepository, useSnapshot } from '@/data';
 import { HEALTH_LABELS } from '@/data/catalogue';
 import type { HealthKind } from '@/data/types';
+import { shownError } from '@/domain/errors';
 import { syncAppleHealth } from '@/health/sync';
 import { Button, Card, Choice, ErrorNote, Field, Screen, T } from '@/ui/ui';
 
@@ -74,7 +75,7 @@ export default function Health() {
               setValue('');
               setNote('Saved.');
             })
-            .catch((err: unknown) => setError(err instanceof Error ? err.message : 'Could not save.'));
+            .catch((err: unknown) => setError(shownError(err, 'Could not save.')));
         }}
       />
       <Button
@@ -92,7 +93,7 @@ export default function Health() {
             }
             await repo.saveHealth(result.samples);
             setNote(`Brought in ${result.samples.length} readings from Apple Health.`);
-          }).catch((err: unknown) => setError(err instanceof Error ? err.message : 'Sync failed.')).finally(() => setPending(false));
+          }).catch((err: unknown) => setError(shownError(err, 'Sync failed.'))).finally(() => setPending(false));
         }}
       />
       <T variant="label">Saved</T>
