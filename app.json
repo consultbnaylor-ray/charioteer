@@ -1,18 +1,24 @@
 {
   "expo": {
-    "name": "charioteer-scaffold",
-    "slug": "charioteer-scaffold",
+    "name": "Charioteer",
+    "slug": "charioteer",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "charioteerscaffold",
+    "scheme": "charioteer",
     "userInterfaceStyle": "automatic",
     "ios": {
-      "icon": "./assets/expo.icon"
+      "bundleIdentifier": "uk.co.quanticalabs.charioteer",
+      "usesAppleSignIn": true,
+      "icon": "./assets/expo.icon",
+      "infoPlist": {
+        "NSMicrophoneUsageDescription": "Charioteer uses the microphone if you start a voice conversation with Thumos. Full voice is not finished in this version."
+      }
     },
     "android": {
+      "package": "uk.co.quanticalabs.charioteer",
       "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
+        "backgroundColor": "#F3EEE6",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
         "backgroundImage": "./assets/images/android-icon-background.png",
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
@@ -25,18 +31,27 @@
     },
     "plugins": [
       "expo-router",
+      "expo-apple-authentication",
+      "expo-secure-store",
       [
         "expo-splash-screen",
         {
-          "backgroundColor": "#208AEF",
+          "backgroundColor": "#F3EEE6",
           "image": "./assets/images/splash-icon.png",
           "imageWidth": 76
+        }
+      ],
+      [
+        "@kingstinct/react-native-healthkit",
+        {
+          "NSHealthShareUsageDescription": "Charioteer reads steps, sleep, resting heart rate, heart rate variability, workouts, and weight so you and Thumos can see how your body is doing. Other people cannot see this.",
+          "NSHealthUpdateUsageDescription": "Charioteer does not write to Apple Health. This message is required because the app includes the HealthKit capability."
         }
       ]
     ],
     "experiments": {
-      "typedRoutes": true,
-      "reactCompiler": true
+      "typedRoutes": false,
+      "reactCompiler": false
     }
   }
 }

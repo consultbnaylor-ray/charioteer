@@ -1,0 +1,164 @@
+import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useEffect, useState } from 'react';
+import { View } from 'react-native';
+
+import { useRepository, useSnapshot } from '@/data';
+import { ALCOHOL_FACTS } from '@/domain/facts';
+import { earnedMilestones } from '@/domain/milestones';
+import { detectSafety, SELF_HARM_NOTICE, WITHDRAWAL_NOTICE } from '@/domain/safety';
+import { inferThumosMode, type ThumosMode } from '@/domain/thumos';
+import { formatClock, urgeRemainingSeconds } from '@/domain/urge';
+import { ensureUrge, restartUrge } from '@/features/urgeSession';
+import { openVoiceSession, voiceInstructions } from '@/voice/openVoice';
+import { Button, Card, ErrorNote, Field, Screen, T } from '@/ui/ui';
+import { useAppTheme } from '@/ui/theme';
+
+export default function Thumos() {
+  const params = useLocalSearchParams<{ mode?: string }>();
+  const sos = params.mode === 'craving';
+  const snap = useSnapshot();
+  const repo = useRepository();
+  const router = useRouter();
+  const theme = useAppTheme();
+  const profile = snap.profile;
+  const [draft, setDraft] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const [pending, setPending] = useState(false);
+  const [factOpen, setFactOpen] = useState(false);
+  const [voiceNote, setVoiceNote] = useState<string | null>(null);
+  const [now, setNow] = useState(() => Date.now());
+  const [urgeStart, setUrgeStart] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (!profile) return;
+    void repo.ensureThumosGuide(sos ? 'craving' : 'opening').catch(() => undefined);
+  }, [profile, repo, sos]);
+
+  useEffect(() => {
+    if (!sos) return;
+    setUrgeStart(ensureUrge());
+    const timer = setInterval(() => setNow(Date.now()), 250);
+    return () => clearInterval(timer);
+  }, [sos]);
+
+  if (!profile) return null;
+  const latest = snap.checkIns[0];
+  const mode: ThumosMode = inferThumosMode({
+    sos,
+    hasHistory: snap.thumos.length > 0,
+    latestCraving: latest?.craving,
+    latestMood: latest?.mood,
+    userText: draft,
+  });
+  const lastUser = [...snap.thumos].reverse().find((message) => message.role === 'user');
+  const safety = detectSafety(lastUser?.content ?? '');
+  const remaining = urgeStart == null ? 0 : urgeRemainingSeconds(urgeStart, now);
+  const fact = ALCOHOL_FACTS[0];
+
+  async function send(text = draft) {
+    setPending(true);
+    setError(null);
+    try {
+      await repo.sendThumos(text, sos || mode === 'support' ? 'support' : mode === 'opening' ? 'steady' : mode);
+      setDraft('');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not send that.');
+    } finally {
+      setPending(false);
+    }
+  }
+
+  return (
+    <Screen
+      eyebrow="Thumos"
+      title={sos ? 'Craving support' : 'How are you feeling?'}
+      intro={snap.mode === 'demo'
+        ? 'Earlier replies in the sample are stored examples, so you can see the shape of a conversation. A new message explains, clearly, when the live coach is not connected.'
+        : 'Thumos helps you stay sober and get healthier. It is not a doctor.'}
+    >
+      {sos ? (
+        <Card style={{ backgroundColor: theme.colors.copperSoft, borderColor: theme.colors.copper }}>
+          <T variant="label">Urge timer</T>
+          <T variant="hero">{formatClock(remaining)}</T>
+          <T>Cravings rise, peak, and pass. Many people find the sharpest part eases within about 20 to 30 minutes. That is a guide, not a measurement.</T>
+          {remaining === 0 ? <T>The ten minutes are up. How do you feel now?</T> : null}
+          <Button label="Start the ten minutes again" tone="quiet" onPress={() => { setUrgeStart(restartUrge()); setNow(Date.now()); }} />
+          <Button label="Breathe" tone="sage" onPress={() => router.push('/breathe?exercise=sigh' as never)} />
+          <T variant="label">What happens if you drink?</T>
+          <T>Ask it plainly: what do you think will happen, and is it worth it? A walk, jog, or run can carry you through the peak if you are able.</T>
+          <T variant="label">Your reasons</T>
+          {snap.reasons.length === 0 ? <T variant="muted">You have not written any yet.</T> : snap.reasons.map((reason) => <T key={reason.id}>{reason.body}</T>)}
+          <Button label={factOpen ? 'Hide the sourced fact' : 'Show one sourced fact'} tone="quiet" onPress={() => setFactOpen((value) => !value)} />
+          {factOpen ? (
+            <View>
+              <T>{fact.text}</T>
+              <T variant="muted">{fact.published}</T>
+            </View>
+          ) : null}
+        </Card>
+      ) : null}
+      {(safety.selfHarm || safety.withdrawal) ? (
+        <Card style={{ backgroundColor: theme.colors.dangerSoft, borderColor: theme.colors.danger }}>
+          <T>{safety.selfHarm ? SELF_HARM_NOTICE : null}</T>
+          <T>{safety.withdrawal ? WITHDRAWAL_NOTICE : null}</T>
+        </Card>
+      ) : null}
+      {snap.thumos.map((message) => (
+        <Card key={message.id} style={{ backgroundColor: message.role === 'user' ? theme.colors.sunken : theme.colors.surface }}>
+          <T variant="label">{message.role === 'user' ? 'You' : message.role === 'offline' ? 'Charioteer' : 'Thumos'}</T>
+          <T>{message.content}</T>
+        </Card>
+      ))}
+      {!profile.consentAi ? (
+        <Card>
+          <T>Thumos stays quiet until you agree that messages can be sent to the coach.</T>
+          <Button label="Allow the coach" onPress={() => void repo.updateProfile({ consentAi: true })} />
+        </Card>
+      ) : (
+        <Field label="Message" value={draft} onChangeText={setDraft} multiline placeholder="Say it in your own words" />
+      )}
+      <ErrorNote>{error}</ErrorNote>
+      {voiceNote ? <T variant="muted">{voiceNote}</T> : null}
+      <View style={{ flexDirection: 'row', gap: 10 }}>
+        <View style={{ flex: 1 }}>
+          <Button label="Send" pending={pending} disabled={!profile.consentAi} onPress={() => void send()} />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Button
+            label="Voice"
+            tone="quiet"
+            onPress={() => {
+              setVoiceNote(null);
+              void repo.mintVoiceToken().then(async (mint) => {
+                if (!mint.ok) {
+                  setVoiceNote(mint.message);
+                  return;
+                }
+                const result = await openVoiceSession(mint.token, voiceInstructions({
+                  now: new Date(),
+                  displayName: profile.displayName,
+                  sobrietyStartedAt: profile.sobrietyStartedAt,
+                  reasons: snap.reasons.map((reason) => reason.body),
+                  weeklySpendGbp: profile.weeklySpendGbp,
+                  weeklyUnits: profile.weeklyUnits,
+                  checkIns: snap.checkIns.slice(0, 7).map((item) => ({
+                    createdAt: item.createdAt,
+                    mood: item.mood,
+                    sleepHours: item.sleepHours,
+                    craving: item.craving,
+                    note: item.note,
+                  })),
+                  health: [],
+                  mode: sos ? 'support' : 'steady',
+                  safety,
+                }));
+                setVoiceNote(result.message);
+              });
+            }}
+          />
+        </View>
+      </View>
+      <T variant="muted">Milestones in view: {(profile.sobrietyStartedAt ? earnedMilestones(new Date(profile.sobrietyStartedAt), new Date()) : []).map((item) => item.badge).join(', ') || 'none yet'}.</T>
+    </Screen>
+  );
+}
