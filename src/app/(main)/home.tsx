@@ -6,7 +6,7 @@ import { useRepository, useSnapshot } from '@/data';
 import { HEALTH_LABELS } from '@/data/catalogue';
 import { earnedMilestones, MILESTONES } from '@/domain/milestones';
 import { formatGbp, savingsFromTypicalWeek } from '@/domain/savings';
-import { formatSoberElapsed, soberElapsed } from '@/domain/sober';
+import { soberElapsed } from '@/domain/sober';
 import { Button, Card, ErrorNote, Field, Screen, T } from '@/ui/ui';
 import { useAppTheme } from '@/ui/theme';
 
@@ -58,7 +58,15 @@ export default function Home() {
         <T variant="label">Sober</T>
         <T variant="hero">{elapsed ? elapsed.days : '—'}</T>
         <T variant="title">{elapsed ? (elapsed.days === 1 ? 'day' : 'days') : 'Set a start date'}</T>
-        {elapsed ? <T variant="muted">and {elapsed.hours === 1 ? '1 hour' : `${elapsed.hours} hours`}. {formatSoberElapsed(elapsed)}.</T> : null}
+        {elapsed ? (
+          <T variant="muted">
+            {elapsed.days === 0 && elapsed.hours === 0
+              ? 'The clock has just started.'
+              : elapsed.hours === 1
+                ? 'and 1 hour'
+                : `and ${elapsed.hours} hours`}
+          </T>
+        ) : null}
       </Card>
       {saved ? (
         <View style={{ flexDirection: 'row', gap: 12 }}>

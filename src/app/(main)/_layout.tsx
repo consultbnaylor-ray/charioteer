@@ -27,7 +27,7 @@ export default function MainLayout() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
 
-  const go = (href: string) => router.push(href as never);
+  const go = (href: string) => router.navigate(href as never);
 
   const brand = (
     <Pressable accessibilityRole="button" accessibilityLabel="Charioteer home" onPress={() => go('/home')} style={styles.brand}>

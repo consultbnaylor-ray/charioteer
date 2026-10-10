@@ -203,6 +203,10 @@ export default function Onboarding() {
               if (step === 1 && adult !== true) return setError('Charioteer is for adults aged 18 and over.');
               if (step === 2 && !/^\d{4}-\d{2}-\d{2}$/.test(start)) return setError('Use a date like 2026-04-02.');
               if (step === 3 && !reasons.some((reason) => reason.trim())) return setError('One reason is enough.');
+              if (step === 6) {
+                const townError = validateTown(town);
+                if (townError) return setError(townError);
+              }
               if (step === STEPS - 1) return void finish();
               setStep((value) => value + 1);
             }}

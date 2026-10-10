@@ -147,6 +147,7 @@ export function Field({
     <View style={{ gap: 6 }}>
       <T variant="label">{label}</T>
       <TextInput
+        accessibilityLabel={label}
         value={value}
         onChangeText={onChangeText}
         placeholder={placeholder}
