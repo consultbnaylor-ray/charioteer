@@ -4,6 +4,7 @@ import {
   LIVE_SUPABASE_ANON_KEY,
   LIVE_SUPABASE_PUBLISHABLE_KEY,
   LIVE_SUPABASE_URL,
+  appleSignInEnabled,
   resolveClientConfig,
 } from './publicEnv';
 
@@ -30,5 +31,12 @@ describe('public client config', () => {
       }).key,
     ).toBe('sb_publishable_test');
     expect(resolveClientConfig({ EXPO_PUBLIC_SUPABASE_ANON_KEY: LIVE_SUPABASE_ANON_KEY }).key).toBe(LIVE_SUPABASE_ANON_KEY);
+  });
+
+  it('hides Sign in with Apple unless the public flag is exactly true', () => {
+    expect(appleSignInEnabled({})).toBe(false);
+    expect(appleSignInEnabled({ EXPO_PUBLIC_APPLE_SIGN_IN_ENABLED: 'false' })).toBe(false);
+    expect(appleSignInEnabled({ EXPO_PUBLIC_APPLE_SIGN_IN_ENABLED: 'TRUE' })).toBe(false);
+    expect(appleSignInEnabled({ EXPO_PUBLIC_APPLE_SIGN_IN_ENABLED: 'true' })).toBe(true);
   });
 });

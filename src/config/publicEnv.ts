@@ -14,6 +14,7 @@ export type PublicEnv = {
   EXPO_PUBLIC_SUPABASE_URL?: string;
   EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY?: string;
   EXPO_PUBLIC_SUPABASE_ANON_KEY?: string;
+  EXPO_PUBLIC_APPLE_SIGN_IN_ENABLED?: string;
 };
 
 export type ClientConfig =
@@ -30,7 +31,13 @@ function fromProcess(): PublicEnv {
     EXPO_PUBLIC_SUPABASE_URL: process.env.EXPO_PUBLIC_SUPABASE_URL,
     EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY: process.env.EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY,
     EXPO_PUBLIC_SUPABASE_ANON_KEY: process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY,
+    EXPO_PUBLIC_APPLE_SIGN_IN_ENABLED: process.env.EXPO_PUBLIC_APPLE_SIGN_IN_ENABLED,
   };
+}
+
+/** The Apple button stays hidden until the Supabase provider is actually on. */
+export function appleSignInEnabled(env: PublicEnv = fromProcess()): boolean {
+  return clean(env.EXPO_PUBLIC_APPLE_SIGN_IN_ENABLED) === 'true';
 }
 
 /** Demo runs only when EXPO_PUBLIC_DATA_MODE is exactly `demo`. Otherwise the app uses live Supabase. */

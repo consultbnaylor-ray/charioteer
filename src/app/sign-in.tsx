@@ -3,6 +3,7 @@ import * as Linking from 'expo-linking';
 import { useState } from 'react';
 import { Pressable, View } from 'react-native';
 
+import { appleSignInEnabled } from '@/config/publicEnv';
 import { useRepository, useSnapshot } from '@/data';
 import { crisisHelplines } from '@/data/catalogue';
 import { DEMO_PASSWORD } from '@/data/demo-seed';
@@ -33,13 +34,17 @@ export default function SignIn() {
   }
 
   return (
-    <Screen title="Hold the reins." intro="A quieter place to stay sober, or simply to live with a bit more care. Thumos is the spirited horse: courage, not a telling-off.">
+    <Screen
+      title="The Beginning is the Most Important Part of the Work"
+      titleStyle={{ fontSize: 28 * theme.scale, lineHeight: 34 * theme.scale }}
+      intro="A quieter place to stay sober, or simply to live with a bit more care. Thumos is the spirited horse: courage, not a telling-off."
+    >
       <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 14 }}>
         <Mark size={168} />
         <Wordmark size={28} />
       </View>
       <Card>
-        <T variant="body">For anyone stepping back from alcohol, and anyone building a clearer life.</T>
+        <T variant="body">For anyone stepping away from alcohol, and anyone building a clearer, more meaningful life.</T>
       </Card>
       <Pressable accessibilityRole="link" onPress={() => setHelpOpen((open) => !open)}>
         <T variant="body" style={{ color: theme.colors.danger, textDecorationLine: 'underline' }}>Need help now?</T>
@@ -74,10 +79,12 @@ export default function SignIn() {
       <Field label="Password" value={password} onChangeText={setPassword} secureTextEntry placeholder="Your password" />
       <ErrorNote>{error}</ErrorNote>
       <Button label="Sign in" pending={pending} onPress={() => submit(email, password)} />
-      <Button label="Sign in with Apple" tone="quiet" onPress={() => {
-        setError(null);
-        void repo.signInWithApple().catch((err: unknown) => setError(err instanceof Error ? err.message : 'Apple sign-in failed.'));
-      }} />
+      {appleSignInEnabled() ? (
+        <Button label="Sign in with Apple" tone="quiet" onPress={() => {
+          setError(null);
+          void repo.signInWithApple().catch((err: unknown) => setError(err instanceof Error ? err.message : 'Apple sign-in failed.'));
+        }} />
+      ) : null}
       <Link href="/sign-up">
         <T variant="body" style={{ textDecorationLine: 'underline' }}>Create an account</T>
       </Link>

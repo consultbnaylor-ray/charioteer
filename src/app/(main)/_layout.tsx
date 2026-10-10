@@ -3,7 +3,7 @@ import { Pressable, StyleSheet, useWindowDimensions, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useAppTheme } from '@/ui/theme';
-import { Mark, T, Wordmark } from '@/ui/ui';
+import { Mark, ShellInsetProvider, T, Wordmark } from '@/ui/ui';
 
 const TABS = [
   { href: '/home', label: 'Today' },
@@ -57,9 +57,11 @@ export default function MainLayout() {
           </Pressable>
         </View>
       )}
-      <View style={{ flex: 1 }}>
-        <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: theme.colors.bg } }} />
-      </View>
+      <ShellInsetProvider top bottom={!wide}>
+        <View style={{ flex: 1 }}>
+          <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: theme.colors.bg } }} />
+        </View>
+      </ShellInsetProvider>
       {wide ? null : (
         <View style={[styles.tabs, { paddingBottom: Math.max(insets.bottom, 8), borderTopColor: theme.colors.line, backgroundColor: theme.colors.surface }]}>
           {TABS.map((tab) => (

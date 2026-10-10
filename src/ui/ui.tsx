@@ -1,6 +1,8 @@
-import { type ReactNode } from 'react';
+import { createContext, useContext, type ReactNode } from 'react';
 import {
   ActivityIndicator,
+  KeyboardAvoidingView,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -11,6 +13,7 @@ import {
   type TextStyle,
   type ViewStyle,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Path } from 'react-native-svg';
 
 import type { Verification } from '@/data/types';
@@ -75,6 +78,25 @@ export function Mark({ size = 36 }: { size?: number }) {
   );
 }
 
+/** The tab shell already pads the status bar and the home indicator. Full-screen routes do not. */
+const ShellInsetContext = createContext({ topHandled: false, bottomHandled: false });
+
+export function ShellInsetProvider({
+  top,
+  bottom,
+  children,
+}: {
+  top?: boolean;
+  bottom?: boolean;
+  children: ReactNode;
+}) {
+  return (
+    <ShellInsetContext.Provider value={{ topHandled: Boolean(top), bottomHandled: Boolean(bottom) }}>
+      {children}
+    </ShellInsetContext.Provider>
+  );
+}
+
 export function Screen({
   children,
   eyebrow,
@@ -82,6 +104,7 @@ export function Screen({
   intro,
   footer,
   banner,
+  titleStyle,
 }: {
   children: ReactNode;
   eyebrow?: string;
@@ -89,19 +112,42 @@ export function Screen({
   intro?: string;
   footer?: ReactNode;
   banner?: ReactNode;
+  titleStyle?: StyleProp<TextStyle>;
 }) {
   const theme = useAppTheme();
+  const insets = useSafeAreaInsets();
+  const shell = useContext(ShellInsetContext);
+  const topInset = shell.topHandled ? 0 : insets.top;
+  const bottomInset = shell.bottomHandled ? 0 : insets.bottom;
   return (
-    <View style={{ flex: 1, backgroundColor: theme.colors.bg }}>
-      {banner ? <View style={[styles.page, { paddingBottom: 0 }]}>{banner}</View> : null}
-      <ScrollView contentContainerStyle={styles.page} keyboardShouldPersistTaps="handled">
-        {eyebrow ? <T variant="label">{eyebrow}</T> : null}
-        {title ? <T variant="display" style={{ marginTop: eyebrow ? 6 : 0 }}>{title}</T> : null}
-        {intro ? <T variant="muted" style={{ marginTop: 8 }}>{intro}</T> : null}
-        <View style={{ marginTop: title || intro ? 22 : 0, gap: 14 }}>{children}</View>
-      </ScrollView>
-      {footer ? <View style={[styles.footer, { borderTopColor: theme.colors.line, backgroundColor: theme.colors.bg }]}>{footer}</View> : null}
-    </View>
+    <KeyboardAvoidingView
+      style={{ flex: 1, backgroundColor: theme.colors.bg }}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+    >
+      <View style={{ flex: 1, paddingTop: topInset }}>
+        {banner ? <View style={[styles.page, { paddingBottom: 0 }]}>{banner}</View> : null}
+        <ScrollView
+          contentContainerStyle={[
+            styles.page,
+            { paddingBottom: 40 + bottomInset + (footer ? 8 : 0) },
+          ]}
+          contentInsetAdjustmentBehavior="never"
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="interactive"
+          automaticallyAdjustKeyboardInsets
+        >
+          {eyebrow ? <T variant="label">{eyebrow}</T> : null}
+          {title ? <T variant="display" style={[{ marginTop: eyebrow ? 6 : 0 }, titleStyle]}>{title}</T> : null}
+          {intro ? <T variant="muted" style={{ marginTop: 8 }}>{intro}</T> : null}
+          <View style={{ marginTop: title || intro ? 22 : 0, gap: 14 }}>{children}</View>
+        </ScrollView>
+        {footer ? (
+          <View style={[styles.footer, { borderTopColor: theme.colors.line, backgroundColor: theme.colors.bg, paddingBottom: 16 + bottomInset }]}>
+            {footer}
+          </View>
+        ) : null}
+      </View>
+    </KeyboardAvoidingView>
   );
 }
 

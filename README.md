@@ -15,7 +15,7 @@ Domain rules (the sober counter, savings, milestones, safety detection, and the 
 
 ## What works in V1
 
-- Email sign-up and sign-in, plus a Sign in with Apple path (native identity token on iOS, OAuth redirect on the web). Apple itself stays off until you add the provider in Supabase.
+- Email sign-up and sign-in, plus a Sign in with Apple path (native identity token on iOS, OAuth redirect on the web). The button is hidden unless `EXPO_PUBLIC_APPLE_SIGN_IN_ENABLED` is exactly `true`. Leave that unset until the Apple provider is enabled in Supabase.
 - Onboarding: name, 18+ confirmation, sobriety start date, personal reasons, weekly spend and units, interests, optional town or area, and separate consents for community, health data, and the coach. Under 18 is a hard stop, with Drinkline and the Samaritans.
 - Sober tracker: days and hours, money saved, units avoided, milestones (24 hours, 7 days, 30 days, 90 days, 6 months, 1 year) with badges. A lapse resets the clock and keeps the length of the previous stretch. The copy is compassionate.
 - Daily check-in: mood, sleep, craving from 0 to 10, optional note, and history.
@@ -34,7 +34,7 @@ Domain rules (the sober counter, savings, milestones, safety detection, and the 
 - **Grok Voice audio.** The ephemeral token request and `session.update` follow the public xAI docs (retrieved 10 October 2026). Voice is Leo, with “Speak British English.” in the instructions, because `en-GB` is not a supported language hint and would be ignored. English is `en`. Microphone capture, PCM framing, and playback of `response.output_audio.delta` are not implemented. The adapter opens the socket, sends the session update, and closes it. See the TODO in `supabase/functions/_shared/voice.ts`.
 - **Text model.** Chat uses the verified Chat Completions call: `POST https://api.x.ai/v1/chat/completions`. The default model is `grok-4.3` with `reasoning_effort` set to `low`. xAI’s docs (retrieved 10 October 2026) say that is the fast setting which still spends a few reasoning tokens, and that `none` is no reasoning at all. A live pass with `none` answered in about 1–1.4 seconds to the first token, but the replies were a single generic line, so the function now uses `low`. `low` has not been timed here. `grok-4.7` cannot disable reasoning and defaults to `high`, which is the 40–50 second wait. The reply is streamed. The server reads the message for a craving, a permission-giving thought, or a social risk, and uses the matching support prompt even if the client sent another mode. A follow-up in the same conversation gets a different instruction from the first support turn. Override the model with `THUMOS_MODEL`. On `grok-4.7`, `grok-4.6`, or `grok-4.5` the function uses `low`, the fastest effort those models allow. `max_tokens` is sent only when effort is `none`, because a low-effort budget is shared with the reasoning tokens.
 - **Demo mode does not call xAI**, even if a key is present in the environment. Live replies exist only when the app points at Supabase and the edge function has `XAI_API_KEY`. Without the key, the function stores a clear offline message and still adds safety notices.
-- **Sign in with Apple** needs an Apple Services ID, a Supabase provider secret, and a dev build on iOS. The button explains that when those are missing.
+- **Sign in with Apple** needs an Apple Services ID, a Supabase provider secret, and a dev build on iOS. The button stays in the code and is hidden until `EXPO_PUBLIC_APPLE_SIGN_IN_ENABLED=true`.
 - **Apple Health** reads steps, sleep, resting heart rate, HRV (SDNN), workouts, and weight for the last 14 days, read-only. It runs only in an iOS dev build (`src/health/sync.ios.ts`). Web and Android show a message and the manually logged readings.
 - **Android and Apple Watch** are not built. The health and voice modules are isolated so they can be added later.
 - **Admin tools** are the reports table and a moderator list on You. There is no separate admin app.
@@ -85,6 +85,7 @@ Copy `.env.example`. Never commit a real key, and never prefix the xAI key with 
 | `EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Client | Public publishable key. Preferred. Default is the live project key. |
 | `EXPO_PUBLIC_SUPABASE_ANON_KEY` | Client | Legacy anon key. Used only when the publishable key is empty. |
 | `EXPO_PUBLIC_DATA_MODE` | Client | Set to `demo` for the on-device sample. Unset uses Supabase. |
+| `EXPO_PUBLIC_APPLE_SIGN_IN_ENABLED` | Client | Set to `true` only after the Supabase Apple provider is on. Otherwise the button is hidden. |
 | `XAI_API_KEY` | Edge function only | `supabase secrets set XAI_API_KEY=…` |
 | `THUMOS_MODEL` | Edge function | Optional. Default `grok-4.3` with `reasoning_effort` `low`. |
 
@@ -159,7 +160,7 @@ On a Mac with Xcode, enable the HealthKit and Sign in with Apple capabilities if
 
 ## TestFlight from a Mac
 
-Build 1 (`1.0.0`, build number `1`) is the archive already uploaded. From the repo on a Mac, signed into Xcode as Quantica Labs Ltd:
+Build 1 (`1.0.0`, build number `1`) is the archive already on TestFlight. `expo.ios.buildNumber` is now `"2"` for the next upload. From the repo on a Mac, signed into Xcode as Quantica Labs Ltd:
 
 ```bash
 npx expo prebuild --platform ios
@@ -185,7 +186,7 @@ xcodebuild \
   -allowProvisioningUpdates
 ```
 
-App Store Connect rejects a second upload that reuses a build number. Before the next archive, raise `expo.ios.buildNumber` in `app.json` (`"1"`, then `"2"`, and so on) and run prebuild again so the new value is in the generated project.
+App Store Connect rejects a second upload that reuses a build number. Before each archive after this one, raise `expo.ios.buildNumber` in `app.json` (`"2"`, then `"3"`, and so on) and run prebuild again so the new value is in the generated project.
 
 ## Tests
 
