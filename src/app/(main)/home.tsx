@@ -265,7 +265,7 @@ export default function Home() {
           <>
             <Field label="Typical spend per week (£)" value={draftSpend} onChangeText={setDraftSpend} keyboardType="decimal-pad" />
             <Field label="Typical units per week" value={draftUnits} onChangeText={setDraftUnits} keyboardType="decimal-pad" />
-            <UnitsGuide onChange={setDraftUnits} />
+            <UnitsGuide onChange={setDraftUnits} stage={profile.stage} weeklySpend={draftSpend} />
           </>
         ) : (
           <DateField label="Date you stopped" value={draftDate} onChange={setDraftDate} maximumDate={new Date()} hint="Today or an earlier day." />

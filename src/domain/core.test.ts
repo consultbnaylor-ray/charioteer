@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { earnedMilestones, milestoneReached } from './milestones';
 import { planRelapse, soberElapsed } from './sober';
-import { formatGbp, savingsFromTypicalWeek } from './savings';
+import { formatGbp, savingsFromTypicalWeek, yearlyFromWeekly } from './savings';
 import { detectSafety, ensureSafetyNotices, firstSafetyHit, pinnedSafetyNotices, SELF_HARM_NOTICE, WITHDRAWAL_NOTICE } from './safety';
 import { encodeSse, parseSseBuffer } from './sse';
 import { buildChatCompletionBody, buildSystemPrompt, buildThumosContext, completionDeltaText, conversationCues, detectCommittedAction, detectRisk, historyTurnsForModel, inferThumosMode, isThumosFollowUp, OFFLINE_COACH_MESSAGE, resolveThumosMode, THUMOS_CHAT, thumosReasoningEffort } from './thumos';
@@ -54,6 +54,11 @@ describe('savings', () => {
 
   it('formats sterling for the UK', () => {
     expect(formatGbp(12.5)).toBe('£12.50');
+  });
+
+  it('uses the NHS 52-week year for a typical week', () => {
+    expect(yearlyFromWeekly(5 * 222, 0)).toBe(57_720);
+    expect(yearlyFromWeekly(-4, 2)).toBe(0);
   });
 });
 

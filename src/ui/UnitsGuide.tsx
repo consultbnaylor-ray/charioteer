@@ -2,16 +2,68 @@ import * as Linking from 'expo-linking';
 import { useState } from 'react';
 import { Pressable, View } from 'react-native';
 
-import { formatWeeklyUnits, NHS_DRINKS, NHS_UNITS_URL, UK_LOW_RISK_WEEKLY_UNITS, unitsForCounts } from '@/domain/units';
+import {
+  BAND_LEGEND,
+  CALORIE_BASIS,
+  DRINK_SOURCES,
+  ESTIMATE_DISCLAIMER,
+  estimateUsualWeek,
+  formatWeeklyUnits,
+  GUIDELINE_EQUIVALENTS,
+  NHS_DRINKS,
+  NHS_UNITS_URL,
+  UK_HIGHER_RISK_MEN_UNITS,
+  UK_LOW_RISK_WEEKLY_UNITS,
+  unitsForCounts,
+} from '@/domain/units';
+import type { Stage } from '@/domain/stage';
 import { useAppTheme } from '@/ui/theme';
 import { T } from '@/ui/ui';
 
 const emptyCounts = Object.fromEntries(NHS_DRINKS.map((drink) => [drink.id, 0]));
 
+function SourceLink({ label, url }: { label: string; url: string }) {
+  return (
+    <Pressable accessibilityRole="link" onPress={() => void Linking.openURL(url)}>
+      <T style={{ textDecorationLine: 'underline' }}>{label}</T>
+    </Pressable>
+  );
+}
+
+function RiskBar({ units }: { units: number }) {
+  const theme = useAppTheme();
+  const max = UK_HIGHER_RISK_MEN_UNITS;
+  const fill = Math.max(0, Math.min(units, max)) / max;
+  const mark = (point: number) => `${(point / max) * 100}%` as const;
+  return (
+    <View accessibilityLabel={BAND_LEGEND}>
+      <View style={{ height: 14, borderRadius: 2, backgroundColor: theme.colors.line, overflow: 'hidden' }}>
+        <View style={{ width: `${fill * 100}%`, height: '100%', backgroundColor: theme.colors.ink }} />
+        {[UK_LOW_RISK_WEEKLY_UNITS, 35, UK_HIGHER_RISK_MEN_UNITS].map((point) => (
+          <View
+            key={point}
+            style={{ position: 'absolute', left: mark(point), top: 0, bottom: 0, width: 2, marginLeft: -1, backgroundColor: theme.colors.bg }}
+          />
+        ))}
+      </View>
+      <T variant="muted">{BAND_LEGEND}</T>
+    </View>
+  );
+}
+
 /** NHS drink sizes, with plus and minus that fill the weekly units field. */
-export function UnitsGuide({ onChange }: { onChange: (units: string) => void }) {
+export function UnitsGuide({
+  onChange,
+  stage = null,
+  weeklySpend = '',
+}: {
+  onChange: (units: string) => void;
+  stage?: Stage | null;
+  weeklySpend?: string;
+}) {
   const theme = useAppTheme();
   const [counts, setCounts] = useState<Record<string, number>>(emptyCounts);
+  const estimate = estimateUsualWeek({ counts, stage, weeklySpend });
 
   function setCount(id: string, next: number) {
     const updated = { ...counts, [id]: Math.max(0, next) };
@@ -22,7 +74,7 @@ export function UnitsGuide({ onChange }: { onChange: (units: string) => void }) 
   return (
     <View style={{ gap: 8, borderWidth: 1, borderColor: theme.colors.line, backgroundColor: theme.colors.sunken, borderRadius: 8, padding: 12 }}>
       <T variant="label">Common drinks</T>
-      <T variant="muted">Tap plus or minus for a usual week. The total fills the units box. NHS figures.</T>
+      <T variant="muted">Tap plus or minus for a usual week. The total fills the units box, and the estimate below updates as you go.</T>
       {NHS_DRINKS.map((drink) => {
         const count = counts[drink.id] ?? 0;
         return (
@@ -47,16 +99,39 @@ export function UnitsGuide({ onChange }: { onChange: (units: string) => void }) 
             </Pressable>
             <View style={{ flex: 1 }}>
               <T>{drink.name}</T>
-              <T variant="muted">{drink.detail} · {drink.unitsLabel}</T>
+              <T variant="muted">{drink.detail} · {drink.unitsLabel} · {drink.kcalLabel}</T>
             </View>
           </View>
         );
       })}
+      {estimate.hasDrinks ? (
+        <View accessibilityRole="summary" style={{ gap: 8 }}>
+          <T>{estimate.headline}</T>
+          <T>{estimate.yearLine}</T>
+          <T>{estimate.comparison}</T>
+          <RiskBar units={estimate.unitsPerWeek} />
+          <T>{estimate.bandLabel}</T>
+          <T>{estimate.equivalents}</T>
+          <T variant="muted">{GUIDELINE_EQUIVALENTS}</T>
+          {estimate.spendLine ? <T>{estimate.spendLine}</T> : (
+            <T variant="muted">Add a typical weekly spend to see a money estimate.</T>
+          )}
+          {estimate.healthNotes.map((note) => (
+            <T key={note}>{note}</T>
+          ))}
+          {estimate.withdrawal ? <T>{estimate.withdrawal}</T> : null}
+          <T variant="muted">{CALORIE_BASIS}</T>
+          <T>{ESTIMATE_DISCLAIMER}</T>
+          {DRINK_SOURCES.map((source) => (
+            <SourceLink key={source.url} label={source.label} url={source.url} />
+          ))}
+        </View>
+      ) : (
+        <T variant="muted">Add drinks to see units, calories, and how the week compares with 14 units.</T>
+      )}
       <T>The UK low-risk guideline is no more than {UK_LOW_RISK_WEEKLY_UNITS} units a week.</T>
       <T variant="muted">A unit is 10ml of pure alcohol. Strength (ABV) × volume (ml) ÷ 1,000.</T>
-      <Pressable accessibilityRole="link" onPress={() => void Linking.openURL(NHS_UNITS_URL)}>
-        <T style={{ textDecorationLine: 'underline' }}>NHS: Calculating alcohol units</T>
-      </Pressable>
+      <SourceLink label="NHS: Calculating alcohol units" url={NHS_UNITS_URL} />
     </View>
   );
 }

@@ -205,7 +205,7 @@ export default function Onboarding() {
             keyboardType="decimal-pad"
             hint="Your own usual week, used only for your savings counter."
           />
-          <UnitsGuide onChange={setUnits} />
+          <UnitsGuide onChange={setUnits} stage={stage} weeklySpend={spend} />
         </View>
       ) : null}
       {step === 5 ? (
