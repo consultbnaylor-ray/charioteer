@@ -378,12 +378,14 @@ export class SupabaseRepository implements Repository {
         onboarding_complete: true,
       })
       .eq('id', userId);
-    if (error) throw new Error(error.message);
+    if (error) throw asUserFacing(error, 'general');
     await this.replaceInterests(userId, input.interestIds);
-    await this.client.from('reasons').delete().eq('user_id', userId);
+    const removed = await this.client.from('reasons').delete().eq('user_id', userId);
+    if (removed.error) throw asUserFacing(removed.error, 'general');
     const reasons = input.reasons.map((body) => body.trim()).filter(Boolean);
     if (reasons.length) {
-      await this.client.from('reasons').insert(reasons.map((body, sort_order) => ({ user_id: userId, body, sort_order })));
+      const inserted = await this.client.from('reasons').insert(reasons.map((body, sort_order) => ({ user_id: userId, body, sort_order })));
+      if (inserted.error) throw asUserFacing(inserted.error, 'general');
     }
     await this.insertConsents(userId, input);
     await this.refresh();
@@ -407,7 +409,7 @@ export class SupabaseRepository implements Repository {
     if (patch.themePreference !== undefined) column.theme_preference = patch.themePreference;
     if (Object.keys(column).length) {
       const { error } = await this.client.from('profiles').update(column).eq('id', userId);
-      if (error) throw new Error(error.message);
+      if (error) throw asUserFacing(error, 'general');
     }
     if (patch.interestIds) await this.replaceInterests(userId, patch.interestIds);
     await this.refresh();
@@ -415,11 +417,12 @@ export class SupabaseRepository implements Repository {
 
   async setReasons(bodies: string[]): Promise<void> {
     const userId = await this.userId();
-    await this.client.from('reasons').delete().eq('user_id', userId);
+    const removed = await this.client.from('reasons').delete().eq('user_id', userId);
+    if (removed.error) throw asUserFacing(removed.error, 'general');
     const reasons = bodies.map((body) => body.trim()).filter(Boolean);
     if (reasons.length) {
       const { error } = await this.client.from('reasons').insert(reasons.map((body, sort_order) => ({ user_id: userId, body, sort_order })));
-      if (error) throw new Error(error.message);
+      if (error) throw asUserFacing(error, 'general');
     }
     await this.refresh();
   }
@@ -433,7 +436,7 @@ export class SupabaseRepository implements Repository {
       craving: input.craving,
       note: input.note.trim(),
     });
-    if (error) throw new Error(error.message);
+    if (error) throw asUserFacing(error, 'general');
     await this.refresh();
   }
 
@@ -449,9 +452,9 @@ export class SupabaseRepository implements Repository {
       days_kept: plan.record.daysKept,
       note: plan.record.note,
     });
-    if (error) throw new Error(error.message);
+    if (error) throw asUserFacing(error, 'general');
     const update = await this.client.from('profiles').update({ sobriety_started_at: plan.nextStartedAt.toISOString() }).eq('id', userId);
-    if (update.error) throw new Error(update.error.message);
+    if (update.error) throw asUserFacing(update.error, 'general');
     await this.refresh();
   }
 
@@ -469,7 +472,7 @@ export class SupabaseRepository implements Repository {
       })),
       { onConflict: 'user_id,kind,recorded_on,source' },
     );
-    if (error) throw new Error(error.message);
+    if (error) throw asUserFacing(error, 'general');
     await this.refresh();
   }
 
@@ -481,7 +484,7 @@ export class SupabaseRepository implements Repository {
     let interest = this.snapshot.interests.find((item) => item.slug === slug);
     if (!interest) {
       const { data, error } = await this.client.from('interests').insert({ slug, label: name, created_by: userId }).select('id, slug, label, created_by').single();
-      if (error) throw new Error(error.message);
+      if (error) throw asUserFacing(error, 'general');
       interest = mapInterest(data as Row);
     }
     const ids = new Set(this.snapshot.profile?.interestIds ?? []);
@@ -493,13 +496,13 @@ export class SupabaseRepository implements Repository {
   async requestConnection(userId: string): Promise<void> {
     const me = await this.userId();
     const { error } = await this.client.from('connections').insert({ requester_id: me, addressee_id: userId, status: 'pending' });
-    if (error) throw new Error(error.message);
+    if (error) throw asUserFacing(error, 'general');
     await this.refresh();
   }
 
   async respondConnection(connectionId: string, accept: boolean): Promise<void> {
     const { error } = await this.client.from('connections').update({ status: accept ? 'accepted' : 'declined' }).eq('id', connectionId);
-    if (error) throw new Error(error.message);
+    if (error) throw asUserFacing(error, 'general');
     await this.refresh();
   }
 
@@ -512,20 +515,21 @@ export class SupabaseRepository implements Repository {
       sender_id: userId,
       body: text.slice(0, 2000),
     });
-    if (error) throw new Error(error.message);
+    if (error) throw asUserFacing(error, 'general');
     await this.refresh();
   }
 
   async blockUser(userId: string): Promise<void> {
     const me = await this.userId();
     const { error } = await this.client.from('blocks').insert({ blocker_id: me, blocked_id: userId });
-    if (error && !error.message.toLowerCase().includes('duplicate')) throw new Error(error.message);
+    if (error && !/duplicate|23505/i.test(`${error.code ?? ''} ${error.message}`)) throw asUserFacing(error, 'general');
     await this.refresh();
   }
 
   async unblockUser(userId: string): Promise<void> {
     const me = await this.userId();
-    await this.client.from('blocks').delete().eq('blocker_id', me).eq('blocked_id', userId);
+    const { error } = await this.client.from('blocks').delete().eq('blocker_id', me).eq('blocked_id', userId);
+    if (error) throw asUserFacing(error, 'general');
     await this.refresh();
   }
 
@@ -539,13 +543,13 @@ export class SupabaseRepository implements Repository {
       reason: input.reason,
       details: input.details.trim(),
     });
-    if (error) throw new Error(error.message);
+    if (error) throw asUserFacing(error, 'general');
     await this.refresh();
   }
 
   async reviewReport(id: string): Promise<void> {
     const { error } = await this.client.from('reports').update({ status: 'reviewed' }).eq('id', id);
-    if (error) throw new Error(error.message);
+    if (error) throw asUserFacing(error, 'general');
     await this.refresh();
   }
 
@@ -563,7 +567,8 @@ export class SupabaseRepository implements Repository {
 
   private async insertGuide(content: string, mode: string) {
     const userId = await this.userId();
-    await this.client.from('thumos_messages').insert({ user_id: userId, role: 'guide', content, mode });
+    const { error } = await this.client.from('thumos_messages').insert({ user_id: userId, role: 'guide', content, mode });
+    if (error) throw asUserFacing(error, 'thumos');
     await this.refresh();
   }
 
@@ -682,7 +687,7 @@ export class SupabaseRepository implements Repository {
     const invoked = await this.client.functions.invoke('account-export', { body: {} });
     if (!invoked.error && invoked.data?.data) return invoked.data.data as Record<string, unknown>;
     const { data, error } = await this.client.rpc('export_my_data');
-    if (error) throw new Error(error.message);
+    if (error) throw asUserFacing(error, 'general');
     return data as Record<string, unknown>;
   }
 
@@ -690,17 +695,18 @@ export class SupabaseRepository implements Repository {
     const invoked = await this.client.functions.invoke('account-delete', { body: {} });
     if (invoked.error) {
       const { error } = await this.client.rpc('delete_my_account');
-      if (error) throw new Error(error.message);
+      if (error) throw asUserFacing(error, 'general');
     }
     await this.client.auth.signOut();
     await this.refresh();
   }
 
   private async replaceInterests(userId: string, interestIds: string[]) {
-    await this.client.from('profile_interests').delete().eq('user_id', userId);
+    const removed = await this.client.from('profile_interests').delete().eq('user_id', userId);
+    if (removed.error) throw asUserFacing(removed.error, 'general');
     if (!interestIds.length) return;
     const { error } = await this.client.from('profile_interests').insert(interestIds.map((interest_id) => ({ user_id: userId, interest_id })));
-    if (error) throw new Error(error.message);
+    if (error) throw asUserFacing(error, 'general');
   }
 
   private async insertConsents(userId: string, input: OnboardingInput) {

@@ -6,11 +6,12 @@ import * as Linking from 'expo-linking';
 import * as SplashScreen from 'expo-splash-screen';
 import { useEffect } from 'react';
 import { Platform, View } from 'react-native';
-import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 
 import { RepoProvider, useSnapshot } from '@/data';
 import { font, ThemeProvider, useAppTheme } from '@/ui/theme';
+import { topSafeInset } from '@/ui/safeArea';
 import { Mark, T, Wordmark } from '@/ui/ui';
 
 SplashScreen.preventAutoHideAsync().catch(() => undefined);
@@ -32,11 +33,9 @@ export default function RootLayout() {
   if (!loaded && !error) return null;
 
   return (
-    <SafeAreaProvider>
-      <RepoProvider>
-        <ThemedShell />
-      </RepoProvider>
-    </SafeAreaProvider>
+    <RepoProvider>
+      <ThemedShell />
+    </RepoProvider>
   );
 }
 
@@ -93,13 +92,7 @@ function Chrome() {
   }, [snap.ready, snap.session, snap.profile?.onboardingComplete, pathname, router]);
 
   if (!snap.ready) {
-    return (
-      <View style={{ flex: 1, backgroundColor: theme.colors.bg, alignItems: 'center', justifyContent: 'center', gap: 14 }}>
-        <Mark size={120} />
-        <Wordmark size={28} />
-        <T variant="muted">Opening your day…</T>
-      </View>
-    );
+    return <OpeningDay background={theme.colors.bg} />;
   }
 
   return (
@@ -107,5 +100,16 @@ function Chrome() {
       <StatusBar style={theme.scheme === 'dark' ? 'light' : 'dark'} />
       <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: theme.colors.bg } }} />
     </>
+  );
+}
+
+function OpeningDay({ background }: { background: string }) {
+  const insets = useSafeAreaInsets();
+  return (
+    <View style={{ flex: 1, backgroundColor: background, alignItems: 'center', justifyContent: 'center', gap: 14, paddingTop: topSafeInset(insets.top) }}>
+      <Mark size={120} />
+      <Wordmark size={28} />
+      <T variant="muted">Opening your day…</T>
+    </View>
   );
 }

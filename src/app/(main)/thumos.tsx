@@ -6,7 +6,7 @@ import { useRepository, useSnapshot } from '@/data';
 import { ALCOHOL_FACTS } from '@/domain/facts';
 import { earnedMilestones } from '@/domain/milestones';
 import { firstSafetyHit, pinnedSafetyNotices } from '@/domain/safety';
-import { asUserFacing } from '@/domain/errors';
+import { asUserFacing, shownError } from '@/domain/errors';
 import { inferThumosMode, type ThumosMode } from '@/domain/thumos';
 import { formatClock, urgeRemainingSeconds } from '@/domain/urge';
 import { ensureUrge, restartUrge } from '@/features/urgeSession';
@@ -35,7 +35,7 @@ export default function Thumos() {
 
   useEffect(() => {
     if (!profile) return;
-    void repo.ensureThumosGuide(sos ? 'craving' : 'opening').catch(() => undefined);
+    void repo.ensureThumosGuide(sos ? 'craving' : 'opening').catch((err: unknown) => setError(shownError(err, 'Could not open the coach.')));
   }, [profile, repo, sos]);
 
   const latest = snap.checkIns[0];
@@ -144,7 +144,7 @@ export default function Thumos() {
       {!profile.consentAi ? (
         <Card>
           <T>Thumos stays quiet until you agree that messages can be sent to the coach.</T>
-          <Button label="Allow the coach" onPress={() => void repo.updateProfile({ consentAi: true })} />
+          <Button label="Allow the coach" onPress={() => void repo.updateProfile({ consentAi: true }).catch((err: unknown) => setError(shownError(err, 'Could not save.')))} />
         </Card>
       ) : (
         <Field label="Message" value={draft} onChangeText={setDraft} multiline placeholder="Say it in your own words" />

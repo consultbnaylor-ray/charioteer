@@ -37,6 +37,12 @@ describe('user facing errors', () => {
     const leaked = asUserFacing(new Error('relation "profiles" does not exist\n    at Module.foo (node_modules/x.ts:4)'), 'thumos');
     expect(leaked.message).not.toMatch(/node_modules|relation/);
     expect(leaked.message).toMatch(/try again/i);
+    const js = asUserFacing(new Error("Cannot read property 'randomUUID' of undefined"), 'general');
+    expect(js.message).not.toMatch(/randomUUID|undefined|property/i);
+    const postgres = asUserFacing(new Error('permission denied for table consents'), 'general');
+    expect(postgres.message).not.toMatch(/permission denied|consents/i);
+    expect(asUserFacing(new Error('duplicate key value violates unique constraint "consents_pkey"'), 'general').message).not.toMatch(/duplicate|violates/i);
+    expect(asUserFacing(new Error('Set a start date first.'), 'general').message).toBe('Set a start date first.');
     error.mockRestore();
   });
 });

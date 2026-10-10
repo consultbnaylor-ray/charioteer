@@ -60,6 +60,44 @@ describe('tighten_grants migration', () => {
   });
 });
 
+describe('client writes against the live grants', () => {
+  const repo = readFileSync('src/data/supabase-repository.ts', 'utf8');
+
+  it('lets onboarding insert consents without reading them back', () => {
+    const method = repo.slice(repo.indexOf('private async insertConsents'), repo.indexOf('function mapInterest'));
+    expect(method).toContain(".from('consents').insert(");
+    expect(method).not.toContain('.select(');
+    expect(method).not.toMatch(/\bid:/);
+  });
+
+  it('only updates profile columns the signed-in user may write', () => {
+    const granted = new Set(updateColumns('profiles'));
+    const written = [
+      'display_name',
+      'sobriety_started_at',
+      'weekly_spend_gbp',
+      'weekly_units',
+      'town',
+      'age_confirmed_18',
+      'community_visible',
+      'consent_health',
+      'consent_ai',
+      'onboarding_complete',
+      'text_scale',
+      'theme_preference',
+    ];
+    for (const column of written) expect(granted.has(column)).toBe(true);
+    expect(granted.has('is_moderator')).toBe(false);
+  });
+
+  it('covers every column the health upsert sends', () => {
+    const granted = new Set([...updateColumns('health_samples'), ...updateColumnsIn(healthUpsert, 'health_samples')]);
+    for (const column of ['user_id', 'kind', 'value', 'unit', 'recorded_on', 'source']) {
+      expect(granted.has(column)).toBe(true);
+    }
+  });
+});
+
 describe('health upsert grant', () => {
   it('adds the conflict columns and checks the full set plus health_own', () => {
     expect(updateColumns('health_samples')).toEqual(['value', 'unit']);

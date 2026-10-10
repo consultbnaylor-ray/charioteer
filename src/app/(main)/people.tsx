@@ -18,7 +18,8 @@ export default function People() {
   if (!me.ageConfirmed18 || !me.communityVisible) {
     return (
       <Screen eyebrow="People" title="Community is off." intro="It is for adults, and only if you choose to be visible. Your private details stay private either way.">
-        <Button label="Turn community on" onPress={() => void repo.updateProfile({ communityVisible: true, })} />
+        <ErrorNote>{error}</ErrorNote>
+        <Button label="Turn community on" onPress={() => void repo.updateProfile({ communityVisible: true }).catch((err: unknown) => setError(shownError(err, 'Could not save that.')))} />
       </Screen>
     );
   }
@@ -64,8 +65,8 @@ export default function People() {
         <Card key={connection.id}>
           <T variant="title">{nameOf(connection.requesterId)} would like to connect</T>
           <View style={{ flexDirection: 'row', gap: 10 }}>
-            <View style={{ flex: 1 }}><Button label="Accept" onPress={() => void repo.respondConnection(connection.id, true)} /></View>
-            <View style={{ flex: 1 }}><Button label="Decline" tone="quiet" onPress={() => void repo.respondConnection(connection.id, false)} /></View>
+            <View style={{ flex: 1 }}><Button label="Accept" onPress={() => void repo.respondConnection(connection.id, true).catch((err: unknown) => setError(shownError(err, 'Could not save that.')))} /></View>
+            <View style={{ flex: 1 }}><Button label="Decline" tone="quiet" onPress={() => void repo.respondConnection(connection.id, false).catch((err: unknown) => setError(shownError(err, 'Could not save that.')))} /></View>
           </View>
         </Card>
       )) : null}

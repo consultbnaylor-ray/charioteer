@@ -39,7 +39,7 @@ export default function Health() {
       {!snap.profile?.consentHealth ? (
         <Card>
           <T>Health consent is off. Turn it on if you want these readings stored.</T>
-          <Button label="Allow health data" onPress={() => void repo.updateProfile({ consentHealth: true })} />
+          <Button label="Allow health data" onPress={() => void repo.updateProfile({ consentHealth: true }).catch((err: unknown) => setError(shownError(err, 'Could not save.')))} />
         </Card>
       ) : null}
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>

@@ -76,12 +76,12 @@ export default function Profile() {
         <T variant="label">Appearance</T>
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
           {themes.map((item) => (
-            <Choice key={item} label={item === 'system' ? 'Match device' : item === 'light' ? 'Light' : 'Dark'} selected={profile.themePreference === item} onPress={() => void repo.updateProfile({ themePreference: item })} />
+            <Choice key={item} label={item === 'system' ? 'Match device' : item === 'light' ? 'Light' : 'Dark'} selected={profile.themePreference === item} onPress={() => void repo.updateProfile({ themePreference: item }).catch((err: unknown) => setError(shownError(err, 'Could not save.')))} />
           ))}
         </View>
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
           {scales.map((item) => (
-            <Choice key={item.id} label={item.label} selected={profile.textScale === item.id} onPress={() => void repo.updateProfile({ textScale: item.id })} />
+            <Choice key={item.id} label={item.label} selected={profile.textScale === item.id} onPress={() => void repo.updateProfile({ textScale: item.id }).catch((err: unknown) => setError(shownError(err, 'Could not save.')))} />
           ))}
         </View>
       </Card>
@@ -102,7 +102,7 @@ export default function Profile() {
                 const next = profile.interestIds.includes(interest.id)
                   ? profile.interestIds.filter((id) => id !== interest.id)
                   : [...profile.interestIds, interest.id];
-                void repo.updateProfile({ interestIds: next });
+                void repo.updateProfile({ interestIds: next }).catch((err: unknown) => setError(shownError(err, 'Could not save.')));
               }}
             />
           ))}
@@ -111,9 +111,9 @@ export default function Profile() {
       <Card>
         <T variant="label">Consent</T>
         <T variant="muted">Health data {profile.consentHealth ? 'on' : 'off'} · Coach {profile.consentAi ? 'on' : 'off'} · Community {profile.communityVisible ? 'on' : 'off'}</T>
-        <Button label={profile.consentHealth ? 'Turn health data off' : 'Allow health data'} tone="quiet" onPress={() => void repo.updateProfile({ consentHealth: !profile.consentHealth })} />
-        <Button label={profile.consentAi ? 'Turn the coach off' : 'Allow the coach'} tone="quiet" onPress={() => void repo.updateProfile({ consentAi: !profile.consentAi })} />
-        <Button label={profile.communityVisible ? 'Hide me from community' : 'Show me in community'} tone="quiet" onPress={() => void repo.updateProfile({ communityVisible: !profile.communityVisible })} />
+        <Button label={profile.consentHealth ? 'Turn health data off' : 'Allow health data'} tone="quiet" onPress={() => void repo.updateProfile({ consentHealth: !profile.consentHealth }).catch((err: unknown) => setError(shownError(err, 'Could not save.')))} />
+        <Button label={profile.consentAi ? 'Turn the coach off' : 'Allow the coach'} tone="quiet" onPress={() => void repo.updateProfile({ consentAi: !profile.consentAi }).catch((err: unknown) => setError(shownError(err, 'Could not save.')))} />
+        <Button label={profile.communityVisible ? 'Hide me from community' : 'Show me in community'} tone="quiet" onPress={() => void repo.updateProfile({ communityVisible: !profile.communityVisible }).catch((err: unknown) => setError(shownError(err, 'Could not save.')))} />
         <Button label="Health readings" tone="quiet" onPress={() => router.push('/health' as never)} />
       </Card>
       {profile.isModerator ? (
@@ -125,7 +125,7 @@ export default function Profile() {
               <T>{report.reportedName} — {report.reason} ({report.status})</T>
               <T variant="muted">{formatUkDate(report.createdAt)}</T>
               {report.details ? <T variant="muted">{report.details}</T> : null}
-              {report.status === 'open' ? <Button label="Mark reviewed" tone="quiet" onPress={() => void repo.reviewReport(report.id)} /> : null}
+              {report.status === 'open' ? <Button label="Mark reviewed" tone="quiet" onPress={() => void repo.reviewReport(report.id).catch((err: unknown) => setError(shownError(err, 'Could not save.')))} /> : null}
             </View>
           ))}
         </Card>
@@ -163,7 +163,7 @@ export default function Profile() {
           }}
         />
       ) : null}
-      <Button label="Sign out" tone="quiet" onPress={() => void repo.signOut()} />
+      <Button label="Sign out" tone="quiet" onPress={() => void repo.signOut().catch((err: unknown) => setError(shownError(err, 'Could not sign out.')))} />
       {message ? <T variant="muted">{message}</T> : null}
       <ErrorNote>{error}</ErrorNote>
       <T variant="muted">Charioteer is operated by Quantica Labs Ltd in the UK. Ben Naylor is the owner. Deleting the account removes the profile and the data tied to it.</T>

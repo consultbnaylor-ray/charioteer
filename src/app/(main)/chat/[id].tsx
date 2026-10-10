@@ -44,7 +44,7 @@ export default function Chat() {
         void repo.sendDirectMessage(connection.id, draft).then(() => setDraft('')).catch((err: unknown) => setError(shownError(err, 'Could not send.')));
       }} />
       <View style={{ flexDirection: 'row', gap: 10 }}>
-        <View style={{ flex: 1 }}><Button label="Block" tone="quiet" onPress={() => void repo.blockUser(otherId)} /></View>
+        <View style={{ flex: 1 }}><Button label="Block" tone="quiet" onPress={() => void repo.blockUser(otherId).catch((err: unknown) => setError(shownError(err, 'Could not block that person.')))} /></View>
         <View style={{ flex: 1 }}><Button label="Report" tone="quiet" onPress={() => setReporting((value) => !value)} /></View>
       </View>
       {reporting ? (

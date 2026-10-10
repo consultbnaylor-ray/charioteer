@@ -3,6 +3,7 @@ import { Pressable, StyleSheet, useWindowDimensions, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useAppTheme } from '@/ui/theme';
+import { topSafeInset } from '@/ui/safeArea';
 import { Mark, ShellInsetProvider, T, Wordmark } from '@/ui/ui';
 
 const TABS = [
@@ -39,7 +40,7 @@ export default function MainLayout() {
   return (
     <View style={{ flex: 1, flexDirection: wide ? 'row' : 'column', backgroundColor: theme.colors.bg }}>
       {wide ? (
-        <View style={[styles.rail, { backgroundColor: theme.colors.surface, borderRightColor: theme.colors.line, paddingTop: insets.top + 18 }]}>
+        <View style={[styles.rail, { backgroundColor: theme.colors.surface, borderRightColor: theme.colors.line, paddingTop: topSafeInset(insets.top) + 18 }]}>
           {brand}
           <T variant="muted" style={{ marginTop: 4, marginBottom: 18 }}>Hold the reins.</T>
           {TABS.map((tab) => (
@@ -50,7 +51,7 @@ export default function MainLayout() {
           <NavItem label="You" active={pathname === '/profile'} onPress={() => go('/profile')} />
         </View>
       ) : (
-        <View style={[styles.mobileTop, { paddingTop: insets.top + 8, borderBottomColor: theme.colors.line }]}>
+        <View style={[styles.mobileTop, { paddingTop: topSafeInset(insets.top) + 8, borderBottomColor: theme.colors.line }]}>
           {brand}
           <Pressable accessibilityRole="button" accessibilityLabel="Your profile" onPress={() => go('/profile')}>
             <T variant="body" style={{ fontFamily: theme.font.bodyStrong }}>You</T>

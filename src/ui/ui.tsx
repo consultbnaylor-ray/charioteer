@@ -18,6 +18,7 @@ import Svg, { Path } from 'react-native-svg';
 
 import type { Verification } from '@/data/types';
 import { HELMET_ASPECT, HELMET_D, HELMET_VIEWBOX } from '@/ui/helmet';
+import { topSafeInset } from '@/ui/safeArea';
 import { radius, useAppTheme } from '@/ui/theme';
 
 type Variant = 'hero' | 'display' | 'title' | 'body' | 'muted' | 'label';
@@ -119,7 +120,7 @@ export function Screen({
   const theme = useAppTheme();
   const insets = useSafeAreaInsets();
   const shell = useContext(ShellInsetContext);
-  const topInset = shell.topHandled ? 0 : insets.top;
+  const topInset = shell.topHandled ? 0 : topSafeInset(insets.top);
   const bottomInset = shell.bottomHandled ? 0 : insets.bottom;
   return (
     <KeyboardAvoidingView
