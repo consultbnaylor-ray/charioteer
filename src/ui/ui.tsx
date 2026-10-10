@@ -105,6 +105,7 @@ export function Screen({
   footer,
   banner,
   titleStyle,
+  introStyle,
 }: {
   children: ReactNode;
   eyebrow?: string;
@@ -113,6 +114,7 @@ export function Screen({
   footer?: ReactNode;
   banner?: ReactNode;
   titleStyle?: StyleProp<TextStyle>;
+  introStyle?: StyleProp<TextStyle>;
 }) {
   const theme = useAppTheme();
   const insets = useSafeAreaInsets();
@@ -138,7 +140,7 @@ export function Screen({
         >
           {eyebrow ? <T variant="label">{eyebrow}</T> : null}
           {title ? <T variant="display" style={[{ marginTop: eyebrow ? 6 : 0 }, titleStyle]}>{title}</T> : null}
-          {intro ? <T variant="muted" style={{ marginTop: 8 }}>{intro}</T> : null}
+          {intro ? <T variant="muted" style={[{ marginTop: 8 }, introStyle]}>{intro}</T> : null}
           <View style={{ marginTop: title || intro ? 22 : 0, gap: 14 }}>{children}</View>
         </ScrollView>
         {footer ? (

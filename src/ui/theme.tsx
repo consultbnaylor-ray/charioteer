@@ -47,6 +47,7 @@ export const radius = { sm: 2, md: 4 } as const;
 export const font = {
   display: 'Oswald_700Bold',
   body: 'Barlow_400Regular',
+  bodyItalic: 'Barlow_400Regular_Italic',
   bodyStrong: 'Barlow_600SemiBold',
 } as const;
 

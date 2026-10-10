@@ -1,5 +1,5 @@
 import { Oswald_700Bold } from '@expo-google-fonts/oswald';
-import { Barlow_400Regular, Barlow_600SemiBold } from '@expo-google-fonts/barlow';
+import { Barlow_400Regular, Barlow_400Regular_Italic, Barlow_600SemiBold } from '@expo-google-fonts/barlow';
 import { useFonts } from 'expo-font';
 import { Stack, usePathname, useRouter } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
@@ -18,6 +18,7 @@ export default function RootLayout() {
   const [loaded, error] = useFonts({
     [font.display]: Oswald_700Bold,
     [font.body]: Barlow_400Regular,
+    [font.bodyItalic]: Barlow_400Regular_Italic,
     [font.bodyStrong]: Barlow_600SemiBold,
   });
 

@@ -35,9 +35,14 @@ export default function SignIn() {
 
   return (
     <Screen
-      title="The Beginning is the Most Important Part of the Work"
-      titleStyle={{ fontSize: 28 * theme.scale, lineHeight: 34 * theme.scale }}
-      intro="A quieter place to stay sober, or simply to live with a bit more care. Thumos is the spirited horse: courage, not a telling-off."
+      title="Hold the reins."
+      intro="The Beginning is the Most Important Part of the Work"
+      introStyle={{
+        fontFamily: theme.font.bodyItalic,
+        fontSize: 19 * theme.scale,
+        lineHeight: 26 * theme.scale,
+        color: theme.colors.ink,
+      }}
     >
       <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 14 }}>
         <Mark size={168} />
