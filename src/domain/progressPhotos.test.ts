@@ -77,9 +77,13 @@ describe('progress photo sharing', () => {
 describe('progress photos stay private', () => {
   const quiet = [
     'src/app/(main)/thumos.tsx',
-    'src/voice/openVoice.ts',
+    'src/voice/briefing.ts',
+    'src/voice/call.ts',
     'supabase/functions/thumos-chat/index.ts',
+    'supabase/functions/thumos-voice-token/index.ts',
+    'supabase/functions/thumos-voice-turn/index.ts',
     'supabase/functions/_shared/thumos.ts',
+    'supabase/functions/_shared/voice.ts',
   ];
 
   it('is absent from Thumos and voice', () => {

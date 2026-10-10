@@ -228,9 +228,26 @@ export type NewReport = {
   details: string;
 };
 
+export type VoiceHistoryTurn = { role: 'user' | 'assistant'; content: string };
+
 export type VoiceMint =
-  | { ok: true; token: string; expiresAt: number }
+  | {
+      ok: true;
+      token: string;
+      expiresAt: number;
+      instructions: string | null;
+      crisisInstructions: string | null;
+      history: VoiceHistoryTurn[];
+      greeting: string | null;
+      mode: ThumosMode | null;
+    }
   | { ok: false; code: string; message: string };
+
+export type VoiceTurnInput = {
+  user: string;
+  assistant: string;
+  mode: ThumosMode;
+};
 
 export interface Repository {
   subscribe(listener: () => void): () => void;
@@ -259,7 +276,8 @@ export interface Repository {
   reviewReport(id: string): Promise<void>;
   ensureThumosGuide(kind: 'opening' | 'craving'): Promise<void>;
   sendThumos(content: string, mode: ThumosMode, onDelta?: (text: string) => void): Promise<void>;
-  mintVoiceToken(): Promise<VoiceMint>;
+  mintVoiceToken(mode?: ThumosMode): Promise<VoiceMint>;
+  saveVoiceTurn(input: VoiceTurnInput): Promise<void>;
   addProgressPhoto(input: NewProgressPhoto): Promise<void>;
   deleteProgressPhoto(id: string): Promise<void>;
   setProgressPhotoVisibility(ids: string[], visibility: ProgressVisibility): Promise<void>;

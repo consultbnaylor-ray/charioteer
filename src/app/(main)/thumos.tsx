@@ -1,5 +1,5 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { View } from 'react-native';
 
 import { useRepository, useSnapshot } from '@/data';
@@ -7,11 +7,13 @@ import { ALCOHOL_FACTS } from '@/domain/facts';
 import { earnedMilestones } from '@/domain/milestones';
 import { firstSafetyHit, pinnedSafetyNotices } from '@/domain/safety';
 import { asUserFacing, shownError } from '@/domain/errors';
-import { drinkFreeThisWeek, showsSoberRecord } from '@/domain/stage';
+import { showsSoberRecord } from '@/domain/stage';
 import { inferThumosMode, type ThumosMode } from '@/domain/thumos';
 import { formatClock, urgeRemainingSeconds } from '@/domain/urge';
 import { ensureUrge, restartUrge } from '@/features/urgeSession';
-import { openVoiceSession, voiceInstructions } from '@/voice/openVoice';
+import { createVoiceRuntime, voiceStatusLabel, type VoiceRuntime } from '@/domain/voiceSession';
+import { briefingFromSnapshot } from '@/voice/briefing';
+import { VoiceCall } from '@/voice/call';
 import { Button, Card, ErrorNote, Field, Screen, T } from '@/ui/ui';
 import { useAppTheme } from '@/ui/theme';
 
@@ -30,7 +32,9 @@ export default function Thumos() {
   const [outgoing, setOutgoing] = useState<string | null>(null);
   const [supportLatch, setSupportLatch] = useState(sos);
   const [factOpen, setFactOpen] = useState(false);
-  const [voiceNote, setVoiceNote] = useState<string | null>(null);
+  const [voice, setVoice] = useState<VoiceRuntime | null>(null);
+  const callRef = useRef<VoiceCall | null>(null);
+  const voiceTicket = useRef(0);
   const [now, setNow] = useState(() => Date.now());
   const [urgeStart, setUrgeStart] = useState<number | null>(null);
 
@@ -49,6 +53,11 @@ export default function Thumos() {
   });
   const showSupport = sos || supportLatch || mode === 'support';
 
+  useEffect(() => () => {
+    voiceTicket.current += 1;
+    void callRef.current?.end();
+  }, []);
+
   useEffect(() => {
     if (!showSupport) return;
     setUrgeStart((current) => current ?? ensureUrge());
@@ -58,7 +67,13 @@ export default function Thumos() {
 
   if (!profile) return null;
   const lastUser = [...snap.thumos].reverse().find((message) => message.role === 'user');
-  const safety = firstSafetyHit([draft, outgoing ?? '', lastUser?.content ?? '']);
+  const safety = firstSafetyHit([
+    draft,
+    outgoing ?? '',
+    voice?.liveUser ?? '',
+    voice?.userText ?? '',
+    lastUser?.content ?? '',
+  ]);
   const notices = pinnedSafetyNotices(safety);
   const remaining = urgeStart == null ? 0 : urgeRemainingSeconds(urgeStart, now);
   const fact = ALCOHOL_FACTS[0];
@@ -83,6 +98,60 @@ export default function Thumos() {
       setLiveReply('');
       setOutgoing(null);
     }
+  }
+
+  const inCall = Boolean(voice && voice.phase !== 'ended' && voice.phase !== 'error');
+
+  async function startVoice() {
+    if (!profile?.consentAi || callRef.current) return;
+    const ticket = voiceTicket.current + 1;
+    voiceTicket.current = ticket;
+    setError(null);
+    const requested = showSupport ? 'support' as const : mode === 'opening' ? 'steady' as const : mode;
+    const fallback = briefingFromSnapshot(snap, requested);
+    if (!fallback) return;
+    setVoice(createVoiceRuntime());
+    try {
+      const mint = await repo.mintVoiceToken(requested);
+      if (ticket !== voiceTicket.current) return;
+      if (!mint.ok) {
+        setVoice(null);
+        setError(mint.message);
+        return;
+      }
+      const briefing = {
+        instructions: mint.instructions ?? fallback.instructions,
+        crisisInstructions: mint.crisisInstructions ?? fallback.crisisInstructions,
+        history: mint.history.length ? mint.history : fallback.history,
+        mode: mint.mode ?? fallback.mode,
+        greeting: mint.greeting ?? fallback.greeting,
+      };
+      const call = new VoiceCall({
+        token: mint.token,
+        briefing,
+        saveTurn: (turn) => repo.saveVoiceTurn({ ...turn, mode: briefing.mode }),
+        onChange: (next) => {
+          setVoice(next);
+          if (next.phase === 'error' || next.phase === 'ended') callRef.current = null;
+        },
+      });
+      if (ticket !== voiceTicket.current) return;
+      callRef.current = call;
+      await call.start();
+    } catch (err) {
+      if (ticket !== voiceTicket.current) return;
+      callRef.current = null;
+      setVoice(null);
+      setError(asUserFacing(err, 'thumos').message);
+    }
+  }
+
+  async function endVoice() {
+    voiceTicket.current += 1;
+    const call = callRef.current;
+    callRef.current = null;
+    await call?.end();
+    setVoice((current) => (current ? { ...current, phase: 'ended' } : current));
   }
 
   const safetyBanner = notices.length ? (
@@ -142,7 +211,27 @@ export default function Thumos() {
           <T>{liveReply || 'Thumos is thinking'}</T>
         </Card>
       ) : null}
-      {!profile.consentAi ? (
+      {inCall && voice ? (
+        <Card style={{ borderColor: theme.colors.ink, borderWidth: 2 }}>
+          <T variant="label">Voice</T>
+          <T variant="display">{voiceStatusLabel(voice)}</T>
+          {voice.liveUser ? <T>You: {voice.liveUser}</T> : null}
+          {voice.liveAssistant ? <T>Thumos: {voice.liveAssistant}</T> : null}
+          {voice.message && voice.phase !== 'error' ? <T variant="muted">{voice.message}</T> : null}
+          <View style={{ flexDirection: 'row', gap: 10 }}>
+            <View style={{ flex: 1 }}>
+              <Button
+                label={voice.muted ? 'Unmute' : 'Mute'}
+                tone="quiet"
+                onPress={() => callRef.current?.mute()}
+              />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Button label="End call" tone="quiet" onPress={() => void endVoice()} />
+            </View>
+          </View>
+        </Card>
+      ) : !profile.consentAi ? (
         <Card>
           <T>Thumos stays quiet until you agree that messages can be sent to the coach.</T>
           <Button label="Allow the coach" onPress={() => void repo.updateProfile({ consentAi: true }).catch((err: unknown) => setError(shownError(err, 'Could not save.')))} />
@@ -150,52 +239,17 @@ export default function Thumos() {
       ) : (
         <Field label="Message" value={draft} onChangeText={setDraft} multiline placeholder="Say it in your own words" />
       )}
-      <ErrorNote>{error}</ErrorNote>
-      {voiceNote ? <T variant="muted">{voiceNote}</T> : null}
-      <View style={{ flexDirection: 'row', gap: 10 }}>
-        <View style={{ flex: 1 }}>
-          <Button label="Send" pending={pending} disabled={!profile.consentAi} onPress={() => void send()} />
+      <ErrorNote>{error || (voice?.phase === 'error' ? voice.message : null)}</ErrorNote>
+      {inCall ? null : (
+        <View style={{ flexDirection: 'row', gap: 10 }}>
+          <View style={{ flex: 1 }}>
+            <Button label="Send" pending={pending} disabled={!profile.consentAi} onPress={() => void send()} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Button label="Voice" disabled={!profile.consentAi || pending} onPress={() => void startVoice()} />
+          </View>
         </View>
-        <View style={{ flex: 1 }}>
-          <Button
-            label="Voice"
-            tone="quiet"
-            onPress={() => {
-              setVoiceNote(null);
-              void repo.mintVoiceToken().then(async (mint) => {
-                if (!mint.ok) {
-                  setVoiceNote(mint.message);
-                  return;
-                }
-                const result = await openVoiceSession(mint.token, voiceInstructions({
-                  now: new Date(),
-                  displayName: profile.displayName,
-                  sobrietyStartedAt: showsSoberRecord(profile.stage) ? profile.sobrietyStartedAt : null,
-                  stage: profile.stage,
-                  plannedQuitAt: profile.plannedQuitAt,
-                  weeklyUnitsGoal: profile.weeklyUnitsGoal,
-                  drinkFreeDaysGoal: profile.drinkFreeDaysGoal,
-                  drinkFreeThisWeek: drinkFreeThisWeek(profile.drinkFreeOn, new Date()),
-                  reasons: snap.reasons.map((reason) => reason.body),
-                  weeklySpendGbp: profile.weeklySpendGbp,
-                  weeklyUnits: profile.weeklyUnits,
-                  checkIns: snap.checkIns.slice(0, 7).map((item) => ({
-                    createdAt: item.createdAt,
-                    mood: item.mood,
-                    sleepHours: item.sleepHours,
-                    craving: item.craving,
-                    note: item.note,
-                  })),
-                  health: [],
-                  mode: showSupport ? 'support' : 'steady',
-                  safety,
-                }));
-                setVoiceNote(result.message);
-              });
-            }}
-          />
-        </View>
-      </View>
+      )}
       {showsSoberRecord(profile.stage) ? <T variant="muted">Milestones in view: {(profile.sobrietyStartedAt ? earnedMilestones(new Date(profile.sobrietyStartedAt), new Date()) : []).map((item) => item.badge).join(', ') || 'none yet'}.</T> : null}
     </Screen>
   );
