@@ -78,7 +78,7 @@ function Chrome() {
   if (!snap.ready) {
     return (
       <View style={{ flex: 1, backgroundColor: theme.colors.bg, alignItems: 'center', justifyContent: 'center', gap: 14 }}>
-        <Mark size={48} />
+        <Mark size={120} />
         <Wordmark size={28} />
         <T variant="muted">Opening your day…</T>
       </View>

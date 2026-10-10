@@ -31,7 +31,7 @@ export default function MainLayout() {
 
   const brand = (
     <Pressable accessibilityRole="button" accessibilityLabel="Charioteer home" onPress={() => go('/home')} style={styles.brand}>
-      <Mark size={28} />
+      <Mark size={58} />
       <Wordmark size={18} />
     </Pressable>
   );

@@ -27,8 +27,8 @@ export default function SignIn() {
 
   return (
     <Screen title="Hold the reins." intro="A quieter place to stay sober, or simply to live with a bit more care. Thumos is the spirited horse: courage, not a telling-off.">
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14 }}>
-        <Mark size={64} />
+      <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 14 }}>
+        <Mark size={168} />
         <Wordmark size={28} />
       </View>
       <Card>

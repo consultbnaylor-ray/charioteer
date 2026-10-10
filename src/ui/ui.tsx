@@ -14,7 +14,7 @@ import {
 import Svg, { Path } from 'react-native-svg';
 
 import type { Verification } from '@/data/types';
-import { HELMET_ICON_PATHS, HELMET_PATHS, HELMET_VIEWBOX } from '@/ui/helmet';
+import { HELMET_ASPECT, HELMET_D, HELMET_VIEWBOX } from '@/ui/helmet';
 import { radius, useAppTheme } from '@/ui/theme';
 
 type Variant = 'hero' | 'display' | 'title' | 'body' | 'muted' | 'label';
@@ -64,15 +64,13 @@ export function Wordmark({ size = 22 }: { size?: number }) {
   );
 }
 
-export function Mark({ size = 28 }: { size?: number }) {
+export function Mark({ size = 36 }: { size?: number }) {
   const theme = useAppTheme();
-  const color = theme.colors.ink;
-  const paths = size <= 36 ? HELMET_ICON_PATHS : HELMET_PATHS;
+  const width = size;
+  const height = size / HELMET_ASPECT;
   return (
-    <Svg width={size} height={size} viewBox={HELMET_VIEWBOX} accessibilityRole="image" accessibilityLabel="Winged helmet">
-      {paths.map((path) => (
-        <Path key={path.d} d={path.d} fill={color} fillRule={path.evenodd ? 'evenodd' : 'nonzero'} />
-      ))}
+    <Svg width={width} height={height} viewBox={HELMET_VIEWBOX} accessibilityRole="image" accessibilityLabel="Winged helmet">
+      <Path d={HELMET_D} fill={theme.colors.ink} fillRule="nonzero" />
     </Svg>
   );
 }
