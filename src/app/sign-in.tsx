@@ -81,7 +81,7 @@ export default function SignIn() {
         </>
       ) : null}
       <Field label="Email" value={email} onChangeText={setEmail} keyboardType="email-address" placeholder="you@example.com" />
-      <Field label="Password" value={password} onChangeText={setPassword} secureTextEntry placeholder="Your password" />
+      <Field label="Password" value={password} onChangeText={setPassword} secureTextEntry textContentType="password" placeholder="Your password" />
       <ErrorNote>{error}</ErrorNote>
       <Button label="Sign in" pending={pending} onPress={() => submit(email, password)} />
       {appleSignInEnabled() ? (

@@ -16,7 +16,7 @@ export default function SignUp() {
     <Screen eyebrow="New account" title="Start where you are." intro="You will choose a sober date, your reasons, and what Charioteer is allowed to keep. Nothing is shared until you say so.">
       <Field label="Name" value={name} onChangeText={setName} placeholder="What should we call you?" />
       <Field label="Email" value={email} onChangeText={setEmail} keyboardType="email-address" placeholder="you@example.com" />
-      <Field label="Password" value={password} onChangeText={setPassword} secureTextEntry hint="At least 8 characters." />
+      <Field label="Password" value={password} onChangeText={setPassword} secureTextEntry textContentType="newPassword" hint="At least 8 characters." />
       <ErrorNote>{error}</ErrorNote>
       <Button
         label="Create account"

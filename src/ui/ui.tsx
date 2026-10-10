@@ -1,4 +1,4 @@
-import { createContext, useContext, type ReactNode } from 'react';
+import { createContext, useContext, useState, type ReactNode } from 'react';
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -205,6 +205,7 @@ export function Field({
   onChangeText,
   placeholder,
   secureTextEntry,
+  textContentType,
   keyboardType,
   multiline,
   hint,
@@ -214,40 +215,86 @@ export function Field({
   onChangeText: (value: string) => void;
   placeholder?: string;
   secureTextEntry?: boolean;
+  /** iOS autofill. Password fields default to `password`; sign-up passes `newPassword`. */
+  textContentType?: 'password' | 'newPassword';
   keyboardType?: 'default' | 'email-address' | 'decimal-pad' | 'number-pad';
   multiline?: boolean;
   hint?: string;
 }) {
   const theme = useAppTheme();
+  const [revealed, setRevealed] = useState(false);
+  const password = Boolean(secureTextEntry);
+  const contentType = password ? (textContentType ?? 'password') : undefined;
+  const input = (
+    <TextInput
+      accessibilityLabel={label}
+      value={value}
+      onChangeText={onChangeText}
+      placeholder={placeholder}
+      placeholderTextColor={theme.colors.muted}
+      secureTextEntry={password && !revealed}
+      textContentType={contentType}
+      autoComplete={contentType === 'newPassword' ? 'password-new' : contentType === 'password' ? 'password' : undefined}
+      keyboardType={keyboardType}
+      multiline={multiline}
+      autoCapitalize={password || keyboardType === 'email-address' ? 'none' : 'sentences'}
+      autoCorrect={password ? false : keyboardType !== 'email-address'}
+      style={[
+        password ? styles.passwordInput : styles.input,
+        {
+          color: theme.colors.ink,
+          borderColor: theme.colors.line,
+          backgroundColor: theme.colors.surface,
+          fontFamily: theme.font.body,
+          fontSize: 17 * theme.scale,
+          minHeight: multiline ? 110 : 52,
+          textAlignVertical: multiline ? 'top' : 'center',
+        },
+      ]}
+    />
+  );
   return (
     <View style={{ gap: 6 }}>
       <T variant="label">{label}</T>
-      <TextInput
-        accessibilityLabel={label}
-        value={value}
-        onChangeText={onChangeText}
-        placeholder={placeholder}
-        placeholderTextColor={theme.colors.muted}
-        secureTextEntry={secureTextEntry}
-        keyboardType={keyboardType}
-        multiline={multiline}
-        autoCapitalize={keyboardType === 'email-address' ? 'none' : 'sentences'}
-        autoCorrect={keyboardType !== 'email-address'}
-        style={[
-          styles.input,
-          {
-            color: theme.colors.ink,
-            borderColor: theme.colors.line,
-            backgroundColor: theme.colors.surface,
-            fontFamily: theme.font.body,
-            fontSize: 17 * theme.scale,
-            minHeight: multiline ? 110 : 52,
-            textAlignVertical: multiline ? 'top' : 'center',
-          },
-        ]}
-      />
+      {password ? (
+        <View
+          style={[
+            styles.input,
+            styles.passwordRow,
+            { borderColor: theme.colors.line, backgroundColor: theme.colors.surface, minHeight: 52 },
+          ]}
+        >
+          {input}
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={revealed ? 'Hide password' : 'Show password'}
+            hitSlop={4}
+            onPress={() => setRevealed((open) => !open)}
+            style={styles.passwordToggle}
+          >
+            <PasswordEye revealed={revealed} color={theme.colors.ink} />
+          </Pressable>
+        </View>
+      ) : (
+        input
+      )}
       {hint ? <T variant="muted">{hint}</T> : null}
     </View>
+  );
+}
+
+function PasswordEye({ revealed, color }: { revealed: boolean; color: string }) {
+  return (
+    <Svg width={22} height={22} viewBox="0 0 24 24" fill="none" accessibilityElementsHidden>
+      <Path
+        d="M2 12s3.6-6.5 10-6.5S22 12 22 12s-3.6 6.5-10 6.5S2 12 2 12z"
+        stroke={color}
+        strokeWidth={1.6}
+        strokeLinejoin="round"
+      />
+      <Path d="M12 15.2a3.2 3.2 0 1 0 0-6.4 3.2 3.2 0 0 0 0 6.4z" stroke={color} strokeWidth={1.6} />
+      {revealed ? <Path d="M4 20L20 4" stroke={color} strokeWidth={1.6} strokeLinecap="round" /> : null}
+    </Svg>
   );
 }
 
@@ -343,6 +390,9 @@ const styles = StyleSheet.create({
   button: { minHeight: 52, borderRadius: radius.md, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 18 },
   buttonText: { letterSpacing: 0.4 },
   input: { borderWidth: 1, borderRadius: radius.md, paddingHorizontal: 14, paddingVertical: 12 },
+  passwordRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 0, paddingRight: 4, paddingLeft: 0 },
+  passwordInput: { flex: 1, borderWidth: 0, backgroundColor: 'transparent', paddingLeft: 14, paddingRight: 4, paddingVertical: 12 },
+  passwordToggle: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
   choice: { borderWidth: 1, borderRadius: radius.md, paddingHorizontal: 14, paddingVertical: 10, minHeight: 44, justifyContent: 'center' },
   note: { borderRadius: radius.sm, borderLeftWidth: 3, padding: 14 },
 });

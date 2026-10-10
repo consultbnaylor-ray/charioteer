@@ -160,7 +160,7 @@ On a Mac with Xcode, enable the HealthKit and Sign in with Apple capabilities if
 
 ## TestFlight from a Mac
 
-Build 1 (`1.0.0`, build number `1`) is the archive already on TestFlight. `expo.ios.buildNumber` is now `"2"` for the next upload. From the repo on a Mac, signed into Xcode as Quantica Labs Ltd:
+Build 1 (`1.0.0`, build number `1`) is the archive already on TestFlight. `expo.ios.buildNumber` is now `"3"` for the next upload. From the repo on a Mac, signed into Xcode as Quantica Labs Ltd:
 
 ```bash
 npx expo prebuild --platform ios
@@ -186,7 +186,7 @@ xcodebuild \
   -allowProvisioningUpdates
 ```
 
-App Store Connect rejects a second upload that reuses a build number. Before each archive after this one, raise `expo.ios.buildNumber` in `app.json` (`"2"`, then `"3"`, and so on) and run prebuild again so the new value is in the generated project.
+App Store Connect rejects a second upload that reuses a build number. Before each archive after this one, raise `expo.ios.buildNumber` in `app.json` (`"4"`, then `"5"`, and so on) and run prebuild again so the new value is in the generated project.
 
 ## Tests
 
