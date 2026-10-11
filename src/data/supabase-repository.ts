@@ -56,6 +56,7 @@ import {
 import { interestSelectionUnchanged, nextInterestIds, rolledBackInterestIds, snapshotWithOwnInterests } from '@/domain/interests';
 import { planCustomInterest, validateTown } from '@/domain/privacy';
 import { fetchWithOneRetry } from '@/domain/retryFetch';
+import { planReasons } from '@/domain/reasons';
 import { planRelapse } from '@/domain/sober';
 import { parseSseBuffer } from '@/domain/sse';
 import { detectSafety } from '@/domain/safety';
@@ -609,13 +610,7 @@ export class SupabaseRepository implements Repository {
       .eq('id', userId);
     if (error) throw asUserFacing(error, 'general');
     await this.replaceInterests(userId, input.interestIds);
-    const removed = await this.client.from('reasons').delete().eq('user_id', userId);
-    if (removed.error) throw asUserFacing(removed.error, 'general');
-    const reasons = input.reasons.map((body) => body.trim()).filter(Boolean);
-    if (reasons.length) {
-      const inserted = await this.client.from('reasons').insert(reasons.map((body, sort_order) => ({ user_id: userId, body, sort_order })));
-      if (inserted.error) throw asUserFacing(inserted.error, 'general');
-    }
+    await this.writeReasons(input.reasons);
     await this.insertConsents(userId, input);
     await this.refresh();
   }
@@ -654,15 +649,14 @@ export class SupabaseRepository implements Repository {
   }
 
   async setReasons(bodies: string[]): Promise<void> {
-    const userId = await this.userId();
-    const removed = await this.client.from('reasons').delete().eq('user_id', userId);
-    if (removed.error) throw asUserFacing(removed.error, 'general');
-    const reasons = bodies.map((body) => body.trim()).filter(Boolean);
-    if (reasons.length) {
-      const { error } = await this.client.from('reasons').insert(reasons.map((body, sort_order) => ({ user_id: userId, body, sort_order })));
-      if (error) throw asUserFacing(error, 'general');
-    }
+    await this.writeReasons(bodies);
     await this.refresh();
+  }
+
+  /** One transaction. The function deletes this user's rows, then inserts the cleaned list. */
+  private async writeReasons(bodies: string[]): Promise<void> {
+    const { error } = await this.client.rpc('set_reasons', { bodies: planReasons(bodies) });
+    if (error) throw asUserFacing(error, 'general');
   }
 
   async addCheckIn(input: NewCheckIn): Promise<void> {

@@ -1,3 +1,4 @@
+import { planReasons } from './reasons';
 import type { Stage } from './stage';
 
 export type ProfileFormValues = {
@@ -27,6 +28,11 @@ function sameNumber(left: string, right: string): boolean {
 }
 
 function lines(value: string): string {
+  return planReasons(value.split('\n')).join('\n');
+}
+
+/** Trimmed lines before case-insensitive duplicates are removed. */
+function rawLines(value: string): string {
   return value.split('\n').map((line) => line.trim()).filter(Boolean).join('\n');
 }
 
@@ -37,6 +43,9 @@ export function profileDetailsDirty(current: ProfileFormValues, saved: ProfileFo
   if (!sameNumber(current.spend, saved.spend)) return true;
   if (!sameNumber(current.units, saved.units)) return true;
   if (lines(current.reasons) !== lines(saved.reasons)) return true;
+  // A repeated line would be stored once. Keep Save available so the next write can replace it.
+  if (rawLines(current.reasons) !== lines(current.reasons)) return true;
+  if (rawLines(saved.reasons) !== lines(saved.reasons)) return true;
   if (current.community !== saved.community) return true;
   if (current.health !== saved.health) return true;
   if (current.ai !== saved.ai) return true;

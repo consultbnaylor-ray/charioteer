@@ -10,6 +10,7 @@ import { parseDrinkFreeGoal, parseUnitsGoal, showsSoberRecord, STAGE_LABELS, STA
 import { shownError } from '@/domain/errors';
 import { interestChipRemovable, interestChipVisible } from '@/domain/interests';
 import { planCustomInterest } from '@/domain/privacy';
+import { planReasons, reasonOverLimit } from '@/domain/reasons';
 import { profileDetailsDirty, type ProfileFormValues } from '@/domain/profileForm';
 import { InterestChip } from '@/ui/InterestChip';
 import { ConsentChoices } from '@/ui/ConsentChoices';
@@ -43,6 +44,7 @@ export default function Profile() {
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
+  const savingRef = useRef(false);
   const [savedNote, setSavedNote] = useState<string | null>(null);
   useEffect(() => {
     if (!savedNote) return;
@@ -126,37 +128,43 @@ export default function Profile() {
   }
 
   async function saveDetails() {
-    if (!profile || pending || !dirty) return;
+    if (!profile || pending || savingRef.current || !dirty) return;
+    savingRef.current = true;
     setError(null);
     setMessage(null);
     setSavedNote(null);
-    if (!name.trim()) {
-      setError('Add your name.');
-      return;
-    }
-    const weeklySpendGbp = Number(spend);
-    const weeklyUnits = Number(units);
-    if (!Number.isFinite(weeklySpendGbp) || weeklySpendGbp < 0 || !Number.isFinite(weeklyUnits) || weeklyUnits < 0) {
-      setError('Spend and units need to be zero or more.');
-      return;
-    }
-    const stageError = validateStageStep({
-      stage,
-      soberDay: isoDay(soberDate),
-      today: isoDay(new Date()),
-      plannedQuit: isoDay(plannedQuit),
-      quitUnsure,
-      unitsGoal,
-      drinkFreeGoal,
-    });
-    if (stageError) {
-      setError(stageError);
-      return;
-    }
-    setPending(true);
-    const parsedUnits = parseUnitsGoal(unitsGoal);
-    const parsedDays = parseDrinkFreeGoal(drinkFreeGoal);
     try {
+      if (!name.trim()) {
+        setError('Add your name.');
+        return;
+      }
+      const weeklySpendGbp = Number(spend);
+      const weeklyUnits = Number(units);
+      if (!Number.isFinite(weeklySpendGbp) || weeklySpendGbp < 0 || !Number.isFinite(weeklyUnits) || weeklyUnits < 0) {
+        setError('Spend and units need to be zero or more.');
+        return;
+      }
+      const stageError = validateStageStep({
+        stage,
+        soberDay: isoDay(soberDate),
+        today: isoDay(new Date()),
+        plannedQuit: isoDay(plannedQuit),
+        quitUnsure,
+        unitsGoal,
+        drinkFreeGoal,
+      });
+      if (stageError) {
+        setError(stageError);
+        return;
+      }
+      const plannedReasons = planReasons(reasons.split('\n'));
+      if (reasonOverLimit(plannedReasons)) {
+        setError('Keep each reason to 280 characters.');
+        return;
+      }
+      setPending(true);
+      const parsedUnits = parseUnitsGoal(unitsGoal);
+      const parsedDays = parseDrinkFreeGoal(drinkFreeGoal);
       await repo.updateProfile({
         displayName: name.trim(),
         town,
@@ -168,13 +176,15 @@ export default function Profile() {
         weeklyUnitsGoal: stage === 'cutting_down' && parsedUnits.ok ? parsedUnits.value : null,
         drinkFreeDaysGoal: stage === 'cutting_down' && parsedDays.ok ? parsedDays.value : null,
       });
-      await repo.setReasons(reasons.split('\n'));
+      await repo.setReasons(plannedReasons);
       await repo.saveConsents({ communityVisible: community, consentHealth: health, consentAi: ai });
+      setReasons(plannedReasons.join('\n'));
       setSavedNote('Saved');
       playSavedHaptic();
     } catch (err) {
       setError(shownError(err, 'Could not save.'));
     } finally {
+      savingRef.current = false;
       setPending(false);
     }
   }

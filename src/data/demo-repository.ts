@@ -28,6 +28,7 @@ import {
 import { planProgressPhoto, progressAnchor, progressPhotoLabel, progressStoragePath, progressVisibility, PROGRESS_MAX_BYTES } from '@/domain/progressPhotos';
 import { interestSelectionUnchanged, nextInterestIds } from '@/domain/interests';
 import { planCustomInterest, validateTown } from '@/domain/privacy';
+import { planReasons } from '@/domain/reasons';
 import { planRelapse } from '@/domain/sober';
 import { detectSafety, ensureSafetyNotices } from '@/domain/safety';
 import { OFFLINE_COACH_MESSAGE, OPENING_LINE, type ThumosMode } from '@/domain/thumos';
@@ -353,10 +354,7 @@ export class DemoRepository implements Repository {
       interestIds: input.interestIds,
     };
     next.consents = mergeConsents(next.consents, input);
-    next.reasons = input.reasons
-      .map((body) => body.trim())
-      .filter(Boolean)
-      .map((body, sortOrder) => ({ id: uid(), body, sortOrder }));
+    next.reasons = planReasons(input.reasons).map((body, sortOrder) => ({ id: uid(), body, sortOrder }));
     this.commit(db);
   }
 
@@ -394,10 +392,7 @@ export class DemoRepository implements Repository {
   async setReasons(bodies: string[]): Promise<void> {
     const account = this.me();
     const db = clone(this.db);
-    db.accounts[account.profile.id].reasons = bodies
-      .map((body) => body.trim())
-      .filter(Boolean)
-      .map((body, sortOrder) => ({ id: uid(), body, sortOrder }));
+    db.accounts[account.profile.id].reasons = planReasons(bodies).map((body, sortOrder) => ({ id: uid(), body, sortOrder }));
     this.commit(db);
   }
 

@@ -120,6 +120,10 @@ describe('profile form changes', () => {
     expect(profileDetailsDirty({ ...saved, spend: '40.0' }, saved)).toBe(false);
     expect(profileDetailsDirty({ ...saved, town: 'Bath' }, saved)).toBe(true);
     expect(profileDetailsDirty({ ...saved, stage: 'exploring' }, saved)).toBe(true);
+    expect(profileDetailsDirty({ ...saved, reasons: 'Family\n' }, saved)).toBe(false);
+    expect(profileDetailsDirty({ ...saved, reasons: 'Family\nSleep' }, saved)).toBe(true);
+    expect(profileDetailsDirty({ ...saved, reasons: 'Family\nfamily' }, saved)).toBe(true);
+    expect(profileDetailsDirty({ ...saved, reasons: 'Family\nFamily' }, { ...saved, reasons: 'Family\nFamily' })).toBe(true);
   });
 });
 

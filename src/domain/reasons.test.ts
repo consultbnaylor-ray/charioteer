@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
-import { REASON_PLACEHOLDERS, reasonPlaceholder } from './reasons';
+import { planReasons, REASON_MAX_LENGTH, REASON_PLACEHOLDERS, reasonOverLimit, reasonPlaceholder } from './reasons';
 
 function contrast(hex: string, on: string): number {
   const channel = (value: number) => {
@@ -16,6 +16,78 @@ function contrast(hex: string, on: string): number {
   const lo = Math.min(luminance(hex), luminance(on));
   return (hi + 0.05) / (lo + 0.05);
 }
+
+describe('planned reasons', () => {
+  it('trims blanks, drops empty lines, and keeps the first of each case-insensitive reason', () => {
+    expect(planReasons(['  Family  ', '', '   ', 'family', 'Sleep', 'SLEEP', '  health  '])).toEqual([
+      'Family',
+      'Sleep',
+      'health',
+    ]);
+    expect(planReasons([])).toEqual([]);
+    expect(reasonOverLimit(['ok', 'x'.repeat(REASON_MAX_LENGTH)])).toBe(false);
+    expect(reasonOverLimit(['x'.repeat(REASON_MAX_LENGTH + 1)])).toBe(true);
+    expect(REASON_MAX_LENGTH).toBe(280);
+  });
+});
+
+describe('reason replace', () => {
+  const repo = readFileSync('src/data/supabase-repository.ts', 'utf8');
+  const demo = readFileSync('src/data/demo-repository.ts', 'utf8');
+  const profile = readFileSync('src/app/(main)/profile.tsx', 'utf8');
+  const migration = readFileSync('supabase/migrations/20261010260000_set_reasons.sql', 'utf8');
+  const save = profile.slice(profile.indexOf('async function saveDetails'), profile.indexOf('async function download'));
+  const onboard = repo.slice(repo.indexOf('async completeOnboarding'), repo.indexOf('async updateProfile'));
+  const write = repo.slice(repo.indexOf('private async writeReasons'), repo.indexOf('async addCheckIn'));
+
+  it('saves reasons through one function and ignores a second tap while that save is running', () => {
+    expect(write).toContain("rpc('set_reasons'");
+    expect(write).toContain('planReasons');
+    expect(write).not.toContain(".from('reasons')");
+    expect(onboard).toContain('this.writeReasons(input.reasons)');
+    expect(onboard).not.toContain(".from('reasons')");
+    expect(repo.slice(repo.indexOf('async setReasons'), repo.indexOf('private async writeReasons'))).toContain('this.writeReasons(bodies)');
+    expect(demo).toContain('planReasons(input.reasons)');
+    expect(demo).toContain('planReasons(bodies)');
+    expect(save).toContain('savingRef.current = true');
+    expect(save.indexOf('savingRef.current = true')).toBeLessThan(save.indexOf('await repo.updateProfile'));
+    expect(save).toContain('planReasons(reasons.split');
+    expect(save).toContain('reasonOverLimit');
+    expect(save).toContain('await repo.setReasons(plannedReasons)');
+    expect(profile).toContain('disabled={!dirty || pending}');
+    expect(profile).toContain('pending={pending}');
+    expect(migration).toContain('create or replace function public.set_reasons(bodies text[])');
+    expect(migration).toContain('security definer');
+    expect(migration).toContain('set search_path = public');
+    expect(migration).toContain('auth.uid()');
+    expect(migration).toContain('for update');
+    expect(migration).toContain('delete from public.reasons where user_id = uid');
+    expect(migration).toContain('distinct on (lower(clean.body))');
+    expect(migration).toContain('unnest(coalesce(bodies, array[]::text[])) as listed(item)');
+    expect(migration).toContain('char_length(btrim(coalesce(item, \'\'))) > 280');
+    expect(migration.toLowerCase()).toContain('revoke all on function public.set_reasons(text[]) from public, anon, authenticated');
+    expect(migration.toLowerCase()).toContain('grant execute on function public.set_reasons(text[]) to authenticated');
+    expect(migration.toLowerCase()).not.toContain('grant execute on function public.set_reasons(text[]) to anon');
+    expect(migration.toLowerCase()).not.toMatch(/create unique index|add constraint|unique \(/);
+    expect(migration).not.toMatch(/visibility/);
+    expect(migration).not.toContain('public.directory');
+  });
+
+  it('leaves interests and goals as replacements, not appended lists', () => {
+    const init = readFileSync('supabase/migrations/20261010120000_init.sql', 'utf8');
+    const update = repo.slice(repo.indexOf('async updateProfile'), repo.indexOf('async setReasons'));
+    const home = readFileSync('src/app/(main)/home.tsx', 'utf8');
+    const stage = readFileSync('src/domain/stage.ts', 'utf8');
+    expect(save).not.toContain('interestIds');
+    expect(init).toContain('primary key (user_id, interest_id)');
+    expect(update).toContain('column.weekly_units_goal = patch.weeklyUnitsGoal');
+    expect(update).toContain('column.drink_free_days_goal = patch.drinkFreeDaysGoal');
+    expect(update).toContain('column.drink_free_on = patch.drinkFreeOn');
+    expect(update).not.toContain(".insert(");
+    expect(home).toContain('updateProfile({ drinkFreeOn: toggleDrinkFreeDay(profile.drinkFreeOn, todayKey) })');
+    expect(stage).toContain('dates.includes(day) ? dates.filter((item) => item !== day) : [...dates, day].sort()');
+  });
+});
 
 describe('reason examples', () => {
   it('gives each of the first three boxes its own example', () => {

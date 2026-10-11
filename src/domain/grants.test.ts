@@ -167,6 +167,22 @@ describe('profile stage', () => {
   });
 });
 
+describe('set reasons function', () => {
+  const setReasons = readFileSync('supabase/migrations/20261010260000_set_reasons.sql', 'utf8');
+
+  it('replaces the caller’s rows in one function and does not add a unique index', () => {
+    expect(setReasons).toContain('create or replace function public.set_reasons(bodies text[])');
+    expect(setReasons).toContain('security definer');
+    expect(setReasons).toContain('auth.uid()');
+    expect(setReasons).toContain('delete from public.reasons where user_id = uid');
+    expect(setReasons).toContain('distinct on (lower(clean.body))');
+    expect(setReasons.toLowerCase()).toContain('revoke all on function public.set_reasons(text[]) from public, anon, authenticated');
+    expect(setReasons.toLowerCase()).toContain('grant execute on function public.set_reasons(text[]) to authenticated');
+    expect(setReasons.toLowerCase()).not.toMatch(/create unique index|unique \(/);
+    expect(setReasons).not.toMatch(/visibility/);
+  });
+});
+
 describe('add interest function', () => {
   it('reuses a slug, attaches it to the caller, and grants execute only to signed-in users', () => {
     expect(addInterest).toContain('create or replace function public.add_interest(label text)');
