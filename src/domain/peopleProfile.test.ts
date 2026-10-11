@@ -16,7 +16,10 @@ describe('your public profile on People', () => {
     expect(people).not.toMatch(/thumos|xai|progress-photos/i);
     expect(card).toContain('Your public profile');
     expect(card).toContain('Your profile is hidden from others');
-    expect(card).toContain('What others can’t see: your reasons, check-ins, money, units, health data, gratitude diary, Thumos chats and private photos.');
+    expect(card).toContain('Name and interests stay on');
+    expect(card).toContain('projectPublicProfile');
+    expect(card).toContain('Hidden:');
+    expect(card).toContain('Chosen, but not visible until Community is on');
     expect(card).toContain('No one to show yet. As more people join near you or share your interests, they’ll appear here.');
     expect(card).toContain('Edit profile');
     expect(card).toContain('Saved ✓');

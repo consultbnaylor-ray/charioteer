@@ -57,6 +57,7 @@ import { interestSelectionUnchanged, nextInterestIds, rolledBackInterestIds, sna
 import { planCustomInterest, validateTown } from '@/domain/privacy';
 import { fetchWithOneRetry } from '@/domain/retryFetch';
 import { planReasons } from '@/domain/reasons';
+import { defaultProfileSharing, normalizeProfileSharing, parsePublicProfile, sensitiveTurnedOn, type ProfileSharing } from '@/domain/profileSharing';
 import { planRelapse } from '@/domain/sober';
 import { parseSseBuffer } from '@/domain/sse';
 import { detectSafety } from '@/domain/safety';
@@ -135,6 +136,7 @@ function emptySnapshot(): AppSnapshot {
     communityPhotos: [],
     gratitude: [],
     visionItems: [],
+    sharing: defaultProfileSharing(),
   };
 }
 
@@ -241,7 +243,7 @@ export class SupabaseRepository implements Repository {
 
     const userId = session.user.id;
     const email = session.user.email ?? '';
-    const [profileRes, reasonsRes, checkRes, relapseRes, healthRes, mineRes, thumosRes, directoryRes, interestLinks, connectionsRes, reportsRes, consentsRes, photosRes, gratitudeRes, gratitudePhotoRes, visionRes] =
+    const [profileRes, reasonsRes, checkRes, relapseRes, healthRes, mineRes, thumosRes, directoryRes, interestLinks, connectionsRes, reportsRes, consentsRes, photosRes, gratitudeRes, gratitudePhotoRes, visionRes, sharingRes] =
       await Promise.all([
         this.client.from('profiles').select('*').eq('id', userId).maybeSingle(),
         this.client.from('reasons').select('*').eq('user_id', userId).order('sort_order'),
@@ -259,6 +261,7 @@ export class SupabaseRepository implements Repository {
         this.client.from('gratitude_entries').select('id, body, category, is_favourite, entry_date, created_at, updated_at').eq('user_id', userId).order('entry_date', { ascending: false }),
         this.client.from('gratitude_photos').select('id, entry_id, user_id, storage_path, created_at').eq('user_id', userId).order('created_at'),
         this.client.from('vision_board_items').select('id, user_id, storage_path, caption, area, size, position, created_at, updated_at').eq('user_id', userId).order('position'),
+        this.client.from('profile_sharing').select('settings').eq('user_id', userId).maybeSingle(),
       ]);
 
     const profileRow = profileRes.data as Row | null;
@@ -334,6 +337,7 @@ export class SupabaseRepository implements Repository {
         await this.signedGratitudePhotos(gratitudePhotoRes.error ? null : ((gratitudePhotoRes.data ?? []) as Row[]), gratitudePhotoRes.error?.message),
       ),
       visionItems: await this.signedVisionItems(visionRes.error ? null : visionRes.data, visionRes.error?.message),
+      sharing: sharingRes.error ? defaultProfileSharing() : normalizeProfileSharing((sharingRes.data as Row | null)?.settings),
     });
   }
 
@@ -1094,6 +1098,26 @@ export class SupabaseRepository implements Repository {
     const { error } = await this.client.from('progress_photos').update({ visibility: next }).in('id', ids).eq('user_id', userId);
     if (error) throw asUserFacing(error, 'general');
     await this.refresh();
+  }
+
+  async setProfileSharing(sharing: ProfileSharing): Promise<void> {
+    const next = normalizeProfileSharing(sharing);
+    if (sensitiveTurnedOn(this.snapshot.sharing, next) && !next.sensitiveConsentAt) {
+      throw new UserFacingError('Confirm that other people may see this first.', 'generic');
+    }
+    const userId = await this.userId();
+    const { error } = await this.client.from('profile_sharing').upsert(
+      { user_id: userId, settings: next, updated_at: new Date().toISOString() },
+      { onConflict: 'user_id' },
+    );
+    if (error) throw asUserFacing(error, 'general');
+    this.emit({ ...this.snapshot, sharing: next });
+  }
+
+  async publicProfile(userId: string): Promise<ReturnType<typeof parsePublicProfile>> {
+    const { data, error } = await this.client.rpc('public_profile', { user_id: userId });
+    if (error) return null;
+    return parsePublicProfile(data);
   }
 
   async deleteProgressPhoto(id: string): Promise<void> {

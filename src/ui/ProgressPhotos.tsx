@@ -9,6 +9,7 @@ import { isoDay, parseIsoDay } from '@/domain/dates';
 import { shownError } from '@/domain/errors';
 import { resolveComparison, type ComparisonChoice } from '@/domain/progressComparison';
 import { planProgressPhoto, PROGRESS_SHARE_WARNING, progressAnchor, progressPhotoLabel, PROGRESS_NOTE_LIMIT } from '@/domain/progressPhotos';
+import { PROFILE_HIDDEN_SHARE, SENSITIVE_SHARE_BODY, SHARE_HINT } from '@/domain/profileSharing';
 import { DateField } from '@/ui/DateField';
 import { pickProgressPhoto } from '@/ui/prepareProgressPhoto';
 import { loadProgressComparison, saveProgressComparison } from '@/ui/progressComparisonStore';
@@ -203,6 +204,9 @@ export function ProgressPhotos() {
     setError(null);
     setPending('share');
     try {
+      if (visibility === 'community' && !snap.sharing.sensitiveConsentAt) {
+        await repo.setProfileSharing({ ...snap.sharing, sensitiveConsentAt: new Date().toISOString() });
+      }
       await repo.setProgressPhotoVisibility(ids, visibility);
       setShareIds(null);
       markSaved('Saved');
@@ -235,6 +239,7 @@ export function ProgressPhotos() {
       <T variant="label">Progress photos</T>
       <T>A starting point, then photos through the months. Counted from your sober date, or from the day you joined.</T>
       <T>Photos stay private unless you choose Share with community. They are not sent to Thumos. Only me puts a shared photo back to just you.</T>
+      <T variant="muted">{profile.communityVisible && profile.ageConfirmed18 ? SHARE_HINT : PROFILE_HIDDEN_SHARE}</T>
       {notice ? <T>{notice}</T> : null}
       {error && !selected ? <ErrorNote>{error}</ErrorNote> : null}
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
@@ -320,6 +325,7 @@ export function ProgressPhotos() {
         onConfirmShare={() => {
           if (selected) void applyVisibility([selected.id], 'community');
         }}
+        firstSensitiveShare={!snap.sharing.sensitiveConsentAt}
         onCancelShare={() => setShareIds(null)}
         onUseAs={(slot) => {
           if (selected) useAs(slot, selected.id);
@@ -350,6 +356,7 @@ export function ProgressPhotos() {
           ) : null}
           {shareIds && shareIds.length > 1 ? (
             <View style={{ gap: 8 }}>
+              {snap.sharing.sensitiveConsentAt ? null : <T>{SENSITIVE_SHARE_BODY}</T>}
               <T>{PROGRESS_SHARE_WARNING}</T>
               <Button label="Share this comparison" pending={pending === 'share'} onPress={() => void applyVisibility(shareIds, 'community')} />
               <Button label="Keep it private" tone="quiet" disabled={pending != null} onPress={() => setShareIds(null)} />
@@ -382,6 +389,7 @@ function PhotoDetailSheet({
   error,
   confirmingDelete,
   confirmingShare,
+  firstSensitiveShare = false,
   onClose,
   onNote,
   onNoteBlur,
@@ -403,6 +411,7 @@ function PhotoDetailSheet({
   error: string | null;
   confirmingDelete: boolean;
   confirmingShare: boolean;
+  firstSensitiveShare?: boolean;
   onClose: () => void;
   onNote: (value: string) => void;
   onNoteBlur: () => void;
@@ -495,7 +504,9 @@ function PhotoDetailSheet({
                 />
                 {confirmingShare ? (
                   <View style={{ gap: 8 }}>
+                    {firstSensitiveShare ? <T>{SENSITIVE_SHARE_BODY}</T> : null}
                     <T>{PROGRESS_SHARE_WARNING}</T>
+                    <T variant="muted">{SHARE_HINT}</T>
                     <Button label="Share this photo" pending={pending === 'share'} onPress={onConfirmShare} />
                     <Button label="Keep it private" tone="quiet" disabled={pending != null} onPress={onCancelShare} />
                   </View>

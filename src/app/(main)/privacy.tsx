@@ -18,7 +18,7 @@ export default function PrivacyScreen() {
   if (!profile) return null;
 
   return (
-      <Screen eyebrow="You" title="Privacy & consent" intro="You can change these at any time. The gratitude diary stays private either way. Photos on a diary line stay private too, and are not sent to Thumos.">
+      <Screen eyebrow="You" title="Privacy & consent" intro="You can change these at any time. A diary line stays hidden until you switch it on. A photo on a line stays hidden until you switch that photo on, and is not sent to Thumos.">
       <ConsentChoices community={community} health={health} ai={ai} onCommunity={setCommunity} onHealth={setHealth} onAi={setAi} />
       <ErrorNote>{error}</ErrorNote>
       {message ? <T variant="muted">{message}</T> : null}

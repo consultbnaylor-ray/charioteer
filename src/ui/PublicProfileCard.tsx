@@ -3,20 +3,21 @@ import { Switch, View } from 'react-native';
 
 import { useRepository, useSnapshot } from '@/data';
 import type { ProgressPhoto } from '@/data/types';
+import { isoDay } from '@/domain/dates';
 import { shownError } from '@/domain/errors';
 import { interestChipRemovable, interestChipVisible } from '@/domain/interests';
 import { planCustomInterest, validateTown } from '@/domain/privacy';
+import { NEVER_SHARED, projectPublicProfile } from '@/domain/profileSharing';
 import { progressPhotoLabel } from '@/domain/progressPhotos';
+import { formatGbp } from '@/domain/savings';
 import { SharedPhotoFrame } from '@/ui/CommunityProfile';
 import { COMMUNITY_CONSENT_BODY } from '@/ui/ConsentChoices';
 import { InterestChip } from '@/ui/InterestChip';
+import { ShareOnProfile } from '@/ui/ShareOnProfile';
 import { useAppTheme } from '@/ui/theme';
 import { Button, Card, ErrorNote, Field, playSavedHaptic, T } from '@/ui/ui';
 
 export const PUBLIC_PROFILE_HIDDEN = 'Your profile is hidden from others';
-
-export const OTHERS_CANT_SEE =
-  'What others can’t see: your reasons, check-ins, money, units, health data, gratitude diary, Thumos chats and private photos.';
 
 /** Shown when Discover has nobody left after blocks and the directory rules. */
 export const DISCOVER_EMPTY =
@@ -65,7 +66,36 @@ export function PublicProfileCard() {
 
   const hidden = !me.communityVisible || !me.ageConfirmed18;
   const labels = new Map(snap.interests.map((interest) => [interest.id, interest.label]));
-  const interestLine = me.interestIds.map((id) => labels.get(id) ?? 'Interest').join(' · ');
+  const now = new Date();
+  const preview = projectPublicProfile({
+    now,
+    today: isoDay(now),
+    displayName: me.displayName,
+    town: me.town,
+    stage: me.stage,
+    sobrietyStartedAt: me.sobrietyStartedAt,
+    weeklySpendGbp: me.weeklySpendGbp,
+    weeklyUnits: me.weeklyUnits,
+    interestLabels: me.interestIds.map((id) => labels.get(id) ?? 'Interest'),
+    reasons: snap.reasons.map((reason) => ({ body: reason.body, sortOrder: reason.sortOrder })),
+    checkIns: snap.checkIns.map((item) => ({ createdAt: item.createdAt })),
+    health: snap.health.map((item) => ({ kind: item.kind, value: item.value, recordedOn: item.recordedOn })),
+    gratitude: snap.gratitude.map((entry) => ({
+      id: entry.id,
+      body: entry.body,
+      entryDate: entry.entryDate,
+      photoIds: entry.photos.map((photo) => photo.id),
+    })),
+    vision: snap.visionItems.map((item) => ({ id: item.id, caption: item.caption, area: item.area })),
+    progressPhotos: snap.progressPhotos.map((photo) => ({
+      id: photo.id,
+      note: photo.note,
+      takenOn: photo.takenOn,
+      monthIndex: photo.monthIndex,
+      visibility: photo.visibility === 'community' ? 'community' : 'private',
+    })),
+  }, snap.sharing);
+  const interestLine = preview.interests.join(' · ');
   const shared = snap.progressPhotos
     .filter((photo) => photo.visibility === 'community')
     .sort((a, b) => a.monthIndex - b.monthIndex || a.takenOn.localeCompare(b.takenOn));
@@ -215,12 +245,29 @@ export function PublicProfileCard() {
           </View>
         ) : (
           <View style={{ gap: 8 }}>
-            <T variant="title">{me.displayName}</T>
-            <T variant="muted">{me.town || 'Area not shared'}</T>
+            <T variant="label">Name and interests stay on</T>
+            <T variant="title">{preview.displayName}</T>
+            <T variant="muted">{preview.town || 'Area not shared'}</T>
             {interestLine ? <T>{interestLine}</T> : null}
+            {preview.stage ? <T>Stage: {preview.stage}</T> : null}
+            {preview.sober ? <T>{preview.sober.days} days sober{preview.sober.milestones.length ? ` · ${preview.sober.milestones.join(', ')}` : ''}</T> : null}
+            {preview.reasons.map((reason) => <T key={reason}>{reason}</T>)}
+            {preview.savings ? <T>{formatGbp(preview.savings.moneyGbp)} saved · {preview.savings.units} units avoided</T> : null}
+            {preview.moodStreak != null ? <T>Mood streak {preview.moodStreak}</T> : null}
+            {preview.health.map((line) => <T key={line}>{line}</T>)}
+            {preview.gratitude.map((entry) => <T key={entry.id}>{entry.body}</T>)}
+            {preview.vision.map((item) => <T key={item.id}>{item.caption}</T>)}
             <OwnSharedPhotos name={me.displayName} photos={shared} />
           </View>
         )}
+        <ShareOnProfile
+          detail="town"
+          on={snap.sharing.town}
+          apply={(sharing, selected) => ({ ...sharing, town: selected })}
+        />
+        {hidden ? (
+          <T variant="muted">Chosen, but not visible until Community is on: {preview.sharedLabels.join(', ')}</T>
+        ) : null}
         <ErrorNote>{error}</ErrorNote>
         <Button label={editing ? 'Done' : 'Edit profile'} tone="quiet" onPress={() => (editing ? finishEditing() : setEditing(true))} />
         {editing ? (
@@ -264,7 +311,8 @@ export function PublicProfileCard() {
           </View>
         ) : null}
       </Card>
-      <T>{OTHERS_CANT_SEE}</T>
+      <T>Hidden: {preview.hiddenLabels.join(', ')}</T>
+      <T variant="muted">{NEVER_SHARED}</T>
     </View>
   );
 }

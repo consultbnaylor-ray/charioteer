@@ -1,11 +1,13 @@
 import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 
 import { useRepository, useSnapshot } from '@/data';
 import type { ProgressPhoto } from '@/data/types';
 import { shownError } from '@/domain/errors';
+import { sharedReportItems, type PublicProfileView } from '@/domain/profileSharing';
+import { formatGbp } from '@/domain/savings';
 import { progressPhotoLabel } from '@/domain/progressPhotos';
 import { radius, useAppTheme } from '@/ui/theme';
 import { Button, ErrorNote, T } from '@/ui/ui';
@@ -62,6 +64,7 @@ export function CommunityProfile({ userId, name }: { userId: string; name: strin
 
   return (
     <View style={{ gap: 10 }}>
+      <SharedProfileFacts userId={userId} name={name} />
       <T variant="label">Shared photos</T>
       <T variant="muted">{name} chose to show these. Private photos stay hidden.</T>
       {error ? <ErrorNote>{error}</ErrorNote> : null}
@@ -98,6 +101,92 @@ export function CommunityProfile({ userId, name }: { userId: string; name: strin
           )}
         </View>
       ))}
+    </View>
+  );
+}
+
+function SharedProfileFacts({ userId, name }: { userId: string; name: string }) {
+  const repo = useRepository();
+  const [view, setView] = useState<PublicProfileView | null | undefined>(undefined);
+  const [reporting, setReporting] = useState<string | null>(null);
+  const [sent, setSent] = useState<string | null>(null);
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let live = true;
+    setView(undefined);
+    void repo.publicProfile(userId).then((next) => {
+      if (live) setView(next);
+    });
+    return () => {
+      live = false;
+    };
+  }, [repo, userId]);
+
+  if (view === undefined) return null;
+  if (!view) return <T variant="muted">This profile is hidden.</T>;
+  const items = sharedReportItems(view).filter((item) => item.label !== 'Progress photo');
+
+  async function report(key: string, summary: string) {
+    setError(null);
+    setPending(true);
+    try {
+      await repo.reportUser({
+        reportedUserId: userId,
+        reason: 'Shared profile',
+        details: summary.slice(0, 2000),
+      });
+      setReporting(null);
+      setSent(key);
+    } catch (err) {
+      setError(shownError(err, 'Could not send the report.'));
+    } finally {
+      setPending(false);
+    }
+  }
+
+  return (
+    <View style={{ gap: 8 }}>
+      <T variant="title">{view.displayName || name}</T>
+      {view.interests.length ? <T>{view.interests.join(' · ')}</T> : null}
+      <T variant="muted">{view.town || 'Area not shared'}</T>
+      {view.stage ? <T>Stage: {view.stage}</T> : null}
+      {view.sober ? <T>{view.sober.days} days sober{view.sober.milestones.length ? ` · ${view.sober.milestones.join(', ')}` : ''}</T> : null}
+      {view.reasons.map((reason) => <T key={reason}>{reason}</T>)}
+      {view.savings ? <T>{formatGbp(view.savings.moneyGbp)} saved · {view.savings.units} units avoided</T> : null}
+      {view.moodStreak != null ? <T>Mood streak {view.moodStreak}</T> : null}
+      {view.health.map((line) => <T key={line}>{line}</T>)}
+      {view.gratitude.map((entry) => <T key={entry.id}>{entry.body}</T>)}
+      {view.vision.map((item) => <T key={item.id}>{[item.caption, item.area].filter(Boolean).join(' · ')}</T>)}
+      {error ? <ErrorNote>{error}</ErrorNote> : null}
+      {sent === 'profile' ? <T variant="muted">Report sent.</T> : null}
+      {reporting === 'profile' ? (
+        <View style={{ gap: 8 }}>
+          <T>This report goes to the moderation queue.</T>
+          <Button label="Send report" pending={pending} onPress={() => void report('profile', `Name: ${view.displayName || name}`)} />
+          <Button label="Cancel" tone="quiet" disabled={pending} onPress={() => setReporting(null)} />
+        </View>
+      ) : (
+        <Button label="Report profile" tone="quiet" disabled={pending} onPress={() => setReporting('profile')} />
+      )}
+      {items.map((item) => {
+        const key = `${item.label}:${item.summary}`;
+        return (
+          <View key={key} style={{ gap: 6 }}>
+            {sent === key ? <T variant="muted">Report sent.</T> : null}
+            {reporting === key ? (
+              <View style={{ gap: 8 }}>
+                <T>This report goes to the moderation queue.</T>
+                <Button label="Send report" pending={pending} onPress={() => void report(key, `${item.label}: ${item.summary}`)} />
+                <Button label="Cancel" tone="quiet" disabled={pending} onPress={() => setReporting(null)} />
+              </View>
+            ) : (
+              <Button label={`Report ${item.label}`} tone="quiet" disabled={pending} onPress={() => setReporting(key)} />
+            )}
+          </View>
+        );
+      })}
     </View>
   );
 }

@@ -22,7 +22,9 @@ import {
   type VisionItem,
   type VisionSize,
 } from '@/domain/visionBoard';
+import { toggleShareId } from '@/domain/profileSharing';
 import { pickProgressPhoto } from '@/ui/prepareProgressPhoto';
+import { ShareOnProfile } from '@/ui/ShareOnProfile';
 import { Button, Choice, ErrorNote, Field, playSavedHaptic, Screen, T } from '@/ui/ui';
 import { useAppTheme } from '@/ui/theme';
 
@@ -292,7 +294,14 @@ export function VisionBoard() {
               {open?.previewUrl ? (
                 <Image source={{ uri: open.previewUrl }} style={{ width: '100%', height: 220, borderRadius: 16 }} contentFit="cover" accessibilityIgnoresInvertColors />
               ) : null}
-              <T variant="muted">Only you can see this. It is not shared, and it is not sent to Thumos.</T>
+              <T variant="muted">The picture file stays on your account and is not sent to Thumos. The caption can appear on your profile if you switch it on.</T>
+              {open ? (
+                <ShareOnProfile
+                  detail="this item"
+                  on={snap.sharing.visionIds.includes(open.id)}
+                  apply={(sharing, selected) => toggleShareId(sharing, 'visionIds', open.id, selected)}
+                />
+              ) : null}
               <Field
                 label="Caption"
                 value={caption}

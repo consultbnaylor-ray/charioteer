@@ -11,10 +11,12 @@ import { earnedMilestones, MILESTONES, milestoneReachedOn } from '@/domain/miles
 import { formatGbp, savingsFromTypicalWeek } from '@/domain/savings';
 import { shownError } from '@/domain/errors';
 import { soberElapsed } from '@/domain/sober';
-import { buildHealthInsights } from '@/domain/healthInsights';
+import { buildHealthInsights, HEALTH_METRICS } from '@/domain/healthInsights';
+import { toggleHealthKind } from '@/domain/profileSharing';
 import { VISION_EMPTY_STATEMENT } from '@/domain/visionBoard';
 import { daysUntil, drinkFreeThisWeek, showsSoberRecord, SUDDEN_STOP_WARNING, toggleDrinkFreeDay } from '@/domain/stage';
 import { CheckInWeek } from '@/ui/CheckInWeek';
+import { ShareOnProfile } from '@/ui/ShareOnProfile';
 import { UnitsGuide } from '@/ui/UnitsGuide';
 import { DateField } from '@/ui/DateField';
 import { Button, Card, EditMark, EditSheet, ErrorNote, Field, Screen, T } from '@/ui/ui';
@@ -135,6 +137,7 @@ export default function Home() {
   return (
     <Screen eyebrow={greeting(now)} title={profile.displayName || 'Friend'} refreshing={refreshing} onRefresh={() => void pullToRefresh()}>
       {sober ? (
+      <View style={{ gap: 8 }}>
       <Card onPress={openCorrection} accessibilityLabel="Correct the sober start date">
         <EditMark label="Sober" />
         <T variant="hero">{elapsed ? elapsed.days : '—'}</T>
@@ -150,7 +153,21 @@ export default function Home() {
         ) : null}
         {started ? <T variant="muted">Since {formatUkDate(started)}</T> : null}
       </Card>
+      <ShareOnProfile
+        detail="days sober and milestones"
+        on={snap.sharing.sober}
+        sensitive
+        apply={(sharing, selected) => ({ ...sharing, sober: selected })}
+      />
+      <ShareOnProfile
+        detail="stage"
+        on={snap.sharing.stage}
+        sensitive
+        apply={(sharing, selected) => ({ ...sharing, stage: selected })}
+      />
+      </View>
       ) : (
+      <View style={{ gap: 8 }}>
       <Card>
         {profile.stage === 'trying_to_stop' ? (
           <>
@@ -186,8 +203,16 @@ export default function Home() {
           </>
         ) : null}
       </Card>
+      <ShareOnProfile
+        detail="stage"
+        on={snap.sharing.stage}
+        sensitive
+        apply={(sharing, selected) => ({ ...sharing, stage: selected })}
+      />
+      </View>
       )}
       {sober ? (
+        <View style={{ gap: 8 }}>
         <View style={{ flexDirection: 'row', gap: 12 }}>
           <Card style={{ flex: 1 }} onPress={openWeek} accessibilityLabel="Edit weekly spend">
             <EditMark label="Saved" />
@@ -199,6 +224,13 @@ export default function Home() {
             <T variant="title">{saved ? saved.units : '—'}</T>
             <T variant="muted">{profile.weeklyUnits != null ? `from ${profile.weeklyUnits} a week` : 'Add your usual units'}</T>
           </Card>
+        </View>
+        <ShareOnProfile
+          detail="money saved and units avoided"
+          on={snap.sharing.savings}
+          sensitive
+          apply={(sharing, selected) => ({ ...sharing, savings: selected })}
+        />
         </View>
       ) : null}
       <Button
@@ -223,6 +255,12 @@ export default function Home() {
             );
           })}
         </View>
+        <ShareOnProfile
+          detail="days sober and milestones"
+          on={snap.sharing.sober}
+          sensitive
+          apply={(sharing, selected) => ({ ...sharing, sober: selected })}
+        />
       </Card> : null}
       <Card>
         <CheckInWeek days={week} />
@@ -231,6 +269,12 @@ export default function Home() {
         <T variant="label">Today</T>
         <T>{checkedToday ? `Mood ${today.mood}/5 · craving ${today.craving}/10. You can add another if the day changed shape.` : 'A check-in takes a few seconds: mood, sleep, craving.'}</T>
         <Button label={checkedToday ? 'Update check-in' : 'Check in'} tone="quiet" onPress={() => router.push('/check-in' as never)} />
+        <ShareOnProfile
+          detail="mood streak"
+          on={snap.sharing.moodStreak}
+          sensitive
+          apply={(sharing, selected) => ({ ...sharing, moodStreak: selected })}
+        />
       </Card>
       <Card>
         <T variant="label">Health Stats</T>
@@ -239,6 +283,15 @@ export default function Home() {
         ) : (
           healthHeadlines.map((line) => <T key={line}>{line}</T>)
         )}
+        {HEALTH_METRICS.map((metric) => (
+          <ShareOnProfile
+            key={metric.kind}
+            detail={metric.label}
+            on={snap.sharing.healthKinds.includes(metric.kind)}
+            sensitive
+            apply={(sharing, selected) => toggleHealthKind(sharing, metric.kind, selected)}
+          />
+        ))}
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="See all health stats"

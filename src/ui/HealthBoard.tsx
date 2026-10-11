@@ -15,7 +15,10 @@ import {
   seriesForWindow,
   type HealthInsightKind,
 } from '@/domain/healthInsights';
+import { toggleHealthKind } from '@/domain/profileSharing';
+import { useSnapshot } from '@/data';
 import { GuidanceRange } from '@/ui/GuidanceRange';
+import { ShareOnProfile } from '@/ui/ShareOnProfile';
 import { HealthChart } from '@/ui/HealthChart';
 import { useAppTheme } from '@/ui/theme';
 import { Card, Choice, Field, playSavedHaptic, T } from '@/ui/ui';
@@ -128,6 +131,7 @@ function MetricCard({
     adult,
   });
   const shownFlags = flags.filter((flag) => flag.id !== 'resting_high' && flag.id !== 'short_sleep');
+  const sharing = useSnapshot().sharing;
 
   useEffect(() => {
     setHeightText(heightCm == null ? '' : String(heightCm));
@@ -163,6 +167,12 @@ function MetricCard({
   return (
     <Card>
       <T variant="label">{label}</T>
+      <ShareOnProfile
+        detail={`${label} average`}
+        on={sharing.healthKinds.includes(kind)}
+        sensitive
+        apply={(current, selected) => toggleHealthKind(current, kind, selected)}
+      />
       {latest ? (
         <T variant="title">
           {formatHealthValue(kind, latest.value)}

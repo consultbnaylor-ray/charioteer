@@ -19,7 +19,9 @@ import {
   type GratitudePhoto,
 } from '@/domain/gratitude';
 import { gratitudePhotoLimitMessage } from '@/domain/gratitudePhotos';
+import { toggleShareId } from '@/domain/profileSharing';
 import { DateField } from '@/ui/DateField';
+import { ShareOnProfile } from '@/ui/ShareOnProfile';
 import { pickProgressPhoto } from '@/ui/prepareProgressPhoto';
 import { Button, Card, Choice, EditSheet, ErrorNote, Field, playSavedHaptic, Screen, T } from '@/ui/ui';
 import { radius, useAppTheme } from '@/ui/theme';
@@ -341,6 +343,11 @@ export default function GratitudeDiary() {
                   </Pressable>
                 </View>
                 {entry.category ? <T variant="muted">{entry.category}</T> : null}
+                <ShareOnProfile
+                  detail="this line"
+                  on={snap.sharing.gratitudeIds.includes(entry.id)}
+                  apply={(sharing, selected) => toggleShareId(sharing, 'gratitudeIds', entry.id, selected)}
+                />
                 {entry.photos.length || cardUpload ? (
                   <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
                     {entry.photos.map((photo) => (
@@ -359,6 +366,15 @@ export default function GratitudeDiary() {
                           </View>
                         )}
                       </Pressable>
+                    ))}
+                    {entry.photos.map((photo) => (
+                      <View key={`${photo.id}-share`} style={{ width: '100%' }}>
+                        <ShareOnProfile
+                          detail="this photo"
+                          on={snap.sharing.gratitudePhotoIds.includes(photo.id)}
+                          apply={(sharing, selected) => toggleShareId(sharing, 'gratitudePhotoIds', photo.id, selected)}
+                        />
+                      </View>
                     ))}
                     {cardUpload ? (
                       <SavingThumb

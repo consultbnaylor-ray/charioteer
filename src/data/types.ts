@@ -1,4 +1,5 @@
 import type { StoredConsent } from '@/domain/consents';
+import type { ProfileSharing, PublicProfileView } from '@/domain/profileSharing';
 import type { GratitudeCategory, GratitudeEntry, GratitudeReflect } from '@/domain/gratitude';
 import type { Stage } from '@/domain/stage';
 import type { ThumosMode } from '@/domain/thumos';
@@ -172,6 +173,8 @@ export type AppSnapshot = {
   gratitude: GratitudeEntry[];
   /** Private vision board. Never included in the community directory. */
   visionItems: VisionItem[];
+  /** Which sections this person has chosen to show. Name and interests stay on. */
+  sharing: ProfileSharing;
 };
 
 export type NewGratitudeEntry = {
@@ -306,6 +309,9 @@ export interface Repository {
   updateProgressPhoto(id: string, input: { takenOn?: string; startingPoint?: boolean; note?: string }): Promise<void>;
   deleteProgressPhoto(id: string): Promise<void>;
   setProgressPhotoVisibility(ids: string[], visibility: ProgressVisibility): Promise<void>;
+  setProfileSharing(sharing: ProfileSharing): Promise<void>;
+  /** Shared fields only. Null when the profile is hidden or blocked. */
+  publicProfile(userId: string): Promise<PublicProfileView | null>;
   openPrivateChat(userId: string): Promise<{ status: 'open'; connectionId: string } | { status: 'requested'; connectionId: string | null }>;
   addGratitudeEntry(input: NewGratitudeEntry): Promise<void>;
   updateGratitudeEntry(id: string, input: NewGratitudeEntry): Promise<void>;

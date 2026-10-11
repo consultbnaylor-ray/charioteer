@@ -297,7 +297,7 @@ describe('gratitude diary wiring', () => {
     expect(reflectMethod).toContain('body: { body, category }');
     expect(reflectMethod).not.toMatch(/gratitude_photos|storage_path|previewUrl/);
     expect(consent).toContain('Gratitude photos are not sent');
-    expect(consent).toContain('Gratitude photos always stay private');
+    expect(consent).toContain('Gratitude photos stay private unless you switch that photo on');
     expect(readFileSync('src/app/(main)/check-in.tsx', 'utf8')).toContain('Add to your Gratitude Diary');
     expect(readFileSync('src/app/(main)/people.tsx', 'utf8')).not.toContain('gratitude');
   });

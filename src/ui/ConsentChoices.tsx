@@ -7,7 +7,7 @@ import { T } from '@/ui/ui';
 
 /** The community switch explanation. People reuses this when someone turns the community on. */
 export const COMMUNITY_CONSENT_BODY =
-  'Other adults can see your name, town or area, and interests. They cannot see your reasons, check-ins, money, units, or health. Your gratitude diary, including any photos on a line, is never shown to other people. A progress photo stays hidden unless you choose Share with community on that photo.';
+  'Other adults can see your name and interests. Town or area stays hidden until you switch it on. Reasons, days sober, money and unit totals, a mood streak, health headlines, diary lines, and photos stay hidden until you switch that item on. Anything you leave off is never shown to the community. A progress photo stays hidden unless you choose Share with community on that photo.';
 
 export function ConsentChoices({
   community,
@@ -40,11 +40,11 @@ export function ConsentChoices({
       />
       <ConsentRow
         title="Thumos, the coach"
-        body="What you type, plus check-ins, reasons, and health summaries, is sent to xAI to write a reply. A few gratitude lines, the latest and the starred ones, are included when this coach is on. A reflection sends only that one line. Your vision statement and photo captions may be included when this coach is on. The gratitude diary stays private and is never shown to the community. Gratitude photos are not sent. Vision board photos are not sent. Progress photos are not sent. Thumos is not a doctor."
+        body="What you type, plus check-ins, reasons, and health summaries, is sent to xAI to write a reply. A few gratitude lines, the latest and the starred ones, are included when this coach is on. A reflection sends only that one line. Your vision statement and photo captions may be included when this coach is on. A gratitude line you have not switched on is never shown to the community. Gratitude photos are not sent. Vision board photos are not sent. Progress photos are not sent. Thumos is not a doctor."
         value={ai}
         onChange={onAi}
       />
-      <T>Progress photos stay private unless you share one. Anyone in the Charioteer community can then see that photo. Photos are not sent to Thumos. Gratitude photos always stay private. They are not shared with the community and are not sent to Thumos. Vision board photos always stay private. They are not shared with the community and are not sent to Thumos.</T>
+      <T>Progress photos stay private unless you share one. Anyone in the Charioteer community can then see that photo. Photos are not sent to Thumos. Gratitude photos stay private unless you switch that photo on. They are not sent to Thumos. Vision board photos always stay private. They are not sent to Thumos. A vision caption can be shown if you switch that item on.</T>
       <T variant="muted">This consent screen is plain language, not a solicitor’s privacy notice. Have it reviewed before a public launch. Version {formatUkLong(parseIsoDay(CONSENT_VERSION))}.</T>
     </View>
   );

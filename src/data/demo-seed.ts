@@ -38,6 +38,8 @@ export type DemoAccount = {
   progressPhotos: ProgressPhoto[];
   gratitude: GratitudeEntry[];
   visionItems: VisionItem[];
+  /** Absent on older sample data. Name and interests stay public; everything else starts off. */
+  sharing?: import('@/domain/profileSharing').ProfileSharing;
 };
 
 export type DemoDb = {

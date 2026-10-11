@@ -35,6 +35,7 @@ import { OFFLINE_COACH_MESSAGE, OPENING_LINE, type ThumosMode } from '@/domain/t
 import { CONSENT_VERSION } from '@/data/catalogue';
 import { consentRows, missingConsentRows } from '@/domain/consents';
 import { stageFromRecord } from '@/domain/stage';
+import { defaultProfileSharing, normalizeProfileSharing, projectPublicProfile, sensitiveTurnedOn, type ProfileSharing, type PublicProfileView, type ShareSource } from '@/domain/profileSharing';
 import { createDemoDb, type DemoAccount, type DemoDb } from '@/data/demo-seed';
 import type {
   AppSnapshot,
@@ -102,6 +103,38 @@ function clone<T>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T;
 }
 
+function shareSource(account: DemoAccount, interests: DemoDb['interests'], now = new Date()): ShareSource {
+  const labels = new Map(interests.map((item) => [item.id, item.label]));
+  return {
+    now,
+    today: isoDay(now),
+    displayName: account.profile.displayName,
+    town: account.profile.town,
+    stage: account.profile.stage,
+    sobrietyStartedAt: account.profile.sobrietyStartedAt,
+    weeklySpendGbp: account.profile.weeklySpendGbp,
+    weeklyUnits: account.profile.weeklyUnits,
+    interestLabels: account.profile.interestIds.map((id) => labels.get(id) ?? 'Interest'),
+    reasons: account.reasons.map((reason) => ({ body: reason.body, sortOrder: reason.sortOrder })),
+    checkIns: account.checkIns.map((item) => ({ createdAt: item.createdAt })),
+    health: account.health.map((item) => ({ kind: item.kind, value: item.value, recordedOn: item.recordedOn })),
+    gratitude: (account.gratitude ?? []).map((entry) => ({
+      id: entry.id,
+      body: entry.body,
+      entryDate: entry.entryDate,
+      photoIds: (entry.photos ?? []).map((photo) => photo.id),
+    })),
+    vision: (account.visionItems ?? []).map((item) => ({ id: item.id, caption: item.caption, area: item.area })),
+    progressPhotos: (account.progressPhotos ?? []).map((photo) => ({
+      id: photo.id,
+      note: photo.note,
+      takenOn: photo.takenOn,
+      monthIndex: photo.monthIndex,
+      visibility: photo.visibility === 'community' ? 'community' as const : 'private' as const,
+    })),
+  };
+}
+
 function blocked(db: DemoDb, a: string, b: string): boolean {
   return db.blocks.some(
     (row) => (row.blockerId === a && row.blockedId === b) || (row.blockerId === b && row.blockedId === a),
@@ -144,7 +177,7 @@ export class DemoRepository implements Repository {
           .map((other) => ({
             id: other.profile.id,
             displayName: other.profile.displayName,
-            town: other.profile.town,
+            town: normalizeProfileSharing(other.sharing).town ? other.profile.town : null,
             interestIds: other.profile.interestIds,
             sharedInterestIds: other.profile.interestIds.filter((id) => mine.has(id)),
           }))
@@ -191,6 +224,7 @@ export class DemoRepository implements Repository {
       profile: account ? readyProfile(account.profile) : null,
       gratitude: account ? sortGratitude((account.gratitude ?? []).map((entry) => ({ ...entry, photos: entry.photos ?? [] }))) : [],
       visionItems: account ? sortVisionItems(account.visionItems ?? []) : [],
+      sharing: account ? normalizeProfileSharing(account.sharing) : defaultProfileSharing(),
     };
   }
 
@@ -699,6 +733,27 @@ export class DemoRepository implements Repository {
     }
     if (!changed) throw new UserFacingError('Could not update that photo.', 'generic');
     this.commit(db);
+  }
+
+  async setProfileSharing(sharing: ProfileSharing): Promise<void> {
+    const account = this.me();
+    const next = normalizeProfileSharing(sharing);
+    if (sensitiveTurnedOn(normalizeProfileSharing(account.sharing), next) && !next.sensitiveConsentAt) {
+      throw new UserFacingError('Confirm that other people may see this first.', 'generic');
+    }
+    const db = clone(this.db);
+    db.accounts[account.profile.id].sharing = next;
+    this.commit(db);
+  }
+
+  async publicProfile(userId: string): Promise<PublicProfileView | null> {
+    const session = this.snapshot.session;
+    if (!session) return null;
+    const other = this.db.accounts[userId];
+    if (!other || !other.profile.onboardingComplete) return null;
+    if (blocked(this.db, session.userId, userId)) return null;
+    if (!other.profile.communityVisible || !other.profile.ageConfirmed18) return null;
+    return projectPublicProfile(shareSource(other, this.db.interests), normalizeProfileSharing(other.sharing));
   }
 
   async deleteProgressPhoto(id: string): Promise<void> {
