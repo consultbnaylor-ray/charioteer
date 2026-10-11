@@ -14,6 +14,7 @@ import { CONSENT_VERSION } from '@/data/catalogue';
 import { hasCurrentConsents } from '@/domain/consents';
 import { font, ThemeProvider, useAppTheme } from '@/ui/theme';
 import { topSafeInset } from '@/ui/safeArea';
+import { KeyboardDoneBar } from '@/ui/keyboard';
 import { Mark, T, Wordmark } from '@/ui/ui';
 
 SplashScreen.preventAutoHideAsync().catch(() => undefined);
@@ -106,6 +107,7 @@ function Chrome() {
     <>
       <StatusBar style={theme.scheme === 'dark' ? 'light' : 'dark'} />
       <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: theme.colors.bg } }} />
+      <KeyboardDoneBar />
     </>
   );
 }

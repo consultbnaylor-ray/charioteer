@@ -1,5 +1,5 @@
 import * as Haptics from 'expo-haptics';
-import { createContext, useContext, useState, type ReactNode } from 'react';
+import { createContext, useContext, useRef, useState, type ReactNode } from 'react';
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -21,6 +21,7 @@ import Svg, { Path } from 'react-native-svg';
 
 import type { Verification } from '@/data/types';
 import { HELMET_ASPECT, HELMET_D, HELMET_VIEWBOX } from '@/ui/helmet';
+import { DismissKeyboard, dismissKeyboardOnAction, inputScrollProps, KeyboardForm, keyboardAccessoryId, useKeyboardField, useKeyboardOffset } from '@/ui/keyboard';
 import { topSafeInset } from '@/ui/safeArea';
 import { radius, useAppTheme } from '@/ui/theme';
 
@@ -127,25 +128,26 @@ export function Screen({
   const theme = useAppTheme();
   const insets = useSafeAreaInsets();
   const shell = useContext(ShellInsetContext);
+  const { hostRef, keyboardVerticalOffset, onKeyboardLayout } = useKeyboardOffset();
   const topInset = shell.topHandled ? 0 : topSafeInset(insets.top);
   const bottomInset = shell.bottomHandled ? 0 : insets.bottom;
   return (
-    <KeyboardAvoidingView
-      style={{ flex: 1, backgroundColor: theme.colors.bg }}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-    >
+    <View ref={hostRef} style={{ flex: 1, backgroundColor: theme.colors.bg }} onLayout={onKeyboardLayout}>
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        keyboardVerticalOffset={keyboardVerticalOffset}
+      >
       <View style={{ flex: 1, paddingTop: topInset }}>
-        {banner ? <View style={[styles.page, { paddingBottom: 0 }]}>{banner}</View> : null}
+        {banner ? <DismissKeyboard style={[styles.page, { paddingBottom: 0 }]}>{banner}</DismissKeyboard> : null}
         <ScrollView
+          {...inputScrollProps}
           contentContainerStyle={[
             styles.page,
             { paddingBottom: 40 + bottomInset + (footer ? 8 : 0) },
           ]}
           contentInsetAdjustmentBehavior="never"
-          keyboardShouldPersistTaps="handled"
           nestedScrollEnabled
-          keyboardDismissMode="interactive"
-          automaticallyAdjustKeyboardInsets
           refreshControl={
             onRefresh ? (
               <RefreshControl
@@ -160,15 +162,18 @@ export function Screen({
           {eyebrow ? <T variant="label">{eyebrow}</T> : null}
           {title ? <T variant="display" style={[{ marginTop: eyebrow ? 6 : 0 }, titleStyle]}>{title}</T> : null}
           {intro ? <T variant="muted" style={[{ marginTop: 8 }, introStyle]}>{intro}</T> : null}
-          <View style={{ marginTop: title || intro ? 22 : 0, gap: 14 }}>{children}</View>
+          <KeyboardForm>
+            <View style={{ marginTop: title || intro ? 22 : 0, gap: 14 }}>{children}</View>
+          </KeyboardForm>
         </ScrollView>
         {footer ? (
-          <View style={[styles.footer, { borderTopColor: theme.colors.line, backgroundColor: theme.colors.bg, paddingBottom: 16 + bottomInset }]}>
+          <DismissKeyboard style={[styles.footer, { borderTopColor: theme.colors.line, backgroundColor: theme.colors.bg, paddingBottom: 16 + bottomInset }]}>
             {footer}
-          </View>
+          </DismissKeyboard>
         ) : null}
       </View>
-    </KeyboardAvoidingView>
+      </KeyboardAvoidingView>
+    </View>
   );
 }
 
@@ -258,10 +263,14 @@ export function EditSheet({
               maxHeight: 640,
             }}
           >
-            <T variant="title">{title}</T>
-            {intro ? <T>{intro}</T> : null}
-            <ScrollView keyboardShouldPersistTaps="handled" style={{ flexGrow: 0, maxHeight: 420 }} contentContainerStyle={{ gap: 12 }}>
-              {children}
+            <DismissKeyboard>
+              <T variant="title">{title}</T>
+              {intro ? <T>{intro}</T> : null}
+            </DismissKeyboard>
+            <ScrollView {...inputScrollProps} style={{ flexGrow: 0, maxHeight: 420 }}>
+              <KeyboardForm>
+                <View style={{ gap: 12 }}>{children}</View>
+              </KeyboardForm>
             </ScrollView>
             <Button label={saveLabel} pending={pending} onPress={onSave} />
             <Button label="Cancel" tone="quiet" onPress={onClose} disabled={pending} />
@@ -304,7 +313,10 @@ export function Button({
       accessibilityRole="button"
       accessibilityLabel={accessibilityLabel ?? label}
       disabled={disabled || pending}
-      onPress={onPress}
+      onPress={() => {
+        dismissKeyboardOnAction(label);
+        onPress();
+      }}
       style={({ pressed }) => [
         styles.button,
         { backgroundColor: tones.bg, opacity: disabled ? 0.45 : pressed ? 0.86 : 1 },
@@ -344,6 +356,8 @@ export function Field({
   onBlur?: () => void;
 }) {
   const theme = useAppTheme();
+  const inputRef = useRef<TextInput>(null);
+  const keys = useKeyboardField(inputRef, Boolean(multiline));
   const [revealed, setRevealed] = useState(false);
   const password = Boolean(secureTextEntry);
   // iOS paints the first TextInput placeholder with `color` when a custom font
@@ -353,16 +367,21 @@ export function Field({
   const contentType = password ? (textContentType ?? 'password') : undefined;
   const input = (
     <TextInput
+      ref={inputRef}
       accessibilityLabel={label}
       value={value}
       onChangeText={onChangeText}
       onBlur={onBlur}
+      onSubmitEditing={keys.onSubmitEditing}
       placeholder={placeholder}
       placeholderTextColor={theme.colors.placeholder}
       secureTextEntry={password && !revealed}
       textContentType={contentType}
       autoComplete={contentType === 'newPassword' ? 'password-new' : contentType === 'password' ? 'password' : undefined}
       keyboardType={keyboardType}
+      returnKeyType={keys.returnKeyType}
+      blurOnSubmit={keys.blurOnSubmit}
+      inputAccessoryViewID={keyboardAccessoryId(Boolean(multiline), keyboardType)}
       multiline={multiline}
       editable={editable}
       maxLength={maxLength}

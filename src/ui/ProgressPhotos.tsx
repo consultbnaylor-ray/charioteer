@@ -12,6 +12,7 @@ import { planProgressPhoto, PROGRESS_SHARE_WARNING, progressAnchor, progressPhot
 import { DateField } from '@/ui/DateField';
 import { pickProgressPhoto } from '@/ui/prepareProgressPhoto';
 import { loadProgressComparison, saveProgressComparison } from '@/ui/progressComparisonStore';
+import { DismissKeyboard, inputScrollProps, KeyboardForm } from '@/ui/keyboard';
 import { radius, useAppTheme } from '@/ui/theme';
 import { Button, Card, Choice, ErrorNote, Field, playSavedHaptic, T } from '@/ui/ui';
 
@@ -440,13 +441,15 @@ function PhotoDetailSheet({
               }}
             >
               <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-                <View pointerEvents="none" style={{ flex: 1, gap: 2 }}>
+                <DismissKeyboard style={{ flex: 1, gap: 2 }}>
                   <T variant="title">{label}</T>
                   {savedTick ? <T>Saved ✓</T> : null}
-                </View>
+                </DismissKeyboard>
                 <Button label="Close" tone="quiet" onPress={onClose} />
               </View>
-              <ScrollView keyboardShouldPersistTaps="handled" nestedScrollEnabled style={{ flexGrow: 0, height: detailsMaxHeight }} contentContainerStyle={{ gap: 12, paddingBottom: 8 }}>
+              <ScrollView {...inputScrollProps} nestedScrollEnabled style={{ flexGrow: 0, height: detailsMaxHeight }}>
+                <KeyboardForm>
+                <View style={{ gap: 12, paddingBottom: 8 }}>
                 <View pointerEvents="box-none" style={{ height: 280, borderRadius: radius.md, overflow: 'hidden', backgroundColor: theme.colors.sunken }}>
                   <ScrollView
                     style={{ height: 280, width: '100%' }}
@@ -514,6 +517,8 @@ function PhotoDetailSheet({
                 ) : (
                   <Button label="Delete" tone="quiet" disabled={pending != null} onPress={onAskDelete} />
                 )}
+                </View>
+                </KeyboardForm>
               </ScrollView>
             </View>
           </KeyboardAvoidingView>
