@@ -4,6 +4,14 @@ export const GRATITUDE_CATEGORIES = ['People', 'Health', 'Progress', 'Small joys
 
 export type GratitudeCategory = (typeof GRATITUDE_CATEGORIES)[number];
 
+export type GratitudePhoto = {
+  id: string;
+  entryId: string;
+  storagePath: string;
+  createdAt: string;
+  previewUrl: string | null;
+};
+
 export type GratitudeEntry = {
   id: string;
   body: string;
@@ -13,6 +21,7 @@ export type GratitudeEntry = {
   entryDate: string;
   createdAt: string;
   updatedAt: string;
+  photos: GratitudePhoto[];
 };
 
 export type GratitudeReflect = { comment: string; suggestions: string[] };
@@ -115,6 +124,7 @@ export function gratitudeForThumos(entries: readonly GratitudeEntry[], limit = 5
   return picked.slice(0, cap);
 }
 
+/** Text only. Photo paths, links, and bytes are never included. */
 export function formatGratitudeContext(entries: readonly GratitudeEntry[]): string {
   const lines = gratitudeForThumos(entries);
   if (!lines.length) return '';
@@ -191,6 +201,7 @@ export function gratitudeFromRows(rows: unknown): GratitudeEntry[] {
       entryDate: String(record.entry_date ?? '').slice(0, 10),
       createdAt: String(record.created_at ?? ''),
       updatedAt: String(record.updated_at ?? ''),
+      photos: [],
     });
   }
   return entries;

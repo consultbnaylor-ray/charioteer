@@ -24,7 +24,7 @@ export function ConsentChoices({
     <View style={{ gap: 16 }}>
       <ConsentRow
         title="Community"
-        body="Other adults can see your name, town or area, and interests. They cannot see your reasons, check-ins, money, units, or health. Your gratitude diary is never shown to other people. A progress photo stays hidden unless you choose Share with community on that photo."
+        body="Other adults can see your name, town or area, and interests. They cannot see your reasons, check-ins, money, units, or health. Your gratitude diary, including any photos on a line, is never shown to other people. A progress photo stays hidden unless you choose Share with community on that photo."
         value={community}
         onChange={onCommunity}
       />
@@ -36,11 +36,11 @@ export function ConsentChoices({
       />
       <ConsentRow
         title="Thumos, the coach"
-        body="What you type, plus check-ins, reasons, and health summaries, is sent to xAI to write a reply. A few gratitude lines, the latest and the starred ones, are included when this coach is on. A reflection sends only that one line. The gratitude diary stays private and is never shown to the community. Progress photos are not sent. Thumos is not a doctor."
+        body="What you type, plus check-ins, reasons, and health summaries, is sent to xAI to write a reply. A few gratitude lines, the latest and the starred ones, are included when this coach is on. A reflection sends only that one line. The gratitude diary stays private and is never shown to the community. Gratitude photos are not sent. Progress photos are not sent. Thumos is not a doctor."
         value={ai}
         onChange={onAi}
       />
-      <T>Progress photos stay private unless you share one. Anyone in the Charioteer community can then see that photo. Photos are not sent to Thumos.</T>
+      <T>Progress photos stay private unless you share one. Anyone in the Charioteer community can then see that photo. Photos are not sent to Thumos. Gratitude photos always stay private. They are not shared with the community and are not sent to Thumos.</T>
       <T variant="muted">This consent screen is plain language, not a solicitor’s privacy notice. Have it reviewed before a public launch. Version {formatUkLong(parseIsoDay(CONSENT_VERSION))}.</T>
     </View>
   );

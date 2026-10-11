@@ -4,6 +4,7 @@ import type { StoredConsent } from '@/domain/consents';
 import type { CheckIn, Connection, DirectMessage, HealthSample, Profile, ProgressPhoto, Reason, Relapse, ThumosMessage } from '@/data/types';
 import { isoDay } from '@/domain/dates';
 import type { GratitudeEntry } from '@/domain/gratitude';
+import { gratitudeStoragePath } from '@/domain/gratitudePhotos';
 import { planProgressPhoto, progressStoragePath } from '@/domain/progressPhotos';
 
 export const DEMO_PASSWORD = 'Charioteer-demo-1';
@@ -135,7 +136,7 @@ function diaryLine(
 ): GratitudeEntry {
   const [year, month, day] = entryDate.split('-').map(Number);
   const created = new Date(year, (month ?? 1) - 1, day ?? 1, 9, 0, 0, 0).toISOString();
-  return { id, body, category, isFavourite, entryDate, createdAt: created, updatedAt: created };
+  return { id, body, category, isFavourite, entryDate, createdAt: created, updatedAt: created, photos: [] };
 }
 
 function samplePhoto(
@@ -236,6 +237,17 @@ export function createDemoDb(now = new Date()): DemoDb {
     diaryLine('11111111-1111-4111-8111-111111111102', 'The river path after rain, and nobody asking me to hurry.', 'Nature', false, localDay(now, 40)),
     diaryLine('11111111-1111-4111-8111-111111111103', 'A quiet cup of tea before the house woke.', 'Small joys', false, lastYear),
   ];
+  const sister = alex.gratitude[0];
+  if (sister) {
+    const photoId = '11111111-1111-4111-8111-1111111111a1';
+    sister.photos = [{
+      id: photoId,
+      entryId: sister.id,
+      storagePath: gratitudeStoragePath(PEOPLE.alex, photoId),
+      createdAt: sister.createdAt,
+      previewUrl: SAMPLE_JPEG,
+    }];
+  }
 
   const other = (
     id: string,

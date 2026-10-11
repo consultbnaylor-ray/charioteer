@@ -298,6 +298,8 @@ export interface Repository {
   addGratitudeEntry(input: NewGratitudeEntry): Promise<void>;
   updateGratitudeEntry(id: string, input: NewGratitudeEntry): Promise<void>;
   deleteGratitudeEntry(id: string): Promise<void>;
+  addGratitudePhoto(entryId: string, bytes: Uint8Array): Promise<void>;
+  deleteGratitudePhoto(id: string): Promise<void>;
   reflectOnGratitude(body: string, category: string | null): Promise<GratitudeReflect>;
   exportData(): Promise<Record<string, unknown>>;
   deleteAccount(): Promise<void>;

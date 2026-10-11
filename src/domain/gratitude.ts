@@ -17,6 +17,7 @@ export {
   sortGratitude,
   type GratitudeCategory,
   type GratitudeEntry,
+  type GratitudePhoto,
   type GratitudeReflect,
   type ResurfacedGratitude,
 } from '../../supabase/functions/_shared/gratitude.ts';

@@ -2,6 +2,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.117.3';
 import { json, preflight } from '../_shared/http.ts';
 
 const PHOTO_BUCKET = 'progress-photos';
+const GRATITUDE_BUCKET = 'gratitude-photos';
 const LEFT_IN_PLACE = 'Could not remove the private photos, so the account was left in place.';
 
 Deno.serve(async (req) => {
@@ -23,6 +24,8 @@ Deno.serve(async (req) => {
   const admin = createClient(url, service, { auth: { persistSession: false } });
   const storageError = await removeProgressPhotos(admin, userData.user.id);
   if (storageError) return json({ ok: false, code: 'storage', message: storageError }, 500);
+  const diaryPhotos = await removeGratitudePhotos(admin, userData.user.id);
+  if (diaryPhotos) return json({ ok: false, code: 'storage', message: diaryPhotos }, 500);
 
   const diary = await admin.from('gratitude_entries').delete().eq('user_id', userData.user.id);
   if (diary.error && !/does not exist|schema cache|could not find the table/i.test(diary.error.message)) {
@@ -52,10 +55,18 @@ type StorageAdmin = {
 
 /** Service role, before the auth user goes. A missing bucket is fine; any other storage error keeps the account. */
 async function removeProgressPhotos(admin: StorageAdmin, userId: string): Promise<string | null> {
+  return removeOwnerFolder(admin, PHOTO_BUCKET, userId);
+}
+
+async function removeGratitudePhotos(admin: StorageAdmin, userId: string): Promise<string | null> {
+  return removeOwnerFolder(admin, GRATITUDE_BUCKET, userId);
+}
+
+async function removeOwnerFolder(admin: StorageAdmin, bucket: string, userId: string): Promise<string | null> {
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(userId)) return LEFT_IN_PLACE;
   const paths: string[] = [];
   for (let offset = 0; offset < 10000; offset += 100) {
-    const listed = await admin.storage.from(PHOTO_BUCKET).list(userId, { limit: 100, offset });
+    const listed = await admin.storage.from(bucket).list(userId, { limit: 100, offset });
     if (listed.error) {
       if (/bucket not found/i.test(listed.error.message)) return null;
       return LEFT_IN_PLACE;
@@ -69,7 +80,7 @@ async function removeProgressPhotos(admin: StorageAdmin, userId: string): Promis
     if (page.length < 100) break;
   }
   for (let index = 0; index < paths.length; index += 100) {
-    const removed = await admin.storage.from(PHOTO_BUCKET).remove(paths.slice(index, index + 100));
+    const removed = await admin.storage.from(bucket).remove(paths.slice(index, index + 100));
     if (removed.error) {
       if (/bucket not found/i.test(removed.error.message)) return null;
       return LEFT_IN_PLACE;

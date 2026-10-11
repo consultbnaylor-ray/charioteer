@@ -10,6 +10,7 @@ import {
 import { randomId } from '@/domain/id';
 import { isoDay } from '@/domain/dates';
 import { isGratitudeCategory, localGratitudeReflect, planGratitudeEntry, sortGratitude, type GratitudeEntry, type GratitudeReflect } from '@/domain/gratitude';
+import { GRATITUDE_MAX_BYTES, gratitudePhotoLimitMessage, gratitudeStoragePath } from '@/domain/gratitudePhotos';
 import { planProgressPhoto, progressAnchor, progressPhotoLabel, progressStoragePath, progressVisibility, PROGRESS_MAX_BYTES } from '@/domain/progressPhotos';
 import { interestSelectionUnchanged, nextInterestIds } from '@/domain/interests';
 import { planCustomInterest, validateTown } from '@/domain/privacy';
@@ -170,7 +171,7 @@ export class DemoRepository implements Repository {
             .flatMap((other) => (other.progressPhotos ?? []).map((photo) => readyPhoto(photo, other.profile.id)).filter((photo) => photo.visibility === 'community'))
         : [],
       profile: account ? readyProfile(account.profile) : null,
-      gratitude: account ? sortGratitude(account.gratitude ?? []) : [],
+      gratitude: account ? sortGratitude((account.gratitude ?? []).map((entry) => ({ ...entry, photos: entry.photos ?? [] }))) : [],
     };
   }
 
@@ -722,6 +723,7 @@ export class DemoRepository implements Repository {
       entryDate: plan.entryDate,
       createdAt: stamp,
       updatedAt: stamp,
+      photos: [],
     };
     next.gratitude = [entry, ...(next.gratitude ?? [])];
     this.commit(db);
@@ -753,6 +755,42 @@ export class DemoRepository implements Repository {
     const db = clone(this.db);
     const next = db.accounts[account.profile.id];
     next.gratitude = (next.gratitude ?? []).filter((entry) => entry.id !== id);
+    this.commit(db);
+  }
+
+  async addGratitudePhoto(entryId: string, bytes: Uint8Array): Promise<void> {
+    if (bytes.byteLength > GRATITUDE_MAX_BYTES) throw new UserFacingError('That photo is still too large.', 'generic');
+    const account = this.me();
+    const db = clone(this.db);
+    const entry = (db.accounts[account.profile.id].gratitude ?? []).find((item) => item.id === entryId);
+    if (!entry) throw new UserFacingError('Could not add that photo.', 'generic');
+    const photos = entry.photos ?? [];
+    const limit = gratitudePhotoLimitMessage(photos.length);
+    if (limit) throw new UserFacingError(limit, 'generic');
+    const id = uid();
+    photos.push({
+      id,
+      entryId,
+      storagePath: gratitudeStoragePath(account.profile.id, id),
+      createdAt: new Date().toISOString(),
+      previewUrl: bytesToDataUrl(bytes),
+    });
+    entry.photos = photos;
+    this.commit(db);
+  }
+
+  async deleteGratitudePhoto(id: string): Promise<void> {
+    const account = this.me();
+    const db = clone(this.db);
+    const list = db.accounts[account.profile.id].gratitude ?? [];
+    let removed = false;
+    for (const entry of list) {
+      const photos = entry.photos ?? [];
+      if (!photos.some((photo) => photo.id === id)) continue;
+      entry.photos = photos.filter((photo) => photo.id !== id);
+      removed = true;
+    }
+    if (!removed) throw new UserFacingError('Could not remove that photo.', 'generic');
     this.commit(db);
   }
 
@@ -801,6 +839,14 @@ export class DemoRepository implements Repository {
         created_at: entry.createdAt,
         updated_at: entry.updatedAt,
       })),
+      gratitude_photos: (account.gratitude ?? []).flatMap((entry) => (entry.photos ?? []).map((photo) => ({
+        id: photo.id,
+        entry_id: entry.id,
+        user_id: id,
+        storage_path: photo.storagePath,
+        created_at: photo.createdAt,
+        signed_url: photo.previewUrl,
+      }))),
     };
   }
 
