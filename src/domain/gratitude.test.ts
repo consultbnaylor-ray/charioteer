@@ -237,6 +237,7 @@ describe('gratitude diary wiring', () => {
       'Thumos',
       'People',
       'Gratitude Diary',
+      'Health Stats',
       'Library/Resources',
       'Progress photos',
       'Drinks & units calculator',

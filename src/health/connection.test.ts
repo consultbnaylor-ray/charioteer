@@ -55,7 +55,24 @@ describe('Apple Health screen and entitlement', () => {
 
   it('replaces the developer intro with the connection card and keeps manual entry', () => {
     expect(screen).not.toContain('dev build');
+    expect(screen).toContain('eyebrow="Health Stats"');
     expect(screen).toContain('Or add a reading yourself');
+    expect(screen).toContain('HealthBoard');
+    expect(screen).toContain('HealthReadings');
+    const home = readFileSync('src/app/(main)/home.tsx', 'utf8');
+    expect(home).toContain('Health Stats');
+    expect(home).toContain('See all');
+    expect(home).toContain("router.push('/health'");
+    expect(home).toContain('buildHealthInsights');
+    expect(home).not.toContain('>Body<');
+    const you = readFileSync('src/app/(main)/profile.tsx', 'utf8');
+    expect(you).not.toContain('Health readings');
+    expect(you).toContain('ConsentChoices');
+    const sections = readFileSync('src/domain/sections.ts', 'utf8');
+    expect(sections).toContain("label: 'Health Stats'");
+    expect(sections).toContain("href: '/health'");
+    expect(sections).toContain("icon: 'pulse'");
+    expect(readFileSync('src/ui/SectionDrawer.tsx', 'utf8')).toContain('<Pulse');
     expect(screen).toContain('AppleHealthCard');
     expect(screen).toContain("router.push('/privacy'");
     expect(screen).not.toContain('Sync from Apple Health');

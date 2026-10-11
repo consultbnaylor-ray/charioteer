@@ -1,5 +1,4 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useRouter } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import { Platform, Share, View } from 'react-native';
 
@@ -22,7 +21,6 @@ import { Button, Card, Choice, ErrorNote, Field, playSavedHaptic, Screen, T } fr
 export default function Profile() {
   const snap = useSnapshot();
   const repo = useRepository();
-  const router = useRouter();
   const profile = snap.profile;
   const [name, setName] = useState(profile?.displayName ?? '');
   const [reasons, setReasons] = useState(snap.reasons.map((reason) => reason.body).join('\n'));
@@ -295,7 +293,6 @@ export default function Profile() {
           ))}
         </View>
       </Card>
-      <Button label="Health readings" tone="quiet" onPress={() => router.push('/health' as never)} />
       {profile.isModerator ? (
         <Card>
           <T variant="label">Moderation queue</T>

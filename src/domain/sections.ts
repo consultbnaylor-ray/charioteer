@@ -11,6 +11,8 @@ export type AppSection = {
   tab?: boolean;
   sos?: boolean;
   signOut?: boolean;
+  /** Drawn beside the label in the menu. */
+  icon?: 'pulse';
 };
 
 export const APP_SECTIONS: readonly AppSection[] = [
@@ -20,6 +22,7 @@ export const APP_SECTIONS: readonly AppSection[] = [
   { id: 'thumos', label: 'Thumos', href: '/thumos', tab: true },
   { id: 'people', label: 'People', href: '/people', tab: true },
   { id: 'gratitude', label: 'Gratitude Diary', href: '/gratitude', tab: true, tabLabel: 'Gratitude' },
+  { id: 'health', label: 'Health Stats', href: '/health', icon: 'pulse' },
   { id: 'library', label: 'Library/Resources', href: '/library' },
   { id: 'photos', label: 'Progress photos', href: '/photos' },
   { id: 'units', label: 'Drinks & units calculator', href: '/units' },

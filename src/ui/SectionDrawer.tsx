@@ -6,7 +6,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRepository } from '@/data';
 import { APP_SECTIONS } from '@/domain/sections';
 import { useAppTheme } from '@/ui/theme';
-import { T } from '@/ui/ui';
+import { Pulse, T } from '@/ui/ui';
 
 const PANEL_WIDTH = 320;
 
@@ -88,15 +88,18 @@ export function SectionDrawer({ open, onClose }: { open: boolean; onClose: () =>
                     backgroundColor: active ? theme.colors.emphasisSoft : 'transparent',
                   }}
                 >
-                  <T
-                    variant="body"
-                    style={{
-                      color: section.sos ? theme.colors.danger : theme.colors.ink,
-                      fontFamily: theme.font.bodyStrong,
-                    }}
-                  >
-                    {section.label}
-                  </T>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                    {section.icon === 'pulse' ? <Pulse color={section.sos ? theme.colors.danger : theme.colors.ink} /> : null}
+                    <T
+                      variant="body"
+                      style={{
+                        color: section.sos ? theme.colors.danger : theme.colors.ink,
+                        fontFamily: theme.font.bodyStrong,
+                      }}
+                    >
+                      {section.label}
+                    </T>
+                  </View>
                 </Pressable>
               );
             })}

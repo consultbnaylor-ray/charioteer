@@ -203,6 +203,15 @@ export function Card({
   );
 }
 
+/** A pulse line for Health Stats in the menu. The row label is the accessible name. */
+export function Pulse({ color }: { color: string }) {
+  return (
+    <Svg width={22} height={22} viewBox="0 0 24 24" fill="none" accessibilityElementsHidden>
+      <Path d="M3 12h3.2l2.2-6 3.4 12 2.2-6H21" stroke={color} strokeWidth={1.6} strokeLinejoin="round" strokeLinecap="round" />
+    </Svg>
+  );
+}
+
 export function Pencil({ color }: { color: string }) {
   return (
     <Svg width={18} height={18} viewBox="0 0 24 24" fill="none" accessibilityElementsHidden>

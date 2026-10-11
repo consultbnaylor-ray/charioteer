@@ -1,9 +1,8 @@
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
-import { View } from 'react-native';
+import { Pressable, View } from 'react-native';
 
 import { useRepository, useSnapshot } from '@/data';
-import { HEALTH_LABELS } from '@/data/catalogue';
 import { recentCheckInDays } from '@/domain/checkIns';
 import { correctedSoberStart } from '@/domain/correctStart';
 import { formatUkDate, formatUkLong, isoDay, startOfLocalDay } from '@/domain/dates';
@@ -11,6 +10,7 @@ import { earnedMilestones, MILESTONES, milestoneReachedOn } from '@/domain/miles
 import { formatGbp, savingsFromTypicalWeek } from '@/domain/savings';
 import { shownError } from '@/domain/errors';
 import { soberElapsed } from '@/domain/sober';
+import { buildHealthInsights } from '@/domain/healthInsights';
 import { daysUntil, drinkFreeThisWeek, showsSoberRecord, SUDDEN_STOP_WARNING, toggleDrinkFreeDay } from '@/domain/stage';
 import { CheckInWeek } from '@/ui/CheckInWeek';
 import { UnitsGuide } from '@/ui/UnitsGuide';
@@ -123,10 +123,12 @@ export default function Home() {
   const week = recentCheckInDays(snap.checkIns, now);
   const today = week[week.length - 1];
   const checkedToday = today.mood != null;
-  const latestHealth = new Map<string, (typeof snap.health)[number]>();
-  for (const sample of snap.health) {
-    if (!latestHealth.has(sample.kind)) latestHealth.set(sample.kind, sample);
-  }
+  const healthHeadlines = buildHealthInsights({
+    today: todayKey,
+    samples: snap.health,
+    soberOn: sober && profile.sobrietyStartedAt ? isoDay(new Date(profile.sobrietyStartedAt)) : null,
+    stage: profile.stage,
+  }).headlines.slice(0, 3);
 
   return (
     <Screen eyebrow={greeting(now)} title={profile.displayName || 'Friend'} refreshing={refreshing} onRefresh={() => void pullToRefresh()}>
@@ -229,12 +231,20 @@ export default function Home() {
         <Button label={checkedToday ? 'Update check-in' : 'Check in'} tone="quiet" onPress={() => router.push('/check-in' as never)} />
       </Card>
       <Card>
-        <T variant="label">Body</T>
-        {latestHealth.size === 0 ? <T variant="muted">No readings yet. Log them, or sync Apple Health on iOS.</T> : null}
-        {[...latestHealth.values()].slice(0, 4).map((sample) => (
-          <T key={sample.id}>{HEALTH_LABELS[sample.kind] ?? sample.kind}: {sample.value} {sample.unit}</T>
-        ))}
-        <Button label="Health" tone="quiet" onPress={() => router.push('/health' as never)} />
+        <T variant="label">Health Stats</T>
+        {healthHeadlines.length === 0 ? (
+          <T variant="muted">Not enough readings yet to compare this week with the one before.</T>
+        ) : (
+          healthHeadlines.map((line) => <T key={line}>{line}</T>)
+        )}
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="See all health stats"
+          onPress={() => router.push('/health' as never)}
+          style={{ minHeight: 44, justifyContent: 'center' }}
+        >
+          <T style={{ fontFamily: theme.font.bodyStrong }}>See all</T>
+        </Pressable>
       </Card>
       {sober ? <Card>
         <T variant="label">If you drank</T>

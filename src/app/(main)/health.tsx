@@ -109,7 +109,7 @@ export default function Health() {
 
   return (
     <Screen
-      eyebrow="Health"
+      eyebrow="Health Stats"
       title="What your body is doing."
       footer={(
         <View style={{ gap: 8 }}>
