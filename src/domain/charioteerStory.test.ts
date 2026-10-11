@@ -21,6 +21,7 @@ describe('the story of the charioteer', () => {
     expect(banner).toContain('useState(false)');
     expect(banner).toContain('accessibilityRole="button"');
     expect(banner).toContain('accessibilityState={{ expanded: open }}');
+    expect(banner).toContain('aria-expanded={open}');
     expect(banner).toContain('theme.font.bodyItalic');
     expect(banner).toContain('Phaedrus');
     expect(banner).toContain('HELMET_D');
