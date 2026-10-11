@@ -4,7 +4,7 @@ import { View } from 'react-native';
 import { useRepository, useSnapshot } from '@/data';
 import { HEALTH_LABELS } from '@/data/catalogue';
 import type { HealthKind } from '@/data/types';
-import { formatUkCompact, isoDay, startOfLocalDay } from '@/domain/dates';
+import { formatUkLong, isoDay, startOfLocalDay } from '@/domain/dates';
 import { shownError } from '@/domain/errors';
 import { syncAppleHealth } from '@/health/sync';
 import { DateField } from '@/ui/DateField';
@@ -96,7 +96,7 @@ export default function Health() {
       {snap.health.map((sample) => (
         <Card key={sample.id}>
           <T>{HEALTH_LABELS[sample.kind] ?? sample.kind}</T>
-          <T variant="muted">{sample.value} {sample.unit} · {formatUkCompact(sample.recordedOn)} · {sample.source === 'healthkit' ? 'Apple Health' : 'Logged here'}</T>
+          <T variant="muted">{sample.value} {sample.unit} · {formatUkLong(sample.recordedOn)} · {sample.source === 'healthkit' ? 'Apple Health' : 'Logged here'}</T>
         </Card>
       ))}
     </Screen>

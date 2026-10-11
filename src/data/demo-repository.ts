@@ -114,6 +114,11 @@ export class DemoRepository implements Repository {
     return this.snapshot;
   }
 
+  async reload(): Promise<void> {
+    this.snapshot = this.derive();
+    this.listeners.forEach((listener) => listener());
+  }
+
   private derive(): AppSnapshot {
     const sessionId = this.db.sessionUserId;
     const account = sessionId ? this.db.accounts[sessionId] : undefined;

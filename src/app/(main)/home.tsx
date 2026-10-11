@@ -1,19 +1,21 @@
-import { useRouter } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { useFocusEffect, useRouter } from 'expo-router';
+import { useCallback, useEffect, useState } from 'react';
 import { View } from 'react-native';
 
 import { useRepository, useSnapshot } from '@/data';
 import { HEALTH_LABELS } from '@/data/catalogue';
+import { recentCheckInDays } from '@/domain/checkIns';
 import { correctedSoberStart } from '@/domain/correctStart';
-import { formatUkCompact, formatUkDate, formatUkLong, isoDay, startOfLocalDay } from '@/domain/dates';
+import { formatUkDate, formatUkLong, isoDay, startOfLocalDay } from '@/domain/dates';
 import { earnedMilestones, MILESTONES, milestoneReachedOn } from '@/domain/milestones';
 import { formatGbp, savingsFromTypicalWeek } from '@/domain/savings';
 import { shownError } from '@/domain/errors';
 import { soberElapsed } from '@/domain/sober';
 import { daysUntil, drinkFreeThisWeek, showsSoberRecord, SUDDEN_STOP_WARNING, toggleDrinkFreeDay } from '@/domain/stage';
+import { CheckInWeek } from '@/ui/CheckInWeek';
 import { UnitsGuide } from '@/ui/UnitsGuide';
 import { DateField } from '@/ui/DateField';
-import { Button, Card, EditMark, EditSheet, ErrorNote, Field, Meter, Screen, T } from '@/ui/ui';
+import { Button, Card, EditMark, EditSheet, ErrorNote, Field, Screen, T } from '@/ui/ui';
 import { radius, useAppTheme } from '@/ui/theme';
 
 function greeting(date: Date) {
@@ -21,12 +23,6 @@ function greeting(date: Date) {
   if (hour < 12) return 'Good morning';
   if (hour < 18) return 'Good afternoon';
   return 'Good evening';
-}
-
-function localDay(date: Date) {
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-  return `${date.getFullYear()}-${month}-${day}`;
 }
 
 export default function Home() {
@@ -44,11 +40,27 @@ export default function Home() {
   const [draftSpend, setDraftSpend] = useState('');
   const [draftUnits, setDraftUnits] = useState('');
   const [pending, setPending] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
 
   useEffect(() => {
     const timer = setInterval(() => setNow(new Date()), 30_000);
     return () => clearInterval(timer);
   }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      void repo.reload();
+    }, [repo]),
+  );
+
+  async function pullToRefresh() {
+    setRefreshing(true);
+    try {
+      await repo.reload();
+    } finally {
+      setRefreshing(false);
+    }
+  }
 
   function openCorrection() {
     if (!profile?.sobrietyStartedAt) return;
@@ -100,7 +112,7 @@ export default function Home() {
   if (!profile) return null;
   const sober = showsSoberRecord(profile.stage);
   const started = sober && profile.sobrietyStartedAt ? new Date(profile.sobrietyStartedAt) : null;
-  const today = isoDay(now);
+  const todayKey = isoDay(now);
   const freeThisWeek = drinkFreeThisWeek(profile.drinkFreeOn, now);
   const quitDays = profile.plannedQuitAt ? daysUntil(profile.plannedQuitAt, now) : null;
   const elapsed = started ? soberElapsed(started, now) : null;
@@ -108,15 +120,16 @@ export default function Home() {
     ? savingsFromTypicalWeek(profile.weeklySpendGbp, profile.weeklyUnits, elapsed.totalMs)
     : null;
   const earned = new Set((started ? earnedMilestones(started, now) : []).map((item) => item.key));
-  const trend = [...snap.checkIns].slice(0, 7).reverse();
-  const checkedToday = snap.checkIns.some((item) => localDay(new Date(item.createdAt)) === localDay(now));
+  const week = recentCheckInDays(snap.checkIns, now);
+  const today = week[week.length - 1];
+  const checkedToday = today.mood != null;
   const latestHealth = new Map<string, (typeof snap.health)[number]>();
   for (const sample of snap.health) {
     if (!latestHealth.has(sample.kind)) latestHealth.set(sample.kind, sample);
   }
 
   return (
-    <Screen eyebrow={greeting(now)} title={profile.displayName || 'Friend'}>
+    <Screen eyebrow={greeting(now)} title={profile.displayName || 'Friend'} refreshing={refreshing} onRefresh={() => void pullToRefresh()}>
       {sober ? (
       <Card onPress={openCorrection} accessibilityLabel="Correct the sober start date">
         <EditMark label="Sober" />
@@ -154,10 +167,10 @@ export default function Home() {
             <T>{profile.drinkFreeDaysGoal != null ? 'drink-free days this week, against your goal.' : 'drink-free days this week.'}</T>
             {profile.weeklyUnitsGoal != null ? <T variant="muted">Units goal: {profile.weeklyUnitsGoal} a week.</T> : null}
             <Button
-              label={profile.drinkFreeOn.includes(today) ? 'Today stays drink-free' : 'Mark today drink-free'}
+              label={profile.drinkFreeOn.includes(todayKey) ? 'Today stays drink-free' : 'Mark today drink-free'}
               tone="quiet"
               onPress={() => {
-                void repo.updateProfile({ drinkFreeOn: toggleDrinkFreeDay(profile.drinkFreeOn, today) }).catch((err: unknown) => setError(shownError(err, 'Could not save.')));
+                void repo.updateProfile({ drinkFreeOn: toggleDrinkFreeDay(profile.drinkFreeOn, todayKey) }).catch((err: unknown) => setError(shownError(err, 'Could not save.')));
               }}
             />
           </>
@@ -200,23 +213,19 @@ export default function Home() {
               <View key={milestone.key} style={{ paddingVertical: 6, paddingHorizontal: 10, borderRadius: radius.sm, borderWidth: 1, borderColor: on ? theme.colors.ink : theme.colors.line, backgroundColor: on ? theme.colors.ink : theme.colors.sunken }}>
                 <T variant="label" style={{ color: on ? theme.colors.bg : theme.colors.muted }}>{milestone.badge}</T>
                 {on && started ? (
-                  <T style={{ color: theme.colors.bg, fontFamily: theme.font.body, fontSize: 12 * theme.scale, letterSpacing: 0 }}>{formatUkCompact(milestoneReachedOn(milestone.key, started))}</T>
+                  <T style={{ color: theme.colors.bg, fontFamily: theme.font.body, fontSize: 12 * theme.scale, letterSpacing: 0 }}>{formatUkLong(milestoneReachedOn(milestone.key, started))}</T>
                 ) : null}
               </View>
             );
           })}
         </View>
       </Card> : null}
-      {trend.length > 0 ? (
-        <Card>
-          <T variant="label">Recent check-ins</T>
-          <Meter label="Mood" max={5} points={trend.map((item) => ({ id: item.id, value: item.mood }))} />
-          <Meter label="Craving" max={10} points={trend.map((item) => ({ id: `${item.id}-craving`, value: item.craving }))} />
-        </Card>
-      ) : null}
+      <Card>
+        <CheckInWeek days={week} />
+      </Card>
       <Card>
         <T variant="label">Today</T>
-        <T>{checkedToday ? 'Check-in done. You can add another if the day changed shape.' : 'A check-in takes a few seconds: mood, sleep, craving.'}</T>
+        <T>{checkedToday ? `Mood ${today.mood}/5 · craving ${today.craving}/10. You can add another if the day changed shape.` : 'A check-in takes a few seconds: mood, sleep, craving.'}</T>
         <Button label={checkedToday ? 'Update check-in' : 'Check in'} tone="quiet" onPress={() => router.push('/check-in' as never)} />
       </Card>
       <Card>

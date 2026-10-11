@@ -153,6 +153,10 @@ export class SupabaseRepository implements Repository {
     return this.snapshot;
   }
 
+  async reload(): Promise<void> {
+    await this.refresh();
+  }
+
   private emit(next: AppSnapshot) {
     this.snapshot = next;
     this.listeners.forEach((listener) => listener());

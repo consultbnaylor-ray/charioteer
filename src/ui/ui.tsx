@@ -5,6 +5,7 @@ import {
   Modal,
   Platform,
   Pressable,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
@@ -108,6 +109,8 @@ export function Screen({
   banner,
   titleStyle,
   introStyle,
+  refreshing,
+  onRefresh,
 }: {
   children: ReactNode;
   eyebrow?: string;
@@ -117,6 +120,8 @@ export function Screen({
   banner?: ReactNode;
   titleStyle?: StyleProp<TextStyle>;
   introStyle?: StyleProp<TextStyle>;
+  refreshing?: boolean;
+  onRefresh?: () => void;
 }) {
   const theme = useAppTheme();
   const insets = useSafeAreaInsets();
@@ -139,6 +144,16 @@ export function Screen({
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode="interactive"
           automaticallyAdjustKeyboardInsets
+          refreshControl={
+            onRefresh ? (
+              <RefreshControl
+                refreshing={Boolean(refreshing)}
+                onRefresh={onRefresh}
+                tintColor={theme.colors.ink}
+                colors={[theme.colors.ink]}
+              />
+            ) : undefined
+          }
         >
           {eyebrow ? <T variant="label">{eyebrow}</T> : null}
           {title ? <T variant="display" style={[{ marginTop: eyebrow ? 6 : 0 }, titleStyle]}>{title}</T> : null}
@@ -455,33 +470,6 @@ export function Stamp({ kind }: { kind: Verification }) {
       }}
     >
       <T variant="label" style={{ color: solid ? theme.colors.bg : theme.colors.muted }}>{label}</T>
-    </View>
-  );
-}
-
-export function Meter({
-  label,
-  points,
-  max,
-}: {
-  label: string;
-  points: { id: string; value: number }[];
-  max: number;
-}) {
-  const theme = useAppTheme();
-  return (
-    <View accessibilityLabel={`${label} chart`} style={{ gap: 8 }}>
-      <T variant="label">{label}</T>
-      <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 6, height: 72 }}>
-        {points.map((point) => {
-          const ratio = Math.max(0, Math.min(1, point.value / max));
-          return (
-            <View key={point.id} style={{ flex: 1, height: 72, justifyContent: 'flex-end', backgroundColor: theme.colors.sunken }}>
-              <View style={{ height: Math.max(3, Math.round(ratio * 72)), backgroundColor: theme.colors.ink }} />
-            </View>
-          );
-        })}
-      </View>
     </View>
   );
 }

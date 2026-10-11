@@ -42,9 +42,13 @@ export function formatUkDate(value: Date | string): string {
   return `${weekday} ${day} ${month} ${year}`;
 }
 
-/** 10/10/2026 */
+/** 11 Jul 2026. Parts are joined so a numeric slash date cannot appear. */
 export function formatUkCompact(value: Date | string): string {
-  return asDate(value).toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' });
+  const date = asDate(value);
+  const day = date.toLocaleDateString('en-GB', { day: 'numeric' });
+  const month = date.toLocaleDateString('en-GB', { month: 'short' });
+  const year = date.toLocaleDateString('en-GB', { year: 'numeric' });
+  return `${day} ${month} ${year}`;
 }
 
 /** Sat 10 Oct 2026, 18:05 */

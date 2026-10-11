@@ -262,6 +262,7 @@ export type VoiceTurnInput = {
 export interface Repository {
   subscribe(listener: () => void): () => void;
   getSnapshot(): AppSnapshot;
+  reload(): Promise<void>;
   signIn(email: string, password: string): Promise<void>;
   signUp(email: string, password: string, displayName: string): Promise<void>;
   signInWithApple(): Promise<void>;
