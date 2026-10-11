@@ -1,3 +1,4 @@
+import * as Haptics from 'expo-haptics';
 import { createContext, useContext, useState, type ReactNode } from 'react';
 import {
   ActivityIndicator,
@@ -270,6 +271,12 @@ export function EditSheet({
   );
 }
 
+/** A short confirmation on a phone. The browser has no haptic engine. */
+export function playSavedHaptic() {
+  if (Platform.OS === 'web') return;
+  void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+}
+
 export function Button({
   label,
   onPress,
@@ -319,6 +326,7 @@ export function Field({
   hint,
   editable = true,
   maxLength,
+  onBlur,
 }: {
   label: string;
   value: string;
@@ -332,6 +340,7 @@ export function Field({
   hint?: string;
   editable?: boolean;
   maxLength?: number;
+  onBlur?: () => void;
 }) {
   const theme = useAppTheme();
   const [revealed, setRevealed] = useState(false);
@@ -346,6 +355,7 @@ export function Field({
       accessibilityLabel={label}
       value={value}
       onChangeText={onChangeText}
+      onBlur={onBlur}
       placeholder={placeholder}
       placeholderTextColor={theme.colors.placeholder}
       secureTextEntry={password && !revealed}

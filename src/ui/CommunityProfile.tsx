@@ -1,4 +1,5 @@
 import { Image } from 'expo-image';
+import { useRouter } from 'expo-router';
 import { useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 
@@ -15,12 +16,31 @@ export function CommunityProfile({ userId, name }: { userId: string; name: strin
   const photos = snap.communityPhotos
     .filter((photo) => photo.userId === userId && photo.visibility === 'community')
     .sort((a, b) => a.monthIndex - b.monthIndex || a.takenOn.localeCompare(b.takenOn));
+  const router = useRouter();
   const [reporting, setReporting] = useState<string | null>(null);
   const [sent, setSent] = useState<string | null>(null);
+  const [asked, setAsked] = useState(false);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const before = photos[0];
   const now = photos[photos.length - 1];
+
+  async function message() {
+    setError(null);
+    setPending(true);
+    try {
+      const opened = await repo.openPrivateChat(userId);
+      if (opened.status === 'open') {
+        router.push(`/chat/${opened.connectionId}` as never);
+        return;
+      }
+      setAsked(true);
+    } catch (err) {
+      setError(shownError(err, 'Could not open a private message.'));
+    } finally {
+      setPending(false);
+    }
+  }
 
   async function report(photo: ProgressPhoto) {
     setError(null);
@@ -45,6 +65,7 @@ export function CommunityProfile({ userId, name }: { userId: string; name: strin
       <T variant="label">Shared photos</T>
       <T variant="muted">{name} chose to show these. Private photos stay hidden.</T>
       {error ? <ErrorNote>{error}</ErrorNote> : null}
+      {asked ? <T variant="muted">A private request is with them. You can message once you have both agreed.</T> : null}
       {photos.length === 0 ? <T variant="muted">No shared photos.</T> : null}
       {photos.length >= 2 && before && now && before.id !== now.id ? (
         <View style={{ flexDirection: 'row', gap: 10 }}>
@@ -65,6 +86,7 @@ export function CommunityProfile({ userId, name }: { userId: string; name: strin
           <T>{progressPhotoLabel(photo.monthIndex, photo.takenOn)}</T>
           {photo.note ? <T variant="muted">{photo.note}</T> : null}
           {sent === photo.id ? <T variant="muted">Report sent.</T> : null}
+          <Button label="Message privately" tone="quiet" disabled={pending} onPress={() => void message()} />
           {reporting === photo.id ? (
             <View style={{ gap: 8 }}>
               <T>This report goes to the moderation queue, with the photo id.</T>

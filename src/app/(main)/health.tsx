@@ -1,5 +1,5 @@
 import { useFocusEffect, useRouter } from 'expo-router';
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Platform, View } from 'react-native';
 
 import { useRepository, useSnapshot } from '@/data';
@@ -14,7 +14,7 @@ import { AppleHealthCard } from '@/ui/AppleHealthCard';
 import { HealthBoard, HealthReadings } from '@/ui/HealthBoard';
 import { DateField } from '@/ui/DateField';
 import { useAppTheme } from '@/ui/theme';
-import { Button, Choice, ErrorNote, Field, Screen, T } from '@/ui/ui';
+import { Button, Choice, ErrorNote, Field, playSavedHaptic, Screen, T } from '@/ui/ui';
 
 const KINDS: { id: HealthKind; unit: string; label: string }[] = [
   { id: 'steps', unit: 'steps', label: 'Steps' },
@@ -37,6 +37,8 @@ export default function Health() {
   const [day, setDay] = useState(() => startOfLocalDay(new Date()));
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
+  const [savePending, setSavePending] = useState(false);
+  const [savedNote, setSavedNote] = useState<string | null>(null);
   const [access, setAccess] = useState<AppleHealthAccess | null>(ios ? null : 'web');
   const [syncedAt, setSyncedAt] = useState<string | null>(null);
   const chosen = KINDS.find((item) => item.id === kind) ?? KINDS[0];
@@ -77,8 +79,45 @@ export default function Health() {
     }
   }
 
+  useEffect(() => {
+    if (!savedNote) return;
+    const timer = setTimeout(() => setSavedNote(null), 2500);
+    return () => clearTimeout(timer);
+  }, [savedNote]);
+
+  function saveReading() {
+    const amount = Number(value);
+    if (!Number.isFinite(amount) || amount < 0) {
+      setError('Enter a number that is zero or more.');
+      return;
+    }
+    if (isoDay(day) > isoDay(new Date())) {
+      setError('Choose today or an earlier day.');
+      return;
+    }
+    setError(null);
+    setSavePending(true);
+    void repo.saveHealth([{ kind, value: amount, unit: chosen.unit, recordedOn: isoDay(day), source: 'manual' }])
+      .then(() => {
+        setValue('');
+        setSavedNote('Saved');
+        playSavedHaptic();
+      })
+      .catch((err: unknown) => setError(shownError(err, 'Could not save.')))
+      .finally(() => setSavePending(false));
+  }
+
   return (
-    <Screen eyebrow="Health" title="What your body is doing.">
+    <Screen
+      eyebrow="Health"
+      title="What your body is doing."
+      footer={(
+        <View style={{ gap: 8 }}>
+          {savedNote ? <T>{savedNote}</T> : null}
+          <Button label="Save reading" pending={savePending} disabled={!consent || !value.trim() || savePending} onPress={saveReading} />
+        </View>
+      )}
+    >
       <AppleHealthCard
         consent={consent}
         ios={ios}
@@ -110,25 +149,6 @@ export default function Health() {
       <Field label={`Value (${chosen.unit})`} value={value} onChangeText={setValue} keyboardType="decimal-pad" />
       <DateField label="Date" value={day} onChange={setDay} maximumDate={new Date()} />
       <ErrorNote>{error}</ErrorNote>
-      <Button
-        label="Save reading"
-        disabled={!consent}
-        onPress={() => {
-          const amount = Number(value);
-          if (!Number.isFinite(amount) || amount < 0) {
-            setError('Enter a number that is zero or more.');
-            return;
-          }
-          if (isoDay(day) > isoDay(new Date())) {
-            setError('Choose today or an earlier day.');
-            return;
-          }
-          setError(null);
-          void repo.saveHealth([{ kind, value: amount, unit: chosen.unit, recordedOn: isoDay(day), source: 'manual' }])
-            .then(() => setValue(''))
-            .catch((err: unknown) => setError(shownError(err, 'Could not save.')));
-        }}
-      />
       <HealthReadings samples={snap.health} />
     </Screen>
   );

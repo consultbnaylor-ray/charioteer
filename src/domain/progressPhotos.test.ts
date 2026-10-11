@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
-import { planProgressPhoto, progressMonthIndex, progressPhotoLabel, progressResize, progressStoragePath, progressVisibility, PROGRESS_SHARE_WARNING, PROGRESS_SHARED_URL_SECONDS } from './progressPhotos';
+import { captureDayFromExif, planProgressPhoto, progressMonthIndex, progressPhotoLabel, progressResize, progressStoragePath, progressVisibility, PROGRESS_SHARE_WARNING, PROGRESS_SHARED_URL_SECONDS } from './progressPhotos';
 
 describe('progress photo months', () => {
   const anchor = new Date(2026, 10, 2);
@@ -45,6 +45,16 @@ describe('progress photo months', () => {
     expect(future).toMatchObject({ ok: false, message: 'Choose today or an earlier day.' });
     const long = planProgressPhoto({ takenOn: '2026-12-01', startingPoint: false, note: 'a'.repeat(281), anchor, today: '2026-12-01' });
     expect(long.ok).toBe(false);
+  });
+});
+
+describe('capture day', () => {
+  it('reads the camera date and ignores a future or missing one', () => {
+    expect(captureDayFromExif({ DateTimeOriginal: '2026:10:11 09:17:14' }, '2026-10-11')).toBe('2026-10-11');
+    expect(captureDayFromExif({ DateTime: '2026-09-01 00:00:00' }, '2026-10-11')).toBe('2026-09-01');
+    expect(captureDayFromExif({ DateTimeOriginal: '2026:12:01 00:00:00' }, '2026-10-11')).toBeNull();
+    expect(captureDayFromExif(null, '2026-10-11')).toBeNull();
+    expect(captureDayFromExif({ GPSLatitude: 51.5 }, '2026-10-11')).toBeNull();
   });
 });
 
@@ -100,6 +110,9 @@ describe('progress photos stay private', () => {
     expect(people).toContain('<CommunityProfile');
     expect(people).not.toMatch(/thumos|xai|progress-photos/i);
     expect(profile).toContain('reportUser');
+    expect(profile).toContain('Message privately');
+    expect(profile).toContain('openPrivateChat');
+    expect(profile).not.toMatch(/comment/i);
     expect(profile).toContain('Shared progress photo');
     expect(profile).toContain('Shared');
     expect(profile).not.toMatch(/thumos|xai|progress-photos/i);
@@ -107,6 +120,11 @@ describe('progress photos stay private', () => {
     expect(you).toContain('Only me');
     expect(you).toContain('Share with community');
     expect(you).toContain('>Shared<');
+    expect(you).toContain('Photo saved');
+    expect(you).toContain('Try again');
+    expect(you).toContain('Save note');
+    expect(you).not.toContain('Save this photo');
+    expect(you).not.toMatch(/comment/i);
   });
 
   it('selects only the granted columns and does not send a photo to Thumos', () => {
@@ -151,5 +169,17 @@ describe('progress photos stay private', () => {
     expect(migration).toContain('grant update (visibility) on public.progress_photos to authenticated');
     expect(migration).not.toMatch(/grant update on public\.progress_photos/i);
     expect(migration).not.toContain('storage.objects');
+  });
+
+  it('lets the owner update the note, date, and month without a table-level grant', () => {
+    const details = readFileSync('supabase/migrations/20261010220000_progress_photo_details.sql', 'utf8');
+    const repo = readFileSync('src/data/supabase-repository.ts', 'utf8');
+    expect(details).toContain('grant update (note, taken_on, month_index) on public.progress_photos to authenticated');
+    expect(details).not.toMatch(/grant update on public\.progress_photos/i);
+    expect(details.toLowerCase()).not.toContain('comment');
+    const update = repo.slice(repo.indexOf('async updateProgressPhoto'), repo.indexOf('async setProgressPhotoVisibility'));
+    expect(update).toContain('taken_on');
+    expect(update).toContain('month_index');
+    expect(update).toContain('note');
   });
 });

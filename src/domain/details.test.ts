@@ -5,6 +5,7 @@ import { earnedMilestones } from './milestones';
 import { savingsFromTypicalWeek } from './savings';
 import { soberElapsed } from './sober';
 import { correctedSoberStart } from './correctStart';
+import { profileDetailsDirty, type ProfileFormValues } from './profileForm';
 
 describe('corrected sober start', () => {
   const now = new Date(2026, 9, 10, 18, 0, 0);
@@ -69,9 +70,43 @@ describe('detail editors', () => {
     expect(profile).toContain('<UnitsGuide');
     expect(profile).toContain('<ConsentChoices');
     expect(profile).toContain('Save your details');
+    expect(profile).toContain('footer=');
+    expect(profile).toContain('profileDetailsDirty');
+    expect(profile).toContain("setSavedNote('Saved')");
+    const checkIn = readFileSync('src/app/(main)/check-in.tsx', 'utf8');
+    expect(checkIn).toContain('footer=');
+    expect(checkIn).toContain('Save check-in');
+    expect(checkIn).toContain('disabled={!dirty || pending}');
+    expect(checkIn).toContain("setSavedNote('Saved')");
     expect(profile).toContain('correctedSoberStart');
     expect(profile).toContain('saveConsents');
     expect(profile).not.toContain('recordRelapse');
+  });
+});
+
+describe('profile form changes', () => {
+  const saved: ProfileFormValues = {
+    name: 'Alex',
+    town: 'Bristol',
+    spend: '40',
+    units: '20',
+    reasons: 'Family',
+    community: false,
+    health: false,
+    ai: true,
+    stage: 'stopped',
+    soberDay: '2026-04-10',
+    plannedQuit: '2026-10-11',
+    quitUnsure: true,
+    unitsGoal: '',
+    drinkFreeGoal: '',
+  };
+
+  it('stays quiet until a saved detail changes', () => {
+    expect(profileDetailsDirty(saved, saved)).toBe(false);
+    expect(profileDetailsDirty({ ...saved, spend: '40.0' }, saved)).toBe(false);
+    expect(profileDetailsDirty({ ...saved, town: 'Bath' }, saved)).toBe(true);
+    expect(profileDetailsDirty({ ...saved, stage: 'exploring' }, saved)).toBe(true);
   });
 });
 

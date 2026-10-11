@@ -71,6 +71,27 @@ export function progressResize(width: number, height: number): { width: number }
   return width >= height ? { width: PROGRESS_MAX_EDGE } : { height: PROGRESS_MAX_EDGE };
 }
 
+/**
+ * The camera's capture day, read from EXIF before the file is re-encoded.
+ * A missing or future day returns null so the caller can use today.
+ */
+export function captureDayFromExif(exif: unknown, today = isoDay(new Date())): string | null {
+  if (!exif || typeof exif !== 'object') return null;
+  const record = exif as Record<string, unknown>;
+  const raw = [record.DateTimeOriginal, record.DateTimeDigitized, record.DateTime].find(
+    (value) => typeof value === 'string' && value.trim(),
+  );
+  if (typeof raw !== 'string') return null;
+  const match = raw.trim().match(/^(\d{4})[:\-/](\d{2})[:\-/](\d{2})/);
+  if (!match) return null;
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  if (month < 1 || month > 12 || day < 1 || day > 31) return null;
+  const iso = `${match[1]}-${match[2]}-${match[3]}`;
+  if (iso > today) return null;
+  return iso;
+}
+
 /** Owner folder only. The file name is the photo id, so one row cannot point at another person's object. */
 export function progressStoragePath(userId: string, photoId: string): string {
   const id = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;

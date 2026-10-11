@@ -454,6 +454,26 @@ export class DemoRepository implements Repository {
     this.commit(db);
   }
 
+  async openPrivateChat(userId: string): Promise<{ status: 'open'; connectionId: string } | { status: 'requested'; connectionId: string | null }> {
+    const account = this.me();
+    if (!account.profile.ageConfirmed18 || !account.profile.communityVisible) {
+      throw new UserFacingError('Turn on community, and confirm you are 18 or over, before you message.', 'generic');
+    }
+    if (blocked(this.db, account.profile.id, userId)) throw new UserFacingError('You cannot contact this person.', 'generic');
+    const existing = this.db.connections.find((connection) =>
+      connection.status !== 'declined' &&
+      ((connection.requesterId === account.profile.id && connection.addresseeId === userId) ||
+        (connection.requesterId === userId && connection.addresseeId === account.profile.id)));
+    if (existing?.status === 'accepted') return { status: 'open', connectionId: existing.id };
+    if (existing) return { status: 'requested', connectionId: existing.id };
+    await this.requestConnection(userId);
+    const created = this.db.connections.find((connection) =>
+      connection.status === 'pending' &&
+      connection.requesterId === account.profile.id &&
+      connection.addresseeId === userId);
+    return { status: 'requested', connectionId: created?.id ?? null };
+  }
+
   async requestConnection(userId: string): Promise<void> {
     const account = this.me();
     if (!account.profile.ageConfirmed18 || !account.profile.communityVisible) {
@@ -634,6 +654,28 @@ export class DemoRepository implements Repository {
       previewUrl: bytesToDataUrl(input.bytes),
     });
     next.progressPhotos = photos;
+    this.commit(db);
+  }
+
+  async updateProgressPhoto(id: string, input: { takenOn?: string; startingPoint?: boolean; note?: string }): Promise<void> {
+    const account = this.me();
+    const photo = (account.progressPhotos ?? []).find((item) => item.id === id);
+    if (!photo) throw new UserFacingError('Could not update that photo.', 'generic');
+    const plan = planProgressPhoto({
+      takenOn: input.takenOn ?? photo.takenOn,
+      startingPoint: input.startingPoint === undefined ? photo.monthIndex === 0 : input.startingPoint,
+      note: input.note ?? photo.note,
+      anchor: progressAnchor(account.profile.sobrietyStartedAt, account.profile.createdAt),
+    });
+    if (!plan.ok) throw new UserFacingError(plan.message, 'generic');
+    const db = clone(this.db);
+    const next = (db.accounts[account.profile.id].progressPhotos ?? []).find((item) => item.id === id);
+    if (!next) throw new UserFacingError('Could not update that photo.', 'generic');
+    if (input.note !== undefined) next.note = plan.note;
+    if (input.takenOn !== undefined || input.startingPoint !== undefined) {
+      next.takenOn = plan.takenOn;
+      next.monthIndex = plan.monthIndex;
+    }
     this.commit(db);
   }
 

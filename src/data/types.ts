@@ -291,8 +291,10 @@ export interface Repository {
   mintVoiceToken(mode?: ThumosMode): Promise<VoiceMint>;
   saveVoiceTurn(input: VoiceTurnInput): Promise<void>;
   addProgressPhoto(input: NewProgressPhoto): Promise<void>;
+  updateProgressPhoto(id: string, input: { takenOn?: string; startingPoint?: boolean; note?: string }): Promise<void>;
   deleteProgressPhoto(id: string): Promise<void>;
   setProgressPhotoVisibility(ids: string[], visibility: ProgressVisibility): Promise<void>;
+  openPrivateChat(userId: string): Promise<{ status: 'open'; connectionId: string } | { status: 'requested'; connectionId: string | null }>;
   addGratitudeEntry(input: NewGratitudeEntry): Promise<void>;
   updateGratitudeEntry(id: string, input: NewGratitudeEntry): Promise<void>;
   deleteGratitudeEntry(id: string): Promise<void>;

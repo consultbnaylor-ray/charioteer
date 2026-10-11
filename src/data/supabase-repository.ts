@@ -710,6 +710,34 @@ export class SupabaseRepository implements Repository {
     this.emit(snapshotWithOwnInterests({ ...this.snapshot, interests }, ids));
   }
 
+  async openPrivateChat(userId: string): Promise<{ status: 'open'; connectionId: string } | { status: 'requested'; connectionId: string | null }> {
+    const me = await this.userId();
+    const profile = this.snapshot.profile;
+    if (!profile?.ageConfirmed18 || !profile.communityVisible) {
+      throw new UserFacingError('Turn on community, and confirm you are 18 or over, before you message.', 'generic');
+    }
+    if (userId === me) throw new UserFacingError('You cannot message yourself.', 'generic');
+    const blocks = await this.client.from('blocks').select('blocker_id, blocked_id').or(`blocker_id.eq.${userId},blocked_id.eq.${userId}`);
+    if (blocks.error) throw asUserFacing(blocks.error, 'general');
+    const closed = (blocks.data ?? []).some((row) => {
+      const record = row as { blocker_id?: string; blocked_id?: string };
+      return (record.blocker_id === me && record.blocked_id === userId) || (record.blocker_id === userId && record.blocked_id === me);
+    });
+    if (closed) throw new UserFacingError('You cannot contact this person.', 'generic');
+    const existing = this.snapshot.connections.find((connection) =>
+      connection.status !== 'declined' &&
+      ((connection.requesterId === me && connection.addresseeId === userId) ||
+        (connection.requesterId === userId && connection.addresseeId === me)));
+    if (existing?.status === 'accepted') return { status: 'open', connectionId: existing.id };
+    if (existing) return { status: 'requested', connectionId: existing.id };
+    await this.requestConnection(userId);
+    const created = this.getSnapshot().connections.find((connection) =>
+      connection.status !== 'declined' &&
+      ((connection.requesterId === me && connection.addresseeId === userId) ||
+        (connection.requesterId === userId && connection.addresseeId === me)));
+    return { status: 'requested', connectionId: created?.id ?? null };
+  }
+
   async requestConnection(userId: string): Promise<void> {
     const me = await this.userId();
     const { error } = await this.client.from('connections').insert({ requester_id: me, addressee_id: userId, status: 'pending' });
@@ -965,6 +993,33 @@ export class SupabaseRepository implements Repository {
       await this.client.storage.from(PROGRESS_BUCKET).remove([path]);
       throw asUserFacing(inserted.error, 'general');
     }
+    await this.refresh();
+  }
+
+  async updateProgressPhoto(id: string, input: { takenOn?: string; startingPoint?: boolean; note?: string }): Promise<void> {
+    const profile = this.snapshot.profile;
+    const photo = this.snapshot.progressPhotos.find((item) => item.id === id && item.userId === profile?.id);
+    if (!profile || !photo) throw new UserFacingError('Could not update that photo.', 'generic');
+    const takenOn = input.takenOn ?? photo.takenOn;
+    const note = input.note ?? photo.note;
+    const startingPoint = input.startingPoint ?? false;
+    const plan = planProgressPhoto({
+      takenOn,
+      startingPoint: input.startingPoint === undefined ? photo.monthIndex === 0 : startingPoint,
+      note,
+      anchor: progressAnchor(profile.sobrietyStartedAt, profile.createdAt),
+    });
+    if (!plan.ok) throw new UserFacingError(plan.message, 'generic');
+    const patch: { note?: string; taken_on?: string; month_index?: number } = {};
+    if (input.note !== undefined) patch.note = plan.note;
+    if (input.takenOn !== undefined || input.startingPoint !== undefined) {
+      patch.taken_on = plan.takenOn;
+      patch.month_index = plan.monthIndex;
+    }
+    if (!Object.keys(patch).length) return;
+    const userId = await this.userId();
+    const { error } = await this.client.from('progress_photos').update(patch).eq('id', id).eq('user_id', userId);
+    if (error) throw asUserFacing(error, 'general');
     await this.refresh();
   }
 

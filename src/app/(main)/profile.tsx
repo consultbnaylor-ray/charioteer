@@ -1,6 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRouter } from 'expo-router';
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Platform, Share, View } from 'react-native';
 
 import { useRepository, useSnapshot } from '@/data';
@@ -11,12 +11,13 @@ import { parseDrinkFreeGoal, parseUnitsGoal, showsSoberRecord, STAGE_LABELS, STA
 import { shownError } from '@/domain/errors';
 import { interestChipRemovable, interestChipVisible } from '@/domain/interests';
 import { planCustomInterest } from '@/domain/privacy';
+import { profileDetailsDirty, type ProfileFormValues } from '@/domain/profileForm';
 import { InterestChip } from '@/ui/InterestChip';
 import { ConsentChoices } from '@/ui/ConsentChoices';
 import { ProgressPhotos } from '@/ui/ProgressPhotos';
 import { UnitsGuide } from '@/ui/UnitsGuide';
 import { DateField } from '@/ui/DateField';
-import { Button, Card, Choice, ErrorNote, Field, Screen, T } from '@/ui/ui';
+import { Button, Card, Choice, ErrorNote, Field, playSavedHaptic, Screen, T } from '@/ui/ui';
 
 export default function Profile() {
   const snap = useSnapshot();
@@ -43,7 +44,48 @@ export default function Profile() {
   const [drinkFreeGoal, setDrinkFreeGoal] = useState(profile?.drinkFreeDaysGoal?.toString() ?? '');
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const [pending, setPending] = useState(false);
+  const [savedNote, setSavedNote] = useState<string | null>(null);
+  useEffect(() => {
+    if (!savedNote) return;
+    const timer = setTimeout(() => setSavedNote(null), 2500);
+    return () => clearTimeout(timer);
+  }, [savedNote]);
+
   if (!profile) return null;
+
+  const savedForm: ProfileFormValues = {
+    name: profile.displayName,
+    town: profile.town ?? '',
+    spend: profile.weeklySpendGbp?.toString() ?? '',
+    units: profile.weeklyUnits?.toString() ?? '',
+    reasons: snap.reasons.map((reason) => reason.body).join('\n'),
+    community: profile.communityVisible,
+    health: profile.consentHealth,
+    ai: profile.consentAi,
+    stage: profile.stage,
+    soberDay: profile.sobrietyStartedAt ? isoDay(new Date(profile.sobrietyStartedAt)) : isoDay(soberDate),
+    plannedQuit: profile.plannedQuitAt ?? isoDay(plannedQuit),
+    quitUnsure: !profile.plannedQuitAt,
+    unitsGoal: profile.weeklyUnitsGoal?.toString() ?? '',
+    drinkFreeGoal: profile.drinkFreeDaysGoal?.toString() ?? '',
+  };
+  const dirty = profileDetailsDirty({
+    name,
+    town,
+    spend,
+    units,
+    reasons,
+    community,
+    health,
+    ai,
+    stage,
+    soberDay: isoDay(soberDate),
+    plannedQuit: isoDay(plannedQuit),
+    quitUnsure,
+    unitsGoal,
+    drinkFreeGoal,
+  }, savedForm);
 
   const themes: ThemePreference[] = ['system', 'light', 'dark'];
   const scales: { id: TextScale; label: string }[] = [
@@ -86,9 +128,10 @@ export default function Profile() {
   }
 
   async function saveDetails() {
-    if (!profile) return;
+    if (!profile || pending || !dirty) return;
     setError(null);
     setMessage(null);
+    setSavedNote(null);
     if (!name.trim()) {
       setError('Add your name.');
       return;
@@ -112,6 +155,7 @@ export default function Profile() {
       setError(stageError);
       return;
     }
+    setPending(true);
     const parsedUnits = parseUnitsGoal(unitsGoal);
     const parsedDays = parseDrinkFreeGoal(drinkFreeGoal);
     try {
@@ -128,9 +172,12 @@ export default function Profile() {
       });
       await repo.setReasons(reasons.split('\n'));
       await repo.saveConsents({ communityVisible: community, consentHealth: health, consentAi: ai });
-      setMessage('Saved.');
+      setSavedNote('Saved');
+      playSavedHaptic();
     } catch (err) {
       setError(shownError(err, 'Could not save.'));
+    } finally {
+      setPending(false);
     }
   }
 
@@ -157,7 +204,17 @@ export default function Profile() {
   }
 
   return (
-    <Screen eyebrow="You" title={profile.displayName} intro={profile.email}>
+    <Screen
+      eyebrow="You"
+      title={profile.displayName}
+      intro={profile.email}
+      footer={(
+        <View style={{ gap: 8 }}>
+          {savedNote ? <T>{savedNote}</T> : null}
+          <Button label="Save your details" pending={pending} disabled={!dirty || pending} onPress={() => void saveDetails()} />
+        </View>
+      )}
+    >
       <T variant="label">Your details</T>
       <T>Name, where you are, the sober date, your usual week, reasons, interests, town, and consents. A new sober date is a correction, not a relapse.</T>
       <Card>
@@ -222,7 +279,6 @@ export default function Profile() {
         />
         <T variant="label">Consent</T>
         <ConsentChoices community={community} health={health} ai={ai} onCommunity={setCommunity} onHealth={setHealth} onAi={setAi} />
-        <Button label="Save your details" onPress={() => void saveDetails()} />
       </Card>
       <ProgressPhotos />
       <Card>
