@@ -13,9 +13,11 @@ import type { VoiceAudio, VoiceMicHandlers } from './audioTypes';
 /**
  * iOS capture and playback through react-native-audio-api 0.13.6.
  *
- * The session is playAndRecord with mode voiceChat, set once before the session
- * is activated. That mode is the echo control. There is no native patch and
- * voice processing is not toggled again while the graph is starting.
+ * The session is playAndRecord with mode voiceChat, set once in prepare()
+ * before the session is activated, and never changed while the engine is
+ * running. That mode is the echo control. Voice processing is not turned on.
+ * patch-package wraps AVAudioEngine prepare and start in @try/@catch and
+ * returns false, so a thrown restart becomes a microphone error.
  *
  * The microphone records at the device rate (48 kHz when the device does not
  * report one). Speech frames are resampled to 24 kHz by the call. Playback uses
