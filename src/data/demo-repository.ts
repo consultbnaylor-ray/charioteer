@@ -8,6 +8,8 @@ import {
   WRONG_PASSWORD_MESSAGE,
 } from '@/domain/errors';
 import { randomId } from '@/domain/id';
+import { isoDay } from '@/domain/dates';
+import { isGratitudeCategory, localGratitudeReflect, planGratitudeEntry, sortGratitude, type GratitudeEntry, type GratitudeReflect } from '@/domain/gratitude';
 import { planProgressPhoto, progressAnchor, progressPhotoLabel, progressStoragePath, progressVisibility, PROGRESS_MAX_BYTES } from '@/domain/progressPhotos';
 import { interestSelectionUnchanged, nextInterestIds } from '@/domain/interests';
 import { planCustomInterest, validateTown } from '@/domain/privacy';
@@ -23,6 +25,7 @@ import type {
   ConsentInput,
   DirectoryCard,
   NewCheckIn,
+  NewGratitudeEntry,
   NewHealthSample,
   NewProgressPhoto,
   NewReport,
@@ -168,6 +171,7 @@ export class DemoRepository implements Repository {
             .flatMap((other) => (other.progressPhotos ?? []).map((photo) => readyPhoto(photo, other.profile.id)).filter((photo) => photo.visibility === 'community'))
         : [],
       profile: account ? readyProfile(account.profile) : null,
+      gratitude: account ? sortGratitude(account.gratitude ?? []) : [],
     };
   }
 
@@ -195,8 +199,12 @@ export class DemoRepository implements Repository {
   private backfillProgressPhotos() {
     const fresh = createDemoDb();
     for (const [id, account] of Object.entries(this.db.accounts)) {
-      if (account.progressPhotos) continue;
-      account.progressPhotos = fresh.accounts[id]?.progressPhotos ?? [];
+      if (!account.progressPhotos) {
+        account.progressPhotos = fresh.accounts[id]?.progressPhotos ?? [];
+      }
+      if (!account.gratitude) {
+        account.gratitude = fresh.accounts[id]?.gratitude ?? [];
+      }
       if (!account.profile.createdAt) {
         account.profile.createdAt = fresh.accounts[id]?.profile.createdAt ?? new Date(0).toISOString();
       }
@@ -260,6 +268,7 @@ export class DemoRepository implements Repository {
       thumos: [],
       consents: [],
       progressPhotos: [],
+      gratitude: [],
     };
     const db = clone(this.db);
     db.accounts[id] = account;
@@ -664,6 +673,63 @@ export class DemoRepository implements Repository {
     this.commit(db);
   }
 
+  async addGratitudeEntry(input: NewGratitudeEntry): Promise<void> {
+    const plan = planGratitudeEntry(input.body, input.entryDate, isoDay(new Date()));
+    if (!plan.ok) throw new UserFacingError(plan.message, 'generic');
+    const account = this.me();
+    const db = clone(this.db);
+    const next = db.accounts[account.profile.id];
+    const stamp = new Date().toISOString();
+    const entry: GratitudeEntry = {
+      id: uid(),
+      body: plan.body,
+      category: input.category && isGratitudeCategory(input.category) ? input.category : null,
+      isFavourite: input.isFavourite,
+      entryDate: plan.entryDate,
+      createdAt: stamp,
+      updatedAt: stamp,
+    };
+    next.gratitude = [entry, ...(next.gratitude ?? [])];
+    this.commit(db);
+  }
+
+  async updateGratitudeEntry(id: string, input: NewGratitudeEntry): Promise<void> {
+    const plan = planGratitudeEntry(input.body, input.entryDate, isoDay(new Date()));
+    if (!plan.ok) throw new UserFacingError(plan.message, 'generic');
+    const account = this.me();
+    const db = clone(this.db);
+    const next = db.accounts[account.profile.id];
+    const list = next.gratitude ?? [];
+    const index = list.findIndex((entry) => entry.id === id);
+    if (index < 0) throw new UserFacingError('Could not update that line.', 'generic');
+    list[index] = {
+      ...list[index],
+      body: plan.body,
+      category: input.category && isGratitudeCategory(input.category) ? input.category : null,
+      isFavourite: input.isFavourite,
+      entryDate: plan.entryDate,
+      updatedAt: new Date().toISOString(),
+    };
+    next.gratitude = list;
+    this.commit(db);
+  }
+
+  async deleteGratitudeEntry(id: string): Promise<void> {
+    const account = this.me();
+    const db = clone(this.db);
+    const next = db.accounts[account.profile.id];
+    next.gratitude = (next.gratitude ?? []).filter((entry) => entry.id !== id);
+    this.commit(db);
+  }
+
+  async reflectOnGratitude(body: string, category: string | null): Promise<GratitudeReflect> {
+    const account = this.me();
+    if (!account.profile.consentAi) {
+      throw new Error('Agree to the coach consent before sending a message to Thumos.');
+    }
+    return localGratitudeReflect(body, category);
+  }
+
   async exportData(): Promise<Record<string, unknown>> {
     const account = this.me();
     const id = account.profile.id;
@@ -690,6 +756,16 @@ export class DemoRepository implements Repository {
         visibility: progressVisibility(photo.visibility),
         label: progressPhotoLabel(photo.monthIndex, photo.takenOn),
         signed_url: photo.previewUrl,
+      })),
+      gratitude_entries: (account.gratitude ?? []).map((entry) => ({
+        id: entry.id,
+        user_id: id,
+        body: entry.body,
+        category: entry.category,
+        is_favourite: entry.isFavourite,
+        entry_date: entry.entryDate,
+        created_at: entry.createdAt,
+        updated_at: entry.updatedAt,
       })),
     };
   }

@@ -1,4 +1,5 @@
 import type { StoredConsent } from '@/domain/consents';
+import type { GratitudeCategory, GratitudeEntry, GratitudeReflect } from '@/domain/gratitude';
 import type { Stage } from '@/domain/stage';
 import type { ThumosMode } from '@/domain/thumos';
 
@@ -160,6 +161,15 @@ export type AppSnapshot = {
   progressPhotos: ProgressPhoto[];
   /** Other people's photos that they have chosen to share. Private photos are never included. */
   communityPhotos: ProgressPhoto[];
+  /** Private diary. Never included in the community directory. */
+  gratitude: GratitudeEntry[];
+};
+
+export type NewGratitudeEntry = {
+  body: string;
+  category: GratitudeCategory | null;
+  isFavourite: boolean;
+  entryDate: string;
 };
 
 export type OnboardingInput = {
@@ -282,6 +292,10 @@ export interface Repository {
   addProgressPhoto(input: NewProgressPhoto): Promise<void>;
   deleteProgressPhoto(id: string): Promise<void>;
   setProgressPhotoVisibility(ids: string[], visibility: ProgressVisibility): Promise<void>;
+  addGratitudeEntry(input: NewGratitudeEntry): Promise<void>;
+  updateGratitudeEntry(id: string, input: NewGratitudeEntry): Promise<void>;
+  deleteGratitudeEntry(id: string): Promise<void>;
+  reflectOnGratitude(body: string, category: string | null): Promise<GratitudeReflect>;
   exportData(): Promise<Record<string, unknown>>;
   deleteAccount(): Promise<void>;
 }

@@ -13,6 +13,8 @@ import {
   asUserFacing,
   isTransientNetworkError,
 } from '@/domain/errors';
+import { gratitudeFromRows, isGratitudeCategory, localGratitudeReflect, planGratitudeEntry, type GratitudeReflect } from '@/domain/gratitude';
+import { isoDay } from '@/domain/dates';
 import { randomId } from '@/domain/id';
 import { passwordResetRedirect, recoveryLink } from '@/domain/passwordReset';
 import { createUtf8Decoder } from '@/domain/utf8';
@@ -44,6 +46,7 @@ import type {
   HealthSample,
   Interest,
   NewCheckIn,
+  NewGratitudeEntry,
   NewHealthSample,
   NewProgressPhoto,
   NewReport,
@@ -79,6 +82,15 @@ const serverStorage = {
   removeItem: (_key: string) => Promise.resolve(),
 };
 
+function loggedEmptyGratitude(message: string): [] {
+  console.error(message);
+  return [];
+}
+
+function gratitudeCategory(value: NewGratitudeEntry['category']): NewGratitudeEntry['category'] {
+  return value && isGratitudeCategory(value) ? value : null;
+}
+
 function emptySnapshot(): AppSnapshot {
   return {
     ready: false,
@@ -100,6 +112,7 @@ function emptySnapshot(): AppSnapshot {
     consents: [],
     progressPhotos: [],
     communityPhotos: [],
+    gratitude: [],
   };
 }
 
@@ -202,7 +215,7 @@ export class SupabaseRepository implements Repository {
 
     const userId = session.user.id;
     const email = session.user.email ?? '';
-    const [profileRes, reasonsRes, checkRes, relapseRes, healthRes, mineRes, thumosRes, directoryRes, interestLinks, connectionsRes, reportsRes, consentsRes, photosRes] =
+    const [profileRes, reasonsRes, checkRes, relapseRes, healthRes, mineRes, thumosRes, directoryRes, interestLinks, connectionsRes, reportsRes, consentsRes, photosRes, gratitudeRes] =
       await Promise.all([
         this.client.from('profiles').select('*').eq('id', userId).maybeSingle(),
         this.client.from('reasons').select('*').eq('user_id', userId).order('sort_order'),
@@ -217,6 +230,7 @@ export class SupabaseRepository implements Repository {
         this.client.from('reports').select('*').order('created_at', { ascending: false }),
         this.client.from('consents').select('kind, granted, version').eq('user_id', userId),
         this.client.from('progress_photos').select('id, user_id, taken_on, month_index, note, storage_path, created_at, visibility').eq('user_id', userId).order('month_index').order('taken_on'),
+        this.client.from('gratitude_entries').select('id, body, category, is_favourite, entry_date, created_at, updated_at').eq('user_id', userId).order('entry_date', { ascending: false }),
       ]);
 
     const profileRow = profileRes.data as Row | null;
@@ -287,6 +301,7 @@ export class SupabaseRepository implements Repository {
       consents: ((consentsRes.data ?? []) as Row[]).map(mapConsent),
       progressPhotos: await this.signedProgressPhotos(photosRes.error ? null : ((photosRes.data ?? []) as Row[]), photosRes.error?.message, userId),
       communityPhotos: photosRes.error ? [] : await this.communityProgressPhotos(userId),
+      gratitude: gratitudeRes.error ? loggedEmptyGratitude(gratitudeRes.error.message) : gratitudeFromRows(gratitudeRes.data),
     });
   }
 
@@ -969,6 +984,62 @@ export class SupabaseRepository implements Repository {
     const { error } = await this.client.from('progress_photos').delete().eq('id', id).eq('user_id', userId);
     if (error) throw asUserFacing(error, 'general');
     await this.refresh();
+  }
+
+  async addGratitudeEntry(input: NewGratitudeEntry): Promise<void> {
+    const plan = planGratitudeEntry(input.body, input.entryDate, isoDay(new Date()));
+    if (!plan.ok) throw new UserFacingError(plan.message, 'generic');
+    const userId = await this.userId();
+    const { error } = await this.client.from('gratitude_entries').insert({
+      user_id: userId,
+      body: plan.body,
+      category: gratitudeCategory(input.category),
+      is_favourite: input.isFavourite,
+      entry_date: plan.entryDate,
+    });
+    if (error) throw asUserFacing(error, 'general');
+    await this.refresh();
+  }
+
+  async updateGratitudeEntry(id: string, input: NewGratitudeEntry): Promise<void> {
+    const plan = planGratitudeEntry(input.body, input.entryDate, isoDay(new Date()));
+    if (!plan.ok) throw new UserFacingError(plan.message, 'generic');
+    const userId = await this.userId();
+    const { error } = await this.client.from('gratitude_entries').update({
+      body: plan.body,
+      category: gratitudeCategory(input.category),
+      is_favourite: input.isFavourite,
+      entry_date: plan.entryDate,
+    }).eq('id', id).eq('user_id', userId);
+    if (error) throw asUserFacing(error, 'general');
+    await this.refresh();
+  }
+
+  async deleteGratitudeEntry(id: string): Promise<void> {
+    const userId = await this.userId();
+    const { error } = await this.client.from('gratitude_entries').delete().eq('id', id).eq('user_id', userId);
+    if (error) throw asUserFacing(error, 'general');
+    await this.refresh();
+  }
+
+  async reflectOnGratitude(body: string, category: string | null): Promise<GratitudeReflect> {
+    if (!this.snapshot.profile?.consentAi) {
+      throw new Error('Agree to the coach consent before sending a message to Thumos.');
+    }
+    try {
+      const invoked = await this.client.functions.invoke('gratitude-reflect', { body: { body, category } });
+      const data = invoked.data as { ok?: boolean; code?: string; comment?: unknown; suggestions?: unknown } | null;
+      if (data?.code === 'consent') {
+        throw new Error('Agree to the coach consent before sending a message to Thumos.');
+      }
+      if (!invoked.error && data?.ok === true && typeof data.comment === 'string' && Array.isArray(data.suggestions)) {
+        const suggestions = data.suggestions.filter((item): item is string => typeof item === 'string' && item.trim().length > 0);
+        if (suggestions.length >= 2) return { comment: data.comment, suggestions: suggestions.slice(0, 3) };
+      }
+    } catch (error) {
+      if (error instanceof Error && error.message.includes('Agree to the coach consent')) throw error;
+    }
+    return localGratitudeReflect(body, category);
   }
 
   async exportData(): Promise<Record<string, unknown>> {

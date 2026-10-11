@@ -24,6 +24,15 @@ Deno.serve(async (req) => {
   const storageError = await removeProgressPhotos(admin, userData.user.id);
   if (storageError) return json({ ok: false, code: 'storage', message: storageError }, 500);
 
+  const diary = await admin.from('gratitude_entries').delete().eq('user_id', userData.user.id);
+  if (diary.error && !/does not exist|schema cache|could not find the table/i.test(diary.error.message)) {
+    return json({
+      ok: false,
+      code: 'diary',
+      message: 'Could not remove the gratitude diary, so the account was left in place.',
+    }, 500);
+  }
+
   const { error: deleteError } = await admin.auth.admin.deleteUser(userData.user.id);
   if (deleteError) return json({ ok: false, code: 'delete', message: deleteError.message }, 500);
   return json({ ok: true });

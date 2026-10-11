@@ -1,19 +1,13 @@
 import { Stack, usePathname, useRouter } from 'expo-router';
+import { useState } from 'react';
 import { Pressable, StyleSheet, useWindowDimensions, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { TAB_SECTIONS } from '@/domain/sections';
 import { useAppTheme } from '@/ui/theme';
 import { topSafeInset } from '@/ui/safeArea';
+import { SectionDrawer } from '@/ui/SectionDrawer';
 import { Mark, ShellInsetProvider, T, Wordmark } from '@/ui/ui';
-
-const TABS = [
-  { href: '/home', label: 'Today' },
-  { href: '/check-in', label: 'Check-in' },
-  { href: '/breathe', label: 'Breathe' },
-  { href: '/thumos', label: 'Thumos' },
-  { href: '/people', label: 'People' },
-  { href: '/library', label: 'Library' },
-] as const;
 
 function selected(pathname: string, href: string) {
   if (href === '/people' && pathname.startsWith('/chat')) return true;
@@ -27,6 +21,7 @@ export default function MainLayout() {
   const pathname = usePathname();
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const [menuOpen, setMenuOpen] = useState(false);
 
   const go = (href: string) => router.navigate(href as never);
 
@@ -37,22 +32,39 @@ export default function MainLayout() {
     </Pressable>
   );
 
+  const menuButton = (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel="Menu"
+      onPress={() => setMenuOpen(true)}
+      style={styles.menu}
+    >
+      <View accessibilityElementsHidden style={styles.menuBars}>
+        <View style={[styles.menuBar, { backgroundColor: theme.colors.ink }]} />
+        <View style={[styles.menuBar, { backgroundColor: theme.colors.ink }]} />
+        <View style={[styles.menuBar, { backgroundColor: theme.colors.ink }]} />
+      </View>
+    </Pressable>
+  );
+
   return (
     <View style={{ flex: 1, flexDirection: wide ? 'row' : 'column', backgroundColor: theme.colors.bg }}>
+      <SectionDrawer open={menuOpen} onClose={() => setMenuOpen(false)} />
       {wide ? (
-        <View style={[styles.rail, { backgroundColor: theme.colors.surface, borderRightColor: theme.colors.line, paddingTop: topSafeInset(insets.top) + 18 }]}>
+        <View style={[styles.rail, { backgroundColor: theme.colors.surface, borderRightColor: theme.colors.line, paddingTop: topSafeInset(insets.top) + 8 }]}>
+          {menuButton}
           {brand}
           <T variant="muted" style={{ marginTop: 4, marginBottom: 18 }}>Hold the reins.</T>
-          {TABS.map((tab) => (
-            <NavItem key={tab.href} label={tab.label} active={selected(pathname, tab.href)} onPress={() => go(tab.href)} />
+          {TAB_SECTIONS.map((tab) => (
+            <NavItem key={tab.href} label={tab.tabLabel ?? tab.label} active={selected(pathname, tab.href)} onPress={() => go(tab.href)} />
           ))}
-          <View style={{ flex: 1 }} />
-          <NavItem label="Health" active={pathname === '/health'} onPress={() => go('/health')} />
-          <NavItem label="You" active={pathname === '/profile'} onPress={() => go('/profile')} />
         </View>
       ) : (
         <View style={[styles.mobileTop, { paddingTop: topSafeInset(insets.top) + 8, borderBottomColor: theme.colors.line }]}>
-          {brand}
+          <View style={styles.mobileBrand}>
+            {menuButton}
+            {brand}
+          </View>
           <Pressable accessibilityRole="button" accessibilityLabel="Your profile" onPress={() => go('/profile')}>
             <T variant="body" style={{ fontFamily: theme.font.bodyStrong }}>You</T>
           </Pressable>
@@ -65,7 +77,7 @@ export default function MainLayout() {
       </ShellInsetProvider>
       {wide ? null : (
         <View style={[styles.tabs, { paddingBottom: Math.max(insets.bottom, 8), borderTopColor: theme.colors.line, backgroundColor: theme.colors.surface }]}>
-          {TABS.map((tab) => (
+          {TAB_SECTIONS.map((tab) => (
             <Pressable key={tab.href} accessibilityRole="button" accessibilityState={{ selected: selected(pathname, tab.href) }} onPress={() => go(tab.href)} style={[styles.tab, { borderTopColor: selected(pathname, tab.href) ? theme.colors.ink : 'transparent' }]}>
               <T
                 variant="muted"
@@ -76,7 +88,7 @@ export default function MainLayout() {
                   textAlign: 'center',
                 }}
               >
-                {tab.label}
+                {tab.tabLabel ?? tab.label}
               </T>
             </Pressable>
           ))}
@@ -103,8 +115,12 @@ function NavItem({ label, active, onPress }: { label: string; active: boolean; o
 const styles = StyleSheet.create({
   rail: { width: 232, borderRightWidth: StyleSheet.hairlineWidth, paddingHorizontal: 16, paddingBottom: 20 },
   brand: { flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 44 },
+  menu: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
+  menuBars: { width: 18, gap: 4 },
+  menuBar: { height: 2, width: 18 },
   navItem: { borderRadius: 2, borderLeftWidth: 3, paddingHorizontal: 12, paddingVertical: 10, marginBottom: 4 },
-  mobileTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingBottom: 8, borderBottomWidth: StyleSheet.hairlineWidth },
+  mobileTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 8, paddingBottom: 8, borderBottomWidth: StyleSheet.hairlineWidth },
+  mobileBrand: { flexDirection: 'row', alignItems: 'center', gap: 4, flex: 1 },
   tabs: { flexDirection: 'row', borderTopWidth: StyleSheet.hairlineWidth, paddingTop: 8 },
   tab: { flex: 1, minHeight: 44, alignItems: 'center', justifyContent: 'center', borderTopWidth: 2 },
 });

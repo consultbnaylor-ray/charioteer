@@ -136,16 +136,17 @@ An allow-list entry of exactly `charioteer://` does not cover `charioteer://set-
 supabase secrets set XAI_API_KEY=your-key
 supabase functions serve
 # or, for a hosted project:
-supabase functions deploy thumos-chat thumos-voice-token thumos-voice-turn account-export account-delete progress-photo-url
+supabase functions deploy thumos-chat thumos-voice-token thumos-voice-turn account-export account-delete progress-photo-url gratitude-reflect
 ```
 
 | Function | Role |
 | --- | --- |
-| `thumos-chat` | Rebuilds context from the database, calls Grok, stores the user line and the reply with the service role. Refuses the call without coach consent. Missing key stores the offline message. |
-| `thumos-voice-token` | Mints an ephemeral realtime client secret and returns the same Thumos instructions and recent history used for text, adapted for speech. Missing key returns a graceful message. |
+| `thumos-chat` | Rebuilds context from the database, calls Grok, stores the user line and the reply with the service role. Refuses the call without coach consent. When the coach is allowed, the context may include up to five private gratitude lines (starred first, then recent). Missing key stores the offline message. |
+| `thumos-voice-token` | Mints an ephemeral realtime client secret and returns the same Thumos instructions and recent history used for text, adapted for speech, including those gratitude lines only after coach consent. Missing key returns a graceful message. |
 | `thumos-voice-turn` | Stores one spoken turn in `thumos_messages` and pins the fixed safety notice when the user’s transcript trips the detector. |
 | `account-export` | Calls `export_my_data()` and adds a one-hour signed link for each private progress photo. The file does not contain the image bytes. |
-| `account-delete` | Removes the caller’s objects in the private `progress-photos` bucket, then deletes the auth user. `delete_my_account()` is the fallback, and the app removes those objects before it uses the fallback. |
+| `account-delete` | Removes the caller’s objects in the private `progress-photos` bucket, deletes their `gratitude_entries` rows, then deletes the auth user. `delete_my_account()` is the fallback, and the app removes those objects before it uses the fallback. |
+| `gratitude-reflect` | With coach consent, sends one diary line and its optional tag to xAI and returns a short comment plus two or three suggestions. It does not read check-ins, health, reasons, photos, or other diary lines. Missing key or a bad reply uses a local note and nothing is sent. |
 | `progress-photo-url` | Signs a 60-second URL for a progress photo the caller is allowed to see: their own, or one whose `visibility` is `community`. A private photo belonging to someone else is not signed. |
 
 The client tries the function first, then the SQL function, for export and deletion.

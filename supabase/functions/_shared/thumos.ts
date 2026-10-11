@@ -1,4 +1,5 @@
 import { factsBlock, type CitedFact, ALCOHOL_FACTS } from './facts.ts';
+import { formatGratitudeContext, GRATITUDE_PROMPT_LINE, type GratitudeEntry } from './gratitude.ts';
 import { earnedMilestones } from './milestones.ts';
 import { savingsFromTypicalWeek } from './savings.ts';
 import { formatSoberElapsed, soberElapsed } from './sober.ts';
@@ -39,6 +40,8 @@ export type ThumosContextInput = {
   weeklyUnitsGoal?: number | null;
   drinkFreeDaysGoal?: number | null;
   drinkFreeThisWeek?: number | null;
+  /** Included only when the person has agreed to the coach. Never community data. */
+  gratitude?: GratitudeEntry[];
 };
 
 const STAGE_LABEL: Record<ThumosStage, string> = {
@@ -386,7 +389,7 @@ const OTHER_GUIDANCE: Record<Exclude<ThumosMode, 'support'>, string> = {
 const CRISIS_SUPPORT = [
   'They have said something about suicide or self-harm. Keep the focus solely on the person and getting help now.',
   'Be warm and brief. Encourage them to contact the Samaritans on 116 123, to call 999 if they are in immediate danger, or to reach someone they trust.',
-  'Do not mention sober time, day counts, personal reasons, savings, milestones, check-ins, or health readings. Do not debate whether they should live. Do not describe methods.',
+  'Do not mention sober time, day counts, personal reasons, savings, milestones, check-ins, health readings, or the gratitude diary. Do not debate whether they should live. Do not describe methods.',
   'A fixed safety notice is added after your reply. Say the invitation to get help in your own words as well.',
 ].join('\n');
 
@@ -481,7 +484,7 @@ export function buildThumosContext(input: ThumosContextInput): string {
   if (input.safety.selfHarm) {
     return [
       `Name: ${input.displayName || 'Friend'}`,
-      'Sober time, personal reasons, savings, milestones, check-ins, and health readings are withheld on this turn. Do not mention them or invent them.',
+      'Sober time, personal reasons, savings, milestones, check-ins, health readings, and the gratitude diary are withheld on this turn. Do not mention them or invent them.',
       `Mode: ${input.mode}`,
       `Safety flags: self-harm YES, withdrawal ${input.safety.withdrawal ? 'YES' : 'no'}`,
     ].join('\n');
@@ -508,6 +511,7 @@ export function buildThumosContext(input: ThumosContextInput): string {
     `Personal reasons:\n${input.reasons.length ? input.reasons.map((reason) => `- ${reason}`).join('\n') : '- none written yet'}`,
     `Recent check-ins (newest first):\n${checkIns || '- none yet'}`,
     `Health readings:\n${health || '- none shared'}`,
+    formatGratitudeContext(input.gratitude ?? []),
     `Mode: ${input.mode}`,
     `Safety flags: self-harm ${input.safety.selfHarm ? 'YES' : 'no'}, withdrawal ${input.safety.withdrawal ? 'YES' : 'no'}`,
   ].filter(Boolean).join('\n');
@@ -532,8 +536,9 @@ export function buildSystemPrompt(
     styleLine(turn),
     'The messages after this system prompt are the conversation so far, oldest first, then their latest line. Use that history. Never repeat a sentence you have already sent. Vary your wording from turn to turn.',
     turn.selfHarm
-      ? 'Do not mention sober time, day counts, personal reasons, savings, or health readings on this turn.'
-      : 'When you mention sober time, a personal reason, a check-in, or a health reading, take it from CONTEXT. Do not invent those details.',
+      ? 'Do not mention sober time, day counts, personal reasons, savings, health readings, or the gratitude diary on this turn.'
+      : 'When you mention sober time, a personal reason, a check-in, a health reading, or a gratitude line, take it from CONTEXT. Do not invent those details.',
+    turn.selfHarm ? '' : GRATITUDE_PROMPT_LINE,
     'Do not invent statistics, study names, or citations. If you share a number about alcohol harm, use only CURATED FACTS, quote it faithfully, and name the source. If you do not have a verified figure, say so.',
     repetitionLine(turn),
     modeGuidance(mode, turn),

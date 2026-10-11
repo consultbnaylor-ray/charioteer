@@ -3,6 +3,7 @@ import { consentRows } from '@/domain/consents';
 import type { StoredConsent } from '@/domain/consents';
 import type { CheckIn, Connection, DirectMessage, HealthSample, Profile, ProgressPhoto, Reason, Relapse, ThumosMessage } from '@/data/types';
 import { isoDay } from '@/domain/dates';
+import type { GratitudeEntry } from '@/domain/gratitude';
 import { planProgressPhoto, progressStoragePath } from '@/domain/progressPhotos';
 
 export const DEMO_PASSWORD = 'Charioteer-demo-1';
@@ -31,6 +32,7 @@ export type DemoAccount = {
   thumos: ThumosMessage[];
   consents: StoredConsent[];
   progressPhotos: ProgressPhoto[];
+  gratitude: GratitudeEntry[];
 };
 
 export type DemoDb = {
@@ -89,6 +91,18 @@ function profile(
 /** A tiny grey JPEG so the sample timeline can render without a camera. */
 const SAMPLE_JPEG =
   'data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAP//////////////////////////////////////////////////////////////////////////////////////2wBDAf//////////////////////////////////////////////////////////////////////////////////////wAARCAABAAEDASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAb/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/8QAFQEBAQAAAAAAAAAAAAAAAAAAAAX/xAAUEQEAAAAAAAAAAAAAAAAAAAAA/9oADAMBAAIQAxAAAAGf/9k=';
+
+function diaryLine(
+  id: string,
+  body: string,
+  category: GratitudeEntry['category'],
+  isFavourite: boolean,
+  entryDate: string,
+): GratitudeEntry {
+  const [year, month, day] = entryDate.split('-').map(Number);
+  const created = new Date(year, (month ?? 1) - 1, day ?? 1, 9, 0, 0, 0).toISOString();
+  return { id, body, category, isFavourite, entryDate, createdAt: created, updatedAt: created };
+}
 
 function samplePhoto(
   userId: string,
@@ -170,6 +184,7 @@ export function createDemoDb(now = new Date()): DemoDb {
     thumos,
     consents: consentRows(CONSENT_VERSION, { consentHealth: true, communityVisible: true, consentAi: true }),
     progressPhotos: [],
+    gratitude: [],
   };
   const anchor = new Date(started);
   const startPlan = planProgressPhoto({
@@ -192,6 +207,12 @@ export function createDemoDb(now = new Date()): DemoDb {
   if (nowPlan.ok) {
     alex.progressPhotos.push(samplePhoto(PEOPLE.alex, 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb2', nowPlan.takenOn, nowPlan.monthIndex, nowPlan.note, now.toISOString()));
   }
+  const lastYear = `${now.getFullYear() - 1}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+  alex.gratitude = [
+    diaryLine('11111111-1111-4111-8111-111111111101', 'My sister rang just to say she was thinking of me.', 'People', true, localDay(now, 3)),
+    diaryLine('11111111-1111-4111-8111-111111111102', 'The river path after rain, and nobody asking me to hurry.', 'Nature', false, localDay(now, 40)),
+    diaryLine('11111111-1111-4111-8111-111111111103', 'A quiet cup of tea before the house woke.', 'Small joys', false, lastYear),
+  ];
 
   const other = (
     id: string,
@@ -211,6 +232,7 @@ export function createDemoDb(now = new Date()): DemoDb {
     thumos: [],
     consents: consentRows(CONSENT_VERSION, { consentHealth: true, communityVisible: true, consentAi: true }),
     progressPhotos: [],
+    gratitude: [],
   });
 
   const jordan = other(PEOPLE.jordan, 'jordan.ellis@example.com', 'Jordan Ellis', 'Manchester', [HIKING, EXERCISE]);

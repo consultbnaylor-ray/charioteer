@@ -1,4 +1,5 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.117.3';
+import { gratitudeFromRows } from '../_shared/gratitude.ts';
 import { json, preflight } from '../_shared/http.ts';
 import {
   buildVoiceBriefing,
@@ -72,6 +73,14 @@ Deno.serve(async (req) => {
     });
   }
 
+  const gratitudeRes = await userClient
+    .from('gratitude_entries')
+    .select('id, body, category, is_favourite, entry_date, created_at, updated_at')
+    .eq('user_id', userId)
+    .order('entry_date', { ascending: false })
+    .limit(40);
+  const gratitude = gratitudeRes.error ? [] : gratitudeFromRows(gratitudeRes.data);
+
   const profile = profileRes.data;
   const stage = profile.stage === 'trying_to_stop' || profile.stage === 'cutting_down' || profile.stage === 'exploring' || profile.stage === 'stopped'
     ? profile.stage
@@ -119,6 +128,7 @@ Deno.serve(async (req) => {
       weeklyUnitsGoal: profile.weekly_units_goal == null ? null : Number(profile.weekly_units_goal),
       drinkFreeDaysGoal: profile.drink_free_days_goal == null ? null : Number(profile.drink_free_days_goal),
       drinkFreeThisWeek: drinkFreeCount(profile.drink_free_on, now),
+      gratitude,
     },
   });
 

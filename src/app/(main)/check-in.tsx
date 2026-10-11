@@ -62,6 +62,13 @@ export default function CheckIn() {
           <Button label="Open support" tone="sos" onPress={() => router.push('/thumos?mode=craving' as never)} />
         </Card>
       ) : null}
+      {savedCraving != null ? (
+        <Card>
+          <T variant="title">Add to your Gratitude Diary</T>
+          <T>A line you want to keep. There is no streak to break.</T>
+          <Button label="Add to your Gratitude Diary" onPress={() => router.push('/gratitude' as never)} />
+        </Card>
+      ) : null}
       <T variant="label">Recent</T>
       {snap.checkIns.length === 0 ? <T variant="muted">No check-ins yet.</T> : null}
       {snap.checkIns.slice(0, 8).map((item) => (

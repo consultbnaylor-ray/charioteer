@@ -1,4 +1,4 @@
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.117.3';
+import { createClient, type SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2.117.3';
 import { ALCOHOL_FACTS } from '../_shared/facts.ts';
 import { corsHeaders, json, preflight } from '../_shared/http.ts';
 import { encodeSse, type ThumosServerEvent } from '../_shared/sse.ts';
@@ -21,6 +21,7 @@ import {
   type HealthTrend,
   type ThumosMode,
 } from '../_shared/thumos.ts';
+import { gratitudeFromRows, type GratitudeEntry } from '../_shared/gratitude.ts';
 
 type Body = { content?: string; mode?: ThumosMode };
 
@@ -34,6 +35,17 @@ function drinkFreeCount(dates: unknown, now: Date): number {
   endDate.setUTCDate(endDate.getUTCDate() + 7);
   const end = endDate.toISOString().slice(0, 10);
   return new Set(dates.map(String).filter((item) => item >= start && item < end)).size;
+}
+
+async function loadGratitude(userClient: SupabaseClient, userId: string): Promise<GratitudeEntry[]> {
+  const gratitudeRes = await userClient
+    .from('gratitude_entries')
+    .select('id, body, category, is_favourite, entry_date, created_at, updated_at')
+    .eq('user_id', userId)
+    .order('entry_date', { ascending: false })
+    .limit(40);
+  if (gratitudeRes.error) return [];
+  return gratitudeFromRows(gratitudeRes.data);
 }
 
 Deno.serve(async (req) => {
@@ -82,6 +94,8 @@ Deno.serve(async (req) => {
     }, 403);
   }
 
+  const gratitude = await loadGratitude(userClient, userId);
+
   const safety = safetyFromText(content);
   const mode = resolveThumosMode({ requested: body.mode, userText: content, safety });
 
@@ -126,6 +140,7 @@ Deno.serve(async (req) => {
     weeklyUnitsGoal: profile.weekly_units_goal == null ? null : Number(profile.weekly_units_goal),
     drinkFreeDaysGoal: profile.drink_free_days_goal == null ? null : Number(profile.drink_free_days_goal),
     drinkFreeThisWeek: drinkFreeCount(profile.drink_free_on, new Date()),
+    gratitude,
   });
 
   const admin = createClient(url, service, { auth: { persistSession: false } });
