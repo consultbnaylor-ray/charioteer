@@ -7,7 +7,7 @@ import { useRepository, useSnapshot } from '@/data';
 import type { TextScale, ThemePreference } from '@/data/types';
 import { correctedSoberStart } from '@/domain/correctStart';
 import { formatUkDate, isoDay, parseIsoDay, startOfLocalDay } from '@/domain/dates';
-import { parseDrinkFreeGoal, parseUnitsGoal, showsSoberRecord, STAGE_LABELS, STAGES, SUDDEN_STOP_WARNING, usualWeekPrompt, validateStageStep, type Stage } from '@/domain/stage';
+import { parseDrinkFreeGoal, parseUnitsGoal, showsSoberRecord, STAGE_LABELS, STAGES, SUDDEN_STOP_WARNING, USUAL_WEEK_HELPER, validateStageStep, type Stage } from '@/domain/stage';
 import { shownError } from '@/domain/errors';
 import { interestChipRemovable, interestChipVisible } from '@/domain/interests';
 import { planCustomInterest } from '@/domain/privacy';
@@ -240,7 +240,7 @@ export default function Profile() {
             <Field label="Drink-free days a week" value={drinkFreeGoal} onChangeText={setDrinkFreeGoal} keyboardType="number-pad" placeholder="0 to 7, optional" />
           </View>
         ) : null}
-        <T variant="muted">{usualWeekPrompt(stage)}</T>
+        <T variant="muted">{USUAL_WEEK_HELPER}</T>
         <Field label="Typical spend per week (£)" value={spend} onChangeText={setSpend} keyboardType="decimal-pad" />
         <Field label="Typical units per week" value={units} onChangeText={setUnits} keyboardType="decimal-pad" />
         <UnitsGuide onChange={setUnits} stage={stage} weeklySpend={spend} />

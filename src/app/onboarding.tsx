@@ -7,7 +7,7 @@ import { shownError } from '@/domain/errors';
 import { interestChipVisible } from '@/domain/interests';
 import { planCustomInterest, validateTown } from '@/domain/privacy';
 import { reasonPlaceholder } from '@/domain/reasons';
-import { parseDrinkFreeGoal, parseUnitsGoal, STAGE_LABELS, STAGES, SUDDEN_STOP_WARNING, usualWeekPrompt, validateStageStep, type Stage } from '@/domain/stage';
+import { parseDrinkFreeGoal, parseUnitsGoal, STAGE_LABELS, STAGES, SUDDEN_STOP_WARNING, USUAL_WEEK_HELPER, validateStageStep, type Stage } from '@/domain/stage';
 import { ConsentChoices } from '@/ui/ConsentChoices';
 import { DateField } from '@/ui/DateField';
 import { UnitsGuide } from '@/ui/UnitsGuide';
@@ -135,12 +135,9 @@ export default function Onboarding() {
   }
 
   const catalogue = snap.interests.filter((interest) => interestChipVisible(interest, interestIds.includes(interest.id)));
-  const pastUsualWeek = stage === 'stopped' || stage === 'trying_to_stop';
-  const title = step === 4 && !pastUsualWeek ? usualWeekPrompt(stage) : titles[step];
-  const intro = step === 4 && pastUsualWeek ? usualWeekPrompt(stage) : intros[step];
 
   return (
-    <Screen eyebrow={`Step ${step + 1} of ${STEPS}`} title={title} intro={intro}>
+    <Screen eyebrow={`Step ${step + 1} of ${STEPS}`} title={titles[step]} intro={intros[step]}>
       {step === 0 ? <Field label="Your name" value={name} onChangeText={setName} placeholder="Alex" /> : null}
       {step === 1 ? (
         <View style={{ gap: 10 }}>
@@ -201,6 +198,7 @@ export default function Onboarding() {
       ) : null}
       {step === 4 ? (
         <View style={{ gap: 10 }}>
+          <T variant="muted">{USUAL_WEEK_HELPER}</T>
           <Field label="Typical spend per week (£)" value={spend} onChangeText={setSpend} keyboardType="decimal-pad" />
           <Field
             label="Typical units per week"
