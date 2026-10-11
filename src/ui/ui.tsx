@@ -143,6 +143,7 @@ export function Screen({
           ]}
           contentInsetAdjustmentBehavior="never"
           keyboardShouldPersistTaps="handled"
+          nestedScrollEnabled
           keyboardDismissMode="interactive"
           automaticallyAdjustKeyboardInsets
           refreshControl={

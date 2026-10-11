@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
+import { defaultComparison, resolveComparison } from './progressComparison';
 import { captureDayFromExif, planProgressPhoto, progressMonthIndex, progressPhotoLabel, progressResize, progressStoragePath, progressVisibility, PROGRESS_SHARE_WARNING, PROGRESS_SHARED_URL_SECONDS } from './progressPhotos';
 
 describe('progress photo months', () => {
@@ -55,6 +56,23 @@ describe('capture day', () => {
     expect(captureDayFromExif({ DateTimeOriginal: '2026:12:01 00:00:00' }, '2026-10-11')).toBeNull();
     expect(captureDayFromExif(null, '2026-10-11')).toBeNull();
     expect(captureDayFromExif({ GPSLatitude: 51.5 }, '2026-10-11')).toBeNull();
+  });
+});
+
+describe('before and now', () => {
+  const starting = { id: 'start', monthIndex: 0, takenOn: '2026-08-01', createdAt: '2026-08-01T00:00:00.000Z' };
+  const middle = { id: 'mid', monthIndex: 1, takenOn: '2026-09-01', createdAt: '2026-09-01T00:00:00.000Z' };
+  const latest = { id: 'now', monthIndex: 2, takenOn: '2026-10-01', createdAt: '2026-10-01T00:00:00.000Z' };
+
+  it('defaults Before to the starting point and Now to the latest photo', () => {
+    expect(defaultComparison([latest, starting, middle])).toEqual({ beforeId: 'start', nowId: 'now' });
+    expect(defaultComparison([latest, middle])).toEqual({ beforeId: 'mid', nowId: 'now' });
+    expect(defaultComparison([starting])).toBeNull();
+  });
+
+  it('keeps a stored choice and drops an id that no longer exists', () => {
+    expect(resolveComparison([starting, middle, latest], { beforeId: 'mid', nowId: 'start' })).toEqual({ beforeId: 'mid', nowId: 'start' });
+    expect(resolveComparison([starting, latest], { beforeId: 'gone', nowId: 'latest' })).toEqual({ beforeId: 'start', nowId: 'now' });
   });
 });
 
@@ -124,6 +142,11 @@ describe('progress photos stay private', () => {
     expect(you).toContain('Try again');
     expect(you).toContain('Save note');
     expect(you).not.toContain('Save this photo');
+    expect(you).not.toContain('Select a photo, then choose which side');
+    expect(you).not.toContain('Show as Before');
+    expect(you).toContain('horizontal');
+    expect(you).toContain('pointerEvents="none"');
+    expect(you).toContain('flexGrow: 0');
     expect(you).not.toMatch(/comment/i);
   });
 
