@@ -16,7 +16,7 @@ export default function UnitsScreen() {
   if (!profile) return null;
 
   return (
-    <Screen eyebrow="You" title="Drinks & units calculator" intro="An estimate for a usual week. These figures are not medical advice.">
+    <Screen eyebrow="You" title="Drinks & units calculator" intro="An estimate for a usual week. These figures are not medical advice. If you have stopped drinking, use this to save what you were regularly consuming.">
       <Field label="Typical units per week" value={units} onChangeText={setUnits} keyboardType="decimal-pad" />
       <UnitsGuide onChange={setUnits} stage={profile.stage} weeklySpend={profile.weeklySpendGbp?.toString() ?? ''} currentUnits={units} />
       <ErrorNote>{error}</ErrorNote>
