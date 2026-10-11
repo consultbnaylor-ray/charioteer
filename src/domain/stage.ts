@@ -14,6 +14,17 @@ export const STAGE_LABELS: Record<Stage, string> = {
 export const SUDDEN_STOP_WARNING =
   'If you have been drinking heavily every day, stopping suddenly can be dangerous. Speak to a GP, or call NHS 111, before you stop.';
 
+/** Usual-week figures for someone who has stopped, or is trying to stop. */
+export const USUAL_WEEK_PAST =
+  'Enter what you used to drink when you were drinking the most, to see how much you’ve been saving.';
+
+/** Usual-week figures while someone is cutting down or still drinking. */
+export const USUAL_WEEK_NOW = 'Your usual week now';
+
+export function usualWeekPrompt(stage: Stage | null): string {
+  return stage === 'stopped' || stage === 'trying_to_stop' ? USUAL_WEEK_PAST : USUAL_WEEK_NOW;
+}
+
 export function isStage(value: unknown): value is Stage {
   return typeof value === 'string' && (STAGES as readonly string[]).includes(value);
 }

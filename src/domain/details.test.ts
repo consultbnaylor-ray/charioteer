@@ -63,7 +63,17 @@ describe('detail editors', () => {
     expect(profile).toContain('Your details');
     expect(profile).toContain('label="Name"');
     expect(profile).toContain('label="Sober since"');
+    expect(profile).toContain('hint="Today or an earlier day. Saving this does not record a relapse."');
+    const spendAt = profile.indexOf('label="Typical spend per week (£)"');
+    const weekHelpAt = profile.indexOf('{usualWeekPrompt(stage)}');
+    expect(weekHelpAt).toBeGreaterThan(-1);
+    expect(weekHelpAt).toBeLessThan(spendAt);
     expect(profile).toContain('label="Typical spend per week (£)"');
+    const onboarding = readFileSync('src/app/onboarding.tsx', 'utf8');
+    expect(onboarding).toContain('const pastUsualWeek = stage === \'stopped\' || stage === \'trying_to_stop\'');
+    expect(onboarding).toContain('step === 4 && !pastUsualWeek ? usualWeekPrompt(stage) : titles[step]');
+    expect(onboarding).toContain('step === 4 && pastUsualWeek ? usualWeekPrompt(stage) : intros[step]');
+    expect(onboarding).toContain('\'Your usual week\'');
     expect(profile).toContain('label="Typical units per week"');
     expect(profile).toContain('label="Reasons, one per line"');
     expect(profile).toContain('label="Town or area"');

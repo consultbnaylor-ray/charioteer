@@ -7,6 +7,9 @@ import {
   showsSoberRecord,
   stageFromRecord,
   toggleDrinkFreeDay,
+  USUAL_WEEK_NOW,
+  USUAL_WEEK_PAST,
+  usualWeekPrompt,
   validateStageStep,
 } from './stage';
 
@@ -17,6 +20,15 @@ describe('stage', () => {
     expect(stageFromRecord(undefined, '2026-08-01T00:00:00.000Z')).toBe('stopped');
     expect(stageFromRecord(undefined, null)).toBe('exploring');
     expect(stageFromRecord('cutting_down', '2026-08-01T00:00:00.000Z')).toBe('cutting_down');
+  });
+
+  it('explains a past usual week after stopping, and the week now while still drinking', () => {
+    expect(USUAL_WEEK_PAST).toBe('Enter what you used to drink when you were drinking the most, to see how much you’ve been saving.');
+    expect(usualWeekPrompt('stopped')).toBe(USUAL_WEEK_PAST);
+    expect(usualWeekPrompt('trying_to_stop')).toBe(USUAL_WEEK_PAST);
+    expect(usualWeekPrompt('cutting_down')).toBe(USUAL_WEEK_NOW);
+    expect(usualWeekPrompt('exploring')).toBe('Your usual week now');
+    expect(usualWeekPrompt(null)).toBe('Your usual week now');
   });
 
   it('shows a sober record only after someone has stopped', () => {
