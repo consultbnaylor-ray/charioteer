@@ -72,6 +72,9 @@
         }
       ]
     ],
+    "extra": {
+      "voiceDiagnostics": true
+    },
     "experiments": {
       "typedRoutes": false,
       "reactCompiler": false

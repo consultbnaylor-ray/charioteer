@@ -240,6 +240,7 @@ export default function Thumos() {
         <Field label="Message" value={draft} onChangeText={setDraft} multiline placeholder="Say it in your own words" />
       )}
       <ErrorNote>{error || (voice?.phase === 'error' ? voice.message : null)}</ErrorNote>
+      {!error && voice?.phase === 'error' && voice.detail ? <T variant="muted">{voice.detail}</T> : null}
       {inCall ? null : (
         <View style={{ flexDirection: 'row', gap: 10 }}>
           <View style={{ flex: 1 }}>

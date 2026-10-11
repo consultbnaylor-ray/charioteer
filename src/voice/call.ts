@@ -1,12 +1,18 @@
-import { AppState, type AppStateStatus } from 'react-native';
+import Constants from 'expo-constants';
+import { AppState, Platform, type AppStateStatus } from 'react-native';
 
 import {
   base64ToBytes,
-  browserSocketProtocols,
   buildVoiceSessionUpdate,
+  combineSocketCause,
   GROK_VOICE,
   inputAudioAppend,
+  mapVoiceFailure,
   pcm16Base64FromFloat,
+  socketFailureCause,
+  voiceCauseText,
+  voiceDiagnosticsEnabled,
+  voiceSocketAuth,
   VOICE_COPY,
   type VoiceBriefing,
 } from '@/domain/voice';
@@ -28,7 +34,13 @@ export type VoiceCallDeps = {
   saveTurn: (turn: { user: string; assistant: string }) => Promise<void>;
   onChange: (state: VoiceRuntime) => void;
   audio?: VoiceAudio;
-  socketFactory?: (url: string, protocols: string[]) => WebSocket;
+  socketFactory?: (
+    url: string,
+    protocols: string[] | undefined,
+    options?: { headers: { Authorization: string } },
+  ) => WebSocket;
+  /** When omitted, dev and TestFlight (`extra.voiceDiagnostics`) show the technical line. */
+  showCause?: boolean;
 };
 
 export class VoiceCall {
@@ -39,10 +51,14 @@ export class VoiceCall {
   private preRoll: string[] = [];
   private appState: { remove: () => void } | null = null;
   private stopped = false;
+  private socketProblem: string | null = null;
+  private socketErrorTimer: ReturnType<typeof setTimeout> | null = null;
   private readonly audio: VoiceAudio;
+  private readonly showCause: boolean;
 
   constructor(private readonly deps: VoiceCallDeps) {
     this.audio = deps.audio ?? createVoiceAudio();
+    this.showCause = deps.showCause ?? diagnosticsEnabled();
   }
 
   async start(): Promise<void> {
@@ -69,8 +85,11 @@ export class VoiceCall {
           else if (event.shouldResume) this.audio.resumeCapture();
         },
       });
-    } catch {
-      this.fail(VOICE_COPY.failed);
+    } catch (err) {
+      const cause = voiceCauseText(err);
+      console.warn('[voice] audio.start failed', cause);
+      const mapped = mapVoiceFailure({ kind: 'audio', cause, showCause: this.showCause });
+      this.fail(mapped.message, mapped.detail);
       return;
     }
     if (this.stopped) {
@@ -104,8 +123,11 @@ export class VoiceCall {
   }
 
   private openSocket() {
-    const factory = this.deps.socketFactory ?? ((url, protocols) => new WebSocket(url, protocols));
-    const socket = factory(GROK_VOICE.socketUrl, browserSocketProtocols(this.deps.token));
+    const url = GROK_VOICE.socketUrl;
+    const auth = voiceSocketAuth(Platform.OS === 'web' ? 'web' : 'native', this.deps.token);
+    const socket = this.deps.socketFactory
+      ? this.deps.socketFactory(url, auth.protocols, auth.headers ? { headers: auth.headers } : undefined)
+      : openVoiceSocket(url, auth);
     this.socket = socket;
     this.timer = setTimeout(() => this.apply({ type: 'local.timeout' }), 8000);
     socket.addEventListener('open', () => {
@@ -120,8 +142,27 @@ export class VoiceCall {
         // Binary or partial frames are ignored. Audio rides in JSON deltas.
       }
     });
-    socket.addEventListener('error', () => this.apply({ type: 'local.socket-error' }));
-    socket.addEventListener('close', () => this.apply({ type: 'local.socket-close', expected: this.expectedClose }));
+    socket.addEventListener('error', (event) => {
+      if (this.expectedClose) return;
+      const cause = socketFailureCause(socketEventFields(event));
+      const recorded = cause === 'socket closed' ? 'socket error' : cause;
+      console.warn('[voice] socket error', recorded);
+      this.socketProblem = recorded;
+      // React Native follows the error with close, and that close carries the code and reason.
+      this.socketErrorTimer = setTimeout(() => {
+        this.socketErrorTimer = null;
+        if (this.stopped || this.state.phase === 'error' || this.state.phase === 'ended') return;
+        this.apply({ type: 'local.socket-error', cause: this.socketProblem ?? 'socket error', showCause: this.showCause });
+      }, 50);
+    });
+    socket.addEventListener('close', (event) => {
+      if (this.socketErrorTimer) clearTimeout(this.socketErrorTimer);
+      this.socketErrorTimer = null;
+      const closeCause = socketFailureCause(socketEventFields(event));
+      const cause = combineSocketCause(this.socketProblem, closeCause);
+      if (!this.expectedClose) console.warn('[voice] socket close', cause);
+      this.apply({ type: 'local.socket-close', expected: this.expectedClose, cause, showCause: this.showCause });
+    });
   }
 
   private onMic(samples: Float32Array, sampleRate: number) {
@@ -183,8 +224,8 @@ export class VoiceCall {
     this.socket.send(JSON.stringify(body));
   }
 
-  private fail(message: string) {
-    this.state = { ...this.state, phase: 'error', message };
+  private fail(message: string, detail: string | null = null) {
+    this.state = { ...this.state, phase: 'error', message, detail };
     this.deps.onChange(this.state);
     this.expectedClose = true;
     void this.shutdown();
@@ -195,6 +236,8 @@ export class VoiceCall {
     this.stopped = true;
     if (this.timer) clearTimeout(this.timer);
     this.timer = null;
+    if (this.socketErrorTimer) clearTimeout(this.socketErrorTimer);
+    this.socketErrorTimer = null;
     this.appState?.remove();
     this.appState = null;
     try {
@@ -205,4 +248,31 @@ export class VoiceCall {
     this.socket = null;
     await this.audio.stop().catch(() => undefined);
   }
+}
+
+function diagnosticsEnabled(): boolean {
+  const extra = Constants.expoConfig?.extra;
+  const flag = extra && typeof extra === 'object' && 'voiceDiagnostics' in extra
+    ? (extra as { voiceDiagnostics?: boolean }).voiceDiagnostics
+    : undefined;
+  return voiceDiagnosticsEnabled({ dev: typeof __DEV__ !== 'undefined' && __DEV__, voiceDiagnostics: flag });
+}
+
+function socketEventFields(event: Event): { message?: string; code?: number; reason?: string } {
+  const record = event as Event & { message?: unknown; code?: unknown; reason?: unknown };
+  return {
+    message: typeof record.message === 'string' ? record.message : undefined,
+    code: typeof record.code === 'number' ? record.code : undefined,
+    reason: typeof record.reason === 'string' ? record.reason : undefined,
+  };
+}
+
+function openVoiceSocket(url: string, auth: { protocols?: string[]; headers?: { Authorization: string } }): WebSocket {
+  if (auth.protocols) return new WebSocket(url, auth.protocols);
+  const NativeSocket = WebSocket as unknown as new (
+    url: string,
+    protocols: undefined,
+    options?: { headers: { Authorization: string } },
+  ) => WebSocket;
+  return new NativeSocket(url, undefined, auth.headers ? { headers: auth.headers } : undefined);
 }

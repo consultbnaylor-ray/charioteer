@@ -9,6 +9,7 @@ import {
   forceSpokenLine,
   historySeedEvent,
   spokenSafetyLine,
+  mapVoiceFailure,
   truncateAssistantItem,
   VOICE_COPY,
   type VoiceHistoryTurn,
@@ -47,6 +48,8 @@ export type VoiceRuntime = {
   safety: SafetyHit;
   notices: string[];
   message: string | null;
+  /** Short technical cause, shown under the friendly line on dev and TestFlight. */
+  detail: string | null;
   pauseReason: 'background' | 'interruption' | null;
 };
 
@@ -89,6 +92,7 @@ export function createVoiceRuntime(): VoiceRuntime {
     safety: EMPTY_SAFETY,
     notices: [],
     message: null,
+    detail: null,
     pauseReason: null,
   };
 }
@@ -241,8 +245,15 @@ export function reduceVoiceEvent(
       return { state, commands };
     }
     if (state.phase === 'ended' || state.phase === 'error') return { state, commands };
+    const mapped = mapVoiceFailure({
+      kind: 'connection',
+      cause: text(record!, 'cause') || (type === 'local.socket-error' ? 'socket error' : 'socket closed'),
+      showCause: record?.showCause === true,
+      configured: state.configured,
+    });
     state.phase = 'error';
-    state.message = state.configured ? VOICE_COPY.network : VOICE_COPY.failed;
+    state.message = mapped.message;
+    state.detail = mapped.detail;
     commands.push({ type: 'stopPlayback' });
     commands.push({ type: 'fail', message: state.message });
     return { state, commands };

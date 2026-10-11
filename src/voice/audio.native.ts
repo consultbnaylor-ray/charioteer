@@ -22,9 +22,11 @@ import type { VoiceAudio, VoiceMicHandlers } from './audioTypes';
  * The session is playAndRecord and voiceChat, with defaultToSpeaker and
  * Bluetooth HFP, so a headset microphone is used and the loudspeaker is the
  * default. scripts/enable-voice-processing.mjs turns on Apple's voice-processing
- * I/O (echo cancellation, noise suppression, automatic gain). This release has
- * no iosVoiceProcessing option yet. The simulator skips that patch because
- * voice processing there records silence.
+ * I/O before the graph is attached. If that cannot be enabled, or the engine
+ * will not start, the native side continues without it. This file then retries
+ * once with headphones-friendly routing (no forced speaker) so the call still
+ * opens. This release has no iosVoiceProcessing option yet. The simulator skips
+ * the patch because voice processing there records silence.
  */
 export function createVoiceAudio(): VoiceAudio {
   const recorder = new AudioRecorder();
@@ -34,6 +36,76 @@ export function createVoiceAudio(): VoiceAudio {
   let played = 0;
   let listening = false;
   const durations = new Map<string, number>();
+
+  function applySession(voiceProcessing: boolean) {
+    AudioManager.setAudioSessionOptions({
+      iosCategory: 'playAndRecord',
+      iosMode: 'voiceChat',
+      iosOptions: voiceProcessing
+        ? ['defaultToSpeaker', 'allowBluetoothHFP']
+        : ['allowBluetoothHFP', 'allowBluetoothA2DP'],
+    });
+  }
+
+  function causeText(error: unknown): string {
+    if (error instanceof Error && error.message.trim()) return error.message.trim();
+    return 'Microphone did not start.';
+  }
+
+  async function releaseGraph() {
+    listening = false;
+    interruption?.remove();
+    interruption = null;
+    try {
+      if (recorder.isRecording()) await recorder.stop();
+    } catch {
+      // The failed start may already have stopped the recorder.
+    }
+    recorder.clearOnAudioReady();
+    durations.clear();
+    if (queue) {
+      queue.clearBuffers();
+      try {
+        queue.stop();
+      } catch {
+        // Already stopped.
+      }
+      queue = null;
+    }
+    if (context) {
+      await context.close().catch(() => undefined);
+      context = null;
+    }
+  }
+
+  async function openMic(handlers: VoiceMicHandlers) {
+    interruption = AudioManager.addSystemEventListener('interruption', (event) => {
+      handlers.onInterruption({ type: event.type, shouldResume: event.shouldResume });
+    });
+    const ready = recorder.onAudioReady(
+      {
+        sampleRate: GROK_VOICE.sampleRate,
+        bufferLength: Math.round(GROK_VOICE.sampleRate * (GROK_VOICE.frameMs / 1000)),
+        channelCount: 1,
+      },
+      ({ buffer }) => {
+        const channel = buffer.getChannelData(0);
+        const copy = new Float32Array(channel.length);
+        copy.set(channel);
+        handlers.onPcm(copy, buffer.sampleRate || GROK_VOICE.sampleRate);
+      },
+    );
+    if (ready.status === 'error') throw new Error(ready.message || 'Microphone callback was rejected.');
+    const started = await recorder.start();
+    if (started.status === 'error') throw new Error(started.message || 'Microphone did not start.');
+    listening = true;
+  }
+
+  async function openPlayback() {
+    ensureQueue();
+    const ctx = ensureContext();
+    if (ctx.state === 'suspended') await ctx.resume();
+  }
 
   function ensureContext() {
     if (!context) context = new AudioContext({ sampleRate: GROK_VOICE.sampleRate });
@@ -57,11 +129,7 @@ export function createVoiceAudio(): VoiceAudio {
 
   return {
     async prepare() {
-      AudioManager.setAudioSessionOptions({
-        iosCategory: 'playAndRecord',
-        iosMode: 'voiceChat',
-        iosOptions: ['defaultToSpeaker', 'allowBluetoothHFP'],
-      });
+      applySession(true);
       AudioManager.observeAudioInterruptions(true);
       const permission = await AudioManager.requestRecordingPermissions();
       if (permission !== 'Granted') return 'denied';
@@ -73,29 +141,26 @@ export function createVoiceAudio(): VoiceAudio {
       return 'granted';
     },
     async start(handlers: VoiceMicHandlers) {
-      interruption = AudioManager.addSystemEventListener('interruption', (event) => {
-        handlers.onInterruption({ type: event.type, shouldResume: event.shouldResume });
-      });
-      const ready = recorder.onAudioReady(
-        {
-          sampleRate: GROK_VOICE.sampleRate,
-          bufferLength: Math.round(GROK_VOICE.sampleRate * (GROK_VOICE.frameMs / 1000)),
-          channelCount: 1,
-        },
-        ({ buffer }) => {
-          const channel = buffer.getChannelData(0);
-          const copy = new Float32Array(channel.length);
-          copy.set(channel);
-          handlers.onPcm(copy, buffer.sampleRate || GROK_VOICE.sampleRate);
-        },
-      );
-      if (ready.status === 'error') throw new Error('mic');
-      ensureQueue();
-      const ctx = ensureContext();
-      if (ctx.state === 'suspended') await ctx.resume();
-      const started = await recorder.start();
-      if (started.status === 'error') throw new Error('mic');
-      listening = true;
+      let firstCause = '';
+      for (const voiceProcessing of [true, false]) {
+        try {
+          applySession(voiceProcessing);
+          // Mic before the playback graph, so voice processing is enabled on a
+          // stopped engine instead of restarting one that is already running.
+          await openMic(handlers);
+          await openPlayback();
+          return;
+        } catch (error) {
+          const cause = causeText(error);
+          await releaseGraph();
+          if (!voiceProcessing) {
+            throw new Error(firstCause ? `${firstCause} Retry without voice processing: ${cause}` : cause);
+          }
+          firstCause = cause;
+          console.warn('[voice] microphone start failed, retrying without voice processing', cause);
+        }
+      }
+      throw new Error(firstCause || 'Microphone did not start.');
     },
     playPcm16(pcm: Uint8Array) {
       if (!pcm.byteLength) return;

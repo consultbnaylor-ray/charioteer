@@ -33,7 +33,8 @@
  * with `{ expires_after: { seconds } }` only. The docs say the body must not
  * include `session` or `expires_after.anchor`. The browser socket authenticates
  * with the subprotocol `xai-client-secret.${token}` because a browser cannot set
- * Authorization. The API key stays on the server.
+ * Authorization. The native app sends `Authorization: Bearer` instead, which
+ * xAI also accepts. The API key stays on the server.
  *
  * `conversation.item.create` with `item.type` `force_message` speaks a verbatim
  * line through TTS and does not take a following `response.create`.
@@ -78,6 +79,7 @@ export const VOICE_COPY = {
   token: 'Voice is unavailable just now. Text chat is still here.',
   unavailable: 'Voice needs the installed app on this phone. Text chat is still here.',
   failed: 'The voice connection failed. Text chat is still available.',
+  audio: 'The microphone did not start. Text chat is still available.',
   timeout: 'The voice session did not connect. Text chat is still available.',
   paused: 'Voice is paused.',
   interrupted: 'Paused while the phone is being used for something else.',
@@ -86,6 +88,76 @@ export const VOICE_COPY = {
 
 export function browserSocketProtocols(ephemeralToken: string): string[] {
   return [`xai-client-secret.${ephemeralToken}`];
+}
+
+export type VoiceSocketAuth = {
+  protocols?: string[];
+  headers?: { Authorization: string };
+};
+
+/** Web must use the subprotocol. Native sends the bearer header xAI accepts. */
+export function voiceSocketAuth(platform: 'web' | 'native', ephemeralToken: string): VoiceSocketAuth {
+  if (platform === 'web') return { protocols: browserSocketProtocols(ephemeralToken) };
+  return { headers: { Authorization: `Bearer ${ephemeralToken}` } };
+}
+
+export type VoiceFailureKind = 'audio' | 'connection';
+
+const CAUSE_LIMIT = 220;
+
+export function voiceCauseText(error: unknown): string {
+  if (error instanceof Error && error.message.trim()) return error.message.trim();
+  if (typeof error === 'string' && error.trim()) return error.trim();
+  if (error && typeof error === 'object' && 'message' in error && typeof error.message === 'string' && error.message.trim()) {
+    return error.message.trim();
+  }
+  return 'unknown';
+}
+
+export function shortenVoiceCause(cause: string): string {
+  const flat = cause.replace(/\s+/g, ' ').trim();
+  if (!flat) return 'unknown';
+  if (flat.length <= CAUSE_LIMIT) return flat;
+  return `${flat.slice(0, CAUSE_LIMIT - 1)}…`;
+}
+
+export function socketFailureCause(event: { message?: string | null; code?: number | null; reason?: string | null }): string {
+  const parts: string[] = [];
+  const message = event.message?.trim() ?? '';
+  const reason = event.reason?.trim() ?? '';
+  if (message) parts.push(message);
+  if (event.code != null && Number.isFinite(event.code)) parts.push(`code ${event.code}`);
+  if (reason && reason !== message) parts.push(reason);
+  return parts.join(' · ') || 'socket closed';
+}
+
+export function combineSocketCause(errorCause: string | null, closeCause: string): string {
+  if (!errorCause || errorCause === 'socket error') return closeCause;
+  if (!closeCause || errorCause === closeCause) return errorCause;
+  return `${errorCause}; ${closeCause}`;
+}
+
+/** Dev builds, and TestFlight while `voiceDiagnostics` is left on. App Store sets it false. */
+export function voiceDiagnosticsEnabled(input: { dev: boolean; voiceDiagnostics?: boolean | null }): boolean {
+  if (input.dev) return true;
+  return input.voiceDiagnostics === true;
+}
+
+export function mapVoiceFailure(input: {
+  kind: VoiceFailureKind;
+  cause: string;
+  showCause: boolean;
+  configured?: boolean;
+}): { message: string; detail: string | null } {
+  const message = input.kind === 'audio'
+    ? VOICE_COPY.audio
+    : input.configured
+      ? VOICE_COPY.network
+      : VOICE_COPY.failed;
+  return {
+    message,
+    detail: input.showCause ? shortenVoiceCause(input.cause) : null,
+  };
 }
 
 const SPEECH_MARKER = 'SPEECH DELIVERY';
