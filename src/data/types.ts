@@ -80,6 +80,25 @@ export type NewProgressPhoto = {
   note: string;
 };
 
+export type ProfilePhotoRole = 'avatar' | 'gallery';
+
+export type ProfilePhoto = {
+  id: string;
+  userId: string;
+  role: ProfilePhotoRole;
+  caption: string;
+  position: number;
+  storagePath: string;
+  createdAt: string;
+  /** Short-lived signed URL, or a demo data URL. Never a public object URL. */
+  previewUrl: string | null;
+};
+
+export type NewProfilePhoto = {
+  bytes: Uint8Array;
+  role: ProfilePhotoRole;
+};
+
 export type Reason = { id: string; body: string; sortOrder: number };
 export type CheckIn = {
   id: string;
@@ -121,6 +140,8 @@ export type DirectoryCard = {
   town: string | null;
   interestIds: string[];
   sharedInterestIds: string[];
+  /** Short-lived signed URL for the profile picture. Null falls back to initials. */
+  avatarUrl: string | null;
 };
 export type Connection = {
   id: string;
@@ -178,6 +199,8 @@ export type AppSnapshot = {
   progressPhotos: ProgressPhoto[];
   /** Other people's photos that they have chosen to share. Private photos are never included. */
   communityPhotos: ProgressPhoto[];
+  /** This person's profile picture and gallery. Visible while Community is on. */
+  profilePhotos: ProfilePhoto[];
   /** Private diary. Never included in the community directory. */
   gratitude: GratitudeEntry[];
   /** Private vision board. Never included in the community directory. */
@@ -321,6 +344,12 @@ export interface Repository {
   addProgressPhoto(input: NewProgressPhoto): Promise<void>;
   updateProgressPhoto(id: string, input: { takenOn?: string; startingPoint?: boolean; note?: string; caption?: string }): Promise<void>;
   deleteProgressPhoto(id: string): Promise<void>;
+  addProfilePhoto(input: NewProfilePhoto): Promise<void>;
+  updateProfilePhoto(id: string, input: { caption: string }): Promise<void>;
+  moveProfilePhoto(id: string, direction: 'up' | 'down'): Promise<void>;
+  deleteProfilePhoto(id: string): Promise<void>;
+  /** Signed URLs for profile photos the caller is allowed to see. */
+  profilePhotoUrls(ids: string[]): Promise<{ id: string; url: string }[]>;
   setProgressPhotoVisibility(ids: string[], visibility: ProgressVisibility): Promise<void>;
   setProfileSharing(sharing: ProfileSharing): Promise<void>;
   saveQuote(quoteId: string): Promise<void>;

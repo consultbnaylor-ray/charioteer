@@ -12,6 +12,7 @@ import { BIO_EXAMPLE, BIO_LIMIT, NEVER_SHARED, PHOTO_CAPTION_LIMIT, projectPubli
 import { progressPhotoLabel } from '@/domain/progressPhotos';
 import { formatGbp } from '@/domain/savings';
 import { SharedPhotoFrame } from '@/ui/CommunityProfile';
+import { OwnProfilePhotos, ProfilePhotoEditor } from '@/ui/ProfilePhotoEditor';
 import { COMMUNITY_CONSENT_BODY } from '@/ui/ConsentChoices';
 import { InterestChip } from '@/ui/InterestChip';
 import { ShareOnProfile } from '@/ui/ShareOnProfile';
@@ -287,6 +288,7 @@ export function PublicProfileCard() {
           <View style={{ gap: 8 }}>
             <T variant="label">Name and interests stay on</T>
             <T variant="title">{preview.displayName}</T>
+            <OwnProfilePhotos name={preview.displayName} photos={snap.profilePhotos ?? []} />
             {preview.bio ? <T>{preview.bio}</T> : null}
             {preview.pinnedQuote ? (
               <View style={{ gap: 4 }}>
@@ -372,6 +374,7 @@ export function PublicProfileCard() {
               on={snap.sharing.bio}
               apply={(sharing, selected) => ({ ...sharing, bio: selected })}
             />
+            <ProfilePhotoEditor />
             <SharedCaptionEditor
               progress={shared}
               vision={snap.visionItems.filter((item) => snap.sharing.visionIds.includes(item.id))}

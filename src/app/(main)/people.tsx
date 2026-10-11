@@ -5,6 +5,7 @@ import { View } from 'react-native';
 import { useRepository, useSnapshot } from '@/data';
 import { shownError } from '@/domain/errors';
 import { CommunityProfile } from '@/ui/CommunityProfile';
+import { MemberAvatar } from '@/ui/MemberAvatar';
 import { DISCOVER_EMPTY, PublicProfileCard } from '@/ui/PublicProfileCard';
 import { Button, Card, Choice, ErrorNote, Screen, T } from '@/ui/ui';
 
@@ -39,8 +40,13 @@ export default function People() {
             (connection.requesterId === card.id && connection.addresseeId === me.id)));
         return (
           <Card key={card.id}>
-            <T variant="title">{card.displayName}</T>
-            <T variant="muted">{card.town || 'Area not shared'}</T>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+              <MemberAvatar name={card.displayName} url={card.avatarUrl} />
+              <View style={{ flex: 1, gap: 4 }}>
+                <T variant="title">{card.displayName}</T>
+                <T variant="muted">{card.town || 'Area not shared'}</T>
+              </View>
+            </View>
             <T>{card.interestIds.map(labelOf).join(' · ')}</T>
             {card.sharedInterestIds.length ? <T variant="muted">In common: {card.sharedInterestIds.map(labelOf).join(', ')}</T> : null}
             <Button

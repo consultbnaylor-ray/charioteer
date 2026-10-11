@@ -26,6 +26,7 @@ import {
   type VisionSize,
 } from '@/domain/visionBoard';
 import { planProgressPhoto, progressAnchor, progressPhotoLabel, progressStoragePath, progressVisibility, PROGRESS_MAX_BYTES } from '@/domain/progressPhotos';
+import { nextGalleryPositions, PROFILE_GALLERY_LIMIT, PROFILE_GALLERY_LIMIT_MESSAGE, profileStoragePath, sortProfilePhotos } from '@/domain/profilePhotos';
 import { interestSelectionUnchanged, nextInterestIds } from '@/domain/interests';
 import { planCustomInterest, validateTown } from '@/domain/privacy';
 import { planReasons } from '@/domain/reasons';
@@ -45,8 +46,10 @@ import type {
   NewCheckIn,
   NewGratitudeEntry,
   NewHealthSample,
+  NewProfilePhoto,
   NewProgressPhoto,
   NewReport,
+  ProfilePhoto,
   ProgressPhoto,
   ProgressVisibility,
   OnboardingInput,
@@ -81,6 +84,18 @@ function readyProfile(profile: DemoAccount['profile']): DemoAccount['profile'] {
     pinnedQuoteId: profile.pinnedQuoteId ?? null,
     bio: profile.bio ?? '',
     createdAt: profile.createdAt || '2026-01-01T00:00:00.000Z',
+  };
+}
+
+function readyProfilePhoto(photo: ProfilePhoto, userId: string): ProfilePhoto {
+  const role = photo.role === 'avatar' ? 'avatar' : 'gallery';
+  return {
+    ...photo,
+    userId: photo.userId || userId,
+    role,
+    caption: photo.caption ?? '',
+    position: photo.position ?? 0,
+    previewUrl: photo.previewUrl ?? null,
   };
 }
 
@@ -139,6 +154,12 @@ function shareSource(account: DemoAccount, interests: DemoDb['interests'], now =
       visibility: photo.visibility === 'community' ? 'community' as const : 'private' as const,
     })),
     pinnedQuoteId: account.profile.pinnedQuoteId ?? null,
+    profilePhotos: sortProfilePhotos(account.profilePhotos ?? []).map((photo) => ({
+      id: photo.id,
+      role: photo.role === 'avatar' ? 'avatar' as const : 'gallery' as const,
+      caption: photo.caption ?? '',
+      position: photo.position ?? 0,
+    })),
   };
 }
 
@@ -187,6 +208,7 @@ export class DemoRepository implements Repository {
             town: normalizeProfileSharing(other.sharing).town ? other.profile.town : null,
             interestIds: other.profile.interestIds,
             sharedInterestIds: other.profile.interestIds.filter((id) => mine.has(id)),
+            avatarUrl: (other.profilePhotos ?? []).find((photo) => photo.role === 'avatar')?.previewUrl ?? null,
           }))
           .sort((a, b) => b.sharedInterestIds.length - a.sharedInterestIds.length || a.displayName.localeCompare(b.displayName))
       : [];
@@ -227,6 +249,9 @@ export class DemoRepository implements Repository {
         ? Object.values(this.db.accounts)
             .filter((other) => other.profile.id !== account.profile.id && !blocked(this.db, account.profile.id, other.profile.id))
             .flatMap((other) => (other.progressPhotos ?? []).map((photo) => readyPhoto(photo, other.profile.id)).filter((photo) => photo.visibility === 'community').map((photo) => ({ ...photo, note: '' })))
+        : [],
+      profilePhotos: account
+        ? sortProfilePhotos((account.profilePhotos ?? []).map((photo) => readyProfilePhoto(photo, account.profile.id)))
         : [],
       profile: account ? readyProfile(account.profile) : null,
       gratitude: account ? sortGratitude((account.gratitude ?? []).map((entry) => ({
@@ -346,6 +371,7 @@ export class DemoRepository implements Repository {
       thumos: [],
       consents: [],
       progressPhotos: [],
+      profilePhotos: [],
       gratitude: [],
       visionItems: [],
       savedQuotes: [],
@@ -824,6 +850,83 @@ export class DemoRepository implements Repository {
     return projectPublicProfile(shareSource(other, this.db.interests), normalizeProfileSharing(other.sharing));
   }
 
+  async addProfilePhoto(input: NewProfilePhoto): Promise<void> {
+    if (input.bytes.byteLength > PROGRESS_MAX_BYTES) throw new UserFacingError('That photo is still too large.', 'generic');
+    if (input.role !== 'avatar' && input.role !== 'gallery') throw new UserFacingError('Could not store that photo.', 'generic');
+    const account = this.me();
+    const existing = account.profilePhotos ?? [];
+    const gallery = existing.filter((photo) => photo.role === 'gallery');
+    if (input.role === 'gallery' && gallery.length >= PROFILE_GALLERY_LIMIT) {
+      throw new UserFacingError(PROFILE_GALLERY_LIMIT_MESSAGE, 'generic');
+    }
+    const id = uid();
+    const position = input.role === 'avatar' ? 0 : gallery.reduce((max, photo) => Math.max(max, photo.position), -1) + 1;
+    const photo: ProfilePhoto = {
+      id,
+      userId: account.profile.id,
+      role: input.role,
+      caption: '',
+      position,
+      storagePath: profileStoragePath(account.profile.id, id),
+      createdAt: new Date().toISOString(),
+      previewUrl: bytesToDataUrl(input.bytes),
+    };
+    const db = clone(this.db);
+    const next = db.accounts[account.profile.id];
+    const kept = input.role === 'avatar' ? existing.filter((item) => item.role !== 'avatar') : existing;
+    next.profilePhotos = [...kept, photo];
+    this.commit(db);
+  }
+
+  async updateProfilePhoto(id: string, input: { caption: string }): Promise<void> {
+    const plan = planProfileText(input.caption, PHOTO_CAPTION_LIMIT);
+    if (!plan.ok) throw new UserFacingError(plan.message, 'generic');
+    const account = this.me();
+    const db = clone(this.db);
+    const photo = (db.accounts[account.profile.id].profilePhotos ?? []).find((item) => item.id === id);
+    if (!photo) throw new UserFacingError('Could not save that photo.', 'generic');
+    photo.caption = plan.text;
+    this.commit(db);
+  }
+
+  async moveProfilePhoto(id: string, direction: 'up' | 'down'): Promise<void> {
+    const account = this.me();
+    const gallery = (account.profilePhotos ?? []).filter((photo) => photo.role === 'gallery');
+    const next = nextGalleryPositions(gallery, id, direction);
+    if (!next) return;
+    const db = clone(this.db);
+    const photos = db.accounts[account.profile.id].profilePhotos ?? [];
+    for (const row of next) {
+      const photo = photos.find((item) => item.id === row.id);
+      if (photo) photo.position = row.position;
+    }
+    this.commit(db);
+  }
+
+  async deleteProfilePhoto(id: string): Promise<void> {
+    const account = this.me();
+    const db = clone(this.db);
+    const next = db.accounts[account.profile.id];
+    next.profilePhotos = (next.profilePhotos ?? []).filter((photo) => photo.id !== id);
+    this.commit(db);
+  }
+
+  async profilePhotoUrls(ids: string[]): Promise<{ id: string; url: string }[]> {
+    const session = this.snapshot.session;
+    if (!session) return [];
+    const wanted = new Set(ids);
+    const urls: { id: string; url: string }[] = [];
+    for (const account of Object.values(this.db.accounts)) {
+      const own = account.profile.id === session.userId;
+      if (!own && (!account.profile.communityVisible || !account.profile.ageConfirmed18 || blocked(this.db, session.userId, account.profile.id))) continue;
+      for (const photo of account.profilePhotos ?? []) {
+        if (!wanted.has(photo.id) || !photo.previewUrl) continue;
+        urls.push({ id: photo.id, url: photo.previewUrl });
+      }
+    }
+    return urls;
+  }
+
   async deleteProgressPhoto(id: string): Promise<void> {
     const account = this.me();
     const db = clone(this.db);
@@ -1079,6 +1182,16 @@ export class DemoRepository implements Repository {
         created_at: photo.createdAt,
         signed_url: photo.previewUrl,
       }))),
+      profile_photos: (account.profilePhotos ?? []).map((photo) => ({
+        id: photo.id,
+        user_id: id,
+        role: photo.role,
+        caption: photo.caption ?? '',
+        position: photo.position ?? 0,
+        storage_path: photo.storagePath,
+        created_at: photo.createdAt,
+        signed_url: photo.previewUrl,
+      })),
       vision_board_items: (account.visionItems ?? []).map((item) => ({
         id: item.id,
         user_id: id,

@@ -1,4 +1,5 @@
 import { isoDay, parseIsoDay } from './dates';
+import { PROFILE_PHOTO_WORDING } from './profilePhotos';
 import { averageValue, formatHealthValue, HEALTH_KINDS, HEALTH_METRICS, seriesForWindow } from './healthInsights';
 import { MILESTONES, milestoneReached } from './milestones';
 import { savingsFromTypicalWeek } from './savings';
@@ -20,7 +21,7 @@ export const SENSITIVE_SHARE_BODY =
   'This can show health information. Days sober, your stage, reasons, money and unit totals, a mood streak, and health headlines are special category data under UK GDPR. Other adults in the Charioteer community can see what you switch on. They cannot see raw readings, check-in notes, flags, or Thumos chats. Quantica Labs Ltd is the controller. Share this only if you want them to see it.';
 
 export const NEVER_SHARED =
-  'Always hidden: check-in details, raw health readings, health flags, height, Thumos chats, private photo notes, and any photo you have not switched on.';
+  `Always hidden: check-in details, raw health readings, health flags, height, Thumos chats, private photo notes, and any photo you have not switched on. ${PROFILE_PHOTO_WORDING}`;
 
 /** Written for the public profile. About 300 characters. */
 export const BIO_LIMIT = 300;
@@ -157,6 +158,8 @@ export type ShareSource = {
   vision: { id: string; caption: string; area: string | null }[];
   /** `note` is private. `caption` is the only line copied onto a shared photo. */
   progressPhotos: { id: string; note: string; caption: string; takenOn: string; monthIndex: number; visibility: 'private' | 'community' }[];
+  /** Profile picture and gallery. Shown whenever Community is on. No storage path. */
+  profilePhotos?: { id: string; role: 'avatar' | 'gallery'; caption: string; position: number }[];
   pinnedQuoteId: string | null;
 };
 
@@ -173,6 +176,8 @@ export type PublicProfileView = {
   moodStreak: number | null;
   health: string[];
   progressPhotos: { id: string; caption: string; takenOn: string; monthIndex: number }[];
+  /** Avatar and gallery. Empty when this person has not added any. */
+  profilePhotos: { id: string; role: 'avatar' | 'gallery'; caption: string; position: number }[];
   gratitude: { id: string; body: string; entryDate: string }[];
   gratitudePhotos: { id: string; caption: string }[];
   vision: { id: string; caption: string; area: string | null }[];
@@ -247,6 +252,17 @@ export function projectPublicProfile(source: ShareSource, sharing: ProfileSharin
   const progressPhotos = source.progressPhotos
     .filter((photo) => photo.visibility === 'community')
     .map((photo) => ({ id: photo.id, caption: typeof photo.caption === 'string' ? photo.caption : '', takenOn: photo.takenOn, monthIndex: photo.monthIndex }));
+  const profilePhotos = [...(source.profilePhotos ?? [])]
+    .flatMap((photo) => {
+      if (!photo || (photo.role !== 'avatar' && photo.role !== 'gallery') || typeof photo.id !== 'string') return [];
+      return [{
+        id: photo.id,
+        role: photo.role,
+        caption: typeof photo.caption === 'string' ? photo.caption : '',
+        position: typeof photo.position === 'number' ? photo.position : 0,
+      }];
+    })
+    .sort((a, b) => (a.role === 'avatar' ? 0 : 1) - (b.role === 'avatar' ? 0 : 1) || a.position - b.position);
   const gratitudeIds = new Set(settings.gratitudeIds);
   const gratitude = source.gratitude
     .filter((entry) => gratitudeIds.has(entry.id))
@@ -278,6 +294,8 @@ export function projectPublicProfile(source: ShareSource, sharing: ProfileSharin
   else hiddenLabels.push('Health headlines');
   if (progressPhotos.length) sharedLabels.push('Progress photos');
   else hiddenLabels.push('Progress photos');
+  if (profilePhotos.length) sharedLabels.push('Profile photos');
+  else hiddenLabels.push('Profile photos');
   if (gratitude.length) sharedLabels.push('Gratitude lines');
   else hiddenLabels.push('Gratitude lines');
   if (gratitudePhotos.length) sharedLabels.push('Gratitude photos');
@@ -303,6 +321,7 @@ export function projectPublicProfile(source: ShareSource, sharing: ProfileSharin
     moodStreak,
     health,
     progressPhotos,
+    profilePhotos,
     gratitude,
     gratitudePhotos,
     vision,
@@ -323,6 +342,7 @@ export function parsePublicProfile(value: unknown): PublicProfileView | null {
   const soberRaw = raw.sober && typeof raw.sober === 'object' ? (raw.sober as Record<string, unknown>) : null;
   const savingsRaw = raw.savings && typeof raw.savings === 'object' ? (raw.savings as Record<string, unknown>) : null;
   const photos = Array.isArray(raw.progressPhotos) ? raw.progressPhotos : [];
+  const profilePhotos = Array.isArray(raw.profilePhotos) ? raw.profilePhotos : [];
   const gratitude = Array.isArray(raw.gratitude) ? raw.gratitude : [];
   const gratitudePhotos = Array.isArray(raw.gratitudePhotos) ? raw.gratitudePhotos : [];
   const vision = Array.isArray(raw.vision) ? raw.vision : [];
@@ -351,6 +371,18 @@ export function parsePublicProfile(value: unknown): PublicProfileView | null {
         caption: typeof photo.caption === 'string' ? photo.caption : '',
         takenOn: typeof photo.takenOn === 'string' ? photo.takenOn : '',
         monthIndex: typeof photo.monthIndex === 'number' ? photo.monthIndex : 0,
+      }];
+    }),
+    profilePhotos: profilePhotos.flatMap((item) => {
+      if (!item || typeof item !== 'object') return [];
+      const photo = item as Record<string, unknown>;
+      if (typeof photo.id !== 'string') return [];
+      if (photo.role !== 'avatar' && photo.role !== 'gallery') return [];
+      return [{
+        id: photo.id,
+        role: photo.role,
+        caption: typeof photo.caption === 'string' ? photo.caption : '',
+        position: typeof photo.position === 'number' ? photo.position : 0,
       }];
     }),
     gratitude: gratitude.flatMap((item) => {
@@ -398,6 +430,7 @@ export function sharedReportItems(view: PublicProfileView): SharedReportItem[] {
   if (view.moodStreak != null) items.push({ label: 'Mood streak', summary: `${view.moodStreak} days` });
   for (const line of view.health) items.push({ label: 'Health headline', summary: line });
   for (const photo of view.progressPhotos) items.push({ label: 'Progress photo', summary: photo.caption || photo.id });
+  for (const photo of view.profilePhotos ?? []) items.push({ label: 'Profile photo', summary: photo.caption || photo.id });
   for (const entry of view.gratitude) items.push({ label: 'Gratitude line', summary: entry.body });
   for (const photo of view.gratitudePhotos) items.push({ label: 'Gratitude photo', summary: photo.caption || photo.id });
   for (const item of view.vision) items.push({ label: 'Vision item', summary: item.caption || item.id });

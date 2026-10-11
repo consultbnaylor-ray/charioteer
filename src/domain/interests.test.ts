@@ -23,7 +23,7 @@ const profile = {
 } as Profile;
 
 function card(id: string, displayName: string, interestIds: string[]): DirectoryCard {
-  return { id, displayName, town: null, interestIds, sharedInterestIds: [] };
+  return { id, displayName, town: null, interestIds, sharedInterestIds: [], avatarUrl: null };
 }
 
 describe('interest selection', () => {

@@ -4,6 +4,7 @@ import { json, preflight } from '../_shared/http.ts';
 const PHOTO_BUCKET = 'progress-photos';
 const GRATITUDE_BUCKET = 'gratitude-photos';
 const VISION_BUCKET = 'vision-board';
+const PROFILE_BUCKET = 'profile-photos';
 const SIGNED_SECONDS = 3600;
 
 type Signer = {
@@ -68,6 +69,14 @@ Deno.serve(async (req) => {
       userId,
       VISION_BUCKET,
       record.vision_board_items as Record<string, unknown>[],
+    );
+  }
+  if (Array.isArray(record.profile_photos)) {
+    record.profile_photos = await withSignedUrls(
+      userClient,
+      userId,
+      PROFILE_BUCKET,
+      record.profile_photos as Record<string, unknown>[],
     );
   }
   return json({ ok: true, data: record });

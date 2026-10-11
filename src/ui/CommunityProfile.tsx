@@ -7,6 +7,7 @@ import { useRepository, useSnapshot } from '@/data';
 import type { ProgressPhoto } from '@/data/types';
 import { shownError } from '@/domain/errors';
 import { sharedReportItems, type PublicProfileView } from '@/domain/profileSharing';
+import { MemberAvatar } from '@/ui/MemberAvatar';
 import { formatGbp } from '@/domain/savings';
 import { progressPhotoLabel } from '@/domain/progressPhotos';
 import { radius, useAppTheme } from '@/ui/theme';
@@ -112,6 +113,7 @@ function SharedProfileFacts({ userId, name }: { userId: string; name: string }) 
   const [sent, setSent] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [photoUrls, setPhotoUrls] = useState<Record<string, string>>({});
 
   useEffect(() => {
     let live = true;
@@ -124,9 +126,28 @@ function SharedProfileFacts({ userId, name }: { userId: string; name: string }) 
     };
   }, [repo, userId]);
 
+  useEffect(() => {
+    const ids = view?.profilePhotos.map((photo) => photo.id) ?? [];
+    if (!ids.length) return;
+    let live = true;
+    void repo.profilePhotoUrls(ids).then((rows) => {
+      if (!live) return;
+      const next: Record<string, string> = {};
+      for (const row of rows) next[row.id] = row.url;
+      setPhotoUrls(next);
+    }).catch(() => {
+      if (live) setPhotoUrls({});
+    });
+    return () => {
+      live = false;
+    };
+  }, [repo, view]);
+
   if (view === undefined) return null;
   if (!view) return <T variant="muted">This profile is hidden.</T>;
-  const items = sharedReportItems(view).filter((item) => item.label !== 'Progress photo');
+  const items = sharedReportItems(view).filter((item) => item.label !== 'Progress photo' && item.label !== 'Profile photo');
+  const avatar = view.profilePhotos.find((photo) => photo.role === 'avatar');
+  const gallery = view.profilePhotos.filter((photo) => photo.role === 'gallery');
 
   async function report(key: string, summary: string) {
     setError(null);
@@ -146,9 +167,61 @@ function SharedProfileFacts({ userId, name }: { userId: string; name: string }) 
     }
   }
 
+  async function reportPhoto(photo: { id: string; caption: string }) {
+    setError(null);
+    setPending(true);
+    try {
+      await repo.reportUser({
+        reportedUserId: userId,
+        reason: 'Profile photo',
+        details: `Profile photo ${photo.id}. ${photo.caption}`.slice(0, 2000),
+      });
+      setReporting(null);
+      setSent(photo.id);
+    } catch (err) {
+      setError(shownError(err, 'Could not send the report.'));
+    } finally {
+      setPending(false);
+    }
+  }
+
   return (
     <View style={{ gap: 8 }}>
-      <T variant="title">{view.displayName || name}</T>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+        <MemberAvatar name={view.displayName || name} url={avatar ? photoUrls[avatar.id] : null} size={64} />
+        <T variant="title">{view.displayName || name}</T>
+      </View>
+      {avatar?.caption ? <T variant="muted">{avatar.caption}</T> : null}
+      {avatar ? (
+        <View style={{ gap: 6 }}>
+          {sent === avatar.id ? <T variant="muted">Report sent.</T> : null}
+          {reporting === avatar.id ? (
+            <View style={{ gap: 8 }}>
+              <T>This report goes to the moderation queue, with the photo id.</T>
+              <Button label="Send report" pending={pending} onPress={() => void reportPhoto(avatar)} />
+              <Button label="Cancel" tone="quiet" disabled={pending} onPress={() => setReporting(null)} />
+            </View>
+          ) : (
+            <Button label="Report profile photo" tone="quiet" disabled={pending} onPress={() => setReporting(avatar.id)} />
+          )}
+        </View>
+      ) : null}
+      {gallery.map((photo) => (
+        <View key={photo.id} style={{ gap: 6 }}>
+          <SharedPhotoFrame photo={{ id: photo.id, userId, takenOn: '', monthIndex: 0, note: '', caption: photo.caption, storagePath: '', createdAt: '', visibility: 'community', previewUrl: photoUrls[photo.id] ?? null }} />
+          {photo.caption ? <T variant="muted">{photo.caption}</T> : null}
+          {sent === photo.id ? <T variant="muted">Report sent.</T> : null}
+          {reporting === photo.id ? (
+            <View style={{ gap: 8 }}>
+              <T>This report goes to the moderation queue, with the photo id.</T>
+              <Button label="Send report" pending={pending} onPress={() => void reportPhoto(photo)} />
+              <Button label="Cancel" tone="quiet" disabled={pending} onPress={() => setReporting(null)} />
+            </View>
+          ) : (
+            <Button label="Report profile photo" tone="quiet" disabled={pending} onPress={() => setReporting(photo.id)} />
+          )}
+        </View>
+      ))}
       {view.bio ? <T>{view.bio}</T> : null}
       {view.pinnedQuote ? (
         <View style={{ gap: 4 }}>

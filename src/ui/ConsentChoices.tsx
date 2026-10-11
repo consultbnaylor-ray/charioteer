@@ -1,13 +1,14 @@
 import { Switch, View } from 'react-native';
 
 import { formatUkLong, parseIsoDay } from '@/domain/dates';
+import { PROFILE_PHOTO_WORDING } from '@/domain/profilePhotos';
 import { CONSENT_VERSION } from '@/data/catalogue';
 import { useAppTheme } from '@/ui/theme';
 import { T } from '@/ui/ui';
 
 /** The community switch explanation. People reuses this when someone turns the community on. */
 export const COMMUNITY_CONSENT_BODY =
-  'Other adults can see your name and interests. Town or area stays hidden until you switch it on. Reasons, days sober, money and unit totals, a mood streak, health headlines, diary lines, and photos stay hidden until you switch that item on. Anything you leave off is never shown to the community. A progress photo stays hidden unless you choose Share with community on that photo.';
+  `Other adults can see your name and interests. Town or area stays hidden until you switch it on. Reasons, days sober, money and unit totals, a mood streak, health headlines, diary lines, and photos stay hidden until you switch that item on. Anything you leave off is never shown to the community. A progress photo stays hidden unless you choose Share with community on that photo. ${PROFILE_PHOTO_WORDING}`;
 
 export function ConsentChoices({
   community,
@@ -44,7 +45,7 @@ export function ConsentChoices({
         value={ai}
         onChange={onAi}
       />
-      <T>Progress photos stay private unless you share one. Anyone in the Charioteer community can then see that photo. Photos are not sent to Thumos. Gratitude photos stay private unless you switch that photo on. They are not sent to Thumos. Vision board photos always stay private. They are not sent to Thumos. A vision caption can be shown if you switch that item on.</T>
+      <T>Progress photos stay private unless you share one. Anyone in the Charioteer community can then see that photo. Photos are not sent to Thumos. Gratitude photos stay private unless you switch that photo on. They are not sent to Thumos. Vision board photos always stay private. They are not sent to Thumos. A vision caption can be shown if you switch that item on. {PROFILE_PHOTO_WORDING}</T>
       <T variant="muted">This consent screen is plain language, not a solicitor’s privacy notice. Have it reviewed before a public launch. Version {formatUkLong(parseIsoDay(CONSENT_VERSION))}.</T>
     </View>
   );

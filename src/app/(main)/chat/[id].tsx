@@ -4,6 +4,7 @@ import { View } from 'react-native';
 
 import { useRepository, useSnapshot } from '@/data';
 import { shownError } from '@/domain/errors';
+import { MemberAvatar } from '@/ui/MemberAvatar';
 import { Button, Card, Choice, ErrorNote, Field, Screen, T } from '@/ui/ui';
 import { useAppTheme } from '@/ui/theme';
 
@@ -25,11 +26,16 @@ export default function Chat() {
     return <Screen title="Chat"><T>This chat is not available.</T></Screen>;
   }
   const otherId = connection.requesterId === me.id ? connection.addresseeId : connection.requesterId;
-  const other = snap.directory.find((card) => card.id === otherId)?.displayName ?? 'Member';
+  const otherCard = snap.directory.find((card) => card.id === otherId);
+  const other = otherCard?.displayName ?? 'Member';
   const messages = snap.messages.filter((message) => message.connectionId === connection.id);
 
   return (
     <Screen eyebrow="Private chat" title={other} intro="Only the two of you can read this. Blocking hides them from you.">
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+        <MemberAvatar name={other} url={otherCard?.avatarUrl} />
+        <T variant="title">{other}</T>
+      </View>
       {messages.map((message) => (
         <Card key={message.id} style={{ backgroundColor: message.senderId === me.id ? theme.colors.emphasisSoft : theme.colors.surface }}>
           <T variant="label">{message.senderId === me.id ? 'You' : other}</T>

@@ -53,6 +53,15 @@ import {
   progressStoragePath,
   progressVisibility,
 } from '@/domain/progressPhotos';
+import {
+  nextGalleryPositions,
+  PROFILE_GALLERY_LIMIT,
+  PROFILE_GALLERY_LIMIT_MESSAGE,
+  PROFILE_PHOTO_BUCKET,
+  PROFILE_SIGNED_URL_SECONDS,
+  profileStoragePath,
+  sortProfilePhotos,
+} from '@/domain/profilePhotos';
 import { interestSelectionUnchanged, nextInterestIds, rolledBackInterestIds, snapshotWithOwnInterests } from '@/domain/interests';
 import { planCustomInterest, validateTown } from '@/domain/privacy';
 import { fetchWithOneRetry } from '@/domain/retryFetch';
@@ -77,8 +86,10 @@ import type {
   NewCheckIn,
   NewGratitudeEntry,
   NewHealthSample,
+  NewProfilePhoto,
   NewProgressPhoto,
   NewReport,
+  ProfilePhoto,
   ProgressPhoto,
   ProgressVisibility,
   OnboardingInput,
@@ -135,6 +146,7 @@ function emptySnapshot(): AppSnapshot {
     consents: [],
     progressPhotos: [],
     communityPhotos: [],
+    profilePhotos: [],
     gratitude: [],
     visionItems: [],
     sharing: defaultProfileSharing(),
@@ -245,7 +257,7 @@ export class SupabaseRepository implements Repository {
 
     const userId = session.user.id;
     const email = session.user.email ?? '';
-    const [profileRes, reasonsRes, checkRes, relapseRes, healthRes, mineRes, thumosRes, directoryRes, interestLinks, connectionsRes, reportsRes, consentsRes, photosRes, gratitudeRes, gratitudePhotoRes, visionRes, sharingRes, quotesRes] =
+    const [profileRes, reasonsRes, checkRes, relapseRes, healthRes, mineRes, thumosRes, directoryRes, interestLinks, connectionsRes, reportsRes, consentsRes, photosRes, gratitudeRes, gratitudePhotoRes, visionRes, sharingRes, quotesRes, profilePhotoRes] =
       await Promise.all([
         this.client.from('profiles').select('*').eq('id', userId).maybeSingle(),
         this.client.from('reasons').select('*').eq('user_id', userId).order('sort_order'),
@@ -265,6 +277,7 @@ export class SupabaseRepository implements Repository {
         this.client.from('vision_board_items').select('id, user_id, storage_path, caption, area, size, position, created_at, updated_at').eq('user_id', userId).order('position'),
         this.client.from('profile_sharing').select('settings').eq('user_id', userId).maybeSingle(),
         this.client.from('user_quotes').select('quote_id, created_at').eq('user_id', userId).order('created_at', { ascending: false }),
+        this.client.from('profile_photos').select('id, user_id, role, caption, position, storage_path, created_at').eq('user_id', userId).order('position').order('created_at'),
       ]);
 
     const profileRow = profileRes.data as Row | null;
@@ -283,16 +296,21 @@ export class SupabaseRepository implements Repository {
       byUser.set(owner, list);
     }
     const mine = new Set(myInterestIds);
-    const directory: DirectoryCard[] = ((directoryRes.data ?? []) as Row[])
-      .filter((row) => String(row.user_id) !== userId)
+    const directoryRows = ((directoryRes.data ?? []) as Row[]).filter((row) => String(row.user_id) !== userId);
+    const avatarById = await this.profilePhotoUrlMap(
+      directoryRows.map((row) => (typeof row.avatar_photo_id === 'string' ? row.avatar_photo_id : '')).filter(Boolean),
+    );
+    const directory: DirectoryCard[] = directoryRows
       .map((row) => {
         const interestIds = byUser.get(String(row.user_id)) ?? [];
+        const avatarId = typeof row.avatar_photo_id === 'string' ? row.avatar_photo_id : '';
         return {
           id: String(row.user_id),
           displayName: String(row.display_name ?? ''),
           town: (row.town as string | null) ?? null,
           interestIds,
           sharedInterestIds: interestIds.filter((id) => mine.has(id)),
+          avatarUrl: avatarById.get(avatarId) ?? null,
         };
       })
       .sort((a, b) => b.sharedInterestIds.length - a.sharedInterestIds.length || a.displayName.localeCompare(b.displayName));
@@ -335,6 +353,7 @@ export class SupabaseRepository implements Repository {
       consents: ((consentsRes.data ?? []) as Row[]).map(mapConsent),
       progressPhotos: await this.signedProgressPhotos(photosRes.error ? null : ((photosRes.data ?? []) as Row[]), photosRes.error?.message, userId),
       communityPhotos: photosRes.error ? [] : await this.communityProgressPhotos(userId),
+      profilePhotos: await this.signedProfilePhotos(profilePhotoRes.error ? null : ((profilePhotoRes.data ?? []) as Row[]), profilePhotoRes.error?.message, userId),
       gratitude: withGratitudePhotos(
         gratitudeRes.error ? loggedEmptyGratitude(gratitudeRes.error.message) : gratitudeFromRows(gratitudeRes.data),
         await this.signedGratitudePhotos(gratitudePhotoRes.error ? null : ((gratitudePhotoRes.data ?? []) as Row[]), gratitudePhotoRes.error?.message),
@@ -385,6 +404,60 @@ export class SupabaseRepository implements Repository {
         previewUrl: signedByPath.get(path) ?? null,
       };
     });
+  }
+
+  private async signedProfilePhotos(rows: Row[] | null, queryError: string | undefined, userId: string): Promise<ProfilePhoto[]> {
+    if (queryError || !rows) {
+      if (queryError) console.error(queryError);
+      return [];
+    }
+    const paths = rows.map((row) => String(row.storage_path)).filter((path) => path && !path.includes('..'));
+    const signedByPath = new Map<string, string>();
+    if (paths.length) {
+      try {
+        const signed = await this.client.storage.from(PROFILE_PHOTO_BUCKET).createSignedUrls(paths, PROFILE_SIGNED_URL_SECONDS);
+        if (signed.error) console.error(signed.error.message);
+        for (const item of signed.data ?? []) {
+          if (item.path && item.signedUrl) signedByPath.set(item.path, item.signedUrl);
+        }
+      } catch (error) {
+        console.error(error);
+      }
+    }
+    return sortProfilePhotos(rows.map((row) => {
+      const path = String(row.storage_path ?? '');
+      const role = row.role === 'avatar' ? 'avatar' as const : 'gallery' as const;
+      return {
+        id: String(row.id),
+        userId: String(row.user_id ?? userId),
+        role,
+        caption: String(row.caption ?? ''),
+        position: Number(row.position ?? 0),
+        storagePath: path,
+        createdAt: String(row.created_at ?? ''),
+        previewUrl: signedByPath.get(path) ?? null,
+      };
+    }));
+  }
+
+  /** Signed URLs for profile photos. A missing function leaves initials in place. */
+  private async profilePhotoUrlMap(ids: string[]): Promise<Map<string, string>> {
+    const urls = new Map<string, string>();
+    const unique = [...new Set(ids)].filter((id) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id));
+    for (let index = 0; index < unique.length; index += 24) {
+      const slice = unique.slice(index, index + 24);
+      try {
+        const invoked = await this.client.functions.invoke('profile-photo-url', { body: { ids: slice } });
+        const photos = invoked.data?.photos;
+        if (invoked.error || !invoked.data?.ok || !Array.isArray(photos)) continue;
+        for (const photo of photos) {
+          if (photo && typeof photo.id === 'string' && typeof photo.signed_url === 'string') urls.set(photo.id, photo.signed_url);
+        }
+      } catch (error) {
+        console.error(error);
+      }
+    }
+    return urls;
   }
 
   /** Owner signed links only. Gratitude photos are never asked of the community signer. */
@@ -1169,6 +1242,99 @@ export class SupabaseRepository implements Repository {
     return parsePublicProfile(data);
   }
 
+  async addProfilePhoto(input: NewProfilePhoto): Promise<void> {
+    if (input.bytes.byteLength > PROGRESS_MAX_BYTES) throw new UserFacingError('That photo is still too large.', 'generic');
+    if (input.role !== 'avatar' && input.role !== 'gallery') throw new UserFacingError('Could not store that photo.', 'generic');
+    const gallery = this.snapshot.profilePhotos.filter((photo) => photo.role === 'gallery');
+    if (input.role === 'gallery' && gallery.length >= PROFILE_GALLERY_LIMIT) {
+      throw new UserFacingError(PROFILE_GALLERY_LIMIT_MESSAGE, 'generic');
+    }
+    const userId = await this.userId();
+    const photoId = randomId();
+    const path = profileStoragePath(userId, photoId);
+    const position = input.role === 'avatar' ? 0 : gallery.reduce((max, photo) => Math.max(max, photo.position), -1) + 1;
+    const body = new Uint8Array(input.bytes.byteLength);
+    body.set(input.bytes);
+    const uploaded = await this.client.storage.from(PROFILE_PHOTO_BUCKET).upload(path, body, {
+      contentType: 'image/jpeg',
+      upsert: false,
+    });
+    if (uploaded.error) throw asUserFacing(uploaded.error, 'general');
+    const existing = input.role === 'avatar' ? this.snapshot.profilePhotos.find((photo) => photo.role === 'avatar') : undefined;
+    if (existing) {
+      const removed = await this.client.from('profile_photos').delete().eq('id', existing.id).eq('user_id', userId);
+      if (removed.error) {
+        await this.client.storage.from(PROFILE_PHOTO_BUCKET).remove([path]);
+        throw asUserFacing(removed.error, 'general');
+      }
+    }
+    const inserted = await this.client.from('profile_photos').insert({
+      id: photoId,
+      user_id: userId,
+      role: input.role,
+      caption: '',
+      position,
+      storage_path: path,
+    });
+    if (inserted.error) {
+      await this.client.storage.from(PROFILE_PHOTO_BUCKET).remove([path]);
+      if (existing) {
+        await this.client.from('profile_photos').insert({
+          id: existing.id,
+          user_id: userId,
+          role: 'avatar',
+          caption: existing.caption,
+          position: existing.position,
+          storage_path: existing.storagePath,
+        });
+      }
+      throw asUserFacing(inserted.error, 'general');
+    }
+    if (existing && existing.storagePath.startsWith(`${userId}/`) && !existing.storagePath.includes('..')) {
+      await this.client.storage.from(PROFILE_PHOTO_BUCKET).remove([existing.storagePath]);
+    }
+    await this.refresh();
+  }
+
+  async updateProfilePhoto(id: string, input: { caption: string }): Promise<void> {
+    const plan = planProfileText(input.caption, PHOTO_CAPTION_LIMIT);
+    if (!plan.ok) throw new UserFacingError(plan.message, 'generic');
+    const userId = await this.userId();
+    const { error } = await this.client.from('profile_photos').update({ caption: plan.text }).eq('id', id).eq('user_id', userId);
+    if (error) throw asUserFacing(error, 'general');
+    await this.refresh();
+  }
+
+  async moveProfilePhoto(id: string, direction: 'up' | 'down'): Promise<void> {
+    const gallery = this.snapshot.profilePhotos.filter((photo) => photo.role === 'gallery');
+    const next = nextGalleryPositions(gallery, id, direction);
+    if (!next) return;
+    const userId = await this.userId();
+    for (const row of next) {
+      const current = gallery.find((photo) => photo.id === row.id);
+      if (!current || current.position === row.position) continue;
+      const { error } = await this.client.from('profile_photos').update({ position: row.position }).eq('id', row.id).eq('user_id', userId);
+      if (error) throw asUserFacing(error, 'general');
+    }
+    await this.refresh();
+  }
+
+  async deleteProfilePhoto(id: string): Promise<void> {
+    const userId = await this.userId();
+    const known = this.snapshot.profilePhotos.find((photo) => photo.id === id);
+    const path = known?.storagePath ?? profileStoragePath(userId, id);
+    const removed = await this.client.storage.from(PROFILE_PHOTO_BUCKET).remove([path]);
+    if (removed.error && !/not found/i.test(removed.error.message)) throw asUserFacing(removed.error, 'general');
+    const { error } = await this.client.from('profile_photos').delete().eq('id', id).eq('user_id', userId);
+    if (error) throw asUserFacing(error, 'general');
+    await this.refresh();
+  }
+
+  async profilePhotoUrls(ids: string[]): Promise<{ id: string; url: string }[]> {
+    const urls = await this.profilePhotoUrlMap(ids);
+    return [...urls.entries()].map(([id, url]) => ({ id, url }));
+  }
+
   async deleteProgressPhoto(id: string): Promise<void> {
     const userId = await this.userId();
     const known = this.snapshot.progressPhotos.find((photo) => photo.id === id);
@@ -1401,9 +1567,10 @@ export class SupabaseRepository implements Repository {
     const removed = await this.removeOwnProgressPhotos();
     const removedDiary = await this.removeOwnGratitudePhotos();
     const removedVision = await this.removeOwnVisionPhotos();
+    const removedProfile = await this.removeOwnProfilePhotos();
     const invoked = await this.client.functions.invoke('account-delete', { body: {} });
     if (invoked.error || invoked.data?.ok === false) {
-      if (!removed || !removedDiary || !removedVision) throw new UserFacingError('Could not remove the private photos, so the account was left in place.', 'generic');
+      if (!removed || !removedDiary || !removedVision || !removedProfile) throw new UserFacingError('Could not remove the private photos, so the account was left in place.', 'generic');
       const { error } = await this.client.rpc('delete_my_account');
       if (error) throw asUserFacing(error, 'general');
     }
@@ -1416,13 +1583,16 @@ export class SupabaseRepository implements Repository {
     const withGratitude = Array.isArray(withProgress.gratitude_photos)
       ? await this.attachBucketLinks(withProgress, 'gratitude_photos', GRATITUDE_BUCKET, seconds)
       : withProgress;
-    if (!Array.isArray(withGratitude.vision_board_items)) return withGratitude;
-    return this.attachBucketLinks(withGratitude, 'vision_board_items', VISION_BUCKET, seconds);
+    const withVision = Array.isArray(withGratitude.vision_board_items)
+      ? await this.attachBucketLinks(withGratitude, 'vision_board_items', VISION_BUCKET, seconds)
+      : withGratitude;
+    if (!Array.isArray(withVision.profile_photos)) return withVision;
+    return this.attachBucketLinks(withVision, 'profile_photos', PROFILE_PHOTO_BUCKET, seconds);
   }
 
   private async attachBucketLinks(
     record: Record<string, unknown>,
-    key: 'progress_photos' | 'gratitude_photos' | 'vision_board_items',
+    key: 'progress_photos' | 'gratitude_photos' | 'vision_board_items' | 'profile_photos',
     bucket: string,
     seconds: number,
   ): Promise<Record<string, unknown>> {
@@ -1460,6 +1630,12 @@ export class SupabaseRepository implements Repository {
     if (!userId) return true;
     const known = this.snapshot.gratitude.flatMap((entry) => entry.photos.map((photo) => photo.storagePath));
     return this.removeOwnerFolder(GRATITUDE_BUCKET, userId, known);
+  }
+
+  private async removeOwnProfilePhotos(): Promise<boolean> {
+    const userId = this.snapshot.session?.userId;
+    if (!userId) return true;
+    return this.removeOwnerFolder(PROFILE_PHOTO_BUCKET, userId, this.snapshot.profilePhotos.map((photo) => photo.storagePath));
   }
 
   private async removeOwnVisionPhotos(): Promise<boolean> {

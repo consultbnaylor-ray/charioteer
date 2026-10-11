@@ -1,7 +1,7 @@
 import { CONSENT_VERSION, INTEREST_CATALOGUE, RESOURCE_CATALOGUE } from '@/data/catalogue';
 import { consentRows } from '@/domain/consents';
 import type { StoredConsent } from '@/domain/consents';
-import type { CheckIn, Connection, DirectMessage, HealthSample, Profile, ProgressPhoto, Reason, Relapse, ThumosMessage } from '@/data/types';
+import type { CheckIn, Connection, DirectMessage, HealthSample, Profile, ProfilePhoto, ProgressPhoto, Reason, Relapse, ThumosMessage } from '@/data/types';
 import type { VisionItem } from '@/domain/visionBoard';
 import { visionStoragePath } from '@/domain/visionBoard';
 import { VISION_SAMPLE_PHOTOS } from '@/data/visionSamples';
@@ -9,6 +9,7 @@ import { isoDay } from '@/domain/dates';
 import type { GratitudeEntry } from '@/domain/gratitude';
 import { gratitudeStoragePath } from '@/domain/gratitudePhotos';
 import { planProgressPhoto, progressStoragePath } from '@/domain/progressPhotos';
+import { profileStoragePath } from '@/domain/profilePhotos';
 
 export const DEMO_PASSWORD = 'Charioteer-demo-1';
 
@@ -36,6 +37,8 @@ export type DemoAccount = {
   thumos: ThumosMessage[];
   consents: StoredConsent[];
   progressPhotos: ProgressPhoto[];
+  /** Absent on older sample data. Profile picture and gallery. */
+  profilePhotos?: ProfilePhoto[];
   gratitude: GratitudeEntry[];
   visionItems: VisionItem[];
   /** Absent on older sample data. Name and interests stay public; everything else starts off. */
@@ -150,6 +153,25 @@ function diaryLine(
   const [year, month, day] = entryDate.split('-').map(Number);
   const created = new Date(year, (month ?? 1) - 1, day ?? 1, 9, 0, 0, 0).toISOString();
   return { id, body, category, isFavourite, entryDate, createdAt: created, updatedAt: created, photos: [] };
+}
+
+function sampleProfilePhoto(
+  userId: string,
+  photoId: string,
+  role: ProfilePhoto['role'],
+  caption: string,
+  position: number,
+): ProfilePhoto {
+  return {
+    id: photoId,
+    userId,
+    role,
+    caption,
+    position,
+    storagePath: profileStoragePath(userId, photoId),
+    createdAt: '2026-10-11T09:00:00.000Z',
+    previewUrl: SAMPLE_JPEG,
+  };
 }
 
 function samplePhoto(
@@ -287,6 +309,11 @@ export function createDemoDb(now = new Date()): DemoDb {
     diaryLine('11111111-1111-4111-8111-111111111103', 'A quiet cup of tea before the house woke.', 'Small joys', false, lastYear),
   ];
   const sister = alex.gratitude[0];
+  alex.profilePhotos = [
+    sampleProfilePhoto(PEOPLE.alex, 'e7e7e7e7-e7e7-4e7e-8e7e-e7e7e7e7e7e1', 'avatar', 'Morning light.', 0),
+    sampleProfilePhoto(PEOPLE.alex, 'e7e7e7e7-e7e7-4e7e-8e7e-e7e7e7e7e7e2', 'gallery', 'The path after rain.', 0),
+    sampleProfilePhoto(PEOPLE.alex, 'e7e7e7e7-e7e7-4e7e-8e7e-e7e7e7e7e7e3', 'gallery', 'A quieter evening.', 1),
+  ];
   if (sister) {
     const photoId = '11111111-1111-4111-8111-1111111111a1';
     sister.photos = [{
@@ -317,11 +344,15 @@ export function createDemoDb(now = new Date()): DemoDb {
     thumos: [],
     consents: consentRows(CONSENT_VERSION, { consentHealth: true, communityVisible: true, consentAi: true }),
     progressPhotos: [],
+    profilePhotos: [],
     gratitude: [],
     visionItems: [],
   });
 
   const jordan = other(PEOPLE.jordan, 'jordan.ellis@example.com', 'Jordan Ellis', 'Manchester', [HIKING, EXERCISE]);
+  jordan.profilePhotos = [
+    sampleProfilePhoto(PEOPLE.jordan, 'e7e7e7e7-e7e7-4e7e-8e7e-e7e7e7e7e7e4', 'avatar', 'Out walking.', 0),
+  ];
   const jordanAnchor = new Date('2026-01-01T00:00:00.000Z');
   const sharedPlan = planProgressPhoto({
     takenOn: isoDay(now),
