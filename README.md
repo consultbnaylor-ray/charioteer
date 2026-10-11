@@ -162,7 +162,14 @@ npx expo run:ios
 
 Or use EAS: `eas build --profile development --platform ios`.
 
-The bundle id is `uk.co.quanticalabs.charioteer`. `app.json` sets Sign in with Apple, the microphone string, the `react-native-audio-api` plugin, and the HealthKit plugin. The share string covers steps, sleep, resting heart rate, HRV, workouts, and weight. The update string says the app does not write to Apple Health; the capability still asks for it. `ios.entitlements` sets `com.apple.developer.healthkit`, and the plugin writes the same entitlement plus `NSHealthShareUsageDescription` at prebuild. Background delivery is off, because Charioteer only reads when someone asks it to. The Apple team is Quantica Labs Ltd, `5FMDXKAX7V`. `ios.config.usesNonExemptEncryption` is `false`. `expo.ios.buildNumber` is `"9"` for the next upload. Build 7 is the TestFlight build Ben reviewed. Build 8 also keeps a voice call going when echo cancellation cannot start: the microphone opens before the playback graph, and a failed voice-processing restart falls back to a call without it. TestFlight shows a short technical line under the friendly voice error (`extra.voiceDiagnostics`).
+The bundle id is `uk.co.quanticalabs.charioteer`. `app.json` sets Sign in with Apple, the microphone string, the `react-native-audio-api` plugin, and the HealthKit plugin. The share string covers steps, sleep, resting heart rate, HRV, workouts, and weight. The update string says the app does not write to Apple Health; the capability still asks for it. `ios.entitlements` sets `com.apple.developer.healthkit`, and the plugin writes the same entitlement plus `NSHealthShareUsageDescription` at prebuild. Background delivery is off, because Charioteer only reads when someone asks it to. The Apple team is Quantica Labs Ltd, `5FMDXKAX7V`. `ios.config.usesNonExemptEncryption` is `false`. `expo.ios.buildNumber` is `"9"` for the next upload. Build 7 is the TestFlight build Ben reviewed. Echo control is the audio session: `playAndRecord` with mode `voiceChat`. Voice processing is not turned on in native code. A small patch, re-applied by `patch-package` on `npm install`, wraps `AVAudioEngine` `prepare` and `startAndReturnError:` in `@try`/`@catch` and returns false, so a route change cannot kill the app. On a Mac, remove a previously patched copy before installing, or the old `AudioEngine.mm` is reused and the new patch will not apply:
+
+```bash
+rm -rf node_modules/react-native-audio-api
+npm install
+```
+
+TestFlight shows a voice debug line (the step reached, the microphone sample rate, and the last error) while `extra.voiceDiagnostics` is true. A voice failure stays on “The voice connection failed. Text chat is still available.”
 
 The home-screen name is `Charioteer` (`expo.name`). The App Store Connect listing name is `Charioteer Sober Coach` (app id `6821371422`).
 
@@ -172,9 +179,11 @@ On a Mac with Xcode, enable the HealthKit and Sign in with Apple capabilities if
 
 ## TestFlight from a Mac
 
-Build 4 is the TestFlight archive from commit `054cf18`. Build 7 is the upload Ben reviewed. `expo.ios.buildNumber` is `"9"` for the next upload. From the repo on a Mac, signed into Xcode as Quantica Labs Ltd:
+Build 4 is the TestFlight archive from commit `054cf18`. Build 7 is the upload Ben reviewed. `expo.ios.buildNumber` is `"9"` for the next upload. From the repo on a Mac, signed into Xcode as Quantica Labs Ltd, clear any patched audio package first, then install and prebuild:
 
 ```bash
+rm -rf node_modules/react-native-audio-api
+npm install
 npx expo prebuild --platform ios
 xcodebuild \
   -workspace ios/Charioteer.xcworkspace \
@@ -197,6 +206,8 @@ xcodebuild \
   -exportOptionsPlist ExportOptions.plist \
   -allowProvisioningUpdates
 ```
+
+Keep the dSYM from the archive that was actually uploaded: `build/Charioteer.xcarchive/dSYMs`. A dSYM from an earlier archive will not symbolicate this build.
 
 App Store Connect rejects a second upload that reuses a build number. Before each archive after this one, raise `expo.ios.buildNumber` in `app.json` (`"5"`, then `"6"`, and so on) and run prebuild again so the new value is in the generated project.
 

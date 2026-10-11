@@ -1,6 +1,7 @@
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
+import { formatVoiceDebug } from './voiceDebug';
 import {
   combineSocketCause,
   mapVoiceFailure,
@@ -97,30 +98,71 @@ describe('voice error mapping', () => {
   });
 });
 
+describe('voice debug line', () => {
+  it('names the step, the microphone rate, and the last error', () => {
+    expect(formatVoiceDebug({ step: 'token', sampleRate: null, error: null })).toBe('Voice debug: token · rate unknown');
+    expect(formatVoiceDebug({ step: 'mic', sampleRate: 48000, error: null })).toBe('Voice debug: mic · 48000 Hz');
+    expect(formatVoiceDebug({ step: 'session.updated', sampleRate: 44100.4, error: 'engine format' })).toBe(
+      'Voice debug: session.updated · 44100 Hz · engine format',
+    );
+    expect(formatVoiceDebug({ step: 'playback', sampleRate: 48000, error: `x${'y'.repeat(400)}` })).toContain('Voice debug: playback · 48000 Hz · ');
+    expect(formatVoiceDebug({ step: 'socket', sampleRate: 48000, error: `x${'y'.repeat(400)}` }).length).toBeLessThan(260);
+  });
+});
+
 describe('voice call wiring', () => {
   it('starts the microphone before playback and authenticates native sockets with the bearer header', () => {
     const audio = readFileSync('src/voice/audio.native.ts', 'utf8');
     const call = readFileSync('src/voice/call.ts', 'utf8');
-    const start = audio.slice(audio.indexOf('async start('));
+    const screen = readFileSync('src/app/(main)/thumos.tsx', 'utf8');
+    const prepare = audio.slice(audio.indexOf('async prepare('), audio.indexOf('async start('));
+    const start = audio.slice(audio.indexOf('async start('), audio.indexOf('playPcm16('));
+    expect(prepare).toContain('setAudioSessionOptions');
+    expect(prepare.indexOf('setAudioSessionOptions')).toBeLessThan(prepare.indexOf('setAudioSessionActivity(true)'));
+    expect(start).not.toContain('setAudioSessionOptions');
+    expect(start).not.toContain('applySession');
     expect(start.indexOf('await openMic')).toBeGreaterThan(-1);
     expect(start.indexOf('await openMic')).toBeLessThan(start.indexOf('await openPlayback'));
-    expect(start).toContain('retrying without voice processing');
+    expect(start).toContain('await this.stop()');
+    expect(audio).toContain('getDevicePreferredSampleRate() || 48000');
+    expect(audio).toContain('rate * 0.1');
+    expect(audio).toContain('channelCount: 1');
+    expect(audio).toContain('new AudioContext()');
+    expect(audio).not.toContain('new AudioContext({');
+    expect(audio).not.toContain('retrying without voice processing');
+    expect(audio).not.toContain('setVoiceProcessingEnabled');
+    expect(call).toContain('VOICE_COPY.failed');
+    expect(call).toContain('formatVoiceDebug');
     expect(call).toContain("console.warn('[voice] audio.start failed'");
     expect(call).toContain("console.warn('[voice] socket error'");
     expect(call).toContain("console.warn('[voice] socket close'");
+    expect(call).toContain('this.guard(');
+    expect(call.match(/socket\.addEventListener\(/g)).toHaveLength(4);
     expect(call).toContain('new NativeSocket(url, undefined, auth.headers ? { headers: auth.headers } : undefined)');
     expect(call).toContain('voiceSocketAuth');
+    expect(screen).toContain('VOICE_COPY.failed');
+    expect(screen).toContain('voice.detail');
   });
 });
 
 describe('voice processing patch', () => {
-  it('enables voice processing before the graph and falls back without it', () => {
-    const script = readFileSync('scripts/enable-voice-processing.mjs', 'utf8');
-    expect(script).toContain('charioteerEnableVoiceProcessingBeforeGraph');
-    expect(script).toContain('charioteerVoiceProcessingDisabled');
-    expect(script).toContain('Starting without voice processing');
-    expect(script).toContain('Engine already running; leaving voice processing off');
-    expect(script).toContain('charioteerVoiceProcessingRetrying');
-    expect(script).not.toContain('const BOOL restartEngine');
+  it('is gone, so a clean AudioEngine.mm is what the phone builds', () => {
+    expect(existsSync('scripts/enable-voice-processing.mjs')).toBe(false);
+    const pkg = readFileSync('package.json', 'utf8');
+    expect(pkg).not.toContain('enable-voice-processing');
+    expect(pkg).toContain('"postinstall": "patch-package"');
+    const patch = readFileSync('patches/react-native-audio-api+0.13.6.patch', 'utf8');
+    expect(patch).toContain('charioteerPrepareAndStartEngine');
+    expect(patch).toContain('@try');
+    expect(patch).toContain('@catch');
+    expect(patch).not.toContain('setVoiceProcessingEnabled');
+    const engine = 'node_modules/react-native-audio-api/ios/audioapi/ios/system/AudioEngine.mm';
+    if (existsSync(engine)) {
+      const source = readFileSync(engine, 'utf8');
+      expect(source).toContain('charioteerPrepareAndStartEngine');
+      expect(source).toContain('@try');
+      expect(source).not.toContain('setVoiceProcessingEnabled');
+      expect(source).not.toContain('charioteerEnableVoiceProcessingBeforeGraph');
+    }
   });
 });

@@ -57,11 +57,15 @@ export function createVoiceAudio(): VoiceAudio {
       const size = 4096;
       processor = context.createScriptProcessor(size, 1, 1);
       processor.onaudioprocess = (event) => {
-        if (paused) return;
-        const channel = event.inputBuffer.getChannelData(0);
-        const copy = new Float32Array(channel.length);
-        copy.set(channel);
-        handlers.onPcm(copy, context?.sampleRate || event.inputBuffer.sampleRate || GROK_VOICE.sampleRate);
+        try {
+          if (paused) return;
+          const channel = event.inputBuffer.getChannelData(0);
+          const copy = new Float32Array(channel.length);
+          copy.set(channel);
+          handlers.onPcm(copy, context?.sampleRate || event.inputBuffer.sampleRate || GROK_VOICE.sampleRate);
+        } catch (error) {
+          handlers.onFailure?.(error);
+        }
       };
       source.connect(processor);
       const mute = context.createGain();

@@ -13,20 +13,13 @@ import type { VoiceAudio, VoiceMicHandlers } from './audioTypes';
 /**
  * iOS capture and playback through react-native-audio-api 0.13.6.
  *
- * Software Mansion maintains it, it ships an Expo config plugin, and it runs in
- * an Expo prebuild or TestFlight binary. AudioRecorder.onAudioReady yields
- * Float32 PCM, converted here to the 16-bit little-endian frames xAI expects.
- * AudioBufferQueueSourceNode plays each response delta as it arrives.
- * clearBuffers drops anything not yet heard when the user barges in.
+ * The session is playAndRecord with mode voiceChat, set once before the session
+ * is activated. That mode is the echo control. There is no native patch and
+ * voice processing is not toggled again while the graph is starting.
  *
- * The session is playAndRecord and voiceChat, with defaultToSpeaker and
- * Bluetooth HFP, so a headset microphone is used and the loudspeaker is the
- * default. scripts/enable-voice-processing.mjs turns on Apple's voice-processing
- * I/O before the graph is attached. If that cannot be enabled, or the engine
- * will not start, the native side continues without it. This file then retries
- * once with headphones-friendly routing (no forced speaker) so the call still
- * opens. This release has no iosVoiceProcessing option yet. The simulator skips
- * the patch because voice processing there records silence.
+ * The microphone records at the device rate (48 kHz when the device does not
+ * report one). Speech frames are resampled to 24 kHz by the call. Playback uses
+ * the context rate and resamples each spoken delta on the way in.
  */
 export function createVoiceAudio(): VoiceAudio {
   const recorder = new AudioRecorder();
@@ -37,78 +30,22 @@ export function createVoiceAudio(): VoiceAudio {
   let listening = false;
   const durations = new Map<string, number>();
 
-  function applySession(voiceProcessing: boolean) {
-    AudioManager.setAudioSessionOptions({
-      iosCategory: 'playAndRecord',
-      iosMode: 'voiceChat',
-      iosOptions: voiceProcessing
-        ? ['defaultToSpeaker', 'allowBluetoothHFP']
-        : ['allowBluetoothHFP', 'allowBluetoothA2DP'],
-    });
-  }
-
   function causeText(error: unknown): string {
     if (error instanceof Error && error.message.trim()) return error.message.trim();
+    if (typeof error === 'string' && error.trim()) return error.trim();
     return 'Microphone did not start.';
   }
 
-  async function releaseGraph() {
-    listening = false;
-    interruption?.remove();
-    interruption = null;
+  function captureRate(): number {
     try {
-      if (recorder.isRecording()) await recorder.stop();
+      return AudioManager.getDevicePreferredSampleRate() || 48000;
     } catch {
-      // The failed start may already have stopped the recorder.
+      return 48000;
     }
-    recorder.clearOnAudioReady();
-    durations.clear();
-    if (queue) {
-      queue.clearBuffers();
-      try {
-        queue.stop();
-      } catch {
-        // Already stopped.
-      }
-      queue = null;
-    }
-    if (context) {
-      await context.close().catch(() => undefined);
-      context = null;
-    }
-  }
-
-  async function openMic(handlers: VoiceMicHandlers) {
-    interruption = AudioManager.addSystemEventListener('interruption', (event) => {
-      handlers.onInterruption({ type: event.type, shouldResume: event.shouldResume });
-    });
-    const ready = recorder.onAudioReady(
-      {
-        sampleRate: GROK_VOICE.sampleRate,
-        bufferLength: Math.round(GROK_VOICE.sampleRate * (GROK_VOICE.frameMs / 1000)),
-        channelCount: 1,
-      },
-      ({ buffer }) => {
-        const channel = buffer.getChannelData(0);
-        const copy = new Float32Array(channel.length);
-        copy.set(channel);
-        handlers.onPcm(copy, buffer.sampleRate || GROK_VOICE.sampleRate);
-      },
-    );
-    if (ready.status === 'error') throw new Error(ready.message || 'Microphone callback was rejected.');
-    const started = await recorder.start();
-    if (started.status === 'error') throw new Error(started.message || 'Microphone did not start.');
-    listening = true;
-  }
-
-  async function openPlayback() {
-    ensureQueue();
-    const ctx = ensureContext();
-    if (ctx.state === 'suspended') await ctx.resume();
   }
 
   function ensureContext() {
-    if (!context) context = new AudioContext({ sampleRate: GROK_VOICE.sampleRate });
+    if (!context) context = new AudioContext();
     return context;
   }
 
@@ -118,73 +55,117 @@ export function createVoiceAudio(): VoiceAudio {
     const next = ctx.createBufferQueueSource();
     next.connect(ctx.destination);
     next.onBufferEnded = (event) => {
-      const ms = durations.get(event.bufferId) ?? 0;
-      durations.delete(event.bufferId);
-      played += ms;
+      try {
+        const ms = durations.get(event.bufferId) ?? 0;
+        durations.delete(event.bufferId);
+        played += ms;
+      } catch {
+        // A late buffer event must not escape the native callback.
+      }
     };
     next.start();
     queue = next;
     return next;
   }
 
+  async function openMic(handlers: VoiceMicHandlers) {
+    interruption = AudioManager.addSystemEventListener('interruption', (event) => {
+      try {
+        handlers.onInterruption({ type: event.type, shouldResume: event.shouldResume });
+      } catch (error) {
+        handlers.onFailure?.(error);
+      }
+    });
+    const rate = captureRate();
+    const ready = recorder.onAudioReady(
+      {
+        sampleRate: rate,
+        bufferLength: Math.round(rate * 0.1),
+        channelCount: 1,
+      },
+      ({ buffer }) => {
+        try {
+          const channel = buffer.getChannelData(0);
+          const copy = new Float32Array(channel.length);
+          copy.set(channel);
+          handlers.onPcm(copy, buffer.sampleRate || rate);
+        } catch (error) {
+          handlers.onFailure?.(error);
+        }
+      },
+    );
+    if (ready.status === 'error') throw new Error(ready.message || 'Microphone callback was rejected.');
+    const started = await recorder.start();
+    if (started.status === 'error') throw new Error(started.message || 'Microphone did not start.');
+    listening = true;
+    handlers.onStep?.('mic', rate);
+  }
+
+  async function openPlayback(handlers: VoiceMicHandlers) {
+    ensureQueue();
+    const ctx = ensureContext();
+    if (ctx.state === 'suspended') await ctx.resume();
+    handlers.onStep?.('playback');
+  }
+
   return {
     async prepare() {
-      applySession(true);
-      AudioManager.observeAudioInterruptions(true);
-      const permission = await AudioManager.requestRecordingPermissions();
-      if (permission !== 'Granted') return 'denied';
       try {
+        AudioManager.setAudioSessionOptions({
+          iosCategory: 'playAndRecord',
+          iosMode: 'voiceChat',
+          iosOptions: ['defaultToSpeaker', 'allowBluetoothHFP'],
+        });
+        AudioManager.observeAudioInterruptions(true);
+        const permission = await AudioManager.requestRecordingPermissions();
+        if (permission !== 'Granted') return 'denied';
         await AudioManager.setAudioSessionActivity(true);
-      } catch {
-        return 'unavailable';
+        return 'granted';
+      } catch (error) {
+        await this.stop();
+        throw new Error(causeText(error));
       }
-      return 'granted';
     },
     async start(handlers: VoiceMicHandlers) {
-      let firstCause = '';
-      for (const voiceProcessing of [true, false]) {
-        try {
-          applySession(voiceProcessing);
-          // Mic before the playback graph, so voice processing is enabled on a
-          // stopped engine instead of restarting one that is already running.
-          await openMic(handlers);
-          await openPlayback();
-          return;
-        } catch (error) {
-          const cause = causeText(error);
-          await releaseGraph();
-          if (!voiceProcessing) {
-            throw new Error(firstCause ? `${firstCause} Retry without voice processing: ${cause}` : cause);
-          }
-          firstCause = cause;
-          console.warn('[voice] microphone start failed, retrying without voice processing', cause);
-        }
+      try {
+        await openMic(handlers);
+        await openPlayback(handlers);
+      } catch (error) {
+        await this.stop();
+        throw new Error(causeText(error));
       }
-      throw new Error(firstCause || 'Microphone did not start.');
     },
     playPcm16(pcm: Uint8Array) {
       if (!pcm.byteLength) return;
-      const ctx = ensureContext();
-      const playback = ensureQueue();
-      const rate = ctx.sampleRate || GROK_VOICE.sampleRate;
-      const source = pcm16ToFloat(pcm);
-      const floats = rate === GROK_VOICE.sampleRate ? source : resampleLinear(source, GROK_VOICE.sampleRate, rate);
-      const audioBuffer = ctx.createBuffer(1, floats.length, rate);
-      audioBuffer.copyToChannel(floats as Float32Array<ArrayBuffer>, 0);
-      const id = playback.enqueueBuffer(audioBuffer);
-      durations.set(id, (source.length / GROK_VOICE.sampleRate) * 1000);
+      try {
+        const ctx = ensureContext();
+        const playback = ensureQueue();
+        const rate = ctx.sampleRate || GROK_VOICE.sampleRate;
+        const source = pcm16ToFloat(pcm);
+        const floats = rate === GROK_VOICE.sampleRate ? source : resampleLinear(source, GROK_VOICE.sampleRate, rate);
+        const audioBuffer = ctx.createBuffer(1, floats.length, rate);
+        audioBuffer.copyToChannel(floats as Float32Array<ArrayBuffer>, 0);
+        const id = playback.enqueueBuffer(audioBuffer);
+        durations.set(id, (source.length / GROK_VOICE.sampleRate) * 1000);
+      } catch (error) {
+        throw new Error(causeText(error));
+      }
     },
     stopPlayback() {
-      durations.clear();
-      if (!queue) return;
-      queue.clearBuffers();
       try {
-        queue.stop();
-      } catch {
-        // The node may already have been stopped.
+        durations.clear();
+        if (!queue) return;
+        queue.clearBuffers();
+        try {
+          queue.stop();
+        } catch {
+          // The node may already have been stopped.
+        }
+        queue = null;
+        if (context && context.state !== 'closed') ensureQueue();
+      } catch (error) {
+        throw new Error(causeText(error));
       }
-      queue = null;
-      if (context && context.state !== 'closed') ensureQueue();
     },
     playedMs() {
       return played;
@@ -193,26 +174,42 @@ export function createVoiceAudio(): VoiceAudio {
       played = 0;
     },
     pauseCapture() {
-      if (listening && recorder.isRecording() && !recorder.isPaused()) recorder.pause();
+      try {
+        if (listening && recorder.isRecording() && !recorder.isPaused()) recorder.pause();
+      } catch (error) {
+        throw new Error(causeText(error));
+      }
     },
     resumeCapture() {
-      if (listening && recorder.isPaused()) recorder.resume();
-      if (context?.state === 'suspended') void context.resume();
+      try {
+        if (listening && recorder.isPaused()) recorder.resume();
+        if (context?.state === 'suspended') void context.resume();
+      } catch (error) {
+        throw new Error(causeText(error));
+      }
     },
     async stop() {
       listening = false;
-      interruption?.remove();
+      try {
+        interruption?.remove();
+      } catch {
+        // The subscription may already be gone.
+      }
       interruption = null;
       try {
         if (recorder.isRecording()) await recorder.stop();
       } catch {
         // The session is already going away.
       }
-      recorder.clearOnAudioReady();
+      try {
+        recorder.clearOnAudioReady();
+      } catch {
+        // The recorder may already have dropped the callback.
+      }
       durations.clear();
       if (queue) {
-        queue.clearBuffers();
         try {
+          queue.clearBuffers();
           queue.stop();
         } catch {
           // Already stopped.

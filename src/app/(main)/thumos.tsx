@@ -11,6 +11,7 @@ import { showsSoberRecord } from '@/domain/stage';
 import { inferThumosMode, type ThumosMode } from '@/domain/thumos';
 import { formatClock, urgeRemainingSeconds } from '@/domain/urge';
 import { ensureUrge, restartUrge } from '@/features/urgeSession';
+import { VOICE_COPY } from '@/domain/voice';
 import { createVoiceRuntime, voiceStatusLabel, type VoiceRuntime } from '@/domain/voiceSession';
 import { briefingFromSnapshot } from '@/voice/briefing';
 import { VoiceCall } from '@/voice/call';
@@ -140,9 +141,15 @@ export default function Thumos() {
       await call.start();
     } catch (err) {
       if (ticket !== voiceTicket.current) return;
+      console.warn('[voice] start failed', err);
       callRef.current = null;
-      setVoice(null);
-      setError(asUserFacing(err, 'thumos').message);
+      setError(null);
+      setVoice((current) => ({
+        ...(current ?? createVoiceRuntime()),
+        phase: 'error',
+        message: VOICE_COPY.failed,
+        detail: current?.detail ?? null,
+      }));
     }
   }
 
@@ -218,6 +225,7 @@ export default function Thumos() {
           {voice.liveUser ? <T>You: {voice.liveUser}</T> : null}
           {voice.liveAssistant ? <T>Thumos: {voice.liveAssistant}</T> : null}
           {voice.message && voice.phase !== 'error' ? <T variant="muted">{voice.message}</T> : null}
+          {voice.detail ? <T variant="muted">{voice.detail}</T> : null}
           <View style={{ flexDirection: 'row', gap: 10 }}>
             <View style={{ flex: 1 }}>
               <Button
