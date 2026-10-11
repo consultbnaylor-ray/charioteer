@@ -25,6 +25,7 @@ When Community is on, other signed-in adults can see your name and your interest
 - A gratitude line you pick
 - A gratitude photo you pick
 - A vision board caption you pick
+- A Stoic quote you have pinned, if you switch that on
 
 Turning a switch off hides that item on the next view. The People screen shows a preview of what is shared and a list of what is hidden.
 
@@ -32,7 +33,7 @@ Turning a switch off hides that item on the next view. The People screen shows a
 
 Days sober, your stage, reasons, money and unit totals, a mood streak, and health headlines are special category data under UK GDPR. The first time you share any of that, the app asks you to confirm. It tells you that other adults in the Charioteer community can see the items you switch on, and that Quantica Labs Ltd is the controller.
 
-Town, a gratitude line, and a vision caption are not treated as that same confirmation. A progress photo already asks before it is shown to the community.
+Town, a gratitude line, a vision caption, and a pinned Stoic quote are not treated as that same confirmation. A pinned quote is a public-domain line you chose. A progress photo already asks before it is shown to the community.
 
 ## How the shared view is built
 

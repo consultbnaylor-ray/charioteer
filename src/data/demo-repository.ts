@@ -36,6 +36,7 @@ import { CONSENT_VERSION } from '@/data/catalogue';
 import { consentRows, missingConsentRows } from '@/domain/consents';
 import { stageFromRecord } from '@/domain/stage';
 import { defaultProfileSharing, normalizeProfileSharing, projectPublicProfile, sensitiveTurnedOn, type ProfileSharing, type PublicProfileView, type ShareSource } from '@/domain/profileSharing';
+import { quoteById } from '@/domain/stoicQuotes';
 import { createDemoDb, type DemoAccount, type DemoDb } from '@/data/demo-seed';
 import type {
   AppSnapshot,
@@ -77,6 +78,7 @@ function readyProfile(profile: DemoAccount['profile']): DemoAccount['profile'] {
     heightCm: profile.heightCm ?? null,
     visionStatement: profile.visionStatement ?? '',
     visionStartedOn: profile.visionStartedOn ?? null,
+    pinnedQuoteId: profile.pinnedQuoteId ?? null,
     createdAt: profile.createdAt || '2026-01-01T00:00:00.000Z',
   };
 }
@@ -132,6 +134,7 @@ function shareSource(account: DemoAccount, interests: DemoDb['interests'], now =
       monthIndex: photo.monthIndex,
       visibility: photo.visibility === 'community' ? 'community' as const : 'private' as const,
     })),
+    pinnedQuoteId: account.profile.pinnedQuoteId ?? null,
   };
 }
 
@@ -225,6 +228,7 @@ export class DemoRepository implements Repository {
       gratitude: account ? sortGratitude((account.gratitude ?? []).map((entry) => ({ ...entry, photos: entry.photos ?? [] }))) : [],
       visionItems: account ? sortVisionItems(account.visionItems ?? []) : [],
       sharing: account ? normalizeProfileSharing(account.sharing) : defaultProfileSharing(),
+      savedQuotes: account?.savedQuotes ?? [],
     };
   }
 
@@ -315,6 +319,7 @@ export class DemoRepository implements Repository {
         heightCm: null,
         visionStatement: '',
         visionStartedOn: null,
+        pinnedQuoteId: null,
         createdAt: new Date().toISOString(),
       },
       reasons: [],
@@ -326,6 +331,7 @@ export class DemoRepository implements Repository {
       progressPhotos: [],
       gratitude: [],
       visionItems: [],
+      savedQuotes: [],
     };
     const db = clone(this.db);
     db.accounts[id] = account;
@@ -732,6 +738,33 @@ export class DemoRepository implements Repository {
       changed += 1;
     }
     if (!changed) throw new UserFacingError('Could not update that photo.', 'generic');
+    this.commit(db);
+  }
+
+  async saveQuote(quoteId: string): Promise<void> {
+    if (!quoteById(quoteId)) throw new UserFacingError('That quote is not in the library.', 'generic');
+    const account = this.me();
+    const saved = account.savedQuotes ?? [];
+    if (saved.some((item) => item.quoteId === quoteId)) return;
+    const db = clone(this.db);
+    const next = db.accounts[account.profile.id];
+    next.savedQuotes = [...(next.savedQuotes ?? []), { quoteId, createdAt: new Date().toISOString() }];
+    this.commit(db);
+  }
+
+  async unsaveQuote(quoteId: string): Promise<void> {
+    const account = this.me();
+    const db = clone(this.db);
+    const next = db.accounts[account.profile.id];
+    next.savedQuotes = (next.savedQuotes ?? []).filter((item) => item.quoteId !== quoteId);
+    this.commit(db);
+  }
+
+  async pinQuote(quoteId: string | null): Promise<void> {
+    if (quoteId && !quoteById(quoteId)) throw new UserFacingError('That quote is not in the library.', 'generic');
+    const account = this.me();
+    const db = clone(this.db);
+    db.accounts[account.profile.id].profile.pinnedQuoteId = quoteId;
     this.commit(db);
   }
 

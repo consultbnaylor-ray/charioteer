@@ -94,6 +94,7 @@ export function PublicProfileCard() {
       monthIndex: photo.monthIndex,
       visibility: photo.visibility === 'community' ? 'community' : 'private',
     })),
+    pinnedQuoteId: me.pinnedQuoteId,
   }, snap.sharing);
   const interestLine = preview.interests.join(' · ');
   const shared = snap.progressPhotos
@@ -247,6 +248,12 @@ export function PublicProfileCard() {
           <View style={{ gap: 8 }}>
             <T variant="label">Name and interests stay on</T>
             <T variant="title">{preview.displayName}</T>
+            {preview.pinnedQuote ? (
+              <View style={{ gap: 4 }}>
+                <T variant="title">{preview.pinnedQuote.text}</T>
+                <T variant="muted">{preview.pinnedQuote.author} · {preview.pinnedQuote.source}</T>
+              </View>
+            ) : null}
             <T variant="muted">{preview.town || 'Area not shared'}</T>
             {interestLine ? <T>{interestLine}</T> : null}
             {preview.stage ? <T>Stage: {preview.stage}</T> : null}

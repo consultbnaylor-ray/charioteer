@@ -58,6 +58,7 @@ import { planCustomInterest, validateTown } from '@/domain/privacy';
 import { fetchWithOneRetry } from '@/domain/retryFetch';
 import { planReasons } from '@/domain/reasons';
 import { defaultProfileSharing, normalizeProfileSharing, parsePublicProfile, sensitiveTurnedOn, type ProfileSharing } from '@/domain/profileSharing';
+import { quoteById } from '@/domain/stoicQuotes';
 import { planRelapse } from '@/domain/sober';
 import { parseSseBuffer } from '@/domain/sse';
 import { detectSafety } from '@/domain/safety';
@@ -137,6 +138,7 @@ function emptySnapshot(): AppSnapshot {
     gratitude: [],
     visionItems: [],
     sharing: defaultProfileSharing(),
+    savedQuotes: [],
   };
 }
 
@@ -243,7 +245,7 @@ export class SupabaseRepository implements Repository {
 
     const userId = session.user.id;
     const email = session.user.email ?? '';
-    const [profileRes, reasonsRes, checkRes, relapseRes, healthRes, mineRes, thumosRes, directoryRes, interestLinks, connectionsRes, reportsRes, consentsRes, photosRes, gratitudeRes, gratitudePhotoRes, visionRes, sharingRes] =
+    const [profileRes, reasonsRes, checkRes, relapseRes, healthRes, mineRes, thumosRes, directoryRes, interestLinks, connectionsRes, reportsRes, consentsRes, photosRes, gratitudeRes, gratitudePhotoRes, visionRes, sharingRes, quotesRes] =
       await Promise.all([
         this.client.from('profiles').select('*').eq('id', userId).maybeSingle(),
         this.client.from('reasons').select('*').eq('user_id', userId).order('sort_order'),
@@ -262,6 +264,7 @@ export class SupabaseRepository implements Repository {
         this.client.from('gratitude_photos').select('id, entry_id, user_id, storage_path, created_at').eq('user_id', userId).order('created_at'),
         this.client.from('vision_board_items').select('id, user_id, storage_path, caption, area, size, position, created_at, updated_at').eq('user_id', userId).order('position'),
         this.client.from('profile_sharing').select('settings').eq('user_id', userId).maybeSingle(),
+        this.client.from('user_quotes').select('quote_id, created_at').eq('user_id', userId).order('created_at', { ascending: false }),
       ]);
 
     const profileRow = profileRes.data as Row | null;
@@ -338,6 +341,13 @@ export class SupabaseRepository implements Repository {
       ),
       visionItems: await this.signedVisionItems(visionRes.error ? null : visionRes.data, visionRes.error?.message),
       sharing: sharingRes.error ? defaultProfileSharing() : normalizeProfileSharing((sharingRes.data as Row | null)?.settings),
+      savedQuotes: quotesRes.error
+        ? []
+        : ((quotesRes.data ?? []) as Row[]).flatMap((row) => {
+            const quoteId = String(row.quote_id ?? '');
+            if (!quoteById(quoteId)) return [];
+            return [{ quoteId, createdAt: String(row.created_at ?? '') }];
+          }),
     });
   }
 
@@ -644,6 +654,10 @@ export class SupabaseRepository implements Repository {
     if (patch.heightCm !== undefined) column.height_cm = patch.heightCm;
     if (patch.visionStatement !== undefined) column.vision_statement = patch.visionStatement || null;
     if (patch.visionStartedOn !== undefined) column.vision_started_on = patch.visionStartedOn;
+    if (patch.pinnedQuoteId !== undefined) {
+      if (patch.pinnedQuoteId && !quoteById(patch.pinnedQuoteId)) throw new UserFacingError('That quote is not in the library.', 'generic');
+      column.pinned_quote_id = patch.pinnedQuoteId;
+    }
     if (Object.keys(column).length) {
       const { error } = await this.client.from('profiles').update(column).eq('id', userId);
       if (error) throw asUserFacing(error, 'general');
@@ -1100,6 +1114,28 @@ export class SupabaseRepository implements Repository {
     await this.refresh();
   }
 
+  async saveQuote(quoteId: string): Promise<void> {
+    if (!quoteById(quoteId)) throw new UserFacingError('That quote is not in the library.', 'generic');
+    const userId = await this.userId();
+    const { error } = await this.client.from('user_quotes').upsert(
+      { user_id: userId, quote_id: quoteId },
+      { onConflict: 'user_id,quote_id' },
+    );
+    if (error) throw asUserFacing(error, 'general');
+    await this.refresh();
+  }
+
+  async unsaveQuote(quoteId: string): Promise<void> {
+    const userId = await this.userId();
+    const { error } = await this.client.from('user_quotes').delete().eq('user_id', userId).eq('quote_id', quoteId);
+    if (error) throw asUserFacing(error, 'general');
+    await this.refresh();
+  }
+
+  async pinQuote(quoteId: string | null): Promise<void> {
+    await this.updateProfile({ pinnedQuoteId: quoteId });
+  }
+
   async setProfileSharing(sharing: ProfileSharing): Promise<void> {
     const next = normalizeProfileSharing(sharing);
     if (sensitiveTurnedOn(this.snapshot.sharing, next) && !next.sensitiveConsentAt) {
@@ -1508,6 +1544,7 @@ function mapProfile(row: Row, email: string, interestIds: string[]): Profile {
     drinkFreeOn: Array.isArray(row.drink_free_on) ? row.drink_free_on.map(String) : [],
     heightCm: row.height_cm == null ? null : Number(row.height_cm),
     visionStatement: typeof row.vision_statement === 'string' ? row.vision_statement : '',
+    pinnedQuoteId: typeof row.pinned_quote_id === 'string' && quoteById(row.pinned_quote_id) ? row.pinned_quote_id : null,
     visionStartedOn: typeof row.vision_started_on === 'string'
       ? (/^(\d{4}-\d{2}-\d{2})/.exec(row.vision_started_on)?.[1] ?? null)
       : null,

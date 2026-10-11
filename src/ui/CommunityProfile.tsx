@@ -149,6 +149,12 @@ function SharedProfileFacts({ userId, name }: { userId: string; name: string }) 
   return (
     <View style={{ gap: 8 }}>
       <T variant="title">{view.displayName || name}</T>
+      {view.pinnedQuote ? (
+        <View style={{ gap: 4 }}>
+          <T variant="title">{view.pinnedQuote.text}</T>
+          <T variant="muted">{view.pinnedQuote.author} · {view.pinnedQuote.source}</T>
+        </View>
+      ) : null}
       {view.interests.length ? <T>{view.interests.join(' · ')}</T> : null}
       <T variant="muted">{view.town || 'Area not shared'}</T>
       {view.stage ? <T>Stage: {view.stage}</T> : null}

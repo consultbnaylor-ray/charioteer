@@ -49,6 +49,7 @@ function source(overrides: Partial<ShareSource> = {}): ShareSource {
       { id: 'p1', note: 'Out on the canal.', takenOn: '2026-08-01', monthIndex: 1, visibility: 'private' },
       { id: 'p2', note: 'Shared day.', takenOn: '2026-09-01', monthIndex: 2, visibility: 'community' },
     ],
+    pinnedQuoteId: null,
     ...overrides,
   };
 }

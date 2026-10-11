@@ -12,6 +12,7 @@ import { formatGbp, savingsFromTypicalWeek } from '@/domain/savings';
 import { shownError } from '@/domain/errors';
 import { soberElapsed } from '@/domain/sober';
 import { buildHealthInsights, HEALTH_METRICS } from '@/domain/healthInsights';
+import { quoteOfTheDay } from '@/domain/stoicQuotes';
 import { toggleHealthKind } from '@/domain/profileSharing';
 import { VISION_EMPTY_STATEMENT } from '@/domain/visionBoard';
 import { daysUntil, drinkFreeThisWeek, showsSoberRecord, SUDDEN_STOP_WARNING, toggleDrinkFreeDay } from '@/domain/stage';
@@ -211,6 +212,12 @@ export default function Home() {
       />
       </View>
       )}
+      <Card>
+        <T variant="label">Quote of the day</T>
+        <T>{quoteOfTheDay(now).text}</T>
+        <T variant="muted">{quoteOfTheDay(now).author} · {quoteOfTheDay(now).source}</T>
+        <Button label="Stoic quotes" tone="quiet" onPress={() => router.push('/quotes' as never)} />
+      </Card>
       {sober ? (
         <View style={{ gap: 8 }}>
         <View style={{ flexDirection: 'row', gap: 12 }}>

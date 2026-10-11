@@ -3,6 +3,7 @@ import { averageValue, formatHealthValue, HEALTH_KINDS, HEALTH_METRICS, seriesFo
 import { MILESTONES, milestoneReached } from './milestones';
 import { savingsFromTypicalWeek } from './savings';
 import { soberElapsed } from './sober';
+import { quoteById } from './stoicQuotes';
 import { STAGE_LABELS, isStage } from './stage';
 
 /** Shown under every Share on profile switch while Community is on. */
@@ -32,6 +33,8 @@ export type ProfileSharing = {
   gratitudeIds: string[];
   gratitudePhotoIds: string[];
   visionIds: string[];
+  /** The pinned Stoic line. Public-domain text, not special category data. */
+  pinnedQuote: boolean;
   /** Set the first time a sobriety or health item is shared. */
   sensitiveConsentAt: string | null;
 };
@@ -48,6 +51,7 @@ export function defaultProfileSharing(): ProfileSharing {
     gratitudeIds: [],
     gratitudePhotoIds: [],
     visionIds: [],
+    pinnedQuote: false,
     sensitiveConsentAt: null,
   };
 }
@@ -85,6 +89,7 @@ export function normalizeProfileSharing(value: unknown): ProfileSharing {
     gratitudeIds: stringList(raw.gratitudeIds),
     gratitudePhotoIds: stringList(raw.gratitudePhotoIds),
     visionIds: stringList(raw.visionIds),
+    pinnedQuote: flag(raw.pinnedQuote),
     sensitiveConsentAt: consent,
   };
 }
@@ -130,6 +135,7 @@ export type ShareSource = {
   gratitude: { id: string; body: string; entryDate: string; photoIds: string[] }[];
   vision: { id: string; caption: string; area: string | null }[];
   progressPhotos: { id: string; note: string; takenOn: string; monthIndex: number; visibility: 'private' | 'community' }[];
+  pinnedQuoteId: string | null;
 };
 
 export type PublicProfileView = {
@@ -146,6 +152,8 @@ export type PublicProfileView = {
   gratitude: { id: string; body: string; entryDate: string }[];
   gratitudePhotos: { id: string }[];
   vision: { id: string; caption: string; area: string | null }[];
+  /** Resolved from the bundled catalogue. Unknown ids are dropped. */
+  pinnedQuote: { id: string; text: string; author: string; source: string } | null;
   sharedLabels: string[];
   hiddenLabels: string[];
 };
@@ -247,6 +255,12 @@ export function projectPublicProfile(source: ShareSource, sharing: ProfileSharin
   else hiddenLabels.push('Gratitude photos');
   if (vision.length) sharedLabels.push('Vision items');
   else hiddenLabels.push('Vision items');
+  const pinned = settings.pinnedQuote ? quoteById(source.pinnedQuoteId) : null;
+  const pinnedQuote = pinned
+    ? { id: pinned.id, text: pinned.text, author: pinned.author, source: pinned.source }
+    : null;
+  if (pinnedQuote) sharedLabels.push('Pinned quote');
+  else hiddenLabels.push('Pinned quote');
 
   return {
     displayName: source.displayName,
@@ -262,6 +276,7 @@ export function projectPublicProfile(source: ShareSource, sharing: ProfileSharin
     gratitude,
     gratitudePhotos,
     vision,
+    pinnedQuote,
     sharedLabels,
     hiddenLabels,
   };
@@ -281,6 +296,7 @@ export function parsePublicProfile(value: unknown): PublicProfileView | null {
   const gratitude = Array.isArray(raw.gratitude) ? raw.gratitude : [];
   const gratitudePhotos = Array.isArray(raw.gratitudePhotos) ? raw.gratitudePhotos : [];
   const vision = Array.isArray(raw.vision) ? raw.vision : [];
+  const pinned = quoteById(typeof raw.pinnedQuoteId === 'string' ? raw.pinnedQuoteId : null);
   return {
     displayName: typeof raw.displayName === 'string' ? raw.displayName : '',
     interests: textList(raw.interests),
@@ -327,6 +343,9 @@ export function parsePublicProfile(value: unknown): PublicProfileView | null {
         area: typeof entry.area === 'string' ? entry.area : null,
       }];
     }),
+    pinnedQuote: pinned
+      ? { id: pinned.id, text: pinned.text, author: pinned.author, source: pinned.source }
+      : null,
     sharedLabels: textList(raw.sharedLabels),
     hiddenLabels: textList(raw.hiddenLabels),
   };
@@ -348,5 +367,6 @@ export function sharedReportItems(view: PublicProfileView): SharedReportItem[] {
   for (const entry of view.gratitude) items.push({ label: 'Gratitude line', summary: entry.body });
   for (const photo of view.gratitudePhotos) items.push({ label: 'Gratitude photo', summary: photo.id });
   for (const item of view.vision) items.push({ label: 'Vision item', summary: item.caption || item.id });
+  if (view.pinnedQuote) items.push({ label: 'Pinned quote', summary: view.pinnedQuote.text });
   return items;
 }

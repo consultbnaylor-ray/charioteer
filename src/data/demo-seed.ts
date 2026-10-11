@@ -40,6 +40,8 @@ export type DemoAccount = {
   visionItems: VisionItem[];
   /** Absent on older sample data. Name and interests stay public; everything else starts off. */
   sharing?: import('@/domain/profileSharing').ProfileSharing;
+  /** Absent on older sample data. Private favourite quote ids. */
+  savedQuotes?: { quoteId: string; createdAt: string }[];
 };
 
 export type DemoDb = {
@@ -127,6 +129,7 @@ function profile(
     heightCm: null,
     visionStatement: '',
     visionStartedOn: null,
+    pinnedQuoteId: null,
     createdAt: '2026-01-01T00:00:00.000Z',
     ...extra,
   };

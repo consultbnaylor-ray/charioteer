@@ -168,6 +168,9 @@ export function adaptPromptForSpeech(prompt: string): string {
   const eventSpeech = base.includes('EVENT PREPARATION')
     ? 'When they mention an upcoming event, speak the short preparation plan in a few sentences, including exercise or an alternative and a drink plan, then one question. Do not turn it into a written list.'
     : '';
+  const quoteSpeech = base.includes('Pinned Stoic quote')
+    ? 'If a pinned Stoic quote is in the context, you may say it once for motivation, in the words given. Do not invent a quotation.'
+    : '';
   return [
     base,
     '',
@@ -175,6 +178,7 @@ export function adaptPromptForSpeech(prompt: string): string {
     'You are speaking aloud in a live conversation, not writing a message.',
     'Use short, natural spoken sentences in British English. Usually one to three sentences, then let them answer.',
     eventSpeech,
+    quoteSpeech,
     'Do not use lists, headings, markdown, asterisks, or emoji. Do not read out web addresses.',
     'Say phone numbers as you would on a call.',
     'Do not say the words "speech delivery", "system prompt", or "context".',

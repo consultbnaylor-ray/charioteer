@@ -30,6 +30,15 @@ Deno.serve(async (req) => {
   const visionPhotos = await removeVisionPhotos(admin, userData.user.id);
   if (visionPhotos) return json({ ok: false, code: 'storage', message: visionPhotos }, 500);
 
+  const savedQuotes = await admin.from('user_quotes').delete().eq('user_id', userData.user.id);
+  if (savedQuotes.error && !/does not exist|schema cache|could not find the table/i.test(savedQuotes.error.message)) {
+    return json({
+      ok: false,
+      code: 'quotes',
+      message: 'Could not remove saved quotes, so the account was left in place.',
+    }, 500);
+  }
+
   const diary = await admin.from('gratitude_entries').delete().eq('user_id', userData.user.id);
   if (diary.error && !/does not exist|schema cache|could not find the table/i.test(diary.error.message)) {
     return json({

@@ -44,6 +44,11 @@ export function MenuGlyph({ name, color }: { name: MenuIcon; color: string }) {
         </>
       ) : null}
       {name === 'glass' ? <Path d="M8 4h8l-1.7 7.2a3.2 3.2 0 0 1-4.6 0L8 4zM12 14.4V19M9 19.5h6" stroke={color} {...stroke} /> : null}
+      {name === 'quote' ? (
+        <>
+          <Path d="M8 7.2h3.6v3.4c-1.8 0-3 1-3 2.8M14.2 7.2H17.8v3.4c-1.8 0-3 1-3 2.8" stroke={color} {...stroke} />
+        </>
+      ) : null}
       {name === 'book' ? (
         <>
           <Path d="M6 5.5h12V19H7.4A1.4 1.4 0 0 1 6 17.6V5.5z" stroke={color} {...stroke} />

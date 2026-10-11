@@ -241,6 +241,7 @@ describe('gratitude diary wiring', () => {
       'Progress photos',
       'Vision Board',
       'Drinks & units calculator',
+      'Stoic Quotes',
       'Library',
       'You',
       'Privacy & consent',

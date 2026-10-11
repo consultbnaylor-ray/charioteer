@@ -8,6 +8,7 @@ import {
   VOICE_COPY,
 } from '../_shared/voice.ts';
 import { buildHealthInsights, londonDay } from '../_shared/healthInsights.ts';
+import { pinnedStoicQuote } from '../_shared/stoicQuotes.ts';
 import {
   interestLabelsFromRows,
   THUMOS_CHAT,
@@ -168,6 +169,7 @@ Deno.serve(async (req) => {
       gratitude,
       vision,
       interests: interestRes.error ? [] : interestLabelsFromRows(interestRes.data),
+      pinnedQuote: pinnedStoicQuote(profile.pinned_quote_id),
     },
   });
 

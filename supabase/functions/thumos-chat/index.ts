@@ -3,6 +3,7 @@ import { ALCOHOL_FACTS } from '../_shared/facts.ts';
 import { corsHeaders, json, preflight } from '../_shared/http.ts';
 import { encodeSse, type ThumosServerEvent } from '../_shared/sse.ts';
 import { ensureSafetyNotices } from '../_shared/safety.ts';
+import { pinnedStoicQuote } from '../_shared/stoicQuotes.ts';
 import {
   buildChatCompletionBody,
   buildSystemPrompt,
@@ -182,6 +183,7 @@ Deno.serve(async (req) => {
     gratitude,
     vision,
     interests: interestRes.error ? [] : interestLabelsFromRows(interestRes.data),
+    pinnedQuote: pinnedStoicQuote(profile.pinned_quote_id),
   });
 
   const admin = createClient(url, service, { auth: { persistSession: false } });

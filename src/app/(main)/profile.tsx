@@ -11,6 +11,7 @@ import { shownError } from '@/domain/errors';
 import { interestChipRemovable, interestChipVisible } from '@/domain/interests';
 import { planCustomInterest } from '@/domain/privacy';
 import { toggleShareId } from '@/domain/profileSharing';
+import { quoteById } from '@/domain/stoicQuotes';
 import { planReasons, reasonOverLimit } from '@/domain/reasons';
 import { profileDetailsDirty, type ProfileFormValues } from '@/domain/profileForm';
 import { InterestChip } from '@/ui/InterestChip';
@@ -20,11 +21,14 @@ import { ProgressPhotos } from '@/ui/ProgressPhotos';
 import { UnitsGuide } from '@/ui/UnitsGuide';
 import { DateField } from '@/ui/DateField';
 import { Button, Card, Choice, ErrorNote, Field, playSavedHaptic, Screen, T } from '@/ui/ui';
+import { useRouter } from 'expo-router';
 
 export default function Profile() {
   const snap = useSnapshot();
   const repo = useRepository();
+  const router = useRouter();
   const profile = snap.profile;
+  const pinned = quoteById(profile?.pinnedQuoteId);
   const [name, setName] = useState(profile?.displayName ?? '');
   const [reasons, setReasons] = useState(snap.reasons.map((reason) => reason.body).join('\n'));
   const [town, setTown] = useState(profile?.town ?? '');
@@ -225,6 +229,22 @@ export default function Profile() {
         </View>
       )}
     >
+      {pinned ? (
+        <View style={{ gap: 8 }}>
+          <T variant="label">Pinned quote</T>
+          <T variant="display">{pinned.text}</T>
+          <T variant="muted">{pinned.author} · {pinned.source}</T>
+          <Button label="Unpin" tone="quiet" onPress={() => void repo.pinQuote(null).catch((err: unknown) => setError(shownError(err, 'Could not unpin that quote.')))} />
+          <Button label="Change" tone="quiet" onPress={() => router.push('/quotes' as never)} />
+          <ShareOnProfile
+            detail="pinned quote"
+            on={snap.sharing.pinnedQuote}
+            apply={(sharing, selected) => ({ ...sharing, pinnedQuote: selected })}
+          />
+        </View>
+      ) : (
+        <Button label="Pin a Stoic quote" tone="quiet" onPress={() => router.push('/quotes' as never)} />
+      )}
       <T variant="label">Your details</T>
       <T>Name, where you are, the sober date, your usual week, reasons, interests, town, and consents. A new sober date is a correction, not a relapse.</T>
       <Card>

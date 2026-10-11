@@ -3,6 +3,7 @@ import { isoDay } from '@/domain/dates';
 import { buildHealthInsights } from '@/domain/healthInsights';
 import { visionContextFrom } from '@/domain/visionBoard';
 import { drinkFreeThisWeek } from '@/domain/stage';
+import { quoteById } from '@/domain/stoicQuotes';
 import { buildVoiceBriefing, type VoiceBriefing } from '@/domain/voice';
 import type { HealthTrend, ThumosMode } from '@/domain/thumos';
 
@@ -73,6 +74,12 @@ export function briefingFromSnapshot(snap: AppSnapshot, requestedMode: ThumosMod
       interests: snap.interests
         .filter((item) => profile.interestIds.includes(item.id))
         .map((item) => item.label),
+      pinnedQuote: profile.consentAi
+        ? (() => {
+            const quote = quoteById(profile.pinnedQuoteId);
+            return quote ? { text: quote.text, author: quote.author, source: quote.source } : null;
+          })()
+        : null,
       mode: requestedMode,
       safety: { selfHarm: false, withdrawal: false, reasons: [] },
     },

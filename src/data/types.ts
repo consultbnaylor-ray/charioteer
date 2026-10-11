@@ -48,6 +48,8 @@ export type Profile = {
   visionStatement: string;
   /** The day the board began. The target is five years after this, and it does not move. */
   visionStartedOn: string | null;
+  /** Id from the bundled Stoic catalogue. Null when nothing is pinned. */
+  pinnedQuoteId: string | null;
   createdAt: string;
 };
 
@@ -146,6 +148,8 @@ export type ThumosMessage = {
   mode: ThumosMode | 'opening';
   createdAt: string;
 };
+export type SavedQuote = { quoteId: string; createdAt: string };
+
 export type Session = { userId: string; email: string };
 
 export type AppSnapshot = {
@@ -175,6 +179,8 @@ export type AppSnapshot = {
   visionItems: VisionItem[];
   /** Which sections this person has chosen to show. Name and interests stay on. */
   sharing: ProfileSharing;
+  /** Private favourite Stoic lines. Other people cannot read this list. */
+  savedQuotes: SavedQuote[];
 };
 
 export type NewGratitudeEntry = {
@@ -229,6 +235,7 @@ export type ProfilePatch = Partial<
     | 'heightCm'
     | 'visionStatement'
     | 'visionStartedOn'
+    | 'pinnedQuoteId'
   >
 >;
 
@@ -310,6 +317,10 @@ export interface Repository {
   deleteProgressPhoto(id: string): Promise<void>;
   setProgressPhotoVisibility(ids: string[], visibility: ProgressVisibility): Promise<void>;
   setProfileSharing(sharing: ProfileSharing): Promise<void>;
+  saveQuote(quoteId: string): Promise<void>;
+  unsaveQuote(quoteId: string): Promise<void>;
+  /** Pass null to unpin. Only a catalogue id can be pinned. */
+  pinQuote(quoteId: string | null): Promise<void>;
   /** Shared fields only. Null when the profile is hidden or blocked. */
   publicProfile(userId: string): Promise<PublicProfileView | null>;
   openPrivateChat(userId: string): Promise<{ status: 'open'; connectionId: string } | { status: 'requested'; connectionId: string | null }>;
