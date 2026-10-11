@@ -1,8 +1,10 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
-import { View } from 'react-native';
+import { Pressable, Text, View } from 'react-native';
+import Svg, { Path } from 'react-native-svg';
 
 import { useRepository, useSnapshot } from '@/data';
+import { CHARIOTEER_STORY, CHARIOTEER_STORY_TITLE } from '@/domain/charioteerStory';
 import { ALCOHOL_FACTS } from '@/domain/facts';
 import { earnedMilestones } from '@/domain/milestones';
 import { firstSafetyHit, pinnedSafetyNotices } from '@/domain/safety';
@@ -15,6 +17,7 @@ import { VOICE_COPY } from '@/domain/voice';
 import { createVoiceRuntime, voiceStatusLabel, type VoiceRuntime } from '@/domain/voiceSession';
 import { briefingFromSnapshot } from '@/voice/briefing';
 import { VoiceCall } from '@/voice/call';
+import { HELMET_ASPECT, HELMET_D, HELMET_VIEWBOX } from '@/ui/helmet';
 import { Button, Card, ErrorNote, Field, Screen, T } from '@/ui/ui';
 import { useAppTheme } from '@/ui/theme';
 
@@ -263,6 +266,49 @@ export default function Thumos() {
         </View>
       )}
       {showsSoberRecord(profile.stage) ? <T variant="muted">Milestones in view: {(profile.sobrietyStartedAt ? earnedMilestones(new Date(profile.sobrietyStartedAt), new Date()) : []).map((item) => item.badge).join(', ') || 'none yet'}.</T> : null}
+      <SoulStory />
     </Screen>
+  );
+}
+
+function SoulStory() {
+  const theme = useAppTheme();
+  const [open, setOpen] = useState(false);
+  const [before, after] = CHARIOTEER_STORY.split('Phaedrus');
+  return (
+    <Card>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={CHARIOTEER_STORY_TITLE}
+        accessibilityState={{ expanded: open }}
+        onPress={() => setOpen((value) => !value)}
+        style={{ minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 12 }}
+      >
+        <T variant="title" style={{ flex: 1 }}>{CHARIOTEER_STORY_TITLE}</T>
+        <View
+          accessibilityElementsHidden
+          importantForAccessibility="no-hide-descendants"
+          style={{ width: 24, height: 24, transform: [{ rotate: open ? '180deg' : '0deg' }] }}
+        >
+          <Svg width={24} height={24} viewBox="0 0 24 24">
+            <Path d="M6 9l6 6 6-6" stroke={theme.colors.ink} strokeWidth={1.6} fill="none" strokeLinecap="round" strokeLinejoin="round" />
+          </Svg>
+        </View>
+      </Pressable>
+      {open ? (
+        <View style={{ gap: 14, paddingTop: 8 }}>
+          <View accessibilityElementsHidden importantForAccessibility="no-hide-descendants" style={{ alignItems: 'center', opacity: 0.15 }}>
+            <Svg width={96} height={96 / HELMET_ASPECT} viewBox={HELMET_VIEWBOX}>
+              <Path d={HELMET_D} fill={theme.colors.ink} />
+            </Svg>
+          </View>
+          <T style={{ lineHeight: 28 * theme.scale }}>
+            {before}
+            <Text style={{ fontFamily: theme.font.bodyItalic }}>Phaedrus</Text>
+            {after}
+          </T>
+        </View>
+      ) : null}
+    </Card>
   );
 }
