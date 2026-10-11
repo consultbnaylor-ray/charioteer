@@ -1,6 +1,7 @@
 import { Image } from 'expo-image';
 import { useEffect, useRef, useState } from 'react';
 import { Modal, Pressable, ScrollView, useWindowDimensions, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useRepository, useSnapshot } from '@/data';
 import { shownError } from '@/domain/errors';
@@ -45,6 +46,7 @@ export function VisionBoard() {
   const repo = useRepository();
   const snap = useSnapshot();
   const theme = useAppTheme();
+  const insets = useSafeAreaInsets();
   const width = useWindowDimensions().width;
   const profile = snap.profile;
   const items = sortVisionItems(snap.visionItems);
@@ -281,8 +283,12 @@ export function VisionBoard() {
       <Modal visible={open != null} animationType="slide" transparent onRequestClose={() => setOpenId(null)}>
         <View style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.45)' }}>
           <Pressable accessibilityRole="button" accessibilityLabel="Close photo" style={{ flex: 1 }} onPress={() => setOpenId(null)} />
-          <View style={{ maxHeight: '88%', backgroundColor: theme.colors.bg, borderTopLeftRadius: 16, borderTopRightRadius: 16, padding: 20, gap: 12 }}>
-            <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ gap: 12 }}>
+          <View style={{ maxHeight: '88%', backgroundColor: theme.colors.bg, borderTopLeftRadius: 16, borderTopRightRadius: 16, paddingHorizontal: 20, paddingTop: 16, paddingBottom: 16 + insets.bottom, gap: 12 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+              <T variant="title">This picture</T>
+              <Button label="Close" tone="quiet" onPress={() => setOpenId(null)} />
+            </View>
+            <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ gap: 12, paddingBottom: 72 }}>
               {open?.previewUrl ? (
                 <Image source={{ uri: open.previewUrl }} style={{ width: '100%', height: 220, borderRadius: 16 }} contentFit="cover" accessibilityIgnoresInvertColors />
               ) : null}
@@ -327,13 +333,12 @@ export function VisionBoard() {
               ) : (
                 <Button label="Delete" tone="quiet" onPress={() => setConfirmDelete(true)} />
               )}
-              <Button label="Close" tone="quiet" onPress={() => setOpenId(null)} />
             </ScrollView>
           </View>
         </View>
       </Modal>
       <Modal visible={show && current != null} animationType="fade" onRequestClose={() => setShow(false)}>
-        <View style={{ flex: 1, backgroundColor: '#0C0C0C', justifyContent: 'center' }}>
+        <View style={{ flex: 1, backgroundColor: '#0C0C0C', justifyContent: 'center', paddingTop: insets.top, paddingBottom: 24 + insets.bottom }}>
           <T variant="label" style={{ color: '#F3F3EE', textAlign: 'center', marginBottom: 12 }}>Look at my vision</T>
           {current?.previewUrl ? (
             <Image source={{ uri: current.previewUrl }} style={{ width: '100%', height: 420 }} contentFit="contain" accessibilityIgnoresInvertColors />
