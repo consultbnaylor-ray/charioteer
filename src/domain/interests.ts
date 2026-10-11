@@ -1,5 +1,33 @@
 import type { DirectoryCard, Profile } from '@/data/types';
 
+/** Catalogue chips, alphabetical. One chip for health and fitness. */
+export const DEFAULT_INTERESTS = [
+  { slug: 'exercise', label: 'Exercise' },
+  { slug: 'gym', label: 'Gym' },
+  { slug: 'health-and-fitness', label: 'Health and Fitness' },
+  { slug: 'hiking', label: 'Hiking' },
+] as const;
+
+export function normaliseInterestName(label: string): string {
+  return label.trim().replace(/\s+/g, ' ').toLowerCase();
+}
+
+/** A catalogue name, including a custom row Ben already created with the same name or slug. */
+export function isDefaultInterest(interest: { slug: string; label: string }): boolean {
+  const name = normaliseInterestName(interest.label);
+  return DEFAULT_INTERESTS.some((item) => item.slug === interest.slug || normaliseInterestName(item.label) === name);
+}
+
+/** Defaults stay on the list. Anything else is shown only while the person has chosen it. */
+export function interestChipVisible(interest: { slug: string; label: string }, selected: boolean): boolean {
+  return isDefaultInterest(interest) || selected;
+}
+
+/** The × is for a person’s own interest. A default chip toggles and stays available. */
+export function interestChipRemovable(interest: { slug: string; label: string; custom: boolean }): boolean {
+  return interest.custom && !isDefaultInterest(interest);
+}
+
 /** Next selected ids. Adding or removing an id that is already in that state returns a copy. */
 export function nextInterestIds(current: readonly string[], interestId: string, selected: boolean): string[] {
   const has = current.includes(interestId);

@@ -1,17 +1,11 @@
 -- Catalogue rows. Keep src/data/catalogue.ts in step with this file.
 
 insert into public.interests (id, slug, label) values
-  ('10000000-0000-4000-8000-000000000001', 'swimming', 'Swimming'),
-  ('10000000-0000-4000-8000-000000000002', 'hiking', 'Hiking'),
-  ('10000000-0000-4000-8000-000000000003', 'dancing', 'Dancing'),
-  ('10000000-0000-4000-8000-000000000004', 'sober-raving', 'Sober raving'),
-  ('10000000-0000-4000-8000-000000000005', 'cinema-meals', 'Cinema/Meals'),
-  ('10000000-0000-4000-8000-000000000006', 'nights-in', 'Nights in'),
-  ('10000000-0000-4000-8000-000000000007', 'reading', 'Reading'),
-  ('10000000-0000-4000-8000-000000000008', 'running', 'Running'),
-  ('10000000-0000-4000-8000-000000000009', 'cooking', 'Cooking'),
-  ('10000000-0000-4000-8000-000000000010', 'yoga', 'Yoga')
-on conflict (id) do nothing;
+  ('10000000-0000-4000-8000-000000000011', 'exercise', 'Exercise'),
+  ('10000000-0000-4000-8000-000000000012', 'gym', 'Gym'),
+  ('10000000-0000-4000-8000-000000000013', 'health-and-fitness', 'Health and Fitness'),
+  ('10000000-0000-4000-8000-000000000002', 'hiking', 'Hiking')
+on conflict (slug) do nothing;
 
 insert into public.resources (id, category, title, detail, url, phone, verification, verification_note, sort_order) values
   ('20000000-0000-4000-8000-000000000001', 'quit_lit', 'This Naked Mind', 'Annie Grace. A widely read book about changing your beliefs around alcohol.', null, null, 'unverified', 'Title and author only. No shop or publisher link is included because one official page was not confirmed in this pass.', 0),
@@ -96,16 +90,15 @@ begin
 
   insert into public.profile_interests (user_id, interest_id) values
     ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1', '10000000-0000-4000-8000-000000000002'),
-    ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1', '10000000-0000-4000-8000-000000000005'),
-    ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1', '10000000-0000-4000-8000-000000000006'),
+    ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1', '10000000-0000-4000-8000-000000000012'),
     ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa2', '10000000-0000-4000-8000-000000000002'),
-    ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa2', '10000000-0000-4000-8000-000000000001'),
-    ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa3', '10000000-0000-4000-8000-000000000004'),
-    ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa3', '10000000-0000-4000-8000-000000000006'),
-    ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa4', '10000000-0000-4000-8000-000000000003'),
-    ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa4', '10000000-0000-4000-8000-000000000005'),
-    ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa5', '10000000-0000-4000-8000-000000000009'),
-    ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa5', '10000000-0000-4000-8000-000000000007');
+    ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa2', '10000000-0000-4000-8000-000000000011'),
+    ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa3', '10000000-0000-4000-8000-000000000012'),
+    ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa3', '10000000-0000-4000-8000-000000000013'),
+    ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa4', '10000000-0000-4000-8000-000000000011'),
+    ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa4', '10000000-0000-4000-8000-000000000013'),
+    ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa5', '10000000-0000-4000-8000-000000000013'),
+    ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa5', '10000000-0000-4000-8000-000000000002');
 
   insert into public.reasons (user_id, body, sort_order) values
     ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1', 'I want to remember my evenings.', 0),

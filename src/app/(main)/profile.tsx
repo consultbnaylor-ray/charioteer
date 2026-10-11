@@ -9,6 +9,7 @@ import { correctedSoberStart } from '@/domain/correctStart';
 import { formatUkDate, isoDay, parseIsoDay, startOfLocalDay } from '@/domain/dates';
 import { parseDrinkFreeGoal, parseUnitsGoal, showsSoberRecord, STAGE_LABELS, STAGES, SUDDEN_STOP_WARNING, validateStageStep, type Stage } from '@/domain/stage';
 import { shownError } from '@/domain/errors';
+import { interestChipRemovable, interestChipVisible } from '@/domain/interests';
 import { planCustomInterest } from '@/domain/privacy';
 import { InterestChip } from '@/ui/InterestChip';
 import { ConsentChoices } from '@/ui/ConsentChoices';
@@ -190,16 +191,17 @@ export default function Profile() {
         <T variant="label">Interests</T>
         <T variant="muted">Tap a chip to add or remove it. Changes save straight away.</T>
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-          {snap.interests.filter((interest) => !interest.custom || profile.interestIds.includes(interest.id)).map((interest) => {
+          {snap.interests.filter((interest) => interestChipVisible(interest, profile.interestIds.includes(interest.id))).map((interest) => {
             const selected = profile.interestIds.includes(interest.id);
+            const removable = interestChipRemovable(interest);
             return (
               <InterestChip
                 key={interest.id}
                 label={interest.label}
                 selected={selected}
-                custom={interest.custom}
+                custom={removable}
                 onPress={() => toggleInterest(interest.id, !selected)}
-                onRemove={interest.custom ? () => toggleInterest(interest.id, false) : undefined}
+                onRemove={removable ? () => toggleInterest(interest.id, false) : undefined}
               />
             );
           })}

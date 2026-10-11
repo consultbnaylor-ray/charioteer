@@ -67,11 +67,11 @@ Open the sample as Alex Hart from the sign-in screen. Password for every sample 
 
 | Email | Who |
 | --- | --- |
-| alex.hart@example.com | Bristol. 47 days and 6 hours sober, £48 and 30 units a week, hiking, cinema/meals, nights in. A chat with Jordan and a request from Sam. |
-| jordan.ellis@example.com | Manchester. Hiking and swimming. Accepted chat with Alex. |
-| sam.okonkwo@example.com | Leeds. Sober raving and nights in. Pending request to Alex. |
-| priya.shah@example.com | London. Dancing and cinema/meals. |
-| rowan.blake@example.com | Glasgow. Cooking and reading. Moderator. |
+| alex.hart@example.com | Bristol. 47 days and 6 hours sober, £48 and 30 units a week, hiking and gym. A chat with Jordan and a request from Sam. |
+| jordan.ellis@example.com | Manchester. Hiking and exercise. Accepted chat with Alex. |
+| sam.okonkwo@example.com | Leeds. Gym and health and fitness. Pending request to Alex. |
+| priya.shah@example.com | London. Exercise and health and fitness. |
+| rowan.blake@example.com | Glasgow. Health and fitness, and hiking. Moderator. |
 
 New messages to Thumos in demo mode say, plainly, that the coach is not connected. The earlier thread on Alex’s account is stored sample copy, labelled as such.
 

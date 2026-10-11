@@ -3,16 +3,10 @@ import type { Interest, Resource } from '@/data/types';
 export const CONSENT_VERSION = '2026-10-10';
 
 export const INTEREST_CATALOGUE: Interest[] = [
-  { id: '10000000-0000-4000-8000-000000000001', slug: 'swimming', label: 'Swimming', custom: false },
+  { id: '10000000-0000-4000-8000-000000000011', slug: 'exercise', label: 'Exercise', custom: false },
+  { id: '10000000-0000-4000-8000-000000000012', slug: 'gym', label: 'Gym', custom: false },
+  { id: '10000000-0000-4000-8000-000000000013', slug: 'health-and-fitness', label: 'Health and Fitness', custom: false },
   { id: '10000000-0000-4000-8000-000000000002', slug: 'hiking', label: 'Hiking', custom: false },
-  { id: '10000000-0000-4000-8000-000000000003', slug: 'dancing', label: 'Dancing', custom: false },
-  { id: '10000000-0000-4000-8000-000000000004', slug: 'sober-raving', label: 'Sober raving', custom: false },
-  { id: '10000000-0000-4000-8000-000000000005', slug: 'cinema-meals', label: 'Cinema/Meals', custom: false },
-  { id: '10000000-0000-4000-8000-000000000006', slug: 'nights-in', label: 'Nights in', custom: false },
-  { id: '10000000-0000-4000-8000-000000000007', slug: 'reading', label: 'Reading', custom: false },
-  { id: '10000000-0000-4000-8000-000000000008', slug: 'running', label: 'Running', custom: false },
-  { id: '10000000-0000-4000-8000-000000000009', slug: 'cooking', label: 'Cooking', custom: false },
-  { id: '10000000-0000-4000-8000-000000000010', slug: 'yoga', label: 'Yoga', custom: false },
 ];
 
 const checked = 'Checked against the organisation or NHS page on 10 October 2026.';

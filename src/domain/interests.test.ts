@@ -2,9 +2,14 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
 import type { DirectoryCard, Profile } from '@/data/types';
+import { INTEREST_CATALOGUE } from '../data/catalogue';
 import {
+  DEFAULT_INTERESTS,
   directoryWithOwnInterests,
+  interestChipRemovable,
+  interestChipVisible,
   interestSelectionUnchanged,
+  isDefaultInterest,
   nextInterestIds,
   rolledBackInterestIds,
   snapshotWithOwnInterests,
@@ -62,6 +67,40 @@ describe('people matching', () => {
     expect(next.directory[0].sharedInterestIds).toEqual(['run']);
     expect(next.ready).toBe(true);
     expect(profile.interestIds).toEqual(['cook']);
+  });
+});
+
+describe('default interests', () => {
+  it('offers exercise, gym, health and fitness, and hiking in alphabetical order', () => {
+    expect(DEFAULT_INTERESTS.map((item) => item.label)).toEqual(['Exercise', 'Gym', 'Health and Fitness', 'Hiking']);
+    expect(INTEREST_CATALOGUE.map((item) => item.label)).toEqual(DEFAULT_INTERESTS.map((item) => item.label));
+    expect(INTEREST_CATALOGUE.map((item) => item.slug)).toEqual(DEFAULT_INTERESTS.map((item) => item.slug));
+    const labels = DEFAULT_INTERESTS.map((item) => item.label);
+    expect(labels).toEqual([...labels].sort((a, b) => a.localeCompare(b, 'en')));
+  });
+
+  it('treats an existing custom Gym or Health and Fitness row as a default chip', () => {
+    expect(isDefaultInterest({ slug: 'gym', label: 'gym' })).toBe(true);
+    expect(isDefaultInterest({ slug: 'weights', label: 'Health and Fitness' })).toBe(true);
+    expect(isDefaultInterest({ slug: 'swimming', label: 'Swimming' })).toBe(false);
+    expect(interestChipVisible({ slug: 'hiking', label: 'Hiking' }, false)).toBe(true);
+    expect(interestChipVisible({ slug: 'cooking', label: 'Cooking' }, false)).toBe(false);
+    expect(interestChipVisible({ slug: 'cooking', label: 'Cooking' }, true)).toBe(true);
+    expect(interestChipRemovable({ slug: 'gym', label: 'Gym', custom: true })).toBe(false);
+    expect(interestChipRemovable({ slug: 'choir', label: 'Choir', custom: true })).toBe(true);
+  });
+
+  it('reuses a live row by name and does not delete interest links', () => {
+    const sql = readFileSync('supabase/migrations/20261010200000_default_interests.sql', 'utf8');
+    expect(sql).toContain('on conflict (slug) do nothing');
+    expect(sql).toContain('created_by = null');
+    for (const label of ['Exercise', 'Gym', 'Health and Fitness', 'Hiking']) expect(sql).toContain(label);
+    expect(sql.toLowerCase()).not.toMatch(/delete from public\.interests/);
+    expect(sql.toLowerCase()).not.toMatch(/delete from public\.profile_interests/);
+    const seed = readFileSync('supabase/seed.sql', 'utf8');
+    expect(seed).toContain("'exercise', 'Exercise'");
+    expect(seed).toContain("'health-and-fitness', 'Health and Fitness'");
+    expect(seed).not.toContain('Sober raving');
   });
 });
 

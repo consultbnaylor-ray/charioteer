@@ -15,14 +15,10 @@ export const PEOPLE = {
   rowan: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa5',
 } as const;
 
+const EXERCISE = '10000000-0000-4000-8000-000000000011';
+const GYM = '10000000-0000-4000-8000-000000000012';
+const HEALTH = '10000000-0000-4000-8000-000000000013';
 const HIKING = '10000000-0000-4000-8000-000000000002';
-const SWIMMING = '10000000-0000-4000-8000-000000000001';
-const DANCING = '10000000-0000-4000-8000-000000000003';
-const RAVING = '10000000-0000-4000-8000-000000000004';
-const CINEMA = '10000000-0000-4000-8000-000000000005';
-const NIGHTS = '10000000-0000-4000-8000-000000000006';
-const READING = '10000000-0000-4000-8000-000000000007';
-const COOKING = '10000000-0000-4000-8000-000000000009';
 
 export type DemoAccount = {
   email: string;
@@ -162,7 +158,7 @@ export function createDemoDb(now = new Date()): DemoDb {
   const alex: DemoAccount = {
     email: 'alex.hart@example.com',
     password: DEMO_PASSWORD,
-    profile: profile(PEOPLE.alex, 'alex.hart@example.com', 'Alex Hart', 'Bristol', [HIKING, CINEMA, NIGHTS], {
+    profile: profile(PEOPLE.alex, 'alex.hart@example.com', 'Alex Hart', 'Bristol', [HIKING, GYM], {
       sobrietyStartedAt: started,
       weeklySpendGbp: 48,
       weeklyUnits: 30,
@@ -217,7 +213,7 @@ export function createDemoDb(now = new Date()): DemoDb {
     progressPhotos: [],
   });
 
-  const jordan = other(PEOPLE.jordan, 'jordan.ellis@example.com', 'Jordan Ellis', 'Manchester', [HIKING, SWIMMING]);
+  const jordan = other(PEOPLE.jordan, 'jordan.ellis@example.com', 'Jordan Ellis', 'Manchester', [HIKING, EXERCISE]);
   const jordanAnchor = new Date('2026-01-01T00:00:00.000Z');
   const sharedPlan = planProgressPhoto({
     takenOn: isoDay(now),
@@ -245,9 +241,9 @@ export function createDemoDb(now = new Date()): DemoDb {
     accounts: {
       [PEOPLE.alex]: alex,
       [PEOPLE.jordan]: jordan,
-      [PEOPLE.sam]: other(PEOPLE.sam, 'sam.okonkwo@example.com', 'Sam Okonkwo', 'Leeds', [RAVING, NIGHTS]),
-      [PEOPLE.priya]: other(PEOPLE.priya, 'priya.shah@example.com', 'Priya Shah', 'London', [DANCING, CINEMA]),
-      [PEOPLE.rowan]: other(PEOPLE.rowan, 'rowan.blake@example.com', 'Rowan Blake', 'Glasgow', [COOKING, READING], {
+      [PEOPLE.sam]: other(PEOPLE.sam, 'sam.okonkwo@example.com', 'Sam Okonkwo', 'Leeds', [GYM, HEALTH]),
+      [PEOPLE.priya]: other(PEOPLE.priya, 'priya.shah@example.com', 'Priya Shah', 'London', [EXERCISE, HEALTH]),
+      [PEOPLE.rowan]: other(PEOPLE.rowan, 'rowan.blake@example.com', 'Rowan Blake', 'Glasgow', [HEALTH, HIKING], {
         isModerator: true,
       }),
     },

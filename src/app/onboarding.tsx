@@ -4,6 +4,7 @@ import { View } from 'react-native';
 import { useRepository, useSnapshot } from '@/data';
 import { isoDay, startOfLocalDay } from '@/domain/dates';
 import { shownError } from '@/domain/errors';
+import { interestChipVisible } from '@/domain/interests';
 import { planCustomInterest, validateTown } from '@/domain/privacy';
 import { reasonPlaceholder } from '@/domain/reasons';
 import { parseDrinkFreeGoal, parseUnitsGoal, STAGE_LABELS, STAGES, SUDDEN_STOP_WARNING, validateStageStep, type Stage } from '@/domain/stage';
@@ -133,7 +134,7 @@ export default function Onboarding() {
     }
   }
 
-  const catalogue = snap.interests.filter((interest) => !interest.custom || interestIds.includes(interest.id));
+  const catalogue = snap.interests.filter((interest) => interestChipVisible(interest, interestIds.includes(interest.id)));
 
   return (
     <Screen eyebrow={`Step ${step + 1} of ${STEPS}`} title={titles[step]} intro={intros[step]}>
@@ -288,7 +289,7 @@ const intros = [
   'Stopped, trying to stop, cutting down, or just looking. You can change this later.',
   'Thumos will remind you of these in your own words, and only when it helps.',
   'Your own usual week. It is an estimate from what you tell us, not a medical calculation.',
-  'Swimming, hiking, dancing, sober raving, cinema and meals, nights in — or something of your own.',
+  'Exercise, gym, health and fitness, hiking — or something of your own.',
   'Optional. Town or area only.',
   'Health and drinking data are sensitive. Nothing is turned on unless you agree.',
 ];
