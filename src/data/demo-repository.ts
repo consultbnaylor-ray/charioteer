@@ -9,6 +9,7 @@ import {
 } from '@/domain/errors';
 import { randomId } from '@/domain/id';
 import { planProgressPhoto, progressAnchor, progressPhotoLabel, progressStoragePath, progressVisibility, PROGRESS_MAX_BYTES } from '@/domain/progressPhotos';
+import { interestSelectionUnchanged, nextInterestIds } from '@/domain/interests';
 import { planCustomInterest, validateTown } from '@/domain/privacy';
 import { planRelapse } from '@/domain/sober';
 import { detectSafety, ensureSafetyNotices } from '@/domain/safety';
@@ -410,6 +411,16 @@ export class DemoRepository implements Repository {
         list.push({ id: uid(), ...sample });
       }
     }
+    this.commit(db);
+  }
+
+  async setInterestSelected(interestId: string, selected: boolean): Promise<void> {
+    const account = this.me();
+    const current = account.profile.interestIds;
+    const next = nextInterestIds(current, interestId, selected);
+    if (interestSelectionUnchanged(current, next)) return;
+    const db = clone(this.db);
+    db.accounts[account.profile.id].profile.interestIds = next;
     this.commit(db);
   }
 

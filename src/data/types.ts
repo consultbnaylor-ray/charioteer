@@ -266,6 +266,7 @@ export interface Repository {
   addCheckIn(input: NewCheckIn): Promise<void>;
   recordRelapse(note: string): Promise<void>;
   saveHealth(samples: NewHealthSample[]): Promise<void>;
+  setInterestSelected(interestId: string, selected: boolean): Promise<void>;
   addCustomInterest(label: string): Promise<void>;
   requestConnection(userId: string): Promise<void>;
   respondConnection(connectionId: string, accept: boolean): Promise<void>;

@@ -1,6 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRouter } from 'expo-router';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { Platform, Share, View } from 'react-native';
 
 import { useRepository, useSnapshot } from '@/data';
@@ -9,6 +9,8 @@ import { correctedSoberStart } from '@/domain/correctStart';
 import { formatUkDate, isoDay, parseIsoDay, startOfLocalDay } from '@/domain/dates';
 import { parseDrinkFreeGoal, parseUnitsGoal, showsSoberRecord, STAGE_LABELS, STAGES, SUDDEN_STOP_WARNING, validateStageStep, type Stage } from '@/domain/stage';
 import { shownError } from '@/domain/errors';
+import { planCustomInterest } from '@/domain/privacy';
+import { InterestChip } from '@/ui/InterestChip';
 import { ConsentChoices } from '@/ui/ConsentChoices';
 import { ProgressPhotos } from '@/ui/ProgressPhotos';
 import { UnitsGuide } from '@/ui/UnitsGuide';
@@ -25,7 +27,9 @@ export default function Profile() {
   const [town, setTown] = useState(profile?.town ?? '');
   const [spend, setSpend] = useState(profile?.weeklySpendGbp?.toString() ?? '');
   const [units, setUnits] = useState(profile?.weeklyUnits?.toString() ?? '');
-  const [interestIds, setInterestIds] = useState(profile?.interestIds ?? []);
+  const [customInterest, setCustomInterest] = useState('');
+  const [addingInterest, setAddingInterest] = useState(false);
+  const addingInterestRef = useRef(false);
   const [community, setCommunity] = useState(profile?.communityVisible ?? false);
   const [health, setHealth] = useState(profile?.consentHealth ?? false);
   const [ai, setAi] = useState(profile?.consentAi ?? false);
@@ -47,8 +51,37 @@ export default function Profile() {
     { id: 'extra', label: 'Extra large' },
   ];
 
-  function toggleInterest(id: string) {
-    setInterestIds((current) => (current.includes(id) ? current.filter((item) => item !== id) : [...current, id]));
+  function toggleInterest(id: string, selected: boolean) {
+    setError(null);
+    void repo.setInterestSelected(id, selected).catch((err: unknown) => setError(shownError(err, 'Could not update that interest.')));
+  }
+
+  async function addOwnInterest() {
+    if (addingInterestRef.current || !profile) return;
+    const plan = planCustomInterest(customInterest);
+    if (!plan.ok) {
+      setError(plan.message);
+      return;
+    }
+    const known = snap.interests.find((item) => item.slug === plan.slug);
+    if (known && profile.interestIds.includes(known.id)) {
+      setCustomInterest('');
+      setError(null);
+      return;
+    }
+    addingInterestRef.current = true;
+    setAddingInterest(true);
+    setError(null);
+    try {
+      if (known) await repo.setInterestSelected(known.id, true);
+      else await repo.addCustomInterest(plan.label);
+      setCustomInterest('');
+    } catch (err) {
+      setError(shownError(err, 'Could not add that interest.'));
+    } finally {
+      addingInterestRef.current = false;
+      setAddingInterest(false);
+    }
   }
 
   async function saveDetails() {
@@ -86,7 +119,6 @@ export default function Profile() {
         town,
         weeklySpendGbp,
         weeklyUnits,
-        interestIds,
         stage,
         sobrietyStartedAt: stage === 'stopped' ? correctedSoberStart(soberDate, profile.sobrietyStartedAt) : null,
         plannedQuitAt: stage === 'trying_to_stop' && !quitUnsure ? isoDay(plannedQuit) : null,
@@ -156,16 +188,36 @@ export default function Profile() {
         <Field label="Town or area" value={town} onChangeText={setTown} placeholder="Bristol, or leave blank" />
         <Field label="Reasons, one per line" value={reasons} onChangeText={setReasons} multiline />
         <T variant="label">Interests</T>
+        <T variant="muted">Tap a chip to add or remove it. Changes save straight away.</T>
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-          {snap.interests.filter((interest) => !interest.custom || interestIds.includes(interest.id)).map((interest) => (
-            <Choice
-              key={interest.id}
-              label={interest.label}
-              selected={interestIds.includes(interest.id)}
-              onPress={() => toggleInterest(interest.id)}
-            />
-          ))}
+          {snap.interests.filter((interest) => !interest.custom || profile.interestIds.includes(interest.id)).map((interest) => {
+            const selected = profile.interestIds.includes(interest.id);
+            return (
+              <InterestChip
+                key={interest.id}
+                label={interest.label}
+                selected={selected}
+                custom={interest.custom}
+                onPress={() => toggleInterest(interest.id, !selected)}
+                onRemove={interest.custom ? () => toggleInterest(interest.id, false) : undefined}
+              />
+            );
+          })}
         </View>
+        <Field
+          label="Add your own interest"
+          value={customInterest}
+          onChangeText={setCustomInterest}
+          placeholder="Climbing, choir, five-a-side…"
+          editable={!addingInterest}
+          maxLength={40}
+        />
+        <Button
+          label="Add"
+          pending={addingInterest}
+          disabled={addingInterest || !customInterest.trim()}
+          onPress={() => void addOwnInterest()}
+        />
         <T variant="label">Consent</T>
         <ConsentChoices community={community} health={health} ai={ai} onCommunity={setCommunity} onHealth={setHealth} onAi={setAi} />
         <Button label="Save your details" onPress={() => void saveDetails()} />

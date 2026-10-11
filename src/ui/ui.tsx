@@ -302,6 +302,8 @@ export function Field({
   keyboardType,
   multiline,
   hint,
+  editable = true,
+  maxLength,
 }: {
   label: string;
   value: string;
@@ -313,6 +315,8 @@ export function Field({
   keyboardType?: 'default' | 'email-address' | 'decimal-pad' | 'number-pad';
   multiline?: boolean;
   hint?: string;
+  editable?: boolean;
+  maxLength?: number;
 }) {
   const theme = useAppTheme();
   const [revealed, setRevealed] = useState(false);
@@ -334,6 +338,8 @@ export function Field({
       autoComplete={contentType === 'newPassword' ? 'password-new' : contentType === 'password' ? 'password' : undefined}
       keyboardType={keyboardType}
       multiline={multiline}
+      editable={editable}
+      maxLength={maxLength}
       autoCapitalize={password || keyboardType === 'email-address' ? 'none' : 'sentences'}
       autoCorrect={password ? false : keyboardType !== 'email-address'}
       style={[

@@ -25,6 +25,7 @@ import {
   progressStoragePath,
   progressVisibility,
 } from '@/domain/progressPhotos';
+import { interestSelectionUnchanged, nextInterestIds, rolledBackInterestIds, snapshotWithOwnInterests } from '@/domain/interests';
 import { planCustomInterest, validateTown } from '@/domain/privacy';
 import { fetchWithOneRetry } from '@/domain/retryFetch';
 import { planRelapse } from '@/domain/sober';
@@ -110,6 +111,9 @@ export class SupabaseRepository implements Repository {
   private listeners = new Set<() => void>();
   private started = false;
   private interestWrites = new Map<string, Promise<void>>();
+  /** In-flight chip saves, so a refresh does not paint the previous selection over an optimistic one. */
+  private pendingInterests = new Map<string, boolean>();
+  private interestQueues = new Map<string, Promise<void>>();
 
   constructor(url: string, anonKey: string) {
     this.url = url;
@@ -139,6 +143,31 @@ export class SupabaseRepository implements Repository {
   private emit(next: AppSnapshot) {
     this.snapshot = next;
     this.listeners.forEach((listener) => listener());
+  }
+
+  private applyPendingInterests(ids: string[]): string[] {
+    let next = ids;
+    for (const [interestId, selected] of this.pendingInterests) {
+      if (ids.includes(interestId) === selected) {
+        this.pendingInterests.delete(interestId);
+        continue;
+      }
+      next = nextInterestIds(next, interestId, selected);
+    }
+    return next;
+  }
+
+  private enqueueInterest(interestId: string, work: () => Promise<void>): Promise<void> {
+    const prior = this.interestQueues.get(interestId) ?? Promise.resolve();
+    const run = prior.then(work, work);
+    this.interestQueues.set(
+      interestId,
+      run.then(
+        () => undefined,
+        () => undefined,
+      ),
+    );
+    return run;
   }
 
   private async start() {
@@ -191,9 +220,11 @@ export class SupabaseRepository implements Repository {
       ]);
 
     const profileRow = profileRes.data as Row | null;
-    const myInterestIds = ((mineRes.data ?? []) as Row[])
-      .filter((row) => row.user_id === userId)
-      .map((row) => String(row.interest_id));
+    const myInterestIds = this.applyPendingInterests(
+      ((mineRes.data ?? []) as Row[])
+        .filter((row) => row.user_id === userId)
+        .map((row) => String(row.interest_id)),
+    );
     const profile = profileRow ? mapProfile(profileRow, email, myInterestIds) : null;
     const links = (interestLinks.data ?? []) as Row[];
     const byUser = new Map<string, string[]>();
@@ -589,6 +620,38 @@ export class SupabaseRepository implements Repository {
     await this.refresh();
   }
 
+  async setInterestSelected(interestId: string, selected: boolean): Promise<void> {
+    const profile = this.snapshot.profile;
+    if (!profile) throw new Error('Sign in first.');
+    const previous = profile.interestIds;
+    const optimistic = nextInterestIds(previous, interestId, selected);
+    if (interestSelectionUnchanged(previous, optimistic)) return;
+    this.pendingInterests.set(interestId, selected);
+    this.emit(snapshotWithOwnInterests(this.snapshot, optimistic));
+    await this.enqueueInterest(interestId, async () => {
+      try {
+        await this.writeInterestLink(profile.id, interestId, selected);
+      } catch (error) {
+        if (this.pendingInterests.get(interestId) === selected) this.pendingInterests.delete(interestId);
+        const current = this.snapshot.profile?.interestIds ?? [];
+        const restored = rolledBackInterestIds(current, optimistic, previous);
+        if (!interestSelectionUnchanged(current, restored)) this.emit(snapshotWithOwnInterests(this.snapshot, restored));
+        throw asUserFacing(error, 'general');
+      }
+    });
+  }
+
+  /** One link row. A repeat insert is the same choice, not an error. */
+  private async writeInterestLink(userId: string, interestId: string, selected: boolean): Promise<void> {
+    if (selected) {
+      const { error } = await this.client.from('profile_interests').insert({ user_id: userId, interest_id: interestId });
+      if (error && !/duplicate|23505/i.test(`${error.code ?? ''} ${error.message}`)) throw error;
+      return;
+    }
+    const { error } = await this.client.from('profile_interests').delete().eq('user_id', userId).eq('interest_id', interestId);
+    if (error) throw error;
+  }
+
   async addCustomInterest(label: string): Promise<void> {
     const plan = planCustomInterest(label);
     if (!plan.ok) throw new Error(plan.message);
@@ -608,17 +671,24 @@ export class SupabaseRepository implements Repository {
    * The catalogue updates in memory so onboarding does not reload the whole account.
    */
   private async writeInterest(label: string, slug: string): Promise<void> {
-    if (this.snapshot.interests.some((item) => item.slug === slug)) return;
+    const existing = this.snapshot.interests.find((item) => item.slug === slug);
+    if (existing) {
+      if (!this.snapshot.profile?.interestIds.includes(existing.id)) await this.setInterestSelected(existing.id, true);
+      return;
+    }
     const { data, error } = await this.client.rpc('add_interest', { label });
     if (error) throw asUserFacing(error, 'general');
     const row = (Array.isArray(data) ? data[0] : data) as Row | null;
     if (!row?.id) throw new Error('Could not add that.');
     const interest = mapInterest(row);
-    if (this.snapshot.interests.some((item) => item.id === interest.id || item.slug === interest.slug)) return;
-    this.emit({
-      ...this.snapshot,
-      interests: [...this.snapshot.interests, interest].sort((a, b) => a.label.localeCompare(b.label)),
-    });
+    const known = this.snapshot.interests.find((item) => item.id === interest.id || item.slug === interest.slug);
+    const interests = known
+      ? this.snapshot.interests
+      : [...this.snapshot.interests, interest].sort((a, b) => a.label.localeCompare(b.label));
+    const id = known?.id ?? interest.id;
+    this.pendingInterests.set(id, true);
+    const ids = nextInterestIds(this.snapshot.profile?.interestIds ?? [], id, true);
+    this.emit(snapshotWithOwnInterests({ ...this.snapshot, interests }, ids));
   }
 
   async requestConnection(userId: string): Promise<void> {
