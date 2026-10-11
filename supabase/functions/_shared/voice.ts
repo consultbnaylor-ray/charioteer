@@ -364,6 +364,7 @@ export function readChannelSamples(source: {
   copyFromChannel?: (destination: Float32Array<ArrayBuffer>, channel: number, startInChannel?: number) => void;
   getChannelData?: (channel: number) => ArrayLike<number>;
 }): Float32Array {
+  if (source.length <= 0) return new Float32Array();
   const out = new Float32Array(Math.max(0, source.length | 0)) as Float32Array<ArrayBuffer>;
   if (source.copyFromChannel) {
     source.copyFromChannel(out, 0, 0);

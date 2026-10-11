@@ -19,9 +19,11 @@ import type { VoiceAudio, VoiceMicHandlers } from './audioTypes';
  * patch-package wraps AVAudioEngine prepare and start in @try/@catch and
  * returns false, so a thrown restart becomes a microphone error.
  *
- * The microphone records at the device rate (48 kHz when the device does not
- * report one). Speech frames are resampled to 24 kHz by the call. Playback uses
- * the context rate and resamples each spoken delta on the way in.
+ * The microphone records at the device rate. voiceChat often reports 24000 Hz;
+ * that is the real rate and is passed through. 48 kHz is only the fallback
+ * when the device does not report one. Speech frames are resampled to 24 kHz
+ * by the call. Playback uses the context rate and resamples each spoken delta
+ * on the way in.
  */
 export function createVoiceAudio(): VoiceAudio {
   const recorder = new AudioRecorder();
@@ -65,7 +67,10 @@ export function createVoiceAudio(): VoiceAudio {
         // A late buffer event must not escape the native callback.
       }
     };
-    next.start();
+    // 0.13.6 defaults the offset to -1. `if (offset && offset < 0)` then
+    // throws, so start() with no arguments always throws. stopPlayback()
+    // builds this queue again, so barge-in uses the same call.
+    next.start(0, 0);
     queue = next;
     return next;
   }

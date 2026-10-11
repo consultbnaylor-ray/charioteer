@@ -136,6 +136,13 @@ describe('voice call wiring', () => {
     expect(audio).toContain('getDevicePreferredSampleRate() || 48000');
     expect(audio).toContain('readChannelSamples');
     expect(audio).not.toContain('getChannelData');
+    const queue = audio.slice(audio.indexOf('function ensureQueue'), audio.indexOf('async function openMic'));
+    expect(queue).toContain('next.start(0, 0)');
+    expect(queue).not.toContain('next.start()');
+    expect(queue).toContain('offset to -1');
+    const web = readFileSync('src/voice/audio.web.ts', 'utf8');
+    expect(web).toContain('node.start(start)');
+    expect(web).not.toContain('createBufferQueueSource');
     expect(audio).toContain('rate * 0.1');
     expect(audio).toContain('channelCount: 1');
     expect(audio).toContain('new AudioContext()');

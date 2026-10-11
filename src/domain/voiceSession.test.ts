@@ -74,6 +74,13 @@ describe('voice PCM', () => {
     expect(Array.from(copied)).toEqual([0.25, -0.5, 1]);
     const indexed = readChannelSamples({ length: libraryShape.length, getChannelData: () => libraryShape });
     expect(Array.from(indexed)).toEqual([0.25, -0.5, 1]);
+    const empty = readChannelSamples({
+      length: 0,
+      copyFromChannel() {
+        throw new Error('empty frame');
+      },
+    });
+    expect(empty.length).toBe(0);
   });
 });
 
