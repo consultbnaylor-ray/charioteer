@@ -2,7 +2,7 @@ import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
-import { clampToPast, formatUkCompact, formatUkDate, formatUkLong, formatUkWhen, isoDay, parseIsoDay } from './dates';
+import { clampToPast, formatUkCompact, formatUkDate, formatUkLong, formatUkLongWhen, formatUkWhen, isoDay, parseIsoDay } from './dates';
 
 const tenth = new Date(2026, 9, 10, 18, 5);
 const eleventh = new Date(2026, 6, 11, 9, 0);
@@ -21,6 +21,7 @@ describe('UK dates', () => {
     expect(formatUkDate(tenth)).toBe('Sat 10 Oct 2026');
     expect(formatUkCompact(tenth)).toBe('10 Oct 2026');
     expect(formatUkWhen(tenth)).toBe('Sat 10 Oct 2026, 18:05');
+    expect(formatUkLongWhen(new Date(2026, 9, 11, 9, 10))).toBe('11 October 2026 09:10');
   });
 
   it('writes 11 July 2026 in long form and 11 Jul 2026 when space is tight', () => {

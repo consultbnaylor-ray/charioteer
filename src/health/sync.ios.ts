@@ -9,7 +9,9 @@ import {
 } from '@kingstinct/react-native-healthkit';
 
 import type { HealthKind, NewHealthSample } from '@/data/types';
+import { isoDay } from '@/domain/dates';
 import { shownError } from '@/domain/errors';
+import { APPLE_HEALTH_READ_TYPES } from '@/health/connection';
 
 export type HealthSyncResult =
   | { ok: true; samples: NewHealthSample[] }
@@ -21,12 +23,6 @@ const ASLEEP = new Set<number>([
   CategoryValueSleepAnalysis.asleepDeep,
   CategoryValueSleepAnalysis.asleepREM,
 ]);
-
-function localDay(date: Date): string {
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-  return `${date.getFullYear()}-${month}-${day}`;
-}
 
 function add(map: Map<string, number>, day: string, amount: number) {
   map.set(day, (map.get(day) ?? 0) + amount);
@@ -55,16 +51,7 @@ export async function syncAppleHealth(): Promise<HealthSyncResult> {
     if (!isHealthDataAvailable()) {
       return { ok: false, message: 'Apple Health is not available on this device.' };
     }
-    const allowed = await requestAuthorization({
-      toRead: [
-        'HKQuantityTypeIdentifierStepCount',
-        'HKQuantityTypeIdentifierRestingHeartRate',
-        'HKQuantityTypeIdentifierHeartRateVariabilitySDNN',
-        'HKQuantityTypeIdentifierBodyMass',
-        'HKCategoryTypeIdentifierSleepAnalysis',
-        'HKWorkoutTypeIdentifier',
-      ],
-    });
+    const allowed = await requestAuthorization({ toRead: [...APPLE_HEALTH_READ_TYPES] });
     if (!allowed) return { ok: false, message: 'Apple Health access was not granted.' };
 
     const end = new Date();
@@ -82,7 +69,7 @@ export async function syncAppleHealth(): Promise<HealthSyncResult> {
     const stepDays = new Map<string, number>();
     for (const row of steps) {
       if (!row.startDate || row.sumQuantity == null) continue;
-      add(stepDays, localDay(row.startDate), row.sumQuantity.quantity);
+      add(stepDays, isoDay(row.startDate), row.sumQuantity.quantity);
     }
     samples.push(...rows('steps', 'steps', stepDays, Math.round));
 
@@ -91,7 +78,7 @@ export async function syncAppleHealth(): Promise<HealthSyncResult> {
     for (const sample of sleep) {
       if (!ASLEEP.has(Number(sample.value))) continue;
       const hours = (sample.endDate.getTime() - sample.startDate.getTime()) / 3_600_000;
-      add(sleepDays, localDay(sample.endDate), hours);
+      add(sleepDays, isoDay(sample.endDate), hours);
     }
     samples.push(...rows('sleep_hours', 'h', sleepDays, (value) => Math.round(value * 10) / 10));
 
@@ -101,7 +88,7 @@ export async function syncAppleHealth(): Promise<HealthSyncResult> {
       filter,
     });
     const heartDays = new Map<string, number>();
-    for (const sample of heart) heartDays.set(localDay(sample.startDate), sample.quantity);
+    for (const sample of heart) heartDays.set(isoDay(sample.startDate), sample.quantity);
     samples.push(...rows('resting_heart_rate', 'bpm', heartDays, Math.round));
 
     const hrv = await queryQuantitySamples('HKQuantityTypeIdentifierHeartRateVariabilitySDNN', {
@@ -110,7 +97,7 @@ export async function syncAppleHealth(): Promise<HealthSyncResult> {
       filter,
     });
     const hrvDays = new Map<string, number>();
-    for (const sample of hrv) hrvDays.set(localDay(sample.startDate), sample.quantity);
+    for (const sample of hrv) hrvDays.set(isoDay(sample.startDate), sample.quantity);
     samples.push(...rows('hrv_sdnn', 'ms', hrvDays, (value) => Math.round(value * 10) / 10));
 
     const weight = await queryQuantitySamples('HKQuantityTypeIdentifierBodyMass', {
@@ -119,14 +106,14 @@ export async function syncAppleHealth(): Promise<HealthSyncResult> {
       filter,
     });
     const weightDays = new Map<string, number>();
-    for (const sample of weight) weightDays.set(localDay(sample.startDate), sample.quantity);
+    for (const sample of weight) weightDays.set(isoDay(sample.startDate), sample.quantity);
     samples.push(...rows('weight_kg', 'kg', weightDays, (value) => Math.round(value * 10) / 10));
 
     const workouts = await queryWorkoutSamples({ limit: 40, filter });
     const workoutDays = new Map<string, number>();
     for (const workout of workouts) {
       const plain = workout.toJSON();
-      add(workoutDays, localDay(new Date(plain.startDate)), minutes(plain.duration.quantity, plain.duration.unit));
+      add(workoutDays, isoDay(new Date(plain.startDate)), minutes(plain.duration.quantity, plain.duration.unit));
       workout.dispose();
     }
     samples.push(...rows('workout_minutes', 'min', workoutDays, Math.round));

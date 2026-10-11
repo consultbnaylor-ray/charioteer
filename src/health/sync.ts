@@ -8,6 +8,6 @@ export type HealthSyncResult =
 export async function syncAppleHealth(): Promise<HealthSyncResult> {
   return {
     ok: false,
-    message: 'Apple Health is available in the iOS dev build. On the web, log readings here and Thumos can see them.',
+    message: 'Apple Health connects in the iPhone app. Here you can log readings yourself.',
   };
 }

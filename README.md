@@ -162,7 +162,7 @@ npx expo run:ios
 
 Or use EAS: `eas build --profile development --platform ios`.
 
-The bundle id is `uk.co.quanticalabs.charioteer`. `app.json` sets Sign in with Apple, the microphone string, the `react-native-audio-api` plugin, and the HealthKit plugin. The share string covers steps, sleep, resting heart rate, HRV, workouts, and weight. The update string says the app does not write to Apple Health; the capability still asks for it. The Apple team is Quantica Labs Ltd, `5FMDXKAX7V`. `ios.config.usesNonExemptEncryption` is `false`. `expo.ios.buildNumber` is `"8"` for the next upload. Build 7 is the TestFlight build Ben reviewed. Build 8 also keeps a voice call going when echo cancellation cannot start: the microphone opens before the playback graph, and a failed voice-processing restart falls back to a call without it. TestFlight shows a short technical line under the friendly voice error (`extra.voiceDiagnostics`).
+The bundle id is `uk.co.quanticalabs.charioteer`. `app.json` sets Sign in with Apple, the microphone string, the `react-native-audio-api` plugin, and the HealthKit plugin. The share string covers steps, sleep, resting heart rate, HRV, workouts, and weight. The update string says the app does not write to Apple Health; the capability still asks for it. `ios.entitlements` sets `com.apple.developer.healthkit`, and the plugin writes the same entitlement plus `NSHealthShareUsageDescription` at prebuild. Background delivery is off, because Charioteer only reads when someone asks it to. The Apple team is Quantica Labs Ltd, `5FMDXKAX7V`. `ios.config.usesNonExemptEncryption` is `false`. `expo.ios.buildNumber` is `"9"` for the next upload. Build 7 is the TestFlight build Ben reviewed. Build 8 also keeps a voice call going when echo cancellation cannot start: the microphone opens before the playback graph, and a failed voice-processing restart falls back to a call without it. TestFlight shows a short technical line under the friendly voice error (`extra.voiceDiagnostics`).
 
 The home-screen name is `Charioteer` (`expo.name`). The App Store Connect listing name is `Charioteer Sober Coach` (app id `6821371422`).
 
@@ -172,7 +172,7 @@ On a Mac with Xcode, enable the HealthKit and Sign in with Apple capabilities if
 
 ## TestFlight from a Mac
 
-Build 4 is the TestFlight archive from commit `054cf18`. Build 7 is the upload Ben reviewed. `expo.ios.buildNumber` is `"8"` for the next upload. From the repo on a Mac, signed into Xcode as Quantica Labs Ltd:
+Build 4 is the TestFlight archive from commit `054cf18`. Build 7 is the upload Ben reviewed. `expo.ios.buildNumber` is `"9"` for the next upload. From the repo on a Mac, signed into Xcode as Quantica Labs Ltd:
 
 ```bash
 npx expo prebuild --platform ios

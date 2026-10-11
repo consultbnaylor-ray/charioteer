@@ -54,6 +54,16 @@ export function formatUkCompact(value: Date | string): string {
 /** Sat 10 Oct 2026, 18:05 */
 export function formatUkWhen(value: Date | string): string {
   const date = asDate(value);
-  const time = date.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
+  const time = ukTime(date);
   return `${formatUkDate(date)}, ${time}`;
+}
+
+/** 11 October 2026 09:10 */
+export function formatUkLongWhen(value: Date | string): string {
+  const date = asDate(value);
+  return `${formatUkLong(date)} ${ukTime(date)}`;
+}
+
+function ukTime(date: Date): string {
+  return date.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
 }
