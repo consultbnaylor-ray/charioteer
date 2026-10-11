@@ -7,6 +7,7 @@ const healthUpsert = readFileSync('supabase/migrations/20261010140000_health_ups
 const addInterest = readFileSync('supabase/migrations/20261010150000_add_interest.sql', 'utf8');
 const consentReread = readFileSync('supabase/migrations/20261010160000_consent_reread.sql', 'utf8');
 const profileStage = readFileSync('supabase/migrations/20261010170000_profile_stage.sql', 'utf8');
+const profileHeight = readFileSync('supabase/migrations/20261010240000_profile_height.sql', 'utf8');
 const progressPhotos = readFileSync('supabase/migrations/20261010180000_progress_photos.sql', 'utf8');
 const progressVisibility = readFileSync('supabase/migrations/20261010190000_progress_photo_visibility.sql', 'utf8');
 
@@ -76,7 +77,11 @@ describe('client writes against the live grants', () => {
   });
 
   it('only updates profile columns the signed-in user may write', () => {
-    const granted = new Set([...updateColumns('profiles'), ...updateColumnsIn(profileStage, 'profiles')]);
+    const granted = new Set([
+      ...updateColumns('profiles'),
+      ...updateColumnsIn(profileStage, 'profiles'),
+      ...updateColumnsIn(profileHeight, 'profiles'),
+    ]);
     const written = [
       'display_name',
       'sobriety_started_at',
@@ -95,6 +100,7 @@ describe('client writes against the live grants', () => {
       'weekly_units_goal',
       'drink_free_days_goal',
       'drink_free_on',
+      'height_cm',
     ];
     for (const column of written) expect(granted.has(column)).toBe(true);
     expect(granted.has('is_moderator')).toBe(false);
@@ -114,6 +120,15 @@ describe('consent reread', () => {
     expect(consentReread).toContain('consents_user_kind_version_key');
     expect(consentReread).toContain('on public.consents (user_id, kind, version)');
     expect(consentReread.toLowerCase()).not.toContain('grant update');
+  });
+});
+
+describe('profile height', () => {
+  it('grants column update only and does not copy height into the directory', () => {
+    expect(updateColumnsIn(profileHeight, 'profiles')).toEqual(['height_cm']);
+    expect(profileHeight.toLowerCase()).not.toMatch(/grant update on public\.profiles/i);
+    expect(profileHeight).not.toContain('public.directory');
+    expect(profileHeight).toContain('height_cm >= 50');
   });
 });
 

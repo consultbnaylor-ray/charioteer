@@ -40,6 +40,8 @@ export type Profile = {
   weeklyUnitsGoal: number | null;
   drinkFreeDaysGoal: number | null;
   drinkFreeOn: string[];
+  /** Centimetres, used only to calculate BMI. Never shown on the public profile. */
+  heightCm: number | null;
   createdAt: string;
 };
 
@@ -214,6 +216,7 @@ export type ProfilePatch = Partial<
     | 'weeklyUnitsGoal'
     | 'drinkFreeDaysGoal'
     | 'drinkFreeOn'
+    | 'heightCm'
   >
 >;
 

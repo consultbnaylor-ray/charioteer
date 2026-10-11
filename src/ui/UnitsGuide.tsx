@@ -2,8 +2,8 @@ import * as Linking from 'expo-linking';
 import { useState } from 'react';
 import { Pressable, View } from 'react-native';
 
+import { weeklyUnitsGuidance } from '@/domain/guidance';
 import {
-  BAND_LEGEND,
   CALORIE_BASIS,
   DRINK_SOURCES,
   ESTIMATE_DISCLAIMER,
@@ -12,11 +12,11 @@ import {
   GUIDELINE_EQUIVALENTS,
   NHS_DRINKS,
   NHS_UNITS_URL,
-  UK_HIGHER_RISK_MEN_UNITS,
   UK_LOW_RISK_WEEKLY_UNITS,
   unitsForCounts,
 } from '@/domain/units';
 import type { Stage } from '@/domain/stage';
+import { GuidanceRange } from '@/ui/GuidanceRange';
 import { useAppTheme } from '@/ui/theme';
 import { T } from '@/ui/ui';
 
@@ -30,40 +30,28 @@ function SourceLink({ label, url }: { label: string; url: string }) {
   );
 }
 
-function RiskBar({ units }: { units: number }) {
-  const theme = useAppTheme();
-  const max = UK_HIGHER_RISK_MEN_UNITS;
-  const fill = Math.max(0, Math.min(units, max)) / max;
-  const mark = (point: number) => `${(point / max) * 100}%` as const;
-  return (
-    <View accessibilityLabel={BAND_LEGEND}>
-      <View style={{ height: 14, borderRadius: 2, backgroundColor: theme.colors.line, overflow: 'hidden' }}>
-        <View style={{ width: `${fill * 100}%`, height: '100%', backgroundColor: theme.colors.ink }} />
-        {[UK_LOW_RISK_WEEKLY_UNITS, 35, UK_HIGHER_RISK_MEN_UNITS].map((point) => (
-          <View
-            key={point}
-            style={{ position: 'absolute', left: mark(point), top: 0, bottom: 0, width: 2, marginLeft: -1, backgroundColor: theme.colors.bg }}
-          />
-        ))}
-      </View>
-      <T variant="muted">{BAND_LEGEND}</T>
-    </View>
-  );
-}
-
 /** NHS drink sizes, with plus and minus that fill the weekly units field. */
 export function UnitsGuide({
   onChange,
   stage = null,
   weeklySpend = '',
+  currentUnits = '',
 }: {
   onChange: (units: string) => void;
   stage?: Stage | null;
   weeklySpend?: string;
+  /** The units field, so a saved week is banded before any drink is tapped. */
+  currentUnits?: string;
 }) {
   const theme = useAppTheme();
   const [counts, setCounts] = useState<Record<string, number>>(emptyCounts);
   const estimate = estimateUsualWeek({ counts, stage, weeklySpend });
+  const typedUnits = Number(currentUnits);
+  const unitsForBand = estimate.hasDrinks
+    ? estimate.unitsPerWeek
+    : currentUnits.trim() && Number.isFinite(typedUnits) && typedUnits >= 0
+      ? typedUnits
+      : null;
 
   function setCount(id: string, next: number) {
     const updated = { ...counts, [id]: Math.max(0, next) };
@@ -109,8 +97,6 @@ export function UnitsGuide({
           <T>{estimate.headline}</T>
           <T>{estimate.yearLine}</T>
           <T>{estimate.comparison}</T>
-          <RiskBar units={estimate.unitsPerWeek} />
-          <T>{estimate.bandLabel}</T>
           <T>{estimate.equivalents}</T>
           <T variant="muted">{GUIDELINE_EQUIVALENTS}</T>
           {estimate.spendLine ? <T>{estimate.spendLine}</T> : (
@@ -127,8 +113,9 @@ export function UnitsGuide({
           ))}
         </View>
       ) : (
-        <T variant="muted">Add drinks to see units, calories, and how the week compares with 14 units.</T>
+        <T variant="muted">{unitsForBand != null ? 'Add drinks to see calories and a breakdown. The guidance below uses the units already entered.' : 'Add drinks to see units, calories, and how the week compares with 14 units.'}</T>
       )}
+      {unitsForBand != null ? <GuidanceRange guidance={weeklyUnitsGuidance(unitsForBand, stage)} /> : null}
       <T>The UK low-risk guideline is no more than {UK_LOW_RISK_WEEKLY_UNITS} units a week.</T>
       <T variant="muted">A unit is 10ml of pure alcohol. Strength (ABV) × volume (ml) ÷ 1,000.</T>
       <SourceLink label="NHS: Calculating alcohol units" url={NHS_UNITS_URL} />

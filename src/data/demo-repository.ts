@@ -58,6 +58,7 @@ function readyProfile(profile: DemoAccount['profile']): DemoAccount['profile'] {
     weeklyUnitsGoal: profile.weeklyUnitsGoal ?? null,
     drinkFreeDaysGoal: profile.drinkFreeDaysGoal ?? null,
     drinkFreeOn: profile.drinkFreeOn ?? [],
+    heightCm: profile.heightCm ?? null,
     createdAt: profile.createdAt || '2026-01-01T00:00:00.000Z',
   };
 }
@@ -259,6 +260,7 @@ export class DemoRepository implements Repository {
         weeklyUnitsGoal: null,
         drinkFreeDaysGoal: null,
         drinkFreeOn: [],
+        heightCm: null,
         createdAt: new Date().toISOString(),
       },
       reasons: [],

@@ -1,9 +1,11 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Linking, Pressable, View } from 'react-native';
 
 import type { HealthSample } from '@/data/types';
+import { buildMetricGuidance, parseHeightCm } from '@/domain/guidance';
 import {
   buildHealthInsights,
+  dailyValues,
   formatHealthValue,
   formatReadingLine,
   formatUkCompactDay,
@@ -13,9 +15,10 @@ import {
   seriesForWindow,
   type HealthInsightKind,
 } from '@/domain/healthInsights';
+import { GuidanceRange } from '@/ui/GuidanceRange';
 import { HealthChart } from '@/ui/HealthChart';
 import { useAppTheme } from '@/ui/theme';
-import { Card, Choice, T } from '@/ui/ui';
+import { Card, Choice, Field, playSavedHaptic, T } from '@/ui/ui';
 
 const RANGES = [7, 30, 90] as const;
 
@@ -24,11 +27,19 @@ export function HealthBoard({
   today,
   soberOn,
   stage,
+  heightCm = null,
+  adult = true,
+  canSaveHeight = false,
+  onSaveHeight,
 }: {
   samples: HealthSample[];
   today: string;
   soberOn: string | null;
   stage: string | null;
+  heightCm?: number | null;
+  adult?: boolean;
+  canSaveHeight?: boolean;
+  onSaveHeight?: (heightCm: number | null) => Promise<void>;
 }) {
   const report = buildHealthInsights({ today, samples, soberOn, stage });
   return (
@@ -54,6 +65,10 @@ export function HealthBoard({
             today={today}
             lines={kindReport?.lines ?? []}
             flags={kindReport?.flags ?? []}
+            heightCm={heightCm}
+            adult={adult}
+            canSaveHeight={canSaveHeight}
+            onSaveHeight={onSaveHeight}
           />
         );
       })}
@@ -73,6 +88,10 @@ function MetricCard({
   today,
   lines,
   flags,
+  heightCm,
+  adult,
+  canSaveHeight,
+  onSaveHeight,
 }: {
   kind: HealthInsightKind;
   label: string;
@@ -87,10 +106,60 @@ function MetricCard({
     sourceName: string;
     sourceUrl: string;
   }[];
+  heightCm: number | null;
+  adult: boolean;
+  canSaveHeight: boolean;
+  onSaveHeight?: (heightCm: number | null) => Promise<void>;
 }) {
   const [range, setRange] = useState<(typeof RANGES)[number]>(7);
+  const [heightText, setHeightText] = useState(heightCm == null ? '' : String(heightCm));
+  const [heightError, setHeightError] = useState<string | null>(null);
+  const [heightSaved, setHeightSaved] = useState<string | null>(null);
   const latest = latestReading(samples, kind, today);
   const points = seriesForWindow(samples, kind, today, range);
+  const history = dailyValues(samples, kind).filter((point) => point.day <= today);
+  const typedHeight = parseHeightCm(heightText);
+  const liveHeight = typedHeight.ok ? typedHeight.value : heightCm;
+  const guidance = buildMetricGuidance({
+    kind,
+    today,
+    points: history,
+    heightCm: liveHeight,
+    adult,
+  });
+  const shownFlags = flags.filter((flag) => flag.id !== 'resting_high' && flag.id !== 'short_sleep');
+
+  useEffect(() => {
+    setHeightText(heightCm == null ? '' : String(heightCm));
+  }, [heightCm]);
+
+  useEffect(() => {
+    if (!heightSaved) return;
+    const timer = setTimeout(() => setHeightSaved(null), 2500);
+    return () => clearTimeout(timer);
+  }, [heightSaved]);
+
+  function commitHeight() {
+    if (!onSaveHeight || !canSaveHeight) return;
+    const parsed = parseHeightCm(heightText);
+    if (!parsed.ok) {
+      setHeightError(parsed.error);
+      setHeightSaved(null);
+      return;
+    }
+    if (parsed.value === heightCm) {
+      setHeightError(null);
+      return;
+    }
+    setHeightError(null);
+    void onSaveHeight(parsed.value).then(() => {
+      setHeightSaved('Saved ✓');
+      playSavedHaptic();
+    }).catch(() => {
+      setHeightError('Could not save your height.');
+    });
+  }
+
   return (
     <Card>
       <T variant="label">{label}</T>
@@ -103,6 +172,23 @@ function MetricCard({
         <T variant="muted">No readings yet</T>
       )}
       {latest?.day === today ? <T variant="muted">Today</T> : null}
+      {kind === 'weight_kg' ? (
+        <View style={{ gap: 6 }}>
+          <Field
+            label="Height (cm)"
+            value={heightText}
+            onChangeText={setHeightText}
+            onBlur={commitHeight}
+            keyboardType="decimal-pad"
+            editable={canSaveHeight}
+            hint="Used only for BMI. It is not shown on your public profile."
+          />
+          {canSaveHeight ? null : <T variant="muted">Health data is off. Turn it on in Privacy & consent to save a height.</T>}
+          {heightError ? <T>{heightError}</T> : null}
+          {heightSaved ? <T>{heightSaved}</T> : null}
+        </View>
+      ) : null}
+      <GuidanceRange guidance={guidance} />
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
         {RANGES.map((days) => (
           <Choice key={days} label={`${days}d`} selected={range === days} onPress={() => setRange(days)} />
@@ -112,7 +198,7 @@ function MetricCard({
       {lines.map((line) => (
         <T key={line}>{line}</T>
       ))}
-      {flags.map((flag) => (
+      {shownFlags.map((flag) => (
         <View key={flag.id} style={{ gap: 4 }}>
           <T>{flag.detail}</T>
           <T>{flag.step}</T>

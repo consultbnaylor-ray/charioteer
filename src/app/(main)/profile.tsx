@@ -241,7 +241,7 @@ export default function Profile() {
         <T variant="muted">{USUAL_WEEK_HELPER}</T>
         <Field label="Typical spend per week (£)" value={spend} onChangeText={setSpend} keyboardType="decimal-pad" />
         <Field label="Typical units per week" value={units} onChangeText={setUnits} keyboardType="decimal-pad" />
-        <UnitsGuide onChange={setUnits} stage={stage} weeklySpend={spend} />
+        <UnitsGuide onChange={setUnits} stage={stage} weeklySpend={spend} currentUnits={units} />
         <Field label="Town or area" value={town} onChangeText={setTown} placeholder="Bristol, or leave blank" />
         <Field label="Reasons, one per line" value={reasons} onChangeText={setReasons} multiline />
         <T variant="label">Interests</T>

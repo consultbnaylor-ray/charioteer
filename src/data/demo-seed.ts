@@ -118,6 +118,7 @@ function profile(
     weeklyUnitsGoal: null,
     drinkFreeDaysGoal: null,
     drinkFreeOn: [],
+    heightCm: null,
     createdAt: '2026-01-01T00:00:00.000Z',
     ...extra,
   };
@@ -200,6 +201,7 @@ export function createDemoDb(now = new Date()): DemoDb {
       sobrietyStartedAt: started,
       weeklySpendGbp: 48,
       weeklyUnits: 30,
+      heightCm: 178,
     }),
     reasons: alexReasons,
     checkIns,

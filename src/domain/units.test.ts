@@ -130,8 +130,9 @@ describe('NHS weekly units', () => {
     const onboarding = readFileSync('src/app/onboarding.tsx', 'utf8');
     const profile = readFileSync('src/app/(main)/profile.tsx', 'utf8');
     const home = readFileSync('src/app/(main)/home.tsx', 'utf8');
-    expect(onboarding).toContain('<UnitsGuide onChange={setUnits} stage={stage} weeklySpend={spend} />');
-    expect(profile).toContain('<UnitsGuide onChange={setUnits} stage={stage} weeklySpend={spend} />');
-    expect(home).toContain('<UnitsGuide onChange={setDraftUnits} stage={profile.stage} weeklySpend={draftSpend} />');
+    expect(guide).toContain('weeklyUnitsGuidance');
+    expect(onboarding).toContain('<UnitsGuide onChange={setUnits} stage={stage} weeklySpend={spend} currentUnits={units} />');
+    expect(profile).toContain('<UnitsGuide onChange={setUnits} stage={stage} weeklySpend={spend} currentUnits={units} />');
+    expect(home).toContain('<UnitsGuide onChange={setDraftUnits} stage={profile.stage} weeklySpend={draftSpend} currentUnits={draftUnits} />');
   });
 });

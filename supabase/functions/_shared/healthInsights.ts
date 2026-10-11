@@ -80,10 +80,11 @@ const SUBJECT: Record<HealthInsightKind, string> = {
   weight_kg: 'Weight',
 };
 
-const HEART_STEP = 'Rest, have some water, and try a breathing exercise. If it stays up, contact your GP or NHS 111. Call 999 if you have chest pain.';
-const SLEEP_STEP = 'A regular bedtime and a breathing exercise can help. You can talk it through with Thumos. If short sleep carries on, contact your GP or NHS 111.';
-const HRV_STEP = 'Rest, have some water, and try a breathing exercise. If you feel unwell, contact your GP or NHS 111. Call 999 if you have chest pain.';
-const WEIGHT_STEP = 'If you did not mean to lose this weight, or it keeps falling, contact your GP or NHS 111.';
+const EMERGENCY_STEP = 'Call 999 if you have chest pain, fainting, or breathlessness.';
+const HEART_STEP = `Rest, have some water, and try a breathing exercise. If it stays up, contact your GP or NHS 111. ${EMERGENCY_STEP}`;
+const SLEEP_STEP = `A regular bedtime and a breathing exercise can help. You can talk it through with Thumos. If short sleep carries on, contact your GP or NHS 111. ${EMERGENCY_STEP}`;
+const HRV_STEP = `Rest, have some water, and try a breathing exercise. If you feel unwell, contact your GP or NHS 111. ${EMERGENCY_STEP}`;
+const WEIGHT_STEP = `If you did not mean to lose this weight, or it keeps falling, contact your GP or NHS 111. ${EMERGENCY_STEP}`;
 
 const PAPWORTH_URL = 'https://www.royalpapworth.nhs.uk/our-services/cardiology/Heart-rhythm-disturbances';
 const SLEEP_URL = 'https://www.nhs.uk/conditions/insomnia/';

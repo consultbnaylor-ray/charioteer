@@ -600,6 +600,7 @@ export class SupabaseRepository implements Repository {
     if (patch.weeklyUnitsGoal !== undefined) column.weekly_units_goal = patch.weeklyUnitsGoal;
     if (patch.drinkFreeDaysGoal !== undefined) column.drink_free_days_goal = patch.drinkFreeDaysGoal;
     if (patch.drinkFreeOn !== undefined) column.drink_free_on = patch.drinkFreeOn;
+    if (patch.heightCm !== undefined) column.height_cm = patch.heightCm;
     if (Object.keys(column).length) {
       const { error } = await this.client.from('profiles').update(column).eq('id', userId);
       if (error) throw asUserFacing(error, 'general');
@@ -1341,6 +1342,7 @@ function mapProfile(row: Row, email: string, interestIds: string[]): Profile {
     weeklyUnitsGoal: row.weekly_units_goal == null ? null : Number(row.weekly_units_goal),
     drinkFreeDaysGoal: row.drink_free_days_goal == null ? null : Number(row.drink_free_days_goal),
     drinkFreeOn: Array.isArray(row.drink_free_on) ? row.drink_free_on.map(String) : [],
+    heightCm: row.height_cm == null ? null : Number(row.height_cm),
     createdAt: row.created_at ? String(row.created_at) : '1970-01-01T00:00:00.000Z',
   };
 }

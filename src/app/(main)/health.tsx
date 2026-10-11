@@ -139,6 +139,12 @@ export default function Health() {
         today={isoDay(new Date())}
         soberOn={snap.profile?.stage === 'stopped' && snap.profile.sobrietyStartedAt ? isoDay(new Date(snap.profile.sobrietyStartedAt)) : null}
         stage={snap.profile?.stage ?? null}
+        heightCm={snap.profile?.heightCm ?? null}
+        adult={snap.profile?.ageConfirmed18 !== false}
+        canSaveHeight={consent}
+        onSaveHeight={async (heightCm) => {
+          await repo.updateProfile({ heightCm });
+        }}
       />
       <T style={{ fontFamily: theme.font.bodyStrong }}>Or add a reading yourself</T>
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
