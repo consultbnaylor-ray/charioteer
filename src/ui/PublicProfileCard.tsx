@@ -32,6 +32,8 @@ export function PublicProfileCard() {
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState(profile?.displayName ?? '');
   const [town, setTown] = useState(profile?.town ?? '');
+  const nameRef = useRef(profile?.displayName ?? '');
+  const townRef = useRef(profile?.town ?? '');
   const [customInterest, setCustomInterest] = useState('');
   const [addingInterest, setAddingInterest] = useState(false);
   const addingInterestRef = useRef(false);
@@ -41,11 +43,15 @@ export function PublicProfileCard() {
   const timers = useRef<Partial<Record<SavedField, ReturnType<typeof setTimeout>>>>({});
 
   useEffect(() => {
-    setName(profile?.displayName ?? '');
+    const next = profile?.displayName ?? '';
+    nameRef.current = next;
+    setName(next);
   }, [profile?.displayName]);
 
   useEffect(() => {
-    setTown(profile?.town ?? '');
+    const next = profile?.town ?? '';
+    townRef.current = next;
+    setTown(next);
   }, [profile?.town]);
 
   useEffect(() => () => {
@@ -74,10 +80,21 @@ export function PublicProfileCard() {
     }, 2500);
   }
 
+  function changeName(value: string) {
+    nameRef.current = value;
+    setName(value);
+  }
+
+  function changeTown(value: string) {
+    townRef.current = value;
+    setTown(value);
+  }
+
   async function saveName() {
-    const next = name.trim();
+    const next = nameRef.current.trim();
     if (next === me.displayName) return;
     if (!next) {
+      nameRef.current = me.displayName;
       setName(me.displayName);
       setError('Add your name.');
       return;
@@ -92,7 +109,7 @@ export function PublicProfileCard() {
   }
 
   async function saveTown() {
-    const next = town.trim();
+    const next = townRef.current.trim();
     if (next === (me.town ?? '')) return;
     const townError = validateTown(next);
     if (townError) {
@@ -172,7 +189,7 @@ export function PublicProfileCard() {
 
   return (
     <View style={{ gap: 10 }}>
-      <T variant="label">Your public profile</T>
+      <T variant="title">Your public profile</T>
       <Card>
         {hidden ? (
           <View style={{ gap: 8 }}>
@@ -208,9 +225,9 @@ export function PublicProfileCard() {
         <Button label={editing ? 'Done' : 'Edit profile'} tone="quiet" onPress={() => (editing ? finishEditing() : setEditing(true))} />
         {editing ? (
           <View style={{ gap: 10 }}>
-            <Field label="Name" value={name} onChangeText={setName} onBlur={() => void saveName()} placeholder="What should we call you?" />
+            <Field label="Name" value={name} onChangeText={changeName} onBlur={() => void saveName()} placeholder="What should we call you?" />
             {saved.name ? <T>Saved ✓</T> : null}
-            <Field label="Town or area" value={town} onChangeText={setTown} onBlur={() => void saveTown()} placeholder="Bristol, or leave blank" />
+            <Field label="Town or area" value={town} onChangeText={changeTown} onBlur={() => void saveTown()} placeholder="Bristol, or leave blank" />
             {saved.town ? <T>Saved ✓</T> : null}
             <T variant="label">Interests</T>
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
