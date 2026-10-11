@@ -71,17 +71,17 @@ export function CommunityProfile({ userId, name }: { userId: string; name: strin
         <View style={{ flexDirection: 'row', gap: 10 }}>
           <View style={{ flex: 1, gap: 6 }}>
             <T variant="label">Before</T>
-            <SharedTile photo={before} />
+            <SharedPhotoFrame photo={before} />
           </View>
           <View style={{ flex: 1, gap: 6 }}>
             <T variant="label">Now</T>
-            <SharedTile photo={now} />
+            <SharedPhotoFrame photo={now} />
           </View>
         </View>
       ) : null}
       {photos.map((photo) => (
         <View key={photo.id} style={{ gap: 6 }}>
-          <SharedTile photo={photo} />
+          <SharedPhotoFrame photo={photo} />
           <T variant="label">Shared</T>
           <T>{progressPhotoLabel(photo.monthIndex, photo.takenOn)}</T>
           {photo.note ? <T variant="muted">{photo.note}</T> : null}
@@ -102,7 +102,7 @@ export function CommunityProfile({ userId, name }: { userId: string; name: strin
   );
 }
 
-function SharedTile({ photo }: { photo: ProgressPhoto }) {
+export function SharedPhotoFrame({ photo }: { photo: ProgressPhoto }) {
   const theme = useAppTheme();
   const label = progressPhotoLabel(photo.monthIndex, photo.takenOn);
   return (

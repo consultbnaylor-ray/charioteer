@@ -5,6 +5,7 @@ import { View } from 'react-native';
 import { useRepository, useSnapshot } from '@/data';
 import { shownError } from '@/domain/errors';
 import { CommunityProfile } from '@/ui/CommunityProfile';
+import { DISCOVER_EMPTY, PublicProfileCard } from '@/ui/PublicProfileCard';
 import { Button, Card, Choice, ErrorNote, Screen, T } from '@/ui/ui';
 
 export default function People() {
@@ -17,15 +18,6 @@ export default function People() {
   const me = snap.profile;
   if (!me) return null;
 
-  if (!me.ageConfirmed18 || !me.communityVisible) {
-    return (
-      <Screen eyebrow="People" title="Community is off." intro="It is for adults, and only if you choose to be visible. Your private details stay private either way.">
-        <ErrorNote>{error}</ErrorNote>
-        <Button label="Turn community on" onPress={() => void repo.updateProfile({ communityVisible: true }).catch((err: unknown) => setError(shownError(err, 'Could not save that.')))} />
-      </Screen>
-    );
-  }
-
   const incoming = snap.connections.filter((connection) => connection.status === 'pending' && connection.addresseeId === me.id);
   const chats = snap.connections.filter((connection) => connection.status === 'accepted');
   const nameOf = (id: string) => snap.directory.find((card) => card.id === id)?.displayName ?? 'Member';
@@ -33,6 +25,7 @@ export default function People() {
 
   return (
     <Screen eyebrow="People" title="Find your people." intro="Shared interests, a town or area, and a private chat once you both agree. You can block or report at any time.">
+      <PublicProfileCard />
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
         <Choice label={`Discover`} selected={tab === 'discover'} onPress={() => setTab('discover')} />
         <Choice label={`Requests (${incoming.length})`} selected={tab === 'requests'} onPress={() => setTab('requests')} />
@@ -68,7 +61,7 @@ export default function People() {
           </Card>
         );
       }) : null}
-      {tab === 'discover' && snap.directory.length === 0 ? <T variant="muted">No one to show. People you have blocked stay hidden.</T> : null}
+      {tab === 'discover' && snap.directory.length === 0 ? <T variant="muted">{DISCOVER_EMPTY}</T> : null}
       {tab === 'requests' ? incoming.map((connection) => (
         <Card key={connection.id}>
           <T variant="title">{nameOf(connection.requesterId)} would like to connect</T>

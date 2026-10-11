@@ -5,6 +5,10 @@ import { CONSENT_VERSION } from '@/data/catalogue';
 import { useAppTheme } from '@/ui/theme';
 import { T } from '@/ui/ui';
 
+/** The community switch explanation. People reuses this when someone turns the community on. */
+export const COMMUNITY_CONSENT_BODY =
+  'Other adults can see your name, town or area, and interests. They cannot see your reasons, check-ins, money, units, or health. Your gratitude diary, including any photos on a line, is never shown to other people. A progress photo stays hidden unless you choose Share with community on that photo.';
+
 export function ConsentChoices({
   community,
   health,
@@ -24,7 +28,7 @@ export function ConsentChoices({
     <View style={{ gap: 16 }}>
       <ConsentRow
         title="Community"
-        body="Other adults can see your name, town or area, and interests. They cannot see your reasons, check-ins, money, units, or health. Your gratitude diary, including any photos on a line, is never shown to other people. A progress photo stays hidden unless you choose Share with community on that photo."
+        body={COMMUNITY_CONSENT_BODY}
         value={community}
         onChange={onCommunity}
       />
