@@ -23,6 +23,23 @@ import {
   gratitudeStoragePath,
   withGratitudePhotos,
 } from '@/domain/gratitudePhotos';
+import {
+  VISION_BUCKET,
+  VISION_CAPTION_LIMIT,
+  VISION_MAX_BYTES,
+  VISION_SIGNED_URL_SECONDS,
+  VISION_STATEMENT_LIMIT,
+  isVisionArea,
+  isVisionSize,
+  moveVisionItem as reorderVisionItems,
+  planVisionText,
+  type VisionArea,
+  type VisionSize,
+  sortVisionItems,
+  visionItemsFromRows,
+  visionPhotoLimitMessage,
+  visionStoragePath,
+} from '@/domain/visionBoard';
 import { isoDay } from '@/domain/dates';
 import { randomId } from '@/domain/id';
 import { passwordResetRedirect, recoveryLink } from '@/domain/passwordReset';
@@ -116,6 +133,7 @@ function emptySnapshot(): AppSnapshot {
     progressPhotos: [],
     communityPhotos: [],
     gratitude: [],
+    visionItems: [],
   };
 }
 
@@ -222,7 +240,7 @@ export class SupabaseRepository implements Repository {
 
     const userId = session.user.id;
     const email = session.user.email ?? '';
-    const [profileRes, reasonsRes, checkRes, relapseRes, healthRes, mineRes, thumosRes, directoryRes, interestLinks, connectionsRes, reportsRes, consentsRes, photosRes, gratitudeRes, gratitudePhotoRes] =
+    const [profileRes, reasonsRes, checkRes, relapseRes, healthRes, mineRes, thumosRes, directoryRes, interestLinks, connectionsRes, reportsRes, consentsRes, photosRes, gratitudeRes, gratitudePhotoRes, visionRes] =
       await Promise.all([
         this.client.from('profiles').select('*').eq('id', userId).maybeSingle(),
         this.client.from('reasons').select('*').eq('user_id', userId).order('sort_order'),
@@ -239,6 +257,7 @@ export class SupabaseRepository implements Repository {
         this.client.from('progress_photos').select('id, user_id, taken_on, month_index, note, storage_path, created_at, visibility').eq('user_id', userId).order('month_index').order('taken_on'),
         this.client.from('gratitude_entries').select('id, body, category, is_favourite, entry_date, created_at, updated_at').eq('user_id', userId).order('entry_date', { ascending: false }),
         this.client.from('gratitude_photos').select('id, entry_id, user_id, storage_path, created_at').eq('user_id', userId).order('created_at'),
+        this.client.from('vision_board_items').select('id, user_id, storage_path, caption, area, size, position, created_at, updated_at').eq('user_id', userId).order('position'),
       ]);
 
     const profileRow = profileRes.data as Row | null;
@@ -313,6 +332,7 @@ export class SupabaseRepository implements Repository {
         gratitudeRes.error ? loggedEmptyGratitude(gratitudeRes.error.message) : gratitudeFromRows(gratitudeRes.data),
         await this.signedGratitudePhotos(gratitudePhotoRes.error ? null : ((gratitudePhotoRes.data ?? []) as Row[]), gratitudePhotoRes.error?.message),
       ),
+      visionItems: await this.signedVisionItems(visionRes.error ? null : visionRes.data, visionRes.error?.message),
     });
   }
 
@@ -372,6 +392,28 @@ export class SupabaseRepository implements Repository {
       }
     }
     return parsed.map((photo) => ({ ...photo, previewUrl: signedByPath.get(photo.storagePath) ?? null }));
+  }
+
+  private async signedVisionItems(rows: unknown, queryError: string | undefined) {
+    if (queryError || !rows) {
+      if (queryError) console.error(queryError);
+      return [];
+    }
+    const parsed = visionItemsFromRows(rows);
+    const paths = parsed.map((item) => item.storagePath);
+    const signedByPath = new Map<string, string>();
+    if (paths.length) {
+      try {
+        const signed = await this.client.storage.from(VISION_BUCKET).createSignedUrls(paths, VISION_SIGNED_URL_SECONDS);
+        if (signed.error) console.error(signed.error.message);
+        for (const item of signed.data ?? []) {
+          if (item.path && item.signedUrl) signedByPath.set(item.path, item.signedUrl);
+        }
+      } catch (error) {
+        console.error(error);
+      }
+    }
+    return sortVisionItems(parsed.map((item) => ({ ...item, previewUrl: signedByPath.get(item.storagePath) ?? null })));
   }
 
   /** Shared photos only. The edge function signs a URL after row-level security has allowed the row. */
@@ -601,6 +643,8 @@ export class SupabaseRepository implements Repository {
     if (patch.drinkFreeDaysGoal !== undefined) column.drink_free_days_goal = patch.drinkFreeDaysGoal;
     if (patch.drinkFreeOn !== undefined) column.drink_free_on = patch.drinkFreeOn;
     if (patch.heightCm !== undefined) column.height_cm = patch.heightCm;
+    if (patch.visionStatement !== undefined) column.vision_statement = patch.visionStatement || null;
+    if (patch.visionStartedOn !== undefined) column.vision_started_on = patch.visionStartedOn;
     if (Object.keys(column).length) {
       const { error } = await this.client.from('profiles').update(column).eq('id', userId);
       if (error) throw asUserFacing(error, 'general');
@@ -1155,6 +1199,98 @@ export class SupabaseRepository implements Repository {
     await this.refresh();
   }
 
+  async saveVisionStatement(statement: string): Promise<void> {
+    const plan = planVisionText(statement, VISION_STATEMENT_LIMIT);
+    if (!plan.ok) throw new UserFacingError(plan.message, 'generic');
+    const userId = await this.userId();
+    const column: Record<string, unknown> = { vision_statement: plan.text || null };
+    if (plan.text && !this.snapshot.profile?.visionStartedOn) column.vision_started_on = isoDay(new Date());
+    const { error } = await this.client.from('profiles').update(column).eq('id', userId);
+    if (error) throw asUserFacing(error, 'general');
+    await this.refresh();
+  }
+
+  async addVisionItem(bytes: Uint8Array): Promise<void> {
+    if (bytes.byteLength > VISION_MAX_BYTES) throw new UserFacingError('That photo is still too large.', 'generic');
+    const limit = visionPhotoLimitMessage(this.snapshot.visionItems.length);
+    if (limit) throw new UserFacingError(limit, 'generic');
+    const userId = await this.userId();
+    const photoId = randomId();
+    const path = visionStoragePath(userId, photoId);
+    const body = new Uint8Array(bytes.byteLength);
+    body.set(bytes);
+    const uploaded = await this.client.storage.from(VISION_BUCKET).upload(path, body, {
+      contentType: 'image/jpeg',
+      upsert: false,
+    });
+    if (uploaded.error) throw asUserFacing(uploaded.error, 'general');
+    const position = this.snapshot.visionItems.reduce((max, item) => Math.max(max, item.position), -1) + 1;
+    const inserted = await this.client.from('vision_board_items').insert({
+      id: photoId,
+      user_id: userId,
+      storage_path: path,
+      caption: '',
+      area: null,
+      size: 'medium',
+      position,
+    });
+    if (inserted.error) {
+      await this.client.storage.from(VISION_BUCKET).remove([path]);
+      throw asUserFacing(inserted.error, 'general');
+    }
+    if (!this.snapshot.profile?.visionStartedOn) {
+      const started = await this.client.from('profiles').update({ vision_started_on: isoDay(new Date()) }).eq('id', userId);
+      if (started.error) console.error(started.error.message);
+    }
+    await this.refresh();
+  }
+
+  async updateVisionItem(id: string, patch: { caption?: string; area?: VisionArea | null; size?: VisionSize }): Promise<void> {
+    const column: Record<string, unknown> = {};
+    if (patch.caption !== undefined) {
+      const plan = planVisionText(patch.caption, VISION_CAPTION_LIMIT);
+      if (!plan.ok) throw new UserFacingError(plan.message, 'generic');
+      column.caption = plan.text;
+    }
+    if (patch.area !== undefined) column.area = patch.area && isVisionArea(patch.area) ? patch.area : null;
+    if (patch.size !== undefined) {
+      if (!isVisionSize(patch.size)) throw new UserFacingError('Could not change that size.', 'generic');
+      column.size = patch.size;
+    }
+    if (!Object.keys(column).length) return;
+    const userId = await this.userId();
+    const { error } = await this.client.from('vision_board_items').update(column).eq('id', id).eq('user_id', userId);
+    if (error) throw asUserFacing(error, 'general');
+    await this.refresh();
+  }
+
+  async moveVisionItem(id: string, direction: 'up' | 'down'): Promise<void> {
+    const ordered = sortVisionItems(this.snapshot.visionItems);
+    const next = reorderVisionItems(ordered, id, direction);
+    if (next.every((item, index) => item.id === ordered[index]?.id)) return;
+    const userId = await this.userId();
+    for (let index = 0; index < next.length; index += 1) {
+      const item = next[index];
+      if (!item || item.position === index) continue;
+      const { error } = await this.client.from('vision_board_items').update({ position: index }).eq('id', item.id).eq('user_id', userId);
+      if (error) throw asUserFacing(error, 'general');
+    }
+    await this.refresh();
+  }
+
+  async deleteVisionItem(id: string): Promise<void> {
+    const userId = await this.userId();
+    const known = this.snapshot.visionItems.find((item) => item.id === id);
+    const path = known?.storagePath && known.storagePath.startsWith(`${userId}/`) && !known.storagePath.includes('..')
+      ? known.storagePath
+      : visionStoragePath(userId, id);
+    const removed = await this.client.storage.from(VISION_BUCKET).remove([path]);
+    if (removed.error && !/not found/i.test(removed.error.message)) throw asUserFacing(removed.error, 'general');
+    const { error } = await this.client.from('vision_board_items').delete().eq('id', id).eq('user_id', userId);
+    if (error) throw asUserFacing(error, 'general');
+    await this.refresh();
+  }
+
   async reflectOnGratitude(body: string, category: string | null): Promise<GratitudeReflect> {
     if (!this.snapshot.profile?.consentAi) {
       throw new Error('Agree to the coach consent before sending a message to Thumos.');
@@ -1186,9 +1322,10 @@ export class SupabaseRepository implements Repository {
   async deleteAccount(): Promise<void> {
     const removed = await this.removeOwnProgressPhotos();
     const removedDiary = await this.removeOwnGratitudePhotos();
+    const removedVision = await this.removeOwnVisionPhotos();
     const invoked = await this.client.functions.invoke('account-delete', { body: {} });
     if (invoked.error || invoked.data?.ok === false) {
-      if (!removed || !removedDiary) throw new UserFacingError('Could not remove the private photos, so the account was left in place.', 'generic');
+      if (!removed || !removedDiary || !removedVision) throw new UserFacingError('Could not remove the private photos, so the account was left in place.', 'generic');
       const { error } = await this.client.rpc('delete_my_account');
       if (error) throw asUserFacing(error, 'general');
     }
@@ -1198,13 +1335,16 @@ export class SupabaseRepository implements Repository {
 
   private async attachProgressLinks(record: Record<string, unknown>, seconds: number): Promise<Record<string, unknown>> {
     const withProgress = await this.attachBucketLinks(record, 'progress_photos', PROGRESS_BUCKET, seconds);
-    if (!Array.isArray(withProgress.gratitude_photos)) return withProgress;
-    return this.attachBucketLinks(withProgress, 'gratitude_photos', GRATITUDE_BUCKET, seconds);
+    const withGratitude = Array.isArray(withProgress.gratitude_photos)
+      ? await this.attachBucketLinks(withProgress, 'gratitude_photos', GRATITUDE_BUCKET, seconds)
+      : withProgress;
+    if (!Array.isArray(withGratitude.vision_board_items)) return withGratitude;
+    return this.attachBucketLinks(withGratitude, 'vision_board_items', VISION_BUCKET, seconds);
   }
 
   private async attachBucketLinks(
     record: Record<string, unknown>,
-    key: 'progress_photos' | 'gratitude_photos',
+    key: 'progress_photos' | 'gratitude_photos' | 'vision_board_items',
     bucket: string,
     seconds: number,
   ): Promise<Record<string, unknown>> {
@@ -1242,6 +1382,12 @@ export class SupabaseRepository implements Repository {
     if (!userId) return true;
     const known = this.snapshot.gratitude.flatMap((entry) => entry.photos.map((photo) => photo.storagePath));
     return this.removeOwnerFolder(GRATITUDE_BUCKET, userId, known);
+  }
+
+  private async removeOwnVisionPhotos(): Promise<boolean> {
+    const userId = this.snapshot.session?.userId;
+    if (!userId) return true;
+    return this.removeOwnerFolder(VISION_BUCKET, userId, this.snapshot.visionItems.map((item) => item.storagePath));
   }
 
   private async removeOwnerFolder(bucket: string, userId: string, known: string[]): Promise<boolean> {
@@ -1343,6 +1489,10 @@ function mapProfile(row: Row, email: string, interestIds: string[]): Profile {
     drinkFreeDaysGoal: row.drink_free_days_goal == null ? null : Number(row.drink_free_days_goal),
     drinkFreeOn: Array.isArray(row.drink_free_on) ? row.drink_free_on.map(String) : [],
     heightCm: row.height_cm == null ? null : Number(row.height_cm),
+    visionStatement: typeof row.vision_statement === 'string' ? row.vision_statement : '',
+    visionStartedOn: typeof row.vision_started_on === 'string'
+      ? (/^(\d{4}-\d{2}-\d{2})/.exec(row.vision_started_on)?.[1] ?? null)
+      : null,
     createdAt: row.created_at ? String(row.created_at) : '1970-01-01T00:00:00.000Z',
   };
 }

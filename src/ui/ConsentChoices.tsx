@@ -40,11 +40,11 @@ export function ConsentChoices({
       />
       <ConsentRow
         title="Thumos, the coach"
-        body="What you type, plus check-ins, reasons, and health summaries, is sent to xAI to write a reply. A few gratitude lines, the latest and the starred ones, are included when this coach is on. A reflection sends only that one line. The gratitude diary stays private and is never shown to the community. Gratitude photos are not sent. Progress photos are not sent. Thumos is not a doctor."
+        body="What you type, plus check-ins, reasons, and health summaries, is sent to xAI to write a reply. A few gratitude lines, the latest and the starred ones, are included when this coach is on. A reflection sends only that one line. Your vision statement and photo captions may be included when this coach is on. The gratitude diary stays private and is never shown to the community. Gratitude photos are not sent. Vision board photos are not sent. Progress photos are not sent. Thumos is not a doctor."
         value={ai}
         onChange={onAi}
       />
-      <T>Progress photos stay private unless you share one. Anyone in the Charioteer community can then see that photo. Photos are not sent to Thumos. Gratitude photos always stay private. They are not shared with the community and are not sent to Thumos.</T>
+      <T>Progress photos stay private unless you share one. Anyone in the Charioteer community can then see that photo. Photos are not sent to Thumos. Gratitude photos always stay private. They are not shared with the community and are not sent to Thumos. Vision board photos always stay private. They are not shared with the community and are not sent to Thumos.</T>
       <T variant="muted">This consent screen is plain language, not a solicitor’s privacy notice. Have it reviewed before a public launch. Version {formatUkLong(parseIsoDay(CONSENT_VERSION))}.</T>
     </View>
   );

@@ -11,6 +11,7 @@ export type MenuIcon =
   | 'star'
   | 'pulse'
   | 'photo'
+  | 'board'
   | 'glass'
   | 'book'
   | 'person'
@@ -50,6 +51,7 @@ export const APP_SECTIONS: readonly AppSection[] = [
   { id: 'gratitude', label: 'Gratitude Diary', href: '/gratitude', tab: true, tabLabel: 'Gratitude', icon: 'star', group: 'main' },
   { id: 'health', label: 'Health Stats', href: '/health', icon: 'pulse', group: 'tools' },
   { id: 'photos', label: 'Progress photos', href: '/photos', icon: 'photo', group: 'tools' },
+  { id: 'vision', label: 'Vision Board', href: '/vision', icon: 'board', group: 'tools' },
   { id: 'units', label: 'Drinks & units calculator', href: '/units', icon: 'glass', group: 'tools' },
   { id: 'library', label: 'Library', href: '/library', icon: 'book', group: 'tools' },
   { id: 'you', label: 'You', href: '/profile', icon: 'person', group: 'account' },

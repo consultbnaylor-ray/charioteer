@@ -1,3 +1,4 @@
+import { Image } from 'expo-image';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import { Pressable, View } from 'react-native';
@@ -11,6 +12,7 @@ import { formatGbp, savingsFromTypicalWeek } from '@/domain/savings';
 import { shownError } from '@/domain/errors';
 import { soberElapsed } from '@/domain/sober';
 import { buildHealthInsights } from '@/domain/healthInsights';
+import { VISION_EMPTY_STATEMENT } from '@/domain/visionBoard';
 import { daysUntil, drinkFreeThisWeek, showsSoberRecord, SUDDEN_STOP_WARNING, toggleDrinkFreeDay } from '@/domain/stage';
 import { CheckInWeek } from '@/ui/CheckInWeek';
 import { UnitsGuide } from '@/ui/UnitsGuide';
@@ -244,6 +246,31 @@ export default function Home() {
           style={{ minHeight: 44, justifyContent: 'center' }}
         >
           <T style={{ fontFamily: theme.font.bodyStrong }}>See all</T>
+        </Pressable>
+      </Card>
+      <Card>
+        <T variant="label">My 5-year vision</T>
+        {profile.visionStatement ? (
+          <T>{profile.visionStatement}</T>
+        ) : (
+          <T style={{ color: theme.colors.placeholder }}>{VISION_EMPTY_STATEMENT}</T>
+        )}
+        {snap.visionItems.length ? (
+          <View style={{ flexDirection: 'row', gap: 8 }}>
+            {snap.visionItems.slice(0, 3).map((item) => (
+              <View key={item.id} style={{ width: 56, height: 56, borderRadius: 10, overflow: 'hidden', backgroundColor: theme.colors.sunken }}>
+                {item.previewUrl ? <Image source={{ uri: item.previewUrl }} style={{ width: 56, height: 56 }} contentFit="cover" accessibilityIgnoresInvertColors /> : null}
+              </View>
+            ))}
+          </View>
+        ) : null}
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Open vision board"
+          onPress={() => router.push('/vision' as never)}
+          style={{ minHeight: 44, justifyContent: 'center' }}
+        >
+          <T style={{ fontFamily: theme.font.bodyStrong }}>Open</T>
         </Pressable>
       </Card>
       {sober ? <Card>

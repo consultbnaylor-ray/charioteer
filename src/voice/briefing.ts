@@ -1,6 +1,7 @@
 import type { AppSnapshot } from '@/data/types';
 import { isoDay } from '@/domain/dates';
 import { buildHealthInsights } from '@/domain/healthInsights';
+import { visionContextFrom } from '@/domain/visionBoard';
 import { drinkFreeThisWeek } from '@/domain/stage';
 import { buildVoiceBriefing, type VoiceBriefing } from '@/domain/voice';
 import type { HealthTrend, ThumosMode } from '@/domain/thumos';
@@ -66,6 +67,9 @@ export function briefingFromSnapshot(snap: AppSnapshot, requestedMode: ThumosMod
       })),
       health: shareHealth ? healthTrends(snap.health) : [],
       healthInsights,
+      vision: profile.consentAi
+        ? visionContextFrom(profile.visionStatement, profile.visionStartedOn, snap.visionItems)
+        : undefined,
       mode: requestedMode,
       safety: { selfHarm: false, withdrawal: false, reasons: [] },
     },

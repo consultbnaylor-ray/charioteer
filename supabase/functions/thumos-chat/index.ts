@@ -22,6 +22,7 @@ import {
   type ThumosMode,
 } from '../_shared/thumos.ts';
 import { gratitudeFromRows, type GratitudeEntry } from '../_shared/gratitude.ts';
+import { visionContextFrom, type VisionContext } from '../_shared/visionBoard.ts';
 import { buildHealthInsights, londonDay } from '../_shared/healthInsights.ts';
 
 type Body = { content?: string; mode?: ThumosMode };
@@ -36,6 +37,25 @@ function drinkFreeCount(dates: unknown, now: Date): number {
   endDate.setUTCDate(endDate.getUTCDate() + 7);
   const end = endDate.toISOString().slice(0, 10);
   return new Set(dates.map(String).filter((item) => item >= start && item < end)).size;
+}
+
+async function loadVision(userClient: SupabaseClient, userId: string, statement: unknown, startedOn: unknown): Promise<VisionContext> {
+  const res = await userClient
+    .from('vision_board_items')
+    .select('caption, area')
+    .eq('user_id', userId)
+    .order('position')
+    .limit(40);
+  const rows = res.error || !Array.isArray(res.data) ? [] : res.data;
+  const started = typeof startedOn === 'string' ? /^(\d{4}-\d{2}-\d{2})/.exec(startedOn)?.[1] ?? null : null;
+  return visionContextFrom(
+    typeof statement === 'string' ? statement : '',
+    started,
+    rows.map((row) => ({
+      caption: typeof row.caption === 'string' ? row.caption : '',
+      area: typeof row.area === 'string' ? row.area : null,
+    })),
+  );
 }
 
 async function loadGratitude(userClient: SupabaseClient, userId: string): Promise<GratitudeEntry[]> {
@@ -96,6 +116,7 @@ Deno.serve(async (req) => {
   }
 
   const gratitude = await loadGratitude(userClient, userId);
+  const vision = await loadVision(userClient, userId, profileRes.data.vision_statement, profileRes.data.vision_started_on);
 
   const safety = safetyFromText(content);
   const mode = resolveThumosMode({ requested: body.mode, userText: content, safety });
@@ -157,6 +178,7 @@ Deno.serve(async (req) => {
     drinkFreeDaysGoal: profile.drink_free_days_goal == null ? null : Number(profile.drink_free_days_goal),
     drinkFreeThisWeek: drinkFreeCount(profile.drink_free_on, new Date()),
     gratitude,
+    vision,
   });
 
   const admin = createClient(url, service, { auth: { persistSession: false } });

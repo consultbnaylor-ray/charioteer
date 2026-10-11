@@ -11,6 +11,20 @@ import { randomId } from '@/domain/id';
 import { isoDay } from '@/domain/dates';
 import { isGratitudeCategory, localGratitudeReflect, planGratitudeEntry, sortGratitude, type GratitudeEntry, type GratitudeReflect } from '@/domain/gratitude';
 import { GRATITUDE_MAX_BYTES, gratitudePhotoLimitMessage, gratitudeStoragePath } from '@/domain/gratitudePhotos';
+import {
+  VISION_CAPTION_LIMIT,
+  VISION_MAX_BYTES,
+  VISION_STATEMENT_LIMIT,
+  isVisionArea,
+  isVisionSize,
+  moveVisionItem as reorderVisionItems,
+  planVisionText,
+  sortVisionItems,
+  visionPhotoLimitMessage,
+  visionStoragePath,
+  type VisionArea,
+  type VisionSize,
+} from '@/domain/visionBoard';
 import { planProgressPhoto, progressAnchor, progressPhotoLabel, progressStoragePath, progressVisibility, PROGRESS_MAX_BYTES } from '@/domain/progressPhotos';
 import { interestSelectionUnchanged, nextInterestIds } from '@/domain/interests';
 import { planCustomInterest, validateTown } from '@/domain/privacy';
@@ -59,6 +73,8 @@ function readyProfile(profile: DemoAccount['profile']): DemoAccount['profile'] {
     drinkFreeDaysGoal: profile.drinkFreeDaysGoal ?? null,
     drinkFreeOn: profile.drinkFreeOn ?? [],
     heightCm: profile.heightCm ?? null,
+    visionStatement: profile.visionStatement ?? '',
+    visionStartedOn: profile.visionStartedOn ?? null,
     createdAt: profile.createdAt || '2026-01-01T00:00:00.000Z',
   };
 }
@@ -173,6 +189,7 @@ export class DemoRepository implements Repository {
         : [],
       profile: account ? readyProfile(account.profile) : null,
       gratitude: account ? sortGratitude((account.gratitude ?? []).map((entry) => ({ ...entry, photos: entry.photos ?? [] }))) : [],
+      visionItems: account ? sortVisionItems(account.visionItems ?? []) : [],
     };
   }
 
@@ -261,6 +278,8 @@ export class DemoRepository implements Repository {
         drinkFreeDaysGoal: null,
         drinkFreeOn: [],
         heightCm: null,
+        visionStatement: '',
+        visionStartedOn: null,
         createdAt: new Date().toISOString(),
       },
       reasons: [],
@@ -271,6 +290,7 @@ export class DemoRepository implements Repository {
       consents: [],
       progressPhotos: [],
       gratitude: [],
+      visionItems: [],
     };
     const db = clone(this.db);
     db.accounts[id] = account;
@@ -796,6 +816,84 @@ export class DemoRepository implements Repository {
     this.commit(db);
   }
 
+  async saveVisionStatement(statement: string): Promise<void> {
+    const plan = planVisionText(statement, VISION_STATEMENT_LIMIT);
+    if (!plan.ok) throw new UserFacingError(plan.message, 'generic');
+    const account = this.me();
+    const db = clone(this.db);
+    const next = db.accounts[account.profile.id];
+    next.profile.visionStatement = plan.text;
+    if (plan.text && !next.profile.visionStartedOn) next.profile.visionStartedOn = isoDay(new Date());
+    this.commit(db);
+  }
+
+  async addVisionItem(bytes: Uint8Array): Promise<void> {
+    if (bytes.byteLength > VISION_MAX_BYTES) throw new UserFacingError('That photo is still too large.', 'generic');
+    const account = this.me();
+    const db = clone(this.db);
+    const next = db.accounts[account.profile.id];
+    const items = next.visionItems ?? [];
+    const limit = visionPhotoLimitMessage(items.length);
+    if (limit) throw new UserFacingError(limit, 'generic');
+    const id = uid();
+    const now = new Date().toISOString();
+    const position = items.reduce((max, item) => Math.max(max, item.position), -1) + 1;
+    items.push({
+      id,
+      caption: '',
+      area: null,
+      size: 'medium',
+      position,
+      storagePath: visionStoragePath(account.profile.id, id),
+      createdAt: now,
+      updatedAt: now,
+      previewUrl: bytesToDataUrl(bytes),
+    });
+    next.visionItems = items;
+    if (!next.profile.visionStartedOn) next.profile.visionStartedOn = isoDay(new Date());
+    this.commit(db);
+  }
+
+  async updateVisionItem(id: string, patch: { caption?: string; area?: VisionArea | null; size?: VisionSize }): Promise<void> {
+    const account = this.me();
+    const db = clone(this.db);
+    const items = db.accounts[account.profile.id].visionItems ?? [];
+    const item = items.find((row) => row.id === id);
+    if (!item) throw new UserFacingError('Could not update that photo.', 'generic');
+    if (patch.caption !== undefined) {
+      const plan = planVisionText(patch.caption, VISION_CAPTION_LIMIT);
+      if (!plan.ok) throw new UserFacingError(plan.message, 'generic');
+      item.caption = plan.text;
+    }
+    if (patch.area !== undefined) item.area = patch.area && isVisionArea(patch.area) ? patch.area : null;
+    if (patch.size !== undefined) {
+      if (!isVisionSize(patch.size)) throw new UserFacingError('Could not change that size.', 'generic');
+      item.size = patch.size;
+    }
+    item.updatedAt = new Date().toISOString();
+    this.commit(db);
+  }
+
+  async moveVisionItem(id: string, direction: 'up' | 'down'): Promise<void> {
+    const account = this.me();
+    const db = clone(this.db);
+    const next = db.accounts[account.profile.id];
+    const ordered = sortVisionItems(next.visionItems ?? []);
+    const moved = reorderVisionItems(ordered, id, direction);
+    next.visionItems = moved.map((item, index) => ({ ...item, position: index }));
+    this.commit(db);
+  }
+
+  async deleteVisionItem(id: string): Promise<void> {
+    const account = this.me();
+    const db = clone(this.db);
+    const next = db.accounts[account.profile.id];
+    const items = next.visionItems ?? [];
+    if (!items.some((item) => item.id === id)) throw new UserFacingError('Could not remove that photo.', 'generic');
+    next.visionItems = items.filter((item) => item.id !== id);
+    this.commit(db);
+  }
+
   async reflectOnGratitude(body: string, category: string | null): Promise<GratitudeReflect> {
     const account = this.me();
     if (!account.profile.consentAi) {
@@ -849,6 +947,18 @@ export class DemoRepository implements Repository {
         created_at: photo.createdAt,
         signed_url: photo.previewUrl,
       }))),
+      vision_board_items: (account.visionItems ?? []).map((item) => ({
+        id: item.id,
+        user_id: id,
+        storage_path: item.storagePath,
+        caption: item.caption,
+        area: item.area,
+        size: item.size,
+        position: item.position,
+        created_at: item.createdAt,
+        updated_at: item.updatedAt,
+        signed_url: item.previewUrl,
+      })),
     };
   }
 

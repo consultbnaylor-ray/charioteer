@@ -3,6 +3,7 @@ import { json, preflight } from '../_shared/http.ts';
 
 const PHOTO_BUCKET = 'progress-photos';
 const GRATITUDE_BUCKET = 'gratitude-photos';
+const VISION_BUCKET = 'vision-board';
 const LEFT_IN_PLACE = 'Could not remove the private photos, so the account was left in place.';
 
 Deno.serve(async (req) => {
@@ -26,6 +27,8 @@ Deno.serve(async (req) => {
   if (storageError) return json({ ok: false, code: 'storage', message: storageError }, 500);
   const diaryPhotos = await removeGratitudePhotos(admin, userData.user.id);
   if (diaryPhotos) return json({ ok: false, code: 'storage', message: diaryPhotos }, 500);
+  const visionPhotos = await removeVisionPhotos(admin, userData.user.id);
+  if (visionPhotos) return json({ ok: false, code: 'storage', message: visionPhotos }, 500);
 
   const diary = await admin.from('gratitude_entries').delete().eq('user_id', userData.user.id);
   if (diary.error && !/does not exist|schema cache|could not find the table/i.test(diary.error.message)) {
@@ -60,6 +63,10 @@ async function removeProgressPhotos(admin: StorageAdmin, userId: string): Promis
 
 async function removeGratitudePhotos(admin: StorageAdmin, userId: string): Promise<string | null> {
   return removeOwnerFolder(admin, GRATITUDE_BUCKET, userId);
+}
+
+async function removeVisionPhotos(admin: StorageAdmin, userId: string): Promise<string | null> {
+  return removeOwnerFolder(admin, VISION_BUCKET, userId);
 }
 
 async function removeOwnerFolder(admin: StorageAdmin, bucket: string, userId: string): Promise<string | null> {

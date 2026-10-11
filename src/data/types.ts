@@ -2,6 +2,7 @@ import type { StoredConsent } from '@/domain/consents';
 import type { GratitudeCategory, GratitudeEntry, GratitudeReflect } from '@/domain/gratitude';
 import type { Stage } from '@/domain/stage';
 import type { ThumosMode } from '@/domain/thumos';
+import type { VisionArea, VisionItem, VisionSize } from '@/domain/visionBoard';
 
 export type TextScale = 'default' | 'large' | 'extra';
 export type ThemePreference = 'system' | 'light' | 'dark';
@@ -42,6 +43,10 @@ export type Profile = {
   drinkFreeOn: string[];
   /** Centimetres, used only to calculate BMI. Never shown on the public profile. */
   heightCm: number | null;
+  /** Private words for the vision board. Photos are stored separately and are not on the public profile. */
+  visionStatement: string;
+  /** The day the board began. The target is five years after this, and it does not move. */
+  visionStartedOn: string | null;
   createdAt: string;
 };
 
@@ -165,6 +170,8 @@ export type AppSnapshot = {
   communityPhotos: ProgressPhoto[];
   /** Private diary. Never included in the community directory. */
   gratitude: GratitudeEntry[];
+  /** Private vision board. Never included in the community directory. */
+  visionItems: VisionItem[];
 };
 
 export type NewGratitudeEntry = {
@@ -217,6 +224,8 @@ export type ProfilePatch = Partial<
     | 'drinkFreeDaysGoal'
     | 'drinkFreeOn'
     | 'heightCm'
+    | 'visionStatement'
+    | 'visionStartedOn'
   >
 >;
 
@@ -304,6 +313,11 @@ export interface Repository {
   addGratitudePhoto(entryId: string, bytes: Uint8Array): Promise<void>;
   deleteGratitudePhoto(id: string): Promise<void>;
   reflectOnGratitude(body: string, category: string | null): Promise<GratitudeReflect>;
+  saveVisionStatement(statement: string): Promise<void>;
+  addVisionItem(bytes: Uint8Array): Promise<void>;
+  updateVisionItem(id: string, patch: { caption?: string; area?: VisionArea | null; size?: VisionSize }): Promise<void>;
+  moveVisionItem(id: string, direction: 'up' | 'down'): Promise<void>;
+  deleteVisionItem(id: string): Promise<void>;
   exportData(): Promise<Record<string, unknown>>;
   deleteAccount(): Promise<void>;
 }

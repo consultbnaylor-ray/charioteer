@@ -1,5 +1,6 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.117.3';
 import { gratitudeFromRows } from '../_shared/gratitude.ts';
+import { visionContextFrom } from '../_shared/visionBoard.ts';
 import { json, preflight } from '../_shared/http.ts';
 import {
   buildVoiceBriefing,
@@ -81,6 +82,24 @@ Deno.serve(async (req) => {
     .order('entry_date', { ascending: false })
     .limit(40);
   const gratitude = gratitudeRes.error ? [] : gratitudeFromRows(gratitudeRes.data);
+  const visionRes = await userClient
+    .from('vision_board_items')
+    .select('caption, area')
+    .eq('user_id', userId)
+    .order('position')
+    .limit(40);
+  const visionRows = visionRes.error || !Array.isArray(visionRes.data) ? [] : visionRes.data;
+  const visionStarted = typeof profileRes.data.vision_started_on === 'string'
+    ? /^(\d{4}-\d{2}-\d{2})/.exec(profileRes.data.vision_started_on)?.[1] ?? null
+    : null;
+  const vision = visionContextFrom(
+    typeof profileRes.data.vision_statement === 'string' ? profileRes.data.vision_statement : '',
+    visionStarted,
+    visionRows.map((row) => ({
+      caption: typeof row.caption === 'string' ? row.caption : '',
+      area: typeof row.area === 'string' ? row.area : null,
+    })),
+  );
 
   const profile = profileRes.data;
   const stage = profile.stage === 'trying_to_stop' || profile.stage === 'cutting_down' || profile.stage === 'exploring' || profile.stage === 'stopped'
@@ -145,6 +164,7 @@ Deno.serve(async (req) => {
       drinkFreeDaysGoal: profile.drink_free_days_goal == null ? null : Number(profile.drink_free_days_goal),
       drinkFreeThisWeek: drinkFreeCount(profile.drink_free_on, now),
       gratitude,
+      vision,
     },
   });
 

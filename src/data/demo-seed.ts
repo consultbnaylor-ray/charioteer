@@ -2,6 +2,9 @@ import { CONSENT_VERSION, INTEREST_CATALOGUE, RESOURCE_CATALOGUE } from '@/data/
 import { consentRows } from '@/domain/consents';
 import type { StoredConsent } from '@/domain/consents';
 import type { CheckIn, Connection, DirectMessage, HealthSample, Profile, ProgressPhoto, Reason, Relapse, ThumosMessage } from '@/data/types';
+import type { VisionItem } from '@/domain/visionBoard';
+import { visionStoragePath } from '@/domain/visionBoard';
+import { VISION_SAMPLE_PHOTOS } from '@/data/visionSamples';
 import { isoDay } from '@/domain/dates';
 import type { GratitudeEntry } from '@/domain/gratitude';
 import { gratitudeStoragePath } from '@/domain/gratitudePhotos';
@@ -34,6 +37,7 @@ export type DemoAccount = {
   consents: StoredConsent[];
   progressPhotos: ProgressPhoto[];
   gratitude: GratitudeEntry[];
+  visionItems: VisionItem[];
 };
 
 export type DemoDb = {
@@ -119,6 +123,8 @@ function profile(
     drinkFreeDaysGoal: null,
     drinkFreeOn: [],
     heightCm: null,
+    visionStatement: '',
+    visionStartedOn: null,
     createdAt: '2026-01-01T00:00:00.000Z',
     ...extra,
   };
@@ -162,6 +168,36 @@ function samplePhoto(
   };
 }
 
+function alexVision(userId: string): VisionItem[] {
+  const created = '2026-10-11T09:00:00.000Z';
+  const tile = (
+    photoId: string,
+    caption: string,
+    area: VisionItem['area'],
+    size: VisionItem['size'],
+    position: number,
+    previewUrl: string,
+  ): VisionItem => ({
+    id: photoId,
+    caption,
+    area,
+    size,
+    position,
+    storagePath: visionStoragePath(userId, photoId),
+    createdAt: created,
+    updatedAt: created,
+    previewUrl,
+  });
+  return [
+    tile('a1a1a1a1-a1a1-4a1a-8a1a-a1a1a1a1a1a1', 'A kitchen with morning light', 'home', 'large', 0, VISION_SAMPLE_PHOTOS.dawn),
+    tile('a2a2a2a2-a2a2-4a2a-8a2a-a2a2a2a2a2a2', 'A body that feels looked after', 'health', 'medium', 1, VISION_SAMPLE_PHOTOS.leaf),
+    tile('a3a3a3a3-a3a3-4a3a-8a3a-a3a3a3a3a3a3', 'A train to somewhere new', 'travel', 'small', 2, VISION_SAMPLE_PHOTOS.sea),
+    tile('a4a4a4a4-a4a4-4a4a-8a4a-a4a4a4a4a4a4', 'Sunday with the people I love', 'family', 'medium', 3, VISION_SAMPLE_PHOTOS.sand),
+    tile('a5a5a5a5-a5a5-4a5a-8a5a-a5a5a5a5a5a5', 'Work I am glad to start', 'career', 'small', 4, VISION_SAMPLE_PHOTOS.clay),
+    tile('a6a6a6a6-a6a6-4a6a-8a6a-a6a6a6a6a6a6', 'A quiet hour that is mine', 'mind', 'large', 5, VISION_SAMPLE_PHOTOS.sky),
+  ];
+}
+
 export function createDemoDb(now = new Date()): DemoDb {
   const started = new Date(now.getTime() - (47 * 24 + 6) * 60 * 60 * 1000).toISOString();
   const ago = (hours: number) => new Date(now.getTime() - hours * 60 * 60 * 1000).toISOString();
@@ -202,6 +238,8 @@ export function createDemoDb(now = new Date()): DemoDb {
       weeklySpendGbp: 48,
       weeklyUnits: 30,
       heightCm: 178,
+      visionStatement: 'A steady morning, a home that feels like mine, and people I can be honest with.',
+      visionStartedOn: '2026-10-11',
     }),
     reasons: alexReasons,
     checkIns,
@@ -211,6 +249,7 @@ export function createDemoDb(now = new Date()): DemoDb {
     consents: consentRows(CONSENT_VERSION, { consentHealth: true, communityVisible: true, consentAi: true }),
     progressPhotos: [],
     gratitude: [],
+    visionItems: alexVision(PEOPLE.alex),
   };
   const anchor = new Date(started);
   const startPlan = planProgressPhoto({
@@ -270,6 +309,7 @@ export function createDemoDb(now = new Date()): DemoDb {
     consents: consentRows(CONSENT_VERSION, { consentHealth: true, communityVisible: true, consentAi: true }),
     progressPhotos: [],
     gratitude: [],
+    visionItems: [],
   });
 
   const jordan = other(PEOPLE.jordan, 'jordan.ellis@example.com', 'Jordan Ellis', 'Manchester', [HIKING, EXERCISE]);

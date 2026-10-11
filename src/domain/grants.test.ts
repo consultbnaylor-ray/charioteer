@@ -8,6 +8,7 @@ const addInterest = readFileSync('supabase/migrations/20261010150000_add_interes
 const consentReread = readFileSync('supabase/migrations/20261010160000_consent_reread.sql', 'utf8');
 const profileStage = readFileSync('supabase/migrations/20261010170000_profile_stage.sql', 'utf8');
 const profileHeight = readFileSync('supabase/migrations/20261010240000_profile_height.sql', 'utf8');
+const profileVision = readFileSync('supabase/migrations/20261010250000_vision_board.sql', 'utf8');
 const progressPhotos = readFileSync('supabase/migrations/20261010180000_progress_photos.sql', 'utf8');
 const progressVisibility = readFileSync('supabase/migrations/20261010190000_progress_photo_visibility.sql', 'utf8');
 
@@ -81,6 +82,7 @@ describe('client writes against the live grants', () => {
       ...updateColumns('profiles'),
       ...updateColumnsIn(profileStage, 'profiles'),
       ...updateColumnsIn(profileHeight, 'profiles'),
+      ...updateColumnsIn(profileVision, 'profiles'),
     ]);
     const written = [
       'display_name',
@@ -101,6 +103,8 @@ describe('client writes against the live grants', () => {
       'drink_free_days_goal',
       'drink_free_on',
       'height_cm',
+      'vision_statement',
+      'vision_started_on',
     ];
     for (const column of written) expect(granted.has(column)).toBe(true);
     expect(granted.has('is_moderator')).toBe(false);
@@ -129,6 +133,21 @@ describe('profile height', () => {
     expect(profileHeight.toLowerCase()).not.toMatch(/grant update on public\.profiles/i);
     expect(profileHeight).not.toContain('public.directory');
     expect(profileHeight).toContain('height_cm >= 50');
+  });
+});
+
+describe('vision board', () => {
+  it('grants column update only and keeps the pictures private', () => {
+    expect(updateColumnsIn(profileVision, 'profiles')).toEqual(['vision_statement', 'vision_started_on']);
+    expect(updateColumnsIn(profileVision, 'vision_board_items')).toEqual(['caption', 'area', 'size', 'position']);
+    expect(profileVision.toLowerCase()).not.toMatch(/grant update on public\.profiles/i);
+    expect(profileVision.toLowerCase()).not.toMatch(/grant update on public\.vision_board_items/i);
+    expect(profileVision).toContain('revoke all on table public.vision_board_items from public, anon, authenticated');
+    expect(profileVision).toContain("values ('vision-board', 'vision-board', false, 2097152");
+    expect(profileVision).toContain('set public = false');
+    expect(profileVision).not.toContain('public.directory');
+    expect(profileVision).not.toMatch(/visibility/);
+    expect(profileVision).toContain("'vision_board_items'");
   });
 });
 

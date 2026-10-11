@@ -239,6 +239,7 @@ describe('gratitude diary wiring', () => {
       'Gratitude Diary',
       'Health Stats',
       'Progress photos',
+      'Vision Board',
       'Drinks & units calculator',
       'Library',
       'You',
@@ -270,7 +271,7 @@ describe('gratitude diary wiring', () => {
     expect(drawer).toContain('<MenuGlyph');
     expect(readFileSync('src/domain/sections.ts', 'utf8')).toContain("label: 'Library'");
     expect(readFileSync('src/domain/sections.ts', 'utf8')).toContain("label: 'You'");
-    expect(readFileSync('app.json', 'utf8')).toContain('"buildNumber": "10"');
+    expect(readFileSync('app.json', 'utf8')).toContain('"buildNumber": "11"');
     const consent = readFileSync('src/ui/ConsentChoices.tsx', 'utf8');
     expect(consent).toContain('gratitude');
     expect(consent).toContain('never shown to the community');
