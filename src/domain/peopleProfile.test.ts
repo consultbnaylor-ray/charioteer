@@ -36,7 +36,12 @@ describe('your public profile on People', () => {
     expect(card).not.toContain('communityPhotos');
     expect(card).not.toContain('Message privately');
     expect(card).not.toContain('reportUser');
-    expect(card).not.toMatch(/\bbio\b/i);
+    expect(card).toContain('label="Bio"');
+    expect(card).toContain('placeholder={BIO_EXAMPLE}');
+    expect(card).toContain('multiline');
+    expect(card).toContain('{bio.length}/{BIO_LIMIT}');
+    expect(card).toContain('Saved ✓');
+    expect(readFileSync('src/domain/profileSharing.ts', 'utf8')).toContain('Dad of two, gym most mornings, 90 days sober and counting.');
     expect(card).not.toMatch(/gratitude_photos|gratitude-photos|progress-photos/);
     expect(consent).toContain('export const COMMUNITY_CONSENT_BODY');
     expect(consent).toContain('body={COMMUNITY_CONSENT_BODY}');

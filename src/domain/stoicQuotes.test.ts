@@ -21,6 +21,7 @@ const SOURCE: ShareSource = {
   now: new Date('2026-10-11T12:00:00.000Z'),
   today: '2026-10-11',
   displayName: 'Alex Hart',
+  bio: '',
   town: null,
   stage: 'exploring',
   sobrietyStartedAt: null,

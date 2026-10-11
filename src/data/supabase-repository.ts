@@ -57,7 +57,7 @@ import { interestSelectionUnchanged, nextInterestIds, rolledBackInterestIds, sna
 import { planCustomInterest, validateTown } from '@/domain/privacy';
 import { fetchWithOneRetry } from '@/domain/retryFetch';
 import { planReasons } from '@/domain/reasons';
-import { defaultProfileSharing, normalizeProfileSharing, parsePublicProfile, sensitiveTurnedOn, type ProfileSharing } from '@/domain/profileSharing';
+import { BIO_LIMIT, PHOTO_CAPTION_LIMIT, defaultProfileSharing, normalizeProfileSharing, parsePublicProfile, planProfileText, sensitiveTurnedOn, type ProfileSharing } from '@/domain/profileSharing';
 import { quoteById } from '@/domain/stoicQuotes';
 import { planRelapse } from '@/domain/sober';
 import { parseSseBuffer } from '@/domain/sse';
@@ -259,9 +259,9 @@ export class SupabaseRepository implements Repository {
         this.client.from('connections').select('*').order('created_at', { ascending: false }),
         this.client.from('reports').select('*').order('created_at', { ascending: false }),
         this.client.from('consents').select('kind, granted, version').eq('user_id', userId),
-        this.client.from('progress_photos').select('id, user_id, taken_on, month_index, note, storage_path, created_at, visibility').eq('user_id', userId).order('month_index').order('taken_on'),
+        this.client.from('progress_photos').select('id, user_id, taken_on, month_index, note, caption, storage_path, created_at, visibility').eq('user_id', userId).order('month_index').order('taken_on'),
         this.client.from('gratitude_entries').select('id, body, category, is_favourite, entry_date, created_at, updated_at').eq('user_id', userId).order('entry_date', { ascending: false }),
-        this.client.from('gratitude_photos').select('id, entry_id, user_id, storage_path, created_at').eq('user_id', userId).order('created_at'),
+        this.client.from('gratitude_photos').select('id, entry_id, user_id, storage_path, caption, created_at').eq('user_id', userId).order('created_at'),
         this.client.from('vision_board_items').select('id, user_id, storage_path, caption, area, size, position, created_at, updated_at').eq('user_id', userId).order('position'),
         this.client.from('profile_sharing').select('settings').eq('user_id', userId).maybeSingle(),
         this.client.from('user_quotes').select('quote_id, created_at').eq('user_id', userId).order('created_at', { ascending: false }),
@@ -378,6 +378,7 @@ export class SupabaseRepository implements Repository {
         takenOn: /^\d{4}-\d{2}-\d{2}/.test(taken) ? taken.slice(0, 10) : taken,
         monthIndex: Number(row.month_index ?? 0),
         note: String(row.note ?? ''),
+        caption: String(row.caption ?? ''),
         storagePath: path,
         createdAt: String(row.created_at ?? ''),
         visibility: progressVisibility(row.visibility),
@@ -431,13 +432,12 @@ export class SupabaseRepository implements Repository {
     return sortVisionItems(parsed.map((item) => ({ ...item, previewUrl: signedByPath.get(item.storagePath) ?? null })));
   }
 
-  /** Shared photos only. The edge function signs a URL after row-level security has allowed the row. */
+  /**
+   * Shared photos only. The definer function returns the caption and never the
+   * private note. The edge function signs a URL for those rows.
+   */
   private async communityProgressPhotos(userId: string): Promise<ProgressPhoto[]> {
-    const shared = await this.client
-      .from('progress_photos')
-      .select('id, user_id, taken_on, month_index, note, storage_path, created_at, visibility')
-      .eq('visibility', 'community')
-      .neq('user_id', userId);
+    const shared = await this.client.rpc('shared_progress_photos');
     if (shared.error || !shared.data?.length) {
       if (shared.error) console.error(shared.error.message);
       return [];
@@ -457,14 +457,15 @@ export class SupabaseRepository implements Repository {
     } catch (error) {
       console.error(error);
     }
-    return rows.filter((row) => progressVisibility(row.visibility) === 'community').map((row) => {
+    return rows.filter((row) => progressVisibility(row.visibility) === 'community' && String(row.user_id ?? '') !== userId).map((row) => {
       const taken = String(row.taken_on ?? '');
       return {
         id: String(row.id),
         userId: String(row.user_id ?? ''),
         takenOn: /^\d{4}-\d{2}-\d{2}/.test(taken) ? taken.slice(0, 10) : taken,
         monthIndex: Number(row.month_index ?? 0),
-        note: String(row.note ?? ''),
+        note: '',
+        caption: String(row.caption ?? ''),
         storagePath: String(row.storage_path ?? ''),
         createdAt: String(row.created_at ?? ''),
         visibility: 'community' as const,
@@ -657,6 +658,11 @@ export class SupabaseRepository implements Repository {
     if (patch.pinnedQuoteId !== undefined) {
       if (patch.pinnedQuoteId && !quoteById(patch.pinnedQuoteId)) throw new UserFacingError('That quote is not in the library.', 'generic');
       column.pinned_quote_id = patch.pinnedQuoteId;
+    }
+    if (patch.bio !== undefined) {
+      const planned = planProfileText(patch.bio, BIO_LIMIT);
+      if (!planned.ok) throw new UserFacingError(planned.message, 'generic');
+      column.bio = planned.text || null;
     }
     if (Object.keys(column).length) {
       const { error } = await this.client.from('profiles').update(column).eq('id', userId);
@@ -1076,25 +1082,32 @@ export class SupabaseRepository implements Repository {
     await this.refresh();
   }
 
-  async updateProgressPhoto(id: string, input: { takenOn?: string; startingPoint?: boolean; note?: string }): Promise<void> {
+  async updateProgressPhoto(id: string, input: { takenOn?: string; startingPoint?: boolean; note?: string; caption?: string }): Promise<void> {
     const profile = this.snapshot.profile;
     const photo = this.snapshot.progressPhotos.find((item) => item.id === id && item.userId === profile?.id);
     if (!profile || !photo) throw new UserFacingError('Could not update that photo.', 'generic');
-    const takenOn = input.takenOn ?? photo.takenOn;
-    const note = input.note ?? photo.note;
-    const startingPoint = input.startingPoint ?? false;
-    const plan = planProgressPhoto({
-      takenOn,
-      startingPoint: input.startingPoint === undefined ? photo.monthIndex === 0 : startingPoint,
-      note,
-      anchor: progressAnchor(profile.sobrietyStartedAt, profile.createdAt),
-    });
-    if (!plan.ok) throw new UserFacingError(plan.message, 'generic');
-    const patch: { note?: string; taken_on?: string; month_index?: number } = {};
-    if (input.note !== undefined) patch.note = plan.note;
-    if (input.takenOn !== undefined || input.startingPoint !== undefined) {
-      patch.taken_on = plan.takenOn;
-      patch.month_index = plan.monthIndex;
+    const patch: { note?: string; taken_on?: string; month_index?: number; caption?: string } = {};
+    if (input.caption !== undefined) {
+      const planned = planProfileText(input.caption, PHOTO_CAPTION_LIMIT);
+      if (!planned.ok) throw new UserFacingError(planned.message, 'generic');
+      patch.caption = planned.text;
+    }
+    if (input.note !== undefined || input.takenOn !== undefined || input.startingPoint !== undefined) {
+      const takenOn = input.takenOn ?? photo.takenOn;
+      const note = input.note ?? photo.note;
+      const startingPoint = input.startingPoint ?? false;
+      const plan = planProgressPhoto({
+        takenOn,
+        startingPoint: input.startingPoint === undefined ? photo.monthIndex === 0 : startingPoint,
+        note,
+        anchor: progressAnchor(profile.sobrietyStartedAt, profile.createdAt),
+      });
+      if (!plan.ok) throw new UserFacingError(plan.message, 'generic');
+      if (input.note !== undefined) patch.note = plan.note;
+      if (input.takenOn !== undefined || input.startingPoint !== undefined) {
+        patch.taken_on = plan.takenOn;
+        patch.month_index = plan.monthIndex;
+      }
     }
     if (!Object.keys(patch).length) return;
     const userId = await this.userId();
@@ -1237,6 +1250,17 @@ export class SupabaseRepository implements Repository {
       await this.client.storage.from(GRATITUDE_BUCKET).remove([path]);
       throw asUserFacing(inserted.error, 'general');
     }
+    await this.refresh();
+  }
+
+  async updateGratitudePhoto(id: string, input: { caption: string }): Promise<void> {
+    const planned = planProfileText(input.caption, PHOTO_CAPTION_LIMIT);
+    if (!planned.ok) throw new UserFacingError(planned.message, 'generic');
+    const known = this.snapshot.gratitude.flatMap((entry) => entry.photos).find((photo) => photo.id === id);
+    if (!known) throw new UserFacingError('Could not update that photo.', 'generic');
+    const userId = await this.userId();
+    const { error } = await this.client.from('gratitude_photos').update({ caption: planned.text }).eq('id', id).eq('user_id', userId);
+    if (error) throw asUserFacing(error, 'general');
     await this.refresh();
   }
 
@@ -1545,6 +1569,7 @@ function mapProfile(row: Row, email: string, interestIds: string[]): Profile {
     heightCm: row.height_cm == null ? null : Number(row.height_cm),
     visionStatement: typeof row.vision_statement === 'string' ? row.vision_statement : '',
     pinnedQuoteId: typeof row.pinned_quote_id === 'string' && quoteById(row.pinned_quote_id) ? row.pinned_quote_id : null,
+    bio: typeof row.bio === 'string' ? row.bio : '',
     visionStartedOn: typeof row.vision_started_on === 'string'
       ? (/^(\d{4}-\d{2}-\d{2})/.exec(row.vision_started_on)?.[1] ?? null)
       : null,

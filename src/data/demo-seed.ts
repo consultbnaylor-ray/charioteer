@@ -130,6 +130,7 @@ function profile(
     visionStatement: '',
     visionStartedOn: null,
     pinnedQuoteId: null,
+    bio: '',
     createdAt: '2026-01-01T00:00:00.000Z',
     ...extra,
   };
@@ -159,6 +160,7 @@ function samplePhoto(
   note: string,
   createdAt: string,
   visibility: ProgressPhoto['visibility'] = 'private',
+  caption = '',
 ): ProgressPhoto {
   return {
     id: photoId,
@@ -166,6 +168,7 @@ function samplePhoto(
     takenOn,
     monthIndex,
     note,
+    caption,
     storagePath: progressStoragePath(userId, photoId),
     createdAt,
     visibility,
@@ -275,7 +278,7 @@ export function createDemoDb(now = new Date()): DemoDb {
     alex.progressPhotos.push(samplePhoto(PEOPLE.alex, 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb1', startPlan.takenOn, startPlan.monthIndex, startPlan.note, started));
   }
   if (nowPlan.ok) {
-    alex.progressPhotos.push(samplePhoto(PEOPLE.alex, 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb2', nowPlan.takenOn, nowPlan.monthIndex, nowPlan.note, now.toISOString()));
+    alex.progressPhotos.push(samplePhoto(PEOPLE.alex, 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb2', nowPlan.takenOn, nowPlan.monthIndex, nowPlan.note, now.toISOString(), 'community', 'A clearer morning.'));
   }
   const lastYear = `${now.getFullYear() - 1}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
   alex.gratitude = [
@@ -292,6 +295,7 @@ export function createDemoDb(now = new Date()): DemoDb {
       storagePath: gratitudeStoragePath(PEOPLE.alex, photoId),
       createdAt: sister.createdAt,
       previewUrl: SAMPLE_JPEG,
+      caption: '',
     }];
   }
 

@@ -10,6 +10,8 @@ export type GratitudePhoto = {
   storagePath: string;
   createdAt: string;
   previewUrl: string | null;
+  /** Public line under a shared photo. There is no private note on these photos. */
+  caption: string;
 };
 
 export type GratitudeEntry = {

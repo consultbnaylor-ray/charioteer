@@ -96,6 +96,7 @@ describe('gratitude diary helpers', () => {
       storagePath: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1/11111111-1111-4111-8111-1111111111a1.jpg',
       createdAt: '2026-10-08T10:00:00.000Z',
       previewUrl: 'https://signed.example/private',
+      caption: '',
     };
     const withPhoto = entry({ id: 'b', body: 'My sister rang', entryDate: '2026-10-08', category: 'People', isFavourite: true, photos: [photo] });
     expect(formatGratitudeContext([withPhoto])).toContain('My sister rang');

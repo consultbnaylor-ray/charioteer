@@ -276,7 +276,7 @@ function SoulStory() {
   const [open, setOpen] = useState(false);
   const [before, after] = CHARIOTEER_STORY.split('Phaedrus');
   useEffect(() => {
-    if (!open || Platform.OS !== 'web') return;
+    if (!open || Platform.OS !== 'web' || typeof document === 'undefined') return;
     document.getElementById('charioteer-story')?.scrollIntoView({ block: 'nearest' });
   }, [open]);
   return (

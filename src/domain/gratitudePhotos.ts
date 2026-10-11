@@ -36,6 +36,7 @@ export function gratitudePhotosFromRows(rows: unknown): GratitudePhoto[] {
       storagePath,
       createdAt: String(record.created_at ?? ''),
       previewUrl: null,
+      caption: typeof record.caption === 'string' ? record.caption : '',
     });
   }
   return photos;

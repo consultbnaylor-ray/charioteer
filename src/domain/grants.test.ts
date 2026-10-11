@@ -9,6 +9,7 @@ const consentReread = readFileSync('supabase/migrations/20261010160000_consent_r
 const profileStage = readFileSync('supabase/migrations/20261010170000_profile_stage.sql', 'utf8');
 const profileHeight = readFileSync('supabase/migrations/20261010240000_profile_height.sql', 'utf8');
 const profileVision = readFileSync('supabase/migrations/20261010250000_vision_board.sql', 'utf8');
+const profileBio = readFileSync('supabase/migrations/20261010290000_profile_bio_captions.sql', 'utf8');
 const progressPhotos = readFileSync('supabase/migrations/20261010180000_progress_photos.sql', 'utf8');
 const progressVisibility = readFileSync('supabase/migrations/20261010190000_progress_photo_visibility.sql', 'utf8');
 
@@ -83,6 +84,7 @@ describe('client writes against the live grants', () => {
       ...updateColumnsIn(profileStage, 'profiles'),
       ...updateColumnsIn(profileHeight, 'profiles'),
       ...updateColumnsIn(profileVision, 'profiles'),
+      ...updateColumnsIn(profileBio, 'profiles'),
     ]);
     const written = [
       'display_name',
@@ -105,6 +107,7 @@ describe('client writes against the live grants', () => {
       'height_cm',
       'vision_statement',
       'vision_started_on',
+      'bio',
     ];
     for (const column of written) expect(granted.has(column)).toBe(true);
     expect(granted.has('is_moderator')).toBe(false);

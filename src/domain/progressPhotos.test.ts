@@ -160,7 +160,7 @@ describe('progress photos stay private', () => {
   it('selects only the granted columns and does not send a photo to Thumos', () => {
     const repo = readFileSync('src/data/supabase-repository.ts', 'utf8');
     const refresh = repo.slice(repo.indexOf('private async refresh'), repo.indexOf('private async userId'));
-    expect(refresh).toContain(".from('progress_photos').select('id, user_id, taken_on, month_index, note, storage_path, created_at, visibility')");
+    expect(refresh).toContain(".from('progress_photos').select('id, user_id, taken_on, month_index, note, caption, storage_path, created_at, visibility')");
     expect(refresh.indexOf("from('consents')")).toBeLessThan(refresh.indexOf("from('progress_photos')"));
     const add = repo.slice(repo.indexOf('async addProgressPhoto'), repo.indexOf('async deleteProgressPhoto'));
     expect(add).toContain(".from('progress_photos').insert");

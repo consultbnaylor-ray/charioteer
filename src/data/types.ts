@@ -50,6 +50,8 @@ export type Profile = {
   visionStartedOn: string | null;
   /** Id from the bundled Stoic catalogue. Null when nothing is pinned. */
   pinnedQuoteId: string | null;
+  /** Public words under the name. Empty when unset. Sharing starts on. */
+  bio: string;
   createdAt: string;
 };
 
@@ -60,7 +62,10 @@ export type ProgressPhoto = {
   userId: string;
   takenOn: string;
   monthIndex: number;
+  /** Private. Never copied onto the public profile. */
   note: string;
+  /** What other people see under a shared photo. */
+  caption: string;
   storagePath: string;
   createdAt: string;
   visibility: ProgressVisibility;
@@ -236,6 +241,7 @@ export type ProfilePatch = Partial<
     | 'visionStatement'
     | 'visionStartedOn'
     | 'pinnedQuoteId'
+    | 'bio'
   >
 >;
 
@@ -313,7 +319,7 @@ export interface Repository {
   mintVoiceToken(mode?: ThumosMode): Promise<VoiceMint>;
   saveVoiceTurn(input: VoiceTurnInput): Promise<void>;
   addProgressPhoto(input: NewProgressPhoto): Promise<void>;
-  updateProgressPhoto(id: string, input: { takenOn?: string; startingPoint?: boolean; note?: string }): Promise<void>;
+  updateProgressPhoto(id: string, input: { takenOn?: string; startingPoint?: boolean; note?: string; caption?: string }): Promise<void>;
   deleteProgressPhoto(id: string): Promise<void>;
   setProgressPhotoVisibility(ids: string[], visibility: ProgressVisibility): Promise<void>;
   setProfileSharing(sharing: ProfileSharing): Promise<void>;
@@ -328,6 +334,7 @@ export interface Repository {
   updateGratitudeEntry(id: string, input: NewGratitudeEntry): Promise<void>;
   deleteGratitudeEntry(id: string): Promise<void>;
   addGratitudePhoto(entryId: string, bytes: Uint8Array): Promise<void>;
+  updateGratitudePhoto(id: string, input: { caption: string }): Promise<void>;
   deleteGratitudePhoto(id: string): Promise<void>;
   reflectOnGratitude(body: string, category: string | null): Promise<GratitudeReflect>;
   saveVisionStatement(statement: string): Promise<void>;

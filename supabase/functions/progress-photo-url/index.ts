@@ -26,17 +26,35 @@ Deno.serve(async (req) => {
   const ids = Array.isArray(body?.ids) ? body.ids.filter((id): id is string => typeof id === 'string' && ID.test(id)).slice(0, 24) : [];
   if (!ids.length) return json({ ok: true, photos: [] });
 
-  // The caller's own row-level security decides which rows exist. A private
-  // photo belonging to someone else is not in this result, so it is not signed.
+  // Own rows come from row-level security. Shared rows come from
+  // shared_progress_photos, which returns the caption path and never the
+  // private note. A private photo belonging to someone else is not signed.
   const { data, error: readError } = await userClient
     .from('progress_photos')
     .select('id, user_id, storage_path, visibility')
     .in('id', ids);
   if (readError) return json({ ok: false, code: 'read' }, 500);
 
+  const shared = await userClient.rpc('shared_progress_photos', { photo_ids: ids });
+  const rows = new Map<string, { id: string; user_id: string; storage_path: string; visibility: string }>();
+  for (const row of data ?? []) rows.set(String(row.id), row);
+  if (!shared.error && Array.isArray(shared.data)) {
+    for (const row of shared.data) {
+      if (!row || typeof row !== 'object' || !('id' in row)) continue;
+      const record = row as { id?: unknown; user_id?: unknown; storage_path?: unknown; visibility?: unknown };
+      if (typeof record.id !== 'string') continue;
+      rows.set(record.id, {
+        id: record.id,
+        user_id: String(record.user_id ?? ''),
+        storage_path: String(record.storage_path ?? ''),
+        visibility: String(record.visibility ?? ''),
+      });
+    }
+  }
+
   const admin = createClient(url, service, { auth: { persistSession: false } });
   const photos: { id: string; signed_url: string }[] = [];
-  for (const row of data ?? []) {
+  for (const row of rows.values()) {
     const id = String(row.id);
     const ownerId = String(row.user_id);
     const path = String(row.storage_path ?? '');

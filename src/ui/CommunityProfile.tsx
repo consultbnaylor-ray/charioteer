@@ -51,7 +51,7 @@ export function CommunityProfile({ userId, name }: { userId: string; name: strin
       await repo.reportUser({
         reportedUserId: photo.userId,
         reason: 'Shared progress photo',
-        details: `Photo ${photo.id}. ${progressPhotoLabel(photo.monthIndex, photo.takenOn)}. ${photo.note}`.slice(0, 2000),
+        details: `Photo ${photo.id}. ${progressPhotoLabel(photo.monthIndex, photo.takenOn)}. ${photo.caption}`.slice(0, 2000),
       });
       setReporting(null);
       setSent(photo.id);
@@ -87,7 +87,7 @@ export function CommunityProfile({ userId, name }: { userId: string; name: strin
           <SharedPhotoFrame photo={photo} />
           <T variant="label">Shared</T>
           <T>{progressPhotoLabel(photo.monthIndex, photo.takenOn)}</T>
-          {photo.note ? <T variant="muted">{photo.note}</T> : null}
+          {photo.caption ? <T variant="muted">{photo.caption}</T> : null}
           {sent === photo.id ? <T variant="muted">Report sent.</T> : null}
           <Button label="Message privately" tone="quiet" disabled={pending} onPress={() => void message()} />
           {reporting === photo.id ? (
@@ -149,6 +149,7 @@ function SharedProfileFacts({ userId, name }: { userId: string; name: string }) 
   return (
     <View style={{ gap: 8 }}>
       <T variant="title">{view.displayName || name}</T>
+      {view.bio ? <T>{view.bio}</T> : null}
       {view.pinnedQuote ? (
         <View style={{ gap: 4 }}>
           <T variant="title">{view.pinnedQuote.text}</T>
@@ -165,6 +166,7 @@ function SharedProfileFacts({ userId, name }: { userId: string; name: string }) 
       {view.health.map((line) => <T key={line}>{line}</T>)}
       {view.gratitude.map((entry) => <T key={entry.id}>{entry.body}</T>)}
       {view.vision.map((item) => <T key={item.id}>{[item.caption, item.area].filter(Boolean).join(' · ')}</T>)}
+      {view.gratitudePhotos.map((photo) => photo.caption ? <T key={photo.id}>{photo.caption}</T> : null)}
       {error ? <ErrorNote>{error}</ErrorNote> : null}
       {sent === 'profile' ? <T variant="muted">Report sent.</T> : null}
       {reporting === 'profile' ? (

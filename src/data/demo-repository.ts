@@ -35,7 +35,7 @@ import { OFFLINE_COACH_MESSAGE, OPENING_LINE, type ThumosMode } from '@/domain/t
 import { CONSENT_VERSION } from '@/data/catalogue';
 import { consentRows, missingConsentRows } from '@/domain/consents';
 import { stageFromRecord } from '@/domain/stage';
-import { defaultProfileSharing, normalizeProfileSharing, projectPublicProfile, sensitiveTurnedOn, type ProfileSharing, type PublicProfileView, type ShareSource } from '@/domain/profileSharing';
+import { BIO_LIMIT, PHOTO_CAPTION_LIMIT, defaultProfileSharing, normalizeProfileSharing, planProfileText, projectPublicProfile, sensitiveTurnedOn, type ProfileSharing, type PublicProfileView, type ShareSource } from '@/domain/profileSharing';
 import { quoteById } from '@/domain/stoicQuotes';
 import { createDemoDb, type DemoAccount, type DemoDb } from '@/data/demo-seed';
 import type {
@@ -79,6 +79,7 @@ function readyProfile(profile: DemoAccount['profile']): DemoAccount['profile'] {
     visionStatement: profile.visionStatement ?? '',
     visionStartedOn: profile.visionStartedOn ?? null,
     pinnedQuoteId: profile.pinnedQuoteId ?? null,
+    bio: profile.bio ?? '',
     createdAt: profile.createdAt || '2026-01-01T00:00:00.000Z',
   };
 }
@@ -87,6 +88,7 @@ function readyPhoto(photo: ProgressPhoto, userId: string): ProgressPhoto {
   return {
     ...photo,
     userId: photo.userId || userId,
+    caption: photo.caption ?? '',
     visibility: progressVisibility(photo.visibility),
     previewUrl: photo.previewUrl ?? null,
   };
@@ -111,6 +113,7 @@ function shareSource(account: DemoAccount, interests: DemoDb['interests'], now =
     now,
     today: isoDay(now),
     displayName: account.profile.displayName,
+    bio: account.profile.bio ?? '',
     town: account.profile.town,
     stage: account.profile.stage,
     sobrietyStartedAt: account.profile.sobrietyStartedAt,
@@ -124,12 +127,13 @@ function shareSource(account: DemoAccount, interests: DemoDb['interests'], now =
       id: entry.id,
       body: entry.body,
       entryDate: entry.entryDate,
-      photoIds: (entry.photos ?? []).map((photo) => photo.id),
+      photos: (entry.photos ?? []).map((photo) => ({ id: photo.id, caption: photo.caption ?? '' })),
     })),
     vision: (account.visionItems ?? []).map((item) => ({ id: item.id, caption: item.caption, area: item.area })),
     progressPhotos: (account.progressPhotos ?? []).map((photo) => ({
       id: photo.id,
       note: photo.note,
+      caption: photo.caption ?? '',
       takenOn: photo.takenOn,
       monthIndex: photo.monthIndex,
       visibility: photo.visibility === 'community' ? 'community' as const : 'private' as const,
@@ -222,10 +226,13 @@ export class DemoRepository implements Repository {
       communityPhotos: account
         ? Object.values(this.db.accounts)
             .filter((other) => other.profile.id !== account.profile.id && !blocked(this.db, account.profile.id, other.profile.id))
-            .flatMap((other) => (other.progressPhotos ?? []).map((photo) => readyPhoto(photo, other.profile.id)).filter((photo) => photo.visibility === 'community'))
+            .flatMap((other) => (other.progressPhotos ?? []).map((photo) => readyPhoto(photo, other.profile.id)).filter((photo) => photo.visibility === 'community').map((photo) => ({ ...photo, note: '' })))
         : [],
       profile: account ? readyProfile(account.profile) : null,
-      gratitude: account ? sortGratitude((account.gratitude ?? []).map((entry) => ({ ...entry, photos: entry.photos ?? [] }))) : [],
+      gratitude: account ? sortGratitude((account.gratitude ?? []).map((entry) => ({
+        ...entry,
+        photos: (entry.photos ?? []).map((photo) => ({ ...photo, caption: photo.caption ?? '' })),
+      }))) : [],
       visionItems: account ? sortVisionItems(account.visionItems ?? []) : [],
       sharing: account ? normalizeProfileSharing(account.sharing) : defaultProfileSharing(),
       savedQuotes: account?.savedQuotes ?? [],
@@ -264,6 +271,15 @@ export class DemoRepository implements Repository {
       }
       if (!account.profile.createdAt) {
         account.profile.createdAt = fresh.accounts[id]?.profile.createdAt ?? new Date(0).toISOString();
+      }
+      if (account.profile.bio == null) account.profile.bio = '';
+      for (const photo of account.progressPhotos ?? []) {
+        if (photo.caption == null) photo.caption = '';
+      }
+      for (const entry of account.gratitude ?? []) {
+        for (const photo of entry.photos ?? []) {
+          if (photo.caption == null) photo.caption = '';
+        }
       }
     }
   }
@@ -320,6 +336,7 @@ export class DemoRepository implements Repository {
         visionStatement: '',
         visionStartedOn: null,
         pinnedQuoteId: null,
+        bio: '',
         createdAt: new Date().toISOString(),
       },
       reasons: [],
@@ -417,6 +434,12 @@ export class DemoRepository implements Repository {
       const townError = validateTown(patch.town);
       if (townError) throw new Error(townError);
     }
+    let bio: string | undefined;
+    if (patch.bio !== undefined) {
+      const planned = planProfileText(patch.bio, BIO_LIMIT);
+      if (!planned.ok) throw new UserFacingError(planned.message, 'generic');
+      bio = planned.text;
+    }
     const account = this.me();
     const db = clone(this.db);
     const next = db.accounts[account.profile.id];
@@ -425,6 +448,7 @@ export class DemoRepository implements Repository {
       ...patch,
       displayName: patch.displayName?.trim() ?? next.profile.displayName,
       town: patch.town === undefined ? next.profile.town : patch.town?.trim() || null,
+      bio: bio === undefined ? (next.profile.bio ?? '') : bio,
     };
     this.commit(db);
   }
@@ -693,6 +717,7 @@ export class DemoRepository implements Repository {
       takenOn: plan.takenOn,
       monthIndex: plan.monthIndex,
       note: plan.note,
+      caption: '',
       storagePath: progressStoragePath(account.profile.id, id),
       createdAt: new Date().toISOString(),
       visibility: 'private',
@@ -702,22 +727,32 @@ export class DemoRepository implements Repository {
     this.commit(db);
   }
 
-  async updateProgressPhoto(id: string, input: { takenOn?: string; startingPoint?: boolean; note?: string }): Promise<void> {
+  async updateProgressPhoto(id: string, input: { takenOn?: string; startingPoint?: boolean; note?: string; caption?: string }): Promise<void> {
     const account = this.me();
     const photo = (account.progressPhotos ?? []).find((item) => item.id === id);
     if (!photo) throw new UserFacingError('Could not update that photo.', 'generic');
-    const plan = planProgressPhoto({
-      takenOn: input.takenOn ?? photo.takenOn,
-      startingPoint: input.startingPoint === undefined ? photo.monthIndex === 0 : input.startingPoint,
-      note: input.note ?? photo.note,
-      anchor: progressAnchor(account.profile.sobrietyStartedAt, account.profile.createdAt),
-    });
-    if (!plan.ok) throw new UserFacingError(plan.message, 'generic');
+    let caption: string | undefined;
+    if (input.caption !== undefined) {
+      const planned = planProfileText(input.caption, PHOTO_CAPTION_LIMIT);
+      if (!planned.ok) throw new UserFacingError(planned.message, 'generic');
+      caption = planned.text;
+    }
+    const touchesDetails = input.note !== undefined || input.takenOn !== undefined || input.startingPoint !== undefined;
+    const plan = touchesDetails
+      ? planProgressPhoto({
+        takenOn: input.takenOn ?? photo.takenOn,
+        startingPoint: input.startingPoint === undefined ? photo.monthIndex === 0 : input.startingPoint,
+        note: input.note ?? photo.note,
+        anchor: progressAnchor(account.profile.sobrietyStartedAt, account.profile.createdAt),
+      })
+      : null;
+    if (plan && !plan.ok) throw new UserFacingError(plan.message, 'generic');
     const db = clone(this.db);
     const next = (db.accounts[account.profile.id].progressPhotos ?? []).find((item) => item.id === id);
     if (!next) throw new UserFacingError('Could not update that photo.', 'generic');
-    if (input.note !== undefined) next.note = plan.note;
-    if (input.takenOn !== undefined || input.startingPoint !== undefined) {
+    if (caption !== undefined) next.caption = caption;
+    if (plan?.ok && input.note !== undefined) next.note = plan.note;
+    if (plan?.ok && (input.takenOn !== undefined || input.startingPoint !== undefined)) {
       next.takenOn = plan.takenOn;
       next.monthIndex = plan.monthIndex;
     }
@@ -879,8 +914,20 @@ export class DemoRepository implements Repository {
       storagePath: gratitudeStoragePath(account.profile.id, id),
       createdAt: new Date().toISOString(),
       previewUrl: bytesToDataUrl(bytes),
+      caption: '',
     });
     entry.photos = photos;
+    this.commit(db);
+  }
+
+  async updateGratitudePhoto(id: string, input: { caption: string }): Promise<void> {
+    const planned = planProfileText(input.caption, PHOTO_CAPTION_LIMIT);
+    if (!planned.ok) throw new UserFacingError(planned.message, 'generic');
+    const account = this.me();
+    const db = clone(this.db);
+    const photo = (db.accounts[account.profile.id].gratitude ?? []).flatMap((entry) => entry.photos ?? []).find((item) => item.id === id);
+    if (!photo) throw new UserFacingError('Could not update that photo.', 'generic');
+    photo.caption = planned.text;
     this.commit(db);
   }
 
@@ -1006,6 +1053,7 @@ export class DemoRepository implements Repository {
         taken_on: photo.takenOn,
         month_index: photo.monthIndex,
         note: photo.note,
+        caption: photo.caption ?? '',
         storage_path: photo.storagePath,
         created_at: photo.createdAt,
         visibility: progressVisibility(photo.visibility),
@@ -1027,6 +1075,7 @@ export class DemoRepository implements Repository {
         entry_id: entry.id,
         user_id: id,
         storage_path: photo.storagePath,
+        caption: photo.caption ?? '',
         created_at: photo.createdAt,
         signed_url: photo.previewUrl,
       }))),

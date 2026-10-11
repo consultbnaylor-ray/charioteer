@@ -20,9 +20,27 @@ export const SENSITIVE_SHARE_BODY =
   'This can show health information. Days sober, your stage, reasons, money and unit totals, a mood streak, and health headlines are special category data under UK GDPR. Other adults in the Charioteer community can see what you switch on. They cannot see raw readings, check-in notes, flags, or Thumos chats. Quantica Labs Ltd is the controller. Share this only if you want them to see it.';
 
 export const NEVER_SHARED =
-  'Always hidden: check-in details, raw health readings, health flags, height, Thumos chats, and any photo you have not switched on.';
+  'Always hidden: check-in details, raw health readings, health flags, height, Thumos chats, private photo notes, and any photo you have not switched on.';
+
+/** Written for the public profile. About 300 characters. */
+export const BIO_LIMIT = 300;
+
+/** Grey example in the empty bio field. */
+export const BIO_EXAMPLE = 'Dad of two, gym most mornings, 90 days sober and counting.';
+
+/** What other people see under a shared photo. Distinct from a private note. */
+export const PHOTO_CAPTION_LIMIT = 140;
+
+/** Trims a profile line and refuses anything over the limit. Newlines in a bio stay. */
+export function planProfileText(value: string, limit: number): { ok: true; text: string } | { ok: false; message: string } {
+  const text = value.replace(/\r\n/g, '\n').trim();
+  if (text.length > limit) return { ok: false, message: `Keep that to ${limit} characters.` };
+  return { ok: true, text };
+}
 
 export type ProfileSharing = {
+  /** Starts on. A bio is written for the profile, and a missing key stays shared. */
+  bio: boolean;
   town: boolean;
   stage: boolean;
   sober: boolean;
@@ -41,6 +59,7 @@ export type ProfileSharing = {
 
 export function defaultProfileSharing(): ProfileSharing {
   return {
+    bio: true,
     town: false,
     stage: false,
     sober: false,
@@ -79,6 +98,7 @@ export function normalizeProfileSharing(value: unknown): ProfileSharing {
   const kinds = stringList(raw.healthKinds).filter((kind) => (HEALTH_KINDS as readonly string[]).includes(kind));
   const consent = typeof raw.sensitiveConsentAt === 'string' && raw.sensitiveConsentAt.trim() ? raw.sensitiveConsentAt : null;
   return {
+    bio: raw.bio === false ? false : true,
     town: flag(raw.town),
     stage: flag(raw.stage),
     sober: flag(raw.sober),
@@ -123,6 +143,7 @@ export type ShareSource = {
   now: Date;
   today: string;
   displayName: string;
+  bio: string;
   town: string | null;
   stage: string;
   sobrietyStartedAt: string | null;
@@ -132,14 +153,17 @@ export type ShareSource = {
   reasons: { body: string; sortOrder: number }[];
   checkIns: { createdAt: string }[];
   health: { kind: string; value: number; recordedOn: string }[];
-  gratitude: { id: string; body: string; entryDate: string; photoIds: string[] }[];
+  gratitude: { id: string; body: string; entryDate: string; photos: { id: string; caption: string }[] }[];
   vision: { id: string; caption: string; area: string | null }[];
-  progressPhotos: { id: string; note: string; takenOn: string; monthIndex: number; visibility: 'private' | 'community' }[];
+  /** `note` is private. `caption` is the only line copied onto a shared photo. */
+  progressPhotos: { id: string; note: string; caption: string; takenOn: string; monthIndex: number; visibility: 'private' | 'community' }[];
   pinnedQuoteId: string | null;
 };
 
 export type PublicProfileView = {
   displayName: string;
+  /** Shown under the name. Null when the bio is blank or sharing is off. */
+  bio: string | null;
   interests: string[];
   town: string | null;
   stage: string | null;
@@ -148,9 +172,9 @@ export type PublicProfileView = {
   savings: { moneyGbp: number; units: number } | null;
   moodStreak: number | null;
   health: string[];
-  progressPhotos: { id: string; note: string; takenOn: string; monthIndex: number }[];
+  progressPhotos: { id: string; caption: string; takenOn: string; monthIndex: number }[];
   gratitude: { id: string; body: string; entryDate: string }[];
-  gratitudePhotos: { id: string }[];
+  gratitudePhotos: { id: string; caption: string }[];
   vision: { id: string; caption: string; area: string | null }[];
   /** Resolved from the bundled catalogue. Unknown ids are dropped. */
   pinnedQuote: { id: string; text: string; author: string; source: string } | null;
@@ -195,10 +219,12 @@ function soberShare(source: ShareSource): { days: number; milestones: string[] }
 
 /**
  * What another community member is allowed to see. Unshared fields are omitted.
- * Name and interests stay on. Everything else starts off.
+ * Name and interests stay on. Bio starts on, because it is written for the profile.
+ * Everything else starts off. A private photo note is never copied.
  */
 export function projectPublicProfile(source: ShareSource, sharing: ProfileSharing): PublicProfileView {
   const settings = normalizeProfileSharing(sharing);
+  const bio = settings.bio && source.bio.trim() ? source.bio.trim() : null;
   const town = settings.town && source.town?.trim() ? source.town.trim() : null;
   const stage = settings.stage && isStage(source.stage) ? STAGE_LABELS[source.stage] : null;
   const sober = settings.sober ? soberShare(source) : null;
@@ -219,13 +245,13 @@ export function projectPublicProfile(source: ShareSource, sharing: ProfileSharin
   const health = healthHeadlines(source, settings.healthKinds);
   const progressPhotos = source.progressPhotos
     .filter((photo) => photo.visibility === 'community')
-    .map((photo) => ({ id: photo.id, note: photo.note, takenOn: photo.takenOn, monthIndex: photo.monthIndex }));
+    .map((photo) => ({ id: photo.id, caption: photo.caption, takenOn: photo.takenOn, monthIndex: photo.monthIndex }));
   const gratitudeIds = new Set(settings.gratitudeIds);
   const gratitude = source.gratitude
     .filter((entry) => gratitudeIds.has(entry.id))
     .map((entry) => ({ id: entry.id, body: entry.body, entryDate: entry.entryDate }));
   const photoIds = new Set(settings.gratitudePhotoIds);
-  const gratitudePhotos = source.gratitude.flatMap((entry) => entry.photoIds.filter((id) => photoIds.has(id)).map((id) => ({ id })));
+  const gratitudePhotos = source.gratitude.flatMap((entry) => entry.photos.filter((photo) => photoIds.has(photo.id)).map((photo) => ({ id: photo.id, caption: photo.caption })));
   const visionIds = new Set(settings.visionIds);
   const vision = source.vision
     .filter((item) => visionIds.has(item.id))
@@ -233,6 +259,8 @@ export function projectPublicProfile(source: ShareSource, sharing: ProfileSharin
 
   const sharedLabels = ['Name', 'Interests'];
   const hiddenLabels: string[] = [];
+  if (bio) sharedLabels.push('Bio');
+  else hiddenLabels.push('Bio');
   if (town) sharedLabels.push('Town');
   else hiddenLabels.push('Town');
   if (stage) sharedLabels.push('Stage');
@@ -264,6 +292,7 @@ export function projectPublicProfile(source: ShareSource, sharing: ProfileSharin
 
   return {
     displayName: source.displayName,
+    bio,
     interests: source.interestLabels,
     town,
     stage,
@@ -299,6 +328,7 @@ export function parsePublicProfile(value: unknown): PublicProfileView | null {
   const pinned = quoteById(typeof raw.pinnedQuoteId === 'string' ? raw.pinnedQuoteId : null);
   return {
     displayName: typeof raw.displayName === 'string' ? raw.displayName : '',
+    bio: typeof raw.bio === 'string' && raw.bio.trim() ? raw.bio.trim() : null,
     interests: textList(raw.interests),
     town: typeof raw.town === 'string' && raw.town.trim() ? raw.town : null,
     stage: typeof raw.stage === 'string' && raw.stage.trim() ? raw.stage : null,
@@ -317,7 +347,7 @@ export function parsePublicProfile(value: unknown): PublicProfileView | null {
       if (typeof photo.id !== 'string') return [];
       return [{
         id: photo.id,
-        note: typeof photo.note === 'string' ? photo.note : '',
+        caption: typeof photo.caption === 'string' ? photo.caption : '',
         takenOn: typeof photo.takenOn === 'string' ? photo.takenOn : '',
         monthIndex: typeof photo.monthIndex === 'number' ? photo.monthIndex : 0,
       }];
@@ -331,7 +361,9 @@ export function parsePublicProfile(value: unknown): PublicProfileView | null {
     gratitudePhotos: gratitudePhotos.flatMap((item) => {
       if (!item || typeof item !== 'object') return [];
       const photo = item as Record<string, unknown>;
-      return typeof photo.id === 'string' ? [{ id: photo.id }] : [];
+      return typeof photo.id === 'string'
+        ? [{ id: photo.id, caption: typeof photo.caption === 'string' ? photo.caption : '' }]
+        : [];
     }),
     vision: vision.flatMap((item) => {
       if (!item || typeof item !== 'object') return [];
@@ -356,6 +388,7 @@ export type SharedReportItem = { label: string; summary: string };
 /** One report target for each thing this profile is actually showing. */
 export function sharedReportItems(view: PublicProfileView): SharedReportItem[] {
   const items: SharedReportItem[] = [];
+  if (view.bio) items.push({ label: 'Bio', summary: view.bio });
   if (view.town) items.push({ label: 'Town', summary: view.town });
   if (view.stage) items.push({ label: 'Stage', summary: view.stage });
   if (view.sober) items.push({ label: 'Days sober', summary: `${view.sober.days} days` });
@@ -363,9 +396,9 @@ export function sharedReportItems(view: PublicProfileView): SharedReportItem[] {
   if (view.savings) items.push({ label: 'Savings', summary: `${view.savings.moneyGbp} saved, ${view.savings.units} units avoided` });
   if (view.moodStreak != null) items.push({ label: 'Mood streak', summary: `${view.moodStreak} days` });
   for (const line of view.health) items.push({ label: 'Health headline', summary: line });
-  for (const photo of view.progressPhotos) items.push({ label: 'Progress photo', summary: photo.note || photo.id });
+  for (const photo of view.progressPhotos) items.push({ label: 'Progress photo', summary: photo.caption || photo.id });
   for (const entry of view.gratitude) items.push({ label: 'Gratitude line', summary: entry.body });
-  for (const photo of view.gratitudePhotos) items.push({ label: 'Gratitude photo', summary: photo.id });
+  for (const photo of view.gratitudePhotos) items.push({ label: 'Gratitude photo', summary: photo.caption || photo.id });
   for (const item of view.vision) items.push({ label: 'Vision item', summary: item.caption || item.id });
   if (view.pinnedQuote) items.push({ label: 'Pinned quote', summary: view.pinnedQuote.text });
   return items;
