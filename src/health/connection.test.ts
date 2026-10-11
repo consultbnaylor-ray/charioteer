@@ -72,7 +72,9 @@ describe('Apple Health screen and entitlement', () => {
     expect(sections).toContain("label: 'Health Stats'");
     expect(sections).toContain("href: '/health'");
     expect(sections).toContain("icon: 'pulse'");
-    expect(readFileSync('src/ui/SectionDrawer.tsx', 'utf8')).toContain('<Pulse');
+    expect(sections).toContain("group: 'tools'");
+    expect(readFileSync('src/ui/SectionDrawer.tsx', 'utf8')).toContain('<MenuGlyph');
+    expect(readFileSync('src/ui/menuIcons.tsx', 'utf8')).toContain("name === 'pulse'");
     expect(screen).toContain('AppleHealthCard');
     expect(screen).toContain("router.push('/privacy'");
     expect(screen).not.toContain('Sync from Apple Health');

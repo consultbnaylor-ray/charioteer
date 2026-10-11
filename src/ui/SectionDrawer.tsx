@@ -1,12 +1,13 @@
 import { usePathname, useRouter } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
-import { Animated, Modal, Pressable, ScrollView, View } from 'react-native';
+import { Animated, Modal, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useRepository } from '@/data';
-import { APP_SECTIONS } from '@/domain/sections';
+import { APP_SECTIONS, MENU_GROUPS, type AppSection } from '@/domain/sections';
+import { CloseMark, MenuGlyph } from '@/ui/menuIcons';
 import { useAppTheme } from '@/ui/theme';
-import { Pulse, T } from '@/ui/ui';
+import { T } from '@/ui/ui';
 
 const PANEL_WIDTH = 320;
 
@@ -36,6 +37,52 @@ export function SectionDrawer({ open, onClose }: { open: boolean; onClose: () =>
     router.navigate(href as never);
   }
 
+  function row(section: AppSection) {
+    const active = section.href !== '' && (pathname === section.href || (section.href === '/people' && pathname.startsWith('/chat')));
+    const color = section.sos ? theme.colors.danger : theme.colors.ink;
+    return (
+      <Pressable
+        key={section.id}
+        accessibilityRole="button"
+        accessibilityLabel={section.label}
+        accessibilityState={{ selected: active }}
+        onPress={() => {
+          if (section.signOut) {
+            onClose();
+            void repo.signOut();
+            return;
+          }
+          go(section.href);
+        }}
+        style={{
+          minHeight: 44,
+          justifyContent: 'center',
+          paddingHorizontal: 12,
+          marginBottom: 4,
+          borderLeftWidth: 3,
+          borderLeftColor: active ? theme.colors.ink : 'transparent',
+          backgroundColor: active ? theme.colors.emphasisSoft : 'transparent',
+        }}
+      >
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+          <MenuGlyph name={section.icon} color={color} />
+          <T
+            variant="body"
+            style={{
+              flex: 1,
+              color,
+              fontFamily: theme.font.bodyStrong,
+            }}
+          >
+            {section.label}
+          </T>
+        </View>
+      </Pressable>
+    );
+  }
+
+  const tail = APP_SECTIONS.filter((section) => !section.group);
+
   return (
     <Modal visible={mounted} transparent animationType="none" onRequestClose={onClose} statusBarTranslucent>
       <View style={{ flex: 1, flexDirection: 'row' }}>
@@ -50,62 +97,32 @@ export function SectionDrawer({ open, onClose }: { open: boolean; onClose: () =>
             borderRightColor: theme.colors.line,
           }}
         >
-          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16 }}>
-            <T variant="title">Menu</T>
+          <View style={{ flexDirection: 'row', alignItems: 'center', paddingLeft: 16, paddingRight: 8 }}>
+            <T variant="title" style={{ flex: 1 }}>Menu</T>
             <Pressable
               accessibilityRole="button"
               accessibilityLabel="Close menu"
               onPress={onClose}
-              style={{ width: 44, height: 44, alignItems: 'center', justifyContent: 'center' }}
+              style={{ width: 44, height: 44, flexShrink: 0, alignItems: 'center', justifyContent: 'center' }}
             >
-              <T variant="body">Close</T>
+              <CloseMark color={theme.colors.ink} />
             </Pressable>
           </View>
           <ScrollView contentContainerStyle={{ paddingHorizontal: 12, paddingBottom: 12 }}>
-            {APP_SECTIONS.map((section) => {
-              const active = section.href !== '' && (pathname === section.href || (section.href === '/people' && pathname.startsWith('/chat')));
-              return (
-                <Pressable
-                  key={section.id}
-                  accessibilityRole="button"
-                  accessibilityLabel={section.label}
-                  accessibilityState={{ selected: active }}
-                  onPress={() => {
-                    if (section.signOut) {
-                      onClose();
-                      void repo.signOut();
-                      return;
-                    }
-                    go(section.href);
-                  }}
-                  style={{
-                    minHeight: 44,
-                    justifyContent: 'center',
-                    paddingHorizontal: 12,
-                    marginBottom: 4,
-                    borderLeftWidth: 3,
-                    borderLeftColor: active ? theme.colors.ink : 'transparent',
-                    backgroundColor: active ? theme.colors.emphasisSoft : 'transparent',
-                  }}
-                >
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-                    {section.icon === 'pulse' ? <Pulse color={section.sos ? theme.colors.danger : theme.colors.ink} /> : null}
-                    <T
-                      variant="body"
-                      style={{
-                        color: section.sos ? theme.colors.danger : theme.colors.ink,
-                        fontFamily: theme.font.bodyStrong,
-                      }}
-                    >
-                      {section.label}
-                    </T>
-                  </View>
-                </Pressable>
-              );
-            })}
+            {MENU_GROUPS.map((group, index) => (
+              <View key={group.id}>
+                {index === 0 ? <View style={{ height: 8 }} /> : (
+                  <View style={{ height: StyleSheet.hairlineWidth, backgroundColor: theme.colors.line, marginHorizontal: 12, marginTop: 10, marginBottom: 8 }} />
+                )}
+                <T variant="label" style={{ paddingHorizontal: 12, marginBottom: 4 }}>{group.label}</T>
+                {APP_SECTIONS.filter((section) => section.group === group.id).map(row)}
+              </View>
+            ))}
+            <View style={{ height: StyleSheet.hairlineWidth, backgroundColor: theme.colors.line, marginHorizontal: 12, marginTop: 10, marginBottom: 8 }} />
+            {tail.map(row)}
           </ScrollView>
         </Animated.View>
-        <Pressable accessibilityRole="button" accessibilityLabel="Close menu" onPress={onClose} style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.45)' }} />
+        <Pressable accessibilityRole="button" accessibilityLabel="Dismiss menu" onPress={onClose} style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.45)' }} />
       </View>
     </Modal>
   );

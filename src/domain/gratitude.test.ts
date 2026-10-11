@@ -238,10 +238,10 @@ describe('gratitude diary wiring', () => {
       'People',
       'Gratitude Diary',
       'Health Stats',
-      'Library/Resources',
       'Progress photos',
       'Drinks & units calculator',
-      'You/profile',
+      'Library',
+      'You',
       'Privacy & consent',
       'Help & crisis lines',
       'Sign out',
@@ -261,6 +261,15 @@ describe('gratitude diary wiring', () => {
     expect(layout).not.toContain("label: 'Library'");
     const drawer = readFileSync('src/ui/SectionDrawer.tsx', 'utf8');
     expect(drawer).toContain('APP_SECTIONS');
+    expect(drawer).toContain('MENU_GROUPS');
+    expect(drawer).toContain('accessibilityLabel="Close menu"');
+    expect(drawer).toContain('width: 44, height: 44');
+    expect(drawer).toContain('<CloseMark');
+    expect(drawer).not.toContain('>Close<');
+    expect(drawer).toContain('accessibilityLabel="Dismiss menu"');
+    expect(drawer).toContain('<MenuGlyph');
+    expect(readFileSync('src/domain/sections.ts', 'utf8')).toContain("label: 'Library'");
+    expect(readFileSync('src/domain/sections.ts', 'utf8')).toContain("label: 'You'");
     expect(readFileSync('app.json', 'utf8')).toContain('"buildNumber": "10"');
     const consent = readFileSync('src/ui/ConsentChoices.tsx', 'utf8');
     expect(consent).toContain('gratitude');
