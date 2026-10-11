@@ -224,7 +224,8 @@ function soberShare(source: ShareSource): { days: number; milestones: string[] }
  */
 export function projectPublicProfile(source: ShareSource, sharing: ProfileSharing): PublicProfileView {
   const settings = normalizeProfileSharing(sharing);
-  const bio = settings.bio && source.bio.trim() ? source.bio.trim() : null;
+  const bioText = typeof source.bio === 'string' ? source.bio.trim() : '';
+  const bio = settings.bio && bioText ? bioText : null;
   const town = settings.town && source.town?.trim() ? source.town.trim() : null;
   const stage = settings.stage && isStage(source.stage) ? STAGE_LABELS[source.stage] : null;
   const sober = settings.sober ? soberShare(source) : null;
@@ -245,13 +246,13 @@ export function projectPublicProfile(source: ShareSource, sharing: ProfileSharin
   const health = healthHeadlines(source, settings.healthKinds);
   const progressPhotos = source.progressPhotos
     .filter((photo) => photo.visibility === 'community')
-    .map((photo) => ({ id: photo.id, caption: photo.caption, takenOn: photo.takenOn, monthIndex: photo.monthIndex }));
+    .map((photo) => ({ id: photo.id, caption: typeof photo.caption === 'string' ? photo.caption : '', takenOn: photo.takenOn, monthIndex: photo.monthIndex }));
   const gratitudeIds = new Set(settings.gratitudeIds);
   const gratitude = source.gratitude
     .filter((entry) => gratitudeIds.has(entry.id))
     .map((entry) => ({ id: entry.id, body: entry.body, entryDate: entry.entryDate }));
   const photoIds = new Set(settings.gratitudePhotoIds);
-  const gratitudePhotos = source.gratitude.flatMap((entry) => entry.photos.filter((photo) => photoIds.has(photo.id)).map((photo) => ({ id: photo.id, caption: photo.caption })));
+  const gratitudePhotos = source.gratitude.flatMap((entry) => (entry.photos ?? []).filter((photo) => photoIds.has(photo.id)).map((photo) => ({ id: photo.id, caption: typeof photo.caption === 'string' ? photo.caption : '' })));
   const visionIds = new Set(settings.visionIds);
   const vision = source.vision
     .filter((item) => visionIds.has(item.id))

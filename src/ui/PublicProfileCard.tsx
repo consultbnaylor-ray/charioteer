@@ -80,7 +80,7 @@ export function PublicProfileCard() {
     now,
     today: isoDay(now),
     displayName: me.displayName,
-    bio: me.bio,
+    bio: me.bio ?? '',
     town: me.town,
     stage: me.stage,
     sobrietyStartedAt: me.sobrietyStartedAt,
