@@ -102,7 +102,7 @@ returns table (
   user_id uuid,
   role text,
   caption text,
-  position integer,
+  "position" integer,
   storage_path text
 )
 language sql

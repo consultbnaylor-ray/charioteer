@@ -172,6 +172,6 @@ describe('vision board privacy', () => {
     expect(home).toContain('My 5-year vision');
     expect(home).toContain('Open vision board');
     expect(home).toContain("router.push('/vision'");
-    expect(readFileSync('app.json', 'utf8')).toContain('"buildNumber": "11"');
+    expect(readFileSync('app.json', 'utf8')).toContain('"buildNumber": "12"');
   });
 });
