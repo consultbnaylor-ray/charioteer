@@ -180,7 +180,17 @@ security definer
 set search_path = public
 as $$
 begin
-
+  update public.directory d
+  set town = case when coalesce((new.settings->>'town')::boolean, false) then p.town else null end,
+      bio = case
+        when coalesce((new.settings->>'bio')::boolean, true) and nullif(btrim(p.bio), '') is not null then btrim(p.bio)
+        else null
+      end
+  from public.profiles p
+  where p.id = new.user_id and d.user_id = new.user_id;
+  return new;
+end;
+$$;
 
 create or replace function public.sync_directory_avatar()
 returns trigger
