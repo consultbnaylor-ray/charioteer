@@ -251,11 +251,13 @@ describe('Thumos context', () => {
     expect(follow).toContain('one concrete thing to do now');
     expect(follow).toContain('breathing exercise');
     expect(follow).not.toContain('Weave the aims below');
-    expect(plan).toContain('soft drink');
-    expect(plan).toContain('way to leave');
-    expect(plan).toContain('Do not mention the breathing exercise');
+    expect(plan).toContain('event preparation');
+    expect(plan).toContain('alcohol-free');
+    expect(plan).toContain('exit plan');
+    expect(plan).toContain('3 to 5 concise suggestions');
     expect(plan).not.toContain('Weave the aims below');
-    expect(follow).not.toContain('soft drink they can order');
+    expect(plan).not.toContain('Do not mention the breathing exercise');
+    expect(follow).not.toContain('alcohol-free options');
   });
 
   it('lets a committed action go without another question', () => {
@@ -320,6 +322,9 @@ describe('Thumos context', () => {
     expect(resolveThumosMode({ requested: 'growth', userText: pub, safety })).toBe('support');
     expect(detectRisk('The wedding is on Saturday and there will be a bar.')).toBe('planning');
     expect(detectRisk('It is a stag do and I am not sure I can handle it.')).toBe('planning');
+    expect(detectRisk('a little apprehensive about a birthday celebration meal tonight')).toBe('planning');
+    expect(detectRisk('There is a work do on Friday.')).toBe('planning');
+    expect(detectRisk('A stressful meeting this afternoon.')).toBe('planning');
     expect(detectRisk('I really want a drink tonight, it\'s been a rough day at work.')).toBe('acute');
     expect(detectRisk('I just think one won\'t hurt.')).toBe('acute');
     expect(detectRisk('I deserve a drink.')).toBe('acute');

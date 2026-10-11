@@ -47,6 +47,8 @@ export type ThumosContextInput = {
   healthInsights?: string[];
   /** Statement and captions only. Photos are never included. Only when coach consent is on. */
   vision?: VisionContext;
+  /** Labels the person chose, such as Gym or Hiking. Used to personalise a plan. */
+  interests?: string[];
 };
 
 const STAGE_LABEL: Record<ThumosStage, string> = {
@@ -95,8 +97,8 @@ const ACUTE_TEXT = new RegExp(
 );
 
 /**
- * A situation still ahead: the pub, a party, other people drinking, or doubt
- * they can get through it. Not the same as a craving that is happening now.
+ * A situation still ahead: a meal, a party, a wedding, work, a date, the pub,
+ * family, a holiday, or a stressful meeting. Not the same as a craving now.
  */
 const PLANNING_TEXT = new RegExp(
   [
@@ -106,6 +108,15 @@ const PLANNING_TEXT = new RegExp(
     String.raw`\bwedding\b`,
     String.raw`\bstag\b`,
     String.raw`\bhen (?:do|party|night)\b`,
+    String.raw`\bbirthday\b`,
+    String.raw`\bcelebration meal\b`,
+    String.raw`\bwork do\b`,
+    String.raw`\bwork drinks\b`,
+    String.raw`\bfamily gathering\b`,
+    String.raw`\bfamily (?:meal|dinner|lunch|do)\b`,
+    String.raw`\bholiday\b`,
+    String.raw`\b(?:stressful|difficult|tricky|tough) meeting\b`,
+    String.raw`\b(?:on a |a )date\b`,
     String.raw`\b(?:can${APOSTROPHE}t|cannot|cant) handle\b`,
     String.raw`\bif i can handle\b`,
     String.raw`\bnot sure (?:if |that )?i can handle\b`,
@@ -115,6 +126,22 @@ const PLANNING_TEXT = new RegExp(
   ].join('|'),
   'i',
 );
+
+/** Labels from a profile_interests embed. A failed or empty read is no interests. */
+export function interestLabelsFromRows(rows: unknown): string[] {
+  if (!Array.isArray(rows)) return [];
+  const labels: string[] = [];
+  for (const row of rows) {
+    if (!row || typeof row !== 'object') continue;
+    const embedded = (row as { interests?: { label?: unknown } | { label?: unknown }[] | null }).interests;
+    const list = Array.isArray(embedded) ? embedded : embedded ? [embedded] : [];
+    for (const item of list) {
+      const label = typeof item?.label === 'string' ? item.label.trim() : '';
+      if (label && !labels.includes(label)) labels.push(label);
+    }
+  }
+  return labels.slice(0, 12);
+}
 
 export type SupportShape = 'acute' | 'planning';
 
@@ -372,11 +399,21 @@ const ACUTE_SUPPORT = [
 ].join('\n');
 
 const PLANNING_SUPPORT = [
-  'This is the first support turn. They are looking at a situation ahead, such as a pub, a bar, a party, a wedding, or other people drinking. They may not be craving this minute.',
-  'Help them make a plan, in natural speech, with no set order and no stack of one-line paragraphs.',
-  'Draw on whichever of these fits: a way to leave, a soft drink they can order without a debate, one friend who knows they are not drinking, arriving later or leaving earlier, and a short reply ready for someone who says go on, have one.',
+  'This turn is event preparation. They are looking at a situation ahead. They may not be craving this minute.',
+  'Follow EVENT PREPARATION below. Do not use the acute craving script, and do not offer only one tool.',
+].join('\n');
+
+const EVENT_PREPARATION = [
+  'EVENT PREPARATION',
+  'When they mention an upcoming situation (a birthday meal, party, wedding, work do, date, pub, family gathering, holiday, or stressful meeting), help them prepare with a short practical plan, not just one tool.',
+  'Give 3 to 5 concise, personalised suggestions. Use what CONTEXT records: their stage, interests (such as gym or hiking), personal reasons, and recent sleep or check-in. Do not invent those details. Ask one question at the end. Offer to set a reminder, or to come back afterwards.',
+  'Cover what is relevant, briefly:',
+  'Before. Suggest some exercise beforehand (a brisk walk, a run, a gym session, or a quick workout) to release endorphins and lift mood. Frame that as general wellbeing advice, not medical advice. If exercise does not suit them (time, an injury, or their mood), offer alternatives: a cold shower, a breathing exercise in the app, a short walk outside, music, eating a proper meal, hydrating, a nap, calling a supportive friend, rereading their reasons, the gratitude diary, or the vision board.',
+  'Plan. Decide the drink order in advance, including alcohol-free options. Have a ready line for when they are offered a drink, such as "I\'m driving", "I\'m on a health kick", or "Not tonight". Include an exit plan and transport, an ally who knows, and a time to leave.',
+  'During. If it gets too much: a breather or a short walk, the urge timer, and a check-in with Thumos.',
+  'After. A reward, and a quick reflection in the Gratitude Diary.',
   'You may mention sober time only if no earlier reply has already said it. Use at most one personal reason, and not one used in the last couple of turns. Do not invent one.',
-  'Do not mention the breathing exercise or the 10-minute urge timer unless they say they are craving now.',
+  'The safety rules still apply. Do not give a taper, doses, or medication advice.',
 ].join('\n');
 
 const FOLLOW_UP_SUPPORT = [
@@ -384,7 +421,7 @@ const FOLLOW_UP_SUPPORT = [
   'Do not repeat an earlier reply. Do not ask the same question again. Do not run back through the support aims.',
   'Respond to their latest thought and move the conversation forward.',
   'If they say just one, one won\'t hurt, they deserve a drink, or a few won\'t matter, challenge that gently and say that the craving usually wants more than one. Do not repeat sober time if an earlier reply already said it. Use at most one reason, and not one used in the last couple of turns. Then give one concrete thing to do now: the breathing exercise, the 10-minute urge timer, or a short walk.',
-  'If they are still facing a pub, a bar, or another plan, stay on that plan and take the next practical step. Do not restart the plan from the top.',
+  'If they are still preparing for an upcoming event, stay on that plan and take the next practical step. Do not restart the whole plan from the top.',
 ].join('\n');
 
 const OTHER_GUIDANCE: Record<Exclude<ThumosMode, 'support'>, string> = {
@@ -428,6 +465,11 @@ export type PromptTurn = {
   stage?: ThumosStage;
 };
 
+function eventPreparationSection(turn: PromptTurn): string {
+  if (turn.selfHarm || turn.committedAction || turn.followUp) return '';
+  return EVENT_PREPARATION;
+}
+
 function modeGuidance(mode: ThumosMode, turn: PromptTurn): string {
   if (turn.selfHarm) return CRISIS_SUPPORT;
   if (turn.committedAction) return committedGuidance(turn.committedAction);
@@ -441,6 +483,9 @@ function styleLine(turn: PromptTurn): string {
   const voice = 'Use UK English. Be calm, plain, and adult. Never punitive about a lapse. No emoji unless the person uses them first. When you mention someone they talk about, use they, unless the user has already used a pronoun for that person. Do not guess he or she.';
   if (turn.selfHarm) return `${voice} Be warm and brief: 2 to 4 sentences.`;
   if (turn.committedAction) return `${voice} Write 1 or 2 sentences. Do not ask a question.`;
+  if (turn.supportShape === 'planning' && !turn.followUp) {
+    return `${voice} Give 3 to 5 concise suggestions and end with one question.`;
+  }
   return `${voice} Write 3 to 6 sentences of connected prose and end with one question. Do not answer in a single generic line, and do not put each point on its own line.`;
 }
 
@@ -521,6 +566,7 @@ export function buildThumosContext(input: ThumosContextInput): string {
     sober ? (saved ? `From their own typical week: about ${saved.moneyGbp} GBP and ${saved.units} units not consumed.` : 'Savings inputs: not set') : '',
     sober ? `Milestones reached: ${milestones.length ? milestones.join(', ') : 'none yet'}` : '',
     `Personal reasons:\n${input.reasons.length ? input.reasons.map((reason) => `- ${reason}`).join('\n') : '- none written yet'}`,
+    `Interests: ${(input.interests ?? []).map((label) => label.trim()).filter(Boolean).slice(0, 12).join(', ') || 'none chosen'}`,
     `Recent check-ins (newest first):\n${checkIns || '- none yet'}`,
     `Health readings:\n${health || '- none shared'}`,
     insightLines.length ? `Health insights, not medical advice:\n${insightLines.map((line) => `- ${line}`).join('\n')}` : '',
@@ -557,6 +603,7 @@ export function buildSystemPrompt(
     'Do not invent statistics, study names, or citations. If you share a number about alcohol harm, use only CURATED FACTS, quote it faithfully, and name the source. If you do not have a verified figure, say so.',
     repetitionLine(turn),
     modeGuidance(mode, turn),
+    eventPreparationSection(turn),
     'Safety rules, follow exactly:',
     '- If they describe heavy daily drinking and wanting to stop abruptly, or withdrawal symptoms (shakes, sweating, hallucinations, confusion, seizures, or feeling very unwell when not drinking): tell them alcohol withdrawal can be dangerous and they should not detox alone. Advise their GP, NHS 111, or 999 in an emergency. Do not give a taper schedule, doses, or medication advice.',
     '- If they express suicidal thoughts or self-harm: take it seriously. Encourage the Samaritans on 116 123 (free, 24 hours) and 999 if they are in immediate danger. Stay supportive. Do not debate whether they should live. Do not describe methods.',

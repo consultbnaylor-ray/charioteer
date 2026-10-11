@@ -12,6 +12,7 @@ import {
   detectCommittedAction,
   detectRisk,
   historyTurnsForModel,
+  interestLabelsFromRows,
   isThumosFollowUp,
   OFFLINE_COACH_MESSAGE,
   resolveThumosMode,
@@ -96,12 +97,13 @@ Deno.serve(async (req) => {
   }
 
   const userId = userData.user.id;
-  const [profileRes, reasonsRes, checkRes, healthRes, historyRes] = await Promise.all([
+  const [profileRes, reasonsRes, checkRes, healthRes, historyRes, interestRes] = await Promise.all([
     userClient.from('profiles').select('*').eq('id', userId).single(),
     userClient.from('reasons').select('body, sort_order').eq('user_id', userId).order('sort_order'),
     userClient.from('check_ins').select('mood, sleep_hours, craving, note, created_at').eq('user_id', userId).order('created_at', { ascending: false }).limit(THUMOS_CHAT.checkInLimit),
     userClient.from('health_samples').select('kind, value, unit, recorded_on').eq('user_id', userId).order('recorded_on', { ascending: false }).limit(1000),
     userClient.from('thumos_messages').select('role, content, created_at').eq('user_id', userId).order('created_at', { ascending: false }).limit(THUMOS_CHAT.historyLimit),
+    userClient.from('profile_interests').select('interests(label)').eq('user_id', userId),
   ]);
 
   if (profileRes.error || !profileRes.data) {
@@ -179,6 +181,7 @@ Deno.serve(async (req) => {
     drinkFreeThisWeek: drinkFreeCount(profile.drink_free_on, new Date()),
     gratitude,
     vision,
+    interests: interestRes.error ? [] : interestLabelsFromRows(interestRes.data),
   });
 
   const admin = createClient(url, service, { auth: { persistSession: false } });

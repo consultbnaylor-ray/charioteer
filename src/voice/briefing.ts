@@ -70,6 +70,9 @@ export function briefingFromSnapshot(snap: AppSnapshot, requestedMode: ThumosMod
       vision: profile.consentAi
         ? visionContextFrom(profile.visionStatement, profile.visionStartedOn, snap.visionItems)
         : undefined,
+      interests: snap.interests
+        .filter((item) => profile.interestIds.includes(item.id))
+        .map((item) => item.label),
       mode: requestedMode,
       safety: { selfHarm: false, withdrawal: false, reasons: [] },
     },

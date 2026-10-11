@@ -10,6 +10,7 @@ export {
   detectRisk,
   historyTurnsForModel,
   inferThumosMode,
+  interestLabelsFromRows,
   isThumosFollowUp,
   OFFLINE_COACH_MESSAGE,
   resolveThumosMode,
