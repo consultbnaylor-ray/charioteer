@@ -46,7 +46,6 @@ import {
   buildSystemPrompt,
   buildThumosContext,
   conversationCues,
-  CRAVING_LINE,
   detectCommittedAction,
   detectRisk,
   historyTurnsForModel,
@@ -324,7 +323,7 @@ export function buildVoiceBriefing(input: {
     crisisInstructions,
     history,
     mode,
-    greeting: mode === 'support' ? CRAVING_LINE : OPENING_LINE,
+    greeting: OPENING_LINE,
   };
 }
 

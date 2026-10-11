@@ -4,6 +4,7 @@ export {
   buildThumosContext,
   completionDeltaText,
   CRAVING_LINE,
+  THUMOS_INTRO,
   conversationCues,
   detectCommittedAction,
   detectRisk,

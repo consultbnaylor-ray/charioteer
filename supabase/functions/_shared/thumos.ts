@@ -338,6 +338,11 @@ export function completionDeltaText(payload: unknown): string {
 
 export const OPENING_LINE = 'How are you feeling?';
 
+/** Shown on the Thumos screen. It is not stored as a chat message. */
+export const THUMOS_INTRO =
+  'Thumos is your Sober Coach. Thumos will do his best to help you through cravings and/or help you reason with yourself. He will help you find reasons to stop (or not start) drinking. He can also help motivate you to stay healthy and keep strong, however you may feel.';
+
+/** Retired guide line. Older rows may still be stored. Do not show or speak it. */
 export const CRAVING_LINE =
   'You are in craving support. I am with you. What is happening, in your own words?';
 

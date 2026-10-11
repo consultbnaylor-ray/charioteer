@@ -248,4 +248,29 @@ describe('voice briefing', () => {
     expect(briefing.crisisInstructions).not.toContain('Be there for my sister');
     expect(briefing.greeting).toBe('How are you feeling?');
   });
+
+  it('keeps craving support in the prompt and greets with the friendly line', () => {
+    const briefing = buildVoiceBriefing({
+      requestedMode: 'support',
+      historyRows: [],
+      context: {
+        now: new Date('2026-10-10T12:00:00.000Z'),
+        displayName: 'Alex',
+        sobrietyStartedAt: null,
+        reasons: ['Be there for my sister'],
+        weeklySpendGbp: null,
+        weeklyUnits: null,
+        checkIns: [],
+        health: [],
+        mode: 'support',
+        safety: { selfHarm: false, withdrawal: false, reasons: [] },
+        stage: 'trying_to_stop',
+        plannedQuitAt: '2026-11-01',
+      },
+    });
+    expect(briefing.mode).toBe('support');
+    expect(briefing.instructions).toContain('first support turn');
+    expect(briefing.greeting).toBe('How are you feeling?');
+    expect(briefing.greeting).not.toContain('craving support');
+  });
 });

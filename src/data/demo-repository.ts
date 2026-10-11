@@ -15,7 +15,7 @@ import { interestSelectionUnchanged, nextInterestIds } from '@/domain/interests'
 import { planCustomInterest, validateTown } from '@/domain/privacy';
 import { planRelapse } from '@/domain/sober';
 import { detectSafety, ensureSafetyNotices } from '@/domain/safety';
-import { CRAVING_LINE, OFFLINE_COACH_MESSAGE, OPENING_LINE, type ThumosMode } from '@/domain/thumos';
+import { OFFLINE_COACH_MESSAGE, OPENING_LINE, type ThumosMode } from '@/domain/thumos';
 import { CONSENT_VERSION } from '@/data/catalogue';
 import { consentRows, missingConsentRows } from '@/domain/consents';
 import { stageFromRecord } from '@/domain/stage';
@@ -81,12 +81,6 @@ function bytesToDataUrl(bytes: Uint8Array): string {
 
 function clone<T>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T;
-}
-
-function localToday(date = new Date()): string {
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-  return `${date.getFullYear()}-${month}-${day}`;
 }
 
 function blocked(db: DemoDb, a: string, b: string): boolean {
@@ -570,16 +564,9 @@ export class DemoRepository implements Repository {
     this.commit(db);
   }
 
-  async ensureThumosGuide(kind: 'opening' | 'craving'): Promise<void> {
-    const account = this.me();
-    if (kind === 'opening') {
-      if (account.thumos.length > 0) return;
-      this.appendGuide(OPENING_LINE, 'opening');
-      return;
-    }
-    const today = localToday();
-    const already = account.thumos.some((message) => message.content === CRAVING_LINE && localToday(new Date(message.createdAt)) === today);
-    if (!already) this.appendGuide(CRAVING_LINE, 'support');
+  async ensureThumosGuide(_kind: 'opening' | 'craving'): Promise<void> {
+    if (this.me().thumos.length > 0) return;
+    this.appendGuide(OPENING_LINE, 'opening');
   }
 
   private appendGuide(content: string, mode: ThumosMode | 'opening') {

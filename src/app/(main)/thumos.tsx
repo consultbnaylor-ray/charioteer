@@ -8,7 +8,7 @@ import { earnedMilestones } from '@/domain/milestones';
 import { firstSafetyHit, pinnedSafetyNotices } from '@/domain/safety';
 import { asUserFacing, shownError } from '@/domain/errors';
 import { showsSoberRecord } from '@/domain/stage';
-import { inferThumosMode, type ThumosMode } from '@/domain/thumos';
+import { CRAVING_LINE, inferThumosMode, THUMOS_INTRO, OPENING_LINE, type ThumosMode } from '@/domain/thumos';
 import { formatClock, urgeRemainingSeconds } from '@/domain/urge';
 import { ensureUrge, restartUrge } from '@/features/urgeSession';
 import { VOICE_COPY } from '@/domain/voice';
@@ -125,7 +125,7 @@ export default function Thumos() {
         crisisInstructions: mint.crisisInstructions ?? fallback.crisisInstructions,
         history: mint.history.length ? mint.history : fallback.history,
         mode: mint.mode ?? fallback.mode,
-        greeting: mint.greeting ?? fallback.greeting,
+        greeting: mint.greeting && mint.greeting !== CRAVING_LINE ? mint.greeting : OPENING_LINE,
       };
       const call = new VoiceCall({
         token: mint.token,
@@ -200,7 +200,10 @@ export default function Thumos() {
           ) : null}
         </Card>
       ) : null}
-      {snap.thumos.map((message) => (
+      <Card>
+        <T>{THUMOS_INTRO}</T>
+      </Card>
+      {snap.thumos.filter((message) => !(message.role === 'guide' && message.content === CRAVING_LINE)).map((message) => (
         <Card key={message.id} style={{ backgroundColor: message.role === 'user' ? theme.colors.emphasisSoft : theme.colors.surface }}>
           <T variant="label">{message.role === 'user' ? 'You' : message.role === 'offline' ? 'Charioteer' : 'Thumos'}</T>
           <T>{message.content}</T>

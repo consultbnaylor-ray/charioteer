@@ -4,7 +4,7 @@ import { planRelapse, soberElapsed } from './sober';
 import { formatGbp, savingsFromTypicalWeek, yearlyFromWeekly } from './savings';
 import { detectSafety, ensureSafetyNotices, firstSafetyHit, pinnedSafetyNotices, SELF_HARM_NOTICE, WITHDRAWAL_NOTICE } from './safety';
 import { encodeSse, parseSseBuffer } from './sse';
-import { buildChatCompletionBody, buildSystemPrompt, buildThumosContext, completionDeltaText, conversationCues, detectCommittedAction, detectRisk, historyTurnsForModel, inferThumosMode, isThumosFollowUp, OFFLINE_COACH_MESSAGE, resolveThumosMode, THUMOS_CHAT, thumosReasoningEffort } from './thumos';
+import { buildChatCompletionBody, buildSystemPrompt, buildThumosContext, completionDeltaText, conversationCues, CRAVING_LINE, detectCommittedAction, detectRisk, historyTurnsForModel, inferThumosMode, isThumosFollowUp, OFFLINE_COACH_MESSAGE, OPENING_LINE, resolveThumosMode, THUMOS_CHAT, THUMOS_INTRO, thumosReasoningEffort } from './thumos';
 import { ALCOHOL_FACTS } from './facts';
 import { browserSocketProtocols, buildVoiceSessionUpdate, GROK_VOICE } from './voice';
 
@@ -163,6 +163,9 @@ describe('Thumos context', () => {
     })).toBe('support');
     expect(inferThumosMode({ sos: false, hasHistory: true, latestMood: 5, latestCraving: 1 })).toBe('growth');
     expect(inferThumosMode({ sos: false, hasHistory: false })).toBe('opening');
+    expect(THUMOS_INTRO).toBe('Thumos is your Sober Coach. Thumos will do his best to help you through cravings and/or help you reason with yourself. He will help you find reasons to stop (or not start) drinking. He can also help motivate you to stay healthy and keep strong, however you may feel.');
+    expect(THUMOS_INTRO).not.toBe(CRAVING_LINE);
+    expect(OPENING_LINE).toBe('How are you feeling?');
   });
 
   it('puts sober time, reasons, check-ins, and health into the prompt', () => {

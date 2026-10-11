@@ -33,7 +33,7 @@ import { fetchWithOneRetry } from '@/domain/retryFetch';
 import { planRelapse } from '@/domain/sober';
 import { parseSseBuffer } from '@/domain/sse';
 import { detectSafety } from '@/domain/safety';
-import { CRAVING_LINE, OFFLINE_COACH_MESSAGE, OPENING_LINE, type ThumosMode } from '@/domain/thumos';
+import { OFFLINE_COACH_MESSAGE, OPENING_LINE, type ThumosMode } from '@/domain/thumos';
 import { CONSENT_VERSION } from '@/data/catalogue';
 import { consentRows, missingConsentRows, type StoredConsent } from '@/domain/consents';
 import { stageFromRecord } from '@/domain/stage';
@@ -66,12 +66,6 @@ import type {
 } from '@/data/types';
 
 type Row = Record<string, unknown>;
-
-function localToday(date = new Date()): string {
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-  return `${date.getFullYear()}-${month}-${day}`;
-}
 
 /** Expo's static web render has no window. iOS does not either, and must still start the client. */
 const staticWebRender = Platform.OS === 'web' && typeof window === 'undefined';
@@ -798,16 +792,9 @@ export class SupabaseRepository implements Repository {
     await this.refresh();
   }
 
-  async ensureThumosGuide(kind: 'opening' | 'craving'): Promise<void> {
-    const messages = this.snapshot.thumos;
-    if (kind === 'opening') {
-      if (messages.length > 0) return;
-      await this.insertGuide(OPENING_LINE, 'opening');
-      return;
-    }
-    const today = localToday();
-    const already = messages.some((message) => message.content === CRAVING_LINE && localToday(new Date(message.createdAt)) === today);
-    if (!already) await this.insertGuide(CRAVING_LINE, 'support');
+  async ensureThumosGuide(_kind: 'opening' | 'craving'): Promise<void> {
+    if (this.snapshot.thumos.length > 0) return;
+    await this.insertGuide(OPENING_LINE, 'opening');
   }
 
   private async insertGuide(content: string, mode: string) {
