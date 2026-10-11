@@ -140,7 +140,14 @@ describe('progress photos stay private', () => {
     expect(you).toContain('>Shared<');
     expect(you).toContain('Photo saved');
     expect(you).toContain('Try again');
-    expect(you).toContain('Save note');
+    expect(you).toContain('Use as Before');
+    expect(you).toContain('Use as Now');
+    expect(you).toContain('Pinch to zoom.');
+    expect(you).toContain('maximumZoomScale={4}');
+    expect(you).toContain('Saved ✓');
+    expect(you).toContain("width: '30%'");
+    expect(you).toContain('Close photo');
+    expect(you).not.toContain('Save note');
     expect(you).not.toContain('Save this photo');
     expect(you).not.toContain('Select a photo, then choose which side');
     expect(you).not.toContain('Show as Before');

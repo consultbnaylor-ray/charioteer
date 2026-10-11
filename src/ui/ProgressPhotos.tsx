@@ -1,6 +1,7 @@
 import { Image } from 'expo-image';
 import { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useRepository, useSnapshot } from '@/data';
 import type { ProgressPhoto, ProgressVisibility } from '@/data/types';
@@ -20,6 +21,12 @@ type PendingUpload = {
   previewUri: string;
 };
 
+type PendingKind = 'camera' | 'library' | 'save' | 'delete' | 'share' | 'note' | 'date' | null;
+
+function tidyNote(value: string): string {
+  return value.trim().replace(/\s+/g, ' ');
+}
+
 export function ProgressPhotos() {
   const snap = useSnapshot();
   const repo = useRepository();
@@ -31,11 +38,14 @@ export function ProgressPhotos() {
   const [choice, setChoice] = useState<ComparisonChoice | null>(null);
   const [picking, setPicking] = useState<'before' | 'now' | null>(null);
   const localPick = useRef(false);
+  const noteTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const tickTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [confirmId, setConfirmId] = useState<string | null>(null);
   const [shareIds, setShareIds] = useState<string[] | null>(null);
-  const [pending, setPending] = useState<'camera' | 'library' | 'save' | 'delete' | 'share' | 'note' | 'date' | null>(null);
+  const [pending, setPending] = useState<PendingKind>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [savedTick, setSavedTick] = useState(false);
   const userId = profile?.id ?? null;
 
   useEffect(() => {
@@ -50,6 +60,13 @@ export function ProgressPhotos() {
     };
   }, [userId]);
 
+  useEffect(() => {
+    return () => {
+      if (noteTimer.current) clearTimeout(noteTimer.current);
+      if (tickTimer.current) clearTimeout(tickTimer.current);
+    };
+  }, []);
+
   if (!profile) return null;
   const ownerId = profile.id;
 
@@ -58,20 +75,45 @@ export function ProgressPhotos() {
   const before = photos.find((photo) => photo.id === comparison?.beforeId) ?? null;
   const now = photos.find((photo) => photo.id === comparison?.nowId) ?? null;
   const anchor = progressAnchor(profile.sobrietyStartedAt, profile.createdAt);
-  const groups = groupPhotos(photos);
   const uploadPlan = upload ? planProgressPhoto({ takenOn: upload.takenOn, startingPoint: false, note: '', anchor }) : null;
+
+  function showTick() {
+    setSavedTick(true);
+    setError(null);
+    playSavedHaptic();
+    if (tickTimer.current) clearTimeout(tickTimer.current);
+    tickTimer.current = setTimeout(() => setSavedTick(false), 2500);
+  }
 
   function markSaved(message: string) {
     setNotice(message);
-    setError(null);
-    playSavedHaptic();
+    showTick();
   }
 
   function openPhoto(photo: ProgressPhoto) {
+    if (noteTimer.current) {
+      clearTimeout(noteTimer.current);
+      noteTimer.current = null;
+    }
     setSelectedId(photo.id);
     setNoteDraft(photo.note);
     setConfirmId(null);
+    setSavedTick(false);
     setNotice(null);
+  }
+
+  function closeSheet() {
+    if (noteTimer.current) {
+      clearTimeout(noteTimer.current);
+      noteTimer.current = null;
+    }
+    const current = photos.find((photo) => photo.id === selectedId);
+    if (current && pending !== 'note' && tidyNote(noteDraft) !== current.note) {
+      void saveDetails(current.id, { note: noteDraft }, 'note');
+    }
+    setSelectedId(null);
+    setConfirmId(null);
+    setShareIds((ids) => (ids?.length === 1 ? null : ids));
   }
 
   async function choose(source: 'camera' | 'library') {
@@ -109,13 +151,25 @@ export function ProgressPhotos() {
     setError(null);
     try {
       await repo.updateProgressPhoto(id, input);
-      if (input.note !== undefined) setNoteDraft(input.note.trim().replace(/\s+/g, ' '));
+      if (input.note !== undefined) {
+        const saved = tidyNote(input.note);
+        setNoteDraft((current) => (tidyNote(current) === saved ? saved : current));
+      }
       markSaved('Saved');
     } catch (err) {
+      setSavedTick(false);
       setError(shownError(err, 'Could not update that photo.'));
     } finally {
       setPending(null);
     }
+  }
+
+  function queueNoteSave(id: string, draft: string, currentNote: string) {
+    if (noteTimer.current) clearTimeout(noteTimer.current);
+    noteTimer.current = setTimeout(() => {
+      noteTimer.current = null;
+      if (tidyNote(draft) !== currentNote) void saveDetails(id, { note: draft }, 'note');
+    }, 600);
   }
 
   async function remove(id: string) {
@@ -152,6 +206,7 @@ export function ProgressPhotos() {
       setShareIds(null);
       markSaved('Saved');
     } catch (err) {
+      setSavedTick(false);
       setError(shownError(err, 'Could not update that photo.'));
     } finally {
       setPending(null);
@@ -160,14 +215,18 @@ export function ProgressPhotos() {
 
   function assignSlot(slot: 'before' | 'now', id: string) {
     const current = resolveComparison(photos, choice);
-    if (!current) return;
     const next = {
-      beforeId: slot === 'before' ? id : current.beforeId,
-      nowId: slot === 'now' ? id : current.nowId,
+      beforeId: slot === 'before' ? id : current?.beforeId ?? '',
+      nowId: slot === 'now' ? id : current?.nowId ?? '',
     };
     localPick.current = true;
     setChoice(next);
     void saveProgressComparison(ownerId, next).catch(() => undefined);
+  }
+
+  function useAs(slot: 'before' | 'now', id: string) {
+    assignSlot(slot, id);
+    markSaved('Saved');
   }
 
   return (
@@ -176,7 +235,7 @@ export function ProgressPhotos() {
       <T>A starting point, then photos through the months. Counted from your sober date, or from the day you joined.</T>
       <T>Photos stay private unless you choose Share with community. They are not sent to Thumos. Only me puts a shared photo back to just you.</T>
       {notice ? <T>{notice}</T> : null}
-      {error ? <ErrorNote>{error}</ErrorNote> : null}
+      {error && !selected ? <ErrorNote>{error}</ErrorNote> : null}
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
         <Button label="Take a photo" pending={pending === 'camera'} disabled={pending != null && pending !== 'camera'} onPress={() => void choose('camera')} />
         <Button label="Choose from library" tone="quiet" pending={pending === 'library'} disabled={pending != null && pending !== 'library'} onPress={() => void choose('library')} />
@@ -199,74 +258,79 @@ export function ProgressPhotos() {
         </View>
       ) : null}
       {photos.length === 0 && !upload ? <T variant="muted">No photos yet.</T> : null}
-      {groups.map((group) => (
-        <View key={group.label} style={{ gap: 8 }}>
-          <T variant="label">{group.label}</T>
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
-            {group.photos.map((photo) => (
-              <View key={photo.id} style={{ width: '47%', maxWidth: '47%', flexGrow: 0, flexShrink: 0, gap: 6, zIndex: 1 }}>
-                <PhotoTile photo={photo} selected={selected?.id === photo.id} onPress={() => openPhoto(photo)} />
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+        {photos.map((photo) => {
+          const label = progressPhotoLabel(photo.monthIndex, photo.takenOn);
+          return (
+            <Pressable
+              key={photo.id}
+              accessibilityRole="button"
+              accessibilityLabel={`Open ${label}`}
+              accessibilityState={{ selected: selected?.id === photo.id }}
+              onPress={() => openPhoto(photo)}
+              collapsable={false}
+              style={{ width: '30%', maxWidth: '30%', flexGrow: 0, flexShrink: 0, minHeight: 44, zIndex: 2 }}
+            >
+              <View pointerEvents="none" style={{ gap: 4 }}>
+                <PhotoFrame photo={photo} marked={selected?.id === photo.id} />
+                <T variant="muted">{label}</T>
                 {photo.visibility === 'community' ? <T variant="label">Shared</T> : null}
-                {photo.note ? <T variant="muted">{photo.note}</T> : null}
               </View>
-            ))}
-          </View>
-        </View>
-      ))}
-      {selected ? (
-        <Card>
-          <T variant="label">This photo</T>
-          <T>{progressPhotoLabel(selected.monthIndex, selected.takenOn)}</T>
-          <DateField
-            label="Taken on"
-            value={parseIsoDay(selected.takenOn)}
-            onChange={(date) => void saveDetails(selected.id, { takenOn: isoDay(date), startingPoint: selected.monthIndex === 0 }, 'date')}
-            maximumDate={new Date()}
-            hint="Today or an earlier day."
-          />
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-            <Choice label="Starting point" selected={selected.monthIndex === 0} onPress={() => void saveDetails(selected.id, { startingPoint: true }, 'date')} />
-            <Choice label="On the timeline" selected={selected.monthIndex !== 0} onPress={() => void saveDetails(selected.id, { takenOn: selected.takenOn, startingPoint: false }, 'date')} />
-          </View>
-          <Field
-            label="Note"
-            value={noteDraft}
-            onChangeText={(value) => setNoteDraft(value.slice(0, PROGRESS_NOTE_LIMIT))}
-            onBlur={() => {
-              if (noteDraft.trim().replace(/\s+/g, ' ') !== selected.note) void saveDetails(selected.id, { note: noteDraft }, 'note');
-            }}
-            placeholder="Optional, a few words"
-            hint="Shown with the photo. If you share it, other people see this note and nothing else."
-          />
-          <Button
-            label="Save note"
-            tone="quiet"
-            pending={pending === 'note'}
-            disabled={pending != null || noteDraft.trim().replace(/\s+/g, ' ') === selected.note}
-            onPress={() => void saveDetails(selected.id, { note: noteDraft }, 'note')}
-          />
-          {shareIds?.length === 1 && shareIds[0] === selected.id ? (
-            <View style={{ gap: 8 }}>
-              <T>{PROGRESS_SHARE_WARNING}</T>
-              <Button label="Share this photo" pending={pending === 'share'} onPress={() => void applyVisibility([selected.id], 'community')} />
-              <Button label="Keep it private" tone="quiet" disabled={pending != null} onPress={() => setShareIds(null)} />
-            </View>
-          ) : (
-            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-              <Choice label="Only me" selected={selected.visibility !== 'community'} onPress={() => { if (selected.visibility === 'community') void applyVisibility([selected.id], 'private'); }} />
-              <Choice label="Share with community" selected={selected.visibility === 'community'} onPress={() => { if (selected.visibility !== 'community') setShareIds([selected.id]); }} />
-            </View>
-          )}
-          {confirmId === selected.id ? (
-            <View style={{ gap: 8 }}>
-              <Button label="Delete this photo" tone="sos" pending={pending === 'delete'} onPress={() => void remove(selected.id)} />
-              <Button label="Keep it" tone="quiet" disabled={pending != null} onPress={() => setConfirmId(null)} />
-            </View>
-          ) : (
-            <Button label="Delete" tone="quiet" disabled={pending != null} onPress={() => setConfirmId(selected.id)} />
-          )}
-        </Card>
-      ) : null}
+            </Pressable>
+          );
+        })}
+      </View>
+      <PhotoDetailSheet
+        photo={selected}
+        noteDraft={noteDraft}
+        savedTick={savedTick}
+        pending={pending}
+        error={error}
+        confirmingDelete={confirmId != null && confirmId === selected?.id}
+        confirmingShare={shareIds?.length === 1 && shareIds[0] === selected?.id}
+        onClose={closeSheet}
+        onNote={(value) => {
+          const next = value.slice(0, PROGRESS_NOTE_LIMIT);
+          setNoteDraft(next);
+          if (selected) queueNoteSave(selected.id, next, selected.note);
+        }}
+        onNoteBlur={() => {
+          if (!selected) return;
+          if (noteTimer.current) {
+            clearTimeout(noteTimer.current);
+            noteTimer.current = null;
+          }
+          if (tidyNote(noteDraft) !== selected.note) void saveDetails(selected.id, { note: noteDraft }, 'note');
+        }}
+        onDate={(date) => {
+          if (!selected) return;
+          void saveDetails(selected.id, { takenOn: isoDay(date), startingPoint: selected.monthIndex === 0 }, 'date');
+        }}
+        onStartingPoint={(startingPoint) => {
+          if (!selected) return;
+          void saveDetails(selected.id, { takenOn: selected.takenOn, startingPoint }, 'date');
+        }}
+        onOnlyMe={() => {
+          if (selected?.visibility === 'community') void applyVisibility([selected.id], 'private');
+        }}
+        onAskShare={() => {
+          if (selected && selected.visibility !== 'community') setShareIds([selected.id]);
+        }}
+        onConfirmShare={() => {
+          if (selected) void applyVisibility([selected.id], 'community');
+        }}
+        onCancelShare={() => setShareIds(null)}
+        onUseAs={(slot) => {
+          if (selected) useAs(slot, selected.id);
+        }}
+        onAskDelete={() => {
+          if (selected) setConfirmId(selected.id);
+        }}
+        onCancelDelete={() => setConfirmId(null)}
+        onDelete={() => {
+          if (selected) void remove(selected.id);
+        }}
+      />
       {photos.length >= 2 && before && now ? (
         <Card>
           <T variant="label">Before and now</T>
@@ -309,19 +373,154 @@ export function ProgressPhotos() {
   );
 }
 
-function groupPhotos(photos: ProgressPhoto[]): { label: string; photos: ProgressPhoto[] }[] {
-  const order: string[] = [];
-  const grouped = new Map<string, ProgressPhoto[]>();
-  for (const photo of photos) {
-    const label = progressPhotoLabel(photo.monthIndex, photo.takenOn);
-    const list = grouped.get(label);
-    if (list) list.push(photo);
-    else {
-      grouped.set(label, [photo]);
-      order.push(label);
-    }
-  }
-  return order.map((label) => ({ label, photos: grouped.get(label) ?? [] }));
+function PhotoDetailSheet({
+  photo,
+  noteDraft,
+  savedTick,
+  pending,
+  error,
+  confirmingDelete,
+  confirmingShare,
+  onClose,
+  onNote,
+  onNoteBlur,
+  onDate,
+  onStartingPoint,
+  onOnlyMe,
+  onAskShare,
+  onConfirmShare,
+  onCancelShare,
+  onUseAs,
+  onAskDelete,
+  onCancelDelete,
+  onDelete,
+}: {
+  photo: ProgressPhoto | null;
+  noteDraft: string;
+  savedTick: boolean;
+  pending: PendingKind;
+  error: string | null;
+  confirmingDelete: boolean;
+  confirmingShare: boolean;
+  onClose: () => void;
+  onNote: (value: string) => void;
+  onNoteBlur: () => void;
+  onDate: (date: Date) => void;
+  onStartingPoint: (startingPoint: boolean) => void;
+  onOnlyMe: () => void;
+  onAskShare: () => void;
+  onConfirmShare: () => void;
+  onCancelShare: () => void;
+  onUseAs: (slot: 'before' | 'now') => void;
+  onAskDelete: () => void;
+  onCancelDelete: () => void;
+  onDelete: () => void;
+}) {
+  const theme = useAppTheme();
+  const insets = useSafeAreaInsets();
+  const { height } = useWindowDimensions();
+  const label = photo ? progressPhotoLabel(photo.monthIndex, photo.takenOn) : '';
+  const detailsMaxHeight = Math.max(320, Math.round(height * 0.92) - 96 - insets.bottom);
+  return (
+    <Modal visible={photo != null} animationType="slide" transparent onRequestClose={onClose}>
+      <View style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.45)' }}>
+        <Pressable accessibilityRole="button" accessibilityLabel="Close photo" style={{ flex: 1 }} onPress={onClose} />
+        {photo ? (
+          <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+            <View
+              style={{
+                backgroundColor: theme.colors.bg,
+                borderTopLeftRadius: 16,
+                borderTopRightRadius: 16,
+                paddingHorizontal: 20,
+                paddingTop: 16,
+                paddingBottom: 16 + insets.bottom,
+                gap: 12,
+                maxHeight: '92%',
+              }}
+            >
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                <View pointerEvents="none" style={{ flex: 1, gap: 2 }}>
+                  <T variant="title">{label}</T>
+                  {savedTick ? <T>Saved ✓</T> : null}
+                </View>
+                <Button label="Close" tone="quiet" onPress={onClose} />
+              </View>
+              <ScrollView keyboardShouldPersistTaps="handled" nestedScrollEnabled style={{ flexGrow: 0, height: detailsMaxHeight }} contentContainerStyle={{ gap: 12, paddingBottom: 8 }}>
+                <View pointerEvents="box-none" style={{ height: 280, borderRadius: radius.md, overflow: 'hidden', backgroundColor: theme.colors.sunken }}>
+                  <ScrollView
+                    style={{ height: 280, width: '100%' }}
+                    contentContainerStyle={{ width: '100%', height: 280 }}
+                    maximumZoomScale={4}
+                    minimumZoomScale={1}
+                    bouncesZoom
+                    centerContent
+                    pinchGestureEnabled
+                    showsHorizontalScrollIndicator={false}
+                    showsVerticalScrollIndicator={false}
+                  >
+                    {photo.previewUrl ? (
+                      <Image pointerEvents="none" source={{ uri: photo.previewUrl }} style={{ width: '100%', height: 280 }} contentFit="contain" />
+                    ) : (
+                      <View pointerEvents="none" style={{ height: 280, alignItems: 'center', justifyContent: 'center', padding: 8 }}>
+                        <T variant="muted">Photo unavailable</T>
+                      </View>
+                    )}
+                  </ScrollView>
+                </View>
+                <T variant="muted">Pinch to zoom.</T>
+                {error ? <ErrorNote>{error}</ErrorNote> : null}
+                <DateField
+                  label="Taken on"
+                  value={parseIsoDay(photo.takenOn)}
+                  onChange={onDate}
+                  maximumDate={new Date()}
+                  hint="Today or an earlier day."
+                />
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+                  <Choice label="Starting point" selected={photo.monthIndex === 0} onPress={() => onStartingPoint(true)} />
+                  <Choice label="On the timeline" selected={photo.monthIndex !== 0} onPress={() => onStartingPoint(false)} />
+                </View>
+                <Field
+                  label="Note"
+                  value={noteDraft}
+                  onChangeText={onNote}
+                  onBlur={onNoteBlur}
+                  multiline
+                  placeholder="Optional, a few words"
+                  hint="Shown with the photo. If you share it, other people see this note and nothing else."
+                />
+                {confirmingShare ? (
+                  <View style={{ gap: 8 }}>
+                    <T>{PROGRESS_SHARE_WARNING}</T>
+                    <Button label="Share this photo" pending={pending === 'share'} onPress={onConfirmShare} />
+                    <Button label="Keep it private" tone="quiet" disabled={pending != null} onPress={onCancelShare} />
+                  </View>
+                ) : (
+                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+                    <Choice label="Only me" selected={photo.visibility !== 'community'} onPress={onOnlyMe} />
+                    <Choice label="Share with community" selected={photo.visibility === 'community'} onPress={onAskShare} />
+                  </View>
+                )}
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+                  <Button label="Use as Before" tone="quiet" disabled={pending != null} onPress={() => onUseAs('before')} />
+                  <Button label="Use as Now" tone="quiet" disabled={pending != null} onPress={() => onUseAs('now')} />
+                </View>
+                {confirmingDelete ? (
+                  <View style={{ gap: 8 }}>
+                    <Button label="Delete this photo" tone="sos" pending={pending === 'delete'} onPress={onDelete} />
+                    <Button label="Keep it" tone="quiet" disabled={pending != null} onPress={onCancelDelete} />
+                  </View>
+                ) : (
+                  <Button label="Delete" tone="quiet" disabled={pending != null} onPress={onAskDelete} />
+                )}
+              </ScrollView>
+            </View>
+          </KeyboardAvoidingView>
+        ) : null}
+      </View>
+    </Modal>
+  );
 }
 
 function ComparisonSlot({
@@ -345,9 +544,11 @@ function ComparisonSlot({
       collapsable={false}
       style={{ flex: 1, gap: 6, minHeight: 44, zIndex: 2 }}
     >
-      <T variant="label">{title}</T>
-      <PhotoFrame photo={photo} marked={open} />
-      <T variant="muted">{label}</T>
+      <View pointerEvents="none" style={{ gap: 6 }}>
+        <T variant="label">{title}</T>
+        <PhotoFrame photo={photo} marked={open} />
+        <T variant="muted">{label}</T>
+      </View>
     </Pressable>
   );
 }
@@ -386,10 +587,12 @@ function PhotoStrip({
               accessibilityState={{ selected: chosen }}
               onPress={() => onChoose(photo.id)}
               collapsable={false}
-              style={{ width: 104, minHeight: 44, gap: 6, zIndex: 2 }}
+              style={{ width: 104, minHeight: 44, zIndex: 2 }}
             >
-              <PhotoFrame photo={photo} marked={chosen} checked={chosen} />
-              <T variant="muted">{label}</T>
+              <View pointerEvents="none" style={{ gap: 6 }}>
+                <PhotoFrame photo={photo} marked={chosen} checked={chosen} />
+                <T variant="muted">{label}</T>
+              </View>
             </Pressable>
           );
         })}
@@ -398,25 +601,8 @@ function PhotoStrip({
   );
 }
 
-function PhotoTile({ photo, selected, onPress }: { photo: ProgressPhoto; selected?: boolean; onPress: () => void }) {
-  const label = progressPhotoLabel(photo.monthIndex, photo.takenOn);
-  return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={`Open ${label}`}
-      accessibilityState={{ selected: Boolean(selected) }}
-      onPress={onPress}
-      collapsable={false}
-      style={{ width: '100%', minHeight: 44, zIndex: 2 }}
-    >
-      <PhotoFrame photo={photo} marked={selected} />
-    </Pressable>
-  );
-}
-
 function PhotoFrame({ photo, marked, checked }: { photo: ProgressPhoto; marked?: boolean; checked?: boolean }) {
   const theme = useAppTheme();
-  const label = progressPhotoLabel(photo.monthIndex, photo.takenOn);
   return (
     <View
       pointerEvents="none"
@@ -431,7 +617,7 @@ function PhotoFrame({ photo, marked, checked }: { photo: ProgressPhoto; marked?:
       }}
     >
       {photo.previewUrl ? (
-        <Image pointerEvents="none" source={{ uri: photo.previewUrl }} style={StyleSheet.absoluteFill} contentFit="cover" accessibilityLabel={label} />
+        <Image pointerEvents="none" source={{ uri: photo.previewUrl }} style={StyleSheet.absoluteFill} contentFit="cover" />
       ) : (
         <View pointerEvents="none" style={[StyleSheet.absoluteFill, { alignItems: 'center', justifyContent: 'center', padding: 8 }]}>
           <T variant="muted">Photo unavailable</T>
