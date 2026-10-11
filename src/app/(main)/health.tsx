@@ -3,18 +3,18 @@ import { useCallback, useState } from 'react';
 import { Platform, View } from 'react-native';
 
 import { useRepository, useSnapshot } from '@/data';
-import { HEALTH_LABELS } from '@/data/catalogue';
 import type { HealthKind } from '@/data/types';
-import { formatUkLong, isoDay, startOfLocalDay } from '@/domain/dates';
+import { isoDay, startOfLocalDay } from '@/domain/dates';
 import { shownError } from '@/domain/errors';
 import { isHealthAccessDenied, type AppleHealthAccess } from '@/health/connection';
 import { connectAppleHealth, openAppSettings, openHealthApp, readAppleHealthAccess } from '@/health/link';
 import { loadLastSynced, saveLastSynced } from '@/health/syncedAt';
 import { syncAppleHealth } from '@/health/sync';
 import { AppleHealthCard } from '@/ui/AppleHealthCard';
+import { HealthBoard, HealthReadings } from '@/ui/HealthBoard';
 import { DateField } from '@/ui/DateField';
 import { useAppTheme } from '@/ui/theme';
-import { Button, Card, Choice, ErrorNote, Field, Screen, T } from '@/ui/ui';
+import { Button, Choice, ErrorNote, Field, Screen, T } from '@/ui/ui';
 
 const KINDS: { id: HealthKind; unit: string; label: string }[] = [
   { id: 'steps', unit: 'steps', label: 'Steps' },
@@ -95,6 +95,12 @@ export default function Health() {
         onSettings={() => void openAppSettings()}
         onPrivacy={() => router.push('/privacy' as never)}
       />
+      <HealthBoard
+        samples={snap.health}
+        today={isoDay(new Date())}
+        soberOn={snap.profile?.stage === 'stopped' && snap.profile.sobrietyStartedAt ? isoDay(new Date(snap.profile.sobrietyStartedAt)) : null}
+        stage={snap.profile?.stage ?? null}
+      />
       <T style={{ fontFamily: theme.font.bodyStrong }}>Or add a reading yourself</T>
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
         {KINDS.map((item) => (
@@ -123,14 +129,7 @@ export default function Health() {
             .catch((err: unknown) => setError(shownError(err, 'Could not save.')));
         }}
       />
-      <T variant="label">Saved</T>
-      {snap.health.length === 0 ? <T variant="muted">Nothing logged yet.</T> : null}
-      {snap.health.map((sample) => (
-        <Card key={sample.id}>
-          <T>{HEALTH_LABELS[sample.kind] ?? sample.kind}</T>
-          <T variant="muted">{sample.value} {sample.unit} · {formatUkLong(sample.recordedOn)} · {sample.source === 'healthkit' ? 'Apple Health' : 'Logged here'}</T>
-        </Card>
-      ))}
+      <HealthReadings samples={snap.health} />
     </Screen>
   );
 }

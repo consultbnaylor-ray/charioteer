@@ -46,9 +46,9 @@ describe('UK dates', () => {
     const milestones = home.slice(home.indexOf('>Milestones'), home.lastIndexOf('CheckInWeek'));
     expect(milestones).toContain('formatUkLong');
     expect(milestones).not.toContain('formatUkCompact');
-    const health = readFileSync('src/app/(main)/health.tsx', 'utf8');
-    expect(health).toContain('formatUkLong');
-    expect(health).not.toContain('formatUkCompact');
+    const readings = readFileSync('src/ui/HealthBoard.tsx', 'utf8');
+    expect(readings).toContain('formatReadingLine');
+    expect(readings).not.toContain("day: '2-digit', month: '2-digit'");
     const problems = files('src')
       .filter((path) => !path.endsWith('.test.ts'))
       .filter((path) => readFileSync(path, 'utf8').includes("day: '2-digit', month: '2-digit'"));

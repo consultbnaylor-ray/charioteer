@@ -22,6 +22,7 @@ import {
   type ThumosMode,
 } from '../_shared/thumos.ts';
 import { gratitudeFromRows, type GratitudeEntry } from '../_shared/gratitude.ts';
+import { buildHealthInsights, londonDay } from '../_shared/healthInsights.ts';
 
 type Body = { content?: string; mode?: ThumosMode };
 
@@ -79,7 +80,7 @@ Deno.serve(async (req) => {
     userClient.from('profiles').select('*').eq('id', userId).single(),
     userClient.from('reasons').select('body, sort_order').eq('user_id', userId).order('sort_order'),
     userClient.from('check_ins').select('mood, sleep_hours, craving, note, created_at').eq('user_id', userId).order('created_at', { ascending: false }).limit(THUMOS_CHAT.checkInLimit),
-    userClient.from('health_samples').select('kind, value, unit, recorded_on').eq('user_id', userId).order('recorded_on', { ascending: false }).limit(40),
+    userClient.from('health_samples').select('kind, value, unit, recorded_on').eq('user_id', userId).order('recorded_on', { ascending: false }).limit(1000),
     userClient.from('thumos_messages').select('role, content, created_at').eq('user_id', userId).order('created_at', { ascending: false }).limit(THUMOS_CHAT.historyLimit),
   ]);
 
@@ -99,8 +100,14 @@ Deno.serve(async (req) => {
   const safety = safetyFromText(content);
   const mode = resolveThumosMode({ requested: body.mode, userText: content, safety });
 
+  const profile = profileRes.data;
+  const stage = profile.stage === 'trying_to_stop' || profile.stage === 'cutting_down' || profile.stage === 'exploring' || profile.stage === 'stopped'
+    ? profile.stage
+    : profile.sobriety_started_at ? 'stopped' : 'exploring';
+  const shareHealth = profile.consent_health === true;
+  const healthRows = shareHealth ? (healthRes.data ?? []) : [];
   const byKind = new Map<string, { value: number; unit: string; recordedOn: string }[]>();
-  for (const row of healthRes.data ?? []) {
+  for (const row of healthRows) {
     const list = byKind.get(row.kind) ?? [];
     list.push({ value: Number(row.value), unit: row.unit, recordedOn: row.recorded_on });
     byKind.set(row.kind, list);
@@ -111,6 +118,18 @@ Deno.serve(async (req) => {
     previous: rows[1]?.value ?? null,
     unit: rows[0]?.unit ?? '',
   }));
+  const healthInsights = shareHealth
+    ? buildHealthInsights({
+        today: londonDay(new Date()),
+        samples: healthRows.map((row) => ({
+          kind: row.kind,
+          value: Number(row.value),
+          recordedOn: String(row.recorded_on),
+        })),
+        soberOn: stage === 'stopped' && profile.sobriety_started_at ? londonDay(profile.sobriety_started_at) : null,
+        stage,
+      }).headlines
+    : [];
 
   const checkIns: CheckInSummary[] = (checkRes.data ?? []).map((row) => ({
     createdAt: row.created_at,
@@ -120,10 +139,6 @@ Deno.serve(async (req) => {
     note: row.note ?? '',
   }));
 
-  const profile = profileRes.data;
-  const stage = profile.stage === 'trying_to_stop' || profile.stage === 'cutting_down' || profile.stage === 'exploring' || profile.stage === 'stopped'
-    ? profile.stage
-    : profile.sobriety_started_at ? 'stopped' : 'exploring';
   const context = buildThumosContext({
     now: new Date(),
     displayName: profile.display_name ?? '',
@@ -133,6 +148,7 @@ Deno.serve(async (req) => {
     weeklyUnits: profile.weekly_units == null ? null : Number(profile.weekly_units),
     checkIns,
     health,
+    healthInsights,
     mode,
     safety,
     stage,

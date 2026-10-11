@@ -1,4 +1,6 @@
 import type { AppSnapshot } from '@/data/types';
+import { isoDay } from '@/domain/dates';
+import { buildHealthInsights } from '@/domain/healthInsights';
 import { drinkFreeThisWeek } from '@/domain/stage';
 import { buildVoiceBriefing, type VoiceBriefing } from '@/domain/voice';
 import type { HealthTrend, ThumosMode } from '@/domain/thumos';
@@ -24,6 +26,18 @@ export function briefingFromSnapshot(snap: AppSnapshot, requestedMode: ThumosMod
   const profile = snap.profile;
   if (!profile) return null;
   const now = new Date();
+  const shareHealth = profile.consentAi && profile.consentHealth;
+  const soberOn = shareHealth && profile.stage === 'stopped' && profile.sobrietyStartedAt
+    ? isoDay(new Date(profile.sobrietyStartedAt))
+    : null;
+  const healthInsights = shareHealth
+    ? buildHealthInsights({
+        today: isoDay(now),
+        samples: snap.health,
+        soberOn,
+        stage: profile.stage,
+      }).headlines
+    : [];
   return buildVoiceBriefing({
     requestedMode,
     historyRows: snap.thumos.map((message) => ({
@@ -50,7 +64,8 @@ export function briefingFromSnapshot(snap: AppSnapshot, requestedMode: ThumosMod
         craving: item.craving,
         note: item.note,
       })),
-      health: healthTrends(snap.health),
+      health: shareHealth ? healthTrends(snap.health) : [],
+      healthInsights,
       mode: requestedMode,
       safety: { selfHarm: false, withdrawal: false, reasons: [] },
     },

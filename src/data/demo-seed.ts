@@ -53,6 +53,40 @@ function localDay(now: Date, daysAgo: number): string {
   return `${date.getFullYear()}-${month}-${day}`;
 }
 
+function demoHealth(now: Date): HealthSample[] {
+  let n = 1;
+  const sample = (kind: HealthSample['kind'], value: number, unit: string, daysAgo: number): HealthSample => {
+    const id = `d1d1d1d1-d1d1-4d1d-8d1d-${n.toString(16).padStart(12, '0')}`;
+    n += 1;
+    return { id, kind, value, unit, recordedOn: localDay(now, daysAgo), source: 'manual' };
+  };
+  const rows: HealthSample[] = [];
+  const steps = [9100, 8800, 8600, 8420, 8200, 9000, 8700, 7000, 6800, 6600, 7200, 6400, 6900, 4682];
+  const sleep = [7.4, 7.2, 7.6, 7.1, 7.5, 7.3, 7.8, 6.4, 6.2, 6.6, 6.1, 6.5, 6.3, 6.8];
+  steps.forEach((value, daysAgo) => rows.push(sample('steps', value, 'steps', daysAgo)));
+  sleep.forEach((value, daysAgo) => rows.push(sample('sleep_hours', value, 'h', daysAgo)));
+  rows.push(
+    sample('resting_heart_rate', 62, 'bpm', 0),
+    sample('resting_heart_rate', 61, 'bpm', 1),
+    sample('resting_heart_rate', 63, 'bpm', 3),
+    sample('resting_heart_rate', 70, 'bpm', 55),
+    sample('resting_heart_rate', 66, 'bpm', 62),
+    sample('hrv_sdnn', 48, 'ms', 0),
+    sample('hrv_sdnn', 46, 'ms', 1),
+    sample('hrv_sdnn', 44, 'ms', 2),
+    sample('hrv_sdnn', 50, 'ms', 4),
+    sample('hrv_sdnn', 47, 'ms', 6),
+    sample('workout_minutes', 32, 'min', 0),
+    sample('workout_minutes', 45, 'min', 2),
+    sample('workout_minutes', 20, 'min', 5),
+    sample('workout_minutes', 40, 'min', 8),
+    sample('weight_kg', 74.2, 'kg', 0),
+    sample('weight_kg', 74.6, 'kg', 7),
+    sample('weight_kg', 74.8, 'kg', 14),
+  );
+  return rows;
+}
+
 function profile(
   id: string,
   email: string,
@@ -144,18 +178,7 @@ export function createDemoDb(now = new Date()): DemoDb {
     { id: 'c5c5c5c5-c5c5-4c5c-8c5c-c5c5c5c5c5c5', mood: 3, sleepHours: 7, craving: 3, note: '', createdAt: ago(116) },
   ];
 
-  const health: HealthSample[] = [
-    { id: 'd1d1d1d1-d1d1-4d1d-8d1d-d1d1d1d1d1d1', kind: 'steps', value: 8420, unit: 'steps', recordedOn: localDay(now, 1), source: 'manual' },
-    { id: 'd2d2d2d2-d2d2-4d2d-8d2d-d2d2d2d2d2d2', kind: 'steps', value: 6104, unit: 'steps', recordedOn: localDay(now, 2), source: 'manual' },
-    { id: 'd3d3d3d3-d3d3-4d3d-8d3d-d3d3d3d3d3d3', kind: 'sleep_hours', value: 7.5, unit: 'h', recordedOn: localDay(now, 1), source: 'manual' },
-    { id: 'd4d4d4d4-d4d4-4d4d-8d4d-d4d4d4d4d4d4', kind: 'sleep_hours', value: 6.2, unit: 'h', recordedOn: localDay(now, 2), source: 'manual' },
-    { id: 'd5d5d5d5-d5d5-4d5d-8d5d-d5d5d5d5d5d5', kind: 'resting_heart_rate', value: 58, unit: 'bpm', recordedOn: localDay(now, 1), source: 'manual' },
-    { id: 'd6d6d6d6-d6d6-4d6d-8d6d-d6d6d6d6d6d6', kind: 'resting_heart_rate', value: 61, unit: 'bpm', recordedOn: localDay(now, 3), source: 'manual' },
-    { id: 'd7d7d7d7-d7d7-4d7d-8d7d-d7d7d7d7d7d7', kind: 'hrv_sdnn', value: 46, unit: 'ms', recordedOn: localDay(now, 1), source: 'manual' },
-    { id: 'd8d8d8d8-d8d8-4d8d-8d8d-d8d8d8d8d8d8', kind: 'hrv_sdnn', value: 41, unit: 'ms', recordedOn: localDay(now, 3), source: 'manual' },
-    { id: 'd9d9d9d9-d9d9-4d9d-8d9d-d9d9d9d9d9d9', kind: 'weight_kg', value: 74.2, unit: 'kg', recordedOn: localDay(now, 1), source: 'manual' },
-    { id: 'dadadada-dada-4dad-8dad-dadadadadada', kind: 'workout_minutes', value: 32, unit: 'min', recordedOn: localDay(now, 1), source: 'manual' },
-  ];
+  const health = demoHealth(now);
 
   const thumos: ThumosMessage[] = [
     { id: 'e1e1e1e1-e1e1-4e1e-8e1e-e1e1e1e1e1e1', role: 'guide', content: 'How are you feeling?', mode: 'opening', createdAt: ago(26) },
