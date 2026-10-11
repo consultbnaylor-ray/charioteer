@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
-import { formatVoiceDebug } from './voiceDebug';
+import { firstVoiceStackFrame, formatVoiceDebug } from './voiceDebug';
 import {
   combineSocketCause,
   mapVoiceFailure,
@@ -99,14 +99,23 @@ describe('voice error mapping', () => {
 });
 
 describe('voice debug line', () => {
-  it('names the step, the microphone rate, and the last error', () => {
-    expect(formatVoiceDebug({ step: 'token', sampleRate: null, error: null })).toBe('Voice debug: token · rate unknown');
-    expect(formatVoiceDebug({ step: 'mic', sampleRate: 48000, error: null })).toBe('Voice debug: mic · 48000 Hz');
+  it('names the step, the microphone rate, and the last error on separate lines', () => {
+    expect(formatVoiceDebug({ step: 'token', sampleRate: null, error: null })).toBe('Voice debug: token\nrate unknown');
+    expect(formatVoiceDebug({ step: 'mic', sampleRate: 48000, error: null })).toBe('Voice debug: mic\n48000 Hz');
     expect(formatVoiceDebug({ step: 'session.updated', sampleRate: 44100.4, error: 'engine format' })).toBe(
-      'Voice debug: session.updated · 44100 Hz · engine format',
+      'Voice debug: session.updated\n44100 Hz\nengine format',
     );
-    expect(formatVoiceDebug({ step: 'playback', sampleRate: 48000, error: `x${'y'.repeat(400)}` })).toContain('Voice debug: playback · 48000 Hz · ');
-    expect(formatVoiceDebug({ step: 'socket', sampleRate: 48000, error: `x${'y'.repeat(400)}` }).length).toBeLessThan(260);
+    expect(formatVoiceDebug({ step: 'mic', sampleRate: 24000, error: 'offset must be a multiple of 4', frame: 'getChannelData' })).toBe(
+      'Voice debug: mic\n24000 Hz\noffset must be a multiple of 4\ngetChannelData',
+    );
+    const long = formatVoiceDebug({ step: 'playback', sampleRate: 48000, error: `x${'y'.repeat(400)}` });
+    expect(long.split('\n')[2]?.length).toBeLessThan(230);
+    const thrown = new Error('offset must be a multiple of 4');
+    thrown.stack = 'RangeError: offset must be a multiple of 4\n    at getChannelData (AudioBuffer.ts:35:12)\n    at readMic (audio.native.ts:89:24)';
+    expect(firstVoiceStackFrame(thrown)).toBe('getChannelData');
+    const hermes = new Error('offset must be a multiple of 2');
+    hermes.stack = 'RangeError: offset must be a multiple of 2\ngetChannelData@89:24\nanonymous@100:1';
+    expect(firstVoiceStackFrame(hermes)).toBe('getChannelData');
   });
 });
 
@@ -125,6 +134,8 @@ describe('voice call wiring', () => {
     expect(start.indexOf('await openMic')).toBeLessThan(start.indexOf('await openPlayback'));
     expect(start).toContain('await this.stop()');
     expect(audio).toContain('getDevicePreferredSampleRate() || 48000');
+    expect(audio).toContain('readChannelSamples');
+    expect(audio).not.toContain('getChannelData');
     expect(audio).toContain('rate * 0.1');
     expect(audio).toContain('channelCount: 1');
     expect(audio).toContain('new AudioContext()');

@@ -208,7 +208,7 @@ describe('gratitude diary wiring', () => {
     expect(layout).not.toContain("label: 'Library'");
     const drawer = readFileSync('src/ui/SectionDrawer.tsx', 'utf8');
     expect(drawer).toContain('APP_SECTIONS');
-    expect(readFileSync('app.json', 'utf8')).toContain('"buildNumber": "9"');
+    expect(readFileSync('app.json', 'utf8')).toContain('"buildNumber": "10"');
     const consent = readFileSync('src/ui/ConsentChoices.tsx', 'utf8');
     expect(consent).toContain('gratitude');
     expect(consent).toContain('never shown to the community');

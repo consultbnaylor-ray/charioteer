@@ -13,6 +13,7 @@ export {
   inputAudioAppend,
   pcm16Base64FromFloat,
   pcm16ToFloat,
+  readChannelSamples,
   resampleLinear,
   mapVoiceFailure,
   shortenVoiceCause,

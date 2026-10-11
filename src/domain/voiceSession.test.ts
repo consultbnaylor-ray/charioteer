@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { SELF_HARM_NOTICE, WITHDRAWAL_NOTICE } from './safety';
-import { buildVoiceBriefing, bytesToBase64, floatToPcm16, pcm16ToFloat, resampleLinear } from './voice';
+import { buildVoiceBriefing, bytesToBase64, floatToPcm16, pcm16Base64FromFloat, pcm16ToFloat, readChannelSamples, resampleLinear } from './voice';
 import { assembleTranscript, createVoiceRuntime, reduceVoiceEvent, voiceStatusLabel, type VoiceRuntime } from './voiceSession';
 
 const ctx = {
@@ -42,6 +42,38 @@ describe('voice PCM', () => {
   it('resamples to the rate xAI expects', () => {
     const up = resampleLinear([0, 1], 2, 4);
     expect(Array.from(up).map((sample) => Math.round(sample * 10) / 10)).toEqual([0, 0.5, 1, 1]);
+    const same = pcm16Base64FromFloat(Float32Array.of(0, 1, -1), 24000);
+    expect(same.length).toBeGreaterThan(0);
+    const fromDevice = pcm16Base64FromFloat(Float32Array.of(0, 0, 1, 1), 48000);
+    expect(pcm16ToFloat(Uint8Array.from(atob(fromDevice), (char) => char.charCodeAt(0))).length).toBe(2);
+  });
+
+  it('reads an odd-offset PCM16 view and a getChannelData-shaped channel without throwing', () => {
+    const pcm = floatToPcm16([0, 1, -1]);
+    const padded = new Uint8Array(pcm.byteLength + 1);
+    padded.set(pcm, 1);
+    const odd = padded.subarray(1);
+    expect(odd.byteOffset % 2).toBe(1);
+    expect(() => new Int16Array(odd.buffer, odd.byteOffset, pcm.byteLength / 2)).toThrow(/multiple of 2|start offset/);
+    const floats = pcm16ToFloat(odd);
+    expect(floats[0]).toBe(0);
+    expect(floats[1]).toBeCloseTo(1, 3);
+    expect(floats[2]).toBe(-1);
+
+    const channel = new Float32Array([0.25, -0.5, 1]);
+    const libraryShape = new Float32Array(channel.buffer, channel.byteOffset, channel.length);
+    expect(libraryShape.byteOffset % 4).toBe(0);
+    const misaligned = new ArrayBuffer(16);
+    expect(() => new Float32Array(misaligned, 1, 1)).toThrow(/multiple of 4|start offset/);
+    const copied = readChannelSamples({
+      length: libraryShape.length,
+      copyFromChannel(destination) {
+        destination.set(libraryShape);
+      },
+    });
+    expect(Array.from(copied)).toEqual([0.25, -0.5, 1]);
+    const indexed = readChannelSamples({ length: libraryShape.length, getChannelData: () => libraryShape });
+    expect(Array.from(indexed)).toEqual([0.25, -0.5, 1]);
   });
 });
 

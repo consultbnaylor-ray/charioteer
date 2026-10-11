@@ -225,7 +225,7 @@ export default function Thumos() {
           {voice.liveUser ? <T>You: {voice.liveUser}</T> : null}
           {voice.liveAssistant ? <T>Thumos: {voice.liveAssistant}</T> : null}
           {voice.message && voice.phase !== 'error' ? <T variant="muted">{voice.message}</T> : null}
-          {voice.detail ? <T variant="muted">{voice.detail}</T> : null}
+          {voice.detail ? <T variant="muted" style={{ width: '100%', flexShrink: 1 }}>{voice.detail}</T> : null}
           <View style={{ flexDirection: 'row', gap: 10 }}>
             <View style={{ flex: 1 }}>
               <Button
@@ -248,7 +248,7 @@ export default function Thumos() {
         <Field label="Message" value={draft} onChangeText={setDraft} multiline placeholder="Say it in your own words" />
       )}
       <ErrorNote>{error || (voice?.phase === 'error' ? voice.message : null)}</ErrorNote>
-      {!error && voice?.phase === 'error' && voice.detail ? <T variant="muted">{voice.detail}</T> : null}
+      {!error && voice?.phase === 'error' && voice.detail ? <T variant="muted" style={{ width: '100%', flexShrink: 1 }}>{voice.detail}</T> : null}
       {inCall ? null : (
         <View style={{ flexDirection: 'row', gap: 10 }}>
           <View style={{ flex: 1 }}>

@@ -15,7 +15,7 @@ import {
   VOICE_COPY,
   type VoiceBriefing,
 } from '@/domain/voice';
-import { formatVoiceDebug, type VoiceDebugStep } from '@/domain/voiceDebug';
+import { firstVoiceStackFrame, formatVoiceDebug, type VoiceDebugStep } from '@/domain/voiceDebug';
 import {
   createVoiceRuntime,
   reduceVoiceEvent,
@@ -57,6 +57,7 @@ export class VoiceCall {
   private step: VoiceDebugStep = 'token';
   private micRate: number | null = null;
   private lastError: string | null = null;
+  private lastFrame: string | null = null;
   private readonly audio: VoiceAudio;
   private readonly showCause: boolean;
 
@@ -119,7 +120,7 @@ export class VoiceCall {
     } catch (err) {
       const cause = voiceCauseText(err);
       console.warn('[voice] audio.start failed', cause);
-      this.lastError = cause;
+      this.remember(err);
       this.fail(VOICE_COPY.failed);
       return;
     }
@@ -269,9 +270,14 @@ export class VoiceCall {
     this.publish();
   }
 
+  private remember(err: unknown) {
+    this.lastError = voiceCauseText(err);
+    this.lastFrame = firstVoiceStackFrame(err);
+  }
+
   private debugLine(): string | null {
     if (!this.showCause) return null;
-    return formatVoiceDebug({ step: this.step, sampleRate: this.micRate, error: this.lastError });
+    return formatVoiceDebug({ step: this.step, sampleRate: this.micRate, error: this.lastError, frame: this.lastFrame });
   }
 
   /** Keeps a store build's detail untouched. TestFlight replaces it with the debug line. */
@@ -293,9 +299,8 @@ export class VoiceCall {
   }
 
   private crash(err: unknown) {
-    const cause = voiceCauseText(err);
-    console.warn('[voice] failed', cause);
-    this.lastError = cause;
+    this.remember(err);
+    console.warn('[voice] failed', this.lastError, this.lastFrame);
     if (this.failing || this.stopped || this.state.phase === 'error' || this.state.phase === 'ended') return;
     this.fail(VOICE_COPY.failed);
   }

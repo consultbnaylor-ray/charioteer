@@ -6,7 +6,7 @@ import {
   type AudioEventSubscription,
 } from 'react-native-audio-api';
 
-import { GROK_VOICE, pcm16ToFloat, resampleLinear } from '@/domain/voice';
+import { GROK_VOICE, pcm16ToFloat, readChannelSamples, resampleLinear } from '@/domain/voice';
 
 import type { VoiceAudio, VoiceMicHandlers } from './audioTypes';
 
@@ -79,6 +79,7 @@ export function createVoiceAudio(): VoiceAudio {
       }
     });
     const rate = captureRate();
+    console.warn('[voice] mic sample rate', rate);
     const ready = recorder.onAudioReady(
       {
         sampleRate: rate,
@@ -87,9 +88,9 @@ export function createVoiceAudio(): VoiceAudio {
       },
       ({ buffer }) => {
         try {
-          const channel = buffer.getChannelData(0);
-          const copy = new Float32Array(channel.length);
-          copy.set(channel);
+          // A fresh Float32Array via copyFromChannel. Viewing the native buffer
+          // threw RangeError "offset must be a multiple of 4" on Hermes.
+          const copy = readChannelSamples(buffer);
           handlers.onPcm(copy, buffer.sampleRate || rate);
         } catch (error) {
           handlers.onFailure?.(error);

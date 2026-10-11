@@ -338,11 +338,42 @@ export function floatToPcm16(samples: ArrayLike<number>): Uint8Array {
   return out;
 }
 
+/**
+ * PCM16 little-endian to float. Bytes are copied into a fresh buffer first.
+ * A Uint8Array subarray can sit at an odd byteOffset, and `new Int16Array(buffer, byteOffset)`
+ * then throws RangeError ("offset must be a multiple of 2" / "start offset of Int16Array
+ * should be a multiple of 2"). DataView on the copy reads with littleEndian true.
+ */
 export function pcm16ToFloat(pcm: Uint8Array): Float32Array {
-  const view = new DataView(pcm.buffer, pcm.byteOffset, pcm.byteLength);
   const length = Math.floor(pcm.byteLength / 2);
+  const bytes = new Uint8Array(length * 2);
+  if (length > 0) bytes.set(pcm.subarray(0, length * 2));
+  const view = new DataView(bytes.buffer);
   const out = new Float32Array(length);
   for (let i = 0; i < length; i += 1) out[i] = view.getInt16(i * 2, true) / 32768;
+  return out;
+}
+
+/**
+ * Copy one channel without `getChannelData`. react-native-audio-api 0.13.6 implements
+ * getChannelData as `new Float32Array(arrayBuffer)` over the native buffer. Hermes throws
+ * RangeError "offset must be a multiple of 4" when that buffer is not 4-byte aligned.
+ * `copyFromChannel` writes into this fresh Float32Array instead.
+ */
+export function readChannelSamples(source: {
+  length: number;
+  copyFromChannel?: (destination: Float32Array<ArrayBuffer>, channel: number, startInChannel?: number) => void;
+  getChannelData?: (channel: number) => ArrayLike<number>;
+}): Float32Array {
+  const out = new Float32Array(Math.max(0, source.length | 0)) as Float32Array<ArrayBuffer>;
+  if (source.copyFromChannel) {
+    source.copyFromChannel(out, 0, 0);
+    return out;
+  }
+  const channel = source.getChannelData?.(0);
+  if (!channel) return out;
+  const count = Math.min(out.length, channel.length);
+  for (let i = 0; i < count; i += 1) out[i] = channel[i] ?? 0;
   return out;
 }
 

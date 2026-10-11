@@ -61,7 +61,7 @@ export function createVoiceAudio(): VoiceAudio {
           if (paused) return;
           const channel = event.inputBuffer.getChannelData(0);
           const copy = new Float32Array(channel.length);
-          copy.set(channel);
+          for (let i = 0; i < copy.length; i += 1) copy[i] = channel[i] ?? 0;
           handlers.onPcm(copy, context?.sampleRate || event.inputBuffer.sampleRate || GROK_VOICE.sampleRate);
         } catch (error) {
           handlers.onFailure?.(error);
