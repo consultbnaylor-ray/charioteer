@@ -313,7 +313,12 @@ export function projectPublicProfile(source: ShareSource, sharing: ProfileSharin
     .filter((entry) => gratitudeIds.has(entry.id))
     .map((entry) => ({ id: entry.id, body: entry.body, entryDate: entry.entryDate }));
   const photoIds = new Set(settings.gratitudePhotoIds);
-  const gratitudePhotos = source.gratitude.flatMap((entry) => (entry.photos ?? []).filter((photo) => photoIds.has(photo.id)).map((photo) => ({ id: photo.id, caption: typeof photo.caption === 'string' ? photo.caption : '' })));
+  const gratitudePhotos = source.gratitude.flatMap((entry) => {
+    if (!gratitudeIds.has(entry.id)) return [];
+    return (entry.photos ?? [])
+      .filter((photo) => photoIds.has(photo.id))
+      .map((photo) => ({ id: photo.id, caption: typeof photo.caption === 'string' ? photo.caption : '' }));
+  });
   const visionIds = new Set(settings.visionIds);
   const vision = source.vision
     .filter((item) => visionIds.has(item.id))

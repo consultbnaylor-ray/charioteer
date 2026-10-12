@@ -3,7 +3,6 @@ import { View } from 'react-native';
 
 import { useSnapshot } from '@/data';
 import { HEALTH_METRICS } from '@/domain/healthInsights';
-import { formatUkLong } from '@/domain/dates';
 import {
   PROFILE_HIDDEN_SHARE,
   SHARE_HINT,
@@ -120,12 +119,10 @@ export default function WhatIShare() {
           apply={(sharing, selected) => toggleShareId(sharing, 'gratitudeIds', entry.id, selected)}
         />
       ))}
-      {snap.gratitude.flatMap((entry) => entry.photos.map((photo, index) => (
+      {snap.gratitude.flatMap((entry) => entry.photos.map((photo) => (
         <ShareOnProfile
           key={photo.id}
-          label={photo.caption.trim()
-            ? `Share photo “${photo.caption.trim()}”`
-            : `Share untitled photo ${index + 1} · ${formatUkLong(entry.entryDate)}`}
+          label={photo.caption.trim() ? `Include photo “${photo.caption.trim()}”` : 'Include photo'}
           item={photo.caption.trim() || 'This gratitude photo'}
           on={snap.sharing.gratitudePhotoIds.includes(photo.id)}
           apply={(sharing, selected) => toggleShareId(sharing, 'gratitudePhotoIds', photo.id, selected)}

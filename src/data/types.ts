@@ -363,7 +363,8 @@ export interface Repository {
   /** Shared fields only. Null when the profile is hidden or blocked. */
   publicProfile(userId: string): Promise<PublicProfileView | null>;
   openPrivateChat(userId: string): Promise<{ status: 'open'; connectionId: string } | { status: 'requested'; connectionId: string | null }>;
-  addGratitudeEntry(input: NewGratitudeEntry): Promise<void>;
+  /** Returns the saved line id, so a photo can be stored on it straight away. */
+  addGratitudeEntry(input: NewGratitudeEntry): Promise<string>;
   updateGratitudeEntry(id: string, input: NewGratitudeEntry): Promise<void>;
   deleteGratitudeEntry(id: string): Promise<void>;
   addGratitudePhoto(entryId: string, bytes: Uint8Array): Promise<void>;

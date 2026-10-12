@@ -143,6 +143,8 @@ describe('public profile projection', () => {
     expect(view.gratitude.map((entry) => entry.body)).toEqual([secret.diary]);
     expect(view.gratitudePhotos).toEqual([]);
     expect(view.vision[0]?.caption).toBe(secret.caption);
+    const photoOnly = projectPublicProfile(source(), toggleShareId(defaultProfileSharing(), 'gratitudePhotoIds', 'gp1', true));
+    expect(photoOnly.gratitudePhotos).toEqual([]);
     const withPhoto = projectPublicProfile(source(), toggleShareId(sharing, 'gratitudePhotoIds', 'gp1', true));
     expect(withPhoto.gratitudePhotos).toEqual([{ id: 'gp1', caption: 'Window light' }]);
     expect(JSON.stringify(withPhoto)).not.toContain('storage');
@@ -278,14 +280,16 @@ describe('public_profile database function', () => {
   it('adds one key per box and keeps an old section that was on', () => {
     const names = readdirSync('supabase/migrations').filter((name) => name.endsWith('.sql')).sort();
     const definers = names.filter((name) => readFileSync(`supabase/migrations/${name}`, 'utf8').includes('function public.public_profile'));
-    expect(definers[definers.length - 1]).toBe('20261010320000_profile_share_items.sql');
-    const latest = readFileSync('supabase/migrations/20261010320000_profile_share_items.sql', 'utf8');
+    expect(definers[definers.length - 1]).toBe('20261010340000_gratitude_include_photo.sql');
+    const shareItems = readFileSync('supabase/migrations/20261010320000_profile_share_items.sql', 'utf8');
+    const latest = readFileSync('supabase/migrations/20261010340000_gratitude_include_photo.sql', 'utf8');
     const profile = latest.slice(latest.indexOf('function public.public_profile'));
-    expect(latest).toContain("jsonb_build_object('soberDays', true)");
-    expect(latest).toContain("jsonb_build_object('milestones', true)");
-    expect(latest).toContain("jsonb_build_object('moneySaved', true)");
-    expect(latest).toContain("jsonb_build_object('unitsAvoided', true)");
-    expect(latest).toContain('not (settings ? \'soberDays\')');
+    expect(shareItems).toContain("jsonb_build_object('soberDays', true)");
+    expect(shareItems).toContain("jsonb_build_object('milestones', true)");
+    expect(shareItems).toContain("jsonb_build_object('moneySaved', true)");
+    expect(shareItems).toContain("jsonb_build_object('unitsAvoided', true)");
+    expect(shareItems).toContain('not (settings ? \'soberDays\')');
+    expect(profile).toContain('gp.entry_id = any(gratitude_ids)');
     expect(profile).toContain("coalesce((settings->>'soberDays')::boolean, (settings->>'sober')::boolean, false)");
     expect(profile).toContain("coalesce((settings->>'milestones')::boolean, (settings->>'sober')::boolean, false)");
     expect(profile).toContain("coalesce((settings->>'moneySaved')::boolean, (settings->>'savings')::boolean, false)");
@@ -364,7 +368,9 @@ describe('public_profile database function', () => {
     expect(diary).not.toContain('<SharingGroup');
     expect(diary).toContain('gratitudeIds');
     expect(diary).toContain('gratitudePhotoIds');
-    expect(diary).toContain('Share photo “');
+    expect(diary).toContain('label="Include photo"');
+    expect(diary).toContain('label="Share on profile"');
+    expect(diary).not.toContain('Share photo');
     expect(diary).not.toMatch(/Share with community|visibility/);
     expect(vision).not.toContain('<SharingGroup');
     expect(vision).toContain('visionIds');

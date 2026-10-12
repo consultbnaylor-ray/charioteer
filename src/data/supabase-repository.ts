@@ -1361,19 +1361,22 @@ export class SupabaseRepository implements Repository {
     await this.refresh();
   }
 
-  async addGratitudeEntry(input: NewGratitudeEntry): Promise<void> {
+  async addGratitudeEntry(input: NewGratitudeEntry): Promise<string> {
     const plan = planGratitudeEntry(input.body, input.entryDate, isoDay(new Date()));
     if (!plan.ok) throw new UserFacingError(plan.message, 'generic');
     const userId = await this.userId();
-    const { error } = await this.client.from('gratitude_entries').insert({
+    const inserted = await this.client.from('gratitude_entries').insert({
       user_id: userId,
       body: plan.body,
       category: gratitudeCategory(input.category),
       is_favourite: input.isFavourite,
       entry_date: plan.entryDate,
-    });
-    if (error) throw asUserFacing(error, 'general');
+    }).select('id').single();
+    if (inserted.error) throw asUserFacing(inserted.error, 'general');
+    const id = inserted.data?.id;
+    if (typeof id !== 'string' || !id) throw new UserFacingError('Could not save that line.', 'generic');
     await this.refresh();
+    return id;
   }
 
   async updateGratitudeEntry(id: string, input: NewGratitudeEntry): Promise<void> {

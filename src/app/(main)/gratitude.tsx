@@ -1,7 +1,7 @@
 import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
-import { useState } from 'react';
-import { ActivityIndicator, Modal, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { useRef, useState } from 'react';
+import { ActivityIndicator, Modal, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 
 import { useRepository, useSnapshot } from '@/data';
 import { formatUkLong, isoDay, parseIsoDay, startOfLocalDay } from '@/domain/dates';
@@ -18,7 +18,7 @@ import {
   type GratitudeEntry,
   type GratitudePhoto,
 } from '@/domain/gratitude';
-import { gratitudePhotoLimitMessage } from '@/domain/gratitudePhotos';
+import { dismissSheetBeforePhotoPicker, gratitudePhotoLimitMessage, photoPickerSheetDelay } from '@/domain/gratitudePhotos';
 import { toggleShareId } from '@/domain/profileSharing';
 import { DateField } from '@/ui/DateField';
 import { ShareOnProfile } from '@/ui/ShareOnProfile';
@@ -27,6 +27,12 @@ import { Button, Card, Choice, EditSheet, ErrorNote, Field, playSavedHaptic, Scr
 import { radius, useAppTheme } from '@/ui/theme';
 
 const EXAMPLE = 'My daughter laughing at breakfast';
+
+type PhotoTarget = { kind: 'composer' } | { kind: 'edit' } | { kind: 'entry'; id: string };
+
+function wait(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
 type ReflectState = {
   entryId: string;
@@ -56,7 +62,9 @@ export default function GratitudeDiary() {
   const [editFavourite, setEditFavourite] = useState(false);
   const [editDate, setEditDate] = useState(() => startOfLocalDay(new Date()));
   const [confirmId, setConfirmId] = useState<string | null>(null);
-  const [menuId, setMenuId] = useState<string | null>(null);
+  const composerId = useRef<string | null>(null);
+  const photoBusy = useRef(false);
+  const [composerEntryId, setComposerEntryId] = useState<string | null>(null);
   const [reflect, setReflect] = useState<ReflectState | null>(null);
   const [reflectNote, setReflectNote] = useState<string | null>(null);
   const [reflectingId, setReflectingId] = useState<string | null>(null);
@@ -68,12 +76,24 @@ export default function GratitudeDiary() {
   const [viewing, setViewing] = useState<GratitudePhoto | null>(null);
   const [removePhotoId, setRemovePhotoId] = useState<string | null>(null);
 
-  const filtered = filterGratitude(entries, { query, category, favouritesOnly: view === 'favourites' });
+  const listed = composerEntryId ? entries.filter((item) => item.id !== composerEntryId) : entries;
+  const filtered = filterGratitude(listed, { query, category, favouritesOnly: view === 'favourites' });
   const groups = groupGratitudeByDay(filtered);
-  const resurfaced = view === 'all' && !query.trim() && !category ? resurfaceGratitude(entries, today) : null;
+  const resurfaced = view === 'all' && !query.trim() && !category ? resurfaceGratitude(listed, today) : null;
   const editingLive = editing ? entries.find((item) => item.id === editing.id) ?? editing : null;
   const editingPhotos = editingLive?.photos ?? [];
   const editingUpload = upload && editing?.id === upload.entryId ? upload : null;
+  const composerEntry = composerEntryId ? entries.find((item) => item.id === composerEntryId) ?? null : null;
+  const composerPhotos = composerEntry?.photos ?? [];
+
+  function clearComposer() {
+    composerId.current = null;
+    setComposerEntryId(null);
+    setBody('');
+    setFavourite(false);
+    setDraftCategory(null);
+    setDate(startOfLocalDay(new Date()));
+  }
 
   async function addEntry() {
     const plan = planGratitudeEntry(body, isoDay(date), today);
@@ -84,21 +104,43 @@ export default function GratitudeDiary() {
     setPending(true);
     setError(null);
     try {
-      await repo.addGratitudeEntry({
-        body: plan.body,
-        entryDate: plan.entryDate,
-        category: draftCategory,
-        isFavourite: favourite,
-      });
-      setBody('');
-      setFavourite(false);
-      setDraftCategory(null);
-      setDate(startOfLocalDay(new Date()));
+      const existing = composerId.current;
+      const saved = existing != null && repo.getSnapshot().gratitude.some((item) => item.id === existing);
+      if (saved && existing) {
+        await repo.updateGratitudeEntry(existing, {
+          body: plan.body,
+          entryDate: plan.entryDate,
+          category: draftCategory,
+          isFavourite: favourite,
+        });
+      } else {
+        await repo.addGratitudeEntry({
+          body: plan.body,
+          entryDate: plan.entryDate,
+          category: draftCategory,
+          isFavourite: favourite,
+        });
+      }
+      clearComposer();
     } catch (err) {
       setError(shownError(err, 'Could not save that line.'));
     } finally {
       setPending(false);
     }
+  }
+
+  async function ensureComposerEntry(): Promise<string> {
+    const known = composerId.current;
+    if (known && repo.getSnapshot().gratitude.some((item) => item.id === known)) return known;
+    const id = await repo.addGratitudeEntry({
+      body,
+      entryDate: isoDay(date),
+      category: draftCategory,
+      isFavourite: favourite,
+    });
+    composerId.current = id;
+    setComposerEntryId(id);
+    return id;
   }
 
   function openEdit(entry: GratitudeEntry) {
@@ -108,7 +150,6 @@ export default function GratitudeDiary() {
     setEditFavourite(entry.isFavourite);
     setEditDate(parseIsoDay(entry.entryDate));
     setRemovePhotoId(null);
-    setMenuId(null);
     setError(null);
   }
 
@@ -156,7 +197,10 @@ export default function GratitudeDiary() {
     try {
       await repo.deleteGratitudeEntry(id);
       setConfirmId(null);
-      setMenuId(null);
+      if (composerId.current === id) {
+        composerId.current = null;
+        setComposerEntryId(null);
+      }
       if (editing?.id === id) setEditing(null);
       if (upload?.entryId === id) setUpload(null);
     } catch (err) {
@@ -217,24 +261,48 @@ export default function GratitudeDiary() {
     }
   }
 
-  async function choosePhoto(source: 'camera' | 'library') {
-    if (!editing) return;
-    const room = gratitudePhotoLimitMessage(editingPhotos.length);
-    if (room || editingUpload) {
+  async function choosePhoto(source: 'camera' | 'library', target: PhotoTarget) {
+    if (photoBusy.current) return;
+    setError(null);
+    setPhotoNotice(null);
+    const editSnapshot = target.kind === 'edit' ? editing : null;
+    let entryId = target.kind === 'entry' ? target.id : target.kind === 'edit' ? editing?.id ?? null : composerId.current;
+    if (target.kind === 'composer') {
+      const plan = planGratitudeEntry(body, isoDay(date), today);
+      if (!plan.ok) {
+        setError(plan.message);
+        return;
+      }
+    }
+    if (target.kind !== 'composer' && !entryId) return;
+    const live = entryId ? repo.getSnapshot().gratitude.find((item) => item.id === entryId) : null;
+    const count = live?.photos.length ?? 0;
+    const room = gratitudePhotoLimitMessage(count);
+    if (room || (upload && entryId != null && upload.entryId === entryId)) {
       setError(room ?? 'That photo is still saving.');
       return;
     }
-    setPhotoPending(source);
-    setError(null);
-    setPhotoNotice(null);
+
+    photoBusy.current = true;
+    let dismissed = false;
     try {
+      if (target.kind === 'edit' && editSnapshot && dismissSheetBeforePhotoPicker(Platform.OS)) {
+        setEditing(null);
+        dismissed = true;
+        await wait(photoPickerSheetDelay(Platform.OS));
+      }
+      setPhotoPending(source);
       const picked = await pickProgressPhoto(source);
       if (!picked) return;
-      await storePhoto(editing.id, { entryId: editing.id, bytes: picked.bytes, previewUri: picked.previewUri });
+      if (target.kind === 'composer') entryId = await ensureComposerEntry();
+      if (!entryId) return;
+      await storePhoto(entryId, { entryId, bytes: picked.bytes, previewUri: picked.previewUri });
     } catch (err) {
       setError(shownError(err, 'Could not add that photo.'));
     } finally {
+      photoBusy.current = false;
       setPhotoPending((current) => (current === source ? null : current));
+      if (dismissed && editSnapshot) setEditing(editSnapshot);
     }
   }
 
@@ -290,6 +358,20 @@ export default function GratitudeDiary() {
           ))}
         </View>
         <Choice label="Favourite" selected={favourite} onPress={() => setFavourite((value) => !value)} />
+        <T variant="muted">A photo saves straight away into your private diary.</T>
+        <PhotoPickers
+          pending={photoPending}
+          disabled={photoPending != null || gratitudePhotoLimitMessage(composerPhotos.length) != null}
+          onTake={() => void choosePhoto('camera', { kind: 'composer' })}
+          onChoose={() => void choosePhoto('library', { kind: 'composer' })}
+        />
+        <PhotoStrip
+          photos={composerPhotos}
+          upload={upload && upload.entryId === composerEntryId ? upload : null}
+          saving={photoPending === 'save'}
+          onView={setViewing}
+          onRetry={(next) => void storePhoto(next.entryId, next)}
+        />
         <Button label="Add to the diary" pending={pending && !editing} onPress={() => void addEntry()} />
       </Card>
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
@@ -310,7 +392,7 @@ export default function GratitudeDiary() {
           <Button label="Privacy & consent" tone="quiet" onPress={() => router.push('/privacy' as never)} />
         </Card>
       ) : null}
-      {entries.length === 0 ? (
+      {listed.length === 0 ? (
         <Card>
           <T variant="muted">{EXAMPLE}</T>
           <T variant="muted">An example, greyed out. Yours can be smaller than that.</T>
@@ -323,7 +405,7 @@ export default function GratitudeDiary() {
           <T>{resurfaced.entry.body}</T>
         </Card>
       ) : null}
-      {entries.length > 0 && groups.length === 0 ? <T variant="muted">Nothing matches.</T> : null}
+      {listed.length > 0 && groups.length === 0 ? <T variant="muted">Nothing matches.</T> : null}
       {groups.map((group) => (
         <View key={group.entryDate} style={{ gap: 8 }}>
           <T variant="label">{formatUkLong(group.entryDate)}</T>
@@ -334,12 +416,6 @@ export default function GratitudeDiary() {
                 <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 8, alignItems: 'flex-start' }}>
                   <View style={{ flex: 1, gap: 6 }}>
                     <T>{entry.body}</T>
-                    <ShareOnProfile
-                      label={`Share “${entry.body}”`}
-                      item={entry.body}
-                      on={snap.sharing.gratitudeIds.includes(entry.id)}
-                      apply={(sharing, selected) => toggleShareId(sharing, 'gratitudeIds', entry.id, selected)}
-                    />
                   </View>
                   <Pressable
                     accessibilityRole="button"
@@ -351,70 +427,51 @@ export default function GratitudeDiary() {
                   </Pressable>
                 </View>
                 {entry.category ? <T variant="muted">{entry.category}</T> : null}
-                {entry.photos.length || cardUpload ? (
-                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-                    {entry.photos.map((photo, index) => (
-                      <View key={photo.id} style={{ width: 160, gap: 6 }}>
-                        <Pressable
-                          accessibilityRole="button"
-                          accessibilityLabel="View photo"
-                          onPress={() => setViewing(photo)}
-                          style={{ width: 72, height: 72, borderRadius: radius.md, overflow: 'hidden', backgroundColor: theme.colors.sunken }}
-                        >
-                          {photo.previewUrl ? (
-                            <Image pointerEvents="none" source={{ uri: photo.previewUrl }} style={{ width: 72, height: 72 }} contentFit="cover" />
-                          ) : (
-                            <View pointerEvents="none" style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-                              <T variant="muted">Photo</T>
-                            </View>
-                          )}
-                        </Pressable>
-                        <ShareOnProfile
-                          label={photo.caption.trim()
-                            ? `Share photo “${photo.caption.trim()}”`
-                            : `Share untitled photo ${index + 1} · ${formatUkLong(entry.entryDate)}`}
-                          item={photo.caption.trim() || 'This gratitude photo'}
-                          on={snap.sharing.gratitudePhotoIds.includes(photo.id)}
-                          apply={(sharing, selected) => toggleShareId(sharing, 'gratitudePhotoIds', photo.id, selected)}
-                        />
-                      </View>
-                    ))}
-                    {cardUpload ? (
-                      <SavingThumb
-                        previewUri={cardUpload.previewUri}
-                        saving={photoPending === 'save'}
-                        onRetry={() => void storePhoto(entry.id, cardUpload)}
-                      />
-                    ) : null}
-                  </View>
-                ) : null}
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel="More actions"
-                  onPress={() => setMenuId((current) => (current === entry.id ? null : entry.id))}
-                  style={{ width: 44, height: 44, alignItems: 'center', justifyContent: 'center' }}
-                >
-                  <T>…</T>
-                </Pressable>
-                {menuId === entry.id ? (
-                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-                    <Pressable accessibilityRole="button" accessibilityLabel="Edit" onPress={() => openEdit(entry)} style={menuHit}>
-                      <T>Edit</T>
-                    </Pressable>
-                    <Pressable accessibilityRole="button" accessibilityLabel="Delete" onPress={() => setConfirmId(entry.id)} style={menuHit}>
-                      <T>Delete</T>
-                    </Pressable>
-                    <Pressable
-                      accessibilityRole="button"
-                      accessibilityLabel="Reflect with Thumos"
-                      disabled={reflectingId === entry.id}
-                      onPress={() => void reflectOn(entry)}
-                      style={menuHit}
-                    >
-                      {reflectingId === entry.id ? <ActivityIndicator color={theme.colors.ink} /> : <T>Reflect with Thumos</T>}
-                    </Pressable>
-                  </View>
-                ) : null}
+                <PhotoPickers
+                  pending={photoPending}
+                  disabled={photoPending != null || gratitudePhotoLimitMessage(entry.photos.length) != null}
+                  onTake={() => void choosePhoto('camera', { kind: 'entry', id: entry.id })}
+                  onChoose={() => void choosePhoto('library', { kind: 'entry', id: entry.id })}
+                />
+                <PhotoStrip
+                  photos={entry.photos}
+                  upload={cardUpload}
+                  saving={photoPending === 'save'}
+                  onView={setViewing}
+                  onRetry={(next) => void storePhoto(entry.id, next)}
+                />
+                {entry.photos.map((photo) => (
+                  <ShareOnProfile
+                    key={photo.id}
+                    label="Include photo"
+                    item={photo.caption.trim() || 'This gratitude photo'}
+                    on={snap.sharing.gratitudePhotoIds.includes(photo.id)}
+                    apply={(sharing, selected) => toggleShareId(sharing, 'gratitudePhotoIds', photo.id, selected)}
+                  />
+                ))}
+                <ShareOnProfile
+                  label="Share on profile"
+                  item={entry.body}
+                  on={snap.sharing.gratitudeIds.includes(entry.id)}
+                  apply={(sharing, selected) => toggleShareId(sharing, 'gratitudeIds', entry.id, selected)}
+                />
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+                  <Pressable accessibilityRole="button" accessibilityLabel="Edit" onPress={() => openEdit(entry)} style={menuHit}>
+                    <T>Edit</T>
+                  </Pressable>
+                  <Pressable accessibilityRole="button" accessibilityLabel="Delete" onPress={() => setConfirmId(entry.id)} style={menuHit}>
+                    <T>Delete</T>
+                  </Pressable>
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel="Reflect with Thumos"
+                    disabled={reflectingId === entry.id}
+                    onPress={() => void reflectOn(entry)}
+                    style={menuHit}
+                  >
+                    {reflectingId === entry.id ? <ActivityIndicator color={theme.colors.ink} /> : <T>Reflect with Thumos</T>}
+                  </Pressable>
+                </View>
                 {confirmId === entry.id ? (
                   <View style={{ gap: 8 }}>
                     <T>Delete this line?</T>
@@ -465,68 +522,100 @@ export default function GratitudeDiary() {
         <T variant="muted">Up to four. They stay private and are not sent to Thumos. A photo saves as soon as you pick it.</T>
         {photoNotice ? <T>{photoNotice}</T> : null}
         {photoLimit ? <T>{photoLimit}</T> : null}
-        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-          <Button
-            label="Take a photo"
-            tone="quiet"
-            pending={photoPending === 'camera'}
-            disabled={photoPending != null || photoLimit != null || editingUpload != null}
-            onPress={() => void choosePhoto('camera')}
-          />
-          <Button
-            label="Choose from library"
-            tone="quiet"
-            pending={photoPending === 'library'}
-            disabled={photoPending != null || photoLimit != null || editingUpload != null}
-            onPress={() => void choosePhoto('library')}
-          />
-        </View>
-        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-          {editingPhotos.map((photo) => (
-            <View key={photo.id} style={{ width: 96, gap: 4 }}>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="View photo"
-                onPress={() => setViewing(photo)}
-                style={{ width: 96, height: 96, borderRadius: radius.md, overflow: 'hidden', backgroundColor: theme.colors.sunken }}
-              >
-                {photo.previewUrl ? (
-                  <Image pointerEvents="none" source={{ uri: photo.previewUrl }} style={{ width: 96, height: 96 }} contentFit="cover" />
-                ) : (
-                  <View pointerEvents="none" style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-                    <T variant="muted">Photo</T>
-                  </View>
-                )}
-              </Pressable>
-              {removePhotoId === photo.id ? (
-                <View style={{ gap: 4 }}>
-                  <T>Remove this photo?</T>
-                  <Button label="Remove photo" tone="quiet" pending={photoPending === 'remove'} onPress={() => void removePhoto(photo.id)} />
-                  <Button label="Keep it" tone="quiet" onPress={() => setRemovePhotoId(null)} />
-                </View>
-              ) : (
-                <Pressable accessibilityRole="button" accessibilityLabel="Remove photo" onPress={() => setRemovePhotoId(photo.id)} style={menuHit}>
-                  <T>Remove</T>
-                </Pressable>
-              )}
-            </View>
-          ))}
-          {editingUpload ? (
-            <SavingThumb
-              previewUri={editingUpload.previewUri}
-              saving={photoPending === 'save'}
-              onRetry={() => void storePhoto(editingLive?.id ?? editingUpload.entryId, editingUpload)}
-            />
-          ) : null}
-        </View>
+        <PhotoPickers
+          pending={photoPending}
+          disabled={photoPending != null || photoLimit != null || editingUpload != null}
+          onTake={() => void choosePhoto('camera', { kind: 'edit' })}
+          onChoose={() => void choosePhoto('library', { kind: 'edit' })}
+        />
+        <PhotoStrip
+          photos={editingPhotos}
+          upload={editingUpload}
+          saving={photoPending === 'save'}
+          onView={setViewing}
+          onRetry={(next) => void storePhoto(editingLive?.id ?? next.entryId, next)}
+        />
         <ErrorNote>{error}</ErrorNote>
       </EditSheet>
-      <PhotoViewer photo={viewing} onClose={() => setViewing(null)} />
+      <PhotoViewer
+        photo={viewing}
+        confirming={viewing != null && removePhotoId === viewing.id}
+        pending={photoPending === 'remove'}
+        onClose={() => {
+          setViewing(null);
+          setRemovePhotoId(null);
+        }}
+        onAskRemove={() => {
+          if (viewing) setRemovePhotoId(viewing.id);
+        }}
+        onKeep={() => setRemovePhotoId(null)}
+        onRemove={() => {
+          if (viewing) void removePhoto(viewing.id);
+        }}
+      />
     </Screen>
   );
 }
 
 const menuHit = { minHeight: 44, justifyContent: 'center' as const, paddingHorizontal: 4 };
+
+function PhotoPickers({
+  pending,
+  disabled,
+  onTake,
+  onChoose,
+}: {
+  pending: null | 'camera' | 'library' | 'save' | 'remove';
+  disabled: boolean;
+  onTake: () => void;
+  onChoose: () => void;
+}) {
+  return (
+    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+      <Button label="Take photo" tone="quiet" pending={pending === 'camera'} disabled={disabled} onPress={onTake} />
+      <Button label="Choose photo" tone="quiet" pending={pending === 'library'} disabled={disabled} onPress={onChoose} />
+    </View>
+  );
+}
+
+function PhotoStrip({
+  photos,
+  upload,
+  saving,
+  onView,
+  onRetry,
+}: {
+  photos: GratitudePhoto[];
+  upload: PendingPhoto | null;
+  saving: boolean;
+  onView: (photo: GratitudePhoto) => void;
+  onRetry: (upload: PendingPhoto) => void;
+}) {
+  const theme = useAppTheme();
+  if (!photos.length && !upload) return null;
+  return (
+    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+      {photos.map((photo) => (
+        <Pressable
+          key={photo.id}
+          accessibilityRole="button"
+          accessibilityLabel="View photo"
+          onPress={() => onView(photo)}
+          style={{ width: 96, height: 96, borderRadius: radius.md, overflow: 'hidden', backgroundColor: theme.colors.sunken }}
+        >
+          {photo.previewUrl ? (
+            <Image pointerEvents="none" source={{ uri: photo.previewUrl }} style={{ width: 96, height: 96 }} contentFit="cover" accessibilityLabel="Gratitude photo" />
+          ) : (
+            <View pointerEvents="none" style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+              <T variant="muted">Photo</T>
+            </View>
+          )}
+        </Pressable>
+      ))}
+      {upload ? <SavingThumb previewUri={upload.previewUri} saving={saving} onRetry={() => onRetry(upload)} /> : null}
+    </View>
+  );
+}
 
 function SavingThumb({ previewUri, saving, onRetry }: { previewUri: string; saving: boolean; onRetry: () => void }) {
   return (
@@ -544,7 +633,23 @@ function SavingThumb({ previewUri, saving, onRetry }: { previewUri: string; savi
   );
 }
 
-function PhotoViewer({ photo, onClose }: { photo: GratitudePhoto | null; onClose: () => void }) {
+function PhotoViewer({
+  photo,
+  confirming,
+  pending,
+  onClose,
+  onAskRemove,
+  onKeep,
+  onRemove,
+}: {
+  photo: GratitudePhoto | null;
+  confirming: boolean;
+  pending: boolean;
+  onClose: () => void;
+  onAskRemove: () => void;
+  onKeep: () => void;
+  onRemove: () => void;
+}) {
   const theme = useAppTheme();
   return (
     <Modal visible={photo != null} animationType="fade" transparent onRequestClose={onClose}>
@@ -570,6 +675,15 @@ function PhotoViewer({ photo, onClose }: { photo: GratitudePhoto | null; onClose
             )}
           </ScrollView>
           <T variant="muted">Pinch to zoom.</T>
+          {confirming ? (
+            <View style={{ gap: 8 }}>
+              <T>Remove this photo?</T>
+              <Button label="Remove photo" tone="quiet" pending={pending} onPress={onRemove} />
+              <Button label="Keep it" tone="quiet" onPress={onKeep} />
+            </View>
+          ) : (
+            <Button label="Remove photo" tone="quiet" onPress={onAskRemove} />
+          )}
           <Button label="Close" tone="quiet" accessibilityLabel="Close photo" onPress={onClose} />
         </View>
       </View>

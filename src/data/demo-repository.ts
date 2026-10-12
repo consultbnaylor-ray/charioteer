@@ -989,7 +989,7 @@ export class DemoRepository implements Repository {
     this.commit(db);
   }
 
-  async addGratitudeEntry(input: NewGratitudeEntry): Promise<void> {
+  async addGratitudeEntry(input: NewGratitudeEntry): Promise<string> {
     const plan = planGratitudeEntry(input.body, input.entryDate, isoDay(new Date()));
     if (!plan.ok) throw new UserFacingError(plan.message, 'generic');
     const account = this.me();
@@ -1008,6 +1008,7 @@ export class DemoRepository implements Repository {
     };
     next.gratitude = [entry, ...(next.gratitude ?? [])];
     this.commit(db);
+    return entry.id;
   }
 
   async updateGratitudeEntry(id: string, input: NewGratitudeEntry): Promise<void> {

@@ -19,7 +19,14 @@ import {
   type GratitudeEntry,
   type GratitudePhoto,
 } from './gratitude';
-import { gratitudePhotoLimitMessage, gratitudePhotosFromRows, gratitudeStoragePath, withGratitudePhotos } from './gratitudePhotos';
+import {
+  dismissSheetBeforePhotoPicker,
+  gratitudePhotoLimitMessage,
+  gratitudePhotosFromRows,
+  gratitudeStoragePath,
+  photoPickerSheetDelay,
+  withGratitudePhotos,
+} from './gratitudePhotos';
 
 function entry(partial: Partial<GratitudeEntry> & Pick<GratitudeEntry, 'id' | 'body' | 'entryDate'>): GratitudeEntry {
   return {
@@ -107,6 +114,10 @@ describe('gratitude diary helpers', () => {
     expect(formatGratitudeContext([withPhoto])).not.toContain('.jpg');
     expect(gratitudePhotoLimitMessage(3)).toBeNull();
     expect(gratitudePhotoLimitMessage(4)).toBe('Four photos is the limit for one line.');
+    expect(dismissSheetBeforePhotoPicker('ios')).toBe(true);
+    expect(dismissSheetBeforePhotoPicker('web')).toBe(false);
+    expect(photoPickerSheetDelay('ios')).toBeGreaterThan(0);
+    expect(photoPickerSheetDelay('web')).toBe(0);
     expect(gratitudeStoragePath('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1', photo.id)).toBe(photo.storagePath);
     expect(() => gratitudeStoragePath('not-a-uuid', photo.id)).toThrow(/store/);
     expect(gratitudePhotosFromRows([{ id: photo.id, entry_id: 'b', storage_path: '../secret.jpg', created_at: '' }])).toEqual([]);
@@ -299,9 +310,21 @@ describe('gratitude diary wiring', () => {
     const diary = readFileSync('src/app/(main)/gratitude.tsx', 'utf8');
     expect(diary.indexOf('consentAi')).toBeLessThan(diary.indexOf('reflectOnGratitude'));
     expect(diary).toContain('My daughter laughing at breakfast');
-    expect(diary).toContain('accessibilityLabel="More actions"');
-    expect(diary).toContain('Take a photo');
-    expect(diary).toContain('Choose from library');
+    expect(diary).not.toContain('accessibilityLabel="More actions"');
+    expect(diary).not.toContain('>…<');
+    expect(diary).toContain('label="Take photo"');
+    expect(diary).toContain('label="Choose photo"');
+    const form = diary.slice(diary.indexOf('A line to keep'), diary.indexOf('Add to the diary'));
+    expect(form).toContain('<PhotoPickers');
+    const edit = diary.slice(diary.indexOf('title="Edit this line"'));
+    expect(edit).toContain('<PhotoPickers');
+    expect(diary).toContain('dismissSheetBeforePhotoPicker(Platform.OS)');
+    expect(diary.indexOf('dismissSheetBeforePhotoPicker(Platform.OS)')).toBeGreaterThan(-1);
+    expect(diary.indexOf('pickProgressPhoto(source)')).toBeGreaterThan(diary.indexOf('dismissSheetBeforePhotoPicker(Platform.OS)'));
+    expect(diary).toContain('label="Share on profile"');
+    expect(diary).toContain('label="Include photo"');
+    expect(diary).toContain("toggleShareId(sharing, 'gratitudeIds'");
+    expect(diary).toContain("toggleShareId(sharing, 'gratitudePhotoIds'");
     expect(diary).toContain('Saving photo…');
     expect(diary).toContain('Try again');
     expect(diary).toContain('Photo saved');

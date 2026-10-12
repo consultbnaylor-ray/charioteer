@@ -52,7 +52,7 @@ describe('public_profile label casts and directory sync', () => {
   const profile = profileFunction(sql);
 
   it('keeps the text casts on the latest public_profile and watches bio', () => {
-    expect(latestPublicProfileMigration()).toBe('20261010320000_profile_share_items.sql');
+    expect(latestPublicProfileMigration()).toBe('20261010340000_gratitude_include_photo.sql');
     expect(profile).toContain('I’ve stopped');
     expect(profile).not.toContain('storage_path');
     const appends = profile.split('\n').filter((line) => /(?:shared|hidden)_labels := /.test(line) && line.includes('||'));

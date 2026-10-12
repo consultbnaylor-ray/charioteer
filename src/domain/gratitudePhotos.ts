@@ -20,6 +20,21 @@ export function gratitudePhotoLimitMessage(count: number): string | null {
   return null;
 }
 
+/**
+ * The edit sheet is a modal. iOS will not present the camera or the photo
+ * library on top of one, so the sheet has to close before the picker opens.
+ */
+export function dismissSheetBeforePhotoPicker(platform: string): boolean {
+  return platform === 'ios' || platform === 'android';
+}
+
+/** How long to wait after closing the sheet, so the picker can present. */
+export function photoPickerSheetDelay(platform: string): number {
+  if (platform === 'ios') return 500;
+  if (platform === 'android') return 300;
+  return 0;
+}
+
 export function gratitudePhotosFromRows(rows: unknown): GratitudePhoto[] {
   if (!Array.isArray(rows)) return [];
   const photos: GratitudePhoto[] = [];
