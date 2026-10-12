@@ -43,10 +43,11 @@ const rows = [
 ];
 
 describe('gratitude diary helpers', () => {
-  it('counts without turning a quiet day into a failure', () => {
-    expect(gratitudeCountLabel(0)).toBe("Nothing saved yet. A quiet day is not a failure.");
-    expect(gratitudeCountLabel(1)).toBe("1 thing you're grateful for");
-    expect(gratitudeCountLabel(42)).toBe("42 things you're grateful for");
+  it('counts recorded lines, and asks for the first one when there are none', () => {
+    expect(gratitudeCountLabel(0)).toBe('Nothing recorded yet. Add your first line below.');
+    expect(gratitudeCountLabel(1)).toBe('You have recorded 1 thing to be grateful for so far');
+    expect(gratitudeCountLabel(4)).toBe('You have recorded 4 things to be grateful for so far');
+    expect(gratitudeCountLabel(42)).toBe('You have recorded 42 things to be grateful for so far');
   });
 
   it('plans a trimmed line on or before today and keeps an internal new line', () => {

@@ -50,11 +50,11 @@ export function planGratitudeEntry(
   return { ok: true, body: text, entryDate };
 }
 
-/** A count, never a streak. A quiet day is not a failure. */
+/** A running total, never a streak. */
 export function gratitudeCountLabel(count: number): string {
-  if (count <= 0) return "Nothing saved yet. A quiet day is not a failure.";
-  if (count === 1) return "1 thing you're grateful for";
-  return `${count} things you're grateful for`;
+  if (count <= 0) return 'Nothing recorded yet. Add your first line below.';
+  if (count === 1) return 'You have recorded 1 thing to be grateful for so far';
+  return `You have recorded ${count} things to be grateful for so far`;
 }
 
 function byNewest(a: GratitudeEntry, b: GratitudeEntry): number {
