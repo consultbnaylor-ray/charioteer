@@ -89,10 +89,13 @@ describe('Apple Health screen and entitlement', () => {
     expect(ios).toContain("Linking.openURL('x-apple-health://')");
     expect(ios).toContain('Linking.openSettings()');
     expect(ios).toContain('requestAuthorization');
+    const sync = readFileSync('src/health/sync.ios.ts', 'utf8');
     for (const type of APPLE_HEALTH_READ_TYPES) {
-      expect(readFileSync('src/health/sync.ios.ts', 'utf8')).toContain('APPLE_HEALTH_READ_TYPES');
+      expect(sync).toContain('APPLE_HEALTH_READ_TYPES');
       expect(APPLE_HEALTH_READ_TYPES).toContain(type);
     }
+    expect(sync).toContain("queryQuantitySamples('HKQuantityTypeIdentifierBodyMass'");
+    expect(sync).toContain("rows('weight_kg', 'kg'");
   });
 
   it('ships the HealthKit entitlement and the share description for the next archive', () => {

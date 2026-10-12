@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Linking, Pressable, View } from 'react-native';
 
 import type { HealthSample } from '@/data/types';
+import { isoDay, startOfLocalDay } from '@/domain/dates';
 import { buildMetricGuidance, parseHeightCm } from '@/domain/guidance';
 import {
   buildHealthInsights,
@@ -17,6 +18,8 @@ import {
 } from '@/domain/healthInsights';
 import { healthShareLabel, toggleHealthKind } from '@/domain/profileSharing';
 import { useSnapshot } from '@/data';
+import { weightReadingKg, type WeightReadingDraft, type WeightUnitMode } from '@/domain/weightEntry';
+import { DateField } from '@/ui/DateField';
 import { GuidanceRange } from '@/ui/GuidanceRange';
 import { ShareOnProfile } from '@/ui/ShareOnProfile';
 import { HealthChart } from '@/ui/HealthChart';
@@ -34,6 +37,8 @@ export function HealthBoard({
   adult = true,
   canSaveHeight = false,
   onSaveHeight,
+  onWeightDraftChange,
+  weightReset = 0,
 }: {
   samples: HealthSample[];
   today: string;
@@ -43,6 +48,8 @@ export function HealthBoard({
   adult?: boolean;
   canSaveHeight?: boolean;
   onSaveHeight?: (heightCm: number | null) => Promise<void>;
+  onWeightDraftChange?: (draft: WeightReadingDraft | null) => void;
+  weightReset?: number;
 }) {
   const report = buildHealthInsights({ today, samples, soberOn, stage });
   return (
@@ -72,6 +79,8 @@ export function HealthBoard({
             adult={adult}
             canSaveHeight={canSaveHeight}
             onSaveHeight={onSaveHeight}
+            onWeightDraftChange={onWeightDraftChange}
+            weightReset={weightReset}
           />
         );
       })}
@@ -95,6 +104,8 @@ function MetricCard({
   adult,
   canSaveHeight,
   onSaveHeight,
+  onWeightDraftChange,
+  weightReset,
 }: {
   kind: HealthInsightKind;
   label: string;
@@ -113,6 +124,8 @@ function MetricCard({
   adult: boolean;
   canSaveHeight: boolean;
   onSaveHeight?: (heightCm: number | null) => Promise<void>;
+  onWeightDraftChange?: (draft: WeightReadingDraft | null) => void;
+  weightReset: number;
 }) {
   const [range, setRange] = useState<(typeof RANGES)[number]>(7);
   const [heightText, setHeightText] = useState(heightCm == null ? '' : String(heightCm));
@@ -178,6 +191,12 @@ function MetricCard({
       {latest?.day === today ? <T variant="muted">Today</T> : null}
       {kind === 'weight_kg' ? (
         <View style={{ gap: 6 }}>
+          <WeightFields
+            canSave={canSaveHeight}
+            heightText={heightText}
+            resetToken={weightReset}
+            onDraft={onWeightDraftChange}
+          />
           <Field
             label="Height (cm)"
             value={heightText}
@@ -187,7 +206,7 @@ function MetricCard({
             editable={canSaveHeight}
             hint="Used only for BMI. It is not shown on your public profile."
           />
-          {canSaveHeight ? null : <T variant="muted">Health data is off. Turn it on in Privacy & consent to save a height.</T>}
+          {canSaveHeight ? null : <T variant="muted">Health data is off. Turn it on in Privacy & consent to save a weight or a height.</T>}
           {heightError ? <T>{heightError}</T> : null}
           {heightSaved ? <T>{heightSaved}</T> : null}
         </View>
@@ -227,6 +246,76 @@ function MetricCard({
         apply={(current, selected) => toggleHealthKind(current, kind, selected)}
       />
     </Card>
+  );
+}
+
+function WeightFields({
+  canSave,
+  heightText,
+  resetToken,
+  onDraft,
+}: {
+  canSave: boolean;
+  heightText: string;
+  resetToken: number;
+  onDraft?: (draft: WeightReadingDraft | null) => void;
+}) {
+  const [unit, setUnit] = useState<WeightUnitMode>('kg');
+  const [kgText, setKgText] = useState('');
+  const [stonesText, setStonesText] = useState('');
+  const [poundsText, setPoundsText] = useState('');
+  const [day, setDay] = useState(() => startOfLocalDay(new Date()));
+  const parsed = weightReadingKg({ unit, kilograms: kgText, stones: stonesText, pounds: poundsText });
+  const seenReset = useRef(resetToken);
+
+  useEffect(() => {
+    if (seenReset.current === resetToken) return;
+    seenReset.current = resetToken;
+    setUnit('kg');
+    setKgText('');
+    setStonesText('');
+    setPoundsText('');
+    setDay(startOfLocalDay(new Date()));
+  }, [resetToken]);
+
+  useEffect(() => {
+    if (!onDraft) return;
+    const reading = weightReadingKg({ unit, kilograms: kgText, stones: stonesText, pounds: poundsText });
+    const recordedOn = isoDay(day);
+    if (!canSave || !reading.ok || reading.kg == null || recordedOn > isoDay(new Date())) {
+      onDraft(null);
+      return;
+    }
+    onDraft({ kg: reading.kg, recordedOn, heightText });
+  }, [onDraft, canSave, unit, kgText, stonesText, poundsText, day, heightText]);
+
+  return (
+    <View style={{ gap: 8 }}>
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+        <Choice label="kg" selected={unit === 'kg'} onPress={() => setUnit('kg')} />
+        <Choice label="st-lb" selected={unit === 'stlb'} onPress={() => setUnit('stlb')} />
+      </View>
+      {unit === 'kg' ? (
+        <Field
+          label="Weight (kg)"
+          value={kgText}
+          onChangeText={setKgText}
+          keyboardType="decimal-pad"
+          editable={canSave}
+        />
+      ) : (
+        <View style={{ flexDirection: 'row', gap: 8 }}>
+          <View style={{ flex: 1 }}>
+            <Field label="Stones" value={stonesText} onChangeText={setStonesText} keyboardType="number-pad" editable={canSave} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Field label="Pounds" value={poundsText} onChangeText={setPoundsText} keyboardType="decimal-pad" editable={canSave} />
+          </View>
+        </View>
+      )}
+      {!parsed.ok ? <T>{parsed.error}</T> : null}
+      <DateField label="Date" value={day} onChange={setDay} maximumDate={new Date()} />
+    </View>
   );
 }
 

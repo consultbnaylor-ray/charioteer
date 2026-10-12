@@ -3,9 +3,11 @@ import { useCallback, useEffect, useState } from 'react';
 import { Platform, View } from 'react-native';
 
 import { useRepository, useSnapshot } from '@/data';
-import type { HealthKind } from '@/data/types';
+import type { HealthKind, NewHealthSample } from '@/data/types';
 import { isoDay, startOfLocalDay } from '@/domain/dates';
 import { shownError } from '@/domain/errors';
+import { parseHeightCm } from '@/domain/guidance';
+import type { WeightReadingDraft } from '@/domain/weightEntry';
 import { isHealthAccessDenied, type AppleHealthAccess } from '@/health/connection';
 import { connectAppleHealth, openAppSettings, openHealthApp, readAppleHealthAccess } from '@/health/link';
 import { loadLastSynced, saveLastSynced } from '@/health/syncedAt';
@@ -39,6 +41,8 @@ export default function Health() {
   const [pending, setPending] = useState(false);
   const [savePending, setSavePending] = useState(false);
   const [savedNote, setSavedNote] = useState<string | null>(null);
+  const [weightDraft, setWeightDraft] = useState<WeightReadingDraft | null>(null);
+  const [weightReset, setWeightReset] = useState(0);
   const [access, setAccess] = useState<AppleHealthAccess | null>(ios ? null : 'web');
   const [syncedAt, setSyncedAt] = useState<string | null>(null);
   const chosen = KINDS.find((item) => item.id === kind) ?? KINDS[0];
@@ -85,26 +89,75 @@ export default function Health() {
     return () => clearTimeout(timer);
   }, [savedNote]);
 
+  const reportWeight = useCallback((draft: WeightReadingDraft | null) => {
+    setWeightDraft((current) => {
+      if (current == null && draft == null) return current;
+      if (
+        current
+        && draft
+        && current.kg === draft.kg
+        && current.recordedOn === draft.recordedOn
+        && current.heightText === draft.heightText
+      ) {
+        return current;
+      }
+      return draft;
+    });
+  }, []);
+
   function saveReading() {
-    const amount = Number(value);
-    if (!Number.isFinite(amount) || amount < 0) {
-      setError('Enter a number that is zero or more.');
-      return;
+    const samples: NewHealthSample[] = [];
+    if (value.trim()) {
+      const amount = Number(value);
+      if (!Number.isFinite(amount) || amount < 0) {
+        setError('Enter a number that is zero or more.');
+        return;
+      }
+      if (isoDay(day) > isoDay(new Date())) {
+        setError('Choose today or an earlier day.');
+        return;
+      }
+      samples.push({ kind, value: amount, unit: chosen.unit, recordedOn: isoDay(day), source: 'manual' });
     }
-    if (isoDay(day) > isoDay(new Date())) {
-      setError('Choose today or an earlier day.');
-      return;
+    let nextHeight: number | null | undefined;
+    if (weightDraft) {
+      if (weightDraft.recordedOn > isoDay(new Date())) {
+        setError('Choose today or an earlier day.');
+        return;
+      }
+      const height = parseHeightCm(weightDraft.heightText);
+      if (!height.ok) {
+        setError(height.error);
+        return;
+      }
+      samples.push({
+        kind: 'weight_kg',
+        value: weightDraft.kg,
+        unit: 'kg',
+        recordedOn: weightDraft.recordedOn,
+        source: 'manual',
+      });
+      if (height.value !== (snap.profile?.heightCm ?? null)) nextHeight = height.value;
     }
+    if (samples.length === 0 && nextHeight === undefined) return;
     setError(null);
     setSavePending(true);
-    void repo.saveHealth([{ kind, value: amount, unit: chosen.unit, recordedOn: isoDay(day), source: 'manual' }])
-      .then(() => {
-        setValue('');
+    const reading = value.trim();
+    const loggedWeight = weightDraft != null;
+    void (async () => {
+      try {
+        if (nextHeight !== undefined) await repo.updateProfile({ heightCm: nextHeight });
+        if (samples.length) await repo.saveHealth(samples);
+        if (reading) setValue('');
+        if (loggedWeight) setWeightReset((token) => token + 1);
         setSavedNote('Saved');
         playSavedHaptic();
-      })
-      .catch((err: unknown) => setError(shownError(err, 'Could not save.')))
-      .finally(() => setSavePending(false));
+      } catch (err: unknown) {
+        setError(shownError(err, 'Could not save.'));
+      } finally {
+        setSavePending(false);
+      }
+    })();
   }
 
   return (
@@ -114,7 +167,7 @@ export default function Health() {
       footer={(
         <View style={{ gap: 8 }}>
           {savedNote ? <T>{savedNote}</T> : null}
-          <Button label="Save reading" pending={savePending} disabled={!consent || !value.trim() || savePending} onPress={saveReading} />
+          <Button label="Save reading" pending={savePending} disabled={!consent || savePending || (!value.trim() && weightDraft == null)} onPress={saveReading} />
         </View>
       )}
     >
@@ -145,6 +198,8 @@ export default function Health() {
         onSaveHeight={async (heightCm) => {
           await repo.updateProfile({ heightCm });
         }}
+        onWeightDraftChange={reportWeight}
+        weightReset={weightReset}
       />
       <T style={{ fontFamily: theme.font.bodyStrong }}>Or add a reading yourself</T>
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
