@@ -1,6 +1,6 @@
 import { Image } from 'expo-image';
 import { useEffect, useRef, useState } from 'react';
-import { Modal, PanResponder, Platform, StyleSheet, View, type GestureResponderEvent } from 'react-native';
+import { Modal, PanResponder, Platform, StyleSheet, useWindowDimensions, View, type GestureResponderEvent } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Circle, Defs, Mask, Rect } from 'react-native-svg';
 
@@ -46,45 +46,43 @@ export function PhotoCropper({
 }) {
   const theme = useAppTheme();
   const insets = useSafeAreaInsets();
+  const { width: windowWidth, height: windowHeight } = useWindowDimensions();
+  const stageWidth = Math.max(200, windowWidth - 32);
+  const stageHeight = Math.max(200, windowHeight - (role === 'gallery' ? 372 : 292) - insets.top - insets.bottom);
+  const stage = { width: stageWidth, height: stageHeight };
   const [shape, setShape] = useState<CropShape>(role === 'avatar' ? 'square' : 'free');
-  const [stage, setStage] = useState({ width: 0, height: 0 });
   const [frame, setFrame] = useState<CropFrame>(EMPTY_FRAME);
   const [placement, setPlacement] = useState<ImagePlacement>(EMPTY_PLACEMENT);
+  const [appliedKey, setAppliedKey] = useState('');
   const frameRef = useRef(frame);
   const placementRef = useRef(placement);
   const stageRef = useRef(stage);
   const imageRef = useRef(image);
-  const fittedKey = useRef('');
   const stageNode = useRef<View>(null);
-  frameRef.current = frame;
-  placementRef.current = placement;
-  stageRef.current = stage;
-  imageRef.current = image;
-
-  useEffect(() => {
-    setShape(role === 'avatar' ? 'square' : 'free');
-    fittedKey.current = '';
-  }, [image.uri, role]);
-
-  useEffect(() => {
-    if (stage.width < 8 || stage.height < 8) return;
-    const key = `${image.uri}:${shape}:${Math.round(stage.width)}:${Math.round(stage.height)}`;
-    if (fittedKey.current === key) return;
-    fittedKey.current = key;
-    const nextFrame = fittedFrame(stage.width, stage.height, shape, image.width, image.height);
+  const fitKey = `${image.uri}:${role}:${shape}:${Math.round(stageWidth)}:${Math.round(stageHeight)}`;
+  if (appliedKey !== fitKey) {
+    const nextFrame = fittedFrame(stageWidth, stageHeight, shape, image.width, image.height);
     const seed = role === 'avatar' ? profilePictureSeed(image.width, image.height) : null;
     const nextPlacement = seed
       ? placementForCrop(image.width, image.height, nextFrame, seed)
       : coverPlacement(image.width, image.height, nextFrame);
     frameRef.current = nextFrame;
     placementRef.current = nextPlacement;
+    setAppliedKey(fitKey);
     setFrame(nextFrame);
     setPlacement(nextPlacement);
-  }, [image.uri, image.width, image.height, role, shape, stage.width, stage.height]);
+  }
+  frameRef.current = frame.width > 2 ? frame : frameRef.current;
+  placementRef.current = frame.width > 2 ? placement : placementRef.current;
+  stageRef.current = stage;
+  imageRef.current = image;
 
   useEffect(() => {
-    if (Platform.OS !== 'web') return;
-    const node = stageNode.current as unknown as WheelNode | null;
+    if (Platform.OS !== 'web' || typeof document === 'undefined') return;
+    const fromRef = stageNode.current as unknown as WheelNode | null;
+    const node = (fromRef && typeof fromRef.addEventListener === 'function'
+      ? fromRef
+      : document.getElementById('profile-crop-stage')) as WheelNode | null;
     if (!node || typeof node.addEventListener !== 'function') return;
     const onWheel = (event: { deltaY: number; preventDefault: () => void }) => {
       event.preventDefault();
@@ -102,7 +100,7 @@ export function PhotoCropper({
     };
     node.addEventListener('wheel', onWheel, { passive: false });
     return () => node.removeEventListener('wheel', onWheel);
-  }, [image.uri]);
+  }, [image.uri, fitKey]);
 
   const gesture = useRef({ placement: EMPTY_PLACEMENT, distance: 0 });
   const pan = useRef(PanResponder.create({
@@ -175,10 +173,11 @@ export function PhotoCropper({
   const displayH = image.height * placement.scale;
 
   return (
-    <Modal visible animationType="slide" onRequestClose={onCancel}>
+    <Modal visible animationType="fade" onRequestClose={onCancel}>
       <View
         style={{
-          flex: 1,
+          width: windowWidth,
+          height: windowHeight,
           backgroundColor: theme.colors.bg,
           paddingTop: insets.top + 16,
           paddingBottom: insets.bottom + 16,
@@ -203,14 +202,9 @@ export function PhotoCropper({
         ) : null}
         <View
           ref={stageNode}
+          nativeID="profile-crop-stage"
           accessibilityLabel="Crop photo"
-          style={{ flex: 1, minHeight: 240, borderRadius: 8, overflow: 'hidden', backgroundColor: '#111111' }}
-          onLayout={(event) => {
-            const { width, height } = event.nativeEvent.layout;
-            setStage((current) => (
-              Math.abs(current.width - width) < 0.5 && Math.abs(current.height - height) < 0.5 ? current : { width, height }
-            ));
-          }}
+          style={{ width: stageWidth, height: stageHeight, borderRadius: 8, overflow: 'hidden', backgroundColor: '#111111' }}
         >
           {ready ? (
             <Image
@@ -247,7 +241,7 @@ export function PhotoCropper({
           ) : null}
         </View>
         <ErrorNote>{error}</ErrorNote>
-        <Button label="Use photo" pending={pending} onPress={usePhoto} />
+        <Button label="Use photo" pending={pending} disabled={!ready} onPress={usePhoto} />
         <Button label="Cancel" tone="quiet" disabled={pending} onPress={onCancel} />
       </View>
     </Modal>
@@ -274,7 +268,7 @@ function CircleMask({ frame }: { frame: CropFrame }) {
   const left = frame.x + (frame.width - size) / 2;
   const top = frame.y + (frame.height - size) / 2;
   return (
-    <View pointerEvents="none" style={{ position: 'absolute', left, top, width: size, height: size }}>
+    <View accessibilityLabel="Circular crop" pointerEvents="none" style={{ position: 'absolute', left, top, width: size, height: size }}>
       <Svg width={size} height={size} accessibilityLabel="Circular crop">
         <Defs>
           <Mask id="profile-crop-circle">
