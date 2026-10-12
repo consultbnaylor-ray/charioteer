@@ -29,14 +29,11 @@ export function profileSquareCrop(
   };
 }
 
-/** Two letters from the name. A missing name is a question mark. */
+/** One letter from the name, so it can sit centred in the circle. A missing name is a question mark. */
 export function profileInitials(name: string): string {
-  const parts = name.trim().split(/\s+/).filter(Boolean);
-  if (!parts.length) return '?';
-  const first = parts[0] ?? '';
-  const last = parts.length > 1 ? (parts[parts.length - 1] ?? '') : '';
-  const letters = (last ? `${first.slice(0, 1)}${last.slice(0, 1)}` : first.slice(0, 2)).toUpperCase();
-  return letters || '?';
+  const first = name.trim().split(/\s+/).filter(Boolean)[0] ?? '';
+  const letter = first.slice(0, 1).toUpperCase();
+  return letter || '?';
 }
 
 /** Owner folder only. The file name is the photo id. */
