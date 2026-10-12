@@ -170,8 +170,18 @@ describe('profile photos', () => {
     expect(avatar).toContain('numberOfLines={1}');
     expect(avatar).toContain('maxFontSizeMultiplier={1}');
     expect(avatar).not.toContain('variant="label"');
+    expect(editor).toContain('PhotoCropper');
     expect(editor).toContain('Take gallery photo');
     expect(editor).toContain('Choose gallery photo');
+    const cropper = readFileSync('src/ui/PhotoCropper.tsx', 'utf8');
+    expect(cropper).toContain('Drag to position');
+    expect(cropper).toContain('Pinch to zoom');
+    expect(cropper).toContain('Circular crop');
+    expect(cropper).toContain('Free');
+    expect(cropper).toContain('4:3');
+    expect(cropper).toContain('Use photo');
+    expect(cropper).toContain('profilePictureSeed');
+    expect(picker).toContain('encodeProfileCrop');
     expect(editor).toContain('Move up');
     expect(editor).toContain('Move down');
     expect(editor).toContain('Delete photo');

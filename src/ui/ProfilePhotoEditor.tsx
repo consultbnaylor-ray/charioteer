@@ -12,7 +12,9 @@ import {
   PROFILE_PHOTO_WORDING,
   sortProfilePhotos,
 } from '@/domain/profilePhotos';
-import { pickProfilePhoto } from '@/ui/prepareProgressPhoto';
+import type { CropRect } from '@/domain/photoCrop';
+import { encodeProfileCrop, pickProfilePhoto } from '@/ui/prepareProgressPhoto';
+import { PhotoCropper } from '@/ui/PhotoCropper';
 import { useAppTheme } from '@/ui/theme';
 import { MemberAvatar } from '@/ui/MemberAvatar';
 import { Button, ErrorNote, Field, playSavedHaptic, T } from '@/ui/ui';
@@ -41,15 +43,31 @@ export function ProfilePhotoEditor() {
   const [pending, setPending] = useState<string | null>(null);
   const [confirmId, setConfirmId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [draft, setDraft] = useState<{ uri: string; width: number; height: number; role: ProfilePhotoRole } | null>(null);
   const full = gallery.length >= PROFILE_GALLERY_LIMIT;
 
   async function add(source: 'camera' | 'library', role: ProfilePhotoRole) {
     setError(null);
     setPending(`${role}-${source}`);
     try {
-      const picked = await pickProfilePhoto(source, role);
+      const picked = await pickProfilePhoto(source);
       if (!picked) return;
-      await repo.addProfilePhoto({ bytes: picked.bytes, role });
+      setDraft({ ...picked, role });
+    } catch (err) {
+      setError(shownError(err, 'Could not add that photo.'));
+    } finally {
+      setPending(null);
+    }
+  }
+
+  async function saveCrop(crop: CropRect) {
+    if (!draft) return;
+    setError(null);
+    setPending('crop');
+    try {
+      const encoded = await encodeProfileCrop(draft.uri, draft.width, draft.height, crop);
+      await repo.addProfilePhoto({ bytes: encoded.bytes, role: draft.role });
+      setDraft(null);
     } catch (err) {
       setError(shownError(err, 'Could not add that photo.'));
     } finally {
@@ -140,6 +158,20 @@ export function ProfilePhotoEditor() {
           )}
         </View>
       ))}
+      {draft ? (
+        <PhotoCropper
+          image={draft}
+          role={draft.role}
+          pending={pending === 'crop'}
+          error={error}
+          onCancel={() => {
+            if (pending === 'crop') return;
+            setDraft(null);
+            setError(null);
+          }}
+          onUse={(crop) => void saveCrop(crop)}
+        />
+      ) : null}
       {full ? <T variant="muted">{PROFILE_GALLERY_LIMIT_MESSAGE}</T> : (
         <View style={{ flexDirection: 'row', gap: 8 }}>
           <View style={{ flex: 1 }}>
