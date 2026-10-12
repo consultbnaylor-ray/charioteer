@@ -1,4 +1,5 @@
 import { GROK_VOICE, pcm16ToFloat } from '@/domain/voice';
+import { VOICE_ENABLED } from '@/domain/voiceFlag';
 
 import type { VoiceAudio, VoiceMicHandlers } from './audioTypes';
 
@@ -27,6 +28,7 @@ export function createVoiceAudio(): VoiceAudio {
 
   return {
     async prepare() {
+      if (!VOICE_ENABLED) return 'unavailable';
       const Ctor = ctor();
       if (!Ctor || !navigator.mediaDevices?.getUserMedia) return 'unavailable';
       try {

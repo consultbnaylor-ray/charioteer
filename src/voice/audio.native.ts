@@ -7,6 +7,7 @@ import {
 } from 'react-native-audio-api';
 
 import { GROK_VOICE, pcm16ToFloat, readChannelSamples, resampleLinear } from '@/domain/voice';
+import { VOICE_ENABLED } from '@/domain/voiceFlag';
 
 import type { VoiceAudio, VoiceMicHandlers } from './audioTypes';
 
@@ -118,6 +119,7 @@ export function createVoiceAudio(): VoiceAudio {
 
   return {
     async prepare() {
+      if (!VOICE_ENABLED) return 'unavailable';
       try {
         AudioManager.setAudioSessionOptions({
           iosCategory: 'playAndRecord',

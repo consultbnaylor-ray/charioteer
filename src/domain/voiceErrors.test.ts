@@ -2,6 +2,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
 import { firstVoiceStackFrame, formatVoiceDebug } from './voiceDebug';
+import { VOICE_ENABLED } from './voiceFlag';
 import {
   combineSocketCause,
   mapVoiceFailure,
@@ -160,6 +161,22 @@ describe('voice call wiring', () => {
     expect(call).toContain('voiceSocketAuth');
     expect(screen).toContain('VOICE_COPY.failed');
     expect(screen).toContain('voice.detail');
+  });
+
+  it('hides voice for launch and does not declare the microphone', () => {
+    expect(VOICE_ENABLED).toBe(false);
+    const screen = readFileSync('src/app/(main)/thumos.tsx', 'utf8');
+    expect(screen).toContain('if (!VOICE_ENABLED) return');
+    expect(screen).toContain('label="Voice"');
+    const app = readFileSync('app.json', 'utf8');
+    expect(app).not.toContain('NSMicrophoneUsageDescription');
+    expect(app).not.toContain('iosMicrophonePermission');
+    expect(app).not.toContain('RECORD_AUDIO');
+    expect(app).not.toMatch(/NSSpeech/);
+    const native = readFileSync('src/voice/audio.native.ts', 'utf8');
+    expect(native.indexOf('if (!VOICE_ENABLED) return')).toBeLessThan(native.indexOf('requestRecordingPermissions'));
+    const web = readFileSync('src/voice/audio.web.ts', 'utf8');
+    expect(web.indexOf('if (!VOICE_ENABLED) return')).toBeLessThan(web.indexOf('getUserMedia'));
   });
 });
 

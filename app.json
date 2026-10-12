@@ -20,7 +20,6 @@
         "com.apple.developer.healthkit": true
       },
       "infoPlist": {
-        "NSMicrophoneUsageDescription": "Charioteer uses the microphone so you can speak with Thumos. Audio is sent to the coach only while a voice conversation is open.",
         "NSCameraUsageDescription": "Charioteer uses the camera so you can take a private progress photo. Other people cannot see it, and it is not sent to the coach.",
         "NSPhotoLibraryUsageDescription": "Charioteer uses your photo library so you can add a private progress photo. Other people cannot see it, and it is not sent to the coach.",
         "NSHealthShareUsageDescription": "Charioteer reads steps, sleep, resting heart rate, heart rate variability, workouts, and weight so you and Thumos can see how your body is doing. Other people cannot see this.",
@@ -63,11 +62,9 @@
       [
         "react-native-audio-api",
         {
-          "iosMicrophonePermission": "Charioteer uses the microphone so you can speak with Thumos. Audio is sent to the coach only while a voice conversation is open.",
-          "androidPermissions": [
-            "android.permission.RECORD_AUDIO",
-            "android.permission.MODIFY_AUDIO_SETTINGS"
-          ]
+          "iosBackgroundMode": false,
+          "androidForegroundService": false,
+          "androidPermissions": []
         }
       ],
       [

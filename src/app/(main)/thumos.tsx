@@ -14,6 +14,7 @@ import { CRAVING_LINE, inferThumosMode, THUMOS_INTRO, OPENING_LINE, type ThumosM
 import { formatClock, urgeRemainingSeconds } from '@/domain/urge';
 import { ensureUrge, restartUrge } from '@/features/urgeSession';
 import { VOICE_COPY } from '@/domain/voice';
+import { VOICE_ENABLED } from '@/domain/voiceFlag';
 import { createVoiceRuntime, voiceStatusLabel, type VoiceRuntime } from '@/domain/voiceSession';
 import { briefingFromSnapshot } from '@/voice/briefing';
 import { VoiceCall } from '@/voice/call';
@@ -107,6 +108,7 @@ export default function Thumos() {
   const inCall = Boolean(voice && voice.phase !== 'ended' && voice.phase !== 'error');
 
   async function startVoice() {
+    if (!VOICE_ENABLED) return;
     if (!profile?.consentAi || callRef.current) return;
     const ticket = voiceTicket.current + 1;
     voiceTicket.current = ticket;
@@ -224,7 +226,7 @@ export default function Thumos() {
           <T>{liveReply || 'Thumos is thinking'}</T>
         </Card>
       ) : null}
-      {inCall && voice ? (
+      {VOICE_ENABLED && inCall && voice ? (
         <Card style={{ borderColor: theme.colors.ink, borderWidth: 2 }}>
           <T variant="label">Voice</T>
           <T variant="display">{voiceStatusLabel(voice)}</T>
@@ -253,9 +255,9 @@ export default function Thumos() {
       ) : (
         <Field label="Message" value={draft} onChangeText={setDraft} multiline placeholder="Say it in your own words" />
       )}
-      <ErrorNote>{error || (voice?.phase === 'error' ? voice.message : null)}</ErrorNote>
-      {!error && voice?.phase === 'error' && voice.detail ? <T variant="muted" style={{ width: '100%', flexShrink: 1 }}>{voice.detail}</T> : null}
-      {inCall ? null : (
+      <ErrorNote>{error || (VOICE_ENABLED && voice?.phase === 'error' ? voice.message : null)}</ErrorNote>
+      {VOICE_ENABLED && !error && voice?.phase === 'error' && voice.detail ? <T variant="muted" style={{ width: '100%', flexShrink: 1 }}>{voice.detail}</T> : null}
+      {VOICE_ENABLED && inCall ? null : VOICE_ENABLED ? (
         <View style={{ flexDirection: 'row', gap: 10 }}>
           <View style={{ flex: 1 }}>
             <Button label="Send" pending={pending} disabled={!profile.consentAi} onPress={() => void send()} />
@@ -264,6 +266,8 @@ export default function Thumos() {
             <Button label="Voice" disabled={!profile.consentAi || pending} onPress={() => void startVoice()} />
           </View>
         </View>
+      ) : (
+        <Button label="Send" pending={pending} disabled={!profile.consentAi} onPress={() => void send()} />
       )}
       {showsSoberRecord(profile.stage) ? <T variant="muted">Milestones in view: {(profile.sobrietyStartedAt ? earnedMilestones(new Date(profile.sobrietyStartedAt), new Date()) : []).map((item) => item.badge).join(', ') || 'none yet'}.</T> : null}
       <SoulStory />
