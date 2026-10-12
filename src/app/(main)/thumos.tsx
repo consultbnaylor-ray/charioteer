@@ -1,5 +1,5 @@
-import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useEffect, useRef, useState } from 'react';
+import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Platform, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
 
@@ -12,7 +12,7 @@ import { firstSafetyHit, pinnedSafetyNotices } from '@/domain/safety';
 import { asUserFacing, shownError } from '@/domain/errors';
 import { showsSoberRecord } from '@/domain/stage';
 import { CRAVING_LINE, inferThumosMode, THUMOS_INTRO, OPENING_LINE, type ThumosMode } from '@/domain/thumos';
-import { THUMOS_EXPANDED, THUMOS_LINE_CAP, THUMOS_VISIBLE, latestThumos, messageNeedsMore } from '@/domain/thumosThread';
+import { THUMOS_LINE_CAP, groupThumosByDay, latestExchange, messageNeedsMore } from '@/domain/thumosThread';
 import { formatClock, urgeRemainingSeconds } from '@/domain/urge';
 import { ensureUrge, restartUrge } from '@/features/urgeSession';
 import { VOICE_COPY } from '@/domain/voice';
@@ -45,9 +45,13 @@ export default function Thumos() {
   const voiceTicket = useRef(0);
   const [now, setNow] = useState(() => Date.now());
   const [urgeStart, setUrgeStart] = useState<number | null>(null);
-  const [shown, setShown] = useState(THUMOS_VISIBLE);
+  const [threadVisit, setThreadVisit] = useState(0);
   const [introOpen, setIntroOpen] = useState<boolean | null>(null);
   const introTouched = useRef(false);
+
+  useFocusEffect(useCallback(() => {
+    setThreadVisit((current) => current + 1);
+  }, []));
 
   useEffect(() => {
     if (!profile) return;
@@ -92,7 +96,7 @@ export default function Thumos() {
 
   if (!profile) return null;
   const thread = snap.thumos.filter((message) => !(message.role === 'guide' && message.content === CRAVING_LINE));
-  const { visible, earlier } = latestThumos(thread, shown);
+  const { visible, earlier } = latestExchange(thread);
   const activity = `${outgoing ?? ''}|${liveReply}|${pending ? 1 : 0}`;
   const pinToken = introOpen === null
     ? ''
@@ -242,9 +246,9 @@ export default function Thumos() {
           }}
         />
         <ThumosTranscript
+          key={threadVisit}
           messages={visible}
           earlier={earlier}
-          onEarlier={() => setShown(THUMOS_EXPANDED)}
           pending={pending}
           outgoing={outgoing}
           liveReply={liveReply}
@@ -378,33 +382,57 @@ function Bubble({ mine, text }: { mine: boolean; text: string }) {
   );
 }
 
+function EarlierDay({ heading, messages }: { heading: string; messages: ThumosMessage[] }) {
+  const theme = useAppTheme();
+  const [open, setOpen] = useState(false);
+  return (
+    <View style={{ width: '100%', gap: 4 }}>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={heading}
+        accessibilityState={{ expanded: open }}
+        aria-expanded={open}
+        onPress={() => setOpen((value) => !value)}
+        style={{ minHeight: 44, justifyContent: 'center' }}
+      >
+        <T style={{ fontFamily: theme.font.bodyStrong }}>{heading}</T>
+      </Pressable>
+      {open ? messages.map((message) => (
+        <Bubble key={message.id} mine={message.role === 'user'} text={message.content} />
+      )) : null}
+    </View>
+  );
+}
+
 function ThumosTranscript({
   messages,
   earlier,
-  onEarlier,
   pending,
   outgoing,
   liveReply,
 }: {
   messages: ThumosMessage[];
-  earlier: number;
-  onEarlier: () => void;
+  earlier: ThumosMessage[];
   pending: boolean;
   outgoing: string | null;
   liveReply: string;
 }) {
+  const [earlierOpen, setEarlierOpen] = useState(false);
+  const days = groupThumosByDay(earlier);
+  const earlierLabel = `Show earlier messages (${earlier.length})`;
   return (
     <View style={{ width: '100%', gap: 4 }}>
-      {earlier > 0 ? (
+      {earlier.length > 0 && !earlierOpen ? (
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel="Show earlier messages"
-          onPress={onEarlier}
+          accessibilityLabel={earlierLabel}
+          onPress={() => setEarlierOpen(true)}
           style={{ minHeight: 44, alignItems: 'center', justifyContent: 'center' }}
         >
-          <T variant="muted">Show earlier messages</T>
+          <T variant="muted">{earlierLabel}</T>
         </Pressable>
       ) : null}
+      {earlierOpen ? days.map((day) => <EarlierDay key={day.day} heading={day.heading} messages={day.messages} />) : null}
       {messages.map((message) => (
         <Bubble key={message.id} mine={message.role === 'user'} text={message.content} />
       ))}

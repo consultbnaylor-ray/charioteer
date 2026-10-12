@@ -2,18 +2,37 @@ import { readFileSync } from 'node:fs';
 
 import { describe, expect, it } from 'vitest';
 
-import { THUMOS_EXPANDED, THUMOS_LINE_CAP, THUMOS_VISIBLE, latestThumos, messageNeedsMore } from './thumosThread';
+import { THUMOS_LINE_CAP, groupThumosByDay, latestExchange, messageNeedsMore, thumosDayLabel } from './thumosThread';
 import { introSeenIn, withIntroSeen } from '../ui/thumosIntroMemory';
 
 describe('thumos conversation window', () => {
-  it('shows the latest six messages and counts the rest as earlier', () => {
-    const messages = Array.from({ length: 10 }, (_, index) => index);
-    expect(THUMOS_VISIBLE).toBe(6);
+  it('shows the latest exchange and keeps older days collapsed behind a count', () => {
+    const saturday = new Date(2026, 9, 10, 15, 0).toISOString();
+    const sunday = new Date(2026, 9, 11, 15, 0).toISOString();
+    const messages = [
+      { role: 'guide', createdAt: saturday, content: 'How are you feeling?' },
+      { role: 'user', createdAt: saturday, content: 'The afternoon felt long.' },
+      { role: 'assistant', createdAt: saturday, content: 'Tea and a short walk are enough for now.' },
+      { role: 'user', createdAt: sunday, content: 'Restless this afternoon, but I slept.' },
+      { role: 'assistant', createdAt: sunday, content: 'A walk before dinner has suited you.' },
+    ];
     expect(THUMOS_LINE_CAP).toBe(6);
-    expect(latestThumos(messages, 6)).toEqual({ visible: messages.slice(4), earlier: 4 });
-    expect(latestThumos(messages, 6.9).visible).toEqual(messages.slice(4));
-    expect(latestThumos(messages, THUMOS_EXPANDED)).toEqual({ visible: messages, earlier: 0 });
-    expect(latestThumos([], 6)).toEqual({ visible: [], earlier: 0 });
+    expect(latestExchange(messages)).toEqual({ visible: messages.slice(3), earlier: messages.slice(0, 3) });
+    expect(latestExchange([])).toEqual({ visible: [], earlier: [] });
+    const opening = [
+      { role: 'guide', createdAt: saturday, content: 'Earlier hello' },
+      { role: 'guide', createdAt: sunday, content: 'How are you feeling?' },
+    ];
+    expect(latestExchange(opening)).toEqual({ visible: [opening[1]], earlier: [opening[0]] });
+    const waiting = [messages[2], messages[3]];
+    expect(latestExchange(waiting).visible).toEqual([messages[3]]);
+    expect(thumosDayLabel(sunday)).toBe('Sunday 11 October 2026');
+    expect(groupThumosByDay(messages).map((day) => day.heading)).toEqual([
+      'Saturday 10 October 2026',
+      'Sunday 11 October 2026',
+    ]);
+    expect(groupThumosByDay(messages)[0].messages).toHaveLength(3);
+    expect(groupThumosByDay(messages)[1].messages).toHaveLength(2);
     expect(messageNeedsMore('One short line.')).toBe(false);
     expect(messageNeedsMore('word '.repeat(20))).toBe(false);
     expect(messageNeedsMore('word '.repeat(40))).toBe(true);
@@ -34,13 +53,18 @@ describe('thumos conversation window', () => {
     expect(screen).toContain('Thumos is your Sober Coach, tap to read more');
     expect(screen).toContain('THUMOS_INTRO');
     expect(screen).toContain('numberOfLines={1}');
-    expect(screen).toContain('Show earlier messages');
+    expect(screen).toContain('Show earlier messages (${earlier.length})');
+    expect(screen).toContain('accessibilityLabel={earlierLabel}');
+    expect(screen).toContain('accessibilityLabel={heading}');
+    expect(screen).toContain('accessibilityState={{ expanded: open }}');
+    expect(screen).toContain('useFocusEffect');
+    expect(screen).toContain('key={threadVisit}');
+    expect(screen).toContain('latestExchange');
+    expect(screen).toContain('groupThumosByDay');
     expect(screen).toContain('accessibilityLabel="More"');
     expect(screen).toContain('messageNeedsMore');
     expect(screen).toContain('numberOfLines={open || !long ? undefined : THUMOS_LINE_CAP}');
-    expect(screen).toContain('setShown(THUMOS_EXPANDED)');
-    expect(screen).toContain('latestThumos');
-    expect(screen).toContain('THUMOS_VISIBLE');
+    expect(screen).not.toContain('THUMOS_VISIBLE');
     expect(screen).toContain("alignSelf: mine ? 'flex-end' : 'flex-start'");
     expect(screen).toContain("maxWidth: '80%'");
     expect(screen).toContain('fontSize: 15 * theme.scale');

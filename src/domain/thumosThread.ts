@@ -1,8 +1,4 @@
-/** How many messages the Thumos screen shows before “Show earlier messages”. */
-export const THUMOS_VISIBLE = 6;
-
-/** One tap reveals the rest of the thread. */
-export const THUMOS_EXPANDED = Number.MAX_SAFE_INTEGER;
+import { formatUkLong, isoDay } from './dates';
 
 /** A bubble past this many lines is truncated until More. */
 export const THUMOS_LINE_CAP = 6;
@@ -21,11 +17,44 @@ export function messageNeedsMore(text: string, charsPerLine = 32): boolean {
   return lines > THUMOS_LINE_CAP;
 }
 
-export function latestThumos<T>(messages: readonly T[], limit: number): { visible: T[]; earlier: number } {
-  const cap = Number.isFinite(limit) ? Math.max(0, Math.floor(limit)) : THUMOS_VISIBLE;
-  if (messages.length <= cap) return { visible: [...messages], earlier: 0 };
-  return {
-    visible: messages.slice(messages.length - cap),
-    earlier: messages.length - cap,
-  };
+type ThreadRow = { role: string };
+
+/**
+ * The open screen shows one exchange: the last user message and Thumos’s reply after it.
+ * A chat that has not had a user message yet shows only Thumos’s latest reply.
+ */
+export function latestExchange<T extends ThreadRow>(messages: readonly T[]): { visible: T[]; earlier: T[] } {
+  if (messages.length === 0) return { visible: [], earlier: [] };
+  let lastUser = -1;
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    if (messages[index].role === 'user') {
+      lastUser = index;
+      break;
+    }
+  }
+  if (lastUser === -1) {
+    return { visible: [messages[messages.length - 1]], earlier: messages.slice(0, -1) };
+  }
+  return { visible: messages.slice(lastUser), earlier: messages.slice(0, lastUser) };
+}
+
+/** Sunday 11 October 2026. Weekday and date are joined so a comma is not inserted. */
+export function thumosDayLabel(createdAt: string): string {
+  const date = new Date(createdAt);
+  const weekday = date.toLocaleDateString('en-GB', { weekday: 'long' });
+  return `${weekday} ${formatUkLong(date)}`;
+}
+
+export type ThumosDayGroup<T> = { day: string; heading: string; messages: T[] };
+
+/** Earlier messages, oldest day first. Messages inside a day stay in thread order. */
+export function groupThumosByDay<T extends { createdAt: string }>(messages: readonly T[]): ThumosDayGroup<T>[] {
+  const groups: ThumosDayGroup<T>[] = [];
+  for (const message of messages) {
+    const day = isoDay(new Date(message.createdAt));
+    const last = groups[groups.length - 1];
+    if (!last || last.day !== day) groups.push({ day, heading: thumosDayLabel(message.createdAt), messages: [message] });
+    else last.messages.push(message);
+  }
+  return groups;
 }
