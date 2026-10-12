@@ -21,6 +21,7 @@ import { useSnapshot } from '@/data';
 import { weightReadingKg, type WeightReadingDraft, type WeightUnitMode } from '@/domain/weightEntry';
 import { DateField } from '@/ui/DateField';
 import { GuidanceRange } from '@/ui/GuidanceRange';
+import { HrvExplainer } from '@/ui/HrvExplainer';
 import { ShareOnProfile } from '@/ui/ShareOnProfile';
 import { HealthChart } from '@/ui/HealthChart';
 import { useAppTheme } from '@/ui/theme';
@@ -212,6 +213,7 @@ function MetricCard({
         </View>
       ) : null}
       <GuidanceRange guidance={guidance} />
+      {kind === 'hrv_sdnn' ? <HrvExplainer /> : null}
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
         {RANGES.map((days) => (
           <Choice key={days} label={`${days}d`} selected={range === days} onPress={() => setRange(days)} />

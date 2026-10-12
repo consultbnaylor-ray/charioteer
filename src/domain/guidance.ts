@@ -4,7 +4,7 @@
  * Nothing here is a diagnosis.
  */
 
-import { formatSleepHours, formatUkCompactDay, shiftDay, type DayValue } from './healthInsights';
+import { formatSleepHours, formatUkCompactDay, HRV_MIN_READINGS, HRV_TOO_FEW, shiftDay, type DayValue } from './healthInsights';
 import type { HealthInsightKind } from './healthInsights';
 import {
   CMO_GUIDELINES_URL,
@@ -361,9 +361,27 @@ function stepsGuidance(points: DayValue[], today: string): GuidanceView {
   });
 }
 
+function hrvOpening(recent: DayValue[], average: number | null): string {
+  if (average == null) return '';
+  const shown = uk(Math.round(average));
+  if (recent.length === 1) return `The one reading in the last 7 days was ${shown} ms.`;
+  return `Your recent average is ${shown} ms, from ${recent.length} days in the last 7 days.`;
+}
+
 function hrvGuidance(points: DayValue[], today: string): GuidanceView {
   const recent = span(points, today, -6, 0);
   const average = mean(recent.map((point) => point.value));
+  const opening = hrvOpening(recent, average);
+  if (points.length < HRV_MIN_READINGS) {
+    return view({
+      label: null,
+      plain: [opening, `${HRV_TOO_FEW}.`, HRV_HONEST].filter(Boolean).join(' '),
+      marker: null,
+      ticks: [],
+      sources: [],
+      warning: null,
+    });
+  }
   if (average == null) {
     return view({
       label: null,
@@ -374,10 +392,6 @@ function hrvGuidance(points: DayValue[], today: string): GuidanceView {
       warning: null,
     });
   }
-  const shown = uk(Math.round(average));
-  const opening = recent.length === 1
-    ? `The one reading in the last 7 days was ${shown} ms.`
-    : `Your recent average is ${shown} ms, from ${recent.length} days in the last 7 days.`;
   return view({
     label: null,
     plain: `${opening} ${ownBaseline(points, today, recent, 'ms')} ${HRV_HONEST}`,

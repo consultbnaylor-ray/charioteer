@@ -83,7 +83,7 @@ const SUBJECT: Record<HealthInsightKind, string> = {
 const EMERGENCY_STEP = 'Call 999 if you have chest pain, fainting, or breathlessness.';
 const HEART_STEP = `Rest, have some water, and try a breathing exercise. If it stays up, contact your GP or NHS 111. ${EMERGENCY_STEP}`;
 const SLEEP_STEP = `A regular bedtime and a breathing exercise can help. You can talk it through with Thumos. If short sleep carries on, contact your GP or NHS 111. ${EMERGENCY_STEP}`;
-const HRV_STEP = `Rest, have some water, and try a breathing exercise. If you feel unwell, contact your GP or NHS 111. ${EMERGENCY_STEP}`;
+const HRV_STEP = `Sleep, drink some water, keep exercise steady, and take a rest day if you need one. A breathing exercise can help. If you feel unwell, contact your GP or NHS 111. ${EMERGENCY_STEP}`;
 const WEIGHT_STEP = `If you did not mean to lose this weight, or it keeps falling, contact your GP or NHS 111. ${EMERGENCY_STEP}`;
 
 const PAPWORTH_URL = 'https://www.royalpapworth.nhs.uk/our-services/cardiology/Heart-rhythm-disturbances';
@@ -91,6 +91,75 @@ const SLEEP_URL = 'https://www.nhs.uk/conditions/insomnia/';
 const WEIGHT_URL = 'https://www.nhs.uk/conditions/malnutrition/';
 
 const NOT_ADVICE = 'This is not a diagnosis and not medical advice.';
+
+/**
+ * A personal HRV trend needs several of the person's own days.
+ * Fewer than this, and the card asks them to keep wearing the watch instead of judging a trend.
+ */
+export const HRV_MIN_READINGS = 5;
+
+export const HRV_TOO_FEW =
+  'Too few readings to judge a trend yet, so wear your watch overnight for a week';
+
+/** A recent day counts as well below their own baseline when it is at least 20% under that earlier average. */
+const HRV_WELL_BELOW = 0.8;
+const HRV_LOW_DAYS = 3;
+
+/**
+ * Plain-English HRV note. The ranges are rough examples, not a target and not a diagnosis.
+ * Apple Watch records SDNN, the standard deviation of inter-beat intervals, in milliseconds.
+ * https://developer.apple.com/documentation/healthkit/hkquantitytypeidentifier/heartratevariabilitysdnn
+ * Cleveland Clinic: HRV is the change in time between beats; a higher figure usually means the body adapts more easily.
+ * https://my.clevelandclinic.org/health/symptoms/21773-heart-rate-variability-hrv
+ * Nunan, Sandercock and Brodie, PACE 2010: short-term SDNN in healthy adults, cross-study mean 50 ms, study means 32 to 93 ms.
+ * https://onlinelibrary.wiley.com/doi/10.1111/j.1540-8159.2010.02841.x
+ * Sammito and Böckelmann, Heart Rhythm 2016: 24-hour SDNN falls with age. Those day-long recordings are not a watch sample.
+ * https://pubmed.ncbi.nlm.nih.gov/26883166/
+ * Pietilä and colleagues, JMIR Mental Health 2018: alcohol lowered heart-rate variability during the first hours of sleep.
+ * https://pmc.ncbi.nlm.nih.gov/articles/PMC5878366/
+ * Timothy, Sharma and Sharma, Indian Journal of Psychiatry 2025: in alcohol dependence, HRV rose within four weeks of detoxification and abstinence.
+ * https://pmc.ncbi.nlm.nih.gov/articles/PMC12594097/
+ */
+export const APPLE_HRV_URL = 'https://developer.apple.com/documentation/healthkit/hkquantitytypeidentifier/heartratevariabilitysdnn';
+export const CLEVELAND_HRV_URL = 'https://my.clevelandclinic.org/health/symptoms/21773-heart-rate-variability-hrv';
+export const NUNAN_SDNN_URL = 'https://onlinelibrary.wiley.com/doi/10.1111/j.1540-8159.2010.02841.x';
+export const SAMMITO_HRV_URL = 'https://pubmed.ncbi.nlm.nih.gov/26883166/';
+export const PIETILA_ALCOHOL_HRV_URL = 'https://pmc.ncbi.nlm.nih.gov/articles/PMC5878366/';
+export const TIMOTHY_ABSTINENCE_HRV_URL = 'https://pmc.ncbi.nlm.nih.gov/articles/PMC12594097/';
+
+export type HrvExplainerLink = { name: string; url: string };
+
+export const HRV_EXPLAINER_TITLE = 'What does HRV mean?';
+
+export const HRV_EXPLAINER_PARAGRAPHS: readonly string[] = [
+  'Heart rate variability is the variation in time between heartbeats. A higher figure usually means a more rested, recovered body.',
+  'Apple Watch measures SDNN, the spread of the time between beats, in milliseconds. It records this on its own, mostly overnight, while you are still.',
+  'There is no official UK target. These figures are general, rough examples, not a target. A review of short-term SDNN in healthy adults found study averages from about 32 to 93 ms, with an overall mean near 50 ms (Nunan, Sandercock and Brodie, 2010). Heart rate variability also falls with age on 24-hour recordings, which are not the same as a watch sample (Sammito and Böckelmann, 2016). As a rough picture, many healthy adults sit around 30 to 70 ms, and that tends to fall with age. Well-trained endurance athletes are often higher, about 70 to 100 ms or more. A reading well below your own usual level, often under about 20 to 30 ms, can show up with illness, poor sleep, stress, alcohol or overtraining.',
+  'A single reading can jump about. The trend over days matters more than one night.',
+  'Alcohol noticeably lowers heart rate variability, including during the first hours of sleep (Pietilä and colleagues, 2018). In people treated for alcohol dependence, it rose within four weeks of detoxification and continued abstinence (Timothy, Sharma and Sharma, 2025). Stopping drinking often raises it over the following weeks. That is a general finding, not a promise for you.',
+];
+
+export const HRV_EXPLAINER_TIPS =
+  'Sleep, drink enough water, keep exercise steady, and take rest days. Breathing exercises can help.';
+
+export const HRV_EXPLAINER_LINKS: readonly HrvExplainerLink[] = [
+  { name: 'Cleveland Clinic: heart rate variability', url: CLEVELAND_HRV_URL },
+  { name: 'Apple: heart rate variability (SDNN)', url: APPLE_HRV_URL },
+  { name: 'Nunan, Sandercock and Brodie, 2010: short-term SDNN', url: NUNAN_SDNN_URL },
+  { name: 'Sammito and Böckelmann, 2016: SDNN and age', url: SAMMITO_HRV_URL },
+  { name: 'Pietilä and colleagues, 2018: alcohol and sleep HRV', url: PIETILA_ALCOHOL_HRV_URL },
+  { name: 'Timothy, Sharma and Sharma, 2025: HRV after stopping', url: TIMOTHY_ABSTINENCE_HRV_URL },
+];
+
+/** Wording Thumos may quote. It is general guidance, not a reading of this person. */
+export function hrvExplainerForCoach(): string {
+  return [
+    HRV_EXPLAINER_TITLE,
+    ...HRV_EXPLAINER_PARAGRAPHS,
+    HRV_EXPLAINER_TIPS,
+    'This is general guidance, not a diagnosis. If they are worried, suggest they speak to their GP. Do not add other ranges or citations.',
+  ].join('\n');
+}
 
 const FLAG_ORDER: HealthFlagId[] = ['resting_high', 'resting_rise', 'short_sleep', 'hrv_low', 'weight_loss'];
 
@@ -404,18 +473,19 @@ function sleepFlag(points: DayValue[], today: string): HealthFlag | null {
 }
 
 function hrvFlag(points: DayValue[], today: string): HealthFlag | null {
+  if (points.length < HRV_MIN_READINGS) return null;
   const recent = inSpan(points, shiftDay(today, -6), today);
   const baselinePoints = inSpan(points, shiftDay(today, -36), shiftDay(today, -7));
-  if (recent.length < 2 || baselinePoints.length < 3) return null;
-  const recentMean = mean(recent.map((point) => point.value));
+  if (baselinePoints.length < 3) return null;
   const baseline = mean(baselinePoints.map((point) => point.value));
-  if (recentMean == null || baseline == null || baseline <= 0) return null;
-  if (recentMean > baseline * 0.8) return null;
+  if (baseline == null || baseline <= 0) return null;
+  const lowDays = recent.filter((point) => point.value <= baseline * HRV_WELL_BELOW);
+  if (lowDays.length < HRV_LOW_DAYS) return null;
   return {
     id: 'hrv_low',
     kind: 'hrv_sdnn',
-    headline: 'Heart rate variability is well below your own recent average.',
-    detail: `Heart rate variability this week is at least 20% below your own previous 30-day average. This is compared with your readings, not a clinical range. ${NOT_ADVICE}`,
+    headline: 'Heart rate variability has been below your usual level for a few days.',
+    detail: `On ${lowDays.length} of the last 7 days, heart rate variability was well below your own usual level. A short run like this can follow poor sleep, stress, alcohol, illness or a hard spell of training. The trend matters more than one night. ${NOT_ADVICE}`,
     step: HRV_STEP,
     sourceName: 'Your own readings',
     sourceUrl: '',
@@ -473,9 +543,10 @@ function reportFor(kind: HealthInsightKind, input: HealthInsightInput): HealthKi
   const points = dailyValues(input.samples, kind).filter((point) => point.day <= input.today);
   const stopped = stoppedStage(input);
   const notes: { rank: HealthNoteRank; text: string }[] = [];
-  const week = weekLine(kind, points, input.today);
+  const tooFewHrv = kind === 'hrv_sdnn' && points.length < HRV_MIN_READINGS;
+  const week = tooFewHrv ? null : weekLine(kind, points, input.today);
   if (week) notes.push({ rank: 'week', text: week });
-  const streak = streakLine(kind, points, input.today);
+  const streak = tooFewHrv ? null : streakLine(kind, points, input.today);
   if (streak) notes.push({ rank: 'streak', text: streak });
   const best = bestLine(kind, points, input.today);
   if (best) notes.push({ rank: 'best', text: best });

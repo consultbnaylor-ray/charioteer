@@ -218,11 +218,40 @@ describe('health insights', () => {
       point('hrv_sdnn', 22, '2026-10-11'),
     ];
     const hrv = buildHealthInsights({ today, soberOn: null, samples: hrvSamples });
-    const low = hrv.kinds.find((kind) => kind.kind === 'hrv_sdnn')?.flags[0];
+    expect(hrv.kinds.find((kind) => kind.kind === 'hrv_sdnn')?.flags).toEqual([]);
+
+    const lowRun = buildHealthInsights({
+      today,
+      soberOn: null,
+      samples: [
+        ...hrvSamples,
+        point('hrv_sdnn', 21, '2026-10-09'),
+      ],
+    });
+    const low = lowRun.kinds.find((kind) => kind.kind === 'hrv_sdnn')?.flags[0];
+    expect(low?.headline).toContain('below your usual level');
     expect(low?.detail).toContain('your own');
+    expect(low?.detail).toContain('3 of the last 7 days');
+    expect(low?.detail).toContain('not a diagnosis');
     expect(low?.detail).not.toMatch(/\d+\s*ms is normal/);
     expect(low?.sourceUrl).toBe('');
     expect(low?.step).toContain('breathing exercise');
+    expect(low?.step).toContain('GP');
+    expect(low?.step).toContain('rest day');
+
+    const sparse = buildHealthInsights({
+      today,
+      soberOn: null,
+      samples: [
+        point('hrv_sdnn', 18, '2026-10-09'),
+        point('hrv_sdnn', 16, '2026-10-10'),
+        point('hrv_sdnn', 15, '2026-10-11'),
+      ],
+    });
+    const sparseHrv = sparse.kinds.find((kind) => kind.kind === 'hrv_sdnn');
+    expect(sparseHrv?.flags).toEqual([]);
+    expect(sparseHrv?.lines.join(' ')).not.toMatch(/down \d+%/);
+    expect(sparse.headlines.join(' ')).not.toMatch(/Heart rate variability down/);
 
     const loss = buildHealthInsights({
       today,
@@ -314,6 +343,9 @@ describe('Thumos health insights', () => {
     expect(context).toContain('8400 steps');
     expect(context).toContain('Health insights, not medical advice:');
     expect(context).toContain('Steps up 18% on last week');
+    expect(context).toContain('What does HRV mean?');
+    expect(context).toContain('rough examples, not a target');
+    expect(context).toContain('not a diagnosis');
     const crisis = buildThumosContext({
       ...base,
       healthInsights: ['Steps up 18% on last week'],
@@ -321,6 +353,7 @@ describe('Thumos health insights', () => {
     });
     expect(crisis).not.toContain('Steps up 18%');
     expect(crisis).not.toContain('8400 steps');
+    expect(crisis).not.toContain('What does HRV mean?');
     expect(crisis).toContain('health insights');
   });
 
