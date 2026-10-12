@@ -1,5 +1,10 @@
+import { moodOnTen } from '../../supabase/functions/_shared/mood';
 import { isoDay } from './dates';
 import { londonDay } from './healthInsights';
+
+export { moodOnTen };
+
+export const MOOD_SCORES = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10] as const;
 
 export type CheckInPoint = {
   mood: number;
@@ -41,6 +46,38 @@ export function recentCheckInDays(checkIns: CheckInPoint[], today: Date): CheckI
     days[index] = { ...days[index], mood: item.mood, craving: item.craving };
   }
   return days;
+}
+
+/** Mean of the days that have a mood. A blank day is not treated as zero. */
+export function weeklyMoodAverage(days: { mood: number | null }[]): number | null {
+  const values = days.map((day) => day.mood).filter((value): value is number => value != null && Number.isFinite(value));
+  if (!values.length) return null;
+  return Math.round((values.reduce((sum, value) => sum + value, 0) / values.length) * 10) / 10;
+}
+
+export function formatMoodAverage(value: number): string {
+  const rounded = Math.round(value * 10) / 10;
+  const text = Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1);
+  return `Average ${text}/10`;
+}
+
+/**
+ * One-time conversion for a saved sample account. Scores already on 1-10
+ * (moodScale 10) are left alone, including a real 4, which must not become 8.
+ */
+export function convertStoredMoods<T extends { mood: number }>(
+  checkIns: T[],
+  moodScale: number | undefined,
+): { checkIns: T[]; moodScale: 10; converted: boolean } {
+  if (moodScale === 10) return { checkIns, moodScale: 10, converted: false };
+  return {
+    checkIns: checkIns.map((item) => {
+      const mood = moodOnTen(item.mood, null);
+      return mood === item.mood ? item : { ...item, mood };
+    }),
+    moodScale: 10,
+    converted: true,
+  };
 }
 
 const GRATEFUL_LINE_LIMIT = 200;

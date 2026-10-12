@@ -7,7 +7,7 @@ import type { VisionArea, VisionItem, VisionSize } from '@/domain/visionBoard';
 
 export type TextScale = 'default' | 'large' | 'extra';
 export type ThemePreference = 'system' | 'light' | 'dark';
-export type Mood = 1 | 2 | 3 | 4 | 5;
+export type Mood = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10;
 
 export type HealthKind =
   | 'steps'

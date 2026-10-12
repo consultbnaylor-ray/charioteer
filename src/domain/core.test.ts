@@ -143,7 +143,7 @@ describe('Thumos context', () => {
     weeklySpendGbp: 45,
     weeklyUnits: 28,
     checkIns: [
-      { createdAt: '2026-02-28T21:00:00.000Z', mood: 4, sleepHours: 7.5, craving: 2, note: 'Quiet night' },
+      { createdAt: '2026-02-28T21:00:00.000Z', mood: 8, sleepHours: 7.5, craving: 2, note: 'Quiet night' },
     ],
     health: [{ kind: 'steps', latest: 8400, previous: 6100, unit: 'steps' }],
     mode: 'growth' as const,
@@ -161,7 +161,8 @@ describe('Thumos context', () => {
       latestCraving: 1,
       userText: 'Mates are all going to the pub after football and I do not know if I can handle it.',
     })).toBe('support');
-    expect(inferThumosMode({ sos: false, hasHistory: true, latestMood: 5, latestCraving: 1 })).toBe('growth');
+    expect(inferThumosMode({ sos: false, hasHistory: true, latestMood: 8, latestCraving: 1 })).toBe('growth');
+    expect(inferThumosMode({ sos: false, hasHistory: true, latestMood: 5, latestCraving: 1 })).toBe('steady');
     expect(inferThumosMode({ sos: false, hasHistory: false })).toBe('opening');
     expect(THUMOS_INTRO).toBe('Thumos is your Sober Coach. Thumos will do his best to help you through cravings and/or help you reason with yourself. He will help you find reasons to stop (or not start) drinking. He can also help motivate you to stay healthy and keep strong, however you may feel.');
     expect(THUMOS_INTRO).not.toBe(CRAVING_LINE);
@@ -172,7 +173,8 @@ describe('Thumos context', () => {
     const context = buildThumosContext(base);
     const prompt = buildSystemPrompt(context, 'growth');
     expect(context).toContain('I want to remember my evenings.');
-    expect(context).toContain('mood 4/5');
+    expect(context).toContain('mood 8/10');
+    expect(context).not.toContain('/5');
     expect(context).toContain('8400 steps');
     expect(prompt).toContain('not a doctor');
     expect(prompt).toContain('116 123');
@@ -228,7 +230,7 @@ describe('Thumos context', () => {
     expect(support).toContain('undo their progress');
     expect(support).toContain('I want to remember my evenings.');
     expect(support).toContain('47 days, 6 hours');
-    expect(support).toContain('mood 4/5');
+    expect(support).toContain('mood 8/10');
     expect(support).toContain('8400 steps');
     expect(support).not.toContain('120 words');
     expect(support).not.toContain('What will you do for the next ten minutes?');

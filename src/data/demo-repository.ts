@@ -7,7 +7,7 @@ import {
   WEAK_PASSWORD_MESSAGE,
   WRONG_PASSWORD_MESSAGE,
 } from '@/domain/errors';
-import { planCheckInGratitudeSync } from '@/domain/checkIns';
+import { convertStoredMoods, planCheckInGratitudeSync } from '@/domain/checkIns';
 import { randomId } from '@/domain/id';
 import { isoDay } from '@/domain/dates';
 import { isGratitudeCategory, localGratitudeReflect, planGratitudeEntry, sortGratitude, type GratitudeEntry, type GratitudeReflect } from '@/domain/gratitude';
@@ -279,10 +279,21 @@ export class DemoRepository implements Repository {
     } catch {
       this.db = createDemoDb();
     }
+    this.backfillMoodScale();
     this.backfillProgressPhotos();
     this.ready = true;
     this.snapshot = this.derive();
     this.listeners.forEach((listener) => listener());
+  }
+
+  /** Older sample data stored mood from 1 to 5. Double it once, then leave a real 4 alone. */
+  private backfillMoodScale() {
+    if (this.db.moodScale === 10) return;
+    for (const account of Object.values(this.db.accounts)) {
+      account.checkIns = convertStoredMoods(account.checkIns, undefined).checkIns as typeof account.checkIns;
+    }
+    this.db.moodScale = 10;
+    void AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(this.db));
   }
 
   /** Sample photos for a demo account saved before this field existed. An empty list stays empty. */

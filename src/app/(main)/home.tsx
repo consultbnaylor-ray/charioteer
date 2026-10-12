@@ -249,7 +249,7 @@ export default function Home() {
       </Card>
       <Card>
         <T variant="label">Today</T>
-        <T>{checkedToday ? `Mood ${today.mood}/5 · craving ${today.craving}/10. You can add another if the day changed shape.` : 'A check-in takes a few seconds: mood, sleep, craving.'}</T>
+        <T>{checkedToday ? `Mood ${today.mood}/10 · craving ${today.craving}/10. You can add another if the day changed shape.` : 'A check-in takes a few seconds: mood, sleep, craving.'}</T>
         <Button label={checkedToday ? 'Update check-in' : 'Check in'} tone="quiet" onPress={() => router.push('/check-in' as never)} />
       </Card>
       <Card>

@@ -31,6 +31,7 @@ import {
 import { gratitudeFromRows, type GratitudeEntry } from '../_shared/gratitude.ts';
 import { visionContextFrom, type VisionContext } from '../_shared/visionBoard.ts';
 import { buildHealthInsights, londonDay } from '../_shared/healthInsights.ts';
+import { moodOnTen } from '../_shared/mood.ts';
 
 type Body = { content?: string; mode?: ThumosMode };
 
@@ -106,7 +107,7 @@ Deno.serve(async (req) => {
   const [profileRes, reasonsRes, checkRes, healthRes, historyRes, interestRes] = await Promise.all([
     userClient.from('profiles').select('*').eq('id', userId).single(),
     userClient.from('reasons').select('body, sort_order').eq('user_id', userId).order('sort_order'),
-    userClient.from('check_ins').select('mood, sleep_hours, craving, note, created_at').eq('user_id', userId).order('created_at', { ascending: false }).limit(THUMOS_CHAT.checkInLimit),
+    userClient.from('check_ins').select('mood, mood_10, sleep_hours, craving, note, created_at').eq('user_id', userId).order('created_at', { ascending: false }).limit(THUMOS_CHAT.checkInLimit),
     userClient.from('health_samples').select('kind, value, unit, recorded_on').eq('user_id', userId).order('recorded_on', { ascending: false }).limit(1000),
     userClient.from('thumos_messages').select('role, content, created_at').eq('user_id', userId).order('created_at', { ascending: false }).limit(THUMOS_CHAT.historyLimit),
     userClient.from('profile_interests').select('interests(label)').eq('user_id', userId),
@@ -162,7 +163,7 @@ Deno.serve(async (req) => {
 
   const checkIns: CheckInSummary[] = (checkRes.data ?? []).map((row) => ({
     createdAt: row.created_at,
-    mood: row.mood,
+    mood: moodOnTen(row.mood, row.mood_10),
     sleepHours: Number(row.sleep_hours),
     craving: row.craving,
     note: row.note ?? '',

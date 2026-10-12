@@ -353,7 +353,8 @@ export function inferThumosMode(input: {
   if (detectRisk(input.userText) !== 'none') return 'support';
   if ((input.latestCraving ?? 0) >= 6) return 'support';
   if (!input.hasHistory && !input.userText) return 'opening';
-  if ((input.latestMood ?? 0) >= 4 && (input.latestCraving ?? 0) <= 3) return 'growth';
+  // 8 is the old Bright (4) once a 1-5 score has been doubled onto 1-10.
+  if ((input.latestMood ?? 0) >= 8 && (input.latestCraving ?? 0) <= 3) return 'growth';
   return 'steady';
 }
 
@@ -660,7 +661,7 @@ export function buildThumosContext(input: ThumosContextInput): string {
     .slice(0, THUMOS_CHAT.checkInLimit)
     .map((item) => {
       const note = item.note.trim().slice(0, THUMOS_CHAT.noteLimit);
-      return `- ${item.createdAt}: mood ${item.mood}/5, sleep ${item.sleepHours}h, craving ${item.craving}/10${note ? `. Note: ${note}` : ''}`;
+      return `- ${item.createdAt}: mood ${item.mood}/10, sleep ${item.sleepHours}h, craving ${item.craving}/10${note ? `. Note: ${note}` : ''}`;
     })
     .join('\n');
 

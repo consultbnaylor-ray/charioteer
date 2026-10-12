@@ -48,6 +48,8 @@ export type DemoAccount = {
 };
 
 export type DemoDb = {
+  /** 10 once check-in moods are stored on the 1-10 scale. Absent on older sample data. */
+  moodScale?: 10;
   accounts: Record<string, DemoAccount>;
   sessionUserId: string | null;
   connections: Connection[];
@@ -241,11 +243,11 @@ export function createDemoDb(now = new Date()): DemoDb {
   ];
 
   const checkIns: CheckIn[] = [
-    { id: 'c1c1c1c1-c1c1-4c1c-8c1c-c1c1c1c1c1c1', mood: 4, sleepHours: 7.5, craving: 2, note: 'Quiet evening. Tea and a film.', createdAt: ago(20) },
-    { id: 'c2c2c2c2-c2c2-4c2c-8c2c-c2c2c2c2c2c2', mood: 3, sleepHours: 6.5, craving: 4, note: 'Walked home the long way.', createdAt: ago(44) },
-    { id: 'c3c3c3c3-c3c3-4c3c-8c3c-c3c3c3c3c3c3', mood: 2, sleepHours: 5, craving: 8, note: 'The urge was loud after work. I stayed in.', createdAt: ago(68) },
-    { id: 'c4c4c4c4-c4c4-4c4c-8c4c-c4c4c4c4c4c4', mood: 4, sleepHours: 8, craving: 1, note: 'Slept properly for once.', createdAt: ago(92) },
-    { id: 'c5c5c5c5-c5c5-4c5c-8c5c-c5c5c5c5c5c5', mood: 3, sleepHours: 7, craving: 3, note: '', createdAt: ago(116) },
+    { id: 'c1c1c1c1-c1c1-4c1c-8c1c-c1c1c1c1c1c1', mood: 8, sleepHours: 7.5, craving: 2, note: 'Quiet evening. Tea and a film.', createdAt: ago(20) },
+    { id: 'c2c2c2c2-c2c2-4c2c-8c2c-c2c2c2c2c2c2', mood: 6, sleepHours: 6.5, craving: 4, note: 'Walked home the long way.', createdAt: ago(44) },
+    { id: 'c3c3c3c3-c3c3-4c3c-8c3c-c3c3c3c3c3c3', mood: 4, sleepHours: 5, craving: 8, note: 'The urge was loud after work. I stayed in.', createdAt: ago(68) },
+    { id: 'c4c4c4c4-c4c4-4c4c-8c4c-c4c4c4c4c4c4', mood: 8, sleepHours: 8, craving: 1, note: 'Slept properly for once.', createdAt: ago(92) },
+    { id: 'c5c5c5c5-c5c5-4c5c-8c5c-c5c5c5c5c5c5', mood: 6, sleepHours: 7, craving: 3, note: '', createdAt: ago(116) },
   ];
 
   const health = demoHealth(now);
@@ -389,6 +391,7 @@ export function createDemoDb(now = new Date()): DemoDb {
   const requestId = 'cccccccc-cccc-4ccc-8ccc-ccccccccccc2';
 
   return {
+    moodScale: 10,
     accounts: {
       [PEOPLE.alex]: alex,
       [PEOPLE.jordan]: jordan,

@@ -277,10 +277,3 @@ export const HEALTH_LABELS: Record<string, string> = {
   weight_kg: 'Weight',
 };
 
-export const MOODS: { value: 1 | 2 | 3 | 4 | 5; label: string }[] = [
-  { value: 1, label: 'Low' },
-  { value: 2, label: 'Heavy' },
-  { value: 3, label: 'Steady' },
-  { value: 4, label: 'Bright' },
-  { value: 5, label: 'Light' },
-];

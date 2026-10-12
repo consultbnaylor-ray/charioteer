@@ -1,6 +1,6 @@
 import { View } from 'react-native';
 
-import type { CheckInDay } from '@/domain/checkIns';
+import { formatMoodAverage, weeklyMoodAverage, type CheckInDay } from '@/domain/checkIns';
 import { useAppTheme } from '@/ui/theme';
 import { T } from '@/ui/ui';
 
@@ -8,6 +8,7 @@ const BAR_MAX = 56;
 
 export function CheckInWeek({ days }: { days: CheckInDay[] }) {
   const empty = days.every((day) => day.mood == null && day.craving == null);
+  const moodAverage = weeklyMoodAverage(days);
   return (
     <View style={{ gap: 12 }}>
       <T variant="label">Recent check-ins</T>
@@ -15,7 +16,7 @@ export function CheckInWeek({ days }: { days: CheckInDay[] }) {
         <T variant="muted">No check-ins in the last 7 days.</T>
       ) : (
         <>
-          <Series label="Mood" max={5} days={days} pick={(day) => day.mood} />
+          <Series label="Mood" max={10} unit="/10" average={moodAverage == null ? null : formatMoodAverage(moodAverage)} days={days} pick={(day) => day.mood} />
           <Series label="Craving" max={10} days={days} pick={(day) => day.craving} />
         </>
       )}
@@ -28,16 +29,21 @@ function Series({
   max,
   days,
   pick,
+  unit = '',
+  average = null,
 }: {
   label: string;
   max: number;
   days: CheckInDay[];
   pick: (day: CheckInDay) => number | null;
+  unit?: string;
+  average?: string | null;
 }) {
   const theme = useAppTheme();
   return (
     <View accessibilityLabel={`${label} chart`} style={{ gap: 6 }}>
       <T variant="label">{label}</T>
+      {average ? <T variant="muted">{average}</T> : null}
       <View style={{ flexDirection: 'row', alignItems: 'flex-end' }}>
         {days.map((day) => {
           const value = pick(day);
@@ -47,7 +53,7 @@ function Series({
           return (
             <View
               key={`${label}-${day.day}`}
-              accessibilityLabel={missing ? `${label} ${day.label}, none` : `${label} ${day.label} ${value}`}
+              accessibilityLabel={missing ? `${label} ${day.label}, none` : `${label} ${day.label} ${value}${unit}`}
               style={{ width: `${100 / 7}%`, alignItems: 'center', gap: 4 }}
             >
               <T style={{ fontSize: 12 * theme.scale, lineHeight: 16 * theme.scale, color: theme.colors.muted }}>

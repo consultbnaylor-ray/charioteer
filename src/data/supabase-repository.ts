@@ -67,7 +67,7 @@ import { planCustomInterest, validateTown } from '@/domain/privacy';
 import { fetchWithOneRetry } from '@/domain/retryFetch';
 import { planReasons } from '@/domain/reasons';
 import { BIO_LIMIT, PHOTO_CAPTION_LIMIT, defaultProfileSharing, normalizeProfileSharing, parsePublicProfile, planProfileText, sensitiveTurnedOn, type ProfileSharing } from '@/domain/profileSharing';
-import { planCheckInGratitude } from '@/domain/checkIns';
+import { moodOnTen, planCheckInGratitude } from '@/domain/checkIns';
 import { quoteById } from '@/domain/stoicQuotes';
 import { planRelapse } from '@/domain/sober';
 import { parseSseBuffer } from '@/domain/sse';
@@ -1805,7 +1805,7 @@ function mapReason(row: Row): Reason {
 function mapCheckIn(row: Row): CheckIn {
   return {
     id: String(row.id),
-    mood: Number(row.mood) as CheckIn['mood'],
+    mood: moodOnTen(row.mood, row.mood_10) as CheckIn['mood'],
     sleepHours: Number(row.sleep_hours),
     craving: Number(row.craving),
     note: String(row.note ?? ''),

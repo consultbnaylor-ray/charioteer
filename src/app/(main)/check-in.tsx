@@ -3,9 +3,8 @@ import { useEffect, useRef, useState } from 'react';
 import { View } from 'react-native';
 
 import { useRepository, useSnapshot } from '@/data';
-import { MOODS } from '@/data/catalogue';
 import type { Mood } from '@/data/types';
-import { gratefulForLine, planCheckInGratitude } from '@/domain/checkIns';
+import { gratefulForLine, MOOD_SCORES, planCheckInGratitude } from '@/domain/checkIns';
 import { formatUkWhen, isoDay } from '@/domain/dates';
 import { shownError } from '@/domain/errors';
 import { randomId } from '@/domain/id';
@@ -17,7 +16,7 @@ export default function CheckIn() {
   const repo = useRepository();
   const snap = useSnapshot();
   const router = useRouter();
-  const [mood, setMood] = useState<Mood>(3);
+  const [mood, setMood] = useState<Mood>(5);
   const [sleep, setSleep] = useState('7');
   const [craving, setCraving] = useState(3);
   const [note, setNote] = useState('');
@@ -100,10 +99,10 @@ export default function CheckIn() {
           apply={(sharing, selected) => ({ ...sharing, moodStreak: selected })}
         />
       </View>
-      <T variant="label">Mood</T>
+      <T variant="label">Mood, 1 to 10</T>
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-        {MOODS.map((item) => (
-          <Choice key={item.value} label={item.label} selected={mood === item.value} onPress={() => touch(setMood)(item.value)} />
+        {MOOD_SCORES.map((value) => (
+          <Choice key={value} label={String(value)} selected={mood === value} onPress={() => touch(setMood)(value)} />
         ))}
       </View>
       <Field label="Sleep last night (hours)" value={sleep} onChangeText={touch(setSleep)} keyboardType="decimal-pad" />
@@ -145,7 +144,7 @@ export default function CheckIn() {
         return (
           <Card key={item.id}>
             <T>{formatUkWhen(item.createdAt)}</T>
-            <T variant="muted">Mood {item.mood}/5 · sleep {item.sleepHours}h · craving {item.craving}/10</T>
+            <T variant="muted">Mood {item.mood}/10 · sleep {item.sleepHours}h · craving {item.craving}/10</T>
             {item.note ? <T>{item.note}</T> : null}
             {gratefulLine ? <T variant="muted">{gratefulLine}</T> : null}
           </Card>
