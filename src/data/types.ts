@@ -52,6 +52,10 @@ export type Profile = {
   pinnedQuoteId: string | null;
   /** Public words under the name. Empty when unset. Sharing starts on. */
   bio: string;
+  /** The Notifications switch. The same column the Edit Profile turn-off control writes. */
+  messageNotifications: boolean;
+  /** When on, a private-message alert names the sender. The message text is never included. */
+  notifySenderName: boolean;
   createdAt: string;
 };
 
@@ -265,6 +269,8 @@ export type ProfilePatch = Partial<
     | 'visionStartedOn'
     | 'pinnedQuoteId'
     | 'bio'
+    | 'messageNotifications'
+    | 'notifySenderName'
   >
 >;
 
@@ -337,6 +343,8 @@ export interface Repository {
   requestConnection(userId: string): Promise<void>;
   respondConnection(connectionId: string, accept: boolean): Promise<void>;
   sendDirectMessage(connectionId: string, body: string): Promise<void>;
+  /** Stores this phone's Expo push token for the signed-in person. */
+  saveDeviceToken(token: string, platform: 'ios' | 'android'): Promise<void>;
   blockUser(userId: string): Promise<void>;
   unblockUser(userId: string): Promise<void>;
   reportUser(input: NewReport): Promise<void>;

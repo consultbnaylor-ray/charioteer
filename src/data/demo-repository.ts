@@ -363,6 +363,8 @@ export class DemoRepository implements Repository {
         visionStartedOn: null,
         pinnedQuoteId: null,
         bio: '',
+        messageNotifications: true,
+        notifySenderName: false,
         createdAt: new Date().toISOString(),
       },
       reasons: [],
@@ -647,6 +649,10 @@ export class DemoRepository implements Repository {
     }
     connection.status = accept ? 'accepted' : 'declined';
     this.commit(db);
+  }
+
+  async saveDeviceToken(_token: string, _platform: 'ios' | 'android'): Promise<void> {
+    return undefined;
   }
 
   async sendDirectMessage(connectionId: string, body: string): Promise<void> {

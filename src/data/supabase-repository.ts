@@ -750,6 +750,8 @@ export class SupabaseRepository implements Repository {
       if (!planned.ok) throw new UserFacingError(planned.message, 'generic');
       column.bio = planned.text || null;
     }
+    if (patch.messageNotifications !== undefined) column.message_notifications = patch.messageNotifications;
+    if (patch.notifySenderName !== undefined) column.notify_sender_name = patch.notifySenderName;
     if (Object.keys(column).length) {
       const { error } = await this.client.from('profiles').update(column).eq('id', userId);
       if (error) throw asUserFacing(error, 'general');
@@ -936,13 +938,28 @@ export class SupabaseRepository implements Repository {
     const text = body.trim();
     if (!text) return;
     const userId = await this.userId();
-    const { error } = await this.client.from('direct_messages').insert({
+    const { data, error } = await this.client.from('direct_messages').insert({
       connection_id: connectionId,
       sender_id: userId,
       body: text.slice(0, 2000),
-    });
+    }).select('id').single();
     if (error) throw asUserFacing(error, 'general');
+    const messageId = data && typeof data.id === 'string' ? data.id : '';
+    if (messageId) {
+      void this.client.functions.invoke('notify-direct-message', { body: { messageId } }).catch(() => undefined);
+    }
     await this.refresh();
+  }
+
+  async saveDeviceToken(token: string, platform: 'ios' | 'android'): Promise<void> {
+    const userId = await this.userId();
+    const { error } = await this.client.from('device_tokens').upsert({
+      user_id: userId,
+      expo_push_token: token,
+      platform,
+      updated_at: new Date().toISOString(),
+    }, { onConflict: 'user_id,expo_push_token' });
+    if (error) throw asUserFacing(error, 'general');
   }
 
   async blockUser(userId: string): Promise<void> {
@@ -1764,6 +1781,8 @@ function mapProfile(row: Row, email: string, interestIds: string[]): Profile {
     visionStatement: typeof row.vision_statement === 'string' ? row.vision_statement : '',
     pinnedQuoteId: typeof row.pinned_quote_id === 'string' && quoteById(row.pinned_quote_id) ? row.pinned_quote_id : null,
     bio: typeof row.bio === 'string' ? row.bio : '',
+    messageNotifications: row.message_notifications == null ? true : Boolean(row.message_notifications),
+    notifySenderName: Boolean(row.notify_sender_name),
     visionStartedOn: typeof row.vision_started_on === 'string'
       ? (/^(\d{4}-\d{2}-\d{2})/.exec(row.vision_started_on)?.[1] ?? null)
       : null,
