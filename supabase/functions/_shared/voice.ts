@@ -169,8 +169,8 @@ export function adaptPromptForSpeech(prompt: string): string {
   const eventSpeech = base.includes('EVENT PREPARATION')
     ? 'When they mention an upcoming event, speak the short preparation plan in a few sentences, including exercise or an alternative and a drink plan, then one question. Do not turn it into a written list.'
     : '';
-  const quoteSpeech = base.includes('Pinned Stoic quote')
-    ? 'If a pinned Stoic quote is in the context, you may say it once for motivation, in the words given. Do not invent a quotation.'
+  const quoteSpeech = base.includes('Pinned Stoic quote') || base.includes('Pinned Platonic quote')
+    ? 'If a pinned Stoic quote or a pinned Platonic quote is in the context, you may say it once for motivation, in the words given. Do not invent a quotation. If the line is Platonic, do not call the author a Stoic.'
     : '';
   return [
     base,

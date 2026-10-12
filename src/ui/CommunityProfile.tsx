@@ -226,7 +226,7 @@ function SharedProfileFacts({ userId, name }: { userId: string; name: string }) 
       {view.pinnedQuote ? (
         <View style={{ gap: 4 }}>
           <T variant="title">{view.pinnedQuote.text}</T>
-          <T variant="muted">{view.pinnedQuote.author} · {view.pinnedQuote.source}</T>
+          <T variant="muted">{view.pinnedQuote.author} · {view.pinnedQuote.school} · {view.pinnedQuote.source}</T>
         </View>
       ) : null}
       {view.interests.length ? <T>{view.interests.join(' · ')}</T> : null}

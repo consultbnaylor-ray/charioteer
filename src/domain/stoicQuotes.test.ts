@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
-import { londonDay } from './healthInsights';
+import { londonDay, shiftDay } from './healthInsights';
 import { defaultProfileSharing, projectPublicProfile, sensitiveTurnedOn, type ShareSource } from './profileSharing';
 import { APP_SECTIONS } from './sections';
 import {
@@ -51,13 +51,15 @@ describe('Stoic quote catalogue', () => {
       expect(quote.text).not.toContain('[Greek:');
       expect(quote.text).not.toContain('Gutenberg');
     }
-    expect(STOIC_AUTHORS).toEqual(['Epictetus', 'Marcus Aurelius', 'Seneca', 'Zeno of Citium']);
+    expect(STOIC_AUTHORS).toEqual(['Epictetus', 'Marcus Aurelius', 'Plato', 'Seneca', 'Zeno of Citium']);
     expect(STOIC_QUOTES.map((quote) => quote.translator)).toEqual(expect.arrayContaining([
       'Meric Casaubon',
       'George Long',
       'Aubrey Stewart',
       'C. D. Yonge',
+      'Benjamin Jowett',
     ]));
+    expect(STOIC_QUOTES.filter((quote) => quote.author !== 'Plato').every((quote) => quote.school === 'Stoic')).toBe(true);
     expect(STOIC_QUOTES.some((quote) => quote.text.startsWith('Of my grandfather Verus'))).toBe(true);
     expect(STOIC_QUOTES.some((quote) => quote.text.startsWith('Of things some are in our power'))).toBe(true);
     expect(STOIC_QUOTES.some((quote) => quote.text.includes('Life is long enough, if you know how to use it.'))).toBe(true);
@@ -151,6 +153,7 @@ describe('pinned quote sharing', () => {
       id: quote.id,
       text: quote.text,
       author: quote.author,
+      school: quote.school,
       source: quote.source,
     });
     expect(JSON.stringify(shared)).not.toContain(quote.plain);
@@ -184,6 +187,7 @@ describe('Thumos and the pinned quote', () => {
   it('includes the line for motivation, and withholds it on a self-harm turn', () => {
     const context = buildThumosContext(base);
     expect(context).toContain(quote.text);
+    expect(context).toContain('Pinned Stoic quote');
     expect(context).toContain('Seneca');
     const prompt = buildSystemPrompt(context, 'steady');
     expect(prompt).toContain('you may use it once for motivation');
@@ -199,13 +203,106 @@ describe('Thumos and the pinned quote', () => {
   });
 });
 
+describe('Plato in the daily rotation', () => {
+  const MISATTRIBUTIONS = [
+    'Be kind, for everyone you meet is fighting a hard battle',
+    'Only the dead have seen the end of war',
+    'Wise men speak because they have something to say',
+    'Music is a moral law',
+    'We can easily forgive a child who is afraid of the dark',
+    'A good decision is based on knowledge not on numbers',
+    'the practice of dying',
+    'be of good cheer about death',
+  ];
+
+  it('keeps Plato Platonic, sourced to a dialogue, and inside one full rotation', () => {
+    const plato = STOIC_QUOTES.filter((quote) => quote.author === 'Plato');
+    expect(plato.length).toBeGreaterThanOrEqual(20);
+    expect(plato.length).toBeLessThanOrEqual(30);
+    const source = /^(Apology|Charmides|Crito|Gorgias|Laches|Laws|Phaedrus|Protagoras|Republic|Symposium|Theaetetus) \d{2,3}[a-e](?:–(?:\d{2,3})?[a-e])?$/;
+    for (const quote of plato) {
+      expect(quote.school, quote.id).toBe('Platonic');
+      expect(quote.translator, quote.id).toBe('Benjamin Jowett');
+      expect(quote.source, quote.id).toMatch(source);
+      expect(quote.text, quote.id).not.toMatch(/Plato was a Stoic|Stoic philosopher/i);
+      for (const fake of MISATTRIBUTIONS) expect(quote.text, quote.id).not.toContain(fake);
+    }
+    expect(plato.some((quote) => quote.source.startsWith('Phaedrus 246'))).toBe(true);
+    expect(plato.some((quote) => quote.id === 'pl-ap-38a' && quote.text.includes('the unexamined life is not worth living'))).toBe(true);
+    const seen = new Set<string>();
+    let day = '2020-01-01';
+    for (let index = 0; index < STOIC_QUOTES.length; index += 1) {
+      const quote = quoteForUkDay(day);
+      if (quote.author === 'Plato') seen.add(quote.id);
+      day = shiftDay(day, 1);
+    }
+    expect([...seen].sort()).toEqual(plato.map((quote) => quote.id).sort());
+    const byTranslator = searchQuotes({ query: 'Benjamin Jowett' });
+    expect(byTranslator.map((quote) => quote.id).sort()).toEqual(plato.map((quote) => quote.id).sort());
+    expect(searchQuotes({ author: 'Plato' }).every((quote) => quote.school === 'Platonic')).toBe(true);
+  });
+
+  it('labels the library, the pin, and Thumos without calling Plato a Stoic', () => {
+    const home = readFileSync('src/app/(main)/home.tsx', 'utf8');
+    const quotes = readFileSync('src/app/(main)/quotes.tsx', 'utf8');
+    const you = readFileSync('src/app/(main)/profile.tsx', 'utf8');
+    expect(quotes).toContain('eyebrow="Stoic & Classical Wisdom"');
+    expect(quotes).toContain('Plato is Platonic, not a Stoic.');
+    expect(quotes).toContain('{quote.school}');
+    expect(home).toContain('quoteCredit(dailyQuote)');
+    expect(home).toContain('label="Stoic & classical wisdom"');
+    expect(you).toContain('quoteCredit(pinned)');
+    expect(you).toContain('label="Pin a quote"');
+    expect(you).not.toContain('Pin a Stoic quote');
+    const plato = STOIC_QUOTES.find((quote) => quote.id === 'pl-ph-246a');
+    expect(plato?.text).toContain('a pair of winged horses and a charioteer');
+    const context = buildThumosContext({
+      now: new Date('2026-10-11T12:00:00.000Z'),
+      displayName: 'Alex',
+      sobrietyStartedAt: null,
+      reasons: [],
+      weeklySpendGbp: null,
+      weeklyUnits: null,
+      checkIns: [],
+      health: [],
+      mode: 'steady',
+      safety: { selfHarm: false, withdrawal: false, reasons: [] },
+      pinnedQuote: plato
+        ? { text: plato.text, author: plato.author, source: plato.source, school: plato.school }
+        : null,
+    });
+    expect(context).toContain('Pinned Platonic quote');
+    expect(context).toContain('Plato is Platonic, not a Stoic.');
+    expect(context).not.toContain('Pinned Stoic quote');
+    const prompt = buildSystemPrompt(context, 'steady');
+    expect(prompt).toContain('Do not call Plato a Stoic.');
+    expect(adaptPromptForSpeech(prompt)).toContain('do not call the author a Stoic');
+    const inferred = buildThumosContext({
+      now: new Date('2026-10-11T12:00:00.000Z'),
+      displayName: 'Alex',
+      sobrietyStartedAt: null,
+      reasons: [],
+      weeklySpendGbp: null,
+      weeklyUnits: null,
+      checkIns: [],
+      health: [],
+      mode: 'steady',
+      safety: { selfHarm: false, withdrawal: false, reasons: [] },
+      pinnedQuote: { text: 'A line.', author: 'Plato', source: 'Phaedrus 246a–b' },
+    });
+    expect(inferred).toContain('Pinned Platonic quote');
+    expect(inferred).not.toContain('Pinned Stoic quote');
+  });
+});
+
 describe('Stoic quotes in the menu and the database', () => {
   it('sits in Tools without moving Vision Board', () => {
     const labels = APP_SECTIONS.map((section) => section.label);
-    const quotes = APP_SECTIONS.find((section) => section.label === 'Stoic Quotes');
+    const quotes = APP_SECTIONS.find((section) => section.label === 'Stoic & Classical Wisdom');
     expect(quotes).toMatchObject({ href: '/quotes', group: 'tools', icon: 'quote' });
-    expect(labels.indexOf('Stoic Quotes')).toBeGreaterThan(labels.indexOf('Drinks & units calculator'));
-    expect(labels.indexOf('Stoic Quotes')).toBeLessThan(labels.indexOf('Library'));
+    expect(labels.indexOf('Stoic & Classical Wisdom')).toBeGreaterThan(labels.indexOf('Drinks & units calculator'));
+    expect(labels.indexOf('Stoic & Classical Wisdom')).toBeLessThan(labels.indexOf('Library'));
+    expect(labels).not.toContain('Stoic Quotes');
     expect(labels.indexOf('Vision Board')).toBeGreaterThan(labels.indexOf('Progress photos'));
     expect(labels.indexOf('Vision Board')).toBeLessThan(labels.indexOf('Drinks & units calculator'));
   });

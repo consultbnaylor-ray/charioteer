@@ -2971,6 +2971,156 @@ export const STOIC_CATALOGUE: readonly { id: string; text: string; author: strin
     "source": "Meditations, Book 9, section 9"
   },
   {
+    "id": "pl-ap-28b",
+    "text": "There you are mistaken: a man who is good for anything ought not to calculate the chance of living or dying; he ought only to consider whether in doing anything he is doing right or wrong—acting the part of a good man or of a bad.",
+    "author": "Plato",
+    "source": "Apology 28b"
+  },
+  {
+    "id": "pl-ap-29d",
+    "text": "You, my friend,—a citizen of the great and mighty and wise city of Athens,—are you not ashamed of heaping up the greatest amount of money and honour and reputation, and caring so little about wisdom and truth and the greatest improvement of the soul, which you never regard or heed at all?",
+    "author": "Plato",
+    "source": "Apology 29d–30a"
+  },
+  {
+    "id": "pl-ap-30e",
+    "text": "For if you kill me you will not easily find a successor to me, who, if I may use such a ludicrous figure of speech, am a sort of gadfly, given to the state by God; and the state is a great and noble steed who is tardy in his motions owing to his very size, and requires to be stirred into life. I am that gadfly which God has attached to the state, and all day long and in all places am always fastening upon you, arousing and persuading and reproaching you.",
+    "author": "Plato",
+    "source": "Apology 30e"
+  },
+  {
+    "id": "pl-ap-36c",
+    "text": "he must look to himself, and seek virtue and wisdom before he looks to his private interests, and look to the state before he looks to the interests of the state; and that this should be the order which he observes in all his actions.",
+    "author": "Plato",
+    "source": "Apology 36c"
+  },
+  {
+    "id": "pl-ap-38a",
+    "text": "and if I say again that daily to discourse about virtue, and of those other things about which you hear me examining myself and others, is the greatest good of man, and that the unexamined life is not worth living, you are still less likely to believe me.",
+    "author": "Plato",
+    "source": "Apology 38a"
+  },
+  {
+    "id": "pl-ch-164d",
+    "text": "I will withdraw them, rather than admit that a man can be temperate or wise who does not know himself; and I am not ashamed to confess that I was in error. For self-knowledge would certainly be maintained by me to be the very essence of knowledge, and in this I agree with him who dedicated the inscription, 'Know thyself!' at Delphi.",
+    "author": "Plato",
+    "source": "Charmides 164d–165a"
+  },
+  {
+    "id": "pl-cr-47c",
+    "text": "In questions of just and unjust, fair and foul, good and evil, which are the subjects of our present consultation, ought we to follow the opinion of the many and to fear them; or the opinion of the one man who has understanding?",
+    "author": "Plato",
+    "source": "Crito 47c–48a"
+  },
+  {
+    "id": "pl-cr-48b",
+    "text": "And I should like to know whether I may say the same of another proposition--that not life, but a good life, is to be chiefly valued?",
+    "author": "Plato",
+    "source": "Crito 48b"
+  },
+  {
+    "id": "pl-cr-49b",
+    "text": "Tell me, then, whether you agree with and assent to my first principle, that neither injury nor retaliation nor warding off evil by evil is ever right.",
+    "author": "Plato",
+    "source": "Crito 49b–c"
+  },
+  {
+    "id": "pl-go-469b",
+    "text": "Then these are the points at issue between us—are they not? I was saying that to do is worse than to suffer injustice?",
+    "author": "Plato",
+    "source": "Gorgias 469b–c"
+  },
+  {
+    "id": "pl-la-195a",
+    "text": "NICIAS: I mean to say, Laches, that courage is the knowledge of that which inspires fear or confidence in war, or in anything.",
+    "author": "Plato",
+    "source": "Laches 195a"
+  },
+  {
+    "id": "pl-lw-659d",
+    "text": "The inference at which we arrive for the third or fourth time is, that education is the constraining and directing of youth towards that right reason, which the law affirms, and which the experience of the eldest and best has agreed to be truly right.",
+    "author": "Plato",
+    "source": "Laws 659d"
+  },
+  {
+    "id": "pl-ph-246a",
+    "text": "And let the figure be composite--a pair of winged horses and a charioteer. Now the winged horses and the charioteers of the gods are all of them noble and of noble descent, but those of other races are mixed; the human charioteer drives his in a pair; and one of them is noble and of noble breed, and the other is ignoble and of ignoble breed; and the driving of them of necessity gives a great deal of trouble to him.",
+    "author": "Plato",
+    "source": "Phaedrus 246a–b"
+  },
+  {
+    "id": "pl-ph-246e",
+    "text": "The divine is beauty, wisdom, goodness, and the like; and by these the wing of the soul is nourished, and grows apace; but when fed upon evil and foulness and the opposite of good, wastes and falls away.",
+    "author": "Plato",
+    "source": "Phaedrus 246e"
+  },
+  {
+    "id": "pl-ph-247b",
+    "text": "The chariots of the gods in even poise, obeying the rein, glide rapidly; but the others labour, for the vicious steed goes heavily, weighing down the charioteer to the earth when his steed has not been thoroughly trained:--and this is the hour of agony and extremest conflict for the soul.",
+    "author": "Plato",
+    "source": "Phaedrus 247b"
+  },
+  {
+    "id": "pl-ph-253d",
+    "text": "The right-hand horse is upright and cleanly made; he has a lofty neck and an aquiline nose; his colour is white, and his eyes dark; he is a lover of honour and modesty and temperance, and the follower of true glory; he needs no touch of the whip, but is guided by word and admonition only.",
+    "author": "Plato",
+    "source": "Phaedrus 253d–e"
+  },
+  {
+    "id": "pl-ph-254e",
+    "text": "And when this has happened several times and the villain has ceased from his wanton way, he is tamed and humbled, and follows the will of the charioteer, and when he sees the beautiful one he is ready to die of fear.",
+    "author": "Plato",
+    "source": "Phaedrus 254e"
+  },
+  {
+    "id": "pl-pr-358c",
+    "text": "Then, I said, no man voluntarily pursues evil, or that which he thinks to be evil. To prefer evil to good is not in human nature; and when a man is compelled to choose one of two evils, no one will choose the greater when he may have the less.",
+    "author": "Plato",
+    "source": "Protagoras 358c–d"
+  },
+  {
+    "id": "pl-re-377a",
+    "text": "You know also that the beginning is the most important part of any work, especially in the case of a young and tender thing; for that is the time at which the character is being formed and the desired impression is more readily taken.",
+    "author": "Plato",
+    "source": "Republic 377a–b"
+  },
+  {
+    "id": "pl-re-442c",
+    "text": "And would you not say that he is temperate who has these same elements in friendly harmony, in whom the one ruling principle of reason, and the two subject ones of spirit and desire are equally agreed that reason ought to rule, and do not rebel?",
+    "author": "Plato",
+    "source": "Republic 442c–d"
+  },
+  {
+    "id": "pl-re-514a",
+    "text": "And now, I said, let me show in a figure how far our nature is enlightened or unenlightened:—Behold! human beings living in a underground den, which has a mouth open towards the light and reaching all along the den; here they have been from their childhood, and have their legs and necks chained so that they cannot move, and can only see before them, being prevented by the chains from turning round their heads.",
+    "author": "Plato",
+    "source": "Republic 514a"
+  },
+  {
+    "id": "pl-re-591c",
+    "text": "In the next place, he will regulate his bodily habit and training, and so far will he be from yielding to brutal and irrational pleasures, that he will regard even health as quite a secondary matter; his first object will be not that he may be fair or strong or well, unless he is likely thereby to gain temperance, but he will always desire so to attemper the body as to preserve the harmony of the soul?",
+    "author": "Plato",
+    "source": "Republic 591c"
+  },
+  {
+    "id": "pl-re-591d",
+    "text": "And in the acquisition of wealth there is a principle of order and harmony which he will also observe; he will not allow himself to be dazzled by the foolish applause of the world, and heap up riches to his own infinite harm?",
+    "author": "Plato",
+    "source": "Republic 591d"
+  },
+  {
+    "id": "pl-sy-202e",
+    "text": "'He is a great spirit (daimon), and like all spirits he is intermediate between the divine and the mortal.' 'And what,' I said, 'is his power?' 'He interprets,' she replied, 'between gods and men, conveying and taking across to the gods the prayers and sacrifices of men, and to men the commands and replies of the gods; he is the mediator who spans the chasm which divides them",
+    "author": "Plato",
+    "source": "Symposium 202e–203a"
+  },
+  {
+    "id": "pl-th-155d",
+    "text": "SOCRATES: I see, my dear Theaetetus, that Theodorus had a true insight into your nature when he said that you were a philosopher, for wonder is the feeling of a philosopher, and philosophy begins in wonder.",
+    "author": "Plato",
+    "source": "Theaetetus 155d"
+  },
+  {
     "id": "sen-on-a-happy-life-c1",
     "text": "All men, brother Gallio, wish to live happily, but are dull at perceiving exactly what it is that makes life happy: and so far is it from being easy to attain the happiness that the more eagerly a man struggles to reach it the further he departs from it, if he takes the wrong road; for, since this leads in the opposite direction, his very swiftness carries him all the further away.",
     "author": "Seneca",

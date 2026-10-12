@@ -11,7 +11,7 @@ import { shownError } from '@/domain/errors';
 import { interestChipRemovable, interestChipVisible } from '@/domain/interests';
 import { planCustomInterest } from '@/domain/privacy';
 import { toggleShareId } from '@/domain/profileSharing';
-import { quoteById } from '@/domain/stoicQuotes';
+import { quoteById, quoteCredit } from '@/domain/stoicQuotes';
 import { planReasons, reasonOverLimit } from '@/domain/reasons';
 import { profileDetailsDirty, type ProfileFormValues } from '@/domain/profileForm';
 import { InterestChip } from '@/ui/InterestChip';
@@ -239,7 +239,7 @@ export default function Profile() {
         <View style={{ gap: 8 }}>
           <T variant="label">Pinned quote</T>
           <T variant="display">{pinned.text}</T>
-          <T variant="muted">{pinned.author} · {pinned.source}</T>
+          <T variant="muted">{quoteCredit(pinned)}</T>
           <InPlainWords plain={pinned.plain} />
           <ShareOnProfile
             label="Share pinned quote"
@@ -251,7 +251,7 @@ export default function Profile() {
           <Button label="Change" tone="quiet" onPress={() => router.push('/quotes' as never)} />
         </View>
       ) : (
-        <Button label="Pin a Stoic quote" tone="quiet" onPress={() => router.push('/quotes' as never)} />
+        <Button label="Pin a quote" tone="quiet" onPress={() => router.push('/quotes' as never)} />
       )}
       <Button label="What I share" tone="quiet" onPress={() => router.push('/sharing' as never)} />
       <T variant="label">Your details</T>
