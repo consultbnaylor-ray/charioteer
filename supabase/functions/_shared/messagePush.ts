@@ -1,6 +1,14 @@
 /** Shown when the recipient has not chosen to include the sender's name. */
 export const GENERIC_MESSAGE_ALERT = 'New message on Charioteer';
 
+/** Edit Profile. On means the stored message_notifications preference is off. */
+export const TURN_OFF_MESSAGE_NOTIFICATIONS = 'Turn off Message Notifications (messages from other users)';
+
+/** The Edit Profile switch and the Notifications switch write the same column. */
+export function notificationsOnFromTurnOff(turnedOff: boolean): boolean {
+  return !turnedOff;
+}
+
 export type MessagePushSkip = 'self' | 'blocked' | 'community' | 'notifications' | 'closed';
 
 export type MessagePushInput = {

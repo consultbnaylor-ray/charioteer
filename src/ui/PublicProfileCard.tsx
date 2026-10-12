@@ -17,6 +17,7 @@ import { MemberAvatar } from '@/ui/MemberAvatar';
 import { OwnProfilePhotos, ProfilePhotoEditor } from '@/ui/ProfilePhotoEditor';
 import { COMMUNITY_CONSENT_BODY } from '@/ui/ConsentChoices';
 import { offerMessageNotifications } from '@/notifications/register';
+import { TURN_OFF_MESSAGE_NOTIFICATIONS, notificationsOnFromTurnOff } from '../../supabase/functions/_shared/messagePush';
 import { InterestChip } from '@/ui/InterestChip';
 import { useAppTheme } from '@/ui/theme';
 import { Button, Card, ErrorNote, Field, playSavedHaptic, T } from '@/ui/ui';
@@ -255,6 +256,13 @@ export function PublicProfileCard() {
     }
   }
 
+  function setMessageNotifications(on: boolean) {
+    setError(null);
+    void repo.updateProfile({ messageNotifications: on }).then(() => {
+      if (on) void offerMessageNotifications(repo);
+    }).catch((err: unknown) => setError(shownError(err, 'Could not save that.')));
+  }
+
   function finishEditing() {
     void saveName();
     void saveTown();
@@ -337,6 +345,16 @@ export function PublicProfileCard() {
         <Button label={editing ? 'Done' : 'Edit profile'} tone="quiet" onPress={() => (editing ? finishEditing() : setEditing(true))} />
         {editing ? (
           <View style={{ gap: 10 }}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 12, alignItems: 'center' }}>
+              <T style={{ flex: 1 }}>{TURN_OFF_MESSAGE_NOTIFICATIONS}</T>
+              <Switch
+                accessibilityLabel={TURN_OFF_MESSAGE_NOTIFICATIONS}
+                value={!me.messageNotifications}
+                onValueChange={(turnedOff) => setMessageNotifications(notificationsOnFromTurnOff(turnedOff))}
+                trackColor={{ true: theme.colors.ink, false: theme.colors.line }}
+                thumbColor={theme.colors.surface}
+              />
+            </View>
             <Field label="Name" value={name} onChangeText={changeName} onBlur={() => void saveName()} placeholder="What should we call you?" />
             {saved.name ? <T>Saved ✓</T> : null}
             <Field label="Town or area" value={town} onChangeText={changeTown} onBlur={() => void saveTown()} placeholder="Bristol, or leave blank" />

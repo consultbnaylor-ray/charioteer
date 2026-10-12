@@ -3,9 +3,11 @@ import { describe, expect, it } from 'vitest';
 
 import {
   GENERIC_MESSAGE_ALERT,
+  TURN_OFF_MESSAGE_NOTIFICATIONS,
   communityOn,
   connectionIdFrom,
   messageAlert,
+  notificationsOnFromTurnOff,
   type MessagePushInput,
 } from '../../supabase/functions/_shared/messagePush';
 
@@ -99,6 +101,15 @@ describe('private message push', () => {
     expect(you).toContain('accessibilityLabel="Show the sender\'s name"');
     expect(you).toContain('messageNotifications: value');
     expect(you).toContain('notifySenderName: value');
+    expect(TURN_OFF_MESSAGE_NOTIFICATIONS).toBe('Turn off Message Notifications (messages from other users)');
+    expect(notificationsOnFromTurnOff(true)).toBe(false);
+    expect(notificationsOnFromTurnOff(false)).toBe(true);
+    expect(card).toContain('{TURN_OFF_MESSAGE_NOTIFICATIONS}');
+    expect(card).toContain('accessibilityLabel={TURN_OFF_MESSAGE_NOTIFICATIONS}');
+    expect(card).toContain('messageNotifications: on');
+    expect(card).toContain('notificationsOnFromTurnOff(turnedOff)');
+    expect(card).toContain('value={!me.messageNotifications}');
+    expect(fn).toContain('recipient.message_notifications !== false');
     expect(fn).toContain('messageAlert(');
     expect(fn).toContain("select('id, connection_id, sender_id')");
     expect(fn).not.toContain('record.body');
