@@ -9,6 +9,7 @@ import {
   moodStreakCount,
   normalizeProfileSharing,
   projectPublicProfile,
+  sensitiveShareConfirm,
   sensitiveTurnedOn,
   sharedReportItems,
   toggleHealthKind,
@@ -74,8 +75,10 @@ describe('public profile projection', () => {
     expect(view.town).toBeNull();
     expect(view.stage).toBeNull();
     expect(view.sober).toBeNull();
+    expect(view.milestones).toEqual([]);
     expect(view.reasons).toEqual([]);
-    expect(view.savings).toBeNull();
+    expect(view.moneySaved).toBeNull();
+    expect(view.unitsAvoided).toBeNull();
     expect(view.moodStreak).toBeNull();
     expect(view.health).toEqual([]);
     expect(view.gratitude).toEqual([]);
@@ -100,12 +103,25 @@ describe('public profile projection', () => {
     expect(view.hiddenLabels).toContain('Bio');
     expect(view.hiddenLabels).toContain('Town');
     expect(view.hiddenLabels).toContain('Reasons');
+    expect(view.hiddenLabels).toContain('Days sober');
+    expect(view.hiddenLabels).toContain('Money saved');
+    expect(view.hiddenLabels).toContain('Units avoided');
     expect(view.sharedLabels).toEqual(['Name', 'Interests', 'Progress photos']);
   });
 
   it('returns only the chosen lines, totals, and averages', () => {
     let sharing = defaultProfileSharing();
-    sharing = { ...sharing, town: true, stage: true, sober: true, savings: true, moodStreak: true, sensitiveConsentAt: '2026-10-11T00:00:00.000Z' };
+    sharing = {
+      ...sharing,
+      town: true,
+      stage: true,
+      soberDays: true,
+      milestones: true,
+      moneySaved: true,
+      unitsAvoided: true,
+      moodStreak: true,
+      sensitiveConsentAt: '2026-10-11T00:00:00.000Z',
+    };
     sharing = toggleShareId(sharing, 'reasonBodies', secret.reason, true);
     sharing = toggleHealthKind(sharing, 'steps', true);
     sharing = toggleShareId(sharing, 'gratitudeIds', 'g1', true);
@@ -114,12 +130,13 @@ describe('public profile projection', () => {
     expect(view.town).toBe('Bristol');
     expect(view.stage).toBe('I’ve stopped');
     expect(view.sober?.days).toBeGreaterThan(0);
-    expect(view.sober?.milestones.length).toBeGreaterThan(0);
+    expect(view.sober?.since).toBe('2026-07-13');
+    expect(view.milestones.length).toBeGreaterThan(0);
     expect(view.reasons).toEqual([secret.reason]);
     expect(view.reasons).not.toContain('Morning walks');
-    expect(view.savings?.moneyGbp).toBeGreaterThan(0);
-    expect(view.savings?.units).toBeGreaterThan(0);
-    expect(JSON.stringify(view.savings)).not.toContain('40');
+    expect(view.moneySaved).toBeGreaterThan(0);
+    expect(view.unitsAvoided).toBeGreaterThan(0);
+    expect(JSON.stringify({ money: view.moneySaved, units: view.unitsAvoided })).not.toContain('40');
     expect(view.moodStreak).toBe(2);
     expect(view.health).toEqual(['Steps average 6,000 steps']);
     expect(view.health.join(' ')).not.toMatch(/sleep|bpm|111|GP/i);
@@ -155,13 +172,62 @@ describe('public profile projection', () => {
     expect(sensitiveTurnedOn({ ...defaultProfileSharing(), bio: false }, defaultProfileSharing())).toBe(false);
   });
 
+  it('shares days sober without the rest of the old bundle', () => {
+    const daysOnly = projectPublicProfile(source(), { ...defaultProfileSharing(), soberDays: true });
+    expect(daysOnly.sober?.days).toBeGreaterThan(0);
+    expect(daysOnly.sober?.since).toBe('2026-07-13');
+    expect(daysOnly.milestones).toEqual([]);
+    expect(daysOnly.stage).toBeNull();
+    expect(daysOnly.reasons).toEqual([]);
+    expect(daysOnly.moneySaved).toBeNull();
+    expect(daysOnly.unitsAvoided).toBeNull();
+    expect(daysOnly.moodStreak).toBeNull();
+    expect(daysOnly.health).toEqual([]);
+    const packed = JSON.stringify(daysOnly);
+    expect(packed).not.toContain(secret.reason);
+    expect(packed).not.toContain('40');
+    expect(packed).not.toContain('I’ve stopped');
+    expect(packed).not.toContain('Steps average');
+    const moneyOnly = projectPublicProfile(source(), { ...defaultProfileSharing(), moneySaved: true });
+    expect(moneyOnly.moneySaved).toBeGreaterThan(0);
+    expect(moneyOnly.unitsAvoided).toBeNull();
+    expect(moneyOnly.sober).toBeNull();
+    expect(String(moneyOnly.moneySaved)).not.toContain('40');
+  });
+
+  it('maps an old section that was on to each of its items', () => {
+    const legacy = normalizeProfileSharing({ sober: true, savings: true });
+    expect(legacy.soberDays).toBe(true);
+    expect(legacy.milestones).toBe(true);
+    expect(legacy.moneySaved).toBe(true);
+    expect(legacy.unitsAvoided).toBe(true);
+    const explicit = normalizeProfileSharing({
+      sober: true,
+      savings: true,
+      soberDays: true,
+      milestones: false,
+      moneySaved: false,
+      unitsAvoided: true,
+    });
+    expect(explicit.soberDays).toBe(true);
+    expect(explicit.milestones).toBe(false);
+    expect(explicit.moneySaved).toBe(false);
+    expect(explicit.unitsAvoided).toBe(true);
+    const view = projectPublicProfile(source(), legacy);
+    expect(view.sober?.since).toBe('2026-07-13');
+    expect(view.milestones.length).toBeGreaterThan(0);
+    expect(view.moneySaved).toBeGreaterThan(0);
+    expect(view.unitsAvoided).toBeGreaterThan(0);
+  });
+
   it('asks for consent the first time sobriety or health is shared', () => {
     const before = defaultProfileSharing();
     expect(sensitiveTurnedOn(before, { ...before, town: true })).toBe(false);
-    expect(sensitiveTurnedOn(before, { ...before, sober: true })).toBe(true);
+    expect(sensitiveTurnedOn(before, { ...before, soberDays: true })).toBe(true);
+    expect(sensitiveTurnedOn(before, { ...before, moneySaved: true })).toBe(true);
     expect(sensitiveTurnedOn(before, toggleHealthKind(before, 'sleep_hours', true))).toBe(true);
     expect(sensitiveTurnedOn(before, toggleShareId(before, 'gratitudeIds', 'g1', true))).toBe(false);
-    const consented = { ...before, sober: true, sensitiveConsentAt: '2026-10-11T00:00:00.000Z' };
+    const consented = { ...before, soberDays: true, sensitiveConsentAt: '2026-10-11T00:00:00.000Z' };
     expect(sensitiveTurnedOn(consented, { ...consented, stage: true })).toBe(true);
   });
 
@@ -174,7 +240,7 @@ describe('public profile projection', () => {
   it('ignores unknown settings and keeps the defaults off', () => {
     const parsed = normalizeProfileSharing({ town: 'yes', sober: 1, healthKinds: ['steps', 'height', 'steps'], reasonBodies: ['  A  ', 'A', ''] });
     expect(parsed.town).toBe(false);
-    expect(parsed.sober).toBe(false);
+    expect(parsed.soberDays).toBe(false);
     expect(parsed.bio).toBe(true);
     expect(normalizeProfileSharing({ bio: false }).bio).toBe(false);
     expect(parsed.healthKinds).toEqual(['steps']);
@@ -209,7 +275,41 @@ describe('public_profile database function', () => {
     expect(sql).toContain('set town = null');
   });
 
-  it('puts labelled share switches on the section screen or What I share', () => {
+  it('adds one key per box and keeps an old section that was on', () => {
+    const names = readdirSync('supabase/migrations').filter((name) => name.endsWith('.sql')).sort();
+    const definers = names.filter((name) => readFileSync(`supabase/migrations/${name}`, 'utf8').includes('function public.public_profile'));
+    expect(definers[definers.length - 1]).toBe('20261010320000_profile_share_items.sql');
+    const latest = readFileSync('supabase/migrations/20261010320000_profile_share_items.sql', 'utf8');
+    const profile = latest.slice(latest.indexOf('function public.public_profile'));
+    expect(latest).toContain("jsonb_build_object('soberDays', true)");
+    expect(latest).toContain("jsonb_build_object('milestones', true)");
+    expect(latest).toContain("jsonb_build_object('moneySaved', true)");
+    expect(latest).toContain("jsonb_build_object('unitsAvoided', true)");
+    expect(latest).toContain('not (settings ? \'soberDays\')');
+    expect(profile).toContain("coalesce((settings->>'soberDays')::boolean, (settings->>'sober')::boolean, false)");
+    expect(profile).toContain("coalesce((settings->>'milestones')::boolean, (settings->>'sober')::boolean, false)");
+    expect(profile).toContain("coalesce((settings->>'moneySaved')::boolean, (settings->>'savings')::boolean, false)");
+    expect(profile).toContain("coalesce((settings->>'unitsAvoided')::boolean, (settings->>'savings')::boolean, false)");
+    expect(profile).toContain("'since', to_char(person.sobriety_started_at at time zone 'Europe/London', 'YYYY-MM-DD')");
+    expect(profile).toContain('I’ve stopped');
+    expect(profile).toContain("'Days sober'::text");
+    expect(profile).toContain("'Milestones'::text");
+    expect(profile).toContain("'Money saved'::text");
+    expect(profile).toContain("'Units avoided'::text");
+    expect(profile).toContain("'moneySaved', shown_money");
+    expect(profile).toContain("'unitsAvoided', shown_units");
+    expect(profile).not.toContain("'Days sober and milestones'");
+    expect(profile).not.toContain("'Money saved and units avoided'");
+    expect(profile).not.toContain('storage_path');
+    expect(profile).not.toContain('height_cm');
+    expect(profile).toContain('security definer');
+    expect(profile).toContain("'position', ph.position");
+    const soberObject = profile.slice(profile.indexOf("shown_sober :="), profile.indexOf('shared_labels := shared_labels || \'Days sober\'::text'));
+    expect(soberObject).toContain("'days', days");
+    expect(soberObject).not.toContain('milestones');
+  });
+
+  it('puts one labelled switch under each box, and on Today only for days sober', () => {
     const home = readFileSync('src/app/(main)/home.tsx', 'utf8');
     const you = readFileSync('src/app/(main)/profile.tsx', 'utf8');
     const checkIn = readFileSync('src/app/(main)/check-in.tsx', 'utf8');
@@ -222,41 +322,61 @@ describe('public_profile database function', () => {
     const card = readFileSync('src/ui/PublicProfileCard.tsx', 'utf8');
     const people = readFileSync('src/ui/CommunityProfile.tsx', 'utf8');
     const peopleScreen = readFileSync('src/app/(main)/people.tsx', 'utf8');
-    for (const source of [home, checkIn, quotes, card]) {
-      expect(source).not.toContain('<ShareOnProfile');
-    }
+    const soberToggle = home.slice(home.indexOf('Correct the sober start date'), home.indexOf('Quote of the day'));
+    expect(soberToggle).toContain('label="Share days sober"');
+    expect(soberToggle).toContain('soberDays: selected');
+    expect(soberToggle).not.toContain('moneySaved');
+    expect(soberToggle).not.toContain('milestones: selected');
+    expect(home.slice(home.indexOf('Quote of the day'))).not.toContain('<ShareOnProfile');
+    expect(home.match(/<ShareOnProfile/g)).toHaveLength(1);
+    expect(quotes).not.toContain('<ShareOnProfile');
+    expect(checkIn).toContain('label="Share mood streak"');
+    expect(checkIn).toContain('moodStreak: selected');
     expect(sharing).toContain('What I share');
     expect(sharing).toContain('label="Share bio"');
     expect(sharing).toContain('label="Share town"');
     expect(sharing).toContain('label="Share stage"');
-    expect(sharing).toContain('label="Share days sober and milestones"');
-    expect(sharing).toContain('label="Share money saved and units avoided"');
+    expect(sharing).toContain('label="Share days sober"');
+    expect(sharing).toContain('label="Share milestones"');
+    expect(sharing).toContain('label="Share money saved"');
+    expect(sharing).toContain('label="Share units avoided"');
     expect(sharing).toContain('label="Share mood streak"');
     expect(sharing).toContain('label="Share pinned quote"');
-    expect(you).toContain('<SharingGroup');
+    expect(sharing).not.toContain('Share days sober and milestones');
+    expect(sharing).not.toContain('Share money saved and units avoided');
+    expect(you).toContain('label="Share stage"');
+    expect(you).toContain('label="Share town"');
+    expect(you).toContain('label="Share pinned quote"');
     expect(you).toContain('reasonBodies');
     expect(you).toContain('What I share');
-    expect(you).not.toContain('town: selected');
+    expect(you).not.toContain('<SharingGroup');
     expect(peopleScreen).toContain('What I share');
-    expect(health).toContain('<SharingGroup');
+    expect(health).not.toContain('<SharingGroup');
     expect(health).toContain('healthShareLabel');
     const metricCard = health.slice(health.indexOf('function MetricCard'), health.indexOf('function Readings'));
-    expect(metricCard).not.toContain('<ShareOnProfile');
+    expect(metricCard).toContain('<ShareOnProfile');
+    expect(metricCard).toContain('healthShareLabel(label)');
+    const weekSummary = health.slice(health.indexOf('Your health this week'), health.indexOf('HEALTH_METRICS.map'));
+    expect(weekSummary).not.toContain('<ShareOnProfile');
     expect(healthShareLabel('Steps')).toBe('Share steps average');
     expect(healthShareLabel('Sleep')).toBe('Share sleep average');
-    expect(diary).toContain('<SharingGroup');
+    expect(sensitiveShareConfirm('Days sober')).toBe('Days sober is health data under UK GDPR. Other members will see it. Share?');
+    expect(diary).not.toContain('<SharingGroup');
     expect(diary).toContain('gratitudeIds');
     expect(diary).toContain('gratitudePhotoIds');
     expect(diary).toContain('Share photo “');
     expect(diary).not.toMatch(/Share with community|visibility/);
-    expect(vision).toContain('<SharingGroup');
+    expect(vision).not.toContain('<SharingGroup');
     expect(vision).toContain('visionIds');
     expect(vision).not.toMatch(/Share with community|visibility/);
     expect(photos).toContain('{SHARE_HINT}');
-    expect(photos).toContain('SENSITIVE_SHARE_BODY');
+    expect(photos).toContain("sensitiveShareConfirm('This progress photo')");
+    expect(photos).toContain("sensitiveShareConfirm('This comparison')");
+    expect(photos).not.toContain('SENSITIVE_SHARE_BODY');
     expect(photos).toContain('{PROGRESS_SHARE_WARNING}');
     expect(card).toContain('hiddenLabels');
     expect(card).toContain('label="Bio"');
+    expect(card).toContain('label="Share bio"');
     expect(card).toContain('placeholder={BIO_EXAMPLE}');
     expect(card).toContain('{bio.length}/{BIO_LIMIT}');
     expect(card).not.toMatch(/\{photo\.note/);
@@ -264,18 +384,23 @@ describe('public_profile database function', () => {
     expect(people).not.toContain('photo.note');
     expect(people).toContain("reason: 'Shared profile'");
     expect(people).toContain('publicProfile');
+    expect(people).toContain('formatSoberShare');
     expect(peopleScreen).not.toMatch(/gratitude/);
     const control = readFileSync('src/ui/ShareOnProfile.tsx', 'utf8');
-    expect(control).toContain('accessibilityLabel="Sharing"');
-    expect(control).toContain('useState(false)');
-    expect(control).toContain('>Sharing<');
+    expect(control).toContain('sensitiveShareConfirm(item)');
+    expect(control).not.toContain('Share this');
+    expect(control).not.toContain('SENSITIVE_SHARE_BODY');
+    expect(control).not.toContain('>Sharing<');
     const allowed = [
       'src/ui/ShareOnProfile.tsx',
       'src/app/(main)/sharing.tsx',
+      'src/app/(main)/home.tsx',
+      'src/app/(main)/check-in.tsx',
       'src/ui/HealthBoard.tsx',
       'src/app/(main)/gratitude.tsx',
       'src/ui/VisionBoard.tsx',
       'src/app/(main)/profile.tsx',
+      'src/ui/PublicProfileCard.tsx',
     ];
     const found = filesUnder('src')
       .filter((path) => !/\.test\.tsx?$/.test(path))

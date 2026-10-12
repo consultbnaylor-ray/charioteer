@@ -16,6 +16,7 @@ import { quoteOfTheDay } from '@/domain/stoicQuotes';
 import { VISION_EMPTY_STATEMENT } from '@/domain/visionBoard';
 import { daysUntil, drinkFreeThisWeek, showsSoberRecord, SUDDEN_STOP_WARNING, toggleDrinkFreeDay } from '@/domain/stage';
 import { CheckInWeek } from '@/ui/CheckInWeek';
+import { ShareOnProfile } from '@/ui/ShareOnProfile';
 import { UnitsGuide } from '@/ui/UnitsGuide';
 import { DateField } from '@/ui/DateField';
 import { Button, Card, EditMark, EditSheet, ErrorNote, Field, Screen, T } from '@/ui/ui';
@@ -136,6 +137,7 @@ export default function Home() {
   return (
     <Screen eyebrow={greeting(now)} title={profile.displayName || 'Friend'} refreshing={refreshing} onRefresh={() => void pullToRefresh()}>
       {sober ? (
+      <View style={{ gap: 8 }}>
       <Card onPress={openCorrection} accessibilityLabel="Correct the sober start date">
         <EditMark label="Sober" />
         <T variant="hero">{elapsed ? elapsed.days : '—'}</T>
@@ -151,6 +153,14 @@ export default function Home() {
         ) : null}
         {started ? <T variant="muted">Since {formatUkDate(started)}</T> : null}
       </Card>
+      <ShareOnProfile
+        label="Share days sober"
+        item="Days sober"
+        on={snap.sharing.soberDays}
+        sensitive
+        apply={(sharing, selected) => ({ ...sharing, soberDays: selected })}
+      />
+      </View>
       ) : (
       <Card>
         {profile.stage === 'trying_to_stop' ? (

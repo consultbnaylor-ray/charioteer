@@ -2,7 +2,14 @@ import { useRouter } from 'expo-router';
 import { View } from 'react-native';
 
 import { useSnapshot } from '@/data';
-import { PROFILE_HIDDEN_SHARE, SHARE_HINT } from '@/domain/profileSharing';
+import { HEALTH_METRICS } from '@/domain/healthInsights';
+import { formatUkLong } from '@/domain/dates';
+import {
+  PROFILE_HIDDEN_SHARE,
+  SHARE_HINT,
+  healthShareLabel,
+  toggleShareId,
+} from '@/domain/profileSharing';
 import { ShareOnProfile } from '@/ui/ShareOnProfile';
 import { Button, Screen, T } from '@/ui/ui';
 
@@ -15,52 +22,128 @@ export default function WhatIShare() {
     <Screen
       eyebrow="Profile"
       title="What I share"
-      intro="Each section below has one switch. Lines, photos, and health averages are chosen on their own screens."
+      intro="Each switch shares only that one item. The same switch sits under the box. This list is a second place to review them all."
     >
       <T variant="muted">{communityOn ? SHARE_HINT : PROFILE_HIDDEN_SHARE}</T>
       <T>Name and interests stay on your profile while Community is on.</T>
       <ShareOnProfile
         label="Share bio"
+        item="Bio"
         on={snap.sharing.bio}
         apply={(sharing, selected) => ({ ...sharing, bio: selected })}
       />
       <ShareOnProfile
         label="Share town"
+        item="Town"
         on={snap.sharing.town}
         apply={(sharing, selected) => ({ ...sharing, town: selected })}
       />
       <ShareOnProfile
         label="Share stage"
+        item="Stage"
         on={snap.sharing.stage}
         sensitive
         apply={(sharing, selected) => ({ ...sharing, stage: selected })}
       />
       <ShareOnProfile
-        label="Share days sober and milestones"
-        on={snap.sharing.sober}
+        label="Share days sober"
+        item="Days sober"
+        on={snap.sharing.soberDays}
         sensitive
-        apply={(sharing, selected) => ({ ...sharing, sober: selected })}
+        apply={(sharing, selected) => ({ ...sharing, soberDays: selected })}
       />
       <ShareOnProfile
-        label="Share money saved and units avoided"
-        on={snap.sharing.savings}
+        label="Share milestones"
+        item="Milestones"
+        on={snap.sharing.milestones}
         sensitive
-        apply={(sharing, selected) => ({ ...sharing, savings: selected })}
+        apply={(sharing, selected) => ({ ...sharing, milestones: selected })}
+      />
+      {snap.reasons.map((reason) => (
+        <ShareOnProfile
+          key={reason.id}
+          label={`Share “${reason.body}”`}
+          item={reason.body.trim()}
+          on={snap.sharing.reasonBodies.includes(reason.body.trim())}
+          sensitive
+          apply={(sharing, selected) => toggleShareId(sharing, 'reasonBodies', reason.body.trim(), selected)}
+        />
+      ))}
+      <ShareOnProfile
+        label="Share money saved"
+        item="Money saved"
+        on={snap.sharing.moneySaved}
+        sensitive
+        apply={(sharing, selected) => ({ ...sharing, moneySaved: selected })}
+      />
+      <ShareOnProfile
+        label="Share units avoided"
+        item="Units avoided"
+        on={snap.sharing.unitsAvoided}
+        sensitive
+        apply={(sharing, selected) => ({ ...sharing, unitsAvoided: selected })}
       />
       <ShareOnProfile
         label="Share mood streak"
+        item="Mood streak"
         on={snap.sharing.moodStreak}
         sensitive
         apply={(sharing, selected) => ({ ...sharing, moodStreak: selected })}
       />
+      {HEALTH_METRICS.map((metric) => (
+        <ShareOnProfile
+          key={metric.kind}
+          label={healthShareLabel(metric.label)}
+          item={`${metric.label} average`}
+          on={snap.sharing.healthKinds.includes(metric.kind)}
+          sensitive
+          apply={(sharing, selected) => {
+            const healthKinds = selected
+              ? sharing.healthKinds.includes(metric.kind) ? sharing.healthKinds : [...sharing.healthKinds, metric.kind]
+              : sharing.healthKinds.filter((kind) => kind !== metric.kind);
+            return { ...sharing, healthKinds };
+          }}
+        />
+      ))}
       <ShareOnProfile
         label="Share pinned quote"
+        item="Pinned quote"
         on={snap.sharing.pinnedQuote}
         apply={(sharing, selected) => ({ ...sharing, pinnedQuote: selected })}
       />
+      {snap.gratitude.map((entry) => (
+        <ShareOnProfile
+          key={entry.id}
+          label={`Share “${entry.body}”`}
+          item={entry.body}
+          on={snap.sharing.gratitudeIds.includes(entry.id)}
+          apply={(sharing, selected) => toggleShareId(sharing, 'gratitudeIds', entry.id, selected)}
+        />
+      ))}
+      {snap.gratitude.flatMap((entry) => entry.photos.map((photo, index) => (
+        <ShareOnProfile
+          key={photo.id}
+          label={photo.caption.trim()
+            ? `Share photo “${photo.caption.trim()}”`
+            : `Share untitled photo ${index + 1} · ${formatUkLong(entry.entryDate)}`}
+          item={photo.caption.trim() || 'This gratitude photo'}
+          on={snap.sharing.gratitudePhotoIds.includes(photo.id)}
+          apply={(sharing, selected) => toggleShareId(sharing, 'gratitudePhotoIds', photo.id, selected)}
+        />
+      )))}
+      {snap.visionItems.map((item, index) => (
+        <ShareOnProfile
+          key={item.id}
+          label={item.caption.trim() ? `Share “${item.caption.trim()}”` : `Share untitled picture ${index + 1}`}
+          item={item.caption.trim() || 'This vision caption'}
+          on={snap.sharing.visionIds.includes(item.id)}
+          apply={(sharing, selected) => toggleShareId(sharing, 'visionIds', item.id, selected)}
+        />
+      ))}
       <T variant="label">On the section screen</T>
-      <T>Each reason, each health average, each gratitude line and photo, each vision caption, and each progress photo has its own labelled switch there.</T>
+      <T>Days sober is on Today. Mood streak is on Check-in. Each health average, reason, gratitude line, and vision caption also has its switch under that box.</T>
       <View style={{ gap: 8 }}>
+        <Button label="Today" tone="quiet" onPress={() => router.push('/home' as never)} />
         <Button label="Health Stats" tone="quiet" onPress={() => router.push('/health' as never)} />
         <Button label="You" tone="quiet" onPress={() => router.push('/profile' as never)} />
         <Button label="Gratitude Diary" tone="quiet" onPress={() => router.push('/gratitude' as never)} />

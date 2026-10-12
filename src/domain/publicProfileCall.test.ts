@@ -52,7 +52,7 @@ describe('public_profile label casts and directory sync', () => {
   const profile = profileFunction(sql);
 
   it('keeps the text casts on the latest public_profile and watches bio', () => {
-    expect(latestPublicProfileMigration()).toBe('20261010310000_public_profile_casts.sql');
+    expect(latestPublicProfileMigration()).toBe('20261010320000_profile_share_items.sql');
     expect(profile).toContain('I’ve stopped');
     expect(profile).not.toContain('storage_path');
     const appends = profile.split('\n').filter((line) => /(?:shared|hidden)_labels := /.test(line) && line.includes('||'));
@@ -241,6 +241,102 @@ describe('public_profile label casts and directory sync', () => {
       `);
       const avatar = await db.query<{ avatar_photo_id: string }>(`select avatar_photo_id from public.directory where user_id = '${TARGET}'`);
       expect(avatar.rows[0]?.avatar_photo_id).toBe(PHOTO);
+    } finally {
+      await db.close();
+    }
+  }, 30_000);
+
+  it('returns days sober on their own and expands an old section that was on', async () => {
+    const db = new PGlite();
+    const items = readFileSync(`${MIGRATIONS}/20261010320000_profile_share_items.sql`, 'utf8');
+    const fn = items.slice(items.indexOf('create or replace function public.public_profile'), items.indexOf('revoke all on function public.public_profile'));
+    try {
+      await db.exec(`
+        create schema if not exists auth;
+        create role anon nologin;
+        create role authenticated nologin;
+        create or replace function auth.uid() returns uuid
+        language sql stable as $$
+          select nullif(current_setting('request.jwt.claim.sub', true), '')::uuid;
+        $$;
+        create table public.profiles (
+          id uuid primary key,
+          display_name text not null default '',
+          bio text,
+          town text,
+          stage text not null default 'exploring',
+          sobriety_started_at timestamptz,
+          weekly_spend_gbp numeric,
+          weekly_units numeric,
+          community_visible boolean not null default false,
+          age_confirmed_18 boolean not null default false,
+          pinned_quote_id text
+        );
+        create table public.blocks (blocker_id uuid, blocked_id uuid);
+        create table public.profile_sharing (user_id uuid primary key, settings jsonb not null default '{}'::jsonb);
+        create table public.interests (id uuid primary key, label text not null);
+        create table public.profile_interests (user_id uuid, interest_id uuid);
+        create table public.reasons (user_id uuid, body text, sort_order int);
+        create table public.check_ins (user_id uuid, created_at timestamptz);
+        create table public.health_samples (user_id uuid, kind text, value numeric, recorded_on date);
+        create table public.progress_photos (id uuid, user_id uuid, caption text, taken_on date, month_index int, visibility text);
+        create table public.gratitude_entries (id uuid, user_id uuid, body text, entry_date date);
+        create table public.gratitude_photos (id uuid, user_id uuid, caption text, created_at timestamptz);
+        create table public.vision_board_items (id uuid, user_id uuid, caption text, area text, position int);
+        create table public.profile_photos (id uuid, user_id uuid, role text, caption text, position int, created_at timestamptz not null default now());
+      `);
+      await db.exec(fn);
+      await db.exec(`
+        insert into public.profiles (
+          id, display_name, stage, sobriety_started_at, weekly_spend_gbp, weekly_units, community_visible, age_confirmed_18
+        ) values (
+          '${TARGET}', 'Alex Hart', 'stopped', '2026-07-13T09:00:00Z', 40, 20, true, true
+        );
+      `);
+      await db.query(`select set_config('request.jwt.claim.sub', $1, false)`, [CALLER]);
+
+      await db.exec(`insert into public.profile_sharing (user_id, settings) values ('${TARGET}', '{"soberDays": true}'::jsonb)`);
+      const daysOnly = await db.query<{ profile: { sober: { days: number; since: string; milestones?: string[] } | null; milestones: string[]; moneySaved: number | null; unitsAvoided: number | null; stage: string | null; moodStreak: number | null } }>(
+        `select public.public_profile($1::uuid) as profile`,
+        [TARGET],
+      );
+      const only = daysOnly.rows[0]?.profile;
+      expect(only?.sober?.days).toBeGreaterThan(0);
+      expect(only?.sober?.since).toBe('2026-07-13');
+      expect(only?.sober).not.toHaveProperty('milestones');
+      expect(only?.milestones).toEqual([]);
+      expect(only?.moneySaved).toBeNull();
+      expect(only?.unitsAvoided).toBeNull();
+      expect(only?.stage).toBeNull();
+      expect(only?.moodStreak).toBeNull();
+      expect(JSON.stringify(only)).not.toContain('40');
+
+      await db.exec(`update public.profile_sharing set settings = '{"sober": true, "savings": true}'::jsonb where user_id = '${TARGET}'`);
+      const legacy = await db.query<{ profile: { sober: { since: string } | null; milestones: string[]; moneySaved: number; unitsAvoided: number; sharedLabels: string[] } }>(
+        `select public.public_profile($1::uuid) as profile`,
+        [TARGET],
+      );
+      const expanded = legacy.rows[0]?.profile;
+      expect(expanded?.sober?.since).toBe('2026-07-13');
+      expect(expanded?.milestones.length).toBeGreaterThan(0);
+      expect(expanded?.moneySaved).toBeGreaterThan(0);
+      expect(expanded?.unitsAvoided).toBeGreaterThan(0);
+      expect(expanded?.sharedLabels).toEqual(expect.arrayContaining(['Days sober', 'Milestones', 'Money saved', 'Units avoided']));
+      expect(String(expanded?.moneySaved)).not.toContain('40');
+
+      const backfill = items.slice(items.indexOf('update public.profile_sharing'), items.indexOf('create or replace function public.public_profile'));
+      await db.exec(`update public.profile_sharing set settings = '{"sober": true, "savings": true, "milestones": false}'::jsonb where user_id = '${TARGET}'`);
+      await db.exec(backfill);
+      const stored = await db.query<{ settings: { soberDays?: boolean; milestones?: boolean; moneySaved?: boolean; unitsAvoided?: boolean; sober?: boolean } }>(
+        `select settings from public.profile_sharing where user_id = '${TARGET}'`,
+      );
+      expect(stored.rows[0]?.settings).toMatchObject({
+        sober: true,
+        soberDays: true,
+        milestones: false,
+        moneySaved: true,
+        unitsAvoided: true,
+      });
     } finally {
       await db.close();
     }

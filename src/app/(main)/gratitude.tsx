@@ -21,7 +21,7 @@ import {
 import { gratitudePhotoLimitMessage } from '@/domain/gratitudePhotos';
 import { toggleShareId } from '@/domain/profileSharing';
 import { DateField } from '@/ui/DateField';
-import { ShareOnProfile, SharingGroup } from '@/ui/ShareOnProfile';
+import { ShareOnProfile } from '@/ui/ShareOnProfile';
 import { pickProgressPhoto } from '@/ui/prepareProgressPhoto';
 import { Button, Card, Choice, EditSheet, ErrorNote, Field, playSavedHaptic, Screen, T } from '@/ui/ui';
 import { radius, useAppTheme } from '@/ui/theme';
@@ -304,28 +304,6 @@ export default function GratitudeDiary() {
         ))}
       </View>
       <ErrorNote>{error}</ErrorNote>
-      {entries.length ? (
-        <SharingGroup>
-          {entries.map((entry) => (
-            <ShareOnProfile
-              key={entry.id}
-              label={`Share “${entry.body}”`}
-              on={snap.sharing.gratitudeIds.includes(entry.id)}
-              apply={(sharing, selected) => toggleShareId(sharing, 'gratitudeIds', entry.id, selected)}
-            />
-          ))}
-          {entries.flatMap((entry) => entry.photos.map((photo, index) => (
-            <ShareOnProfile
-              key={photo.id}
-              label={photo.caption.trim()
-                ? `Share photo “${photo.caption.trim()}”`
-                : `Share untitled photo ${index + 1} · ${formatUkLong(entry.entryDate)}`}
-              on={snap.sharing.gratitudePhotoIds.includes(photo.id)}
-              apply={(sharing, selected) => toggleShareId(sharing, 'gratitudePhotoIds', photo.id, selected)}
-            />
-          )))}
-        </SharingGroup>
-      ) : null}
       {reflectNote ? (
         <Card>
           <T>{reflectNote}</T>
@@ -354,7 +332,15 @@ export default function GratitudeDiary() {
             return (
               <Card key={entry.id}>
                 <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 8, alignItems: 'flex-start' }}>
-                  <T style={{ flex: 1 }}>{entry.body}</T>
+                  <View style={{ flex: 1, gap: 6 }}>
+                    <T>{entry.body}</T>
+                    <ShareOnProfile
+                      label={`Share “${entry.body}”`}
+                      item={entry.body}
+                      on={snap.sharing.gratitudeIds.includes(entry.id)}
+                      apply={(sharing, selected) => toggleShareId(sharing, 'gratitudeIds', entry.id, selected)}
+                    />
+                  </View>
                   <Pressable
                     accessibilityRole="button"
                     accessibilityLabel={entry.isFavourite ? 'Remove favourite' : 'Mark as favourite'}
@@ -367,22 +353,31 @@ export default function GratitudeDiary() {
                 {entry.category ? <T variant="muted">{entry.category}</T> : null}
                 {entry.photos.length || cardUpload ? (
                   <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-                    {entry.photos.map((photo) => (
-                      <Pressable
-                        key={photo.id}
-                        accessibilityRole="button"
-                        accessibilityLabel="View photo"
-                        onPress={() => setViewing(photo)}
-                        style={{ width: 72, height: 72, borderRadius: radius.md, overflow: 'hidden', backgroundColor: theme.colors.sunken }}
-                      >
-                        {photo.previewUrl ? (
-                          <Image pointerEvents="none" source={{ uri: photo.previewUrl }} style={{ width: 72, height: 72 }} contentFit="cover" />
-                        ) : (
-                          <View pointerEvents="none" style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-                            <T variant="muted">Photo</T>
-                          </View>
-                        )}
-                      </Pressable>
+                    {entry.photos.map((photo, index) => (
+                      <View key={photo.id} style={{ width: 160, gap: 6 }}>
+                        <Pressable
+                          accessibilityRole="button"
+                          accessibilityLabel="View photo"
+                          onPress={() => setViewing(photo)}
+                          style={{ width: 72, height: 72, borderRadius: radius.md, overflow: 'hidden', backgroundColor: theme.colors.sunken }}
+                        >
+                          {photo.previewUrl ? (
+                            <Image pointerEvents="none" source={{ uri: photo.previewUrl }} style={{ width: 72, height: 72 }} contentFit="cover" />
+                          ) : (
+                            <View pointerEvents="none" style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+                              <T variant="muted">Photo</T>
+                            </View>
+                          )}
+                        </Pressable>
+                        <ShareOnProfile
+                          label={photo.caption.trim()
+                            ? `Share photo “${photo.caption.trim()}”`
+                            : `Share untitled photo ${index + 1} · ${formatUkLong(entry.entryDate)}`}
+                          item={photo.caption.trim() || 'This gratitude photo'}
+                          on={snap.sharing.gratitudePhotoIds.includes(photo.id)}
+                          apply={(sharing, selected) => toggleShareId(sharing, 'gratitudePhotoIds', photo.id, selected)}
+                        />
+                      </View>
                     ))}
                     {cardUpload ? (
                       <SavingThumb

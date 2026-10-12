@@ -8,7 +8,8 @@ import { isoDay } from '@/domain/dates';
 import { shownError } from '@/domain/errors';
 import { interestChipRemovable, interestChipVisible } from '@/domain/interests';
 import { planCustomInterest, validateTown } from '@/domain/privacy';
-import { BIO_EXAMPLE, BIO_LIMIT, NEVER_SHARED, PHOTO_CAPTION_LIMIT, projectPublicProfile } from '@/domain/profileSharing';
+import { BIO_EXAMPLE, BIO_LIMIT, NEVER_SHARED, PHOTO_CAPTION_LIMIT, formatSoberShare, projectPublicProfile } from '@/domain/profileSharing';
+import { ShareOnProfile } from '@/ui/ShareOnProfile';
 import { progressPhotoLabel } from '@/domain/progressPhotos';
 import { formatGbp } from '@/domain/savings';
 import { SharedPhotoFrame } from '@/ui/CommunityProfile';
@@ -297,6 +298,14 @@ export function PublicProfileCard() {
             </View>
             <OwnProfilePhotos name={preview.displayName} photos={snap.profilePhotos ?? []} />
             {preview.bio ? <T>{preview.bio}</T> : null}
+            {editing ? null : (
+              <ShareOnProfile
+                label="Share bio"
+                item="Bio"
+                on={snap.sharing.bio}
+                apply={(sharing, selected) => ({ ...sharing, bio: selected })}
+              />
+            )}
             {preview.pinnedQuote ? (
               <View style={{ gap: 4 }}>
                 <T variant="title">{preview.pinnedQuote.text}</T>
@@ -306,9 +315,11 @@ export function PublicProfileCard() {
             <T variant="muted">{preview.town || 'Area not shared'}</T>
             {interestLine ? <T>{interestLine}</T> : null}
             {preview.stage ? <T>Stage: {preview.stage}</T> : null}
-            {preview.sober ? <T>{preview.sober.days} days sober{preview.sober.milestones.length ? ` · ${preview.sober.milestones.join(', ')}` : ''}</T> : null}
+            {preview.sober ? <T>{formatSoberShare(preview.sober)}</T> : null}
+            {preview.milestones.length ? <T>{preview.milestones.join(', ')}</T> : null}
             {preview.reasons.map((reason) => <T key={reason}>{reason}</T>)}
-            {preview.savings ? <T>{formatGbp(preview.savings.moneyGbp)} saved · {preview.savings.units} units avoided</T> : null}
+            {preview.moneySaved != null ? <T>{formatGbp(preview.moneySaved)} saved</T> : null}
+            {preview.unitsAvoided != null ? <T>{preview.unitsAvoided} units avoided</T> : null}
             {preview.moodStreak != null ? <T>Mood streak {preview.moodStreak}</T> : null}
             {preview.health.map((line) => <T key={line}>{line}</T>)}
             {preview.gratitude.map((entry) => <T key={entry.id}>{entry.body}</T>)}
@@ -328,6 +339,12 @@ export function PublicProfileCard() {
             {saved.name ? <T>Saved ✓</T> : null}
             <Field label="Town or area" value={town} onChangeText={changeTown} onBlur={() => void saveTown()} placeholder="Bristol, or leave blank" />
             {saved.town ? <T>Saved ✓</T> : null}
+            <ShareOnProfile
+              label="Share town"
+              item="Town"
+              on={snap.sharing.town}
+              apply={(sharing, selected) => ({ ...sharing, town: selected })}
+            />
             <T variant="label">Interests</T>
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
               {snap.interests.filter((interest) => interestChipVisible(interest, me.interestIds.includes(interest.id))).map((interest) => {
@@ -371,6 +388,12 @@ export function PublicProfileCard() {
             />
             <T variant="muted">{bio.length}/{BIO_LIMIT}</T>
             {saved.bio ? <T>Saved ✓</T> : null}
+            <ShareOnProfile
+              label="Share bio"
+              item="Bio"
+              on={snap.sharing.bio}
+              apply={(sharing, selected) => ({ ...sharing, bio: selected })}
+            />
             <ProfilePhotoEditor />
             <SharedCaptionEditor
               progress={shared}

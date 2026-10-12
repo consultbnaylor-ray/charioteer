@@ -5,8 +5,10 @@ import { View } from 'react-native';
 import { useRepository, useSnapshot } from '@/data';
 import { MOODS } from '@/data/catalogue';
 import type { Mood } from '@/data/types';
-import { formatUkWhen } from '@/domain/dates';
+import { formatUkWhen, isoDay } from '@/domain/dates';
 import { shownError } from '@/domain/errors';
+import { moodStreakCount } from '@/domain/profileSharing';
+import { ShareOnProfile } from '@/ui/ShareOnProfile';
 import { Button, Card, Choice, ErrorNote, Field, playSavedHaptic, Screen, T } from '@/ui/ui';
 
 export default function CheckIn() {
@@ -66,6 +68,20 @@ export default function CheckIn() {
         </View>
       )}
     >
+      <View style={{ gap: 8 }}>
+        <Card>
+          <T variant="label">Mood streak</T>
+          <T variant="title">{moodStreakCount(snap.checkIns, isoDay(new Date()))}</T>
+          <T variant="muted">Check-in days in a row. Only this count can be shared.</T>
+        </Card>
+        <ShareOnProfile
+          label="Share mood streak"
+          item="Mood streak"
+          on={snap.sharing.moodStreak}
+          sensitive
+          apply={(sharing, selected) => ({ ...sharing, moodStreak: selected })}
+        />
+      </View>
       <T variant="label">Mood</T>
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
         {MOODS.map((item) => (

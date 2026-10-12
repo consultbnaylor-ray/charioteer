@@ -15,7 +15,7 @@ import { quoteById } from '@/domain/stoicQuotes';
 import { planReasons, reasonOverLimit } from '@/domain/reasons';
 import { profileDetailsDirty, type ProfileFormValues } from '@/domain/profileForm';
 import { InterestChip } from '@/ui/InterestChip';
-import { ShareOnProfile, SharingGroup } from '@/ui/ShareOnProfile';
+import { ShareOnProfile } from '@/ui/ShareOnProfile';
 import { ConsentChoices } from '@/ui/ConsentChoices';
 import { ProgressPhotos } from '@/ui/ProgressPhotos';
 import { UnitsGuide } from '@/ui/UnitsGuide';
@@ -234,6 +234,12 @@ export default function Profile() {
           <T variant="label">Pinned quote</T>
           <T variant="display">{pinned.text}</T>
           <T variant="muted">{pinned.author} · {pinned.source}</T>
+          <ShareOnProfile
+            label="Share pinned quote"
+            item="Pinned quote"
+            on={snap.sharing.pinnedQuote}
+            apply={(sharing, selected) => ({ ...sharing, pinnedQuote: selected })}
+          />
           <Button label="Unpin" tone="quiet" onPress={() => void repo.pinQuote(null).catch((err: unknown) => setError(shownError(err, 'Could not unpin that quote.')))} />
           <Button label="Change" tone="quiet" onPress={() => router.push('/quotes' as never)} />
         </View>
@@ -251,6 +257,13 @@ export default function Profile() {
             <Choice key={item} label={STAGE_LABELS[item]} selected={stage === item} onPress={() => setStage(item)} />
           ))}
         </View>
+        <ShareOnProfile
+          label="Share stage"
+          item="Stage"
+          on={snap.sharing.stage}
+          sensitive
+          apply={(sharing, selected) => ({ ...sharing, stage: selected })}
+        />
         {stage === 'stopped' ? <DateField label="Sober since" value={soberDate} onChange={setSoberDate} maximumDate={new Date()} hint="Today or an earlier day. Saving this does not record a relapse." /> : null}
         {stage === 'trying_to_stop' ? (
           <View style={{ gap: 8 }}>
@@ -271,20 +284,25 @@ export default function Profile() {
         <Field label="Typical units per week" value={units} onChangeText={setUnits} keyboardType="decimal-pad" />
         <UnitsGuide onChange={setUnits} stage={stage} weeklySpend={spend} currentUnits={units} />
         <Field label="Town or area" value={town} onChangeText={setTown} placeholder="Bristol, or leave blank" />
+        <ShareOnProfile
+          label="Share town"
+          item="Town"
+          on={snap.sharing.town}
+          apply={(sharing, selected) => ({ ...sharing, town: selected })}
+        />
         <Field label="Reasons, one per line" value={reasons} onChangeText={setReasons} multiline />
-        {snap.reasons.length ? (
-          <SharingGroup>
-            {snap.reasons.map((reason) => (
-              <ShareOnProfile
-                key={reason.id}
-                label={`Share “${reason.body}”`}
-                on={snap.sharing.reasonBodies.includes(reason.body.trim())}
-                sensitive
-                apply={(sharing, selected) => toggleShareId(sharing, 'reasonBodies', reason.body.trim(), selected)}
-              />
-            ))}
-          </SharingGroup>
-        ) : null}
+        {snap.reasons.map((reason) => (
+          <View key={reason.id} style={{ gap: 6 }}>
+            <T>{reason.body}</T>
+            <ShareOnProfile
+              label={`Share “${reason.body}”`}
+              item={reason.body.trim()}
+              on={snap.sharing.reasonBodies.includes(reason.body.trim())}
+              sensitive
+              apply={(sharing, selected) => toggleShareId(sharing, 'reasonBodies', reason.body.trim(), selected)}
+            />
+          </View>
+        ))}
         <T variant="muted">Name and interests stay on your profile while Community is on.</T>
         <T variant="label">Interests</T>
         <T variant="muted">Tap a chip to add or remove it. Changes save straight away.</T>

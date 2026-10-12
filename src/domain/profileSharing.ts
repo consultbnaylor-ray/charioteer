@@ -1,4 +1,4 @@
-import { isoDay, parseIsoDay } from './dates';
+import { formatUkDate, isoDay, parseIsoDay } from './dates';
 import { PROFILE_PHOTO_WORDING } from './profilePhotos';
 import { averageValue, formatHealthValue, HEALTH_KINDS, HEALTH_METRICS, seriesForWindow } from './healthInsights';
 import { MILESTONES, milestoneReached } from './milestones';
@@ -14,11 +14,12 @@ export const SHARE_HINT = 'Visible to other community members';
 export const PROFILE_HIDDEN_SHARE = 'Your profile is hidden from others. Nothing here is visible until Community is on.';
 
 /**
- * First share of sobriety or health information. Explicit consent for special
- * category data. Quantica Labs Ltd is the controller.
+ * Shown once, the first time a health or sobriety item is switched on.
+ * Names that item only. The switch itself is the confirmation.
  */
-export const SENSITIVE_SHARE_BODY =
-  'This can show health information. Days sober, your stage, reasons, money and unit totals, a mood streak, and health headlines are special category data under UK GDPR. Other adults in the Charioteer community can see what you switch on. They cannot see raw readings, check-in notes, flags, or Thumos chats. Quantica Labs Ltd is the controller. Share this only if you want them to see it.';
+export function sensitiveShareConfirm(item: string): string {
+  return `${item} is health data under UK GDPR. Other members will see it. Share?`;
+}
 
 export const NEVER_SHARED =
   `Always hidden: check-in details, raw health readings, health flags, height, Thumos chats, private photo notes, and any photo you have not switched on. ${PROFILE_PHOTO_WORDING}`;
@@ -44,9 +45,12 @@ export type ProfileSharing = {
   bio: boolean;
   town: boolean;
   stage: boolean;
-  sober: boolean;
+  /** Days sober and the since date. Not milestones. */
+  soberDays: boolean;
+  milestones: boolean;
   reasonBodies: string[];
-  savings: boolean;
+  moneySaved: boolean;
+  unitsAvoided: boolean;
   moodStreak: boolean;
   healthKinds: string[];
   gratitudeIds: string[];
@@ -63,9 +67,11 @@ export function defaultProfileSharing(): ProfileSharing {
     bio: true,
     town: false,
     stage: false,
-    sober: false,
+    soberDays: false,
+    milestones: false,
     reasonBodies: [],
-    savings: false,
+    moneySaved: false,
+    unitsAvoided: false,
     moodStreak: false,
     healthKinds: [],
     gratitudeIds: [],
@@ -94,6 +100,15 @@ function flag(value: unknown): boolean {
   return value === true;
 }
 
+/**
+ * A new per-box key wins when it is present, including an explicit off.
+ * Otherwise an old section that was on turns each of its items on.
+ */
+function chosen(raw: Record<string, unknown>, key: string, legacy: string): boolean {
+  if (Object.prototype.hasOwnProperty.call(raw, key)) return flag(raw[key]);
+  return flag(raw[legacy]);
+}
+
 export function normalizeProfileSharing(value: unknown): ProfileSharing {
   const raw = value && typeof value === 'object' ? (value as Record<string, unknown>) : {};
   const kinds = stringList(raw.healthKinds).filter((kind) => (HEALTH_KINDS as readonly string[]).includes(kind));
@@ -102,9 +117,11 @@ export function normalizeProfileSharing(value: unknown): ProfileSharing {
     bio: raw.bio === false ? false : true,
     town: flag(raw.town),
     stage: flag(raw.stage),
-    sober: flag(raw.sober),
+    soberDays: chosen(raw, 'soberDays', 'sober'),
+    milestones: chosen(raw, 'milestones', 'sober'),
     reasonBodies: stringList(raw.reasonBodies),
-    savings: flag(raw.savings),
+    moneySaved: chosen(raw, 'moneySaved', 'savings'),
+    unitsAvoided: chosen(raw, 'unitsAvoided', 'savings'),
     moodStreak: flag(raw.moodStreak),
     healthKinds: kinds,
     gratitudeIds: stringList(raw.gratitudeIds),
@@ -115,7 +132,7 @@ export function normalizeProfileSharing(value: unknown): ProfileSharing {
   };
 }
 
-const SENSITIVE_FLAGS = ['stage', 'sober', 'savings', 'moodStreak'] as const;
+const SENSITIVE_FLAGS = ['stage', 'soberDays', 'milestones', 'moneySaved', 'unitsAvoided', 'moodStreak'] as const;
 
 /** True when this change newly shares sobriety or health information. */
 export function sensitiveTurnedOn(before: ProfileSharing, after: ProfileSharing): boolean {
@@ -175,9 +192,12 @@ export type PublicProfileView = {
   interests: string[];
   town: string | null;
   stage: string | null;
-  sober: { days: number; milestones: string[] } | null;
+  /** Days and the since date. Milestones are a separate key. */
+  sober: { days: number; since: string } | null;
+  milestones: string[];
   reasons: string[];
-  savings: { moneyGbp: number; units: number } | null;
+  moneySaved: number | null;
+  unitsAvoided: number | null;
   moodStreak: number | null;
   health: string[];
   progressPhotos: { id: string; caption: string; takenOn: string; monthIndex: number }[];
@@ -218,13 +238,28 @@ function healthHeadlines(source: ShareSource, kinds: string[]): string[] {
   });
 }
 
-function soberShare(source: ShareSource): { days: number; milestones: string[] } | null {
+function soberStart(source: ShareSource): Date | null {
   if (!source.sobrietyStartedAt) return null;
   const started = new Date(source.sobrietyStartedAt);
-  if (Number.isNaN(started.getTime())) return null;
-  const elapsed = soberElapsed(started, source.now);
-  const milestones = MILESTONES.filter((milestone) => milestoneReached(milestone.key, started, source.now)).map((milestone) => milestone.badge);
-  return { days: elapsed.days, milestones };
+  return Number.isNaN(started.getTime()) ? null : started;
+}
+
+function soberDaysShare(source: ShareSource): { days: number; since: string } | null {
+  const started = soberStart(source);
+  if (!started) return null;
+  return { days: soberElapsed(started, source.now).days, since: isoDay(started) };
+}
+
+function milestoneShare(source: ShareSource): string[] {
+  const started = soberStart(source);
+  if (!started) return [];
+  return MILESTONES.filter((milestone) => milestoneReached(milestone.key, started, source.now)).map((milestone) => milestone.badge);
+}
+
+/** "90 days sober · since 13 July 2026". The since date is omitted when it was not shared. */
+export function formatSoberShare(sober: { days: number; since: string }): string {
+  const count = `${sober.days} ${sober.days === 1 ? 'day' : 'days'} sober`;
+  return sober.since ? `${count} · since ${formatUkDate(sober.since)}` : count;
 }
 
 /**
@@ -238,19 +273,24 @@ export function projectPublicProfile(source: ShareSource, sharing: ProfileSharin
   const bio = settings.bio && bioText ? bioText : null;
   const town = settings.town && source.town?.trim() ? source.town.trim() : null;
   const stage = settings.stage && isStage(source.stage) ? STAGE_LABELS[source.stage] : null;
-  const sober = settings.sober ? soberShare(source) : null;
+  const sober = settings.soberDays ? soberDaysShare(source) : null;
+  const milestones = settings.milestones ? milestoneShare(source) : [];
   const wantedReasons = new Set(settings.reasonBodies);
   const reasons = source.reasons
     .filter((reason) => wantedReasons.has(reason.body.trim()))
     .sort((a, b) => a.sortOrder - b.sortOrder)
     .map((reason) => reason.body.trim());
-  let savings: PublicProfileView['savings'] = null;
-  if (settings.savings && source.sobrietyStartedAt && source.weeklySpendGbp != null && source.weeklyUnits != null) {
-    const started = new Date(source.sobrietyStartedAt);
-    if (!Number.isNaN(started.getTime())) {
-      const totals = savingsFromTypicalWeek(source.weeklySpendGbp, source.weeklyUnits, Math.max(0, source.now.getTime() - started.getTime()));
-      savings = { moneyGbp: totals.moneyGbp, units: totals.units };
-    }
+  const started = soberStart(source);
+  let moneySaved: number | null = null;
+  let unitsAvoided: number | null = null;
+  if (started && (settings.moneySaved || settings.unitsAvoided)) {
+    const totals = savingsFromTypicalWeek(
+      settings.moneySaved ? source.weeklySpendGbp ?? 0 : 0,
+      settings.unitsAvoided ? source.weeklyUnits ?? 0 : 0,
+      Math.max(0, source.now.getTime() - started.getTime()),
+    );
+    if (settings.moneySaved && source.weeklySpendGbp != null) moneySaved = totals.moneyGbp;
+    if (settings.unitsAvoided && source.weeklyUnits != null) unitsAvoided = totals.units;
   }
   const moodStreak = settings.moodStreak ? moodStreakCount(source.checkIns, source.today) : null;
   const health = healthHeadlines(source, settings.healthKinds);
@@ -287,12 +327,16 @@ export function projectPublicProfile(source: ShareSource, sharing: ProfileSharin
   else hiddenLabels.push('Town');
   if (stage) sharedLabels.push('Stage');
   else hiddenLabels.push('Stage');
-  if (sober) sharedLabels.push('Days sober and milestones');
-  else hiddenLabels.push('Days sober and milestones');
+  if (sober) sharedLabels.push('Days sober');
+  else hiddenLabels.push('Days sober');
+  if (milestones.length) sharedLabels.push('Milestones');
+  else hiddenLabels.push('Milestones');
   if (reasons.length) sharedLabels.push('Reasons');
   else hiddenLabels.push('Reasons');
-  if (savings) sharedLabels.push('Money saved and units avoided');
-  else hiddenLabels.push('Money saved and units avoided');
+  if (moneySaved != null) sharedLabels.push('Money saved');
+  else hiddenLabels.push('Money saved');
+  if (unitsAvoided != null) sharedLabels.push('Units avoided');
+  else hiddenLabels.push('Units avoided');
   if (moodStreak != null) sharedLabels.push('Mood streak');
   else hiddenLabels.push('Mood streak');
   if (health.length) sharedLabels.push('Health headlines');
@@ -321,8 +365,10 @@ export function projectPublicProfile(source: ShareSource, sharing: ProfileSharin
     town,
     stage,
     sober,
+    milestones,
     reasons,
-    savings,
+    moneySaved,
+    unitsAvoided,
     moodStreak,
     health,
     progressPhotos,
@@ -346,6 +392,12 @@ export function parsePublicProfile(value: unknown): PublicProfileView | null {
   const raw = value as Record<string, unknown>;
   const soberRaw = raw.sober && typeof raw.sober === 'object' ? (raw.sober as Record<string, unknown>) : null;
   const savingsRaw = raw.savings && typeof raw.savings === 'object' ? (raw.savings as Record<string, unknown>) : null;
+  const moneySaved = typeof raw.moneySaved === 'number'
+    ? raw.moneySaved
+    : savingsRaw && typeof savingsRaw.moneyGbp === 'number' ? savingsRaw.moneyGbp : null;
+  const unitsAvoided = typeof raw.unitsAvoided === 'number'
+    ? raw.unitsAvoided
+    : savingsRaw && typeof savingsRaw.units === 'number' ? savingsRaw.units : null;
   const photos = Array.isArray(raw.progressPhotos) ? raw.progressPhotos : [];
   const profilePhotos = Array.isArray(raw.profilePhotos) ? raw.profilePhotos : [];
   const gratitude = Array.isArray(raw.gratitude) ? raw.gratitude : [];
@@ -359,12 +411,12 @@ export function parsePublicProfile(value: unknown): PublicProfileView | null {
     town: typeof raw.town === 'string' && raw.town.trim() ? raw.town : null,
     stage: typeof raw.stage === 'string' && raw.stage.trim() ? raw.stage : null,
     sober: soberRaw && typeof soberRaw.days === 'number'
-      ? { days: soberRaw.days, milestones: textList(soberRaw.milestones) }
+      ? { days: soberRaw.days, since: typeof soberRaw.since === 'string' ? soberRaw.since : '' }
       : null,
+    milestones: Array.isArray(raw.milestones) ? textList(raw.milestones) : textList(soberRaw?.milestones),
     reasons: textList(raw.reasons),
-    savings: savingsRaw && typeof savingsRaw.moneyGbp === 'number' && typeof savingsRaw.units === 'number'
-      ? { moneyGbp: savingsRaw.moneyGbp, units: savingsRaw.units }
-      : null,
+    moneySaved,
+    unitsAvoided,
     moodStreak: typeof raw.moodStreak === 'number' ? raw.moodStreak : null,
     health: textList(raw.health),
     progressPhotos: photos.flatMap((item) => {
@@ -429,9 +481,11 @@ export function sharedReportItems(view: PublicProfileView): SharedReportItem[] {
   if (view.bio) items.push({ label: 'Bio', summary: view.bio });
   if (view.town) items.push({ label: 'Town', summary: view.town });
   if (view.stage) items.push({ label: 'Stage', summary: view.stage });
-  if (view.sober) items.push({ label: 'Days sober', summary: `${view.sober.days} days` });
+  if (view.sober) items.push({ label: 'Days sober', summary: formatSoberShare(view.sober) });
+  for (const badge of view.milestones) items.push({ label: 'Milestone', summary: badge });
   for (const reason of view.reasons) items.push({ label: 'Reason', summary: reason });
-  if (view.savings) items.push({ label: 'Savings', summary: `${view.savings.moneyGbp} saved, ${view.savings.units} units avoided` });
+  if (view.moneySaved != null) items.push({ label: 'Money saved', summary: `${view.moneySaved} saved` });
+  if (view.unitsAvoided != null) items.push({ label: 'Units avoided', summary: `${view.unitsAvoided} units avoided` });
   if (view.moodStreak != null) items.push({ label: 'Mood streak', summary: `${view.moodStreak} days` });
   for (const line of view.health) items.push({ label: 'Health headline', summary: line });
   for (const photo of view.progressPhotos) items.push({ label: 'Progress photo', summary: photo.caption || photo.id });

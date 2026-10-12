@@ -6,7 +6,7 @@ import { StyleSheet, View } from 'react-native';
 import { useRepository, useSnapshot } from '@/data';
 import type { ProgressPhoto } from '@/data/types';
 import { shownError } from '@/domain/errors';
-import { sharedReportItems, type PublicProfileView } from '@/domain/profileSharing';
+import { formatSoberShare, sharedReportItems, type PublicProfileView } from '@/domain/profileSharing';
 import { MemberAvatar } from '@/ui/MemberAvatar';
 import { formatGbp } from '@/domain/savings';
 import { progressPhotoLabel } from '@/domain/progressPhotos';
@@ -232,9 +232,11 @@ function SharedProfileFacts({ userId, name }: { userId: string; name: string }) 
       {view.interests.length ? <T>{view.interests.join(' · ')}</T> : null}
       <T variant="muted">{view.town || 'Area not shared'}</T>
       {view.stage ? <T>Stage: {view.stage}</T> : null}
-      {view.sober ? <T>{view.sober.days} days sober{view.sober.milestones.length ? ` · ${view.sober.milestones.join(', ')}` : ''}</T> : null}
+      {view.sober ? <T>{formatSoberShare(view.sober)}</T> : null}
+      {view.milestones.length ? <T>{view.milestones.join(', ')}</T> : null}
       {view.reasons.map((reason) => <T key={reason}>{reason}</T>)}
-      {view.savings ? <T>{formatGbp(view.savings.moneyGbp)} saved · {view.savings.units} units avoided</T> : null}
+      {view.moneySaved != null ? <T>{formatGbp(view.moneySaved)} saved</T> : null}
+      {view.unitsAvoided != null ? <T>{view.unitsAvoided} units avoided</T> : null}
       {view.moodStreak != null ? <T>Mood streak {view.moodStreak}</T> : null}
       {view.health.map((line) => <T key={line}>{line}</T>)}
       {view.gratitude.map((entry) => <T key={entry.id}>{entry.body}</T>)}

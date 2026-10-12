@@ -24,7 +24,7 @@ import {
 } from '@/domain/visionBoard';
 import { toggleShareId } from '@/domain/profileSharing';
 import { pickProgressPhoto } from '@/ui/prepareProgressPhoto';
-import { ShareOnProfile, SharingGroup } from '@/ui/ShareOnProfile';
+import { ShareOnProfile } from '@/ui/ShareOnProfile';
 import { Button, Choice, ErrorNote, Field, playSavedHaptic, Screen, T } from '@/ui/ui';
 import { useAppTheme } from '@/ui/theme';
 
@@ -225,18 +225,6 @@ export function VisionBoard() {
         <Button label={photoPending === 'camera' ? 'Saving photo…' : 'Take a photo'} tone="quiet" onPress={() => { void choosePhoto('camera'); }} />
         <Button label={photoPending === 'library' ? 'Saving photo…' : 'Choose from library'} tone="quiet" onPress={() => { void choosePhoto('library'); }} />
       </View>
-      {items.length ? (
-        <SharingGroup>
-          {items.map((item, index) => (
-            <ShareOnProfile
-              key={item.id}
-              label={item.caption.trim() ? `Share “${item.caption.trim()}”` : `Share untitled picture ${index + 1}`}
-              on={snap.sharing.visionIds.includes(item.id)}
-              apply={(sharing, selected) => toggleShareId(sharing, 'visionIds', item.id, selected)}
-            />
-          ))}
-        </SharingGroup>
-      ) : null}
       {photoNotice ? <T variant="muted">{photoNotice}</T> : null}
       {retry ? <Button label="Try again" tone="quiet" onPress={() => { void storePhoto(retry); }} /> : null}
       {items.length ? (
@@ -274,19 +262,27 @@ export function VisionBoard() {
             <View key={row.map((item) => item.id).join('-')} style={{ flexDirection: 'row', gap, alignItems: 'flex-start' }}>
               {row.map((item) => {
                 const span = item.size === 'large' || row.length === 1 ? boardWidth : (boardWidth - gap) / 2;
+                const index = items.findIndex((candidate) => candidate.id === item.id);
                 return (
-                  <Pressable
-                    key={item.id}
-                    accessibilityRole="button"
-                    accessibilityLabel={`${item.caption || 'Vision photo'}${item.area ? `, ${visionAreaLabel(item.area)}` : ''}`}
-                    onPress={() => openItem(item)}
-                    style={{ width: span, height: TILE[item.size], borderRadius: 16, overflow: 'hidden', backgroundColor: theme.colors.sunken }}
-                  >
-                    {item.previewUrl ? (
-                      <Image source={{ uri: item.previewUrl }} style={{ width: '100%', height: '100%' }} contentFit="cover" accessibilityIgnoresInvertColors />
-                    ) : null}
-                    <Overlay caption={item.caption} area={visionAreaLabel(item.area)} />
-                  </Pressable>
+                  <View key={item.id} style={{ width: span, gap: 6 }}>
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityLabel={`${item.caption || 'Vision photo'}${item.area ? `, ${visionAreaLabel(item.area)}` : ''}`}
+                      onPress={() => openItem(item)}
+                      style={{ width: span, height: TILE[item.size], borderRadius: 16, overflow: 'hidden', backgroundColor: theme.colors.sunken }}
+                    >
+                      {item.previewUrl ? (
+                        <Image source={{ uri: item.previewUrl }} style={{ width: '100%', height: '100%' }} contentFit="cover" accessibilityIgnoresInvertColors />
+                      ) : null}
+                      <Overlay caption={item.caption} area={visionAreaLabel(item.area)} />
+                    </Pressable>
+                    <ShareOnProfile
+                      label={item.caption.trim() ? `Share “${item.caption.trim()}”` : `Share untitled picture ${index + 1}`}
+                      item={item.caption.trim() || 'This vision caption'}
+                      on={snap.sharing.visionIds.includes(item.id)}
+                      apply={(sharing, selected) => toggleShareId(sharing, 'visionIds', item.id, selected)}
+                    />
+                  </View>
                 );
               })}
             </View>

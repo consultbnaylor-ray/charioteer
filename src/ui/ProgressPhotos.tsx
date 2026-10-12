@@ -9,7 +9,7 @@ import { isoDay, parseIsoDay } from '@/domain/dates';
 import { shownError } from '@/domain/errors';
 import { resolveComparison, type ComparisonChoice } from '@/domain/progressComparison';
 import { planProgressPhoto, PROGRESS_SHARE_WARNING, progressAnchor, progressPhotoLabel, PROGRESS_NOTE_LIMIT } from '@/domain/progressPhotos';
-import { PROFILE_HIDDEN_SHARE, SENSITIVE_SHARE_BODY, SHARE_HINT } from '@/domain/profileSharing';
+import { PROFILE_HIDDEN_SHARE, SHARE_HINT, sensitiveShareConfirm } from '@/domain/profileSharing';
 import { DateField } from '@/ui/DateField';
 import { pickProgressPhoto } from '@/ui/prepareProgressPhoto';
 import { loadProgressComparison, saveProgressComparison } from '@/ui/progressComparisonStore';
@@ -356,7 +356,7 @@ export function ProgressPhotos() {
           ) : null}
           {shareIds && shareIds.length > 1 ? (
             <View style={{ gap: 8 }}>
-              {snap.sharing.sensitiveConsentAt ? null : <T>{SENSITIVE_SHARE_BODY}</T>}
+              {snap.sharing.sensitiveConsentAt ? null : <T>{sensitiveShareConfirm('This comparison')}</T>}
               <T>{PROGRESS_SHARE_WARNING}</T>
               <Button label="Share this comparison" pending={pending === 'share'} onPress={() => void applyVisibility(shareIds, 'community')} />
               <Button label="Keep it private" tone="quiet" disabled={pending != null} onPress={() => setShareIds(null)} />
@@ -504,7 +504,7 @@ function PhotoDetailSheet({
                 />
                 {confirmingShare ? (
                   <View style={{ gap: 8 }}>
-                    {firstSensitiveShare ? <T>{SENSITIVE_SHARE_BODY}</T> : null}
+                    {firstSensitiveShare ? <T>{sensitiveShareConfirm('This progress photo')}</T> : null}
                     <T>{PROGRESS_SHARE_WARNING}</T>
                     <T variant="muted">{SHARE_HINT}</T>
                     <Button label="Share this photo" pending={pending === 'share'} onPress={onConfirmShare} />

@@ -1,28 +1,30 @@
-import { useState, type ReactNode } from 'react';
-import { Pressable, Switch, View } from 'react-native';
+import { useState } from 'react';
+import { Switch, View } from 'react-native';
 
 import { useRepository, useSnapshot } from '@/data';
 import { shownError } from '@/domain/errors';
 import {
-  PROFILE_HIDDEN_SHARE,
-  SENSITIVE_SHARE_BODY,
-  SHARE_HINT,
+  sensitiveShareConfirm,
   type ProfileSharing,
 } from '@/domain/profileSharing';
 import { useAppTheme } from '@/ui/theme';
 import { Button, ErrorNote, T } from '@/ui/ui';
 
 /**
- * One labelled share switch. Sensitive sections ask once, then remember
- * the consent time. The hint is shown by the screen or by SharingGroup.
+ * One labelled switch for the box above it. The first health or sobriety
+ * item names itself and waits for the switch to be turned on again.
+ * Later items remember that consent. There is no separate share button.
  */
 export function ShareOnProfile({
   label,
+  item,
   on,
   sensitive = false,
   apply,
 }: {
   label: string;
+  /** Named in the one-time confirmation, for example "Days sober". */
+  item: string;
   on: boolean;
   sensitive?: boolean;
   apply: (sharing: ProfileSharing, selected: boolean) => ProfileSharing;
@@ -52,14 +54,14 @@ export function ShareOnProfile({
   function change(value: boolean) {
     if (!value) {
       setAsk(false);
-      void save(false, false);
+      if (on) void save(false, false);
       return;
     }
-    if (sensitive && !snap.sharing.sensitiveConsentAt) {
+    if (sensitive && !snap.sharing.sensitiveConsentAt && !ask) {
       setAsk(true);
       return;
     }
-    void save(true, false);
+    void save(true, Boolean(sensitive && !snap.sharing.sensitiveConsentAt));
   }
 
   return (
@@ -77,42 +79,11 @@ export function ShareOnProfile({
       </View>
       {ask ? (
         <View style={{ gap: 8 }}>
-          <T>{SENSITIVE_SHARE_BODY}</T>
-          <Button label="Share this" pending={pending} onPress={() => void save(true, true)} />
+          <T>{sensitiveShareConfirm(item)}</T>
           <Button label="Keep it private" tone="quiet" disabled={pending} onPress={() => setAsk(false)} />
         </View>
       ) : null}
       {error ? <ErrorNote>{error}</ErrorNote> : null}
-    </View>
-  );
-}
-
-/** Per-item switches, closed until opened. The hint is shown once. */
-export function SharingGroup({ children }: { children: ReactNode }) {
-  const snap = useSnapshot();
-  const theme = useAppTheme();
-  const [open, setOpen] = useState(false);
-  const communityOn = Boolean(snap.profile?.communityVisible && snap.profile?.ageConfirmed18);
-
-  return (
-    <View style={{ gap: 8 }}>
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel="Sharing"
-        accessibilityState={{ expanded: open }}
-        aria-expanded={open}
-        onPress={() => setOpen((value) => !value)}
-        style={{ minHeight: 44, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}
-      >
-        <T variant="label">Sharing</T>
-        <T variant="muted" style={{ color: theme.colors.muted }}>{open ? 'Hide' : 'Show'}</T>
-      </Pressable>
-      {open ? (
-        <View style={{ gap: 12 }}>
-          <T variant="muted">{communityOn ? SHARE_HINT : PROFILE_HIDDEN_SHARE}</T>
-          {children}
-        </View>
-      ) : null}
     </View>
   );
 }
