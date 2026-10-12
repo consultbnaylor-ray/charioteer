@@ -9,7 +9,7 @@
     "userInterfaceStyle": "dark",
     "ios": {
       "bundleIdentifier": "uk.co.quanticalabs.charioteer",
-      "buildNumber": "13",
+      "buildNumber": "15",
       "appleTeamId": "5FMDXKAX7V",
       "usesAppleSignIn": true,
       "icon": "./assets/brand/ios/icon-1024.png",
@@ -25,7 +25,9 @@
         "NSPhotoLibraryUsageDescription": "Charioteer uses your photo library so you can add a private progress photo. Other people cannot see it, and it is not sent to the coach.",
         "NSHealthShareUsageDescription": "Charioteer reads steps, sleep, resting heart rate, heart rate variability, workouts, and weight so you and Thumos can see how your body is doing. Other people cannot see this.",
         "NSHealthUpdateUsageDescription": "Charioteer does not write to Apple Health. This message is required because the app includes the HealthKit capability.",
-        "LSApplicationQueriesSchemes": ["x-apple-health"]
+        "LSApplicationQueriesSchemes": [
+          "x-apple-health"
+        ]
       }
     },
     "android": {
@@ -35,7 +37,10 @@
         "foregroundImage": "./assets/brand/adaptive-foreground.png",
         "monochromeImage": "./assets/brand/adaptive-monochrome.png"
       },
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "permissions": [
+        "android.permission.RECORD_AUDIO"
+      ]
     },
     "web": {
       "output": "static",
@@ -79,11 +84,16 @@
       ]
     ],
     "extra": {
-      "voiceDiagnostics": true
+      "voiceDiagnostics": true,
+      "router": {},
+      "eas": {
+        "projectId": "eb295a90-d9aa-48ef-9e16-c2b29d2638a9"
+      }
     },
     "experiments": {
       "typedRoutes": false,
       "reactCompiler": false
-    }
+    },
+    "owner": "quantica-labs-ltd"
   }
 }
