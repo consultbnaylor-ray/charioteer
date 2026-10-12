@@ -221,9 +221,9 @@ export const BANNED_THUMOS_PHRASES = [
 
 export const THUMOS_RETRY_NOTE = [
   'The previous draft was rejected.',
-  'It repeated a sentence or a closing line from the last three replies, or it recapped earlier context, or it mentioned a check-in or a health figure that was already used.',
+  'It repeated a sentence or a closing line from the last three replies, or it recapped earlier context, or it mentioned a check-in or a health figure that was already used, or it offered to set a reminder, an alarm, a calendar entry, or to contact someone.',
   'Write a fresh reply. Usually 2 to 4 sentences. Answer only what they just said.',
-  'Do not recap. Do not repeat any earlier sentence or closing line. Often no question.',
+  'Do not recap. Do not repeat any earlier sentence or closing line. Often no question. Do not offer to do something you cannot do.',
 ].join(' ');
 
 const SENTENCE_BREAK = /(?<=[.!?])\s+/;
@@ -236,7 +236,17 @@ const RECAP_PATTERNS = [
 /** A check-in or a health figure, not an ordinary mention of time. */
 const HEALTH_OR_CHECKIN = /\b(?:check-ins?|hours of sleep|slept\s+\d|sleep(?:ing)?\s+\d|\d+(?:\.\d+)?\s*hours?\s+of\s+sleep|recorded\s+\d+(?:\.\d+)?\s*hours|\d[\d,]*(?:\s+|\s*)steps|\d+\s*bpm|resting heart(?:\s+rate)?|heart rate)\b/i;
 
-export type ThumosReplyFault = 'repeat' | 'recap' | 'banned' | 'health';
+export type ThumosReplyFault = 'repeat' | 'recap' | 'banned' | 'health' | 'undoable';
+
+/** Thumos claiming it will set a reminder, an alarm, a calendar entry, or contact someone. */
+const UNDOABLE_OFFER = [
+  /\b(?:I(?:['’]ll| will| can| could|['’]m going to| am going to)|let me) (?:set|add|create|make|put|schedule)\b[^.]{0,60}\b(?:reminder|alarm|calendar)\b/i,
+  /\b(?:I(?:['’]ll| will| can| could)|let me) (?:contact|call|text|message|email|ring)\b/i,
+];
+
+export function offersUndoableAction(text: string): boolean {
+  return UNDOABLE_OFFER.some((pattern) => pattern.test(text));
+}
 
 export function replySentences(text: string): string[] {
   return text
@@ -308,6 +318,7 @@ export function thumosReplyFaults(reply: string, earlierAssistant: readonly stri
   if (replyRecaps(reply)) faults.push('recap');
   if (usesBannedThumosPhrase(reply)) faults.push('banned');
   if (mentionsCheckInOrHealth(reply) && earlierAssistant.some((item) => mentionsCheckInOrHealth(item))) faults.push('health');
+  if (offersUndoableAction(reply)) faults.push('undoable');
   return faults;
 }
 
@@ -518,7 +529,7 @@ const PLANNING_SUPPORT = [
 const EVENT_PREPARATION = [
   'EVENT PREPARATION',
   'When they mention an upcoming situation (a birthday meal, party, wedding, work do, date, pub, family gathering, holiday, or stressful meeting), help them prepare with a short practical plan, not just one tool.',
-  'Give 3 to 5 concise, personalised suggestions. Use what CONTEXT records: their stage, interests (such as gym or hiking), personal reasons, and recent sleep or check-in. Do not invent those details. Often end with no question. A short, specific follow-up is fine. Offer to set a reminder, or to come back afterwards.',
+  'Give 3 to 5 concise, personalised suggestions. Use what CONTEXT records: their stage, interests (such as gym or hiking), personal reasons, and recent sleep or check-in. Do not invent those details. Often end with no question. A short, specific follow-up is fine. If a reminder would help, suggest they set it themselves. You can offer to come back afterwards in this chat.',
   'Cover what is relevant, briefly:',
   'Before. Suggest some exercise beforehand (a brisk walk, a run, a gym session, or a quick workout) to release endorphins and lift mood. Frame that as general wellbeing advice, not medical advice. If exercise does not suit them (time, an injury, or their mood), offer alternatives: a cold shower, a breathing exercise in the app, a short walk outside, music, eating a proper meal, hydrating, a nap, calling a supportive friend, rereading their reasons, the gratitude diary, or the vision board.',
   'Plan. Decide the drink order in advance, including alcohol-free options. Have a ready line for when they are offered a drink, such as "I\'m driving", "I\'m on a health kick", or "Not tonight". Include an exit plan and transport, an ally who knows, and a time to leave.',
@@ -728,6 +739,7 @@ export function buildSystemPrompt(
         ? stageGuidance(turn.stage)
         : 'Your job is to help this person stay sober and get healthier.',
     'You are not a doctor, therapist, or emergency service. Say so when the conversation touches physical health, withdrawal, or mental health.',
+    'You cannot act outside this chat. Never offer to set a reminder, an alarm, or a calendar entry, and never offer to contact someone. If a reminder, alarm, or calendar entry would help, suggest they set it themselves. Do not say "I can set a reminder".',
     styleLine(turn),
     'The messages after this system prompt are the conversation so far, oldest first, then their latest line. Use that history. Never repeat a sentence you have already sent. Vary your wording from turn to turn.',
     turn.selfHarm

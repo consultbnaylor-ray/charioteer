@@ -12,6 +12,7 @@ export {
   freshThumosFallback,
   historyTurnsForModel,
   mentionsCheckInOrHealth,
+  offersUndoableAction,
   replyRecaps,
   replyRepeatsRecent,
   THUMOS_RETRY_NOTE,

@@ -6,6 +6,7 @@ import {
   buildSystemPrompt,
   freshThumosFallback,
   mentionsCheckInOrHealth,
+  offersUndoableAction,
   replyRecaps,
   replyRepeatsRecent,
   thumosReplyFaults,
@@ -76,5 +77,24 @@ describe('thumos reply post-check', () => {
     expect(prompt).toContain('never in two replies in a row');
     expect(prompt).toContain('2 to 4 sentences');
     expect(prompt).not.toContain('What part of sleep or another area');
+  });
+
+  it('never offers to set a reminder, an alarm, a calendar entry, or to contact someone', () => {
+    const said = 'I can set a reminder for Friday if that fits.';
+    for (const mode of ['opening', 'steady', 'growth', 'support'] as const) {
+      const prompt = buildSystemPrompt('CONTEXT', mode);
+      expect(prompt).toContain('Never offer to set a reminder, an alarm, or a calendar entry');
+      expect(prompt).toContain('never offer to contact someone');
+      expect(prompt).toContain('suggest they set it themselves');
+      expect(prompt).not.toContain('Offer to set a reminder');
+      expect(prompt).not.toContain(said);
+    }
+    expect(offersUndoableAction(said)).toBe(true);
+    expect(thumosReplyFaults(said, [])).toContain('undoable');
+    expect(offersUndoableAction('I will add Friday to your calendar.')).toBe(true);
+    expect(offersUndoableAction('Let me message your friend.')).toBe(true);
+    expect(offersUndoableAction('I can call them this afternoon.')).toBe(true);
+    expect(thumosReplyFaults('Set a reminder on your phone for Friday. I will be here afterwards.', [])).toEqual([]);
+    expect(offersUndoableAction('You could set an alarm for half past nine.')).toBe(false);
   });
 });
