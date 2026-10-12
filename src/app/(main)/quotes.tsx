@@ -15,6 +15,7 @@ import {
   type StoicQuote,
   type StoicTheme,
 } from '@/domain/stoicQuotes';
+import { InPlainWords } from '@/ui/InPlainWords';
 import { Button, Card, Choice, ErrorNote, Field, Screen, T } from '@/ui/ui';
 
 function dayLabel(day: string): string {
@@ -28,6 +29,7 @@ function QuoteBody({ quote }: { quote: StoicQuote }) {
       <T variant="muted">{quote.author}</T>
       <T variant="muted">{quote.source}</T>
       <T variant="muted">{quote.translator}</T>
+      <InPlainWords plain={quote.plain} />
       <T variant="label">{quote.theme}</T>
     </View>
   );
@@ -112,6 +114,7 @@ export default function StoicQuotes() {
         <T variant="muted">{dayLabel(day)}</T>
         <T variant="title">{daily.text}</T>
         <T variant="muted">{daily.author} · {daily.source}</T>
+        <InPlainWords plain={daily.plain} />
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
           <Button label="Previous day" tone="quiet" onPress={() => setDaysBack((value) => Math.min(value + 1, 364))} />
           <Button label="Next day" tone="quiet" disabled={daysBack === 0} onPress={() => setDaysBack((value) => Math.max(0, value - 1))} />

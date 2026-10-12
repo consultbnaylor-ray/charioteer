@@ -19,6 +19,7 @@ import { CheckInWeek } from '@/ui/CheckInWeek';
 import { ShareOnProfile } from '@/ui/ShareOnProfile';
 import { UnitsGuide } from '@/ui/UnitsGuide';
 import { DateField } from '@/ui/DateField';
+import { InPlainWords } from '@/ui/InPlainWords';
 import { Button, Card, EditMark, EditSheet, ErrorNote, Field, Screen, T } from '@/ui/ui';
 import { radius, useAppTheme } from '@/ui/theme';
 
@@ -36,6 +37,7 @@ export default function Home() {
   const theme = useAppTheme();
   const profile = snap.profile;
   const [now, setNow] = useState(() => new Date());
+  const dailyQuote = quoteOfTheDay(now);
   const [relapseOpen, setRelapseOpen] = useState(false);
   const [note, setNote] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -200,8 +202,9 @@ export default function Home() {
       )}
       <Card>
         <T variant="label">Quote of the day</T>
-        <T>{quoteOfTheDay(now).text}</T>
-        <T variant="muted">{quoteOfTheDay(now).author} · {quoteOfTheDay(now).source}</T>
+        <T>{dailyQuote.text}</T>
+        <T variant="muted">{dailyQuote.author} · {dailyQuote.source}</T>
+        <InPlainWords plain={dailyQuote.plain} />
         <Button label="Stoic quotes" tone="quiet" onPress={() => router.push('/quotes' as never)} />
       </Card>
       {sober ? (

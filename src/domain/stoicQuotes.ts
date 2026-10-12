@@ -7,7 +7,8 @@ import { londonDay, shiftDay } from './healthInsights';
  * for Epictetus, Aubrey Stewart (died 1918) for Seneca’s dialogues, and
  * C. D. Yonge (died 1891) for Zeno as reported by Diogenes Laertius.
  * Musonius Rufus and Seneca’s Letters are left out: no English translation
- * out of UK copyright could be verified. Nothing here is paraphrased.
+ * out of UK copyright could be verified. The `text` field is that translation.
+ * `plain` is Charioteer’s own short paraphrase, not the author’s words.
  */
 export const STOIC_THEMES = ['Discipline', 'Courage', 'Control', 'Adversity', 'Self-mastery', 'Temperance'] as const;
 
@@ -19,6 +20,8 @@ export type StoicQuote = {
   source: string;
   translator: string;
   text: string;
+  /** Charioteer’s plain-English paraphrase. Not the author’s words. */
+  plain: string;
   theme: StoicTheme;
 };
 
@@ -30,16 +33,18 @@ function asQuote(value: unknown): StoicQuote | null {
   if (!value || typeof value !== 'object') return null;
   const row = value as Record<string, unknown>;
   if (typeof row.id !== 'string' || typeof row.author !== 'string' || typeof row.source !== 'string') return null;
-  if (typeof row.translator !== 'string' || typeof row.text !== 'string' || typeof row.theme !== 'string') return null;
+  if (typeof row.translator !== 'string' || typeof row.text !== 'string' || typeof row.plain !== 'string' || typeof row.theme !== 'string') return null;
   if (!isTheme(row.theme)) return null;
   const text = row.text.trim();
-  if (!text) return null;
+  const plain = row.plain.trim();
+  if (!text || !plain) return null;
   return {
     id: row.id,
     author: row.author,
     source: row.source,
     translator: row.translator,
     text,
+    plain,
     theme: row.theme,
   };
 }
@@ -89,6 +94,6 @@ export function searchQuotes(input: { query?: string; author?: string | null; th
     if (input.author && quote.author !== input.author) return false;
     if (input.theme && quote.theme !== input.theme) return false;
     if (!query) return Boolean(input.author || input.theme);
-    return [quote.text, quote.author, quote.source, quote.theme, quote.translator].some((part) => part.toLowerCase().includes(query));
+    return [quote.text, quote.plain, quote.author, quote.source, quote.theme, quote.translator].some((part) => part.toLowerCase().includes(query));
   });
 }

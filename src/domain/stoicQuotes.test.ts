@@ -88,6 +88,50 @@ describe('Stoic quote catalogue', () => {
     expect(courage.every((quote) => quote.theme === 'Courage')).toBe(true);
     expect(searchQuotes({ query: 'grandfather Verus' }).some((quote) => quote.author === 'Marcus Aurelius')).toBe(true);
   });
+
+  it('stores a short plain-English paraphrase that is not the translation', () => {
+    const seen = new Set<string>();
+    for (const quote of STOIC_QUOTES) {
+      const words = quote.plain.trim().split(/\s+/);
+      expect(words.length, quote.id).toBeGreaterThanOrEqual(25);
+      expect(words.length, quote.id).toBeLessThanOrEqual(35);
+      const sentences = quote.plain.split(/[.!?]+/).map((part) => part.trim()).filter(Boolean);
+      expect(sentences.length, quote.id).toBeGreaterThanOrEqual(1);
+      expect(sentences.length, quote.id).toBeLessThanOrEqual(2);
+      expect(quote.plain.endsWith('.'), quote.id).toBe(true);
+      expect(quote.plain, quote.id).not.toBe(quote.text);
+      expect(seen.has(quote.plain), quote.id).toBe(false);
+      seen.add(quote.plain);
+      const original = new Set<string>();
+      const sourceWords = quote.text.toLowerCase().replace(/[^a-z0-9'\s]/g, ' ').split(/\s+/).filter(Boolean);
+      for (let index = 0; index <= sourceWords.length - 5; index += 1) original.add(sourceWords.slice(index, index + 5).join(' '));
+      const plainWords = quote.plain.toLowerCase().replace(/[^a-z0-9'\s]/g, ' ').split(/\s+/).filter(Boolean);
+      for (let index = 0; index <= plainWords.length - 5; index += 1) {
+        expect(original.has(plainWords.slice(index, index + 5).join(' ')), quote.id).toBe(false);
+      }
+    }
+    expect(seen.size).toBe(STOIC_QUOTES.length);
+    const mark = readFileSync('src/ui/InPlainWords.tsx', 'utf8');
+    expect(mark).toContain("export const IN_PLAIN_WORDS = 'In plain words'");
+    expect(mark).toContain("export const PLAIN_WORDS_MARK = 'Charioteer’s own words, not the author’s.'");
+    expect(mark).toContain('font.bodyItalic');
+  });
+
+  it('shows the paraphrase under the daily quote, favourites, and the pin on You', () => {
+    const home = readFileSync('src/app/(main)/home.tsx', 'utf8');
+    const quotes = readFileSync('src/app/(main)/quotes.tsx', 'utf8');
+    const you = readFileSync('src/app/(main)/profile.tsx', 'utf8');
+    for (const source of [home, quotes, you]) {
+      expect(source).toContain('InPlainWords');
+      expect(source).toContain('plain=');
+    }
+    expect(quotes).toContain('<InPlainWords plain={quote.plain} />');
+    expect(quotes).toContain('<InPlainWords plain={daily.plain} />');
+    expect(you).toContain('<InPlainWords plain={pinned.plain} />');
+    const community = readFileSync('src/ui/CommunityProfile.tsx', 'utf8');
+    expect(community).not.toContain('InPlainWords');
+    expect(community).not.toContain('.plain');
+  });
 });
 
 describe('pinned quote sharing', () => {
@@ -109,6 +153,7 @@ describe('pinned quote sharing', () => {
       author: quote.author,
       source: quote.source,
     });
+    expect(JSON.stringify(shared)).not.toContain(quote.plain);
     expect(shared.sharedLabels).toContain('Pinned quote');
 
     const unknown = projectPublicProfile(

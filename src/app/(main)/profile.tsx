@@ -20,6 +20,7 @@ import { ConsentChoices } from '@/ui/ConsentChoices';
 import { ProgressPhotos } from '@/ui/ProgressPhotos';
 import { UnitsGuide } from '@/ui/UnitsGuide';
 import { DateField } from '@/ui/DateField';
+import { InPlainWords } from '@/ui/InPlainWords';
 import { Button, Card, Choice, ErrorNote, Field, playSavedHaptic, Screen, T } from '@/ui/ui';
 import { useAppTheme } from '@/ui/theme';
 import { offerMessageNotifications } from '@/notifications/register';
@@ -239,6 +240,7 @@ export default function Profile() {
           <T variant="label">Pinned quote</T>
           <T variant="display">{pinned.text}</T>
           <T variant="muted">{pinned.author} · {pinned.source}</T>
+          <InPlainWords plain={pinned.plain} />
           <ShareOnProfile
             label="Share pinned quote"
             item="Pinned quote"
