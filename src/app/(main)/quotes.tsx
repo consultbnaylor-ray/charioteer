@@ -15,7 +15,6 @@ import {
   type StoicQuote,
   type StoicTheme,
 } from '@/domain/stoicQuotes';
-import { ShareOnProfile } from '@/ui/ShareOnProfile';
 import { Button, Card, Choice, ErrorNote, Field, Screen, T } from '@/ui/ui';
 
 function dayLabel(day: string): string {
@@ -86,13 +85,6 @@ export default function StoicQuotes() {
           pending={pending === `${quote.id}-pin`}
           onPress={() => void run(`${quote.id}-pin`, () => repo.pinQuote(pinned ? null : quote.id))}
         />
-        {pinned ? (
-          <ShareOnProfile
-            detail="pinned quote"
-            on={snap.sharing.pinnedQuote}
-            apply={(sharing, selected) => ({ ...sharing, pinnedQuote: selected })}
-          />
-        ) : null}
       </View>
     );
   }

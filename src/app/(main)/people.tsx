@@ -27,6 +27,7 @@ export default function People() {
   return (
     <Screen eyebrow="People" title="Find your people." intro="Shared interests, a town or area, and a private chat once you both agree. You can block or report at any time.">
       <PublicProfileCard />
+      <Button label="What I share" tone="quiet" onPress={() => router.push('/sharing' as never)} />
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
         <Choice label={`Discover`} selected={tab === 'discover'} onPress={() => setTab('discover')} />
         <Choice label={`Requests (${incoming.length})`} selected={tab === 'requests'} onPress={() => setTab('requests')} />

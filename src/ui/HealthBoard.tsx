@@ -15,10 +15,10 @@ import {
   seriesForWindow,
   type HealthInsightKind,
 } from '@/domain/healthInsights';
-import { toggleHealthKind } from '@/domain/profileSharing';
+import { healthShareLabel, toggleHealthKind } from '@/domain/profileSharing';
 import { useSnapshot } from '@/data';
 import { GuidanceRange } from '@/ui/GuidanceRange';
-import { ShareOnProfile } from '@/ui/ShareOnProfile';
+import { ShareOnProfile, SharingGroup } from '@/ui/ShareOnProfile';
 import { HealthChart } from '@/ui/HealthChart';
 import { useAppTheme } from '@/ui/theme';
 import { Card, Choice, Field, playSavedHaptic, T } from '@/ui/ui';
@@ -45,6 +45,7 @@ export function HealthBoard({
   onSaveHeight?: (heightCm: number | null) => Promise<void>;
 }) {
   const report = buildHealthInsights({ today, samples, soberOn, stage });
+  const sharing = useSnapshot().sharing;
   return (
     <View style={{ gap: 14 }}>
       <Card>
@@ -56,6 +57,17 @@ export function HealthBoard({
         )}
         <T variant="muted">These notes are not medical advice.</T>
       </Card>
+      <SharingGroup>
+        {HEALTH_METRICS.map((metric) => (
+          <ShareOnProfile
+            key={metric.kind}
+            label={healthShareLabel(metric.label)}
+            on={sharing.healthKinds.includes(metric.kind)}
+            sensitive
+            apply={(current, selected) => toggleHealthKind(current, metric.kind, selected)}
+          />
+        ))}
+      </SharingGroup>
       {HEALTH_METRICS.map((metric) => {
         const kindReport = report.kinds.find((item) => item.kind === metric.kind);
         return (
@@ -131,7 +143,6 @@ function MetricCard({
     adult,
   });
   const shownFlags = flags.filter((flag) => flag.id !== 'resting_high' && flag.id !== 'short_sleep');
-  const sharing = useSnapshot().sharing;
 
   useEffect(() => {
     setHeightText(heightCm == null ? '' : String(heightCm));
@@ -167,12 +178,6 @@ function MetricCard({
   return (
     <Card>
       <T variant="label">{label}</T>
-      <ShareOnProfile
-        detail={`${label} average`}
-        on={sharing.healthKinds.includes(kind)}
-        sensitive
-        apply={(current, selected) => toggleHealthKind(current, kind, selected)}
-      />
       {latest ? (
         <T variant="title">
           {formatHealthValue(kind, latest.value)}

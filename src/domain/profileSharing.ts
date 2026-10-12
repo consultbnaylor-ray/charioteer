@@ -7,7 +7,7 @@ import { soberElapsed } from './sober';
 import { quoteById } from './stoicQuotes';
 import { STAGE_LABELS, isStage } from './stage';
 
-/** Shown under every Share on profile switch while Community is on. */
+/** Shown once above a group of share switches while Community is on. */
 export const SHARE_HINT = 'Visible to other community members';
 
 /** Shown under the switches while Community is off. */
@@ -131,6 +131,11 @@ export function toggleShareId(sharing: ProfileSharing, key: 'reasonBodies' | 'gr
   const current = sharing[key];
   const next = on ? (current.includes(id) ? current : [...current, id]) : current.filter((item) => item !== id);
   return { ...sharing, [key]: next };
+}
+
+/** "Steps" is shown as "Share steps average". */
+export function healthShareLabel(metricLabel: string): string {
+  return `Share ${metricLabel.toLowerCase()} average`;
 }
 
 export function toggleHealthKind(sharing: ProfileSharing, kind: string, on: boolean): ProfileSharing {

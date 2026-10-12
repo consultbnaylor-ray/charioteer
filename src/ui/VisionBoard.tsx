@@ -24,7 +24,7 @@ import {
 } from '@/domain/visionBoard';
 import { toggleShareId } from '@/domain/profileSharing';
 import { pickProgressPhoto } from '@/ui/prepareProgressPhoto';
-import { ShareOnProfile } from '@/ui/ShareOnProfile';
+import { ShareOnProfile, SharingGroup } from '@/ui/ShareOnProfile';
 import { Button, Choice, ErrorNote, Field, playSavedHaptic, Screen, T } from '@/ui/ui';
 import { useAppTheme } from '@/ui/theme';
 
@@ -225,6 +225,18 @@ export function VisionBoard() {
         <Button label={photoPending === 'camera' ? 'Saving photo…' : 'Take a photo'} tone="quiet" onPress={() => { void choosePhoto('camera'); }} />
         <Button label={photoPending === 'library' ? 'Saving photo…' : 'Choose from library'} tone="quiet" onPress={() => { void choosePhoto('library'); }} />
       </View>
+      {items.length ? (
+        <SharingGroup>
+          {items.map((item, index) => (
+            <ShareOnProfile
+              key={item.id}
+              label={item.caption.trim() ? `Share “${item.caption.trim()}”` : `Share untitled picture ${index + 1}`}
+              on={snap.sharing.visionIds.includes(item.id)}
+              apply={(sharing, selected) => toggleShareId(sharing, 'visionIds', item.id, selected)}
+            />
+          ))}
+        </SharingGroup>
+      ) : null}
       {photoNotice ? <T variant="muted">{photoNotice}</T> : null}
       {retry ? <Button label="Try again" tone="quiet" onPress={() => { void storePhoto(retry); }} /> : null}
       {items.length ? (
@@ -295,13 +307,6 @@ export function VisionBoard() {
                 <Image source={{ uri: open.previewUrl }} style={{ width: '100%', height: 220, borderRadius: 16 }} contentFit="cover" accessibilityIgnoresInvertColors />
               ) : null}
               <T variant="muted">The picture file stays on your account and is not sent to Thumos. The caption can appear on your profile if you switch it on.</T>
-              {open ? (
-                <ShareOnProfile
-                  detail="this item"
-                  on={snap.sharing.visionIds.includes(open.id)}
-                  apply={(sharing, selected) => toggleShareId(sharing, 'visionIds', open.id, selected)}
-                />
-              ) : null}
               <Field
                 label="Caption"
                 value={caption}

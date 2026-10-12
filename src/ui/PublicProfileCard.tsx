@@ -15,7 +15,6 @@ import { SharedPhotoFrame } from '@/ui/CommunityProfile';
 import { OwnProfilePhotos, ProfilePhotoEditor } from '@/ui/ProfilePhotoEditor';
 import { COMMUNITY_CONSENT_BODY } from '@/ui/ConsentChoices';
 import { InterestChip } from '@/ui/InterestChip';
-import { ShareOnProfile } from '@/ui/ShareOnProfile';
 import { useAppTheme } from '@/ui/theme';
 import { Button, Card, ErrorNote, Field, playSavedHaptic, T } from '@/ui/ui';
 
@@ -310,11 +309,6 @@ export function PublicProfileCard() {
             <OwnSharedPhotos name={me.displayName} photos={shared} />
           </View>
         )}
-        <ShareOnProfile
-          detail="town"
-          on={snap.sharing.town}
-          apply={(sharing, selected) => ({ ...sharing, town: selected })}
-        />
         {hidden ? (
           <T variant="muted">Chosen, but not visible until Community is on: {preview.sharedLabels.join(', ')}</T>
         ) : null}
@@ -369,11 +363,6 @@ export function PublicProfileCard() {
             />
             <T variant="muted">{bio.length}/{BIO_LIMIT}</T>
             {saved.bio ? <T>Saved ✓</T> : null}
-            <ShareOnProfile
-              detail="bio"
-              on={snap.sharing.bio}
-              apply={(sharing, selected) => ({ ...sharing, bio: selected })}
-            />
             <ProfilePhotoEditor />
             <SharedCaptionEditor
               progress={shared}

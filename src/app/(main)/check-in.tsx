@@ -7,7 +7,6 @@ import { MOODS } from '@/data/catalogue';
 import type { Mood } from '@/data/types';
 import { formatUkWhen } from '@/domain/dates';
 import { shownError } from '@/domain/errors';
-import { ShareOnProfile } from '@/ui/ShareOnProfile';
 import { Button, Card, Choice, ErrorNote, Field, playSavedHaptic, Screen, T } from '@/ui/ui';
 
 export default function CheckIn() {
@@ -68,12 +67,6 @@ export default function CheckIn() {
       )}
     >
       <T variant="label">Mood</T>
-      <ShareOnProfile
-        detail="mood streak"
-        on={snap.sharing.moodStreak}
-        sensitive
-        apply={(sharing, selected) => ({ ...sharing, moodStreak: selected })}
-      />
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
         {MOODS.map((item) => (
           <Choice key={item.value} label={item.label} selected={mood === item.value} onPress={() => touch(setMood)(item.value)} />

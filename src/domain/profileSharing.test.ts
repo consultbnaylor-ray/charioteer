@@ -1,9 +1,11 @@
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 import {
   BIO_EXAMPLE,
   defaultProfileSharing,
+  healthShareLabel,
   moodStreakCount,
   normalizeProfileSharing,
   projectPublicProfile,
@@ -13,6 +15,13 @@ import {
   toggleShareId,
   type ShareSource,
 } from './profileSharing';
+
+function filesUnder(dir: string): string[] {
+  return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+    const path = join(dir, entry.name);
+    return entry.isDirectory() ? filesUnder(path) : [path];
+  });
+}
 
 const secret = {
   reason: 'I want to be here for my daughter',
@@ -200,26 +209,47 @@ describe('public_profile database function', () => {
     expect(sql).toContain('set town = null');
   });
 
-  it('puts a Share on profile switch on every section', () => {
+  it('puts labelled share switches on the section screen or What I share', () => {
     const home = readFileSync('src/app/(main)/home.tsx', 'utf8');
     const you = readFileSync('src/app/(main)/profile.tsx', 'utf8');
     const checkIn = readFileSync('src/app/(main)/check-in.tsx', 'utf8');
+    const quotes = readFileSync('src/app/(main)/quotes.tsx', 'utf8');
+    const sharing = readFileSync('src/app/(main)/sharing.tsx', 'utf8');
     const health = readFileSync('src/ui/HealthBoard.tsx', 'utf8');
     const diary = readFileSync('src/app/(main)/gratitude.tsx', 'utf8');
     const vision = readFileSync('src/ui/VisionBoard.tsx', 'utf8');
     const photos = readFileSync('src/ui/ProgressPhotos.tsx', 'utf8');
     const card = readFileSync('src/ui/PublicProfileCard.tsx', 'utf8');
     const people = readFileSync('src/ui/CommunityProfile.tsx', 'utf8');
-    for (const source of [home, you, checkIn, health, diary, vision, card]) {
-      expect(source).toContain('<ShareOnProfile');
+    const peopleScreen = readFileSync('src/app/(main)/people.tsx', 'utf8');
+    for (const source of [home, checkIn, quotes, card]) {
+      expect(source).not.toContain('<ShareOnProfile');
     }
-    expect(home).toContain('moodStreak');
-    expect(home).toContain('healthKinds');
+    expect(sharing).toContain('What I share');
+    expect(sharing).toContain('label="Share bio"');
+    expect(sharing).toContain('label="Share town"');
+    expect(sharing).toContain('label="Share stage"');
+    expect(sharing).toContain('label="Share days sober and milestones"');
+    expect(sharing).toContain('label="Share money saved and units avoided"');
+    expect(sharing).toContain('label="Share mood streak"');
+    expect(sharing).toContain('label="Share pinned quote"');
+    expect(you).toContain('<SharingGroup');
     expect(you).toContain('reasonBodies');
-    expect(you).toContain('town: selected');
+    expect(you).toContain('What I share');
+    expect(you).not.toContain('town: selected');
+    expect(peopleScreen).toContain('What I share');
+    expect(health).toContain('<SharingGroup');
+    expect(health).toContain('healthShareLabel');
+    const metricCard = health.slice(health.indexOf('function MetricCard'), health.indexOf('function Readings'));
+    expect(metricCard).not.toContain('<ShareOnProfile');
+    expect(healthShareLabel('Steps')).toBe('Share steps average');
+    expect(healthShareLabel('Sleep')).toBe('Share sleep average');
+    expect(diary).toContain('<SharingGroup');
     expect(diary).toContain('gratitudeIds');
     expect(diary).toContain('gratitudePhotoIds');
+    expect(diary).toContain('Share photo “');
     expect(diary).not.toMatch(/Share with community|visibility/);
+    expect(vision).toContain('<SharingGroup');
     expect(vision).toContain('visionIds');
     expect(vision).not.toMatch(/Share with community|visibility/);
     expect(photos).toContain('{SHARE_HINT}');
@@ -234,7 +264,28 @@ describe('public_profile database function', () => {
     expect(people).not.toContain('photo.note');
     expect(people).toContain("reason: 'Shared profile'");
     expect(people).toContain('publicProfile');
-    expect(readFileSync('src/app/(main)/people.tsx', 'utf8')).not.toMatch(/gratitude/);
+    expect(peopleScreen).not.toMatch(/gratitude/);
+    const control = readFileSync('src/ui/ShareOnProfile.tsx', 'utf8');
+    expect(control).toContain('accessibilityLabel="Sharing"');
+    expect(control).toContain('useState(false)');
+    expect(control).toContain('>Sharing<');
+    const allowed = [
+      'src/ui/ShareOnProfile.tsx',
+      'src/app/(main)/sharing.tsx',
+      'src/ui/HealthBoard.tsx',
+      'src/app/(main)/gratitude.tsx',
+      'src/ui/VisionBoard.tsx',
+      'src/app/(main)/profile.tsx',
+    ];
+    const found = filesUnder('src')
+      .filter((path) => !/\.test\.tsx?$/.test(path))
+      .filter((path) => {
+        const source = readFileSync(path, 'utf8');
+        return source.includes('<ShareOnProfile') || source.includes('export function ShareOnProfile');
+      })
+      .map((path) => path.split('\\').join('/'))
+      .sort();
+    expect(found).toEqual([...allowed].sort());
   });
 });
 

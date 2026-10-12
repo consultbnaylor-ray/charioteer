@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { Switch, View } from 'react-native';
+import { useState, type ReactNode } from 'react';
+import { Pressable, Switch, View } from 'react-native';
 
 import { useRepository, useSnapshot } from '@/data';
 import { shownError } from '@/domain/errors';
@@ -13,18 +13,18 @@ import { useAppTheme } from '@/ui/theme';
 import { Button, ErrorNote, T } from '@/ui/ui';
 
 /**
- * One Share on profile switch. Sensitive sections ask once, then remember
- * the consent time. Community off still stores the choice, and says so.
+ * One labelled share switch. Sensitive sections ask once, then remember
+ * the consent time. The hint is shown by the screen or by SharingGroup.
  */
 export function ShareOnProfile({
+  label,
   on,
   sensitive = false,
-  detail,
   apply,
 }: {
+  label: string;
   on: boolean;
   sensitive?: boolean;
-  detail?: string;
   apply: (sharing: ProfileSharing, selected: boolean) => ProfileSharing;
 }) {
   const snap = useSnapshot();
@@ -33,8 +33,6 @@ export function ShareOnProfile({
   const [ask, setAsk] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
-  const communityOn = Boolean(snap.profile?.communityVisible && snap.profile?.ageConfirmed18);
-  const label = detail ? `Share on profile, ${detail}` : 'Share on profile';
 
   async function save(selected: boolean, consent: boolean) {
     setPending(true);
@@ -67,7 +65,7 @@ export function ShareOnProfile({
   return (
     <View style={{ gap: 6 }}>
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 12, alignItems: 'center' }}>
-        <T style={{ flex: 1 }}>Share on profile</T>
+        <T style={{ flex: 1 }}>{label}</T>
         <Switch
           accessibilityLabel={label}
           value={on}
@@ -77,7 +75,6 @@ export function ShareOnProfile({
           thumbColor={theme.colors.surface}
         />
       </View>
-      <T variant="muted">{communityOn ? SHARE_HINT : PROFILE_HIDDEN_SHARE}</T>
       {ask ? (
         <View style={{ gap: 8 }}>
           <T>{SENSITIVE_SHARE_BODY}</T>
@@ -86,6 +83,36 @@ export function ShareOnProfile({
         </View>
       ) : null}
       {error ? <ErrorNote>{error}</ErrorNote> : null}
+    </View>
+  );
+}
+
+/** Per-item switches, closed until opened. The hint is shown once. */
+export function SharingGroup({ children }: { children: ReactNode }) {
+  const snap = useSnapshot();
+  const theme = useAppTheme();
+  const [open, setOpen] = useState(false);
+  const communityOn = Boolean(snap.profile?.communityVisible && snap.profile?.ageConfirmed18);
+
+  return (
+    <View style={{ gap: 8 }}>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel="Sharing"
+        accessibilityState={{ expanded: open }}
+        aria-expanded={open}
+        onPress={() => setOpen((value) => !value)}
+        style={{ minHeight: 44, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}
+      >
+        <T variant="label">Sharing</T>
+        <T variant="muted" style={{ color: theme.colors.muted }}>{open ? 'Hide' : 'Show'}</T>
+      </Pressable>
+      {open ? (
+        <View style={{ gap: 12 }}>
+          <T variant="muted">{communityOn ? SHARE_HINT : PROFILE_HIDDEN_SHARE}</T>
+          {children}
+        </View>
+      ) : null}
     </View>
   );
 }
