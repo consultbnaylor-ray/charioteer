@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 
 import { buildSystemPrompt, buildThumosContext } from './thumos';
 import { APP_SECTIONS, TAB_SECTIONS } from './sections';
+import { tabLabelFontSize, tabSideInset } from '../ui/tabBar';
 import {
   filterGratitude,
   formatGratitudeContext,
@@ -258,6 +259,22 @@ describe('gratitude diary wiring', () => {
       'Gratitude',
     ]);
     const layout = readFileSync('src/app/(main)/_layout.tsx', 'utf8');
+    expect(layout).toContain('flex: 1, minWidth: 0');
+    expect(layout).toContain('adjustsFontSizeToFit');
+    expect(layout).toContain('minimumFontScale={0.7}');
+    expect(layout).toContain('paddingLeft: tabSide');
+    expect(layout).toContain('paddingRight: tabSide');
+    expect(layout).toContain("textAlign: 'center'");
+    const tabBar = readFileSync('src/ui/tabBar.ts', 'utf8');
+    expect(tabBar).toContain('Math.max(left, right)');
+    expect(tabSideInset(0, 0)).toBe(8);
+    expect(tabSideInset(47, 0)).toBe(tabSideInset(0, 47));
+    expect(tabSideInset(47, 0)).toBeGreaterThan(47);
+    const narrow = tabLabelFontSize(320, tabSideInset(0, 0), 1);
+    const phone = tabLabelFontSize(390, tabSideInset(0, 0), 1);
+    expect(phone).toBeLessThan(12);
+    expect(narrow).toBeLessThanOrEqual(phone);
+    expect(narrow * 4.2).toBeLessThanOrEqual((320 - tabSideInset(0, 0) * 2) / TAB_SECTIONS.length - 4);
     expect(layout).toContain('accessibilityLabel="Menu"');
     expect(layout).toContain('width: 44, height: 44');
     expect(layout).toContain('TAB_SECTIONS');

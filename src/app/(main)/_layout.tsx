@@ -1,9 +1,10 @@
 import { Stack, usePathname, useRouter } from 'expo-router';
 import { useState } from 'react';
-import { Pressable, StyleSheet, useWindowDimensions, View } from 'react-native';
+import { Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { TAB_SECTIONS } from '@/domain/sections';
+import { tabLabelFontSize, tabSideInset } from '@/ui/tabBar';
 import { useAppTheme } from '@/ui/theme';
 import { topSafeInset } from '@/ui/safeArea';
 import { SectionDrawer } from '@/ui/SectionDrawer';
@@ -17,10 +18,13 @@ function selected(pathname: string, href: string) {
 
 export default function MainLayout() {
   const theme = useAppTheme();
-  const wide = useWindowDimensions().width >= 980;
+  const { width } = useWindowDimensions();
+  const wide = width >= 980;
   const pathname = usePathname();
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const tabSide = tabSideInset(insets.left, insets.right);
+  const labelSize = tabLabelFontSize(width, tabSide, theme.scale);
   const [menuOpen, setMenuOpen] = useState(false);
 
   const go = (href: string) => router.navigate(href as never);
@@ -76,20 +80,37 @@ export default function MainLayout() {
         </View>
       </ShellInsetProvider>
       {wide ? null : (
-        <View style={[styles.tabs, { paddingBottom: Math.max(insets.bottom, 8), borderTopColor: theme.colors.line, backgroundColor: theme.colors.surface }]}>
+        <View
+          style={[
+            styles.tabs,
+            {
+              paddingBottom: Math.max(insets.bottom, 8),
+              paddingLeft: tabSide,
+              paddingRight: tabSide,
+              borderTopColor: theme.colors.line,
+              backgroundColor: theme.colors.surface,
+            },
+          ]}
+        >
           {TAB_SECTIONS.map((tab) => (
             <Pressable key={tab.href} accessibilityRole="button" accessibilityState={{ selected: selected(pathname, tab.href) }} onPress={() => go(tab.href)} style={[styles.tab, { borderTopColor: selected(pathname, tab.href) ? theme.colors.ink : 'transparent' }]}>
-              <T
-                variant="muted"
+              <Text
+                numberOfLines={1}
+                adjustsFontSizeToFit
+                minimumFontScale={0.7}
+                maxFontSizeMultiplier={1.6}
                 style={{
+                  width: '100%',
+                  alignSelf: 'stretch',
+                  textAlign: 'center',
                   color: selected(pathname, tab.href) ? theme.colors.ink : theme.colors.muted,
                   fontFamily: theme.font.bodyStrong,
-                  fontSize: 12 * theme.scale,
-                  textAlign: 'center',
+                  fontSize: labelSize,
+                  lineHeight: Math.round(labelSize * 1.25),
                 }}
               >
                 {tab.tabLabel ?? tab.label}
-              </T>
+              </Text>
             </Pressable>
           ))}
         </View>
@@ -121,6 +142,6 @@ const styles = StyleSheet.create({
   navItem: { borderRadius: 2, borderLeftWidth: 3, paddingHorizontal: 12, paddingVertical: 10, marginBottom: 4 },
   mobileTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 8, paddingBottom: 8, borderBottomWidth: StyleSheet.hairlineWidth },
   mobileBrand: { flexDirection: 'row', alignItems: 'center', gap: 4, flex: 1 },
-  tabs: { flexDirection: 'row', borderTopWidth: StyleSheet.hairlineWidth, paddingTop: 8 },
-  tab: { flex: 1, minHeight: 44, alignItems: 'center', justifyContent: 'center', borderTopWidth: 2 },
+  tabs: { flexDirection: 'row', alignItems: 'stretch', width: '100%', borderTopWidth: StyleSheet.hairlineWidth, paddingTop: 8 },
+  tab: { flex: 1, minWidth: 0, minHeight: 44, alignItems: 'center', justifyContent: 'center', borderTopWidth: 2 },
 });
