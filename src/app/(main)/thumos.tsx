@@ -1,9 +1,10 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
-import { Platform, Pressable, Text, View } from 'react-native';
+import { Platform, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
 
 import { useRepository, useSnapshot } from '@/data';
+import type { ThumosMessage } from '@/data/types';
 import { CHARIOTEER_STORY, CHARIOTEER_STORY_TITLE } from '@/domain/charioteerStory';
 import { ALCOHOL_FACTS } from '@/domain/facts';
 import { earnedMilestones } from '@/domain/milestones';
@@ -11,6 +12,7 @@ import { firstSafetyHit, pinnedSafetyNotices } from '@/domain/safety';
 import { asUserFacing, shownError } from '@/domain/errors';
 import { showsSoberRecord } from '@/domain/stage';
 import { CRAVING_LINE, inferThumosMode, THUMOS_INTRO, OPENING_LINE, type ThumosMode } from '@/domain/thumos';
+import { THUMOS_VISIBLE, latestThumos } from '@/domain/thumosThread';
 import { formatClock, urgeRemainingSeconds } from '@/domain/urge';
 import { ensureUrge, restartUrge } from '@/features/urgeSession';
 import { VOICE_COPY } from '@/domain/voice';
@@ -19,7 +21,8 @@ import { createVoiceRuntime, voiceStatusLabel, type VoiceRuntime } from '@/domai
 import { briefingFromSnapshot } from '@/voice/briefing';
 import { VoiceCall } from '@/voice/call';
 import { HELMET_ASPECT, HELMET_D, HELMET_VIEWBOX } from '@/ui/helmet';
-import { Button, Card, ErrorNote, Field, Screen, T } from '@/ui/ui';
+import { markThumosIntroSeen, thumosIntroSeen } from '@/ui/thumosIntroMemory';
+import { Button, Card, ErrorNote, Field, Screen, T, useScreenScroller } from '@/ui/ui';
 import { useAppTheme } from '@/ui/theme';
 
 export default function Thumos() {
@@ -42,11 +45,28 @@ export default function Thumos() {
   const voiceTicket = useRef(0);
   const [now, setNow] = useState(() => Date.now());
   const [urgeStart, setUrgeStart] = useState<number | null>(null);
+  const [shown, setShown] = useState(THUMOS_VISIBLE);
+  const [introOpen, setIntroOpen] = useState<boolean | null>(null);
+  const introTouched = useRef(false);
 
   useEffect(() => {
     if (!profile) return;
     void repo.ensureThumosGuide(sos ? 'craving' : 'opening').catch((err: unknown) => setError(shownError(err, 'Could not open the coach.')));
   }, [profile, repo, sos]);
+
+  useEffect(() => {
+    const userId = profile?.id;
+    if (!userId) return;
+    let live = true;
+    void thumosIntroSeen(userId).then((seen) => {
+      if (!live) return;
+      if (!introTouched.current) setIntroOpen(!seen);
+      if (!seen) void markThumosIntroSeen(userId);
+    });
+    return () => {
+      live = false;
+    };
+  }, [profile?.id]);
 
   const latest = snap.checkIns[0];
   const mode: ThumosMode = inferThumosMode({
@@ -71,6 +91,14 @@ export default function Thumos() {
   }, [showSupport]);
 
   if (!profile) return null;
+  const thread = snap.thumos.filter((message) => !(message.role === 'guide' && message.content === CRAVING_LINE));
+  const { visible, earlier } = latestThumos(thread, shown);
+  const activity = `${outgoing ?? ''}|${liveReply}|${pending ? 1 : 0}`;
+  const pinToken = introOpen === null
+    ? ''
+    : introOpen
+      ? (pending || outgoing || liveReply ? `open|${activity}` : '')
+      : `${visible[visible.length - 1]?.id ?? ''}|${activity}`;
   const lastUser = [...snap.thumos].reverse().find((message) => message.role === 'user');
   const safety = firstSafetyHit([
     draft,
@@ -205,74 +233,207 @@ export default function Thumos() {
           ) : null}
         </Card>
       ) : null}
-      <Card>
-        <T>{THUMOS_INTRO}</T>
-      </Card>
-      {snap.thumos.filter((message) => !(message.role === 'guide' && message.content === CRAVING_LINE)).map((message) => (
-        <Card key={message.id} style={{ backgroundColor: message.role === 'user' ? theme.colors.emphasisSoft : theme.colors.surface }}>
-          <T variant="label">{message.role === 'user' ? 'You' : message.role === 'offline' ? 'Charioteer' : 'Thumos'}</T>
-          <T>{message.content}</T>
-        </Card>
-      ))}
-      {pending && outgoing ? (
-        <Card style={{ backgroundColor: theme.colors.emphasisSoft }}>
-          <T variant="label">You</T>
-          <T>{outgoing}</T>
-        </Card>
-      ) : null}
-      {pending ? (
-        <Card>
-          <T variant="label">Thumos</T>
-          <T>{liveReply || 'Thumos is thinking'}</T>
-        </Card>
-      ) : null}
-      {VOICE_ENABLED && inCall && voice ? (
-        <Card style={{ borderColor: theme.colors.ink, borderWidth: 2 }}>
-          <T variant="label">Voice</T>
-          <T variant="display">{voiceStatusLabel(voice)}</T>
-          {voice.liveUser ? <T>You: {voice.liveUser}</T> : null}
-          {voice.liveAssistant ? <T>Thumos: {voice.liveAssistant}</T> : null}
-          {voice.message && voice.phase !== 'error' ? <T variant="muted">{voice.message}</T> : null}
-          {voice.detail ? <T variant="muted" style={{ width: '100%', flexShrink: 1 }}>{voice.detail}</T> : null}
+      <View style={{ width: '100%', gap: 8 }}>
+        <ThumosIntro
+          open={introOpen === true}
+          onToggle={() => {
+            introTouched.current = true;
+            setIntroOpen((value) => !value);
+          }}
+        />
+        <ThumosTranscript
+          messages={visible}
+          earlier={earlier}
+          onEarlier={() => setShown((count) => count + THUMOS_VISIBLE)}
+          pending={pending}
+          outgoing={outgoing}
+          liveReply={liveReply}
+        />
+        {VOICE_ENABLED && inCall && voice ? (
+          <Card style={{ borderColor: theme.colors.ink, borderWidth: 2 }}>
+            <T variant="label">Voice</T>
+            <T variant="display">{voiceStatusLabel(voice)}</T>
+            {voice.liveUser ? <T>You: {voice.liveUser}</T> : null}
+            {voice.liveAssistant ? <T>Thumos: {voice.liveAssistant}</T> : null}
+            {voice.message && voice.phase !== 'error' ? <T variant="muted">{voice.message}</T> : null}
+            {voice.detail ? <T variant="muted" style={{ width: '100%', flexShrink: 1 }}>{voice.detail}</T> : null}
+            <View style={{ flexDirection: 'row', gap: 10 }}>
+              <View style={{ flex: 1 }}>
+                <Button
+                  label={voice.muted ? 'Unmute' : 'Mute'}
+                  tone="quiet"
+                  onPress={() => callRef.current?.mute()}
+                />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Button label="End call" tone="quiet" onPress={() => void endVoice()} />
+              </View>
+            </View>
+          </Card>
+        ) : !profile.consentAi ? (
+          <Card>
+            <T>Thumos stays quiet until you agree that messages can be sent to the coach.</T>
+            <Button label="Allow the coach" onPress={() => void repo.updateProfile({ consentAi: true }).catch((err: unknown) => setError(shownError(err, 'Could not save.')))} />
+          </Card>
+        ) : (
+          <Field label="Message" value={draft} onChangeText={setDraft} multiline placeholder="Say it in your own words" />
+        )}
+        <ErrorNote>{error || (VOICE_ENABLED && voice?.phase === 'error' ? voice.message : null)}</ErrorNote>
+        {VOICE_ENABLED && !error && voice?.phase === 'error' && voice.detail ? <T variant="muted" style={{ width: '100%', flexShrink: 1 }}>{voice.detail}</T> : null}
+        {VOICE_ENABLED && inCall ? null : VOICE_ENABLED ? (
           <View style={{ flexDirection: 'row', gap: 10 }}>
             <View style={{ flex: 1 }}>
-              <Button
-                label={voice.muted ? 'Unmute' : 'Mute'}
-                tone="quiet"
-                onPress={() => callRef.current?.mute()}
-              />
+              <Button label="Send" pending={pending} disabled={!profile.consentAi} onPress={() => void send()} />
             </View>
             <View style={{ flex: 1 }}>
-              <Button label="End call" tone="quiet" onPress={() => void endVoice()} />
+              <Button label="Voice" disabled={!profile.consentAi || pending} onPress={() => void startVoice()} />
             </View>
           </View>
-        </Card>
-      ) : !profile.consentAi ? (
-        <Card>
-          <T>Thumos stays quiet until you agree that messages can be sent to the coach.</T>
-          <Button label="Allow the coach" onPress={() => void repo.updateProfile({ consentAi: true }).catch((err: unknown) => setError(shownError(err, 'Could not save.')))} />
-        </Card>
-      ) : (
-        <Field label="Message" value={draft} onChangeText={setDraft} multiline placeholder="Say it in your own words" />
-      )}
-      <ErrorNote>{error || (VOICE_ENABLED && voice?.phase === 'error' ? voice.message : null)}</ErrorNote>
-      {VOICE_ENABLED && !error && voice?.phase === 'error' && voice.detail ? <T variant="muted" style={{ width: '100%', flexShrink: 1 }}>{voice.detail}</T> : null}
-      {VOICE_ENABLED && inCall ? null : VOICE_ENABLED ? (
-        <View style={{ flexDirection: 'row', gap: 10 }}>
-          <View style={{ flex: 1 }}>
-            <Button label="Send" pending={pending} disabled={!profile.consentAi} onPress={() => void send()} />
-          </View>
-          <View style={{ flex: 1 }}>
-            <Button label="Voice" disabled={!profile.consentAi || pending} onPress={() => void startVoice()} />
-          </View>
-        </View>
-      ) : (
-        <Button label="Send" pending={pending} disabled={!profile.consentAi} onPress={() => void send()} />
-      )}
+        ) : (
+          <Button label="Send" pending={pending} disabled={!profile.consentAi} onPress={() => void send()} />
+        )}
+        <PinLatest token={pinToken} />
+      </View>
       {showsSoberRecord(profile.stage) ? <T variant="muted">Milestones in view: {(profile.sobrietyStartedAt ? earnedMilestones(new Date(profile.sobrietyStartedAt), new Date()) : []).map((item) => item.badge).join(', ') || 'none yet'}.</T> : null}
       <SoulStory />
     </Screen>
   );
+}
+
+const INTRO_LINE = 'Thumos is your Sober Coach, tap to read more';
+
+function ThumosIntro({ open, onToggle }: { open: boolean; onToggle: () => void }) {
+  const theme = useAppTheme();
+  const { width } = useWindowDimensions();
+  // 297 is the collapsed sentence at 15px Barlow, so it stays one line on a narrow phone.
+  const introSize = Math.min(15 * theme.scale, Math.max(0, width - 68) / (297 / 15));
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={open ? 'Thumos is your Sober Coach' : INTRO_LINE}
+      accessibilityState={{ expanded: open }}
+      aria-expanded={open}
+      onPress={onToggle}
+      style={{
+        minHeight: 44,
+        justifyContent: 'center',
+        borderWidth: StyleSheet.hairlineWidth,
+        borderColor: theme.colors.line,
+        backgroundColor: theme.colors.surface,
+        borderRadius: theme.radius.md,
+        paddingVertical: 8,
+        paddingHorizontal: 10,
+      }}
+    >
+      {open ? (
+        <T style={{ fontSize: 15 * theme.scale, lineHeight: 20 * theme.scale }}>{THUMOS_INTRO}</T>
+      ) : (
+        <Text
+          numberOfLines={1}
+          adjustsFontSizeToFit
+          minimumFontScale={0.7}
+          style={{ fontFamily: theme.font.body, fontSize: introSize, lineHeight: Math.round(introSize * 1.25), color: theme.colors.ink }}
+        >
+          {INTRO_LINE}
+        </Text>
+      )}
+    </Pressable>
+  );
+}
+
+function Bubble({ mine, text }: { mine: boolean; text: string }) {
+  const theme = useAppTheme();
+  return (
+    <View
+      style={{
+        alignSelf: mine ? 'flex-end' : 'flex-start',
+        maxWidth: '80%',
+        backgroundColor: mine ? theme.colors.emphasisSoft : theme.colors.surface,
+        borderColor: theme.colors.line,
+        borderWidth: StyleSheet.hairlineWidth,
+        borderRadius: 12,
+        paddingVertical: 6,
+        paddingHorizontal: 10,
+      }}
+    >
+      <T style={{ fontSize: 15 * theme.scale, lineHeight: 20 * theme.scale }}>{text}</T>
+    </View>
+  );
+}
+
+function ThumosTranscript({
+  messages,
+  earlier,
+  onEarlier,
+  pending,
+  outgoing,
+  liveReply,
+}: {
+  messages: ThumosMessage[];
+  earlier: number;
+  onEarlier: () => void;
+  pending: boolean;
+  outgoing: string | null;
+  liveReply: string;
+}) {
+  return (
+    <View style={{ width: '100%', gap: 4 }}>
+      {earlier > 0 ? (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Show earlier"
+          onPress={onEarlier}
+          style={{ minHeight: 44, alignItems: 'center', justifyContent: 'center' }}
+        >
+          <T variant="muted">Show earlier</T>
+        </Pressable>
+      ) : null}
+      {messages.map((message) => (
+        <Bubble key={message.id} mine={message.role === 'user'} text={message.content} />
+      ))}
+      {pending && outgoing ? <Bubble mine text={outgoing} /> : null}
+      {pending ? <Bubble mine={false} text={liveReply || 'Thumos is thinking'} /> : null}
+    </View>
+  );
+}
+
+function PinLatest({ token }: { token: string }) {
+  const handle = useScreenScroller();
+  const marker = useRef<View>(null);
+  useEffect(() => {
+    if (!token) return;
+    let cancelled = false;
+    const pin = () => {
+      if (cancelled) return;
+      if (Platform.OS === 'web') {
+        if (typeof document === 'undefined') return;
+        document.getElementById('thumos-latest')?.scrollIntoView({ block: 'end' });
+        return;
+      }
+      const markerView = marker.current;
+      const inner = handle?.current.innerRef.current;
+      const scroller = handle?.current.scrollRef.current;
+      if (!markerView || !inner || !scroller) return;
+      markerView.measureLayout(
+        inner,
+        (_x, y, _width, height) => {
+          const viewport = handle?.current.height ?? 0;
+          const target = viewport > 0 ? y + height - viewport + 8 : y;
+          scroller.scrollTo({ y: Math.max(0, target), animated: false });
+        },
+        () => {},
+      );
+    };
+    const frame = requestAnimationFrame(() => {
+      pin();
+      requestAnimationFrame(pin);
+    });
+    return () => {
+      cancelled = true;
+      cancelAnimationFrame(frame);
+    };
+  }, [token, handle]);
+  return <View ref={marker} nativeID="thumos-latest" collapsable={false} style={{ height: 1, width: '100%' }} />;
 }
 
 function SoulStory() {

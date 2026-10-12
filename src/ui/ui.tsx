@@ -1,5 +1,5 @@
 import * as Haptics from 'expo-haptics';
-import { createContext, useContext, useRef, useState, type ReactNode } from 'react';
+import { createContext, useContext, useRef, useState, type ReactNode, type RefObject } from 'react';
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -86,6 +86,18 @@ export function Mark({ size = 36 }: { size?: number }) {
 /** The tab shell already pads the status bar and the home indicator. Full-screen routes do not. */
 const ShellInsetContext = createContext({ topHandled: false, bottomHandled: false });
 
+export type ScreenScrollHandle = {
+  scrollRef: RefObject<ScrollView | null>;
+  innerRef: RefObject<View | null>;
+  height: number;
+};
+
+const ScreenScrollContext = createContext<RefObject<ScreenScrollHandle> | null>(null);
+
+export function useScreenScroller() {
+  return useContext(ScreenScrollContext);
+}
+
 export function ShellInsetProvider({
   top,
   bottom,
@@ -131,6 +143,9 @@ export function Screen({
   const { hostRef, keyboardVerticalOffset, onKeyboardLayout } = useKeyboardOffset();
   const topInset = shell.topHandled ? 0 : topSafeInset(insets.top);
   const bottomInset = shell.bottomHandled ? 0 : insets.bottom;
+  const scrollRef = useRef<ScrollView>(null);
+  const innerRef = useRef<View>(null);
+  const scrollHandle = useRef<ScreenScrollHandle>({ scrollRef, innerRef, height: 0 });
   return (
     <View ref={hostRef} style={{ flex: 1, backgroundColor: theme.colors.bg }} onLayout={onKeyboardLayout}>
       <KeyboardAvoidingView
@@ -138,10 +153,16 @@ export function Screen({
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         keyboardVerticalOffset={keyboardVerticalOffset}
       >
+      <ScreenScrollContext.Provider value={scrollHandle}>
       <View style={{ flex: 1, paddingTop: topInset }}>
         {banner ? <DismissKeyboard style={[styles.page, { paddingBottom: 0 }]}>{banner}</DismissKeyboard> : null}
         <ScrollView
+          ref={scrollRef}
+          innerViewRef={innerRef as RefObject<View>}
           {...inputScrollProps}
+          onLayout={(event) => {
+            scrollHandle.current.height = event.nativeEvent.layout.height;
+          }}
           contentContainerStyle={[
             styles.page,
             { paddingBottom: 40 + bottomInset + (footer ? 8 : 0) },
@@ -172,6 +193,7 @@ export function Screen({
           </DismissKeyboard>
         ) : null}
       </View>
+      </ScreenScrollContext.Provider>
       </KeyboardAvoidingView>
     </View>
   );
