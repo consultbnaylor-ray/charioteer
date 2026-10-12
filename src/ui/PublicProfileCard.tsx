@@ -12,7 +12,8 @@ import { BIO_EXAMPLE, BIO_LIMIT, NEVER_SHARED, PHOTO_CAPTION_LIMIT, projectPubli
 import { progressPhotoLabel } from '@/domain/progressPhotos';
 import { formatGbp } from '@/domain/savings';
 import { SharedPhotoFrame } from '@/ui/CommunityProfile';
-import { OwnProfilePhotos, ProfileAvatarPicker, ProfilePhotoEditor } from '@/ui/ProfilePhotoEditor';
+import { MemberAvatar } from '@/ui/MemberAvatar';
+import { OwnProfilePhotos, ProfilePhotoEditor } from '@/ui/ProfilePhotoEditor';
 import { COMMUNITY_CONSENT_BODY } from '@/ui/ConsentChoices';
 import { InterestChip } from '@/ui/InterestChip';
 import { useAppTheme } from '@/ui/theme';
@@ -108,6 +109,7 @@ export function PublicProfileCard() {
     pinnedQuoteId: me.pinnedQuoteId,
   }, snap.sharing);
   const interestLine = preview.interests.join(' · ');
+  const avatar = (snap.profilePhotos ?? []).find((photo) => photo.role === 'avatar');
   const shared = snap.progressPhotos
     .filter((photo) => photo.visibility === 'community')
     .sort((a, b) => a.monthIndex - b.monthIndex || a.takenOn.localeCompare(b.takenOn));
@@ -286,10 +288,13 @@ export function PublicProfileCard() {
         ) : (
           <View style={{ gap: 8 }}>
             <T variant="label">Name and interests stay on</T>
-            <ProfileAvatarPicker
-              name={preview.displayName}
-              trailing={<T variant="title">{preview.displayName}</T>}
-            />
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+              <MemberAvatar name={preview.displayName} url={avatar?.previewUrl} size={72} />
+              <View style={{ flex: 1, gap: 2 }}>
+                <T variant="title">{preview.displayName}</T>
+                {avatar?.caption ? <T variant="muted">{avatar.caption}</T> : null}
+              </View>
+            </View>
             <OwnProfilePhotos name={preview.displayName} photos={snap.profilePhotos ?? []} />
             {preview.bio ? <T>{preview.bio}</T> : null}
             {preview.pinnedQuote ? (
