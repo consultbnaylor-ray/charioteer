@@ -12,7 +12,7 @@ import { firstSafetyHit, pinnedSafetyNotices } from '@/domain/safety';
 import { asUserFacing, shownError } from '@/domain/errors';
 import { showsSoberRecord } from '@/domain/stage';
 import { CRAVING_LINE, inferThumosMode, THUMOS_INTRO, OPENING_LINE, type ThumosMode } from '@/domain/thumos';
-import { THUMOS_LINE_CAP, groupThumosByDay, latestExchange, messageNeedsMore } from '@/domain/thumosThread';
+import { THUMOS_LINE_CAP, groupThumosByDay, messageNeedsMore, visibleThumos } from '@/domain/thumosThread';
 import { formatClock, urgeRemainingSeconds } from '@/domain/urge';
 import { ensureUrge, restartUrge } from '@/features/urgeSession';
 import { VOICE_COPY } from '@/domain/voice';
@@ -46,11 +46,13 @@ export default function Thumos() {
   const [now, setNow] = useState(() => Date.now());
   const [urgeStart, setUrgeStart] = useState<number | null>(null);
   const [threadVisit, setThreadVisit] = useState(0);
+  const [keptSend, setKeptSend] = useState<string | null>(null);
   const [introOpen, setIntroOpen] = useState<boolean | null>(null);
   const introTouched = useRef(false);
 
   useFocusEffect(useCallback(() => {
     setThreadVisit((current) => current + 1);
+    setKeptSend(null);
   }, []));
 
   useEffect(() => {
@@ -96,7 +98,7 @@ export default function Thumos() {
 
   if (!profile) return null;
   const thread = snap.thumos.filter((message) => !(message.role === 'guide' && message.content === CRAVING_LINE));
-  const { visible, earlier } = latestExchange(thread);
+  const { visible, earlier } = visibleThumos(thread, keptSend);
   const activity = `${outgoing ?? ''}|${liveReply}|${pending ? 1 : 0}`;
   const pinToken = introOpen === null
     ? ''
@@ -118,6 +120,7 @@ export default function Thumos() {
   async function send(text = draft) {
     const trimmed = text.trim();
     if (!trimmed) return;
+    setKeptSend(trimmed);
     const support = sos || mode === 'support' || inferThumosMode({ sos, hasHistory: true, userText: trimmed }) === 'support';
     setSupportLatch(support);
     setPending(true);
@@ -128,6 +131,7 @@ export default function Thumos() {
     try {
       await repo.sendThumos(trimmed, support ? 'support' : mode === 'opening' ? 'steady' : mode, (next) => setLiveReply(next));
     } catch (err) {
+      setKeptSend(null);
       setDraft(trimmed);
       setError(asUserFacing(err, 'thumos').message);
     } finally {
@@ -436,8 +440,8 @@ function ThumosTranscript({
       {messages.map((message) => (
         <Bubble key={message.id} mine={message.role === 'user'} text={message.content} />
       ))}
-      {pending && outgoing ? <Bubble mine text={outgoing} /> : null}
-      {pending ? <Bubble mine={false} text={liveReply || 'Thumos is thinking'} /> : null}
+      {pending && outgoing && !messages.some((message) => message.role === 'user' && message.content === outgoing) ? <Bubble mine text={outgoing} /> : null}
+      {pending && !messages.some((message) => message.role !== 'user' && message.content === liveReply) ? <Bubble mine={false} text={liveReply || 'Thumos is thinking'} /> : null}
     </View>
   );
 }

@@ -17,25 +17,27 @@ export function messageNeedsMore(text: string, charsPerLine = 32): boolean {
   return lines > THUMOS_LINE_CAP;
 }
 
-type ThreadRow = { role: string };
+type ThreadRow = { role: string; content: string };
 
 /**
- * The open screen shows one exchange: the last user message and Thumos’s reply after it.
- * A chat that has not had a user message yet shows only Thumos’s latest reply.
+ * The open screen shows one message, normally Thumos’s latest reply.
+ * While a send from this visit is still on screen, that user message stays up with the reply.
+ * Pass null once the screen is opened again.
  */
-export function latestExchange<T extends ThreadRow>(messages: readonly T[]): { visible: T[]; earlier: T[] } {
-  if (messages.length === 0) return { visible: [], earlier: [] };
-  let lastUser = -1;
-  for (let index = messages.length - 1; index >= 0; index -= 1) {
-    if (messages[index].role === 'user') {
-      lastUser = index;
-      break;
+export function visibleThumos<T extends ThreadRow>(messages: readonly T[], sentText: string | null): { visible: T[]; earlier: T[] } {
+  if (sentText) {
+    let start = -1;
+    for (let index = messages.length - 1; index >= 0; index -= 1) {
+      if (messages[index].role === 'user' && messages[index].content === sentText) {
+        start = index;
+        break;
+      }
     }
+    if (start === -1) return { visible: [], earlier: [...messages] };
+    return { visible: messages.slice(start), earlier: messages.slice(0, start) };
   }
-  if (lastUser === -1) {
-    return { visible: [messages[messages.length - 1]], earlier: messages.slice(0, -1) };
-  }
-  return { visible: messages.slice(lastUser), earlier: messages.slice(0, lastUser) };
+  if (messages.length === 0) return { visible: [], earlier: [] };
+  return { visible: [messages[messages.length - 1]], earlier: messages.slice(0, -1) };
 }
 
 /** Sunday 11 October 2026. Weekday and date are joined so a comma is not inserted. */

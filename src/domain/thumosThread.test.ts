@@ -2,11 +2,11 @@ import { readFileSync } from 'node:fs';
 
 import { describe, expect, it } from 'vitest';
 
-import { THUMOS_LINE_CAP, groupThumosByDay, latestExchange, messageNeedsMore, thumosDayLabel } from './thumosThread';
+import { THUMOS_LINE_CAP, groupThumosByDay, messageNeedsMore, thumosDayLabel, visibleThumos } from './thumosThread';
 import { introSeenIn, withIntroSeen } from '../ui/thumosIntroMemory';
 
 describe('thumos conversation window', () => {
-  it('shows the latest exchange and keeps older days collapsed behind a count', () => {
+  it('shows only the latest message, and keeps a fresh send with its reply', () => {
     const saturday = new Date(2026, 9, 10, 15, 0).toISOString();
     const sunday = new Date(2026, 9, 11, 15, 0).toISOString();
     const messages = [
@@ -17,15 +17,19 @@ describe('thumos conversation window', () => {
       { role: 'assistant', createdAt: sunday, content: 'A walk before dinner has suited you.' },
     ];
     expect(THUMOS_LINE_CAP).toBe(6);
-    expect(latestExchange(messages)).toEqual({ visible: messages.slice(3), earlier: messages.slice(0, 3) });
-    expect(latestExchange([])).toEqual({ visible: [], earlier: [] });
+    expect(visibleThumos(messages, null)).toEqual({ visible: [messages[4]], earlier: messages.slice(0, 4) });
+    expect(visibleThumos(messages, null).earlier.some((message) => message.role === 'user')).toBe(true);
+    expect(visibleThumos([], null)).toEqual({ visible: [], earlier: [] });
     const opening = [
       { role: 'guide', createdAt: saturday, content: 'Earlier hello' },
       { role: 'guide', createdAt: sunday, content: 'How are you feeling?' },
     ];
-    expect(latestExchange(opening)).toEqual({ visible: [opening[1]], earlier: [opening[0]] });
-    const waiting = [messages[2], messages[3]];
-    expect(latestExchange(waiting).visible).toEqual([messages[3]]);
+    expect(visibleThumos(opening, null)).toEqual({ visible: [opening[1]], earlier: [opening[0]] });
+    expect(visibleThumos(messages, 'Restless this afternoon, but I slept.')).toEqual({
+      visible: messages.slice(3),
+      earlier: messages.slice(0, 3),
+    });
+    expect(visibleThumos(messages, 'Not stored yet')).toEqual({ visible: [], earlier: messages });
     expect(thumosDayLabel(sunday)).toBe('Sunday 11 October 2026');
     expect(groupThumosByDay(messages).map((day) => day.heading)).toEqual([
       'Saturday 10 October 2026',
@@ -59,7 +63,9 @@ describe('thumos conversation window', () => {
     expect(screen).toContain('accessibilityState={{ expanded: open }}');
     expect(screen).toContain('useFocusEffect');
     expect(screen).toContain('key={threadVisit}');
-    expect(screen).toContain('latestExchange');
+    expect(screen).toContain('visibleThumos');
+    expect(screen).toContain('setKeptSend(null)');
+    expect(screen).toContain('setKeptSend(trimmed)');
     expect(screen).toContain('groupThumosByDay');
     expect(screen).toContain('accessibilityLabel="More"');
     expect(screen).toContain('messageNeedsMore');
