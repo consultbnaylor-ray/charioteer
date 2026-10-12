@@ -67,6 +67,7 @@ import { planCustomInterest, validateTown } from '@/domain/privacy';
 import { fetchWithOneRetry } from '@/domain/retryFetch';
 import { planReasons } from '@/domain/reasons';
 import { BIO_LIMIT, PHOTO_CAPTION_LIMIT, defaultProfileSharing, normalizeProfileSharing, parsePublicProfile, planProfileText, sensitiveTurnedOn, type ProfileSharing } from '@/domain/profileSharing';
+import { planCheckInGratitude } from '@/domain/checkIns';
 import { quoteById } from '@/domain/stoicQuotes';
 import { planRelapse } from '@/domain/sober';
 import { parseSseBuffer } from '@/domain/sse';
@@ -272,7 +273,7 @@ export class SupabaseRepository implements Repository {
         this.client.from('reports').select('*').order('created_at', { ascending: false }),
         this.client.from('consents').select('kind, granted, version').eq('user_id', userId),
         this.client.from('progress_photos').select('id, user_id, taken_on, month_index, note, caption, storage_path, created_at, visibility').eq('user_id', userId).order('month_index').order('taken_on'),
-        this.client.from('gratitude_entries').select('id, body, category, is_favourite, entry_date, created_at, updated_at').eq('user_id', userId).order('entry_date', { ascending: false }),
+        this.client.from('gratitude_entries').select('id, body, category, is_favourite, entry_date, created_at, updated_at, check_in_id').eq('user_id', userId).order('entry_date', { ascending: false }),
         this.client.from('gratitude_photos').select('id, entry_id, user_id, storage_path, caption, created_at').eq('user_id', userId).order('created_at'),
         this.client.from('vision_board_items').select('id, user_id, storage_path, caption, area, size, position, created_at, updated_at').eq('user_id', userId).order('position'),
         this.client.from('profile_sharing').select('settings').eq('user_id', userId).maybeSingle(),
@@ -333,6 +334,18 @@ export class SupabaseRepository implements Repository {
       }));
     }
 
+    let gratitudeRows: unknown = gratitudeRes.data;
+    let gratitudeMessage = gratitudeRes.error?.message ?? null;
+    if (gratitudeMessage && /check_in_id/i.test(gratitudeMessage)) {
+      const again = await this.client
+        .from('gratitude_entries')
+        .select('id, body, category, is_favourite, entry_date, created_at, updated_at')
+        .eq('user_id', userId)
+        .order('entry_date', { ascending: false });
+      gratitudeRows = again.data;
+      gratitudeMessage = again.error?.message ?? null;
+    }
+
     this.emit({
       ready: true,
       mode: 'supabase',
@@ -355,7 +368,7 @@ export class SupabaseRepository implements Repository {
       communityPhotos: photosRes.error ? [] : await this.communityProgressPhotos(userId),
       profilePhotos: await this.signedProfilePhotos(profilePhotoRes.error ? null : ((profilePhotoRes.data ?? []) as Row[]), profilePhotoRes.error?.message, userId),
       gratitude: withGratitudePhotos(
-        gratitudeRes.error ? loggedEmptyGratitude(gratitudeRes.error.message) : gratitudeFromRows(gratitudeRes.data),
+        gratitudeMessage ? loggedEmptyGratitude(gratitudeMessage) : gratitudeFromRows(gratitudeRows),
         await this.signedGratitudePhotos(gratitudePhotoRes.error ? null : ((gratitudePhotoRes.data ?? []) as Row[]), gratitudePhotoRes.error?.message),
       ),
       visionItems: await this.signedVisionItems(visionRes.error ? null : visionRes.data, visionRes.error?.message),
@@ -757,13 +770,15 @@ export class SupabaseRepository implements Repository {
   }
 
   async addCheckIn(input: NewCheckIn): Promise<void> {
-    const userId = await this.userId();
-    const { error } = await this.client.from('check_ins').insert({
-      user_id: userId,
+    const planned = planCheckInGratitude(input.gratitude);
+    if (!planned.ok) throw new UserFacingError(planned.message, 'generic');
+    const { error } = await this.client.rpc('save_check_in', {
+      check_in_id: input.id,
       mood: input.mood,
       sleep_hours: input.sleepHours,
       craving: input.craving,
       note: input.note.trim(),
+      gratitude: planned.body,
     });
     if (error) throw asUserFacing(error, 'general');
     await this.refresh();

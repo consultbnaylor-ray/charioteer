@@ -269,10 +269,14 @@ export type ProfilePatch = Partial<
 >;
 
 export type NewCheckIn = {
+  /** Stable for one save, including a retry, so the diary row is not inserted twice. */
+  id: string;
   mood: Mood;
   sleepHours: number;
   craving: number;
   note: string;
+  /** Blank saves the check-in and creates no diary row. */
+  gratitude: string;
 };
 
 export type NewHealthSample = {

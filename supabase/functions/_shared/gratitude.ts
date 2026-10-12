@@ -24,6 +24,8 @@ export type GratitudeEntry = {
   createdAt: string;
   updatedAt: string;
   photos: GratitudePhoto[];
+  /** Set when the line was saved with a check-in. Editing either side uses this row. */
+  checkInId?: string | null;
 };
 
 export type GratitudeReflect = { comment: string; suggestions: string[] };
@@ -204,6 +206,7 @@ export function gratitudeFromRows(rows: unknown): GratitudeEntry[] {
       createdAt: String(record.created_at ?? ''),
       updatedAt: String(record.updated_at ?? ''),
       photos: [],
+      checkInId: typeof record.check_in_id === 'string' && record.check_in_id ? record.check_in_id : null,
     });
   }
   return entries;

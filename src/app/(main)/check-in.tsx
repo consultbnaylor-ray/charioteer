@@ -1,12 +1,14 @@
 import { useRouter } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { View } from 'react-native';
 
 import { useRepository, useSnapshot } from '@/data';
 import { MOODS } from '@/data/catalogue';
 import type { Mood } from '@/data/types';
+import { gratefulForLine, planCheckInGratitude } from '@/domain/checkIns';
 import { formatUkWhen, isoDay } from '@/domain/dates';
 import { shownError } from '@/domain/errors';
+import { randomId } from '@/domain/id';
 import { moodStreakCount } from '@/domain/profileSharing';
 import { ShareOnProfile } from '@/ui/ShareOnProfile';
 import { Button, Card, Choice, ErrorNote, Field, playSavedHaptic, Screen, T } from '@/ui/ui';
@@ -19,6 +21,9 @@ export default function CheckIn() {
   const [sleep, setSleep] = useState('7');
   const [craving, setCraving] = useState(3);
   const [note, setNote] = useState('');
+  const [grateful, setGrateful] = useState('');
+  const draftId = useRef(randomId());
+  const saving = useRef(false);
   const [error, setError] = useState<string | null>(null);
   const [savedCraving, setSavedCraving] = useState<number | null>(null);
   const [savedNote, setSavedNote] = useState<string | null>(null);
@@ -40,20 +45,33 @@ export default function CheckIn() {
   }
 
   function save() {
+    if (saving.current) return;
     const sleepHours = Number(sleep);
     if (!Number.isFinite(sleepHours) || sleepHours < 0 || sleepHours > 24) {
       setError('Sleep needs to be between 0 and 24 hours.');
       return;
     }
+    const planned = planCheckInGratitude(grateful);
+    if (!planned.ok) {
+      setError(planned.message);
+      return;
+    }
+    const id = draftId.current;
+    saving.current = true;
     setPending(true);
     setError(null);
-    void repo.addCheckIn({ mood, sleepHours, craving, note }).then(() => {
+    void repo.addCheckIn({ id, mood, sleepHours, craving, note, gratitude: planned.body }).then(() => {
+      draftId.current = randomId();
       setSavedCraving(craving);
       setNote('');
+      setGrateful('');
       setDirty(false);
       setSavedNote('Saved');
       playSavedHaptic();
-    }).catch((err: unknown) => setError(shownError(err, 'Could not save.'))).finally(() => setPending(false));
+    }).catch((err: unknown) => setError(shownError(err, 'Could not save.'))).finally(() => {
+      saving.current = false;
+      setPending(false);
+    });
   }
 
   return (
@@ -96,6 +114,15 @@ export default function CheckIn() {
         ))}
       </View>
       <Field label="Note, if you want" value={note} onChangeText={touch(setNote)} multiline placeholder="What is actually going on?" />
+      <Field
+        label="Grateful for, if you want"
+        value={grateful}
+        onChangeText={touch(setGrateful)}
+        multiline
+        maxLength={602}
+        placeholder="Up to three short lines"
+        hint="Saved into your Gratitude Diary. Leave it empty and nothing is added."
+      />
       <ErrorNote>{error}</ErrorNote>
       {savedCraving != null && savedCraving >= 6 ? (
         <Card>
@@ -113,13 +140,17 @@ export default function CheckIn() {
       ) : null}
       <T variant="label">Recent</T>
       {snap.checkIns.length === 0 ? <T variant="muted">No check-ins yet.</T> : null}
-      {snap.checkIns.slice(0, 8).map((item) => (
-        <Card key={item.id}>
-          <T>{formatUkWhen(item.createdAt)}</T>
-          <T variant="muted">Mood {item.mood}/5 · sleep {item.sleepHours}h · craving {item.craving}/10</T>
-          {item.note ? <T>{item.note}</T> : null}
-        </Card>
-      ))}
+      {snap.checkIns.slice(0, 8).map((item) => {
+        const gratefulLine = gratefulForLine(snap.gratitude.find((entry) => entry.checkInId === item.id)?.body ?? '');
+        return (
+          <Card key={item.id}>
+            <T>{formatUkWhen(item.createdAt)}</T>
+            <T variant="muted">Mood {item.mood}/5 · sleep {item.sleepHours}h · craving {item.craving}/10</T>
+            {item.note ? <T>{item.note}</T> : null}
+            {gratefulLine ? <T variant="muted">{gratefulLine}</T> : null}
+          </Card>
+        );
+      })}
     </Screen>
   );
 }

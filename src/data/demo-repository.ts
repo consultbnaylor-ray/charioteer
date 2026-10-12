@@ -7,6 +7,7 @@ import {
   WEAK_PASSWORD_MESSAGE,
   WRONG_PASSWORD_MESSAGE,
 } from '@/domain/errors';
+import { planCheckInGratitudeSync } from '@/domain/checkIns';
 import { randomId } from '@/domain/id';
 import { isoDay } from '@/domain/dates';
 import { isGratitudeCategory, localGratitudeReflect, planGratitudeEntry, sortGratitude, type GratitudeEntry, type GratitudeReflect } from '@/domain/gratitude';
@@ -488,15 +489,52 @@ export class DemoRepository implements Repository {
 
   async addCheckIn(input: NewCheckIn): Promise<void> {
     const account = this.me();
+    const existing = account.checkIns.find((item) => item.id === input.id);
+    const createdAt = existing?.createdAt ?? new Date().toISOString();
+    const linked = (account.gratitude ?? []).find((entry) => entry.checkInId === input.id) ?? null;
+    const planned = planCheckInGratitudeSync(
+      linked ? { id: linked.id, createdAt: linked.createdAt } : null,
+      { id: input.id, createdAt },
+      input.gratitude,
+      new Date(),
+      uid,
+    );
+    if (!planned.ok) throw new UserFacingError(planned.message, 'generic');
     const db = clone(this.db);
-    db.accounts[account.profile.id].checkIns.push({
-      id: uid(),
+    const next = db.accounts[account.profile.id];
+    const checkIn = {
+      id: input.id,
       mood: input.mood,
       sleepHours: input.sleepHours,
       craving: input.craving,
       note: input.note.trim(),
-      createdAt: new Date().toISOString(),
-    });
+      createdAt,
+    };
+    next.checkIns = existing
+      ? next.checkIns.map((item) => item.id === input.id ? checkIn : item)
+      : [...next.checkIns, checkIn];
+    const list = next.gratitude ?? [];
+    const sync = planned.sync;
+    if (sync.kind === 'remove') {
+      next.gratitude = list.filter((entry) => entry.checkInId !== input.id);
+    } else if (sync.kind === 'write' && sync.fresh) {
+      const entry: GratitudeEntry = {
+        id: sync.id,
+        body: sync.body,
+        category: null,
+        isFavourite: false,
+        entryDate: sync.entryDate,
+        createdAt: sync.createdAt,
+        updatedAt: sync.updatedAt,
+        photos: [],
+        checkInId: input.id,
+      };
+      next.gratitude = [entry, ...list];
+    } else if (sync.kind === 'write') {
+      next.gratitude = list.map((entry) => entry.id === sync.id
+        ? { ...entry, body: sync.body, entryDate: sync.entryDate, updatedAt: sync.updatedAt, checkInId: input.id }
+        : entry);
+    }
     this.commit(db);
   }
 
@@ -1172,6 +1210,7 @@ export class DemoRepository implements Repository {
         entry_date: entry.entryDate,
         created_at: entry.createdAt,
         updated_at: entry.updatedAt,
+        check_in_id: entry.checkInId ?? null,
       })),
       gratitude_photos: (account.gratitude ?? []).flatMap((entry) => (entry.photos ?? []).map((photo) => ({
         id: photo.id,

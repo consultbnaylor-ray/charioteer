@@ -89,8 +89,9 @@ describe('gratitude diary helpers', () => {
     expect(formatGratitudeContext([rows[1]!])).toContain('2026-10-08, People, favourite: My sister rang');
     expect(sameGratitudeBody('  My sister   rang ', 'my sister rang')).toBe(true);
     expect(gratitudeFromRows([{ id: '1', body: 'Tea', category: 'Nope', is_favourite: true, entry_date: '2026-10-11', created_at: '', updated_at: '' }])).toEqual([
-      { id: '1', body: 'Tea', category: null, isFavourite: true, entryDate: '2026-10-11', createdAt: '', updatedAt: '', photos: [] },
+      { id: '1', body: 'Tea', category: null, isFavourite: true, entryDate: '2026-10-11', createdAt: '', updatedAt: '', photos: [], checkInId: null },
     ]);
+    expect(gratitudeFromRows([{ id: '2', body: 'Tea', category: null, is_favourite: false, entry_date: '2026-10-11', created_at: '', updated_at: '', check_in_id: 'c1c1c1c1-c1c1-4c1c-8c1c-c1c1c1c1c1c1' }])[0]?.checkInId).toBe('c1c1c1c1-c1c1-4c1c-8c1c-c1c1c1c1c1c1');
     const photo: GratitudePhoto = {
       id: '11111111-1111-4111-8111-1111111111a1',
       entryId: 'b',
