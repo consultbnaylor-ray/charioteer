@@ -9,6 +9,7 @@ import {
   moodStreakCount,
   normalizeProfileSharing,
   projectPublicProfile,
+  SHARE_HINT,
   sensitiveShareConfirm,
   sensitiveTurnedOn,
   sharedReportItems,
@@ -375,6 +376,7 @@ describe('public_profile database function', () => {
     expect(vision).not.toContain('<SharingGroup');
     expect(vision).toContain('visionIds');
     expect(vision).not.toMatch(/Share with community|visibility/);
+    expect(SHARE_HINT).toBe('Profile is visible to other community members');
     expect(photos).toContain('{SHARE_HINT}');
     expect(photos).toContain("sensitiveShareConfirm('This progress photo')");
     expect(photos).toContain("sensitiveShareConfirm('This comparison')");

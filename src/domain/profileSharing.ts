@@ -7,8 +7,8 @@ import { soberElapsed } from './sober';
 import { quoteById } from './stoicQuotes';
 import { STAGE_LABELS, isStage } from './stage';
 
-/** Shown once above a group of share switches while Community is on. */
-export const SHARE_HINT = 'Visible to other community members';
+/** Helper under a Share on profile switch while Community is on. */
+export const SHARE_HINT = 'Profile is visible to other community members';
 
 /** Shown under the switches while Community is off. */
 export const PROFILE_HIDDEN_SHARE = 'Your profile is hidden from others. Nothing here is visible until Community is on.';
