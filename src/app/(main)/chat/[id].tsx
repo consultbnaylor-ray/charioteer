@@ -1,9 +1,10 @@
 import { useLocalSearchParams } from 'expo-router';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { View } from 'react-native';
 
 import { useRepository, useSnapshot } from '@/data';
 import { shownError } from '@/domain/errors';
+import { offerMessageNotifications } from '@/notifications/register';
 import { MemberAvatar } from '@/ui/MemberAvatar';
 import { Button, Card, Choice, ErrorNote, Field, Screen, T } from '@/ui/ui';
 import { useAppTheme } from '@/ui/theme';
@@ -22,6 +23,12 @@ export default function Chat() {
   const [error, setError] = useState<string | null>(null);
   const me = snap.profile;
   const connection = snap.connections.find((item) => item.id === id);
+
+  useEffect(() => {
+    if (!connection) return;
+    void offerMessageNotifications(repo);
+  }, [repo, connection]);
+
   if (!me || !connection) {
     return <Screen title="Chat"><T>This chat is not available.</T></Screen>;
   }

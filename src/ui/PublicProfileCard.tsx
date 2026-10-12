@@ -16,6 +16,7 @@ import { SharedPhotoFrame } from '@/ui/CommunityProfile';
 import { MemberAvatar } from '@/ui/MemberAvatar';
 import { OwnProfilePhotos, ProfilePhotoEditor } from '@/ui/ProfilePhotoEditor';
 import { COMMUNITY_CONSENT_BODY } from '@/ui/ConsentChoices';
+import { offerMessageNotifications } from '@/notifications/register';
 import { InterestChip } from '@/ui/InterestChip';
 import { useAppTheme } from '@/ui/theme';
 import { Button, Card, ErrorNote, Field, playSavedHaptic, T } from '@/ui/ui';
@@ -246,6 +247,7 @@ export function PublicProfileCard() {
         consentHealth: me.consentHealth,
         consentAi: me.consentAi,
       });
+      if (on) void offerMessageNotifications(repo);
     } catch (err) {
       setError(shownError(err, 'Could not save that.'));
     } finally {

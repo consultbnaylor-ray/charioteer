@@ -1,6 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useEffect, useRef, useState } from 'react';
-import { Platform, Share, View } from 'react-native';
+import { Platform, Share, Switch, View } from 'react-native';
 
 import { useRepository, useSnapshot } from '@/data';
 import type { TextScale, ThemePreference } from '@/data/types';
@@ -21,12 +21,16 @@ import { ProgressPhotos } from '@/ui/ProgressPhotos';
 import { UnitsGuide } from '@/ui/UnitsGuide';
 import { DateField } from '@/ui/DateField';
 import { Button, Card, Choice, ErrorNote, Field, playSavedHaptic, Screen, T } from '@/ui/ui';
+import { useAppTheme } from '@/ui/theme';
+import { offerMessageNotifications } from '@/notifications/register';
+import { GENERIC_MESSAGE_ALERT } from '../../../supabase/functions/_shared/messagePush';
 import { useRouter } from 'expo-router';
 
 export default function Profile() {
   const snap = useSnapshot();
   const repo = useRepository();
   const router = useRouter();
+  const theme = useAppTheme();
   const profile = snap.profile;
   const pinned = quoteById(profile?.pinnedQuoteId);
   const [name, setName] = useState(profile?.displayName ?? '');
@@ -184,6 +188,7 @@ export default function Profile() {
       });
       await repo.setReasons(plannedReasons);
       await repo.saveConsents({ communityVisible: community, consentHealth: health, consentAi: ai });
+      if (community) void offerMessageNotifications(repo);
       setReasons(plannedReasons.join('\n'));
       setSavedNote('Saved');
       playSavedHaptic();
@@ -352,6 +357,37 @@ export default function Profile() {
             <Choice key={item.id} label={item.label} selected={profile.textScale === item.id} onPress={() => void repo.updateProfile({ textScale: item.id }).catch((err: unknown) => setError(shownError(err, 'Could not save.')))} />
           ))}
         </View>
+      </Card>
+      <Card>
+        <T variant="label">Notifications</T>
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 12, alignItems: 'center' }}>
+          <T style={{ flex: 1 }}>Notifications</T>
+          <Switch
+            accessibilityLabel="Notifications"
+            value={profile.messageNotifications}
+            onValueChange={(value) => {
+              void repo.updateProfile({ messageNotifications: value }).then(() => {
+                if (value) void offerMessageNotifications(repo);
+              }).catch((err: unknown) => setError(shownError(err, 'Could not save.')));
+            }}
+            trackColor={{ true: theme.colors.ink, false: theme.colors.line }}
+            thumbColor={theme.colors.surface}
+          />
+        </View>
+        <T variant="muted">A private message can alert this phone. The alert does not include what they wrote.</T>
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 12, alignItems: 'center' }}>
+          <T style={{ flex: 1 }}>Show the sender's name</T>
+          <Switch
+            accessibilityLabel="Show the sender's name"
+            value={profile.notifySenderName}
+            onValueChange={(value) => {
+              void repo.updateProfile({ notifySenderName: value }).catch((err: unknown) => setError(shownError(err, 'Could not save.')));
+            }}
+            trackColor={{ true: theme.colors.ink, false: theme.colors.line }}
+            thumbColor={theme.colors.surface}
+          />
+        </View>
+        <T variant="muted">Off, the alert says {GENERIC_MESSAGE_ALERT}.</T>
       </Card>
       {profile.isModerator ? (
         <Card>

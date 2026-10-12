@@ -10,6 +10,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 
 import { RepoProvider, useSnapshot } from '@/data';
+import { listenForMessageOpens } from '@/notifications/register';
 import { CONSENT_VERSION } from '@/data/catalogue';
 import { hasCurrentConsents } from '@/domain/consents';
 import { font, ThemeProvider, useAppTheme } from '@/ui/theme';
@@ -63,6 +64,10 @@ function Chrome() {
       document.body.style.backgroundColor = theme.colors.bg;
     }
   }, [theme.colors.bg]);
+
+  useEffect(() => listenForMessageOpens((connectionId) => {
+    router.push(`/chat/${connectionId}` as never);
+  }), [router]);
 
   useEffect(() => {
     const openReset = (url: string | null) => {

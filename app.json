@@ -17,7 +17,8 @@
         "usesNonExemptEncryption": false
       },
       "entitlements": {
-        "com.apple.developer.healthkit": true
+        "com.apple.developer.healthkit": true,
+        "aps-environment": "production"
       },
       "infoPlist": {
         "NSCameraUsageDescription": "Charioteer uses the camera so you can take a private progress photo. Other people cannot see it, and it is not sent to the coach.",
@@ -51,6 +52,7 @@
         }
       ],
       "expo-secure-store",
+      "expo-notifications",
       [
         "expo-splash-screen",
         {

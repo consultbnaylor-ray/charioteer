@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { useRepository, useSnapshot } from '@/data';
 import { shownError } from '@/domain/errors';
 import { ConsentChoices } from '@/ui/ConsentChoices';
+import { offerMessageNotifications } from '@/notifications/register';
 import { Button, ErrorNote, Screen, T } from '@/ui/ui';
 
 export default function Consent() {
@@ -20,6 +21,7 @@ export default function Consent() {
     setError(null);
     try {
       await repo.saveConsents({ communityVisible: community, consentHealth: health, consentAi: ai });
+      if (community) void offerMessageNotifications(repo);
     } catch (err) {
       setError(shownError(err, 'Could not save.'));
     } finally {

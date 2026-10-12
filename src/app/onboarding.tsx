@@ -8,6 +8,7 @@ import { interestChipVisible } from '@/domain/interests';
 import { planCustomInterest, validateTown } from '@/domain/privacy';
 import { reasonPlaceholder } from '@/domain/reasons';
 import { parseDrinkFreeGoal, parseUnitsGoal, STAGE_LABELS, STAGES, SUDDEN_STOP_WARNING, USUAL_WEEK_HELPER, validateStageStep, type Stage } from '@/domain/stage';
+import { offerMessageNotifications } from '@/notifications/register';
 import { ConsentChoices } from '@/ui/ConsentChoices';
 import { DateField } from '@/ui/DateField';
 import { UnitsGuide } from '@/ui/UnitsGuide';
@@ -127,6 +128,7 @@ export default function Onboarding() {
         consentHealth: health,
         consentAi: ai,
       });
+      if (community) void offerMessageNotifications(repo);
     } catch (err) {
       setError(shownError(err, 'Could not save.'));
     } finally {

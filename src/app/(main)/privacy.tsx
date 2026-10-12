@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { useRepository, useSnapshot } from '@/data';
 import { shownError } from '@/domain/errors';
 import { ConsentChoices } from '@/ui/ConsentChoices';
+import { offerMessageNotifications } from '@/notifications/register';
 import { Button, ErrorNote, Screen, T } from '@/ui/ui';
 
 export default function PrivacyScreen() {
@@ -31,6 +32,7 @@ export default function PrivacyScreen() {
           setMessage(null);
           void repo.saveConsents({ communityVisible: community, consentHealth: health, consentAi: ai }).then(() => {
             setMessage('Saved.');
+            if (community) void offerMessageNotifications(repo);
           }).catch((err: unknown) => setError(shownError(err, 'Could not save.'))).finally(() => setPending(false));
         }}
       />
