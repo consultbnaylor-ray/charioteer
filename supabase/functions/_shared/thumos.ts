@@ -212,6 +212,116 @@ export function conversationCues(input: {
   return { soberTimeAlreadySaid, reasonsAlreadyUsed };
 }
 
+/** Phrases that make a reply sound like a template. Never send these. */
+export const BANNED_THUMOS_PHRASES = [
+  'tied to that figure',
+  'keeps the focus on',
+  'maintaining momentum',
+] as const;
+
+export const THUMOS_RETRY_NOTE = [
+  'The previous draft was rejected.',
+  'It repeated a sentence or a closing line from the last three replies, or it recapped earlier context, or it mentioned a check-in or a health figure that was already used.',
+  'Write a fresh reply. Usually 2 to 4 sentences. Answer only what they just said.',
+  'Do not recap. Do not repeat any earlier sentence or closing line. Often no question.',
+].join(' ');
+
+const SENTENCE_BREAK = /(?<=[.!?])\s+/;
+
+const RECAP_PATTERNS = [
+  /you(?:['’]ve| have) followed\b/i,
+  /\byour recent check-?in\b/i,
+];
+
+/** A check-in or a health figure, not an ordinary mention of time. */
+const HEALTH_OR_CHECKIN = /\b(?:check-ins?|hours of sleep|slept\s+\d|sleep(?:ing)?\s+\d|\d+(?:\.\d+)?\s*hours?\s+of\s+sleep|recorded\s+\d+(?:\.\d+)?\s*hours|\d[\d,]*(?:\s+|\s*)steps|\d+\s*bpm|resting heart(?:\s+rate)?|heart rate)\b/i;
+
+export type ThumosReplyFault = 'repeat' | 'recap' | 'banned' | 'health';
+
+export function replySentences(text: string): string[] {
+  return text
+    .replace(/\s+/g, ' ')
+    .trim()
+    .split(SENTENCE_BREAK)
+    .map((part) => part.trim())
+    .filter(Boolean);
+}
+
+function canonicalSentence(sentence: string): string {
+  return sentence
+    .toLowerCase()
+    .replace(/[‘’']/g, '')
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function sharesWordRun(left: string, right: string, size = 8): boolean {
+  const a = canonicalSentence(left).split(' ').filter(Boolean);
+  const b = canonicalSentence(right).split(' ').filter(Boolean);
+  if (a.length < size || b.length < size) return false;
+  const grams = new Set<string>();
+  for (let index = 0; index <= a.length - size; index += 1) grams.add(a.slice(index, index + size).join(' '));
+  for (let index = 0; index <= b.length - size; index += 1) {
+    if (grams.has(b.slice(index, index + size).join(' '))) return true;
+  }
+  return false;
+}
+
+export function mentionsCheckInOrHealth(text: string): boolean {
+  return HEALTH_OR_CHECKIN.test(text);
+}
+
+export function replyRecaps(text: string): boolean {
+  return RECAP_PATTERNS.some((pattern) => pattern.test(text));
+}
+
+export function usesBannedThumosPhrase(text: string): boolean {
+  const hay = text.toLowerCase();
+  return BANNED_THUMOS_PHRASES.some((phrase) => hay.includes(phrase));
+}
+
+/**
+ * True when this reply repeats a sentence, or a closing line, from the last
+ * three assistant replies. Matching ignores case and punctuation.
+ */
+export function replyRepeatsRecent(reply: string, recentAssistant: readonly string[]): boolean {
+  const prior = recentAssistant.map((item) => item.trim()).filter(Boolean).slice(-3);
+  const priorSentences = prior.flatMap((item) => replySentences(item));
+  const priorClosings = prior.map((item) => replySentences(item).at(-1) ?? '').filter(Boolean);
+  const nextSentences = replySentences(reply);
+  const same = (left: string, right: string) => {
+    const a = canonicalSentence(left);
+    const b = canonicalSentence(right);
+    if (a.length < 20 || b.length < 20) return false;
+    return a === b || sharesWordRun(left, right);
+  };
+  if (nextSentences.some((sentence) => priorSentences.some((earlier) => same(sentence, earlier)))) return true;
+  const closing = nextSentences.at(-1) ?? '';
+  return priorClosings.some((earlier) => same(closing, earlier));
+}
+
+/** Post-check for one reply against earlier assistant replies, oldest first. */
+export function thumosReplyFaults(reply: string, earlierAssistant: readonly string[]): ThumosReplyFault[] {
+  const faults: ThumosReplyFault[] = [];
+  if (replyRepeatsRecent(reply, earlierAssistant)) faults.push('repeat');
+  if (replyRecaps(reply)) faults.push('recap');
+  if (usesBannedThumosPhrase(reply)) faults.push('banned');
+  if (mentionsCheckInOrHealth(reply) && earlierAssistant.some((item) => mentionsCheckInOrHealth(item))) faults.push('health');
+  return faults;
+}
+
+/** A short line that passes the post-check, used when a second draft still fails. */
+export function freshThumosFallback(earlierAssistant: readonly string[]): string {
+  const options = [
+    'I am with you on that. We can stay with what you just said.',
+    'All right. We can leave it there for a moment.',
+    'Noted. Say the next bit in your own words if you want.',
+    'I am here. No need to cover old ground.',
+  ];
+  return options.find((option) => thumosReplyFaults(option, earlierAssistant).length === 0) ?? 'I am here.';
+}
+
 /** Acute wins when the same message is both a craving now and a plan ahead. */
 export function detectRisk(userText: string | undefined | null): 'acute' | 'planning' | 'none' {
   const text = userText ?? '';
@@ -408,7 +518,7 @@ const PLANNING_SUPPORT = [
 const EVENT_PREPARATION = [
   'EVENT PREPARATION',
   'When they mention an upcoming situation (a birthday meal, party, wedding, work do, date, pub, family gathering, holiday, or stressful meeting), help them prepare with a short practical plan, not just one tool.',
-  'Give 3 to 5 concise, personalised suggestions. Use what CONTEXT records: their stage, interests (such as gym or hiking), personal reasons, and recent sleep or check-in. Do not invent those details. Ask one question at the end. Offer to set a reminder, or to come back afterwards.',
+  'Give 3 to 5 concise, personalised suggestions. Use what CONTEXT records: their stage, interests (such as gym or hiking), personal reasons, and recent sleep or check-in. Do not invent those details. Often end with no question. A short, specific follow-up is fine. Offer to set a reminder, or to come back afterwards.',
   'Cover what is relevant, briefly:',
   'Before. Suggest some exercise beforehand (a brisk walk, a run, a gym session, or a quick workout) to release endorphins and lift mood. Frame that as general wellbeing advice, not medical advice. If exercise does not suit them (time, an injury, or their mood), offer alternatives: a cold shower, a breathing exercise in the app, a short walk outside, music, eating a proper meal, hydrating, a nap, calling a supportive friend, rereading their reasons, the gratitude diary, or the vision board.',
   'Plan. Decide the drink order in advance, including alcohol-free options. Have a ready line for when they are offered a drink, such as "I\'m driving", "I\'m on a health kick", or "Not tonight". Include an exit plan and transport, an ally who knows, and a time to leave.',
@@ -426,13 +536,22 @@ const FOLLOW_UP_SUPPORT = [
   'If they are still preparing for an upcoming event, stay on that plan and take the next practical step. Do not restart the whole plan from the top.',
 ].join('\n');
 
+const CONVERSATION_SHAPE = [
+  'Reply in the moment. Do not recap what they already said or did. Do not open with a summary of earlier turns, such as "You have followed the dog walk and gym" or "Your recent check-in recorded 7 hours".',
+  'Mention a check-in or a health reading only when their latest message makes that figure newly relevant. Do it at most once in the whole conversation, and never in two replies in a row. If an earlier reply already used a check-in or a health figure, leave it out.',
+  'Usually write 2 to 4 sentences. Answer what they just said, directly.',
+  'Often end with no question at all. When a question helps, ask one short follow-up about the specific thing they just said. Vary the ending from turn to turn. Do not reuse a closing line. Do not end by offering a menu of sleep, exercise, nutrition, connection, or purpose.',
+  'Never write these phrases: "tied to that figure", "keeps the focus on", "maintaining momentum".',
+  'If they name a plan, such as getting to bed at 10pm, affirm that plan and give one concrete tip. Do not widen it into other topics.',
+].join('\n');
+
 const OTHER_GUIDANCE: Record<Exclude<ThumosMode, 'support'>, string> = {
   opening:
     'This is the start of the conversation, or the person has not yet said how they feel. Ask how they are feeling. Do not launch into advice.',
   steady:
-    'Stay with what they actually said. Be warm and specific. End with one question. Do not answer in a single generic line.',
+    'Stay with what they actually said. Be warm and specific. Do not recap earlier turns. Do not answer in a single generic line.',
   growth:
-    'They seem to be doing all right. Acknowledge the specific thing they said, without gushing, and do not reply with only "That is good" or "Keep going". Cite one real figure from Health readings or Recent check-ins in CONTEXT, with its unit, such as a step count or hours of sleep. If CONTEXT has no figure, do not invent one. Then suggest one specific next step tied to that figure, among exercise, sleep, nutrition, connection, and purpose. End with one question about what they want to try. Do not lecture.',
+    'They seem to be doing all right. Acknowledge the specific thing they just said, without gushing, and do not reply with only "That is good" or "Keep going". Give one concrete next step that follows from their latest message. Do not cite a check-in or a health figure unless they just brought that subject up, and do not invent one. Do not lecture.',
 };
 
 const CRISIS_SUPPORT = [
@@ -464,6 +583,8 @@ export type PromptTurn = {
   selfHarm?: boolean;
   soberTimeAlreadySaid?: boolean;
   reasonsAlreadyUsed?: string[];
+  /** An earlier assistant reply already used a check-in or a health figure. */
+  healthAlreadySaid?: boolean;
   stage?: ThumosStage;
 };
 
@@ -486,9 +607,18 @@ function styleLine(turn: PromptTurn): string {
   if (turn.selfHarm) return `${voice} Be warm and brief: 2 to 4 sentences.`;
   if (turn.committedAction) return `${voice} Write 1 or 2 sentences. Do not ask a question.`;
   if (turn.supportShape === 'planning' && !turn.followUp) {
-    return `${voice} Give 3 to 5 concise suggestions and end with one question.`;
+    return `${voice} Give 3 to 5 concise suggestions. Often end with no question. A short, specific follow-up is fine.`;
   }
-  return `${voice} Write 3 to 6 sentences of connected prose and end with one question. Do not answer in a single generic line, and do not put each point on its own line.`;
+  return `${voice} Usually 2 to 4 sentences. Answer what they just said. Often end with no question. Vary the ending. Do not answer in a single generic line, and do not put each point on its own line.`;
+}
+
+function conversationShape(turn: PromptTurn): string {
+  if (turn.selfHarm || turn.committedAction) return '';
+  const lines = [CONVERSATION_SHAPE];
+  if (turn.healthAlreadySaid) {
+    lines.push('A check-in or a health figure was already mentioned in this conversation. Do not mention one in this reply.');
+  }
+  return lines.join('\n');
 }
 
 function repetitionLine(turn: PromptTurn): string {
@@ -607,6 +737,7 @@ export function buildSystemPrompt(
     turn.selfHarm ? '' : VISION_PROMPT_LINE,
     'Do not invent statistics, study names, or citations. If you share a number about alcohol harm, use only CURATED FACTS, quote it faithfully, and name the source. If you do not have a verified figure, say so.',
     repetitionLine(turn),
+    conversationShape(turn),
     modeGuidance(mode, turn),
     eventPreparationSection(turn),
     'Safety rules, follow exactly:',

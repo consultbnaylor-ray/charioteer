@@ -12,7 +12,7 @@ import { firstSafetyHit, pinnedSafetyNotices } from '@/domain/safety';
 import { asUserFacing, shownError } from '@/domain/errors';
 import { showsSoberRecord } from '@/domain/stage';
 import { CRAVING_LINE, inferThumosMode, THUMOS_INTRO, OPENING_LINE, type ThumosMode } from '@/domain/thumos';
-import { THUMOS_VISIBLE, latestThumos } from '@/domain/thumosThread';
+import { THUMOS_EXPANDED, THUMOS_LINE_CAP, THUMOS_VISIBLE, latestThumos, messageNeedsMore } from '@/domain/thumosThread';
 import { formatClock, urgeRemainingSeconds } from '@/domain/urge';
 import { ensureUrge, restartUrge } from '@/features/urgeSession';
 import { VOICE_COPY } from '@/domain/voice';
@@ -244,7 +244,7 @@ export default function Thumos() {
         <ThumosTranscript
           messages={visible}
           earlier={earlier}
-          onEarlier={() => setShown((count) => count + THUMOS_VISIBLE)}
+          onEarlier={() => setShown(THUMOS_EXPANDED)}
           pending={pending}
           outgoing={outgoing}
           liveReply={liveReply}
@@ -343,6 +343,8 @@ function ThumosIntro({ open, onToggle }: { open: boolean; onToggle: () => void }
 
 function Bubble({ mine, text }: { mine: boolean; text: string }) {
   const theme = useAppTheme();
+  const [open, setOpen] = useState(false);
+  const long = messageNeedsMore(text);
   return (
     <View
       style={{
@@ -356,7 +358,22 @@ function Bubble({ mine, text }: { mine: boolean; text: string }) {
         paddingHorizontal: 10,
       }}
     >
-      <T style={{ fontSize: 15 * theme.scale, lineHeight: 20 * theme.scale }}>{text}</T>
+      <Text
+        numberOfLines={open || !long ? undefined : THUMOS_LINE_CAP}
+        style={{ fontFamily: theme.font.body, fontSize: 15 * theme.scale, lineHeight: 20 * theme.scale, color: theme.colors.ink }}
+      >
+        {text}
+      </Text>
+      {long && !open ? (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="More"
+          onPress={() => setOpen(true)}
+          style={{ minHeight: 44, justifyContent: 'center' }}
+        >
+          <T variant="muted">More</T>
+        </Pressable>
+      ) : null}
     </View>
   );
 }
@@ -381,11 +398,11 @@ function ThumosTranscript({
       {earlier > 0 ? (
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel="Show earlier"
+          accessibilityLabel="Show earlier messages"
           onPress={onEarlier}
           style={{ minHeight: 44, alignItems: 'center', justifyContent: 'center' }}
         >
-          <T variant="muted">Show earlier</T>
+          <T variant="muted">Show earlier messages</T>
         </Pressable>
       ) : null}
       {messages.map((message) => (

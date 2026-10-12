@@ -12,13 +12,18 @@ import {
   conversationCues,
   detectCommittedAction,
   detectRisk,
+  freshThumosFallback,
   historyTurnsForModel,
   interestLabelsFromRows,
   isThumosFollowUp,
+  mentionsCheckInOrHealth,
   OFFLINE_COACH_MESSAGE,
   resolveThumosMode,
   safetyFromText,
   THUMOS_CHAT,
+  THUMOS_RETRY_NOTE,
+  thumosReplyFaults,
+  type ChatTurn,
   type CheckInSummary,
   type HealthTrend,
   type ThumosMode,
@@ -200,6 +205,10 @@ Deno.serve(async (req) => {
     reasons: (reasonsRes.data ?? []).map((row) => row.body),
   });
   const committedAction = safety.selfHarm ? null : detectCommittedAction(content);
+  const earlierAssistant = [...historyRows]
+    .filter((row) => row.role === 'assistant' && row.content.trim())
+    .sort((a, b) => (a.createdAt < b.createdAt ? -1 : 1))
+    .map((row) => row.content);
   const system = buildSystemPrompt(context, mode, ALCOHOL_FACTS, {
     followUp: mode === 'support' && isThumosFollowUp(historyRows),
     supportShape: detectRisk(content) === 'planning' ? 'planning' : 'acute',
@@ -207,6 +216,7 @@ Deno.serve(async (req) => {
     selfHarm: safety.selfHarm,
     soberTimeAlreadySaid: cues.soberTimeAlreadySaid,
     reasonsAlreadyUsed: cues.reasonsAlreadyUsed,
+    healthAlreadySaid: earlierAssistant.some((item) => mentionsCheckInOrHealth(item)),
     stage,
   });
 
@@ -222,27 +232,30 @@ Deno.serve(async (req) => {
           send({ type: 'delta', text: reply });
         } else {
           try {
-            const response = await fetch(THUMOS_CHAT.completionsUrl, {
-              method: 'POST',
-              headers: {
-                Authorization: `Bearer ${apiKey}`,
-                'Content-Type': 'application/json',
-              },
-              body: JSON.stringify(buildChatCompletionBody({ model, system, history, user: content, stream: true })),
-            });
-            if (!response.ok || !response.body) {
+            const first = await completeThumos({ apiKey, model, system, history, user: content });
+            if (!first.ok) {
               reply = ensureSafetyNotices(
                 'Thumos could not get a reply from the coach just now. This is not a model answer. If you are in danger, call 999. For withdrawal, call NHS 111 or your GP. For suicidal thoughts, call the Samaritans on 116 123.',
                 safety,
               );
               send({ type: 'delta', text: reply });
             } else {
-              const text = await readCompletionStream(response.body, (delta) => send({ type: 'delta', text: delta }));
-              reply = ensureSafetyNotices(
-                text.trim() ? text.trim() : 'I am here. Say a little more if you can.',
-                safety,
-              );
+              let modelText = first.text || 'I am here. Say a little more if you can.';
+              if (!safety.selfHarm && thumosReplyFaults(modelText, earlierAssistant).length > 0) {
+                const second = await completeThumos({
+                  apiKey,
+                  model,
+                  system: `${system}\n\n${THUMOS_RETRY_NOTE}`,
+                  history,
+                  user: content,
+                });
+                modelText = second.ok && second.text && thumosReplyFaults(second.text, earlierAssistant).length === 0
+                  ? second.text
+                  : freshThumosFallback(earlierAssistant);
+              }
+              reply = ensureSafetyNotices(modelText, safety);
               role = 'assistant';
+              send({ type: 'delta', text: reply });
             }
           } catch {
             reply = ensureSafetyNotices(OFFLINE_COACH_MESSAGE, safety);
@@ -278,7 +291,33 @@ Deno.serve(async (req) => {
   });
 });
 
-async function readCompletionStream(body: ReadableStream<Uint8Array>, onDelta: (text: string) => void): Promise<string> {
+async function completeThumos(input: {
+  apiKey: string;
+  model: string;
+  system: string;
+  history: ChatTurn[];
+  user: string;
+}): Promise<{ ok: true; text: string } | { ok: false }> {
+  const response = await fetch(THUMOS_CHAT.completionsUrl, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${input.apiKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(buildChatCompletionBody({
+      model: input.model,
+      system: input.system,
+      history: input.history,
+      user: input.user,
+      stream: true,
+    })),
+  });
+  if (!response.ok || !response.body) return { ok: false };
+  const text = (await readCompletionStream(response.body)).trim();
+  return { ok: true, text };
+}
+
+async function readCompletionStream(body: ReadableStream<Uint8Array>): Promise<string> {
   const reader = body.getReader();
   const decoder = new TextDecoder();
   let buffer = '';
@@ -289,7 +328,16 @@ async function readCompletionStream(body: ReadableStream<Uint8Array>, onDelta: (
     buffer += decoder.decode(value, { stream: true });
     const lines = buffer.split('\n');
     buffer = lines.pop() ?? '';
-    for (const line of lines) {
+    reply += textFromSseLines(lines);
+  }
+  buffer += decoder.decode();
+  if (buffer.trim()) reply += textFromSseLines(buffer.split('\n'));
+  return reply;
+}
+
+function textFromSseLines(lines: string[]): string {
+  let reply = '';
+  for (const line of lines) {
       const trimmed = line.trim();
       if (!trimmed.startsWith('data:')) continue;
       const payload = trimmed.slice(5).trim();
@@ -298,11 +346,9 @@ async function readCompletionStream(body: ReadableStream<Uint8Array>, onDelta: (
         const text = completionDeltaText(JSON.parse(payload));
         if (!text) continue;
         reply += text;
-        onDelta(text);
       } catch {
         // A partial JSON line is completed on the next chunk.
       }
-    }
   }
   return reply;
 }

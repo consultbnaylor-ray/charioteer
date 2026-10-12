@@ -251,6 +251,16 @@ export function createDemoDb(now = new Date()): DemoDb {
   const health = demoHealth(now);
 
   const thumos: ThumosMessage[] = [
+    { id: 'e0e0e0e0-e0e0-4e0e-8e0e-e0e0e0e0e0e1', role: 'user', content: 'The afternoon felt long.', mode: 'steady', createdAt: ago(32) },
+    { id: 'e0e0e0e0-e0e0-4e0e-8e0e-e0e0e0e0e0e2', role: 'assistant', content: 'A long afternoon can still be got through. Tea and a short walk are enough for now.', mode: 'steady', createdAt: ago(32) },
+    { id: 'e0e0e0e0-e0e0-4e0e-8e0e-e0e0e0e0e0e3', role: 'user', content: 'I might aim for bed at ten.', mode: 'steady', createdAt: ago(30) },
+    {
+      id: 'e0e0e0e0-e0e0-4e0e-8e0e-e0e0e0e0e0e4',
+      role: 'assistant',
+      content: 'Ten o\'clock is a clear bedtime. Put the phone in another room at half past nine, dim the lights, and leave tomorrow\'s first job written down so it is not spinning in your head. If you wake in the night, stay in bed and count breaths rather than opening the phone. That is the whole plan for this evening, and it does not need anything else added to it.',
+      mode: 'growth',
+      createdAt: ago(30),
+    },
     { id: 'e1e1e1e1-e1e1-4e1e-8e1e-e1e1e1e1e1e1', role: 'guide', content: 'How are you feeling?', mode: 'opening', createdAt: ago(26) },
     { id: 'e2e2e2e2-e2e2-4e2e-8e2e-e2e2e2e2e2e2', role: 'user', content: 'Restless this afternoon, but I slept.', mode: 'steady', createdAt: ago(25) },
     {

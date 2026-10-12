@@ -54,7 +54,8 @@ describe('event preparation', () => {
     expect(prompt).toContain('EVENT PREPARATION');
     expect(prompt).toContain('not just one tool');
     expect(prompt).toContain('3 to 5 concise');
-    expect(prompt).toContain('one question');
+    expect(prompt).toContain('Often end with no question');
+    expect(prompt).toContain('short, specific follow-up');
     expect(prompt).toContain('set a reminder');
     expect(prompt).toContain('come back afterwards');
     expect(prompt).toContain('Gym, Hiking');

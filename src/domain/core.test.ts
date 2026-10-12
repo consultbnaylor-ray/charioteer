@@ -212,8 +212,10 @@ describe('Thumos context', () => {
   it('asks a craving reply to follow the support shape and a good day to ask a question', () => {
     const context = buildThumosContext(base);
     const support = buildSystemPrompt(context, 'support');
-    expect(support).toContain('3 to 6 sentences');
-    expect(support).toContain('end with one question');
+    expect(support).toContain('2 to 4 sentences');
+    expect(support).toContain('Often end with no question');
+    expect(support).not.toContain('3 to 6 sentences');
+    expect(support).not.toContain('End with one question about what they want to try');
     expect(support).toContain('Weave the aims below');
     expect(support).toContain('breathing exercise');
     expect(support).toContain('10-minute urge timer');
@@ -231,12 +233,17 @@ describe('Thumos context', () => {
     expect(support).not.toContain('120 words');
     expect(support).not.toContain('What will you do for the next ten minutes?');
     const growth = buildSystemPrompt(context, 'growth');
-    expect(growth).toContain('Cite one real figure');
-    expect(growth).toContain('one specific next step');
+    expect(growth).toContain('one concrete next step');
     expect(growth).toContain('8400 steps');
-    expect(growth).toContain('End with one question');
+    expect(growth).toContain('bed at 10pm');
+    expect(growth).toContain('tied to that figure');
+    expect(growth).toContain('keeps the focus on');
+    expect(growth).toContain('maintaining momentum');
+    expect(growth).not.toContain('Cite one real figure');
+    expect(growth).not.toContain('End with one question about what they want to try');
     expect(growth).not.toContain('120 words');
     expect(growth).toContain('That is good');
+    expect(buildSystemPrompt(context, 'growth', undefined, { healthAlreadySaid: true })).toContain('already mentioned in this conversation');
   });
 
   it('uses a different instruction for a follow-up, and a plan when the risk is still ahead', () => {

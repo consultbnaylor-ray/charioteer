@@ -50,6 +50,7 @@ import {
   detectRisk,
   historyTurnsForModel,
   isThumosFollowUp,
+  mentionsCheckInOrHealth,
   OPENING_LINE,
   resolveThumosMode,
   type HistoryRow,
@@ -313,6 +314,7 @@ export function buildVoiceBriefing(input: {
     selfHarm: safety.selfHarm,
     soberTimeAlreadySaid: cues.soberTimeAlreadySaid,
     reasonsAlreadyUsed: cues.reasonsAlreadyUsed,
+    healthAlreadySaid: input.historyRows.some((row) => row.role === 'assistant' && mentionsCheckInOrHealth(row.content)),
     stage,
   }));
   const crisisSafety: SafetyHit = {
