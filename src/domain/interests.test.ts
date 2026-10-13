@@ -71,12 +71,26 @@ describe('people matching', () => {
 });
 
 describe('default interests', () => {
-  it('offers exercise, gym, health and fitness, and hiking in alphabetical order', () => {
-    expect(DEFAULT_INTERESTS.map((item) => item.label)).toEqual(['Exercise', 'Gym', 'Health and Fitness', 'Hiking']);
+  it('keeps the fitness chips and adds nights in, films, and travel, in alphabetical order', () => {
+    expect(DEFAULT_INTERESTS.map((item) => item.label)).toEqual([
+      'Comedy',
+      'Cozy Nights In',
+      'Exercise',
+      'Films',
+      'Gym',
+      'Health and Fitness',
+      'Hiking',
+      'Sober Nights Out',
+      'Travel',
+      'TV Series',
+    ]);
     expect(INTEREST_CATALOGUE.map((item) => item.label)).toEqual(DEFAULT_INTERESTS.map((item) => item.label));
     expect(INTEREST_CATALOGUE.map((item) => item.slug)).toEqual(DEFAULT_INTERESTS.map((item) => item.slug));
     const labels = DEFAULT_INTERESTS.map((item) => item.label);
     expect(labels).toEqual([...labels].sort((a, b) => a.localeCompare(b, 'en')));
+    for (const kept of ['Exercise', 'Gym', 'Health and Fitness', 'Hiking']) {
+      expect(labels).toContain(kept);
+    }
   });
 
   it('treats an existing custom Gym or Health and Fitness row as a default chip', () => {
@@ -84,6 +98,9 @@ describe('default interests', () => {
     expect(isDefaultInterest({ slug: 'weights', label: 'Health and Fitness' })).toBe(true);
     expect(isDefaultInterest({ slug: 'swimming', label: 'Swimming' })).toBe(false);
     expect(interestChipVisible({ slug: 'hiking', label: 'Hiking' }, false)).toBe(true);
+    expect(interestChipVisible({ slug: 'films', label: 'Films' }, false)).toBe(true);
+    expect(interestChipVisible({ slug: 'movie-night', label: 'Cozy Nights In' }, false)).toBe(true);
+    expect(interestChipRemovable({ slug: 'comedy', label: 'Comedy', custom: true })).toBe(false);
     expect(interestChipVisible({ slug: 'cooking', label: 'Cooking' }, false)).toBe(false);
     expect(interestChipVisible({ slug: 'cooking', label: 'Cooking' }, true)).toBe(true);
     expect(interestChipRemovable({ slug: 'gym', label: 'Gym', custom: true })).toBe(false);
@@ -101,6 +118,24 @@ describe('default interests', () => {
     expect(seed).toContain("'exercise', 'Exercise'");
     expect(seed).toContain("'health-and-fitness', 'Health and Fitness'");
     expect(seed).not.toContain('Sober raving');
+  });
+
+  it('inserts the wider catalogue without changing anyone’s selections', () => {
+    const sql = readFileSync('supabase/migrations/20261013090000_community_interests.sql', 'utf8');
+    const seed = readFileSync('supabase/seed.sql', 'utf8');
+    expect(sql).toContain('insert into public.interests');
+    expect(sql).toContain('on conflict (slug) do nothing');
+    expect(sql.toLowerCase()).not.toMatch(/profile_interests/);
+    expect(sql.toLowerCase()).not.toMatch(/delete /);
+    expect(sql.toLowerCase()).not.toMatch(/update /);
+    for (const label of ['Comedy', 'Cozy Nights In', 'Sober Nights Out', 'Travel', 'TV Series', 'Films']) {
+      expect(sql).toContain(label);
+      expect(seed).toContain(label);
+    }
+    for (const slug of ['comedy', 'cozy-nights-in', 'sober-nights-out', 'travel', 'tv-series', 'films']) {
+      expect(sql).toContain(slug);
+      expect(seed).toContain(`'${slug}'`);
+    }
   });
 });
 

@@ -1,11 +1,17 @@
 import type { DirectoryCard, Profile } from '@/data/types';
 
-/** Catalogue chips, alphabetical. One chip for health and fitness. */
+/** Catalogue chips, alphabetical. Fitness stays, alongside nights in, films, and travel. */
 export const DEFAULT_INTERESTS = [
+  { slug: 'comedy', label: 'Comedy' },
+  { slug: 'cozy-nights-in', label: 'Cozy Nights In' },
   { slug: 'exercise', label: 'Exercise' },
+  { slug: 'films', label: 'Films' },
   { slug: 'gym', label: 'Gym' },
   { slug: 'health-and-fitness', label: 'Health and Fitness' },
   { slug: 'hiking', label: 'Hiking' },
+  { slug: 'sober-nights-out', label: 'Sober Nights Out' },
+  { slug: 'travel', label: 'Travel' },
+  { slug: 'tv-series', label: 'TV Series' },
 ] as const;
 
 export function normaliseInterestName(label: string): string {

@@ -1,10 +1,16 @@
 -- Catalogue rows. Keep src/data/catalogue.ts in step with this file.
 
 insert into public.interests (id, slug, label) values
+  ('10000000-0000-4000-8000-000000000014', 'comedy', 'Comedy'),
+  ('10000000-0000-4000-8000-000000000015', 'cozy-nights-in', 'Cozy Nights In'),
   ('10000000-0000-4000-8000-000000000011', 'exercise', 'Exercise'),
+  ('10000000-0000-4000-8000-000000000019', 'films', 'Films'),
   ('10000000-0000-4000-8000-000000000012', 'gym', 'Gym'),
   ('10000000-0000-4000-8000-000000000013', 'health-and-fitness', 'Health and Fitness'),
-  ('10000000-0000-4000-8000-000000000002', 'hiking', 'Hiking')
+  ('10000000-0000-4000-8000-000000000002', 'hiking', 'Hiking'),
+  ('10000000-0000-4000-8000-000000000016', 'sober-nights-out', 'Sober Nights Out'),
+  ('10000000-0000-4000-8000-000000000017', 'travel', 'Travel'),
+  ('10000000-0000-4000-8000-000000000018', 'tv-series', 'TV Series')
 on conflict (slug) do nothing;
 
 insert into public.resources (id, category, title, detail, url, phone, verification, verification_note, sort_order) values

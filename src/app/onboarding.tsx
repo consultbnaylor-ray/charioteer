@@ -292,7 +292,7 @@ const intros = [
   'Stopped, trying to stop, cutting down, or just looking. You can change this later.',
   'Thumos will remind you of these in your own words, and only when it helps.',
   'Your own usual week. It is an estimate from what you tell us, not a medical calculation.',
-  'Exercise, gym, health and fitness, hiking — or something of your own.',
+  'Comedy, films, travel, a night in or out — or something of your own.',
   'Optional. Town or area only.',
   'Health and drinking data are sensitive. Nothing is turned on unless you agree.',
 ];

@@ -3,10 +3,16 @@ import type { Interest, Resource } from '@/data/types';
 export const CONSENT_VERSION = '2026-10-10';
 
 export const INTEREST_CATALOGUE: Interest[] = [
+  { id: '10000000-0000-4000-8000-000000000014', slug: 'comedy', label: 'Comedy', custom: false },
+  { id: '10000000-0000-4000-8000-000000000015', slug: 'cozy-nights-in', label: 'Cozy Nights In', custom: false },
   { id: '10000000-0000-4000-8000-000000000011', slug: 'exercise', label: 'Exercise', custom: false },
+  { id: '10000000-0000-4000-8000-000000000019', slug: 'films', label: 'Films', custom: false },
   { id: '10000000-0000-4000-8000-000000000012', slug: 'gym', label: 'Gym', custom: false },
   { id: '10000000-0000-4000-8000-000000000013', slug: 'health-and-fitness', label: 'Health and Fitness', custom: false },
   { id: '10000000-0000-4000-8000-000000000002', slug: 'hiking', label: 'Hiking', custom: false },
+  { id: '10000000-0000-4000-8000-000000000016', slug: 'sober-nights-out', label: 'Sober Nights Out', custom: false },
+  { id: '10000000-0000-4000-8000-000000000017', slug: 'travel', label: 'Travel', custom: false },
+  { id: '10000000-0000-4000-8000-000000000018', slug: 'tv-series', label: 'TV Series', custom: false },
 ];
 
 const checked = 'Checked against the organisation or NHS page on 10 October 2026.';
