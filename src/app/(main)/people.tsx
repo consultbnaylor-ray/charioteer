@@ -40,7 +40,7 @@ export default function People() {
       <Button label="What I share" tone="quiet" onPress={() => router.push('/sharing' as never)} />
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
         <Choice label={`Discover`} selected={tab === 'discover'} onPress={() => setTab('discover')} />
-        <Choice label={`Requests (${incoming.length})`} selected={tab === 'requests'} onPress={() => setTab('requests')} />
+        <Choice label={`Requests (${incoming.length})`} selected={tab === 'requests'} tone={incoming.length > 0 ? 'alert' : 'default'} onPress={() => setTab('requests')} />
         <Choice label={`Chats (${chats.length})`} selected={tab === 'chats'} onPress={() => setTab('chats')} />
       </View>
       <ErrorNote>{error}</ErrorNote>

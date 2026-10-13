@@ -68,5 +68,11 @@ describe('discover connection actions', () => {
     expect(layout).toContain('peopleTabAccessibilityLabel');
     expect(layout).toContain('requestBadgeText');
     expect(layout).toContain('href === \'/people\'');
+    expect(people).toContain("tone={incoming.length > 0 ? 'alert' : 'default'}");
+    const choice = readFileSync('src/ui/ui.tsx', 'utf8');
+    expect(choice).toContain("tone === 'alert'");
+    expect(choice).toContain('alert ? theme.colors.danger');
+    expect(layout).toContain('theme.colors.dangerFill');
+    expect(layout).toContain('theme.colors.dangerInk');
   });
 });
