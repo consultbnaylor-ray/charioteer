@@ -1,11 +1,13 @@
 import { useLocalSearchParams } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { View } from 'react-native';
 
 import { useRepository, useSnapshot } from '@/data';
 import { shownError } from '@/domain/errors';
+import { randomId } from '@/domain/id';
 import { offerMessageNotifications } from '@/notifications/register';
 import { MemberAvatar, useMemberAvatars } from '@/ui/MemberAvatar';
+import { usePendingPress } from '@/ui/pendingAction';
 import { Button, Card, Choice, ErrorNote, Field, Screen, T } from '@/ui/ui';
 import { useAppTheme } from '@/ui/theme';
 
@@ -22,6 +24,8 @@ export default function Chat() {
   const [reason, setReason] = useState(REASONS[0]);
   const [details, setDetails] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const { run, isPending } = usePendingPress();
+  const clientIds = useRef(new Map<string, string>());
   const me = snap.profile;
   const connection = snap.connections.find((item) => item.id === id);
 
@@ -37,6 +41,17 @@ export default function Chat() {
   const otherCard = snap.directory.find((card) => card.id === otherId);
   const other = otherCard?.displayName ?? 'Member';
   const messages = snap.messages.filter((message) => message.connectionId === connection.id);
+  const clientIdFor = (key: string) => {
+    const existing = clientIds.current.get(key);
+    if (existing) return existing;
+    const id = randomId();
+    clientIds.current.set(key, id);
+    return id;
+  };
+  const send = (text: string, id: string, key: string) => {
+    setError(null);
+    run(key, () => repo.sendDirectMessage(connection.id, text, id).catch((err: unknown) => setError(shownError(err, 'Could not send.'))));
+  };
 
   return (
     <Screen eyebrow="Private chat" title={other} intro="Only the two of you can read this. Blocking hides them from you.">
@@ -48,17 +63,41 @@ export default function Chat() {
         <Card key={message.id} style={{ backgroundColor: message.senderId === me.id ? theme.colors.emphasisSoft : theme.colors.surface }}>
           <T variant="label">{message.senderId === me.id ? 'You' : other}</T>
           <T>{message.body}</T>
+          {message.delivery === 'sending' ? <T variant="muted">Sending…</T> : null}
+          {message.delivery === 'failed' ? (
+            <View style={{ gap: 8 }}>
+              <T variant="muted">That message was not sent.</T>
+              <Button label="Try again" tone="quiet" pending={isPending(`send:${message.id}`)} pendingLabel="Sending..." onPress={() => send(message.body, message.id, `send:${message.id}`)} />
+            </View>
+          ) : null}
         </Card>
       ))}
       {messages.length === 0 ? <T variant="muted">No messages yet. Say hello when you are ready.</T> : null}
-      <Field label="Message" value={draft} onChangeText={setDraft} placeholder="Write a message" />
+      <Field label="Message" value={draft} onChangeText={setDraft} placeholder="Write a message" multiline minLines={4} maxLines={6} />
       <ErrorNote>{error}</ErrorNote>
-      <Button label="Send" onPress={() => {
+      <Button label="Send" pending={isPending('compose')} pendingLabel="Sending..." onPress={() => {
+        const text = draft.trim();
+        if (!text) return;
+        const id = clientIdFor('compose');
+        setDraft('');
         setError(null);
-        void repo.sendDirectMessage(connection.id, draft).then(() => setDraft('')).catch((err: unknown) => setError(shownError(err, 'Could not send.')));
+        run('compose', () => repo.sendDirectMessage(connection.id, text, id).then(() => {
+          clientIds.current.delete('compose');
+        }).catch((err: unknown) => {
+          setError(shownError(err, 'Could not send.'));
+          const kept = repo.getSnapshot().messages.some((message) => message.id === id);
+          if (!kept) setDraft(text);
+          else clientIds.current.delete('compose');
+        }));
       }} />
       <View style={{ flexDirection: 'row', gap: 10 }}>
-        <View style={{ flex: 1 }}><Button label="Block" tone="quiet" onPress={() => void repo.blockUser(otherId).catch((err: unknown) => setError(shownError(err, 'Could not block that person.')))} /></View>
+        <View style={{ flex: 1 }}><Button label="Block" tone="quiet" pending={isPending(`block:${otherId}`)} pendingLabel="Sending..." onPress={() => {
+          setError(null);
+          const key = `block:${otherId}`;
+          run(key, () => repo.blockUser(otherId, clientIdFor(key)).then(() => {
+            clientIds.current.delete(key);
+          }).catch((err: unknown) => setError(shownError(err, 'Could not block that person.'))));
+        }} /></View>
         <View style={{ flex: 1 }}><Button label="Report" tone="quiet" onPress={() => setReporting((value) => !value)} /></View>
       </View>
       {reporting ? (
@@ -68,11 +107,14 @@ export default function Chat() {
             {REASONS.map((item) => <Choice key={item} label={item} selected={reason === item} onPress={() => setReason(item)} />)}
           </View>
           <Field label="Details" value={details} onChangeText={setDetails} multiline />
-          <Button label="Send report" onPress={() => {
-            void repo.reportUser({ reportedUserId: otherId, reason, details }).then(() => {
+          <Button label="Send report" pending={isPending(`report:${otherId}`)} pendingLabel="Sending..." onPress={() => {
+            setError(null);
+            const key = `report:${otherId}`;
+            run(key, () => repo.reportUser({ reportedUserId: otherId, reason, details, clientId: clientIdFor(key) }).then(() => {
+              clientIds.current.delete(key);
               setReporting(false);
               setDetails('');
-            }).catch((err: unknown) => setError(shownError(err, 'Could not send the report.')));
+            }).catch((err: unknown) => setError(shownError(err, 'Could not send the report.'))));
           }} />
           <T variant="muted">Reports go to a moderation queue. In this version that queue is the reports table, visible to moderators.</T>
         </Card>

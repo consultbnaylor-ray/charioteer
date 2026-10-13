@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { Pressable, View } from 'react-native';
 
 import { useRepository, useSnapshot } from '@/data';
@@ -48,6 +48,7 @@ export default function StoicQuotes() {
   const [shown, setShown] = useState(24);
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState<string | null>(null);
+  const pendingRef = useRef<string | null>(null);
   const day = earlierQuoteDay(today, daysBack);
   const daily = quoteForUkDay(day);
   const saved = snap.savedQuotes.flatMap((item) => {
@@ -59,6 +60,8 @@ export default function StoicQuotes() {
   const visible = matches.slice(0, shown);
 
   async function run(id: string, action: () => Promise<void>) {
+    if (pendingRef.current) return;
+    pendingRef.current = id;
     setPending(id);
     setError(null);
     try {
@@ -66,6 +69,7 @@ export default function StoicQuotes() {
     } catch (err) {
       setError(shownError(err, 'Could not update that quote.'));
     } finally {
+      pendingRef.current = null;
       setPending(null);
     }
   }

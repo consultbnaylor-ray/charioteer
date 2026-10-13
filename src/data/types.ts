@@ -162,6 +162,8 @@ export type DirectMessage = {
   senderId: string;
   body: string;
   createdAt: string;
+  /** Missing once the server has the row. `sending` is the optimistic copy. */
+  delivery?: 'sending' | 'failed';
 };
 export type Report = {
   id: string;
@@ -299,6 +301,8 @@ export type NewReport = {
   reportedUserId: string;
   reason: string;
   details: string;
+  /** Stable for one send, including a retry, so the report row is not inserted twice. */
+  clientId?: string;
 };
 
 export type VoiceHistoryTurn = { role: 'user' | 'assistant'; content: string };
@@ -342,12 +346,12 @@ export interface Repository {
   saveHealth(samples: NewHealthSample[]): Promise<void>;
   setInterestSelected(interestId: string, selected: boolean): Promise<void>;
   addCustomInterest(label: string): Promise<void>;
-  requestConnection(userId: string): Promise<void>;
+  requestConnection(userId: string, clientId?: string): Promise<void>;
   respondConnection(connectionId: string, accept: boolean): Promise<void>;
-  sendDirectMessage(connectionId: string, body: string): Promise<void>;
+  sendDirectMessage(connectionId: string, body: string, clientId?: string): Promise<void>;
   /** Stores this phone's Expo push token for the signed-in person. */
   saveDeviceToken(token: string, platform: 'ios' | 'android'): Promise<void>;
-  blockUser(userId: string): Promise<void>;
+  blockUser(userId: string, clientId?: string): Promise<void>;
   unblockUser(userId: string): Promise<void>;
   reportUser(input: NewReport): Promise<void>;
   reviewReport(id: string): Promise<void>;
