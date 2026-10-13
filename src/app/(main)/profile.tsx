@@ -15,6 +15,7 @@ import { quoteById, quoteCredit } from '@/domain/stoicQuotes';
 import { planReasons, reasonOverLimit } from '@/domain/reasons';
 import { profileDetailsDirty, type ProfileFormValues } from '@/domain/profileForm';
 import { InterestChip } from '@/ui/InterestChip';
+import { MemberAvatar } from '@/ui/MemberAvatar';
 import { ShareOnProfile } from '@/ui/ShareOnProfile';
 import { ConsentChoices } from '@/ui/ConsentChoices';
 import { ProgressPhotos } from '@/ui/ProgressPhotos';
@@ -34,6 +35,7 @@ export default function Profile() {
   const theme = useAppTheme();
   const profile = snap.profile;
   const pinned = quoteById(profile?.pinnedQuoteId);
+  const avatar = (snap.profilePhotos ?? []).find((photo) => photo.role === 'avatar');
   const [name, setName] = useState(profile?.displayName ?? '');
   const [reasons, setReasons] = useState(snap.reasons.map((reason) => reason.body).join('\n'));
   const [town, setTown] = useState(profile?.town ?? '');
@@ -235,6 +237,15 @@ export default function Profile() {
         </View>
       )}
     >
+      <Card
+        accessibilityLabel="View my public profile"
+        onPress={() => router.push('/public-profile' as never)}
+      >
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+          <MemberAvatar name={profile.displayName} url={avatar?.previewUrl} size={36} />
+          <T style={{ fontFamily: theme.font.bodyStrong, flex: 1 }}>View my public profile</T>
+        </View>
+      </Card>
       {pinned ? (
         <View style={{ gap: 8 }}>
           <T variant="label">Pinned quote</T>
