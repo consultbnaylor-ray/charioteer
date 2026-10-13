@@ -3,6 +3,7 @@ import { useCallback, useState } from 'react';
 import { View } from 'react-native';
 
 import { useRepository, useSnapshot } from '@/data';
+import { discoverAction, type DiscoverAction } from '@/domain/connections';
 import { shownError } from '@/domain/errors';
 import { CommunityProfile } from '@/ui/CommunityProfile';
 import { MemberAvatar, useMemberAvatars } from '@/ui/MemberAvatar';
@@ -44,10 +45,7 @@ export default function People() {
       </View>
       <ErrorNote>{error}</ErrorNote>
       {tab === 'discover' ? snap.directory.map((card) => {
-        const linked = snap.connections.some((connection) =>
-          connection.status !== 'declined' &&
-          ((connection.requesterId === me.id && connection.addresseeId === card.id) ||
-            (connection.requesterId === card.id && connection.addresseeId === me.id)));
+        const action = discoverAction(snap.connections, me.id, card.id);
         return (
           <Card key={card.id}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
@@ -59,14 +57,17 @@ export default function People() {
             </View>
             <T>{card.interestIds.map(labelOf).join(' · ')}</T>
             {card.sharedInterestIds.length ? <T variant="muted">In common: {card.sharedInterestIds.map(labelOf).join(', ')}</T> : null}
-            <Button
-              label={linked ? 'Already in touch' : 'Ask to connect'}
-              tone="quiet"
-              disabled={linked}
-              onPress={() => {
+            <DiscoverActions
+              action={action}
+              onAsk={() => {
                 setError(null);
                 void repo.requestConnection(card.id).catch((err: unknown) => setError(shownError(err, 'Could not send that.')));
               }}
+              onRespond={(connectionId, accept) => {
+                setError(null);
+                void repo.respondConnection(connectionId, accept).catch((err: unknown) => setError(shownError(err, 'Could not save that.')));
+              }}
+              onMessage={(connectionId) => router.push(`/chat/${connectionId}` as never)}
             />
             <Button
               label={profileId === card.id ? 'Hide profile' : 'Profile'}
@@ -115,4 +116,29 @@ export default function People() {
       {tab === 'chats' && chats.length === 0 ? <T variant="muted">No chats yet. Accept a request, or ask someone to connect.</T> : null}
     </Screen>
   );
+}
+
+/** The same control stays on the card when Profile is open, so Discover and the profile agree. */
+function DiscoverActions({
+  action,
+  onAsk,
+  onRespond,
+  onMessage,
+}: {
+  action: DiscoverAction;
+  onAsk: () => void;
+  onRespond: (connectionId: string, accept: boolean) => void;
+  onMessage: (connectionId: string) => void;
+}) {
+  if (action.kind === 'incoming') {
+    return (
+      <View style={{ flexDirection: 'row', gap: 10 }}>
+        <View style={{ flex: 1 }}><Button label="Accept request" onPress={() => onRespond(action.connectionId, true)} /></View>
+        <View style={{ flex: 1 }}><Button label="Decline" tone="quiet" onPress={() => onRespond(action.connectionId, false)} /></View>
+      </View>
+    );
+  }
+  if (action.kind === 'sent') return <Button label="Request sent" tone="quiet" disabled onPress={() => undefined} />;
+  if (action.kind === 'message') return <Button label="Message" onPress={() => onMessage(action.connectionId)} />;
+  return <Button label="Ask to connect" tone="quiet" onPress={onAsk} />;
 }

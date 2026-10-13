@@ -927,7 +927,7 @@ export class SupabaseRepository implements Repository {
     const { error } = await this.client.from('connections').insert({ requester_id: me, addressee_id: userId, status: 'pending' });
     if (error) throw asUserFacing(error, 'general');
     // The request is saved. A slow or failed reload afterwards must not report
-    // it as unsent, or the card says "Already in touch" after an error.
+    // it as unsent, or the card stays on "Ask to connect" after an error.
     await this.refresh().catch((reloadError: unknown) => console.error(reloadError));
   }
 
