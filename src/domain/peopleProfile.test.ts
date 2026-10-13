@@ -53,7 +53,7 @@ describe('your public profile on People', () => {
     const link = you.indexOf('View my public profile');
     expect(link).toBeGreaterThan(-1);
     expect(link).toBeLessThan(you.indexOf('Pinned quote'));
-    expect(link).toBeLessThan(you.indexOf('Pin a Stoic quote'));
+    expect(link).toBeLessThan(you.indexOf('Pin a quote'));
     expect(you).toContain('<MemberAvatar');
     expect(you).toContain("router.push('/public-profile'");
     expect(preview).toContain('<PublicProfileCard');
