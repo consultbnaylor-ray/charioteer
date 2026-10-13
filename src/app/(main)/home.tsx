@@ -1,6 +1,6 @@
 import { Image } from 'expo-image';
 import { useFocusEffect, useRouter } from 'expo-router';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Pressable, View } from 'react-native';
 
 import { useRepository, useSnapshot } from '@/data';
@@ -20,6 +20,7 @@ import { ShareOnProfile } from '@/ui/ShareOnProfile';
 import { UnitsGuide } from '@/ui/UnitsGuide';
 import { DateField } from '@/ui/DateField';
 import { InPlainWords } from '@/ui/InPlainWords';
+import { usePendingPress } from '@/ui/pendingAction';
 import { Button, Card, EditMark, EditSheet, ErrorNote, Field, Screen, T } from '@/ui/ui';
 import { radius, useAppTheme } from '@/ui/theme';
 
@@ -46,6 +47,8 @@ export default function Home() {
   const [draftSpend, setDraftSpend] = useState('');
   const [draftUnits, setDraftUnits] = useState('');
   const [pending, setPending] = useState(false);
+  const saving = useRef(false);
+  const { run: runRelapse, isPending: relapsePending } = usePendingPress();
   const [refreshing, setRefreshing] = useState(false);
 
   useEffect(() => {
@@ -83,7 +86,8 @@ export default function Home() {
   }
 
   async function saveCorrection() {
-    if (!profile) return;
+    if (!profile || saving.current) return;
+    saving.current = true;
     setPending(true);
     setError(null);
     try {
@@ -92,17 +96,20 @@ export default function Home() {
     } catch (err) {
       setError(shownError(err, 'Could not save the date.'));
     } finally {
+      saving.current = false;
       setPending(false);
     }
   }
 
   async function saveWeek() {
+    if (saving.current) return;
     const weeklySpendGbp = Number(draftSpend);
     const weeklyUnits = Number(draftUnits);
     if (!Number.isFinite(weeklySpendGbp) || weeklySpendGbp < 0 || !Number.isFinite(weeklyUnits) || weeklyUnits < 0) {
       setError('Spend and units need to be zero or more.');
       return;
     }
+    saving.current = true;
     setPending(true);
     setError(null);
     try {
@@ -111,6 +118,7 @@ export default function Home() {
     } catch (err) {
       setError(shownError(err, 'Could not save.'));
     } finally {
+      saving.current = false;
       setPending(false);
     }
   }
@@ -301,12 +309,13 @@ export default function Home() {
             <Field label="Anything you want to remember" value={note} onChangeText={setNote} placeholder="Optional" />
             <Button
               label="Reset the clock, kindly"
+              pending={relapsePending('relapse')}
               onPress={() => {
                 setError(null);
-                void repo.recordRelapse(note).then(() => {
+                runRelapse('relapse', () => repo.recordRelapse(note).then(() => {
                   setNote('');
                   setRelapseOpen(false);
-                }).catch((err: unknown) => setError(shownError(err, 'Could not save that.')));
+                }).catch((err: unknown) => setError(shownError(err, 'Could not save that.'))));
               }}
             />
           </View>

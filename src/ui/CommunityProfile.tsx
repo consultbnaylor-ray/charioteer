@@ -1,6 +1,6 @@
 import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 
 import { useRepository, useSnapshot } from '@/data';
@@ -25,10 +25,13 @@ export function CommunityProfile({ userId, name }: { userId: string; name: strin
   const [asked, setAsked] = useState(false);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const busy = useRef(false);
   const before = photos[0];
   const now = photos[photos.length - 1];
 
   async function message() {
+    if (busy.current) return;
+    busy.current = true;
     setError(null);
     setPending(true);
     try {
@@ -41,11 +44,14 @@ export function CommunityProfile({ userId, name }: { userId: string; name: strin
     } catch (err) {
       setError(shownError(err, 'Could not open a private message.'));
     } finally {
+      busy.current = false;
       setPending(false);
     }
   }
 
   async function report(photo: ProgressPhoto) {
+    if (busy.current) return;
+    busy.current = true;
     setError(null);
     setPending(true);
     try {
@@ -59,6 +65,7 @@ export function CommunityProfile({ userId, name }: { userId: string; name: strin
     } catch (err) {
       setError(shownError(err, 'Could not send the report.'));
     } finally {
+      busy.current = false;
       setPending(false);
     }
   }
@@ -94,7 +101,7 @@ export function CommunityProfile({ userId, name }: { userId: string; name: strin
           {reporting === photo.id ? (
             <View style={{ gap: 8 }}>
               <T>This report goes to the moderation queue, with the photo id.</T>
-              <Button label="Send report" pending={pending} onPress={() => void report(photo)} />
+              <Button label="Send report" pending={pending} pendingLabel="Sending..." onPress={() => void report(photo)} />
               <Button label="Cancel" tone="quiet" disabled={pending} onPress={() => setReporting(null)} />
             </View>
           ) : (
@@ -114,6 +121,7 @@ function SharedProfileFacts({ userId, name }: { userId: string; name: string }) 
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [photoUrls, setPhotoUrls] = useState<Record<string, string>>({});
+  const busy = useRef(false);
 
   useEffect(() => {
     let live = true;
@@ -150,6 +158,8 @@ function SharedProfileFacts({ userId, name }: { userId: string; name: string }) 
   const gallery = view.profilePhotos.filter((photo) => photo.role === 'gallery');
 
   async function report(key: string, summary: string) {
+    if (busy.current) return;
+    busy.current = true;
     setError(null);
     setPending(true);
     try {
@@ -163,11 +173,14 @@ function SharedProfileFacts({ userId, name }: { userId: string; name: string }) 
     } catch (err) {
       setError(shownError(err, 'Could not send the report.'));
     } finally {
+      busy.current = false;
       setPending(false);
     }
   }
 
   async function reportPhoto(photo: { id: string; caption: string }) {
+    if (busy.current) return;
+    busy.current = true;
     setError(null);
     setPending(true);
     try {
@@ -181,6 +194,7 @@ function SharedProfileFacts({ userId, name }: { userId: string; name: string }) 
     } catch (err) {
       setError(shownError(err, 'Could not send the report.'));
     } finally {
+      busy.current = false;
       setPending(false);
     }
   }
@@ -198,7 +212,7 @@ function SharedProfileFacts({ userId, name }: { userId: string; name: string }) 
           {reporting === avatar.id ? (
             <View style={{ gap: 8 }}>
               <T>This report goes to the moderation queue, with the photo id.</T>
-              <Button label="Send report" pending={pending} onPress={() => void reportPhoto(avatar)} />
+              <Button label="Send report" pending={pending} pendingLabel="Sending..." onPress={() => void reportPhoto(avatar)} />
               <Button label="Cancel" tone="quiet" disabled={pending} onPress={() => setReporting(null)} />
             </View>
           ) : (
@@ -214,7 +228,7 @@ function SharedProfileFacts({ userId, name }: { userId: string; name: string }) 
           {reporting === photo.id ? (
             <View style={{ gap: 8 }}>
               <T>This report goes to the moderation queue, with the photo id.</T>
-              <Button label="Send report" pending={pending} onPress={() => void reportPhoto(photo)} />
+              <Button label="Send report" pending={pending} pendingLabel="Sending..." onPress={() => void reportPhoto(photo)} />
               <Button label="Cancel" tone="quiet" disabled={pending} onPress={() => setReporting(null)} />
             </View>
           ) : (
@@ -247,7 +261,7 @@ function SharedProfileFacts({ userId, name }: { userId: string; name: string }) 
       {reporting === 'profile' ? (
         <View style={{ gap: 8 }}>
           <T>This report goes to the moderation queue.</T>
-          <Button label="Send report" pending={pending} onPress={() => void report('profile', `Name: ${view.displayName || name}`)} />
+          <Button label="Send report" pending={pending} pendingLabel="Sending..." onPress={() => void report('profile', `Name: ${view.displayName || name}`)} />
           <Button label="Cancel" tone="quiet" disabled={pending} onPress={() => setReporting(null)} />
         </View>
       ) : (
@@ -261,7 +275,7 @@ function SharedProfileFacts({ userId, name }: { userId: string; name: string }) 
             {reporting === key ? (
               <View style={{ gap: 8 }}>
                 <T>This report goes to the moderation queue.</T>
-                <Button label="Send report" pending={pending} onPress={() => void report(key, `${item.label}: ${item.summary}`)} />
+                <Button label="Send report" pending={pending} pendingLabel="Sending..." onPress={() => void report(key, `${item.label}: ${item.summary}`)} />
                 <Button label="Cancel" tone="quiet" disabled={pending} onPress={() => setReporting(null)} />
               </View>
             ) : (

@@ -4,6 +4,7 @@ import { useRepository, useSnapshot } from '@/data';
 import { shownError } from '@/domain/errors';
 import { ConsentChoices } from '@/ui/ConsentChoices';
 import { offerMessageNotifications } from '@/notifications/register';
+import { usePendingPress } from '@/ui/pendingAction';
 import { Button, ErrorNote, Screen, T } from '@/ui/ui';
 
 export default function PrivacyScreen() {
@@ -15,7 +16,7 @@ export default function PrivacyScreen() {
   const [ai, setAi] = useState(profile?.consentAi ?? false);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
-  const [pending, setPending] = useState(false);
+  const { run, isPending } = usePendingPress();
   if (!profile) return null;
 
   return (
@@ -25,15 +26,14 @@ export default function PrivacyScreen() {
       {message ? <T variant="muted">{message}</T> : null}
       <Button
         label="Save consent"
-        pending={pending}
+        pending={isPending('save')}
         onPress={() => {
-          setPending(true);
           setError(null);
           setMessage(null);
-          void repo.saveConsents({ communityVisible: community, consentHealth: health, consentAi: ai }).then(() => {
+          run('save', () => repo.saveConsents({ communityVisible: community, consentHealth: health, consentAi: ai }).then(() => {
             setMessage('Saved.');
             if (community) void offerMessageNotifications(repo);
-          }).catch((err: unknown) => setError(shownError(err, 'Could not save.'))).finally(() => setPending(false));
+          }).catch((err: unknown) => setError(shownError(err, 'Could not save.'))));
         }}
       />
     </Screen>

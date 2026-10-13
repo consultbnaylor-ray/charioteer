@@ -22,6 +22,7 @@ import { ProgressPhotos } from '@/ui/ProgressPhotos';
 import { UnitsGuide } from '@/ui/UnitsGuide';
 import { DateField } from '@/ui/DateField';
 import { InPlainWords } from '@/ui/InPlainWords';
+import { usePendingPress } from '@/ui/pendingAction';
 import { Button, Card, Choice, ErrorNote, Field, playSavedHaptic, Screen, T } from '@/ui/ui';
 import { useAppTheme } from '@/ui/theme';
 import { offerMessageNotifications } from '@/notifications/register';
@@ -58,6 +59,7 @@ export default function Profile() {
   const [message, setMessage] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
   const savingRef = useRef(false);
+  const { run: runWrite, isPending: writePending } = usePendingPress();
   const [savedNote, setSavedNote] = useState<string | null>(null);
   useEffect(() => {
     if (!savedNote) return;
@@ -258,7 +260,7 @@ export default function Profile() {
             on={snap.sharing.pinnedQuote}
             apply={(sharing, selected) => ({ ...sharing, pinnedQuote: selected })}
           />
-          <Button label="Unpin" tone="quiet" onPress={() => void repo.pinQuote(null).catch((err: unknown) => setError(shownError(err, 'Could not unpin that quote.')))} />
+          <Button label="Unpin" tone="quiet" pending={writePending('unpin')} onPress={() => runWrite('unpin', () => repo.pinQuote(null).catch((err: unknown) => setError(shownError(err, 'Could not unpin that quote.'))))} />
           <Button label="Change" tone="quiet" onPress={() => router.push('/quotes' as never)} />
         </View>
       ) : (
@@ -411,7 +413,7 @@ export default function Profile() {
               <T>{report.reportedName} — {report.reason} ({report.status})</T>
               <T variant="muted">{formatUkDate(report.createdAt)}</T>
               {report.details ? <T variant="muted">{report.details}</T> : null}
-              {report.status === 'open' ? <Button label="Mark reviewed" tone="quiet" onPress={() => void repo.reviewReport(report.id).catch((err: unknown) => setError(shownError(err, 'Could not save.')))} /> : null}
+              {report.status === 'open' ? <Button label="Mark reviewed" tone="quiet" pending={writePending(report.id)} onPress={() => runWrite(report.id, () => repo.reviewReport(report.id).catch((err: unknown) => setError(shownError(err, 'Could not save.'))))} /> : null}
             </View>
           ))}
         </Card>
@@ -433,9 +435,10 @@ export default function Profile() {
       <Button
         label="Delete account and data"
         tone="sos"
-        disabled={confirm !== 'DELETE'}
+        disabled={confirm !== 'DELETE' || writePending('delete')}
+        pending={writePending('delete')}
         onPress={() => {
-          void repo.deleteAccount().catch((err: unknown) => setError(shownError(err, 'Could not delete the account.')));
+          runWrite('delete', () => repo.deleteAccount().catch((err: unknown) => setError(shownError(err, 'Could not delete the account.'))));
         }}
       />
       {snap.mode === 'demo' ? (

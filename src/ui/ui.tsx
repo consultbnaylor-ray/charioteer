@@ -324,6 +324,7 @@ export function Button({
   tone = 'primary',
   disabled,
   pending,
+  pendingLabel,
   accessibilityLabel,
 }: {
   label: string;
@@ -331,6 +332,8 @@ export function Button({
   tone?: 'primary' | 'quiet' | 'sos';
   disabled?: boolean;
   pending?: boolean;
+  /** Shown beside the spinner while the press is in flight. */
+  pendingLabel?: string;
   accessibilityLabel?: string;
 }) {
   const theme = useAppTheme();
@@ -339,10 +342,11 @@ export function Button({
     quiet: { bg: theme.colors.sunken, fg: theme.colors.ink },
     sos: { bg: theme.colors.dangerFill, fg: theme.colors.dangerInk },
   }[tone];
+  const textStyle = [styles.buttonText, { color: tones.fg, fontFamily: theme.font.bodyStrong, fontSize: 16 * theme.scale }];
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={accessibilityLabel ?? label}
+      accessibilityLabel={pending && pendingLabel ? pendingLabel : accessibilityLabel ?? label}
       disabled={disabled || pending}
       onPress={() => {
         dismissKeyboardOnAction(label);
@@ -350,10 +354,15 @@ export function Button({
       }}
       style={({ pressed }) => [
         styles.button,
-        { backgroundColor: tones.bg, opacity: disabled ? 0.45 : pressed ? 0.86 : 1 },
+        { backgroundColor: tones.bg, opacity: disabled || pending ? 0.45 : pressed ? 0.86 : 1 },
       ]}
     >
-      {pending ? <ActivityIndicator color={tones.fg} /> : <Text style={[styles.buttonText, { color: tones.fg, fontFamily: theme.font.bodyStrong, fontSize: 16 * theme.scale }]}>{label}</Text>}
+      {pending ? (
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          <ActivityIndicator color={tones.fg} />
+          {pendingLabel ? <Text style={textStyle}>{pendingLabel}</Text> : null}
+        </View>
+      ) : <Text style={textStyle}>{label}</Text>}
     </Pressable>
   );
 }
@@ -367,6 +376,8 @@ export function Field({
   textContentType,
   keyboardType,
   multiline,
+  minLines,
+  maxLines,
   hint,
   editable = true,
   maxLength,
@@ -380,7 +391,10 @@ export function Field({
   /** iOS autofill. Password fields default to `password`; sign-up passes `newPassword`. */
   textContentType?: 'password' | 'newPassword';
   keyboardType?: 'default' | 'email-address' | 'decimal-pad' | 'number-pad';
+  /** Return inserts a new line. `minLines` and `maxLines` set how tall it grows. */
   multiline?: boolean;
+  minLines?: number;
+  maxLines?: number;
   hint?: string;
   editable?: boolean;
   maxLength?: number;
@@ -388,13 +402,17 @@ export function Field({
 }) {
   const theme = useAppTheme();
   const inputRef = useRef<TextInput>(null);
-  const keys = useKeyboardField(inputRef, Boolean(multiline));
   const [revealed, setRevealed] = useState(false);
   const password = Boolean(secureTextEntry);
+  const writing = Boolean(multiline || minLines);
+  const keys = useKeyboardField(inputRef, writing);
   // iOS paints the first TextInput placeholder with `color` when a custom font
   // is set, and ignores placeholderTextColor. An empty field uses the hint
   // colour for both, so an example never looks like something already typed.
   const textColor = value ? theme.colors.ink : theme.colors.placeholder;
+  const lineHeight = Math.round(24 * theme.scale);
+  const minHeight = minLines ? minLines * lineHeight + 24 : writing ? 110 : 52;
+  const maxHeight = maxLines ? maxLines * lineHeight + 24 : undefined;
   const contentType = password ? (textContentType ?? 'password') : undefined;
   const input = (
     <TextInput
@@ -412,8 +430,8 @@ export function Field({
       keyboardType={keyboardType}
       returnKeyType={keys.returnKeyType}
       blurOnSubmit={keys.blurOnSubmit}
-      inputAccessoryViewID={keyboardAccessoryId(Boolean(multiline), keyboardType)}
-      multiline={multiline}
+      inputAccessoryViewID={keyboardAccessoryId(writing, keyboardType)}
+      multiline={writing}
       editable={editable}
       maxLength={maxLength}
       autoCapitalize={password || keyboardType === 'email-address' ? 'none' : 'sentences'}
@@ -426,8 +444,10 @@ export function Field({
           backgroundColor: theme.colors.surface,
           fontFamily: theme.font.body,
           fontSize: 17 * theme.scale,
-          minHeight: multiline ? 110 : 52,
-          textAlignVertical: multiline ? 'top' : 'center',
+          lineHeight: minLines ? lineHeight : undefined,
+          minHeight,
+          maxHeight,
+          textAlignVertical: writing ? 'top' : 'center',
         },
       ]}
     />

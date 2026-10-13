@@ -1,12 +1,14 @@
 import { useFocusEffect, useRouter } from 'expo-router';
-import { useCallback, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { View } from 'react-native';
 
 import { useRepository, useSnapshot } from '@/data';
 import { discoverAction, type DiscoverAction } from '@/domain/connections';
 import { shownError } from '@/domain/errors';
+import { randomId } from '@/domain/id';
 import { CommunityProfile } from '@/ui/CommunityProfile';
 import { MemberAvatar, useMemberAvatars } from '@/ui/MemberAvatar';
+import { usePendingPress } from '@/ui/pendingAction';
 import { DISCOVER_EMPTY, PublicProfileCard } from '@/ui/PublicProfileCard';
 import { Button, Card, Choice, ErrorNote, Screen, T } from '@/ui/ui';
 
@@ -17,6 +19,8 @@ export default function People() {
   const [tab, setTab] = useState<'discover' | 'requests' | 'chats'>('discover');
   const [profileId, setProfileId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const { run, isPending } = usePendingPress();
+  const clientIds = useRef(new Map<string, string>());
   const me = snap.profile;
   const avatarOf = useMemberAvatars(snap.directory);
 
@@ -33,6 +37,24 @@ export default function People() {
   const chats = snap.connections.filter((connection) => connection.status === 'accepted');
   const nameOf = (id: string) => snap.directory.find((card) => card.id === id)?.displayName ?? 'Member';
   const labelOf = (id: string) => snap.interests.find((interest) => interest.id === id)?.label ?? 'Interest';
+  const clientIdFor = (key: string) => {
+    const existing = clientIds.current.get(key);
+    if (existing) return existing;
+    const id = randomId();
+    clientIds.current.set(key, id);
+    return id;
+  };
+  const ask = (cardId: string) => {
+    setError(null);
+    const key = `ask:${cardId}`;
+    run(key, () => repo.requestConnection(cardId, clientIdFor(key)).then(() => {
+      clientIds.current.delete(key);
+    }).catch((err: unknown) => setError(shownError(err, 'Could not send that.'))));
+  };
+  const respond = (connectionId: string, accept: boolean) => {
+    setError(null);
+    run(`respond:${connectionId}`, () => repo.respondConnection(connectionId, accept).catch((err: unknown) => setError(shownError(err, 'Could not save that.'))));
+  };
 
   return (
     <Screen eyebrow="People" title="Find your people." intro="Shared interests, a town or area, and a private chat once you both agree. You can block or report at any time.">
@@ -59,14 +81,10 @@ export default function People() {
             {card.sharedInterestIds.length ? <T variant="muted">In common: {card.sharedInterestIds.map(labelOf).join(', ')}</T> : null}
             <DiscoverActions
               action={action}
-              onAsk={() => {
-                setError(null);
-                void repo.requestConnection(card.id).catch((err: unknown) => setError(shownError(err, 'Could not send that.')));
-              }}
-              onRespond={(connectionId, accept) => {
-                setError(null);
-                void repo.respondConnection(connectionId, accept).catch((err: unknown) => setError(shownError(err, 'Could not save that.')));
-              }}
+              askPending={isPending(`ask:${card.id}`)}
+              respondPending={action.kind === 'incoming' && isPending(`respond:${action.connectionId}`)}
+              onAsk={() => ask(card.id)}
+              onRespond={respond}
               onMessage={(connectionId) => router.push(`/chat/${connectionId}` as never)}
             />
             <Button
@@ -86,8 +104,8 @@ export default function People() {
             <View style={{ flex: 1 }}><T variant="title">{nameOf(connection.requesterId)} would like to connect</T></View>
           </View>
           <View style={{ flexDirection: 'row', gap: 10 }}>
-            <View style={{ flex: 1 }}><Button label="Accept" onPress={() => void repo.respondConnection(connection.id, true).catch((err: unknown) => setError(shownError(err, 'Could not save that.')))} /></View>
-            <View style={{ flex: 1 }}><Button label="Decline" tone="quiet" onPress={() => void repo.respondConnection(connection.id, false).catch((err: unknown) => setError(shownError(err, 'Could not save that.')))} /></View>
+            <View style={{ flex: 1 }}><Button label="Accept" pending={isPending(`respond:${connection.id}`)} pendingLabel="Sending..." onPress={() => respond(connection.id, true)} /></View>
+            <View style={{ flex: 1 }}><Button label="Decline" tone="quiet" pending={isPending(`respond:${connection.id}`)} pendingLabel="Sending..." onPress={() => respond(connection.id, false)} /></View>
           </View>
         </Card>
       )) : null}
@@ -121,11 +139,15 @@ export default function People() {
 /** The same control stays on the card when Profile is open, so Discover and the profile agree. */
 function DiscoverActions({
   action,
+  askPending,
+  respondPending,
   onAsk,
   onRespond,
   onMessage,
 }: {
   action: DiscoverAction;
+  askPending: boolean;
+  respondPending: boolean;
   onAsk: () => void;
   onRespond: (connectionId: string, accept: boolean) => void;
   onMessage: (connectionId: string) => void;
@@ -133,12 +155,12 @@ function DiscoverActions({
   if (action.kind === 'incoming') {
     return (
       <View style={{ flexDirection: 'row', gap: 10 }}>
-        <View style={{ flex: 1 }}><Button label="Accept request" onPress={() => onRespond(action.connectionId, true)} /></View>
-        <View style={{ flex: 1 }}><Button label="Decline" tone="quiet" onPress={() => onRespond(action.connectionId, false)} /></View>
+        <View style={{ flex: 1 }}><Button label="Accept request" pending={respondPending} pendingLabel="Sending..." onPress={() => onRespond(action.connectionId, true)} /></View>
+        <View style={{ flex: 1 }}><Button label="Decline" tone="quiet" pending={respondPending} pendingLabel="Sending..." onPress={() => onRespond(action.connectionId, false)} /></View>
       </View>
     );
   }
   if (action.kind === 'sent') return <Button label="Request sent" tone="quiet" disabled onPress={() => undefined} />;
   if (action.kind === 'message') return <Button label="Message" onPress={() => onMessage(action.connectionId)} />;
-  return <Button label="Ask to connect" tone="quiet" onPress={onAsk} />;
+  return <Button label="Ask to connect" tone="quiet" pending={askPending} pendingLabel="Sending..." onPress={onAsk} />;
 }

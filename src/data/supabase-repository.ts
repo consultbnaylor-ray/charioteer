@@ -42,6 +42,7 @@ import {
 } from '@/domain/visionBoard';
 import { isoDay } from '@/domain/dates';
 import { randomId } from '@/domain/id';
+import { isDuplicateWrite, mergeOutgoingMessages, shareInflight } from '@/domain/writes';
 import { passwordResetRedirect, recoveryLink } from '@/domain/passwordReset';
 import { createUtf8Decoder } from '@/domain/utf8';
 import {
@@ -82,6 +83,7 @@ import type {
   Connection,
   ConsentInput,
   DirectoryCard,
+  DirectMessage,
   HealthSample,
   Interest,
   NewCheckIn,
@@ -166,6 +168,9 @@ export class SupabaseRepository implements Repository {
   /** In-flight chip saves, so a refresh does not paint the previous selection over an optimistic one. */
   private pendingInterests = new Map<string, boolean>();
   private interestQueues = new Map<string, Promise<void>>();
+  private once = shareInflight();
+  /** Messages shown before the server confirms them. The id is the client idempotency key. */
+  private outgoingMessages = new Map<string, DirectMessage>();
 
   constructor(url: string, anonKey: string) {
     this.url = url;
@@ -197,7 +202,12 @@ export class SupabaseRepository implements Repository {
   }
 
   private emit(next: AppSnapshot) {
-    this.snapshot = next;
+    if (this.outgoingMessages.size === 0) {
+      this.snapshot = next;
+    } else {
+      const base = next.messages.filter((message) => !this.outgoingMessages.has(message.id));
+      this.snapshot = { ...next, messages: [...mergeOutgoingMessages(base, [...this.outgoingMessages.values()])] };
+    }
     this.listeners.forEach((listener) => listener());
   }
 
@@ -922,36 +932,75 @@ export class SupabaseRepository implements Repository {
     return { status: 'requested', connectionId: created?.id ?? null };
   }
 
-  async requestConnection(userId: string): Promise<void> {
-    const me = await this.userId();
-    const { error } = await this.client.from('connections').insert({ requester_id: me, addressee_id: userId, status: 'pending' });
-    if (error) throw asUserFacing(error, 'general');
-    // The request is saved. A slow or failed reload afterwards must not report
-    // it as unsent, or the card stays on "Ask to connect" after an error.
-    await this.refresh().catch((reloadError: unknown) => console.error(reloadError));
+  async requestConnection(userId: string, clientId?: string): Promise<void> {
+    const id = clientId || randomId();
+    return this.once(`connect:${userId}`, async () => {
+      const me = await this.userId();
+      const live = this.snapshot.connections.some((connection) =>
+        connection.status !== 'declined' &&
+        ((connection.requesterId === me && connection.addresseeId === userId) ||
+          (connection.requesterId === userId && connection.addresseeId === me)));
+      if (live) return;
+      const { error } = await this.client.from('connections').insert({ id, requester_id: me, addressee_id: userId, status: 'pending' });
+      if (error && !isDuplicateWrite(error)) throw asUserFacing(error, 'general');
+      // The request is saved. A slow or failed reload afterwards must not report
+      // it as unsent, or the card stays on "Ask to connect" after an error.
+      await this.refresh().catch((reloadError: unknown) => console.error(reloadError));
+    });
   }
 
   async respondConnection(connectionId: string, accept: boolean): Promise<void> {
-    const { error } = await this.client.from('connections').update({ status: accept ? 'accepted' : 'declined' }).eq('id', connectionId);
-    if (error) throw asUserFacing(error, 'general');
-    await this.refresh().catch((reloadError: unknown) => console.error(reloadError));
+    return this.once(`respond:${connectionId}`, async () => {
+      const current = this.snapshot.connections.find((connection) => connection.id === connectionId);
+      if (current && current.status !== 'pending') return;
+      const { error } = await this.client.from('connections').update({ status: accept ? 'accepted' : 'declined' }).eq('id', connectionId);
+      if (error) throw asUserFacing(error, 'general');
+      await this.refresh().catch((reloadError: unknown) => console.error(reloadError));
+    });
   }
 
-  async sendDirectMessage(connectionId: string, body: string): Promise<void> {
-    const text = body.trim();
+  async sendDirectMessage(connectionId: string, body: string, clientId?: string): Promise<void> {
+    const text = body.trim().slice(0, 2000);
     if (!text) return;
-    const userId = await this.userId();
-    const { data, error } = await this.client.from('direct_messages').insert({
-      connection_id: connectionId,
-      sender_id: userId,
-      body: text.slice(0, 2000),
-    }).select('id').single();
-    if (error) throw asUserFacing(error, 'general');
-    const messageId = data && typeof data.id === 'string' ? data.id : '';
-    if (messageId) {
-      void this.client.functions.invoke('notify-direct-message', { body: { messageId } }).catch(() => undefined);
-    }
-    await this.refresh();
+    const id = clientId || randomId();
+    return this.once(`message:${id}`, async () => {
+      if (this.snapshot.messages.some((message) => message.id === id && !message.delivery)) return;
+      const userId = await this.userId();
+      const optimistic: DirectMessage = {
+        id,
+        connectionId,
+        senderId: userId,
+        body: text,
+        createdAt: this.outgoingMessages.get(id)?.createdAt ?? new Date().toISOString(),
+        delivery: 'sending',
+      };
+      this.outgoingMessages.set(id, optimistic);
+      this.emit({ ...this.snapshot });
+      const { data, error } = await this.client.from('direct_messages').insert({
+        id,
+        connection_id: connectionId,
+        sender_id: userId,
+        body: text,
+      }).select('id').single();
+      if (error && !isDuplicateWrite(error)) {
+        this.outgoingMessages.set(id, { ...optimistic, delivery: 'failed' });
+        this.emit({ ...this.snapshot });
+        throw asUserFacing(error, 'general');
+      }
+      const messageId = !error && data && typeof data.id === 'string' ? data.id : '';
+      if (messageId) {
+        void this.client.functions.invoke('notify-direct-message', { body: { messageId } }).catch(() => undefined);
+      }
+      const { delivery: _delivery, ...confirmed } = optimistic;
+      this.outgoingMessages.set(id, confirmed);
+      this.emit({ ...this.snapshot });
+      await this.refresh().catch((reloadError: unknown) => console.error(reloadError));
+      this.outgoingMessages.delete(id);
+      if (!this.snapshot.messages.some((message) => message.id === id)) {
+        this.outgoingMessages.set(id, confirmed);
+      }
+      this.emit({ ...this.snapshot });
+    });
   }
 
   async saveDeviceToken(token: string, platform: 'ios' | 'android'): Promise<void> {
@@ -965,11 +1014,14 @@ export class SupabaseRepository implements Repository {
     if (error) throw asUserFacing(error, 'general');
   }
 
-  async blockUser(userId: string): Promise<void> {
-    const me = await this.userId();
-    const { error } = await this.client.from('blocks').insert({ blocker_id: me, blocked_id: userId });
-    if (error && !/duplicate|23505/i.test(`${error.code ?? ''} ${error.message}`)) throw asUserFacing(error, 'general');
-    await this.refresh();
+  async blockUser(userId: string, clientId?: string): Promise<void> {
+    const id = clientId || randomId();
+    return this.once(`block:${userId}`, async () => {
+      const me = await this.userId();
+      const { error } = await this.client.from('blocks').insert({ id, blocker_id: me, blocked_id: userId });
+      if (error && !isDuplicateWrite(error)) throw asUserFacing(error, 'general');
+      await this.refresh();
+    });
   }
 
   async unblockUser(userId: string): Promise<void> {
@@ -980,17 +1032,21 @@ export class SupabaseRepository implements Repository {
   }
 
   async reportUser(input: NewReport): Promise<void> {
-    const me = await this.userId();
-    const name = this.snapshot.directory.find((card) => card.id === input.reportedUserId)?.displayName ?? 'Member';
-    const { error } = await this.client.from('reports').insert({
-      reporter_id: me,
-      reported_user_id: input.reportedUserId,
-      reported_name: name,
-      reason: input.reason,
-      details: input.details.trim(),
+    const id = input.clientId || randomId();
+    return this.once(`report:${id}`, async () => {
+      const me = await this.userId();
+      const name = this.snapshot.directory.find((card) => card.id === input.reportedUserId)?.displayName ?? 'Member';
+      const { error } = await this.client.from('reports').insert({
+        id,
+        reporter_id: me,
+        reported_user_id: input.reportedUserId,
+        reported_name: name,
+        reason: input.reason,
+        details: input.details.trim(),
+      });
+      if (error && !isDuplicateWrite(error)) throw asUserFacing(error, 'general');
+      await this.refresh();
     });
-    if (error) throw asUserFacing(error, 'general');
-    await this.refresh();
   }
 
   async reviewReport(id: string): Promise<void> {
