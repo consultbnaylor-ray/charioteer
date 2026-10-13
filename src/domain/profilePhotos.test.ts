@@ -190,7 +190,7 @@ describe('profile photos', () => {
     expect(picker).toContain('profileSquareCrop');
     expect(picker).toContain('SaveFormat.JPEG');
     expect(people).toContain('<MemberAvatar');
-    expect(people).toContain('avatarUrl');
+    expect(people).toContain('useMemberAvatars');
     expect(people).not.toMatch(/gratitude/);
     expect(people).not.toMatch(/thumos|xai|progress-photos/i);
     expect(chat).toContain('<MemberAvatar');

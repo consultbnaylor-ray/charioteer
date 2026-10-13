@@ -210,6 +210,7 @@ export class DemoRepository implements Repository {
             interestIds: other.profile.interestIds,
             sharedInterestIds: other.profile.interestIds.filter((id) => mine.has(id)),
             avatarUrl: (other.profilePhotos ?? []).find((photo) => photo.role === 'avatar')?.previewUrl ?? null,
+            avatarPhotoId: (other.profilePhotos ?? []).find((photo) => photo.role === 'avatar')?.id ?? null,
           }))
           .sort((a, b) => b.sharedInterestIds.length - a.sharedInterestIds.length || a.displayName.localeCompare(b.displayName))
       : [];

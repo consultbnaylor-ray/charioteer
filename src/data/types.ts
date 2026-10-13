@@ -146,6 +146,8 @@ export type DirectoryCard = {
   sharedInterestIds: string[];
   /** Short-lived signed URL for the profile picture. Null falls back to initials. */
   avatarUrl: string | null;
+  /** Profile picture id, so a screen can ask for a fresh signed URL when it opens. */
+  avatarPhotoId?: string | null;
 };
 export type Connection = {
   id: string;

@@ -312,6 +312,7 @@ export class SupabaseRepository implements Repository {
           interestIds,
           sharedInterestIds: interestIds.filter((id) => mine.has(id)),
           avatarUrl: avatarById.get(avatarId) ?? null,
+          avatarPhotoId: avatarId || null,
         };
       })
       .sort((a, b) => b.sharedInterestIds.length - a.sharedInterestIds.length || a.displayName.localeCompare(b.displayName));
@@ -925,13 +926,15 @@ export class SupabaseRepository implements Repository {
     const me = await this.userId();
     const { error } = await this.client.from('connections').insert({ requester_id: me, addressee_id: userId, status: 'pending' });
     if (error) throw asUserFacing(error, 'general');
-    await this.refresh();
+    // The request is saved. A slow or failed reload afterwards must not report
+    // it as unsent, or the card says "Already in touch" after an error.
+    await this.refresh().catch((reloadError: unknown) => console.error(reloadError));
   }
 
   async respondConnection(connectionId: string, accept: boolean): Promise<void> {
     const { error } = await this.client.from('connections').update({ status: accept ? 'accepted' : 'declined' }).eq('id', connectionId);
     if (error) throw asUserFacing(error, 'general');
-    await this.refresh();
+    await this.refresh().catch((reloadError: unknown) => console.error(reloadError));
   }
 
   async sendDirectMessage(connectionId: string, body: string): Promise<void> {

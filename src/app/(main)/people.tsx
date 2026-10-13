@@ -1,11 +1,11 @@
-import { useRouter } from 'expo-router';
-import { useState } from 'react';
+import { useFocusEffect, useRouter } from 'expo-router';
+import { useCallback, useState } from 'react';
 import { View } from 'react-native';
 
 import { useRepository, useSnapshot } from '@/data';
 import { shownError } from '@/domain/errors';
 import { CommunityProfile } from '@/ui/CommunityProfile';
-import { MemberAvatar } from '@/ui/MemberAvatar';
+import { MemberAvatar, useMemberAvatars } from '@/ui/MemberAvatar';
 import { DISCOVER_EMPTY, PublicProfileCard } from '@/ui/PublicProfileCard';
 import { Button, Card, Choice, ErrorNote, Screen, T } from '@/ui/ui';
 
@@ -17,9 +17,18 @@ export default function People() {
   const [profileId, setProfileId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const me = snap.profile;
+  const avatarOf = useMemberAvatars(snap.directory);
+
+  // New requests and chats arrive from other people, so load them each time People opens.
+  useFocusEffect(
+    useCallback(() => {
+      void repo.reload();
+    }, [repo]),
+  );
   if (!me) return null;
 
   const incoming = snap.connections.filter((connection) => connection.status === 'pending' && connection.addresseeId === me.id);
+  const sent = snap.connections.filter((connection) => connection.status === 'pending' && connection.requesterId === me.id);
   const chats = snap.connections.filter((connection) => connection.status === 'accepted');
   const nameOf = (id: string) => snap.directory.find((card) => card.id === id)?.displayName ?? 'Member';
   const labelOf = (id: string) => snap.interests.find((interest) => interest.id === id)?.label ?? 'Interest';
@@ -42,7 +51,7 @@ export default function People() {
         return (
           <Card key={card.id}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-              <MemberAvatar name={card.displayName} url={card.avatarUrl} />
+              <MemberAvatar name={card.displayName} url={avatarOf(card.id)} />
               <View style={{ flex: 1, gap: 4 }}>
                 <T variant="title">{card.displayName}</T>
                 <T variant="muted">{card.town || 'Area not shared'}</T>
@@ -71,7 +80,10 @@ export default function People() {
       {tab === 'discover' && snap.directory.length === 0 ? <T variant="muted">{DISCOVER_EMPTY}</T> : null}
       {tab === 'requests' ? incoming.map((connection) => (
         <Card key={connection.id}>
-          <T variant="title">{nameOf(connection.requesterId)} would like to connect</T>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+            <MemberAvatar name={nameOf(connection.requesterId)} url={avatarOf(connection.requesterId)} />
+            <View style={{ flex: 1 }}><T variant="title">{nameOf(connection.requesterId)} would like to connect</T></View>
+          </View>
           <View style={{ flexDirection: 'row', gap: 10 }}>
             <View style={{ flex: 1 }}><Button label="Accept" onPress={() => void repo.respondConnection(connection.id, true).catch((err: unknown) => setError(shownError(err, 'Could not save that.')))} /></View>
             <View style={{ flex: 1 }}><Button label="Decline" tone="quiet" onPress={() => void repo.respondConnection(connection.id, false).catch((err: unknown) => setError(shownError(err, 'Could not save that.')))} /></View>
@@ -79,11 +91,23 @@ export default function People() {
         </Card>
       )) : null}
       {tab === 'requests' && incoming.length === 0 ? <T variant="muted">No open requests.</T> : null}
+      {tab === 'requests' && sent.length ? <T variant="label">Sent</T> : null}
+      {tab === 'requests' ? sent.map((connection) => (
+        <Card key={connection.id}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+            <MemberAvatar name={nameOf(connection.addresseeId)} url={avatarOf(connection.addresseeId)} />
+            <View style={{ flex: 1 }}><T variant="title">Waiting for {nameOf(connection.addresseeId)} to accept</T></View>
+          </View>
+        </Card>
+      )) : null}
       {tab === 'chats' ? chats.map((connection) => {
         const other = connection.requesterId === me.id ? connection.addresseeId : connection.requesterId;
         return (
           <Card key={connection.id}>
-            <T variant="title">{nameOf(other)}</T>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+              <MemberAvatar name={nameOf(other)} url={avatarOf(other)} />
+              <View style={{ flex: 1 }}><T variant="title">{nameOf(other)}</T></View>
+            </View>
             <Button label="Open chat" onPress={() => router.push(`/chat/${connection.id}` as never)} />
           </Card>
         );

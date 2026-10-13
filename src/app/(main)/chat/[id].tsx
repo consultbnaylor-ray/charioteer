@@ -5,7 +5,7 @@ import { View } from 'react-native';
 import { useRepository, useSnapshot } from '@/data';
 import { shownError } from '@/domain/errors';
 import { offerMessageNotifications } from '@/notifications/register';
-import { MemberAvatar } from '@/ui/MemberAvatar';
+import { MemberAvatar, useMemberAvatars } from '@/ui/MemberAvatar';
 import { Button, Card, Choice, ErrorNote, Field, Screen, T } from '@/ui/ui';
 import { useAppTheme } from '@/ui/theme';
 
@@ -16,6 +16,7 @@ export default function Chat() {
   const snap = useSnapshot();
   const repo = useRepository();
   const theme = useAppTheme();
+  const avatarOf = useMemberAvatars(snap.directory);
   const [draft, setDraft] = useState('');
   const [reporting, setReporting] = useState(false);
   const [reason, setReason] = useState(REASONS[0]);
@@ -40,7 +41,7 @@ export default function Chat() {
   return (
     <Screen eyebrow="Private chat" title={other} intro="Only the two of you can read this. Blocking hides them from you.">
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-        <MemberAvatar name={other} url={otherCard?.avatarUrl} />
+        <MemberAvatar name={other} url={avatarOf(otherId)} />
         <T variant="title">{other}</T>
       </View>
       {messages.map((message) => (

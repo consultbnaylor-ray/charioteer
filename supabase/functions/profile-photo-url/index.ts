@@ -2,7 +2,10 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.117.3';
 import { json, preflight } from '../_shared/http.ts';
 
 const PHOTO_BUCKET = 'profile-photos';
-const SHARED_SECONDS = 60;
+// The app signs these when it loads and shows them minutes later, so a minute
+// was too short and shared photos rendered as empty boxes. Access is still
+// checked on every request; a link only reaches an allowed viewer.
+const SHARED_SECONDS = 60 * 60;
 const ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 Deno.serve(async (req) => {
