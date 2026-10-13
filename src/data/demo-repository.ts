@@ -9,6 +9,7 @@ import {
 } from '@/domain/errors';
 import { convertStoredMoods, planCheckInGratitudeSync } from '@/domain/checkIns';
 import { randomId } from '@/domain/id';
+import { shareInflight } from '@/domain/writes';
 import { isoDay } from '@/domain/dates';
 import { isGratitudeCategory, localGratitudeReflect, planGratitudeEntry, sortGratitude, type GratitudeEntry, type GratitudeReflect } from '@/domain/gratitude';
 import { GRATITUDE_MAX_BYTES, gratitudePhotoLimitMessage, gratitudeStoragePath } from '@/domain/gratitudePhotos';
@@ -175,6 +176,7 @@ export class DemoRepository implements Repository {
   private ready = false;
   private snapshot: AppSnapshot = this.derive();
   private listeners = new Set<() => void>();
+  private once = shareInflight();
 
   constructor() {
     void this.hydrate();
@@ -628,70 +630,84 @@ export class DemoRepository implements Repository {
     return { status: 'requested', connectionId: created?.id ?? null };
   }
 
-  async requestConnection(userId: string): Promise<void> {
-    const account = this.me();
-    if (!account.profile.ageConfirmed18 || !account.profile.communityVisible) {
-      throw new Error('Turn on community, and confirm you are 18 or over, before you connect.');
-    }
-    if (blocked(this.db, account.profile.id, userId)) throw new Error('You cannot contact this person.');
-    const exists = this.db.connections.some(
-      (connection) =>
-        connection.status !== 'declined' &&
-        ((connection.requesterId === account.profile.id && connection.addresseeId === userId) ||
-          (connection.requesterId === userId && connection.addresseeId === account.profile.id)),
-    );
-    if (exists) throw new Error('There is already a request between you.');
-    const db = clone(this.db);
-    db.connections.push({
-      id: uid(),
-      requesterId: account.profile.id,
-      addresseeId: userId,
-      status: 'pending',
-      createdAt: new Date().toISOString(),
+  async requestConnection(userId: string, clientId?: string): Promise<void> {
+    const id = clientId || uid();
+    return this.once(`connect:${userId}`, async () => {
+      const account = this.me();
+      if (!account.profile.ageConfirmed18 || !account.profile.communityVisible) {
+        throw new Error('Turn on community, and confirm you are 18 or over, before you connect.');
+      }
+      if (blocked(this.db, account.profile.id, userId)) throw new Error('You cannot contact this person.');
+      if (this.db.connections.some((connection) => connection.id === id)) return;
+      const exists = this.db.connections.some(
+        (connection) =>
+          connection.status !== 'declined' &&
+          ((connection.requesterId === account.profile.id && connection.addresseeId === userId) ||
+            (connection.requesterId === userId && connection.addresseeId === account.profile.id)),
+      );
+      if (exists) return;
+      const db = clone(this.db);
+      db.connections.push({
+        id,
+        requesterId: account.profile.id,
+        addresseeId: userId,
+        status: 'pending',
+        createdAt: new Date().toISOString(),
+      });
+      this.commit(db);
     });
-    this.commit(db);
   }
 
   async respondConnection(connectionId: string, accept: boolean): Promise<void> {
-    const account = this.me();
-    const db = clone(this.db);
-    const connection = db.connections.find((item) => item.id === connectionId);
-    if (!connection || connection.addresseeId !== account.profile.id || connection.status !== 'pending') {
-      throw new Error('That request is no longer open.');
-    }
-    connection.status = accept ? 'accepted' : 'declined';
-    this.commit(db);
+    return this.once(`respond:${connectionId}`, async () => {
+      const account = this.me();
+      const db = clone(this.db);
+      const connection = db.connections.find((item) => item.id === connectionId);
+      if (!connection || connection.addresseeId !== account.profile.id) {
+        throw new Error('That request is no longer open.');
+      }
+      if (connection.status !== 'pending') return;
+      connection.status = accept ? 'accepted' : 'declined';
+      this.commit(db);
+    });
   }
 
   async saveDeviceToken(_token: string, _platform: 'ios' | 'android'): Promise<void> {
     return undefined;
   }
 
-  async sendDirectMessage(connectionId: string, body: string): Promise<void> {
-    const text = body.trim();
+  async sendDirectMessage(connectionId: string, body: string, clientId?: string): Promise<void> {
+    const text = body.trim().slice(0, 2000);
     if (!text) return;
-    const account = this.me();
-    const connection = this.db.connections.find((item) => item.id === connectionId);
-    if (!connection || connection.status !== 'accepted') throw new Error('You can message once you have both agreed.');
-    if (![connection.requesterId, connection.addresseeId].includes(account.profile.id)) throw new Error('That chat is not yours.');
-    if (blocked(this.db, connection.requesterId, connection.addresseeId)) throw new Error('This chat is closed.');
-    const db = clone(this.db);
-    db.messages.push({
-      id: uid(),
-      connectionId,
-      senderId: account.profile.id,
-      body: text.slice(0, 2000),
-      createdAt: new Date().toISOString(),
+    const id = clientId || uid();
+    return this.once(`message:${id}`, async () => {
+      if (this.db.messages.some((message) => message.id === id)) return;
+      const account = this.me();
+      const connection = this.db.connections.find((item) => item.id === connectionId);
+      if (!connection || connection.status !== 'accepted') throw new Error('You can message once you have both agreed.');
+      if (![connection.requesterId, connection.addresseeId].includes(account.profile.id)) throw new Error('That chat is not yours.');
+      if (blocked(this.db, connection.requesterId, connection.addresseeId)) throw new Error('This chat is closed.');
+      const db = clone(this.db);
+      db.messages.push({
+        id,
+        connectionId,
+        senderId: account.profile.id,
+        body: text,
+        createdAt: new Date().toISOString(),
+      });
+      this.commit(db);
     });
-    this.commit(db);
   }
 
-  async blockUser(userId: string): Promise<void> {
-    const account = this.me();
-    if (this.db.blocks.some((row) => row.blockerId === account.profile.id && row.blockedId === userId)) return;
-    const db = clone(this.db);
-    db.blocks.push({ id: uid(), blockerId: account.profile.id, blockedId: userId });
-    this.commit(db);
+  async blockUser(userId: string, clientId?: string): Promise<void> {
+    const id = clientId || uid();
+    return this.once(`block:${userId}`, async () => {
+      const account = this.me();
+      if (this.db.blocks.some((row) => row.id === id || (row.blockerId === account.profile.id && row.blockedId === userId))) return;
+      const db = clone(this.db);
+      db.blocks.push({ id, blockerId: account.profile.id, blockedId: userId });
+      this.commit(db);
+    });
   }
 
   async unblockUser(userId: string): Promise<void> {
@@ -702,20 +718,24 @@ export class DemoRepository implements Repository {
   }
 
   async reportUser(input: NewReport): Promise<void> {
-    const account = this.me();
-    const reported = this.db.accounts[input.reportedUserId];
-    const db = clone(this.db);
-    db.reports.push({
-      id: uid(),
-      reporterId: account.profile.id,
-      reportedUserId: input.reportedUserId,
-      reportedName: reported?.profile.displayName ?? 'Member',
-      reason: input.reason,
-      details: input.details.trim(),
-      status: 'open',
-      createdAt: new Date().toISOString(),
+    const id = input.clientId || uid();
+    return this.once(`report:${id}`, async () => {
+      if (this.db.reports.some((report) => report.id === id)) return;
+      const account = this.me();
+      const reported = this.db.accounts[input.reportedUserId];
+      const db = clone(this.db);
+      db.reports.push({
+        id,
+        reporterId: account.profile.id,
+        reportedUserId: input.reportedUserId,
+        reportedName: reported?.profile.displayName ?? 'Member',
+        reason: input.reason,
+        details: input.details.trim(),
+        status: 'open',
+        createdAt: new Date().toISOString(),
+      });
+      this.commit(db);
     });
-    this.commit(db);
   }
 
   async reviewReport(id: string): Promise<void> {
