@@ -9,6 +9,7 @@ import {
   healthShareLabel,
   toggleShareId,
 } from '@/domain/profileSharing';
+import { NutritionShareSwitch } from '@/ui/NutritionShare';
 import { ShareOnProfile } from '@/ui/ShareOnProfile';
 import { Button, Screen, T } from '@/ui/ui';
 
@@ -104,6 +105,18 @@ export default function WhatIShare() {
           }}
         />
       ))}
+      <NutritionShareSwitch
+        label="Food diary visible to community members"
+        item="Food diary"
+        on={snap.nutrition.shareFoodDiary}
+        apply={(settings, selected) => ({ ...settings, shareFoodDiary: selected })}
+      />
+      <NutritionShareSwitch
+        label="Show a hard moment on my profile"
+        item="A hard moment"
+        on={snap.nutrition.wagonVisible}
+        apply={(settings, selected) => ({ ...settings, wagonVisible: selected })}
+      />
       <ShareOnProfile
         label="Share pinned quote"
         item="Pinned quote"
@@ -142,6 +155,7 @@ export default function WhatIShare() {
       <View style={{ gap: 8 }}>
         <Button label="Today" tone="quiet" onPress={() => router.push('/home' as never)} />
         <Button label="Health Stats" tone="quiet" onPress={() => router.push('/health' as never)} />
+        <Button label="Nutrition" tone="quiet" onPress={() => router.push('/nutrition' as never)} />
         <Button label="You" tone="quiet" onPress={() => router.push('/profile' as never)} />
         <Button label="Gratitude Diary" tone="quiet" onPress={() => router.push('/gratitude' as never)} />
         <Button label="Vision Board" tone="quiet" onPress={() => router.push('/vision' as never)} />

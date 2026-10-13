@@ -8,6 +8,7 @@ import { isoDay } from '@/domain/dates';
 import { shownError } from '@/domain/errors';
 import { interestChipRemovable, interestChipVisible } from '@/domain/interests';
 import { planCustomInterest, validateTown } from '@/domain/privacy';
+import { WAGON_PUBLIC_LINE } from '@/domain/nutrition';
 import { BIO_EXAMPLE, BIO_LIMIT, NEVER_SHARED, PHOTO_CAPTION_LIMIT, formatSoberShare, projectPublicProfile } from '@/domain/profileSharing';
 import { ShareOnProfile } from '@/ui/ShareOnProfile';
 import { progressPhotoLabel } from '@/domain/progressPhotos';
@@ -110,6 +111,7 @@ export function PublicProfileCard() {
       visibility: photo.visibility === 'community' ? 'community' : 'private',
     })),
     pinnedQuoteId: me.pinnedQuoteId,
+    nutrition: { logs: snap.foodLogs, settings: snap.nutrition },
   }, snap.sharing);
   const interestLine = preview.interests.join(' · ');
   const avatar = (snap.profilePhotos ?? []).find((photo) => photo.role === 'avatar');
@@ -335,6 +337,18 @@ export function PublicProfileCard() {
             {preview.gratitude.map((entry) => <T key={entry.id}>{entry.body}</T>)}
             {preview.vision.map((item) => <T key={item.id}>{item.caption}</T>)}
             {preview.gratitudePhotos.map((photo) => photo.caption ? <T key={photo.id}>{photo.caption}</T> : null)}
+            {preview.foodDiary?.length ? (
+              <View style={{ gap: 4 }}>
+                <T variant="label">Today’s meals</T>
+                {preview.foodDiary.map((meal) => <T key={`${meal.meal}:${meal.detail}`}>{meal.meal}: {meal.detail}</T>)}
+              </View>
+            ) : null}
+            {preview.wagon ? (
+              <View style={{ gap: 4 }}>
+                <T>{WAGON_PUBLIC_LINE}</T>
+                {preview.wagon.note ? <T variant="muted">{preview.wagon.note}</T> : null}
+              </View>
+            ) : null}
             <OwnSharedPhotos name={me.displayName} photos={shared} />
           </View>
         )}

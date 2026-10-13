@@ -6,6 +6,7 @@ import type { VisionItem } from '@/domain/visionBoard';
 import { visionStoragePath } from '@/domain/visionBoard';
 import { VISION_SAMPLE_PHOTOS } from '@/data/visionSamples';
 import { isoDay } from '@/domain/dates';
+import { estimateFromText } from '@/domain/nutrition';
 import type { GratitudeEntry } from '@/domain/gratitude';
 import { gratitudeStoragePath } from '@/domain/gratitudePhotos';
 import { planProgressPhoto, progressStoragePath } from '@/domain/progressPhotos';
@@ -45,6 +46,10 @@ export type DemoAccount = {
   sharing?: import('@/domain/profileSharing').ProfileSharing;
   /** Absent on older sample data. Private favourite quote ids. */
   savedQuotes?: { quoteId: string; createdAt: string }[];
+  /** Absent on older sample data. Private meals. */
+  foodLogs?: import('@/domain/nutrition').FoodLog[];
+  nutrition?: import('@/domain/nutrition').NutritionSettings;
+  waterDays?: import('@/domain/nutrition').NutritionDay[];
 };
 
 export type DemoDb = {
@@ -339,6 +344,34 @@ export function createDemoDb(now = new Date()): DemoDb {
       caption: '',
     }];
   }
+  const lowMood = checkIns.find((item) => item.mood === 4);
+  alex.foodLogs = [
+    {
+      id: '11111111-1111-4111-8111-111111111111',
+      userId: PEOPLE.alex,
+      eatenOn: isoDay(now),
+      meal: 'breakfast',
+      source: 'text',
+      note: 'Porridge and a banana',
+      items: estimateFromText('porridge and a banana'),
+      estimated: true,
+      createdAt: now.toISOString(),
+      previewUrl: null,
+    },
+    {
+      id: '11111111-1111-4111-8111-111111111112',
+      userId: PEOPLE.alex,
+      eatenOn: lowMood ? isoDay(new Date(lowMood.createdAt)) : isoDay(now),
+      meal: 'snack',
+      source: 'text',
+      note: 'Crisps after a short night',
+      items: estimateFromText('crisps'),
+      estimated: true,
+      createdAt: lowMood?.createdAt ?? now.toISOString(),
+      previewUrl: null,
+    },
+  ];
+  alex.waterDays = [{ day: isoDay(now), waterMl: 350 }];
 
   const other = (
     id: string,

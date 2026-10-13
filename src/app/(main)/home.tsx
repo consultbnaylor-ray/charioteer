@@ -12,6 +12,7 @@ import { formatGbp, savingsFromTypicalWeek } from '@/domain/savings';
 import { shownError } from '@/domain/errors';
 import { soberElapsed } from '@/domain/sober';
 import { buildHealthInsights } from '@/domain/healthInsights';
+import { dayItems, sumItems, type FoodLog } from '@/domain/nutrition';
 import { quoteCredit, quoteOfTheDay } from '@/domain/stoicQuotes';
 import { VISION_EMPTY_STATEMENT } from '@/domain/visionBoard';
 import { daysUntil, drinkFreeThisWeek, showsSoberRecord, SUDDEN_STOP_WARNING, toggleDrinkFreeDay } from '@/domain/stage';
@@ -23,6 +24,14 @@ import { InPlainWords } from '@/ui/InPlainWords';
 import { usePendingPress } from '@/ui/pendingAction';
 import { Button, Card, EditMark, EditSheet, ErrorNote, Field, Screen, T } from '@/ui/ui';
 import { radius, useAppTheme } from '@/ui/theme';
+
+function NutritionToday({ logs, hideCalories, today }: { logs: FoodLog[]; hideCalories: boolean; today: string }) {
+  const items = dayItems(logs, today);
+  if (!items.length) return <T>Log a meal and see how the day is going.</T>;
+  const totals = sumItems(items);
+  if (hideCalories) return <T>{`${items.length} ${items.length === 1 ? 'item' : 'items'} logged. Fibre ${totals.fibreG} g.`}</T>;
+  return <T>{`${totals.kcal.toLocaleString('en-GB')} kcal logged today. Fibre ${totals.fibreG} g.`}</T>;
+}
 
 function greeting(date: Date) {
   const hour = date.getHours();
@@ -259,6 +268,11 @@ export default function Home() {
         <T variant="label">Today</T>
         <T>{checkedToday ? `Mood ${today.mood}/10 · craving ${today.craving}/10. You can add another if the day changed shape.` : 'A check-in takes a few seconds: mood, sleep, craving.'}</T>
         <Button label={checkedToday ? 'Update check-in' : 'Check in'} tone="quiet" onPress={() => router.push('/check-in' as never)} />
+      </Card>
+      <Card>
+        <T variant="label">Nutrition</T>
+        <NutritionToday logs={snap.foodLogs} hideCalories={snap.nutrition.hideCalories} today={isoDay(now)} />
+        <Button label="Open nutrition" tone="quiet" onPress={() => router.push('/nutrition' as never)} />
       </Card>
       <Card>
         <T variant="label">Health Stats</T>

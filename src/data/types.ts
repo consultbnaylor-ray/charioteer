@@ -1,4 +1,5 @@
 import type { StoredConsent } from '@/domain/consents';
+import type { FoodItem, FoodLog, MealSlot, MealSource, NutritionDay, NutritionSettings, SharedNutritionView } from '@/domain/nutrition';
 import type { ProfileSharing, PublicProfileView } from '@/domain/profileSharing';
 import type { GratitudeCategory, GratitudeEntry, GratitudeReflect } from '@/domain/gratitude';
 import type { Stage } from '@/domain/stage';
@@ -217,6 +218,10 @@ export type AppSnapshot = {
   sharing: ProfileSharing;
   /** Private favourite Stoic lines. Other people cannot read this list. */
   savedQuotes: SavedQuote[];
+  /** Private food log. Other people see today's meals only when the diary is shared. */
+  foodLogs: FoodLog[];
+  nutrition: NutritionSettings;
+  waterDays: NutritionDay[];
 };
 
 export type NewGratitudeEntry = {
@@ -326,6 +331,20 @@ export type VoiceTurnInput = {
   mode: ThumosMode;
 };
 
+export type NewFoodLog = {
+  /** Stable for one save, including a retry, so the meal is not inserted twice. */
+  id: string;
+  eatenOn: string;
+  meal: MealSlot;
+  source: MealSource;
+  note: string;
+  items: FoodItem[];
+  estimated: boolean;
+  photoBase64?: string | null;
+};
+
+export type MealEstimate = { items: FoodItem[]; source: 'model' | 'local' };
+
 export interface Repository {
   subscribe(listener: () => void): () => void;
   getSnapshot(): AppSnapshot;
@@ -399,4 +418,12 @@ export interface Repository {
   deleteVisionItem(id: string): Promise<void>;
   exportData(): Promise<Record<string, unknown>>;
   deleteAccount(): Promise<void>;
+  /** Reads a photo or a sentence. The person confirms the items before they are saved. */
+  estimateMeal(input: { text?: string; imageBase64?: string }): Promise<MealEstimate>;
+  saveFoodLog(input: NewFoodLog): Promise<void>;
+  deleteFoodLog(id: string): Promise<void>;
+  setNutritionSettings(settings: NutritionSettings): Promise<void>;
+  setWater(day: string, waterMl: number): Promise<void>;
+  /** Today's shared meals and wagon line. Null when the profile is hidden or blocked. */
+  sharedNutrition(userId: string): Promise<SharedNutritionView | null>;
 }

@@ -5,6 +5,7 @@ import { MILESTONES, milestoneReached } from './milestones';
 import { savingsFromTypicalWeek } from './savings';
 import { soberElapsed } from './sober';
 import { quoteById, type QuoteSchool } from './stoicQuotes';
+import { publicMealLines, type FoodLog, type NutritionSettings } from './nutrition';
 import { STAGE_LABELS, isStage } from './stage';
 
 /** Helper under a Share on profile switch while Community is on. */
@@ -22,7 +23,7 @@ export function sensitiveShareConfirm(item: string): string {
 }
 
 export const NEVER_SHARED =
-  `Always hidden: check-in details, raw health readings, health flags, height, Thumos chats, private photo notes, and any photo you have not switched on. ${PROFILE_PHOTO_WORDING}`;
+  `Always hidden: check-in details, raw health readings, health flags, height, Thumos chats, private photo notes, meal photos, and any photo you have not switched on. ${PROFILE_PHOTO_WORDING}`;
 
 /** Written for the public profile. About 300 characters. */
 export const BIO_LIMIT = 300;
@@ -183,6 +184,8 @@ export type ShareSource = {
   /** Profile picture and gallery. Shown whenever Community is on. No storage path. */
   profilePhotos?: { id: string; role: 'avatar' | 'gallery'; caption: string; position: number }[];
   pinnedQuoteId: string | null;
+  /** Today's meals and the wagon flag. Absent means nothing from the food log is shared. */
+  nutrition?: { logs: FoodLog[]; settings: NutritionSettings };
 };
 
 export type PublicProfileView = {
@@ -210,6 +213,10 @@ export type PublicProfileView = {
   pinnedQuote: { id: string; text: string; author: string; school: QuoteSchool; source: string } | null;
   sharedLabels: string[];
   hiddenLabels: string[];
+  /** Today's meals, when the food diary is switched on. Null when it is not. */
+  foodDiary: { meal: string; detail: string }[] | null;
+  /** A gentle line, when they have chosen to show a hard moment. */
+  wagon: { note: string } | null;
 };
 
 /** Consecutive check-in days. The number only. Mood, craving, sleep, and notes stay off. */
@@ -360,6 +367,17 @@ export function projectPublicProfile(source: ShareSource, sharing: ProfileSharin
   const pinnedQuote = shownPinnedQuote(pinned);
   if (pinnedQuote) sharedLabels.push('Pinned quote');
   else hiddenLabels.push('Pinned quote');
+  const foodDiary = source.nutrition?.settings.shareFoodDiary
+    ? publicMealLines(source.nutrition.logs, source.today, source.nutrition.settings.hideCalories)
+    : null;
+  const wagonNote = source.nutrition?.settings.wagonNote.trim().slice(0, 200) ?? '';
+  const wagon = source.nutrition?.settings.wagonOn && source.nutrition.settings.wagonVisible
+    ? { note: wagonNote }
+    : null;
+  if (foodDiary) sharedLabels.push('Food diary');
+  else hiddenLabels.push('Food diary');
+  if (wagon) sharedLabels.push('A hard moment');
+  else hiddenLabels.push('A hard moment');
 
   return {
     displayName: source.displayName,
@@ -382,6 +400,8 @@ export function projectPublicProfile(source: ShareSource, sharing: ProfileSharin
     pinnedQuote,
     sharedLabels,
     hiddenLabels,
+    foodDiary,
+    wagon,
   };
 }
 
@@ -477,7 +497,27 @@ export function parsePublicProfile(value: unknown): PublicProfileView | null {
     pinnedQuote: shownPinnedQuote(pinned),
     sharedLabels: textList(raw.sharedLabels),
     hiddenLabels: textList(raw.hiddenLabels),
+    foodDiary: mealLines(raw.foodDiary),
+    wagon: wagonLine(raw.wagon),
   };
+}
+
+function mealLines(value: unknown): { meal: string; detail: string }[] | null {
+  if (!Array.isArray(value)) return null;
+  return value.flatMap((item) => {
+    if (!item || typeof item !== 'object') return [];
+    const row = item as Record<string, unknown>;
+    const meal = typeof row.meal === 'string' ? row.meal : '';
+    const detail = typeof row.detail === 'string' ? row.detail : '';
+    if (!meal && !detail) return [];
+    return [{ meal, detail }];
+  });
+}
+
+function wagonLine(value: unknown): { note: string } | null {
+  if (!value || typeof value !== 'object') return null;
+  const note = (value as { note?: unknown }).note;
+  return { note: typeof note === 'string' ? note : '' };
 }
 
 export type SharedReportItem = { label: string; summary: string };
@@ -501,5 +541,7 @@ export function sharedReportItems(view: PublicProfileView): SharedReportItem[] {
   for (const photo of view.gratitudePhotos) items.push({ label: 'Gratitude photo', summary: photo.caption || photo.id });
   for (const item of view.vision) items.push({ label: 'Vision item', summary: item.caption || item.id });
   if (view.pinnedQuote) items.push({ label: 'Pinned quote', summary: view.pinnedQuote.text });
+  for (const meal of view.foodDiary ?? []) items.push({ label: 'Food diary', summary: `${meal.meal}: ${meal.detail}` });
+  if (view.wagon) items.push({ label: 'A hard moment', summary: view.wagon.note || 'Having a hard moment.' });
   return items;
 }

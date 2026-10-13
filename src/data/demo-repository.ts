@@ -40,6 +40,15 @@ import { consentRows, missingConsentRows } from '@/domain/consents';
 import { stageFromRecord } from '@/domain/stage';
 import { BIO_LIMIT, PHOTO_CAPTION_LIMIT, defaultProfileSharing, normalizeProfileSharing, planProfileText, projectPublicProfile, sensitiveTurnedOn, type ProfileSharing, type PublicProfileView, type ShareSource } from '@/domain/profileSharing';
 import { quoteById } from '@/domain/stoicQuotes';
+import {
+  defaultNutritionSettings,
+  estimateFromText,
+  foodItemFromUnknown,
+  presentSharedNutrition,
+  samplePhotoMeal,
+  type FoodLog,
+  type NutritionSettings,
+} from '@/domain/nutrition';
 import { createDemoDb, type DemoAccount, type DemoDb } from '@/data/demo-seed';
 import type {
   AppSnapshot,
@@ -156,6 +165,10 @@ function shareSource(account: DemoAccount, interests: DemoDb['interests'], now =
       visibility: photo.visibility === 'community' ? 'community' as const : 'private' as const,
     })),
     pinnedQuoteId: account.profile.pinnedQuoteId ?? null,
+    nutrition: {
+      logs: account.foodLogs ?? [],
+      settings: account.nutrition ?? defaultNutritionSettings(),
+    },
     profilePhotos: sortProfilePhotos(account.profilePhotos ?? []).map((photo) => ({
       id: photo.id,
       role: photo.role === 'avatar' ? 'avatar' as const : 'gallery' as const,
@@ -273,6 +286,9 @@ export class DemoRepository implements Repository {
       visionItems: account ? sortVisionItems(account.visionItems ?? []) : [],
       sharing: account ? normalizeProfileSharing(account.sharing) : defaultProfileSharing(),
       savedQuotes: account?.savedQuotes ?? [],
+      foodLogs: account?.foodLogs ?? [],
+      nutrition: account?.nutrition ?? defaultNutritionSettings(),
+      waterDays: account?.waterDays ?? [],
     };
   }
 
@@ -292,6 +308,7 @@ export class DemoRepository implements Repository {
     }
     this.backfillMoodScale();
     this.backfillProgressPhotos();
+    this.backfillNutrition();
     this.ready = true;
     this.snapshot = this.derive();
     this.listeners.forEach((listener) => listener());
@@ -329,6 +346,16 @@ export class DemoRepository implements Repository {
           if (photo.caption == null) photo.caption = '';
         }
       }
+    }
+  }
+
+  /** Sample meals for a demo account saved before the food log existed. An empty list stays empty. */
+  private backfillNutrition() {
+    const fresh = createDemoDb();
+    for (const [id, account] of Object.entries(this.db.accounts)) {
+      if (!account.foodLogs) account.foodLogs = fresh.accounts[id]?.foodLogs ?? [];
+      if (!account.nutrition) account.nutrition = fresh.accounts[id]?.nutrition ?? defaultNutritionSettings();
+      if (!account.waterDays) account.waterDays = fresh.accounts[id]?.waterDays ?? [];
     }
   }
 
@@ -400,6 +427,9 @@ export class DemoRepository implements Repository {
       gratitude: [],
       visionItems: [],
       savedQuotes: [],
+      foodLogs: [],
+      nutrition: defaultNutritionSettings(),
+      waterDays: [],
     };
     const db = clone(this.db);
     db.accounts[id] = account;
@@ -922,6 +952,79 @@ export class DemoRepository implements Repository {
     const db = clone(this.db);
     db.accounts[account.profile.id].sharing = next;
     this.commit(db);
+  }
+
+  async estimateMeal(input: { text?: string; imageBase64?: string }) {
+    const text = input.text?.trim() ?? '';
+    const items = text ? estimateFromText(text) : samplePhotoMeal();
+    if (!items.length) throw new UserFacingError('Could not read that meal. You can still type it in yourself.', 'generic');
+    return { items, source: 'local' as const };
+  }
+
+  async saveFoodLog(input: import('@/data/types').NewFoodLog): Promise<void> {
+    return this.once(`food:${input.id}`, async () => {
+      const account = this.me();
+      const items = input.items.map(foodItemFromUnknown).filter((item): item is NonNullable<typeof item> => item != null);
+      if (!items.length) throw new UserFacingError('Add at least one food.', 'generic');
+      const db = clone(this.db);
+      const next = db.accounts[account.profile.id];
+      const logs = next.foodLogs ?? [];
+      if (logs.some((log) => log.id === input.id)) return;
+      const log: FoodLog = {
+        id: input.id,
+        userId: account.profile.id,
+        eatenOn: input.eatenOn,
+        meal: input.meal,
+        source: input.source,
+        note: input.note.slice(0, 500),
+        items,
+        estimated: input.estimated,
+        createdAt: new Date().toISOString(),
+        previewUrl: input.photoBase64 ? `data:image/jpeg;base64,${input.photoBase64}` : null,
+      };
+      next.foodLogs = [log, ...logs];
+      this.commit(db);
+    });
+  }
+
+  async deleteFoodLog(id: string): Promise<void> {
+    const account = this.me();
+    const db = clone(this.db);
+    const next = db.accounts[account.profile.id];
+    next.foodLogs = (next.foodLogs ?? []).filter((log) => log.id !== id);
+    this.commit(db);
+  }
+
+  async setNutritionSettings(settings: NutritionSettings): Promise<void> {
+    const account = this.me();
+    const db = clone(this.db);
+    db.accounts[account.profile.id].nutrition = {
+      ...defaultNutritionSettings(),
+      ...settings,
+      wagonNote: settings.wagonNote.slice(0, 200),
+      wagonVisible: settings.wagonVisible,
+    };
+    this.commit(db);
+  }
+
+  async setWater(day: string, waterMl: number): Promise<void> {
+    const account = this.me();
+    const ml = Math.max(0, Math.min(8000, Math.round(waterMl)));
+    const db = clone(this.db);
+    const next = db.accounts[account.profile.id];
+    const days = (next.waterDays ?? []).filter((item) => item.day !== day);
+    next.waterDays = [...days, { day, waterMl: ml }];
+    this.commit(db);
+  }
+
+  async sharedNutrition(userId: string) {
+    const session = this.snapshot.session;
+    if (!session) return null;
+    const other = this.db.accounts[userId];
+    if (!other?.profile.onboardingComplete) return null;
+    if (blocked(this.db, session.userId, userId)) return null;
+    if (!other.profile.communityVisible || !other.profile.ageConfirmed18) return null;
+    return presentSharedNutrition(other.nutrition ?? defaultNutritionSettings(), other.foodLogs ?? [], isoDay(new Date()));
   }
 
   async publicProfile(userId: string): Promise<PublicProfileView | null> {

@@ -31,6 +31,7 @@ import {
 import { gratitudeFromRows, type GratitudeEntry } from '../_shared/gratitude.ts';
 import { visionContextFrom, type VisionContext } from '../_shared/visionBoard.ts';
 import { buildHealthInsights, londonDay } from '../_shared/healthInsights.ts';
+import { loadNutritionLines } from '../_shared/nutritionLoad.ts';
 import { moodOnTen } from '../_shared/mood.ts';
 
 type Body = { content?: string; mode?: ThumosMode };
@@ -168,6 +169,7 @@ Deno.serve(async (req) => {
     craving: row.craving,
     note: row.note ?? '',
   }));
+  const nutritionLines = safety.selfHarm ? [] : await loadNutritionLines(userClient, profile, checkIns);
 
   const context = buildThumosContext({
     now: new Date(),
@@ -190,6 +192,7 @@ Deno.serve(async (req) => {
     vision,
     interests: interestRes.error ? [] : interestLabelsFromRows(interestRes.data),
     pinnedQuote: pinnedStoicQuote(profile.pinned_quote_id),
+    nutritionLines,
   });
 
   const admin = createClient(url, service, { auth: { persistSession: false } });

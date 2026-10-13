@@ -8,6 +8,7 @@ import {
   VOICE_COPY,
 } from '../_shared/voice.ts';
 import { buildHealthInsights, londonDay } from '../_shared/healthInsights.ts';
+import { loadNutritionLines } from '../_shared/nutritionLoad.ts';
 import { moodOnTen } from '../_shared/mood.ts';
 import { pinnedStoicQuote } from '../_shared/stoicQuotes.ts';
 import {
@@ -171,6 +172,7 @@ Deno.serve(async (req) => {
       vision,
       interests: interestRes.error ? [] : interestLabelsFromRows(interestRes.data),
       pinnedQuote: pinnedStoicQuote(profile.pinned_quote_id),
+      nutritionLines: await loadNutritionLines(userClient, profile, checkIns, now),
     },
   });
 

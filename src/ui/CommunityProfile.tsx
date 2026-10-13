@@ -6,6 +6,7 @@ import { StyleSheet, View } from 'react-native';
 import { useRepository, useSnapshot } from '@/data';
 import type { ProgressPhoto } from '@/data/types';
 import { shownError } from '@/domain/errors';
+import { WAGON_PUBLIC_LINE, type SharedNutritionView } from '@/domain/nutrition';
 import { formatSoberShare, sharedReportItems, type PublicProfileView } from '@/domain/profileSharing';
 import { MemberAvatar } from '@/ui/MemberAvatar';
 import { formatGbp } from '@/domain/savings';
@@ -115,7 +116,10 @@ export function CommunityProfile({ userId, name }: { userId: string; name: strin
 
 function SharedProfileFacts({ userId, name }: { userId: string; name: string }) {
   const repo = useRepository();
+  const router = useRouter();
   const [view, setView] = useState<PublicProfileView | null | undefined>(undefined);
+  const [nutrition, setNutrition] = useState<SharedNutritionView | null>(null);
+  const [asked, setAsked] = useState(false);
   const [reporting, setReporting] = useState<string | null>(null);
   const [sent, setSent] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
@@ -128,6 +132,9 @@ function SharedProfileFacts({ userId, name }: { userId: string; name: string }) 
     setView(undefined);
     void repo.publicProfile(userId).then((next) => {
       if (live) setView(next);
+    });
+    void repo.sharedNutrition(userId).then((next) => {
+      if (live) setNutrition(next);
     });
     return () => {
       live = false;
@@ -153,7 +160,32 @@ function SharedProfileFacts({ userId, name }: { userId: string; name: string }) 
 
   if (view === undefined) return null;
   if (!view) return <T variant="muted">This profile is hidden.</T>;
-  const items = sharedReportItems(view).filter((item) => item.label !== 'Progress photo' && item.label !== 'Profile photo');
+  const shown: PublicProfileView = {
+    ...view,
+    foodDiary: nutrition?.meals.length ? nutrition.meals : view.foodDiary,
+    wagon: nutrition?.wagon ?? view.wagon,
+  };
+  const items = sharedReportItems(shown).filter((item) => item.label !== 'Progress photo' && item.label !== 'Profile photo');
+
+  async function reach() {
+    if (busy.current) return;
+    busy.current = true;
+    setError(null);
+    setPending(true);
+    try {
+      const opened = await repo.openPrivateChat(userId);
+      if (opened.status === 'open') {
+        router.push(`/chat/${opened.connectionId}` as never);
+        return;
+      }
+      setAsked(true);
+    } catch (err) {
+      setError(shownError(err, 'Could not open a private message.'));
+    } finally {
+      busy.current = false;
+      setPending(false);
+    }
+  }
   const avatar = view.profilePhotos.find((photo) => photo.role === 'avatar');
   const gallery = view.profilePhotos.filter((photo) => photo.role === 'gallery');
 
@@ -252,8 +284,24 @@ function SharedProfileFacts({ userId, name }: { userId: string; name: string }) 
       {view.moneySaved != null ? <T>{formatGbp(view.moneySaved)} saved</T> : null}
       {view.unitsAvoided != null ? <T>{view.unitsAvoided} units avoided</T> : null}
       {view.moodStreak != null ? <T>Mood streak {view.moodStreak}</T> : null}
-      {view.health.map((line) => <T key={line}>{line}</T>)}
-      {view.gratitude.map((entry) => <T key={entry.id}>{entry.body}</T>)}
+      {shown.health.map((line) => <T key={line}>{line}</T>)}
+      {shown.foodDiary?.length ? (
+        <View style={{ gap: 4 }}>
+          <T variant="label">Today’s meals</T>
+          {shown.foodDiary.map((meal) => <T key={`${meal.meal}:${meal.detail}`}>{meal.meal}: {meal.detail}</T>)}
+          <T variant="muted">Only a private message or a report.</T>
+          <Button label="Message privately" tone="quiet" pending={pending} pendingLabel="Opening..." onPress={() => void reach()} />
+        </View>
+      ) : null}
+      {shown.wagon ? (
+        <View style={{ gap: 6 }}>
+          <T>{WAGON_PUBLIC_LINE}</T>
+          {shown.wagon.note ? <T variant="muted">{shown.wagon.note}</T> : null}
+          {asked ? <T variant="muted">A private request is with them. You can message once you have both agreed.</T> : null}
+          <Button label="Reach out" pending={pending} pendingLabel="Opening..." onPress={() => void reach()} />
+        </View>
+      ) : null}
+      {shown.gratitude.map((entry) => <T key={entry.id}>{entry.body}</T>)}
       {view.vision.map((item) => <T key={item.id}>{[item.caption, item.area].filter(Boolean).join(' · ')}</T>)}
       {view.gratitudePhotos.map((photo) => photo.caption ? <T key={photo.id}>{photo.caption}</T> : null)}
       {error ? <ErrorNote>{error}</ErrorNote> : null}

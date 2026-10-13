@@ -29,7 +29,8 @@ describe('Apple Health card', () => {
   it('offers connect, then a synced line, and a denied line', () => {
     expect(healthCardState({ consent: true, ios: true, access: null, syncedAt: null }).kind).toBe('checking');
     expect(healthCardState({ consent: true, ios: true, access: 'prompt', syncedAt: null }).kind).toBe('prompt');
-    expect(APPLE_HEALTH_INTRO).toContain('never writes');
+    expect(APPLE_HEALTH_INTRO).toContain('writes only the meals and water you save');
+    expect(APPLE_HEALTH_INTRO).toContain('does not write steps, sleep, heart rate, or weight');
     expect(APPLE_HEALTH_INTRO).toContain('Settings > Health > Data Access & Devices');
     const connected = healthCardState({ consent: true, ios: true, access: 'connected', syncedAt: synced });
     expect(connected).toEqual({

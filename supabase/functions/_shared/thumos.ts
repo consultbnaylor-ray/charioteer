@@ -5,6 +5,7 @@ import { earnedMilestones } from './milestones.ts';
 import { savingsFromTypicalWeek } from './savings.ts';
 import { formatSoberElapsed, soberElapsed } from './sober.ts';
 import { hrvExplainerForCoach } from './healthInsights.ts';
+import { NUTRITION_PROMPT_LINE } from './nutrition.ts';
 import { detectSafety, type SafetyHit } from './safety.ts';
 
 export type ThumosMode = 'opening' | 'steady' | 'growth' | 'support';
@@ -52,6 +53,8 @@ export type ThumosContextInput = {
   interests?: string[];
   /** Their pinned line, when coach consent is already on. Withheld on a self-harm turn. Plato is Platonic, not Stoic. */
   pinnedQuote?: { text: string; author: string; source: string; school?: 'Stoic' | 'Platonic' } | null;
+  /** Their own food log. Withheld on a self-harm turn. Omit kcal when calories are hidden. */
+  nutritionLines?: string[];
 };
 
 function pinnedQuoteSchool(quote: { author: string; school?: string }): 'Stoic' | 'Platonic' {
@@ -693,11 +696,12 @@ export function buildThumosContext(input: ThumosContextInput): string {
     .join('\n');
 
   const insightLines = (input.healthInsights ?? []).map((line) => line.trim()).filter(Boolean).slice(0, 3);
+  const nutritionLines = (input.nutritionLines ?? []).map((line) => line.trim()).filter(Boolean).slice(0, 12);
 
   if (input.safety.selfHarm) {
     return [
       `Name: ${input.displayName || 'Friend'}`,
-      'Sober time, personal reasons, savings, milestones, check-ins, health readings, health insights, the gratitude diary, the vision board, and the pinned Stoic quote or pinned Platonic quote are withheld on this turn. Do not mention them or invent them. Do not call Plato a Stoic.',
+      'Sober time, personal reasons, savings, milestones, check-ins, health readings, health insights, the gratitude diary, the vision board, the nutrition log, and the pinned Stoic quote or pinned Platonic quote are withheld on this turn. Do not mention them or invent them. Do not call Plato a Stoic.',
       `Mode: ${input.mode}`,
       `Safety flags: self-harm YES, withdrawal ${input.safety.withdrawal ? 'YES' : 'no'}`,
     ].join('\n');
@@ -732,6 +736,7 @@ export function buildThumosContext(input: ThumosContextInput): string {
     `HRV explainer, general guidance and not a diagnosis. Use this if they ask what heart rate variability means. Do not turn it into a diagnosis or a personal target:\n${hrvExplainerForCoach()}`,
     formatGratitudeContext(input.gratitude ?? []),
     formatVisionContext(input.vision),
+    nutritionLines.length ? `Nutrition, their own log. Estimates are estimates:\n${nutritionLines.map((line) => `- ${line}`).join('\n')}` : '',
     `Mode: ${input.mode}`,
     `Safety flags: self-harm ${input.safety.selfHarm ? 'YES' : 'no'}, withdrawal ${input.safety.withdrawal ? 'YES' : 'no'}`,
   ].filter(Boolean).join('\n');
@@ -757,10 +762,11 @@ export function buildSystemPrompt(
     styleLine(turn),
     'The messages after this system prompt are the conversation so far, oldest first, then their latest line. Use that history. Never repeat a sentence you have already sent. Vary your wording from turn to turn.',
     turn.selfHarm
-      ? 'Do not mention sober time, day counts, personal reasons, savings, health readings, health insights, the gratitude diary, the vision board, or a pinned Stoic quote or a pinned Platonic quote on this turn. Do not call Plato a Stoic.'
+      ? 'Do not mention sober time, day counts, personal reasons, savings, health readings, health insights, the gratitude diary, the vision board, the nutrition log, or a pinned Stoic quote or a pinned Platonic quote on this turn. Do not call Plato a Stoic.'
       : 'When you mention sober time, a personal reason, a check-in, a health reading, a health insight, a gratitude line, a vision caption, or a pinned Stoic quote or a pinned Platonic quote, take it from CONTEXT. Do not invent those details. A health insight is a note from their own readings, not a diagnosis. If CONTEXT includes an HRV explainer, you may use that wording when they ask what heart rate variability means. Do not add ranges or citations that are not written there, and do not diagnose. If CONTEXT includes a pinned Stoic quote or a pinned Platonic quote, you may use it once for motivation. Quote it faithfully. Plato is Platonic, not a Stoic. Do not call Plato a Stoic.',
     turn.selfHarm ? '' : GRATITUDE_PROMPT_LINE,
     turn.selfHarm ? '' : VISION_PROMPT_LINE,
+    turn.selfHarm ? '' : NUTRITION_PROMPT_LINE,
     'Do not invent statistics, study names, or citations. If you share a number about alcohol harm, use only CURATED FACTS, quote it faithfully, and name the source. If you do not have a verified figure, say so.',
     repetitionLine(turn),
     conversationShape(turn),

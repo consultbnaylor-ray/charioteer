@@ -45,7 +45,7 @@ function minutes(quantity: number, unit: string): number {
   return quantity / 60;
 }
 
-/** Reads the last 14 days. Charioteer does not write to Apple Health. */
+/** Reads the last 14 days. Food and water are written separately when a meal is saved. */
 export async function syncAppleHealth(): Promise<HealthSyncResult> {
   try {
     if (!isHealthDataAvailable()) {

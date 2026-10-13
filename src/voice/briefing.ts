@@ -1,6 +1,9 @@
 import type { AppSnapshot } from '@/data/types';
 import { isoDay } from '@/domain/dates';
 import { buildHealthInsights } from '@/domain/healthInsights';
+import { defaultNutritionSettings, nutritionContextLines } from '@/domain/nutrition';
+import { savingsFromTypicalWeek } from '@/domain/savings';
+import { soberElapsed } from '@/domain/sober';
 import { visionContextFrom } from '@/domain/visionBoard';
 import { drinkFreeThisWeek } from '@/domain/stage';
 import { quoteById } from '@/domain/stoicQuotes';
@@ -21,6 +24,27 @@ function healthTrends(samples: AppSnapshot['health']): HealthTrend[] {
     previous: rows[1]?.value ?? null,
     unit: rows[0]?.unit ?? '',
   }));
+}
+
+function nutritionLinesFrom(snap: AppSnapshot, now: Date): string[] {
+  const profile = snap.profile;
+  if (!profile) return [];
+  const started = profile.stage === 'stopped' && profile.sobrietyStartedAt ? new Date(profile.sobrietyStartedAt) : null;
+  const elapsed = started && !Number.isNaN(started.getTime()) ? soberElapsed(started, now) : null;
+  const units = elapsed && profile.weeklyUnits != null
+    ? savingsFromTypicalWeek(profile.weeklySpendGbp ?? 0, profile.weeklyUnits, elapsed.totalMs).units
+    : 0;
+  const today = isoDay(now);
+  const water = (snap.waterDays ?? []).find((day) => day.day === today)?.waterMl ?? 0;
+  return nutritionContextLines({
+    logs: snap.foodLogs ?? [],
+    settings: snap.nutrition ?? defaultNutritionSettings(),
+    waterMl: water,
+    checkIns: snap.checkIns.map((item) => ({ createdAt: item.createdAt, mood: item.mood, sleepHours: item.sleepHours })),
+    soberDays: elapsed ? elapsed.days : null,
+    unitsAvoided: units,
+    today,
+  });
 }
 
 /** Client copy of the voice prompt, used when the token function has not been redeployed yet. */
@@ -80,6 +104,7 @@ export function briefingFromSnapshot(snap: AppSnapshot, requestedMode: ThumosMod
             return quote ? { text: quote.text, author: quote.author, source: quote.source, school: quote.school } : null;
           })()
         : null,
+      nutritionLines: profile.consentAi ? nutritionLinesFrom(snap, now) : [],
       mode: requestedMode,
       safety: { selfHarm: false, withdrawal: false, reasons: [] },
     },

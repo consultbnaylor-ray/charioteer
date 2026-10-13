@@ -41,6 +41,19 @@ import {
   visionStoragePath,
 } from '@/domain/visionBoard';
 import { isoDay } from '@/domain/dates';
+import {
+  defaultNutritionSettings,
+  estimateFromText,
+  foodItemFromUnknown,
+  isMealSlot,
+  parseMealEstimate,
+  parseSharedNutrition,
+  samplePhotoMeal,
+  type FoodItem,
+  type FoodLog,
+  type NutritionDay,
+  type NutritionSettings,
+} from '@/domain/nutrition';
 import { randomId } from '@/domain/id';
 import { chatInsertFilter, messageFromRealtime, withIncomingMessage } from '@/domain/liveChat';
 import { isDuplicateWrite, mergeOutgoingMessages, shareInflight } from '@/domain/writes';
@@ -87,7 +100,9 @@ import type {
   DirectMessage,
   HealthSample,
   Interest,
+  MealEstimate,
   NewCheckIn,
+  NewFoodLog,
   NewGratitudeEntry,
   NewHealthSample,
   NewProfilePhoto,
@@ -155,8 +170,13 @@ function emptySnapshot(): AppSnapshot {
     visionItems: [],
     sharing: defaultProfileSharing(),
     savedQuotes: [],
+    foodLogs: [],
+    nutrition: defaultNutritionSettings(),
+    waterDays: [],
   };
 }
+
+const FOOD_BUCKET = 'food-photos';
 
 export class SupabaseRepository implements Repository {
   private client: SupabaseClient;
@@ -454,6 +474,7 @@ export class SupabaseRepository implements Repository {
         await this.signedGratitudePhotos(gratitudePhotoRes.error ? null : ((gratitudePhotoRes.data ?? []) as Row[]), gratitudePhotoRes.error?.message),
       ),
       visionItems: await this.signedVisionItems(visionRes.error ? null : visionRes.data, visionRes.error?.message),
+      ...(await this.nutritionSnapshot(userId)),
       sharing: sharingRes.error ? defaultProfileSharing() : normalizeProfileSharing((sharingRes.data as Row | null)?.settings),
       savedQuotes: quotesRes.error
         ? []
@@ -1720,6 +1741,128 @@ export class SupabaseRepository implements Repository {
     return localGratitudeReflect(body, category);
   }
 
+  private async nutritionSnapshot(userId: string): Promise<Pick<AppSnapshot, 'foodLogs' | 'nutrition' | 'waterDays'>> {
+    const [logsRes, settingsRes, waterRes] = await Promise.all([
+      this.client.from('food_logs').select('id, user_id, eaten_on, meal, source, note, items, estimated, photo_path, created_at').eq('user_id', userId).order('eaten_on', { ascending: false }).order('created_at', { ascending: false }),
+      this.client.from('nutrition_settings').select('kcal_target, hide_calories, share_food_diary, wagon_on, wagon_note, wagon_visible').eq('user_id', userId).maybeSingle(),
+      this.client.from('nutrition_days').select('day, water_ml').eq('user_id', userId).order('day', { ascending: false }).limit(14),
+    ]);
+    const logs = logsRes.error ? [] : ((logsRes.data ?? []) as Row[]).map((row) => mapFoodLog(row, userId)).filter((log): log is FoodLog => log != null);
+    const paths = logsRes.error ? [] : ((logsRes.data ?? []) as Row[]).map((row) => String(row.photo_path ?? '')).filter((path) => path && !path.includes('..'));
+    const signed = new Map<string, string>();
+    if (paths.length) {
+      try {
+        const urls = await this.client.storage.from(FOOD_BUCKET).createSignedUrls(paths, 3600);
+        for (const item of urls.data ?? []) {
+          if (item.path && item.signedUrl) signed.set(item.path, item.signedUrl);
+        }
+      } catch (error) {
+        console.error(error);
+      }
+    }
+    return {
+      foodLogs: logs.map((log) => {
+        const path = ((logsRes.data ?? []) as Row[]).find((row) => String(row.id) === log.id);
+        const photo = path ? String(path.photo_path ?? '') : '';
+        return { ...log, previewUrl: signed.get(photo) ?? null };
+      }),
+      nutrition: settingsRes.error ? defaultNutritionSettings() : nutritionFromRow(settingsRes.data as Row | null),
+      waterDays: waterRes.error ? [] : ((waterRes.data ?? []) as Row[]).map(mapWaterDay),
+    };
+  }
+
+  async estimateMeal(input: { text?: string; imageBase64?: string }): Promise<MealEstimate> {
+    const text = input.text?.trim() ?? '';
+    const local = (): MealEstimate => ({ items: text ? estimateFromText(text) : samplePhotoMeal(), source: 'local' });
+    try {
+      const invoked = await this.client.functions.invoke('estimate-meal', {
+        body: { text, imageBase64: input.imageBase64 ?? '' },
+      });
+      const data = invoked.data as { ok?: boolean; items?: unknown; source?: string; code?: string; message?: string } | null;
+      if (data?.code === 'consent') return local();
+      const items = parseMealEstimate({ items: data?.items });
+      if (!invoked.error && data?.ok === true && items) {
+        return { items, source: data.source === 'model' ? 'model' : 'local' };
+      }
+    } catch (error) {
+      console.error(error);
+    }
+    const fallback = local();
+    if (!fallback.items.length) throw new UserFacingError('Could not read that meal. You can still type it in yourself.', 'generic');
+    return fallback;
+  }
+
+  async saveFoodLog(input: NewFoodLog): Promise<void> {
+    return this.once(`food:${input.id}`, async () => {
+      const userId = await this.userId();
+      let photoPath: string | null = null;
+      if (input.photoBase64) {
+        photoPath = `${userId}/${input.id}.jpg`;
+        const binary = atob(input.photoBase64);
+        const body = new Uint8Array(binary.length);
+        for (let index = 0; index < binary.length; index += 1) body[index] = binary.charCodeAt(index);
+        const uploaded = await this.client.storage.from(FOOD_BUCKET).upload(photoPath, body, { contentType: 'image/jpeg', upsert: true });
+        if (uploaded.error) throw asUserFacing(uploaded.error, 'general');
+      }
+      const inserted = await this.client.from('food_logs').insert({
+        id: input.id,
+        user_id: userId,
+        eaten_on: input.eatenOn,
+        meal: input.meal,
+        source: input.source,
+        note: input.note.slice(0, 500),
+        items: input.items,
+        estimated: input.estimated,
+        photo_path: photoPath,
+      });
+      if (inserted.error && !isDuplicateWrite(inserted.error)) throw asUserFacing(inserted.error, 'general');
+      await this.refresh();
+    });
+  }
+
+  async deleteFoodLog(id: string): Promise<void> {
+    const userId = await this.userId();
+    const known = this.snapshot.foodLogs.find((log) => log.id === id);
+    if (known?.previewUrl) {
+      const path = `${userId}/${id}.jpg`;
+      const removed = await this.client.storage.from(FOOD_BUCKET).remove([path]);
+      if (removed.error && !/not found/i.test(removed.error.message)) console.error(removed.error.message);
+    }
+    const { error } = await this.client.from('food_logs').delete().eq('id', id).eq('user_id', userId);
+    if (error) throw asUserFacing(error, 'general');
+    await this.refresh();
+  }
+
+  async setNutritionSettings(settings: NutritionSettings): Promise<void> {
+    const userId = await this.userId();
+    const { error } = await this.client.from('nutrition_settings').upsert({
+      user_id: userId,
+      kcal_target: settings.kcalTarget,
+      hide_calories: settings.hideCalories,
+      share_food_diary: settings.shareFoodDiary,
+      wagon_on: settings.wagonOn,
+      wagon_note: settings.wagonNote.slice(0, 200),
+      wagon_visible: settings.wagonVisible,
+      updated_at: new Date().toISOString(),
+    });
+    if (error) throw asUserFacing(error, 'general');
+    await this.refresh();
+  }
+
+  async setWater(day: string, waterMl: number): Promise<void> {
+    const userId = await this.userId();
+    const ml = Math.max(0, Math.min(8000, Math.round(waterMl)));
+    const { error } = await this.client.from('nutrition_days').upsert({ user_id: userId, day, water_ml: ml });
+    if (error) throw asUserFacing(error, 'general');
+    await this.refresh();
+  }
+
+  async sharedNutrition(userId: string) {
+    const { data, error } = await this.client.rpc('shared_nutrition', { target: userId });
+    if (error || data == null) return null;
+    return parseSharedNutrition(data);
+  }
+
   async exportData(): Promise<Record<string, unknown>> {
     const invoked = await this.client.functions.invoke('account-export', { body: {} });
     if (!invoked.error && invoked.data?.data) return invoked.data.data as Record<string, unknown>;
@@ -2006,6 +2149,44 @@ function mapReport(row: Row): Report {
     status: row.status as Report['status'],
     createdAt: String(row.created_at),
   };
+}
+
+function mapFoodLog(row: Row, userId: string): FoodLog | null {
+  const meal = String(row.meal ?? '');
+  if (!isMealSlot(meal)) return null;
+  const source = row.source === 'photo' || row.source === 'text' || row.source === 'manual' ? row.source : 'manual';
+  const eaten = String(row.eaten_on ?? '').slice(0, 10);
+  const items = Array.isArray(row.items) ? row.items.map(foodItemFromUnknown).filter((item): item is FoodItem => item != null) : [];
+  return {
+    id: String(row.id),
+    userId: String(row.user_id ?? userId),
+    eatenOn: eaten,
+    meal,
+    source,
+    note: String(row.note ?? ''),
+    items,
+    estimated: row.estimated === true,
+    createdAt: String(row.created_at ?? ''),
+    previewUrl: null,
+  };
+}
+
+function nutritionFromRow(row: Row | null): NutritionSettings {
+  const base = defaultNutritionSettings();
+  if (!row) return base;
+  const target = typeof row.kcal_target === 'number' ? row.kcal_target : null;
+  return {
+    kcalTarget: target != null && target >= 800 && target <= 6000 ? target : null,
+    hideCalories: row.hide_calories === true,
+    shareFoodDiary: row.share_food_diary === true,
+    wagonOn: row.wagon_on === true,
+    wagonNote: String(row.wagon_note ?? '').slice(0, 200),
+    wagonVisible: row.wagon_visible === true,
+  };
+}
+
+function mapWaterDay(row: Row): NutritionDay {
+  return { day: String(row.day ?? '').slice(0, 10), waterMl: Number(row.water_ml ?? 0) };
 }
 
 function mapThumos(row: Row): ThumosMessage {

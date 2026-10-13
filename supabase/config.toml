@@ -74,5 +74,8 @@ verify_jwt = true
 [functions.gratitude-reflect]
 verify_jwt = true
 
+[functions.estimate-meal]
+verify_jwt = true
+
 [functions.notify-direct-message]
 verify_jwt = true
