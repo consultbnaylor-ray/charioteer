@@ -400,6 +400,26 @@ export function createDemoDb(now = new Date()): DemoDb {
   jordan.profilePhotos = [
     sampleProfilePhoto(PEOPLE.jordan, 'e7e7e7e7-e7e7-4e7e-8e7e-e7e7e7e7e7e4', 'avatar', 'Out walking.', 0),
   ];
+  jordan.nutrition = {
+    kcalTarget: null,
+    hideCalories: false,
+    shareFoodDiary: true,
+    wagonOn: true,
+    wagonNote: 'A rough evening. I am still here.',
+    wagonVisible: true,
+  };
+  jordan.foodLogs = [{
+    id: '11111111-1111-4111-8111-111111111113',
+    userId: PEOPLE.jordan,
+    eatenOn: isoDay(now),
+    meal: 'dinner',
+    source: 'text',
+    note: 'Chicken',
+    items: estimateFromText('chicken'),
+    estimated: true,
+    createdAt: now.toISOString(),
+    previewUrl: null,
+  }];
   const jordanAnchor = new Date('2026-01-01T00:00:00.000Z');
   const sharedPlan = planProgressPhoto({
     takenOn: isoDay(now),
