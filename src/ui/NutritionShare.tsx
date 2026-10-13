@@ -3,7 +3,7 @@ import { Switch, View } from 'react-native';
 
 import { useRepository, useSnapshot } from '@/data';
 import { shownError } from '@/domain/errors';
-import type { NutritionSettings } from '@/domain/nutrition';
+import type { NutritionSettings, SharedQuality } from '@/domain/nutrition';
 import { sensitiveShareConfirm } from '@/domain/profileSharing';
 import { useAppTheme } from '@/ui/theme';
 import { Button, ErrorNote, T } from '@/ui/ui';
@@ -81,5 +81,66 @@ export function NutritionShareSwitch({
       ) : null}
       {error ? <ErrorNote>{error}</ErrorNote> : null}
     </View>
+  );
+}
+
+/** Unsaturated fat against saturated and trans fat. The ink is the unsaturated share. */
+export function FatShareBar({ unsaturated, other }: { unsaturated: number; other: number }) {
+  const theme = useAppTheme();
+  const total = unsaturated + other;
+  const share = total > 0 ? unsaturated / total : 0;
+  return (
+    <View
+      accessibilityLabel="Unsaturated fat compared with saturated and trans fat"
+      style={{ height: 12, borderRadius: 6, backgroundColor: theme.colors.line, overflow: 'hidden' }}
+    >
+      <View style={{ width: `${Math.round(share * 100)}%`, height: '100%', backgroundColor: theme.colors.ink }} />
+    </View>
+  );
+}
+
+/** The pieces another member can see. Buttons stay with the profile that offers them. */
+export function SharedNutritionFacts({
+  meals,
+  calories,
+  quality,
+  progress,
+}: {
+  meals: { meal: string; detail: string }[] | null;
+  calories: string | null;
+  quality: SharedQuality | null;
+  progress: string | null;
+}) {
+  return (
+    <>
+      {meals ? (
+        <View style={{ gap: 4 }}>
+          <T variant="label">Today’s meals</T>
+          {meals.length === 0 ? <T variant="muted">Nothing logged today.</T> : meals.map((meal) => (
+            <T key={`${meal.meal}:${meal.detail}`}>{meal.meal}: {meal.detail}</T>
+          ))}
+        </View>
+      ) : null}
+      {calories ? (
+        <View style={{ gap: 4 }}>
+          <T variant="label">Calories and macros</T>
+          <T>{calories}</T>
+        </View>
+      ) : null}
+      {quality ? (
+        <View style={{ gap: 4 }}>
+          <T variant="label">Food quality</T>
+          <FatShareBar unsaturated={quality.unsaturated} other={quality.other} />
+          <T variant="muted">{`Unsaturated ${quality.unsaturated} g · saturated and trans ${quality.other} g`}</T>
+          <T>{quality.line}</T>
+        </View>
+      ) : null}
+      {progress ? (
+        <View style={{ gap: 4 }}>
+          <T variant="label">Progress</T>
+          <T>{progress}</T>
+        </View>
+      ) : null}
+    </>
   );
 }

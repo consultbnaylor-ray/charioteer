@@ -15,10 +15,14 @@ import {
   MEAL_SLOTS,
   WAGON_SUPPORT,
   alcoholSavedLine,
+  caloriesShareLine,
   dayItems,
   fatBalance,
+  mealStreakDays,
   nutritionPatternLines,
   processedLine,
+  progressShareLine,
+  publicMealLines,
   sugarCravingNote,
   sumItems,
   targetLine,
@@ -29,7 +33,7 @@ import {
 import { savingsFromTypicalWeek } from '@/domain/savings';
 import { soberElapsed } from '@/domain/sober';
 import { writeDayToAppleHealth } from '@/health/writeNutrition';
-import { NutritionShareSwitch } from '@/ui/NutritionShare';
+import { FatShareBar, NutritionShareSwitch } from '@/ui/NutritionShare';
 import { pickMealPhoto } from '@/ui/pickMealPhoto';
 import { usePendingPress } from '@/ui/pendingAction';
 import { useAppTheme } from '@/ui/theme';
@@ -139,7 +143,9 @@ export default function Nutrition() {
   const patterns = nutritionPatternLines(snap.foodLogs, snap.checkIns);
   const water = snap.waterDays.find((day) => day.day === today)?.waterMl ?? 0;
   const todayLogs = snap.foodLogs.filter((log) => log.eatenOn === today);
-  const goodShare = fats.unsaturated + fats.other <= 0 ? 0 : fats.unsaturated / (fats.unsaturated + fats.other);
+  const mealLines = publicMealLines(snap.foodLogs, today);
+  const calorieLine = caloriesShareLine(items, hide);
+  const streakLine = progressShareLine(mealStreakDays(snap.foodLogs, today));
 
   const [meal, setMeal] = useState<MealSlot>('breakfast');
   const [text, setText] = useState('');
@@ -318,7 +324,6 @@ export default function Nutrition() {
         await repo.setNutritionSettings({
           ...current,
           wagonOn: value,
-          wagonVisible: value ? current.wagonVisible : false,
           wagonNote: value ? wagonNote.slice(0, 200) : '',
         });
         if (!value) setWagonNote('');
@@ -361,12 +366,7 @@ export default function Nutrition() {
         <T>{`Protein ${totals.proteinG} g · carbohydrate ${totals.carbsG} g · sugar ${totals.sugarG} g`}</T>
         <T>{`Fibre ${totals.fibreG} g · sodium ${totals.sodiumMg.toLocaleString('en-GB')} mg`}</T>
         <T variant="label">Fats</T>
-        <View
-          accessibilityLabel="Unsaturated fat compared with saturated and trans fat"
-          style={{ height: 12, borderRadius: 6, backgroundColor: theme.colors.line, overflow: 'hidden' }}
-        >
-          <View style={{ width: `${Math.round(goodShare * 100)}%`, height: '100%', backgroundColor: theme.colors.ink }} />
-        </View>
+        <FatShareBar unsaturated={fats.unsaturated} other={fats.other} />
         <T variant="muted">{`Unsaturated ${fats.unsaturated} g · saturated and trans ${fats.other} g`}</T>
         <T>{fats.line}</T>
         <T variant="muted">{FAT_SCIENCE}</T>
@@ -503,13 +503,62 @@ export default function Nutrition() {
 
       <Card>
         <T variant="label">Sharing</T>
-        <T variant="muted">Off until you switch it on. Other people can message privately or report.</T>
+        <T variant="muted">Each switch shares only that item. They stay off until you switch them on. A private message or a report is the only reply.</T>
+      </Card>
+
+      <Card>
+        <T variant="label">Today’s meals</T>
+        {mealLines.length === 0 ? <T variant="muted">Nothing saved yet.</T> : mealLines.map((meal) => (
+          <T key={`${meal.meal}:${meal.detail}`}>{meal.meal}: {meal.detail}</T>
+        ))}
+        <T variant="muted">Names only. Calories and macros stay on their own switch.</T>
         <NutritionShareSwitch
-          label="Food diary visible to community members"
-          item="Food diary"
+          label="Share today's meals"
+          item="Today's meals"
           on={settings.shareFoodDiary}
           apply={(current, selected) => ({ ...current, shareFoodDiary: selected })}
         />
+      </Card>
+
+      <Card>
+        <T variant="label">Calories and macros</T>
+        <T>{calorieLine}</T>
+        <T variant="muted">Protein, carbohydrate, sugar and fibre. The fat split stays on food quality. Sodium stays private.</T>
+        <NutritionShareSwitch
+          label="Share daily calories and macros"
+          item="Daily calories and macros"
+          on={settings.shareCalories}
+          apply={(current, selected) => ({ ...current, shareCalories: selected })}
+        />
+      </Card>
+
+      <Card>
+        <T variant="label">Food quality</T>
+        <FatShareBar unsaturated={fats.unsaturated} other={fats.other} />
+        <T variant="muted">{`Unsaturated ${fats.unsaturated} g · saturated and trans ${fats.other} g`}</T>
+        <T>{fats.line}</T>
+        <NutritionShareSwitch
+          label="Share food quality"
+          item="Food quality"
+          on={settings.shareQuality}
+          apply={(current, selected) => ({ ...current, shareQuality: selected })}
+        />
+      </Card>
+
+      <Card>
+        <T variant="label">Progress</T>
+        <T>{streakLine}</T>
+        <T variant="muted">Days in a row with a meal logged. Check-ins stay private.</T>
+        <NutritionShareSwitch
+          label="Share progress and streaks"
+          item="Progress and streaks"
+          on={settings.shareProgress}
+          apply={(current, selected) => ({ ...current, shareProgress: selected })}
+        />
+      </Card>
+
+      <Card>
+        <T variant="label">A hard moment</T>
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
           <T style={{ flex: 1 }}>I’ve fallen off the wagon</T>
           <Switch
@@ -527,15 +576,17 @@ export default function Nutrition() {
             {WAGON_SUPPORT.map((line) => <T key={line}>{line}</T>)}
             <Field label="Optional note" value={wagonNote} onChangeText={setWagonNote} placeholder="A few words, if you want" maxLength={200} />
             <Button label="Save note" pending={isPending('wagon-note')} pendingLabel="Saving..." onPress={saveWagonNote} />
-            <NutritionShareSwitch
-              label="Show this on my profile"
-              item="A hard moment"
-              on={settings.wagonVisible}
-              apply={(current, selected) => ({ ...current, wagonVisible: selected })}
-            />
             <Button label="Clear this" tone="quiet" pending={isPending('wagon')} pendingLabel="Clearing..." onPress={() => setWagon(false)} />
           </View>
-        ) : null}
+        ) : (
+          <T variant="muted">This stays on your own screen until you share the flag.</T>
+        )}
+        <NutritionShareSwitch
+          label="Share the wagon flag"
+          item="The wagon flag"
+          on={settings.wagonVisible}
+          apply={(current, selected) => ({ ...current, wagonVisible: selected })}
+        />
       </Card>
 
       {healthNote ? <T variant="muted">{healthNote}</T> : null}

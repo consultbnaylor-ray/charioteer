@@ -424,6 +424,6 @@ export interface Repository {
   deleteFoodLog(id: string): Promise<void>;
   setNutritionSettings(settings: NutritionSettings): Promise<void>;
   setWater(day: string, waterMl: number): Promise<void>;
-  /** Today's shared meals and wagon line. Null when the profile is hidden or blocked. */
+  /** Shared nutrition items. Each field is null unless that switch is on. Null when the profile is hidden or blocked. */
   sharedNutrition(userId: string): Promise<SharedNutritionView | null>;
 }

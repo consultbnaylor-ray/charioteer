@@ -7,6 +7,7 @@ import { useRepository, useSnapshot } from '@/data';
 import type { ProgressPhoto } from '@/data/types';
 import { shownError } from '@/domain/errors';
 import { WAGON_PUBLIC_LINE, type SharedNutritionView } from '@/domain/nutrition';
+import { SharedNutritionFacts } from '@/ui/NutritionShare';
 import { formatSoberShare, sharedReportItems, type PublicProfileView } from '@/domain/profileSharing';
 import { MemberAvatar } from '@/ui/MemberAvatar';
 import { formatGbp } from '@/domain/savings';
@@ -160,11 +161,16 @@ function SharedProfileFacts({ userId, name }: { userId: string; name: string }) 
 
   if (view === undefined) return null;
   if (!view) return <T variant="muted">This profile is hidden.</T>;
-  const shown: PublicProfileView = {
-    ...view,
-    foodDiary: nutrition?.meals.length ? nutrition.meals : view.foodDiary,
-    wagon: nutrition?.wagon ?? view.wagon,
-  };
+  const shown: PublicProfileView = nutrition
+    ? {
+      ...view,
+      foodDiary: nutrition.meals,
+      calories: nutrition.calories,
+      quality: nutrition.quality,
+      progress: nutrition.progress,
+      wagon: nutrition.wagon,
+    }
+    : view;
   const items = sharedReportItems(shown).filter((item) => item.label !== 'Progress photo' && item.label !== 'Profile photo');
 
   async function reach() {
@@ -285,10 +291,9 @@ function SharedProfileFacts({ userId, name }: { userId: string; name: string }) 
       {view.unitsAvoided != null ? <T>{view.unitsAvoided} units avoided</T> : null}
       {view.moodStreak != null ? <T>Mood streak {view.moodStreak}</T> : null}
       {shown.health.map((line) => <T key={line}>{line}</T>)}
-      {shown.foodDiary?.length ? (
+      <SharedNutritionFacts meals={shown.foodDiary} calories={shown.calories} quality={shown.quality} progress={shown.progress} />
+      {shown.foodDiary ? (
         <View style={{ gap: 4 }}>
-          <T variant="label">Today’s meals</T>
-          {shown.foodDiary.map((meal) => <T key={`${meal.meal}:${meal.detail}`}>{meal.meal}: {meal.detail}</T>)}
           <T variant="muted">Only a private message or a report.</T>
           <Button label="Message privately" tone="quiet" pending={pending} pendingLabel="Opening..." onPress={() => void reach()} />
         </View>

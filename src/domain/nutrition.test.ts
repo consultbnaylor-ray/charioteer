@@ -12,13 +12,16 @@ import {
   WAGON_SUPPORT,
   alcoholKcalSaved,
   alcoholSavedLine,
+  caloriesShareLine,
   estimateFromText,
   fatBalance,
+  mealStreakDays,
   nutritionContextLines,
   nutritionHealthQuantities,
   nutritionPatternLines,
   parseSharedNutrition,
   presentSharedNutrition,
+  progressShareLine,
   samplePhotoMeal,
   sugarCravingNote,
   targetLine,
@@ -138,7 +141,7 @@ describe('meal estimates', () => {
     expect(text).toContain('350 ml');
   });
 
-  it('shares meals and the wagon line only when those switches are on', () => {
+  it('shares each nutrition item only when its own switch is on', () => {
     const meal = log({
       eatenOn: '2026-10-13',
       meal: 'breakfast',
@@ -157,18 +160,75 @@ describe('meal estimates', () => {
       }],
     });
     const off = presentSharedNutrition(defaultNutritionSettings(), [meal], '2026-10-13');
-    expect(off.meals).toEqual([]);
+    expect(off.meals).toBeNull();
+    expect(off.calories).toBeNull();
+    expect(off.quality).toBeNull();
+    expect(off.progress).toBeNull();
     expect(off.wagon).toBeNull();
-    const on = presentSharedNutrition({
+
+    const diary = presentSharedNutrition({
       ...defaultNutritionSettings(),
       shareFoodDiary: true,
+    }, [meal], '2026-10-13');
+    expect(diary.meals?.[0]?.detail).toContain('Porridge');
+    expect(diary.meals?.[0]?.detail).toContain(ESTIMATE_LABEL);
+    expect(diary.meals?.[0]?.detail).not.toMatch(/kcal/i);
+    expect(diary.calories).toBeNull();
+    expect(diary.quality).toBeNull();
+    expect(presentSharedNutrition({ ...defaultNutritionSettings(), shareFoodDiary: true }, [meal], '2026-10-14').meals).toEqual([]);
+
+    const calories = presentSharedNutrition({ ...defaultNutritionSettings(), shareCalories: true }, [meal], '2026-10-13');
+    expect(calories.meals).toBeNull();
+    expect(calories.calories).toContain('180 kcal');
+    expect(calories.calories).toContain('protein 6 g');
+    expect(calories.calories).not.toMatch(/unsaturated|sodium/i);
+    const hiddenCalories = presentSharedNutrition({
+      ...defaultNutritionSettings(),
+      shareCalories: true,
+      hideCalories: true,
+    }, [meal], '2026-10-13');
+    expect(hiddenCalories.calories).not.toMatch(/kcal/i);
+    expect(hiddenCalories.calories).toContain('protein 6 g');
+
+    const quality = presentSharedNutrition({ ...defaultNutritionSettings(), shareQuality: true }, [meal], '2026-10-13');
+    expect(quality.quality?.line).toContain('unsaturated');
+    expect(quality.calories).toBeNull();
+    expect(quality.meals).toBeNull();
+
+    expect(mealStreakDays([meal, log({ eatenOn: '2026-10-12', meal: 'lunch' })], '2026-10-13')).toBe(2);
+    expect(mealStreakDays([log({ eatenOn: '2026-10-12', meal: 'lunch' })], '2026-10-13')).toBe(1);
+    expect(mealStreakDays([log({ eatenOn: '2026-10-11', meal: 'lunch' })], '2026-10-13')).toBe(0);
+    const progress = presentSharedNutrition({ ...defaultNutritionSettings(), shareProgress: true }, [meal], '2026-10-13');
+    expect(progress.progress).toBe(progressShareLine(1));
+    expect(progress.calories).toBeNull();
+    expect(caloriesShareLine([], false)).toBe('No calories or macros logged today.');
+
+    const wagon = presentSharedNutrition({
+      ...defaultNutritionSettings(),
       wagonOn: true,
       wagonVisible: true,
       wagonNote: 'Hard day',
     }, [meal], '2026-10-13');
-    expect(on.meals[0]?.detail).toContain('Porridge');
-    expect(on.meals[0]?.detail).toContain(ESTIMATE_LABEL);
-    expect(on.wagon).toEqual({ note: 'Hard day' });
+    expect(wagon.wagon).toEqual({ note: 'Hard day' });
+    expect(wagon.meals).toBeNull();
+    expect(presentSharedNutrition({
+      ...defaultNutritionSettings(),
+      wagonOn: false,
+      wagonVisible: true,
+    }, [meal], '2026-10-13').wagon).toBeNull();
+
+    const parsed = parseSharedNutrition({
+      mealsShared: true,
+      meals: [{ meal: 'breakfast', names: 'Porridge', estimated: true, note: '', items: [{ name: 'Porridge', kcal: 180 }] }],
+      calories: { kcal: 180, proteinG: 6, carbsG: 28, sugarG: 1, fibreG: 3 },
+      quality: null,
+      progressDays: null,
+      wagonOn: false,
+    });
+    expect(parsed?.meals?.[0]?.detail).toContain('Porridge');
+    expect(parsed?.meals?.[0]?.detail).not.toMatch(/180/);
+    expect(parsed?.calories).toContain('180 kcal');
+    expect(parseSharedNutrition({ mealsShared: false, meals: [{ meal: 'breakfast', names: 'Secret', kcal: 999 }] })?.meals).toBeNull();
     expect(parseSharedNutrition(null)).toBeNull();
   });
 });
@@ -221,13 +281,18 @@ describe('nutrition storage and coach', () => {
     expect(readFileSync('supabase/functions/_shared/thumos.ts', 'utf8')).toContain('NUTRITION_PROMPT_LINE');
   });
 
-  it('keeps six tabs and puts Nutrition in the menu after Health Stats', () => {
+  it('keeps six equal tabs and gives Nutrition its own menu screen', () => {
     expect(TAB_SECTIONS).toHaveLength(6);
     expect(APP_SECTIONS.filter((section) => section.tab).map((section) => section.label)).not.toContain('Nutrition');
     const labels = APP_SECTIONS.map((section) => section.label);
     expect(labels.indexOf('Nutrition')).toBe(labels.indexOf('Health Stats') + 1);
-    expect(screen).toContain('Food diary visible to community members');
+    expect(screen).toContain("Share today's meals");
+    expect(screen).toContain('Share daily calories and macros');
+    expect(screen).toContain('Share food quality');
+    expect(screen).toContain('Share progress and streaks');
+    expect(screen).toContain('Share the wagon flag');
     expect(screen).toContain('I’ve fallen off the wagon');
+    expect(screen).not.toContain('wagonVisible: value ? current.wagonVisible : false');
     expect(screen).toContain('Hide calories');
     expect(screen).toContain('{ESTIMATE_LABEL}');
     expect(screen).not.toContain('danger');
@@ -235,7 +300,32 @@ describe('nutrition storage and coach', () => {
     expect(screen).not.toContain('barcode');
     expect(WAGON_PUBLIC_LINE).toContain('private message');
     expect(WAGON_SUPPORT.join(' ')).toContain('116 123');
-    expect(readFileSync('src/ui/CommunityProfile.tsx', 'utf8')).toContain('Reach out');
-    expect(readFileSync('src/app/(main)/home.tsx', 'utf8')).toContain('Open nutrition');
+    const community = readFileSync('src/ui/CommunityProfile.tsx', 'utf8');
+    expect(community).toContain('Reach out');
+    expect(community).toContain('Message privately');
+    expect(community).not.toMatch(/comment/i);
+    const home = readFileSync('src/app/(main)/home.tsx', 'utf8');
+    expect(home).not.toContain('Open nutrition');
+    expect(home).not.toContain('NutritionToday');
+    expect(readFileSync('src/app/(main)/check-in.tsx', 'utf8')).not.toContain('/nutrition');
+    expect(readFileSync('src/app/(main)/_layout.tsx', 'utf8')).toContain('flex: 1, minWidth: 0');
+    const shares = readFileSync('supabase/migrations/20261013230000_nutrition_shares.sql', 'utf8');
+    expect(shares).toContain('add column if not exists share_calories boolean not null default false');
+    expect(shares).toContain('add column if not exists share_quality boolean not null default false');
+    expect(shares).toContain('add column if not exists share_progress boolean not null default false');
+    expect(shares).toContain('function public.shared_nutrition');
+    expect(shares).toContain('community_visible is not true');
+    expect(shares).toContain('age_confirmed_18 is not true');
+    expect(shares).toContain('public.blocks');
+    expect(shares).toContain("'mealsShared'");
+    expect(shares).toContain("'names'");
+    expect(shares).toContain('hide_calories');
+    expect(shares).toContain("'progressDays'");
+    expect(shares).not.toContain("'items'");
+    expect(shares).not.toContain('sodium');
+    expect(shares).not.toMatch(/drop table/i);
+    expect(shares).not.toMatch(/delete from/i);
+    expect(shares).not.toContain('public_profile');
+    expect(shares).not.toContain('profile_interests');
   });
 });

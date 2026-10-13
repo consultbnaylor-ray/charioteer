@@ -61,9 +61,13 @@ function settingsFromRow(row: unknown): NutritionSettings {
   const record = row as Record<string, unknown>;
   const target = typeof record.kcal_target === 'number' ? record.kcal_target : null;
   return {
+    ...base,
     kcalTarget: target,
     hideCalories: record.hide_calories === true,
     shareFoodDiary: record.share_food_diary === true,
+    shareCalories: record.share_calories === true,
+    shareQuality: record.share_quality === true,
+    shareProgress: record.share_progress === true,
     wagonOn: record.wagon_on === true,
     wagonNote: typeof record.wagon_note === 'string' ? record.wagon_note : '',
     wagonVisible: record.wagon_visible === true,

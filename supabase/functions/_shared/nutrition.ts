@@ -69,7 +69,14 @@ export type FoodLog = {
 export type NutritionSettings = {
   kcalTarget: number | null;
   hideCalories: boolean;
+  /** Today's meal names. Not the figures. */
   shareFoodDiary: boolean;
+  /** kcal and macros. Separate from the fat bar. */
+  shareCalories: boolean;
+  /** Unsaturated fat against saturated and trans fat. */
+  shareQuality: boolean;
+  /** Consecutive days with a meal logged. */
+  shareProgress: boolean;
   wagonOn: boolean;
   wagonNote: string;
   wagonVisible: boolean;
@@ -82,6 +89,9 @@ export function defaultNutritionSettings(): NutritionSettings {
     kcalTarget: null,
     hideCalories: false,
     shareFoodDiary: false,
+    shareCalories: false,
+    shareQuality: false,
+    shareProgress: false,
     wagonOn: false,
     wagonNote: '',
     wagonVisible: false,
@@ -310,15 +320,58 @@ export function sugarCravingNote(soberDays: number | null): string | null {
   return SUGAR_CRAVING_NOTE;
 }
 
-export function publicMealLines(logs: readonly FoodLog[], day: string, hideCalories: boolean): { meal: string; detail: string }[] {
+/** Meal names only. Calories and macros are a separate share. */
+export function publicMealLines(logs: readonly FoodLog[], day: string): { meal: string; detail: string }[] {
   return logs
     .filter((log) => log.eatenOn === day)
     .map((log) => {
       const names = log.items.map((item) => item.name).filter(Boolean).join(', ');
-      const kcal = hideCalories ? '' : ` · ${sumItems(log.items).kcal} kcal`;
       const estimate = log.estimated ? ` · ${ESTIMATE_LABEL}` : '';
-      return { meal: MEAL_LABEL[log.meal], detail: `${names || log.note || 'Meal'}${kcal}${estimate}` };
+      return { meal: MEAL_LABEL[log.meal], detail: `${names || log.note || 'Meal'}${estimate}` };
     });
+}
+
+/** kcal plus protein, carbohydrate, sugar and fibre. The fat split stays on the quality share. */
+export function caloriesShareLine(items: readonly FoodItem[], hideCalories: boolean): string {
+  if (!items.length) return hideCalories ? 'No macros logged today.' : 'No calories or macros logged today.';
+  const totals = sumItems(items);
+  const parts = [
+    hideCalories ? null : `${totals.kcal.toLocaleString('en-GB')} kcal`,
+    `protein ${totals.proteinG} g`,
+    `carbohydrate ${totals.carbsG} g`,
+    `sugar ${totals.sugarG} g`,
+    `fibre ${totals.fibreG} g`,
+  ].filter((part): part is string => Boolean(part));
+  return parts.join(' · ');
+}
+
+function shiftIsoDay(iso: string, delta: number): string {
+  const [year, month, day] = iso.split('-').map(Number);
+  const date = new Date(Date.UTC(year ?? 1970, (month ?? 1) - 1, day ?? 1));
+  date.setUTCDate(date.getUTCDate() + delta);
+  return date.toISOString().slice(0, 10);
+}
+
+/** Consecutive days with any meal, ending today, or yesterday if today is still empty. */
+export function mealStreakDays(logs: readonly FoodLog[], today: string): number {
+  const days = new Set(logs.map((log) => log.eatenOn));
+  let cursor = today;
+  if (!days.has(cursor)) {
+    cursor = shiftIsoDay(cursor, -1);
+    if (!days.has(cursor)) return 0;
+  }
+  let count = 0;
+  while (days.has(cursor) && count < 366) {
+    count += 1;
+    cursor = shiftIsoDay(cursor, -1);
+  }
+  return count;
+}
+
+export function progressShareLine(days: number): string {
+  if (days <= 0) return 'No meal streak yet.';
+  if (days === 1) return '1 day with a meal logged.';
+  return `${days} days in a row with a meal logged.`;
 }
 
 type CheckDay = { day: string; mood: number | null; sleepHours: number | null; snacks: number };
@@ -428,46 +481,110 @@ export const NUTRITION_HEALTH_WRITES = [
   { identifier: 'HKQuantityTypeIdentifierDietaryWater', unit: 'mL', key: 'waterMl' },
 ] as const;
 
+export type SharedQuality = { unsaturated: number; other: number; line: string };
+
 export type SharedNutritionView = {
-  meals: { meal: string; detail: string }[];
+  /** Null when that switch is off. An empty list means meals are shared and today is blank. */
+  meals: { meal: string; detail: string }[] | null;
+  calories: string | null;
+  quality: SharedQuality | null;
+  progress: string | null;
   wagon: { note: string } | null;
 };
 
-/** What another member may see. An empty meal list means the diary is shared and today is blank. */
+/** What another member may see. Each field is null unless its own switch is on. */
 export function presentSharedNutrition(
   settings: NutritionSettings,
   logs: readonly FoodLog[],
   today: string,
 ): SharedNutritionView {
+  const items = dayItems(logs, today);
+  const balance = fatBalance(items);
   return {
-    meals: settings.shareFoodDiary ? publicMealLines(logs, today, settings.hideCalories) : [],
+    meals: settings.shareFoodDiary ? publicMealLines(logs, today) : null,
+    calories: settings.shareCalories ? caloriesShareLine(items, settings.hideCalories) : null,
+    quality: settings.shareQuality
+      ? { unsaturated: balance.unsaturated, other: balance.other, line: balance.line }
+      : null,
+    progress: settings.shareProgress ? progressShareLine(mealStreakDays(logs, today)) : null,
     wagon: settings.wagonOn && settings.wagonVisible ? { note: settings.wagonNote.trim().slice(0, 200) } : null,
   };
 }
 
 /** Reads shared_nutrition. Null means the profile is hidden or blocked. */
-export function parseSharedNutrition(value: unknown): SharedNutritionView | null {
-  if (!value || typeof value !== 'object') return null;
-  const raw = value as Record<string, unknown>;
-  const hide = raw.hideCalories === true;
-  const rows = Array.isArray(raw.meals) ? raw.meals : [];
-  const meals = rows.flatMap((row) => {
+function sharedMealRows(raw: Record<string, unknown>): { meal: string; detail: string }[] | null {
+  if (raw.mealsShared === false) return null;
+  if (!Array.isArray(raw.meals)) return raw.mealsShared === true ? [] : null;
+  return raw.meals.flatMap((row) => {
     if (!row || typeof row !== 'object') return [];
     const item = row as Record<string, unknown>;
     const slot = typeof item.meal === 'string' && isMealSlot(item.meal) ? item.meal : null;
+    const fromNames = typeof item.names === 'string' ? item.names.trim() : '';
     const foods = Array.isArray(item.items)
       ? item.items.map(foodItemFromUnknown).filter((food): food is FoodItem => food != null)
       : [];
-    const names = foods.map((food) => food.name).join(', ');
+    const names = fromNames || foods.map((food) => food.name).join(', ');
     const note = typeof item.note === 'string' ? item.note.trim() : '';
-    const kcal = hide || foods.length === 0 ? '' : ` · ${sumItems(foods).kcal} kcal`;
     const estimate = item.estimated === true ? ` · ${ESTIMATE_LABEL}` : '';
-    return [{ meal: slot ? MEAL_LABEL[slot] : 'Meal', detail: `${names || note || 'Meal'}${kcal}${estimate}` }];
+    return [{ meal: slot ? MEAL_LABEL[slot] : 'Meal', detail: `${names || note || 'Meal'}${estimate}` }];
   });
+}
+
+function sharedCalories(value: unknown): string | null {
+  if (!value || typeof value !== 'object') return null;
+  const row = value as Record<string, unknown>;
+  const items: FoodItem[] = [{
+    name: 'Day',
+    kcal: typeof row.kcal === 'number' ? row.kcal : 0,
+    proteinG: typeof row.proteinG === 'number' ? row.proteinG : 0,
+    carbsG: typeof row.carbsG === 'number' ? row.carbsG : 0,
+    sugarG: typeof row.sugarG === 'number' ? row.sugarG : 0,
+    fibreG: typeof row.fibreG === 'number' ? row.fibreG : 0,
+    unsaturatedG: 0,
+    saturatedG: 0,
+    transG: 0,
+    sodiumMg: 0,
+    processed: false,
+  }];
+  const logged = items[0] && (items[0].kcal > 0 || items[0].proteinG > 0 || items[0].carbsG > 0 || items[0].sugarG > 0 || items[0].fibreG > 0);
+  return caloriesShareLine(logged ? items : [], row.kcal == null);
+}
+
+function sharedQuality(value: unknown): SharedQuality | null {
+  if (!value || typeof value !== 'object') return null;
+  const row = value as Record<string, unknown>;
+  const unsaturated = typeof row.unsaturatedG === 'number' ? row.unsaturatedG : 0;
+  const other = typeof row.otherG === 'number' ? row.otherG : 0;
+  const items: FoodItem[] = [{
+    name: 'Day',
+    kcal: 0,
+    proteinG: 0,
+    carbsG: 0,
+    sugarG: 0,
+    fibreG: 0,
+    unsaturatedG: unsaturated,
+    saturatedG: other,
+    transG: 0,
+    sodiumMg: 0,
+    processed: false,
+  }];
+  const balance = fatBalance(unsaturated + other > 0 ? items : []);
+  return { unsaturated: balance.unsaturated, other: balance.other, line: balance.line };
+}
+
+export function parseSharedNutrition(value: unknown): SharedNutritionView | null {
+  if (!value || typeof value !== 'object') return null;
+  const raw = value as Record<string, unknown>;
   const wagon = raw.wagonOn === true
     ? { note: typeof raw.wagonNote === 'string' ? raw.wagonNote.trim().slice(0, 200) : '' }
     : null;
-  return { meals, wagon };
+  return {
+    meals: sharedMealRows(raw),
+    calories: sharedCalories(raw.calories),
+    quality: sharedQuality(raw.quality),
+    progress: typeof raw.progressDays === 'number' ? progressShareLine(raw.progressDays) : null,
+    wagon,
+  };
 }
 
 export function nutritionHealthQuantities(items: readonly FoodItem[], waterMl: number): Record<string, number> {

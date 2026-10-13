@@ -1741,10 +1741,19 @@ export class SupabaseRepository implements Repository {
     return localGratitudeReflect(body, category);
   }
 
+  /** Older databases lack the later share columns. A missing column stays off. */
+  private async nutritionSettingsRow(userId: string) {
+    const wide = 'kcal_target, hide_calories, share_food_diary, share_calories, share_quality, share_progress, wagon_on, wagon_note, wagon_visible';
+    const first = await this.client.from('nutrition_settings').select(wide).eq('user_id', userId).maybeSingle();
+    if (!first.error) return first;
+    const narrow = 'kcal_target, hide_calories, share_food_diary, wagon_on, wagon_note, wagon_visible';
+    return this.client.from('nutrition_settings').select(narrow).eq('user_id', userId).maybeSingle();
+  }
+
   private async nutritionSnapshot(userId: string): Promise<Pick<AppSnapshot, 'foodLogs' | 'nutrition' | 'waterDays'>> {
     const [logsRes, settingsRes, waterRes] = await Promise.all([
       this.client.from('food_logs').select('id, user_id, eaten_on, meal, source, note, items, estimated, photo_path, created_at').eq('user_id', userId).order('eaten_on', { ascending: false }).order('created_at', { ascending: false }),
-      this.client.from('nutrition_settings').select('kcal_target, hide_calories, share_food_diary, wagon_on, wagon_note, wagon_visible').eq('user_id', userId).maybeSingle(),
+      this.nutritionSettingsRow(userId),
       this.client.from('nutrition_days').select('day, water_ml').eq('user_id', userId).order('day', { ascending: false }).limit(14),
     ]);
     const logs = logsRes.error ? [] : ((logsRes.data ?? []) as Row[]).map((row) => mapFoodLog(row, userId)).filter((log): log is FoodLog => log != null);
@@ -1835,16 +1844,26 @@ export class SupabaseRepository implements Repository {
 
   async setNutritionSettings(settings: NutritionSettings): Promise<void> {
     const userId = await this.userId();
-    const { error } = await this.client.from('nutrition_settings').upsert({
+    const row = {
       user_id: userId,
       kcal_target: settings.kcalTarget,
       hide_calories: settings.hideCalories,
       share_food_diary: settings.shareFoodDiary,
+      share_calories: settings.shareCalories,
+      share_quality: settings.shareQuality,
+      share_progress: settings.shareProgress,
       wagon_on: settings.wagonOn,
       wagon_note: settings.wagonNote.slice(0, 200),
       wagon_visible: settings.wagonVisible,
       updated_at: new Date().toISOString(),
-    });
+    };
+    let { error } = await this.client.from('nutrition_settings').upsert(row);
+    const missingShareColumn = Boolean(error && /share_calories|share_quality|share_progress/i.test(error.message));
+    const leavingNewSharesOff = !settings.shareCalories && !settings.shareQuality && !settings.shareProgress;
+    if (error && missingShareColumn && leavingNewSharesOff) {
+      const { share_calories: _calories, share_quality: _quality, share_progress: _progress, ...legacy } = row;
+      ({ error } = await this.client.from('nutrition_settings').upsert(legacy));
+    }
     if (error) throw asUserFacing(error, 'general');
     await this.refresh();
   }
@@ -2179,6 +2198,9 @@ function nutritionFromRow(row: Row | null): NutritionSettings {
     kcalTarget: target != null && target >= 800 && target <= 6000 ? target : null,
     hideCalories: row.hide_calories === true,
     shareFoodDiary: row.share_food_diary === true,
+    shareCalories: row.share_calories === true,
+    shareQuality: row.share_quality === true,
+    shareProgress: row.share_progress === true,
     wagonOn: row.wagon_on === true,
     wagonNote: String(row.wagon_note ?? '').slice(0, 200),
     wagonVisible: row.wagon_visible === true,

@@ -106,14 +106,32 @@ export default function WhatIShare() {
         />
       ))}
       <NutritionShareSwitch
-        label="Food diary visible to community members"
-        item="Food diary"
+        label="Share today's meals"
+        item="Today's meals"
         on={snap.nutrition.shareFoodDiary}
         apply={(settings, selected) => ({ ...settings, shareFoodDiary: selected })}
       />
       <NutritionShareSwitch
-        label="Show a hard moment on my profile"
-        item="A hard moment"
+        label="Share daily calories and macros"
+        item="Daily calories and macros"
+        on={snap.nutrition.shareCalories}
+        apply={(settings, selected) => ({ ...settings, shareCalories: selected })}
+      />
+      <NutritionShareSwitch
+        label="Share food quality"
+        item="Food quality"
+        on={snap.nutrition.shareQuality}
+        apply={(settings, selected) => ({ ...settings, shareQuality: selected })}
+      />
+      <NutritionShareSwitch
+        label="Share progress and streaks"
+        item="Progress and streaks"
+        on={snap.nutrition.shareProgress}
+        apply={(settings, selected) => ({ ...settings, shareProgress: selected })}
+      />
+      <NutritionShareSwitch
+        label="Share the wagon flag"
+        item="The wagon flag"
         on={snap.nutrition.wagonVisible}
         apply={(settings, selected) => ({ ...settings, wagonVisible: selected })}
       />

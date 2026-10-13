@@ -5,7 +5,7 @@ import { MILESTONES, milestoneReached } from './milestones';
 import { savingsFromTypicalWeek } from './savings';
 import { soberElapsed } from './sober';
 import { quoteById, type QuoteSchool } from './stoicQuotes';
-import { publicMealLines, type FoodLog, type NutritionSettings } from './nutrition';
+import { presentSharedNutrition, type FoodLog, type NutritionSettings, type SharedQuality } from './nutrition';
 import { STAGE_LABELS, isStage } from './stage';
 
 /** Helper under a Share on profile switch while Community is on. */
@@ -184,7 +184,7 @@ export type ShareSource = {
   /** Profile picture and gallery. Shown whenever Community is on. No storage path. */
   profilePhotos?: { id: string; role: 'avatar' | 'gallery'; caption: string; position: number }[];
   pinnedQuoteId: string | null;
-  /** Today's meals and the wagon flag. Absent means nothing from the food log is shared. */
+  /** Today's nutrition shares. Absent means nothing from the food log is shared. */
   nutrition?: { logs: FoodLog[]; settings: NutritionSettings };
 };
 
@@ -213,8 +213,14 @@ export type PublicProfileView = {
   pinnedQuote: { id: string; text: string; author: string; school: QuoteSchool; source: string } | null;
   sharedLabels: string[];
   hiddenLabels: string[];
-  /** Today's meals, when the food diary is switched on. Null when it is not. */
+  /** Today's meal names. Null when that switch is off. An empty list means today is blank. */
   foodDiary: { meal: string; detail: string }[] | null;
+  /** kcal and macros. Null when that switch is off. */
+  calories: string | null;
+  /** Unsaturated fat against saturated and trans fat. */
+  quality: SharedQuality | null;
+  /** Consecutive days with a meal logged. */
+  progress: string | null;
   /** A gentle line, when they have chosen to show a hard moment. */
   wagon: { note: string } | null;
 };
@@ -367,15 +373,22 @@ export function projectPublicProfile(source: ShareSource, sharing: ProfileSharin
   const pinnedQuote = shownPinnedQuote(pinned);
   if (pinnedQuote) sharedLabels.push('Pinned quote');
   else hiddenLabels.push('Pinned quote');
-  const foodDiary = source.nutrition?.settings.shareFoodDiary
-    ? publicMealLines(source.nutrition.logs, source.today, source.nutrition.settings.hideCalories)
-    : null;
-  const wagonNote = source.nutrition?.settings.wagonNote.trim().slice(0, 200) ?? '';
-  const wagon = source.nutrition?.settings.wagonOn && source.nutrition.settings.wagonVisible
-    ? { note: wagonNote }
-    : null;
-  if (foodDiary) sharedLabels.push('Food diary');
-  else hiddenLabels.push('Food diary');
+  const sharedFood = source.nutrition
+    ? presentSharedNutrition(source.nutrition.settings, source.nutrition.logs, source.today)
+    : { meals: null, calories: null, quality: null, progress: null, wagon: null };
+  const foodDiary = sharedFood.meals;
+  const calories = sharedFood.calories;
+  const quality = sharedFood.quality;
+  const progress = sharedFood.progress;
+  const wagon = sharedFood.wagon;
+  if (foodDiary) sharedLabels.push("Today's meals");
+  else hiddenLabels.push("Today's meals");
+  if (calories) sharedLabels.push('Calories and macros');
+  else hiddenLabels.push('Calories and macros');
+  if (quality) sharedLabels.push('Food quality');
+  else hiddenLabels.push('Food quality');
+  if (progress) sharedLabels.push('Progress and streaks');
+  else hiddenLabels.push('Progress and streaks');
   if (wagon) sharedLabels.push('A hard moment');
   else hiddenLabels.push('A hard moment');
 
@@ -401,6 +414,9 @@ export function projectPublicProfile(source: ShareSource, sharing: ProfileSharin
     sharedLabels,
     hiddenLabels,
     foodDiary,
+    calories,
+    quality,
+    progress,
     wagon,
   };
 }
@@ -498,6 +514,9 @@ export function parsePublicProfile(value: unknown): PublicProfileView | null {
     sharedLabels: textList(raw.sharedLabels),
     hiddenLabels: textList(raw.hiddenLabels),
     foodDiary: mealLines(raw.foodDiary),
+    calories: typeof raw.calories === 'string' && raw.calories.trim() ? raw.calories : null,
+    quality: qualityShare(raw.quality),
+    progress: typeof raw.progress === 'string' && raw.progress.trim() ? raw.progress : null,
     wagon: wagonLine(raw.wagon),
   };
 }
@@ -512,6 +531,16 @@ function mealLines(value: unknown): { meal: string; detail: string }[] | null {
     if (!meal && !detail) return [];
     return [{ meal, detail }];
   });
+}
+
+function qualityShare(value: unknown): SharedQuality | null {
+  if (!value || typeof value !== 'object') return null;
+  const row = value as Record<string, unknown>;
+  const unsaturated = typeof row.unsaturated === 'number' ? row.unsaturated : 0;
+  const other = typeof row.other === 'number' ? row.other : 0;
+  const line = typeof row.line === 'string' ? row.line : '';
+  if (!line && unsaturated + other <= 0) return null;
+  return { unsaturated, other, line };
 }
 
 function wagonLine(value: unknown): { note: string } | null {
@@ -541,7 +570,13 @@ export function sharedReportItems(view: PublicProfileView): SharedReportItem[] {
   for (const photo of view.gratitudePhotos) items.push({ label: 'Gratitude photo', summary: photo.caption || photo.id });
   for (const item of view.vision) items.push({ label: 'Vision item', summary: item.caption || item.id });
   if (view.pinnedQuote) items.push({ label: 'Pinned quote', summary: view.pinnedQuote.text });
-  for (const meal of view.foodDiary ?? []) items.push({ label: 'Food diary', summary: `${meal.meal}: ${meal.detail}` });
+  if (view.foodDiary) {
+    if (view.foodDiary.length === 0) items.push({ label: "Today's meals", summary: 'Nothing logged today.' });
+    for (const meal of view.foodDiary) items.push({ label: "Today's meals", summary: `${meal.meal}: ${meal.detail}` });
+  }
+  if (view.calories) items.push({ label: 'Calories and macros', summary: view.calories });
+  if (view.quality) items.push({ label: 'Food quality', summary: view.quality.line });
+  if (view.progress) items.push({ label: 'Progress and streaks', summary: view.progress });
   if (view.wagon) items.push({ label: 'A hard moment', summary: view.wagon.note || 'Having a hard moment.' });
   return items;
 }
