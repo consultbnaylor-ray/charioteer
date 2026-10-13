@@ -16,6 +16,7 @@ export type MenuIcon =
   | 'book'
   | 'quote'
   | 'person'
+  | 'bell'
   | 'lock'
   | 'help'
   | 'leave';
@@ -57,6 +58,7 @@ export const APP_SECTIONS: readonly AppSection[] = [
   { id: 'quotes', label: 'Stoic & Classical Wisdom', href: '/quotes', icon: 'quote', group: 'tools' },
   { id: 'library', label: 'Library', href: '/library', icon: 'book', group: 'tools' },
   { id: 'you', label: 'You', href: '/profile', icon: 'person', group: 'account' },
+  { id: 'notifications', label: 'Notifications', href: '/notifications', icon: 'bell', group: 'account' },
   { id: 'privacy', label: 'Privacy & consent', href: '/privacy', icon: 'lock', group: 'account' },
   { id: 'help', label: 'Help & crisis lines', href: '/help', sos: true, icon: 'help' },
   { id: 'sign-out', label: 'Sign out', href: '', signOut: true, icon: 'leave' },
