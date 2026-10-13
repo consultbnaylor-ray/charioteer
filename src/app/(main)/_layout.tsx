@@ -171,8 +171,8 @@ function NavItem({
 function RequestBadge({ label }: { label: string }) {
   const theme = useAppTheme();
   return (
-    <View accessibilityElementsHidden importantForAccessibility="no-hide-descendants" style={[styles.badge, { backgroundColor: theme.colors.ink }]}>
-      <Text style={{ color: theme.colors.bg, fontFamily: theme.font.bodyStrong, fontSize: 11, lineHeight: 14 }}>{label}</Text>
+    <View accessibilityElementsHidden importantForAccessibility="no-hide-descendants" style={[styles.badge, { backgroundColor: theme.colors.dangerFill }]}>
+      <Text style={{ color: theme.colors.dangerInk, fontFamily: theme.font.bodyStrong, fontSize: 11, lineHeight: 14 }}>{label}</Text>
     </View>
   );
 }

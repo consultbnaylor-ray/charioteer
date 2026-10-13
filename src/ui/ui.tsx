@@ -481,12 +481,16 @@ export function Choice({
   label,
   selected,
   onPress,
+  tone = 'default',
 }: {
   label: string;
   selected: boolean;
   onPress: () => void;
+  /** `alert` is the danger red, used when a connection request is waiting. */
+  tone?: 'default' | 'alert';
 }) {
   const theme = useAppTheme();
+  const alert = tone === 'alert';
   return (
     <Pressable
       accessibilityRole="button"
@@ -495,12 +499,12 @@ export function Choice({
       style={[
         styles.choice,
         {
-          borderColor: selected ? theme.colors.ink : theme.colors.line,
+          borderColor: alert ? theme.colors.danger : selected ? theme.colors.ink : theme.colors.line,
           backgroundColor: selected ? theme.colors.emphasisSoft : theme.colors.surface,
         },
       ]}
     >
-      <Text style={{ fontFamily: theme.font.bodyStrong, color: theme.colors.ink, fontSize: 15 * theme.scale }}>{label}</Text>
+      <Text style={{ fontFamily: theme.font.bodyStrong, color: alert ? theme.colors.danger : theme.colors.ink, fontSize: 15 * theme.scale }}>{label}</Text>
     </Pressable>
   );
 }
