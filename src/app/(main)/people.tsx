@@ -6,7 +6,9 @@ import { useRepository, useSnapshot } from '@/data';
 import { discoverAction, type DiscoverAction } from '@/domain/connections';
 import { shownError } from '@/domain/errors';
 import { randomId } from '@/domain/id';
+import { chatPreview, chatUnread, chatsChoiceLabel, latestChatMessage } from '@/domain/liveChat';
 import { CommunityProfile } from '@/ui/CommunityProfile';
+import { useChatRead } from '@/ui/chatRead';
 import { MemberAvatar, useMemberAvatars } from '@/ui/MemberAvatar';
 import { usePendingPress } from '@/ui/pendingAction';
 import { DISCOVER_EMPTY, PublicProfileCard } from '@/ui/PublicProfileCard';
@@ -22,6 +24,7 @@ export default function People() {
   const { run, isPending } = usePendingPress();
   const clientIds = useRef(new Map<string, string>());
   const me = snap.profile;
+  const readMarks = useChatRead(me?.id);
   const avatarOf = useMemberAvatars(snap.directory);
 
   // New requests and chats arrive from other people, so load them each time People opens.
@@ -34,7 +37,18 @@ export default function People() {
 
   const incoming = snap.connections.filter((connection) => connection.status === 'pending' && connection.addresseeId === me.id);
   const sent = snap.connections.filter((connection) => connection.status === 'pending' && connection.requesterId === me.id);
-  const chats = snap.connections.filter((connection) => connection.status === 'accepted');
+  const chats = snap.connections
+    .filter((connection) => connection.status === 'accepted')
+    .slice()
+    .sort((a, b) => {
+      const aAt = latestChatMessage(snap.messages, a.id)?.createdAt ?? a.createdAt;
+      const bAt = latestChatMessage(snap.messages, b.id)?.createdAt ?? b.createdAt;
+      return bAt.localeCompare(aAt);
+    });
+  const unreadTotal = chats.reduce(
+    (sum, connection) => sum + chatUnread(snap.messages, connection.id, me.id, readMarks[connection.id] ?? null),
+    0,
+  );
   const nameOf = (id: string) => snap.directory.find((card) => card.id === id)?.displayName ?? 'Member';
   const labelOf = (id: string) => snap.interests.find((interest) => interest.id === id)?.label ?? 'Interest';
   const clientIdFor = (key: string) => {
@@ -63,7 +77,7 @@ export default function People() {
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
         <Choice label={`Discover`} selected={tab === 'discover'} onPress={() => setTab('discover')} />
         <Choice label={`Requests (${incoming.length})`} selected={tab === 'requests'} tone={incoming.length > 0 ? 'alert' : 'default'} onPress={() => setTab('requests')} />
-        <Choice label={`Chats (${chats.length})`} selected={tab === 'chats'} onPress={() => setTab('chats')} />
+        <Choice label={chatsChoiceLabel(chats.length, unreadTotal)} selected={tab === 'chats'} onPress={() => setTab('chats')} />
       </View>
       <ErrorNote>{error}</ErrorNote>
       {tab === 'discover' ? snap.directory.map((card) => {
@@ -121,11 +135,17 @@ export default function People() {
       )) : null}
       {tab === 'chats' ? chats.map((connection) => {
         const other = connection.requesterId === me.id ? connection.addresseeId : connection.requesterId;
+        const latest = latestChatMessage(snap.messages, connection.id);
+        const unread = chatUnread(snap.messages, connection.id, me.id, readMarks[connection.id] ?? null);
         return (
           <Card key={connection.id}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
               <MemberAvatar name={nameOf(other)} url={avatarOf(other)} />
-              <View style={{ flex: 1 }}><T variant="title">{nameOf(other)}</T></View>
+              <View style={{ flex: 1, gap: 4 }}>
+                <T variant="title">{nameOf(other)}</T>
+                {latest ? <T variant="muted">{chatPreview(latest.body)}</T> : null}
+              </View>
+              {unread > 0 ? <T variant="label">{unread === 1 ? '1 new' : `${unread} new`}</T> : null}
             </View>
             <Button label="Open chat" onPress={() => router.push(`/chat/${connection.id}` as never)} />
           </Card>

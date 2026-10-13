@@ -5,11 +5,11 @@ import { Stack, usePathname, useRouter } from 'expo-router';
 import * as Linking from 'expo-linking';
 import * as SplashScreen from 'expo-splash-screen';
 import { useEffect } from 'react';
-import { Platform, View } from 'react-native';
+import { AppState, Platform, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 
-import { RepoProvider, useSnapshot } from '@/data';
+import { RepoProvider, useRepository, useSnapshot } from '@/data';
 import { listenForMessageOpens } from '@/notifications/register';
 import { CONSENT_VERSION } from '@/data/catalogue';
 import { hasCurrentConsents } from '@/domain/consents';
@@ -55,6 +55,7 @@ function ThemedShell() {
 function Chrome() {
   const theme = useAppTheme();
   const snap = useSnapshot();
+  const repo = useRepository();
   const pathname = usePathname();
   const router = useRouter();
 
@@ -66,8 +67,16 @@ function Chrome() {
   }, [theme.colors.bg]);
 
   useEffect(() => listenForMessageOpens((connectionId) => {
+    void repo.reloadMessages();
     router.push(`/chat/${connectionId}` as never);
-  }), [router]);
+  }), [router, repo]);
+
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', (next) => {
+      if (next === 'active') void repo.reloadMessages();
+    });
+    return () => subscription.remove();
+  }, [repo]);
 
   useEffect(() => {
     const openReset = (url: string | null) => {
