@@ -46,4 +46,18 @@ describe('your public profile on People', () => {
     expect(consent).toContain('export const COMMUNITY_CONSENT_BODY');
     expect(consent).toContain('body={COMMUNITY_CONSENT_BODY}');
   });
+
+  it('opens that same preview from the top of You, above the pinned quote', () => {
+    const you = readFileSync('src/app/(main)/profile.tsx', 'utf8');
+    const preview = readFileSync('src/app/(main)/public-profile.tsx', 'utf8');
+    const link = you.indexOf('View my public profile');
+    expect(link).toBeGreaterThan(-1);
+    expect(link).toBeLessThan(you.indexOf('Pinned quote'));
+    expect(link).toBeLessThan(you.indexOf('Pin a Stoic quote'));
+    expect(you).toContain('<MemberAvatar');
+    expect(you).toContain("router.push('/public-profile'");
+    expect(preview).toContain('<PublicProfileCard');
+    expect(preview).not.toContain('CommunityProfile');
+    expect(preview).not.toContain('Message privately');
+  });
 });
