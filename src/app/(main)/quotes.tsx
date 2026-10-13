@@ -8,6 +8,7 @@ import { londonDay } from '@/domain/healthInsights';
 import {
   earlierQuoteDay,
   quoteById,
+  quoteCredit,
   quoteForUkDay,
   searchQuotes,
   STOIC_AUTHORS,
@@ -26,7 +27,7 @@ function QuoteBody({ quote }: { quote: StoicQuote }) {
   return (
     <View style={{ gap: 6 }}>
       <T>{quote.text}</T>
-      <T variant="muted">{quote.author}</T>
+      <T variant="muted">{quote.author} · {quote.school}</T>
       <T variant="muted">{quote.source}</T>
       <T variant="muted">{quote.translator}</T>
       <InPlainWords plain={quote.plain} />
@@ -94,7 +95,7 @@ export default function StoicQuotes() {
   function row(quote: StoicQuote) {
     return (
       <Card key={`${quote.id}`}>
-        <Pressable accessibilityRole="button" accessibilityLabel={`${quote.author}. ${quote.text}`} onPress={() => setOpenId(openId === quote.id ? null : quote.id)}>
+        <Pressable accessibilityRole="button" accessibilityLabel={`${quote.author}, ${quote.school}. ${quote.text}`} onPress={() => setOpenId(openId === quote.id ? null : quote.id)}>
           <QuoteBody quote={quote} />
         </Pressable>
         {actions(quote)}
@@ -104,16 +105,16 @@ export default function StoicQuotes() {
 
   return (
     <Screen
-      eyebrow="Stoic Quotes"
+      eyebrow="Stoic & Classical Wisdom"
       title="A line for the day."
-      intro="Public-domain translations, the same line for everyone on a UK date. Search by author or theme, and keep a private list."
+      intro="Public-domain translations from the Stoics and from Plato. Plato is Platonic, not a Stoic. The same line for everyone on a UK date."
     >
       {error ? <ErrorNote>{error}</ErrorNote> : null}
       <Card>
         <T variant="label">{daysBack === 0 ? 'Quote of the day' : 'Earlier day'}</T>
         <T variant="muted">{dayLabel(day)}</T>
         <T variant="title">{daily.text}</T>
-        <T variant="muted">{daily.author} · {daily.source}</T>
+        <T variant="muted">{quoteCredit(daily)}</T>
         <InPlainWords plain={daily.plain} />
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
           <Button label="Previous day" tone="quiet" onPress={() => setDaysBack((value) => Math.min(value + 1, 364))} />

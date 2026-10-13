@@ -77,7 +77,7 @@ export function briefingFromSnapshot(snap: AppSnapshot, requestedMode: ThumosMod
       pinnedQuote: profile.consentAi
         ? (() => {
             const quote = quoteById(profile.pinnedQuoteId);
-            return quote ? { text: quote.text, author: quote.author, source: quote.source } : null;
+            return quote ? { text: quote.text, author: quote.author, source: quote.source, school: quote.school } : null;
           })()
         : null,
       mode: requestedMode,

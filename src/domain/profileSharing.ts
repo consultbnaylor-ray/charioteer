@@ -4,7 +4,7 @@ import { averageValue, formatHealthValue, HEALTH_KINDS, HEALTH_METRICS, seriesFo
 import { MILESTONES, milestoneReached } from './milestones';
 import { savingsFromTypicalWeek } from './savings';
 import { soberElapsed } from './sober';
-import { quoteById } from './stoicQuotes';
+import { quoteById, type QuoteSchool } from './stoicQuotes';
 import { STAGE_LABELS, isStage } from './stage';
 
 /** Helper under a Share on profile switch while Community is on. */
@@ -56,7 +56,7 @@ export type ProfileSharing = {
   gratitudeIds: string[];
   gratitudePhotoIds: string[];
   visionIds: string[];
-  /** The pinned Stoic line. Public-domain text, not special category data. */
+  /** The pinned line, Stoic or Platonic. Public-domain text, not special category data. */
   pinnedQuote: boolean;
   /** Set the first time a sobriety or health item is shared. */
   sensitiveConsentAt: string | null;
@@ -206,8 +206,8 @@ export type PublicProfileView = {
   gratitude: { id: string; body: string; entryDate: string }[];
   gratitudePhotos: { id: string; caption: string }[];
   vision: { id: string; caption: string; area: string | null }[];
-  /** Resolved from the bundled catalogue. Unknown ids are dropped. */
-  pinnedQuote: { id: string; text: string; author: string; source: string } | null;
+  /** Resolved from the bundled catalogue. Unknown ids are dropped. School keeps Plato Platonic. */
+  pinnedQuote: { id: string; text: string; author: string; school: QuoteSchool; source: string } | null;
   sharedLabels: string[];
   hiddenLabels: string[];
 };
@@ -357,9 +357,7 @@ export function projectPublicProfile(source: ShareSource, sharing: ProfileSharin
   if (vision.length) sharedLabels.push('Vision items');
   else hiddenLabels.push('Vision items');
   const pinned = settings.pinnedQuote ? quoteById(source.pinnedQuoteId) : null;
-  const pinnedQuote = pinned
-    ? { id: pinned.id, text: pinned.text, author: pinned.author, source: pinned.source }
-    : null;
+  const pinnedQuote = shownPinnedQuote(pinned);
   if (pinnedQuote) sharedLabels.push('Pinned quote');
   else hiddenLabels.push('Pinned quote');
 
@@ -389,6 +387,12 @@ export function projectPublicProfile(source: ShareSource, sharing: ProfileSharin
 
 function textList(value: unknown): string[] {
   return stringList(value);
+}
+
+function shownPinnedQuote(pinned: ReturnType<typeof quoteById>) {
+  return pinned
+    ? { id: pinned.id, text: pinned.text, author: pinned.author, school: pinned.school, source: pinned.source }
+    : null;
 }
 
 /** Reads the public_profile payload and keeps only the shared fields. */
@@ -470,9 +474,7 @@ export function parsePublicProfile(value: unknown): PublicProfileView | null {
         area: typeof entry.area === 'string' ? entry.area : null,
       }];
     }),
-    pinnedQuote: pinned
-      ? { id: pinned.id, text: pinned.text, author: pinned.author, source: pinned.source }
-      : null,
+    pinnedQuote: shownPinnedQuote(pinned),
     sharedLabels: textList(raw.sharedLabels),
     hiddenLabels: textList(raw.hiddenLabels),
   };

@@ -319,7 +319,7 @@ export function PublicProfileCard() {
             {preview.pinnedQuote ? (
               <View style={{ gap: 4 }}>
                 <T variant="title">{preview.pinnedQuote.text}</T>
-                <T variant="muted">{preview.pinnedQuote.author} · {preview.pinnedQuote.source}</T>
+                <T variant="muted">{preview.pinnedQuote.author} · {preview.pinnedQuote.school} · {preview.pinnedQuote.source}</T>
               </View>
             ) : null}
             <T variant="muted">{preview.town || 'Area not shared'}</T>
