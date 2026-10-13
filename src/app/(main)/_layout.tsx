@@ -3,7 +3,9 @@ import { useState } from 'react';
 import { Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { TAB_SECTIONS } from '@/domain/sections';
+import { useSnapshot } from '@/data';
+import { incomingRequestCount, peopleTabAccessibilityLabel, requestBadgeText } from '@/domain/connections';
+import { TAB_SECTIONS, type AppSection } from '@/domain/sections';
 import { tabLabelFontSize, tabSideInset } from '@/ui/tabBar';
 import { useAppTheme } from '@/ui/theme';
 import { topSafeInset } from '@/ui/safeArea';
@@ -26,8 +28,12 @@ export default function MainLayout() {
   const tabSide = tabSideInset(insets.left, insets.right);
   const labelSize = tabLabelFontSize(width, tabSide, theme.scale);
   const [menuOpen, setMenuOpen] = useState(false);
+  const snap = useSnapshot();
+  const requestCount = snap.profile ? incomingRequestCount(snap.connections, snap.profile.id) : 0;
+  const peopleBadge = requestBadgeText(requestCount);
 
   const go = (href: string) => router.navigate(href as never);
+  const tabName = (tab: AppSection) => (tab.href === '/people' ? peopleTabAccessibilityLabel(requestCount) : tab.tabLabel ?? tab.label);
 
   const brand = (
     <Pressable accessibilityRole="button" accessibilityLabel="Charioteer home" onPress={() => go('/home')} style={styles.brand}>
@@ -60,7 +66,14 @@ export default function MainLayout() {
           {brand}
           <T variant="muted" style={{ marginTop: 4, marginBottom: 18 }}>Hold the reins.</T>
           {TAB_SECTIONS.map((tab) => (
-            <NavItem key={tab.href} label={tab.tabLabel ?? tab.label} active={selected(pathname, tab.href)} onPress={() => go(tab.href)} />
+            <NavItem
+              key={tab.href}
+              label={tab.tabLabel ?? tab.label}
+              badge={tab.href === '/people' ? peopleBadge : null}
+              accessibilityLabel={tabName(tab)}
+              active={selected(pathname, tab.href)}
+              onPress={() => go(tab.href)}
+            />
           ))}
         </View>
       ) : (
@@ -93,7 +106,14 @@ export default function MainLayout() {
           ]}
         >
           {TAB_SECTIONS.map((tab) => (
-            <Pressable key={tab.href} accessibilityRole="button" accessibilityState={{ selected: selected(pathname, tab.href) }} onPress={() => go(tab.href)} style={[styles.tab, { borderTopColor: selected(pathname, tab.href) ? theme.colors.ink : 'transparent' }]}>
+            <Pressable
+              key={tab.href}
+              accessibilityRole="button"
+              accessibilityLabel={tabName(tab)}
+              accessibilityState={{ selected: selected(pathname, tab.href) }}
+              onPress={() => go(tab.href)}
+              style={[styles.tab, { borderTopColor: selected(pathname, tab.href) ? theme.colors.ink : 'transparent' }]}
+            >
               <Text
                 numberOfLines={1}
                 adjustsFontSizeToFit
@@ -111,6 +131,7 @@ export default function MainLayout() {
               >
                 {tab.tabLabel ?? tab.label}
               </Text>
+              {tab.href === '/people' && peopleBadge ? <RequestBadge label={peopleBadge} /> : null}
             </Pressable>
           ))}
         </View>
@@ -119,17 +140,40 @@ export default function MainLayout() {
   );
 }
 
-function NavItem({ label, active, onPress }: { label: string; active: boolean; onPress: () => void }) {
+function NavItem({
+  label,
+  badge,
+  accessibilityLabel,
+  active,
+  onPress,
+}: {
+  label: string;
+  badge: string | null;
+  accessibilityLabel: string;
+  active: boolean;
+  onPress: () => void;
+}) {
   const theme = useAppTheme();
   return (
     <Pressable
       accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel}
       accessibilityState={{ selected: active }}
       onPress={onPress}
       style={[styles.navItem, { backgroundColor: active ? theme.colors.emphasisSoft : 'transparent', borderLeftColor: active ? theme.colors.ink : 'transparent' }]}
     >
       <T variant="body" style={{ fontFamily: theme.font.bodyStrong, color: theme.colors.ink }}>{label}</T>
+      {badge ? <RequestBadge label={badge} /> : null}
     </Pressable>
+  );
+}
+
+function RequestBadge({ label }: { label: string }) {
+  const theme = useAppTheme();
+  return (
+    <View accessibilityElementsHidden importantForAccessibility="no-hide-descendants" style={[styles.badge, { backgroundColor: theme.colors.ink }]}>
+      <Text style={{ color: theme.colors.bg, fontFamily: theme.font.bodyStrong, fontSize: 11, lineHeight: 14 }}>{label}</Text>
+    </View>
   );
 }
 
@@ -139,9 +183,10 @@ const styles = StyleSheet.create({
   menu: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
   menuBars: { width: 18, gap: 4 },
   menuBar: { height: 2, width: 18 },
-  navItem: { borderRadius: 2, borderLeftWidth: 3, paddingHorizontal: 12, paddingVertical: 10, marginBottom: 4 },
+  navItem: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderRadius: 2, borderLeftWidth: 3, paddingHorizontal: 12, paddingVertical: 10, marginBottom: 4 },
   mobileTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 8, paddingBottom: 8, borderBottomWidth: StyleSheet.hairlineWidth },
   mobileBrand: { flexDirection: 'row', alignItems: 'center', gap: 4, flex: 1 },
   tabs: { flexDirection: 'row', alignItems: 'stretch', width: '100%', borderTopWidth: StyleSheet.hairlineWidth, paddingTop: 8 },
   tab: { flex: 1, minWidth: 0, minHeight: 44, alignItems: 'center', justifyContent: 'center', borderTopWidth: 2 },
+  badge: { position: 'absolute', top: 2, right: 2, minWidth: 16, height: 16, borderRadius: 8, paddingHorizontal: 3, alignItems: 'center', justifyContent: 'center' },
 });
