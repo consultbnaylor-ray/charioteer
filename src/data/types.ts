@@ -330,6 +330,13 @@ export interface Repository {
   subscribe(listener: () => void): () => void;
   getSnapshot(): AppSnapshot;
   reload(): Promise<void>;
+  /** Messages only. Used while a chat is open and when the app returns. */
+  reloadMessages(): Promise<void>;
+  /**
+   * Inserts for one chat. Realtime applies the select policy, and the filter
+   * limits the stream to this connection. Call the returned function to stop.
+   */
+  watchChat(connectionId: string): () => void;
   signIn(email: string, password: string): Promise<void>;
   signUp(email: string, password: string, displayName: string): Promise<void>;
   signInWithApple(): Promise<void>;

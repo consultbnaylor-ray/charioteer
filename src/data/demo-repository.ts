@@ -196,6 +196,14 @@ export class DemoRepository implements Repository {
     this.listeners.forEach((listener) => listener());
   }
 
+  async reloadMessages(): Promise<void> {
+    await this.reload();
+  }
+
+  watchChat(_connectionId: string): () => void {
+    return () => undefined;
+  }
+
   private derive(): AppSnapshot {
     const sessionId = this.db.sessionUserId;
     const account = sessionId ? this.db.accounts[sessionId] : undefined;

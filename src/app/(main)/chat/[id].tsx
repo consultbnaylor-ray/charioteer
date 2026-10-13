@@ -3,8 +3,10 @@ import { useEffect, useRef, useState } from 'react';
 import { View } from 'react-native';
 
 import { useRepository, useSnapshot } from '@/data';
+import { markChatRead } from '@/data/chatRead';
 import { shownError } from '@/domain/errors';
 import { randomId } from '@/domain/id';
+import { CHAT_POLL_MS, latestChatMessage } from '@/domain/liveChat';
 import { offerMessageNotifications } from '@/notifications/register';
 import { MemberAvatar, useMemberAvatars } from '@/ui/MemberAvatar';
 import { usePendingPress } from '@/ui/pendingAction';
@@ -28,11 +30,31 @@ export default function Chat() {
   const clientIds = useRef(new Map<string, string>());
   const me = snap.profile;
   const connection = snap.connections.find((item) => item.id === id);
+  const connectionId = connection?.id;
 
   useEffect(() => {
     if (!connection) return;
     void offerMessageNotifications(repo);
   }, [repo, connection]);
+
+  useEffect(() => {
+    if (!connectionId) return;
+    const stop = repo.watchChat(connectionId);
+    const timer = setInterval(() => {
+      void repo.reloadMessages();
+    }, CHAT_POLL_MS);
+    return () => {
+      stop();
+      clearInterval(timer);
+    };
+  }, [repo, connectionId]);
+
+  useEffect(() => {
+    if (!me || !connectionId) return;
+    const latest = latestChatMessage(snap.messages, connectionId);
+    if (!latest) return;
+    void markChatRead(me.id, connectionId, latest.createdAt);
+  }, [me, connectionId, snap.messages]);
 
   if (!me || !connection) {
     return <Screen title="Chat"><T>This chat is not available.</T></Screen>;

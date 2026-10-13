@@ -42,6 +42,7 @@ import {
 } from '@/domain/visionBoard';
 import { isoDay } from '@/domain/dates';
 import { randomId } from '@/domain/id';
+import { chatInsertFilter, messageFromRealtime, withIncomingMessage } from '@/domain/liveChat';
 import { isDuplicateWrite, mergeOutgoingMessages, shareInflight } from '@/domain/writes';
 import { passwordResetRedirect, recoveryLink } from '@/domain/passwordReset';
 import { createUtf8Decoder } from '@/domain/utf8';
@@ -171,6 +172,9 @@ export class SupabaseRepository implements Repository {
   private once = shareInflight();
   /** Messages shown before the server confirms them. The id is the client idempotency key. */
   private outgoingMessages = new Map<string, DirectMessage>();
+  /** Unfiltered insert stream for the chats list. Recreated only when sign-in changes. */
+  private messageChannel: ReturnType<SupabaseClient['channel']> | null = null;
+  private messagesListening = false;
 
   constructor(url: string, anonKey: string) {
     this.url = url;
@@ -199,6 +203,43 @@ export class SupabaseRepository implements Repository {
 
   async reload(): Promise<void> {
     await this.refresh();
+  }
+
+  async reloadMessages(): Promise<void> {
+    const { data: sessionData } = await this.client.auth.getSession();
+    if (!sessionData.session) return;
+    const connectionIds = this.snapshot.connections.map((connection) => connection.id);
+    if (!connectionIds.length) return;
+    const messageRes = await this.client
+      .from('direct_messages')
+      .select('*')
+      .in('connection_id', connectionIds)
+      .order('created_at');
+    if (messageRes.error) return;
+    const fetched = ((messageRes.data ?? []) as Row[]).map(mapDirectMessage);
+    const allowed = new Set(connectionIds);
+    this.emit({
+      ...this.snapshot,
+      messages: mergeFetchedMessages(this.snapshot.messages, fetched, allowed),
+    });
+  }
+
+  watchChat(connectionId: string): () => void {
+    const filter = chatInsertFilter(connectionId);
+    if (!filter) return () => undefined;
+    const channel = this.client
+      .channel(`chat:${connectionId}`)
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'direct_messages', filter },
+        (payload) => {
+          this.ingestMessage(payload.new);
+        },
+      )
+      .subscribe();
+    return () => {
+      void this.client.removeChannel(channel);
+    };
   }
 
   private emit(next: AppSnapshot) {
@@ -239,16 +280,42 @@ export class SupabaseRepository implements Repository {
   private async start() {
     if (this.started) return;
     this.started = true;
-    this.client.auth.onAuthStateChange(() => {
+    this.client.auth.onAuthStateChange((_event, session) => {
+      void this.client.realtime.setAuth(session?.access_token ?? null);
+      this.listenForMessages(Boolean(session));
       void this.refresh();
     });
+    const { data } = await this.client.auth.getSession();
+    await this.client.realtime.setAuth(data.session?.access_token ?? null);
+    this.listenForMessages(Boolean(data.session));
     await this.refresh();
-    this.client
+  }
+
+  /** One insert stream for every chat this account can read. Realtime applies the select policy. */
+  private listenForMessages(signedIn: boolean) {
+    if (!signedIn) {
+      if (this.messageChannel) void this.client.removeChannel(this.messageChannel);
+      this.messageChannel = null;
+      this.messagesListening = false;
+      return;
+    }
+    if (this.messagesListening) return;
+    this.messagesListening = true;
+    this.messageChannel = this.client
       .channel('direct-messages')
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'direct_messages' }, () => {
-        void this.refresh();
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'direct_messages' }, (payload) => {
+        this.ingestMessage(payload.new);
       })
       .subscribe();
+  }
+
+  private ingestMessage(row: unknown) {
+    const incoming = messageFromRealtime(row);
+    if (!incoming) return;
+    this.outgoingMessages.delete(incoming.id);
+    const next = withIncomingMessage(this.snapshot.messages, incoming);
+    if (next === this.snapshot.messages) return;
+    this.emit({ ...this.snapshot, messages: [...next] });
   }
 
   private async refresh() {
@@ -329,20 +396,24 @@ export class SupabaseRepository implements Repository {
 
     const connections = ((connectionsRes.data ?? []) as Row[]).map(mapConnection);
     const connectionIds = connections.map((connection) => connection.id);
-    let messages: AppSnapshot['messages'] = [];
+    const allowedConnections = new Set(connectionIds);
+    const sameAccount = this.snapshot.session?.userId === userId;
+    let messages: AppSnapshot['messages'] = sameAccount
+      ? this.snapshot.messages.filter((message) => allowedConnections.has(message.connectionId))
+      : [];
     if (connectionIds.length) {
       const messageRes = await this.client
         .from('direct_messages')
         .select('*')
         .in('connection_id', connectionIds)
         .order('created_at');
-      messages = ((messageRes.data ?? []) as Row[]).map((row) => ({
-        id: String(row.id),
-        connectionId: String(row.connection_id),
-        senderId: String(row.sender_id),
-        body: String(row.body),
-        createdAt: String(row.created_at),
-      }));
+      if (!messageRes.error) {
+        messages = mergeFetchedMessages(
+          sameAccount ? this.snapshot.messages : [],
+          ((messageRes.data ?? []) as Row[]).map(mapDirectMessage),
+          allowedConnections,
+        );
+      }
     }
 
     let gratitudeRows: unknown = gratitudeRes.data;
@@ -1891,6 +1962,27 @@ function mapHealth(row: Row): HealthSample {
     recordedOn: String(row.recorded_on),
     source: row.source as HealthSample['source'],
   };
+}
+
+function mapDirectMessage(row: Row): DirectMessage {
+  return {
+    id: String(row.id),
+    connectionId: String(row.connection_id),
+    senderId: String(row.sender_id),
+    body: String(row.body),
+    createdAt: String(row.created_at),
+  };
+}
+
+/** Keeps a message Realtime already showed when a slower fetch has not caught up. */
+function mergeFetchedMessages(
+  current: readonly DirectMessage[],
+  fetched: readonly DirectMessage[],
+  allowed: ReadonlySet<string>,
+): DirectMessage[] {
+  const fetchedIds = new Set(fetched.map((message) => message.id));
+  const kept = current.filter((message) => allowed.has(message.connectionId) && !fetchedIds.has(message.id));
+  return [...fetched, ...kept].sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id));
 }
 
 function mapConnection(row: Row): Connection {
