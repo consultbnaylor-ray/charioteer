@@ -4,6 +4,7 @@ import { formatVisionContext, VISION_PROMPT_LINE, type VisionContext } from './v
 import { earnedMilestones } from './milestones.ts';
 import { savingsFromTypicalWeek } from './savings.ts';
 import { formatSoberElapsed, soberElapsed } from './sober.ts';
+import { hrvExplainerForCoach } from './healthInsights.ts';
 import { detectSafety, type SafetyHit } from './safety.ts';
 
 export type ThumosMode = 'opening' | 'steady' | 'growth' | 'support';
@@ -717,6 +718,7 @@ export function buildThumosContext(input: ThumosContextInput): string {
     `Recent check-ins (newest first):\n${checkIns || '- none yet'}`,
     `Health readings:\n${health || '- none shared'}`,
     insightLines.length ? `Health insights, not medical advice:\n${insightLines.map((line) => `- ${line}`).join('\n')}` : '',
+    `HRV explainer, general guidance and not a diagnosis. Use this if they ask what heart rate variability means. Do not turn it into a diagnosis or a personal target:\n${hrvExplainerForCoach()}`,
     formatGratitudeContext(input.gratitude ?? []),
     formatVisionContext(input.vision),
     `Mode: ${input.mode}`,
@@ -745,7 +747,7 @@ export function buildSystemPrompt(
     'The messages after this system prompt are the conversation so far, oldest first, then their latest line. Use that history. Never repeat a sentence you have already sent. Vary your wording from turn to turn.',
     turn.selfHarm
       ? 'Do not mention sober time, day counts, personal reasons, savings, health readings, health insights, the gratitude diary, the vision board, or a pinned Stoic quote on this turn.'
-      : 'When you mention sober time, a personal reason, a check-in, a health reading, a health insight, a gratitude line, a vision caption, or a pinned Stoic quote, take it from CONTEXT. Do not invent those details. A health insight is a note from their own readings, not a diagnosis. If CONTEXT includes a pinned Stoic quote, you may use it once for motivation. Quote it faithfully.',
+      : 'When you mention sober time, a personal reason, a check-in, a health reading, a health insight, a gratitude line, a vision caption, or a pinned Stoic quote, take it from CONTEXT. Do not invent those details. A health insight is a note from their own readings, not a diagnosis. If CONTEXT includes an HRV explainer, you may use that wording when they ask what heart rate variability means. Do not add ranges or citations that are not written there, and do not diagnose. If CONTEXT includes a pinned Stoic quote, you may use it once for motivation. Quote it faithfully.',
     turn.selfHarm ? '' : GRATITUDE_PROMPT_LINE,
     turn.selfHarm ? '' : VISION_PROMPT_LINE,
     'Do not invent statistics, study names, or citations. If you share a number about alcohol harm, use only CURATED FACTS, quote it faithfully, and name the source. If you do not have a verified figure, say so.',

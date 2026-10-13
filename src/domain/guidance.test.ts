@@ -22,7 +22,7 @@ import {
   parseHeightCm,
   weeklyUnitsGuidance,
 } from './guidance';
-import type { DayValue } from './healthInsights';
+import { HRV_EXPLAINER_LINKS, HRV_EXPLAINER_PARAGRAPHS, HRV_EXPLAINER_TIPS, HRV_TOO_FEW, hrvExplainerForCoach, type DayValue } from './healthInsights';
 
 const today = '2026-10-11';
 const source = readFileSync('src/domain/guidance.ts', 'utf8');
@@ -189,10 +189,60 @@ describe('steps and heart rate variability', () => {
     ]);
     expect(hrv.label).toBeNull();
     expect(hrv.marker).toBeNull();
+    expect(hrv.plain).toContain(HRV_TOO_FEW);
     expect(hrv.plain).toContain('no official UK target');
     expect(hrv.plain).not.toMatch(/\d+\s*to\s*\d+\s*ms/);
+    expect(hrv.plain).not.toContain('earlier average');
     expect(hrv.sources).toEqual([]);
     expect(hrv.caveat).toBe(GUIDANCE_CAVEAT);
+
+    const enough = metric('hrv_sdnn', [
+      ['2026-09-10', 40],
+      ['2026-09-20', 42],
+      ['2026-10-01', 38],
+      ['2026-10-08', 44],
+      ['2026-10-10', 46],
+      ['2026-10-11', 45],
+    ]);
+    expect(enough.plain).not.toContain(HRV_TOO_FEW);
+    expect(enough.label).toBeNull();
+    expect(enough.marker).toBeNull();
+    expect(enough.plain).toContain('your own');
+    expect(enough.caveat).toBe(GUIDANCE_CAVEAT);
+  });
+
+  it('keeps typical HRV ranges as rough examples, with the papers named', () => {
+    const text = HRV_EXPLAINER_PARAGRAPHS.join(' ');
+    expect(text).toContain('variation in time between heartbeats');
+    expect(text).toContain('more rested, recovered body');
+    expect(text).toContain('Apple Watch measures SDNN');
+    expect(text).toContain('mostly overnight');
+    expect(text).toContain('general, rough examples, not a target');
+    expect(text).toContain('30 to 70 ms');
+    expect(text).toContain('70 to 100 ms or more');
+    expect(text).toContain('20 to 30 ms');
+    expect(text).toContain('falls with age');
+    expect(text).toContain('trend over days matters more than one night');
+    expect(text).toContain('Alcohol noticeably lowers');
+    expect(text).toContain('four weeks');
+    expect(text).toContain('not a promise for you');
+    expect(HRV_EXPLAINER_TIPS).toContain('Sleep');
+    expect(HRV_EXPLAINER_TIPS).toContain('water');
+    expect(HRV_EXPLAINER_TIPS).toContain('rest days');
+    expect(HRV_EXPLAINER_TIPS).toContain('Breathing exercises');
+    expect(HRV_EXPLAINER_LINKS.map((item) => item.url)).toEqual([
+      'https://my.clevelandclinic.org/health/symptoms/21773-heart-rate-variability-hrv',
+      'https://developer.apple.com/documentation/healthkit/hkquantitytypeidentifier/heartratevariabilitysdnn',
+      'https://onlinelibrary.wiley.com/doi/10.1111/j.1540-8159.2010.02841.x',
+      'https://pubmed.ncbi.nlm.nih.gov/26883166/',
+      'https://pmc.ncbi.nlm.nih.gov/articles/PMC5878366/',
+      'https://pmc.ncbi.nlm.nih.gov/articles/PMC12594097/',
+    ]);
+    const coach = hrvExplainerForCoach();
+    expect(coach).toContain('What does HRV mean?');
+    expect(coach).toContain('not a diagnosis');
+    expect(coach).toContain('GP');
+    expect(coach).not.toMatch(/below 50 ms is unhealthy/i);
   });
 });
 
