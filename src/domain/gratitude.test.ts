@@ -259,6 +259,7 @@ describe('gratitude diary wiring', () => {
       'Stoic & Classical Wisdom',
       'Library',
       'You',
+      'Notifications',
       'Privacy & consent',
       'Help & crisis lines',
       'Sign out',
