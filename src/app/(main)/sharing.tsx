@@ -6,7 +6,9 @@ import { useRepository, useSnapshot } from '@/data';
 import type { ProgressPhoto } from '@/data/types';
 import { shownError } from '@/domain/errors';
 import { HEALTH_METRICS } from '@/domain/healthInsights';
+import { sortGratitude } from '@/domain/gratitude';
 import { PROFILE_PHOTO_WORDING } from '@/domain/profilePhotos';
+import { compareNewest } from '@/domain/shareList';
 import {
   PROFILE_HIDDEN_SHARE,
   SHARE_HINT,
@@ -19,8 +21,9 @@ import { PROGRESS_SHARE_WARNING, progressPhotoLabel } from '@/domain/progressPho
 import { COMMUNITY_CONSENT_BODY } from '@/ui/ConsentChoices';
 import { NutritionShareSwitch } from '@/ui/NutritionShare';
 import { ScrollTarget } from '@/ui/ScrollTarget';
-import { PhotoSectionShare, ReviewSectionShare } from '@/ui/SectionShare';
+import { GratitudeSectionShare, PhotoSectionShare, ReviewSectionShare, VisionSectionShare } from '@/ui/SectionShare';
 import { ShareOnProfile } from '@/ui/ShareOnProfile';
+import { ShareSwitchList } from '@/ui/ShareSwitchList';
 import { useAppTheme } from '@/ui/theme';
 import { Button, QuietNote, Screen, T } from '@/ui/ui';
 
@@ -153,45 +156,77 @@ export default function WhatIShare() {
         <Button label="Edit profile photos" tone="quiet" onPress={() => router.push('/public-profile?edit=photos' as never)} />
       </ShareAnchor>
       <ShareAnchor id="gratitudeLines" title="Gratitude lines">
-        {snap.gratitude.length ? snap.gratitude.map((entry) => (
-          <ShareOnProfile
-            key={entry.id}
-            label={`Share “${entry.body}”`}
-            item={entry.body}
-            on={snap.sharing.gratitudeIds.includes(entry.id)}
-            apply={(sharing, selected) => toggleShareId(sharing, 'gratitudeIds', entry.id, selected)}
+        <GratitudeSectionShare />
+        {snap.gratitude.length ? (
+          <ShareSwitchList
+            title="Gratitude entries"
+            shared={snap.gratitude.filter((entry) => snap.sharing.gratitudeIds.includes(entry.id)).length}
+            items={sortGratitude(snap.gratitude).map((entry) => (
+              <ShareOnProfile
+                key={entry.id}
+                lines={2}
+                label={`Share “${entry.body}”`}
+                item={entry.body}
+                on={snap.sharing.gratitudeIds.includes(entry.id)}
+                apply={(sharing, selected) => toggleShareId(sharing, 'gratitudeIds', entry.id, selected)}
+              />
+            ))}
           />
-        )) : (
+        ) : (
           <EmptyShare note="No gratitude lines yet.">
             <Button label="Gratitude Diary" tone="quiet" onPress={() => router.push('/gratitude' as never)} />
           </EmptyShare>
         )}
       </ShareAnchor>
       <ShareAnchor id="gratitudePhotos" title="Gratitude photos">
-        {gratitudePhotos.length ? snap.gratitude.flatMap((entry) => entry.photos.map((photo) => (
-          <ShareOnProfile
-            key={photo.id}
-            label={photo.caption.trim() ? `Include photo “${photo.caption.trim()}”` : 'Include photo'}
-            item={photo.caption.trim() || 'This gratitude photo'}
-            on={snap.sharing.gratitudePhotoIds.includes(photo.id)}
-            apply={(sharing, selected) => toggleShareId(sharing, 'gratitudePhotoIds', photo.id, selected)}
+        {gratitudePhotos.length ? (
+          <ShareSwitchList
+            title="Gratitude photos"
+            shared={gratitudePhotos.filter((photo) => snap.sharing.gratitudePhotoIds.includes(photo.id)).length}
+            items={sortGratitude(snap.gratitude).flatMap((entry) => [...entry.photos].sort((a, b) => compareNewest(
+              { stamp: a.createdAt, id: a.id },
+              { stamp: b.createdAt, id: b.id },
+            )).map((photo) => (
+              <ShareOnProfile
+                key={photo.id}
+                lines={2}
+                label={photo.caption.trim() ? `Include photo “${photo.caption.trim()}”` : 'Include photo'}
+                item={photo.caption.trim() || 'This gratitude photo'}
+                on={snap.sharing.gratitudePhotoIds.includes(photo.id)}
+                apply={(sharing, selected) => toggleShareId(sharing, 'gratitudePhotoIds', photo.id, selected)}
+              />
+            )))}
           />
-        ))) : (
+        ) : (
           <EmptyShare note="No gratitude photos yet. A photo stays private until you include it.">
             <Button label="Gratitude Diary" tone="quiet" onPress={() => router.push('/gratitude' as never)} />
           </EmptyShare>
         )}
       </ShareAnchor>
       <ShareAnchor id="visionItems" title="Vision items">
-        {snap.visionItems.length ? snap.visionItems.map((item, index) => (
-          <ShareOnProfile
-            key={item.id}
-            label={item.caption.trim() ? `Share “${item.caption.trim()}”` : `Share untitled picture ${index + 1}`}
-            item={item.caption.trim() || 'This vision caption'}
-            on={snap.sharing.visionIds.includes(item.id)}
-            apply={(sharing, selected) => toggleShareId(sharing, 'visionIds', item.id, selected)}
+        <VisionSectionShare />
+        {snap.visionItems.length ? (
+          <ShareSwitchList
+            title="Vision items"
+            shared={snap.visionItems.filter((item) => snap.sharing.visionIds.includes(item.id)).length}
+            items={[...snap.visionItems].sort((a, b) => compareNewest(
+              { stamp: a.createdAt, id: a.id },
+              { stamp: b.createdAt, id: b.id },
+            )).map((item) => {
+              const index = snap.visionItems.findIndex((candidate) => candidate.id === item.id);
+              return (
+                <ShareOnProfile
+                  key={item.id}
+                  lines={2}
+                  label={item.caption.trim() ? `Share “${item.caption.trim()}”` : `Share untitled picture ${index + 1}`}
+                  item={item.caption.trim() || 'This vision caption'}
+                  on={snap.sharing.visionIds.includes(item.id)}
+                  apply={(sharing, selected) => toggleShareId(sharing, 'visionIds', item.id, selected)}
+                />
+              );
+            })}
           />
-        )) : (
+        ) : (
           <EmptyShare note="No vision items yet. Add one on the Vision Board, then share it here.">
             <Button label="Vision Board" tone="quiet" onPress={() => router.push('/vision' as never)} />
           </EmptyShare>
@@ -300,10 +335,17 @@ function ProgressPhotoShares() {
       </EmptyShare>
     );
   }
+  const ordered = [...photos].sort((a, b) => compareNewest(
+    { stamp: `${a.takenOn}T${a.createdAt}`, id: a.id },
+    { stamp: `${b.takenOn}T${b.createdAt}`, id: b.id },
+  ));
+  const shared = ordered.filter((photo) => photo.visibility === 'community').length;
   return (
-    <View style={{ gap: 10 }}>
-      {photos.map((photo) => <ProgressPhotoShareSwitch key={photo.id} photo={photo} />)}
-    </View>
+    <ShareSwitchList
+      title="Progress photos"
+      shared={shared}
+      items={ordered.map((photo) => <ProgressPhotoShareSwitch key={photo.id} photo={photo} />)}
+    />
   );
 }
 
@@ -349,7 +391,7 @@ function ProgressPhotoShareSwitch({ photo }: { photo: ProgressPhoto }) {
   return (
     <View style={{ gap: 6, opacity: communityOn ? 1 : 0.45 }}>
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 12, alignItems: 'center' }}>
-        <T style={{ flex: 1 }}>{name}</T>
+        <T style={{ flex: 1 }} numberOfLines={2}>{name}</T>
         <Switch
           accessibilityLabel={`Share ${name}`}
           value={on}

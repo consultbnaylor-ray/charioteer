@@ -31,10 +31,12 @@ export function T({
   variant = 'body',
   style,
   children,
+  numberOfLines,
 }: {
   variant?: Variant;
   style?: StyleProp<TextStyle>;
   children: ReactNode;
+  numberOfLines?: number;
 }) {
   const theme = useAppTheme();
   const size = theme.scale;
@@ -54,7 +56,7 @@ export function T({
     },
   };
   return (
-    <Text maxFontSizeMultiplier={2} style={[styles[variant], style]}>
+    <Text maxFontSizeMultiplier={2} numberOfLines={numberOfLines} style={[styles[variant], style]}>
       {children}
     </Text>
   );
