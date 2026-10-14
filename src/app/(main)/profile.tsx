@@ -257,6 +257,10 @@ export default function Profile() {
           <T style={{ fontFamily: theme.font.bodyStrong, flex: 1 }}>View my public profile</T>
         </View>
       </Card>
+      <Card accessibilityLabel="Open Stats" onPress={() => router.push('/stats' as never)}>
+        <T style={{ fontFamily: theme.font.bodyStrong }}>Stats</T>
+        <T variant="muted">Sober days, mood, food, and body, in one place.</T>
+      </Card>
       {pinned ? (
         <View style={{ gap: 8 }}>
           <T variant="label">Pinned quote</T>

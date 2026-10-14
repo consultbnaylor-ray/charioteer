@@ -321,6 +321,8 @@ describe('nutrition storage and coach', () => {
     expect(APP_SECTIONS.filter((section) => section.tab).map((section) => section.label)).not.toContain('Nutrition');
     const labels = APP_SECTIONS.map((section) => section.label);
     expect(labels.indexOf('Nutrition')).toBe(labels.indexOf('Health Stats') + 1);
+    expect(labels.indexOf('Stats')).toBe(labels.indexOf('Health Stats') - 1);
+    expect(APP_SECTIONS.find((section) => section.id === 'stats')?.tab).toBeUndefined();
     expect(screen).toContain("Share today's meals");
     expect(screen).toContain('Share daily calories and macros');
     expect(screen).toContain('Share food quality');

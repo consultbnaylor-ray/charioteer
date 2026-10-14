@@ -53,6 +53,7 @@ import { NutritionBoard, WaterMeter, WeightTrendChart } from '@/ui/NutritionChar
 import { FatShareBar, NutritionShareSummary, NutritionShareSwitch, WagonFlag } from '@/ui/NutritionShare';
 import { pickMealPhoto } from '@/ui/pickMealPhoto';
 import { usePendingPress } from '@/ui/pendingAction';
+import { ScrollTarget } from '@/ui/ScrollTarget';
 import { useAppTheme } from '@/ui/theme';
 import { Button, Card, Choice, ErrorNote, Field, QuietNote, Screen, T, playSavedHaptic } from '@/ui/ui';
 
@@ -659,6 +660,7 @@ export default function Nutrition() {
           <Button label="Cancel" tone="quiet" disabled={isPending('save')} onPress={() => setDraft(null)} />
         </Card>
       ) : null}
+      <ScrollTarget id="goal">
       <Card>
         <T variant="label">Goal</T>
         <T variant="muted">Pick one. A suggestion uses your weight, height, age, and sex if you add them. You can change the numbers.</T>
@@ -707,6 +709,7 @@ export default function Nutrition() {
           apply={(current, selected) => ({ ...current, shareGoal: selected })}
         />
       </Card>
+      </ScrollTarget>
       <Card>
         <T variant="label">Logged today</T>
         {todayLogs.length === 0 ? <T variant="muted">Nothing saved yet.</T> : null}
@@ -731,6 +734,7 @@ export default function Nutrition() {
           apply={(current, selected) => ({ ...current, shareFoodDiary: selected })}
         />
       </Card>
+      <ScrollTarget id="today">
       <Card>
         <T variant="label">Today</T>
         {hide ? <T>{HIDE_CALORIES_LINE}</T> : <T>{`${totals.kcal.toLocaleString('en-GB')} kcal`}</T>}
@@ -756,6 +760,7 @@ export default function Nutrition() {
           apply={(current, selected) => ({ ...current, shareCalories: selected })}
         />
       </Card>
+      </ScrollTarget>
       <NutritionBoard
         logs={snap.foodLogs}
         today={today}
@@ -780,12 +785,15 @@ export default function Nutrition() {
           />
         )}
       />
+      <ScrollTarget id="water">
       <Card>
         <T variant="label">Water</T>
         <WaterMeter ml={water} />
         <Field label="Water today (ml)" value={waterText} onChangeText={setWaterText} keyboardType="number-pad" placeholder="350" />
         <Button label="Save water" pending={isPending('water')} pendingLabel="Saving..." onPress={saveWater} />
       </Card>
+      </ScrollTarget>
+      <ScrollTarget id="weight">
       <Card>
         <T variant="label">Weight</T>
         {weights.length === 0 ? <T variant="muted">Add a weight on Health Stats and it will show here.</T> : (
@@ -797,7 +805,11 @@ export default function Nutrition() {
           </>
         )}
       </Card>
+      </ScrollTarget>
+      <ScrollTarget id="body">
       <BodyCompositionCard />
+      </ScrollTarget>
+      <ScrollTarget id="calories">
       <Card>
         <T variant="label">Calories</T>
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
@@ -819,6 +831,7 @@ export default function Nutrition() {
           </>
         )}
       </Card>
+      </ScrollTarget>
       <WagonFlag />
       <NutritionShareSummary />
       {healthNote ? <T variant="muted">{healthNote}</T> : null}

@@ -9,6 +9,7 @@ import { formatUkWhen, isoDay } from '@/domain/dates';
 import { shownError } from '@/domain/errors';
 import { randomId } from '@/domain/id';
 import { moodStreakCount } from '@/domain/profileSharing';
+import { ScrollTarget } from '@/ui/ScrollTarget';
 import { ShareOnProfile } from '@/ui/ShareOnProfile';
 import { Button, Card, Choice, ErrorNote, Field, playSavedHaptic, Screen, T } from '@/ui/ui';
 
@@ -99,19 +100,23 @@ export default function CheckIn() {
           apply={(sharing, selected) => ({ ...sharing, moodStreak: selected })}
         />
       </View>
-      <T variant="label">Mood, 1 to 10</T>
-      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-        {MOOD_SCORES.map((value) => (
-          <Choice key={value} label={String(value)} selected={mood === value} onPress={() => touch(setMood)(value)} />
-        ))}
-      </View>
+      <ScrollTarget id="mood">
+        <T variant="label">Mood, 1 to 10</T>
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+          {MOOD_SCORES.map((value) => (
+            <Choice key={value} label={String(value)} selected={mood === value} onPress={() => touch(setMood)(value)} />
+          ))}
+        </View>
+      </ScrollTarget>
       <Field label="Sleep last night (hours)" value={sleep} onChangeText={touch(setSleep)} keyboardType="decimal-pad" />
-      <T variant="label">Craving, 0 to 10</T>
-      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-        {Array.from({ length: 11 }, (_, value) => (
-          <Choice key={value} label={String(value)} selected={craving === value} onPress={() => touch(setCraving)(value)} />
-        ))}
-      </View>
+      <ScrollTarget id="craving">
+        <T variant="label">Craving, 0 to 10</T>
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+          {Array.from({ length: 11 }, (_, value) => (
+            <Choice key={value} label={String(value)} selected={craving === value} onPress={() => touch(setCraving)(value)} />
+          ))}
+        </View>
+      </ScrollTarget>
       <Field label="Note, if you want" value={note} onChangeText={touch(setNote)} multiline placeholder="What is actually going on?" />
       <Field
         label="Grateful for, if you want"
@@ -137,6 +142,7 @@ export default function CheckIn() {
           <Button label="Add to your Gratitude Diary" onPress={() => router.push('/gratitude' as never)} />
         </Card>
       ) : null}
+      <ScrollTarget id="recent">
       <T variant="label">Recent</T>
       {snap.checkIns.length === 0 ? <T variant="muted">No check-ins yet.</T> : null}
       {snap.checkIns.slice(0, 8).map((item) => {
@@ -150,6 +156,7 @@ export default function CheckIn() {
           </Card>
         );
       })}
+      </ScrollTarget>
     </Screen>
   );
 }

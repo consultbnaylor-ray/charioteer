@@ -24,6 +24,7 @@ import { DateField } from '@/ui/DateField';
 import { OwnerPhoto } from '@/ui/OwnerPhoto';
 import { ShareOnProfile } from '@/ui/ShareOnProfile';
 import { pickProgressPhoto } from '@/ui/prepareProgressPhoto';
+import { ScrollTarget } from '@/ui/ScrollTarget';
 import { Button, Card, Choice, EditSheet, ErrorNote, Field, playSavedHaptic, Screen, T } from '@/ui/ui';
 import { radius, useAppTheme } from '@/ui/theme';
 
@@ -346,6 +347,7 @@ export default function GratitudeDiary() {
       title="Gratitude Diary"
       intro="A list you can come back to. This diary is private. It is not shown to the community. Photos on a line stay private too, and are not sent to Thumos. Thumos sees a few lines of text only if you have allowed the coach."
     >
+      <ScrollTarget id="diary">
       <T>{gratitudeCountLabel(entries.length)}</T>
       {photoNotice ? <T>{photoNotice}</T> : null}
       <Card>
@@ -502,6 +504,7 @@ export default function GratitudeDiary() {
           })}
         </View>
       ))}
+      </ScrollTarget>
       <EditSheet
         visible={editing != null}
         title="Edit this line"

@@ -31,6 +31,11 @@ export function MenuGlyph({ name, color }: { name: MenuIcon; color: string }) {
       ) : null}
       {name === 'star' ? <Path d="M12 4.2 13.9 8.6l4.8.4-3.6 3.1 1.1 4.6L12 14.4 7.8 16.7l1.1-4.6L5.3 9l4.8-.4L12 4.2z" stroke={color} {...stroke} /> : null}
       {name === 'pulse' ? <Path d="M3 12h3.2l2.2-6 3.4 12 2.2-6H21" stroke={color} {...stroke} /> : null}
+      {name === 'stats' ? (
+        <>
+          <Path d="M4 4h6.5v6.5H4V4zM13.5 4H20v6.5h-6.5V4zM4 13.5h6.5V20H4v-6.5zM13.5 13.5H20V20h-6.5v-6.5z" stroke={color} {...stroke} />
+        </>
+      ) : null}
       {name === 'meal' ? (
         <>
           <Path d="M7 10h10c.2 3.6-2 6.4-5 6.4S6.8 13.6 7 10z" stroke={color} {...stroke} />

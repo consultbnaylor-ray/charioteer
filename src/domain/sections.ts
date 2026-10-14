@@ -10,6 +10,7 @@ export type MenuIcon =
   | 'people'
   | 'star'
   | 'pulse'
+  | 'stats'
   | 'meal'
   | 'photo'
   | 'board'
@@ -52,6 +53,7 @@ export const APP_SECTIONS: readonly AppSection[] = [
   { id: 'thumos', label: 'Thumos', href: '/thumos', tab: true, icon: 'chat', group: 'main' },
   { id: 'people', label: 'People', href: '/people', tab: true, icon: 'people', group: 'main' },
   { id: 'gratitude', label: 'Gratitude Diary', href: '/gratitude', tab: true, tabLabel: 'Gratitude', icon: 'star', group: 'main' },
+  { id: 'stats', label: 'Stats', href: '/stats', icon: 'stats', group: 'tools' },
   { id: 'health', label: 'Health Stats', href: '/health', icon: 'pulse', group: 'tools' },
   { id: 'nutrition', label: 'Nutrition', href: '/nutrition', icon: 'meal', group: 'tools' },
   { id: 'photos', label: 'Progress photos', href: '/photos', icon: 'photo', group: 'tools' },

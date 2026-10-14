@@ -22,6 +22,7 @@ import { OwnerPhoto } from '@/ui/OwnerPhoto';
 import { InPlainWords } from '@/ui/InPlainWords';
 import { usePendingPress } from '@/ui/pendingAction';
 import { Button, Card, EditMark, EditSheet, ErrorNote, Field, Screen, T } from '@/ui/ui';
+import { ScrollTarget } from '@/ui/ScrollTarget';
 import { radius, useAppTheme } from '@/ui/theme';
 
 function greeting(date: Date) {
@@ -146,6 +147,7 @@ export default function Home() {
 
   return (
     <Screen eyebrow={greeting(now)} title={profile.displayName || 'Friend'} refreshing={refreshing} onRefresh={() => void pullToRefresh()}>
+      <ScrollTarget id="sober">
       {sober ? (
       <View style={{ gap: 8 }}>
       <Card onPress={openCorrection} accessibilityLabel="Correct the sober start date">
@@ -208,6 +210,11 @@ export default function Home() {
         ) : null}
       </Card>
       )}
+      </ScrollTarget>
+      <Card accessibilityLabel="Open Stats" onPress={() => router.push('/stats' as never)}>
+        <T variant="label">Stats</T>
+        <T>A plain look at sober days, check-ins, food, and the rest.</T>
+      </Card>
       <Card>
         <T variant="label">Quote of the day</T>
         <T>{dailyQuote.text}</T>
