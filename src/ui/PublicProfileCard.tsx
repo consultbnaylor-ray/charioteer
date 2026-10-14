@@ -120,6 +120,12 @@ export function PublicProfileCard() {
       monthIndex: photo.monthIndex,
       visibility: photo.visibility === 'community' ? 'community' : 'private',
     })),
+    profilePhotos: (snap.profilePhotos ?? []).map((photo) => ({
+      id: photo.id,
+      role: photo.role === 'avatar' ? 'avatar' as const : 'gallery' as const,
+      caption: photo.caption ?? '',
+      position: photo.position ?? 0,
+    })),
     pinnedQuoteId: me.pinnedQuoteId,
     nutrition: {
       logs: snap.foodLogs,
