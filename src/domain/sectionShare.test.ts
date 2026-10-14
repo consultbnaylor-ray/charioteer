@@ -25,7 +25,7 @@ describe('section share master', () => {
     expect(sectionShareState([{ on: false }, { on: false }])).toBe('off');
     expect(sectionShareState([{ on: true }, { on: true }])).toBe('on');
     expect(sectionShareState([{ on: true }, { on: false }])).toBe('mixed');
-    expect(SECTION_SHARE_LABEL).toBe('Share this section on profile');
+    expect(SECTION_SHARE_LABEL).toBe('Share Whole Section');
     expect(SECTION_SHARE_SOME).toBe('Some shared');
   });
 

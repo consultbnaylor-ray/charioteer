@@ -4,7 +4,7 @@ import { progressPhotoLabel } from './progressPhotos';
 import type { ProfileSharing } from './profileSharing';
 
 /** Master switch copy. The same words sit at the top of each section. */
-export const SECTION_SHARE_LABEL = 'Share this section on profile';
+export const SECTION_SHARE_LABEL = 'Share Whole Section';
 
 /** Shown beside the master when only some boxes in the section are on. */
 export const SECTION_SHARE_SOME = 'Some shared';
