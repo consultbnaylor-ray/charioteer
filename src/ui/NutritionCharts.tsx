@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
 import { View } from 'react-native';
 import Svg, { Circle, Line, Rect } from 'react-native-svg';
 
@@ -35,6 +35,8 @@ export function NutritionBoard({
   kcalTarget,
   proteinTarget,
   checkIns,
+  qualitySwitch,
+  progressSwitch,
 }: {
   logs: readonly FoodLog[];
   today: string;
@@ -42,6 +44,8 @@ export function NutritionBoard({
   kcalTarget: number | null;
   proteinTarget: number | null;
   checkIns: readonly { createdAt: string; mood: number; sleepHours: number }[];
+  qualitySwitch?: ReactNode;
+  progressSwitch?: ReactNode;
 }) {
   const [span, setSpan] = useState<7 | 30>(7);
   const picture = useMemo(() => {
@@ -78,6 +82,7 @@ export function NutritionBoard({
         <MacroDonut slices={picture.macros.slices} caption={picture.macros.caption} />
         <T variant="label">Fats</T>
         <FatBar unsaturated={picture.fats.unsaturated} other={picture.fats.other} caption={picture.fats.line} />
+        {qualitySwitch}
       </Card>
 
       <Card>
@@ -111,6 +116,7 @@ export function NutritionBoard({
         )}
         <T variant="label">Logging</T>
         <LoggingCalendar dots={picture.dots} caption={picture.dotsCaption} />
+        {progressSwitch}
       </Card>
 
       {picture.insights.length ? (

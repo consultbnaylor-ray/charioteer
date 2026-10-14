@@ -14,6 +14,13 @@ export const SHARE_HINT = 'Profile is visible to other community members';
 /** Shown under the switches while Community is off. */
 export const PROFILE_HIDDEN_SHARE = 'Your profile is hidden from others. Nothing here is visible until Community is on.';
 
+/** Community is on only when the person has switched it on and confirmed they are 18. */
+export function communitySharingOn(
+  profile: { communityVisible: boolean; ageConfirmed18: boolean } | null | undefined,
+): boolean {
+  return profile?.communityVisible === true && profile.ageConfirmed18 === true;
+}
+
 /**
  * Shown once, the first time a health or sobriety item is switched on.
  * Names that item only. The switch itself is the confirmation.

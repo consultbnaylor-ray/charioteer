@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
+import { communitySharingOn } from './profileSharing';
 import { APP_SECTIONS, TAB_SECTIONS } from './sections';
 import {
   ESTIMATE_LABEL,
@@ -785,7 +786,7 @@ describe('nutrition charts', () => {
     const weight = at('variant="label">Weight');
     const goal = at('variant="label">Goal');
     const wagon = at('<WagonFlag');
-    const sharing = at('variant="label">Sharing');
+    const sharing = at('<NutritionShareSummary');
     expect(log).toBeGreaterThan(-1);
     expect(log).toBeLessThan(logged);
     expect(logged).toBeLessThan(summary);
@@ -795,6 +796,39 @@ describe('nutrition charts', () => {
     expect(weight).toBeLessThan(goal);
     expect(goal).toBeLessThan(wagon);
     expect(wagon).toBeLessThan(sharing);
+    expect(screen.slice(logged, summary)).toContain("Share today's meals");
+    expect(screen.slice(summary, board)).toContain('Share daily calories and macros');
+    expect(screen.slice(board, water)).toContain('Share food quality');
+    expect(screen.slice(board, water)).toContain('Share progress and streaks');
+    expect(screen.slice(goal, wagon)).toContain('Share the goal and progress');
     expect(screen).toContain("pending={isPending('suggest')}");
+  });
+
+  it('keeps every nutrition share on screen when Community is off or the settings row is missing', () => {
+    expect(communitySharingOn(null)).toBe(false);
+    expect(communitySharingOn({ communityVisible: false, ageConfirmed18: true })).toBe(false);
+    expect(communitySharingOn({ communityVisible: true, ageConfirmed18: false })).toBe(false);
+    expect(communitySharingOn({ communityVisible: true, ageConfirmed18: true })).toBe(true);
+    const screen = readFileSync('src/app/(main)/nutrition.tsx', 'utf8');
+    const share = readFileSync('src/ui/NutritionShare.tsx', 'utf8');
+    const repo = readFileSync('src/data/supabase-repository.ts', 'utf8');
+    const card = screen.slice(screen.indexOf('<NutritionShareSummary'), screen.indexOf('{healthNote'));
+    expect(card).toContain('<NutritionShareSummary');
+    expect(share).toContain('What I share from Nutrition');
+    expect(share).toContain('Share today\'s meals');
+    expect(share).toContain('Share daily calories and macros');
+    expect(share).toContain('Share food quality');
+    expect(share).toContain('Share progress and streaks');
+    expect(share).toContain('Share the wagon flag');
+    expect(share).toContain('Share the goal and progress');
+    expect(share).toContain('These stay off until Community is on.');
+    expect(share).toContain('Turn on Community');
+    expect(share).toContain("router.push('/privacy'");
+    expect(share).toContain('disabled={!communityOn}');
+    expect(share).not.toContain('consentHealth');
+    expect(share).not.toContain('consentAi');
+    expect(screen).not.toMatch(/\{[^}\n]*communityVisible[^}\n]*\?[^}\n]*null/);
+    expect(repo).toContain('settingsRes.error ? defaultNutritionSettings() : nutritionFromRow');
+    expect(repo).toContain('if (!row) return base');
   });
 });

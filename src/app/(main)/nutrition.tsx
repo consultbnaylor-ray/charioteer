@@ -20,7 +20,6 @@ import {
   MEAL_SLOTS,
   NUTRITION_GOALS,
   alcoholSavedLine,
-  caloriesShareLine,
   dayItems,
   fatBalance,
   goalBodyForSuggestion,
@@ -28,12 +27,9 @@ import {
   goalMealNote,
   kcalFloor,
   lossBlocked,
-  mealStreakDays,
   mifflinBmr,
   nutritionPatternLines,
   processedLine,
-  progressShareLine,
-  publicMealLines,
   sugarCravingNote,
   suggestedTargetsLine,
   suggestGoalTargets,
@@ -53,7 +49,7 @@ import { weightReadingKg } from '@/domain/weightEntry';
 import { readAppleHealthBody } from '@/health/sync';
 import { writeDayToAppleHealth } from '@/health/writeNutrition';
 import { NutritionBoard, WaterMeter, WeightTrendChart } from '@/ui/NutritionCharts';
-import { FatShareBar, NutritionShareSwitch, WagonFlag } from '@/ui/NutritionShare';
+import { FatShareBar, NutritionShareSummary, NutritionShareSwitch, WagonFlag } from '@/ui/NutritionShare';
 import { pickMealPhoto } from '@/ui/pickMealPhoto';
 import { usePendingPress } from '@/ui/pendingAction';
 import { useAppTheme } from '@/ui/theme';
@@ -180,9 +176,6 @@ export default function Nutrition() {
   const patterns = nutritionPatternLines(snap.foodLogs, snap.checkIns);
   const water = snap.waterDays.find((day) => day.day === today)?.waterMl ?? 0;
   const todayLogs = snap.foodLogs.filter((log) => log.eatenOn === today);
-  const mealLines = publicMealLines(snap.foodLogs, today);
-  const calorieLine = caloriesShareLine(items, hide);
-  const streakLine = progressShareLine(mealStreakDays(snap.foodLogs, today));
   const weights = weightPointsFrom(snap.health);
   const latestWeight = weights.length ? weights[weights.length - 1] : undefined;
   const blocked = settings.goal
@@ -672,6 +665,12 @@ export default function Nutrition() {
             </View>
           );
         })}
+        <NutritionShareSwitch
+          label="Share today's meals"
+          item="Today's meals"
+          on={settings.shareFoodDiary}
+          apply={(current, selected) => ({ ...current, shareFoodDiary: selected })}
+        />
       </Card>
       <Card>
         <T variant="label">Today</T>
@@ -691,6 +690,12 @@ export default function Nutrition() {
         {saved ? <T>{saved}</T> : null}
         {dayLine ? <T>{dayLine}</T> : null}
         <T variant="muted">{`Water ${water.toLocaleString('en-GB')} ml`}</T>
+        <NutritionShareSwitch
+          label="Share daily calories and macros"
+          item="Daily calories and macros"
+          on={settings.shareCalories}
+          apply={(current, selected) => ({ ...current, shareCalories: selected })}
+        />
       </Card>
       <NutritionBoard
         logs={snap.foodLogs}
@@ -699,6 +704,22 @@ export default function Nutrition() {
         kcalTarget={settings.kcalTarget}
         proteinTarget={settings.proteinTarget}
         checkIns={snap.checkIns}
+        qualitySwitch={(
+          <NutritionShareSwitch
+            label="Share food quality"
+            item="Food quality"
+            on={settings.shareQuality}
+            apply={(current, selected) => ({ ...current, shareQuality: selected })}
+          />
+        )}
+        progressSwitch={(
+          <NutritionShareSwitch
+            label="Share progress and streaks"
+            item="Progress and streaks"
+            on={settings.shareProgress}
+            apply={(current, selected) => ({ ...current, shareProgress: selected })}
+          />
+        )}
       />
       <Card>
         <T variant="label">Water</T>
@@ -752,6 +773,12 @@ export default function Nutrition() {
         )}
         <Field label="Daily protein (g)" value={protein} onChangeText={setProtein} keyboardType="number-pad" placeholder="Leave blank for none" />
         <Button label="Save targets" pending={isPending('targets')} pendingLabel="Saving..." onPress={saveTargets} />
+        <NutritionShareSwitch
+          label="Share the goal and progress"
+          item="The goal and progress"
+          on={settings.shareGoal}
+          apply={(current, selected) => ({ ...current, shareGoal: selected })}
+        />
       </Card>
       <Card>
         <T variant="label">Calories</T>
@@ -775,72 +802,7 @@ export default function Nutrition() {
         )}
       </Card>
       <WagonFlag />
-      <Card>
-        <T variant="label">Sharing</T>
-        <T variant="muted">Each switch shares only that item. They stay off until you switch them on. A private message or a report is the only reply.</T>
-      </Card>
-
-      <Card>
-        <T variant="label">Today’s meals</T>
-        {mealLines.length === 0 ? <T variant="muted">Nothing saved yet.</T> : mealLines.map((meal) => (
-          <T key={`${meal.meal}:${meal.detail}`}>{meal.meal}: {meal.detail}</T>
-        ))}
-        <T variant="muted">Names only. Calories and macros stay on their own switch.</T>
-        <NutritionShareSwitch
-          label="Share today's meals"
-          item="Today's meals"
-          on={settings.shareFoodDiary}
-          apply={(current, selected) => ({ ...current, shareFoodDiary: selected })}
-        />
-      </Card>
-
-      <Card>
-        <T variant="label">Calories and macros</T>
-        <T>{calorieLine}</T>
-        <T variant="muted">Protein, carbohydrate, sugar and fibre. The fat split stays on food quality. Sodium stays private.</T>
-        <NutritionShareSwitch
-          label="Share daily calories and macros"
-          item="Daily calories and macros"
-          on={settings.shareCalories}
-          apply={(current, selected) => ({ ...current, shareCalories: selected })}
-        />
-      </Card>
-
-      <Card>
-        <T variant="label">Food quality</T>
-        <FatShareBar unsaturated={fats.unsaturated} other={fats.other} />
-        <T variant="muted">{`Unsaturated ${fats.unsaturated} g · saturated and trans ${fats.other} g`}</T>
-        <T>{fats.line}</T>
-        <NutritionShareSwitch
-          label="Share food quality"
-          item="Food quality"
-          on={settings.shareQuality}
-          apply={(current, selected) => ({ ...current, shareQuality: selected })}
-        />
-      </Card>
-
-      <Card>
-        <T variant="label">Progress</T>
-        <T>{streakLine}</T>
-        <T variant="muted">Days in a row with a meal logged. Check-ins stay private.</T>
-        <NutritionShareSwitch
-          label="Share progress and streaks"
-          item="Progress and streaks"
-          on={settings.shareProgress}
-          apply={(current, selected) => ({ ...current, shareProgress: selected })}
-        />
-      </Card>
-
-      <Card>
-        <T variant="label">Goal and progress</T>
-        <T variant="muted">The goal name and a short line. Weight in kilograms and calories stay off this share.</T>
-        <NutritionShareSwitch
-          label="Share the goal and progress"
-          item="The goal and progress"
-          on={settings.shareGoal}
-          apply={(current, selected) => ({ ...current, shareGoal: selected })}
-        />
-      </Card>
+      <NutritionShareSummary />
       {healthNote ? <T variant="muted">{healthNote}</T> : null}
       {error ? <ErrorNote>{error}</ErrorNote> : null}
     </Screen>

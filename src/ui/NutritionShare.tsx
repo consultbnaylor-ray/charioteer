@@ -1,13 +1,16 @@
+import { useRouter } from 'expo-router';
 import { useState } from 'react';
-import { Switch, View } from 'react-native';
+import { Pressable, Switch, View } from 'react-native';
 
 import { useRepository, useSnapshot } from '@/data';
 import { shownError } from '@/domain/errors';
 import { WAGON_SUPPORT, type NutritionSettings, type SharedGoal, type SharedQuality } from '@/domain/nutrition';
-import { sensitiveShareConfirm } from '@/domain/profileSharing';
+import { communitySharingOn, sensitiveShareConfirm } from '@/domain/profileSharing';
 import { usePendingPress } from '@/ui/pendingAction';
 import { useAppTheme } from '@/ui/theme';
 import { Button, Card, Field, QuietNote, T } from '@/ui/ui';
+
+export const NUTRITION_SHARE_LOCKED = 'These stay off until Community is on.';
 
 /**
  * One labelled switch for a nutrition share. The first health or sobriety
@@ -27,6 +30,7 @@ export function NutritionShareSwitch({
   const snap = useSnapshot();
   const repo = useRepository();
   const theme = useAppTheme();
+  const communityOn = communitySharingOn(snap.profile);
   const [ask, setAsk] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -44,6 +48,7 @@ export function NutritionShareSwitch({
   }
 
   function change(value: boolean) {
+    if (!communityOn) return;
     if (!value) {
       setAsk(false);
       if (on) void save(false, false);
@@ -63,6 +68,7 @@ export function NutritionShareSwitch({
         <Switch
           accessibilityLabel={label}
           value={on}
+          disabled={!communityOn}
           onValueChange={change}
           trackColor={{ true: theme.colors.ink, false: theme.colors.line }}
           thumbColor={theme.colors.surface}
@@ -77,6 +83,70 @@ export function NutritionShareSwitch({
       ) : null}
       <QuietNote>{error}</QuietNote>
     </View>
+  );
+}
+
+/** All six nutrition shares, always listed. Community off disables them; it does not hide them. */
+export function NutritionShareSummary() {
+  const snap = useSnapshot();
+  const router = useRouter();
+  const settings = snap.nutrition;
+  const communityOn = communitySharingOn(snap.profile);
+  return (
+    <Card>
+      <T variant="label">What I share from Nutrition</T>
+      {communityOn ? (
+        <T variant="muted">Each switch shares only that item. They stay off until you switch them on.</T>
+      ) : (
+        <>
+          <T variant="muted">{NUTRITION_SHARE_LOCKED}</T>
+          <Pressable
+            accessibilityRole="link"
+            accessibilityLabel="Turn on Community"
+            onPress={() => router.push('/privacy' as never)}
+            style={{ minHeight: 44, justifyContent: 'center' }}
+          >
+            <T>Turn on Community</T>
+          </Pressable>
+        </>
+      )}
+      <NutritionShareSwitch
+        label="Share today's meals"
+        item="Today's meals"
+        on={settings.shareFoodDiary}
+        apply={(current, selected) => ({ ...current, shareFoodDiary: selected })}
+      />
+      <NutritionShareSwitch
+        label="Share daily calories and macros"
+        item="Daily calories and macros"
+        on={settings.shareCalories}
+        apply={(current, selected) => ({ ...current, shareCalories: selected })}
+      />
+      <NutritionShareSwitch
+        label="Share food quality"
+        item="Food quality"
+        on={settings.shareQuality}
+        apply={(current, selected) => ({ ...current, shareQuality: selected })}
+      />
+      <NutritionShareSwitch
+        label="Share progress and streaks"
+        item="Progress and streaks"
+        on={settings.shareProgress}
+        apply={(current, selected) => ({ ...current, shareProgress: selected })}
+      />
+      <NutritionShareSwitch
+        label="Share the wagon flag"
+        item="The wagon flag"
+        on={settings.wagonVisible}
+        apply={(current, selected) => ({ ...current, wagonVisible: selected })}
+      />
+      <NutritionShareSwitch
+        label="Share the goal and progress"
+        item="The goal and progress"
+        on={settings.shareGoal}
+        apply={(current, selected) => ({ ...current, shareGoal: selected })}
+      />
+    </Card>
   );
 }
 
