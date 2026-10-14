@@ -73,9 +73,17 @@ function Chrome() {
 
   useEffect(() => {
     const subscription = AppState.addEventListener('change', (next) => {
-      if (next === 'active') void repo.reloadMessages();
+      if (next !== 'active') return;
+      void repo.reloadMessages();
+      void repo.resignOwnerPhotos();
     });
-    return () => subscription.remove();
+    const timer = setInterval(() => {
+      void repo.refreshOwnerPhotosIfStale();
+    }, 60_000);
+    return () => {
+      subscription.remove();
+      clearInterval(timer);
+    };
   }, [repo]);
 
   useEffect(() => {

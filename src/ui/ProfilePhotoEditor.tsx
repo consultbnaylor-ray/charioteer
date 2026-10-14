@@ -1,4 +1,3 @@
-import { Image } from 'expo-image';
 import { useEffect, useRef, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 
@@ -17,6 +16,7 @@ import { encodeProfileCrop, pickProfilePhoto } from '@/ui/prepareProgressPhoto';
 import { PhotoCropper } from '@/ui/PhotoCropper';
 import { useAppTheme } from '@/ui/theme';
 import { MemberAvatar } from '@/ui/MemberAvatar';
+import { OwnerPhoto } from '@/ui/OwnerPhoto';
 import { Button, ErrorNote, Field, playSavedHaptic, T } from '@/ui/ui';
 
 export function OwnProfilePhotos({ name, photos }: { name: string; photos: ProfilePhoto[] }) {
@@ -191,7 +191,7 @@ function PhotoFrame({ uri, label }: { uri: string | null; label: string }) {
   return (
     <View style={{ width: '100%', maxWidth: 280, aspectRatio: 1, borderRadius: 8, overflow: 'hidden', backgroundColor: theme.colors.sunken }}>
       {uri ? (
-        <Image source={{ uri }} style={StyleSheet.absoluteFill} contentFit="cover" accessibilityLabel={label} />
+        <OwnerPhoto uri={uri} style={StyleSheet.absoluteFill} contentFit="cover" accessibilityLabel={label} />
       ) : (
         <View style={[StyleSheet.absoluteFill, { alignItems: 'center', justifyContent: 'center' }]}>
           <T variant="muted">Photo</T>

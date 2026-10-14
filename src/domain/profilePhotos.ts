@@ -3,7 +3,8 @@ import { progressStoragePath } from './progressPhotos';
 export const PROFILE_PHOTO_BUCKET = 'profile-photos';
 export const PROFILE_GALLERY_LIMIT = 6;
 export const PROFILE_GALLERY_LIMIT_MESSAGE = 'Six profile photos is the limit.';
-export const PROFILE_SIGNED_URL_SECONDS = 600;
+/** Owner links. Other people still receive the short shared lifetime below. */
+export const PROFILE_SIGNED_URL_SECONDS = 3600;
 /** Other people only receive a URL this short. Turning Community off stops new ones. */
 export const PROFILE_SHARED_URL_SECONDS = 60;
 

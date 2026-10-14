@@ -1,4 +1,3 @@
-import { Image } from 'expo-image';
 import { useEffect, useRef, useState } from 'react';
 import { Modal, Pressable, ScrollView, useWindowDimensions, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -23,6 +22,7 @@ import {
   type VisionSize,
 } from '@/domain/visionBoard';
 import { toggleShareId } from '@/domain/profileSharing';
+import { OwnerPhoto } from '@/ui/OwnerPhoto';
 import { pickProgressPhoto } from '@/ui/prepareProgressPhoto';
 import { ShareOnProfile } from '@/ui/ShareOnProfile';
 import { Button, Choice, ErrorNote, Field, playSavedHaptic, Screen, T } from '@/ui/ui';
@@ -272,7 +272,7 @@ export function VisionBoard() {
                       style={{ width: span, height: TILE[item.size], borderRadius: 16, overflow: 'hidden', backgroundColor: theme.colors.sunken }}
                     >
                       {item.previewUrl ? (
-                        <Image source={{ uri: item.previewUrl }} style={{ width: '100%', height: '100%' }} contentFit="cover" accessibilityIgnoresInvertColors />
+                        <OwnerPhoto uri={item.previewUrl} style={{ width: '100%', height: '100%' }} contentFit="cover" />
                       ) : null}
                       <Overlay caption={item.caption} area={visionAreaLabel(item.area)} />
                     </Pressable>
@@ -300,7 +300,7 @@ export function VisionBoard() {
             </View>
             <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ gap: 12, paddingBottom: 72 }}>
               {open?.previewUrl ? (
-                <Image source={{ uri: open.previewUrl }} style={{ width: '100%', height: 220, borderRadius: 16 }} contentFit="cover" accessibilityIgnoresInvertColors />
+                <OwnerPhoto uri={open.previewUrl} style={{ width: '100%', height: 220, borderRadius: 16 }} contentFit="cover" />
               ) : null}
               <T variant="muted">The picture file stays on your account and is not sent to Thumos. The caption can appear on your profile if you switch it on.</T>
               <Field
@@ -351,7 +351,7 @@ export function VisionBoard() {
         <View style={{ flex: 1, backgroundColor: '#0C0C0C', justifyContent: 'center', paddingTop: insets.top, paddingBottom: 24 + insets.bottom }}>
           <T variant="label" style={{ color: '#F3F3EE', textAlign: 'center', marginBottom: 12 }}>Look at my vision</T>
           {current?.previewUrl ? (
-            <Image source={{ uri: current.previewUrl }} style={{ width: '100%', height: 420 }} contentFit="contain" accessibilityIgnoresInvertColors />
+            <OwnerPhoto uri={current.previewUrl} style={{ width: '100%', height: 420 }} contentFit="contain" />
           ) : null}
           <View style={{ padding: 20, gap: 8 }}>
             {current?.area ? <T style={{ color: '#F3F3EE' }}>{visionAreaLabel(current.area)}</T> : null}

@@ -1,4 +1,4 @@
-import { Image } from 'expo-image';
+import { OwnerPhoto } from '@/ui/OwnerPhoto';
 import { useEffect, useRef, useState } from 'react';
 import { StyleSheet, Switch, View } from 'react-native';
 
@@ -530,7 +530,7 @@ function PhotoThumb({ uri, label }: { uri: string | null; label: string }) {
   return (
     <View style={{ width: 72, height: 72, borderRadius: 8, overflow: 'hidden', backgroundColor: theme.colors.sunken }}>
       {uri ? (
-        <Image source={{ uri }} style={StyleSheet.absoluteFill} contentFit="cover" accessibilityLabel={label} />
+        <OwnerPhoto uri={uri} style={StyleSheet.absoluteFill} contentFit="cover" accessibilityLabel={label} />
       ) : (
         <View style={[StyleSheet.absoluteFill, { alignItems: 'center', justifyContent: 'center', padding: 4 }]}>
           <T variant="muted">Photo</T>

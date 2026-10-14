@@ -5,7 +5,8 @@ export const PROGRESS_MAX_EDGE = 1600;
 export const PROGRESS_JPEG_QUALITY = 0.8;
 export const PROGRESS_MAX_BYTES = 2_097_152;
 export const PROGRESS_NOTE_LIMIT = 280;
-export const PROGRESS_SIGNED_URL_SECONDS = 600;
+/** Owner links. Other people still receive the short shared lifetime below. */
+export const PROGRESS_SIGNED_URL_SECONDS = 3600;
 /** Other people only ever receive a URL this short. Unsharing or deletion stops new ones at once. */
 export const PROGRESS_SHARED_URL_SECONDS = 60;
 export const PROGRESS_SHARE_WARNING = 'Anyone in the Charioteer community will be able to see this photo';

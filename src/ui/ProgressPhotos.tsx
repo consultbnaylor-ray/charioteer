@@ -11,6 +11,7 @@ import { resolveComparison, type ComparisonChoice } from '@/domain/progressCompa
 import { planProgressPhoto, PROGRESS_SHARE_WARNING, progressAnchor, progressPhotoLabel, PROGRESS_NOTE_LIMIT } from '@/domain/progressPhotos';
 import { PROFILE_HIDDEN_SHARE, SHARE_HINT, sensitiveShareConfirm } from '@/domain/profileSharing';
 import { DateField } from '@/ui/DateField';
+import { OwnerPhoto } from '@/ui/OwnerPhoto';
 import { pickProgressPhoto } from '@/ui/prepareProgressPhoto';
 import { loadProgressComparison, saveProgressComparison } from '@/ui/progressComparisonStore';
 import { DismissKeyboard, inputScrollProps, KeyboardForm } from '@/ui/keyboard';
@@ -472,7 +473,7 @@ function PhotoDetailSheet({
                     showsVerticalScrollIndicator={false}
                   >
                     {photo.previewUrl ? (
-                      <Image pointerEvents="none" source={{ uri: photo.previewUrl }} style={{ width: '100%', height: 280 }} contentFit="contain" />
+                      <OwnerPhoto pointerEvents="none" uri={photo.previewUrl} style={{ width: '100%', height: 280 }} contentFit="contain" />
                     ) : (
                       <View pointerEvents="none" style={{ height: 280, alignItems: 'center', justifyContent: 'center', padding: 8 }}>
                         <T variant="muted">Photo unavailable</T>
@@ -633,7 +634,7 @@ function PhotoFrame({ photo, marked, checked }: { photo: ProgressPhoto; marked?:
       }}
     >
       {photo.previewUrl ? (
-        <Image pointerEvents="none" source={{ uri: photo.previewUrl }} style={StyleSheet.absoluteFill} contentFit="cover" />
+        <OwnerPhoto pointerEvents="none" uri={photo.previewUrl} style={StyleSheet.absoluteFill} contentFit="cover" />
       ) : (
         <View pointerEvents="none" style={[StyleSheet.absoluteFill, { alignItems: 'center', justifyContent: 'center', padding: 8 }]}>
           <T variant="muted">Photo unavailable</T>

@@ -216,6 +216,11 @@ export class DemoRepository implements Repository {
     await this.reload();
   }
 
+  /** Demo pictures are data URLs, so there is nothing to sign again. */
+  async resignOwnerPhotos(): Promise<void> {}
+
+  async refreshOwnerPhotosIfStale(): Promise<void> {}
+
   watchChat(_connectionId: string): () => void {
     return () => undefined;
   }

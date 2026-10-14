@@ -10,8 +10,13 @@ import { useAppTheme } from '@/ui/theme';
 /** Profile picture, or one centred initial when there is no photo. */
 export function MemberAvatar({ name, url, size = 48 }: { name: string; url?: string | null; size?: number }) {
   const theme = useAppTheme();
+  const repo = useRepository();
+  const [attempt, setAttempt] = useState(0);
   const [failed, setFailed] = useState(false);
-  useEffect(() => setFailed(false), [url]);
+  useEffect(() => {
+    setAttempt(0);
+    setFailed(false);
+  }, [url]);
   const show = Boolean(url) && !failed;
   const fontSize = Math.round(size * 0.38);
   const lineHeight = Math.round(size * 0.44);
@@ -30,11 +35,19 @@ export function MemberAvatar({ name, url, size = 48 }: { name: string; url?: str
     >
       {show ? (
         <Image
+          key={attempt}
           source={{ uri: url ?? '' }}
           style={StyleSheet.absoluteFill}
           contentFit="cover"
           accessibilityLabel={`${name} profile picture`}
-          onError={() => setFailed(true)}
+          onError={() => {
+            void repo.resignOwnerPhotos();
+            if (attempt < 1) {
+              setAttempt(1);
+              return;
+            }
+            setFailed(true);
+          }}
         />
       ) : (
         <Text

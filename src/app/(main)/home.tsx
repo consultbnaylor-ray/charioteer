@@ -1,4 +1,3 @@
-import { Image } from 'expo-image';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Pressable, View } from 'react-native';
@@ -19,6 +18,7 @@ import { CheckInWeek } from '@/ui/CheckInWeek';
 import { ShareOnProfile } from '@/ui/ShareOnProfile';
 import { UnitsGuide } from '@/ui/UnitsGuide';
 import { DateField } from '@/ui/DateField';
+import { OwnerPhoto } from '@/ui/OwnerPhoto';
 import { InPlainWords } from '@/ui/InPlainWords';
 import { usePendingPress } from '@/ui/pendingAction';
 import { Button, Card, EditMark, EditSheet, ErrorNote, Field, Screen, T } from '@/ui/ui';
@@ -287,7 +287,7 @@ export default function Home() {
           <View style={{ flexDirection: 'row', gap: 8 }}>
             {snap.visionItems.slice(0, 3).map((item) => (
               <View key={item.id} style={{ width: 56, height: 56, borderRadius: 10, overflow: 'hidden', backgroundColor: theme.colors.sunken }}>
-                {item.previewUrl ? <Image source={{ uri: item.previewUrl }} style={{ width: 56, height: 56 }} contentFit="cover" accessibilityIgnoresInvertColors /> : null}
+                {item.previewUrl ? <OwnerPhoto uri={item.previewUrl} style={{ width: 56, height: 56 }} contentFit="cover" /> : null}
               </View>
             ))}
           </View>

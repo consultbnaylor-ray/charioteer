@@ -5,7 +5,7 @@ export const GRATITUDE_BUCKET = 'gratitude-photos';
 export const GRATITUDE_PHOTO_LIMIT = 4;
 export const GRATITUDE_MAX_BYTES = 2_097_152;
 /** Owner signed links only. There is no community TTL. */
-export const GRATITUDE_SIGNED_URL_SECONDS = 600;
+export const GRATITUDE_SIGNED_URL_SECONDS = 3600;
 
 /** Owner folder only. The file name is the photo id. */
 export function gratitudeStoragePath(userId: string, photoId: string): string {

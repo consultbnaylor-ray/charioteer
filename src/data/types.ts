@@ -352,6 +352,13 @@ export interface Repository {
   /** Messages only. Used while a chat is open and when the app returns. */
   reloadMessages(): Promise<void>;
   /**
+   * New owner signed URLs for progress, profile, gratitude, and vision photos.
+   * Patches those links only, so a chip save in flight is left as it is.
+   */
+  resignOwnerPhotos(): Promise<void>;
+  /** Re-signs those owner URLs when the last sign is more than about eight minutes old. */
+  refreshOwnerPhotosIfStale(): Promise<void>;
+  /**
    * Inserts for one chat. Realtime applies the select policy, and the filter
    * limits the stream to this connection. Call the returned function to stop.
    */

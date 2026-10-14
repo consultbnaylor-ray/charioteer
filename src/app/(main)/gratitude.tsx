@@ -21,6 +21,7 @@ import {
 import { dismissSheetBeforePhotoPicker, gratitudePhotoLimitMessage, photoPickerSheetDelay } from '@/domain/gratitudePhotos';
 import { toggleShareId } from '@/domain/profileSharing';
 import { DateField } from '@/ui/DateField';
+import { OwnerPhoto } from '@/ui/OwnerPhoto';
 import { ShareOnProfile } from '@/ui/ShareOnProfile';
 import { pickProgressPhoto } from '@/ui/prepareProgressPhoto';
 import { Button, Card, Choice, EditSheet, ErrorNote, Field, playSavedHaptic, Screen, T } from '@/ui/ui';
@@ -604,7 +605,7 @@ function PhotoStrip({
           style={{ width: 96, height: 96, borderRadius: radius.md, overflow: 'hidden', backgroundColor: theme.colors.sunken }}
         >
           {photo.previewUrl ? (
-            <Image pointerEvents="none" source={{ uri: photo.previewUrl }} style={{ width: 96, height: 96 }} contentFit="cover" accessibilityLabel="Gratitude photo" />
+            <OwnerPhoto pointerEvents="none" uri={photo.previewUrl} style={{ width: 96, height: 96 }} contentFit="cover" accessibilityLabel="Gratitude photo" />
           ) : (
             <View pointerEvents="none" style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
               <T variant="muted">Photo</T>
@@ -667,7 +668,7 @@ function PhotoViewer({
             style={{ height: 360 }}
           >
             {photo?.previewUrl ? (
-              <Image pointerEvents="none" source={{ uri: photo.previewUrl }} style={{ width: '100%', height: 360 }} contentFit="contain" />
+              <OwnerPhoto pointerEvents="none" uri={photo.previewUrl} style={{ width: '100%', height: 360 }} contentFit="contain" />
             ) : (
               <View pointerEvents="none" style={{ height: 360, alignItems: 'center', justifyContent: 'center' }}>
                 <T variant="muted">Photo unavailable</T>

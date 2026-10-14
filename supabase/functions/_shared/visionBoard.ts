@@ -8,7 +8,8 @@ export const VISION_MAX_BYTES = 2_097_152;
 export const VISION_PHOTO_LIMIT = 40;
 export const VISION_CAPTION_LIMIT = 140;
 export const VISION_STATEMENT_LIMIT = 280;
-export const VISION_SIGNED_URL_SECONDS = 600;
+/** Owner links. Vision photos are private and are not given a short community URL. */
+export const VISION_SIGNED_URL_SECONDS = 3600;
 
 export const VISION_AREAS = [
   { id: 'health', label: 'Health' },

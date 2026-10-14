@@ -43,6 +43,12 @@ import {
 } from '@/domain/visionBoard';
 import { isoDay } from '@/domain/dates';
 import {
+  ownerPhotoResignCooling,
+  ownerPhotoUrlsStale,
+  withSignedGratitudePhotos,
+  withSignedPreviewUrls,
+} from '@/domain/ownerPhotos';
+import {
   defaultNutritionSettings,
   estimateFromText,
   foodItemFromUnknown,
@@ -208,6 +214,9 @@ export class SupabaseRepository implements Repository {
   /** Unfiltered insert stream for the chats list. Recreated only when sign-in changes. */
   private messageChannel: ReturnType<SupabaseClient['channel']> | null = null;
   private messagesListening = false;
+  /** When owner progress, profile, gratitude, and vision links were last signed. */
+  private ownerPhotosSignedAt: number | null = null;
+  private ownerPhotoResign: Promise<void> | null = null;
 
   constructor(url: string, anonKey: string) {
     this.url = url;
@@ -236,6 +245,20 @@ export class SupabaseRepository implements Repository {
 
   async reload(): Promise<void> {
     await this.refresh();
+  }
+
+  async resignOwnerPhotos(): Promise<void> {
+    if (this.ownerPhotoResign) return this.ownerPhotoResign;
+    if (ownerPhotoResignCooling(this.ownerPhotosSignedAt)) return;
+    this.ownerPhotoResign = this.resignOwnerPhotosNow().finally(() => {
+      this.ownerPhotoResign = null;
+    });
+    return this.ownerPhotoResign;
+  }
+
+  async refreshOwnerPhotosIfStale(): Promise<void> {
+    if (!ownerPhotoUrlsStale(this.ownerPhotosSignedAt)) return;
+    await this.resignOwnerPhotos();
   }
 
   async reloadMessages(): Promise<void> {
@@ -349,6 +372,7 @@ export class SupabaseRepository implements Repository {
     const resources = ((resourcesRes.data ?? []) as Row[]).map(mapResource);
 
     if (!session) {
+      this.ownerPhotosSignedAt = null;
       this.emit({ ...emptySnapshot(), ready: true, interests, resources });
       return;
     }
@@ -448,6 +472,7 @@ export class SupabaseRepository implements Repository {
       gratitudeMessage = again.error?.message ?? null;
     }
 
+    this.ownerPhotosSignedAt = Date.now();
     this.emit({
       ready: true,
       mode: 'supabase',
@@ -484,6 +509,63 @@ export class SupabaseRepository implements Repository {
             return [{ quoteId, createdAt: String(row.created_at ?? '') }];
           }),
     });
+  }
+
+  /** Signs the paths already on the snapshot and writes only the new preview URLs. */
+  private async resignOwnerPhotosNow(): Promise<void> {
+    const { data } = await this.client.auth.getSession();
+    if (!data.session) return;
+    const currentPaths = this.snapshot;
+    const [progress, profile, gratitude, vision] = await Promise.all([
+      this.signedUrlMap(PROGRESS_BUCKET, currentPaths.progressPhotos.map((photo) => photo.storagePath), PROGRESS_SIGNED_URL_SECONDS),
+      this.signedUrlMap(PROFILE_PHOTO_BUCKET, currentPaths.profilePhotos.map((photo) => photo.storagePath), PROFILE_SIGNED_URL_SECONDS),
+      this.signedUrlMap(
+        GRATITUDE_BUCKET,
+        currentPaths.gratitude.flatMap((entry) => entry.photos.map((photo) => photo.storagePath)),
+        GRATITUDE_SIGNED_URL_SECONDS,
+      ),
+      this.signedUrlMap(VISION_BUCKET, currentPaths.visionItems.map((item) => item.storagePath), VISION_SIGNED_URL_SECONDS),
+    ]);
+    const wanted = currentPaths.progressPhotos.length
+      + currentPaths.profilePhotos.length
+      + currentPaths.gratitude.reduce((sum, entry) => sum + entry.photos.length, 0)
+      + currentPaths.visionItems.length;
+    const signedCount = progress.size + profile.size + gratitude.size + vision.size;
+    if (wanted === 0 || signedCount > 0) this.ownerPhotosSignedAt = Date.now();
+    const latest = this.snapshot;
+    const progressPhotos = withSignedPreviewUrls(latest.progressPhotos, progress);
+    const profilePhotos = withSignedPreviewUrls(latest.profilePhotos, profile);
+    const gratitudeEntries = withSignedGratitudePhotos(latest.gratitude, gratitude);
+    const visionItems = withSignedPreviewUrls(latest.visionItems, vision);
+    if (
+      progressPhotos === latest.progressPhotos
+      && profilePhotos === latest.profilePhotos
+      && gratitudeEntries === latest.gratitude
+      && visionItems === latest.visionItems
+    ) return;
+    this.emit({
+      ...latest,
+      progressPhotos,
+      profilePhotos,
+      gratitude: gratitudeEntries,
+      visionItems,
+    });
+  }
+
+  private async signedUrlMap(bucket: string, paths: string[], seconds: number): Promise<Map<string, string>> {
+    const signedByPath = new Map<string, string>();
+    const clean = [...new Set(paths.filter((path) => path && !path.includes('..')))];
+    if (!clean.length) return signedByPath;
+    try {
+      const signed = await this.client.storage.from(bucket).createSignedUrls(clean, seconds);
+      if (signed.error) console.error(signed.error.message);
+      for (const item of signed.data ?? []) {
+        if (item.path && item.signedUrl) signedByPath.set(item.path, item.signedUrl);
+      }
+    } catch (error) {
+      console.error(error);
+    }
+    return signedByPath;
   }
 
   private async signedProgressPhotos(rows: Row[] | null, queryError: string | undefined, userId: string): Promise<ProgressPhoto[]> {

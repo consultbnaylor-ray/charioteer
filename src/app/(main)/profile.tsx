@@ -1,5 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Platform, Share, Switch, View } from 'react-native';
 
 import { useRepository, useSnapshot } from '@/data';
@@ -28,7 +28,7 @@ import { Button, Card, Choice, ErrorNote, Field, playSavedHaptic, Screen, T } fr
 import { useAppTheme } from '@/ui/theme';
 import { offerMessageNotifications } from '@/notifications/register';
 import { GENERIC_MESSAGE_ALERT } from '../../../supabase/functions/_shared/messagePush';
-import { useRouter } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 
 export default function Profile() {
   const snap = useSnapshot();
@@ -67,6 +67,13 @@ export default function Profile() {
     const timer = setTimeout(() => setSavedNote(null), 2500);
     return () => clearTimeout(timer);
   }, [savedNote]);
+
+  // Owner photo links expire while the tab stays mounted, so load them again each time You opens.
+  useFocusEffect(
+    useCallback(() => {
+      void repo.reload();
+    }, [repo]),
+  );
 
   if (!profile) return null;
 
