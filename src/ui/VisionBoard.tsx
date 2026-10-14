@@ -24,6 +24,7 @@ import {
 import { toggleShareId } from '@/domain/profileSharing';
 import { OwnerPhoto } from '@/ui/OwnerPhoto';
 import { pickProgressPhoto } from '@/ui/prepareProgressPhoto';
+import { VisionSectionShare } from '@/ui/SectionShare';
 import { ShareOnProfile } from '@/ui/ShareOnProfile';
 import { Button, Choice, ErrorNote, Field, playSavedHaptic, Screen, T } from '@/ui/ui';
 import { useAppTheme } from '@/ui/theme';
@@ -206,6 +207,7 @@ export function VisionBoard() {
       title="My 5-year vision"
       intro={visionDateLine(profile?.visionStartedOn ?? null)}
     >
+      <VisionSectionShare />
       <Field
         label="In my own words"
         value={statement}

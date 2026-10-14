@@ -15,6 +15,7 @@ import { quoteCredit, quoteOfTheDay } from '@/domain/stoicQuotes';
 import { VISION_EMPTY_STATEMENT } from '@/domain/visionBoard';
 import { daysUntil, drinkFreeThisWeek, showsSoberRecord, SUDDEN_STOP_WARNING, toggleDrinkFreeDay } from '@/domain/stage';
 import { CheckInWeek } from '@/ui/CheckInWeek';
+import { SoberSectionShare } from '@/ui/SectionShare';
 import { ShareOnProfile } from '@/ui/ShareOnProfile';
 import { UnitsGuide } from '@/ui/UnitsGuide';
 import { DateField } from '@/ui/DateField';
@@ -150,6 +151,7 @@ export default function Home() {
       <ScrollTarget id="sober">
       {sober ? (
       <View style={{ gap: 8 }}>
+      <SoberSectionShare />
       <Card onPress={openCorrection} accessibilityLabel="Correct the sober start date">
         <EditMark label="Sober" />
         <T variant="hero">{elapsed ? elapsed.days : '—'}</T>

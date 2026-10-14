@@ -22,6 +22,7 @@ import { dismissSheetBeforePhotoPicker, gratitudePhotoLimitMessage, photoPickerS
 import { toggleShareId } from '@/domain/profileSharing';
 import { DateField } from '@/ui/DateField';
 import { OwnerPhoto } from '@/ui/OwnerPhoto';
+import { GratitudeSectionShare } from '@/ui/SectionShare';
 import { ShareOnProfile } from '@/ui/ShareOnProfile';
 import { pickProgressPhoto } from '@/ui/prepareProgressPhoto';
 import { ScrollTarget } from '@/ui/ScrollTarget';
@@ -347,6 +348,7 @@ export default function GratitudeDiary() {
       title="Gratitude Diary"
       intro="A list you can come back to. This diary is private. It is not shown to the community. Photos on a line stay private too, and are not sent to Thumos. Thumos sees a few lines of text only if you have allowed the coach."
     >
+      <GratitudeSectionShare />
       <ScrollTarget id="diary">
       <T>{gratitudeCountLabel(entries.length)}</T>
       {photoNotice ? <T>{photoNotice}</T> : null}

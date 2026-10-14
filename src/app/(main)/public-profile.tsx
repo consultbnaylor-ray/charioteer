@@ -1,3 +1,4 @@
+import { ProfileTextSectionShare } from '@/ui/SectionShare';
 import { PublicProfileCard } from '@/ui/PublicProfileCard';
 import { Screen } from '@/ui/ui';
 
@@ -5,6 +6,7 @@ import { Screen } from '@/ui/ui';
 export default function MyPublicProfile() {
   return (
     <Screen eyebrow="You">
+      <ProfileTextSectionShare />
       <PublicProfileCard />
     </Screen>
   );

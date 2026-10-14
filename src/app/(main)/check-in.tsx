@@ -10,6 +10,7 @@ import { shownError } from '@/domain/errors';
 import { randomId } from '@/domain/id';
 import { moodStreakCount } from '@/domain/profileSharing';
 import { ScrollTarget } from '@/ui/ScrollTarget';
+import { CheckInSectionShare } from '@/ui/SectionShare';
 import { ShareOnProfile } from '@/ui/ShareOnProfile';
 import { Button, Card, Choice, ErrorNote, Field, playSavedHaptic, Screen, T } from '@/ui/ui';
 
@@ -86,6 +87,7 @@ export default function CheckIn() {
         </View>
       )}
     >
+      <CheckInSectionShare />
       <View style={{ gap: 8 }}>
         <Card>
           <T variant="label">Mood streak</T>

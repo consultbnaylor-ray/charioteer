@@ -54,6 +54,7 @@ import { BodyCompositionCard } from '@/ui/BodyComposition';
 import { MealEdit } from '@/ui/MealEdit';
 import { NutritionBoard, WaterMeter, WeightTrendChart } from '@/ui/NutritionCharts';
 import { FatShareBar, NutritionShareSummary, NutritionShareSwitch, WagonFlag } from '@/ui/NutritionShare';
+import { NutritionSectionShare } from '@/ui/SectionShare';
 import { pickMealPhoto } from '@/ui/pickMealPhoto';
 import { usePendingPress } from '@/ui/pendingAction';
 import { ScrollTarget } from '@/ui/ScrollTarget';
@@ -693,6 +694,7 @@ export default function Nutrition() {
       title="Nutrition"
       intro={`${formatUkLong(today)}. Estimates stay labelled, and nothing is saved until you confirm it.`}
     >
+      <NutritionSectionShare />
       <Card>
         <T variant="label">Log a meal</T>
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>

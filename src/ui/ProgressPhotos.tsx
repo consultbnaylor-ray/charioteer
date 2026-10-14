@@ -10,6 +10,7 @@ import { shownError } from '@/domain/errors';
 import { resolveComparison, type ComparisonChoice } from '@/domain/progressComparison';
 import { planProgressPhoto, PROGRESS_SHARE_WARNING, progressAnchor, progressPhotoLabel, PROGRESS_NOTE_LIMIT } from '@/domain/progressPhotos';
 import { PROFILE_HIDDEN_SHARE, SHARE_HINT, sensitiveShareConfirm } from '@/domain/profileSharing';
+import { PhotoSectionShare } from '@/ui/SectionShare';
 import { DateField } from '@/ui/DateField';
 import { OwnerPhoto } from '@/ui/OwnerPhoto';
 import { pickProgressPhoto } from '@/ui/prepareProgressPhoto';
@@ -237,6 +238,7 @@ export function ProgressPhotos() {
 
   return (
     <View style={{ gap: 14 }}>
+      <PhotoSectionShare />
       <T variant="label">Progress photos</T>
       <T>A starting point, then photos through the months. Counted from your sober date, or from the day you joined.</T>
       <T>Photos stay private unless you choose Share with community. They are not sent to Thumos. Only me puts a shared photo back to just you.</T>

@@ -19,6 +19,7 @@ import { InterestChip } from '@/ui/InterestChip';
 import { MemberAvatar } from '@/ui/MemberAvatar';
 import { BuildChoices } from '@/ui/BodyComposition';
 import { WagonFlag } from '@/ui/NutritionShare';
+import { YouSectionShare } from '@/ui/SectionShare';
 import { ShareOnProfile } from '@/ui/ShareOnProfile';
 import { ConsentChoices } from '@/ui/ConsentChoices';
 import { ProgressPhotos } from '@/ui/ProgressPhotos';
@@ -249,6 +250,7 @@ export default function Profile() {
         </View>
       )}
     >
+      <YouSectionShare />
       <Card
         accessibilityLabel="View my public profile"
         onPress={() => router.push('/public-profile' as never)}
