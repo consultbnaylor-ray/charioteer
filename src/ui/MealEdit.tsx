@@ -70,12 +70,15 @@ export function MealEdit({
   const [items, setItems] = useState<DraftItem[]>(() => log.items.map(draftFrom));
   const [fatText, setFatText] = useState(() => log.items.map((item) => String(fatGrams(draftFrom(item)))));
   const [estimated, setEstimated] = useState(log.estimated);
+  const appliedRef = useRef(openedPortion);
+  const draftRef = useRef(items);
 
   const typedPortion = parsePortion(portion);
   const portionChanged = (typedPortion ?? appliedPortion) !== openedPortion;
   const descriptionChanged = note.trim() !== openedNote.trim();
 
   function replaceItems(next: DraftItem[]) {
+    draftRef.current = next;
     setItems(next);
     setFatText(next.map((item) => String(fatGrams(item))));
   }
@@ -83,9 +86,20 @@ export function MealEdit({
   function updateItem(index: number, patch: Partial<DraftItem>) {
     setItems((current) => {
       const next = current.map((item, itemIndex) => (itemIndex === index ? { ...item, ...patch } : item));
+      draftRef.current = next;
       setFatText(next.map((item) => String(fatGrams(item))));
       return next;
     });
+  }
+
+  function applyPortion(value: string) {
+    setPortion(value);
+    const next = parsePortion(value);
+    if (next == null || next === appliedRef.current) return;
+    const scaled = scaleDraft(draftRef.current, next / appliedRef.current);
+    appliedRef.current = next;
+    setAppliedPortion(next);
+    replaceItems(scaled);
   }
 
   function commitPortion(drafts: DraftItem[]): { items: DraftItem[]; portion: number } | null {
@@ -94,8 +108,9 @@ export function MealEdit({
       onError('Portion sits between 0.25 and 12.');
       return null;
     }
-    if (next === appliedPortion) return { items: drafts, portion: next };
-    const scaled = scaleDraft(drafts, next / appliedPortion);
+    if (next === appliedRef.current) return { items: drafts, portion: next };
+    const scaled = scaleDraft(drafts, next / appliedRef.current);
+    appliedRef.current = next;
     setAppliedPortion(next);
     replaceItems(scaled);
     return { items: scaled, portion: next };
@@ -153,7 +168,10 @@ export function MealEdit({
       }
       const scaled = factor === 1 ? foods : scaleFoodItems(foods, factor);
       replaceItems(scaled.map(draftFrom));
-      if (typedPortion != null) setAppliedPortion(typedPortion);
+      if (typedPortion != null) {
+        appliedRef.current = typedPortion;
+        setAppliedPortion(typedPortion);
+      }
       setEstimated(true);
       onError(null);
     }).catch((err: unknown) => {
@@ -167,8 +185,7 @@ export function MealEdit({
       <Field
         label="Portion"
         value={portion}
-        onChangeText={setPortion}
-        onBlur={() => { commitPortion(items); }}
+        onChangeText={applyPortion}
         keyboardType="decimal-pad"
         hint="1 is the logged amount. 2 doubles every figure."
       />
