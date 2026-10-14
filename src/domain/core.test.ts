@@ -4,7 +4,7 @@ import { planRelapse, soberElapsed } from './sober';
 import { formatGbp, savingsFromTypicalWeek, yearlyFromWeekly } from './savings';
 import { detectSafety, ensureSafetyNotices, firstSafetyHit, pinnedSafetyNotices, SELF_HARM_NOTICE, WITHDRAWAL_NOTICE } from './safety';
 import { encodeSse, parseSseBuffer } from './sse';
-import { buildChatCompletionBody, buildSystemPrompt, buildThumosContext, completionDeltaText, conversationCues, CRAVING_LINE, detectCommittedAction, detectRisk, historyTurnsForModel, inferThumosMode, isThumosFollowUp, OFFLINE_COACH_MESSAGE, OPENING_LINE, resolveThumosMode, THUMOS_CHAT, THUMOS_INTRO, thumosReasoningEffort } from './thumos';
+import { buildChatCompletionBody, buildSystemPrompt, buildThumosContext, completionDeltaText, conversationCues, CRAVING_LINE, detectCommittedAction, detectRisk, historyTurnsForModel, inferThumosMode, isThumosFollowUp, OFFLINE_COACH_MESSAGE, OPENING_LINE, resolveThumosMode, THUMOS_CHAT, THUMOS_INTRO, thumosReasoningEffort, XAI_RETRY_BACKOFF_MS, xaiCallShouldRetry } from './thumos';
 import { ALCOHOL_FACTS } from './facts';
 import { browserSocketProtocols, buildVoiceSessionUpdate, GROK_VOICE } from './voice';
 
@@ -184,6 +184,23 @@ describe('Thumos context', () => {
     expect(buildSystemPrompt(context, 'opening')).toContain('Ask how they are feeling');
     expect(prompt).toContain('47 days, 6 hours');
     expect(OFFLINE_COACH_MESSAGE).toContain('not a reply from the model');
+    expect(OFFLINE_COACH_MESSAGE).toContain('xAI key is not set');
+  });
+
+  it('retries one temporary xAI failure and leaves a missing key or a hard 4xx alone', () => {
+    expect(XAI_RETRY_BACKOFF_MS).toBeGreaterThan(0);
+    expect(XAI_RETRY_BACKOFF_MS).toBeLessThan(2_000);
+    expect(xaiCallShouldRetry({ status: 503, attempt: 0 })).toBe(true);
+    expect(xaiCallShouldRetry({ status: 429, attempt: 0 })).toBe(true);
+    expect(xaiCallShouldRetry({ status: 408, attempt: 0 })).toBe(true);
+    expect(xaiCallShouldRetry({ status: null, errorName: 'TimeoutError', attempt: 0 })).toBe(true);
+    expect(xaiCallShouldRetry({ status: null, errorName: 'AbortError', attempt: 0 })).toBe(true);
+    expect(xaiCallShouldRetry({ status: null, errorName: 'TypeError', attempt: 0 })).toBe(true);
+    expect(xaiCallShouldRetry({ status: 503, attempt: 1 })).toBe(false);
+    expect(xaiCallShouldRetry({ status: null, errorName: 'TimeoutError', attempt: 1 })).toBe(false);
+    expect(xaiCallShouldRetry({ status: 401, attempt: 0 })).toBe(false);
+    expect(xaiCallShouldRetry({ status: 400, attempt: 0 })).toBe(false);
+    expect(xaiCallShouldRetry({ status: 200, attempt: 0 })).toBe(false);
   });
 
   it('treats craving language as support even when the client asked for another mode', () => {

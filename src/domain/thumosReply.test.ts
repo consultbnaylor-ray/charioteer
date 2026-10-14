@@ -79,6 +79,25 @@ describe('thumos reply post-check', () => {
     expect(prompt).not.toContain('What part of sleep or another area');
   });
 
+  it('uses the missing-key line only when the key is absent', () => {
+    const chat = readFileSync('supabase/functions/thumos-chat/index.ts', 'utf8');
+    const keyCheck = chat.indexOf('if (!apiKey)');
+    const call = chat.indexOf('completeThumos(', keyCheck);
+    const catchAt = chat.indexOf('} catch (error)', call);
+    expect(keyCheck).toBeGreaterThan(0);
+    expect(chat.slice(keyCheck, call)).toContain('OFFLINE_COACH_MESSAGE');
+    expect(chat).toContain('could not get a reply from the coach just now. Please try again.');
+    expect(chat.slice(call, catchAt)).toContain('COACH_REPLY_FAILED');
+    expect(chat.slice(call, catchAt)).not.toContain('OFFLINE_COACH_MESSAGE');
+    const caught = chat.slice(catchAt, catchAt + 400);
+    expect(caught).toContain('COACH_REPLY_FAILED');
+    expect(caught).toContain("console.error('thumos xAI HTTP status'");
+    expect(caught).not.toContain('OFFLINE_COACH_MESSAGE');
+    expect(chat).toContain('xaiCallShouldRetry');
+    expect(chat).toContain('XAI_RETRY_BACKOFF_MS');
+    expect(chat).toContain('AbortSignal.timeout');
+  });
+
   it('never offers to set a reminder, an alarm, a calendar entry, or to contact someone', () => {
     const said = 'I can set a reminder for Friday if that fits.';
     for (const mode of ['opening', 'steady', 'growth', 'support'] as const) {

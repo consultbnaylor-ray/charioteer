@@ -19,6 +19,8 @@ import {
   mentionsCheckInOrHealth,
   OFFLINE_COACH_MESSAGE,
   resolveThumosMode,
+  XAI_RETRY_BACKOFF_MS,
+  xaiCallShouldRetry,
   safetyFromText,
   THUMOS_CHAT,
   THUMOS_RETRY_NOTE,
@@ -35,6 +37,20 @@ import { loadNutritionLines } from '../_shared/nutritionLoad.ts';
 import { moodOnTen } from '../_shared/mood.ts';
 
 type Body = { content?: string; mode?: ThumosMode };
+
+/** Shown when the key is set but xAI did not answer. Not the missing-key line. */
+const COACH_REPLY_FAILED = [
+  'Thumos could not get a reply from the coach just now. Please try again.',
+  'This is not a model answer.',
+  'If you are in danger, call 999. For withdrawal, call NHS 111 or your GP. For suicidal thoughts, call the Samaritans on 116 123.',
+].join(' ');
+
+/** Long enough for a low-reasoning reply, short enough that one retry can still finish. */
+const XAI_TIMEOUT_MS = 25_000;
+
+function pause(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
 function drinkFreeCount(dates: unknown, now: Date): number {
   if (!Array.isArray(dates)) return 0;
@@ -238,10 +254,7 @@ Deno.serve(async (req) => {
           try {
             const first = await completeThumos({ apiKey, model, system, history, user: content });
             if (!first.ok) {
-              reply = ensureSafetyNotices(
-                'Thumos could not get a reply from the coach just now. This is not a model answer. If you are in danger, call 999. For withdrawal, call NHS 111 or your GP. For suicidal thoughts, call the Samaritans on 116 123.',
-                safety,
-              );
+              reply = ensureSafetyNotices(COACH_REPLY_FAILED, safety);
               send({ type: 'delta', text: reply });
             } else {
               let modelText = first.text || 'I am here. Say a little more if you can.';
@@ -261,8 +274,9 @@ Deno.serve(async (req) => {
               role = 'assistant';
               send({ type: 'delta', text: reply });
             }
-          } catch {
-            reply = ensureSafetyNotices(OFFLINE_COACH_MESSAGE, safety);
+          } catch (error) {
+            console.error('thumos xAI HTTP status', xaiErrorStatus(error));
+            reply = ensureSafetyNotices(COACH_REPLY_FAILED, safety);
             send({ type: 'delta', text: reply });
           }
         }
@@ -295,6 +309,15 @@ Deno.serve(async (req) => {
   });
 });
 
+function xaiErrorStatus(error: unknown): number | string {
+  if (error && typeof error === 'object' && 'status' in error && typeof (error as { status: unknown }).status === 'number') {
+    return (error as { status: number }).status;
+  }
+  const name = error instanceof Error ? error.name : '';
+  if (name === 'TimeoutError' || name === 'AbortError') return 'timeout';
+  return name || 'timeout';
+}
+
 async function completeThumos(input: {
   apiKey: string;
   model: string;
@@ -302,23 +325,45 @@ async function completeThumos(input: {
   history: ChatTurn[];
   user: string;
 }): Promise<{ ok: true; text: string } | { ok: false }> {
-  const response = await fetch(THUMOS_CHAT.completionsUrl, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${input.apiKey}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(buildChatCompletionBody({
-      model: input.model,
-      system: input.system,
-      history: input.history,
-      user: input.user,
-      stream: true,
-    })),
-  });
-  if (!response.ok || !response.body) return { ok: false };
-  const text = (await readCompletionStream(response.body)).trim();
-  return { ok: true, text };
+  const body = JSON.stringify(buildChatCompletionBody({
+    model: input.model,
+    system: input.system,
+    history: input.history,
+    user: input.user,
+    stream: true,
+  }));
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      const response = await fetch(THUMOS_CHAT.completionsUrl, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${input.apiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body,
+        signal: AbortSignal.timeout(XAI_TIMEOUT_MS),
+      });
+      if (!response.ok || !response.body) {
+        console.error('thumos xAI HTTP status', response.status);
+        if (xaiCallShouldRetry({ status: response.status, attempt })) {
+          await pause(XAI_RETRY_BACKOFF_MS);
+          continue;
+        }
+        return { ok: false };
+      }
+      const text = (await readCompletionStream(response.body)).trim();
+      return { ok: true, text };
+    } catch (error) {
+      const errorName = error instanceof Error ? error.name : '';
+      console.error('thumos xAI HTTP status', xaiErrorStatus(error));
+      if (xaiCallShouldRetry({ status: null, errorName, attempt })) {
+        await pause(XAI_RETRY_BACKOFF_MS);
+        continue;
+      }
+      return { ok: false };
+    }
+  }
+  return { ok: false };
 }
 
 async function readCompletionStream(body: ReadableStream<Uint8Array>): Promise<string> {

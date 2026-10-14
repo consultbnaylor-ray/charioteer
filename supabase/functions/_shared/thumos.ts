@@ -425,6 +425,25 @@ export const THUMOS_CHAT = {
   maxTokens: 450,
 } as const;
 
+/** Pause before the single retry of a dropped or temporary xAI call. */
+export const XAI_RETRY_BACKOFF_MS = 400;
+
+/**
+ * One retry, and only for a timeout, a network drop, or a temporary HTTP
+ * status. A missing key is not an xAI error, and 4xx other than 408 or 429
+ * is not worth a second call.
+ */
+export function xaiCallShouldRetry(input: {
+  status: number | null;
+  errorName?: string | null;
+  attempt: number;
+}): boolean {
+  if (input.attempt !== 0) return false;
+  if (input.status != null) return input.status === 408 || input.status === 429 || input.status >= 500;
+  const name = input.errorName ?? '';
+  return name === 'TimeoutError' || name === 'AbortError' || name === 'TypeError';
+}
+
 export function thumosReasoningEffort(model: string): 'none' | 'low' {
   if (
     model === 'grok-4.3' ||

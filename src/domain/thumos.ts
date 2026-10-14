@@ -25,6 +25,8 @@ export {
   OPENING_LINE,
   safetyFromText,
   THUMOS_CHAT,
+  XAI_RETRY_BACKOFF_MS,
+  xaiCallShouldRetry,
   thumosReasoningEffort,
   thumosReplyFaults,
   type ChatTurn,

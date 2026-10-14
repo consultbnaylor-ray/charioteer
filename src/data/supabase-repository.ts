@@ -1373,7 +1373,7 @@ export class SupabaseRepository implements Repository {
       const message = typeof data?.message === 'string' ? data.message : '';
       return {
         ok: false,
-        code: typeof data?.code === 'string' ? data.code : 'missing_key',
+        code: typeof data?.code === 'string' ? data.code : 'unavailable',
         message: message && message.length < 180 ? message : 'Voice is unavailable just now. Text chat is still here.',
       };
     }

@@ -178,6 +178,13 @@ describe('voice call wiring', () => {
     const web = readFileSync('src/voice/audio.web.ts', 'utf8');
     expect(web.indexOf('if (!VOICE_ENABLED) return')).toBeLessThan(web.indexOf('getUserMedia'));
   });
+
+  it('treats a voice start with no code as unavailable', () => {
+    const repo = readFileSync('src/data/supabase-repository.ts', 'utf8');
+    const mint = repo.slice(repo.indexOf('async mintVoiceToken'), repo.indexOf('async saveVoiceTurn'));
+    expect(mint).toContain("data.code : 'unavailable'");
+    expect(mint).not.toContain('missing_key');
+  });
 });
 
 describe('voice processing patch', () => {
