@@ -15,17 +15,27 @@ import {
   caloriesShareLine,
   estimateFromText,
   fatBalance,
+  goalDayLine,
+  goalMealNote,
+  goalShareLine,
+  kcalFloor,
   mealStreakDays,
+  mifflinBmr,
   nutritionContextLines,
   nutritionHealthQuantities,
   nutritionPatternLines,
   parseSharedNutrition,
   presentSharedNutrition,
   progressShareLine,
+  proteinGramsFor,
   samplePhotoMeal,
   sugarCravingNote,
+  suggestGoalTargets,
   targetLine,
+  weightTrendLine,
   defaultNutritionSettings,
+  GOAL_LABEL,
+  LOW_BMI_NOTE,
   type FoodLog,
 } from './nutrition';
 
@@ -165,6 +175,7 @@ describe('meal estimates', () => {
     expect(off.quality).toBeNull();
     expect(off.progress).toBeNull();
     expect(off.wagon).toBeNull();
+    expect(off.goal).toBeNull();
 
     const diary = presentSharedNutrition({
       ...defaultNutritionSettings(),
@@ -327,5 +338,174 @@ describe('nutrition storage and coach', () => {
     expect(shares).not.toMatch(/delete from/i);
     expect(shares).not.toContain('public_profile');
     expect(shares).not.toContain('profile_interests');
+    expect(GOAL_LABEL.lose_weight).toBe('Lose Weight');
+    expect(GOAL_LABEL.lose_fat_build_muscle).toBe('Lose Fat & Build Muscle');
+    expect(GOAL_LABEL.maintain).toBe('Maintain Weight');
+    expect(GOAL_LABEL.increase).toBe('Increase Weight');
+    expect(screen).toContain('GOAL_LABEL[id]');
+    expect(screen).not.toContain('Loose');
+    expect(Object.values(GOAL_LABEL).join(' ')).not.toContain('Loose');
+    expect(screen).toContain('Suggest targets');
+    expect(screen).toContain('Share the goal and progress');
+    expect(screen).toContain('Daily protein (g)');
+    expect(readFileSync('src/app/(main)/sharing.tsx', 'utf8')).toContain('Share the goal and progress');
+    const goals = readFileSync('supabase/migrations/20261014040000_nutrition_goals.sql', 'utf8');
+    expect(goals).toContain('add column if not exists goal text');
+    expect(goals).toContain('add column if not exists share_goal boolean not null default false');
+    expect(goals).toContain('lose_fat_build_muscle');
+    expect(goals).toContain('function public.shared_nutrition');
+    expect(goals).toContain('community_visible is not true');
+    expect(goals).toContain('age_confirmed_18 is not true');
+    expect(goals).toContain('public.blocks');
+    expect(goals).toContain("'bmiLow'");
+    expect(goals).toContain("'direction'");
+    expect(goals).not.toContain('public_profile');
+    expect(goals).not.toContain('profile_interests');
+    expect(goals).not.toMatch(/drop table/i);
+    expect(goals).not.toMatch(/delete from/i);
+  });
+});
+
+describe('nutrition goals', () => {
+  const body = { weightKg: 80, heightCm: 180, age: 40, sex: 'male' as const };
+
+  it('suggests a modest deficit from Mifflin-St Jeor and keeps a kcal floor', () => {
+    expect(mifflinBmr(body)).toBe(1730);
+    const lose = suggestGoalTargets({ ...body, goal: 'lose_weight', activeEnergyKcal: null });
+    expect(lose.ok).toBe(true);
+    if (!lose.ok) return;
+    expect(lose.suggestion.kcal).toBe(2282);
+    expect(lose.suggestion.proteinG).toBe(128);
+    expect(lose.suggestion.blockedLoss).toBe(false);
+    expect(proteinGramsFor('lose_fat_build_muscle', 80)).toBe(144);
+    const recomp = suggestGoalTargets({ ...body, goal: 'lose_fat_build_muscle', activeEnergyKcal: null });
+    expect(recomp.ok && recomp.suggestion.kcal).toBe(2382);
+    expect(recomp.ok && recomp.suggestion.proteinG).toBe(144);
+    const active = suggestGoalTargets({ ...body, goal: 'lose_weight', activeEnergyKcal: 500 });
+    expect(active.ok && active.suggestion.kcal).toBe(1830);
+    expect(active.ok && active.suggestion.usedActiveEnergy).toBe(true);
+    const floored = suggestGoalTargets({
+      goal: 'lose_weight',
+      weightKg: 45,
+      heightCm: 155,
+      age: 70,
+      sex: 'female',
+      activeEnergyKcal: null,
+    });
+    expect(floored.ok && floored.suggestion.kcal).toBe(1200);
+    expect(floored.ok && floored.suggestion.floor).toBe(kcalFloor(floored.ok ? floored.suggestion.bmr : 0, 'female'));
+  });
+
+  it('does not suggest a deficit when BMI is under 18.5', () => {
+    const low = suggestGoalTargets({
+      goal: 'lose_weight',
+      weightKg: 50,
+      heightCm: 175,
+      age: 40,
+      sex: 'male',
+      activeEnergyKcal: null,
+    });
+    expect(low.ok).toBe(true);
+    if (!low.ok) return;
+    expect(low.suggestion.blockedLoss).toBe(true);
+    expect(low.suggestion.note).toBe(LOW_BMI_NOTE);
+    expect(low.suggestion.kcal).toBeGreaterThan(2000);
+    const line = goalDayLine({
+      goal: 'lose_weight',
+      hideCalories: false,
+      kcal: 1800,
+      kcalTarget: 1500,
+      proteinG: 40,
+      proteinTarget: 80,
+      blockedLoss: true,
+    });
+    expect(line).toContain('A lower intake is not being suggested.');
+    expect(line).not.toContain('eating less');
+  });
+
+  it('hides kcal from the goal line and keeps a shared goal qualitative', () => {
+    const hidden = goalDayLine({
+      goal: 'lose_fat_build_muscle',
+      hideCalories: true,
+      kcal: 2200,
+      kcalTarget: 1800,
+      proteinG: 90,
+      proteinTarget: 140,
+      blockedLoss: false,
+    });
+    expect(hidden).toContain('Protein');
+    expect(hidden).toContain('Calories stay hidden');
+    expect(hidden).not.toMatch(/kcal/i);
+    const shared = presentSharedNutrition({
+      ...defaultNutritionSettings(),
+      goal: 'lose_weight',
+      shareGoal: true,
+      proteinTarget: 128,
+      hideCalories: true,
+    }, [], '2026-10-14', {
+      heightCm: 180,
+      weights: [{ day: '2026-10-01', kg: 80.4 }, { day: '2026-10-14', kg: 79.6 }],
+    });
+    expect(shared.goal?.line).toContain('Lose Weight');
+    expect(shared.goal?.line).toContain('eased down');
+    expect(shared.goal?.line).not.toMatch(/kcal|\bkg\b/i);
+    expect(presentSharedNutrition({
+      ...defaultNutritionSettings(),
+      goal: 'lose_weight',
+      shareGoal: false,
+    }, [], '2026-10-14').goal).toBeNull();
+    const parsed = parseSharedNutrition({
+      mealsShared: false,
+      goal: { id: 'increase', proteinG: 40, proteinTargetG: 120, direction: 'up', hideCalories: false, bmiLow: false },
+    });
+    expect(parsed?.goal?.line).toBe(goalShareLine({
+      goal: 'increase',
+      proteinG: 40,
+      proteinTarget: 120,
+      direction: 'up',
+      hideCalories: false,
+      blockedLoss: false,
+    }));
+    expect(parsed?.goal?.line).not.toMatch(/\d+\s*kcal|\bkg\b/);
+  });
+
+  it('gives Thumos a gentle goal line and a photo note', () => {
+    const lines = nutritionContextLines({
+      logs: [],
+      settings: { ...defaultNutritionSettings(), goal: 'lose_weight', proteinTarget: 128, kcalTarget: 2282 },
+      waterMl: 0,
+      checkIns: [],
+      soberDays: null,
+      unitsAvoided: 0,
+      today: '2026-10-14',
+      body: { weightKg: 50, heightCm: 175, weights: [{ day: '2026-10-01', kg: 51 }, { day: '2026-10-14', kg: 50 }] },
+    });
+    const text = lines.join('\n');
+    expect(text).toContain('Their goal is Lose Weight.');
+    expect(text).toContain('A lower intake is not being suggested.');
+    expect(text).not.toMatch(/eat less|shame|lazy|weak/i);
+    const hidden = nutritionContextLines({
+      logs: [],
+      settings: { ...defaultNutritionSettings(), goal: 'maintain', hideCalories: true, kcalTarget: 2000 },
+      waterMl: 0,
+      checkIns: [],
+      soberDays: null,
+      unitsAvoided: 0,
+      today: '2026-10-14',
+    });
+    expect(hidden.join('\n')).not.toMatch(/kcal/i);
+    const note = goalMealNote({
+      goal: 'lose_weight',
+      items: samplePhotoMeal(),
+      hideCalories: false,
+      blockedLoss: false,
+    });
+    expect(note).toContain('One meal does not decide the day.');
+    expect(goalMealNote({ goal: 'lose_weight', items: samplePhotoMeal(), hideCalories: false, blockedLoss: true }))
+      .toBe('This is an estimate. A lower intake is not being suggested.');
+    expect(weightTrendLine([
+      { day: '2026-09-30', kg: 74.8 },
+      { day: '2026-10-14', kg: 74.2 },
+    ], 'lose_weight')).toContain('gentle move');
   });
 });

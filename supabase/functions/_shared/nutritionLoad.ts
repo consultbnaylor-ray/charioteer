@@ -3,7 +3,10 @@ import {
   defaultNutritionSettings,
   foodItemFromUnknown,
   isMealSlot,
+  isNutritionGoal,
+  isNutritionSex,
   nutritionContextLines,
+  weightPointsFrom,
   type FoodItem,
   type FoodLog,
   type NutritionSettings,
@@ -55,11 +58,18 @@ function logsFromRows(rows: unknown): FoodLog[] {
   });
 }
 
+function optionalNumber(value: unknown, min: number, max: number): number | null {
+  const parsed = typeof value === 'number' ? value : typeof value === 'string' && value.trim() ? Number(value) : null;
+  if (parsed == null || !Number.isFinite(parsed) || parsed < min || parsed > max) return null;
+  return parsed;
+}
+
 function settingsFromRow(row: unknown): NutritionSettings {
   const base = defaultNutritionSettings();
   if (!row || typeof row !== 'object') return base;
   const record = row as Record<string, unknown>;
   const target = typeof record.kcal_target === 'number' ? record.kcal_target : null;
+  const age = optionalNumber(record.goal_age, 18, 100);
   return {
     ...base,
     kcalTarget: target,
@@ -68,6 +78,12 @@ function settingsFromRow(row: unknown): NutritionSettings {
     shareCalories: record.share_calories === true,
     shareQuality: record.share_quality === true,
     shareProgress: record.share_progress === true,
+    goal: typeof record.goal === 'string' && isNutritionGoal(record.goal) ? record.goal : null,
+    goalAge: age == null ? null : Math.round(age),
+    goalSex: typeof record.goal_sex === 'string' && isNutritionSex(record.goal_sex) ? record.goal_sex : null,
+    proteinTarget: optionalNumber(record.protein_target_g, 0, 700),
+    activityEnergyKcal: optionalNumber(record.activity_energy_kcal, 0, 2500),
+    shareGoal: record.share_goal === true,
     wagonOn: record.wagon_on === true,
     wagonNote: typeof record.wagon_note === 'string' ? record.wagon_note : '',
     wagonVisible: record.wagon_visible === true,
@@ -86,16 +102,23 @@ export async function loadNutritionLines(
     sobriety_started_at?: string | null;
     weekly_spend_gbp?: number | string | null;
     weekly_units?: number | string | null;
+    height_cm?: number | string | null;
   },
   checkIns: readonly { createdAt: string; mood: number; sleepHours: number }[],
   now = new Date(),
 ): Promise<string[]> {
   const today = londonDay(now);
-  const [logsRes, settingsRes, waterRes] = await Promise.all([
+  const wide = 'kcal_target, hide_calories, share_food_diary, share_calories, share_quality, share_progress, goal, goal_age, goal_sex, protein_target_g, activity_energy_kcal, share_goal, wagon_on, wagon_note, wagon_visible';
+  const narrow = 'kcal_target, hide_calories, share_food_diary, wagon_on, wagon_note, wagon_visible';
+  const [logsRes, waterRes, healthRes] = await Promise.all([
     userClient.from('food_logs').select('id, eaten_on, meal, source, note, items, estimated, created_at').eq('user_id', profile.id).order('eaten_on', { ascending: false }).limit(80),
-    userClient.from('nutrition_settings').select('kcal_target, hide_calories, share_food_diary, wagon_on, wagon_note, wagon_visible').eq('user_id', profile.id).maybeSingle(),
     userClient.from('nutrition_days').select('water_ml').eq('user_id', profile.id).eq('day', today).maybeSingle(),
+    userClient.from('health_samples').select('kind, value, recorded_on').eq('user_id', profile.id).order('recorded_on', { ascending: true }).limit(400),
   ]);
+  let settingsRes = await userClient.from('nutrition_settings').select(wide).eq('user_id', profile.id).maybeSingle();
+  if (settingsRes.error) {
+    settingsRes = await userClient.from('nutrition_settings').select(narrow).eq('user_id', profile.id).maybeSingle();
+  }
   if (logsRes.error && settingsRes.error) return [];
   const started = profile.stage === 'stopped' && profile.sobriety_started_at ? new Date(profile.sobriety_started_at) : null;
   const elapsed = started && !Number.isNaN(started.getTime()) ? soberElapsed(started, now) : null;
@@ -106,6 +129,17 @@ export async function loadNutritionLines(
     : 0;
   const waterRow = waterRes.error || !waterRes.data || typeof waterRes.data !== 'object' ? null : waterRes.data as { water_ml?: unknown };
   const waterMl = typeof waterRow?.water_ml === 'number' ? waterRow.water_ml : 0;
+  const samples = healthRes.error || !Array.isArray(healthRes.data) ? [] : healthRes.data.flatMap((row) => {
+    if (!row || typeof row !== 'object') return [];
+    const record = row as Record<string, unknown>;
+    const value = typeof record.value === 'number' ? record.value : Number(record.value);
+    const recordedOn = typeof record.recorded_on === 'string' ? record.recorded_on : '';
+    if (!recordedOn || !Number.isFinite(value)) return [];
+    return [{ kind: typeof record.kind === 'string' ? record.kind : '', value, recordedOn }];
+  });
+  const weights = weightPointsFrom(samples);
+  const latest = weights.length ? weights[weights.length - 1] : undefined;
+  const height = profile.height_cm == null ? null : Number(profile.height_cm);
   return nutritionContextLines({
     logs: logsRes.error ? [] : logsFromRows(logsRes.data),
     settings: settingsRes.error ? defaultNutritionSettings() : settingsFromRow(settingsRes.data),
@@ -114,5 +148,10 @@ export async function loadNutritionLines(
     soberDays: elapsed ? elapsed.days : null,
     unitsAvoided,
     today,
+    body: {
+      weightKg: latest?.kg ?? null,
+      heightCm: height != null && Number.isFinite(height) ? height : null,
+      weights,
+    },
   });
 }

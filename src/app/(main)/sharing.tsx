@@ -130,6 +130,12 @@ export default function WhatIShare() {
         apply={(settings, selected) => ({ ...settings, shareProgress: selected })}
       />
       <NutritionShareSwitch
+        label="Share the goal and progress"
+        item="The goal and progress"
+        on={snap.nutrition.shareGoal}
+        apply={(settings, selected) => ({ ...settings, shareGoal: selected })}
+      />
+      <NutritionShareSwitch
         label="Share the wagon flag"
         item="The wagon flag"
         on={snap.nutrition.wagonVisible}

@@ -46,6 +46,7 @@ import {
   foodItemFromUnknown,
   presentSharedNutrition,
   samplePhotoMeal,
+  weightPointsFrom,
   type FoodLog,
   type NutritionSettings,
 } from '@/domain/nutrition';
@@ -168,6 +169,8 @@ function shareSource(account: DemoAccount, interests: DemoDb['interests'], now =
     nutrition: {
       logs: account.foodLogs ?? [],
       settings: account.nutrition ?? defaultNutritionSettings(),
+      heightCm: account.profile.heightCm,
+      weights: weightPointsFrom(account.health),
     },
     profilePhotos: sortProfilePhotos(account.profilePhotos ?? []).map((photo) => ({
       id: photo.id,
@@ -1024,7 +1027,12 @@ export class DemoRepository implements Repository {
     if (!other?.profile.onboardingComplete) return null;
     if (blocked(this.db, session.userId, userId)) return null;
     if (!other.profile.communityVisible || !other.profile.ageConfirmed18) return null;
-    return presentSharedNutrition(other.nutrition ?? defaultNutritionSettings(), other.foodLogs ?? [], isoDay(new Date()));
+    return presentSharedNutrition(
+      other.nutrition ?? defaultNutritionSettings(),
+      other.foodLogs ?? [],
+      isoDay(new Date()),
+      { heightCm: other.profile.heightCm, weights: weightPointsFrom(other.health) },
+    );
   }
 
   async publicProfile(userId: string): Promise<PublicProfileView | null> {

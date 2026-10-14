@@ -10,25 +10,38 @@ import {
   ESTIMATE_HINT,
   ESTIMATE_LABEL,
   FAT_SCIENCE,
+  GOAL_LABEL,
   HIDE_CALORIES_LINE,
+  LOW_BMI_NOTE,
   MEAL_LABEL,
   MEAL_SLOTS,
+  NUTRITION_GOALS,
   WAGON_SUPPORT,
   alcoholSavedLine,
   caloriesShareLine,
   dayItems,
   fatBalance,
+  goalDayLine,
+  goalMealNote,
+  kcalFloor,
+  lossBlocked,
   mealStreakDays,
+  mifflinBmr,
   nutritionPatternLines,
   processedLine,
   progressShareLine,
   publicMealLines,
   sugarCravingNote,
+  suggestGoalTargets,
   sumItems,
   targetLine,
+  weightPointsFrom,
+  weightTrendLine,
   type FoodItem,
   type MealSlot,
   type MealSource,
+  type NutritionGoal,
+  type NutritionSex,
 } from '@/domain/nutrition';
 import { savingsFromTypicalWeek } from '@/domain/savings';
 import { soberElapsed } from '@/domain/sober';
@@ -103,6 +116,22 @@ function numberFrom(value: string): number {
   return parsed;
 }
 
+function readAge(value: string): number | null | 'bad' {
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  const age = Math.round(Number(trimmed));
+  if (!Number.isFinite(age) || age < 18 || age > 100) return 'bad';
+  return age;
+}
+
+function readProtein(value: string): number | null | 'bad' {
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  const grams = Math.round(Number(trimmed));
+  if (!Number.isFinite(grams) || grams < 1 || grams > 700) return 'bad';
+  return grams;
+}
+
 function itemFromDraft(draft: DraftItem): FoodItem | null {
   const name = draft.name.trim().slice(0, 80);
   if (!name) return null;
@@ -146,6 +175,22 @@ export default function Nutrition() {
   const mealLines = publicMealLines(snap.foodLogs, today);
   const calorieLine = caloriesShareLine(items, hide);
   const streakLine = progressShareLine(mealStreakDays(snap.foodLogs, today));
+  const weights = weightPointsFrom(snap.health);
+  const latestWeight = weights.length ? weights[weights.length - 1] : undefined;
+  const blocked = settings.goal
+    ? lossBlocked({ goal: settings.goal, weightKg: latestWeight?.kg ?? null, heightCm: profile?.heightCm ?? null })
+    : false;
+  const dayLine = settings.goal
+    ? goalDayLine({
+      goal: settings.goal,
+      hideCalories: hide,
+      kcal: totals.kcal,
+      kcalTarget: settings.kcalTarget,
+      proteinG: totals.proteinG,
+      proteinTarget: settings.proteinTarget,
+      blockedLoss: blocked,
+    })
+    : null;
 
   const [meal, setMeal] = useState<MealSlot>('breakfast');
   const [text, setText] = useState('');
@@ -155,6 +200,69 @@ export default function Nutrition() {
   const [target, setTarget] = useState(settings.kcalTarget == null ? '' : String(settings.kcalTarget));
   const [waterText, setWaterText] = useState(water ? String(water) : '');
   const [wagonNote, setWagonNote] = useState(settings.wagonNote);
+  const [goalAge, setGoalAge] = useState(settings.goalAge == null ? '' : String(settings.goalAge));
+  const [protein, setProtein] = useState(settings.proteinTarget == null ? '' : String(settings.proteinTarget));
+  const [goalNote, setGoalNote] = useState<string | null>(null);
+
+  function floorFor(age: number | null, sex: NutritionSex | null): number | null {
+    const weight = latestWeight?.kg ?? null;
+    const height = profile?.heightCm ?? null;
+    if (weight == null || height == null || age == null) return null;
+    const bmr = mifflinBmr({ weightKg: weight, heightCm: height, age, sex });
+    if (bmr == null) return null;
+    return kcalFloor(bmr, sex);
+  }
+
+  function chooseGoal(goal: NutritionGoal) {
+    run(`goal:${goal}`, async () => {
+      setError(null);
+      try {
+        await repo.setNutritionSettings({ ...repo.getSnapshot().nutrition, goal });
+      } catch (err) {
+        setError(shownError(err, 'Could not save that goal.'));
+      }
+    });
+  }
+
+  function chooseSex(sex: NutritionSex | null) {
+    run('sex', async () => {
+      setError(null);
+      try {
+        await repo.setNutritionSettings({ ...repo.getSnapshot().nutrition, goalSex: sex });
+      } catch (err) {
+        setError(shownError(err, 'Could not save that.'));
+      }
+    });
+  }
+
+  function suggest() {
+    if (!settings.goal) {
+      setError('Choose a goal first.');
+      return;
+    }
+    const age = readAge(goalAge);
+    if (age === 'bad') {
+      setError('Age sits between 18 and 100. Leave it blank if you would rather not say.');
+      return;
+    }
+    const result = suggestGoalTargets({
+      goal: settings.goal,
+      weightKg: latestWeight?.kg ?? null,
+      heightCm: profile?.heightCm ?? null,
+      age,
+      sex: settings.goalSex,
+      activeEnergyKcal: settings.activityEnergyKcal,
+    });
+    if (!result.ok) {
+      setGoalNote(null);
+      setError(result.message);
+      return;
+    }
+    setError(null);
+    setProtein(String(result.suggestion.proteinG));
+    if (!hide) setTarget(String(result.suggestion.kcal));
+    setGoalNote(result.suggestion.note);
+  }
 
   function openDraft(next: Draft) {
     setDraft({ ...next, meal });
@@ -266,19 +374,79 @@ export default function Nutrition() {
     });
   }
 
+  function kcalFromField(): number | null | 'bad' {
+    const trimmed = target.trim();
+    if (!trimmed) return null;
+    const kcal = Math.round(Number(trimmed));
+    if (!Number.isFinite(kcal) || kcal < 800 || kcal > 6000) return 'bad';
+    return kcal;
+  }
+
+  function refuseLowKcal(kcal: number | null, age: number | null, sex: NutritionSex | null): string | null {
+    const floor = floorFor(age, sex);
+    if (kcal == null || floor == null || kcal >= floor) return null;
+    return `That sits under ${floor.toLocaleString('en-GB')} kcal, which is the floor for this screen. A higher target can be saved.`;
+  }
+
   function saveTarget() {
     run('target', async () => {
       setError(null);
-      const trimmed = target.trim();
-      const kcal = trimmed ? Math.round(Number(trimmed)) : null;
-      if (kcal != null && (!Number.isFinite(kcal) || kcal < 800 || kcal > 6000)) {
+      const kcal = kcalFromField();
+      if (kcal === 'bad') {
         setError('A target sits between 800 and 6,000 kcal, or leave it blank.');
         return;
       }
+      const current = repo.getSnapshot().nutrition;
+      const low = refuseLowKcal(kcal, current.goalAge, current.goalSex);
+      if (low) {
+        setError(low);
+        return;
+      }
       try {
-        await repo.setNutritionSettings({ ...repo.getSnapshot().nutrition, kcalTarget: kcal });
+        await repo.setNutritionSettings({ ...current, kcalTarget: kcal });
       } catch (err) {
         setError(shownError(err, 'Could not save that target.'));
+      }
+    });
+  }
+
+  function saveTargets() {
+    run('targets', async () => {
+      setError(null);
+      const age = readAge(goalAge);
+      if (age === 'bad') {
+        setError('Age sits between 18 and 100. Leave it blank if you would rather not say.');
+        return;
+      }
+      const proteinG = readProtein(protein);
+      if (proteinG === 'bad') {
+        setError('Protein sits between 1 and 700 g, or leave it blank.');
+        return;
+      }
+      const current = repo.getSnapshot().nutrition;
+      let kcal = current.kcalTarget;
+      if (!hide) {
+        const next = kcalFromField();
+        if (next === 'bad') {
+          setError('A target sits between 800 and 6,000 kcal, or leave it blank.');
+          return;
+        }
+        const low = refuseLowKcal(next, age, current.goalSex);
+        if (low) {
+          setError(low);
+          return;
+        }
+        kcal = next;
+      }
+      try {
+        await repo.setNutritionSettings({
+          ...current,
+          goalAge: age,
+          proteinTarget: proteinG,
+          kcalTarget: kcal,
+        });
+      } catch (err) {
+        setError(shownError(err, 'Could not save those targets.'));
       }
     });
   }
@@ -352,6 +520,15 @@ export default function Nutrition() {
     });
   }
 
+  const photoNote = draft?.source === 'photo'
+    ? goalMealNote({
+      goal: settings.goal,
+      items: draft.items.map(itemFromDraft).filter((item): item is FoodItem => item != null),
+      hideCalories: hide,
+      blockedLoss: blocked,
+    })
+    : null;
+
   return (
     <Screen
       eyebrow="Tools"
@@ -374,7 +551,40 @@ export default function Nutrition() {
         {patterns.map((line) => <T key={line}>{line}</T>)}
         {sugar ? <T>{sugar}</T> : null}
         {saved ? <T>{saved}</T> : null}
+        {dayLine ? <T>{dayLine}</T> : null}
         <T variant="muted">{`Water ${water.toLocaleString('en-GB')} ml`}</T>
+      </Card>
+
+      <Card>
+        <T variant="label">Goal</T>
+        <T variant="muted">Pick one. A suggestion uses your weight, height, age, and sex if you add them. You can change the numbers.</T>
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+          {NUTRITION_GOALS.map((id) => (
+            <Choice key={id} label={GOAL_LABEL[id]} selected={settings.goal === id} onPress={() => chooseGoal(id)} />
+          ))}
+        </View>
+        <Field label="Age" value={goalAge} onChangeText={setGoalAge} keyboardType="number-pad" placeholder="Optional" />
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+          <Choice label="Woman" selected={settings.goalSex === 'female'} onPress={() => chooseSex('female')} />
+          <Choice label="Man" selected={settings.goalSex === 'male'} onPress={() => chooseSex('male')} />
+          <Choice label="Not set" selected={settings.goalSex == null} onPress={() => chooseSex(null)} />
+        </View>
+        <Button label="Suggest targets" tone="quiet" onPress={suggest} />
+        {blocked ? <T>{LOW_BMI_NOTE}</T> : null}
+        {goalNote && !blocked ? <T variant="muted">{goalNote}</T> : null}
+        {hide ? null : (
+          <Field label="Daily kcal" value={target} onChangeText={setTarget} keyboardType="number-pad" placeholder="Leave blank for none" />
+        )}
+        <Field label="Daily protein (g)" value={protein} onChangeText={setProtein} keyboardType="number-pad" placeholder="Leave blank for none" />
+        <Button label="Save targets" pending={isPending('targets')} pendingLabel="Saving..." onPress={saveTargets} />
+      </Card>
+
+      <Card>
+        <T variant="label">Weight</T>
+        {weights.length === 0 ? <T variant="muted">Add a weight on Health Stats and it will show here.</T> : weights.map((point) => (
+          <T key={point.day}>{`${formatUkLong(point.day)} · ${point.kg} kg`}</T>
+        ))}
+        <T>{weightTrendLine(weights, settings.goal)}</T>
       </Card>
 
       <Card>
@@ -410,6 +620,7 @@ export default function Nutrition() {
         <Card>
           <T variant="label">{draft.source === 'photo' ? 'Confirm this photo' : 'Confirm this meal'}</T>
           {draft.estimated ? <T>{ESTIMATE_LABEL}</T> : null}
+          {photoNote ? <T>{photoNote}</T> : null}
           <T>{ESTIMATE_HINT}</T>
           {draft.previewUri ? (
             <Image
@@ -554,6 +765,17 @@ export default function Nutrition() {
           item="Progress and streaks"
           on={settings.shareProgress}
           apply={(current, selected) => ({ ...current, shareProgress: selected })}
+        />
+      </Card>
+
+      <Card>
+        <T variant="label">Goal and progress</T>
+        <T variant="muted">The goal name and a short line. Weight in kilograms and calories stay off this share.</T>
+        <NutritionShareSwitch
+          label="Share the goal and progress"
+          item="The goal and progress"
+          on={settings.shareGoal}
+          apply={(current, selected) => ({ ...current, shareGoal: selected })}
         />
       </Card>
 

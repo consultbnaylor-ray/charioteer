@@ -46,6 +46,8 @@ import {
   estimateFromText,
   foodItemFromUnknown,
   isMealSlot,
+  isNutritionGoal,
+  isNutritionSex,
   parseMealEstimate,
   parseSharedNutrition,
   samplePhotoMeal,
@@ -1741,11 +1743,14 @@ export class SupabaseRepository implements Repository {
     return localGratitudeReflect(body, category);
   }
 
-  /** Older databases lack the later share columns. A missing column stays off. */
+  /** Older databases lack the later share and goal columns. A missing column stays off. */
   private async nutritionSettingsRow(userId: string) {
-    const wide = 'kcal_target, hide_calories, share_food_diary, share_calories, share_quality, share_progress, wagon_on, wagon_note, wagon_visible';
-    const first = await this.client.from('nutrition_settings').select(wide).eq('user_id', userId).maybeSingle();
+    const goal = 'kcal_target, hide_calories, share_food_diary, share_calories, share_quality, share_progress, goal, goal_age, goal_sex, protein_target_g, activity_energy_kcal, share_goal, wagon_on, wagon_note, wagon_visible';
+    const first = await this.client.from('nutrition_settings').select(goal).eq('user_id', userId).maybeSingle();
     if (!first.error) return first;
+    const shares = 'kcal_target, hide_calories, share_food_diary, share_calories, share_quality, share_progress, wagon_on, wagon_note, wagon_visible';
+    const second = await this.client.from('nutrition_settings').select(shares).eq('user_id', userId).maybeSingle();
+    if (!second.error) return second;
     const narrow = 'kcal_target, hide_calories, share_food_diary, wagon_on, wagon_note, wagon_visible';
     return this.client.from('nutrition_settings').select(narrow).eq('user_id', userId).maybeSingle();
   }
@@ -1852,16 +1857,33 @@ export class SupabaseRepository implements Repository {
       share_calories: settings.shareCalories,
       share_quality: settings.shareQuality,
       share_progress: settings.shareProgress,
+      goal: settings.goal,
+      goal_age: settings.goalAge,
+      goal_sex: settings.goalSex,
+      protein_target_g: settings.proteinTarget,
+      activity_energy_kcal: settings.activityEnergyKcal,
+      share_goal: settings.shareGoal,
       wagon_on: settings.wagonOn,
       wagon_note: settings.wagonNote.slice(0, 200),
       wagon_visible: settings.wagonVisible,
       updated_at: new Date().toISOString(),
     };
-    let { error } = await this.client.from('nutrition_settings').upsert(row);
-    const missingShareColumn = Boolean(error && /share_calories|share_quality|share_progress/i.test(error.message));
+    let payload: Record<string, unknown> = row;
+    let { error } = await this.client.from('nutrition_settings').upsert(payload);
+    const leavingGoalOff = settings.goal == null
+      && settings.goalAge == null
+      && settings.goalSex == null
+      && settings.proteinTarget == null
+      && settings.activityEnergyKcal == null
+      && !settings.shareGoal;
+    if (error && leavingGoalOff && /goal|protein_target_g|activity_energy_kcal|share_goal/i.test(error.message)) {
+      const { goal: _goal, goal_age: _age, goal_sex: _sex, protein_target_g: _protein, activity_energy_kcal: _energy, share_goal: _shareGoal, ...withoutGoal } = row;
+      payload = withoutGoal;
+      ({ error } = await this.client.from('nutrition_settings').upsert(payload));
+    }
     const leavingNewSharesOff = !settings.shareCalories && !settings.shareQuality && !settings.shareProgress;
-    if (error && missingShareColumn && leavingNewSharesOff) {
-      const { share_calories: _calories, share_quality: _quality, share_progress: _progress, ...legacy } = row;
+    if (error && leavingNewSharesOff && /share_calories|share_quality|share_progress/i.test(error.message)) {
+      const { share_calories: _calories, share_quality: _quality, share_progress: _progress, ...legacy } = payload;
       ({ error } = await this.client.from('nutrition_settings').upsert(legacy));
     }
     if (error) throw asUserFacing(error, 'general');
@@ -2190,17 +2212,33 @@ function mapFoodLog(row: Row, userId: string): FoodLog | null {
   };
 }
 
+function nutritionNumber(value: unknown, min: number, max: number): number | null {
+  const parsed = typeof value === 'number' ? value : typeof value === 'string' && value.trim() ? Number(value) : null;
+  if (parsed == null || !Number.isFinite(parsed) || parsed < min || parsed > max) return null;
+  return parsed;
+}
+
 function nutritionFromRow(row: Row | null): NutritionSettings {
   const base = defaultNutritionSettings();
   if (!row) return base;
-  const target = typeof row.kcal_target === 'number' ? row.kcal_target : null;
+  const target = nutritionNumber(row.kcal_target, 800, 6000);
+  const age = nutritionNumber(row.goal_age, 18, 100);
+  const goal = typeof row.goal === 'string' && isNutritionGoal(row.goal) ? row.goal : null;
+  const sex = typeof row.goal_sex === 'string' && isNutritionSex(row.goal_sex) ? row.goal_sex : null;
   return {
-    kcalTarget: target != null && target >= 800 && target <= 6000 ? target : null,
+    ...base,
+    kcalTarget: target == null ? null : Math.round(target),
     hideCalories: row.hide_calories === true,
     shareFoodDiary: row.share_food_diary === true,
     shareCalories: row.share_calories === true,
     shareQuality: row.share_quality === true,
     shareProgress: row.share_progress === true,
+    goal,
+    goalAge: age == null ? null : Math.round(age),
+    goalSex: sex,
+    proteinTarget: nutritionNumber(row.protein_target_g, 0, 700),
+    activityEnergyKcal: nutritionNumber(row.activity_energy_kcal, 0, 2500),
+    shareGoal: row.share_goal === true,
     wagonOn: row.wagon_on === true,
     wagonNote: String(row.wagon_note ?? '').slice(0, 200),
     wagonVisible: row.wagon_visible === true,

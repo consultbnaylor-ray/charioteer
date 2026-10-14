@@ -1,7 +1,7 @@
 import type { NewHealthSample } from '@/data/types';
 
 export type HealthSyncResult =
-  | { ok: true; samples: NewHealthSample[] }
+  | { ok: true; samples: NewHealthSample[]; activeEnergyKcal: number | null }
   | { ok: false; message: string };
 
 /** Web and Android read the account's saved readings. Apple Health is iOS-only. */

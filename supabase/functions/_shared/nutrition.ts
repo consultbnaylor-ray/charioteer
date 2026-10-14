@@ -33,7 +33,7 @@ export const WAGON_SUPPORT = [
   'NHS 111 if you are worried about withdrawal',
 ] as const;
 export const NUTRITION_PROMPT_LINE =
-  'If CONTEXT includes a nutrition summary, you may mention it. Estimates are estimates. Do not shame anyone about calories, weight, or a day over a target. If calories are hidden, do not mention kcal. If CONTEXT says they have fallen off the wagon, treat that as a safety moment: be gentle, do not shame, and mention the Samaritans on 116 123 and Drinkline on 0300 123 1110. Sugar cravings in early recovery are common; you may say so only when CONTEXT includes that note.';
+  'If CONTEXT includes a nutrition summary, you may mention it. Estimates are estimates. Do not shame anyone about calories, weight, or a day over a target. If calories are hidden, do not mention kcal. If CONTEXT includes a nutrition goal, offer one gentle tip that fits that goal. Do not suggest eating less when CONTEXT says a lower intake is not being suggested. If CONTEXT says they have fallen off the wagon, treat that as a safety moment: be gentle, do not shame, and mention the Samaritans on 116 123 and Drinkline on 0300 123 1110. Sugar cravings in early recovery are common; you may say so only when CONTEXT includes that note.';
 
 /** NHS: up to 222 kcal in a pint of 5.2% lager, about 3 units. */
 export const NHS_PINT_52_KCAL = 222;
@@ -77,6 +77,15 @@ export type NutritionSettings = {
   shareQuality: boolean;
   /** Consecutive days with a meal logged. */
   shareProgress: boolean;
+  /** Null until they choose one. */
+  goal: NutritionGoal | null;
+  goalAge: number | null;
+  goalSex: NutritionSex | null;
+  proteinTarget: number | null;
+  /** Recent Apple Health active energy, kcal a day. Null when it has not been read. */
+  activityEnergyKcal: number | null;
+  /** Goal name and a qualitative progress line. Off until switched on. */
+  shareGoal: boolean;
   wagonOn: boolean;
   wagonNote: string;
   wagonVisible: boolean;
@@ -92,6 +101,12 @@ export function defaultNutritionSettings(): NutritionSettings {
     shareCalories: false,
     shareQuality: false,
     shareProgress: false,
+    goal: null,
+    goalAge: null,
+    goalSex: null,
+    proteinTarget: null,
+    activityEnergyKcal: null,
+    shareGoal: false,
     wagonOn: false,
     wagonNote: '',
     wagonVisible: false,
@@ -430,6 +445,7 @@ export function nutritionContextLines(input: {
   soberDays: number | null;
   unitsAvoided: number;
   today: string;
+  body?: { weightKg: number | null; heightCm: number | null; weights: readonly { day: string; kg: number }[] };
 }): string[] {
   const items = dayItems(input.logs, input.today);
   const totals = sumItems(items);
@@ -464,6 +480,22 @@ export function nutritionContextLines(input: {
   }
   if (input.waterMl > 0) lines.push(`Water logged today: ${input.waterMl} ml.`);
   lines.push(...nutritionPatternLines(input.logs, input.checkIns));
+  const goal = input.settings.goal;
+  if (goal) {
+    const weightKg = input.body?.weightKg ?? null;
+    const blocked = lossBlocked({ goal, weightKg, heightCm: input.body?.heightCm ?? null });
+    lines.push(`Their goal is ${GOAL_LABEL[goal]}.`);
+    if (blocked) lines.push('A lower intake is not being suggested.');
+    else if (!hide && input.settings.kcalTarget != null) {
+      lines.push(`The calorie target they set is ${input.settings.kcalTarget} kcal. One gentle tip is enough. There is no failing a day.`);
+    } else if (hide) lines.push('Calories stay hidden. Speak about protein and food quality.');
+    else lines.push('Offer one gentle tip that fits this goal.');
+    if (input.settings.proteinTarget != null) {
+      const mark = totals.proteinG >= input.settings.proteinTarget ? 'at' : 'short of';
+      lines.push(`Protein today is ${totals.proteinG} g, ${mark} a target of ${input.settings.proteinTarget} g.`);
+    }
+    if (input.body?.weights.length) lines.push(weightTrendLine(input.body.weights, goal));
+  }
   return lines;
 }
 
@@ -481,6 +513,224 @@ export const NUTRITION_HEALTH_WRITES = [
   { identifier: 'HKQuantityTypeIdentifierDietaryWater', unit: 'mL', key: 'waterMl' },
 ] as const;
 
+export const NUTRITION_GOALS = ['lose_weight', 'lose_fat_build_muscle', 'maintain', 'increase'] as const;
+export type NutritionGoal = (typeof NUTRITION_GOALS)[number];
+export type NutritionSex = 'female' | 'male';
+
+export const GOAL_LABEL: Record<NutritionGoal, string> = {
+  lose_weight: 'Lose Weight',
+  lose_fat_build_muscle: 'Lose Fat & Build Muscle',
+  maintain: 'Maintain Weight',
+  increase: 'Increase Weight',
+};
+
+export const LOW_BMI = 18.5;
+export const LOW_BMI_NOTE =
+  'Your BMI is under 18.5. This app will not suggest eating less. If you are worried about your weight, a GP can help. This is not a diagnosis.';
+
+const MODERATE_ACTIVITY = 1.55;
+const MODEST_ADJUSTMENT = 400;
+const RECOMP_ADJUSTMENT = 300;
+
+export function isNutritionGoal(value: string): value is NutritionGoal {
+  return (NUTRITION_GOALS as readonly string[]).includes(value);
+}
+
+export function isNutritionSex(value: string): value is NutritionSex {
+  return value === 'female' || value === 'male';
+}
+
+/** Mifflin-St Jeor. Sex unset uses the midpoint of the female and male constants. */
+export function mifflinBmr(input: { weightKg: number; heightCm: number; age: number; sex: NutritionSex | null }): number | null {
+  const { weightKg, heightCm, age, sex } = input;
+  if (!(weightKg >= 30 && weightKg <= 300)) return null;
+  if (!(heightCm >= 50 && heightCm <= 250)) return null;
+  if (!(age >= 18 && age <= 100)) return null;
+  const sexTerm = sex === 'male' ? 5 : sex === 'female' ? -161 : -78;
+  return Math.round((10 * weightKg) + (6.25 * heightCm) - (5 * age) + sexTerm);
+}
+
+export function bmiValue(weightKg: number, heightCm: number): number | null {
+  if (!(heightCm >= 50 && heightCm <= 250) || !(weightKg > 0)) return null;
+  const metres = heightCm / 100;
+  return Math.round((weightKg / (metres * metres)) * 10) / 10;
+}
+
+export function lossBlocked(input: { goal: NutritionGoal | null; weightKg: number | null; heightCm: number | null }): boolean {
+  if (input.goal !== 'lose_weight' && input.goal !== 'lose_fat_build_muscle') return false;
+  if (input.weightKg == null || input.heightCm == null) return false;
+  const bmi = bmiValue(input.weightKg, input.heightCm);
+  return bmi != null && bmi < LOW_BMI;
+}
+
+/** Never under BMR, and never under 1,200 kcal for women or 1,500 for men. Sex unset uses 1,500. */
+export function kcalFloor(bmr: number, sex: NutritionSex | null): number {
+  const sexFloor = sex === 'female' ? 1200 : 1500;
+  return Math.max(Math.round(bmr), sexFloor);
+}
+
+export function proteinGramsFor(goal: NutritionGoal, weightKg: number): number {
+  const perKg = goal === 'lose_fat_build_muscle' ? 1.8 : goal === 'maintain' ? 1.2 : 1.6;
+  return Math.round(perKg * weightKg);
+}
+
+export type GoalSuggestion = {
+  kcal: number;
+  proteinG: number;
+  bmr: number;
+  floor: number;
+  bmi: number | null;
+  blockedLoss: boolean;
+  usedActiveEnergy: boolean;
+  note: string;
+};
+
+export function suggestGoalTargets(input: {
+  goal: NutritionGoal;
+  weightKg: number | null;
+  heightCm: number | null;
+  age: number | null;
+  sex: NutritionSex | null;
+  activeEnergyKcal: number | null;
+}): { ok: true; suggestion: GoalSuggestion } | { ok: false; message: string } {
+  if (input.weightKg == null) return { ok: false, message: 'Add a weight on Health Stats, then a target can be suggested.' };
+  if (input.heightCm == null) return { ok: false, message: 'Add your height on Health Stats, then a target can be suggested.' };
+  if (input.age == null) return { ok: false, message: 'Add your age, then a target can be suggested. You can still type your own.' };
+  const bmr = mifflinBmr({ weightKg: input.weightKg, heightCm: input.heightCm, age: input.age, sex: input.sex });
+  if (bmr == null) return { ok: false, message: 'Age sits between 18 and 100, and weight and height need to be in the usual adult range.' };
+  const floor = kcalFloor(bmr, input.sex);
+  const bmi = bmiValue(input.weightKg, input.heightCm);
+  const active = input.activeEnergyKcal;
+  const usedActiveEnergy = active != null && active >= 0 && active <= 2500;
+  const tdee = usedActiveEnergy ? bmr + Math.round(active) : Math.round(bmr * MODERATE_ACTIVITY);
+  const lossGoal = input.goal === 'lose_weight' || input.goal === 'lose_fat_build_muscle';
+  const blockedLoss = lossGoal && bmi != null && bmi < LOW_BMI;
+  let kcal = tdee;
+  if (!blockedLoss && input.goal === 'lose_weight') kcal = tdee - MODEST_ADJUSTMENT;
+  if (!blockedLoss && input.goal === 'lose_fat_build_muscle') kcal = tdee - RECOMP_ADJUSTMENT;
+  if (input.goal === 'increase') kcal = tdee + MODEST_ADJUSTMENT;
+  kcal = Math.max(kcal, floor);
+  const proteinG = proteinGramsFor(input.goal, input.weightKg);
+  const activityLine = usedActiveEnergy
+    ? 'It uses your recent Apple Health active energy.'
+    : 'It assumes a moderately active day. Apple Health active energy will refine it when that reading is available.';
+  const sexLine = input.sex == null ? ' Sex was not set, so the estimate sits between the female and male equations.' : '';
+  const note = blockedLoss
+    ? LOW_BMI_NOTE
+    : `A starting suggestion from the Mifflin-St Jeor equation. ${activityLine}${sexLine} Change it if it does not suit you. This is not medical advice.`;
+  return { ok: true, suggestion: { kcal, proteinG, bmr, floor, bmi, blockedLoss, usedActiveEnergy, note } };
+}
+
+export function goalDayLine(input: {
+  goal: NutritionGoal;
+  hideCalories: boolean;
+  kcal: number;
+  kcalTarget: number | null;
+  proteinG: number;
+  proteinTarget: number | null;
+  blockedLoss: boolean;
+}): string {
+  const parts = [`Goal: ${GOAL_LABEL[input.goal]}.`];
+  if (input.blockedLoss) parts.push('A lower intake is not being suggested.');
+  if (input.proteinTarget != null) {
+    parts.push(input.proteinG >= input.proteinTarget
+      ? `Protein is at ${input.proteinTarget} g.`
+      : `Protein is ${input.proteinG} g towards ${input.proteinTarget} g.`);
+  }
+  if (!input.hideCalories && input.kcalTarget != null && !input.blockedLoss) {
+    parts.push(input.kcal <= input.kcalTarget
+      ? 'Energy is within the target you set.'
+      : 'Energy is above the target you set. There is no failing a day.');
+  }
+  if (input.hideCalories) parts.push('Calories stay hidden. Protein and food quality are the marks on this screen.');
+  return parts.join(' ');
+}
+
+export type WeightDirection = 'down' | 'up' | 'steady' | 'unknown';
+
+export function weightPointsFrom(samples: readonly { kind: string; value: number; recordedOn: string }[]): { day: string; kg: number }[] {
+  const byDay = new Map<string, number>();
+  for (const sample of samples) {
+    if (sample.kind !== 'weight_kg' || !(sample.value > 0)) continue;
+    const day = sample.recordedOn.slice(0, 10);
+    byDay.set(day, sample.value);
+  }
+  return [...byDay.entries()]
+    .map(([day, kg]) => ({ day, kg }))
+    .sort((left, right) => left.day.localeCompare(right.day));
+}
+
+export function weightDirection(points: readonly { day: string; kg: number }[]): WeightDirection {
+  if (points.length < 2) return 'unknown';
+  const ordered = [...points].sort((left, right) => left.day.localeCompare(right.day));
+  const first = ordered[0];
+  const last = ordered[ordered.length - 1];
+  if (!first || !last) return 'unknown';
+  const delta = last.kg - first.kg;
+  if (delta <= -0.3) return 'down';
+  if (delta >= 0.3) return 'up';
+  return 'steady';
+}
+
+export function weightTrendLine(points: readonly { day: string; kg: number }[], goal: NutritionGoal | null): string {
+  const direction = weightDirection(points);
+  if (direction === 'unknown') return 'Log weight more than once and a trend can sit here. The number stays on this screen.';
+  if (goal === 'lose_fat_build_muscle') {
+    return 'For losing fat and building muscle, the scales can stay still while the body changes. Protein is the clearer daily mark.';
+  }
+  if (goal === 'lose_weight' && direction === 'down') return 'Weight is lower than the earlier reading. That is a gentle move, not a race.';
+  if (goal === 'lose_weight' && direction === 'up') return 'Weight is higher than the earlier reading. Days vary. There is no failing a week.';
+  if (goal === 'increase' && direction === 'up') return 'Weight is higher than the earlier reading.';
+  if (goal === 'increase' && direction === 'down') return 'Weight is lower than the earlier reading. If that was not the aim, a GP can help.';
+  if (goal === 'maintain' && direction === 'steady') return 'Weight has stayed near the earlier reading.';
+  if (direction === 'down') return 'Weight is lower than the earlier reading.';
+  if (direction === 'up') return 'Weight is higher than the earlier reading.';
+  return 'Weight has stayed near the earlier reading.';
+}
+
+export function goalMealNote(input: {
+  goal: NutritionGoal | null;
+  items: readonly FoodItem[];
+  hideCalories: boolean;
+  blockedLoss: boolean;
+}): string | null {
+  if (!input.goal || !input.items.length) return null;
+  if (input.blockedLoss) return 'This is an estimate. A lower intake is not being suggested.';
+  const totals = sumItems(input.items);
+  const protein = `About ${totals.proteinG} g protein.`;
+  const energy = input.hideCalories ? '' : `About ${totals.kcal.toLocaleString('en-GB')} kcal. `;
+  const fit = input.goal === 'lose_fat_build_muscle'
+    ? ' Protein at this meal helps the muscle side of the goal.'
+    : input.goal === 'increase'
+      ? ' A bit more at meals can support a higher weight.'
+      : input.goal === 'lose_weight'
+        ? ' One meal does not decide the day.'
+        : ' A steady meal still counts.';
+  return `${energy}${protein}${fit}`.trim();
+}
+
+export function goalShareLine(input: {
+  goal: NutritionGoal;
+  proteinG: number | null;
+  proteinTarget: number | null;
+  direction: WeightDirection;
+  hideCalories: boolean;
+  blockedLoss: boolean;
+}): string {
+  const parts = [GOAL_LABEL[input.goal]];
+  if (input.blockedLoss) parts.push('A lower intake is not being suggested.');
+  else if (input.proteinTarget != null && input.proteinG != null) {
+    parts.push(input.proteinG >= input.proteinTarget ? 'Protein is at the target today.' : 'Protein is still short of the target today.');
+  }
+  if (input.direction === 'down') parts.push('Weight has eased down across recent readings.');
+  else if (input.direction === 'up') parts.push('Weight has risen across recent readings.');
+  else if (input.direction === 'steady') parts.push('Weight has stayed near the earlier reading.');
+  if (input.hideCalories) parts.push('Calories are not part of this share.');
+  return parts.join(' ');
+}
+
+export type SharedGoal = { label: string; line: string };
+
 export type SharedQuality = { unsaturated: number; other: number; line: string };
 
 export type SharedNutritionView = {
@@ -490,13 +740,44 @@ export type SharedNutritionView = {
   quality: SharedQuality | null;
   progress: string | null;
   wagon: { note: string } | null;
+  /** Goal name and a qualitative line. Null when that switch is off. No kilograms and no kcal. */
+  goal: SharedGoal | null;
 };
+
+function sharedGoalFrom(
+  settings: NutritionSettings,
+  logs: readonly FoodLog[],
+  today: string,
+  body?: { heightCm?: number | null; weights?: readonly { day: string; kg: number }[] },
+): SharedGoal | null {
+  if (!settings.shareGoal || !settings.goal) return null;
+  const weights = body?.weights ?? [];
+  const ordered = [...weights].sort((left, right) => left.day.localeCompare(right.day));
+  const latest = ordered.length ? ordered[ordered.length - 1] : undefined;
+  const totals = sumItems(dayItems(logs, today));
+  return {
+    label: GOAL_LABEL[settings.goal],
+    line: goalShareLine({
+      goal: settings.goal,
+      proteinG: totals.proteinG,
+      proteinTarget: settings.proteinTarget,
+      direction: weightDirection(weights),
+      hideCalories: settings.hideCalories,
+      blockedLoss: lossBlocked({
+        goal: settings.goal,
+        weightKg: latest?.kg ?? null,
+        heightCm: body?.heightCm ?? null,
+      }),
+    }),
+  };
+}
 
 /** What another member may see. Each field is null unless its own switch is on. */
 export function presentSharedNutrition(
   settings: NutritionSettings,
   logs: readonly FoodLog[],
   today: string,
+  body?: { heightCm?: number | null; weights?: readonly { day: string; kg: number }[] },
 ): SharedNutritionView {
   const items = dayItems(logs, today);
   const balance = fatBalance(items);
@@ -508,6 +789,7 @@ export function presentSharedNutrition(
       : null,
     progress: settings.shareProgress ? progressShareLine(mealStreakDays(logs, today)) : null,
     wagon: settings.wagonOn && settings.wagonVisible ? { note: settings.wagonNote.trim().slice(0, 200) } : null,
+    goal: sharedGoalFrom(settings, logs, today, body),
   };
 }
 
@@ -572,6 +854,25 @@ function sharedQuality(value: unknown): SharedQuality | null {
   return { unsaturated: balance.unsaturated, other: balance.other, line: balance.line };
 }
 
+function sharedGoal(value: unknown): SharedGoal | null {
+  if (!value || typeof value !== 'object') return null;
+  const row = value as Record<string, unknown>;
+  const id = typeof row.id === 'string' && isNutritionGoal(row.id) ? row.id : null;
+  if (!id) return null;
+  const direction = row.direction === 'down' || row.direction === 'up' || row.direction === 'steady' ? row.direction : 'unknown';
+  return {
+    label: GOAL_LABEL[id],
+    line: goalShareLine({
+      goal: id,
+      proteinG: typeof row.proteinG === 'number' ? row.proteinG : null,
+      proteinTarget: typeof row.proteinTargetG === 'number' ? row.proteinTargetG : null,
+      direction,
+      hideCalories: row.hideCalories === true,
+      blockedLoss: row.bmiLow === true,
+    }),
+  };
+}
+
 export function parseSharedNutrition(value: unknown): SharedNutritionView | null {
   if (!value || typeof value !== 'object') return null;
   const raw = value as Record<string, unknown>;
@@ -584,6 +885,7 @@ export function parseSharedNutrition(value: unknown): SharedNutritionView | null
     quality: sharedQuality(raw.quality),
     progress: typeof raw.progressDays === 'number' ? progressShareLine(raw.progressDays) : null,
     wagon,
+    goal: sharedGoal(raw.goal),
   };
 }
 

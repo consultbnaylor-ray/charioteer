@@ -5,7 +5,7 @@ import { MILESTONES, milestoneReached } from './milestones';
 import { savingsFromTypicalWeek } from './savings';
 import { soberElapsed } from './sober';
 import { quoteById, type QuoteSchool } from './stoicQuotes';
-import { presentSharedNutrition, type FoodLog, type NutritionSettings, type SharedQuality } from './nutrition';
+import { presentSharedNutrition, type FoodLog, type NutritionSettings, type SharedGoal, type SharedQuality } from './nutrition';
 import { STAGE_LABELS, isStage } from './stage';
 
 /** Helper under a Share on profile switch while Community is on. */
@@ -185,7 +185,12 @@ export type ShareSource = {
   profilePhotos?: { id: string; role: 'avatar' | 'gallery'; caption: string; position: number }[];
   pinnedQuoteId: string | null;
   /** Today's nutrition shares. Absent means nothing from the food log is shared. */
-  nutrition?: { logs: FoodLog[]; settings: NutritionSettings };
+  nutrition?: {
+    logs: FoodLog[];
+    settings: NutritionSettings;
+    heightCm?: number | null;
+    weights?: { day: string; kg: number }[];
+  };
 };
 
 export type PublicProfileView = {
@@ -223,6 +228,8 @@ export type PublicProfileView = {
   progress: string | null;
   /** A gentle line, when they have chosen to show a hard moment. */
   wagon: { note: string } | null;
+  /** Goal name and a qualitative progress line. Null when that switch is off. */
+  goal: SharedGoal | null;
 };
 
 /** Consecutive check-in days. The number only. Mood, craving, sleep, and notes stay off. */
@@ -374,13 +381,17 @@ export function projectPublicProfile(source: ShareSource, sharing: ProfileSharin
   if (pinnedQuote) sharedLabels.push('Pinned quote');
   else hiddenLabels.push('Pinned quote');
   const sharedFood = source.nutrition
-    ? presentSharedNutrition(source.nutrition.settings, source.nutrition.logs, source.today)
-    : { meals: null, calories: null, quality: null, progress: null, wagon: null };
+    ? presentSharedNutrition(source.nutrition.settings, source.nutrition.logs, source.today, {
+      heightCm: source.nutrition.heightCm,
+      weights: source.nutrition.weights,
+    })
+    : { meals: null, calories: null, quality: null, progress: null, wagon: null, goal: null };
   const foodDiary = sharedFood.meals;
   const calories = sharedFood.calories;
   const quality = sharedFood.quality;
   const progress = sharedFood.progress;
   const wagon = sharedFood.wagon;
+  const goal = sharedFood.goal;
   if (foodDiary) sharedLabels.push("Today's meals");
   else hiddenLabels.push("Today's meals");
   if (calories) sharedLabels.push('Calories and macros');
@@ -391,6 +402,8 @@ export function projectPublicProfile(source: ShareSource, sharing: ProfileSharin
   else hiddenLabels.push('Progress and streaks');
   if (wagon) sharedLabels.push('A hard moment');
   else hiddenLabels.push('A hard moment');
+  if (goal) sharedLabels.push('Nutrition goal');
+  else hiddenLabels.push('Nutrition goal');
 
   return {
     displayName: source.displayName,
@@ -418,6 +431,7 @@ export function projectPublicProfile(source: ShareSource, sharing: ProfileSharin
     quality,
     progress,
     wagon,
+    goal,
   };
 }
 
@@ -518,6 +532,7 @@ export function parsePublicProfile(value: unknown): PublicProfileView | null {
     quality: qualityShare(raw.quality),
     progress: typeof raw.progress === 'string' && raw.progress.trim() ? raw.progress : null,
     wagon: wagonLine(raw.wagon),
+    goal: goalFrom(raw.goal),
   };
 }
 
@@ -541,6 +556,15 @@ function qualityShare(value: unknown): SharedQuality | null {
   const line = typeof row.line === 'string' ? row.line : '';
   if (!line && unsaturated + other <= 0) return null;
   return { unsaturated, other, line };
+}
+
+function goalFrom(value: unknown): SharedGoal | null {
+  if (!value || typeof value !== 'object') return null;
+  const row = value as Record<string, unknown>;
+  const label = typeof row.label === 'string' ? row.label.trim() : '';
+  const line = typeof row.line === 'string' ? row.line.trim() : '';
+  if (!label && !line) return null;
+  return { label, line };
 }
 
 function wagonLine(value: unknown): { note: string } | null {
@@ -578,5 +602,6 @@ export function sharedReportItems(view: PublicProfileView): SharedReportItem[] {
   if (view.quality) items.push({ label: 'Food quality', summary: view.quality.line });
   if (view.progress) items.push({ label: 'Progress and streaks', summary: view.progress });
   if (view.wagon) items.push({ label: 'A hard moment', summary: view.wagon.note || 'Having a hard moment.' });
+  if (view.goal) items.push({ label: 'Nutrition goal', summary: view.goal.line });
   return items;
 }

@@ -3,7 +3,7 @@ import { Switch, View } from 'react-native';
 
 import { useRepository, useSnapshot } from '@/data';
 import { shownError } from '@/domain/errors';
-import type { NutritionSettings, SharedQuality } from '@/domain/nutrition';
+import type { NutritionSettings, SharedGoal, SharedQuality } from '@/domain/nutrition';
 import { sensitiveShareConfirm } from '@/domain/profileSharing';
 import { useAppTheme } from '@/ui/theme';
 import { Button, ErrorNote, T } from '@/ui/ui';
@@ -105,11 +105,13 @@ export function SharedNutritionFacts({
   calories,
   quality,
   progress,
+  goal = null,
 }: {
   meals: { meal: string; detail: string }[] | null;
   calories: string | null;
   quality: SharedQuality | null;
   progress: string | null;
+  goal?: SharedGoal | null;
 }) {
   return (
     <>
@@ -139,6 +141,12 @@ export function SharedNutritionFacts({
         <View style={{ gap: 4 }}>
           <T variant="label">Progress</T>
           <T>{progress}</T>
+        </View>
+      ) : null}
+      {goal ? (
+        <View style={{ gap: 4 }}>
+          <T variant="label">Nutrition goal</T>
+          <T>{goal.line}</T>
         </View>
       ) : null}
     </>

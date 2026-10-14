@@ -1,7 +1,7 @@
 import type { AppSnapshot } from '@/data/types';
 import { isoDay } from '@/domain/dates';
 import { buildHealthInsights } from '@/domain/healthInsights';
-import { defaultNutritionSettings, nutritionContextLines } from '@/domain/nutrition';
+import { defaultNutritionSettings, nutritionContextLines, weightPointsFrom } from '@/domain/nutrition';
 import { savingsFromTypicalWeek } from '@/domain/savings';
 import { soberElapsed } from '@/domain/sober';
 import { visionContextFrom } from '@/domain/visionBoard';
@@ -36,6 +36,8 @@ function nutritionLinesFrom(snap: AppSnapshot, now: Date): string[] {
     : 0;
   const today = isoDay(now);
   const water = (snap.waterDays ?? []).find((day) => day.day === today)?.waterMl ?? 0;
+  const weights = weightPointsFrom(snap.health);
+  const latest = weights.length ? weights[weights.length - 1] : undefined;
   return nutritionContextLines({
     logs: snap.foodLogs ?? [],
     settings: snap.nutrition ?? defaultNutritionSettings(),
@@ -44,6 +46,11 @@ function nutritionLinesFrom(snap: AppSnapshot, now: Date): string[] {
     soberDays: elapsed ? elapsed.days : null,
     unitsAvoided: units,
     today,
+    body: {
+      weightKg: latest?.kg ?? null,
+      heightCm: profile.heightCm,
+      weights,
+    },
   });
 }
 

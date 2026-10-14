@@ -63,6 +63,12 @@ export default function Health() {
       return;
     }
     await repo.saveHealth(result.samples);
+    if (result.activeEnergyKcal != null) {
+      await repo.setNutritionSettings({
+        ...repo.getSnapshot().nutrition,
+        activityEnergyKcal: result.activeEnergyKcal,
+      });
+    }
     const stamp = new Date().toISOString();
     await saveLastSynced(stamp);
     setSyncedAt(stamp);

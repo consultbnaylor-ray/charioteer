@@ -14,7 +14,7 @@ import { shownError } from '@/domain/errors';
 import { APPLE_HEALTH_READ_TYPES } from '@/health/connection';
 
 export type HealthSyncResult =
-  | { ok: true; samples: NewHealthSample[] }
+  | { ok: true; samples: NewHealthSample[]; activeEnergyKcal: number | null }
   | { ok: false; message: string };
 
 const ASLEEP = new Set<number>([
@@ -118,7 +118,29 @@ export async function syncAppleHealth(): Promise<HealthSyncResult> {
     }
     samples.push(...rows('workout_minutes', 'min', workoutDays, Math.round));
 
-    return { ok: true, samples };
+    let activeEnergyKcal: number | null = null;
+    try {
+      const energy = await queryStatisticsCollectionForQuantity(
+        'HKQuantityTypeIdentifierActiveEnergyBurned',
+        ['cumulativeSum'],
+        start,
+        { day: 1 },
+        { filter, unit: 'kcal' },
+      );
+      const days: number[] = [];
+      for (const row of energy) {
+        if (row.sumQuantity == null) continue;
+        days.push(row.sumQuantity.quantity);
+      }
+      if (days.length) {
+        const average = Math.round(days.reduce((sum, value) => sum + value, 0) / days.length);
+        activeEnergyKcal = average >= 0 && average <= 2500 ? average : null;
+      }
+    } catch {
+      activeEnergyKcal = null;
+    }
+
+    return { ok: true, samples, activeEnergyKcal };
   } catch (error) {
     const message = shownError(error, 'Apple Health could not be read.');
     return { ok: false, message };
