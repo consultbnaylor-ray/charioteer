@@ -44,5 +44,6 @@ describe('collapsed share lists', () => {
     expect(list).toContain('SHARE_LIST_PAGE');
     expect(list).not.toContain('<ShareOnProfile');
     expect(list).toContain('expanded: open');
+    expect(list).toContain('aria-expanded={open}');
   });
 });

@@ -29,6 +29,7 @@ export function ShareSwitchList({
         accessibilityRole="button"
         accessibilityLabel={label}
         accessibilityState={{ expanded: open }}
+        aria-expanded={open}
         onPress={() => setOpen((current) => !current)}
         style={{ minHeight: 44, justifyContent: 'center' }}
       >
