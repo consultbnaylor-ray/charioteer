@@ -8,6 +8,7 @@ import { shownError } from '@/domain/errors';
 import { randomId } from '@/domain/id';
 import { chatPreview, chatUnread, chatsChoiceLabel, latestChatMessage } from '@/domain/liveChat';
 import { CommunityProfile } from '@/ui/CommunityProfile';
+import { CommunityPrompt } from '@/ui/CommunityPrompt';
 import { useChatRead } from '@/ui/chatRead';
 import { MemberAvatar, useMemberAvatars } from '@/ui/MemberAvatar';
 import { usePendingPress } from '@/ui/pendingAction';
@@ -72,6 +73,7 @@ export default function People() {
 
   return (
     <Screen eyebrow="People" title="Find your people." intro="Shared interests, a town or area, and a private chat once you both agree. You can block or report at any time.">
+      <CommunityPrompt userId={me.id} visible={!me.communityVisible && me.ageConfirmed18} />
       <PublicProfileCard />
       <Button label="What I share" tone="quiet" onPress={() => router.push('/sharing' as never)} />
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>

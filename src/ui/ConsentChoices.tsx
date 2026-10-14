@@ -6,9 +6,16 @@ import { CONSENT_VERSION } from '@/data/catalogue';
 import { useAppTheme } from '@/ui/theme';
 import { T } from '@/ui/ui';
 
-/** The community switch explanation. People reuses this when someone turns the community on. */
+/**
+ * The community switch. Turning it on does not publish stats, photos, nutrition, or the wagon flag.
+ * People and What I share reuse this wording.
+ */
 export const COMMUNITY_CONSENT_BODY =
-  `Other adults can see your name and interests. Town or area stays hidden until you switch it on. Reasons, days sober, money and unit totals, a mood streak, health headlines, diary lines, and photos stay hidden until you switch that item on. Anything you leave off is never shown to the community. A progress photo stays hidden unless you choose Share with community on that photo. ${PROFILE_PHOTO_WORDING}`;
+  'Turning this on lets other members find you in People, see your name, interests and profile picture, and send you a request or a private message. Nothing else is shared. Stats, photos, nutrition, the wagon flag, and each other item stay off until you switch that item on separately. You can turn Community off at any time.';
+
+/** A short version for the People tab, when this person has left Community off. */
+export const COMMUNITY_PROMPT_BODY =
+  'Other members cannot find you in People until Community is on. They would see your name and profile picture, and could send a request or a private message. Nothing else is shared until you switch it on.';
 
 export function ConsentChoices({
   community,

@@ -9,6 +9,7 @@ import {
   healthShareLabel,
   toggleShareId,
 } from '@/domain/profileSharing';
+import { COMMUNITY_CONSENT_BODY } from '@/ui/ConsentChoices';
 import { NutritionShareSwitch } from '@/ui/NutritionShare';
 import { ShareOnProfile } from '@/ui/ShareOnProfile';
 import { Button, Screen, T } from '@/ui/ui';
@@ -25,6 +26,7 @@ export default function WhatIShare() {
       intro="Each switch shares only that one item. The same switch sits under the box. This list is a second place to review them all."
     >
       <T variant="muted">{communityOn ? SHARE_HINT : PROFILE_HIDDEN_SHARE}</T>
+      <T>{COMMUNITY_CONSENT_BODY}</T>
       <T>Name and interests stay on your profile while Community is on.</T>
       <ShareOnProfile
         label="Share bio"

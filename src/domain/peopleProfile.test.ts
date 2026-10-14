@@ -1,6 +1,8 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
+import { COMMUNITY_PROMPT_SNOOZE_MS, communityPromptSnoozed, withCommunityPromptSnooze } from './communityPrompt';
+
 describe('your public profile on People', () => {
   const people = readFileSync('src/app/(main)/people.tsx', 'utf8');
   const card = readFileSync('src/ui/PublicProfileCard.tsx', 'utf8');
@@ -80,5 +82,39 @@ describe('your public profile on People', () => {
     expect(wagon).toContain('will not shame you');
     expect(wagon).toContain('wagonOn: value');
     expect(wagon).not.toMatch(/failed|relapse|weak/i);
+  });
+
+  it('says Community shares only a way to be found, and leaves the switch off by default', () => {
+    const consent = readFileSync('src/ui/ConsentChoices.tsx', 'utf8');
+    expect(consent).toContain('find you in People');
+    expect(consent).toContain('name, interests and profile picture');
+    expect(consent).toContain('private message');
+    expect(consent).toContain('Nothing else is shared');
+    expect(consent).toContain('wagon flag');
+    expect(consent).toContain('turn Community off at any time');
+    expect(consent).toContain('Nothing else is shared until you switch it on');
+    expect(consent).not.toContain('Other adults can see your name and interests');
+    const onboarding = readFileSync('src/app/onboarding.tsx', 'utf8');
+    expect(onboarding).toContain('const [community, setCommunity] = useState(false)');
+    expect(onboarding).toContain('<ConsentChoices');
+    expect(readFileSync('src/app/consent.tsx', 'utf8')).toContain('profile?.communityVisible ?? false');
+    expect(readFileSync('src/app/(main)/sharing.tsx', 'utf8')).toContain('COMMUNITY_CONSENT_BODY');
+    expect(readFileSync('src/ui/PublicProfileCard.tsx', 'utf8')).toContain('COMMUNITY_CONSENT_BODY');
+    const people = readFileSync('src/app/(main)/people.tsx', 'utf8');
+    expect(people).toContain('<CommunityPrompt');
+    expect(people).toContain('!me.communityVisible && me.ageConfirmed18');
+    expect(people).not.toContain('Community is off');
+    const prompt = readFileSync('src/ui/CommunityPrompt.tsx', 'utf8');
+    expect(prompt).toContain('Turn on Community');
+    expect(prompt).toContain('Not now');
+    expect(prompt).toContain("router.push('/privacy'");
+    expect(prompt).toContain('tone="quiet"');
+    expect(prompt).not.toContain('danger');
+    const now = Date.parse('2026-10-14T12:00:00.000Z');
+    expect(communityPromptSnoozed(null, 'user', now)).toBe(false);
+    const stored = withCommunityPromptSnooze(null, 'user', now);
+    expect(communityPromptSnoozed(stored, 'user', now + COMMUNITY_PROMPT_SNOOZE_MS - 1)).toBe(true);
+    expect(communityPromptSnoozed(stored, 'user', now + COMMUNITY_PROMPT_SNOOZE_MS)).toBe(false);
+    expect(communityPromptSnoozed(stored, 'someone-else', now)).toBe(false);
   });
 });
