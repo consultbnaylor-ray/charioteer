@@ -45,6 +45,7 @@ import {
   defaultNutritionSettings,
   estimateFromText,
   foodItemFromUnknown,
+  parsePortion,
   isBodyCompositionSource,
   parseBodyFatPct,
   parseLeanMassKg,
@@ -70,6 +71,7 @@ import type {
   ProfilePhoto,
   ProgressPhoto,
   ProgressVisibility,
+  FoodLogUpdate,
   OnboardingInput,
   ProfilePatch,
   Repository,
@@ -300,7 +302,11 @@ export class DemoRepository implements Repository {
       visionItems: account ? sortVisionItems(account.visionItems ?? []) : [],
       sharing: account ? normalizeProfileSharing(account.sharing) : defaultProfileSharing(),
       savedQuotes: account?.savedQuotes ?? [],
-      foodLogs: account?.foodLogs ?? [],
+      foodLogs: (account?.foodLogs ?? []).map((log) => ({
+        ...log,
+        eatenAt: log.eatenAt ?? null,
+        portion: typeof log.portion === 'number' && log.portion > 0 ? log.portion : 1,
+      })),
       nutrition: { ...defaultNutritionSettings(), ...(account?.nutrition ?? {}) },
       waterDays: account?.waterDays ?? [],
       bodyComposition: account?.bodyComposition ?? [],
@@ -1004,11 +1010,13 @@ export class DemoRepository implements Repository {
         id: input.id,
         userId: account.profile.id,
         eatenOn: input.eatenOn,
+        eatenAt: new Date().toISOString(),
         meal: input.meal,
         source: input.source,
         note: input.note.slice(0, 500),
         items,
         estimated: input.estimated,
+        portion: 1,
         createdAt: new Date().toISOString(),
         previewUrl: input.photoBase64 ? `data:image/jpeg;base64,${input.photoBase64}` : null,
       };
@@ -1017,12 +1025,41 @@ export class DemoRepository implements Repository {
     });
   }
 
+  async updateFoodLog(id: string, patch: FoodLogUpdate): Promise<void> {
+    return this.once(`food-edit:${id}`, async () => {
+      const account = this.me();
+      const db = clone(this.db);
+      const next = db.accounts[account.profile.id];
+      const logs = next.foodLogs ?? [];
+      const current = logs.find((log) => log.id === id);
+      if (!current || current.userId !== account.profile.id) throw new UserFacingError('That meal is not on this account.', 'generic');
+      const portion = parsePortion(patch.portion);
+      if (portion == null) throw new UserFacingError('Portion sits between 0.25 and 12.', 'generic');
+      const items = patch.items.map(foodItemFromUnknown).filter((item): item is NonNullable<typeof item> => item != null);
+      if (!items.length) throw new UserFacingError('Add at least one food.', 'generic');
+      const eatenAt = patch.eatenAt && !Number.isNaN(new Date(patch.eatenAt).getTime()) ? new Date(patch.eatenAt).toISOString() : null;
+      next.foodLogs = logs.map((log) => (log.id === id ? {
+        ...log,
+        eatenOn: patch.eatenOn,
+        eatenAt,
+        meal: patch.meal,
+        note: patch.note.slice(0, 500),
+        items,
+        estimated: patch.estimated,
+        portion,
+      } : log));
+      this.commit(db);
+    });
+  }
+
   async deleteFoodLog(id: string): Promise<void> {
-    const account = this.me();
-    const db = clone(this.db);
-    const next = db.accounts[account.profile.id];
-    next.foodLogs = (next.foodLogs ?? []).filter((log) => log.id !== id);
-    this.commit(db);
+    return this.once(`food-delete:${id}`, async () => {
+      const account = this.me();
+      const db = clone(this.db);
+      const next = db.accounts[account.profile.id];
+      next.foodLogs = (next.foodLogs ?? []).filter((log) => log.id !== id);
+      this.commit(db);
+    });
   }
 
   async setNutritionSettings(settings: NutritionSettings): Promise<void> {

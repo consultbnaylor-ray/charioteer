@@ -53,6 +53,7 @@ import {
   estimateFromText,
   foodItemFromUnknown,
   isBodyBuild,
+  parsePortion,
   isBodyCompositionSource,
   isMealSlot,
   isNutritionGoal,
@@ -119,6 +120,7 @@ import type {
   Interest,
   MealEstimate,
   NewCheckIn,
+  FoodLogUpdate,
   NewFoodLog,
   NewGratitudeEntry,
   NewHealthSample,
@@ -1927,7 +1929,7 @@ export class SupabaseRepository implements Repository {
 
   private async nutritionSnapshot(userId: string): Promise<Pick<AppSnapshot, 'foodLogs' | 'nutrition' | 'waterDays' | 'bodyComposition'>> {
     const [logsRes, settingsRes, waterRes, bodyRes] = await Promise.all([
-      this.client.from('food_logs').select('id, user_id, eaten_on, meal, source, note, items, estimated, photo_path, created_at').eq('user_id', userId).order('eaten_on', { ascending: false }).order('created_at', { ascending: false }),
+      this.foodLogRows(userId),
       this.nutritionSettingsRow(userId),
       this.client.from('nutrition_days').select('day, water_ml').eq('user_id', userId).order('day', { ascending: false }).limit(14),
       this.client.from('body_composition').select('id, recorded_on, body_fat_pct, lean_mass_kg, waist_cm, source, created_at').eq('user_id', userId).order('recorded_on', { ascending: false }).order('created_at', { ascending: false }).limit(60),
@@ -1954,6 +1956,25 @@ export class SupabaseRepository implements Repository {
       nutrition: this.prefer('nutrition', settingsRes.error ? defaultNutritionSettings() : nutritionFromRow(settingsRes.data as Row | null)),
       waterDays: waterRes.error ? [] : ((waterRes.data ?? []) as Row[]).map(mapWaterDay),
       bodyComposition: bodyRes.error ? [] : ((bodyRes.data ?? []) as Row[]).map(mapBodyComposition).filter((row): row is BodyCompositionReading => row != null),
+    };
+  }
+
+  /** Older databases have no meal time or portion. Those columns are left unset. */
+  private async foodLogRows(userId: string): Promise<{ data: Row[] | null; error: { message: string } | null }> {
+    const order = (columns: string) => this.client
+      .from('food_logs')
+      .select(columns)
+      .eq('user_id', userId)
+      .order('eaten_on', { ascending: false })
+      .order('created_at', { ascending: false });
+    const full = 'id, user_id, eaten_on, eaten_at, meal, source, note, items, estimated, photo_path, created_at, portion';
+    const first = await order(full);
+    const chosen = !first.error || !/eaten_at|portion/i.test(first.error.message)
+      ? first
+      : await order('id, user_id, eaten_on, meal, source, note, items, estimated, photo_path, created_at');
+    return {
+      data: (chosen.data ?? null) as unknown as Row[] | null,
+      error: chosen.error ? { message: chosen.error.message } : null,
     };
   }
 
@@ -1990,33 +2011,77 @@ export class SupabaseRepository implements Repository {
         const uploaded = await this.client.storage.from(FOOD_BUCKET).upload(photoPath, body, { contentType: 'image/jpeg', upsert: true });
         if (uploaded.error) throw asUserFacing(uploaded.error, 'general');
       }
-      const inserted = await this.client.from('food_logs').insert({
+      const row = {
         id: input.id,
         user_id: userId,
         eaten_on: input.eatenOn,
+        eaten_at: new Date().toISOString(),
         meal: input.meal,
         source: input.source,
         note: input.note.slice(0, 500),
         items: input.items,
         estimated: input.estimated,
         photo_path: photoPath,
-      });
+        portion: 1,
+      };
+      let inserted = await this.client.from('food_logs').insert(row);
+      if (inserted.error && !isDuplicateWrite(inserted.error) && /eaten_at|portion/i.test(inserted.error.message)) {
+        const { eaten_at: _eatenAt, portion: _portion, ...legacy } = row;
+        inserted = await this.client.from('food_logs').insert(legacy);
+      }
       if (inserted.error && !isDuplicateWrite(inserted.error)) throw asUserFacing(inserted.error, 'general');
       await this.refresh();
     });
   }
 
+  async updateFoodLog(id: string, patch: FoodLogUpdate): Promise<void> {
+    return this.once(`food-edit:${id}`, async () => {
+      const userId = this.snapshot.session?.userId ?? await this.userId();
+      const before = this.snapshot.foodLogs;
+      const current = before.find((log) => log.id === id);
+      if (!current || current.userId !== userId) throw new UserFacingError('That meal is not on this account.', 'generic');
+      const next = foodLogFromUpdate(current, patch);
+      this.emit({ ...this.snapshot, foodLogs: before.map((log) => (log.id === id ? next : log)) });
+      const row = {
+        eaten_on: next.eatenOn,
+        eaten_at: next.eatenAt,
+        meal: next.meal,
+        note: next.note,
+        items: next.items,
+        estimated: next.estimated,
+        portion: next.portion,
+      };
+      let { error } = await this.client.from('food_logs').update(row).eq('id', id).eq('user_id', userId);
+      if (error && /eaten_at|portion/i.test(error.message)) {
+        const { eaten_at: _eatenAt, portion: _portion, ...legacy } = row;
+        ({ error } = await this.client.from('food_logs').update(legacy).eq('id', id).eq('user_id', userId));
+      }
+      if (error) {
+        this.emit({ ...this.snapshot, foodLogs: before });
+        throw asUserFacing(error, 'general');
+      }
+    });
+  }
+
   async deleteFoodLog(id: string): Promise<void> {
-    const userId = await this.userId();
-    const known = this.snapshot.foodLogs.find((log) => log.id === id);
-    if (known?.previewUrl) {
-      const path = `${userId}/${id}.jpg`;
-      const removed = await this.client.storage.from(FOOD_BUCKET).remove([path]);
-      if (removed.error && !/not found/i.test(removed.error.message)) console.error(removed.error.message);
-    }
-    const { error } = await this.client.from('food_logs').delete().eq('id', id).eq('user_id', userId);
-    if (error) throw asUserFacing(error, 'general');
-    await this.refresh();
+    return this.once(`food-delete:${id}`, async () => {
+      const userId = this.snapshot.session?.userId ?? await this.userId();
+      const before = this.snapshot.foodLogs;
+      const known = before.find((log) => log.id === id);
+      this.emit({ ...this.snapshot, foodLogs: before.filter((log) => log.id !== id) });
+      try {
+        if (known?.previewUrl) {
+          const path = `${userId}/${id}.jpg`;
+          const removed = await this.client.storage.from(FOOD_BUCKET).remove([path]);
+          if (removed.error && !/not found/i.test(removed.error.message)) console.error(removed.error.message);
+        }
+        const { error } = await this.client.from('food_logs').delete().eq('id', id).eq('user_id', userId);
+        if (error) throw error;
+      } catch (error) {
+        this.emit({ ...this.snapshot, foodLogs: before });
+        throw asUserFacing(error, 'general');
+      }
+    });
   }
 
   async setNutritionSettings(settings: NutritionSettings): Promise<void> {
@@ -2634,8 +2699,31 @@ function mapFoodLog(row: Row, userId: string): FoodLog | null {
     note: String(row.note ?? ''),
     items,
     estimated: row.estimated === true,
+    eatenAt: typeof row.eaten_at === 'string' && row.eaten_at ? row.eaten_at : null,
+    portion: parsePortion(row.portion) ?? 1,
     createdAt: String(row.created_at ?? ''),
     previewUrl: null,
+  };
+}
+
+function foodLogFromUpdate(current: FoodLog, patch: FoodLogUpdate): FoodLog {
+  if (!isMealSlot(patch.meal) || !/^\d{4}-\d{2}-\d{2}$/.test(patch.eatenOn)) {
+    throw new UserFacingError('That meal could not be saved.', 'generic');
+  }
+  const portion = parsePortion(patch.portion);
+  if (portion == null) throw new UserFacingError('Portion sits between 0.25 and 12.', 'generic');
+  const items = patch.items.map(foodItemFromUnknown).filter((item): item is FoodItem => item != null);
+  if (!items.length) throw new UserFacingError('Add at least one food.', 'generic');
+  const eatenAt = patch.eatenAt && !Number.isNaN(new Date(patch.eatenAt).getTime()) ? new Date(patch.eatenAt).toISOString() : null;
+  return {
+    ...current,
+    eatenOn: patch.eatenOn,
+    eatenAt,
+    meal: patch.meal,
+    note: patch.note.slice(0, 500),
+    items,
+    estimated: patch.estimated,
+    portion,
   };
 }
 

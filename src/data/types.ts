@@ -351,6 +351,17 @@ export type NewFoodLog = {
   photoBase64?: string | null;
 };
 
+/** Replaces one saved meal. The id stays, so the day is not given a second row. */
+export type FoodLogUpdate = {
+  eatenOn: string;
+  eatenAt: string | null;
+  meal: MealSlot;
+  note: string;
+  items: FoodItem[];
+  estimated: boolean;
+  portion: number;
+};
+
 export type MealEstimate = { items: FoodItem[]; source: 'model' | 'local' };
 
 export interface Repository {
@@ -436,6 +447,7 @@ export interface Repository {
   /** Reads a photo or a sentence. The person confirms the items before they are saved. */
   estimateMeal(input: { text?: string; imageBase64?: string }): Promise<MealEstimate>;
   saveFoodLog(input: NewFoodLog): Promise<void>;
+  updateFoodLog(id: string, patch: FoodLogUpdate): Promise<void>;
   deleteFoodLog(id: string): Promise<void>;
   setNutritionSettings(settings: NutritionSettings): Promise<void>;
   setWater(day: string, waterMl: number): Promise<void>;

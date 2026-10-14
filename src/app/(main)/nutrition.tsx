@@ -4,12 +4,13 @@ import { useEffect, useState } from 'react';
 import { Platform, Pressable, Switch, View } from 'react-native';
 
 import { useRepository, useSnapshot } from '@/data';
-import type { NewHealthSample } from '@/data/types';
-import { formatUkCompactWhen, formatUkLong, isoDay } from '@/domain/dates';
+import type { FoodLogUpdate, NewHealthSample } from '@/data/types';
+import { formatUkCompact, formatUkCompactWhen, formatUkLong, formatUkTime, isoDay } from '@/domain/dates';
 import { shownError } from '@/domain/errors';
 import { parseHeightCm } from '@/domain/guidance';
 import { randomId } from '@/domain/id';
 import {
+  APPLE_HEALTH_MEAL_NOTE,
   ESTIMATE_HINT,
   ESTIMATE_LABEL,
   FAT_SCIENCE,
@@ -37,6 +38,7 @@ import {
   targetLine,
   weightPointsFrom,
   type FoodItem,
+  type FoodLog,
   type GoalBody,
   type MealSlot,
   type MealSource,
@@ -49,6 +51,7 @@ import { weightReadingKg } from '@/domain/weightEntry';
 import { readAppleHealthBody } from '@/health/sync';
 import { writeDayToAppleHealth } from '@/health/writeNutrition';
 import { BodyCompositionCard } from '@/ui/BodyComposition';
+import { MealEdit } from '@/ui/MealEdit';
 import { NutritionBoard, WaterMeter, WeightTrendChart } from '@/ui/NutritionCharts';
 import { FatShareBar, NutritionShareSummary, NutritionShareSwitch, WagonFlag } from '@/ui/NutritionShare';
 import { pickMealPhoto } from '@/ui/pickMealPhoto';
@@ -178,6 +181,10 @@ export default function Nutrition() {
   const patterns = nutritionPatternLines(snap.foodLogs, snap.checkIns);
   const water = snap.waterDays.find((day) => day.day === today)?.waterMl ?? 0;
   const todayLogs = snap.foodLogs.filter((log) => log.eatenOn === today);
+  const earlierLogs = snap.foodLogs
+    .filter((log) => log.eatenOn !== today)
+    .slice()
+    .sort((a, b) => b.eatenOn.localeCompare(a.eatenOn) || b.createdAt.localeCompare(a.createdAt));
   const weights = weightPointsFrom(snap.health);
   const latestWeight = weights.length ? weights[weights.length - 1] : undefined;
   const blocked = settings.goal
@@ -210,12 +217,21 @@ export default function Nutrition() {
   const [goalHeight, setGoalHeight] = useState('');
   const [suggestNote, setSuggestNote] = useState<string | null>(null);
   const [targetsSavedAt, setTargetsSavedAt] = useState<number | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [confirmId, setConfirmId] = useState<string | null>(null);
+  const [mealSavedAt, setMealSavedAt] = useState<number | null>(null);
 
   useEffect(() => {
     if (targetsSavedAt == null) return;
     const timer = setTimeout(() => setTargetsSavedAt(null), 2500);
     return () => clearTimeout(timer);
   }, [targetsSavedAt]);
+
+  useEffect(() => {
+    if (mealSavedAt == null) return;
+    const timer = setTimeout(() => setMealSavedAt(null), 2500);
+    return () => clearTimeout(timer);
+  }, [mealSavedAt]);
 
   function floorFor(age: number | null, sex: NutritionSex | null): number | null {
     const weight = latestWeight?.kg ?? null;
@@ -442,15 +458,108 @@ export default function Nutrition() {
     });
   }
 
+  function saveEdited(id: string, patch: FoodLogUpdate) {
+    run('meal-save', async () => {
+      setError(null);
+      try {
+        await repo.updateFoodLog(id, patch);
+        setMealSavedAt(Date.now());
+        playSavedHaptic();
+        // The earlier HealthKit sample has no stored id, so it is left as it is.
+        if (profile?.consentHealth) setHealthNote(APPLE_HEALTH_MEAL_NOTE);
+      } catch (err) {
+        setError(shownError(err, 'Could not save that meal.'));
+      }
+    });
+  }
+
+  function estimateEdited(text: string): Promise<FoodItem[]> {
+    return new Promise((resolve, reject) => {
+      run('meal-estimate', async () => {
+        try {
+          const estimate = await repo.estimateMeal({ text });
+          resolve(estimate.items);
+        } catch (err) {
+          reject(err);
+        }
+      });
+    });
+  }
+
   function removeLog(id: string) {
     run(`remove:${id}`, async () => {
       setError(null);
       try {
         await repo.deleteFoodLog(id);
+        setConfirmId(null);
+        if (editingId === id) setEditingId(null);
+        if (profile?.consentHealth) setHealthNote(APPLE_HEALTH_MEAL_NOTE);
       } catch (err) {
         setError(shownError(err, 'Could not remove that meal.'));
       }
     });
+  }
+
+  function renderLog(log: FoodLog, showDate: boolean) {
+    const names = log.items.map((item) => item.name).join(', ');
+    const kcal = hide ? '' : ` · ${sumItems(log.items).kcal} kcal`;
+    const estimate = log.estimated ? ` · ${ESTIMATE_LABEL}` : '';
+    const when = log.eatenAt ? ` · ${formatUkTime(log.eatenAt)}` : '';
+    const dateBit = showDate ? `${formatUkCompact(log.eatenOn)} · ` : '';
+    const portionBit = log.portion && log.portion !== 1 ? ` · portion ${log.portion}` : '';
+    const health = Boolean(profile?.consentHealth);
+    return (
+      <View key={log.id} style={{ gap: 6 }}>
+        {log.previewUrl ? (
+          <Image source={{ uri: log.previewUrl }} style={{ width: 96, height: 96, borderRadius: 10 }} contentFit="cover" accessibilityLabel="Saved meal photo" />
+        ) : null}
+        <T>{`${dateBit}${MEAL_LABEL[log.meal]}${when}: ${names || log.note || 'Meal'}${portionBit}${kcal}${estimate}`}</T>
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+          <Button
+            label="Edit"
+            tone="quiet"
+            accessibilityLabel={`Edit ${log.meal}`}
+            onPress={() => {
+              setConfirmId(null);
+              setMealSavedAt(null);
+              setEditingId((current) => (current === log.id ? null : log.id));
+            }}
+          />
+          <Button
+            label="Delete"
+            tone="quiet"
+            accessibilityLabel={`Delete ${log.meal}`}
+            onPress={() => {
+              setEditingId(null);
+              setMealSavedAt(null);
+              setConfirmId(log.id);
+            }}
+          />
+        </View>
+        {confirmId === log.id ? (
+          <View style={{ gap: 8 }}>
+            <T>Delete this meal?</T>
+            {health ? <T variant="muted">{APPLE_HEALTH_MEAL_NOTE}</T> : null}
+            <Button label="Delete this meal" tone="quiet" pending={isPending(`remove:${log.id}`)} pendingLabel="Deleting..." onPress={() => removeLog(log.id)} />
+            <Button label="Keep it" tone="quiet" disabled={isPending(`remove:${log.id}`)} onPress={() => setConfirmId(null)} />
+          </View>
+        ) : null}
+        {editingId === log.id ? (
+          <MealEdit
+            log={log}
+            hideCalories={hide}
+            saved={mealSavedAt != null}
+            saving={isPending('meal-save')}
+            estimating={isPending('meal-estimate')}
+            showHealthNote={health}
+            onSave={(patch) => saveEdited(log.id, patch)}
+            onEstimate={estimateEdited}
+            onCancel={() => { if (!isPending('meal-save')) setEditingId(null); }}
+            onError={setError}
+          />
+        ) : null}
+      </View>
+    );
   }
 
   function kcalFromField(): number | null | 'bad' {
@@ -713,20 +822,9 @@ export default function Nutrition() {
       <Card>
         <T variant="label">Logged today</T>
         {todayLogs.length === 0 ? <T variant="muted">Nothing saved yet.</T> : null}
-        {todayLogs.map((log) => {
-          const names = log.items.map((item) => item.name).join(', ');
-          const kcal = hide ? '' : ` · ${sumItems(log.items).kcal} kcal`;
-          const estimate = log.estimated ? ` · ${ESTIMATE_LABEL}` : '';
-          return (
-            <View key={log.id} style={{ gap: 6 }}>
-              {log.previewUrl ? (
-                <Image source={{ uri: log.previewUrl }} style={{ width: 96, height: 96, borderRadius: 10 }} contentFit="cover" accessibilityLabel="Saved meal photo" />
-              ) : null}
-              <T>{`${MEAL_LABEL[log.meal]}: ${names || log.note || 'Meal'}${kcal}${estimate}`}</T>
-              <Button label="Remove" tone="quiet" pending={isPending(`remove:${log.id}`)} pendingLabel="Removing..." onPress={() => removeLog(log.id)} />
-            </View>
-          );
-        })}
+        {todayLogs.map((log) => renderLog(log, false))}
+        {earlierLogs.length ? <T variant="label">Earlier</T> : null}
+        {earlierLogs.map((log) => renderLog(log, true))}
         <NutritionShareSwitch
           label="Share today's meals"
           item="Today's meals"

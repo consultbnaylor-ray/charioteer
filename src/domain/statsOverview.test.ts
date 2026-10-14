@@ -33,6 +33,8 @@ function log(day: string, items: FoodItem[]): FoodLog {
     note: '',
     items,
     estimated: false,
+    eatenAt: null,
+    portion: 1,
     createdAt: `${day}T12:00:00.000Z`,
     previewUrl: null,
   };

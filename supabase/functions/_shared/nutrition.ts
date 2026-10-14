@@ -18,6 +18,14 @@ export const MEAL_LABEL: Record<MealSlot, string> = {
 
 export const ESTIMATE_LABEL = 'Estimate';
 export const ESTIMATE_HINT = 'These are estimates. Change anything that looks wrong, then save.';
+/**
+ * HealthKit writes do not keep the sample id, so a later edit cannot replace
+ * that sample. A second write would count the meal twice.
+ */
+export const APPLE_HEALTH_MEAL_NOTE =
+  'If this meal was saved to Apple Health, the earlier sample stays. This app did not store a sample id, so it cannot update or delete that sample.';
+export const PORTION_MIN = 0.25;
+export const PORTION_MAX = 12;
 export const HIDE_CALORIES_LINE = 'Calories are hidden. This view is about food quality.';
 export const NO_SHAME_OVER = 'Above the target you set. There is no failing a day.';
 export const WITHIN_TARGET = 'Within the target you set.';
@@ -57,11 +65,15 @@ export type FoodLog = {
   id: string;
   userId: string;
   eatenOn: string;
+  /** When they ate it. Null on older rows that only stored the day. */
+  eatenAt: string | null;
   meal: MealSlot;
   source: MealSource;
   note: string;
   items: FoodItem[];
   estimated: boolean;
+  /** 1 is the logged amount. A later portion scales the figures already stored. */
+  portion: number;
   createdAt: string;
   previewUrl: string | null;
 };
@@ -313,6 +325,29 @@ export function estimateFromText(text: string): FoodItem[] {
 /** Demo photo reading. The live function sends the picture to the vision model. */
 export function samplePhotoMeal(): FoodItem[] {
   return estimateFromText('chicken and avocado');
+}
+
+export function parsePortion(value: unknown): number | null {
+  const parsed = typeof value === 'number' ? value : typeof value === 'string' ? Number(value.trim().replace(',', '.')) : NaN;
+  if (!Number.isFinite(parsed) || parsed < PORTION_MIN || parsed > PORTION_MAX) return null;
+  return Math.round(parsed * 100) / 100;
+}
+
+/** Scales every figure. The name and the processed flag stay as they are. */
+export function scaleFoodItems(items: readonly FoodItem[], factor: number): FoodItem[] {
+  const n = Number.isFinite(factor) && factor > 0 ? factor : 1;
+  return items.map((item) => ({
+    ...item,
+    kcal: Math.round(item.kcal * n),
+    proteinG: round1(item.proteinG * n),
+    carbsG: round1(item.carbsG * n),
+    sugarG: round1(item.sugarG * n),
+    fibreG: round1(item.fibreG * n),
+    unsaturatedG: round1(item.unsaturatedG * n),
+    saturatedG: round1(item.saturatedG * n),
+    transG: round1(item.transG * n),
+    sodiumMg: Math.round(item.sodiumMg * n),
+  }));
 }
 
 export function sumItems(items: readonly FoodItem[]) {

@@ -70,6 +70,11 @@ export function formatUkLongWhen(value: Date | string): string {
   return `${formatUkLong(date)} ${ukTime(date)}`;
 }
 
+/** 08:30. Local time, 24-hour. */
+export function formatUkTime(value: Date | string): string {
+  return ukTime(asDate(value));
+}
+
 function ukTime(date: Date): string {
   return date.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
 }

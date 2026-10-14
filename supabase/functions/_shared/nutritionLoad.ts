@@ -59,6 +59,8 @@ function logsFromRows(rows: unknown): FoodLog[] {
       note: typeof record.note === 'string' ? record.note : '',
       items,
       estimated: record.estimated === true,
+      eatenAt: typeof record.eaten_at === 'string' && record.eaten_at ? record.eaten_at : null,
+      portion: typeof record.portion === 'number' && record.portion > 0 ? record.portion : 1,
       createdAt: typeof record.created_at === 'string' ? record.created_at : '',
       previewUrl: null,
     }];

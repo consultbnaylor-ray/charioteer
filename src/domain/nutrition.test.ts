@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { communitySharingOn } from './profileSharing';
 import { APP_SECTIONS, TAB_SECTIONS } from './sections';
 import {
+  APPLE_HEALTH_MEAL_NOTE,
   ESTIMATE_LABEL,
   FAT_SCIENCE,
   HIDE_CALORIES_LINE,
@@ -47,6 +48,10 @@ import {
   fatFreeMassKg,
   ffmiPlain,
   ffmiValue,
+  dayItems,
+  parsePortion,
+  scaleFoodItems,
+  sumItems,
   parseBodyFatPct,
   parseWaistCm,
   waistToHeight,
@@ -71,6 +76,8 @@ function log(partial: Partial<FoodLog> & Pick<FoodLog, 'eatenOn' | 'meal'>): Foo
     note: '',
     items: [],
     estimated: true,
+    eatenAt: null,
+    portion: 1,
     createdAt: partial.eatenOn,
     previewUrl: null,
     ...partial,
@@ -984,5 +991,91 @@ describe('body composition', () => {
     expect(save).toContain("from('body_composition').upsert");
     expect(save).not.toContain('this.refresh()');
     expect(repo).toContain('build: settings.build');
+  });
+});
+
+describe('meal edit', () => {
+  it('scales the saved meal so the day, the chart, and the goal ring follow it', () => {
+    const porridge = estimateFromText('porridge')[0];
+    expect(porridge?.kcal).toBe(180);
+    const larger = scaleFoodItems(porridge ? [porridge] : [], 2)[0];
+    expect(larger?.kcal).toBe(360);
+    expect(larger?.proteinG).toBe(12);
+    expect(larger?.fibreG).toBe(6);
+    const edited = log({ eatenOn: '2026-10-14', meal: 'breakfast', items: larger ? [larger] : [], portion: 2 });
+    expect(sumItems(dayItems([edited], '2026-10-14')).kcal).toBe(360);
+    expect(sumItems(dayItems([], '2026-10-14')).kcal).toBe(0);
+    const trend = nutritionTrendDays([edited], '2026-10-14', 7).find((day) => day.day === '2026-10-14');
+    expect(trend?.kcal).toBe(360);
+    expect(trend?.proteinG).toBe(12);
+    expect(todayRing({
+      hideCalories: false,
+      kcal: trend?.kcal ?? 0,
+      kcalTarget: 2000,
+      proteinG: trend?.proteinG ?? 0,
+      proteinTarget: 100,
+      logged: true,
+    }).caption).toBe('360 of 2,000 kcal logged today.');
+    expect(parsePortion('2')).toBe(2);
+    expect(parsePortion('0.25')).toBe(0.25);
+    expect(parsePortion('0')).toBeNull();
+    expect(parsePortion('13')).toBeNull();
+    expect(APPLE_HEALTH_MEAL_NOTE).toContain('sample id');
+    expect(APPLE_HEALTH_MEAL_NOTE).toContain('cannot update or delete');
+  });
+
+  it('keeps update and delete on the owner and edits the diary in place', () => {
+    const sql = readFileSync('supabase/migrations/20261013220000_nutrition.sql', 'utf8');
+    expect(sql).toContain('create policy food_logs_all on public.food_logs');
+    expect(sql).toContain('for all to authenticated');
+    expect(sql).toContain('using (user_id = auth.uid())');
+    expect(sql).toContain('with check (user_id = auth.uid())');
+    expect(sql).toContain('grant select, insert, update, delete on public.food_logs to authenticated');
+    const edit = readFileSync('supabase/migrations/20261014210000_food_log_edit.sql', 'utf8');
+    expect(edit).toContain('add column if not exists eaten_at');
+    expect(edit).toContain('add column if not exists portion');
+    expect(edit).toContain('food_logs_all');
+    expect(edit).not.toMatch(/create policy/i);
+    expect(edit).not.toMatch(/drop table/i);
+    expect(edit).not.toMatch(/delete from/i);
+
+    const screen = readFileSync('src/app/(main)/nutrition.tsx', 'utf8');
+    const editor = readFileSync('src/ui/MealEdit.tsx', 'utf8');
+    const repo = readFileSync('src/data/supabase-repository.ts', 'utf8');
+    expect(screen).toContain('label="Edit"');
+    expect(screen).toContain('Delete this meal?');
+    expect(screen).toContain('label="Keep it"');
+    expect(screen).toContain("saving={isPending('meal-save')}");
+    expect(screen).toContain("estimating={isPending('meal-estimate')}");
+    expect(screen).toContain('updateFoodLog');
+    const saveEdited = screen.slice(screen.indexOf('function saveEdited'), screen.indexOf('function estimateEdited'));
+    expect(saveEdited).toContain('APPLE_HEALTH_MEAL_NOTE');
+    expect(saveEdited).not.toContain('writeDayToAppleHealth');
+    expect(editor).toContain('Re-estimate with AI');
+    expect(editor).toContain('Saved ✓');
+    expect(editor).toContain('label="Description"');
+    expect(editor).toContain('label="Portion"');
+    expect(editor).toContain('label="Date"');
+    expect(editor).toContain('label="Time"');
+    expect(editor).toContain('label="Fat (g)"');
+    expect(editor).toContain('Fat quality');
+    expect(editor).toContain('label="Fibre (g)"');
+    expect(editor).toContain('label="Sugar (g)"');
+    expect(editor).toContain('Highly processed');
+    expect(editor).toContain('MEAL_SLOTS');
+    expect(readFileSync('src/domain/statsOverview.ts', 'utf8')).toContain('foodLogs');
+
+    const update = repo.slice(repo.indexOf('async updateFoodLog'), repo.indexOf('async deleteFoodLog'));
+    expect(update).toContain(".update(row)");
+    expect(update).toContain(".eq('id', id)");
+    expect(update).toContain(".eq('user_id', userId)");
+    expect(update).toContain('this.emit');
+    expect(update).not.toContain('this.refresh()');
+    const remove = repo.slice(repo.indexOf('async deleteFoodLog'), repo.indexOf('async setNutritionSettings'));
+    expect(remove).toContain('.delete()');
+    expect(remove).toContain(".eq('user_id', userId)");
+    expect(remove).toContain('this.emit');
+    expect(remove).not.toContain('this.refresh()');
+    expect(readFileSync('src/data/demo-repository.ts', 'utf8')).toContain('async updateFoodLog');
   });
 });
