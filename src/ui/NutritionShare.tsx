@@ -3,10 +3,11 @@ import { Switch, View } from 'react-native';
 
 import { useRepository, useSnapshot } from '@/data';
 import { shownError } from '@/domain/errors';
-import type { NutritionSettings, SharedGoal, SharedQuality } from '@/domain/nutrition';
+import { WAGON_SUPPORT, type NutritionSettings, type SharedGoal, type SharedQuality } from '@/domain/nutrition';
 import { sensitiveShareConfirm } from '@/domain/profileSharing';
+import { usePendingPress } from '@/ui/pendingAction';
 import { useAppTheme } from '@/ui/theme';
-import { Button, ErrorNote, T } from '@/ui/ui';
+import { Button, Card, ErrorNote, Field, T } from '@/ui/ui';
 
 /**
  * One labelled switch for a nutrition share. The first health or sobriety
@@ -81,6 +82,83 @@ export function NutritionShareSwitch({
       ) : null}
       {error ? <ErrorNote>{error}</ErrorNote> : null}
     </View>
+  );
+}
+
+/**
+ * The personal wagon flag. You and Nutrition both render this, so they read
+ * and write the same note, flag, and share switch.
+ */
+export function WagonFlag() {
+  const snap = useSnapshot();
+  const repo = useRepository();
+  const theme = useAppTheme();
+  const { run, isPending } = usePendingPress();
+  const settings = snap.nutrition;
+  const [wagonNote, setWagonNote] = useState(settings.wagonNote);
+  const [error, setError] = useState<string | null>(null);
+
+  function setWagon(value: boolean) {
+    run('wagon', async () => {
+      setError(null);
+      try {
+        const current = repo.getSnapshot().nutrition;
+        await repo.setNutritionSettings({
+          ...current,
+          wagonOn: value,
+          wagonNote: value ? wagonNote.slice(0, 200) : '',
+        });
+        if (!value) setWagonNote('');
+      } catch (err) {
+        setError(shownError(err, 'Could not update that flag.'));
+      }
+    });
+  }
+
+  function saveWagonNote() {
+    run('wagon-note', async () => {
+      setError(null);
+      try {
+        await repo.setNutritionSettings({ ...repo.getSnapshot().nutrition, wagonNote: wagonNote.slice(0, 200) });
+      } catch (err) {
+        setError(shownError(err, 'Could not save that note.'));
+      }
+    });
+  }
+
+  return (
+    <Card>
+      <T variant="label">A hard moment</T>
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
+        <T style={{ flex: 1 }}>I’ve fallen off the wagon</T>
+        <Switch
+          accessibilityLabel="I’ve fallen off the wagon"
+          value={settings.wagonOn}
+          disabled={isPending('wagon')}
+          onValueChange={setWagon}
+          trackColor={{ true: theme.colors.ink, false: theme.colors.line }}
+          thumbColor={theme.colors.surface}
+        />
+      </View>
+      {settings.wagonOn ? (
+        <View style={{ gap: 8 }}>
+          <T>You can clear this whenever you want. While it is on, Thumos treats it gently and will not shame you.</T>
+          {WAGON_SUPPORT.map((line) => <T key={line}>{line}</T>)}
+          <Field label="Optional note" value={wagonNote} onChangeText={setWagonNote} placeholder="A few words, if you want" maxLength={200} />
+          <Button label="Save note" pending={isPending('wagon-note')} pendingLabel="Saving..." onPress={saveWagonNote} />
+          <Button label="Clear this" tone="quiet" pending={isPending('wagon')} pendingLabel="Clearing..." onPress={() => setWagon(false)} />
+        </View>
+      ) : (
+        <T variant="muted">This stays on your own screen until you share the flag.</T>
+      )}
+      <NutritionShareSwitch
+        label="Share the wagon flag"
+        item="The wagon flag"
+        on={settings.wagonVisible}
+        apply={(current, selected) => ({ ...current, wagonVisible: selected })}
+      />
+      {error ? <ErrorNote>{error}</ErrorNote> : null}
+    </Card>
   );
 }
 

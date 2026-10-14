@@ -16,7 +16,6 @@ import {
   MEAL_LABEL,
   MEAL_SLOTS,
   NUTRITION_GOALS,
-  WAGON_SUPPORT,
   alcoholSavedLine,
   caloriesShareLine,
   dayItems,
@@ -46,7 +45,7 @@ import {
 import { savingsFromTypicalWeek } from '@/domain/savings';
 import { soberElapsed } from '@/domain/sober';
 import { writeDayToAppleHealth } from '@/health/writeNutrition';
-import { FatShareBar, NutritionShareSwitch } from '@/ui/NutritionShare';
+import { FatShareBar, NutritionShareSwitch, WagonFlag } from '@/ui/NutritionShare';
 import { pickMealPhoto } from '@/ui/pickMealPhoto';
 import { usePendingPress } from '@/ui/pendingAction';
 import { useAppTheme } from '@/ui/theme';
@@ -199,7 +198,6 @@ export default function Nutrition() {
   const [healthNote, setHealthNote] = useState<string | null>(null);
   const [target, setTarget] = useState(settings.kcalTarget == null ? '' : String(settings.kcalTarget));
   const [waterText, setWaterText] = useState(water ? String(water) : '');
-  const [wagonNote, setWagonNote] = useState(settings.wagonNote);
   const [goalAge, setGoalAge] = useState(settings.goalAge == null ? '' : String(settings.goalAge));
   const [protein, setProtein] = useState(settings.proteinTarget == null ? '' : String(settings.proteinTarget));
   const [goalNote, setGoalNote] = useState<string | null>(null);
@@ -484,39 +482,11 @@ export default function Nutrition() {
     });
   }
 
-  function setWagon(value: boolean) {
-    run('wagon', async () => {
-      setError(null);
-      try {
-        const current = repo.getSnapshot().nutrition;
-        await repo.setNutritionSettings({
-          ...current,
-          wagonOn: value,
-          wagonNote: value ? wagonNote.slice(0, 200) : '',
-        });
-        if (!value) setWagonNote('');
-      } catch (err) {
-        setError(shownError(err, 'Could not update that flag.'));
-      }
-    });
-  }
-
   function updateItem(index: number, patch: Partial<DraftItem>) {
     setDraft((current) => {
       if (!current) return current;
       const itemsNext = current.items.map((item, itemIndex) => (itemIndex === index ? { ...item, ...patch } : item));
       return { ...current, items: itemsNext };
-    });
-  }
-
-  function saveWagonNote() {
-    run('wagon-note', async () => {
-      setError(null);
-      try {
-        await repo.setNutritionSettings({ ...repo.getSnapshot().nutrition, wagonNote: wagonNote.slice(0, 200) });
-      } catch (err) {
-        setError(shownError(err, 'Could not save that note.'));
-      }
     });
   }
 
@@ -779,37 +749,7 @@ export default function Nutrition() {
         />
       </Card>
 
-      <Card>
-        <T variant="label">A hard moment</T>
-        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
-          <T style={{ flex: 1 }}>I’ve fallen off the wagon</T>
-          <Switch
-            accessibilityLabel="I’ve fallen off the wagon"
-            value={settings.wagonOn}
-            disabled={isPending('wagon')}
-            onValueChange={setWagon}
-            trackColor={{ true: theme.colors.ink, false: theme.colors.line }}
-            thumbColor={theme.colors.surface}
-          />
-        </View>
-        {settings.wagonOn ? (
-          <View style={{ gap: 8 }}>
-            <T>You can clear this whenever you want. While it is on, Thumos treats it gently and will not shame you.</T>
-            {WAGON_SUPPORT.map((line) => <T key={line}>{line}</T>)}
-            <Field label="Optional note" value={wagonNote} onChangeText={setWagonNote} placeholder="A few words, if you want" maxLength={200} />
-            <Button label="Save note" pending={isPending('wagon-note')} pendingLabel="Saving..." onPress={saveWagonNote} />
-            <Button label="Clear this" tone="quiet" pending={isPending('wagon')} pendingLabel="Clearing..." onPress={() => setWagon(false)} />
-          </View>
-        ) : (
-          <T variant="muted">This stays on your own screen until you share the flag.</T>
-        )}
-        <NutritionShareSwitch
-          label="Share the wagon flag"
-          item="The wagon flag"
-          on={settings.wagonVisible}
-          apply={(current, selected) => ({ ...current, wagonVisible: selected })}
-        />
-      </Card>
+      <WagonFlag />
 
       {healthNote ? <T variant="muted">{healthNote}</T> : null}
       {error ? <ErrorNote>{error}</ErrorNote> : null}

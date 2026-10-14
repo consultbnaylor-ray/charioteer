@@ -60,4 +60,25 @@ describe('your public profile on People', () => {
     expect(preview).not.toContain('CommunityProfile');
     expect(preview).not.toContain('Message privately');
   });
+
+  it('puts the same wagon flag under the profile, quote, and share links', () => {
+    const you = readFileSync('src/app/(main)/profile.tsx', 'utf8');
+    const nutrition = readFileSync('src/app/(main)/nutrition.tsx', 'utf8');
+    const wagon = readFileSync('src/ui/NutritionShare.tsx', 'utf8');
+    const pin = you.indexOf('Pin a quote');
+    const share = you.indexOf('What I share');
+    const flag = you.indexOf('<WagonFlag');
+    expect(you.indexOf('View my public profile')).toBeLessThan(pin);
+    expect(pin).toBeLessThan(share);
+    expect(share).toBeLessThan(flag);
+    expect(flag).toBeLessThan(you.indexOf('Your details'));
+    expect(nutrition).toContain('<WagonFlag');
+    expect(wagon).toContain('export function WagonFlag');
+    expect(wagon).toContain('I’ve fallen off the wagon');
+    expect(wagon).toContain('Share the wagon flag');
+    expect(wagon).toContain('WAGON_SUPPORT');
+    expect(wagon).toContain('will not shame you');
+    expect(wagon).toContain('wagonOn: value');
+    expect(wagon).not.toMatch(/failed|relapse|weak/i);
+  });
 });

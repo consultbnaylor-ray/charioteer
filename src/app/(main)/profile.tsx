@@ -16,6 +16,7 @@ import { planReasons, reasonOverLimit } from '@/domain/reasons';
 import { profileDetailsDirty, type ProfileFormValues } from '@/domain/profileForm';
 import { InterestChip } from '@/ui/InterestChip';
 import { MemberAvatar } from '@/ui/MemberAvatar';
+import { WagonFlag } from '@/ui/NutritionShare';
 import { ShareOnProfile } from '@/ui/ShareOnProfile';
 import { ConsentChoices } from '@/ui/ConsentChoices';
 import { ProgressPhotos } from '@/ui/ProgressPhotos';
@@ -267,6 +268,7 @@ export default function Profile() {
         <Button label="Pin a quote" tone="quiet" onPress={() => router.push('/quotes' as never)} />
       )}
       <Button label="What I share" tone="quiet" onPress={() => router.push('/sharing' as never)} />
+      <WagonFlag />
       <T variant="label">Your details</T>
       <T>Name, where you are, the sober date, your usual week, reasons, interests, town, and consents. A new sober date is a correction, not a relapse.</T>
       <Card>
