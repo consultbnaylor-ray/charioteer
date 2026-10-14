@@ -6,13 +6,14 @@ export const APPLE_HEALTH_READ_TYPES = [
   'HKQuantityTypeIdentifierRestingHeartRate',
   'HKQuantityTypeIdentifierHeartRateVariabilitySDNN',
   'HKQuantityTypeIdentifierBodyMass',
+  'HKQuantityTypeIdentifierHeight',
   'HKCategoryTypeIdentifierSleepAnalysis',
   'HKWorkoutTypeIdentifier',
   'HKQuantityTypeIdentifierActiveEnergyBurned',
 ] as const;
 
 export const APPLE_HEALTH_INTRO =
-  'Connect Apple Health to see your steps, sleep, resting heart rate, HRV, workouts, weight and active energy here, and to save the food and water you log. Charioteer reads steps, sleep, heart rate, HRV, workouts, weight and active energy. It writes only the meals and water you save: energy, protein, carbohydrate, sugar, fibre, fat, sodium and water. It does not write steps, sleep, heart rate, or weight. Other people never see these readings. You can disconnect any time in Settings > Health > Data Access & Devices.';
+  'Connect Apple Health to see your steps, sleep, resting heart rate, HRV, workouts, weight, height and active energy here, and to save the food and water you log. Charioteer reads steps, sleep, heart rate, HRV, workouts, weight, height and active energy. It writes only the meals and water you save: energy, protein, carbohydrate, sugar, fibre, fat, sodium and water. It does not write steps, sleep, heart rate, or weight. Other people never see these readings. You can disconnect any time in Settings > Health > Data Access & Devices.';
 
 export const APPLE_HEALTH_WEB = 'Apple Health connects in the iPhone app. Here you can log readings yourself.';
 
@@ -25,6 +26,13 @@ export const APPLE_HEALTH_CONSENT =
 export const APPLE_HEALTH_UNAVAILABLE = 'Apple Health is not available on this device.';
 
 export type AppleHealthAccess = 'prompt' | 'connected' | 'denied' | 'unavailable' | 'web';
+
+/** The latest body mass and height Apple Health can offer for a nutrition target. */
+export type AppleHealthBody = {
+  weightKg: number | null;
+  weightDay: string | null;
+  heightCm: number | null;
+};
 
 export type HealthCardKind =
   | { kind: 'consent' }

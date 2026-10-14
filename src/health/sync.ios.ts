@@ -11,7 +11,11 @@ import {
 import type { HealthKind, NewHealthSample } from '@/data/types';
 import { isoDay } from '@/domain/dates';
 import { shownError } from '@/domain/errors';
-import { APPLE_HEALTH_READ_TYPES } from '@/health/connection';
+import { APPLE_HEALTH_READ_TYPES, type AppleHealthBody } from '@/health/connection';
+
+export type AppleHealthBodyRead =
+  | { ok: true; body: AppleHealthBody }
+  | { ok: false; message: string };
 
 export type HealthSyncResult =
   | { ok: true; samples: NewHealthSample[]; activeEnergyKcal: number | null }
@@ -36,6 +40,45 @@ function rows(kind: HealthKind, unit: string, values: Map<string, number>, round
     value: round(value),
     source: 'healthkit' as const,
   }));
+}
+
+function oneDecimal(value: number | undefined): number | null {
+  if (value == null || !Number.isFinite(value) || value <= 0) return null;
+  return Math.round(value * 10) / 10;
+}
+
+/** Latest weight and height only. A full sync still covers the other readings. */
+export async function readAppleHealthBody(): Promise<AppleHealthBodyRead> {
+  try {
+    if (!isHealthDataAvailable()) {
+      return { ok: false, message: 'Apple Health is not available on this device.' };
+    }
+    const allowed = await requestAuthorization({ toRead: [...APPLE_HEALTH_READ_TYPES] });
+    if (!allowed) return { ok: false, message: 'Apple Health access was not granted.' };
+
+    const weight = await queryQuantitySamples('HKQuantityTypeIdentifierBodyMass', {
+      limit: 1,
+      ascending: false,
+      unit: 'kg',
+    });
+    const height = await queryQuantitySamples('HKQuantityTypeIdentifierHeight', {
+      limit: 1,
+      ascending: false,
+      unit: 'cm',
+    });
+    const latestWeight = weight[0];
+    const latestHeight = height[0];
+    return {
+      ok: true,
+      body: {
+        weightKg: oneDecimal(latestWeight?.quantity),
+        weightDay: latestWeight ? isoDay(latestWeight.startDate) : null,
+        heightCm: oneDecimal(latestHeight?.quantity),
+      },
+    };
+  } catch (error) {
+    return { ok: false, message: shownError(error, 'Apple Health could not be read.') };
+  }
 }
 
 function minutes(quantity: number, unit: string): number {

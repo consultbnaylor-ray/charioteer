@@ -585,6 +585,75 @@ export type GoalSuggestion = {
   note: string;
 };
 
+export type GoalMeasureFrom = 'box' | 'health' | 'profile' | 'typed';
+
+export type GoalBody = {
+  weightKg: number | null;
+  heightCm: number | null;
+  weightFrom: GoalMeasureFrom | null;
+  heightFrom: GoalMeasureFrom | null;
+};
+
+/** Names every missing measure. Weight and height together use one sentence. */
+export function missingGoalBodyMessage(input: { weightKg: number | null; heightCm: number | null }): string | null {
+  const weight = input.weightKg == null;
+  const height = input.heightCm == null;
+  if (weight && height) return 'Add your weight and height';
+  if (weight) return 'Add your weight';
+  if (height) return 'Add your height';
+  return null;
+}
+
+/**
+ * Latest weight wins: a typed value, otherwise the later of the weight box and Apple Health.
+ * Height is the typed value, otherwise the profile, otherwise Apple Health.
+ */
+export function goalBodyForSuggestion(input: {
+  box: { kg: number; day: string } | null;
+  healthWeight: { kg: number; day: string } | null;
+  profileHeightCm: number | null;
+  healthHeightCm: number | null;
+  typedWeightKg: number | null;
+  typedHeightCm: number | null;
+}): GoalBody {
+  let weightKg: number | null = null;
+  let weightFrom: GoalMeasureFrom | null = null;
+  if (input.typedWeightKg != null) {
+    weightKg = input.typedWeightKg;
+    weightFrom = 'typed';
+  } else if (input.box && input.healthWeight) {
+    const healthLater = input.healthWeight.day >= input.box.day;
+    weightKg = healthLater ? input.healthWeight.kg : input.box.kg;
+    weightFrom = healthLater ? 'health' : 'box';
+  } else if (input.healthWeight) {
+    weightKg = input.healthWeight.kg;
+    weightFrom = 'health';
+  } else if (input.box) {
+    weightKg = input.box.kg;
+    weightFrom = 'box';
+  }
+
+  let heightCm: number | null = null;
+  let heightFrom: GoalMeasureFrom | null = null;
+  if (input.typedHeightCm != null) {
+    heightCm = input.typedHeightCm;
+    heightFrom = 'typed';
+  } else if (input.profileHeightCm != null) {
+    heightCm = input.profileHeightCm;
+    heightFrom = 'profile';
+  } else if (input.healthHeightCm != null) {
+    heightCm = input.healthHeightCm;
+    heightFrom = 'health';
+  }
+
+  return { weightKg, heightCm, weightFrom, heightFrom };
+}
+
+export function suggestedTargetsLine(input: { kcal: number; proteinG: number; hideCalories: boolean }): string {
+  if (input.hideCalories) return `Suggested ${input.proteinG} g protein.`;
+  return `Suggested ${input.kcal.toLocaleString('en-GB')} kcal and ${input.proteinG} g protein.`;
+}
+
 export function suggestGoalTargets(input: {
   goal: NutritionGoal;
   weightKg: number | null;
@@ -593,8 +662,9 @@ export function suggestGoalTargets(input: {
   sex: NutritionSex | null;
   activeEnergyKcal: number | null;
 }): { ok: true; suggestion: GoalSuggestion } | { ok: false; message: string } {
-  if (input.weightKg == null) return { ok: false, message: 'Add a weight on Health Stats, then a target can be suggested.' };
-  if (input.heightCm == null) return { ok: false, message: 'Add your height on Health Stats, then a target can be suggested.' };
+  if (input.weightKg == null || input.heightCm == null) {
+    return { ok: false, message: missingGoalBodyMessage(input) ?? 'Add your weight and height' };
+  }
   if (input.age == null) return { ok: false, message: 'Add your age, then a target can be suggested. You can still type your own.' };
   const bmr = mifflinBmr({ weightKg: input.weightKg, heightCm: input.heightCm, age: input.age, sex: input.sex });
   if (bmr == null) return { ok: false, message: 'Age sits between 18 and 100, and weight and height need to be in the usual adult range.' };

@@ -15,6 +15,7 @@ import {
   caloriesShareLine,
   estimateFromText,
   fatBalance,
+  goalBodyForSuggestion,
   goalDayLine,
   goalMealNote,
   goalShareLine,
@@ -30,6 +31,7 @@ import {
   proteinGramsFor,
   samplePhotoMeal,
   sugarCravingNote,
+  suggestedTargetsLine,
   suggestGoalTargets,
   targetLine,
   weightTrendLine,
@@ -353,6 +355,22 @@ describe('nutrition storage and coach', () => {
     expect(screen).not.toContain('Loose');
     expect(Object.values(GOAL_LABEL).join(' ')).not.toContain('Loose');
     expect(screen).toContain('Suggest targets');
+    expect(screen).toContain("pending={isPending('suggest')}");
+    expect(screen).toContain('pendingLabel="Suggesting..."');
+    expect(screen).toContain('readAppleHealthBody');
+    expect(screen).toContain('goalBodyForSuggestion');
+    expect(screen).toContain('label="Weight (kg)"');
+    expect(screen).toContain('label="Height (cm)"');
+    expect(screen).toContain('Or add them on Health Stats');
+    const goalCard = screen.slice(screen.indexOf('variant="label">Goal'), screen.indexOf('variant="label">Weight'));
+    expect(goalCard).toContain('Suggest targets');
+    expect(goalCard).toContain('{suggestNote}');
+    expect(goalCard).toContain('label="Weight (kg)"');
+    expect(goalCard).toContain('label="Height (cm)"');
+    const suggestFn = screen.slice(screen.indexOf('function suggest()'), screen.indexOf('function openDraft'));
+    expect(suggestFn).toContain("run('suggest'");
+    expect(suggestFn).toContain('setSuggestNote(result.message)');
+    expect(suggestFn).not.toContain('setError(result.message)');
     expect(screen).toContain('Share the goal and progress');
     expect(screen).toContain('Daily protein (g)');
     expect(readFileSync('src/app/(main)/sharing.tsx', 'utf8')).toContain('Share the goal and progress');
@@ -401,6 +419,80 @@ describe('nutrition goals', () => {
     });
     expect(floored.ok && floored.suggestion.kcal).toBe(1200);
     expect(floored.ok && floored.suggestion.floor).toBe(kcalFloor(floored.ok ? floored.suggestion.bmr : 0, 'female'));
+  });
+
+  it('says exactly what is missing for Lose Fat & Build Muscle at age 45', () => {
+    const ben = {
+      goal: 'lose_fat_build_muscle' as const,
+      age: 45,
+      sex: 'male' as const,
+      activeEnergyKcal: null,
+    };
+    const both = suggestGoalTargets({ ...ben, weightKg: null, heightCm: null });
+    expect(both).toEqual({ ok: false, message: 'Add your weight and height' });
+    const weightOnly = suggestGoalTargets({ ...ben, weightKg: null, heightCm: 180 });
+    expect(weightOnly).toEqual({ ok: false, message: 'Add your weight' });
+    const heightOnly = suggestGoalTargets({ ...ben, weightKg: 80, heightCm: null });
+    expect(heightOnly).toEqual({ ok: false, message: 'Add your height' });
+  });
+
+  it('suggests from Apple Health when the weight box and profile have neither', () => {
+    const fromHealth = goalBodyForSuggestion({
+      box: null,
+      healthWeight: { kg: 80, day: '2026-10-14' },
+      profileHeightCm: null,
+      healthHeightCm: 180,
+      typedWeightKg: null,
+      typedHeightCm: null,
+    });
+    expect(fromHealth).toEqual({
+      weightKg: 80,
+      heightCm: 180,
+      weightFrom: 'health',
+      heightFrom: 'health',
+    });
+    const result = suggestGoalTargets({
+      goal: 'lose_fat_build_muscle',
+      weightKg: fromHealth.weightKg,
+      heightCm: fromHealth.heightCm,
+      age: 45,
+      sex: 'male',
+      activeEnergyKcal: null,
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.suggestion.kcal).toBe(2343);
+    expect(result.suggestion.proteinG).toBe(144);
+    expect(suggestedTargetsLine({
+      kcal: result.suggestion.kcal,
+      proteinG: result.suggestion.proteinG,
+      hideCalories: false,
+    })).toBe('Suggested 2,343 kcal and 144 g protein.');
+
+    const laterBox = goalBodyForSuggestion({
+      box: { kg: 82, day: '2026-10-14' },
+      healthWeight: { kg: 80, day: '2026-10-01' },
+      profileHeightCm: 178,
+      healthHeightCm: 180,
+      typedWeightKg: null,
+      typedHeightCm: null,
+    });
+    expect(laterBox.weightKg).toBe(82);
+    expect(laterBox.weightFrom).toBe('box');
+    expect(laterBox.heightCm).toBe(178);
+    expect(laterBox.heightFrom).toBe('profile');
+
+    const typed = goalBodyForSuggestion({
+      box: null,
+      healthWeight: null,
+      profileHeightCm: null,
+      healthHeightCm: null,
+      typedWeightKg: 80,
+      typedHeightCm: 180,
+    });
+    expect(typed.weightFrom).toBe('typed');
+    expect(typed.heightFrom).toBe('typed');
+    expect(suggestedTargetsLine({ kcal: 2343, proteinG: 144, hideCalories: true })).toBe('Suggested 144 g protein.');
   });
 
   it('does not suggest a deficit when BMI is under 18.5', () => {

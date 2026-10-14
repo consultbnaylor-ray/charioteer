@@ -1,10 +1,13 @@
 import { Image } from 'expo-image';
+import { useRouter } from 'expo-router';
 import { useState } from 'react';
-import { Platform, Switch, View } from 'react-native';
+import { Platform, Pressable, Switch, View } from 'react-native';
 
 import { useRepository, useSnapshot } from '@/data';
+import type { NewHealthSample } from '@/data/types';
 import { formatUkLong, isoDay } from '@/domain/dates';
 import { shownError } from '@/domain/errors';
+import { parseHeightCm } from '@/domain/guidance';
 import { randomId } from '@/domain/id';
 import {
   ESTIMATE_HINT,
@@ -20,6 +23,7 @@ import {
   caloriesShareLine,
   dayItems,
   fatBalance,
+  goalBodyForSuggestion,
   goalDayLine,
   goalMealNote,
   kcalFloor,
@@ -31,12 +35,14 @@ import {
   progressShareLine,
   publicMealLines,
   sugarCravingNote,
+  suggestedTargetsLine,
   suggestGoalTargets,
   sumItems,
   targetLine,
   weightPointsFrom,
   weightTrendLine,
   type FoodItem,
+  type GoalBody,
   type MealSlot,
   type MealSource,
   type NutritionGoal,
@@ -44,12 +50,14 @@ import {
 } from '@/domain/nutrition';
 import { savingsFromTypicalWeek } from '@/domain/savings';
 import { soberElapsed } from '@/domain/sober';
+import { weightReadingKg } from '@/domain/weightEntry';
+import { readAppleHealthBody } from '@/health/sync';
 import { writeDayToAppleHealth } from '@/health/writeNutrition';
 import { FatShareBar, NutritionShareSwitch, WagonFlag } from '@/ui/NutritionShare';
 import { pickMealPhoto } from '@/ui/pickMealPhoto';
 import { usePendingPress } from '@/ui/pendingAction';
 import { useAppTheme } from '@/ui/theme';
-import { Button, Card, Choice, ErrorNote, Field, QuietNote, Screen, T } from '@/ui/ui';
+import { Button, Card, Choice, ErrorNote, Field, QuietNote, Screen, T, playSavedHaptic } from '@/ui/ui';
 
 type DraftItem = {
   name: string;
@@ -152,6 +160,7 @@ function itemFromDraft(draft: DraftItem): FoodItem | null {
 export default function Nutrition() {
   const snap = useSnapshot();
   const repo = useRepository();
+  const router = useRouter();
   const theme = useAppTheme();
   const { run, isPending } = usePendingPress();
   const profile = snap.profile;
@@ -202,6 +211,9 @@ export default function Nutrition() {
   const [protein, setProtein] = useState(settings.proteinTarget == null ? '' : String(settings.proteinTarget));
   const [goalNote, setGoalNote] = useState<string | null>(null);
   const [choiceNote, setChoiceNote] = useState<string | null>(null);
+  const [goalWeight, setGoalWeight] = useState('');
+  const [goalHeight, setGoalHeight] = useState('');
+  const [suggestNote, setSuggestNote] = useState<string | null>(null);
 
   function floorFor(age: number | null, sex: NutritionSex | null): number | null {
     const weight = latestWeight?.kg ?? null;
@@ -226,33 +238,106 @@ export default function Nutrition() {
     });
   }
 
+  function keepSuggestedMeasures(body: GoalBody, healthDay: string | null) {
+    const jobs: Promise<void>[] = [];
+    const sameBoxedWeight = latestWeight != null
+      && body.weightKg === latestWeight.kg
+      && healthDay === latestWeight.day;
+    if (
+      body.weightKg != null
+      && profile?.consentHealth
+      && (body.weightFrom === 'typed' || (body.weightFrom === 'health' && !sameBoxedWeight))
+    ) {
+      const sample: NewHealthSample = {
+        kind: 'weight_kg',
+        unit: 'kg',
+        value: body.weightKg,
+        recordedOn: body.weightFrom === 'health' && healthDay ? healthDay : today,
+        source: body.weightFrom === 'health' ? 'healthkit' : 'manual',
+      };
+      jobs.push(repo.saveHealth([sample]));
+    }
+    if (
+      body.heightCm != null
+      && (body.heightFrom === 'typed' || body.heightFrom === 'health')
+      && body.heightCm !== (profile?.heightCm ?? null)
+    ) {
+      jobs.push(repo.updateProfile({ heightCm: body.heightCm }));
+    }
+    if (!jobs.length) return;
+    void Promise.all(jobs).catch(() => undefined);
+  }
+
   function suggest() {
-    if (!settings.goal) {
-      setError('Choose a goal first.');
-      return;
-    }
-    const age = readAge(goalAge);
-    if (age === 'bad') {
-      setError('Age sits between 18 and 100. Leave it blank if you would rather not say.');
-      return;
-    }
-    const result = suggestGoalTargets({
-      goal: settings.goal,
-      weightKg: latestWeight?.kg ?? null,
-      heightCm: profile?.heightCm ?? null,
-      age,
-      sex: settings.goalSex,
-      activeEnergyKcal: settings.activityEnergyKcal,
+    run('suggest', async () => {
+      setSuggestNote(null);
+      setError(null);
+      if (!settings.goal) {
+        setSuggestNote('Choose a goal first.');
+        return;
+      }
+      const age = readAge(goalAge);
+      if (age === 'bad') {
+        setSuggestNote('Age sits between 18 and 100. Leave it blank if you would rather not say.');
+        return;
+      }
+      const typedWeight = weightReadingKg({ unit: 'kg', kilograms: goalWeight, stones: '', pounds: '' });
+      if (!typedWeight.ok) {
+        setSuggestNote(typedWeight.error);
+        return;
+      }
+      const typedHeight = parseHeightCm(goalHeight);
+      if (!typedHeight.ok) {
+        setSuggestNote(typedHeight.error);
+        return;
+      }
+
+      let healthWeight: { kg: number; day: string } | null = null;
+      let healthHeightCm: number | null = null;
+      let healthDay: string | null = null;
+      if (Platform.OS === 'ios' && profile?.consentHealth) {
+        const read = await readAppleHealthBody();
+        if (read.ok) {
+          healthHeightCm = read.body.heightCm;
+          if (read.body.weightKg != null && read.body.weightDay) {
+            healthWeight = { kg: read.body.weightKg, day: read.body.weightDay };
+            healthDay = read.body.weightDay;
+          }
+        }
+      }
+
+      const body = goalBodyForSuggestion({
+        box: latestWeight ? { kg: latestWeight.kg, day: latestWeight.day } : null,
+        healthWeight,
+        profileHeightCm: profile?.heightCm ?? null,
+        healthHeightCm,
+        typedWeightKg: typedWeight.kg,
+        typedHeightCm: typedHeight.value,
+      });
+      const result = suggestGoalTargets({
+        goal: settings.goal,
+        weightKg: body.weightKg,
+        heightCm: body.heightCm,
+        age,
+        sex: settings.goalSex,
+        activeEnergyKcal: settings.activityEnergyKcal,
+      });
+      if (!result.ok) {
+        setGoalNote(null);
+        setSuggestNote(result.message);
+        return;
+      }
+      setProtein(String(result.suggestion.proteinG));
+      if (!hide) setTarget(String(result.suggestion.kcal));
+      setGoalNote(result.suggestion.note);
+      setSuggestNote(suggestedTargetsLine({
+        kcal: result.suggestion.kcal,
+        proteinG: result.suggestion.proteinG,
+        hideCalories: hide,
+      }));
+      playSavedHaptic();
+      keepSuggestedMeasures(body, healthDay);
     });
-    if (!result.ok) {
-      setGoalNote(null);
-      setError(result.message);
-      return;
-    }
-    setError(null);
-    setProtein(String(result.suggestion.proteinG));
-    if (!hide) setTarget(String(result.suggestion.kcal));
-    setGoalNote(result.suggestion.note);
   }
 
   function openDraft(next: Draft) {
@@ -529,7 +614,19 @@ export default function Nutrition() {
           <Choice label="Not set" selected={settings.goalSex == null} onPress={() => chooseSex(null)} />
         </View>
         <QuietNote>{choiceNote}</QuietNote>
-        <Button label="Suggest targets" tone="quiet" onPress={suggest} />
+        {latestWeight == null ? (
+          <Field label="Weight (kg)" value={goalWeight} onChangeText={setGoalWeight} keyboardType="decimal-pad" placeholder="74.2" />
+        ) : null}
+        {profile?.heightCm == null ? (
+          <Field label="Height (cm)" value={goalHeight} onChangeText={setGoalHeight} keyboardType="decimal-pad" placeholder="178" />
+        ) : null}
+        {latestWeight == null || profile?.heightCm == null ? (
+          <Pressable accessibilityRole="link" accessibilityLabel="Health Stats" onPress={() => router.push('/health' as never)}>
+            <T variant="muted">Or add them on Health Stats</T>
+          </Pressable>
+        ) : null}
+        <Button label="Suggest targets" tone="quiet" pending={isPending('suggest')} pendingLabel="Suggesting..." onPress={suggest} />
+        {suggestNote ? <T>{suggestNote}</T> : null}
         {blocked ? <T>{LOW_BMI_NOTE}</T> : null}
         {goalNote && !blocked ? <T variant="muted">{goalNote}</T> : null}
         {hide ? null : (
