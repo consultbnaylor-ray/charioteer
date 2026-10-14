@@ -1,6 +1,7 @@
 import { OwnerPhoto } from '@/ui/OwnerPhoto';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
-import { StyleSheet, Switch, View } from 'react-native';
+import { Pressable, StyleSheet, Switch, View } from 'react-native';
 
 import { useRepository, useSnapshot } from '@/data';
 import type { ProgressPhoto } from '@/data/types';
@@ -10,6 +11,7 @@ import { interestChipRemovable, interestChipVisible } from '@/domain/interests';
 import { planCustomInterest, validateTown } from '@/domain/privacy';
 import { WAGON_PUBLIC_LINE, weightPointsFrom } from '@/domain/nutrition';
 import { SharedNutritionFacts } from '@/ui/NutritionShare';
+import { hiddenShareHref } from '@/domain/hiddenShareTargets';
 import { BIO_EXAMPLE, BIO_LIMIT, NEVER_SHARED, PHOTO_CAPTION_LIMIT, formatSoberShare, projectPublicProfile } from '@/domain/profileSharing';
 import { ShareOnProfile } from '@/ui/ShareOnProfile';
 import { progressPhotoLabel } from '@/domain/progressPhotos';
@@ -36,8 +38,11 @@ export function PublicProfileCard() {
   const snap = useSnapshot();
   const repo = useRepository();
   const theme = useAppTheme();
+  const router = useRouter();
+  const editParam = useLocalSearchParams<{ edit?: string | string[] }>().edit;
+  const editPhotos = (Array.isArray(editParam) ? editParam[0] : editParam) === 'photos';
   const profile = snap.profile;
-  const [editing, setEditing] = useState(false);
+  const [editing, setEditing] = useState(editPhotos);
   const [name, setName] = useState(profile?.displayName ?? '');
   const [town, setTown] = useState(profile?.town ?? '');
   const [bio, setBio] = useState(profile?.bio ?? '');
@@ -69,6 +74,10 @@ export function PublicProfileCard() {
     bioRef.current = next;
     setBio(next);
   }, [profile?.bio]);
+
+  useEffect(() => {
+    if (editPhotos) setEditing(true);
+  }, [editPhotos]);
 
   useEffect(() => () => {
     for (const timer of Object.values(timers.current)) {
@@ -435,8 +444,38 @@ export function PublicProfileCard() {
           </View>
         ) : null}
       </Card>
-      <T>Hidden: {preview.hiddenLabels.join(', ')}</T>
+      <HiddenShareLine labels={preview.hiddenLabels} onOpen={(href) => router.push(href as never)} />
       <T variant="muted">{NEVER_SHARED}</T>
+    </View>
+  );
+}
+
+function HiddenShareLine({ labels, onOpen }: { labels: string[]; onOpen: (href: string) => void }) {
+  if (!labels.length) return null;
+  return (
+    <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 6 }}>
+      <View style={{ minHeight: 44, justifyContent: 'center' }}>
+        <T>Hidden:</T>
+      </View>
+      {labels.map((label, index) => (
+        <Pressable
+          key={label}
+          accessibilityRole="link"
+          accessibilityLabel={`Share ${label}`}
+          onPress={() => onOpen(hiddenShareHref(label))}
+          style={{ minHeight: 44, justifyContent: 'center' }}
+        >
+          <T style={{ textDecorationLine: 'underline' }}>{index < labels.length - 1 ? `${label},` : label}</T>
+        </Pressable>
+      ))}
+      <Pressable
+        accessibilityRole="link"
+        accessibilityLabel="Change what I share"
+        onPress={() => onOpen(hiddenShareHref())}
+        style={{ minHeight: 44, justifyContent: 'center' }}
+      >
+        <T style={{ textDecorationLine: 'underline' }}>Change ›</T>
+      </Pressable>
     </View>
   );
 }
