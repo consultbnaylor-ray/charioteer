@@ -97,6 +97,10 @@ describe('Apple Health screen and entitlement', () => {
     }
     expect(sync).toContain("queryQuantitySamples('HKQuantityTypeIdentifierBodyMass'");
     expect(sync).toContain("queryQuantitySamples('HKQuantityTypeIdentifierHeight'");
+    expect(sync).toContain("queryQuantitySamples('HKQuantityTypeIdentifierBodyFatPercentage'");
+    expect(sync).toContain("queryQuantitySamples('HKQuantityTypeIdentifierLeanBodyMass'");
+    expect(APPLE_HEALTH_READ_TYPES).toContain('HKQuantityTypeIdentifierBodyFatPercentage');
+    expect(APPLE_HEALTH_READ_TYPES).toContain('HKQuantityTypeIdentifierLeanBodyMass');
     expect(sync).toContain('readAppleHealthBody');
     expect(APPLE_HEALTH_READ_TYPES).toContain('HKQuantityTypeIdentifierHeight');
     expect(sync).toContain("rows('weight_kg', 'kg'");

@@ -41,12 +41,18 @@ import { stageFromRecord } from '@/domain/stage';
 import { BIO_LIMIT, PHOTO_CAPTION_LIMIT, defaultProfileSharing, normalizeProfileSharing, planProfileText, projectPublicProfile, sensitiveTurnedOn, type ProfileSharing, type PublicProfileView, type ShareSource } from '@/domain/profileSharing';
 import { quoteById } from '@/domain/stoicQuotes';
 import {
+  compositionForAssessment,
   defaultNutritionSettings,
   estimateFromText,
   foodItemFromUnknown,
+  isBodyCompositionSource,
+  parseBodyFatPct,
+  parseLeanMassKg,
+  parseWaistCm,
   presentSharedNutrition,
   samplePhotoMeal,
   weightPointsFrom,
+  type BodyCompositionReading,
   type FoodLog,
   type NutritionSettings,
 } from '@/domain/nutrition';
@@ -295,8 +301,9 @@ export class DemoRepository implements Repository {
       sharing: account ? normalizeProfileSharing(account.sharing) : defaultProfileSharing(),
       savedQuotes: account?.savedQuotes ?? [],
       foodLogs: account?.foodLogs ?? [],
-      nutrition: account?.nutrition ?? defaultNutritionSettings(),
+      nutrition: { ...defaultNutritionSettings(), ...(account?.nutrition ?? {}) },
       waterDays: account?.waterDays ?? [],
+      bodyComposition: account?.bodyComposition ?? [],
     };
   }
 
@@ -362,8 +369,18 @@ export class DemoRepository implements Repository {
     const fresh = createDemoDb();
     for (const [id, account] of Object.entries(this.db.accounts)) {
       if (!account.foodLogs) account.foodLogs = fresh.accounts[id]?.foodLogs ?? [];
-      if (!account.nutrition) account.nutrition = fresh.accounts[id]?.nutrition ?? defaultNutritionSettings();
+      const seeded = fresh.accounts[id]?.nutrition ?? defaultNutritionSettings();
+      if (!account.nutrition) account.nutrition = seeded;
+      else {
+        const stored = account.nutrition as NutritionSettings & { build?: NutritionSettings['build'] };
+        account.nutrition = {
+          ...defaultNutritionSettings(),
+          ...account.nutrition,
+          build: stored.build === undefined ? seeded.build : stored.build,
+        };
+      }
       if (!account.waterDays) account.waterDays = fresh.accounts[id]?.waterDays ?? [];
+      if (!account.bodyComposition) account.bodyComposition = fresh.accounts[id]?.bodyComposition ?? [];
     }
   }
 
@@ -438,6 +455,7 @@ export class DemoRepository implements Repository {
       foodLogs: [],
       nutrition: defaultNutritionSettings(),
       waterDays: [],
+      bodyComposition: [],
     };
     const db = clone(this.db);
     db.accounts[id] = account;
@@ -1015,6 +1033,37 @@ export class DemoRepository implements Repository {
     this.commit(db);
   }
 
+  async saveBodyComposition(input: {
+    recordedOn: string;
+    bodyFatPct: number | null;
+    leanMassKg: number | null;
+    waistCm: number | null;
+    source: import('@/domain/nutrition').BodyCompositionSource;
+  }): Promise<void> {
+    const recordedOn = input.recordedOn.slice(0, 10);
+    if (!isBodyCompositionSource(input.source) || !/^\d{4}-\d{2}-\d{2}$/.test(recordedOn)) return;
+    const account = this.me();
+    const db = clone(this.db);
+    const next = db.accounts[account.profile.id];
+    const rows = next.bodyComposition ?? [];
+    const previous = rows.find((row) => row.recordedOn === recordedOn && row.source === input.source);
+    const bodyFatPct = input.bodyFatPct == null ? (previous?.bodyFatPct ?? null) : parseBodyFatPct(input.bodyFatPct);
+    const leanMassKg = input.leanMassKg == null ? (previous?.leanMassKg ?? null) : parseLeanMassKg(input.leanMassKg);
+    const waistCm = input.waistCm == null ? (previous?.waistCm ?? null) : parseWaistCm(input.waistCm, 'cm');
+    if (bodyFatPct == null && leanMassKg == null && waistCm == null) return;
+    const saved: BodyCompositionReading = {
+      id: previous?.id ?? randomId(),
+      recordedOn,
+      bodyFatPct,
+      leanMassKg,
+      waistCm,
+      source: input.source,
+      createdAt: previous?.createdAt ?? new Date().toISOString(),
+    };
+    next.bodyComposition = [saved, ...rows.filter((row) => !(row.recordedOn === recordedOn && row.source === input.source))];
+    this.commit(db);
+  }
+
   async setWater(day: string, waterMl: number): Promise<void> {
     const account = this.me();
     const ml = Math.max(0, Math.min(8000, Math.round(waterMl)));
@@ -1032,11 +1081,18 @@ export class DemoRepository implements Repository {
     if (!other?.profile.onboardingComplete) return null;
     if (blocked(this.db, session.userId, userId)) return null;
     if (!other.profile.communityVisible || !other.profile.ageConfirmed18) return null;
+    const figures = compositionForAssessment(other.bodyComposition ?? []);
     return presentSharedNutrition(
-      other.nutrition ?? defaultNutritionSettings(),
+      { ...defaultNutritionSettings(), ...(other.nutrition ?? {}) },
       other.foodLogs ?? [],
       isoDay(new Date()),
-      { heightCm: other.profile.heightCm, weights: weightPointsFrom(other.health) },
+      {
+        heightCm: other.profile.heightCm,
+        weights: weightPointsFrom(other.health),
+        bodyFatPct: figures.bodyFatPct,
+        leanMassKg: figures.leanMassKg,
+        waistCm: figures.waistCm,
+      },
     );
   }
 

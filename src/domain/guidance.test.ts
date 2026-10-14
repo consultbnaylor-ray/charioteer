@@ -274,6 +274,29 @@ describe('BMI guidance', () => {
     expect(high.warning?.detail).toContain('obese');
     expect(high.warning?.step).toContain('NHS 111');
     expect(high.marker?.warning).toBe(true);
+    expect(healthy.plain).toContain("BMI can't tell muscle from fat");
+  });
+
+  it('does not call a muscular person overweight from BMI alone', () => {
+    const lifted = metric('weight_kg', [['2026-10-11', 80]], { heightCm: 170, adult: true, build: 'muscular', sex: 'male' });
+    expect(lifted.label).toBeNull();
+    expect(lifted.ticks).toEqual([]);
+    expect(lifted.warning).toBeNull();
+    expect(lifted.plain).not.toMatch(/overweight|obese/i);
+    expect(lifted.plain).toContain('you lift weights');
+
+    const fatter = metric('weight_kg', [['2026-10-11', 80]], { heightCm: 170, adult: true, build: 'muscular', bodyFatPct: 18, sex: 'male' });
+    expect(fatter.plain).toContain('Body fat is 18%');
+    expect(fatter.plain).not.toMatch(/overweight|obese/i);
+    expect(fatter.warning).toBeNull();
+
+    const waist = metric('weight_kg', [['2026-10-11', 80]], { heightCm: 170, adult: true, waistCm: 80 });
+    expect(waist.label).toBe('Within the healthy band');
+    expect(waist.plain).not.toMatch(/overweight|obese/i);
+
+    const low = metric('weight_kg', [['2026-10-11', 50]], { heightCm: 175, adult: true, build: 'muscular' });
+    expect(low.label).toBe('Below the healthy range');
+    expect(low.warning?.detail).toContain('18.5');
   });
 
   it('does not invent a BMI without height or an adult age', () => {

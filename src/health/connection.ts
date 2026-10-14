@@ -7,13 +7,15 @@ export const APPLE_HEALTH_READ_TYPES = [
   'HKQuantityTypeIdentifierHeartRateVariabilitySDNN',
   'HKQuantityTypeIdentifierBodyMass',
   'HKQuantityTypeIdentifierHeight',
+  'HKQuantityTypeIdentifierBodyFatPercentage',
+  'HKQuantityTypeIdentifierLeanBodyMass',
   'HKCategoryTypeIdentifierSleepAnalysis',
   'HKWorkoutTypeIdentifier',
   'HKQuantityTypeIdentifierActiveEnergyBurned',
 ] as const;
 
 export const APPLE_HEALTH_INTRO =
-  'Connect Apple Health to see your steps, sleep, resting heart rate, HRV, workouts, weight, height and active energy here, and to save the food and water you log. Charioteer reads steps, sleep, heart rate, HRV, workouts, weight, height and active energy. It writes only the meals and water you save: energy, protein, carbohydrate, sugar, fibre, fat, sodium and water. It does not write steps, sleep, heart rate, or weight. Other people never see these readings. You can disconnect any time in Settings > Health > Data Access & Devices.';
+  'Connect Apple Health to see your steps, sleep, resting heart rate, HRV, workouts, weight, height, body fat, lean body mass and active energy here, and to save the food and water you log. Charioteer reads steps, sleep, heart rate, HRV, workouts, weight, height, body fat, lean body mass and active energy. It writes only the meals and water you save: energy, protein, carbohydrate, sugar, fibre, fat, sodium and water. It does not write steps, sleep, heart rate, or weight. Other people never see these readings. You can disconnect any time in Settings > Health > Data Access & Devices.';
 
 export const APPLE_HEALTH_WEB = 'Apple Health connects in the iPhone app. Here you can log readings yourself.';
 
@@ -32,6 +34,16 @@ export type AppleHealthBody = {
   weightKg: number | null;
   weightDay: string | null;
   heightCm: number | null;
+  bodyFatPct: number | null;
+  leanMassKg: number | null;
+  compositionDay: string | null;
+};
+
+/** One day's body fat and lean mass from Apple Health. Waist is entered by hand. */
+export type AppleHealthComposition = {
+  recordedOn: string;
+  bodyFatPct: number | null;
+  leanMassKg: number | null;
 };
 
 export type HealthCardKind =

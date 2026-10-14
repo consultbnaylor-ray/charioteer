@@ -6,7 +6,8 @@ import type { VisionItem } from '@/domain/visionBoard';
 import { visionStoragePath } from '@/domain/visionBoard';
 import { VISION_SAMPLE_PHOTOS } from '@/data/visionSamples';
 import { isoDay } from '@/domain/dates';
-import { estimateFromText } from '@/domain/nutrition';
+import { defaultNutritionSettings, estimateFromText } from '@/domain/nutrition';
+import type { BodyCompositionReading } from '@/domain/nutrition';
 import type { GratitudeEntry } from '@/domain/gratitude';
 import { gratitudeStoragePath } from '@/domain/gratitudePhotos';
 import { planProgressPhoto, progressStoragePath } from '@/domain/progressPhotos';
@@ -50,6 +51,8 @@ export type DemoAccount = {
   foodLogs?: import('@/domain/nutrition').FoodLog[];
   nutrition?: import('@/domain/nutrition').NutritionSettings;
   waterDays?: import('@/domain/nutrition').NutritionDay[];
+  /** Absent on older sample data. Private body-fat, lean-mass, and waist history. */
+  bodyComposition?: BodyCompositionReading[];
 };
 
 export type DemoDb = {
@@ -299,6 +302,16 @@ export function createDemoDb(now = new Date()): DemoDb {
     progressPhotos: [],
     gratitude: [],
     visionItems: alexVision(PEOPLE.alex),
+    nutrition: { ...defaultNutritionSettings(), build: 'muscular' },
+    bodyComposition: [{
+      id: 'c0c0c0c0-c0c0-4c0c-8c0c-c0c0c0c0c0c1',
+      recordedOn: isoDay(now),
+      bodyFatPct: 15,
+      leanMassKg: 63,
+      waistCm: 84,
+      source: 'dexa',
+      createdAt: now.toISOString(),
+    }],
   };
   const anchor = new Date(started);
   const startPlan = planProgressPhoto({
@@ -416,6 +429,7 @@ export function createDemoDb(now = new Date()): DemoDb {
     wagonOn: true,
     wagonNote: 'A rough evening. I am still here.',
     wagonVisible: true,
+    build: null,
   };
   jordan.foodLogs = [{
     id: '11111111-1111-4111-8111-111111111113',

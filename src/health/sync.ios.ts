@@ -11,14 +11,15 @@ import {
 import type { HealthKind, NewHealthSample } from '@/data/types';
 import { isoDay } from '@/domain/dates';
 import { shownError } from '@/domain/errors';
-import { APPLE_HEALTH_READ_TYPES, type AppleHealthBody } from '@/health/connection';
+import { parseBodyFatPct, parseLeanMassKg } from '@/domain/nutrition';
+import { APPLE_HEALTH_READ_TYPES, type AppleHealthBody, type AppleHealthComposition } from '@/health/connection';
 
 export type AppleHealthBodyRead =
   | { ok: true; body: AppleHealthBody }
   | { ok: false; message: string };
 
 export type HealthSyncResult =
-  | { ok: true; samples: NewHealthSample[]; activeEnergyKcal: number | null }
+  | { ok: true; samples: NewHealthSample[]; activeEnergyKcal: number | null; composition?: AppleHealthComposition[] }
   | { ok: false; message: string };
 
 const ASLEEP = new Set<number>([
@@ -66,14 +67,30 @@ export async function readAppleHealthBody(): Promise<AppleHealthBodyRead> {
       ascending: false,
       unit: 'cm',
     });
+    const fat = await queryQuantitySamples('HKQuantityTypeIdentifierBodyFatPercentage', {
+      limit: 1,
+      ascending: false,
+      unit: '%',
+    }).catch(() => []);
+    const lean = await queryQuantitySamples('HKQuantityTypeIdentifierLeanBodyMass', {
+      limit: 1,
+      ascending: false,
+      unit: 'kg',
+    }).catch(() => []);
     const latestWeight = weight[0];
     const latestHeight = height[0];
+    const latestFat = fat[0];
+    const latestLean = lean[0];
+    const compositionDay = latestFat ? isoDay(latestFat.startDate) : latestLean ? isoDay(latestLean.startDate) : null;
     return {
       ok: true,
       body: {
         weightKg: oneDecimal(latestWeight?.quantity),
         weightDay: latestWeight ? isoDay(latestWeight.startDate) : null,
         heightCm: oneDecimal(latestHeight?.quantity),
+        bodyFatPct: latestFat ? parseBodyFatPct(latestFat.quantity) : null,
+        leanMassKg: latestLean ? parseLeanMassKg(latestLean.quantity) : null,
+        compositionDay,
       },
     };
   } catch (error) {
@@ -152,6 +169,38 @@ export async function syncAppleHealth(): Promise<HealthSyncResult> {
     for (const sample of weight) weightDays.set(isoDay(sample.startDate), sample.quantity);
     samples.push(...rows('weight_kg', 'kg', weightDays, (value) => Math.round(value * 10) / 10));
 
+    let composition: AppleHealthComposition[] = [];
+    try {
+      const fat = await queryQuantitySamples('HKQuantityTypeIdentifierBodyFatPercentage', {
+        limit: 0,
+        unit: '%',
+        filter,
+      });
+      const lean = await queryQuantitySamples('HKQuantityTypeIdentifierLeanBodyMass', {
+        limit: 0,
+        unit: 'kg',
+        filter,
+      });
+      const byDay = new Map<string, { bodyFatPct: number | null; leanMassKg: number | null }>();
+      for (const sample of fat) {
+        const day = isoDay(sample.startDate);
+        const current = byDay.get(day) ?? { bodyFatPct: null, leanMassKg: null };
+        current.bodyFatPct = parseBodyFatPct(sample.quantity);
+        byDay.set(day, current);
+      }
+      for (const sample of lean) {
+        const day = isoDay(sample.startDate);
+        const current = byDay.get(day) ?? { bodyFatPct: null, leanMassKg: null };
+        current.leanMassKg = parseLeanMassKg(sample.quantity);
+        byDay.set(day, current);
+      }
+      composition = [...byDay.entries()]
+        .map(([recordedOn, value]) => ({ recordedOn, bodyFatPct: value.bodyFatPct, leanMassKg: value.leanMassKg }))
+        .filter((row) => row.bodyFatPct != null || row.leanMassKg != null);
+    } catch {
+      composition = [];
+    }
+
     const workouts = await queryWorkoutSamples({ limit: 40, filter });
     const workoutDays = new Map<string, number>();
     for (const workout of workouts) {
@@ -183,7 +232,7 @@ export async function syncAppleHealth(): Promise<HealthSyncResult> {
       activeEnergyKcal = null;
     }
 
-    return { ok: true, samples, activeEnergyKcal };
+    return { ok: true, samples, activeEnergyKcal, composition };
   } catch (error) {
     const message = shownError(error, 'Apple Health could not be read.');
     return { ok: false, message };

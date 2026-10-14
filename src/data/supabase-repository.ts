@@ -52,12 +52,18 @@ import {
   defaultNutritionSettings,
   estimateFromText,
   foodItemFromUnknown,
+  isBodyBuild,
+  isBodyCompositionSource,
   isMealSlot,
   isNutritionGoal,
   isNutritionSex,
+  parseBodyFatPct,
+  parseLeanMassKg,
   parseMealEstimate,
   parseSharedNutrition,
+  parseWaistCm,
   samplePhotoMeal,
+  type BodyCompositionReading,
   type FoodItem,
   type FoodLog,
   type NutritionDay,
@@ -184,6 +190,7 @@ function emptySnapshot(): AppSnapshot {
     foodLogs: [],
     nutrition: defaultNutritionSettings(),
     waterDays: [],
+    bodyComposition: [],
   };
 }
 
@@ -1903,9 +1910,12 @@ export class SupabaseRepository implements Repository {
 
   /** Older databases lack the later share and goal columns. A missing column stays off. */
   private async nutritionSettingsRow(userId: string) {
-    const goal = 'kcal_target, hide_calories, share_food_diary, share_calories, share_quality, share_progress, goal, goal_age, goal_sex, protein_target_g, activity_energy_kcal, share_goal, wagon_on, wagon_note, wagon_visible';
+    const goal = 'kcal_target, hide_calories, share_food_diary, share_calories, share_quality, share_progress, goal, goal_age, goal_sex, protein_target_g, activity_energy_kcal, share_goal, wagon_on, wagon_note, wagon_visible, build';
     const first = await this.client.from('nutrition_settings').select(goal).eq('user_id', userId).maybeSingle();
     if (!first.error) return first;
+    const withoutBuild = 'kcal_target, hide_calories, share_food_diary, share_calories, share_quality, share_progress, goal, goal_age, goal_sex, protein_target_g, activity_energy_kcal, share_goal, wagon_on, wagon_note, wagon_visible';
+    const built = await this.client.from('nutrition_settings').select(withoutBuild).eq('user_id', userId).maybeSingle();
+    if (!built.error) return built;
     const shares = 'kcal_target, hide_calories, share_food_diary, share_calories, share_quality, share_progress, wagon_on, wagon_note, wagon_visible';
     const second = await this.client.from('nutrition_settings').select(shares).eq('user_id', userId).maybeSingle();
     if (!second.error) return second;
@@ -1913,11 +1923,12 @@ export class SupabaseRepository implements Repository {
     return this.client.from('nutrition_settings').select(narrow).eq('user_id', userId).maybeSingle();
   }
 
-  private async nutritionSnapshot(userId: string): Promise<Pick<AppSnapshot, 'foodLogs' | 'nutrition' | 'waterDays'>> {
-    const [logsRes, settingsRes, waterRes] = await Promise.all([
+  private async nutritionSnapshot(userId: string): Promise<Pick<AppSnapshot, 'foodLogs' | 'nutrition' | 'waterDays' | 'bodyComposition'>> {
+    const [logsRes, settingsRes, waterRes, bodyRes] = await Promise.all([
       this.client.from('food_logs').select('id, user_id, eaten_on, meal, source, note, items, estimated, photo_path, created_at').eq('user_id', userId).order('eaten_on', { ascending: false }).order('created_at', { ascending: false }),
       this.nutritionSettingsRow(userId),
       this.client.from('nutrition_days').select('day, water_ml').eq('user_id', userId).order('day', { ascending: false }).limit(14),
+      this.client.from('body_composition').select('id, recorded_on, body_fat_pct, lean_mass_kg, waist_cm, source, created_at').eq('user_id', userId).order('recorded_on', { ascending: false }).order('created_at', { ascending: false }).limit(60),
     ]);
     const logs = logsRes.error ? [] : ((logsRes.data ?? []) as Row[]).map((row) => mapFoodLog(row, userId)).filter((log): log is FoodLog => log != null);
     const paths = logsRes.error ? [] : ((logsRes.data ?? []) as Row[]).map((row) => String(row.photo_path ?? '')).filter((path) => path && !path.includes('..'));
@@ -1940,6 +1951,7 @@ export class SupabaseRepository implements Repository {
       }),
       nutrition: this.prefer('nutrition', settingsRes.error ? defaultNutritionSettings() : nutritionFromRow(settingsRes.data as Row | null)),
       waterDays: waterRes.error ? [] : ((waterRes.data ?? []) as Row[]).map(mapWaterDay),
+      bodyComposition: bodyRes.error ? [] : ((bodyRes.data ?? []) as Row[]).map(mapBodyComposition).filter((row): row is BodyCompositionReading => row != null),
     };
   }
 
@@ -2037,6 +2049,7 @@ export class SupabaseRepository implements Repository {
       wagon_on: settings.wagonOn,
       wagon_note: settings.wagonNote.slice(0, 200),
       wagon_visible: settings.wagonVisible,
+      build: settings.build,
       updated_at: new Date().toISOString(),
     };
     let payload: Record<string, unknown> = row;
@@ -2050,6 +2063,11 @@ export class SupabaseRepository implements Repository {
     if (error && leavingGoalOff && /goal|protein_target_g|activity_energy_kcal|share_goal/i.test(error.message)) {
       const { goal: _goal, goal_age: _age, goal_sex: _sex, protein_target_g: _protein, activity_energy_kcal: _energy, share_goal: _shareGoal, ...withoutGoal } = row;
       payload = withoutGoal;
+      ({ error } = await this.client.from('nutrition_settings').upsert(payload));
+    }
+    if (error && settings.build == null && /\bbuild\b/i.test(error.message)) {
+      const { build: _build, ...withoutBuild } = payload;
+      payload = withoutBuild;
       ({ error } = await this.client.from('nutrition_settings').upsert(payload));
     }
     const leavingNewSharesOff = !settings.shareCalories && !settings.shareQuality && !settings.shareProgress;
@@ -2066,6 +2084,49 @@ export class SupabaseRepository implements Repository {
     const { error } = await this.client.from('nutrition_days').upsert({ user_id: userId, day, water_ml: ml });
     if (error) throw asUserFacing(error, 'general');
     await this.refresh();
+  }
+
+  async saveBodyComposition(input: {
+    recordedOn: string;
+    bodyFatPct: number | null;
+    leanMassKg: number | null;
+    waistCm: number | null;
+    source: import('@/domain/nutrition').BodyCompositionSource;
+  }): Promise<void> {
+    const recordedOn = input.recordedOn.slice(0, 10);
+    if (!isBodyCompositionSource(input.source) || !/^\d{4}-\d{2}-\d{2}$/.test(recordedOn)) return;
+    const userId = this.snapshot.session?.userId ?? await this.userId();
+    return this.once(`body:${recordedOn}:${input.source}`, async () => {
+      const previous = this.snapshot.bodyComposition.find((row) => row.recordedOn === recordedOn && row.source === input.source);
+      const bodyFatPct = input.bodyFatPct == null ? (previous?.bodyFatPct ?? null) : parseBodyFatPct(input.bodyFatPct);
+      const leanMassKg = input.leanMassKg == null ? (previous?.leanMassKg ?? null) : parseLeanMassKg(input.leanMassKg);
+      const waistCm = input.waistCm == null ? (previous?.waistCm ?? null) : parseWaistCm(input.waistCm, 'cm');
+      if (bodyFatPct == null && leanMassKg == null && waistCm == null) return;
+      const next: BodyCompositionReading = {
+        id: previous?.id ?? randomId(),
+        recordedOn,
+        bodyFatPct,
+        leanMassKg,
+        waistCm,
+        source: input.source,
+        createdAt: previous?.createdAt ?? new Date().toISOString(),
+      };
+      const before = this.snapshot.bodyComposition;
+      const rest = before.filter((row) => !(row.recordedOn === recordedOn && row.source === input.source));
+      this.emit({ ...this.snapshot, bodyComposition: [next, ...rest] });
+      const { error } = await this.client.from('body_composition').upsert({
+        user_id: userId,
+        recorded_on: recordedOn,
+        body_fat_pct: bodyFatPct,
+        lean_mass_kg: leanMassKg,
+        waist_cm: waistCm,
+        source: input.source,
+      }, { onConflict: 'user_id,recorded_on,source' });
+      if (error) {
+        this.emit({ ...this.snapshot, bodyComposition: before });
+        throw asUserFacing(error, 'general');
+      }
+    });
   }
 
   async sharedNutrition(userId: string) {
@@ -2604,6 +2665,26 @@ function nutritionFromRow(row: Row | null): NutritionSettings {
     wagonOn: row.wagon_on === true,
     wagonNote: String(row.wagon_note ?? '').slice(0, 200),
     wagonVisible: row.wagon_visible === true,
+    build: typeof row.build === 'string' && isBodyBuild(row.build) ? row.build : null,
+  };
+}
+
+function mapBodyComposition(row: Row): BodyCompositionReading | null {
+  const source = typeof row.source === 'string' && isBodyCompositionSource(row.source) ? row.source : null;
+  const recordedOn = String(row.recorded_on ?? '').slice(0, 10);
+  if (!source || !recordedOn) return null;
+  const bodyFatPct = parseBodyFatPct(nutritionNumber(row.body_fat_pct, 0, 100));
+  const leanMassKg = parseLeanMassKg(nutritionNumber(row.lean_mass_kg, 0, 300));
+  const waistCm = parseWaistCm(nutritionNumber(row.waist_cm, 0, 300), 'cm');
+  if (bodyFatPct == null && leanMassKg == null && waistCm == null) return null;
+  return {
+    id: String(row.id),
+    recordedOn,
+    bodyFatPct,
+    leanMassKg,
+    waistCm,
+    source,
+    createdAt: String(row.created_at ?? ''),
   };
 }
 

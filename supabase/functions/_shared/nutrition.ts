@@ -33,7 +33,7 @@ export const WAGON_SUPPORT = [
   'NHS 111 if you are worried about withdrawal',
 ] as const;
 export const NUTRITION_PROMPT_LINE =
-  'If CONTEXT includes a nutrition summary, you may mention it. Estimates are estimates. Do not shame anyone about calories, weight, or a day over a target. If calories are hidden, do not mention kcal. If CONTEXT includes a nutrition goal, offer one gentle tip that fits that goal. Do not suggest eating less when CONTEXT says a lower intake is not being suggested. If CONTEXT says they have fallen off the wagon, treat that as a safety moment: be gentle, do not shame, and mention the Samaritans on 116 123 and Drinkline on 0300 123 1110. Sugar cravings in early recovery are common; you may say so only when CONTEXT includes that note.';
+  'If CONTEXT includes a nutrition summary, you may mention it. Estimates are estimates. Do not shame anyone about calories, weight, or a day over a target. If calories are hidden, do not mention kcal. If CONTEXT includes a nutrition goal, offer one gentle tip that fits that goal. Do not suggest eating less when CONTEXT says a lower intake is not being suggested. If CONTEXT includes body composition, use body fat before waist-to-height, and waist-to-height before BMI. Do not call someone overweight or obese from BMI when CONTEXT says they lift weights, or when CONTEXT is using body fat or waist. If CONTEXT says they have fallen off the wagon, treat that as a safety moment: be gentle, do not shame, and mention the Samaritans on 116 123 and Drinkline on 0300 123 1110. Sugar cravings in early recovery are common; you may say so only when CONTEXT includes that note.';
 
 /** NHS: up to 222 kcal in a pint of 5.2% lager, about 3 units. */
 export const NHS_PINT_52_KCAL = 222;
@@ -89,9 +89,65 @@ export type NutritionSettings = {
   wagonOn: boolean;
   wagonNote: string;
   wagonVisible: boolean;
+  /** Null until they choose one. Muscular turns BMI category labels off. */
+  build: BodyBuild | null;
 };
 
 export type NutritionDay = { day: string; waterMl: number };
+
+export const BODY_BUILDS = ['muscular', 'average', 'slim'] as const;
+export type BodyBuild = (typeof BODY_BUILDS)[number];
+
+export const BUILD_LABEL: Record<BodyBuild, string> = {
+  muscular: 'Muscular / I lift weights',
+  average: 'Average',
+  slim: 'Slim',
+};
+
+export const BODY_ENTRY_SOURCES = ['smart_scale', 'gym_scan', 'dexa', 'other'] as const;
+export type BodyEntrySource = (typeof BODY_ENTRY_SOURCES)[number];
+export type BodyCompositionSource = BodyEntrySource | 'healthkit';
+
+export const BODY_SOURCE_LABEL: Record<BodyCompositionSource, string> = {
+  healthkit: 'Apple Health',
+  smart_scale: 'Smart scale',
+  gym_scan: 'Gym scan',
+  dexa: 'DEXA',
+  other: 'Other',
+};
+
+/** Shown when weight status has nothing but BMI. */
+export const BMI_ONLY_NOTE = "BMI can't tell muscle from fat; add body fat or waist for a better picture";
+
+/** Waist divided by height. Below this is the healthy band used on this screen. */
+export const WAIST_HEIGHT_HEALTHY = 0.5;
+
+/**
+ * Descriptive bands for this screen, not an NHS category.
+ * Body fat is used instead of a BMI label when it is known.
+ */
+export const BODY_FAT_HIGH = { female: 32, male: 25, unset: 28 } as const;
+export const BODY_FAT_LOW = { female: 14, male: 6, unset: 10 } as const;
+
+export type BodyCompositionReading = {
+  id: string;
+  recordedOn: string;
+  bodyFatPct: number | null;
+  leanMassKg: number | null;
+  waistCm: number | null;
+  source: BodyCompositionSource;
+  createdAt: string;
+};
+
+export type WeightAssessment = {
+  basis: 'body_fat' | 'waist' | 'bmi' | 'none';
+  label: string | null;
+  plain: string;
+  /** Overweight and obese words stay off. */
+  hideBmiCategory: boolean;
+  /** The existing under-18.5 safety floor still applies. */
+  underweight: boolean;
+};
 
 export function defaultNutritionSettings(): NutritionSettings {
   return {
@@ -110,6 +166,7 @@ export function defaultNutritionSettings(): NutritionSettings {
     wagonOn: false,
     wagonNote: '',
     wagonVisible: false,
+    build: null,
   };
 }
 
@@ -640,7 +697,14 @@ export function nutritionContextLines(input: {
   soberDays: number | null;
   unitsAvoided: number;
   today: string;
-  body?: { weightKg: number | null; heightCm: number | null; weights: readonly { day: string; kg: number }[] };
+  body?: {
+    weightKg: number | null;
+    heightCm: number | null;
+    weights: readonly { day: string; kg: number }[];
+    bodyFatPct?: number | null;
+    leanMassKg?: number | null;
+    waistCm?: number | null;
+  };
 }): string[] {
   const items = dayItems(input.logs, input.today);
   const totals = sumItems(items);
@@ -652,6 +716,14 @@ export function nutritionContextLines(input: {
   }
   const sugar = sugarCravingNote(input.soberDays);
   if (sugar) lines.push(sugar);
+  lines.push(...compositionContextLines({
+    settings: input.settings,
+    weightKg: input.body?.weightKg ?? null,
+    heightCm: input.body?.heightCm ?? null,
+    bodyFatPct: input.body?.bodyFatPct ?? null,
+    leanMassKg: input.body?.leanMassKg ?? null,
+    waistCm: input.body?.waistCm ?? null,
+  }));
   if (!hide) {
     const saved = alcoholSavedLine(input.unitsAvoided, false);
     if (saved) lines.push(saved);
@@ -758,15 +830,224 @@ export function lossBlocked(input: { goal: NutritionGoal | null; weightKg: numbe
   return bmi != null && bmi < LOW_BMI;
 }
 
+export function isBodyBuild(value: string): value is BodyBuild {
+  return (BODY_BUILDS as readonly string[]).includes(value);
+}
+
+export function isBodyCompositionSource(value: string): value is BodyCompositionSource {
+  return value === 'healthkit' || (BODY_ENTRY_SOURCES as readonly string[]).includes(value);
+}
+
+/** HealthKit may send a fraction (0.15) or a percent (15). Stored values are percents from 2 to 70. */
+export function parseBodyFatPct(value: number | null | undefined): number | null {
+  if (value == null || !Number.isFinite(value) || value <= 0) return null;
+  const pct = value <= 1 ? value * 100 : value;
+  if (pct < 2 || pct > 70) return null;
+  return Math.round(pct * 10) / 10;
+}
+
+export function parseLeanMassKg(value: number | null | undefined): number | null {
+  if (value == null || !Number.isFinite(value) || value < 20 || value > 200) return null;
+  return Math.round(value * 10) / 10;
+}
+
+export const CM_PER_INCH = 2.54;
+
+export function parseWaistCm(value: number | null | undefined, unit: 'cm' | 'in'): number | null {
+  if (value == null || !Number.isFinite(value) || value <= 0) return null;
+  const cm = unit === 'in' ? value * CM_PER_INCH : value;
+  if (cm < 40 || cm > 200) return null;
+  return Math.round(cm * 10) / 10;
+}
+
+export function waistToHeight(waistCm: number, heightCm: number): number | null {
+  if (!(waistCm > 0) || !(heightCm >= 50 && heightCm <= 250)) return null;
+  return Math.round((waistCm / heightCm) * 100) / 100;
+}
+
+function fatBand(sex: NutritionSex | null): { low: number; high: number } {
+  if (sex === 'female') return { low: BODY_FAT_LOW.female, high: BODY_FAT_HIGH.female };
+  if (sex === 'male') return { low: BODY_FAT_LOW.male, high: BODY_FAT_HIGH.male };
+  return { low: BODY_FAT_LOW.unset, high: BODY_FAT_HIGH.unset };
+}
+
+/**
+ * Body fat, then waist-to-height, then BMI.
+ * Category labels stay off for a muscular build unless BMI is under 18.5.
+ */
+export function assessWeight(input: {
+  bodyFatPct?: number | null;
+  waistCm?: number | null;
+  weightKg?: number | null;
+  heightCm?: number | null;
+  build?: BodyBuild | null;
+  sex?: NutritionSex | null;
+}): WeightAssessment {
+  const fat = input.bodyFatPct != null && input.bodyFatPct >= 2 && input.bodyFatPct <= 70 ? input.bodyFatPct : null;
+  if (fat != null) {
+    const band = fatBand(input.sex ?? null);
+    const label = fat < band.low ? 'Low body fat' : fat >= band.high ? 'Above the body-fat band' : 'Within the body-fat band';
+    return {
+      basis: 'body_fat',
+      label,
+      plain: `Body fat is ${plainMeasure(fat)}%. That is used instead of a BMI category. These bands describe this screen. They are not a diagnosis.`,
+      hideBmiCategory: true,
+      underweight: false,
+    };
+  }
+  const ratio = input.waistCm != null && input.heightCm != null ? waistToHeight(input.waistCm, input.heightCm) : null;
+  if (ratio != null) {
+    const healthy = ratio < WAIST_HEIGHT_HEALTHY;
+    return {
+      basis: 'waist',
+      label: healthy ? 'Within the healthy band' : 'Outside the healthy band',
+      plain: healthy
+        ? `Waist is less than half your height (waist-to-height ${ratio.toFixed(2)}). Under 0.5 is the healthy band on this screen.`
+        : `Waist-to-height is ${ratio.toFixed(2)}. 0.5 or more sits outside the healthy band on this screen. This is not a diagnosis.`,
+      hideBmiCategory: true,
+      underweight: false,
+    };
+  }
+  const bmi = input.weightKg != null && input.heightCm != null ? bmiValue(input.weightKg, input.heightCm) : null;
+  if (bmi == null) {
+    return { basis: 'none', label: null, plain: '', hideBmiCategory: false, underweight: false };
+  }
+  const underweight = bmi < LOW_BMI;
+  if (input.build === 'muscular' && !underweight) {
+    return {
+      basis: 'bmi',
+      label: null,
+      plain: `BMI is ${bmi.toFixed(1)}. Category labels stay off because you lift weights. ${BMI_ONLY_NOTE}`,
+      hideBmiCategory: true,
+      underweight: false,
+    };
+  }
+  if (underweight) {
+    return {
+      basis: 'bmi',
+      label: 'Below the healthy range',
+      plain: `BMI is ${bmi.toFixed(1)}, under 18.5. ${BMI_ONLY_NOTE}`,
+      hideBmiCategory: false,
+      underweight: true,
+    };
+  }
+  return {
+    basis: 'bmi',
+    label: null,
+    plain: `BMI is ${bmi.toFixed(1)}. ${BMI_ONLY_NOTE}`,
+    hideBmiCategory: false,
+    underweight: false,
+  };
+}
+
+/** Latest value of each measure. A newer waist does not hide an earlier body-fat reading. */
+export function compositionForAssessment(rows: readonly BodyCompositionReading[]): {
+  bodyFatPct: number | null;
+  leanMassKg: number | null;
+  waistCm: number | null;
+} {
+  const ordered = [...rows].sort((left, right) => right.recordedOn.localeCompare(left.recordedOn) || right.createdAt.localeCompare(left.createdAt));
+  return {
+    bodyFatPct: ordered.find((row) => row.bodyFatPct != null)?.bodyFatPct ?? null,
+    leanMassKg: ordered.find((row) => row.leanMassKg != null)?.leanMassKg ?? null,
+    waistCm: ordered.find((row) => row.waistCm != null)?.waistCm ?? null,
+  };
+}
+
+function plainMeasure(value: number): string {
+  const rounded = Math.round(value * 10) / 10;
+  return String(rounded);
+}
+
+/** Measured lean mass when it is present, otherwise weight with body fat removed. Needs body fat. */
+export function fatFreeMassKg(input: { weightKg: number | null; bodyFatPct: number | null; leanMassKg: number | null }): number | null {
+  if (input.bodyFatPct == null || input.bodyFatPct < 2 || input.bodyFatPct > 70) return null;
+  if (input.leanMassKg != null && input.leanMassKg >= 20 && input.leanMassKg <= 200) return Math.round(input.leanMassKg * 10) / 10;
+  if (input.weightKg == null || !(input.weightKg > 0)) return null;
+  const lean = input.weightKg * (1 - input.bodyFatPct / 100);
+  if (lean < 20 || lean > 200) return null;
+  return Math.round(lean * 10) / 10;
+}
+
+export function ffmiValue(leanKg: number, heightCm: number): number | null {
+  if (!(heightCm >= 50 && heightCm <= 250) || !(leanKg > 0)) return null;
+  const metres = heightCm / 100;
+  return Math.round((leanKg / (metres * metres)) * 10) / 10;
+}
+
+/** Descriptive words for this screen. Not an NHS category. */
+export function ffmiPlain(input: { ffmi: number; sex: NutritionSex | null }): string {
+  const cuts = input.sex === 'female' ? [15, 17, 19] : input.sex === 'male' ? [18, 20, 22] : [16, 18, 20];
+  const word = input.ffmi < cuts[0]
+    ? 'a lighter amount of muscle'
+    : input.ffmi < cuts[1]
+      ? 'an ordinary amount of muscle'
+      : input.ffmi < cuts[2]
+        ? 'more muscle than is typical'
+        : 'a muscular amount of muscle';
+  return `Fat-free mass index is ${input.ffmi.toFixed(1)}, which on this screen reads as ${word}. This is not a diagnosis.`;
+}
+
+/** A short line for the progress share. Null when there is nothing to say. */
+export function compositionShareLine(input: {
+  bodyFatPct: number | null;
+  leanMassKg: number | null;
+  waistCm: number | null;
+  heightCm: number | null;
+}): string | null {
+  if (input.bodyFatPct != null && input.bodyFatPct >= 2 && input.bodyFatPct <= 70) {
+    return `Body fat ${plainMeasure(input.bodyFatPct)}%.`;
+  }
+  const ratio = input.waistCm != null && input.heightCm != null ? waistToHeight(input.waistCm, input.heightCm) : null;
+  if (ratio != null) {
+    return ratio < WAIST_HEIGHT_HEALTHY
+      ? 'Waist is less than half their height.'
+      : 'Waist-to-height is 0.5 or more.';
+  }
+  if (input.leanMassKg != null) return 'Lean body mass is recorded.';
+  return null;
+}
+
+export function compositionContextLines(input: {
+  settings: Pick<NutritionSettings, 'build' | 'goalSex'>;
+  weightKg?: number | null;
+  heightCm?: number | null;
+  bodyFatPct?: number | null;
+  leanMassKg?: number | null;
+  waistCm?: number | null;
+}): string[] {
+  const lines: string[] = [];
+  if (input.settings.build) lines.push(`Their build is ${BUILD_LABEL[input.settings.build]}.`);
+  const assessment = assessWeight({
+    bodyFatPct: input.bodyFatPct ?? null,
+    waistCm: input.waistCm ?? null,
+    weightKg: input.weightKg ?? null,
+    heightCm: input.heightCm ?? null,
+    build: input.settings.build,
+    sex: input.settings.goalSex,
+  });
+  if (assessment.basis !== 'none' && assessment.plain) lines.push(assessment.plain);
+  if (assessment.hideBmiCategory) lines.push('Do not call them overweight or obese from BMI.');
+  const lean = fatFreeMassKg({
+    weightKg: input.weightKg ?? null,
+    bodyFatPct: input.bodyFatPct ?? null,
+    leanMassKg: input.leanMassKg ?? null,
+  });
+  const ffmi = lean != null && input.heightCm != null ? ffmiValue(lean, input.heightCm) : null;
+  if (ffmi != null) lines.push(ffmiPlain({ ffmi, sex: input.settings.goalSex }));
+  return lines;
+}
+
 /** Never under BMR, and never under 1,200 kcal for women or 1,500 for men. Sex unset uses 1,500. */
 export function kcalFloor(bmr: number, sex: NutritionSex | null): number {
   const sexFloor = sex === 'female' ? 1200 : 1500;
   return Math.max(Math.round(bmr), sexFloor);
 }
 
-export function proteinGramsFor(goal: NutritionGoal, weightKg: number): number {
-  const perKg = goal === 'lose_fat_build_muscle' ? 1.8 : goal === 'maintain' ? 1.2 : 1.6;
-  return Math.round(perKg * weightKg);
+/** Muscular uses 2 g per kg, inside 1.8 to 2.2. Other builds keep the goal rates. Capped at 700 g. */
+export function proteinGramsFor(goal: NutritionGoal, weightKg: number, build: BodyBuild | null = null): number {
+  const perKg = build === 'muscular' ? 2 : goal === 'lose_fat_build_muscle' ? 1.8 : goal === 'maintain' ? 1.2 : 1.6;
+  return Math.min(700, Math.round(perKg * weightKg));
 }
 
 export type GoalSuggestion = {
@@ -856,6 +1137,8 @@ export function suggestGoalTargets(input: {
   age: number | null;
   sex: NutritionSex | null;
   activeEnergyKcal: number | null;
+  /** Muscular raises protein only. The under-18.5 floor still blocks a deficit. */
+  build?: BodyBuild | null;
 }): { ok: true; suggestion: GoalSuggestion } | { ok: false; message: string } {
   if (input.weightKg == null || input.heightCm == null) {
     return { ok: false, message: missingGoalBodyMessage(input) ?? 'Add your weight and height' };
@@ -875,14 +1158,17 @@ export function suggestGoalTargets(input: {
   if (!blockedLoss && input.goal === 'lose_fat_build_muscle') kcal = tdee - RECOMP_ADJUSTMENT;
   if (input.goal === 'increase') kcal = tdee + MODEST_ADJUSTMENT;
   kcal = Math.max(kcal, floor);
-  const proteinG = proteinGramsFor(input.goal, input.weightKg);
+  const proteinG = proteinGramsFor(input.goal, input.weightKg, input.build ?? null);
   const activityLine = usedActiveEnergy
     ? 'It uses your recent Apple Health active energy.'
     : 'It assumes a moderately active day. Apple Health active energy will refine it when that reading is available.';
   const sexLine = input.sex == null ? ' Sex was not set, so the estimate sits between the female and male equations.' : '';
+  const liftLine = !blockedLoss && input.build === 'muscular'
+    ? ' Protein uses 2 g per kg, inside 1.8 to 2.2 g per kg, because you lift weights.'
+    : '';
   const note = blockedLoss
     ? LOW_BMI_NOTE
-    : `A starting suggestion from the Mifflin-St Jeor equation. ${activityLine}${sexLine} Change it if it does not suit you. This is not medical advice.`;
+    : `A starting suggestion from the Mifflin-St Jeor equation. ${activityLine}${sexLine}${liftLine} Change it if it does not suit you. This is not medical advice.`;
   return { ok: true, suggestion: { kcal, proteinG, bmr, floor, bmi, blockedLoss, usedActiveEnergy, note } };
 }
 
@@ -1042,17 +1328,30 @@ export function presentSharedNutrition(
   settings: NutritionSettings,
   logs: readonly FoodLog[],
   today: string,
-  body?: { heightCm?: number | null; weights?: readonly { day: string; kg: number }[] },
+  body?: {
+    heightCm?: number | null;
+    weights?: readonly { day: string; kg: number }[];
+    bodyFatPct?: number | null;
+    leanMassKg?: number | null;
+    waistCm?: number | null;
+  },
 ): SharedNutritionView {
   const items = dayItems(logs, today);
   const balance = fatBalance(items);
+  const streak = progressShareLine(mealStreakDays(logs, today));
+  const composition = compositionShareLine({
+    bodyFatPct: body?.bodyFatPct ?? null,
+    leanMassKg: body?.leanMassKg ?? null,
+    waistCm: body?.waistCm ?? null,
+    heightCm: body?.heightCm ?? null,
+  });
   return {
     meals: settings.shareFoodDiary ? publicMealLines(logs, today) : null,
     calories: settings.shareCalories ? caloriesShareLine(items, settings.hideCalories) : null,
     quality: settings.shareQuality
       ? { unsaturated: balance.unsaturated, other: balance.other, line: balance.line }
       : null,
-    progress: settings.shareProgress ? progressShareLine(mealStreakDays(logs, today)) : null,
+    progress: settings.shareProgress ? [streak, composition].filter(Boolean).join(' ') : null,
     wagon: settings.wagonOn && settings.wagonVisible ? { note: settings.wagonNote.trim().slice(0, 200) } : null,
     goal: sharedGoalFrom(settings, logs, today, body),
   };
@@ -1144,11 +1443,13 @@ export function parseSharedNutrition(value: unknown): SharedNutritionView | null
   const wagon = raw.wagonOn === true
     ? { note: typeof raw.wagonNote === 'string' ? raw.wagonNote.trim().slice(0, 200) : '' }
     : null;
+  const progressBase = typeof raw.progressDays === 'number' ? progressShareLine(raw.progressDays) : null;
+  const composition = progressBase && typeof raw.composition === 'string' ? raw.composition.trim() : '';
   return {
     meals: sharedMealRows(raw),
     calories: sharedCalories(raw.calories),
     quality: sharedQuality(raw.quality),
-    progress: typeof raw.progressDays === 'number' ? progressShareLine(raw.progressDays) : null,
+    progress: progressBase ? `${progressBase}${composition ? ` ${composition}` : ''}` : null,
     wagon,
     goal: sharedGoal(raw.goal),
   };

@@ -1,5 +1,5 @@
 import type { StoredConsent } from '@/domain/consents';
-import type { FoodItem, FoodLog, MealSlot, MealSource, NutritionDay, NutritionSettings, SharedNutritionView } from '@/domain/nutrition';
+import type { BodyCompositionReading, BodyCompositionSource, FoodItem, FoodLog, MealSlot, MealSource, NutritionDay, NutritionSettings, SharedNutritionView } from '@/domain/nutrition';
 import type { ProfileSharing, PublicProfileView } from '@/domain/profileSharing';
 import type { GratitudeCategory, GratitudeEntry, GratitudeReflect } from '@/domain/gratitude';
 import type { Stage } from '@/domain/stage';
@@ -222,6 +222,8 @@ export type AppSnapshot = {
   foodLogs: FoodLog[];
   nutrition: NutritionSettings;
   waterDays: NutritionDay[];
+  /** Private body-fat, lean-mass, and waist history. Shared only as a progress line when that switch is on. */
+  bodyComposition: BodyCompositionReading[];
 };
 
 export type NewGratitudeEntry = {
@@ -431,6 +433,14 @@ export interface Repository {
   deleteFoodLog(id: string): Promise<void>;
   setNutritionSettings(settings: NutritionSettings): Promise<void>;
   setWater(day: string, waterMl: number): Promise<void>;
+  /** Saves one day and source. A blank figure keeps the figure already stored for that day. */
+  saveBodyComposition(input: {
+    recordedOn: string;
+    bodyFatPct: number | null;
+    leanMassKg: number | null;
+    waistCm: number | null;
+    source: BodyCompositionSource;
+  }): Promise<void>;
   /** Shared nutrition items. Each field is null unless that switch is on. Null when the profile is hidden or blocked. */
   sharedNutrition(userId: string): Promise<SharedNutritionView | null>;
 }

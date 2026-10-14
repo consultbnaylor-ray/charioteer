@@ -48,6 +48,7 @@ import { soberElapsed } from '@/domain/sober';
 import { weightReadingKg } from '@/domain/weightEntry';
 import { readAppleHealthBody } from '@/health/sync';
 import { writeDayToAppleHealth } from '@/health/writeNutrition';
+import { BodyCompositionCard } from '@/ui/BodyComposition';
 import { NutritionBoard, WaterMeter, WeightTrendChart } from '@/ui/NutritionCharts';
 import { FatShareBar, NutritionShareSummary, NutritionShareSwitch, WagonFlag } from '@/ui/NutritionShare';
 import { pickMealPhoto } from '@/ui/pickMealPhoto';
@@ -314,6 +315,7 @@ export default function Nutrition() {
         age,
         sex: settings.goalSex,
         activeEnergyKcal: settings.activityEnergyKcal,
+        build: settings.build,
       });
       if (!result.ok) {
         setGoalNote(null);
@@ -738,6 +740,7 @@ export default function Nutrition() {
           </>
         )}
       </Card>
+      <BodyCompositionCard />
       <Card>
         <T variant="label">Goal</T>
         <T variant="muted">Pick one. A suggestion uses your weight, height, age, and sex if you add them. You can change the numbers.</T>

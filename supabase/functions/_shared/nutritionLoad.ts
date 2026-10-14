@@ -1,12 +1,19 @@
 import { londonDay } from './healthInsights.ts';
 import {
+  compositionForAssessment,
   defaultNutritionSettings,
   foodItemFromUnknown,
+  isBodyBuild,
+  isBodyCompositionSource,
   isMealSlot,
   isNutritionGoal,
   isNutritionSex,
   nutritionContextLines,
+  parseBodyFatPct,
+  parseLeanMassKg,
+  parseWaistCm,
   weightPointsFrom,
+  type BodyCompositionReading,
   type FoodItem,
   type FoodLog,
   type NutritionSettings,
@@ -87,7 +94,32 @@ function settingsFromRow(row: unknown): NutritionSettings {
     wagonOn: record.wagon_on === true,
     wagonNote: typeof record.wagon_note === 'string' ? record.wagon_note : '',
     wagonVisible: record.wagon_visible === true,
+    build: typeof record.build === 'string' && isBodyBuild(record.build) ? record.build : null,
   };
+}
+
+function compositionFromRows(rows: unknown): BodyCompositionReading[] {
+  if (!Array.isArray(rows)) return [];
+  return rows.flatMap((row) => {
+    if (!row || typeof row !== 'object') return [];
+    const record = row as Record<string, unknown>;
+    const source = typeof record.source === 'string' && isBodyCompositionSource(record.source) ? record.source : null;
+    const recordedOn = typeof record.recorded_on === 'string' ? record.recorded_on.slice(0, 10) : '';
+    if (!source || !recordedOn) return [];
+    const bodyFatPct = parseBodyFatPct(optionalNumber(record.body_fat_pct, 0, 100));
+    const leanMassKg = parseLeanMassKg(optionalNumber(record.lean_mass_kg, 0, 300));
+    const waistCm = parseWaistCm(optionalNumber(record.waist_cm, 0, 300), 'cm');
+    if (bodyFatPct == null && leanMassKg == null && waistCm == null) return [];
+    return [{
+      id: typeof record.id === 'string' ? record.id : recordedOn,
+      recordedOn,
+      bodyFatPct,
+      leanMassKg,
+      waistCm,
+      source,
+      createdAt: typeof record.created_at === 'string' ? record.created_at : '',
+    }];
+  });
 }
 
 /**
@@ -108,14 +140,19 @@ export async function loadNutritionLines(
   now = new Date(),
 ): Promise<string[]> {
   const today = londonDay(now);
-  const wide = 'kcal_target, hide_calories, share_food_diary, share_calories, share_quality, share_progress, goal, goal_age, goal_sex, protein_target_g, activity_energy_kcal, share_goal, wagon_on, wagon_note, wagon_visible';
+  const wide = 'kcal_target, hide_calories, share_food_diary, share_calories, share_quality, share_progress, goal, goal_age, goal_sex, protein_target_g, activity_energy_kcal, share_goal, wagon_on, wagon_note, wagon_visible, build';
+  const goals = 'kcal_target, hide_calories, share_food_diary, share_calories, share_quality, share_progress, goal, goal_age, goal_sex, protein_target_g, activity_energy_kcal, share_goal, wagon_on, wagon_note, wagon_visible';
   const narrow = 'kcal_target, hide_calories, share_food_diary, wagon_on, wagon_note, wagon_visible';
-  const [logsRes, waterRes, healthRes] = await Promise.all([
+  const [logsRes, waterRes, healthRes, bodyRes] = await Promise.all([
     userClient.from('food_logs').select('id, eaten_on, meal, source, note, items, estimated, created_at').eq('user_id', profile.id).order('eaten_on', { ascending: false }).limit(80),
     userClient.from('nutrition_days').select('water_ml').eq('user_id', profile.id).eq('day', today).maybeSingle(),
     userClient.from('health_samples').select('kind, value, recorded_on').eq('user_id', profile.id).order('recorded_on', { ascending: true }).limit(400),
+    userClient.from('body_composition').select('id, recorded_on, body_fat_pct, lean_mass_kg, waist_cm, source, created_at').eq('user_id', profile.id).order('recorded_on', { ascending: false }).limit(40),
   ]);
   let settingsRes = await userClient.from('nutrition_settings').select(wide).eq('user_id', profile.id).maybeSingle();
+  if (settingsRes.error) {
+    settingsRes = await userClient.from('nutrition_settings').select(goals).eq('user_id', profile.id).maybeSingle();
+  }
   if (settingsRes.error) {
     settingsRes = await userClient.from('nutrition_settings').select(narrow).eq('user_id', profile.id).maybeSingle();
   }
@@ -140,6 +177,7 @@ export async function loadNutritionLines(
   const weights = weightPointsFrom(samples);
   const latest = weights.length ? weights[weights.length - 1] : undefined;
   const height = profile.height_cm == null ? null : Number(profile.height_cm);
+  const figures = compositionForAssessment(bodyRes.error ? [] : compositionFromRows(bodyRes.data));
   return nutritionContextLines({
     logs: logsRes.error ? [] : logsFromRows(logsRes.data),
     settings: settingsRes.error ? defaultNutritionSettings() : settingsFromRow(settingsRes.data),
@@ -152,6 +190,9 @@ export async function loadNutritionLines(
       weightKg: latest?.kg ?? null,
       heightCm: height != null && Number.isFinite(height) ? height : null,
       weights,
+      bodyFatPct: figures.bodyFatPct,
+      leanMassKg: figures.leanMassKg,
+      waistCm: figures.waistCm,
     },
   });
 }

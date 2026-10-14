@@ -4,6 +4,7 @@ import { Linking, Pressable, View } from 'react-native';
 import type { HealthSample } from '@/data/types';
 import { isoDay, startOfLocalDay } from '@/domain/dates';
 import { buildMetricGuidance, parseHeightCm } from '@/domain/guidance';
+import { compositionForAssessment } from '@/domain/nutrition';
 import {
   buildHealthInsights,
   dailyValues,
@@ -137,15 +138,21 @@ function MetricCard({
   const history = dailyValues(samples, kind).filter((point) => point.day <= today);
   const typedHeight = parseHeightCm(heightText);
   const liveHeight = typedHeight.ok ? typedHeight.value : heightCm;
+  const snap = useSnapshot();
+  const figures = compositionForAssessment(snap.bodyComposition);
   const guidance = buildMetricGuidance({
     kind,
     today,
     points: history,
     heightCm: liveHeight,
     adult,
+    bodyFatPct: kind === 'weight_kg' ? figures.bodyFatPct : null,
+    waistCm: kind === 'weight_kg' ? figures.waistCm : null,
+    build: kind === 'weight_kg' ? snap.nutrition.build : null,
+    sex: kind === 'weight_kg' ? snap.nutrition.goalSex : null,
   });
   const shownFlags = flags.filter((flag) => flag.id !== 'resting_high' && flag.id !== 'short_sleep');
-  const sharing = useSnapshot().sharing;
+  const sharing = snap.sharing;
 
   useEffect(() => {
     setHeightText(heightCm == null ? '' : String(heightCm));
@@ -205,7 +212,7 @@ function MetricCard({
             onBlur={commitHeight}
             keyboardType="decimal-pad"
             editable={canSaveHeight}
-            hint="Used only for BMI. It is not shown on your public profile."
+            hint="Used for BMI and waist-to-height. It is not shown on your public profile."
           />
           {canSaveHeight ? null : <T variant="muted">Health data is off. Turn it on in Privacy & consent to save a weight or a height.</T>}
           {heightError ? <T>{heightError}</T> : null}

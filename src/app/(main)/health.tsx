@@ -63,6 +63,15 @@ export default function Health() {
       return;
     }
     await repo.saveHealth(result.samples);
+    for (const row of result.composition ?? []) {
+      await repo.saveBodyComposition({
+        recordedOn: row.recordedOn,
+        bodyFatPct: row.bodyFatPct,
+        leanMassKg: row.leanMassKg,
+        waistCm: null,
+        source: 'healthkit',
+      });
+    }
     if (result.activeEnergyKcal != null) {
       await repo.setNutritionSettings({
         ...repo.getSnapshot().nutrition,

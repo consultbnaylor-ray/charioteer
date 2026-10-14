@@ -6,6 +6,7 @@
 
 import { formatSleepHours, formatUkCompactDay, HRV_MIN_READINGS, HRV_TOO_FEW, shiftDay, type DayValue } from './healthInsights';
 import type { HealthInsightKind } from './healthInsights';
+import { BMI_ONLY_NOTE, assessWeight, type BodyBuild, type NutritionSex } from './nutrition';
 import {
   CMO_GUIDELINES_URL,
   UK_HIGHER_RISK_MEN_UNITS,
@@ -402,7 +403,13 @@ function hrvGuidance(points: DayValue[], today: string): GuidanceView {
   });
 }
 
-function weightGuidance(points: DayValue[], today: string, heightCm: number | null, adult: boolean): GuidanceView {
+function weightGuidance(
+  points: DayValue[],
+  today: string,
+  heightCm: number | null,
+  adult: boolean,
+  composition?: { bodyFatPct?: number | null; waistCm?: number | null; build?: BodyBuild | null; sex?: NutritionSex | null },
+): GuidanceView {
   const recent = span(points, today, -6, 0);
   const recentMean = mean(recent.map((point) => point.value));
   const latest = points.length ? points[points.length - 1] : null;
@@ -417,6 +424,24 @@ function weightGuidance(points: DayValue[], today: string, heightCm: number | nu
       marker: null,
       ticks: [],
       sources: BMI_SOURCES,
+      warning: null,
+    });
+  }
+  const assessed = assessWeight({
+    bodyFatPct: composition?.bodyFatPct ?? null,
+    waistCm: composition?.waistCm ?? null,
+    weightKg: weight,
+    heightCm,
+    build: composition?.build ?? null,
+    sex: composition?.sex ?? null,
+  });
+  if (assessed.basis === 'body_fat' || assessed.basis === 'waist') {
+    return view({
+      label: assessed.label,
+      plain: assessed.plain,
+      marker: null,
+      ticks: [],
+      sources: [],
       warning: null,
     });
   }
@@ -452,6 +477,16 @@ function weightGuidance(points: DayValue[], today: string, heightCm: number | nu
     });
   }
   const bmi = oneDecimal(raw);
+  if (assessed.hideBmiCategory && !assessed.underweight) {
+    return view({
+      label: null,
+      plain: assessed.plain,
+      marker: null,
+      ticks: [],
+      sources: [],
+      warning: null,
+    });
+  }
   const scaleMin = 15;
   const scaleMax = 40;
   const ticks = [
@@ -488,7 +523,7 @@ function weightGuidance(points: DayValue[], today: string, heightCm: number | nu
   }
   return view({
     label,
-    plain: `${weightText}${named} ${BMI_LIMITS}${when}`,
+    plain: `${weightText}${named} ${BMI_LIMITS}${when} ${BMI_ONLY_NOTE}`,
     marker: { position: place(bmi, scaleMin, scaleMax), warning: warning != null },
     ticks,
     sources: BMI_SOURCES,
@@ -502,6 +537,10 @@ export function buildMetricGuidance(input: {
   points: DayValue[];
   heightCm?: number | null;
   adult?: boolean;
+  bodyFatPct?: number | null;
+  waistCm?: number | null;
+  build?: BodyBuild | null;
+  sex?: NutritionSex | null;
 }): GuidanceView {
   const points = [...input.points].filter((point) => point.day <= input.today).sort((left, right) => (left.day < right.day ? -1 : 1));
   if (input.kind === 'sleep_hours') return sleepGuidance(points, input.today);
@@ -509,7 +548,12 @@ export function buildMetricGuidance(input: {
   if (input.kind === 'workout_minutes') return workoutGuidance(points, input.today);
   if (input.kind === 'steps') return stepsGuidance(points, input.today);
   if (input.kind === 'hrv_sdnn') return hrvGuidance(points, input.today);
-  return weightGuidance(points, input.today, input.heightCm ?? null, input.adult !== false);
+  return weightGuidance(points, input.today, input.heightCm ?? null, input.adult !== false, {
+    bodyFatPct: input.bodyFatPct,
+    waistCm: input.waistCm,
+    build: input.build,
+    sex: input.sex,
+  });
 }
 
 export function weeklyUnitsGuidance(units: number, stage?: string | null): GuidanceView {

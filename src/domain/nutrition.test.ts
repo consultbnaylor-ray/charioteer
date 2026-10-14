@@ -38,8 +38,18 @@ import {
   weightTrendLine,
   defaultNutritionSettings,
   GOAL_LABEL,
+  BMI_ONLY_NOTE,
+  BUILD_LABEL,
   LOW_BMI_NOTE,
   WEEK_CHART_EMPTY,
+  assessWeight,
+  compositionShareLine,
+  fatFreeMassKg,
+  ffmiPlain,
+  ffmiValue,
+  parseBodyFatPct,
+  parseWaistCm,
+  waistToHeight,
   eatingInsights,
   loggingCaption,
   loggingDots,
@@ -784,6 +794,7 @@ describe('nutrition charts', () => {
     const board = at('<NutritionBoard');
     const water = at('variant="label">Water');
     const weight = at('variant="label">Weight');
+    const body = at('<BodyCompositionCard');
     const goal = at('variant="label">Goal');
     const wagon = at('<WagonFlag');
     const sharing = at('<NutritionShareSummary');
@@ -793,7 +804,8 @@ describe('nutrition charts', () => {
     expect(summary).toBeLessThan(board);
     expect(board).toBeLessThan(water);
     expect(water).toBeLessThan(weight);
-    expect(weight).toBeLessThan(goal);
+    expect(weight).toBeLessThan(body);
+    expect(body).toBeLessThan(goal);
     expect(goal).toBeLessThan(wagon);
     expect(wagon).toBeLessThan(sharing);
     expect(screen.slice(logged, summary)).toContain("Share today's meals");
@@ -830,5 +842,138 @@ describe('nutrition charts', () => {
     expect(screen).not.toMatch(/\{[^}\n]*communityVisible[^}\n]*\?[^}\n]*null/);
     expect(repo).toContain('settingsRes.error ? defaultNutritionSettings() : nutritionFromRow');
     expect(repo).toContain('if (!row) return base');
+  });
+});
+
+describe('body composition', () => {
+  const sql = readFileSync('supabase/migrations/20261014170000_body_composition.sql', 'utf8');
+  const screen = readFileSync('src/ui/BodyComposition.tsx', 'utf8');
+  const repo = readFileSync('src/data/supabase-repository.ts', 'utf8');
+
+  it('stores body fat, lean mass, and waist for the owner only', () => {
+    expect(sql).toContain('create table public.body_composition');
+    expect(sql).toContain("source in ('healthkit', 'smart_scale', 'gym_scan', 'dexa', 'other')");
+    expect(sql).toContain("build in ('muscular', 'average', 'slim')");
+    expect(sql).toContain('user_id = auth.uid()');
+    expect(sql).toContain('revoke all on table public.body_composition from public, anon, authenticated');
+    expect(sql).not.toMatch(/grant select on public\.body_composition to anon/i);
+    expect(sql).toContain('unique (user_id, recorded_on, source)');
+    expect(sql).toContain("'composition', composition");
+    expect(sql).toContain('if share_prog then');
+    expect(sql).toContain('Waist is less than half their height.');
+    expect(sql).toContain("'body_composition'");
+    expect(sql).not.toMatch(/drop table/i);
+    expect(sql).not.toMatch(/delete from/i);
+  });
+
+  it('uses body fat, then waist, then BMI, and keeps the underweight floor', () => {
+    expect(parseBodyFatPct(0.15)).toBe(15);
+    expect(parseBodyFatPct(15)).toBe(15);
+    expect(parseWaistCm(33, 'in')).toBe(83.8);
+    expect(waistToHeight(84, 178)).toBe(0.47);
+    const fat = assessWeight({ bodyFatPct: 15, waistCm: 84, weightKg: 80, heightCm: 170, build: 'muscular', sex: 'male' });
+    expect(fat.basis).toBe('body_fat');
+    expect(fat.hideBmiCategory).toBe(true);
+    expect(fat.plain).not.toMatch(/overweight|obese/i);
+    const waist = assessWeight({ waistCm: 84, weightKg: 80, heightCm: 178, build: 'average', sex: 'male' });
+    expect(waist.basis).toBe('waist');
+    expect(waist.label).toBe('Within the healthy band');
+    expect(waist.plain).toContain('less than half your height');
+    const onlyBmi = assessWeight({ weightKg: 80, heightCm: 170, build: 'average', sex: 'male' });
+    expect(onlyBmi.basis).toBe('bmi');
+    expect(onlyBmi.plain).toContain(BMI_ONLY_NOTE);
+    const muscular = assessWeight({ weightKg: 80, heightCm: 170, build: 'muscular', sex: 'male' });
+    expect(muscular.label).toBeNull();
+    expect(muscular.hideBmiCategory).toBe(true);
+    expect(muscular.plain).not.toMatch(/overweight|obese/i);
+    expect(muscular.plain).toContain(BMI_ONLY_NOTE);
+    const low = assessWeight({ weightKg: 50, heightCm: 175, build: 'muscular', sex: 'male' });
+    expect(low.underweight).toBe(true);
+    expect(low.label).toBe('Below the healthy range');
+    const lean = fatFreeMassKg({ weightKg: 74.2, bodyFatPct: 15, leanMassKg: 63 });
+    expect(lean).toBe(63);
+    const ffmi = ffmiValue(63, 178);
+    expect(ffmi).toBe(19.9);
+    expect(ffmiPlain({ ffmi: ffmi ?? 0, sex: 'male' })).toContain('ordinary');
+    expect(ffmiPlain({ ffmi: ffmi ?? 0, sex: 'male' })).toContain('not a diagnosis');
+    expect(compositionShareLine({ bodyFatPct: 15, leanMassKg: 63, waistCm: 84, heightCm: 178 })).toBe('Body fat 15%.');
+    expect(compositionShareLine({ bodyFatPct: null, leanMassKg: null, waistCm: null, heightCm: 178 })).toBeNull();
+  });
+
+  it('raises protein for a muscular build without dropping the safety floor', () => {
+    expect(proteinGramsFor('lose_weight', 80)).toBe(128);
+    expect(proteinGramsFor('lose_weight', 80, 'muscular')).toBe(160);
+    expect(proteinGramsFor('lose_fat_build_muscle', 80, 'muscular')).toBe(160);
+    const lifted = suggestGoalTargets({
+      goal: 'lose_weight',
+      weightKg: 80,
+      heightCm: 180,
+      age: 40,
+      sex: 'male',
+      activeEnergyKcal: null,
+      build: 'muscular',
+    });
+    expect(lifted.ok && lifted.suggestion.proteinG).toBe(160);
+    expect(lifted.ok && lifted.suggestion.kcal).toBe(2282);
+    expect(lifted.ok && lifted.suggestion.note).toContain('1.8 to 2.2');
+    const blocked = suggestGoalTargets({
+      goal: 'lose_weight',
+      weightKg: 50,
+      heightCm: 175,
+      age: 40,
+      sex: 'male',
+      activeEnergyKcal: null,
+      build: 'muscular',
+    });
+    expect(blocked.ok && blocked.suggestion.blockedLoss).toBe(true);
+    expect(blocked.ok && blocked.suggestion.note).toBe(LOW_BMI_NOTE);
+    const lines = nutritionContextLines({
+      logs: [],
+      settings: { ...defaultNutritionSettings(), build: 'muscular', goalSex: 'male' },
+      waterMl: 0,
+      checkIns: [],
+      soberDays: null,
+      unitsAvoided: 0,
+      today: '2026-10-14',
+      body: { weightKg: 80, heightCm: 170, weights: [], bodyFatPct: null, leanMassKg: null, waistCm: null },
+    });
+    const text = lines.join('\n');
+    expect(text).toContain(BUILD_LABEL.muscular);
+    expect(text).toContain('Do not call them overweight or obese from BMI.');
+    expect(text).not.toMatch(/NHS overweight|calls obese|is overweight/i);
+    const shared = presentSharedNutrition(
+      { ...defaultNutritionSettings(), shareProgress: true },
+      [],
+      '2026-10-14',
+      { heightCm: 178, weights: [], bodyFatPct: 15, leanMassKg: 63, waistCm: 84 },
+    );
+    expect(shared.progress).toContain('Body fat 15%.');
+    const hidden = presentSharedNutrition(
+      { ...defaultNutritionSettings(), shareProgress: false },
+      [],
+      '2026-10-14',
+      { bodyFatPct: 15, leanMassKg: 63, waistCm: 84, heightCm: 178 },
+    );
+    expect(hidden.progress).toBeNull();
+    const parsed = parseSharedNutrition({ progressDays: 1, composition: 'Body fat 15%.' });
+    expect(parsed?.progress).toBe(`${progressShareLine(1)} Body fat 15%.`);
+    expect(parseSharedNutrition({ composition: 'Body fat 15%.' })?.progress).toBeNull();
+  });
+
+  it('keeps the body card free of photo estimation and reloads', () => {
+    expect(screen).toContain('BMI_ONLY_NOTE');
+    expect(BUILD_LABEL.muscular).toBe('Muscular / I lift weights');
+    expect(screen).toContain('BUILD_LABEL');
+    expect(screen).toContain("pending={isPending('body')}");
+    expect(screen).toContain('setNutritionSettings');
+    expect(screen).not.toMatch(/ImagePicker|launchCamera|expo-image-picker|estimateMeal|photoBase64/);
+    expect(readFileSync('src/app/(main)/profile.tsx', 'utf8')).toContain('<BuildChoices');
+    expect(readFileSync('supabase/functions/_shared/nutrition.ts', 'utf8')).toContain('use body fat before waist-to-height');
+    expect(readFileSync('supabase/functions/_shared/thumos.ts', 'utf8')).toContain('slice(0, 16)');
+    expect(readFileSync('supabase/functions/_shared/nutritionLoad.ts', 'utf8')).toContain("from('body_composition')");
+    const save = repo.slice(repo.indexOf('async saveBodyComposition'), repo.indexOf('async sharedNutrition'));
+    expect(save).toContain("from('body_composition').upsert");
+    expect(save).not.toContain('this.refresh()');
+    expect(repo).toContain('build: settings.build');
   });
 });

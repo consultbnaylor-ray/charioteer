@@ -1,8 +1,8 @@
 import type { NewHealthSample } from '@/data/types';
-import type { AppleHealthBody } from '@/health/connection';
+import type { AppleHealthBody, AppleHealthComposition } from '@/health/connection';
 
 export type HealthSyncResult =
-  | { ok: true; samples: NewHealthSample[]; activeEnergyKcal: number | null }
+  | { ok: true; samples: NewHealthSample[]; activeEnergyKcal: number | null; composition?: AppleHealthComposition[] }
   | { ok: false; message: string };
 
 export type AppleHealthBodyRead =

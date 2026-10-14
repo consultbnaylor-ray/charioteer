@@ -696,7 +696,7 @@ export function buildThumosContext(input: ThumosContextInput): string {
     .join('\n');
 
   const insightLines = (input.healthInsights ?? []).map((line) => line.trim()).filter(Boolean).slice(0, 3);
-  const nutritionLines = (input.nutritionLines ?? []).map((line) => line.trim()).filter(Boolean).slice(0, 12);
+  const nutritionLines = (input.nutritionLines ?? []).map((line) => line.trim()).filter(Boolean).slice(0, 16);
 
   if (input.safety.selfHarm) {
     return [
