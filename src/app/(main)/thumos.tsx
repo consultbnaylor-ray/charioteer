@@ -217,7 +217,7 @@ export default function Thumos() {
       title={sos ? 'Craving support' : 'How are you feeling?'}
       intro={snap.mode === 'demo'
         ? 'Earlier replies in the sample are stored examples, so you can see the shape of a conversation. A new message explains, clearly, when the live coach is not connected.'
-        : 'Thumos helps you stay sober and get healthier. It is not a doctor.'}
+        : 'Thumos helps you stay sober, and can nudge you to move, eat, and sleep. It is not a doctor.'}
       banner={safetyBanner}
     >
       {showSupport ? (
@@ -308,17 +308,17 @@ export default function Thumos() {
   );
 }
 
-const INTRO_LINE = 'Thumos is your Sober Coach, tap to read more';
+const INTRO_LINE = 'Thumos is your sober and fitness coach, tap to read more';
 
 function ThumosIntro({ open, onToggle }: { open: boolean; onToggle: () => void }) {
   const theme = useAppTheme();
   const { width } = useWindowDimensions();
-  // 297 is the collapsed sentence at 15px Barlow, so it stays one line on a narrow phone.
-  const introSize = Math.min(15 * theme.scale, Math.max(0, width - 68) / (297 / 15));
+  // 348 is the collapsed sentence at 15px Barlow, so it stays one line on a narrow phone.
+  const introSize = Math.min(15 * theme.scale, Math.max(0, width - 68) / (348 / 15));
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={open ? 'Thumos is your Sober Coach' : INTRO_LINE}
+      accessibilityLabel={open ? 'Thumos, sober and fitness coach' : INTRO_LINE}
       accessibilityState={{ expanded: open }}
       aria-expanded={open}
       onPress={onToggle}

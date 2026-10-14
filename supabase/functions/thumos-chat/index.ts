@@ -16,6 +16,7 @@ import {
   historyTurnsForModel,
   interestLabelsFromRows,
   isThumosFollowUp,
+  motivationForTurn,
   mentionsCheckInOrHealth,
   OFFLINE_COACH_MESSAGE,
   resolveThumosMode,
@@ -35,6 +36,8 @@ import { visionContextFrom, type VisionContext } from '../_shared/visionBoard.ts
 import { buildHealthInsights, londonDay } from '../_shared/healthInsights.ts';
 import { loadNutritionLines } from '../_shared/nutritionLoad.ts';
 import { moodOnTen } from '../_shared/mood.ts';
+import { GOAL_LABEL, type NutritionGoal } from '../_shared/nutrition.ts';
+import { formatSoberElapsed, soberElapsed } from '../_shared/sober.ts';
 
 type Body = { content?: string; mode?: ThumosMode };
 
@@ -121,13 +124,15 @@ Deno.serve(async (req) => {
   }
 
   const userId = userData.user.id;
-  const [profileRes, reasonsRes, checkRes, healthRes, historyRes, interestRes] = await Promise.all([
+  const [profileRes, reasonsRes, checkRes, healthRes, historyRes, interestRes, memoryRes, goalRes] = await Promise.all([
     userClient.from('profiles').select('*').eq('id', userId).single(),
     userClient.from('reasons').select('body, sort_order').eq('user_id', userId).order('sort_order'),
     userClient.from('check_ins').select('mood, mood_10, sleep_hours, craving, note, created_at').eq('user_id', userId).order('created_at', { ascending: false }).limit(THUMOS_CHAT.checkInLimit),
     userClient.from('health_samples').select('kind, value, unit, recorded_on').eq('user_id', userId).order('recorded_on', { ascending: false }).limit(1000),
     userClient.from('thumos_messages').select('role, content, created_at').eq('user_id', userId).order('created_at', { ascending: false }).limit(THUMOS_CHAT.historyLimit),
     userClient.from('profile_interests').select('interests(label)').eq('user_id', userId),
+    userClient.from('thumos_motivation_memory').select('recent_ids').eq('user_id', userId).maybeSingle(),
+    userClient.from('nutrition_settings').select('goal').eq('user_id', userId).maybeSingle(),
   ]);
 
   if (profileRes.error || !profileRes.data) {
@@ -225,6 +230,35 @@ Deno.serve(async (req) => {
     reasons: (reasonsRes.data ?? []).map((row) => row.body),
   });
   const committedAction = safety.selfHarm ? null : detectCommittedAction(content);
+  const workout = health.find((item) => item.kind === 'workout_minutes');
+  const pinned = pinnedStoicQuote(profile.pinned_quote_id);
+  const recentIds = memoryRes.error || !Array.isArray(memoryRes.data?.recent_ids)
+    ? []
+    : memoryRes.data.recent_ids.map(String);
+  const goalValue = goalRes.error ? null : goalRes.data?.goal;
+  const nutritionGoal = typeof goalValue === 'string' && goalValue in GOAL_LABEL
+    ? GOAL_LABEL[goalValue as NutritionGoal]
+    : null;
+  const motivation = motivationForTurn({
+    text: content,
+    mode,
+    safety,
+    recentIds,
+    now: new Date(),
+    reasons: (reasonsRes.data ?? []).map((row) => row.body),
+    visionStatement: vision.statement,
+    visionCaptions: vision.captions.map((item) => item.caption),
+    soberLabel: stage === 'stopped' && profile.sobriety_started_at
+      ? formatSoberElapsed(soberElapsed(new Date(profile.sobriety_started_at), new Date()))
+      : null,
+    nutritionGoal,
+    interests: interestRes.error ? [] : interestLabelsFromRows(interestRes.data),
+    hadWorkout: (workout?.latest ?? 0) > 0,
+    overworked: (workout?.latest ?? 0) >= 90 && (workout?.previous ?? 0) >= 90,
+    mood: checkIns[0]?.mood ?? null,
+    sleepHours: checkIns[0]?.sleepHours ?? null,
+    stoicQuote: pinned?.school === 'Stoic' ? pinned.text : null,
+  });
   const earlierAssistant = [...historyRows]
     .filter((row) => row.role === 'assistant' && row.content.trim())
     .sort((a, b) => (a.createdAt < b.createdAt ? -1 : 1))
@@ -238,6 +272,7 @@ Deno.serve(async (req) => {
     reasonsAlreadyUsed: cues.reasonsAlreadyUsed,
     healthAlreadySaid: earlierAssistant.some((item) => mentionsCheckInOrHealth(item)),
     stage,
+    motivation,
   });
 
   const stream = new ReadableStream<Uint8Array>({
@@ -289,6 +324,14 @@ Deno.serve(async (req) => {
         if (insertError) {
           send({ type: 'error', message: 'The message could not be saved.' });
         } else {
+          if (motivation && role === 'assistant') {
+            const memory = await admin.from('thumos_motivation_memory').upsert({
+              user_id: userId,
+              recent_ids: motivation.recentIds,
+              updated_at: new Date().toISOString(),
+            }, { onConflict: 'user_id' });
+            if (memory.error) console.error('thumos motivation memory', memory.error.message);
+          }
           send({ type: 'done', reply, role, ok: role === 'assistant' });
         }
       } catch {

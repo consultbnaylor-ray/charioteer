@@ -953,6 +953,8 @@ export class SupabaseRepository implements Repository {
     }
     if (patch.messageNotifications !== undefined) column.message_notifications = patch.messageNotifications;
     if (patch.notifySenderName !== undefined) column.notify_sender_name = patch.notifySenderName;
+    if (patch.movementReminder !== undefined) column.movement_reminder = patch.movementReminder;
+    if (patch.movementReminderMinute !== undefined) column.movement_reminder_minute = patch.movementReminderMinute;
     const profile = this.snapshot.profile;
     if (!profile) throw new Error('Sign in first.');
     const lane = this.profileLane();
@@ -2520,6 +2522,8 @@ function mapProfile(row: Row, email: string, interestIds: string[]): Profile {
     bio: typeof row.bio === 'string' ? row.bio : '',
     messageNotifications: row.message_notifications == null ? true : Boolean(row.message_notifications),
     notifySenderName: Boolean(row.notify_sender_name),
+    movementReminder: Boolean(row.movement_reminder),
+    movementReminderMinute: row.movement_reminder_minute == null ? null : Number(row.movement_reminder_minute),
     visionStartedOn: typeof row.vision_started_on === 'string'
       ? (/^(\d{4}-\d{2}-\d{2})/.exec(row.vision_started_on)?.[1] ?? null)
       : null,

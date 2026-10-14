@@ -54,7 +54,7 @@ describe('thumos conversation window', () => {
 
   it('renders compact bubbles, a one-line intro, and a show-earlier control', () => {
     const screen = readFileSync('src/app/(main)/thumos.tsx', 'utf8');
-    expect(screen).toContain('Thumos is your Sober Coach, tap to read more');
+    expect(screen).toContain('Thumos is your sober and fitness coach, tap to read more');
     expect(screen).toContain('THUMOS_INTRO');
     expect(screen).toContain('numberOfLines={1}');
     expect(screen).toContain('Show earlier messages (${earlier.length})');

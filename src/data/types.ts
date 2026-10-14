@@ -57,6 +57,10 @@ export type Profile = {
   messageNotifications: boolean;
   /** When on, a private-message alert names the sender. The message text is never included. */
   notifySenderName: boolean;
+  /** Gentle movement nudge. Off until the person turns it on. */
+  movementReminder: boolean;
+  /** Minutes after midnight, local to the phone that schedules it. Null when unset. */
+  movementReminderMinute: number | null;
   createdAt: string;
 };
 
@@ -282,6 +286,8 @@ export type ProfilePatch = Partial<
     | 'bio'
     | 'messageNotifications'
     | 'notifySenderName'
+    | 'movementReminder'
+    | 'movementReminderMinute'
   >
 >;
 

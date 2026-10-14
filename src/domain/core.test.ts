@@ -164,7 +164,7 @@ describe('Thumos context', () => {
     expect(inferThumosMode({ sos: false, hasHistory: true, latestMood: 8, latestCraving: 1 })).toBe('growth');
     expect(inferThumosMode({ sos: false, hasHistory: true, latestMood: 5, latestCraving: 1 })).toBe('steady');
     expect(inferThumosMode({ sos: false, hasHistory: false })).toBe('opening');
-    expect(THUMOS_INTRO).toBe('Thumos is your Sober Coach. Thumos will do his best to help you through cravings and/or help you reason with yourself. He will help you find reasons to stop (or not start) drinking. He can also help motivate you to stay healthy and keep strong, however you may feel.');
+    expect(THUMOS_INTRO).toBe('Thumos is your sober, fitness, and health motivator. Sobriety and safety come first. He will do his best to help you through cravings and to reason with yourself, and to find reasons to stop (or not start) drinking. When you cannot be bothered to run, train, walk, cook something healthy, or sleep, he will help you start. That encouragement is not medical advice.');
     expect(THUMOS_INTRO).not.toBe(CRAVING_LINE);
     expect(OPENING_LINE).toBe('How are you feeling?');
   });

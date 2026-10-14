@@ -26,6 +26,8 @@ export function profileWithPatch(profile: Profile, patch: ProfilePatch): Profile
   if (patch.bio !== undefined) next.bio = patch.bio;
   if (patch.messageNotifications !== undefined) next.messageNotifications = patch.messageNotifications;
   if (patch.notifySenderName !== undefined) next.notifySenderName = patch.notifySenderName;
+  if (patch.movementReminder !== undefined) next.movementReminder = patch.movementReminder;
+  if (patch.movementReminderMinute !== undefined) next.movementReminderMinute = patch.movementReminderMinute;
   return next;
 }
 
@@ -58,6 +60,10 @@ export function profileWithColumn(
   if ('bio' in column) next.bio = typeof column.bio === 'string' ? column.bio : '';
   if ('message_notifications' in column) next.messageNotifications = Boolean(column.message_notifications);
   if ('notify_sender_name' in column) next.notifySenderName = Boolean(column.notify_sender_name);
+  if ('movement_reminder' in column) next.movementReminder = Boolean(column.movement_reminder);
+  if ('movement_reminder_minute' in column) {
+    next.movementReminderMinute = column.movement_reminder_minute == null ? null : Number(column.movement_reminder_minute);
+  }
   if (interestIds) next.interestIds = [...interestIds];
   return next;
 }

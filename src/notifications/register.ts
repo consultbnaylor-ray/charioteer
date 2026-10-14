@@ -3,6 +3,9 @@ import { Platform } from 'react-native';
 
 import type { Repository } from '@/data/types';
 import { connectionIdFrom } from '../../supabase/functions/_shared/messagePush';
+import { MOVEMENT_REMINDER_BODY, MOVEMENT_REMINDER_TITLE } from '../../supabase/functions/_shared/motivation';
+
+export const MOVEMENT_REMINDER_ID = 'movement-reminder';
 
 type TokenStore = Pick<Repository, 'saveDeviceToken'>;
 
@@ -37,6 +40,43 @@ export async function offerMessageNotifications(repo: TokenStore): Promise<void>
       : await Notifications.getExpoPushTokenAsync();
     if (!token.data) return;
     await repo.saveDeviceToken(token.data, Platform.OS);
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Schedules or clears the local movement nudge. The body is generic.
+ * Web has no local schedule; the saved preference still stands for a phone.
+ */
+export async function syncMovementReminder(on: boolean, minute: number | null): Promise<void> {
+  if (Platform.OS !== 'ios' && Platform.OS !== 'android') return;
+  try {
+    const Notifications = await import('expo-notifications');
+    await Notifications.cancelScheduledNotificationAsync(MOVEMENT_REMINDER_ID).catch(() => undefined);
+    if (!on || minute == null) return;
+    const existing = await Notifications.getPermissionsAsync();
+    let status = existing.status;
+    if (status !== 'granted') {
+      const asked = await Notifications.requestPermissionsAsync();
+      status = asked.status;
+    }
+    if (status !== 'granted') return;
+    const hour = Math.floor(minute / 60);
+    const rest = minute % 60;
+    await Notifications.scheduleNotificationAsync({
+      identifier: MOVEMENT_REMINDER_ID,
+      content: {
+        title: MOVEMENT_REMINDER_TITLE,
+        body: MOVEMENT_REMINDER_BODY,
+        data: { kind: 'movement' },
+      },
+      trigger: {
+        type: Notifications.SchedulableTriggerInputTypes.DAILY,
+        hour,
+        minute: rest,
+      },
+    });
   } catch {
     return undefined;
   }

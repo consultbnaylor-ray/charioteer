@@ -353,6 +353,8 @@ export class DemoRepository implements Repository {
         account.profile.createdAt = fresh.accounts[id]?.profile.createdAt ?? new Date(0).toISOString();
       }
       if (account.profile.bio == null) account.profile.bio = '';
+      if (account.profile.movementReminder == null) account.profile.movementReminder = false;
+      if (account.profile.movementReminderMinute === undefined) account.profile.movementReminderMinute = null;
       for (const photo of account.progressPhotos ?? []) {
         if (photo.caption == null) photo.caption = '';
       }
@@ -439,6 +441,8 @@ export class DemoRepository implements Repository {
         bio: '',
         messageNotifications: true,
         notifySenderName: false,
+        movementReminder: false,
+        movementReminderMinute: null,
         createdAt: new Date().toISOString(),
       },
       reasons: [],

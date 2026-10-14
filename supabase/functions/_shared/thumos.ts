@@ -7,6 +7,20 @@ import { formatSoberElapsed, soberElapsed } from './sober.ts';
 import { hrvExplainerForCoach } from './healthInsights.ts';
 import { NUTRITION_PROMPT_LINE } from './nutrition.ts';
 import { detectSafety, type SafetyHit } from './safety.ts';
+import {
+  motivationGuidance,
+  planMotivation,
+  type MotivationInput,
+  type MotivationPlan,
+} from './motivation.ts';
+
+export {
+  formatReminderClock,
+  MOTIVATION_MEMORY,
+  MOVEMENT_REMINDER_BODY,
+  MOVEMENT_REMINDER_TITLE,
+  parseReminderClock,
+} from './motivation.ts';
 
 export type ThumosMode = 'opening' | 'steady' | 'growth' | 'support';
 
@@ -528,7 +542,7 @@ export const OPENING_LINE = 'How are you feeling?';
 
 /** Shown on the Thumos screen. It is not stored as a chat message. */
 export const THUMOS_INTRO =
-  'Thumos is your Sober Coach. Thumos will do his best to help you through cravings and/or help you reason with yourself. He will help you find reasons to stop (or not start) drinking. He can also help motivate you to stay healthy and keep strong, however you may feel.';
+  'Thumos is your sober, fitness, and health motivator. Sobriety and safety come first. He will do his best to help you through cravings and to reason with yourself, and to find reasons to stop (or not start) drinking. When you cannot be bothered to run, train, walk, cook something healthy, or sleep, he will help you start. That encouragement is not medical advice.';
 
 /** Retired guide line. Older rows may still be stored. Do not show or speak it. */
 export const CRAVING_LINE =
@@ -632,11 +646,35 @@ export type PromptTurn = {
   /** An earlier assistant reply already used a check-in or a health figure. */
   healthAlreadySaid?: boolean;
   stage?: ThumosStage;
+  /** Set only when this turn is a motivation ask and safety has already cleared it. */
+  motivation?: Pick<MotivationPlan, 'id' | 'activity' | 'reply'> | null;
 };
+
+/**
+ * A "can't be bothered" turn, or null when safety, support, a craving, or a
+ * commitment already owns the reply. Crisis handling is unchanged.
+ */
+export function motivationForTurn(
+  input: MotivationInput & {
+    mode?: ThumosMode;
+    safety?: { selfHarm: boolean; withdrawal: boolean };
+  },
+): MotivationPlan | null {
+  if (input.mode === 'support') return null;
+  if (input.safety?.selfHarm || input.safety?.withdrawal) return null;
+  if (detectRisk(input.text) !== 'none') return null;
+  if (detectCommittedAction(input.text)) return null;
+  return planMotivation(input);
+}
 
 function eventPreparationSection(turn: PromptTurn): string {
   if (turn.selfHarm || turn.committedAction || turn.followUp) return '';
   return EVENT_PREPARATION;
+}
+
+function motivationBlock(mode: ThumosMode, turn: PromptTurn): string {
+  if (mode === 'support' || turn.selfHarm || turn.committedAction || !turn.motivation) return '';
+  return motivationGuidance(turn.motivation);
 }
 
 function modeGuidance(mode: ThumosMode, turn: PromptTurn): string {
@@ -776,6 +814,9 @@ export function buildSystemPrompt(
       : (turn.stage && turn.stage !== 'stopped')
         ? stageGuidance(turn.stage)
         : 'Your job is to help this person stay sober and get healthier.',
+    mode === 'support' || turn.selfHarm
+      ? ''
+      : 'You also motivate movement, a healthy meal, and sleep when they cannot be bothered. Sobriety and safety still come first. That help is not medical advice. Respect an injury, an illness, and signs of overtraining, and give permission to rest.',
     'You are not a doctor, therapist, or emergency service. Say so when the conversation touches physical health, withdrawal, or mental health.',
     'You cannot act outside this chat. Never offer to set a reminder, an alarm, or a calendar entry, and never offer to contact someone. If a reminder, alarm, or calendar entry would help, suggest they set it themselves. Do not say "I can set a reminder".',
     styleLine(turn),
@@ -791,6 +832,7 @@ export function buildSystemPrompt(
     conversationShape(turn),
     modeGuidance(mode, turn),
     eventPreparationSection(turn),
+    motivationBlock(mode, turn),
     'Safety rules, follow exactly:',
     '- If they describe heavy daily drinking and wanting to stop abruptly, or withdrawal symptoms (shakes, sweating, hallucinations, confusion, seizures, or feeling very unwell when not drinking): tell them alcohol withdrawal can be dangerous and they should not detox alone. Advise their GP, NHS 111, or 999 in an emergency. Do not give a taper schedule, doses, or medication advice.',
     '- If they express suicidal thoughts or self-harm: take it seriously. Encourage the Samaritans on 116 123 (free, 24 hours) and 999 if they are in immediate danger. Stay supportive. Do not debate whether they should live. Do not describe methods.',
