@@ -21,6 +21,7 @@
         "aps-environment": "production"
       },
       "infoPlist": {
+        "CFBundleDisplayName": "Charioteer",
         "NSCameraUsageDescription": "Charioteer uses the camera so you can take a private progress photo. Other people cannot see it, and it is not sent to the coach.",
         "NSPhotoLibraryUsageDescription": "Charioteer uses your photo library so you can add a private progress photo. Other people cannot see it, and it is not sent to the coach.",
         "NSHealthShareUsageDescription": "Charioteer reads steps, sleep, resting heart rate, heart rate variability, workouts, weight, height, body fat, lean body mass, and active energy so you and Thumos can see how your body is doing. Other people cannot see this.",

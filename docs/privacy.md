@@ -1,6 +1,6 @@
 # Privacy
 
-Quantica Labs Ltd is the controller for Charioteer. This page is plain language for the product. It is not a solicitor’s privacy notice. Have it reviewed before a public launch.
+Quantica Labs Ltd is the controller for Charioteer Sober/Health Coach. This page is plain language for the product. It is not a solicitor’s privacy notice. Have it reviewed before a public launch.
 
 ## What stays on your account
 

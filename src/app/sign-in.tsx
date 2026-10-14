@@ -3,6 +3,7 @@ import * as Linking from 'expo-linking';
 import { useEffect, useState } from 'react';
 import { Pressable, View } from 'react-native';
 
+import { APP_FULL_NAME } from '@/domain/appName';
 import { appleSignInEnabled } from '@/config/publicEnv';
 import { useRepository, useSnapshot } from '@/data';
 import { crisisHelplines } from '@/data/catalogue';
@@ -73,7 +74,10 @@ export default function SignIn() {
     >
       <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 14 }}>
         <Mark size={168} />
-        <Wordmark size={28} />
+        <View style={{ gap: 4, flexShrink: 1 }}>
+          <Wordmark size={28} />
+          <T variant="muted">{APP_FULL_NAME}</T>
+        </View>
       </View>
       <Card>
         <T variant="body">For anyone stepping away from alcohol, and anyone building a clearer, more meaningful life.</T>

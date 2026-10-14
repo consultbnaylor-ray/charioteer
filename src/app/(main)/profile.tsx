@@ -4,6 +4,7 @@ import { Platform, Share, Switch, View } from 'react-native';
 
 import { useRepository, useSnapshot } from '@/data';
 import type { TextScale, ThemePreference } from '@/data/types';
+import { APP_FULL_NAME } from '@/domain/appName';
 import { correctedSoberStart } from '@/domain/correctStart';
 import { formatUkDate, isoDay, parseIsoDay, startOfLocalDay } from '@/domain/dates';
 import { parseDrinkFreeGoal, parseUnitsGoal, showsSoberRecord, STAGE_LABELS, STAGES, SUDDEN_STOP_WARNING, USUAL_WEEK_HELPER, validateStageStep, type Stage } from '@/domain/stage';
@@ -473,7 +474,7 @@ export default function Profile() {
       <Button label="Sign out" tone="quiet" onPress={() => void repo.signOut().catch((err: unknown) => setError(shownError(err, 'Could not sign out.')))} />
       {message ? <T variant="muted">{message}</T> : null}
       <ErrorNote>{error}</ErrorNote>
-      <T variant="muted">Charioteer is operated by Quantica Labs Ltd in the UK. Ben Naylor is the owner. Deleting the account removes the profile and the data tied to it.</T>
+      <T variant="muted">{APP_FULL_NAME} is operated by Quantica Labs Ltd in the UK. Ben Naylor is the owner. Deleting the account removes the profile and the data tied to it.</T>
     </Screen>
   );
 }

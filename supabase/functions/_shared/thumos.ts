@@ -542,7 +542,7 @@ export const OPENING_LINE = 'How are you feeling?';
 
 /** Shown on the Thumos screen. It is not stored as a chat message. */
 export const THUMOS_INTRO =
-  'Thumos is your sober, fitness, and health motivator. Sobriety and safety come first. He will do his best to help you through cravings and to reason with yourself, and to find reasons to stop (or not start) drinking. When you cannot be bothered to run, train, walk, cook something healthy, or sleep, he will help you start. That encouragement is not medical advice.';
+  'Thumos is your sober, fitness, and health motivator in Charioteer Sober/Health Coach. Sobriety and safety come first. He will do his best to help you through cravings and to reason with yourself, and to find reasons to stop (or not start) drinking. When you cannot be bothered to run, train, walk, cook something healthy, or sleep, he will help you start. That encouragement is not medical advice.';
 
 /** Retired guide line. Older rows may still be stored. Do not show or speak it. */
 export const CRAVING_LINE =

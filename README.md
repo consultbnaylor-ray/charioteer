@@ -172,7 +172,7 @@ npm install
 
 TestFlight shows a voice debug line (the step reached, the microphone sample rate, and the last error) while `extra.voiceDiagnostics` is true. A voice failure stays on “The voice connection failed. Text chat is still available.”
 
-The home-screen name is `Charioteer` (`expo.name`). The App Store Connect listing name is `Charioteer Sober Coach` (app id `6821371422`).
+The home-screen name is `Charioteer` (`expo.name` and `CFBundleDisplayName`). The App Store Connect listing name is `Charioteer Sober/Health Coach` (app id `6821371422`). The bundle id stays `uk.co.quanticalabs.charioteer`.
 
 On a Mac with Xcode, enable the HealthKit and Sign in with Apple capabilities if prebuild has not already. Add the same bundle id in the Apple Developer portal, then turn on the Apple provider in Supabase.
 

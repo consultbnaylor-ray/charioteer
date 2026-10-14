@@ -9,6 +9,7 @@ import { AppState, Platform, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 
+import { APP_DISPLAY_NAME, APP_FULL_NAME } from '@/domain/appName';
 import { RepoProvider, useRepository, useSnapshot } from '@/data';
 import { listenForMessageOpens } from '@/notifications/register';
 import { CONSENT_VERSION } from '@/data/catalogue';
@@ -61,7 +62,7 @@ function Chrome() {
 
   useEffect(() => {
     if (Platform.OS === 'web' && typeof document !== 'undefined') {
-      document.title = 'Charioteer';
+      document.title = APP_DISPLAY_NAME;
       document.body.style.backgroundColor = theme.colors.bg;
     }
   }, [theme.colors.bg]);
@@ -140,6 +141,7 @@ function OpeningDay({ background }: { background: string }) {
     <View style={{ flex: 1, backgroundColor: background, alignItems: 'center', justifyContent: 'center', gap: 14, paddingTop: topSafeInset(insets.top) }}>
       <Mark size={120} />
       <Wordmark size={28} />
+      <T variant="muted">{APP_FULL_NAME}</T>
       <T variant="muted">Opening your day…</T>
     </View>
   );

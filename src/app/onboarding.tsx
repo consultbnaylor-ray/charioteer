@@ -8,6 +8,7 @@ import { interestChipVisible } from '@/domain/interests';
 import { planCustomInterest, validateTown } from '@/domain/privacy';
 import { reasonPlaceholder } from '@/domain/reasons';
 import { parseDrinkFreeGoal, parseUnitsGoal, STAGE_LABELS, STAGES, SUDDEN_STOP_WARNING, USUAL_WEEK_HELPER, validateStageStep, type Stage } from '@/domain/stage';
+import { APP_FULL_NAME } from '@/domain/appName';
 import { offerMessageNotifications } from '@/notifications/register';
 import { ConsentChoices } from '@/ui/ConsentChoices';
 import { DateField } from '@/ui/DateField';
@@ -146,7 +147,7 @@ export default function Onboarding() {
           <Button label="I am 18 or over" tone={adult === true ? 'primary' : 'quiet'} onPress={() => setAdult(true)} />
           <Button label="I am under 18" tone={adult === false ? 'primary' : 'quiet'} onPress={() => setAdult(false)} />
           {adult === false ? (
-            <T>Charioteer is only for adults. If you are worried about your own or someone else’s drinking, an adult can help you contact Drinkline on 0300 123 1110, or the Samaritans on 116 123.</T>
+            <T>{APP_FULL_NAME} is only for adults. If you are worried about your own or someone else’s drinking, an adult can help you contact Drinkline on 0300 123 1110, or the Samaritans on 116 123.</T>
           ) : null}
         </View>
       ) : null}
@@ -246,7 +247,7 @@ export default function Onboarding() {
             onPress={() => {
               setError(null);
               if (step === 0 && !name.trim()) return setError('Add your name.');
-              if (step === 1 && adult !== true) return setError('Charioteer is for adults aged 18 and over.');
+              if (step === 1 && adult !== true) return setError(`${APP_FULL_NAME} is for adults aged 18 and over.`);
               if (step === 2) {
                 const stageError = validateStageStep({
                   stage,
@@ -288,7 +289,7 @@ const titles = [
 
 const intros = [
   'This is the name other people will see if you join the community.',
-  'Confirm you are 18 or over. Charioteer is not for children.',
+  `Confirm you are 18 or over. ${APP_FULL_NAME} is not for children.`,
   'Stopped, trying to stop, cutting down, or just looking. You can change this later.',
   'Thumos will remind you of these in your own words, when a craving hits or when you cannot be bothered to start, and only when it helps.',
   'Your own usual week. It is an estimate from what you tell us, not a medical calculation.',
