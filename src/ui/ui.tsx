@@ -539,6 +539,12 @@ export function ErrorNote({ children }: { children: string | null }) {
   );
 }
 
+/** A failed chip or switch save. Small, and only after the choice has been put back. */
+export function QuietNote({ children }: { children: string | null }) {
+  if (!children) return null;
+  return <T variant="muted">{children}</T>;
+}
+
 export function Stamp({ kind }: { kind: Verification }) {
   const theme = useAppTheme();
   const solid = kind === 'verified';

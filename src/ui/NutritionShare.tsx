@@ -7,7 +7,7 @@ import { WAGON_SUPPORT, type NutritionSettings, type SharedGoal, type SharedQual
 import { sensitiveShareConfirm } from '@/domain/profileSharing';
 import { usePendingPress } from '@/ui/pendingAction';
 import { useAppTheme } from '@/ui/theme';
-import { Button, Card, ErrorNote, Field, T } from '@/ui/ui';
+import { Button, Card, Field, QuietNote, T } from '@/ui/ui';
 
 /**
  * One labelled switch for a nutrition share. The first health or sobriety
@@ -29,21 +29,17 @@ export function NutritionShareSwitch({
   const theme = useAppTheme();
   const [ask, setAsk] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [pending, setPending] = useState(false);
 
   async function save(selected: boolean, consent: boolean) {
-    setPending(true);
     setError(null);
+    setAsk(false);
     try {
-      await repo.setNutritionSettings(apply(snap.nutrition, selected));
+      await repo.setNutritionSettings(apply(repo.getSnapshot().nutrition, selected));
       if (consent) {
-        await repo.setProfileSharing({ ...snap.sharing, sensitiveConsentAt: new Date().toISOString() });
+        await repo.setProfileSharing({ ...repo.getSnapshot().sharing, sensitiveConsentAt: new Date().toISOString() });
       }
-      setAsk(false);
     } catch (err) {
       setError(shownError(err, 'Could not update sharing.'));
-    } finally {
-      setPending(false);
     }
   }
 
@@ -67,7 +63,6 @@ export function NutritionShareSwitch({
         <Switch
           accessibilityLabel={label}
           value={on}
-          disabled={pending}
           onValueChange={change}
           trackColor={{ true: theme.colors.ink, false: theme.colors.line }}
           thumbColor={theme.colors.surface}
@@ -76,11 +71,11 @@ export function NutritionShareSwitch({
       {ask ? (
         <View style={{ gap: 8 }}>
           <T>{sensitiveShareConfirm(item)}</T>
-          <Button label="Share" pending={pending} pendingLabel="Saving..." onPress={() => void save(true, true)} />
-          <Button label="Not now" tone="quiet" disabled={pending} onPress={() => setAsk(false)} />
+          <Button label="Share" onPress={() => void save(true, true)} />
+          <Button label="Not now" tone="quiet" onPress={() => setAsk(false)} />
         </View>
       ) : null}
-      {error ? <ErrorNote>{error}</ErrorNote> : null}
+      <QuietNote>{error}</QuietNote>
     </View>
   );
 }
@@ -99,19 +94,16 @@ export function WagonFlag() {
   const [error, setError] = useState<string | null>(null);
 
   function setWagon(value: boolean) {
-    run('wagon', async () => {
-      setError(null);
-      try {
-        const current = repo.getSnapshot().nutrition;
-        await repo.setNutritionSettings({
-          ...current,
-          wagonOn: value,
-          wagonNote: value ? wagonNote.slice(0, 200) : '',
-        });
-        if (!value) setWagonNote('');
-      } catch (err) {
-        setError(shownError(err, 'Could not update that flag.'));
-      }
+    setError(null);
+    const current = repo.getSnapshot().nutrition;
+    void repo.setNutritionSettings({
+      ...current,
+      wagonOn: value,
+      wagonNote: value ? wagonNote.slice(0, 200) : '',
+    }).then(() => {
+      if (!repo.getSnapshot().nutrition.wagonOn) setWagonNote('');
+    }).catch((err: unknown) => {
+      setError(shownError(err, 'Could not update that flag.'));
     });
   }
 
@@ -134,7 +126,6 @@ export function WagonFlag() {
         <Switch
           accessibilityLabel="I’ve fallen off the wagon"
           value={settings.wagonOn}
-          disabled={isPending('wagon')}
           onValueChange={setWagon}
           trackColor={{ true: theme.colors.ink, false: theme.colors.line }}
           thumbColor={theme.colors.surface}
@@ -146,7 +137,7 @@ export function WagonFlag() {
           {WAGON_SUPPORT.map((line) => <T key={line}>{line}</T>)}
           <Field label="Optional note" value={wagonNote} onChangeText={setWagonNote} placeholder="A few words, if you want" maxLength={200} />
           <Button label="Save note" pending={isPending('wagon-note')} pendingLabel="Saving..." onPress={saveWagonNote} />
-          <Button label="Clear this" tone="quiet" pending={isPending('wagon')} pendingLabel="Clearing..." onPress={() => setWagon(false)} />
+          <Button label="Clear this" tone="quiet" onPress={() => setWagon(false)} />
         </View>
       ) : (
         <T variant="muted">This stays on your own screen until you share the flag.</T>
@@ -157,7 +148,7 @@ export function WagonFlag() {
         on={settings.wagonVisible}
         apply={(current, selected) => ({ ...current, wagonVisible: selected })}
       />
-      {error ? <ErrorNote>{error}</ErrorNote> : null}
+      <QuietNote>{error}</QuietNote>
     </Card>
   );
 }

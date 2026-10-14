@@ -34,6 +34,7 @@ import {
   moveVisionItem as reorderVisionItems,
   planVisionText,
   type VisionArea,
+  type VisionItem,
   type VisionSize,
   sortVisionItems,
   visionItemsFromRows,
@@ -79,7 +80,9 @@ import {
   profileStoragePath,
   sortProfilePhotos,
 } from '@/domain/profilePhotos';
+import { CoalescedSave, sameJson } from '@/domain/coalescedSave';
 import { interestSelectionUnchanged, nextInterestIds, rolledBackInterestIds, snapshotWithOwnInterests } from '@/domain/interests';
+import { profileWithColumn, profileWithPatch } from '@/domain/profilePatch';
 import { planCustomInterest, validateTown } from '@/domain/privacy';
 import { fetchWithOneRetry } from '@/domain/retryFetch';
 import { planReasons } from '@/domain/reasons';
@@ -180,6 +183,8 @@ function emptySnapshot(): AppSnapshot {
 
 const FOOD_BUCKET = 'food-photos';
 
+type ProfileWrite = { column: Record<string, unknown>; interestIds?: string[] };
+
 export class SupabaseRepository implements Repository {
   private client: SupabaseClient;
   private url: string;
@@ -190,7 +195,13 @@ export class SupabaseRepository implements Repository {
   private interestWrites = new Map<string, Promise<void>>();
   /** In-flight chip saves, so a refresh does not paint the previous selection over an optimistic one. */
   private pendingInterests = new Map<string, boolean>();
-  private interestQueues = new Map<string, Promise<void>>();
+  /** One lane per choice, so rapid taps send only the latest value. */
+  private saves = new Map<string, CoalescedSave<unknown>>();
+  /** Profile to restore if a chip save fails and nothing newer has been chosen. */
+  private profileBase: Profile | null = null;
+  private consentBase: Pick<Profile, 'communityVisible' | 'consentHealth' | 'consentAi'> | null = null;
+  /** Consent rows from before the optimistic insert, so the real insert is not skipped. */
+  private consentExisting: StoredConsent[] | null = null;
   private once = shareInflight();
   /** Messages shown before the server confirms them. The id is the client idempotency key. */
   private outgoingMessages = new Map<string, DirectMessage>();
@@ -286,19 +297,6 @@ export class SupabaseRepository implements Repository {
     return next;
   }
 
-  private enqueueInterest(interestId: string, work: () => Promise<void>): Promise<void> {
-    const prior = this.interestQueues.get(interestId) ?? Promise.resolve();
-    const run = prior.then(work, work);
-    this.interestQueues.set(
-      interestId,
-      run.then(
-        () => undefined,
-        () => undefined,
-      ),
-    );
-    return run;
-  }
-
   private async start() {
     if (this.started) return;
     this.started = true;
@@ -381,12 +379,12 @@ export class SupabaseRepository implements Repository {
       ]);
 
     const profileRow = profileRes.data as Row | null;
-    const myInterestIds = this.applyPendingInterests(
-      ((mineRes.data ?? []) as Row[])
-        .filter((row) => row.user_id === userId)
-        .map((row) => String(row.interest_id)),
-    );
-    const profile = profileRow ? mapProfile(profileRow, email, myInterestIds) : null;
+    const serverInterestIds = ((mineRes.data ?? []) as Row[])
+      .filter((row) => row.user_id === userId)
+      .map((row) => String(row.interest_id));
+    this.settleInterestLanes(serverInterestIds);
+    const myInterestIds = this.applyPendingInterests(serverInterestIds);
+    const profile = this.withPendingProfile(profileRow ? mapProfile(profileRow, email, myInterestIds) : null);
     const links = (interestLinks.data ?? []) as Row[];
     const byUser = new Map<string, string[]>();
     for (const link of links) {
@@ -467,17 +465,17 @@ export class SupabaseRepository implements Repository {
       messages,
       reports: ((reportsRes.data ?? []) as Row[]).map(mapReport),
       thumos: ((thumosRes.data ?? []) as Row[]).map(mapThumos),
-      consents: ((consentsRes.data ?? []) as Row[]).map(mapConsent),
-      progressPhotos: await this.signedProgressPhotos(photosRes.error ? null : ((photosRes.data ?? []) as Row[]), photosRes.error?.message, userId),
+      consents: this.overlayConsentRows(((consentsRes.data ?? []) as Row[]).map(mapConsent)),
+      progressPhotos: this.overlayProgress(await this.signedProgressPhotos(photosRes.error ? null : ((photosRes.data ?? []) as Row[]), photosRes.error?.message, userId)),
       communityPhotos: photosRes.error ? [] : await this.communityProgressPhotos(userId),
       profilePhotos: await this.signedProfilePhotos(profilePhotoRes.error ? null : ((profilePhotoRes.data ?? []) as Row[]), profilePhotoRes.error?.message, userId),
       gratitude: withGratitudePhotos(
         gratitudeMessage ? loggedEmptyGratitude(gratitudeMessage) : gratitudeFromRows(gratitudeRows),
         await this.signedGratitudePhotos(gratitudePhotoRes.error ? null : ((gratitudePhotoRes.data ?? []) as Row[]), gratitudePhotoRes.error?.message),
       ),
-      visionItems: await this.signedVisionItems(visionRes.error ? null : visionRes.data, visionRes.error?.message),
+      visionItems: this.overlayVision(await this.signedVisionItems(visionRes.error ? null : visionRes.data, visionRes.error?.message)),
       ...(await this.nutritionSnapshot(userId)),
-      sharing: sharingRes.error ? defaultProfileSharing() : normalizeProfileSharing((sharingRes.data as Row | null)?.settings),
+      sharing: this.prefer('sharing', sharingRes.error ? defaultProfileSharing() : normalizeProfileSharing((sharingRes.data as Row | null)?.settings)),
       savedQuotes: quotesRes.error
         ? []
         : ((quotesRes.data ?? []) as Row[]).flatMap((row) => {
@@ -826,10 +824,18 @@ export class SupabaseRepository implements Repository {
       const townError = validateTown(patch.town);
       if (townError) throw new Error(townError);
     }
-    const userId = await this.userId();
     const column: Record<string, unknown> = {};
-    if (patch.displayName != null) column.display_name = patch.displayName.trim();
-    if (patch.town !== undefined) column.town = patch.town?.trim() || null;
+    const shown: ProfilePatch = { ...patch };
+    if (patch.displayName != null) {
+      const displayName = patch.displayName.trim();
+      column.display_name = displayName;
+      shown.displayName = displayName;
+    }
+    if (patch.town !== undefined) {
+      const town = patch.town?.trim() || null;
+      column.town = town;
+      shown.town = town;
+    }
     if (patch.weeklySpendGbp !== undefined) column.weekly_spend_gbp = patch.weeklySpendGbp;
     if (patch.weeklyUnits !== undefined) column.weekly_units = patch.weeklyUnits;
     if (patch.communityVisible !== undefined) column.community_visible = patch.communityVisible;
@@ -854,15 +860,25 @@ export class SupabaseRepository implements Repository {
       const planned = planProfileText(patch.bio, BIO_LIMIT);
       if (!planned.ok) throw new UserFacingError(planned.message, 'generic');
       column.bio = planned.text || null;
+      shown.bio = planned.text;
     }
     if (patch.messageNotifications !== undefined) column.message_notifications = patch.messageNotifications;
     if (patch.notifySenderName !== undefined) column.notify_sender_name = patch.notifySenderName;
-    if (Object.keys(column).length) {
-      const { error } = await this.client.from('profiles').update(column).eq('id', userId);
-      if (error) throw asUserFacing(error, 'general');
+    const profile = this.snapshot.profile;
+    if (!profile) throw new Error('Sign in first.');
+    const lane = this.profileLane();
+    const merged: ProfileWrite = {
+      column: stableRecord({ ...(lane.dirty ? lane.value.column : {}), ...column }),
+      interestIds: patch.interestIds ?? (lane.dirty ? lane.value.interestIds : undefined),
+    };
+    if (!lane.dirty) this.profileBase = profile;
+    this.emit({ ...this.snapshot, profile: profileWithPatch(profile, shown) });
+    try {
+      await lane.choose(merged);
+    } catch (error) {
+      if (!lane.dirty && this.profileBase) this.emit({ ...this.snapshot, profile: this.profileAfterConsent(this.profileBase) });
+      throw asUserFacing(error, 'general');
     }
-    if (patch.interestIds) await this.replaceInterests(userId, patch.interestIds);
-    await this.refresh();
   }
 
   async setReasons(bodies: string[]): Promise<void> {
@@ -935,17 +951,19 @@ export class SupabaseRepository implements Repository {
     if (interestSelectionUnchanged(previous, optimistic)) return;
     this.pendingInterests.set(interestId, selected);
     this.emit(snapshotWithOwnInterests(this.snapshot, optimistic));
-    await this.enqueueInterest(interestId, async () => {
-      try {
-        await this.writeInterestLink(profile.id, interestId, selected);
-      } catch (error) {
-        if (this.pendingInterests.get(interestId) === selected) this.pendingInterests.delete(interestId);
-        const current = this.snapshot.profile?.interestIds ?? [];
-        const restored = rolledBackInterestIds(current, optimistic, previous);
-        if (!interestSelectionUnchanged(current, restored)) this.emit(snapshotWithOwnInterests(this.snapshot, restored));
-        throw asUserFacing(error, 'general');
-      }
+    const lane = this.saveLane(`interest:${interestId}`, previous.includes(interestId), async (value) => {
+      await this.writeInterestLink(profile.id, interestId, value);
     });
+    try {
+      await lane.choose(selected);
+      if (this.pendingInterests.get(interestId) === selected && !lane.dirty) this.pendingInterests.delete(interestId);
+    } catch (error) {
+      if (this.pendingInterests.get(interestId) === selected) this.pendingInterests.delete(interestId);
+      const current = this.snapshot.profile?.interestIds ?? [];
+      const restored = rolledBackInterestIds(current, optimistic, previous);
+      if (!interestSelectionUnchanged(current, restored)) this.emit(snapshotWithOwnInterests(this.snapshot, restored));
+      throw asUserFacing(error, 'general');
+    }
   }
 
   /** One link row. A repeat insert is the same choice, not an error. */
@@ -1368,10 +1386,25 @@ export class SupabaseRepository implements Repository {
       }
     }
     if (!Object.keys(patch).length) return;
-    const userId = await this.userId();
-    const { error } = await this.client.from('progress_photos').update(patch).eq('id', id).eq('user_id', userId);
-    if (error) throw asUserFacing(error, 'general');
-    await this.refresh();
+    const before = stableRecord(progressColumn(photo));
+    const lane = this.saveLane(`progress:${id}`, before, (value) => this.persistProgress(id, value));
+    if (!lane.dirty) lane.seen(before);
+    const merged = stableRecord({ ...(lane.dirty ? lane.value : before), ...patch });
+    this.emit({
+      ...this.snapshot,
+      progressPhotos: this.snapshot.progressPhotos.map((item) => item.id === id ? progressWithColumn(item, merged) : item),
+    });
+    try {
+      await lane.choose(merged);
+    } catch (error) {
+      if (!lane.dirty) {
+        this.emit({
+          ...this.snapshot,
+          progressPhotos: this.snapshot.progressPhotos.map((item) => item.id === id ? progressWithColumn(item, lane.value) : item),
+        });
+      }
+      throw asUserFacing(error, 'general');
+    }
   }
 
   async setProgressPhotoVisibility(ids: string[], visibility: ProgressVisibility): Promise<void> {
@@ -1379,10 +1412,33 @@ export class SupabaseRepository implements Repository {
     if (!ids.length || (visibility !== 'private' && visibility !== 'community')) {
       throw new UserFacingError('Could not update that photo.', 'generic');
     }
-    const userId = await this.userId();
-    const { error } = await this.client.from('progress_photos').update({ visibility: next }).in('id', ids).eq('user_id', userId);
-    if (error) throw asUserFacing(error, 'general');
-    await this.refresh();
+    const known = new Set(ids);
+    const previous = new Map(ids.map((id) => {
+      const photo = this.snapshot.progressPhotos.find((item) => item.id === id);
+      return [id, photo?.visibility ?? 'private'] as const;
+    }));
+    this.emit({
+      ...this.snapshot,
+      progressPhotos: this.snapshot.progressPhotos.map((photo) => known.has(photo.id) ? { ...photo, visibility: next } : photo),
+    });
+    try {
+      await Promise.all(ids.map(async (id) => {
+        const before = previous.get(id) ?? 'private';
+        const lane = this.saveLane(`visibility:${id}`, before, (value) => this.persistVisibility(id, value), Object.is);
+        if (!lane.dirty) lane.seen(before);
+        await lane.choose(next);
+      }));
+    } catch (error) {
+      this.emit({
+        ...this.snapshot,
+        progressPhotos: this.snapshot.progressPhotos.map((photo) => {
+          const lane = this.saves.get(`visibility:${photo.id}`) as CoalescedSave<ProgressVisibility> | undefined;
+          if (!lane || lane.dirty) return photo;
+          return { ...photo, visibility: lane.value };
+        }),
+      });
+      throw asUserFacing(error, 'general');
+    }
   }
 
   async saveQuote(quoteId: string): Promise<void> {
@@ -1412,13 +1468,15 @@ export class SupabaseRepository implements Repository {
     if (sensitiveTurnedOn(this.snapshot.sharing, next) && !next.sensitiveConsentAt) {
       throw new UserFacingError('Confirm that other people may see this first.', 'generic');
     }
-    const userId = await this.userId();
-    const { error } = await this.client.from('profile_sharing').upsert(
-      { user_id: userId, settings: next, updated_at: new Date().toISOString() },
-      { onConflict: 'user_id' },
-    );
-    if (error) throw asUserFacing(error, 'general');
+    const lane = this.saveLane('sharing', this.snapshot.sharing, (value) => this.persistSharing(value));
+    if (!lane.dirty) lane.seen(this.snapshot.sharing);
     this.emit({ ...this.snapshot, sharing: next });
+    try {
+      await lane.choose(next);
+    } catch (error) {
+      if (!lane.dirty) this.emit({ ...this.snapshot, sharing: lane.value });
+      throw asUserFacing(error, 'general');
+    }
   }
 
   async publicProfile(userId: string): Promise<ReturnType<typeof parsePublicProfile>> {
@@ -1690,10 +1748,28 @@ export class SupabaseRepository implements Repository {
       column.size = patch.size;
     }
     if (!Object.keys(column).length) return;
-    const userId = await this.userId();
-    const { error } = await this.client.from('vision_board_items').update(column).eq('id', id).eq('user_id', userId);
-    if (error) throw asUserFacing(error, 'general');
-    await this.refresh();
+    const existing = this.snapshot.visionItems.find((item) => item.id === id);
+    const before = stableRecord(existing ? { caption: existing.caption, area: existing.area, size: existing.size } : column);
+    const lane = this.saveLane(`vision:${id}`, before, (value) => this.persistVision(id, value));
+    if (!lane.dirty) lane.seen(before);
+    const merged = stableRecord({ ...(lane.dirty ? lane.value : before), ...column });
+    if (existing) {
+      this.emit({
+        ...this.snapshot,
+        visionItems: this.snapshot.visionItems.map((item) => item.id === id ? visionWithColumn(item, merged) : item),
+      });
+    }
+    try {
+      await lane.choose(merged);
+    } catch (error) {
+      if (!lane.dirty) {
+        this.emit({
+          ...this.snapshot,
+          visionItems: this.snapshot.visionItems.map((item) => item.id === id ? visionWithColumn(item, lane.value) : item),
+        });
+      }
+      throw asUserFacing(error, 'general');
+    }
   }
 
   async moveVisionItem(id: string, direction: 'up' | 'down'): Promise<void> {
@@ -1780,7 +1856,7 @@ export class SupabaseRepository implements Repository {
         const photo = path ? String(path.photo_path ?? '') : '';
         return { ...log, previewUrl: signed.get(photo) ?? null };
       }),
-      nutrition: settingsRes.error ? defaultNutritionSettings() : nutritionFromRow(settingsRes.data as Row | null),
+      nutrition: this.prefer('nutrition', settingsRes.error ? defaultNutritionSettings() : nutritionFromRow(settingsRes.data as Row | null)),
       waterDays: waterRes.error ? [] : ((waterRes.data ?? []) as Row[]).map(mapWaterDay),
     };
   }
@@ -1848,7 +1924,20 @@ export class SupabaseRepository implements Repository {
   }
 
   async setNutritionSettings(settings: NutritionSettings): Promise<void> {
-    const userId = await this.userId();
+    const next = canonicalNutrition(settings);
+    const lane = this.saveLane('nutrition', this.snapshot.nutrition, (value) => this.persistNutrition(value));
+    if (!lane.dirty) lane.seen(canonicalNutrition(this.snapshot.nutrition));
+    this.emit({ ...this.snapshot, nutrition: next });
+    try {
+      await lane.choose(next);
+    } catch (error) {
+      if (!lane.dirty) this.emit({ ...this.snapshot, nutrition: lane.value });
+      throw asUserFacing(error, 'general');
+    }
+  }
+
+  private async persistNutrition(settings: NutritionSettings): Promise<void> {
+    const userId = this.snapshot.session?.userId ?? await this.userId();
     const row = {
       user_id: userId,
       kcal_target: settings.kcalTarget,
@@ -1887,7 +1976,6 @@ export class SupabaseRepository implements Repository {
       ({ error } = await this.client.from('nutrition_settings').upsert(legacy));
     }
     if (error) throw asUserFacing(error, 'general');
-    await this.refresh();
   }
 
   async setWater(day: string, waterMl: number): Promise<void> {
@@ -2027,19 +2115,211 @@ export class SupabaseRepository implements Repository {
   }
 
   async saveConsents(input: ConsentInput): Promise<void> {
-    const userId = await this.userId();
+    const profile = this.snapshot.profile;
+    if (!profile) throw new Error('Sign in first.');
+    const next = canonicalConsent(input);
+    const lane = this.saveLane('consent', next, (value) => this.persistConsents(value));
+    if (!lane.dirty) {
+      this.consentBase = {
+        communityVisible: profile.communityVisible,
+        consentHealth: profile.consentHealth,
+        consentAi: profile.consentAi,
+      };
+      this.consentExisting = this.snapshot.consents;
+      lane.seen(canonicalConsent(this.consentBase));
+    }
+    const rows = consentRows(CONSENT_VERSION, next);
+    const replaced = this.snapshot.consents.map((row) => {
+      const match = rows.find((item) => item.kind === row.kind && item.version === row.version);
+      return match ? { ...row, granted: match.granted } : row;
+    });
+    const added = missingConsentRows(replaced, rows);
+    this.emit({
+      ...this.snapshot,
+      profile: {
+        ...profile,
+        communityVisible: next.communityVisible,
+        consentHealth: next.consentHealth,
+        consentAi: next.consentAi,
+      },
+      consents: [...replaced, ...added],
+    });
+    try {
+      await lane.choose(next);
+      if (!lane.dirty && sameJson(lane.value, next) && this.profileBase) {
+        this.profileBase = {
+          ...this.profileBase,
+          communityVisible: next.communityVisible,
+          consentHealth: next.consentHealth,
+          consentAi: next.consentAi,
+        };
+      }
+    } catch (error) {
+      if (!lane.dirty && this.consentBase) {
+        const current = this.snapshot.profile;
+        this.emit({
+          ...this.snapshot,
+          profile: current
+            ? {
+              ...current,
+              communityVisible: this.consentBase.communityVisible,
+              consentHealth: this.consentBase.consentHealth,
+              consentAi: this.consentBase.consentAi,
+            }
+            : current,
+          consents: this.consentExisting ?? this.snapshot.consents,
+        });
+        if (this.profileBase) {
+          this.profileBase = {
+            ...this.profileBase,
+            communityVisible: this.consentBase.communityVisible,
+            consentHealth: this.consentBase.consentHealth,
+            consentAi: this.consentBase.consentAi,
+          };
+        }
+      }
+      throw asUserFacing(error, 'general');
+    }
+  }
+
+  private saveLane<T>(
+    key: string,
+    initial: T,
+    write: (value: T) => Promise<void>,
+    equals?: (left: T, right: T) => boolean,
+  ): CoalescedSave<T> {
+    const found = this.saves.get(key) as CoalescedSave<T> | undefined;
+    if (found) return found;
+    const lane = new CoalescedSave(initial, write, equals ?? sameJson);
+    this.saves.set(key, lane as CoalescedSave<unknown>);
+    return lane;
+  }
+
+  private profileLane(): CoalescedSave<ProfileWrite> {
+    return this.saveLane('profile', { column: {} }, (value) => this.persistProfile(value));
+  }
+
+  private async persistProfile(value: ProfileWrite): Promise<void> {
+    const userId = this.snapshot.session?.userId ?? await this.userId();
+    if (Object.keys(value.column).length) {
+      const { error } = await this.client.from('profiles').update(value.column).eq('id', userId);
+      if (error) throw error;
+    }
+    if (value.interestIds) await this.replaceInterests(userId, value.interestIds);
+    if (this.profileBase) this.profileBase = profileWithColumn(this.profileBase, value.column, value.interestIds);
+  }
+
+  private async persistSharing(next: ProfileSharing): Promise<void> {
+    const userId = this.snapshot.session?.userId ?? await this.userId();
+    const { error } = await this.client.from('profile_sharing').upsert(
+      { user_id: userId, settings: next, updated_at: new Date().toISOString() },
+      { onConflict: 'user_id' },
+    );
+    if (error) throw error;
+  }
+
+  private async persistConsents(input: ConsentInput): Promise<void> {
+    const userId = this.snapshot.session?.userId ?? await this.userId();
     const { error } = await this.client.from('profiles').update({
       community_visible: input.communityVisible,
       consent_health: input.consentHealth,
       consent_ai: input.consentAi,
     }).eq('id', userId);
-    if (error) throw asUserFacing(error, 'general');
-    await this.insertConsents(userId, input);
-    await this.refresh();
+    if (error) throw error;
+    await this.insertConsents(userId, input, this.consentExisting ?? []);
   }
 
-  private async insertConsents(userId: string, input: ConsentInput) {
-    const next = missingConsentRows(this.snapshot.consents, consentRows(CONSENT_VERSION, input));
+  private async persistProgress(id: string, patch: Record<string, unknown>): Promise<void> {
+    const userId = this.snapshot.session?.userId ?? await this.userId();
+    const { error } = await this.client.from('progress_photos').update(patch).eq('id', id).eq('user_id', userId);
+    if (error) throw error;
+  }
+
+  private async persistVisibility(id: string, visibility: ProgressVisibility): Promise<void> {
+    const userId = this.snapshot.session?.userId ?? await this.userId();
+    const { error } = await this.client.from('progress_photos').update({ visibility }).eq('id', id).eq('user_id', userId);
+    if (error) throw error;
+  }
+
+  private async persistVision(id: string, column: Record<string, unknown>): Promise<void> {
+    const userId = this.snapshot.session?.userId ?? await this.userId();
+    const { error } = await this.client.from('vision_board_items').update(column).eq('id', id).eq('user_id', userId);
+    if (error) throw error;
+  }
+
+  /** A loaded value replaces a settled choice. An unsaved tap stays on screen. */
+  private prefer<T>(key: string, server: T): T {
+    const lane = this.saves.get(key) as CoalescedSave<T> | undefined;
+    if (!lane) return server;
+    return lane.seen(server);
+  }
+
+  private withPendingProfile(profile: Profile | null): Profile | null {
+    if (!profile) return null;
+    const lane = this.saves.get('profile') as CoalescedSave<ProfileWrite> | undefined;
+    const next = lane?.dirty ? profileWithColumn(profile, lane.value.column, lane.value.interestIds) : profile;
+    if (!lane?.dirty) this.profileBase = profile;
+    return this.profileAfterConsent(next);
+  }
+
+  private profileAfterConsent(profile: Profile): Profile {
+    const lane = this.saves.get('consent') as CoalescedSave<ConsentInput> | undefined;
+    if (!lane?.dirty) return profile;
+    return {
+      ...profile,
+      communityVisible: lane.value.communityVisible,
+      consentHealth: lane.value.consentHealth,
+      consentAi: lane.value.consentAi,
+    };
+  }
+
+  private overlayConsentRows(rows: StoredConsent[]): StoredConsent[] {
+    const lane = this.saves.get('consent') as CoalescedSave<ConsentInput> | undefined;
+    if (!lane?.dirty) return rows;
+    const next = consentRows(CONSENT_VERSION, lane.value);
+    const replaced = rows.map((row) => {
+      const match = next.find((item) => item.kind === row.kind && item.version === row.version);
+      return match ? { ...row, granted: match.granted } : row;
+    });
+    return [...replaced, ...missingConsentRows(replaced, next)];
+  }
+
+  private overlayVision(items: VisionItem[]): VisionItem[] {
+    return items.map((item) => {
+      const lane = this.saves.get(`vision:${item.id}`) as CoalescedSave<Record<string, unknown>> | undefined;
+      if (!lane) return item;
+      if (!lane.dirty) {
+        lane.seen(stableRecord({ caption: item.caption, area: item.area, size: item.size }));
+        return item;
+      }
+      return visionWithColumn(item, lane.value);
+    });
+  }
+
+  private overlayProgress(photos: ProgressPhoto[]): ProgressPhoto[] {
+    return photos.map((photo) => {
+      const details = this.saves.get(`progress:${photo.id}`) as CoalescedSave<Record<string, unknown>> | undefined;
+      const visibility = this.saves.get(`visibility:${photo.id}`) as CoalescedSave<ProgressVisibility> | undefined;
+      let next = photo;
+      if (details?.dirty) next = progressWithColumn(next, details.value);
+      else if (details) details.seen(stableRecord(progressColumn(next)));
+      if (visibility?.dirty) next = { ...next, visibility: visibility.value };
+      else if (visibility) visibility.seen(next.visibility);
+      return next;
+    });
+  }
+
+  private settleInterestLanes(serverIds: readonly string[]) {
+    for (const [key, lane] of this.saves) {
+      if (!key.startsWith('interest:')) continue;
+      const typed = lane as CoalescedSave<boolean>;
+      if (typed.dirty) continue;
+      typed.seen(serverIds.includes(key.slice('interest:'.length)));
+    }
+  }
+
+  private async insertConsents(userId: string, input: ConsentInput, existing: readonly { kind: string; version: string }[] = this.snapshot.consents) {
+    const next = missingConsentRows(existing, consentRows(CONSENT_VERSION, input));
     if (!next.length) return;
     const { error } = await this.client.from('consents').insert(next.map((row) => ({
       user_id: userId,
@@ -2256,5 +2536,55 @@ function mapThumos(row: Row): ThumosMessage {
     content: String(row.content),
     mode: row.mode as ThumosMessage['mode'],
     createdAt: String(row.created_at),
+  };
+}
+
+function canonicalNutrition(settings: NutritionSettings): NutritionSettings {
+  return {
+    ...defaultNutritionSettings(),
+    ...settings,
+    wagonNote: settings.wagonNote.slice(0, 200),
+  };
+}
+
+function canonicalConsent(input: ConsentInput): ConsentInput {
+  return {
+    communityVisible: input.communityVisible,
+    consentHealth: input.consentHealth,
+    consentAi: input.consentAi,
+  };
+}
+
+function stableRecord(record: Record<string, unknown>): Record<string, unknown> {
+  const next: Record<string, unknown> = {};
+  for (const key of Object.keys(record).sort()) next[key] = record[key];
+  return next;
+}
+
+function progressColumn(photo: ProgressPhoto): Record<string, unknown> {
+  return {
+    caption: photo.caption,
+    month_index: photo.monthIndex,
+    note: photo.note,
+    taken_on: photo.takenOn,
+  };
+}
+
+function progressWithColumn(photo: ProgressPhoto, column: Record<string, unknown>): ProgressPhoto {
+  return {
+    ...photo,
+    caption: 'caption' in column ? String(column.caption ?? '') : photo.caption,
+    monthIndex: 'month_index' in column ? Number(column.month_index ?? photo.monthIndex) : photo.monthIndex,
+    note: 'note' in column ? String(column.note ?? '') : photo.note,
+    takenOn: 'taken_on' in column ? String(column.taken_on ?? photo.takenOn) : photo.takenOn,
+  };
+}
+
+function visionWithColumn(item: VisionItem, column: Record<string, unknown>): VisionItem {
+  return {
+    ...item,
+    caption: 'caption' in column ? String(column.caption ?? '') : item.caption,
+    area: 'area' in column ? (column.area as VisionItem['area']) : item.area,
+    size: 'size' in column ? (column.size as VisionItem['size']) : item.size,
   };
 }

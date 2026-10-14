@@ -49,7 +49,7 @@ import { FatShareBar, NutritionShareSwitch, WagonFlag } from '@/ui/NutritionShar
 import { pickMealPhoto } from '@/ui/pickMealPhoto';
 import { usePendingPress } from '@/ui/pendingAction';
 import { useAppTheme } from '@/ui/theme';
-import { Button, Card, Choice, ErrorNote, Field, Screen, T } from '@/ui/ui';
+import { Button, Card, Choice, ErrorNote, Field, QuietNote, Screen, T } from '@/ui/ui';
 
 type DraftItem = {
   name: string;
@@ -201,6 +201,7 @@ export default function Nutrition() {
   const [goalAge, setGoalAge] = useState(settings.goalAge == null ? '' : String(settings.goalAge));
   const [protein, setProtein] = useState(settings.proteinTarget == null ? '' : String(settings.proteinTarget));
   const [goalNote, setGoalNote] = useState<string | null>(null);
+  const [choiceNote, setChoiceNote] = useState<string | null>(null);
 
   function floorFor(age: number | null, sex: NutritionSex | null): number | null {
     const weight = latestWeight?.kg ?? null;
@@ -212,24 +213,16 @@ export default function Nutrition() {
   }
 
   function chooseGoal(goal: NutritionGoal) {
-    run(`goal:${goal}`, async () => {
-      setError(null);
-      try {
-        await repo.setNutritionSettings({ ...repo.getSnapshot().nutrition, goal });
-      } catch (err) {
-        setError(shownError(err, 'Could not save that goal.'));
-      }
+    setChoiceNote(null);
+    void repo.setNutritionSettings({ ...repo.getSnapshot().nutrition, goal }).catch((err: unknown) => {
+      setChoiceNote(shownError(err, 'Could not save that goal.'));
     });
   }
 
   function chooseSex(sex: NutritionSex | null) {
-    run('sex', async () => {
-      setError(null);
-      try {
-        await repo.setNutritionSettings({ ...repo.getSnapshot().nutrition, goalSex: sex });
-      } catch (err) {
-        setError(shownError(err, 'Could not save that.'));
-      }
+    setChoiceNote(null);
+    void repo.setNutritionSettings({ ...repo.getSnapshot().nutrition, goalSex: sex }).catch((err: unknown) => {
+      setChoiceNote(shownError(err, 'Could not save that.'));
     });
   }
 
@@ -472,13 +465,9 @@ export default function Nutrition() {
   }
 
   function setHide(value: boolean) {
-    run('hide', async () => {
-      setError(null);
-      try {
-        await repo.setNutritionSettings({ ...repo.getSnapshot().nutrition, hideCalories: value });
-      } catch (err) {
-        setError(shownError(err, 'Could not update that setting.'));
-      }
+    setChoiceNote(null);
+    void repo.setNutritionSettings({ ...repo.getSnapshot().nutrition, hideCalories: value }).catch((err: unknown) => {
+      setChoiceNote(shownError(err, 'Could not update that setting.'));
     });
   }
 
@@ -539,6 +528,7 @@ export default function Nutrition() {
           <Choice label="Man" selected={settings.goalSex === 'male'} onPress={() => chooseSex('male')} />
           <Choice label="Not set" selected={settings.goalSex == null} onPress={() => chooseSex(null)} />
         </View>
+        <QuietNote>{choiceNote}</QuietNote>
         <Button label="Suggest targets" tone="quiet" onPress={suggest} />
         {blocked ? <T>{LOW_BMI_NOTE}</T> : null}
         {goalNote && !blocked ? <T variant="muted">{goalNote}</T> : null}
@@ -667,13 +657,13 @@ export default function Nutrition() {
           <Switch
             accessibilityLabel="Hide calories"
             value={hide}
-            disabled={isPending('hide')}
             onValueChange={setHide}
             trackColor={{ true: theme.colors.ink, false: theme.colors.line }}
             thumbColor={theme.colors.surface}
           />
         </View>
         <T variant="muted">{HIDE_CALORIES_LINE}</T>
+        <QuietNote>{choiceNote}</QuietNote>
         {hide ? null : (
           <>
             <Field label="Optional kcal target" value={target} onChangeText={setTarget} keyboardType="number-pad" placeholder="Leave blank for none" />

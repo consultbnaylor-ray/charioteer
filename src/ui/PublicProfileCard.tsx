@@ -22,7 +22,7 @@ import { offerMessageNotifications } from '@/notifications/register';
 import { TURN_OFF_MESSAGE_NOTIFICATIONS, notificationsOnFromTurnOff } from '../../supabase/functions/_shared/messagePush';
 import { InterestChip } from '@/ui/InterestChip';
 import { useAppTheme } from '@/ui/theme';
-import { Button, Card, ErrorNote, Field, playSavedHaptic, T } from '@/ui/ui';
+import { Button, Card, ErrorNote, Field, playSavedHaptic, QuietNote, T } from '@/ui/ui';
 
 export const PUBLIC_PROFILE_HIDDEN = 'Your profile is hidden from others';
 
@@ -47,7 +47,7 @@ export function PublicProfileCard() {
   const [customInterest, setCustomInterest] = useState('');
   const [addingInterest, setAddingInterest] = useState(false);
   const addingInterestRef = useRef(false);
-  const [communityBusy, setCommunityBusy] = useState(false);
+  const [choiceNote, setChoiceNote] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState<Partial<Record<SavedField, boolean>>>({});
   const timers = useRef<Partial<Record<SavedField, ReturnType<typeof setTimeout>>>>({});
@@ -246,22 +246,18 @@ export function PublicProfileCard() {
     }
   }
 
-  async function turnCommunity(on: boolean) {
-    if (!me.ageConfirmed18 || communityBusy) return;
-    setError(null);
-    setCommunityBusy(true);
-    try {
-      await repo.saveConsents({
-        communityVisible: on,
-        consentHealth: me.consentHealth,
-        consentAi: me.consentAi,
-      });
+  function turnCommunity(on: boolean) {
+    if (!me.ageConfirmed18) return;
+    setChoiceNote(null);
+    void repo.saveConsents({
+      communityVisible: on,
+      consentHealth: me.consentHealth,
+      consentAi: me.consentAi,
+    }).then(() => {
       if (on) void offerMessageNotifications(repo);
-    } catch (err) {
-      setError(shownError(err, 'Could not save that.'));
-    } finally {
-      setCommunityBusy(false);
-    }
+    }).catch((err: unknown) => {
+      setChoiceNote(shownError(err, 'Could not save that.'));
+    });
   }
 
   function setMessageNotifications(on: boolean) {
@@ -292,13 +288,13 @@ export function PublicProfileCard() {
                   <Switch
                     accessibilityLabel="Community"
                     value={me.communityVisible}
-                    disabled={communityBusy}
-                    onValueChange={(value) => void turnCommunity(value)}
+                    onValueChange={(value) => turnCommunity(value)}
                     trackColor={{ true: theme.colors.ink, false: theme.colors.line }}
                     thumbColor={theme.colors.surface}
                   />
                 </View>
                 <T variant="muted">{COMMUNITY_CONSENT_BODY}</T>
+                <QuietNote>{choiceNote}</QuietNote>
               </View>
             ) : (
               <T variant="muted">Community is for adults. Confirm you are 18 or over before your profile can be seen.</T>

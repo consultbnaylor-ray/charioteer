@@ -8,7 +8,7 @@ import {
   type ProfileSharing,
 } from '@/domain/profileSharing';
 import { useAppTheme } from '@/ui/theme';
-import { Button, ErrorNote, T } from '@/ui/ui';
+import { Button, QuietNote, T } from '@/ui/ui';
 
 /**
  * One labelled switch for the box above it. The first health or sobriety
@@ -34,20 +34,16 @@ export function ShareOnProfile({
   const theme = useAppTheme();
   const [ask, setAsk] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [pending, setPending] = useState(false);
 
   async function save(selected: boolean, consent: boolean) {
-    setPending(true);
     setError(null);
+    setAsk(false);
     try {
-      let next = apply(snap.sharing, selected);
+      let next = apply(repo.getSnapshot().sharing, selected);
       if (consent) next = { ...next, sensitiveConsentAt: new Date().toISOString() };
       await repo.setProfileSharing(next);
-      setAsk(false);
     } catch (err) {
       setError(shownError(err, 'Could not update sharing.'));
-    } finally {
-      setPending(false);
     }
   }
 
@@ -71,7 +67,6 @@ export function ShareOnProfile({
         <Switch
           accessibilityLabel={label}
           value={on}
-          disabled={pending}
           onValueChange={change}
           trackColor={{ true: theme.colors.ink, false: theme.colors.line }}
           thumbColor={theme.colors.surface}
@@ -80,10 +75,10 @@ export function ShareOnProfile({
       {ask ? (
         <View style={{ gap: 8 }}>
           <T>{sensitiveShareConfirm(item)}</T>
-          <Button label="Keep it private" tone="quiet" disabled={pending} onPress={() => setAsk(false)} />
+          <Button label="Keep it private" tone="quiet" onPress={() => setAsk(false)} />
         </View>
       ) : null}
-      {error ? <ErrorNote>{error}</ErrorNote> : null}
+      <QuietNote>{error}</QuietNote>
     </View>
   );
 }
