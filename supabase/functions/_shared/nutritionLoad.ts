@@ -95,6 +95,7 @@ function settingsFromRow(row: unknown): NutritionSettings {
     wagonNote: typeof record.wagon_note === 'string' ? record.wagon_note : '',
     wagonVisible: record.wagon_visible === true,
     build: typeof record.build === 'string' && isBodyBuild(record.build) ? record.build : null,
+    updatedAt: typeof record.updated_at === 'string' && record.updated_at ? record.updated_at : null,
   };
 }
 
@@ -140,9 +141,9 @@ export async function loadNutritionLines(
   now = new Date(),
 ): Promise<string[]> {
   const today = londonDay(now);
-  const wide = 'kcal_target, hide_calories, share_food_diary, share_calories, share_quality, share_progress, goal, goal_age, goal_sex, protein_target_g, activity_energy_kcal, share_goal, wagon_on, wagon_note, wagon_visible, build';
-  const goals = 'kcal_target, hide_calories, share_food_diary, share_calories, share_quality, share_progress, goal, goal_age, goal_sex, protein_target_g, activity_energy_kcal, share_goal, wagon_on, wagon_note, wagon_visible';
-  const narrow = 'kcal_target, hide_calories, share_food_diary, wagon_on, wagon_note, wagon_visible';
+  const wide = 'kcal_target, hide_calories, share_food_diary, share_calories, share_quality, share_progress, goal, goal_age, goal_sex, protein_target_g, activity_energy_kcal, share_goal, wagon_on, wagon_note, wagon_visible, build, updated_at';
+  const goals = 'kcal_target, hide_calories, share_food_diary, share_calories, share_quality, share_progress, goal, goal_age, goal_sex, protein_target_g, activity_energy_kcal, share_goal, wagon_on, wagon_note, wagon_visible, updated_at';
+  const narrow = 'kcal_target, hide_calories, share_food_diary, wagon_on, wagon_note, wagon_visible, updated_at';
   const [logsRes, waterRes, healthRes, bodyRes] = await Promise.all([
     userClient.from('food_logs').select('id, eaten_on, meal, source, note, items, estimated, created_at').eq('user_id', profile.id).order('eaten_on', { ascending: false }).limit(80),
     userClient.from('nutrition_days').select('water_ml').eq('user_id', profile.id).eq('day', today).maybeSingle(),

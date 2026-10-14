@@ -42,6 +42,12 @@ export function formatUkDate(value: Date | string): string {
   return `${weekday} ${day} ${month} ${year}`;
 }
 
+/** 14 Oct 2026, 17:41. Local time, 24-hour. */
+export function formatUkCompactWhen(value: Date | string): string {
+  const date = asDate(value);
+  return `${formatUkCompact(date)}, ${ukTime(date)}`;
+}
+
 /** 11 Jul 2026. Parts are joined so a numeric slash date cannot appear. */
 export function formatUkCompact(value: Date | string): string {
   const date = asDate(value);

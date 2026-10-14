@@ -31,6 +31,11 @@ alter table public.nutrition_settings
   add column if not exists build text
     check (build is null or build in ('muscular', 'average', 'slim'));
 
+-- The original nutrition_settings table already has updated_at. This keeps a
+-- partial database able to record when the goal row was last saved.
+alter table public.nutrition_settings
+  add column if not exists updated_at timestamptz not null default now();
+
 create or replace function public.shared_nutrition(target uuid)
 returns jsonb
 language plpgsql

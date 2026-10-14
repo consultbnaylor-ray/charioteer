@@ -1029,6 +1029,7 @@ export class DemoRepository implements Repository {
       ...settings,
       wagonNote: settings.wagonNote.slice(0, 200),
       wagonVisible: settings.wagonVisible,
+      updatedAt: new Date().toISOString(),
     };
     this.commit(db);
   }

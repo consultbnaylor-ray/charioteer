@@ -91,6 +91,8 @@ export type NutritionSettings = {
   wagonVisible: boolean;
   /** Null until they choose one. Muscular turns BMI category labels off. */
   build: BodyBuild | null;
+  /** When this settings row was last written. Null until a row exists. */
+  updatedAt: string | null;
 };
 
 export type NutritionDay = { day: string; waterMl: number };
@@ -167,6 +169,7 @@ export function defaultNutritionSettings(): NutritionSettings {
     wagonNote: '',
     wagonVisible: false,
     build: null,
+    updatedAt: null,
   };
 }
 

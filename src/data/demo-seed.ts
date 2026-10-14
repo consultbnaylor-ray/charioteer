@@ -430,6 +430,7 @@ export function createDemoDb(now = new Date()): DemoDb {
     wagonNote: 'A rough evening. I am still here.',
     wagonVisible: true,
     build: null,
+    updatedAt: null,
   };
   jordan.foodLogs = [{
     id: '11111111-1111-4111-8111-111111111113',

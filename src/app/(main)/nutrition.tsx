@@ -1,11 +1,11 @@
 import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Platform, Pressable, Switch, View } from 'react-native';
 
 import { useRepository, useSnapshot } from '@/data';
 import type { NewHealthSample } from '@/data/types';
-import { formatUkLong, isoDay } from '@/domain/dates';
+import { formatUkCompactWhen, formatUkLong, isoDay } from '@/domain/dates';
 import { shownError } from '@/domain/errors';
 import { parseHeightCm } from '@/domain/guidance';
 import { randomId } from '@/domain/id';
@@ -208,6 +208,13 @@ export default function Nutrition() {
   const [goalWeight, setGoalWeight] = useState('');
   const [goalHeight, setGoalHeight] = useState('');
   const [suggestNote, setSuggestNote] = useState<string | null>(null);
+  const [targetsSavedAt, setTargetsSavedAt] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (targetsSavedAt == null) return;
+    const timer = setTimeout(() => setTargetsSavedAt(null), 2500);
+    return () => clearTimeout(timer);
+  }, [targetsSavedAt]);
 
   function floorFor(age: number | null, sex: NutritionSex | null): number | null {
     const weight = latestWeight?.kg ?? null;
@@ -516,6 +523,8 @@ export default function Nutrition() {
           proteinTarget: proteinG,
           kcalTarget: kcal,
         });
+        setTargetsSavedAt(Date.now());
+        playSavedHaptic();
       } catch (err) {
         setError(shownError(err, 'Could not save those targets.'));
       }
@@ -651,6 +660,54 @@ export default function Nutrition() {
         </Card>
       ) : null}
       <Card>
+        <T variant="label">Goal</T>
+        <T variant="muted">Pick one. A suggestion uses your weight, height, age, and sex if you add them. You can change the numbers.</T>
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+          {NUTRITION_GOALS.map((id) => (
+            <Choice key={id} label={GOAL_LABEL[id]} selected={settings.goal === id} onPress={() => chooseGoal(id)} />
+          ))}
+        </View>
+        <Field label="Age" value={goalAge} onChangeText={setGoalAge} keyboardType="number-pad" placeholder="Optional" />
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+          <Choice label="Woman" selected={settings.goalSex === 'female'} onPress={() => chooseSex('female')} />
+          <Choice label="Man" selected={settings.goalSex === 'male'} onPress={() => chooseSex('male')} />
+          <Choice label="Not set" selected={settings.goalSex == null} onPress={() => chooseSex(null)} />
+        </View>
+        <QuietNote>{choiceNote}</QuietNote>
+        {latestWeight == null ? (
+          <Field label="Weight (kg)" value={goalWeight} onChangeText={setGoalWeight} keyboardType="decimal-pad" placeholder="74.2" />
+        ) : null}
+        {profile?.heightCm == null ? (
+          <Field label="Height (cm)" value={goalHeight} onChangeText={setGoalHeight} keyboardType="decimal-pad" placeholder="178" />
+        ) : null}
+        {latestWeight == null || profile?.heightCm == null ? (
+          <Pressable accessibilityRole="link" accessibilityLabel="Health Stats" onPress={() => router.push('/health' as never)}>
+            <T variant="muted">Or add them on Health Stats</T>
+          </Pressable>
+        ) : null}
+        <Button label="Suggest targets" tone="quiet" pending={isPending('suggest')} pendingLabel="Suggesting..." onPress={suggest} />
+        {suggestNote ? <T>{suggestNote}</T> : null}
+        {blocked ? <T>{LOW_BMI_NOTE}</T> : null}
+        {goalNote && !blocked ? <T variant="muted">{goalNote}</T> : null}
+        {hide ? null : (
+          <Field label="Daily kcal" value={target} onChangeText={setTarget} keyboardType="number-pad" placeholder="Leave blank for none" />
+        )}
+        <Field label="Daily protein (g)" value={protein} onChangeText={setProtein} keyboardType="number-pad" placeholder="Leave blank for none" />
+        <Button
+          label={targetsSavedAt != null && !isPending('targets') ? 'Saved ✓' : 'Save targets'}
+          pending={isPending('targets')}
+          pendingLabel="Saving..."
+          onPress={saveTargets}
+        />
+        {settings.updatedAt ? <T>{`Last updated ${formatUkCompactWhen(settings.updatedAt)}`}</T> : null}
+        <NutritionShareSwitch
+          label="Share the goal and progress"
+          item="The goal and progress"
+          on={settings.shareGoal}
+          apply={(current, selected) => ({ ...current, shareGoal: selected })}
+        />
+      </Card>
+      <Card>
         <T variant="label">Logged today</T>
         {todayLogs.length === 0 ? <T variant="muted">Nothing saved yet.</T> : null}
         {todayLogs.map((log) => {
@@ -741,48 +798,6 @@ export default function Nutrition() {
         )}
       </Card>
       <BodyCompositionCard />
-      <Card>
-        <T variant="label">Goal</T>
-        <T variant="muted">Pick one. A suggestion uses your weight, height, age, and sex if you add them. You can change the numbers.</T>
-        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-          {NUTRITION_GOALS.map((id) => (
-            <Choice key={id} label={GOAL_LABEL[id]} selected={settings.goal === id} onPress={() => chooseGoal(id)} />
-          ))}
-        </View>
-        <Field label="Age" value={goalAge} onChangeText={setGoalAge} keyboardType="number-pad" placeholder="Optional" />
-        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-          <Choice label="Woman" selected={settings.goalSex === 'female'} onPress={() => chooseSex('female')} />
-          <Choice label="Man" selected={settings.goalSex === 'male'} onPress={() => chooseSex('male')} />
-          <Choice label="Not set" selected={settings.goalSex == null} onPress={() => chooseSex(null)} />
-        </View>
-        <QuietNote>{choiceNote}</QuietNote>
-        {latestWeight == null ? (
-          <Field label="Weight (kg)" value={goalWeight} onChangeText={setGoalWeight} keyboardType="decimal-pad" placeholder="74.2" />
-        ) : null}
-        {profile?.heightCm == null ? (
-          <Field label="Height (cm)" value={goalHeight} onChangeText={setGoalHeight} keyboardType="decimal-pad" placeholder="178" />
-        ) : null}
-        {latestWeight == null || profile?.heightCm == null ? (
-          <Pressable accessibilityRole="link" accessibilityLabel="Health Stats" onPress={() => router.push('/health' as never)}>
-            <T variant="muted">Or add them on Health Stats</T>
-          </Pressable>
-        ) : null}
-        <Button label="Suggest targets" tone="quiet" pending={isPending('suggest')} pendingLabel="Suggesting..." onPress={suggest} />
-        {suggestNote ? <T>{suggestNote}</T> : null}
-        {blocked ? <T>{LOW_BMI_NOTE}</T> : null}
-        {goalNote && !blocked ? <T variant="muted">{goalNote}</T> : null}
-        {hide ? null : (
-          <Field label="Daily kcal" value={target} onChangeText={setTarget} keyboardType="number-pad" placeholder="Leave blank for none" />
-        )}
-        <Field label="Daily protein (g)" value={protein} onChangeText={setProtein} keyboardType="number-pad" placeholder="Leave blank for none" />
-        <Button label="Save targets" pending={isPending('targets')} pendingLabel="Saving..." onPress={saveTargets} />
-        <NutritionShareSwitch
-          label="Share the goal and progress"
-          item="The goal and progress"
-          on={settings.shareGoal}
-          apply={(current, selected) => ({ ...current, shareGoal: selected })}
-        />
-      </Card>
       <Card>
         <T variant="label">Calories</T>
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>

@@ -1910,16 +1910,16 @@ export class SupabaseRepository implements Repository {
 
   /** Older databases lack the later share and goal columns. A missing column stays off. */
   private async nutritionSettingsRow(userId: string) {
-    const goal = 'kcal_target, hide_calories, share_food_diary, share_calories, share_quality, share_progress, goal, goal_age, goal_sex, protein_target_g, activity_energy_kcal, share_goal, wagon_on, wagon_note, wagon_visible, build';
+    const goal = 'kcal_target, hide_calories, share_food_diary, share_calories, share_quality, share_progress, goal, goal_age, goal_sex, protein_target_g, activity_energy_kcal, share_goal, wagon_on, wagon_note, wagon_visible, build, updated_at';
     const first = await this.client.from('nutrition_settings').select(goal).eq('user_id', userId).maybeSingle();
     if (!first.error) return first;
-    const withoutBuild = 'kcal_target, hide_calories, share_food_diary, share_calories, share_quality, share_progress, goal, goal_age, goal_sex, protein_target_g, activity_energy_kcal, share_goal, wagon_on, wagon_note, wagon_visible';
+    const withoutBuild = 'kcal_target, hide_calories, share_food_diary, share_calories, share_quality, share_progress, goal, goal_age, goal_sex, protein_target_g, activity_energy_kcal, share_goal, wagon_on, wagon_note, wagon_visible, updated_at';
     const built = await this.client.from('nutrition_settings').select(withoutBuild).eq('user_id', userId).maybeSingle();
     if (!built.error) return built;
-    const shares = 'kcal_target, hide_calories, share_food_diary, share_calories, share_quality, share_progress, wagon_on, wagon_note, wagon_visible';
+    const shares = 'kcal_target, hide_calories, share_food_diary, share_calories, share_quality, share_progress, wagon_on, wagon_note, wagon_visible, updated_at';
     const second = await this.client.from('nutrition_settings').select(shares).eq('user_id', userId).maybeSingle();
     if (!second.error) return second;
-    const narrow = 'kcal_target, hide_calories, share_food_diary, wagon_on, wagon_note, wagon_visible';
+    const narrow = 'kcal_target, hide_calories, share_food_diary, wagon_on, wagon_note, wagon_visible, updated_at';
     return this.client.from('nutrition_settings').select(narrow).eq('user_id', userId).maybeSingle();
   }
 
@@ -2018,7 +2018,7 @@ export class SupabaseRepository implements Repository {
   }
 
   async setNutritionSettings(settings: NutritionSettings): Promise<void> {
-    const next = canonicalNutrition(settings);
+    const next = canonicalNutrition({ ...settings, updatedAt: new Date().toISOString() });
     const lane = this.saveLane('nutrition', this.snapshot.nutrition, (value) => this.persistNutrition(value));
     if (!lane.dirty) lane.seen(canonicalNutrition(this.snapshot.nutrition));
     this.emit({ ...this.snapshot, nutrition: next });
@@ -2666,6 +2666,7 @@ function nutritionFromRow(row: Row | null): NutritionSettings {
     wagonNote: String(row.wagon_note ?? '').slice(0, 200),
     wagonVisible: row.wagon_visible === true,
     build: typeof row.build === 'string' && isBodyBuild(row.build) ? row.build : null,
+    updatedAt: typeof row.updated_at === 'string' && row.updated_at ? row.updated_at : null,
   };
 }
 
