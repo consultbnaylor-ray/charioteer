@@ -40,7 +40,6 @@ import {
   sumItems,
   targetLine,
   weightPointsFrom,
-  weightTrendLine,
   type FoodItem,
   type GoalBody,
   type MealSlot,
@@ -53,6 +52,7 @@ import { soberElapsed } from '@/domain/sober';
 import { weightReadingKg } from '@/domain/weightEntry';
 import { readAppleHealthBody } from '@/health/sync';
 import { writeDayToAppleHealth } from '@/health/writeNutrition';
+import { NutritionBoard, WaterMeter, WeightTrendChart } from '@/ui/NutritionCharts';
 import { FatShareBar, NutritionShareSwitch, WagonFlag } from '@/ui/NutritionShare';
 import { pickMealPhoto } from '@/ui/pickMealPhoto';
 import { usePendingPress } from '@/ui/pendingAction';
@@ -599,6 +599,15 @@ export default function Nutrition() {
         <T variant="muted">{`Water ${water.toLocaleString('en-GB')} ml`}</T>
       </Card>
 
+      <NutritionBoard
+        logs={snap.foodLogs}
+        today={today}
+        hideCalories={hide}
+        kcalTarget={settings.kcalTarget}
+        proteinTarget={settings.proteinTarget}
+        checkIns={snap.checkIns}
+      />
+
       <Card>
         <T variant="label">Goal</T>
         <T variant="muted">Pick one. A suggestion uses your weight, height, age, and sex if you add them. You can change the numbers.</T>
@@ -638,10 +647,14 @@ export default function Nutrition() {
 
       <Card>
         <T variant="label">Weight</T>
-        {weights.length === 0 ? <T variant="muted">Add a weight on Health Stats and it will show here.</T> : weights.map((point) => (
-          <T key={point.day}>{`${formatUkLong(point.day)} · ${point.kg} kg`}</T>
-        ))}
-        <T>{weightTrendLine(weights, settings.goal)}</T>
+        {weights.length === 0 ? <T variant="muted">Add a weight on Health Stats and it will show here.</T> : (
+          <>
+            {weights.map((point) => (
+              <T key={point.day}>{`${formatUkLong(point.day)} · ${point.kg} kg`}</T>
+            ))}
+            <WeightTrendChart points={weights} goal={settings.goal} />
+          </>
+        )}
       </Card>
 
       <Card>
@@ -743,6 +756,7 @@ export default function Nutrition() {
 
       <Card>
         <T variant="label">Water</T>
+        <WaterMeter ml={water} />
         <Field label="Water today (ml)" value={waterText} onChangeText={setWaterText} keyboardType="number-pad" placeholder="350" />
         <Button label="Save water" pending={isPending('water')} pendingLabel="Saving..." onPress={saveWater} />
       </Card>

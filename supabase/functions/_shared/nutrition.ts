@@ -437,6 +437,201 @@ export function nutritionPatternLines(
   return lines;
 }
 
+export const WATER_DAY_ML = 2000;
+export const WEEK_CHART_EMPTY = 'Log a few meals to see your week';
+
+export type TodayRing = {
+  kind: 'kcal' | 'protein';
+  value: number;
+  target: number | null;
+  /** Share of the ring to fill, from 0 to 1. */
+  fill: number;
+  centre: string;
+  unit: string;
+  caption: string;
+};
+
+/** Kcal against the target, or protein when calories are hidden. */
+export function todayRing(input: {
+  hideCalories: boolean;
+  kcal: number;
+  kcalTarget: number | null;
+  proteinG: number;
+  proteinTarget: number | null;
+  logged: boolean;
+}): TodayRing {
+  const kind = input.hideCalories ? 'protein' : 'kcal';
+  const value = kind === 'protein' ? input.proteinG : input.kcal;
+  const target = kind === 'protein' ? input.proteinTarget : input.kcalTarget;
+  const usableTarget = target != null && target > 0 ? target : null;
+  const fill = usableTarget == null ? 0 : Math.max(0, Math.min(1, value / usableTarget));
+  const unit = kind === 'protein' ? 'g protein' : 'kcal';
+  const centre = kind === 'protein' ? String(round1(value)) : Math.round(value).toLocaleString('en-GB');
+  let caption = 'Nothing logged today.';
+  if (input.logged || value > 0) {
+    const shown = kind === 'protein' ? `${round1(value)} g protein` : `${Math.round(value).toLocaleString('en-GB')} kcal`;
+    if (usableTarget == null) caption = `${shown} logged. No target yet.`;
+    else if (value > usableTarget) {
+      const mark = kind === 'protein' ? `${usableTarget} g` : `${usableTarget.toLocaleString('en-GB')} kcal`;
+      caption = `${shown} logged, above ${mark}.`;
+    } else {
+      const amount = kind === 'protein' ? String(round1(value)) : Math.round(value).toLocaleString('en-GB');
+      const mark = kind === 'protein' ? String(usableTarget) : usableTarget.toLocaleString('en-GB');
+      caption = `${amount} of ${mark} ${unit} logged today.`;
+    }
+  }
+  return { kind, value, target: usableTarget, fill, centre, unit, caption };
+}
+
+export type MacroSlice = { id: 'protein' | 'carbs' | 'fat'; label: string; grams: number; share: number };
+
+export function macroSplit(items: readonly FoodItem[]): { slices: MacroSlice[]; caption: string } {
+  const totals = sumItems(items);
+  const fat = round1(totals.unsaturatedG + totals.saturatedG + totals.transG);
+  const parts = [
+    { id: 'protein' as const, label: 'Protein', grams: totals.proteinG },
+    { id: 'carbs' as const, label: 'Carbs', grams: totals.carbsG },
+    { id: 'fat' as const, label: 'Fat', grams: fat },
+  ];
+  const sum = parts.reduce((total, part) => total + part.grams, 0);
+  if (sum <= 0) return { slices: [], caption: 'Log a meal to see protein, carbohydrate and fat.' };
+  return {
+    slices: parts.map((part) => ({ ...part, share: part.grams / sum })),
+    caption: `Protein ${totals.proteinG} g, carbohydrate ${totals.carbsG} g, fat ${fat} g.`,
+  };
+}
+
+export type TrendDay = { day: string; kcal: number; proteinG: number; logged: boolean };
+
+export function nutritionTrendDays(logs: readonly FoodLog[], today: string, span: 7 | 30): TrendDay[] {
+  const days: TrendDay[] = [];
+  for (let ago = span - 1; ago >= 0; ago -= 1) {
+    const day = shiftIsoDay(today, -ago);
+    const items = dayItems(logs, day);
+    const totals = sumItems(items);
+    days.push({ day, kcal: totals.kcal, proteinG: totals.proteinG, logged: items.length > 0 });
+  }
+  return days;
+}
+
+export function trendCaption(days: readonly TrendDay[], input: {
+  hideCalories: boolean;
+  span: 7 | 30;
+}): string {
+  const logged = days.filter((day) => day.logged);
+  if (!logged.length) return input.span === 7 ? WEEK_CHART_EMPTY : 'Log a few meals to see the month.';
+  const protein = round1(logged.reduce((sum, day) => sum + day.proteinG, 0) / logged.length);
+  if (input.hideCalories) return `Logged days average ${protein} g protein.`;
+  const kcal = Math.round(logged.reduce((sum, day) => sum + day.kcal, 0) / logged.length);
+  return `Logged days average ${kcal.toLocaleString('en-GB')} kcal and ${protein} g protein.`;
+}
+
+export type SmoothWeight = { day: string; kg: number; smooth: number };
+
+/** A three-day average, so a single reading does not spike the line. */
+export function smoothWeight(points: readonly { day: string; kg: number }[]): SmoothWeight[] {
+  return points.map((point, index) => {
+    const window = points.slice(Math.max(0, index - 1), Math.min(points.length, index + 2));
+    const smooth = round1(window.reduce((sum, item) => sum + item.kg, 0) / window.length);
+    return { day: point.day, kg: point.kg, smooth };
+  });
+}
+
+export type LoggingDot = { day: string; logged: boolean };
+
+export function loggingDots(logs: readonly FoodLog[], today: string): LoggingDot[] {
+  const logged = new Set(logs.map((log) => log.eatenOn));
+  const dots: LoggingDot[] = [];
+  for (let ago = 27; ago >= 0; ago -= 1) {
+    const day = shiftIsoDay(today, -ago);
+    dots.push({ day, logged: logged.has(day) });
+  }
+  return dots;
+}
+
+export function loggingCaption(logs: readonly FoodLog[], today: string): string {
+  const streak = mealStreakDays(logs, today);
+  if (streak <= 0) return 'Log a meal and the day gets a dot.';
+  return progressShareLine(streak);
+}
+
+export function waterProgress(ml: number): { ml: number; mark: number; fill: number; caption: string } {
+  const amount = Math.max(0, Math.round(ml));
+  const fill = Math.max(0, Math.min(1, amount / WATER_DAY_ML));
+  const caption = amount <= 0
+    ? 'No water logged today.'
+    : `${amount.toLocaleString('en-GB')} ml of ${WATER_DAY_ML.toLocaleString('en-GB')} ml logged today.`;
+  return { ml: amount, mark: WATER_DAY_ML, fill, caption };
+}
+
+export type EatingInsight = {
+  id: 'sleep' | 'mood';
+  caption: string;
+  leftLabel: string;
+  rightLabel: string;
+  leftSnacks: number;
+  rightSnacks: number;
+};
+
+/** Snack counts beside sleep and mood. Absent until both sides of the comparison exist. */
+export function eatingInsights(
+  logs: readonly FoodLog[],
+  checkIns: readonly { createdAt: string; mood: number; sleepHours: number }[],
+): EatingInsight[] {
+  const days = new Map<string, { snacks: number; mood: number | null; sleepHours: number | null }>();
+  for (const log of logs) {
+    const row = days.get(log.eatenOn) ?? { snacks: 0, mood: null, sleepHours: null };
+    if (log.meal === 'snack') row.snacks += 1;
+    days.set(log.eatenOn, row);
+  }
+  for (const check of checkIns) {
+    const day = dayKeyFromStamp(check.createdAt);
+    const row = days.get(day) ?? { snacks: 0, mood: null, sleepHours: null };
+    row.mood = check.mood;
+    row.sleepHours = check.sleepHours;
+    days.set(day, row);
+  }
+  const rows = [...days.values()];
+  const insights: EatingInsight[] = [];
+  const shortSleep = rows.filter((row) => row.sleepHours != null && row.sleepHours < 6);
+  const longerSleep = rows.filter((row) => row.sleepHours != null && row.sleepHours >= 6);
+  if (shortSleep.length && longerSleep.length) {
+    const left = round1(shortSleep.reduce((sum, row) => sum + row.snacks, 0) / shortSleep.length);
+    const right = round1(longerSleep.reduce((sum, row) => sum + row.snacks, 0) / longerSleep.length);
+    insights.push({
+      id: 'sleep',
+      caption: left > right
+        ? 'On days you slept under 6 hours, you logged more snacks.'
+        : left < right
+          ? 'On longer nights, you logged more snacks.'
+          : 'Snacks were about the same on short and longer nights.',
+      leftLabel: 'Under 6 hours',
+      rightLabel: '6 hours or more',
+      leftSnacks: left,
+      rightSnacks: right,
+    });
+  }
+  const lowMood = rows.filter((row) => row.mood != null && row.mood <= 4);
+  const steadier = rows.filter((row) => row.mood != null && row.mood > 4);
+  if (lowMood.length && steadier.length) {
+    const left = round1(lowMood.reduce((sum, row) => sum + row.snacks, 0) / lowMood.length);
+    const right = round1(steadier.reduce((sum, row) => sum + row.snacks, 0) / steadier.length);
+    insights.push({
+      id: 'mood',
+      caption: left > right
+        ? 'Lower-mood days had more snacks.'
+        : left < right
+          ? 'Steadier-mood days had more snacks.'
+          : 'Snacks were about the same across those moods.',
+      leftLabel: 'Lower mood',
+      rightLabel: 'Steadier mood',
+      leftSnacks: left,
+      rightSnacks: right,
+    });
+  }
+  return insights;
+}
+
 export function nutritionContextLines(input: {
   logs: readonly FoodLog[];
   settings: NutritionSettings;

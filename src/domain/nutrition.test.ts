@@ -38,6 +38,17 @@ import {
   defaultNutritionSettings,
   GOAL_LABEL,
   LOW_BMI_NOTE,
+  WEEK_CHART_EMPTY,
+  eatingInsights,
+  loggingCaption,
+  loggingDots,
+  macroSplit,
+  nutritionTrendDays,
+  smoothWeight,
+  todayRing,
+  trendCaption,
+  waterProgress,
+  type FoodItem,
   type FoodLog,
 } from './nutrition';
 
@@ -606,5 +617,165 @@ describe('nutrition goals', () => {
       { day: '2026-09-30', kg: 74.8 },
       { day: '2026-10-14', kg: 74.2 },
     ], 'lose_weight')).toContain('gentle move');
+  });
+});
+
+describe('nutrition charts', () => {
+  function food(partial: Partial<FoodItem> & Pick<FoodItem, 'name' | 'kcal' | 'proteinG'>): FoodItem {
+    return {
+      carbsG: 0,
+      sugarG: 0,
+      fibreG: 0,
+      unsaturatedG: 0,
+      saturatedG: 0,
+      transG: 0,
+      sodiumMg: 0,
+      processed: false,
+      ...partial,
+    };
+  }
+
+  it('draws today against the target, and protein when calories are hidden', () => {
+    const shown = todayRing({
+      hideCalories: false,
+      kcal: 900,
+      kcalTarget: 1800,
+      proteinG: 40,
+      proteinTarget: 100,
+      logged: true,
+    });
+    expect(shown.kind).toBe('kcal');
+    expect(shown.caption).toBe('900 of 1,800 kcal logged today.');
+    expect(shown.fill).toBe(0.5);
+
+    const hidden = todayRing({
+      hideCalories: true,
+      kcal: 900,
+      kcalTarget: 1800,
+      proteinG: 40,
+      proteinTarget: 100,
+      logged: true,
+    });
+    expect(hidden.kind).toBe('protein');
+    expect(hidden.caption).toBe('40 of 100 g protein logged today.');
+    expect(hidden.caption).not.toMatch(/kcal/i);
+
+    const over = todayRing({
+      hideCalories: false,
+      kcal: 2200,
+      kcalTarget: 1800,
+      proteinG: 40,
+      proteinTarget: 100,
+      logged: true,
+    });
+    expect(over.fill).toBe(1);
+    expect(over.caption).toBe('2,200 kcal logged, above 1,800 kcal.');
+
+    const open = todayRing({
+      hideCalories: false,
+      kcal: 900,
+      kcalTarget: null,
+      proteinG: 40,
+      proteinTarget: null,
+      logged: true,
+    });
+    expect(open.caption).toBe('900 kcal logged. No target yet.');
+    expect(todayRing({
+      hideCalories: false,
+      kcal: 0,
+      kcalTarget: 1800,
+      proteinG: 0,
+      proteinTarget: 100,
+      logged: false,
+    }).caption).toBe('Nothing logged today.');
+  });
+
+  it('asks for a few meals before drawing an empty week or month', () => {
+    const week = nutritionTrendDays([], '2026-10-14', 7);
+    expect(week).toHaveLength(7);
+    expect(week.every((day) => day.logged === false)).toBe(true);
+    expect(week[6]?.day).toBe('2026-10-14');
+    expect(trendCaption(week, { hideCalories: false, span: 7 })).toBe(WEEK_CHART_EMPTY);
+    expect(WEEK_CHART_EMPTY).toBe('Log a few meals to see your week');
+    expect(trendCaption(nutritionTrendDays([], '2026-10-14', 30), { hideCalories: false, span: 30 }))
+      .toBe('Log a few meals to see the month.');
+
+    const logged = nutritionTrendDays([
+      log({
+        eatenOn: '2026-10-14',
+        meal: 'breakfast',
+        items: [food({ name: 'Porridge', kcal: 900, proteinG: 40 })],
+      }),
+    ], '2026-10-14', 7);
+    expect(trendCaption(logged, { hideCalories: false, span: 7 }))
+      .toBe('Logged days average 900 kcal and 40 g protein.');
+    const quiet = trendCaption(logged, { hideCalories: true, span: 7 });
+    expect(quiet).toBe('Logged days average 40 g protein.');
+    expect(quiet).not.toMatch(/kcal/i);
+  });
+
+  it('splits protein, carbohydrate and fat, and smooths weight without inventing days', () => {
+    const empty = macroSplit([]);
+    expect(empty.slices).toEqual([]);
+    expect(empty.caption).toBe('Log a meal to see protein, carbohydrate and fat.');
+    const split = macroSplit([
+      food({ name: 'Chicken', kcal: 200, proteinG: 30, carbsG: 0, unsaturatedG: 2, saturatedG: 1 }),
+      food({ name: 'Rice', kcal: 180, proteinG: 4, carbsG: 40 }),
+    ]);
+    expect(split.slices.map((slice) => slice.label)).toEqual(['Protein', 'Carbs', 'Fat']);
+    const shares = split.slices.reduce((sum, slice) => sum + slice.share, 0);
+    expect(shares).toBeCloseTo(1, 5);
+
+    const smoothed = smoothWeight([
+      { day: '2026-10-01', kg: 80 },
+      { day: '2026-10-08', kg: 82 },
+      { day: '2026-10-14', kg: 78 },
+    ]);
+    expect(smoothed.map((point) => point.day)).toEqual(['2026-10-01', '2026-10-08', '2026-10-14']);
+    expect(smoothed[1]?.smooth).toBe(80);
+  });
+
+  it('marks logged days, a water mark, and snack patterns only when both sides exist', () => {
+    expect(loggingDots([], '2026-10-14')).toHaveLength(28);
+    const dots = loggingDots([log({ eatenOn: '2026-10-14', meal: 'lunch' })], '2026-10-14');
+    expect(dots.filter((dot) => dot.logged).map((dot) => dot.day)).toEqual(['2026-10-14']);
+    expect(loggingCaption([], '2026-10-14')).toBe('Log a meal and the day gets a dot.');
+
+    expect(waterProgress(0)).toEqual({ ml: 0, mark: 2000, fill: 0, caption: 'No water logged today.' });
+    expect(waterProgress(350)).toEqual({
+      ml: 350,
+      mark: 2000,
+      fill: 0.175,
+      caption: '350 ml of 2,000 ml logged today.',
+    });
+
+    expect(eatingInsights([], [])).toEqual([]);
+    const insights = eatingInsights(
+      [
+        log({ eatenOn: '2026-10-11', meal: 'snack' }),
+        log({ eatenOn: '2026-10-12', meal: 'breakfast' }),
+      ],
+      [
+        { createdAt: '2026-10-11T20:00:00.000Z', mood: 3, sleepHours: 5 },
+        { createdAt: '2026-10-12T20:00:00.000Z', mood: 8, sleepHours: 7.5 },
+      ],
+    );
+    expect(insights.map((insight) => insight.id)).toEqual(['sleep', 'mood']);
+    expect(insights[0]?.caption).toBe('On days you slept under 6 hours, you logged more snacks.');
+    expect(insights[1]?.caption).toBe('Lower-mood days had more snacks.');
+    expect(insights.map((insight) => insight.caption).join(' ')).not.toMatch(/kcal/i);
+  });
+
+  it('draws the charts with the svg already in the app, in white and grey', () => {
+    const charts = readFileSync('src/ui/NutritionCharts.tsx', 'utf8');
+    const screen = readFileSync('src/app/(main)/nutrition.tsx', 'utf8');
+    expect(charts).toContain("from 'react-native-svg'");
+    expect(charts).not.toMatch(/victory-native|gifted-charts|expo-linear-gradient/);
+    expect(charts).not.toMatch(/danger|#f00|#ff0000|\bred\b/i);
+    expect(charts).not.toMatch(/\bfetch\(|\bawait\b/);
+    expect(screen).toContain('<NutritionBoard');
+    expect(screen).toContain('<WeightTrendChart');
+    expect(screen).toContain('<WaterMeter');
+    expect(screen).toContain("pending={isPending('suggest')}");
   });
 });
