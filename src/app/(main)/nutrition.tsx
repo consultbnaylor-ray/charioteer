@@ -580,84 +580,6 @@ export default function Nutrition() {
       intro={`${formatUkLong(today)}. Estimates stay labelled, and nothing is saved until you confirm it.`}
     >
       <Card>
-        <T variant="label">Today</T>
-        {hide ? <T>{HIDE_CALORIES_LINE}</T> : <T>{`${totals.kcal.toLocaleString('en-GB')} kcal`}</T>}
-        {!hide && settings.kcalTarget != null ? <T variant="muted">{`Target ${settings.kcalTarget.toLocaleString('en-GB')} kcal`}</T> : null}
-        {!hide ? <T>{targetLine(totals.kcal, settings.kcalTarget, false)}</T> : null}
-        <T>{`Protein ${totals.proteinG} g · carbohydrate ${totals.carbsG} g · sugar ${totals.sugarG} g`}</T>
-        <T>{`Fibre ${totals.fibreG} g · sodium ${totals.sodiumMg.toLocaleString('en-GB')} mg`}</T>
-        <T variant="label">Fats</T>
-        <FatShareBar unsaturated={fats.unsaturated} other={fats.other} />
-        <T variant="muted">{`Unsaturated ${fats.unsaturated} g · saturated and trans ${fats.other} g`}</T>
-        <T>{fats.line}</T>
-        <T variant="muted">{FAT_SCIENCE}</T>
-        {processedLine(items) ? <T>{processedLine(items)}</T> : null}
-        {patterns.map((line) => <T key={line}>{line}</T>)}
-        {sugar ? <T>{sugar}</T> : null}
-        {saved ? <T>{saved}</T> : null}
-        {dayLine ? <T>{dayLine}</T> : null}
-        <T variant="muted">{`Water ${water.toLocaleString('en-GB')} ml`}</T>
-      </Card>
-
-      <NutritionBoard
-        logs={snap.foodLogs}
-        today={today}
-        hideCalories={hide}
-        kcalTarget={settings.kcalTarget}
-        proteinTarget={settings.proteinTarget}
-        checkIns={snap.checkIns}
-      />
-
-      <Card>
-        <T variant="label">Goal</T>
-        <T variant="muted">Pick one. A suggestion uses your weight, height, age, and sex if you add them. You can change the numbers.</T>
-        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-          {NUTRITION_GOALS.map((id) => (
-            <Choice key={id} label={GOAL_LABEL[id]} selected={settings.goal === id} onPress={() => chooseGoal(id)} />
-          ))}
-        </View>
-        <Field label="Age" value={goalAge} onChangeText={setGoalAge} keyboardType="number-pad" placeholder="Optional" />
-        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-          <Choice label="Woman" selected={settings.goalSex === 'female'} onPress={() => chooseSex('female')} />
-          <Choice label="Man" selected={settings.goalSex === 'male'} onPress={() => chooseSex('male')} />
-          <Choice label="Not set" selected={settings.goalSex == null} onPress={() => chooseSex(null)} />
-        </View>
-        <QuietNote>{choiceNote}</QuietNote>
-        {latestWeight == null ? (
-          <Field label="Weight (kg)" value={goalWeight} onChangeText={setGoalWeight} keyboardType="decimal-pad" placeholder="74.2" />
-        ) : null}
-        {profile?.heightCm == null ? (
-          <Field label="Height (cm)" value={goalHeight} onChangeText={setGoalHeight} keyboardType="decimal-pad" placeholder="178" />
-        ) : null}
-        {latestWeight == null || profile?.heightCm == null ? (
-          <Pressable accessibilityRole="link" accessibilityLabel="Health Stats" onPress={() => router.push('/health' as never)}>
-            <T variant="muted">Or add them on Health Stats</T>
-          </Pressable>
-        ) : null}
-        <Button label="Suggest targets" tone="quiet" pending={isPending('suggest')} pendingLabel="Suggesting..." onPress={suggest} />
-        {suggestNote ? <T>{suggestNote}</T> : null}
-        {blocked ? <T>{LOW_BMI_NOTE}</T> : null}
-        {goalNote && !blocked ? <T variant="muted">{goalNote}</T> : null}
-        {hide ? null : (
-          <Field label="Daily kcal" value={target} onChangeText={setTarget} keyboardType="number-pad" placeholder="Leave blank for none" />
-        )}
-        <Field label="Daily protein (g)" value={protein} onChangeText={setProtein} keyboardType="number-pad" placeholder="Leave blank for none" />
-        <Button label="Save targets" pending={isPending('targets')} pendingLabel="Saving..." onPress={saveTargets} />
-      </Card>
-
-      <Card>
-        <T variant="label">Weight</T>
-        {weights.length === 0 ? <T variant="muted">Add a weight on Health Stats and it will show here.</T> : (
-          <>
-            {weights.map((point) => (
-              <T key={point.day}>{`${formatUkLong(point.day)} · ${point.kg} kg`}</T>
-            ))}
-            <WeightTrendChart points={weights} goal={settings.goal} />
-          </>
-        )}
-      </Card>
-
-      <Card>
         <T variant="label">Log a meal</T>
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
           {MEAL_SLOTS.map((slot) => (
@@ -685,7 +607,6 @@ export default function Nutrition() {
           })}
         />
       </Card>
-
       {draft ? (
         <Card>
           <T variant="label">{draft.source === 'photo' ? 'Confirm this photo' : 'Confirm this meal'}</T>
@@ -734,7 +655,6 @@ export default function Nutrition() {
           <Button label="Cancel" tone="quiet" disabled={isPending('save')} onPress={() => setDraft(null)} />
         </Card>
       ) : null}
-
       <Card>
         <T variant="label">Logged today</T>
         {todayLogs.length === 0 ? <T variant="muted">Nothing saved yet.</T> : null}
@@ -753,14 +673,86 @@ export default function Nutrition() {
           );
         })}
       </Card>
-
+      <Card>
+        <T variant="label">Today</T>
+        {hide ? <T>{HIDE_CALORIES_LINE}</T> : <T>{`${totals.kcal.toLocaleString('en-GB')} kcal`}</T>}
+        {!hide && settings.kcalTarget != null ? <T variant="muted">{`Target ${settings.kcalTarget.toLocaleString('en-GB')} kcal`}</T> : null}
+        {!hide ? <T>{targetLine(totals.kcal, settings.kcalTarget, false)}</T> : null}
+        <T>{`Protein ${totals.proteinG} g · carbohydrate ${totals.carbsG} g · sugar ${totals.sugarG} g`}</T>
+        <T>{`Fibre ${totals.fibreG} g · sodium ${totals.sodiumMg.toLocaleString('en-GB')} mg`}</T>
+        <T variant="label">Fats</T>
+        <FatShareBar unsaturated={fats.unsaturated} other={fats.other} />
+        <T variant="muted">{`Unsaturated ${fats.unsaturated} g · saturated and trans ${fats.other} g`}</T>
+        <T>{fats.line}</T>
+        <T variant="muted">{FAT_SCIENCE}</T>
+        {processedLine(items) ? <T>{processedLine(items)}</T> : null}
+        {patterns.map((line) => <T key={line}>{line}</T>)}
+        {sugar ? <T>{sugar}</T> : null}
+        {saved ? <T>{saved}</T> : null}
+        {dayLine ? <T>{dayLine}</T> : null}
+        <T variant="muted">{`Water ${water.toLocaleString('en-GB')} ml`}</T>
+      </Card>
+      <NutritionBoard
+        logs={snap.foodLogs}
+        today={today}
+        hideCalories={hide}
+        kcalTarget={settings.kcalTarget}
+        proteinTarget={settings.proteinTarget}
+        checkIns={snap.checkIns}
+      />
       <Card>
         <T variant="label">Water</T>
         <WaterMeter ml={water} />
         <Field label="Water today (ml)" value={waterText} onChangeText={setWaterText} keyboardType="number-pad" placeholder="350" />
         <Button label="Save water" pending={isPending('water')} pendingLabel="Saving..." onPress={saveWater} />
       </Card>
-
+      <Card>
+        <T variant="label">Weight</T>
+        {weights.length === 0 ? <T variant="muted">Add a weight on Health Stats and it will show here.</T> : (
+          <>
+            {weights.map((point) => (
+              <T key={point.day}>{`${formatUkLong(point.day)} · ${point.kg} kg`}</T>
+            ))}
+            <WeightTrendChart points={weights} goal={settings.goal} />
+          </>
+        )}
+      </Card>
+      <Card>
+        <T variant="label">Goal</T>
+        <T variant="muted">Pick one. A suggestion uses your weight, height, age, and sex if you add them. You can change the numbers.</T>
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+          {NUTRITION_GOALS.map((id) => (
+            <Choice key={id} label={GOAL_LABEL[id]} selected={settings.goal === id} onPress={() => chooseGoal(id)} />
+          ))}
+        </View>
+        <Field label="Age" value={goalAge} onChangeText={setGoalAge} keyboardType="number-pad" placeholder="Optional" />
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+          <Choice label="Woman" selected={settings.goalSex === 'female'} onPress={() => chooseSex('female')} />
+          <Choice label="Man" selected={settings.goalSex === 'male'} onPress={() => chooseSex('male')} />
+          <Choice label="Not set" selected={settings.goalSex == null} onPress={() => chooseSex(null)} />
+        </View>
+        <QuietNote>{choiceNote}</QuietNote>
+        {latestWeight == null ? (
+          <Field label="Weight (kg)" value={goalWeight} onChangeText={setGoalWeight} keyboardType="decimal-pad" placeholder="74.2" />
+        ) : null}
+        {profile?.heightCm == null ? (
+          <Field label="Height (cm)" value={goalHeight} onChangeText={setGoalHeight} keyboardType="decimal-pad" placeholder="178" />
+        ) : null}
+        {latestWeight == null || profile?.heightCm == null ? (
+          <Pressable accessibilityRole="link" accessibilityLabel="Health Stats" onPress={() => router.push('/health' as never)}>
+            <T variant="muted">Or add them on Health Stats</T>
+          </Pressable>
+        ) : null}
+        <Button label="Suggest targets" tone="quiet" pending={isPending('suggest')} pendingLabel="Suggesting..." onPress={suggest} />
+        {suggestNote ? <T>{suggestNote}</T> : null}
+        {blocked ? <T>{LOW_BMI_NOTE}</T> : null}
+        {goalNote && !blocked ? <T variant="muted">{goalNote}</T> : null}
+        {hide ? null : (
+          <Field label="Daily kcal" value={target} onChangeText={setTarget} keyboardType="number-pad" placeholder="Leave blank for none" />
+        )}
+        <Field label="Daily protein (g)" value={protein} onChangeText={setProtein} keyboardType="number-pad" placeholder="Leave blank for none" />
+        <Button label="Save targets" pending={isPending('targets')} pendingLabel="Saving..." onPress={saveTargets} />
+      </Card>
       <Card>
         <T variant="label">Calories</T>
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
@@ -782,7 +774,7 @@ export default function Nutrition() {
           </>
         )}
       </Card>
-
+      <WagonFlag />
       <Card>
         <T variant="label">Sharing</T>
         <T variant="muted">Each switch shares only that item. They stay off until you switch them on. A private message or a report is the only reply.</T>
@@ -849,9 +841,6 @@ export default function Nutrition() {
           apply={(current, selected) => ({ ...current, shareGoal: selected })}
         />
       </Card>
-
-      <WagonFlag />
-
       {healthNote ? <T variant="muted">{healthNote}</T> : null}
       {error ? <ErrorNote>{error}</ErrorNote> : null}
     </Screen>
