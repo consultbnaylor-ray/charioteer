@@ -194,11 +194,17 @@ describe('stats overview', () => {
     }));
     expect(byId(runner, 'weight').meaning).toBe('Body fat and training matter more than a small change');
     expect(byId(runner, 'weight').tone).toBe('info');
+    const heavy = buildStatsOverview(input({
+      health: weights,
+      nutrition: { ...defaultNutritionSettings(), goal: 'elite_heavy_boxer' },
+    }));
+    expect(byId(heavy, 'weight').meaning).toBe('Size and power matter more than a small change');
+    expect(byId(heavy, 'weight').tone).toBe('info');
     const boxer = buildStatsOverview(input({
       health: weights,
-      nutrition: { ...defaultNutritionSettings(), goal: 'elite_boxer' },
+      nutrition: { ...defaultNutritionSettings(), goal: 'elite_middle_boxer' },
     }));
-    expect(byId(boxer, 'weight').meaning).toBe('A weight class is not a race on this screen');
+    expect(byId(boxer, 'weight').meaning).toBe('A middleweight limit is not a race on this screen');
     const builder = buildStatsOverview(input({
       health: weights,
       nutrition: { ...defaultNutritionSettings(), goal: 'body_builder' },

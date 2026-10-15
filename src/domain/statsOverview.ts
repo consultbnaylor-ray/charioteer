@@ -331,12 +331,24 @@ function weightTile(input: StatsOverviewInput): StatTileModel {
       href: '/nutrition?section=weight',
     });
   }
-  if (goal === 'elite_boxer') {
+  if (goal === 'elite_heavy_boxer') {
     return tile({
       id: 'weight',
       title: 'Weight',
       value,
-      meaning: 'A weight class is not a race on this screen',
+      meaning: 'Size and power matter more than a small change',
+      tone: 'info',
+      series,
+      chart,
+      href: '/nutrition?section=weight',
+    });
+  }
+  if (goal === 'elite_middle_boxer') {
+    return tile({
+      id: 'weight',
+      title: 'Weight',
+      value,
+      meaning: 'A middleweight limit is not a race on this screen',
       tone: 'info',
       series,
       chart,

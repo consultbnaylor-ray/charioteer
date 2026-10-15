@@ -18,6 +18,8 @@ import {
   FAT_SCIENCE,
   GOAL_LABEL,
   GOAL_PLAIN,
+  MIDDLEWEIGHT_LIMIT_KG,
+  isTrainingGoal,
   HIDE_CALORIES_LINE,
   LOW_BMI_NOTE,
   MEAL_LABEL,
@@ -398,7 +400,7 @@ export default function Nutrition() {
         bodyFatPct: figures.bodyFatPct,
         waistCm: figures.waistCm,
         phase: settings.goal === 'body_builder' ? settings.goalPhase : null,
-        weightClassKg: settings.goal === 'elite_boxer' ? klass : null,
+        weightClassKg: settings.goal === 'elite_middle_boxer' ? klass : null,
       });
       if (!result.ok) {
         setGoalNote(null);
@@ -711,7 +713,7 @@ export default function Nutrition() {
           proteinTarget: proteinG,
           carbTarget: carbG,
           fatTarget: fatG,
-          weightClassKg: current.goal === 'elite_boxer' ? klass : current.weightClassKg,
+          weightClassKg: current.goal === 'elite_middle_boxer' ? klass : current.weightClassKg,
           kcalTarget: kcal,
         });
         setTargetsSavedAt(Date.now());
@@ -880,13 +882,17 @@ export default function Nutrition() {
             </ScrollView>
           </>
         ) : null}
-        {settings.goal === 'elite_boxer' ? (
+        {settings.goal === 'elite_heavy_boxer' ? (
+          <T variant="muted">This goal keeps size and power. The suggestion adds a little food. It will not plan a cut.</T>
+        ) : null}
+        {settings.goal === 'elite_middle_boxer' ? (
           <>
             <T>{COMPETITION_NOTE}</T>
-            <Field label="Weight class (kg)" value={weightClass} onChangeText={setWeightClass} keyboardType="decimal-pad" placeholder="Optional" />
+            <T variant="muted">{`Leave this blank and the suggestion uses ${MIDDLEWEIGHT_LIMIT_KG} kg, the middleweight limit on this screen. Type your own class if it is different. The change stays small.`}</T>
+            <Field label="Middleweight limit (kg)" value={weightClass} onChangeText={setWeightClass} keyboardType="decimal-pad" placeholder={String(MIDDLEWEIGHT_LIMIT_KG)} />
           </>
         ) : null}
-        {settings.goal && (settings.goal === 'elite_runner' || settings.goal === 'body_builder' || settings.goal === 'elite_boxer') && (profile?.stage === 'stopped' || profile?.stage === 'trying_to_stop') ? (
+        {settings.goal && isTrainingGoal(settings.goal) && (profile?.stage === 'stopped' || profile?.stage === 'trying_to_stop') ? (
           <T variant="muted">Recovery stays alcohol-free: food, water, sleep, and a soft drink if you want one.</T>
         ) : null}
         <Field label="Age" value={goalAge} onChangeText={setGoalAge} keyboardType="number-pad" placeholder="Optional" />

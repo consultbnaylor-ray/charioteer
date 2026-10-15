@@ -2,6 +2,8 @@ import {
   COMPETITION_NOTE,
   GOAL_LABEL,
   LOW_BMI_NOTE,
+  MIDDLEWEIGHT_LIMIT_KG,
+  isTrainingGoal,
   assessWeight,
   bmiValue,
   compositionForAssessment,
@@ -272,8 +274,13 @@ function targetLine(facts: Derived): string {
   if (facts.input.goal === 'body_builder') {
     parts.push(facts.input.goalPhase === 'cut' ? 'Cut phase, kept modest' : 'Surplus / lean bulk');
   }
-  if (facts.input.goal === 'elite_boxer' && facts.input.weightClassKg != null) {
-    parts.push(`Weight class ${facts.input.weightClassKg} kg is a note for a coach and a doctor`);
+  if (facts.input.goal === 'elite_heavy_boxer') {
+    parts.push('Size and power, with food around training');
+  }
+  if (facts.input.goal === 'elite_middle_boxer') {
+    const limit = facts.input.weightClassKg ?? MIDDLEWEIGHT_LIMIT_KG;
+    const typed = facts.input.weightClassKg != null ? '' : ' until you type your own';
+    parts.push(`Middleweight limit ${limit} kg${typed} is a note for a coach and a doctor`);
   }
   if (facts.recentKcal != null && !facts.input.hideCalories) {
     parts.push(`recent days averaged ${Math.round(facts.recentKcal).toLocaleString('en-GB')} kcal`);
@@ -329,11 +336,17 @@ function nutritionHabits(facts: Derived): string[] {
         'Eat a proper meal after the lifting session.',
         'Log body fat and lean mass when you have a reading.',
       ],
-    elite_boxer: [
+    elite_heavy_boxer: [
+      'Eat a proper meal before the session and another after it.',
+      'Add a little to the meal you already cook, so the week can hold size and power.',
+      'Put protein on breakfast, lunch, and dinner.',
+      'Keep water with the meal. Sparkling water counts.',
+    ],
+    elite_middle_boxer: [
       'Eat before the session and a proper meal after it.',
+      'Keep every meal. A middleweight limit on this screen is a small change, not a skipped meal.',
       'Keep water with the meal. Do not skip drinks to change the scales.',
-      'A weight class, if you have one, is a note for a coach and a doctor.',
-      'Put protein on the meals you already eat.',
+      'A middleweight limit is a note for a coach and a doctor.',
     ],
     none: [
       'Keep three meals, even on a day that runs late.',
@@ -365,7 +378,7 @@ function swaps(facts: Derived): string[] {
     'Build the plate around vegetables and protein, then add the carbohydrate you like.',
     facts.gym ? 'After the gym, eat a meal you cooked rather than a second coffee.' : 'Keep the evening meal at home on two nights this week.',
   ];
-  const athlete = facts.input.goal === 'elite_runner' || facts.input.goal === 'body_builder' || facts.input.goal === 'elite_boxer';
+  const athlete = isTrainingGoal(facts.input.goal);
   const recovery = 'After training, eat the meal you planned and have sparkling water. A drink is not the recovery.';
   const pool = facts.soberPath && athlete
     ? [recovery, ...sober]
@@ -430,7 +443,7 @@ function sessions(facts: Derived): string[] {
 
 function athleteSessions(facts: Derived): string[] | null {
   const goal = facts.input.goal;
-  if (goal !== 'elite_runner' && goal !== 'body_builder' && goal !== 'elite_boxer') return null;
+  if (!isTrainingGoal(goal)) return null;
   const easy = facts.level === 'starting';
   const soberRest = facts.soberPath
     ? 'Sunday · Rest. Recovery is the meal, water, and sleep. A soft drink is enough if you want one.'
@@ -464,8 +477,19 @@ function athleteSessions(facts: Derived): string[] | null {
       soberRest,
     ];
   }
+  if (goal === 'elite_heavy_boxer') {
+    return [
+      'Monday · Pad work or a power session, then a meal with protein.',
+      'Tuesday · Rest, or a short walk.',
+      'Wednesday · A power session, fewer sets than your best week, then eat.',
+      'Thursday · Rest.',
+      'Friday · Skill work, and stop while you could still do more.',
+      'Saturday · The session you care about, with food before and after.',
+      soberRest,
+    ];
+  }
   return [
-    'Monday · Skill work or a pad session, then a meal. Do not skip food to change the scales.',
+    'Monday · Skill work or a pad session, then a meal. Keep every meal.',
     'Tuesday · Rest.',
     easy
       ? 'Wednesday · A short walk or easy skill work, then stop.'
@@ -483,7 +507,7 @@ function fitnessIntro(facts: Derived): string {
   if (facts.safety.withdrawal) return `${WITHDRAWAL_NOTICE}`;
   if (facts.safety.selfHarm) return 'Training can wait. A person comes first.';
   if (facts.injury) return `Keep this week short and easy, and stop if something hurts. ${PLAN_DOCTOR}`;
-  if (facts.input.goal === 'elite_runner' || facts.input.goal === 'body_builder' || facts.input.goal === 'elite_boxer') {
+  if (isTrainingGoal(facts.input.goal)) {
     const load = facts.workoutMinutes != null
       ? `${facts.workoutMinutes} workout minutes over the last week`
       : 'no workout minutes logged yet';
@@ -491,7 +515,9 @@ function fitnessIntro(facts: Derived): string {
       ? 'This week keeps fuel around the sessions and a rest day after the longer one.'
       : facts.input.goal === 'body_builder'
         ? 'This week keeps the lifting volume you can recover from, with food after the sessions.'
-        : 'This week keeps skill work and food around it. A weigh-in plan belongs with a coach and a doctor.';
+        : facts.input.goal === 'elite_heavy_boxer'
+          ? 'This week keeps food around the sessions so size and power can hold.'
+          : 'This week keeps skill work and food around it. A middleweight limit belongs with a coach and a doctor.';
     return clip(`${aim} Recent training load: ${load}.`, 280);
   }
   const steps = facts.steps != null ? `${Math.round(facts.steps).toLocaleString('en-GB')} steps on a recent day` : 'no step count yet';
@@ -745,7 +771,7 @@ export const HEALTH_PLAN_PROMPT = [
   'Use the person\'s interests, reasons, and vision when they are present. Vary the sentences. Do not reuse a stock template.',
   'If a finished action is listed, do not repeat it. Move on to the next step.',
   'For someone sober or trying to stop, include alcohol-replacement ideas in the swaps. Recovery after training stays alcohol-free.',
-  'If the goal is an elite runner, body builder, or combat-sport athlete, include training load, recovery, and fuelling around sessions.',
+  'If the goal is an elite runner, body builder, heavyweight boxer, or middleweight boxer, include training load, recovery, and fuelling around sessions. A heavyweight goal keeps size and power and does not use a deficit. A middleweight goal stays near a limit with a small change only.',
   'Do not suggest a rapid weight cut, dehydration, a sauna, or skipping meals to make weight. A competition weigh-in belongs with a coach and a doctor.',
   'No diagnosis, no medication, no medical advice. Do not tell anyone to eat less when the figures say the intake should not fall. Do not suggest stopping alcohol suddenly.',
   'If a limit mentions injury, pain, pregnancy, or a health condition, keep the week easy and say to check with a doctor before big changes.',

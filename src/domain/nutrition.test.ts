@@ -1120,31 +1120,36 @@ describe('meal edit', () => {
 describe('training nutrition goals', () => {
   const body = { weightKg: 80, heightCm: 180, age: 40, sex: 'male' as const, activeEnergyKcal: null };
 
-  it('names the three goals in plain words and keeps the chips scrollable', () => {
+  it('names the training goals in plain words and keeps the chips scrollable', () => {
     expect(GOAL_LABEL.elite_runner).toBe('Elite Athlete (Lean Runner etc.)');
     expect(GOAL_LABEL.body_builder).toBe('Body Builder');
-    expect(GOAL_LABEL.elite_boxer).toBe('Elite Athlete (Mid to Heavy Boxer etc.)');
+    expect(GOAL_LABEL.elite_heavy_boxer).toBe('Elite Athlete (Heavy Weight Boxer)');
+    expect(GOAL_LABEL.elite_middle_boxer).toBe('Elite Athlete (Middle Weight Boxer)');
     expect(GOAL_PLAIN.elite_runner).toMatch(/carbohydrate/i);
     expect(GOAL_PLAIN.body_builder).toMatch(/lean mass/i);
-    expect(GOAL_PLAIN.elite_boxer).toMatch(/rapid cut/i);
+    expect(GOAL_PLAIN.elite_heavy_boxer).toMatch(/size and power/i);
+    expect(GOAL_PLAIN.elite_middle_boxer).toMatch(/middleweight limit/i);
     const screen = readFileSync('src/app/(main)/nutrition.tsx', 'utf8');
     expect(screen).toContain('horizontal');
     expect(screen).toContain('GOAL_PLAIN[settings.goal]');
     expect(screen).toContain('label="Daily carbohydrate (g)"');
     expect(screen).toContain('label="Daily fat (g)"');
-    expect(screen).toContain('label="Weight class (kg)"');
+    expect(screen).toContain('label="Middleweight limit (kg)"');
     expect(screen).toContain('COMPETITION_NOTE');
     expect(screen).toContain('PHASE_LABEL');
     expect(screen).toContain('compositionTrendLine');
-    const sql = readFileSync('supabase/migrations/20261015170000_training_goals.sql', 'utf8');
-    expect(sql).toContain('elite_runner');
-    expect(sql).toContain('body_builder');
-    expect(sql).toContain('elite_boxer');
-    expect(sql).toContain('carb_target_g');
-    expect(sql).toContain('fat_target_g');
-    expect(sql).toContain('goal_phase');
-    expect(sql).toContain('weight_class_kg');
+    const columns = readFileSync('supabase/migrations/20261015170000_training_goals.sql', 'utf8');
+    expect(columns).toContain('carb_target_g');
+    expect(columns).toContain('fat_target_g');
+    expect(columns).toContain('goal_phase');
+    expect(columns).toContain('weight_class_kg');
+    const sql = readFileSync('supabase/migrations/20261015180000_boxer_goals.sql', 'utf8');
+    expect(sql).toContain('elite_heavy_boxer');
+    expect(sql).toContain('elite_middle_boxer');
+    expect(sql).toContain('Elite Athlete (Heavy Weight Boxer)');
+    expect(sql).toContain('Elite Athlete (Middle Weight Boxer)');
     expect(sql).toContain('nutrition_goal_label');
+    expect(sql).toContain("'elite_middle_boxer'");
     expect(sql).not.toMatch(/drop table/i);
     expect(sql).not.toMatch(/delete from/i);
   });
@@ -1217,23 +1222,39 @@ describe('training nutrition goals', () => {
     expect(trend).toContain('Lean mass is higher');
   });
 
-  it('fuels a boxer and will not deepen a deficit to chase a weight class', () => {
-    const plain = suggestGoalTargets({ ...body, goal: 'elite_boxer' });
-    expect(plain.ok && plain.suggestion.kcal).toBe(2682);
-    expect(plain.ok && plain.suggestion.proteinG).toBe(160);
-    expect(plain.ok && plain.suggestion.carbG).toBe(296);
-    expect(plain.ok && plain.suggestion.fatG).toBe(95);
-    expect(plain.ok && plain.suggestion.note).toContain(COMPETITION_NOTE);
-    const above = suggestGoalTargets({ ...body, goal: 'elite_boxer', weightClassKg: 82 });
-    expect(above.ok && above.suggestion.kcal).toBe(2882);
-    const near = suggestGoalTargets({ ...body, goal: 'elite_boxer', weightClassKg: 78, bodyFatPct: 14 });
+  it('builds a heavyweight and keeps a middleweight change small', () => {
+    const heavy = suggestGoalTargets({ ...body, goal: 'elite_heavy_boxer' });
+    expect(heavy.ok && heavy.suggestion.kcal).toBe(2882);
+    expect(heavy.ok && heavy.suggestion.proteinG).toBe(176);
+    expect(heavy.ok && heavy.suggestion.carbG).toBe(338);
+    expect(heavy.ok && heavy.suggestion.fatG).toBe(92);
+    expect(heavy.ok && heavy.suggestion.note).toContain('size and power');
+    expect(heavy.ok && heavy.suggestion.note).toContain(COMPETITION_NOTE);
+    expect(heavy.ok && heavy.suggestion.blockedLoss).toBe(false);
+    const heavyBelow = suggestGoalTargets({ ...body, goal: 'elite_heavy_boxer', weightClassKg: 70, bodyFatPct: 14 });
+    expect(heavyBelow.ok && heavyBelow.suggestion.kcal).toBe(2882);
+
+    const middle = suggestGoalTargets({ ...body, goal: 'elite_middle_boxer' });
+    expect(middle.ok && middle.suggestion.kcal).toBe(2482);
+    expect(middle.ok && middle.suggestion.proteinG).toBe(160);
+    expect(middle.ok && middle.suggestion.carbG).toBe(253);
+    expect(middle.ok && middle.suggestion.fatG).toBe(92);
+    expect(middle.ok && middle.suggestion.note).toContain('75 kg until you type your own');
+    const under = suggestGoalTargets({ ...body, goal: 'elite_middle_boxer', weightClassKg: 82 });
+    expect(under.ok && under.suggestion.kcal).toBe(2682);
+    expect(under.ok && under.suggestion.carbG).toBe(281);
+    expect(under.ok && under.suggestion.fatG).toBe(102);
+    const near = suggestGoalTargets({ ...body, goal: 'elite_middle_boxer', weightClassKg: 79, bodyFatPct: 14 });
     expect(near.ok && near.suggestion.kcal).toBe(2482);
     expect(near.ok && near.suggestion.basis).toBe('body_fat');
-    const far = suggestGoalTargets({ ...body, goal: 'elite_boxer', weightClassKg: 70, bodyFatPct: 14 });
+    const far = suggestGoalTargets({ ...body, goal: 'elite_middle_boxer', weightClassKg: 70, bodyFatPct: 14 });
     expect(far.ok && far.suggestion.kcal).toBe(2482);
     expect(far.ok && far.suggestion.note).not.toMatch(/sauna|skip water|sweat/i);
+    const lowFat = suggestGoalTargets({ ...body, goal: 'elite_middle_boxer', bodyFatPct: 5 });
+    expect(lowFat.ok && lowFat.suggestion.kcal).toBe(2682);
+    expect(lowFat.ok && lowFat.suggestion.note).toContain('already low');
     const low = suggestGoalTargets({
-      goal: 'elite_boxer',
+      goal: 'elite_middle_boxer',
       weightKg: 50,
       heightCm: 175,
       age: 40,
@@ -1246,7 +1267,7 @@ describe('training nutrition goals', () => {
     expect(low.ok && low.suggestion.kcal).toBeGreaterThan(2000);
     const coach = nutritionContextLines({
       logs: [],
-      settings: { ...defaultNutritionSettings(), goal: 'elite_boxer', weightClassKg: 75 },
+      settings: { ...defaultNutritionSettings(), goal: 'elite_middle_boxer', weightClassKg: 75 },
       waterMl: 0,
       checkIns: [],
       soberDays: 40,
@@ -1258,6 +1279,9 @@ describe('training nutrition goals', () => {
     expect(text).toContain('alcohol-free');
     expect(text).toContain('coach');
     expect(text).not.toMatch(/have the first drink/i);
-    expect(weightTrendLine([{ day: '2026-09-01', kg: 80 }, { day: '2026-10-01', kg: 79 }], 'elite_boxer')).toContain('not a race');
+    expect(weightTrendLine([{ day: '2026-09-01', kg: 80 }, { day: '2026-10-01', kg: 79 }], 'elite_middle_boxer')).toContain('not a race');
+    expect(weightTrendLine([{ day: '2026-09-01', kg: 80 }, { day: '2026-10-01', kg: 81 }], 'elite_heavy_boxer')).toContain('size and power');
+    expect(proteinGramsFor('elite_heavy_boxer', 80, 'muscular')).toBe(176);
+    expect(proteinGramsFor('elite_middle_boxer', 80, 'muscular')).toBe(176);
   });
 });

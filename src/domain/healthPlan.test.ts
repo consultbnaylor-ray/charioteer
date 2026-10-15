@@ -177,15 +177,22 @@ describe('health plan writer', () => {
     expect(builderText).toContain('not a skipped meal');
     expect(builderText).toContain('Cut phase');
 
-    const boxer = draftHealthPlan(input({ salt: 'boxer', goal: 'elite_boxer', weightClassKg: 75 }));
+    const heavy = draftHealthPlan(input({ salt: 'heavy', goal: 'elite_heavy_boxer' }));
+    const heavyText = joined(heavy);
+    expect(heavyText).toMatch(/size and power/i);
+    expect(heavyText).toMatch(/protein/i);
+    expect(heavyText.toLowerCase()).not.toMatch(/sauna to|skip water|sweat out/);
+
+    const boxer = draftHealthPlan(input({ salt: 'boxer', goal: 'elite_middle_boxer', weightClassKg: 75 }));
     const boxerText = joined(boxer);
+    expect(boxerText).toMatch(/middleweight/i);
     expect(boxerText).toMatch(/coach/);
     expect(boxerText).toMatch(/doctor/);
     expect(boxerText.toLowerCase()).not.toMatch(/sauna to|skip water|sweat out/);
   });
 
   it('drops a rapid-cut suggestion and keeps a refusal', () => {
-    const base = draftHealthPlan(input({ salt: 'cut-guard', goal: 'elite_boxer' }));
+    const base = draftHealthPlan(input({ salt: 'cut-guard', goal: 'elite_middle_boxer' }));
     const guarded = guardHealthPlan({
       ...base,
       fitness: {
@@ -195,7 +202,7 @@ describe('health plan writer', () => {
           ...base.fitness.sessions,
         ],
       },
-    }, input({ salt: 'cut-guard', goal: 'elite_boxer' }));
+    }, input({ salt: 'cut-guard', goal: 'elite_middle_boxer' }));
     expect(joined(guarded).toLowerCase()).not.toContain('sauna to');
     expect(joined(guarded)).toMatch(/coach/);
   });
