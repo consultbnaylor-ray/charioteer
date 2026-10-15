@@ -337,6 +337,49 @@ describe('health plan writer', () => {
     expect(blank.nutrition.swaps.map((item) => item.text)).toEqual([SWAP_LOG_MORE]);
   });
 
+  it('does not give drink swaps to an exploring user with no drink evidence', () => {
+    const fresh = input({
+      salt: 'new-exploring',
+      stage: 'exploring',
+      sobrietyStartedAt: null,
+      weeklyUnits: 0,
+      foodLogs: [],
+      checkIns: [],
+      reasons: [],
+      limits: '',
+      visionStatement: '',
+    });
+    const plan = draftHealthPlan(fresh);
+    expect(plan.nutrition.swaps.map((item) => item.text)).toEqual([SWAP_LOG_MORE]);
+    expect(mentionsUnsupportedSwap('Have the first drink later, and put food on the table before it.', fresh)).toBe(true);
+    expect(mentionsUnsupportedSwap('Alternate a drink with water, and stop at the number you chose.', fresh)).toBe(true);
+    const guarded = guardHealthPlan({
+      ...plan,
+      nutrition: {
+        ...plan.nutrition,
+        swaps: [
+          { id: 's1', text: 'Have the first drink later, and put food on the table before it.', done: false },
+          { id: 's2', text: 'Alternate a drink with water, and stop at the number you chose.', done: false },
+        ],
+      },
+    }, fresh);
+    expect(guarded.nutrition.swaps.map((item) => item.text)).toEqual([SWAP_LOG_MORE]);
+    expect(healthPlanModelContext(fresh, plan).profile.drinks).toBe(false);
+    expect(HEALTH_PLAN_PROMPT).toMatch(/Exploring on its own is not drinking/);
+    const units = draftHealthPlan(input({ stage: 'exploring', weeklyUnits: 8, foodLogs: [], sobrietyStartedAt: null, limits: '', reasons: [] }));
+    expect(units.nutrition.swaps.map((item) => item.text).join(' ')).toMatch(/first drink|Alternate a drink/i);
+    const beer = draftHealthPlan(input({
+      stage: 'exploring',
+      weeklyUnits: 0,
+      reasons: ['A beer after work'],
+      foodLogs: [],
+      sobrietyStartedAt: null,
+    }));
+    expect(beer.nutrition.swaps.map((item) => item.text).join(' ')).toMatch(/beer/i);
+    const stopping = draftHealthPlan(input({ stage: 'trying_to_stop', sobrietyStartedAt: null, foodLogs: [], weeklyUnits: 0, limits: '', reasons: [] }));
+    expect(stopping.nutrition.swaps.map((item) => item.text).join(' ')).toMatch(/drink/i);
+  });
+
   it('drops a tip that sends logging to another app', () => {
     expect(mentionsOtherTracker('Track intake in the same app you use for steps so patterns show up fast.')).toBe(true);
     expect(mentionsOtherTracker('Log breakfast in MyFitnessPal.')).toBe(true);

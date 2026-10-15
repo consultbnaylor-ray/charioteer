@@ -435,7 +435,8 @@ export function abstainsFromDrink(input: PlanInput): boolean {
 
 function stillDrinks(input: PlanInput): boolean {
   if (abstainsFromDrink(input)) return false;
-  if (input.stage === 'cutting_down' || input.stage === 'exploring' || input.stage === 'trying_to_stop') return true;
+  // Exploring is the default for a new account. It is not evidence that they drink.
+  if (input.stage === 'cutting_down' || input.stage === 'trying_to_stop') return true;
   if ((input.weeklyUnits ?? 0) > 0) return true;
   return ALCOHOL_WORD.test(swapEvidenceText(input));
 }
@@ -1222,6 +1223,7 @@ export const HEALTH_PLAN_PROMPT = [
   'If a finished action is listed, do not repeat it. Move on to the next step.',
   'Swaps may use only the profile, check-ins, and logged food and drink in the user message. That is the only allowed basis for a swap. Do not invent a food, a snack, or a drink. Do not turn an interest such as hiking into a drinking night.',
   'If profile.stopped is true, or they say they do not drink, skip every drinking and alcohol swap. Do not tell them to replace a drink, an evening drink, a drinking night, or bitters. At most one sober-positive line, and it must not tell them to replace a drink. Recovery after training stays alcohol-free.',
+  'Write a drink swap only when profile.drinks is true. Exploring on its own is not drinking. profile.drinks is true for cutting down, trying to stop, weekly units above zero, or an alcohol word in logged food, a check-in note, or a reason. If profile.drinks is false, do not write "Have the first drink later" or "Alternate a drink with water".',
   'A food swap is allowed only when that food appears in loggedFood, loggedDrink, a check-in note, or dietNotes. Suggest crisps only when crisps or snacks appear there.',
   'If nothing they logged or wrote supports a swap, return one swap whose text is exactly "Log a few more meals and Thumos will suggest swaps based on what you actually eat."',
   'If the goal is an elite runner, body builder, heavyweight boxer, or middleweight boxer, include training load, recovery, and fuelling around sessions. A heavyweight goal keeps size and power and does not use a deficit. A middleweight goal stays near a limit with a small change only.',
