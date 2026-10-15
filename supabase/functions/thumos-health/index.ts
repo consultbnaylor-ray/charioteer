@@ -3,8 +3,8 @@ import { THUMOS_CHAT } from '../_shared/thumos.ts';
 import { THUMOS_HEALTH_CADENCE, thumosHealthBody, thumosHealthVerdict } from '../_shared/thumosHealth.ts';
 
 /**
- * One-token check that xAI answers. Call every five minutes (*/5 * * * *)
- * and hourly (0 * * * *), with header x-thumos-health set to THUMOS_HEALTH_SECRET.
+ * One-token check that xAI answers. Call every five minutes (every 5 minutes in cron)
+ * and hourly (top of each hour), with header x-thumos-health set to THUMOS_HEALTH_SECRET.
  */
 Deno.serve(async (req) => {
   const early = preflight(req);
