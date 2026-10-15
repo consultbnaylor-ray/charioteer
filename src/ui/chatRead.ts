@@ -50,14 +50,24 @@ export function useChatRead(userId: string | null | undefined, threads: readonly
     if (!userId) return;
     const storedNow = getChatReadMarks();
     if (storedNow.userId !== userId || !storedNow.ready || !storedNow.serverLoaded) return;
-    for (const thread of threadsRef.current) {
-      if (!thread.newestAt || storedNow.marks[thread.id]) continue;
-      const at = thread.newestAt;
-      void markChatRead(userId, thread.id, at).then((moved) => {
-        if (!moved) return;
-        void repo.saveChatRead(thread.id, at).catch((error: unknown) => console.error(error));
-      });
-    }
+    const pending = threadsRef.current.filter((thread) => thread.newestAt && !storedNow.marks[thread.id]);
+    if (pending.length === 0) return;
+    // The store update has to wait until this effect has finished, or the People screen never paints.
+    let live = true;
+    queueMicrotask(() => {
+      if (!live) return;
+      for (const thread of pending) {
+        const at = thread.newestAt;
+        if (!at) continue;
+        void markChatRead(userId, thread.id, at).then((moved) => {
+          if (!moved) return;
+          void repo.saveChatRead(thread.id, at).catch((error: unknown) => console.error(error));
+        });
+      }
+    });
+    return () => {
+      live = false;
+    };
   }, [userId, repo, threadKey, stored.ready, stored.serverLoaded, stored.userId]);
 
   const ready = Boolean(userId) && stored.userId === userId && stored.ready;
