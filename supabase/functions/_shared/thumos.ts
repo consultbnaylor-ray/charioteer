@@ -433,10 +433,19 @@ export function resolveThumosMode(input: {
 export const THUMOS_CHAT = {
   completionsUrl: 'https://api.x.ai/v1/chat/completions',
   model: 'grok-4.3',
+  /** Second model when the primary times out or returns 429 or 5xx. Fast, and reasoning stays off. */
+  fallbackModel: 'grok-4-fast-non-reasoning',
   historyLimit: 8,
   checkInLimit: 4,
   noteLimit: 160,
   maxTokens: 450,
+  /** First try. Short enough that a fallback model can still answer. */
+  firstTimeoutMs: 12_000,
+  /** Crisis and withdrawal skip the long wait. A scripted reply still follows if both models fail. */
+  crisisTimeoutMs: 8_000,
+  nutritionLineCap: 6,
+  nutritionChars: 700,
+  motivationChars: 700,
 } as const;
 
 /** Pause before the single retry of a dropped or temporary xAI call. */
@@ -456,6 +465,85 @@ export function xaiCallShouldRetry(input: {
   if (input.status != null) return input.status === 408 || input.status === 429 || input.status >= 500;
   const name = input.errorName ?? '';
   return name === 'TimeoutError' || name === 'AbortError' || name === 'TypeError';
+}
+
+export type ThumosModelStep = { model: string; timeoutMs: number };
+
+/** Primary model first. A crisis uses the shorter timeout, then the same fallback. */
+export function thumosModelChain(input: { crisis: boolean }): ThumosModelStep[] {
+  const timeoutMs = input.crisis ? THUMOS_CHAT.crisisTimeoutMs : THUMOS_CHAT.firstTimeoutMs;
+  return [
+    { model: THUMOS_CHAT.model, timeoutMs },
+    { model: THUMOS_CHAT.fallbackModel, timeoutMs },
+  ];
+}
+
+export type ThumosCallResult =
+  | { ok: true; text: string }
+  | { ok: false; status: number | 'timeout' | 'network' };
+
+export type ThumosChainResult =
+  | { text: string; from: 'primary' | 'fallback' }
+  | { text: null; from: 'scripted'; lastStatus: number | 'timeout' | 'network' | 'empty' };
+
+function attemptShouldSwitch(result: ThumosCallResult): boolean {
+  if (result.ok) return result.text.trim().length === 0;
+  return xaiCallShouldRetry({
+    status: typeof result.status === 'number' ? result.status : null,
+    errorName: result.status === 'timeout' ? 'TimeoutError' : 'TypeError',
+    attempt: 0,
+  });
+}
+
+/**
+ * Primary model, then the fallback model on 5xx, 429, timeout, or a dropped
+ * connection. Anything else stops, and the caller uses the scripted reply.
+ */
+export async function runThumosModelChain(input: {
+  crisis: boolean;
+  backoffMs?: number;
+  pause?: (ms: number) => Promise<void>;
+  onRetry?: (model: string) => void;
+  call: (step: ThumosModelStep, index: number) => Promise<ThumosCallResult>;
+}): Promise<ThumosChainResult> {
+  const chain = thumosModelChain({ crisis: input.crisis });
+  const pause = input.pause ?? ((ms: number) => new Promise((resolve) => setTimeout(resolve, ms)));
+  const primary = chain[0];
+  if (!primary) return { text: null, from: 'scripted', lastStatus: 'network' };
+  const first = await input.call(primary, 0);
+  if (first.ok && first.text.trim()) return { text: first.text.trim(), from: 'primary' };
+  const secondary = chain[1];
+  if (!secondary || !attemptShouldSwitch(first)) {
+    return { text: null, from: 'scripted', lastStatus: first.ok ? 'empty' : first.status };
+  }
+  input.onRetry?.(secondary.model);
+  await pause(input.backoffMs ?? XAI_RETRY_BACKOFF_MS);
+  const second = await input.call(secondary, 1);
+  if (second.ok && second.text.trim()) return { text: second.text.trim(), from: 'fallback' };
+  return { text: null, from: 'scripted', lastStatus: second.ok ? 'empty' : second.status };
+}
+
+/** A client idempotency id. Anything else is ignored so a bad body cannot widen the lookup. */
+export function thumosRequestId(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(trimmed) ? trimmed : null;
+}
+
+/** The reply already saved for this request, if a retry arrived after it was written. */
+export function storedThumosReply(rows: readonly { role?: string; content?: string }[]): { role: 'assistant' | 'offline'; content: string } | null {
+  for (const row of rows) {
+    if ((row.role === 'assistant' || row.role === 'offline') && typeof row.content === 'string' && row.content.trim()) {
+      return { role: row.role, content: row.content };
+    }
+  }
+  return null;
+}
+
+export function capContextBlock(text: string, max: number): string {
+  const trimmed = text.trim();
+  if (trimmed.length <= max) return trimmed;
+  return `${trimmed.slice(0, Math.max(0, max - 1)).trimEnd()}…`;
 }
 
 export function thumosReasoningEffort(model: string): 'none' | 'low' {
@@ -556,6 +644,19 @@ export const OFFLINE_COACH_MESSAGE = [
   'If you are thinking about suicide or self-harm, call the Samaritans free on 116 123, or 999 if you are in immediate danger.',
   'Thumos is not a medical professional.',
 ].join(' ');
+
+/**
+ * Shown when the key is set but no model answered, and on the phone after
+ * retries never reached the server. It does not claim the key is missing.
+ */
+export const SCRIPTED_COACH_REPLY = [
+  'This is not the AI.',
+  'Thumos could not get a reply from the coach just now. Please try again.',
+  'If you are in danger, call 999. For withdrawal, call NHS 111 or your GP. For suicidal thoughts, call the Samaritans on 116 123.',
+].join(' ');
+
+/** Neutral line on the phone. The supportive reply sits under it, with a Try again button. */
+export const THUMOS_UNREACHABLE = 'Couldn\'t reach Thumos – tap to retry.';
 
 const ACUTE_SUPPORT = [
   'This is the first support turn. They are in a craving, or they are talking themselves into a drink, right now.',
@@ -674,7 +775,7 @@ function eventPreparationSection(turn: PromptTurn): string {
 
 function motivationBlock(mode: ThumosMode, turn: PromptTurn): string {
   if (mode === 'support' || turn.selfHarm || turn.committedAction || !turn.motivation) return '';
-  return motivationGuidance(turn.motivation);
+  return capContextBlock(motivationGuidance(turn.motivation), THUMOS_CHAT.motivationChars);
 }
 
 function modeGuidance(mode: ThumosMode, turn: PromptTurn): string {
@@ -753,7 +854,7 @@ export function buildThumosContext(input: ThumosContextInput): string {
     .join('\n');
 
   const insightLines = (input.healthInsights ?? []).map((line) => line.trim()).filter(Boolean).slice(0, 3);
-  const nutritionLines = (input.nutritionLines ?? []).map((line) => line.trim()).filter(Boolean).slice(0, 16);
+  const nutritionLines = (input.nutritionLines ?? []).map((line) => line.trim()).filter(Boolean).slice(0, THUMOS_CHAT.nutritionLineCap);
 
   if (input.safety.selfHarm) {
     return [
@@ -793,7 +894,9 @@ export function buildThumosContext(input: ThumosContextInput): string {
     `HRV explainer, general guidance and not a diagnosis. Use this if they ask what heart rate variability means. Do not turn it into a diagnosis or a personal target:\n${hrvExplainerForCoach()}`,
     formatGratitudeContext(input.gratitude ?? []),
     formatVisionContext(input.vision),
-    nutritionLines.length ? `Nutrition, their own log. Estimates are estimates:\n${nutritionLines.map((line) => `- ${line}`).join('\n')}` : '',
+    nutritionLines.length
+      ? `Nutrition, their own log. Estimates are estimates:\n${capContextBlock(nutritionLines.map((line) => `- ${line}`).join('\n'), THUMOS_CHAT.nutritionChars)}`
+      : '',
     `Mode: ${input.mode}`,
     `Safety flags: self-harm ${input.safety.selfHarm ? 'YES' : 'no'}, withdrawal ${input.safety.withdrawal ? 'YES' : 'no'}`,
   ].filter(Boolean).join('\n');

@@ -108,7 +108,18 @@ import { quoteById } from '@/domain/stoicQuotes';
 import { planRelapse } from '@/domain/sober';
 import { parseSseBuffer } from '@/domain/sse';
 import { detectSafety } from '@/domain/safety';
-import { OFFLINE_COACH_MESSAGE, OPENING_LINE, type ThumosMode } from '@/domain/thumos';
+import {
+  MEAL_UNREACHABLE,
+  PLAN_UNREACHABLE,
+  REFLECT_UNREACHABLE,
+  VOICE_UNREACHABLE,
+  edgeFailureLog,
+  postWithRetry,
+  type EdgeSendState,
+} from '@/domain/edgeRetry';
+import { clientAppBuild } from '@/domain/clientError';
+import { OPENING_LINE, SCRIPTED_COACH_REPLY, THUMOS_UNREACHABLE, type ThumosMode } from '@/domain/thumos';
+import Constants from 'expo-constants';
 import { CONSENT_VERSION } from '@/data/catalogue';
 import { consentRows, missingConsentRows, type StoredConsent } from '@/domain/consents';
 import { stageFromRecord } from '@/domain/stage';
@@ -1314,37 +1325,46 @@ export class SupabaseRepository implements Repository {
     await this.refresh();
   }
 
-  async sendThumos(content: string, mode: ThumosMode, onDelta?: (text: string) => void): Promise<void> {
+  async sendThumos(
+    content: string,
+    mode: ThumosMode,
+    onDelta?: (text: string) => void,
+    onState?: (state: EdgeSendState) => void,
+  ): Promise<void> {
     const text = content.trim();
     if (!text) return;
     if (!this.snapshot.profile?.consentAi) throw new Error('Agree to the coach consent before sending a message to Thumos.');
     const safety = detectSafety(text);
     const effectiveMode: ThumosMode = safety.selfHarm || safety.withdrawal ? 'support' : mode;
+    const requestId = randomId();
 
     let response: Response;
     try {
-      const { data: sessionData } = await this.client.auth.getSession();
-      const token = sessionData.session?.access_token;
-      if (!token) throw new Error('Sign in first.');
-      response = await fetch(`${this.url}/functions/v1/thumos-chat`, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${token}`,
-          apikey: this.anonKey,
-          'Content-Type': 'application/json',
-          Accept: 'text/event-stream',
+      const token = await this.accessToken();
+      response = await postWithRetry({
+        fetchImpl: (url, init) => fetch(url, init),
+        url: `${this.url}/functions/v1/thumos-chat`,
+        init: {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${token}`,
+            apikey: this.anonKey,
+            'Content-Type': 'application/json',
+            Accept: 'text/event-stream',
+          },
+          body: JSON.stringify({ content: text, mode: effectiveMode, request_id: requestId }),
         },
-        body: JSON.stringify({ content: text, mode: effectiveMode }),
+        onState,
       });
-    } catch {
-      await this.insertOfflinePair(text, effectiveMode);
-      return;
+    } catch (error) {
+      this.rememberEdgeFailure('thumos', error);
+      throw new UserFacingError(`${THUMOS_UNREACHABLE} ${SCRIPTED_COACH_REPLY}`, 'generic');
     }
 
     if (!response.ok) {
       if (response.status >= 500) {
-        await this.insertOfflinePair(text, effectiveMode);
-        return;
+        this.rememberEdgeFailure('thumos', new Error('Thumos did not answer.'), response.status);
+        throw new UserFacingError(`${THUMOS_UNREACHABLE} ${SCRIPTED_COACH_REPLY}`, 'generic');
       }
       const body = (await response.json().catch(() => null)) as { message?: string } | null;
       throw asUserFacing(new Error(body?.message ?? 'Could not send that.'), 'thumos');
@@ -1360,9 +1380,16 @@ export class SupabaseRepository implements Repository {
     let failed: string | null = null;
     const apply = (chunk: string) => {
       parseSseBuffer(chunk, (event) => {
-        if (event.type === 'delta') {
+        if (event.type === 'ping') {
+          onState?.('waiting');
+        } else if (event.type === 'status') {
+          onState?.(event.state === 'retrying' ? 'retrying' : 'waiting');
+        } else if (event.type === 'delta') {
           accumulated += event.text;
           onDelta?.(accumulated);
+        } else if (event.type === 'replace') {
+          accumulated = event.reply;
+          onDelta?.(event.reply);
         } else if (event.type === 'done') {
           accumulated = event.reply;
           onDelta?.(event.reply);
@@ -1381,9 +1408,16 @@ export class SupabaseRepository implements Repository {
         if (done) break;
         buffer += decoder.decode(value);
         const leftover = parseSseBuffer(buffer, (event) => {
-          if (event.type === 'delta') {
+          if (event.type === 'ping') {
+            onState?.('waiting');
+          } else if (event.type === 'status') {
+            onState?.(event.state === 'retrying' ? 'retrying' : 'waiting');
+          } else if (event.type === 'delta') {
             accumulated += event.text;
             onDelta?.(accumulated);
+          } else if (event.type === 'replace') {
+            accumulated = event.reply;
+            onDelta?.(event.reply);
           } else if (event.type === 'done') {
             accumulated = event.reply;
             onDelta?.(event.reply);
@@ -1403,33 +1437,84 @@ export class SupabaseRepository implements Repository {
     await this.refresh();
   }
 
-  private async insertOfflinePair(text: string, mode: ThumosMode) {
-    const userId = await this.userId();
-    const { error: insertError } = await this.client.from('thumos_messages').insert([
-      { user_id: userId, role: 'user', content: text, mode },
-      { user_id: userId, role: 'offline', content: OFFLINE_COACH_MESSAGE, mode: 'support' },
-    ]);
-    if (insertError) throw asUserFacing(insertError, 'thumos');
-    await this.refresh();
+  private async accessToken(): Promise<string> {
+    const { data: sessionData } = await this.client.auth.getSession();
+    const token = sessionData.session?.access_token;
+    if (!token) throw new Error('Sign in first.');
+    return token;
+  }
+
+  private rememberEdgeFailure(screen: string, error: unknown, status?: number) {
+    const line = edgeFailureLog(error, status);
+    console.error(screen, line);
+    void this.logClientError(screen, line, clientAppBuild({
+      buildNumber: Constants.expoConfig?.ios?.buildNumber,
+      version: Constants.expoConfig?.version,
+    }));
+  }
+
+  private async callEdge(name: string, body: unknown): Promise<{ status: number; data: unknown }> {
+    const token = await this.accessToken();
+    const response = await postWithRetry({
+      fetchImpl: (url, init) => fetch(url, init),
+      url: `${this.url}/functions/v1/${name}`,
+      init: {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          apikey: this.anonKey,
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+        },
+        body: JSON.stringify(body),
+      },
+    });
+    return { status: response.status, data: await response.json().catch(() => null) };
   }
 
   async mintVoiceToken(mode?: ThumosMode): Promise<VoiceMint> {
-    const { data, error } = await this.client.functions.invoke('thumos-voice-token', { body: { mode } });
-    if (error || !data?.ok || typeof data?.token !== 'string') {
+    type VoicePayload = {
+      ok?: boolean;
+      code?: string;
+      message?: string;
+      token?: unknown;
+      expiresAt?: unknown;
+      instructions?: unknown;
+      crisisInstructions?: unknown;
+      history?: unknown;
+      greeting?: unknown;
+      mode?: unknown;
+    };
+    let data: VoicePayload | null = null;
+    try {
+      const invoked = await this.callEdge('thumos-voice-token', { mode });
+      data = invoked.data as VoicePayload | null;
+      if (invoked.status >= 500) {
+        this.rememberEdgeFailure('voice', new Error('Voice did not answer.'), invoked.status);
+        return { ok: false, code: 'unavailable', message: VOICE_UNREACHABLE };
+      }
+    } catch (error) {
+      this.rememberEdgeFailure('voice', error);
+      return { ok: false, code: 'unavailable', message: VOICE_UNREACHABLE };
+    }
+    if (!data?.ok || typeof data?.token !== 'string') {
       const message = typeof data?.message === 'string' ? data.message : '';
+      const honest = message.length > 0 && message.length < 180 && !/xAI key|XAI_API_KEY/i.test(message) ? message : '';
       return {
         ok: false,
         code: typeof data?.code === 'string' ? data.code : 'unavailable',
-        message: message && message.length < 180 ? message : 'Voice is unavailable just now. Text chat is still here.',
+        message: honest || VOICE_UNREACHABLE,
       };
     }
-    const history = Array.isArray(data.history)
-      ? data.history.flatMap((turn: { role?: string; content?: string }) => (
-          (turn?.role === 'user' || turn?.role === 'assistant') && typeof turn.content === 'string'
-            ? [{ role: turn.role, content: turn.content }]
-            : []
-        ))
-      : [];
+    const history: { role: 'user' | 'assistant'; content: string }[] = [];
+    if (Array.isArray(data.history)) {
+      for (const turn of data.history) {
+        if (!turn || typeof turn !== 'object') continue;
+        const role = (turn as { role?: unknown }).role;
+        const content = (turn as { content?: unknown }).content;
+        if ((role === 'user' || role === 'assistant') && typeof content === 'string') history.push({ role, content });
+      }
+    }
     return {
       ok: true,
       token: data.token,
@@ -1948,17 +2033,24 @@ export class SupabaseRepository implements Repository {
       throw new Error('Agree to the coach consent before sending a message to Thumos.');
     }
     try {
-      const invoked = await this.client.functions.invoke('gratitude-reflect', { body: { body, category } });
+      const invoked = await this.callEdge('gratitude-reflect', { body, category });
+      if (invoked.status >= 500) {
+        this.rememberEdgeFailure('gratitude', new Error('Reflection did not answer.'), invoked.status);
+        throw new UserFacingError(REFLECT_UNREACHABLE, 'generic');
+      }
       const data = invoked.data as { ok?: boolean; code?: string; comment?: unknown; suggestions?: unknown } | null;
       if (data?.code === 'consent') {
         throw new Error('Agree to the coach consent before sending a message to Thumos.');
       }
-      if (!invoked.error && data?.ok === true && typeof data.comment === 'string' && Array.isArray(data.suggestions)) {
+      if (invoked.status < 400 && data?.ok === true && typeof data.comment === 'string' && Array.isArray(data.suggestions)) {
         const suggestions = data.suggestions.filter((item): item is string => typeof item === 'string' && item.trim().length > 0);
         if (suggestions.length >= 2) return { comment: data.comment, suggestions: suggestions.slice(0, 3) };
       }
     } catch (error) {
+      if (error instanceof UserFacingError) throw error;
       if (error instanceof Error && error.message.includes('Agree to the coach consent')) throw error;
+      this.rememberEdgeFailure('gratitude', error);
+      throw new UserFacingError(REFLECT_UNREACHABLE, 'generic');
     }
     return localGratitudeReflect(body, category);
   }
@@ -2036,17 +2128,21 @@ export class SupabaseRepository implements Repository {
     const text = input.text?.trim() ?? '';
     const local = (): MealEstimate => ({ items: text ? estimateFromText(text) : samplePhotoMeal(), source: 'local' });
     try {
-      const invoked = await this.client.functions.invoke('estimate-meal', {
-        body: { text, imageBase64: input.imageBase64 ?? '' },
-      });
+      const invoked = await this.callEdge('estimate-meal', { text, imageBase64: input.imageBase64 ?? '' });
+      if (invoked.status >= 500) {
+        this.rememberEdgeFailure('estimate-meal', new Error('Meal estimate did not answer.'), invoked.status);
+        throw new UserFacingError(MEAL_UNREACHABLE, 'generic');
+      }
       const data = invoked.data as { ok?: boolean; items?: unknown; source?: string; code?: string; message?: string } | null;
       if (data?.code === 'consent') return local();
       const items = parseMealEstimate({ items: data?.items });
-      if (!invoked.error && data?.ok === true && items) {
+      if (invoked.status < 400 && data?.ok === true && items) {
         return { items, source: data.source === 'model' ? 'model' : 'local' };
       }
     } catch (error) {
-      console.error(error);
+      if (error instanceof UserFacingError) throw error;
+      this.rememberEdgeFailure('estimate-meal', error);
+      throw new UserFacingError(MEAL_UNREACHABLE, 'generic');
     }
     const fallback = local();
     if (!fallback.items.length) throw new UserFacingError('Could not read that meal. You can still type it in yourself.', 'generic');
@@ -2293,9 +2389,17 @@ export class SupabaseRepository implements Repository {
       throw new UserFacingError('Writing a plan needs the coach consent, because your figures are sent to the model.', 'generic');
     }
     const userId = this.snapshot.session?.userId ?? await this.userId();
-    const invoked = await this.client.functions.invoke('health-plan', {
-      body: { limits: limits.trim().slice(0, 280) },
-    });
+    let invoked: { status: number; data: unknown };
+    try {
+      invoked = await this.callEdge('health-plan', { limits: limits.trim().slice(0, 280) });
+    } catch (error) {
+      this.rememberEdgeFailure('health-plan', error);
+      throw new UserFacingError(PLAN_UNREACHABLE, 'generic');
+    }
+    if (invoked.status >= 500) {
+      this.rememberEdgeFailure('health-plan', new Error('Health Plan did not answer.'), invoked.status);
+      throw new UserFacingError(PLAN_UNREACHABLE, 'generic');
+    }
     const data = invoked.data as { ok?: boolean; code?: string; message?: string; plan?: unknown } | null;
     if (data?.code === 'consent') {
       throw new UserFacingError(
@@ -2304,8 +2408,8 @@ export class SupabaseRepository implements Repository {
       );
     }
     const plan = healthPlanFromStored(data?.plan);
-    if (invoked.error || data?.ok !== true || !plan) {
-      throw new UserFacingError('Could not write a plan. Try again.', 'generic');
+    if (data?.ok !== true || !plan) {
+      throw new UserFacingError(PLAN_UNREACHABLE, 'generic');
     }
     const { error } = await this.client.from('health_plans').upsert({
       user_id: userId,

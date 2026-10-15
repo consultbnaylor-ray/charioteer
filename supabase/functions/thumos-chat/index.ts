@@ -19,7 +19,12 @@ import {
   motivationForTurn,
   mentionsCheckInOrHealth,
   OFFLINE_COACH_MESSAGE,
+  SCRIPTED_COACH_REPLY,
   resolveThumosMode,
+  runThumosModelChain,
+  storedThumosReply,
+  thumosModelChain,
+  thumosRequestId,
   XAI_RETRY_BACKOFF_MS,
   xaiCallShouldRetry,
   safetyFromText,
@@ -39,17 +44,14 @@ import { moodOnTen } from '../_shared/mood.ts';
 import { GOAL_LABEL, type NutritionGoal } from '../_shared/nutrition.ts';
 import { formatSoberElapsed, soberElapsed } from '../_shared/sober.ts';
 
-type Body = { content?: string; mode?: ThumosMode };
+type Body = { content?: string; mode?: ThumosMode; request_id?: string };
 
-/** Shown when the key is set but xAI did not answer. Not the missing-key line. */
-const COACH_REPLY_FAILED = [
-  'Thumos could not get a reply from the coach just now. Please try again.',
-  'This is not a model answer.',
-  'If you are in danger, call 999. For withdrawal, call NHS 111 or your GP. For suicidal thoughts, call the Samaritans on 116 123.',
-].join(' ');
-
-/** Long enough for a low-reasoning reply, short enough that one retry can still finish. */
-const XAI_TIMEOUT_MS = 25_000;
+/**
+ * Shown when the key is set but xAI did not answer.
+ * The line is: could not get a reply from the coach just now. Please try again.
+ * It is not the missing-key line.
+ */
+const COACH_REPLY_FAILED = SCRIPTED_COACH_REPLY;
 
 function pause(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -275,28 +277,84 @@ Deno.serve(async (req) => {
     motivation,
   });
 
+  const requestId = thumosRequestId(body.request_id);
+  const crisis = safety.selfHarm || safety.withdrawal;
+
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
       const encoder = new TextEncoder();
       const send = (event: ThumosServerEvent) => controller.enqueue(encoder.encode(encodeSse(event)));
+      send({ type: 'ping' });
       let reply = OFFLINE_COACH_MESSAGE;
       let role: 'assistant' | 'offline' = 'offline';
+      let fallbackKind: 'offline' | 'scripted' | null = null;
       try {
+        if (requestId) {
+          const saved = await admin
+            .from('thumos_messages')
+            .select('role, content')
+            .eq('user_id', userId)
+            .eq('request_id', requestId);
+          const existing = saved.error ? null : storedThumosReply(saved.data ?? []);
+          if (existing) {
+            send({ type: 'replace', reply: existing.content });
+            send({ type: 'done', reply: existing.content, role: existing.role, ok: existing.role === 'assistant' });
+            return;
+          }
+        }
+
         if (!apiKey) {
+          console.error('thumos XAI_API_KEY is not set');
           reply = ensureSafetyNotices(OFFLINE_COACH_MESSAGE, safety);
+          fallbackKind = 'offline';
           send({ type: 'delta', text: reply });
         } else {
           try {
-            const first = await completeThumos({ apiKey, model, system, history, user: content });
-            if (!first.ok) {
+            send({ type: 'status', state: 'waiting' });
+            const primaryStep = thumosModelChain({ crisis })[0];
+            let streamed = '';
+            const attempt = await runThumosModelChain({
+              crisis,
+              backoffMs: XAI_RETRY_BACKOFF_MS,
+              pause,
+              onRetry: (nextModel) => {
+                console.error('thumos fallbackModel', nextModel);
+                send({ type: 'status', state: 'retrying' });
+              },
+              call: (step, index) => completeThumos({
+                apiKey,
+                model: step.model,
+                timeoutMs: step.timeoutMs,
+                system,
+                history,
+                user: content,
+                onDelta: index > 0 && streamed
+                  ? undefined
+                  : (piece) => {
+                    streamed += piece;
+                    send({ type: 'delta', text: piece });
+                  },
+              }),
+            });
+            let modelText = attempt.text ?? '';
+            if (attempt.from === 'fallback' && modelText && streamed !== modelText) {
+              send({ type: 'replace', reply: modelText });
+              streamed = modelText;
+            }
+            if (attempt.from === 'scripted') {
+              console.error('thumos xAI HTTP status', attempt.lastStatus);
+            }
+            if (!modelText) {
               reply = ensureSafetyNotices(COACH_REPLY_FAILED, safety);
-              send({ type: 'delta', text: reply });
+              fallbackKind = 'scripted';
+              if (!streamed) send({ type: 'delta', text: reply });
+              else send({ type: 'replace', reply });
             } else {
-              let modelText = first.text || 'I am here. Say a little more if you can.';
-              if (!safety.selfHarm && thumosReplyFaults(modelText, earlierAssistant).length > 0) {
+              if (!crisis && thumosReplyFaults(modelText, earlierAssistant).length > 0) {
                 const second = await completeThumos({
                   apiKey,
-                  model,
+                  model: primaryStep?.model ?? model,
+                  timeoutMs: primaryStep?.timeoutMs ?? THUMOS_CHAT.firstTimeoutMs,
                   system: `${system}\n\n${THUMOS_RETRY_NOTE}`,
                   history,
                   user: content,
@@ -304,24 +362,27 @@ Deno.serve(async (req) => {
                 modelText = second.ok && second.text && thumosReplyFaults(second.text, earlierAssistant).length === 0
                   ? second.text
                   : freshThumosFallback(earlierAssistant);
+                reply = ensureSafetyNotices(modelText, safety);
+                role = 'assistant';
+                send({ type: 'replace', reply });
+              } else {
+                reply = ensureSafetyNotices(modelText, safety);
+                role = 'assistant';
+                if (reply !== modelText) send({ type: 'replace', reply });
+                else if (!streamed) send({ type: 'delta', text: reply });
               }
-              reply = ensureSafetyNotices(modelText, safety);
-              role = 'assistant';
-              send({ type: 'delta', text: reply });
             }
           } catch (error) {
             console.error('thumos xAI HTTP status', xaiErrorStatus(error));
             reply = ensureSafetyNotices(COACH_REPLY_FAILED, safety);
+            fallbackKind = 'scripted';
             send({ type: 'delta', text: reply });
           }
         }
 
-        const now = new Date().toISOString();
-        const { error: insertError } = await admin.from('thumos_messages').insert([
-          { user_id: userId, role: 'user', content, mode, created_at: now },
-          { user_id: userId, role, content: reply, mode, created_at: new Date(Date.now() + 1).toISOString() },
-        ]);
-        if (insertError) {
+        if (fallbackKind) await noteThumosFallback(admin, fallbackKind);
+        const saved = await saveThumosPair(admin, { userId, content, reply, role, mode, requestId });
+        if (!saved.ok) {
           send({ type: 'error', message: 'The message could not be saved.' });
         } else {
           if (motivation && role === 'assistant') {
@@ -364,10 +425,12 @@ function xaiErrorStatus(error: unknown): number | string {
 async function completeThumos(input: {
   apiKey: string;
   model: string;
+  timeoutMs: number;
   system: string;
   history: ChatTurn[];
   user: string;
-}): Promise<{ ok: true; text: string } | { ok: false }> {
+  onDelta?: (piece: string) => void;
+}): Promise<{ ok: true; text: string } | { ok: false; status: number | 'timeout' | 'network' }> {
   const body = JSON.stringify(buildChatCompletionBody({
     model: input.model,
     system: input.system,
@@ -375,55 +438,107 @@ async function completeThumos(input: {
     user: input.user,
     stream: true,
   }));
-  for (let attempt = 0; attempt < 2; attempt += 1) {
-    try {
-      const response = await fetch(THUMOS_CHAT.completionsUrl, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${input.apiKey}`,
-          'Content-Type': 'application/json',
-        },
-        body,
-        signal: AbortSignal.timeout(XAI_TIMEOUT_MS),
-      });
-      if (!response.ok || !response.body) {
-        console.error('thumos xAI HTTP status', response.status);
-        if (xaiCallShouldRetry({ status: response.status, attempt })) {
-          await pause(XAI_RETRY_BACKOFF_MS);
-          continue;
-        }
-        return { ok: false };
+  try {
+    const response = await fetch(THUMOS_CHAT.completionsUrl, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${input.apiKey}`,
+        'Content-Type': 'application/json',
+        Connection: 'close',
+      },
+      body,
+      signal: AbortSignal.timeout(input.timeoutMs),
+    });
+    if (!response.ok || !response.body) {
+      console.error('thumos xAI HTTP status', response.status);
+      if (xaiCallShouldRetry({ status: response.status, attempt: 0 })) {
+        return { ok: false, status: response.status };
       }
-      const text = (await readCompletionStream(response.body)).trim();
-      return { ok: true, text };
-    } catch (error) {
-      const errorName = error instanceof Error ? error.name : '';
-      console.error('thumos xAI HTTP status', xaiErrorStatus(error));
-      if (xaiCallShouldRetry({ status: null, errorName, attempt })) {
-        await pause(XAI_RETRY_BACKOFF_MS);
-        continue;
-      }
-      return { ok: false };
+      return { ok: false, status: response.status };
     }
+    const text = (await readCompletionStream(response.body, input.onDelta)).trim();
+    return { ok: true, text };
+  } catch (error) {
+    const errorName = error instanceof Error ? error.name : '';
+    console.error('thumos xAI HTTP status', xaiErrorStatus(error));
+    if (xaiCallShouldRetry({ status: null, errorName, attempt: 0 })) {
+      const status = xaiErrorStatus(error);
+      return { ok: false, status: status === 'timeout' ? 'timeout' : 'network' };
+    }
+    return { ok: false, status: 'network' };
   }
-  return { ok: false };
 }
 
-async function readCompletionStream(body: ReadableStream<Uint8Array>): Promise<string> {
+async function noteThumosFallback(admin: SupabaseClient, kind: 'offline' | 'scripted') {
+  console.error('THUMOS_FALLBACK', kind);
+  const day = new Date().toISOString().slice(0, 10);
+  const existing = await admin.from('thumos_fallback_days').select('offline_count, scripted_count').eq('day', day).maybeSingle();
+  if (existing.error) {
+    console.error('thumos fallback count', existing.error.message);
+    return;
+  }
+  const offline = Number(existing.data?.offline_count ?? 0) + (kind === 'offline' ? 1 : 0);
+  const scripted = Number(existing.data?.scripted_count ?? 0) + (kind === 'scripted' ? 1 : 0);
+  const saved = await admin.from('thumos_fallback_days').upsert({
+    day,
+    offline_count: offline,
+    scripted_count: scripted,
+    updated_at: new Date().toISOString(),
+  });
+  if (saved.error) console.error('thumos fallback count', saved.error.message);
+}
+
+async function saveThumosPair(admin: SupabaseClient, input: {
+  userId: string;
+  content: string;
+  reply: string;
+  role: 'assistant' | 'offline';
+  mode: ThumosMode;
+  requestId: string | null;
+}): Promise<{ ok: boolean }> {
+  const now = new Date().toISOString();
+  const rows = [
+    { user_id: input.userId, role: 'user', content: input.content, mode: input.mode, created_at: now, request_id: input.requestId },
+    { user_id: input.userId, role: input.role, content: input.reply, mode: input.mode, created_at: new Date(Date.now() + 1).toISOString(), request_id: input.requestId },
+  ];
+  if (input.requestId) {
+    const saved = await admin.from('thumos_messages').upsert(rows, { onConflict: 'user_id,request_id,role', ignoreDuplicates: true });
+    if (!saved.error) return { ok: true };
+    console.error('thumos save', saved.error.message);
+  }
+  const plain = rows.map((row) => {
+    const { request_id: _requestId, ...rest } = row;
+    return rest;
+  });
+  const inserted = await admin.from('thumos_messages').insert(plain);
+  if (inserted.error) {
+    console.error('thumos save', inserted.error.message);
+    return { ok: false };
+  }
+  return { ok: true };
+}
+
+async function readCompletionStream(body: ReadableStream<Uint8Array>, onDelta?: (piece: string) => void): Promise<string> {
   const reader = body.getReader();
   const decoder = new TextDecoder();
   let buffer = '';
   let reply = '';
+  const take = (lines: string[]) => {
+    const piece = textFromSseLines(lines);
+    if (!piece) return;
+    reply += piece;
+    onDelta?.(piece);
+  };
   while (true) {
     const { done, value } = await reader.read();
     if (done) break;
     buffer += decoder.decode(value, { stream: true });
     const lines = buffer.split('\n');
     buffer = lines.pop() ?? '';
-    reply += textFromSseLines(lines);
+    take(lines);
   }
   buffer += decoder.decode();
-  if (buffer.trim()) reply += textFromSseLines(buffer.split('\n'));
+  if (buffer.trim()) take(buffer.split('\n'));
   return reply;
 }
 

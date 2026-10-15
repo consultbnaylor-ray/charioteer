@@ -411,7 +411,7 @@ export interface Repository {
   reportUser(input: NewReport): Promise<void>;
   reviewReport(id: string): Promise<void>;
   ensureThumosGuide(kind: 'opening' | 'craving'): Promise<void>;
-  sendThumos(content: string, mode: ThumosMode, onDelta?: (text: string) => void): Promise<void>;
+  sendThumos(content: string, mode: ThumosMode, onDelta?: (text: string) => void, onState?: (state: 'sending' | 'waiting' | 'retrying') => void): Promise<void>;
   mintVoiceToken(mode?: ThumosMode): Promise<VoiceMint>;
   saveVoiceTurn(input: VoiceTurnInput): Promise<void>;
   addProgressPhoto(input: NewProgressPhoto): Promise<void>;

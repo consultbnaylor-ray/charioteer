@@ -1022,7 +1022,7 @@ describe('body composition', () => {
     expect(screen).not.toMatch(/ImagePicker|launchCamera|expo-image-picker|estimateMeal|photoBase64/);
     expect(readFileSync('src/app/(main)/profile.tsx', 'utf8')).toContain('<BuildChoices');
     expect(readFileSync('supabase/functions/_shared/nutrition.ts', 'utf8')).toContain('use body fat before waist-to-height');
-    expect(readFileSync('supabase/functions/_shared/thumos.ts', 'utf8')).toContain('slice(0, 16)');
+    expect(readFileSync('supabase/functions/_shared/thumos.ts', 'utf8')).toContain('nutritionLineCap');
     expect(readFileSync('supabase/functions/_shared/nutritionLoad.ts', 'utf8')).toContain("from('body_composition')");
     const save = repo.slice(repo.indexOf('async saveBodyComposition'), repo.indexOf('async sharedNutrition'));
     expect(save).toContain("from('body_composition').upsert");

@@ -58,7 +58,7 @@ import { planCustomInterest, validateTown } from '@/domain/privacy';
 import { planReasons } from '@/domain/reasons';
 import { planRelapse } from '@/domain/sober';
 import { detectSafety, ensureSafetyNotices } from '@/domain/safety';
-import { OFFLINE_COACH_MESSAGE, OPENING_LINE, type ThumosMode } from '@/domain/thumos';
+import { OPENING_LINE, SCRIPTED_COACH_REPLY, type ThumosMode } from '@/domain/thumos';
 import { CONSENT_VERSION } from '@/data/catalogue';
 import { consentRows, missingConsentRows } from '@/domain/consents';
 import { stageFromRecord } from '@/domain/stage';
@@ -905,15 +905,17 @@ export class DemoRepository implements Repository {
     this.commit(db);
   }
 
-  async sendThumos(content: string, mode: ThumosMode, onDelta?: (text: string) => void): Promise<void> {
+  async sendThumos(content: string, mode: ThumosMode, onDelta?: (text: string) => void, onState?: (state: 'sending' | 'waiting' | 'retrying') => void): Promise<void> {
     const text = content.trim();
     if (!text) return;
     const account = this.me();
     if (!account.profile.consentAi) {
       throw new Error('Agree to the coach consent before sending a message to Thumos.');
     }
+    onState?.('sending');
     const safety = detectSafety(text);
-    const reply = ensureSafetyNotices(OFFLINE_COACH_MESSAGE, safety);
+    const reply = ensureSafetyNotices(SCRIPTED_COACH_REPLY, safety);
+    onState?.('waiting');
     onDelta?.(reply);
     const db = clone(this.db);
     const thread = db.accounts[account.profile.id].thumos;
@@ -921,7 +923,7 @@ export class DemoRepository implements Repository {
     thread.push({ id: uid(), role: 'user', content: text, mode, createdAt: stamp.toISOString() });
     thread.push({
       id: uid(),
-      role: 'offline',
+      role: 'guide',
       content: reply,
       mode: safety.selfHarm || safety.withdrawal ? 'support' : mode,
       createdAt: new Date(stamp.getTime() + 1).toISOString(),
@@ -933,7 +935,7 @@ export class DemoRepository implements Repository {
     return {
       ok: false,
       code: 'missing_key',
-      message: 'Voice needs XAI_API_KEY on the Supabase edge function. The sample on this device does not call xAI.',
+      message: 'Couldn\'t reach voice. Text chat is still here.',
     };
   }
 

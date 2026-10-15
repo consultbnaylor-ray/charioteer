@@ -53,6 +53,9 @@ enabled = true
 [functions.thumos-chat]
 verify_jwt = true
 
+[functions.thumos-health]
+verify_jwt = false
+
 [functions.thumos-voice-token]
 verify_jwt = true
 

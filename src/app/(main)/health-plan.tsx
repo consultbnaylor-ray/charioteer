@@ -118,6 +118,7 @@ export default function HealthPlanScreen() {
       intro="Thumos reads the figures you already keep and writes a short plan. It is not a diagnosis."
     >
       <ErrorNote>{error}</ErrorNote>
+      {error ? <Button label="Try again" pending={refreshing} onPress={refresh} /> : null}
       {plan ? (
         <>
           <Card>
