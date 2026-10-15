@@ -1,5 +1,8 @@
 export type ThumosServerEvent =
+  | { type: 'ping' }
+  | { type: 'status'; state: 'waiting' | 'retrying' }
   | { type: 'delta'; text: string }
+  | { type: 'replace'; reply: string }
   | { type: 'done'; reply: string; role: 'assistant' | 'offline'; ok: boolean }
   | { type: 'error'; message: string };
 

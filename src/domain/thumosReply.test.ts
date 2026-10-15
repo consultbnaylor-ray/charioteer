@@ -96,6 +96,9 @@ describe('thumos reply post-check', () => {
     expect(chat).toContain('xaiCallShouldRetry');
     expect(chat).toContain('XAI_RETRY_BACKOFF_MS');
     expect(chat).toContain('AbortSignal.timeout');
+    expect(chat).toContain("console.error('thumos XAI_API_KEY is not set')");
+    expect(chat).toContain('fallbackModel');
+    expect(chat.indexOf("send({ type: 'delta', text: reply })")).toBeGreaterThan(0);
   });
 
   it('never offers to set a reminder, an alarm, a calendar entry, or to contact someone', () => {

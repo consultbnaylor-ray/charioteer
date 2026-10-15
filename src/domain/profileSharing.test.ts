@@ -8,8 +8,10 @@ import {
   healthShareLabel,
   moodStreakCount,
   normalizeProfileSharing,
+  parsePublicProfile,
   projectPublicProfile,
   SHARE_HINT,
+  shownList,
   sensitiveShareConfirm,
   sensitiveTurnedOn,
   sharedReportItems,
@@ -227,6 +229,7 @@ describe('public profile projection', () => {
     const before = defaultProfileSharing();
     expect(sensitiveTurnedOn(before, { ...before, town: true })).toBe(false);
     expect(sensitiveTurnedOn(before, { ...before, soberDays: true })).toBe(true);
+    expect(sensitiveTurnedOn(before, { ...before, healthPlan: true })).toBe(true);
     expect(sensitiveTurnedOn(before, { ...before, moneySaved: true })).toBe(true);
     expect(sensitiveTurnedOn(before, toggleHealthKind(before, 'sleep_hours', true))).toBe(true);
     expect(sensitiveTurnedOn(before, toggleShareId(before, 'gratitudeIds', 'g1', true))).toBe(false);
@@ -248,6 +251,11 @@ describe('public profile projection', () => {
     expect(normalizeProfileSharing({ bio: false }).bio).toBe(false);
     expect(parsed.healthKinds).toEqual(['steps']);
     expect(parsed.reasonBodies).toEqual(['A']);
+    expect(parsed.shareNewGratitude).toBe(false);
+    expect(parsed.healthPlan).toBe(false);
+    expect(defaultProfileSharing().healthPlan).toBe(false);
+    expect(defaultProfileSharing().shareNewGratitude).toBe(false);
+    expect(normalizeProfileSharing({ shareNewGratitude: true }).shareNewGratitude).toBe(true);
   });
 });
 
@@ -391,6 +399,14 @@ describe('public_profile database function', () => {
     expect(people).toContain('photo.caption');
     expect(people).not.toContain('photo.note');
     expect(people).toContain("reason: 'Shared profile'");
+    expect(people).toContain('Report this profile');
+    expect(people).toContain('label="Reason"');
+    expect(people).toContain('⋯');
+    expect(people).toContain('privateMessageFailure');
+    expect(people).toContain('label="Try again"');
+    expect(people).not.toContain('`Report ${item.label}`');
+    expect(people).not.toContain('label="Report photo"');
+    expect(people).not.toContain('label="Report profile"');
     expect(people).toContain('publicProfile');
     expect(people).toContain('formatSoberShare');
     expect(peopleScreen).not.toMatch(/gratitude/);
@@ -409,6 +425,7 @@ describe('public_profile database function', () => {
       'src/ui/VisionBoard.tsx',
       'src/app/(main)/profile.tsx',
       'src/ui/PublicProfileCard.tsx',
+      'src/app/(main)/health-plan.tsx',
     ];
     const found = filesUnder('src')
       .filter((path) => !/\.test\.tsx?$/.test(path))
@@ -447,5 +464,43 @@ describe('bio and photo captions', () => {
     expect(profile).toContain('security definer');
     expect(profile).not.toContain('storage_path');
     expect(profile).not.toContain('height_cm');
+  });
+
+  it('reads a null public profile without throwing', () => {
+    const parsed = parsePublicProfile({
+      displayName: 'Jordan Ellis',
+      gratitudePhotos: null,
+      vision: null,
+      gratitude: null,
+      profilePhotos: null,
+      progressPhotos: null,
+      interests: null,
+      milestones: null,
+      reasons: null,
+      health: null,
+      foodDiary: null,
+      quality: null,
+      goal: null,
+      calories: null,
+      progress: null,
+      wagon: null,
+      bodyComposition: null,
+    });
+    expect(parsed?.gratitudePhotos).toEqual([]);
+    expect(parsed?.vision).toEqual([]);
+    expect(parsed?.gratitude).toEqual([]);
+    expect(parsed?.profilePhotos).toEqual([]);
+    expect(parsed?.progressPhotos).toEqual([]);
+    expect(parsed?.interests).toEqual([]);
+    expect(parsed?.foodDiary).toBeNull();
+    expect(parsed?.quality).toBeNull();
+    expect(parsed?.goal).toBeNull();
+    expect(sharedReportItems(parsed!)).toEqual([]);
+    expect(shownList(null)).toEqual([]);
+    expect(JSON.stringify(parsed)).not.toContain('bodyComposition');
+    const facts = readFileSync('src/ui/CommunityProfile.tsx', 'utf8');
+    const nutritionUi = readFileSync('src/ui/NutritionShare.tsx', 'utf8');
+    expect(facts).toContain('shownList(');
+    expect(nutritionUi).toContain('Array.isArray(meals)');
   });
 });

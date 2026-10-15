@@ -36,6 +36,12 @@ export function MenuGlyph({ name, color }: { name: MenuIcon; color: string }) {
           <Path d="M4 4h6.5v6.5H4V4zM13.5 4H20v6.5h-6.5V4zM4 13.5h6.5V20H4v-6.5zM13.5 13.5H20V20h-6.5v-6.5z" stroke={color} {...stroke} />
         </>
       ) : null}
+      {name === 'plan' ? (
+        <>
+          <Path d="M7 4.5h10v15H7v-15z" stroke={color} {...stroke} />
+          <Path d="M9.5 8.5h5M9.5 12h5M9.5 15.5h3" stroke={color} {...stroke} />
+        </>
+      ) : null}
       {name === 'meal' ? (
         <>
           <Path d="M7 10h10c.2 3.6-2 6.4-5 6.4S6.8 13.6 7 10z" stroke={color} {...stroke} />

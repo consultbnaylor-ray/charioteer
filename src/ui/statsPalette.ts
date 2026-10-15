@@ -1,7 +1,7 @@
 import type { StatsTone } from '@/domain/statsOverview';
 import type { Scheme } from '@/ui/theme';
 
-/** Soft colours for the Stats tiles only. The rest of the app stays monochrome. */
+/** Soft colours for Stats tiles and the nutrition charts. The rest of the app stays monochrome. */
 export type StatsInk = { bg: string; ink: string };
 
 /**

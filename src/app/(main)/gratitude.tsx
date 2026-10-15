@@ -19,7 +19,7 @@ import {
   type GratitudePhoto,
 } from '@/domain/gratitude';
 import { dismissSheetBeforePhotoPicker, gratitudePhotoLimitMessage, photoPickerSheetDelay } from '@/domain/gratitudePhotos';
-import { toggleShareId } from '@/domain/profileSharing';
+import { SHARE_NEW_GRATITUDE, SHARE_NEW_GRATITUDE_HINT, toggleShareId } from '@/domain/profileSharing';
 import { DateField } from '@/ui/DateField';
 import { OwnerPhoto } from '@/ui/OwnerPhoto';
 import { GratitudeSectionShare } from '@/ui/SectionShare';
@@ -349,6 +349,13 @@ export default function GratitudeDiary() {
       intro="A list you can come back to. This diary is private. It is not shown to the community. Photos on a line stay private too, and are not sent to Thumos. Thumos sees a few lines of text only if you have allowed the coach."
     >
       <GratitudeSectionShare />
+      <ShareOnProfile
+        label={SHARE_NEW_GRATITUDE}
+        item="Lines I add later"
+        on={snap.sharing.shareNewGratitude}
+        apply={(sharing, selected) => ({ ...sharing, shareNewGratitude: selected })}
+      />
+      <T variant="muted">{SHARE_NEW_GRATITUDE_HINT}</T>
       <ScrollTarget id="diary">
       <T>{gratitudeCountLabel(entries.length)}</T>
       {photoNotice ? <T>{photoNotice}</T> : null}

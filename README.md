@@ -137,7 +137,7 @@ An allow-list entry of exactly `charioteer://` does not cover `charioteer://set-
 supabase secrets set XAI_API_KEY=your-key
 supabase functions serve
 # or, for a hosted project:
-supabase functions deploy thumos-chat thumos-voice-token thumos-voice-turn account-export account-delete progress-photo-url gratitude-reflect
+supabase functions deploy thumos-chat thumos-voice-token thumos-voice-turn account-export account-delete progress-photo-url gratitude-reflect health-plan
 ```
 
 | Function | Role |
@@ -148,6 +148,7 @@ supabase functions deploy thumos-chat thumos-voice-token thumos-voice-turn accou
 | `account-export` | Calls `export_my_data()` and adds a one-hour signed link for each private progress photo. The file does not contain the image bytes. |
 | `account-delete` | Removes the caller’s objects in the private `progress-photos` bucket, deletes their `gratitude_entries` rows, then deletes the auth user. `delete_my_account()` is the fallback, and the app removes those objects before it uses the fallback. |
 | `gratitude-reflect` | With coach consent, sends one diary line and its optional tag to xAI and returns a short comment plus two or three suggestions. It does not read check-ins, health, reasons, photos, or other diary lines. Missing key or a bad reply uses a local note and nothing is sent. |
+| `health-plan` | With coach consent, reads this person’s own figures and asks Grok for a short nutrition, fitness, and wellbeing plan. A missing key, a safety hit, or a bad reply uses the local plan. The function does not store the row. Sharing, when switched on, shows only the headline, this week’s focus, and the tick count. |
 | `progress-photo-url` | Signs a 60-second URL for a progress photo the caller is allowed to see: their own, or one whose `visibility` is `community`. A private photo belonging to someone else is not signed. |
 
 The client tries the function first, then the SQL function, for export and deletion.

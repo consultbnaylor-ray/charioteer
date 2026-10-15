@@ -4,10 +4,12 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   EMAIL_TAKEN_MESSAGE,
   OFFLINE_MESSAGE,
+  UserFacingError,
   WEAK_PASSWORD_MESSAGE,
   WRONG_PASSWORD_MESSAGE,
   asUserFacing,
   isTransientNetworkError,
+  privateMessageFailure,
 } from './errors';
 import { fetchWithOneRetry } from './retryFetch';
 import { PASSWORD_RESET_REDIRECTS, passwordResetRedirect, recoveryLink } from './passwordReset';
@@ -44,6 +46,43 @@ describe('user facing errors', () => {
     expect(asUserFacing(new Error('duplicate key value violates unique constraint "consents_pkey"'), 'general').message).not.toMatch(/duplicate|violates/i);
     expect(asUserFacing(new Error('duplicate key value violates unique constraint "interests_slug_key"'), 'general').message).not.toMatch(/duplicate|violates|interests_slug/i);
     expect(asUserFacing(new Error('Set a start date first.'), 'general').message).toBe('Set a start date first.');
+    error.mockRestore();
+  });
+
+  it('keeps the server reason when a private message fails', () => {
+    const error = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const ambiguous = Object.assign(new Error('column reference "user_id" is ambiguous'), { code: '42702' });
+    expect(privateMessageFailure(ambiguous)).toBe('42702: column reference "user_id" is ambiguous');
+    expect(privateMessageFailure(new UserFacingError('You cannot message yourself.', 'generic'))).toBe('You cannot message yourself.');
+    expect(privateMessageFailure(new UserFacingError('You cannot contact this person.', 'generic'))).toBe('You cannot contact this person.');
+    expect(privateMessageFailure(new Error('permission denied for table connections'))).toBe('permission denied for table connections');
+    expect(privateMessageFailure(new Error('relation "profiles" does not exist\n    at Module.foo (node_modules/x.ts:4)'))).toBe('relation "profiles" does not exist');
+    expect(privateMessageFailure(new Error('failed at Module.foo (node_modules/x.ts:4)'))).toBe('Could not open a private message.');
+    const repo = readFileSync('src/data/supabase-repository.ts', 'utf8');
+    const connect = repo.slice(repo.indexOf('async requestConnection'), repo.indexOf('async respondConnection'));
+    expect(connect).toContain('if (error && !isDuplicateWrite(error)) throw error');
+    const open = repo.slice(repo.indexOf('async openPrivateChat'), repo.indexOf('async requestConnection'));
+    expect(open).not.toContain(".from('blocks')");
+    expect(open).not.toContain('blocks.error');
+    const profile = readFileSync('src/ui/CommunityProfile.tsx', 'utf8');
+    expect(profile).toContain('privateMessageFailure');
+    expect(profile).toContain('label="Try again"');
+    expect(profile).not.toContain("shownError(err, 'Could not open a private message.')");
+    error.mockRestore();
+  });
+
+  it('says a person cannot be contacted when the server refuses the connection', () => {
+    const error = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const refused = Object.assign(
+      new Error('new row violates row-level security policy for table "connections"'),
+      { code: '42501' },
+    );
+    expect(privateMessageFailure(refused)).toBe('You cannot contact this person.');
+    expect(privateMessageFailure(refused)).not.toMatch(/42501|row-level|connections/i);
+    const repo = readFileSync('src/data/supabase-repository.ts', 'utf8');
+    const open = repo.slice(repo.indexOf('async openPrivateChat'), repo.indexOf('async requestConnection'));
+    expect(open).not.toContain('select(');
+    expect(open).toContain('requestConnection');
     error.mockRestore();
   });
 });

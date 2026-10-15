@@ -109,3 +109,53 @@ export function shownError(error: unknown, fallbackMessage: string, context: Err
   if (faced.code === 'generic' && faced.message === fallback(context)) return fallbackMessage;
   return faced.message;
 }
+
+const PRIVATE_MESSAGE_FALLBACK = 'Could not open a private message.';
+
+function errorCode(error: unknown): string {
+  if (!error || typeof error !== 'object' || !('code' in error)) return '';
+  const code = (error as { code?: unknown }).code;
+  if (typeof code === 'string') return code.trim();
+  if (typeof code === 'number' && Number.isFinite(code)) return String(code);
+  return '';
+}
+
+function firstLine(value: string): string {
+  return value.split('\n')[0].replace(/\s+/g, ' ').trim();
+}
+
+/** Code plus the server message, without a stack trace or a token. */
+function serverReason(error: unknown): string {
+  const code = errorCode(error);
+  const raw = typeof error === 'string' ? error : plainMessage(error);
+  const message = firstLine(raw);
+  const text = (code && message && !message.startsWith(code) ? `${code}: ${message}` : message || code)
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 180);
+  if (!text || /node_modules|\.swift\b|\.ts:\d|jwt|bearer\s|eyJ[A-Za-z0-9_-]{12,}/i.test(text)) return '';
+  return text;
+}
+
+const CANNOT_CONTACT = 'You cannot contact this person.';
+
+/** The connections insert policy refuses a block, someone under 18, or a hidden profile. */
+function connectionRefused(error: unknown): boolean {
+  const text = `${errorCode(error)} ${typeof error === 'string' ? error : plainMessage(error)}`.toLowerCase();
+  return /row-level security/.test(text) && /connections/.test(text);
+}
+
+/**
+ * Copy for a failed private message. A sentence we wrote stays as it is.
+ * A server failure keeps its code and message, so the screen can show why it failed.
+ * A connection the server refuses becomes a plain sentence.
+ */
+export function privateMessageFailure(error: unknown): string {
+  console.error(error);
+  if (error instanceof UserFacingError) return error.message;
+  if (isTransientNetworkError(error)) return OFFLINE_MESSAGE;
+  const known = matchKnown(errorText(error));
+  if (known) return known.message;
+  if (connectionRefused(error)) return CANNOT_CONTACT;
+  return serverReason(error) || PRIVATE_MESSAGE_FALLBACK;
+}

@@ -134,7 +134,7 @@ function useShareWrite() {
 
 export function NutritionSectionShare() {
   const { repo, snap, consented, communityOn } = useShareWrite();
-  const boxes = nutritionSectionBoxes(snap.nutrition);
+  const boxes = nutritionSectionBoxes(snap.nutrition, snap.sharing.healthPlan);
   return (
     <SectionShare
       boxes={boxes}
@@ -142,19 +142,21 @@ export function NutritionSectionShare() {
       consented={consented}
       onCommit={async (on) => {
         const current = repo.getSnapshot();
-        const becoming = on ? boxesBecomingVisible(nutritionSectionBoxes(current.nutrition)) : [];
+        const becoming = on ? boxesBecomingVisible(nutritionSectionBoxes(current.nutrition, current.sharing.healthPlan)) : [];
         const sharing = stampSectionConsent(
-          current.sharing,
+          applyProfileSection(current.sharing, { healthPlan: true }, on),
           sectionNeedsConsent(becoming, Boolean(current.sharing.sensitiveConsentAt)),
           new Date().toISOString(),
         );
         const nutrition = applyNutritionSection(current.nutrition, on);
+        const sharingChanged = sharing.healthPlan !== current.sharing.healthPlan
+          || sharing.sensitiveConsentAt !== current.sharing.sensitiveConsentAt;
         await runSectionSave([
           {
             write: () => repo.setNutritionSettings(nutrition),
             undo: () => repo.setNutritionSettings(current.nutrition),
           },
-          ...(sharing !== current.sharing ? [{
+          ...(sharingChanged ? [{
             write: () => repo.setProfileSharing(sharing),
             undo: () => repo.setProfileSharing(current.sharing),
           }] : []),
@@ -175,6 +177,7 @@ export function YouSectionShare() {
     reasons: snap.reasons,
     reasonBodies: snap.sharing.reasonBodies,
     wagonVisible: snap.nutrition.wagonVisible,
+    planShared: snap.sharing.healthPlan,
   });
   return (
     <SectionShare
@@ -193,6 +196,7 @@ export function YouSectionShare() {
           reasons: current.reasons,
           reasonBodies: current.sharing.reasonBodies,
           wagonVisible: current.nutrition.wagonVisible,
+          planShared: current.sharing.healthPlan,
         });
         const becoming = on ? boxesBecomingVisible(fresh) : [];
         const sharing = stampSectionConsent(

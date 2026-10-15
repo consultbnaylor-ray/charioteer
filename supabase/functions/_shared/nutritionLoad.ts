@@ -5,6 +5,7 @@ import {
   foodItemFromUnknown,
   isBodyBuild,
   isBodyCompositionSource,
+  isBuilderPhase,
   isMealSlot,
   isNutritionGoal,
   isNutritionSex,
@@ -91,6 +92,10 @@ function settingsFromRow(row: unknown): NutritionSettings {
     goalAge: age == null ? null : Math.round(age),
     goalSex: typeof record.goal_sex === 'string' && isNutritionSex(record.goal_sex) ? record.goal_sex : null,
     proteinTarget: optionalNumber(record.protein_target_g, 0, 700),
+    carbTarget: optionalNumber(record.carb_target_g, 0, 1000),
+    fatTarget: optionalNumber(record.fat_target_g, 0, 400),
+    goalPhase: typeof record.goal_phase === 'string' && isBuilderPhase(record.goal_phase) ? record.goal_phase : null,
+    weightClassKg: optionalNumber(record.weight_class_kg, 40, 200),
     activityEnergyKcal: optionalNumber(record.activity_energy_kcal, 0, 2500),
     shareGoal: record.share_goal === true,
     wagonOn: record.wagon_on === true,
@@ -143,6 +148,7 @@ export async function loadNutritionLines(
   now = new Date(),
 ): Promise<string[]> {
   const today = londonDay(now);
+  const athlete = 'kcal_target, hide_calories, share_food_diary, share_calories, share_quality, share_progress, goal, goal_age, goal_sex, protein_target_g, carb_target_g, fat_target_g, goal_phase, weight_class_kg, activity_energy_kcal, share_goal, wagon_on, wagon_note, wagon_visible, build, updated_at';
   const wide = 'kcal_target, hide_calories, share_food_diary, share_calories, share_quality, share_progress, goal, goal_age, goal_sex, protein_target_g, activity_energy_kcal, share_goal, wagon_on, wagon_note, wagon_visible, build, updated_at';
   const goals = 'kcal_target, hide_calories, share_food_diary, share_calories, share_quality, share_progress, goal, goal_age, goal_sex, protein_target_g, activity_energy_kcal, share_goal, wagon_on, wagon_note, wagon_visible, updated_at';
   const narrow = 'kcal_target, hide_calories, share_food_diary, wagon_on, wagon_note, wagon_visible, updated_at';
@@ -152,7 +158,10 @@ export async function loadNutritionLines(
     userClient.from('health_samples').select('kind, value, recorded_on').eq('user_id', profile.id).order('recorded_on', { ascending: true }).limit(400),
     userClient.from('body_composition').select('id, recorded_on, body_fat_pct, lean_mass_kg, waist_cm, source, created_at').eq('user_id', profile.id).order('recorded_on', { ascending: false }).limit(40),
   ]);
-  let settingsRes = await userClient.from('nutrition_settings').select(wide).eq('user_id', profile.id).maybeSingle();
+  let settingsRes = await userClient.from('nutrition_settings').select(athlete).eq('user_id', profile.id).maybeSingle();
+  if (settingsRes.error) {
+    settingsRes = await userClient.from('nutrition_settings').select(wide).eq('user_id', profile.id).maybeSingle();
+  }
   if (settingsRes.error) {
     settingsRes = await userClient.from('nutrition_settings').select(goals).eq('user_id', profile.id).maybeSingle();
   }

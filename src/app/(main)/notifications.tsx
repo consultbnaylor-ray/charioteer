@@ -68,7 +68,7 @@ export default function NotificationsScreen() {
             onValueChange={(value) => {
               setError(null);
               void repo.updateProfile({ messageNotifications: value }).then(() => {
-                if (value) void offerMessageNotifications(repo);
+                if (value) void offerMessageNotifications(repo).catch((error: unknown) => console.error('message notifications', error));
               }).catch((err: unknown) => setError(shownError(err, 'Could not save.')));
             }}
             trackColor={{ true: theme.colors.ink, false: theme.colors.line }}

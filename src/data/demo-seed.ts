@@ -8,6 +8,9 @@ import { VISION_SAMPLE_PHOTOS } from '@/data/visionSamples';
 import { isoDay } from '@/domain/dates';
 import { defaultNutritionSettings, estimateFromText } from '@/domain/nutrition';
 import type { BodyCompositionReading } from '@/domain/nutrition';
+import { PLAN_DISCLAIMER, draftHealthPlan, type HealthPlan } from '@/domain/healthPlan';
+import { scopeFromPreset } from '@/domain/buddies';
+import { defaultProfileSharing } from '@/domain/profileSharing';
 import type { GratitudeEntry } from '@/domain/gratitude';
 import { gratitudeStoragePath } from '@/domain/gratitudePhotos';
 import { planProgressPhoto, progressStoragePath } from '@/domain/progressPhotos';
@@ -53,6 +56,8 @@ export type DemoAccount = {
   waterDays?: import('@/domain/nutrition').NutritionDay[];
   /** Absent on older sample data. Private body-fat, lean-mass, and waist history. */
   bodyComposition?: BodyCompositionReading[];
+  /** Absent on older sample data. Private until Share on profile is on. */
+  healthPlan?: HealthPlan | null;
 };
 
 export type DemoDb = {
@@ -64,6 +69,26 @@ export type DemoDb = {
   messages: DirectMessage[];
   blocks: { id: string; blockerId: string; blockedId: string }[];
   reports: import('@/data/types').Report[];
+  /** Absent on older sample data. Personal shares, not the public profile. */
+  buddyInvites?: {
+    id: string;
+    ownerId: string;
+    buddyId: string;
+    status: 'pending' | 'accepted' | 'declined' | 'revoked';
+    scope: import('@/domain/buddies').BuddyScope;
+    createdAt: string;
+  }[];
+  buddyLinks?: {
+    id: string;
+    ownerId: string;
+    token: string;
+    code: string;
+    scope: import('@/domain/buddies').BuddyScope;
+    expiresAt: string;
+    createdAt: string;
+    usedBy: string | null;
+    revokedAt: string | null;
+  }[];
   interests: typeof INTEREST_CATALOGUE;
   resources: typeof RESOURCE_CATALOGUE;
 };
@@ -315,6 +340,37 @@ export function createDemoDb(now = new Date()): DemoDb {
       createdAt: now.toISOString(),
     }],
   };
+  alex.healthPlan = draftHealthPlan({
+    now,
+    salt: 'alex-seed',
+    displayName: alex.profile.displayName,
+    stage: alex.profile.stage,
+    sobrietyStartedAt: alex.profile.sobrietyStartedAt,
+    heightCm: alex.profile.heightCm,
+    visionStatement: alex.profile.visionStatement,
+    visionCaptions: [],
+    interestLabels: ['Hiking', 'Gym'],
+    reasons: alexReasons.map((reason) => reason.body),
+    limits: '',
+    goal: alex.nutrition?.goal ?? null,
+    goalSex: alex.nutrition?.goalSex ?? null,
+    goalAge: alex.nutrition?.goalAge ?? null,
+    build: alex.nutrition?.build ?? null,
+    kcalTarget: alex.nutrition?.kcalTarget ?? null,
+    proteinTarget: alex.nutrition?.proteinTarget ?? null,
+    carbTarget: alex.nutrition?.carbTarget ?? null,
+    fatTarget: alex.nutrition?.fatTarget ?? null,
+    goalPhase: alex.nutrition?.goalPhase ?? null,
+    weightClassKg: alex.nutrition?.weightClassKg ?? null,
+    hideCalories: alex.nutrition?.hideCalories ?? false,
+    foodLogs: [],
+    checkIns: checkIns.map((row) => ({ mood: row.mood, craving: row.craving, sleepHours: row.sleepHours, note: row.note, createdAt: row.createdAt })),
+    health,
+    bodyFatPct: 15,
+    leanMassKg: 63,
+    waistCm: 84,
+    doneTexts: [],
+  });
   const anchor = new Date(started);
   const startPlan = planProgressPhoto({
     takenOn: isoDay(anchor),
@@ -426,10 +482,14 @@ export function createDemoDb(now = new Date()): DemoDb {
     shareCalories: false,
     shareQuality: false,
     shareProgress: false,
-    goal: null,
+    goal: 'maintain',
     goalAge: null,
     goalSex: null,
     proteinTarget: null,
+    carbTarget: null,
+    fatTarget: null,
+    goalPhase: null,
+    weightClassKg: null,
     activityEnergyKcal: null,
     shareGoal: false,
     wagonOn: true,
@@ -437,6 +497,23 @@ export function createDemoDb(now = new Date()): DemoDb {
     wagonVisible: true,
     build: null,
     updatedAt: null,
+  };
+  jordan.sharing = { ...defaultProfileSharing(), healthPlan: true, sensitiveConsentAt: '2026-10-01T09:00:00.000Z' };
+  jordan.healthPlan = {
+    focus: [
+      { id: 'focus-1', text: 'Walk 30 minutes on Monday.', done: true },
+      { id: 'focus-2', text: 'Keep three meals at the same times.', done: false },
+    ],
+    nutrition: {
+      targets: '2,200 kcal',
+      habits: [{ id: 'habit-1', text: 'Put protein on the lunch you already eat.', done: false }],
+      swaps: [],
+    },
+    fitness: { intro: '8,689 steps', sessions: [] },
+    wellbeing: { habits: [{ id: 'well-1', text: 'Sleep about 7.4 hours.', done: false }] },
+    limits: '',
+    disclaimer: PLAN_DISCLAIMER,
+    updatedAt: now.toISOString(),
   };
   jordan.foodLogs = [{
     id: '11111111-1111-4111-8111-111111111113',
@@ -498,6 +575,25 @@ export function createDemoDb(now = new Date()): DemoDb {
     ],
     blocks: [],
     reports: [],
+    buddyInvites: [
+      {
+        id: 'dddddddd-dddd-4ddd-8ddd-ddddddddddd1',
+        ownerId: PEOPLE.jordan,
+        buddyId: PEOPLE.alex,
+        status: 'accepted',
+        scope: { ...scopeFromPreset('food'), healthPlan: true },
+        createdAt: ago(48),
+      },
+      {
+        id: 'dddddddd-dddd-4ddd-8ddd-ddddddddddd2',
+        ownerId: PEOPLE.priya,
+        buddyId: PEOPLE.alex,
+        status: 'pending',
+        scope: scopeFromPreset('light'),
+        createdAt: ago(3),
+      },
+    ],
+    buddyLinks: [],
     interests: INTEREST_CATALOGUE.map((item) => ({ ...item })),
     resources: RESOURCE_CATALOGUE.map((item) => ({ ...item })),
   };

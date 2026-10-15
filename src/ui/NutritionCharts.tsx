@@ -1,8 +1,9 @@
 import { useMemo, useState, type ReactNode } from 'react';
 import { View } from 'react-native';
-import Svg, { Circle, Line, Rect } from 'react-native-svg';
+import Svg, { Circle, Line } from 'react-native-svg';
 
-import type { FoodLog, NutritionGoal, TrendDay } from '@/domain/nutrition';
+import type { ChartBar } from '@/domain/distance';
+import type { FoodLog, NutritionGoal, TodayRing, TrendDay } from '@/domain/nutrition';
 import {
   dayItems,
   eatingInsights,
@@ -18,15 +19,16 @@ import {
   waterProgress,
   weightTrendLine,
 } from '@/domain/nutrition';
+import type { StatsTone } from '@/domain/statsOverview';
+import { CompareBars, ProgressRing, useChartMotion } from '@/ui/DistanceCharts';
+import { statsToneColors } from '@/ui/statsPalette';
 import { useAppTheme } from '@/ui/theme';
 import { Card, Choice, T } from '@/ui/ui';
-
-const RING = 132;
-const RING_STROKE = 12;
 
 /**
  * Nutrition charts use react-native-svg, the same drawing library as Health.
  * Figures come from the meals already on screen, so nothing is fetched.
+ * Colour comes from the stats palette, with a word beside it.
  */
 export function NutritionBoard({
   logs,
@@ -51,17 +53,29 @@ export function NutritionBoard({
   const picture = useMemo(() => {
     const items = dayItems(logs, today);
     const totals = sumItems(items);
+    const whole = items.filter((item) => !item.processed).length;
+    const processed = items.length - whole;
+    const shared = {
+      hideCalories,
+      kcal: totals.kcal,
+      kcalTarget,
+      proteinG: totals.proteinG,
+      proteinTarget,
+      logged: items.length > 0,
+    };
     return {
-      ring: todayRing({
-        hideCalories,
-        kcal: totals.kcal,
-        kcalTarget,
-        proteinG: totals.proteinG,
-        proteinTarget,
-        logged: items.length > 0,
-      }),
+      kcal: hideCalories ? null : todayRing({ ...shared, hideCalories: false }),
+      protein: todayRing({ ...shared, hideCalories: true }),
       macros: macroSplit(items),
       fats: fatBalance(items),
+      quality: items.length === 0 ? null : {
+        max: Math.max(whole, processed, 1),
+        caption: `Whole ${whole}, processed ${processed}.`,
+        bars: [
+          { key: 'whole', label: `Whole ${whole}`, value: whole, tone: whole > 0 ? 'good' : 'empty' },
+          { key: 'processed', label: `Processed ${processed}`, value: processed, tone: processed > 0 ? 'watch' : 'info' },
+        ] satisfies ChartBar[],
+      },
       dots: loggingDots(logs, today),
       dotsCaption: loggingCaption(logs, today),
       insights: eatingInsights(logs, checkIns),
@@ -76,12 +90,22 @@ export function NutritionBoard({
   return (
     <>
       <Card>
-        <T variant="label">{hideCalories ? 'Protein today' : 'Energy today'}</T>
-        <Ring ring={picture.ring} />
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12, justifyContent: 'space-around' }}>
+          {picture.kcal ? <RingFigure label="Energy today" ring={picture.kcal} tone={energyTone(picture.kcal)} /> : null}
+          <RingFigure label="Protein today" ring={picture.protein} tone={proteinTone(picture.protein)} />
+        </View>
         <T variant="label">Protein, carbohydrate and fat</T>
-        <MacroDonut slices={picture.macros.slices} caption={picture.macros.caption} />
+        <MacroBars slices={picture.macros.slices} caption={picture.macros.caption} />
         <T variant="label">Fats</T>
         <FatBar unsaturated={picture.fats.unsaturated} other={picture.fats.other} caption={picture.fats.line} />
+        {picture.quality ? (
+          <>
+            <T variant="label">Food quality</T>
+            <View accessibilityLabel={picture.quality.caption}>
+              <CompareBars layout="row" max={picture.quality.max} bars={picture.quality.bars} />
+            </View>
+          </>
+        ) : null}
         {qualitySwitch}
       </Card>
 
@@ -96,6 +120,7 @@ export function NutritionBoard({
             {hideCalories ? null : (
               <TrendBars
                 title="Energy"
+                kind="kcal"
                 days={trend.days}
                 pick={(day) => day.kcal}
                 target={kcalTarget}
@@ -104,6 +129,7 @@ export function NutritionBoard({
             )}
             <TrendBars
               title="Protein"
+              kind="protein"
               days={trend.days}
               pick={(day) => day.proteinG}
               target={proteinTarget}
@@ -131,6 +157,38 @@ export function NutritionBoard({
   );
 }
 
+function energyTone(ring: TodayRing): StatsTone {
+  if (ring.value <= 0 || ring.target == null) return 'info';
+  if (ring.value > ring.target) return 'watch';
+  if (ring.value >= ring.target * 0.85) return 'good';
+  return 'info';
+}
+
+function proteinTone(ring: TodayRing): StatsTone {
+  if (ring.value <= 0 || ring.target == null) return 'info';
+  return ring.value >= ring.target ? 'good' : 'info';
+}
+
+function RingFigure({ label, ring, tone }: { label: string; ring: TodayRing; tone: StatsTone }) {
+  return (
+    <View style={{ alignItems: 'center', gap: 4, flexGrow: 1, flexBasis: 140 }}>
+      <T variant="label">{label}</T>
+      <ProgressRing
+        centre={ring.centre}
+        unit={ring.unit}
+        fill={ring.fill}
+        status={ring.status}
+        tone={tone}
+        surface="card"
+        size={108}
+        mark
+        spoken
+        caption={ring.caption}
+      />
+    </View>
+  );
+}
+
 export function WeightTrendChart({
   points,
   goal,
@@ -139,6 +197,8 @@ export function WeightTrendChart({
   goal: NutritionGoal | null;
 }) {
   const theme = useAppTheme();
+  const motion = useChartMotion();
+  const ink = statsToneColors(theme.scheme).info.ink;
   const [width, setWidth] = useState(0);
   const series = smoothWeight(points);
   const caption = weightTrendLine(points, goal);
@@ -155,28 +215,30 @@ export function WeightTrendChart({
   };
   return (
     <View accessibilityLabel={caption} style={{ gap: 8 }}>
-      <View onLayout={(event) => setWidth(Math.round(event.nativeEvent.layout.width))}>
+      <View onLayout={(event) => setWidth(Math.round(event.nativeEvent.layout.width))} style={{ overflow: 'hidden' }}>
         {width > 0 ? (
-          <Svg width={width} height={height}>
-            {series.slice(1).map((point, index) => {
-              const previous = series[index];
-              if (!previous) return null;
-              return (
-                <Line
-                  key={point.day}
-                  x1={xFor(index)}
-                  y1={yFor(previous.smooth)}
-                  x2={xFor(index + 1)}
-                  y2={yFor(point.smooth)}
-                  stroke={theme.colors.ink}
-                  strokeWidth={2}
-                />
-              );
-            })}
-            {series.map((point, index) => (
-              <Circle key={point.day} cx={xFor(index)} cy={yFor(point.kg)} r={3.5} fill={theme.colors.ink} />
-            ))}
-          </Svg>
+          <View style={{ width: Math.max(1, width * motion), overflow: 'hidden' }}>
+            <Svg width={width} height={height}>
+              {series.slice(1).map((point, index) => {
+                const previous = series[index];
+                if (!previous) return null;
+                return (
+                  <Line
+                    key={point.day}
+                    x1={xFor(index)}
+                    y1={yFor(previous.smooth)}
+                    x2={xFor(index + 1)}
+                    y2={yFor(point.smooth)}
+                    stroke={ink}
+                    strokeWidth={2}
+                  />
+                );
+              })}
+              {series.map((point, index) => (
+                <Circle key={point.day} cx={xFor(index)} cy={yFor(point.kg)} r={3.5} fill={ink} />
+              ))}
+            </Svg>
+          </View>
         ) : (
           <View style={{ height }} />
         )}
@@ -187,109 +249,52 @@ export function WeightTrendChart({
 }
 
 export function WaterMeter({ ml }: { ml: number }) {
-  const theme = useAppTheme();
   const water = waterProgress(ml);
+  const tone: StatsTone = water.ml >= water.mark ? 'good' : 'info';
   return (
-    <View accessibilityLabel={water.caption} style={{ gap: 8 }}>
-      <View style={{ height: 14, borderRadius: 7, backgroundColor: theme.colors.line, overflow: 'hidden' }}>
-        <View style={{ width: `${Math.round(water.fill * 100)}%`, height: '100%', backgroundColor: theme.colors.ink }} />
-      </View>
-      <T variant="muted">{water.caption}</T>
-    </View>
+    <ProgressRing
+      centre={water.ml.toLocaleString('en-GB')}
+      unit="ml"
+      fill={water.fill}
+      status={water.status}
+      tone={tone}
+      surface="card"
+      mark
+      spoken
+      caption={water.caption}
+    />
   );
 }
 
-function Ring({ ring }: { ring: ReturnType<typeof todayRing> }) {
-  const theme = useAppTheme();
-  const radius = (RING - RING_STROKE) / 2;
-  const circumference = 2 * Math.PI * radius;
-  const dash = circumference * ring.fill;
-  const centre = RING / 2;
-  return (
-    <View accessibilityLabel={ring.caption} style={{ alignItems: 'center', gap: 8 }}>
-      <View style={{ width: RING, height: RING }}>
-        <Svg width={RING} height={RING}>
-          <Circle cx={centre} cy={centre} r={radius} stroke={theme.colors.line} strokeWidth={RING_STROKE} fill="none" />
-          {ring.fill > 0 ? (
-            <Circle
-              cx={centre}
-              cy={centre}
-              r={radius}
-              stroke={theme.colors.ink}
-              strokeWidth={RING_STROKE}
-              fill="none"
-              strokeDasharray={`${dash} ${circumference - dash}`}
-              transform={`rotate(-90 ${centre} ${centre})`}
-            />
-          ) : null}
-        </Svg>
-        <View style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, alignItems: 'center', justifyContent: 'center' }}>
-          <T variant="title">{ring.centre}</T>
-          <T variant="muted">{ring.unit}</T>
-        </View>
-      </View>
-      <T variant="muted">{ring.caption}</T>
-    </View>
-  );
-}
-
-function MacroDonut({
+function MacroBars({
   slices,
   caption,
 }: {
   slices: { id: 'protein' | 'carbs' | 'fat'; label: string; grams: number; share: number }[];
   caption: string;
 }) {
-  const theme = useAppTheme();
-  const ink = { protein: theme.colors.ink, carbs: theme.colors.muted, fat: theme.colors.placeholder };
-  const size = 132;
-  const stroke = 16;
-  const radius = (size - stroke) / 2;
-  const circumference = 2 * Math.PI * radius;
-  const centre = size / 2;
-  let offset = 0;
+  if (slices.length === 0) return <T variant="muted">{caption}</T>;
+  const max = Math.max(...slices.map((slice) => slice.grams), 1);
   return (
-    <View accessibilityLabel={caption} style={{ alignItems: 'center', gap: 8 }}>
-      {slices.length === 0 ? <T variant="muted">{caption}</T> : (
-        <>
-          <Svg width={size} height={size}>
-            {slices.filter((slice) => slice.grams > 0).map((slice) => {
-              const length = slice.share * circumference;
-              const node = (
-                <Circle
-                  key={slice.id}
-                  cx={centre}
-                  cy={centre}
-                  r={radius}
-                  stroke={ink[slice.id]}
-                  strokeWidth={stroke}
-                  fill="none"
-                  strokeDasharray={`${length} ${circumference - length}`}
-                  strokeDashoffset={-offset}
-                  transform={`rotate(-90 ${centre} ${centre})`}
-                />
-              );
-              offset += length;
-              return node;
-            })}
-          </Svg>
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 12 }}>
-            {slices.map((slice) => (
-              <View key={slice.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: ink[slice.id] }} />
-                <T style={{ fontSize: 13 * theme.scale, lineHeight: 18 * theme.scale }}>{slice.label}</T>
-              </View>
-            ))}
-          </View>
-          <T variant="muted">{caption}</T>
-        </>
-      )}
+    <View accessibilityLabel={caption} style={{ gap: 8 }}>
+      <CompareBars
+        layout="row"
+        max={max}
+        bars={slices.map((slice) => ({
+          key: slice.id,
+          label: `${slice.label} ${slice.grams} g`,
+          value: slice.grams,
+          tone: 'info',
+        }))}
+      />
+      <T variant="muted">{caption}</T>
     </View>
   );
 }
 
 function FatBar({ unsaturated, other, caption }: { unsaturated: number; other: number; caption: string }) {
   const theme = useAppTheme();
+  const colors = statsToneColors(theme.scheme);
   const total = unsaturated + other;
   const share = total > 0 ? unsaturated / total : 0;
   return (
@@ -297,8 +302,8 @@ function FatBar({ unsaturated, other, caption }: { unsaturated: number; other: n
       <View style={{ height: 16, borderRadius: 8, backgroundColor: theme.colors.line, overflow: 'hidden', flexDirection: 'row' }}>
         {total > 0 ? (
           <>
-            <View style={{ width: `${Math.round(share * 100)}%`, backgroundColor: theme.colors.ink }} />
-            <View style={{ width: `${100 - Math.round(share * 100)}%`, backgroundColor: theme.colors.muted }} />
+            <View style={{ width: `${Math.round(share * 100)}%`, backgroundColor: colors.good.ink }} />
+            <View style={{ width: `${100 - Math.round(share * 100)}%`, backgroundColor: colors.watch.ink }} />
           </>
         ) : null}
       </View>
@@ -311,61 +316,53 @@ function FatBar({ unsaturated, other, caption }: { unsaturated: number; other: n
   );
 }
 
+function barTone(kind: 'kcal' | 'protein', amount: number, logged: boolean, target: number | null): ChartBar['tone'] {
+  if (!logged) return 'empty';
+  if (target == null || target <= 0) return 'info';
+  if (kind === 'protein') return amount >= target ? 'good' : 'info';
+  return amount > target ? 'watch' : 'good';
+}
+
 function TrendBars({
   title,
+  kind,
   days,
   pick,
   target,
   unit,
 }: {
   title: string;
+  kind: 'kcal' | 'protein';
   days: readonly TrendDay[];
   pick: (day: TrendDay) => number;
   target: number | null;
   unit: string;
 }) {
   const theme = useAppTheme();
-  const [width, setWidth] = useState(0);
   const amounts = days.map((day) => pick(day));
   const top = Math.max(...amounts, target != null && target > 0 ? target : 0, 1);
-  const height = 112;
-  const barHeight = (amount: number) => Math.max(amount > 0 ? 3 : 1, (amount / top) * (height - 8));
-  const targetY = target != null && target > 0 ? height - (target / top) * (height - 8) : null;
   return (
     <View accessibilityLabel={`${title} over ${days.length} days`} style={{ gap: 6 }}>
       <T variant="label">{title}</T>
-      <View onLayout={(event) => setWidth(Math.round(event.nativeEvent.layout.width))}>
-        {width > 0 ? (
-          <Svg width={width} height={height}>
-            {targetY != null ? (
-              <Line x1={0} x2={width} y1={targetY} y2={targetY} stroke={theme.colors.muted} strokeWidth={1} strokeDasharray="4 4" />
-            ) : null}
-            {days.map((day, index) => {
-              const slot = width / days.length;
-              const bar = Math.max(2, Math.min(16, slot * 0.62));
-              const amount = amounts[index] ?? 0;
-              const h = barHeight(amount);
-              return (
-                <Rect
-                  key={day.day}
-                  x={index * slot + (slot - bar) / 2}
-                  y={height - h}
-                  width={bar}
-                  height={h}
-                  fill={day.logged ? theme.colors.ink : theme.colors.line}
-                />
-              );
-            })}
-          </Svg>
-        ) : (
-          <View style={{ height }} />
-        )}
-      </View>
-      <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-        {axisLabels(days.map((day) => day.day)).map((label) => (
-          <T key={label.key} style={{ fontSize: 11 * theme.scale, lineHeight: 14 * theme.scale, color: theme.colors.muted }}>{label.text}</T>
-        ))}
-      </View>
+      <CompareBars
+        max={top}
+        target={target != null && target > 0 ? target : null}
+        showLabels={days.length <= 7}
+        bars={days.map((day, index) => ({
+          key: day.day,
+          label: weekdayLetter(day.day),
+          value: amounts[index] ?? 0,
+          tone: barTone(kind, amounts[index] ?? 0, day.logged, target),
+          missing: day.logged ? undefined : 'line',
+        }))}
+      />
+      {days.length > 7 ? (
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+          {axisLabels(days.map((day) => day.day)).map((label) => (
+            <T key={label.key} style={{ fontSize: 11 * theme.scale, lineHeight: 14 * theme.scale, color: theme.colors.muted }}>{label.text}</T>
+          ))}
+        </View>
+      ) : null}
       {target != null && target > 0 ? (
         <T variant="muted">{`Dashed line: ${target.toLocaleString('en-GB')} ${unit} target.`}</T>
       ) : null}
@@ -381,6 +378,7 @@ function LoggingCalendar({
   caption: string;
 }) {
   const theme = useAppTheme();
+  const loggedInk = statsToneColors(theme.scheme).info.ink;
   return (
     <View accessibilityLabel={caption} style={{ gap: 8 }}>
       <View style={{ flexDirection: 'row', flexWrap: 'wrap' }}>
@@ -392,7 +390,7 @@ function LoggingCalendar({
                 width: 12,
                 height: 12,
                 borderRadius: 6,
-                backgroundColor: dot.logged ? theme.colors.ink : theme.colors.line,
+                backgroundColor: dot.logged ? loggedInk : theme.colors.line,
               }}
             />
           </View>
@@ -426,16 +424,13 @@ function SnackBar({ label, value, height }: { label: string; value: number; heig
   return (
     <View style={{ flex: 1, gap: 4 }}>
       <T style={{ fontSize: 13 * theme.scale, lineHeight: 18 * theme.scale }}>{label}</T>
-      <View style={{ height, backgroundColor: theme.colors.ink, borderRadius: 2 }} />
+      <View style={{ height, backgroundColor: statsToneColors(theme.scheme).info.ink, borderRadius: 2 }} />
       <T variant="muted">{value === 1 ? '1 snack' : `${value} snacks`}</T>
     </View>
   );
 }
 
 function axisLabels(days: string[]): { key: string; text: string }[] {
-  if (days.length <= 7) {
-    return days.map((day) => ({ key: day, text: weekdayLetter(day) }));
-  }
   const first = days[0];
   const middle = days[Math.floor(days.length / 2)];
   const last = days[days.length - 1];
