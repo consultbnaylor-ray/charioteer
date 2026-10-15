@@ -62,12 +62,27 @@ describe('user facing errors', () => {
     const connect = repo.slice(repo.indexOf('async requestConnection'), repo.indexOf('async respondConnection'));
     expect(connect).toContain('if (error && !isDuplicateWrite(error)) throw error');
     const open = repo.slice(repo.indexOf('async openPrivateChat'), repo.indexOf('async requestConnection'));
-    expect(open).toContain('if (blocks.error) throw blocks.error');
-    expect(open).not.toContain('asUserFacing(blocks.error');
+    expect(open).not.toContain(".from('blocks')");
+    expect(open).not.toContain('blocks.error');
     const profile = readFileSync('src/ui/CommunityProfile.tsx', 'utf8');
     expect(profile).toContain('privateMessageFailure');
     expect(profile).toContain('label="Try again"');
     expect(profile).not.toContain("shownError(err, 'Could not open a private message.')");
+    error.mockRestore();
+  });
+
+  it('says a person cannot be contacted when the server refuses the connection', () => {
+    const error = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const refused = Object.assign(
+      new Error('new row violates row-level security policy for table "connections"'),
+      { code: '42501' },
+    );
+    expect(privateMessageFailure(refused)).toBe('You cannot contact this person.');
+    expect(privateMessageFailure(refused)).not.toMatch(/42501|row-level|connections/i);
+    const repo = readFileSync('src/data/supabase-repository.ts', 'utf8');
+    const open = repo.slice(repo.indexOf('async openPrivateChat'), repo.indexOf('async requestConnection'));
+    expect(open).not.toContain('select(');
+    expect(open).toContain('requestConnection');
     error.mockRestore();
   });
 });

@@ -1116,13 +1116,8 @@ export class SupabaseRepository implements Repository {
       throw new UserFacingError('Turn on community, and confirm you are 18 or over, before you message.', 'generic');
     }
     if (userId === me) throw new UserFacingError('You cannot message yourself.', 'generic');
-    const blocks = await this.client.from('blocks').select('blocker_id, blocked_id').or(`blocker_id.eq.${userId},blocked_id.eq.${userId}`);
-    if (blocks.error) throw blocks.error;
-    const closed = (blocks.data ?? []).some((row) => {
-      const record = row as { blocker_id?: string; blocked_id?: string };
-      return (record.blocker_id === me && record.blocked_id === userId) || (record.blocker_id === userId && record.blocked_id === me);
-    });
-    if (closed) throw new UserFacingError('You cannot contact this person.', 'generic');
+    // A block, the age check, and who may read the chat are enforced on the server.
+    // authenticated cannot select blocks, so this does not read that table.
     const existing = this.snapshot.connections.find((connection) =>
       connection.status !== 'declined' &&
       ((connection.requesterId === me && connection.addresseeId === userId) ||

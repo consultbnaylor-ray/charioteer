@@ -137,9 +137,18 @@ function serverReason(error: unknown): string {
   return text;
 }
 
+const CANNOT_CONTACT = 'You cannot contact this person.';
+
+/** The connections insert policy refuses a block, someone under 18, or a hidden profile. */
+function connectionRefused(error: unknown): boolean {
+  const text = `${errorCode(error)} ${typeof error === 'string' ? error : plainMessage(error)}`.toLowerCase();
+  return /row-level security/.test(text) && /connections/.test(text);
+}
+
 /**
  * Copy for a failed private message. A sentence we wrote stays as it is.
  * A server failure keeps its code and message, so the screen can show why it failed.
+ * A connection the server refuses becomes a plain sentence.
  */
 export function privateMessageFailure(error: unknown): string {
   console.error(error);
@@ -147,5 +156,6 @@ export function privateMessageFailure(error: unknown): string {
   if (isTransientNetworkError(error)) return OFFLINE_MESSAGE;
   const known = matchKnown(errorText(error));
   if (known) return known.message;
+  if (connectionRefused(error)) return CANNOT_CONTACT;
   return serverReason(error) || PRIVATE_MESSAGE_FALLBACK;
 }
