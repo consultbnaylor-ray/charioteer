@@ -602,6 +602,76 @@ export function todayRing(input: {
   return { kind, value, target: usableTarget, fill, centre, unit, caption, status };
 }
 
+export const TODAY_MEALS_EMPTY = 'No meals logged yet today';
+
+/** A longer list starts closed. Five meals still fit on the card. */
+export const TODAY_MEALS_COLLAPSE_AFTER = 5;
+
+export type TodayMealRow = {
+  id: string;
+  meal: MealSlot;
+  typeLabel: string;
+  name: string;
+  kcal: number;
+};
+
+export type TodayMealTotals = {
+  kcal: number;
+  proteinG: number;
+  carbsG: number;
+  fatG: number;
+};
+
+function mealWhen(log: FoodLog): string {
+  return log.eatenAt || log.createdAt || '';
+}
+
+/** This person's meals for one day, earliest first. Another account's rows are left out. */
+export function todayMealRows(logs: readonly FoodLog[], day: string, ownerId: string): TodayMealRow[] {
+  return logs
+    .filter((log) => log.eatenOn === day && log.userId === ownerId)
+    .slice()
+    .sort((a, b) => mealWhen(a).localeCompare(mealWhen(b)) || a.id.localeCompare(b.id))
+    .map((log) => {
+      const names = log.items.map((item) => item.name.trim()).filter(Boolean).join(', ');
+      return {
+        id: log.id,
+        meal: log.meal,
+        typeLabel: MEAL_LABEL[log.meal],
+        name: names || log.note.trim() || 'Meal',
+        kcal: sumItems(log.items).kcal,
+      };
+    });
+}
+
+export function todayMealTotals(logs: readonly FoodLog[], day: string, ownerId: string): TodayMealTotals {
+  const items = logs
+    .filter((log) => log.eatenOn === day && log.userId === ownerId)
+    .flatMap((log) => log.items);
+  const totals = sumItems(items);
+  return {
+    kcal: totals.kcal,
+    proteinG: totals.proteinG,
+    carbsG: totals.carbsG,
+    fatG: round1(totals.unsaturatedG + totals.saturatedG + totals.transG),
+  };
+}
+
+export function todayMealsNeedCollapse(count: number): boolean {
+  return count > TODAY_MEALS_COLLAPSE_AFTER;
+}
+
+/** kcal, then protein, carbohydrate, and fat when any of those was logged. */
+export function todayMealTotalLine(totals: TodayMealTotals, hideCalories: boolean): string {
+  const hasMacros = totals.proteinG > 0 || totals.carbsG > 0 || totals.fatG > 0;
+  const macros = hasMacros
+    ? `Protein ${totals.proteinG} g · carbohydrate ${totals.carbsG} g · fat ${totals.fatG} g`
+    : '';
+  if (hideCalories) return macros;
+  const kcal = `${Math.round(totals.kcal).toLocaleString('en-GB')} kcal`;
+  return macros ? `${kcal} · ${macros}` : kcal;
+}
+
 export type MacroSlice = { id: 'protein' | 'carbs' | 'fat'; label: string; grams: number; share: number };
 
 export function macroSplit(items: readonly FoodItem[]): { slices: MacroSlice[]; caption: string } {

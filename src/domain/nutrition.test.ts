@@ -64,6 +64,11 @@ import {
   macroSplit,
   nutritionTrendDays,
   smoothWeight,
+  TODAY_MEALS_EMPTY,
+  todayMealRows,
+  todayMealTotalLine,
+  todayMealTotals,
+  todayMealsNeedCollapse,
   todayRing,
   trendCaption,
   waterProgress,
@@ -1283,5 +1288,105 @@ describe('training nutrition goals', () => {
     expect(weightTrendLine([{ day: '2026-09-01', kg: 80 }, { day: '2026-10-01', kg: 81 }], 'elite_heavy_boxer')).toContain('size and power');
     expect(proteinGramsFor('elite_heavy_boxer', 80, 'muscular')).toBe(176);
     expect(proteinGramsFor('elite_middle_boxer', 80, 'muscular')).toBe(176);
+  });
+});
+
+describe("today's meals on the log card", () => {
+  function item(partial: Partial<FoodItem> & Pick<FoodItem, 'name' | 'kcal'>): FoodItem {
+    return {
+      proteinG: 0,
+      carbsG: 0,
+      sugarG: 0,
+      fibreG: 0,
+      unsaturatedG: 0,
+      saturatedG: 0,
+      transG: 0,
+      sodiumMg: 0,
+      processed: false,
+      ...partial,
+    };
+  }
+
+  it('lists only this person’s meals for the day, earliest first, with a running total', () => {
+    const day = '2026-10-15';
+    const logs = [
+      log({
+        id: 'dinner',
+        eatenOn: day,
+        meal: 'dinner',
+        eatenAt: '2026-10-15T19:00:00.000Z',
+        createdAt: '2026-10-15T19:01:00.000Z',
+        items: [item({ name: 'Salmon', kcal: 400, proteinG: 30, saturatedG: 20 })],
+      }),
+      log({
+        id: 'breakfast',
+        eatenOn: day,
+        meal: 'breakfast',
+        eatenAt: '2026-10-15T08:00:00.000Z',
+        createdAt: '2026-10-15T08:05:00.000Z',
+        items: [item({ name: 'Porridge', kcal: 300, proteinG: 10, carbsG: 50, saturatedG: 5 })],
+      }),
+      log({
+        id: 'snack',
+        eatenOn: day,
+        meal: 'snack',
+        eatenAt: null,
+        createdAt: '2026-10-15T15:00:00.000Z',
+        note: 'Apple',
+        items: [],
+      }),
+      log({
+        id: 'other',
+        userId: 'someone-else',
+        eatenOn: day,
+        meal: 'lunch',
+        eatenAt: '2026-10-15T12:00:00.000Z',
+        items: [item({ name: 'Secret lunch', kcal: 900, proteinG: 1 })],
+      }),
+      log({
+        id: 'yesterday',
+        eatenOn: '2026-10-14',
+        meal: 'lunch',
+        items: [item({ name: 'Yesterday', kcal: 100, proteinG: 1 })],
+      }),
+    ];
+    const rows = todayMealRows(logs, day, 'user');
+    expect(rows.map((row) => row.typeLabel)).toEqual(['Breakfast', 'Snack', 'Dinner']);
+    expect(rows[0]).toMatchObject({ name: 'Porridge', kcal: 300 });
+    expect(rows[1]?.name).toBe('Apple');
+    expect(rows.map((row) => row.name).join(' ')).not.toContain('Secret');
+    expect(rows.map((row) => row.name).join(' ')).not.toContain('Yesterday');
+    const totals = todayMealTotals(logs, day, 'user');
+    expect(totals).toEqual({ kcal: 700, proteinG: 40, carbsG: 50, fatG: 25 });
+    expect(todayMealTotalLine(totals, false)).toBe('700 kcal · Protein 40 g · carbohydrate 50 g · fat 25 g');
+    expect(todayMealTotalLine(totals, true)).not.toContain('kcal');
+    expect(todayMealsNeedCollapse(5)).toBe(false);
+    expect(todayMealsNeedCollapse(6)).toBe(true);
+    expect(TODAY_MEALS_EMPTY).toBe('No meals logged yet today');
+    expect(todayRing({
+      hideCalories: false,
+      kcal: 1680,
+      kcalTarget: 2000,
+      proteinG: 40,
+      proteinTarget: null,
+      logged: true,
+    }).status).toBe('320 kcal left');
+    expect(todayMealRows([], day, 'user')).toEqual([]);
+  });
+
+  it('sits inside the Log a meal card and stays monochrome', () => {
+    const screen = readFileSync('src/app/(main)/nutrition.tsx', 'utf8');
+    const meals = readFileSync('src/ui/TodayMeals.tsx', 'utf8');
+    const log = screen.indexOf('variant="label">Log a meal');
+    const body = screen.indexOf('<BodyCompositionCard');
+    expect(screen.slice(log, body)).toContain('<TodayMeals');
+    expect(screen).toContain('todayMealRows(snap.foodLogs');
+    expect(screen).toContain("setEditAnchor('summary')");
+    expect(screen).toContain('<MealEdit');
+    expect(meals).toContain('TODAY_MEALS_EMPTY');
+    expect(meals).toContain("Hide today's meals");
+    expect(meals).not.toContain('statsTone');
+    expect(meals).not.toContain('statsPalette');
+    expect(readFileSync('src/app/(main)/home.tsx', 'utf8')).not.toContain('NutritionToday');
   });
 });

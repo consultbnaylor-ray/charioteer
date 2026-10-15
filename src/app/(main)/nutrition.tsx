@@ -45,6 +45,9 @@ import {
   suggestGoalTargets,
   sumItems,
   targetLine,
+  todayMealRows,
+  todayMealTotals,
+  todayRing,
   weightPointsFrom,
   weightTrendLine,
   type BuilderPhase,
@@ -63,6 +66,7 @@ import { readAppleHealthBody } from '@/health/sync';
 import { writeDayToAppleHealth } from '@/health/writeNutrition';
 import { BodyCompositionCard } from '@/ui/BodyComposition';
 import { MealEdit } from '@/ui/MealEdit';
+import { TodayMeals } from '@/ui/TodayMeals';
 import { NutritionBoard, WaterMeter, WeightTrendChart } from '@/ui/NutritionCharts';
 import { FatShareBar, NutritionShareSummary, NutritionShareSwitch, WagonFlag } from '@/ui/NutritionShare';
 import { NutritionSectionShare } from '@/ui/SectionShare';
@@ -261,6 +265,7 @@ export default function Nutrition() {
   const [suggestNote, setSuggestNote] = useState<string | null>(null);
   const [targetsSavedAt, setTargetsSavedAt] = useState<number | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [editAnchor, setEditAnchor] = useState<'summary' | 'list'>('list');
   const [confirmId, setConfirmId] = useState<string | null>(null);
   const [mealSavedAt, setMealSavedAt] = useState<number | null>(null);
 
@@ -565,43 +570,38 @@ export default function Nutrition() {
     });
   }
 
-  function renderLog(log: FoodLog, showDate: boolean) {
-    const names = log.items.map((item) => item.name).join(', ');
-    const kcal = hide ? '' : ` · ${sumItems(log.items).kcal} kcal`;
-    const estimate = log.estimated ? ` · ${ESTIMATE_LABEL}` : '';
-    const when = log.eatenAt ? ` · ${formatUkTime(log.eatenAt)}` : '';
-    const dateBit = showDate ? `${formatUkCompact(log.eatenOn)} · ` : '';
-    const portionBit = log.portion && log.portion !== 1 ? ` · portion ${log.portion}` : '';
+  function mealActions(log: FoodLog, where: 'summary' | 'list') {
+    const active = editAnchor === where;
     const health = Boolean(profile?.consentHealth);
     return (
-      <View key={log.id} style={{ gap: 6 }}>
-        {log.previewUrl ? (
-          <Image source={{ uri: log.previewUrl }} style={{ width: 96, height: 96, borderRadius: 10 }} contentFit="cover" accessibilityLabel="Saved meal photo" />
-        ) : null}
-        <T>{`${dateBit}${MEAL_LABEL[log.meal]}${when}: ${names || log.note || 'Meal'}${portionBit}${kcal}${estimate}`}</T>
+      <View style={{ gap: 6 }}>
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-          <Button
-            label="Edit"
-            tone="quiet"
-            accessibilityLabel={`Edit ${log.meal}`}
-            onPress={() => {
-              setConfirmId(null);
-              setMealSavedAt(null);
-              setEditingId((current) => (current === log.id ? null : log.id));
-            }}
-          />
+          {where === 'list' ? (
+            <Button
+              label="Edit"
+              tone="quiet"
+              accessibilityLabel={`Edit ${log.meal}`}
+              onPress={() => {
+                setEditAnchor('list');
+                setConfirmId(null);
+                setMealSavedAt(null);
+                setEditingId((current) => (current === log.id && editAnchor === 'list' ? null : log.id));
+              }}
+            />
+          ) : null}
           <Button
             label="Delete"
             tone="quiet"
             accessibilityLabel={`Delete ${log.meal}`}
             onPress={() => {
+              setEditAnchor(where);
               setEditingId(null);
               setMealSavedAt(null);
               setConfirmId(log.id);
             }}
           />
         </View>
-        {confirmId === log.id ? (
+        {active && confirmId === log.id ? (
           <View style={{ gap: 8 }}>
             <T>Delete this meal?</T>
             {health ? <T variant="muted">{APPLE_HEALTH_MEAL_NOTE}</T> : null}
@@ -609,7 +609,7 @@ export default function Nutrition() {
             <Button label="Keep it" tone="quiet" disabled={isPending(`remove:${log.id}`)} onPress={() => setConfirmId(null)} />
           </View>
         ) : null}
-        {editingId === log.id ? (
+        {active && editingId === log.id ? (
           <MealEdit
             log={log}
             hideCalories={hide}
@@ -623,6 +623,24 @@ export default function Nutrition() {
             onError={setError}
           />
         ) : null}
+      </View>
+    );
+  }
+
+  function renderLog(log: FoodLog, showDate: boolean) {
+    const names = log.items.map((item) => item.name).join(', ');
+    const kcal = hide ? '' : ` · ${sumItems(log.items).kcal} kcal`;
+    const estimate = log.estimated ? ` · ${ESTIMATE_LABEL}` : '';
+    const when = log.eatenAt ? ` · ${formatUkTime(log.eatenAt)}` : '';
+    const dateBit = showDate ? `${formatUkCompact(log.eatenOn)} · ` : '';
+    const portionBit = log.portion && log.portion !== 1 ? ` · portion ${log.portion}` : '';
+    return (
+      <View key={log.id} style={{ gap: 6 }}>
+        {log.previewUrl ? (
+          <Image source={{ uri: log.previewUrl }} style={{ width: 96, height: 96, borderRadius: 10 }} contentFit="cover" accessibilityLabel="Saved meal photo" />
+        ) : null}
+        <T>{`${dateBit}${MEAL_LABEL[log.meal]}${when}: ${names || log.note || 'Meal'}${portionBit}${kcal}${estimate}`}</T>
+        {mealActions(log, 'list')}
       </View>
     );
   }
@@ -761,6 +779,23 @@ export default function Nutrition() {
     });
   }
 
+  const ownerId = profile?.id ?? '';
+  const mealRows = todayMealRows(snap.foodLogs, today, ownerId);
+  const mealTotals = todayMealTotals(snap.foodLogs, today, ownerId);
+  const calorieRing = !hide && settings.kcalTarget != null && mealRows.length > 0
+    ? todayRing({
+      hideCalories: false,
+      kcal: mealTotals.kcal,
+      kcalTarget: settings.kcalTarget,
+      proteinG: mealTotals.proteinG,
+      proteinTarget: settings.proteinTarget,
+      logged: true,
+    })
+    : null;
+  const summaryLog = editAnchor === 'summary'
+    ? snap.foodLogs.find((log) => log.id === editingId || log.id === confirmId) ?? null
+    : null;
+
   const photoNote = draft?.source === 'photo'
     ? goalMealNote({
       goal: settings.goal,
@@ -803,6 +838,20 @@ export default function Nutrition() {
             previewUri: null,
             photoBase64: null,
           })}
+        />
+        <TodayMeals
+          rows={mealRows}
+          totals={mealTotals}
+          hideCalories={hide}
+          ring={calorieRing}
+          activeId={summaryLog?.id ?? null}
+          onOpen={(id) => {
+            setEditAnchor('summary');
+            setConfirmId(null);
+            setMealSavedAt(null);
+            setEditingId((current) => (current === id && editAnchor === 'summary' ? null : id));
+          }}
+          activeTools={summaryLog ? mealActions(summaryLog, 'summary') : null}
         />
       </Card>
       {draft ? (
