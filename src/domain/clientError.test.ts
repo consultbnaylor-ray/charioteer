@@ -18,7 +18,7 @@ describe('caught screen errors', () => {
 
   it('wraps profile and chat, and logs only the safe line', () => {
     const boundary = readFileSync('src/ui/ScreenBoundary.tsx', 'utf8');
-    const sql = readFileSync('supabase/migrations/20261015060000_chat_reads_and_client_errors.sql', 'utf8');
+    const sql = readFileSync('supabase/migrations/20261015061000_chat_reads_and_client_errors.sql', 'utf8');
     expect(boundary).toContain('{SCREEN_ERROR}');
     expect(boundary).toContain('sanitizeClientError');
     expect(boundary).toContain('logClientError');

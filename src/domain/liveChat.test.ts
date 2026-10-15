@@ -96,7 +96,7 @@ describe('live chat', () => {
     expect(people).toContain('screen="profile"');
     expect(readFileSync('src/ui/chatRead.ts', 'utf8')).toContain('saveChatRead');
     expect(readFileSync('src/data/chatRead.ts', 'utf8')).toContain('applyRemoteChatReads');
-    const reads = readFileSync('supabase/migrations/20261015060000_chat_reads_and_client_errors.sql', 'utf8');
+    const reads = readFileSync('supabase/migrations/20261015061000_chat_reads_and_client_errors.sql', 'utf8');
     expect(reads).toContain('create table public.chat_reads');
     expect(reads).toContain('create table public.client_errors');
     expect(reads).toContain('enable row level security');
