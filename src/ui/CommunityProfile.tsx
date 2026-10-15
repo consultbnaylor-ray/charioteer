@@ -44,8 +44,14 @@ function kindFor(label: string): ReportKind {
   return 'profile';
 }
 
+function shownSummary(summary: string): string {
+  const clean = summary.replace(/\s+/g, ' ').trim();
+  if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(clean)) return '';
+  return clean;
+}
+
 function choiceLabel(item: ReportTarget): string {
-  const summary = item.summary.replace(/\s+/g, ' ').trim();
+  const summary = shownSummary(item.summary);
   if (!summary || summary === item.label) return item.label;
   const short = summary.length > 64 ? `${summary.slice(0, 61)}…` : summary;
   return `${item.label}: ${short}`;
@@ -165,7 +171,7 @@ function ReportSheet({
           onPress={() => onSelect(item.key)}
         />
       ))}
-      {selected ? <T variant="muted">{selected.summary}</T> : null}
+      {selected && shownSummary(selected.summary) ? <T variant="muted">{shownSummary(selected.summary)}</T> : null}
       <Field
         label="Reason"
         value={reasonText}
