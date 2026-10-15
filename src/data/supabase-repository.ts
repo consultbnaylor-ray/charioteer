@@ -110,6 +110,7 @@ import { parseSseBuffer } from '@/domain/sse';
 import { detectSafety } from '@/domain/safety';
 import {
   MEAL_UNREACHABLE,
+  PLAN_NOT_SAVED,
   PLAN_UNREACHABLE,
   REFLECT_UNREACHABLE,
   VOICE_UNREACHABLE,
@@ -2421,8 +2422,17 @@ export class SupabaseRepository implements Repository {
       disclaimer: plan.disclaimer.slice(0, 400),
       updated_at: plan.updatedAt,
     });
-    if (error) throw asUserFacing(error, 'general');
     this.emit({ ...this.snapshot, healthPlan: plan });
+    if (error) {
+      const detail = typeof error.message === 'string' && error.message.trim()
+        ? error.message
+        : 'health plan upsert failed';
+      await this.logClientError('health-plan', detail, clientAppBuild({
+        buildNumber: Constants.expoConfig?.ios?.buildNumber,
+        version: Constants.expoConfig?.version,
+      }));
+      throw new UserFacingError(PLAN_NOT_SAVED, 'generic');
+    }
   }
 
   async sharedNutrition(userId: string) {

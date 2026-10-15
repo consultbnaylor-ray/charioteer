@@ -273,6 +273,23 @@ describe('health plan wiring', () => {
     expect(readFileSync('src/app/(main)/profile.tsx', 'utf8')).toContain("'/health-plan'");
   });
 
+  it('shows the written plan when the save fails, and keeps the other failure copy', () => {
+    const page = readFileSync('src/app/(main)/health-plan.tsx', 'utf8');
+    const repo = readFileSync('src/data/supabase-repository.ts', 'utf8');
+    const refresh = repo.slice(repo.indexOf('async refreshHealthPlan'), repo.indexOf('async sharedNutrition'));
+    const saved = refresh.slice(refresh.lastIndexOf(".from('health_plans')"));
+    expect(page).toContain('PLAN_NOT_SAVED');
+    expect(page).toContain("setError(PLAN_NOT_SAVED)");
+    expect(page).toContain("shownError(err, 'Could not write a plan.')");
+    expect(page.indexOf('PLAN_NOT_SAVED')).toBeLessThan(page.indexOf("shownError(err, 'Could not write a plan.')"));
+    expect(saved.indexOf('this.emit')).toBeGreaterThan(0);
+    expect(saved.indexOf('this.emit')).toBeLessThan(saved.indexOf('if (error)'));
+    expect(saved.indexOf('logClientError')).toBeGreaterThan(saved.indexOf('if (error)'));
+    expect(saved.indexOf('PLAN_NOT_SAVED')).toBeGreaterThan(saved.indexOf('logClientError'));
+    expect(refresh.indexOf('PLAN_UNREACHABLE')).toBeGreaterThan(0);
+    expect(refresh.indexOf('PLAN_UNREACHABLE')).toBeLessThan(refresh.lastIndexOf(".from('health_plans')"));
+  });
+
   it('shares the headline, focus, and ticks, and leaves the figures behind', () => {
     const plan: HealthPlan = {
       focus: [

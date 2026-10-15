@@ -16,6 +16,8 @@ export const EDGE_STATE_LABEL: Record<EdgeSendState, string> = {
 export const MEAL_UNREACHABLE = 'Couldn\'t reach the meal estimate – tap to retry.';
 export const REFLECT_UNREACHABLE = 'Couldn\'t reach a reflection – tap to retry.';
 export const PLAN_UNREACHABLE = 'Couldn\'t write a plan – tap to retry.';
+/** The model wrote a plan, and the database did not keep it. */
+export const PLAN_NOT_SAVED = 'Plan written but not saved — tap to retry.';
 export const VOICE_UNREACHABLE = 'Couldn\'t reach voice. Text chat is still here.';
 
 export function edgeStatusShouldRetry(status: number): boolean {

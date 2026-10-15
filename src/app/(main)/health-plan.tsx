@@ -3,7 +3,8 @@ import { Pressable, useWindowDimensions, View } from 'react-native';
 
 import { useRepository, useSnapshot } from '@/data';
 import { formatUkCompactWhen } from '@/domain/dates';
-import { shownError } from '@/domain/errors';
+import { PLAN_NOT_SAVED } from '@/domain/edgeRetry';
+import { UserFacingError, shownError } from '@/domain/errors';
 import { PLAN_DISCLAIMER, togglePlanAction, type PlanAction } from '@/domain/healthPlan';
 import { planProgressFigure } from '@/domain/measureFigures';
 import { PROFILE_HIDDEN_SHARE, communitySharingOn } from '@/domain/profileSharing';
@@ -117,7 +118,11 @@ export default function HealthPlanScreen() {
         await queue.current;
         await repo.refreshHealthPlan(limitsRef.current);
       } catch (err) {
-        setError(shownError(err, 'Could not write a plan.'));
+        if (err instanceof UserFacingError && err.message === PLAN_NOT_SAVED) {
+          setError(PLAN_NOT_SAVED);
+        } else {
+          setError(shownError(err, 'Could not write a plan.'));
+        }
       }
     });
   }
