@@ -394,6 +394,14 @@ describe('public_profile database function', () => {
     expect(people).toContain('photo.caption');
     expect(people).not.toContain('photo.note');
     expect(people).toContain("reason: 'Shared profile'");
+    expect(people).toContain('Report this profile');
+    expect(people).toContain('label="Reason"');
+    expect(people).toContain('⋯');
+    expect(people).toContain('privateMessageFailure');
+    expect(people).toContain('label="Try again"');
+    expect(people).not.toContain('`Report ${item.label}`');
+    expect(people).not.toContain('label="Report photo"');
+    expect(people).not.toContain('label="Report profile"');
     expect(people).toContain('publicProfile');
     expect(people).toContain('formatSoberShare');
     expect(peopleScreen).not.toMatch(/gratitude/);

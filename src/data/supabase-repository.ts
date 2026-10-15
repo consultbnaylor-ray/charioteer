@@ -1117,7 +1117,7 @@ export class SupabaseRepository implements Repository {
     }
     if (userId === me) throw new UserFacingError('You cannot message yourself.', 'generic');
     const blocks = await this.client.from('blocks').select('blocker_id, blocked_id').or(`blocker_id.eq.${userId},blocked_id.eq.${userId}`);
-    if (blocks.error) throw asUserFacing(blocks.error, 'general');
+    if (blocks.error) throw blocks.error;
     const closed = (blocks.data ?? []).some((row) => {
       const record = row as { blocker_id?: string; blocked_id?: string };
       return (record.blocker_id === me && record.blocked_id === userId) || (record.blocker_id === userId && record.blocked_id === me);
@@ -1147,7 +1147,8 @@ export class SupabaseRepository implements Repository {
           (connection.requesterId === userId && connection.addresseeId === me)));
       if (live) return;
       const { error } = await this.client.from('connections').insert({ id, requester_id: me, addressee_id: userId, status: 'pending' });
-      if (error && !isDuplicateWrite(error)) throw asUserFacing(error, 'general');
+      // The private-message screen shows this server reason. Other callers still run it through shownError.
+      if (error && !isDuplicateWrite(error)) throw error;
       // The request is saved. A slow or failed reload afterwards must not report
       // it as unsent, or the card stays on "Ask to connect" after an error.
       await this.refresh().catch((reloadError: unknown) => console.error(reloadError));
