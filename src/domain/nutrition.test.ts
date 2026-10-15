@@ -842,6 +842,9 @@ describe('nutrition charts', () => {
     expect(wagon).toBeLessThan(sharing);
     expect(screen.slice(body - 80, body)).toContain('id="body"');
     expect(readFileSync('src/domain/statsOverview.ts', 'utf8')).toContain("href: '/nutrition?section=body'");
+    const scroller = readFileSync('src/ui/ScrollTarget.tsx', 'utf8');
+    expect(scroller).toContain('querySelectorAll(`[id="section-${id}"]`)');
+    expect(scroller).toContain('scrollIntoView');
     expect(screen.slice(logged, summary)).toContain("Share today's meals");
     expect(screen.slice(summary, board)).toContain('Share daily calories and macros');
     expect(screen.slice(board, water)).toContain('Share food quality');
