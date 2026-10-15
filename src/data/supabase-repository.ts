@@ -71,6 +71,7 @@ import {
   type NutritionSettings,
 } from '@/domain/nutrition';
 import { PLAN_DISCLAIMER, healthPlanFromStored, parseSharedHealthPlan, type HealthPlan } from '@/domain/healthPlan';
+import { parseBuddyLinkPass, parseBuddyList, parseBuddyPreview, parseBuddyShare, type BuddyLinkPass, type BuddyList, type BuddyScope, type BuddyShareView } from '@/domain/buddies';
 import { randomId } from '@/domain/id';
 import { chatInsertFilter, messageFromRealtime, withIncomingMessage } from '@/domain/liveChat';
 import { isDuplicateWrite, mergeOutgoingMessages, shareInflight } from '@/domain/writes';
@@ -2313,6 +2314,73 @@ export class SupabaseRepository implements Repository {
     const { data, error } = await this.client.rpc('shared_health_plan', { target: userId });
     if (error || data == null) return null;
     return parseSharedHealthPlan(data);
+  }
+
+  async listBuddies(): Promise<BuddyList> {
+    const { data, error } = await this.client.rpc('list_buddies');
+    if (error) throw error;
+    return parseBuddyList(data);
+  }
+
+  async createBuddyInvite(buddyId: string, scope: BuddyScope): Promise<void> {
+    const { data, error } = await this.client.rpc('create_buddy_invite', { buddy: buddyId, scope });
+    if (error) throw error;
+    const inviteId = typeof data === 'string' ? data : '';
+    if (inviteId) {
+      void this.client.functions.invoke('notify-buddy-invite', { body: { inviteId } }).catch(() => undefined);
+    }
+  }
+
+  async createBuddyLink(scope: BuddyScope): Promise<BuddyLinkPass> {
+    const { data, error } = await this.client.rpc('create_buddy_link', { scope });
+    if (error) throw error;
+    const pass = parseBuddyLinkPass(data);
+    if (!pass) throw new UserFacingError('Could not create that link.', 'generic');
+    return pass;
+  }
+
+  async acceptBuddyInvite(inviteId: string): Promise<void> {
+    const { error } = await this.client.rpc('accept_buddy_invite', { invite: inviteId });
+    if (error) throw error;
+  }
+
+  async declineBuddyInvite(inviteId: string): Promise<void> {
+    const { error } = await this.client.rpc('decline_buddy_invite', { invite: inviteId });
+    if (error) throw error;
+  }
+
+  async previewBuddyLink(secret: string): Promise<{ name: string; scope: BuddyScope }> {
+    const { data, error } = await this.client.rpc('preview_buddy_link', { secret });
+    if (error) throw error;
+    const preview = parseBuddyPreview(data);
+    if (!preview) throw new UserFacingError('That invite is not available.', 'generic');
+    return preview;
+  }
+
+  async acceptBuddyLink(secret: string): Promise<void> {
+    const { error } = await this.client.rpc('accept_buddy_link', { secret });
+    if (error) throw error;
+  }
+
+  async revokeBuddy(inviteId: string): Promise<void> {
+    const { error } = await this.client.rpc('revoke_buddy', { invite: inviteId });
+    if (error) throw error;
+  }
+
+  async revokeBuddyLink(linkId: string): Promise<void> {
+    const { error } = await this.client.rpc('revoke_buddy_link', { link: linkId });
+    if (error) throw error;
+  }
+
+  async updateBuddyScope(inviteId: string, scope: BuddyScope): Promise<void> {
+    const { error } = await this.client.rpc('update_buddy_scope', { invite: inviteId, scope });
+    if (error) throw error;
+  }
+
+  async sharedBuddyData(ownerId: string): Promise<BuddyShareView | null> {
+    const { data, error } = await this.client.rpc('shared_buddy_data', { owner: ownerId });
+    if (error || data == null) return null;
+    return parseBuddyShare(data);
   }
 
   async exportData(): Promise<Record<string, unknown>> {

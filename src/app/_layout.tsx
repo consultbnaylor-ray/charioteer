@@ -10,6 +10,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 
 import { APP_DISPLAY_NAME, APP_FULL_NAME } from '@/domain/appName';
+import { buddySecretFromUrl, holdBuddySecret, peekBuddySecret, consumeBuddySecret } from '@/domain/buddies';
 import { RepoProvider, useRepository, useSnapshot } from '@/data';
 import { listenForMessageOpens, retryMessageNotifications } from '@/notifications/register';
 import { CONSENT_VERSION } from '@/data/catalogue';
@@ -70,7 +71,7 @@ function Chrome() {
   useEffect(() => listenForMessageOpens((connectionId) => {
     void repo.reloadMessages().catch((error: unknown) => console.error(error));
     router.push(`/chat/${connectionId}` as never);
-  }), [router, repo]);
+  }, () => router.push('/buddies' as never)), [router, repo]);
 
   useEffect(() => {
     const registerPhone = () => {
@@ -96,6 +97,11 @@ function Chrome() {
 
   useEffect(() => {
     const openReset = (url: string | null) => {
+      const secret = url ? buddySecretFromUrl(url) : null;
+      if (secret) {
+        holdBuddySecret(secret);
+        router.push(`/buddies?token=${encodeURIComponent(secret)}` as never);
+      }
       if (!url || !url.includes('set-password') || handledResetUrl === url) return;
       handledResetUrl = url;
       if (Platform.OS === 'web' && typeof window !== 'undefined' && window.location.pathname.includes('set-password')) return;
@@ -124,6 +130,13 @@ function Chrome() {
     }
     if (consentDue) {
       if (pathname !== '/consent') router.replace('/consent');
+      return;
+    }
+    if (pathname.startsWith('/buddies')) consumeBuddySecret();
+    const buddySecret = peekBuddySecret();
+    if (buddySecret) {
+      consumeBuddySecret();
+      router.replace(`/buddies?token=${encodeURIComponent(buddySecret)}` as never);
       return;
     }
     if (authRoute || onboarding || pathname === '/consent' || pathname === '/') router.replace('/home');

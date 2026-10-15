@@ -571,6 +571,7 @@ function SharedProfileFacts({ userId, name }: { userId: string; name: string }) 
       {shownList(view.vision).map((item) => <T key={item.id}>{[item.caption, item.area].filter(Boolean).join(' · ')}</T>)}
       {shownList(view.gratitudePhotos).map((photo) => photo.caption ? <T key={photo.id}>{photo.caption}</T> : null)}
       {sent && sent !== avatar?.id && !gallery.some((photo) => photo.id === sent) ? <T variant="muted">Report sent.</T> : null}
+      <Button label="Invite as buddy" tone="quiet" disabled={pending} onPress={() => router.push(`/buddies?invite=${userId}` as never)} />
       <Button label="Report this profile" tone="quiet" disabled={pending} onPress={openProfileReport} />
       {draft ? (
         <ReportSheet

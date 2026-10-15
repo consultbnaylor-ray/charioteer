@@ -2,6 +2,7 @@ import Constants from 'expo-constants';
 import { Platform } from 'react-native';
 
 import type { Repository } from '@/data/types';
+import { buddyInviteIdFrom } from '../../supabase/functions/_shared/buddyPush';
 import { connectionIdFrom } from '../../supabase/functions/_shared/messagePush';
 import { MOVEMENT_REMINDER_BODY, MOVEMENT_REMINDER_TITLE } from '../../supabase/functions/_shared/motivation';
 
@@ -116,8 +117,8 @@ export async function syncMovementReminder(on: boolean, minute: number | null): 
   }
 }
 
-/** Opens the chat named on a notification. Does not ask for permission. */
-export function listenForMessageOpens(openChat: (connectionId: string) => void): () => void {
+/** Opens the chat or the Buddies screen named on a notification. Does not ask for permission. */
+export function listenForMessageOpens(openChat: (connectionId: string) => void, openBuddy?: () => void): () => void {
   if (Platform.OS === 'web') return () => undefined;
   let remove: () => void = () => undefined;
   let cancelled = false;
@@ -134,15 +135,18 @@ export function listenForMessageOpens(openChat: (connectionId: string) => void):
           shouldShowList: true,
         }),
       });
-      const subscription = Notifications.addNotificationResponseReceivedListener((response) => {
-        const id = connectionIdFrom(response.notification.request.content.data);
+      const open = (data: unknown) => {
+        const id = connectionIdFrom(data);
         if (id) openChat(id);
+        if (buddyInviteIdFrom(data)) openBuddy?.();
+      };
+      const subscription = Notifications.addNotificationResponseReceivedListener((response) => {
+        open(response.notification.request.content.data);
       });
       remove = () => subscription.remove();
       const last = await Notifications.getLastNotificationResponseAsync();
       if (cancelled || !last) return;
-      const id = connectionIdFrom(last.notification.request.content.data);
-      if (id) openChat(id);
+      open(last.notification.request.content.data);
     } catch {
       return undefined;
     }

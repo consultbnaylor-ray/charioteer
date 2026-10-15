@@ -86,6 +86,7 @@ export default function People() {
       <CommunityPrompt userId={me.id} visible={!me.communityVisible && me.ageConfirmed18} />
       <PublicProfileCard />
       <Button label="What I share" tone="quiet" onPress={() => router.push('/sharing' as never)} />
+      <Button label="Buddies" onPress={() => router.push('/buddies' as never)} />
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
         <Choice label={`Discover`} selected={tab === 'discover'} onPress={() => setTab('discover')} />
         <Choice label={`Requests (${incoming.length})`} selected={tab === 'requests'} tone={incoming.length > 0 ? 'alert' : 'default'} onPress={() => setTab('requests')} />

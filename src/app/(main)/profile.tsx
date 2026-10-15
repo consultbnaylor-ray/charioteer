@@ -287,6 +287,7 @@ export default function Profile() {
         <Button label="Pin a quote" tone="quiet" onPress={() => router.push('/quotes' as never)} />
       )}
       <Button label="What I share" tone="quiet" onPress={() => router.push('/sharing' as never)} />
+      <Button label="Buddies" onPress={() => router.push('/buddies' as never)} />
       <Card>
         <T variant="label">Build</T>
         <BuildChoices />

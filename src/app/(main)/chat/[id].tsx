@@ -1,4 +1,4 @@
-import { useLocalSearchParams } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import { AppState, Pressable, View } from 'react-native';
 
@@ -26,6 +26,7 @@ export default function ChatScreen() {
 
 function Chat() {
   const { id } = useLocalSearchParams<{ id: string }>();
+  const router = useRouter();
   const snap = useSnapshot();
   const repo = useRepository();
   const theme = useAppTheme();
@@ -161,6 +162,7 @@ function Chat() {
           else clientIds.current.delete('compose');
         }));
       }} />
+      <Button label="Invite as buddy" tone="quiet" onPress={() => router.push(`/buddies?invite=${otherId}` as never)} />
       <View style={{ flexDirection: 'row', gap: 10 }}>
         <View style={{ flex: 1 }}><Button label="Block" tone="quiet" pending={isPending(`block:${otherId}`)} pendingLabel="Sending..." onPress={() => {
           setError(null);

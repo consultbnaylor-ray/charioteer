@@ -9,6 +9,7 @@ import { isoDay } from '@/domain/dates';
 import { defaultNutritionSettings, estimateFromText } from '@/domain/nutrition';
 import type { BodyCompositionReading } from '@/domain/nutrition';
 import { PLAN_DISCLAIMER, draftHealthPlan, type HealthPlan } from '@/domain/healthPlan';
+import { scopeFromPreset } from '@/domain/buddies';
 import { defaultProfileSharing } from '@/domain/profileSharing';
 import type { GratitudeEntry } from '@/domain/gratitude';
 import { gratitudeStoragePath } from '@/domain/gratitudePhotos';
@@ -68,6 +69,26 @@ export type DemoDb = {
   messages: DirectMessage[];
   blocks: { id: string; blockerId: string; blockedId: string }[];
   reports: import('@/data/types').Report[];
+  /** Absent on older sample data. Personal shares, not the public profile. */
+  buddyInvites?: {
+    id: string;
+    ownerId: string;
+    buddyId: string;
+    status: 'pending' | 'accepted' | 'declined' | 'revoked';
+    scope: import('@/domain/buddies').BuddyScope;
+    createdAt: string;
+  }[];
+  buddyLinks?: {
+    id: string;
+    ownerId: string;
+    token: string;
+    code: string;
+    scope: import('@/domain/buddies').BuddyScope;
+    expiresAt: string;
+    createdAt: string;
+    usedBy: string | null;
+    revokedAt: string | null;
+  }[];
   interests: typeof INTEREST_CATALOGUE;
   resources: typeof RESOURCE_CATALOGUE;
 };
@@ -546,6 +567,25 @@ export function createDemoDb(now = new Date()): DemoDb {
     ],
     blocks: [],
     reports: [],
+    buddyInvites: [
+      {
+        id: 'dddddddd-dddd-4ddd-8ddd-ddddddddddd1',
+        ownerId: PEOPLE.jordan,
+        buddyId: PEOPLE.alex,
+        status: 'accepted',
+        scope: { ...scopeFromPreset('food'), healthPlan: true },
+        createdAt: ago(48),
+      },
+      {
+        id: 'dddddddd-dddd-4ddd-8ddd-ddddddddddd2',
+        ownerId: PEOPLE.priya,
+        buddyId: PEOPLE.alex,
+        status: 'pending',
+        scope: scopeFromPreset('light'),
+        createdAt: ago(3),
+      },
+    ],
+    buddyLinks: [],
     interests: INTEREST_CATALOGUE.map((item) => ({ ...item })),
     resources: RESOURCE_CATALOGUE.map((item) => ({ ...item })),
   };

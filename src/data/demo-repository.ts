@@ -7,6 +7,30 @@ import {
   WEAK_PASSWORD_MESSAGE,
   WRONG_PASSWORD_MESSAGE,
 } from '@/domain/errors';
+import {
+  BUDDY_ADULT,
+  BUDDY_ALREADY,
+  BUDDY_CANNOT_INVITE,
+  BUDDY_CHOOSE,
+  BUDDY_INVITE_DAILY_LIMIT,
+  BUDDY_INVITE_LIMIT,
+  BUDDY_LINK_DAILY_LIMIT,
+  BUDDY_LINK_DAYS,
+  BUDDY_LINK_LIMIT,
+  BUDDY_UNAVAILABLE,
+  buddyLinkUrl,
+  makeBuddyCode,
+  makeBuddyToken,
+  normalizeBuddyScope,
+  parseBuddyPreview,
+  projectBuddyShare,
+  scopeHasShare,
+  type BuddyLinkPass,
+  type BuddyList,
+  type BuddyScope,
+  type BuddyShareSource,
+  type BuddyShareView,
+} from '@/domain/buddies';
 import { convertStoredMoods, planCheckInGratitudeSync } from '@/domain/checkIns';
 import { randomId } from '@/domain/id';
 import { shareInflight } from '@/domain/writes';
@@ -191,6 +215,31 @@ function shareSource(account: DemoAccount, interests: DemoDb['interests'], now =
   };
 }
 
+function buddyName(db: DemoDb, id: string): string {
+  return db.accounts[id]?.profile.displayName || 'Member';
+}
+
+function buddySource(account: DemoAccount, today: string): BuddyShareSource {
+  const latest = [...(account.bodyComposition ?? [])].sort((a, b) => b.recordedOn.localeCompare(a.recordedOn))[0];
+  return {
+    ownerId: account.profile.id,
+    displayName: account.profile.displayName,
+    today,
+    nutrition: account.nutrition ?? defaultNutritionSettings(),
+    foodLogs: account.foodLogs ?? [],
+    checkIns: account.checkIns,
+    gratitude: (account.gratitude ?? []).map((entry) => ({ body: entry.body })),
+    visionStatement: account.profile.visionStatement || null,
+    visionCaptions: (account.visionItems ?? []).map((item) => item.caption),
+    healthPlan: account.healthPlan ?? null,
+    health: account.health.map((row) => ({ kind: row.kind, value: row.value, recordedOn: row.recordedOn })),
+    bodyFatPct: latest?.bodyFatPct ?? null,
+    leanMassKg: latest?.leanMassKg ?? null,
+    waistCm: latest?.waistCm ?? null,
+    heightCm: account.profile.heightCm,
+  };
+}
+
 function blocked(db: DemoDb, a: string, b: string): boolean {
   return db.blocks.some(
     (row) => (row.blockerId === a && row.blockedId === b) || (row.blockerId === b && row.blockedId === a),
@@ -334,9 +383,19 @@ export class DemoRepository implements Repository {
     this.backfillMoodScale();
     this.backfillProgressPhotos();
     this.backfillNutrition();
+    this.backfillBuddies();
     this.ready = true;
     this.snapshot = this.derive();
     this.listeners.forEach((listener) => listener());
+  }
+
+  /** Sample invites for a demo account saved before buddies existed. */
+  private backfillBuddies() {
+    if (this.db.buddyInvites && this.db.buddyLinks) return;
+    const fresh = createDemoDb();
+    if (!this.db.buddyInvites) this.db.buddyInvites = fresh.buddyInvites ?? [];
+    if (!this.db.buddyLinks) this.db.buddyLinks = fresh.buddyLinks ?? [];
+    void AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(this.db));
   }
 
   /** Older sample data stored mood from 1 to 5. Double it once, then leave a real 4 alone. */
@@ -1190,6 +1249,196 @@ export class DemoRepository implements Repository {
     const db = clone(this.db);
     db.accounts[account.profile.id].healthPlan = plan;
     this.commit(db);
+  }
+
+  private liveInvites() {
+    return this.db.buddyInvites ?? [];
+  }
+
+  async listBuddies(): Promise<BuddyList> {
+    const account = this.me();
+    const id = account.profile.id;
+    const invites = this.liveInvites().filter((invite) => invite.status === 'pending' || invite.status === 'accepted');
+    const now = new Date().toISOString();
+    return {
+      sharing: invites
+        .filter((invite) => invite.ownerId === id)
+        .map((invite) => ({ ...invite, scope: normalizeBuddyScope(invite.scope), name: buddyName(this.db, invite.buddyId) })),
+      watching: invites
+        .filter((invite) => invite.buddyId === id)
+        .map((invite) => ({ ...invite, scope: normalizeBuddyScope(invite.scope), name: buddyName(this.db, invite.ownerId) })),
+      links: (this.db.buddyLinks ?? [])
+        .filter((link) => link.ownerId === id && !link.usedBy && !link.revokedAt && link.expiresAt > now)
+        .map((link) => ({ id: link.id, expiresAt: link.expiresAt, scope: normalizeBuddyScope(link.scope), createdAt: link.createdAt })),
+    };
+  }
+
+  async createBuddyInvite(buddyId: string, scope: BuddyScope): Promise<void> {
+    const account = this.me();
+    const chosen = normalizeBuddyScope(scope);
+    if (!scopeHasShare(chosen)) throw new UserFacingError(BUDDY_CHOOSE, 'generic');
+    if (!account.profile.ageConfirmed18) throw new UserFacingError(BUDDY_ADULT, 'generic');
+    const other = this.db.accounts[buddyId];
+    if (!other || other.profile.id === account.profile.id || !other.profile.ageConfirmed18 || blocked(this.db, account.profile.id, buddyId)) {
+      throw new UserFacingError(BUDDY_CANNOT_INVITE, 'generic');
+    }
+    const db = clone(this.db);
+    const invites = db.buddyInvites ?? [];
+    const live = invites.find((invite) => invite.ownerId === account.profile.id && invite.buddyId === buddyId && (invite.status === 'pending' || invite.status === 'accepted'));
+    if (live?.status === 'accepted') throw new UserFacingError(BUDDY_ALREADY, 'generic');
+    if (live) {
+      live.scope = chosen;
+      db.buddyInvites = invites;
+      this.commit(db);
+      return;
+    }
+    const dayAgo = Date.now() - 86_400_000;
+    const recent = invites.filter((invite) => invite.ownerId === account.profile.id && Date.parse(invite.createdAt) > dayAgo).length;
+    if (recent >= BUDDY_INVITE_DAILY_LIMIT) throw new UserFacingError(BUDDY_INVITE_LIMIT, 'generic');
+    invites.push({
+      id: randomId(),
+      ownerId: account.profile.id,
+      buddyId,
+      status: 'pending',
+      scope: chosen,
+      createdAt: new Date().toISOString(),
+    });
+    db.buddyInvites = invites;
+    this.commit(db);
+  }
+
+  async createBuddyLink(scope: BuddyScope): Promise<BuddyLinkPass> {
+    const account = this.me();
+    const chosen = normalizeBuddyScope(scope);
+    if (!scopeHasShare(chosen)) throw new UserFacingError(BUDDY_CHOOSE, 'generic');
+    if (!account.profile.ageConfirmed18) throw new UserFacingError(BUDDY_ADULT, 'generic');
+    const db = clone(this.db);
+    const links = db.buddyLinks ?? [];
+    const dayAgo = Date.now() - 86_400_000;
+    const recent = links.filter((link) => link.ownerId === account.profile.id && Date.parse(link.createdAt) > dayAgo).length;
+    if (recent >= BUDDY_LINK_DAILY_LIMIT) throw new UserFacingError(BUDDY_LINK_LIMIT, 'generic');
+    const bytes = Uint8Array.from({ length: 16 }, () => Math.floor(Math.random() * 256));
+    const token = makeBuddyToken(bytes);
+    const code = makeBuddyCode(bytes);
+    const expiresAt = new Date(Date.now() + BUDDY_LINK_DAYS * 86_400_000).toISOString();
+    const id = randomId();
+    links.push({
+      id,
+      ownerId: account.profile.id,
+      token,
+      code,
+      scope: chosen,
+      expiresAt,
+      createdAt: new Date().toISOString(),
+      usedBy: null,
+      revokedAt: null,
+    });
+    db.buddyLinks = links;
+    this.commit(db);
+    return { id, token, code, expiresAt, url: buddyLinkUrl(token) };
+  }
+
+  async acceptBuddyInvite(inviteId: string): Promise<void> {
+    const account = this.me();
+    const db = clone(this.db);
+    const invite = (db.buddyInvites ?? []).find((item) => item.id === inviteId && item.buddyId === account.profile.id && item.status === 'pending');
+    if (!invite || !account.profile.ageConfirmed18 || blocked(this.db, account.profile.id, invite.ownerId)) {
+      throw new UserFacingError(BUDDY_UNAVAILABLE, 'generic');
+    }
+    invite.status = 'accepted';
+    this.commit(db);
+  }
+
+  async declineBuddyInvite(inviteId: string): Promise<void> {
+    const account = this.me();
+    const db = clone(this.db);
+    const invite = (db.buddyInvites ?? []).find((item) => item.id === inviteId && item.buddyId === account.profile.id && item.status === 'pending');
+    if (!invite) throw new UserFacingError(BUDDY_UNAVAILABLE, 'generic');
+    invite.status = 'declined';
+    this.commit(db);
+  }
+
+  async previewBuddyLink(secret: string): Promise<{ name: string; scope: BuddyScope }> {
+    const account = this.me();
+    const cleaned = secret.trim();
+    const wanted = cleaned.length === 8 ? cleaned.toUpperCase() : cleaned.toLowerCase();
+    const link = (this.db.buddyLinks ?? []).find((item) => {
+      if (item.usedBy || item.revokedAt || item.expiresAt <= new Date().toISOString()) return false;
+      return item.token === wanted || item.code === wanted;
+    });
+    if (!link || link.ownerId === account.profile.id || !account.profile.ageConfirmed18 || blocked(this.db, account.profile.id, link.ownerId)) {
+      throw new UserFacingError(BUDDY_UNAVAILABLE, 'generic');
+    }
+    return parseBuddyPreview({ name: buddyName(this.db, link.ownerId), scope: link.scope }) ?? { name: 'Member', scope: normalizeBuddyScope(link.scope) };
+  }
+
+  async acceptBuddyLink(secret: string): Promise<void> {
+    const account = this.me();
+    const cleaned = secret.trim();
+    const wanted = cleaned.length === 8 ? cleaned.toUpperCase() : cleaned.toLowerCase();
+    const db = clone(this.db);
+    const link = (db.buddyLinks ?? []).find((item) => {
+      if (item.usedBy || item.revokedAt || item.expiresAt <= new Date().toISOString()) return false;
+      return item.token === wanted || item.code === wanted;
+    });
+    if (!link || link.ownerId === account.profile.id || !account.profile.ageConfirmed18 || blocked(this.db, account.profile.id, link.ownerId)) {
+      throw new UserFacingError(BUDDY_UNAVAILABLE, 'generic');
+    }
+    const invites = db.buddyInvites ?? [];
+    const live = invites.find((invite) => invite.ownerId === link.ownerId && invite.buddyId === account.profile.id && (invite.status === 'pending' || invite.status === 'accepted'));
+    if (live) {
+      live.status = 'accepted';
+      live.scope = link.scope;
+    } else {
+      invites.push({
+        id: randomId(),
+        ownerId: link.ownerId,
+        buddyId: account.profile.id,
+        status: 'accepted',
+        scope: link.scope,
+        createdAt: new Date().toISOString(),
+      });
+    }
+    link.usedBy = account.profile.id;
+    db.buddyInvites = invites;
+    this.commit(db);
+  }
+
+  async revokeBuddy(inviteId: string): Promise<void> {
+    const account = this.me();
+    const db = clone(this.db);
+    const invite = (db.buddyInvites ?? []).find((item) => item.id === inviteId && (item.ownerId === account.profile.id || item.buddyId === account.profile.id) && (item.status === 'pending' || item.status === 'accepted'));
+    if (!invite) throw new UserFacingError(BUDDY_UNAVAILABLE, 'generic');
+    invite.status = 'revoked';
+    this.commit(db);
+  }
+
+  async revokeBuddyLink(linkId: string): Promise<void> {
+    const account = this.me();
+    const db = clone(this.db);
+    const link = (db.buddyLinks ?? []).find((item) => item.id === linkId && item.ownerId === account.profile.id && !item.usedBy && !item.revokedAt);
+    if (!link) throw new UserFacingError(BUDDY_UNAVAILABLE, 'generic');
+    link.revokedAt = new Date().toISOString();
+    this.commit(db);
+  }
+
+  async updateBuddyScope(inviteId: string, scope: BuddyScope): Promise<void> {
+    const account = this.me();
+    const chosen = normalizeBuddyScope(scope);
+    if (!scopeHasShare(chosen)) throw new UserFacingError(BUDDY_CHOOSE, 'generic');
+    const db = clone(this.db);
+    const invite = (db.buddyInvites ?? []).find((item) => item.id === inviteId && item.ownerId === account.profile.id && (item.status === 'pending' || item.status === 'accepted'));
+    if (!invite) throw new UserFacingError(BUDDY_UNAVAILABLE, 'generic');
+    invite.scope = chosen;
+    this.commit(db);
+  }
+
+  async sharedBuddyData(ownerId: string): Promise<BuddyShareView | null> {
+    const account = this.me();
+    const invite = this.liveInvites().find((item) => item.ownerId === ownerId && item.buddyId === account.profile.id && item.status === 'accepted');
+    const owner = this.db.accounts[ownerId];
+    if (!invite || !owner || !account.profile.ageConfirmed18 || !owner.profile.ageConfirmed18 || blocked(this.db, account.profile.id, ownerId)) return null;
+    return projectBuddyShare(buddySource(owner, isoDay(new Date())), normalizeBuddyScope(invite.scope));
   }
 
   async sharedHealthPlan(userId: string) {
