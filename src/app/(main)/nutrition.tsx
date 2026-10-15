@@ -1,6 +1,6 @@
 import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Platform, Pressable, ScrollView, Switch, View } from 'react-native';
 
 import { useRepository, useSnapshot } from '@/data';
@@ -11,6 +11,7 @@ import { parseHeightCm } from '@/domain/guidance';
 import { randomId } from '@/domain/id';
 import {
   APPLE_HEALTH_MEAL_NOTE,
+  DUPLICATE_MEAL_PROMPT,
   ESTIMATE_HINT,
   ESTIMATE_LABEL,
   BUILDER_PHASES,
@@ -40,6 +41,7 @@ import {
   mifflinBmr,
   nutritionPatternLines,
   processedLine,
+  recentDuplicateMeal,
   sugarCravingNote,
   suggestedTargetsLine,
   suggestGoalTargets,
@@ -76,7 +78,7 @@ import { pickMealPhoto } from '@/ui/pickMealPhoto';
 import { usePendingPress } from '@/ui/pendingAction';
 import { ScrollTarget } from '@/ui/ScrollTarget';
 import { useAppTheme } from '@/ui/theme';
-import { Button, Card, Choice, ErrorNote, Field, QuietNote, Screen, T, playSavedHaptic } from '@/ui/ui';
+import { Button, Card, Choice, ErrorNote, Field, QuietNote, Screen, T, playSavedHaptic, useScreenScroller } from '@/ui/ui';
 
 type DraftItem = {
   name: string;
@@ -210,7 +212,6 @@ export default function Nutrition() {
   const saved = alcoholSavedLine(units, hide);
   const patterns = nutritionPatternLines(snap.foodLogs, snap.checkIns);
   const water = snap.waterDays.find((day) => day.day === today)?.waterMl ?? 0;
-  const todayLogs = snap.foodLogs.filter((log) => log.eatenOn === today);
   const earlierLogs = snap.foodLogs
     .filter((log) => log.eatenOn !== today)
     .slice()
@@ -270,6 +271,10 @@ export default function Nutrition() {
   const [editAnchor, setEditAnchor] = useState<'summary' | 'list'>('list');
   const [confirmId, setConfirmId] = useState<string | null>(null);
   const [mealSavedAt, setMealSavedAt] = useState<number | null>(null);
+  const [duplicateAsk, setDuplicateAsk] = useState(false);
+  const [revealId, setRevealId] = useState<string | null>(null);
+  const savedRowRef = useRef<View>(null);
+  const scroller = useScreenScroller();
 
   useEffect(() => {
     if (targetsSavedAt == null) return;
@@ -282,6 +287,43 @@ export default function Nutrition() {
     const timer = setTimeout(() => setMealSavedAt(null), 2500);
     return () => clearTimeout(timer);
   }, [mealSavedAt]);
+
+  useEffect(() => {
+    if (!revealId) return undefined;
+    let cancelled = false;
+    const pin = () => {
+      if (cancelled) return;
+      if (Platform.OS === 'web') {
+        if (typeof document === 'undefined') return;
+        const node = document.getElementById('saved-meal-row');
+        node?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+        return;
+      }
+      const row = savedRowRef.current;
+      const inner = scroller?.current.innerRef.current;
+      const scroll = scroller?.current.scrollRef.current;
+      if (!row || !inner || !scroll) return;
+      row.measureLayout(
+        inner as never,
+        (_x, y, _width, height) => {
+          const viewHeight = scroller?.current.height ?? 0;
+          const top = Math.max(0, y - Math.max(8, (viewHeight - height) / 2));
+          scroll.scrollTo({ y: top, animated: true });
+        },
+        () => {},
+      );
+    };
+    const frame = requestAnimationFrame(() => {
+      pin();
+      requestAnimationFrame(pin);
+    });
+    const later = setTimeout(pin, 400);
+    return () => {
+      cancelled = true;
+      cancelAnimationFrame(frame);
+      clearTimeout(later);
+    };
+  }, [revealId, scroller]);
 
   function floorFor(age: number | null, sex: NutritionSex | null): number | null {
     const weight = latestWeight?.kg ?? null;
@@ -432,6 +474,7 @@ export default function Nutrition() {
   }
 
   function openDraft(next: Draft) {
+    setDuplicateAsk(false);
     setDraft({ ...next, meal });
     setError(null);
   }
@@ -497,19 +540,26 @@ export default function Nutrition() {
     });
   }
 
-  function saveMeal() {
+  function saveMeal(force: boolean) {
     if (!draft) return;
+    const foods = draft.items.map(itemFromDraft).filter((item): item is FoodItem => item != null);
+    if (!foods.length) {
+      setError('Add at least one food.');
+      return;
+    }
+    const ownerId = profile?.id ?? '';
+    if (!force && recentDuplicateMeal(snap.foodLogs, ownerId, { meal: draft.meal, note: draft.note, items: foods }, Date.now())) {
+      setDuplicateAsk(true);
+      return;
+    }
+    setDuplicateAsk(false);
+    const id = randomId();
     run('save', async () => {
       setError(null);
       setHealthNote(null);
-      const foods = draft.items.map(itemFromDraft).filter((item): item is FoodItem => item != null);
-      if (!foods.length) {
-        setError('Add at least one food.');
-        return;
-      }
       try {
         await repo.saveFoodLog({
-          id: randomId(),
+          id,
           eatenOn: today,
           meal: draft.meal,
           source: draft.source,
@@ -520,6 +570,9 @@ export default function Nutrition() {
         });
         setDraft(null);
         setText('');
+        setMealSavedAt(Date.now());
+        setRevealId(id);
+        playSavedHaptic();
         if (Platform.OS === 'ios' && profile?.consentHealth) {
           const written = await writeDayToAppleHealth(foods, 0);
           setHealthNote(written.ok ? 'Saved to Apple Health.' : written.message);
@@ -774,6 +827,7 @@ export default function Nutrition() {
   }
 
   function updateItem(index: number, patch: Partial<DraftItem>) {
+    setDuplicateAsk(false);
     setDraft((current) => {
       if (!current) return current;
       const itemsNext = current.items.map((item, itemIndex) => (itemIndex === index ? { ...item, ...patch } : item));
@@ -841,20 +895,6 @@ export default function Nutrition() {
             photoBase64: null,
           })}
         />
-        <TodayMeals
-          rows={mealRows}
-          totals={mealTotals}
-          hideCalories={hide}
-          ring={calorieRing}
-          activeId={summaryLog?.id ?? null}
-          onOpen={(id) => {
-            setEditAnchor('summary');
-            setConfirmId(null);
-            setMealSavedAt(null);
-            setEditingId((current) => (current === id && editAnchor === 'summary' ? null : id));
-          }}
-          activeTools={summaryLog ? mealActions(summaryLog, 'summary') : null}
-        />
       </Card>
       {draft ? (
         <Card>
@@ -872,7 +912,7 @@ export default function Nutrition() {
           ) : null}
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
             {MEAL_SLOTS.map((slot) => (
-              <Choice key={slot} label={MEAL_LABEL[slot]} selected={draft.meal === slot} onPress={() => setDraft({ ...draft, meal: slot })} />
+              <Choice key={slot} label={MEAL_LABEL[slot]} selected={draft.meal === slot} onPress={() => { setDuplicateAsk(false); setDraft({ ...draft, meal: slot }); }} />
             ))}
           </View>
           {draft.items.map((item, index) => (
@@ -899,11 +939,44 @@ export default function Nutrition() {
               </View>
             </View>
           ))}
-          <Button label="Add another food" tone="quiet" onPress={() => setDraft({ ...draft, items: [...draft.items, blankItem()] })} />
-          <Button label="Save meal" pending={isPending('save')} pendingLabel="Saving..." onPress={saveMeal} />
-          <Button label="Cancel" tone="quiet" disabled={isPending('save')} onPress={() => setDraft(null)} />
+          <Button label="Add another food" tone="quiet" onPress={() => { setDuplicateAsk(false); setDraft({ ...draft, items: [...draft.items, blankItem()] }); }} />
+          {duplicateAsk ? <T>{DUPLICATE_MEAL_PROMPT}</T> : null}
+          {duplicateAsk ? (
+            <Button label="Add anyway" tone="quiet" pending={isPending('save')} pendingLabel="Saving..." onPress={() => saveMeal(true)} />
+          ) : (
+            <Button label="Save meal" pending={isPending('save')} pendingLabel="Saving..." onPress={() => saveMeal(false)} />
+          )}
+          <Button label="Cancel" tone="quiet" disabled={isPending('save')} onPress={() => { setDuplicateAsk(false); setDraft(null); }} />
         </Card>
       ) : null}
+      <Card>
+        <T variant="label">Logged today</T>
+        {mealSavedAt != null ? <T>Saved ✓</T> : null}
+        <TodayMeals
+          rows={mealRows}
+          totals={mealTotals}
+          hideCalories={hide}
+          ring={calorieRing}
+          activeId={summaryLog?.id ?? null}
+          highlightId={revealId}
+          rowRef={savedRowRef}
+          onOpen={(id) => {
+            setEditAnchor('summary');
+            setConfirmId(null);
+            setMealSavedAt(null);
+            setEditingId((current) => (current === id && editAnchor === 'summary' ? null : id));
+          }}
+          activeTools={summaryLog ? mealActions(summaryLog, 'summary') : null}
+        />
+        {earlierLogs.length ? <T variant="label">Earlier</T> : null}
+        {earlierLogs.map((log) => renderLog(log, true))}
+        <NutritionShareSwitch
+          label="Share today's meals"
+          item="Today's meals"
+          on={settings.shareFoodDiary}
+          apply={(current, selected) => ({ ...current, shareFoodDiary: selected })}
+        />
+      </Card>
       <ScrollTarget id="body">
       <BodyCompositionCard />
       </ScrollTarget>
@@ -991,19 +1064,6 @@ export default function Nutrition() {
         />
       </Card>
       </ScrollTarget>
-      <Card>
-        <T variant="label">Logged today</T>
-        {todayLogs.length === 0 ? <T variant="muted">Nothing saved yet.</T> : null}
-        {todayLogs.map((log) => renderLog(log, false))}
-        {earlierLogs.length ? <T variant="label">Earlier</T> : null}
-        {earlierLogs.map((log) => renderLog(log, true))}
-        <NutritionShareSwitch
-          label="Share today's meals"
-          item="Today's meals"
-          on={settings.shareFoodDiary}
-          apply={(current, selected) => ({ ...current, shareFoodDiary: selected })}
-        />
-      </Card>
       <ScrollTarget id="today">
       <Card>
         <T variant="label">Today</T>

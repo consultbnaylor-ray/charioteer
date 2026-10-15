@@ -661,6 +661,38 @@ export function todayMealsNeedCollapse(count: number): boolean {
   return count > TODAY_MEALS_COLLAPSE_AFTER;
 }
 
+/** A second save of the same meal inside this window asks before it is added again. */
+export const RECENT_MEAL_WINDOW_MS = 2 * 60 * 1000;
+
+export const DUPLICATE_MEAL_PROMPT = 'Looks like you just logged this — add anyway?';
+
+function mealMatchKey(meal: MealSlot, note: string, items: readonly { name: string; kcal: number }[]): string {
+  const names = items.map((item) => item.name.trim()).filter(Boolean).join(', ');
+  const name = (names || note.trim() || 'Meal').replace(/\s+/g, ' ').toLowerCase();
+  const kcal = Math.round(items.reduce((sum, item) => sum + (Number.isFinite(item.kcal) ? item.kcal : 0), 0));
+  return `${meal}\n${name}\n${kcal}`;
+}
+
+/** Same meal type, name, and kcal, saved by this person within a couple of minutes. */
+export function recentDuplicateMeal(
+  logs: readonly FoodLog[],
+  ownerId: string,
+  candidate: { meal: MealSlot; note: string; items: readonly FoodItem[] },
+  nowMs: number,
+  windowMs = RECENT_MEAL_WINDOW_MS,
+): boolean {
+  if (!ownerId) return false;
+  const key = mealMatchKey(candidate.meal, candidate.note, candidate.items);
+  return logs.some((log) => {
+    if (log.userId !== ownerId) return false;
+    const savedAt = Date.parse(log.createdAt);
+    if (!Number.isFinite(savedAt)) return false;
+    const age = nowMs - savedAt;
+    if (age < 0 || age > windowMs) return false;
+    return mealMatchKey(log.meal, log.note, log.items) === key;
+  });
+}
+
 /** kcal, then protein, carbohydrate, and fat when any of those was logged. */
 export function todayMealTotalLine(totals: TodayMealTotals, hideCalories: boolean): string {
   const hasMacros = totals.proteinG > 0 || totals.carbsG > 0 || totals.fatG > 0;

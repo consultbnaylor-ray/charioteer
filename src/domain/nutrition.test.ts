@@ -64,7 +64,10 @@ import {
   macroSplit,
   nutritionTrendDays,
   smoothWeight,
+  DUPLICATE_MEAL_PROMPT,
+  RECENT_MEAL_WINDOW_MS,
   TODAY_MEALS_EMPTY,
+  recentDuplicateMeal,
   todayMealRows,
   todayMealTotalLine,
   todayMealTotals,
@@ -401,7 +404,7 @@ describe('nutrition storage and coach', () => {
     expect(screen).toContain('label="Weight (kg)"');
     expect(screen).toContain('label="Height (cm)"');
     expect(screen).toContain('Or add them on Health Stats');
-    const goalCard = screen.slice(screen.indexOf('variant="label">Goal'), screen.indexOf('variant="label">Logged today'));
+    const goalCard = screen.slice(screen.indexOf('variant="label">Goal'), screen.indexOf('variant="label">Today'));
     expect(goalCard).toContain('Suggest targets');
     expect(goalCard).toContain('{suggestNote}');
     expect(goalCard).toContain('label="Weight (kg)"');
@@ -839,10 +842,10 @@ describe('nutrition charts', () => {
     const wagon = at('<WagonFlag');
     const sharing = at('<NutritionShareSummary');
     expect(log).toBeGreaterThan(-1);
-    expect(log).toBeLessThan(body);
+    expect(log).toBeLessThan(logged);
+    expect(logged).toBeLessThan(body);
     expect(body).toBeLessThan(goal);
-    expect(goal).toBeLessThan(logged);
-    expect(logged).toBeLessThan(summary);
+    expect(goal).toBeLessThan(summary);
     expect(summary).toBeLessThan(board);
     expect(board).toBeLessThan(water);
     expect(water).toBeLessThan(weight);
@@ -853,14 +856,14 @@ describe('nutrition charts', () => {
     const scroller = readFileSync('src/ui/ScrollTarget.tsx', 'utf8');
     expect(scroller).toContain('querySelectorAll(`[id="section-${id}"]`)');
     expect(scroller).toContain('scrollIntoView');
-    expect(screen.slice(logged, summary)).toContain("Share today's meals");
+    expect(screen.slice(logged, body)).toContain("Share today's meals");
     expect(screen.slice(summary, board)).toContain('Share daily calories and macros');
     expect(screen.slice(board, water)).toContain('Share food quality');
     expect(screen.slice(board, water)).toContain('Share progress and streaks');
-    expect(screen.slice(goal, logged)).toContain('Share the goal and progress');
-    expect(screen.slice(goal, logged)).toContain('Saved ✓');
-    expect(screen.slice(goal, logged)).toContain('Last updated');
-    expect(screen.slice(goal, logged)).toContain('formatUkCompactWhen');
+    expect(screen.slice(goal, summary)).toContain('Share the goal and progress');
+    expect(screen.slice(goal, summary)).toContain('Saved ✓');
+    expect(screen.slice(goal, summary)).toContain('Last updated');
+    expect(screen.slice(goal, summary)).toContain('formatUkCompactWhen');
     expect(screen).toContain("pending={isPending('suggest')}");
   });
 
@@ -1374,19 +1377,67 @@ describe("today's meals on the log card", () => {
     expect(todayMealRows([], day, 'user')).toEqual([]);
   });
 
-  it('sits inside the Log a meal card and stays monochrome', () => {
+  it('sits under Log a meal and the confirm card, above Body, and stays monochrome', () => {
     const screen = readFileSync('src/app/(main)/nutrition.tsx', 'utf8');
     const meals = readFileSync('src/ui/TodayMeals.tsx', 'utf8');
     const log = screen.indexOf('variant="label">Log a meal');
+    const confirm = screen.indexOf('Confirm this meal');
+    const logged = screen.indexOf('variant="label">Logged today');
     const body = screen.indexOf('<BodyCompositionCard');
-    expect(screen.slice(log, body)).toContain('<TodayMeals');
+    expect(log).toBeGreaterThan(-1);
+    expect(log).toBeLessThan(confirm);
+    expect(confirm).toBeLessThan(logged);
+    expect(logged).toBeLessThan(body);
+    expect(screen.slice(log, confirm)).not.toContain('<TodayMeals');
+    expect(screen.slice(logged, body)).toContain('<TodayMeals');
+    expect(screen.slice(logged, body)).toContain('Saved ✓');
+    expect(screen.slice(logged, body)).toContain('>Earlier<');
+    expect(screen.slice(logged, body)).toContain("Share today's meals");
+    const save = screen.slice(screen.indexOf('function saveMeal'), screen.indexOf('function saveEdited'));
+    expect(save).toContain('setMealSavedAt(Date.now())');
+    expect(save).toContain('setRevealId(id)');
+    expect(save).toContain('recentDuplicateMeal');
+    expect(screen).toContain('DUPLICATE_MEAL_PROMPT');
+    expect(screen).toContain("label=\"Add anyway\"");
+    expect(screen).toContain("getElementById('saved-meal-row')");
+    expect(screen).toContain('scrollIntoView');
     expect(screen).toContain('todayMealRows(snap.foodLogs');
     expect(screen).toContain("setEditAnchor('summary')");
     expect(screen).toContain('<MealEdit');
     expect(meals).toContain('TODAY_MEALS_EMPTY');
     expect(meals).toContain("Hide today's meals");
+    expect(meals).toContain('saved-meal-row');
     expect(meals).not.toContain('statsTone');
     expect(meals).not.toContain('statsPalette');
     expect(readFileSync('src/app/(main)/home.tsx', 'utf8')).not.toContain('NutritionToday');
+  });
+
+  it('asks before saving the same meal again within a couple of minutes', () => {
+    const now = Date.parse('2026-10-15T12:02:00.000Z');
+    const eggs = item({ name: '4 eggs', kcal: 312 });
+    const logged = log({
+      eatenOn: '2026-10-15',
+      meal: 'breakfast',
+      createdAt: '2026-10-15T12:00:30.000Z',
+      items: [eggs],
+    });
+    const again = { meal: 'breakfast' as const, note: '', items: [eggs] };
+    expect(DUPLICATE_MEAL_PROMPT).toBe('Looks like you just logged this — add anyway?');
+    expect(RECENT_MEAL_WINDOW_MS).toBe(2 * 60 * 1000);
+    expect(recentDuplicateMeal([logged], 'user', again, now)).toBe(true);
+    expect(recentDuplicateMeal([logged], 'user', { ...again, meal: 'lunch' }, now)).toBe(false);
+    expect(recentDuplicateMeal([logged], 'user', { ...again, items: [item({ name: '4 eggs', kcal: 280 })] }, now)).toBe(false);
+    expect(recentDuplicateMeal([logged], 'user', { ...again, items: [item({ name: '3 eggs', kcal: 312 })] }, now)).toBe(false);
+    expect(recentDuplicateMeal([logged], 'user', { ...again, items: [item({ name: '4 Eggs', kcal: 312 })] }, now)).toBe(true);
+    expect(recentDuplicateMeal([logged], 'someone-else', again, now)).toBe(false);
+    expect(recentDuplicateMeal([logged], 'user', again, now + RECENT_MEAL_WINDOW_MS + 1)).toBe(false);
+    const noted = log({
+      eatenOn: '2026-10-15',
+      meal: 'breakfast',
+      createdAt: '2026-10-15T12:00:00.000Z',
+      note: '4 eggs',
+      items: [],
+    });
+    expect(recentDuplicateMeal([noted], 'user', { meal: 'breakfast', note: '4 eggs', items: [] }, now)).toBe(true);
   });
 });

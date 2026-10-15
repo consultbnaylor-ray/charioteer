@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode, type RefObject } from 'react';
 import { Pressable, View } from 'react-native';
 import Svg, { Circle } from 'react-native-svg';
 
@@ -51,6 +51,8 @@ export function TodayMeals({
   activeId,
   onOpen,
   activeTools,
+  highlightId,
+  rowRef,
 }: {
   rows: readonly TodayMealRow[];
   totals: TodayMealTotals;
@@ -59,11 +61,17 @@ export function TodayMeals({
   activeId: string | null;
   onOpen: (id: string) => void;
   activeTools: ReactNode;
+  highlightId?: string | null;
+  rowRef?: RefObject<View | null>;
 }) {
   const theme = useAppTheme();
   const [open, setOpen] = useState(false);
   const long = todayMealsNeedCollapse(rows.length);
-  const shown = rows.length > 0 && (!long || open);
+  const pinned = highlightId != null && rows.some((row) => row.id === highlightId);
+  const shown = rows.length > 0 && (!long || open || pinned);
+  useEffect(() => {
+    if (pinned) setOpen(true);
+  }, [pinned]);
   const total = rows.length > 0 ? todayMealTotalLine(totals, hideCalories) : '';
   return (
     <View style={{ gap: 8 }}>
@@ -89,8 +97,15 @@ export function TodayMeals({
       ) : null}
       {shown ? rows.map((row) => {
         const kcal = hideCalories ? '' : ` · ${row.kcal.toLocaleString('en-GB')} kcal`;
+        const justSaved = row.id === highlightId;
         return (
-          <View key={row.id} style={{ gap: 6, borderTopWidth: 1, borderTopColor: theme.colors.line, paddingTop: 8 }}>
+          <View
+            key={row.id}
+            ref={justSaved ? rowRef : undefined}
+            nativeID={justSaved ? 'saved-meal-row' : undefined}
+            collapsable={false}
+            style={{ gap: 6, borderTopWidth: 1, borderTopColor: theme.colors.line, paddingTop: 8 }}
+          >
             <Pressable
               accessibilityRole="button"
               accessibilityLabel={`${row.typeLabel}, ${row.name}${kcal}`}
