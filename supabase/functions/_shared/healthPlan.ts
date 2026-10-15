@@ -71,13 +71,15 @@ export type PlanInput = {
   leanMassKg: number | null;
   waistCm: number | null;
   doneTexts: string[];
+  /** Usual gym week from You. Absent or null when they have not set one. */
+  schedule?: TrainingSchedule | null;
 };
 
 type Level = 'starting' | 'some' | 'active';
 
 const WEEK_ORDER = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'] as const;
 
-/** Logged workouts over the last four weeks. The plan maintains this, or eases off only for pain, illness, injury, or poor recovery. */
+/** Logged workouts over the last four weeks, or the week the person stated on You. The plan maintains this, or eases off only for pain, illness, injury, or poor recovery. */
 export type TrainingBaseline = {
   sessionsPerWeek: number;
   typicalMinutes: number;
@@ -85,6 +87,23 @@ export type TrainingBaseline = {
   restDays: string[];
   summary: string;
   dayCount: number;
+  /** Days for an easy walk, not a gym session and not a missed one. */
+  walkDays?: string[];
+  /** Minutes for each training day. A longer day can sit above typicalMinutes. */
+  dayMinutes?: Record<string, number>;
+  source?: 'logged' | 'stated';
+  /** The person's own note, when they wrote one on You. */
+  note?: string;
+};
+
+/** Usual gym week saved from You. Days are weekday names, Monday first. */
+export type TrainingSchedule = {
+  days: string[];
+  typicalMinutes: number;
+  longerDay: string | null;
+  longerMinutes: number | null;
+  walkDay: string | null;
+  note: string;
 };
 
 type Derived = {
@@ -268,7 +287,7 @@ function derive(input: PlanInput): Derived {
     vision: vision || null,
     injury: /injur|pain|surgery|pregnant|condition|asthma|heart|doctor|gp\b/i.test(input.limits),
     easeOff: easesOff(input),
-    baseline: trainingBaseline(input),
+    baseline: planBaseline(input),
     safety,
     done: input.doneTexts.map((item) => item.trim()).filter(Boolean).slice(0, 12),
   };
@@ -514,7 +533,7 @@ export type HealthPlanModelContext = {
   activity: string;
   kcalTarget: number | null;
   proteinTarget: number | null;
-  /** Logged routine from the last four weeks, or null when the log is too thin to be a routine. */
+  /** Stated week from You, or the logged routine from the last four weeks. Null when neither is usable. */
   training: TrainingBaseline | null;
 };
 
@@ -548,7 +567,7 @@ export function healthPlanModelContext(input: PlanInput, plan: HealthPlan): Heal
     activity: plan.fitness.intro,
     kcalTarget: input.kcalTarget,
     proteinTarget: input.proteinTarget,
-    training: trainingBaseline(input),
+    training: planBaseline(input),
   };
 }
 
@@ -647,7 +666,152 @@ export function trainingBaseline(input: PlanInput): TrainingBaseline | null {
   const summary = trainDays.length >= 5
     ? `You train about ${typicalMinutes} min on most days.`
     : `You train about ${typicalMinutes} min on ${joinDays(trainDays)}.`;
-  return { sessionsPerWeek, typicalMinutes, trainDays, restDays, summary, dayCount: logged.length };
+  return {
+    sessionsPerWeek,
+    typicalMinutes,
+    trainDays,
+    restDays,
+    walkDays: [],
+    summary,
+    dayCount: logged.length,
+    source: 'logged',
+  };
+}
+
+const SCHEDULE_DAY_COLUMNS = [
+  ['monday', 'Monday'],
+  ['tuesday', 'Tuesday'],
+  ['wednesday', 'Wednesday'],
+  ['thursday', 'Thursday'],
+  ['friday', 'Friday'],
+  ['saturday', 'Saturday'],
+  ['sunday', 'Sunday'],
+] as const;
+
+function weekdayListed(value: string | null | undefined): value is (typeof WEEK_ORDER)[number] {
+  return WEEK_ORDER.some((day) => day === value);
+}
+
+/** Drops an incomplete or out-of-range week. Minutes stay inside the safety caps. */
+export function normaliseTrainingSchedule(raw: {
+  days?: readonly string[] | null;
+  typicalMinutes?: number | null;
+  longerDay?: string | null;
+  longerMinutes?: number | null;
+  walkDay?: string | null;
+  note?: string | null;
+} | null | undefined): TrainingSchedule | null {
+  if (!raw) return null;
+  const days = WEEK_ORDER.filter((day) => (raw.days ?? []).includes(day));
+  if (!days.length) return null;
+  const typical = Math.round(Number(raw.typicalMinutes));
+  if (!Number.isFinite(typical) || typical < 10 || typical > 180) return null;
+  let longerDay = weekdayListed(raw.longerDay) && days.includes(raw.longerDay) ? raw.longerDay : null;
+  let longerMinutes = longerDay == null ? null : Math.round(Number(raw.longerMinutes));
+  if (longerDay) {
+    if (longerMinutes == null || !Number.isFinite(longerMinutes) || longerMinutes <= typical || longerMinutes > 240) {
+      longerDay = null;
+      longerMinutes = null;
+    }
+  }
+  const walkDay = weekdayListed(raw.walkDay) && !days.includes(raw.walkDay) ? raw.walkDay : null;
+  const note = (raw.note ?? '').replace(/\s+/g, ' ').trim().slice(0, 280);
+  return { days: [...days], typicalMinutes: typical, longerDay, longerMinutes, walkDay, note };
+}
+
+/** One owner row from training_schedules. Null when the week is missing or not usable. */
+export function trainingScheduleFromRow(row: unknown): TrainingSchedule | null {
+  if (!row || typeof row !== 'object') return null;
+  const record = row as Record<string, unknown>;
+  const days = SCHEDULE_DAY_COLUMNS.filter(([column]) => record[column] === true).map(([, name]) => name);
+  return normaliseTrainingSchedule({
+    days,
+    typicalMinutes: Number(record.typical_minutes),
+    longerDay: typeof record.longer_day === 'string' ? record.longer_day : null,
+    longerMinutes: record.longer_minutes == null ? null : Number(record.longer_minutes),
+    walkDay: typeof record.walk_day === 'string' ? record.walk_day : null,
+    note: typeof record.note === 'string' ? record.note : '',
+  });
+}
+
+function aimBody(schedule: TrainingSchedule): string {
+  const typical = schedule.typicalMinutes;
+  const longer = schedule.longerDay;
+  const ordinary = schedule.days.filter((day) => day !== longer);
+  const weekdays = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
+  const isWeekdays = ordinary.length === 5 && weekdays.every((day) => ordinary.includes(day));
+  if (longer && schedule.longerMinutes && schedule.longerMinutes > typical) {
+    if (!ordinary.length) return `${schedule.longerMinutes} min on ${longer}`;
+    const where = isWeekdays ? 'weekdays' : joinDays(ordinary);
+    return `${typical} min on ${where} and a bit more on ${longer}`;
+  }
+  if (isWeekdays && schedule.days.length === 5) return `${typical} min on weekdays`;
+  if (schedule.days.length >= 6) return `${typical} min on most days`;
+  return `${typical} min on ${joinDays(schedule.days)}`;
+}
+
+/** One line for the You card. */
+export function trainingScheduleSummary(schedule: TrainingSchedule | null): string {
+  if (!schedule?.days.length) return 'Not set yet.';
+  const walk = schedule.walkDay ? ` Walk on ${schedule.walkDay}.` : '';
+  return `${aimBody(schedule)}.${walk}`;
+}
+
+function completedThisWeek(input: PlanInput, trainDays: readonly string[]): { done: number; total: number } {
+  const today = isoDay(input.now);
+  const start = shift(today, -6);
+  const byDay = new Map<string, number>();
+  for (const row of input.health) {
+    if (row.kind !== 'workout_minutes') continue;
+    if (row.recordedOn < start || row.recordedOn > today) continue;
+    if (!Number.isFinite(row.value) || row.value <= 0) continue;
+    byDay.set(row.recordedOn, (byDay.get(row.recordedOn) ?? 0) + row.value);
+  }
+  let done = 0;
+  for (let offset = 0; offset < 7; offset += 1) {
+    const day = shift(start, offset);
+    if (!trainDays.includes(weekdayName(day))) continue;
+    if ((byDay.get(day) ?? 0) > 0) done += 1;
+  }
+  return { done, total: trainDays.length };
+}
+
+/**
+ * The stated week is the plan whenever You has a saved schedule.
+ * A thin or missing log does not invent rest days. A solid log adds how many of those sessions happened this week.
+ */
+function statedBaseline(input: PlanInput): TrainingBaseline | null {
+  const schedule = normaliseTrainingSchedule(input.schedule);
+  if (!schedule) return null;
+  const dayMinutes: Record<string, number> = {};
+  for (const day of schedule.days) {
+    dayMinutes[day] = day === schedule.longerDay && schedule.longerMinutes ? schedule.longerMinutes : schedule.typicalMinutes;
+  }
+  const walkDays = schedule.walkDay ? [schedule.walkDay] : [];
+  const restDays = WEEK_ORDER.filter((day) => !schedule.days.includes(day) && !walkDays.includes(day));
+  const logged = trainingBaseline(input);
+  const count = completedThisWeek(input, schedule.days);
+  const comparison = logged && count.done > 0 ? `you have done ${count.done} of ${count.total} this week` : null;
+  const summary = comparison
+    ? `You aim for ${aimBody(schedule)}; ${comparison}`
+    : `You aim for ${aimBody(schedule)}`;
+  return {
+    sessionsPerWeek: schedule.days.length,
+    typicalMinutes: schedule.typicalMinutes,
+    trainDays: [...schedule.days],
+    restDays: [...restDays],
+    walkDays,
+    dayMinutes,
+    summary,
+    dayCount: logged?.dayCount ?? 0,
+    source: 'stated',
+    note: schedule.note,
+  };
+}
+
+/** Stated schedule when You has one, otherwise the logged four-week routine. */
+export function planBaseline(input: PlanInput): TrainingBaseline | null {
+  return statedBaseline(input) ?? trainingBaseline(input);
 }
 
 function weekdaysMentioned(text: string): string[] {
@@ -680,7 +844,13 @@ export function mentionsRegressiveSession(text: string, baseline: TrainingBaseli
   if (baseline.sessionsPerWeek >= 3 && /\b(full rest|no structured)\b/i.test(line)) return true;
   if (/\b(fewer sets|fewer reps)\b/i.test(line)) return true;
   const minutes = line.match(/\b(\d+)\s*(?:min|minutes)\b/i);
-  if (minutes && trainsNamed && Number(minutes[1]) < baseline.typicalMinutes * 0.9) return true;
+  if (minutes && trainsNamed) {
+    const floors = named
+      .filter((day) => baseline.trainDays.includes(day))
+      .map((day) => baseline.dayMinutes?.[day] ?? baseline.typicalMinutes);
+    const floor = floors.length ? Math.min(...floors) : baseline.typicalMinutes;
+    if (Number(minutes[1]) < floor * 0.9) return true;
+  }
   return false;
 }
 
@@ -701,18 +871,31 @@ function sessionKind(facts: Derived): string {
 }
 
 function routineWeek(facts: Derived, baseline: TrainingBaseline): string[] {
-  const minutes = Math.round(baseline.typicalMinutes);
   const kind = sessionKind(facts);
   const progress = progressionClause(facts);
   const lines: string[] = [];
   for (const day of WEEK_ORDER) {
-    if (baseline.trainDays.includes(day)) lines.push(`${day} · Keep this ${kind}, about ${minutes} min. ${progress}`);
+    if (baseline.trainDays.includes(day)) {
+      const minutes = Math.round(baseline.dayMinutes?.[day] ?? baseline.typicalMinutes);
+      lines.push(`${day} · Keep this ${kind}, about ${minutes} min. ${progress}`);
+    } else if (baseline.walkDays?.includes(day)) lines.push(`${day} · A walk. Keep it easy.`);
     else if (baseline.restDays.includes(day)) lines.push(`${day} · Rest. You already leave this day free.`);
   }
   return lines;
 }
 
+function statedKeep(goal: PlanInput['goal']): string {
+  if (goal === 'elite_runner') return 'Keep the runs and the carbohydrate.';
+  if (goal === 'body_builder') return 'Keep the lifting and the protein.';
+  if (goal === 'elite_heavy_boxer' || goal === 'elite_middle_boxer') return 'Keep the boxing and the protein.';
+  if (goal === 'lose_fat_build_muscle') return 'Keep the resistance work and the protein.';
+  return 'Keep this routine.';
+}
+
 function baselineIntro(facts: Derived, baseline: TrainingBaseline): string {
+  if (baseline.source === 'stated') {
+    return clip(`${baseline.summary}. ${statedKeep(facts.input.goal)} ${PLAN_DOCTOR}`, 220);
+  }
   const goal = facts.input.goal;
   const next = goal === 'elite_runner'
     ? 'Keep the runs and the carbohydrate, and add a little distance.'
@@ -1046,6 +1229,7 @@ function mergeSessions(incoming: PlanAction[], fallback: PlanAction[], facts: De
     if (next.length >= 7) break;
   }
   if (!baseline) return next.length >= 3 ? next : fallback;
+  if (baseline.source === 'stated') return fallback;
   const covered = baseline.trainDays.every((day) => seenDays.has(day));
   return covered && next.length >= 3 ? next : fallback;
 }
@@ -1077,13 +1261,14 @@ export function guardHealthPlan(plan: HealthPlan, input: PlanInput): HealthPlan 
   let intro = cleanLine(plan.fitness.intro, facts) ?? local.fitness.intro;
   if (facts.safety.withdrawal && !intro.includes('do not stop suddenly')) intro = WITHDRAWAL_NOTICE;
   if ((facts.injury || facts.easeOff) && !facts.safety.withdrawal && !facts.safety.selfHarm) intro = local.fitness.intro;
+  const introMatches = facts.baseline?.source === 'stated' ? /you aim for/i.test(intro) : /train about/i.test(intro);
   if (
     facts.baseline
     && !facts.safety.selfHarm
     && !facts.safety.withdrawal
     && !facts.injury
     && !facts.easeOff
-    && !/train about/i.test(intro)
+    && !introMatches
   ) {
     intro = local.fitness.intro;
   }
@@ -1228,6 +1413,7 @@ export const HEALTH_PLAN_PROMPT = [
   'If nothing they logged or wrote supports a swap, return one swap whose text is exactly "Log a few more meals and Thumos will suggest swaps based on what you actually eat."',
   'If the goal is an elite runner, body builder, heavyweight boxer, or middleweight boxer, include training load, recovery, and fuelling around sessions. A heavyweight goal keeps size and power and does not use a deficit. A middleweight goal stays near a limit with a small change only.',
   'When the user message includes training, that object is the routine from logged workouts over the last 4 weeks: sessions per week, typical minutes, train weekdays, and rest weekdays. Maintain or progress that baseline. Never prescribe fewer sessions or fewer minutes unless they report pain, illness, injury, or poor recovery. Rest only on training.restDays. Do not invent a rest day, a full rest, or "no structured workouts" on a day they train. One row per weekday. Do not append a stock walk-and-rest week. The fitness intro must say what the log shows, for example "You train about 30 min on most days." Progress with a little more weight, one more set, or about 5 to 10 percent volume. For lose fat and build muscle, emphasise resistance training, protein, and a little easy walking or steps. A runner, boxer, or body builder keeps that sport. Check with a doctor before big changes.',
+  'When training.source is "stated", the person set that week on You. Follow training.trainDays and training.dayMinutes. Rest only on training.restDays. A day in training.walkDays is a walk, not a missed gym day and not a gym session. The fitness intro states the aim, for example "You aim for 30 min on weekdays and a bit more on Saturday". If the summary says how many of those sessions they have done this week, keep that comparison. Use training.note only when they wrote one. Do not invent a time of day.',
   'Do not suggest a rapid weight cut, dehydration, a sauna, or skipping meals to make weight. A competition weigh-in belongs with a coach and a doctor.',
   'No diagnosis, no medication, no medical advice. Do not tell anyone to eat less when the figures say the intake should not fall. Do not suggest stopping alcohol suddenly.',
   'Food, steps, weight, sleep, and mood are already logged in Charioteer. Never tell the person to use another app, the same app, a tracking app, a wearable, a fitness tracker, or a named product such as MyFitnessPal, Nutracheck, Fitbit, Garmin, or Apple Health. When a habit is about tracking, name Nutrition for meals and body readings, Stats for steps, weight, and workouts, and Check-in for mood, craving, and sleep.',

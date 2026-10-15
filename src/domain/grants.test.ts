@@ -431,6 +431,13 @@ describe('client upsert update grants', () => {
       columns: ['user_id', 'focus', 'nutrition', 'fitness', 'wellbeing', 'limits', 'disclaimer', 'updated_at'],
       withheld: [],
     },
+    training_schedules: {
+      columns: [
+        'user_id', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday',
+        'typical_minutes', 'longer_day', 'longer_minutes', 'walk_day', 'note', 'updated_at',
+      ],
+      withheld: [],
+    },
     profile_sharing: {
       columns: ['user_id', 'settings', 'updated_at'],
       withheld: [],
@@ -462,6 +469,7 @@ describe('client upsert update grants', () => {
     expect(grants.get('health_samples')?.tableLevel).toBe(false);
     expect(grants.get('user_quotes')?.tableLevel).toBe(false);
     expect(grants.get('health_plans')?.tableLevel).toBe(false);
+    expect(grants.get('training_schedules')?.tableLevel).toBe(false);
   });
 
   it('adds the quote conflict columns without redoing the health plan grant', () => {

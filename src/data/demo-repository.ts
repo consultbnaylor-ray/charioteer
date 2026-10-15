@@ -81,7 +81,7 @@ import {
   type FoodLog,
   type NutritionSettings,
 } from '@/domain/nutrition';
-import { donePlanTexts, draftHealthPlan, presentSharedHealthPlan, type HealthPlan } from '@/domain/healthPlan';
+import { donePlanTexts, draftHealthPlan, normaliseTrainingSchedule, presentSharedHealthPlan, type HealthPlan, type TrainingSchedule } from '@/domain/healthPlan';
 import { createDemoDb, type DemoAccount, type DemoDb } from '@/data/demo-seed';
 import type {
   AppSnapshot,
@@ -363,6 +363,7 @@ export class DemoRepository implements Repository {
       waterDays: account?.waterDays ?? [],
       bodyComposition: account?.bodyComposition ?? [],
       healthPlan: account?.healthPlan ?? null,
+      trainingSchedule: account?.trainingSchedule ?? null,
     };
   }
 
@@ -1197,6 +1198,15 @@ export class DemoRepository implements Repository {
     return undefined;
   }
 
+  async saveTrainingSchedule(schedule: TrainingSchedule | null): Promise<void> {
+    const account = this.me();
+    const next = schedule ? normaliseTrainingSchedule(schedule) : null;
+    if (schedule && !next) throw new UserFacingError('Could not save that training schedule.', 'generic');
+    const db = clone(this.db);
+    db.accounts[account.profile.id].trainingSchedule = next;
+    this.commit(db);
+  }
+
   async saveHealthPlan(plan: HealthPlan): Promise<void> {
     const account = this.me();
     const db = clone(this.db);
@@ -1252,6 +1262,7 @@ export class DemoRepository implements Repository {
       leanMassKg: figures.leanMassKg,
       waistCm: figures.waistCm,
       doneTexts: account.healthPlan ? donePlanTexts(account.healthPlan) : [],
+      schedule: account.trainingSchedule ?? null,
     });
     const db = clone(this.db);
     db.accounts[account.profile.id].healthPlan = plan;

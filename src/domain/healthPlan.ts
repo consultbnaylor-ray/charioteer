@@ -13,7 +13,11 @@ export {
   mentionsOtherTracker,
   mentionsRegressiveSession,
   mentionsUnsupportedSwap,
+  normaliseTrainingSchedule,
+  planBaseline,
   trainingBaseline,
+  trainingScheduleFromRow,
+  trainingScheduleSummary,
   parseHealthPlanJson,
   parseSharedHealthPlan,
   presentSharedHealthPlan,
@@ -24,4 +28,5 @@ export {
   type PlanInput,
   type SharedHealthPlan,
   type TrainingBaseline,
+  type TrainingSchedule,
 } from '../../supabase/functions/_shared/healthPlan.ts';

@@ -71,7 +71,7 @@ import {
   type NutritionDay,
   type NutritionSettings,
 } from '@/domain/nutrition';
-import { PLAN_DISCLAIMER, healthPlanFromStored, parseSharedHealthPlan, type HealthPlan } from '@/domain/healthPlan';
+import { PLAN_DISCLAIMER, healthPlanFromStored, normaliseTrainingSchedule, parseSharedHealthPlan, trainingScheduleFromRow, type HealthPlan, type TrainingSchedule } from '@/domain/healthPlan';
 import { parseBuddyLinkPass, parseBuddyList, parseBuddyPreview, parseBuddyShare, type BuddyLinkPass, type BuddyList, type BuddyScope, type BuddyShareView } from '@/domain/buddies';
 import { randomId } from '@/domain/id';
 import { chatInsertFilter, messageFromRealtime, withIncomingMessage } from '@/domain/liveChat';
@@ -209,6 +209,7 @@ function emptySnapshot(): AppSnapshot {
     waterDays: [],
     bodyComposition: [],
     healthPlan: null,
+    trainingSchedule: null,
   };
 }
 
@@ -404,7 +405,7 @@ export class SupabaseRepository implements Repository {
 
     const userId = session.user.id;
     const email = session.user.email ?? '';
-    const [profileRes, reasonsRes, checkRes, relapseRes, healthRes, mineRes, thumosRes, directoryRes, interestLinks, connectionsRes, reportsRes, consentsRes, photosRes, gratitudeRes, gratitudePhotoRes, visionRes, sharingRes, quotesRes, profilePhotoRes, healthPlanRes] =
+    const [profileRes, reasonsRes, checkRes, relapseRes, healthRes, mineRes, thumosRes, directoryRes, interestLinks, connectionsRes, reportsRes, consentsRes, photosRes, gratitudeRes, gratitudePhotoRes, visionRes, sharingRes, quotesRes, profilePhotoRes, healthPlanRes, scheduleRes] =
       await Promise.all([
         this.client.from('profiles').select('*').eq('id', userId).maybeSingle(),
         this.client.from('reasons').select('*').eq('user_id', userId).order('sort_order'),
@@ -426,6 +427,7 @@ export class SupabaseRepository implements Repository {
         this.client.from('user_quotes').select('quote_id, created_at').eq('user_id', userId).order('created_at', { ascending: false }),
         this.client.from('profile_photos').select('id, user_id, role, caption, position, storage_path, created_at').eq('user_id', userId).order('position').order('created_at'),
         this.client.from('health_plans').select('focus, nutrition, fitness, wellbeing, limits, disclaimer, updated_at').eq('user_id', userId).maybeSingle(),
+        this.client.from('training_schedules').select('monday, tuesday, wednesday, thursday, friday, saturday, sunday, typical_minutes, longer_day, longer_minutes, walk_day, note').eq('user_id', userId).maybeSingle(),
       ]);
 
     const profileRow = profileRes.data as Row | null;
@@ -535,6 +537,7 @@ export class SupabaseRepository implements Repository {
             return [{ quoteId, createdAt: String(row.created_at ?? '') }];
           }),
       healthPlan: healthPlanRes.error ? null : healthPlanFromStored(healthPlanRes.data),
+      trainingSchedule: scheduleRes.error ? null : trainingScheduleFromRow(scheduleRes.data),
     });
   }
 
@@ -2358,6 +2361,43 @@ export class SupabaseRepository implements Repository {
         throw asUserFacing(error, 'general');
       }
     });
+  }
+
+  async saveTrainingSchedule(schedule: TrainingSchedule | null): Promise<void> {
+    const userId = this.snapshot.session?.userId ?? await this.userId();
+    const before = this.snapshot.trainingSchedule;
+    const next = schedule ? normaliseTrainingSchedule(schedule) : null;
+    if (schedule && !next) throw new UserFacingError('Could not save that training schedule.', 'generic');
+    this.emit({ ...this.snapshot, trainingSchedule: next });
+    if (!next) {
+      const { error } = await this.client.from('training_schedules').delete().eq('user_id', userId);
+      if (error) {
+        this.emit({ ...this.snapshot, trainingSchedule: before });
+        throw asUserFacing(error, 'general');
+      }
+      return;
+    }
+    const days = new Set(next.days);
+    const { error } = await this.client.from('training_schedules').upsert({
+      user_id: userId,
+      monday: days.has('Monday'),
+      tuesday: days.has('Tuesday'),
+      wednesday: days.has('Wednesday'),
+      thursday: days.has('Thursday'),
+      friday: days.has('Friday'),
+      saturday: days.has('Saturday'),
+      sunday: days.has('Sunday'),
+      typical_minutes: next.typicalMinutes,
+      longer_day: next.longerDay,
+      longer_minutes: next.longerMinutes,
+      walk_day: next.walkDay,
+      note: next.note,
+      updated_at: new Date().toISOString(),
+    });
+    if (error) {
+      this.emit({ ...this.snapshot, trainingSchedule: before });
+      throw asUserFacing(error, 'general');
+    }
   }
 
   async saveHealthPlan(plan: HealthPlan): Promise<void> {

@@ -18,6 +18,7 @@ import { profileDetailsDirty, type ProfileFormValues } from '@/domain/profileFor
 import { InterestChip } from '@/ui/InterestChip';
 import { MemberAvatar } from '@/ui/MemberAvatar';
 import { BuildChoices } from '@/ui/BodyComposition';
+import { TrainingScheduleCard } from '@/ui/TrainingSchedule';
 import { WagonFlag } from '@/ui/NutritionShare';
 import { YouSectionShare } from '@/ui/SectionShare';
 import { ShareOnProfile } from '@/ui/ShareOnProfile';
@@ -268,6 +269,7 @@ export default function Profile() {
         <T style={{ fontFamily: theme.font.bodyStrong }}>Health Plan</T>
         <T variant="muted">Nutrition, fitness, and a week of wellbeing, written from your own figures.</T>
       </Card>
+      <TrainingScheduleCard />
       {pinned ? (
         <View style={{ gap: 8 }}>
           <T variant="label">Pinned quote</T>

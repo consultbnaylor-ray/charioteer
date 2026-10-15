@@ -231,6 +231,8 @@ export type AppSnapshot = {
   bodyComposition: BodyCompositionReading[];
   /** Private Thumos plan. Never included in the community directory. */
   healthPlan: HealthPlan | null;
+  /** Usual gym week from You. Null until they save one. */
+  trainingSchedule: import('@/domain/healthPlan').TrainingSchedule | null;
 };
 
 export type NewGratitudeEntry = {
@@ -492,4 +494,6 @@ export interface Repository {
   saveHealthPlan(plan: HealthPlan): Promise<void>;
   /** Asks Thumos for a new plan from this person's figures. Finished actions are left behind. */
   refreshHealthPlan(limits: string): Promise<void>;
+  /** Saves the usual gym week, or clears it when null. */
+  saveTrainingSchedule(schedule: import('@/domain/healthPlan').TrainingSchedule | null): Promise<void>;
 }

@@ -6,6 +6,7 @@ import {
   guardHealthPlan,
   healthPlanModelContext,
   parseHealthPlanJson,
+  trainingScheduleFromRow,
   type PlanInput,
 } from '../_shared/healthPlan.ts';
 import { json, preflight } from '../_shared/http.ts';
@@ -61,7 +62,7 @@ Deno.serve(async (req) => {
   if (settingsRes.error) {
     settingsRes = await userClient.from('nutrition_settings').select('goal, goal_age, goal_sex, build, kcal_target, protein_target_g, hide_calories').eq('user_id', userId).maybeSingle();
   }
-  const [logsRes, checkRes, healthRes, bodyRes, reasonsRes, visionRes, interestRes, savedRes] = await Promise.all([
+  const [logsRes, checkRes, healthRes, bodyRes, reasonsRes, visionRes, interestRes, savedRes, scheduleRes] = await Promise.all([
     userClient.from('food_logs').select('id, eaten_on, meal, items, estimated, created_at').eq('user_id', userId).order('eaten_on', { ascending: false }).limit(40),
     userClient.from('check_ins').select('mood, craving, sleep_hours, note, created_at').eq('user_id', userId).order('created_at', { ascending: false }).limit(14),
     userClient.from('health_samples').select('kind, value, recorded_on').eq('user_id', userId).order('recorded_on', { ascending: false }).limit(240),
@@ -70,6 +71,7 @@ Deno.serve(async (req) => {
     userClient.from('vision_board_items').select('caption').eq('user_id', userId).order('position').limit(6),
     userClient.from('profile_interests').select('interest_id, interests(label)').eq('user_id', userId),
     userClient.from('health_plans').select('focus, nutrition, fitness, wellbeing, limits').eq('user_id', userId).maybeSingle(),
+    userClient.from('training_schedules').select('monday, tuesday, wednesday, thursday, friday, saturday, sunday, typical_minutes, longer_day, longer_minutes, walk_day, note').eq('user_id', userId).maybeSingle(),
   ]);
 
   const settings = (settingsRes.data ?? {}) as Record<string, unknown>;
@@ -154,6 +156,7 @@ Deno.serve(async (req) => {
     leanMassKg: typeof latestLean?.lean_mass_kg === 'number' ? latestLean.lean_mass_kg : null,
     waistCm: typeof latestWaist?.waist_cm === 'number' ? latestWaist.waist_cm : null,
     doneTexts,
+    schedule: scheduleRes.error ? null : trainingScheduleFromRow(scheduleRes.data),
   };
 
   const local = draftHealthPlan(input);

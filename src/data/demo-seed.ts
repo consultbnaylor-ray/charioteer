@@ -58,6 +58,8 @@ export type DemoAccount = {
   bodyComposition?: BodyCompositionReading[];
   /** Absent on older sample data. Private until Share on profile is on. */
   healthPlan?: HealthPlan | null;
+  /** Absent until they save a usual gym week on You. */
+  trainingSchedule?: import('@/domain/healthPlan').TrainingSchedule | null;
 };
 
 export type DemoDb = {

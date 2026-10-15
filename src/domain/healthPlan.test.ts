@@ -16,7 +16,10 @@ import {
   mentionsOtherTracker,
   mentionsRegressiveSession,
   mentionsUnsupportedSwap,
+  planBaseline,
   trainingBaseline,
+  trainingScheduleFromRow,
+  trainingScheduleSummary,
   presentSharedHealthPlan,
   togglePlanAction,
   type HealthPlan,
@@ -489,6 +492,135 @@ describe('health plan writer', () => {
     expect(texts.filter((text) => /\bRest\b/.test(text))).toEqual(['Sunday · Rest. You already leave this day free.']);
     expect(texts.join(' ')).not.toMatch(/Tuesday · Rest|Friday-Sunday|full rest|no structured/i);
     expect(texts.filter((text) => text.startsWith('Tuesday ·'))).toHaveLength(1);
+  });
+
+  it('follows a stated weekday 30 minute week plus a longer Saturday', () => {
+    const schedule = {
+      days: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'],
+      typicalMinutes: 30,
+      longerDay: 'Saturday',
+      longerMinutes: 45,
+      walkDay: 'Sunday',
+      note: 'Weekday mornings.',
+    };
+    const thin = input({
+      salt: 'stated-thin',
+      goal: 'lose_fat_build_muscle',
+      schedule,
+      health: [{ kind: 'weight_kg', value: 80, recordedOn: '2026-10-14' }],
+    });
+    expect(trainingBaseline(thin)).toBeNull();
+    expect(planBaseline(thin)?.source).toBe('stated');
+    const plan = draftHealthPlan(thin);
+    expect(plan.fitness.intro).toBe('You aim for 30 min on weekdays and a bit more on Saturday. Keep the resistance work and the protein. Check with your doctor before big changes.');
+    expect(plan.fitness.intro).not.toMatch(/you have done/);
+    expect(plan.fitness.intro).toContain(PLAN_DOCTOR);
+    expect(plan.fitness.intro.length).toBeLessThanOrEqual(220);
+    const texts = plan.fitness.sessions.map((item) => item.text);
+    expect(texts).toHaveLength(7);
+    expect(texts.join(' ')).not.toMatch(/Tuesday · Rest|full rest|no structured/i);
+    expect(texts.find((text) => text.startsWith('Monday ·'))).toMatch(/about 30 min/);
+    expect(texts.find((text) => text.startsWith('Monday ·'))).toMatch(/Add a little weight or one set/);
+    expect(texts.find((text) => text.startsWith('Saturday ·'))).toMatch(/about 45 min/);
+    expect(texts.find((text) => text.startsWith('Sunday ·'))).toBe('Sunday · A walk. Keep it easy.');
+    expect(texts.join(' ')).not.toMatch(/\bRest\b/);
+    const context = healthPlanModelContext(thin, plan);
+    expect(context.training?.trainDays).toContain('Tuesday');
+    expect(context.training?.restDays).toEqual([]);
+    expect(context.training?.walkDays).toEqual(['Sunday']);
+    expect(context.training?.dayMinutes?.Saturday).toBe(45);
+    expect(context.training?.dayMinutes?.Monday).toBe(30);
+    expect(context.training?.note).toBe('Weekday mornings.');
+    expect(HEALTH_PLAN_PROMPT).toMatch(/You aim for 30 min on weekdays and a bit more on Saturday/);
+    expect(trainingScheduleSummary(schedule)).toBe('30 min on weekdays and a bit more on Saturday. Walk on Sunday.');
+    expect(trainingScheduleFromRow({
+      monday: true,
+      tuesday: true,
+      wednesday: true,
+      thursday: true,
+      friday: true,
+      saturday: true,
+      sunday: false,
+      typical_minutes: 30,
+      longer_day: 'Saturday',
+      longer_minutes: 45,
+      walk_day: 'Sunday',
+      note: 'Weekday mornings.',
+    })).toEqual(schedule);
+
+    const loggedDays: { kind: string; value: number; recordedOn: string }[] = [];
+    for (let offset = 0; offset < 28; offset += 1) {
+      const recordedOn = isoShift('2026-10-15', -offset);
+      const name = weekdayOf(recordedOn);
+      if (name === 'Monday' || name === 'Tuesday' || name === 'Wednesday' || name === 'Thursday') {
+        loggedDays.push({ kind: 'workout_minutes', value: 30, recordedOn });
+      }
+    }
+    const logged = input({
+      salt: 'stated-compare',
+      goal: 'lose_fat_build_muscle',
+      schedule,
+      health: loggedDays,
+    });
+    expect(trainingBaseline(logged)?.trainDays).not.toContain('Saturday');
+    const compared = draftHealthPlan(logged);
+    expect(compared.fitness.intro).toMatch(/You aim for 30 min on weekdays and a bit more on Saturday; you have done 4 of 6 this week/);
+    expect(compared.fitness.intro).toContain(PLAN_DOCTOR);
+    expect(compared.fitness.intro.length).toBeLessThanOrEqual(220);
+    const comparedTexts = compared.fitness.sessions.map((item) => item.text);
+    expect(comparedTexts.find((text) => text.startsWith('Tuesday ·'))).toMatch(/about 30 min/);
+    expect(comparedTexts.find((text) => text.startsWith('Saturday ·'))).toMatch(/about 45 min/);
+    expect(comparedTexts.find((text) => text.startsWith('Sunday ·'))).toMatch(/A walk/);
+    expect(comparedTexts.join(' ')).not.toMatch(/Tuesday · Rest/);
+
+    const guarded = guardHealthPlan({
+      ...compared,
+      fitness: {
+        intro: 'Tuesday is a rest day and Sunday is a gym session.',
+        sessions: [
+          { id: 'a', text: 'Tuesday · Rest.', done: false },
+          { id: 'b', text: 'Saturday · Keep this session, about 30 min.', done: false },
+          { id: 'c', text: 'Sunday · Gym for 40 minutes.', done: false },
+        ],
+      },
+    }, logged);
+    expect(guarded.fitness.intro).toMatch(/You aim for 30 min on weekdays and a bit more on Saturday; you have done 4 of 6 this week/);
+    expect(guarded.fitness.intro).toContain(PLAN_DOCTOR);
+    const guardedTexts = guarded.fitness.sessions.map((item) => item.text);
+    expect(guardedTexts.find((text) => text.startsWith('Tuesday ·'))).toMatch(/about 30 min/);
+    expect(guardedTexts.find((text) => text.startsWith('Saturday ·'))).toMatch(/about 45 min/);
+    expect(guardedTexts.find((text) => text.startsWith('Sunday ·'))).toMatch(/A walk/);
+    const stated = planBaseline(logged);
+    expect(mentionsRegressiveSession('Saturday · Keep this session, about 30 min.', stated)).toBe(true);
+    expect(mentionsRegressiveSession('Saturday · Keep this session, about 45 min. Add a little weight or one set.', stated)).toBe(false);
+
+    const hurt = draftHealthPlan(input({
+      salt: 'stated-hurt',
+      goal: 'lose_fat_build_muscle',
+      schedule,
+      limits: 'Sore knee after surgery',
+      health: dailyWorkouts(30),
+    }));
+    expect(hurt.fitness.intro).toContain(PLAN_DOCTOR);
+    expect(hurt.fitness.sessions.map((item) => item.text).join(' ')).toMatch(/\bRest\b/);
+    expect(hurt.fitness.sessions.map((item) => item.text).join(' ')).not.toMatch(/Add a little weight/);
+
+    const page = readFileSync('src/app/(main)/profile.tsx', 'utf8');
+    expect(page).toContain('<TrainingScheduleCard');
+    const card = readFileSync('src/ui/TrainingSchedule.tsx', 'utf8');
+    expect(card).toContain('My training schedule');
+    expect(card).toContain('aria-expanded={open}');
+    expect(card).toContain('accessibilityState={{ expanded: open }}');
+    expect(card).toContain('Save schedule');
+    expect(card).toContain('Walk day');
+    const sql = readFileSync('supabase/migrations/20261015240000_training_schedules.sql', 'utf8');
+    expect(sql).toContain('create table public.training_schedules');
+    expect(sql).toContain('training_schedules_own');
+    expect(sql).toContain('user_id = auth.uid()');
+    expect(sql).toContain('grant update (');
+    expect(sql).toContain("'training_schedules'");
+    expect(sql.toLowerCase()).not.toMatch(/drop table|delete from/i);
+    expect(readFileSync('supabase/functions/health-plan/index.ts', 'utf8')).toContain("from('training_schedules')");
   });
 
   it('drops a regressive model week instead of appending the stock walk rows', () => {
