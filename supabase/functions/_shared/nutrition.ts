@@ -544,6 +544,8 @@ export type TodayRing = {
   centre: string;
   unit: string;
   caption: string;
+  /** Short line under the ring, such as "320 kcal left". */
+  status: string;
 };
 
 /** Kcal against the target, or protein when calories are hidden. */
@@ -563,19 +565,29 @@ export function todayRing(input: {
   const unit = kind === 'protein' ? 'g protein' : 'kcal';
   const centre = kind === 'protein' ? String(round1(value)) : Math.round(value).toLocaleString('en-GB');
   let caption = 'Nothing logged today.';
+  let status = 'Nothing logged today';
   if (input.logged || value > 0) {
     const shown = kind === 'protein' ? `${round1(value)} g protein` : `${Math.round(value).toLocaleString('en-GB')} kcal`;
-    if (usableTarget == null) caption = `${shown} logged. No target yet.`;
-    else if (value > usableTarget) {
+    if (usableTarget == null) {
+      caption = `${shown} logged. No target yet.`;
+      status = 'No target yet';
+    } else if (value > usableTarget) {
       const mark = kind === 'protein' ? `${usableTarget} g` : `${usableTarget.toLocaleString('en-GB')} kcal`;
       caption = `${shown} logged, above ${mark}.`;
+      if (kind === 'protein') status = 'At your target';
+      else status = `${Math.round(value - usableTarget).toLocaleString('en-GB')} kcal over`;
     } else {
       const amount = kind === 'protein' ? String(round1(value)) : Math.round(value).toLocaleString('en-GB');
       const mark = kind === 'protein' ? String(usableTarget) : usableTarget.toLocaleString('en-GB');
       caption = `${amount} of ${mark} ${unit} logged today.`;
+      const left = usableTarget - value;
+      if (left < (kind === 'protein' ? 0.05 : 1)) status = kind === 'protein' ? 'At your target' : 'On target';
+      else status = kind === 'protein'
+        ? `${round1(left)} g left`
+        : `${Math.round(left).toLocaleString('en-GB')} kcal left`;
     }
   }
-  return { kind, value, target: usableTarget, fill, centre, unit, caption };
+  return { kind, value, target: usableTarget, fill, centre, unit, caption, status };
 }
 
 export type MacroSlice = { id: 'protein' | 'carbs' | 'fat'; label: string; grams: number; share: number };
@@ -650,13 +662,19 @@ export function loggingCaption(logs: readonly FoodLog[], today: string): string 
   return progressShareLine(streak);
 }
 
-export function waterProgress(ml: number): { ml: number; mark: number; fill: number; caption: string } {
+export function waterProgress(ml: number): { ml: number; mark: number; fill: number; caption: string; status: string } {
   const amount = Math.max(0, Math.round(ml));
   const fill = Math.max(0, Math.min(1, amount / WATER_DAY_ML));
   const caption = amount <= 0
     ? 'No water logged today.'
     : `${amount.toLocaleString('en-GB')} ml of ${WATER_DAY_ML.toLocaleString('en-GB')} ml logged today.`;
-  return { ml: amount, mark: WATER_DAY_ML, fill, caption };
+  const left = WATER_DAY_ML - amount;
+  const status = amount <= 0
+    ? 'None logged today'
+    : left <= 0
+      ? (left === 0 ? "At the day's mark" : `${Math.abs(left).toLocaleString('en-GB')} ml over`)
+      : `${left.toLocaleString('en-GB')} ml left`;
+  return { ml: amount, mark: WATER_DAY_ML, fill, caption, status };
 }
 
 export type EatingInsight = {

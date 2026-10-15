@@ -666,6 +666,7 @@ describe('nutrition charts', () => {
     });
     expect(shown.kind).toBe('kcal');
     expect(shown.caption).toBe('900 of 1,800 kcal logged today.');
+    expect(shown.status).toBe('900 kcal left');
     expect(shown.fill).toBe(0.5);
 
     const hidden = todayRing({
@@ -678,6 +679,7 @@ describe('nutrition charts', () => {
     });
     expect(hidden.kind).toBe('protein');
     expect(hidden.caption).toBe('40 of 100 g protein logged today.');
+    expect(hidden.status).toBe('60 g left');
     expect(hidden.caption).not.toMatch(/kcal/i);
 
     const over = todayRing({
@@ -690,6 +692,7 @@ describe('nutrition charts', () => {
     });
     expect(over.fill).toBe(1);
     expect(over.caption).toBe('2,200 kcal logged, above 1,800 kcal.');
+    expect(over.status).toBe('400 kcal over');
 
     const open = todayRing({
       hideCalories: false,
@@ -700,14 +703,25 @@ describe('nutrition charts', () => {
       logged: true,
     });
     expect(open.caption).toBe('900 kcal logged. No target yet.');
-    expect(todayRing({
+    expect(open.status).toBe('No target yet');
+    const quiet = todayRing({
       hideCalories: false,
       kcal: 0,
       kcalTarget: 1800,
       proteinG: 0,
       proteinTarget: 100,
       logged: false,
-    }).caption).toBe('Nothing logged today.');
+    });
+    expect(quiet.caption).toBe('Nothing logged today.');
+    expect(quiet.status).toBe('Nothing logged today');
+    expect(todayRing({
+      hideCalories: true,
+      kcal: 900,
+      kcalTarget: 1800,
+      proteinG: 120,
+      proteinTarget: 100,
+      logged: true,
+    }).status).toBe('At your target');
   });
 
   it('asks for a few meals before drawing an empty week or month', () => {
@@ -761,13 +775,16 @@ describe('nutrition charts', () => {
     expect(dots.filter((dot) => dot.logged).map((dot) => dot.day)).toEqual(['2026-10-14']);
     expect(loggingCaption([], '2026-10-14')).toBe('Log a meal and the day gets a dot.');
 
-    expect(waterProgress(0)).toEqual({ ml: 0, mark: 2000, fill: 0, caption: 'No water logged today.' });
+    expect(waterProgress(0)).toEqual({ ml: 0, mark: 2000, fill: 0, caption: 'No water logged today.', status: 'None logged today' });
     expect(waterProgress(350)).toEqual({
       ml: 350,
       mark: 2000,
       fill: 0.175,
       caption: '350 ml of 2,000 ml logged today.',
+      status: '1,650 ml left',
     });
+    expect(waterProgress(2000).status).toBe("At the day's mark");
+    expect(waterProgress(2500).status).toBe('500 ml over');
 
     expect(eatingInsights([], [])).toEqual([]);
     const insights = eatingInsights(
@@ -786,13 +803,19 @@ describe('nutrition charts', () => {
     expect(insights.map((insight) => insight.caption).join(' ')).not.toMatch(/kcal/i);
   });
 
-  it('draws the charts with the svg already in the app, in white and grey', () => {
+  it('draws the charts with the svg already in the app, using the stats palette', () => {
     const charts = readFileSync('src/ui/NutritionCharts.tsx', 'utf8');
     const screen = readFileSync('src/app/(main)/nutrition.tsx', 'utf8');
     expect(charts).toContain("from 'react-native-svg'");
+    expect(charts).toContain('statsToneColors');
+    expect(charts).toContain('<ProgressRing');
+    expect(charts).toContain('<CompareBars');
+    expect(charts).not.toContain('MacroDonut');
     expect(charts).not.toMatch(/victory-native|gifted-charts|expo-linear-gradient/);
     expect(charts).not.toMatch(/danger|#f00|#ff0000|\bred\b/i);
     expect(charts).not.toMatch(/\bfetch\(|\bawait\b/);
+    expect(readFileSync('src/ui/BodyComposition.tsx', 'utf8')).toContain('<RangeTrack');
+    expect(readFileSync('src/ui/StatTile.tsx', 'utf8')).toContain('router.push(tile.href');
     expect(screen).toContain('<NutritionBoard');
     expect(screen).toContain('<WeightTrendChart');
     expect(screen).toContain('<WaterMeter');

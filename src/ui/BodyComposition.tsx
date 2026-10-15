@@ -4,6 +4,7 @@ import { Platform, View } from 'react-native';
 import { useRepository, useSnapshot } from '@/data';
 import { formatUkLong, isoDay, startOfLocalDay } from '@/domain/dates';
 import { shownError } from '@/domain/errors';
+import { WAIST_ZONE_CAPTION, bodyFatRange, bodyFatZoneCaption, waistRange } from '@/domain/distance';
 import {
   BMI_ONLY_NOTE,
   BODY_BUILDS,
@@ -24,6 +25,7 @@ import {
   type BodyEntrySource,
 } from '@/domain/nutrition';
 import { readAppleHealthBody } from '@/health/sync';
+import { RangeTrack } from '@/ui/DistanceCharts';
 import { DateField } from '@/ui/DateField';
 import { usePendingPress } from '@/ui/pendingAction';
 import { Button, Card, Choice, Field, QuietNote, T, playSavedHaptic } from '@/ui/ui';
@@ -79,6 +81,8 @@ export function BodyCompositionCard() {
   });
   const ffmi = lean != null && profile?.heightCm != null ? ffmiValue(lean, profile.heightCm) : null;
   const ratio = figures.waistCm != null && profile?.heightCm != null ? waistToHeight(figures.waistCm, profile.heightCm) : null;
+  const fatRange = figures.bodyFatPct != null ? bodyFatRange(figures.bodyFatPct, settings.goalSex) : null;
+  const waistFigure = ratio != null ? waistRange(ratio) : null;
   const [fat, setFat] = useState('');
   const [leanText, setLeanText] = useState('');
   const [waist, setWaist] = useState('');
@@ -163,6 +167,36 @@ export function BodyCompositionCard() {
       <T variant="muted">Body fat is used before waist-to-height, and waist-to-height before BMI. This is not a diagnosis, and it is not estimated from a photo.</T>
       <BuildChoices />
       {assessment.plain ? <T>{assessment.plain}</T> : <T variant="muted">{BMI_ONLY_NOTE}</T>}
+      {fatRange && figures.bodyFatPct != null ? (
+        <RangeTrack
+          value={figures.bodyFatPct}
+          zoneLow={fatRange.zoneLow}
+          zoneHigh={fatRange.zoneHigh}
+          scaleMin={fatRange.scaleMin}
+          scaleMax={fatRange.scaleMax}
+          status={fatRange.status}
+          zoneCaption={bodyFatZoneCaption(fatRange)}
+          tone={fatRange.within ? 'good' : 'watch'}
+          surface="card"
+          mark
+          spoken
+        />
+      ) : null}
+      {waistFigure && ratio != null ? (
+        <RangeTrack
+          value={ratio}
+          zoneLow={waistFigure.zoneLow}
+          zoneHigh={waistFigure.zoneHigh}
+          scaleMin={waistFigure.scaleMin}
+          scaleMax={waistFigure.scaleMax}
+          status={waistFigure.status}
+          zoneCaption={WAIST_ZONE_CAPTION}
+          tone={waistFigure.within ? 'good' : 'watch'}
+          surface="card"
+          mark
+          spoken
+        />
+      ) : null}
       {ratio != null && assessment.basis !== 'waist' ? (
         <T>{ratio < 0.5
           ? `Waist-to-height is ${ratio.toFixed(2)}. Under 0.5 is the healthy band: waist is less than half your height.`
