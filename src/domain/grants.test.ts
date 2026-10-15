@@ -285,6 +285,11 @@ function authenticatedSelectTables(): Set<string> {
         granted.delete(revoke[1]);
         continue;
       }
+      const revokeSelect = /revoke\s+select\b[\s\S]*?\s+on\s+(?:table\s+)?public\.([a-z_]+)\s+from\s+([^;]+)/i.exec(statement);
+      if (revokeSelect && /\bauthenticated\b/i.test(revokeSelect[2])) {
+        granted.delete(revokeSelect[1]);
+        continue;
+      }
       const grant = /grant\s+([\s\S]+?)\s+on\s+(?:table\s+)?public\.([a-z_]+)\s+to\s+([^;]+)/i.exec(statement);
       if (grant && /\bauthenticated\b/i.test(grant[3]) && /\bselect\b/i.test(grant[1])) granted.add(grant[2]);
     }
@@ -503,3 +508,63 @@ describe('client reads against the live grants', () => {
     expect(granted.has('blocks')).toBe(false);
   });
 });
+
+describe('unblock user', () => {
+  const fn = readFileSync('supabase/migrations/20261015250000_unblock_user.sql', 'utf8');
+  const later = readFileSync('supabase/migrations/20261015260000_blocks_select_revoke.sql', 'utf8');
+  const repo = readFileSync('src/data/supabase-repository.ts', 'utf8');
+
+  it('deletes only the caller’s block through a definer function', () => {
+    expect(fn).toContain('create or replace function public.unblock_user(target uuid)');
+    expect(fn).toContain('security definer');
+    expect(fn).toContain('set search_path = public');
+    expect(fn).toContain('auth.uid()');
+    expect(fn).toContain('delete from public.blocks');
+    expect(fn).toContain('blocker_id = auth.uid()');
+    expect(fn).toContain('blocked_id = target');
+    expect(fn.toLowerCase()).toContain('revoke all on function public.unblock_user(uuid) from public, anon, authenticated');
+    expect(fn.toLowerCase()).toContain('grant execute on function public.unblock_user(uuid) to authenticated');
+    expect(fn.toLowerCase()).not.toContain('grant execute on function public.unblock_user(uuid) to anon');
+    expect(fn.toLowerCase()).not.toContain('grant execute on function public.unblock_user(uuid) to public');
+    expect(fn.toLowerCase()).not.toContain('revoke select');
+    expect(fn).not.toMatch(/drop table/i);
+  });
+
+  it('calls the function and does not select or delete blocks from the client', () => {
+    const method = repo.slice(repo.indexOf('async unblockUser'), repo.indexOf('async reportUser'));
+    expect(method).toContain("rpc('unblock_user'");
+    expect(method).toContain('target: userId');
+    expect(method).not.toContain(".from('blocks')");
+    expect(method).not.toContain('.delete(');
+    const touches = sourceFiles('src').filter((file) =>
+      !file.endsWith('.test.ts') && readFileSync(file, 'utf8').includes(".from('blocks')"));
+    expect(touches).toEqual(['src/data/supabase-repository.ts']);
+    expect(repo).toContain(".from('blocks').insert");
+    expect(repo).not.toContain(".from('blocks').delete");
+    expect(repo).not.toContain(".from('blocks').select");
+    expect(readFileSync('supabase/functions/notify-direct-message/index.ts', 'utf8')).toContain("admin.from('blocks')");
+    expect(readFileSync('supabase/functions/notify-buddy-invite/index.ts', 'utf8')).toContain("admin.from('blocks')");
+  });
+
+  it('revokes the stopgap select in a later file and leaves block insert', () => {
+    expect(later).toContain('revoke select (blocker_id, blocked_id) on public.blocks from authenticated');
+    expect(later).toContain('20261015250000_unblock_user.sql');
+    expect(later.toLowerCase()).not.toMatch(/grant\s+select/);
+    expect(later).not.toMatch(/drop table|delete from/i);
+    expect(authenticatedSelectTables().has('blocks')).toBe(false);
+  });
+});
+
+function sourceFiles(dir: string): string[] {
+  const out: string[] = [];
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const path = `${dir}/${entry.name}`;
+    if (entry.isDirectory()) {
+      if (entry.name === 'node_modules' || entry.name === '.expo') continue;
+      out.push(...sourceFiles(path));
+    } else if (entry.name.endsWith('.ts') || entry.name.endsWith('.tsx')) {
+      out.push(path);
+    }
+  }
+  return out;
+}

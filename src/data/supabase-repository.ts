@@ -1287,8 +1287,8 @@ export class SupabaseRepository implements Repository {
   }
 
   async unblockUser(userId: string): Promise<void> {
-    const me = await this.userId();
-    const { error } = await this.client.from('blocks').delete().eq('blocker_id', me).eq('blocked_id', userId);
+    // A filtered delete needs SELECT. Authenticated must not have that on blocks.
+    const { error } = await this.client.rpc('unblock_user', { target: userId });
     if (error) throw asUserFacing(error, 'general');
     await this.refresh();
   }
