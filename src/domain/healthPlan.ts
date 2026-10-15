@@ -11,7 +11,9 @@ export {
   healthPlanFromStored,
   healthPlanModelContext,
   mentionsOtherTracker,
+  mentionsRegressiveSession,
   mentionsUnsupportedSwap,
+  trainingBaseline,
   parseHealthPlanJson,
   parseSharedHealthPlan,
   presentSharedHealthPlan,
@@ -21,4 +23,5 @@ export {
   type PlanAction,
   type PlanInput,
   type SharedHealthPlan,
+  type TrainingBaseline,
 } from '../../supabase/functions/_shared/healthPlan.ts';

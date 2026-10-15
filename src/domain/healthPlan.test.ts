@@ -14,7 +14,9 @@ import {
   healthPlanFromStored,
   healthPlanModelContext,
   mentionsOtherTracker,
+  mentionsRegressiveSession,
   mentionsUnsupportedSwap,
+  trainingBaseline,
   presentSharedHealthPlan,
   togglePlanAction,
   type HealthPlan,
@@ -61,6 +63,34 @@ function input(partial: Partial<PlanInput> = {}): PlanInput {
 function joined(plan: ReturnType<typeof draftHealthPlan>): string {
   return JSON.stringify(plan);
 }
+
+function isoShift(day: string, delta: number): string {
+  const [year, month, date] = day.split('-').map(Number);
+  const next = new Date(year ?? 2026, (month ?? 1) - 1, date ?? 1);
+  next.setDate(next.getDate() + delta);
+  const monthText = String(next.getMonth() + 1).padStart(2, '0');
+  const dateText = String(next.getDate()).padStart(2, '0');
+  return `${next.getFullYear()}-${monthText}-${dateText}`;
+}
+
+function weekdayOf(day: string): string {
+  const [year, month, date] = day.split('-').map(Number);
+  const next = new Date(year ?? 2026, (month ?? 1) - 1, date ?? 1);
+  return ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][next.getDay()] ?? '';
+}
+
+/** Workout minutes on each of the last 28 days, optionally skipping a weekday. */
+function dailyWorkouts(minutes: number, skip: (day: string) => boolean = () => false) {
+  const rows: { kind: string; value: number; recordedOn: string }[] = [];
+  for (let offset = 0; offset < 28; offset += 1) {
+    const recordedOn = isoShift('2026-10-15', -offset);
+    if (skip(recordedOn)) continue;
+    rows.push({ kind: 'workout_minutes', value: minutes, recordedOn });
+  }
+  return rows;
+}
+
+const WEEKDAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 
 function mealLog(name: string, note = ''): FoodLog {
   return {
@@ -353,6 +383,164 @@ describe('health plan writer', () => {
     expect(guarded.disclaimer).toContain('not a diagnosis');
   });
 
+  it('keeps a daily 30 minute routine and does not invent rest days', () => {
+    const person = input({
+      salt: 'daily-gym',
+      goal: 'lose_fat_build_muscle',
+      health: [
+        { kind: 'weight_kg', value: 80, recordedOn: '2026-10-14' },
+        ...dailyWorkouts(30),
+      ],
+    });
+    const baseline = trainingBaseline(person);
+    expect(baseline?.sessionsPerWeek).toBe(7);
+    expect(baseline?.typicalMinutes).toBe(30);
+    expect(baseline?.trainDays).toEqual(WEEKDAYS);
+    expect(baseline?.restDays).toEqual([]);
+    expect(baseline?.summary).toBe('You train about 30 min on most days.');
+    const plan = draftHealthPlan(person);
+    expect(plan.fitness.intro).toMatch(/You train about 30 min on most days/);
+    expect(plan.fitness.intro).toMatch(/resistance/);
+    expect(plan.fitness.intro).toMatch(/protein/);
+    expect(plan.fitness.intro).toMatch(/walking/);
+    expect(plan.fitness.intro).toContain(PLAN_DOCTOR);
+    expect(plan.fitness.intro.length).toBeLessThanOrEqual(220);
+    const texts = plan.fitness.sessions.map((item) => item.text);
+    expect(texts).toHaveLength(7);
+    for (const day of WEEKDAYS) {
+      expect(texts.filter((text) => text.startsWith(`${day} ·`))).toHaveLength(1);
+    }
+    expect(texts.join(' ')).not.toMatch(/\bRest\b|full rest|no structured|Walk for 30 minutes/i);
+    expect(texts[0]).toMatch(/Monday · Keep this session, about 30 min/);
+    expect(texts.join(' ')).toMatch(/Add a little weight or one set/);
+    const context = healthPlanModelContext(person, plan);
+    expect(context.training?.sessionsPerWeek).toBe(7);
+    expect(context.training?.trainDays).toContain('Tuesday');
+    expect(HEALTH_PLAN_PROMPT).toMatch(/Never prescribe fewer sessions/);
+    expect(HEALTH_PLAN_PROMPT).toMatch(/You train about 30 min on most days/);
+    expect(HEALTH_PLAN_PROMPT).not.toMatch(/realistic week with rest days/);
+    expect(trainingBaseline(input({
+      health: [{ kind: 'workout_minutes', value: 180, recordedOn: '2026-10-15' }],
+    }))).toBeNull();
+    expect(trainingBaseline(input({
+      health: [
+        { kind: 'workout_minutes', value: 40, recordedOn: '2026-10-15' },
+        { kind: 'workout_minutes', value: 30, recordedOn: '2026-10-13' },
+        { kind: 'workout_minutes', value: 20, recordedOn: '2026-10-10' },
+        { kind: 'workout_minutes', value: 25, recordedOn: '2026-10-07' },
+      ],
+    }))).toBeNull();
+  });
+
+  it('rests only on the weekday the log already leaves free', () => {
+    const person = input({
+      salt: 'sunday-off',
+      goal: 'lose_fat_build_muscle',
+      health: dailyWorkouts(30, (day) => weekdayOf(day) === 'Sunday'),
+    });
+    const baseline = trainingBaseline(person);
+    expect(baseline?.restDays).toEqual(['Sunday']);
+    expect(baseline?.trainDays).not.toContain('Sunday');
+    expect(baseline?.sessionsPerWeek).toBe(6);
+    const texts = draftHealthPlan(person).fitness.sessions.map((item) => item.text);
+    expect(texts.filter((text) => /\bRest\b/.test(text))).toEqual(['Sunday · Rest. You already leave this day free.']);
+    expect(texts.join(' ')).not.toMatch(/Tuesday · Rest|Friday-Sunday|full rest|no structured/i);
+    expect(texts.filter((text) => text.startsWith('Tuesday ·'))).toHaveLength(1);
+  });
+
+  it('drops a regressive model week instead of appending the stock walk rows', () => {
+    const person = input({
+      salt: 'regress',
+      goal: 'lose_fat_build_muscle',
+      health: [
+        { kind: 'weight_kg', value: 80, recordedOn: '2026-10-14' },
+        ...dailyWorkouts(30),
+      ],
+    });
+    const baseline = trainingBaseline(person);
+    expect(mentionsRegressiveSession('Tuesday · Rest.', baseline)).toBe(true);
+    expect(mentionsRegressiveSession('Tuesday full rest', baseline)).toBe(true);
+    expect(mentionsRegressiveSession('Friday-Sunday rest, no structured workouts', baseline)).toBe(true);
+    expect(mentionsRegressiveSession('Monday · Walk for 20 minutes', baseline)).toBe(true);
+    expect(mentionsRegressiveSession('Monday · Keep this session, about 30 min. Add a little weight or one set.', baseline)).toBe(false);
+    const local = draftHealthPlan(person);
+    const guarded = guardHealthPlan({
+      ...local,
+      fitness: {
+        intro: 'Three gym days, then Friday-Sunday rest.',
+        sessions: [
+          { id: 'a', text: 'Monday · Gym for 30 minutes.', done: false },
+          { id: 'b', text: 'Wednesday · Gym for 30 minutes.', done: false },
+          { id: 'c', text: 'Thursday · Gym for 30 minutes.', done: false },
+          { id: 'd', text: 'Tuesday full rest', done: false },
+          { id: 'e', text: 'Friday-Sunday rest, no structured workouts', done: false },
+          { id: 'f', text: 'Monday · Walk for 30 minutes', done: false },
+          { id: 'g', text: 'Tuesday · Rest.', done: false },
+        ],
+      },
+    }, person);
+    const texts = guarded.fitness.sessions.map((item) => item.text);
+    expect(guarded.fitness.intro).toMatch(/You train about 30 min on most days/);
+    expect(texts).toHaveLength(7);
+    for (const day of WEEKDAYS) {
+      expect(texts.filter((text) => text.startsWith(`${day} ·`))).toHaveLength(1);
+    }
+    expect(texts.join(' ')).not.toMatch(/Walk for 30 minutes|Tuesday · Rest|full rest|no structured/i);
+    expect(texts.join(' ')).toMatch(/about 30 min/);
+  });
+
+  it('eases a daily routine off when the week reports an injury', () => {
+    const plan = draftHealthPlan(input({
+      salt: 'knee-daily',
+      goal: 'lose_fat_build_muscle',
+      limits: 'Sore knee after surgery',
+      health: dailyWorkouts(30),
+    }));
+    expect(plan.fitness.intro).toContain(PLAN_DOCTOR);
+    expect(plan.fitness.intro).not.toMatch(/Add a little weight/);
+    const week = plan.fitness.sessions.map((item) => item.text).join(' ');
+    expect(week).toMatch(/Rest/);
+    expect(week.toLowerCase()).not.toContain('push');
+    const ill = draftHealthPlan(input({
+      salt: 'ill-daily',
+      goal: 'lose_fat_build_muscle',
+      checkIns: [{ mood: 4, craving: 1, sleepHours: 5, note: 'Poor recovery this week', createdAt: '2026-10-14T21:00:00.000Z' }],
+      health: dailyWorkouts(30),
+    }));
+    expect(ill.fitness.sessions.map((item) => item.text).join(' ')).toMatch(/Rest/);
+    expect(ill.fitness.intro).toContain(PLAN_DOCTOR);
+  });
+
+  it('keeps a runner, a boxer, and a body builder on their own work when the log is daily', () => {
+    const runner = draftHealthPlan(input({
+      salt: 'daily-run',
+      goal: 'elite_runner',
+      health: dailyWorkouts(40),
+    }));
+    const runnerText = joined(runner);
+    expect(runner.fitness.intro).toMatch(/You train about 40 min on most days/);
+    expect(runnerText).toMatch(/run/i);
+    expect(runnerText).toMatch(/carbohydrate/);
+    expect(runnerText).not.toMatch(/fewer sets|Walk for 30 minutes|Tuesday · Rest/i);
+    const boxer = draftHealthPlan(input({
+      salt: 'daily-box',
+      goal: 'elite_middle_boxer',
+      weightClassKg: 75,
+      health: dailyWorkouts(30),
+    }));
+    expect(joined(boxer)).toMatch(/boxing/);
+    expect(joined(boxer)).toMatch(/protein/);
+    expect(joined(boxer)).toContain(PLAN_DOCTOR);
+    const builder = draftHealthPlan(input({
+      salt: 'daily-build',
+      goal: 'body_builder',
+      health: dailyWorkouts(45),
+    }));
+    expect(joined(builder)).toMatch(/lifting/);
+    expect(joined(builder)).toMatch(/protein/);
+    expect(joined(builder)).not.toMatch(/fewer sets/);
+  });
+
   it('keeps ticks when a stored row is read back', () => {
     const plan = draftHealthPlan(input({ salt: 'stored' }));
     const ticked = togglePlanAction(plan, plan.focus[0]?.id ?? '');
@@ -384,6 +572,7 @@ describe('health plan wiring', () => {
     expect(fn).toContain('healthPlanModelContext');
     expect(fn).toContain('weekly_units');
     expect(fn).toContain('isMealSlot');
+    expect(fn).toContain('.limit(240)');
     expect(readFileSync('supabase/functions/_shared/healthPlan.ts', 'utf8')).toContain('not a diagnosis');
     expect(readFileSync('supabase/config.toml', 'utf8')).toContain('[functions.health-plan]');
   });
