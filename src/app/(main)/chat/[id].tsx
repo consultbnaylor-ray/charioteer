@@ -10,12 +10,21 @@ import { CHAT_HISTORY_ERROR, CHAT_POLL_MS, latestChatMessage } from '@/domain/li
 import { MESSAGE_TOKEN_ERROR, offerMessageNotifications } from '@/notifications/register';
 import { MemberAvatar, useMemberAvatars } from '@/ui/MemberAvatar';
 import { usePendingPress } from '@/ui/pendingAction';
+import { ScreenBoundary } from '@/ui/ScreenBoundary';
 import { Button, Card, Choice, ErrorNote, Field, Screen, T } from '@/ui/ui';
 import { useAppTheme } from '@/ui/theme';
 
 const REASONS = ['Unwanted contact', 'Safety concern', 'Spam', 'Something else'];
 
-export default function Chat() {
+export default function ChatScreen() {
+  return (
+    <ScreenBoundary screen="chat">
+      <Chat />
+    </ScreenBoundary>
+  );
+}
+
+function Chat() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const snap = useSnapshot();
   const repo = useRepository();
@@ -77,10 +86,14 @@ export default function Chat() {
 
   useEffect(() => {
     if (!me || !connectionId) return;
-    const latest = latestChatMessage(snap.messages, connectionId);
+    const latest = latestChatMessage(snap.messages ?? [], connectionId);
     if (!latest) return;
-    void markChatRead(me.id, connectionId, latest.createdAt);
-  }, [me, connectionId, snap.messages]);
+    const at = latest.createdAt;
+    void markChatRead(me.id, connectionId, at).then((moved) => {
+      if (!moved) return;
+      void repo.saveChatRead(connectionId, at).catch((error: unknown) => console.error(error));
+    });
+  }, [me, connectionId, snap.messages, repo]);
 
   if (!me || !connection) {
     return <Screen title="Chat"><T>This chat is not available.</T></Screen>;
@@ -88,7 +101,7 @@ export default function Chat() {
   const otherId = connection.requesterId === me.id ? connection.addresseeId : connection.requesterId;
   const otherCard = snap.directory.find((card) => card.id === otherId);
   const other = otherCard?.displayName ?? 'Member';
-  const messages = snap.messages.filter((message) => message.connectionId === connection.id);
+  const messages = (snap.messages ?? []).filter((message) => message?.connectionId === connection.id);
   const clientIdFor = (key: string) => {
     const existing = clientIds.current.get(key);
     if (existing) return existing;
@@ -120,12 +133,12 @@ export default function Chat() {
       {messages.map((message) => (
         <Card key={message.id} style={{ backgroundColor: message.senderId === me.id ? theme.colors.emphasisSoft : theme.colors.surface }}>
           <T variant="label">{message.senderId === me.id ? 'You' : other}</T>
-          <T>{message.body}</T>
+          <T>{message.body ?? ''}</T>
           {message.delivery === 'sending' ? <T variant="muted">Sending…</T> : null}
           {message.delivery === 'failed' ? (
             <View style={{ gap: 8 }}>
               <T variant="muted">That message was not sent.</T>
-              <Button label="Try again" tone="quiet" pending={isPending(`send:${message.id}`)} pendingLabel="Sending..." onPress={() => send(message.body, message.id, `send:${message.id}`)} />
+              <Button label="Try again" tone="quiet" pending={isPending(`send:${message.id}`)} pendingLabel="Sending..." onPress={() => send(message.body ?? '', message.id, `send:${message.id}`)} />
             </View>
           ) : null}
         </Card>

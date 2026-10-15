@@ -1209,6 +1209,46 @@ export class SupabaseRepository implements Repository {
     });
   }
 
+  async loadChatReads(): Promise<Record<string, string>> {
+    const { data, error } = await this.client.from('chat_reads').select('connection_id, read_through');
+    if (error) throw error;
+    const marks: Record<string, string> = {};
+    for (const row of data ?? []) {
+      const id = (row as { connection_id?: unknown }).connection_id;
+      const at = (row as { read_through?: unknown }).read_through;
+      if (typeof id === 'string' && typeof at === 'string' && at) marks[id] = at;
+    }
+    return marks;
+  }
+
+  async saveChatRead(connectionId: string, readThrough: string): Promise<void> {
+    try {
+      const { error } = await this.client.rpc('save_chat_read', {
+        p_connection_id: connectionId,
+        p_read_through: readThrough,
+      });
+      if (error) console.error('chat read', error);
+    } catch (error) {
+      console.error('chat read', error);
+    }
+  }
+
+  async logClientError(screen: string, message: string, appBuild: string): Promise<void> {
+    try {
+      const userId = await this.userId();
+      const clip = (value: string, max: number) => value.replace(/\s+/g, ' ').trim().slice(0, max);
+      const { error } = await this.client.from('client_errors').insert({
+        user_id: userId,
+        screen: clip(screen, 80) || 'app',
+        message: clip(message, 300) || 'Unknown error',
+        app_build: clip(appBuild, 40) || 'unknown',
+      });
+      if (error) console.error('client error log', error.message);
+    } catch (error) {
+      console.error('client error log', error);
+    }
+  }
+
   async saveDeviceToken(token: string, platform: 'ios' | 'android'): Promise<void> {
     const userId = await this.userId();
     const { error } = await this.client.from('device_tokens').upsert({

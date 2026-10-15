@@ -201,6 +201,7 @@ export class DemoRepository implements Repository {
   private snapshot: AppSnapshot = this.derive();
   private listeners = new Set<() => void>();
   private once = shareInflight();
+  private chatReads = new Map<string, string>();
 
   constructor() {
     void this.hydrate();
@@ -1114,6 +1115,20 @@ export class DemoRepository implements Repository {
     const days = (next.waterDays ?? []).filter((item) => item.day !== day);
     next.waterDays = [...days, { day, waterMl: ml }];
     this.commit(db);
+  }
+
+  async loadChatReads(): Promise<Record<string, string>> {
+    return Object.fromEntries(this.chatReads);
+  }
+
+  async saveChatRead(connectionId: string, readThrough: string): Promise<void> {
+    const previous = this.chatReads.get(connectionId);
+    if (previous && Date.parse(previous) >= Date.parse(readThrough)) return;
+    this.chatReads.set(connectionId, readThrough);
+  }
+
+  async logClientError(_screen: string, _message: string, _appBuild: string): Promise<void> {
+    return undefined;
   }
 
   async sharedNutrition(userId: string) {

@@ -615,33 +615,40 @@ function wagonLine(value: unknown): { note: string } | null {
 
 export type SharedReportItem = { label: string; summary: string };
 
+/** An array from a public profile. A missing or null section is an empty list, not a crash. */
+export function shownList<T>(value: readonly T[] | null | undefined): readonly T[] {
+  return Array.isArray(value) ? value : [];
+}
+
 /** One report target for each thing this profile is actually showing. */
 export function sharedReportItems(view: PublicProfileView): SharedReportItem[] {
   const items: SharedReportItem[] = [];
   if (view.bio) items.push({ label: 'Bio', summary: view.bio });
   if (view.town) items.push({ label: 'Town', summary: view.town });
   if (view.stage) items.push({ label: 'Stage', summary: view.stage });
-  if (view.sober) items.push({ label: 'Days sober', summary: formatSoberShare(view.sober) });
-  for (const badge of view.milestones) items.push({ label: 'Milestone', summary: badge });
-  for (const reason of view.reasons) items.push({ label: 'Reason', summary: reason });
+  if (view.sober && typeof view.sober.days === 'number') {
+    items.push({ label: 'Days sober', summary: formatSoberShare({ days: view.sober.days, since: typeof view.sober.since === 'string' ? view.sober.since : '' }) });
+  }
+  for (const badge of shownList(view.milestones)) items.push({ label: 'Milestone', summary: badge });
+  for (const reason of shownList(view.reasons)) items.push({ label: 'Reason', summary: reason });
   if (view.moneySaved != null) items.push({ label: 'Money saved', summary: `${view.moneySaved} saved` });
   if (view.unitsAvoided != null) items.push({ label: 'Units avoided', summary: `${view.unitsAvoided} units avoided` });
   if (view.moodStreak != null) items.push({ label: 'Mood streak', summary: `${view.moodStreak} days` });
-  for (const line of view.health) items.push({ label: 'Health headline', summary: line });
-  for (const photo of view.progressPhotos) items.push({ label: 'Progress photo', summary: photo.caption || photo.id });
-  for (const photo of view.profilePhotos ?? []) items.push({ label: 'Profile photo', summary: photo.caption || photo.id });
-  for (const entry of view.gratitude) items.push({ label: 'Gratitude line', summary: entry.body });
-  for (const photo of view.gratitudePhotos) items.push({ label: 'Gratitude photo', summary: photo.caption || photo.id });
-  for (const item of view.vision) items.push({ label: 'Vision item', summary: item.caption || item.id });
-  if (view.pinnedQuote) items.push({ label: 'Pinned quote', summary: view.pinnedQuote.text });
-  if (view.foodDiary) {
+  for (const line of shownList(view.health)) items.push({ label: 'Health headline', summary: line });
+  for (const photo of shownList(view.progressPhotos)) items.push({ label: 'Progress photo', summary: photo.caption || photo.id });
+  for (const photo of shownList(view.profilePhotos)) items.push({ label: 'Profile photo', summary: photo.caption || photo.id });
+  for (const entry of shownList(view.gratitude)) items.push({ label: 'Gratitude line', summary: entry.body });
+  for (const photo of shownList(view.gratitudePhotos)) items.push({ label: 'Gratitude photo', summary: photo.caption || photo.id });
+  for (const item of shownList(view.vision)) items.push({ label: 'Vision item', summary: item.caption || item.id });
+  if (view.pinnedQuote && typeof view.pinnedQuote.text === 'string') items.push({ label: 'Pinned quote', summary: view.pinnedQuote.text });
+  if (Array.isArray(view.foodDiary)) {
     if (view.foodDiary.length === 0) items.push({ label: "Today's meals", summary: 'Nothing logged today.' });
-    for (const meal of view.foodDiary) items.push({ label: "Today's meals", summary: `${meal.meal}: ${meal.detail}` });
+    for (const meal of view.foodDiary) items.push({ label: "Today's meals", summary: `${meal?.meal ?? ''}: ${meal?.detail ?? ''}` });
   }
-  if (view.calories) items.push({ label: 'Calories and macros', summary: view.calories });
-  if (view.quality) items.push({ label: 'Food quality', summary: view.quality.line });
-  if (view.progress) items.push({ label: 'Progress and streaks', summary: view.progress });
-  if (view.wagon) items.push({ label: 'A hard moment', summary: view.wagon.note || 'Having a hard moment.' });
-  if (view.goal) items.push({ label: 'Nutrition goal', summary: view.goal.line });
+  if (typeof view.calories === 'string' && view.calories) items.push({ label: 'Calories and macros', summary: view.calories });
+  if (view.quality && typeof view.quality.line === 'string') items.push({ label: 'Food quality', summary: view.quality.line });
+  if (typeof view.progress === 'string' && view.progress) items.push({ label: 'Progress and streaks', summary: view.progress });
+  if (view.wagon) items.push({ label: 'A hard moment', summary: typeof view.wagon.note === 'string' && view.wagon.note ? view.wagon.note : 'Having a hard moment.' });
+  if (view.goal && typeof view.goal.line === 'string') items.push({ label: 'Nutrition goal', summary: view.goal.line });
   return items;
 }

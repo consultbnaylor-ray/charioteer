@@ -269,7 +269,7 @@ export function PublicProfileCard() {
       consentHealth: me.consentHealth,
       consentAi: me.consentAi,
     }).then(() => {
-      if (on) void offerMessageNotifications(repo);
+      if (on) void offerMessageNotifications(repo).catch((error: unknown) => console.error('message notifications', error));
     }).catch((err: unknown) => {
       setChoiceNote(shownError(err, 'Could not save that.'));
     });
@@ -278,7 +278,7 @@ export function PublicProfileCard() {
   function setMessageNotifications(on: boolean) {
     setError(null);
     void repo.updateProfile({ messageNotifications: on }).then(() => {
-      if (on) void offerMessageNotifications(repo);
+      if (on) void offerMessageNotifications(repo).catch((error: unknown) => console.error('message notifications', error));
     }).catch((err: unknown) => setError(shownError(err, 'Could not save that.')));
   }
 

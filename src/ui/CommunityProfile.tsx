@@ -8,7 +8,7 @@ import type { ProgressPhoto } from '@/data/types';
 import { privateMessageFailure, shownError } from '@/domain/errors';
 import { WAGON_PUBLIC_LINE, type SharedNutritionView } from '@/domain/nutrition';
 import { SharedNutritionFacts } from '@/ui/NutritionShare';
-import { PROFILE_LOAD_ERROR, formatSoberShare, sharedReportItems, type PublicProfileView, type SharedReportItem } from '@/domain/profileSharing';
+import { PROFILE_LOAD_ERROR, formatSoberShare, sharedReportItems, shownList, type PublicProfileView, type SharedReportItem } from '@/domain/profileSharing';
 import { MemberAvatar } from '@/ui/MemberAvatar';
 import { formatGbp } from '@/domain/savings';
 import { progressPhotoLabel } from '@/domain/progressPhotos';
@@ -187,8 +187,8 @@ function ReportSheet({
 export function CommunityProfile({ userId, name }: { userId: string; name: string }) {
   const snap = useSnapshot();
   const repo = useRepository();
-  const photos = snap.communityPhotos
-    .filter((photo) => photo.userId === userId && photo.visibility === 'community')
+  const photos = shownList(snap.communityPhotos)
+    .filter((photo) => photo?.userId === userId && photo.visibility === 'community')
     .sort((a, b) => a.monthIndex - b.monthIndex || a.takenOn.localeCompare(b.takenOn));
   const router = useRouter();
   const [draft, setDraft] = useState<ReportDraft | null>(null);
@@ -365,7 +365,7 @@ function SharedProfileFacts({ userId, name }: { userId: string; name: string }) 
   }, [repo, userId, attempt]);
 
   useEffect(() => {
-    const ids = view?.profilePhotos.map((photo) => photo.id) ?? [];
+    const ids = shownList(view?.profilePhotos).map((photo) => photo.id);
     if (!ids.length) return;
     let live = true;
     void repo.profilePhotoUrls(ids).then((rows) => {
@@ -402,8 +402,9 @@ function SharedProfileFacts({ userId, name }: { userId: string; name: string }) 
     }
     : view;
   const items = sharedReportItems(shown);
-  const avatar = view.profilePhotos.find((photo) => photo.role === 'avatar');
-  const gallery = view.profilePhotos.filter((photo) => photo.role === 'gallery');
+  const profilePhotos = shownList(view.profilePhotos);
+  const avatar = profilePhotos.find((photo) => photo.role === 'avatar');
+  const gallery = profilePhotos.filter((photo) => photo.role === 'gallery');
 
   async function reach(from: 'diary' | 'wagon') {
     if (busy.current) return;
@@ -508,16 +509,16 @@ function SharedProfileFacts({ userId, name }: { userId: string; name: string }) 
           <T variant="muted">{view.pinnedQuote.author} · {view.pinnedQuote.school} · {view.pinnedQuote.source}</T>
         </View>
       ) : null}
-      {view.interests.length ? <T>{view.interests.join(' · ')}</T> : null}
+      {shownList(view.interests).length ? <T>{shownList(view.interests).join(' · ')}</T> : null}
       <T variant="muted">{view.town || 'Area not shared'}</T>
       {view.stage ? <T>Stage: {view.stage}</T> : null}
-      {view.sober ? <T>{formatSoberShare(view.sober)}</T> : null}
-      {view.milestones.length ? <T>{view.milestones.join(', ')}</T> : null}
-      {view.reasons.map((reason) => <T key={reason}>{reason}</T>)}
+      {view.sober && typeof view.sober.days === 'number' ? <T>{formatSoberShare({ days: view.sober.days, since: typeof view.sober.since === 'string' ? view.sober.since : '' })}</T> : null}
+      {shownList(view.milestones).length ? <T>{shownList(view.milestones).join(', ')}</T> : null}
+      {shownList(view.reasons).map((reason) => <T key={reason}>{reason}</T>)}
       {view.moneySaved != null ? <T>{formatGbp(view.moneySaved)} saved</T> : null}
       {view.unitsAvoided != null ? <T>{view.unitsAvoided} units avoided</T> : null}
       {view.moodStreak != null ? <T>Mood streak {view.moodStreak}</T> : null}
-      {shown.health.map((line) => <T key={line}>{line}</T>)}
+      {shownList(shown.health).map((line) => <T key={line}>{line}</T>)}
       <SharedNutritionFacts meals={shown.foodDiary} calories={shown.calories} quality={shown.quality} progress={shown.progress} goal={shown.goal} />
       {shown.foodDiary ? (
         <View style={{ gap: 4 }}>
@@ -535,9 +536,9 @@ function SharedProfileFacts({ userId, name }: { userId: string; name: string }) 
           {messageAt === 'wagon' ? <MessageFailure message={messageError} pending={pending} onRetry={() => void reach('wagon')} /> : null}
         </View>
       ) : null}
-      {shown.gratitude.map((entry) => <T key={entry.id}>{entry.body}</T>)}
-      {view.vision.map((item) => <T key={item.id}>{[item.caption, item.area].filter(Boolean).join(' · ')}</T>)}
-      {view.gratitudePhotos.map((photo) => photo.caption ? <T key={photo.id}>{photo.caption}</T> : null)}
+      {shownList(shown.gratitude).map((entry) => <T key={entry.id}>{entry.body ?? ''}</T>)}
+      {shownList(view.vision).map((item) => <T key={item.id}>{[item.caption, item.area].filter(Boolean).join(' · ')}</T>)}
+      {shownList(view.gratitudePhotos).map((photo) => photo.caption ? <T key={photo.id}>{photo.caption}</T> : null)}
       {sent && sent !== avatar?.id && !gallery.some((photo) => photo.id === sent) ? <T variant="muted">Report sent.</T> : null}
       <Button label="Report this profile" tone="quiet" disabled={pending} onPress={openProfileReport} />
       {draft ? (

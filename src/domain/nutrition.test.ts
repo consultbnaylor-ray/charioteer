@@ -937,6 +937,12 @@ describe('body composition', () => {
     expect(ffmiPlain({ ffmi: ffmi ?? 0, sex: 'male' })).toContain('not a diagnosis');
     expect(compositionShareLine({ bodyFatPct: 15, leanMassKg: 63, waistCm: 84, heightCm: 178 })).toBe('Body fat 15%.');
     expect(compositionShareLine({ bodyFatPct: null, leanMassKg: null, waistCm: null, heightCm: 178 })).toBeNull();
+    expect(compositionShareLine({
+      bodyFatPct: undefined as unknown as null,
+      leanMassKg: undefined as unknown as null,
+      waistCm: undefined as unknown as null,
+      heightCm: undefined as unknown as null,
+    })).toBeNull();
   });
 
   it('raises protein for a muscular build without dropping the safety floor', () => {

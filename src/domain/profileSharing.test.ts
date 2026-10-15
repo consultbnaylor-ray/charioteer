@@ -8,8 +8,10 @@ import {
   healthShareLabel,
   moodStreakCount,
   normalizeProfileSharing,
+  parsePublicProfile,
   projectPublicProfile,
   SHARE_HINT,
+  shownList,
   sensitiveShareConfirm,
   sensitiveTurnedOn,
   sharedReportItems,
@@ -458,5 +460,43 @@ describe('bio and photo captions', () => {
     expect(profile).toContain('security definer');
     expect(profile).not.toContain('storage_path');
     expect(profile).not.toContain('height_cm');
+  });
+
+  it('reads a null public profile without throwing', () => {
+    const parsed = parsePublicProfile({
+      displayName: 'Jordan Ellis',
+      gratitudePhotos: null,
+      vision: null,
+      gratitude: null,
+      profilePhotos: null,
+      progressPhotos: null,
+      interests: null,
+      milestones: null,
+      reasons: null,
+      health: null,
+      foodDiary: null,
+      quality: null,
+      goal: null,
+      calories: null,
+      progress: null,
+      wagon: null,
+      bodyComposition: null,
+    });
+    expect(parsed?.gratitudePhotos).toEqual([]);
+    expect(parsed?.vision).toEqual([]);
+    expect(parsed?.gratitude).toEqual([]);
+    expect(parsed?.profilePhotos).toEqual([]);
+    expect(parsed?.progressPhotos).toEqual([]);
+    expect(parsed?.interests).toEqual([]);
+    expect(parsed?.foodDiary).toBeNull();
+    expect(parsed?.quality).toBeNull();
+    expect(parsed?.goal).toBeNull();
+    expect(sharedReportItems(parsed!)).toEqual([]);
+    expect(shownList(null)).toEqual([]);
+    expect(JSON.stringify(parsed)).not.toContain('bodyComposition');
+    const facts = readFileSync('src/ui/CommunityProfile.tsx', 'utf8');
+    const nutritionUi = readFileSync('src/ui/NutritionShare.tsx', 'utf8');
+    expect(facts).toContain('shownList(');
+    expect(nutritionUi).toContain('Array.isArray(meals)');
   });
 });

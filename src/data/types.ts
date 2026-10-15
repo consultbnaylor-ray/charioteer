@@ -461,4 +461,10 @@ export interface Repository {
   }): Promise<void>;
   /** Shared nutrition items. Each field is null unless that switch is on. Null when the profile is hidden or blocked. */
   sharedNutrition(userId: string): Promise<SharedNutritionView | null>;
+  /** Read lines for this person's chats. Empty when none are stored yet. */
+  loadChatReads(): Promise<Record<string, string>>;
+  /** Moves one chat's read line forward. An older time is ignored. */
+  saveChatRead(connectionId: string, readThrough: string): Promise<void>;
+  /** A caught screen error. Screen name, short message, and build only. */
+  logClientError(screen: string, message: string, appBuild: string): Promise<void>;
 }

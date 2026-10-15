@@ -10,6 +10,7 @@ import { chatPreview, chatUnread, chatsChoiceLabel, latestChatMessage } from '@/
 import { CommunityProfile } from '@/ui/CommunityProfile';
 import { CommunityPrompt } from '@/ui/CommunityPrompt';
 import { useChatRead } from '@/ui/chatRead';
+import { ScreenBoundary } from '@/ui/ScreenBoundary';
 import { MemberAvatar, useMemberAvatars } from '@/ui/MemberAvatar';
 import { usePendingPress } from '@/ui/pendingAction';
 import { DISCOVER_EMPTY, PublicProfileCard } from '@/ui/PublicProfileCard';
@@ -25,7 +26,24 @@ export default function People() {
   const { run, isPending } = usePendingPress();
   const clientIds = useRef(new Map<string, string>());
   const me = snap.profile;
-  const readMarks = useChatRead(me?.id);
+  const messages = snap.messages ?? [];
+  const chats = me
+    ? (snap.connections ?? [])
+      .filter((connection) => connection.status === 'accepted')
+      .slice()
+      .sort((a, b) => {
+        const aAt = latestChatMessage(messages, a.id)?.createdAt ?? a.createdAt;
+        const bAt = latestChatMessage(messages, b.id)?.createdAt ?? b.createdAt;
+        return bAt.localeCompare(aAt);
+      })
+    : [];
+  const { marks: readMarks } = useChatRead(
+    me?.id,
+    chats.map((connection) => ({
+      id: connection.id,
+      newestAt: latestChatMessage(messages, connection.id)?.createdAt ?? null,
+    })),
+  );
   const avatarOf = useMemberAvatars(snap.directory);
 
   // New requests and chats arrive from other people, so load them each time People opens.
@@ -36,18 +54,10 @@ export default function People() {
   );
   if (!me) return null;
 
-  const incoming = snap.connections.filter((connection) => connection.status === 'pending' && connection.addresseeId === me.id);
-  const sent = snap.connections.filter((connection) => connection.status === 'pending' && connection.requesterId === me.id);
-  const chats = snap.connections
-    .filter((connection) => connection.status === 'accepted')
-    .slice()
-    .sort((a, b) => {
-      const aAt = latestChatMessage(snap.messages, a.id)?.createdAt ?? a.createdAt;
-      const bAt = latestChatMessage(snap.messages, b.id)?.createdAt ?? b.createdAt;
-      return bAt.localeCompare(aAt);
-    });
+  const incoming = (snap.connections ?? []).filter((connection) => connection.status === 'pending' && connection.addresseeId === me.id);
+  const sent = (snap.connections ?? []).filter((connection) => connection.status === 'pending' && connection.requesterId === me.id);
   const unreadTotal = chats.reduce(
-    (sum, connection) => sum + chatUnread(snap.messages, connection.id, me.id, readMarks[connection.id] ?? null),
+    (sum, connection) => sum + chatUnread(messages, connection.id, me.id, readMarks[connection.id] ?? null),
     0,
   );
   const nameOf = (id: string) => snap.directory.find((card) => card.id === id)?.displayName ?? 'Member';
@@ -93,8 +103,8 @@ export default function People() {
                 <T variant="muted">{card.town || 'Area not shared'}</T>
               </View>
             </View>
-            <T>{card.interestIds.map(labelOf).join(' · ')}</T>
-            {card.sharedInterestIds.length ? <T variant="muted">In common: {card.sharedInterestIds.map(labelOf).join(', ')}</T> : null}
+            <T>{(card.interestIds ?? []).map(labelOf).join(' · ')}</T>
+            {(card.sharedInterestIds ?? []).length ? <T variant="muted">In common: {(card.sharedInterestIds ?? []).map(labelOf).join(', ')}</T> : null}
             <DiscoverActions
               action={action}
               askPending={isPending(`ask:${card.id}`)}
@@ -108,7 +118,11 @@ export default function People() {
               tone="quiet"
               onPress={() => setProfileId((current) => (current === card.id ? null : card.id))}
             />
-            {profileId === card.id ? <CommunityProfile userId={card.id} name={card.displayName} /> : null}
+            {profileId === card.id ? (
+              <ScreenBoundary screen="profile">
+                <CommunityProfile userId={card.id} name={card.displayName} />
+              </ScreenBoundary>
+            ) : null}
           </Card>
         );
       }) : null}
@@ -137,15 +151,15 @@ export default function People() {
       )) : null}
       {tab === 'chats' ? chats.map((connection) => {
         const other = connection.requesterId === me.id ? connection.addresseeId : connection.requesterId;
-        const latest = latestChatMessage(snap.messages, connection.id);
-        const unread = chatUnread(snap.messages, connection.id, me.id, readMarks[connection.id] ?? null);
+        const latest = latestChatMessage(messages, connection.id);
+        const unread = chatUnread(messages, connection.id, me.id, readMarks[connection.id] ?? null);
         return (
           <Card key={connection.id}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
               <MemberAvatar name={nameOf(other)} url={avatarOf(other)} />
               <View style={{ flex: 1, gap: 4 }}>
                 <T variant="title">{nameOf(other)}</T>
-                {latest ? <T variant="muted">{chatPreview(latest.body)}</T> : null}
+                {latest?.body ? <T variant="muted">{chatPreview(latest.body)}</T> : null}
               </View>
               {unread > 0 ? <T variant="label">{unread === 1 ? '1 new' : `${unread} new`}</T> : null}
             </View>

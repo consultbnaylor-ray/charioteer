@@ -76,7 +76,7 @@ function Chrome() {
     const registerPhone = () => {
       void retryMessageNotifications(repo).then((message) => {
         if (message) console.error(message);
-      });
+      }).catch((error: unknown) => console.error('message notifications', error));
     };
     registerPhone();
     const subscription = AppState.addEventListener('change', (next) => {

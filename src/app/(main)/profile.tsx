@@ -204,7 +204,7 @@ export default function Profile() {
       });
       await repo.setReasons(plannedReasons);
       await repo.saveConsents({ communityVisible: community, consentHealth: health, consentAi: ai });
-      if (community) void offerMessageNotifications(repo);
+      if (community) void offerMessageNotifications(repo).catch((error: unknown) => console.error('message notifications', error));
       setReasons(plannedReasons.join('\n'));
       setSavedNote('Saved');
       playSavedHaptic();
@@ -403,7 +403,7 @@ export default function Profile() {
             value={profile.messageNotifications}
             onValueChange={(value) => {
               void repo.updateProfile({ messageNotifications: value }).then(() => {
-                if (value) void offerMessageNotifications(repo);
+                if (value) void offerMessageNotifications(repo).catch((error: unknown) => console.error('message notifications', error));
               }).catch((err: unknown) => setError(shownError(err, 'Could not save.')));
             }}
             trackColor={{ true: theme.colors.ink, false: theme.colors.line }}
