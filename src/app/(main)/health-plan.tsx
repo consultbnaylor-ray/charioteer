@@ -19,6 +19,7 @@ function ActionRow({ action, disabled, onToggle }: { action: PlanAction; disable
     <Pressable
       accessibilityRole="checkbox"
       accessibilityState={{ checked: action.done, disabled }}
+      aria-checked={action.done}
       accessibilityLabel={action.text}
       disabled={disabled}
       onPress={() => onToggle(action.id)}
