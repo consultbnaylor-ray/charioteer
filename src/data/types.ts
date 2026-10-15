@@ -2,6 +2,7 @@ import type { StoredConsent } from '@/domain/consents';
 import type { BodyCompositionReading, BodyCompositionSource, FoodItem, FoodLog, MealSlot, MealSource, NutritionDay, NutritionSettings, SharedNutritionView } from '@/domain/nutrition';
 import type { ProfileSharing, PublicProfileView } from '@/domain/profileSharing';
 import type { GratitudeCategory, GratitudeEntry, GratitudeReflect } from '@/domain/gratitude';
+import type { HealthPlan, SharedHealthPlan } from '@/domain/healthPlan';
 import type { Stage } from '@/domain/stage';
 import type { ThumosMode } from '@/domain/thumos';
 import type { VisionArea, VisionItem, VisionSize } from '@/domain/visionBoard';
@@ -228,6 +229,8 @@ export type AppSnapshot = {
   waterDays: NutritionDay[];
   /** Private body-fat, lean-mass, and waist history. Shared only as a progress line when that switch is on. */
   bodyComposition: BodyCompositionReading[];
+  /** Private Thumos plan. Never included in the community directory. */
+  healthPlan: HealthPlan | null;
 };
 
 export type NewGratitudeEntry = {
@@ -408,7 +411,7 @@ export interface Repository {
   reportUser(input: NewReport): Promise<void>;
   reviewReport(id: string): Promise<void>;
   ensureThumosGuide(kind: 'opening' | 'craving'): Promise<void>;
-  sendThumos(content: string, mode: ThumosMode, onDelta?: (text: string) => void): Promise<void>;
+  sendThumos(content: string, mode: ThumosMode, onDelta?: (text: string) => void, onState?: (state: 'sending' | 'waiting' | 'retrying') => void): Promise<void>;
   mintVoiceToken(mode?: ThumosMode): Promise<VoiceMint>;
   saveVoiceTurn(input: VoiceTurnInput): Promise<void>;
   addProgressPhoto(input: NewProgressPhoto): Promise<void>;
@@ -461,4 +464,32 @@ export interface Repository {
   }): Promise<void>;
   /** Shared nutrition items. Each field is null unless that switch is on. Null when the profile is hidden or blocked. */
   sharedNutrition(userId: string): Promise<SharedNutritionView | null>;
+  /** Headline, focus, and tick count. Null when the switch is off, the profile is hidden, or the viewer is outside Community. */
+  sharedHealthPlan(userId: string): Promise<SharedHealthPlan | null>;
+  /** Invites this person sent, invites waiting for them, and unused links. */
+  listBuddies(): Promise<import('@/domain/buddies').BuddyList>;
+  /** In-app invite. The scope is what the buddy will be able to see. */
+  createBuddyInvite(buddyId: string, scope: import('@/domain/buddies').BuddyScope): Promise<void>;
+  /** Single-use link. The token and code are returned once. */
+  createBuddyLink(scope: import('@/domain/buddies').BuddyScope): Promise<import('@/domain/buddies').BuddyLinkPass>;
+  acceptBuddyInvite(inviteId: string): Promise<void>;
+  declineBuddyInvite(inviteId: string): Promise<void>;
+  /** Scope summary for a link, before it is used. */
+  previewBuddyLink(secret: string): Promise<{ name: string; scope: import('@/domain/buddies').BuddyScope }>;
+  acceptBuddyLink(secret: string): Promise<void>;
+  revokeBuddy(inviteId: string): Promise<void>;
+  revokeBuddyLink(linkId: string): Promise<void>;
+  updateBuddyScope(inviteId: string, scope: import('@/domain/buddies').BuddyScope): Promise<void>;
+  /** Sections the caller is allowed to see. Null when they are not an accepted buddy. Community is not required. */
+  sharedBuddyData(ownerId: string): Promise<import('@/domain/buddies').BuddyShareView | null>;
+  /** Read lines for this person's chats. Empty when none are stored yet. */
+  loadChatReads(): Promise<Record<string, string>>;
+  /** Moves one chat's read line forward. An older time is ignored. */
+  saveChatRead(connectionId: string, readThrough: string): Promise<void>;
+  /** A caught screen error. Screen name, short message, and build only. */
+  logClientError(screen: string, message: string, appBuild: string): Promise<void>;
+  /** Writes the ticked actions and the limits. It does not call the model. */
+  saveHealthPlan(plan: HealthPlan): Promise<void>;
+  /** Asks Thumos for a new plan from this person's figures. Finished actions are left behind. */
+  refreshHealthPlan(limits: string): Promise<void>;
 }

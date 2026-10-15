@@ -3,6 +3,9 @@ import type { DirectMessage } from '@/data/types';
 /** How often an open chat asks the server for messages Realtime may have missed. */
 export const CHAT_POLL_MS = 10_000;
 
+/** Shown when the message query fails. An empty chat uses a different line. */
+export const CHAT_HISTORY_ERROR = "Couldn't load messages – Try again";
+
 const CONNECTION_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /** Realtime filter for one chat. Null when the id is not a connection uuid. */
@@ -29,22 +32,49 @@ export function withIncomingMessage(messages: readonly DirectMessage[], incoming
   return [...messages, incoming].sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id));
 }
 
+/** Milliseconds since epoch. A blank or unreadable time sorts first and is never "after" a real line. */
+export function chatInstant(value: string): number {
+  const time = Date.parse(value);
+  return Number.isNaN(time) ? Number.NEGATIVE_INFINITY : time;
+}
+
 export function latestChatMessage(messages: readonly DirectMessage[], connectionId: string): DirectMessage | null {
   let latest: DirectMessage | null = null;
   for (const message of messages) {
     if (message.connectionId !== connectionId || message.delivery) continue;
-    if (!latest || message.createdAt > latest.createdAt) latest = message;
+    if (!latest || chatInstant(message.createdAt) > chatInstant(latest.createdAt)) latest = message;
   }
   return latest;
 }
 
-/** Messages from the other person after the last one this phone has shown. */
+/**
+ * Saved read line when this thread already has one.
+ * Otherwise the newest message time, so history already on the thread counts as read.
+ */
+export function initialReadThrough(newestAt: string | null, saved: string | null | undefined): string | null {
+  if (saved) return saved;
+  return newestAt;
+}
+
+/** Later instant wins. An equal time keeps the mark already stored. */
+export function mergeReadMarks(local: Readonly<Record<string, string>>, remote: Readonly<Record<string, string>>): Record<string, string> {
+  const merged: Record<string, string> = { ...local };
+  for (const [id, at] of Object.entries(remote)) {
+    if (!at) continue;
+    const previous = merged[id];
+    if (!previous || chatInstant(at) > chatInstant(previous)) merged[id] = at;
+  }
+  return merged;
+}
+
+/** Messages from the other person after the last one this person has read. No line yet counts them all. */
 export function chatUnread(messages: readonly DirectMessage[], connectionId: string, meId: string, readThrough: string | null): number {
+  const readAt = readThrough == null ? null : chatInstant(readThrough);
   return messages.filter((message) =>
     message.connectionId === connectionId &&
     message.senderId !== meId &&
     !message.delivery &&
-    (readThrough == null || message.createdAt > readThrough)
+    (readAt == null || chatInstant(message.createdAt) > readAt)
   ).length;
 }
 

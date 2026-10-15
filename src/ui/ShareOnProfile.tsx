@@ -20,6 +20,7 @@ export function ShareOnProfile({
   item,
   on,
   sensitive = false,
+  lines,
   apply,
 }: {
   label: string;
@@ -27,6 +28,8 @@ export function ShareOnProfile({
   item: string;
   on: boolean;
   sensitive?: boolean;
+  /** Caps the visible label. The switch name stays the full text. */
+  lines?: number;
   apply: (sharing: ProfileSharing, selected: boolean) => ProfileSharing;
 }) {
   const snap = useSnapshot();
@@ -63,7 +66,7 @@ export function ShareOnProfile({
   return (
     <View style={{ gap: 6 }}>
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 12, alignItems: 'center' }}>
-        <T style={{ flex: 1 }}>{label}</T>
+        <T style={{ flex: 1 }} numberOfLines={lines}>{label}</T>
         <Switch
           accessibilityLabel={label}
           value={on}

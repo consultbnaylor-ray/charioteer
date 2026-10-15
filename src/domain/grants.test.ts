@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
 const sql = readFileSync('supabase/migrations/20261010130000_tighten_grants.sql', 'utf8');
@@ -265,5 +265,57 @@ describe('health upsert grant', () => {
     expect(healthUpsert).toContain('health_samples still has table-level UPDATE');
     const intended = [...updateColumns('health_samples'), ...updateColumnsIn(healthUpsert, 'health_samples')].sort();
     expect(intended).toEqual(['kind', 'recorded_on', 'source', 'unit', 'user_id', 'value']);
+  });
+});
+
+/** Tables authenticated can read after every migration, in filename order. */
+function authenticatedSelectTables(): Set<string> {
+  const granted = new Set<string>();
+  const files = readdirSync('supabase/migrations').filter((name) => name.endsWith('.sql')).sort();
+  for (const name of files) {
+    const sql = readFileSync(`supabase/migrations/${name}`, 'utf8');
+    for (const statement of sql.split(';')) {
+      if (/revoke all privileges on all tables in schema public/i.test(statement) && /\bauthenticated\b/i.test(statement)) {
+        granted.clear();
+        continue;
+      }
+      if (/\bon\s+function\b/i.test(statement)) continue;
+      const revoke = /revoke all on (?:table\s+)?public\.([a-z_]+)\s+from\s+([^;]+)/i.exec(statement);
+      if (revoke && /\bauthenticated\b/i.test(revoke[2])) {
+        granted.delete(revoke[1]);
+        continue;
+      }
+      const grant = /grant\s+([\s\S]+?)\s+on\s+(?:table\s+)?public\.([a-z_]+)\s+to\s+([^;]+)/i.exec(statement);
+      if (grant && /\bauthenticated\b/i.test(grant[3]) && /\bselect\b/i.test(grant[1])) granted.add(grant[2]);
+    }
+  }
+  return granted;
+}
+
+function clientSelectTables(source: string): string[] {
+  const tables = new Set<string>();
+  const re = /\.from\('([a-z_]+)'\)/g;
+  let match: RegExpExecArray | null;
+  while ((match = re.exec(source))) {
+    const after = source.slice(match.index + match[0].length, match.index + match[0].length + 320);
+    const selectAt = after.search(/\.select\s*\(/);
+    if (selectAt < 0) continue;
+    if (/\.from\(/.test(after.slice(0, selectAt))) continue;
+    tables.add(match[1]);
+  }
+  return [...tables].sort();
+}
+
+describe('client reads against the live grants', () => {
+  it('does not select a table authenticated cannot read', () => {
+    const granted = authenticatedSelectTables();
+    const selected = clientSelectTables(readFileSync('src/data/supabase-repository.ts', 'utf8'));
+    expect(selected.filter((table) => !granted.has(table))).toEqual([]);
+    expect(selected).not.toContain('blocks');
+    expect(selected).not.toContain('client_errors');
+    expect(selected).not.toContain('message_push_log');
+    expect(granted.has('connections')).toBe(true);
+    expect(granted.has('direct_messages')).toBe(true);
+    expect(granted.has('blocks')).toBe(false);
   });
 });

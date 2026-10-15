@@ -11,7 +11,8 @@ import { earnedMilestones } from '@/domain/milestones';
 import { firstSafetyHit, pinnedSafetyNotices } from '@/domain/safety';
 import { asUserFacing, shownError } from '@/domain/errors';
 import { showsSoberRecord } from '@/domain/stage';
-import { CRAVING_LINE, inferThumosMode, THUMOS_INTRO, OPENING_LINE, type ThumosMode } from '@/domain/thumos';
+import { EDGE_STATE_LABEL, type EdgeSendState } from '@/domain/edgeRetry';
+import { CRAVING_LINE, inferThumosMode, SCRIPTED_COACH_REPLY, THUMOS_INTRO, THUMOS_UNREACHABLE, OPENING_LINE, type ThumosMode } from '@/domain/thumos';
 import { THUMOS_LINE_CAP, groupThumosByDay, messageNeedsMore, visibleThumos } from '@/domain/thumosThread';
 import { formatClock, urgeRemainingSeconds } from '@/domain/urge';
 import { ensureUrge, restartUrge } from '@/features/urgeSession';
@@ -36,6 +37,8 @@ export default function Thumos() {
   const [draft, setDraft] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
+  const [sendState, setSendState] = useState<EdgeSendState | null>(null);
+  const [unreachable, setUnreachable] = useState(false);
   const [liveReply, setLiveReply] = useState('');
   const [outgoing, setOutgoing] = useState<string | null>(null);
   const [supportLatch, setSupportLatch] = useState(sos);
@@ -124,18 +127,28 @@ export default function Thumos() {
     const support = sos || mode === 'support' || inferThumosMode({ sos, hasHistory: true, userText: trimmed }) === 'support';
     setSupportLatch(support);
     setPending(true);
+    setSendState('sending');
+    setUnreachable(false);
     setLiveReply('');
     setOutgoing(trimmed);
     setError(null);
     setDraft('');
     try {
-      await repo.sendThumos(trimmed, support ? 'support' : mode === 'opening' ? 'steady' : mode, (next) => setLiveReply(next));
+      await repo.sendThumos(
+        trimmed,
+        support ? 'support' : mode === 'opening' ? 'steady' : mode,
+        (next) => setLiveReply(next),
+        (state) => setSendState(state),
+      );
     } catch (err) {
       setKeptSend(null);
       setDraft(trimmed);
-      setError(asUserFacing(err, 'thumos').message);
+      const message = asUserFacing(err, 'thumos').message;
+      if (message.startsWith(THUMOS_UNREACHABLE)) setUnreachable(true);
+      else setError(message);
     } finally {
       setPending(false);
+      setSendState(null);
       setLiveReply('');
       setOutgoing(null);
     }
@@ -256,6 +269,7 @@ export default function Thumos() {
           pending={pending}
           outgoing={outgoing}
           liveReply={liveReply}
+          statusLine={sendState ? EDGE_STATE_LABEL[sendState] : null}
         />
         {VOICE_ENABLED && inCall && voice ? (
           <Card style={{ borderColor: theme.colors.ink, borderWidth: 2 }}>
@@ -286,6 +300,13 @@ export default function Thumos() {
         ) : (
           <Field label="Message" value={draft} onChangeText={setDraft} multiline placeholder="Say it in your own words" />
         )}
+        {unreachable ? (
+          <Card>
+            <T>{THUMOS_UNREACHABLE}</T>
+            <T>{SCRIPTED_COACH_REPLY}</T>
+            <Button label="Try again" onPress={() => void send()} />
+          </Card>
+        ) : null}
         <ErrorNote>{error || (VOICE_ENABLED && voice?.phase === 'error' ? voice.message : null)}</ErrorNote>
         {VOICE_ENABLED && !error && voice?.phase === 'error' && voice.detail ? <T variant="muted" style={{ width: '100%', flexShrink: 1 }}>{voice.detail}</T> : null}
         {VOICE_ENABLED && inCall ? null : VOICE_ENABLED ? (
@@ -414,12 +435,14 @@ function ThumosTranscript({
   pending,
   outgoing,
   liveReply,
+  statusLine,
 }: {
   messages: ThumosMessage[];
   earlier: ThumosMessage[];
   pending: boolean;
   outgoing: string | null;
   liveReply: string;
+  statusLine?: string | null;
 }) {
   const [earlierOpen, setEarlierOpen] = useState(false);
   const days = groupThumosByDay(earlier);
@@ -441,7 +464,7 @@ function ThumosTranscript({
         <Bubble key={message.id} mine={message.role === 'user'} text={message.content} />
       ))}
       {pending && outgoing && !messages.some((message) => message.role === 'user' && message.content === outgoing) ? <Bubble mine text={outgoing} /> : null}
-      {pending && !messages.some((message) => message.role !== 'user' && message.content === liveReply) ? <Bubble mine={false} text={liveReply || 'Thumos is thinking'} /> : null}
+      {pending && !messages.some((message) => message.role !== 'user' && message.content === liveReply) ? <Bubble mine={false} text={liveReply || statusLine || 'Waiting for Thumos…'} /> : null}
     </View>
   );
 }

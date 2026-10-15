@@ -53,6 +53,7 @@ import {
   estimateFromText,
   foodItemFromUnknown,
   isBodyBuild,
+  isBuilderPhase,
   parsePortion,
   isBodyCompositionSource,
   isMealSlot,
@@ -70,6 +71,8 @@ import {
   type NutritionDay,
   type NutritionSettings,
 } from '@/domain/nutrition';
+import { PLAN_DISCLAIMER, healthPlanFromStored, parseSharedHealthPlan, type HealthPlan } from '@/domain/healthPlan';
+import { parseBuddyLinkPass, parseBuddyList, parseBuddyPreview, parseBuddyShare, type BuddyLinkPass, type BuddyList, type BuddyScope, type BuddyShareView } from '@/domain/buddies';
 import { randomId } from '@/domain/id';
 import { chatInsertFilter, messageFromRealtime, withIncomingMessage } from '@/domain/liveChat';
 import { isDuplicateWrite, mergeOutgoingMessages, shareInflight } from '@/domain/writes';
@@ -99,13 +102,24 @@ import { profileWithColumn, profileWithPatch } from '@/domain/profilePatch';
 import { planCustomInterest, validateTown } from '@/domain/privacy';
 import { fetchWithOneRetry } from '@/domain/retryFetch';
 import { planReasons } from '@/domain/reasons';
-import { BIO_LIMIT, PHOTO_CAPTION_LIMIT, defaultProfileSharing, normalizeProfileSharing, parsePublicProfile, planProfileText, sensitiveTurnedOn, type ProfileSharing } from '@/domain/profileSharing';
+import { BIO_LIMIT, PHOTO_CAPTION_LIMIT, defaultProfileSharing, normalizeProfileSharing, parsePublicProfile, planProfileText, sensitiveTurnedOn, shareFreshGratitude, type ProfileSharing } from '@/domain/profileSharing';
 import { moodOnTen, planCheckInGratitude } from '@/domain/checkIns';
 import { quoteById } from '@/domain/stoicQuotes';
 import { planRelapse } from '@/domain/sober';
 import { parseSseBuffer } from '@/domain/sse';
 import { detectSafety } from '@/domain/safety';
-import { OFFLINE_COACH_MESSAGE, OPENING_LINE, type ThumosMode } from '@/domain/thumos';
+import {
+  MEAL_UNREACHABLE,
+  PLAN_UNREACHABLE,
+  REFLECT_UNREACHABLE,
+  VOICE_UNREACHABLE,
+  edgeFailureLog,
+  postWithRetry,
+  type EdgeSendState,
+} from '@/domain/edgeRetry';
+import { clientAppBuild } from '@/domain/clientError';
+import { OPENING_LINE, SCRIPTED_COACH_REPLY, THUMOS_UNREACHABLE, type ThumosMode } from '@/domain/thumos';
+import Constants from 'expo-constants';
 import { CONSENT_VERSION } from '@/data/catalogue';
 import { consentRows, missingConsentRows, type StoredConsent } from '@/domain/consents';
 import { stageFromRecord } from '@/domain/stage';
@@ -193,6 +207,7 @@ function emptySnapshot(): AppSnapshot {
     nutrition: defaultNutritionSettings(),
     waterDays: [],
     bodyComposition: [],
+    healthPlan: null,
   };
 }
 
@@ -280,7 +295,7 @@ export class SupabaseRepository implements Repository {
       .select('*')
       .in('connection_id', connectionIds)
       .order('created_at');
-    if (messageRes.error) return;
+    if (messageRes.error) throw asUserFacing(messageRes.error, 'general');
     const fetched = ((messageRes.data ?? []) as Row[]).map(mapDirectMessage);
     const allowed = new Set(connectionIds);
     this.emit({
@@ -388,7 +403,7 @@ export class SupabaseRepository implements Repository {
 
     const userId = session.user.id;
     const email = session.user.email ?? '';
-    const [profileRes, reasonsRes, checkRes, relapseRes, healthRes, mineRes, thumosRes, directoryRes, interestLinks, connectionsRes, reportsRes, consentsRes, photosRes, gratitudeRes, gratitudePhotoRes, visionRes, sharingRes, quotesRes, profilePhotoRes] =
+    const [profileRes, reasonsRes, checkRes, relapseRes, healthRes, mineRes, thumosRes, directoryRes, interestLinks, connectionsRes, reportsRes, consentsRes, photosRes, gratitudeRes, gratitudePhotoRes, visionRes, sharingRes, quotesRes, profilePhotoRes, healthPlanRes] =
       await Promise.all([
         this.client.from('profiles').select('*').eq('id', userId).maybeSingle(),
         this.client.from('reasons').select('*').eq('user_id', userId).order('sort_order'),
@@ -409,6 +424,7 @@ export class SupabaseRepository implements Repository {
         this.client.from('profile_sharing').select('settings').eq('user_id', userId).maybeSingle(),
         this.client.from('user_quotes').select('quote_id, created_at').eq('user_id', userId).order('created_at', { ascending: false }),
         this.client.from('profile_photos').select('id, user_id, role, caption, position, storage_path, created_at').eq('user_id', userId).order('position').order('created_at'),
+        this.client.from('health_plans').select('focus, nutrition, fitness, wellbeing, limits, disclaimer, updated_at').eq('user_id', userId).maybeSingle(),
       ]);
 
     const profileRow = profileRes.data as Row | null;
@@ -517,6 +533,7 @@ export class SupabaseRepository implements Repository {
             if (!quoteById(quoteId)) return [];
             return [{ quoteId, createdAt: String(row.created_at ?? '') }];
           }),
+      healthPlan: healthPlanRes.error ? null : healthPlanFromStored(healthPlanRes.data),
     });
   }
 
@@ -1116,13 +1133,8 @@ export class SupabaseRepository implements Repository {
       throw new UserFacingError('Turn on community, and confirm you are 18 or over, before you message.', 'generic');
     }
     if (userId === me) throw new UserFacingError('You cannot message yourself.', 'generic');
-    const blocks = await this.client.from('blocks').select('blocker_id, blocked_id').or(`blocker_id.eq.${userId},blocked_id.eq.${userId}`);
-    if (blocks.error) throw asUserFacing(blocks.error, 'general');
-    const closed = (blocks.data ?? []).some((row) => {
-      const record = row as { blocker_id?: string; blocked_id?: string };
-      return (record.blocker_id === me && record.blocked_id === userId) || (record.blocker_id === userId && record.blocked_id === me);
-    });
-    if (closed) throw new UserFacingError('You cannot contact this person.', 'generic');
+    // A block, the age check, and who may read the chat are enforced on the server.
+    // authenticated cannot select blocks, so this does not read that table.
     const existing = this.snapshot.connections.find((connection) =>
       connection.status !== 'declined' &&
       ((connection.requesterId === me && connection.addresseeId === userId) ||
@@ -1147,7 +1159,8 @@ export class SupabaseRepository implements Repository {
           (connection.requesterId === userId && connection.addresseeId === me)));
       if (live) return;
       const { error } = await this.client.from('connections').insert({ id, requester_id: me, addressee_id: userId, status: 'pending' });
-      if (error && !isDuplicateWrite(error)) throw asUserFacing(error, 'general');
+      // The private-message screen shows this server reason. Other callers still run it through shownError.
+      if (error && !isDuplicateWrite(error)) throw error;
       // The request is saved. A slow or failed reload afterwards must not report
       // it as unsent, or the card stays on "Ask to connect" after an error.
       await this.refresh().catch((reloadError: unknown) => console.error(reloadError));
@@ -1206,6 +1219,46 @@ export class SupabaseRepository implements Repository {
       }
       this.emit({ ...this.snapshot });
     });
+  }
+
+  async loadChatReads(): Promise<Record<string, string>> {
+    const { data, error } = await this.client.from('chat_reads').select('connection_id, read_through');
+    if (error) throw error;
+    const marks: Record<string, string> = {};
+    for (const row of data ?? []) {
+      const id = (row as { connection_id?: unknown }).connection_id;
+      const at = (row as { read_through?: unknown }).read_through;
+      if (typeof id === 'string' && typeof at === 'string' && at) marks[id] = at;
+    }
+    return marks;
+  }
+
+  async saveChatRead(connectionId: string, readThrough: string): Promise<void> {
+    try {
+      const { error } = await this.client.rpc('save_chat_read', {
+        p_connection_id: connectionId,
+        p_read_through: readThrough,
+      });
+      if (error) console.error('chat read', error);
+    } catch (error) {
+      console.error('chat read', error);
+    }
+  }
+
+  async logClientError(screen: string, message: string, appBuild: string): Promise<void> {
+    try {
+      const userId = await this.userId();
+      const clip = (value: string, max: number) => value.replace(/\s+/g, ' ').trim().slice(0, max);
+      const { error } = await this.client.from('client_errors').insert({
+        user_id: userId,
+        screen: clip(screen, 80) || 'app',
+        message: clip(message, 300) || 'Unknown error',
+        app_build: clip(appBuild, 40) || 'unknown',
+      });
+      if (error) console.error('client error log', error.message);
+    } catch (error) {
+      console.error('client error log', error);
+    }
   }
 
   async saveDeviceToken(token: string, platform: 'ios' | 'android'): Promise<void> {
@@ -1272,37 +1325,46 @@ export class SupabaseRepository implements Repository {
     await this.refresh();
   }
 
-  async sendThumos(content: string, mode: ThumosMode, onDelta?: (text: string) => void): Promise<void> {
+  async sendThumos(
+    content: string,
+    mode: ThumosMode,
+    onDelta?: (text: string) => void,
+    onState?: (state: EdgeSendState) => void,
+  ): Promise<void> {
     const text = content.trim();
     if (!text) return;
     if (!this.snapshot.profile?.consentAi) throw new Error('Agree to the coach consent before sending a message to Thumos.');
     const safety = detectSafety(text);
     const effectiveMode: ThumosMode = safety.selfHarm || safety.withdrawal ? 'support' : mode;
+    const requestId = randomId();
 
     let response: Response;
     try {
-      const { data: sessionData } = await this.client.auth.getSession();
-      const token = sessionData.session?.access_token;
-      if (!token) throw new Error('Sign in first.');
-      response = await fetch(`${this.url}/functions/v1/thumos-chat`, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${token}`,
-          apikey: this.anonKey,
-          'Content-Type': 'application/json',
-          Accept: 'text/event-stream',
+      const token = await this.accessToken();
+      response = await postWithRetry({
+        fetchImpl: (url, init) => fetch(url, init),
+        url: `${this.url}/functions/v1/thumos-chat`,
+        init: {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${token}`,
+            apikey: this.anonKey,
+            'Content-Type': 'application/json',
+            Accept: 'text/event-stream',
+          },
+          body: JSON.stringify({ content: text, mode: effectiveMode, request_id: requestId }),
         },
-        body: JSON.stringify({ content: text, mode: effectiveMode }),
+        onState,
       });
-    } catch {
-      await this.insertOfflinePair(text, effectiveMode);
-      return;
+    } catch (error) {
+      this.rememberEdgeFailure('thumos', error);
+      throw new UserFacingError(`${THUMOS_UNREACHABLE} ${SCRIPTED_COACH_REPLY}`, 'generic');
     }
 
     if (!response.ok) {
       if (response.status >= 500) {
-        await this.insertOfflinePair(text, effectiveMode);
-        return;
+        this.rememberEdgeFailure('thumos', new Error('Thumos did not answer.'), response.status);
+        throw new UserFacingError(`${THUMOS_UNREACHABLE} ${SCRIPTED_COACH_REPLY}`, 'generic');
       }
       const body = (await response.json().catch(() => null)) as { message?: string } | null;
       throw asUserFacing(new Error(body?.message ?? 'Could not send that.'), 'thumos');
@@ -1318,9 +1380,16 @@ export class SupabaseRepository implements Repository {
     let failed: string | null = null;
     const apply = (chunk: string) => {
       parseSseBuffer(chunk, (event) => {
-        if (event.type === 'delta') {
+        if (event.type === 'ping') {
+          onState?.('waiting');
+        } else if (event.type === 'status') {
+          onState?.(event.state === 'retrying' ? 'retrying' : 'waiting');
+        } else if (event.type === 'delta') {
           accumulated += event.text;
           onDelta?.(accumulated);
+        } else if (event.type === 'replace') {
+          accumulated = event.reply;
+          onDelta?.(event.reply);
         } else if (event.type === 'done') {
           accumulated = event.reply;
           onDelta?.(event.reply);
@@ -1339,9 +1408,16 @@ export class SupabaseRepository implements Repository {
         if (done) break;
         buffer += decoder.decode(value);
         const leftover = parseSseBuffer(buffer, (event) => {
-          if (event.type === 'delta') {
+          if (event.type === 'ping') {
+            onState?.('waiting');
+          } else if (event.type === 'status') {
+            onState?.(event.state === 'retrying' ? 'retrying' : 'waiting');
+          } else if (event.type === 'delta') {
             accumulated += event.text;
             onDelta?.(accumulated);
+          } else if (event.type === 'replace') {
+            accumulated = event.reply;
+            onDelta?.(event.reply);
           } else if (event.type === 'done') {
             accumulated = event.reply;
             onDelta?.(event.reply);
@@ -1361,33 +1437,84 @@ export class SupabaseRepository implements Repository {
     await this.refresh();
   }
 
-  private async insertOfflinePair(text: string, mode: ThumosMode) {
-    const userId = await this.userId();
-    const { error: insertError } = await this.client.from('thumos_messages').insert([
-      { user_id: userId, role: 'user', content: text, mode },
-      { user_id: userId, role: 'offline', content: OFFLINE_COACH_MESSAGE, mode: 'support' },
-    ]);
-    if (insertError) throw asUserFacing(insertError, 'thumos');
-    await this.refresh();
+  private async accessToken(): Promise<string> {
+    const { data: sessionData } = await this.client.auth.getSession();
+    const token = sessionData.session?.access_token;
+    if (!token) throw new Error('Sign in first.');
+    return token;
+  }
+
+  private rememberEdgeFailure(screen: string, error: unknown, status?: number) {
+    const line = edgeFailureLog(error, status);
+    console.error(screen, line);
+    void this.logClientError(screen, line, clientAppBuild({
+      buildNumber: Constants.expoConfig?.ios?.buildNumber,
+      version: Constants.expoConfig?.version,
+    }));
+  }
+
+  private async callEdge(name: string, body: unknown): Promise<{ status: number; data: unknown }> {
+    const token = await this.accessToken();
+    const response = await postWithRetry({
+      fetchImpl: (url, init) => fetch(url, init),
+      url: `${this.url}/functions/v1/${name}`,
+      init: {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          apikey: this.anonKey,
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+        },
+        body: JSON.stringify(body),
+      },
+    });
+    return { status: response.status, data: await response.json().catch(() => null) };
   }
 
   async mintVoiceToken(mode?: ThumosMode): Promise<VoiceMint> {
-    const { data, error } = await this.client.functions.invoke('thumos-voice-token', { body: { mode } });
-    if (error || !data?.ok || typeof data?.token !== 'string') {
+    type VoicePayload = {
+      ok?: boolean;
+      code?: string;
+      message?: string;
+      token?: unknown;
+      expiresAt?: unknown;
+      instructions?: unknown;
+      crisisInstructions?: unknown;
+      history?: unknown;
+      greeting?: unknown;
+      mode?: unknown;
+    };
+    let data: VoicePayload | null = null;
+    try {
+      const invoked = await this.callEdge('thumos-voice-token', { mode });
+      data = invoked.data as VoicePayload | null;
+      if (invoked.status >= 500) {
+        this.rememberEdgeFailure('voice', new Error('Voice did not answer.'), invoked.status);
+        return { ok: false, code: 'unavailable', message: VOICE_UNREACHABLE };
+      }
+    } catch (error) {
+      this.rememberEdgeFailure('voice', error);
+      return { ok: false, code: 'unavailable', message: VOICE_UNREACHABLE };
+    }
+    if (!data?.ok || typeof data?.token !== 'string') {
       const message = typeof data?.message === 'string' ? data.message : '';
+      const honest = message.length > 0 && message.length < 180 && !/xAI key|XAI_API_KEY/i.test(message) ? message : '';
       return {
         ok: false,
         code: typeof data?.code === 'string' ? data.code : 'unavailable',
-        message: message && message.length < 180 ? message : 'Voice is unavailable just now. Text chat is still here.',
+        message: honest || VOICE_UNREACHABLE,
       };
     }
-    const history = Array.isArray(data.history)
-      ? data.history.flatMap((turn: { role?: string; content?: string }) => (
-          (turn?.role === 'user' || turn?.role === 'assistant') && typeof turn.content === 'string'
-            ? [{ role: turn.role, content: turn.content }]
-            : []
-        ))
-      : [];
+    const history: { role: 'user' | 'assistant'; content: string }[] = [];
+    if (Array.isArray(data.history)) {
+      for (const turn of data.history) {
+        if (!turn || typeof turn !== 'object') continue;
+        const role = (turn as { role?: unknown }).role;
+        const content = (turn as { content?: unknown }).content;
+        if ((role === 'user' || role === 'assistant') && typeof content === 'string') history.push({ role, content });
+      }
+    }
     return {
       ok: true,
       token: data.token,
@@ -1574,7 +1701,7 @@ export class SupabaseRepository implements Repository {
 
   async publicProfile(userId: string): Promise<ReturnType<typeof parsePublicProfile>> {
     const { data, error } = await this.client.rpc('public_profile', { user_id: userId });
-    if (error) return null;
+    if (error) throw asUserFacing(error, 'general');
     return parsePublicProfile(data);
   }
 
@@ -1697,6 +1824,7 @@ export class SupabaseRepository implements Repository {
     const id = inserted.data?.id;
     if (typeof id !== 'string' || !id) throw new UserFacingError('Could not save that line.', 'generic');
     await this.refresh();
+    await this.shareAddedGratitude({ entryId: id });
     return id;
   }
 
@@ -1756,6 +1884,14 @@ export class SupabaseRepository implements Repository {
       throw asUserFacing(inserted.error, 'general');
     }
     await this.refresh();
+    await this.shareAddedGratitude({ photoId });
+  }
+
+  /** A new line or photo follows Share Whole Section only when the person opted in. */
+  private async shareAddedGratitude(added: { entryId?: string; photoId?: string }): Promise<void> {
+    const next = shareFreshGratitude(this.snapshot.sharing, added);
+    if (!next) return;
+    await this.setProfileSharing(next);
   }
 
   async updateGratitudePhoto(id: string, input: { caption: string }): Promise<void> {
@@ -1897,23 +2033,33 @@ export class SupabaseRepository implements Repository {
       throw new Error('Agree to the coach consent before sending a message to Thumos.');
     }
     try {
-      const invoked = await this.client.functions.invoke('gratitude-reflect', { body: { body, category } });
+      const invoked = await this.callEdge('gratitude-reflect', { body, category });
+      if (invoked.status >= 500) {
+        this.rememberEdgeFailure('gratitude', new Error('Reflection did not answer.'), invoked.status);
+        throw new UserFacingError(REFLECT_UNREACHABLE, 'generic');
+      }
       const data = invoked.data as { ok?: boolean; code?: string; comment?: unknown; suggestions?: unknown } | null;
       if (data?.code === 'consent') {
         throw new Error('Agree to the coach consent before sending a message to Thumos.');
       }
-      if (!invoked.error && data?.ok === true && typeof data.comment === 'string' && Array.isArray(data.suggestions)) {
+      if (invoked.status < 400 && data?.ok === true && typeof data.comment === 'string' && Array.isArray(data.suggestions)) {
         const suggestions = data.suggestions.filter((item): item is string => typeof item === 'string' && item.trim().length > 0);
         if (suggestions.length >= 2) return { comment: data.comment, suggestions: suggestions.slice(0, 3) };
       }
     } catch (error) {
+      if (error instanceof UserFacingError) throw error;
       if (error instanceof Error && error.message.includes('Agree to the coach consent')) throw error;
+      this.rememberEdgeFailure('gratitude', error);
+      throw new UserFacingError(REFLECT_UNREACHABLE, 'generic');
     }
     return localGratitudeReflect(body, category);
   }
 
   /** Older databases lack the later share and goal columns. A missing column stays off. */
   private async nutritionSettingsRow(userId: string) {
+    const athlete = 'kcal_target, hide_calories, share_food_diary, share_calories, share_quality, share_progress, goal, goal_age, goal_sex, protein_target_g, carb_target_g, fat_target_g, goal_phase, weight_class_kg, activity_energy_kcal, share_goal, wagon_on, wagon_note, wagon_visible, build, updated_at';
+    const widened = await this.client.from('nutrition_settings').select(athlete).eq('user_id', userId).maybeSingle();
+    if (!widened.error) return widened;
     const goal = 'kcal_target, hide_calories, share_food_diary, share_calories, share_quality, share_progress, goal, goal_age, goal_sex, protein_target_g, activity_energy_kcal, share_goal, wagon_on, wagon_note, wagon_visible, build, updated_at';
     const first = await this.client.from('nutrition_settings').select(goal).eq('user_id', userId).maybeSingle();
     if (!first.error) return first;
@@ -1982,17 +2128,21 @@ export class SupabaseRepository implements Repository {
     const text = input.text?.trim() ?? '';
     const local = (): MealEstimate => ({ items: text ? estimateFromText(text) : samplePhotoMeal(), source: 'local' });
     try {
-      const invoked = await this.client.functions.invoke('estimate-meal', {
-        body: { text, imageBase64: input.imageBase64 ?? '' },
-      });
+      const invoked = await this.callEdge('estimate-meal', { text, imageBase64: input.imageBase64 ?? '' });
+      if (invoked.status >= 500) {
+        this.rememberEdgeFailure('estimate-meal', new Error('Meal estimate did not answer.'), invoked.status);
+        throw new UserFacingError(MEAL_UNREACHABLE, 'generic');
+      }
       const data = invoked.data as { ok?: boolean; items?: unknown; source?: string; code?: string; message?: string } | null;
       if (data?.code === 'consent') return local();
       const items = parseMealEstimate({ items: data?.items });
-      if (!invoked.error && data?.ok === true && items) {
+      if (invoked.status < 400 && data?.ok === true && items) {
         return { items, source: data.source === 'model' ? 'model' : 'local' };
       }
     } catch (error) {
-      console.error(error);
+      if (error instanceof UserFacingError) throw error;
+      this.rememberEdgeFailure('estimate-meal', error);
+      throw new UserFacingError(MEAL_UNREACHABLE, 'generic');
     }
     const fallback = local();
     if (!fallback.items.length) throw new UserFacingError('Could not read that meal. You can still type it in yourself.', 'generic');
@@ -2111,6 +2261,10 @@ export class SupabaseRepository implements Repository {
       goal_age: settings.goalAge,
       goal_sex: settings.goalSex,
       protein_target_g: settings.proteinTarget,
+      carb_target_g: settings.carbTarget,
+      fat_target_g: settings.fatTarget,
+      goal_phase: settings.goalPhase,
+      weight_class_kg: settings.weightClassKg,
       activity_energy_kcal: settings.activityEnergyKcal,
       share_goal: settings.shareGoal,
       wagon_on: settings.wagonOn,
@@ -2130,6 +2284,15 @@ export class SupabaseRepository implements Repository {
     if (error && leavingGoalOff && /goal|protein_target_g|activity_energy_kcal|share_goal/i.test(error.message)) {
       const { goal: _goal, goal_age: _age, goal_sex: _sex, protein_target_g: _protein, activity_energy_kcal: _energy, share_goal: _shareGoal, ...withoutGoal } = row;
       payload = withoutGoal;
+      ({ error } = await this.client.from('nutrition_settings').upsert(payload));
+    }
+    const athleteUnset = settings.carbTarget == null
+      && settings.fatTarget == null
+      && settings.goalPhase == null
+      && settings.weightClassKg == null;
+    if (error && athleteUnset && /carb_target_g|fat_target_g|goal_phase|weight_class_kg/i.test(error.message)) {
+      const { carb_target_g: _carb, fat_target_g: _fat, goal_phase: _phase, weight_class_kg: _klass, ...withoutAthlete } = payload;
+      payload = withoutAthlete;
       ({ error } = await this.client.from('nutrition_settings').upsert(payload));
     }
     if (error && settings.build == null && /\bbuild\b/i.test(error.message)) {
@@ -2196,10 +2359,149 @@ export class SupabaseRepository implements Repository {
     });
   }
 
+  async saveHealthPlan(plan: HealthPlan): Promise<void> {
+    const userId = this.snapshot.session?.userId ?? await this.userId();
+    const before = this.snapshot.healthPlan;
+    const next: HealthPlan = {
+      ...plan,
+      limits: plan.limits.slice(0, 280),
+      disclaimer: (plan.disclaimer || PLAN_DISCLAIMER).slice(0, 400),
+    };
+    this.emit({ ...this.snapshot, healthPlan: next });
+    const { error } = await this.client.from('health_plans').upsert({
+      user_id: userId,
+      focus: next.focus,
+      nutrition: next.nutrition,
+      fitness: next.fitness,
+      wellbeing: next.wellbeing,
+      limits: next.limits,
+      disclaimer: next.disclaimer,
+      updated_at: next.updatedAt,
+    });
+    if (error) {
+      this.emit({ ...this.snapshot, healthPlan: before });
+      throw asUserFacing(error, 'general');
+    }
+  }
+
+  async refreshHealthPlan(limits: string): Promise<void> {
+    if (!this.snapshot.profile?.consentAi) {
+      throw new UserFacingError('Writing a plan needs the coach consent, because your figures are sent to the model.', 'generic');
+    }
+    const userId = this.snapshot.session?.userId ?? await this.userId();
+    let invoked: { status: number; data: unknown };
+    try {
+      invoked = await this.callEdge('health-plan', { limits: limits.trim().slice(0, 280) });
+    } catch (error) {
+      this.rememberEdgeFailure('health-plan', error);
+      throw new UserFacingError(PLAN_UNREACHABLE, 'generic');
+    }
+    if (invoked.status >= 500) {
+      this.rememberEdgeFailure('health-plan', new Error('Health Plan did not answer.'), invoked.status);
+      throw new UserFacingError(PLAN_UNREACHABLE, 'generic');
+    }
+    const data = invoked.data as { ok?: boolean; code?: string; message?: string; plan?: unknown } | null;
+    if (data?.code === 'consent') {
+      throw new UserFacingError(
+        data.message || 'Writing a plan needs the coach consent, because your figures are sent to the model.',
+        'generic',
+      );
+    }
+    const plan = healthPlanFromStored(data?.plan);
+    if (data?.ok !== true || !plan) {
+      throw new UserFacingError(PLAN_UNREACHABLE, 'generic');
+    }
+    const { error } = await this.client.from('health_plans').upsert({
+      user_id: userId,
+      focus: plan.focus,
+      nutrition: plan.nutrition,
+      fitness: plan.fitness,
+      wellbeing: plan.wellbeing,
+      limits: plan.limits,
+      disclaimer: plan.disclaimer.slice(0, 400),
+      updated_at: plan.updatedAt,
+    });
+    if (error) throw asUserFacing(error, 'general');
+    this.emit({ ...this.snapshot, healthPlan: plan });
+  }
+
   async sharedNutrition(userId: string) {
     const { data, error } = await this.client.rpc('shared_nutrition', { target: userId });
     if (error || data == null) return null;
     return parseSharedNutrition(data);
+  }
+
+  async sharedHealthPlan(userId: string) {
+    const { data, error } = await this.client.rpc('shared_health_plan', { target: userId });
+    if (error || data == null) return null;
+    return parseSharedHealthPlan(data);
+  }
+
+  async listBuddies(): Promise<BuddyList> {
+    const { data, error } = await this.client.rpc('list_buddies');
+    if (error) throw error;
+    return parseBuddyList(data);
+  }
+
+  async createBuddyInvite(buddyId: string, scope: BuddyScope): Promise<void> {
+    const { data, error } = await this.client.rpc('create_buddy_invite', { buddy: buddyId, scope });
+    if (error) throw error;
+    const inviteId = typeof data === 'string' ? data : '';
+    if (inviteId) {
+      void this.client.functions.invoke('notify-buddy-invite', { body: { inviteId } }).catch(() => undefined);
+    }
+  }
+
+  async createBuddyLink(scope: BuddyScope): Promise<BuddyLinkPass> {
+    const { data, error } = await this.client.rpc('create_buddy_link', { scope });
+    if (error) throw error;
+    const pass = parseBuddyLinkPass(data);
+    if (!pass) throw new UserFacingError('Could not create that link.', 'generic');
+    return pass;
+  }
+
+  async acceptBuddyInvite(inviteId: string): Promise<void> {
+    const { error } = await this.client.rpc('accept_buddy_invite', { invite: inviteId });
+    if (error) throw error;
+  }
+
+  async declineBuddyInvite(inviteId: string): Promise<void> {
+    const { error } = await this.client.rpc('decline_buddy_invite', { invite: inviteId });
+    if (error) throw error;
+  }
+
+  async previewBuddyLink(secret: string): Promise<{ name: string; scope: BuddyScope }> {
+    const { data, error } = await this.client.rpc('preview_buddy_link', { secret });
+    if (error) throw error;
+    const preview = parseBuddyPreview(data);
+    if (!preview) throw new UserFacingError('That invite is not available.', 'generic');
+    return preview;
+  }
+
+  async acceptBuddyLink(secret: string): Promise<void> {
+    const { error } = await this.client.rpc('accept_buddy_link', { secret });
+    if (error) throw error;
+  }
+
+  async revokeBuddy(inviteId: string): Promise<void> {
+    const { error } = await this.client.rpc('revoke_buddy', { invite: inviteId });
+    if (error) throw error;
+  }
+
+  async revokeBuddyLink(linkId: string): Promise<void> {
+    const { error } = await this.client.rpc('revoke_buddy_link', { link: linkId });
+    if (error) throw error;
+  }
+
+  async updateBuddyScope(inviteId: string, scope: BuddyScope): Promise<void> {
+    const { error } = await this.client.rpc('update_buddy_scope', { invite: inviteId, scope });
+    if (error) throw error;
+  }
+
+  async sharedBuddyData(ownerId: string): Promise<BuddyShareView | null> {
+    const { data, error } = await this.client.rpc('shared_buddy_data', { owner: ownerId });
+    if (error || data == null) return null;
+    return parseBuddyShare(data);
   }
 
   async exportData(): Promise<Record<string, unknown>> {
@@ -2752,6 +3054,10 @@ function nutritionFromRow(row: Row | null): NutritionSettings {
     goalAge: age == null ? null : Math.round(age),
     goalSex: sex,
     proteinTarget: nutritionNumber(row.protein_target_g, 0, 700),
+    carbTarget: nutritionNumber(row.carb_target_g, 0, 1000),
+    fatTarget: nutritionNumber(row.fat_target_g, 0, 400),
+    goalPhase: typeof row.goal_phase === 'string' && isBuilderPhase(row.goal_phase) ? row.goal_phase : null,
+    weightClassKg: nutritionNumber(row.weight_class_kg, 40, 200),
     activityEnergyKcal: nutritionNumber(row.activity_energy_kcal, 0, 2500),
     shareGoal: row.share_goal === true,
     wagonOn: row.wagon_on === true,

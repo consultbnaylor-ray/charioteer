@@ -5,6 +5,7 @@ import { MILESTONES, milestoneReached } from './milestones';
 import { savingsFromTypicalWeek } from './savings';
 import { soberElapsed } from './sober';
 import { quoteById, type QuoteSchool } from './stoicQuotes';
+import { parseSharedHealthPlan, presentSharedHealthPlan, type HealthPlan, type SharedHealthPlan } from './healthPlan';
 import { presentSharedNutrition, type FoodLog, type NutritionSettings, type SharedGoal, type SharedQuality } from './nutrition';
 import { STAGE_LABELS, isStage } from './stage';
 
@@ -41,6 +42,15 @@ export const BIO_EXAMPLE = 'Dad of two, gym most mornings, 90 days sober and cou
 /** What other people see under a shared photo. Distinct from a private note. */
 export const PHOTO_CAPTION_LIMIT = 140;
 
+/** Shown when public_profile fails. A hidden profile uses a different line. */
+export const PROFILE_LOAD_ERROR = "Couldn't load profile – Try again";
+
+/** Opt-in beside Share Whole Section. New lines stay private until this is on. */
+export const SHARE_NEW_GRATITUDE = 'Share lines I add later';
+
+/** Under the opt-in. The master only covers lines and photos that already exist. */
+export const SHARE_NEW_GRATITUDE_HINT = 'New lines and photos stay private until this is on.';
+
 /** Trims a profile line and refuses anything over the limit. Newlines in a bio stay. */
 export function planProfileText(value: string, limit: number): { ok: true; text: string } | { ok: false; message: string } {
   const text = value.replace(/\r\n/g, '\n').trim();
@@ -66,6 +76,16 @@ export type ProfileSharing = {
   visionIds: string[];
   /** The pinned line, Stoic or Platonic. Public-domain text, not special category data. */
   pinnedQuote: boolean;
+  /**
+   * When on, a line or photo added after this stays shared.
+   * Share Whole Section does not turn this on. Missing means off.
+   */
+  shareNewGratitude: boolean;
+  /**
+   * Headline, this week's focus, and how many focus items are ticked.
+   * Weight, body figures, and the rest of the plan stay off. Missing means off.
+   */
+  healthPlan: boolean;
   /** Set the first time a sobriety or health item is shared. */
   sensitiveConsentAt: string | null;
 };
@@ -86,6 +106,8 @@ export function defaultProfileSharing(): ProfileSharing {
     gratitudePhotoIds: [],
     visionIds: [],
     pinnedQuote: false,
+    shareNewGratitude: false,
+    healthPlan: false,
     sensitiveConsentAt: null,
   };
 }
@@ -136,11 +158,30 @@ export function normalizeProfileSharing(value: unknown): ProfileSharing {
     gratitudePhotoIds: stringList(raw.gratitudePhotoIds),
     visionIds: stringList(raw.visionIds),
     pinnedQuote: flag(raw.pinnedQuote),
+    shareNewGratitude: flag(raw.shareNewGratitude),
+    healthPlan: flag(raw.healthPlan),
     sensitiveConsentAt: consent,
   };
 }
 
-const SENSITIVE_FLAGS = ['stage', 'soberDays', 'milestones', 'moneySaved', 'unitsAvoided', 'moodStreak'] as const;
+/**
+ * Shares a line or photo that was just added, when the person opted in.
+ * Returns null when the lists should stay as they are.
+ */
+export function shareFreshGratitude(
+  sharing: ProfileSharing,
+  added: { entryId?: string; photoId?: string },
+): ProfileSharing | null {
+  if (!sharing.shareNewGratitude) return null;
+  let gratitudeIds = sharing.gratitudeIds;
+  let gratitudePhotoIds = sharing.gratitudePhotoIds;
+  if (added.entryId && !gratitudeIds.includes(added.entryId)) gratitudeIds = [...gratitudeIds, added.entryId];
+  if (added.photoId && !gratitudePhotoIds.includes(added.photoId)) gratitudePhotoIds = [...gratitudePhotoIds, added.photoId];
+  if (gratitudeIds === sharing.gratitudeIds && gratitudePhotoIds === sharing.gratitudePhotoIds) return null;
+  return { ...sharing, gratitudeIds, gratitudePhotoIds };
+}
+
+const SENSITIVE_FLAGS = ['stage', 'soberDays', 'milestones', 'moneySaved', 'unitsAvoided', 'moodStreak', 'healthPlan'] as const;
 
 /** True when this change newly shares sobriety or health information. */
 export function sensitiveTurnedOn(before: ProfileSharing, after: ProfileSharing): boolean {
@@ -198,6 +239,8 @@ export type ShareSource = {
     heightCm?: number | null;
     weights?: { day: string; kg: number }[];
   };
+  /** The owner's plan. Only the headline and focus ticks are copied when the switch is on. */
+  healthPlan?: HealthPlan | null;
 };
 
 export type PublicProfileView = {
@@ -237,6 +280,8 @@ export type PublicProfileView = {
   wagon: { note: string } | null;
   /** Goal name and a qualitative progress line. Null when that switch is off. */
   goal: SharedGoal | null;
+  /** Headline, focus lines, and tick counts. Null when that switch is off or there is no plan. */
+  healthPlan: SharedHealthPlan | null;
 };
 
 /** Consecutive check-in days. The number only. Mood, craving, sleep, and notes stay off. */
@@ -411,6 +456,9 @@ export function projectPublicProfile(source: ShareSource, sharing: ProfileSharin
   else hiddenLabels.push('A hard moment');
   if (goal) sharedLabels.push('Nutrition goal');
   else hiddenLabels.push('Nutrition goal');
+  const healthPlan = presentSharedHealthPlan(source.healthPlan, settings.healthPlan, source.nutrition?.settings.goal ?? null);
+  if (healthPlan) sharedLabels.push('Health Plan');
+  else hiddenLabels.push('Health Plan');
 
   return {
     displayName: source.displayName,
@@ -439,6 +487,7 @@ export function projectPublicProfile(source: ShareSource, sharing: ProfileSharin
     progress,
     wagon,
     goal,
+    healthPlan,
   };
 }
 
@@ -540,6 +589,7 @@ export function parsePublicProfile(value: unknown): PublicProfileView | null {
     progress: typeof raw.progress === 'string' && raw.progress.trim() ? raw.progress : null,
     wagon: wagonLine(raw.wagon),
     goal: goalFrom(raw.goal),
+    healthPlan: parseSharedHealthPlan(raw.healthPlan),
   };
 }
 
@@ -582,33 +632,46 @@ function wagonLine(value: unknown): { note: string } | null {
 
 export type SharedReportItem = { label: string; summary: string };
 
+/** An array from a public profile. A missing or null section is an empty list, not a crash. */
+export function shownList<T>(value: readonly T[] | null | undefined): readonly T[] {
+  return Array.isArray(value) ? value : [];
+}
+
 /** One report target for each thing this profile is actually showing. */
 export function sharedReportItems(view: PublicProfileView): SharedReportItem[] {
   const items: SharedReportItem[] = [];
   if (view.bio) items.push({ label: 'Bio', summary: view.bio });
   if (view.town) items.push({ label: 'Town', summary: view.town });
   if (view.stage) items.push({ label: 'Stage', summary: view.stage });
-  if (view.sober) items.push({ label: 'Days sober', summary: formatSoberShare(view.sober) });
-  for (const badge of view.milestones) items.push({ label: 'Milestone', summary: badge });
-  for (const reason of view.reasons) items.push({ label: 'Reason', summary: reason });
+  if (view.sober && typeof view.sober.days === 'number') {
+    items.push({ label: 'Days sober', summary: formatSoberShare({ days: view.sober.days, since: typeof view.sober.since === 'string' ? view.sober.since : '' }) });
+  }
+  for (const badge of shownList(view.milestones)) items.push({ label: 'Milestone', summary: badge });
+  for (const reason of shownList(view.reasons)) items.push({ label: 'Reason', summary: reason });
   if (view.moneySaved != null) items.push({ label: 'Money saved', summary: `${view.moneySaved} saved` });
   if (view.unitsAvoided != null) items.push({ label: 'Units avoided', summary: `${view.unitsAvoided} units avoided` });
   if (view.moodStreak != null) items.push({ label: 'Mood streak', summary: `${view.moodStreak} days` });
-  for (const line of view.health) items.push({ label: 'Health headline', summary: line });
-  for (const photo of view.progressPhotos) items.push({ label: 'Progress photo', summary: photo.caption || photo.id });
-  for (const photo of view.profilePhotos ?? []) items.push({ label: 'Profile photo', summary: photo.caption || photo.id });
-  for (const entry of view.gratitude) items.push({ label: 'Gratitude line', summary: entry.body });
-  for (const photo of view.gratitudePhotos) items.push({ label: 'Gratitude photo', summary: photo.caption || photo.id });
-  for (const item of view.vision) items.push({ label: 'Vision item', summary: item.caption || item.id });
-  if (view.pinnedQuote) items.push({ label: 'Pinned quote', summary: view.pinnedQuote.text });
-  if (view.foodDiary) {
+  for (const line of shownList(view.health)) items.push({ label: 'Health headline', summary: line });
+  for (const photo of shownList(view.progressPhotos)) items.push({ label: 'Progress photo', summary: photo.caption || photo.id });
+  for (const photo of shownList(view.profilePhotos)) items.push({ label: 'Profile photo', summary: photo.caption || photo.id });
+  for (const entry of shownList(view.gratitude)) items.push({ label: 'Gratitude line', summary: entry.body });
+  for (const photo of shownList(view.gratitudePhotos)) items.push({ label: 'Gratitude photo', summary: photo.caption || photo.id });
+  for (const item of shownList(view.vision)) items.push({ label: 'Vision item', summary: item.caption || item.id });
+  if (view.pinnedQuote && typeof view.pinnedQuote.text === 'string') items.push({ label: 'Pinned quote', summary: view.pinnedQuote.text });
+  if (Array.isArray(view.foodDiary)) {
     if (view.foodDiary.length === 0) items.push({ label: "Today's meals", summary: 'Nothing logged today.' });
-    for (const meal of view.foodDiary) items.push({ label: "Today's meals", summary: `${meal.meal}: ${meal.detail}` });
+    for (const meal of view.foodDiary) items.push({ label: "Today's meals", summary: `${meal?.meal ?? ''}: ${meal?.detail ?? ''}` });
   }
-  if (view.calories) items.push({ label: 'Calories and macros', summary: view.calories });
-  if (view.quality) items.push({ label: 'Food quality', summary: view.quality.line });
-  if (view.progress) items.push({ label: 'Progress and streaks', summary: view.progress });
-  if (view.wagon) items.push({ label: 'A hard moment', summary: view.wagon.note || 'Having a hard moment.' });
-  if (view.goal) items.push({ label: 'Nutrition goal', summary: view.goal.line });
+  if (typeof view.calories === 'string' && view.calories) items.push({ label: 'Calories and macros', summary: view.calories });
+  if (view.quality && typeof view.quality.line === 'string') items.push({ label: 'Food quality', summary: view.quality.line });
+  if (typeof view.progress === 'string' && view.progress) items.push({ label: 'Progress and streaks', summary: view.progress });
+  if (view.wagon) items.push({ label: 'A hard moment', summary: typeof view.wagon.note === 'string' && view.wagon.note ? view.wagon.note : 'Having a hard moment.' });
+  if (view.goal && typeof view.goal.line === 'string') items.push({ label: 'Nutrition goal', summary: view.goal.line });
+  if (view.healthPlan) {
+    items.push({
+      label: 'Health plan',
+      summary: `${view.healthPlan.headline}. ${view.healthPlan.ticked} of ${view.healthPlan.total} ticked`,
+    });
+  }
   return items;
 }

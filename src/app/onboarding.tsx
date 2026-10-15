@@ -129,7 +129,7 @@ export default function Onboarding() {
         consentHealth: health,
         consentAi: ai,
       });
-      if (community) void offerMessageNotifications(repo);
+      if (community) void offerMessageNotifications(repo).catch((error: unknown) => console.error('message notifications', error));
     } catch (err) {
       setError(shownError(err, 'Could not save.'));
     } finally {

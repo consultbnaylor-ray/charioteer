@@ -204,7 +204,7 @@ export default function Profile() {
       });
       await repo.setReasons(plannedReasons);
       await repo.saveConsents({ communityVisible: community, consentHealth: health, consentAi: ai });
-      if (community) void offerMessageNotifications(repo);
+      if (community) void offerMessageNotifications(repo).catch((error: unknown) => console.error('message notifications', error));
       setReasons(plannedReasons.join('\n'));
       setSavedNote('Saved');
       playSavedHaptic();
@@ -264,6 +264,10 @@ export default function Profile() {
         <T style={{ fontFamily: theme.font.bodyStrong }}>Stats</T>
         <T variant="muted">Sober days, mood, food, and body, in one place.</T>
       </Card>
+      <Card accessibilityLabel="Open Health Plan" onPress={() => router.push('/health-plan' as never)}>
+        <T style={{ fontFamily: theme.font.bodyStrong }}>Health Plan</T>
+        <T variant="muted">Nutrition, fitness, and a week of wellbeing, written from your own figures.</T>
+      </Card>
       {pinned ? (
         <View style={{ gap: 8 }}>
           <T variant="label">Pinned quote</T>
@@ -283,6 +287,7 @@ export default function Profile() {
         <Button label="Pin a quote" tone="quiet" onPress={() => router.push('/quotes' as never)} />
       )}
       <Button label="What I share" tone="quiet" onPress={() => router.push('/sharing' as never)} />
+      <Button label="Buddies" onPress={() => router.push('/buddies' as never)} />
       <Card>
         <T variant="label">Build</T>
         <BuildChoices />
@@ -403,7 +408,7 @@ export default function Profile() {
             value={profile.messageNotifications}
             onValueChange={(value) => {
               void repo.updateProfile({ messageNotifications: value }).then(() => {
-                if (value) void offerMessageNotifications(repo);
+                if (value) void offerMessageNotifications(repo).catch((error: unknown) => console.error('message notifications', error));
               }).catch((err: unknown) => setError(shownError(err, 'Could not save.')));
             }}
             trackColor={{ true: theme.colors.ink, false: theme.colors.line }}
