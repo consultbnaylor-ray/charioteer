@@ -771,6 +771,9 @@ export default function Nutrition() {
           <Button label="Cancel" tone="quiet" disabled={isPending('save')} onPress={() => setDraft(null)} />
         </Card>
       ) : null}
+      <ScrollTarget id="body">
+      <BodyCompositionCard />
+      </ScrollTarget>
       <ScrollTarget id="goal">
       <Card>
         <T variant="label">Goal</T>
@@ -905,9 +908,6 @@ export default function Nutrition() {
           </>
         )}
       </Card>
-      </ScrollTarget>
-      <ScrollTarget id="body">
-      <BodyCompositionCard />
       </ScrollTarget>
       <ScrollTarget id="calories">
       <Card>
