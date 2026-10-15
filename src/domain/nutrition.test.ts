@@ -1375,6 +1375,38 @@ describe("today's meals on the log card", () => {
       logged: true,
     }).status).toBe('320 kcal left');
     expect(todayMealRows([], day, 'user')).toEqual([]);
+    expect(rows.every((row) => row.previewUrl == null)).toBe(true);
+  });
+
+  it('passes the saved photo through and shows it on today’s row', () => {
+    const day = '2026-10-15';
+    const rows = todayMealRows([
+      log({
+        id: 'photo',
+        eatenOn: day,
+        meal: 'breakfast',
+        previewUrl: 'https://signed.example/eggs.jpg',
+        items: [item({ name: 'Eggs', kcal: 300 })],
+      }),
+      log({
+        id: 'plain',
+        eatenOn: day,
+        meal: 'lunch',
+        items: [item({ name: 'Soup', kcal: 200 })],
+      }),
+    ], day, 'user');
+    expect(rows[0]?.previewUrl).toBe('https://signed.example/eggs.jpg');
+    expect(rows[1]?.previewUrl).toBeNull();
+    const meals = readFileSync('src/ui/TodayMeals.tsx', 'utf8');
+    expect(meals).toContain("from 'expo-image'");
+    expect(meals).toContain('<Image');
+    expect(meals).toContain('row.previewUrl');
+    expect(meals).toContain('accessibilityLabel="Saved meal photo"');
+    expect(meals).toContain('contentFit="cover"');
+    expect(meals).toContain('width: 96');
+    expect(meals).toContain('height: 96');
+    expect(meals).toContain('borderRadius: 10');
+    expect(meals).toContain('onOpen(row.id)');
   });
 
   it('sits under Log a meal and the confirm card, above Body, and stays monochrome', () => {

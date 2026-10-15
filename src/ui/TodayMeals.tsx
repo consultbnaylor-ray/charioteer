@@ -1,3 +1,4 @@
+import { Image } from 'expo-image';
 import { useEffect, useState, type ReactNode, type RefObject } from 'react';
 import { Pressable, View } from 'react-native';
 import Svg, { Circle } from 'react-native-svg';
@@ -110,8 +111,16 @@ export function TodayMeals({
               accessibilityRole="button"
               accessibilityLabel={`${row.typeLabel}, ${row.name}${kcal}`}
               onPress={() => onOpen(row.id)}
-              style={{ minHeight: 44, justifyContent: 'center' }}
+              style={{ minHeight: 44, justifyContent: 'center', gap: 6 }}
             >
+              {row.previewUrl ? (
+                <Image
+                  source={{ uri: row.previewUrl }}
+                  style={{ width: 96, height: 96, borderRadius: 10 }}
+                  contentFit="cover"
+                  accessibilityLabel="Saved meal photo"
+                />
+              ) : null}
               <T>{`${row.typeLabel} · ${row.name}${kcal}`}</T>
             </Pressable>
             {activeId === row.id ? activeTools : null}

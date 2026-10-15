@@ -613,6 +613,7 @@ export type TodayMealRow = {
   typeLabel: string;
   name: string;
   kcal: number;
+  previewUrl?: string | null;
 };
 
 export type TodayMealTotals = {
@@ -640,6 +641,7 @@ export function todayMealRows(logs: readonly FoodLog[], day: string, ownerId: st
         typeLabel: MEAL_LABEL[log.meal],
         name: names || log.note.trim() || 'Meal',
         kcal: sumItems(log.items).kcal,
+        previewUrl: log.previewUrl ?? null,
       };
     });
 }
