@@ -77,5 +77,8 @@ verify_jwt = true
 [functions.estimate-meal]
 verify_jwt = true
 
+[functions.health-plan]
+verify_jwt = true
+
 [functions.notify-direct-message]
 verify_jwt = true

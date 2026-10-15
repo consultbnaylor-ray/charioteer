@@ -264,6 +264,10 @@ export default function Profile() {
         <T style={{ fontFamily: theme.font.bodyStrong }}>Stats</T>
         <T variant="muted">Sober days, mood, food, and body, in one place.</T>
       </Card>
+      <Card accessibilityLabel="Open Health Plan" onPress={() => router.push('/health-plan' as never)}>
+        <T style={{ fontFamily: theme.font.bodyStrong }}>Health Plan</T>
+        <T variant="muted">Nutrition, fitness, and a week of wellbeing, written from your own figures.</T>
+      </Card>
       {pinned ? (
         <View style={{ gap: 8 }}>
           <T variant="label">Pinned quote</T>

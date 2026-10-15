@@ -8,6 +8,7 @@ import { VISION_SAMPLE_PHOTOS } from '@/data/visionSamples';
 import { isoDay } from '@/domain/dates';
 import { defaultNutritionSettings, estimateFromText } from '@/domain/nutrition';
 import type { BodyCompositionReading } from '@/domain/nutrition';
+import { draftHealthPlan, type HealthPlan } from '@/domain/healthPlan';
 import type { GratitudeEntry } from '@/domain/gratitude';
 import { gratitudeStoragePath } from '@/domain/gratitudePhotos';
 import { planProgressPhoto, progressStoragePath } from '@/domain/progressPhotos';
@@ -53,6 +54,8 @@ export type DemoAccount = {
   waterDays?: import('@/domain/nutrition').NutritionDay[];
   /** Absent on older sample data. Private body-fat, lean-mass, and waist history. */
   bodyComposition?: BodyCompositionReading[];
+  /** Absent on older sample data. Private plan. Never shared. */
+  healthPlan?: HealthPlan | null;
 };
 
 export type DemoDb = {
@@ -315,6 +318,33 @@ export function createDemoDb(now = new Date()): DemoDb {
       createdAt: now.toISOString(),
     }],
   };
+  alex.healthPlan = draftHealthPlan({
+    now,
+    salt: 'alex-seed',
+    displayName: alex.profile.displayName,
+    stage: alex.profile.stage,
+    sobrietyStartedAt: alex.profile.sobrietyStartedAt,
+    heightCm: alex.profile.heightCm,
+    visionStatement: alex.profile.visionStatement,
+    visionCaptions: [],
+    interestLabels: ['Hiking', 'Gym'],
+    reasons: alexReasons.map((reason) => reason.body),
+    limits: '',
+    goal: alex.nutrition?.goal ?? null,
+    goalSex: alex.nutrition?.goalSex ?? null,
+    goalAge: alex.nutrition?.goalAge ?? null,
+    build: alex.nutrition?.build ?? null,
+    kcalTarget: alex.nutrition?.kcalTarget ?? null,
+    proteinTarget: alex.nutrition?.proteinTarget ?? null,
+    hideCalories: alex.nutrition?.hideCalories ?? false,
+    foodLogs: [],
+    checkIns: checkIns.map((row) => ({ mood: row.mood, craving: row.craving, sleepHours: row.sleepHours, note: row.note, createdAt: row.createdAt })),
+    health,
+    bodyFatPct: 15,
+    leanMassKg: 63,
+    waistCm: 84,
+    doneTexts: [],
+  });
   const anchor = new Date(started);
   const startPlan = planProgressPhoto({
     takenOn: isoDay(anchor),

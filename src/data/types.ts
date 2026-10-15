@@ -2,6 +2,7 @@ import type { StoredConsent } from '@/domain/consents';
 import type { BodyCompositionReading, BodyCompositionSource, FoodItem, FoodLog, MealSlot, MealSource, NutritionDay, NutritionSettings, SharedNutritionView } from '@/domain/nutrition';
 import type { ProfileSharing, PublicProfileView } from '@/domain/profileSharing';
 import type { GratitudeCategory, GratitudeEntry, GratitudeReflect } from '@/domain/gratitude';
+import type { HealthPlan } from '@/domain/healthPlan';
 import type { Stage } from '@/domain/stage';
 import type { ThumosMode } from '@/domain/thumos';
 import type { VisionArea, VisionItem, VisionSize } from '@/domain/visionBoard';
@@ -228,6 +229,8 @@ export type AppSnapshot = {
   waterDays: NutritionDay[];
   /** Private body-fat, lean-mass, and waist history. Shared only as a progress line when that switch is on. */
   bodyComposition: BodyCompositionReading[];
+  /** Private Thumos plan. Never included in the community directory. */
+  healthPlan: HealthPlan | null;
 };
 
 export type NewGratitudeEntry = {
@@ -467,4 +470,8 @@ export interface Repository {
   saveChatRead(connectionId: string, readThrough: string): Promise<void>;
   /** A caught screen error. Screen name, short message, and build only. */
   logClientError(screen: string, message: string, appBuild: string): Promise<void>;
+  /** Writes the ticked actions and the limits. It does not call the model. */
+  saveHealthPlan(plan: HealthPlan): Promise<void>;
+  /** Asks Thumos for a new plan from this person's figures. Finished actions are left behind. */
+  refreshHealthPlan(limits: string): Promise<void>;
 }

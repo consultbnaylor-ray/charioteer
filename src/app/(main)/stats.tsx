@@ -1,3 +1,4 @@
+import { useRouter } from 'expo-router';
 import { useWindowDimensions, View } from 'react-native';
 
 import { useSnapshot } from '@/data';
@@ -5,7 +6,7 @@ import { buildStatsOverview } from '@/domain/statsOverview';
 import { StatTile } from '@/ui/StatTile';
 import { statsToneColors } from '@/ui/statsPalette';
 import { useAppTheme } from '@/ui/theme';
-import { Screen, T } from '@/ui/ui';
+import { Card, Screen, T } from '@/ui/ui';
 
 const LEGEND = [
   ['good', 'On track'],
@@ -17,6 +18,7 @@ const LEGEND = [
 export default function Stats() {
   const snap = useSnapshot();
   const theme = useAppTheme();
+  const router = useRouter();
   const { width } = useWindowDimensions();
   const profile = snap.profile;
   if (!profile) return null;
@@ -45,6 +47,10 @@ export default function Stats() {
       title="Stats"
       intro="A plain look at the figures you already keep. The words say what the colour means."
     >
+      <Card accessibilityLabel="Open Health Plan" onPress={() => router.push('/health-plan' as never)}>
+        <T style={{ fontFamily: theme.font.bodyStrong }}>Health Plan</T>
+        <T variant="muted">A short plan from the figures you already keep.</T>
+      </Card>
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12 }}>
         {LEGEND.map(([tone, label]) => (
           <View key={tone} style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>

@@ -57,6 +57,7 @@ import {
   type FoodLog,
   type NutritionSettings,
 } from '@/domain/nutrition';
+import { donePlanTexts, draftHealthPlan, type HealthPlan } from '@/domain/healthPlan';
 import { createDemoDb, type DemoAccount, type DemoDb } from '@/data/demo-seed';
 import type {
   AppSnapshot,
@@ -311,6 +312,7 @@ export class DemoRepository implements Repository {
       nutrition: { ...defaultNutritionSettings(), ...(account?.nutrition ?? {}) },
       waterDays: account?.waterDays ?? [],
       bodyComposition: account?.bodyComposition ?? [],
+      healthPlan: account?.healthPlan ?? null,
     };
   }
 
@@ -390,6 +392,7 @@ export class DemoRepository implements Repository {
       }
       if (!account.waterDays) account.waterDays = fresh.accounts[id]?.waterDays ?? [];
       if (!account.bodyComposition) account.bodyComposition = fresh.accounts[id]?.bodyComposition ?? [];
+      if (account.healthPlan === undefined) account.healthPlan = fresh.accounts[id]?.healthPlan ?? null;
     }
   }
 
@@ -467,6 +470,7 @@ export class DemoRepository implements Repository {
       nutrition: defaultNutritionSettings(),
       waterDays: [],
       bodyComposition: [],
+      healthPlan: null,
     };
     const db = clone(this.db);
     db.accounts[id] = account;
@@ -1129,6 +1133,62 @@ export class DemoRepository implements Repository {
 
   async logClientError(_screen: string, _message: string, _appBuild: string): Promise<void> {
     return undefined;
+  }
+
+  async saveHealthPlan(plan: HealthPlan): Promise<void> {
+    const account = this.me();
+    const db = clone(this.db);
+    db.accounts[account.profile.id].healthPlan = { ...plan, limits: plan.limits.slice(0, 280) };
+    this.commit(db);
+  }
+
+  async refreshHealthPlan(limits: string): Promise<void> {
+    const account = this.me();
+    if (!account.profile.consentAi) {
+      throw new UserFacingError('Writing a plan needs the coach consent, because your figures are sent to the model.', 'generic');
+    }
+    const nutrition = { ...defaultNutritionSettings(), ...(account.nutrition ?? {}) };
+    const figures = compositionForAssessment(account.bodyComposition ?? []);
+    const interestLabels = account.profile.interestIds.flatMap((id) => {
+      const label = this.db.interests.find((item) => item.id === id)?.label;
+      return label ? [label] : [];
+    });
+    const plan = draftHealthPlan({
+      now: new Date(),
+      salt: new Date().toISOString(),
+      displayName: account.profile.displayName,
+      stage: account.profile.stage,
+      sobrietyStartedAt: account.profile.sobrietyStartedAt,
+      heightCm: account.profile.heightCm,
+      visionStatement: account.profile.visionStatement,
+      visionCaptions: (account.visionItems ?? []).map((item) => item.caption).filter(Boolean),
+      interestLabels,
+      reasons: account.reasons.map((reason) => reason.body),
+      limits: limits.trim().slice(0, 280),
+      goal: nutrition.goal,
+      goalSex: nutrition.goalSex,
+      goalAge: nutrition.goalAge,
+      build: nutrition.build,
+      kcalTarget: nutrition.kcalTarget,
+      proteinTarget: nutrition.proteinTarget,
+      hideCalories: nutrition.hideCalories,
+      foodLogs: account.foodLogs ?? [],
+      checkIns: account.checkIns.map((row) => ({
+        mood: row.mood,
+        craving: row.craving,
+        sleepHours: row.sleepHours,
+        note: row.note,
+        createdAt: row.createdAt,
+      })),
+      health: account.health.map((row) => ({ kind: row.kind, value: row.value, recordedOn: row.recordedOn })),
+      bodyFatPct: figures.bodyFatPct,
+      leanMassKg: figures.leanMassKg,
+      waistCm: figures.waistCm,
+      doneTexts: account.healthPlan ? donePlanTexts(account.healthPlan) : [],
+    });
+    const db = clone(this.db);
+    db.accounts[account.profile.id].healthPlan = plan;
+    this.commit(db);
   }
 
   async sharedNutrition(userId: string) {

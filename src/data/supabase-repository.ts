@@ -70,6 +70,7 @@ import {
   type NutritionDay,
   type NutritionSettings,
 } from '@/domain/nutrition';
+import { PLAN_DISCLAIMER, healthPlanFromStored, type HealthPlan } from '@/domain/healthPlan';
 import { randomId } from '@/domain/id';
 import { chatInsertFilter, messageFromRealtime, withIncomingMessage } from '@/domain/liveChat';
 import { isDuplicateWrite, mergeOutgoingMessages, shareInflight } from '@/domain/writes';
@@ -193,6 +194,7 @@ function emptySnapshot(): AppSnapshot {
     nutrition: defaultNutritionSettings(),
     waterDays: [],
     bodyComposition: [],
+    healthPlan: null,
   };
 }
 
@@ -388,7 +390,7 @@ export class SupabaseRepository implements Repository {
 
     const userId = session.user.id;
     const email = session.user.email ?? '';
-    const [profileRes, reasonsRes, checkRes, relapseRes, healthRes, mineRes, thumosRes, directoryRes, interestLinks, connectionsRes, reportsRes, consentsRes, photosRes, gratitudeRes, gratitudePhotoRes, visionRes, sharingRes, quotesRes, profilePhotoRes] =
+    const [profileRes, reasonsRes, checkRes, relapseRes, healthRes, mineRes, thumosRes, directoryRes, interestLinks, connectionsRes, reportsRes, consentsRes, photosRes, gratitudeRes, gratitudePhotoRes, visionRes, sharingRes, quotesRes, profilePhotoRes, healthPlanRes] =
       await Promise.all([
         this.client.from('profiles').select('*').eq('id', userId).maybeSingle(),
         this.client.from('reasons').select('*').eq('user_id', userId).order('sort_order'),
@@ -409,6 +411,7 @@ export class SupabaseRepository implements Repository {
         this.client.from('profile_sharing').select('settings').eq('user_id', userId).maybeSingle(),
         this.client.from('user_quotes').select('quote_id, created_at').eq('user_id', userId).order('created_at', { ascending: false }),
         this.client.from('profile_photos').select('id, user_id, role, caption, position, storage_path, created_at').eq('user_id', userId).order('position').order('created_at'),
+        this.client.from('health_plans').select('focus, nutrition, fitness, wellbeing, limits, disclaimer, updated_at').eq('user_id', userId).maybeSingle(),
       ]);
 
     const profileRow = profileRes.data as Row | null;
@@ -517,6 +520,7 @@ export class SupabaseRepository implements Repository {
             if (!quoteById(quoteId)) return [];
             return [{ quoteId, createdAt: String(row.created_at ?? '') }];
           }),
+      healthPlan: healthPlanRes.error ? null : healthPlanFromStored(healthPlanRes.data),
     });
   }
 
@@ -2239,6 +2243,64 @@ export class SupabaseRepository implements Repository {
         throw asUserFacing(error, 'general');
       }
     });
+  }
+
+  async saveHealthPlan(plan: HealthPlan): Promise<void> {
+    const userId = this.snapshot.session?.userId ?? await this.userId();
+    const before = this.snapshot.healthPlan;
+    const next: HealthPlan = {
+      ...plan,
+      limits: plan.limits.slice(0, 280),
+      disclaimer: (plan.disclaimer || PLAN_DISCLAIMER).slice(0, 400),
+    };
+    this.emit({ ...this.snapshot, healthPlan: next });
+    const { error } = await this.client.from('health_plans').upsert({
+      user_id: userId,
+      focus: next.focus,
+      nutrition: next.nutrition,
+      fitness: next.fitness,
+      wellbeing: next.wellbeing,
+      limits: next.limits,
+      disclaimer: next.disclaimer,
+      updated_at: next.updatedAt,
+    });
+    if (error) {
+      this.emit({ ...this.snapshot, healthPlan: before });
+      throw asUserFacing(error, 'general');
+    }
+  }
+
+  async refreshHealthPlan(limits: string): Promise<void> {
+    if (!this.snapshot.profile?.consentAi) {
+      throw new UserFacingError('Writing a plan needs the coach consent, because your figures are sent to the model.', 'generic');
+    }
+    const userId = this.snapshot.session?.userId ?? await this.userId();
+    const invoked = await this.client.functions.invoke('health-plan', {
+      body: { limits: limits.trim().slice(0, 280) },
+    });
+    const data = invoked.data as { ok?: boolean; code?: string; message?: string; plan?: unknown } | null;
+    if (data?.code === 'consent') {
+      throw new UserFacingError(
+        data.message || 'Writing a plan needs the coach consent, because your figures are sent to the model.',
+        'generic',
+      );
+    }
+    const plan = healthPlanFromStored(data?.plan);
+    if (invoked.error || data?.ok !== true || !plan) {
+      throw new UserFacingError('Could not write a plan. Try again.', 'generic');
+    }
+    const { error } = await this.client.from('health_plans').upsert({
+      user_id: userId,
+      focus: plan.focus,
+      nutrition: plan.nutrition,
+      fitness: plan.fitness,
+      wellbeing: plan.wellbeing,
+      limits: plan.limits,
+      disclaimer: plan.disclaimer.slice(0, 400),
+      updated_at: plan.updatedAt,
+    });
+    if (error) throw asUserFacing(error, 'general');
+    this.emit({ ...this.snapshot, healthPlan: plan });
   }
 
   async sharedNutrition(userId: string) {
