@@ -189,7 +189,7 @@ describe('Thumos reachability', () => {
     expect(thumosHealthBody().max_tokens).toBe(1);
     expect(thumosHealthBody().reasoning_effort).toBe('none');
     expect(health).toContain('max_tokens');
-    expect(health).toContain('*/5 * * * *');
+    expect(health).toContain('every 5 minutes');
     expect(thumosHealthVerdict(200).ok).toBe(true);
     expect(thumosHealthVerdict(500).ok).toBe(false);
     expect(thumosHealthVerdict('timeout').code).toBe('timeout');
