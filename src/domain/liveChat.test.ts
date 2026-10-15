@@ -3,7 +3,8 @@ import { describe, expect, it } from 'vitest';
 
 import type { DirectMessage } from '@/data/types';
 
-import { CHAT_POLL_MS, chatInsertFilter, chatPreview, chatUnread, chatsChoiceLabel, latestChatMessage, messageFromRealtime, withIncomingMessage } from './liveChat';
+import { CHAT_HISTORY_ERROR, CHAT_POLL_MS, chatInsertFilter, chatPreview, chatUnread, chatsChoiceLabel, latestChatMessage, messageFromRealtime, withIncomingMessage } from './liveChat';
+import { PROFILE_LOAD_ERROR } from './profileSharing';
 
 function message(id: string, senderId: string, createdAt: string, connectionId = 'cccccccc-cccc-4ccc-8ccc-ccccccccccc1'): DirectMessage {
   return { id, connectionId, senderId, body: `Hello ${id}`, createdAt };
@@ -67,13 +68,32 @@ describe('live chat', () => {
     expect(chat).toContain('CHAT_POLL_MS');
     expect(chat).toContain('reloadMessages');
     expect(chat).toContain('markChatRead');
+    expect(chat).toContain('AppState');
+    expect(chat).toContain('CHAT_HISTORY_ERROR');
+    const open = chat.slice(chat.indexOf('if (!connectionId) return;'), chat.indexOf('void markChatRead'));
+    expect(open.indexOf('repo.reloadMessages()')).toBeGreaterThan(-1);
+    expect(open.indexOf('repo.reloadMessages()')).toBeLessThan(open.indexOf('setInterval'));
+    expect(open).toContain("addEventListener('change'");
+    expect(CHAT_HISTORY_ERROR).toBe("Couldn't load messages – Try again");
     expect(people).toContain('chatUnread');
     expect(people).toContain('chatsChoiceLabel');
     expect(people).not.toMatch(/gratitude/);
     expect(people).not.toMatch(/thumos|xai|progress-photos/i);
     expect(layout).toContain('AppState');
     expect(layout).toContain('reloadMessages');
+    expect(layout).toContain('reloadMessages().catch');
     expect(layout).toContain('listenForMessageOpens');
+    const reload = repo.slice(repo.indexOf('async reloadMessages'), repo.indexOf('watchChat'));
+    expect(reload).toContain('if (messageRes.error) throw asUserFacing');
+    expect(reload).not.toContain('if (messageRes.error) return');
+    const profile = repo.slice(repo.indexOf('async publicProfile'), repo.indexOf('async addProfilePhoto'));
+    const facts = readFileSync('src/ui/CommunityProfile.tsx', 'utf8');
+    expect(profile).toContain("if (error) throw asUserFacing(error, 'general')");
+    expect(profile).not.toContain('return null');
+    expect(facts).toContain('{PROFILE_LOAD_ERROR}');
+    expect(facts).toContain('This profile is hidden.');
+    expect(facts).toContain('setAttempt');
+    expect(PROFILE_LOAD_ERROR).toBe("Couldn't load profile – Try again");
     expect(sql).toContain('supabase_realtime');
     expect(sql).toContain('direct_messages');
     expect(sql).toContain('replica identity full');

@@ -12,6 +12,8 @@ import { compareNewest } from '@/domain/shareList';
 import {
   PROFILE_HIDDEN_SHARE,
   SHARE_HINT,
+  SHARE_NEW_GRATITUDE,
+  SHARE_NEW_GRATITUDE_HINT,
   communitySharingOn,
   healthShareLabel,
   sensitiveShareConfirm,
@@ -157,6 +159,13 @@ export default function WhatIShare() {
       </ShareAnchor>
       <ShareAnchor id="gratitudeLines" title="Gratitude lines">
         <GratitudeSectionShare />
+        <ShareOnProfile
+          label={SHARE_NEW_GRATITUDE}
+          item="Lines I add later"
+          on={snap.sharing.shareNewGratitude}
+          apply={(sharing, selected) => ({ ...sharing, shareNewGratitude: selected })}
+        />
+        <T variant="muted">{SHARE_NEW_GRATITUDE_HINT}</T>
         {snap.gratitude.length ? (
           <ShareSwitchList
             title="Gratitude entries"

@@ -41,6 +41,15 @@ export const BIO_EXAMPLE = 'Dad of two, gym most mornings, 90 days sober and cou
 /** What other people see under a shared photo. Distinct from a private note. */
 export const PHOTO_CAPTION_LIMIT = 140;
 
+/** Shown when public_profile fails. A hidden profile uses a different line. */
+export const PROFILE_LOAD_ERROR = "Couldn't load profile – Try again";
+
+/** Opt-in beside Share Whole Section. New lines stay private until this is on. */
+export const SHARE_NEW_GRATITUDE = 'Share lines I add later';
+
+/** Under the opt-in. The master only covers lines and photos that already exist. */
+export const SHARE_NEW_GRATITUDE_HINT = 'New lines and photos stay private until this is on.';
+
 /** Trims a profile line and refuses anything over the limit. Newlines in a bio stay. */
 export function planProfileText(value: string, limit: number): { ok: true; text: string } | { ok: false; message: string } {
   const text = value.replace(/\r\n/g, '\n').trim();
@@ -66,6 +75,11 @@ export type ProfileSharing = {
   visionIds: string[];
   /** The pinned line, Stoic or Platonic. Public-domain text, not special category data. */
   pinnedQuote: boolean;
+  /**
+   * When on, a line or photo added after this stays shared.
+   * Share Whole Section does not turn this on. Missing means off.
+   */
+  shareNewGratitude: boolean;
   /** Set the first time a sobriety or health item is shared. */
   sensitiveConsentAt: string | null;
 };
@@ -86,6 +100,7 @@ export function defaultProfileSharing(): ProfileSharing {
     gratitudePhotoIds: [],
     visionIds: [],
     pinnedQuote: false,
+    shareNewGratitude: false,
     sensitiveConsentAt: null,
   };
 }
@@ -136,8 +151,26 @@ export function normalizeProfileSharing(value: unknown): ProfileSharing {
     gratitudePhotoIds: stringList(raw.gratitudePhotoIds),
     visionIds: stringList(raw.visionIds),
     pinnedQuote: flag(raw.pinnedQuote),
+    shareNewGratitude: flag(raw.shareNewGratitude),
     sensitiveConsentAt: consent,
   };
+}
+
+/**
+ * Shares a line or photo that was just added, when the person opted in.
+ * Returns null when the lists should stay as they are.
+ */
+export function shareFreshGratitude(
+  sharing: ProfileSharing,
+  added: { entryId?: string; photoId?: string },
+): ProfileSharing | null {
+  if (!sharing.shareNewGratitude) return null;
+  let gratitudeIds = sharing.gratitudeIds;
+  let gratitudePhotoIds = sharing.gratitudePhotoIds;
+  if (added.entryId && !gratitudeIds.includes(added.entryId)) gratitudeIds = [...gratitudeIds, added.entryId];
+  if (added.photoId && !gratitudePhotoIds.includes(added.photoId)) gratitudePhotoIds = [...gratitudePhotoIds, added.photoId];
+  if (gratitudeIds === sharing.gratitudeIds && gratitudePhotoIds === sharing.gratitudePhotoIds) return null;
+  return { ...sharing, gratitudeIds, gratitudePhotoIds };
 }
 
 const SENSITIVE_FLAGS = ['stage', 'soberDays', 'milestones', 'moneySaved', 'unitsAvoided', 'moodStreak'] as const;

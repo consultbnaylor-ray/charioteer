@@ -3,13 +3,15 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
 import { defaultNutritionSettings } from './nutrition';
-import { defaultProfileSharing } from './profileSharing';
+import { defaultProfileSharing, shareFreshGratitude } from './profileSharing';
 import {
   SECTION_SHARE_LABEL,
   SECTION_SHARE_SOME,
   applyNutritionSection,
   applyProfileSection,
   boxesBecomingVisible,
+  gratitudeSectionBoxes,
+  gratitudeSectionPatch,
   nutritionSectionBoxes,
   reviewSectionPatch,
   runSectionSave,
@@ -157,11 +159,67 @@ describe('section share master', () => {
     expect(control).not.toContain('refresh(');
     expect(control).not.toContain('<ShareOnProfile');
     expect(control).not.toContain('<SharingGroup');
+    const gratitudeMaster = control.slice(control.indexOf('function GratitudeSectionShare'), control.indexOf('function VisionSectionShare'));
+    expect(gratitudeMaster).toContain('gratitudeSectionPatch(current.gratitude)');
+    expect(gratitudeMaster).not.toContain('shareNewGratitude');
+    expect(diary).toContain('label={SHARE_NEW_GRATITUDE}');
+    expect(review).toContain('label={SHARE_NEW_GRATITUDE}');
+    expect(diary.indexOf('<GratitudeSectionShare')).toBeLessThan(diary.indexOf('label={SHARE_NEW_GRATITUDE}'));
     const youMaster = control.slice(control.indexOf('function YouSectionShare'), control.indexOf('function CheckInSectionShare'));
     expect(youMaster).toContain('wagonVisible: on');
     expect(youMaster).not.toContain('wagonOn');
     const reviewPatch = reviewSectionPatch({ reasons: [], gratitude: [], vision: [] });
     expect(reviewPatch.soberDays).toBe(true);
     expect(Object.keys(reviewPatch)).not.toContain('wagonOn');
+  });
+
+  it('shares every current gratitude line and photo, and reads some shared when one is left out', () => {
+    const entries = Array.from({ length: 10 }, (_, index) => ({
+      id: `line-${index}`,
+      body: `Line ${index}`,
+      photos: index === 0 ? [{ id: 'photo-0', caption: 'First' }] : index === 4 ? [{ id: 'photo-4', caption: '' }, { id: 'photo-5', caption: 'Second' }] : [],
+    }));
+    const patch = gratitudeSectionPatch(entries);
+    expect(patch.gratitudeIds).toEqual(entries.map((entry) => entry.id));
+    expect(patch.gratitudePhotoIds).toEqual(['photo-0', 'photo-4', 'photo-5']);
+    const shared = applyProfileSection({ ...defaultProfileSharing(), shareNewGratitude: false }, patch, true);
+    expect(shared.gratitudeIds).toHaveLength(10);
+    expect(shared.gratitudePhotoIds).toHaveLength(3);
+    expect(shared.shareNewGratitude).toBe(false);
+    const boxes = gratitudeSectionBoxes(entries, shared.gratitudeIds, shared.gratitudePhotoIds);
+    expect(boxes).toHaveLength(13);
+    expect(sectionShareState(boxes)).toBe('on');
+    const partial = applyProfileSection(defaultProfileSharing(), { gratitudeIds: ['line-0'], gratitudePhotoIds: ['photo-0'] }, true);
+    const mixed = gratitudeSectionBoxes(entries, partial.gratitudeIds, partial.gratitudePhotoIds);
+    expect(mixed.filter((box) => box.on)).toHaveLength(2);
+    expect(sectionShareState(mixed)).toBe('mixed');
+    expect(SECTION_SHARE_SOME).toBe('Some shared');
+    const cleared = applyProfileSection({ ...shared, shareNewGratitude: true }, patch, false);
+    expect(cleared.gratitudeIds).toEqual([]);
+    expect(cleared.gratitudePhotoIds).toEqual([]);
+    expect(cleared.shareNewGratitude).toBe(true);
+  });
+
+  it('keeps a new gratitude line private unless the person opted in', () => {
+    const current = { ...defaultProfileSharing(), gratitudeIds: ['line-0'], gratitudePhotoIds: ['photo-0'] };
+    expect(shareFreshGratitude(current, { entryId: 'line-1' })).toBeNull();
+    expect(shareFreshGratitude(current, { photoId: 'photo-1' })).toBeNull();
+    const opted = { ...current, shareNewGratitude: true };
+    expect(shareFreshGratitude(opted, { entryId: 'line-1' })?.gratitudeIds).toEqual(['line-0', 'line-1']);
+    expect(shareFreshGratitude(opted, { photoId: 'photo-1' })?.gratitudePhotoIds).toEqual(['photo-0', 'photo-1']);
+    expect(shareFreshGratitude(opted, { entryId: 'line-0' })).toBeNull();
+    const added = shareFreshGratitude(opted, { entryId: 'line-1' });
+    const boxes = gratitudeSectionBoxes(
+      [{ id: 'line-0', body: 'Old', photos: [] }, { id: 'line-1', body: 'New', photos: [] }],
+      added?.gratitudeIds ?? [],
+      [],
+    );
+    expect(sectionShareState(boxes)).toBe('on');
+    const leftOut = gratitudeSectionBoxes(
+      [{ id: 'line-0', body: 'Old', photos: [{ id: 'photo-0', caption: '' }] }, { id: 'line-1', body: 'New', photos: [] }],
+      current.gratitudeIds,
+      current.gratitudePhotoIds,
+    );
+    expect(sectionShareState(leftOut)).toBe('mixed');
   });
 });

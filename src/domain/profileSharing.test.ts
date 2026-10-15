@@ -248,6 +248,9 @@ describe('public profile projection', () => {
     expect(normalizeProfileSharing({ bio: false }).bio).toBe(false);
     expect(parsed.healthKinds).toEqual(['steps']);
     expect(parsed.reasonBodies).toEqual(['A']);
+    expect(parsed.shareNewGratitude).toBe(false);
+    expect(defaultProfileSharing().shareNewGratitude).toBe(false);
+    expect(normalizeProfileSharing({ shareNewGratitude: true }).shareNewGratitude).toBe(true);
   });
 });
 

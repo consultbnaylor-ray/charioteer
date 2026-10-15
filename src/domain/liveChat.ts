@@ -3,6 +3,9 @@ import type { DirectMessage } from '@/data/types';
 /** How often an open chat asks the server for messages Realtime may have missed. */
 export const CHAT_POLL_MS = 10_000;
 
+/** Shown when the message query fails. An empty chat uses a different line. */
+export const CHAT_HISTORY_ERROR = "Couldn't load messages – Try again";
+
 const CONNECTION_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /** Realtime filter for one chat. Null when the id is not a connection uuid. */

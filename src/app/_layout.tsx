@@ -11,7 +11,7 @@ import { StatusBar } from 'expo-status-bar';
 
 import { APP_DISPLAY_NAME, APP_FULL_NAME } from '@/domain/appName';
 import { RepoProvider, useRepository, useSnapshot } from '@/data';
-import { listenForMessageOpens } from '@/notifications/register';
+import { listenForMessageOpens, retryMessageNotifications } from '@/notifications/register';
 import { CONSENT_VERSION } from '@/data/catalogue';
 import { hasCurrentConsents } from '@/domain/consents';
 import { font, ThemeProvider, useAppTheme } from '@/ui/theme';
@@ -68,15 +68,22 @@ function Chrome() {
   }, [theme.colors.bg]);
 
   useEffect(() => listenForMessageOpens((connectionId) => {
-    void repo.reloadMessages();
+    void repo.reloadMessages().catch((error: unknown) => console.error(error));
     router.push(`/chat/${connectionId}` as never);
   }), [router, repo]);
 
   useEffect(() => {
+    const registerPhone = () => {
+      void retryMessageNotifications(repo).then((message) => {
+        if (message) console.error(message);
+      });
+    };
+    registerPhone();
     const subscription = AppState.addEventListener('change', (next) => {
       if (next !== 'active') return;
-      void repo.reloadMessages();
+      void repo.reloadMessages().catch((error: unknown) => console.error(error));
       void repo.resignOwnerPhotos();
+      registerPhone();
     });
     const timer = setInterval(() => {
       void repo.refreshOwnerPhotosIfStale();

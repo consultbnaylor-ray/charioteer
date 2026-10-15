@@ -1,13 +1,13 @@
 import { useLocalSearchParams } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
-import { View } from 'react-native';
+import { AppState, Pressable, View } from 'react-native';
 
 import { useRepository, useSnapshot } from '@/data';
 import { markChatRead } from '@/data/chatRead';
 import { shownError } from '@/domain/errors';
 import { randomId } from '@/domain/id';
-import { CHAT_POLL_MS, latestChatMessage } from '@/domain/liveChat';
-import { offerMessageNotifications } from '@/notifications/register';
+import { CHAT_HISTORY_ERROR, CHAT_POLL_MS, latestChatMessage } from '@/domain/liveChat';
+import { MESSAGE_TOKEN_ERROR, offerMessageNotifications } from '@/notifications/register';
 import { MemberAvatar, useMemberAvatars } from '@/ui/MemberAvatar';
 import { usePendingPress } from '@/ui/pendingAction';
 import { Button, Card, Choice, ErrorNote, Field, Screen, T } from '@/ui/ui';
@@ -26,6 +26,10 @@ export default function Chat() {
   const [reason, setReason] = useState(REASONS[0]);
   const [details, setDetails] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [historyError, setHistoryError] = useState<string | null>(null);
+  const [historyAttempt, setHistoryAttempt] = useState(0);
+  const [notifyError, setNotifyError] = useState<string | null>(null);
+  const [notifyAttempt, setNotifyAttempt] = useState(0);
   const { run, isPending } = usePendingPress();
   const clientIds = useRef(new Map<string, string>());
   const me = snap.profile;
@@ -34,20 +38,42 @@ export default function Chat() {
 
   useEffect(() => {
     if (!connection) return;
-    void offerMessageNotifications(repo);
-  }, [repo, connection]);
+    let live = true;
+    void offerMessageNotifications(repo).then((message) => {
+      if (live) setNotifyError(message);
+    }).catch((err: unknown) => {
+      console.error(err);
+      if (live) setNotifyError(MESSAGE_TOKEN_ERROR);
+    });
+    return () => {
+      live = false;
+    };
+  }, [repo, connection, notifyAttempt]);
 
   useEffect(() => {
     if (!connectionId) return;
+    let live = true;
+    const load = () => {
+      void repo.reloadMessages().then(() => {
+        if (live) setHistoryError(null);
+      }).catch((err: unknown) => {
+        console.error(err);
+        if (live) setHistoryError(CHAT_HISTORY_ERROR);
+      });
+    };
+    load();
     const stop = repo.watchChat(connectionId);
-    const timer = setInterval(() => {
-      void repo.reloadMessages();
-    }, CHAT_POLL_MS);
+    const timer = setInterval(load, CHAT_POLL_MS);
+    const subscription = AppState.addEventListener('change', (state) => {
+      if (state === 'active') load();
+    });
     return () => {
+      live = false;
       stop();
       clearInterval(timer);
+      subscription.remove();
     };
-  }, [repo, connectionId]);
+  }, [repo, connectionId, historyAttempt]);
 
   useEffect(() => {
     if (!me || !connectionId) return;
@@ -81,6 +107,16 @@ export default function Chat() {
         <MemberAvatar name={other} url={avatarOf(otherId)} />
         <T variant="title">{other}</T>
       </View>
+      {historyError ? (
+        <Pressable accessibilityRole="button" accessibilityLabel={CHAT_HISTORY_ERROR} onPress={() => setHistoryAttempt((attempt) => attempt + 1)} style={{ minHeight: 44, justifyContent: 'center' }}>
+          <T>{CHAT_HISTORY_ERROR}</T>
+        </Pressable>
+      ) : null}
+      {notifyError ? (
+        <Pressable accessibilityRole="button" accessibilityLabel={MESSAGE_TOKEN_ERROR} onPress={() => setNotifyAttempt((attempt) => attempt + 1)} style={{ minHeight: 44, justifyContent: 'center' }}>
+          <T>{MESSAGE_TOKEN_ERROR}</T>
+        </Pressable>
+      ) : null}
       {messages.map((message) => (
         <Card key={message.id} style={{ backgroundColor: message.senderId === me.id ? theme.colors.emphasisSoft : theme.colors.surface }}>
           <T variant="label">{message.senderId === me.id ? 'You' : other}</T>
@@ -94,7 +130,7 @@ export default function Chat() {
           ) : null}
         </Card>
       ))}
-      {messages.length === 0 ? <T variant="muted">No messages yet. Say hello when you are ready.</T> : null}
+      {messages.length === 0 && !historyError ? <T variant="muted">No messages yet. Say hello when you are ready.</T> : null}
       <Field label="Message" value={draft} onChangeText={setDraft} placeholder="Write a message" multiline minLines={4} maxLines={6} />
       <ErrorNote>{error}</ErrorNote>
       <Button label="Send" pending={isPending('compose')} pendingLabel="Sending..." onPress={() => {

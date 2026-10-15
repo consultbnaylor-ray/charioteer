@@ -1,14 +1,14 @@
 import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
 
 import { useRepository, useSnapshot } from '@/data';
 import type { ProgressPhoto } from '@/data/types';
 import { shownError } from '@/domain/errors';
 import { WAGON_PUBLIC_LINE, type SharedNutritionView } from '@/domain/nutrition';
 import { SharedNutritionFacts } from '@/ui/NutritionShare';
-import { formatSoberShare, sharedReportItems, type PublicProfileView } from '@/domain/profileSharing';
+import { PROFILE_LOAD_ERROR, formatSoberShare, sharedReportItems, type PublicProfileView } from '@/domain/profileSharing';
 import { MemberAvatar } from '@/ui/MemberAvatar';
 import { formatGbp } from '@/domain/savings';
 import { progressPhotoLabel } from '@/domain/progressPhotos';
@@ -118,7 +118,9 @@ export function CommunityProfile({ userId, name }: { userId: string; name: strin
 function SharedProfileFacts({ userId, name }: { userId: string; name: string }) {
   const repo = useRepository();
   const router = useRouter();
-  const [view, setView] = useState<PublicProfileView | null | undefined>(undefined);
+  const [view, setView] = useState<PublicProfileView | null>(null);
+  const [load, setLoad] = useState<'loading' | 'hidden' | 'ready' | 'error'>('loading');
+  const [attempt, setAttempt] = useState(0);
   const [nutrition, setNutrition] = useState<SharedNutritionView | null>(null);
   const [asked, setAsked] = useState(false);
   const [reporting, setReporting] = useState<string | null>(null);
@@ -130,9 +132,16 @@ function SharedProfileFacts({ userId, name }: { userId: string; name: string }) 
 
   useEffect(() => {
     let live = true;
-    setView(undefined);
+    setLoad('loading');
     void repo.publicProfile(userId).then((next) => {
-      if (live) setView(next);
+      if (!live) return;
+      setView(next);
+      setLoad(next ? 'ready' : 'hidden');
+    }).catch((err: unknown) => {
+      console.error(err);
+      if (!live) return;
+      setView(null);
+      setLoad('error');
     });
     void repo.sharedNutrition(userId).then((next) => {
       if (live) setNutrition(next);
@@ -140,7 +149,7 @@ function SharedProfileFacts({ userId, name }: { userId: string; name: string }) 
     return () => {
       live = false;
     };
-  }, [repo, userId]);
+  }, [repo, userId, attempt]);
 
   useEffect(() => {
     const ids = view?.profilePhotos.map((photo) => photo.id) ?? [];
@@ -159,8 +168,15 @@ function SharedProfileFacts({ userId, name }: { userId: string; name: string }) 
     };
   }, [repo, view]);
 
-  if (view === undefined) return null;
-  if (!view) return <T variant="muted">This profile is hidden.</T>;
+  if (load === 'loading') return null;
+  if (load === 'error') {
+    return (
+      <Pressable accessibilityRole="button" accessibilityLabel={PROFILE_LOAD_ERROR} onPress={() => setAttempt((current) => current + 1)} style={{ minHeight: 44, justifyContent: 'center' }}>
+        <T>{PROFILE_LOAD_ERROR}</T>
+      </Pressable>
+    );
+  }
+  if (load === 'hidden' || !view) return <T variant="muted">This profile is hidden.</T>;
   const shown: PublicProfileView = nutrition
     ? {
       ...view,

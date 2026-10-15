@@ -99,7 +99,7 @@ import { profileWithColumn, profileWithPatch } from '@/domain/profilePatch';
 import { planCustomInterest, validateTown } from '@/domain/privacy';
 import { fetchWithOneRetry } from '@/domain/retryFetch';
 import { planReasons } from '@/domain/reasons';
-import { BIO_LIMIT, PHOTO_CAPTION_LIMIT, defaultProfileSharing, normalizeProfileSharing, parsePublicProfile, planProfileText, sensitiveTurnedOn, type ProfileSharing } from '@/domain/profileSharing';
+import { BIO_LIMIT, PHOTO_CAPTION_LIMIT, defaultProfileSharing, normalizeProfileSharing, parsePublicProfile, planProfileText, sensitiveTurnedOn, shareFreshGratitude, type ProfileSharing } from '@/domain/profileSharing';
 import { moodOnTen, planCheckInGratitude } from '@/domain/checkIns';
 import { quoteById } from '@/domain/stoicQuotes';
 import { planRelapse } from '@/domain/sober';
@@ -280,7 +280,7 @@ export class SupabaseRepository implements Repository {
       .select('*')
       .in('connection_id', connectionIds)
       .order('created_at');
-    if (messageRes.error) return;
+    if (messageRes.error) throw asUserFacing(messageRes.error, 'general');
     const fetched = ((messageRes.data ?? []) as Row[]).map(mapDirectMessage);
     const allowed = new Set(connectionIds);
     this.emit({
@@ -1574,7 +1574,7 @@ export class SupabaseRepository implements Repository {
 
   async publicProfile(userId: string): Promise<ReturnType<typeof parsePublicProfile>> {
     const { data, error } = await this.client.rpc('public_profile', { user_id: userId });
-    if (error) return null;
+    if (error) throw asUserFacing(error, 'general');
     return parsePublicProfile(data);
   }
 
@@ -1697,6 +1697,7 @@ export class SupabaseRepository implements Repository {
     const id = inserted.data?.id;
     if (typeof id !== 'string' || !id) throw new UserFacingError('Could not save that line.', 'generic');
     await this.refresh();
+    await this.shareAddedGratitude({ entryId: id });
     return id;
   }
 
@@ -1756,6 +1757,14 @@ export class SupabaseRepository implements Repository {
       throw asUserFacing(inserted.error, 'general');
     }
     await this.refresh();
+    await this.shareAddedGratitude({ photoId });
+  }
+
+  /** A new line or photo follows Share Whole Section only when the person opted in. */
+  private async shareAddedGratitude(added: { entryId?: string; photoId?: string }): Promise<void> {
+    const next = shareFreshGratitude(this.snapshot.sharing, added);
+    if (!next) return;
+    await this.setProfileSharing(next);
   }
 
   async updateGratitudePhoto(id: string, input: { caption: string }): Promise<void> {

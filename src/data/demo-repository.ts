@@ -38,7 +38,7 @@ import { OFFLINE_COACH_MESSAGE, OPENING_LINE, type ThumosMode } from '@/domain/t
 import { CONSENT_VERSION } from '@/data/catalogue';
 import { consentRows, missingConsentRows } from '@/domain/consents';
 import { stageFromRecord } from '@/domain/stage';
-import { BIO_LIMIT, PHOTO_CAPTION_LIMIT, defaultProfileSharing, normalizeProfileSharing, planProfileText, projectPublicProfile, sensitiveTurnedOn, type ProfileSharing, type PublicProfileView, type ShareSource } from '@/domain/profileSharing';
+import { BIO_LIMIT, PHOTO_CAPTION_LIMIT, defaultProfileSharing, normalizeProfileSharing, planProfileText, projectPublicProfile, sensitiveTurnedOn, shareFreshGratitude, type ProfileSharing, type PublicProfileView, type ShareSource } from '@/domain/profileSharing';
 import { quoteById } from '@/domain/stoicQuotes';
 import {
   compositionForAssessment,
@@ -1267,6 +1267,8 @@ export class DemoRepository implements Repository {
       photos: [],
     };
     next.gratitude = [entry, ...(next.gratitude ?? [])];
+    const followed = shareFreshGratitude(normalizeProfileSharing(next.sharing), { entryId: entry.id });
+    if (followed) next.sharing = followed;
     this.commit(db);
     return entry.id;
   }
@@ -1319,6 +1321,8 @@ export class DemoRepository implements Repository {
       caption: '',
     });
     entry.photos = photos;
+    const followed = shareFreshGratitude(normalizeProfileSharing(db.accounts[account.profile.id].sharing), { photoId: id });
+    if (followed) db.accounts[account.profile.id].sharing = followed;
     this.commit(db);
   }
 

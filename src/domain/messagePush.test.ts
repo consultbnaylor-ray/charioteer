@@ -131,4 +131,23 @@ describe('private message push', () => {
     expect(fn).toContain('decision.body');
     expect(fn).not.toContain(SECRET);
   });
+
+  it('retries a saved token at launch without asking, and shows a failure on the chat', () => {
+    const layout = readFileSync('src/app/_layout.tsx', 'utf8');
+    const chat = readFileSync('src/app/(main)/chat/[id].tsx', 'utf8');
+    const register = readFileSync('src/notifications/register.ts', 'utf8');
+    expect(layout).toContain('retryMessageNotifications');
+    expect(layout).not.toContain('offerMessageNotifications');
+    expect(layout).not.toContain('requestPermissionsAsync');
+    expect(chat).toContain('offerMessageNotifications');
+    expect(chat).toContain('MESSAGE_TOKEN_ERROR');
+    expect(register).toContain("console.error('message notifications', error)");
+    expect(register).toContain("Couldn't register for message notifications – Try again");
+    const retry = register.slice(register.indexOf('export async function retryMessageNotifications'), register.indexOf('export async function syncMovementReminder'));
+    expect(retry).not.toContain('requestPermissionsAsync');
+    expect(retry).toContain('getPermissionsAsync');
+    const offer = register.slice(register.indexOf('export async function offerMessageNotifications'), register.indexOf('export async function retryMessageNotifications'));
+    expect(offer).toContain('requestPermissionsAsync');
+    expect(offer).not.toContain('return undefined');
+  });
 });
