@@ -328,13 +328,13 @@ function nutritionHabits(facts: Derived): string[] {
         'Keep three meals. A cut on this screen is a slightly smaller portion, not a skipped meal.',
         'Put protein on each of those meals.',
         'Eat after the lifting session.',
-        'Log body fat and lean mass when you have a reading. The scales can stay still.',
+        'Log body fat and lean mass on Nutrition when you have a reading. The scales can stay still.',
       ]
       : [
         'Add a little to the meal you already cook, on top of the meals you already eat.',
         'Put protein on breakfast, lunch, and dinner.',
         'Eat a proper meal after the lifting session.',
-        'Log body fat and lean mass when you have a reading.',
+        'Log body fat and lean mass on Nutrition when you have a reading.',
       ],
     elite_heavy_boxer: [
       'Eat a proper meal before the session and another after it.',
@@ -355,7 +355,9 @@ function nutritionHabits(facts: Derived): string[] {
       'Drink a glass of water before the evening meal.',
     ],
   };
-  return take(facts.input.salt, 'habits', banks[goal ?? 'none'] ?? banks.none, 4, facts.done);
+  const chosen = take(facts.input.salt, 'habits', banks[goal ?? 'none'] ?? banks.none, 3, facts.done);
+  if (facts.done.some((item) => item.toLowerCase() === LOG_IN_CHARIOTEER.toLowerCase())) return chosen;
+  return [...chosen, LOG_IN_CHARIOTEER];
 }
 
 function swaps(facts: Derived): string[] {
@@ -518,7 +520,7 @@ function fitnessIntro(facts: Derived): string {
         : facts.input.goal === 'elite_heavy_boxer'
           ? 'This week keeps food around the sessions so size and power can hold.'
           : 'This week keeps skill work and food around it. A middleweight limit belongs with a coach and a doctor.';
-    return clip(`${aim} Recent training load: ${load}.`, 280);
+    return clip(`${aim} Recent training load: ${load}. That load stays on Stats.`, 280);
   }
   const steps = facts.steps != null ? `${Math.round(facts.steps).toLocaleString('en-GB')} steps on a recent day` : 'no step count yet';
   const work = facts.workoutMinutes != null ? `${facts.workoutMinutes} workout minutes over the last week` : 'no workout minutes logged';
@@ -527,7 +529,7 @@ function fitnessIntro(facts: Derived): string {
     : facts.level === 'some'
       ? 'This week keeps the movement you have and leaves two rest days.'
       : 'This week starts with short walks and more rest than work.';
-  return clip(`${pace} Recent figures: ${steps}, ${work}.`, 240);
+  return clip(`${pace} Recent figures: ${steps}, ${work}. Steps, weight, and workouts stay on Stats.`, 280);
 }
 
 function wellbeingHabits(facts: Derived): string[] {
@@ -543,7 +545,7 @@ function wellbeingHabits(facts: Derived): string[] {
     ? 'Mood has been lower than the earlier check-ins. Keep the check-in short, and one ordinary plan in the afternoon.'
     : facts.moodTrend === 'higher'
       ? 'Mood has lifted on the later check-ins. Keep the same rhythm rather than adding a new project.'
-      : 'Check in on the days you already open the app. Mood and craving are enough.';
+      : 'Use Check-in on the days you already open Charioteer. Mood and craving are enough.';
   const stress = facts.cravingTrend === 'higher'
     ? 'Cravings have been higher. Use the breathing timer once when the urge shows up, then a glass of water.'
     : 'When the day spikes, use one minute of the breathing timer before you decide the next thing.';
@@ -587,6 +589,58 @@ function written(facts: Derived, updatedAt: string): HealthPlan {
   };
 }
 
+const LOG_IN_CHARIOTEER = 'Log meals on Nutrition. Steps and weight belong on Stats, and mood on Check-in.';
+
+const OUTSIDE_APP = /\b(?:another app|the same app|a tracking app|tracking app|different app|other app|third-party app|third party app)\b/i;
+
+/** Food and fitness products people are sent to instead of Nutrition, Stats, and Check-in. */
+const TRACKER_NAMES = [
+  'myfitnesspal',
+  'my fitness pal',
+  'nutracheck',
+  'nutra check',
+  'lose it',
+  'loseit',
+  'cronometer',
+  'lifesum',
+  'fatsecret',
+  'fat secret',
+  'noom',
+  'yazio',
+  'macrofactor',
+  'macro factor',
+  'carb manager',
+  'fitbit',
+  'garmin',
+  'strava',
+  'whoop',
+  'oura',
+  'samsung health',
+  'google fit',
+  'peloton',
+  'nike run club',
+  'mapmyrun',
+  'map my run',
+  'withings',
+  'mynetdiary',
+  'my net diary',
+  'calorie king',
+  'sparkpeople',
+  'apple watch',
+  'apple health',
+  'smartwatch',
+  'fitness tracker',
+  'fitness watch',
+  'wearable',
+];
+
+const TRACKER_NAME = new RegExp(`\\b(?:${TRACKER_NAMES.map((name) => name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')})\\b`, 'i');
+
+/** A tip that sends logging to some other product. Charioteer's own screens stay. */
+export function mentionsOtherTracker(text: string): boolean {
+  return OUTSIDE_APP.test(text) || TRACKER_NAME.test(text);
+}
+
 const BANNED = /\b(i diagnose|you have (?:depression|anxiety|an eating disorder|diabetes|cancer)|prescri(?:be|ption)|stop your medication|starve|eat nothing)\b/i;
 const DEFICIT = /\b(eat less|calorie deficit|skip meals|cut your calories|0 kcal)\b/i;
 const HARMFUL_CUT = /\b(dehydrat\w*|sauna|water cut|diuretic)\b/i;
@@ -599,7 +653,7 @@ function recommendsHarmfulCut(text: string): boolean {
 
 function cleanLine(text: string, facts: Derived): string | null {
   const line = clip(text, 220);
-  if (!line || BANNED.test(line) || recommendsHarmfulCut(line)) return null;
+  if (!line || BANNED.test(line) || recommendsHarmfulCut(line) || mentionsOtherTracker(line)) return null;
   if ((facts.underweight || facts.blockedLoss) && DEFICIT.test(line)) return null;
   if (facts.belowFloor && facts.input.kcalTarget != null && line.includes(String(facts.input.kcalTarget)) && facts.floorKcal != null) {
     return line.replaceAll(String(facts.input.kcalTarget), String(facts.floorKcal));
@@ -774,6 +828,7 @@ export const HEALTH_PLAN_PROMPT = [
   'If the goal is an elite runner, body builder, heavyweight boxer, or middleweight boxer, include training load, recovery, and fuelling around sessions. A heavyweight goal keeps size and power and does not use a deficit. A middleweight goal stays near a limit with a small change only.',
   'Do not suggest a rapid weight cut, dehydration, a sauna, or skipping meals to make weight. A competition weigh-in belongs with a coach and a doctor.',
   'No diagnosis, no medication, no medical advice. Do not tell anyone to eat less when the figures say the intake should not fall. Do not suggest stopping alcohol suddenly.',
+  'Food, steps, weight, sleep, and mood are already logged in Charioteer. Never tell the person to use another app, the same app, a tracking app, a wearable, a fitness tracker, or a named product such as MyFitnessPal, Nutracheck, Fitbit, Garmin, or Apple Health. When a habit is about tracking, name Nutrition for meals and body readings, Stats for steps, weight, and workouts, and Check-in for mood, craving, and sleep.',
   'If a limit mentions injury, pain, pregnancy, or a health condition, keep the week easy and say to check with a doctor before big changes.',
   'Shape: {"focus":[{"id":"focus-1","text":""}],"nutrition":{"targets":"","habits":[{"id":"habit-1","text":""}],"swaps":[{"id":"swap-1","text":""}]},"fitness":{"intro":"","sessions":[{"id":"session-1","text":""}]},"wellbeing":{"habits":[{"id":"well-1","text":""}]}}',
 ].join(' ');

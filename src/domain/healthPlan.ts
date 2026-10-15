@@ -6,6 +6,7 @@ export {
   draftHealthPlan,
   guardHealthPlan,
   healthPlanFromStored,
+  mentionsOtherTracker,
   parseHealthPlanJson,
   parseSharedHealthPlan,
   presentSharedHealthPlan,

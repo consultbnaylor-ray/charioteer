@@ -6,9 +6,11 @@ import {
   PLAN_DISCLAIMER,
   PLAN_DOCTOR,
   donePlanTexts,
+  HEALTH_PLAN_PROMPT,
   draftHealthPlan,
   guardHealthPlan,
   healthPlanFromStored,
+  mentionsOtherTracker,
   presentSharedHealthPlan,
   togglePlanAction,
   type HealthPlan,
@@ -205,6 +207,36 @@ describe('health plan writer', () => {
     }, input({ salt: 'cut-guard', goal: 'elite_middle_boxer' }));
     expect(joined(guarded).toLowerCase()).not.toContain('sauna to');
     expect(joined(guarded)).toMatch(/coach/);
+  });
+
+  it('drops a tip that sends logging to another app', () => {
+    expect(mentionsOtherTracker('Track intake in the same app you use for steps so patterns show up fast.')).toBe(true);
+    expect(mentionsOtherTracker('Log breakfast in MyFitnessPal.')).toBe(true);
+    expect(mentionsOtherTracker('Use Nutracheck for the evening meal.')).toBe(true);
+    expect(mentionsOtherTracker('A tracking app will show the pattern.')).toBe(true);
+    expect(mentionsOtherTracker('Try another app for steps.')).toBe(true);
+    expect(mentionsOtherTracker('Log meals on Nutrition. Steps and weight belong on Stats, and mood on Check-in.')).toBe(false);
+    const base = draftHealthPlan(input({ salt: 'apps', goal: null }));
+    const guarded = guardHealthPlan({
+      ...base,
+      nutrition: {
+        ...base.nutrition,
+        habits: [
+          { id: 'habit-x', text: 'Track intake in the same app you use for steps so patterns show up fast.', done: false },
+          { id: 'habit-y', text: 'Log breakfast in MyFitnessPal and steps on a Fitbit.', done: false },
+          { id: 'habit-z', text: 'A tracking app will show the pattern.', done: false },
+        ],
+      },
+    }, input({ salt: 'apps', goal: null }));
+    const text = joined(guarded);
+    expect(text).not.toMatch(/same app|another app|tracking app|myfitnesspal|nutracheck|fitbit/i);
+    expect(text).toMatch(/Nutrition/);
+    expect(text).toMatch(/Stats/);
+    expect(text).toMatch(/Check-in/);
+    expect(HEALTH_PLAN_PROMPT).toMatch(/another app/);
+    expect(HEALTH_PLAN_PROMPT).toMatch(/MyFitnessPal/);
+    expect(HEALTH_PLAN_PROMPT).toMatch(/Nutrition/);
+    expect(HEALTH_PLAN_PROMPT).toMatch(/Check-in/);
   });
 
   it('drops a diagnosis the model tried to add', () => {
