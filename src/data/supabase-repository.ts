@@ -53,6 +53,7 @@ import {
   estimateFromText,
   foodItemFromUnknown,
   isBodyBuild,
+  isBuilderPhase,
   parsePortion,
   isBodyCompositionSource,
   isMealSlot,
@@ -1964,6 +1965,9 @@ export class SupabaseRepository implements Repository {
 
   /** Older databases lack the later share and goal columns. A missing column stays off. */
   private async nutritionSettingsRow(userId: string) {
+    const athlete = 'kcal_target, hide_calories, share_food_diary, share_calories, share_quality, share_progress, goal, goal_age, goal_sex, protein_target_g, carb_target_g, fat_target_g, goal_phase, weight_class_kg, activity_energy_kcal, share_goal, wagon_on, wagon_note, wagon_visible, build, updated_at';
+    const widened = await this.client.from('nutrition_settings').select(athlete).eq('user_id', userId).maybeSingle();
+    if (!widened.error) return widened;
     const goal = 'kcal_target, hide_calories, share_food_diary, share_calories, share_quality, share_progress, goal, goal_age, goal_sex, protein_target_g, activity_energy_kcal, share_goal, wagon_on, wagon_note, wagon_visible, build, updated_at';
     const first = await this.client.from('nutrition_settings').select(goal).eq('user_id', userId).maybeSingle();
     if (!first.error) return first;
@@ -2161,6 +2165,10 @@ export class SupabaseRepository implements Repository {
       goal_age: settings.goalAge,
       goal_sex: settings.goalSex,
       protein_target_g: settings.proteinTarget,
+      carb_target_g: settings.carbTarget,
+      fat_target_g: settings.fatTarget,
+      goal_phase: settings.goalPhase,
+      weight_class_kg: settings.weightClassKg,
       activity_energy_kcal: settings.activityEnergyKcal,
       share_goal: settings.shareGoal,
       wagon_on: settings.wagonOn,
@@ -2180,6 +2188,15 @@ export class SupabaseRepository implements Repository {
     if (error && leavingGoalOff && /goal|protein_target_g|activity_energy_kcal|share_goal/i.test(error.message)) {
       const { goal: _goal, goal_age: _age, goal_sex: _sex, protein_target_g: _protein, activity_energy_kcal: _energy, share_goal: _shareGoal, ...withoutGoal } = row;
       payload = withoutGoal;
+      ({ error } = await this.client.from('nutrition_settings').upsert(payload));
+    }
+    const athleteUnset = settings.carbTarget == null
+      && settings.fatTarget == null
+      && settings.goalPhase == null
+      && settings.weightClassKg == null;
+    if (error && athleteUnset && /carb_target_g|fat_target_g|goal_phase|weight_class_kg/i.test(error.message)) {
+      const { carb_target_g: _carb, fat_target_g: _fat, goal_phase: _phase, weight_class_kg: _klass, ...withoutAthlete } = payload;
+      payload = withoutAthlete;
       ({ error } = await this.client.from('nutrition_settings').upsert(payload));
     }
     if (error && settings.build == null && /\bbuild\b/i.test(error.message)) {
@@ -2933,6 +2950,10 @@ function nutritionFromRow(row: Row | null): NutritionSettings {
     goalAge: age == null ? null : Math.round(age),
     goalSex: sex,
     proteinTarget: nutritionNumber(row.protein_target_g, 0, 700),
+    carbTarget: nutritionNumber(row.carb_target_g, 0, 1000),
+    fatTarget: nutritionNumber(row.fat_target_g, 0, 400),
+    goalPhase: typeof row.goal_phase === 'string' && isBuilderPhase(row.goal_phase) ? row.goal_phase : null,
+    weightClassKg: nutritionNumber(row.weight_class_kg, 40, 200),
     activityEnergyKcal: nutritionNumber(row.activity_energy_kcal, 0, 2500),
     shareGoal: row.share_goal === true,
     wagonOn: row.wagon_on === true,

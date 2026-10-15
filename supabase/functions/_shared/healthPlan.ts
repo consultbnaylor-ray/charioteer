@@ -1,4 +1,5 @@
 import {
+  COMPETITION_NOTE,
   GOAL_LABEL,
   LOW_BMI_NOTE,
   assessWeight,
@@ -11,6 +12,7 @@ import {
   sumItems,
   weightPointsFrom,
   type BodyBuild,
+  type BuilderPhase,
   type FoodLog,
   type NutritionGoal,
   type NutritionSex,
@@ -53,6 +55,10 @@ export type PlanInput = {
   build: BodyBuild | null;
   kcalTarget: number | null;
   proteinTarget: number | null;
+  carbTarget?: number | null;
+  fatTarget?: number | null;
+  goalPhase?: BuilderPhase | null;
+  weightClassKg?: number | null;
   hideCalories: boolean;
   foodLogs: readonly FoodLog[];
   checkIns: readonly { mood: number; craving: number; sleepHours: number; note: string; createdAt: string }[];
@@ -229,7 +235,12 @@ function derive(input: PlanInput): Derived {
     recentProtein: average(logged.map((row) => row.proteinG)),
     assessment: assessment.plain,
     underweight,
-    blockedLoss: lossBlocked({ goal: input.goal, weightKg: latestWeight, heightCm: input.heightCm }) || underweight,
+    blockedLoss: lossBlocked({
+      goal: input.goal,
+      weightKg: latestWeight,
+      heightCm: input.heightCm,
+      phase: input.goalPhase ?? null,
+    }) || underweight,
     floorKcal,
     belowFloor: input.kcalTarget != null && input.kcalTarget < floorKcal,
     hiking: /hik|walk|outdoor/.test(interests),
@@ -256,6 +267,14 @@ function targetLine(facts: Derived): string {
     parts.push(`${facts.input.kcalTarget.toLocaleString('en-GB')} kcal`);
   }
   if (facts.input.proteinTarget != null) parts.push(`${facts.input.proteinTarget} g protein`);
+  if (facts.input.carbTarget != null) parts.push(`${facts.input.carbTarget} g carbohydrate`);
+  if (facts.input.fatTarget != null) parts.push(`${facts.input.fatTarget} g fat`);
+  if (facts.input.goal === 'body_builder') {
+    parts.push(facts.input.goalPhase === 'cut' ? 'Cut phase, kept modest' : 'Surplus / lean bulk');
+  }
+  if (facts.input.goal === 'elite_boxer' && facts.input.weightClassKg != null) {
+    parts.push(`Weight class ${facts.input.weightClassKg} kg is a note for a coach and a doctor`);
+  }
   if (facts.recentKcal != null && !facts.input.hideCalories) {
     parts.push(`recent days averaged ${Math.round(facts.recentKcal).toLocaleString('en-GB')} kcal`);
   }
@@ -291,6 +310,31 @@ function nutritionHabits(facts: Derived): string[] {
       'Do not skip breakfast on the busy morning.',
       'Serve a slightly larger portion of the meal you already cook.',
     ],
+    elite_runner: [
+      'Eat a carbohydrate food you already like in the hour before the longer session.',
+      'Eat a meal with protein and carbohydrate in the hour after training.',
+      'Keep the easy day easy, and do not add a second hard session.',
+      'Drink water with the meal. Sparkling water counts.',
+    ],
+    body_builder: facts.input.goalPhase === 'cut'
+      ? [
+        'Keep three meals. A cut on this screen is a slightly smaller portion, not a skipped meal.',
+        'Put protein on each of those meals.',
+        'Eat after the lifting session.',
+        'Log body fat and lean mass when you have a reading. The scales can stay still.',
+      ]
+      : [
+        'Add a little to the meal you already cook, on top of the meals you already eat.',
+        'Put protein on breakfast, lunch, and dinner.',
+        'Eat a proper meal after the lifting session.',
+        'Log body fat and lean mass when you have a reading.',
+      ],
+    elite_boxer: [
+      'Eat before the session and a proper meal after it.',
+      'Keep water with the meal. Do not skip drinks to change the scales.',
+      'A weight class, if you have one, is a note for a coach and a doctor.',
+      'Put protein on the meals you already eat.',
+    ],
     none: [
       'Keep three meals, even on a day that runs late.',
       'Add a protein food to the meal that is usually just toast or a sandwich.',
@@ -321,7 +365,15 @@ function swaps(facts: Derived): string[] {
     'Build the plate around vegetables and protein, then add the carbohydrate you like.',
     facts.gym ? 'After the gym, eat a meal you cooked rather than a second coffee.' : 'Keep the evening meal at home on two nights this week.',
   ];
-  const pool = facts.soberPath ? sober : facts.cutting ? [...cutting, ...food.slice(0, 2)] : food;
+  const athlete = facts.input.goal === 'elite_runner' || facts.input.goal === 'body_builder' || facts.input.goal === 'elite_boxer';
+  const recovery = 'After training, eat the meal you planned and have sparkling water. A drink is not the recovery.';
+  const pool = facts.soberPath && athlete
+    ? [recovery, ...sober]
+    : facts.soberPath
+      ? sober
+      : facts.cutting
+        ? [...cutting, ...food.slice(0, 2)]
+        : food;
   return take(facts.input.salt, 'swaps', pool, facts.soberPath ? 3 : 3, facts.done);
 }
 
@@ -351,6 +403,8 @@ function sessions(facts: Derived): string[] {
       'Sunday · Rest.',
     ];
   }
+  const athleteWeek = athleteSessions(facts);
+  if (athleteWeek) return athleteWeek;
   const walk = facts.level === 'active' ? '30 minutes' : facts.level === 'some' ? '20 minutes' : '15 minutes';
   const longer = facts.level === 'starting' ? '20 minutes' : 'a little longer than last week';
   const hard = facts.gym && facts.level !== 'starting'
@@ -374,10 +428,72 @@ function sessions(facts: Derived): string[] {
   ];
 }
 
+function athleteSessions(facts: Derived): string[] | null {
+  const goal = facts.input.goal;
+  if (goal !== 'elite_runner' && goal !== 'body_builder' && goal !== 'elite_boxer') return null;
+  const easy = facts.level === 'starting';
+  const soberRest = facts.soberPath
+    ? 'Sunday · Rest. Recovery is the meal, water, and sleep. A soft drink is enough if you want one.'
+    : 'Sunday · Rest.';
+  if (goal === 'elite_runner') {
+    return [
+      easy
+        ? 'Monday · A brisk walk, then a carbohydrate snack you already like.'
+        : 'Monday · An easy run, then a carbohydrate snack you already like.',
+      'Tuesday · Rest, or a very easy spin if the legs feel ordinary.',
+      easy
+        ? 'Wednesday · A slightly longer walk. Eat a meal in the hour after, with carbohydrate and protein.'
+        : 'Wednesday · The longer session. Eat a meal in the hour after, with carbohydrate and protein.',
+      'Thursday · Rest.',
+      'Friday · A short session, and stop while you could still do more.',
+      'Saturday · The session you care about. Eat before it, and a proper meal after.',
+      soberRest,
+    ];
+  }
+  if (goal === 'body_builder') {
+    const cut = facts.input.goalPhase === 'cut'
+      ? 'Monday · A lifting session with fewer sets than your best week. Keep every meal. This cut is a small change, not a skipped meal.'
+      : 'Monday · A lifting session, fewer sets than your best week, then a meal with protein.';
+    return [
+      cut,
+      'Tuesday · Rest, or a short walk.',
+      'Wednesday · The second lifting session. Eat after it.',
+      'Thursday · Rest.',
+      'Friday · A shorter lifting session, and stop while the last set is tidy.',
+      'Saturday · Rest if the week was heavy. Otherwise the same session as Monday.',
+      soberRest,
+    ];
+  }
+  return [
+    'Monday · Skill work or a pad session, then a meal. Do not skip food to change the scales.',
+    'Tuesday · Rest.',
+    easy
+      ? 'Wednesday · A short walk or easy skill work, then stop.'
+      : 'Wednesday · A shorter session than you could do.',
+    'Thursday · Rest.',
+    'Friday · Easy skill work, and stop if you feel flat.',
+    'Saturday · The session you care about, with food before and after.',
+    facts.soberPath
+      ? `Sunday · Rest. ${COMPETITION_NOTE} Recovery stays alcohol-free.`
+      : `Sunday · Rest. ${COMPETITION_NOTE}`,
+  ];
+}
+
 function fitnessIntro(facts: Derived): string {
   if (facts.safety.withdrawal) return `${WITHDRAWAL_NOTICE}`;
   if (facts.safety.selfHarm) return 'Training can wait. A person comes first.';
   if (facts.injury) return `Keep this week short and easy, and stop if something hurts. ${PLAN_DOCTOR}`;
+  if (facts.input.goal === 'elite_runner' || facts.input.goal === 'body_builder' || facts.input.goal === 'elite_boxer') {
+    const load = facts.workoutMinutes != null
+      ? `${facts.workoutMinutes} workout minutes over the last week`
+      : 'no workout minutes logged yet';
+    const aim = facts.input.goal === 'elite_runner'
+      ? 'This week keeps fuel around the sessions and a rest day after the longer one.'
+      : facts.input.goal === 'body_builder'
+        ? 'This week keeps the lifting volume you can recover from, with food after the sessions.'
+        : 'This week keeps skill work and food around it. A weigh-in plan belongs with a coach and a doctor.';
+    return clip(`${aim} Recent training load: ${load}.`, 280);
+  }
   const steps = facts.steps != null ? `${Math.round(facts.steps).toLocaleString('en-GB')} steps on a recent day` : 'no step count yet';
   const work = facts.workoutMinutes != null ? `${facts.workoutMinutes} workout minutes over the last week` : 'no workout minutes logged';
   const pace = facts.level === 'active'
@@ -447,10 +563,17 @@ function written(facts: Derived, updatedAt: string): HealthPlan {
 
 const BANNED = /\b(i diagnose|you have (?:depression|anxiety|an eating disorder|diabetes|cancer)|prescri(?:be|ption)|stop your medication|starve|eat nothing)\b/i;
 const DEFICIT = /\b(eat less|calorie deficit|skip meals|cut your calories|0 kcal)\b/i;
+const HARMFUL_CUT = /\b(dehydrat\w*|sauna|water cut|diuretic)\b/i;
+
+/** A refusal ("will not plan dehydration") stays. A suggestion to do it does not. */
+function recommendsHarmfulCut(text: string): boolean {
+  if (!HARMFUL_CUT.test(text)) return false;
+  return !/\b(will not|do not|don't|never|not plan)\b/i.test(text);
+}
 
 function cleanLine(text: string, facts: Derived): string | null {
   const line = clip(text, 220);
-  if (!line || BANNED.test(line)) return null;
+  if (!line || BANNED.test(line) || recommendsHarmfulCut(line)) return null;
   if ((facts.underweight || facts.blockedLoss) && DEFICIT.test(line)) return null;
   if (facts.belowFloor && facts.input.kcalTarget != null && line.includes(String(facts.input.kcalTarget)) && facts.floorKcal != null) {
     return line.replaceAll(String(facts.input.kcalTarget), String(facts.floorKcal));
@@ -621,7 +744,9 @@ export const HEALTH_PLAN_PROMPT = [
   'Also give this week\'s focus as 1 to 3 items.',
   'Use the person\'s interests, reasons, and vision when they are present. Vary the sentences. Do not reuse a stock template.',
   'If a finished action is listed, do not repeat it. Move on to the next step.',
-  'For someone sober or trying to stop, include alcohol-replacement ideas in the swaps.',
+  'For someone sober or trying to stop, include alcohol-replacement ideas in the swaps. Recovery after training stays alcohol-free.',
+  'If the goal is an elite runner, body builder, or combat-sport athlete, include training load, recovery, and fuelling around sessions.',
+  'Do not suggest a rapid weight cut, dehydration, a sauna, or skipping meals to make weight. A competition weigh-in belongs with a coach and a doctor.',
   'No diagnosis, no medication, no medical advice. Do not tell anyone to eat less when the figures say the intake should not fall. Do not suggest stopping alcohol suddenly.',
   'If a limit mentions injury, pain, pregnancy, or a health condition, keep the week easy and say to check with a doctor before big changes.',
   'Shape: {"focus":[{"id":"focus-1","text":""}],"nutrition":{"targets":"","habits":[{"id":"habit-1","text":""}],"swaps":[{"id":"swap-1","text":""}]},"fitness":{"intro":"","sessions":[{"id":"session-1","text":""}]},"wellbeing":{"habits":[{"id":"well-1","text":""}]}}',

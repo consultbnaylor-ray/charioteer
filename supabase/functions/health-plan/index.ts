@@ -8,7 +8,7 @@ import {
   type PlanInput,
 } from '../_shared/healthPlan.ts';
 import { json, preflight } from '../_shared/http.ts';
-import { isBodyBuild, isNutritionGoal, isNutritionSex, type FoodItem, type FoodLog, type NutritionGoal } from '../_shared/nutrition.ts';
+import { isBodyBuild, isBuilderPhase, isNutritionGoal, isNutritionSex, type FoodItem, type FoodLog, type NutritionGoal } from '../_shared/nutrition.ts';
 import { buildChatCompletionBody, THUMOS_CHAT } from '../_shared/thumos.ts';
 
 type Body = { limits?: string };
@@ -55,8 +55,12 @@ Deno.serve(async (req) => {
   const body = (await req.json().catch(() => ({}))) as Body;
   const limits = textOf(body.limits).trim().slice(0, 280);
 
-  const [settingsRes, logsRes, checkRes, healthRes, bodyRes, reasonsRes, visionRes, interestRes, savedRes] = await Promise.all([
-    userClient.from('nutrition_settings').select('goal, goal_age, goal_sex, build, kcal_target, protein_target_g, hide_calories').eq('user_id', userId).maybeSingle(),
+  const settingsSelect = 'goal, goal_age, goal_sex, build, kcal_target, protein_target_g, carb_target_g, fat_target_g, goal_phase, weight_class_kg, hide_calories';
+  let settingsRes = await userClient.from('nutrition_settings').select(settingsSelect).eq('user_id', userId).maybeSingle();
+  if (settingsRes.error) {
+    settingsRes = await userClient.from('nutrition_settings').select('goal, goal_age, goal_sex, build, kcal_target, protein_target_g, hide_calories').eq('user_id', userId).maybeSingle();
+  }
+  const [logsRes, checkRes, healthRes, bodyRes, reasonsRes, visionRes, interestRes, savedRes] = await Promise.all([
     userClient.from('food_logs').select('id, eaten_on, meal, items, estimated, created_at').eq('user_id', userId).order('eaten_on', { ascending: false }).limit(40),
     userClient.from('check_ins').select('mood, craving, sleep_hours, note, created_at').eq('user_id', userId).order('created_at', { ascending: false }).limit(14),
     userClient.from('health_samples').select('kind, value, recorded_on').eq('user_id', userId).order('recorded_on', { ascending: false }).limit(80),
@@ -125,6 +129,10 @@ Deno.serve(async (req) => {
     build: isBodyBuild(textOf(settings.build)) ? textOf(settings.build) as PlanInput['build'] : null,
     kcalTarget: typeof settings.kcal_target === 'number' ? settings.kcal_target : null,
     proteinTarget: typeof settings.protein_target_g === 'number' ? settings.protein_target_g : null,
+    carbTarget: typeof settings.carb_target_g === 'number' ? settings.carb_target_g : null,
+    fatTarget: typeof settings.fat_target_g === 'number' ? settings.fat_target_g : null,
+    goalPhase: isBuilderPhase(textOf(settings.goal_phase)) ? textOf(settings.goal_phase) as PlanInput['goalPhase'] : null,
+    weightClassKg: typeof settings.weight_class_kg === 'number' ? settings.weight_class_kg : null,
     hideCalories: Boolean(settings.hide_calories),
     foodLogs: logs,
     checkIns: ((checkRes.data ?? []) as Record<string, unknown>[]).map((row) => ({

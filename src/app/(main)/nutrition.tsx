@@ -1,7 +1,7 @@
 import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { Platform, Pressable, Switch, View } from 'react-native';
+import { Platform, Pressable, ScrollView, Switch, View } from 'react-native';
 
 import { useRepository, useSnapshot } from '@/data';
 import type { FoodLogUpdate, NewHealthSample } from '@/data/types';
@@ -13,19 +13,26 @@ import {
   APPLE_HEALTH_MEAL_NOTE,
   ESTIMATE_HINT,
   ESTIMATE_LABEL,
+  BUILDER_PHASES,
+  COMPETITION_NOTE,
   FAT_SCIENCE,
   GOAL_LABEL,
+  GOAL_PLAIN,
   HIDE_CALORIES_LINE,
   LOW_BMI_NOTE,
   MEAL_LABEL,
   MEAL_SLOTS,
   NUTRITION_GOALS,
+  PHASE_LABEL,
   alcoholSavedLine,
+  compositionForAssessment,
+  compositionTrendLine,
   dayItems,
   fatBalance,
   goalBodyForSuggestion,
   goalDayLine,
   goalMealNote,
+  macroDayLine,
   kcalFloor,
   lossBlocked,
   mifflinBmr,
@@ -37,6 +44,8 @@ import {
   sumItems,
   targetLine,
   weightPointsFrom,
+  weightTrendLine,
+  type BuilderPhase,
   type FoodItem,
   type FoodLog,
   type GoalBody,
@@ -134,11 +143,23 @@ function readAge(value: string): number | null | 'bad' {
 }
 
 function readProtein(value: string): number | null | 'bad' {
+  return readGrams(value, 1, 700);
+}
+
+function readGrams(value: string, min: number, max: number): number | null | 'bad' {
   const trimmed = value.trim();
   if (!trimmed) return null;
   const grams = Math.round(Number(trimmed));
-  if (!Number.isFinite(grams) || grams < 1 || grams > 700) return 'bad';
+  if (!Number.isFinite(grams) || grams < min || grams > max) return 'bad';
   return grams;
+}
+
+function readWeightClass(value: string): number | null | 'bad' {
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  const kg = Math.round(Number(trimmed) * 10) / 10;
+  if (!Number.isFinite(kg) || kg < 40 || kg > 200) return 'bad';
+  return kg;
 }
 
 function itemFromDraft(draft: DraftItem): FoodItem | null {
@@ -189,8 +210,20 @@ export default function Nutrition() {
   const weights = weightPointsFrom(snap.health);
   const latestWeight = weights.length ? weights[weights.length - 1] : undefined;
   const blocked = settings.goal
-    ? lossBlocked({ goal: settings.goal, weightKg: latestWeight?.kg ?? null, heightCm: profile?.heightCm ?? null })
+    ? lossBlocked({
+      goal: settings.goal,
+      weightKg: latestWeight?.kg ?? null,
+      heightCm: profile?.heightCm ?? null,
+      phase: settings.goalPhase,
+    })
     : false;
+  const macroLine = macroDayLine({
+    carbsG: totals.carbsG,
+    carbTarget: settings.carbTarget,
+    fatG: totals.unsaturatedG + totals.saturatedG + totals.transG,
+    fatTarget: settings.fatTarget,
+  });
+  const compositionTrend = compositionTrendLine(snap.bodyComposition, settings.goal);
   const dayLine = settings.goal
     ? goalDayLine({
       goal: settings.goal,
@@ -200,6 +233,10 @@ export default function Nutrition() {
       proteinG: totals.proteinG,
       proteinTarget: settings.proteinTarget,
       blockedLoss: blocked,
+      carbsG: totals.carbsG,
+      carbTarget: settings.carbTarget,
+      fatG: totals.unsaturatedG + totals.saturatedG + totals.transG,
+      fatTarget: settings.fatTarget,
     })
     : null;
 
@@ -212,6 +249,9 @@ export default function Nutrition() {
   const [waterText, setWaterText] = useState(water ? String(water) : '');
   const [goalAge, setGoalAge] = useState(settings.goalAge == null ? '' : String(settings.goalAge));
   const [protein, setProtein] = useState(settings.proteinTarget == null ? '' : String(settings.proteinTarget));
+  const [carbs, setCarbs] = useState(settings.carbTarget == null ? '' : String(settings.carbTarget));
+  const [fat, setFat] = useState(settings.fatTarget == null ? '' : String(settings.fatTarget));
+  const [weightClass, setWeightClass] = useState(settings.weightClassKg == null ? '' : String(settings.weightClassKg));
   const [goalNote, setGoalNote] = useState<string | null>(null);
   const [choiceNote, setChoiceNote] = useState<string | null>(null);
   const [goalWeight, setGoalWeight] = useState('');
@@ -247,6 +287,14 @@ export default function Nutrition() {
     setChoiceNote(null);
     void repo.setNutritionSettings({ ...repo.getSnapshot().nutrition, goal }).catch((err: unknown) => {
       setChoiceNote(shownError(err, 'Could not save that goal.'));
+    });
+  }
+
+  function choosePhase(phase: BuilderPhase) {
+    setChoiceNote(null);
+    const next = settings.goalPhase === phase ? null : phase;
+    void repo.setNutritionSettings({ ...repo.getSnapshot().nutrition, goalPhase: next }).catch((err: unknown) => {
+      setChoiceNote(shownError(err, 'Could not save that phase.'));
     });
   }
 
@@ -333,6 +381,12 @@ export default function Nutrition() {
         typedWeightKg: typedWeight.kg,
         typedHeightCm: typedHeight.value,
       });
+      const klass = readWeightClass(weightClass);
+      if (klass === 'bad') {
+        setSuggestNote('A weight class sits between 40 and 200 kg, or leave it blank.');
+        return;
+      }
+      const figures = compositionForAssessment(snap.bodyComposition);
       const result = suggestGoalTargets({
         goal: settings.goal,
         weightKg: body.weightKg,
@@ -341,6 +395,10 @@ export default function Nutrition() {
         sex: settings.goalSex,
         activeEnergyKcal: settings.activityEnergyKcal,
         build: settings.build,
+        bodyFatPct: figures.bodyFatPct,
+        waistCm: figures.waistCm,
+        phase: settings.goal === 'body_builder' ? settings.goalPhase : null,
+        weightClassKg: settings.goal === 'elite_boxer' ? klass : null,
       });
       if (!result.ok) {
         setGoalNote(null);
@@ -348,11 +406,15 @@ export default function Nutrition() {
         return;
       }
       setProtein(String(result.suggestion.proteinG));
+      setCarbs(String(result.suggestion.carbG));
+      setFat(String(result.suggestion.fatG));
       if (!hide) setTarget(String(result.suggestion.kcal));
       setGoalNote(result.suggestion.note);
       setSuggestNote(suggestedTargetsLine({
         kcal: result.suggestion.kcal,
         proteinG: result.suggestion.proteinG,
+        carbG: result.suggestion.carbG,
+        fatG: result.suggestion.fatG,
         hideCalories: hide,
       }));
       playSavedHaptic();
@@ -612,6 +674,21 @@ export default function Nutrition() {
         setError('Protein sits between 1 and 700 g, or leave it blank.');
         return;
       }
+      const carbG = readGrams(carbs, 1, 1000);
+      if (carbG === 'bad') {
+        setError('Carbohydrate sits between 1 and 1,000 g, or leave it blank.');
+        return;
+      }
+      const fatG = readGrams(fat, 1, 400);
+      if (fatG === 'bad') {
+        setError('Fat sits between 1 and 400 g, or leave it blank.');
+        return;
+      }
+      const klass = readWeightClass(weightClass);
+      if (klass === 'bad') {
+        setError('A weight class sits between 40 and 200 kg, or leave it blank.');
+        return;
+      }
       const current = repo.getSnapshot().nutrition;
       let kcal = current.kcalTarget;
       if (!hide) {
@@ -632,6 +709,9 @@ export default function Nutrition() {
           ...current,
           goalAge: age,
           proteinTarget: proteinG,
+          carbTarget: carbG,
+          fatTarget: fatG,
+          weightClassKg: current.goal === 'elite_boxer' ? klass : current.weightClassKg,
           kcalTarget: kcal,
         });
         setTargetsSavedAt(Date.now());
@@ -777,12 +857,38 @@ export default function Nutrition() {
       <ScrollTarget id="goal">
       <Card>
         <T variant="label">Goal</T>
-        <T variant="muted">Pick one. A suggestion uses your weight, height, age, and sex if you add them. You can change the numbers.</T>
-        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+        <T variant="muted">Pick one. Swipe the row if a goal sits off the side. A suggestion uses your weight, height, age, and sex if you add them. You can change the numbers.</T>
+        <ScrollView
+          horizontal
+          nestedScrollEnabled
+          showsHorizontalScrollIndicator
+          keyboardShouldPersistTaps="handled"
+          contentContainerStyle={{ gap: 8, paddingRight: 8 }}
+        >
           {NUTRITION_GOALS.map((id) => (
             <Choice key={id} label={GOAL_LABEL[id]} selected={settings.goal === id} onPress={() => chooseGoal(id)} />
           ))}
-        </View>
+        </ScrollView>
+        {settings.goal ? <T variant="muted">{GOAL_PLAIN[settings.goal]}</T> : null}
+        {settings.goal === 'body_builder' ? (
+          <>
+            <T variant="muted">Choose a surplus or a cut. A suggestion uses a lean bulk until you pick a cut.</T>
+            <ScrollView horizontal nestedScrollEnabled showsHorizontalScrollIndicator keyboardShouldPersistTaps="handled" contentContainerStyle={{ gap: 8 }}>
+              {BUILDER_PHASES.map((id) => (
+                <Choice key={id} label={PHASE_LABEL[id]} selected={settings.goalPhase === id} onPress={() => choosePhase(id)} />
+              ))}
+            </ScrollView>
+          </>
+        ) : null}
+        {settings.goal === 'elite_boxer' ? (
+          <>
+            <T>{COMPETITION_NOTE}</T>
+            <Field label="Weight class (kg)" value={weightClass} onChangeText={setWeightClass} keyboardType="decimal-pad" placeholder="Optional" />
+          </>
+        ) : null}
+        {settings.goal && (settings.goal === 'elite_runner' || settings.goal === 'body_builder' || settings.goal === 'elite_boxer') && (profile?.stage === 'stopped' || profile?.stage === 'trying_to_stop') ? (
+          <T variant="muted">Recovery stays alcohol-free: food, water, sleep, and a soft drink if you want one.</T>
+        ) : null}
         <Field label="Age" value={goalAge} onChangeText={setGoalAge} keyboardType="number-pad" placeholder="Optional" />
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
           <Choice label="Woman" selected={settings.goalSex === 'female'} onPress={() => chooseSex('female')} />
@@ -809,12 +915,16 @@ export default function Nutrition() {
           <Field label="Daily kcal" value={target} onChangeText={setTarget} keyboardType="number-pad" placeholder="Leave blank for none" />
         )}
         <Field label="Daily protein (g)" value={protein} onChangeText={setProtein} keyboardType="number-pad" placeholder="Leave blank for none" />
+        <Field label="Daily carbohydrate (g)" value={carbs} onChangeText={setCarbs} keyboardType="number-pad" placeholder="Leave blank for none" />
+        <Field label="Daily fat (g)" value={fat} onChangeText={setFat} keyboardType="number-pad" placeholder="Leave blank for none" />
         <Button
           label={targetsSavedAt != null && !isPending('targets') ? 'Saved ✓' : 'Save targets'}
           pending={isPending('targets')}
           pendingLabel="Saving..."
           onPress={saveTargets}
         />
+        {settings.goal ? <T variant="muted">{weightTrendLine(weights, settings.goal)}</T> : null}
+        {compositionTrend ? <T variant="muted">{compositionTrend}</T> : null}
         {settings.updatedAt ? <T>{`Last updated ${formatUkCompactWhen(settings.updatedAt)}`}</T> : null}
         <NutritionShareSwitch
           label="Share the goal and progress"
@@ -854,7 +964,7 @@ export default function Nutrition() {
         {patterns.map((line) => <T key={line}>{line}</T>)}
         {sugar ? <T>{sugar}</T> : null}
         {saved ? <T>{saved}</T> : null}
-        {dayLine ? <T>{dayLine}</T> : null}
+        {dayLine ? <T>{dayLine}</T> : macroLine ? <T>{macroLine}</T> : null}
         <T variant="muted">{`Water ${water.toLocaleString('en-GB')} ml`}</T>
         <NutritionShareSwitch
           label="Share daily calories and macros"

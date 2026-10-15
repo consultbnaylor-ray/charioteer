@@ -1231,6 +1231,10 @@ export class DemoRepository implements Repository {
       build: nutrition.build,
       kcalTarget: nutrition.kcalTarget,
       proteinTarget: nutrition.proteinTarget,
+      carbTarget: nutrition.carbTarget,
+      fatTarget: nutrition.fatTarget,
+      goalPhase: nutrition.goalPhase,
+      weightClassKg: nutrition.weightClassKg,
       hideCalories: nutrition.hideCalories,
       foodLogs: account.foodLogs ?? [],
       checkIns: account.checkIns.map((row) => ({

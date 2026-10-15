@@ -154,6 +154,52 @@ describe('health plan writer', () => {
     expect(plan.fitness.sessions[0]?.text).toMatch(/Rest/);
   });
 
+  it('writes training load, recovery, and fuelling for the three training goals', () => {
+    const runner = draftHealthPlan(input({
+      salt: 'runner',
+      stage: 'stopped',
+      sobrietyStartedAt: '2026-06-01',
+      goal: 'elite_runner',
+      health: [
+        { kind: 'weight_kg', value: 70, recordedOn: '2026-10-14' },
+        { kind: 'workout_minutes', value: 180, recordedOn: '2026-10-15' },
+      ],
+    }));
+    const runnerText = joined(runner);
+    expect(runnerText).toMatch(/carbohydrate|fuel/i);
+    expect(runnerText).toMatch(/sparkling water|soft drink|alcohol-free/i);
+    expect(runnerText).toContain('workout minutes');
+    expect(runnerText).not.toMatch(/have the first drink/i);
+
+    const builder = draftHealthPlan(input({ salt: 'builder', goal: 'body_builder', goalPhase: 'cut' }));
+    const builderText = joined(builder);
+    expect(builderText).toMatch(/lifting|lean mass/i);
+    expect(builderText).toContain('not a skipped meal');
+    expect(builderText).toContain('Cut phase');
+
+    const boxer = draftHealthPlan(input({ salt: 'boxer', goal: 'elite_boxer', weightClassKg: 75 }));
+    const boxerText = joined(boxer);
+    expect(boxerText).toMatch(/coach/);
+    expect(boxerText).toMatch(/doctor/);
+    expect(boxerText.toLowerCase()).not.toMatch(/sauna to|skip water|sweat out/);
+  });
+
+  it('drops a rapid-cut suggestion and keeps a refusal', () => {
+    const base = draftHealthPlan(input({ salt: 'cut-guard', goal: 'elite_boxer' }));
+    const guarded = guardHealthPlan({
+      ...base,
+      fitness: {
+        ...base.fitness,
+        sessions: [
+          { id: 'session-x', text: 'Spend an hour in a sauna to make weight.', done: false },
+          ...base.fitness.sessions,
+        ],
+      },
+    }, input({ salt: 'cut-guard', goal: 'elite_boxer' }));
+    expect(joined(guarded).toLowerCase()).not.toContain('sauna to');
+    expect(joined(guarded)).toMatch(/coach/);
+  });
+
   it('drops a diagnosis the model tried to add', () => {
     const base = draftHealthPlan(input({ salt: 'guard' }));
     const guarded = guardHealthPlan({

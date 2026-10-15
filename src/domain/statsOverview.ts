@@ -305,12 +305,38 @@ function weightTile(input: StatsOverviewInput): StatTileModel {
       href: '/nutrition?section=weight',
     });
   }
-  if (goal === 'lose_fat_build_muscle') {
+  if (goal === 'lose_fat_build_muscle' || goal === 'body_builder') {
     return tile({
       id: 'weight',
       title: 'Weight',
       value,
-      meaning: 'The scales can stay still while the body changes',
+      meaning: goal === 'body_builder'
+        ? 'Body fat and lean mass matter more than the scales'
+        : 'The scales can stay still while the body changes',
+      tone: 'info',
+      series,
+      chart,
+      href: '/nutrition?section=weight',
+    });
+  }
+  if (goal === 'elite_runner') {
+    return tile({
+      id: 'weight',
+      title: 'Weight',
+      value,
+      meaning: 'Body fat and training matter more than a small change',
+      tone: 'info',
+      series,
+      chart,
+      href: '/nutrition?section=weight',
+    });
+  }
+  if (goal === 'elite_boxer') {
+    return tile({
+      id: 'weight',
+      title: 'Weight',
+      value,
+      meaning: 'A weight class is not a race on this screen',
       tone: 'info',
       series,
       chart,
@@ -449,6 +475,35 @@ function bodyTile(input: StatsOverviewInput): StatTileModel {
     tone: 'info',
     series: fatSeries.length ? fatSeries : waistSeries,
     chart: { kind: 'none' },
+    href: '/nutrition?section=body',
+  });
+}
+
+function leanTile(input: StatsOverviewInput): StatTileModel | null {
+  if (input.nutrition.goal !== 'body_builder') return null;
+  const series = [...input.bodyComposition]
+    .filter((row) => row.leanMassKg != null)
+    .sort((left, right) => left.recordedOn.localeCompare(right.recordedOn))
+    .map((row) => row.leanMassKg as number);
+  const latest = series.at(-1);
+  const earlier = series.length >= 2 ? series[0] : null;
+  const delta = latest != null && earlier != null ? latest - earlier : null;
+  const meaning = delta == null
+    ? 'Log lean mass more than once'
+    : delta >= 0.3
+      ? 'Higher than the earlier reading'
+      : delta <= -0.3
+        ? 'Lower than the earlier reading'
+        : 'Near the earlier reading';
+  const tone: StatsTone = delta != null && delta >= 0.3 ? 'good' : delta != null && delta <= -0.3 ? 'watch' : 'info';
+  return tile({
+    id: 'lean',
+    title: 'Lean mass',
+    value: latest == null ? '—' : `${round1(latest)} kg`,
+    meaning,
+    tone,
+    series: series.slice(-8),
+    chart: series.length >= 2 ? { kind: 'line', points: series.slice(-8) } : { kind: 'none' },
     href: '/nutrition?section=body',
   });
 }
@@ -607,6 +662,7 @@ export function buildStatsOverview(input: StatsOverviewInput): StatTileModel[] {
     checkInTile(input, input.now),
     weightTile(input),
     bodyTile(input),
+    ...[leanTile(input)].filter((item): item is StatTileModel => item != null),
     calorieTile(input, today),
     proteinTile(input, today),
     qualityTile(input, today),

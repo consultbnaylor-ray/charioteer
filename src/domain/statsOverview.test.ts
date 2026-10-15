@@ -183,6 +183,54 @@ describe('stats overview', () => {
     expect(body.chart).toMatchObject({ kind: 'range', status: 'Within healthy range' });
   });
 
+  it('keeps the scales from judging a training goal, and tracks lean mass for a body builder', () => {
+    const weights = [
+      { kind: 'weight_kg', value: 80, recordedOn: '2026-10-01' },
+      { kind: 'weight_kg', value: 79, recordedOn: '2026-10-14' },
+    ];
+    const runner = buildStatsOverview(input({
+      health: weights,
+      nutrition: { ...defaultNutritionSettings(), goal: 'elite_runner' },
+    }));
+    expect(byId(runner, 'weight').meaning).toBe('Body fat and training matter more than a small change');
+    expect(byId(runner, 'weight').tone).toBe('info');
+    const boxer = buildStatsOverview(input({
+      health: weights,
+      nutrition: { ...defaultNutritionSettings(), goal: 'elite_boxer' },
+    }));
+    expect(byId(boxer, 'weight').meaning).toBe('A weight class is not a race on this screen');
+    const builder = buildStatsOverview(input({
+      health: weights,
+      nutrition: { ...defaultNutritionSettings(), goal: 'body_builder' },
+      bodyComposition: [{
+        id: '1',
+        recordedOn: '2026-09-01',
+        bodyFatPct: 18,
+        leanMassKg: 62,
+        waistCm: null,
+        source: 'dexa',
+        createdAt: '2026-09-01T00:00:00.000Z',
+      }, {
+        id: '2',
+        recordedOn: '2026-10-14',
+        bodyFatPct: 16,
+        leanMassKg: 63.4,
+        waistCm: null,
+        source: 'dexa',
+        createdAt: '2026-10-14T00:00:00.000Z',
+      }],
+    }));
+    expect(byId(builder, 'weight').meaning).toBe('Body fat and lean mass matter more than the scales');
+    expect(byId(builder, 'lean')).toMatchObject({
+      title: 'Lean mass',
+      value: '63.4 kg',
+      meaning: 'Higher than the earlier reading',
+      tone: 'good',
+      href: '/nutrition?section=body',
+    });
+    expect(byId(builder, 'lean').chart.kind).toBe('line');
+  });
+
   it('measures sober days, water, and gratitude against the next mark', () => {
     const now = new Date(2026, 9, 14, 17, 41);
     const tiles = buildStatsOverview(input({

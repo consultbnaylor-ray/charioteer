@@ -13,6 +13,7 @@ import {
   BUILD_LABEL,
   assessWeight,
   compositionForAssessment,
+  compositionTrendLine,
   fatFreeMassKg,
   ffmiPlain,
   ffmiValue,
@@ -90,6 +91,7 @@ export function BodyCompositionCard() {
   const [source, setSource] = useState<BodyEntrySource>('smart_scale');
   const [day, setDay] = useState(() => startOfLocalDay(new Date()));
   const [note, setNote] = useState<string | null>(null);
+  const compositionTrend = compositionTrendLine(snap.bodyComposition, settings.goal);
   const history = [...snap.bodyComposition]
     .sort((left, right) => right.recordedOn.localeCompare(left.recordedOn) || right.createdAt.localeCompare(left.createdAt))
     .slice(0, 5);
@@ -203,6 +205,7 @@ export function BodyCompositionCard() {
           : `Waist-to-height is ${ratio.toFixed(2)}. 0.5 or more sits outside the healthy band on this screen.`}</T>
       ) : null}
       {ffmi != null ? <T>{ffmiPlain({ ffmi, sex: settings.goalSex })}</T> : null}
+      {compositionTrend ? <T variant="muted">{compositionTrend}</T> : null}
       <Field label="Body fat (%)" value={fat} onChangeText={setFat} keyboardType="decimal-pad" placeholder="15" />
       <Field label="Lean body mass (kg)" value={leanText} onChangeText={setLeanText} keyboardType="decimal-pad" placeholder="63" />
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>

@@ -41,7 +41,7 @@ export const WAGON_SUPPORT = [
   'NHS 111 if you are worried about withdrawal',
 ] as const;
 export const NUTRITION_PROMPT_LINE =
-  'If CONTEXT includes a nutrition summary, you may mention it. Estimates are estimates. Do not shame anyone about calories, weight, or a day over a target. If calories are hidden, do not mention kcal. If CONTEXT includes a nutrition goal, offer one gentle tip that fits that goal. Do not suggest eating less when CONTEXT says a lower intake is not being suggested. If CONTEXT includes body composition, use body fat before waist-to-height, and waist-to-height before BMI. Do not call someone overweight or obese from BMI when CONTEXT says they lift weights, or when CONTEXT is using body fat or waist. If CONTEXT says they have fallen off the wagon, treat that as a safety moment: be gentle, do not shame, and mention the Samaritans on 116 123 and Drinkline on 0300 123 1110. Sugar cravings in early recovery are common; you may say so only when CONTEXT includes that note.';
+  'If CONTEXT includes a nutrition summary, you may mention it. Estimates are estimates. Do not shame anyone about calories, weight, or a day over a target. If calories are hidden, do not mention kcal. If CONTEXT includes a nutrition goal, offer one gentle tip that fits that goal. Do not suggest eating less when CONTEXT says a lower intake is not being suggested. If the goal is an elite runner, talk about carbohydrate around training and moderate protein, and lean body composition rather than the scales. If the goal is body building, talk about a surplus or a cut phase, protein, and body fat and lean mass, and do not push an aggressive deficit. If the goal is a boxer or other combat sport, talk about performance fuelling. A weight class is only a note for a coach and a doctor. Never suggest a rapid weight cut, skipping meals to make weight, a sauna, or dehydration. For someone sober, recovery tips stay alcohol-free: food, water, sleep, and a soft drink if they want one. If CONTEXT includes body composition, use body fat before waist-to-height, and waist-to-height before BMI. Do not call someone overweight or obese from BMI when CONTEXT says they lift weights, or when CONTEXT is using body fat or waist. If CONTEXT says they have fallen off the wagon, treat that as a safety moment: be gentle, do not shame, and mention the Samaritans on 116 123 and Drinkline on 0300 123 1110. Sugar cravings in early recovery are common; you may say so only when CONTEXT includes that note.';
 
 /** NHS: up to 222 kcal in a pint of 5.2% lager, about 3 units. */
 export const NHS_PINT_52_KCAL = 222;
@@ -94,6 +94,14 @@ export type NutritionSettings = {
   goalAge: number | null;
   goalSex: NutritionSex | null;
   proteinTarget: number | null;
+  /** Grams a day. Null until they set one. */
+  carbTarget: number | null;
+  /** Grams a day. Null until they set one. */
+  fatTarget: number | null;
+  /** Body building only. Null until they choose a surplus or a cut. */
+  goalPhase: BuilderPhase | null;
+  /** Combat-sport weight class, kilograms. Null when they have not set one. */
+  weightClassKg: number | null;
   /** Recent Apple Health active energy, kcal a day. Null when it has not been read. */
   activityEnergyKcal: number | null;
   /** Goal name and a qualitative progress line. Off until switched on. */
@@ -175,6 +183,10 @@ export function defaultNutritionSettings(): NutritionSettings {
     goalAge: null,
     goalSex: null,
     proteinTarget: null,
+    carbTarget: null,
+    fatTarget: null,
+    goalPhase: null,
+    weightClassKg: null,
     activityEnergyKcal: null,
     shareGoal: false,
     wagonOn: false,
@@ -806,8 +818,14 @@ export function nutritionContextLines(input: {
   const goal = input.settings.goal;
   if (goal) {
     const weightKg = input.body?.weightKg ?? null;
-    const blocked = lossBlocked({ goal, weightKg, heightCm: input.body?.heightCm ?? null });
+    const blocked = lossBlocked({
+      goal,
+      weightKg,
+      heightCm: input.body?.heightCm ?? null,
+      phase: input.settings.goalPhase,
+    });
     lines.push(`Their goal is ${GOAL_LABEL[goal]}.`);
+    lines.push(...goalCoachLines(input.settings, input.soberDays != null));
     if (blocked) lines.push('A lower intake is not being suggested.');
     else if (!hide && input.settings.kcalTarget != null) {
       lines.push(`The calorie target they set is ${input.settings.kcalTarget} kcal. One gentle tip is enough. There is no failing a day.`);
@@ -836,7 +854,15 @@ export const NUTRITION_HEALTH_WRITES = [
   { identifier: 'HKQuantityTypeIdentifierDietaryWater', unit: 'mL', key: 'waterMl' },
 ] as const;
 
-export const NUTRITION_GOALS = ['lose_weight', 'lose_fat_build_muscle', 'maintain', 'increase'] as const;
+export const NUTRITION_GOALS = [
+  'lose_weight',
+  'lose_fat_build_muscle',
+  'maintain',
+  'increase',
+  'elite_runner',
+  'body_builder',
+  'elite_boxer',
+] as const;
 export type NutritionGoal = (typeof NUTRITION_GOALS)[number];
 export type NutritionSex = 'female' | 'male';
 
@@ -845,7 +871,35 @@ export const GOAL_LABEL: Record<NutritionGoal, string> = {
   lose_fat_build_muscle: 'Lose Fat & Build Muscle',
   maintain: 'Maintain Weight',
   increase: 'Increase Weight',
+  elite_runner: 'Elite Athlete (Lean Runner etc.)',
+  body_builder: 'Body Builder',
+  elite_boxer: 'Elite Athlete (Mid to Heavy Boxer etc.)',
 };
+
+/** One plain sentence under the goal chips. */
+export const GOAL_PLAIN: Record<NutritionGoal, string> = {
+  lose_weight: 'A modest drop in energy, with enough food to stay well.',
+  lose_fat_build_muscle: 'Protein at meals. The scales may stay still while the body changes.',
+  maintain: 'Keep the weight you have, with regular meals.',
+  increase: 'A little more food, to support a higher weight.',
+  elite_runner: 'Higher carbohydrate, moderate protein, and food around training. Lean body composition matters more than the scales.',
+  body_builder: 'A surplus for a lean bulk, or a cut phase. Protein stays high. Body fat and lean mass are the marks.',
+  elite_boxer: 'High protein and food for training. A weight class is optional, and this screen will not plan a rapid cut.',
+};
+
+export const BUILDER_PHASES = ['surplus', 'cut'] as const;
+export type BuilderPhase = (typeof BUILDER_PHASES)[number];
+
+export const PHASE_LABEL: Record<BuilderPhase, string> = {
+  surplus: 'Surplus / lean bulk',
+  cut: 'Cut phase',
+};
+
+export const COMPETITION_NOTE =
+  'A competition weigh-in is a decision for you, a coach, and a doctor. This app will not plan a rapid cut, skipped meals, or dehydration.';
+
+const LOW_FAT_HOLD =
+  'Body fat is already low on this screen. A lower intake is not being suggested. This is not a diagnosis.';
 
 export const LOW_BMI = 18.5;
 export const LOW_BMI_NOTE =
@@ -879,11 +933,50 @@ export function bmiValue(weightKg: number, heightCm: number): number | null {
   return Math.round((weightKg / (metres * metres)) * 10) / 10;
 }
 
-export function lossBlocked(input: { goal: NutritionGoal | null; weightKg: number | null; heightCm: number | null }): boolean {
-  if (input.goal !== 'lose_weight' && input.goal !== 'lose_fat_build_muscle') return false;
+export function isBuilderPhase(value: string): value is BuilderPhase {
+  return (BUILDER_PHASES as readonly string[]).includes(value);
+}
+
+export function lossBlocked(input: {
+  goal: NutritionGoal | null;
+  weightKg: number | null;
+  heightCm: number | null;
+  phase?: BuilderPhase | null;
+}): boolean {
+  const watchesFloor = input.goal === 'lose_weight'
+    || input.goal === 'lose_fat_build_muscle'
+    || input.goal === 'elite_runner'
+    || input.goal === 'elite_boxer'
+    || (input.goal === 'body_builder' && input.phase === 'cut');
+  if (!watchesFloor) return false;
   if (input.weightKg == null || input.heightCm == null) return false;
   const bmi = bmiValue(input.weightKg, input.heightCm);
   return bmi != null && bmi < LOW_BMI;
+}
+
+/** Coach lines for the three training goals. Sober recovery stays alcohol-free. */
+export function goalCoachLines(
+  settings: Pick<NutritionSettings, 'goal' | 'goalPhase' | 'weightClassKg'>,
+  sober: boolean,
+): string[] {
+  const goal = settings.goal;
+  if (goal !== 'elite_runner' && goal !== 'body_builder' && goal !== 'elite_boxer') return [];
+  const lines: string[] = [];
+  if (goal === 'elite_runner') {
+    lines.push('Elite endurance goal. Suggest carbohydrate around training and moderate protein, about 1.6 to 1.8 g per kg. Lean body composition matters more than the scales. Do not suggest an aggressive deficit.');
+  }
+  if (goal === 'body_builder') {
+    const phase = settings.goalPhase === 'cut'
+      ? 'They chose a cut phase. Keep any deficit modest, and do not suggest skipping meals.'
+      : 'They are on a surplus or lean bulk unless they chose a cut. Do not suggest an aggressive deficit.';
+    lines.push(`Body building goal. Protein sits around 2.0 to 2.4 g per kg. Talk about body fat and lean mass, not the scales alone. ${phase}`);
+  }
+  if (goal === 'elite_boxer') {
+    const klass = settings.weightClassKg != null ? ` They noted a weight class of ${settings.weightClassKg} kg.` : '';
+    lines.push(`Combat-sport goal. High protein and food for training.${klass} ${COMPETITION_NOTE}`);
+  }
+  if (sober) lines.push('They are on a sober path. Recovery tips stay alcohol-free: food, water, sleep, and a soft drink if they want one.');
+  return lines;
 }
 
 export function isBodyBuild(value: string): value is BodyBuild {
@@ -1100,20 +1193,69 @@ export function kcalFloor(bmr: number, sex: NutritionSex | null): number {
   return Math.max(Math.round(bmr), sexFloor);
 }
 
-/** Muscular uses 2 g per kg, inside 1.8 to 2.2. Other builds keep the goal rates. Capped at 700 g. */
-export function proteinGramsFor(goal: NutritionGoal, weightKg: number, build: BodyBuild | null = null): number {
-  const perKg = build === 'muscular' ? 2 : goal === 'lose_fat_build_muscle' ? 1.8 : goal === 'maintain' ? 1.2 : 1.6;
+/**
+ * Muscular uses 2 g per kg on the original goals, inside 1.8 to 2.2.
+ * Runner, body builder, and boxer keep their own rates. Capped at 700 g.
+ */
+export function proteinGramsFor(
+  goal: NutritionGoal,
+  weightKg: number,
+  build: BodyBuild | null = null,
+  phase: BuilderPhase | null = null,
+): number {
+  const perKg = goal === 'elite_runner'
+    ? (build === 'muscular' ? 1.8 : 1.7)
+    : goal === 'body_builder'
+      ? (phase === 'cut' ? 2.4 : 2.2)
+      : goal === 'elite_boxer'
+        ? (build === 'muscular' ? 2.2 : 2)
+        : build === 'muscular'
+          ? 2
+          : goal === 'lose_fat_build_muscle'
+            ? 1.8
+            : goal === 'maintain'
+              ? 1.2
+              : 1.6;
   return Math.min(700, Math.round(perKg * weightKg));
+}
+
+const ATHLETE_DEFICIT = 200;
+const LEAN_BULK = 300;
+
+function carbShareFor(goal: NutritionGoal): number {
+  if (goal === 'elite_runner') return 0.7;
+  if (goal === 'elite_boxer') return 0.58;
+  if (goal === 'body_builder') return 0.5;
+  return 0.55;
+}
+
+/** Protein is taken first. Fat stays at least a fifth of the calories. */
+export function macroGramsFor(kcal: number, proteinG: number, goal: NutritionGoal): { carbG: number; fatG: number } {
+  const remaining = Math.max(0, kcal - proteinG * 4);
+  let carbKcal = Math.round(remaining * carbShareFor(goal));
+  let fatKcal = remaining - carbKcal;
+  const fatFloor = Math.round(kcal * 0.2);
+  if (fatKcal < fatFloor) {
+    fatKcal = Math.min(fatFloor, remaining);
+    carbKcal = remaining - fatKcal;
+  }
+  return {
+    carbG: Math.min(1000, Math.max(0, Math.round(carbKcal / 4))),
+    fatG: Math.min(400, Math.max(0, Math.round(fatKcal / 9))),
+  };
 }
 
 export type GoalSuggestion = {
   kcal: number;
   proteinG: number;
+  carbG: number;
+  fatG: number;
   bmr: number;
   floor: number;
   bmi: number | null;
   blockedLoss: boolean;
   usedActiveEnergy: boolean;
+  basis: WeightAssessment['basis'];
   note: string;
 };
 
@@ -1181,9 +1323,18 @@ export function goalBodyForSuggestion(input: {
   return { weightKg, heightCm, weightFrom, heightFrom };
 }
 
-export function suggestedTargetsLine(input: { kcal: number; proteinG: number; hideCalories: boolean }): string {
-  if (input.hideCalories) return `Suggested ${input.proteinG} g protein.`;
-  return `Suggested ${input.kcal.toLocaleString('en-GB')} kcal and ${input.proteinG} g protein.`;
+export function suggestedTargetsLine(input: {
+  kcal: number;
+  proteinG: number;
+  hideCalories: boolean;
+  carbG?: number | null;
+  fatG?: number | null;
+}): string {
+  const macros = input.carbG != null && input.fatG != null
+    ? `, ${input.carbG} g carbohydrate, and ${input.fatG} g fat`
+    : '';
+  if (input.hideCalories) return `Suggested ${input.proteinG} g protein${macros}.`;
+  return `Suggested ${input.kcal.toLocaleString('en-GB')} kcal and ${input.proteinG} g protein${macros}.`;
 }
 
 export function suggestGoalTargets(input: {
@@ -1193,8 +1344,12 @@ export function suggestGoalTargets(input: {
   age: number | null;
   sex: NutritionSex | null;
   activeEnergyKcal: number | null;
-  /** Muscular raises protein only. The under-18.5 floor still blocks a deficit. */
+  /** Muscular raises protein only on the original goals. The under-18.5 floor still blocks a deficit. */
   build?: BodyBuild | null;
+  bodyFatPct?: number | null;
+  waistCm?: number | null;
+  phase?: BuilderPhase | null;
+  weightClassKg?: number | null;
 }): { ok: true; suggestion: GoalSuggestion } | { ok: false; message: string } {
   if (input.weightKg == null || input.heightCm == null) {
     return { ok: false, message: missingGoalBodyMessage(input) ?? 'Add your weight and height' };
@@ -1207,25 +1362,115 @@ export function suggestGoalTargets(input: {
   const active = input.activeEnergyKcal;
   const usedActiveEnergy = active != null && active >= 0 && active <= 2500;
   const tdee = usedActiveEnergy ? bmr + Math.round(active) : Math.round(bmr * MODERATE_ACTIVITY);
+  const assessment = assessWeight({
+    bodyFatPct: input.bodyFatPct ?? null,
+    waistCm: input.waistCm ?? null,
+    weightKg: input.weightKg,
+    heightCm: input.heightCm,
+    build: input.build ?? null,
+    sex: input.sex,
+  });
+  const lowFat = assessment.label === 'Low body fat';
+  const phase = input.phase === 'surplus' || input.phase === 'cut' ? input.phase : null;
+  const weightClass = input.weightClassKg != null && input.weightClassKg >= 40 && input.weightClassKg <= 200
+    ? input.weightClassKg
+    : null;
   const lossGoal = input.goal === 'lose_weight' || input.goal === 'lose_fat_build_muscle';
-  const blockedLoss = lossGoal && bmi != null && bmi < LOW_BMI;
+  const cutPhase = input.goal === 'body_builder' && phase === 'cut';
+  const athleteFloor = input.goal === 'elite_runner' || input.goal === 'elite_boxer' || cutPhase;
+  const blockedLoss = (lossGoal || athleteFloor) && bmi != null && bmi < LOW_BMI;
   let kcal = tdee;
+  let classCut = false;
   if (!blockedLoss && input.goal === 'lose_weight') kcal = tdee - MODEST_ADJUSTMENT;
   if (!blockedLoss && input.goal === 'lose_fat_build_muscle') kcal = tdee - RECOMP_ADJUSTMENT;
   if (input.goal === 'increase') kcal = tdee + MODEST_ADJUSTMENT;
+  if (input.goal === 'elite_runner') {
+    const room = !blockedLoss && !lowFat && (
+      assessment.label === 'Above the body-fat band' || assessment.label === 'Outside the healthy band'
+    );
+    if (room) kcal = tdee - ATHLETE_DEFICIT;
+  }
+  if (input.goal === 'body_builder') {
+    if (cutPhase && !blockedLoss && !lowFat) kcal = tdee - RECOMP_ADJUSTMENT;
+    else if (!cutPhase) kcal = tdee + LEAN_BULK;
+  }
+  if (input.goal === 'elite_boxer' && weightClass != null) {
+    if (weightClass > input.weightKg + 1) kcal = tdee + ATHLETE_DEFICIT;
+    else if (weightClass < input.weightKg - 0.5) {
+      classCut = true;
+      if (!blockedLoss && !lowFat) kcal = tdee - ATHLETE_DEFICIT;
+    }
+  }
   kcal = Math.max(kcal, floor);
-  const proteinG = proteinGramsFor(input.goal, input.weightKg, input.build ?? null);
+  const proteinG = proteinGramsFor(input.goal, input.weightKg, input.build ?? null, phase);
+  const macros = macroGramsFor(kcal, proteinG, input.goal);
   const activityLine = usedActiveEnergy
     ? 'It uses your recent Apple Health active energy.'
     : 'It assumes a moderately active day. Apple Health active energy will refine it when that reading is available.';
   const sexLine = input.sex == null ? ' Sex was not set, so the estimate sits between the female and male equations.' : '';
-  const liftLine = !blockedLoss && input.build === 'muscular'
+  const athlete = input.goal === 'elite_runner' || input.goal === 'body_builder' || input.goal === 'elite_boxer';
+  const liftLine = !blockedLoss && !athlete && input.build === 'muscular'
     ? ' Protein uses 2 g per kg, inside 1.8 to 2.2 g per kg, because you lift weights.'
+    : '';
+  const basisLine = assessment.basis === 'body_fat'
+    ? ' Body fat is used before waist or BMI.'
+    : assessment.basis === 'waist'
+      ? ' Waist-to-height is used before BMI.'
+      : assessment.basis === 'bmi'
+        ? ' Only BMI is available, so that is what this suggestion uses.'
+        : '';
+  const athleteLine = input.goal === 'elite_runner'
+    ? ` Protein is about ${input.build === 'muscular' ? '1.8' : '1.7'} g per kg, inside 1.6 to 1.8. Carbohydrate is the larger share, for fuelling around training.`
+    : input.goal === 'body_builder'
+      ? ` Protein is about ${phase === 'cut' ? '2.4' : '2.2'} g per kg, inside 2.0 to 2.4. ${phase === 'cut' ? 'This cut is 300 kcal under a maintenance estimate.' : phase === 'surplus' ? 'This is a lean bulk, 300 kcal over a maintenance estimate.' : 'A lean bulk is used until you choose a cut.'}`
+      : input.goal === 'elite_boxer'
+        ? ` Protein is about ${input.build === 'muscular' ? '2.2' : '2'} g per kg, for training.`
+        : '';
+  const safetyLine = !blockedLoss && lowFat && (input.goal === 'elite_runner' || cutPhase || classCut)
+    ? ` ${LOW_FAT_HOLD}`
+    : '';
+  const classLine = input.goal === 'elite_boxer'
+    ? ` ${COMPETITION_NOTE}`
     : '';
   const note = blockedLoss
     ? LOW_BMI_NOTE
-    : `A starting suggestion from the Mifflin-St Jeor equation. ${activityLine}${sexLine}${liftLine} Change it if it does not suit you. This is not medical advice.`;
-  return { ok: true, suggestion: { kcal, proteinG, bmr, floor, bmi, blockedLoss, usedActiveEnergy, note } };
+    : `A starting suggestion from the Mifflin-St Jeor equation. ${activityLine}${sexLine}${basisLine}${athleteLine}${liftLine}${safetyLine}${classLine} Change it if it does not suit you. This is not medical advice.`;
+  return {
+    ok: true,
+    suggestion: {
+      kcal,
+      proteinG,
+      carbG: macros.carbG,
+      fatG: macros.fatG,
+      bmr,
+      floor,
+      bmi,
+      blockedLoss,
+      usedActiveEnergy,
+      basis: assessment.basis,
+      note,
+    },
+  };
+}
+
+export function macroDayLine(input: {
+  carbsG: number;
+  carbTarget: number | null;
+  fatG: number;
+  fatTarget: number | null;
+}): string | null {
+  const parts: string[] = [];
+  if (input.carbTarget != null) {
+    parts.push(input.carbsG >= input.carbTarget
+      ? `Carbohydrate is at ${input.carbTarget} g.`
+      : `Carbohydrate is ${Math.round(input.carbsG)} g towards ${input.carbTarget} g.`);
+  }
+  if (input.fatTarget != null) {
+    parts.push(input.fatG >= input.fatTarget
+      ? `Fat is at ${input.fatTarget} g.`
+      : `Fat is ${Math.round(input.fatG)} g towards ${input.fatTarget} g.`);
+  }
+  return parts.length ? parts.join(' ') : null;
 }
 
 export function goalDayLine(input: {
@@ -1236,14 +1481,28 @@ export function goalDayLine(input: {
   proteinG: number;
   proteinTarget: number | null;
   blockedLoss: boolean;
+  carbsG?: number;
+  carbTarget?: number | null;
+  fatG?: number;
+  fatTarget?: number | null;
 }): string {
   const parts = [`Goal: ${GOAL_LABEL[input.goal]}.`];
   if (input.blockedLoss) parts.push('A lower intake is not being suggested.');
+  if (input.goal === 'elite_runner') parts.push('Fuelling around training matters more than one day on the scales.');
+  if (input.goal === 'body_builder') parts.push('Body fat and lean mass matter more than one day on the scales.');
+  if (input.goal === 'elite_boxer') parts.push('A weight class is not decided on this screen.');
   if (input.proteinTarget != null) {
     parts.push(input.proteinG >= input.proteinTarget
       ? `Protein is at ${input.proteinTarget} g.`
       : `Protein is ${input.proteinG} g towards ${input.proteinTarget} g.`);
   }
+  const macros = macroDayLine({
+    carbsG: input.carbsG ?? 0,
+    carbTarget: input.carbTarget ?? null,
+    fatG: input.fatG ?? 0,
+    fatTarget: input.fatTarget ?? null,
+  });
+  if (macros) parts.push(macros);
   if (!input.hideCalories && input.kcalTarget != null && !input.blockedLoss) {
     parts.push(input.kcal <= input.kcalTarget
       ? 'Energy is within the target you set.'
@@ -1285,6 +1544,15 @@ export function weightTrendLine(points: readonly { day: string; kg: number }[], 
   if (goal === 'lose_fat_build_muscle') {
     return 'For losing fat and building muscle, the scales can stay still while the body changes. Protein is the clearer daily mark.';
   }
+  if (goal === 'elite_runner') {
+    return 'For endurance training, a small change on the scales is not the mark. Body fat and how the sessions feel matter more.';
+  }
+  if (goal === 'body_builder') {
+    return 'For building muscle, body fat and lean mass matter more than the scales. The scales can stay still while the body changes.';
+  }
+  if (goal === 'elite_boxer') {
+    return 'A weight class is not a race. This screen will not treat a reading as a cut. Speak to a coach and a doctor before a competition weigh-in.';
+  }
   if (goal === 'lose_weight' && direction === 'down') return 'Weight is lower than the earlier reading. That is a gentle move, not a race.';
   if (goal === 'lose_weight' && direction === 'up') return 'Weight is higher than the earlier reading. Days vary. There is no failing a week.';
   if (goal === 'increase' && direction === 'up') return 'Weight is higher than the earlier reading.';
@@ -1293,6 +1561,52 @@ export function weightTrendLine(points: readonly { day: string; kg: number }[], 
   if (direction === 'down') return 'Weight is lower than the earlier reading.';
   if (direction === 'up') return 'Weight is higher than the earlier reading.';
   return 'Weight has stayed near the earlier reading.';
+}
+
+/** Body fat, then lean mass. Only the training goals ask for this line. */
+export function compositionTrendLine(rows: readonly BodyCompositionReading[], goal: NutritionGoal | null): string | null {
+  if (goal !== 'elite_runner' && goal !== 'body_builder' && goal !== 'elite_boxer') return null;
+  const ordered = [...rows].sort((left, right) => left.recordedOn.localeCompare(right.recordedOn) || left.createdAt.localeCompare(right.createdAt));
+  const fats = ordered.filter((row) => row.bodyFatPct != null);
+  const leans = ordered.filter((row) => row.leanMassKg != null);
+  const shift = (latest: number, earlier: number): 'down' | 'up' | 'steady' => {
+    const delta = latest - earlier;
+    if (delta <= -0.3) return 'down';
+    if (delta >= 0.3) return 'up';
+    return 'steady';
+  };
+  const parts: string[] = [];
+  if (fats.length >= 2) {
+    const earlier = fats[0]?.bodyFatPct;
+    const latest = fats[fats.length - 1]?.bodyFatPct;
+    if (earlier != null && latest != null) {
+      const moved = shift(latest, earlier);
+      parts.push(moved === 'down'
+        ? 'Body fat is lower than the earlier reading.'
+        : moved === 'up'
+          ? 'Body fat is higher than the earlier reading.'
+          : 'Body fat has stayed near the earlier reading.');
+    }
+  }
+  if (leans.length >= 2 && goal === 'body_builder') {
+    const earlier = leans[0]?.leanMassKg;
+    const latest = leans[leans.length - 1]?.leanMassKg;
+    if (earlier != null && latest != null) {
+      const moved = shift(latest, earlier);
+      parts.push(moved === 'up'
+        ? 'Lean mass is higher than the earlier reading.'
+        : moved === 'down'
+          ? 'Lean mass is lower than the earlier reading.'
+          : 'Lean mass has stayed near the earlier reading.');
+    }
+  }
+  if (!parts.length) {
+    if (goal === 'body_builder') return 'Log body fat and lean mass more than once and a trend can sit here.';
+    if (goal === 'elite_boxer') return 'Log body fat more than once and a trend can sit here. A weight class is not a race.';
+    return 'Log body fat more than once and a trend can sit here. The scales are not the only mark.';
+  }
+  if (goal === 'elite_boxer') parts.push('Speak to a coach and a doctor before a competition weigh-in.');
+  return parts.join(' ');
 }
 
 export function goalMealNote(input: {
@@ -1308,11 +1622,17 @@ export function goalMealNote(input: {
   const energy = input.hideCalories ? '' : `About ${totals.kcal.toLocaleString('en-GB')} kcal. `;
   const fit = input.goal === 'lose_fat_build_muscle'
     ? ' Protein at this meal helps the muscle side of the goal.'
-    : input.goal === 'increase'
-      ? ' A bit more at meals can support a higher weight.'
-      : input.goal === 'lose_weight'
-        ? ' One meal does not decide the day.'
-        : ' A steady meal still counts.';
+    : input.goal === 'elite_runner'
+      ? ' Carbohydrate at this meal helps the training.'
+      : input.goal === 'body_builder'
+        ? ' Protein at this meal supports the muscle work.'
+        : input.goal === 'elite_boxer'
+          ? ' A meal around training still counts. One meal does not make a weight class.'
+          : input.goal === 'increase'
+            ? ' A bit more at meals can support a higher weight.'
+            : input.goal === 'lose_weight'
+              ? ' One meal does not decide the day.'
+              : ' A steady meal still counts.';
   return `${energy}${protein}${fit}`.trim();
 }
 
@@ -1328,6 +1648,11 @@ export function goalShareLine(input: {
   if (input.blockedLoss) parts.push('A lower intake is not being suggested.');
   else if (input.proteinTarget != null && input.proteinG != null) {
     parts.push(input.proteinG >= input.proteinTarget ? 'Protein is at the target today.' : 'Protein is still short of the target today.');
+  }
+  if (input.goal === 'elite_runner' || input.goal === 'body_builder' || input.goal === 'elite_boxer') {
+    parts.push('Progress on this goal is about training, recovery, and body composition.');
+    if (input.hideCalories) parts.push('Calories are not part of this share.');
+    return parts.join(' ');
   }
   if (input.direction === 'down') parts.push('Weight has eased down across recent readings.');
   else if (input.direction === 'up') parts.push('Weight has risen across recent readings.');
@@ -1374,6 +1699,7 @@ function sharedGoalFrom(
         goal: settings.goal,
         weightKg: latest?.kg ?? null,
         heightCm: body?.heightCm ?? null,
+        phase: settings.goalPhase,
       }),
     }),
   };
