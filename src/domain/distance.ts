@@ -114,9 +114,10 @@ export function drinkFreeRing(free: number, goal: number): { centre: string; uni
 
 export function gratitudeWeekRing(count: number): { centre: string; unit: string; fill: number; status: string } {
   const fill = Math.max(0, Math.min(1, count / GRATITUDE_WEEK_AIM));
-  const centre = String(count);
+  const centre = String(Math.max(0, count));
+  const unit = count === 1 ? 'line' : 'lines';
   if (count <= 0) return { centre: '0', unit: 'lines', fill: 0, status: 'None this week' };
-  if (count >= GRATITUDE_WEEK_AIM) return { centre, unit: 'lines', fill: 1, status: "This week's aim is met" };
+  if (count >= GRATITUDE_WEEK_AIM) return { centre, unit, fill: 1, status: "This week's aim is met" };
   const left = GRATITUDE_WEEK_AIM - count;
-  return { centre, unit: 'lines', fill, status: left === 1 ? '1 line to go' : `${left} lines to go` };
+  return { centre, unit, fill, status: left === 1 ? '1 line to go' : `${left} lines to go` };
 }

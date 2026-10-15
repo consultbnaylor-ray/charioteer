@@ -210,7 +210,7 @@ export function CompareBars({
       </View>
     );
   }
-  const height = 64;
+  const height = 84;
   const targetY = target != null && target > 0 ? height - (Math.min(target, top) / top) * height : null;
   return (
     <View accessibilityElementsHidden style={{ gap: 4, alignSelf: 'stretch' }}>

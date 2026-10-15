@@ -50,7 +50,8 @@ describe('distance from a target or healthy range', () => {
 
     expect(drinkFreeRing(2, 5)).toMatchObject({ centre: '2', unit: 'of 5', status: '3 days to go', fill: 0.4 });
     expect(drinkFreeRing(5, 5).status).toBe("This week's aim is met");
-    expect(gratitudeWeekRing(3)).toMatchObject({ centre: '3', status: '4 lines to go' });
+    expect(gratitudeWeekRing(3)).toMatchObject({ centre: '3', unit: 'lines', status: '4 lines to go' });
+    expect(gratitudeWeekRing(1)).toMatchObject({ centre: '1', unit: 'line', status: '6 lines to go' });
     expect(gratitudeWeekRing(0).status).toBe('None this week');
     expect(gratitudeWeekRing(7).status).toBe("This week's aim is met");
   });
