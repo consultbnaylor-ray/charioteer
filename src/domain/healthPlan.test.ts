@@ -7,15 +7,20 @@ import {
   PLAN_DOCTOR,
   donePlanTexts,
   HEALTH_PLAN_PROMPT,
+  SOBER_SWAP,
+  SWAP_LOG_MORE,
   draftHealthPlan,
   guardHealthPlan,
   healthPlanFromStored,
+  healthPlanModelContext,
   mentionsOtherTracker,
+  mentionsUnsupportedSwap,
   presentSharedHealthPlan,
   togglePlanAction,
   type HealthPlan,
   type PlanInput,
 } from './healthPlan';
+import type { FoodLog } from './nutrition';
 import { defaultNutritionSettings } from './nutrition';
 import { defaultProfileSharing, projectPublicProfile, sharedReportItems, type ShareSource } from './profileSharing';
 
@@ -57,6 +62,35 @@ function joined(plan: ReturnType<typeof draftHealthPlan>): string {
   return JSON.stringify(plan);
 }
 
+function mealLog(name: string, note = ''): FoodLog {
+  return {
+    id: name,
+    userId: 'user',
+    eatenOn: '2026-10-15',
+    eatenAt: null,
+    meal: 'snack',
+    source: 'manual',
+    note,
+    items: [{
+      name,
+      kcal: 1,
+      proteinG: 0,
+      carbsG: 0,
+      sugarG: 0,
+      fibreG: 0,
+      unsaturatedG: 0,
+      saturatedG: 0,
+      transG: 0,
+      sodiumMg: 0,
+      processed: false,
+    }],
+    estimated: false,
+    portion: 1,
+    createdAt: '2026-10-15T09:00:00.000Z',
+    previewUrl: null,
+  };
+}
+
 describe('health plan writer', () => {
   it('writes a different plan for a sober hiker than for someone cutting weight', () => {
     const sober = draftHealthPlan(input({
@@ -79,7 +113,9 @@ describe('health plan writer', () => {
     const soberText = joined(sober).toLowerCase();
     const cuttingText = joined(cutting).toLowerCase();
     expect(soberText).not.toBe(cuttingText);
-    expect(soberText).toMatch(/sparkling water|soft drink|hike/);
+    expect(soberText).toMatch(/hike/);
+    expect(sober.nutrition.swaps.map((item) => item.text).join(' ')).not.toMatch(/drinking night|evening drink|bitters|crisp|replace any/i);
+    expect(sober.nutrition.swaps.some((item) => item.text === SOBER_SWAP)).toBe(true);
     expect(cuttingText).not.toMatch(/sparkling water/);
     expect(sober.fitness.sessions.some((item) => /rest/i.test(item.text))).toBe(true);
     expect(sober.focus.length).toBeGreaterThanOrEqual(1);
@@ -209,6 +245,68 @@ describe('health plan writer', () => {
     expect(joined(guarded)).toMatch(/coach/);
   });
 
+  it('does not invent a drink or a crisp swap for a sober user', () => {
+    const sober = input({
+      salt: 'sober-plain',
+      stage: 'stopped',
+      sobrietyStartedAt: '2026-06-01',
+      goal: null,
+      interestLabels: ['Hiking'],
+      limits: 'Shift work',
+      weeklyUnits: 28,
+      foodLogs: [mealLog('Porridge', 'Porridge and a banana')],
+      checkIns: [{ mood: 6, craving: 2, sleepHours: 7, note: 'Quiet evening', createdAt: '2026-10-14T21:00:00.000Z' }],
+    });
+    expect(mentionsUnsupportedSwap('Replace any evening drink with sparkling water, fresh lime and a dash of bitters.', sober)).toBe(true);
+    expect(mentionsUnsupportedSwap('Plan a short hike for the evening that used to be a drinking night.', sober)).toBe(true);
+    expect(mentionsUnsupportedSwap('Swap crisps for a small handful of almonds and berries.', sober)).toBe(true);
+    expect(mentionsUnsupportedSwap(SOBER_SWAP, sober)).toBe(false);
+    const plan = draftHealthPlan(sober);
+    const swaps = plan.nutrition.swaps.map((item) => item.text).join(' ');
+    expect(swaps).not.toMatch(/crisp|snack|drinking night|evening drink|bitters|used to pour|pub|replace any/i);
+    expect(plan.nutrition.swaps.map((item) => item.text)).toEqual([SOBER_SWAP]);
+    const guarded = guardHealthPlan({
+      ...plan,
+      nutrition: {
+        ...plan.nutrition,
+        swaps: [
+          { id: 's1', text: 'Replace any evening drink with sparkling water, fresh lime and a dash of bitters.', done: false },
+          { id: 's2', text: 'Plan a short hike for the evening that used to be a drinking night.', done: false },
+          { id: 's3', text: 'Swap crisps for a small handful of almonds and berries.', done: false },
+        ],
+      },
+    }, sober);
+    expect(guarded.nutrition.swaps.map((item) => item.text).join(' ')).not.toMatch(/crisp|drinking night|evening drink|bitters/i);
+    expect(guarded.nutrition.swaps.some((item) => item.text === SOBER_SWAP)).toBe(true);
+    const context = healthPlanModelContext(sober, plan);
+    expect(context.profile.stopped).toBe(true);
+    expect(context.profile.drinks).toBe(false);
+    expect(context.profile.goal).toBeNull();
+    expect(context.profile.sobrietyStartedAt).toBe('2026-06-01');
+    expect(context.profile.dietNotes).toBe('Shift work');
+    expect(context.loggedFood.join(' ')).toMatch(/Porridge/);
+    expect(context.loggedFood.join(' ')).not.toMatch(/crisp/i);
+    expect(context.loggedDrink).toEqual([]);
+    expect(context.checkIns[0]?.note).toBe('Quiet evening');
+    expect(HEALTH_PLAN_PROMPT).toMatch(/only allowed basis/);
+    expect(HEALTH_PLAN_PROMPT).toMatch(/Log a few more meals/);
+    expect(HEALTH_PLAN_PROMPT).not.toMatch(/alcohol-replacement/);
+    const named = input({ stage: 'exploring', sobrietyStartedAt: null, limits: "I don't drink", foodLogs: [] });
+    expect(draftHealthPlan(named).nutrition.swaps.map((item) => item.text)).toEqual([SOBER_SWAP]);
+    const crisps = input({
+      stage: 'stopped',
+      sobrietyStartedAt: '2026-06-01',
+      foodLogs: [mealLog('Crisps', 'Crisps after a short night')],
+    });
+    expect(mentionsUnsupportedSwap('Swap crisps for a small handful of almonds and berries.', crisps)).toBe(false);
+    expect(draftHealthPlan(crisps).nutrition.swaps.map((item) => item.text).join(' ')).toMatch(/crisps/i);
+    const cutting = draftHealthPlan(input({ stage: 'cutting_down', sobrietyStartedAt: null, foodLogs: [] }));
+    expect(cutting.nutrition.swaps.map((item) => item.text).join(' ')).toMatch(/drink/i);
+    expect(cutting.nutrition.swaps.map((item) => item.text).join(' ')).not.toMatch(/crisp|drinking night|bitters/i);
+    const blank = draftHealthPlan(input({ stage: 'unknown', sobrietyStartedAt: null, foodLogs: [], limits: '', reasons: [], weeklyUnits: 0 }));
+    expect(blank.nutrition.swaps.map((item) => item.text)).toEqual([SWAP_LOG_MORE]);
+  });
+
   it('drops a tip that sends logging to another app', () => {
     expect(mentionsOtherTracker('Track intake in the same app you use for steps so patterns show up fast.')).toBe(true);
     expect(mentionsOtherTracker('Log breakfast in MyFitnessPal.')).toBe(true);
@@ -283,6 +381,9 @@ describe('health plan wiring', () => {
     expect(fn).toContain('buildChatCompletionBody');
     expect(fn).toContain('THUMOS_CHAT');
     expect(fn).toContain('HEALTH_PLAN_PROMPT');
+    expect(fn).toContain('healthPlanModelContext');
+    expect(fn).toContain('weekly_units');
+    expect(fn).toContain('isMealSlot');
     expect(readFileSync('supabase/functions/_shared/healthPlan.ts', 'utf8')).toContain('not a diagnosis');
     expect(readFileSync('supabase/config.toml', 'utf8')).toContain('[functions.health-plan]');
   });

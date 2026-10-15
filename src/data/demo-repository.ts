@@ -1227,6 +1227,7 @@ export class DemoRepository implements Repository {
       interestLabels,
       reasons: account.reasons.map((reason) => reason.body),
       limits: limits.trim().slice(0, 280),
+      weeklyUnits: account.profile.weeklyUnits,
       goal: nutrition.goal,
       goalSex: nutrition.goalSex,
       goalAge: nutrition.goalAge,

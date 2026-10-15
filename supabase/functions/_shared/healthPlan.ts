@@ -51,6 +51,8 @@ export type PlanInput = {
   interestLabels: string[];
   reasons: string[];
   limits: string;
+  /** Usual weekly units. For someone who has stopped, this is what they used to drink, not a current habit. */
+  weeklyUnits?: number | null;
   goal: NutritionGoal | null;
   goalSex: NutritionSex | null;
   goalAge: number | null;
@@ -360,36 +362,198 @@ function nutritionHabits(facts: Derived): string[] {
   return [...chosen, LOG_IN_CHARIOTEER];
 }
 
+export const SWAP_LOG_MORE = 'Log a few more meals and Thumos will suggest swaps based on what you actually eat.';
+
+/** One sober line. It does not ask anyone to replace a drink. */
+export const SOBER_SWAP = 'Keep the evenings you already like. The sober days stay on Check-in.';
+
+const DOES_NOT_DRINK = /\b(don'?t drink|do not drink|not drinking|stopped drinking|never drink|teetotal|no alcohol|alcohol[ -]free|i am sober|i'm sober)\b/i;
+
+const ALCOHOL_WORD = /\b(alcohol|alcoholic|beers?|wines?|lagers?|ciders?|pints?|pubs?|spirits|bitters|booze|gin|vodka|whisk(?:y|ey)|rum|prosecco|champagne|alcopops?|cocktails?)\b/i;
+
+/** A line that treats a drink as something they still take and should replace. */
+const REPLACING_A_DRINK = /\b(replace\b[^.]{0,60}\bdrinks?|evening drinks?|drinking nights?|used to pour|used to be a drinking|dash of bitters|old pub|at the bar|first drink|alternate a drink|instead of (?:a |the |your |an )?drinks?)\b/i;
+
+/**
+ * The food being given up has to appear in logged meals or in something they wrote.
+ * Almonds and berries are the suggestion, so they are not in this list.
+ */
+const SWAP_FOODS: { mentioned: RegExp; evidence: RegExp }[] = [
+  { mentioned: /\bcrisps?\b/i, evidence: /\bcrisps?\b|\bsnacks?\b/i },
+  { mentioned: /\bchips\b/i, evidence: /\bchips\b|\bcrisps?\b|\bsnacks?\b/i },
+  { mentioned: /\bsnacks?\b/i, evidence: /\bsnacks?\b|\bcrisps?\b/i },
+  { mentioned: /\bchocolates?\b/i, evidence: /\bchocolates?\b/i },
+  { mentioned: /\bpastr(?:y|ies)\b/i, evidence: /\bpastr(?:y|ies)\b/i },
+  { mentioned: /\bbiscuits?\b/i, evidence: /\bbiscuits?\b/i },
+  { mentioned: /\bcookies?\b/i, evidence: /\bcookies?\b|\bbiscuits?\b/i },
+  { mentioned: /\b(?:pizza|burgers?|fries|takeaway|take-away)\b/i, evidence: /\b(?:pizza|burgers?|fries|takeaway|take-away)\b/i },
+  { mentioned: /\b(?:fizzy|soda|cola|coke)\b/i, evidence: /\b(?:fizzy|soda|cola|coke)\b/i },
+  { mentioned: /\b(?:sweets?|candy|cakes?|ice cream)\b/i, evidence: /\b(?:sweets?|candy|cakes?|ice cream)\b/i },
+];
+
+const FOOD_SUGGESTIONS: { evidence: RegExp; line: string }[] = [
+  { evidence: /\bcrisps?\b|\bsnacks?\b/i, line: 'Swap the crisps or snacks you logged for a small handful of almonds and berries.' },
+  { evidence: /\bchocolates?\b/i, line: 'Swap the chocolate you logged for fruit you already like.' },
+  { evidence: /\bpastr(?:y|ies)\b/i, line: 'Swap the pastry you logged for eggs or yoghurt.' },
+  { evidence: /\bbiscuits?\b|\bcookies?\b/i, line: 'Swap the biscuits you logged for fruit.' },
+  { evidence: /\b(?:pizza|burgers?|fries|takeaway|take-away)\b/i, line: 'Swap one logged takeaway for a meal you cook at home.' },
+  { evidence: /\b(?:fizzy|soda|cola|coke)\b/i, line: 'Swap the fizzy drink you logged for water.' },
+  { evidence: /\b(?:sweets?|candy|cakes?|ice cream)\b/i, line: 'Swap the sweet you logged for fruit.' },
+];
+
+/** Logged meals, check-in notes, limits, and reasons. Interests are not a food habit. */
+export function swapEvidenceText(input: PlanInput): string {
+  const logged = input.foodLogs.flatMap((log) => [log.note, ...log.items.map((item) => item.name)]);
+  const notes = input.checkIns.map((row) => row.note);
+  return [input.limits, ...input.reasons, ...notes, ...logged].join('\n');
+}
+
+/** Stopped, a sober date, or their own words that they do not drink. */
+export function abstainsFromDrink(input: PlanInput): boolean {
+  if (input.stage === 'stopped') return true;
+  if (input.sobrietyStartedAt) return true;
+  const stated = [input.limits, input.visionStatement, ...input.reasons, ...input.checkIns.map((row) => row.note)].join('\n');
+  return DOES_NOT_DRINK.test(stated);
+}
+
+function stillDrinks(input: PlanInput): boolean {
+  if (abstainsFromDrink(input)) return false;
+  if (input.stage === 'cutting_down' || input.stage === 'exploring' || input.stage === 'trying_to_stop') return true;
+  if ((input.weeklyUnits ?? 0) > 0) return true;
+  return ALCOHOL_WORD.test(swapEvidenceText(input));
+}
+
+function sameLine(left: string, right: string): boolean {
+  return left.trim().toLowerCase() === right.trim().toLowerCase();
+}
+
+/**
+ * True when a swap invents a drink to replace, or a food they have not logged or mentioned.
+ * The sober line and the log-more line stay.
+ */
+const INVENTED_DRINK = /\b(evening drinks?|drinking nights?|used to pour|used to be a drinking|dash of bitters|old pub|at the bar)\b/i;
+
+const SPECIFIC_ALCOHOL: { mentioned: RegExp; evidence: RegExp }[] = [
+  { mentioned: /\bbeers?\b/i, evidence: /\bbeers?\b|\blagers?\b|\bpints?\b/i },
+  { mentioned: /\bwines?\b/i, evidence: /\bwines?\b/i },
+  { mentioned: /\blagers?\b/i, evidence: /\blagers?\b|\bbeers?\b|\bpints?\b/i },
+  { mentioned: /\bciders?\b/i, evidence: /\bciders?\b/i },
+  { mentioned: /\bpints?\b/i, evidence: /\bpints?\b|\bbeers?\b|\blagers?\b/i },
+  { mentioned: /\b(?:gin|vodka|whisk(?:y|ey)|rum|prosecco|champagne|alcopops?|cocktails?|spirits|bitters)\b/i, evidence: /\b(?:gin|vodka|whisk(?:y|ey)|rum|prosecco|champagne|alcopops?|cocktails?|spirits|bitters)\b/i },
+];
+
+export function mentionsUnsupportedSwap(text: string, input: PlanInput): boolean {
+  const line = text.trim();
+  if (sameLine(line, SWAP_LOG_MORE) || sameLine(line, SOBER_SWAP)) return false;
+  const evidence = swapEvidenceText(input);
+  const replacing = REPLACING_A_DRINK.test(line) || ALCOHOL_WORD.test(line);
+  if (abstainsFromDrink(input) && replacing) return true;
+  if (INVENTED_DRINK.test(line) && !INVENTED_DRINK.test(evidence)) return true;
+  for (const food of SWAP_FOODS) {
+    if (food.mentioned.test(line) && !food.evidence.test(evidence)) return true;
+  }
+  for (const drink of SPECIFIC_ALCOHOL) {
+    if (drink.mentioned.test(line) && !drink.evidence.test(evidence)) return true;
+  }
+  const namesFood = SWAP_FOODS.some((food) => food.mentioned.test(line));
+  if (!namesFood && !replacing) return true;
+  if (replacing && !stillDrinks(input)) return true;
+  return false;
+}
+
+function loggedFoodAndDrink(input: PlanInput): { food: string[]; drink: string[] } {
+  const food: string[] = [];
+  const drink: string[] = [];
+  for (const log of input.foodLogs) {
+    for (const bit of [log.note, ...log.items.map((item) => item.name)]) {
+      const name = bit.replace(/\s+/g, ' ').trim();
+      if (!name) continue;
+      if (ALCOHOL_WORD.test(name)) drink.push(name);
+      else food.push(name);
+    }
+  }
+  return { food: [...new Set(food)].slice(0, 40), drink: [...new Set(drink)].slice(0, 20) };
+}
+
+export type HealthPlanModelContext = {
+  profile: {
+    goal: NutritionGoal | null;
+    stage: string;
+    sobrietyStartedAt: string | null;
+    drinks: boolean;
+    stopped: boolean;
+    dietNotes: string;
+  };
+  checkIns: PlanInput['checkIns'];
+  loggedFood: string[];
+  loggedDrink: string[];
+  interests: string[];
+  reasons: string[];
+  vision: string;
+  limits: string;
+  finished: string[];
+  body: string;
+  activity: string;
+  kcalTarget: number | null;
+  proteinTarget: number | null;
+};
+
+/** What the model may use. Swaps may use only profile, checkIns, loggedFood, and loggedDrink. */
+export function healthPlanModelContext(input: PlanInput, plan: HealthPlan): HealthPlanModelContext {
+  const logged = loggedFoodAndDrink(input);
+  return {
+    profile: {
+      goal: input.goal,
+      stage: input.stage,
+      sobrietyStartedAt: input.sobrietyStartedAt,
+      drinks: stillDrinks(input),
+      stopped: abstainsFromDrink(input),
+      dietNotes: input.limits.slice(0, 280),
+    },
+    checkIns: input.checkIns.slice(0, 8).map((row) => ({
+      mood: row.mood,
+      craving: row.craving,
+      sleepHours: row.sleepHours,
+      note: row.note.slice(0, 160),
+      createdAt: row.createdAt,
+    })),
+    loggedFood: logged.food,
+    loggedDrink: logged.drink,
+    interests: input.interestLabels,
+    reasons: input.reasons.map((item) => item.slice(0, 120)),
+    vision: input.visionStatement.slice(0, 160),
+    limits: input.limits.slice(0, 280),
+    finished: input.doneTexts.slice(0, 8),
+    body: plan.nutrition.targets,
+    activity: plan.fitness.intro,
+    kcalTarget: input.kcalTarget,
+    proteinTarget: input.proteinTarget,
+  };
+}
+
 function swaps(facts: Derived): string[] {
-  const sober = [
-    'At the hour you used to pour a drink, have sparkling water with citrus in a proper glass.',
-    'Order a soft drink you actually like when everyone else is at the bar.',
-    'Take a ten-minute walk at the old pub time, then eat the meal you planned.',
-    facts.hiking
-      ? 'Plan a short hike for the evening that used to be a drinking night.'
-      : 'Cook one meal you look forward to, and sit down for it.',
-  ];
-  const cutting = [
-    'Have the first drink later, and put food on the table before it.',
-    'Alternate a drink with sparkling water.',
-    'Pick a smaller measure than last week, and stop at the number you chose this morning.',
-  ];
-  const food = [
-    'Swap the pastry breakfast for eggs or yoghurt.',
-    'Keep nuts or cheese in the bag instead of the shop chocolate.',
-    'Build the plate around vegetables and protein, then add the carbohydrate you like.',
-    facts.gym ? 'After the gym, eat a meal you cooked rather than a second coffee.' : 'Keep the evening meal at home on two nights this week.',
-  ];
-  const athlete = isTrainingGoal(facts.input.goal);
-  const recovery = 'After training, eat the meal you planned and have sparkling water. A drink is not the recovery.';
-  const pool = facts.soberPath && athlete
-    ? [recovery, ...sober]
-    : facts.soberPath
-      ? sober
-      : facts.cutting
-        ? [...cutting, ...food.slice(0, 2)]
-        : food;
-  return take(facts.input.salt, 'swaps', pool, facts.soberPath ? 3 : 3, facts.done);
+  const evidence = swapEvidenceText(facts.input);
+  const lines: string[] = [];
+  const soberDone = facts.done.some((item) => sameLine(item, SOBER_SWAP));
+  if (abstainsFromDrink(facts.input)) {
+    if (!soberDone) lines.push(SOBER_SWAP);
+  } else if (stillDrinks(facts.input)) {
+    const named = evidence.match(/\b(beers?|lagers?|wines?|ciders?|pints?|gins?|vodkas?|whisk(?:y|ey)|rums?)\b/i);
+    if (named?.[1]) lines.push(`Swap the ${named[1].toLowerCase()} you logged for water or a soft drink you like.`);
+    else {
+      lines.push('Have the first drink later, and put food on the table before it.');
+      lines.push('Alternate a drink with water, and stop at the number you chose.');
+    }
+  }
+  for (const rule of FOOD_SUGGESTIONS) {
+    if (rule.evidence.test(evidence)) lines.push(rule.line);
+  }
+  const unique = [...new Set(lines)];
+  if (!unique.length) return [SWAP_LOG_MORE];
+  const sober = unique.filter((line) => sameLine(line, SOBER_SWAP));
+  const rest = unique.filter((line) => !sameLine(line, SOBER_SWAP));
+  if (!rest.length) return sober;
+  return [...sober, ...take(facts.input.salt, 'swaps', rest, 3, facts.done)].slice(0, 4);
 }
 
 function sessions(facts: Derived): string[] {
@@ -661,6 +825,26 @@ function cleanLine(text: string, facts: Derived): string | null {
   return line;
 }
 
+function mergeSwaps(incoming: PlanAction[], fallback: PlanAction[], facts: Derived): PlanAction[] {
+  const seen = new Set<string>();
+  const next: PlanAction[] = [];
+  for (const action of [...incoming, ...fallback]) {
+    const text = cleanLine(action.text, facts);
+    if (!text || mentionsUnsupportedSwap(text, facts.input) || seen.has(text.toLowerCase())) continue;
+    if (facts.done.some((done) => done.toLowerCase() === text.toLowerCase())) continue;
+    seen.add(text.toLowerCase());
+    next.push({ id: `swap-${next.length + 1}`, text, done: false });
+    if (next.length >= 4) break;
+  }
+  const real = next.filter((action) => !sameLine(action.text, SWAP_LOG_MORE));
+  const kept = (real.length ? real : next.filter((action) => sameLine(action.text, SWAP_LOG_MORE))).slice(0, 4);
+  if (kept.length) return kept;
+  const filler = abstainsFromDrink(facts.input) && !facts.done.some((item) => sameLine(item, SOBER_SWAP))
+    ? SOBER_SWAP
+    : SWAP_LOG_MORE;
+  return [{ id: 'swap-1', text: filler, done: false }];
+}
+
 function mergeActions(prefix: string, incoming: PlanAction[], fallback: PlanAction[], facts: Derived, min: number, max: number): PlanAction[] {
   const seen = new Set<string>();
   const next: PlanAction[] = [];
@@ -680,7 +864,7 @@ export function guardHealthPlan(plan: HealthPlan, input: PlanInput): HealthPlan 
   const local = written(facts, plan.updatedAt || input.now.toISOString());
   const focus = mergeActions('focus', plan.focus, local.focus, facts, 1, 3);
   const habits = mergeActions('habit', plan.nutrition.habits, local.nutrition.habits, facts, 3, 4);
-  const swapLines = mergeActions('swap', plan.nutrition.swaps, local.nutrition.swaps, facts, 2, 4);
+  const swapLines = mergeSwaps(plan.nutrition.swaps, local.nutrition.swaps, facts);
   let targets = cleanLine(plan.nutrition.targets, facts) ?? local.nutrition.targets;
   if ((facts.underweight || facts.blockedLoss) && !targets.includes('will not suggest eating less')) {
     targets = clip(`${targets} ${LOW_BMI_NOTE}`, 320);
@@ -700,7 +884,7 @@ export function guardHealthPlan(plan: HealthPlan, input: PlanInput): HealthPlan 
   }
   return {
     focus: focus.length ? focus : local.focus,
-    nutrition: { targets, habits: habits.length >= 3 ? habits : local.nutrition.habits, swaps: swapLines.length >= 2 ? swapLines : local.nutrition.swaps },
+    nutrition: { targets, habits: habits.length >= 3 ? habits : local.nutrition.habits, swaps: swapLines },
     fitness: { intro, sessions: sessionsOut.length ? sessionsOut : local.fitness.sessions },
     wellbeing: { habits: wellbeing.length ? wellbeing : local.wellbeing.habits },
     limits: clip(input.limits, 280),
@@ -824,7 +1008,10 @@ export const HEALTH_PLAN_PROMPT = [
   'Also give this week\'s focus as 1 to 3 items.',
   'Use the person\'s interests, reasons, and vision when they are present. Vary the sentences. Do not reuse a stock template.',
   'If a finished action is listed, do not repeat it. Move on to the next step.',
-  'For someone sober or trying to stop, include alcohol-replacement ideas in the swaps. Recovery after training stays alcohol-free.',
+  'Swaps may use only the profile, check-ins, and logged food and drink in the user message. That is the only allowed basis for a swap. Do not invent a food, a snack, or a drink. Do not turn an interest such as hiking into a drinking night.',
+  'If profile.stopped is true, or they say they do not drink, skip every drinking and alcohol swap. Do not tell them to replace a drink, an evening drink, a drinking night, or bitters. At most one sober-positive line, and it must not tell them to replace a drink. Recovery after training stays alcohol-free.',
+  'A food swap is allowed only when that food appears in loggedFood, loggedDrink, a check-in note, or dietNotes. Suggest crisps only when crisps or snacks appear there.',
+  'If nothing they logged or wrote supports a swap, return one swap whose text is exactly "Log a few more meals and Thumos will suggest swaps based on what you actually eat."',
   'If the goal is an elite runner, body builder, heavyweight boxer, or middleweight boxer, include training load, recovery, and fuelling around sessions. A heavyweight goal keeps size and power and does not use a deficit. A middleweight goal stays near a limit with a small change only.',
   'Do not suggest a rapid weight cut, dehydration, a sauna, or skipping meals to make weight. A competition weigh-in belongs with a coach and a doctor.',
   'No diagnosis, no medication, no medical advice. Do not tell anyone to eat less when the figures say the intake should not fall. Do not suggest stopping alcohol suddenly.',

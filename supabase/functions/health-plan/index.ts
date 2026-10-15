@@ -4,11 +4,12 @@ import {
   HEALTH_PLAN_PROMPT,
   draftHealthPlan,
   guardHealthPlan,
+  healthPlanModelContext,
   parseHealthPlanJson,
   type PlanInput,
 } from '../_shared/healthPlan.ts';
 import { json, preflight } from '../_shared/http.ts';
-import { isBodyBuild, isBuilderPhase, isNutritionGoal, isNutritionSex, type FoodItem, type FoodLog, type NutritionGoal } from '../_shared/nutrition.ts';
+import { isBodyBuild, isBuilderPhase, isMealSlot, isNutritionGoal, isNutritionSex, type FoodItem, type FoodLog, type NutritionGoal } from '../_shared/nutrition.ts';
 import { buildChatCompletionBody, THUMOS_CHAT } from '../_shared/thumos.ts';
 
 type Body = { limits?: string };
@@ -42,7 +43,7 @@ Deno.serve(async (req) => {
   if (userError || !userData.user) return json({ ok: false, code: 'unauthorised' }, 401);
   const userId = userData.user.id;
 
-  const profileRes = await userClient.from('profiles').select('display_name, stage, sobriety_started_at, height_cm, vision_statement, consent_ai').eq('id', userId).single();
+  const profileRes = await userClient.from('profiles').select('display_name, stage, sobriety_started_at, height_cm, vision_statement, consent_ai, weekly_units').eq('id', userId).single();
   if (profileRes.error || !profileRes.data) return json({ ok: false, code: 'profile', message: 'Finish setting up your account first.' }, 400);
   if (!profileRes.data.consent_ai) {
     return json({
@@ -77,14 +78,15 @@ Deno.serve(async (req) => {
     const items = Array.isArray(row.items) ? row.items as FoodItem[] : [];
     const eatenOn = textOf(row.eaten_on);
     if (!eatenOn) return [];
+    const meal = textOf(row.meal);
     return [{
       id: textOf(row.id) || eatenOn,
       userId,
       eatenOn,
       eatenAt: null,
-      meal: 'dinner',
+      meal: isMealSlot(meal) ? meal : 'dinner',
       source: 'manual',
-      note: '',
+      note: textOf(row.note).slice(0, 200),
       items,
       estimated: Boolean(row.estimated),
       previewUrl: null,
@@ -123,6 +125,7 @@ Deno.serve(async (req) => {
     interestLabels,
     reasons: ((reasonsRes.data ?? []) as { body?: string }[]).map((row) => textOf(row.body)).filter(Boolean).slice(0, 5),
     limits: limits || textOf(saved?.limits).slice(0, 280),
+    weeklyUnits: Number.isFinite(Number(profileRes.data.weekly_units)) ? Number(profileRes.data.weekly_units) : null,
     goal,
     goalSex: isNutritionSex(textOf(settings.goal_sex)) ? textOf(settings.goal_sex) as PlanInput['goalSex'] : null,
     goalAge: typeof settings.goal_age === 'number' ? settings.goal_age : null,
@@ -168,20 +171,7 @@ Deno.serve(async (req) => {
         model: Deno.env.get('THUMOS_MODEL') || THUMOS_CHAT.model,
         system: HEALTH_PLAN_PROMPT,
         history: [],
-        user: JSON.stringify({
-          stage: input.stage,
-          soberDays: input.sobrietyStartedAt,
-          goal: input.goal,
-          kcalTarget: input.kcalTarget,
-          proteinTarget: input.proteinTarget,
-          interests: input.interestLabels,
-          reasons: input.reasons.map((item) => item.slice(0, 120)),
-          vision: input.visionStatement.slice(0, 160),
-          limits: input.limits,
-          finished: input.doneTexts.slice(0, 8),
-          body: local.nutrition.targets,
-          activity: local.fitness.intro,
-        }),
+        user: JSON.stringify(healthPlanModelContext(input, local)),
         stream: false,
       })),
     });
