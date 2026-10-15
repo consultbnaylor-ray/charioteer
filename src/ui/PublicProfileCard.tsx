@@ -16,7 +16,7 @@ import { BIO_EXAMPLE, BIO_LIMIT, NEVER_SHARED, PHOTO_CAPTION_LIMIT, formatSoberS
 import { ShareOnProfile } from '@/ui/ShareOnProfile';
 import { progressPhotoLabel } from '@/domain/progressPhotos';
 import { formatGbp } from '@/domain/savings';
-import { SharedPhotoFrame } from '@/ui/CommunityProfile';
+import { SharedHealthPlanFacts, SharedPhotoFrame } from '@/ui/CommunityProfile';
 import { MemberAvatar } from '@/ui/MemberAvatar';
 import { OwnProfilePhotos, ProfilePhotoEditor } from '@/ui/ProfilePhotoEditor';
 import { COMMUNITY_CONSENT_BODY } from '@/ui/ConsentChoices';
@@ -133,6 +133,7 @@ export function PublicProfileCard() {
       heightCm: me.heightCm,
       weights: weightPointsFrom(snap.health),
     },
+    healthPlan: snap.healthPlan,
   }, snap.sharing);
   const interestLine = preview.interests.join(' · ');
   const avatar = (snap.profilePhotos ?? []).find((photo) => photo.role === 'avatar');
@@ -355,6 +356,7 @@ export function PublicProfileCard() {
             {preview.vision.map((item) => <T key={item.id}>{item.caption}</T>)}
             {preview.gratitudePhotos.map((photo) => photo.caption ? <T key={photo.id}>{photo.caption}</T> : null)}
             <SharedNutritionFacts meals={preview.foodDiary} calories={preview.calories} quality={preview.quality} progress={preview.progress} goal={preview.goal} />
+            <SharedHealthPlanFacts plan={preview.healthPlan} />
             {preview.wagon ? (
               <View style={{ gap: 4 }}>
                 <T>{WAGON_PUBLIC_LINE}</T>

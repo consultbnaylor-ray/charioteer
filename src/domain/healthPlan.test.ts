@@ -9,9 +9,13 @@ import {
   draftHealthPlan,
   guardHealthPlan,
   healthPlanFromStored,
+  presentSharedHealthPlan,
   togglePlanAction,
+  type HealthPlan,
   type PlanInput,
 } from './healthPlan';
+import { defaultNutritionSettings } from './nutrition';
+import { defaultProfileSharing, projectPublicProfile, sharedReportItems, type ShareSource } from './profileSharing';
 
 function input(partial: Partial<PlanInput> = {}): PlanInput {
   return {
@@ -205,10 +209,104 @@ describe('health plan wiring', () => {
     expect(page).toContain('Last updated');
     expect(page).toContain('buildStatsOverview');
     expect(page).toContain('StatTile');
-    expect(page).not.toContain('Share');
+    expect(page).toContain('Share on profile');
+    expect(page).toContain('PROFILE_HIDDEN_SHARE');
+    expect(page).toContain("pointerEvents={communityOn ? 'auto' : 'none'}");
+    expect(page).not.toContain('Share Whole Section');
+    expect(page).not.toContain('This stays on your account.');
     expect(TAB_SECTIONS.map((section) => section.label)).not.toContain('Health Plan');
     expect(TAB_SECTIONS).toHaveLength(6);
     expect(readFileSync('src/app/(main)/stats.tsx', 'utf8')).toContain("'/health-plan'");
     expect(readFileSync('src/app/(main)/profile.tsx', 'utf8')).toContain("'/health-plan'");
+  });
+
+  it('shares the headline, focus, and ticks, and leaves the figures behind', () => {
+    const plan: HealthPlan = {
+      focus: [
+        { id: 'a', text: 'Walk 30 minutes on Monday.', done: true },
+        { id: 'b', text: 'Recent days averaged 1,748 kcal and weight is 80 kg.', done: false },
+        { id: 'c', text: 'Body fat 15% and waist 84 cm stay off this line.', done: false },
+        { id: 'd', text: '80 kg', done: false },
+      ],
+      nutrition: {
+        targets: '2,200 kcal · BMI 25.2',
+        habits: [{ id: 'h', text: 'Secret habit with 90 g protein', done: false }],
+        swaps: [{ id: 's', text: 'Sparkling water', done: false }],
+      },
+      fitness: { intro: '8,689 steps', sessions: [{ id: 'gym', text: 'Short gym session', done: false }] },
+      wellbeing: { habits: [{ id: 'w', text: 'Sleep 7.4 hours', done: true }] },
+      limits: 'sore knee',
+      disclaimer: PLAN_DISCLAIMER,
+      updatedAt: '2026-10-15T09:00:00.000Z',
+    };
+    expect(presentSharedHealthPlan(plan, false, 'lose_weight')).toBeNull();
+    expect(presentSharedHealthPlan(null, true, 'lose_weight')).toBeNull();
+    const shared = presentSharedHealthPlan(plan, true, 'lose_weight');
+    expect(shared).toEqual({
+      headline: 'Lose Weight',
+      focus: [
+        { text: 'Walk 30 minutes on Monday.', done: true },
+        { text: 'Recent days averaged and weight is.', done: false },
+        { text: 'and stay off this line.', done: false },
+      ],
+      ticked: 1,
+      total: 3,
+    });
+    expect(presentSharedHealthPlan(plan, true, null)?.headline).toBe('Health plan');
+    const payload = JSON.stringify(shared);
+    expect(payload).not.toMatch(/kcal|kg|steps|body fat|bmi|waist|hours/i);
+    expect(payload).not.toContain('Secret habit');
+    expect(payload).not.toContain('Sparkling water');
+    expect(payload).not.toContain('Short gym');
+    expect(payload).not.toContain('Sleep');
+    expect(payload).toContain('30 minutes');
+
+    const source: ShareSource = {
+      now: new Date('2026-10-15T09:00:00.000Z'),
+      today: '2026-10-15',
+      displayName: 'Alex Hart',
+      bio: '',
+      town: null,
+      stage: 'stopped',
+      sobrietyStartedAt: null,
+      weeklySpendGbp: null,
+      weeklyUnits: null,
+      interestLabels: [],
+      reasons: [],
+      checkIns: [],
+      health: [],
+      gratitude: [],
+      vision: [],
+      progressPhotos: [],
+      pinnedQuoteId: null,
+      nutrition: { logs: [], settings: { ...defaultNutritionSettings(), goal: 'lose_weight', shareGoal: false } },
+      healthPlan: plan,
+    };
+    const hidden = projectPublicProfile(source, defaultProfileSharing());
+    expect(hidden.healthPlan).toBeNull();
+    expect(hidden.hiddenLabels).toContain('Health Plan');
+    expect(hidden.goal).toBeNull();
+    const shown = projectPublicProfile(source, { ...defaultProfileSharing(), healthPlan: true });
+    expect(shown.sharedLabels).toContain('Health Plan');
+    expect(shown.healthPlan?.headline).toBe('Lose Weight');
+    expect(shown.goal).toBeNull();
+    expect(sharedReportItems(shown).some((item) => item.label === 'Health plan' && item.summary.includes('1 of 3 ticked'))).toBe(true);
+
+    const sql = readFileSync('supabase/migrations/20261015150000_health_plan_share.sql', 'utf8');
+    expect(sql).toContain('shared_health_plan');
+    expect(sql).toContain('viewer_in_community()');
+    expect(sql).toContain("settings->>'healthPlan'");
+    expect(sql).toContain('hp.focus');
+    expect(sql.toLowerCase()).not.toContain('body_fat');
+    expect(sql.toLowerCase()).not.toContain('weight_kg');
+    expect(sql).not.toContain('nutrition.targets');
+    expect(sql).not.toMatch(/function public\.public_profile/);
+    expect(sql).toContain('revoke all on function public.shared_health_plan(uuid) from public, anon');
+    expect(sql).toContain('grant execute on function public.shared_health_plan(uuid) to authenticated');
+    const profile = readFileSync('src/ui/CommunityProfile.tsx', 'utf8');
+    expect(profile).toContain('sharedHealthPlan');
+    expect(profile).toContain('Only a private message or a report.');
+    expect(profile).toContain("reach('plan')");
+    expect(profile).not.toContain('Report this plan');
   });
 });

@@ -57,7 +57,7 @@ import {
   type FoodLog,
   type NutritionSettings,
 } from '@/domain/nutrition';
-import { donePlanTexts, draftHealthPlan, type HealthPlan } from '@/domain/healthPlan';
+import { donePlanTexts, draftHealthPlan, presentSharedHealthPlan, type HealthPlan } from '@/domain/healthPlan';
 import { createDemoDb, type DemoAccount, type DemoDb } from '@/data/demo-seed';
 import type {
   AppSnapshot,
@@ -181,6 +181,7 @@ function shareSource(account: DemoAccount, interests: DemoDb['interests'], now =
       heightCm: account.profile.heightCm,
       weights: weightPointsFrom(account.health),
     },
+    healthPlan: account.healthPlan ?? null,
     profilePhotos: sortProfilePhotos(account.profilePhotos ?? []).map((photo) => ({
       id: photo.id,
       role: photo.role === 'avatar' ? 'avatar' as const : 'gallery' as const,
@@ -1189,6 +1190,19 @@ export class DemoRepository implements Repository {
     const db = clone(this.db);
     db.accounts[account.profile.id].healthPlan = plan;
     this.commit(db);
+  }
+
+  async sharedHealthPlan(userId: string) {
+    const session = this.snapshot.session;
+    if (!session) return null;
+    const viewer = this.db.accounts[session.userId];
+    const other = this.db.accounts[userId];
+    if (!viewer || !other?.profile.onboardingComplete) return null;
+    if (blocked(this.db, session.userId, userId)) return null;
+    if (!other.profile.communityVisible || !other.profile.ageConfirmed18) return null;
+    if (session.userId !== userId && (!viewer.profile.communityVisible || !viewer.profile.ageConfirmed18)) return null;
+    const sharing = normalizeProfileSharing(other.sharing);
+    return presentSharedHealthPlan(other.healthPlan ?? null, sharing.healthPlan, other.nutrition?.goal ?? null);
   }
 
   async sharedNutrition(userId: string) {

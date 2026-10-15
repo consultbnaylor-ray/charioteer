@@ -626,3 +626,70 @@ export const HEALTH_PLAN_PROMPT = [
   'If a limit mentions injury, pain, pregnancy, or a health condition, keep the week easy and say to check with a doctor before big changes.',
   'Shape: {"focus":[{"id":"focus-1","text":""}],"nutrition":{"targets":"","habits":[{"id":"habit-1","text":""}],"swaps":[{"id":"swap-1","text":""}]},"fitness":{"intro":"","sessions":[{"id":"session-1","text":""}]},"wellbeing":{"habits":[{"id":"well-1","text":""}]}}',
 ].join(' ');
+
+/** What another member may see. Habits, swaps, sessions, targets, and limits stay off. */
+export type SharedHealthPlan = {
+  headline: string;
+  focus: { text: string; done: boolean }[];
+  ticked: number;
+  total: number;
+};
+
+const UNIT_FIGURE = /\b\d[\d,.]*\s*(?:kcal|kg|g|cm|steps|bpm|hours?)\b|\b\d[\d,.]*\s*%/gi;
+const NAMED_FIGURE = /\b(?:bmi|body fat|waist|lean mass)\b(?:\s*\d[\d,.]*)?|\b\d[\d,.]*\s*(?:bmi|body fat|waist|lean mass)\b/gi;
+
+/** Drops unit-bearing readings. A bare plan such as "30 minutes" stays. */
+export function redactPlanLine(text: string): string {
+  const cleaned = text
+    .replace(UNIT_FIGURE, ' ')
+    .replace(NAMED_FIGURE, ' ')
+    .replace(/\s+/g, ' ')
+    .replace(/\s+([,.;:])/g, '$1')
+    .trim();
+  if (!/[\p{L}\p{N}]/u.test(cleaned)) return '';
+  return cleaned;
+}
+
+/**
+ * Headline goal, this week's focus, and the tick count.
+ * Null when the switch is off or there is no plan. Nutrition targets are never copied.
+ */
+export function presentSharedHealthPlan(
+  plan: HealthPlan | null | undefined,
+  shared: boolean,
+  goal: NutritionGoal | null | undefined,
+): SharedHealthPlan | null {
+  if (!shared || !plan) return null;
+  const focus = plan.focus.flatMap((action) => {
+    const text = redactPlanLine(action.text);
+    if (!text) return [];
+    return [{ text, done: action.done }];
+  });
+  return {
+    headline: goal && GOAL_LABEL[goal] ? GOAL_LABEL[goal] : 'Health plan',
+    focus,
+    ticked: focus.filter((action) => action.done).length,
+    total: focus.length,
+  };
+}
+
+/** Reads the shared_health_plan payload. Anything else is hidden. */
+export function parseSharedHealthPlan(value: unknown): SharedHealthPlan | null {
+  if (!value || typeof value !== 'object') return null;
+  const row = value as Record<string, unknown>;
+  const headline = typeof row.headline === 'string' ? row.headline.trim() : '';
+  const focus = (Array.isArray(row.focus) ? row.focus : []).flatMap((item) => {
+    if (!item || typeof item !== 'object') return [];
+    const action = item as Record<string, unknown>;
+    const text = typeof action.text === 'string' ? action.text.trim() : '';
+    if (!text) return [];
+    return [{ text, done: action.done === true }];
+  });
+  if (!headline && focus.length === 0) return null;
+  return {
+    headline: headline || 'Health plan',
+    focus,
+    ticked: focus.filter((action) => action.done).length,
+    total: focus.length,
+  };
+}

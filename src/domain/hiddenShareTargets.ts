@@ -26,6 +26,7 @@ export const HIDDEN_SHARE_SECTIONS = {
   'Progress and streaks': 'nutritionProgress',
   'A hard moment': 'hardMoment',
   'Nutrition goal': 'nutritionGoal',
+  'Health Plan': 'healthPlan',
 } as const;
 
 export type HiddenShareLabel = keyof typeof HIDDEN_SHARE_SECTIONS;

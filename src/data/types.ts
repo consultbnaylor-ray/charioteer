@@ -2,7 +2,7 @@ import type { StoredConsent } from '@/domain/consents';
 import type { BodyCompositionReading, BodyCompositionSource, FoodItem, FoodLog, MealSlot, MealSource, NutritionDay, NutritionSettings, SharedNutritionView } from '@/domain/nutrition';
 import type { ProfileSharing, PublicProfileView } from '@/domain/profileSharing';
 import type { GratitudeCategory, GratitudeEntry, GratitudeReflect } from '@/domain/gratitude';
-import type { HealthPlan } from '@/domain/healthPlan';
+import type { HealthPlan, SharedHealthPlan } from '@/domain/healthPlan';
 import type { Stage } from '@/domain/stage';
 import type { ThumosMode } from '@/domain/thumos';
 import type { VisionArea, VisionItem, VisionSize } from '@/domain/visionBoard';
@@ -464,6 +464,8 @@ export interface Repository {
   }): Promise<void>;
   /** Shared nutrition items. Each field is null unless that switch is on. Null when the profile is hidden or blocked. */
   sharedNutrition(userId: string): Promise<SharedNutritionView | null>;
+  /** Headline, focus, and tick count. Null when the switch is off, the profile is hidden, or the viewer is outside Community. */
+  sharedHealthPlan(userId: string): Promise<SharedHealthPlan | null>;
   /** Read lines for this person's chats. Empty when none are stored yet. */
   loadChatReads(): Promise<Record<string, string>>;
   /** Moves one chat's read line forward. An older time is ignored. */

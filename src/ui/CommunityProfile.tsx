@@ -6,6 +6,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useRepository, useSnapshot } from '@/data';
 import type { ProgressPhoto } from '@/data/types';
 import { privateMessageFailure, shownError } from '@/domain/errors';
+import type { SharedHealthPlan } from '@/domain/healthPlan';
 import { WAGON_PUBLIC_LINE, type SharedNutritionView } from '@/domain/nutrition';
 import { SharedNutritionFacts } from '@/ui/NutritionShare';
 import { PROFILE_LOAD_ERROR, formatSoberShare, sharedReportItems, shownList, type PublicProfileView, type SharedReportItem } from '@/domain/profileSharing';
@@ -325,6 +326,21 @@ export function CommunityProfile({ userId, name }: { userId: string; name: strin
   );
 }
 
+/** Headline, focus lines, and tick count. The rest of the plan is not here. */
+export function SharedHealthPlanFacts({ plan }: { plan: SharedHealthPlan | null }) {
+  if (!plan) return null;
+  return (
+    <View style={{ gap: 4 }}>
+      <T variant="label">Health plan</T>
+      <T>{plan.headline}</T>
+      {plan.focus.map((action, index) => (
+        <T key={`${index}:${action.text}`} style={{ textDecorationLine: action.done ? 'line-through' : 'none' }}>{action.text}</T>
+      ))}
+      <T variant="muted">{`${plan.ticked} of ${plan.total} ticked`}</T>
+    </View>
+  );
+}
+
 function SharedProfileFacts({ userId, name }: { userId: string; name: string }) {
   const repo = useRepository();
   const router = useRouter();
@@ -332,13 +348,14 @@ function SharedProfileFacts({ userId, name }: { userId: string; name: string }) 
   const [load, setLoad] = useState<'loading' | 'hidden' | 'ready' | 'error'>('loading');
   const [attempt, setAttempt] = useState(0);
   const [nutrition, setNutrition] = useState<SharedNutritionView | null>(null);
+  const [planShare, setPlanShare] = useState<SharedHealthPlan | null>(null);
   const [asked, setAsked] = useState(false);
   const [draft, setDraft] = useState<ReportDraft | null>(null);
   const [reasonText, setReasonText] = useState('');
   const [sent, setSent] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
   const [messageError, setMessageError] = useState<string | null>(null);
-  const [messageAt, setMessageAt] = useState<'diary' | 'wagon' | null>(null);
+  const [messageAt, setMessageAt] = useState<'diary' | 'wagon' | 'plan' | null>(null);
   const [reportError, setReportError] = useState<string | null>(null);
   const [photoUrls, setPhotoUrls] = useState<Record<string, string>>({});
   const busy = useRef(false);
@@ -358,6 +375,9 @@ function SharedProfileFacts({ userId, name }: { userId: string; name: string }) 
     });
     void repo.sharedNutrition(userId).then((next) => {
       if (live) setNutrition(next);
+    });
+    void repo.sharedHealthPlan(userId).then((next) => {
+      if (live) setPlanShare(next);
     });
     return () => {
       live = false;
@@ -390,23 +410,26 @@ function SharedProfileFacts({ userId, name }: { userId: string; name: string }) 
     );
   }
   if (load === 'hidden' || !view) return <T variant="muted">This profile is hidden.</T>;
-  const shown: PublicProfileView = nutrition
-    ? {
-      ...view,
-      foodDiary: nutrition.meals,
-      calories: nutrition.calories,
-      quality: nutrition.quality,
-      progress: nutrition.progress,
-      wagon: nutrition.wagon,
-      goal: nutrition.goal,
-    }
-    : view;
+  const shown: PublicProfileView = {
+    ...view,
+    ...(nutrition
+      ? {
+        foodDiary: nutrition.meals,
+        calories: nutrition.calories,
+        quality: nutrition.quality,
+        progress: nutrition.progress,
+        wagon: nutrition.wagon,
+        goal: nutrition.goal,
+      }
+      : {}),
+    healthPlan: planShare,
+  };
   const items = sharedReportItems(shown);
   const profilePhotos = shownList(view.profilePhotos);
   const avatar = profilePhotos.find((photo) => photo.role === 'avatar');
   const gallery = profilePhotos.filter((photo) => photo.role === 'gallery');
 
-  async function reach(from: 'diary' | 'wagon') {
+  async function reach(from: 'diary' | 'wagon' | 'plan') {
     if (busy.current) return;
     busy.current = true;
     setMessageError(null);
@@ -523,8 +546,16 @@ function SharedProfileFacts({ userId, name }: { userId: string; name: string }) 
       {shown.foodDiary ? (
         <View style={{ gap: 4 }}>
           <T variant="muted">Only a private message or a report.</T>
-          <Button label="Message privately" tone="quiet" pending={pending} pendingLabel="Opening..." onPress={() => void reach('diary')} />
+          <Button label="Message privately" tone="quiet" pending={pending && messageAt === 'diary'} pendingLabel="Opening..." onPress={() => void reach('diary')} />
           {messageAt === 'diary' ? <MessageFailure message={messageError} pending={pending} onRetry={() => void reach('diary')} /> : null}
+        </View>
+      ) : null}
+      {shown.healthPlan ? (
+        <View style={{ gap: 4 }}>
+          <SharedHealthPlanFacts plan={shown.healthPlan} />
+          <T variant="muted">Only a private message or a report.</T>
+          <Button label="Message privately" tone="quiet" pending={pending && messageAt === 'plan'} pendingLabel="Opening..." onPress={() => void reach('plan')} />
+          {messageAt === 'plan' ? <MessageFailure message={messageError} pending={pending} onRetry={() => void reach('plan')} /> : null}
         </View>
       ) : null}
       {shown.wagon ? (
@@ -532,7 +563,7 @@ function SharedProfileFacts({ userId, name }: { userId: string; name: string }) 
           <T>{WAGON_PUBLIC_LINE}</T>
           {shown.wagon.note ? <T variant="muted">{shown.wagon.note}</T> : null}
           {asked ? <T variant="muted">A private request is with them. You can message once you have both agreed.</T> : null}
-          <Button label="Reach out" pending={pending} pendingLabel="Opening..." onPress={() => void reach('wagon')} />
+          <Button label="Reach out" pending={pending && messageAt === 'wagon'} pendingLabel="Opening..." onPress={() => void reach('wagon')} />
           {messageAt === 'wagon' ? <MessageFailure message={messageError} pending={pending} onRetry={() => void reach('wagon')} /> : null}
         </View>
       ) : null}

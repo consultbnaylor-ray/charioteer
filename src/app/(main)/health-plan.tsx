@@ -5,7 +5,9 @@ import { useRepository, useSnapshot } from '@/data';
 import { formatUkCompactWhen } from '@/domain/dates';
 import { shownError } from '@/domain/errors';
 import { PLAN_DISCLAIMER, togglePlanAction, type PlanAction } from '@/domain/healthPlan';
+import { PROFILE_HIDDEN_SHARE, communitySharingOn } from '@/domain/profileSharing';
 import { buildStatsOverview } from '@/domain/statsOverview';
+import { ShareOnProfile } from '@/ui/ShareOnProfile';
 import { StatTile } from '@/ui/StatTile';
 import { usePendingPress } from '@/ui/pendingAction';
 import { useAppTheme } from '@/ui/theme';
@@ -45,7 +47,6 @@ function ActionRow({ action, disabled, onToggle }: { action: PlanAction; disable
 export default function HealthPlanScreen() {
   const snap = useSnapshot();
   const repo = useRepository();
-  const theme = useAppTheme();
   const { width } = useWindowDimensions();
   const { run, isPending } = usePendingPress();
   const profile = snap.profile;
@@ -64,6 +65,7 @@ export default function HealthPlanScreen() {
   }, [plan?.updatedAt]);
 
   if (!profile) return null;
+  const communityOn = communitySharingOn(profile);
 
   const tiles = buildStatsOverview({
     now: new Date(),
@@ -173,7 +175,25 @@ export default function HealthPlanScreen() {
       <Button label="Refresh plan" pending={refreshing} pendingLabel="Writing..." onPress={refresh} />
       {plan ? <T variant="muted">{`Last updated ${formatUkCompactWhen(plan.updatedAt)}`}</T> : null}
       <T variant="muted">{plan?.disclaimer || PLAN_DISCLAIMER}</T>
-      <T variant="muted" style={{ fontFamily: theme.font.body }}>This stays on your account.</T>
+      <View
+        accessibilityElementsHidden={!communityOn}
+        importantForAccessibility={communityOn ? 'auto' : 'no-hide-descendants'}
+        pointerEvents={communityOn ? 'auto' : 'none'}
+        style={{ opacity: communityOn ? 1 : 0.45 }}
+      >
+        <ShareOnProfile
+          label="Share on profile"
+          item="Health plan"
+          sensitive
+          on={snap.sharing.healthPlan}
+          apply={(sharing, selected) => ({ ...sharing, healthPlan: selected })}
+        />
+      </View>
+      <T variant="muted">
+        {communityOn
+          ? "Other members see the goal, this week's focus, and how many are ticked. Weight, body figures, and the rest stay off."
+          : PROFILE_HIDDEN_SHARE}
+      </T>
     </Screen>
   );
 }

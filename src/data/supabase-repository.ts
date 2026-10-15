@@ -70,7 +70,7 @@ import {
   type NutritionDay,
   type NutritionSettings,
 } from '@/domain/nutrition';
-import { PLAN_DISCLAIMER, healthPlanFromStored, type HealthPlan } from '@/domain/healthPlan';
+import { PLAN_DISCLAIMER, healthPlanFromStored, parseSharedHealthPlan, type HealthPlan } from '@/domain/healthPlan';
 import { randomId } from '@/domain/id';
 import { chatInsertFilter, messageFromRealtime, withIncomingMessage } from '@/domain/liveChat';
 import { isDuplicateWrite, mergeOutgoingMessages, shareInflight } from '@/domain/writes';
@@ -2307,6 +2307,12 @@ export class SupabaseRepository implements Repository {
     const { data, error } = await this.client.rpc('shared_nutrition', { target: userId });
     if (error || data == null) return null;
     return parseSharedNutrition(data);
+  }
+
+  async sharedHealthPlan(userId: string) {
+    const { data, error } = await this.client.rpc('shared_health_plan', { target: userId });
+    if (error || data == null) return null;
+    return parseSharedHealthPlan(data);
   }
 
   async exportData(): Promise<Record<string, unknown>> {

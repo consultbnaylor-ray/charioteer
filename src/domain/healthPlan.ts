@@ -7,8 +7,12 @@ export {
   guardHealthPlan,
   healthPlanFromStored,
   parseHealthPlanJson,
+  parseSharedHealthPlan,
+  presentSharedHealthPlan,
+  redactPlanLine,
   togglePlanAction,
   type HealthPlan,
   type PlanAction,
   type PlanInput,
+  type SharedHealthPlan,
 } from '../../supabase/functions/_shared/healthPlan.ts';

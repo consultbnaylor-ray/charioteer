@@ -229,6 +229,7 @@ describe('public profile projection', () => {
     const before = defaultProfileSharing();
     expect(sensitiveTurnedOn(before, { ...before, town: true })).toBe(false);
     expect(sensitiveTurnedOn(before, { ...before, soberDays: true })).toBe(true);
+    expect(sensitiveTurnedOn(before, { ...before, healthPlan: true })).toBe(true);
     expect(sensitiveTurnedOn(before, { ...before, moneySaved: true })).toBe(true);
     expect(sensitiveTurnedOn(before, toggleHealthKind(before, 'sleep_hours', true))).toBe(true);
     expect(sensitiveTurnedOn(before, toggleShareId(before, 'gratitudeIds', 'g1', true))).toBe(false);
@@ -251,6 +252,8 @@ describe('public profile projection', () => {
     expect(parsed.healthKinds).toEqual(['steps']);
     expect(parsed.reasonBodies).toEqual(['A']);
     expect(parsed.shareNewGratitude).toBe(false);
+    expect(parsed.healthPlan).toBe(false);
+    expect(defaultProfileSharing().healthPlan).toBe(false);
     expect(defaultProfileSharing().shareNewGratitude).toBe(false);
     expect(normalizeProfileSharing({ shareNewGratitude: true }).shareNewGratitude).toBe(true);
   });
@@ -422,6 +425,7 @@ describe('public_profile database function', () => {
       'src/ui/VisionBoard.tsx',
       'src/app/(main)/profile.tsx',
       'src/ui/PublicProfileCard.tsx',
+      'src/app/(main)/health-plan.tsx',
     ];
     const found = filesUnder('src')
       .filter((path) => !/\.test\.tsx?$/.test(path))

@@ -8,7 +8,8 @@ import { VISION_SAMPLE_PHOTOS } from '@/data/visionSamples';
 import { isoDay } from '@/domain/dates';
 import { defaultNutritionSettings, estimateFromText } from '@/domain/nutrition';
 import type { BodyCompositionReading } from '@/domain/nutrition';
-import { draftHealthPlan, type HealthPlan } from '@/domain/healthPlan';
+import { PLAN_DISCLAIMER, draftHealthPlan, type HealthPlan } from '@/domain/healthPlan';
+import { defaultProfileSharing } from '@/domain/profileSharing';
 import type { GratitudeEntry } from '@/domain/gratitude';
 import { gratitudeStoragePath } from '@/domain/gratitudePhotos';
 import { planProgressPhoto, progressStoragePath } from '@/domain/progressPhotos';
@@ -54,7 +55,7 @@ export type DemoAccount = {
   waterDays?: import('@/domain/nutrition').NutritionDay[];
   /** Absent on older sample data. Private body-fat, lean-mass, and waist history. */
   bodyComposition?: BodyCompositionReading[];
-  /** Absent on older sample data. Private plan. Never shared. */
+  /** Absent on older sample data. Private until Share on profile is on. */
   healthPlan?: HealthPlan | null;
 };
 
@@ -456,7 +457,7 @@ export function createDemoDb(now = new Date()): DemoDb {
     shareCalories: false,
     shareQuality: false,
     shareProgress: false,
-    goal: null,
+    goal: 'maintain',
     goalAge: null,
     goalSex: null,
     proteinTarget: null,
@@ -467,6 +468,23 @@ export function createDemoDb(now = new Date()): DemoDb {
     wagonVisible: true,
     build: null,
     updatedAt: null,
+  };
+  jordan.sharing = { ...defaultProfileSharing(), healthPlan: true, sensitiveConsentAt: '2026-10-01T09:00:00.000Z' };
+  jordan.healthPlan = {
+    focus: [
+      { id: 'focus-1', text: 'Walk 30 minutes on Monday.', done: true },
+      { id: 'focus-2', text: 'Keep three meals at the same times.', done: false },
+    ],
+    nutrition: {
+      targets: '2,200 kcal',
+      habits: [{ id: 'habit-1', text: 'Put protein on the lunch you already eat.', done: false }],
+      swaps: [],
+    },
+    fitness: { intro: '8,689 steps', sessions: [] },
+    wellbeing: { habits: [{ id: 'well-1', text: 'Sleep about 7.4 hours.', done: false }] },
+    limits: '',
+    disclaimer: PLAN_DISCLAIMER,
+    updatedAt: now.toISOString(),
   };
   jordan.foodLogs = [{
     id: '11111111-1111-4111-8111-111111111113',

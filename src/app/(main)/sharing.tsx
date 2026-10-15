@@ -298,12 +298,23 @@ export default function WhatIShare() {
           apply={(settings, selected) => ({ ...settings, shareGoal: selected })}
         />
       </ShareAnchor>
+      <ShareAnchor id="healthPlan" title="Health Plan">
+        <ShareOnProfile
+          label="Share on profile"
+          item="Health plan"
+          sensitive
+          on={snap.sharing.healthPlan}
+          apply={(sharing, selected) => ({ ...sharing, healthPlan: selected })}
+        />
+        <T variant="muted">Other members see the goal, this week's focus, and how many are ticked. Weight, body figures, and the rest stay off.</T>
+      </ShareAnchor>
       <T variant="label">On the section screen</T>
       <T>Days sober is on Today. Mood streak is on Check-in. Each health average, reason, gratitude line, and vision caption also has its switch under that box.</T>
       <View style={{ gap: 8 }}>
         <Button label="Today" tone="quiet" onPress={() => router.push('/home' as never)} />
         <Button label="Health Stats" tone="quiet" onPress={() => router.push('/health' as never)} />
         <Button label="Nutrition" tone="quiet" onPress={() => router.push('/nutrition' as never)} />
+        <Button label="Health Plan" tone="quiet" onPress={() => router.push('/health-plan' as never)} />
         <Button label="You" tone="quiet" onPress={() => router.push('/profile' as never)} />
         <Button label="Gratitude Diary" tone="quiet" onPress={() => router.push('/gratitude' as never)} />
         <Button label="Vision Board" tone="quiet" onPress={() => router.push('/vision' as never)} />

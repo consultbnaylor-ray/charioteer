@@ -5,6 +5,7 @@ import { MILESTONES, milestoneReached } from './milestones';
 import { savingsFromTypicalWeek } from './savings';
 import { soberElapsed } from './sober';
 import { quoteById, type QuoteSchool } from './stoicQuotes';
+import { parseSharedHealthPlan, presentSharedHealthPlan, type HealthPlan, type SharedHealthPlan } from './healthPlan';
 import { presentSharedNutrition, type FoodLog, type NutritionSettings, type SharedGoal, type SharedQuality } from './nutrition';
 import { STAGE_LABELS, isStage } from './stage';
 
@@ -80,6 +81,11 @@ export type ProfileSharing = {
    * Share Whole Section does not turn this on. Missing means off.
    */
   shareNewGratitude: boolean;
+  /**
+   * Headline, this week's focus, and how many focus items are ticked.
+   * Weight, body figures, and the rest of the plan stay off. Missing means off.
+   */
+  healthPlan: boolean;
   /** Set the first time a sobriety or health item is shared. */
   sensitiveConsentAt: string | null;
 };
@@ -101,6 +107,7 @@ export function defaultProfileSharing(): ProfileSharing {
     visionIds: [],
     pinnedQuote: false,
     shareNewGratitude: false,
+    healthPlan: false,
     sensitiveConsentAt: null,
   };
 }
@@ -152,6 +159,7 @@ export function normalizeProfileSharing(value: unknown): ProfileSharing {
     visionIds: stringList(raw.visionIds),
     pinnedQuote: flag(raw.pinnedQuote),
     shareNewGratitude: flag(raw.shareNewGratitude),
+    healthPlan: flag(raw.healthPlan),
     sensitiveConsentAt: consent,
   };
 }
@@ -173,7 +181,7 @@ export function shareFreshGratitude(
   return { ...sharing, gratitudeIds, gratitudePhotoIds };
 }
 
-const SENSITIVE_FLAGS = ['stage', 'soberDays', 'milestones', 'moneySaved', 'unitsAvoided', 'moodStreak'] as const;
+const SENSITIVE_FLAGS = ['stage', 'soberDays', 'milestones', 'moneySaved', 'unitsAvoided', 'moodStreak', 'healthPlan'] as const;
 
 /** True when this change newly shares sobriety or health information. */
 export function sensitiveTurnedOn(before: ProfileSharing, after: ProfileSharing): boolean {
@@ -231,6 +239,8 @@ export type ShareSource = {
     heightCm?: number | null;
     weights?: { day: string; kg: number }[];
   };
+  /** The owner's plan. Only the headline and focus ticks are copied when the switch is on. */
+  healthPlan?: HealthPlan | null;
 };
 
 export type PublicProfileView = {
@@ -270,6 +280,8 @@ export type PublicProfileView = {
   wagon: { note: string } | null;
   /** Goal name and a qualitative progress line. Null when that switch is off. */
   goal: SharedGoal | null;
+  /** Headline, focus lines, and tick counts. Null when that switch is off or there is no plan. */
+  healthPlan: SharedHealthPlan | null;
 };
 
 /** Consecutive check-in days. The number only. Mood, craving, sleep, and notes stay off. */
@@ -444,6 +456,9 @@ export function projectPublicProfile(source: ShareSource, sharing: ProfileSharin
   else hiddenLabels.push('A hard moment');
   if (goal) sharedLabels.push('Nutrition goal');
   else hiddenLabels.push('Nutrition goal');
+  const healthPlan = presentSharedHealthPlan(source.healthPlan, settings.healthPlan, source.nutrition?.settings.goal ?? null);
+  if (healthPlan) sharedLabels.push('Health Plan');
+  else hiddenLabels.push('Health Plan');
 
   return {
     displayName: source.displayName,
@@ -472,6 +487,7 @@ export function projectPublicProfile(source: ShareSource, sharing: ProfileSharin
     progress,
     wagon,
     goal,
+    healthPlan,
   };
 }
 
@@ -573,6 +589,7 @@ export function parsePublicProfile(value: unknown): PublicProfileView | null {
     progress: typeof raw.progress === 'string' && raw.progress.trim() ? raw.progress : null,
     wagon: wagonLine(raw.wagon),
     goal: goalFrom(raw.goal),
+    healthPlan: parseSharedHealthPlan(raw.healthPlan),
   };
 }
 
@@ -650,5 +667,11 @@ export function sharedReportItems(view: PublicProfileView): SharedReportItem[] {
   if (typeof view.progress === 'string' && view.progress) items.push({ label: 'Progress and streaks', summary: view.progress });
   if (view.wagon) items.push({ label: 'A hard moment', summary: typeof view.wagon.note === 'string' && view.wagon.note ? view.wagon.note : 'Having a hard moment.' });
   if (view.goal && typeof view.goal.line === 'string') items.push({ label: 'Nutrition goal', summary: view.goal.line });
+  if (view.healthPlan) {
+    items.push({
+      label: 'Health plan',
+      summary: `${view.healthPlan.headline}. ${view.healthPlan.ticked} of ${view.healthPlan.total} ticked`,
+    });
+  }
   return items;
 }
