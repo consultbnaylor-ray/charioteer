@@ -286,6 +286,7 @@ export function RangeTrack({
   surface,
   mark = false,
   spoken = false,
+  showStatus = true,
 }: {
   value: number;
   zoneLow: number;
@@ -298,6 +299,8 @@ export function RangeTrack({
   surface: 'tile' | 'card';
   mark?: boolean;
   spoken?: boolean;
+  /** Hide the status line when a ring above the track already says it. */
+  showStatus?: boolean;
 }) {
   const theme = useAppTheme();
   const motion = useChartMotion();
@@ -312,7 +315,7 @@ export function RangeTrack({
   return (
     <View
       accessibilityElementsHidden={!spoken}
-      accessibilityLabel={spoken ? `${zoneCaption}. ${status}` : undefined}
+      accessibilityLabel={spoken ? (showStatus ? `${zoneCaption}. ${status}` : zoneCaption) : undefined}
       style={{ gap: 6, alignSelf: 'stretch' }}
     >
       <View style={{ height: 22, justifyContent: 'flex-end' }}>
@@ -350,7 +353,7 @@ export function RangeTrack({
       </View>
       <T style={{ fontSize: 13 * theme.scale, lineHeight: 18 * theme.scale, color: surface === 'tile' ? markerInk : theme.colors.muted }}>{zoneCaption}</T>
       {mark ? <SignalRow tone={tone} /> : null}
-      <T style={{ color: surface === 'tile' ? markerInk : theme.colors.ink }}>{status}</T>
+      {showStatus ? <T style={{ color: surface === 'tile' ? markerInk : theme.colors.ink }}>{status}</T> : null}
     </View>
   );
 }

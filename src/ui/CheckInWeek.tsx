@@ -1,6 +1,8 @@
 import { View } from 'react-native';
 
 import { formatMoodAverage, weeklyMoodAverage, type CheckInDay } from '@/domain/checkIns';
+import { checkInWeekFigure, countSplit, moodCravingBars, moodFigure } from '@/domain/measureFigures';
+import { MeasureBarsView, MeasureRingView, MeasureSplitView } from '@/ui/MeasuredFigure';
 import { useAppTheme } from '@/ui/theme';
 import { T } from '@/ui/ui';
 
@@ -9,9 +11,21 @@ const BAR_MAX = 56;
 export function CheckInWeek({ days }: { days: CheckInDay[] }) {
   const empty = days.every((day) => day.mood == null && day.craving == null);
   const moodAverage = weeklyMoodAverage(days);
+  const logged = days.filter((day) => day.mood != null).length;
+  const latest = [...days].reverse().find((day) => day.mood != null);
   return (
     <View style={{ gap: 12 }}>
       <T variant="label">Recent check-ins</T>
+      <MeasureRingView label="Check-ins" ring={checkInWeekFigure(logged)} />
+      <MeasureSplitView label="This week" split={countSplit(logged, 7, 'logged days', 'open days')} />
+      {latest?.mood != null ? (
+        <>
+          <MeasureRingView label="Mood" ring={moodFigure(latest.mood)} />
+          {latest.craving != null ? (
+            <MeasureBarsView label="Mood and craving" bars={moodCravingBars(latest.mood, latest.craving)} />
+          ) : null}
+        </>
+      ) : null}
       {empty ? (
         <T variant="muted">No check-ins in the last 7 days.</T>
       ) : (

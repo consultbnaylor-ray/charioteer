@@ -59,6 +59,7 @@ import {
   type NutritionGoal,
   type NutritionSex,
 } from '@/domain/nutrition';
+import { healthFigure } from '@/domain/measureFigures';
 import { savingsFromTypicalWeek } from '@/domain/savings';
 import { soberElapsed } from '@/domain/sober';
 import { weightReadingKg } from '@/domain/weightEntry';
@@ -67,6 +68,7 @@ import { writeDayToAppleHealth } from '@/health/writeNutrition';
 import { BodyCompositionCard } from '@/ui/BodyComposition';
 import { MealEdit } from '@/ui/MealEdit';
 import { TodayMeals } from '@/ui/TodayMeals';
+import { HealthFigureView } from '@/ui/MeasuredFigure';
 import { NutritionBoard, WaterMeter, WeightTrendChart } from '@/ui/NutritionCharts';
 import { FatShareBar, NutritionShareSummary, NutritionShareSwitch, WagonFlag } from '@/ui/NutritionShare';
 import { NutritionSectionShare } from '@/ui/SectionShare';
@@ -1064,6 +1066,14 @@ export default function Nutrition() {
       <ScrollTarget id="weight">
       <Card>
         <T variant="label">Weight</T>
+        <HealthFigureView
+          figure={healthFigure(
+            'weight_kg',
+            weights.map((point) => ({ day: point.day, value: point.kg })),
+            today,
+            { classKg: settings.goal === 'elite_middle_boxer' ? settings.weightClassKg : null },
+          )}
+        />
         {weights.length === 0 ? <T variant="muted">Add a weight on Health Stats and it will show here.</T> : (
           <>
             {weights.map((point) => (

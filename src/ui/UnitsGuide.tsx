@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { Pressable, View } from 'react-native';
 
 import { weeklyUnitsGuidance } from '@/domain/guidance';
+import { drinkCountBars, unitsWeekFigure } from '@/domain/measureFigures';
 import {
   CALORIE_BASIS,
   DRINK_SOURCES,
@@ -17,6 +18,7 @@ import {
 } from '@/domain/units';
 import type { Stage } from '@/domain/stage';
 import { GuidanceRange } from '@/ui/GuidanceRange';
+import { MeasureBarsView, MeasureRingView } from '@/ui/MeasuredFigure';
 import { useAppTheme } from '@/ui/theme';
 import { T } from '@/ui/ui';
 
@@ -52,6 +54,7 @@ export function UnitsGuide({
     : currentUnits.trim() && Number.isFinite(typedUnits) && typedUnits >= 0
       ? typedUnits
       : null;
+  const drinks = drinkCountBars(NHS_DRINKS.map((drink) => ({ key: drink.id, label: drink.name, count: counts[drink.id] ?? 0 })));
 
   function setCount(id: string, next: number) {
     const updated = { ...counts, [id]: Math.max(0, next) };
@@ -92,6 +95,7 @@ export function UnitsGuide({
           </View>
         );
       })}
+      {drinks ? <MeasureBarsView label="Drinks" bars={drinks} /> : null}
       {estimate.hasDrinks ? (
         <View accessibilityRole="summary" style={{ gap: 8 }}>
           <T>{estimate.headline}</T>
@@ -115,7 +119,12 @@ export function UnitsGuide({
       ) : (
         <T variant="muted">{unitsForBand != null ? 'Add drinks to see calories and a breakdown. The guidance below uses the units already entered.' : 'Add drinks to see units, calories, and how the week compares with 14 units.'}</T>
       )}
-      {unitsForBand != null ? <GuidanceRange guidance={weeklyUnitsGuidance(unitsForBand, stage)} /> : null}
+      {unitsForBand != null ? (
+        <>
+          <MeasureRingView label="Units this week" ring={unitsWeekFigure(unitsForBand, stage ?? null)} />
+          <GuidanceRange guidance={weeklyUnitsGuidance(unitsForBand, stage)} />
+        </>
+      ) : null}
       <T>The UK low-risk guideline is no more than {UK_LOW_RISK_WEEKLY_UNITS} units a week.</T>
       <T variant="muted">A unit is 10ml of pure alcohol. Strength (ABV) × volume (ml) ÷ 1,000.</T>
       <SourceLink label="NHS: Calculating alcohol units" url={NHS_UNITS_URL} />

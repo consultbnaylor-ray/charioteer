@@ -26,7 +26,9 @@ import {
   type BodyEntrySource,
 } from '@/domain/nutrition';
 import { readAppleHealthBody } from '@/health/sync';
+import { rangedRing } from '@/domain/measureFigures';
 import { RangeTrack } from '@/ui/DistanceCharts';
+import { MeasureRingView } from '@/ui/MeasuredFigure';
 import { DateField } from '@/ui/DateField';
 import { usePendingPress } from '@/ui/pendingAction';
 import { Button, Card, Choice, Field, QuietNote, T, playSavedHaptic } from '@/ui/ui';
@@ -170,34 +172,62 @@ export function BodyCompositionCard() {
       <BuildChoices />
       {assessment.plain ? <T>{assessment.plain}</T> : <T variant="muted">{BMI_ONLY_NOTE}</T>}
       {fatRange && figures.bodyFatPct != null ? (
-        <RangeTrack
-          value={figures.bodyFatPct}
-          zoneLow={fatRange.zoneLow}
-          zoneHigh={fatRange.zoneHigh}
-          scaleMin={fatRange.scaleMin}
-          scaleMax={fatRange.scaleMax}
-          status={fatRange.status}
-          zoneCaption={bodyFatZoneCaption(fatRange)}
-          tone={fatRange.within ? 'good' : 'watch'}
-          surface="card"
-          mark
-          spoken
-        />
+        <>
+          <MeasureRingView
+            label="Body fat"
+            detail={bodyFatZoneCaption(fatRange)}
+            ring={rangedRing(
+              String(Math.round(figures.bodyFatPct * 10) / 10),
+              '%',
+              figures.bodyFatPct,
+              fatRange.zoneLow,
+              fatRange.zoneHigh,
+              fatRange.within,
+              fatRange.status,
+            )}
+          />
+          <RangeTrack
+            value={figures.bodyFatPct}
+            zoneLow={fatRange.zoneLow}
+            zoneHigh={fatRange.zoneHigh}
+            scaleMin={fatRange.scaleMin}
+            scaleMax={fatRange.scaleMax}
+            status={fatRange.status}
+            zoneCaption={bodyFatZoneCaption(fatRange)}
+            tone={fatRange.within ? 'good' : 'watch'}
+            surface="card"
+            showStatus={false}
+          />
+        </>
       ) : null}
       {waistFigure && ratio != null ? (
-        <RangeTrack
-          value={ratio}
-          zoneLow={waistFigure.zoneLow}
-          zoneHigh={waistFigure.zoneHigh}
-          scaleMin={waistFigure.scaleMin}
-          scaleMax={waistFigure.scaleMax}
-          status={waistFigure.status}
-          zoneCaption={WAIST_ZONE_CAPTION}
-          tone={waistFigure.within ? 'good' : 'watch'}
-          surface="card"
-          mark
-          spoken
-        />
+        <>
+          <MeasureRingView
+            label="Waist to height"
+            detail={WAIST_ZONE_CAPTION}
+            ring={rangedRing(
+              ratio.toFixed(2),
+              'ratio',
+              ratio,
+              waistFigure.zoneLow,
+              waistFigure.zoneHigh,
+              waistFigure.within,
+              waistFigure.status,
+            )}
+          />
+          <RangeTrack
+            value={ratio}
+            zoneLow={waistFigure.zoneLow}
+            zoneHigh={waistFigure.zoneHigh}
+            scaleMin={waistFigure.scaleMin}
+            scaleMax={waistFigure.scaleMax}
+            status={waistFigure.status}
+            zoneCaption={WAIST_ZONE_CAPTION}
+            tone={waistFigure.within ? 'good' : 'watch'}
+            surface="card"
+            showStatus={false}
+          />
+        </>
       ) : null}
       {ratio != null && assessment.basis !== 'waist' ? (
         <T>{ratio < 0.5

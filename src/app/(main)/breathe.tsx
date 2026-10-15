@@ -17,6 +17,8 @@ import {
   type BreathTiming,
 } from '@/domain/breathPause';
 import { BREATH_EXERCISES, URGE_SURF_STEPS, type BreathExercise, type BreathPhase } from '@/features/exercises';
+import { breathPhaseFigure, urgeStepFigure } from '@/domain/measureFigures';
+import { MeasureRingView } from '@/ui/MeasuredFigure';
 import { Button, Card, Choice, Screen, T } from '@/ui/ui';
 import { useAppTheme } from '@/ui/theme';
 
@@ -207,6 +209,10 @@ function BreathRunner({ exercise }: { exercise: BreathExercise }) {
     <Card>
       <T variant="title">{exercise.title}</T>
       <T variant="muted">{exercise.summary}</T>
+      <MeasureRingView
+        label="This breath"
+        ring={breathPhaseFigure(started ? left : phase.seconds, phase.seconds, started ? phase.label : 'Ready')}
+      />
       <View style={{ alignItems: 'center', paddingVertical: 18 }}>
         <Animated.View style={{ width: size, height: size, borderRadius: 999, backgroundColor: theme.colors.ink, alignItems: 'center', justifyContent: 'center' }}>
           <T variant="title" style={{ color: theme.colors.bg, textAlign: 'center' }}>{started ? phase.label : 'Ready'}</T>
@@ -241,6 +247,7 @@ function UrgeSurf() {
   const current = URGE_SURF_STEPS[step];
   return (
     <Card>
+      <MeasureRingView label="Urge surfing" ring={urgeStepFigure(step + 1, URGE_SURF_STEPS.length, current.title)} />
       <T variant="label">Step {step + 1} of {URGE_SURF_STEPS.length}</T>
       <T variant="title">{current.title}</T>
       <T>{current.body}</T>

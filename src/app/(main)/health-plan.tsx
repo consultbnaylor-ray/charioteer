@@ -5,9 +5,11 @@ import { useRepository, useSnapshot } from '@/data';
 import { formatUkCompactWhen } from '@/domain/dates';
 import { shownError } from '@/domain/errors';
 import { PLAN_DISCLAIMER, togglePlanAction, type PlanAction } from '@/domain/healthPlan';
+import { planProgressFigure } from '@/domain/measureFigures';
 import { PROFILE_HIDDEN_SHARE, communitySharingOn } from '@/domain/profileSharing';
 import { buildStatsOverview } from '@/domain/statsOverview';
 import { ShareOnProfile } from '@/ui/ShareOnProfile';
+import { MeasureBarsView, MeasureRingView } from '@/ui/MeasuredFigure';
 import { StatTile } from '@/ui/StatTile';
 import { usePendingPress } from '@/ui/pendingAction';
 import { useAppTheme } from '@/ui/theme';
@@ -84,6 +86,15 @@ export default function HealthPlanScreen() {
     gratitude: snap.gratitude,
   }).filter((tile) => PROGRESS_IDS.includes(tile.id));
   const columns = width >= 720 ? 3 : 2;
+  const progress = plan
+    ? planProgressFigure([
+      { key: 'focus', label: 'Focus', done: plan.focus.filter((item) => item.done).length, total: plan.focus.length },
+      { key: 'habits', label: 'Habits', done: plan.nutrition.habits.filter((item) => item.done).length, total: plan.nutrition.habits.length },
+      { key: 'swaps', label: 'Swaps', done: plan.nutrition.swaps.filter((item) => item.done).length, total: plan.nutrition.swaps.length },
+      { key: 'fitness', label: 'Fitness', done: plan.fitness.sessions.filter((item) => item.done).length, total: plan.fitness.sessions.length },
+      { key: 'wellbeing', label: 'Wellbeing', done: plan.wellbeing.habits.filter((item) => item.done).length, total: plan.wellbeing.habits.length },
+    ])
+    : null;
 
   function tick(id: string) {
     if (!planRef.current || refreshing) return;
@@ -157,6 +168,12 @@ export default function HealthPlanScreen() {
           <T>Thumos has not written a plan yet. Refresh to use the figures you already keep.</T>
         </Card>
       )}
+      {progress ? (
+        <Card>
+          <MeasureRingView label="Plan progress" ring={progress.ring} />
+          <MeasureBarsView label="By section" bars={progress.bars} />
+        </Card>
+      ) : null}
       <T variant="label">Progress</T>
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
         {tiles.map((item) => (

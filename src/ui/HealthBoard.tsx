@@ -20,8 +20,10 @@ import {
 import { healthShareLabel, toggleHealthKind } from '@/domain/profileSharing';
 import { useSnapshot } from '@/data';
 import { weightReadingKg, type WeightReadingDraft, type WeightUnitMode } from '@/domain/weightEntry';
+import { healthFigure } from '@/domain/measureFigures';
 import { DateField } from '@/ui/DateField';
 import { GuidanceRange } from '@/ui/GuidanceRange';
+import { HealthFigureView } from '@/ui/MeasuredFigure';
 import { HrvExplainer } from '@/ui/HrvExplainer';
 import { ShareOnProfile } from '@/ui/ShareOnProfile';
 import { HealthChart } from '@/ui/HealthChart';
@@ -185,9 +187,13 @@ function MetricCard({
     });
   }
 
+  const classKg = kind === 'weight_kg' && snap.nutrition.goal === 'elite_middle_boxer' ? snap.nutrition.weightClassKg : null;
+  const figure = healthFigure(kind, history, today, { classKg });
+
   return (
     <Card>
       <T variant="label">{label}</T>
+      <HealthFigureView figure={figure} />
       {latest ? (
         <T variant="title">
           {formatHealthValue(kind, latest.value)}
