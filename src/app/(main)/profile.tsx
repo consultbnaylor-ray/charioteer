@@ -18,6 +18,7 @@ import { profileDetailsDirty, type ProfileFormValues } from '@/domain/profileFor
 import { InterestChip } from '@/ui/InterestChip';
 import { MemberAvatar } from '@/ui/MemberAvatar';
 import { BuildChoices } from '@/ui/BodyComposition';
+import { GoalChoices } from '@/ui/GoalChoices';
 import { TrainingScheduleCard } from '@/ui/TrainingSchedule';
 import { WagonFlag } from '@/ui/NutritionShare';
 import { YouSectionShare } from '@/ui/SectionShare';
@@ -295,6 +296,7 @@ export default function Profile() {
         <T variant="label">Build</T>
         <BuildChoices />
       </Card>
+      <GoalChoices />
       <WagonFlag />
       <T variant="label">Your details</T>
       <T>Name, where you are, the sober date, your usual week, reasons, interests, town, and consents. A new sober date is a correction, not a relapse.</T>

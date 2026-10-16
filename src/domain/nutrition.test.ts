@@ -403,7 +403,7 @@ describe('nutrition storage and coach', () => {
     expect(GOAL_LABEL.lose_fat_build_muscle).toBe('Lose Fat & Build Muscle');
     expect(GOAL_LABEL.maintain).toBe('Maintain Weight');
     expect(GOAL_LABEL.increase).toBe('Increase Weight');
-    expect(screen).toContain('GOAL_LABEL[id]');
+    expect(readFileSync('src/ui/GoalChoices.tsx', 'utf8')).toContain('option.label');
     expect(screen).not.toContain('Loose');
     expect(Object.values(GOAL_LABEL).join(' ')).not.toContain('Loose');
     expect(screen).toContain('Suggest targets');
@@ -414,7 +414,7 @@ describe('nutrition storage and coach', () => {
     expect(screen).toContain('label="Weight (kg)"');
     expect(screen).toContain('label="Height (cm)"');
     expect(screen).toContain('Or add them on Health Stats');
-    const goalCard = screen.slice(screen.indexOf('variant="label">Goal'), screen.indexOf('variant="label">Today'));
+    const goalCard = screen.slice(screen.indexOf('<GoalChoices'), screen.indexOf('variant="label">Today'));
     expect(goalCard).toContain('Suggest targets');
     expect(goalCard).toContain('{suggestNote}');
     expect(goalCard).toContain('label="Weight (kg)"');
@@ -843,7 +843,7 @@ describe('nutrition charts', () => {
     const at = (needle: string) => screen.indexOf(needle);
     const log = at('variant="label">Log a meal');
     const body = at('<BodyCompositionCard');
-    const goal = at('variant="label">Goal');
+    const goal = at('<GoalChoices');
     const logged = at('variant="label">Logged today');
     const summary = at('variant="label">Today');
     const board = at('<NutritionBoard');
@@ -1163,8 +1163,10 @@ describe('training nutrition goals', () => {
     expect(GOAL_PLAIN.elite_heavy_boxer).toMatch(/size and power/i);
     expect(GOAL_PLAIN.elite_middle_boxer).toMatch(/middleweight limit/i);
     const screen = readFileSync('src/app/(main)/nutrition.tsx', 'utf8');
+    const goals = readFileSync('src/ui/GoalChoices.tsx', 'utf8');
     expect(screen).toContain('horizontal');
-    expect(screen).toContain('GOAL_PLAIN[settings.goal]');
+    expect(goals).toContain('GOAL_PLAIN[settings.goal]');
+    expect(goals).toContain("flexWrap: 'wrap'");
     expect(screen).toContain('label="Daily carbohydrate (g)"');
     expect(screen).toContain('label="Daily fat (g)"');
     expect(screen).toContain('label="Middleweight limit (kg)"');

@@ -17,15 +17,12 @@ import {
   BUILDER_PHASES,
   COMPETITION_NOTE,
   FAT_SCIENCE,
-  GOAL_LABEL,
-  GOAL_PLAIN,
   MIDDLEWEIGHT_LIMIT_KG,
   isTrainingGoal,
   HIDE_CALORIES_LINE,
   LOW_BMI_NOTE,
   MEAL_LABEL,
   MEAL_SLOTS,
-  NUTRITION_GOALS,
   PHASE_LABEL,
   alcoholSavedLine,
   compositionForAssessment,
@@ -59,7 +56,6 @@ import {
   type GoalBody,
   type MealSlot,
   type MealSource,
-  type NutritionGoal,
   type NutritionSex,
 } from '@/domain/nutrition';
 import { healthFigure } from '@/domain/measureFigures';
@@ -69,6 +65,7 @@ import { weightReadingKg } from '@/domain/weightEntry';
 import { readAppleHealthBody } from '@/health/sync';
 import { writeDayToAppleHealth } from '@/health/writeNutrition';
 import { BodyCompositionCard } from '@/ui/BodyComposition';
+import { GoalChoices } from '@/ui/GoalChoices';
 import { MealBreakdown } from '@/ui/MealNutrientBars';
 import { MealEdit } from '@/ui/MealEdit';
 import { TodayMeals } from '@/ui/TodayMeals';
@@ -362,13 +359,6 @@ export default function Nutrition() {
     const bmr = mifflinBmr({ weightKg: weight, heightCm: height, age, sex });
     if (bmr == null) return null;
     return kcalFloor(bmr, sex);
-  }
-
-  function chooseGoal(goal: NutritionGoal) {
-    setChoiceNote(null);
-    void repo.setNutritionSettings({ ...repo.getSnapshot().nutrition, goal }).catch((err: unknown) => {
-      setChoiceNote(shownError(err, 'Could not save that goal.'));
-    });
   }
 
   function choosePhase(phase: BuilderPhase) {
@@ -1013,20 +1003,10 @@ export default function Nutrition() {
       </ScrollTarget>
       <ScrollTarget id="goal">
       <Card>
-        <T variant="label">Goal</T>
-        <T variant="muted">Pick one. Swipe the row if a goal sits off the side. A suggestion uses your weight, height, age, and sex if you add them. You can change the numbers.</T>
-        <ScrollView
-          horizontal
-          nestedScrollEnabled
-          showsHorizontalScrollIndicator
-          keyboardShouldPersistTaps="handled"
-          contentContainerStyle={{ gap: 8, paddingRight: 8 }}
-        >
-          {NUTRITION_GOALS.map((id) => (
-            <Choice key={id} label={GOAL_LABEL[id]} selected={settings.goal === id} onPress={() => chooseGoal(id)} />
-          ))}
-        </ScrollView>
-        {settings.goal ? <T variant="muted">{GOAL_PLAIN[settings.goal]}</T> : null}
+        <GoalChoices
+          framed={false}
+          detail="Pick one. A suggestion uses your weight, height, age, and sex if you add them. You can change the numbers."
+        />
         {settings.goal === 'body_builder' ? (
           <>
             <T variant="muted">Choose a surplus or a cut. A suggestion uses a lean bulk until you pick a cut.</T>
