@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
+import { messagePromptSeenIn, withMessagePromptSeen } from './messagePrompt';
 import {
   GENERIC_MESSAGE_ALERT,
   TURN_OFF_MESSAGE_NOTIFICATIONS,
@@ -90,7 +91,7 @@ describe('private message push', () => {
     expect(sql).toContain('grant update (message_notifications, notify_sender_name)');
     expect(sql).not.toContain('grant select on public.message_push_log');
     expect(app).toContain('"aps-environment": "production"');
-    expect(app).toContain('"buildNumber": "13"');
+    expect(app).toMatch(/"buildNumber": "\d+"/);
     expect(app).toContain('expo-notifications');
     expect(layout).toContain('listenForMessageOpens');
     expect(layout).not.toContain('offerMessageNotifications');
@@ -120,9 +121,12 @@ describe('private message push', () => {
     expect(screen).toContain('messageNotifications: value');
     expect(screen).toContain("Show sender's name");
     expect(screen).toContain('notifySenderName: value');
-    expect(screen).toContain("existing.status === 'denied'");
-    expect(screen).toContain('Linking.openSettings()');
-    expect(screen).toContain('Open iOS Settings');
+    expect(screen).toContain('<IosNotificationOffRow');
+    expect(you).toContain('<IosNotificationOffRow');
+    const off = readFileSync('src/ui/IosNotificationOffRow.tsx', 'utf8');
+    expect(off).toContain("existing.status === 'denied'");
+    expect(off).toContain('Linking.openSettings()');
+    expect(off).toContain('Notifications are off for Charioteer — Open Settings');
     expect(fn).toContain('recipient.message_notifications !== false');
     expect(fn).toContain('messageAlert(');
     expect(fn).toContain("select('id, connection_id, sender_id')");
@@ -130,15 +134,22 @@ describe('private message push', () => {
     expect(fn).not.toContain('message.body');
     expect(fn).toContain('decision.body');
     expect(fn).not.toContain(SECRET);
+    expect(readFileSync('supabase/migrations/20261016010000_push_tickets.sql', 'utf8')).toContain('tickets jsonb');
+    expect(fn).toContain('tickets:');
   });
 
-  it('retries a saved token at launch without asking, and shows a failure on the chat', () => {
+  it('refreshes a granted token on launch and foreground, and explains the ask once before the system sheet', () => {
     const layout = readFileSync('src/app/_layout.tsx', 'utf8');
+    const main = readFileSync('src/app/(main)/_layout.tsx', 'utf8');
     const chat = readFileSync('src/app/(main)/chat/[id].tsx', 'utf8');
     const register = readFileSync('src/notifications/register.ts', 'utf8');
+    const prompt = readFileSync('src/ui/MessageNotificationPrompt.tsx', 'utf8');
     expect(layout).toContain('retryMessageNotifications');
     expect(layout).not.toContain('offerMessageNotifications');
     expect(layout).not.toContain('requestPermissionsAsync');
+    const registerPhone = layout.slice(layout.indexOf('const registerPhone'), layout.indexOf('const timer'));
+    expect(registerPhone.match(/registerPhone\(\)/g)?.length).toBe(2);
+    expect(registerPhone).toContain("if (next !== 'active') return");
     expect(chat).toContain('offerMessageNotifications');
     expect(chat).toContain('MESSAGE_TOKEN_ERROR');
     expect(register).toContain("console.error('message notifications', error)");
@@ -146,9 +157,18 @@ describe('private message push', () => {
     const retry = register.slice(register.indexOf('export async function retryMessageNotifications'), register.indexOf('export async function syncMovementReminder'));
     expect(retry).not.toContain('requestPermissionsAsync');
     expect(retry).toContain('getPermissionsAsync');
+    expect(retry).toContain("existing.status !== 'granted'");
     const offer = register.slice(register.indexOf('export async function offerMessageNotifications'), register.indexOf('export async function retryMessageNotifications'));
     expect(offer).toContain('requestPermissionsAsync');
     expect(offer).not.toContain('return undefined');
+    expect(main).toContain('<MessageNotificationPrompt');
+    expect(prompt).toContain('GENERIC_MESSAGE_ALERT');
+    expect(prompt).toContain('does not include what they wrote');
+    expect(prompt).toContain('Allow notifications');
+    expect(prompt).toContain('Not now');
+    expect(prompt).toContain('offerMessageNotifications(repo)');
+    expect(prompt).not.toContain('requestPermissionsAsync');
+    expect(prompt).toContain('markMessagePromptSeen');
   });
 
   it('keeps a failed token registration from rejecting at launch or on a switch', () => {
@@ -165,10 +185,30 @@ describe('private message push', () => {
       'src/app/(main)/privacy.tsx',
       'src/app/consent.tsx',
       'src/app/(main)/chat/[id].tsx',
+      'src/ui/MessageNotificationPrompt.tsx',
     ]) {
       const source = readFileSync(path, 'utf8');
       expect(source).toContain('offerMessageNotifications(repo)');
       expect(source).toMatch(/offerMessageNotifications\(repo\)[\s\S]{0,240}\.catch/);
     }
+  });
+
+  it('asks only once, and logs a failed push without the message', () => {
+    const user = 'cccccccc-cccc-4ccc-8ccc-ccccccccccc1';
+    expect(messagePromptSeenIn(null, user)).toBe(false);
+    const stored = withMessagePromptSeen(null, user);
+    expect(messagePromptSeenIn(stored, user)).toBe(true);
+    expect(messagePromptSeenIn(stored, 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb1')).toBe(false);
+    expect(messagePromptSeenIn('not-json', user)).toBe(false);
+    const repo = readFileSync('src/data/supabase-repository.ts', 'utf8');
+    const send = repo.slice(repo.indexOf('async sendDirectMessage'), repo.indexOf('async loadChatReads'));
+    const notify = send.slice(send.indexOf("invoke('notify-direct-message'"));
+    expect(notify).toContain('rememberEdgeFailure');
+    expect(notify).toContain('Push send failed');
+    expect(notify).not.toContain('.catch(() => undefined)');
+    expect(notify).not.toContain('text');
+    expect(notify).not.toContain(SECRET);
+    const save = repo.slice(repo.indexOf('async saveDeviceToken'), repo.indexOf('async blockUser'));
+    expect(save).toContain('updated_at: new Date().toISOString()');
   });
 });

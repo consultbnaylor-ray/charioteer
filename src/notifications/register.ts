@@ -32,7 +32,7 @@ async function currentPushToken(): Promise<string | null> {
 
 /**
  * Asks for notification permission and stores the Expo push token.
- * Call this when Community is turned on, or when a chat opens. Not at launch.
+ * The first signed-in launch explains this first. Community and an open chat can still ask.
  * Returns a line to show when saving the token fails.
  */
 export async function offerMessageNotifications(repo: TokenStore): Promise<string | null> {
@@ -59,8 +59,8 @@ export async function offerMessageNotifications(repo: TokenStore): Promise<strin
 }
 
 /**
- * Stores a token when permission is already granted. Does not ask.
- * Safe at launch and whenever the app comes back to the foreground.
+ * Stores a fresh token when permission is already granted. Does not ask.
+ * Runs on every launch and whenever the app comes back to the foreground.
  */
 export async function retryMessageNotifications(repo: TokenStore): Promise<string | null> {
   if (Platform.OS !== 'ios' && Platform.OS !== 'android') return null;

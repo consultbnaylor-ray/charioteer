@@ -1211,7 +1211,11 @@ export class SupabaseRepository implements Repository {
       }
       const messageId = !error && data && typeof data.id === 'string' ? data.id : '';
       if (messageId) {
-        void this.client.functions.invoke('notify-direct-message', { body: { messageId } }).catch(() => undefined);
+        void this.client.functions.invoke('notify-direct-message', { body: { messageId } }).then(({ error: pushError }) => {
+          if (pushError) this.rememberEdgeFailure('notify-direct-message', new Error('Push send failed'));
+        }).catch(() => {
+          this.rememberEdgeFailure('notify-direct-message', new Error('Push send failed'));
+        });
       }
       const { delivery: _delivery, ...confirmed } = optimistic;
       this.outgoingMessages.set(id, confirmed);

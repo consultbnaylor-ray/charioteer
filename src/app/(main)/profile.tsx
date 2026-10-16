@@ -31,6 +31,7 @@ import { usePendingPress } from '@/ui/pendingAction';
 import { Button, Card, Choice, ErrorNote, Field, playSavedHaptic, Screen, T } from '@/ui/ui';
 import { useAppTheme } from '@/ui/theme';
 import { offerMessageNotifications } from '@/notifications/register';
+import { IosNotificationOffRow } from '@/ui/IosNotificationOffRow';
 import { GENERIC_MESSAGE_ALERT } from '../../../supabase/functions/_shared/messagePush';
 import { useFocusEffect, useRouter } from 'expo-router';
 
@@ -431,6 +432,7 @@ export default function Profile() {
           />
         </View>
         <T variant="muted">Off, the alert says {GENERIC_MESSAGE_ALERT}.</T>
+        <IosNotificationOffRow />
       </Card>
       {profile.isModerator ? (
         <Card>

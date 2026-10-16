@@ -1,29 +1,18 @@
 import { useFocusEffect } from 'expo-router';
 import { useCallback, useState } from 'react';
-import { Linking, Platform, Switch, View } from 'react-native';
+import { Switch, View } from 'react-native';
 
 import { useRepository, useSnapshot } from '@/data';
 import { shownError } from '@/domain/errors';
 import { formatReminderClock, parseReminderClock } from '@/domain/thumos';
 import { offerMessageNotifications, syncMovementReminder } from '@/notifications/register';
+import { IosNotificationOffRow } from '@/ui/IosNotificationOffRow';
 import { useAppTheme } from '@/ui/theme';
-import { Button, Card, Choice, ErrorNote, Field, Screen, T } from '@/ui/ui';
+import { Card, Choice, ErrorNote, Field, Screen, T } from '@/ui/ui';
 import { GENERIC_MESSAGE_ALERT } from '../../../supabase/functions/_shared/messagePush';
 import { MOVEMENT_REMINDER_BODY } from '../../../supabase/functions/_shared/motivation';
 
 const REMINDER_CHOICES = [7 * 60, 12 * 60 + 30, 18 * 60, 21 * 60];
-
-/** iOS only. Denied means the system will not show the permission sheet again. */
-async function iosNotificationsDenied(): Promise<boolean> {
-  if (Platform.OS !== 'ios') return false;
-  try {
-    const Notifications = await import('expo-notifications');
-    const existing = await Notifications.getPermissionsAsync();
-    return existing.status === 'denied';
-  } catch {
-    return false;
-  }
-}
 
 export default function NotificationsScreen() {
   const snap = useSnapshot();
@@ -31,22 +20,14 @@ export default function NotificationsScreen() {
   const theme = useAppTheme();
   const profile = snap.profile;
   const [error, setError] = useState<string | null>(null);
-  const [denied, setDenied] = useState(false);
   const [timeDraft, setTimeDraft] = useState('');
 
   useFocusEffect(
     useCallback(() => {
-      let live = true;
-      void iosNotificationsDenied().then((next) => {
-        if (live) setDenied(next);
-      });
       if (profile?.movementReminder) {
         void syncMovementReminder(true, profile.movementReminderMinute);
       }
       setTimeDraft(profile?.movementReminderMinute == null ? '' : formatReminderClock(profile.movementReminderMinute));
-      return () => {
-        live = false;
-      };
     }, [profile?.movementReminder, profile?.movementReminderMinute]),
   );
 
@@ -90,6 +71,7 @@ export default function NotificationsScreen() {
           />
         </View>
         <T variant="muted">Off, the alert says {GENERIC_MESSAGE_ALERT}.</T>
+        <IosNotificationOffRow />
       </Card>
       <Card>
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 12, alignItems: 'center' }}>
@@ -147,9 +129,6 @@ export default function NotificationsScreen() {
           </View>
         ) : null}
       </Card>
-      {denied ? (
-        <Button label="Open iOS Settings" onPress={() => void Linking.openSettings()} />
-      ) : null}
     </Screen>
   );
 }

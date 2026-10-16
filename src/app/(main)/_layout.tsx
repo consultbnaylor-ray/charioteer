@@ -9,6 +9,7 @@ import { TAB_SECTIONS, type AppSection } from '@/domain/sections';
 import { tabLabelFontSize, tabSideInset } from '@/ui/tabBar';
 import { useAppTheme } from '@/ui/theme';
 import { topSafeInset } from '@/ui/safeArea';
+import { MessageNotificationPrompt } from '@/ui/MessageNotificationPrompt';
 import { SectionDrawer } from '@/ui/SectionDrawer';
 import { Mark, ShellInsetProvider, T, Wordmark } from '@/ui/ui';
 
@@ -89,7 +90,10 @@ export default function MainLayout() {
       )}
       <ShellInsetProvider top bottom={!wide}>
         <View style={{ flex: 1 }}>
-          <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: theme.colors.bg } }} />
+          {snap.profile ? <MessageNotificationPrompt userId={snap.profile.id} /> : null}
+          <View style={{ flex: 1 }}>
+            <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: theme.colors.bg } }} />
+          </View>
         </View>
       </ShellInsetProvider>
       {wide ? null : (
