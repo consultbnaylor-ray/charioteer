@@ -32,7 +32,7 @@ do $$
 declare
   def text := pg_get_functiondef('public.unblock_user(uuid)'::regprocedure);
 begin
-  if def not ilike '%security definer%' or def not ilike '%search_path = public%' then
+  if def not ilike '%security definer%' or def not ilike '%search_path%public%' then
     raise exception 'unblock_user is missing security definer or a fixed search_path';
   end if;
   if position('blocker_id = auth.uid()' in def) = 0
