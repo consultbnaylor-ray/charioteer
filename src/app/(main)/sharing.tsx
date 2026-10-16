@@ -14,6 +14,7 @@ import {
   SHARE_HINT,
   SHARE_NEW_GRATITUDE,
   SHARE_NEW_GRATITUDE_HINT,
+  applyWeightAndBodyShare,
   communitySharingOn,
   healthShareLabel,
   sensitiveShareConfirm,
@@ -306,7 +307,15 @@ export default function WhatIShare() {
           on={snap.sharing.healthPlan}
           apply={(sharing, selected) => ({ ...sharing, healthPlan: selected })}
         />
-        <T variant="muted">Other members see the goal, this week's focus, and how many are ticked. Weight, body figures, and the rest stay off.</T>
+        <T variant="muted">Other members see the goal, this week's focus, and how many are ticked.</T>
+        <ShareOnProfile
+          label="Share weight and body figures"
+          item="Weight and body figures"
+          sensitive
+          on={snap.sharing.shareBodyFigures}
+          apply={applyWeightAndBodyShare}
+        />
+        <T variant="muted">Other members see the weight average, and body fat, waist, or lean mass. Height stays private.</T>
       </ShareAnchor>
       <T variant="label">On the section screen</T>
       <T>Days sober is on Today. Mood streak is on Check-in. Each health average, reason, gratitude line, and vision caption also has its switch under that box.</T>

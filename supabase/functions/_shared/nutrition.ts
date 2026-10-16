@@ -2021,6 +2021,8 @@ export type SharedNutritionView = {
   calories: string | null;
   quality: SharedQuality | null;
   progress: string | null;
+  /** Body fat, waist, or lean mass. Null unless that switch is on and progress is not already showing it. */
+  bodyFigures: string | null;
   wagon: { note: string } | null;
   /** Goal name and a qualitative line. Null when that switch is off. No kilograms and no kcal. */
   goal: SharedGoal | null;
@@ -2066,6 +2068,8 @@ export function presentSharedNutrition(
     bodyFatPct?: number | null;
     leanMassKg?: number | null;
     waistCm?: number | null;
+    /** Weight and body figures switch. Off leaves body fat, waist, and lean mass out. */
+    shareFigures?: boolean;
   },
 ): SharedNutritionView {
   const items = dayItems(logs, today);
@@ -2077,13 +2081,17 @@ export function presentSharedNutrition(
     waistCm: body?.waistCm ?? null,
     heightCm: body?.heightCm ?? null,
   });
+  const progress = settings.shareProgress
+    ? [streak, body?.shareFigures ? null : composition].filter(Boolean).join(' ')
+    : null;
   return {
     meals: settings.shareFoodDiary ? publicMealLines(logs, today) : null,
     calories: settings.shareCalories ? caloriesShareLine(items, settings.hideCalories) : null,
     quality: settings.shareQuality
       ? { unsaturated: balance.unsaturated, other: balance.other, line: balance.line }
       : null,
-    progress: settings.shareProgress ? [streak, composition].filter(Boolean).join(' ') : null,
+    progress,
+    bodyFigures: body?.shareFigures ? composition : null,
     wagon: settings.wagonOn && settings.wagonVisible ? { note: settings.wagonNote.trim().slice(0, 200) } : null,
     goal: sharedGoalFrom(settings, logs, today, body),
   };
@@ -2176,12 +2184,13 @@ export function parseSharedNutrition(value: unknown): SharedNutritionView | null
     ? { note: typeof raw.wagonNote === 'string' ? raw.wagonNote.trim().slice(0, 200) : '' }
     : null;
   const progressBase = typeof raw.progressDays === 'number' ? progressShareLine(raw.progressDays) : null;
-  const composition = progressBase && typeof raw.composition === 'string' ? raw.composition.trim() : '';
+  const composition = typeof raw.composition === 'string' ? raw.composition.trim() : '';
   return {
     meals: sharedMealRows(raw),
     calories: sharedCalories(raw.calories),
     quality: sharedQuality(raw.quality),
     progress: progressBase ? `${progressBase}${composition ? ` ${composition}` : ''}` : null,
+    bodyFigures: !progressBase && composition ? composition : null,
     wagon,
     goal: sharedGoal(raw.goal),
   };

@@ -21,6 +21,7 @@ export {
   parseHealthPlanJson,
   parseSharedHealthPlan,
   presentSharedHealthPlan,
+  standaloneFocus,
   redactPlanLine,
   togglePlanAction,
   type HealthPlan,

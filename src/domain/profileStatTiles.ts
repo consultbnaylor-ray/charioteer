@@ -76,6 +76,7 @@ export function profileStatBoard(
   pushNullable(tiles, notShared, owner, view.calories, 'Calories', () => caloriesTile(view.calories ?? ''));
   pushNullable(tiles, notShared, owner, view.quality, 'Food quality', () => qualityTile(view));
   pushNullable(tiles, notShared, owner, view.progress, 'Meal streak', () => progressTile(view.progress ?? ''));
+  pushFlag(tiles, notShared, owner, sharing?.shareBodyFigures === true, 'Body figures', () => bodyFiguresTile(view.bodyFigures), 'Nothing to show yet');
   pushNullable(tiles, notShared, owner, view.goal, 'Nutrition goal', () => goalTile(view));
   pushFlag(tiles, notShared, owner, sharing?.healthPlan === true, 'Health plan', () => planTile(view), 'No plan yet');
 
@@ -279,6 +280,18 @@ function qualityTile(view: PublicProfileView): ProfileStatTile | null {
     value: quality.line,
     caption: `Unsaturated ${formatPlain(quality.unsaturated)} g · saturated and trans ${formatPlain(quality.other)} g`,
     chart: values.length ? { kind: 'bars', values } : null,
+  };
+}
+
+function bodyFiguresTile(line: string | null): ProfileStatTile | null {
+  if (!line) return null;
+  const value = firstNumber(line);
+  return {
+    id: 'body-figures',
+    label: 'Body figures',
+    value: line,
+    caption: '',
+    chart: value != null && value > 0 ? { kind: 'bars', values: [value] } : null,
   };
 }
 

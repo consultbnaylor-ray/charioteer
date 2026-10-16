@@ -167,6 +167,15 @@ function clone<T>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T;
 }
 
+function latestBody(rows: NonNullable<DemoAccount['bodyComposition']>): { bodyFatPct: number | null; leanMassKg: number | null; waistCm: number | null } {
+  const ordered = [...rows].sort((a, b) => b.recordedOn.localeCompare(a.recordedOn));
+  return {
+    bodyFatPct: ordered.find((row) => row.bodyFatPct != null)?.bodyFatPct ?? null,
+    leanMassKg: ordered.find((row) => row.leanMassKg != null)?.leanMassKg ?? null,
+    waistCm: ordered.find((row) => row.waistCm != null)?.waistCm ?? null,
+  };
+}
+
 function shareSource(account: DemoAccount, interests: DemoDb['interests'], now = new Date()): ShareSource {
   const labels = new Map(interests.map((item) => [item.id, item.label]));
   return {
@@ -204,6 +213,7 @@ function shareSource(account: DemoAccount, interests: DemoDb['interests'], now =
       settings: account.nutrition ?? defaultNutritionSettings(),
       heightCm: account.profile.heightCm,
       weights: weightPointsFrom(account.health),
+      ...latestBody(account.bodyComposition ?? []),
     },
     healthPlan: account.healthPlan ?? null,
     profilePhotos: sortProfilePhotos(account.profilePhotos ?? []).map((photo) => ({

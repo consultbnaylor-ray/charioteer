@@ -244,12 +244,14 @@ export function SharedNutritionFacts({
   calories,
   quality,
   progress,
+  bodyFigures = null,
   goal = null,
 }: {
   meals: { meal: string; detail: string }[] | null;
   calories: string | null;
   quality: SharedQuality | null;
   progress: string | null;
+  bodyFigures?: string | null;
   goal?: SharedGoal | null;
 }) {
   const rows = Array.isArray(meals) ? meals : null;
@@ -285,6 +287,12 @@ export function SharedNutritionFacts({
         <View style={{ gap: 4 }}>
           <T variant="label">Progress</T>
           <T>{progress}</T>
+        </View>
+      ) : null}
+      {typeof bodyFigures === 'string' && bodyFigures ? (
+        <View style={{ gap: 4 }}>
+          <T variant="label">Body figures</T>
+          <T>{bodyFigures}</T>
         </View>
       ) : null}
       {goal && goalLine ? (

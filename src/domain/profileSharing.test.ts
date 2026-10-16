@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   BIO_EXAMPLE,
+  applyWeightAndBodyShare,
   defaultProfileSharing,
   healthShareLabel,
   moodStreakCount,
@@ -254,7 +255,13 @@ describe('public profile projection', () => {
     expect(parsed.shareNewGratitude).toBe(false);
     expect(parsed.healthPlan).toBe(false);
     expect(defaultProfileSharing().healthPlan).toBe(false);
+    expect(defaultProfileSharing().shareBodyFigures).toBe(false);
     expect(defaultProfileSharing().shareNewGratitude).toBe(false);
+    const figures = applyWeightAndBodyShare(defaultProfileSharing(), true);
+    expect(figures.shareBodyFigures).toBe(true);
+    expect(figures.healthKinds).toEqual(['weight_kg']);
+    expect(applyWeightAndBodyShare(figures, false)).toMatchObject({ shareBodyFigures: false, healthKinds: [] });
+    expect(sensitiveTurnedOn(defaultProfileSharing(), figures)).toBe(true);
     expect(normalizeProfileSharing({ shareNewGratitude: true }).shareNewGratitude).toBe(true);
   });
 });

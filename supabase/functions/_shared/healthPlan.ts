@@ -1076,14 +1076,65 @@ function wellbeingHabits(facts: Derived): string[] {
   return take(facts.input.salt, 'well', [sleep, mood, stress, wind], 4, facts.done);
 }
 
+const CARRY_OVER = /\b(you marked|this week moves on|so this week|one focus is enough)\b/i;
+const LEADING_ACTION = /^(Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday|Rest|Walk|Keep|Include|Pick|Use|Leave|Bring|Log|Have|Eat|Sleep|Stop|Add|Drink|Train|Sit|Take|Choose|Protect|Start|One|A|An|The|Your|When|If)\b/i;
+
+/** A complete sentence that fits, with no ellipsis and no mid-sentence cut. */
+function trimSentence(value: string, max: number): string | null {
+  const text = value.replace(/\s+/g, ' ').trim();
+  if (!text) return null;
+  if (text.length <= max) return text;
+  const window = text.slice(0, max);
+  let end = -1;
+  for (let i = window.length - 1; i >= 24; i -= 1) {
+    const mark = window[i];
+    if ((mark === '.' || mark === '!' || mark === '?') && (i === window.length - 1 || window[i + 1] === ' ')) {
+      end = i;
+      break;
+    }
+  }
+  if (end >= 24) return window.slice(0, end + 1).trim();
+  return null;
+}
+
+function stripVocative(line: string, firstName: string): string {
+  const named = firstName
+    ? line.replace(new RegExp(`^${firstName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')},\\s+`, 'i'), '')
+    : line;
+  if (named !== line) return named;
+  const match = line.match(/^(\p{L}[\p{L}’'-]{1,30}),\s+([\s\S]+)$/u);
+  if (!match?.[1] || !match[2]) return line;
+  if (LEADING_ACTION.test(match[1])) return line;
+  if (LEADING_ACTION.test(match[2]) || /^(you|one focus|this week)\b/i.test(match[2])) return match[2];
+  return line;
+}
+
+/**
+ * A focus item is one short action.
+ * Progress talk, a name at the front, and a cut marked with an ellipsis come off.
+ */
+export function standaloneFocus(value: string, firstName = ''): string | null {
+  let line = stripVocative(value.replace(/\s+/g, ' ').trim(), firstName);
+  line = line.replace(/you marked\s+[“"'][\s\S]*?[”"']\s*done,?\s*so this week moves on\.?\s*/i, '');
+  line = line.replace(/\b(one focus is enough|this week moves on)\.?\s*/gi, '');
+  line = line.replace(/\s+/g, ' ').trim();
+  const ellipsis = line.search(/…|\.{3}/);
+  if (ellipsis >= 0) {
+    const before = line.slice(0, ellipsis).trim();
+    const end = Math.max(before.lastIndexOf('.'), before.lastIndexOf('!'), before.lastIndexOf('?'));
+    line = end >= 0 ? before.slice(0, end + 1).trim() : '';
+  }
+  line = line.replace(/\s+/g, ' ').trim();
+  if (!line || CARRY_OVER.test(line)) return null;
+  return trimSentence(line, 160);
+}
+
 function focusLines(facts: Derived, habits: string[], session: string, well: string): string[] {
-  const name = facts.firstName ? `${facts.firstName}, ` : '';
-  const moved = facts.done[0] ? `You marked “${clip(facts.done[0], 80)}” done, so this week moves on.` : '';
-  const lines = [
-    clip(`${name}${moved || 'One focus is enough.'} ${habits[0] ?? ''}`.replace(/\s+/g, ' '), 160),
-    session,
-    well,
-  ].filter((line) => line.trim().length > 0);
+  const lines = [habits[0] ?? '', session, well]
+    .flatMap((line) => {
+      const text = standaloneFocus(line, facts.firstName);
+      return text ? [text] : [];
+    });
   const unique = [...new Set(lines)];
   return unique.slice(0, facts.done.length > 2 ? 2 : 3);
 }
@@ -1238,7 +1289,8 @@ function mergeActions(prefix: string, incoming: PlanAction[], fallback: PlanActi
   const seen = new Set<string>();
   const next: PlanAction[] = [];
   for (const action of [...incoming, ...fallback]) {
-    const text = cleanLine(action.text, facts);
+    const cleaned = cleanLine(action.text, facts);
+    const text = prefix === 'focus' ? (cleaned ? standaloneFocus(cleaned, facts.firstName) : null) : cleaned;
     if (!text || seen.has(text.toLowerCase())) continue;
     if (facts.done.some((done) => done.toLowerCase() === text.toLowerCase())) continue;
     seen.add(text.toLowerCase());
@@ -1340,13 +1392,17 @@ export function healthPlanFromStored(row: unknown): HealthPlan | null {
   const nutrition = (data.nutrition ?? null) as { targets?: unknown; habits?: unknown; swaps?: unknown } | null;
   const fitness = (data.fitness ?? null) as { intro?: unknown; sessions?: unknown } | null;
   const wellbeing = (data.wellbeing ?? null) as { habits?: unknown } | null;
-  const focus = asActions(data.focus, 'focus', true);
+  const storedFocus = asActions(data.focus, 'focus', true);
+  const focus = storedFocus.flatMap((action) => {
+    const text = standaloneFocus(action.text);
+    return text ? [{ ...action, text }] : [];
+  });
   const updatedAt = typeof data.updatedAt === 'string'
     ? data.updatedAt
     : typeof data.updated_at === 'string'
       ? data.updated_at
       : '';
-  if (!focus.length || !updatedAt) return null;
+  if (!storedFocus.length || !updatedAt) return null;
   const disclaimer = typeof data.disclaimer === 'string' && data.disclaimer.trim()
     ? data.disclaimer
     : PLAN_DISCLAIMER;
@@ -1405,7 +1461,8 @@ export const HEALTH_PLAN_PROMPT = [
   'Three sections: nutrition (targets sentence, 3 or 4 practical habits, food swaps), fitness (one row per weekday, following the logged training baseline), and wellbeing (sleep, stress, mood, and a check-in rhythm).',
   'Also give this week\'s focus as 1 to 3 items.',
   'Use the person\'s interests, reasons, and vision when they are present. Vary the sentences. Do not reuse a stock template.',
-  'If a finished action is listed, do not repeat it. Move on to the next step.',
+  'If a finished action is listed, leave it out and write the next action. Do not mention the finished action.',
+  'This week\'s focus is 1 to 3 short standalone actions. Each one is a complete sentence. Do not start with the person\'s name. Do not say they marked something done, that the week moves on, or that one focus is enough. Do not use an ellipsis.',
   'Swaps may use only the profile, check-ins, and logged food and drink in the user message. That is the only allowed basis for a swap. Do not invent a food, a snack, or a drink. Do not turn an interest such as hiking into a drinking night.',
   'If profile.stopped is true, or they say they do not drink, skip every drinking and alcohol swap. Do not tell them to replace a drink, an evening drink, a drinking night, or bitters. At most one sober-positive line, and it must not tell them to replace a drink. Recovery after training stays alcohol-free.',
   'Write a drink swap only when profile.drinks is true. Exploring on its own is not drinking. profile.drinks is true for cutting down, trying to stop, weekly units above zero, or an alcohol word in logged food, a check-in note, or a reason. If profile.drinks is false, do not write "Have the first drink later" or "Alternate a drink with water".',
@@ -1455,7 +1512,9 @@ export function presentSharedHealthPlan(
 ): SharedHealthPlan | null {
   if (!shared || !plan) return null;
   const focus = plan.focus.flatMap((action) => {
-    const text = redactPlanLine(action.text);
+    const standalone = standaloneFocus(action.text);
+    if (!standalone) return [];
+    const text = redactPlanLine(standalone);
     if (!text) return [];
     return [{ text, done: action.done }];
   });

@@ -12,6 +12,7 @@ import {
   draftHealthPlan,
   guardHealthPlan,
   healthPlanFromStored,
+  standaloneFocus,
   healthPlanModelContext,
   mentionsOtherTracker,
   mentionsRegressiveSession,
@@ -204,7 +205,10 @@ describe('health plan writer', () => {
     const next = draftHealthPlan(input({ salt: 'done-week', doneTexts: [finished] }));
     expect(finished.length).toBeGreaterThan(0);
     expect(next.nutrition.habits.map((item) => item.text)).not.toContain(finished);
-    expect(next.focus.map((item) => item.text).join(' ')).toContain('moves on');
+    const focusText = next.focus.map((item) => item.text).join(' ');
+    expect(focusText).not.toMatch(/moves on|you marked|one focus is enough|Alex,/i);
+    expect(focusText).not.toMatch(/…|\.{3}/);
+    expect(next.focus.every((item) => item.text.length > 0 && item.text.length <= 160)).toBe(true);
     const ticked = togglePlanAction(first, first.focus[0]?.id ?? '');
     expect(ticked.updatedAt).toBe(first.updatedAt);
     expect(donePlanTexts(ticked)).toContain(first.focus[0]?.text);
@@ -716,6 +720,41 @@ describe('health plan writer', () => {
     expect(joined(builder)).not.toMatch(/fewer sets/);
   });
 
+  it('drops a carry-over sentence from a focus item', () => {
+    const leaked = 'Ben, You marked "Stay consistent with the six resistance sessions to build muscle while losing f..." done, so this week moves on. Include a protein food at break...';
+    expect(standaloneFocus(leaked, 'Ben')).toBeNull();
+    expect(standaloneFocus('Ben, Include a protein food at breakfast.', 'Ben')).toBe('Include a protein food at breakfast.');
+    expect(standaloneFocus('Walk 30 minutes on Monday.')).toBe('Walk 30 minutes on Monday.');
+    const base = draftHealthPlan(input({ salt: 'carry', displayName: 'Ben Hart' }));
+    const guarded = guardHealthPlan({
+      ...base,
+      focus: [
+        { id: 'focus-1', text: leaked, done: false },
+        { id: 'focus-2', text: 'Keep lunch at the same time.', done: false },
+      ],
+    }, input({ salt: 'carry', displayName: 'Ben Hart' }));
+    const text = guarded.focus.map((item) => item.text).join(' ');
+    expect(text).not.toMatch(/Ben,|you marked|moves on|…|\.{3}/i);
+    expect(text).toContain('Keep lunch at the same time.');
+    const stored = healthPlanFromStored({
+      ...base,
+      focus: [{ id: 'focus-9', text: leaked, done: true }, ...base.focus],
+      updatedAt: base.updatedAt,
+    });
+    expect(stored?.focus.map((item) => item.text).join(' ')).not.toMatch(/you marked|moves on|…/);
+    expect(HEALTH_PLAN_PROMPT).toMatch(/standalone actions/);
+    expect(HEALTH_PLAN_PROMPT).toMatch(/Do not use an ellipsis/);
+    expect(HEALTH_PLAN_PROMPT).not.toMatch(/Move on to the next step/);
+    const bodySql = readFileSync('supabase/migrations/20261016130000_share_body_figures.sql', 'utf8');
+    expect(bodySql).toContain("settings->'shareBodyFigures'");
+    expect(bodySql).toContain('share_prog or share_body');
+    expect(bodySql).toContain('viewer_in_community()');
+    expect(bodySql.toLowerCase()).not.toContain('grant select on public.body_composition');
+    expect(bodySql.toLowerCase()).not.toContain('grant select on public.health_samples');
+    expect(bodySql).toContain('shared_health_plan');
+    expect(bodySql).toContain('you marked|this week moves on|one focus is enough');
+  });
+
   it('keeps ticks when a stored row is read back', () => {
     const plan = draftHealthPlan(input({ salt: 'stored' }));
     const ticked = togglePlanAction(plan, plan.focus[0]?.id ?? '');
@@ -760,8 +799,14 @@ describe('health plan wiring', () => {
     expect(page).toContain('buildStatsOverview');
     expect(page).toContain('StatTile');
     expect(page).toContain('Share on profile');
-    expect(page).toContain('PROFILE_HIDDEN_SHARE');
-    expect(page).toContain("pointerEvents={communityOn ? 'auto' : 'none'}");
+    expect(page).toContain('Share weight and body figures');
+    expect(page).toContain('Other members see the goal, this week\'s focus, and how many are ticked.');
+    expect(page).toContain('Other members see the weight average, and body fat, waist, or lean mass. Height stays private.');
+    expect(page).toContain('Community is off. Other members can see what you share here only when Community is on.');
+    expect(page.indexOf('Share on profile')).toBeLessThan(page.indexOf("This week's focus"));
+    expect(page).not.toContain('pointerEvents');
+    expect(page).not.toContain('accessibilityElementsHidden');
+    expect(page).toContain('applyWeightAndBodyShare');
     expect(page).not.toContain('Share Whole Section');
     expect(page).not.toContain('This stays on your account.');
     expect(TAB_SECTIONS.map((section) => section.label)).not.toContain('Health Plan');

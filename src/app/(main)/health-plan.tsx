@@ -7,7 +7,7 @@ import { PLAN_NOT_SAVED } from '@/domain/edgeRetry';
 import { UserFacingError, shownError } from '@/domain/errors';
 import { PLAN_DISCLAIMER, togglePlanAction, type PlanAction } from '@/domain/healthPlan';
 import { planProgressFigure } from '@/domain/measureFigures';
-import { PROFILE_HIDDEN_SHARE, communitySharingOn } from '@/domain/profileSharing';
+import { applyWeightAndBodyShare, communitySharingOn } from '@/domain/profileSharing';
 import { buildStatsOverview } from '@/domain/statsOverview';
 import { PlanTick } from '@/ui/PlanTick';
 import { ShareOnProfile } from '@/ui/ShareOnProfile';
@@ -121,6 +121,27 @@ export default function HealthPlanScreen() {
       title="Health Plan"
       intro="Thumos reads the figures you already keep and writes a short plan. It is not a diagnosis."
     >
+      <View style={{ gap: 8 }}>
+        <ShareOnProfile
+          label="Share on profile"
+          item="Health plan"
+          sensitive
+          on={snap.sharing.healthPlan}
+          apply={(sharing, selected) => ({ ...sharing, healthPlan: selected })}
+        />
+        <T variant="muted">Other members see the goal, this week's focus, and how many are ticked.</T>
+        <ShareOnProfile
+          label="Share weight and body figures"
+          item="Weight and body figures"
+          sensitive
+          on={snap.sharing.shareBodyFigures}
+          apply={applyWeightAndBodyShare}
+        />
+        <T variant="muted">Other members see the weight average, and body fat, waist, or lean mass. Height stays private.</T>
+        {communityOn ? null : (
+          <T>Community is off. Other members can see what you share here only when Community is on.</T>
+        )}
+      </View>
       <ErrorNote>{error}</ErrorNote>
       {error ? <Button label="Try again" pending={refreshing} onPress={refresh} /> : null}
       {plan ? (
@@ -186,25 +207,6 @@ export default function HealthPlanScreen() {
       <Button label="Refresh plan" pending={refreshing} pendingLabel="Writing..." onPress={refresh} />
       {plan ? <T variant="muted">{`Last updated ${formatUkCompactWhen(plan.updatedAt)}`}</T> : null}
       <T variant="muted">{plan?.disclaimer || PLAN_DISCLAIMER}</T>
-      <View
-        accessibilityElementsHidden={!communityOn}
-        importantForAccessibility={communityOn ? 'auto' : 'no-hide-descendants'}
-        pointerEvents={communityOn ? 'auto' : 'none'}
-        style={{ opacity: communityOn ? 1 : 0.45 }}
-      >
-        <ShareOnProfile
-          label="Share on profile"
-          item="Health plan"
-          sensitive
-          on={snap.sharing.healthPlan}
-          apply={(sharing, selected) => ({ ...sharing, healthPlan: selected })}
-        />
-      </View>
-      <T variant="muted">
-        {communityOn
-          ? "Other members see the goal, this week's focus, and how many are ticked. Weight, body figures, and the rest stay off."
-          : PROFILE_HIDDEN_SHARE}
-      </T>
     </Screen>
   );
 }

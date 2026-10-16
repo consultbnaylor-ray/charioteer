@@ -86,6 +86,11 @@ export type ProfileSharing = {
    * Weight, body figures, and the rest of the plan stay off. Missing means off.
    */
   healthPlan: boolean;
+  /**
+   * Weight average, plus body fat, waist, or lean mass.
+   * Separate from the Health Plan headline. Missing means off.
+   */
+  shareBodyFigures: boolean;
   /** Set the first time a sobriety or health item is shared. */
   sensitiveConsentAt: string | null;
 };
@@ -108,6 +113,7 @@ export function defaultProfileSharing(): ProfileSharing {
     pinnedQuote: false,
     shareNewGratitude: false,
     healthPlan: false,
+    shareBodyFigures: false,
     sensitiveConsentAt: null,
   };
 }
@@ -160,6 +166,7 @@ export function normalizeProfileSharing(value: unknown): ProfileSharing {
     pinnedQuote: flag(raw.pinnedQuote),
     shareNewGratitude: flag(raw.shareNewGratitude),
     healthPlan: flag(raw.healthPlan),
+    shareBodyFigures: flag(raw.shareBodyFigures),
     sensitiveConsentAt: consent,
   };
 }
@@ -181,7 +188,7 @@ export function shareFreshGratitude(
   return { ...sharing, gratitudeIds, gratitudePhotoIds };
 }
 
-const SENSITIVE_FLAGS = ['stage', 'soberDays', 'milestones', 'moneySaved', 'unitsAvoided', 'moodStreak', 'healthPlan'] as const;
+const SENSITIVE_FLAGS = ['stage', 'soberDays', 'milestones', 'moneySaved', 'unitsAvoided', 'moodStreak', 'healthPlan', 'shareBodyFigures'] as const;
 
 /** True when this change newly shares sobriety or health information. */
 export function sensitiveTurnedOn(before: ProfileSharing, after: ProfileSharing): boolean {
@@ -202,6 +209,11 @@ export function toggleShareId(sharing: ProfileSharing, key: 'reasonBodies' | 'gr
 /** "Steps" is shown as "Share steps average". */
 export function healthShareLabel(metricLabel: string): string {
   return `Share ${metricLabel.toLowerCase()} average`;
+}
+
+/** The Health Plan figures switch. Weight average and body figures move together. */
+export function applyWeightAndBodyShare(sharing: ProfileSharing, selected: boolean): ProfileSharing {
+  return { ...toggleHealthKind(sharing, 'weight_kg', selected), shareBodyFigures: selected };
 }
 
 export function toggleHealthKind(sharing: ProfileSharing, kind: string, on: boolean): ProfileSharing {
@@ -238,6 +250,9 @@ export type ShareSource = {
     settings: NutritionSettings;
     heightCm?: number | null;
     weights?: { day: string; kg: number }[];
+    bodyFatPct?: number | null;
+    leanMassKg?: number | null;
+    waistCm?: number | null;
   };
   /** The owner's plan. Only the headline and focus ticks are copied when the switch is on. */
   healthPlan?: HealthPlan | null;
@@ -276,6 +291,8 @@ export type PublicProfileView = {
   quality: SharedQuality | null;
   /** Consecutive days with a meal logged. */
   progress: string | null;
+  /** Body fat, waist, or lean mass. Null when that switch is off. */
+  bodyFigures: string | null;
   /** A gentle line, when they have chosen to show a hard moment. */
   wagon: { note: string } | null;
   /** Goal name and a qualitative progress line. Null when that switch is off. */
@@ -459,8 +476,12 @@ export function projectPublicProfile(source: ShareSource, sharing: ProfileSharin
     ? presentSharedNutrition(source.nutrition.settings, source.nutrition.logs, source.today, {
       heightCm: source.nutrition.heightCm,
       weights: source.nutrition.weights,
+      bodyFatPct: source.nutrition.bodyFatPct,
+      leanMassKg: source.nutrition.leanMassKg,
+      waistCm: source.nutrition.waistCm,
+      shareFigures: settings.shareBodyFigures,
     })
-    : { meals: null, calories: null, quality: null, progress: null, wagon: null, goal: null };
+    : { meals: null, calories: null, quality: null, progress: null, bodyFigures: null, wagon: null, goal: null };
   const foodDiary = sharedFood.meals;
   const calories = sharedFood.calories;
   const quality = sharedFood.quality;
@@ -508,6 +529,7 @@ export function projectPublicProfile(source: ShareSource, sharing: ProfileSharin
     calories,
     quality,
     progress,
+    bodyFigures: sharedFood.bodyFigures,
     wagon,
     goal,
     healthPlan,
@@ -611,6 +633,7 @@ export function parsePublicProfile(value: unknown): PublicProfileView | null {
     calories: typeof raw.calories === 'string' && raw.calories.trim() ? raw.calories : null,
     quality: qualityShare(raw.quality),
     progress: typeof raw.progress === 'string' && raw.progress.trim() ? raw.progress : null,
+    bodyFigures: typeof raw.bodyFigures === 'string' && raw.bodyFigures.trim() ? raw.bodyFigures.trim() : null,
     wagon: wagonLine(raw.wagon),
     goal: goalFrom(raw.goal),
     healthPlan: parseSharedHealthPlan(raw.healthPlan),

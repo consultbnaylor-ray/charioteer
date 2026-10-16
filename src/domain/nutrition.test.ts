@@ -1027,6 +1027,21 @@ describe('body composition', () => {
     const parsed = parseSharedNutrition({ progressDays: 1, composition: 'Body fat 15%.' });
     expect(parsed?.progress).toBe(`${progressShareLine(1)} Body fat 15%.`);
     expect(parseSharedNutrition({ composition: 'Body fat 15%.' })?.progress).toBeNull();
+    expect(parseSharedNutrition({ composition: 'Body fat 15%.' })?.bodyFigures).toBe('Body fat 15%.');
+    const figuresOnly = presentSharedNutrition(
+      defaultNutritionSettings(),
+      [],
+      '2026-10-14',
+      { bodyFatPct: 15, leanMassKg: 63, waistCm: 84, heightCm: 178, shareFigures: true },
+    );
+    expect(figuresOnly.progress).toBeNull();
+    expect(figuresOnly.bodyFigures).toBe('Body fat 15%.');
+    expect(presentSharedNutrition(
+      defaultNutritionSettings(),
+      [],
+      '2026-10-14',
+      { bodyFatPct: 15, heightCm: 178, shareFigures: false },
+    ).bodyFigures).toBeNull();
   });
 
   it('keeps the body card free of photo estimation and reloads', () => {

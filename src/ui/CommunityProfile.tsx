@@ -424,6 +424,7 @@ function SharedProfileFacts({ userId, name }: { userId: string; name: string }) 
         calories: nutrition.calories,
         quality: nutrition.quality,
         progress: nutrition.progress,
+        bodyFigures: nutrition.bodyFigures,
         wagon: nutrition.wagon,
         goal: nutrition.goal,
       }
@@ -549,7 +550,7 @@ function SharedProfileFacts({ userId, name }: { userId: string; name: string }) 
       {view.unitsAvoided != null ? <T>{view.unitsAvoided} units avoided</T> : null}
       {view.moodStreak != null ? <T>Mood streak {view.moodStreak}</T> : null}
       {shownList(shown.health).map((line) => <T key={line}>{line}</T>)}
-      <SharedNutritionFacts meals={shown.foodDiary} calories={shown.calories} quality={shown.quality} progress={shown.progress} goal={shown.goal} />
+      <SharedNutritionFacts meals={shown.foodDiary} calories={shown.calories} quality={shown.quality} progress={shown.progress} bodyFigures={shown.bodyFigures} goal={shown.goal} />
       {shown.foodDiary ? (
         <View style={{ gap: 4 }}>
           <T variant="muted">Only a private message or a report.</T>

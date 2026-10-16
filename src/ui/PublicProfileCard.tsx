@@ -9,7 +9,7 @@ import { isoDay } from '@/domain/dates';
 import { shownError } from '@/domain/errors';
 import { interestChipRemovable, interestChipVisible } from '@/domain/interests';
 import { planCustomInterest, validateTown } from '@/domain/privacy';
-import { WAGON_PUBLIC_LINE, weightPointsFrom } from '@/domain/nutrition';
+import { compositionForAssessment, WAGON_PUBLIC_LINE, weightPointsFrom } from '@/domain/nutrition';
 import { SharedNutritionFacts } from '@/ui/NutritionShare';
 import { hiddenShareHref } from '@/domain/hiddenShareTargets';
 import { profileStatBoard } from '@/domain/profileStatTiles';
@@ -93,6 +93,7 @@ export function PublicProfileCard() {
   const hidden = !me.communityVisible || !me.ageConfirmed18;
   const labels = new Map(snap.interests.map((interest) => [interest.id, interest.label]));
   const now = new Date();
+  const figures = compositionForAssessment(snap.bodyComposition);
   const preview = projectPublicProfile({
     now,
     today: isoDay(now),
@@ -134,6 +135,9 @@ export function PublicProfileCard() {
       settings: snap.nutrition,
       heightCm: me.heightCm,
       weights: weightPointsFrom(snap.health),
+      bodyFatPct: figures.bodyFatPct,
+      leanMassKg: figures.leanMassKg,
+      waistCm: figures.waistCm,
     },
     healthPlan: snap.healthPlan,
   }, snap.sharing);
