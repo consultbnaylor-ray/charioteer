@@ -16,6 +16,14 @@ import {
   alcoholSavedLine,
   caloriesShareLine,
   estimateFromText,
+  foodItemFromUnknown,
+  formatGrams,
+  MEAL_ESTIMATE_PROMPT,
+  NUTRITION_BREAKDOWN_LABEL,
+  mealChartStartsOpen,
+  mealNutrientBars,
+  parseMealEstimate,
+  processedFoodLevel,
   fatBalance,
   goalBodyForSuggestion,
   goalDayLine,
@@ -1422,6 +1430,10 @@ describe("today's meals on the log card", () => {
     expect(logged).toBeLessThan(body);
     expect(screen.slice(log, confirm)).not.toContain('<TodayMeals');
     expect(screen.slice(logged, body)).toContain('<TodayMeals');
+    const renderLog = screen.slice(screen.indexOf('function renderLog'), screen.indexOf('function kcalFromField'));
+    expect(renderLog).toContain('<MealBreakdown');
+    expect(renderLog).toContain('mealNutrientBars(log.items)');
+    expect(renderLog).toContain('startOpen={false}');
     expect(screen.slice(logged, body)).toContain('Saved ✓');
     expect(screen.slice(logged, body)).toContain('>Earlier<');
     expect(screen.slice(logged, body)).toContain("Share today's meals");
@@ -1441,6 +1453,16 @@ describe("today's meals on the log card", () => {
     expect(meals).toContain('saved-meal-row');
     expect(meals).not.toContain('statsTone');
     expect(meals).not.toContain('statsPalette');
+    expect(NUTRITION_BREAKDOWN_LABEL).toBe('Nutrition breakdown');
+    expect(meals).toContain('MealBreakdown');
+    expect(meals).toContain('mealChartStartsOpen');
+    const bars = readFileSync('src/ui/MealNutrientBars.tsx', 'utf8');
+    expect(bars).toContain('NUTRITION_BREAKDOWN_LABEL');
+    expect(bars).toContain('Hide nutrition breakdown');
+    expect(bars).not.toContain('statsTone');
+    expect(bars).not.toContain('statsPalette');
+    expect(bars).toContain('theme.colors.ink');
+    expect(bars).toContain('bar.label');
     expect(readFileSync('src/app/(main)/home.tsx', 'utf8')).not.toContain('NutritionToday');
   });
 
@@ -1471,5 +1493,62 @@ describe("today's meals on the log card", () => {
       items: [],
     });
     expect(recentDuplicateMeal([noted], 'user', { meal: 'breakfast', note: '4 eggs', items: [] }, now)).toBe(true);
+  });
+
+  it('draws a compact bar for each stored nutrient and leaves out anything missing', () => {
+    const porridge = estimateFromText('porridge and a banana');
+    const labels = mealNutrientBars(porridge).map((bar) => bar.label);
+    expect(labels).toContain('Protein 7.2 g');
+    expect(labels).toContain('Carbs 51 g');
+    expect(labels).toContain('Sugars 13 g · Within 27 g');
+    expect(labels).toContain('Total fat 2.8 g · Within 21 g');
+    expect(labels).toContain('Saturated fat 0.7 g · Within 6 g');
+    expect(labels).toContain('Fibre 5.6 g');
+    expect(labels).toContain('Salt 0.1 g · Within 1.8 g');
+    expect(labels).toContain('Processed food level Low');
+    expect(labels.join(' ')).not.toMatch(/\b0 g\b/);
+    const crisps = mealNutrientBars(estimateFromText('crisps'));
+    expect(crisps.map((bar) => bar.label)).toContain('Processed food level High');
+    expect(crisps.find((bar) => bar.key === 'saturated')?.zone).toBeGreaterThan(0);
+    const mixed = mealNutrientBars([
+      ...estimateFromText('chicken'),
+      ...estimateFromText('crisps'),
+    ]);
+    expect(processedFoodLevel(estimateFromText('chicken'))).toBe('Low');
+    expect(mixed.map((bar) => bar.label)).toContain('Processed food level Medium');
+    const chocolate = mealNutrientBars(estimateFromText('chocolate'));
+    expect(chocolate.map((bar) => bar.label)).toContain('Saturated fat 7 g · Above 6 g');
+    const partial = foodItemFromUnknown({ name: 'Soup', kcal: 200, proteinG: 8 });
+    expect(partial).not.toBeNull();
+    const partialBars = mealNutrientBars(partial ? [partial] : []);
+    expect(partialBars.map((bar) => bar.label)).toEqual(['Protein 8 g']);
+    const empty = foodItemFromUnknown({ name: 'Soup', kcal: 200 });
+    expect(mealNutrientBars(empty ? [empty] : [])).toEqual([]);
+    const unknown = estimateFromText('mystery stew');
+    expect(unknown[0]?.known).toEqual([]);
+    expect(mealNutrientBars(unknown)).toEqual([]);
+    expect(mealChartStartsOpen(0, 2)).toBe(true);
+    expect(mealChartStartsOpen(0, 3)).toBe(false);
+    expect(mealChartStartsOpen(1, 3)).toBe(true);
+    expect(mealChartStartsOpen(2, 3)).toBe(true);
+    expect(formatGrams(1.8)).toBe('1.8');
+  });
+
+  it('fills nutrients the model left off a known food, and keeps figures it did send', () => {
+    expect(MEAL_ESTIMATE_PROMPT).toContain('Leave a key out only when it cannot be estimated');
+    expect(MEAL_ESTIMATE_PROMPT).toContain('sodiumMg');
+    const egg = parseMealEstimate({ items: [{ name: 'Egg', kcal: 78, proteinG: 6.4 }] });
+    expect(egg?.[0]?.proteinG).toBe(6.4);
+    expect(egg?.[0]?.saturatedG).toBe(1.6);
+    expect(egg?.[0]?.sodiumMg).toBe(70);
+    expect(egg?.[0]?.processedKnown).toBe(true);
+    expect(mealNutrientBars(egg ?? []).map((bar) => bar.label)).toContain('Saturated fat 1.6 g · Within 6 g');
+    expect(mealNutrientBars(egg ?? []).map((bar) => bar.label).join(' ')).not.toContain('Sugars');
+    const kept = parseMealEstimate({ items: [{ name: 'Egg', kcal: 78, proteinG: 6.4, sugarG: 2 }] });
+    expect(kept?.[0]?.sugarG).toBe(2);
+    const dish = parseMealEstimate({ items: [{ name: 'Egg fried rice', kcal: 400, proteinG: 12 }] });
+    expect(dish?.[0]?.saturatedG).toBe(0);
+    expect(dish?.[0]?.known).toEqual(['proteinG']);
+    expect(mealNutrientBars(dish ?? []).map((bar) => bar.label)).toEqual(['Protein 12 g']);
   });
 });

@@ -5,12 +5,14 @@ import Svg, { Circle } from 'react-native-svg';
 
 import {
   TODAY_MEALS_EMPTY,
+  mealChartStartsOpen,
   todayMealTotalLine,
   todayMealsNeedCollapse,
   type TodayMealRow,
   type TodayMealTotals,
   type TodayRing,
 } from '@/domain/nutrition';
+import { MealBreakdown } from '@/ui/MealNutrientBars';
 import { useAppTheme } from '@/ui/theme';
 import { T } from '@/ui/ui';
 
@@ -96,7 +98,7 @@ export function TodayMeals({
           <T style={{ flex: 1 }}>{ring.status}</T>
         </View>
       ) : null}
-      {shown ? rows.map((row) => {
+      {shown ? rows.map((row, index) => {
         const kcal = hideCalories ? '' : ` · ${row.kcal.toLocaleString('en-GB')} kcal`;
         const justSaved = row.id === highlightId;
         return (
@@ -123,6 +125,7 @@ export function TodayMeals({
               ) : null}
               <T>{`${row.typeLabel} · ${row.name}${kcal}`}</T>
             </Pressable>
+            <MealBreakdown bars={row.bars} startOpen={mealChartStartsOpen(index, rows.length)} />
             {activeId === row.id ? activeTools : null}
           </View>
         );

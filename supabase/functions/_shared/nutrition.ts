@@ -59,7 +59,14 @@ export type FoodItem = {
   transG: number;
   sodiumMg: number;
   processed: boolean;
+  /** Nutrient keys the estimate included. Older rows omit this and keep the numbers they stored. */
+  known?: NutrientKey[];
+  /** The estimate said whether this food is ultra-processed. */
+  processedKnown?: boolean;
 };
+
+export const NUTRIENT_KEYS = ['proteinG', 'carbsG', 'sugarG', 'fibreG', 'unsaturatedG', 'saturatedG', 'transG', 'sodiumMg'] as const;
+export type NutrientKey = (typeof NUTRIENT_KEYS)[number];
 
 export type FoodLog = {
   id: string;
@@ -212,23 +219,68 @@ function num(value: unknown, places: number): number {
   return Math.round(parsed * factor) / factor;
 }
 
+const NUTRIENT_ALIASES: Record<NutrientKey, string> = {
+  proteinG: 'protein_g',
+  carbsG: 'carbs_g',
+  sugarG: 'sugar_g',
+  fibreG: 'fibre_g',
+  unsaturatedG: 'unsaturated_g',
+  saturatedG: 'saturated_g',
+  transG: 'trans_g',
+  sodiumMg: 'sodium_mg',
+};
+
+function isNutrientKey(value: unknown): value is NutrientKey {
+  return typeof value === 'string' && (NUTRIENT_KEYS as readonly string[]).includes(value);
+}
+
+function readNutrient(
+  row: Record<string, unknown>,
+  key: NutrientKey,
+  places: number,
+  listed: readonly NutrientKey[] | null,
+): { value: number; known: boolean } {
+  const known = listed ? listed.includes(key) : key in row || NUTRIENT_ALIASES[key] in row;
+  const raw = row[key] ?? row[NUTRIENT_ALIASES[key]];
+  return { value: known ? num(raw, places) : 0, known };
+}
+
 export function foodItemFromUnknown(value: unknown): FoodItem | null {
   if (!value || typeof value !== 'object') return null;
   const row = value as Record<string, unknown>;
   const name = typeof row.name === 'string' ? row.name.trim().slice(0, 80) : '';
   if (!name) return null;
+  const listed = Array.isArray(row.known) ? row.known.filter(isNutrientKey) : null;
+  const protein = readNutrient(row, 'proteinG', 1, listed);
+  const carbs = readNutrient(row, 'carbsG', 1, listed);
+  const sugar = readNutrient(row, 'sugarG', 1, listed);
+  const fibre = readNutrient(row, 'fibreG', 1, listed);
+  const unsaturated = readNutrient(row, 'unsaturatedG', 1, listed);
+  const saturated = readNutrient(row, 'saturatedG', 1, listed);
+  const trans = readNutrient(row, 'transG', 1, listed);
+  const sodium = readNutrient(row, 'sodiumMg', 0, listed);
+  const known = [protein, carbs, sugar, fibre, unsaturated, saturated, trans, sodium]
+    .map((part, index) => (part.known ? NUTRIENT_KEYS[index] : null))
+    .filter((key): key is NutrientKey => key != null);
+  const processedKnown = typeof row.processedKnown === 'boolean'
+    ? row.processedKnown
+    : listed
+      ? false
+      : 'processed' in row;
   return {
     name,
     kcal: num(row.kcal, 0),
-    proteinG: num(row.proteinG ?? row.protein_g, 1),
-    carbsG: num(row.carbsG ?? row.carbs_g, 1),
-    sugarG: num(row.sugarG ?? row.sugar_g, 1),
-    fibreG: num(row.fibreG ?? row.fibre_g, 1),
-    unsaturatedG: num(row.unsaturatedG ?? row.unsaturated_g, 1),
-    saturatedG: num(row.saturatedG ?? row.saturated_g, 1),
-    transG: num(row.transG ?? row.trans_g, 1),
-    sodiumMg: num(row.sodiumMg ?? row.sodium_mg, 0),
+    proteinG: protein.value,
+    carbsG: carbs.value,
+    sugarG: sugar.value,
+    fibreG: fibre.value,
+    unsaturatedG: unsaturated.value,
+    saturatedG: saturated.value,
+    transG: trans.value,
+    sodiumMg: sodium.value,
     processed: row.processed === true,
+    known,
+    processedKnown,
   };
 }
 
@@ -237,7 +289,7 @@ export function parseMealEstimate(payload: unknown): FoodItem[] | null {
   if (!raw || typeof raw !== 'object') return null;
   const items = (raw as { items?: unknown }).items;
   if (!Array.isArray(items)) return null;
-  const parsed = items.map(foodItemFromUnknown).filter((item): item is FoodItem => item != null);
+  const parsed = items.map(foodItemFromUnknown).filter((item): item is FoodItem => item != null).map(fillEstimateGaps);
   return parsed.length ? parsed.slice(0, 12) : null;
 }
 
@@ -261,7 +313,8 @@ function jsonFromText(text: string): unknown {
 export const MEAL_ESTIMATE_PROMPT = [
   'You estimate a meal for a UK food log. Reply with JSON only, no markdown.',
   'Shape: {"items":[{"name":"","kcal":0,"proteinG":0,"carbsG":0,"sugarG":0,"fibreG":0,"unsaturatedG":0,"saturatedG":0,"transG":0,"sodiumMg":0,"processed":false}]}',
-  'Use grams except kcal and sodium (milligrams). unsaturatedG is mono and poly together.',
+  'Use grams except kcal and sodium (milligrams). unsaturatedG is mono and poly together. Salt on a UK label is sodium times 2.5.',
+  'Include every nutrient key. Use 0 when the food has none of it. Leave a key out only when it cannot be estimated.',
   'processed is true for ultra-processed foods such as crisps, biscuits, sweets, fizzy drinks, and reconstituted meat.',
   'These are estimates. Do not invent a medical claim. If the picture or text is not food, return {"items":[]}.',
 ].join(' ');
@@ -299,7 +352,44 @@ function scaled(food: KnownFood, count: number): FoodItem {
     transG: round1(each.transG * n),
     sodiumMg: Math.round(each.sodiumMg * n),
     processed: food.processed,
+    known: [...NUTRIENT_KEYS],
+    processedKnown: true,
   };
+}
+
+/** Fills nutrients the model left out when the name is one known food. Provided figures stay. */
+function fillEstimateGaps(item: FoodItem): FoodItem {
+  const food = knownFoodForName(item.name);
+  if (!food) return item;
+  const known = new Set<NutrientKey>(item.known ?? []);
+  if (!item.known) {
+    for (const key of NUTRIENT_KEYS) {
+      if (item[key] > 0) known.add(key);
+    }
+  }
+  const ratio = item.kcal > 0 && food.each.kcal > 0 ? item.kcal / food.each.kcal : 1;
+  const factor = Math.min(PORTION_MAX, ratio > 0 ? ratio : 1);
+  const next: FoodItem = { ...item, known: [...known] };
+  for (const key of NUTRIENT_KEYS) {
+    if (known.has(key)) continue;
+    const raw = food.each[key] * factor;
+    next[key] = key === 'sodiumMg' ? Math.round(raw) : round1(raw);
+    known.add(key);
+  }
+  next.known = [...known];
+  if (!item.processedKnown) {
+    next.processed = food.processed;
+    next.processedKnown = true;
+  }
+  return next;
+}
+
+function knownFoodForName(name: string): KnownFood | null {
+  const plain = name.toLowerCase().replace(/^\d+\s*×\s*/, '').trim();
+  for (const food of KNOWN) {
+    if (plain === food.name.toLowerCase() || food.keys.some((key) => plain === key)) return food;
+  }
+  return null;
 }
 
 /** A local reading of a sentence such as "2 eggs on toast", used when the model is off. */
@@ -331,6 +421,8 @@ export function estimateFromText(text: string): FoodItem[] {
     transG: 0,
     sodiumMg: 0,
     processed: false,
+    known: [],
+    processedKnown: false,
   }];
 }
 
@@ -607,6 +699,33 @@ export const TODAY_MEALS_EMPTY = 'No meals logged yet today';
 /** A longer list starts closed. Five meals still fit on the card. */
 export const TODAY_MEALS_COLLAPSE_AFTER = 5;
 
+/** The newest meals keep their bars in view. Older rows start behind the toggle. */
+export const LATEST_MEAL_CHARTS = 2;
+
+export const NUTRITION_BREAKDOWN_LABEL = 'Nutrition breakdown';
+
+/**
+ * A meal is high above these amounts.
+ * https://www.nhs.uk/live-well/eat-well/food-guidelines-and-food-labels/how-to-read-food-labels/
+ */
+export const MEAL_FAT_GUIDE_G = 21;
+export const MEAL_SAT_FAT_GUIDE_G = 6;
+export const MEAL_SUGAR_GUIDE_G = 27;
+export const MEAL_SALT_GUIDE_G = 1.8;
+
+/** UK label: salt grams = sodium milligrams × 2.5 / 1000. */
+const SALT_FROM_SODIUM_MG = 2.5 / 1000;
+
+export type MealNutrientBar = {
+  key: string;
+  /** Name, grams, and a guideline word when one exists. */
+  label: string;
+  /** Share of this bar's track, from 0 to 1. */
+  fill: number;
+  /** Share of the track that is the healthy zone. Omitted when no guideline applies. */
+  zone?: number;
+};
+
 export type TodayMealRow = {
   id: string;
   meal: MealSlot;
@@ -614,7 +733,103 @@ export type TodayMealRow = {
   name: string;
   kcal: number;
   previewUrl?: string | null;
+  bars: MealNutrientBar[];
 };
+
+function nutrientIsKnown(item: FoodItem, key: NutrientKey): boolean {
+  if (item.known) return item.known.includes(key);
+  return item[key] > 0;
+}
+
+function processedIsKnown(item: FoodItem): boolean {
+  if (typeof item.processedKnown === 'boolean') return item.processedKnown;
+  if (item.known) return false;
+  return item.processed === true;
+}
+
+function sumKnown(items: readonly FoodItem[], key: NutrientKey): number | null {
+  let any = false;
+  let total = 0;
+  for (const item of items) {
+    if (!nutrientIsKnown(item, key)) continue;
+    any = true;
+    total += item[key];
+  }
+  return any ? round1(total) : null;
+}
+
+export function formatGrams(value: number): string {
+  const rounded = round1(value);
+  return Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1);
+}
+
+function zoneWords(grams: number, guide: number): string {
+  return `${grams <= guide ? 'Within' : 'Above'} ${formatGrams(guide)} g`;
+}
+
+export type ProcessedFoodLevel = 'Low' | 'Medium' | 'High';
+
+/** Low when none of the known items are ultra-processed, High when all of them are. */
+export function processedFoodLevel(items: readonly FoodItem[]): ProcessedFoodLevel | null {
+  const decided = items.filter(processedIsKnown);
+  if (!decided.length) return null;
+  const flagged = decided.filter((item) => item.processed).length;
+  if (flagged === 0) return 'Low';
+  if (flagged === decided.length) return 'High';
+  return 'Medium';
+}
+
+/** Bars for the nutrients this meal actually has. A missing figure is left out, including a stored zero. */
+export function mealNutrientBars(items: readonly FoodItem[]): MealNutrientBar[] {
+  const protein = sumKnown(items, 'proteinG');
+  const carbs = sumKnown(items, 'carbsG');
+  const sugar = sumKnown(items, 'sugarG');
+  const fibre = sumKnown(items, 'fibreG');
+  const unsaturated = sumKnown(items, 'unsaturatedG');
+  const saturated = sumKnown(items, 'saturatedG');
+  const trans = sumKnown(items, 'transG');
+  const sodium = sumKnown(items, 'sodiumMg');
+  const fatParts = [unsaturated, saturated, trans].filter((part): part is number => part != null);
+  const fat = fatParts.length ? round1(fatParts.reduce((sum, part) => sum + part, 0)) : null;
+  const salt = sodium == null ? null : round1(sodium * SALT_FROM_SODIUM_MG);
+  const specs: { key: string; name: string; grams: number | null; guide?: number }[] = [
+    { key: 'protein', name: 'Protein', grams: protein },
+    { key: 'carbs', name: 'Carbs', grams: carbs },
+    { key: 'sugar', name: 'Sugars', grams: sugar, guide: MEAL_SUGAR_GUIDE_G },
+    { key: 'fat', name: 'Total fat', grams: fat, guide: MEAL_FAT_GUIDE_G },
+    { key: 'saturated', name: 'Saturated fat', grams: saturated, guide: MEAL_SAT_FAT_GUIDE_G },
+    { key: 'fibre', name: 'Fibre', grams: fibre },
+    { key: 'salt', name: 'Salt', grams: salt, guide: MEAL_SALT_GUIDE_G },
+  ];
+  const visible = specs.filter((spec): spec is { key: string; name: string; grams: number; guide?: number } => spec.grams != null && spec.grams > 0);
+  const peak = visible.reduce((max, spec) => Math.max(max, spec.grams, spec.guide ?? 0), 0);
+  const bars: MealNutrientBar[] = visible.map((spec) => {
+    const label = spec.guide == null
+      ? `${spec.name} ${formatGrams(spec.grams)} g`
+      : `${spec.name} ${formatGrams(spec.grams)} g · ${zoneWords(spec.grams, spec.guide)}`;
+    return {
+      key: spec.key,
+      label,
+      fill: peak > 0 ? spec.grams / peak : 0,
+      ...(spec.guide == null ? {} : { zone: peak > 0 ? Math.min(1, spec.guide / peak) : 0 }),
+    };
+  });
+  const level = processedFoodLevel(items);
+  if (level) {
+    bars.push({
+      key: 'processed',
+      label: `Processed food level ${level}`,
+      fill: level === 'Low' ? 1 / 3 : level === 'Medium' ? 2 / 3 : 1,
+    });
+  }
+  return bars;
+}
+
+/** Latest meals stay open. A longer list tucks the earlier charts away. */
+export function mealChartStartsOpen(index: number, count: number): boolean {
+  if (count <= LATEST_MEAL_CHARTS) return true;
+  return index >= count - LATEST_MEAL_CHARTS;
+}
 
 export type TodayMealTotals = {
   kcal: number;
@@ -642,6 +857,7 @@ export function todayMealRows(logs: readonly FoodLog[], day: string, ownerId: st
         name: names || log.note.trim() || 'Meal',
         kcal: sumItems(log.items).kcal,
         previewUrl: log.previewUrl ?? null,
+        bars: mealNutrientBars(log.items),
       };
     });
 }

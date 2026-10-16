@@ -40,6 +40,7 @@ import {
   lossBlocked,
   mifflinBmr,
   nutritionPatternLines,
+  mealNutrientBars,
   processedLine,
   recentDuplicateMeal,
   sugarCravingNote,
@@ -68,6 +69,7 @@ import { weightReadingKg } from '@/domain/weightEntry';
 import { readAppleHealthBody } from '@/health/sync';
 import { writeDayToAppleHealth } from '@/health/writeNutrition';
 import { BodyCompositionCard } from '@/ui/BodyComposition';
+import { MealBreakdown } from '@/ui/MealNutrientBars';
 import { MealEdit } from '@/ui/MealEdit';
 import { TodayMeals } from '@/ui/TodayMeals';
 import { HealthFigureView } from '@/ui/MeasuredFigure';
@@ -172,21 +174,49 @@ function readWeightClass(value: string): number | null | 'bad' {
   return kg;
 }
 
+function draftedGrams(value: string, places: number): { value: number; known: boolean } {
+  const trimmed = value.trim();
+  if (!trimmed) return { value: 0, known: false };
+  const parsed = numberFrom(trimmed);
+  const factor = 10 ** places;
+  return { value: Math.round(parsed * factor) / factor, known: true };
+}
+
 function itemFromDraft(draft: DraftItem): FoodItem | null {
   const name = draft.name.trim().slice(0, 80);
   if (!name) return null;
+  const protein = draftedGrams(draft.proteinG, 1);
+  const carbs = draftedGrams(draft.carbsG, 1);
+  const sugar = draftedGrams(draft.sugarG, 1);
+  const fibre = draftedGrams(draft.fibreG, 1);
+  const unsaturated = draftedGrams(draft.unsaturatedG, 1);
+  const saturated = draftedGrams(draft.saturatedG, 1);
+  const trans = draftedGrams(draft.transG, 1);
+  const sodium = draftedGrams(draft.sodiumMg, 0);
+  const known = [
+    protein.known ? 'proteinG' as const : null,
+    carbs.known ? 'carbsG' as const : null,
+    sugar.known ? 'sugarG' as const : null,
+    fibre.known ? 'fibreG' as const : null,
+    unsaturated.known ? 'unsaturatedG' as const : null,
+    saturated.known ? 'saturatedG' as const : null,
+    trans.known ? 'transG' as const : null,
+    sodium.known ? 'sodiumMg' as const : null,
+  ].filter((key): key is NonNullable<typeof key> => key != null);
   return {
     name,
     kcal: Math.round(numberFrom(draft.kcal)),
-    proteinG: numberFrom(draft.proteinG),
-    carbsG: numberFrom(draft.carbsG),
-    sugarG: numberFrom(draft.sugarG),
-    fibreG: numberFrom(draft.fibreG),
-    unsaturatedG: numberFrom(draft.unsaturatedG),
-    saturatedG: numberFrom(draft.saturatedG),
-    transG: numberFrom(draft.transG),
-    sodiumMg: Math.round(numberFrom(draft.sodiumMg)),
+    proteinG: protein.value,
+    carbsG: carbs.value,
+    sugarG: sugar.value,
+    fibreG: fibre.value,
+    unsaturatedG: unsaturated.value,
+    saturatedG: saturated.value,
+    transG: trans.value,
+    sodiumMg: sodium.value,
     processed: draft.processed,
+    known,
+    processedKnown: true,
   };
 }
 
@@ -695,6 +725,7 @@ export default function Nutrition() {
           <Image source={{ uri: log.previewUrl }} style={{ width: 96, height: 96, borderRadius: 10 }} contentFit="cover" accessibilityLabel="Saved meal photo" />
         ) : null}
         <T>{`${dateBit}${MEAL_LABEL[log.meal]}${when}: ${names || log.note || 'Meal'}${portionBit}${kcal}${estimate}`}</T>
+        <MealBreakdown bars={mealNutrientBars(log.items)} startOpen={false} />
         {mealActions(log, 'list')}
       </View>
     );
