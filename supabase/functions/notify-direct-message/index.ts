@@ -115,6 +115,14 @@ Deno.serve(async (req) => {
   const dropped = targets.filter((_, index) => result.data?.[index]?.details?.error === 'DeviceNotRegistered');
   if (dropped.length) await admin.from('device_tokens').delete().eq('user_id', recipientId).in('expo_push_token', dropped);
   const delivered = result.data.some((ticket) => ticket.status === 'ok');
+  // Ticket ids and codes only, so a push Expo accepted but never delivered can be traced by receipt.
+  await admin.from('message_push_log').update({
+    tickets: result.data.map((ticket) => ({
+      id: (ticket as { id?: string }).id ?? null,
+      status: ticket.status ?? null,
+      error: ticket.details?.error ?? null,
+    })),
+  }).eq('message_id', messageId);
   if (!delivered) {
     await admin.from('message_push_log').delete().eq('message_id', messageId);
     return json({ ok: false, code: 'push' }, 502);
