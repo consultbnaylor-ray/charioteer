@@ -282,6 +282,17 @@ export type PublicProfileView = {
   goal: SharedGoal | null;
   /** Headline, focus lines, and tick counts. Null when that switch is off or there is no plan. */
   healthPlan: SharedHealthPlan | null;
+  /**
+   * Last 7 days for health kinds that are already shared.
+   * Empty when that kind's switch is off, or when no reading was stored.
+   */
+  healthTrends: SharedHealthTrend[];
+};
+
+/** One shared health kind, with the days that already have a reading. */
+export type SharedHealthTrend = {
+  kind: string;
+  points: { day: string; value: number }[];
 };
 
 /** Consecutive check-in days. The number only. Mood, craving, sleep, and notes stay off. */
@@ -298,6 +309,17 @@ export function moodStreakCount(checkIns: { createdAt: string }[], today: string
     cursor = isoDay(new Date(parseIsoDay(cursor).getTime() - 86_400_000));
   }
   return count;
+}
+
+function sharedHealthTrends(source: ShareSource, kinds: string[]): SharedHealthTrend[] {
+  const allowed = new Set<string>(HEALTH_KINDS);
+  return kinds.flatMap((kind) => {
+    if (!allowed.has(kind)) return [];
+    const points = seriesForWindow(source.health, kind, source.today, 7)
+      .filter((point) => Number.isFinite(point.value))
+      .map((point) => ({ day: point.day, value: point.value }));
+    return points.length ? [{ kind, points }] : [];
+  });
 }
 
 function healthHeadlines(source: ShareSource, kinds: string[]): string[] {
@@ -366,6 +388,7 @@ export function projectPublicProfile(source: ShareSource, sharing: ProfileSharin
   }
   const moodStreak = settings.moodStreak ? moodStreakCount(source.checkIns, source.today) : null;
   const health = healthHeadlines(source, settings.healthKinds);
+  const healthTrends = sharedHealthTrends(source, settings.healthKinds);
   const progressPhotos = source.progressPhotos
     .filter((photo) => photo.visibility === 'community')
     .map((photo) => ({ id: photo.id, caption: typeof photo.caption === 'string' ? photo.caption : '', takenOn: photo.takenOn, monthIndex: photo.monthIndex }));
@@ -488,6 +511,7 @@ export function projectPublicProfile(source: ShareSource, sharing: ProfileSharin
     wagon,
     goal,
     healthPlan,
+    healthTrends,
   };
 }
 
@@ -590,7 +614,28 @@ export function parsePublicProfile(value: unknown): PublicProfileView | null {
     wagon: wagonLine(raw.wagon),
     goal: goalFrom(raw.goal),
     healthPlan: parseSharedHealthPlan(raw.healthPlan),
+    healthTrends: trendList(raw.healthTrends),
   };
+}
+
+function trendList(value: unknown): SharedHealthTrend[] {
+  if (!Array.isArray(value)) return [];
+  const allowed = new Set<string>(HEALTH_KINDS);
+  return value.flatMap((item) => {
+    if (!item || typeof item !== 'object') return [];
+    const row = item as Record<string, unknown>;
+    if (typeof row.kind !== 'string' || !allowed.has(row.kind)) return [];
+    if (!Array.isArray(row.points)) return [];
+    const points = row.points.flatMap((point) => {
+      if (!point || typeof point !== 'object') return [];
+      const sample = point as Record<string, unknown>;
+      const day = typeof sample.day === 'string' ? sample.day : '';
+      const amount = typeof sample.value === 'number' ? sample.value : Number.NaN;
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(day) || !Number.isFinite(amount)) return [];
+      return [{ day, value: amount }];
+    });
+    return points.length ? [{ kind: row.kind, points }] : [];
+  });
 }
 
 function mealLines(value: unknown): { meal: string; detail: string }[] | null {

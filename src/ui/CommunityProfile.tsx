@@ -9,7 +9,9 @@ import { privateMessageFailure, shownError } from '@/domain/errors';
 import type { SharedHealthPlan } from '@/domain/healthPlan';
 import { WAGON_PUBLIC_LINE, type SharedNutritionView } from '@/domain/nutrition';
 import { SharedNutritionFacts } from '@/ui/NutritionShare';
+import { profileStatBoard } from '@/domain/profileStatTiles';
 import { PROFILE_LOAD_ERROR, formatSoberShare, sharedReportItems, shownList, type PublicProfileView, type SharedReportItem } from '@/domain/profileSharing';
+import { ProfileStatBoard } from '@/ui/ProfileStatTiles';
 import { MemberAvatar } from '@/ui/MemberAvatar';
 import { PlanTick } from '@/ui/PlanTick';
 import { formatGbp } from '@/domain/savings';
@@ -538,6 +540,7 @@ function SharedProfileFacts({ userId, name }: { userId: string; name: string }) 
       ) : null}
       {shownList(view.interests).length ? <T>{shownList(view.interests).join(' · ')}</T> : null}
       <T variant="muted">{view.town || 'Area not shared'}</T>
+      <ProfileStatBoard {...profileStatBoard(shown, { audience: 'member' })} />
       {view.stage ? <T>Stage: {view.stage}</T> : null}
       {view.sober && typeof view.sober.days === 'number' ? <T>{formatSoberShare({ days: view.sober.days, since: typeof view.sober.since === 'string' ? view.sober.since : '' })}</T> : null}
       {shownList(view.milestones).length ? <T>{shownList(view.milestones).join(', ')}</T> : null}

@@ -12,7 +12,9 @@ import { planCustomInterest, validateTown } from '@/domain/privacy';
 import { WAGON_PUBLIC_LINE, weightPointsFrom } from '@/domain/nutrition';
 import { SharedNutritionFacts } from '@/ui/NutritionShare';
 import { hiddenShareHref } from '@/domain/hiddenShareTargets';
+import { profileStatBoard } from '@/domain/profileStatTiles';
 import { BIO_EXAMPLE, BIO_LIMIT, NEVER_SHARED, PHOTO_CAPTION_LIMIT, formatSoberShare, projectPublicProfile } from '@/domain/profileSharing';
+import { ProfileStatBoard } from '@/ui/ProfileStatTiles';
 import { ShareOnProfile } from '@/ui/ShareOnProfile';
 import { progressPhotoLabel } from '@/domain/progressPhotos';
 import { formatGbp } from '@/domain/savings';
@@ -344,6 +346,7 @@ export function PublicProfileCard() {
             ) : null}
             <T variant="muted">{preview.town || 'Area not shared'}</T>
             {interestLine ? <T>{interestLine}</T> : null}
+            <ProfileStatBoard {...profileStatBoard(preview, { audience: 'owner', sharing: snap.sharing })} />
             {preview.stage ? <T>Stage: {preview.stage}</T> : null}
             {preview.sober ? <T>{formatSoberShare(preview.sober)}</T> : null}
             {preview.milestones.length ? <T>{preview.milestones.join(', ')}</T> : null}
