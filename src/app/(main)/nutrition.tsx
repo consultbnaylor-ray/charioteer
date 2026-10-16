@@ -568,6 +568,10 @@ export default function Nutrition() {
 
   function readText() {
     setEstimateAttempt('text');
+    if (text.trim().length < 2) {
+      failEstimate('Add a little more detail, or enter the meal yourself.');
+      return;
+    }
     run('estimate', async () => {
       setEstimateError(null);
       setEstimateReady(false);

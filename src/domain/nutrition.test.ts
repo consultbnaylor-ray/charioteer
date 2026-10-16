@@ -903,6 +903,8 @@ describe('nutrition charts', () => {
     const textRead = screen.slice(screen.indexOf('function readText'), screen.indexOf('function readPhoto'));
     const photoRead = screen.slice(screen.indexOf('function readPhoto'), screen.indexOf('function samplePhoto'));
     const sampleRead = screen.slice(screen.indexOf('function samplePhoto'), screen.indexOf('function saveMeal'));
+    expect(textRead).toContain('text.trim().length < 2');
+    expect(textRead.indexOf('failEstimate(')).toBeLessThan(textRead.indexOf('estimateMeal'));
     expect(textRead).toContain('failEstimate(');
     expect(photoRead).toContain('failEstimate(');
     expect(sampleRead).toContain('failEstimate(');
