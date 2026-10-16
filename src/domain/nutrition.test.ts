@@ -877,6 +877,43 @@ describe('nutrition charts', () => {
     expect(screen).toContain("pending={isPending('suggest')}");
   });
 
+  it('shows a ready tick in the log box and a retry when the estimate fails', () => {
+    const screen = readFileSync('src/app/(main)/nutrition.tsx', 'utf8');
+    const status = readFileSync('src/ui/MealEstimateStatus.tsx', 'utf8');
+    const log = screen.slice(screen.indexOf('variant="label">Log a meal'), screen.indexOf('variant="label">Logged today'));
+    expect(status).toContain('Estimate ready - see below');
+    expect(status).toContain('Estimating...');
+    expect(status).toContain('statsToneColors');
+    expect(status).toContain('color: green');
+    expect(status).toContain('<PlanTick done');
+    expect(status).toContain('<ErrorNote');
+    expect(status).toContain('label="Try again"');
+    expect(status).not.toContain('saveFoodLog');
+    expect(log).toContain('<MealEstimateStatus');
+    expect(log).toContain('ready={estimateReady && draft?.estimated === true}');
+    expect(log).toContain('error={estimateError}');
+    expect(log).toContain('pendingLabel="Estimating..."');
+    expect(log).toContain('nativeID="meal-estimate-confirm"');
+    expect(log).toContain('{ESTIMATE_LABEL}');
+    expect(log).toContain('label="Save meal"');
+    expect(log).toContain('setEstimateReady(false)');
+    expect(log).not.toContain('saveFoodLog');
+    expect(screen).toContain("getElementById('meal-estimate-confirm')?.scrollIntoView");
+    expect(screen).toContain('failEstimate(');
+    const textRead = screen.slice(screen.indexOf('function readText'), screen.indexOf('function readPhoto'));
+    const photoRead = screen.slice(screen.indexOf('function readPhoto'), screen.indexOf('function samplePhoto'));
+    const sampleRead = screen.slice(screen.indexOf('function samplePhoto'), screen.indexOf('function saveMeal'));
+    expect(textRead).toContain('failEstimate(');
+    expect(photoRead).toContain('failEstimate(');
+    expect(sampleRead).toContain('failEstimate(');
+    expect(textRead).not.toMatch(/catch\s*\([^)]*\)\s*\{\s*\}/);
+    expect(photoRead).not.toMatch(/catch\s*\([^)]*\)\s*\{\s*\}/);
+    expect(sampleRead).not.toMatch(/catch\s*\([^)]*\)\s*\{\s*\}/);
+    const saved = screen.slice(screen.indexOf('await repo.saveFoodLog'), screen.indexOf('setText('));
+    expect(saved).toContain('setEstimateReady(false)');
+    expect(screen).toContain('nothing is saved until you confirm it');
+  });
+
   it('keeps every nutrition share on screen when Community is off or the settings row is missing', () => {
     expect(communitySharingOn(null)).toBe(false);
     expect(communitySharingOn({ communityVisible: false, ageConfirmed18: true })).toBe(false);

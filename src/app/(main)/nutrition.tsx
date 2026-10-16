@@ -66,8 +66,10 @@ import { readAppleHealthBody } from '@/health/sync';
 import { writeDayToAppleHealth } from '@/health/writeNutrition';
 import { BodyCompositionCard } from '@/ui/BodyComposition';
 import { GoalChoices } from '@/ui/GoalChoices';
+import { MealEstimateStatus } from '@/ui/MealEstimateStatus';
 import { MealBreakdown } from '@/ui/MealNutrientBars';
 import { MealEdit } from '@/ui/MealEdit';
+import { statsToneColors } from '@/ui/statsPalette';
 import { TodayMeals } from '@/ui/TodayMeals';
 import { HealthFigureView } from '@/ui/MeasuredFigure';
 import { NutritionBoard, WaterMeter, WeightTrendChart } from '@/ui/NutritionCharts';
@@ -300,7 +302,13 @@ export default function Nutrition() {
   const [mealSavedAt, setMealSavedAt] = useState<number | null>(null);
   const [duplicateAsk, setDuplicateAsk] = useState(false);
   const [revealId, setRevealId] = useState<string | null>(null);
+  const [estimateReady, setEstimateReady] = useState(false);
+  const [estimateError, setEstimateError] = useState<string | null>(null);
+  const [estimateAttempt, setEstimateAttempt] = useState<'text' | 'camera' | 'library' | 'sample'>('text');
+  const [estimateFlash, setEstimateFlash] = useState(false);
+  const [pinEstimate, setPinEstimate] = useState(0);
   const savedRowRef = useRef<View>(null);
+  const confirmRef = useRef<View>(null);
   const scroller = useScreenScroller();
 
   useEffect(() => {
@@ -314,6 +322,46 @@ export default function Nutrition() {
     const timer = setTimeout(() => setMealSavedAt(null), 2500);
     return () => clearTimeout(timer);
   }, [mealSavedAt]);
+
+  useEffect(() => {
+    if (!estimateFlash) return undefined;
+    const timer = setTimeout(() => setEstimateFlash(false), 1800);
+    return () => clearTimeout(timer);
+  }, [estimateFlash]);
+
+  useEffect(() => {
+    if (!pinEstimate) return undefined;
+    let cancelled = false;
+    const pin = () => {
+      if (cancelled) return;
+      if (Platform.OS === 'web') {
+        if (typeof document === 'undefined') return;
+        document.getElementById('meal-estimate-confirm')?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+        return;
+      }
+      const row = confirmRef.current;
+      const inner = scroller?.current.innerRef.current;
+      const scroll = scroller?.current.scrollRef.current;
+      if (!row || !inner || !scroll) return;
+      row.measureLayout(
+        inner as never,
+        (_x, y) => {
+          scroll.scrollTo({ y: Math.max(0, y - 8), animated: true });
+        },
+        () => {},
+      );
+    };
+    const frame = requestAnimationFrame(() => {
+      pin();
+      requestAnimationFrame(pin);
+    });
+    const later = setTimeout(pin, 400);
+    return () => {
+      cancelled = true;
+      cancelAnimationFrame(frame);
+      clearTimeout(later);
+    };
+  }, [pinEstimate, scroller]);
 
   useEffect(() => {
     if (!revealId) return undefined;
@@ -499,16 +547,38 @@ export default function Nutrition() {
     setError(null);
   }
 
+  function showEstimate(next: Draft) {
+    setEstimateError(null);
+    setEstimateReady(true);
+    setEstimateFlash(true);
+    openDraft(next);
+    setPinEstimate((value) => value + 1);
+  }
+
+  function failEstimate(message: string) {
+    setEstimateReady(false);
+    setEstimateError(message);
+  }
+
+  function retryEstimate() {
+    if (estimateAttempt === 'camera' || estimateAttempt === 'library') readPhoto(estimateAttempt);
+    else if (estimateAttempt === 'sample') samplePhoto();
+    else readText();
+  }
+
   function readText() {
+    setEstimateAttempt('text');
     run('estimate', async () => {
+      setEstimateError(null);
+      setEstimateReady(false);
       setError(null);
       try {
         const estimate = await repo.estimateMeal({ text });
         if (!estimate.items.length) {
-          setError('Add a little more detail, or enter the meal yourself.');
+          failEstimate('Add a little more detail, or enter the meal yourself.');
           return;
         }
-        openDraft({
+        showEstimate({
           meal,
           source: 'text',
           note: text.trim().slice(0, 500),
@@ -518,19 +588,30 @@ export default function Nutrition() {
           photoBase64: null,
         });
       } catch (err) {
-        setError(shownError(err, 'Could not read that meal. You can still type it in yourself.'));
+        failEstimate(shownError(err, 'Could not read that meal. You can still type it in yourself.'));
       }
     });
   }
 
   function readPhoto(source: 'camera' | 'library') {
+    const hadEstimate = draft?.estimated === true;
+    setEstimateAttempt(source);
     run('photo', async () => {
+      setEstimateError(null);
+      setEstimateReady(false);
       setError(null);
       try {
         const photo = await pickMealPhoto(source);
-        if (!photo) return;
+        if (!photo) {
+          if (hadEstimate) setEstimateReady(true);
+          return;
+        }
         const estimate = await repo.estimateMeal({ imageBase64: photo.base64, text });
-        openDraft({
+        if (!estimate.items.length) {
+          failEstimate('Could not read that photo. You can still type the meal in yourself.');
+          return;
+        }
+        showEstimate({
           meal,
           source: 'photo',
           note: text.trim().slice(0, 500),
@@ -540,23 +621,35 @@ export default function Nutrition() {
           photoBase64: photo.base64,
         });
       } catch (err) {
-        setError(shownError(err, 'Could not read that photo. You can still type the meal in yourself.'));
+        failEstimate(shownError(err, 'Could not read that photo. You can still type the meal in yourself.'));
       }
     });
   }
 
   function samplePhoto() {
+    setEstimateAttempt('sample');
     run('sample', async () => {
-      const estimate = await repo.estimateMeal({ imageBase64: SAMPLE_JPEG });
-      openDraft({
-        meal,
-        source: 'photo',
-        note: 'Sample plate',
-        items: estimate.items.map(draftFrom),
-        estimated: true,
-        previewUri: `data:image/jpeg;base64,${SAMPLE_JPEG}`,
-        photoBase64: SAMPLE_JPEG,
-      });
+      setEstimateError(null);
+      setEstimateReady(false);
+      setError(null);
+      try {
+        const estimate = await repo.estimateMeal({ imageBase64: SAMPLE_JPEG });
+        if (!estimate.items.length) {
+          failEstimate('Could not read that photo. You can still type the meal in yourself.');
+          return;
+        }
+        showEstimate({
+          meal,
+          source: 'photo',
+          note: 'Sample plate',
+          items: estimate.items.map(draftFrom),
+          estimated: true,
+          previewUri: `data:image/jpeg;base64,${SAMPLE_JPEG}`,
+          photoBase64: SAMPLE_JPEG,
+        });
+      } catch (err) {
+        failEstimate(shownError(err, 'Could not read that photo. You can still type the meal in yourself.'));
+      }
     });
   }
 
@@ -589,6 +682,8 @@ export default function Nutrition() {
           photoBase64: draft.photoBase64,
         });
         setDraft(null);
+        setEstimateReady(false);
+        setEstimateFlash(false);
         setText('');
         setMealSavedAt(Date.now());
         setRevealId(id);
@@ -897,28 +992,40 @@ export default function Nutrition() {
           ))}
         </View>
         <Field label="Describe the meal" value={text} onChangeText={setText} placeholder="2 eggs on toast" />
-        <Button label="Estimate from text" pending={isPending('estimate')} pendingLabel="Reading..." onPress={readText} />
-        <Button label="Take a photo" tone="quiet" pending={isPending('photo')} pendingLabel="Reading..." onPress={() => readPhoto('camera')} />
-        <Button label="Choose a photo" tone="quiet" pending={isPending('photo')} pendingLabel="Reading..." onPress={() => readPhoto('library')} />
+        <Button label="Estimate from text" pending={isPending('estimate')} pendingLabel="Estimating..." onPress={readText} />
+        <Button label="Take a photo" tone="quiet" pending={isPending('photo')} pendingLabel="Estimating..." onPress={() => readPhoto('camera')} />
+        <Button label="Choose a photo" tone="quiet" pending={isPending('photo')} pendingLabel="Estimating..." onPress={() => readPhoto('library')} />
         {snap.mode === 'demo' ? (
-          <Button label="Use a sample photo" tone="quiet" pending={isPending('sample')} pendingLabel="Reading..." onPress={samplePhoto} />
+          <Button label="Use a sample photo" tone="quiet" pending={isPending('sample')} pendingLabel="Estimating..." onPress={samplePhoto} />
         ) : null}
         <Button
           label="Enter it myself"
           tone="quiet"
-          onPress={() => openDraft({
-            meal,
-            source: 'manual',
-            note: text.trim().slice(0, 500),
-            items: [blankItem()],
-            estimated: false,
-            previewUri: null,
-            photoBase64: null,
-          })}
+          onPress={() => {
+            setEstimateReady(false);
+            setEstimateFlash(false);
+            setEstimateError(null);
+            openDraft({
+              meal,
+              source: 'manual',
+              note: text.trim().slice(0, 500),
+              items: [blankItem()],
+              estimated: false,
+              previewUri: null,
+              photoBase64: null,
+            });
+          }}
+        />
+        <MealEstimateStatus
+          waiting={isPending('estimate') || isPending('photo') || isPending('sample')}
+          ready={estimateReady && draft?.estimated === true}
+          error={estimateError}
+          onRetry={retryEstimate}
         />
       </Card>
       {draft ? (
-        <Card>
+        <View ref={confirmRef} nativeID="meal-estimate-confirm" collapsable={false}>
+        <Card style={estimateFlash ? { borderColor: statsToneColors(theme.scheme).good.ink, borderWidth: 2 } : undefined}>
           <T variant="label">{draft.source === 'photo' ? 'Confirm this photo' : 'Confirm this meal'}</T>
           {draft.estimated ? <T>{ESTIMATE_LABEL}</T> : null}
           {photoNote ? <T>{photoNote}</T> : null}
@@ -967,8 +1074,9 @@ export default function Nutrition() {
           ) : (
             <Button label="Save meal" pending={isPending('save')} pendingLabel="Saving..." onPress={() => saveMeal(false)} />
           )}
-          <Button label="Cancel" tone="quiet" disabled={isPending('save')} onPress={() => { setDuplicateAsk(false); setDraft(null); }} />
+          <Button label="Cancel" tone="quiet" disabled={isPending('save')} onPress={() => { setDuplicateAsk(false); setDraft(null); setEstimateReady(false); setEstimateFlash(false); }} />
         </Card>
+        </View>
       ) : null}
       <Card>
         <T variant="label">Logged today</T>
