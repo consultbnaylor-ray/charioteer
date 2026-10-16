@@ -1,13 +1,25 @@
-import { View } from 'react-native';
+import { Image } from 'expo-image';
+import { useState } from 'react';
+import { Modal, Pressable, View } from 'react-native';
 import Svg, { Circle, Polyline } from 'react-native-svg';
 
+import type { SharedMealPhoto } from '@/domain/nutrition';
 import { PROFILE_NOT_SHARED, type ProfileStatChart, type ProfileStatTile } from '@/domain/profileStatTiles';
 import { useAppTheme } from '@/ui/theme';
 import { T } from '@/ui/ui';
 
-/** Compact monochrome tiles for stats a profile already shares. */
-export function ProfileStatBoard({ tiles, notShared }: { tiles: ProfileStatTile[]; notShared: string[] }) {
-  if (!tiles.length && !notShared.length) return null;
+/** Compact monochrome tiles for stats a profile already shares. Meal photos sit with today's meals. */
+export function ProfileStatBoard({
+  tiles,
+  notShared,
+  mealPhotos = null,
+}: {
+  tiles: ProfileStatTile[];
+  notShared: string[];
+  mealPhotos?: SharedMealPhoto[] | null;
+}) {
+  const photos = (mealPhotos ?? []).filter((photo) => photo.url);
+  if (!tiles.length && !notShared.length && !photos.length) return null;
   return (
     <View style={{ gap: 8 }}>
       {tiles.length ? (
@@ -15,9 +27,61 @@ export function ProfileStatBoard({ tiles, notShared }: { tiles: ProfileStatTile[
           {tiles.map((tile) => <StatTile key={tile.id} tile={tile} />)}
         </View>
       ) : null}
+      {photos.length ? <MealPhotoRow photos={photos} /> : null}
       {notShared.length ? (
         <T variant="muted">{`${PROFILE_NOT_SHARED}: ${notShared.join(', ')}`}</T>
       ) : null}
+    </View>
+  );
+}
+
+/** Rounded thumbnails for today's shared meals. Tap opens a larger view with no edit controls. */
+function MealPhotoRow({ photos }: { photos: SharedMealPhoto[] }) {
+  const [open, setOpen] = useState<SharedMealPhoto | null>(null);
+  return (
+    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10, width: '100%' }}>
+      {photos.map((photo) => (
+        <Pressable
+          key={photo.id}
+          accessibilityRole="button"
+          accessibilityLabel={`${photo.meal} photo`}
+          onPress={() => setOpen(photo)}
+          style={{ width: 84, alignItems: 'center', gap: 4 }}
+        >
+          <Image
+            source={{ uri: photo.url }}
+            style={{ width: 72, height: 72, borderRadius: 12 }}
+            contentFit="cover"
+            accessibilityElementsHidden
+            importantForAccessibility="no"
+          />
+          <T variant="muted" numberOfLines={1}>{photo.meal}</T>
+        </Pressable>
+      ))}
+      <Modal visible={open != null} transparent animationType="fade" onRequestClose={() => setOpen(null)}>
+        <View style={{ flex: 1, backgroundColor: 'rgba(20,20,20,0.88)', justifyContent: 'center', padding: 24, gap: 12 }}>
+          {open?.url ? (
+            <View accessibilityRole="image" accessibilityLabel={`${open.meal} photo`}>
+              <Image
+                source={{ uri: open.url }}
+                style={{ width: '100%', height: 360, borderRadius: 12 }}
+                contentFit="contain"
+                accessibilityElementsHidden
+                importantForAccessibility="no"
+              />
+            </View>
+          ) : null}
+          {open ? <T style={{ color: '#fff', textAlign: 'center' }}>{open.meal}</T> : null}
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Close"
+            onPress={() => setOpen(null)}
+            style={{ minHeight: 44, alignItems: 'center', justifyContent: 'center' }}
+          >
+            <T style={{ color: '#fff' }}>Close</T>
+          </Pressable>
+        </View>
+      </Modal>
     </View>
   );
 }

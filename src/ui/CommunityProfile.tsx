@@ -421,6 +421,7 @@ function SharedProfileFacts({ userId, name }: { userId: string; name: string }) 
     ...(nutrition
       ? {
         foodDiary: nutrition.meals,
+        mealPhotos: nutrition.mealPhotos,
         calories: nutrition.calories,
         quality: nutrition.quality,
         progress: nutrition.progress,
@@ -541,7 +542,7 @@ function SharedProfileFacts({ userId, name }: { userId: string; name: string }) 
       ) : null}
       {shownList(view.interests).length ? <T>{shownList(view.interests).join(' · ')}</T> : null}
       <T variant="muted">{view.town || 'Area not shared'}</T>
-      <ProfileStatBoard {...profileStatBoard(shown, { audience: 'member' })} />
+      <ProfileStatBoard {...profileStatBoard(shown, { audience: 'member' })} mealPhotos={shown.mealPhotos} />
       {view.stage ? <T>Stage: {view.stage}</T> : null}
       {view.sober && typeof view.sober.days === 'number' ? <T>{formatSoberShare({ days: view.sober.days, since: typeof view.sober.since === 'string' ? view.sober.since : '' })}</T> : null}
       {shownList(view.milestones).length ? <T>{shownList(view.milestones).join(', ')}</T> : null}

@@ -6,7 +6,7 @@ import { savingsFromTypicalWeek } from './savings';
 import { soberElapsed } from './sober';
 import { quoteById, type QuoteSchool } from './stoicQuotes';
 import { parseSharedHealthPlan, presentSharedHealthPlan, type HealthPlan, type SharedHealthPlan } from './healthPlan';
-import { presentSharedNutrition, type FoodLog, type NutritionSettings, type SharedGoal, type SharedQuality } from './nutrition';
+import { presentSharedNutrition, type FoodLog, type NutritionSettings, type SharedGoal, type SharedMealPhoto, type SharedQuality } from './nutrition';
 import { STAGE_LABELS, isStage } from './stage';
 
 /** Helper under a Share on profile switch while Community is on. */
@@ -31,7 +31,7 @@ export function sensitiveShareConfirm(item: string): string {
 }
 
 export const NEVER_SHARED =
-  `Always hidden: check-in details, raw health readings, health flags, height, Thumos chats, private photo notes, meal photos, and any photo you have not switched on. ${PROFILE_PHOTO_WORDING}`;
+  `Always hidden: check-in details, raw health readings, health flags, height, Thumos chats, private photo notes, and any photo you have not switched on. Today's meal photos follow Share today's meals. Meals from earlier days stay private. ${PROFILE_PHOTO_WORDING}`;
 
 /** Written for the public profile. About 300 characters. */
 export const BIO_LIMIT = 300;
@@ -285,6 +285,8 @@ export type PublicProfileView = {
   hiddenLabels: string[];
   /** Today's meal names. Null when that switch is off. An empty list means today is blank. */
   foodDiary: { meal: string; detail: string }[] | null;
+  /** Today's meal photos. Null when Share today's meals is off. */
+  mealPhotos: SharedMealPhoto[] | null;
   /** kcal and macros. Null when that switch is off. */
   calories: string | null;
   /** Unsaturated fat against saturated and trans fat. */
@@ -481,7 +483,7 @@ export function projectPublicProfile(source: ShareSource, sharing: ProfileSharin
       waistCm: source.nutrition.waistCm,
       shareFigures: settings.shareBodyFigures,
     })
-    : { meals: null, calories: null, quality: null, progress: null, bodyFigures: null, wagon: null, goal: null };
+    : { meals: null, mealPhotos: null, calories: null, quality: null, progress: null, bodyFigures: null, wagon: null, goal: null };
   const foodDiary = sharedFood.meals;
   const calories = sharedFood.calories;
   const quality = sharedFood.quality;
@@ -526,6 +528,7 @@ export function projectPublicProfile(source: ShareSource, sharing: ProfileSharin
     sharedLabels,
     hiddenLabels,
     foodDiary,
+    mealPhotos: sharedFood.mealPhotos,
     calories,
     quality,
     progress,
@@ -630,6 +633,7 @@ export function parsePublicProfile(value: unknown): PublicProfileView | null {
     sharedLabels: textList(raw.sharedLabels),
     hiddenLabels: textList(raw.hiddenLabels),
     foodDiary: mealLines(raw.foodDiary),
+    mealPhotos: null,
     calories: typeof raw.calories === 'string' && raw.calories.trim() ? raw.calories : null,
     quality: qualityShare(raw.quality),
     progress: typeof raw.progress === 'string' && raw.progress.trim() ? raw.progress : null,

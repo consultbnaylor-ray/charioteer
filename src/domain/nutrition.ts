@@ -150,6 +150,7 @@ export {
   type NutritionSex,
   type ProcessedFoodLevel,
   type SharedGoal,
+  type SharedMealPhoto,
   type SharedNutritionView,
   type SharedQuality,
   type SmoothWeight,

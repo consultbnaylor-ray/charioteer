@@ -2015,9 +2015,18 @@ export type SharedGoal = { label: string; line: string };
 
 export type SharedQuality = { unsaturated: number; other: number; line: string };
 
+export type SharedMealPhoto = {
+  id: string;
+  /** Breakfast, Lunch, Dinner, or Snack. */
+  meal: string;
+  url: string;
+};
+
 export type SharedNutritionView = {
   /** Null when that switch is off. An empty list means meals are shared and today is blank. */
   meals: { meal: string; detail: string }[] | null;
+  /** Today's meals that have a photo. Null when Share today's meals is off. */
+  mealPhotos: SharedMealPhoto[] | null;
   calories: string | null;
   quality: SharedQuality | null;
   progress: string | null;
@@ -2086,6 +2095,7 @@ export function presentSharedNutrition(
     : null;
   return {
     meals: settings.shareFoodDiary ? publicMealLines(logs, today) : null,
+    mealPhotos: settings.shareFoodDiary ? sharedMealPhotosFromLogs(logs, today) : null,
     calories: settings.shareCalories ? caloriesShareLine(items, settings.hideCalories) : null,
     quality: settings.shareQuality
       ? { unsaturated: balance.unsaturated, other: balance.other, line: balance.line }
@@ -2095,6 +2105,32 @@ export function presentSharedNutrition(
     wagon: settings.wagonOn && settings.wagonVisible ? { note: settings.wagonNote.trim().slice(0, 200) } : null,
     goal: sharedGoalFrom(settings, logs, today, body),
   };
+}
+
+const MEAL_PHOTO_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** A photo the app can show. A storage path is not a link. */
+function mealPhotoUrl(value: string | null | undefined): string | null {
+  if (!value) return null;
+  const url = value.trim();
+  if (url.startsWith('https://') || url.startsWith('http://') || url.startsWith('data:image/')) return url.slice(0, 2000);
+  return null;
+}
+
+/** Today's meals that already have a photo link. Older days and meals without a photo are left out. */
+function sharedMealPhotosFromLogs(logs: readonly FoodLog[], today: string): SharedMealPhoto[] {
+  const seen = new Set<string>();
+  const photos: SharedMealPhoto[] = [];
+  for (const log of logs) {
+    if (log.eatenOn !== today || seen.has(log.id) || !MEAL_PHOTO_ID.test(log.id)) continue;
+    const url = mealPhotoUrl(log.previewUrl);
+    const slot = isMealSlot(log.meal) ? log.meal : null;
+    if (!url || !slot) continue;
+    seen.add(log.id);
+    photos.push({ id: log.id, meal: MEAL_LABEL[slot], url });
+    if (photos.length >= 8) break;
+  }
+  return photos;
 }
 
 /** Reads shared_nutrition. Null means the profile is hidden or blocked. */
@@ -2114,6 +2150,27 @@ function sharedMealRows(raw: Record<string, unknown>): { meal: string; detail: s
     const estimate = item.estimated === true ? ` · ${ESTIMATE_LABEL}` : '';
     return [{ meal: slot ? MEAL_LABEL[slot] : 'Meal', detail: `${names || note || 'Meal'}${estimate}` }];
   });
+}
+
+/** Photo ids from shared_nutrition. The link is added after the storage check. A path in the payload is ignored. */
+function sharedMealPhotoRows(raw: Record<string, unknown>): SharedMealPhoto[] | null {
+  if (raw.mealsShared === false) return null;
+  const mealsOn = raw.mealsShared === true || Array.isArray(raw.meals);
+  if (!mealsOn) return null;
+  if (!Array.isArray(raw.mealPhotos)) return [];
+  const seen = new Set<string>();
+  const photos: SharedMealPhoto[] = [];
+  for (const row of raw.mealPhotos) {
+    if (!row || typeof row !== 'object') continue;
+    const item = row as Record<string, unknown>;
+    const id = typeof item.id === 'string' ? item.id : '';
+    const slot = typeof item.meal === 'string' && isMealSlot(item.meal) ? item.meal : null;
+    if (!MEAL_PHOTO_ID.test(id) || !slot || seen.has(id)) continue;
+    seen.add(id);
+    photos.push({ id, meal: MEAL_LABEL[slot], url: '' });
+    if (photos.length >= 8) break;
+  }
+  return photos;
 }
 
 function sharedCalories(value: unknown): string | null {
@@ -2187,6 +2244,7 @@ export function parseSharedNutrition(value: unknown): SharedNutritionView | null
   const composition = typeof raw.composition === 'string' ? raw.composition.trim() : '';
   return {
     meals: sharedMealRows(raw),
+    mealPhotos: sharedMealPhotoRows(raw),
     calories: sharedCalories(raw.calories),
     quality: sharedQuality(raw.quality),
     progress: progressBase ? `${progressBase}${composition ? ` ${composition}` : ''}` : null,

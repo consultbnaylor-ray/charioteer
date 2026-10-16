@@ -221,6 +221,7 @@ describe('meal estimates', () => {
     });
     const off = presentSharedNutrition(defaultNutritionSettings(), [meal], '2026-10-13');
     expect(off.meals).toBeNull();
+    expect(off.mealPhotos).toBeNull();
     expect(off.calories).toBeNull();
     expect(off.quality).toBeNull();
     expect(off.progress).toBeNull();
@@ -235,6 +236,7 @@ describe('meal estimates', () => {
     expect(diary.meals?.[0]?.detail).toContain(ESTIMATE_LABEL);
     expect(diary.meals?.[0]?.detail).not.toMatch(/kcal/i);
     expect(diary.calories).toBeNull();
+    expect(diary.mealPhotos).toEqual([]);
     expect(diary.quality).toBeNull();
     expect(presentSharedNutrition({ ...defaultNutritionSettings(), shareFoodDiary: true }, [meal], '2026-10-14').meals).toEqual([]);
 
@@ -1565,5 +1567,93 @@ describe("today's meals on the log card", () => {
     expect(dish?.[0]?.saturatedG).toBe(0);
     expect(dish?.[0]?.known).toEqual(['proteinG']);
     expect(mealNutrientBars(dish ?? []).map((bar) => bar.label)).toEqual(['Protein 12 g']);
+  });
+});
+
+describe('shared meal photos', () => {
+  const breakfast = '11111111-1111-4111-8111-111111111111';
+  const lunch = '22222222-2222-4222-8222-222222222222';
+
+  it('keeps today photos behind Share today meals and drops everything else', () => {
+    const today = '2026-10-16';
+    const logs = [
+      log({ id: breakfast, eatenOn: today, meal: 'breakfast', previewUrl: 'https://photos.example/breakfast.jpg' }),
+      log({ id: lunch, eatenOn: today, meal: 'lunch', previewUrl: null }),
+      log({ id: '33333333-3333-4333-8333-333333333333', eatenOn: '2026-10-15', meal: 'dinner', previewUrl: 'https://photos.example/yesterday.jpg' }),
+      log({ id: 'not-a-photo', eatenOn: today, meal: 'snack', previewUrl: 'user/secret.jpg' }),
+    ];
+    const hidden = presentSharedNutrition(defaultNutritionSettings(), logs, today);
+    expect(hidden.mealPhotos).toBeNull();
+    expect(JSON.stringify(hidden)).not.toContain('photos.example');
+    expect(JSON.stringify(hidden)).not.toContain('secret');
+
+    const shared = presentSharedNutrition({ ...defaultNutritionSettings(), shareFoodDiary: true }, logs, today);
+    expect(shared.mealPhotos).toEqual([
+      { id: breakfast, meal: 'Breakfast', url: 'https://photos.example/breakfast.jpg' },
+    ]);
+    expect(shared.meals?.map((meal) => meal.meal)).toEqual(['Breakfast', 'Lunch', 'Snack']);
+    expect(JSON.stringify(shared)).not.toContain('yesterday');
+    expect(JSON.stringify(shared)).not.toContain('secret');
+  });
+
+  it('reads photo ids from shared nutrition and ignores a link in the payload', () => {
+    const blocked = parseSharedNutrition({
+      mealsShared: false,
+      meals: [],
+      mealPhotos: [{ id: breakfast, meal: 'breakfast', url: 'https://photos.example/secret.jpg', photo_path: 'owner/secret.jpg' }],
+    });
+    expect(blocked?.mealPhotos).toBeNull();
+    expect(JSON.stringify(blocked)).not.toContain('secret');
+
+    const parsed = parseSharedNutrition({
+      mealsShared: true,
+      meals: [],
+      mealPhotos: [
+        { id: breakfast, meal: 'breakfast', url: 'https://photos.example/secret.jpg', photo_path: 'owner/secret.jpg' },
+        { id: 'not-an-id', meal: 'lunch' },
+        { id: lunch, meal: 'side' },
+      ],
+    });
+    expect(parsed?.mealPhotos).toEqual([{ id: breakfast, meal: 'Breakfast', url: '' }]);
+    expect(JSON.stringify(parsed)).not.toContain('secret');
+    expect(JSON.stringify(parsed)).not.toContain('photo_path');
+  });
+
+  it('limits other members to photos of meals shared today', () => {
+    const sql = readFileSync('supabase/migrations/20261016140000_shared_meal_photos.sql', 'utf8');
+    const photos = sql.slice(sql.indexOf("'id', f.id"), sql.indexOf('order by f.created_at'));
+    const gate = sql.slice(sql.indexOf('function public.food_photo_shared'));
+    const repo = readFileSync('src/data/supabase-repository.ts', 'utf8');
+    const signer = repo.slice(repo.indexOf('async sharedNutrition'), repo.indexOf('async sharedHealthPlan'));
+    const board = readFileSync('src/ui/ProfileStatTiles.tsx', 'utf8');
+    const card = readFileSync('src/ui/PublicProfileCard.tsx', 'utf8');
+    const people = readFileSync('src/ui/CommunityProfile.tsx', 'utf8');
+
+    expect(sql).toContain("'mealPhotos'");
+    expect(sql).toContain('case when share_meals then photos else null end');
+    expect(photos).not.toContain('photo_path');
+    expect(sql).toContain("f.photo_path = f.user_id::text || '/' || f.id::text || '.jpg'");
+    expect(sql).toContain('f.eaten_on = london');
+    expect(gate).toContain('share_food_diary is true');
+    expect(gate).toContain('viewer_in_community()');
+    expect(gate).toContain('community_visible is true');
+    expect(gate).toContain('age_confirmed_18 is true');
+    expect(gate).toContain('public.blocks');
+    expect(gate).toContain("eaten_on = (timezone('Europe/London', now()))::date");
+    expect(gate).toContain('food_photos_storage_shared_read');
+    expect(gate).not.toMatch(/grant select on public\.food_logs/i);
+    expect(gate).not.toMatch(/grant select on storage\.objects/i);
+    expect(signer.indexOf("rpc('shared_nutrition'")).toBeLessThan(signer.indexOf('createSignedUrls'));
+    expect(signer).toContain('mealPhotos: []');
+    expect(signer).not.toContain('console.');
+    expect(board).toContain('mealPhotos');
+    expect(board).toContain('accessibilityLabel={`${photo.meal} photo`}');
+    expect(board).toContain('borderRadius: 12');
+    expect(board).toContain('contentFit="contain"');
+    expect(board).toContain('accessibilityLabel="Close"');
+    expect(board).not.toContain('photo_path');
+    expect(card).toContain('mealPhotos={preview.mealPhotos}');
+    expect(people).toContain('mealPhotos: nutrition.mealPhotos');
+    expect(people).toContain('mealPhotos={shown.mealPhotos}');
   });
 });

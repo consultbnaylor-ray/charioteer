@@ -2482,7 +2482,26 @@ export class SupabaseRepository implements Repository {
   async sharedNutrition(userId: string) {
     const { data, error } = await this.client.rpc('shared_nutrition', { target: userId });
     if (error || data == null) return null;
-    return parseSharedNutrition(data);
+    const parsed = parseSharedNutrition(data);
+    if (!parsed?.mealPhotos?.length) return parsed;
+    const paths = parsed.mealPhotos.map((photo) => `${userId}/${photo.id}.jpg`);
+    try {
+      const signed = await this.client.storage.from(FOOD_BUCKET).createSignedUrls(paths, 3600);
+      if (signed.error || !signed.data) return { ...parsed, mealPhotos: [] };
+      const byPath = new Map<string, string>();
+      for (const item of signed.data) {
+        if (item.path && item.signedUrl) byPath.set(item.path, item.signedUrl);
+      }
+      return {
+        ...parsed,
+        mealPhotos: parsed.mealPhotos.flatMap((photo) => {
+          const url = byPath.get(`${userId}/${photo.id}.jpg`);
+          return url ? [{ ...photo, url }] : [];
+        }),
+      };
+    } catch {
+      return { ...parsed, mealPhotos: [] };
+    }
   }
 
   async sharedHealthPlan(userId: string) {

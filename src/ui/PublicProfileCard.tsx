@@ -350,7 +350,7 @@ export function PublicProfileCard() {
             ) : null}
             <T variant="muted">{preview.town || 'Area not shared'}</T>
             {interestLine ? <T>{interestLine}</T> : null}
-            <ProfileStatBoard {...profileStatBoard(preview, { audience: 'owner', sharing: snap.sharing })} />
+            <ProfileStatBoard {...profileStatBoard(preview, { audience: 'owner', sharing: snap.sharing })} mealPhotos={preview.mealPhotos} />
             {preview.stage ? <T>Stage: {preview.stage}</T> : null}
             {preview.sober ? <T>{formatSoberShare(preview.sober)}</T> : null}
             {preview.milestones.length ? <T>{preview.milestones.join(', ')}</T> : null}
