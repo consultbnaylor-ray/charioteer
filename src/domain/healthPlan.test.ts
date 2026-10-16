@@ -871,7 +871,17 @@ describe('health plan wiring', () => {
     expect(sql).toContain('revoke all on function public.shared_health_plan(uuid) from public, anon');
     expect(sql).toContain('grant execute on function public.shared_health_plan(uuid) to authenticated');
     const profile = readFileSync('src/ui/CommunityProfile.tsx', 'utf8');
+    const planPage = readFileSync('src/app/(main)/health-plan.tsx', 'utf8');
+    const tick = readFileSync('src/ui/PlanTick.tsx', 'utf8');
     expect(profile).toContain('sharedHealthPlan');
+    expect(profile).toContain('<PlanTick');
+    expect(profile).not.toContain('line-through');
+    expect(profile).toContain('of ${plan.total} ticked');
+    expect(planPage).toContain('<PlanTick');
+    expect(planPage).not.toContain('line-through');
+    expect(tick).toContain('accessibilityLabel="Done"');
+    expect(tick).toContain('statsToneColors');
+    expect(tick).toContain('borderRadius: SIZE / 2');
     expect(profile).toContain('Only a private message or a report.');
     expect(profile).toContain("reach('plan')");
     expect(profile).not.toContain('Report this plan');

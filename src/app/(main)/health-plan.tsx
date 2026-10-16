@@ -9,40 +9,28 @@ import { PLAN_DISCLAIMER, togglePlanAction, type PlanAction } from '@/domain/hea
 import { planProgressFigure } from '@/domain/measureFigures';
 import { PROFILE_HIDDEN_SHARE, communitySharingOn } from '@/domain/profileSharing';
 import { buildStatsOverview } from '@/domain/statsOverview';
+import { PlanTick } from '@/ui/PlanTick';
 import { ShareOnProfile } from '@/ui/ShareOnProfile';
 import { MeasureBarsView, MeasureRingView } from '@/ui/MeasuredFigure';
 import { StatTile } from '@/ui/StatTile';
 import { usePendingPress } from '@/ui/pendingAction';
-import { useAppTheme } from '@/ui/theme';
 import { Button, Card, ErrorNote, Field, Screen, T } from '@/ui/ui';
 
 const PROGRESS_IDS = ['sober', 'mood', 'calories', 'protein', 'body', 'weight'];
 
 function ActionRow({ action, disabled, onToggle }: { action: PlanAction; disabled: boolean; onToggle: (id: string) => void }) {
-  const theme = useAppTheme();
   return (
     <Pressable
       accessibilityRole="checkbox"
       accessibilityState={{ checked: action.done, disabled }}
       aria-checked={action.done}
-      accessibilityLabel={action.text}
+      accessibilityLabel={action.done ? `${action.text}, Done` : action.text}
       disabled={disabled}
       onPress={() => onToggle(action.id)}
       style={{ minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 6 }}
     >
-      <View
-        style={{
-          width: 22,
-          height: 22,
-          borderWidth: 1.5,
-          borderColor: theme.colors.ink,
-          alignItems: 'center',
-          justifyContent: 'center',
-        }}
-      >
-        {action.done ? <View style={{ width: 12, height: 12, backgroundColor: theme.colors.ink }} /> : null}
-      </View>
-      <T style={{ flex: 1, textDecorationLine: action.done ? 'line-through' : 'none' }}>{action.text}</T>
+      <PlanTick done={action.done} />
+      <T style={{ flex: 1 }}>{action.text}</T>
     </Pressable>
   );
 }

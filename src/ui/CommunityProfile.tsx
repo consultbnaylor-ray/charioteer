@@ -11,6 +11,7 @@ import { WAGON_PUBLIC_LINE, type SharedNutritionView } from '@/domain/nutrition'
 import { SharedNutritionFacts } from '@/ui/NutritionShare';
 import { PROFILE_LOAD_ERROR, formatSoberShare, sharedReportItems, shownList, type PublicProfileView, type SharedReportItem } from '@/domain/profileSharing';
 import { MemberAvatar } from '@/ui/MemberAvatar';
+import { PlanTick } from '@/ui/PlanTick';
 import { formatGbp } from '@/domain/savings';
 import { progressPhotoLabel } from '@/domain/progressPhotos';
 import { radius, useAppTheme } from '@/ui/theme';
@@ -334,7 +335,10 @@ export function SharedHealthPlanFacts({ plan }: { plan: SharedHealthPlan | null 
       <T variant="label">Health plan</T>
       <T>{plan.headline}</T>
       {plan.focus.map((action, index) => (
-        <T key={`${index}:${action.text}`} style={{ textDecorationLine: action.done ? 'line-through' : 'none' }}>{action.text}</T>
+        <View key={`${index}:${action.text}`} style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          <PlanTick done={action.done} />
+          <T style={{ flex: 1 }}>{action.text}</T>
+        </View>
       ))}
       <T variant="muted">{`${plan.ticked} of ${plan.total} ticked`}</T>
     </View>
