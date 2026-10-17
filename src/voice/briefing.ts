@@ -3,6 +3,7 @@ import { isoDay } from '@/domain/dates';
 import { buildHealthInsights } from '@/domain/healthInsights';
 import { buildFitnessSnapshot, fitnessFromSnapshot } from '@/domain/fitnessSnapshot';
 import { goalLedFromSnapshot, goalProgressLine } from '@/domain/goalLed';
+import { goalWeightRange } from '@/domain/goalWeightRange';
 import { compositionForAssessment, defaultNutritionSettings, nutritionContextLines, weightPointsFrom } from '@/domain/nutrition';
 import { savingsFromTypicalWeek } from '@/domain/savings';
 import { soberElapsed } from '@/domain/sober';
@@ -62,7 +63,20 @@ function nutritionLinesFrom(snap: AppSnapshot, now: Date): string[] {
   const fitness = profile.consentHealth
     ? buildFitnessSnapshot(fitnessFromSnapshot(snap, 'unknown', now)).contextLine
     : null;
-  return [progress, fitness, ...lines].filter((line): line is string => Boolean(line));
+  const settings = snap.nutrition ?? defaultNutritionSettings();
+  const weightRange = goalWeightRange({
+    goal: settings.goal,
+    phase: settings.goalPhase,
+    weightClassKg: settings.weightClassKg,
+    weightKg: latest?.kg ?? null,
+    heightCm: profile.heightCm,
+    age: settings.goalAge,
+    sex: settings.goalSex,
+    build: settings.build,
+    bodyFatPct: figures.bodyFatPct,
+    waistCm: figures.waistCm,
+  }).contextLine;
+  return [progress, fitness, weightRange, ...lines].filter((line): line is string => Boolean(line));
 }
 
 /** Client copy of the voice prompt, used when the token function has not been redeployed yet. */

@@ -1,4 +1,5 @@
 import { buildFitnessSnapshot } from './fitnessSnapshot.ts';
+import { goalWeightRange } from './goalWeightRange.ts';
 import { goalProgressLine } from './goalLed.ts';
 import { londonDay, shiftDay } from './healthInsights.ts';
 import {
@@ -270,5 +271,17 @@ export async function loadNutritionLines(
     previousWeightKg: weights.length > 1 ? weights[weights.length - 2]?.kg ?? null : null,
     sleepHours: sleep ?? null,
   });
-  return [progress, fitness, ...lines].filter((line): line is string => Boolean(line));
+  const weightRange = goalWeightRange({
+    goal: settings.goal,
+    phase: settings.goalPhase,
+    weightClassKg: settings.weightClassKg,
+    weightKg: latest?.kg ?? null,
+    heightCm: height != null && Number.isFinite(height) ? height : null,
+    age: settings.goalAge,
+    sex: settings.goalSex,
+    build: settings.build,
+    bodyFatPct: figures.bodyFatPct,
+    waistCm: figures.waistCm,
+  }).contextLine;
+  return [progress, fitness, weightRange, ...lines].filter((line): line is string => Boolean(line));
 }

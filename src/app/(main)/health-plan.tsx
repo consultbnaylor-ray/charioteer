@@ -10,6 +10,7 @@ import { planProgressFigure } from '@/domain/measureFigures';
 import { applyWeightAndBodyShare, communitySharingOn } from '@/domain/profileSharing';
 import { buildStatsOverview } from '@/domain/statsOverview';
 import { GoalChoices } from '@/ui/GoalChoices';
+import { GoalWeightRange } from '@/ui/GoalWeightRange';
 import { YourFitness } from '@/ui/YourFitness';
 import { YourGoal } from '@/ui/YourGoal';
 import { PlanTick } from '@/ui/PlanTick';
@@ -194,6 +195,7 @@ export default function HealthPlanScreen() {
           <MeasureBarsView label="By section" bars={progress.bars} />
         </Card>
       ) : null}
+      <GoalWeightRange />
       <T variant="label">Progress</T>
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
         {tiles.map((item) => (

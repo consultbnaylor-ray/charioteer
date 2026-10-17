@@ -2,6 +2,7 @@ import { View } from 'react-native';
 
 import { useSnapshot } from '@/data';
 import { buildGoalLed, goalLedFromSnapshot } from '@/domain/goalLed';
+import { GoalWeightRange } from '@/ui/GoalWeightRange';
 import { MeasureRingView } from '@/ui/MeasuredFigure';
 import { PlanTick } from '@/ui/PlanTick';
 import { Card, T } from '@/ui/ui';
@@ -50,6 +51,7 @@ export function YourGoal({ place }: { place: 'today' | 'stats' | 'plan' }) {
           <T style={{ flex: 1 }}>{tick.label}</T>
         </View>
       ))}
+      {place === 'plan' ? null : <GoalWeightRange embedded />}
     </Card>
   );
 }

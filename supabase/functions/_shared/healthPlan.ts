@@ -20,6 +20,7 @@ import {
   type NutritionSex,
 } from './nutrition.ts';
 import { buildFitnessSnapshot, fitnessFocusLines, type FitnessSnapshotInput } from './fitnessSnapshot.ts';
+import { goalWeightRange } from './goalWeightRange.ts';
 import { goalFocusLine } from './goalLed.ts';
 import { firstSafetyHit, SELF_HARM_NOTICE, WITHDRAWAL_NOTICE, type SafetyHit } from './safety.ts';
 import { soberElapsed } from './sober.ts';
@@ -544,6 +545,8 @@ export type HealthPlanModelContext = {
   training: TrainingBaseline | null;
   /** One fitness sentence. Null when health consent is off or there is nothing to say. */
   fitnessSnapshot: string | null;
+  /** Approximate weight range, or a prompt when height, sex, or age is missing. */
+  weightRange: string | null;
 };
 
 /** What the model may use. Swaps may use only profile, checkIns, loggedFood, and loggedDrink. */
@@ -578,7 +581,24 @@ export function healthPlanModelContext(input: PlanInput, plan: HealthPlan): Heal
     proteinTarget: input.proteinTarget,
     training: planBaseline(input),
     fitnessSnapshot: input.fitnessSnapshot === undefined ? fitnessSnapshotFor(input) : input.fitnessSnapshot,
+    weightRange: weightRangeFor(input),
   };
+}
+
+function weightRangeFor(input: PlanInput): string | null {
+  const latest = weightPointsFrom(input.health).at(-1)?.kg ?? null;
+  return goalWeightRange({
+    goal: input.goal,
+    phase: input.goalPhase ?? null,
+    weightClassKg: input.weightClassKg ?? null,
+    weightKg: latest,
+    heightCm: input.heightCm,
+    age: input.goalAge,
+    sex: input.goalSex,
+    build: input.build,
+    bodyFatPct: input.bodyFatPct,
+    waistCm: input.waistCm,
+  }).contextLine;
 }
 
 function swaps(facts: Derived): string[] {
@@ -1538,6 +1558,7 @@ export const HEALTH_PLAN_PROMPT = [
   'If the goal is an elite runner, body builder, heavyweight boxer, or middleweight boxer, include training load, recovery, and fuelling around sessions. A heavyweight goal keeps size and power and does not use a deficit. A middleweight goal stays near a limit with a small change only.',
   'When the user message includes training, that object is the routine from logged workouts over the last 4 weeks: sessions per week, typical minutes, train weekdays, and rest weekdays. Maintain or progress that baseline. Never prescribe fewer sessions or fewer minutes unless they report pain, illness, injury, or poor recovery. Rest only on training.restDays. Do not invent a rest day, a full rest, or "no structured workouts" on a day they train. One row per weekday. Do not append a stock walk-and-rest week. The fitness intro must say what the log shows, for example "You train about 30 min on most days." Progress with a little more weight, one more set, or about 5 to 10 percent volume. For lose fat and build muscle, emphasise resistance training, protein, and a little easy walking or steps. A runner, boxer, or body builder keeps that sport. Check with a doctor before big changes.',
   'When training.source is "stated", the person set that week on You. Follow training.trainDays and training.dayMinutes. Rest only on training.restDays. A day in training.walkDays is a walk, not a missed gym day and not a gym session. The fitness intro states the aim, for example "You aim for 30 min on weekdays and a bit more on Saturday". If the summary says how many of those sessions they have done this week, keep that comparison. Use training.note only when they wrote one. Do not invent a time of day.',
+  'When weightRange is present, it is an approximate range from published sources. Use those figures. Do not turn a boxing class limit into a weight cut. Do not set a target below the healthy minimum. A loss, when one is mentioned, stays around 0.5 to 1 kg a week at most.',
   'Do not suggest a rapid weight cut, dehydration, a sauna, or skipping meals to make weight. A competition weigh-in belongs with a coach and a doctor.',
   'No diagnosis, no medication, no medical advice. Do not tell anyone to eat less when the figures say the intake should not fall. Do not suggest stopping alcohol suddenly.',
   'Food, steps, weight, sleep, and mood are already logged in Charioteer. Never tell the person to use another app, the same app, a tracking app, a wearable, a fitness tracker, or a named product such as MyFitnessPal, Nutracheck, Fitbit, Garmin, or Apple Health. When a habit is about tracking, name Nutrition for meals and body readings, Stats for steps, weight, and workouts, and Check-in for mood, craving, and sleep.',
