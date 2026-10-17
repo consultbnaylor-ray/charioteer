@@ -333,12 +333,14 @@ function tickLabel(measure: GoalMeasure): string {
   if (measure.id === 'protein') {
     if (measure.status === 'On track') return 'Protein is on track';
     if (measure.status === 'Short') return 'Protein is short today';
+    if (measure.status === 'Logged') return 'Protein is logged';
     return 'Protein is not logged yet';
   }
   if (measure.id === 'kcal') {
     if (measure.status === 'Above') return 'Calories are above the target';
     if (measure.status === 'Under') return 'Calories are under the target';
-    if (measure.status === 'Nothing logged yet' || measure.status === 'No target yet') return 'Calories are not logged yet';
+    if (measure.status === 'No target yet') return 'No calorie target yet';
+    if (measure.status === 'Nothing logged yet') return 'Calories are not logged yet';
     return 'Calories are in range';
   }
   if (measure.id === 'sessions') {

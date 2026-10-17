@@ -46,6 +46,20 @@ describe('goal led summary', () => {
     const text = `${hidden.matters} ${hidden.progressWords} ${hidden.nudges.join(' ')} ${hidden.measures.map((item) => `${item.label} ${item.words} ${item.unit}`).join(' ')}`;
     expect(text).not.toMatch(/kcal/i);
     expect(goalProgressLine({ ...base, goal: 'maintain', hideCalories: true })).not.toMatch(/kcal/i);
+    const logged = buildGoalLed({
+      ...base,
+      goal: 'lose_fat_build_muscle',
+      proteinTarget: null,
+      todayProtein: 7,
+      kcalTarget: null,
+      scheduledDays: null,
+      workoutDays: 3,
+      workoutMinutes: 97,
+    });
+    expect(logged.progressWords).toContain('protein is logged');
+    expect(logged.progressWords).toContain('training is 97 min');
+    expect(logged.progressWords).toContain('no calorie target yet');
+    expect(logged.progressWords).not.toContain('not logged yet');
   });
 
   it('keeps a middleweight change small and does not turn a runner into a distance plan', () => {
