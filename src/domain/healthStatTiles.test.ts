@@ -5,12 +5,19 @@ import {
   BMI_MUSCLE_NOTE,
   buildHealthStatBoard,
   detailShowsStatusAgain,
+  gapForStat,
+  healthSharingSteps,
+  healthTypesForGaps,
   HEALTH_STAT_CATALOGUE,
   HEALTH_STAT_SECTIONS,
   HEALTH_STATS_MISSING,
+  HEALTH_TURN_ON,
+  missingHealthAction,
+  parseBodyGap,
   type HealthStatBoardInput,
   type HealthStatTile,
 } from '@/domain/healthStatTiles';
+import { APPLE_HEALTH_READ_TYPES } from '@/health/connection';
 import { HEALTH_KINDS } from '@/domain/healthInsights';
 
 const today = '2026-10-17';
@@ -223,6 +230,11 @@ describe('health stat tiles', () => {
     expect(board.sections).toEqual([]);
     expect(board.missing).toEqual(HEALTH_STAT_CATALOGUE.map((item) => item.title));
     expect(board.missingLine).toBe(`${HEALTH_STATS_MISSING}: ${board.missing.join(', ')}`);
+    expect(board.gaps.map((gap) => gap.title)).toEqual(board.missing);
+    for (const gap of board.gaps) {
+      expect(gap.source.length).toBeGreaterThan(10);
+      if (gap.healthType) expect(APPLE_HEALTH_READ_TYPES).toContain(gap.healthType);
+    }
     expect(HEALTH_STAT_SECTIONS.map((section) => section.title)).toEqual([
       'Heart',
       'Fitness',
@@ -402,5 +414,53 @@ describe('health stat tiles', () => {
     expect(board).not.toContain('community');
     expect(share).toContain('<ShareOnProfile');
     expect(readFileSync('src/domain/healthStatTiles.ts', 'utf8')).toContain(HEALTH_STATS_MISSING);
+    expect(board).toContain('label={HEALTH_TURN_ON}');
+    expect(readFileSync('src/domain/healthStatTiles.ts', 'utf8')).toContain(HEALTH_TURN_ON);
+    expect(board).toContain('healthSharingSteps');
+    expect(board).toContain('Save body reading');
+    expect(board).toContain('Body fat (%)');
+    expect(board).toContain('Lean body mass (kg)');
+    expect(screen).toContain('turnOnAppleHealthReads');
+    expect(screen).toContain('onSaveBody={saveBodyGap}');
+    const ios = readFileSync('src/health/link.ios.ts', 'utf8');
+    expect(ios).toContain('turnOnAppleHealthReads');
+    expect(ios).toContain('getRequestStatusForAuthorization({ toRead })');
+    expect(ios).toContain('missingHealthAction');
+    expect(ios).toContain('requestAuthorization({ toRead })');
+    expect(ios).toContain('openHealthApp()');
+  });
+
+  it('explains a missing boxer reading and offers body fat and lean mass in the app', () => {
+    const board = buildHealthStatBoard(input());
+    const recovery = board.gaps.find((gap) => gap.id === 'heart_rate_recovery');
+    const fat = board.gaps.find((gap) => gap.id === 'body_fat');
+    const lean = board.gaps.find((gap) => gap.id === 'lean_mass');
+    expect(recovery).toEqual(gapForStat('heart_rate_recovery', 'Heart rate recovery'));
+    expect(recovery?.source).toBe('Heart rate recovery needs a recent Apple Watch workout.');
+    expect(recovery?.manual).toBe(false);
+    expect(fat?.source).toBe('Body fat comes from a smart scale or manual entry in Health.');
+    expect(fat?.manual).toBe(true);
+    expect(fat?.healthType).toBe('HKQuantityTypeIdentifierBodyFatPercentage');
+    expect(lean?.source).toBe('Lean mass comes from a smart scale or manual entry in Health.');
+    expect(lean?.manual).toBe(true);
+    expect(lean?.healthType).toBe('HKQuantityTypeIdentifierLeanBodyMass');
+    expect(healthSharingSteps(['Heart rate recovery', 'Body fat', 'Lean mass'])).toBe(
+      'Health > Sharing > Apps > Charioteer > turn on Heart rate recovery, Body fat, Lean mass.',
+    );
+    expect(healthTypesForGaps([recovery!, fat!, lean!])).toEqual([
+      'HKQuantityTypeIdentifierHeartRateRecoveryOneMinute',
+      'HKQuantityTypeIdentifierBodyFatPercentage',
+      'HKQuantityTypeIdentifierLeanBodyMass',
+    ]);
+    expect(missingHealthAction('shouldRequest')).toBe('request');
+    expect(missingHealthAction('unknown')).toBe('request');
+    expect(missingHealthAction('unnecessary')).toBe('open');
+    expect(parseBodyGap('15', '63')).toEqual({ ok: true, bodyFatPct: 15, leanMassKg: 63 });
+    expect(parseBodyGap('', '63')).toEqual({ ok: true, bodyFatPct: null, leanMassKg: 63 });
+    expect(parseBodyGap('1', '')).toEqual({ ok: false, error: 'Body fat sits between 2% and 70%.' });
+    expect(parseBodyGap('', '')).toEqual({ ok: false, error: 'Add body fat or lean mass.' });
+    const logged = buildHealthStatBoard(alex());
+    expect(logged.gaps.map((gap) => gap.id)).toEqual(['active_energy']);
+    expect(logged.gaps[0]?.manual).toBe(false);
   });
 });

@@ -7,9 +7,11 @@ import type { HealthKind, NewHealthSample } from '@/data/types';
 import { isoDay, startOfLocalDay } from '@/domain/dates';
 import { shownError } from '@/domain/errors';
 import { parseHeightCm } from '@/domain/guidance';
+import type { BodyEntrySource } from '@/domain/nutrition';
 import type { WeightReadingDraft } from '@/domain/weightEntry';
-import { isHealthAccessDenied, type AppleHealthAccess } from '@/health/connection';
-import { connectAppleHealth, openAppSettings, openHealthApp, readAppleHealthAccess } from '@/health/link';
+import { isHealthAccessDenied, type AppleHealthAccess, type AppleHealthTurnOn } from '@/health/connection';
+import { connectAppleHealth, openAppSettings, openHealthApp, readAppleHealthAccess, turnOnAppleHealthReads } from '@/health/link';
+import type { HealthTurnOnResult } from '@/ui/HealthStatBoard';
 import { loadLastSynced, saveLastSynced } from '@/health/syncedAt';
 import { syncAppleHealth } from '@/health/sync';
 import { AppleHealthCard } from '@/ui/AppleHealthCard';
@@ -85,6 +87,26 @@ export default function Health() {
     await saveLastSynced(stamp);
     setSyncedAt(stamp);
     setAccess('connected');
+  }
+
+  async function turnOnMissing(types: readonly string[]): Promise<HealthTurnOnResult> {
+    if (!consent) {
+      router.push('/privacy' as never);
+      return 'consent';
+    }
+    const result: AppleHealthTurnOn = await turnOnAppleHealthReads(types);
+    if (result === 'prompted') await pullFromHealth();
+    return result;
+  }
+
+  async function saveBodyGap(reading: { recordedOn: string; bodyFatPct: number | null; leanMassKg: number | null; source: BodyEntrySource }) {
+    await repo.saveBodyComposition({
+      recordedOn: reading.recordedOn,
+      bodyFatPct: reading.bodyFatPct,
+      leanMassKg: reading.leanMassKg,
+      waistCm: null,
+      source: reading.source,
+    });
   }
 
   async function connect() {
@@ -218,6 +240,8 @@ export default function Health() {
         goalSex={snap.nutrition.goalSex}
         goal={snap.nutrition.goal}
         build={snap.nutrition.build}
+        onTurnOn={turnOnMissing}
+        onSaveBody={saveBodyGap}
       />
       <HealthBoard
         samples={snap.health}

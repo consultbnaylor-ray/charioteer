@@ -28,6 +28,8 @@ import {
 import { dailyValues, shiftDay, weekdayShort, type DayValue } from '@/domain/healthInsights';
 import {
   GOAL_LABEL,
+  parseBodyFatPct,
+  parseLeanMassKg,
   WAIST_HEIGHT_HEALTHY,
   type BodyBuild,
   type NutritionGoal,
@@ -36,9 +38,147 @@ import {
 import { STATS_SIGNAL, type StatsTone } from '@/domain/statsOverview';
 
 export const HEALTH_STATS_MISSING = 'Not available yet - turn on in Apple Health';
+export const HEALTH_TURN_ON = 'Turn on in Apple Health';
+export const HEALTH_SHARING_STEPS = 'Health > Sharing > Apps > Charioteer > turn on';
 
 const ADULT_HIDDEN = 'These adult ranges are not shown under 18. Nothing here is guessed.';
 const NO_BAND = 'There is no guideline band here.';
+
+/** Where a missing reading comes from, and the HealthKit type to ask for. */
+const HEALTH_STAT_GAPS: Record<string, { source: string; healthType: string | null; manual: boolean }> = {
+  resting_heart_rate: {
+    source: 'Resting heart rate comes from Apple Watch while you are still.',
+    healthType: 'HKQuantityTypeIdentifierRestingHeartRate',
+    manual: false,
+  },
+  walking_heart_rate: {
+    source: 'Walking heart rate comes from Apple Watch on a walk.',
+    healthType: 'HKQuantityTypeIdentifierWalkingHeartRateAverage',
+    manual: false,
+  },
+  heart_rate_recovery: {
+    source: 'Heart rate recovery needs a recent Apple Watch workout.',
+    healthType: 'HKQuantityTypeIdentifierHeartRateRecoveryOneMinute',
+    manual: false,
+  },
+  session_heart_rate: {
+    source: 'Session heart rate comes from a logged Apple Watch workout.',
+    healthType: 'HKWorkoutTypeIdentifier',
+    manual: false,
+  },
+  vo2_max: {
+    source: 'Cardio fitness comes from Apple Watch after outdoor walks or runs.',
+    healthType: 'HKQuantityTypeIdentifierVO2Max',
+    manual: false,
+  },
+  mix: {
+    source: 'Strength, cardio, and other come from logged workouts.',
+    healthType: 'HKWorkoutTypeIdentifier',
+    manual: false,
+  },
+  sleep_hours: {
+    source: 'Sleep comes from Apple Watch or a sleep tracker in Health.',
+    healthType: 'HKCategoryTypeIdentifierSleepAnalysis',
+    manual: false,
+  },
+  hrv_sdnn: {
+    source: 'Heart rate variability comes from Apple Watch overnight.',
+    healthType: 'HKQuantityTypeIdentifierHeartRateVariabilitySDNN',
+    manual: false,
+  },
+  weight_kg: {
+    source: 'Weight comes from a scale in Health, or you can log it on this page.',
+    healthType: 'HKQuantityTypeIdentifierBodyMass',
+    manual: false,
+  },
+  body_fat: {
+    source: 'Body fat comes from a smart scale or manual entry in Health.',
+    healthType: 'HKQuantityTypeIdentifierBodyFatPercentage',
+    manual: true,
+  },
+  waist: {
+    source: 'Waist is entered by hand. Apple Health does not supply it.',
+    healthType: null,
+    manual: false,
+  },
+  lean_mass: {
+    source: 'Lean mass comes from a smart scale or manual entry in Health.',
+    healthType: 'HKQuantityTypeIdentifierLeanBodyMass',
+    manual: true,
+  },
+  steps: {
+    source: 'Steps come from your iPhone or Apple Watch.',
+    healthType: 'HKQuantityTypeIdentifierStepCount',
+    manual: false,
+  },
+  active_energy: {
+    source: 'Active energy comes from Apple Watch.',
+    healthType: 'HKQuantityTypeIdentifierActiveEnergyBurned',
+    manual: false,
+  },
+  workouts: {
+    source: 'Workouts come from Apple Watch or a workout app in Health.',
+    healthType: 'HKWorkoutTypeIdentifier',
+    manual: false,
+  },
+  weekly_active_minutes: {
+    source: 'Weekly active minutes come from logged workouts.',
+    healthType: 'HKWorkoutTypeIdentifier',
+    manual: false,
+  },
+};
+
+export type HealthStatGap = {
+  id: string;
+  title: string;
+  source: string;
+  healthType: string | null;
+  /** Body fat and lean mass can be typed in the app. */
+  manual: boolean;
+};
+
+export type HealthAuthRequest = 'unknown' | 'shouldRequest' | 'unnecessary';
+
+/** iOS shows the Health sheet only while the decision is still open. */
+export function missingHealthAction(status: HealthAuthRequest): 'request' | 'open' {
+  return status === 'unnecessary' ? 'open' : 'request';
+}
+
+export function healthSharingSteps(titles: readonly string[]): string {
+  return `${HEALTH_SHARING_STEPS} ${titles.join(', ')}.`;
+}
+
+export function healthTypesForGaps(gaps: readonly Pick<HealthStatGap, 'healthType'>[]): string[] {
+  const types: string[] = [];
+  for (const gap of gaps) {
+    if (gap.healthType && !types.includes(gap.healthType)) types.push(gap.healthType);
+  }
+  return types;
+}
+
+export function gapForStat(id: string, title: string): HealthStatGap {
+  const info = HEALTH_STAT_GAPS[id];
+  return {
+    id,
+    title,
+    source: info?.source ?? `${title} comes from Apple Health.`,
+    healthType: info?.healthType ?? null,
+    manual: info?.manual ?? false,
+  };
+}
+
+/** The same checks as the body card. An empty field is left unset. */
+export function parseBodyGap(
+  fat: string,
+  lean: string,
+): { ok: true; bodyFatPct: number | null; leanMassKg: number | null } | { ok: false; error: string } {
+  const bodyFatPct = fat.trim() ? parseBodyFatPct(Number(fat)) : null;
+  if (fat.trim() && bodyFatPct == null) return { ok: false, error: 'Body fat sits between 2% and 70%.' };
+  const leanMassKg = lean.trim() ? parseLeanMassKg(Number(lean)) : null;
+  if (lean.trim() && leanMassKg == null) return { ok: false, error: 'Lean body mass sits between 20 and 200 kg.' };
+  if (bodyFatPct == null && leanMassKg == null) return { ok: false, error: 'Add body fat or lean mass.' };
+  return { ok: true, bodyFatPct, leanMassKg };
+}
 export const BMI_MUSCLE_NOTE = 'Above the BMI band - common for muscular builds; body fat and waist tell you more';
 
 /** A zone or ring already draws the signal and the status. The sheet must not repeat them. */
@@ -164,6 +304,7 @@ export type HealthStatSection = {
 export type HealthStatBoardModel = {
   sections: HealthStatSection[];
   missing: string[];
+  gaps: HealthStatGap[];
   missingLine: string | null;
   caveat: string;
 };
@@ -175,9 +316,13 @@ export function buildHealthStatBoard(input: HealthStatBoardInput): HealthStatBoa
   const height = usableHeight(input.heightCm);
   const tiles: HealthStatTile[] = [];
   const missing: string[] = [];
+  const gaps: HealthStatGap[] = [];
   const take = (item: CatalogItem, tile: HealthStatTile | null) => {
     if (tile) tiles.push(tile);
-    else missing.push(item.title);
+    else {
+      missing.push(item.title);
+      gaps.push(gapForStat(item.id, item.title));
+    }
   };
 
   for (const item of HEALTH_STAT_CATALOGUE) {
@@ -193,6 +338,7 @@ export function buildHealthStatBoard(input: HealthStatBoardInput): HealthStatBoa
   return {
     sections,
     missing,
+    gaps,
     missingLine: missing.length ? `${HEALTH_STATS_MISSING}: ${missing.join(', ')}` : null,
     caveat: GUIDANCE_CAVEAT,
   };

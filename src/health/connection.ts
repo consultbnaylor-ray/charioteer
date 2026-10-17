@@ -38,6 +38,9 @@ export const APPLE_HEALTH_UNAVAILABLE = 'Apple Health is not available on this d
 
 export type AppleHealthAccess = 'prompt' | 'connected' | 'denied' | 'unavailable' | 'web';
 
+/** What happened when the missing-readings button asked Apple Health. */
+export type AppleHealthTurnOn = 'prompted' | 'opened' | 'unavailable' | 'web';
+
 /** The latest body mass and height Apple Health can offer for a nutrition target. */
 export type AppleHealthBody = {
   weightKg: number | null;
