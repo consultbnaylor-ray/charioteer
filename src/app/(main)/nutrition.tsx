@@ -81,6 +81,7 @@ import { MealEstimateStatus } from '@/ui/MealEstimateStatus';
 import { MealDayList } from '@/ui/MealDayList';
 import { MealBreakdown } from '@/ui/MealNutrientBars';
 import { MealEdit } from '@/ui/MealEdit';
+import { OwnerPhoto } from '@/ui/OwnerPhoto';
 import { statsToneColors } from '@/ui/statsPalette';
 import { TodayMeals } from '@/ui/TodayMeals';
 import { HealthFigureView } from '@/ui/MeasuredFigure';
@@ -824,7 +825,7 @@ export default function Nutrition() {
     return (
       <View key={log.id} style={{ gap: 6 }}>
         {log.previewUrl ? (
-          <Image source={{ uri: log.previewUrl }} style={{ width: 96, height: 96, borderRadius: 10 }} contentFit="cover" accessibilityLabel="Saved meal photo" />
+          <OwnerPhoto uri={log.previewUrl} style={{ width: 96, height: 96, borderRadius: 10 }} contentFit="cover" accessibilityLabel="Saved meal photo" />
         ) : null}
         <T>{`${dateBit}${MEAL_LABEL[log.meal]}${when}: ${names || log.note || 'Meal'}${portionBit}${kcal}${estimate}`}</T>
         <MealBreakdown bars={mealNutrientBars(log.items)} startOpen={false} />

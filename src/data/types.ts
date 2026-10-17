@@ -385,10 +385,11 @@ export interface Repository {
   /** Messages only. Used while a chat is open and when the app returns. */
   reloadMessages(): Promise<void>;
   /**
-   * New owner signed URLs for progress, profile, gratitude, and vision photos.
+   * New owner signed URLs for progress, profile, gratitude, vision, and meal photos.
    * Patches those links only, so a chip save in flight is left as it is.
+   * `force` skips the short gap after the last sign. Image errors use it.
    */
-  resignOwnerPhotos(): Promise<void>;
+  resignOwnerPhotos(options?: { force?: boolean }): Promise<void>;
   /** Re-signs those owner URLs when the last sign is more than about eight minutes old. */
   refreshOwnerPhotosIfStale(): Promise<void>;
   /**

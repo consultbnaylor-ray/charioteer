@@ -288,7 +288,7 @@ export class DemoRepository implements Repository {
   }
 
   /** Demo pictures are data URLs, so there is nothing to sign again. */
-  async resignOwnerPhotos(): Promise<void> {}
+  async resignOwnerPhotos(_options?: { force?: boolean }): Promise<void> {}
 
   async refreshOwnerPhotosIfStale(): Promise<void> {}
 

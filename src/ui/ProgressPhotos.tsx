@@ -280,10 +280,12 @@ export function ProgressPhotos() {
               collapsable={false}
               style={{ width: '30%', maxWidth: '30%', flexGrow: 0, flexShrink: 0, minHeight: 44, zIndex: 2 }}
             >
-              <View pointerEvents="none" style={{ gap: 4 }}>
+              <View style={{ gap: 4 }}>
                 <PhotoFrame photo={photo} marked={selected?.id === photo.id} />
-                <T variant="muted">{label}</T>
-                {photo.visibility === 'community' ? <T variant="label">Shared</T> : null}
+                <View pointerEvents="none">
+                  <T variant="muted">{label}</T>
+                  {photo.visibility === 'community' ? <T variant="label">Shared</T> : null}
+                </View>
               </View>
             </Pressable>
           );
@@ -563,10 +565,14 @@ function ComparisonSlot({
       collapsable={false}
       style={{ flex: 1, gap: 6, minHeight: 44, zIndex: 2 }}
     >
-      <View pointerEvents="none" style={{ gap: 6 }}>
-        <T variant="label">{title}</T>
+      <View style={{ gap: 6 }}>
+        <View pointerEvents="none">
+          <T variant="label">{title}</T>
+        </View>
         <PhotoFrame photo={photo} marked={open} />
-        <T variant="muted">{label}</T>
+        <View pointerEvents="none">
+          <T variant="muted">{label}</T>
+        </View>
       </View>
     </Pressable>
   );
@@ -608,9 +614,11 @@ function PhotoStrip({
               collapsable={false}
               style={{ width: 104, minHeight: 44, zIndex: 2 }}
             >
-              <View pointerEvents="none" style={{ gap: 6 }}>
+              <View style={{ gap: 6 }}>
                 <PhotoFrame photo={photo} marked={chosen} checked={chosen} />
-                <T variant="muted">{label}</T>
+                <View pointerEvents="none">
+                  <T variant="muted">{label}</T>
+                </View>
               </View>
             </Pressable>
           );
@@ -624,7 +632,7 @@ function PhotoFrame({ photo, marked, checked }: { photo: ProgressPhoto; marked?:
   const theme = useAppTheme();
   return (
     <View
-      pointerEvents="none"
+      pointerEvents="box-none"
       style={{
         width: '100%',
         aspectRatio: 1,

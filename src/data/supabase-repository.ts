@@ -43,8 +43,11 @@ import {
 } from '@/domain/visionBoard';
 import { isoDay } from '@/domain/dates';
 import {
+  foodPhotoStoragePath,
+  OWNER_PHOTO_URL_SECONDS,
   ownerPhotoResignCooling,
   ownerPhotoUrlsStale,
+  withSignedFoodPhotos,
   withSignedGratitudePhotos,
   withSignedPreviewUrls,
 } from '@/domain/ownerPhotos';
@@ -244,6 +247,8 @@ export class SupabaseRepository implements Repository {
   /** When owner progress, profile, gratitude, and vision links were last signed. */
   private ownerPhotosSignedAt: number | null = null;
   private ownerPhotoResign: Promise<void> | null = null;
+  /** One extra sign after the current one, shared by every image error that arrives mid-sign. */
+  private ownerPhotoResignFollowUp: Promise<void> | null = null;
 
   constructor(url: string, anonKey: string) {
     this.url = url;
@@ -274,13 +279,25 @@ export class SupabaseRepository implements Repository {
     await this.refresh();
   }
 
-  async resignOwnerPhotos(): Promise<void> {
-    if (this.ownerPhotoResign) return this.ownerPhotoResign;
-    if (ownerPhotoResignCooling(this.ownerPhotosSignedAt)) return;
-    this.ownerPhotoResign = this.resignOwnerPhotosNow().finally(() => {
-      this.ownerPhotoResign = null;
+  async resignOwnerPhotos(options?: { force?: boolean }): Promise<void> {
+    const force = options?.force === true;
+    if (this.ownerPhotoResign) {
+      if (!force) return this.ownerPhotoResign;
+      if (!this.ownerPhotoResignFollowUp) {
+        const running = this.ownerPhotoResign;
+        this.ownerPhotoResignFollowUp = running.then(() => {
+          this.ownerPhotoResignFollowUp = null;
+          return this.resignOwnerPhotos({ force: true });
+        });
+      }
+      return this.ownerPhotoResignFollowUp;
+    }
+    if (!force && ownerPhotoResignCooling(this.ownerPhotosSignedAt)) return;
+    const run = this.resignOwnerPhotosNow().finally(() => {
+      if (this.ownerPhotoResign === run) this.ownerPhotoResign = null;
     });
-    return this.ownerPhotoResign;
+    this.ownerPhotoResign = run;
+    return run;
   }
 
   async refreshOwnerPhotosIfStale(): Promise<void> {
@@ -547,7 +564,10 @@ export class SupabaseRepository implements Repository {
     const { data } = await this.client.auth.getSession();
     if (!data.session) return;
     const currentPaths = this.snapshot;
-    const [progress, profile, gratitude, vision] = await Promise.all([
+    const mealPaths = currentPaths.foodLogs.flatMap((log) => (
+      log.previewUrl ? [foodPhotoStoragePath(log.userId, log.id)] : []
+    ));
+    const [progress, profile, gratitude, vision, meals] = await Promise.all([
       this.signedUrlMap(PROGRESS_BUCKET, currentPaths.progressPhotos.map((photo) => photo.storagePath), PROGRESS_SIGNED_URL_SECONDS),
       this.signedUrlMap(PROFILE_PHOTO_BUCKET, currentPaths.profilePhotos.map((photo) => photo.storagePath), PROFILE_SIGNED_URL_SECONDS),
       this.signedUrlMap(
@@ -556,23 +576,27 @@ export class SupabaseRepository implements Repository {
         GRATITUDE_SIGNED_URL_SECONDS,
       ),
       this.signedUrlMap(VISION_BUCKET, currentPaths.visionItems.map((item) => item.storagePath), VISION_SIGNED_URL_SECONDS),
+      this.signedUrlMap(FOOD_BUCKET, mealPaths, OWNER_PHOTO_URL_SECONDS),
     ]);
     const wanted = currentPaths.progressPhotos.length
       + currentPaths.profilePhotos.length
       + currentPaths.gratitude.reduce((sum, entry) => sum + entry.photos.length, 0)
-      + currentPaths.visionItems.length;
-    const signedCount = progress.size + profile.size + gratitude.size + vision.size;
+      + currentPaths.visionItems.length
+      + mealPaths.length;
+    const signedCount = progress.size + profile.size + gratitude.size + vision.size + meals.size;
     if (wanted === 0 || signedCount > 0) this.ownerPhotosSignedAt = Date.now();
     const latest = this.snapshot;
     const progressPhotos = withSignedPreviewUrls(latest.progressPhotos, progress);
     const profilePhotos = withSignedPreviewUrls(latest.profilePhotos, profile);
     const gratitudeEntries = withSignedGratitudePhotos(latest.gratitude, gratitude);
     const visionItems = withSignedPreviewUrls(latest.visionItems, vision);
+    const foodLogs = withSignedFoodPhotos(latest.foodLogs, meals);
     if (
       progressPhotos === latest.progressPhotos
       && profilePhotos === latest.profilePhotos
       && gratitudeEntries === latest.gratitude
       && visionItems === latest.visionItems
+      && foodLogs === latest.foodLogs
     ) return;
     this.emit({
       ...latest,
@@ -580,6 +604,7 @@ export class SupabaseRepository implements Repository {
       profilePhotos,
       gratitude: gratitudeEntries,
       visionItems,
+      foodLogs,
     });
   }
 

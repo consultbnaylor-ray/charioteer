@@ -1,28 +1,45 @@
 import { Image } from 'expo-image';
 import { useEffect, useMemo, useState } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { useRepository } from '@/data';
 import type { DirectoryCard } from '@/data/types';
+import { PHOTO_RETRY, PHOTO_UNAVAILABLE } from '@/domain/ownerPhotos';
 import { profileInitials } from '@/domain/profilePhotos';
+import { useSignedPhotoRetry } from '@/ui/signedPhotoRetry';
 import { useAppTheme } from '@/ui/theme';
 
 /** Profile picture, or one centred initial when there is no photo. */
 export function MemberAvatar({ name, url, size = 48 }: { name: string; url?: string | null; size?: number }) {
   const theme = useAppTheme();
-  const repo = useRepository();
-  const [attempt, setAttempt] = useState(0);
-  const [failed, setFailed] = useState(false);
-  useEffect(() => {
-    setAttempt(0);
-    setFailed(false);
-  }, [url]);
-  const show = Boolean(url) && !failed;
+  const retryState = useSignedPhotoRetry(url);
+  const show = Boolean(url) && !retryState.gaveUp;
+  const failed = Boolean(url) && retryState.gaveUp;
   const fontSize = Math.round(size * 0.38);
   const lineHeight = Math.round(size * 0.44);
+  const initial = (
+    <Text
+      numberOfLines={1}
+      adjustsFontSizeToFit
+      minimumFontScale={0.5}
+      maxFontSizeMultiplier={1}
+      style={{
+        width: Math.round(size * 0.72),
+        textAlign: 'center',
+        fontFamily: theme.font.bodyStrong,
+        fontSize,
+        lineHeight,
+        color: theme.colors.ink,
+        includeFontPadding: false,
+      }}
+    >
+      {profileInitials(name)}
+    </Text>
+  );
   return (
     <View
-      accessibilityLabel={`${name} profile picture`}
+      accessibilityLabel={failed ? undefined : `${name} profile picture`}
+      accessible={!failed}
       style={{
         width: size,
         height: size,
@@ -35,39 +52,24 @@ export function MemberAvatar({ name, url, size = 48 }: { name: string; url?: str
     >
       {show ? (
         <Image
-          key={attempt}
+          key={retryState.mount}
           source={{ uri: url ?? '' }}
           style={StyleSheet.absoluteFill}
           contentFit="cover"
+          cachePolicy={retryState.mount > 0 ? 'none' : 'disk'}
           accessibilityLabel={`${name} profile picture`}
-          onError={() => {
-            void repo.resignOwnerPhotos();
-            if (attempt < 1) {
-              setAttempt(1);
-              return;
-            }
-            setFailed(true);
-          }}
+          onError={retryState.onError}
         />
-      ) : (
-        <Text
-          numberOfLines={1}
-          adjustsFontSizeToFit
-          minimumFontScale={0.5}
-          maxFontSizeMultiplier={1}
-          style={{
-            width: Math.round(size * 0.72),
-            textAlign: 'center',
-            fontFamily: theme.font.bodyStrong,
-            fontSize,
-            lineHeight,
-            color: theme.colors.ink,
-            includeFontPadding: false,
-          }}
+      ) : failed ? (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={`${PHOTO_UNAVAILABLE}. ${PHOTO_RETRY}`}
+          onPress={retryState.retry}
+          style={[StyleSheet.absoluteFill, { alignItems: 'center', justifyContent: 'center' }]}
         >
-          {profileInitials(name)}
-        </Text>
-      )}
+          {initial}
+        </Pressable>
+      ) : initial}
     </View>
   );
 }

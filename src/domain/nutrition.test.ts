@@ -1786,8 +1786,7 @@ describe("today's meals on the log card", () => {
     expect(rows[0]?.previewUrl).toBe('https://signed.example/eggs.jpg');
     expect(rows[1]?.previewUrl).toBeNull();
     const meals = readFileSync('src/ui/TodayMeals.tsx', 'utf8');
-    expect(meals).toContain("from 'expo-image'");
-    expect(meals).toContain('<Image');
+    expect(meals).toContain('<OwnerPhoto');
     expect(meals).toContain('row.previewUrl');
     expect(meals).toContain('accessibilityLabel="Saved meal photo"');
     expect(meals).toContain('contentFit="cover"');

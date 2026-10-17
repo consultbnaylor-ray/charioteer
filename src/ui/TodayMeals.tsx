@@ -1,4 +1,3 @@
-import { Image } from 'expo-image';
 import { useEffect, useState, type ReactNode, type RefObject } from 'react';
 import { Pressable, View } from 'react-native';
 import Svg, { Circle, Path } from 'react-native-svg';
@@ -14,6 +13,7 @@ import {
   type TodayRing,
 } from '@/domain/nutrition';
 import { MealBreakdown } from '@/ui/MealNutrientBars';
+import { OwnerPhoto } from '@/ui/OwnerPhoto';
 import { useAppTheme } from '@/ui/theme';
 import { T } from '@/ui/ui';
 
@@ -149,8 +149,8 @@ export function TodayMeals({
               style={{ minHeight: 44, justifyContent: 'center', gap: 6 }}
             >
               {row.previewUrl ? (
-                <Image
-                  source={{ uri: row.previewUrl }}
+                <OwnerPhoto
+                  uri={row.previewUrl}
                   style={{ width: 96, height: 96, borderRadius: 10 }}
                   contentFit="cover"
                   accessibilityLabel="Saved meal photo"
