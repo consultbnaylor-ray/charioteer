@@ -72,4 +72,60 @@ describe('goal options', () => {
     expect(you.indexOf('<GoalChoices')).toBeGreaterThan(you.indexOf('<BuildChoices'));
     expect(you.indexOf('<GoalChoices')).toBeLessThan(you.indexOf('<WagonFlag'));
   });
+
+  it('saves a goal change at once and confirms it, leaving Save your details for the other fields', () => {
+    const ui = readFileSync('src/ui/GoalChoices.tsx', 'utf8');
+    const choose = ui.slice(ui.indexOf('async function choose'), ui.indexOf('const shown'));
+    const savedAt = choose.indexOf('setSaved(true)');
+    expect(choose).toContain('if (settings.goal === id) return');
+    expect(choose.indexOf('await repo.setNutritionSettings')).toBeGreaterThan(-1);
+    expect(choose.indexOf('await repo.setNutritionSettings')).toBeLessThan(savedAt);
+    expect(choose.indexOf('if (ticket !== write.current) return')).toBeLessThan(savedAt);
+    expect(choose).toContain('goal: id');
+    expect(choose).toContain('playSavedHaptic()');
+    expect(choose).toContain('Could not save that goal.');
+    expect(ui).toContain("export const GOAL_SAVED_LINE = 'Goal saved'");
+    expect(ui).toContain('accessibilityLabel={GOAL_SAVED_LINE}');
+    expect(ui).toContain('<PlanTick done');
+    expect(ui).toContain('statsToneColors(theme.scheme).good.ink');
+    expect(ui).toContain('color: green');
+    expect(ui).not.toContain('profileDetailsDirty');
+
+    const form = readFileSync('src/domain/profileForm.ts', 'utf8');
+    expect(form).not.toContain('nutrition');
+    expect(form).not.toMatch(/\bgoal\b/);
+    const you = readFileSync('src/app/(main)/profile.tsx', 'utf8');
+    expect(you).toContain('disabled={!dirty || pending}');
+    expect(you).toContain('<GoalChoices />');
+    expect(you.indexOf('<GoalChoices />')).toBeLessThan(you.indexOf('variant="label">Your details'));
+    const plan = readFileSync('src/app/(main)/health-plan.tsx', 'utf8');
+    expect(plan).toContain('<GoalChoices />');
+    expect(plan).not.toContain('Save your details');
+  });
+
+  it('keeps the other build 28 controls on their own save path', () => {
+    const schedule = readFileSync('src/ui/TrainingSchedule.tsx', 'utf8');
+    expect(schedule).toContain('setDirty(true)');
+    expect(schedule).toContain("setSavedNote('Saved ✓')");
+    expect(schedule).toContain('label="Save schedule"');
+    expect(schedule).toContain('disabled={pending}');
+    expect(schedule).not.toContain('profileDetailsDirty');
+    expect(schedule).not.toContain('Save your details');
+
+    const share = readFileSync('src/ui/ShareOnProfile.tsx', 'utf8');
+    expect(share).toContain('await repo.setProfileSharing(next)');
+    expect(share).not.toContain('profileDetailsDirty');
+    const plan = readFileSync('src/app/(main)/health-plan.tsx', 'utf8');
+    expect(plan).toContain('label="Share on profile"');
+    expect(plan).toContain('label="Share weight and body figures"');
+    expect(plan.indexOf('<ShareOnProfile')).toBeGreaterThan(plan.indexOf('<GoalChoices />'));
+
+    const section = readFileSync('src/ui/SectionShare.tsx', 'utf8');
+    expect(section).toContain('await onCommit(on)');
+    expect(section).toContain('SECTION_SHARE_LABEL');
+    expect(section).not.toContain('profileDetailsDirty');
+    expect(section).not.toContain('Save your details');
+    const you = readFileSync('src/app/(main)/profile.tsx', 'utf8');
+    expect(you).toContain('<YouSectionShare />');
+  });
 });
