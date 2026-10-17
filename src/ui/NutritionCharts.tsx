@@ -1,0 +1,453 @@
+import { useMemo, useState, type ReactNode } from 'react';
+import { View } from 'react-native';
+import Svg, { Circle, Line } from 'react-native-svg';
+
+import type { ChartBar } from '@/domain/distance';
+import type { FoodLog, NutritionGoal, TodayRing, TrendDay } from '@/domain/nutrition';
+import {
+  dayItems,
+  eatingInsights,
+  fatBalance,
+  loggingCaption,
+  loggingDots,
+  macroSplit,
+  nutritionTrendDays,
+  smoothWeight,
+  sumItems,
+  todayRing,
+  trendCaption,
+  waterProgress,
+  weightTrendLine,
+} from '@/domain/nutrition';
+import type { StatsTone } from '@/domain/statsOverview';
+import { CompareBars, ProgressRing, useChartMotion } from '@/ui/DistanceCharts';
+import { statsToneColors } from '@/ui/statsPalette';
+import { useAppTheme } from '@/ui/theme';
+import { Card, Choice, T } from '@/ui/ui';
+
+/**
+ * Nutrition charts use react-native-svg, the same drawing library as Health.
+ * Figures come from the meals already on screen, so nothing is fetched.
+ * Colour comes from the stats palette, with a word beside it.
+ */
+export function NutritionBoard({
+  logs,
+  today,
+  hideCalories,
+  kcalTarget,
+  proteinTarget,
+  checkIns,
+  qualitySwitch,
+  progressSwitch,
+}: {
+  logs: readonly FoodLog[];
+  today: string;
+  hideCalories: boolean;
+  kcalTarget: number | null;
+  proteinTarget: number | null;
+  checkIns: readonly { createdAt: string; mood: number; sleepHours: number }[];
+  qualitySwitch?: ReactNode;
+  progressSwitch?: ReactNode;
+}) {
+  const [span, setSpan] = useState<7 | 30>(7);
+  const picture = useMemo(() => {
+    const items = dayItems(logs, today);
+    const totals = sumItems(items);
+    const whole = items.filter((item) => !item.processed).length;
+    const processed = items.length - whole;
+    const shared = {
+      hideCalories,
+      kcal: totals.kcal,
+      kcalTarget,
+      proteinG: totals.proteinG,
+      proteinTarget,
+      logged: items.length > 0,
+    };
+    return {
+      kcal: hideCalories ? null : todayRing({ ...shared, hideCalories: false }),
+      protein: todayRing({ ...shared, hideCalories: true }),
+      macros: macroSplit(items),
+      fats: fatBalance(items),
+      quality: items.length === 0 ? null : {
+        max: Math.max(whole, processed, 1),
+        caption: `Whole ${whole}, processed ${processed}.`,
+        bars: [
+          { key: 'whole', label: `Whole ${whole}`, value: whole, tone: whole > 0 ? 'good' : 'empty' },
+          { key: 'processed', label: `Processed ${processed}`, value: processed, tone: processed > 0 ? 'watch' : 'info' },
+        ] satisfies ChartBar[],
+      },
+      dots: loggingDots(logs, today),
+      dotsCaption: loggingCaption(logs, today),
+      insights: eatingInsights(logs, checkIns),
+    };
+  }, [logs, today, hideCalories, kcalTarget, proteinTarget, checkIns]);
+  const trend = useMemo(() => {
+    const days = nutritionTrendDays(logs, today, span);
+    return { days, caption: trendCaption(days, { hideCalories, span }) };
+  }, [logs, today, span, hideCalories]);
+  const loggedDays = trend.days.some((day) => day.logged);
+
+  return (
+    <>
+      <Card>
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12, justifyContent: 'space-around' }}>
+          {picture.kcal ? <RingFigure label="Energy today" ring={picture.kcal} tone={energyTone(picture.kcal)} /> : null}
+          <RingFigure label="Protein today" ring={picture.protein} tone={proteinTone(picture.protein)} />
+        </View>
+        <T variant="label">Protein, carbohydrate and fat</T>
+        <MacroBars slices={picture.macros.slices} caption={picture.macros.caption} />
+        <T variant="label">Fats</T>
+        <FatBar unsaturated={picture.fats.unsaturated} other={picture.fats.other} caption={picture.fats.line} />
+        {picture.quality ? (
+          <>
+            <T variant="label">Food quality</T>
+            <View accessibilityLabel={picture.quality.caption}>
+              <CompareBars layout="row" max={picture.quality.max} bars={picture.quality.bars} />
+            </View>
+          </>
+        ) : null}
+        {qualitySwitch}
+      </Card>
+
+      <Card>
+        <T variant="label">Recent days</T>
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+          <Choice label="7 days" selected={span === 7} onPress={() => setSpan(7)} />
+          <Choice label="30 days" selected={span === 30} onPress={() => setSpan(30)} />
+        </View>
+        {loggedDays ? (
+          <>
+            {hideCalories ? null : (
+              <TrendBars
+                title="Energy"
+                kind="kcal"
+                days={trend.days}
+                pick={(day) => day.kcal}
+                target={kcalTarget}
+                unit="kcal"
+              />
+            )}
+            <TrendBars
+              title="Protein"
+              kind="protein"
+              days={trend.days}
+              pick={(day) => day.proteinG}
+              target={proteinTarget}
+              unit="g"
+            />
+            <T variant="muted">{trend.caption}</T>
+          </>
+        ) : (
+          <T variant="muted">{trend.caption}</T>
+        )}
+        <T variant="label">Logging</T>
+        <LoggingCalendar dots={picture.dots} caption={picture.dotsCaption} />
+        {progressSwitch}
+      </Card>
+
+      {picture.insights.length ? (
+        <Card>
+          <T variant="label">Alongside check-ins</T>
+          {picture.insights.map((insight) => (
+            <InsightCard key={insight.id} insight={insight} />
+          ))}
+        </Card>
+      ) : null}
+    </>
+  );
+}
+
+function energyTone(ring: TodayRing): StatsTone {
+  if (ring.value <= 0 || ring.target == null) return 'info';
+  if (ring.value > ring.target) return 'watch';
+  if (ring.value >= ring.target * 0.85) return 'good';
+  return 'info';
+}
+
+function proteinTone(ring: TodayRing): StatsTone {
+  if (ring.value <= 0 || ring.target == null) return 'info';
+  return ring.value >= ring.target ? 'good' : 'info';
+}
+
+function RingFigure({ label, ring, tone }: { label: string; ring: TodayRing; tone: StatsTone }) {
+  return (
+    <View style={{ alignItems: 'center', gap: 4, flexGrow: 1, flexBasis: 140 }}>
+      <T variant="label">{label}</T>
+      <ProgressRing
+        centre={ring.centre}
+        unit={ring.unit}
+        fill={ring.fill}
+        status={ring.status}
+        tone={tone}
+        surface="card"
+        size={108}
+        mark
+        spoken
+        caption={ring.caption}
+      />
+    </View>
+  );
+}
+
+export function WeightTrendChart({
+  points,
+  goal,
+}: {
+  points: readonly { day: string; kg: number }[];
+  goal: NutritionGoal | null;
+}) {
+  const theme = useAppTheme();
+  const motion = useChartMotion();
+  const ink = statsToneColors(theme.scheme).info.ink;
+  const [width, setWidth] = useState(0);
+  const series = smoothWeight(points);
+  const caption = weightTrendLine(points, goal);
+  if (series.length < 2) return <T variant="muted">{caption}</T>;
+  const values = series.flatMap((point) => [point.kg, point.smooth]);
+  const low = Math.min(...values);
+  const high = Math.max(...values);
+  const span = high - low || 1;
+  const height = 120;
+  const yFor = (kg: number) => 12 + (1 - (kg - (low - span * 0.15)) / (span * 1.3)) * (height - 24);
+  const xFor = (index: number) => {
+    if (series.length <= 1 || width <= 0) return 0;
+    return 8 + (index / (series.length - 1)) * (width - 16);
+  };
+  return (
+    <View accessibilityLabel={caption} style={{ gap: 8 }}>
+      <View onLayout={(event) => setWidth(Math.round(event.nativeEvent.layout.width))} style={{ overflow: 'hidden' }}>
+        {width > 0 ? (
+          <View style={{ width: Math.max(1, width * motion), overflow: 'hidden' }}>
+            <Svg width={width} height={height}>
+              {series.slice(1).map((point, index) => {
+                const previous = series[index];
+                if (!previous) return null;
+                return (
+                  <Line
+                    key={point.day}
+                    x1={xFor(index)}
+                    y1={yFor(previous.smooth)}
+                    x2={xFor(index + 1)}
+                    y2={yFor(point.smooth)}
+                    stroke={ink}
+                    strokeWidth={2}
+                  />
+                );
+              })}
+              {series.map((point, index) => (
+                <Circle key={point.day} cx={xFor(index)} cy={yFor(point.kg)} r={3.5} fill={ink} />
+              ))}
+            </Svg>
+          </View>
+        ) : (
+          <View style={{ height }} />
+        )}
+      </View>
+      <T variant="muted">{caption}</T>
+    </View>
+  );
+}
+
+export function WaterMeter({ ml }: { ml: number }) {
+  const water = waterProgress(ml);
+  const tone: StatsTone = water.ml >= water.mark ? 'good' : 'info';
+  return (
+    <ProgressRing
+      centre={water.ml.toLocaleString('en-GB')}
+      unit="ml"
+      fill={water.fill}
+      status={water.status}
+      tone={tone}
+      surface="card"
+      mark
+      spoken
+      caption={water.caption}
+    />
+  );
+}
+
+function MacroBars({
+  slices,
+  caption,
+}: {
+  slices: { id: 'protein' | 'carbs' | 'fat'; label: string; grams: number; share: number }[];
+  caption: string;
+}) {
+  if (slices.length === 0) return <T variant="muted">{caption}</T>;
+  const max = Math.max(...slices.map((slice) => slice.grams), 1);
+  return (
+    <View accessibilityLabel={caption} style={{ gap: 8 }}>
+      <CompareBars
+        layout="row"
+        max={max}
+        bars={slices.map((slice) => ({
+          key: slice.id,
+          label: `${slice.label} ${slice.grams} g`,
+          value: slice.grams,
+          tone: 'info',
+        }))}
+      />
+      <T variant="muted">{caption}</T>
+    </View>
+  );
+}
+
+function FatBar({ unsaturated, other, caption }: { unsaturated: number; other: number; caption: string }) {
+  const theme = useAppTheme();
+  const colors = statsToneColors(theme.scheme);
+  const total = unsaturated + other;
+  const share = total > 0 ? unsaturated / total : 0;
+  return (
+    <View accessibilityLabel={caption} style={{ gap: 8 }}>
+      <View style={{ height: 16, borderRadius: 8, backgroundColor: theme.colors.line, overflow: 'hidden', flexDirection: 'row' }}>
+        {total > 0 ? (
+          <>
+            <View style={{ width: `${Math.round(share * 100)}%`, backgroundColor: colors.good.ink }} />
+            <View style={{ width: `${100 - Math.round(share * 100)}%`, backgroundColor: colors.watch.ink }} />
+          </>
+        ) : null}
+      </View>
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 8 }}>
+        <T style={{ fontSize: 13 * theme.scale, lineHeight: 18 * theme.scale }}>Unsaturated</T>
+        <T style={{ fontSize: 13 * theme.scale, lineHeight: 18 * theme.scale }}>Saturated and trans</T>
+      </View>
+      <T variant="muted">{caption}</T>
+    </View>
+  );
+}
+
+function barTone(kind: 'kcal' | 'protein', amount: number, logged: boolean, target: number | null): ChartBar['tone'] {
+  if (!logged) return 'empty';
+  if (target == null || target <= 0) return 'info';
+  if (kind === 'protein') return amount >= target ? 'good' : 'info';
+  return amount > target ? 'watch' : 'good';
+}
+
+function TrendBars({
+  title,
+  kind,
+  days,
+  pick,
+  target,
+  unit,
+}: {
+  title: string;
+  kind: 'kcal' | 'protein';
+  days: readonly TrendDay[];
+  pick: (day: TrendDay) => number;
+  target: number | null;
+  unit: string;
+}) {
+  const theme = useAppTheme();
+  const amounts = days.map((day) => pick(day));
+  const top = Math.max(...amounts, target != null && target > 0 ? target : 0, 1);
+  return (
+    <View accessibilityLabel={`${title} over ${days.length} days`} style={{ gap: 6 }}>
+      <T variant="label">{title}</T>
+      <CompareBars
+        max={top}
+        target={target != null && target > 0 ? target : null}
+        showLabels={days.length <= 7}
+        bars={days.map((day, index) => ({
+          key: day.day,
+          label: weekdayLetter(day.day),
+          value: amounts[index] ?? 0,
+          tone: barTone(kind, amounts[index] ?? 0, day.logged, target),
+          missing: day.logged ? undefined : 'line',
+        }))}
+      />
+      {days.length > 7 ? (
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+          {axisLabels(days.map((day) => day.day)).map((label) => (
+            <T key={label.key} style={{ fontSize: 11 * theme.scale, lineHeight: 14 * theme.scale, color: theme.colors.muted }}>{label.text}</T>
+          ))}
+        </View>
+      ) : null}
+      {target != null && target > 0 ? (
+        <T variant="muted">{`Dashed line: ${target.toLocaleString('en-GB')} ${unit} target.`}</T>
+      ) : null}
+    </View>
+  );
+}
+
+function LoggingCalendar({
+  dots,
+  caption,
+}: {
+  dots: { day: string; logged: boolean }[];
+  caption: string;
+}) {
+  const theme = useAppTheme();
+  const loggedInk = statsToneColors(theme.scheme).info.ink;
+  return (
+    <View accessibilityLabel={caption} style={{ gap: 8 }}>
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap' }}>
+        {dots.map((dot) => (
+          <View key={dot.day} style={{ width: `${100 / 7}%`, alignItems: 'center', paddingVertical: 4 }}>
+            <View
+              accessibilityLabel={dot.logged ? `${dot.day} logged` : `${dot.day} not logged`}
+              style={{
+                width: 12,
+                height: 12,
+                borderRadius: 6,
+                backgroundColor: dot.logged ? loggedInk : theme.colors.line,
+              }}
+            />
+          </View>
+        ))}
+      </View>
+      <T variant="muted">{caption}</T>
+    </View>
+  );
+}
+
+function InsightCard({
+  insight,
+}: {
+  insight: { caption: string; leftLabel: string; rightLabel: string; leftSnacks: number; rightSnacks: number };
+}) {
+  const max = Math.max(insight.leftSnacks, insight.rightSnacks, 1);
+  const bar = (value: number) => Math.max(value > 0 ? 6 : 2, Math.round((value / max) * 56));
+  return (
+    <View accessibilityLabel={insight.caption} style={{ gap: 8 }}>
+      <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 16 }}>
+        <SnackBar label={insight.leftLabel} value={insight.leftSnacks} height={bar(insight.leftSnacks)} />
+        <SnackBar label={insight.rightLabel} value={insight.rightSnacks} height={bar(insight.rightSnacks)} />
+      </View>
+      <T variant="muted">{insight.caption}</T>
+    </View>
+  );
+}
+
+function SnackBar({ label, value, height }: { label: string; value: number; height: number }) {
+  const theme = useAppTheme();
+  return (
+    <View style={{ flex: 1, gap: 4 }}>
+      <T style={{ fontSize: 13 * theme.scale, lineHeight: 18 * theme.scale }}>{label}</T>
+      <View style={{ height, backgroundColor: statsToneColors(theme.scheme).info.ink, borderRadius: 2 }} />
+      <T variant="muted">{value === 1 ? '1 snack' : `${value} snacks`}</T>
+    </View>
+  );
+}
+
+function axisLabels(days: string[]): { key: string; text: string }[] {
+  const first = days[0];
+  const middle = days[Math.floor(days.length / 2)];
+  const last = days[days.length - 1];
+  return [first, middle, last].filter((day): day is string => Boolean(day)).map((day) => ({
+    key: day,
+    text: compactDay(day),
+  }));
+}
+
+function weekdayLetter(iso: string): string {
+  const [year, month, day] = iso.split('-').map(Number);
+  const date = new Date(Date.UTC(year ?? 1970, (month ?? 1) - 1, day ?? 1));
+  return 'SMTWTFS'[date.getUTCDay()] ?? '';
+}
+
+function compactDay(iso: string): string {
+  const [year, month, day] = iso.split('-').map(Number);
+  const date = new Date(Date.UTC(year ?? 1970, (month ?? 1) - 1, day ?? 1));
+  return date.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', timeZone: 'UTC' });
+}

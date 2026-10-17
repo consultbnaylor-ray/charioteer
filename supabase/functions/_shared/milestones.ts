@@ -1,5 +1,5 @@
-import { addMonthsUtc, addYearsUtc } from './time';
-import { HOUR_MS } from './sober';
+import { addMonthsUtc, addYearsUtc } from './time.ts';
+import { HOUR_MS } from './sober.ts';
 
 export const MILESTONE_KEYS = ['24h', '7d', '30d', '90d', '6m', '1y'] as const;
 export type MilestoneKey = (typeof MILESTONE_KEYS)[number];

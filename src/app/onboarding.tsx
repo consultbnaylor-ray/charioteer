@@ -1,34 +1,33 @@
-import { useState } from 'react';
-import { Switch, View } from 'react-native';
+import { useRef, useState } from 'react';
+import { View } from 'react-native';
 
 import { useRepository, useSnapshot } from '@/data';
-import { validateTown } from '@/domain/privacy';
+import { isoDay, startOfLocalDay } from '@/domain/dates';
+import { shownError } from '@/domain/errors';
+import { interestChipVisible } from '@/domain/interests';
+import { planCustomInterest, validateTown } from '@/domain/privacy';
+import { reasonPlaceholder } from '@/domain/reasons';
+import { parseDrinkFreeGoal, parseUnitsGoal, STAGE_LABELS, STAGES, SUDDEN_STOP_WARNING, USUAL_WEEK_HELPER, validateStageStep, type Stage } from '@/domain/stage';
+import { APP_FULL_NAME } from '@/domain/appName';
+import { offerMessageNotifications } from '@/notifications/register';
+import { ConsentChoices } from '@/ui/ConsentChoices';
+import { DateField } from '@/ui/DateField';
+import { UnitsGuide } from '@/ui/UnitsGuide';
 import { Button, Choice, ErrorNote, Field, Screen, T } from '@/ui/ui';
 import { useAppTheme } from '@/ui/theme';
 
 const STEPS = 8;
 
-function todayIso() {
-  const now = new Date();
-  const month = String(now.getMonth() + 1).padStart(2, '0');
-  const day = String(now.getDate()).padStart(2, '0');
-  return `${now.getFullYear()}-${month}-${day}`;
+function daysAgo(days: number): Date {
+  const date = startOfLocalDay(new Date());
+  date.setDate(date.getDate() - days);
+  return date;
 }
 
-function shiftDays(days: number) {
+function toInstant(day: Date): string {
+  const chosen = startOfLocalDay(day);
   const now = new Date();
-  now.setDate(now.getDate() - days);
-  const month = String(now.getMonth() + 1).padStart(2, '0');
-  const day = String(now.getDate()).padStart(2, '0');
-  return `${now.getFullYear()}-${month}-${day}`;
-}
-
-function toInstant(isoDay: string): string {
-  const [year, month, day] = isoDay.split('-').map(Number);
-  const chosen = new Date(year, (month ?? 1) - 1, day ?? 1);
-  const now = new Date();
-  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  if (chosen.getTime() === today.getTime()) return now.toISOString();
+  if (isoDay(chosen) === isoDay(now)) return now.toISOString();
   return chosen.toISOString();
 }
 
@@ -39,7 +38,12 @@ export default function Onboarding() {
   const [step, setStep] = useState(0);
   const [name, setName] = useState(snap.profile?.displayName ?? '');
   const [adult, setAdult] = useState<boolean | null>(null);
-  const [start, setStart] = useState(todayIso());
+  const [stage, setStage] = useState<Stage | null>(null);
+  const [start, setStart] = useState(() => startOfLocalDay(new Date()));
+  const [plannedQuit, setPlannedQuit] = useState(() => startOfLocalDay(new Date()));
+  const [quitUnsure, setQuitUnsure] = useState(true);
+  const [unitsGoal, setUnitsGoal] = useState('');
+  const [drinkFreeGoal, setDrinkFreeGoal] = useState('');
   const [reasons, setReasons] = useState(['', '', '']);
   const [spend, setSpend] = useState('40');
   const [units, setUnits] = useState('20');
@@ -51,9 +55,45 @@ export default function Onboarding() {
   const [ai, setAi] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
+  const [addingInterest, setAddingInterest] = useState(false);
+  const addingInterestRef = useRef(false);
 
   function toggleInterest(id: string) {
     setInterestIds((current) => (current.includes(id) ? current.filter((item) => item !== id) : [...current, id]));
+  }
+
+  function selectInterest(id: string) {
+    setInterestIds((current) => (current.includes(id) ? current : [...current, id]));
+    setCustom('');
+  }
+
+  async function addInterest() {
+    if (addingInterestRef.current) return;
+    const plan = planCustomInterest(custom);
+    if (!plan.ok) {
+      setError(plan.message);
+      return;
+    }
+    const known = repo.getSnapshot().interests.find((item) => item.slug === plan.slug);
+    if (known) {
+      setError(null);
+      selectInterest(known.id);
+      return;
+    }
+    addingInterestRef.current = true;
+    setAddingInterest(true);
+    setError(null);
+    try {
+      await repo.addCustomInterest(plan.label);
+      const match = repo.getSnapshot().interests.find((item) => item.slug === plan.slug);
+      if (match) selectInterest(match.id);
+      else setCustom('');
+    } catch (err) {
+      setError(shownError(err, 'Could not add that.'));
+    } finally {
+      addingInterestRef.current = false;
+      setAddingInterest(false);
+    }
   }
 
   async function finish() {
@@ -71,9 +111,15 @@ export default function Onboarding() {
     setPending(true);
     setError(null);
     try {
+      const units = parseUnitsGoal(unitsGoal);
+      const days = parseDrinkFreeGoal(drinkFreeGoal);
       await repo.completeOnboarding({
         displayName: name,
-        sobrietyStartedAt: toInstant(start),
+        stage: stage ?? 'exploring',
+        sobrietyStartedAt: stage === 'stopped' ? toInstant(start) : null,
+        plannedQuitAt: stage === 'trying_to_stop' && !quitUnsure ? isoDay(plannedQuit) : null,
+        weeklyUnitsGoal: stage === 'cutting_down' && units.ok ? units.value : null,
+        drinkFreeDaysGoal: stage === 'cutting_down' && days.ok ? days.value : null,
         reasons,
         weeklySpendGbp,
         weeklyUnits,
@@ -83,14 +129,15 @@ export default function Onboarding() {
         consentHealth: health,
         consentAi: ai,
       });
+      if (community) void offerMessageNotifications(repo).catch((error: unknown) => console.error('message notifications', error));
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not save.');
+      setError(shownError(err, 'Could not save.'));
     } finally {
       setPending(false);
     }
   }
 
-  const catalogue = snap.interests.filter((interest) => !interest.custom || interestIds.includes(interest.id));
+  const catalogue = snap.interests.filter((interest) => interestChipVisible(interest, interestIds.includes(interest.id)));
 
   return (
     <Screen eyebrow={`Step ${step + 1} of ${STEPS}`} title={titles[step]} intro={intros[step]}>
@@ -100,18 +147,42 @@ export default function Onboarding() {
           <Button label="I am 18 or over" tone={adult === true ? 'primary' : 'quiet'} onPress={() => setAdult(true)} />
           <Button label="I am under 18" tone={adult === false ? 'primary' : 'quiet'} onPress={() => setAdult(false)} />
           {adult === false ? (
-            <T>Charioteer is only for adults. If you are worried about your own or someone else’s drinking, an adult can help you contact Drinkline on 0300 123 1110, or the Samaritans on 116 123.</T>
+            <T>{APP_FULL_NAME} is only for adults. If you are worried about your own or someone else’s drinking, an adult can help you contact Drinkline on 0300 123 1110, or the Samaritans on 116 123.</T>
           ) : null}
         </View>
       ) : null}
       {step === 2 ? (
         <View style={{ gap: 10 }}>
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-            <Choice label="Today" selected={start === todayIso()} onPress={() => setStart(todayIso())} />
-            <Choice label="Yesterday" selected={start === shiftDays(1)} onPress={() => setStart(shiftDays(1))} />
-            <Choice label="A week ago" selected={start === shiftDays(7)} onPress={() => setStart(shiftDays(7))} />
-          </View>
-          <Field label="Or a date" value={start} onChangeText={setStart} placeholder="YYYY-MM-DD" hint="Use the day you stopped, or today if you are starting now." />
+          {STAGES.map((item) => (
+            <Choice key={item} label={STAGE_LABELS[item]} selected={stage === item} onPress={() => setStage(item)} />
+          ))}
+          {stage === 'stopped' ? (
+            <View style={{ gap: 10 }}>
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+                <Choice label="Today" selected={isoDay(start) === isoDay(new Date())} onPress={() => setStart(startOfLocalDay(new Date()))} />
+                <Choice label="Yesterday" selected={isoDay(start) === isoDay(daysAgo(1))} onPress={() => setStart(daysAgo(1))} />
+                <Choice label="A week ago" selected={isoDay(start) === isoDay(daysAgo(7))} onPress={() => setStart(daysAgo(7))} />
+              </View>
+              <DateField label="Or a date" value={start} onChange={setStart} maximumDate={new Date()} hint="Use the day you stopped, or today if you are starting now." />
+            </View>
+          ) : null}
+          {stage === 'trying_to_stop' ? (
+            <View style={{ gap: 10 }}>
+              <T>{SUDDEN_STOP_WARNING}</T>
+              <Choice label="Not sure yet" selected={quitUnsure} onPress={() => setQuitUnsure(true)} />
+              <Choice label="Pick a date" selected={!quitUnsure} onPress={() => setQuitUnsure(false)} />
+              {quitUnsure ? null : (
+                <DateField label="Planned quit date" value={plannedQuit} onChange={setPlannedQuit} earliestDate={new Date()} hint="Today or a later day." />
+              )}
+            </View>
+          ) : null}
+          {stage === 'cutting_down' ? (
+            <View style={{ gap: 10 }}>
+              <Field label="Weekly units goal, if you want one" value={unitsGoal} onChangeText={setUnitsGoal} keyboardType="decimal-pad" placeholder="Optional" />
+              <Field label="Drink-free days a week, if you want a number" value={drinkFreeGoal} onChangeText={setDrinkFreeGoal} keyboardType="number-pad" placeholder="0 to 7, optional" />
+            </View>
+          ) : null}
+          {stage === 'exploring' ? <T>No date needed. You can decide later, and change this in You.</T> : null}
         </View>
       ) : null}
       {step === 3 ? (
@@ -122,7 +193,7 @@ export default function Onboarding() {
               label={`Reason ${index + 1}`}
               value={reason}
               onChangeText={(value) => setReasons((current) => current.map((item, itemIndex) => (itemIndex === index ? value : item)))}
-              placeholder="In your own words"
+              placeholder={reasonPlaceholder(index)}
             />
           ))}
           <Button label="Add another reason" tone="quiet" onPress={() => setReasons((current) => [...current, ''])} />
@@ -130,14 +201,16 @@ export default function Onboarding() {
       ) : null}
       {step === 4 ? (
         <View style={{ gap: 10 }}>
+          <T variant="muted">{USUAL_WEEK_HELPER}</T>
           <Field label="Typical spend per week (£)" value={spend} onChangeText={setSpend} keyboardType="decimal-pad" />
           <Field
             label="Typical units per week"
             value={units}
             onChangeText={setUnits}
             keyboardType="decimal-pad"
-            hint="A unit is 10ml of pure alcohol. The NHS formula is strength (ABV) × volume (ml) ÷ 1,000. This is your own usual week, used only for your savings counter."
+            hint="Your own usual week, used only for your savings counter."
           />
+          <UnitsGuide onChange={setUnits} stage={stage} weeklySpend={spend} currentUnits={units} />
         </View>
       ) : null}
       {step === 5 ? (
@@ -151,15 +224,9 @@ export default function Onboarding() {
           <Button
             label="Add interest"
             tone="quiet"
-            onPress={() => {
-              const label = custom.trim();
-              if (!label) return;
-              void repo.addCustomInterest(label).then(() => {
-                const match = repo.getSnapshot().interests.find((item) => item.label.toLowerCase() === label.toLowerCase());
-                if (match) setInterestIds((current) => (current.includes(match.id) ? current : [...current, match.id]));
-                setCustom('');
-              }).catch((err: unknown) => setError(err instanceof Error ? err.message : 'Could not add that.'));
-            }}
+            pending={addingInterest}
+            disabled={addingInterest || !custom.trim()}
+            onPress={() => void addInterest()}
           />
         </View>
       ) : null}
@@ -167,27 +234,7 @@ export default function Onboarding() {
         <Field label="Town or area" value={town} onChangeText={setTown} placeholder="Bristol, or leave blank" hint="Never a street or postcode. Other people only see this if you turn community on." />
       ) : null}
       {step === 7 ? (
-        <View style={{ gap: 16 }}>
-          <Consent
-            title="Community"
-            body="Other adults can see your name, town or area, and interests. They cannot see your reasons, check-ins, money, units, or health."
-            value={community}
-            onChange={setCommunity}
-          />
-          <Consent
-            title="Health data"
-            body="Steps, sleep, heart rate, heart-rate variability, workouts, and weight are special category data under UK GDPR. Stored so you and Thumos can see trends. Quantica Labs Ltd is the controller. You can export or delete them with your account."
-            value={health}
-            onChange={setHealth}
-          />
-          <Consent
-            title="Thumos, the coach"
-            body="What you type, plus days sober, check-ins, reasons, and health summaries, is sent to xAI to write a reply. Thumos is not a doctor."
-            value={ai}
-            onChange={setAi}
-          />
-          <T variant="muted">This consent screen is plain language, not a solicitor’s privacy notice. Have it reviewed before a public launch. Version 2026-10-10.</T>
-        </View>
+        <ConsentChoices community={community} health={health} ai={ai} onCommunity={setCommunity} onHealth={setHealth} onAi={setAi} />
       ) : null}
       <ErrorNote>{error}</ErrorNote>
       <View style={{ flexDirection: 'row', gap: 10 }}>
@@ -200,8 +247,19 @@ export default function Onboarding() {
             onPress={() => {
               setError(null);
               if (step === 0 && !name.trim()) return setError('Add your name.');
-              if (step === 1 && adult !== true) return setError('Charioteer is for adults aged 18 and over.');
-              if (step === 2 && !/^\d{4}-\d{2}-\d{2}$/.test(start)) return setError('Use a date like 2026-04-02.');
+              if (step === 1 && adult !== true) return setError(`${APP_FULL_NAME} is for adults aged 18 and over.`);
+              if (step === 2) {
+                const stageError = validateStageStep({
+                  stage,
+                  soberDay: isoDay(start),
+                  today: isoDay(new Date()),
+                  plannedQuit: isoDay(plannedQuit),
+                  quitUnsure,
+                  unitsGoal,
+                  drinkFreeGoal,
+                });
+                if (stageError) return setError(stageError);
+              }
               if (step === 3 && !reasons.some((reason) => reason.trim())) return setError('One reason is enough.');
               if (step === 6) {
                 const townError = validateTown(town);
@@ -221,7 +279,7 @@ export default function Onboarding() {
 const titles = [
   'What should we call you?',
   'This app is for adults.',
-  'When did you stop?',
+  'Where are you right now?',
   'Why does this matter?',
   'Your usual week',
   'What do you like doing?',
@@ -231,24 +289,12 @@ const titles = [
 
 const intros = [
   'This is the name other people will see if you join the community.',
-  'Confirm you are 18 or over. Charioteer is not for children.',
-  'If you drank today, you can still begin now. A later lapse does not wipe the record of the days you kept.',
-  'Thumos will remind you of these in your own words, and only when it helps.',
-  'Used for money saved and units avoided. It is an estimate from what you tell us, not a medical calculation.',
-  'Swimming, hiking, dancing, sober raving, cinema and meals, nights in — or something of your own.',
+  `Confirm you are 18 or over. ${APP_FULL_NAME} is not for children.`,
+  'Stopped, trying to stop, cutting down, or just looking. You can change this later.',
+  'Thumos will remind you of these in your own words, when a craving hits or when you cannot be bothered to start, and only when it helps.',
+  'Your own usual week. It is an estimate from what you tell us, not a medical calculation.',
+  'Comedy, films, travel, a night in or out — or something of your own.',
   'Optional. Town or area only.',
   'Health and drinking data are sensitive. Nothing is turned on unless you agree.',
 ];
 
-function Consent({ title, body, value, onChange }: { title: string; body: string; value: boolean; onChange: (value: boolean) => void }) {
-  const theme = useAppTheme();
-  return (
-    <View style={{ gap: 8 }}>
-      <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 12, alignItems: 'center' }}>
-        <T variant="title" style={{ fontSize: 20, flex: 1 }}>{title}</T>
-        <Switch accessibilityLabel={title} value={value} onValueChange={onChange} trackColor={{ true: theme.colors.ink, false: theme.colors.line }} thumbColor={theme.colors.surface} />
-      </View>
-      <T variant="muted">{body}</T>
-    </View>
-  );
-}
