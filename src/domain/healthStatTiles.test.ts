@@ -14,6 +14,13 @@ import {
   HEALTH_TURN_ON,
   missingHealthAction,
   parseBodyGap,
+  PERIOD_DAILY_AVERAGE,
+  PERIOD_LAST_28,
+  PERIOD_LAST_NIGHT,
+  PERIOD_LATEST,
+  PERIOD_LATEST_DAY,
+  PERIOD_THIS_WEEK,
+  PERIOD_TODAY,
   type HealthStatBoardInput,
   type HealthStatTile,
 } from '@/domain/healthStatTiles';
@@ -144,8 +151,10 @@ describe('health stat tiles', () => {
     }
 
     const minutes = tile(board, 'weekly_active_minutes');
-    expect(minutes.unit).toBe('min this week');
+    expect(minutes.unit).toBe('min');
+    expect(minutes.period).toBe(PERIOD_THIS_WEEK);
     expect(minutes.valueText).toBe('97');
+    expect(minutes.weeklyLine).toBeNull();
     expect(minutes.status).toBe('53 minutes to 150');
     expect(minutes.mark).toBe('Note');
     expect(minutes.hasGuideline).toBe(true);
@@ -210,6 +219,8 @@ describe('health stat tiles', () => {
 
     const mix = tile(board, 'mix');
     expect(mix.unit).toBe('min');
+    expect(mix.period).toBe(PERIOD_LAST_28);
+    expect(mix.weeklyLine).toBe('About 23 min a week.');
     expect(mix.hasGuideline).toBe(false);
     expect(mix.status).toContain('Mostly strength');
     expect(mix.status).toContain('no guideline mix');
@@ -217,6 +228,7 @@ describe('health stat tiles', () => {
     expect(mix.about).toContain('not heart rate');
     if (mix.visual.kind === 'bars') {
       expect(mix.visual.bars.map((bar) => bar.key)).toEqual(['strength', 'cardio', 'conditioning', 'other']);
+      expect(mix.visual.caption).toBe('');
     }
 
     const workouts = tile(board, 'workouts');
@@ -426,6 +438,8 @@ describe('health stat tiles', () => {
     expect(screen).not.toContain('communityPhotos');
     expect(screen).toContain('<HealthSectionShare />');
     expect(screen.indexOf('<HealthStatBoard')).toBeLessThan(screen.indexOf('<HealthBoard'));
+    expect(board).toContain('valueWithPeriod');
+    expect(board).toContain('tile.weeklyLine');
     expect(board).toContain('Each workout type');
     expect(board).toContain('onSetWorkoutBucket');
     expect(board).toContain('More info about');
@@ -501,11 +515,62 @@ describe('health stat tiles', () => {
     expect(mix.meaning).toContain('Elliptical 300 min');
     expect(mix.meaning).toContain('Mixed cardio 80 min');
     expect(mix.meaning).toContain('shown on its own');
+    expect(mix.period).toBe(PERIOD_LAST_28);
+    expect(mix.valueText).toBe('920');
+    expect(mix.weeklyLine).toBe('About 230 min a week.');
     expect(mix.breakdown?.map((row) => row.bucket)).toEqual(['strength', 'cardio', 'strength']);
     if (mix.visual.kind === 'bars') {
       expect(mix.visual.bars.find((bar) => bar.key === 'strength')?.value).toBe(620);
       expect(mix.visual.bars.find((bar) => bar.key === 'cardio')?.value).toBe(300);
       expect(mix.visual.bars.find((bar) => bar.key === 'conditioning')?.value).toBe(0);
     }
+  });
+
+  it('puts the period on the value line of every tile, and a week average on a 28-day total', () => {
+    const board = buildHealthStatBoard(alex());
+    const periods: Record<string, string> = {
+      resting_heart_rate: PERIOD_LATEST,
+      walking_heart_rate: PERIOD_LATEST,
+      heart_rate_recovery: PERIOD_LATEST,
+      session_heart_rate: PERIOD_LATEST,
+      vo2_max: PERIOD_LATEST,
+      mix: PERIOD_LAST_28,
+      sleep_hours: PERIOD_LAST_NIGHT,
+      hrv_sdnn: PERIOD_LATEST,
+      weight_kg: PERIOD_LATEST,
+      body_fat: PERIOD_LATEST,
+      waist: PERIOD_LATEST,
+      lean_mass: PERIOD_LATEST,
+      steps: PERIOD_TODAY,
+      workouts: PERIOD_THIS_WEEK,
+      weekly_active_minutes: PERIOD_THIS_WEEK,
+    };
+    for (const [id, period] of Object.entries(periods)) {
+      const item = tile(board, id);
+      expect(item.period).toBe(period);
+      expect(`${item.valueText} ${item.unit} - ${item.period}`).toContain(period);
+      if (id !== 'mix') expect(item.weeklyLine).toBeNull();
+    }
+    expect(tile(board, 'sleep_hours').valueText).toBe('7.4');
+    expect(tile(board, 'vo2_max').valueText).toBe('42');
+    expect(tile(board, 'workouts').valueText).toBe('97');
+
+    const earlier = buildHealthStatBoard(input({
+      samples: [{ kind: 'steps', value: 4200, recordedOn: '2026-10-16' }],
+    }));
+    expect(tile(earlier, 'steps').period).toBe(PERIOD_LATEST_DAY);
+
+    const energy = buildHealthStatBoard(input({ activityEnergyKcal: 1840 }));
+    expect(tile(energy, 'active_energy').period).toBe(PERIOD_DAILY_AVERAGE);
+
+    const long = buildHealthStatBoard(input({
+      samples: [{ kind: 'strength_minutes', value: 1198, recordedOn: today }],
+    }));
+    const mix = tile(long, 'mix');
+    expect(mix.valueText).toBe('1,198');
+    expect(mix.period).toBe(PERIOD_LAST_28);
+    expect(mix.weeklyLine).toBe('About 300 min a week.');
+    expect(readFileSync('src/ui/HealthStatBoard.tsx', 'utf8')).toContain('{valueWithPeriod(tile)}');
+    expect(readFileSync('src/domain/healthStatTiles.ts', 'utf8')).not.toContain("caption: 'Last 28 days'");
   });
 });

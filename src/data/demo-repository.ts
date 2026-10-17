@@ -467,7 +467,7 @@ export class DemoRepository implements Repository {
       changed = true;
     }
     this.db.workoutTypes = 1;
-    if (changed || this.db.workoutTypes === 1) void AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(this.db));
+    if ((changed || this.db.workoutTypes === 1) && typeof window !== 'undefined') void AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(this.db));
   }
 
   /** Sample meals for a demo account saved before the food log existed. An empty list stays empty. */

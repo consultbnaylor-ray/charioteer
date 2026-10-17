@@ -55,6 +55,15 @@ export const HEALTH_SHARING_STEPS = 'Health > Sharing > Apps > Charioteer > turn
 const ADULT_HIDDEN = 'These adult ranges are not shown under 18. Nothing here is guessed.';
 const NO_BAND = 'There is no guideline band here.';
 
+/** Shown on the value line, beside the number, so the window is not a footnote. */
+export const PERIOD_LATEST = 'latest reading';
+export const PERIOD_LAST_NIGHT = 'last night';
+export const PERIOD_TODAY = 'today';
+export const PERIOD_LATEST_DAY = 'latest day';
+export const PERIOD_THIS_WEEK = 'this week';
+export const PERIOD_LAST_28 = 'last 28 days';
+export const PERIOD_DAILY_AVERAGE = 'recent daily average';
+
 /** Where a missing reading comes from, and the HealthKit type to ask for. */
 const HEALTH_STAT_GAPS: Record<string, { source: string; healthType: string | null; manual: boolean }> = {
   resting_heart_rate: {
@@ -292,6 +301,10 @@ export type HealthStatTile = {
   title: string;
   valueText: string;
   unit: string;
+  /** Window the figure covers, written on the same line as the number. */
+  period: string;
+  /** A week-sized reading of a total that covers more than seven days. */
+  weeklyLine: string | null;
   status: string;
   tone: StatsTone;
   mark: string;
@@ -399,6 +412,7 @@ function heartBandTile(item: CatalogItem, input: HealthStatBoardInput, grown: bo
     return finish(item, {
       valueText: String(bpm),
       unit: 'bpm',
+      period: PERIOD_LATEST,
       status: ADULT_HIDDEN,
       tone: 'info',
       trend: readingTrend(history, 2),
@@ -423,6 +437,7 @@ function heartBandTile(item: CatalogItem, input: HealthStatBoardInput, grown: bo
   return finish(item, {
     valueText: String(bpm),
     unit: 'bpm',
+    period: PERIOD_LATEST,
     status,
     tone,
     trend: readingTrend(history, 2),
@@ -457,6 +472,7 @@ function sleepTile(item: CatalogItem, input: HealthStatBoardInput, grown: boolea
     return finish(item, {
       valueText: oneText(hours),
       unit: 'h',
+      period: PERIOD_LAST_NIGHT,
       status: ADULT_HIDDEN,
       tone: 'info',
       trend: readingTrend(history, 0.3),
@@ -481,6 +497,7 @@ function sleepTile(item: CatalogItem, input: HealthStatBoardInput, grown: boolea
   return finish(item, {
     valueText: oneText(hours),
     unit: 'h',
+    period: PERIOD_LAST_NIGHT,
     status,
     tone,
     trend: readingTrend(history, 0.3),
@@ -545,6 +562,7 @@ function vo2Tile(item: CatalogItem, input: HealthStatBoardInput, grown: boolean)
   return finish(item, {
     valueText: oneText(value),
     unit: 'ml/kg/min',
+    period: PERIOD_LATEST,
     status,
     tone,
     trend: readingTrend(history, 1),
@@ -616,6 +634,8 @@ function mixTile(item: CatalogItem, input: HealthStatBoardInput): HealthStatTile
   return finish(item, {
     valueText: whole(total),
     unit: 'min',
+    period: PERIOD_LAST_28,
+    weeklyLine: weeklyAverageWords(total, 28),
     status,
     tone: 'info',
     trend: MIX_HOW,
@@ -623,7 +643,7 @@ function mixTile(item: CatalogItem, input: HealthStatBoardInput): HealthStatTile
     visual: {
       kind: 'bars',
       max: Math.max(strength, cardio, conditioning, other, 1),
-      caption: 'Last 28 days',
+      caption: '',
       bars: [
         { key: 'strength', label: `Strength ${whole(strength)} min`, value: strength, tone: 'good' },
         { key: 'cardio', label: `Cardio ${whole(cardio)} min`, value: cardio, tone: 'info' },
@@ -660,6 +680,7 @@ function hrvTile(item: CatalogItem, input: HealthStatBoardInput): HealthStatTile
   return finish(item, {
     valueText: String(ms),
     unit: 'ms',
+    period: PERIOD_LATEST,
     status: 'There is no official UK target.',
     tone: 'info',
     trend,
@@ -753,6 +774,7 @@ function weightTile(
   return finish(item, {
     valueText: oneText(kg),
     unit: 'kg',
+    period: PERIOD_LATEST,
     status,
     tone,
     trend,
@@ -820,6 +842,7 @@ function bodyFatTile(item: CatalogItem, input: HealthStatBoardInput, grown: bool
   return finish(item, {
     valueText: oneText(pct),
     unit: '%',
+    period: PERIOD_LATEST,
     status,
     tone,
     trend: readingTrend(history, 0.5),
@@ -872,6 +895,7 @@ function waistTile(
   return finish(item, {
     valueText: oneText(cm),
     unit: 'cm',
+    period: PERIOD_LATEST,
     status,
     tone,
     trend,
@@ -904,6 +928,7 @@ function leanTile(item: CatalogItem, input: HealthStatBoardInput): HealthStatTil
   return finish(item, {
     valueText: oneText(kg),
     unit: 'kg',
+    period: PERIOD_LATEST,
     status: NO_BAND,
     tone: 'info',
     trend: readingTrend(history, 0.3),
@@ -945,6 +970,7 @@ function stepsTile(item: CatalogItem, input: HealthStatBoardInput): HealthStatTi
   return finish(item, {
     valueText: whole(shown.value),
     unit: 'steps',
+    period: todayPoint ? PERIOD_TODAY : PERIOD_LATEST_DAY,
     status,
     tone: 'info',
     trend,
@@ -970,6 +996,7 @@ function energyTile(item: CatalogItem, kcal: number | null): HealthStatTile | nu
   return finish(item, {
     valueText: whole(shown),
     unit: 'kcal',
+    period: PERIOD_DAILY_AVERAGE,
     status: 'Recent daily average',
     tone: 'info',
     trend: null,
@@ -1002,11 +1029,12 @@ function workoutTile(item: CatalogItem, input: HealthStatBoardInput): HealthStat
     tone: 'info' as const,
   }));
   const visual: HealthStatVisual = bars.length
-    ? { kind: 'bars', max: Math.max(...bars.map((bar) => bar.value), 1), caption: 'Logged this week', bars }
-    : { kind: 'bars', max: 1, caption: 'None logged this week', bars: [{ key: 'none', label: 'This week 0 min', value: 0, tone: 'info' }] };
+    ? { kind: 'bars', max: Math.max(...bars.map((bar) => bar.value), 1), caption: '', bars }
+    : { kind: 'bars', max: 1, caption: '', bars: [{ key: 'none', label: 'This week 0 min', value: 0, tone: 'info' }] };
   return finish(item, {
     valueText: whole(total),
     unit: 'min',
+    period: PERIOD_THIS_WEEK,
     status: 'Logged workouts may not include walking.',
     tone: 'info',
     trend: weekTrend(history, input.today, 5),
@@ -1050,7 +1078,8 @@ function weeklyTile(item: CatalogItem, input: HealthStatBoardInput): HealthStatT
   const history = workouts.length > 0 ? workouts : mergeDays([strength, cardio, conditioning, other]);
   return finish(item, {
     valueText: whole(rounded),
-    unit: 'min this week',
+    unit: 'min',
+    period: PERIOD_THIS_WEEK,
     status,
     tone,
     trend: weekTrend(history, input.today, 5),
@@ -1091,6 +1120,7 @@ function plainSeriesTile(
   return finish(item, {
     valueText: shown,
     unit,
+    period: PERIOD_LATEST,
     status: note,
     tone: 'info',
     trend: readingTrend(history, epsilon),
@@ -1117,6 +1147,8 @@ function plainReading(
   return {
     valueText: oneText(value),
     unit,
+    period: PERIOD_LATEST,
+    weeklyLine: null,
     status,
     tone: 'info',
     trend,
@@ -1133,15 +1165,22 @@ function plainReading(
 
 function finish(
   item: CatalogItem,
-  tile: Omit<HealthStatTile, 'id' | 'section' | 'title' | 'mark'>,
+  tile: Omit<HealthStatTile, 'id' | 'section' | 'title' | 'mark' | 'weeklyLine'> & { weeklyLine?: string | null },
 ): HealthStatTile {
   return {
     id: item.id,
     section: item.section,
     title: item.title,
     mark: STATS_SIGNAL[tile.tone],
+    weeklyLine: null,
     ...tile,
   };
+}
+
+/** A 28-day total of 1,198 minutes is about 300 minutes a week. */
+function weeklyAverageWords(total: number, days: number): string {
+  const perWeek = Math.round(total / (days / 7));
+  return `About ${whole(perWeek)} min a week.`;
 }
 
 function spark(history: readonly DayValue[], label: string): HealthStatVisual {

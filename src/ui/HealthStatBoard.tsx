@@ -209,7 +209,7 @@ function StatSection({
 
 function StatTile({ tile, onOpen }: { tile: HealthStatTile; onOpen: () => void }) {
   const theme = useAppTheme();
-  const spoken = `More info about ${tile.title}. ${tile.valueText} ${tile.unit}. ${tile.mark}. ${tile.status}`;
+  const spoken = `More info about ${tile.title}. ${valueWithPeriod(tile)}. ${tile.weeklyLine ?? ''} ${tile.mark}. ${tile.status}`;
   return (
     <Pressable
       accessibilityRole="button"
@@ -228,9 +228,7 @@ function StatTile({ tile, onOpen }: { tile: HealthStatTile; onOpen: () => void }
       }}
     >
       <T variant="label">{tile.title}</T>
-      {tile.visual.kind === 'ring' ? null : (
-        <T style={{ fontFamily: theme.font.bodyStrong }}>{tile.valueText} {tile.unit}</T>
-      )}
+      <TileValue tile={tile} />
       <TileVisual visual={tile.visual} />
       {tile.visual.kind === 'ring' || tile.visual.kind === 'zone' ? null : (
         <StatusMark tone={tile.tone} status={tile.status} />
@@ -242,6 +240,21 @@ function StatTile({ tile, onOpen }: { tile: HealthStatTile; onOpen: () => void }
       <T variant="muted">More info</T>
     </Pressable>
   );
+}
+
+/** The window sits on the number, in the same weight, not as a grey caption under the chart. */
+function TileValue({ tile }: { tile: HealthStatTile }) {
+  const theme = useAppTheme();
+  return (
+    <View style={{ gap: 2 }}>
+      <T style={{ fontFamily: theme.font.bodyStrong }}>{valueWithPeriod(tile)}</T>
+      {tile.weeklyLine ? <T>{tile.weeklyLine}</T> : null}
+    </View>
+  );
+}
+
+function valueWithPeriod(tile: HealthStatTile): string {
+  return `${tile.valueText} ${tile.unit} - ${tile.period}`;
 }
 
 function TileVisual({ visual }: { visual: HealthStatVisual }) {
@@ -389,7 +402,7 @@ function StatDetail({
               <View style={{ gap: 12, paddingBottom: 8 }}>
                 <T variant="label">What this is</T>
                 <T>{tile.about}</T>
-                <T style={{ fontFamily: theme.font.bodyStrong }}>{tile.valueText} {tile.unit}</T>
+                <TileValue tile={tile} />
                 <TileVisual visual={tile.visual} />
                 {detailShowsStatusAgain(tile.visual.kind) ? <StatusMark tone={tile.tone} status={tile.status} /> : null}
                 <T variant="label">What your number means</T>
