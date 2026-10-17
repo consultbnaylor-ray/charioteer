@@ -1,6 +1,7 @@
 import type { AppSnapshot } from '@/data/types';
 import { isoDay } from '@/domain/dates';
 import { buildHealthInsights } from '@/domain/healthInsights';
+import { goalLedFromSnapshot, goalProgressLine } from '@/domain/goalLed';
 import { compositionForAssessment, defaultNutritionSettings, nutritionContextLines, weightPointsFrom } from '@/domain/nutrition';
 import { savingsFromTypicalWeek } from '@/domain/savings';
 import { soberElapsed } from '@/domain/sober';
@@ -39,7 +40,7 @@ function nutritionLinesFrom(snap: AppSnapshot, now: Date): string[] {
   const weights = weightPointsFrom(snap.health);
   const latest = weights.length ? weights[weights.length - 1] : undefined;
   const figures = compositionForAssessment(snap.bodyComposition ?? []);
-  return nutritionContextLines({
+  const lines = nutritionContextLines({
     logs: snap.foodLogs ?? [],
     settings: snap.nutrition ?? defaultNutritionSettings(),
     waterMl: water,
@@ -56,6 +57,8 @@ function nutritionLinesFrom(snap: AppSnapshot, now: Date): string[] {
       waistCm: figures.waistCm,
     },
   });
+  const progress = goalProgressLine(goalLedFromSnapshot(snap, now));
+  return progress ? [progress, ...lines] : lines;
 }
 
 /** Client copy of the voice prompt, used when the token function has not been redeployed yet. */

@@ -10,6 +10,7 @@ import { planProgressFigure } from '@/domain/measureFigures';
 import { applyWeightAndBodyShare, communitySharingOn } from '@/domain/profileSharing';
 import { buildStatsOverview } from '@/domain/statsOverview';
 import { GoalChoices } from '@/ui/GoalChoices';
+import { YourGoal } from '@/ui/YourGoal';
 import { PlanTick } from '@/ui/PlanTick';
 import { ShareOnProfile } from '@/ui/ShareOnProfile';
 import { MeasureBarsView, MeasureRingView } from '@/ui/MeasuredFigure';
@@ -123,6 +124,7 @@ export default function HealthPlanScreen() {
       intro="Thumos reads the figures you already keep and writes a short plan. It is not a diagnosis."
     >
       <GoalChoices />
+      <YourGoal place="plan" />
       <View style={{ gap: 8 }}>
         <ShareOnProfile
           label="Share on profile"

@@ -26,6 +26,7 @@ import { InPlainWords } from '@/ui/InPlainWords';
 import { usePendingPress } from '@/ui/pendingAction';
 import { Button, Card, EditMark, EditSheet, ErrorNote, Field, Screen, T } from '@/ui/ui';
 import { ScrollTarget } from '@/ui/ScrollTarget';
+import { YourGoal } from '@/ui/YourGoal';
 import { radius, useAppTheme } from '@/ui/theme';
 
 function greeting(date: Date) {
@@ -214,6 +215,7 @@ export default function Home() {
       </Card>
       )}
       </ScrollTarget>
+      <YourGoal place="today" />
       <Card accessibilityLabel="Open Stats" onPress={() => router.push('/stats' as never)}>
         <T variant="label">Stats</T>
         <T>A plain look at sober days, check-ins, food, and the rest.</T>

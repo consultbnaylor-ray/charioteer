@@ -1,6 +1,8 @@
-import { londonDay } from './healthInsights.ts';
+import { goalProgressLine } from './goalLed.ts';
+import { londonDay, shiftDay } from './healthInsights.ts';
 import {
   compositionForAssessment,
+  dayItems,
   defaultNutritionSettings,
   foodItemFromUnknown,
   isBodyBuild,
@@ -9,10 +11,12 @@ import {
   isMealSlot,
   isNutritionGoal,
   isNutritionSex,
+  lossBlocked,
   nutritionContextLines,
   parseBodyFatPct,
   parseLeanMassKg,
   parseWaistCm,
+  sumItems,
   weightPointsFrom,
   type BodyCompositionReading,
   type FoodItem,
@@ -152,11 +156,12 @@ export async function loadNutritionLines(
   const wide = 'kcal_target, hide_calories, share_food_diary, share_calories, share_quality, share_progress, goal, goal_age, goal_sex, protein_target_g, activity_energy_kcal, share_goal, wagon_on, wagon_note, wagon_visible, build, updated_at';
   const goals = 'kcal_target, hide_calories, share_food_diary, share_calories, share_quality, share_progress, goal, goal_age, goal_sex, protein_target_g, activity_energy_kcal, share_goal, wagon_on, wagon_note, wagon_visible, updated_at';
   const narrow = 'kcal_target, hide_calories, share_food_diary, wagon_on, wagon_note, wagon_visible, updated_at';
-  const [logsRes, waterRes, healthRes, bodyRes] = await Promise.all([
+  const [logsRes, waterRes, healthRes, bodyRes, scheduleRes] = await Promise.all([
     userClient.from('food_logs').select('id, eaten_on, meal, source, note, items, estimated, created_at').eq('user_id', profile.id).order('eaten_on', { ascending: false }).limit(80),
     userClient.from('nutrition_days').select('water_ml').eq('user_id', profile.id).eq('day', today).maybeSingle(),
     userClient.from('health_samples').select('kind, value, recorded_on').eq('user_id', profile.id).order('recorded_on', { ascending: true }).limit(400),
     userClient.from('body_composition').select('id, recorded_on, body_fat_pct, lean_mass_kg, waist_cm, source, created_at').eq('user_id', profile.id).order('recorded_on', { ascending: false }).limit(40),
+    userClient.from('training_schedules').select('monday, tuesday, wednesday, thursday, friday, saturday, sunday').eq('user_id', profile.id).maybeSingle(),
   ]);
   let settingsRes = await userClient.from('nutrition_settings').select(athlete).eq('user_id', profile.id).maybeSingle();
   if (settingsRes.error) {
@@ -190,9 +195,22 @@ export async function loadNutritionLines(
   const latest = weights.length ? weights[weights.length - 1] : undefined;
   const height = profile.height_cm == null ? null : Number(profile.height_cm);
   const figures = compositionForAssessment(bodyRes.error ? [] : compositionFromRows(bodyRes.data));
-  return nutritionContextLines({
-    logs: logsRes.error ? [] : logsFromRows(logsRes.data),
-    settings: settingsRes.error ? defaultNutritionSettings() : settingsFromRow(settingsRes.data),
+  const logs = logsRes.error ? [] : logsFromRows(logsRes.data);
+  const settings = settingsRes.error ? defaultNutritionSettings() : settingsFromRow(settingsRes.data);
+  const weekStart = shiftDay(today, -6);
+  const workouts = samples.filter((sample) => sample.kind === 'workout_minutes' && sample.recordedOn >= weekStart && sample.recordedOn <= today);
+  const scheduleRow = scheduleRes.error || !scheduleRes.data || typeof scheduleRes.data !== 'object'
+    ? null
+    : scheduleRes.data as Record<string, unknown>;
+  const scheduledDays = scheduleRow
+    ? ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'].filter((day) => scheduleRow[day] === true).length
+    : null;
+  const todayItems = dayItems(logs, today);
+  const totals = sumItems(todayItems);
+  const sleep = checkIns.find((item) => Number.isFinite(item.sleepHours))?.sleepHours ?? null;
+  const lines = nutritionContextLines({
+    logs,
+    settings,
     waterMl,
     checkIns,
     soberDays: elapsed ? elapsed.days : null,
@@ -207,4 +225,32 @@ export async function loadNutritionLines(
       waistCm: figures.waistCm,
     },
   });
+  const stage = profile.stage === 'stopped' || profile.stage === 'trying_to_stop' || profile.stage === 'cutting_down' || profile.stage === 'exploring'
+    ? profile.stage
+    : null;
+  const progress = goalProgressLine({
+    goal: settings.goal,
+    stage,
+    hideCalories: settings.hideCalories,
+    kcalTarget: settings.kcalTarget,
+    proteinTarget: settings.proteinTarget,
+    weightClassKg: settings.weightClassKg,
+    blockedLoss: lossBlocked({
+      goal: settings.goal,
+      weightKg: latest?.kg ?? null,
+      heightCm: height != null && Number.isFinite(height) ? height : null,
+      phase: settings.goalPhase,
+    }),
+    todayLogged: todayItems.length > 0,
+    todayKcal: totals.kcal,
+    todayProtein: totals.proteinG,
+    workoutsKnown: !healthRes.error,
+    workoutDays: new Set(workouts.map((sample) => sample.recordedOn)).size,
+    workoutMinutes: workouts.reduce((sum, sample) => sum + sample.value, 0),
+    scheduledDays: scheduledDays && scheduledDays > 0 ? scheduledDays : null,
+    weightKg: latest?.kg ?? null,
+    previousWeightKg: weights.length > 1 ? weights[weights.length - 2]?.kg ?? null : null,
+    sleepHours: sleep ?? null,
+  });
+  return progress ? [progress, ...lines] : lines;
 }

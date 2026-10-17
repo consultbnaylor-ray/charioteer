@@ -19,6 +19,7 @@ import {
   type NutritionGoal,
   type NutritionSex,
 } from './nutrition.ts';
+import { goalFocusLine } from './goalLed.ts';
 import { firstSafetyHit, SELF_HARM_NOTICE, WITHDRAWAL_NOTICE, type SafetyHit } from './safety.ts';
 import { soberElapsed } from './sober.ts';
 
@@ -1073,7 +1074,10 @@ function wellbeingHabits(facts: Derived): string[] {
     : facts.reason
       ? `Your reason, “${facts.reason}”, is the point of the easy evening.`
       : 'Leave one evening with nothing planned except the meal and an early night.';
-  return take(facts.input.salt, 'well', [sleep, mood, stress, wind], 4, facts.done);
+  const rows = take(facts.input.salt, 'well', [sleep, mood, stress, wind], 4, facts.done);
+  if (!isTrainingGoal(facts.input.goal)) return rows;
+  const recovery = 'Protect sleep the night before a harder session. Check with a doctor before big changes.';
+  return [recovery, ...rows.filter((line) => line !== recovery)].slice(0, 4);
 }
 
 const CARRY_OVER = /\b(you marked|this week moves on|so this week|one focus is enough)\b/i;
@@ -1130,7 +1134,7 @@ export function standaloneFocus(value: string, firstName = ''): string | null {
 }
 
 function focusLines(facts: Derived, habits: string[], session: string, well: string): string[] {
-  const lines = [habits[0] ?? '', session, well]
+  const lines = [goalFocusLine(facts.input.goal) ?? '', habits[0] ?? '', session, well]
     .flatMap((line) => {
       const text = standaloneFocus(line, facts.firstName);
       return text ? [text] : [];
@@ -1468,6 +1472,7 @@ export const HEALTH_PLAN_PROMPT = [
   'Write a drink swap only when profile.drinks is true. Exploring on its own is not drinking. profile.drinks is true for cutting down, trying to stop, weekly units above zero, or an alcohol word in logged food, a check-in note, or a reason. If profile.drinks is false, do not write "Have the first drink later" or "Alternate a drink with water".',
   'A food swap is allowed only when that food appears in loggedFood, loggedDrink, a check-in note, or dietNotes. Suggest crisps only when crisps or snacks appear there.',
   'If nothing they logged or wrote supports a swap, return one swap whose text is exactly "Log a few more meals and Thumos will suggest swaps based on what you actually eat."',
+  'Nutrition, fitness, wellbeing, and this week\'s focus all follow the saved nutrition goal. Do not write a running plan, a mileage build, or a progressive distance week.',
   'If the goal is an elite runner, body builder, heavyweight boxer, or middleweight boxer, include training load, recovery, and fuelling around sessions. A heavyweight goal keeps size and power and does not use a deficit. A middleweight goal stays near a limit with a small change only.',
   'When the user message includes training, that object is the routine from logged workouts over the last 4 weeks: sessions per week, typical minutes, train weekdays, and rest weekdays. Maintain or progress that baseline. Never prescribe fewer sessions or fewer minutes unless they report pain, illness, injury, or poor recovery. Rest only on training.restDays. Do not invent a rest day, a full rest, or "no structured workouts" on a day they train. One row per weekday. Do not append a stock walk-and-rest week. The fitness intro must say what the log shows, for example "You train about 30 min on most days." Progress with a little more weight, one more set, or about 5 to 10 percent volume. For lose fat and build muscle, emphasise resistance training, protein, and a little easy walking or steps. A runner, boxer, or body builder keeps that sport. Check with a doctor before big changes.',
   'When training.source is "stated", the person set that week on You. Follow training.trainDays and training.dayMinutes. Rest only on training.restDays. A day in training.walkDays is a walk, not a missed gym day and not a gym session. The fitness intro states the aim, for example "You aim for 30 min on weekdays and a bit more on Saturday". If the summary says how many of those sessions they have done this week, keep that comparison. Use training.note only when they wrote one. Do not invent a time of day.',
