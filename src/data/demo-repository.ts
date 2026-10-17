@@ -450,6 +450,7 @@ export class DemoRepository implements Repository {
 
   /** Sample workout types for a demo account saved before the mix split existed. */
   private backfillWorkoutTypes() {
+    if (this.db.workoutTypes === 1) return;
     const fresh = createDemoDb();
     let changed = false;
     for (const [id, account] of Object.entries(this.db.accounts)) {
@@ -465,7 +466,8 @@ export class DemoRepository implements Repository {
       account.health = [...health, ...extra];
       changed = true;
     }
-    if (changed) void AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(this.db));
+    this.db.workoutTypes = 1;
+    if (changed || this.db.workoutTypes === 1) void AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(this.db));
   }
 
   /** Sample meals for a demo account saved before the food log existed. An empty list stays empty. */

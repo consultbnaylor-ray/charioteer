@@ -65,6 +65,8 @@ export type DemoAccount = {
 export type DemoDb = {
   /** 10 once check-in moods are stored on the 1-10 scale. Absent on older sample data. */
   moodScale?: 10;
+  /** 1 once sample workout types have been copied onto an older demo account. */
+  workoutTypes?: 1;
   accounts: Record<string, DemoAccount>;
   sessionUserId: string | null;
   connections: Connection[];
