@@ -1010,6 +1010,47 @@ export function mealDayGroups(
   });
 }
 
+/** One Show more step is this many days, counting back from today. */
+export const MEAL_WEEK_DAYS = 7;
+
+export const MEAL_SHOW_MORE = 'Show more';
+
+/** Oldest day still on screen when this many weeks are open. Week 1 is today and the six days before it. */
+export function mealWeekCutoff(today: string, weeks: number): string {
+  const open = Number.isFinite(weeks) && weeks >= 1 ? Math.floor(weeks) : 1;
+  return shiftIsoDay(today, -(open * MEAL_WEEK_DAYS - 1));
+}
+
+/** How many week-sized steps include `day`. A day in the current week is 1. */
+export function mealWeeksForDay(today: string, day: string): number {
+  if (!day || day >= mealWeekCutoff(today, 1)) return 1;
+  let weeks = 1;
+  while (weeks < 520 && mealWeekCutoff(today, weeks) > day) weeks += 1;
+  return weeks;
+}
+
+/** The open weeks of day rows. Older days stay out until Show more. */
+export function visibleMealDays<T extends { day: string }>(
+  groups: readonly T[],
+  today: string,
+  weeks: number,
+): { visible: T[]; hasMore: boolean } {
+  const cutoff = mealWeekCutoff(today, weeks);
+  return {
+    visible: groups.filter((group) => group.day >= cutoff),
+    hasMore: groups.some((group) => group.day < cutoff),
+  };
+}
+
+/** The week count after one Show more press: the next older week that still has a meal. */
+export function mealWeeksAfterShowMore(groups: readonly { day: string }[], today: string, weeks: number): number {
+  const cutoff = mealWeekCutoff(today, weeks);
+  const older = groups.filter((group) => group.day < cutoff).map((group) => group.day);
+  if (!older.length) return Number.isFinite(weeks) && weeks >= 1 ? Math.floor(weeks) : 1;
+  const newestOlder = [...older].sort((a, b) => b.localeCompare(a))[0] ?? cutoff;
+  return mealWeeksForDay(today, newestOlder);
+}
+
 export type MacroSlice = { id: 'protein' | 'carbs' | 'fat'; label: string; grams: number; share: number };
 
 export function macroSplit(items: readonly FoodItem[]): { slices: MacroSlice[]; caption: string } {

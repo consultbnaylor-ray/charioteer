@@ -38,6 +38,10 @@ import {
   mifflinBmr,
   nutritionPatternLines,
   mealDayGroups,
+  MEAL_SHOW_MORE,
+  mealWeeksAfterShowMore,
+  mealWeeksForDay,
+  visibleMealDays,
   mealNutrientBars,
   processedLine,
   recentDuplicateMeal,
@@ -309,6 +313,7 @@ export default function Nutrition() {
   const [estimateError, setEstimateError] = useState<string | null>(null);
   const [estimateAttempt, setEstimateAttempt] = useState<'text' | 'camera' | 'library' | 'sample'>('text');
   const [estimateFlash, setEstimateFlash] = useState(false);
+  const [mealWeeks, setMealWeeks] = useState(1);
   const [pinEstimate, setPinEstimate] = useState(0);
   const savedRowRef = useRef<View>(null);
   const confirmRef = useRef<View>(null);
@@ -966,9 +971,11 @@ export default function Nutrition() {
     kcalTarget: settings.kcalTarget,
     proteinTarget: settings.proteinTarget,
   });
-  const todayGroup = dayGroups.find((group) => group.isToday) ?? null;
-  const earlierGroups = dayGroups.filter((group) => !group.isToday);
   const pinnedDay = snap.foodLogs.find((log) => log.id === revealId || log.id === editingId || log.id === confirmId)?.eatenOn ?? null;
+  const weeksOpen = Math.max(mealWeeks, pinnedDay ? mealWeeksForDay(today, pinnedDay) : 1);
+  const mealWindow = visibleMealDays(dayGroups, today, weeksOpen);
+  const todayGroup = mealWindow.visible.find((group) => group.isToday) ?? null;
+  const earlierGroups = mealWindow.visible.filter((group) => !group.isToday);
   const calorieRing = !hide && settings.kcalTarget != null && mealRows.length > 0
     ? todayRing({
       hideCalories: false,
@@ -1129,6 +1136,13 @@ export default function Nutrition() {
           pinnedDay={pinnedDay}
           renderMeals={(group) => earlierLogs.filter((log) => log.eatenOn === group.day).map((log) => renderLog(log, false))}
         />
+        {mealWindow.hasMore ? (
+          <Button
+            label={MEAL_SHOW_MORE}
+            tone="quiet"
+            onPress={() => setMealWeeks(mealWeeksAfterShowMore(dayGroups, today, weeksOpen))}
+          />
+        ) : null}
         <NutritionShareSwitch
           label="Share today's meals"
           item="Today's meals"

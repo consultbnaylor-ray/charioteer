@@ -458,6 +458,20 @@ export function createDemoDb(now = new Date()): DemoDb {
       createdAt: lowMood?.createdAt ?? now.toISOString(),
       previewUrl: null,
     },
+    {
+      id: '11111111-1111-4111-8111-111111111114',
+      userId: PEOPLE.alex,
+      eatenOn: isoDay(new Date(now.getFullYear(), now.getMonth(), now.getDate() - 10)),
+      eatenAt: new Date(now.getFullYear(), now.getMonth(), now.getDate() - 10, 13, 0, 0).toISOString(),
+      meal: 'lunch',
+      source: 'text',
+      note: 'Chicken from last week',
+      items: estimateFromText('chicken'),
+      estimated: true,
+      portion: 1,
+      createdAt: new Date(now.getFullYear(), now.getMonth(), now.getDate() - 10, 13, 0, 0).toISOString(),
+      previewUrl: null,
+    },
   ];
   alex.waterDays = [{ day: isoDay(now), waterMl: 350 }];
 

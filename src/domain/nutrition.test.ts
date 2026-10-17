@@ -21,8 +21,14 @@ import {
   MEAL_ESTIMATE_PROMPT,
   NUTRITION_BREAKDOWN_LABEL,
   mealChartStartsOpen,
+  MEAL_SHOW_MORE,
+  MEAL_WEEK_DAYS,
   mealDayGroups,
   mealDayTitle,
+  mealWeekCutoff,
+  mealWeeksAfterShowMore,
+  mealWeeksForDay,
+  visibleMealDays,
   mealNutrientBars,
   parseMealEstimate,
   processedFoodLevel,
@@ -1487,6 +1493,41 @@ describe("today's meals on the log card", () => {
     ], today, '')).toEqual([]);
   });
 
+  it('shows the last seven days, then another week on Show more', () => {
+    const today = '2026-10-17';
+    expect(MEAL_WEEK_DAYS).toBe(7);
+    expect(MEAL_SHOW_MORE).toBe('Show more');
+    expect(mealWeekCutoff(today, 1)).toBe('2026-10-11');
+    expect(mealWeekCutoff(today, 2)).toBe('2026-10-04');
+    expect(mealWeeksForDay(today, '2026-10-11')).toBe(1);
+    expect(mealWeeksForDay(today, '2026-10-10')).toBe(2);
+    expect(mealWeeksForDay(today, '2025-10-16')).toBeGreaterThan(2);
+    const groups = mealDayGroups([
+      log({ id: 'today', eatenOn: today, meal: 'breakfast', items: [item({ name: 'Eggs', kcal: 300, proteinG: 24 })] }),
+      log({ id: 'in-week', eatenOn: '2026-10-14', meal: 'snack', items: [item({ name: 'Crisps', kcal: 180, proteinG: 2 })] }),
+      log({ id: 'edge', eatenOn: '2026-10-11', meal: 'lunch', items: [item({ name: 'Soup', kcal: 400, proteinG: 15 })] }),
+      log({ id: 'next', eatenOn: '2026-10-10', meal: 'lunch', items: [item({ name: 'Chicken', kcal: 165, proteinG: 31 })] }),
+      log({ id: 'older', eatenOn: '2026-10-03', meal: 'dinner', items: [item({ name: 'Fish', kcal: 200, proteinG: 20 })] }),
+      log({ id: 'secret', userId: 'someone-else', eatenOn: '2026-09-01', meal: 'snack', items: [item({ name: 'Secret', kcal: 50 })] }),
+    ], today, 'user');
+    const first = visibleMealDays(groups, today, 1);
+    expect(first.visible.map((group) => group.day)).toEqual([today, '2026-10-14', '2026-10-11']);
+    expect(first.visible[0]?.isToday).toBe(true);
+    expect(first.hasMore).toBe(true);
+    const afterOne = mealWeeksAfterShowMore(groups, today, 1);
+    expect(afterOne).toBe(2);
+    const second = visibleMealDays(groups, today, afterOne);
+    expect(second.visible.map((group) => group.day)).toEqual([today, '2026-10-14', '2026-10-11', '2026-10-10']);
+    expect(second.hasMore).toBe(true);
+    const afterTwo = mealWeeksAfterShowMore(groups, today, afterOne);
+    const third = visibleMealDays(groups, today, afterTwo);
+    expect(third.visible.map((group) => group.day)).toContain('2026-10-03');
+    expect(third.visible.map((group) => group.heading).join(' ')).not.toContain('Secret');
+    expect(third.hasMore).toBe(false);
+    expect(mealWeeksAfterShowMore(groups, today, afterTwo)).toBe(afterTwo);
+    expect(visibleMealDays([], today, 1)).toEqual({ visible: [], hasMore: false });
+  });
+
   it('passes the saved photo through and shows it on today’s row', () => {
     const day = '2026-10-15';
     const rows = todayMealRows([
@@ -1555,6 +1596,10 @@ describe("today's meals on the log card", () => {
     expect(meals).toContain('saved-meal-row');
     const days = readFileSync('src/ui/MealDayList.tsx', 'utf8');
     expect(screen).toContain('mealDayGroups(');
+    expect(screen).toContain('visibleMealDays(');
+    expect(screen).toContain('mealWeeksAfterShowMore(');
+    expect(screen).toContain('useState(1)');
+    expect(screen).toContain('label={MEAL_SHOW_MORE}');
     expect(screen).toContain('<MealDayList');
     expect(screen).toContain('bare');
     expect(screen).toContain('TODAY_MEALS_EMPTY');
