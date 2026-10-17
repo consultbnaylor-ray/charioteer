@@ -46,6 +46,9 @@ import {
   parseSharedNutrition,
   presentSharedNutrition,
   progressShareLine,
+  healthyTopKg,
+  isBodyBuild,
+  proteinBasisKg,
   proteinGramsFor,
   samplePhotoMeal,
   sugarCravingNote,
@@ -57,6 +60,10 @@ import {
   GOAL_LABEL,
   BMI_ONLY_NOTE,
   BUILD_LABEL,
+  BUILD_WHY,
+  CARRYING_COACH_LINE,
+  CARRYING_PROTEIN_NOTE,
+  HEALTHY_BMI_TOP,
   LOW_BMI_NOTE,
   WEEK_CHART_EMPTY,
   assessWeight,
@@ -1096,7 +1103,14 @@ describe('body composition', () => {
   it('keeps the body card free of photo estimation and reloads', () => {
     expect(screen).toContain('BMI_ONLY_NOTE');
     expect(BUILD_LABEL.muscular).toBe('Muscular / I lift weights');
+    expect(BUILD_LABEL.carrying_extra).toBe('Carrying extra weight');
+    expect(screen).toContain('BUILD_WHY');
     expect(screen).toContain('BUILD_LABEL');
+    expect(BUILD_WHY).toContain('BMI category labels');
+    expect(BUILD_WHY).toContain('protein suggestion');
+    expect(BUILD_WHY).toContain('weight range and fitness comparisons');
+    expect(BUILD_WHY).toContain('change it any time');
+    expect(BUILD_WHY).toContain('do not see this choice');
     expect(screen).toContain("pending={isPending('body')}");
     expect(screen).toContain('setNutritionSettings');
     expect(screen).not.toMatch(/ImagePicker|launchCamera|expo-image-picker|estimateMeal|photoBase64/);
@@ -1108,6 +1122,78 @@ describe('body composition', () => {
     expect(save).toContain("from('body_composition').upsert");
     expect(save).not.toContain('this.refresh()');
     expect(repo).toContain('build: settings.build');
+  });
+
+  it('keeps BMI labels on for carrying extra weight and bases protein on a healthy weight', () => {
+    const migration = readFileSync('supabase/migrations/20261017130000_build_carrying_extra.sql', 'utf8');
+    expect(migration).toContain("build in ('muscular', 'average', 'slim', 'carrying_extra')");
+    expect(migration).toContain('nutrition_settings_build_check');
+    expect(migration).not.toMatch(/delete from/i);
+    expect(migration).not.toMatch(/drop table/i);
+    expect(isBodyBuild('carrying_extra')).toBe(true);
+    expect(healthyTopKg(170)).toBe(72);
+    expect(HEALTHY_BMI_TOP).toBe(24.9);
+
+    const carrying = assessWeight({ weightKg: 110, heightCm: 170, build: 'carrying_extra', sex: 'male' });
+    expect(carrying.hideBmiCategory).toBe(false);
+    expect(carrying.underweight).toBe(false);
+    expect(carrying.plain).toContain('Category labels stay on');
+    const low = assessWeight({ weightKg: 50, heightCm: 175, build: 'carrying_extra', sex: 'male' });
+    expect(low.underweight).toBe(true);
+    expect(low.label).toBe('Below the healthy range');
+
+    const above = proteinBasisKg({ weightKg: 110, heightCm: 170, build: 'carrying_extra' });
+    expect(above).toEqual({ kg: 72, usedHealthyWeight: true });
+    const inside = proteinBasisKg({ weightKg: 70, heightCm: 170, build: 'carrying_extra' });
+    expect(inside).toEqual({ kg: 70, usedHealthyWeight: false });
+    expect(proteinGramsFor('lose_weight', above.kg, 'carrying_extra')).toBe(115);
+    expect(proteinGramsFor('lose_weight', 110, 'carrying_extra')).toBe(176);
+
+    const shared = {
+      goal: 'lose_weight' as const,
+      weightKg: 110,
+      heightCm: 170,
+      age: 40,
+      sex: 'male' as const,
+      activeEnergyKcal: null,
+    };
+    const suggested = suggestGoalTargets({ ...shared, build: 'carrying_extra' });
+    const ordinary = suggestGoalTargets({ ...shared, build: 'average' });
+    expect(suggested.ok && suggested.suggestion.proteinG).toBe(115);
+    expect(ordinary.ok && ordinary.suggestion.proteinG).toBe(176);
+    if (!suggested.ok || !ordinary.ok) throw new Error('expected a suggestion');
+    expect(suggested.suggestion.kcal).toBe(ordinary.suggestion.kcal);
+    expect(suggested.suggestion.kcal).toBeGreaterThanOrEqual(suggested.suggestion.floor);
+    expect(suggested.ok && suggested.suggestion.note).toContain(CARRYING_PROTEIN_NOTE);
+    expect(suggested.ok && suggested.suggestion.note).toContain('not a crash diet');
+    expect(suggested.ok && suggested.suggestion.note).toContain('Check with a doctor');
+    const held = suggestGoalTargets({ ...shared, weightKg: 70, build: 'carrying_extra' });
+    expect(held.ok && held.suggestion.proteinG).toBe(112);
+    expect(held.ok && held.suggestion.note).not.toContain('rather than your full weight');
+
+    const heavy = suggestGoalTargets({ ...shared, goal: 'elite_heavy_boxer', build: 'carrying_extra' });
+    const heavyAverage = suggestGoalTargets({ ...shared, goal: 'elite_heavy_boxer', build: 'average' });
+    expect(heavy.ok && heavy.suggestion.proteinG).toBe(158);
+    if (!heavy.ok || !heavyAverage.ok) throw new Error('expected a suggestion');
+    expect(heavy.suggestion.kcal).toBe(heavyAverage.suggestion.kcal);
+    expect(heavy.suggestion.kcal).toBeGreaterThan(heavy.suggestion.bmr);
+
+    const lines = nutritionContextLines({
+      logs: [],
+      settings: { ...defaultNutritionSettings(), build: 'carrying_extra', goalSex: 'male' },
+      waterMl: 0,
+      checkIns: [],
+      soberDays: null,
+      unitsAvoided: 0,
+      today: '2026-10-17',
+      body: { weightKg: 110, heightCm: 170, weights: [], bodyFatPct: null, leanMassKg: null, waistCm: null },
+    });
+    const text = lines.join('\n');
+    expect(text).toContain(BUILD_LABEL.carrying_extra);
+    expect(text).toContain(CARRYING_COACH_LINE);
+    expect(text).toContain('BMI category labels stay on');
+    expect(text).not.toContain('Do not call them overweight or obese from BMI.');
+    expect(readFileSync('supabase/functions/_shared/nutrition.ts', 'utf8')).toContain('carrying extra weight');
   });
 });
 

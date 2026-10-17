@@ -245,6 +245,7 @@ export async function loadNutritionLines(
         return [{ day, hours: item.sleepHours }];
       }),
       permission: 'unknown',
+      build: settings.build,
     }).contextLine
     : null;
   const progress = goalProgressLine({

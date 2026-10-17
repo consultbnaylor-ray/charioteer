@@ -94,6 +94,21 @@ describe('goal weight range', () => {
     expect(inside.pace).toBeNull();
   });
 
+  it('gives a steady gap for carrying extra weight, with a doctor check and no crash plan', () => {
+    const over = goalWeightRange({ ...adult, goal: 'lose_weight', weightKg: 90, build: 'carrying_extra' });
+    expect(over.gap).toBe('About 18 kg to lose to reach the top of this range');
+    expect(over.pace).toBe(LOSS_PACE_KG);
+    expect(over.doctor).toBe(DOCTOR_NOTE);
+    expect(over.muscle).toContain('Waist and body fat tell you more');
+    expect(over.muscle).toContain('steady pace');
+    expect(over.words).not.toMatch(/crash|rapid cut|skip meals/i);
+    expect(over.contextLine).toContain(DOCTOR_NOTE);
+    expect(over.contextLine).toContain('0.5 to 1 kg');
+    const inside = goalWeightRange({ ...adult, goal: 'lose_weight', weightKg: 70, build: 'carrying_extra' });
+    expect(inside.withinRange).toBe(true);
+    expect(inside.gap).toBeNull();
+  });
+
   it('does not push a muscular person, or a logged body-fat reading, down to the BMI band', () => {
     const muscular = goalWeightRange({ ...adult, goal: 'lose_weight', weightKg: 90, build: 'muscular' });
     expect(muscular.gap).toBeNull();

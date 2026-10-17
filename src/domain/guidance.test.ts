@@ -285,6 +285,11 @@ describe('BMI guidance', () => {
     expect(lifted.plain).not.toMatch(/overweight|obese/i);
     expect(lifted.plain).toContain('you lift weights');
 
+    const carrying = metric('weight_kg', [['2026-10-11', 80]], { heightCm: 170, adult: true, build: 'carrying_extra', sex: 'male' });
+    expect(carrying.label).toBe('Above the healthy range');
+    expect(carrying.plain).toContain('overweight');
+    expect(carrying.ticks.length).toBeGreaterThan(0);
+
     const fatter = metric('weight_kg', [['2026-10-11', 80]], { heightCm: 170, adult: true, build: 'muscular', bodyFatPct: 18, sex: 'male' });
     expect(fatter.plain).toContain('Body fat is 18%');
     expect(fatter.plain).not.toMatch(/overweight|obese/i);

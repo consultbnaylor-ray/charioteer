@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { APPLE_HEALTH_READ_TYPES } from '@/health/connection';
 import { HEALTH_KINDS } from '@/domain/healthInsights';
 import { HEALTH_PLAN_PROMPT, draftHealthPlan, type PlanInput } from '@/domain/healthPlan';
-import { NUTRITION_PROMPT_LINE } from '@/domain/nutrition';
+import { CARRYING_FITNESS_NOTE, NUTRITION_PROMPT_LINE } from '@/domain/nutrition';
 import {
   ADDED_NOT_REDUCED,
   buildFitnessSnapshot,
@@ -310,5 +310,26 @@ describe('fitness snapshot', () => {
     expect(runner.cardio?.compare.goal).toBeNull();
     expect(runner.cardio?.compare.goalNote).toContain('Elite Athlete (Lean Runner etc.) has no separate published range');
     expect(runner.cardio?.compare.words).toContain('Typical for men in their 40s');
+  });
+
+  it('keeps a carrying-extra comparison on their own readings', () => {
+    const view = buildFitnessSnapshot(input({
+      goal: 'lose_weight',
+      build: 'carrying_extra',
+      health: [{ kind: 'vo2_max', value: 32, recordedOn: '2026-10-16' }],
+    }));
+    expect(view.cardio?.compare.words).toContain(CARRYING_FITNESS_NOTE);
+    expect(view.contextLine).toContain('own readings');
+    expect(view.contextLine).toContain('mileage plan');
+    expect(view.contextLine).toContain('Check with a doctor');
+    expect(view.recommendations.map((item) => item.text).join(' ')).not.toMatch(/mileage|crash|deficit/);
+    const quiet = buildFitnessSnapshot(input({
+      goal: 'lose_weight',
+      build: 'carrying_extra',
+      health: [],
+      scheduleWeekMinutes: null,
+    }));
+    expect(quiet.levelWords).toContain(CARRYING_FITNESS_NOTE);
+    expect(quiet.contextLine).toContain('Do not add a mileage plan');
   });
 });

@@ -8,6 +8,7 @@ import { WAIST_ZONE_CAPTION, bodyFatRange, bodyFatZoneCaption, waistRange } from
 import {
   BMI_ONLY_NOTE,
   BODY_BUILDS,
+  BUILD_WHY,
   BODY_ENTRY_SOURCES,
   BODY_SOURCE_LABEL,
   BUILD_LABEL,
@@ -49,7 +50,7 @@ export function BuildChoices() {
 
   return (
     <View style={{ gap: 8 }}>
-      <T variant="muted">Muscular turns BMI category labels off and uses a higher protein suggestion.</T>
+      <T variant="muted">{BUILD_WHY}</T>
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
         {BODY_BUILDS.map((id) => (
           <Choice key={id} label={BUILD_LABEL[id]} selected={settings.build === id} onPress={() => choose(id)} />

@@ -373,6 +373,23 @@ describe('health stat tiles', () => {
     expect(tile(plain, 'weight_kg').status).toBe('Over the healthy BMI band');
     expect(tile(plain, 'weight_kg').tone).toBe('watch');
 
+    const carrying = buildHealthStatBoard(input({
+      goal: 'lose_weight',
+      goalSex: 'male',
+      goalAge: 40,
+      heightCm: 170,
+      build: 'carrying_extra',
+      body: [],
+      samples: [{ kind: 'weight_kg', value: 90, recordedOn: today }],
+    }));
+    const extra = tile(carrying, 'weight_kg');
+    expect(extra.status).toBe('Over the healthy BMI band');
+    expect(extra.status).not.toBe(BMI_MUSCLE_NOTE);
+    expect(extra.tone).toBe('watch');
+    expect(extra.meaning).toContain('steady change');
+    expect(extra.meaning).toContain('Check with a doctor');
+    expect(extra.meaning).not.toMatch(/crash|rapid cut/i);
+
     const builder = buildHealthStatBoard(input({
       goal: 'body_builder',
       goalSex: 'male',

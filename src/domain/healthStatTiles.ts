@@ -503,6 +503,7 @@ function vo2Tile(item: CatalogItem, input: HealthStatBoardInput, grown: boolean)
     scheduleWeekMinutes: null,
     health: input.samples,
     permission: 'unknown',
+    build: grown ? input.build : null,
   });
   const cardio = fitness.cardio;
   const band = cardio?.compare.age ?? null;
@@ -689,9 +690,11 @@ function weightTile(
   const scaleMax = classBand?.highKg == null && classBand
     ? Math.max(...marks, classBand.lowKg + 8) * 1.08
     : Math.max(...marks) * 1.06;
-  const extra = input.build === 'muscular' || fat.length > 0 || waist.length > 0
-    ? ' Body fat and waist tell more than the scales when they are logged.'
-    : '';
+  const extra = input.build === 'carrying_extra'
+    ? ' Waist and body fat tell more than BMI when they are logged. A steady change is enough. Check with a doctor before big changes.'
+    : input.build === 'muscular' || fat.length > 0 || waist.length > 0
+      ? ' Body fat and waist tell more than the scales when they are logged.'
+      : '';
   const meaning = weightMeaning(input.goal, ranged, extra);
   return finish(item, {
     valueText: oneText(kg),

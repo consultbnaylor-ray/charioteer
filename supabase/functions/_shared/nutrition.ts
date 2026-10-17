@@ -41,7 +41,7 @@ export const WAGON_SUPPORT = [
   'NHS 111 if you are worried about withdrawal',
 ] as const;
 export const NUTRITION_PROMPT_LINE =
-  'If CONTEXT includes a nutrition summary, you may mention it. Estimates are estimates. Do not shame anyone about calories, weight, or a day over a target. If calories are hidden, do not mention kcal. If CONTEXT includes a nutrition goal, or how they are doing toward it, tie one remark back to that goal. Do not recap the whole goal, and do not add a stock ending. If CONTEXT includes a fitness snapshot, tie one remark back to it. Do not recap the whole snapshot. It is an estimate, not a medical assessment. If CONTEXT includes a weight range, use those figures. Do not turn a class limit into a weight cut. Do not suggest a target below the healthy minimum. A loss, when one is mentioned, stays around 0.5 to 1 kg a week at most. Do not suggest fewer sessions than they already do, a crash week, or a running or mileage plan. Do not suggest eating less when CONTEXT says a lower intake is not being suggested. Do not suggest a crash diet. Check with a doctor before big changes. If the goal is an elite runner, talk about carbohydrate around training and moderate protein, and lean body composition rather than the scales. If the goal is body building, talk about a surplus or a cut phase, protein, and body fat and lean mass, and do not push an aggressive deficit. If the goal is a heavyweight boxer, talk about size and power, high protein, and food around training. Do not suggest a deficit. If the goal is a middleweight boxer, talk about staying near a middleweight limit with a small change only. Never suggest a rapid weight cut, skipping meals to make weight, a sauna, or dehydration. For someone sober, recovery tips stay alcohol-free: food, water, sleep, and a soft drink if they want one. If CONTEXT includes body composition, use body fat before waist-to-height, and waist-to-height before BMI. Do not call someone overweight or obese from BMI when CONTEXT says they lift weights, or when CONTEXT is using body fat or waist. If CONTEXT says they have fallen off the wagon, treat that as a safety moment: be gentle, do not shame, and mention the Samaritans on 116 123 and Drinkline on 0300 123 1110. Sugar cravings in early recovery are common; you may say so only when CONTEXT includes that note.';
+  'If CONTEXT includes a nutrition summary, you may mention it. Estimates are estimates. Do not shame anyone about calories, weight, or a day over a target. If calories are hidden, do not mention kcal. If CONTEXT includes a nutrition goal, or how they are doing toward it, tie one remark back to that goal. Do not recap the whole goal, and do not add a stock ending. If CONTEXT includes a fitness snapshot, tie one remark back to it. Do not recap the whole snapshot. It is an estimate, not a medical assessment. If CONTEXT includes a weight range, use those figures. Do not turn a class limit into a weight cut. Do not suggest a target below the healthy minimum. A loss, when one is mentioned, stays around 0.5 to 1 kg a week at most. Do not suggest fewer sessions than they already do, a crash week, or a running or mileage plan. Do not suggest eating less when CONTEXT says a lower intake is not being suggested. Do not suggest a crash diet. Check with a doctor before big changes. If the goal is an elite runner, talk about carbohydrate around training and moderate protein, and lean body composition rather than the scales. If the goal is body building, talk about a surplus or a cut phase, protein, and body fat and lean mass, and do not push an aggressive deficit. If the goal is a heavyweight boxer, talk about size and power, high protein, and food around training. Do not suggest a deficit. If the goal is a middleweight boxer, talk about staying near a middleweight limit with a small change only. Never suggest a rapid weight cut, skipping meals to make weight, a sauna, or dehydration. For someone sober, recovery tips stay alcohol-free: food, water, sleep, and a soft drink if they want one. If CONTEXT includes body composition, use body fat before waist-to-height, and waist-to-height before BMI. Do not call someone overweight or obese from BMI when CONTEXT says they lift weights, or when CONTEXT is using body fat or waist. If CONTEXT says they are carrying extra weight, BMI category labels stay on unless body fat or waist is the better figure, protein uses a healthy weight rather than total weight, and you do not suggest a crash diet. Check with a doctor before big changes. If CONTEXT says they have fallen off the wagon, treat that as a safety moment: be gentle, do not shame, and mention the Samaritans on 116 123 and Drinkline on 0300 123 1110. Sugar cravings in early recovery are common; you may say so only when CONTEXT includes that note.';
 
 /** NHS: up to 222 kcal in a pint of 5.2% lager, about 3 units. */
 export const NHS_PINT_52_KCAL = 222;
@@ -116,7 +116,7 @@ export type NutritionSettings = {
   wagonOn: boolean;
   wagonNote: string;
   wagonVisible: boolean;
-  /** Null until they choose one. Muscular turns BMI category labels off. */
+  /** Null until they choose one. Muscular turns BMI category labels off. Carrying extra weight keeps them on. */
   build: BodyBuild | null;
   /** When this settings row was last written. Null until a row exists. */
   updatedAt: string | null;
@@ -124,14 +124,34 @@ export type NutritionSettings = {
 
 export type NutritionDay = { day: string; waterMl: number };
 
-export const BODY_BUILDS = ['muscular', 'average', 'slim'] as const;
+export const BODY_BUILDS = ['muscular', 'average', 'slim', 'carrying_extra'] as const;
 export type BodyBuild = (typeof BODY_BUILDS)[number];
 
 export const BUILD_LABEL: Record<BodyBuild, string> = {
   muscular: 'Muscular / I lift weights',
   average: 'Average',
   slim: 'Slim',
+  carrying_extra: 'Carrying extra weight',
 };
+
+/** Shown above the build choices. The choice itself stays off other people's screens. */
+export const BUILD_WHY =
+  'Pick the build you have now. It decides whether BMI category labels are shown (they stay off for Muscular), which waist-to-height, body fat, or BMI figure the app leans on, the protein suggestion, and the wording of the weight range and fitness comparisons. You can change it any time. Other people do not see this choice.';
+
+/** Top of the NICE healthy BMI band. Protein for carrying extra weight uses this, not total weight. */
+export const HEALTHY_BMI_TOP = 24.9;
+
+export const CARRYING_PROTEIN_NOTE =
+  'Protein uses the top of the healthy BMI band for your height, rather than your full weight. The calorie suggestion is unchanged. This is not a crash diet. Check with a doctor before big changes.';
+
+export const CARRYING_COACH_LINE =
+  'They chose Carrying extra weight. BMI category labels stay on unless body fat or waist is the better figure. When their weight is above the healthy band, protein uses that healthy weight rather than total weight. Do not suggest a crash diet or a rapid cut. Do not shame them. Check with a doctor before big changes.';
+
+export const CARRYING_RANGE_NOTE =
+  'Waist and body fat tell you more when you have them. A steady pace is enough.';
+
+export const CARRYING_FITNESS_NOTE =
+  'Comparisons use your own readings. They do not add a mileage plan or a bigger deficit. Check with a doctor before big changes.';
 
 export const BODY_ENTRY_SOURCES = ['smart_scale', 'gym_scan', 'dexa', 'other'] as const;
 export type BodyEntrySource = (typeof BODY_ENTRY_SOURCES)[number];
@@ -1566,6 +1586,15 @@ export function assessWeight(input: {
       underweight: true,
     };
   }
+  if (input.build === 'carrying_extra') {
+    return {
+      basis: 'bmi',
+      label: null,
+      plain: `BMI is ${bmi.toFixed(1)}. Category labels stay on. Waist and body fat are the better check when you have them. ${BMI_ONLY_NOTE}`,
+      hideBmiCategory: false,
+      underweight: false,
+    };
+  }
   return {
     basis: 'bmi',
     label: null,
@@ -1663,6 +1692,7 @@ export function compositionContextLines(input: {
   });
   if (assessment.basis !== 'none' && assessment.plain) lines.push(assessment.plain);
   if (assessment.hideBmiCategory) lines.push('Do not call them overweight or obese from BMI.');
+  if (input.settings.build === 'carrying_extra') lines.push(CARRYING_COACH_LINE);
   const lean = fatFreeMassKg({
     weightKg: input.weightKg ?? null,
     bodyFatPct: input.bodyFatPct ?? null,
@@ -1705,6 +1735,32 @@ export function proteinGramsFor(
               ? 1.2
               : 1.6;
   return Math.min(700, Math.round(perKg * weightKg));
+}
+
+/** Kilograms at the top of the healthy BMI band for this height. Null when height is unusable. */
+export function healthyTopKg(heightCm: number): number | null {
+  if (!(heightCm >= 50 && heightCm <= 250)) return null;
+  const metres = heightCm / 100;
+  return Math.round(HEALTHY_BMI_TOP * metres * metres * 10) / 10;
+}
+
+/**
+ * Carrying extra weight uses the healthy-band top once current weight is above it.
+ * At or under that weight, and for every other build, protein uses the weight given.
+ */
+export function proteinBasisKg(input: {
+  weightKg: number;
+  heightCm: number | null;
+  build: BodyBuild | null;
+}): { kg: number; usedHealthyWeight: boolean } {
+  if (input.build !== 'carrying_extra' || input.heightCm == null) {
+    return { kg: input.weightKg, usedHealthyWeight: false };
+  }
+  const healthy = healthyTopKg(input.heightCm);
+  if (healthy == null || !(input.weightKg > healthy + 0.05)) {
+    return { kg: input.weightKg, usedHealthyWeight: false };
+  }
+  return { kg: healthy, usedHealthyWeight: true };
 }
 
 const ATHLETE_DEFICIT = 200;
@@ -1890,7 +1946,12 @@ export function suggestGoalTargets(input: {
     if (!blockedLoss && !lowFat) kcal = tdee - ATHLETE_DEFICIT;
   }
   kcal = Math.max(kcal, floor);
-  const proteinG = proteinGramsFor(input.goal, input.weightKg, input.build ?? null, phase);
+  const proteinBasis = proteinBasisKg({
+    weightKg: input.weightKg,
+    heightCm: input.heightCm,
+    build: input.build ?? null,
+  });
+  const proteinG = proteinGramsFor(input.goal, proteinBasis.kg, input.build ?? null, phase);
   const macros = macroGramsFor(kcal, proteinG, input.goal);
   const activityLine = usedActiveEnergy
     ? 'It uses your recent Apple Health active energy.'
@@ -1922,9 +1983,10 @@ export function suggestGoalTargets(input: {
   const classLine = input.goal === 'elite_heavy_boxer' || input.goal === 'elite_middle_boxer'
     ? ` ${COMPETITION_NOTE}`
     : '';
+  const carryLine = proteinBasis.usedHealthyWeight ? ` ${CARRYING_PROTEIN_NOTE}` : '';
   const note = blockedLoss
     ? LOW_BMI_NOTE
-    : `A starting suggestion from the Mifflin-St Jeor equation. ${activityLine}${sexLine}${basisLine}${athleteLine}${liftLine}${safetyLine}${classLine} Change it if it does not suit you. This is not medical advice.`;
+    : `A starting suggestion from the Mifflin-St Jeor equation. ${activityLine}${sexLine}${basisLine}${athleteLine}${liftLine}${carryLine}${safetyLine}${classLine} Change it if it does not suit you. This is not medical advice.`;
   return {
     ok: true,
     suggestion: {

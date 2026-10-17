@@ -57,6 +57,7 @@ export function fitnessFromSnapshot(
     health: (snap.health ?? []).map((sample) => ({ kind: sample.kind, value: sample.value, recordedOn: sample.recordedOn })),
     sleep,
     permission,
+    build: snap.nutrition?.build ?? null,
   };
 }
 

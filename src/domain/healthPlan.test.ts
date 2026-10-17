@@ -177,6 +177,40 @@ describe('health plan writer', () => {
     expect(plan.nutrition.habits.map((item) => item.text).join(' ')).not.toMatch(/\beat less\b/i);
   });
 
+  it('keeps a carrying-extra plan on a healthy protein weight and a doctor check', () => {
+    const plan = draftHealthPlan(input({
+      salt: 'carry',
+      goal: 'lose_weight',
+      build: 'carrying_extra',
+      kcalTarget: 2100,
+      proteinTarget: 140,
+      heightCm: 170,
+      health: [{ kind: 'weight_kg', value: 90, recordedOn: '2026-10-14' }],
+    }));
+    expect(plan.nutrition.targets).toContain('healthy weight');
+    expect(plan.nutrition.targets).toContain('not a crash diet');
+    expect(plan.nutrition.targets).toContain(PLAN_DOCTOR);
+    expect(plan.nutrition.targets).toContain('140 g protein');
+    expect(joined(plan)).not.toMatch(/skip meals|rapid cut|eat less|crash week/i);
+    const context = healthPlanModelContext(input({
+      salt: 'carry',
+      goal: 'lose_weight',
+      build: 'carrying_extra',
+      kcalTarget: 2100,
+      proteinTarget: 140,
+      heightCm: 170,
+      goalAge: 40,
+      goalSex: 'male',
+      health: [{ kind: 'weight_kg', value: 90, recordedOn: '2026-10-14' }],
+    }), plan);
+    expect(context.weightRange).toContain('0.5 to 1 kg');
+    expect(context.weightRange).toContain('Check with a doctor');
+    expect(context.fitnessSnapshot).toContain('Do not add a mileage plan');
+    expect(context.fitnessSnapshot).not.toMatch(/progressive distance|crash week/);
+    expect(HEALTH_PLAN_PROMPT).toContain('carrying extra weight');
+    expect(HEALTH_PLAN_PROMPT).toContain('do not write a crash diet');
+  });
+
   it('lifts an aggressive target up to the safety floor', () => {
     const plan = draftHealthPlan(input({
       salt: 'floor',

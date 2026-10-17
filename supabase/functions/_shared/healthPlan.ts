@@ -332,8 +332,12 @@ function targetLine(facts: Derived): string {
     parts.push(`recent days averaged ${Math.round(facts.recentKcal).toLocaleString('en-GB')} kcal`);
   }
   if (facts.recentProtein != null) parts.push(`about ${Math.round(facts.recentProtein)} g protein`);
-  if (!parts.length) return 'No calorie or protein target is saved yet. Pick one on Nutrition, and keep meals regular until then.';
-  return clip(parts.join(' · '), 220);
+  const base = !parts.length
+    ? 'No calorie or protein target is saved yet. Pick one on Nutrition, and keep meals regular until then.'
+    : clip(parts.join(' · '), 220);
+  if (facts.input.build !== 'carrying_extra' || facts.blockedLoss || facts.underweight) return base;
+  const note = `Protein follows a healthy weight when you are above the band. This is not a crash diet. ${PLAN_DOCTOR}`;
+  return `${clip(base, 180)} ${note}`.trim();
 }
 
 function nutritionHabits(facts: Derived): string[] {
@@ -1184,6 +1188,7 @@ function fitnessInput(input: PlanInput): FitnessSnapshotInput {
       return [{ day, hours: row.sleepHours }];
     }),
     permission: 'unknown',
+    build: input.build,
   };
 }
 
@@ -1559,6 +1564,7 @@ export const HEALTH_PLAN_PROMPT = [
   'When the user message includes training, that object is the routine from logged workouts over the last 4 weeks: sessions per week, typical minutes, train weekdays, and rest weekdays. Maintain or progress that baseline. Never prescribe fewer sessions or fewer minutes unless they report pain, illness, injury, or poor recovery. Rest only on training.restDays. Do not invent a rest day, a full rest, or "no structured workouts" on a day they train. One row per weekday. Do not append a stock walk-and-rest week. The fitness intro must say what the log shows, for example "You train about 30 min on most days." Progress with a little more weight, one more set, or about 5 to 10 percent volume. For lose fat and build muscle, emphasise resistance training, protein, and a little easy walking or steps. A runner, boxer, or body builder keeps that sport. Check with a doctor before big changes.',
   'When training.source is "stated", the person set that week on You. Follow training.trainDays and training.dayMinutes. Rest only on training.restDays. A day in training.walkDays is a walk, not a missed gym day and not a gym session. The fitness intro states the aim, for example "You aim for 30 min on weekdays and a bit more on Saturday". If the summary says how many of those sessions they have done this week, keep that comparison. Use training.note only when they wrote one. Do not invent a time of day.',
   'When weightRange is present, it is an approximate range from published sources. Use those figures. Do not turn a boxing class limit into a weight cut. Do not set a target below the healthy minimum. A loss, when one is mentioned, stays around 0.5 to 1 kg a week at most.',
+  'If they are carrying extra weight, keep BMI category labels on, base protein on a healthy weight rather than total weight, keep any loss around 0.5 to 1 kg a week, and do not write a crash diet. Check with a doctor before big changes.',
   'Do not suggest a rapid weight cut, dehydration, a sauna, or skipping meals to make weight. A competition weigh-in belongs with a coach and a doctor.',
   'No diagnosis, no medication, no medical advice. Do not tell anyone to eat less when the figures say the intake should not fall. Do not suggest stopping alcohol suddenly.',
   'Food, steps, weight, sleep, and mood are already logged in Charioteer. Never tell the person to use another app, the same app, a tracking app, a wearable, a fitness tracker, or a named product such as MyFitnessPal, Nutracheck, Fitbit, Garmin, or Apple Health. When a habit is about tracking, name Nutrition for meals and body readings, Stats for steps, weight, and workouts, and Check-in for mood, craving, and sleep.',

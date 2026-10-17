@@ -7,7 +7,7 @@
  * not a medical assessment.
  */
 import { shiftDay } from './healthInsights.ts';
-import { GOAL_LABEL, type NutritionGoal, type NutritionSex } from './nutrition.ts';
+import { CARRYING_FITNESS_NOTE, GOAL_LABEL, type BodyBuild, type NutritionGoal, type NutritionSex } from './nutrition.ts';
 
 export type FitnessLevel = 'Developing' | 'Steady' | 'Strong';
 
@@ -26,6 +26,8 @@ export type FitnessSnapshotInput = {
   /** Check-in sleep, used only when sleep is not already in health. */
   sleep?: readonly { day: string; hours: number }[];
   permission: 'denied' | 'unknown';
+  /** Carrying extra weight keeps the comparison on their own readings. */
+  build?: BodyBuild | null;
 };
 
 export type FitnessRing = {
@@ -348,7 +350,7 @@ export function buildFitnessSnapshot(input: FitnessSnapshotInput): FitnessSnapsh
   const fallback = vo2Level ? null : fallbackLevel(minutes, input.scheduleWeekMinutes, restingSplit);
   const level = vo2Level ?? fallback;
 
-  const levelWords = levelWordsFor({
+  const levelWordsBase = levelWordsFor({
     level,
     vo2: latestVo2,
     band: Boolean(band),
@@ -367,6 +369,12 @@ export function buildFitnessSnapshot(input: FitnessSnapshotInput): FitnessSnapsh
     goal: input.goal,
     band,
   });
+  if (input.build === 'carrying_extra' && compare) {
+    compare.words = `${compare.words} ${CARRYING_FITNESS_NOTE}`.replace(/\s+/g, ' ').trim();
+  }
+  const levelWords = input.build === 'carrying_extra' && compare == null
+    ? `${levelWordsBase} ${CARRYING_FITNESS_NOTE}`
+    : levelWordsBase;
   const cardio = latestVo2 == null || compare == null ? null : {
     centre: String(round1(latestVo2)),
     unit: 'ml/kg/min',
@@ -441,6 +449,7 @@ export function buildFitnessSnapshot(input: FitnessSnapshotInput): FitnessSnapsh
     minutes,
     recovery: recovery?.words ?? null,
     recommendation: recommendations.find((item) => item.forFocus)?.text ?? recommendations[0]?.text ?? null,
+    build: input.build ?? null,
   });
 
   return {
@@ -671,9 +680,13 @@ function contextFrom(input: {
   minutes: number;
   recovery: string | null;
   recommendation: string | null;
+  build: BodyBuild | null;
 }): string | null {
-  if (!input.level && input.minutes <= 0 && !input.recovery && !input.compare) return null;
+  if (!input.level && input.minutes <= 0 && !input.recovery && !input.compare && input.build !== 'carrying_extra') return null;
   const bits = ['Fitness snapshot, an estimate, not a medical assessment.'];
+  if (input.build === 'carrying_extra') {
+    bits.push('They are carrying extra weight. Comparisons use their own readings. Do not add a mileage plan or a bigger deficit.');
+  }
   if (input.compare) bits.push(input.compare);
   else if (input.level) bits.push(`Level ${input.level}${input.vo2 != null ? `, cardio fitness about ${round1(input.vo2)} ml/kg/min` : ''}.`);
   if (input.minutes > 0) bits.push(`${Math.round(input.minutes)} active minutes this week.`);

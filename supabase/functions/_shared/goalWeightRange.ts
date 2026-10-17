@@ -6,6 +6,7 @@
  */
 
 import {
+  CARRYING_RANGE_NOTE,
   COMPETITION_NOTE,
   GOAL_LABEL,
   assessWeight,
@@ -244,6 +245,7 @@ function muscleNote(input: GoalWeightInput, basis: 'body_fat' | 'waist' | 'bmi' 
     return `${BMI_ROUGH} Body fat or waist is the better check when you have logged it.`;
   }
   if (input.build === 'muscular') return `${BMI_ROUGH} Muscle can sit above the healthy BMI band.`;
+  if (input.build === 'carrying_extra') return `${BMI_ROUGH} ${CARRYING_RANGE_NOTE}`;
   return BMI_ROUGH;
 }
 
