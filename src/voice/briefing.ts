@@ -1,6 +1,7 @@
 import type { AppSnapshot } from '@/data/types';
 import { isoDay } from '@/domain/dates';
 import { buildHealthInsights } from '@/domain/healthInsights';
+import { buildFitnessSnapshot, fitnessFromSnapshot } from '@/domain/fitnessSnapshot';
 import { goalLedFromSnapshot, goalProgressLine } from '@/domain/goalLed';
 import { compositionForAssessment, defaultNutritionSettings, nutritionContextLines, weightPointsFrom } from '@/domain/nutrition';
 import { savingsFromTypicalWeek } from '@/domain/savings';
@@ -58,7 +59,10 @@ function nutritionLinesFrom(snap: AppSnapshot, now: Date): string[] {
     },
   });
   const progress = goalProgressLine(goalLedFromSnapshot(snap, now));
-  return progress ? [progress, ...lines] : lines;
+  const fitness = profile.consentHealth
+    ? buildFitnessSnapshot(fitnessFromSnapshot(snap, 'unknown', now)).contextLine
+    : null;
+  return [progress, fitness, ...lines].filter((line): line is string => Boolean(line));
 }
 
 /** Client copy of the voice prompt, used when the token function has not been redeployed yet. */

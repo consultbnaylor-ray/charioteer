@@ -5,6 +5,7 @@ export {
   SOBER_SWAP,
   SWAP_LOG_MORE,
   abstainsFromDrink,
+  applyFitnessFocus,
   donePlanTexts,
   draftHealthPlan,
   guardHealthPlan,

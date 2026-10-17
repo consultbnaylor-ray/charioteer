@@ -1,3 +1,4 @@
+import { buildFitnessSnapshot } from './fitnessSnapshot.ts';
 import { goalProgressLine } from './goalLed.ts';
 import { londonDay, shiftDay } from './healthInsights.ts';
 import {
@@ -147,6 +148,7 @@ export async function loadNutritionLines(
     weekly_spend_gbp?: number | string | null;
     weekly_units?: number | string | null;
     height_cm?: number | string | null;
+    consent_health?: boolean | null;
   },
   checkIns: readonly { createdAt: string; mood: number; sleepHours: number }[],
   now = new Date(),
@@ -159,7 +161,7 @@ export async function loadNutritionLines(
   const [logsRes, waterRes, healthRes, bodyRes, scheduleRes] = await Promise.all([
     userClient.from('food_logs').select('id, eaten_on, meal, source, note, items, estimated, created_at').eq('user_id', profile.id).order('eaten_on', { ascending: false }).limit(80),
     userClient.from('nutrition_days').select('water_ml').eq('user_id', profile.id).eq('day', today).maybeSingle(),
-    userClient.from('health_samples').select('kind, value, recorded_on').eq('user_id', profile.id).order('recorded_on', { ascending: true }).limit(400),
+    userClient.from('health_samples').select('kind, value, recorded_on').eq('user_id', profile.id).order('recorded_on', { ascending: true }).limit(800),
     userClient.from('body_composition').select('id, recorded_on, body_fat_pct, lean_mass_kg, waist_cm, source, created_at').eq('user_id', profile.id).order('recorded_on', { ascending: false }).limit(40),
     userClient.from('training_schedules').select('monday, tuesday, wednesday, thursday, friday, saturday, sunday').eq('user_id', profile.id).maybeSingle(),
   ]);
@@ -228,6 +230,22 @@ export async function loadNutritionLines(
   const stage = profile.stage === 'stopped' || profile.stage === 'trying_to_stop' || profile.stage === 'cutting_down' || profile.stage === 'exploring'
     ? profile.stage
     : null;
+  const fitness = profile.consent_health === true
+    ? buildFitnessSnapshot({
+      today,
+      goal: settings.goal,
+      goalAge: settings.goalAge,
+      goalSex: settings.goalSex,
+      scheduleWeekMinutes: null,
+      health: samples,
+      sleep: checkIns.flatMap((item) => {
+        const day = item.createdAt.slice(0, 10);
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(day) || !Number.isFinite(item.sleepHours) || item.sleepHours <= 0) return [];
+        return [{ day, hours: item.sleepHours }];
+      }),
+      permission: 'unknown',
+    }).contextLine
+    : null;
   const progress = goalProgressLine({
     goal: settings.goal,
     stage,
@@ -252,5 +270,5 @@ export async function loadNutritionLines(
     previousWeightKg: weights.length > 1 ? weights[weights.length - 2]?.kg ?? null : null,
     sleepHours: sleep ?? null,
   });
-  return progress ? [progress, ...lines] : lines;
+  return [progress, fitness, ...lines].filter((line): line is string => Boolean(line));
 }

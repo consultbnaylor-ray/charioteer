@@ -19,6 +19,7 @@ import {
   type NutritionGoal,
   type NutritionSex,
 } from './nutrition.ts';
+import { buildFitnessSnapshot, fitnessFocusLines, type FitnessSnapshotInput } from './fitnessSnapshot.ts';
 import { goalFocusLine } from './goalLed.ts';
 import { firstSafetyHit, SELF_HARM_NOTICE, WITHDRAWAL_NOTICE, type SafetyHit } from './safety.ts';
 import { soberElapsed } from './sober.ts';
@@ -74,6 +75,11 @@ export type PlanInput = {
   doneTexts: string[];
   /** Usual gym week from You. Absent or null when they have not set one. */
   schedule?: TrainingSchedule | null;
+  /**
+   * Short fitness sentence for the model.
+   * Undefined computes it from health. Null withholds it, for example when health consent is off.
+   */
+  fitnessSnapshot?: string | null;
 };
 
 type Level = 'starting' | 'some' | 'active';
@@ -536,6 +542,8 @@ export type HealthPlanModelContext = {
   proteinTarget: number | null;
   /** Stated week from You, or the logged routine from the last four weeks. Null when neither is usable. */
   training: TrainingBaseline | null;
+  /** One fitness sentence. Null when health consent is off or there is nothing to say. */
+  fitnessSnapshot: string | null;
 };
 
 /** What the model may use. Swaps may use only profile, checkIns, loggedFood, and loggedDrink. */
@@ -569,6 +577,7 @@ export function healthPlanModelContext(input: PlanInput, plan: HealthPlan): Heal
     kcalTarget: input.kcalTarget,
     proteinTarget: input.proteinTarget,
     training: planBaseline(input),
+    fitnessSnapshot: input.fitnessSnapshot === undefined ? fitnessSnapshotFor(input) : input.fitnessSnapshot,
   };
 }
 
@@ -1133,8 +1142,37 @@ export function standaloneFocus(value: string, firstName = ''): string | null {
   return trimSentence(line, 160);
 }
 
+function fitnessInput(input: PlanInput): FitnessSnapshotInput {
+  const today = isoDay(input.now);
+  const schedule = input.schedule;
+  const scheduleWeekMinutes = schedule && schedule.days.length > 0 && schedule.typicalMinutes > 0
+    ? schedule.days.reduce((total, day) => {
+      if (schedule.longerDay === day && schedule.longerMinutes && schedule.longerMinutes > 0) return total + schedule.longerMinutes;
+      return total + schedule.typicalMinutes;
+    }, 0)
+    : null;
+  return {
+    today,
+    goal: input.goal,
+    goalAge: input.goalAge,
+    goalSex: input.goalSex,
+    scheduleWeekMinutes,
+    health: input.health,
+    sleep: input.checkIns.flatMap((row) => {
+      const day = row.createdAt.slice(0, 10);
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(day) || row.sleepHours <= 0) return [];
+      return [{ day, hours: row.sleepHours }];
+    }),
+    permission: 'unknown',
+  };
+}
+
+function fitnessSnapshotFor(input: PlanInput): string | null {
+  return buildFitnessSnapshot(fitnessInput(input)).contextLine;
+}
+
 function focusLines(facts: Derived, habits: string[], session: string, well: string): string[] {
-  const lines = [goalFocusLine(facts.input.goal) ?? '', habits[0] ?? '', session, well]
+  const lines = [...fitnessFocusLines(fitnessInput(facts.input)), goalFocusLine(facts.input.goal) ?? '', habits[0] ?? '', session, well]
     .flatMap((line) => {
       const text = standaloneFocus(line, facts.firstName);
       return text ? [text] : [];
@@ -1352,6 +1390,29 @@ export function draftHealthPlan(input: PlanInput): HealthPlan {
   return guardHealthPlan(written(facts, input.now.toISOString()), input);
 }
 
+/** Adds a fitness line to this week's focus, or ticks it when it is already there. */
+export function applyFitnessFocus(plan: HealthPlan | null, text: string, updatedAt: string): HealthPlan {
+  const line = text.replace(/\s+/g, ' ').trim().slice(0, 160);
+  if (plan) {
+    const match = plan.focus.find((item) => item.text.toLowerCase() === line.toLowerCase());
+    if (match) return togglePlanAction(plan, match.id);
+    return {
+      ...plan,
+      focus: [...plan.focus, { id: `focus-fit-${plan.focus.length + 1}`, text: line, done: false }],
+      updatedAt,
+    };
+  }
+  return {
+    focus: [{ id: 'focus-fit-1', text: line, done: false }],
+    nutrition: { targets: 'Refresh the plan to fill this in from your figures.', habits: [], swaps: [] },
+    fitness: { intro: 'Refresh the plan to fill this in from your figures.', sessions: [] },
+    wellbeing: { habits: [] },
+    limits: '',
+    disclaimer: PLAN_DISCLAIMER,
+    updatedAt,
+  };
+}
+
 export function togglePlanAction(plan: HealthPlan, id: string): HealthPlan {
   const flip = (action: PlanAction): PlanAction => action.id === id ? { ...action, done: !action.done } : action;
   return {
@@ -1473,6 +1534,7 @@ export const HEALTH_PLAN_PROMPT = [
   'A food swap is allowed only when that food appears in loggedFood, loggedDrink, a check-in note, or dietNotes. Suggest crisps only when crisps or snacks appear there.',
   'If nothing they logged or wrote supports a swap, return one swap whose text is exactly "Log a few more meals and Thumos will suggest swaps based on what you actually eat."',
   'Nutrition, fitness, wellbeing, and this week\'s focus all follow the saved nutrition goal. Do not write a running plan, a mileage build, or a progressive distance week.',
+  'When fitnessSnapshot is present, it is an estimate from their own readings, not a medical assessment. You may add one session or hold the week they already do. Never prescribe fewer sessions or fewer minutes unless they report pain, illness, injury, or poor recovery. Do not turn it into a running plan. Check with a doctor before big changes.',
   'If the goal is an elite runner, body builder, heavyweight boxer, or middleweight boxer, include training load, recovery, and fuelling around sessions. A heavyweight goal keeps size and power and does not use a deficit. A middleweight goal stays near a limit with a small change only.',
   'When the user message includes training, that object is the routine from logged workouts over the last 4 weeks: sessions per week, typical minutes, train weekdays, and rest weekdays. Maintain or progress that baseline. Never prescribe fewer sessions or fewer minutes unless they report pain, illness, injury, or poor recovery. Rest only on training.restDays. Do not invent a rest day, a full rest, or "no structured workouts" on a day they train. One row per weekday. Do not append a stock walk-and-rest week. The fitness intro must say what the log shows, for example "You train about 30 min on most days." Progress with a little more weight, one more set, or about 5 to 10 percent volume. For lose fat and build muscle, emphasise resistance training, protein, and a little easy walking or steps. A runner, boxer, or body builder keeps that sport. Check with a doctor before big changes.',
   'When training.source is "stated", the person set that week on You. Follow training.trainDays and training.dayMinutes. Rest only on training.restDays. A day in training.walkDays is a walk, not a missed gym day and not a gym session. The fitness intro states the aim, for example "You aim for 30 min on weekdays and a bit more on Saturday". If the summary says how many of those sessions they have done this week, keep that comparison. Use training.note only when they wrote one. Do not invent a time of day.',

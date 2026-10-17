@@ -44,7 +44,7 @@ Deno.serve(async (req) => {
   if (userError || !userData.user) return json({ ok: false, code: 'unauthorised' }, 401);
   const userId = userData.user.id;
 
-  const profileRes = await userClient.from('profiles').select('display_name, stage, sobriety_started_at, height_cm, vision_statement, consent_ai, weekly_units').eq('id', userId).single();
+  const profileRes = await userClient.from('profiles').select('display_name, stage, sobriety_started_at, height_cm, vision_statement, consent_ai, consent_health, weekly_units').eq('id', userId).single();
   if (profileRes.error || !profileRes.data) return json({ ok: false, code: 'profile', message: 'Finish setting up your account first.' }, 400);
   if (!profileRes.data.consent_ai) {
     return json({
@@ -65,7 +65,7 @@ Deno.serve(async (req) => {
   const [logsRes, checkRes, healthRes, bodyRes, reasonsRes, visionRes, interestRes, savedRes, scheduleRes] = await Promise.all([
     userClient.from('food_logs').select('id, eaten_on, meal, items, estimated, created_at').eq('user_id', userId).order('eaten_on', { ascending: false }).limit(40),
     userClient.from('check_ins').select('mood, craving, sleep_hours, note, created_at').eq('user_id', userId).order('created_at', { ascending: false }).limit(14),
-    userClient.from('health_samples').select('kind, value, recorded_on').eq('user_id', userId).order('recorded_on', { ascending: false }).limit(240),
+    userClient.from('health_samples').select('kind, value, recorded_on').eq('user_id', userId).order('recorded_on', { ascending: false }).limit(800),
     userClient.from('body_composition').select('body_fat_pct, lean_mass_kg, waist_cm, recorded_on').eq('user_id', userId).order('recorded_on', { ascending: false }).limit(8),
     userClient.from('reasons').select('body').eq('user_id', userId).order('sort_order').limit(6),
     userClient.from('vision_board_items').select('caption').eq('user_id', userId).order('position').limit(6),
@@ -157,6 +157,7 @@ Deno.serve(async (req) => {
     waistCm: typeof latestWaist?.waist_cm === 'number' ? latestWaist.waist_cm : null,
     doneTexts,
     schedule: scheduleRes.error ? null : trainingScheduleFromRow(scheduleRes.data),
+    fitnessSnapshot: profileRes.data.consent_health === true ? undefined : null,
   };
 
   const local = draftHealthPlan(input);

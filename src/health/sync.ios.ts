@@ -12,6 +12,7 @@ import type { HealthKind, NewHealthSample } from '@/data/types';
 import { isoDay } from '@/domain/dates';
 import { shownError } from '@/domain/errors';
 import { parseBodyFatPct, parseLeanMassKg } from '@/domain/nutrition';
+import { workoutBucket } from '@/domain/fitnessSnapshot';
 import { APPLE_HEALTH_READ_TYPES, type AppleHealthBody, type AppleHealthComposition } from '@/health/connection';
 
 export type AppleHealthBodyRead =
@@ -116,7 +117,9 @@ export async function syncAppleHealth(): Promise<HealthSyncResult> {
 
     const end = new Date();
     const start = new Date(end.getTime() - 14 * 24 * 60 * 60 * 1000);
+    const fitnessStart = new Date(end.getTime() - 56 * 24 * 60 * 60 * 1000);
     const filter = { date: { startDate: start, endDate: end } };
+    const fitnessFilter = { date: { startDate: fitnessStart, endDate: end } };
     const samples: NewHealthSample[] = [];
 
     const steps = await queryStatisticsCollectionForQuantity(
@@ -133,7 +136,7 @@ export async function syncAppleHealth(): Promise<HealthSyncResult> {
     }
     samples.push(...rows('steps', 'steps', stepDays, Math.round));
 
-    const sleep = await queryCategorySamples('HKCategoryTypeIdentifierSleepAnalysis', { limit: 0, filter });
+    const sleep = await queryCategorySamples('HKCategoryTypeIdentifierSleepAnalysis', { limit: 0, filter: fitnessFilter });
     const sleepDays = new Map<string, number>();
     for (const sample of sleep) {
       if (!ASLEEP.has(Number(sample.value))) continue;
@@ -145,7 +148,7 @@ export async function syncAppleHealth(): Promise<HealthSyncResult> {
     const heart = await queryQuantitySamples('HKQuantityTypeIdentifierRestingHeartRate', {
       limit: 0,
       unit: 'count/min',
-      filter,
+      filter: fitnessFilter,
     });
     const heartDays = new Map<string, number>();
     for (const sample of heart) heartDays.set(isoDay(sample.startDate), sample.quantity);
@@ -154,7 +157,7 @@ export async function syncAppleHealth(): Promise<HealthSyncResult> {
     const hrv = await queryQuantitySamples('HKQuantityTypeIdentifierHeartRateVariabilitySDNN', {
       limit: 0,
       unit: 'ms',
-      filter,
+      filter: fitnessFilter,
     });
     const hrvDays = new Map<string, number>();
     for (const sample of hrv) hrvDays.set(isoDay(sample.startDate), sample.quantity);
@@ -201,14 +204,86 @@ export async function syncAppleHealth(): Promise<HealthSyncResult> {
       composition = [];
     }
 
-    const workouts = await queryWorkoutSamples({ limit: 40, filter });
+    const workouts = await queryWorkoutSamples({ limit: 0, filter: fitnessFilter });
     const workoutDays = new Map<string, number>();
+    const strengthDays = new Map<string, number>();
+    const cardioDays = new Map<string, number>();
+    const otherDays = new Map<string, number>();
+    const sessionHeart = new Map<string, { total: number; count: number }>();
     for (const workout of workouts) {
       const plain = workout.toJSON();
-      add(workoutDays, isoDay(new Date(plain.startDate)), minutes(plain.duration.quantity, plain.duration.unit));
+      const day = isoDay(new Date(plain.startDate));
+      const length = minutes(plain.duration.quantity, plain.duration.unit);
+      const burned = plain.totalEnergyBurned?.quantity ?? 0;
+      if (length <= 0 && burned <= 0) {
+        workout.dispose();
+        continue;
+      }
+      add(workoutDays, day, length);
+      const bucket = workoutBucket(Number(plain.workoutActivityType));
+      if (bucket === 'strength') add(strengthDays, day, length);
+      else if (bucket === 'cardio') add(cardioDays, day, length);
+      else add(otherDays, day, length);
+      try {
+        const stat = await workout.getStatistic('HKQuantityTypeIdentifierHeartRate', 'count/min');
+        const average = stat?.averageQuantity?.quantity;
+        if (average != null && average > 30 && average < 230) {
+          const current = sessionHeart.get(day) ?? { total: 0, count: 0 };
+          current.total += average;
+          current.count += 1;
+          sessionHeart.set(day, current);
+        }
+      } catch {
+        // A workout without a heart-rate statistic still counts for minutes.
+      }
       workout.dispose();
     }
     samples.push(...rows('workout_minutes', 'min', workoutDays, Math.round));
+    samples.push(...rows('strength_minutes', 'min', strengthDays, Math.round));
+    samples.push(...rows('cardio_minutes', 'min', cardioDays, Math.round));
+    samples.push(...rows('other_minutes', 'min', otherDays, Math.round));
+    const sessionDays = new Map<string, number>();
+    for (const [day, stat] of sessionHeart) {
+      if (stat.count > 0) sessionDays.set(day, stat.total / stat.count);
+    }
+    samples.push(...rows('session_heart_rate', 'bpm', sessionDays, Math.round));
+
+    try {
+      const vo2 = await queryQuantitySamples('HKQuantityTypeIdentifierVO2Max', {
+        limit: 0,
+        unit: 'ml/(kg*min)',
+        filter: fitnessFilter,
+      });
+      const vo2Days = new Map<string, number>();
+      for (const sample of vo2) vo2Days.set(isoDay(sample.startDate), sample.quantity);
+      samples.push(...rows('vo2_max', 'ml/kg/min', vo2Days, (value) => Math.round(value * 10) / 10));
+    } catch {
+      // Cardio fitness is absent until the watch has a reading.
+    }
+    try {
+      const walking = await queryQuantitySamples('HKQuantityTypeIdentifierWalkingHeartRateAverage', {
+        limit: 0,
+        unit: 'count/min',
+        filter: fitnessFilter,
+      });
+      const walkingDays = new Map<string, number>();
+      for (const sample of walking) walkingDays.set(isoDay(sample.startDate), sample.quantity);
+      samples.push(...rows('walking_heart_rate', 'bpm', walkingDays, Math.round));
+    } catch {
+      // Walking heart rate is optional.
+    }
+    try {
+      const recovery = await queryQuantitySamples('HKQuantityTypeIdentifierHeartRateRecoveryOneMinute', {
+        limit: 0,
+        unit: 'count/min',
+        filter: fitnessFilter,
+      });
+      const recoveryDays = new Map<string, number>();
+      for (const sample of recovery) recoveryDays.set(isoDay(sample.startDate), sample.quantity);
+      samples.push(...rows('heart_rate_recovery', 'bpm', recoveryDays, Math.round));
+    } catch {
+      // Heart rate recovery is absent on some watches.
+    }
 
     let activeEnergyKcal: number | null = null;
     try {

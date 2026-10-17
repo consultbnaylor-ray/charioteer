@@ -220,12 +220,30 @@ export function formatSleepHours(hours: number): string {
   return `${whole}h ${minutes}m`;
 }
 
+const FITNESS_LABELS: Record<string, string> = {
+  vo2_max: 'Cardio fitness',
+  walking_heart_rate: 'Walking heart rate',
+  heart_rate_recovery: 'Heart rate recovery',
+  strength_minutes: 'Strength minutes',
+  cardio_minutes: 'Cardio minutes',
+  other_minutes: 'Other minutes',
+  session_heart_rate: 'Session heart rate',
+};
+
+export function healthKindLabel(kind: string): string {
+  return HEALTH_METRICS.find((metric) => metric.kind === kind)?.label ?? FITNESS_LABELS[kind] ?? kind;
+}
+
 export function formatHealthValue(kind: string, value: number): string {
   if (kind === 'steps') return `${ukNumber(Math.round(value))} steps`;
   if (kind === 'sleep_hours') return formatSleepHours(value);
-  if (kind === 'resting_heart_rate') return `${Math.round(value)} bpm`;
+  if (kind === 'resting_heart_rate' || kind === 'walking_heart_rate' || kind === 'session_heart_rate') return `${Math.round(value)} bpm`;
+  if (kind === 'heart_rate_recovery') return `${Math.round(value)} bpm`;
   if (kind === 'hrv_sdnn') return `${Math.round(value)} ms`;
-  if (kind === 'workout_minutes') return `${Math.round(value)} min`;
+  if (kind === 'workout_minutes' || kind === 'strength_minutes' || kind === 'cardio_minutes' || kind === 'other_minutes') {
+    return `${Math.round(value)} min`;
+  }
+  if (kind === 'vo2_max') return `${ukNumber(value, 1)}`;
   if (kind === 'weight_kg') return `${ukNumber(value, 1)} kg`;
   return ukNumber(value, Number.isInteger(value) ? 0 : 1);
 }

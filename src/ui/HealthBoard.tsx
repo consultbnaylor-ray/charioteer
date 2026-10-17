@@ -12,6 +12,7 @@ import {
   formatReadingLine,
   formatUkCompactDay,
   groupedReadings,
+  healthKindLabel,
   HEALTH_METRICS,
   latestReading,
   seriesForWindow,
@@ -351,7 +352,7 @@ function Readings({ groups }: { groups: ReturnType<typeof groupedReadings> }) {
       </Pressable>
       {open
         ? groups.map((group) => {
-            const label = HEALTH_METRICS.find((metric) => metric.kind === group.kind)?.label ?? group.kind;
+            const label = healthKindLabel(group.kind);
             return (
               <View key={group.kind} style={{ gap: 6 }}>
                 <T variant="label">{label}</T>

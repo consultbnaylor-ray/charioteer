@@ -17,7 +17,14 @@ export type HealthKind =
   | 'resting_heart_rate'
   | 'hrv_sdnn'
   | 'workout_minutes'
-  | 'weight_kg';
+  | 'weight_kg'
+  | 'vo2_max'
+  | 'walking_heart_rate'
+  | 'heart_rate_recovery'
+  | 'strength_minutes'
+  | 'cardio_minutes'
+  | 'other_minutes'
+  | 'session_heart_rate';
 
 export type ResourceCategory = 'quit_lit' | 'groups' | 'helplines' | 'health';
 export type Verification = 'verified' | 'partial' | 'unverified';

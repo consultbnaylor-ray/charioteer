@@ -10,6 +10,7 @@ import { planProgressFigure } from '@/domain/measureFigures';
 import { applyWeightAndBodyShare, communitySharingOn } from '@/domain/profileSharing';
 import { buildStatsOverview } from '@/domain/statsOverview';
 import { GoalChoices } from '@/ui/GoalChoices';
+import { YourFitness } from '@/ui/YourFitness';
 import { YourGoal } from '@/ui/YourGoal';
 import { PlanTick } from '@/ui/PlanTick';
 import { ShareOnProfile } from '@/ui/ShareOnProfile';
@@ -125,6 +126,7 @@ export default function HealthPlanScreen() {
     >
       <GoalChoices />
       <YourGoal place="plan" />
+      <YourFitness />
       <View style={{ gap: 8 }}>
         <ShareOnProfile
           label="Share on profile"

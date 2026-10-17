@@ -6,6 +6,7 @@ import { buildStatsOverview } from '@/domain/statsOverview';
 import { StatTile } from '@/ui/StatTile';
 import { statsToneColors } from '@/ui/statsPalette';
 import { useAppTheme } from '@/ui/theme';
+import { YourFitness } from '@/ui/YourFitness';
 import { YourGoal } from '@/ui/YourGoal';
 import { Card, Screen, T } from '@/ui/ui';
 
@@ -49,6 +50,7 @@ export default function Stats() {
       intro="A plain look at the figures you already keep. The words say what the colour means."
     >
       <YourGoal place="stats" />
+      <YourFitness />
       <Card accessibilityLabel="Open Health Plan" onPress={() => router.push('/health-plan' as never)}>
         <T style={{ fontFamily: theme.font.bodyStrong }}>Health Plan</T>
         <T variant="muted">A short plan from the figures you already keep.</T>

@@ -8,6 +8,7 @@ export {
   formatSleepHours,
   formatUkCompactDay,
   groupedReadings,
+  healthKindLabel,
   HEALTH_KINDS,
   HEALTH_METRICS,
   hrvExplainerForCoach,

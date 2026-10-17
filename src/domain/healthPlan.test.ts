@@ -786,7 +786,7 @@ describe('health plan wiring', () => {
     expect(fn).toContain('healthPlanModelContext');
     expect(fn).toContain('weekly_units');
     expect(fn).toContain('isMealSlot');
-    expect(fn).toContain('.limit(240)');
+    expect(fn).toContain('.limit(800)');
     expect(readFileSync('supabase/functions/_shared/healthPlan.ts', 'utf8')).toContain('not a diagnosis');
     expect(readFileSync('supabase/config.toml', 'utf8')).toContain('[functions.health-plan]');
   });
