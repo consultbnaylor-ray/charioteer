@@ -165,7 +165,19 @@ export function ProgressRing({
         </Svg>
         <View style={{ position: 'absolute', left: 8, right: 8, top: 0, bottom: 0, alignItems: 'center', justifyContent: 'center' }}>
           <T style={{ color: colors.centre, fontFamily: theme.font.display, fontSize: centreSize, lineHeight: centreSize * 1.15 }}>{centre}</T>
-          {unit ? <T style={{ color: colors.muted, fontSize: 11 * theme.scale, lineHeight: 14 * theme.scale }}>{unit}</T> : null}
+          {unit ? (
+            <T
+              numberOfLines={2}
+              style={{
+                color: colors.muted,
+                fontSize: (unit.length > 8 ? 9 : 11) * theme.scale,
+                lineHeight: (unit.length > 8 ? 11 : 14) * theme.scale,
+                textAlign: 'center',
+              }}
+            >
+              {unit}
+            </T>
+          ) : null}
         </View>
       </View>
       {mark ? <SignalRow tone={tone} /> : null}

@@ -1,9 +1,15 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { Platform, Pressable, View } from 'react-native';
 
 import { useRepository, useSnapshot } from '@/data';
 import { shownError } from '@/domain/errors';
-import { fitnessView, type FitnessSnapshot, type FitnessTone } from '@/domain/fitnessSnapshot';
+import {
+  fitnessView,
+  VO2_WHAT,
+  type FitnessCompare,
+  type FitnessSnapshot,
+  type FitnessTone,
+} from '@/domain/fitnessSnapshot';
 import { applyFitnessFocus } from '@/domain/healthPlan';
 import type { AppleHealthAccess } from '@/health/connection';
 import { readAppleHealthAccess } from '@/health/link';
@@ -71,7 +77,11 @@ export function YourFitness() {
             }}
           />
           {view.cardio.trend.length >= 2 ? <TrendLine points={view.cardio.trend} color={ink(view.cardio.tone)} /> : null}
-          {view.cardio.trend.length >= 2 ? <T variant="muted">Cardio fitness, oldest to newest.</T> : null}
+          {view.cardio.trend.length >= 2 ? <T variant="muted">Cardio fitness, oldest to newest. ml/kg/min.</T> : null}
+          <Fold title="What is this?">
+            <T>{VO2_WHAT}</T>
+          </Fold>
+          <FitnessCompareBar compare={view.cardio.compare} tone={view.cardio.tone} />
         </View>
       ) : null}
       {view.minutes ? (
@@ -90,7 +100,9 @@ export function YourFitness() {
       {view.resting ? (
         <View style={{ gap: 6 }}>
           <T variant="label">Resting heart rate</T>
-          <T style={{ color: ink(view.resting.tone), fontFamily: theme.font.bodyStrong }}>{view.resting.tone === 'watch' ? 'Watch' : 'On track'}</T>
+          <T style={{ color: ink(view.resting.tone), fontFamily: theme.font.bodyStrong }}>
+            {view.resting.reading ? `${view.resting.reading} · ` : ''}{view.resting.tone === 'watch' ? 'Watch' : 'On track'}
+          </T>
           <TrendLine points={view.resting.points} color={ink(view.resting.tone)} />
           <T variant="muted">{view.resting.words} Oldest to newest.</T>
         </View>
@@ -101,6 +113,12 @@ export function YourFitness() {
           <T variant="label">Recovery</T>
           <T style={{ color: ink(view.recovery.tone), fontFamily: theme.font.bodyStrong }}>{view.recovery.status}</T>
           <T>{view.recovery.words}</T>
+        </View>
+      ) : null}
+      {view.recommendations.length > 0 ? (
+        <View style={{ gap: 4 }}>
+          <T variant="label">To get closer to your goal</T>
+          <T variant="muted">Check with a doctor before big changes.</T>
         </View>
       ) : null}
       {view.recommendations.map((item) => {
@@ -122,6 +140,107 @@ export function YourFitness() {
       })}
       {error ? <T>{error}</T> : null}
     </Card>
+  );
+}
+
+function Fold({ title, children }: { title: string; children: ReactNode }) {
+  const theme = useAppTheme();
+  const [open, setOpen] = useState(false);
+  return (
+    <View style={{ alignSelf: 'stretch', gap: 6 }}>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={title}
+        accessibilityState={{ expanded: open }}
+        onPress={() => setOpen((value) => !value)}
+        style={{ minHeight: 44, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}
+      >
+        <T style={{ fontFamily: theme.font.bodyStrong, flex: 1 }}>{title}</T>
+        <T variant="muted">{open ? 'Hide' : 'Show'}</T>
+      </Pressable>
+      {open ? children : null}
+    </View>
+  );
+}
+
+function FitnessCompareBar({ compare, tone }: { compare: FitnessCompare; tone: FitnessTone }) {
+  const theme = useAppTheme();
+  const colors = statsToneColors(theme.scheme);
+  const marks = [compare.value, compare.age?.low, compare.age?.high, compare.goal?.low, compare.goal?.high]
+    .filter((point): point is number => point != null);
+  const low = Math.min(...marks);
+  const high = Math.max(...marks);
+  const pad = Math.max(4, (high - low) * 0.15);
+  const scaleMin = Math.max(0, low - pad);
+  const span = high + pad - scaleMin || 1;
+  const place = (point: number): `${number}%` => `${Math.max(0, Math.min(1, (point - scaleMin) / span)) * 100}%`;
+  const band = (zone: { low: number; high: number } | null, fill: string, edge: string) => {
+    if (!zone) return null;
+    const start = Math.max(0, Math.min(1, (zone.low - scaleMin) / span));
+    const end = Math.max(0, Math.min(1, (zone.high - scaleMin) / span));
+    return (
+      <View
+        style={{
+          position: 'absolute',
+          left: `${start * 100}%`,
+          width: `${Math.max(1.5, (end - start) * 100)}%`,
+          top: 0,
+          bottom: 0,
+          backgroundColor: fill,
+          borderLeftWidth: 2,
+          borderRightWidth: 2,
+          borderColor: edge,
+        }}
+      />
+    );
+  };
+  return (
+    <View accessibilityLabel={compare.words} style={{ alignSelf: 'stretch', gap: 8 }}>
+      <View accessibilityElementsHidden style={{ height: 28, justifyContent: 'flex-end' }}>
+        <View style={{ height: 14, borderRadius: 7, overflow: 'hidden', backgroundColor: theme.colors.line }}>
+          {band(compare.age, colors.good.bg, colors.good.ink)}
+          {band(compare.goal, colors.info.bg, colors.info.ink)}
+        </View>
+        <View
+          style={{
+            position: 'absolute',
+            left: place(compare.value),
+            marginLeft: -7,
+            top: 7,
+            width: 14,
+            height: 14,
+            borderRadius: 7,
+            backgroundColor: colors[tone].ink,
+            borderWidth: 2,
+            borderColor: theme.colors.surface,
+          }}
+        />
+      </View>
+      <View style={{ gap: 6 }}>
+        <Legend swatch={colors[tone].ink} round label={`You, ${compare.value} ml/kg/min`} />
+        {compare.age ? (
+          <Legend swatch={colors.good.ink} label={`${compare.age.label}, ${compare.age.low} to ${compare.age.high}`} />
+        ) : null}
+        {compare.goal ? (
+          <Legend swatch={colors.info.ink} label={`${compare.goal.label}, approximate, ${compare.goal.low} to ${compare.goal.high}`} />
+        ) : null}
+      </View>
+      <T>{compare.words}</T>
+      {compare.sources.length > 0 ? (
+        <Fold title="About these ranges">
+          {compare.sources.map((source) => <T key={source.slice(0, 24)} variant="muted">{source}</T>)}
+        </Fold>
+      ) : null}
+    </View>
+  );
+}
+
+function Legend({ swatch, label, round = false }: { swatch: string; label: string; round?: boolean }) {
+  return (
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+      <View style={{ width: 12, height: 12, borderRadius: round ? 6 : 2, backgroundColor: swatch }} />
+      <T style={{ flex: 1 }}>{label}</T>
+    </View>
   );
 }
 

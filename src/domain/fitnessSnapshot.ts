@@ -5,7 +5,10 @@ import type { TrainingSchedule } from '@/domain/healthPlan';
 export {
   buildFitnessSnapshot,
   fitnessFocusLines,
+  VO2_WHAT,
   workoutBucket,
+  type FitnessBand,
+  type FitnessCompare,
   type FitnessLevel,
   type FitnessRecommendation,
   type FitnessRing,

@@ -37,8 +37,27 @@ export type FitnessRing = {
   words: string;
 };
 
+export type FitnessBand = {
+  low: number;
+  high: number;
+  /** Short name on the bar, beside the colour. */
+  label: string;
+};
+
+export type FitnessCompare = {
+  value: number;
+  age: FitnessBand | null;
+  goal: FitnessBand | null;
+  /** Why a goal range is absent. */
+  goalNote: string | null;
+  words: string;
+  sources: string[];
+};
+
 export type FitnessTrend = {
   label: string;
+  /** Latest reading with its unit, such as "62 bpm". */
+  reading: string | null;
   words: string;
   tone: FitnessTone;
   points: number[];
@@ -63,7 +82,7 @@ export type FitnessSnapshot = {
   levelWords: string;
   estimate: string;
   missing: string | null;
-  cardio: (FitnessRing & { trend: number[] }) | null;
+  cardio: (FitnessRing & { trend: number[]; compare: FitnessCompare }) | null;
   resting: FitnessTrend | null;
   minutes: FitnessRing | null;
   mix: { weeks: FitnessWeekMix[]; words: string } | null;
@@ -74,6 +93,26 @@ export type FitnessSnapshot = {
 };
 
 const ESTIMATE = 'An estimate, not a medical assessment. Check with a doctor before big changes.';
+
+/** Shown when "What is this?" is opened. The ring stays compact until then. */
+export const VO2_WHAT =
+  'VO2 max: how much oxygen your body can use at full effort, per kg of body weight per minute. Apple Watch estimates it.';
+
+const FRIEND_SOURCE =
+  'Age and sex: Kaminsky, Arena, and Myers, Mayo Clinic Proceedings, 2015. The shaded band is the 25th to the 75th percentile for treadmill cardio fitness.';
+
+/**
+ * Kim, Song, and Min, Exercise Science, 2016. Korean national amateur men.
+ * Heavyweight (light-heavyweight through super-heavyweight) mean 59.24 ± 2.75.
+ * Middleweight group (lightweight through middleweight) mean 62.04 ± 2.89.
+ * The heavyweight group was lower. Ranges are that mean, plus or minus about one
+ * standard deviation, rounded. Approximate, and for men on a national team.
+ */
+const BOXER_SOURCE =
+  'Boxers: Kim, Song, and Min, Exercise Science, 2016. Korean national amateur men. Heavyweight cardio fitness averaged about 59 ml/kg/min and the middleweight group about 62, and the heavyweight group was lower. The ranges here are about one standard deviation either side, rounded. They are approximate.';
+
+const HEAVY_BOXER = { low: 56, high: 62, label: 'Typical for your goal' };
+const MIDDLE_BOXER = { low: 59, high: 65, label: 'Typical for your goal' };
 
 const MEN = [
   { maxAge: 29, p25: 40.1, p75: 55.2 },
@@ -164,6 +203,71 @@ function levelTone(level: FitnessLevel): FitnessTone {
   return level === 'Developing' ? 'watch' : 'good';
 }
 
+function boxerBand(goal: NutritionGoal | null, sex: NutritionSex | null): FitnessBand | null {
+  if (sex !== 'male') return null;
+  if (goal === 'elite_heavy_boxer') return HEAVY_BOXER;
+  if (goal === 'elite_middle_boxer') return MIDDLE_BOXER;
+  return null;
+}
+
+function goalNoteFor(
+  goal: NutritionGoal | null,
+  sex: NutritionSex | null,
+  hasGoalBand: boolean,
+  hasAgeBand: boolean,
+): string | null {
+  if (hasGoalBand) return null;
+  if (goal === 'elite_heavy_boxer' || goal === 'elite_middle_boxer') {
+    return 'The boxing ranges found are for men on a national team, so they are not shown.';
+  }
+  if (!hasAgeBand) return null;
+  if (goal === 'elite_runner' || goal === 'body_builder') {
+    return 'This goal has no separate published range here. The band is typical for your age and sex.';
+  }
+  return 'This goal has no separate published cardio range. The band is typical for your age and sex.';
+}
+
+function compareFor(input: {
+  value: number;
+  age: number | null;
+  sex: NutritionSex | null;
+  goal: NutritionGoal | null;
+  band: { p25: number; p75: number } | null;
+}): FitnessCompare {
+  const ageBand = input.band && input.age != null && input.sex
+    ? { low: round1(input.band.p25), high: round1(input.band.p75), label: 'Typical for your age and sex' }
+    : null;
+  const goalBand = boxerBand(input.goal, input.sex);
+  const goalNote = goalNoteFor(input.goal, input.sex, Boolean(goalBand), Boolean(ageBand));
+  const you = `You are at about ${round1(input.value)} ml/kg/min.`;
+  const ageWords = ageBand && input.sex && input.age != null
+    ? ` Typical for ${sexWord(input.sex)} in their ${decade(input.age)} is about ${ageBand.low} to ${ageBand.high}.`
+    : '';
+  const goalWords = goalBand
+    ? ` Typical for this goal, approximate, is about ${goalBand.low} to ${goalBand.high}.`
+    : '';
+  const place = goalBand
+    ? input.value < goalBand.low
+      ? ' You are below that approximate range.'
+      : input.value > goalBand.high
+        ? ' You are above that approximate range.'
+        : ' You are inside that approximate range.'
+    : '';
+  const note = goalNote ? ` ${goalNote}` : '';
+  const sources = [
+    ...(ageBand ? [FRIEND_SOURCE] : []),
+    ...((goalBand || input.goal === 'elite_heavy_boxer' || input.goal === 'elite_middle_boxer') ? [BOXER_SOURCE] : []),
+  ];
+  return {
+    value: round1(input.value),
+    age: ageBand,
+    goal: goalBand,
+    goalNote,
+    words: `${you}${ageWords}${goalWords}${place}${note}`.replace(/\s+/g, ' ').trim(),
+    sources,
+  };
+}
+
 function round1(value: number): number {
   return Math.round(value * 10) / 10;
 }
@@ -217,18 +321,27 @@ export function buildFitnessSnapshot(input: FitnessSnapshotInput): FitnessSnapsh
     walking: walking.length ? walking[walking.length - 1]?.value ?? null : null,
   });
 
-  const cardio = latestVo2 == null ? null : {
+  const compare = latestVo2 == null ? null : compareFor({
+    value: latestVo2,
+    age: input.goalAge,
+    sex: input.goalSex,
+    goal: input.goal,
+    band,
+  });
+  const cardio = latestVo2 == null || compare == null ? null : {
     centre: String(round1(latestVo2)),
-    unit: 'ml',
+    unit: 'ml/kg/min',
     fill: band ? Math.max(0.08, Math.min(1, (latestVo2 - band.p25) / (band.p75 - band.p25))) : 0.5,
     status: vo2Level ?? 'No age or sex',
     tone: vo2Level ? levelTone(vo2Level) : 'info' as const,
     words: levelWords,
     trend: vo2.slice(-8).map((point) => round1(point.value)),
+    compare,
   };
 
   const restingTrend = resting.length >= 2 ? {
     label: 'Resting heart rate',
+    reading: `${Math.round(resting[resting.length - 1]?.value ?? 0)} bpm`,
     words: restingWords(restingSplit),
     tone: rhrUp ? 'watch' as const : 'good' as const,
     points: resting.slice(-8).map((point) => Math.round(point.value)),
@@ -237,7 +350,7 @@ export function buildFitnessSnapshot(input: FitnessSnapshotInput): FitnessSnapsh
   const aim = input.scheduleWeekMinutes && input.scheduleWeekMinutes > 0 ? input.scheduleWeekMinutes : 150;
   const minutesRing = minutes > 0 || input.scheduleWeekMinutes ? {
     centre: String(Math.round(minutes)),
-    unit: 'min',
+    unit: 'min this week',
     fill: Math.max(0, Math.min(1, minutes / aim)),
     status: minutes >= aim * 0.9 ? 'On track' : 'Short',
     tone: minutes >= aim * 0.9 ? 'good' as const : 'watch' as const,
@@ -270,6 +383,7 @@ export function buildFitnessSnapshot(input: FitnessSnapshotInput): FitnessSnapsh
     minutes,
     schedule: input.scheduleWeekMinutes,
     hasWork: minutes > 0 || mixTotal > 0,
+    belowGoal: Boolean(compare?.goal && latestVo2 != null && latestVo2 < compare.goal.low),
   });
 
   const missing = missingLine({
@@ -284,8 +398,8 @@ export function buildFitnessSnapshot(input: FitnessSnapshotInput): FitnessSnapsh
   const contextLine = contextFrom({
     level,
     vo2: latestVo2,
+    compare: compare?.words ?? null,
     minutes,
-    mixWords: mix?.words ?? null,
     recovery: recovery?.words ?? null,
     recommendation: recommendations.find((item) => item.forFocus)?.text ?? recommendations[0]?.text ?? null,
   });
@@ -344,10 +458,10 @@ function levelWordsFor(input: {
       : input.level === 'Strong'
         ? 'above the middle of a published range'
         : 'in the middle of a published range';
-    return `Cardio fitness is about ${round1(input.vo2)}. For ${sexWord(input.sex)} in their ${decade(input.age)}, that sits ${place}.`;
+    return `Cardio fitness is about ${round1(input.vo2)} ml/kg/min. For ${sexWord(input.sex)} in their ${decade(input.age)}, that sits ${place}.`;
   }
   if (input.vo2 != null && !input.band) {
-    return `Cardio fitness is about ${round1(input.vo2)}. Add age and sex on Nutrition for a level.`;
+    return `Cardio fitness is about ${round1(input.vo2)} ml/kg/min. Add age and sex on Nutrition for a level.`;
   }
   if (!input.level) return 'Not enough readings yet for a level.';
   const minutesBit = input.minutes > 0 ? `${Math.round(input.minutes)} active minutes this week` : 'no active minutes logged this week';
@@ -433,6 +547,12 @@ function recoveryView(input: {
   return { status: 'Note', tone: 'info', words: `Heart rate recovery is about ${Math.round(input.drop ?? 0)} bpm.${dropBit}`.replace(/\s+/g, ' ') };
 }
 
+const EASY_AEROBIC = 'Add one easy aerobic session of 30 to 45 minutes at a conversational pace, beside the work you already do.';
+const EASY_BESIDE_STRENGTH = 'Add one easy aerobic session of 30 to 45 minutes at a conversational pace, beside the strength work you already do.';
+const EASY_BESIDE_BOXING = 'Add one easy aerobic session of 30 to 45 minutes at a conversational pace, beside the boxing you already do.';
+const SHORT_INTERVAL = 'Add one short interval session a week, and build it up gradually, beside the sessions you already do.';
+const SLEEP_PROTEIN = 'Keep sleep and protein with the sessions you already do.';
+
 function recommend(input: {
   goal: NutritionGoal | null;
   easier: boolean;
@@ -442,6 +562,7 @@ function recommend(input: {
   minutes: number;
   schedule: number | null;
   hasWork: boolean;
+  belowGoal: boolean;
 }): FitnessRecommendation[] {
   const lines: FitnessRecommendation[] = [];
   const add = (text: string, forFocus: boolean) => {
@@ -456,17 +577,22 @@ function recommend(input: {
   }
   const cardioShare = input.total > 0 ? input.cardio / input.total : null;
   const strengthShare = input.total > 0 ? input.strength / input.total : null;
+  const lowCardio = cardioShare != null && cardioShare < 0.2 && input.strength > input.cardio && input.total >= 30;
   const goal = input.goal;
-  if (goal === 'lose_fat_build_muscle' && cardioShare != null && cardioShare < 0.2 && input.strength > input.cardio && input.total >= 30) {
-    add('Add one easy cardio session beside the strength work you already do.', true);
+  const boxer = goal === 'elite_heavy_boxer' || goal === 'elite_middle_boxer';
+  if (boxer && (lowCardio || input.belowGoal)) {
+    add(EASY_BESIDE_BOXING, true);
+    if (lowCardio) add(SHORT_INTERVAL, true);
+    add(SLEEP_PROTEIN, true);
+  } else if (goal === 'lose_fat_build_muscle' && lowCardio) {
+    add(EASY_BESIDE_STRENGTH, true);
+    add(SLEEP_PROTEIN, true);
   } else if (goal === 'lose_fat_build_muscle' && strengthShare != null && strengthShare < 0.2 && input.cardio > input.strength && input.total >= 30) {
     add('Add one strength session beside the work you already do.', true);
   } else if ((goal === 'increase' || goal === 'body_builder') && strengthShare != null && strengthShare < 0.25 && input.total >= 30) {
     add('Add one strength session beside the work you already do.', true);
-  } else if ((goal === 'elite_heavy_boxer' || goal === 'elite_middle_boxer') && cardioShare != null && cardioShare < 0.2 && input.total >= 30) {
-    add('Add one short conditioning session beside the boxing you already do.', true);
   } else if (goal === 'lose_weight' && input.minutes > 0 && input.minutes < 150 && (input.schedule == null || input.minutes < input.schedule)) {
-    add('Add one session you already know, and keep every session you already do.', true);
+    add(EASY_AEROBIC, true);
   } else if (goal === 'elite_runner' && input.hasWork) {
     add('Hold the sessions you already do, and keep one of them easy.', true);
   }
@@ -502,18 +628,22 @@ function missingLine(input: {
 function contextFrom(input: {
   level: FitnessLevel | null;
   vo2: number | null;
+  compare: string | null;
   minutes: number;
-  mixWords: string | null;
   recovery: string | null;
   recommendation: string | null;
 }): string | null {
-  if (!input.level && input.minutes <= 0 && !input.mixWords && !input.recovery) return null;
+  if (!input.level && input.minutes <= 0 && !input.recovery && !input.compare) return null;
   const bits = ['Fitness snapshot, an estimate, not a medical assessment.'];
-  if (input.level) bits.push(`Level ${input.level}${input.vo2 != null ? `, cardio fitness about ${round1(input.vo2)}` : ''}.`);
+  if (input.compare) bits.push(input.compare);
+  else if (input.level) bits.push(`Level ${input.level}${input.vo2 != null ? `, cardio fitness about ${round1(input.vo2)} ml/kg/min` : ''}.`);
   if (input.minutes > 0) bits.push(`${Math.round(input.minutes)} active minutes this week.`);
-  if (input.mixWords) bits.push(input.mixWords);
-  if (input.recovery) bits.push(input.recovery.replace(/\s+/g, ' '));
   if (input.recommendation) bits.push(input.recommendation);
   bits.push('Check with a doctor before big changes.');
-  return bits.join(' ').replace(/\s+/g, ' ').trim().slice(0, 500);
+  let line = bits.join(' ').replace(/\s+/g, ' ').trim();
+  if (input.recovery) {
+    const extra = ` ${input.recovery.replace(/\s+/g, ' ').trim()}`;
+    if (line.length + extra.length <= 500) line += extra;
+  }
+  return line.slice(0, 500);
 }

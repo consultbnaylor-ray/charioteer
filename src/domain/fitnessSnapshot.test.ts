@@ -5,7 +5,7 @@ import { APPLE_HEALTH_READ_TYPES } from '@/health/connection';
 import { HEALTH_KINDS } from '@/domain/healthInsights';
 import { HEALTH_PLAN_PROMPT, draftHealthPlan, type PlanInput } from '@/domain/healthPlan';
 import { NUTRITION_PROMPT_LINE } from '@/domain/nutrition';
-import { buildFitnessSnapshot, workoutBucket, type FitnessSnapshotInput } from '@/domain/fitnessSnapshot';
+import { buildFitnessSnapshot, VO2_WHAT, workoutBucket, type FitnessSnapshotInput } from '@/domain/fitnessSnapshot';
 
 function input(partial: Partial<FitnessSnapshotInput> = {}): FitnessSnapshotInput {
   return {
@@ -30,9 +30,19 @@ describe('fitness snapshot', () => {
     }));
     expect(view.level).toBe('Steady');
     expect(view.levelWords).toContain('men in their 40s');
+    expect(view.levelWords).toContain('ml/kg/min');
     expect(view.cardio?.status).toBe('Steady');
+    expect(view.cardio?.unit).toBe('ml/kg/min');
     expect(view.cardio?.trend).toEqual([42, 41]);
+    expect(view.cardio?.compare.age).toEqual({ low: 31.9, high: 45, label: 'Typical for your age and sex' });
+    expect(view.cardio?.compare.goal).toBeNull();
+    expect(view.cardio?.compare.words).toContain('41 ml/kg/min');
+    expect(view.cardio?.compare.goalNote).toContain('no separate published cardio range');
+    expect(view.cardio?.compare.sources.join(' ')).toContain('Kaminsky');
+    expect(VO2_WHAT).toBe('VO2 max: how much oxygen your body can use at full effort, per kg of body weight per minute. Apple Watch estimates it.');
     expect(view.estimate).toContain('not a medical assessment');
+    expect(view.contextLine).toContain('ml/kg/min');
+    expect(view.contextLine).toContain('31.9 to 45');
     expect(view.contextLine).not.toMatch(/runna|mileage|5k|10k/i);
   });
 
@@ -60,6 +70,8 @@ describe('fitness snapshot', () => {
     expect(view.level).toBe('Developing');
     expect(view.levelWords).toContain('resting heart rate');
     expect(view.minutes?.centre).toBe('30');
+    expect(view.minutes?.unit).toBe('min this week');
+    expect(view.resting?.reading).toBe('62 bpm');
     expect(view.resting?.words).toContain('lower');
   });
 
@@ -73,8 +85,9 @@ describe('fitness snapshot', () => {
       ],
     }));
     expect(view.recommendations.map((item) => item.text)).toContain(
-      'Add one easy cardio session beside the strength work you already do.',
+      'Add one easy aerobic session of 30 to 45 minutes at a conversational pace, beside the strength work you already do.',
     );
+    expect(view.recommendations.map((item) => item.text).join(' ')).toContain('sleep and protein');
     expect(view.recommendations.length).toBeLessThanOrEqual(3);
     expect(view.mix?.words).toContain('mostly strength');
     expect(view.recommendations.some((item) => /fewer|drop a session|mileage|runna/i.test(item.text))).toBe(false);
@@ -107,7 +120,14 @@ describe('fitness snapshot', () => {
         { kind: 'workout_minutes', value: 50, recordedOn: '2026-10-14' },
       ],
     }));
-    expect(view.recommendations[0]?.text).toBe('Add one short conditioning session beside the boxing you already do.');
+    expect(view.recommendations[0]?.text).toBe(
+      'Add one easy aerobic session of 30 to 45 minutes at a conversational pace, beside the boxing you already do.',
+    );
+    expect(view.recommendations.map((item) => item.text)).toContain(
+      'Add one short interval session a week, and build it up gradually, beside the sessions you already do.',
+    );
+    expect(view.recommendations.map((item) => item.text).join(' ')).toMatch(/sleep and protein/i);
+    expect(view.recommendations.some((item) => /mile|km|5k|runna|mileage/i.test(item.text))).toBe(false);
     expect(view.contextLine).not.toMatch(/sauna|dehydrat|rapid cut/i);
   });
 
@@ -175,7 +195,7 @@ describe('fitness snapshot', () => {
       doneTexts: [],
     };
     const plan = draftHealthPlan(planInput);
-    expect(plan.focus.some((item) => item.text.startsWith('Add one easy cardio session'))).toBe(true);
+    expect(plan.focus.some((item) => item.text.startsWith('Add one easy aerobic session'))).toBe(true);
     expect(plan.focus.length).toBeLessThanOrEqual(3);
     expect(plan.fitness.sessions.map((item) => item.text).join(' ')).not.toMatch(/runna|progressive distance/i);
     expect(HEALTH_PLAN_PROMPT).toContain('When fitnessSnapshot is present');
@@ -208,5 +228,53 @@ describe('fitness snapshot', () => {
     expect(privacy).toContain('does not read blood oxygen');
     expect(readFileSync('src/app/(main)/stats.tsx', 'utf8')).toContain('<YourFitness');
     expect(readFileSync('src/app/(main)/health-plan.tsx', 'utf8')).toContain('<YourFitness');
+    const card = readFileSync('src/ui/YourFitness.tsx', 'utf8');
+    expect(card).toContain('What is this?');
+    expect(card).toContain('To get closer to your goal');
+    expect(card).toContain('About these ranges');
+    expect(card).toContain('ml/kg/min');
+    expect(card).toContain('Check with a doctor before big changes.');
+  });
+
+  it('compares a male heavyweight boxer with a lower approximate range than a middleweight', () => {
+    const heavy = buildFitnessSnapshot(input({
+      goal: 'elite_heavy_boxer',
+      health: [{ kind: 'vo2_max', value: 42.6, recordedOn: '2026-10-16' }],
+    }));
+    const middle = buildFitnessSnapshot(input({
+      goal: 'elite_middle_boxer',
+      health: [{ kind: 'vo2_max', value: 42.6, recordedOn: '2026-10-16' }],
+    }));
+    expect(heavy.cardio?.compare.goal).toEqual({ low: 56, high: 62, label: 'Typical for your goal' });
+    expect(middle.cardio?.compare.goal).toEqual({ low: 59, high: 65, label: 'Typical for your goal' });
+    expect(heavy.cardio?.compare.goal?.low).toBeLessThan(middle.cardio?.compare.goal?.low ?? 0);
+    expect(heavy.cardio?.compare.words).toContain('below that approximate range');
+    expect(heavy.cardio?.compare.sources.join(' ')).toContain('Kim, Song, and Min');
+    expect(heavy.cardio?.compare.sources.join(' ')).toContain('Kaminsky');
+    expect(heavy.contextLine).toContain('42.6 ml/kg/min');
+    expect(heavy.contextLine).toContain('56 to 62');
+    expect(heavy.contextLine).toContain('Check with a doctor before big changes.');
+    expect(heavy.recommendations.map((item) => item.text).join(' ')).toMatch(/30 to 45/);
+    expect(heavy.recommendations.map((item) => item.text).join(' ')).toMatch(/conversational/);
+    expect(heavy.recommendations.map((item) => item.text).join(' ')).not.toMatch(/mileage|runna|\bkm\b/i);
+  });
+
+  it('withholds the boxing range for women and does not invent one for a runner', () => {
+    const woman = buildFitnessSnapshot(input({
+      goal: 'elite_heavy_boxer',
+      goalSex: 'female',
+      health: [{ kind: 'vo2_max', value: 42, recordedOn: '2026-10-16' }],
+    }));
+    expect(woman.cardio?.compare.goal).toBeNull();
+    expect(woman.cardio?.compare.age).not.toBeNull();
+    expect(woman.cardio?.compare.goalNote).toContain('men on a national team');
+    expect(woman.cardio?.compare.words).not.toMatch(/56 to 62/);
+    const runner = buildFitnessSnapshot(input({
+      goal: 'elite_runner',
+      health: [{ kind: 'vo2_max', value: 50, recordedOn: '2026-10-16' }],
+    }));
+    expect(runner.cardio?.compare.goal).toBeNull();
+    expect(runner.cardio?.compare.goalNote).toContain('no separate published range');
+    expect(runner.cardio?.compare.words).toContain('Typical for men in their 40s');
   });
 });
