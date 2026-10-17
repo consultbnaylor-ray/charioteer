@@ -12,7 +12,16 @@ export {
   whyCardioMatters,
   whyMinutesMatter,
   whyRestingMatters,
+  CONDITIONING_NOTE,
+  MIX_HOW,
+  activityTypeFromKind,
+  dedupeWorkouts,
+  defaultWorkoutBucket,
+  rebucketStoredMinutes,
+  withWorkoutBucket,
   workoutBucket,
+  workoutTypeKind,
+  workoutTypeLabel,
   type FitnessBand,
   type FitnessCompare,
   type FitnessLevel,
@@ -23,6 +32,7 @@ export {
   type FitnessTone,
   type FitnessTrend,
   type FitnessWeekMix,
+  type WorkoutSpan,
 } from '../../supabase/functions/_shared/fitnessSnapshot.ts';
 
 import { buildFitnessSnapshot, type FitnessSnapshotInput } from '../../supabase/functions/_shared/fitnessSnapshot.ts';

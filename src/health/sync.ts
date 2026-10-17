@@ -1,4 +1,5 @@
 import type { NewHealthSample } from '@/data/types';
+import type { WorkoutBucketMap } from '@/domain/nutrition';
 import type { AppleHealthBody, AppleHealthComposition } from '@/health/connection';
 
 export type HealthSyncResult =
@@ -12,7 +13,7 @@ export type AppleHealthBodyRead =
 const HEALTH_HERE = 'Apple Health connects in the iPhone app. Here you can log readings yourself.';
 
 /** Web and Android read the account's saved readings. Apple Health is iOS-only. */
-export async function syncAppleHealth(): Promise<HealthSyncResult> {
+export async function syncAppleHealth(_overrides: WorkoutBucketMap = {}): Promise<HealthSyncResult> {
   return { ok: false, message: HEALTH_HERE };
 }
 

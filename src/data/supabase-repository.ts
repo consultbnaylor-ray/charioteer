@@ -64,6 +64,7 @@ import {
   parseMealEstimate,
   parseSharedNutrition,
   parseWaistCm,
+  parseWorkoutBuckets,
   samplePhotoMeal,
   type BodyCompositionReading,
   type FoodItem,
@@ -2065,7 +2066,7 @@ export class SupabaseRepository implements Repository {
 
   /** Older databases lack the later share and goal columns. A missing column stays off. */
   private async nutritionSettingsRow(userId: string) {
-    const athlete = 'kcal_target, hide_calories, share_food_diary, share_calories, share_quality, share_progress, goal, goal_age, goal_sex, protein_target_g, carb_target_g, fat_target_g, goal_phase, weight_class_kg, activity_energy_kcal, share_goal, wagon_on, wagon_note, wagon_visible, build, updated_at';
+    const athlete = 'kcal_target, hide_calories, share_food_diary, share_calories, share_quality, share_progress, goal, goal_age, goal_sex, protein_target_g, carb_target_g, fat_target_g, goal_phase, weight_class_kg, activity_energy_kcal, share_goal, wagon_on, wagon_note, wagon_visible, build, workout_buckets, updated_at';
     const widened = await this.client.from('nutrition_settings').select(athlete).eq('user_id', userId).maybeSingle();
     if (!widened.error) return widened;
     const goal = 'kcal_target, hide_calories, share_food_diary, share_calories, share_quality, share_progress, goal, goal_age, goal_sex, protein_target_g, activity_energy_kcal, share_goal, wagon_on, wagon_note, wagon_visible, build, updated_at';
@@ -2279,6 +2280,7 @@ export class SupabaseRepository implements Repository {
       wagon_note: settings.wagonNote.slice(0, 200),
       wagon_visible: settings.wagonVisible,
       build: settings.build,
+      workout_buckets: settings.workoutBuckets,
       updated_at: new Date().toISOString(),
     };
     let payload: Record<string, unknown> = row;
@@ -2306,6 +2308,11 @@ export class SupabaseRepository implements Repository {
     if (error && settings.build == null && /\bbuild\b/i.test(error.message)) {
       const { build: _build, ...withoutBuild } = payload;
       payload = withoutBuild;
+      ({ error } = await this.client.from('nutrition_settings').upsert(payload));
+    }
+    if (error && Object.keys(settings.workoutBuckets).length === 0 && /workout_buckets/i.test(error.message)) {
+      const { workout_buckets: _buckets, ...withoutBuckets } = payload;
+      payload = withoutBuckets;
       ({ error } = await this.client.from('nutrition_settings').upsert(payload));
     }
     const leavingNewSharesOff = !settings.shareCalories && !settings.shareQuality && !settings.shareProgress;
@@ -3137,6 +3144,7 @@ function nutritionFromRow(row: Row | null): NutritionSettings {
     wagonNote: String(row.wagon_note ?? '').slice(0, 200),
     wagonVisible: row.wagon_visible === true,
     build: typeof row.build === 'string' && isBodyBuild(row.build) ? row.build : null,
+    workoutBuckets: parseWorkoutBuckets(row.workout_buckets),
     updatedAt: typeof row.updated_at === 'string' && row.updated_at ? row.updated_at : null,
   };
 }
@@ -3179,6 +3187,7 @@ function canonicalNutrition(settings: NutritionSettings): NutritionSettings {
     ...defaultNutritionSettings(),
     ...settings,
     wagonNote: settings.wagonNote.slice(0, 200),
+    workoutBuckets: parseWorkoutBuckets(settings.workoutBuckets),
   };
 }
 

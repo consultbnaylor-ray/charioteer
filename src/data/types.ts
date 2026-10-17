@@ -23,8 +23,10 @@ export type HealthKind =
   | 'heart_rate_recovery'
   | 'strength_minutes'
   | 'cardio_minutes'
+  | 'conditioning_minutes'
   | 'other_minutes'
-  | 'session_heart_rate';
+  | 'session_heart_rate'
+  | `workout_type_${number}`;
 
 export type ResourceCategory = 'quit_lit' | 'groups' | 'helplines' | 'health';
 export type Verification = 'verified' | 'partial' | 'unverified';

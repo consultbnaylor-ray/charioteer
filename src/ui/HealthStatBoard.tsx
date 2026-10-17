@@ -17,7 +17,7 @@ import {
   type HealthStatTile,
   type HealthStatVisual,
 } from '@/domain/healthStatTiles';
-import { BODY_ENTRY_SOURCES, BODY_SOURCE_LABEL, type BodyEntrySource } from '@/domain/nutrition';
+import { BODY_ENTRY_SOURCES, BODY_SOURCE_LABEL, WORKOUT_BUCKETS, WORKOUT_BUCKET_LABEL, type BodyEntrySource, type WorkoutBucket } from '@/domain/nutrition';
 import { STATS_SIGNAL } from '@/domain/statsOverview';
 import {
   APPLE_HEALTH_CONSENT,
@@ -39,6 +39,7 @@ export function HealthStatBoard(
   input: HealthStatBoardInput & {
     onTurnOn?: (types: readonly string[]) => Promise<HealthTurnOnResult>;
     onSaveBody?: (reading: { recordedOn: string; bodyFatPct: number | null; leanMassKg: number | null; source: BodyEntrySource }) => Promise<void>;
+    onSetWorkoutBucket?: (activityType: number, bucket: WorkoutBucket) => Promise<void>;
   },
 ) {
   const model = buildHealthStatBoard(input);
@@ -53,7 +54,7 @@ export function HealthStatBoard(
       {model.missingLine ? (
         <MissingReads line={model.missingLine} gaps={model.gaps} onTurnOn={input.onTurnOn} onSaveBody={input.onSaveBody} />
       ) : null}
-      <StatDetail tile={open} caveat={model.caveat} onClose={() => setOpenId(null)} />
+      <StatDetail tile={open} caveat={model.caveat} onClose={() => setOpenId(null)} onSetWorkoutBucket={input.onSetWorkoutBucket} />
     </View>
   );
 }
@@ -306,14 +307,58 @@ function StatusMark({ tone, status }: { tone: HealthStatTile['tone']; status: st
   );
 }
 
+function WorkoutTypeChoices({
+  tile,
+  onSetWorkoutBucket,
+}: {
+  tile: HealthStatTile;
+  onSetWorkoutBucket?: (activityType: number, bucket: WorkoutBucket) => Promise<void>;
+}) {
+  const rows = tile.breakdown ?? [];
+  const [pending, setPending] = useState<number | null>(null);
+  const [note, setNote] = useState<string | null>(null);
+  if (!rows.length) return null;
+  return (
+    <View style={{ gap: 12 }}>
+      <T variant="label">Each workout type</T>
+      {rows.map((row) => (
+        <View key={row.activityType} style={{ gap: 6 }}>
+          <T>{row.label}, {row.minutes} min. Counted as {WORKOUT_BUCKET_LABEL[row.bucket].toLowerCase()}.</T>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+            {WORKOUT_BUCKETS.map((bucket) => (
+              <Choice
+                key={bucket}
+                label={WORKOUT_BUCKET_LABEL[bucket]}
+                selected={row.bucket === bucket}
+                onPress={() => {
+                  if (!onSetWorkoutBucket || row.bucket === bucket || pending != null) return;
+                  setPending(row.activityType);
+                  setNote(null);
+                  void onSetWorkoutBucket(row.activityType, bucket)
+                    .then(() => setNote(`${row.label} now counts as ${WORKOUT_BUCKET_LABEL[bucket].toLowerCase()}.`))
+                    .catch((err: unknown) => setNote(shownError(err, 'Could not save that choice.')))
+                    .finally(() => setPending(null));
+                }}
+              />
+            ))}
+          </View>
+        </View>
+      ))}
+      {note ? <T>{note}</T> : null}
+    </View>
+  );
+}
+
 function StatDetail({
   tile,
   caveat,
   onClose,
+  onSetWorkoutBucket,
 }: {
   tile: HealthStatTile | null;
   caveat: string;
   onClose: () => void;
+  onSetWorkoutBucket?: (activityType: number, bucket: WorkoutBucket) => Promise<void>;
 }) {
   const theme = useAppTheme();
   const insets = useSafeAreaInsets();
@@ -350,6 +395,7 @@ function StatDetail({
                 <T variant="label">What your number means</T>
                 <T>{tile.meaning}</T>
                 {tile.rangeNote && tile.rangeNote !== tile.meaning ? <T>{tile.rangeNote}</T> : null}
+                <WorkoutTypeChoices tile={tile} onSetWorkoutBucket={onSetWorkoutBucket} />
                 {tile.history.length >= 2 ? <TrendLine points={tile.history} color={ink} /> : null}
                 {tile.trend ? <T variant="muted">{tile.trend}</T> : null}
                 {tile.sourceUrl ? (

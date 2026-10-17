@@ -18,6 +18,7 @@ import {
   type HealthStatTile,
 } from '@/domain/healthStatTiles';
 import { APPLE_HEALTH_READ_TYPES } from '@/health/connection';
+import { MIX_HOW } from '@/domain/fitnessSnapshot';
 import { HEALTH_KINDS } from '@/domain/healthInsights';
 
 const today = '2026-10-17';
@@ -212,8 +213,10 @@ describe('health stat tiles', () => {
     expect(mix.hasGuideline).toBe(false);
     expect(mix.status).toContain('Mostly strength');
     expect(mix.status).toContain('no guideline mix');
+    expect(mix.trend).toBe(MIX_HOW);
+    expect(mix.about).toContain('not heart rate');
     if (mix.visual.kind === 'bars') {
-      expect(mix.visual.bars.map((bar) => bar.key)).toEqual(['strength', 'cardio', 'other']);
+      expect(mix.visual.bars.map((bar) => bar.key)).toEqual(['strength', 'cardio', 'conditioning', 'other']);
     }
 
     const workouts = tile(board, 'workouts');
@@ -413,6 +416,7 @@ describe('health stat tiles', () => {
     expect(HEALTH_KINDS).not.toContain('heart_rate_recovery');
     expect(HEALTH_KINDS).not.toContain('session_heart_rate');
     expect(HEALTH_KINDS).not.toContain('strength_minutes');
+    expect(HEALTH_KINDS).not.toContain('conditioning_minutes');
     const screen = readFileSync('src/app/(main)/health.tsx', 'utf8');
     const board = readFileSync('src/ui/HealthStatBoard.tsx', 'utf8');
     const share = readFileSync('src/ui/HealthBoard.tsx', 'utf8');
@@ -422,6 +426,8 @@ describe('health stat tiles', () => {
     expect(screen).not.toContain('communityPhotos');
     expect(screen).toContain('<HealthSectionShare />');
     expect(screen.indexOf('<HealthStatBoard')).toBeLessThan(screen.indexOf('<HealthBoard'));
+    expect(board).toContain('Each workout type');
+    expect(board).toContain('onSetWorkoutBucket');
     expect(board).toContain('More info about');
     expect(board).toContain('More info');
     expect(board).toContain('detailShowsStatusAgain');
@@ -479,5 +485,27 @@ describe('health stat tiles', () => {
     const logged = buildHealthStatBoard(alex());
     expect(logged.gaps.map((gap) => gap.id)).toEqual(['active_energy']);
     expect(logged.gaps[0]?.manual).toBe(false);
+  });
+
+  it('lists each workout type and follows a saved recategorisation', () => {
+    const board = buildHealthStatBoard(input({
+      samples: [
+        { kind: 'workout_type_20', value: 540, recordedOn: today },
+        { kind: 'workout_type_16', value: 300, recordedOn: today },
+        { kind: 'workout_type_73', value: 80, recordedOn: today },
+      ],
+      workoutBuckets: { '73': 'strength' },
+    }));
+    const mix = tile(board, 'mix');
+    expect(mix.meaning).toContain('Functional strength 540 min');
+    expect(mix.meaning).toContain('Elliptical 300 min');
+    expect(mix.meaning).toContain('Mixed cardio 80 min');
+    expect(mix.meaning).toContain('shown on its own');
+    expect(mix.breakdown?.map((row) => row.bucket)).toEqual(['strength', 'cardio', 'strength']);
+    if (mix.visual.kind === 'bars') {
+      expect(mix.visual.bars.find((bar) => bar.key === 'strength')?.value).toBe(620);
+      expect(mix.visual.bars.find((bar) => bar.key === 'cardio')?.value).toBe(300);
+      expect(mix.visual.bars.find((bar) => bar.key === 'conditioning')?.value).toBe(0);
+    }
   });
 });

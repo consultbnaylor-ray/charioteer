@@ -7,7 +7,8 @@ import type { HealthKind, NewHealthSample } from '@/data/types';
 import { isoDay, startOfLocalDay } from '@/domain/dates';
 import { shownError } from '@/domain/errors';
 import { parseHeightCm } from '@/domain/guidance';
-import type { BodyEntrySource } from '@/domain/nutrition';
+import { rebucketStoredMinutes, withWorkoutBucket } from '@/domain/fitnessSnapshot';
+import type { BodyEntrySource, WorkoutBucket } from '@/domain/nutrition';
 import type { WeightReadingDraft } from '@/domain/weightEntry';
 import { isHealthAccessDenied, type AppleHealthAccess, type AppleHealthTurnOn } from '@/health/connection';
 import { catchUpAppleHealthReads } from '@/health/catchUp';
@@ -81,7 +82,7 @@ export default function Health() {
   }, [ios]);
 
   async function pullFromHealth() {
-    const result = await syncAppleHealth();
+    const result = await syncAppleHealth(repo.getSnapshot().nutrition.workoutBuckets);
     if (!result.ok) {
       if (isHealthAccessDenied(result.message)) setAccess('denied');
       setError(result.message);
@@ -138,6 +139,17 @@ export default function Health() {
       waistCm: null,
       source: reading.source,
     });
+  }
+
+  async function setWorkoutBucket(activityType: number, bucket: WorkoutBucket) {
+    const current = repo.getSnapshot().nutrition;
+    const workoutBuckets = withWorkoutBucket(current.workoutBuckets, activityType, bucket);
+    await repo.setNutritionSettings({ ...current, workoutBuckets });
+    const rewritten = rebucketStoredMinutes(repo.getSnapshot().health, workoutBuckets);
+    if (rewritten.length && repo.getSnapshot().profile?.consentHealth) {
+      await repo.saveHealth(rewritten);
+    }
+    void playSavedHaptic();
   }
 
   async function connect() {
@@ -272,8 +284,10 @@ export default function Health() {
         goalSex={snap.nutrition.goalSex}
         goal={snap.nutrition.goal}
         build={snap.nutrition.build}
+        workoutBuckets={snap.nutrition.workoutBuckets}
         onTurnOn={turnOnMissing}
         onSaveBody={saveBodyGap}
+        onSetWorkoutBucket={setWorkoutBucket}
       />
       <HealthBoard
         samples={snap.health}

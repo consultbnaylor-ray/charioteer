@@ -134,6 +134,13 @@ function demoHealth(now: Date): HealthSample[] {
     sample('strength_minutes', 40, 'min', 7),
     sample('strength_minutes', 30, 'min', 9),
     sample('cardio_minutes', 15, 'min', 5),
+    sample('conditioning_minutes', 25, 'min', 3),
+    sample('workout_type_50', 40, 'min', 0),
+    sample('workout_type_50', 35, 'min', 2),
+    sample('workout_type_50', 40, 'min', 7),
+    sample('workout_type_20', 30, 'min', 9),
+    sample('workout_type_16', 15, 'min', 5),
+    sample('workout_type_63', 25, 'min', 3),
     sample('vo2_max', 42, 'ml/kg/min', 1),
     sample('vo2_max', 41, 'ml/kg/min', 10),
     sample('vo2_max', 40, 'ml/kg/min', 21),
@@ -523,6 +530,7 @@ export function createDemoDb(now = new Date()): DemoDb {
     wagonNote: 'A rough evening. I am still here.',
     wagonVisible: true,
     build: null,
+    workoutBuckets: {},
     updatedAt: null,
   };
   jordan.sharing = { ...defaultProfileSharing(), healthPlan: true, sensitiveConsentAt: '2026-10-01T09:00:00.000Z' };

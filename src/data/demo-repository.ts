@@ -83,6 +83,7 @@ import {
 } from '@/domain/nutrition';
 import { donePlanTexts, draftHealthPlan, normaliseTrainingSchedule, presentSharedHealthPlan, type HealthPlan, type TrainingSchedule } from '@/domain/healthPlan';
 import { createDemoDb, type DemoAccount, type DemoDb } from '@/data/demo-seed';
+import { activityTypeFromKind } from '@/domain/fitnessSnapshot';
 import type {
   AppSnapshot,
   ConsentInput,
@@ -395,6 +396,7 @@ export class DemoRepository implements Repository {
     this.backfillProgressPhotos();
     this.backfillNutrition();
     this.backfillBuddies();
+    this.backfillWorkoutTypes();
     this.ready = true;
     this.snapshot = this.derive();
     this.listeners.forEach((listener) => listener());
@@ -444,6 +446,26 @@ export class DemoRepository implements Repository {
         }
       }
     }
+  }
+
+  /** Sample workout types for a demo account saved before the mix split existed. */
+  private backfillWorkoutTypes() {
+    const fresh = createDemoDb();
+    let changed = false;
+    for (const [id, account] of Object.entries(this.db.accounts)) {
+      const health = account.health ?? [];
+      const seeded = fresh.accounts[id]?.health ?? [];
+      const have = new Set(health.map((row) => `${row.kind}|${row.recordedOn}`));
+      const extra = seeded.filter((row) => {
+        const typed = activityTypeFromKind(row.kind) != null;
+        const bucket = row.kind === 'strength_minutes' || row.kind === 'cardio_minutes' || row.kind === 'conditioning_minutes' || row.kind === 'other_minutes';
+        return (typed || bucket) && !have.has(`${row.kind}|${row.recordedOn}`);
+      });
+      if (!extra.length) continue;
+      account.health = [...health, ...extra];
+      changed = true;
+    }
+    if (changed) void AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(this.db));
   }
 
   /** Sample meals for a demo account saved before the food log existed. An empty list stays empty. */

@@ -12,7 +12,8 @@ import type { HealthKind, NewHealthSample } from '@/data/types';
 import { isoDay } from '@/domain/dates';
 import { shownError } from '@/domain/errors';
 import { parseBodyFatPct, parseLeanMassKg } from '@/domain/nutrition';
-import { workoutBucket } from '@/domain/fitnessSnapshot';
+import { dedupeWorkouts, workoutBucket, workoutTypeKind, type WorkoutSpan } from '@/domain/fitnessSnapshot';
+import type { WorkoutBucket, WorkoutBucketMap } from '@/domain/nutrition';
 import { HEALTH_SAMPLE_DAYS } from '@/domain/healthVisibility';
 import { APPLE_HEALTH_READ_TYPES, type AppleHealthBody, type AppleHealthComposition } from '@/health/connection';
 
@@ -113,7 +114,7 @@ function minutes(quantity: number, unit: string): number {
  * reading from earlier in that window is kept when today has none.
  * Food and water are written separately when a meal is saved.
  */
-export async function syncAppleHealth(): Promise<HealthSyncResult> {
+export async function syncAppleHealth(overrides: WorkoutBucketMap = {}): Promise<HealthSyncResult> {
   try {
     if (!isHealthDataAvailable()) {
       return { ok: false, message: 'Apple Health is not available on this device.' };
@@ -215,26 +216,53 @@ export async function syncAppleHealth(): Promise<HealthSyncResult> {
 
     const workouts = await queryWorkoutSamples({ limit: 0, filter: fitnessFilter });
     const workoutDays = new Map<string, number>();
-    const strengthDays = new Map<string, number>();
-    const cardioDays = new Map<string, number>();
-    const otherDays = new Map<string, number>();
+    const bucketDays: Record<WorkoutBucket, Map<string, number>> = {
+      strength: new Map(),
+      cardio: new Map(),
+      conditioning: new Map(),
+      other: new Map(),
+    };
+    const typeDays = new Map<string, Map<string, number>>();
     const sessionHeart = new Map<string, { total: number; count: number }>();
+    const pending: { workout: (typeof workouts)[number]; span: WorkoutSpan }[] = [];
     for (const workout of workouts) {
       const plain = workout.toJSON();
-      const day = isoDay(new Date(plain.startDate));
+      const startMs = new Date(plain.startDate).getTime();
+      const endMs = new Date(plain.endDate).getTime();
+      // totalEnergyBurned is not used. Minutes come from the workout duration.
       const length = minutes(plain.duration.quantity, plain.duration.unit);
-      const burned = plain.totalEnergyBurned?.quantity ?? 0;
-      if (length <= 0 && burned <= 0) {
+      if (length <= 0 || !Number.isFinite(startMs) || !Number.isFinite(endMs) || endMs <= startMs) {
         workout.dispose();
         continue;
       }
+      pending.push({
+        workout,
+        span: {
+          activityType: Number(plain.workoutActivityType),
+          startMs,
+          endMs,
+          durationMin: length,
+          sourceId: plain.sourceRevision?.source?.bundleIdentifier ?? '',
+        },
+      });
+    }
+    const kept = new Set(dedupeWorkouts(pending.map((item) => item.span)));
+    for (const item of pending) {
+      if (!kept.has(item.span)) {
+        item.workout.dispose();
+        continue;
+      }
+      const day = isoDay(new Date(item.span.startMs));
+      const length = item.span.durationMin;
       add(workoutDays, day, length);
-      const bucket = workoutBucket(Number(plain.workoutActivityType));
-      if (bucket === 'strength') add(strengthDays, day, length);
-      else if (bucket === 'cardio') add(cardioDays, day, length);
-      else add(otherDays, day, length);
+      const bucket = workoutBucket(item.span.activityType, overrides);
+      add(bucketDays[bucket], day, length);
+      const typeKind = workoutTypeKind(item.span.activityType);
+      const typeMap = typeDays.get(typeKind) ?? new Map<string, number>();
+      add(typeMap, day, length);
+      typeDays.set(typeKind, typeMap);
       try {
-        const stat = await workout.getStatistic('HKQuantityTypeIdentifierHeartRate', 'count/min');
+        const stat = await item.workout.getStatistic('HKQuantityTypeIdentifierHeartRate', 'count/min');
         const average = stat?.averageQuantity?.quantity;
         if (average != null && average > 30 && average < 230) {
           const current = sessionHeart.get(day) ?? { total: 0, count: 0 };
@@ -243,14 +271,24 @@ export async function syncAppleHealth(): Promise<HealthSyncResult> {
           sessionHeart.set(day, current);
         }
       } catch {
-        // A workout without a heart-rate statistic still counts for minutes.
+        // Heart rate is stored as its own reading. It does not choose the bucket.
       }
-      workout.dispose();
+      item.workout.dispose();
+    }
+    const touchedDays = new Set<string>(workoutDays.keys());
+    for (const day of touchedDays) {
+      for (const bucket of ['strength', 'cardio', 'conditioning', 'other'] as const) {
+        if (!bucketDays[bucket].has(day)) bucketDays[bucket].set(day, 0);
+      }
     }
     samples.push(...rows('workout_minutes', 'min', workoutDays, Math.round));
-    samples.push(...rows('strength_minutes', 'min', strengthDays, Math.round));
-    samples.push(...rows('cardio_minutes', 'min', cardioDays, Math.round));
-    samples.push(...rows('other_minutes', 'min', otherDays, Math.round));
+    samples.push(...rows('strength_minutes', 'min', bucketDays.strength, Math.round));
+    samples.push(...rows('cardio_minutes', 'min', bucketDays.cardio, Math.round));
+    samples.push(...rows('conditioning_minutes', 'min', bucketDays.conditioning, Math.round));
+    samples.push(...rows('other_minutes', 'min', bucketDays.other, Math.round));
+    for (const [kind, days] of typeDays) {
+      samples.push(...rows(kind as NewHealthSample['kind'], 'min', days, Math.round));
+    }
     const sessionDays = new Map<string, number>();
     for (const [day, stat] of sessionHeart) {
       if (stat.count > 0) sessionDays.set(day, stat.total / stat.count);

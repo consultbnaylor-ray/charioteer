@@ -14,7 +14,11 @@ import {
   whyCardioMatters,
   whyMinutesMatter,
   whyRestingMatters,
+  dedupeWorkouts,
+  rebucketStoredMinutes,
+  withWorkoutBucket,
   workoutBucket,
+  workoutTypeLabel,
   type FitnessSnapshotInput,
 } from '@/domain/fitnessSnapshot';
 
@@ -164,11 +168,58 @@ describe('fitness snapshot', () => {
     expect(denied.missing).toContain('Settings > Health > Data Access & Devices > Charioteer');
   });
 
-  it('sorts workout types into strength, cardio, and other', () => {
+  it('sorts workout types into strength, cardio, conditioning, and other', () => {
     expect(workoutBucket(50)).toBe('strength');
+    expect(workoutBucket(20)).toBe('strength');
+    expect(workoutBucket(59)).toBe('strength');
+    expect(workoutBucket(11)).toBe('strength');
     expect(workoutBucket(37)).toBe('cardio');
-    expect(workoutBucket(8)).toBe('cardio');
+    expect(workoutBucket(52)).toBe('cardio');
+    expect(workoutBucket(16)).toBe('cardio');
+    expect(workoutBucket(35)).toBe('cardio');
+    expect(workoutBucket(44)).toBe('cardio');
+    expect(workoutBucket(8)).toBe('conditioning');
+    expect(workoutBucket(63)).toBe('conditioning');
+    expect(workoutBucket(65)).toBe('conditioning');
+    expect(workoutBucket(73)).toBe('conditioning');
+    expect(workoutBucket(30)).toBe('conditioning');
+    expect(workoutBucket(28)).toBe('conditioning');
     expect(workoutBucket(57)).toBe('other');
+    expect(workoutBucket(66)).toBe('other');
+    expect(workoutBucket(62)).toBe('other');
+    expect(workoutTypeLabel(20)).toBe('Functional strength');
+    expect(workoutTypeLabel(73)).toBe('Mixed cardio');
+    expect(workoutBucket(73, { '73': 'strength' })).toBe('strength');
+    expect(withWorkoutBucket({}, 73, 'strength')).toEqual({ '73': 'strength' });
+    expect(withWorkoutBucket({ '73': 'strength' }, 73, 'conditioning')).toEqual({});
+  });
+
+  it('counts one session once when the Watch and another app both wrote it', () => {
+    const start = Date.parse('2026-10-17T10:00:00Z');
+    const minute = 60 * 1000;
+    const kept = dedupeWorkouts([
+      { activityType: 50, startMs: start, endMs: start + 45 * minute, durationMin: 40, sourceId: 'com.apple.health' },
+      { activityType: 73, startMs: start + 2 * minute, endMs: start + 47 * minute, durationMin: 45, sourceId: 'com.example.gym' },
+      { activityType: 37, startMs: start + 3 * 60 * minute, endMs: start + 4 * 60 * minute, durationMin: 50, sourceId: 'com.apple.health' },
+    ]);
+    expect(kept.map((row) => row.activityType)).toEqual([50, 37]);
+    expect(kept.reduce((sum, row) => sum + row.durationMin, 0)).toBe(90);
+  });
+
+  it('rebuilds bucket minutes from the stored workout types', () => {
+    const rows = rebucketStoredMinutes(
+      [
+        { kind: 'workout_type_20', value: 40, recordedOn: '2026-10-16' },
+        { kind: 'workout_type_73', value: 30, recordedOn: '2026-10-16' },
+        { kind: 'workout_type_16', value: 15, recordedOn: '2026-10-15' },
+      ],
+      { '73': 'strength' },
+    );
+    const on = (kind: string, day: string) => rows.find((row) => row.kind === kind && row.recordedOn === day)?.value;
+    expect(on('strength_minutes', '2026-10-16')).toBe(70);
+    expect(on('conditioning_minutes', '2026-10-16')).toBe(0);
+    expect(on('cardio_minutes', '2026-10-15')).toBe(15);
+    expect(on('strength_minutes', '2026-10-15')).toBe(0);
   });
 
   it('puts an actionable line into the health plan focus and the prompts', () => {
@@ -234,6 +285,14 @@ describe('fitness snapshot', () => {
     const migration = readFileSync('supabase/migrations/20261017120000_fitness_snapshot_kinds.sql', 'utf8');
     expect(migration).toContain("'vo2_max'");
     expect(migration).toContain("'strength_minutes'");
+    const buckets = readFileSync('supabase/migrations/20261017140000_workout_buckets.sql', 'utf8');
+    expect(buckets).toContain('conditioning_minutes');
+    expect(buckets).toContain('workout_type_');
+    expect(buckets).toContain('workout_buckets');
+    expect(buckets).not.toMatch(/drop table/i);
+    expect(sync).toContain('dedupeWorkouts');
+    expect(sync).toContain('does not choose the bucket');
+    expect(readFileSync('src/domain/healthStatTiles.ts', 'utf8')).toContain('MIX_HOW');
     const privacy = readFileSync('docs/privacy.md', 'utf8');
     expect(privacy).toContain('not used for advertising');
     expect(privacy).toContain('does not read blood oxygen');

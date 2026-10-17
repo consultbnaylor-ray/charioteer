@@ -32,7 +32,8 @@ import { Button, Card, T } from '@/ui/ui';
 const MIX = [
   ['strength', 'Strength', 'good'],
   ['cardio', 'Cardio', 'info'],
-  ['other', 'Other', 'watch'],
+  ['conditioning', 'Conditioning', 'watch'],
+  ['other', 'Other', 'attention'],
 ] as const;
 
 /**
@@ -486,7 +487,7 @@ function MixBar({ view }: { view: FitnessSnapshot }) {
   const theme = useAppTheme();
   const colors = statsToneColors(theme.scheme);
   const weeks = view.mix?.weeks ?? [];
-  const max = Math.max(1, ...weeks.map((week) => week.strength + week.cardio + week.other));
+  const max = Math.max(1, ...weeks.map((week) => week.strength + week.cardio + week.conditioning + week.other));
   return (
     <View style={{ gap: 8 }} accessibilityLabel={view.mix?.words}>
       <T variant="label">Sessions</T>
@@ -500,14 +501,15 @@ function MixBar({ view }: { view: FitnessSnapshot }) {
       </View>
       <View style={{ flexDirection: 'row', alignItems: 'flex-end', height: 72, gap: 4 }}>
         {weeks.map((week) => {
-          const total = week.strength + week.cardio + week.other;
+          const total = week.strength + week.cardio + week.conditioning + week.other;
           const height = Math.max(total > 0 ? 4 : 0, (total / max) * 72);
           return (
             <View key={week.label} style={{ flex: 1, alignItems: 'center', justifyContent: 'flex-end', height: 72 }}>
               <View style={{ width: '70%', maxWidth: 18, height, borderRadius: 2, overflow: 'hidden', justifyContent: 'flex-end' }}>
                 {total > 0 ? (
                   <>
-                    <View style={{ height: `${(week.other / total) * 100}%`, backgroundColor: colors.watch.ink }} />
+                    <View style={{ height: `${(week.other / total) * 100}%`, backgroundColor: colors.attention.ink }} />
+                    <View style={{ height: `${(week.conditioning / total) * 100}%`, backgroundColor: colors.watch.ink }} />
                     <View style={{ height: `${(week.cardio / total) * 100}%`, backgroundColor: colors.info.ink }} />
                     <View style={{ height: `${(week.strength / total) * 100}%`, backgroundColor: colors.good.ink }} />
                   </>

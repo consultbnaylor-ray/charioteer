@@ -6,7 +6,15 @@
  */
 
 import { bodyFatRange } from '@/domain/distance';
-import { buildFitnessSnapshot, VO2_WHAT } from '@/domain/fitnessSnapshot';
+import {
+  activityTypeFromKind,
+  buildFitnessSnapshot,
+  CONDITIONING_NOTE,
+  MIX_HOW,
+  VO2_WHAT,
+  workoutBucket,
+  workoutTypeLabel,
+} from '@/domain/fitnessSnapshot';
 import { goalBandLegend, goalWeightRange, IBA_RULES_URL, NO_CUT } from '@/domain/goalWeightRange';
 import {
   BHF_HEART_RATE_URL,
@@ -31,9 +39,12 @@ import {
   parseBodyFatPct,
   parseLeanMassKg,
   WAIST_HEIGHT_HEALTHY,
+  WORKOUT_BUCKETS,
   type BodyBuild,
   type NutritionGoal,
   type NutritionSex,
+  type WorkoutBucket,
+  type WorkoutBucketMap,
 } from '@/domain/nutrition';
 import { STATS_SIGNAL, type StatsTone } from '@/domain/statsOverview';
 
@@ -239,6 +250,8 @@ export type HealthStatBoardInput = {
   goalSex: NutritionSex | null;
   goal: NutritionGoal | null;
   build: BodyBuild | null;
+  /** Saved workout-type choices. Empty uses the default mapping. */
+  workoutBuckets?: WorkoutBucketMap;
 };
 
 export type HealthStatVisual =
@@ -293,6 +306,8 @@ export type HealthStatTile = {
   sourceUrl: string | null;
   extraSourceName?: string | null;
   extraSourceUrl?: string | null;
+  /** Per workout type, last 28 days. Present on the mix tile when types were stored. */
+  breakdown?: { activityType: number; label: string; minutes: number; bucket: WorkoutBucket }[];
 };
 
 export type HealthStatSection = {
@@ -544,46 +559,85 @@ function vo2Tile(item: CatalogItem, input: HealthStatBoardInput, grown: boolean)
   });
 }
 
+function mixTotals(input: HealthStatBoardInput, start: string): {
+  buckets: Record<WorkoutBucket, number>;
+  breakdown: { activityType: number; label: string; minutes: number; bucket: WorkoutBucket }[];
+} {
+  const byType = new Map<number, number>();
+  for (const sample of input.samples) {
+    const activityType = activityTypeFromKind(sample.kind);
+    if (activityType == null || sample.recordedOn < start || sample.recordedOn > input.today) continue;
+    if (!Number.isFinite(sample.value) || sample.value <= 0) continue;
+    byType.set(activityType, (byType.get(activityType) ?? 0) + sample.value);
+  }
+  const buckets: Record<WorkoutBucket, number> = { strength: 0, cardio: 0, conditioning: 0, other: 0 };
+  if (byType.size > 0) {
+    const breakdown = [...byType.entries()]
+      .map(([activityType, minutes]) => ({
+        activityType,
+        label: workoutTypeLabel(activityType),
+        minutes: Math.round(minutes),
+        bucket: workoutBucket(activityType, input.workoutBuckets),
+      }))
+      .filter((row) => row.minutes > 0)
+      .sort((left, right) => right.minutes - left.minutes || left.label.localeCompare(right.label));
+    for (const row of breakdown) buckets[row.bucket] += row.minutes;
+    return { buckets, breakdown };
+  }
+  for (const bucket of WORKOUT_BUCKETS) {
+    const kind = bucket === 'strength'
+      ? 'strength_minutes'
+      : bucket === 'cardio'
+        ? 'cardio_minutes'
+        : bucket === 'conditioning'
+          ? 'conditioning_minutes'
+          : 'other_minutes';
+    buckets[bucket] = sumBetween(series(input.samples, kind, input.today), start, input.today);
+  }
+  return { buckets, breakdown: [] };
+}
+
 function mixTile(item: CatalogItem, input: HealthStatBoardInput): HealthStatTile | null {
   const start = shiftDay(input.today, -27);
-  const strength = sumBetween(series(input.samples, 'strength_minutes', input.today), start, input.today);
-  const cardio = sumBetween(series(input.samples, 'cardio_minutes', input.today), start, input.today);
-  const other = sumBetween(series(input.samples, 'other_minutes', input.today), start, input.today);
-  if (strength + cardio + other <= 0) return null;
-  const total = strength + cardio + other;
-  const parts = [
-    { name: 'strength', value: strength },
-    { name: 'cardio', value: cardio },
-    { name: 'other', value: other },
-  ].sort((left, right) => right.value - left.value);
+  const { buckets, breakdown } = mixTotals(input, start);
+  const strength = buckets.strength;
+  const cardio = buckets.cardio;
+  const conditioning = buckets.conditioning;
+  const other = buckets.other;
+  const total = strength + cardio + conditioning + other;
+  if (total <= 0) return null;
+  const parts = WORKOUT_BUCKETS.map((name) => ({ name, value: buckets[name] })).sort((left, right) => right.value - left.value);
   const even = parts[0].value === parts[1].value;
   const share = Math.round((parts[0].value / total) * 100);
   const status = even
     ? 'An even mix. There is no guideline mix.'
     : `Mostly ${parts[0].name}, about ${share}%. There is no guideline mix.`;
+  const listed = breakdown.map((row) => `${row.label} ${whole(row.minutes)} min`).join(', ');
   return finish(item, {
     valueText: whole(total),
     unit: 'min',
     status,
     tone: 'info',
-    trend: null,
+    trend: MIX_HOW,
     hasGuideline: false,
     visual: {
       kind: 'bars',
-      max: Math.max(strength, cardio, other, 1),
+      max: Math.max(strength, cardio, conditioning, other, 1),
       caption: 'Last 28 days',
       bars: [
-        { key: 'strength', label: `Strength ${whole(strength)} min`, value: strength, tone: 'info' },
+        { key: 'strength', label: `Strength ${whole(strength)} min`, value: strength, tone: 'good' },
         { key: 'cardio', label: `Cardio ${whole(cardio)} min`, value: cardio, tone: 'info' },
+        { key: 'conditioning', label: `Conditioning ${whole(conditioning)} min`, value: conditioning, tone: 'watch' },
         { key: 'other', label: `Other ${whole(other)} min`, value: other, tone: 'info' },
       ],
     },
     history: [],
-    about: 'Strength, cardio, and other: minutes logged in each kind of workout over the last 28 days.',
-    meaning: status,
-    rangeNote: 'There is no guideline mix.',
+    about: `Strength, cardio, conditioning, and other: minutes from the workout type recorded over the last 28 days. ${MIX_HOW} ${CONDITIONING_NOTE} Overlapping workouts from more than one app are counted once. The minutes are the workout duration, not time in a heart-rate zone.`,
+    meaning: listed ? `${listed}. ${CONDITIONING_NOTE}` : `${status} ${CONDITIONING_NOTE}`,
+    rangeNote: 'There is no guideline mix. You can count a workout type as strength, cardio, conditioning, or other. That choice stays on your account.',
     sourceName: null,
     sourceUrl: null,
+    breakdown,
   });
 }
 
@@ -971,12 +1025,14 @@ function weeklyTile(item: CatalogItem, input: HealthStatBoardInput): HealthStatT
   const workouts = series(input.samples, 'workout_minutes', input.today);
   const strength = series(input.samples, 'strength_minutes', input.today);
   const cardio = series(input.samples, 'cardio_minutes', input.today);
+  const conditioning = series(input.samples, 'conditioning_minutes', input.today);
   const other = series(input.samples, 'other_minutes', input.today);
-  if (workouts.length + strength.length + cardio.length + other.length === 0) return null;
+  if (workouts.length + strength.length + cardio.length + conditioning.length + other.length === 0) return null;
   const weekStart = shiftDay(input.today, -6);
   const workoutWeek = sumBetween(workouts, weekStart, input.today);
   const mixWeek = sumBetween(strength, weekStart, input.today)
     + sumBetween(cardio, weekStart, input.today)
+    + sumBetween(conditioning, weekStart, input.today)
     + sumBetween(other, weekStart, input.today);
   const minutes = workouts.length > 0 ? workoutWeek : mixWeek;
   const rounded = Math.round(minutes);
@@ -991,7 +1047,7 @@ function weeklyTile(item: CatalogItem, input: HealthStatBoardInput): HealthStatT
         ? '1 minute to 150'
         : `${left} minutes to 150`;
   const scaleMax = Math.max(300, rounded + 20);
-  const history = workouts.length > 0 ? workouts : mergeDays([strength, cardio, other]);
+  const history = workouts.length > 0 ? workouts : mergeDays([strength, cardio, conditioning, other]);
   return finish(item, {
     valueText: whole(rounded),
     unit: 'min this week',

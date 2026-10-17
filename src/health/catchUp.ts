@@ -29,7 +29,7 @@ export function catchUpAppleHealthReads(repo: HealthSink): Promise<HealthCatchUp
 async function runCatchUp(repo: HealthSink): Promise<HealthCatchUp> {
   const status = await ensureCurrentAppleHealthReads();
   if (status !== 'requested') return { status, imported: false, syncedAt: null };
-  const result = await syncAppleHealth();
+  const result = await syncAppleHealth(repo.getSnapshot().nutrition.workoutBuckets);
   if (!result.ok) return { status, imported: false, syncedAt: null };
   await repo.saveHealth(result.samples);
   for (const row of result.composition ?? []) {

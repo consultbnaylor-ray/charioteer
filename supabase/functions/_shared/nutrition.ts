@@ -118,9 +118,43 @@ export type NutritionSettings = {
   wagonVisible: boolean;
   /** Null until they choose one. Muscular turns BMI category labels off. Carrying extra weight keeps them on. */
   build: BodyBuild | null;
+  /**
+   * Workout type numbers the person has moved, such as { "73": "strength" }.
+   * Empty until they change one. The default mapping stays in code.
+   */
+  workoutBuckets: WorkoutBucketMap;
   /** When this settings row was last written. Null until a row exists. */
   updatedAt: string | null;
 };
+
+export const WORKOUT_BUCKETS = ['strength', 'cardio', 'conditioning', 'other'] as const;
+export type WorkoutBucket = (typeof WORKOUT_BUCKETS)[number];
+/** Keys are HealthKit workout activity type numbers. */
+export type WorkoutBucketMap = Partial<Record<string, WorkoutBucket>>;
+
+export const WORKOUT_BUCKET_LABEL: Record<WorkoutBucket, string> = {
+  strength: 'Strength',
+  cardio: 'Cardio',
+  conditioning: 'Conditioning',
+  other: 'Other',
+};
+
+export function isWorkoutBucket(value: string): value is WorkoutBucket {
+  return (WORKOUT_BUCKETS as readonly string[]).includes(value);
+}
+
+/** Drop unknown keys. A choice that matches the default is not stored. */
+export function parseWorkoutBuckets(value: unknown, isDefault?: (activityType: number, bucket: WorkoutBucket) => boolean): WorkoutBucketMap {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+  const next: WorkoutBucketMap = {};
+  for (const [key, bucket] of Object.entries(value as Record<string, unknown>)) {
+    if (!/^[1-9][0-9]{0,3}$/.test(key) || typeof bucket !== 'string' || !isWorkoutBucket(bucket)) continue;
+    const activityType = Number(key);
+    if (isDefault?.(activityType, bucket)) continue;
+    next[key] = bucket;
+  }
+  return next;
+}
 
 export type NutritionDay = { day: string; waterMl: number };
 
@@ -220,6 +254,7 @@ export function defaultNutritionSettings(): NutritionSettings {
     wagonNote: '',
     wagonVisible: false,
     build: null,
+    workoutBuckets: {},
     updatedAt: null,
   };
 }

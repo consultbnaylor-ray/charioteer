@@ -7,7 +7,16 @@
  * not a medical assessment.
  */
 import { shiftDay } from './healthInsights.ts';
-import { CARRYING_FITNESS_NOTE, GOAL_LABEL, type BodyBuild, type NutritionGoal, type NutritionSex } from './nutrition.ts';
+import {
+  CARRYING_FITNESS_NOTE,
+  GOAL_LABEL,
+  WORKOUT_BUCKETS,
+  type BodyBuild,
+  type NutritionGoal,
+  type NutritionSex,
+  type WorkoutBucket,
+  type WorkoutBucketMap,
+} from './nutrition.ts';
 
 export type FitnessLevel = 'Developing' | 'Steady' | 'Strong';
 
@@ -69,6 +78,7 @@ export type FitnessWeekMix = {
   label: string;
   strength: number;
   cardio: number;
+  conditioning: number;
   other: number;
 };
 
@@ -170,16 +180,194 @@ const WOMEN = [
   { maxAge: 79, p25: 15.6, p75: 20.8 },
 ] as const;
 
-const STRENGTH_TYPES = new Set([20, 50, 59]);
-const CARDIO_TYPES = new Set([
-  8, 11, 13, 16, 24, 28, 30, 35, 37, 44, 46, 52, 53, 60, 63, 64, 65, 68, 69, 73, 74, 77, 82,
-]);
+/**
+ * HealthKit workout activity types.
+ * Strength: traditional strength, functional strength, core training, cross training.
+ * Conditioning: HIIT, mixed cardio, boxing, kickboxing, martial arts. Shown on their own.
+ * Cardio: steady aerobic work such as running, walking, cycling, rowing, and machines.
+ * Heart rate and VO2 max are not used.
+ */
+const STRENGTH_TYPES = new Set([11, 20, 50, 59]);
+const CONDITIONING_TYPES = new Set([8, 28, 30, 63, 65, 73]);
+const CARDIO_TYPES = new Set([13, 16, 24, 35, 37, 44, 46, 52, 53, 60, 64, 68, 69, 70, 71, 74, 77, 82]);
 
-/** Strength, cardio, or other. Combat sports count as conditioning, not as a third plan. */
-export function workoutBucket(activityType: number): 'strength' | 'cardio' | 'other' {
+export const WORKOUT_TYPE_LABEL: Record<number, string> = {
+  1: 'American football',
+  2: 'Archery',
+  3: 'Australian football',
+  4: 'Badminton',
+  5: 'Baseball',
+  6: 'Basketball',
+  7: 'Bowling',
+  8: 'Boxing',
+  9: 'Climbing',
+  10: 'Cricket',
+  11: 'Cross training',
+  12: 'Curling',
+  13: 'Cycling',
+  14: 'Dance',
+  16: 'Elliptical',
+  20: 'Functional strength',
+  21: 'Golf',
+  24: 'Hiking',
+  28: 'Martial arts',
+  29: 'Mind and body',
+  30: 'Mixed cardio',
+  35: 'Rowing',
+  37: 'Running',
+  44: 'Stair climber',
+  46: 'Swimming',
+  50: 'Traditional strength',
+  52: 'Walking',
+  57: 'Yoga',
+  58: 'Barre',
+  59: 'Core training',
+  62: 'Flexibility',
+  63: 'HIIT',
+  64: 'Jump rope',
+  65: 'Kickboxing',
+  66: 'Pilates',
+  68: 'Stairs',
+  69: 'Step training',
+  72: 'Tai chi',
+  73: 'Mixed cardio',
+  74: 'Hand cycling',
+  77: 'Cardio dance',
+  80: 'Cooldown',
+  82: 'Swim, bike, run',
+};
+
+/** One line on the mix card. The split follows the saved workout type. */
+export const MIX_HOW = 'Based on the workout type your Watch or app recorded, not heart rate.';
+
+export const CONDITIONING_NOTE =
+  'Conditioning is HIIT, mixed cardio, boxing, kickboxing, and martial arts. It is shown on its own, not inside cardio.';
+
+export function workoutTypeLabel(activityType: number): string {
+  return WORKOUT_TYPE_LABEL[activityType] ?? `Workout type ${activityType}`;
+}
+
+export function defaultWorkoutBucket(activityType: number): WorkoutBucket {
   if (STRENGTH_TYPES.has(activityType)) return 'strength';
+  if (CONDITIONING_TYPES.has(activityType)) return 'conditioning';
   if (CARDIO_TYPES.has(activityType)) return 'cardio';
   return 'other';
+}
+
+/** The person's saved choice wins. Anything else uses the default type. */
+export function workoutBucket(activityType: number, overrides?: WorkoutBucketMap | null): WorkoutBucket {
+  const chosen = overrides?.[String(activityType)];
+  if (chosen === 'strength' || chosen === 'cardio' || chosen === 'conditioning' || chosen === 'other') return chosen;
+  return defaultWorkoutBucket(activityType);
+}
+
+/** Store a choice only when it differs from the default type. */
+export function withWorkoutBucket(current: WorkoutBucketMap | null | undefined, activityType: number, bucket: WorkoutBucket): WorkoutBucketMap {
+  const next: WorkoutBucketMap = { ...(current ?? {}) };
+  const key = String(activityType);
+  if (!/^[1-9][0-9]{0,3}$/.test(key)) return next;
+  if (defaultWorkoutBucket(activityType) === bucket) delete next[key];
+  else next[key] = bucket;
+  return next;
+}
+
+export function workoutTypeKind(activityType: number): `workout_type_${number}` {
+  return `workout_type_${activityType}`;
+}
+
+export function activityTypeFromKind(kind: string): number | null {
+  const match = /^workout_type_([1-9][0-9]{0,3})$/.exec(kind);
+  if (!match) return null;
+  const activityType = Number(match[1]);
+  return activityType >= 1 && activityType <= 3000 ? activityType : null;
+}
+
+export type WorkoutSpan = {
+  activityType: number;
+  startMs: number;
+  endMs: number;
+  /** HealthKit workout duration, in minutes. Paused time is not added on top. */
+  durationMin: number;
+  /** App that wrote the workout. Empty when Health did not say. */
+  sourceId: string;
+};
+
+const MIN_OVERLAP_MS = 2 * 60 * 1000;
+
+function overlapsHeavily(left: WorkoutSpan, right: WorkoutSpan): boolean {
+  const overlap = Math.min(left.endMs, right.endMs) - Math.max(left.startMs, right.startMs);
+  if (overlap < MIN_OVERLAP_MS) return false;
+  const shorter = Math.min(Math.max(left.endMs - left.startMs, 1), Math.max(right.endMs - right.startMs, 1));
+  return overlap >= shorter * 0.5;
+}
+
+function appleSource(sourceId: string): boolean {
+  return sourceId.toLowerCase().startsWith('com.apple.');
+}
+
+function preferWorkout<T extends WorkoutSpan>(left: T, right: T): T {
+  const leftApple = appleSource(left.sourceId);
+  const rightApple = appleSource(right.sourceId);
+  if (leftApple !== rightApple) {
+    const apple = leftApple ? left : right;
+    const other = leftApple ? right : left;
+    if (apple.durationMin >= other.durationMin * 0.5) return apple;
+    return other;
+  }
+  if (right.durationMin > left.durationMin) return right;
+  return left;
+}
+
+/**
+ * One session written by the Watch and again by another app counts once.
+ * A brief overlap, such as finishing one session and starting the next, stays as two.
+ */
+export function dedupeWorkouts<T extends WorkoutSpan>(sessions: readonly T[]): T[] {
+  const ordered = [...sessions].sort((left, right) => left.startMs - right.startMs || right.durationMin - left.durationMin);
+  const kept: T[] = [];
+  for (const session of ordered) {
+    if (session.durationMin <= 0 || session.endMs <= session.startMs) continue;
+    const index = kept.findIndex((other) => overlapsHeavily(session, other));
+    if (index < 0) kept.push(session);
+    else kept[index] = preferWorkout(kept[index], session);
+  }
+  return kept;
+}
+
+const BUCKET_KIND = {
+  strength: 'strength_minutes',
+  cardio: 'cardio_minutes',
+  conditioning: 'conditioning_minutes',
+  other: 'other_minutes',
+} as const;
+
+/** Rebuild the daily bucket totals from stored per-type minutes. Days with no type stay as they were. */
+export function rebucketStoredMinutes(
+  samples: readonly { kind: string; value: number; recordedOn: string }[],
+  overrides?: WorkoutBucketMap | null,
+): { kind: (typeof BUCKET_KIND)[WorkoutBucket]; value: number; recordedOn: string; unit: 'min'; source: 'healthkit' }[] {
+  const days = new Map<string, Record<WorkoutBucket, number>>();
+  for (const sample of samples) {
+    const activityType = activityTypeFromKind(sample.kind);
+    if (activityType == null || !Number.isFinite(sample.value) || sample.value <= 0) continue;
+    const bucket = workoutBucket(activityType, overrides);
+    const row = days.get(sample.recordedOn) ?? { strength: 0, cardio: 0, conditioning: 0, other: 0 };
+    row[bucket] += sample.value;
+    days.set(sample.recordedOn, row);
+  }
+  const written: { kind: (typeof BUCKET_KIND)[WorkoutBucket]; value: number; recordedOn: string; unit: 'min'; source: 'healthkit' }[] = [];
+  for (const [recordedOn, row] of days) {
+    for (const bucket of WORKOUT_BUCKETS) {
+      written.push({
+        kind: BUCKET_KIND[bucket],
+        value: Math.round(row[bucket]),
+        recordedOn,
+        unit: 'min',
+        source: 'healthkit',
+      });
+    }
+  }
+  return written;
 }
 
 function avg(values: number[]): number | null {
@@ -330,13 +518,15 @@ export function buildFitnessSnapshot(input: FitnessSnapshotInput): FitnessSnapsh
   const workoutMinutes = sumKind(input.health, 'workout_minutes', weekStart, today);
   const mixWeek = sumKind(input.health, 'strength_minutes', weekStart, today)
     + sumKind(input.health, 'cardio_minutes', weekStart, today)
+    + sumKind(input.health, 'conditioning_minutes', weekStart, today)
     + sumKind(input.health, 'other_minutes', weekStart, today);
   const minutes = workoutMinutes > 0 ? workoutMinutes : mixWeek;
   const monthStart = shiftDay(today, -27);
   const strength = sumKind(input.health, 'strength_minutes', monthStart, today);
   const cardioMin = sumKind(input.health, 'cardio_minutes', monthStart, today);
+  const conditioning = sumKind(input.health, 'conditioning_minutes', monthStart, today);
   const other = sumKind(input.health, 'other_minutes', monthStart, today);
-  const mixTotal = strength + cardioMin + other;
+  const mixTotal = strength + cardioMin + conditioning + other;
   const restingSplit = halves(resting);
   const sleepSplit = halves(sleep);
   const hrvSplit = halves(hrv);
@@ -405,8 +595,8 @@ export function buildFitnessSnapshot(input: FitnessSnapshotInput): FitnessSnapsh
   } : null;
 
   const weeks = mixWeeks(input.health, today);
-  const mix = weeks.some((week) => week.strength + week.cardio + week.other > 0)
-    ? { weeks, words: mixWords(strength, cardioMin, other) }
+  const mix = weeks.some((week) => week.strength + week.cardio + week.conditioning + week.other > 0)
+    ? { weeks, words: mixWords(strength, cardioMin, conditioning, other) }
     : null;
 
   const recovery = recoveryView({
@@ -426,6 +616,7 @@ export function buildFitnessSnapshot(input: FitnessSnapshotInput): FitnessSnapsh
     easier,
     strength,
     cardio: cardioMin,
+    conditioning,
     total: mixTotal,
     minutes,
     schedule: input.scheduleWeekMinutes,
@@ -544,19 +735,26 @@ function mixWeeks(samples: readonly FitnessSample[], today: string): FitnessWeek
       label: index === 0 ? 'Now' : `${index}w`,
       strength: Math.round(sumKind(samples, 'strength_minutes', start, end)),
       cardio: Math.round(sumKind(samples, 'cardio_minutes', start, end)),
+      conditioning: Math.round(sumKind(samples, 'conditioning_minutes', start, end)),
       other: Math.round(sumKind(samples, 'other_minutes', start, end)),
     });
   }
-  const first = weeks.findIndex((week) => week.strength + week.cardio + week.other > 0);
+  const first = weeks.findIndex((week) => week.strength + week.cardio + week.conditioning + week.other > 0);
   return first <= 0 ? weeks : weeks.slice(first);
 }
 
-function mixWords(strength: number, cardio: number, other: number): string {
-  const total = strength + cardio + other;
+function mixWords(strength: number, cardio: number, conditioning: number, other: number): string {
+  const total = strength + cardio + conditioning + other;
   if (total <= 0) return 'No split of strength and cardio yet.';
   const share = (part: number) => Math.round((part / total) * 100);
-  const leader = strength >= cardio && strength >= other ? 'strength' : cardio >= other ? 'cardio' : 'other';
-  return `Recent weeks are mostly ${leader}. Strength ${share(strength)}%, cardio ${share(cardio)}%, other ${share(other)}%.`;
+  const parts = [
+    ['strength', strength],
+    ['cardio', cardio],
+    ['conditioning', conditioning],
+    ['other', other],
+  ] as const;
+  const leader = [...parts].sort((left, right) => right[1] - left[1])[0]?.[0] ?? 'strength';
+  return `Recent weeks are mostly ${leader}. Strength ${share(strength)}%, cardio ${share(cardio)}%, conditioning ${share(conditioning)}%, other ${share(other)}%. ${CONDITIONING_NOTE}`;
 }
 
 function recoveryView(input: {
@@ -606,6 +804,7 @@ function recommend(input: {
   easier: boolean;
   strength: number;
   cardio: number;
+  conditioning: number;
   total: number;
   minutes: number;
   schedule: number | null;
@@ -623,9 +822,10 @@ function recommend(input: {
     add('Keep the sessions you already do, and make this an easier week.', true);
     return lines;
   }
-  const cardioShare = input.total > 0 ? input.cardio / input.total : null;
+  const aerobic = input.cardio + input.conditioning;
+  const cardioShare = input.total > 0 ? aerobic / input.total : null;
   const strengthShare = input.total > 0 ? input.strength / input.total : null;
-  const lowCardio = cardioShare != null && cardioShare < 0.2 && input.strength > input.cardio && input.total >= 30;
+  const lowCardio = cardioShare != null && cardioShare < 0.2 && input.strength > aerobic && input.total >= 30;
   const goal = input.goal;
   const boxer = goal === 'elite_heavy_boxer' || goal === 'elite_middle_boxer';
   if (boxer && (lowCardio || input.belowGoal)) {
@@ -635,7 +835,7 @@ function recommend(input: {
   } else if (goal === 'lose_fat_build_muscle' && lowCardio) {
     add(EASY_BESIDE_STRENGTH, true);
     add(SLEEP_PROTEIN, true);
-  } else if (goal === 'lose_fat_build_muscle' && strengthShare != null && strengthShare < 0.2 && input.cardio > input.strength && input.total >= 30) {
+  } else if (goal === 'lose_fat_build_muscle' && strengthShare != null && strengthShare < 0.2 && aerobic > input.strength && input.total >= 30) {
     add('Add one strength session beside the work you already do.', true);
   } else if ((goal === 'increase' || goal === 'body_builder') && strengthShare != null && strengthShare < 0.25 && input.total >= 30) {
     add('Add one strength session beside the work you already do.', true);
