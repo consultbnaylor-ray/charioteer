@@ -1,13 +1,14 @@
 import { Image } from 'expo-image';
 import { useEffect, useState, type ReactNode, type RefObject } from 'react';
 import { Pressable, View } from 'react-native';
-import Svg, { Circle } from 'react-native-svg';
+import Svg, { Circle, Path } from 'react-native-svg';
 
 import {
   TODAY_MEALS_EMPTY,
   mealChartStartsOpen,
   todayMealTotalLine,
   todayMealsNeedCollapse,
+  type LoggedProteinRing,
   type TodayMealRow,
   type TodayMealTotals,
   type TodayRing,
@@ -16,7 +17,7 @@ import { MealBreakdown } from '@/ui/MealNutrientBars';
 import { useAppTheme } from '@/ui/theme';
 import { T } from '@/ui/ui';
 
-function MonoRing({ fill, label }: { fill: number; label: string }) {
+function MonoRing({ fill }: { fill: number }) {
   const theme = useAppTheme();
   const ring = 56;
   const stroke = 6;
@@ -25,7 +26,7 @@ function MonoRing({ fill, label }: { fill: number; label: string }) {
   const shown = Math.max(0, Math.min(1, fill));
   const mid = ring / 2;
   return (
-    <View accessibilityLabel={label} style={{ width: ring, height: ring }}>
+    <View accessibilityElementsHidden importantForAccessibility="no-hide-descendants" style={{ width: ring, height: ring }}>
       <Svg width={ring} height={ring}>
         <Circle cx={mid} cy={mid} r={radius} stroke={theme.colors.line} strokeWidth={stroke} fill="none" />
         {shown > 0 ? (
@@ -46,11 +47,38 @@ function MonoRing({ fill, label }: { fill: number; label: string }) {
   );
 }
 
+/** Ink tick beside "Protein target met". The words already name it. */
+function ProteinTick() {
+  const theme = useAppTheme();
+  return (
+    <View accessibilityElementsHidden importantForAccessibility="no-hide-descendants" style={{ width: 22, height: 22 }}>
+      <Svg width={22} height={22} viewBox="0 0 24 24" fill="none">
+        <Path d="M5 12.5 9.2 16.7 19 7" stroke={theme.colors.ink} strokeWidth={2.4} strokeLinecap="round" strokeLinejoin="round" fill="none" />
+      </Svg>
+    </View>
+  );
+}
+
+function RingLine({ fill, status, tick }: { fill: number; status: string; tick: boolean }) {
+  return (
+    <View
+      accessible
+      accessibilityLabel={status}
+      style={{ flexDirection: 'row', alignItems: 'center', gap: 12, flexGrow: 1, flexShrink: 1, flexBasis: '46%', minWidth: 200 }}
+    >
+      <MonoRing fill={fill} />
+      {tick ? <ProteinTick /> : null}
+      <T style={{ flex: 1 }}>{status}</T>
+    </View>
+  );
+}
+
 export function TodayMeals({
   rows,
   totals,
   hideCalories,
   ring,
+  protein = null,
   activeId,
   onOpen,
   activeTools,
@@ -62,6 +90,8 @@ export function TodayMeals({
   totals: TodayMealTotals;
   hideCalories: boolean;
   ring: TodayRing | null;
+  /** Protein still to eat, using the same target as the day bar. */
+  protein?: LoggedProteinRing | null;
   activeId: string | null;
   onOpen: (id: string) => void;
   activeTools: ReactNode;
@@ -95,10 +125,10 @@ export function TodayMeals({
       )}
       {!bare && rows.length === 0 ? <T variant="muted">{TODAY_MEALS_EMPTY}</T> : null}
       {total ? <T>{total}</T> : null}
-      {ring ? (
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-          <MonoRing fill={ring.fill} label={ring.status} />
-          <T style={{ flex: 1 }}>{ring.status}</T>
+      {ring || protein ? (
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 12 }}>
+          {ring ? <RingLine fill={ring.fill} status={ring.status} tick={false} /> : null}
+          {protein ? <RingLine fill={protein.fill} status={protein.status} tick={protein.met} /> : null}
         </View>
       ) : null}
       {shown ? rows.map((row, index) => {

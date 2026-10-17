@@ -749,6 +749,36 @@ export function todayRing(input: {
   return { kind, value, target: usableTarget, fill, centre, unit, caption, status };
 }
 
+export const PROTEIN_TARGET_MET = 'Protein target met';
+
+export type LoggedProteinRing = {
+  /** Share of the ring to fill, from 0 to 1. A met target fills the ring. */
+  fill: number;
+  /** "55.7 g protein left", or the met line once nothing is left. */
+  status: string;
+  met: boolean;
+};
+
+/**
+ * Protein still to eat today, against the same target as the day bar.
+ * A met or passed target is the met line, never a negative remainder.
+ */
+export function loggedProteinRing(input: {
+  proteinG: number;
+  proteinTarget: number | null;
+}): LoggedProteinRing | null {
+  const target = input.proteinTarget != null && input.proteinTarget > 0 ? input.proteinTarget : null;
+  if (target == null) return null;
+  const eaten = Number.isFinite(input.proteinG) && input.proteinG > 0 ? input.proteinG : 0;
+  const left = Math.round((target - eaten) * 10) / 10;
+  if (left <= 0) return { fill: 1, status: PROTEIN_TARGET_MET, met: true };
+  return {
+    fill: Math.max(0, Math.min(1, eaten / target)),
+    status: `${formatGrams(left)} g protein left`,
+    met: false,
+  };
+}
+
 export const TODAY_MEALS_EMPTY = 'No meals logged yet today';
 
 /** A longer list starts closed. Five meals still fit on the card. */

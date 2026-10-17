@@ -52,6 +52,7 @@ import {
   sumItems,
   targetLine,
   TODAY_MEALS_EMPTY,
+  loggedProteinRing,
   todayMealRows,
   todayMealTotals,
   todayRing,
@@ -987,6 +988,9 @@ export default function Nutrition() {
       logged: true,
     })
     : null;
+  const proteinRing = mealRows.length > 0
+    ? loggedProteinRing({ proteinG: mealTotals.proteinG, proteinTarget: settings.proteinTarget })
+    : null;
   const summaryLog = editAnchor === 'summary'
     ? snap.foodLogs.find((log) => log.id === editingId || log.id === confirmId) ?? null
     : null;
@@ -1115,6 +1119,7 @@ export default function Nutrition() {
                 totals={mealTotals}
                 hideCalories={hide}
                 ring={calorieRing}
+                protein={proteinRing}
                 activeId={summaryLog?.id ?? null}
                 highlightId={revealId}
                 rowRef={savedRowRef}

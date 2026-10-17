@@ -91,6 +91,8 @@ import {
   RECENT_MEAL_WINDOW_MS,
   TODAY_MEALS_EMPTY,
   recentDuplicateMeal,
+  loggedProteinRing,
+  PROTEIN_TARGET_MET,
   todayMealRows,
   todayMealTotalLine,
   todayMealTotals,
@@ -1577,6 +1579,48 @@ describe("today's meals on the log card", () => {
     expect(mealDayGroups([
       log({ eatenOn: today, meal: 'snack', items: [item({ name: 'Apple', kcal: 80 })] }),
     ], today, '')).toEqual([]);
+  });
+
+  it('puts protein left beside the calorie ring, and a tick once the target is met', () => {
+    const short = loggedProteinRing({ proteinG: 84.3, proteinTarget: 140 });
+    expect(short).toEqual({ fill: 84.3 / 140, status: '55.7 g protein left', met: false });
+    expect(loggedProteinRing({ proteinG: 0, proteinTarget: 140 })).toEqual({
+      fill: 0,
+      status: '140 g protein left',
+      met: false,
+    });
+    expect(loggedProteinRing({ proteinG: 140, proteinTarget: 140 })).toEqual({
+      fill: 1,
+      status: PROTEIN_TARGET_MET,
+      met: true,
+    });
+    const over = loggedProteinRing({ proteinG: 160.4, proteinTarget: 140 });
+    expect(over).toEqual({ fill: 1, status: PROTEIN_TARGET_MET, met: true });
+    expect(over?.status).not.toMatch(/-/);
+    expect(loggedProteinRing({ proteinG: 40, proteinTarget: null })).toBeNull();
+    expect(loggedProteinRing({ proteinG: 40, proteinTarget: 0 })).toBeNull();
+
+    const today = '2026-10-17';
+    const groups = mealDayGroups([
+      log({ eatenOn: today, meal: 'breakfast', items: [item({ name: 'Eggs', kcal: 1250, proteinG: 84.3 })] }),
+    ], today, 'user', { kcalTarget: 2000, proteinTarget: 140 });
+    expect(groups[0]?.bars.find((bar) => bar.key === 'protein')?.label).toBe('Protein 84.3 of 140 g');
+    expect(loggedProteinRing({
+      proteinG: groups[0]?.proteinG ?? 0,
+      proteinTarget: 140,
+    })?.status).toBe('55.7 g protein left');
+
+    const screen = readFileSync('src/app/(main)/nutrition.tsx', 'utf8');
+    const meals = readFileSync('src/ui/TodayMeals.tsx', 'utf8');
+    expect(screen).toContain('loggedProteinRing({ proteinG: mealTotals.proteinG, proteinTarget: settings.proteinTarget })');
+    expect(screen).toContain('protein={proteinRing}');
+    expect(meals).toContain("flexWrap: 'wrap'");
+    expect(meals).toContain('minWidth: 200');
+    expect(meals).toContain('tick={protein.met}');
+    expect(meals).toContain('theme.colors.ink');
+    expect(meals).not.toContain('statsTone');
+    expect(meals).not.toContain('statsPalette');
+    expect(PROTEIN_TARGET_MET).toBe('Protein target met');
   });
 
   it('shows the last seven days, then another week on Show more', () => {
