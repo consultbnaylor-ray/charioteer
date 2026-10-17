@@ -98,6 +98,41 @@ const ESTIMATE = 'An estimate, not a medical assessment. Check with a doctor bef
 export const VO2_WHAT =
   'VO2 max: how much oxygen your body can use at full effort, per kg of body weight per minute. Apple Watch estimates it.';
 
+export const MINUTES_WHAT =
+  'Active minutes: time in workouts this week. The unit is minutes. The ring fills toward 150 minutes a week, or toward the week you set when that is the mark.';
+
+export const RESTING_WHAT =
+  'Resting heart rate: how many times your heart beats in a minute while you are at rest. The unit is bpm.';
+
+/** Routine lines add sessions. They never shorten the week. */
+export const ADDED_NOT_REDUCED =
+  'These add to the sessions you already do. They do not replace them or make the week shorter.';
+
+/** Plain reason the cardio number matters for the goal. No invented sport ranges. */
+export function whyCardioMatters(goal: NutritionGoal | null): string {
+  if (goal === 'elite_heavy_boxer' || goal === 'elite_middle_boxer') {
+    return 'For boxing, this is how much oxygen you can use when the work stays hard, and how you recover between efforts. The goal range, when it is shown, is an approximate estimate from a published study.';
+  }
+  if (goal === 'elite_runner') {
+    return 'For running, this is how much oxygen you can use when the work is hard. This goal has no separate published range here, so the comparison is the age and sex band.';
+  }
+  if (goal === 'body_builder' || goal === 'increase') {
+    return 'This sits beside the strength work. It is how much oxygen you can use at full effort. This goal has no separate published cardio range here.';
+  }
+  if (goal === 'lose_fat_build_muscle' || goal === 'lose_weight') {
+    return 'This is one mark of how your heart and lungs keep up with the work. The sessions you already do stay in place.';
+  }
+  return 'This is one mark of how much oxygen you can use at full effort. When a band is shown, it is typical for your age and sex, and it is an estimate.';
+}
+
+export function whyMinutesMatter(): string {
+  return 'The minutes show the week you are already doing. A suggestion adds a session beside that week. It does not cut the week down.';
+}
+
+export function whyRestingMatters(): string {
+  return 'Your own earlier readings are the comparison. A rise can mean the week is heavier than usual. One number on its own is not a diagnosis.';
+}
+
 const FRIEND_SOURCE =
   'Age and sex: Kaminsky, Arena, and Myers, Mayo Clinic Proceedings, 2015. The shaded band is the 25th to the 75th percentile for treadmill cardio fitness.';
 

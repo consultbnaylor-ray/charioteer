@@ -3,9 +3,15 @@ import { isoDay } from '@/domain/dates';
 import type { TrainingSchedule } from '@/domain/healthPlan';
 
 export {
+  ADDED_NOT_REDUCED,
   buildFitnessSnapshot,
   fitnessFocusLines,
+  MINUTES_WHAT,
+  RESTING_WHAT,
   VO2_WHAT,
+  whyCardioMatters,
+  whyMinutesMatter,
+  whyRestingMatters,
   workoutBucket,
   type FitnessBand,
   type FitnessCompare,

@@ -5,7 +5,18 @@ import { APPLE_HEALTH_READ_TYPES } from '@/health/connection';
 import { HEALTH_KINDS } from '@/domain/healthInsights';
 import { HEALTH_PLAN_PROMPT, draftHealthPlan, type PlanInput } from '@/domain/healthPlan';
 import { NUTRITION_PROMPT_LINE } from '@/domain/nutrition';
-import { buildFitnessSnapshot, VO2_WHAT, workoutBucket, type FitnessSnapshotInput } from '@/domain/fitnessSnapshot';
+import {
+  ADDED_NOT_REDUCED,
+  buildFitnessSnapshot,
+  MINUTES_WHAT,
+  RESTING_WHAT,
+  VO2_WHAT,
+  whyCardioMatters,
+  whyMinutesMatter,
+  whyRestingMatters,
+  workoutBucket,
+  type FitnessSnapshotInput,
+} from '@/domain/fitnessSnapshot';
 
 function input(partial: Partial<FitnessSnapshotInput> = {}): FitnessSnapshotInput {
   return {
@@ -234,6 +245,25 @@ describe('fitness snapshot', () => {
     expect(card).toContain('About these ranges');
     expect(card).toContain('ml/kg/min');
     expect(card).toContain('Check with a doctor before big changes.');
+    expect(card).toContain('More info');
+    expect(card).toContain('label="Close"');
+    expect(card).toContain('Why this matters for your goal');
+    expect(card).toContain('ADDED_NOT_REDUCED');
+  });
+
+  it('explains the measures in plain words without inventing a sport range', () => {
+    expect(MINUTES_WHAT).toContain('minutes');
+    expect(RESTING_WHAT).toContain('bpm');
+    expect(ADDED_NOT_REDUCED).toContain('already do');
+    expect(ADDED_NOT_REDUCED).toContain('shorter');
+    expect(whyCardioMatters('elite_heavy_boxer')).toContain('approximate estimate');
+    expect(whyCardioMatters('elite_heavy_boxer')).not.toMatch(/\d/);
+    expect(whyCardioMatters('elite_runner')).toContain('no separate published range');
+    expect(whyCardioMatters('elite_runner')).not.toMatch(/\d/);
+    expect(whyCardioMatters('body_builder')).toContain('no separate published cardio range');
+    expect(whyCardioMatters(null)).toContain('estimate');
+    expect(whyMinutesMatter()).toContain('does not cut the week');
+    expect(whyRestingMatters()).toContain('earlier readings');
   });
 
   it('compares a male heavyweight boxer with a lower approximate range than a middleweight', () => {

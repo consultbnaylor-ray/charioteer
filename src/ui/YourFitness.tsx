@@ -1,16 +1,24 @@
 import { useEffect, useState, type ReactNode } from 'react';
-import { Platform, Pressable, View } from 'react-native';
+import { Modal, Platform, Pressable, ScrollView, useWindowDimensions, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useRepository, useSnapshot } from '@/data';
 import { shownError } from '@/domain/errors';
 import {
+  ADDED_NOT_REDUCED,
   fitnessView,
+  MINUTES_WHAT,
+  RESTING_WHAT,
   VO2_WHAT,
+  whyCardioMatters,
+  whyMinutesMatter,
+  whyRestingMatters,
   type FitnessCompare,
   type FitnessSnapshot,
   type FitnessTone,
 } from '@/domain/fitnessSnapshot';
 import { applyFitnessFocus } from '@/domain/healthPlan';
+import type { NutritionGoal } from '@/domain/nutrition';
 import type { AppleHealthAccess } from '@/health/connection';
 import { readAppleHealthAccess } from '@/health/link';
 import { TrendLine } from '@/ui/DistanceCharts';
@@ -18,7 +26,7 @@ import { MeasureRingView } from '@/ui/MeasuredFigure';
 import { PlanTick } from '@/ui/PlanTick';
 import { statsToneColors } from '@/ui/statsPalette';
 import { useAppTheme } from '@/ui/theme';
-import { Card, T } from '@/ui/ui';
+import { Button, Card, T } from '@/ui/ui';
 
 const MIX = [
   ['strength', 'Strength', 'good'],
@@ -36,6 +44,7 @@ export function YourFitness() {
   const theme = useAppTheme();
   const [access, setAccess] = useState<AppleHealthAccess | null>(Platform.OS === 'ios' ? null : 'web');
   const [error, setError] = useState<string | null>(null);
+  const [info, setInfo] = useState<InfoFocus | null>(null);
   useEffect(() => {
     if (Platform.OS !== 'ios') return;
     void readAppleHealthAccess().then(setAccess).catch(() => setAccess('prompt'));
@@ -57,12 +66,19 @@ export function YourFitness() {
     }
   }
 
+  const goal = snap.nutrition?.goal ?? null;
+  const focusState = (text: string) => {
+    const saved = snap.healthPlan?.focus.find((action) => action.text.toLowerCase() === text.toLowerCase());
+    return { saved: Boolean(saved), done: Boolean(saved?.done) };
+  };
+
   return (
     <Card>
       <T variant="label">Your fitness</T>
       {view.level ? <T style={{ color: ink(view.level === 'Developing' ? 'watch' : 'good'), fontFamily: theme.font.bodyStrong }}>{view.level}</T> : null}
       <T>{view.levelWords}</T>
       <T variant="muted">{view.estimate}</T>
+      <MoreInfo about="your fitness" onPress={() => setInfo('card')} />
       {view.missing ? <T variant="muted">{view.missing}</T> : null}
       {view.cardio ? (
         <View style={{ alignItems: 'center', gap: 6 }}>
@@ -82,20 +98,24 @@ export function YourFitness() {
             <T>{VO2_WHAT}</T>
           </Fold>
           <FitnessCompareBar compare={view.cardio.compare} tone={view.cardio.tone} />
+          <MoreInfo about="cardio fitness" onPress={() => setInfo('cardio')} />
         </View>
       ) : null}
       {view.minutes ? (
-        <MeasureRingView
-          label="Active minutes"
-          ring={{
-            centre: view.minutes.centre,
-            unit: view.minutes.unit,
-            fill: view.minutes.fill,
-            status: view.minutes.status,
-            tone: view.minutes.tone,
-          }}
-          detail={view.minutes.words}
-        />
+        <View style={{ alignSelf: 'stretch', gap: 6 }}>
+          <MeasureRingView
+            label="Active minutes"
+            ring={{
+              centre: view.minutes.centre,
+              unit: view.minutes.unit,
+              fill: view.minutes.fill,
+              status: view.minutes.status,
+              tone: view.minutes.tone,
+            }}
+            detail={view.minutes.words}
+          />
+          <MoreInfo about="active minutes" onPress={() => setInfo('minutes')} />
+        </View>
       ) : null}
       {view.resting ? (
         <View style={{ gap: 6 }}>
@@ -105,6 +125,7 @@ export function YourFitness() {
           </T>
           <TrendLine points={view.resting.points} color={ink(view.resting.tone)} />
           <T variant="muted">{view.resting.words} Oldest to newest.</T>
+          <MoreInfo about="resting heart rate" onPress={() => setInfo('resting')} />
         </View>
       ) : null}
       {view.mix ? <MixBar view={view} /> : null}
@@ -139,7 +160,206 @@ export function YourFitness() {
         );
       })}
       {error ? <T>{error}</T> : null}
+      <FitnessInfoSheet
+        focus={info}
+        view={view}
+        goal={goal}
+        focusState={focusState}
+        error={error}
+        onClose={() => setInfo(null)}
+        onTick={(text) => void tick(text)}
+      />
     </Card>
+  );
+}
+
+type InfoFocus = 'card' | 'cardio' | 'minutes' | 'resting';
+
+function MoreInfo({ about, onPress }: { about: string; onPress: () => void }) {
+  return (
+    <View style={{ alignSelf: 'stretch' }}>
+      <Button label="More info" tone="quiet" accessibilityLabel={`More info about ${about}`} onPress={onPress} />
+    </View>
+  );
+}
+
+const INFO_TITLE: Record<InfoFocus, string> = {
+  card: 'Your fitness',
+  cardio: 'Cardio fitness',
+  minutes: 'Active minutes',
+  resting: 'Resting heart rate',
+};
+
+function FitnessInfoSheet({
+  focus,
+  view,
+  goal,
+  focusState,
+  error,
+  onClose,
+  onTick,
+}: {
+  focus: InfoFocus | null;
+  view: FitnessSnapshot;
+  goal: NutritionGoal | null;
+  focusState: (text: string) => { saved: boolean; done: boolean };
+  error: string | null;
+  onClose: () => void;
+  onTick: (text: string) => void;
+}) {
+  const theme = useAppTheme();
+  const insets = useSafeAreaInsets();
+  const { height } = useWindowDimensions();
+  const colors = statsToneColors(theme.scheme);
+  const ink = (tone: FitnessTone) => colors[tone].ink;
+  const bodyHeight = Math.max(280, Math.round(height * 0.92) - 168 - insets.bottom);
+  const order: Array<'cardio' | 'minutes' | 'resting'> = focus === 'minutes'
+    ? ['minutes', 'cardio', 'resting']
+    : focus === 'resting'
+      ? ['resting', 'cardio', 'minutes']
+      : ['cardio', 'minutes', 'resting'];
+  return (
+    <Modal visible={focus != null} animationType="slide" transparent onRequestClose={onClose}>
+      <View style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.45)' }}>
+        <Pressable accessibilityRole="button" accessibilityLabel="Close" style={{ flex: 1 }} onPress={onClose} />
+        <View
+          style={{
+            backgroundColor: theme.colors.bg,
+            borderTopLeftRadius: 16,
+            borderTopRightRadius: 16,
+            paddingHorizontal: 20,
+            paddingTop: 16,
+            paddingBottom: 16 + insets.bottom,
+            gap: 12,
+            maxHeight: '92%',
+          }}
+        >
+          <T variant="title">{focus ? INFO_TITLE[focus] : 'Your fitness'}</T>
+          <Button label="Close" tone="quiet" onPress={onClose} />
+          <ScrollView style={{ flexGrow: 0, height: bodyHeight }}>
+            <View style={{ gap: 18, paddingBottom: 8 }}>
+              {order.map((key) => {
+                if (key === 'cardio') {
+                  return <CardioDetail key={key} view={view} goal={goal} ink={ink} />;
+                }
+                if (key === 'minutes' && view.minutes) {
+                  return <MinutesDetail key={key} view={view} />;
+                }
+                if (key === 'resting' && view.resting) {
+                  return <RestingDetail key={key} view={view} ink={ink} />;
+                }
+                return null;
+              })}
+              <View style={{ gap: 8 }}>
+                <T variant="label">To get closer to your goal</T>
+                <T variant="muted">Check with a doctor before big changes.</T>
+                <T>{view.estimate}</T>
+                <T>{ADDED_NOT_REDUCED}</T>
+                {view.recommendations.length === 0 ? <T>Nothing extra to add. Keep the sessions you already do.</T> : null}
+                {view.recommendations.map((item) => {
+                  const state = focusState(item.text);
+                  return (
+                    <Pressable
+                      key={item.id}
+                      accessibilityRole="checkbox"
+                      accessibilityState={{ checked: state.done }}
+                      accessibilityLabel={state.saved ? item.text : `${item.text}. Add to this week's focus`}
+                      onPress={() => onTick(item.text)}
+                      style={{ minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 8 }}
+                    >
+                      <PlanTick done={state.done} />
+                      <T style={{ flex: 1 }}>{item.text}</T>
+                    </Pressable>
+                  );
+                })}
+                {error ? <T>{error}</T> : null}
+              </View>
+            </View>
+          </ScrollView>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
+function CardioDetail({
+  view,
+  goal,
+  ink,
+}: {
+  view: FitnessSnapshot;
+  goal: NutritionGoal | null;
+  ink: (tone: FitnessTone) => string;
+}) {
+  const cardio = view.cardio;
+  return (
+    <View style={{ alignItems: 'center', gap: 8, alignSelf: 'stretch' }}>
+      <T variant="label">What this is</T>
+      <T>{VO2_WHAT}</T>
+      {cardio ? (
+        <MeasureRingView
+          label="Cardio fitness"
+          ring={{
+            centre: cardio.centre,
+            unit: cardio.unit,
+            fill: cardio.fill,
+            status: cardio.status,
+            tone: cardio.tone,
+          }}
+        />
+      ) : view.missing ? <T variant="muted">{view.missing}</T> : null}
+      {cardio && cardio.trend.length >= 2 ? <TrendLine points={cardio.trend} color={ink(cardio.tone)} /> : null}
+      {cardio && cardio.trend.length >= 2 ? <T variant="muted">Cardio fitness, oldest to newest. ml/kg/min.</T> : null}
+      <T variant="label">What your number means</T>
+      <T>{view.levelWords}</T>
+      {cardio ? <T>{cardio.compare.words}</T> : null}
+      {cardio ? <FitnessCompareBar compare={cardio.compare} tone={cardio.tone} sourcesOpen /> : null}
+      <T variant="label">Why this matters for your goal</T>
+      <T>{whyCardioMatters(goal)}</T>
+    </View>
+  );
+}
+
+function MinutesDetail({ view }: { view: FitnessSnapshot }) {
+  const minutes = view.minutes;
+  if (!minutes) return null;
+  return (
+    <View style={{ alignItems: 'center', gap: 8, alignSelf: 'stretch' }}>
+      <T variant="label">What this is</T>
+      <T>{MINUTES_WHAT}</T>
+      <MeasureRingView
+        label="Active minutes"
+        ring={{
+          centre: minutes.centre,
+          unit: minutes.unit,
+          fill: minutes.fill,
+          status: minutes.status,
+          tone: minutes.tone,
+        }}
+        detail={minutes.words}
+      />
+      <T variant="label">What your number means</T>
+      <T>{minutes.words}</T>
+      <T variant="label">Why this matters for your goal</T>
+      <T>{whyMinutesMatter()}</T>
+    </View>
+  );
+}
+
+function RestingDetail({ view, ink }: { view: FitnessSnapshot; ink: (tone: FitnessTone) => string }) {
+  const resting = view.resting;
+  if (!resting) return null;
+  return (
+    <View style={{ gap: 8, alignSelf: 'stretch' }}>
+      <T variant="label">What this is</T>
+      <T>{RESTING_WHAT}</T>
+      <T variant="label">What your number means</T>
+      <T>{resting.reading ? `${resting.reading}. ` : ''}{resting.words}</T>
+      <TrendLine points={resting.points} color={ink(resting.tone)} />
+      <T variant="muted">Oldest to newest.</T>
+      <T variant="label">Why this matters for your goal</T>
+      <T>{whyRestingMatters()}</T>
+    </View>
   );
 }
 
@@ -163,7 +383,15 @@ function Fold({ title, children }: { title: string; children: ReactNode }) {
   );
 }
 
-function FitnessCompareBar({ compare, tone }: { compare: FitnessCompare; tone: FitnessTone }) {
+function FitnessCompareBar({
+  compare,
+  tone,
+  sourcesOpen = false,
+}: {
+  compare: FitnessCompare;
+  tone: FitnessTone;
+  sourcesOpen?: boolean;
+}) {
   const theme = useAppTheme();
   const colors = statsToneColors(theme.scheme);
   const marks = [compare.value, compare.age?.low, compare.age?.high, compare.goal?.low, compare.goal?.high]
@@ -227,9 +455,17 @@ function FitnessCompareBar({ compare, tone }: { compare: FitnessCompare; tone: F
       </View>
       <T>{compare.words}</T>
       {compare.sources.length > 0 ? (
-        <Fold title="About these ranges">
-          {compare.sources.map((source) => <T key={source.slice(0, 24)} variant="muted">{source}</T>)}
-        </Fold>
+        sourcesOpen ? (
+          <View style={{ gap: 6, alignSelf: 'stretch' }}>
+            <T variant="label">About these ranges</T>
+            <T variant="muted">These ranges are estimates from the studies named here.</T>
+            {compare.sources.map((source) => <T key={source.slice(0, 24)} variant="muted">{source}</T>)}
+          </View>
+        ) : (
+          <Fold title="About these ranges">
+            {compare.sources.map((source) => <T key={source.slice(0, 24)} variant="muted">{source}</T>)}
+          </Fold>
+        )
       ) : null}
     </View>
   );
