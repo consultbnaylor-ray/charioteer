@@ -13,6 +13,7 @@ import { connectAppleHealth, openAppSettings, openHealthApp, readAppleHealthAcce
 import { loadLastSynced, saveLastSynced } from '@/health/syncedAt';
 import { syncAppleHealth } from '@/health/sync';
 import { AppleHealthCard } from '@/ui/AppleHealthCard';
+import { HealthStatBoard } from '@/ui/HealthStatBoard';
 import { HealthSectionShare } from '@/ui/SectionShare';
 import { HealthBoard, HealthReadings } from '@/ui/HealthBoard';
 import { DateField } from '@/ui/DateField';
@@ -203,6 +204,18 @@ export default function Health() {
         onManage={() => void openHealthApp()}
         onSettings={() => void openAppSettings()}
         onPrivacy={() => router.push('/privacy' as never)}
+      />
+      <HealthStatBoard
+        today={isoDay(new Date())}
+        samples={snap.health}
+        body={snap.bodyComposition}
+        activityEnergyKcal={snap.nutrition.activityEnergyKcal}
+        heightCm={snap.profile?.heightCm ?? null}
+        adult={snap.profile?.ageConfirmed18 !== false}
+        goalAge={snap.nutrition.goalAge}
+        goalSex={snap.nutrition.goalSex}
+        goal={snap.nutrition.goal}
+        build={snap.nutrition.build}
       />
       <HealthBoard
         samples={snap.health}
