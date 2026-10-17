@@ -1184,7 +1184,7 @@ export default function Nutrition() {
         {settings.goal === 'elite_middle_boxer' ? (
           <>
             <T>{COMPETITION_NOTE}</T>
-            <T variant="muted">{`Leave this blank and the suggestion uses ${MIDDLEWEIGHT_LIMIT_KG} kg, the middleweight limit on this screen. Type your own class if it is different. The change stays small.`}</T>
+            <T variant="muted">{`Leave this blank and the suggestion uses ${MIDDLEWEIGHT_LIMIT_KG} kg (160 lb), the professional middleweight limit. Type your own class if it is different. The change stays small. Amateur IBA figures are a reference only. Muscular boxers can sit above the BMI band.`}</T>
             <Field label="Middleweight limit (kg)" value={weightClass} onChangeText={setWeightClass} keyboardType="decimal-pad" placeholder={String(MIDDLEWEIGHT_LIMIT_KG)} />
           </>
         ) : null}

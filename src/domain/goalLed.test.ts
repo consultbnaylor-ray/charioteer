@@ -93,6 +93,10 @@ describe('goal led summary', () => {
     expect(cruiser.matters).toMatch(/cruiserweight limit/);
     expect(cruiser.measures.find((item) => item.id === 'weight')?.words).toContain('above the cruiserweight limit of 90.7 kg');
     expect(goalFocusLine('elite_super_middle_boxer')).toContain('super middleweight');
+    expect(goalFocusLine('elite_super_light_boxer')).toContain('super lightweight');
+    const feather = buildGoalLed({ ...base, goal: 'elite_feather_boxer', weightKg: 62 });
+    expect(feather.name).toBe('Elite Athlete (Featherweight Boxer)');
+    expect(feather.measures.find((item) => item.id === 'weight')?.words).toContain('above the featherweight limit of 57.2 kg');
   });
 
   it('stays quiet until a goal is chosen', () => {

@@ -41,7 +41,7 @@ export const WAGON_SUPPORT = [
   'NHS 111 if you are worried about withdrawal',
 ] as const;
 export const NUTRITION_PROMPT_LINE =
-  'If CONTEXT includes a nutrition summary, you may mention it. Estimates are estimates. Do not shame anyone about calories, weight, or a day over a target. If calories are hidden, do not mention kcal. If CONTEXT includes a nutrition goal, or how they are doing toward it, tie one remark back to that goal. Do not recap the whole goal, and do not add a stock ending. If CONTEXT includes a fitness snapshot, tie one remark back to it. Do not recap the whole snapshot. It is an estimate, not a medical assessment. If CONTEXT includes a weight range, use those figures. Do not turn a class limit into a weight cut. Do not suggest a target below the healthy minimum. A loss, when one is mentioned, stays around 0.5 to 1 kg a week at most. Do not suggest fewer sessions than they already do, a crash week, or a running or mileage plan. Do not suggest eating less when CONTEXT says a lower intake is not being suggested. Do not suggest a crash diet. Check with a doctor before big changes. If the goal is an elite runner, talk about carbohydrate around training and moderate protein, and lean body composition rather than the scales. If the goal is body building, talk about a surplus or a cut phase, protein, and body fat and lean mass, and do not push an aggressive deficit. If the goal is a heavyweight boxer, talk about size and power, high protein, and food around training. Do not suggest a deficit. If the goal is a middleweight boxer, talk about staying near a middleweight limit with a small change only. If the goal is a super middleweight, light heavyweight, or cruiserweight boxer, stay near that professional limit with a small change only. Those limits are about 76.2 kg, 79.4 kg, and 90.7 kg. Amateur IBA figures are a reference only. Muscular boxers can sit above the BMI band. Never suggest a rapid weight cut, skipping meals to make weight, a sauna, or dehydration. For someone sober, recovery tips stay alcohol-free: food, water, sleep, and a soft drink if they want one. If CONTEXT includes body composition, use body fat before waist-to-height, and waist-to-height before BMI. Do not call someone overweight or obese from BMI when CONTEXT says they lift weights, or when CONTEXT is using body fat or waist. If CONTEXT says they are carrying extra weight, BMI category labels stay on unless body fat or waist is the better figure, protein uses a healthy weight rather than total weight, and you do not suggest a crash diet. Check with a doctor before big changes. If CONTEXT says they have fallen off the wagon, treat that as a safety moment: be gentle, do not shame, and mention the Samaritans on 116 123 and Drinkline on 0300 123 1110. Sugar cravings in early recovery are common; you may say so only when CONTEXT includes that note.';
+  'If CONTEXT includes a nutrition summary, you may mention it. Estimates are estimates. Do not shame anyone about calories, weight, or a day over a target. If calories are hidden, do not mention kcal. If CONTEXT includes a nutrition goal, or how they are doing toward it, tie one remark back to that goal. Do not recap the whole goal, and do not add a stock ending. If CONTEXT includes a fitness snapshot, tie one remark back to it. Do not recap the whole snapshot. It is an estimate, not a medical assessment. If CONTEXT includes a weight range, use those figures. Do not turn a class limit into a weight cut. Do not suggest a target below the healthy minimum. A loss, when one is mentioned, stays around 0.5 to 1 kg a week at most. Do not suggest fewer sessions than they already do, a crash week, or a running or mileage plan. Do not suggest eating less when CONTEXT says a lower intake is not being suggested. Do not suggest a crash diet. Check with a doctor before big changes. If the goal is an elite runner, talk about carbohydrate around training and moderate protein, and lean body composition rather than the scales. If the goal is body building, talk about a surplus or a cut phase, protein, and body fat and lean mass, and do not push an aggressive deficit. If the goal is a heavyweight boxer, talk about size and power, high protein, and food around training. Do not suggest a deficit. If the goal is a middleweight boxer, talk about staying near a professional middleweight limit of about 72.6 kg (160 lb) with a small change only. A class they type is the limit on this screen. If the goal is a featherweight, super featherweight, lightweight, super lightweight, welterweight, super welterweight, super middleweight, light heavyweight, or cruiserweight boxer, stay near that professional limit with a small change only. Those limits are about 57.2 kg, 59.0 kg, 61.2 kg, 63.5 kg, 66.7 kg, 69.9 kg, 76.2 kg, 79.4 kg, and 90.7 kg. Super lightweight is also called light welterweight. Super welterweight is also called light middleweight. Amateur IBA figures are a reference only. Muscular boxers can sit above the BMI band. Never suggest a rapid weight cut, skipping meals to make weight, a sauna, or dehydration. For someone sober, recovery tips stay alcohol-free: food, water, sleep, and a soft drink if they want one. If CONTEXT includes body composition, use body fat before waist-to-height, and waist-to-height before BMI. Do not call someone overweight or obese from BMI when CONTEXT says they lift weights, or when CONTEXT is using body fat or waist. If CONTEXT says they are carrying extra weight, BMI category labels stay on unless body fat or waist is the better figure, protein uses a healthy weight rather than total weight, and you do not suggest a crash diet. Check with a doctor before big changes. If CONTEXT says they have fallen off the wagon, treat that as a safety moment: be gentle, do not shame, and mention the Samaritans on 116 123 and Drinkline on 0300 123 1110. Sugar cravings in early recovery are common; you may say so only when CONTEXT includes that note.';
 
 /** NHS: up to 222 kcal in a pint of 5.2% lager, about 3 units. */
 export const NHS_PINT_52_KCAL = 222;
@@ -1395,6 +1395,12 @@ export const NUTRITION_GOALS = [
   'increase',
   'elite_runner',
   'body_builder',
+  'elite_feather_boxer',
+  'elite_super_feather_boxer',
+  'elite_light_boxer',
+  'elite_super_light_boxer',
+  'elite_welter_boxer',
+  'elite_super_welter_boxer',
   'elite_middle_boxer',
   'elite_super_middle_boxer',
   'elite_light_heavy_boxer',
@@ -1411,6 +1417,12 @@ export const GOAL_LABEL: Record<NutritionGoal, string> = {
   increase: 'Increase Weight',
   elite_runner: 'Elite Athlete (Lean Runner etc.)',
   body_builder: 'Body Builder',
+  elite_feather_boxer: 'Elite Athlete (Featherweight Boxer)',
+  elite_super_feather_boxer: 'Elite Athlete (Super Featherweight Boxer)',
+  elite_light_boxer: 'Elite Athlete (Lightweight Boxer)',
+  elite_super_light_boxer: 'Elite Athlete (Super Lightweight Boxer)',
+  elite_welter_boxer: 'Elite Athlete (Welterweight Boxer)',
+  elite_super_welter_boxer: 'Elite Athlete (Super Welterweight Boxer)',
   elite_middle_boxer: 'Elite Athlete (Middle Weight Boxer)',
   elite_super_middle_boxer: 'Elite Athlete (Super Middleweight Boxer)',
   elite_light_heavy_boxer: 'Elite Athlete (Light Heavyweight Boxer)',
@@ -1445,6 +1457,12 @@ export const GOAL_PLAIN: Record<NutritionGoal, string> = {
   increase: 'A little more food, to support a higher weight.',
   elite_runner: 'Higher carbohydrate, moderate protein, and food around training. Lean body composition matters more than the scales.',
   body_builder: 'A surplus for a lean bulk, or a cut phase. Protein stays high. Body fat and lean mass are the marks.',
+  elite_feather_boxer: 'Stay near a featherweight limit of about 57.2 kg (126 lb). Any change is small. Muscular boxers can sit above the BMI band. A competition weigh-in belongs with a coach and a doctor.',
+  elite_super_feather_boxer: 'Stay near a super featherweight limit of about 59.0 kg (130 lb). Any change is small. Muscular boxers can sit above the BMI band. A competition weigh-in belongs with a coach and a doctor.',
+  elite_light_boxer: 'Stay near a lightweight limit of about 61.2 kg (135 lb). Any change is small. Muscular boxers can sit above the BMI band. A competition weigh-in belongs with a coach and a doctor.',
+  elite_super_light_boxer: 'Stay near a super lightweight limit of about 63.5 kg (140 lb), also called light welterweight. Any change is small. Muscular boxers can sit above the BMI band. A competition weigh-in belongs with a coach and a doctor.',
+  elite_welter_boxer: 'Stay near a welterweight limit of about 66.7 kg (147 lb). Any change is small. Muscular boxers can sit above the BMI band. A competition weigh-in belongs with a coach and a doctor.',
+  elite_super_welter_boxer: 'Stay near a super welterweight limit of about 69.9 kg (154 lb), also called light middleweight. Any change is small. Muscular boxers can sit above the BMI band. A competition weigh-in belongs with a coach and a doctor.',
   elite_middle_boxer: 'Stay lean around a middleweight limit. Any change is small. A competition weigh-in belongs with a coach and a doctor.',
   elite_super_middle_boxer: 'Stay near a super middleweight limit of about 76.2 kg (168 lb). Any change is small. Muscular boxers can sit above the BMI band. A competition weigh-in belongs with a coach and a doctor.',
   elite_light_heavy_boxer: 'Stay near a light heavyweight limit of about 79.4 kg (175 lb). Any change is small. Muscular boxers can sit above the BMI band. A competition weigh-in belongs with a coach and a doctor.',
@@ -1463,24 +1481,46 @@ export const PHASE_LABEL: Record<BuilderPhase, string> = {
 export const COMPETITION_NOTE =
   'A competition weigh-in is a decision for you, a coach, and a doctor. This app will not plan a rapid cut, skipped meals, or dehydration.';
 
-/** Amateur middleweight limit used until the person types their own. */
-export const MIDDLEWEIGHT_LIMIT_KG = 75;
+/** Professional middleweight limit, 160 lb, used until the person types their own. */
+export const MIDDLEWEIGHT_LIMIT_KG = 72.6;
 
 /**
  * Professional class limits, in the pounds and kilograms Ben named.
- * The window starts over the previous professional limit. 72.6 kg is 160 lb.
+ * The window starts over the previous professional limit. Featherweight has no
+ * lower class in this list, so its window is up to 57.2 kg. 72.6 kg is 160 lb.
  * Amateur IBA classes use different names, so they stay a reference only.
  */
 export const PRO_BOXING_CLASSES = {
-  elite_super_middle_boxer: { short: 'super middleweight', limitKg: 76.2, limitLb: 168, lowOverKg: 72.6 },
-  elite_light_heavy_boxer: { short: 'light heavyweight', limitKg: 79.4, limitLb: 175, lowOverKg: 76.2 },
-  elite_cruiser_boxer: { short: 'cruiserweight', limitKg: 90.7, limitLb: 200, lowOverKg: 79.4 },
+  elite_feather_boxer: { short: 'featherweight', also: null, limitKg: 57.2, limitLb: 126, lowOverKg: null },
+  elite_super_feather_boxer: { short: 'super featherweight', also: null, limitKg: 59.0, limitLb: 130, lowOverKg: 57.2 },
+  elite_light_boxer: { short: 'lightweight', also: null, limitKg: 61.2, limitLb: 135, lowOverKg: 59.0 },
+  elite_super_light_boxer: { short: 'super lightweight', also: 'light welterweight', limitKg: 63.5, limitLb: 140, lowOverKg: 61.2 },
+  elite_welter_boxer: { short: 'welterweight', also: null, limitKg: 66.7, limitLb: 147, lowOverKg: 63.5 },
+  elite_super_welter_boxer: { short: 'super welterweight', also: 'light middleweight', limitKg: 69.9, limitLb: 154, lowOverKg: 66.7 },
+  elite_super_middle_boxer: { short: 'super middleweight', also: null, limitKg: 76.2, limitLb: 168, lowOverKg: 72.6 },
+  elite_light_heavy_boxer: { short: 'light heavyweight', also: null, limitKg: 79.4, limitLb: 175, lowOverKg: 76.2 },
+  elite_cruiser_boxer: { short: 'cruiserweight', also: null, limitKg: 90.7, limitLb: 200, lowOverKg: 79.4 },
 } as const;
 
 export type ClassBoxerGoal = keyof typeof PRO_BOXING_CLASSES;
 
 export function isClassBoxer(goal: NutritionGoal | null): goal is ClassBoxerGoal {
-  return goal === 'elite_super_middle_boxer' || goal === 'elite_light_heavy_boxer' || goal === 'elite_cruiser_boxer';
+  return goal != null && Object.prototype.hasOwnProperty.call(PRO_BOXING_CLASSES, goal);
+}
+
+/** Chip text for the boxing list. The full goal name stays on GOAL_LABEL. */
+export function boxingChipLabel(goal: NutritionGoal): string | null {
+  if (goal === 'elite_middle_boxer') return 'Middleweight';
+  if (goal === 'elite_heavy_boxer') return 'Heavyweight';
+  if (!isClassBoxer(goal)) return null;
+  const spec = PRO_BOXING_CLASSES[goal];
+  const title = spec.short.charAt(0).toUpperCase() + spec.short.slice(1);
+  return spec.also ? `${title} (${spec.also})` : title;
+}
+
+export function classBoxerName(goal: ClassBoxerGoal): string {
+  const spec = PRO_BOXING_CLASSES[goal];
+  return spec.also ? `${spec.short} (${spec.also})` : spec.short;
 }
 
 export function isAnyBoxer(goal: NutritionGoal | null): boolean {
@@ -1588,7 +1628,7 @@ export function goalCoachLines(
   }
   if (isClassBoxer(goal)) {
     const spec = PRO_BOXING_CLASSES[goal];
-    lines.push(`${GOAL_LABEL[goal]}. High protein and food around training. The professional ${spec.short} limit is about ${spec.limitKg} kg (${spec.limitLb} lb). Any change stays small. Do not suggest a larger deficit, a rapid cut, or skipped meals. Amateur IBA figures are a reference only. Muscular boxers can sit above the BMI band. ${COMPETITION_NOTE}`);
+    lines.push(`${GOAL_LABEL[goal]}. High protein and food around training. The professional ${classBoxerName(goal)} limit is about ${spec.limitKg} kg (${spec.limitLb} lb). Any change stays small. Do not suggest a larger deficit, a rapid cut, or skipped meals. Amateur IBA figures are a reference only. Muscular boxers can sit above the BMI band. ${COMPETITION_NOTE}`);
   }
   if (sober) lines.push('They are on a sober path. Recovery tips stay alcohol-free: food, water, sleep, and a soft drink if they want one.');
   return lines;

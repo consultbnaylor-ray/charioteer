@@ -309,6 +309,13 @@ describe('health plan writer', () => {
     const heavyStill = draftHealthPlan(input({ salt: 'heavy', goal: 'elite_heavy_boxer' }));
     expect(joined(heavyStill)).toMatch(/size and power/i);
     expect(joined(heavyStill)).not.toContain('90.7 kg');
+    const feather = draftHealthPlan(input({ salt: 'feather', goal: 'elite_feather_boxer' }));
+    const featherText = joined(feather);
+    expect(featherText).toContain('Elite Athlete (Featherweight Boxer)');
+    expect(featherText).toContain('57.2 kg');
+    expect(featherText).toMatch(/doctor/i);
+    expect(featherText.toLowerCase()).not.toMatch(/sauna to|skip water|sweat out/);
+    expect(featherText).not.toMatch(/to lose/i);
   });
 
   it('drops a rapid-cut suggestion and keeps a refusal', () => {

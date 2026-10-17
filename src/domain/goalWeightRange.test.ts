@@ -155,21 +155,26 @@ describe('goal weight range', () => {
       weightClassKg: 75,
     });
     expect(`${over.gap ?? ''} ${over.words}`).not.toMatch(/to lose/i);
+    expect(over.classReference).toContain('72.6 kg (160 lb)');
     expect(over.classReference).toContain('over 71 kg to 75 kg');
+    expect(over.classReference).toContain('for reference only');
     expect(over.classReference).toContain('You noted a limit of 75 kg');
     expect(over.classReference).toContain('will not plan a weight cut');
     expect(over.classReference).toContain('dehydration');
     expect(over.sources.map((source) => source.name).join(' ')).toContain('IBA Technical and Competition Rules');
     const inside = goalWeightRange({
       goal: 'elite_middle_boxer',
-      weightKg: 73,
+      weightKg: 71,
       heightCm: 178,
       age: 28,
       sex: 'male',
     });
     expect(inside.withinRange).toBe(true);
     expect(inside.gap).toBeNull();
-    expect(inside.words).toBe('For Elite Athlete (Middle Weight Boxer), you are inside this class.');
+    expect(inside.words).toBe('For Elite Athlete (Middle Weight Boxer), you are inside this class. The professional limit is about 72.6 kg (160 lb).');
+    expect(inside.goal?.label).toBe('Middleweight limit (reference)');
+    expect(inside.goal?.lowKg).toBe(69.9);
+    expect(inside.goal?.highKg).toBe(72.6);
     const heavy = goalWeightRange({
       goal: 'elite_heavy_boxer',
       weightKg: 110,
@@ -266,6 +271,32 @@ describe('goal weight range', () => {
     });
     expect(heavy.words).toContain('super heavyweight');
     expect(heavy.words).not.toContain('76.2 kg');
+    const feather = goalWeightRange({
+      goal: 'elite_feather_boxer',
+      weightKg: 60,
+      heightCm: 170,
+      age: 28,
+      sex: 'male',
+    });
+    expect(feather.goal?.label).toBe('Featherweight limit (reference)');
+    expect(feather.goal?.highKg).toBe(57.2);
+    expect(feather.words).toContain('For Elite Athlete (Featherweight Boxer), you are above this class.');
+    expect(feather.words).toContain('57.2 kg (126 lb)');
+    expect(feather.classReference).toContain('over 54 kg to 57 kg');
+    expect(feather.classReference).toContain('for reference only');
+    expect(feather.contextLine).toContain('Featherweight limit (reference): up to 57.2 kg');
+    expect(`${feather.gap ?? ''} ${feather.words}`).not.toMatch(/to lose/i);
+    const welter = goalWeightRange({
+      goal: 'elite_super_welter_boxer',
+      weightKg: 68,
+      heightCm: 175,
+      age: 30,
+      sex: 'female',
+    });
+    expect(welter.withinRange).toBe(true);
+    expect(welter.words).toContain('69.9 kg (154 lb)');
+    expect(welter.classReference).toContain('light middleweight');
+    expect(welter.classReference).toContain('over 66 kg to 70 kg');
   });
 
   it('uses stones and pounds when that unit is asked for', () => {

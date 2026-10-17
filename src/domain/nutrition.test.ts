@@ -1412,7 +1412,7 @@ describe('training nutrition goals', () => {
     expect(middle.ok && middle.suggestion.proteinG).toBe(160);
     expect(middle.ok && middle.suggestion.carbG).toBe(253);
     expect(middle.ok && middle.suggestion.fatG).toBe(92);
-    expect(middle.ok && middle.suggestion.note).toContain('75 kg until you type your own');
+    expect(middle.ok && middle.suggestion.note).toContain('72.6 kg until you type your own');
     const under = suggestGoalTargets({ ...body, goal: 'elite_middle_boxer', weightClassKg: 82 });
     expect(under.ok && under.suggestion.kcal).toBe(2682);
     expect(under.ok && under.suggestion.carbG).toBe(281);
@@ -1461,12 +1461,25 @@ describe('training nutrition goals', () => {
   it('places the newer boxing classes between middleweight and heavyweight', () => {
     const order = NUTRITION_GOALS.filter((id) => id.includes('boxer'));
     expect(order).toEqual([
+      'elite_feather_boxer',
+      'elite_super_feather_boxer',
+      'elite_light_boxer',
+      'elite_super_light_boxer',
+      'elite_welter_boxer',
+      'elite_super_welter_boxer',
       'elite_middle_boxer',
       'elite_super_middle_boxer',
       'elite_light_heavy_boxer',
       'elite_cruiser_boxer',
       'elite_heavy_boxer',
     ]);
+    expect(GOAL_LABEL.elite_feather_boxer).toBe('Elite Athlete (Featherweight Boxer)');
+    expect(GOAL_LABEL.elite_super_light_boxer).toBe('Elite Athlete (Super Lightweight Boxer)');
+    expect(GOAL_LABEL.elite_super_welter_boxer).toBe('Elite Athlete (Super Welterweight Boxer)');
+    expect(GOAL_PLAIN.elite_feather_boxer).toContain('57.2 kg');
+    expect(GOAL_PLAIN.elite_super_light_boxer).toContain('light welterweight');
+    expect(GOAL_PLAIN.elite_super_welter_boxer).toContain('light middleweight');
+    expect(GOAL_PLAIN.elite_welter_boxer).toContain('66.7 kg');
     expect(GOAL_LABEL.elite_super_middle_boxer).toBe('Elite Athlete (Super Middleweight Boxer)');
     expect(GOAL_LABEL.elite_light_heavy_boxer).toBe('Elite Athlete (Light Heavyweight Boxer)');
     expect(GOAL_LABEL.elite_cruiser_boxer).toBe('Elite Athlete (Cruiserweight Boxer)');
@@ -1498,6 +1511,13 @@ describe('training nutrition goals', () => {
     expect(cruiser.ok && cruiser.suggestion.kcal).toBe(2682);
     expect(cruiser.ok && cruiser.suggestion.note).toContain('90.7 kg (200 lb)');
     expect(cruiser.ok && cruiser.suggestion.note).toContain('stays at maintenance');
+    const feather = suggestGoalTargets({ ...body, goal: 'elite_feather_boxer' });
+    expect(feather.ok && feather.suggestion.kcal).toBe(2482);
+    expect(feather.ok && feather.suggestion.note).toContain('57.2 kg (126 lb)');
+    expect(feather.ok && feather.suggestion.note).toContain('200 kcal under maintenance');
+    expect(feather.ok && feather.suggestion.note).not.toMatch(/spend .*sauna|skip water|sweat out/i);
+    expect(sheetClassKg('elite_feather_boxer', 70)).toBe(57.2);
+    expect(sheetClassKg('elite_welter_boxer', null)).toBe(66.7);
     const heavy = suggestGoalTargets({ ...body, goal: 'elite_heavy_boxer' });
     expect(heavy.ok && heavy.suggestion.kcal).toBe(2882);
     expect(heavy.ok && heavy.suggestion.note).toContain('size and power');
@@ -1510,6 +1530,24 @@ describe('training nutrition goals', () => {
     expect(weightTrendLine([{ day: '2026-09-01', kg: 82 }, { day: '2026-10-01', kg: 81 }], 'elite_light_heavy_boxer')).toContain('79.4 kg');
     expect(weightTrendLine([{ day: '2026-09-01', kg: 82 }, { day: '2026-10-01', kg: 81 }], 'elite_light_heavy_boxer')).not.toMatch(/to lose|weight cut/i);
 
+    const lower = readFileSync('supabase/migrations/20261017240000_lower_boxing_class_goals.sql', 'utf8');
+    expect(lower).toContain("'elite_feather_boxer'");
+    expect(lower).toContain("'elite_super_feather_boxer'");
+    expect(lower).toContain("'elite_light_boxer'");
+    expect(lower).toContain("'elite_super_light_boxer'");
+    expect(lower).toContain("'elite_welter_boxer'");
+    expect(lower).toContain("'elite_super_welter_boxer'");
+    expect(lower).toContain("'elite_middle_boxer'");
+    expect(lower).toContain("'elite_heavy_boxer'");
+    expect(lower).toContain('Elite Athlete (Featherweight Boxer)');
+    expect(lower).toContain('Not applied');
+    expect(lower).not.toMatch(/drop table/i);
+    expect(lower).not.toMatch(/delete from/i);
+    const chips = readFileSync('src/ui/GoalChoices.tsx', 'utf8');
+    expect(chips).toContain('Boxing weight classes');
+    expect(chips).toContain('accessibilityState={{ expanded: boxingOpen }}');
+    expect(chips).toContain('boxingChipLabel(option.id)');
+    expect(chips).toContain('nestedScrollEnabled');
     const sql = readFileSync('supabase/migrations/20261017230000_boxing_class_goals.sql', 'utf8');
     expect(sql).toContain('nutrition_settings_goal_check');
     expect(sql).toContain("'elite_super_middle_boxer'");

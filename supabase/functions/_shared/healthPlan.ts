@@ -18,6 +18,7 @@ import {
   weightPointsFrom,
   type BodyBuild,
   type BuilderPhase,
+  type ClassBoxerGoal,
   type FoodLog,
   type NutritionGoal,
   type NutritionSex,
@@ -347,6 +348,17 @@ function targetLine(facts: Derived): string {
   return `${clip(base, 180)} ${note}`.trim();
 }
 
+function classLimitHabits(goal: ClassBoxerGoal): string[] {
+  const spec = PRO_BOXING_CLASSES[goal];
+  const named = spec.also ? `${spec.short} (${spec.also})` : spec.short;
+  return [
+    'Eat before the session and a proper meal after it.',
+    `Keep every meal. A ${named} limit of about ${spec.limitKg} kg is a small change, not a skipped meal.`,
+    'Keep water with the meal. Do not skip drinks to change the scales.',
+    'A class limit is a note for a coach and a doctor. Muscular boxers can sit above the BMI band.',
+  ];
+}
+
 function nutritionHabits(facts: Derived): string[] {
   const goal = facts.input.goal;
   const banks: Record<string, string[]> = {
@@ -430,7 +442,8 @@ function nutritionHabits(facts: Derived): string[] {
       'Drink a glass of water before the evening meal.',
     ],
   };
-  const chosen = take(facts.input.salt, 'habits', banks[goal ?? 'none'] ?? banks.none, 3, facts.done);
+  const habits = isClassBoxer(goal) ? classLimitHabits(goal) : (banks[goal ?? 'none'] ?? banks.none);
+  const chosen = take(facts.input.salt, 'habits', habits, 3, facts.done);
   if (facts.done.some((item) => item.toLowerCase() === LOG_IN_CHARIOTEER.toLowerCase())) return chosen;
   return [...chosen, LOG_IN_CHARIOTEER];
 }
@@ -1589,7 +1602,7 @@ export const HEALTH_PLAN_PROMPT = [
   'If nothing they logged or wrote supports a swap, return one swap whose text is exactly "Log a few more meals and Thumos will suggest swaps based on what you actually eat."',
   'Nutrition, fitness, wellbeing, and this week\'s focus all follow the saved nutrition goal. Do not write a running plan, a mileage build, or a progressive distance week.',
   'When fitnessSnapshot is present, it is an estimate from their own readings, not a medical assessment. You may add one session or hold the week they already do. Never prescribe fewer sessions or fewer minutes unless they report pain, illness, injury, or poor recovery. Do not turn it into a running plan. Check with a doctor before big changes.',
-  'If the goal is an elite runner, body builder, heavyweight boxer, middleweight boxer, super middleweight boxer, light heavyweight boxer, or cruiserweight boxer, include training load, recovery, and fuelling around sessions. A heavyweight goal keeps size and power and does not use a deficit. A middleweight, super middleweight, light heavyweight, or cruiserweight goal stays near its limit with a small change only. Amateur IBA figures are a reference only. Muscular boxers can sit above the BMI band.',
+  'If the goal is an elite runner, body builder, or boxer, include training load, recovery, and fuelling around sessions. A heavyweight goal keeps size and power and does not use a deficit. A middleweight goal, and a featherweight through cruiserweight goal, stays near its limit with a small change only. Professional limits for those classes are about 57.2 kg, 59.0 kg, 61.2 kg, 63.5 kg, 66.7 kg, 69.9 kg, 72.6 kg, 76.2 kg, 79.4 kg, and 90.7 kg. Super lightweight is also called light welterweight. Super welterweight is also called light middleweight. Amateur IBA figures are a reference only. Muscular boxers can sit above the BMI band.',
   'When the user message includes training, that object is the routine from logged workouts over the last 4 weeks: sessions per week, typical minutes, train weekdays, and rest weekdays. Maintain or progress that baseline. Never prescribe fewer sessions or fewer minutes unless they report pain, illness, injury, or poor recovery. Rest only on training.restDays. Do not invent a rest day, a full rest, or "no structured workouts" on a day they train. One row per weekday. Do not append a stock walk-and-rest week. The fitness intro must say what the log shows, for example "You train about 30 min on most days." Progress with a little more weight, one more set, or about 5 to 10 percent volume. For lose fat and build muscle, emphasise resistance training, protein, and a little easy walking or steps. A runner, boxer, or body builder keeps that sport. Check with a doctor before big changes.',
   'When training.source is "stated", the person set that week on You. Follow training.trainDays and training.dayMinutes. Rest only on training.restDays. A day in training.walkDays is a walk, not a missed gym day and not a gym session. The fitness intro states the aim, for example "You aim for 30 min on weekdays and a bit more on Saturday". If the summary says how many of those sessions they have done this week, keep that comparison. Use training.note only when they wrote one. Do not invent a time of day.',
   'When weightRange is present, it is an approximate range from published sources. Use those figures. Do not turn a boxing class limit into a weight cut. Do not set a target below the healthy minimum. A loss, when one is mentioned, stays around 0.5 to 1 kg a week at most.',

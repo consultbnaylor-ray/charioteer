@@ -12,6 +12,7 @@ import {
   GOAL_LABEL,
   WORKOUT_BUCKETS,
   isAnyBoxer,
+  isClassBoxer,
   type BodyBuild,
   type NutritionGoal,
   type NutritionSex,
@@ -155,10 +156,11 @@ const FRIEND_SOURCE =
  * Heavyweight (light-heavyweight through super-heavyweight) mean 59.24 ± 2.75.
  * Middleweight group (lightweight through middleweight) mean 62.04 ± 2.89.
  * The heavyweight group was lower. Ranges are that mean, plus or minus about one
- * standard deviation, rounded. Approximate, and for men on a national team.
+ * standard deviation, rounded. Classes lighter than lightweight use that nearer
+ * published group. Approximate, and for men on a national team.
  */
 const BOXER_SOURCE =
-  'Boxers: Kim, Song, and Min, Exercise Science, 2016. Korean national amateur men. Heavyweight cardio fitness averaged about 59 ml/kg/min and the middleweight group about 62, and the heavyweight group was lower. The ranges here are about one standard deviation either side, rounded. They are approximate.';
+  'Boxers: Kim, Song, and Min, Exercise Science, 2016. Korean national amateur men. Heavyweight cardio fitness averaged about 59 ml/kg/min and the middleweight group about 62, and the heavyweight group was lower. The ranges here are about one standard deviation either side, rounded. Classes lighter than lightweight use that nearer published group. They are approximate.';
 
 const HEAVY_BOXER = { low: 56, high: 62 };
 const MIDDLE_BOXER = { low: 59, high: 65 };
@@ -436,7 +438,7 @@ function boxerBand(goal: NutritionGoal | null, sex: NutritionSex | null): Fitnes
   if (goal === 'elite_heavy_boxer' || goal === 'elite_light_heavy_boxer' || goal === 'elite_cruiser_boxer') {
     return { ...HEAVY_BOXER, label };
   }
-  if (goal === 'elite_middle_boxer' || goal === 'elite_super_middle_boxer') return { ...MIDDLE_BOXER, label };
+  if (goal === 'elite_middle_boxer' || isClassBoxer(goal)) return { ...MIDDLE_BOXER, label };
   return null;
 }
 

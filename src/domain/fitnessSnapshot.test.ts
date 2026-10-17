@@ -359,6 +359,15 @@ describe('fitness snapshot', () => {
       high: 62,
       label: 'Typical for Elite Athlete (Cruiserweight Boxer)',
     });
+    const feather = buildFitnessSnapshot(input({
+      goal: 'elite_feather_boxer',
+      health: [{ kind: 'vo2_max', value: 42.6, recordedOn: '2026-10-16' }],
+    }));
+    expect(feather.cardio?.compare.goal).toEqual({
+      low: 59,
+      high: 65,
+      label: 'Typical for Elite Athlete (Featherweight Boxer)',
+    });
     expect(whyCardioMatters('elite_light_heavy_boxer')).toContain('Elite Athlete (Light Heavyweight Boxer)');
     expect(whyCardioMatters('elite_light_heavy_boxer')).toContain('approximate');
     expect(heavy.cardio?.compare.words).toContain('below that approximate range');

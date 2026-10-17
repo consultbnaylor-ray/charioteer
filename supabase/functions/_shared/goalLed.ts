@@ -1,4 +1,4 @@
-import { GOAL_LABEL, MIDDLEWEIGHT_LIMIT_KG, PRO_BOXING_CLASSES, classBoxerLimitKg, isClassBoxer, type NutritionGoal } from './nutrition.ts';
+import { GOAL_LABEL, MIDDLEWEIGHT_LIMIT_KG, classBoxerLimitKg, classBoxerName, isClassBoxer, type NutritionGoal } from './nutrition.ts';
 
 export type GoalTone = 'good' | 'watch' | 'info' | 'attention';
 
@@ -58,6 +58,12 @@ const FOCUS: Record<NutritionGoal, string> = {
   increase: 'Add a little to a meal you already cook, with protein, and keep the strength sessions.',
   elite_runner: 'Eat before and after the sessions you already do, and protect sleep the night before the longer one.',
   body_builder: 'Keep protein on each meal, and keep the lifting you already do. Do not skip a meal.',
+  elite_feather_boxer: 'Keep every meal, and keep the skill work you already do. A featherweight limit is a small change only.',
+  elite_super_feather_boxer: 'Keep every meal, and keep the skill work you already do. A super featherweight limit is a small change only.',
+  elite_light_boxer: 'Keep every meal, and keep the skill work you already do. A lightweight limit is a small change only.',
+  elite_super_light_boxer: 'Keep every meal, and keep the skill work you already do. A super lightweight limit is a small change only.',
+  elite_welter_boxer: 'Keep every meal, and keep the skill work you already do. A welterweight limit is a small change only.',
+  elite_super_welter_boxer: 'Keep every meal, and keep the skill work you already do. A super welterweight limit is a small change only.',
   elite_middle_boxer: 'Keep every meal, and keep the skill work you already do. A class limit is a small change only.',
   elite_super_middle_boxer: 'Keep every meal, and keep the skill work you already do. A super middleweight limit is a small change only.',
   elite_light_heavy_boxer: 'Keep every meal, and keep the skill work you already do. A light heavyweight limit is a small change only.',
@@ -95,6 +101,12 @@ function mattersFor(goal: NutritionGoal, stage: GoalLedInput['stage'], blocked: 
     increase: 'What matters most is a little more food than you use, protein at meals, and the strength sessions you already do.',
     elite_runner: 'What matters most is fuel around the sessions you already do, protein, and sleep before the longer day.',
     body_builder: 'What matters most is protein, the lifting you already do, and enough food to recover.',
+    elite_feather_boxer: 'What matters most is the skill work you already do, protein, and staying near the featherweight limit with a small change only.',
+    elite_super_feather_boxer: 'What matters most is the skill work you already do, protein, and staying near the super featherweight limit with a small change only.',
+    elite_light_boxer: 'What matters most is the skill work you already do, protein, and staying near the lightweight limit with a small change only.',
+    elite_super_light_boxer: 'What matters most is the skill work you already do, protein, and staying near the super lightweight limit with a small change only.',
+    elite_welter_boxer: 'What matters most is the skill work you already do, protein, and staying near the welterweight limit with a small change only.',
+    elite_super_welter_boxer: 'What matters most is the skill work you already do, protein, and staying near the super welterweight limit with a small change only.',
     elite_middle_boxer: 'What matters most is the skill work you already do, protein, and staying near your class with a small change only.',
     elite_super_middle_boxer: 'What matters most is the skill work you already do, protein, and staying near the super middleweight limit with a small change only.',
     elite_light_heavy_boxer: 'What matters most is the skill work you already do, protein, and staying near the light heavyweight limit with a small change only.',
@@ -228,7 +240,7 @@ function weightMeasure(input: GoalLedInput, hope: 'down' | 'steady' | 'up' | 'cl
     };
   }
   if (hope === 'class') {
-    const named = isClassBoxer(input.goal) ? PRO_BOXING_CLASSES[input.goal].short : 'middleweight';
+    const named = isClassBoxer(input.goal) ? classBoxerName(input.goal) : 'middleweight';
     const limit = isClassBoxer(input.goal)
       ? classBoxerLimitKg(input.goal) ?? MIDDLEWEIGHT_LIMIT_KG
       : num(input.weightClassKg) ?? MIDDLEWEIGHT_LIMIT_KG;

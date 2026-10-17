@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { View } from 'react-native';
+import { Pressable, ScrollView, View } from 'react-native';
 
 import { useRepository, useSnapshot } from '@/data';
 import { shownError } from '@/domain/errors';
@@ -10,7 +10,7 @@ import {
   resolveGoalOptions,
   type GoalOption,
 } from '@/domain/goalOptions';
-import { GOAL_PLAIN, type NutritionGoal } from '@/domain/nutrition';
+import { GOAL_PLAIN, boxingChipLabel, isAnyBoxer, type NutritionGoal } from '@/domain/nutrition';
 import { PlanTick } from '@/ui/PlanTick';
 import { statsToneColors } from '@/ui/statsPalette';
 import { useAppTheme } from '@/ui/theme';
@@ -39,6 +39,7 @@ export function GoalChoices({
   const [note, setNote] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
   const [attempt, setAttempt] = useState(0);
+  const [boxingOpen, setBoxingOpen] = useState(() => isAnyBoxer(settings.goal));
   const write = useRef(0);
   const green = statsToneColors(theme.scheme).good.ink;
 
@@ -62,6 +63,11 @@ export function GoalChoices({
     };
   }, [attempt]);
 
+  const currentBoxing = isAnyBoxer(settings.goal) ? settings.goal : null;
+  useEffect(() => {
+    if (currentBoxing) setBoxingOpen(true);
+  }, [currentBoxing]);
+
   async function choose(id: NutritionGoal) {
     if (settings.goal === id) return;
     const ticket = ++write.current;
@@ -79,6 +85,8 @@ export function GoalChoices({
   }
 
   const shown = options.length ? options : defaultGoalOptions();
+  const general = shown.filter((option) => !isAnyBoxer(option.id));
+  const boxing = shown.filter((option) => isAnyBoxer(option.id));
   const body = (
     <View style={{ gap: 8 }}>
       <T variant="label">Goal</T>
@@ -90,7 +98,7 @@ export function GoalChoices({
         </View>
       ) : null}
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-        {shown.map((option) => (
+        {general.map((option) => (
           <Choice
             key={option.id}
             label={option.label}
@@ -99,6 +107,37 @@ export function GoalChoices({
           />
         ))}
       </View>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel="Boxing weight classes"
+        accessibilityState={{ expanded: boxingOpen }}
+        onPress={() => setBoxingOpen((value) => !value)}
+        style={{ minHeight: 44, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}
+      >
+        <T style={{ fontFamily: theme.font.bodyStrong, flex: 1 }}>Boxing weight classes</T>
+        <T variant="muted">{boxingOpen ? 'Hide' : 'Show'}</T>
+      </Pressable>
+      {!boxingOpen && currentBoxing ? (
+        <Choice
+          label={boxingChipLabel(currentBoxing) ?? 'Boxing'}
+          selected
+          onPress={() => setBoxingOpen(true)}
+        />
+      ) : null}
+      {boxingOpen ? (
+        <ScrollView style={{ maxHeight: 280 }} nestedScrollEnabled>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+            {boxing.map((option) => (
+              <Choice
+                key={option.id}
+                label={boxingChipLabel(option.id) ?? option.label}
+                selected={settings.goal === option.id}
+                onPress={() => void choose(option.id)}
+              />
+            ))}
+          </View>
+        </ScrollView>
+      ) : null}
       {saved ? (
         <View
           accessibilityRole="text"

@@ -58,8 +58,8 @@ export type GoalWeightInput = {
   unit?: WeightUnitMode;
 };
 
-/** highKg is null when a published class has no upper limit. lowExclusive means the class starts over lowKg. */
-export type WeightSpan = { lowKg: number; highKg: number | null; lowExclusive?: boolean };
+/** highKg is null when a published class has no upper limit. lowExclusive means the class starts over lowKg. ceilingOnly is a class with no lower edge in this list. */
+export type WeightSpan = { lowKg: number; highKg: number | null; lowExclusive?: boolean; ceilingOnly?: boolean };
 
 export type GoalWeightSource = { name: string; url: string };
 
@@ -103,8 +103,8 @@ const IBA_SOURCE: GoalWeightSource = {
 
 type ClassWindow = {
   label: string;
-  /** Official lower edge. The class starts over this weight. */
-  lowOver: number;
+  /** Official lower edge. The class starts over this weight. Null when this list has no lower class. */
+  lowOver: number | null;
   /** Official upper edge, inclusive. Null when the table has no upper limit. */
   highTo: number | null;
   /** Heavyweight goal also covers the super-heavyweight class above the heavyweight top. */
@@ -138,6 +138,7 @@ export function formatWeightAmount(kg: number, unit: WeightUnitMode): string {
 }
 
 function spanText(span: WeightSpan, unit: WeightUnitMode): string {
+  if (span.ceilingOnly && span.highKg != null) return `up to ${formatWeightAmount(span.highKg, unit)}`;
   const low = formatWeightAmount(span.lowKg, unit);
   if (span.highKg == null) return span.lowExclusive ? `over ${low}` : `${low} and above`;
   const high = formatWeightAmount(span.highKg, unit);
@@ -147,7 +148,8 @@ function spanText(span: WeightSpan, unit: WeightUnitMode): string {
 /** Legend for a goal band. A class limit is a reference, not an approximate target. */
 export function goalBandLegend(span: WeightSpan & { label: string }, unit: WeightUnitMode = 'kg'): string {
   const text = spanText(span, unit);
-  return span.lowExclusive ? `${span.label}: ${text}` : `${span.label}, approximate, ${text}`;
+  if (span.ceilingOnly || span.lowExclusive) return `${span.label}: ${text}`;
+  return `${span.label}, approximate, ${text}`;
 }
 
 function missingPrompt(missing: string[]): string {
@@ -193,22 +195,19 @@ function gainSentence(weightKg: number, lowKg: number, unit: WeightUnitMode, pla
 }
 
 function boxerClass(goal: NutritionGoal, sex: NutritionSex): ClassWindow | null {
-  if (goal === 'elite_middle_boxer' && sex === 'male') {
+  if (goal === 'elite_middle_boxer') {
     return {
-      label: 'Middleweight class (reference)',
-      lowOver: 71,
-      highTo: 75,
+      label: 'Middleweight limit (reference)',
+      lowOver: 69.9,
+      highTo: 72.6,
       countsAbove: false,
-      sentence: 'IBA elite men, middleweight, over 71 kg to 75 kg.',
-    };
-  }
-  if (goal === 'elite_middle_boxer' && sex === 'female') {
-    return {
-      label: 'Middleweight class (reference)',
-      lowOver: 70,
-      highTo: 75,
-      countsAbove: false,
-      sentence: 'IBA elite and youth women, middleweight, over 70 kg to 75 kg.',
+      sentence: [
+        'Professional middleweight limit, about 72.6 kg (160 lb).',
+        sex === 'female'
+          ? 'Amateur IBA, for reference only: elite and youth women middleweight is over 70 kg to 75 kg.'
+          : 'Amateur IBA, for reference only: elite men middleweight is over 71 kg to 75 kg.',
+        'Muscular boxers can sit above the BMI band.',
+      ].join(' '),
     };
   }
   if (goal === 'elite_heavy_boxer' && sex === 'male') {
@@ -234,6 +233,7 @@ function boxerClass(goal: NutritionGoal, sex: NutritionSex): ClassWindow | null 
 }
 
 function withProLimit(goal: NutritionGoal | null, words: string): string {
+  if (goal === 'elite_middle_boxer') return `${words} The professional limit is about 72.6 kg (160 lb).`;
   if (!isClassBoxer(goal)) return words;
   const spec = PRO_BOXING_CLASSES[goal];
   return `${words} The professional limit is about ${spec.limitKg} kg (${spec.limitLb} lb).`;
@@ -242,13 +242,14 @@ function withProLimit(goal: NutritionGoal | null, words: string): string {
 function proClass(goal: ClassBoxerGoal, sex: NutritionSex): ClassWindow {
   const spec = PRO_BOXING_CLASSES[goal];
   const title = spec.short.charAt(0).toUpperCase() + spec.short.slice(1);
+  const named = spec.also ? `${spec.short} (${spec.also})` : spec.short;
   return {
     label: `${title} limit (reference)`,
     lowOver: spec.lowOverKg,
     highTo: spec.limitKg,
     countsAbove: false,
     sentence: [
-      `Professional ${spec.short} limit, about ${spec.limitKg} kg (${spec.limitLb} lb).`,
+      `Professional ${named} limit, about ${spec.limitKg} kg (${spec.limitLb} lb).`,
       amateurIba(goal, sex),
       'Muscular boxers can sit above the BMI band.',
     ].join(' '),
@@ -257,23 +258,33 @@ function proClass(goal: ClassBoxerGoal, sex: NutritionSex): ClassWindow {
 
 /** Amateur names do not match these professional classes, so the IBA line stays a reference. */
 function amateurIba(goal: ClassBoxerGoal, sex: NutritionSex): string {
-  if (sex === 'female') {
-    if (goal === 'elite_cruiser_boxer') {
-      return 'Amateur IBA, for reference only: elite and youth women heavyweight is over 81 kg, with no upper limit in that table.';
-    }
-    return 'Amateur IBA, for reference only: elite and youth women light heavyweight is over 75 kg to 81 kg.';
-  }
-  if (goal === 'elite_super_middle_boxer') {
-    return 'Amateur IBA, for reference only: elite men light cruiserweight is over 75 kg to 80 kg. IBA does not name a super middleweight.';
-  }
-  if (goal === 'elite_light_heavy_boxer') {
-    return 'Amateur IBA, for reference only: elite men light cruiserweight is over 75 kg to 80 kg. IBA light heavyweight is over 86 kg to 92 kg, a different class from this professional limit.';
-  }
-  return 'Amateur IBA, for reference only: elite men light heavyweight is over 86 kg to 92 kg. IBA cruiserweight is over 80 kg to 86 kg, a different limit from this professional class.';
+  const men: Record<ClassBoxerGoal, string> = {
+    elite_feather_boxer: 'Amateur IBA, for reference only: elite men featherweight is over 54 kg to 57 kg. This professional limit sits just over that, in lightweight, over 57 kg to 60 kg.',
+    elite_super_feather_boxer: 'Amateur IBA, for reference only: IBA does not name a super featherweight. Elite men lightweight is over 57 kg to 60 kg.',
+    elite_light_boxer: 'Amateur IBA, for reference only: elite men lightweight is over 57 kg to 60 kg. This professional limit sits in light welterweight, over 60 kg to 63.5 kg.',
+    elite_super_light_boxer: 'Amateur IBA, for reference only: elite men light welterweight is over 60 kg to 63.5 kg, the same ceiling. IBA does not use the name super lightweight.',
+    elite_welter_boxer: 'Amateur IBA, for reference only: elite men welterweight is over 63.5 kg to 67 kg.',
+    elite_super_welter_boxer: 'Amateur IBA, for reference only: IBA does not name a super welterweight. Elite men light middleweight is over 67 kg to 71 kg.',
+    elite_super_middle_boxer: 'Amateur IBA, for reference only: elite men light cruiserweight is over 75 kg to 80 kg. IBA does not name a super middleweight.',
+    elite_light_heavy_boxer: 'Amateur IBA, for reference only: elite men light cruiserweight is over 75 kg to 80 kg. IBA light heavyweight is over 86 kg to 92 kg, a different class from this professional limit.',
+    elite_cruiser_boxer: 'Amateur IBA, for reference only: elite men light heavyweight is over 86 kg to 92 kg. IBA cruiserweight is over 80 kg to 86 kg, a different limit from this professional class.',
+  };
+  const women: Record<ClassBoxerGoal, string> = {
+    elite_feather_boxer: 'Amateur IBA, for reference only: elite and youth women featherweight is over 54 kg to 57 kg. This professional limit sits just over that, in lightweight, over 57 kg to 60 kg.',
+    elite_super_feather_boxer: 'Amateur IBA, for reference only: IBA does not name a super featherweight. Elite and youth women lightweight is over 57 kg to 60 kg.',
+    elite_light_boxer: 'Amateur IBA, for reference only: elite and youth women lightweight is over 57 kg to 60 kg. This professional limit sits in light welterweight, over 60 kg to 63 kg.',
+    elite_super_light_boxer: 'Amateur IBA, for reference only: elite and youth women light welterweight is over 60 kg to 63 kg. This professional limit sits in welterweight, over 63 kg to 66 kg.',
+    elite_welter_boxer: 'Amateur IBA, for reference only: elite and youth women welterweight is over 63 kg to 66 kg. This professional limit sits in light middleweight, over 66 kg to 70 kg.',
+    elite_super_welter_boxer: 'Amateur IBA, for reference only: IBA does not name a super welterweight. Elite and youth women light middleweight is over 66 kg to 70 kg.',
+    elite_super_middle_boxer: 'Amateur IBA, for reference only: elite and youth women light heavyweight is over 75 kg to 81 kg.',
+    elite_light_heavy_boxer: 'Amateur IBA, for reference only: elite and youth women light heavyweight is over 75 kg to 81 kg.',
+    elite_cruiser_boxer: 'Amateur IBA, for reference only: elite and youth women heavyweight is over 81 kg, with no upper limit in that table.',
+  };
+  return sex === 'female' ? women[goal] : men[goal];
 }
 
 function classInRange(weightKg: number, klass: ClassWindow): boolean {
-  if (!(weightKg > klass.lowOver)) return false;
+  if (klass.lowOver != null && !(weightKg > klass.lowOver)) return false;
   if (klass.highTo == null || klass.countsAbove) return true;
   return weightKg <= klass.highTo + 0.05;
 }
@@ -393,9 +404,10 @@ function buildRange(input: GoalWeightInput, unit: WeightUnitMode): Omit<GoalWeig
     : null;
   const goal = klass
     ? {
-      lowKg: klass.lowOver,
+      lowKg: klass.lowOver ?? klass.highTo ?? 0,
       highKg: klass.highTo,
-      lowExclusive: true,
+      lowExclusive: klass.lowOver != null,
+      ceilingOnly: klass.lowOver == null && klass.highTo != null,
       label: klass.label,
     }
     : healthyAsGoal(input.goal, healthy);
@@ -423,7 +435,7 @@ function buildRange(input: GoalWeightInput, unit: WeightUnitMode): Omit<GoalWeig
         words = klass.countsAbove && klass.highTo != null && weightKg > klass.highTo + 0.05
           ? `${named}, you are in the super heavyweight class, over ${formatWeightAmount(klass.highTo, unit)}. This is a reference, not a target.`
           : `${named}, you are inside this class.`;
-      } else if (weightKg <= klass.lowOver) {
+      } else if (klass.lowOver != null && weightKg <= klass.lowOver) {
         const gapKg = round1(klass.lowOver - weightKg);
         if (gapKg > 0 && klass.lowOver + 0.05 >= healthy.lowKg) {
           gap = `The gap to the bottom of this class is about ${formatWeightAmount(gapKg, unit)}`;
