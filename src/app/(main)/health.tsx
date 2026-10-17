@@ -10,11 +10,15 @@ import { parseHeightCm } from '@/domain/guidance';
 import type { BodyEntrySource } from '@/domain/nutrition';
 import type { WeightReadingDraft } from '@/domain/weightEntry';
 import { isHealthAccessDenied, type AppleHealthAccess, type AppleHealthTurnOn } from '@/health/connection';
-import { connectAppleHealth, openAppSettings, openHealthApp, readAppleHealthAccess, turnOnAppleHealthReads } from '@/health/link';
+import { catchUpAppleHealthReads } from '@/health/catchUp';
+import { connectAppleHealth, openAppSettings, openHealthApp, readAppleHealthAccess, turnOnAppleHealthReads, askAppleHealthReads } from '@/health/link';
+import { readHealthVisibility } from '@/health/visibility';
+import type { HealthVisibilityReport } from '@/domain/healthVisibility';
 import type { HealthTurnOnResult } from '@/ui/HealthStatBoard';
 import { loadLastSynced, saveLastSynced } from '@/health/syncedAt';
 import { syncAppleHealth } from '@/health/sync';
 import { AppleHealthCard } from '@/ui/AppleHealthCard';
+import { HealthVisibility } from '@/ui/HealthVisibility';
 import { GoalLine } from '@/ui/GoalLine';
 import { HealthStatBoard } from '@/ui/HealthStatBoard';
 import { HealthSectionShare } from '@/ui/SectionShare';
@@ -50,15 +54,31 @@ export default function Health() {
   const [weightReset, setWeightReset] = useState(0);
   const [access, setAccess] = useState<AppleHealthAccess | null>(ios ? null : 'web');
   const [syncedAt, setSyncedAt] = useState<string | null>(null);
+  const [visibility, setVisibility] = useState<HealthVisibilityReport | null>(ios ? null : { kind: 'web' });
+  const [visibilityPending, setVisibilityPending] = useState(false);
   const chosen = KINDS.find((item) => item.id === kind) ?? KINDS[0];
 
   const refreshLink = useCallback(() => {
     if (!ios) return;
     void readAppleHealthAccess().then(setAccess).catch(() => setAccess('prompt'));
     void loadLastSynced().then(setSyncedAt);
-  }, [ios]);
+    if (!consent) return;
+    void catchUpAppleHealthReads(repo).then((result) => {
+      if (!result.imported || !result.syncedAt) return;
+      setSyncedAt(result.syncedAt);
+      setAccess('connected');
+    }).catch(() => undefined);
+  }, [consent, ios, repo]);
 
   useFocusEffect(refreshLink);
+
+  const loadVisibility = useCallback(() => {
+    setVisibilityPending(true);
+    void readHealthVisibility()
+      .then(setVisibility)
+      .catch(() => setVisibility(ios ? { kind: 'unavailable' } : { kind: 'web' }))
+      .finally(() => setVisibilityPending(false));
+  }, [ios]);
 
   async function pullFromHealth() {
     const result = await syncAppleHealth();
@@ -96,6 +116,17 @@ export default function Health() {
     }
     const result: AppleHealthTurnOn = await turnOnAppleHealthReads(types);
     if (result === 'prompted') await pullFromHealth();
+    return result;
+  }
+
+  async function askUnasked(types: readonly string[]): Promise<HealthTurnOnResult> {
+    if (!consent) {
+      router.push('/privacy' as never);
+      return 'consent';
+    }
+    const result = await askAppleHealthReads(types);
+    if (result === 'prompted') await pullFromHealth();
+    loadVisibility();
     return result;
   }
 
@@ -229,6 +260,7 @@ export default function Health() {
         onSettings={() => void openAppSettings()}
         onPrivacy={() => router.push('/privacy' as never)}
       />
+      <HealthVisibility report={visibility} pending={visibilityPending} onOpen={loadVisibility} onAsk={askUnasked} />
       <HealthStatBoard
         today={isoDay(new Date())}
         samples={snap.health}

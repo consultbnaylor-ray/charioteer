@@ -7,7 +7,9 @@ import {
 import { Linking } from 'react-native';
 
 import { missingHealthAction } from '@/domain/healthStatTiles';
+import { healthReadSetChanged } from '@/domain/healthVisibility';
 import { APPLE_HEALTH_READ_TYPES, type AppleHealthAccess, type AppleHealthTurnOn, isHealthAccessDenied } from '@/health/connection';
+import { loadHealthReadSet, saveHealthReadSet } from '@/health/readSet';
 
 const toRead = [...APPLE_HEALTH_READ_TYPES];
 
@@ -89,4 +91,31 @@ export async function turnOnAppleHealthReads(types: readonly string[]): Promise<
   }
   await openHealthApp();
   return 'opened';
+}
+
+/**
+ * An install that already answered the old sheet does not see new types until
+ * requestAuthorization is called with them. This does that once per changed set.
+ */
+export async function ensureCurrentAppleHealthReads(): Promise<'requested' | 'current' | 'unavailable'> {
+  if (!isHealthDataAvailable()) return 'unavailable';
+  const stored = await loadHealthReadSet();
+  if (!healthReadSetChanged(stored, APPLE_HEALTH_READ_TYPES)) return 'current';
+  try {
+    const allowed = await requestAuthorization({ toRead: [...APPLE_HEALTH_READ_TYPES] });
+    if (!allowed) return 'current';
+    await saveHealthReadSet(APPLE_HEALTH_READ_TYPES);
+    return 'requested';
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (isHealthAccessDenied(message)) return 'current';
+    throw error;
+  }
+}
+
+/** Asks again for types the sheet has not covered. A recorded decision does not reappear. */
+export async function askAppleHealthReads(types: readonly string[]): Promise<AppleHealthTurnOn> {
+  const result = await turnOnAppleHealthReads(types);
+  if (result === 'prompted') await saveHealthReadSet(APPLE_HEALTH_READ_TYPES);
+  return result;
 }

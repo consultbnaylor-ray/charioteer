@@ -12,6 +12,7 @@ import { StatusBar } from 'expo-status-bar';
 import { APP_DISPLAY_NAME, APP_FULL_NAME } from '@/domain/appName';
 import { buddySecretFromUrl, holdBuddySecret, peekBuddySecret, consumeBuddySecret } from '@/domain/buddies';
 import { RepoProvider, useRepository, useSnapshot } from '@/data';
+import { catchUpAppleHealthReads } from '@/health/catchUp';
 import { listenForMessageOpens, retryMessageNotifications } from '@/notifications/register';
 import { CONSENT_VERSION } from '@/data/catalogue';
 import { hasCurrentConsents } from '@/domain/consents';
@@ -72,6 +73,11 @@ function Chrome() {
     void repo.reloadMessages().catch((error: unknown) => console.error(error));
     router.push(`/chat/${connectionId}` as never);
   }, () => router.push('/buddies' as never)), [router, repo]);
+
+  useEffect(() => {
+    if (Platform.OS !== 'ios' || !snap.ready || !snap.session || !snap.profile?.consentHealth) return;
+    void catchUpAppleHealthReads(repo).catch((error: unknown) => console.error('apple health reads', error));
+  }, [repo, snap.profile?.consentHealth, snap.ready, snap.session]);
 
   useEffect(() => {
     const registerPhone = () => {

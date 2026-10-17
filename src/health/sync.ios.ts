@@ -13,6 +13,7 @@ import { isoDay } from '@/domain/dates';
 import { shownError } from '@/domain/errors';
 import { parseBodyFatPct, parseLeanMassKg } from '@/domain/nutrition';
 import { workoutBucket } from '@/domain/fitnessSnapshot';
+import { HEALTH_SAMPLE_DAYS } from '@/domain/healthVisibility';
 import { APPLE_HEALTH_READ_TYPES, type AppleHealthBody, type AppleHealthComposition } from '@/health/connection';
 
 export type AppleHealthBodyRead =
@@ -106,7 +107,12 @@ function minutes(quantity: number, unit: string): number {
   return quantity / 60;
 }
 
-/** Reads the last 14 days. Food and water are written separately when a meal is saved. */
+/**
+ * Steps, weight, and active energy use the last 14 days.
+ * Heart rate recovery, body fat, and lean mass use the last 8 weeks, so a
+ * reading from earlier in that window is kept when today has none.
+ * Food and water are written separately when a meal is saved.
+ */
 export async function syncAppleHealth(): Promise<HealthSyncResult> {
   try {
     if (!isHealthDataAvailable()) {
@@ -117,7 +123,7 @@ export async function syncAppleHealth(): Promise<HealthSyncResult> {
 
     const end = new Date();
     const start = new Date(end.getTime() - 14 * 24 * 60 * 60 * 1000);
-    const fitnessStart = new Date(end.getTime() - 56 * 24 * 60 * 60 * 1000);
+    const fitnessStart = new Date(end.getTime() - HEALTH_SAMPLE_DAYS * 24 * 60 * 60 * 1000);
     const filter = { date: { startDate: start, endDate: end } };
     const fitnessFilter = { date: { startDate: fitnessStart, endDate: end } };
     const samples: NewHealthSample[] = [];
@@ -172,37 +178,40 @@ export async function syncAppleHealth(): Promise<HealthSyncResult> {
     for (const sample of weight) weightDays.set(isoDay(sample.startDate), sample.quantity);
     samples.push(...rows('weight_kg', 'kg', weightDays, (value) => Math.round(value * 10) / 10));
 
-    let composition: AppleHealthComposition[] = [];
+    const byDay = new Map<string, { bodyFatPct: number | null; leanMassKg: number | null }>();
     try {
       const fat = await queryQuantitySamples('HKQuantityTypeIdentifierBodyFatPercentage', {
         limit: 0,
         unit: '%',
-        filter,
+        filter: fitnessFilter,
       });
-      const lean = await queryQuantitySamples('HKQuantityTypeIdentifierLeanBodyMass', {
-        limit: 0,
-        unit: 'kg',
-        filter,
-      });
-      const byDay = new Map<string, { bodyFatPct: number | null; leanMassKg: number | null }>();
       for (const sample of fat) {
         const day = isoDay(sample.startDate);
         const current = byDay.get(day) ?? { bodyFatPct: null, leanMassKg: null };
         current.bodyFatPct = parseBodyFatPct(sample.quantity);
         byDay.set(day, current);
       }
+    } catch {
+      // Body fat stays empty until Health has a sample this app can read.
+    }
+    try {
+      const lean = await queryQuantitySamples('HKQuantityTypeIdentifierLeanBodyMass', {
+        limit: 0,
+        unit: 'kg',
+        filter: fitnessFilter,
+      });
       for (const sample of lean) {
         const day = isoDay(sample.startDate);
         const current = byDay.get(day) ?? { bodyFatPct: null, leanMassKg: null };
         current.leanMassKg = parseLeanMassKg(sample.quantity);
         byDay.set(day, current);
       }
-      composition = [...byDay.entries()]
-        .map(([recordedOn, value]) => ({ recordedOn, bodyFatPct: value.bodyFatPct, leanMassKg: value.leanMassKg }))
-        .filter((row) => row.bodyFatPct != null || row.leanMassKg != null);
     } catch {
-      composition = [];
+      // Lean mass stays empty until Health has a sample this app can read.
     }
+    const composition: AppleHealthComposition[] = [...byDay.entries()]
+      .map(([recordedOn, value]) => ({ recordedOn, bodyFatPct: value.bodyFatPct, leanMassKg: value.leanMassKg }))
+      .filter((row) => row.bodyFatPct != null || row.leanMassKg != null);
 
     const workouts = await queryWorkoutSamples({ limit: 0, filter: fitnessFilter });
     const workoutDays = new Map<string, number>();
