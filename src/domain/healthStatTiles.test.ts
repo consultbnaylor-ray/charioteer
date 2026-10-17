@@ -363,6 +363,25 @@ describe('health stat tiles', () => {
     }
     expect(weight.extraSourceName).toContain('IBA Technical and Competition Rules');
     expect(weight.extraSourceUrl).toContain('iba.sport');
+    const klass = buildHealthStatBoard(input({
+      goal: 'elite_super_middle_boxer',
+      goalSex: 'male',
+      goalAge: 30,
+      heightCm: 178,
+      build: 'muscular',
+      body: [],
+      samples: [{ kind: 'weight_kg', value: 80, recordedOn: today }],
+    }));
+    const bar = tile(klass, 'weight_kg');
+    expect(bar.status).toBe(BMI_MUSCLE_NOTE);
+    expect(bar.meaning).toContain('For Elite Athlete (Super Middleweight Boxer)');
+    expect(bar.meaning).toContain('76.2 kg (168 lb)');
+    expect(bar.meaning).toContain('for reference only');
+    expect(bar.meaning).not.toMatch(/to lose/i);
+    if (bar.visual.kind === 'zone') {
+      expect(bar.visual.goalCaption).toBe('Super middleweight limit (reference): over 72.6 kg to 76.2 kg');
+      expect(bar.visual.goalHigh).toBe(76.2);
+    }
     expect(detailShowsStatusAgain('zone')).toBe(false);
     expect(detailShowsStatusAgain('ring')).toBe(false);
     expect(detailShowsStatusAgain('bars')).toBe(true);

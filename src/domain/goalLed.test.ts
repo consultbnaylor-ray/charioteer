@@ -86,6 +86,13 @@ describe('goal led summary', () => {
     });
     expect(share).toContain('Progress on Elite Athlete (Heavy Weight Boxer) is about training, recovery, and body composition.');
     expect(share).not.toMatch(/this goal/i);
+    const cruiser = buildGoalLed({ ...base, goal: 'elite_cruiser_boxer', weightKg: 94 });
+    expect(cruiser.name).toBe('Elite Athlete (Cruiserweight Boxer)');
+    expect(cruiser.caution).toMatch(/No rapid cut/);
+    expect(cruiser.caution).toMatch(/doctor/i);
+    expect(cruiser.matters).toMatch(/cruiserweight limit/);
+    expect(cruiser.measures.find((item) => item.id === 'weight')?.words).toContain('above the cruiserweight limit of 90.7 kg');
+    expect(goalFocusLine('elite_super_middle_boxer')).toContain('super middleweight');
   });
 
   it('stays quiet until a goal is chosen', () => {

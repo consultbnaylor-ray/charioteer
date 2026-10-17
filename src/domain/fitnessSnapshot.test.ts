@@ -341,6 +341,26 @@ describe('fitness snapshot', () => {
     expect(middle.cardio?.compare.goal).toEqual({ low: 59, high: 65, label: 'Typical for Elite Athlete (Middle Weight Boxer)' });
     expect(heavy.cardio?.compare.words).toContain('Typical for Elite Athlete (Heavy Weight Boxer), approximate, is about 56 to 62');
     expect(heavy.cardio?.compare.goal?.low).toBeLessThan(middle.cardio?.compare.goal?.low ?? 0);
+    const superMiddle = buildFitnessSnapshot(input({
+      goal: 'elite_super_middle_boxer',
+      health: [{ kind: 'vo2_max', value: 42.6, recordedOn: '2026-10-16' }],
+    }));
+    const cruiser = buildFitnessSnapshot(input({
+      goal: 'elite_cruiser_boxer',
+      health: [{ kind: 'vo2_max', value: 42.6, recordedOn: '2026-10-16' }],
+    }));
+    expect(superMiddle.cardio?.compare.goal).toEqual({
+      low: 59,
+      high: 65,
+      label: 'Typical for Elite Athlete (Super Middleweight Boxer)',
+    });
+    expect(cruiser.cardio?.compare.goal).toEqual({
+      low: 56,
+      high: 62,
+      label: 'Typical for Elite Athlete (Cruiserweight Boxer)',
+    });
+    expect(whyCardioMatters('elite_light_heavy_boxer')).toContain('Elite Athlete (Light Heavyweight Boxer)');
+    expect(whyCardioMatters('elite_light_heavy_boxer')).toContain('approximate');
     expect(heavy.cardio?.compare.words).toContain('below that approximate range');
     expect(heavy.cardio?.compare.sources.join(' ')).toContain('Kim, Song, and Min');
     expect(heavy.cardio?.compare.sources.join(' ')).toContain('Kaminsky');

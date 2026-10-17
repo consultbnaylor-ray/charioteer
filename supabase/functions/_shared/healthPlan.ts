@@ -3,6 +3,9 @@ import {
   GOAL_LABEL,
   LOW_BMI_NOTE,
   MIDDLEWEIGHT_LIMIT_KG,
+  PRO_BOXING_CLASSES,
+  isAnyBoxer,
+  isClassBoxer,
   isTrainingGoal,
   assessWeight,
   bmiValue,
@@ -328,6 +331,10 @@ function targetLine(facts: Derived): string {
     const typed = facts.input.weightClassKg != null ? '' : ' until you type your own';
     parts.push(`Middleweight limit ${limit} kg${typed} is a note for a coach and a doctor`);
   }
+  if (isClassBoxer(facts.input.goal)) {
+    const spec = PRO_BOXING_CLASSES[facts.input.goal];
+    parts.push(`Professional ${spec.short} limit about ${spec.limitKg} kg is a note for a coach and a doctor`);
+  }
   if (facts.recentKcal != null && !facts.input.hideCalories) {
     parts.push(`recent days averaged ${Math.round(facts.recentKcal).toLocaleString('en-GB')} kcal`);
   }
@@ -397,6 +404,24 @@ function nutritionHabits(facts: Derived): string[] {
       'Keep every meal. A middleweight limit on this screen is a small change, not a skipped meal.',
       'Keep water with the meal. Do not skip drinks to change the scales.',
       'A middleweight limit is a note for a coach and a doctor.',
+    ],
+    elite_super_middle_boxer: [
+      'Eat before the session and a proper meal after it.',
+      'Keep every meal. A super middleweight limit of about 76.2 kg is a small change, not a skipped meal.',
+      'Keep water with the meal. Do not skip drinks to change the scales.',
+      'A super middleweight limit is a note for a coach and a doctor. Muscular boxers can sit above the BMI band.',
+    ],
+    elite_light_heavy_boxer: [
+      'Eat before the session and a proper meal after it.',
+      'Keep every meal. A light heavyweight limit of about 79.4 kg is a small change, not a skipped meal.',
+      'Keep water with the meal. Do not skip drinks to change the scales.',
+      'A light heavyweight limit is a note for a coach and a doctor. Muscular boxers can sit above the BMI band.',
+    ],
+    elite_cruiser_boxer: [
+      'Eat before the session and a proper meal after it.',
+      'Keep every meal. A cruiserweight limit of about 90.7 kg is a small change, not a skipped meal.',
+      'Keep water with the meal. Do not skip drinks to change the scales.',
+      'A cruiserweight limit is a note for a coach and a doctor. Muscular boxers can sit above the BMI band.',
     ],
     none: [
       'Keep three meals, even on a day that runs late.',
@@ -891,7 +916,7 @@ export function mentionsRegressiveSession(text: string, baseline: TrainingBaseli
 function progressionClause(facts: Derived): string {
   const goal = facts.input.goal;
   if (goal === 'elite_runner') return 'Add a little distance, about 5 to 10 percent.';
-  if (goal === 'elite_heavy_boxer' || goal === 'elite_middle_boxer') return 'Add a little work on the pads or the bag.';
+  if (isAnyBoxer(goal)) return 'Add a little work on the pads or the bag.';
   if (goal === 'body_builder') return 'Add a little weight or one set.';
   return 'Add a little weight or one set.';
 }
@@ -899,7 +924,7 @@ function progressionClause(facts: Derived): string {
 function sessionKind(facts: Derived): string {
   const goal = facts.input.goal;
   if (goal === 'elite_runner') return 'run';
-  if (goal === 'elite_heavy_boxer' || goal === 'elite_middle_boxer') return 'boxing session';
+  if (isAnyBoxer(goal)) return 'boxing session';
   if (goal === 'body_builder') return 'lifting session';
   return 'session';
 }
@@ -921,7 +946,7 @@ function routineWeek(facts: Derived, baseline: TrainingBaseline): string[] {
 function statedKeep(goal: PlanInput['goal']): string {
   if (goal === 'elite_runner') return 'Keep the runs and the carbohydrate.';
   if (goal === 'body_builder') return 'Keep the lifting and the protein.';
-  if (goal === 'elite_heavy_boxer' || goal === 'elite_middle_boxer') return 'Keep the boxing and the protein.';
+  if (isAnyBoxer(goal)) return 'Keep the boxing and the protein.';
   if (goal === 'lose_fat_build_muscle') return 'Keep the resistance work and the protein.';
   return 'Keep this routine.';
 }
@@ -935,7 +960,7 @@ function baselineIntro(facts: Derived, baseline: TrainingBaseline): string {
     ? 'Keep the runs and the carbohydrate, and add a little distance.'
     : goal === 'body_builder'
       ? 'Keep the lifting and the protein, and add a little weight or one set.'
-      : goal === 'elite_heavy_boxer' || goal === 'elite_middle_boxer'
+      : isAnyBoxer(goal)
         ? 'Keep the boxing and the protein, and add a little work.'
         : goal === 'lose_fat_build_muscle'
           ? 'Keep the resistance work and the protein, add a little weight or one set, and keep some easy walking.'
@@ -1072,7 +1097,11 @@ function fitnessIntro(facts: Derived): string {
         ? 'This week keeps the lifting volume you can recover from, with food after the sessions.'
         : facts.input.goal === 'elite_heavy_boxer'
           ? 'This week keeps food around the sessions so size and power can hold.'
-          : 'This week keeps skill work and food around it. A middleweight limit belongs with a coach and a doctor.';
+          : facts.input.goal === 'elite_middle_boxer'
+            ? 'This week keeps skill work and food around it. A middleweight limit belongs with a coach and a doctor.'
+            : isClassBoxer(facts.input.goal)
+              ? `This week keeps skill work and food around it. A ${PRO_BOXING_CLASSES[facts.input.goal].short} limit of about ${PRO_BOXING_CLASSES[facts.input.goal].limitKg} kg belongs with a coach and a doctor.`
+              : 'This week keeps skill work and food around it. A middleweight limit belongs with a coach and a doctor.';
     return clip(`${aim} Recent training load: ${load}. That load stays on Stats.`, 280);
   }
   const steps = facts.steps != null ? `${Math.round(facts.steps).toLocaleString('en-GB')} steps on a recent day` : 'no step count yet';
@@ -1560,7 +1589,7 @@ export const HEALTH_PLAN_PROMPT = [
   'If nothing they logged or wrote supports a swap, return one swap whose text is exactly "Log a few more meals and Thumos will suggest swaps based on what you actually eat."',
   'Nutrition, fitness, wellbeing, and this week\'s focus all follow the saved nutrition goal. Do not write a running plan, a mileage build, or a progressive distance week.',
   'When fitnessSnapshot is present, it is an estimate from their own readings, not a medical assessment. You may add one session or hold the week they already do. Never prescribe fewer sessions or fewer minutes unless they report pain, illness, injury, or poor recovery. Do not turn it into a running plan. Check with a doctor before big changes.',
-  'If the goal is an elite runner, body builder, heavyweight boxer, or middleweight boxer, include training load, recovery, and fuelling around sessions. A heavyweight goal keeps size and power and does not use a deficit. A middleweight goal stays near a limit with a small change only.',
+  'If the goal is an elite runner, body builder, heavyweight boxer, middleweight boxer, super middleweight boxer, light heavyweight boxer, or cruiserweight boxer, include training load, recovery, and fuelling around sessions. A heavyweight goal keeps size and power and does not use a deficit. A middleweight, super middleweight, light heavyweight, or cruiserweight goal stays near its limit with a small change only. Amateur IBA figures are a reference only. Muscular boxers can sit above the BMI band.',
   'When the user message includes training, that object is the routine from logged workouts over the last 4 weeks: sessions per week, typical minutes, train weekdays, and rest weekdays. Maintain or progress that baseline. Never prescribe fewer sessions or fewer minutes unless they report pain, illness, injury, or poor recovery. Rest only on training.restDays. Do not invent a rest day, a full rest, or "no structured workouts" on a day they train. One row per weekday. Do not append a stock walk-and-rest week. The fitness intro must say what the log shows, for example "You train about 30 min on most days." Progress with a little more weight, one more set, or about 5 to 10 percent volume. For lose fat and build muscle, emphasise resistance training, protein, and a little easy walking or steps. A runner, boxer, or body builder keeps that sport. Check with a doctor before big changes.',
   'When training.source is "stated", the person set that week on You. Follow training.trainDays and training.dayMinutes. Rest only on training.restDays. A day in training.walkDays is a walk, not a missed gym day and not a gym session. The fitness intro states the aim, for example "You aim for 30 min on weekdays and a bit more on Saturday". If the summary says how many of those sessions they have done this week, keep that comparison. Use training.note only when they wrote one. Do not invent a time of day.',
   'When weightRange is present, it is an approximate range from published sources. Use those figures. Do not turn a boxing class limit into a weight cut. Do not set a target below the healthy minimum. A loss, when one is mentioned, stays around 0.5 to 1 kg a week at most.',

@@ -19,7 +19,10 @@ import {
   FAT_SCIENCE,
   GOAL_LABEL,
   MIDDLEWEIGHT_LIMIT_KG,
+  PRO_BOXING_CLASSES,
+  isClassBoxer,
   isTrainingGoal,
+  sheetClassKg,
   HIDE_CALORIES_LINE,
   LOW_BMI_NOTE,
   MEAL_LABEL,
@@ -1185,6 +1188,9 @@ export default function Nutrition() {
             <Field label="Middleweight limit (kg)" value={weightClass} onChangeText={setWeightClass} keyboardType="decimal-pad" placeholder={String(MIDDLEWEIGHT_LIMIT_KG)} />
           </>
         ) : null}
+        {isClassBoxer(settings.goal) ? (
+          <T variant="muted">{`${GOAL_LABEL[settings.goal]} stays near about ${PRO_BOXING_CLASSES[settings.goal].limitKg} kg (${PRO_BOXING_CLASSES[settings.goal].limitLb} lb). Any change is small. It will not plan a cut. Muscular boxers can sit above the BMI band. ${COMPETITION_NOTE}`}</T>
+        ) : null}
         {settings.goal && isTrainingGoal(settings.goal) && (profile?.stage === 'stopped' || profile?.stage === 'trying_to_stop') ? (
           <T variant="muted">Recovery stays alcohol-free: food, water, sleep, and a soft drink if you want one.</T>
         ) : null}
@@ -1300,7 +1306,7 @@ export default function Nutrition() {
             'weight_kg',
             weights.map((point) => ({ day: point.day, value: point.kg })),
             today,
-            { classKg: settings.goal === 'elite_middle_boxer' ? settings.weightClassKg : null },
+            { classKg: sheetClassKg(settings.goal, settings.weightClassKg) },
           )}
         />
         {weights.length === 0 ? <T variant="muted">Add a weight on Health Stats and it will show here.</T> : (

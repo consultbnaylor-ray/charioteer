@@ -205,6 +205,11 @@ describe('stats overview', () => {
       nutrition: { ...defaultNutritionSettings(), goal: 'elite_middle_boxer' },
     }));
     expect(byId(boxer, 'weight').meaning).toBe('A middleweight limit is not a race on this screen');
+    const cruiser = buildStatsOverview(input({
+      health: weights,
+      nutrition: { ...defaultNutritionSettings(), goal: 'elite_cruiser_boxer' },
+    }));
+    expect(byId(cruiser, 'weight').meaning).toBe('A cruiserweight limit is not a race on this screen');
     const builder = buildStatsOverview(input({
       health: weights,
       nutrition: { ...defaultNutritionSettings(), goal: 'body_builder' },

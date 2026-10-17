@@ -215,6 +215,59 @@ describe('goal weight range', () => {
     expect(sheet.contextLine).toContain('For Elite Athlete (Heavy Weight Boxer)');
   });
 
+  it('sets a super middleweight, light heavyweight, and cruiserweight against the professional limit', () => {
+    const over = goalWeightRange({
+      goal: 'elite_super_middle_boxer',
+      weightKg: 80,
+      heightCm: 178,
+      age: 28,
+      sex: 'male',
+    });
+    expect(over.goal?.label).toBe('Super middleweight limit (reference)');
+    expect(over.goal?.lowKg).toBe(72.6);
+    expect(over.goal?.highKg).toBe(76.2);
+    expect(over.words).toContain('For Elite Athlete (Super Middleweight Boxer), you are above this class.');
+    expect(over.words).toContain('The professional limit is about 76.2 kg (168 lb).');
+    expect(over.gap).toBe('The gap above this class is about 3.8 kg');
+    expect(`${over.gap ?? ''} ${over.words}`).not.toMatch(/to lose/i);
+    expect(over.classReference).toContain('over 75 kg to 80 kg');
+    expect(over.classReference).toContain('for reference only');
+    expect(over.classReference).toContain('will not plan a weight cut');
+    expect(over.classReference).toContain('Muscular boxers can sit above the BMI band');
+    expect(over.doctor).toBe(DOCTOR_NOTE);
+    const inside = goalWeightRange({
+      goal: 'elite_light_heavy_boxer',
+      weightKg: 78,
+      heightCm: 178,
+      age: 28,
+      sex: 'male',
+    });
+    expect(inside.withinRange).toBe(true);
+    expect(inside.words).toContain('you are inside this class');
+    expect(inside.words).toContain('79.4 kg (175 lb)');
+    expect(inside.classReference).toContain('IBA light heavyweight is over 86 kg to 92 kg');
+    const under = goalWeightRange({
+      goal: 'elite_cruiser_boxer',
+      weightKg: 70,
+      heightCm: 178,
+      age: 28,
+      sex: 'female',
+    });
+    expect(under.words).toContain('For Elite Athlete (Cruiserweight Boxer), you are under this class.');
+    expect(under.words).toContain('90.7 kg (200 lb)');
+    expect(under.classReference).toContain('over 81 kg');
+    expect(under.classReference).toContain('for reference only');
+    const heavy = goalWeightRange({
+      goal: 'elite_heavy_boxer',
+      weightKg: 110,
+      heightCm: 185,
+      age: 30,
+      sex: 'male',
+    });
+    expect(heavy.words).toContain('super heavyweight');
+    expect(heavy.words).not.toContain('76.2 kg');
+  });
+
   it('uses stones and pounds when that unit is asked for', () => {
     const stones = goalWeightRange({ ...adult, goal: 'lose_weight', weightKg: 78, unit: 'stlb' });
     expect(stones.gap).toBe(`About ${formatWeightAmount(6, 'stlb')} to lose to reach the top of this range`);

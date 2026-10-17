@@ -9,9 +9,13 @@ import {
   CARRYING_RANGE_NOTE,
   COMPETITION_NOTE,
   GOAL_LABEL,
+  PRO_BOXING_CLASSES,
   assessWeight,
+  isAnyBoxer,
+  isClassBoxer,
   type BodyBuild,
   type BuilderPhase,
+  type ClassBoxerGoal,
   type NutritionGoal,
   type NutritionSex,
 } from './nutrition.ts';
@@ -225,7 +229,47 @@ function boxerClass(goal: NutritionGoal, sex: NutritionSex): ClassWindow | null 
       sentence: 'IBA elite and youth women, heavyweight, over 81 kg, with no upper limit in that table.',
     };
   }
+  if (isClassBoxer(goal)) return proClass(goal, sex);
   return null;
+}
+
+function withProLimit(goal: NutritionGoal | null, words: string): string {
+  if (!isClassBoxer(goal)) return words;
+  const spec = PRO_BOXING_CLASSES[goal];
+  return `${words} The professional limit is about ${spec.limitKg} kg (${spec.limitLb} lb).`;
+}
+
+function proClass(goal: ClassBoxerGoal, sex: NutritionSex): ClassWindow {
+  const spec = PRO_BOXING_CLASSES[goal];
+  const title = spec.short.charAt(0).toUpperCase() + spec.short.slice(1);
+  return {
+    label: `${title} limit (reference)`,
+    lowOver: spec.lowOverKg,
+    highTo: spec.limitKg,
+    countsAbove: false,
+    sentence: [
+      `Professional ${spec.short} limit, about ${spec.limitKg} kg (${spec.limitLb} lb).`,
+      amateurIba(goal, sex),
+      'Muscular boxers can sit above the BMI band.',
+    ].join(' '),
+  };
+}
+
+/** Amateur names do not match these professional classes, so the IBA line stays a reference. */
+function amateurIba(goal: ClassBoxerGoal, sex: NutritionSex): string {
+  if (sex === 'female') {
+    if (goal === 'elite_cruiser_boxer') {
+      return 'Amateur IBA, for reference only: elite and youth women heavyweight is over 81 kg, with no upper limit in that table.';
+    }
+    return 'Amateur IBA, for reference only: elite and youth women light heavyweight is over 75 kg to 81 kg.';
+  }
+  if (goal === 'elite_super_middle_boxer') {
+    return 'Amateur IBA, for reference only: elite men light cruiserweight is over 75 kg to 80 kg. IBA does not name a super middleweight.';
+  }
+  if (goal === 'elite_light_heavy_boxer') {
+    return 'Amateur IBA, for reference only: elite men light cruiserweight is over 75 kg to 80 kg. IBA light heavyweight is over 86 kg to 92 kg, a different class from this professional limit.';
+  }
+  return 'Amateur IBA, for reference only: elite men light heavyweight is over 86 kg to 92 kg. IBA cruiserweight is over 80 kg to 86 kg, a different limit from this professional class.';
 }
 
 function classInRange(weightKg: number, klass: ClassWindow): boolean {
@@ -269,7 +313,7 @@ function goalCopy(goal: NutritionGoal | null, phase: BuilderPhase | null): strin
 
 function healthyAsGoal(goal: NutritionGoal | null, healthy: WeightSpan): (WeightSpan & { label: string }) | null {
   if (goal == null) return null;
-  if (goal === 'elite_heavy_boxer' || goal === 'elite_middle_boxer') return null;
+  if (isAnyBoxer(goal)) return null;
   const label = goal === 'lose_weight' || goal === 'maintain' || goal === 'increase'
     ? `Typical for ${GOAL_LABEL[goal]}`
     : `Healthy weight, used for ${GOAL_LABEL[goal]}`;
@@ -338,9 +382,9 @@ function buildRange(input: GoalWeightInput, unit: WeightUnitMode): Omit<GoalWeig
   });
   const compositionLogged = assessment.basis === 'body_fat' || assessment.basis === 'waist';
   const compositionWithin = assessment.label === 'Within the body-fat band' || assessment.label === 'Within the healthy band';
-  const athleteGoal = input.goal === 'elite_runner' || input.goal === 'body_builder' || input.goal === 'elite_heavy_boxer' || input.goal === 'elite_middle_boxer';
+  const athleteGoal = input.goal === 'elite_runner' || input.goal === 'body_builder' || isAnyBoxer(input.goal);
   const suppressLoss = compositionLogged || input.build === 'muscular' || athleteGoal || input.goal === 'increase';
-  const klass = input.goal === 'elite_heavy_boxer' || input.goal === 'elite_middle_boxer'
+  const klass = isAnyBoxer(input.goal) && input.goal
     ? boxerClass(input.goal, sex)
     : null;
   const noted = input.goal ? typedLimit(input.goal, input.weightClassKg) : null;
@@ -396,6 +440,7 @@ function buildRange(input: GoalWeightInput, unit: WeightUnitMode): Omit<GoalWeig
       } else {
         words = `${named}, you are above this class. This is a reference, not a target. ${NO_CUT}`;
       }
+      words = withProLimit(input.goal, words);
     } else if (insideHealthy) {
       withinRange = true;
       words = 'Within range';

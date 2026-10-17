@@ -298,6 +298,17 @@ describe('health plan writer', () => {
     expect(boxerText).toMatch(/coach/);
     expect(boxerText).toMatch(/doctor/);
     expect(boxerText.toLowerCase()).not.toMatch(/sauna to|skip water|sweat out/);
+
+    const cruiser = draftHealthPlan(input({ salt: 'cruiser', goal: 'elite_cruiser_boxer' }));
+    const cruiserText = joined(cruiser);
+    expect(cruiserText).toContain('Elite Athlete (Cruiserweight Boxer)');
+    expect(cruiserText).toContain('90.7 kg');
+    expect(cruiserText).toMatch(/doctor/i);
+    expect(cruiserText.toLowerCase()).not.toMatch(/sauna to|skip water|sweat out/);
+    expect(cruiserText).not.toMatch(/to lose/i);
+    const heavyStill = draftHealthPlan(input({ salt: 'heavy', goal: 'elite_heavy_boxer' }));
+    expect(joined(heavyStill)).toMatch(/size and power/i);
+    expect(joined(heavyStill)).not.toContain('90.7 kg');
   });
 
   it('drops a rapid-cut suggestion and keeps a refusal', () => {

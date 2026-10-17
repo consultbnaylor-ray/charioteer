@@ -12,8 +12,10 @@ import {
   type DistanceChart,
 } from '@/domain/distance';
 import {
+  PRO_BOXING_CLASSES,
   assessWeight,
   compositionForAssessment,
+  isClassBoxer,
   dayItems,
   nutritionTrendDays,
   processedLine,
@@ -349,6 +351,18 @@ function weightTile(input: StatsOverviewInput): StatTileModel {
       title: 'Weight',
       value,
       meaning: 'A middleweight limit is not a race on this screen',
+      tone: 'info',
+      series,
+      chart,
+      href: '/nutrition?section=weight',
+    });
+  }
+  if (isClassBoxer(goal)) {
+    return tile({
+      id: 'weight',
+      title: 'Weight',
+      value,
+      meaning: `A ${PRO_BOXING_CLASSES[goal].short} limit is not a race on this screen`,
       tone: 'info',
       series,
       chart,

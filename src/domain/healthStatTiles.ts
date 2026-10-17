@@ -36,6 +36,7 @@ import {
 import { dailyValues, shiftDay, weekdayShort, type DayValue } from '@/domain/healthInsights';
 import {
   GOAL_LABEL,
+  isAnyBoxer,
   parseBodyFatPct,
   parseLeanMassKg,
   WAIST_HEIGHT_HEALTHY,
@@ -219,7 +220,7 @@ export function detailShowsStatusAgain(kind: HealthStatVisual['kind']): boolean 
 }
 
 function athleteGoal(goal: NutritionGoal | null): boolean {
-  return goal === 'elite_runner' || goal === 'body_builder' || goal === 'elite_heavy_boxer' || goal === 'elite_middle_boxer';
+  return goal === 'elite_runner' || goal === 'body_builder' || isAnyBoxer(goal);
 }
 
 export type HealthStatSectionId = 'heart' | 'fitness' | 'sleep' | 'body' | 'activity';

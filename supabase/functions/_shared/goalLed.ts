@@ -1,4 +1,4 @@
-import { GOAL_LABEL, type NutritionGoal } from './nutrition.ts';
+import { GOAL_LABEL, MIDDLEWEIGHT_LIMIT_KG, PRO_BOXING_CLASSES, classBoxerLimitKg, isClassBoxer, type NutritionGoal } from './nutrition.ts';
 
 export type GoalTone = 'good' | 'watch' | 'info' | 'attention';
 
@@ -58,8 +58,11 @@ const FOCUS: Record<NutritionGoal, string> = {
   increase: 'Add a little to a meal you already cook, with protein, and keep the strength sessions.',
   elite_runner: 'Eat before and after the sessions you already do, and protect sleep the night before the longer one.',
   body_builder: 'Keep protein on each meal, and keep the lifting you already do. Do not skip a meal.',
-  elite_heavy_boxer: 'Eat before and after the sessions you already do, so size and power can hold.',
   elite_middle_boxer: 'Keep every meal, and keep the skill work you already do. A class limit is a small change only.',
+  elite_super_middle_boxer: 'Keep every meal, and keep the skill work you already do. A super middleweight limit is a small change only.',
+  elite_light_heavy_boxer: 'Keep every meal, and keep the skill work you already do. A light heavyweight limit is a small change only.',
+  elite_cruiser_boxer: 'Keep every meal, and keep the skill work you already do. A cruiserweight limit is a small change only.',
+  elite_heavy_boxer: 'Eat before and after the sessions you already do, so size and power can hold.',
 };
 
 /** One weekly focus sentence for this goal. It does not cut a session they already do. */
@@ -92,15 +95,18 @@ function mattersFor(goal: NutritionGoal, stage: GoalLedInput['stage'], blocked: 
     increase: 'What matters most is a little more food than you use, protein at meals, and the strength sessions you already do.',
     elite_runner: 'What matters most is fuel around the sessions you already do, protein, and sleep before the longer day.',
     body_builder: 'What matters most is protein, the lifting you already do, and enough food to recover.',
-    elite_heavy_boxer: 'What matters most is food around the sessions you already do, protein, and recovery. Size and power need that food.',
     elite_middle_boxer: 'What matters most is the skill work you already do, protein, and staying near your class with a small change only.',
+    elite_super_middle_boxer: 'What matters most is the skill work you already do, protein, and staying near the super middleweight limit with a small change only.',
+    elite_light_heavy_boxer: 'What matters most is the skill work you already do, protein, and staying near the light heavyweight limit with a small change only.',
+    elite_cruiser_boxer: 'What matters most is the skill work you already do, protein, and staying near the cruiserweight limit with a small change only.',
+    elite_heavy_boxer: 'What matters most is food around the sessions you already do, protein, and recovery. Size and power need that food.',
   };
   return `${line[goal]}${sober}`;
 }
 
 function cautionFor(goal: NutritionGoal | null, blocked: boolean): string | null {
   if (!goal) return null;
-  if (goal === 'elite_middle_boxer') {
+  if (goal === 'elite_middle_boxer' || isClassBoxer(goal)) {
     return 'Keep every meal. A small change only. No rapid cut, skipped drinks, or a sauna. Check with a doctor before big changes.';
   }
   if (goal === 'elite_heavy_boxer' || goal === 'elite_runner' || goal === 'body_builder' || blocked) {
@@ -222,7 +228,10 @@ function weightMeasure(input: GoalLedInput, hope: 'down' | 'steady' | 'up' | 'cl
     };
   }
   if (hope === 'class') {
-    const limit = num(input.weightClassKg) ?? 75;
+    const named = isClassBoxer(input.goal) ? PRO_BOXING_CLASSES[input.goal].short : 'middleweight';
+    const limit = isClassBoxer(input.goal)
+      ? classBoxerLimitKg(input.goal) ?? MIDDLEWEIGHT_LIMIT_KG
+      : num(input.weightClassKg) ?? MIDDLEWEIGHT_LIMIT_KG;
     const near = latest <= limit + 1;
     return {
       id: 'weight',
@@ -232,9 +241,13 @@ function weightMeasure(input: GoalLedInput, hope: 'down' | 'steady' | 'up' | 'cl
       fill: latest > 0 ? clamp01(limit / latest) : 0,
       status: near ? 'Near the class' : 'Above the class',
       tone: near ? 'good' : 'watch',
-      words: near
-        ? `Weight is near the ${limit} kg class. Keep every meal.`
-        : `Weight is above the ${limit} kg class. Keep every meal. A small change only.`,
+      words: isClassBoxer(input.goal)
+        ? near
+          ? `Weight is near the ${named} limit of ${limit} kg. Keep every meal.`
+          : `Weight is above the ${named} limit of ${limit} kg. Keep every meal. A small change only.`
+        : near
+          ? `Weight is near the ${limit} kg class. Keep every meal.`
+          : `Weight is above the ${limit} kg class. Keep every meal. A small change only.`,
     };
   }
   const previous = num(input.previousWeightKg);

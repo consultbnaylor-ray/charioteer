@@ -11,6 +11,7 @@ import {
   CARRYING_FITNESS_NOTE,
   GOAL_LABEL,
   WORKOUT_BUCKETS,
+  isAnyBoxer,
   type BodyBuild,
   type NutritionGoal,
   type NutritionSex,
@@ -123,7 +124,7 @@ export const ADDED_NOT_REDUCED =
 /** Plain reason the cardio number matters for the goal. No invented sport ranges. */
 export function whyCardioMatters(goal: NutritionGoal | null): string {
   const title = goal ? GOAL_LABEL[goal] : null;
-  if (goal === 'elite_heavy_boxer' || goal === 'elite_middle_boxer') {
+  if (isAnyBoxer(goal)) {
     return `For boxing, this is how much oxygen you can use when the work stays hard, and how you recover between efforts. The ${title} range, when it is shown, is an approximate estimate from a published study.`;
   }
   if (goal === 'elite_runner') {
@@ -432,8 +433,10 @@ function levelTone(level: FitnessLevel): FitnessTone {
 function boxerBand(goal: NutritionGoal | null, sex: NutritionSex | null): FitnessBand | null {
   if (sex !== 'male' || !goal) return null;
   const label = `Typical for ${GOAL_LABEL[goal]}`;
-  if (goal === 'elite_heavy_boxer') return { ...HEAVY_BOXER, label };
-  if (goal === 'elite_middle_boxer') return { ...MIDDLE_BOXER, label };
+  if (goal === 'elite_heavy_boxer' || goal === 'elite_light_heavy_boxer' || goal === 'elite_cruiser_boxer') {
+    return { ...HEAVY_BOXER, label };
+  }
+  if (goal === 'elite_middle_boxer' || goal === 'elite_super_middle_boxer') return { ...MIDDLE_BOXER, label };
   return null;
 }
 
@@ -444,7 +447,7 @@ function goalNoteFor(
   hasAgeBand: boolean,
 ): string | null {
   if (hasGoalBand) return null;
-  if (goal === 'elite_heavy_boxer' || goal === 'elite_middle_boxer') {
+  if (isAnyBoxer(goal)) {
     return 'The boxing ranges found are for men on a national team, so they are not shown.';
   }
   if (!hasAgeBand) return null;
@@ -485,7 +488,7 @@ function compareFor(input: {
   const note = goalNote ? ` ${goalNote}` : '';
   const sources = [
     ...(ageBand ? [FRIEND_SOURCE] : []),
-    ...((goalBand || input.goal === 'elite_heavy_boxer' || input.goal === 'elite_middle_boxer') ? [BOXER_SOURCE] : []),
+    ...((goalBand || isAnyBoxer(input.goal)) ? [BOXER_SOURCE] : []),
   ];
   return {
     value: round1(input.value),
@@ -827,7 +830,7 @@ function recommend(input: {
   const strengthShare = input.total > 0 ? input.strength / input.total : null;
   const lowCardio = cardioShare != null && cardioShare < 0.2 && input.strength > aerobic && input.total >= 30;
   const goal = input.goal;
-  const boxer = goal === 'elite_heavy_boxer' || goal === 'elite_middle_boxer';
+  const boxer = isAnyBoxer(goal);
   if (boxer && (lowCardio || input.belowGoal)) {
     add(EASY_BESIDE_BOXING, true);
     if (lowCardio) add(SHORT_INTERVAL, true);

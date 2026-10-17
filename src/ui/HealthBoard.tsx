@@ -4,7 +4,7 @@ import { Linking, Pressable, View } from 'react-native';
 import type { HealthSample } from '@/data/types';
 import { isoDay, startOfLocalDay } from '@/domain/dates';
 import { buildMetricGuidance, parseHeightCm } from '@/domain/guidance';
-import { compositionForAssessment } from '@/domain/nutrition';
+import { compositionForAssessment, sheetClassKg } from '@/domain/nutrition';
 import {
   buildHealthInsights,
   dailyValues,
@@ -188,7 +188,7 @@ function MetricCard({
     });
   }
 
-  const classKg = kind === 'weight_kg' && snap.nutrition.goal === 'elite_middle_boxer' ? snap.nutrition.weightClassKg : null;
+  const classKg = kind === 'weight_kg' ? sheetClassKg(snap.nutrition.goal, snap.nutrition.weightClassKg) : null;
   const figure = healthFigure(kind, history, today, { classKg });
 
   return (
