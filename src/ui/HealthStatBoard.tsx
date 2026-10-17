@@ -229,11 +229,11 @@ function StatTile({ tile, onOpen }: { tile: HealthStatTile; onOpen: () => void }
     >
       <T variant="label">{tile.title}</T>
       <TileValue tile={tile} />
-      <TileVisual visual={tile.visual} />
-      {tile.visual.kind === 'ring' || tile.visual.kind === 'zone' ? null : (
+      {tile.empty ? null : <TileVisual visual={tile.visual} />}
+      {tile.empty || tile.visual.kind === 'ring' || tile.visual.kind === 'zone' ? null : (
         <StatusMark tone={tile.tone} status={tile.status} />
       )}
-      {tile.history.length >= 2 && tile.visual.kind !== 'line' ? (
+      {!tile.empty && tile.history.length >= 2 && tile.visual.kind !== 'line' ? (
         <TrendLine points={tile.history} color={statsToneColors(theme.scheme)[tile.tone].ink} />
       ) : null}
       {tile.trend ? <T variant="muted">{tile.trend}</T> : null}
@@ -254,6 +254,7 @@ function TileValue({ tile }: { tile: HealthStatTile }) {
 }
 
 function valueWithPeriod(tile: HealthStatTile): string {
+  if (!tile.unit) return `${tile.valueText} - ${tile.period}`;
   return `${tile.valueText} ${tile.unit} - ${tile.period}`;
 }
 
@@ -403,13 +404,13 @@ function StatDetail({
                 <T variant="label">What this is</T>
                 <T>{tile.about}</T>
                 <TileValue tile={tile} />
-                <TileVisual visual={tile.visual} />
-                {detailShowsStatusAgain(tile.visual.kind) ? <StatusMark tone={tile.tone} status={tile.status} /> : null}
+                {tile.empty ? null : <TileVisual visual={tile.visual} />}
+                {!tile.empty && detailShowsStatusAgain(tile.visual.kind) ? <StatusMark tone={tile.tone} status={tile.status} /> : null}
                 <T variant="label">What your number means</T>
                 <T>{tile.meaning}</T>
                 {tile.rangeNote && tile.rangeNote !== tile.meaning ? <T>{tile.rangeNote}</T> : null}
                 <WorkoutTypeChoices tile={tile} onSetWorkoutBucket={onSetWorkoutBucket} />
-                {tile.history.length >= 2 ? <TrendLine points={tile.history} color={ink} /> : null}
+                {!tile.empty && tile.history.length >= 2 ? <TrendLine points={tile.history} color={ink} /> : null}
                 {tile.trend ? <T variant="muted">{tile.trend}</T> : null}
                 {tile.sourceUrl ? (
                   <Pressable

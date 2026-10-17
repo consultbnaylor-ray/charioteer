@@ -76,7 +76,25 @@ describe('what Charioteer can see', () => {
     expect(ids).not.toContain('body_fat');
     expect(ids).not.toContain('lean_mass');
     const recovery = board.sections.flatMap((section) => section.tiles).find((tile) => tile.id === 'heart_rate_recovery');
-    expect(recovery?.valueText).toBe('22');
+    expect(recovery?.empty).toBe(true);
+    expect(recovery?.valueText).toBe('No readings');
+    expect(recovery?.status).toBe('No readings in the last 7 days.');
+    const month = buildHealthStatBoard({
+      today: '2026-10-17',
+      period: '30',
+      samples: [{ kind: 'heart_rate_recovery', value: 22, recordedOn: '2026-09-20' }],
+      body: [{ recordedOn: '2026-09-27', bodyFatPct: 18, leanMassKg: 70, waistCm: null }],
+      activityEnergyKcal: null,
+      heightCm: 178,
+      adult: true,
+      goalAge: 42,
+      goalSex: 'male',
+      goal: 'elite_heavy_boxer',
+      build: 'muscular',
+    });
+    const kept = month.sections.flatMap((section) => section.tiles).find((tile) => tile.id === 'heart_rate_recovery');
+    expect(kept?.valueText).toBe('22');
+    expect(month.sections.flatMap((section) => section.tiles).find((tile) => tile.id === 'body_fat')?.valueText).toBe('18');
   });
 
   it('requests the full set when it changes, and queries the three readings over 8 weeks', () => {

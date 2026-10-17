@@ -55,14 +55,26 @@ export const HEALTH_SHARING_STEPS = 'Health > Sharing > Apps > Charioteer > turn
 const ADULT_HIDDEN = 'These adult ranges are not shown under 18. Nothing here is guessed.';
 const NO_BAND = 'There is no guideline band here.';
 
+/** Day, seven days, or thirty days. Seven days is the page default. */
+export const HEALTH_STAT_PERIODS = ['day', '7', '30'] as const;
+export type HealthStatPeriod = (typeof HEALTH_STAT_PERIODS)[number];
+
+export const HEALTH_STAT_PERIOD_LABEL: Record<HealthStatPeriod, string> = {
+  day: 'Day',
+  '7': '7 days',
+  '30': '30 days',
+};
+
+export function parseHealthStatPeriod(value: unknown): HealthStatPeriod {
+  return value === 'day' || value === '7' || value === '30' ? value : '7';
+}
+
 /** Shown on the value line, beside the number, so the window is not a footnote. */
 export const PERIOD_LATEST = 'latest reading';
 export const PERIOD_LAST_NIGHT = 'last night';
 export const PERIOD_TODAY = 'today';
-export const PERIOD_LATEST_DAY = 'latest day';
-export const PERIOD_THIS_WEEK = 'this week';
-export const PERIOD_LAST_28 = 'last 28 days';
-export const PERIOD_DAILY_AVERAGE = 'recent daily average';
+export const PERIOD_LAST_7 = 'last 7 days';
+export const PERIOD_LAST_30 = 'last 30 days';
 
 /** Where a missing reading comes from, and the HealthKit type to ask for. */
 const HEALTH_STAT_GAPS: Record<string, { source: string; healthType: string | null; manual: boolean }> = {
@@ -261,6 +273,8 @@ export type HealthStatBoardInput = {
   build: BodyBuild | null;
   /** Saved workout-type choices. Empty uses the default mapping. */
   workoutBuckets?: WorkoutBucketMap;
+  /** Omitted means the last 7 days. */
+  period?: HealthStatPeriod;
 };
 
 export type HealthStatVisual =
@@ -305,6 +319,8 @@ export type HealthStatTile = {
   period: string;
   /** A week-sized reading of a total that covers more than seven days. */
   weeklyLine: string | null;
+  /** Older readings exist, but none fall in the chosen period. */
+  empty: boolean;
   status: string;
   tone: StatsTone;
   mark: string;
@@ -319,7 +335,7 @@ export type HealthStatTile = {
   sourceUrl: string | null;
   extraSourceName?: string | null;
   extraSourceUrl?: string | null;
-  /** Per workout type, last 28 days. Present on the mix tile when types were stored. */
+  /** Per workout type in the chosen period. Present on the mix tile when types were stored. */
   breakdown?: { activityType: number; label: string; minutes: number; bucket: WorkoutBucket }[];
 };
 
@@ -397,28 +413,32 @@ function tileFor(
   if (item.id === 'waist') return waistTile(item, input, grown, height);
   if (item.id === 'lean_mass') return leanTile(item, input);
   if (item.id === 'steps') return stepsTile(item, input);
-  if (item.id === 'active_energy') return energyTile(item, input.activityEnergyKcal);
+  if (item.id === 'active_energy') return energyTile(item, input);
   if (item.id === 'workouts') return workoutTile(item, input);
   return weeklyTile(item, input);
 }
 
 function heartBandTile(item: CatalogItem, input: HealthStatBoardInput, grown: boolean): HealthStatTile | null {
-  const history = series(input.samples, item.id, input.today);
-  const latest = history.at(-1);
-  if (!latest) return null;
-  const bpm = Math.round(latest.value);
+  const all = series(input.samples, item.id, input.today);
+  const window = slicePeriod(all, input);
+  if (window === 'none') return null;
+  if (window === 'gap') return emptyTile(item, input);
+  const period = periodOf(input);
+  const label = periodLabel(period);
+  const bpm = Math.round(averageOf(window.current));
+  const trend = movementTrend(window.current, window.previous, 'mean', 2, period);
   const about = 'Resting heart rate: how many times your heart beats in a minute while you are at rest. The unit is bpm.';
   if (!grown) {
     return finish(item, {
       valueText: String(bpm),
       unit: 'bpm',
-      period: PERIOD_LATEST,
+      period: label,
       status: ADULT_HIDDEN,
       tone: 'info',
-      trend: readingTrend(history, 2),
+      trend,
       hasGuideline: false,
-      visual: spark(history, `${bpm} bpm`),
-      history: nums(history),
+      visual: spark(window.current, `${bpm} bpm`),
+      history: nums(window.current),
       about,
       meaning: ADULT_HIDDEN,
       rangeNote: null,
@@ -437,10 +457,10 @@ function heartBandTile(item: CatalogItem, input: HealthStatBoardInput, grown: bo
   return finish(item, {
     valueText: String(bpm),
     unit: 'bpm',
-    period: PERIOD_LATEST,
+    period: label,
     status,
     tone,
-    trend: readingTrend(history, 2),
+    trend,
     hasGuideline: true,
     visual: {
       kind: 'zone',
@@ -453,9 +473,9 @@ function heartBandTile(item: CatalogItem, input: HealthStatBoardInput, grown: bo
       zoneCaption: 'Usual range 60–100 bpm',
       tone,
     },
-    history: nums(history),
+    history: nums(window.current),
     about,
-    meaning: 'The British Heart Foundation says a usual adult resting rate is 60 to 100 bpm. Below 60 can be normal if you are very fit.',
+    meaning: 'The British Heart Foundation says a usual adult resting rate is 60 to 100 bpm. Below 60 can be normal if you are very fit. The band is the same for a day, a week, or a month.',
     rangeNote: null,
     sourceName: 'British Heart Foundation',
     sourceUrl: BHF_HEART_RATE_URL,
@@ -463,22 +483,26 @@ function heartBandTile(item: CatalogItem, input: HealthStatBoardInput, grown: bo
 }
 
 function sleepTile(item: CatalogItem, input: HealthStatBoardInput, grown: boolean): HealthStatTile | null {
-  const history = series(input.samples, 'sleep_hours', input.today);
-  const latest = history.at(-1);
-  if (!latest) return null;
-  const hours = Math.round(latest.value * 10) / 10;
+  const all = series(input.samples, 'sleep_hours', input.today);
+  const window = slicePeriod(all, input);
+  if (window === 'none') return null;
+  if (window === 'gap') return emptyTile(item, input, true);
+  const period = periodOf(input);
+  const label = periodLabel(period, period === 'day');
+  const hours = Math.round(averageOf(window.current) * 10) / 10;
+  const trend = movementTrend(window.current, window.previous, 'mean', 0.3, period);
   const about = 'Sleep: hours asleep. The unit is hours.';
   if (!grown) {
     return finish(item, {
       valueText: oneText(hours),
       unit: 'h',
-      period: PERIOD_LAST_NIGHT,
+      period: label,
       status: ADULT_HIDDEN,
       tone: 'info',
-      trend: readingTrend(history, 0.3),
+      trend,
       hasGuideline: false,
-      visual: spark(history, `${oneText(hours)} h`),
-      history: nums(history),
+      visual: spark(window.current, `${oneText(hours)} h`),
+      history: nums(window.current),
       about,
       meaning: ADULT_HIDDEN,
       rangeNote: null,
@@ -497,10 +521,10 @@ function sleepTile(item: CatalogItem, input: HealthStatBoardInput, grown: boolea
   return finish(item, {
     valueText: oneText(hours),
     unit: 'h',
-    period: PERIOD_LAST_NIGHT,
+    period: label,
     status,
     tone,
-    trend: readingTrend(history, 0.3),
+    trend,
     hasGuideline: true,
     visual: {
       kind: 'zone',
@@ -513,9 +537,9 @@ function sleepTile(item: CatalogItem, input: HealthStatBoardInput, grown: boolea
       zoneCaption: 'Healthy range 7–9 h',
       tone,
     },
-    history: nums(history),
+    history: nums(window.current),
     about,
-    meaning: 'The NHS says adults need 7 to 9 hours.',
+    meaning: 'The NHS says adults need 7 to 9 hours a night. That range is not stretched across a week or a month.',
     rangeNote: null,
     sourceName: 'NHS',
     sourceUrl: NHS_SLEEP_URL,
@@ -526,6 +550,10 @@ function vo2Tile(item: CatalogItem, input: HealthStatBoardInput, grown: boolean)
   const history = series(input.samples, 'vo2_max', input.today).filter((point) => point.value > 0);
   const latest = history.at(-1);
   if (!latest) return null;
+  const period = periodOf(input);
+  const window = slicePeriod(history, input);
+  const current = window === 'gap' || window === 'none' ? [] : window.current;
+  const previous = window === 'gap' || window === 'none' ? [] : window.previous;
   const value = Math.round(latest.value * 10) / 10;
   const fitness = buildFitnessSnapshot({
     today: input.today,
@@ -558,17 +586,20 @@ function vo2Tile(item: CatalogItem, input: HealthStatBoardInput, grown: boolean)
       zoneCaption: 'Typical for your age and sex',
       tone,
     }
-    : spark(history, `${oneText(value)} ml/kg/min`);
+    : spark(current.length > 0 ? current : [{ day: latest.day, value: latest.value }], `${oneText(value)} ml/kg/min`);
+  const trend = current.length > 0
+    ? movementTrend(current, previous, 'mean', 1, period)
+    : noReadingsLine(period, false);
   return finish(item, {
     valueText: oneText(value),
     unit: 'ml/kg/min',
     period: PERIOD_LATEST,
     status,
     tone,
-    trend: readingTrend(history, 1),
+    trend,
     hasGuideline: band != null,
     visual,
-    history: history.slice(-8).map((point) => Math.round(point.value * 10) / 10),
+    history: current.map((point) => Math.round(point.value * 10) / 10),
     about: VO2_WHAT,
     meaning: cardio?.compare.words ?? 'Apple Watch estimates this. Nothing here is guessed.',
     rangeNote: cardio?.compare.goalNote ?? null,
@@ -616,14 +647,19 @@ function mixTotals(input: HealthStatBoardInput, start: string): {
 }
 
 function mixTile(item: CatalogItem, input: HealthStatBoardInput): HealthStatTile | null {
-  const start = shiftDay(input.today, -27);
+  const period = periodOf(input);
+  const start = windowStart(input.today, period);
   const { buckets, breakdown } = mixTotals(input, start);
   const strength = buckets.strength;
   const cardio = buckets.cardio;
   const conditioning = buckets.conditioning;
   const other = buckets.other;
   const total = strength + cardio + conditioning + other;
-  if (total <= 0) return null;
+  if (total <= 0) {
+    const any = mixTotals(input, '1970-01-01');
+    const anyTotal = any.buckets.strength + any.buckets.cardio + any.buckets.conditioning + any.buckets.other;
+    return anyTotal > 0 ? emptyTile(item, input) : null;
+  }
   const parts = WORKOUT_BUCKETS.map((name) => ({ name, value: buckets[name] })).sort((left, right) => right.value - left.value);
   const even = parts[0].value === parts[1].value;
   const share = Math.round((parts[0].value / total) * 100);
@@ -634,8 +670,8 @@ function mixTile(item: CatalogItem, input: HealthStatBoardInput): HealthStatTile
   return finish(item, {
     valueText: whole(total),
     unit: 'min',
-    period: PERIOD_LAST_28,
-    weeklyLine: weeklyAverageWords(total, 28),
+    period: periodLabel(period),
+    weeklyLine: period === '30' ? weeklyAverageWords(total, 30) : null,
     status,
     tone: 'info',
     trend: MIX_HOW,
@@ -652,7 +688,7 @@ function mixTile(item: CatalogItem, input: HealthStatBoardInput): HealthStatTile
       ],
     },
     history: [],
-    about: `Strength, cardio, conditioning, and other: minutes from the workout type recorded over the last 28 days. ${MIX_HOW} ${CONDITIONING_NOTE} Overlapping workouts from more than one app are counted once. The minutes are the workout duration, not time in a heart-rate zone.`,
+    about: `Strength, cardio, conditioning, and other: minutes from the workout type recorded over ${periodPhrase(period)}. ${MIX_HOW} ${CONDITIONING_NOTE} Overlapping workouts from more than one app are counted once. The minutes are the workout duration, not time in a heart-rate zone.`,
     meaning: listed ? `${listed}. ${CONDITIONING_NOTE}` : `${status} ${CONDITIONING_NOTE}`,
     rangeNote: 'There is no guideline mix. You can count a workout type as strength, cardio, conditioning, or other. That choice stays on your account.',
     sourceName: null,
@@ -662,43 +698,24 @@ function mixTile(item: CatalogItem, input: HealthStatBoardInput): HealthStatTile
 }
 
 function hrvTile(item: CatalogItem, input: HealthStatBoardInput): HealthStatTile | null {
-  const history = series(input.samples, 'hrv_sdnn', input.today);
-  const latest = history.at(-1);
-  if (!latest) return null;
-  const ms = Math.round(latest.value);
-  const earlier = history.slice(0, -1).map((point) => point.value);
-  const usual = mean(earlier);
-  let trend: string | null = null;
-  if (usual != null) {
-    const gap = latest.value - usual;
-    trend = Math.abs(gap) < 5
-      ? 'Near your own usual level.'
-      : gap > 0
-        ? 'Higher than your own usual level.'
-        : 'Lower than your own usual level.';
-  }
+  const all = series(input.samples, 'hrv_sdnn', input.today);
+  const window = slicePeriod(all, input);
+  if (window === 'none') return null;
+  if (window === 'gap') return emptyTile(item, input);
+  const period = periodOf(input);
+  const ms = Math.round(averageOf(window.current));
   return finish(item, {
     valueText: String(ms),
     unit: 'ms',
-    period: PERIOD_LATEST,
+    period: periodLabel(period),
     status: 'There is no official UK target.',
     tone: 'info',
-    trend,
+    trend: movementTrend(window.current, window.previous, 'mean', 5, period),
     hasGuideline: false,
-    visual: usual == null
-      ? spark(history, `${ms} ms`)
-      : {
-        kind: 'bars',
-        max: Math.max(latest.value, usual, 1),
-        caption: 'Latest and your own usual level',
-        bars: [
-          { key: 'latest', label: `Latest ${ms} ms`, value: latest.value, tone: 'info' },
-          { key: 'usual', label: `Usual ${Math.round(usual)} ms`, value: usual, tone: 'info' },
-        ],
-      },
-    history: nums(history),
+    visual: spark(window.current, `${ms} ms`),
+    history: nums(window.current),
     about: 'Heart rate variability, in milliseconds (SDNN). Devices measure it in different ways.',
-    meaning: 'There is no official UK target. This is compared with your own readings.',
+    meaning: 'There is no official UK target. This is the average of your own readings in this period.',
     rangeNote: 'There is no official UK target.',
     sourceName: null,
     sourceUrl: null,
@@ -711,27 +728,33 @@ function weightTile(
   grown: boolean,
   height: number | null,
 ): HealthStatTile | null {
-  const history = series(input.samples, 'weight_kg', input.today).filter((point) => point.value > 0);
-  const latest = history.at(-1);
-  if (!latest) return null;
-  const kg = Math.round(latest.value * 10) / 10;
+  const all = series(input.samples, 'weight_kg', input.today).filter((point) => point.value > 0);
+  const window = slicePeriod(all, input);
+  if (window === 'none') return null;
+  if (window === 'gap') return emptyTile(item, input);
+  const period = periodOf(input);
+  const label = periodLabel(period);
+  const history = window.current;
+  const kg = Math.round(averageOf(history) * 10) / 10;
   const about = 'Weight, in kilograms.';
-  const trend = readingTrend(history, 0.3);
+  const trend = movementTrend(history, window.previous, 'mean', 0.3, period);
   if (!grown) {
-    return finish(item, plainReading(kg, 'kg', ADULT_HIDDEN, trend, history, about, ADULT_HIDDEN));
+    return finish(item, plainReading(kg, 'kg', ADULT_HIDDEN, trend, history, about, ADULT_HIDDEN, label));
   }
   if (height == null) {
     const meaning = 'Add your height, then a BMI band can be shown. Nothing here is guessed.';
-    return finish(item, plainReading(kg, 'kg', meaning, trend, history, about, meaning));
+    return finish(item, plainReading(kg, 'kg', meaning, trend, history, about, meaning, label));
   }
   const low = kgForBmi(NICE_BMI_HEALTHY_MIN, height);
   const high = kgForBmi(NICE_BMI_HEALTHY_MAX, height);
   const within = kg >= low && kg <= high;
   const under = kg < low;
-  const fat = bodySeries(input.body, input.today, (row) => row.bodyFatPct);
-  const waist = bodySeries(input.body, input.today, (row) => row.waistCm);
-  const fatPct = fat.at(-1)?.value ?? null;
-  const waistCm = waist.at(-1)?.value ?? null;
+  const fatWindow = slicePeriod(bodySeries(input.body, input.today, (row) => row.bodyFatPct), input);
+  const waistWindow = slicePeriod(bodySeries(input.body, input.today, (row) => row.waistCm), input);
+  const fatPct = fatWindow === 'none' || fatWindow === 'gap' ? null : averageOf(fatWindow.current);
+  const waistCm = waistWindow === 'none' || waistWindow === 'gap' ? null : averageOf(waistWindow.current);
+  const fatCount = fatPct == null ? 0 : 1;
+  const waistCount = waistCm == null ? 0 : 1;
   const fatFine = fatPct != null && bodyFatRange(fatPct, input.goalSex).within;
   const waistFine = waistCm != null && waistCm / height < WAIST_HEIGHT_HEALTHY;
   const compositionFine = (fatPct != null || waistCm != null)
@@ -767,14 +790,14 @@ function weightTile(
     : Math.max(...marks) * 1.06;
   const extra = input.build === 'carrying_extra'
     ? ' Waist and body fat tell more than BMI when they are logged. A steady change is enough. Check with a doctor before big changes.'
-    : input.build === 'muscular' || fat.length > 0 || waist.length > 0
+    : input.build === 'muscular' || fatCount > 0 || waistCount > 0
       ? ' Body fat and waist tell more than the scales when they are logged.'
       : '';
   const meaning = weightMeaning(input.goal, ranged, extra);
   return finish(item, {
     valueText: oneText(kg),
     unit: 'kg',
-    period: PERIOD_LATEST,
+    period: label,
     status,
     tone,
     trend,
@@ -824,13 +847,18 @@ function weightMeaning(
 }
 
 function bodyFatTile(item: CatalogItem, input: HealthStatBoardInput, grown: boolean): HealthStatTile | null {
-  const history = bodySeries(input.body, input.today, (row) => row.bodyFatPct);
-  const latest = history.at(-1);
-  if (!latest) return null;
-  const pct = Math.round(latest.value * 10) / 10;
+  const all = bodySeries(input.body, input.today, (row) => row.bodyFatPct);
+  const window = slicePeriod(all, input);
+  if (window === 'none') return null;
+  if (window === 'gap') return emptyTile(item, input);
+  const period = periodOf(input);
+  const label = periodLabel(period);
+  const history = window.current;
+  const pct = Math.round(averageOf(history) * 10) / 10;
+  const trend = movementTrend(history, window.previous, 'mean', 0.5, period);
   const about = 'Body fat, as a percentage of body weight.';
   if (!grown) {
-    return finish(item, plainReading(pct, '%', ADULT_HIDDEN, readingTrend(history, 0.5), history, about, ADULT_HIDDEN));
+    return finish(item, plainReading(pct, '%', ADULT_HIDDEN, trend, history, about, ADULT_HIDDEN, label));
   }
   const range = bodyFatRange(pct, input.goalSex);
   const tone: StatsTone = range.within ? 'good' : pct < range.zoneLow ? 'info' : 'watch';
@@ -842,10 +870,10 @@ function bodyFatTile(item: CatalogItem, input: HealthStatBoardInput, grown: bool
   return finish(item, {
     valueText: oneText(pct),
     unit: '%',
-    period: PERIOD_LATEST,
+    period: label,
     status,
     tone,
-    trend: readingTrend(history, 0.5),
+    trend,
     hasGuideline: true,
     visual: {
       kind: 'zone',
@@ -873,18 +901,22 @@ function waistTile(
   grown: boolean,
   height: number | null,
 ): HealthStatTile | null {
-  const history = bodySeries(input.body, input.today, (row) => row.waistCm);
-  const latest = history.at(-1);
-  if (!latest) return null;
-  const cm = Math.round(latest.value * 10) / 10;
+  const all = bodySeries(input.body, input.today, (row) => row.waistCm);
+  const window = slicePeriod(all, input);
+  if (window === 'none') return null;
+  if (window === 'gap') return emptyTile(item, input);
+  const period = periodOf(input);
+  const label = periodLabel(period);
+  const history = window.current;
+  const cm = Math.round(averageOf(history) * 10) / 10;
   const about = 'Waist measurement, in centimetres.';
-  const trend = readingTrend(history, 1);
+  const trend = movementTrend(history, window.previous, 'mean', 1, period);
   if (!grown) {
-    return finish(item, plainReading(cm, 'cm', ADULT_HIDDEN, trend, history, about, ADULT_HIDDEN));
+    return finish(item, plainReading(cm, 'cm', ADULT_HIDDEN, trend, history, about, ADULT_HIDDEN, label));
   }
   if (height == null) {
     const meaning = 'Add your height to compare waist with 0.5. Nothing here is guessed.';
-    return finish(item, plainReading(cm, 'cm', meaning, trend, history, about, meaning));
+    return finish(item, plainReading(cm, 'cm', meaning, trend, history, about, meaning, label));
   }
   const ratio = cm / height;
   const within = ratio < WAIST_HEIGHT_HEALTHY;
@@ -895,7 +927,7 @@ function waistTile(
   return finish(item, {
     valueText: oneText(cm),
     unit: 'cm',
-    period: PERIOD_LATEST,
+    period: label,
     status,
     tone,
     trend,
@@ -921,20 +953,22 @@ function waistTile(
 }
 
 function leanTile(item: CatalogItem, input: HealthStatBoardInput): HealthStatTile | null {
-  const history = bodySeries(input.body, input.today, (row) => row.leanMassKg);
-  const latest = history.at(-1);
-  if (!latest) return null;
-  const kg = Math.round(latest.value * 10) / 10;
+  const all = bodySeries(input.body, input.today, (row) => row.leanMassKg);
+  const window = slicePeriod(all, input);
+  if (window === 'none') return null;
+  if (window === 'gap') return emptyTile(item, input);
+  const period = periodOf(input);
+  const kg = Math.round(averageOf(window.current) * 10) / 10;
   return finish(item, {
     valueText: oneText(kg),
     unit: 'kg',
-    period: PERIOD_LATEST,
+    period: periodLabel(period),
     status: NO_BAND,
     tone: 'info',
-    trend: readingTrend(history, 0.3),
+    trend: movementTrend(window.current, window.previous, 'mean', 0.3, period),
     hasGuideline: false,
-    visual: spark(history, `${oneText(kg)} kg`),
-    history: nums(history),
+    visual: spark(window.current, `${oneText(kg)} kg`),
+    history: nums(window.current),
     about: 'Lean mass: muscle, bone, and the rest of the body that is not fat. The unit is kilograms.',
     meaning: NO_BAND,
     rangeNote: NO_BAND,
@@ -944,60 +978,46 @@ function leanTile(item: CatalogItem, input: HealthStatBoardInput): HealthStatTil
 }
 
 function stepsTile(item: CatalogItem, input: HealthStatBoardInput): HealthStatTile | null {
-  const history = series(input.samples, 'steps', input.today);
-  if (history.length === 0) return null;
-  const recentStart = shiftDay(input.today, -13);
-  const recent = history.filter((point) => point.day >= recentStart);
-  const todayPoint = recent.find((point) => point.day === input.today) ?? null;
-  const earlier = recent.filter((point) => point.day !== input.today);
-  const average = mean(earlier.map((point) => point.value));
-  const shown = todayPoint ?? history.at(-1)!;
-  const bars: { key: string; label: string; value: number; tone: StatsTone }[] = [];
-  if (todayPoint) bars.push({ key: 'today', label: `Today ${whole(todayPoint.value)}`, value: todayPoint.value, tone: 'info' });
-  if (average != null) bars.push({ key: 'average', label: `Recent average ${whole(average)}`, value: average, tone: 'info' });
-  if (bars.length === 0) bars.push({ key: 'latest', label: `Latest ${whole(shown.value)}`, value: shown.value, tone: 'info' });
-  let trend: string | null = null;
-  if (todayPoint && average != null) {
-    trend = todayPoint.value > average
-      ? 'Higher than your recent average.'
-      : todayPoint.value < average
-        ? 'Lower than your recent average.'
-        : 'Level with your recent average.';
-  }
-  const status = todayPoint
+  const all = series(input.samples, 'steps', input.today);
+  const window = slicePeriod(all, input);
+  if (window === 'none') return null;
+  if (window === 'gap') return emptyTile(item, input);
+  const period = periodOf(input);
+  const total = Math.round(window.current.reduce((sum, point) => sum + point.value, 0));
+  const status = period === 'day'
     ? 'There is no daily step target.'
-    : 'No steps logged today. There is no daily step target.';
+    : 'There is no step target for this period.';
   return finish(item, {
-    valueText: whole(shown.value),
+    valueText: whole(total),
     unit: 'steps',
-    period: todayPoint ? PERIOD_TODAY : PERIOD_LATEST_DAY,
+    period: periodLabel(period),
+    weeklyLine: period === '30' ? weeklyAverageWords(total, 30, 'steps') : null,
     status,
     tone: 'info',
-    trend,
+    trend: movementTrend(window.current, window.previous, 'sum', 1, period),
     hasGuideline: false,
-    visual: {
-      kind: 'bars',
-      max: Math.max(...bars.map((bar) => bar.value), 1),
-      caption: 'There is no daily step target.',
-      bars,
-    },
-    history: nums(history),
-    about: 'Steps in a day.',
-    meaning: 'There is no NHS or UK Chief Medical Officer daily step target.',
-    rangeNote: 'There is no daily step target.',
+    visual: spark(window.current, `${whole(total)} steps`),
+    history: nums(window.current),
+    about: period === 'day' ? 'Steps in a day.' : `Steps over ${periodPhrase(period)}.`,
+    meaning: 'There is no NHS or UK Chief Medical Officer step target.',
+    rangeNote: status,
     sourceName: null,
     sourceUrl: null,
   });
 }
 
-function energyTile(item: CatalogItem, kcal: number | null): HealthStatTile | null {
+function energyTile(item: CatalogItem, input: HealthStatBoardInput): HealthStatTile | null {
+  const kcal = input.activityEnergyKcal;
   if (kcal == null || !Number.isFinite(kcal) || kcal < 0 || kcal > 2500) return null;
-  const shown = Math.round(kcal);
+  const period = periodOf(input);
+  const days = periodDays(period);
+  const shown = Math.round(kcal * days);
   return finish(item, {
     valueText: whole(shown),
     unit: 'kcal',
-    period: PERIOD_DAILY_AVERAGE,
-    status: 'Recent daily average',
+    period: periodLabel(period),
+    weeklyLine: period === '30' ? weeklyAverageWords(shown, 30, 'kcal') : null,
+    status: 'From the recent daily average.',
     tone: 'info',
     trend: null,
     hasGuideline: false,
@@ -1008,8 +1028,8 @@ function energyTile(item: CatalogItem, kcal: number | null): HealthStatTile | nu
       bars: [{ key: 'energy', label: `${whole(shown)} kcal`, value: shown, tone: 'info' }],
     },
     history: [],
-    about: 'Active energy: a recent daily average of energy used in movement. The unit is kilocalories. Apple Health can supply it.',
-    meaning: NO_BAND,
+    about: 'Active energy is scaled from the recent daily average stored from Apple Health. A day shows that average, 7 days shows seven times it, and 30 days shows thirty times it. The unit is kilocalories.',
+    meaning: 'From the recent daily average. Apple Health is not storing a separate total for each day here.',
     rangeNote: NO_BAND,
     sourceName: null,
     sourceUrl: null,
@@ -1018,11 +1038,12 @@ function energyTile(item: CatalogItem, kcal: number | null): HealthStatTile | nu
 
 function workoutTile(item: CatalogItem, input: HealthStatBoardInput): HealthStatTile | null {
   const history = series(input.samples, 'workout_minutes', input.today);
-  if (history.length === 0) return null;
-  const weekStart = shiftDay(input.today, -6);
-  const week = history.filter((point) => point.day >= weekStart);
-  const total = week.reduce((sum, point) => sum + point.value, 0);
-  const bars = week.filter((point) => point.value > 0).map((point) => ({
+  const window = slicePeriod(history, input);
+  if (window === 'none') return null;
+  if (window === 'gap') return emptyTile(item, input);
+  const period = periodOf(input);
+  const total = window.current.reduce((sum, point) => sum + point.value, 0);
+  const bars = window.current.filter((point) => point.value > 0).map((point) => ({
     key: point.day,
     label: `${weekdayShort(point.day)} ${whole(point.value)} min`,
     value: point.value,
@@ -1030,19 +1051,20 @@ function workoutTile(item: CatalogItem, input: HealthStatBoardInput): HealthStat
   }));
   const visual: HealthStatVisual = bars.length
     ? { kind: 'bars', max: Math.max(...bars.map((bar) => bar.value), 1), caption: '', bars }
-    : { kind: 'bars', max: 1, caption: '', bars: [{ key: 'none', label: 'This week 0 min', value: 0, tone: 'info' }] };
+    : spark(window.current, `${whole(total)} min`);
   return finish(item, {
     valueText: whole(total),
     unit: 'min',
-    period: PERIOD_THIS_WEEK,
+    period: periodLabel(period),
+    weeklyLine: period === '30' ? weeklyAverageWords(total, 30) : null,
     status: 'Logged workouts may not include walking.',
     tone: 'info',
-    trend: weekTrend(history, input.today, 5),
+    trend: movementTrend(window.current, window.previous, 'sum', 5, period),
     hasGuideline: false,
     visual,
-    history: nums(history),
-    about: 'Workouts: minutes logged in workouts. They may not include walking. The unit is minutes.',
-    meaning: 'This tile is the logged workouts. The 150-minute mark sits on weekly active minutes.',
+    history: nums(window.current),
+    about: `Workouts: minutes logged over ${periodPhrase(period)}. They may not include walking. The unit is minutes.`,
+    meaning: 'This tile is the logged workouts. The activity-minute mark sits on active minutes.',
     rangeNote: 'Logged workouts may not include walking.',
     sourceName: null,
     sourceUrl: null,
@@ -1055,49 +1077,48 @@ function weeklyTile(item: CatalogItem, input: HealthStatBoardInput): HealthStatT
   const cardio = series(input.samples, 'cardio_minutes', input.today);
   const conditioning = series(input.samples, 'conditioning_minutes', input.today);
   const other = series(input.samples, 'other_minutes', input.today);
-  if (workouts.length + strength.length + cardio.length + conditioning.length + other.length === 0) return null;
-  const weekStart = shiftDay(input.today, -6);
-  const workoutWeek = sumBetween(workouts, weekStart, input.today);
-  const mixWeek = sumBetween(strength, weekStart, input.today)
-    + sumBetween(cardio, weekStart, input.today)
-    + sumBetween(conditioning, weekStart, input.today)
-    + sumBetween(other, weekStart, input.today);
-  const minutes = workouts.length > 0 ? workoutWeek : mixWeek;
-  const rounded = Math.round(minutes);
-  const left = Math.max(0, CMO_MODERATE_MINUTES_WEEK - rounded);
-  const met = rounded >= CMO_MODERATE_MINUTES_WEEK;
+  const history = workouts.length > 0 ? workouts : mergeDays([strength, cardio, conditioning, other]);
+  const window = slicePeriod(history, input);
+  if (window === 'none') return null;
+  if (window === 'gap') return emptyTile(item, input);
+  const period = periodOf(input);
+  const rounded = Math.round(window.current.reduce((sum, point) => sum + point.value, 0));
+  const target = scaledActivityMinutes(CMO_MODERATE_MINUTES_WEEK, period);
+  const vigorous = scaledActivityMinutes(CMO_VIGOROUS_MINUTES_WEEK, period);
+  const left = Math.max(0, target - rounded);
+  const met = rounded >= target;
   const tone: StatsTone = met ? 'good' : 'info';
   const status = met
-    ? '150 minutes logged'
+    ? `${whole(target)} minutes logged`
     : rounded === 0
-      ? '150 minutes to go'
+      ? `${whole(target)} minutes to go`
       : left === 1
-        ? '1 minute to 150'
-        : `${left} minutes to 150`;
-  const scaleMax = Math.max(300, rounded + 20);
-  const history = workouts.length > 0 ? workouts : mergeDays([strength, cardio, conditioning, other]);
+        ? `1 minute to ${whole(target)}`
+        : `${whole(left)} minutes to ${whole(target)}`;
+  const scaleMax = Math.max(target * 2, rounded + 20);
   return finish(item, {
     valueText: whole(rounded),
     unit: 'min',
-    period: PERIOD_THIS_WEEK,
+    period: periodLabel(period),
+    weeklyLine: period === '30' ? weeklyAverageWords(rounded, 30) : null,
     status,
     tone,
-    trend: weekTrend(history, input.today, 5),
+    trend: movementTrend(window.current, window.previous, 'sum', 5, period),
     hasGuideline: true,
     visual: {
       kind: 'zone',
       value: rounded,
-      zoneLow: CMO_MODERATE_MINUTES_WEEK,
+      zoneLow: target,
       zoneHigh: scaleMax,
       scaleMin: 0,
       scaleMax,
       status,
-      zoneCaption: 'At least 150 min this week',
+      zoneCaption: activityCaption(period, target),
       tone,
     },
-    history: nums(history),
-    about: 'Active minutes: time counted toward this week. The unit is minutes.',
-    meaning: `The UK Chief Medical Officers recommend at least ${CMO_MODERATE_MINUTES_WEEK} minutes of moderate activity a week, or ${CMO_VIGOROUS_MINUTES_WEEK} minutes of vigorous activity. Logged workouts may not include walking, and this app cannot tell how hard the minutes were.`,
+    history: nums(window.current),
+    about: `Active minutes: time counted over ${periodPhrase(period)}. The unit is minutes.`,
+    meaning: `The UK Chief Medical Officers recommend at least ${CMO_MODERATE_MINUTES_WEEK} minutes of moderate activity a week, or ${CMO_VIGOROUS_MINUTES_WEEK} minutes of vigorous activity. For ${periodPhrase(period)} that is at least ${whole(target)} minutes, or ${whole(vigorous)} minutes of vigorous activity. Logged workouts may not include walking, and this app cannot tell how hard the minutes were.`,
     rangeNote: null,
     sourceName: 'UK Chief Medical Officers',
     sourceUrl: CMO_ACTIVITY_URL,
@@ -1113,20 +1134,23 @@ function plainSeriesTile(
   about: string,
   note: string,
 ): HealthStatTile | null {
-  const history = series(input.samples, item.id, input.today).filter((point) => point.value > 0);
-  const latest = history.at(-1);
-  if (!latest) return null;
-  const shown = digits === 0 ? String(Math.round(latest.value)) : oneText(latest.value);
+  const all = series(input.samples, item.id, input.today).filter((point) => point.value > 0);
+  const window = slicePeriod(all, input);
+  if (window === 'none') return null;
+  if (window === 'gap') return emptyTile(item, input);
+  const period = periodOf(input);
+  const value = averageOf(window.current);
+  const shown = digits === 0 ? String(Math.round(value)) : oneText(value);
   return finish(item, {
     valueText: shown,
     unit,
-    period: PERIOD_LATEST,
+    period: periodLabel(period),
     status: note,
     tone: 'info',
-    trend: readingTrend(history, epsilon),
+    trend: movementTrend(window.current, window.previous, 'mean', epsilon, period),
     hasGuideline: false,
-    visual: spark(history, `${shown} ${unit}`),
-    history: nums(history),
+    visual: spark(window.current, `${shown} ${unit}`),
+    history: nums(window.current),
     about,
     meaning: note,
     rangeNote: note,
@@ -1143,12 +1167,14 @@ function plainReading(
   history: DayValue[],
   about: string,
   meaning: string,
+  period: string,
 ): Omit<HealthStatTile, 'id' | 'section' | 'title' | 'mark'> {
   return {
     valueText: oneText(value),
     unit,
-    period: PERIOD_LATEST,
+    period,
     weeklyLine: null,
+    empty: false,
     status,
     tone: 'info',
     trend,
@@ -1165,7 +1191,10 @@ function plainReading(
 
 function finish(
   item: CatalogItem,
-  tile: Omit<HealthStatTile, 'id' | 'section' | 'title' | 'mark' | 'weeklyLine'> & { weeklyLine?: string | null },
+  tile: Omit<HealthStatTile, 'id' | 'section' | 'title' | 'mark' | 'weeklyLine' | 'empty'> & {
+    weeklyLine?: string | null;
+    empty?: boolean;
+  },
 ): HealthStatTile {
   return {
     id: item.id,
@@ -1173,18 +1202,143 @@ function finish(
     title: item.title,
     mark: STATS_SIGNAL[tile.tone],
     weeklyLine: null,
+    empty: false,
     ...tile,
   };
 }
 
-/** A 28-day total of 1,198 minutes is about 300 minutes a week. */
-function weeklyAverageWords(total: number, days: number): string {
+/** A 30-day total of 1,198 minutes is about 280 minutes a week. */
+function weeklyAverageWords(total: number, days: number, unit = 'min'): string {
   const perWeek = Math.round(total / (days / 7));
-  return `About ${whole(perWeek)} min a week.`;
+  return `About ${whole(perWeek)} ${unit} a week.`;
+}
+
+function periodOf(input: HealthStatBoardInput): HealthStatPeriod {
+  return parseHealthStatPeriod(input.period);
+}
+
+function periodDays(period: HealthStatPeriod): number {
+  if (period === 'day') return 1;
+  if (period === '30') return 30;
+  return 7;
+}
+
+/** The 150-minute week, scaled to the chosen period. 21 today, 150 in 7 days, 643 in 30 days. */
+export function scaledActivityMinutes(weekly: number, period: HealthStatPeriod): number {
+  return Math.round((weekly * periodDays(period)) / 7);
+}
+
+function activityCaption(period: HealthStatPeriod, target: number): string {
+  if (period === 'day') return `At least ${target} min today`;
+  return `At least ${target} min in ${period === '30' ? 30 : 7} days`;
+}
+
+function periodLabel(period: HealthStatPeriod, night = false): string {
+  if (period === 'day') return night ? PERIOD_LAST_NIGHT : PERIOD_TODAY;
+  if (period === '30') return PERIOD_LAST_30;
+  return PERIOD_LAST_7;
+}
+
+function periodPhrase(period: HealthStatPeriod): string {
+  if (period === 'day') return 'today';
+  if (period === '30') return 'the last 30 days';
+  return 'the last 7 days';
+}
+
+function noReadingsLine(period: HealthStatPeriod, night: boolean): string {
+  if (period === 'day') return night ? 'No readings last night.' : 'No readings today.';
+  if (period === '30') return 'No readings in the last 30 days.';
+  return 'No readings in the last 7 days.';
+}
+
+function windowStart(today: string, period: HealthStatPeriod): string {
+  return shiftDay(today, -(periodDays(period) - 1));
+}
+
+function previousBounds(today: string, period: HealthStatPeriod): { start: string; end: string } {
+  const end = shiftDay(windowStart(today, period), -1);
+  return { start: shiftDay(end, -(periodDays(period) - 1)), end };
+}
+
+type PeriodSlice = { current: DayValue[]; previous: DayValue[] };
+
+function slicePeriod(points: readonly DayValue[], input: HealthStatBoardInput): PeriodSlice | 'none' | 'gap' {
+  if (points.length === 0) return 'none';
+  const period = periodOf(input);
+  const start = windowStart(input.today, period);
+  const current = points.filter((point) => point.day >= start && point.day <= input.today);
+  if (current.length === 0) return 'gap';
+  const previousWindow = previousBounds(input.today, period);
+  const previous = points.filter((point) => point.day >= previousWindow.start && point.day <= previousWindow.end);
+  return { current, previous };
+}
+
+function emptyTile(item: CatalogItem, input: HealthStatBoardInput, night = false): HealthStatTile {
+  const period = periodOf(input);
+  const asleep = night && period === 'day';
+  const status = noReadingsLine(period, asleep);
+  return finish(item, {
+    valueText: 'No readings',
+    unit: '',
+    period: periodLabel(period, asleep),
+    status,
+    tone: 'info',
+    trend: null,
+    hasGuideline: false,
+    empty: true,
+    visual: { kind: 'line', points: [] },
+    history: [],
+    about: status,
+    meaning: status,
+    rangeNote: null,
+    sourceName: null,
+    sourceUrl: null,
+  });
+}
+
+function averageOf(points: readonly DayValue[]): number {
+  return points.reduce((sum, point) => sum + point.value, 0) / points.length;
+}
+
+function movementTrend(
+  current: readonly DayValue[],
+  previous: readonly DayValue[],
+  mode: 'sum' | 'mean',
+  epsilon: number,
+  period: HealthStatPeriod,
+): string | null {
+  const aggregate = (points: readonly DayValue[]): number | null => {
+    if (points.length === 0) return null;
+    const total = points.reduce((sum, point) => sum + point.value, 0);
+    return mode === 'sum' ? total : total / points.length;
+  };
+  const now = aggregate(current);
+  const before = aggregate(previous);
+  if (now != null && before != null) return trendWords(now, before, epsilon, periodBefore(period));
+  if (current.length >= 2) {
+    const latest = current[current.length - 1]!.value;
+    const earlier = current.slice(0, -1);
+    const usual = earlier.reduce((sum, point) => sum + point.value, 0) / earlier.length;
+    return trendWords(latest, usual, epsilon, 'the earlier days in this period');
+  }
+  return null;
+}
+
+function periodBefore(period: HealthStatPeriod): string {
+  if (period === 'day') return 'the day before';
+  if (period === '30') return 'the 30 days before';
+  return 'the 7 days before';
+}
+
+function trendWords(latest: number, previous: number, epsilon: number, against: string): string {
+  const delta = latest - previous;
+  if (Math.abs(delta) <= epsilon) return `Steady against ${against}.`;
+  if (delta > 0) return `Up from ${against}.`;
+  return `Down from ${against}.`;
 }
 
 function spark(history: readonly DayValue[], label: string): HealthStatVisual {
-  if (history.length >= 2) return { kind: 'line', points: history.slice(-8).map((point) => point.value) };
+  if (history.length >= 2) return { kind: 'line', points: history.map((point) => point.value) };
   const latest = history.at(-1);
   const value = latest?.value ?? 0;
   return {
@@ -1220,35 +1374,6 @@ function sumBetween(points: readonly DayValue[], start: string, end: string): nu
   return points.filter((point) => point.day >= start && point.day <= end).reduce((sum, point) => sum + point.value, 0);
 }
 
-function readingTrend(history: readonly DayValue[], epsilon: number): string | null {
-  if (history.length < 2) return null;
-  const latest = history.at(-1)!.value;
-  const previous = history.at(-2)!.value;
-  return trendFrom(latest, previous, epsilon, 'reading');
-}
-
-function weekTrend(history: readonly DayValue[], today: string, epsilon: number): string | null {
-  const weekStart = shiftDay(today, -6);
-  if (!history.some((point) => point.day < weekStart)) return null;
-  const previousStart = shiftDay(today, -13);
-  const previousEnd = shiftDay(today, -7);
-  return trendFrom(
-    sumBetween(history, weekStart, today),
-    sumBetween(history, previousStart, previousEnd),
-    epsilon,
-    'week',
-  );
-}
-
-function trendFrom(latest: number, previous: number, epsilon: number, noun: 'reading' | 'week'): string {
-  const delta = latest - previous;
-  if (Math.abs(delta) <= epsilon) {
-    return noun === 'week' ? 'Steady against the week before.' : 'Steady against the earlier reading.';
-  }
-  if (delta > 0) return noun === 'week' ? 'Up from the week before.' : 'Up from the earlier reading.';
-  return noun === 'week' ? 'Down from the week before.' : 'Down from the earlier reading.';
-}
-
 function mergeDays(groups: DayValue[][]): DayValue[] {
   const map = new Map<string, number>();
   for (const group of groups) {
@@ -1260,12 +1385,7 @@ function mergeDays(groups: DayValue[][]): DayValue[] {
 }
 
 function nums(history: readonly DayValue[]): number[] {
-  return history.slice(-8).map((point) => point.value);
-}
-
-function mean(values: number[]): number | null {
-  if (values.length === 0) return null;
-  return values.reduce((sum, value) => sum + value, 0) / values.length;
+  return history.map((point) => point.value);
 }
 
 function isGrown(input: HealthStatBoardInput): boolean {

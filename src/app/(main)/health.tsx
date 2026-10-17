@@ -7,6 +7,11 @@ import type { HealthKind, NewHealthSample } from '@/data/types';
 import { isoDay, startOfLocalDay } from '@/domain/dates';
 import { shownError } from '@/domain/errors';
 import { parseHeightCm } from '@/domain/guidance';
+import {
+  HEALTH_STAT_PERIOD_LABEL,
+  HEALTH_STAT_PERIODS,
+  type HealthStatPeriod,
+} from '@/domain/healthStatTiles';
 import { rebucketStoredMinutes, withWorkoutBucket } from '@/domain/fitnessSnapshot';
 import type { BodyEntrySource, WorkoutBucket } from '@/domain/nutrition';
 import type { WeightReadingDraft } from '@/domain/weightEntry';
@@ -16,6 +21,7 @@ import { connectAppleHealth, openAppSettings, openHealthApp, readAppleHealthAcce
 import { readHealthVisibility } from '@/health/visibility';
 import type { HealthVisibilityReport } from '@/domain/healthVisibility';
 import type { HealthTurnOnResult } from '@/ui/HealthStatBoard';
+import { loadHealthStatPeriod, saveHealthStatPeriod } from '@/health/statPeriod';
 import { loadLastSynced, saveLastSynced } from '@/health/syncedAt';
 import { syncAppleHealth } from '@/health/sync';
 import { AppleHealthCard } from '@/ui/AppleHealthCard';
@@ -57,7 +63,23 @@ export default function Health() {
   const [syncedAt, setSyncedAt] = useState<string | null>(null);
   const [visibility, setVisibility] = useState<HealthVisibilityReport | null>(ios ? null : { kind: 'web' });
   const [visibilityPending, setVisibilityPending] = useState(false);
+  const [period, setPeriod] = useState<HealthStatPeriod>('7');
   const chosen = KINDS.find((item) => item.id === kind) ?? KINDS[0];
+
+  useEffect(() => {
+    let live = true;
+    void loadHealthStatPeriod().then((saved) => {
+      if (live) setPeriod(saved);
+    });
+    return () => {
+      live = false;
+    };
+  }, []);
+
+  function choosePeriod(next: HealthStatPeriod) {
+    setPeriod(next);
+    void saveHealthStatPeriod(next);
+  }
 
   const refreshLink = useCallback(() => {
     if (!ios) return;
@@ -254,6 +276,16 @@ export default function Health() {
         </View>
       )}
     >
+      <View accessibilityRole="radiogroup" accessibilityLabel="Period" style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+        {HEALTH_STAT_PERIODS.map((id) => (
+          <Choice
+            key={id}
+            label={HEALTH_STAT_PERIOD_LABEL[id]}
+            selected={period === id}
+            onPress={() => choosePeriod(id)}
+          />
+        ))}
+      </View>
       <GoalLine />
       <HealthSectionShare />
       <AppleHealthCard
@@ -285,6 +317,7 @@ export default function Health() {
         goal={snap.nutrition.goal}
         build={snap.nutrition.build}
         workoutBuckets={snap.nutrition.workoutBuckets}
+        period={period}
         onTurnOn={turnOnMissing}
         onSaveBody={saveBodyGap}
         onSetWorkoutBucket={setWorkoutBucket}
