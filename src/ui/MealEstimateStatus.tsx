@@ -1,5 +1,6 @@
 import { View } from 'react-native';
 
+import { ESTIMATE_WAIT_NOTE } from '@/domain/edgeRetry';
 import { Button, ErrorNote, T } from '@/ui/ui';
 import { PlanTick } from '@/ui/PlanTick';
 import { statsToneColors } from '@/ui/statsPalette';
@@ -24,7 +25,12 @@ export function MealEstimateStatus({
   const green = statsToneColors(theme.scheme).good.ink;
   return (
     <View style={{ gap: 8 }}>
-      {waiting ? <T variant="muted">{ESTIMATE_WAITING_LINE}</T> : null}
+      {waiting ? (
+        <View style={{ gap: 4 }}>
+          <T variant="muted">{ESTIMATE_WAITING_LINE}</T>
+          <T variant="muted">{ESTIMATE_WAIT_NOTE}</T>
+        </View>
+      ) : null}
       {!waiting && ready ? (
         <View
           accessibilityRole="text"

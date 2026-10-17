@@ -49,6 +49,7 @@ Deno.serve(async (req) => {
   }
 
   const local = text ? estimateFromText(text) : samplePhotoMeal();
+  const ESTIMATE_PROVIDER_TIMEOUT_MS = 28_000;
   const apiKey = Deno.env.get('XAI_API_KEY');
   if (!apiKey) return json({ ok: true, items: local, source: 'local' });
 
@@ -80,6 +81,7 @@ Deno.serve(async (req) => {
           { role: 'user', content },
         ],
       }),
+      signal: AbortSignal.timeout(ESTIMATE_PROVIDER_TIMEOUT_MS),
     });
     if (!response.ok) return json({ ok: true, items: local, source: 'local' });
     const parsed = parseMealEstimate(completionText(await response.json()));

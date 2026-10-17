@@ -2,7 +2,25 @@ import { readFileSync } from 'node:fs';
 
 import { describe, expect, it } from 'vitest';
 
-import { edgeErrorShouldRetry, edgeFailureLog, edgeStatusShouldRetry, freshConnectionInit, postWithRetry } from './edgeRetry';
+import {
+  CHECK_CONNECTION,
+  ESTIMATE_CLIENT_TIMEOUT_MS,
+  ESTIMATE_PROVIDER_TIMEOUT_MS,
+  PLAN_UNREACHABLE,
+  REFLECT_UNREACHABLE,
+  SIGN_IN_AGAIN,
+  aiCallMessage,
+  classifyEdgeError,
+  classifyEdgeStatus,
+  edgeErrorShouldRetry,
+  edgeFailureLog,
+  edgeStatusShouldRetry,
+  freshConnectionInit,
+  isThumosFallback,
+  postWithRetry,
+  prepareAiSession,
+  type SessionTicket,
+} from './edgeRetry';
 import { ensureSafetyNotices, SELF_HARM_NOTICE } from './safety';
 import { SCRIPTED_COACH_REPLY, THUMOS_CHAT, THUMOS_UNREACHABLE, runThumosModelChain, storedThumosReply, thumosModelChain, thumosRequestId, type ThumosCallResult } from './thumos';
 import { thumosHealthBody, thumosHealthVerdict } from '../../supabase/functions/_shared/thumosHealth';
@@ -198,5 +216,148 @@ describe('Thumos reachability', () => {
     expect(sql).toContain('request_id');
     expect(sql).toContain('thumos_fallback_days');
     expect(sql).not.toMatch(/delete from/i);
+    expect(screen).toContain('isThumosFallback');
+    expect(screen).toContain('SIGN_IN_AGAIN');
+    expect(screen).toContain('CHECK_CONNECTION');
+  });
+
+  it('refreshes the session once, and once more only when that refresh has no token', async () => {
+    const now = 1_700_000_000_000;
+    const fresh = (token: string): SessionTicket => ({
+      accessToken: token,
+      expiresAt: Math.floor(now / 1000) + 3600,
+      userId: 'user-1',
+    });
+    const empty: SessionTicket = { accessToken: null, expiresAt: null, userId: null };
+    let refreshes = 0;
+    const ready = await prepareAiSession({
+      now,
+      read: async () => fresh('cached'),
+      refresh: async () => {
+        refreshes += 1;
+        return { ticket: fresh('refreshed'), error: null };
+      },
+    });
+    expect(refreshes).toBe(1);
+    expect(ready).toEqual({ accessToken: 'refreshed', userId: 'user-1' });
+
+    refreshes = 0;
+    const second = await prepareAiSession({
+      now,
+      read: async () => empty,
+      refresh: async () => {
+        refreshes += 1;
+        return refreshes === 1
+          ? { ticket: empty, error: new Error('Auth session missing') }
+          : { ticket: fresh('second'), error: null };
+      },
+    });
+    expect(refreshes).toBe(2);
+    expect(second).toEqual({ accessToken: 'second', userId: 'user-1' });
+  });
+
+  it('keeps a live token when the refresh cannot reach the network, and names a missing session', async () => {
+    const now = 1_700_000_000_000;
+    const live: SessionTicket = {
+      accessToken: 'still-good',
+      expiresAt: Math.floor(now / 1000) + 3600,
+      userId: 'user-1',
+    };
+    const expired: SessionTicket = {
+      accessToken: 'stale',
+      expiresAt: Math.floor(now / 1000) - 120,
+      userId: 'user-1',
+    };
+    const empty: SessionTicket = { accessToken: null, expiresAt: null, userId: null };
+    const kept = await prepareAiSession({
+      now,
+      read: async () => live,
+      refresh: async () => { throw new TypeError('Network request failed'); },
+    });
+    expect(kept).toEqual({ accessToken: 'still-good', userId: 'user-1' });
+
+    const dropped = await prepareAiSession({
+      now,
+      read: async () => expired,
+      refresh: async () => { throw new TypeError('Failed to fetch'); },
+    });
+    expect(dropped).toEqual({ failure: 'connection' });
+
+    const signedOut = await prepareAiSession({
+      now,
+      read: async () => empty,
+      refresh: async () => ({ ticket: empty, error: new Error('Auth session missing') }),
+    });
+    expect(signedOut).toEqual({ failure: 'signed-out' });
+
+    const unread = await prepareAiSession({
+      now,
+      read: async () => { throw new TypeError('Network request failed'); },
+      refresh: async () => ({ ticket: empty, error: null }),
+    });
+    expect(unread).toEqual({ failure: 'connection' });
+  });
+
+  it('uses a different sentence for a lost session, a timeout, a drop, and a server error', () => {
+    expect(aiCallMessage('meal', 'signed-out')).toBe(SIGN_IN_AGAIN);
+    expect(aiCallMessage('meal', 'auth')).toBe('Please sign in again.');
+    expect(aiCallMessage('thumos', 'connection')).toBe(CHECK_CONNECTION);
+    expect(aiCallMessage('meal', 'connection')).toBe('Check your connection.');
+    expect(aiCallMessage('meal', 'network')).toBe('The meal estimate lost the connection. Tap to retry.');
+    expect(aiCallMessage('meal', 'timeout')).toBe('The meal estimate took too long. Tap to retry.');
+    expect(aiCallMessage('meal', 'server')).toBe('The meal estimate did not answer. Tap to retry.');
+    expect(aiCallMessage('plan', 'server')).toBe(PLAN_UNREACHABLE);
+    expect(aiCallMessage('reflect', 'server')).toBe(REFLECT_UNREACHABLE);
+    expect(aiCallMessage('thumos', 'server')).toBe('Thumos did not answer – tap to retry.');
+    expect(aiCallMessage('thumos', 'network')).toBe('Thumos lost the connection. Tap to retry.');
+    expect(aiCallMessage('thumos', 'timeout')).toBe('Thumos took too long. Tap to retry.');
+    expect(isThumosFallback(aiCallMessage('thumos', 'network'))).toBe(true);
+    expect(isThumosFallback(aiCallMessage('thumos', 'timeout'))).toBe(true);
+    expect(isThumosFallback(aiCallMessage('thumos', 'server'))).toBe(true);
+    expect(isThumosFallback(SIGN_IN_AGAIN)).toBe(false);
+    expect(isThumosFallback(CHECK_CONNECTION)).toBe(false);
+    expect(classifyEdgeStatus(401)).toBe('auth');
+    expect(classifyEdgeStatus(503)).toBe('server');
+    expect(classifyEdgeStatus(403)).toBeNull();
+    expect(classifyEdgeError(new TypeError('Failed to fetch'))).toBe('network');
+    const aborted = new Error('The operation was aborted.');
+    aborted.name = 'AbortError';
+    expect(classifyEdgeError(aborted)).toBe('timeout');
+    const timed = new Error('The request timed out.');
+    timed.name = 'TimeoutError';
+    expect(classifyEdgeError(timed)).toBe('timeout');
+    expect(edgeFailureLog(new Error('porridge with honey'), 401)).toBe('HTTP 401');
+    expect(edgeFailureLog(new TypeError('Network request failed'))).not.toContain('porridge');
+    expect(ESTIMATE_CLIENT_TIMEOUT_MS).toBe(40_000);
+    expect(ESTIMATE_PROVIDER_TIMEOUT_MS).toBe(28_000);
+  });
+
+  it('does not send again after the caller has already given up', async () => {
+    const controller = new AbortController();
+    controller.abort();
+    let calls = 0;
+    await expect(postWithRetry({
+      url: 'https://example.test/functions/v1/estimate-meal',
+      init: { method: 'POST', signal: controller.signal, body: 'porridge with honey' },
+      sleep: async () => undefined,
+      fetchImpl: async () => {
+        calls += 1;
+        return response(200);
+      },
+    })).rejects.toThrow(/aborted/i);
+    expect(calls).toBe(0);
+
+    const late = new AbortController();
+    let attempts = 0;
+    await expect(postWithRetry({
+      url: 'https://example.test/functions/v1/estimate-meal',
+      init: { method: 'POST', signal: late.signal },
+      sleep: async () => { late.abort(); },
+      fetchImpl: async () => {
+        attempts += 1;
+        throw new TypeError('Network request failed');
+      },
+    })).rejects.toThrow('Network request failed');
+    expect(attempts).toBe(1);
   });
 });

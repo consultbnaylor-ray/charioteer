@@ -11,7 +11,7 @@ import { earnedMilestones } from '@/domain/milestones';
 import { firstSafetyHit, pinnedSafetyNotices } from '@/domain/safety';
 import { asUserFacing, shownError } from '@/domain/errors';
 import { showsSoberRecord } from '@/domain/stage';
-import { EDGE_STATE_LABEL, type EdgeSendState } from '@/domain/edgeRetry';
+import { CHECK_CONNECTION, EDGE_STATE_LABEL, SIGN_IN_AGAIN, isThumosFallback, type EdgeSendState } from '@/domain/edgeRetry';
 import { CRAVING_LINE, inferThumosMode, SCRIPTED_COACH_REPLY, THUMOS_INTRO, THUMOS_UNREACHABLE, OPENING_LINE, type ThumosMode } from '@/domain/thumos';
 import { THUMOS_LINE_CAP, groupThumosByDay, messageNeedsMore, visibleThumos } from '@/domain/thumosThread';
 import { formatClock, urgeRemainingSeconds } from '@/domain/urge';
@@ -38,7 +38,7 @@ export default function Thumos() {
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
   const [sendState, setSendState] = useState<EdgeSendState | null>(null);
-  const [unreachable, setUnreachable] = useState(false);
+  const [unreachable, setUnreachable] = useState<string | null>(null);
   const [liveReply, setLiveReply] = useState('');
   const [outgoing, setOutgoing] = useState<string | null>(null);
   const [supportLatch, setSupportLatch] = useState(sos);
@@ -128,7 +128,7 @@ export default function Thumos() {
     setSupportLatch(support);
     setPending(true);
     setSendState('sending');
-    setUnreachable(false);
+    setUnreachable(null);
     setLiveReply('');
     setOutgoing(trimmed);
     setError(null);
@@ -144,8 +144,11 @@ export default function Thumos() {
       setKeptSend(null);
       setDraft(trimmed);
       const message = asUserFacing(err, 'thumos').message;
-      if (message.startsWith(THUMOS_UNREACHABLE)) setUnreachable(true);
-      else setError(message);
+      if (message === SIGN_IN_AGAIN || message === CHECK_CONNECTION) setError(message);
+      else if (isThumosFallback(message)) {
+        const scriptedAt = message.indexOf(SCRIPTED_COACH_REPLY);
+        setUnreachable(scriptedAt >= 0 ? message.slice(0, scriptedAt).trim() : message);
+      } else setError(message);
     } finally {
       setPending(false);
       setSendState(null);
@@ -302,7 +305,7 @@ export default function Thumos() {
         )}
         {unreachable ? (
           <Card>
-            <T>{THUMOS_UNREACHABLE}</T>
+            <T>{unreachable ?? THUMOS_UNREACHABLE}</T>
             <T>{SCRIPTED_COACH_REPLY}</T>
             <Button label="Try again" onPress={() => void send()} />
           </Card>

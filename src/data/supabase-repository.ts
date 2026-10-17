@@ -113,17 +113,24 @@ import { planRelapse } from '@/domain/sober';
 import { parseSseBuffer } from '@/domain/sse';
 import { detectSafety } from '@/domain/safety';
 import {
-  MEAL_UNREACHABLE,
+  ESTIMATE_CLIENT_TIMEOUT_MS,
   PLAN_NOT_SAVED,
   PLAN_UNREACHABLE,
-  REFLECT_UNREACHABLE,
   VOICE_UNREACHABLE,
+  EdgeSessionError,
+  aiCallMessage,
+  classifyEdgeError,
+  classifyEdgeStatus,
   edgeFailureLog,
   postWithRetry,
+  prepareAiSession,
+  type AiFeature,
+  type EdgeFailureKind,
   type EdgeSendState,
+  type SessionTicket,
 } from '@/domain/edgeRetry';
 import { clientAppBuild } from '@/domain/clientError';
-import { OPENING_LINE, SCRIPTED_COACH_REPLY, THUMOS_UNREACHABLE, type ThumosMode } from '@/domain/thumos';
+import { OPENING_LINE, SCRIPTED_COACH_REPLY, type ThumosMode } from '@/domain/thumos';
 import Constants from 'expo-constants';
 import { CONSENT_VERSION } from '@/data/catalogue';
 import { consentRows, missingConsentRows, type StoredConsent } from '@/domain/consents';
@@ -249,6 +256,8 @@ export class SupabaseRepository implements Repository {
   private ownerPhotoResign: Promise<void> | null = null;
   /** One extra sign after the current one, shared by every image error that arrives mid-sign. */
   private ownerPhotoResignFollowUp: Promise<void> | null = null;
+  /** One shared session refresh for AI calls that start together. */
+  private aiSession: Promise<string> | null = null;
 
   constructor(url: string, anonKey: string) {
     this.url = url;
@@ -1281,8 +1290,14 @@ export class SupabaseRepository implements Repository {
 
   async logClientError(screen: string, message: string, appBuild: string): Promise<void> {
     try {
-      const userId = await this.userId();
       const clip = (value: string, max: number) => value.replace(/\s+/g, ' ').trim().slice(0, max);
+      const stored = this.snapshot.session?.userId ?? null;
+      const sessionUser = stored ? null : (await this.client.auth.getSession()).data.session?.user?.id ?? null;
+      const userId = stored ?? sessionUser;
+      if (!userId) {
+        console.error('client error log', 'no session', clip(screen, 80), clip(message, 300));
+        return;
+      }
       const { error } = await this.client.from('client_errors').insert({
         user_id: userId,
         screen: clip(screen, 80) || 'app',
@@ -1374,7 +1389,7 @@ export class SupabaseRepository implements Repository {
 
     let response: Response;
     try {
-      const token = await this.accessToken();
+      const token = await this.sessionForAiCall();
       response = await postWithRetry({
         fetchImpl: (url, init) => fetch(url, init),
         url: `${this.url}/functions/v1/thumos-chat`,
@@ -1391,15 +1406,13 @@ export class SupabaseRepository implements Repository {
         onState,
       });
     } catch (error) {
-      this.rememberEdgeFailure('thumos', error);
-      throw new UserFacingError(`${THUMOS_UNREACHABLE} ${SCRIPTED_COACH_REPLY}`, 'generic');
+      if (error instanceof UserFacingError) throw error;
+      throw this.aiFailure('thumos', 'thumos', error);
     }
 
     if (!response.ok) {
-      if (response.status >= 500) {
-        this.rememberEdgeFailure('thumos', new Error('Thumos did not answer.'), response.status);
-        throw new UserFacingError(`${THUMOS_UNREACHABLE} ${SCRIPTED_COACH_REPLY}`, 'generic');
-      }
+      const kind = classifyEdgeStatus(response.status);
+      if (kind) throw this.aiFailure('thumos', 'thumos', new Error('Thumos did not answer.'), response.status);
       const body = (await response.json().catch(() => null)) as { message?: string } | null;
       throw asUserFacing(new Error(body?.message ?? 'Could not send that.'), 'thumos');
     }
@@ -1478,8 +1491,38 @@ export class SupabaseRepository implements Repository {
     return token;
   }
 
-  private rememberEdgeFailure(screen: string, error: unknown, status?: number) {
-    const line = edgeFailureLog(error, status);
+  private sessionTicket(session: { access_token?: string; expires_at?: number; user?: { id?: string } } | null): SessionTicket {
+    return {
+      accessToken: session?.access_token ?? null,
+      expiresAt: typeof session?.expires_at === 'number' ? session.expires_at : null,
+      userId: session?.user?.id ?? null,
+    };
+  }
+
+  /** Refresh the session once, then once more if that refresh does not return a token. */
+  private sessionForAiCall(): Promise<string> {
+    if (this.aiSession) return this.aiSession;
+    this.aiSession = this.loadAiSession().finally(() => {
+      this.aiSession = null;
+    });
+    return this.aiSession;
+  }
+
+  private async loadAiSession(): Promise<string> {
+    const ready = await prepareAiSession({
+      read: async () => this.sessionTicket((await this.client.auth.getSession()).data.session),
+      refresh: async () => {
+        const { data, error } = await this.client.auth.refreshSession();
+        return { ticket: this.sessionTicket(data.session), error };
+      },
+    });
+    if ('failure' in ready) throw new EdgeSessionError(ready.failure);
+    return ready.accessToken;
+  }
+
+  private rememberEdgeFailure(screen: string, error: unknown, status?: number, kind?: EdgeFailureKind) {
+    const detail = edgeFailureLog(error, status);
+    const line = kind ? `${kind}: ${detail}` : detail;
     console.error(screen, line);
     void this.logClientError(screen, line, clientAppBuild({
       buildNumber: Constants.expoConfig?.ios?.buildNumber,
@@ -1487,23 +1530,50 @@ export class SupabaseRepository implements Repository {
     }));
   }
 
-  private async callEdge(name: string, body: unknown): Promise<{ status: number; data: unknown }> {
-    const token = await this.accessToken();
-    const response = await postWithRetry({
-      fetchImpl: (url, init) => fetch(url, init),
-      url: `${this.url}/functions/v1/${name}`,
-      init: {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${token}`,
-          apikey: this.anonKey,
-          'Content-Type': 'application/json',
-          Accept: 'application/json',
+  private aiFailure(feature: AiFeature, screen: string, error: unknown, status?: number): UserFacingError {
+    if (error instanceof UserFacingError) return error;
+    const kind: EdgeFailureKind = error instanceof EdgeSessionError
+      ? error.kind
+      : status != null
+        ? (classifyEdgeStatus(status) ?? 'server')
+        : classifyEdgeError(error);
+    this.rememberEdgeFailure(screen, error, status, kind);
+    const message = feature === 'thumos' && (kind === 'network' || kind === 'timeout' || kind === 'server')
+      ? `${aiCallMessage(feature, kind)} ${SCRIPTED_COACH_REPLY}`
+      : aiCallMessage(feature, kind);
+    return new UserFacingError(message, 'generic');
+  }
+
+  private async callEdge(
+    name: string,
+    body: unknown,
+    options?: { ai?: boolean; timeoutMs?: number },
+  ): Promise<{ status: number; data: unknown }> {
+    const token = options?.ai ? await this.sessionForAiCall() : await this.accessToken();
+    const controller = options?.timeoutMs ? new AbortController() : null;
+    const timer = controller && options?.timeoutMs
+      ? setTimeout(() => controller.abort(), options.timeoutMs)
+      : null;
+    try {
+      const response = await postWithRetry({
+        fetchImpl: (url, init) => fetch(url, init),
+        url: `${this.url}/functions/v1/${name}`,
+        init: {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${token}`,
+            apikey: this.anonKey,
+            'Content-Type': 'application/json',
+            Accept: 'application/json',
+          },
+          body: JSON.stringify(body),
+          signal: controller?.signal,
         },
-        body: JSON.stringify(body),
-      },
-    });
-    return { status: response.status, data: await response.json().catch(() => null) };
+      });
+      return { status: response.status, data: await response.json().catch(() => null) };
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
   }
 
   async mintVoiceToken(mode?: ThumosMode): Promise<VoiceMint> {
@@ -2067,14 +2137,13 @@ export class SupabaseRepository implements Repository {
       throw new Error('Agree to the coach consent before sending a message to Thumos.');
     }
     try {
-      const invoked = await this.callEdge('gratitude-reflect', { body, category });
-      if (invoked.status >= 500) {
-        this.rememberEdgeFailure('gratitude', new Error('Reflection did not answer.'), invoked.status);
-        throw new UserFacingError(REFLECT_UNREACHABLE, 'generic');
-      }
+      const invoked = await this.callEdge('gratitude-reflect', { body, category }, { ai: true });
       const data = invoked.data as { ok?: boolean; code?: string; comment?: unknown; suggestions?: unknown } | null;
       if (data?.code === 'consent') {
         throw new Error('Agree to the coach consent before sending a message to Thumos.');
+      }
+      if (invoked.status === 401 || invoked.status >= 500) {
+        throw this.aiFailure('reflect', 'gratitude', new Error('Reflection did not answer.'), invoked.status);
       }
       if (invoked.status < 400 && data?.ok === true && typeof data.comment === 'string' && Array.isArray(data.suggestions)) {
         const suggestions = data.suggestions.filter((item): item is string => typeof item === 'string' && item.trim().length > 0);
@@ -2083,8 +2152,7 @@ export class SupabaseRepository implements Repository {
     } catch (error) {
       if (error instanceof UserFacingError) throw error;
       if (error instanceof Error && error.message.includes('Agree to the coach consent')) throw error;
-      this.rememberEdgeFailure('gratitude', error);
-      throw new UserFacingError(REFLECT_UNREACHABLE, 'generic');
+      throw this.aiFailure('reflect', 'gratitude', error);
     }
     return localGratitudeReflect(body, category);
   }
@@ -2162,21 +2230,22 @@ export class SupabaseRepository implements Repository {
     const text = input.text?.trim() ?? '';
     const local = (): MealEstimate => ({ items: text ? estimateFromText(text) : samplePhotoMeal(), source: 'local' });
     try {
-      const invoked = await this.callEdge('estimate-meal', { text, imageBase64: input.imageBase64 ?? '' });
-      if (invoked.status >= 500) {
-        this.rememberEdgeFailure('estimate-meal', new Error('Meal estimate did not answer.'), invoked.status);
-        throw new UserFacingError(MEAL_UNREACHABLE, 'generic');
-      }
+      const invoked = await this.callEdge('estimate-meal', { text, imageBase64: input.imageBase64 ?? '' }, {
+        ai: true,
+        timeoutMs: ESTIMATE_CLIENT_TIMEOUT_MS,
+      });
       const data = invoked.data as { ok?: boolean; items?: unknown; source?: string; code?: string; message?: string } | null;
       if (data?.code === 'consent') return local();
+      if (invoked.status === 401 || invoked.status >= 500) {
+        throw this.aiFailure('meal', 'estimate-meal', new Error('Meal estimate did not answer.'), invoked.status);
+      }
       const items = parseMealEstimate({ items: data?.items });
       if (invoked.status < 400 && data?.ok === true && items) {
         return { items, source: data.source === 'model' ? 'model' : 'local' };
       }
     } catch (error) {
       if (error instanceof UserFacingError) throw error;
-      this.rememberEdgeFailure('estimate-meal', error);
-      throw new UserFacingError(MEAL_UNREACHABLE, 'generic');
+      throw this.aiFailure('meal', 'estimate-meal', error);
     }
     const fallback = local();
     if (!fallback.items.length) throw new UserFacingError('Could not read that meal. You can still type it in yourself.', 'generic');
@@ -2468,14 +2537,13 @@ export class SupabaseRepository implements Repository {
     const userId = this.snapshot.session?.userId ?? await this.userId();
     let invoked: { status: number; data: unknown };
     try {
-      invoked = await this.callEdge('health-plan', { limits: limits.trim().slice(0, 280) });
+      invoked = await this.callEdge('health-plan', { limits: limits.trim().slice(0, 280) }, { ai: true });
     } catch (error) {
-      this.rememberEdgeFailure('health-plan', error);
-      throw new UserFacingError(PLAN_UNREACHABLE, 'generic');
+      if (error instanceof UserFacingError) throw error;
+      throw this.aiFailure('plan', 'health-plan', error);
     }
-    if (invoked.status >= 500) {
-      this.rememberEdgeFailure('health-plan', new Error('Health Plan did not answer.'), invoked.status);
-      throw new UserFacingError(PLAN_UNREACHABLE, 'generic');
+    if (invoked.status === 401 || invoked.status >= 500) {
+      throw this.aiFailure('plan', 'health-plan', new Error('Health Plan did not answer.'), invoked.status);
     }
     const data = invoked.data as { ok?: boolean; code?: string; message?: string; plan?: unknown } | null;
     if (data?.code === 'consent') {

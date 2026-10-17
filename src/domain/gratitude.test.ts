@@ -341,8 +341,8 @@ describe('gratitude diary wiring', () => {
     expect(readFileSync('src/ui/CommunityProfile.tsx', 'utf8')).not.toMatch(/gratitude_photos|gratitude-photos/);
     expect(readFileSync('src/app/(main)/people.tsx', 'utf8')).not.toMatch(/gratitude/);
     const repo = readFileSync('src/data/supabase-repository.ts', 'utf8');
-    const reflectMethod = repo.slice(repo.indexOf('async reflectOnGratitude'), repo.indexOf('async exportData'));
-    expect(reflectMethod).toContain('body: { body, category }');
+    const reflectMethod = repo.slice(repo.indexOf('async reflectOnGratitude'), repo.indexOf('private async nutritionSettingsRow'));
+    expect(reflectMethod).toContain("callEdge('gratitude-reflect', { body, category }, { ai: true })");
     expect(reflectMethod).not.toMatch(/gratitude_photos|storage_path|previewUrl/);
     expect(consent).toContain('Gratitude photos are not sent');
     expect(consent).toContain('Gratitude photos stay private unless you switch that photo on');

@@ -32,4 +32,14 @@ describe('caught screen errors', () => {
     expect(sql).toContain('for insert to authenticated');
     expect(sql).toContain('with check (user_id = auth.uid())');
   });
+
+  it('logs a client error from the stored user without asking the server who they are', () => {
+    const repo = readFileSync('src/data/supabase-repository.ts', 'utf8');
+    const method = repo.slice(repo.indexOf('async logClientError'), repo.indexOf('async saveDeviceToken'));
+    expect(method).toContain("'no session'");
+    expect(method).toContain('getSession()');
+    expect(method).toContain("from('client_errors')");
+    expect(method).not.toContain('this.userId()');
+    expect(method).not.toContain('getUser(');
+  });
 });

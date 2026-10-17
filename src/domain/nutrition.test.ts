@@ -934,6 +934,40 @@ describe('nutrition charts', () => {
     const saved = screen.slice(screen.indexOf('await repo.saveFoodLog'), screen.indexOf('setText('));
     expect(saved).toContain('setEstimateReady(false)');
     expect(screen).toContain('nothing is saved until you confirm it');
+    expect(status).toContain('ESTIMATE_WAIT_NOTE');
+    expect(status).toContain('{ESTIMATE_WAIT_NOTE}');
+  });
+
+  it('times out a slow meal estimate and does not log the meal', () => {
+    const estimate = readFileSync('supabase/functions/estimate-meal/index.ts', 'utf8');
+    const status = readFileSync('src/ui/MealEstimateStatus.tsx', 'utf8');
+    const retry = readFileSync('src/domain/edgeRetry.ts', 'utf8');
+    const repo = readFileSync('src/data/supabase-repository.ts', 'utf8');
+    const method = repo.slice(repo.indexOf('async estimateMeal'), repo.indexOf('async saveFoodLog'));
+    const caller = repo.slice(repo.indexOf('private async callEdge'), repo.indexOf('async mintVoiceToken'));
+    const send = repo.slice(repo.indexOf('async sendThumos'), repo.indexOf('private async accessToken'));
+    const plan = repo.slice(repo.indexOf('async refreshHealthPlan'), repo.indexOf('async sharedNutrition'));
+    const voice = repo.slice(repo.indexOf('async mintVoiceToken'), repo.indexOf('async reflectOnGratitude'));
+    const logged = repo.slice(repo.indexOf('private rememberEdgeFailure'), repo.indexOf('private aiFailure'));
+    expect(estimate).toContain('const ESTIMATE_PROVIDER_TIMEOUT_MS = 28_000');
+    expect(estimate).toContain('signal: AbortSignal.timeout(ESTIMATE_PROVIDER_TIMEOUT_MS)');
+    expect(estimate).toContain("source: 'local'");
+    expect(retry).toContain("ESTIMATE_WAIT_NOTE = 'This can take up to 20 seconds.'");
+    expect(status).toContain('{ESTIMATE_WAIT_NOTE}');
+    expect(method).toContain('ai: true');
+    expect(method).toContain('timeoutMs: ESTIMATE_CLIENT_TIMEOUT_MS');
+    expect(caller).toContain('options?.ai ? await this.sessionForAiCall()');
+    expect(method).not.toContain('logClientError');
+    expect(method).not.toContain('rememberEdgeFailure');
+    expect(send).toContain('sessionForAiCall');
+    expect(send).not.toContain('accessToken()');
+    expect(plan).toContain("callEdge('health-plan'");
+    expect(plan).toContain('{ ai: true }');
+    expect(voice).toContain("callEdge('thumos-voice-token', { mode })");
+    expect(voice).not.toContain('ai: true');
+    expect(logged).toContain('edgeFailureLog');
+    expect(logged).not.toContain('imageBase64');
+    expect(logged).not.toContain('text');
   });
 
   it('keeps every nutrition share on screen when Community is off or the settings row is missing', () => {
