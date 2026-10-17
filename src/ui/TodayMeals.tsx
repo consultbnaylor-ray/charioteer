@@ -56,6 +56,7 @@ export function TodayMeals({
   activeTools,
   highlightId,
   rowRef,
+  bare = false,
 }: {
   rows: readonly TodayMealRow[];
   totals: TodayMealTotals;
@@ -66,10 +67,12 @@ export function TodayMeals({
   activeTools: ReactNode;
   highlightId?: string | null;
   rowRef?: RefObject<View | null>;
+  /** The day row already opens and closes this list. */
+  bare?: boolean;
 }) {
   const theme = useAppTheme();
   const [open, setOpen] = useState(false);
-  const long = todayMealsNeedCollapse(rows.length);
+  const long = !bare && todayMealsNeedCollapse(rows.length);
   const pinned = highlightId != null && rows.some((row) => row.id === highlightId);
   const shown = rows.length > 0 && (!long || open || pinned);
   useEffect(() => {
@@ -78,7 +81,7 @@ export function TodayMeals({
   const total = rows.length > 0 ? todayMealTotalLine(totals, hideCalories) : '';
   return (
     <View style={{ gap: 8 }}>
-      {long ? (
+      {bare ? null : long ? (
         <Pressable
           accessibilityRole="button"
           accessibilityLabel={open ? "Hide today's meals" : "Show today's meals"}
@@ -90,7 +93,7 @@ export function TodayMeals({
       ) : (
         <T variant="label">Today's meals</T>
       )}
-      {rows.length === 0 ? <T variant="muted">{TODAY_MEALS_EMPTY}</T> : null}
+      {!bare && rows.length === 0 ? <T variant="muted">{TODAY_MEALS_EMPTY}</T> : null}
       {total ? <T>{total}</T> : null}
       {ring ? (
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>

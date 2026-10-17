@@ -21,6 +21,8 @@ import {
   MEAL_ESTIMATE_PROMPT,
   NUTRITION_BREAKDOWN_LABEL,
   mealChartStartsOpen,
+  mealDayGroups,
+  mealDayTitle,
   mealNutrientBars,
   parseMealEstimate,
   processedFoodLevel,
@@ -1444,6 +1446,47 @@ describe("today's meals on the log card", () => {
     expect(rows.every((row) => row.previewUrl == null)).toBe(true);
   });
 
+  it('shrinks logged meals to one row per day', () => {
+    const today = '2026-10-17';
+    const groups = mealDayGroups([
+      log({ id: 'breakfast', eatenOn: '2026-10-16', meal: 'breakfast', items: [item({ name: 'Porridge', kcal: 400, proteinG: 12 })] }),
+      log({ id: 'lunch', eatenOn: '2026-10-16', meal: 'lunch', items: [item({ name: 'Soup', kcal: 500, proteinG: 20 })] }),
+      log({ id: 'dinner', eatenOn: '2026-10-16', meal: 'dinner', items: [item({ name: 'Fish', kcal: 920, proteinG: 40 })] }),
+      log({ id: 'today', eatenOn: today, meal: 'breakfast', items: [item({ name: 'Eggs', kcal: 300, proteinG: 24 })] }),
+      log({ id: 'other', userId: 'someone-else', eatenOn: '2026-10-16', meal: 'snack', items: [item({ name: 'Secret', kcal: 50, proteinG: 1 })] }),
+      log({ id: 'last-year', eatenOn: '2025-10-16', meal: 'snack', items: [item({ name: 'Apple', kcal: 80, proteinG: 0 })] }),
+    ], today, 'user', { kcalTarget: 2000, proteinTarget: 140 });
+    expect(groups.map((group) => group.day)).toEqual([today, '2026-10-16', '2025-10-16']);
+    expect(groups[0]?.isToday).toBe(true);
+    expect(groups[1]?.isToday).toBe(false);
+    expect(mealDayTitle('2026-10-16', today)).toBe('Fri 16 Oct');
+    expect(groups[0]?.heading).toBe('Sat 17 Oct - 1 meal - 300 kcal');
+    expect(groups[1]?.heading).toBe('Fri 16 Oct - 3 meals - 1,820 kcal');
+    expect(groups[2]?.heading).toBe('Thu 16 Oct 2025 - 1 meal - 80 kcal');
+    expect(groups.map((group) => group.heading).join(' ')).not.toContain('Secret');
+    const friday = groups[1];
+    expect(friday?.bars.map((bar) => bar.label)).toEqual([
+      '1,820 of 2,000 kcal',
+      'Protein 72 of 140 g',
+    ]);
+    expect(friday?.bars[0]?.zone).toBeCloseTo(2000 / 2000, 5);
+    expect(friday?.bars[0]?.fill).toBeCloseTo(1820 / 2000, 5);
+    const hidden = mealDayGroups([
+      log({ eatenOn: '2026-10-16', meal: 'lunch', items: [item({ name: 'Soup', kcal: 500, proteinG: 20 })] }),
+    ], today, 'user', { hideCalories: true });
+    expect(hidden[0]?.heading).toBe('Fri 16 Oct - 1 meal');
+    expect(hidden[0]?.bars.map((bar) => bar.key)).toEqual(['protein']);
+    const plain = mealDayGroups([
+      log({ eatenOn: '2026-10-16', meal: 'lunch', items: [item({ name: 'Soup', kcal: 500, proteinG: 20 })] }),
+    ], today, 'user');
+    expect(plain[0]?.bars.every((bar) => bar.zone == null)).toBe(true);
+    expect(plain[0]?.bars[0]?.label).toBe('500 kcal');
+    expect(mealDayGroups([], today, 'user')).toEqual([]);
+    expect(mealDayGroups([
+      log({ eatenOn: today, meal: 'snack', items: [item({ name: 'Apple', kcal: 80 })] }),
+    ], today, '')).toEqual([]);
+  });
+
   it('passes the saved photo through and shows it on today’s row', () => {
     const day = '2026-10-15';
     const rows = todayMealRows([
@@ -1508,7 +1551,22 @@ describe("today's meals on the log card", () => {
     expect(screen).toContain('<MealEdit');
     expect(meals).toContain('TODAY_MEALS_EMPTY');
     expect(meals).toContain("Hide today's meals");
+    expect(meals).toContain('bare');
     expect(meals).toContain('saved-meal-row');
+    const days = readFileSync('src/ui/MealDayList.tsx', 'utf8');
+    expect(screen).toContain('mealDayGroups(');
+    expect(screen).toContain('<MealDayList');
+    expect(screen).toContain('bare');
+    expect(screen).toContain('TODAY_MEALS_EMPTY');
+    expect(screen.slice(logged, body)).toContain('renderLog(log, false)');
+    expect(days).toContain('useState(group.isToday)');
+    expect(days).toContain('accessibilityState={{ expanded: open }}');
+    expect(days).toContain("open ? 'Hide' : 'Show'");
+    expect(days).toContain('group.heading');
+    expect(days).toContain('<MealNutrientBars');
+    expect(days).not.toContain('statsTone');
+    expect(days).not.toContain('ShareOnProfile');
+    expect(readFileSync('src/ui/NutritionShare.tsx', 'utf8')).not.toContain('MealDayList');
     expect(meals).not.toContain('statsTone');
     expect(meals).not.toContain('statsPalette');
     expect(NUTRITION_BREAKDOWN_LABEL).toBe('Nutrition breakdown');

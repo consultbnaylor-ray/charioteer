@@ -37,6 +37,7 @@ import {
   lossBlocked,
   mifflinBmr,
   nutritionPatternLines,
+  mealDayGroups,
   mealNutrientBars,
   processedLine,
   recentDuplicateMeal,
@@ -45,6 +46,7 @@ import {
   suggestGoalTargets,
   sumItems,
   targetLine,
+  TODAY_MEALS_EMPTY,
   todayMealRows,
   todayMealTotals,
   todayRing,
@@ -67,6 +69,7 @@ import { writeDayToAppleHealth } from '@/health/writeNutrition';
 import { BodyCompositionCard } from '@/ui/BodyComposition';
 import { GoalChoices } from '@/ui/GoalChoices';
 import { MealEstimateStatus } from '@/ui/MealEstimateStatus';
+import { MealDayList } from '@/ui/MealDayList';
 import { MealBreakdown } from '@/ui/MealNutrientBars';
 import { MealEdit } from '@/ui/MealEdit';
 import { statsToneColors } from '@/ui/statsPalette';
@@ -958,6 +961,14 @@ export default function Nutrition() {
   const ownerId = profile?.id ?? '';
   const mealRows = todayMealRows(snap.foodLogs, today, ownerId);
   const mealTotals = todayMealTotals(snap.foodLogs, today, ownerId);
+  const dayGroups = mealDayGroups(snap.foodLogs, today, ownerId, {
+    hideCalories: hide,
+    kcalTarget: settings.kcalTarget,
+    proteinTarget: settings.proteinTarget,
+  });
+  const todayGroup = dayGroups.find((group) => group.isToday) ?? null;
+  const earlierGroups = dayGroups.filter((group) => !group.isToday);
+  const pinnedDay = snap.foodLogs.find((log) => log.id === revealId || log.id === editingId || log.id === confirmId)?.eatenOn ?? null;
   const calorieRing = !hide && settings.kcalTarget != null && mealRows.length > 0
     ? todayRing({
       hideCalories: false,
@@ -1085,24 +1096,39 @@ export default function Nutrition() {
       <Card>
         <T variant="label">Logged today</T>
         {mealSavedAt != null ? <T>Saved ✓</T> : null}
-        <TodayMeals
-          rows={mealRows}
-          totals={mealTotals}
-          hideCalories={hide}
-          ring={calorieRing}
-          activeId={summaryLog?.id ?? null}
-          highlightId={revealId}
-          rowRef={savedRowRef}
-          onOpen={(id) => {
-            setEditAnchor('summary');
-            setConfirmId(null);
-            setMealSavedAt(null);
-            setEditingId((current) => (current === id && editAnchor === 'summary' ? null : id));
-          }}
-          activeTools={summaryLog ? mealActions(summaryLog, 'summary') : null}
+        {todayGroup ? (
+          <MealDayList
+            groups={[todayGroup]}
+            pinnedDay={pinnedDay}
+            renderMeals={() => (
+              <TodayMeals
+                bare
+                rows={mealRows}
+                totals={mealTotals}
+                hideCalories={hide}
+                ring={calorieRing}
+                activeId={summaryLog?.id ?? null}
+                highlightId={revealId}
+                rowRef={savedRowRef}
+                onOpen={(id) => {
+                  setEditAnchor('summary');
+                  setConfirmId(null);
+                  setMealSavedAt(null);
+                  setEditingId((current) => (current === id && editAnchor === 'summary' ? null : id));
+                }}
+                activeTools={summaryLog ? mealActions(summaryLog, 'summary') : null}
+              />
+            )}
+          />
+        ) : (
+          <T variant="muted">{TODAY_MEALS_EMPTY}</T>
+        )}
+        {earlierGroups.length ? <T variant="label">Earlier</T> : null}
+        <MealDayList
+          groups={earlierGroups}
+          pinnedDay={pinnedDay}
+          renderMeals={(group) => earlierLogs.filter((log) => log.eatenOn === group.day).map((log) => renderLog(log, false))}
         />
-        {earlierLogs.length ? <T variant="label">Earlier</T> : null}
-        {earlierLogs.map((log) => renderLog(log, true))}
         <NutritionShareSwitch
           label="Share today's meals"
           item="Today's meals"

@@ -922,6 +922,94 @@ export function todayMealTotalLine(totals: TodayMealTotals, hideCalories: boolea
   return macros ? `${kcal} · ${macros}` : kcal;
 }
 
+const MEAL_DAY_WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'] as const;
+const MEAL_DAY_MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'] as const;
+
+/** Fri 16 Oct. The year is added only when it is not the year of `today`, so a recent day stays short. */
+export function mealDayTitle(day: string, today: string): string {
+  const [year, month, date] = day.split('-').map(Number);
+  const local = new Date(year ?? 1970, (month ?? 1) - 1, date ?? 1);
+  const title = `${MEAL_DAY_WEEKDAYS[local.getDay()]} ${local.getDate()} ${MEAL_DAY_MONTHS[local.getMonth()]}`;
+  return day.slice(0, 4) === today.slice(0, 4) ? title : `${title} ${local.getFullYear()}`;
+}
+
+export function mealDayHeading(input: {
+  day: string;
+  today: string;
+  mealCount: number;
+  kcal: number;
+  hideCalories: boolean;
+}): string {
+  const count = input.mealCount === 1 ? '1 meal' : `${input.mealCount} meals`;
+  const title = `${mealDayTitle(input.day, input.today)} - ${count}`;
+  if (input.hideCalories) return title;
+  return `${title} - ${Math.round(input.kcal).toLocaleString('en-GB')} kcal`;
+}
+
+export type MealDayGroup = {
+  day: string;
+  isToday: boolean;
+  mealCount: number;
+  kcal: number;
+  proteinG: number;
+  /** Fri 16 Oct - 3 meals - 1,820 kcal */
+  heading: string;
+  /** Calorie and protein tracks. A shaded zone is this person's own target, and only when one is set. */
+  bars: MealNutrientBar[];
+};
+
+/**
+ * One compact row per day for this person, newest day first.
+ * Another account's meals are left out. A day with nothing logged is left out.
+ */
+export function mealDayGroups(
+  logs: readonly FoodLog[],
+  today: string,
+  ownerId: string,
+  options: { hideCalories?: boolean; kcalTarget?: number | null; proteinTarget?: number | null } = {},
+): MealDayGroup[] {
+  if (!ownerId) return [];
+  const hide = options.hideCalories === true;
+  const days = [...new Set(logs.filter((log) => log.userId === ownerId && log.eatenOn).map((log) => log.eatenOn))]
+    .sort((a, b) => b.localeCompare(a));
+  const drafts = days.flatMap((day) => {
+    const totals = todayMealTotals(logs, day, ownerId);
+    const mealCount = todayMealRows(logs, day, ownerId).length;
+    if (mealCount === 0) return [];
+    return [{ day, isToday: day === today, mealCount, kcal: totals.kcal, proteinG: totals.proteinG }];
+  });
+  const kcalTarget = options.kcalTarget != null && options.kcalTarget > 0 ? options.kcalTarget : null;
+  const proteinTarget = options.proteinTarget != null && options.proteinTarget > 0 ? options.proteinTarget : null;
+  const kcalScale = Math.max(...drafts.map((group) => group.kcal), kcalTarget ?? 0, 1);
+  const proteinScale = Math.max(...drafts.map((group) => group.proteinG), proteinTarget ?? 0, 1);
+  return drafts.map((group) => {
+    const bars: MealNutrientBar[] = [];
+    if (!hide) {
+      bars.push({
+        key: 'kcal',
+        label: kcalTarget
+          ? `${Math.round(group.kcal).toLocaleString('en-GB')} of ${Math.round(kcalTarget).toLocaleString('en-GB')} kcal`
+          : `${Math.round(group.kcal).toLocaleString('en-GB')} kcal`,
+        fill: group.kcal / kcalScale,
+        ...(kcalTarget ? { zone: Math.min(1, kcalTarget / kcalScale) } : {}),
+      });
+    }
+    bars.push({
+      key: 'protein',
+      label: proteinTarget
+        ? `Protein ${formatGrams(group.proteinG)} of ${formatGrams(proteinTarget)} g`
+        : `Protein ${formatGrams(group.proteinG)} g`,
+      fill: proteinScale > 0 ? group.proteinG / proteinScale : 0,
+      ...(proteinTarget ? { zone: Math.min(1, proteinTarget / proteinScale) } : {}),
+    });
+    return {
+      ...group,
+      heading: mealDayHeading({ ...group, today, hideCalories: hide }),
+      bars,
+    };
+  });
+}
+
 export type MacroSlice = { id: 'protein' | 'carbs' | 'fat'; label: string; grams: number; share: number };
 
 export function macroSplit(items: readonly FoodItem[]): { slices: MacroSlice[]; caption: string } {
