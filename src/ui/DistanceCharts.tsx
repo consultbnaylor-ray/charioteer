@@ -294,6 +294,9 @@ export function RangeTrack({
   scaleMax,
   status,
   zoneCaption,
+  goalLow = null,
+  goalHigh = null,
+  goalCaption = null,
   tone,
   surface,
   mark = false,
@@ -307,6 +310,10 @@ export function RangeTrack({
   scaleMax: number;
   status: string;
   zoneCaption: string;
+  /** A second band, such as a boxing class. high null means the class has no upper limit. */
+  goalLow?: number | null;
+  goalHigh?: number | null;
+  goalCaption?: string | null;
   tone: StatsTone;
   surface: 'tile' | 'card';
   mark?: boolean;
@@ -327,7 +334,7 @@ export function RangeTrack({
   return (
     <View
       accessibilityElementsHidden={!spoken}
-      accessibilityLabel={spoken ? (showStatus ? `${zoneCaption}. ${status}` : zoneCaption) : undefined}
+      accessibilityLabel={spoken ? [zoneCaption, goalCaption, showStatus ? status : null].filter(Boolean).join('. ') : undefined}
       style={{ gap: 6, alignSelf: 'stretch' }}
     >
       <View style={{ height: 22, justifyContent: 'flex-end' }}>
@@ -346,6 +353,21 @@ export function RangeTrack({
               borderColor: colors.good.ink,
             }}
           />
+          {goalLow != null ? (
+            <View
+              style={{
+                position: 'absolute',
+                left: `${place(goalLow) * 100}%`,
+                width: `${Math.max(1.5, ((goalHigh == null ? 1 : place(goalHigh)) - place(goalLow)) * 100)}%`,
+                top: 0,
+                bottom: 0,
+                backgroundColor: colors.info.bg,
+                borderLeftWidth: 2,
+                borderRightWidth: goalHigh == null ? 0 : 2,
+                borderColor: colors.info.ink,
+              }}
+            />
+          ) : null}
         </View>
         <View
           accessibilityElementsHidden
@@ -364,6 +386,9 @@ export function RangeTrack({
         />
       </View>
       <T style={{ fontSize: 13 * theme.scale, lineHeight: 18 * theme.scale, color: surface === 'tile' ? markerInk : theme.colors.muted }}>{zoneCaption}</T>
+      {goalCaption ? (
+        <T style={{ fontSize: 13 * theme.scale, lineHeight: 18 * theme.scale, color: colors.info.ink }}>{goalCaption}</T>
+      ) : null}
       {mark ? <SignalRow tone={tone} /> : null}
       {showStatus ? <T style={{ color: surface === 'tile' ? markerInk : theme.colors.ink }}>{status}</T> : null}
     </View>

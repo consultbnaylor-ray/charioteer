@@ -139,6 +139,12 @@ function spanText(span: WeightSpan, unit: WeightUnitMode): string {
   return span.lowExclusive ? `over ${low} to ${high}` : `${low} to ${high}`;
 }
 
+/** Legend for a goal band. A class limit is a reference, not an approximate target. */
+export function goalBandLegend(span: WeightSpan & { label: string }, unit: WeightUnitMode = 'kg'): string {
+  const text = spanText(span, unit);
+  return span.lowExclusive ? `${span.label}: ${text}` : `${span.label}, approximate, ${text}`;
+}
+
 function missingPrompt(missing: string[]): string {
   const list = missing.length === 1
     ? missing[0]
@@ -184,7 +190,7 @@ function gainSentence(weightKg: number, lowKg: number, unit: WeightUnitMode, pla
 function boxerClass(goal: NutritionGoal, sex: NutritionSex): ClassWindow | null {
   if (goal === 'elite_middle_boxer' && sex === 'male') {
     return {
-      label: 'Middleweight class, reference',
+      label: 'Middleweight class (reference)',
       lowOver: 71,
       highTo: 75,
       countsAbove: false,
@@ -193,7 +199,7 @@ function boxerClass(goal: NutritionGoal, sex: NutritionSex): ClassWindow | null 
   }
   if (goal === 'elite_middle_boxer' && sex === 'female') {
     return {
-      label: 'Middleweight class, reference',
+      label: 'Middleweight class (reference)',
       lowOver: 70,
       highTo: 75,
       countsAbove: false,
@@ -202,7 +208,7 @@ function boxerClass(goal: NutritionGoal, sex: NutritionSex): ClassWindow | null 
   }
   if (goal === 'elite_heavy_boxer' && sex === 'male') {
     return {
-      label: 'Heavyweight class, reference',
+      label: 'Heavyweight class (reference)',
       lowOver: 92,
       highTo: 100,
       countsAbove: true,
@@ -211,7 +217,7 @@ function boxerClass(goal: NutritionGoal, sex: NutritionSex): ClassWindow | null 
   }
   if (goal === 'elite_heavy_boxer' && sex === 'female') {
     return {
-      label: 'Heavyweight class, reference',
+      label: 'Heavyweight class (reference)',
       lowOver: 81,
       highTo: null,
       countsAbove: false,
@@ -268,6 +274,11 @@ function healthyAsGoal(goal: NutritionGoal | null, healthy: WeightSpan): (Weight
   return { ...healthy, label };
 }
 
+function sentence(text: string): string {
+  const trimmed = text.trim();
+  return /[.!?]$/.test(trimmed) ? trimmed : `${trimmed}.`;
+}
+
 function contextFrom(view: Omit<GoalWeightView, 'contextLine'>): string {
   if (view.status === 'prompt') return `Weight range: ${view.prompt}`;
   const parts = ['Weight range.'];
@@ -275,11 +286,11 @@ function contextFrom(view: Omit<GoalWeightView, 'contextLine'>): string {
   if (view.healthy?.highKg != null) {
     parts.push(`Healthy weight for this height is about ${spanText(view.healthy, 'kg')}.`);
   }
-  if (view.goal) parts.push(`${view.goal.label}, approximate, ${spanText(view.goal, 'kg')}.`);
+  if (view.goal) parts.push(`${goalBandLegend(view.goal, 'kg')}.`);
   if (view.goalNote) parts.push(view.goalNote);
+  if (view.words && view.words !== 'Within range') parts.push(sentence(view.words));
   if (view.withinRange) parts.push('Within range.');
-  else if (view.gap) parts.push(`${view.gap}.`);
-  else if (view.words) parts.push(view.words);
+  else if (view.gap && view.gap !== view.words) parts.push(sentence(view.gap));
   if (view.classReference) parts.push(view.classReference);
   if (view.muscle) parts.push(view.muscle);
   if (view.floorNote) parts.push(view.floorNote);
@@ -325,7 +336,8 @@ function buildRange(input: GoalWeightInput, unit: WeightUnitMode): Omit<GoalWeig
   });
   const compositionLogged = assessment.basis === 'body_fat' || assessment.basis === 'waist';
   const compositionWithin = assessment.label === 'Within the body-fat band' || assessment.label === 'Within the healthy band';
-  const suppressLoss = compositionLogged || input.build === 'muscular' || input.goal === 'body_builder' || input.goal === 'increase';
+  const athleteGoal = input.goal === 'elite_runner' || input.goal === 'body_builder' || input.goal === 'elite_heavy_boxer' || input.goal === 'elite_middle_boxer';
+  const suppressLoss = compositionLogged || input.build === 'muscular' || athleteGoal || input.goal === 'increase';
   const klass = input.goal === 'elite_heavy_boxer' || input.goal === 'elite_middle_boxer'
     ? boxerClass(input.goal, sex)
     : null;
@@ -358,21 +370,29 @@ function buildRange(input: GoalWeightInput, unit: WeightUnitMode): Omit<GoalWeig
       gap = gainSentence(weightKg, healthy.lowKg, unit, 'range');
       words = gap ?? words;
       floorNote = NOT_BELOW;
-    } else if (klass) {
+    } else if (klass && input.goal) {
+      const named = `For ${GOAL_LABEL[input.goal]}`;
       if (classInRange(weightKg, klass)) {
         withinRange = true;
-        words = 'Within range';
+        words = klass.countsAbove && klass.highTo != null && weightKg > klass.highTo + 0.05
+          ? `${named}, you are in the super heavyweight class, over ${formatWeightAmount(klass.highTo, unit)}. This is a reference, not a target.`
+          : `${named}, you are inside this class.`;
       } else if (weightKg <= klass.lowOver) {
-        const target = round1(klass.lowOver + 0.1);
-        if (target + 0.05 >= healthy.lowKg) {
-          gap = gainSentence(weightKg, target, unit, 'class');
-          words = gap ?? 'Within range';
-          if (!gap) withinRange = true;
+        const gapKg = round1(klass.lowOver - weightKg);
+        if (gapKg > 0 && klass.lowOver + 0.05 >= healthy.lowKg) {
+          gap = `The gap to the bottom of this class is about ${formatWeightAmount(gapKg, unit)}`;
+          words = `${named}, you are under this class.`;
+        } else if (gapKg <= 0) {
+          withinRange = true;
+          words = `${named}, you are inside this class.`;
         } else {
-          words = 'You are under this class limit. This is a reference, not a target.';
+          words = `${named}, you are under this class. This is a reference, not a target.`;
         }
+      } else if (klass.highTo != null) {
+        gap = `The gap above this class is about ${formatWeightAmount(round1(weightKg - klass.highTo), unit)}`;
+        words = `${named}, you are above this class. This is a reference, not a target. ${NO_CUT}`;
       } else {
-        words = `You are above this class limit. This is a reference, not a target. ${NO_CUT}`;
+        words = `${named}, you are above this class. This is a reference, not a target. ${NO_CUT}`;
       }
     } else if (insideHealthy) {
       withinRange = true;
@@ -388,8 +408,8 @@ function buildRange(input: GoalWeightInput, unit: WeightUnitMode): Omit<GoalWeig
           ? 'Body fat is the better check here, so there is no scale target.'
           : 'Waist is the better check here, so there is no scale target.';
       } else if (suppressLoss) {
-        words = input.goal === 'body_builder'
-          ? `There is no separate published weight range for ${GOAL_LABEL[input.goal]}, so there is no scale target.`
+        words = input.goal === 'body_builder' || input.goal === 'elite_runner'
+          ? `For ${GOAL_LABEL[input.goal]}, there is no separate published weight range, so there is no scale target.`
           : input.build === 'muscular'
             ? 'Muscle can sit above the BMI band, so there is no scale target.'
             : input.goal

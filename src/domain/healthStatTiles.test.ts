@@ -2,7 +2,9 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
 import {
+  BMI_MUSCLE_NOTE,
   buildHealthStatBoard,
+  detailShowsStatusAgain,
   HEALTH_STAT_CATALOGUE,
   HEALTH_STAT_SECTIONS,
   HEALTH_STATS_MISSING,
@@ -146,6 +148,7 @@ describe('health stat tiles', () => {
     expect(weight.status).toBe('Within the healthy BMI band');
     expect(weight.meaning).toContain('18.5 to 24.9');
     expect(weight.meaning).toContain('not a weight cut');
+    expect(weight.meaning).toContain('will not plan a weight cut');
     expect(weight.meaning).toContain('Body fat and waist');
     expect(weight.meaning).not.toMatch(/to lose/i);
     expect(weight.trend).toBe('Down from the earlier reading.');
@@ -294,6 +297,87 @@ describe('health stat tiles', () => {
     expect(tile(once, 'walking_heart_rate').history).toEqual([96]);
   });
 
+  it('names a heavyweight class on the weight bar and does not warn a boxer for BMI', () => {
+    const board = buildHealthStatBoard(input({
+      goal: 'elite_heavy_boxer',
+      goalSex: 'male',
+      goalAge: 30,
+      heightCm: 172,
+      build: null,
+      body: [],
+      samples: [{ kind: 'weight_kg', value: 84.1, recordedOn: today }],
+    }));
+    const weight = tile(board, 'weight_kg');
+    expect(weight.valueText).toBe('84.1');
+    expect(weight.status).toBe(BMI_MUSCLE_NOTE);
+    expect(weight.tone).toBe('info');
+    expect(weight.mark).toBe('Note');
+    expect(weight.status).not.toBe('Over the healthy BMI band');
+    expect(weight.meaning).toContain('For Elite Athlete (Heavy Weight Boxer), you are under this class.');
+    expect(weight.meaning).toContain('The gap to the bottom of this class is about 7.9 kg');
+    expect(weight.meaning).toContain('over 92 kg to 100 kg');
+    expect(weight.meaning).toContain('will not plan a weight cut');
+    expect(weight.meaning).not.toMatch(/to lose/i);
+    expect(weight.visual.kind).toBe('zone');
+    if (weight.visual.kind === 'zone') {
+      expect(weight.visual.zoneCaption).toBe('Healthy BMI band 54.7–73.7 kg');
+      expect(weight.visual.goalCaption).toBe('Heavyweight class (reference): over 92 kg to 100 kg');
+      expect(weight.visual.goalLow).toBe(92);
+      expect(weight.visual.goalHigh).toBe(100);
+      expect(weight.visual.status).toBe(weight.status);
+    }
+    expect(weight.extraSourceName).toContain('IBA Technical and Competition Rules');
+    expect(weight.extraSourceUrl).toContain('iba.sport');
+    expect(detailShowsStatusAgain('zone')).toBe(false);
+    expect(detailShowsStatusAgain('ring')).toBe(false);
+    expect(detailShowsStatusAgain('bars')).toBe(true);
+  });
+
+  it('softens the BMI line when body fat or waist is logged and fine, and keeps a plain warning otherwise', () => {
+    const fine = buildHealthStatBoard(input({
+      goal: 'lose_weight',
+      goalSex: 'male',
+      goalAge: 40,
+      heightCm: 170,
+      build: null,
+      body: [{ recordedOn: today, bodyFatPct: 18, leanMassKg: null, waistCm: null }],
+      samples: [{ kind: 'weight_kg', value: 90, recordedOn: today }],
+    }));
+    const softened = tile(fine, 'weight_kg');
+    expect(softened.status).toBe(BMI_MUSCLE_NOTE);
+    expect(softened.tone).toBe('info');
+    expect(softened.meaning).not.toMatch(/to lose/i);
+    if (softened.visual.kind === 'zone') expect(softened.visual.goalCaption ?? null).toBeNull();
+
+    const plain = buildHealthStatBoard(input({
+      goal: 'lose_weight',
+      goalSex: 'male',
+      goalAge: 40,
+      heightCm: 170,
+      build: null,
+      body: [],
+      samples: [{ kind: 'weight_kg', value: 90, recordedOn: today }],
+    }));
+    expect(tile(plain, 'weight_kg').status).toBe('Over the healthy BMI band');
+    expect(tile(plain, 'weight_kg').tone).toBe('watch');
+
+    const builder = buildHealthStatBoard(input({
+      goal: 'body_builder',
+      goalSex: 'male',
+      goalAge: 34,
+      heightCm: 178,
+      build: null,
+      body: [],
+      samples: [{ kind: 'weight_kg', value: 96, recordedOn: today }],
+    }));
+    const built = tile(builder, 'weight_kg');
+    expect(built.status).toBe(BMI_MUSCLE_NOTE);
+    expect(built.meaning).toContain('For Body Builder');
+    expect(built.meaning).toContain('no separate published weight range');
+    expect(built.meaning).not.toMatch(/to lose/i);
+    if (built.visual.kind === 'zone') expect(built.visual.goalLow ?? null).toBeNull();
+  });
+
   it('keeps the new readings off the public profile and leaves sharing on the existing switches', () => {
     expect(HEALTH_KINDS).not.toContain('vo2_max');
     expect(HEALTH_KINDS).not.toContain('walking_heart_rate');
@@ -311,6 +395,7 @@ describe('health stat tiles', () => {
     expect(screen.indexOf('<HealthStatBoard')).toBeLessThan(screen.indexOf('<HealthBoard'));
     expect(board).toContain('More info about');
     expect(board).toContain('More info');
+    expect(board).toContain('detailShowsStatusAgain');
     expect(board).toContain('label="Close"');
     expect(board).toContain('accessibilityState={{ expanded: open }}');
     expect(board).not.toContain('ShareOnProfile');

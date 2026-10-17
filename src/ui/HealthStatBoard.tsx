@@ -5,6 +5,7 @@ import Svg from 'react-native-svg';
 
 import {
   buildHealthStatBoard,
+  detailShowsStatusAgain,
   type HealthStatBoardInput,
   type HealthStatTile,
   type HealthStatVisual,
@@ -131,6 +132,9 @@ function TileVisual({ visual }: { visual: HealthStatVisual }) {
         scaleMax={visual.scaleMax}
         status={visual.status}
         zoneCaption={visual.zoneCaption}
+        goalLow={visual.goalLow}
+        goalHigh={visual.goalHigh}
+        goalCaption={visual.goalCaption}
         tone={visual.tone}
         surface="card"
         mark
@@ -204,7 +208,7 @@ function StatDetail({
                 <T>{tile.about}</T>
                 <T style={{ fontFamily: theme.font.bodyStrong }}>{tile.valueText} {tile.unit}</T>
                 <TileVisual visual={tile.visual} />
-                <StatusMark tone={tile.tone} status={tile.status} />
+                {detailShowsStatusAgain(tile.visual.kind) ? <StatusMark tone={tile.tone} status={tile.status} /> : null}
                 <T variant="label">What your number means</T>
                 <T>{tile.meaning}</T>
                 {tile.rangeNote && tile.rangeNote !== tile.meaning ? <T>{tile.rangeNote}</T> : null}
@@ -219,6 +223,15 @@ function StatDetail({
                     <T variant="muted">{tile.sourceName}</T>
                   </Pressable>
                 ) : tile.sourceName ? <T variant="muted">{tile.sourceName}</T> : null}
+                {tile.extraSourceUrl ? (
+                  <Pressable
+                    accessibilityRole="link"
+                    onPress={() => void Linking.openURL(tile.extraSourceUrl!)}
+                    style={{ minHeight: 44, justifyContent: 'center' }}
+                  >
+                    <T variant="muted">{tile.extraSourceName}</T>
+                  </Pressable>
+                ) : null}
                 <T variant="muted">{caveat}</T>
               </View>
             </ScrollView>

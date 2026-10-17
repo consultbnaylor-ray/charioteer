@@ -5,6 +5,7 @@ import { useSnapshot } from '@/data';
 import {
   APPROXIMATE,
   formatWeightAmount,
+  goalBandLegend,
   goalWeightFromSnapshot,
   type GoalWeightView,
   type WeightSpan,
@@ -49,14 +50,16 @@ function Ready({ view, unit, goalName }: { view: GoalWeightView; unit: WeightUni
   return (
     <View style={{ gap: 8 }}>
       {view.healthy ? <RangeBar view={view} unit={unit} goalName={goalName} /> : null}
+      {view.words && view.words !== 'Within range' && view.words !== view.gap ? <T>{view.words}</T> : null}
       {view.withinRange ? (
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }} accessibilityLabel="Within range">
           <PlanTick done />
           <T>Within range</T>
         </View>
-      ) : (
-        <Outside text={view.gap ?? view.words} />
-      )}
+      ) : view.gap && view.gap === view.words ? (
+        <Outside text={view.gap} />
+      ) : null}
+      {view.gap && view.gap !== view.words ? <T>{view.gap}</T> : null}
       {view.goalNote ? <T variant="muted">{view.goalNote}</T> : null}
       {view.classReference ? <T>{view.classReference}</T> : null}
       {view.muscle ? <T variant="muted">{view.muscle}</T> : null}
@@ -156,7 +159,7 @@ function RangeBar({ view, unit, goalName }: { view: GoalWeightView; unit: Weight
         ) : null}
         <Legend swatch={colors.good.ink} label={`Healthy weight, ${shownSpan(healthy, unit)}`} />
         {view.goal ? (
-          <Legend swatch={colors.info.ink} label={`${view.goal.label}, approximate, ${shownSpan(view.goal, unit)}`} />
+          <Legend swatch={colors.info.ink} label={goalBandLegend(view.goal, unit)} />
         ) : (
           <Legend swatch={colors.info.ink} label={goalName ? `No separate published range for ${goalName}` : 'No separate published range'} />
         )}

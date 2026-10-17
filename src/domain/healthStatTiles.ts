@@ -7,6 +7,7 @@
 
 import { bodyFatRange } from '@/domain/distance';
 import { buildFitnessSnapshot, VO2_WHAT } from '@/domain/fitnessSnapshot';
+import { goalBandLegend, goalWeightRange, IBA_RULES_URL, NO_CUT } from '@/domain/goalWeightRange';
 import {
   BHF_HEART_RATE_URL,
   BHF_RESTING_MAX_BPM,
@@ -26,6 +27,7 @@ import {
 } from '@/domain/guidance';
 import { dailyValues, shiftDay, weekdayShort, type DayValue } from '@/domain/healthInsights';
 import {
+  GOAL_LABEL,
   WAIST_HEIGHT_HEALTHY,
   type BodyBuild,
   type NutritionGoal,
@@ -37,6 +39,16 @@ export const HEALTH_STATS_MISSING = 'Not available yet - turn on in Apple Health
 
 const ADULT_HIDDEN = 'These adult ranges are not shown under 18. Nothing here is guessed.';
 const NO_BAND = 'There is no guideline band here.';
+export const BMI_MUSCLE_NOTE = 'Above the BMI band - common for muscular builds; body fat and waist tell you more';
+
+/** A zone or ring already draws the signal and the status. The sheet must not repeat them. */
+export function detailShowsStatusAgain(kind: HealthStatVisual['kind']): boolean {
+  return kind !== 'zone' && kind !== 'ring';
+}
+
+function athleteGoal(goal: NutritionGoal | null): boolean {
+  return goal === 'elite_runner' || goal === 'body_builder' || goal === 'elite_heavy_boxer' || goal === 'elite_middle_boxer';
+}
 
 export type HealthStatSectionId = 'heart' | 'fitness' | 'sleep' | 'body' | 'activity';
 
@@ -107,6 +119,10 @@ export type HealthStatVisual =
     scaleMax: number;
     status: string;
     zoneCaption: string;
+    /** Second band on the same bar. Null high means the class has no upper limit. */
+    goalLow?: number | null;
+    goalHigh?: number | null;
+    goalCaption?: string | null;
     tone: StatsTone;
   }
   | {
@@ -135,6 +151,8 @@ export type HealthStatTile = {
   rangeNote: string | null;
   sourceName: string | null;
   sourceUrl: string | null;
+  extraSourceName?: string | null;
+  extraSourceUrl?: string | null;
 };
 
 export type HealthStatSection = {
@@ -488,17 +506,47 @@ function weightTile(
   const high = kgForBmi(NICE_BMI_HEALTHY_MAX, height);
   const within = kg >= low && kg <= high;
   const under = kg < low;
-  const tone: StatsTone = within ? 'good' : 'watch';
+  const fat = bodySeries(input.body, input.today, (row) => row.bodyFatPct);
+  const waist = bodySeries(input.body, input.today, (row) => row.waistCm);
+  const fatPct = fat.at(-1)?.value ?? null;
+  const waistCm = waist.at(-1)?.value ?? null;
+  const fatFine = fatPct != null && bodyFatRange(fatPct, input.goalSex).within;
+  const waistFine = waistCm != null && waistCm / height < WAIST_HEIGHT_HEALTHY;
+  const compositionFine = (fatPct != null || waistCm != null)
+    && (fatPct == null || fatFine)
+    && (waistCm == null || waistFine);
+  const soften = !within && !under && (athleteGoal(input.goal) || compositionFine);
+  const tone: StatsTone = within ? 'good' : under ? 'watch' : soften ? 'info' : 'watch';
   const status = within
     ? 'Within the healthy BMI band'
     : under
       ? 'Under the healthy BMI band'
-      : 'Over the healthy BMI band';
-  const fat = bodySeries(input.body, input.today, (row) => row.bodyFatPct);
-  const waist = bodySeries(input.body, input.today, (row) => row.waistCm);
+      : soften
+        ? BMI_MUSCLE_NOTE
+        : 'Over the healthy BMI band';
+  const ranged = input.goalSex && (input.goalAge != null || input.adult)
+    ? goalWeightRange({
+      goal: input.goal,
+      weightKg: kg,
+      heightCm: height,
+      age: input.goalAge ?? 18,
+      sex: input.goalSex,
+      build: input.build,
+      bodyFatPct: fatPct,
+      waistCm,
+    })
+    : null;
+  const classBand = ranged?.status === 'ready' && ranged.goal?.lowExclusive ? ranged.goal : null;
+  const goalCaption = classBand ? goalBandLegend(classBand, 'kg') : null;
+  const marks = [low, high, kg, classBand?.lowKg, classBand?.highKg].filter((point): point is number => point != null);
+  const scaleMin = Math.max(1, Math.min(...marks) * 0.92);
+  const scaleMax = classBand?.highKg == null && classBand
+    ? Math.max(...marks, classBand.lowKg + 8) * 1.08
+    : Math.max(...marks) * 1.06;
   const extra = input.build === 'muscular' || fat.length > 0 || waist.length > 0
     ? ' Body fat and waist tell more than the scales when they are logged.'
     : '';
+  const meaning = weightMeaning(input.goal, ranged, extra);
   return finish(item, {
     valueText: oneText(kg),
     unit: 'kg',
@@ -511,19 +559,43 @@ function weightTile(
       value: kg,
       zoneLow: low,
       zoneHigh: high,
-      scaleMin: Math.max(1, Math.min(low * 0.85, kg - 2)),
-      scaleMax: Math.max(high * 1.15, kg + 2),
+      scaleMin,
+      scaleMax,
       status,
       zoneCaption: `Healthy BMI band ${oneText(low)}–${oneText(high)} kg`,
+      goalLow: classBand?.lowKg ?? null,
+      goalHigh: classBand?.highKg ?? null,
+      goalCaption,
       tone,
     },
     history: nums(history),
     about,
-    meaning: `Healthy BMI for this height is ${NICE_BMI_HEALTHY_MIN} to ${NICE_BMI_HEALTHY_MAX}. BMI is a rough guide. This is not a weight cut.${extra}`,
+    meaning,
     rangeNote: null,
     sourceName: 'NICE NG246 and the NHS',
     sourceUrl: NICE_BMI_URL,
+    extraSourceName: classBand ? 'IBA Technical and Competition Rules, effective 15 April 2026, section 2.2' : null,
+    extraSourceUrl: classBand ? IBA_RULES_URL : null,
   });
+}
+
+function weightMeaning(
+  goal: NutritionGoal | null,
+  ranged: ReturnType<typeof goalWeightRange> | null,
+  extra: string,
+): string {
+  const parts = [`Healthy BMI for this height is ${NICE_BMI_HEALTHY_MIN} to ${NICE_BMI_HEALTHY_MAX}. BMI is a rough guide.`];
+  if (ranged?.status === 'ready' && athleteGoal(goal)) {
+    if (ranged.words && ranged.words !== 'Within range') parts.push(ranged.words);
+    if (ranged.gap && ranged.gap !== ranged.words) parts.push(ranged.gap.endsWith('.') ? ranged.gap : `${ranged.gap}.`);
+    if (ranged.classReference) parts.push(ranged.classReference);
+    else if (ranged.goalNote) parts.push(ranged.goalNote);
+  } else if (goal && athleteGoal(goal)) {
+    parts.push(`For ${GOAL_LABEL[goal]}.`);
+  }
+  parts.push('This is not a weight cut.');
+  if (!ranged?.classReference) parts.push(NO_CUT);
+  return `${parts.join(' ')}${extra}`;
 }
 
 function bodyFatTile(item: CatalogItem, input: HealthStatBoardInput, grown: boolean): HealthStatTile | null {

@@ -18,6 +18,7 @@ export {
   NOT_BELOW,
   RANGE_CAVEAT,
   formatWeightAmount,
+  goalBandLegend,
   goalWeightRange,
   type GoalWeightInput,
   type GoalWeightSource,

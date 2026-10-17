@@ -125,7 +125,9 @@ describe('goal weight range', () => {
     const runner = goalWeightRange({ ...adult, goal: 'elite_runner', weightKg: 90 });
     expect(runner.goalNote).toContain('Elite Athlete (Lean Runner etc.)');
     expect(runner.goalNote).toContain('no separate published weight range');
-    expect(runner.gap).toContain('to lose to reach the top of this range');
+    expect(runner.gap).toBeNull();
+    expect(runner.words).toContain('For Elite Athlete (Lean Runner etc.)');
+    expect(runner.words).not.toMatch(/to lose/i);
   });
 
   it('shows boxing class limits as a reference and never as a cut', () => {
@@ -152,7 +154,7 @@ describe('goal weight range', () => {
     });
     expect(inside.withinRange).toBe(true);
     expect(inside.gap).toBeNull();
-    expect(inside.words).toBe('Within range');
+    expect(inside.words).toBe('For Elite Athlete (Middle Weight Boxer), you are inside this class.');
     const heavy = goalWeightRange({
       goal: 'elite_heavy_boxer',
       weightKg: 110,
@@ -162,6 +164,8 @@ describe('goal weight range', () => {
     });
     expect(heavy.withinRange).toBe(true);
     expect(heavy.gap).toBeNull();
+    expect(heavy.words).toContain('For Elite Athlete (Heavy Weight Boxer)');
+    expect(heavy.words).toContain('super heavyweight');
     expect(heavy.classReference).toContain('over 92 kg to 100 kg');
     expect(heavy.classReference).toContain('over 100 kg');
     expect(`${heavy.gap ?? ''} ${heavy.words}`).not.toMatch(/to lose/);
@@ -172,8 +176,28 @@ describe('goal weight range', () => {
       age: 30,
       sex: 'male',
     });
-    expect(lightHeavy.gap).toContain('to gain to reach the bottom of this class');
+    expect(lightHeavy.words).toContain('For Elite Athlete (Heavy Weight Boxer)');
+    expect(lightHeavy.words).toContain('under this class');
+    expect(lightHeavy.gap).toBe('The gap to the bottom of this class is about 4 kg');
     expect(lightHeavy.gap).not.toContain('to lose');
+    const sheet = goalWeightRange({
+      goal: 'elite_heavy_boxer',
+      weightKg: 84.1,
+      heightCm: 172,
+      age: 30,
+      sex: 'male',
+    });
+    expect(sheet.healthy?.lowKg).toBe(54.7);
+    expect(sheet.healthy?.highKg).toBe(73.7);
+    expect(sheet.goal?.label).toBe('Heavyweight class (reference)');
+    expect(sheet.goal?.lowExclusive).toBe(true);
+    expect(sheet.words).toBe('For Elite Athlete (Heavy Weight Boxer), you are under this class.');
+    expect(sheet.gap).toBe('The gap to the bottom of this class is about 7.9 kg');
+    expect(sheet.classReference).toContain('IBA');
+    expect(sheet.classReference).toContain('will not plan a weight cut');
+    expect(`${sheet.words} ${sheet.gap}`).not.toMatch(/to lose|weight cut/i);
+    expect(sheet.contextLine).toContain('Heavyweight class (reference): over 92 kg to 100 kg');
+    expect(sheet.contextLine).toContain('For Elite Athlete (Heavy Weight Boxer)');
   });
 
   it('uses stones and pounds when that unit is asked for', () => {
@@ -211,7 +235,9 @@ describe('goal weight range', () => {
     expect(readFileSync('src/app/(main)/stats.tsx', 'utf8')).toContain('YourGoal');
     expect(readFileSync('src/app/(main)/health-plan.tsx', 'utf8')).toContain('<GoalWeightRange />');
     expect(card).toContain('About these ranges');
-    expect(card).toContain('approximate');
+    expect(card).toContain('APPROXIMATE');
+    expect(card).toContain('goalBandLegend');
+    expect(card).toContain('view.words');
     expect(card).toContain('Within range');
     expect(card).toContain('st-lb');
     expect(card).toContain('view.doctor');
