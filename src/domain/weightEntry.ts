@@ -1,16 +1,36 @@
+import { shiftDay } from '@/domain/healthInsights';
+import { parseWaistCm } from '@/domain/nutrition';
+
 /** Avoirdupois. One stone is 14 pounds. Weight is stored in kilograms. */
 export const KG_PER_POUND = 0.45359237;
 export const POUNDS_PER_STONE = 14;
 export const WEIGHT_KG_MAX = 500;
 
 export type WeightUnitMode = 'kg' | 'stlb';
+export type WaistUnitMode = 'cm' | 'in';
 
 export type WeightParse = { ok: true; kg: number | null } | { ok: false; error: string };
+export type WaistParse = { ok: true; cm: number | null } | { ok: false; error: string };
 
 export type WeightReadingDraft = {
-  kg: number;
+  kg: number | null;
   recordedOn: string;
   heightText: string;
+  waistCm: number | null;
+};
+
+/** Tape measure at the navel, after a relaxed breath out. */
+export const WAIST_MEASURE_NOTE = 'Measure at the navel, relaxed breath out.';
+
+/** Body-figure share is the only switch that can show a waist line to other people. */
+export const WAIST_PRIVATE_NOTE = 'Waist stays private unless Share weight and body figures is on.';
+
+export type WaistDay = { day: string; cm: number };
+
+export type WaistWindow = {
+  points: WaistDay[];
+  latest: WaistDay | null;
+  averageCm: number | null;
 };
 
 export function roundWeightKg(kg: number): number {
@@ -75,4 +95,59 @@ export function weightReadingKg(input: {
 
 export function weightReadingReady(parsed: WeightParse): boolean {
   return parsed.ok && parsed.kg != null;
+}
+
+/** Centimetres by default. Inches are converted and stored as centimetres. An empty field is not a waist. */
+export function waistReadingCm(text: string, unit: WaistUnitMode): WaistParse {
+  if (blank(text)) return { ok: true, cm: null };
+  const parsed = Number(text.trim());
+  if (!Number.isFinite(parsed)) {
+    return {
+      ok: false,
+      error: unit === 'in' ? 'Enter your waist in inches, such as 33.' : 'Enter your waist in centimetres, such as 84.',
+    };
+  }
+  const cm = parseWaistCm(parsed, unit);
+  if (cm == null) {
+    return {
+      ok: false,
+      error: unit === 'in' ? 'Waist sits between about 16 and 79 inches.' : 'Waist sits between 40 and 200 cm.',
+    };
+  }
+  return { ok: true, cm };
+}
+
+export function formatWaistCm(cm: number): string {
+  const rounded = Math.round(cm * 10) / 10;
+  const text = Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1);
+  return `${text} cm`;
+}
+
+/**
+ * One waist per day in the window, newest day first.
+ * A later save on the same day replaces the earlier one. The average is the daily values.
+ */
+export function waistWindow(
+  rows: readonly { recordedOn: string; waistCm: number | null; createdAt: string }[],
+  today: string,
+  windowDays: number,
+): WaistWindow {
+  const byDay = new Map<string, { cm: number; createdAt: string }>();
+  for (const row of rows) {
+    if (row.waistCm == null || !(row.waistCm > 0)) continue;
+    const day = row.recordedOn.slice(0, 10);
+    if (day > today) continue;
+    const current = byDay.get(day);
+    if (!current || row.createdAt > current.createdAt) byDay.set(day, { cm: row.waistCm, createdAt: row.createdAt });
+  }
+  const start = shiftDay(today, -(windowDays - 1));
+  const points = [...byDay.entries()]
+    .filter(([day]) => day >= start && day <= today)
+    .map(([day, value]) => ({ day, cm: value.cm }))
+    .sort((left, right) => (left.day < right.day ? 1 : left.day > right.day ? -1 : 0));
+  const latest = points[0] ?? null;
+  const averageCm = points.length === 0
+    ? null
+    : Math.round((points.reduce((sum, point) => sum + point.cm, 0) / points.length) * 10) / 10;
+  return { points, latest, averageCm };
 }

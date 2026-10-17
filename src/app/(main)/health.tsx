@@ -31,6 +31,7 @@ import { HealthStatBoard } from '@/ui/HealthStatBoard';
 import { HealthSectionShare } from '@/ui/SectionShare';
 import { HealthBoard, HealthReadings } from '@/ui/HealthBoard';
 import { DateField } from '@/ui/DateField';
+import { PlanTick } from '@/ui/PlanTick';
 import { useAppTheme } from '@/ui/theme';
 import { Button, Choice, ErrorNote, Field, playSavedHaptic, Screen, T } from '@/ui/ui';
 
@@ -203,6 +204,7 @@ export default function Health() {
         && current.kg === draft.kg
         && current.recordedOn === draft.recordedOn
         && current.heightText === draft.heightText
+        && current.waistCm === draft.waistCm
       ) {
         return current;
       }
@@ -235,26 +237,39 @@ export default function Health() {
         setError(height.error);
         return;
       }
-      samples.push({
-        kind: 'weight_kg',
-        value: weightDraft.kg,
-        unit: 'kg',
-        recordedOn: weightDraft.recordedOn,
-        source: 'manual',
-      });
+      if (weightDraft.kg != null) {
+        samples.push({
+          kind: 'weight_kg',
+          value: weightDraft.kg,
+          unit: 'kg',
+          recordedOn: weightDraft.recordedOn,
+          source: 'manual',
+        });
+      }
       if (height.value !== (snap.profile?.heightCm ?? null)) nextHeight = height.value;
     }
-    if (samples.length === 0 && nextHeight === undefined) return;
+    const waistCm = weightDraft?.waistCm ?? null;
+    const waistOn = weightDraft?.recordedOn;
+    if (samples.length === 0 && nextHeight === undefined && waistCm == null) return;
     setError(null);
     setSavePending(true);
     const reading = value.trim();
-    const loggedWeight = weightDraft != null;
+    const loggedSheet = weightDraft != null;
     void (async () => {
       try {
         if (nextHeight !== undefined) await repo.updateProfile({ heightCm: nextHeight });
         if (samples.length) await repo.saveHealth(samples);
+        if (waistCm != null && waistOn) {
+          await repo.saveBodyComposition({
+            recordedOn: waistOn,
+            bodyFatPct: null,
+            leanMassKg: null,
+            waistCm,
+            source: 'other',
+          });
+        }
         if (reading) setValue('');
-        if (loggedWeight) setWeightReset((token) => token + 1);
+        if (loggedSheet) setWeightReset((token) => token + 1);
         setSavedNote('Saved');
         playSavedHaptic();
       } catch (err: unknown) {
@@ -271,7 +286,12 @@ export default function Health() {
       title="What your body is doing."
       footer={(
         <View style={{ gap: 8 }}>
-          {savedNote ? <T>{savedNote}</T> : null}
+          {savedNote ? (
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              <PlanTick done />
+              <T>{savedNote}</T>
+            </View>
+          ) : null}
           <Button label="Save reading" pending={savePending} disabled={!consent || savePending || (!value.trim() && weightDraft == null)} onPress={saveReading} />
         </View>
       )}

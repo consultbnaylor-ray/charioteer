@@ -20,7 +20,6 @@ import {
   ffmiValue,
   parseBodyFatPct,
   parseLeanMassKg,
-  parseWaistCm,
   waistToHeight,
   weightPointsFrom,
   type BodyBuild,
@@ -28,6 +27,7 @@ import {
 } from '@/domain/nutrition';
 import { readAppleHealthBody } from '@/health/sync';
 import { rangedRing } from '@/domain/measureFigures';
+import { formatWaistCm } from '@/domain/weightEntry';
 import { RangeTrack } from '@/ui/DistanceCharts';
 import { MeasureRingView } from '@/ui/MeasuredFigure';
 import { DateField } from '@/ui/DateField';
@@ -89,8 +89,6 @@ export function BodyCompositionCard() {
   const waistFigure = ratio != null ? waistRange(ratio) : null;
   const [fat, setFat] = useState('');
   const [leanText, setLeanText] = useState('');
-  const [waist, setWaist] = useState('');
-  const [unit, setUnit] = useState<'cm' | 'in'>('cm');
   const [source, setSource] = useState<BodyEntrySource>('smart_scale');
   const [day, setDay] = useState(() => startOfLocalDay(new Date()));
   const [note, setNote] = useState<string | null>(null);
@@ -113,13 +111,8 @@ export function BodyCompositionCard() {
         setNote('Lean body mass sits between 20 and 200 kg.');
         return;
       }
-      const waistCm = waist.trim() ? parseWaistCm(Number(waist), unit) : null;
-      if (waist.trim() && waistCm == null) {
-        setNote(unit === 'in' ? 'Waist sits between about 16 and 79 inches.' : 'Waist sits between 40 and 200 cm.');
-        return;
-      }
-      if (bodyFatPct == null && leanMassKg == null && waistCm == null) {
-        setNote('Add body fat, lean mass, or a waist measurement.');
+      if (bodyFatPct == null && leanMassKg == null) {
+        setNote('Add body fat or lean mass.');
         return;
       }
       try {
@@ -127,7 +120,7 @@ export function BodyCompositionCard() {
           recordedOn: isoDay(day),
           bodyFatPct,
           leanMassKg,
-          waistCm,
+          waistCm: null,
           source,
         });
         setNote('Saved');
@@ -237,13 +230,13 @@ export function BodyCompositionCard() {
       ) : null}
       {ffmi != null ? <T>{ffmiPlain({ ffmi, sex: settings.goalSex })}</T> : null}
       {compositionTrend ? <T variant="muted">{compositionTrend}</T> : null}
+      <T variant="muted">
+        {figures.waistCm != null
+          ? `Latest waist ${formatWaistCm(figures.waistCm)}, from a weight reading. Waist-to-height uses that figure.`
+          : 'Add a waist with a weight reading. Waist-to-height uses the latest one.'}
+      </T>
       <Field label="Body fat (%)" value={fat} onChangeText={setFat} keyboardType="decimal-pad" placeholder="15" />
       <Field label="Lean body mass (kg)" value={leanText} onChangeText={setLeanText} keyboardType="decimal-pad" placeholder="63" />
-      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-        <Choice label="cm" selected={unit === 'cm'} onPress={() => setUnit('cm')} />
-        <Choice label="inches" selected={unit === 'in'} onPress={() => setUnit('in')} />
-      </View>
-      <Field label={unit === 'cm' ? 'Waist (cm)' : 'Waist (inches)'} value={waist} onChangeText={setWaist} keyboardType="decimal-pad" placeholder={unit === 'cm' ? '84' : '33'} />
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
         {BODY_ENTRY_SOURCES.map((id) => (
           <Choice key={id} label={BODY_SOURCE_LABEL[id]} selected={source === id} onPress={() => setSource(id)} />

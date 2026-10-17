@@ -1,7 +1,16 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
-import { stonesAndPoundsToKg, weightReadingKg, weightReadingReady } from './weightEntry';
+import {
+  formatWaistCm,
+  stonesAndPoundsToKg,
+  WAIST_MEASURE_NOTE,
+  WAIST_PRIVATE_NOTE,
+  waistReadingCm,
+  waistWindow,
+  weightReadingKg,
+  weightReadingReady,
+} from './weightEntry';
 
 describe('weight entry', () => {
   it('keeps kilograms as the default and treats an empty field as no weight', () => {
@@ -46,8 +55,24 @@ describe('weight entry', () => {
     expect(fields.indexOf('label="Stones"')).toBeGreaterThan(fields.indexOf('label="Weight (kg)"'));
     expect(fields.indexOf('label="Pounds"')).toBeGreaterThan(fields.indexOf('label="Stones"'));
     expect(fields.indexOf('label="Date"')).toBeGreaterThan(fields.indexOf('label="Pounds"'));
+    expect(fields.indexOf('label="cm"')).toBeGreaterThan(fields.indexOf('label="Pounds"'));
+    expect(fields.indexOf('label="inches"')).toBeGreaterThan(fields.indexOf('label="cm"'));
+    expect(fields.indexOf("label={waistUnit === 'cm' ? 'Waist (cm)' : 'Waist (inches)'}")).toBeGreaterThan(fields.indexOf('label="inches"'));
+    expect(fields.indexOf('label="Date"')).toBeGreaterThan(fields.indexOf('Waist (inches)'));
+    expect(fields).toContain('hint={WAIST_MEASURE_NOTE}');
+    expect(fields).toContain('{WAIST_PRIVATE_NOTE}');
     expect(fields).toContain("useState<WeightUnitMode>('kg')");
+    expect(fields).toContain("useState<WaistUnitMode>('cm')");
     expect(fields).toContain('startOfLocalDay(new Date())');
+    const history = board.slice(board.indexOf('function WaistHistory'), board.indexOf('function Readings'));
+    expect(history).toContain('formatWaistCm(point.cm)');
+    expect(history).toContain('formatUkCompactDay(point.day)');
+    expect(history).toContain('Average');
+    expect(history).toContain('No waist readings in the last');
+    expect(history).not.toContain('ShareOnProfile');
+    expect(board).toContain('<WaistHistory');
+    expect(board).toContain('windowDays={range}');
+    expect(board).toContain("label={`${days}d`}");
     const screen = readFileSync('src/app/(main)/health.tsx', 'utf8');
     expect(screen).toContain('label="Save reading"');
     expect(screen).toContain('!value.trim() && weightDraft == null');
@@ -55,5 +80,43 @@ describe('weight entry', () => {
     expect(screen).toContain('unit: \'kg\'');
     expect(screen).toContain('heightCm: nextHeight');
     expect(screen).toContain('source: \'manual\'');
+    expect(screen).toContain('saveBodyComposition');
+    expect(screen).toContain("source: 'other'");
+    expect(screen).toContain('waistCm');
+    expect(screen).toContain('<PlanTick done');
+    const body = readFileSync('src/ui/BodyComposition.tsx', 'utf8');
+    expect(body).toContain('figures.waistCm');
+    expect(body).toContain('from a weight reading');
+    expect(body).not.toContain("label={unit === 'cm' ? 'Waist (cm)' : 'Waist (inches)'}");
+    const stored = readFileSync('supabase/migrations/20261014170000_body_composition.sql', 'utf8');
+    expect(stored).toContain('waist_cm numeric');
+    expect(stored).toContain('user_id = auth.uid()');
+  });
+
+  it('stores a waist in centimetres and keeps a window of value, date, and average', () => {
+    expect(waistReadingCm('', 'cm')).toEqual({ ok: true, cm: null });
+    expect(waistReadingCm('84', 'cm')).toEqual({ ok: true, cm: 84 });
+    expect(waistReadingCm('33', 'in')).toEqual({ ok: true, cm: 83.8 });
+    expect(waistReadingCm('39', 'cm').ok).toBe(false);
+    expect(waistReadingCm('15', 'in').ok).toBe(false);
+    expect(formatWaistCm(84)).toBe('84 cm');
+    expect(formatWaistCm(83.82)).toBe('83.8 cm');
+    const today = '2026-10-17';
+    const rows = [
+      { recordedOn: '2026-10-17', waistCm: 80, createdAt: '2026-10-17T08:00:00.000Z' },
+      { recordedOn: '2026-10-17', waistCm: 84, createdAt: '2026-10-17T18:00:00.000Z' },
+      { recordedOn: '2026-10-10', waistCm: 82, createdAt: '2026-10-10T08:00:00.000Z' },
+      { recordedOn: '2026-07-01', waistCm: 90, createdAt: '2026-07-01T08:00:00.000Z' },
+    ];
+    const week = waistWindow(rows, today, 7);
+    expect(week.points).toEqual([{ day: '2026-10-17', cm: 84 }]);
+    expect(week.latest).toEqual({ day: '2026-10-17', cm: 84 });
+    expect(week.averageCm).toBe(84);
+    const month = waistWindow(rows, today, 30);
+    expect(month.points.map((point) => point.day)).toEqual(['2026-10-17', '2026-10-10']);
+    expect(month.averageCm).toBe(83);
+    expect(waistWindow(rows, today, 90).points.map((point) => point.cm)).toEqual([84, 82]);
+    expect(WAIST_MEASURE_NOTE).toBe('Measure at the navel, relaxed breath out.');
+    expect(WAIST_PRIVATE_NOTE).toContain('Share weight and body figures');
   });
 });
