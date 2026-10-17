@@ -269,7 +269,7 @@ function weightMeasure(input: GoalLedInput, hope: 'down' | 'steady' | 'up' | 'cl
 function sleepMeasure(input: GoalLedInput): GoalMeasure {
   const hours = num(input.sleepHours);
   if (hours == null) {
-    return { id: 'sleep', label: 'Sleep', centre: '—', unit: 'h', fill: 0, status: 'Nothing logged yet', tone: 'info', words: 'A check-in records sleep for this goal.' };
+    return { id: 'sleep', label: 'Sleep', centre: '—', unit: 'h', fill: 0, status: 'Nothing logged yet', tone: 'info', words: input.goal ? `A check-in records sleep for ${GOAL_LABEL[input.goal]}.` : 'A check-in records sleep.' };
   }
   const usual = hours >= 7 && hours <= 9;
   return {
@@ -280,7 +280,7 @@ function sleepMeasure(input: GoalLedInput): GoalMeasure {
     fill: usual ? 1 : hours < 7 ? clamp01(hours / 7) : clamp01(9 / hours),
     status: usual ? 'In the usual range' : hours < 7 ? 'Short' : 'Above the usual range',
     tone: usual ? 'good' : 'watch',
-    words: usual ? 'Sleep is in the usual 7 to 9 hour range.' : `Sleep was about ${round1(hours)} hours. Recovery matters for this goal.`,
+    words: usual ? 'Sleep is in the usual 7 to 9 hour range.' : `Sleep was about ${round1(hours)} hours.${input.goal ? ` Recovery matters for ${GOAL_LABEL[input.goal]}.` : ''}`,
   };
 }
 

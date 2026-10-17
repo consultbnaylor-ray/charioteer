@@ -1279,7 +1279,7 @@ export function nutritionContextLines(input: {
     else if (!hide && input.settings.kcalTarget != null) {
       lines.push(`The calorie target they set is ${input.settings.kcalTarget} kcal. One gentle tip is enough. There is no failing a day.`);
     } else if (hide) lines.push('Calories stay hidden. Speak about protein and food quality.');
-    else lines.push('Offer one gentle tip that fits this goal.');
+    else lines.push(`Offer one gentle tip that fits ${GOAL_LABEL[goal]}.`);
     if (input.settings.proteinTarget != null) {
       const mark = totals.proteinG >= input.settings.proteinTarget ? 'at' : 'short of';
       lines.push(`Protein today is ${totals.proteinG} g, ${mark} a target of ${input.settings.proteinTarget} g.`);
@@ -1326,6 +1326,25 @@ export const GOAL_LABEL: Record<NutritionGoal, string> = {
   elite_heavy_boxer: 'Elite Athlete (Heavy Weight Boxer)',
   elite_middle_boxer: 'Elite Athlete (Middle Weight Boxer)',
 };
+
+/** The saved goal, written out. Null until one is picked. */
+export function goalTitle(goal: NutritionGoal | null | undefined): string | null {
+  return goal ? GOAL_LABEL[goal] : null;
+}
+
+export function closerToGoal(goal: NutritionGoal | null | undefined): string {
+  const title = goalTitle(goal);
+  return title ? `To get closer to ${title}` : 'To get closer';
+}
+
+export function whyGoalMatters(goal: NutritionGoal | null | undefined): string {
+  const title = goalTitle(goal);
+  return title ? `Why this matters for ${title}` : 'Why this matters';
+}
+
+export function towardGoal(name: string | null | undefined): string {
+  return name ? `How you're doing toward ${name}` : "How you're doing";
+}
 
 /** One plain sentence under the goal chips. */
 export const GOAL_PLAIN: Record<NutritionGoal, string> = {
@@ -2129,7 +2148,7 @@ export function goalShareLine(input: {
     parts.push(input.proteinG >= input.proteinTarget ? 'Protein is at the target today.' : 'Protein is still short of the target today.');
   }
   if (isTrainingGoal(input.goal)) {
-    parts.push('Progress on this goal is about training, recovery, and body composition.');
+    parts.push(`Progress on ${GOAL_LABEL[input.goal]} is about training, recovery, and body composition.`);
     if (input.hideCalories) parts.push('Calories are not part of this share.');
     return parts.join(' ');
   }

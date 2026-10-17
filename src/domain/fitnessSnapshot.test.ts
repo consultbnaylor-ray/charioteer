@@ -48,7 +48,7 @@ describe('fitness snapshot', () => {
     expect(view.cardio?.compare.age).toEqual({ low: 31.9, high: 45, label: 'Typical for your age and sex' });
     expect(view.cardio?.compare.goal).toBeNull();
     expect(view.cardio?.compare.words).toContain('41 ml/kg/min');
-    expect(view.cardio?.compare.goalNote).toContain('no separate published cardio range');
+    expect(view.cardio?.compare.goalNote).toContain('Lose Fat & Build Muscle has no separate published cardio range');
     expect(view.cardio?.compare.sources.join(' ')).toContain('Kaminsky');
     expect(VO2_WHAT).toBe('VO2 max: how much oxygen your body can use at full effort, per kg of body weight per minute. Apple Watch estimates it.');
     expect(view.estimate).toContain('not a medical assessment');
@@ -241,13 +241,14 @@ describe('fitness snapshot', () => {
     expect(readFileSync('src/app/(main)/health-plan.tsx', 'utf8')).toContain('<YourFitness');
     const card = readFileSync('src/ui/YourFitness.tsx', 'utf8');
     expect(card).toContain('What is this?');
-    expect(card).toContain('To get closer to your goal');
+    expect(card).toContain('closerToGoal(goal)');
+    expect(card).toContain('whyGoalMatters(goal)');
+    expect(card).toContain('<GoalLine note={false} />');
     expect(card).toContain('About these ranges');
     expect(card).toContain('ml/kg/min');
     expect(card).toContain('Check with a doctor before big changes.');
     expect(card).toContain('More info');
     expect(card).toContain('label="Close"');
-    expect(card).toContain('Why this matters for your goal');
     expect(card).toContain('ADDED_NOT_REDUCED');
   });
 
@@ -256,8 +257,10 @@ describe('fitness snapshot', () => {
     expect(RESTING_WHAT).toContain('bpm');
     expect(ADDED_NOT_REDUCED).toContain('already do');
     expect(ADDED_NOT_REDUCED).toContain('shorter');
+    expect(whyCardioMatters('elite_heavy_boxer')).toContain('Elite Athlete (Heavy Weight Boxer)');
     expect(whyCardioMatters('elite_heavy_boxer')).toContain('approximate estimate');
     expect(whyCardioMatters('elite_heavy_boxer')).not.toMatch(/\d/);
+    expect(whyCardioMatters('elite_runner')).toContain('Elite Athlete (Lean Runner etc.)');
     expect(whyCardioMatters('elite_runner')).toContain('no separate published range');
     expect(whyCardioMatters('elite_runner')).not.toMatch(/\d/);
     expect(whyCardioMatters('body_builder')).toContain('no separate published cardio range');
@@ -275,8 +278,9 @@ describe('fitness snapshot', () => {
       goal: 'elite_middle_boxer',
       health: [{ kind: 'vo2_max', value: 42.6, recordedOn: '2026-10-16' }],
     }));
-    expect(heavy.cardio?.compare.goal).toEqual({ low: 56, high: 62, label: 'Typical for your goal' });
-    expect(middle.cardio?.compare.goal).toEqual({ low: 59, high: 65, label: 'Typical for your goal' });
+    expect(heavy.cardio?.compare.goal).toEqual({ low: 56, high: 62, label: 'Typical for Elite Athlete (Heavy Weight Boxer)' });
+    expect(middle.cardio?.compare.goal).toEqual({ low: 59, high: 65, label: 'Typical for Elite Athlete (Middle Weight Boxer)' });
+    expect(heavy.cardio?.compare.words).toContain('Typical for Elite Athlete (Heavy Weight Boxer), approximate, is about 56 to 62');
     expect(heavy.cardio?.compare.goal?.low).toBeLessThan(middle.cardio?.compare.goal?.low ?? 0);
     expect(heavy.cardio?.compare.words).toContain('below that approximate range');
     expect(heavy.cardio?.compare.sources.join(' ')).toContain('Kim, Song, and Min');
@@ -304,7 +308,7 @@ describe('fitness snapshot', () => {
       health: [{ kind: 'vo2_max', value: 50, recordedOn: '2026-10-16' }],
     }));
     expect(runner.cardio?.compare.goal).toBeNull();
-    expect(runner.cardio?.compare.goalNote).toContain('no separate published range');
+    expect(runner.cardio?.compare.goalNote).toContain('Elite Athlete (Lean Runner etc.) has no separate published range');
     expect(runner.cardio?.compare.words).toContain('Typical for men in their 40s');
   });
 });

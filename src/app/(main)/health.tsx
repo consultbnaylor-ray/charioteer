@@ -13,6 +13,7 @@ import { connectAppleHealth, openAppSettings, openHealthApp, readAppleHealthAcce
 import { loadLastSynced, saveLastSynced } from '@/health/syncedAt';
 import { syncAppleHealth } from '@/health/sync';
 import { AppleHealthCard } from '@/ui/AppleHealthCard';
+import { GoalLine } from '@/ui/GoalLine';
 import { HealthStatBoard } from '@/ui/HealthStatBoard';
 import { HealthSectionShare } from '@/ui/SectionShare';
 import { HealthBoard, HealthReadings } from '@/ui/HealthBoard';
@@ -188,6 +189,7 @@ export default function Health() {
         </View>
       )}
     >
+      <GoalLine />
       <HealthSectionShare />
       <AppleHealthCard
         consent={consent}

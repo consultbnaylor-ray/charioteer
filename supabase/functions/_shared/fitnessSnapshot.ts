@@ -7,7 +7,7 @@
  * not a medical assessment.
  */
 import { shiftDay } from './healthInsights.ts';
-import type { NutritionGoal, NutritionSex } from './nutrition.ts';
+import { GOAL_LABEL, type NutritionGoal, type NutritionSex } from './nutrition.ts';
 
 export type FitnessLevel = 'Developing' | 'Steady' | 'Strong';
 
@@ -110,14 +110,15 @@ export const ADDED_NOT_REDUCED =
 
 /** Plain reason the cardio number matters for the goal. No invented sport ranges. */
 export function whyCardioMatters(goal: NutritionGoal | null): string {
+  const title = goal ? GOAL_LABEL[goal] : null;
   if (goal === 'elite_heavy_boxer' || goal === 'elite_middle_boxer') {
-    return 'For boxing, this is how much oxygen you can use when the work stays hard, and how you recover between efforts. The goal range, when it is shown, is an approximate estimate from a published study.';
+    return `For boxing, this is how much oxygen you can use when the work stays hard, and how you recover between efforts. The ${title} range, when it is shown, is an approximate estimate from a published study.`;
   }
   if (goal === 'elite_runner') {
-    return 'For running, this is how much oxygen you can use when the work is hard. This goal has no separate published range here, so the comparison is the age and sex band.';
+    return `For running, this is how much oxygen you can use when the work is hard. ${title} has no separate published range here, so the comparison is the age and sex band.`;
   }
   if (goal === 'body_builder' || goal === 'increase') {
-    return 'This sits beside the strength work. It is how much oxygen you can use at full effort. This goal has no separate published cardio range here.';
+    return `This sits beside the strength work. It is how much oxygen you can use at full effort. ${title} has no separate published cardio range here.`;
   }
   if (goal === 'lose_fat_build_muscle' || goal === 'lose_weight') {
     return 'This is one mark of how your heart and lungs keep up with the work. The sessions you already do stay in place.';
@@ -146,8 +147,8 @@ const FRIEND_SOURCE =
 const BOXER_SOURCE =
   'Boxers: Kim, Song, and Min, Exercise Science, 2016. Korean national amateur men. Heavyweight cardio fitness averaged about 59 ml/kg/min and the middleweight group about 62, and the heavyweight group was lower. The ranges here are about one standard deviation either side, rounded. They are approximate.';
 
-const HEAVY_BOXER = { low: 56, high: 62, label: 'Typical for your goal' };
-const MIDDLE_BOXER = { low: 59, high: 65, label: 'Typical for your goal' };
+const HEAVY_BOXER = { low: 56, high: 62 };
+const MIDDLE_BOXER = { low: 59, high: 65 };
 
 const MEN = [
   { maxAge: 29, p25: 40.1, p75: 55.2 },
@@ -239,9 +240,10 @@ function levelTone(level: FitnessLevel): FitnessTone {
 }
 
 function boxerBand(goal: NutritionGoal | null, sex: NutritionSex | null): FitnessBand | null {
-  if (sex !== 'male') return null;
-  if (goal === 'elite_heavy_boxer') return HEAVY_BOXER;
-  if (goal === 'elite_middle_boxer') return MIDDLE_BOXER;
+  if (sex !== 'male' || !goal) return null;
+  const label = `Typical for ${GOAL_LABEL[goal]}`;
+  if (goal === 'elite_heavy_boxer') return { ...HEAVY_BOXER, label };
+  if (goal === 'elite_middle_boxer') return { ...MIDDLE_BOXER, label };
   return null;
 }
 
@@ -256,10 +258,12 @@ function goalNoteFor(
     return 'The boxing ranges found are for men on a national team, so they are not shown.';
   }
   if (!hasAgeBand) return null;
+  const title = goal ? GOAL_LABEL[goal] : null;
   if (goal === 'elite_runner' || goal === 'body_builder') {
-    return 'This goal has no separate published range here. The band is typical for your age and sex.';
+    return `${title} has no separate published range here. The band is typical for your age and sex.`;
   }
-  return 'This goal has no separate published cardio range. The band is typical for your age and sex.';
+  if (!title) return 'There is no separate published cardio range. The band is typical for your age and sex.';
+  return `${title} has no separate published cardio range. The band is typical for your age and sex.`;
 }
 
 function compareFor(input: {
@@ -278,8 +282,8 @@ function compareFor(input: {
   const ageWords = ageBand && input.sex && input.age != null
     ? ` Typical for ${sexWord(input.sex)} in their ${decade(input.age)} is about ${ageBand.low} to ${ageBand.high}.`
     : '';
-  const goalWords = goalBand
-    ? ` Typical for this goal, approximate, is about ${goalBand.low} to ${goalBand.high}.`
+  const goalWords = goalBand && input.goal
+    ? ` Typical for ${GOAL_LABEL[input.goal]}, approximate, is about ${goalBand.low} to ${goalBand.high}.`
     : '';
   const place = goalBand
     ? input.value < goalBand.low

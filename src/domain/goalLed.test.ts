@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 
 import { draftHealthPlan, HEALTH_PLAN_PROMPT } from './healthPlan';
 import { buildGoalLed, goalFocusLine, goalProgressLine } from './goalLed';
-import { NUTRITION_GOALS, NUTRITION_PROMPT_LINE } from './nutrition';
+import { goalShareLine, NUTRITION_GOALS, NUTRITION_PROMPT_LINE } from './nutrition';
 import { buildSystemPrompt, buildThumosContext } from './thumos';
 
 const base = {
@@ -72,6 +72,20 @@ describe('goal led summary', () => {
     expect(runner.matters).toMatch(/sessions you already do/i);
     expect(runner.matters).toMatch(/sleep/i);
     expect(runner.measures.map((item) => item.id)).toEqual(['sessions', 'protein', 'sleep']);
+    const quiet = buildGoalLed({ ...base, goal: 'elite_heavy_boxer', sleepHours: null });
+    expect(quiet.measures.find((item) => item.id === 'sleep')?.words).toBe('A check-in records sleep for Elite Athlete (Heavy Weight Boxer).');
+    const shortSleep = buildGoalLed({ ...base, goal: 'elite_runner', sleepHours: 5 });
+    expect(shortSleep.measures.find((item) => item.id === 'sleep')?.words).toContain('Recovery matters for Elite Athlete (Lean Runner etc.)');
+    const share = goalShareLine({
+      goal: 'elite_heavy_boxer',
+      proteinG: 80,
+      proteinTarget: 140,
+      direction: 'steady',
+      hideCalories: false,
+      blockedLoss: false,
+    });
+    expect(share).toContain('Progress on Elite Athlete (Heavy Weight Boxer) is about training, recovery, and body composition.');
+    expect(share).not.toMatch(/this goal/i);
   });
 
   it('stays quiet until a goal is chosen', () => {
@@ -86,7 +100,9 @@ describe('goal led summary', () => {
     expect(readFileSync('src/app/(main)/home.tsx', 'utf8')).toContain('<YourGoal place="today" />');
     expect(readFileSync('src/app/(main)/stats.tsx', 'utf8')).toContain('<YourGoal place="stats" />');
     expect(readFileSync('src/app/(main)/health-plan.tsx', 'utf8')).toContain('<YourGoal place="plan" />');
-    expect(readFileSync('src/ui/YourGoal.tsx', 'utf8')).toContain("How you're doing toward your goal");
+    expect(readFileSync('src/ui/YourGoal.tsx', 'utf8')).toContain('towardGoal(view.name)');
+    expect(readFileSync('src/app/(main)/stats.tsx', 'utf8')).toContain('<GoalLine />');
+    expect(readFileSync('src/app/(main)/health.tsx', 'utf8')).toContain('<GoalLine />');
     expect(readFileSync('src/ui/YourGoal.tsx', 'utf8')).toContain('<PlanTick');
     const focus = goalFocusLine('lose_fat_build_muscle');
     expect(focus).toMatch(/protein/i);

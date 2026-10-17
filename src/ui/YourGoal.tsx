@@ -2,6 +2,8 @@ import { View } from 'react-native';
 
 import { useSnapshot } from '@/data';
 import { buildGoalLed, goalLedFromSnapshot } from '@/domain/goalLed';
+import { towardGoal } from '@/domain/nutrition';
+import { GoalLine } from '@/ui/GoalLine';
 import { GoalWeightRange } from '@/ui/GoalWeightRange';
 import { MeasureRingView } from '@/ui/MeasuredFigure';
 import { PlanTick } from '@/ui/PlanTick';
@@ -19,8 +21,7 @@ export function YourGoal({ place }: { place: 'today' | 'stats' | 'plan' }) {
   const showNudges = place === 'today';
   return (
     <Card>
-      <T variant="label">Your goal</T>
-      {view.name ? <T>{view.name}</T> : null}
+      {place === 'stats' ? null : <GoalLine />}
       <T variant="muted">{view.matters}</T>
       {view.caution ? <T variant="muted">{view.caution}</T> : null}
       {showRings && view.measures.length ? (
@@ -43,7 +44,7 @@ export function YourGoal({ place }: { place: 'today' | 'stats' | 'plan' }) {
         </View>
       ) : null}
       {showNudges ? view.nudges.map((line) => <T key={line}>{line}</T>) : null}
-      <T variant="label">How you're doing toward your goal</T>
+      <T variant="label">{towardGoal(view.name)}</T>
       <T>{view.progressWords}</T>
       {view.ticks.map((tick) => (
         <View key={tick.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>

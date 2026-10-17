@@ -17,6 +17,7 @@ import {
   BUILDER_PHASES,
   COMPETITION_NOTE,
   FAT_SCIENCE,
+  GOAL_LABEL,
   MIDDLEWEIGHT_LIMIT_KG,
   isTrainingGoal,
   HIDE_CALORIES_LINE,
@@ -1170,7 +1171,7 @@ export default function Nutrition() {
           </>
         ) : null}
         {settings.goal === 'elite_heavy_boxer' ? (
-          <T variant="muted">This goal keeps size and power. The suggestion adds a little food. It will not plan a cut.</T>
+          <T variant="muted">{`${GOAL_LABEL.elite_heavy_boxer} keeps size and power. The suggestion adds a little food. It will not plan a cut.`}</T>
         ) : null}
         {settings.goal === 'elite_middle_boxer' ? (
           <>

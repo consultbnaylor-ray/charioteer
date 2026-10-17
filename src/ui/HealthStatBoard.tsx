@@ -11,6 +11,7 @@ import {
 } from '@/domain/healthStatTiles';
 import { STATS_SIGNAL } from '@/domain/statsOverview';
 import { CompareBars, ProgressRing, RangeTrack, ToneMark, TrendLine } from '@/ui/DistanceCharts';
+import { GoalLine } from '@/ui/GoalLine';
 import { statsToneColors } from '@/ui/statsPalette';
 import { useAppTheme } from '@/ui/theme';
 import { Button, Card, T } from '@/ui/ui';
@@ -194,6 +195,7 @@ function StatDetail({
           }}
         >
           <T variant="title">{tile?.title ?? 'More info'}</T>
+          <GoalLine note={false} />
           <Button label="Close" tone="quiet" onPress={onClose} />
           {tile ? (
             <ScrollView style={{ flexGrow: 0, height: bodyHeight }}>

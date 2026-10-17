@@ -18,7 +18,8 @@ import {
   type FitnessTone,
 } from '@/domain/fitnessSnapshot';
 import { applyFitnessFocus } from '@/domain/healthPlan';
-import type { NutritionGoal } from '@/domain/nutrition';
+import { closerToGoal, whyGoalMatters, type NutritionGoal } from '@/domain/nutrition';
+import { GoalLine } from '@/ui/GoalLine';
 import type { AppleHealthAccess } from '@/health/connection';
 import { readAppleHealthAccess } from '@/health/link';
 import { TrendLine } from '@/ui/DistanceCharts';
@@ -138,7 +139,7 @@ export function YourFitness() {
       ) : null}
       {view.recommendations.length > 0 ? (
         <View style={{ gap: 4 }}>
-          <T variant="label">To get closer to your goal</T>
+          <T variant="label">{closerToGoal(goal)}</T>
           <T variant="muted">Check with a doctor before big changes.</T>
         </View>
       ) : null}
@@ -235,6 +236,7 @@ function FitnessInfoSheet({
           }}
         >
           <T variant="title">{focus ? INFO_TITLE[focus] : 'Your fitness'}</T>
+          <GoalLine note={false} />
           <Button label="Close" tone="quiet" onPress={onClose} />
           <ScrollView style={{ flexGrow: 0, height: bodyHeight }}>
             <View style={{ gap: 18, paddingBottom: 8 }}>
@@ -243,15 +245,15 @@ function FitnessInfoSheet({
                   return <CardioDetail key={key} view={view} goal={goal} ink={ink} />;
                 }
                 if (key === 'minutes' && view.minutes) {
-                  return <MinutesDetail key={key} view={view} />;
+                  return <MinutesDetail key={key} view={view} goal={goal} />;
                 }
                 if (key === 'resting' && view.resting) {
-                  return <RestingDetail key={key} view={view} ink={ink} />;
+                  return <RestingDetail key={key} view={view} goal={goal} ink={ink} />;
                 }
                 return null;
               })}
               <View style={{ gap: 8 }}>
-                <T variant="label">To get closer to your goal</T>
+                <T variant="label">{closerToGoal(goal)}</T>
                 <T variant="muted">Check with a doctor before big changes.</T>
                 <T>{view.estimate}</T>
                 <T>{ADDED_NOT_REDUCED}</T>
@@ -314,13 +316,13 @@ function CardioDetail({
       <T>{view.levelWords}</T>
       {cardio ? <T>{cardio.compare.words}</T> : null}
       {cardio ? <FitnessCompareBar compare={cardio.compare} tone={cardio.tone} sourcesOpen /> : null}
-      <T variant="label">Why this matters for your goal</T>
+      <T variant="label">{whyGoalMatters(goal)}</T>
       <T>{whyCardioMatters(goal)}</T>
     </View>
   );
 }
 
-function MinutesDetail({ view }: { view: FitnessSnapshot }) {
+function MinutesDetail({ view, goal }: { view: FitnessSnapshot; goal: NutritionGoal | null }) {
   const minutes = view.minutes;
   if (!minutes) return null;
   return (
@@ -340,13 +342,13 @@ function MinutesDetail({ view }: { view: FitnessSnapshot }) {
       />
       <T variant="label">What your number means</T>
       <T>{minutes.words}</T>
-      <T variant="label">Why this matters for your goal</T>
+      <T variant="label">{whyGoalMatters(goal)}</T>
       <T>{whyMinutesMatter()}</T>
     </View>
   );
 }
 
-function RestingDetail({ view, ink }: { view: FitnessSnapshot; ink: (tone: FitnessTone) => string }) {
+function RestingDetail({ view, goal, ink }: { view: FitnessSnapshot; goal: NutritionGoal | null; ink: (tone: FitnessTone) => string }) {
   const resting = view.resting;
   if (!resting) return null;
   return (
@@ -357,7 +359,7 @@ function RestingDetail({ view, ink }: { view: FitnessSnapshot; ink: (tone: Fitne
       <T>{resting.reading ? `${resting.reading}. ` : ''}{resting.words}</T>
       <TrendLine points={resting.points} color={ink(resting.tone)} />
       <T variant="muted">Oldest to newest.</T>
-      <T variant="label">Why this matters for your goal</T>
+      <T variant="label">{whyGoalMatters(goal)}</T>
       <T>{whyRestingMatters()}</T>
     </View>
   );

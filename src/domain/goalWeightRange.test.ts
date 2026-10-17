@@ -113,7 +113,7 @@ describe('goal weight range', () => {
   it('does not invent a higher target for increase, or a scale cut for a body builder', () => {
     const above = goalWeightRange({ ...adult, goal: 'increase', weightKg: 90 });
     expect(above.gap).toBeNull();
-    expect(above.words).toContain('no separate published weight above the healthy band');
+    expect(above.words).toContain('Increase Weight has no separate published weight above the healthy band');
     expect(above.words).not.toContain('to lose');
     const gain = goalWeightRange({ ...adult, goal: 'increase', weightKg: 50 });
     expect(gain.gap).toContain('to gain');
@@ -123,6 +123,7 @@ describe('goal weight range', () => {
     expect(`${cut.words} ${cut.goalNote}`).not.toContain('to lose');
     expect(cut.goalNote).toMatch(/healthy minimum/);
     const runner = goalWeightRange({ ...adult, goal: 'elite_runner', weightKg: 90 });
+    expect(runner.goalNote).toContain('Elite Athlete (Lean Runner etc.)');
     expect(runner.goalNote).toContain('no separate published weight range');
     expect(runner.gap).toContain('to lose to reach the top of this range');
   });

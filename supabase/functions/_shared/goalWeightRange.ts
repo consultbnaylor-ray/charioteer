@@ -242,17 +242,18 @@ function muscleNote(input: GoalWeightInput, basis: 'body_fat' | 'waist' | 'bmi' 
 }
 
 function goalCopy(goal: NutritionGoal | null, phase: BuilderPhase | null): string | null {
-  if (goal === 'lose_weight' || goal === 'maintain') return 'The range for this goal is the healthy BMI band for your height.';
-  if (goal === 'increase') return 'The published range for this goal is the healthy BMI band. There is no separate published weight above it.';
+  const title = goal ? GOAL_LABEL[goal] : null;
+  if (goal === 'lose_weight' || goal === 'maintain') return `The range for ${title} is the healthy BMI band for your height.`;
+  if (goal === 'increase') return `The published range for ${title} is the healthy BMI band. There is no separate published weight above it.`;
   if (goal === 'lose_fat_build_muscle') {
-    return 'There is no separate published scale range for this goal. The band is the healthy BMI range. The scales can stay still while the body changes.';
+    return `There is no separate published scale range for ${title}. The band is the healthy BMI range. The scales can stay still while the body changes.`;
   }
   if (goal === 'elite_runner') {
-    return 'There is no separate published weight range for this goal. Lean body composition matters more than the scales.';
+    return `There is no separate published weight range for ${title}. Lean body composition matters more than the scales.`;
   }
   if (goal === 'body_builder') {
     const cut = phase === 'cut' ? ' A cut on this screen stays modest and does not go below the healthy minimum.' : '';
-    return `There is no separate published weight range for this goal. Body fat and lean mass matter more than the scales.${cut}`;
+    return `There is no separate published weight range for ${title}. Body fat and lean mass matter more than the scales.${cut}`;
   }
   if (goal == null) return 'Choose a goal to see a goal-level range. The band shown is the healthy BMI range.';
   return null;
@@ -378,7 +379,7 @@ function buildRange(input: GoalWeightInput, unit: WeightUnitMode): Omit<GoalWeig
       words = 'Within range';
     } else if (weightKg > healthy.highKg) {
       if (input.goal === 'increase') {
-        words = 'This goal has no separate published weight above the healthy band.';
+        words = `${GOAL_LABEL[input.goal]} has no separate published weight above the healthy band.`;
       } else if (suppressLoss && compositionLogged && compositionWithin) {
         withinRange = true;
         words = 'Within range';
@@ -388,10 +389,12 @@ function buildRange(input: GoalWeightInput, unit: WeightUnitMode): Omit<GoalWeig
           : 'Waist is the better check here, so there is no scale target.';
       } else if (suppressLoss) {
         words = input.goal === 'body_builder'
-          ? 'There is no separate published weight range for this goal, so there is no scale target.'
+          ? `There is no separate published weight range for ${GOAL_LABEL[input.goal]}, so there is no scale target.`
           : input.build === 'muscular'
             ? 'Muscle can sit above the BMI band, so there is no scale target.'
-            : 'This goal has no separate published weight above the healthy band.';
+            : input.goal
+              ? `${GOAL_LABEL[input.goal]} has no separate published weight above the healthy band.`
+              : 'There is no separate published weight above the healthy band.';
       } else {
         gap = loseSentence(weightKg, healthy.highKg, unit);
         words = gap ?? 'Within range';

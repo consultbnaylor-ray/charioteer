@@ -10,6 +10,8 @@ import {
   type WeightSpan,
   type WeightUnitMode,
 } from '@/domain/goalWeightRange';
+import { GOAL_LABEL } from '@/domain/nutrition';
+import { GoalLine } from '@/ui/GoalLine';
 import { PlanTick } from '@/ui/PlanTick';
 import { statsToneColors } from '@/ui/statsPalette';
 import { useAppTheme } from '@/ui/theme';
@@ -24,8 +26,10 @@ export function GoalWeightRange({ embedded = false }: { embedded?: boolean }) {
   const [unit, setUnit] = useState<WeightUnitMode>('kg');
   if (!snap.profile) return null;
   const view = goalWeightFromSnapshot(snap, unit);
+  const goalName = snap.nutrition?.goal ? GOAL_LABEL[snap.nutrition.goal] : null;
   const body = (
     <View style={{ gap: 8 }} accessibilityLabel={view.words}>
+      {embedded ? null : <GoalLine note={false} />}
       <T variant="label">Weight range</T>
       {view.status === 'ready' ? <T variant="muted">{APPROXIMATE}</T> : null}
       {view.status === 'ready' ? (
@@ -34,17 +38,17 @@ export function GoalWeightRange({ embedded = false }: { embedded?: boolean }) {
           <Choice label="st-lb" selected={unit === 'stlb'} onPress={() => setUnit('stlb')} />
         </View>
       ) : null}
-      {view.status === 'prompt' ? <T>{view.prompt}</T> : <Ready view={view} unit={unit} />}
+      {view.status === 'prompt' ? <T>{view.prompt}</T> : <Ready view={view} unit={unit} goalName={goalName} />}
     </View>
   );
   if (embedded) return body;
   return <Card>{body}</Card>;
 }
 
-function Ready({ view, unit }: { view: GoalWeightView; unit: WeightUnitMode }) {
+function Ready({ view, unit, goalName }: { view: GoalWeightView; unit: WeightUnitMode; goalName: string | null }) {
   return (
     <View style={{ gap: 8 }}>
-      {view.healthy ? <RangeBar view={view} unit={unit} /> : null}
+      {view.healthy ? <RangeBar view={view} unit={unit} goalName={goalName} /> : null}
       {view.withinRange ? (
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }} accessibilityLabel="Within range">
           <PlanTick done />
@@ -83,7 +87,7 @@ function Outside({ text }: { text: string }) {
   );
 }
 
-function RangeBar({ view, unit }: { view: GoalWeightView; unit: WeightUnitMode }) {
+function RangeBar({ view, unit, goalName }: { view: GoalWeightView; unit: WeightUnitMode; goalName: string | null }) {
   const theme = useAppTheme();
   const colors = statsToneColors(theme.scheme);
   const healthy = view.healthy;
@@ -154,7 +158,7 @@ function RangeBar({ view, unit }: { view: GoalWeightView; unit: WeightUnitMode }
         {view.goal ? (
           <Legend swatch={colors.info.ink} label={`${view.goal.label}, approximate, ${shownSpan(view.goal, unit)}`} />
         ) : (
-          <Legend swatch={colors.info.ink} label="No separate published range for this goal" />
+          <Legend swatch={colors.info.ink} label={goalName ? `No separate published range for ${goalName}` : 'No separate published range'} />
         )}
       </View>
     </View>
