@@ -78,6 +78,12 @@ export function unaskedHealthTypes(rows: readonly Pick<HealthVisibilityRow, 'typ
   return rows.filter((row) => row.asked === 'no').map((row) => row.type);
 }
 
+/** A type not yet asked, or asked with nothing in the last 8 weeks. */
+export function healthVisibilityHasGaps(report: HealthVisibilityReport | null): boolean {
+  if (report?.kind !== 'ready') return false;
+  return report.rows.some((row) => row.asked === 'no' || row.days <= 0);
+}
+
 /** Distinct calendar days that fall inside the rolling window ending at `now`. */
 export function daysInLookback(isoDays: readonly string[], now: Date, windowDays = HEALTH_SAMPLE_DAYS): number {
   const start = isoDay(new Date(now.getTime() - windowDays * 24 * 60 * 60 * 1000));

@@ -1,4 +1,4 @@
-import { formatUkLongWhen } from '../domain/dates';
+import { formatUkLongWhen, formatUkTime } from '../domain/dates';
 
 /**
  * Types Charioteer asks to read. It does not request write access.
@@ -36,6 +36,11 @@ export const APPLE_HEALTH_CONSENT =
 
 export const APPLE_HEALTH_UNAVAILABLE = 'Apple Health is not available on this device.';
 
+export const APPLE_HEALTH_REFRESH = 'Refresh now';
+export const APPLE_HEALTH_UPDATED = 'Updated just now';
+export const APPLE_HEALTH_TURN_ON = 'Turn on in Apple Health';
+export const APPLE_HEALTH_DETAILS = 'Details';
+
 export type AppleHealthAccess = 'prompt' | 'connected' | 'denied' | 'unavailable' | 'web';
 
 /** What happened when the missing-readings button asked Apple Health. */
@@ -66,6 +71,33 @@ export type HealthCardKind =
   | { kind: 'connected'; line: string }
   | { kind: 'denied' }
   | { kind: 'unavailable' };
+
+/**
+ * One line for the top of Health Stats.
+ * Connected names the clock. Not connected and Some readings missing are the other two.
+ */
+export function appleHealthStatusLine(input: {
+  consent: boolean;
+  ios: boolean;
+  access: AppleHealthAccess | null;
+  syncedAt: string | null;
+  missing: boolean;
+}): string {
+  if (!input.consent || !input.ios) return 'Apple Health: Not connected';
+  if (input.access == null || input.access === 'web') return 'Apple Health: checking';
+  if (input.access !== 'connected') return 'Apple Health: Not connected';
+  if (input.missing) return 'Apple Health: Some readings missing';
+  const when = appleHealthClock(input.syncedAt);
+  if (!when) return 'Apple Health: connected';
+  return `Apple Health: connected, last updated ${when}`;
+}
+
+function appleHealthClock(syncedAt: string | null): string | null {
+  if (!syncedAt) return null;
+  const date = new Date(syncedAt);
+  if (Number.isNaN(date.getTime())) return null;
+  return formatUkTime(date);
+}
 
 export function connectedAppleHealthLine(syncedAt: Date | string | null): string {
   if (syncedAt == null) return 'Connected to Apple Health';

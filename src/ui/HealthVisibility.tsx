@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Pressable, View } from 'react-native';
 
 import {
@@ -18,20 +18,32 @@ import { Button, Card, T } from '@/ui/ui';
 export function HealthVisibility({
   report,
   pending,
+  request = 0,
   onOpen,
   onCheck,
   onAsk,
 }: {
   report: HealthVisibilityReport | null;
   pending: boolean;
+  /** Each increase opens the list. The row starts closed. */
+  request?: number;
   onOpen: () => void;
   onCheck: () => void;
   onAsk: (types: readonly string[]) => Promise<AppleHealthTurnOn | 'consent'>;
 }) {
   const theme = useAppTheme();
   const [open, setOpen] = useState(false);
+  const seen = useRef(0);
   const unasked = report?.kind === 'ready' ? unaskedHealthTypes(report.rows) : [];
   const [asking, setAsking] = useState(false);
+
+  useEffect(() => {
+    if (request === seen.current) return;
+    seen.current = request;
+    if (request < 1) return;
+    setOpen(true);
+    onOpen();
+  }, [request, onOpen]);
 
   function toggle() {
     setOpen((value) => {

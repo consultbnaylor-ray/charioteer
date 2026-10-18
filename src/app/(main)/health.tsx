@@ -8,6 +8,8 @@ import { isoDay, startOfLocalDay } from '@/domain/dates';
 import { shownError } from '@/domain/errors';
 import { parseHeightCm } from '@/domain/guidance';
 import {
+  HEALTH_SHEET_ASKED,
+  HEALTH_SHEET_WONT_SHOW,
   HEALTH_STAT_PERIOD_LABEL,
   HEALTH_STAT_PERIODS,
   type HealthStatPeriod,
@@ -15,11 +17,20 @@ import {
 import { rebucketStoredMinutes, withWorkoutBucket } from '@/domain/fitnessSnapshot';
 import type { BodyEntrySource, WorkoutBucket } from '@/domain/nutrition';
 import { weightWaistWrite, type WaistSampleWrite, type WeightReadingDraft } from '@/domain/weightEntry';
-import { isHealthAccessDenied, type AppleHealthAccess, type AppleHealthTurnOn } from '@/health/connection';
+import {
+  APPLE_HEALTH_CONSENT,
+  APPLE_HEALTH_DENIED,
+  APPLE_HEALTH_READ_TYPES,
+  APPLE_HEALTH_UNAVAILABLE,
+  APPLE_HEALTH_WEB,
+  isHealthAccessDenied,
+  type AppleHealthAccess,
+  type AppleHealthTurnOn,
+} from '@/health/connection';
+import { healthVisibilityHasGaps, type HealthVisibilityReport } from '@/domain/healthVisibility';
 import { catchUpAppleHealthReads } from '@/health/catchUp';
 import { connectAppleHealth, openAppSettings, openHealthApp, readAppleHealthAccess, turnOnAppleHealthReads, askAppleHealthReads } from '@/health/link';
 import { readHealthVisibility } from '@/health/visibility';
-import type { HealthVisibilityReport } from '@/domain/healthVisibility';
 import type { HealthTurnOnResult } from '@/ui/HealthStatBoard';
 import { loadHealthStatPeriod, saveHealthStatPeriod } from '@/health/statPeriod';
 import { loadLastSynced, saveLastSynced } from '@/health/syncedAt';
@@ -65,6 +76,10 @@ export default function Health() {
   const [visibility, setVisibility] = useState<HealthVisibilityReport | null>(ios ? null : { kind: 'web' });
   const [visibilityPending, setVisibilityPending] = useState(false);
   const [period, setPeriod] = useState<HealthStatPeriod>('7');
+  const [updatedNow, setUpdatedNow] = useState(false);
+  const [refreshError, setRefreshError] = useState<string | null>(null);
+  const [turnOnNote, setTurnOnNote] = useState<string | null>(null);
+  const [seeRequest, setSeeRequest] = useState(0);
   const chosen = KINDS.find((item) => item.id === kind) ?? KINDS[0];
 
   useEffect(() => {
@@ -104,33 +119,106 @@ export default function Health() {
       .finally(() => setVisibilityPending(false));
   }, [ios]);
 
-  async function pullFromHealth() {
-    const result = await syncAppleHealth(repo.getSnapshot().nutrition.workoutBuckets);
+  async function pullFromHealth(): Promise<{ ok: true } | { ok: false; message: string }> {
+    let result: Awaited<ReturnType<typeof syncAppleHealth>>;
+    try {
+      result = await syncAppleHealth(repo.getSnapshot().nutrition.workoutBuckets);
+    } catch (err: unknown) {
+      return { ok: false, message: shownError(err, 'Could not refresh Apple Health.') };
+    }
     if (!result.ok) {
       if (isHealthAccessDenied(result.message)) setAccess('denied');
-      setError(result.message);
-      return;
+      return { ok: false, message: result.message || 'Could not refresh Apple Health.' };
     }
-    await repo.saveHealth(result.samples);
-    for (const row of result.composition ?? []) {
-      await repo.saveBodyComposition({
-        recordedOn: row.recordedOn,
-        bodyFatPct: row.bodyFatPct,
-        leanMassKg: row.leanMassKg,
-        waistCm: null,
-        source: 'healthkit',
-      });
+    try {
+      await repo.saveHealth(result.samples);
+      for (const row of result.composition ?? []) {
+        await repo.saveBodyComposition({
+          recordedOn: row.recordedOn,
+          bodyFatPct: row.bodyFatPct,
+          leanMassKg: row.leanMassKg,
+          waistCm: null,
+          source: 'healthkit',
+        });
+      }
+      if (result.activeEnergyKcal != null) {
+        await repo.setNutritionSettings({
+          ...repo.getSnapshot().nutrition,
+          activityEnergyKcal: result.activeEnergyKcal,
+        });
+      }
+      const stamp = new Date().toISOString();
+      await saveLastSynced(stamp);
+      setSyncedAt(stamp);
+      setAccess('connected');
+      return { ok: true };
+    } catch (err: unknown) {
+      return { ok: false, message: shownError(err, 'Could not refresh Apple Health.') };
     }
-    if (result.activeEnergyKcal != null) {
-      await repo.setNutritionSettings({
-        ...repo.getSnapshot().nutrition,
-        activityEnergyKcal: result.activeEnergyKcal,
-      });
+  }
+
+  function noteForTurnOn(result: HealthTurnOnResult): string | null {
+    if (result === 'web') return APPLE_HEALTH_WEB;
+    if (result === 'unavailable') return APPLE_HEALTH_UNAVAILABLE;
+    if (result === 'consent') return APPLE_HEALTH_CONSENT;
+    if (result === 'opened') return HEALTH_SHEET_WONT_SHOW;
+    if (result === 'prompted') return HEALTH_SHEET_ASKED;
+    return null;
+  }
+
+  async function refreshNow() {
+    setPending(true);
+    setRefreshError(null);
+    setUpdatedNow(false);
+    try {
+      if (!consent) {
+        setRefreshError(APPLE_HEALTH_CONSENT);
+        return;
+      }
+      if (!ios) {
+        setRefreshError(APPLE_HEALTH_WEB);
+        return;
+      }
+      let next = access;
+      if (next !== 'connected' && next !== 'unavailable') {
+        next = await connectAppleHealth();
+        setAccess(next);
+      }
+      if (next === 'unavailable') {
+        setRefreshError(APPLE_HEALTH_UNAVAILABLE);
+        return;
+      }
+      if (next === 'denied') {
+        setRefreshError(APPLE_HEALTH_DENIED);
+        return;
+      }
+      if (next !== 'connected') {
+        setRefreshError('Apple Health is not connected.');
+        return;
+      }
+      const pulled = await pullFromHealth();
+      if (!pulled.ok) {
+        setRefreshError(pulled.message);
+        return;
+      }
+      setUpdatedNow(true);
+      loadVisibility();
+    } catch (err: unknown) {
+      setRefreshError(shownError(err, 'Could not refresh Apple Health.'));
+    } finally {
+      setPending(false);
     }
-    const stamp = new Date().toISOString();
-    await saveLastSynced(stamp);
-    setSyncedAt(stamp);
-    setAccess('connected');
+  }
+
+  async function turnOnFromRow() {
+    setTurnOnNote(null);
+    setRefreshError(null);
+    try {
+      const result = await turnOnMissing([...APPLE_HEALTH_READ_TYPES]);
+      setTurnOnNote(noteForTurnOn(result));
+    } catch (err: unknown) {
+      setRefreshError(shownError(err, 'Could not open Apple Health.'));
+    }
   }
 
   async function turnOnMissing(types: readonly string[]): Promise<HealthTurnOnResult> {
@@ -139,7 +227,11 @@ export default function Health() {
       return 'consent';
     }
     const result: AppleHealthTurnOn = await turnOnAppleHealthReads(types);
-    if (result === 'prompted') await pullFromHealth();
+    if (result === 'prompted') {
+      const pulled = await pullFromHealth();
+      if (!pulled.ok) setRefreshError(pulled.message);
+      else setUpdatedNow(true);
+    }
     loadVisibility();
     return result;
   }
@@ -150,7 +242,11 @@ export default function Health() {
       return 'consent';
     }
     const result = await askAppleHealthReads(types);
-    if (result === 'prompted') await pullFromHealth();
+    if (result === 'prompted') {
+      const pulled = await pullFromHealth();
+      if (!pulled.ok) setRefreshError(pulled.message);
+      else setUpdatedNow(true);
+    }
     loadVisibility();
     return result;
   }
@@ -182,9 +278,14 @@ export default function Health() {
     try {
       const next = await connectAppleHealth();
       setAccess(next);
-      if (next === 'connected') await pullFromHealth();
+      if (next === 'connected') {
+        const pulled = await pullFromHealth();
+        if (!pulled.ok) setRefreshError(pulled.message);
+        else setUpdatedNow(true);
+      } else if (next === 'denied') setRefreshError(APPLE_HEALTH_DENIED);
+      else if (next === 'unavailable') setRefreshError(APPLE_HEALTH_UNAVAILABLE);
     } catch (err) {
-      setError(shownError(err, 'Could not connect to Apple Health.'));
+      setRefreshError(shownError(err, 'Could not connect to Apple Health.'));
     } finally {
       setPending(false);
     }
@@ -282,6 +383,32 @@ export default function Health() {
         </View>
       )}
     >
+      <AppleHealthCard
+        consent={consent}
+        ios={ios}
+        access={access}
+        syncedAt={syncedAt}
+        missing={healthVisibilityHasGaps(visibility)}
+        pending={pending}
+        updated={updatedNow}
+        refreshError={refreshError}
+        turnOnNote={turnOnNote}
+        onRefresh={() => void refreshNow()}
+        onConnect={() => void connect()}
+        onManage={() => void openHealthApp()}
+        onSettings={() => void openAppSettings()}
+        onPrivacy={() => router.push('/privacy' as never)}
+        onSee={() => setSeeRequest((current) => current + 1)}
+        onTurnOn={turnOnFromRow}
+      />
+      <HealthVisibility
+        report={visibility}
+        pending={visibilityPending}
+        request={seeRequest}
+        onOpen={loadVisibility}
+        onCheck={loadVisibility}
+        onAsk={askUnasked}
+      />
       <View accessibilityRole="radiogroup" accessibilityLabel="Period" style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
         {HEALTH_STAT_PERIODS.map((id) => (
           <Choice
@@ -294,23 +421,6 @@ export default function Health() {
       </View>
       <GoalLine />
       <HealthSectionShare />
-      <AppleHealthCard
-        consent={consent}
-        ios={ios}
-        access={access}
-        syncedAt={syncedAt}
-        pending={pending}
-        onConnect={() => void connect()}
-        onSync={() => {
-          setPending(true);
-          setError(null);
-          void pullFromHealth().catch((err: unknown) => setError(shownError(err, 'Sync failed.'))).finally(() => setPending(false));
-        }}
-        onManage={() => void openHealthApp()}
-        onSettings={() => void openAppSettings()}
-        onPrivacy={() => router.push('/privacy' as never)}
-      />
-      <HealthVisibility report={visibility} pending={visibilityPending} onOpen={loadVisibility} onCheck={loadVisibility} onAsk={askUnasked} />
       <HealthStatBoard
         today={isoDay(new Date())}
         samples={snap.health}

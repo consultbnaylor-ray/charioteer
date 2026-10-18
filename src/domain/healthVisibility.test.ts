@@ -7,6 +7,7 @@ import {
   healthReadSetChanged,
   healthReadSetKey,
   healthReadTitle,
+  healthVisibilityHasGaps,
   healthVisibilityLine,
   HEALTH_ASK_AGAIN,
   HEALTH_CHECK_AGAIN,
@@ -135,6 +136,20 @@ describe('what Charioteer can see', () => {
     expect(panel).toContain('label={HEALTH_ASK_AGAIN}');
     expect(panel).toContain('label={HEALTH_CHECK_AGAIN}');
     expect(panel).toContain('onCheck');
+    expect(healthVisibilityHasGaps(null)).toBe(false);
+    expect(healthVisibilityHasGaps({ kind: 'web' })).toBe(false);
+    expect(healthVisibilityHasGaps({
+      kind: 'ready',
+      rows: [{ type: 'HKQuantityTypeIdentifierStepCount', title: 'Steps', asked: 'yes', days: 4 }],
+    })).toBe(false);
+    expect(healthVisibilityHasGaps({
+      kind: 'ready',
+      rows: [{ type: 'HKQuantityTypeIdentifierStepCount', title: 'Steps', asked: 'yes', days: 0 }],
+    })).toBe(true);
+    expect(healthVisibilityHasGaps({
+      kind: 'ready',
+      rows: [{ type: 'HKQuantityTypeIdentifierBodyFatPercentage', title: 'Body fat', asked: 'no', days: 2 }],
+    })).toBe(true);
     expect(HEALTH_ASK_AGAIN).toBe('Ask Health again');
     expect(HEALTH_CHECK_AGAIN).toBe('Check again');
     expect(screen).toContain('<HealthVisibility');
