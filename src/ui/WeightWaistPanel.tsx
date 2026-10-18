@@ -118,7 +118,13 @@ export function WeightWaistPanel() {
         </View>
       ) : null}
       <ErrorNote>{error}</ErrorNote>
-      <Button label="Save" pending={pending} disabled={!consent || pending || draft == null} onPress={save} />
+      <Button
+        label="Save"
+        pending={pending}
+        disabled={!consent || pending || draft == null}
+        disabledReason={!consent ? undefined : draft == null ? 'Add a weight or a waist to save.' : undefined}
+        onPress={save}
+      />
       <Pressable
         accessibilityRole="link"
         accessibilityLabel="Open the weight sheet"

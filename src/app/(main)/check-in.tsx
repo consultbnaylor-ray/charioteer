@@ -84,7 +84,7 @@ export default function CheckIn() {
       footer={(
         <View style={{ gap: 8 }}>
           {savedNote ? <T>{savedNote}</T> : null}
-          <Button label="Save check-in" pending={pending} disabled={!dirty || pending} onPress={save} />
+          <Button label="Save check-in" pending={pending} disabled={!dirty || pending} disabledReason={dirty ? undefined : 'Change the check-in to save.'} onPress={save} />
         </View>
       )}
     >

@@ -337,6 +337,7 @@ export function Button({
   pending,
   pendingLabel,
   accessibilityLabel,
+  disabledReason,
 }: {
   label: string;
   onPress: () => void;
@@ -346,35 +347,51 @@ export function Button({
   /** Shown beside the spinner while the press is in flight. */
   pendingLabel?: string;
   accessibilityLabel?: string;
+  /** Shown under a disabled button, and read with it. Pending uses pendingLabel instead. */
+  disabledReason?: string;
 }) {
   const theme = useAppTheme();
+  const inactive = Boolean(disabled || pending);
+  const reason = disabled && !pending ? disabledReason?.trim() : '';
+  // Primary is a solid fill: light with dark text in the dark theme, dark with light text in the light theme.
+  // Quiet is an outline on the card, so a secondary action is not mistaken for a switched-off control.
   const tones = {
-    primary: { bg: theme.colors.ink, fg: theme.colors.bg },
-    quiet: { bg: theme.colors.sunken, fg: theme.colors.ink },
-    sos: { bg: theme.colors.dangerFill, fg: theme.colors.dangerInk },
+    primary: { bg: theme.colors.ink, fg: theme.colors.bg, border: 'transparent' },
+    quiet: { bg: 'transparent', fg: theme.colors.ink, border: theme.colors.ink },
+    sos: { bg: theme.colors.dangerFill, fg: theme.colors.dangerInk, border: 'transparent' },
   }[tone];
   const textStyle = [styles.buttonText, { color: tones.fg, fontFamily: theme.font.bodyStrong, fontSize: 16 * theme.scale }];
   return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={pending && pendingLabel ? pendingLabel : accessibilityLabel ?? label}
-      disabled={disabled || pending}
-      onPress={() => {
-        dismissKeyboardOnAction(label);
-        onPress();
-      }}
-      style={({ pressed }) => [
-        styles.button,
-        { backgroundColor: tones.bg, opacity: disabled || pending ? 0.45 : pressed ? 0.86 : 1 },
-      ]}
-    >
-      {pending ? (
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-          <ActivityIndicator color={tones.fg} />
-          {pendingLabel ? <Text style={textStyle}>{pendingLabel}</Text> : null}
-        </View>
-      ) : <Text style={textStyle}>{label}</Text>}
-    </Pressable>
+    <View style={{ gap: 6 }}>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={pending && pendingLabel ? pendingLabel : accessibilityLabel ?? label}
+        accessibilityHint={reason || undefined}
+        accessibilityState={{ disabled: inactive }}
+        disabled={inactive}
+        onPress={() => {
+          dismissKeyboardOnAction(label);
+          onPress();
+        }}
+        style={({ pressed }) => [
+          styles.button,
+          {
+            backgroundColor: tones.bg,
+            borderColor: tones.border,
+            borderWidth: tone === 'quiet' ? 1.5 : 0,
+            opacity: inactive ? 0.45 : pressed ? 0.86 : 1,
+          },
+        ]}
+      >
+        {pending ? (
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            <ActivityIndicator color={tones.fg} />
+            {pendingLabel ? <Text style={textStyle}>{pendingLabel}</Text> : null}
+          </View>
+        ) : <Text style={textStyle}>{label}</Text>}
+      </Pressable>
+      {reason ? <T variant="muted">{reason}</T> : null}
+    </View>
   );
 }
 

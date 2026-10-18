@@ -379,7 +379,13 @@ export default function Health() {
               <T>{savedNote}</T>
             </View>
           ) : null}
-          <Button label="Save reading" pending={savePending} disabled={!consent || savePending || (!value.trim() && weightDraft == null)} onPress={saveReading} />
+          <Button
+            label="Save reading"
+            pending={savePending}
+            disabled={!consent || savePending || (!value.trim() && weightDraft == null)}
+            disabledReason={!consent ? 'Turn on health data to save a reading.' : value.trim() || weightDraft != null ? undefined : 'Add a reading to save.'}
+            onPress={saveReading}
+          />
         </View>
       )}
     >

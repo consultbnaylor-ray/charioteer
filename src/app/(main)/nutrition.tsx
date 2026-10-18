@@ -1309,7 +1309,7 @@ export default function Nutrition() {
             <T variant="muted">Or add them on Health Stats</T>
           </Pressable>
         ) : null}
-        <Button label="Suggest targets" tone="quiet" pending={isPending('suggest')} pendingLabel="Suggesting..." onPress={suggest} />
+        <Button label="Suggest targets" pending={isPending('suggest')} pendingLabel="Suggesting..." onPress={suggest} />
         {suggestNote ? <T>{suggestNote}</T> : null}
         {blocked ? <T>{LOW_BMI_NOTE}</T> : null}
         {goalNote && !blocked ? <T variant="muted">{goalNote}</T> : null}

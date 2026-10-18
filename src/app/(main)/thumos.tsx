@@ -332,14 +332,14 @@ export default function Thumos() {
         {VOICE_ENABLED && inCall ? null : VOICE_ENABLED ? (
           <View style={{ flexDirection: 'row', gap: 10 }}>
             <View style={{ flex: 1 }}>
-              <Button label="Send" pending={pending} disabled={!profile.consentAi} onPress={() => void send()} />
+              <Button label="Send" pending={pending} disabled={!profile.consentAi} disabledReason={profile.consentAi ? undefined : 'Allow the coach before sending.'} onPress={() => void send()} />
             </View>
             <View style={{ flex: 1 }}>
-              <Button label="Voice" disabled={!profile.consentAi || pending} onPress={() => void startVoice()} />
+              <Button label="Voice" disabled={!profile.consentAi || pending} disabledReason={profile.consentAi ? undefined : 'Allow the coach before a voice call.'} onPress={() => void startVoice()} />
             </View>
           </View>
         ) : (
-          <Button label="Send" pending={pending} disabled={!profile.consentAi} onPress={() => void send()} />
+          <Button label="Send" pending={pending} disabled={!profile.consentAi} disabledReason={profile.consentAi ? undefined : 'Allow the coach before sending.'} onPress={() => void send()} />
         )}
         <PinLatest token={pinToken} />
       </View>

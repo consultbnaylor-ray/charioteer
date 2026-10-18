@@ -250,7 +250,7 @@ export default function Profile() {
       footer={(
         <View style={{ gap: 8 }}>
           {savedNote ? <T>{savedNote}</T> : null}
-          <Button label="Save your details" pending={pending} disabled={!dirty || pending} onPress={() => void saveDetails()} />
+          <Button label="Save your details" pending={pending} disabled={!dirty || pending} disabledReason={dirty ? undefined : 'Change a detail to save.'} onPress={() => void saveDetails()} />
         </View>
       )}
     >
@@ -470,6 +470,7 @@ export default function Profile() {
         label="Delete account and data"
         tone="sos"
         disabled={confirm !== 'DELETE' || writePending('delete')}
+        disabledReason={confirm === 'DELETE' ? undefined : 'Type DELETE to remove the account.'}
         pending={writePending('delete')}
         onPress={() => {
           runWrite('delete', () => repo.deleteAccount().catch((err: unknown) => setError(shownError(err, 'Could not delete the account.'))));
