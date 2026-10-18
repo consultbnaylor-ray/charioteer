@@ -1,5 +1,4 @@
 import {
-  CategoryValueSleepAnalysis,
   isHealthDataAvailable,
   queryCategorySamples,
   queryQuantitySamples,
@@ -15,6 +14,7 @@ import { parseBodyFatPct, parseLeanMassKg } from '@/domain/nutrition';
 import { dedupeWorkouts, workoutBucket, workoutTypeKind, type WorkoutSpan } from '@/domain/fitnessSnapshot';
 import type { WorkoutBucket, WorkoutBucketMap } from '@/domain/nutrition';
 import { HEALTH_SAMPLE_DAYS } from '@/domain/healthVisibility';
+import { sleepHoursByWakeDay } from '@/domain/sleepNights';
 import { APPLE_HEALTH_READ_TYPES, type AppleHealthBody, type AppleHealthComposition } from '@/health/connection';
 
 export type AppleHealthBodyRead =
@@ -24,13 +24,6 @@ export type AppleHealthBodyRead =
 export type HealthSyncResult =
   | { ok: true; samples: NewHealthSample[]; activeEnergyKcal: number | null; composition?: AppleHealthComposition[] }
   | { ok: false; message: string };
-
-const ASLEEP = new Set<number>([
-  CategoryValueSleepAnalysis.asleepUnspecified,
-  CategoryValueSleepAnalysis.asleepCore,
-  CategoryValueSleepAnalysis.asleepDeep,
-  CategoryValueSleepAnalysis.asleepREM,
-]);
 
 function add(map: Map<string, number>, day: string, amount: number) {
   map.set(day, (map.get(day) ?? 0) + amount);
@@ -144,12 +137,17 @@ export async function syncAppleHealth(overrides: WorkoutBucketMap = {}): Promise
     samples.push(...rows('steps', 'steps', stepDays, Math.round));
 
     const sleep = await queryCategorySamples('HKCategoryTypeIdentifierSleepAnalysis', { limit: 0, filter: fitnessFilter });
-    const sleepDays = new Map<string, number>();
-    for (const sample of sleep) {
-      if (!ASLEEP.has(Number(sample.value))) continue;
-      const hours = (sample.endDate.getTime() - sample.startDate.getTime()) / 3_600_000;
-      add(sleepDays, isoDay(sample.endDate), hours);
-    }
+    // The same 8-week window as the other fitness samples. A night is the
+    // morning it ended. Watch stages win over a plain "asleep" sample, and a
+    // night stored only as time in bed is still kept.
+    const sleepDays = sleepHoursByWakeDay(
+      sleep.map((sample) => ({
+        value: Number(sample.value),
+        startMs: sample.startDate.getTime(),
+        endMs: sample.endDate.getTime(),
+      })),
+      (endMs) => isoDay(new Date(endMs)),
+    );
     samples.push(...rows('sleep_hours', 'h', sleepDays, (value) => Math.round(value * 10) / 10));
 
     const heart = await queryQuantitySamples('HKQuantityTypeIdentifierRestingHeartRate', {

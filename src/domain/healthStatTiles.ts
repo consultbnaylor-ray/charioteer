@@ -33,7 +33,7 @@ import {
   NICE_BMI_HEALTHY_MIN,
   NICE_BMI_URL,
 } from '@/domain/guidance';
-import { dailyValues, shiftDay, weekdayShort, type DayValue } from '@/domain/healthInsights';
+import { dailyValues, formatSleepHours, shiftDay, weekdayShort, type DayValue } from '@/domain/healthInsights';
 import {
   GOAL_LABEL,
   isAnyBoxer,
@@ -438,7 +438,7 @@ function heartBandTile(item: CatalogItem, input: HealthStatBoardInput, grown: bo
   const all = series(input.samples, item.id, input.today);
   const window = slicePeriod(all, input);
   if (window === 'none') return null;
-  if (window === 'gap') return emptyTile(item, input);
+  if (window === 'gap') return olderReadingTile(item, input, all, (point) => `Latest ${Math.round(point.value)} bpm`);
   const period = periodOf(input);
   const label = periodLabel(period);
   const bpm = Math.round(averageOf(window.current));
@@ -502,25 +502,28 @@ function sleepTile(item: CatalogItem, input: HealthStatBoardInput, grown: boolea
   const all = series(input.samples, 'sleep_hours', input.today);
   const window = slicePeriod(all, input);
   if (window === 'none') return null;
-  if (window === 'gap') return emptyTile(item, input, true);
+  if (window === 'gap') {
+    return olderReadingTile(item, input, all, (point) => `Latest night ${formatSleepHours(point.value)}`, true);
+  }
   const period = periodOf(input);
   const label = periodLabel(period, period === 'day');
   const hours = Math.round(averageOf(window.current) * 10) / 10;
+  const nights = nightCountLine(window.current.length);
   const trend = movementTrend(window.current, window.previous, 'mean', 0.3, period);
-  const about = 'Sleep: hours asleep. The unit is hours.';
+  const about = 'Sleep: hours asleep. The unit is hours. The figure is the average of the nights that have a reading.';
   if (!grown) {
     return finish(item, {
       valueText: oneText(hours),
       unit: 'h',
       period: label,
-      status: ADULT_HIDDEN,
+      status: `${ADULT_HIDDEN} ${nights}`,
       tone: 'info',
       trend,
       hasGuideline: false,
       visual: spark(window.current, `${oneText(hours)} h`),
       history: nums(window.current),
       about,
-      meaning: ADULT_HIDDEN,
+      meaning: `${ADULT_HIDDEN} ${nights}`,
       rangeNote: null,
       sourceName: null,
       sourceUrl: null,
@@ -529,11 +532,12 @@ function sleepTile(item: CatalogItem, input: HealthStatBoardInput, grown: boolea
   const under = hours < NHS_ADULT_SLEEP_MIN_HOURS;
   const over = hours > NHS_ADULT_SLEEP_MAX_HOURS;
   const tone: StatsTone = under ? 'watch' : over ? 'info' : 'good';
-  const status = under
+  const band = under
     ? 'Under 7 hours'
     : over
       ? 'Over 9 hours, not a warning on its own'
       : 'Within 7 to 9 hours';
+  const status = `${band}. ${nights}`;
   return finish(item, {
     valueText: oneText(hours),
     unit: 'h',
@@ -555,7 +559,7 @@ function sleepTile(item: CatalogItem, input: HealthStatBoardInput, grown: boolea
     },
     history: nums(window.current),
     about,
-    meaning: 'The NHS says adults need 7 to 9 hours a night. That range is not stretched across a week or a month.',
+    meaning: `The NHS says adults need 7 to 9 hours a night. That range is not stretched across a week or a month. ${nights}`,
     rangeNote: null,
     sourceName: 'NHS',
     sourceUrl: NHS_SLEEP_URL,
@@ -624,14 +628,14 @@ function vo2Tile(item: CatalogItem, input: HealthStatBoardInput, grown: boolean)
   });
 }
 
-function mixTotals(input: HealthStatBoardInput, start: string): {
+function mixTotals(input: HealthStatBoardInput, start: string, end = input.today): {
   buckets: Record<WorkoutBucket, number>;
   breakdown: { activityType: number; label: string; minutes: number; bucket: WorkoutBucket }[];
 } {
   const byType = new Map<number, number>();
   for (const sample of input.samples) {
     const activityType = activityTypeFromKind(sample.kind);
-    if (activityType == null || sample.recordedOn < start || sample.recordedOn > input.today) continue;
+    if (activityType == null || sample.recordedOn < start || sample.recordedOn > end) continue;
     if (!Number.isFinite(sample.value) || sample.value <= 0) continue;
     byType.set(activityType, (byType.get(activityType) ?? 0) + sample.value);
   }
@@ -657,7 +661,7 @@ function mixTotals(input: HealthStatBoardInput, start: string): {
         : bucket === 'conditioning'
           ? 'conditioning_minutes'
           : 'other_minutes';
-    buckets[bucket] = sumBetween(series(input.samples, kind, input.today), start, input.today);
+    buckets[bucket] = sumBetween(series(input.samples, kind, end), start, end);
   }
   return { buckets, breakdown: [] };
 }
@@ -672,9 +676,16 @@ function mixTile(item: CatalogItem, input: HealthStatBoardInput): HealthStatTile
   const other = buckets.other;
   const total = strength + cardio + conditioning + other;
   if (total <= 0) {
-    const any = mixTotals(input, '1970-01-01');
-    const anyTotal = any.buckets.strength + any.buckets.cardio + any.buckets.conditioning + any.buckets.other;
-    return anyTotal > 0 ? emptyTile(item, input) : null;
+    const days = [...new Set(input.samples.map((sample) => sample.recordedOn.slice(0, 10)))]
+      .filter((day) => day <= input.today)
+      .sort();
+    let latest: DayValue | null = null;
+    for (const day of days) {
+      const dayTotals = mixTotals(input, day, day);
+      const dayTotal = dayTotals.buckets.strength + dayTotals.buckets.cardio + dayTotals.buckets.conditioning + dayTotals.buckets.other;
+      if (dayTotal > 0) latest = { day, value: dayTotal };
+    }
+    return latest ? olderReadingTile(item, input, [latest], (point) => `Latest ${whole(point.value)} min`) : null;
   }
   const parts = WORKOUT_BUCKETS.map((name) => ({ name, value: buckets[name] })).sort((left, right) => right.value - left.value);
   const even = parts[0].value === parts[1].value;
@@ -717,7 +728,7 @@ function hrvTile(item: CatalogItem, input: HealthStatBoardInput): HealthStatTile
   const all = series(input.samples, 'hrv_sdnn', input.today);
   const window = slicePeriod(all, input);
   if (window === 'none') return null;
-  if (window === 'gap') return emptyTile(item, input);
+  if (window === 'gap') return olderReadingTile(item, input, all, (point) => `Latest ${Math.round(point.value)} ms`);
   const period = periodOf(input);
   const ms = Math.round(averageOf(window.current));
   return finish(item, {
@@ -747,7 +758,7 @@ function weightTile(
   const all = series(input.samples, 'weight_kg', input.today).filter((point) => point.value > 0);
   const window = slicePeriod(all, input);
   if (window === 'none') return null;
-  if (window === 'gap') return emptyTile(item, input);
+  if (window === 'gap') return olderReadingTile(item, input, all, (point) => `Latest ${oneText(point.value)} kg`);
   const period = periodOf(input);
   const label = periodLabel(period);
   const history = window.current;
@@ -866,7 +877,7 @@ function bodyFatTile(item: CatalogItem, input: HealthStatBoardInput, grown: bool
   const all = bodySeries(input.body, input.today, (row) => row.bodyFatPct);
   const window = slicePeriod(all, input);
   if (window === 'none') return null;
-  if (window === 'gap') return emptyTile(item, input);
+  if (window === 'gap') return olderReadingTile(item, input, all, (point) => `Latest ${oneText(point.value)}%`);
   const period = periodOf(input);
   const label = periodLabel(period);
   const history = window.current;
@@ -920,7 +931,7 @@ function waistTile(
   const all = bodySeries(input.body, input.today, (row) => row.waistCm);
   const window = slicePeriod(all, input);
   if (window === 'none') return null;
-  if (window === 'gap') return emptyTile(item, input);
+  if (window === 'gap') return olderReadingTile(item, input, all, (point) => `Latest ${oneText(point.value)} cm`);
   const period = periodOf(input);
   const label = periodLabel(period);
   const history = window.current;
@@ -972,7 +983,7 @@ function leanTile(item: CatalogItem, input: HealthStatBoardInput): HealthStatTil
   const all = bodySeries(input.body, input.today, (row) => row.leanMassKg);
   const window = slicePeriod(all, input);
   if (window === 'none') return null;
-  if (window === 'gap') return emptyTile(item, input);
+  if (window === 'gap') return olderReadingTile(item, input, all, (point) => `Latest ${oneText(point.value)} kg`);
   const period = periodOf(input);
   const kg = Math.round(averageOf(window.current) * 10) / 10;
   return finish(item, {
@@ -997,7 +1008,7 @@ function stepsTile(item: CatalogItem, input: HealthStatBoardInput): HealthStatTi
   const all = series(input.samples, 'steps', input.today);
   const window = slicePeriod(all, input);
   if (window === 'none') return null;
-  if (window === 'gap') return emptyTile(item, input);
+  if (window === 'gap') return olderReadingTile(item, input, all, (point) => `Latest ${whole(point.value)} steps`);
   const period = periodOf(input);
   const total = Math.round(window.current.reduce((sum, point) => sum + point.value, 0));
   const status = period === 'day'
@@ -1056,7 +1067,7 @@ function workoutTile(item: CatalogItem, input: HealthStatBoardInput): HealthStat
   const history = series(input.samples, 'workout_minutes', input.today);
   const window = slicePeriod(history, input);
   if (window === 'none') return null;
-  if (window === 'gap') return emptyTile(item, input);
+  if (window === 'gap') return olderReadingTile(item, input, history, (point) => `Latest ${whole(point.value)} min`);
   const period = periodOf(input);
   const total = window.current.reduce((sum, point) => sum + point.value, 0);
   const bars = window.current.filter((point) => point.value > 0).map((point) => ({
@@ -1096,7 +1107,7 @@ function weeklyTile(item: CatalogItem, input: HealthStatBoardInput): HealthStatT
   const history = workouts.length > 0 ? workouts : mergeDays([strength, cardio, conditioning, other]);
   const window = slicePeriod(history, input);
   if (window === 'none') return null;
-  if (window === 'gap') return emptyTile(item, input);
+  if (window === 'gap') return olderReadingTile(item, input, history, (point) => `Latest ${whole(point.value)} min`);
   const period = periodOf(input);
   const rounded = Math.round(window.current.reduce((sum, point) => sum + point.value, 0));
   const target = scaledActivityMinutes(CMO_MODERATE_MINUTES_WEEK, period);
@@ -1153,7 +1164,7 @@ function plainSeriesTile(
   const all = series(input.samples, item.id, input.today).filter((point) => point.value > 0);
   const window = slicePeriod(all, input);
   if (window === 'none') return null;
-  if (window === 'gap') return emptyTile(item, input);
+  if (window === 'gap') return olderReadingTile(item, input, all, (point) => `Latest ${digits === 0 ? String(Math.round(point.value)) : oneText(point.value)} ${unit}`);
   const period = periodOf(input);
   const value = averageOf(window.current);
   const shown = digits === 0 ? String(Math.round(value)) : oneText(value);
@@ -1289,14 +1300,43 @@ function slicePeriod(points: readonly DayValue[], input: HealthStatBoardInput): 
   return { current, previous };
 }
 
-function emptyTile(item: CatalogItem, input: HealthStatBoardInput, night = false): HealthStatTile {
+const SHORT_MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+function compactUkDay(iso: string, today: string): string {
+  const [year, month, day] = iso.split('-').map(Number);
+  const text = `${day} ${SHORT_MONTHS[(month ?? 1) - 1] ?? ''}`;
+  if (iso.slice(0, 4) === today.slice(0, 4)) return text;
+  return `${text} ${year}`;
+}
+
+function olderThanPeriod(period: HealthStatPeriod, night: boolean): string {
+  if (period === 'day') return night ? 'older than last night' : 'older than today';
+  if (period === '30') return 'older than the last 30 days';
+  return 'older than the last 7 days';
+}
+
+function nightCountLine(count: number): string {
+  if (count === 1) return '1 night.';
+  return `Average of ${count} nights.`;
+}
+
+/** The latest stored reading, named as older than the selected period. */
+function olderReadingTile(
+  item: CatalogItem,
+  input: HealthStatBoardInput,
+  points: readonly DayValue[],
+  phrase: (point: DayValue) => string,
+  night = false,
+): HealthStatTile {
+  const latest = points[points.length - 1]!;
   const period = periodOf(input);
-  const asleep = night && period === 'day';
-  const status = noReadingsLine(period, asleep);
+  const label = olderThanPeriod(period, night && period === 'day');
+  const valueText = `${phrase(latest)} · ${compactUkDay(latest.day, input.today)}`;
+  const status = `This reading is ${label}.`;
   return finish(item, {
-    valueText: 'No readings',
+    valueText,
     unit: '',
-    period: periodLabel(period, asleep),
+    period: label,
     status,
     tone: 'info',
     trend: null,
@@ -1304,8 +1344,8 @@ function emptyTile(item: CatalogItem, input: HealthStatBoardInput, night = false
     empty: true,
     visual: { kind: 'line', points: [] },
     history: [],
-    about: status,
-    meaning: status,
+    about: `${valueText}. ${status}`,
+    meaning: `${valueText}. ${status}`,
     rangeNote: null,
     sourceName: null,
     sourceUrl: null,

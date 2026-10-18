@@ -81,8 +81,9 @@ describe('what Charioteer can see', () => {
     expect(ids).not.toContain('lean_mass');
     const recovery = board.sections.flatMap((section) => section.tiles).find((tile) => tile.id === 'heart_rate_recovery');
     expect(recovery?.empty).toBe(true);
-    expect(recovery?.valueText).toBe('No readings');
-    expect(recovery?.status).toBe('No readings in the last 7 days.');
+    expect(recovery?.valueText).toBe('Latest 22 bpm · 20 Sep');
+    expect(recovery?.period).toBe('older than the last 7 days');
+    expect(recovery?.status).toBe('This reading is older than the last 7 days.');
     const month = buildHealthStatBoard({
       today: '2026-10-17',
       period: '30',
@@ -109,6 +110,9 @@ describe('what Charioteer can see', () => {
     const screen = readFileSync('src/app/(main)/health.tsx', 'utf8');
     const layout = readFileSync('src/app/_layout.tsx', 'utf8');
     expect(sync).toContain('HEALTH_SAMPLE_DAYS');
+    expect(sync).toContain('sleepHoursByWakeDay');
+    const sleepQuery = sync.slice(sync.indexOf('HKCategoryTypeIdentifierSleepAnalysis'), sync.indexOf('HKCategoryTypeIdentifierSleepAnalysis') + 140);
+    expect(sleepQuery).toContain('fitnessFilter');
     expect(sync).toContain("queryQuantitySamples('HKQuantityTypeIdentifierHeartRateRecoveryOneMinute'");
     expect(sync).toContain("queryQuantitySamples('HKQuantityTypeIdentifierBodyFatPercentage'");
     expect(sync).toContain("queryQuantitySamples('HKQuantityTypeIdentifierLeanBodyMass'");

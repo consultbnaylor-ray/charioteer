@@ -150,7 +150,7 @@ describe('health stat tiles', () => {
 
     const sleep = tile(board, 'sleep_hours');
     expect(sleep.unit).toBe('h');
-    expect(sleep.status).toBe('Within 7 to 9 hours');
+    expect(sleep.status).toBe('Within 7 to 9 hours. Average of 2 nights.');
     if (sleep.visual.kind === 'zone') {
       expect(sleep.visual.zoneLow).toBe(7);
       expect(sleep.visual.zoneHigh).toBe(9);
@@ -637,10 +637,10 @@ describe('health stat tiles', () => {
     }));
     const quietSteps = tile(earlier, 'steps');
     expect(quietSteps.empty).toBe(true);
-    expect(quietSteps.valueText).toBe('No readings');
+    expect(quietSteps.valueText).toBe('Latest 4,200 steps · 16 Oct');
     expect(quietSteps.unit).toBe('');
-    expect(quietSteps.period).toBe(PERIOD_TODAY);
-    expect(quietSteps.status).toBe('No readings today.');
+    expect(quietSteps.period).toBe('older than today');
+    expect(quietSteps.status).toBe('This reading is older than today.');
     expect(quietSteps.hasGuideline).toBe(false);
     expect(earlier.missing).not.toContain('Steps');
 
@@ -677,6 +677,7 @@ describe('health stat tiles', () => {
     const day = buildHealthStatBoard(alex({ period: 'day' }));
     expect(tile(day, 'sleep_hours').valueText).toBe('7.4');
     expect(tile(day, 'sleep_hours').period).toBe(PERIOD_LAST_NIGHT);
+    expect(tile(day, 'sleep_hours').status).toBe('Within 7 to 9 hours. 1 night.');
     expect(tile(day, 'steps').valueText).toBe('9,100');
     expect(tile(day, 'steps').period).toBe(PERIOD_TODAY);
     expect(tile(day, 'steps').status).toBe('There is no daily step target.');
@@ -696,8 +697,9 @@ describe('health stat tiles', () => {
     expect(tile(day, 'vo2_max').trend).toBe('No readings today.');
     expect(tile(day, 'vo2_max').history).toEqual([]);
     expect(tile(day, 'walking_heart_rate').empty).toBe(true);
-    expect(tile(day, 'walking_heart_rate').valueText).toBe('No readings');
-    expect(tile(day, 'walking_heart_rate').status).toBe('No readings today.');
+    expect(tile(day, 'walking_heart_rate').valueText).toBe('Latest 96 bpm · 15 Oct');
+    expect(tile(day, 'walking_heart_rate').period).toBe('older than today');
+    expect(tile(day, 'walking_heart_rate').status).toBe('This reading is older than today.');
     expect(day.missing).not.toContain('Walking heart rate');
     const daySleep = tile(day, 'sleep_hours');
     expect(daySleep.visual.kind).toBe('zone');
@@ -757,5 +759,60 @@ describe('health stat tiles', () => {
       workoutBuckets: { '73': 'strength' },
     }));
     expect(tile(recategorised, 'mix').weeklyLine).toBe('About 215 min a week.');
+  });
+
+  it('averages the nights in the period, and names an older night when the period is empty', () => {
+    const recent = buildHealthStatBoard(input({
+      period: '7',
+      samples: [
+        { kind: 'sleep_hours', value: 8, recordedOn: '2026-10-15' },
+        { kind: 'sleep_hours', value: 6, recordedOn: '2026-10-16' },
+        { kind: 'sleep_hours', value: 7, recordedOn: '2026-10-17' },
+      ],
+    }));
+    const averaged = tile(recent, 'sleep_hours');
+    expect(averaged.valueText).toBe('7');
+    expect(averaged.unit).toBe('h');
+    expect(averaged.period).toBe(PERIOD_LAST_7);
+    expect(averaged.status).toBe('Within 7 to 9 hours. Average of 3 nights.');
+    expect(averaged.meaning).toContain('Average of 3 nights.');
+    expect(averaged.empty).toBe(false);
+
+    const stale = buildHealthStatBoard(input({
+      today: '2026-10-17',
+      period: '7',
+      samples: [
+        { kind: 'sleep_hours', value: 5.8, recordedOn: '2026-09-25' },
+        { kind: 'resting_heart_rate', value: 58, recordedOn: '2026-09-25' },
+        { kind: 'hrv_sdnn', value: 41, recordedOn: '2026-09-20' },
+        { kind: 'weight_kg', value: 76.4, recordedOn: '2026-09-25' },
+      ],
+      body: [{ recordedOn: '2026-09-25', bodyFatPct: 19.5, leanMassKg: null, waistCm: null }],
+    }));
+    const sleep = tile(stale, 'sleep_hours');
+    expect(sleep.valueText).toBe('Latest night 5h 48m · 25 Sep');
+    expect(sleep.period).toBe('older than the last 7 days');
+    expect(sleep.status).toBe('This reading is older than the last 7 days.');
+    expect(sleep.meaning).toContain('Latest night 5h 48m · 25 Sep');
+    expect(sleep.status).not.toContain('No readings');
+    expect(tile(stale, 'resting_heart_rate').valueText).toBe('Latest 58 bpm · 25 Sep');
+    expect(tile(stale, 'hrv_sdnn').valueText).toBe('Latest 41 ms · 20 Sep');
+    expect(tile(stale, 'weight_kg').valueText).toBe('Latest 76.4 kg · 25 Sep');
+    expect(tile(stale, 'body_fat').valueText).toBe('Latest 19.5% · 25 Sep');
+    expect(tile(stale, 'body_fat').period).toBe('older than the last 7 days');
+
+    const lastNight = buildHealthStatBoard(input({
+      period: 'day',
+      samples: [{ kind: 'sleep_hours', value: 5.8, recordedOn: '2026-09-25' }],
+    }));
+    expect(tile(lastNight, 'sleep_hours').valueText).toBe('Latest night 5h 48m · 25 Sep');
+    expect(tile(lastNight, 'sleep_hours').period).toBe('older than last night');
+
+    const month = buildHealthStatBoard(input({
+      period: '30',
+      samples: [{ kind: 'sleep_hours', value: 5.8, recordedOn: '2026-09-01' }],
+    }));
+    expect(tile(month, 'sleep_hours').period).toBe('older than the last 30 days');
+    expect(tile(month, 'sleep_hours').valueText).toBe('Latest night 5h 48m · 1 Sep');
   });
 });
