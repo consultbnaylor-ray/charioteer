@@ -190,7 +190,9 @@ describe('weight entry', () => {
     const card = readFileSync('src/ui/WeightWaistPanel.tsx', 'utf8');
     expect(card).toContain('variant="label">Weight and waist');
     expect(card).toContain('<WeightFields');
-    expect(card).toContain('weightWaistWrite(draft, isoDay(new Date()))');
+    expect(card).toContain('const current = draftRef.current');
+    expect(card).toContain('weightWaistWrite(current, isoDay(new Date()))');
+    expect(card).toContain('draftRef.current = next');
     expect(card).toContain('repo.saveHealth([planned.sample])');
     expect(card).toContain('repo.saveBodyComposition(planned.waist)');
     expect(card).toContain('label="Save"');

@@ -1,5 +1,5 @@
 import { useRouter } from 'expo-router';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Pressable, View } from 'react-native';
 
 import { useRepository, useSnapshot } from '@/data';
@@ -34,6 +34,8 @@ export function WeightWaistPanel() {
   const theme = useAppTheme();
   const consent = Boolean(snap.profile?.consentHealth);
   const [draft, setDraft] = useState<WeightReadingDraft | null>(null);
+  const draftRef = useRef<WeightReadingDraft | null>(null);
+  const savingRef = useRef(false);
   const [resetToken, setResetToken] = useState(0);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -50,13 +52,15 @@ export function WeightWaistPanel() {
   }, [saved]);
 
   const report = useCallback((next: WeightReadingDraft | null) => {
+    draftRef.current = next;
     setDraft(next);
     if (next) setSaved(false);
   }, []);
 
   function save() {
-    if (!consent || pending || !draft) return;
-    const planned = weightWaistWrite(draft, isoDay(new Date()));
+    const current = draftRef.current;
+    if (!consent || pending || savingRef.current || !current) return;
+    const planned = weightWaistWrite(current, isoDay(new Date()));
     if (!planned.ok) {
       setError(planned.error);
       setSaved(false);
@@ -65,6 +69,8 @@ export function WeightWaistPanel() {
     if (!planned.sample && !planned.waist) return;
     setError(null);
     setPending(true);
+    savingRef.current = true;
+    draftRef.current = null;
     void (async () => {
       try {
         if (planned.sample) await repo.saveHealth([planned.sample]);
@@ -74,9 +80,12 @@ export function WeightWaistPanel() {
         setSaved(true);
         playSavedHaptic();
       } catch (err: unknown) {
+        draftRef.current = current;
+        setDraft(current);
         setSaved(false);
         setError(shownError(err, 'Could not save.'));
       } finally {
+        savingRef.current = false;
         setPending(false);
       }
     })();
