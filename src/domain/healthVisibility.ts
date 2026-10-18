@@ -14,9 +14,10 @@ export const HEALTH_SAMPLE_DAYS = 56;
 export const HEALTH_VISIBILITY_TITLE = 'What Charioteer can see';
 
 export const HEALTH_VISIBILITY_NOTE =
-  'iOS does not tell an app whether a read was allowed. This list says whether Charioteer has asked, and whether a sample was found in the last 8 weeks.';
+  'iOS does not tell an app whether a read was allowed. Each line says whether Charioteer has asked, and whether a sample was found in the last 8 weeks. No data found means no sample came back.';
 
 export const HEALTH_ASK_AGAIN = 'Ask Health again';
+export const HEALTH_CHECK_AGAIN = 'Check again';
 
 const TITLES: Record<(typeof APPLE_HEALTH_READ_TYPES)[number], string> = {
   HKQuantityTypeIdentifierStepCount: 'Steps',
@@ -67,9 +68,10 @@ export function healthReadTitle(type: string): string {
 }
 
 export function healthVisibilityLine(row: Pick<HealthVisibilityRow, 'title' | 'asked' | 'days'>): string {
-  const found = row.days > 0 ? 'yes' : 'no';
+  const asked = `asked: ${row.asked}`;
+  if (row.days <= 0) return `${row.title}: ${asked}; no data found in the last 8 weeks`;
   const days = row.days === 1 ? '1 day' : `${row.days} days`;
-  return `${row.title}: asked: ${row.asked}; data found in last 8 weeks: ${found}, ${days}`;
+  return `${row.title}: ${asked}; data found in the last 8 weeks: ${days}`;
 }
 
 export function unaskedHealthTypes(rows: readonly Pick<HealthVisibilityRow, 'type' | 'asked'>[]): string[] {

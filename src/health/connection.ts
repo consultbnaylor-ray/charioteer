@@ -29,7 +29,7 @@ export const APPLE_HEALTH_INTRO =
 export const APPLE_HEALTH_WEB = 'Apple Health connects in the iPhone app. Here you can log readings yourself.';
 
 export const APPLE_HEALTH_DENIED =
-  'Apple Health access is off. Turn it on in Settings > Health > Data Access & Devices > Charioteer.';
+  'Apple Health did not finish the permission request. Turn categories on in the Health app: profile picture (top right) > Privacy > Apps > Charioteer. On iOS versions that have it: Settings > Health > Data Access & Devices > Charioteer.';
 
 export const APPLE_HEALTH_CONSENT =
   'Health data is off. Turn it on in Privacy & consent if you want steps, sleep, and the other readings kept here.';

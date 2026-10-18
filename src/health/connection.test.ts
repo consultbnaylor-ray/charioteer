@@ -39,9 +39,9 @@ describe('Apple Health card', () => {
     });
     expect(connectedAppleHealthLine(null)).toBe('Connected to Apple Health');
     expect(healthCardState({ consent: true, ios: true, access: 'denied', syncedAt: null }).kind).toBe('denied');
-    expect(APPLE_HEALTH_DENIED).toBe(
-      'Apple Health access is off. Turn it on in Settings > Health > Data Access & Devices > Charioteer.',
-    );
+    expect(APPLE_HEALTH_DENIED).toContain('profile picture (top right) > Privacy > Apps > Charioteer');
+    expect(APPLE_HEALTH_DENIED).toContain('Settings > Health > Data Access & Devices > Charioteer');
+    expect(APPLE_HEALTH_DENIED).not.toMatch(/access is off|switched off/i);
     expect(isHealthAccessDenied('Apple Health access was not granted.')).toBe(true);
     expect(isHealthAccessDenied('Apple Health is not available on this device.')).toBe(false);
   });

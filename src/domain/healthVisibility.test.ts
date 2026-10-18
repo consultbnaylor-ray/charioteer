@@ -9,6 +9,7 @@ import {
   healthReadTitle,
   healthVisibilityLine,
   HEALTH_ASK_AGAIN,
+  HEALTH_CHECK_AGAIN,
   HEALTH_SAMPLE_DAYS,
   HEALTH_VISIBILITY_NOTE,
   HEALTH_VISIBILITY_TITLE,
@@ -38,15 +39,18 @@ describe('what Charioteer can see', () => {
 
   it('says asked and days, and does not claim a read was allowed', () => {
     expect(healthVisibilityLine({ title: 'Heart rate recovery', asked: 'yes', days: 0 })).toBe(
-      'Heart rate recovery: asked: yes; data found in last 8 weeks: no, 0 days',
+      'Heart rate recovery: asked: yes; no data found in the last 8 weeks',
     );
     expect(healthVisibilityLine({ title: 'Body fat', asked: 'no', days: 1 })).toBe(
-      'Body fat: asked: no; data found in last 8 weeks: yes, 1 day',
+      'Body fat: asked: no; data found in the last 8 weeks: 1 day',
     );
     expect(healthVisibilityLine({ title: 'Lean mass', asked: 'yes', days: 3 })).toBe(
-      'Lean mass: asked: yes; data found in last 8 weeks: yes, 3 days',
+      'Lean mass: asked: yes; data found in the last 8 weeks: 3 days',
     );
+    expect(healthVisibilityLine({ title: 'Workouts', asked: 'yes', days: 0 })).not.toMatch(/switched off|access is off/i);
     expect(HEALTH_VISIBILITY_NOTE).toContain('does not tell an app whether a read was allowed');
+    expect(HEALTH_VISIBILITY_NOTE).toContain('No data found');
+    expect(HEALTH_VISIBILITY_NOTE).not.toMatch(/switched off/i);
     expect(HEALTH_VISIBILITY_TITLE).toBe('What Charioteer can see');
     expect(HEALTH_VISIBILITY_NOTE).not.toMatch(/Denied or unknown/);
     expect(unaskedHealthTypes([
@@ -125,8 +129,12 @@ describe('what Charioteer can see', () => {
     expect(panel).toContain('useState(false)');
     expect(panel).toContain('HEALTH_VISIBILITY_TITLE');
     expect(panel).toContain('label={HEALTH_ASK_AGAIN}');
+    expect(panel).toContain('label={HEALTH_CHECK_AGAIN}');
+    expect(panel).toContain('onCheck');
     expect(HEALTH_ASK_AGAIN).toBe('Ask Health again');
+    expect(HEALTH_CHECK_AGAIN).toBe('Check again');
     expect(screen).toContain('<HealthVisibility');
+    expect(screen).toContain('onCheck={loadVisibility}');
     expect(screen).toContain('catchUpAppleHealthReads');
     expect(layout).toContain('catchUpAppleHealthReads');
   });

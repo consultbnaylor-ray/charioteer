@@ -49,9 +49,19 @@ import {
 } from '@/domain/nutrition';
 import { STATS_SIGNAL, type StatsTone } from '@/domain/statsOverview';
 
-export const HEALTH_STATS_MISSING = 'Not available yet - turn on in Apple Health';
-export const HEALTH_TURN_ON = 'Turn on in Apple Health';
-export const HEALTH_SHARING_STEPS = 'Health > Sharing > Apps > Charioteer > turn on';
+export const HEALTH_STATS_MISSING = 'No data found yet';
+export const HEALTH_TURN_ON = 'Ask Apple Health';
+/** iOS shows the sheet once per type. A later tap cannot reopen it. */
+export const HEALTH_SHEET_LIMIT =
+  'Apple Health shows its permission sheet only for categories it has not asked about yet. After that, the sheet cannot be opened again.';
+export const HEALTH_PRIVACY_STEPS =
+  'Health app > profile picture (top right) > Privacy > Apps > Charioteer > turn on those categories.';
+export const HEALTH_SETTINGS_STEPS =
+  'On iOS versions that have it: Settings > Health > Data Access & Devices > Charioteer.';
+export const HEALTH_SHEET_WONT_SHOW =
+  'The permission sheet will not appear. The Health app is open. Follow the steps above.';
+export const HEALTH_SHEET_ASKED =
+  'Apple Health was asked again. A category it has not seen yet uses the permission sheet.';
 
 const ADULT_HIDDEN = 'These adult ranges are not shown under 18. Nothing here is guessed.';
 const NO_BAND = 'There is no guideline band here.';
@@ -177,8 +187,13 @@ export function missingHealthAction(status: HealthAuthRequest): 'request' | 'ope
   return status === 'unnecessary' ? 'open' : 'request';
 }
 
+/** Ask for the sheet when iOS may still show it. Otherwise explain the real path. */
+export function healthTurnOnPlan(status: HealthAuthRequest): 'sheet' | 'explain' {
+  return missingHealthAction(status) === 'request' ? 'sheet' : 'explain';
+}
+
 export function healthSharingSteps(titles: readonly string[]): string {
-  return `${HEALTH_SHARING_STEPS} ${titles.join(', ')}.`;
+  return `${HEALTH_SHEET_LIMIT} For ${titles.join(', ')}: ${HEALTH_PRIVACY_STEPS} ${HEALTH_SETTINGS_STEPS}`;
 }
 
 export function healthTypesForGaps(gaps: readonly Pick<HealthStatGap, 'healthType'>[]): string[] {

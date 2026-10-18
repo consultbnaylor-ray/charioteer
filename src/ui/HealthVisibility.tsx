@@ -5,6 +5,7 @@ import {
   healthVisibilityLine,
   unaskedHealthTypes,
   HEALTH_ASK_AGAIN,
+  HEALTH_CHECK_AGAIN,
   HEALTH_VISIBILITY_NOTE,
   HEALTH_VISIBILITY_TITLE,
   type HealthVisibilityReport,
@@ -18,11 +19,13 @@ export function HealthVisibility({
   report,
   pending,
   onOpen,
+  onCheck,
   onAsk,
 }: {
   report: HealthVisibilityReport | null;
   pending: boolean;
   onOpen: () => void;
+  onCheck: () => void;
   onAsk: (types: readonly string[]) => Promise<AppleHealthTurnOn | 'consent'>;
 }) {
   const theme = useAppTheme();
@@ -58,6 +61,12 @@ export function HealthVisibility({
           {report?.kind === 'ready' ? report.rows.map((row) => (
             <T key={row.type}>{healthVisibilityLine(row)}</T>
           )) : null}
+          <Button
+            label={HEALTH_CHECK_AGAIN}
+            pending={pending}
+            pendingLabel="Checking..."
+            onPress={onCheck}
+          />
           {unasked.length ? (
             <Button
               label={HEALTH_ASK_AGAIN}

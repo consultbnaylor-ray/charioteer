@@ -140,6 +140,7 @@ export default function Health() {
     }
     const result: AppleHealthTurnOn = await turnOnAppleHealthReads(types);
     if (result === 'prompted') await pullFromHealth();
+    loadVisibility();
     return result;
   }
 
@@ -324,7 +325,7 @@ export default function Health() {
         onSettings={() => void openAppSettings()}
         onPrivacy={() => router.push('/privacy' as never)}
       />
-      <HealthVisibility report={visibility} pending={visibilityPending} onOpen={loadVisibility} onAsk={askUnasked} />
+      <HealthVisibility report={visibility} pending={visibilityPending} onOpen={loadVisibility} onCheck={loadVisibility} onAsk={askUnasked} />
       <HealthStatBoard
         today={isoDay(new Date())}
         samples={snap.health}

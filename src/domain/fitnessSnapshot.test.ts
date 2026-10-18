@@ -165,7 +165,10 @@ describe('fitness snapshot', () => {
     expect(empty.cardio).toBeNull();
     expect(empty.recommendations).toEqual([]);
     const denied = buildFitnessSnapshot(input({ health: [], permission: 'denied' }));
+    expect(denied.missing).toContain('No data found from Apple Health');
+    expect(denied.missing).toContain('profile picture (top right) > Privacy > Apps > Charioteer');
     expect(denied.missing).toContain('Settings > Health > Data Access & Devices > Charioteer');
+    expect(denied.missing).not.toMatch(/access is off|switched off/i);
   });
 
   it('sorts workout types into strength, cardio, conditioning, and other', () => {

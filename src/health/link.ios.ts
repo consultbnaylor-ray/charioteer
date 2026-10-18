@@ -6,7 +6,7 @@ import {
 } from '@kingstinct/react-native-healthkit';
 import { Linking } from 'react-native';
 
-import { missingHealthAction } from '@/domain/healthStatTiles';
+import { healthTurnOnPlan } from '@/domain/healthStatTiles';
 import { healthReadSetChanged } from '@/domain/healthVisibility';
 import { APPLE_HEALTH_READ_TYPES, type AppleHealthAccess, type AppleHealthTurnOn, isHealthAccessDenied } from '@/health/connection';
 import { loadHealthReadSet, saveHealthReadSet } from '@/health/readSet';
@@ -41,18 +41,21 @@ export async function connectAppleHealth(): Promise<AppleHealthAccess> {
   }
 }
 
-/** Health app first. The app's own Settings page if that URL cannot be opened. */
+/**
+ * Health app first. iOS has no link to Privacy > Apps > Charioteer.
+ * The app's own Settings page is the fallback, where Health can appear.
+ */
 export async function openHealthApp(): Promise<void> {
   try {
     const supported = await Linking.canOpenURL('x-apple-health://');
-    if (!supported) {
-      await Linking.openSettings();
+    if (supported) {
+      await Linking.openURL('x-apple-health://');
       return;
     }
-    await Linking.openURL('x-apple-health://');
   } catch {
-    await Linking.openSettings();
+    // The Health URL failed. Settings is the remaining way out.
   }
+  await Linking.openSettings();
 }
 
 export async function openAppSettings(): Promise<void> {
@@ -60,37 +63,37 @@ export async function openAppSettings(): Promise<void> {
 }
 
 /**
- * Asks HealthKit for the missing read types when iOS will still show the sheet.
- * A recorded decision does not show again, so the Health app is opened instead.
+ * Asks again for every read type, including ones added after the first sheet.
+ * The status is read first: after requestAuthorization it becomes unnecessary
+ * even when the sheet just appeared. The request still runs before the Health
+ * app is opened. A recorded decision does not show the sheet again.
  */
-export async function turnOnAppleHealthReads(types: readonly string[]): Promise<AppleHealthTurnOn> {
+export async function turnOnAppleHealthReads(_types: readonly string[]): Promise<AppleHealthTurnOn> {
   if (!isHealthDataAvailable()) return 'unavailable';
-  const known = new Set<string>(APPLE_HEALTH_READ_TYPES);
-  const toRead = types.filter((type): type is (typeof APPLE_HEALTH_READ_TYPES)[number] => known.has(type));
   let status = AuthorizationRequestStatus.unknown;
-  if (toRead.length) {
-    try {
-      status = await getRequestStatusForAuthorization({ toRead });
-    } catch {
-      status = AuthorizationRequestStatus.unknown;
-    }
+  try {
+    status = await getRequestStatusForAuthorization({ toRead });
+  } catch {
+    status = AuthorizationRequestStatus.unknown;
   }
   const name = status === AuthorizationRequestStatus.unnecessary
     ? 'unnecessary'
     : status === AuthorizationRequestStatus.shouldRequest
       ? 'shouldRequest'
       : 'unknown';
-  if (toRead.length && missingHealthAction(name) === 'request') {
-    try {
-      const allowed = await requestAuthorization({ toRead });
-      if (allowed) return 'prompted';
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      if (!isHealthAccessDenied(message)) throw error;
-    }
+  const plan = healthTurnOnPlan(name);
+  try {
+    await requestAuthorization({ toRead });
+    await saveHealthReadSet(APPLE_HEALTH_READ_TYPES);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (!isHealthAccessDenied(message)) throw error;
   }
-  await openHealthApp();
-  return 'opened';
+  if (plan === 'explain') {
+    await openHealthApp();
+    return 'opened';
+  }
+  return 'prompted';
 }
 
 /**

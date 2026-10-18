@@ -10,6 +10,8 @@ import {
   detailShowsStatusAgain,
   healthSharingSteps,
   healthTypesForGaps,
+  HEALTH_SHEET_ASKED,
+  HEALTH_SHEET_WONT_SHOW,
   HEALTH_TURN_ON,
   parseBodyGap,
   type HealthStatBoardInput,
@@ -84,7 +86,8 @@ function MissingReads({
       if (result === 'web') setFollowUp(APPLE_HEALTH_WEB);
       else if (result === 'unavailable') setFollowUp(APPLE_HEALTH_UNAVAILABLE);
       else if (result === 'consent') setFollowUp(APPLE_HEALTH_CONSENT);
-      else if (result === 'opened') setFollowUp('If the switches are not on the screen that opened, follow the steps below.');
+      else if (result === 'opened') setFollowUp(HEALTH_SHEET_WONT_SHOW);
+      else if (result === 'prompted') setFollowUp(HEALTH_SHEET_ASKED);
     } catch (err: unknown) {
       setFollowUp(shownError(err, 'Could not open Apple Health.'));
     } finally {
@@ -96,7 +99,7 @@ function MissingReads({
     <View style={{ gap: 8 }}>
       <T variant="muted">{line}</T>
       {healthGaps.length ? (
-        <Button label={HEALTH_TURN_ON} pending={pending} pendingLabel="Opening..." onPress={() => void turnOn()} />
+        <Button label={HEALTH_TURN_ON} pending={pending} pendingLabel="Asking..." onPress={() => void turnOn()} />
       ) : null}
       {steps ? <T>{steps}</T> : null}
       {followUp ? <T>{followUp}</T> : null}

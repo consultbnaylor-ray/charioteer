@@ -7,7 +7,13 @@ import {
   detailShowsStatusAgain,
   gapForStat,
   healthSharingSteps,
+  healthTurnOnPlan,
   healthTypesForGaps,
+  HEALTH_PRIVACY_STEPS,
+  HEALTH_SETTINGS_STEPS,
+  HEALTH_SHEET_ASKED,
+  HEALTH_SHEET_LIMIT,
+  HEALTH_SHEET_WONT_SHOW,
   HEALTH_STAT_CATALOGUE,
   HEALTH_STAT_SECTIONS,
   HEALTH_STATS_MISSING,
@@ -484,6 +490,10 @@ describe('health stat tiles', () => {
     expect(share).toContain('<ShareOnProfile');
     expect(readFileSync('src/domain/healthStatTiles.ts', 'utf8')).toContain(HEALTH_STATS_MISSING);
     expect(board).toContain('label={HEALTH_TURN_ON}');
+    expect(board).toContain('pendingLabel="Asking..."');
+    expect(board).toContain('HEALTH_SHEET_WONT_SHOW');
+    expect(board).toContain('HEALTH_SHEET_ASKED');
+    expect(board).not.toContain('Sharing > Apps');
     expect(readFileSync('src/domain/healthStatTiles.ts', 'utf8')).toContain(HEALTH_TURN_ON);
     expect(board).toContain('healthSharingSteps');
     expect(board).toContain('Save body reading');
@@ -492,11 +502,18 @@ describe('health stat tiles', () => {
     expect(screen).toContain('turnOnAppleHealthReads');
     expect(screen).toContain('onSaveBody={saveBodyGap}');
     const ios = readFileSync('src/health/link.ios.ts', 'utf8');
+    const turnOn = ios.slice(ios.indexOf('export async function turnOnAppleHealthReads'), ios.indexOf('export async function ensureCurrentAppleHealthReads'));
     expect(ios).toContain('turnOnAppleHealthReads');
-    expect(ios).toContain('getRequestStatusForAuthorization({ toRead })');
-    expect(ios).toContain('missingHealthAction');
-    expect(ios).toContain('requestAuthorization({ toRead })');
-    expect(ios).toContain('openHealthApp()');
+    expect(turnOn).toContain('getRequestStatusForAuthorization({ toRead })');
+    expect(turnOn).toContain('healthTurnOnPlan');
+    expect(turnOn).toContain('requestAuthorization({ toRead })');
+    expect(turnOn).toContain("plan === 'explain'");
+    expect(turnOn).toContain('openHealthApp()');
+    expect(turnOn.indexOf('requestAuthorization({ toRead })')).toBeLessThan(turnOn.indexOf('openHealthApp()'));
+    expect(turnOn).not.toContain('types.filter');
+    expect(ios).toContain('const toRead = [...APPLE_HEALTH_READ_TYPES]');
+    const screenTurn = screen.slice(screen.indexOf('async function turnOnMissing'), screen.indexOf('async function askUnasked'));
+    expect(screenTurn).toContain('loadVisibility()');
   });
 
   it('explains a missing boxer reading and offers body fat and lean mass in the app', () => {
@@ -513,9 +530,15 @@ describe('health stat tiles', () => {
     expect(lean?.source).toBe('Lean mass comes from a smart scale or manual entry in Health.');
     expect(lean?.manual).toBe(true);
     expect(lean?.healthType).toBe('HKQuantityTypeIdentifierLeanBodyMass');
-    expect(healthSharingSteps(['Heart rate recovery', 'Body fat', 'Lean mass'])).toBe(
-      'Health > Sharing > Apps > Charioteer > turn on Heart rate recovery, Body fat, Lean mass.',
-    );
+    const steps = healthSharingSteps(['Heart rate recovery', 'Body fat', 'Lean mass']);
+    expect(steps).toContain('Heart rate recovery, Body fat, Lean mass');
+    expect(steps).toContain(HEALTH_SHEET_LIMIT);
+    expect(steps).toContain(HEALTH_PRIVACY_STEPS);
+    expect(steps).toContain(HEALTH_SETTINGS_STEPS);
+    expect(steps).toContain('Health app > profile picture (top right) > Privacy > Apps > Charioteer');
+    expect(steps).toContain('Settings > Health > Data Access & Devices > Charioteer');
+    expect(steps).not.toContain('Sharing > Apps');
+    expect(steps).not.toMatch(/switched off/i);
     expect(healthTypesForGaps([recovery!, fat!, lean!])).toEqual([
       'HKQuantityTypeIdentifierHeartRateRecoveryOneMinute',
       'HKQuantityTypeIdentifierBodyFatPercentage',
@@ -524,6 +547,24 @@ describe('health stat tiles', () => {
     expect(missingHealthAction('shouldRequest')).toBe('request');
     expect(missingHealthAction('unknown')).toBe('request');
     expect(missingHealthAction('unnecessary')).toBe('open');
+    expect(healthTurnOnPlan('shouldRequest')).toBe('sheet');
+    expect(healthTurnOnPlan('unknown')).toBe('sheet');
+    expect(healthTurnOnPlan('unnecessary')).toBe('explain');
+    expect(HEALTH_STATS_MISSING).toBe('No data found yet');
+    expect(HEALTH_TURN_ON).toBe('Ask Apple Health');
+    expect(HEALTH_SHEET_WONT_SHOW).toContain('will not appear');
+    expect(HEALTH_SHEET_ASKED).toContain('asked again');
+    for (const item of HEALTH_STAT_CATALOGUE) {
+      const gap = gapForStat(item.id, item.title);
+      if (gap.healthType) expect(APPLE_HEALTH_READ_TYPES).toContain(gap.healthType);
+    }
+    expect(APPLE_HEALTH_READ_TYPES).toEqual(expect.arrayContaining([
+      'HKQuantityTypeIdentifierHeartRateRecoveryOneMinute',
+      'HKQuantityTypeIdentifierBodyFatPercentage',
+      'HKQuantityTypeIdentifierLeanBodyMass',
+      'HKQuantityTypeIdentifierVO2Max',
+      'HKWorkoutTypeIdentifier',
+    ]));
     expect(parseBodyGap('15', '63')).toEqual({ ok: true, bodyFatPct: 15, leanMassKg: 63 });
     expect(parseBodyGap('', '63')).toEqual({ ok: true, bodyFatPct: null, leanMassKg: 63 });
     expect(parseBodyGap('1', '')).toEqual({ ok: false, error: 'Body fat sits between 2% and 70%.' });

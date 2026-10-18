@@ -862,11 +862,11 @@ function missingLine(input: {
   hasLevel: boolean;
 }): string | null {
   if (input.permission === 'denied' && !input.hasLevel && !input.hasWork) {
-    return 'Apple Health access is off. Turn on Workouts, Heart, and Cardio Fitness in Settings > Health > Data Access & Devices > Charioteer.';
+    return 'No data found from Apple Health. Turn on Workouts, Heart, and Cardio Fitness in the Health app: profile picture (top right) > Privacy > Apps > Charioteer. On iOS versions that have it: Settings > Health > Data Access & Devices > Charioteer.';
   }
   const parts: string[] = [];
   if (input.permission === 'denied') {
-    parts.push('Apple Health access is off, so new readings will not arrive.');
+    parts.push('No data found from Apple Health, so new readings will not arrive.');
   }
   if (!input.hasVo2) parts.push('Cardio fitness appears when the watch has a VO2 max reading.');
   if (input.hasVo2 && !input.hasAgeSex) parts.push('Age and sex on Nutrition turn that reading into a level.');
