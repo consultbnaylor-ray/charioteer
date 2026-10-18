@@ -15,7 +15,7 @@ import { CHECK_CONNECTION, EDGE_STATE_LABEL, SIGN_IN_AGAIN, isThumosFallback, ty
 import { CRAVING_LINE, inferThumosMode, SCRIPTED_COACH_REPLY, THUMOS_INTRO, THUMOS_UNREACHABLE, OPENING_LINE, type ThumosMode } from '@/domain/thumos';
 import { THUMOS_LINE_CAP, groupThumosByDay, messageNeedsMore, visibleThumos } from '@/domain/thumosThread';
 import { formatClock, urgeRemainingSeconds } from '@/domain/urge';
-import { ensureUrge, restartUrge } from '@/features/urgeSession';
+import { clearUrge, restartUrge } from '@/features/urgeSession';
 import { VOICE_COPY } from '@/domain/voice';
 import { VOICE_ENABLED } from '@/domain/voiceFlag';
 import { createVoiceRuntime, voiceStatusLabel, type VoiceRuntime } from '@/domain/voiceSession';
@@ -56,6 +56,12 @@ export default function Thumos() {
   useFocusEffect(useCallback(() => {
     setThreadVisit((current) => current + 1);
     setKeptSend(null);
+    setUrgeStart(null);
+    clearUrge();
+    return () => {
+      setUrgeStart(null);
+      clearUrge();
+    };
   }, []));
 
   useEffect(() => {
@@ -78,26 +84,26 @@ export default function Thumos() {
   }, [profile?.id]);
 
   const latest = snap.checkIns[0];
+  // Draft text is not a message. Craving words are read only after Send.
   const mode: ThumosMode = inferThumosMode({
     sos,
     hasHistory: snap.thumos.length > 0,
     latestCraving: latest?.craving,
     latestMood: latest?.mood,
-    userText: draft,
   });
   const showSupport = sos || supportLatch || mode === 'support';
 
   useEffect(() => () => {
     voiceTicket.current += 1;
     void callRef.current?.end();
+    clearUrge();
   }, []);
 
   useEffect(() => {
-    if (!showSupport) return;
-    setUrgeStart((current) => current ?? ensureUrge());
+    if (urgeStart == null) return;
     const timer = setInterval(() => setNow(Date.now()), 250);
     return () => clearInterval(timer);
-  }, [showSupport]);
+  }, [urgeStart]);
 
   if (!profile) return null;
   const thread = snap.thumos.filter((message) => !(message.role === 'guide' && message.content === CRAVING_LINE));
@@ -117,14 +123,21 @@ export default function Thumos() {
     lastUser?.content ?? '',
   ]);
   const notices = pinnedSafetyNotices(safety);
-  const remaining = urgeStart == null ? 0 : urgeRemainingSeconds(urgeStart, now);
+  const remaining = urgeStart == null ? 600 : urgeRemainingSeconds(urgeStart, now);
   const fact = ALCOHOL_FACTS[0];
 
   async function send(text = draft) {
     const trimmed = text.trim();
     if (!trimmed) return;
     setKeptSend(trimmed);
-    const support = sos || mode === 'support' || inferThumosMode({ sos, hasHistory: true, userText: trimmed }) === 'support';
+    const sentMode = inferThumosMode({
+      sos,
+      hasHistory: true,
+      latestCraving: latest?.craving,
+      latestMood: latest?.mood,
+      userText: trimmed,
+    });
+    const support = sentMode === 'support';
     setSupportLatch(support);
     setPending(true);
     setSendState('sending');
@@ -136,7 +149,7 @@ export default function Thumos() {
     try {
       await repo.sendThumos(
         trimmed,
-        support ? 'support' : mode === 'opening' ? 'steady' : mode,
+        support ? 'support' : sentMode === 'opening' ? 'steady' : sentMode,
         (next) => setLiveReply(next),
         (state) => setSendState(state),
       );
@@ -241,8 +254,12 @@ export default function Thumos() {
           <T variant="label">Urge timer</T>
           <T variant="hero">{formatClock(remaining)}</T>
           <T>Cravings rise, peak, and pass. Many people find the sharpest part eases within about 20 to 30 minutes. That is a guide, not a measurement.</T>
-          {remaining === 0 ? <T>The ten minutes are up. How do you feel now?</T> : null}
-          <Button label="Start the ten minutes again" tone="quiet" onPress={() => { setUrgeStart(restartUrge()); setNow(Date.now()); }} />
+          {urgeStart != null && remaining === 0 ? <T>The ten minutes are up. How do you feel now?</T> : null}
+          <Button
+            label={urgeStart == null ? 'Start ten minutes' : 'Start the ten minutes again'}
+            tone="quiet"
+            onPress={() => { setUrgeStart(restartUrge()); setNow(Date.now()); }}
+          />
           <Button label="Breathe" onPress={() => router.push('/breathe?exercise=sigh' as never)} />
           <T variant="label">What happens if you drink?</T>
           <T>Ask it plainly: what do you think will happen, and is it worth it? A walk, jog, or run can carry you through the peak if you are able.</T>
