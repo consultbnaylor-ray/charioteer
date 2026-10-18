@@ -145,8 +145,10 @@ describe('private message push', () => {
     const register = readFileSync('src/notifications/register.ts', 'utf8');
     const prompt = readFileSync('src/ui/MessageNotificationPrompt.tsx', 'utf8');
     expect(layout).toContain('retryMessageNotifications');
+    expect(layout).toContain('cancelScheduledNotifications()');
     expect(layout).not.toContain('offerMessageNotifications');
     expect(layout).not.toContain('requestPermissionsAsync');
+    expect(layout).not.toContain('scheduleNotificationAsync');
     const registerPhone = layout.slice(layout.indexOf('const registerPhone'), layout.indexOf('const timer'));
     expect(registerPhone.match(/registerPhone\(\)/g)?.length).toBe(2);
     expect(registerPhone).toContain("if (next !== 'active') return");
@@ -154,10 +156,15 @@ describe('private message push', () => {
     expect(chat).toContain('MESSAGE_TOKEN_ERROR');
     expect(register).toContain("console.error('message notifications', error)");
     expect(register).toContain("Couldn't register for message notifications – Try again");
-    const retry = register.slice(register.indexOf('export async function retryMessageNotifications'), register.indexOf('export async function syncMovementReminder'));
+    const retry = register.slice(register.indexOf('export async function retryMessageNotifications'), register.indexOf('export async function cancelScheduledNotifications'));
     expect(retry).not.toContain('requestPermissionsAsync');
     expect(retry).toContain('getPermissionsAsync');
     expect(retry).toContain("existing.status !== 'granted'");
+    const cancel = register.slice(register.indexOf('export async function cancelScheduledNotifications'), register.indexOf('export function listenForMessageOpens'));
+    expect(cancel).toContain('cancelAllScheduledNotificationsAsync');
+    expect(cancel).not.toContain('requestPermissionsAsync');
+    expect(register).not.toContain('scheduleNotificationAsync');
+    expect(readFileSync('src/app/(main)/notifications.tsx', 'utf8')).not.toContain('Movement reminder');
     const offer = register.slice(register.indexOf('export async function offerMessageNotifications'), register.indexOf('export async function retryMessageNotifications'));
     expect(offer).toContain('requestPermissionsAsync');
     expect(offer).not.toContain('return undefined');

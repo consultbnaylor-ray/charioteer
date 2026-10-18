@@ -2618,12 +2618,8 @@ export class SupabaseRepository implements Repository {
   }
 
   async createBuddyInvite(buddyId: string, scope: BuddyScope): Promise<void> {
-    const { data, error } = await this.client.rpc('create_buddy_invite', { buddy: buddyId, scope });
+    const { error } = await this.client.rpc('create_buddy_invite', { buddy: buddyId, scope });
     if (error) throw error;
-    const inviteId = typeof data === 'string' ? data : '';
-    if (inviteId) {
-      void this.client.functions.invoke('notify-buddy-invite', { body: { inviteId } }).catch(() => undefined);
-    }
   }
 
   async createBuddyLink(scope: BuddyScope): Promise<BuddyLinkPass> {

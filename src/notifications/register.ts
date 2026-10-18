@@ -4,9 +4,6 @@ import { Platform } from 'react-native';
 import type { Repository } from '@/data/types';
 import { buddyInviteIdFrom } from '../../supabase/functions/_shared/buddyPush';
 import { connectionIdFrom } from '../../supabase/functions/_shared/messagePush';
-import { MOVEMENT_REMINDER_BODY, MOVEMENT_REMINDER_TITLE } from '../../supabase/functions/_shared/motivation';
-
-export const MOVEMENT_REMINDER_ID = 'movement-reminder';
 
 type TokenStore = Pick<Repository, 'saveDeviceToken'>;
 
@@ -81,37 +78,15 @@ export async function retryMessageNotifications(repo: TokenStore): Promise<strin
 }
 
 /**
- * Schedules or clears the local movement nudge. The body is generic.
- * Web has no local schedule; the saved preference still stands for a phone.
+ * Drops every local schedule left by an older build.
+ * Direct messages are remote pushes and are not in this list.
+ * Does not ask for permission and does not create a new schedule.
  */
-export async function syncMovementReminder(on: boolean, minute: number | null): Promise<void> {
+export async function cancelScheduledNotifications(): Promise<void> {
   if (Platform.OS !== 'ios' && Platform.OS !== 'android') return;
   try {
     const Notifications = await import('expo-notifications');
-    await Notifications.cancelScheduledNotificationAsync(MOVEMENT_REMINDER_ID).catch(() => undefined);
-    if (!on || minute == null) return;
-    const existing = await Notifications.getPermissionsAsync();
-    let status = existing.status;
-    if (status !== 'granted') {
-      const asked = await Notifications.requestPermissionsAsync();
-      status = asked.status;
-    }
-    if (status !== 'granted') return;
-    const hour = Math.floor(minute / 60);
-    const rest = minute % 60;
-    await Notifications.scheduleNotificationAsync({
-      identifier: MOVEMENT_REMINDER_ID,
-      content: {
-        title: MOVEMENT_REMINDER_TITLE,
-        body: MOVEMENT_REMINDER_BODY,
-        data: { kind: 'movement' },
-      },
-      trigger: {
-        type: Notifications.SchedulableTriggerInputTypes.DAILY,
-        hour,
-        minute: rest,
-      },
-    });
+    await Notifications.cancelAllScheduledNotificationsAsync();
   } catch {
     return undefined;
   }

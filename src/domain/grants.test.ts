@@ -543,7 +543,10 @@ describe('unblock user', () => {
     expect(repo).not.toContain(".from('blocks').delete");
     expect(repo).not.toContain(".from('blocks').select");
     expect(readFileSync('supabase/functions/notify-direct-message/index.ts', 'utf8')).toContain("admin.from('blocks')");
-    expect(readFileSync('supabase/functions/notify-buddy-invite/index.ts', 'utf8')).toContain("admin.from('blocks')");
+    const buddyPush = readFileSync('supabase/functions/notify-buddy-invite/index.ts', 'utf8');
+    expect(buddyPush).toContain("skipped: 'messages-only'");
+    expect(buddyPush).not.toContain("admin.from('blocks')");
+    expect(buddyPush).not.toContain('exp.host');
   });
 
   it('revokes the stopgap select in a later file and leaves block insert', () => {

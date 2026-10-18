@@ -216,9 +216,14 @@ describe('buddy server', () => {
     expect(shared).not.toContain('c.note');
     const healthAt = shared.indexOf('health_samples');
     expect(healthAt).toBeGreaterThan(shared.indexOf('if share_health then'));
-    expect(fn).toContain('message_notifications');
-    expect(fn).toContain('buddyInviteAlert');
+    expect(fn).toContain("skipped: 'messages-only'");
+    expect(fn).not.toContain('buddyInviteAlert');
+    expect(fn).not.toContain('exp.host');
     expect(fn).not.toContain('community_visible');
+    const invite = readFileSync('src/data/supabase-repository.ts', 'utf8');
+    const create = invite.slice(invite.indexOf('async createBuddyInvite'), invite.indexOf('async createBuddyLink'));
+    expect(create).toContain("rpc('create_buddy_invite'");
+    expect(create).not.toContain('notify-buddy-invite');
   });
 });
 
