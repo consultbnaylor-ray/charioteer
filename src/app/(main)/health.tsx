@@ -27,7 +27,7 @@ import {
   type AppleHealthAccess,
   type AppleHealthTurnOn,
 } from '@/health/connection';
-import { healthVisibilityHasGaps, type HealthVisibilityReport } from '@/domain/healthVisibility';
+import { healthMissingReadings, type HealthVisibilityReport } from '@/domain/healthVisibility';
 import { catchUpAppleHealthReads } from '@/health/catchUp';
 import { connectAppleHealth, openAppSettings, openHealthApp, readAppleHealthAccess, turnOnAppleHealthReads, askAppleHealthReads } from '@/health/link';
 import { readHealthVisibility } from '@/health/visibility';
@@ -394,7 +394,7 @@ export default function Health() {
         ios={ios}
         access={access}
         syncedAt={syncedAt}
-        missing={healthVisibilityHasGaps(visibility)}
+        gaps={healthMissingReadings(visibility)}
         pending={pending}
         updated={updatedNow}
         refreshError={refreshError}

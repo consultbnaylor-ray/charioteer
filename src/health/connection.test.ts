@@ -51,11 +51,14 @@ describe('Apple Health card', () => {
     expect(isHealthAccessDenied('Apple Health is not available on this device.')).toBe(false);
   });
 
-  it('names connected with the clock, or not connected, or some readings missing', () => {
-    const base = { consent: true, ios: true, access: 'connected' as const, syncedAt: synced, missing: false };
+  it('names connected with the clock, or not connected, or each missing reading', () => {
+    const base = { consent: true, ios: true, access: 'connected' as const, syncedAt: synced, missingTitles: [] as string[] };
     expect(appleHealthStatusLine(base)).toBe('Apple Health: connected, last updated 09:10');
     expect(appleHealthStatusLine({ ...base, syncedAt: null })).toBe('Apple Health: connected');
-    expect(appleHealthStatusLine({ ...base, missing: true })).toBe('Apple Health: Some readings missing');
+    expect(appleHealthStatusLine({
+      ...base,
+      missingTitles: ['Heart rate recovery', 'Body fat', 'Lean mass'],
+    })).toBe('Apple Health: Missing: Heart rate recovery, Body fat, Lean mass');
     expect(appleHealthStatusLine({ ...base, access: 'denied' })).toBe('Apple Health: Not connected');
     expect(appleHealthStatusLine({ ...base, access: 'prompt' })).toBe('Apple Health: Not connected');
     expect(appleHealthStatusLine({ ...base, access: null })).toBe('Apple Health: checking');
@@ -110,7 +113,10 @@ describe('Apple Health screen and entitlement', () => {
     expect(periodAt).toBeLessThan(boardAt);
     expect(screen).toContain('onRefresh={() => void refreshNow()}');
     expect(screen).toContain('request={seeRequest}');
-    expect(screen).toContain('healthVisibilityHasGaps');
+    expect(screen).toContain('healthMissingReadings');
+    expect(card).toContain('HEALTH_MISSING_DETAIL');
+    expect(card).toContain('missingOpen');
+    expect(card).toContain('gap.line');
     expect(card).toContain('Connect Apple Health');
     expect(card).toContain('APPLE_HEALTH_REFRESH');
     expect(card).toContain('APPLE_HEALTH_UPDATED');

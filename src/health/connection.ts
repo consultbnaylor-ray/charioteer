@@ -74,19 +74,19 @@ export type HealthCardKind =
 
 /**
  * One line for the top of Health Stats.
- * Connected names the clock. Not connected and Some readings missing are the other two.
+ * Connected names the clock. Gaps name each missing reading. Otherwise the row says not connected.
  */
 export function appleHealthStatusLine(input: {
   consent: boolean;
   ios: boolean;
   access: AppleHealthAccess | null;
   syncedAt: string | null;
-  missing: boolean;
+  missingTitles?: readonly string[];
 }): string {
   if (!input.consent || !input.ios) return 'Apple Health: Not connected';
   if (input.access == null || input.access === 'web') return 'Apple Health: checking';
   if (input.access !== 'connected') return 'Apple Health: Not connected';
-  if (input.missing) return 'Apple Health: Some readings missing';
+  if (input.missingTitles?.length) return `Apple Health: Missing: ${input.missingTitles.join(', ')}`;
   const when = appleHealthClock(input.syncedAt);
   if (!when) return 'Apple Health: connected';
   return `Apple Health: connected, last updated ${when}`;

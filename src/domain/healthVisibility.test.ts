@@ -7,8 +7,12 @@ import {
   healthReadSetChanged,
   healthReadSetKey,
   healthReadTitle,
+  healthMissingDetail,
+  healthMissingReadings,
+  healthMissingSummary,
   healthVisibilityHasGaps,
   healthVisibilityLine,
+  HEALTH_MISSING_DETAIL,
   HEALTH_ASK_AGAIN,
   HEALTH_CHECK_AGAIN,
   HEALTH_SAMPLE_DAYS,
@@ -151,6 +155,56 @@ describe('what Charioteer can see', () => {
       rows: [{ type: 'HKQuantityTypeIdentifierBodyFatPercentage', title: 'Body fat', asked: 'no', days: 2 }],
     })).toBe(true);
     expect(HEALTH_ASK_AGAIN).toBe('Ask Health again');
+    expect(HEALTH_MISSING_DETAIL).toBe('Why these are missing');
+    const named = healthMissingReadings({
+      kind: 'ready',
+      rows: [
+        { type: 'HKQuantityTypeIdentifierStepCount', title: 'Steps', asked: 'yes', days: 4 },
+        { type: 'HKQuantityTypeIdentifierHeartRateRecoveryOneMinute', title: 'Heart rate recovery', asked: 'yes', days: 0 },
+        { type: 'HKQuantityTypeIdentifierBodyFatPercentage', title: 'Body fat', asked: 'yes', days: 0 },
+        { type: 'HKQuantityTypeIdentifierLeanBodyMass', title: 'Lean mass', asked: 'no', days: 0 },
+        { type: 'HKCategoryTypeIdentifierSleepAnalysis', title: 'Sleep', asked: 'yes', days: 0 },
+      ],
+    });
+    expect(named.map((row) => row.title)).toEqual(['Heart rate recovery', 'Body fat', 'Lean mass', 'Sleep']);
+    expect(healthMissingSummary(named.map((row) => row.title))).toBe(
+      'Missing: Heart rate recovery, Body fat, Lean mass, Sleep',
+    );
+    expect(named.find((row) => row.title === 'Heart rate recovery')?.line).toBe(
+      'Heart rate recovery: No data found. Needs a recent Apple Watch workout.',
+    );
+    expect(named.find((row) => row.title === 'Body fat')?.line).toBe(
+      'Body fat: No data found. Needs a smart scale or manual entry in Health.',
+    );
+    expect(named.find((row) => row.title === 'Lean mass')?.line).toBe(
+      'Lean mass: No data found. Needs a smart scale or manual entry in Health. Ask Apple Health.',
+    );
+    expect(named.find((row) => row.title === 'Sleep')?.line).toBe(
+      'Sleep: No data found. No recent night recorded.',
+    );
+    expect(named.every((row) => row.finding === 'no_data')).toBe(true);
+    expect(named.map((row) => row.line).join('\n')).not.toMatch(/not permitted|switched off|access is off/i);
+    expect(healthMissingDetail({
+      type: 'HKQuantityTypeIdentifierHeartRateRecoveryOneMinute',
+      title: 'Heart rate recovery',
+      asked: 'yes',
+      days: 0,
+      access: 'denied',
+    })).toBe('Heart rate recovery: Not permitted. Turn it on in Apple Health.');
+    expect(healthMissingDetail({
+      type: 'HKQuantityTypeIdentifierBodyFatPercentage',
+      title: 'Body fat',
+      asked: 'no',
+      days: 2,
+    })).toBe('Body fat: Not asked yet. Ask Apple Health. Needs a smart scale or manual entry in Health.');
+    expect(healthMissingDetail({
+      type: 'HKQuantityTypeIdentifierBodyFatPercentage',
+      title: 'Body fat',
+      asked: 'no',
+      days: 2,
+    })).not.toMatch(/not permitted|no data found/i);
+    expect(healthMissingReadings(null)).toEqual([]);
+    expect(healthMissingReadings({ kind: 'web' })).toEqual([]);
     expect(HEALTH_CHECK_AGAIN).toBe('Check again');
     expect(screen).toContain('<HealthVisibility');
     expect(screen).toContain('onCheck={loadVisibility}');

@@ -15,7 +15,7 @@ import {
   healthCardState,
   type AppleHealthAccess,
 } from '@/health/connection';
-import { HEALTH_VISIBILITY_TITLE } from '@/domain/healthVisibility';
+import { HEALTH_MISSING_DETAIL, HEALTH_VISIBILITY_TITLE, type HealthMissingReading } from '@/domain/healthVisibility';
 import { PlanTick } from '@/ui/PlanTick';
 import { useAppTheme } from '@/ui/theme';
 import { Button, Card, ErrorNote, T } from '@/ui/ui';
@@ -25,7 +25,7 @@ export function AppleHealthCard({
   ios,
   access,
   syncedAt,
-  missing,
+  gaps,
   pending,
   updated,
   refreshError,
@@ -42,7 +42,7 @@ export function AppleHealthCard({
   ios: boolean;
   access: AppleHealthAccess | null;
   syncedAt: string | null;
-  missing: boolean;
+  gaps: readonly HealthMissingReading[];
   pending: boolean;
   updated: boolean;
   refreshError: string | null;
@@ -57,9 +57,16 @@ export function AppleHealthCard({
 }) {
   const theme = useAppTheme();
   const [details, setDetails] = useState(false);
+  const [missingOpen, setMissingOpen] = useState(false);
   const [asking, setAsking] = useState(false);
   const state = healthCardState({ consent, ios, access, syncedAt });
-  const line = appleHealthStatusLine({ consent, ios, access, syncedAt, missing });
+  const line = appleHealthStatusLine({
+    consent,
+    ios,
+    access,
+    syncedAt,
+    missingTitles: gaps.map((gap) => gap.title),
+  });
   const link = {
     minHeight: 44,
     justifyContent: 'center' as const,
@@ -69,7 +76,16 @@ export function AppleHealthCard({
   return (
     <Card>
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 10 }}>
-        <T style={{ flexGrow: 1, flexShrink: 1, minWidth: 180, fontFamily: theme.font.bodyStrong }}>{line}</T>
+        <Pressable
+          accessibilityRole={gaps.length ? 'button' : 'text'}
+          accessibilityLabel={line}
+          accessibilityState={gaps.length ? { expanded: missingOpen } : undefined}
+          disabled={!gaps.length}
+          onPress={() => setMissingOpen((value) => !value)}
+          style={{ flexGrow: 1, flexShrink: 1, minWidth: 180, minHeight: 44, justifyContent: 'center' }}
+        >
+          <T style={{ fontFamily: theme.font.bodyStrong }}>{line}</T>
+        </Pressable>
         <Pressable
           accessibilityRole="button"
           accessibilityLabel={pending ? 'Refreshing' : APPLE_HEALTH_REFRESH}
@@ -90,6 +106,25 @@ export function AppleHealthCard({
           <T style={{ fontFamily: theme.font.bodyStrong }}>{pending ? 'Refreshing' : APPLE_HEALTH_REFRESH}</T>
         </Pressable>
       </View>
+      {gaps.length ? (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={HEALTH_MISSING_DETAIL}
+          accessibilityState={{ expanded: missingOpen }}
+          onPress={() => setMissingOpen((value) => !value)}
+          style={{ minHeight: 44, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}
+        >
+          <T style={{ fontFamily: theme.font.bodyStrong }}>{HEALTH_MISSING_DETAIL}</T>
+          <T variant="muted">{missingOpen ? 'Hide' : 'Show'}</T>
+        </Pressable>
+      ) : null}
+      {missingOpen && gaps.length ? (
+        <View style={{ gap: 8 }}>
+          {gaps.map((gap) => (
+            <T key={gap.type}>{gap.line}</T>
+          ))}
+        </View>
+      ) : null}
       {updated ? (
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
           <PlanTick done />

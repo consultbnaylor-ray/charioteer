@@ -42,6 +42,43 @@ export type HealthVisibilityRow = {
   title: string;
   asked: HealthAsk;
   days: number;
+  /**
+   * Set only when a caller truly knows the read was refused.
+   * HealthKit hides read permission, so this stays unset and the line says no data found.
+   */
+  access?: 'denied';
+};
+
+/** Collapsed label under the named missing line. */
+export const HEALTH_MISSING_DETAIL = 'Why these are missing';
+
+/**
+ * One action for a reading with no sample.
+ * HealthKit does not say the read was refused, so these assume no data was found.
+ */
+const MISSING_ACTION: Record<(typeof APPLE_HEALTH_READ_TYPES)[number], string> = {
+  HKQuantityTypeIdentifierStepCount: 'Carry your iPhone or wear Apple Watch.',
+  HKQuantityTypeIdentifierRestingHeartRate: 'Wear Apple Watch while you are still.',
+  HKQuantityTypeIdentifierHeartRateVariabilitySDNN: 'Wear Apple Watch overnight.',
+  HKQuantityTypeIdentifierVO2Max: 'Record an outdoor walk or run on Apple Watch.',
+  HKQuantityTypeIdentifierWalkingHeartRateAverage: 'Take a walk with Apple Watch.',
+  HKQuantityTypeIdentifierHeartRateRecoveryOneMinute: 'Needs a recent Apple Watch workout.',
+  HKQuantityTypeIdentifierBodyMass: 'Use a scale in Health, or log weight on this page.',
+  HKQuantityTypeIdentifierHeight: 'Enter height in the Health app.',
+  HKQuantityTypeIdentifierBodyFatPercentage: 'Needs a smart scale or manual entry in Health.',
+  HKQuantityTypeIdentifierLeanBodyMass: 'Needs a smart scale or manual entry in Health.',
+  HKCategoryTypeIdentifierSleepAnalysis: 'No recent night recorded.',
+  HKWorkoutTypeIdentifier: 'Record a workout on Apple Watch or in a workout app.',
+  HKQuantityTypeIdentifierActiveEnergyBurned: 'Wear Apple Watch so movement is recorded.',
+};
+
+export type HealthReadFinding = 'no_data' | 'not_permitted';
+
+export type HealthMissingReading = {
+  type: string;
+  title: string;
+  finding: HealthReadFinding;
+  line: string;
 };
 
 export type HealthVisibilityReport =
@@ -80,8 +117,42 @@ export function unaskedHealthTypes(rows: readonly Pick<HealthVisibilityRow, 'typ
 
 /** A type not yet asked, or asked with nothing in the last 8 weeks. */
 export function healthVisibilityHasGaps(report: HealthVisibilityReport | null): boolean {
-  if (report?.kind !== 'ready') return false;
-  return report.rows.some((row) => row.asked === 'no' || row.days <= 0);
+  return healthMissingReadings(report).length > 0;
+}
+
+/** Names for the refresher line: "Missing: Heart rate recovery, Body fat, Lean mass". */
+export function healthMissingSummary(titles: readonly string[]): string {
+  return `Missing: ${titles.join(', ')}`;
+}
+
+/**
+ * One line: the reading, whether anything was found, and what to do.
+ * "Not permitted" is used only when `access` is denied. HealthKit usually cannot say that.
+ */
+export function healthMissingDetail(row: Pick<HealthVisibilityRow, 'type' | 'title' | 'asked' | 'days' | 'access'>): string {
+  const action = MISSING_ACTION[row.type as (typeof APPLE_HEALTH_READ_TYPES)[number]]
+    ?? 'Check Apple Health for a recent sample.';
+  if (row.access === 'denied') {
+    return `${row.title}: Not permitted. Turn it on in Apple Health.`;
+  }
+  if (row.asked === 'no' && row.days > 0) {
+    return `${row.title}: Not asked yet. Ask Apple Health. ${action}`;
+  }
+  const ask = row.asked === 'no' ? ' Ask Apple Health.' : '';
+  return `${row.title}: No data found. ${action}${ask}`;
+}
+
+/** Readings the refresher should name. Order follows the report. */
+export function healthMissingReadings(report: HealthVisibilityReport | null): HealthMissingReading[] {
+  if (report?.kind !== 'ready') return [];
+  return report.rows
+    .filter((row) => row.asked === 'no' || row.days <= 0)
+    .map((row) => ({
+      type: row.type,
+      title: row.title,
+      finding: row.access === 'denied' ? 'not_permitted' : 'no_data',
+      line: healthMissingDetail(row),
+    }));
 }
 
 /** Distinct calendar days that fall inside the rolling window ending at `now`. */
