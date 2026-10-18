@@ -5,7 +5,8 @@ import { Platform, Pressable, ScrollView, Switch, View } from 'react-native';
 
 import { useRepository, useSnapshot } from '@/data';
 import type { FoodLogUpdate, NewHealthSample } from '@/data/types';
-import { formatUkCompact, formatUkCompactWhen, formatUkLong, formatUkTime, isoDay } from '@/domain/dates';
+import { formatUkCompact, formatUkCompactWhen, formatUkLong, formatUkTime, isoDay, parseIsoDay } from '@/domain/dates';
+import { londonDay } from '@/domain/healthInsights';
 import { shownError } from '@/domain/errors';
 import { parseHeightCm } from '@/domain/guidance';
 import { randomId } from '@/domain/id';
@@ -41,7 +42,11 @@ import {
   lossBlocked,
   mifflinBmr,
   nutritionPatternLines,
+  mealAddedLabel,
   mealDayGroups,
+  mealEatenStamp,
+  mealLoggingLabel,
+  mealLogWindow,
   MEAL_SHOW_MORE,
   mealWeeksAfterShowMore,
   mealWeeksForDay,
@@ -77,7 +82,9 @@ import { readAppleHealthBody } from '@/health/sync';
 import { writeDayToAppleHealth } from '@/health/writeNutrition';
 import { BodyCompositionCard } from '@/ui/BodyComposition';
 import { GoalChoices } from '@/ui/GoalChoices';
+import { DateField } from '@/ui/DateField';
 import { MealEstimateStatus } from '@/ui/MealEstimateStatus';
+import { PlanTick } from '@/ui/PlanTick';
 import { MealDayList } from '@/ui/MealDayList';
 import { MealBreakdown } from '@/ui/MealNutrientBars';
 import { MealEdit } from '@/ui/MealEdit';
@@ -239,7 +246,8 @@ export default function Nutrition() {
   const theme = useAppTheme();
   const { run, isPending } = usePendingPress();
   const profile = snap.profile;
-  const today = isoDay(new Date());
+  const today = londonDay(new Date());
+  const logWindow = mealLogWindow(new Date());
   const settings = snap.nutrition;
   const hide = settings.hideCalories;
   const items = dayItems(snap.foodLogs, today);
@@ -292,6 +300,8 @@ export default function Nutrition() {
     : null;
 
   const [meal, setMeal] = useState<MealSlot>('breakfast');
+  const [logDay, setLogDay] = useState(() => mealLogWindow(new Date()).today);
+  const [savedDayNote, setSavedDayNote] = useState<string | null>(null);
   const [text, setText] = useState('');
   const [draft, setDraft] = useState<Draft | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -315,6 +325,7 @@ export default function Nutrition() {
   const [mealSavedAt, setMealSavedAt] = useState<number | null>(null);
   const [duplicateAsk, setDuplicateAsk] = useState(false);
   const [revealId, setRevealId] = useState<string | null>(null);
+  const [revealDay, setRevealDay] = useState<string | null>(null);
   const [estimateReady, setEstimateReady] = useState(false);
   const [estimateError, setEstimateError] = useState<string | null>(null);
   const [estimateAttempt, setEstimateAttempt] = useState<'text' | 'camera' | 'library' | 'sample'>('text');
@@ -322,6 +333,7 @@ export default function Nutrition() {
   const [mealWeeks, setMealWeeks] = useState(1);
   const [pinEstimate, setPinEstimate] = useState(0);
   const savedRowRef = useRef<View>(null);
+  const dayAnchorRef = useRef<View>(null);
   const confirmRef = useRef<View>(null);
   const scroller = useScreenScroller();
 
@@ -333,7 +345,10 @@ export default function Nutrition() {
 
   useEffect(() => {
     if (mealSavedAt == null) return;
-    const timer = setTimeout(() => setMealSavedAt(null), 2500);
+    const timer = setTimeout(() => {
+      setMealSavedAt(null);
+      setSavedDayNote(null);
+    }, 6000);
     return () => clearTimeout(timer);
   }, [mealSavedAt]);
 
@@ -384,11 +399,12 @@ export default function Nutrition() {
       if (cancelled) return;
       if (Platform.OS === 'web') {
         if (typeof document === 'undefined') return;
-        const node = document.getElementById('saved-meal-row');
+        const day = revealDay ? document.getElementById(`meal-day-${revealDay}`) : null;
+        const node = day ?? document.getElementById('saved-meal-row');
         node?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
         return;
       }
-      const row = savedRowRef.current;
+      const row = (revealDay ? dayAnchorRef.current : null) ?? savedRowRef.current;
       const inner = scroller?.current.innerRef.current;
       const scroll = scroller?.current.scrollRef.current;
       if (!row || !inner || !scroll) return;
@@ -406,13 +422,13 @@ export default function Nutrition() {
       pin();
       requestAnimationFrame(pin);
     });
-    const later = setTimeout(pin, 400);
+    const later = [400, 1200].map((wait) => setTimeout(pin, wait));
     return () => {
       cancelled = true;
       cancelAnimationFrame(frame);
-      clearTimeout(later);
+      later.forEach((timer) => clearTimeout(timer));
     };
-  }, [revealId, scroller]);
+  }, [revealId, revealDay, scroller]);
 
   function floorFor(age: number | null, sex: NutritionSex | null): number | null {
     const weight = latestWeight?.kg ?? null;
@@ -689,9 +705,15 @@ export default function Nutrition() {
       setError(null);
       setHealthNote(null);
       try {
+        const stamp = mealEatenStamp(logDay, draft.meal, new Date());
+        if ('error' in stamp) {
+          setError(stamp.error);
+          return;
+        }
         await repo.saveFoodLog({
           id,
-          eatenOn: today,
+          eatenOn: stamp.eatenOn,
+          eatenAt: stamp.eatenAt,
           meal: draft.meal,
           source: draft.source,
           note: draft.note,
@@ -703,10 +725,12 @@ export default function Nutrition() {
         setEstimateReady(false);
         setEstimateFlash(false);
         setText('');
+        setSavedDayNote(mealAddedLabel(stamp.eatenOn, new Date()));
         setMealSavedAt(Date.now());
+        setRevealDay(stamp.eatenOn);
         setRevealId(id);
         playSavedHaptic();
-        if (Platform.OS === 'ios' && profile?.consentHealth) {
+        if (Platform.OS === 'ios' && profile?.consentHealth && stamp.eatenOn === londonDay(new Date())) {
           const written = await writeDayToAppleHealth(foods, 0);
           setHealthNote(written.ok ? 'Saved to Apple Health.' : written.message);
         }
@@ -721,7 +745,10 @@ export default function Nutrition() {
       setError(null);
       try {
         await repo.updateFoodLog(id, patch);
+        setSavedDayNote(mealAddedLabel(patch.eatenOn, new Date()));
         setMealSavedAt(Date.now());
+        setRevealDay(patch.eatenOn);
+        setRevealId(id);
         playSavedHaptic();
         // The earlier HealthKit sample has no stored id, so it is left as it is.
         if (profile?.consentHealth) setHealthNote(APPLE_HEALTH_MEAL_NOTE);
@@ -1022,6 +1049,19 @@ export default function Nutrition() {
             <Choice key={slot} label={MEAL_LABEL[slot]} selected={meal === slot} onPress={() => setMeal(slot)} />
           ))}
         </View>
+        <T variant="label">Day</T>
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+          <Choice label="Today" selected={logDay === logWindow.today} onPress={() => setLogDay(logWindow.today)} />
+          <Choice label="Yesterday" selected={logDay === logWindow.yesterday} onPress={() => setLogDay(logWindow.yesterday)} />
+        </View>
+        <DateField
+          label="Earlier day"
+          value={parseIsoDay(logDay)}
+          onChange={(next) => setLogDay(isoDay(next))}
+          maximumDate={parseIsoDay(logWindow.today)}
+          earliestDate={parseIsoDay(logWindow.earliest)}
+        />
+        <T>{mealLoggingLabel(logDay, new Date())}</T>
         <Field label="Describe the meal" value={text} onChangeText={setText} placeholder="2 eggs on toast" />
         <Button label="Estimate from text" pending={isPending('estimate')} pendingLabel="Estimating..." onPress={readText} />
         <Button label="Take a photo" tone="quiet" pending={isPending('photo')} pendingLabel="Estimating..." onPress={() => readPhoto('camera')} />
@@ -1098,6 +1138,7 @@ export default function Nutrition() {
               </View>
             </View>
           ))}
+          <T>{mealLoggingLabel(logDay, new Date())}</T>
           <Button label="Add another food" tone="quiet" onPress={() => { setDuplicateAsk(false); setDraft({ ...draft, items: [...draft.items, blankItem()] }); }} />
           {duplicateAsk ? <T>{DUPLICATE_MEAL_PROMPT}</T> : null}
           {duplicateAsk ? (
@@ -1111,11 +1152,17 @@ export default function Nutrition() {
       ) : null}
       <Card>
         <T variant="label">Logged today</T>
-        {mealSavedAt != null ? <T>Saved ✓</T> : null}
+        {savedDayNote ? (
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            <PlanTick done />
+            <T>{savedDayNote}</T>
+          </View>
+        ) : null}
         {todayGroup ? (
           <MealDayList
             groups={[todayGroup]}
             pinnedDay={pinnedDay}
+            anchorRef={dayAnchorRef}
             renderMeals={() => (
               <TodayMeals
                 bare
@@ -1144,6 +1191,7 @@ export default function Nutrition() {
         <MealDayList
           groups={earlierGroups}
           pinnedDay={pinnedDay}
+          anchorRef={dayAnchorRef}
           renderMeals={(group) => earlierLogs.filter((log) => log.eatenOn === group.day).map((log) => renderLog(log, false))}
         />
         {mealWindow.hasMore ? (

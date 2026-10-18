@@ -357,6 +357,8 @@ export type NewFoodLog = {
   /** Stable for one save, including a retry, so the meal is not inserted twice. */
   id: string;
   eatenOn: string;
+  /** London meal time. When omitted, the save uses the slot clock on eatenOn, not the moment of the tap. */
+  eatenAt?: string | null;
   meal: MealSlot;
   source: MealSource;
   note: string;

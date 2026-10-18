@@ -1,6 +1,8 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
+import { londonDay } from './healthInsights';
+import { figuresForLondonWeek } from './goalLed';
 import { communitySharingOn } from './profileSharing';
 import { APP_SECTIONS, TAB_SECTIONS } from './sections';
 import {
@@ -23,8 +25,17 @@ import {
   mealChartStartsOpen,
   MEAL_SHOW_MORE,
   MEAL_WEEK_DAYS,
+  mealAddedLabel,
+  mealDayChangeAllowed,
   mealDayGroups,
   mealDayTitle,
+  mealEatenStamp,
+  mealLogDayAllowed,
+  mealLoggingLabel,
+  mealLogWindow,
+  MEAL_LOG_LOOKBACK_DAYS,
+  londonClock,
+  storedMealInstant,
   mealWeekCutoff,
   mealWeeksAfterShowMore,
   mealWeeksForDay,
@@ -105,6 +116,7 @@ import {
   waterProgress,
   type FoodItem,
   type FoodLog,
+  type MealSlot,
 } from './nutrition';
 
 function log(partial: Partial<FoodLog> & Pick<FoodLog, 'eatenOn' | 'meal'>): FoodLog {
@@ -1847,7 +1859,8 @@ describe("today's meals on the log card", () => {
     expect(renderLog).toContain('<MealBreakdown');
     expect(renderLog).toContain('mealNutrientBars(log.items)');
     expect(renderLog).toContain('startOpen={false}');
-    expect(screen.slice(logged, body)).toContain('Saved ✓');
+    expect(screen.slice(logged, body)).toContain('<PlanTick done />');
+    expect(screen.slice(logged, body)).toContain('{savedDayNote}');
     expect(screen.slice(logged, body)).toContain('>Earlier<');
     expect(screen.slice(logged, body)).toContain("Share today's meals");
     const save = screen.slice(screen.indexOf('function saveMeal'), screen.indexOf('function saveEdited'));
@@ -2070,5 +2083,127 @@ describe('shared meal photos', () => {
     expect(card).toContain('mealPhotos={preview.mealPhotos}');
     expect(people).toContain('mealPhotos: nutrition.mealPhotos');
     expect(people).toContain('mealPhotos={shown.mealPhotos}');
+  });
+});
+
+function eatenAtOf(day: string, slot: MealSlot, now: Date): string {
+  const stamp = mealEatenStamp(day, slot, now);
+  if ('error' in stamp) throw new Error(stamp.error);
+  return stamp.eatenAt;
+}
+
+describe('logging a meal on another day', () => {
+  const midnight = new Date('2026-10-17T23:30:00.000Z');
+
+  it('keeps today on the London date across midnight, BST, and GMT', () => {
+    expect(MEAL_LOG_LOOKBACK_DAYS).toBe(30);
+    expect(mealLogWindow(midnight)).toEqual({
+      today: '2026-10-18',
+      yesterday: '2026-10-17',
+      earliest: '2026-09-18',
+    });
+    expect(londonDay(midnight)).toBe('2026-10-18');
+    expect(mealLogWindow(new Date('2026-10-25T00:30:00.000Z')).today).toBe('2026-10-25');
+    expect(mealLogWindow(new Date('2026-10-24T23:30:00.000Z')).today).toBe('2026-10-25');
+    expect(mealLogWindow(new Date('2026-03-29T00:30:00.000Z')).today).toBe('2026-03-29');
+    expect(mealLogWindow(new Date('2026-01-15T00:30:00.000Z')).today).toBe('2026-01-15');
+  });
+
+  it('stores the London meal time on the chosen day, not the moment of the tap', () => {
+    const breakfast = mealEatenStamp('2026-10-17', 'breakfast', midnight);
+    expect(breakfast).toEqual({ eatenOn: '2026-10-17', eatenAt: '2026-10-17T07:00:00.000Z' });
+    if (!('error' in breakfast)) {
+      expect(londonDay(breakfast.eatenAt)).toBe('2026-10-17');
+      expect(londonClock(breakfast.eatenAt)).toBe('08:00');
+    }
+    expect(eatenAtOf('2026-10-17', 'lunch', midnight)).toBe('2026-10-17T11:30:00.000Z');
+    expect(eatenAtOf('2026-10-17', 'snack', midnight)).toBe('2026-10-17T14:30:00.000Z');
+    expect(mealEatenStamp('2026-10-17', 'dinner', midnight)).toEqual({
+      eatenOn: '2026-10-17',
+      eatenAt: '2026-10-17T17:30:00.000Z',
+    });
+    expect(mealEatenStamp('2026-11-17', 'breakfast', new Date('2026-11-17T12:00:00.000Z'))).toEqual({
+      eatenOn: '2026-11-17',
+      eatenAt: '2026-11-17T08:00:00.000Z',
+    });
+    expect(eatenAtOf('2026-10-24', 'dinner', new Date('2026-10-24T12:00:00.000Z'))).toBe('2026-10-24T17:30:00.000Z');
+    expect(eatenAtOf('2026-10-25', 'breakfast', new Date('2026-10-25T12:00:00.000Z'))).toBe('2026-10-25T08:00:00.000Z');
+    expect(eatenAtOf('2026-03-28', 'dinner', new Date('2026-03-28T12:00:00.000Z'))).toBe('2026-03-28T18:30:00.000Z');
+    expect(eatenAtOf('2026-03-29', 'breakfast', new Date('2026-03-29T12:00:00.000Z'))).toBe('2026-03-29T07:00:00.000Z');
+    expect(storedMealInstant({ eatenOn: '2026-10-17', meal: 'breakfast' })).toBe('2026-10-17T07:00:00.000Z');
+    expect(mealEatenStamp('2026-10-19', 'lunch', midnight)).toEqual({ error: 'Choose today or a day in the last 30 days.' });
+    expect(mealLogDayAllowed('2026-09-18', midnight)).toBe(true);
+    expect(mealLogDayAllowed('2026-09-17', midnight)).toBe(false);
+    expect(mealDayChangeAllowed('2026-08-01', '2026-08-01', midnight)).toBe(true);
+    expect(mealLoggingLabel('2026-10-16', midnight)).toBe('Logging for Fri 16 Oct');
+    expect(mealAddedLabel('2026-10-16', midnight)).toBe('Added to Fri 16 Oct, see below');
+  });
+
+  it('counts the meal on that day for the list, the week, and leaves it off the public profile', () => {
+    const friday = log({
+      id: '11111111-1111-4111-8111-111111111116',
+      eatenOn: '2026-10-16',
+      meal: 'dinner',
+      items: [{
+        name: 'Fish',
+        kcal: 500,
+        proteinG: 40,
+        carbsG: 0,
+        sugarG: 0,
+        fibreG: 0,
+        unsaturatedG: 0,
+        saturatedG: 0,
+        transG: 0,
+        sodiumMg: 0,
+        processed: false,
+      }],
+      createdAt: '2026-10-17T23:30:00.000Z',
+    });
+    const groups = mealDayGroups([friday], '2026-10-18', 'user');
+    expect(groups.map((group) => group.day)).toEqual(['2026-10-16']);
+    expect(groups[0]?.proteinG).toBe(40);
+    expect(groups[0]?.isToday).toBe(false);
+    const week = figuresForLondonWeek({ now: midnight, logs: [friday], health: [], checkIns: [] });
+    expect(week.week.days).toContain('2026-10-16');
+    expect(week.weekProtein).toEqual([40]);
+    expect(week.todayProtein).toBe(0);
+    expect(dayItems([friday], '2026-10-16')).toHaveLength(1);
+    expect(dayItems([friday], '2026-10-18')).toHaveLength(0);
+    const shared = presentSharedNutrition({ ...defaultNutritionSettings(), shareFoodDiary: true }, [friday], '2026-10-18');
+    expect(shared.meals).toEqual([]);
+    expect(shared.mealPhotos).toEqual([]);
+  });
+
+  it('offers the day on every log route and does not need a new column or a function change', () => {
+    const screen = readFileSync('src/app/(main)/nutrition.tsx', 'utf8');
+    const log = screen.slice(screen.indexOf('variant="label">Log a meal'), screen.indexOf('variant="label">Logged today'));
+    expect(log).toContain('variant="label">Day');
+    expect(log).toContain('label="Today"');
+    expect(log).toContain('label="Yesterday"');
+    expect(log).toContain('label="Earlier day"');
+    expect(log).toContain('mealLoggingLabel(logDay, new Date())');
+    expect(screen.slice(screen.indexOf('variant="label">Logged today'), screen.indexOf('<ScrollTarget id="body">'))).toContain('<PlanTick done />');
+    expect(screen).toContain('{savedDayNote}');
+    expect(screen).toContain('mealAddedLabel(stamp.eatenOn, new Date())');
+    expect(screen).toContain('mealEatenStamp(logDay, draft.meal, new Date())');
+    expect(screen).toContain('eatenAt: stamp.eatenAt');
+    expect(screen).toContain('londonDay(new Date())');
+    expect(screen).toContain('getElementById(`meal-day-${revealDay}`)');
+    expect(readFileSync('src/ui/MealDayList.tsx', 'utf8')).toContain('nativeID={`meal-day-${group.day}`}');
+    expect(screen).toContain('dayAnchorRef');
+    const edit = readFileSync('src/ui/MealEdit.tsx', 'utf8');
+    expect(edit).toContain('mealDayChangeAllowed');
+    expect(edit).toContain('londonWallInstant');
+    expect(edit).toContain('earliestDate={parseIsoDay(mealLogWindow(new Date()).earliest)}');
+    const live = readFileSync('src/data/supabase-repository.ts', 'utf8');
+    const demo = readFileSync('src/data/demo-repository.ts', 'utf8');
+    expect(live).toContain('eaten_at: storedMealInstant(input)');
+    expect(demo).toContain('eatenAt: storedMealInstant(input)');
+    expect(live).not.toContain('eaten_at: new Date().toISOString()');
+    expect(demo).not.toContain('eatenAt: new Date().toISOString()');
+    const estimate = readFileSync('supabase/functions/estimate-meal/index.ts', 'utf8');
+    expect(estimate).not.toContain('food_logs');
+    expect(estimate).not.toContain('eaten_on');
+    expect(readFileSync('supabase/functions/_shared/nutritionLoad.ts', 'utf8')).toContain('eaten_on');
   });
 });

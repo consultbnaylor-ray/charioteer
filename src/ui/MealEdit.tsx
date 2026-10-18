@@ -4,6 +4,7 @@ import { Platform, Pressable, Switch, View } from 'react-native';
 
 import type { FoodLogUpdate } from '@/data/types';
 import { isoDay, parseIsoDay } from '@/domain/dates';
+import { londonDay } from '@/domain/healthInsights';
 import { shownError } from '@/domain/errors';
 import {
   APPLE_HEALTH_MEAL_NOTE,
@@ -11,6 +12,11 @@ import {
   ESTIMATE_LABEL,
   MEAL_LABEL,
   MEAL_SLOTS,
+  londonClock,
+  londonWallInstant,
+  mealDayChangeAllowed,
+  mealLogWindow,
+  mealSlotClock,
   parsePortion,
   scaleFoodItems,
   type FoodItem,
@@ -66,7 +72,7 @@ export function MealEdit({
   const [appliedPortion, setAppliedPortion] = useState(openedPortion);
   const [meal, setMeal] = useState<MealSlot>(log.meal);
   const [day, setDay] = useState(() => parseIsoDay(log.eatenOn));
-  const [time, setTime] = useState(() => clockFrom(log.eatenAt ?? log.createdAt));
+  const [time, setTime] = useState(() => (log.eatenAt ? londonClock(log.eatenAt) : mealSlotClock(log.meal)));
   const [items, setItems] = useState<DraftItem[]>(() => log.items.map(draftFrom));
   const [fatText, setFatText] = useState(() => log.items.map((item) => String(fatGrams(draftFrom(item)))));
   const [estimated, setEstimated] = useState(log.estimated);
@@ -141,11 +147,20 @@ export function MealEdit({
       onError('Use a time such as 08:30.');
       return;
     }
-    const eaten = new Date(day.getFullYear(), day.getMonth(), day.getDate(), clock.hours, clock.minutes, 0, 0);
+    const picked = isoDay(day);
+    if (!mealDayChangeAllowed(picked, log.eatenOn, new Date())) {
+      onError('Choose today or a day in the last 30 days.');
+      return;
+    }
+    const eatenAt = londonWallInstant(picked, clock.hours, clock.minutes);
+    if (londonDay(eatenAt) !== picked) {
+      onError('That day could not be saved.');
+      return;
+    }
     onError(null);
     onSave({
-      eatenOn: isoDay(day),
-      eatenAt: eaten.toISOString(),
+      eatenOn: picked,
+      eatenAt,
       meal,
       note: note.trim().slice(0, 500),
       items: foods,
@@ -191,10 +206,16 @@ export function MealEdit({
       />
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
         {MEAL_SLOTS.map((slot) => (
-          <Choice key={slot} label={MEAL_LABEL[slot]} selected={meal === slot} onPress={() => setMeal(slot)} />
+          <Choice key={slot} label={MEAL_LABEL[slot]} selected={meal === slot} onPress={() => { setMeal(slot); setTime(mealSlotClock(slot)); }} />
         ))}
       </View>
-      <DateField label="Date" value={day} onChange={setDay} maximumDate={new Date()} />
+      <DateField
+        label="Date"
+        value={day}
+        onChange={setDay}
+        maximumDate={parseIsoDay(mealLogWindow(new Date()).today)}
+        earliestDate={parseIsoDay(mealLogWindow(new Date()).earliest)}
+      />
       <TimeField label="Time" value={time} onChange={setTime} />
       {estimated ? <T>{ESTIMATE_LABEL}</T> : null}
       {items.map((item, index) => (
@@ -428,13 +449,6 @@ function withFatTotal(item: DraftItem, total: number): DraftItem {
     saturatedG: String(round1(numberFrom(item.saturatedG) * factor)),
     transG: String(round1(numberFrom(item.transG) * factor)),
   };
-}
-
-function clockFrom(value: string | null): string {
-  if (!value) return '12:00';
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return '12:00';
-  return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
 }
 
 function parseClock(value: string): { hours: number; minutes: number } | null {

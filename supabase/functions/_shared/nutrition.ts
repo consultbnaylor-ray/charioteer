@@ -1,3 +1,5 @@
+import { londonDay } from './healthInsights.ts';
+
 /**
  * Food log maths. Figures from a photo or a sentence are estimates.
  * The NHS pint used for alcohol calories is the same 222 kcal / about 3 units
@@ -614,7 +616,7 @@ export function caloriesShareLine(items: readonly FoodItem[], hideCalories: bool
   return parts.join(' · ');
 }
 
-function shiftIsoDay(iso: string, delta: number): string {
+export function shiftIsoDay(iso: string, delta: number): string {
   const [year, month, day] = iso.split('-').map(Number);
   const date = new Date(Date.UTC(year ?? 1970, (month ?? 1) - 1, day ?? 1));
   date.setUTCDate(date.getUTCDate() + delta);
@@ -1009,6 +1011,109 @@ export function todayMealTotalLine(totals: TodayMealTotals, hideCalories: boolea
 
 const MEAL_DAY_WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'] as const;
 const MEAL_DAY_MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'] as const;
+
+/** How far back a missed meal can be logged. Today counts, and tomorrow does not. */
+export const MEAL_LOG_LOOKBACK_DAYS = 30;
+
+const MEAL_CLOCK: Record<MealSlot, { hour: number; minute: number }> = {
+  breakfast: { hour: 8, minute: 0 },
+  lunch: { hour: 12, minute: 30 },
+  dinner: { hour: 18, minute: 30 },
+  snack: { hour: 15, minute: 30 },
+};
+
+/** Breakfast 08:00, lunch 12:30, dinner 18:30, snack 15:30, Europe/London. */
+export function mealSlotClock(slot: MealSlot): string {
+  const clock = MEAL_CLOCK[slot];
+  return `${String(clock.hour).padStart(2, '0')}:${String(clock.minute).padStart(2, '0')}`;
+}
+
+function londonOffsetMinutes(instant: Date): number {
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Europe/London',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hourCycle: 'h23',
+  }).formatToParts(instant);
+  const read = (type: Intl.DateTimeFormatPartTypes) => Number(parts.find((part) => part.type === type)?.value ?? '0');
+  const wall = Date.UTC(read('year'), read('month') - 1, read('day'), read('hour'), read('minute'), read('second'));
+  return Math.round((wall - instant.getTime()) / 60_000);
+}
+
+/** A Europe/London wall clock on a calendar day, stored as UTC. The calendar day does not follow the server clock. */
+export function londonWallInstant(day: string, hour: number, minute: number): string {
+  const [year, month, date] = day.split('-').map(Number);
+  const guess = Date.UTC(year ?? 1970, (month ?? 1) - 1, date ?? 1, hour, minute, 0);
+  const first = guess - londonOffsetMinutes(new Date(guess)) * 60_000;
+  const settled = guess - londonOffsetMinutes(new Date(first)) * 60_000;
+  return new Date(settled).toISOString();
+}
+
+/** Hour and minute in Europe/London. */
+export function londonClock(value: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '12:00';
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Europe/London',
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+  }).formatToParts(date);
+  const hour = parts.find((part) => part.type === 'hour')?.value ?? '12';
+  const minute = parts.find((part) => part.type === 'minute')?.value ?? '00';
+  return `${hour.padStart(2, '0')}:${minute.padStart(2, '0')}`;
+}
+
+export function mealLogWindow(now: Date): { today: string; yesterday: string; earliest: string } {
+  const today = londonDay(now);
+  return {
+    today,
+    yesterday: shiftIsoDay(today, -1),
+    earliest: shiftIsoDay(today, -MEAL_LOG_LOOKBACK_DAYS),
+  };
+}
+
+export function mealLogDayAllowed(day: string, now: Date): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) return false;
+  const window = mealLogWindow(now);
+  return day >= window.earliest && day <= window.today;
+}
+
+/** An unchanged day stays, including one older than the logging window. */
+export function mealDayChangeAllowed(next: string, previous: string, now: Date): boolean {
+  if (next === previous && /^\d{4}-\d{2}-\d{2}$/.test(next)) return true;
+  return mealLogDayAllowed(next, now);
+}
+
+/**
+ * The day the person picked, and a London meal time on that day.
+ * `created_at` is when they pressed save. It is not the day of the meal.
+ */
+export function mealEatenStamp(day: string, slot: MealSlot, now = new Date()): { eatenOn: string; eatenAt: string } | { error: string } {
+  if (!mealLogDayAllowed(day, now)) return { error: 'Choose today or a day in the last 30 days.' };
+  const clock = MEAL_CLOCK[slot];
+  const eatenAt = londonWallInstant(day, clock.hour, clock.minute);
+  if (londonDay(eatenAt) !== day) return { error: 'That day could not be saved.' };
+  return { eatenOn: day, eatenAt };
+}
+
+export function storedMealInstant(input: { eatenOn: string; meal: MealSlot; eatenAt?: string | null }): string {
+  if (input.eatenAt && !Number.isNaN(Date.parse(input.eatenAt))) return new Date(input.eatenAt).toISOString();
+  const clock = MEAL_CLOCK[input.meal];
+  return londonWallInstant(input.eatenOn, clock.hour, clock.minute);
+}
+
+export function mealLoggingLabel(day: string, now: Date): string {
+  return `Logging for ${mealDayTitle(day, londonDay(now))}`;
+}
+
+export function mealAddedLabel(day: string, now: Date): string {
+  return `Added to ${mealDayTitle(day, londonDay(now))}, see below`;
+}
 
 /** Fri 16 Oct. The year is added only when it is not the year of `today`, so a recent day stays short. */
 export function mealDayTitle(day: string, today: string): string {

@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode, type RefObject } from 'react';
 import { Pressable, View } from 'react-native';
 
 import type { MealDayGroup } from '@/domain/nutrition';
@@ -13,17 +13,24 @@ import { T } from '@/ui/ui';
 export function MealDayList({
   groups,
   pinnedDay,
+  anchorRef,
   renderMeals,
 }: {
   groups: readonly MealDayGroup[];
   pinnedDay?: string | null;
+  anchorRef?: RefObject<View | null>;
   renderMeals: (group: MealDayGroup) => ReactNode;
 }) {
   if (!groups.length) return null;
   return (
     <View style={{ gap: 12 }}>
       {groups.map((group) => (
-        <MealDay key={group.day} group={group} pinned={pinnedDay === group.day}>
+        <MealDay
+          key={group.day}
+          group={group}
+          pinned={pinnedDay === group.day}
+          anchorRef={pinnedDay === group.day ? anchorRef : undefined}
+        >
           {renderMeals(group)}
         </MealDay>
       ))}
@@ -34,10 +41,12 @@ export function MealDayList({
 function MealDay({
   group,
   pinned,
+  anchorRef,
   children,
 }: {
   group: MealDayGroup;
   pinned: boolean;
+  anchorRef?: RefObject<View | null>;
   children: ReactNode;
 }) {
   const theme = useAppTheme();
@@ -46,7 +55,7 @@ function MealDay({
     if (pinned) setOpen(true);
   }, [pinned]);
   return (
-    <View style={{ gap: 8 }}>
+    <View ref={anchorRef} nativeID={`meal-day-${group.day}`} collapsable={false} style={{ gap: 8 }}>
       <Pressable
         accessibilityRole="button"
         accessibilityLabel={`${group.heading}. ${open ? 'Hide' : 'Show'}`}
