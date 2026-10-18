@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { Fragment, useEffect, useRef, useState } from 'react';
 import { Linking, Pressable, View } from 'react-native';
 
 import type { HealthSample } from '@/data/types';
@@ -38,6 +38,7 @@ import { HealthFigureView } from '@/ui/MeasuredFigure';
 import { HrvExplainer } from '@/ui/HrvExplainer';
 import { ShareOnProfile } from '@/ui/ShareOnProfile';
 import { HealthChart } from '@/ui/HealthChart';
+import { ScrollTarget } from '@/ui/ScrollTarget';
 import { useAppTheme } from '@/ui/theme';
 import { Card, Choice, Field, playSavedHaptic, T } from '@/ui/ui';
 
@@ -80,9 +81,8 @@ export function HealthBoard({
       </Card>
       {HEALTH_METRICS.map((metric) => {
         const kindReport = report.kinds.find((item) => item.kind === metric.kind);
-        return (
+        const card = (
           <MetricCard
-            key={metric.kind}
             kind={metric.kind}
             label={metric.label}
             chart={metric.chart}
@@ -97,6 +97,12 @@ export function HealthBoard({
             onWeightDraftChange={onWeightDraftChange}
             weightReset={weightReset}
           />
+        );
+        if (metric.kind !== 'weight_kg') return <Fragment key={metric.kind}>{card}</Fragment>;
+        return (
+          <ScrollTarget key={metric.kind} id="weight">
+            {card}
+          </ScrollTarget>
         );
       })}
     </View>
@@ -278,7 +284,7 @@ function MetricCard({
   );
 }
 
-function WeightFields({
+export function WeightFields({
   canSave,
   heightText,
   resetToken,

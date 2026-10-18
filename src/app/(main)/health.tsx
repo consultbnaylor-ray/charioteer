@@ -14,7 +14,7 @@ import {
 } from '@/domain/healthStatTiles';
 import { rebucketStoredMinutes, withWorkoutBucket } from '@/domain/fitnessSnapshot';
 import type { BodyEntrySource, WorkoutBucket } from '@/domain/nutrition';
-import type { WeightReadingDraft } from '@/domain/weightEntry';
+import { weightWaistWrite, type WaistSampleWrite, type WeightReadingDraft } from '@/domain/weightEntry';
 import { isHealthAccessDenied, type AppleHealthAccess, type AppleHealthTurnOn } from '@/health/connection';
 import { catchUpAppleHealthReads } from '@/health/catchUp';
 import { connectAppleHealth, openAppSettings, openHealthApp, readAppleHealthAccess, turnOnAppleHealthReads, askAppleHealthReads } from '@/health/link';
@@ -228,9 +228,11 @@ export default function Health() {
       samples.push({ kind, value: amount, unit: chosen.unit, recordedOn: isoDay(day), source: 'manual' });
     }
     let nextHeight: number | null | undefined;
+    let waistWrite: WaistSampleWrite | null = null;
     if (weightDraft) {
-      if (weightDraft.recordedOn > isoDay(new Date())) {
-        setError('Choose today or an earlier day.');
+      const planned = weightWaistWrite(weightDraft, isoDay(new Date()));
+      if (!planned.ok) {
+        setError(planned.error);
         return;
       }
       const height = parseHeightCm(weightDraft.heightText);
@@ -238,20 +240,11 @@ export default function Health() {
         setError(height.error);
         return;
       }
-      if (weightDraft.kg != null) {
-        samples.push({
-          kind: 'weight_kg',
-          value: weightDraft.kg,
-          unit: 'kg',
-          recordedOn: weightDraft.recordedOn,
-          source: 'manual',
-        });
-      }
+      if (planned.sample) samples.push(planned.sample);
       if (height.value !== (snap.profile?.heightCm ?? null)) nextHeight = height.value;
+      waistWrite = planned.waist;
     }
-    const waistCm = weightDraft?.waistCm ?? null;
-    const waistOn = weightDraft?.recordedOn;
-    if (samples.length === 0 && nextHeight === undefined && waistCm == null) return;
+    if (samples.length === 0 && nextHeight === undefined && waistWrite == null) return;
     setError(null);
     setSavePending(true);
     const reading = value.trim();
@@ -260,15 +253,7 @@ export default function Health() {
       try {
         if (nextHeight !== undefined) await repo.updateProfile({ heightCm: nextHeight });
         if (samples.length) await repo.saveHealth(samples);
-        if (waistCm != null && waistOn) {
-          await repo.saveBodyComposition({
-            recordedOn: waistOn,
-            bodyFatPct: null,
-            leanMassKg: null,
-            waistCm,
-            source: 'other',
-          });
-        }
+        if (waistWrite) await repo.saveBodyComposition(waistWrite);
         if (reading) setValue('');
         if (loggedSheet) setWeightReset((token) => token + 1);
         setSavedNote('Saved');

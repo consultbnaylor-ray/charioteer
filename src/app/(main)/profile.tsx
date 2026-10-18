@@ -19,6 +19,7 @@ import { InterestChip } from '@/ui/InterestChip';
 import { MemberAvatar } from '@/ui/MemberAvatar';
 import { BuildChoices } from '@/ui/BodyComposition';
 import { GoalChoices } from '@/ui/GoalChoices';
+import { WeightWaistPanel } from '@/ui/WeightWaistPanel';
 import { TrainingScheduleCard } from '@/ui/TrainingSchedule';
 import { WagonFlag } from '@/ui/NutritionShare';
 import { YouSectionShare } from '@/ui/SectionShare';
@@ -292,6 +293,7 @@ export default function Profile() {
       )}
       <Button label="What I share" tone="quiet" onPress={() => router.push('/sharing' as never)} />
       <Button label="Buddies" onPress={() => router.push('/buddies' as never)} />
+      <WeightWaistPanel />
       <Card>
         <T variant="label">Build</T>
         <BuildChoices />

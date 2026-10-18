@@ -1,5 +1,5 @@
-import { shiftDay } from '@/domain/healthInsights';
-import { parseWaistCm } from '@/domain/nutrition';
+import { formatHealthValue, formatUkCompactDay, shiftDay } from '@/domain/healthInsights';
+import { parseWaistCm, weightPointsFrom } from '@/domain/nutrition';
 
 /** Avoirdupois. One stone is 14 pounds. Weight is stored in kilograms. */
 export const KG_PER_POUND = 0.45359237;
@@ -121,6 +121,92 @@ export function formatWaistCm(cm: number): string {
   const rounded = Math.round(cm * 10) / 10;
   const text = Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1);
   return `${text} cm`;
+}
+
+export type WeightSampleWrite = {
+  kind: 'weight_kg';
+  value: number;
+  unit: 'kg';
+  recordedOn: string;
+  source: 'manual';
+};
+
+export type WaistSampleWrite = {
+  recordedOn: string;
+  bodyFatPct: null;
+  leanMassKg: null;
+  waistCm: number;
+  source: 'other';
+};
+
+/**
+ * The save the weight sheet and the You panel both use.
+ * Weight becomes a manual weight_kg sample. Waist becomes body_composition.waist_cm.
+ * Apple Health keeps writing its own weight samples; this does not start a second sync.
+ */
+export function weightWaistWrite(
+  draft: Pick<WeightReadingDraft, 'kg' | 'recordedOn' | 'waistCm'>,
+  today: string,
+): { ok: true; sample: WeightSampleWrite | null; waist: WaistSampleWrite | null } | { ok: false; error: string } {
+  if (draft.recordedOn > today) return { ok: false, error: 'Choose today or an earlier day.' };
+  let sample: WeightSampleWrite | null = null;
+  if (draft.kg != null) {
+    const parsed = weightReadingKg({ unit: 'kg', kilograms: String(draft.kg), stones: '', pounds: '' });
+    if (!parsed.ok || parsed.kg == null) {
+      return { ok: false, error: parsed.ok ? 'Enter a weight above zero.' : parsed.error };
+    }
+    sample = {
+      kind: 'weight_kg',
+      value: parsed.kg,
+      unit: 'kg',
+      recordedOn: draft.recordedOn,
+      source: 'manual',
+    };
+  }
+  let waist: WaistSampleWrite | null = null;
+  if (draft.waistCm != null) {
+    const parsed = waistReadingCm(String(draft.waistCm), 'cm');
+    if (!parsed.ok || parsed.cm == null) {
+      return { ok: false, error: parsed.ok ? 'Enter a waist above zero.' : parsed.error };
+    }
+    waist = {
+      recordedOn: draft.recordedOn,
+      bodyFatPct: null,
+      leanMassKg: null,
+      waistCm: parsed.cm,
+      source: 'other',
+    };
+  }
+  return { ok: true, sample, waist };
+}
+
+/** Newest stored weight, including a sample Apple Health already synced. */
+export function latestWeightPoint(
+  samples: readonly { kind: string; value: number; recordedOn: string }[],
+): { day: string; kg: number } | null {
+  return weightPointsFrom(samples).at(-1) ?? null;
+}
+
+/** Newest stored waist, matching the body-composition row the weight sheet reads. */
+export function latestWaistPoint(
+  rows: readonly { recordedOn: string; waistCm: number | null; createdAt: string }[],
+): { day: string; cm: number } | null {
+  const ordered = [...rows].sort(
+    (left, right) => right.recordedOn.localeCompare(left.recordedOn) || right.createdAt.localeCompare(left.createdAt),
+  );
+  const row = ordered.find((item) => item.waistCm != null && item.waistCm > 0);
+  if (!row || row.waistCm == null) return null;
+  return { day: row.recordedOn.slice(0, 10), cm: row.waistCm };
+}
+
+export function latestWeightLine(point: { day: string; kg: number } | null): string {
+  if (!point) return 'No weight logged yet';
+  return `Latest weight ${formatHealthValue('weight_kg', point.kg)} · ${formatUkCompactDay(point.day)}`;
+}
+
+export function latestWaistLine(point: { day: string; cm: number } | null): string {
+  if (!point) return 'No waist logged yet';
+  return `Latest waist ${formatWaistCm(point.cm)} · ${formatUkCompactDay(point.day)}`;
 }
 
 /**
