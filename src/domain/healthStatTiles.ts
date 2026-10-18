@@ -7,13 +7,11 @@
 
 import { bodyFatRange } from '@/domain/distance';
 import {
-  activityTypeFromKind,
   buildFitnessSnapshot,
   CONDITIONING_NOTE,
   MIX_HOW,
   VO2_WHAT,
-  workoutBucket,
-  workoutTypeLabel,
+  workoutMixReport,
 } from '@/domain/fitnessSnapshot';
 import { goalBandLegend, goalWeightRange, IBA_RULES_URL, NO_CUT } from '@/domain/goalWeightRange';
 import {
@@ -267,7 +265,7 @@ export const HEALTH_STAT_CATALOGUE: readonly { id: string; section: HealthStatSe
   { id: 'weekly_active_minutes', section: 'activity', title: 'Weekly active minutes' },
 ];
 
-export type HealthStatSample = { kind: string; value: number; recordedOn: string };
+export type HealthStatSample = { kind: string; value: number; recordedOn: string; source?: string };
 
 export type HealthStatBody = {
   recordedOn: string;
@@ -631,45 +629,36 @@ function vo2Tile(item: CatalogItem, input: HealthStatBoardInput, grown: boolean)
 function mixTotals(input: HealthStatBoardInput, start: string, end = input.today): {
   buckets: Record<WorkoutBucket, number>;
   breakdown: { activityType: number; label: string; minutes: number; bucket: WorkoutBucket }[];
+  lines: string[];
 } {
-  const byType = new Map<number, number>();
-  for (const sample of input.samples) {
-    const activityType = activityTypeFromKind(sample.kind);
-    if (activityType == null || sample.recordedOn < start || sample.recordedOn > end) continue;
-    if (!Number.isFinite(sample.value) || sample.value <= 0) continue;
-    byType.set(activityType, (byType.get(activityType) ?? 0) + sample.value);
-  }
-  const buckets: Record<WorkoutBucket, number> = { strength: 0, cardio: 0, conditioning: 0, other: 0 };
-  if (byType.size > 0) {
-    const breakdown = [...byType.entries()]
-      .map(([activityType, minutes]) => ({
-        activityType,
-        label: workoutTypeLabel(activityType),
-        minutes: Math.round(minutes),
-        bucket: workoutBucket(activityType, input.workoutBuckets),
-      }))
-      .filter((row) => row.minutes > 0)
-      .sort((left, right) => right.minutes - left.minutes || left.label.localeCompare(right.label));
-    for (const row of breakdown) buckets[row.bucket] += row.minutes;
-    return { buckets, breakdown };
-  }
-  for (const bucket of WORKOUT_BUCKETS) {
-    const kind = bucket === 'strength'
-      ? 'strength_minutes'
-      : bucket === 'cardio'
-        ? 'cardio_minutes'
-        : bucket === 'conditioning'
-          ? 'conditioning_minutes'
-          : 'other_minutes';
-    buckets[bucket] = sumBetween(series(input.samples, kind, end), start, end);
-  }
-  return { buckets, breakdown: [] };
+  const report = workoutMixReport({
+    samples: input.samples,
+    today: input.today,
+    start,
+    end,
+    overrides: input.workoutBuckets,
+  });
+  return {
+    buckets: {
+      strength: report.strength,
+      cardio: report.cardio,
+      conditioning: report.conditioning,
+      other: report.other,
+    },
+    breakdown: report.types.map((row) => ({
+      activityType: row.activityType,
+      label: row.label,
+      minutes: row.minutes,
+      bucket: row.bucket,
+    })),
+    lines: report.lines,
+  };
 }
 
 function mixTile(item: CatalogItem, input: HealthStatBoardInput): HealthStatTile | null {
   const period = periodOf(input);
   const start = windowStart(input.today, period);
-  const { buckets, breakdown } = mixTotals(input, start);
+  const { buckets, breakdown, lines } = mixTotals(input, start);
   const strength = buckets.strength;
   const cardio = buckets.cardio;
   const conditioning = buckets.conditioning;
@@ -716,7 +705,7 @@ function mixTile(item: CatalogItem, input: HealthStatBoardInput): HealthStatTile
     },
     history: [],
     about: `Strength, cardio, conditioning, and other: minutes from the workout type recorded over ${periodPhrase(period)}. ${MIX_HOW} ${CONDITIONING_NOTE} Overlapping workouts from more than one app are counted once. The minutes are the workout duration, not time in a heart-rate zone.`,
-    meaning: listed ? `${listed}. ${CONDITIONING_NOTE}` : `${status} ${CONDITIONING_NOTE}`,
+    meaning: [listed, ...lines].filter(Boolean).join(' '),
     rangeNote: 'There is no guideline mix. You can count a workout type as strength, cardio, conditioning, or other. That choice stays on your account.',
     sourceName: null,
     sourceUrl: null,

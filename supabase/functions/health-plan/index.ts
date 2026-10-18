@@ -10,7 +10,7 @@ import {
   type PlanInput,
 } from '../_shared/healthPlan.ts';
 import { json, preflight } from '../_shared/http.ts';
-import { isBodyBuild, isBuilderPhase, isMealSlot, isNutritionGoal, isNutritionSex, type FoodItem, type FoodLog, type NutritionGoal } from '../_shared/nutrition.ts';
+import { isBodyBuild, isBuilderPhase, isMealSlot, isNutritionGoal, isNutritionSex, parseWorkoutBuckets, type FoodItem, type FoodLog, type NutritionGoal } from '../_shared/nutrition.ts';
 import { buildChatCompletionBody, THUMOS_CHAT } from '../_shared/thumos.ts';
 
 type Body = { limits?: string };
@@ -57,7 +57,7 @@ Deno.serve(async (req) => {
   const body = (await req.json().catch(() => ({}))) as Body;
   const limits = textOf(body.limits).trim().slice(0, 280);
 
-  const settingsSelect = 'goal, goal_age, goal_sex, build, kcal_target, protein_target_g, carb_target_g, fat_target_g, goal_phase, weight_class_kg, hide_calories';
+  const settingsSelect = 'goal, goal_age, goal_sex, build, kcal_target, protein_target_g, carb_target_g, fat_target_g, goal_phase, weight_class_kg, hide_calories, workout_buckets';
   let settingsRes = await userClient.from('nutrition_settings').select(settingsSelect).eq('user_id', userId).maybeSingle();
   if (settingsRes.error) {
     settingsRes = await userClient.from('nutrition_settings').select('goal, goal_age, goal_sex, build, kcal_target, protein_target_g, hide_calories').eq('user_id', userId).maybeSingle();
@@ -65,7 +65,7 @@ Deno.serve(async (req) => {
   const [logsRes, checkRes, healthRes, bodyRes, reasonsRes, visionRes, interestRes, savedRes, scheduleRes] = await Promise.all([
     userClient.from('food_logs').select('id, eaten_on, meal, items, estimated, created_at').eq('user_id', userId).order('eaten_on', { ascending: false }).limit(40),
     userClient.from('check_ins').select('mood, craving, sleep_hours, note, created_at').eq('user_id', userId).order('created_at', { ascending: false }).limit(14),
-    userClient.from('health_samples').select('kind, value, recorded_on').eq('user_id', userId).order('recorded_on', { ascending: false }).limit(800),
+    userClient.from('health_samples').select('kind, value, recorded_on, source').eq('user_id', userId).order('recorded_on', { ascending: false }).limit(800),
     userClient.from('body_composition').select('body_fat_pct, lean_mass_kg, waist_cm, recorded_on').eq('user_id', userId).order('recorded_on', { ascending: false }).limit(8),
     userClient.from('reasons').select('body').eq('user_id', userId).order('sort_order').limit(6),
     userClient.from('vision_board_items').select('caption').eq('user_id', userId).order('position').limit(6),
@@ -151,12 +151,14 @@ Deno.serve(async (req) => {
       kind: textOf(row.kind),
       value: Number(row.value) || 0,
       recordedOn: textOf(row.recorded_on),
+      source: row.source === 'healthkit' || row.source === 'manual' ? row.source : undefined,
     })),
     bodyFatPct: typeof latestFat?.body_fat_pct === 'number' ? latestFat.body_fat_pct : null,
     leanMassKg: typeof latestLean?.lean_mass_kg === 'number' ? latestLean.lean_mass_kg : null,
     waistCm: typeof latestWaist?.waist_cm === 'number' ? latestWaist.waist_cm : null,
     doneTexts,
     schedule: scheduleRes.error ? null : trainingScheduleFromRow(scheduleRes.data),
+    workoutBuckets: parseWorkoutBuckets(settings.workout_buckets),
     fitnessSnapshot: profileRes.data.consent_health === true ? undefined : null,
   };
 

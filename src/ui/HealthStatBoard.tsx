@@ -337,6 +337,7 @@ function WorkoutTypeChoices({
   if (!rows.length) return null;
   return (
     <View style={{ gap: 12 }}>
+      <T variant="label">How this is worked out</T>
       <T variant="label">Each workout type</T>
       {rows.map((row) => (
         <View key={row.activityType} style={{ gap: 6 }}>

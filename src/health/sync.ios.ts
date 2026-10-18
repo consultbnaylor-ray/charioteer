@@ -11,7 +11,8 @@ import type { HealthKind, NewHealthSample } from '@/data/types';
 import { isoDay } from '@/domain/dates';
 import { shownError } from '@/domain/errors';
 import { parseBodyFatPct, parseLeanMassKg } from '@/domain/nutrition';
-import { dedupeWorkouts, workoutBucket, workoutTypeKind, type WorkoutSpan } from '@/domain/fitnessSnapshot';
+import { dedupeWorkouts, workoutBucket, workoutTypeKind, type WorkoutSourceMinute, type WorkoutSpan } from '@/domain/fitnessSnapshot';
+import { saveWorkoutSources } from '@/health/workoutSources';
 import type { WorkoutBucket, WorkoutBucketMap } from '@/domain/nutrition';
 import { HEALTH_SAMPLE_DAYS } from '@/domain/healthVisibility';
 import { sleepHoursByWakeDay } from '@/domain/sleepNights';
@@ -24,6 +25,15 @@ export type AppleHealthBodyRead =
 export type HealthSyncResult =
   | { ok: true; samples: NewHealthSample[]; activeEnergyKcal: number | null; composition?: AppleHealthComposition[] }
   | { ok: false; message: string };
+
+function workoutSourceName(source: { name?: string; bundleIdentifier?: string } | null | undefined): string {
+  const name = source?.name?.trim();
+  if (name) return name.slice(0, 60);
+  const id = source?.bundleIdentifier ?? '';
+  if (id.startsWith('com.apple.')) return 'Apple Watch';
+  const tail = id.split('.').filter(Boolean).pop();
+  return tail ? tail.slice(0, 60) : 'Apple Health';
+}
 
 function add(map: Map<string, number>, day: string, amount: number) {
   map.set(day, (map.get(day) ?? 0) + amount);
@@ -222,7 +232,7 @@ export async function syncAppleHealth(overrides: WorkoutBucketMap = {}): Promise
     };
     const typeDays = new Map<string, Map<string, number>>();
     const sessionHeart = new Map<string, { total: number; count: number }>();
-    const pending: { workout: (typeof workouts)[number]; span: WorkoutSpan }[] = [];
+    const pending: { workout: (typeof workouts)[number]; span: WorkoutSpan; sourceName: string }[] = [];
     for (const workout of workouts) {
       const plain = workout.toJSON();
       const startMs = new Date(plain.startDate).getTime();
@@ -235,6 +245,7 @@ export async function syncAppleHealth(overrides: WorkoutBucketMap = {}): Promise
       }
       pending.push({
         workout,
+        sourceName: workoutSourceName(plain.sourceRevision?.source),
         span: {
           activityType: Number(plain.workoutActivityType),
           startMs,
@@ -245,6 +256,7 @@ export async function syncAppleHealth(overrides: WorkoutBucketMap = {}): Promise
       });
     }
     const kept = new Set(dedupeWorkouts(pending.map((item) => item.span)));
+    const sourceMinutes: WorkoutSourceMinute[] = [];
     for (const item of pending) {
       if (!kept.has(item.span)) {
         item.workout.dispose();
@@ -253,12 +265,23 @@ export async function syncAppleHealth(overrides: WorkoutBucketMap = {}): Promise
       const day = isoDay(new Date(item.span.startMs));
       const length = item.span.durationMin;
       add(workoutDays, day, length);
-      const bucket = workoutBucket(item.span.activityType, overrides);
+      const activityType = Number.isInteger(item.span.activityType) && item.span.activityType > 0
+        ? item.span.activityType
+        : 0;
+      const bucket = workoutBucket(activityType, overrides);
       add(bucketDays[bucket], day, length);
-      const typeKind = workoutTypeKind(item.span.activityType);
-      const typeMap = typeDays.get(typeKind) ?? new Map<string, number>();
-      add(typeMap, day, length);
-      typeDays.set(typeKind, typeMap);
+      if (activityType > 0) {
+        sourceMinutes.push({
+          day,
+          activityType,
+          minutes: length,
+          sourceName: item.sourceName,
+        });
+        const typeKind = workoutTypeKind(activityType);
+        const typeMap = typeDays.get(typeKind) ?? new Map<string, number>();
+        add(typeMap, day, length);
+        typeDays.set(typeKind, typeMap);
+      }
       try {
         const stat = await item.workout.getStatistic('HKQuantityTypeIdentifierHeartRate', 'count/min');
         const average = stat?.averageQuantity?.quantity;
@@ -292,6 +315,7 @@ export async function syncAppleHealth(overrides: WorkoutBucketMap = {}): Promise
       if (stat.count > 0) sessionDays.set(day, stat.total / stat.count);
     }
     samples.push(...rows('session_heart_rate', 'bpm', sessionDays, Math.round));
+    await saveWorkoutSources(sourceMinutes).catch(() => undefined);
 
     try {
       const vo2 = await queryQuantitySamples('HKQuantityTypeIdentifierVO2Max', {

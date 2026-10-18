@@ -13,12 +13,17 @@ import {
   whyCardioMatters,
   whyMinutesMatter,
   whyRestingMatters,
+  rebucketStoredMinutes,
+  withWorkoutBucket,
+  WORKOUT_MIX_TITLE,
   type FitnessCompare,
   type FitnessSnapshot,
   type FitnessTone,
+  type WorkoutSourceMinute,
 } from '@/domain/fitnessSnapshot';
 import { applyFitnessFocus } from '@/domain/healthPlan';
-import { closerToGoal, whyGoalMatters, type NutritionGoal } from '@/domain/nutrition';
+import { loadWorkoutSources } from '@/health/workoutSources';
+import { closerToGoal, whyGoalMatters, WORKOUT_BUCKET_LABEL, WORKOUT_BUCKETS, type NutritionGoal, type WorkoutBucket } from '@/domain/nutrition';
 import { GoalLine } from '@/ui/GoalLine';
 import type { AppleHealthAccess } from '@/health/connection';
 import { readAppleHealthAccess } from '@/health/link';
@@ -27,7 +32,7 @@ import { MeasureRingView } from '@/ui/MeasuredFigure';
 import { PlanTick } from '@/ui/PlanTick';
 import { statsToneColors } from '@/ui/statsPalette';
 import { useAppTheme } from '@/ui/theme';
-import { Button, Card, T } from '@/ui/ui';
+import { Button, Card, Choice, T, playSavedHaptic } from '@/ui/ui';
 
 const MIX = [
   ['strength', 'Strength', 'good'],
@@ -47,12 +52,32 @@ export function YourFitness() {
   const [access, setAccess] = useState<AppleHealthAccess | null>(Platform.OS === 'ios' ? null : 'web');
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<InfoFocus | null>(null);
+  const [sourceApps, setSourceApps] = useState<WorkoutSourceMinute[]>([]);
+  const [bucketNote, setBucketNote] = useState<string | null>(null);
   useEffect(() => {
     if (Platform.OS !== 'ios') return;
     void readAppleHealthAccess().then(setAccess).catch(() => setAccess('prompt'));
   }, []);
+  useEffect(() => {
+    void loadWorkoutSources().then(setSourceApps).catch(() => setSourceApps([]));
+  }, [snap.health]);
   if (!snap.profile) return null;
-  const view = fitnessView(snap, access === 'denied' ? 'denied' : 'unknown');
+  const view = fitnessView(snap, access === 'denied' ? 'denied' : 'unknown', new Date(), sourceApps);
+
+  async function saveBucket(activityType: number, bucket: WorkoutBucket) {
+    setError(null);
+    try {
+      const current = repo.getSnapshot().nutrition;
+      const workoutBuckets = withWorkoutBucket(current.workoutBuckets, activityType, bucket);
+      await repo.setNutritionSettings({ ...current, workoutBuckets });
+      const rewritten = rebucketStoredMinutes(repo.getSnapshot().health, workoutBuckets);
+      if (rewritten.length && repo.getSnapshot().profile?.consentHealth) await repo.saveHealth(rewritten);
+      setBucketNote(`That workout type now counts as ${WORKOUT_BUCKET_LABEL[bucket].toLowerCase()}.`);
+      void playSavedHaptic();
+    } catch (err) {
+      setError(shownError(err, 'Could not save that workout type.'));
+    }
+  }
   if (!view) return null;
   const colors = statsToneColors(theme.scheme);
   const ink = (tone: FitnessTone) => colors[tone].ink;
@@ -130,7 +155,7 @@ export function YourFitness() {
           <MoreInfo about="resting heart rate" onPress={() => setInfo('resting')} />
         </View>
       ) : null}
-      {view.mix ? <MixBar view={view} /> : null}
+      {view.mix ? <MixBar view={view} note={bucketNote} onSetBucket={(activityType, bucket) => void saveBucket(activityType, bucket)} /> : null}
       {view.recovery ? (
         <View style={{ gap: 4 }}>
           <T variant="label">Recovery</T>
@@ -483,7 +508,15 @@ function Legend({ swatch, label, round = false }: { swatch: string; label: strin
   );
 }
 
-function MixBar({ view }: { view: FitnessSnapshot }) {
+function MixBar({
+  view,
+  note,
+  onSetBucket,
+}: {
+  view: FitnessSnapshot;
+  note: string | null;
+  onSetBucket: (activityType: number, bucket: WorkoutBucket) => void;
+}) {
   const theme = useAppTheme();
   const colors = statsToneColors(theme.scheme);
   const weeks = view.mix?.weeks ?? [];
@@ -527,6 +560,27 @@ function MixBar({ view }: { view: FitnessSnapshot }) {
         ))}
       </View>
       <T variant="muted">{view.mix?.words} Oldest week to this week.</T>
+      <Fold title={WORKOUT_MIX_TITLE}>
+        {(view.mix?.lines ?? []).map((line) => <T key={line}>{line}</T>)}
+        {(view.mix?.types ?? []).map((row) => (
+          <View key={row.activityType} style={{ gap: 6 }}>
+            <T>Fix {row.label}</T>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+              {WORKOUT_BUCKETS.map((bucket) => (
+                <Choice
+                  key={bucket}
+                  label={WORKOUT_BUCKET_LABEL[bucket]}
+                  selected={row.bucket === bucket}
+                  onPress={() => {
+                    if (row.bucket !== bucket) onSetBucket(row.activityType, bucket);
+                  }}
+                />
+              ))}
+            </View>
+          </View>
+        ))}
+        {note ? <T>{note}</T> : null}
+      </Fold>
     </View>
   );
 }

@@ -22,6 +22,7 @@ import {
   type FoodLog,
   type NutritionGoal,
   type NutritionSex,
+  type WorkoutBucketMap,
 } from './nutrition.ts';
 import { buildFitnessSnapshot, fitnessFocusLines, type FitnessSnapshotInput } from './fitnessSnapshot.ts';
 import { goalWeightRange } from './goalWeightRange.ts';
@@ -74,13 +75,15 @@ export type PlanInput = {
   hideCalories: boolean;
   foodLogs: readonly FoodLog[];
   checkIns: readonly { mood: number; craving: number; sleepHours: number; note: string; createdAt: string }[];
-  health: readonly { kind: string; value: number; recordedOn: string }[];
+  health: readonly { kind: string; value: number; recordedOn: string; source?: string }[];
   bodyFatPct: number | null;
   leanMassKg: number | null;
   waistCm: number | null;
   doneTexts: string[];
   /** Usual gym week from You. Absent or null when they have not set one. */
   schedule?: TrainingSchedule | null;
+  /** Recategorised workout types. Absent uses the default type. */
+  workoutBuckets?: WorkoutBucketMap | null;
   /**
    * Short fitness sentence for the model.
    * Undefined computes it from health. Null withholds it, for example when health consent is off.
@@ -1232,6 +1235,7 @@ function fitnessInput(input: PlanInput): FitnessSnapshotInput {
     }),
     permission: 'unknown',
     build: input.build,
+    workoutBuckets: input.workoutBuckets ?? null,
   };
 }
 

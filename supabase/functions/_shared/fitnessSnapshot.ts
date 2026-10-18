@@ -24,7 +24,21 @@ export type FitnessLevel = 'Developing' | 'Steady' | 'Strong';
 
 export type FitnessTone = 'good' | 'watch' | 'info';
 
-export type FitnessSample = { kind: string; value: number; recordedOn: string };
+export type FitnessSample = {
+  kind: string;
+  value: number;
+  recordedOn: string;
+  /** healthkit wins over a same-day manual copy. Absent when the row did not say. */
+  source?: string;
+};
+
+/** Minutes one app wrote for one workout type on one day. No route and no heart rate. */
+export type WorkoutSourceMinute = {
+  day: string;
+  activityType: number;
+  minutes: number;
+  sourceName: string;
+};
 
 export type FitnessSnapshotInput = {
   today: string;
@@ -39,6 +53,10 @@ export type FitnessSnapshotInput = {
   permission: 'denied' | 'unknown';
   /** Carrying extra weight keeps the comparison on their own readings. */
   build?: BodyBuild | null;
+  /** Saved recategorisation. The default type is used when a type is absent. */
+  workoutBuckets?: WorkoutBucketMap | null;
+  /** App names from the last iPhone sync. The chart still counts stored minutes without them. */
+  sourceApps?: readonly WorkoutSourceMinute[];
 };
 
 export type FitnessRing = {
@@ -84,6 +102,17 @@ export type FitnessWeekMix = {
   other: number;
 };
 
+export type WorkoutTypeMinute = {
+  activityType: number;
+  label: string;
+  minutes: number;
+  bucket: WorkoutBucket;
+  sources: string[];
+};
+
+/** Dropdown on the sessions chart. */
+export const WORKOUT_MIX_TITLE = 'How this is worked out';
+
 export type FitnessRecommendation = {
   id: string;
   text: string;
@@ -99,7 +128,13 @@ export type FitnessSnapshot = {
   cardio: (FitnessRing & { trend: number[]; compare: FitnessCompare }) | null;
   resting: FitnessTrend | null;
   minutes: FitnessRing | null;
-  mix: { weeks: FitnessWeekMix[]; words: string } | null;
+  mix: {
+    weeks: FitnessWeekMix[];
+    words: string;
+    /** One line per recorded workout type, then how the minutes were chosen. */
+    lines: string[];
+    types: WorkoutTypeMinute[];
+  } | null;
   recovery: { words: string; tone: FitnessTone; status: string } | null;
   recommendations: FitnessRecommendation[];
   /** One line for Thumos and the plan. Null when there is nothing to say. */
@@ -193,6 +228,8 @@ const WOMEN = [
 const STRENGTH_TYPES = new Set([11, 20, 50, 59]);
 const CONDITIONING_TYPES = new Set([8, 28, 30, 63, 65, 73]);
 const CARDIO_TYPES = new Set([13, 16, 24, 35, 37, 44, 46, 52, 53, 60, 64, 68, 69, 70, 71, 74, 77, 82]);
+/** Flexibility, cooldown, and Health's Other. Never cardio. */
+const OTHER_TYPES = new Set([62, 80, 3000]);
 
 export const WORKOUT_TYPE_LABEL: Record<number, string> = {
   1: 'American football',
@@ -238,6 +275,7 @@ export const WORKOUT_TYPE_LABEL: Record<number, string> = {
   77: 'Cardio dance',
   80: 'Cooldown',
   82: 'Swim, bike, run',
+  3000: 'Other',
 };
 
 /** One line on the mix card. The split follows the saved workout type. */
@@ -251,9 +289,11 @@ export function workoutTypeLabel(activityType: number): string {
 }
 
 export function defaultWorkoutBucket(activityType: number): WorkoutBucket {
+  if (!Number.isInteger(activityType) || activityType <= 0) return 'other';
   if (STRENGTH_TYPES.has(activityType)) return 'strength';
   if (CONDITIONING_TYPES.has(activityType)) return 'conditioning';
   if (CARDIO_TYPES.has(activityType)) return 'cardio';
+  if (OTHER_TYPES.has(activityType)) return 'other';
   return 'other';
 }
 
@@ -526,12 +566,17 @@ export function buildFitnessSnapshot(input: FitnessSnapshotInput): FitnessSnapsh
     + sumKind(input.health, 'conditioning_minutes', weekStart, today)
     + sumKind(input.health, 'other_minutes', weekStart, today);
   const minutes = workoutMinutes > 0 ? workoutMinutes : mixWeek;
-  const monthStart = shiftDay(today, -27);
-  const strength = sumKind(input.health, 'strength_minutes', monthStart, today);
-  const cardioMin = sumKind(input.health, 'cardio_minutes', monthStart, today);
-  const conditioning = sumKind(input.health, 'conditioning_minutes', monthStart, today);
-  const other = sumKind(input.health, 'other_minutes', monthStart, today);
-  const mixTotal = strength + cardioMin + conditioning + other;
+  const mixReport = workoutMixReport({
+    samples: input.health,
+    today,
+    overrides: input.workoutBuckets,
+    sourceApps: input.sourceApps,
+  });
+  const strength = mixReport.strength;
+  const cardioMin = mixReport.cardio;
+  const conditioning = mixReport.conditioning;
+  const other = mixReport.other;
+  const mixTotal = mixReport.total;
   const restingSplit = halves(resting);
   const sleepSplit = halves(sleep);
   const hrvSplit = halves(hrv);
@@ -599,9 +644,8 @@ export function buildFitnessSnapshot(input: FitnessSnapshotInput): FitnessSnapsh
     words: minutesWords(minutes, input.scheduleWeekMinutes),
   } : null;
 
-  const weeks = mixWeeks(input.health, today);
-  const mix = weeks.some((week) => week.strength + week.cardio + week.conditioning + week.other > 0)
-    ? { weeks, words: mixWords(strength, cardioMin, conditioning, other) }
+  const mix = mixReport.total > 0
+    ? { weeks: mixReport.weeks, words: mixReport.words, lines: mixReport.lines, types: mixReport.types }
     : null;
 
   const recovery = recoveryView({
@@ -731,22 +775,217 @@ function minutesWords(minutes: number, schedule: number | null): string {
   return `${Math.round(minutes)} min this week. ${guideline}`;
 }
 
-function mixWeeks(samples: readonly FitnessSample[], today: string): FitnessWeekMix[] {
-  const thisMonday = mondayOf(today);
-  const weeks: FitnessWeekMix[] = [];
-  for (let index = 7; index >= 0; index -= 1) {
-    const start = shiftDay(thisMonday, -index * 7);
-    const end = index === 0 ? today : shiftDay(start, 6);
-    weeks.push({
-      label: index === 0 ? 'Now' : `${index}w`,
-      strength: Math.round(sumKind(samples, 'strength_minutes', start, end)),
-      cardio: Math.round(sumKind(samples, 'cardio_minutes', start, end)),
-      conditioning: Math.round(sumKind(samples, 'conditioning_minutes', start, end)),
-      other: Math.round(sumKind(samples, 'other_minutes', start, end)),
+const BUCKET_KIND_NAME = {
+  strength_minutes: 'strength',
+  cardio_minutes: 'cardio',
+  conditioning_minutes: 'conditioning',
+  other_minutes: 'other',
+} as const;
+
+type MixBuckets = Record<WorkoutBucket, number>;
+
+function blankBuckets(): MixBuckets {
+  return { strength: 0, cardio: 0, conditioning: 0, other: 0 };
+}
+
+function sampleDay(recordedOn: string): string {
+  return recordedOn.slice(0, 10);
+}
+
+/**
+ * One number per kind per day.
+ * A Health row replaces a manual row for that day, so a workout saved by the Watch and typed again is not added twice.
+ */
+function collapseMixSamples(samples: readonly FitnessSample[]): FitnessSample[] {
+  const groups = new Map<string, FitnessSample[]>();
+  for (const sample of samples) {
+    const day = sampleDay(sample.recordedOn);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(day) || !Number.isFinite(sample.value) || sample.value <= 0) continue;
+    const key = `${sample.kind}|${day}`;
+    const list = groups.get(key) ?? [];
+    list.push({ ...sample, recordedOn: day });
+    groups.set(key, list);
+  }
+  const collapsed: FitnessSample[] = [];
+  for (const list of groups.values()) {
+    const fromHealth = list.filter((row) => row.source === 'healthkit');
+    const chosen = fromHealth.length ? fromHealth : list;
+    collapsed.push({
+      kind: chosen[0]?.kind ?? '',
+      recordedOn: chosen[0]?.recordedOn ?? '',
+      value: chosen.reduce((sum, row) => sum + row.value, 0),
+      source: fromHealth.length ? 'healthkit' : chosen.find((row) => row.source)?.source,
     });
   }
-  const first = weeks.findIndex((week) => week.strength + week.cardio + week.conditioning + week.other > 0);
-  return first <= 0 ? weeks : weeks.slice(first);
+  return collapsed;
+}
+
+function sourceLabel(source: string | undefined): string {
+  if (source === 'manual') return 'Logged here';
+  if (source === 'healthkit') return 'Apple Health';
+  return 'Source not stored';
+}
+
+export type WorkoutMixReport = {
+  weeks: FitnessWeekMix[];
+  strength: number;
+  cardio: number;
+  conditioning: number;
+  other: number;
+  total: number;
+  words: string;
+  lines: string[];
+  types: WorkoutTypeMinute[];
+  typeDays: number;
+  bucketDays: number;
+};
+
+/**
+ * The one split for the sessions chart, the Health Stats mix tile, and the plan.
+ * A day with workout-type minutes uses those minutes. Saved bucket totals are used only on days with no type.
+ * Unknown types, including Health's Other, count as other.
+ */
+export function workoutMixReport(input: {
+  samples: readonly FitnessSample[];
+  today: string;
+  start?: string;
+  end?: string;
+  overrides?: WorkoutBucketMap | null;
+  sourceApps?: readonly WorkoutSourceMinute[];
+}): WorkoutMixReport {
+  const end = input.end ?? input.today;
+  const chart = input.start == null;
+  const thisMonday = mondayOf(input.today);
+  const rangeStart = input.start ?? shiftDay(thisMonday, -7 * 7);
+  const collapsed = collapseMixSamples(input.samples).filter((sample) => sample.recordedOn >= rangeStart && sample.recordedOn <= end);
+  const byDay = new Map<string, FitnessSample[]>();
+  for (const sample of collapsed) {
+    const list = byDay.get(sample.recordedOn) ?? [];
+    list.push(sample);
+    byDay.set(sample.recordedOn, list);
+  }
+  const typeHits: { day: string; activityType: number; minutes: number; source?: string }[] = [];
+  const dayBuckets = new Map<string, MixBuckets>();
+  const dayKind = new Map<string, 'type' | 'bucket'>();
+  for (const [day, rows] of byDay) {
+    const typed = rows.filter((row) => activityTypeFromKind(row.kind) != null);
+    const buckets = blankBuckets();
+    if (typed.length) {
+      dayKind.set(day, 'type');
+      for (const row of typed) {
+        const activityType = activityTypeFromKind(row.kind);
+        if (activityType == null) continue;
+        const bucket = workoutBucket(activityType, input.overrides);
+        buckets[bucket] += row.value;
+        typeHits.push({ day, activityType, minutes: row.value, source: row.source });
+      }
+    } else {
+      let used = false;
+      for (const row of rows) {
+        const bucket = BUCKET_KIND_NAME[row.kind as keyof typeof BUCKET_KIND_NAME];
+        if (!bucket) continue;
+        buckets[bucket] += row.value;
+        used = true;
+      }
+      if (used) dayKind.set(day, 'bucket');
+    }
+    if (buckets.strength + buckets.cardio + buckets.conditioning + buckets.other > 0) dayBuckets.set(day, buckets);
+  }
+  const weekStarts: { label: string; start: string; end: string }[] = chart
+    ? Array.from({ length: 8 }, (_, index) => {
+      const ago = 7 - index;
+      const start = shiftDay(thisMonday, -ago * 7);
+      return { label: ago === 0 ? 'Now' : `${ago}w`, start, end: ago === 0 ? end : shiftDay(start, 6) };
+    })
+    : [{ label: 'Period', start: rangeStart, end }];
+  let weeks: FitnessWeekMix[] = weekStarts.map((week) => {
+    const totals = blankBuckets();
+    for (const [day, buckets] of dayBuckets) {
+      if (day < week.start || day > week.end) continue;
+      totals.strength += buckets.strength;
+      totals.cardio += buckets.cardio;
+      totals.conditioning += buckets.conditioning;
+      totals.other += buckets.other;
+    }
+    return {
+      label: week.label,
+      strength: Math.round(totals.strength),
+      cardio: Math.round(totals.cardio),
+      conditioning: Math.round(totals.conditioning),
+      other: Math.round(totals.other),
+    };
+  });
+  if (chart) {
+    const first = weeks.findIndex((week) => week.strength + week.cardio + week.conditioning + week.other > 0);
+    if (first > 0) weeks = weeks.slice(first);
+  }
+  const shownStart = chart ? (weekStarts.find((week) => week.label === weeks[0]?.label)?.start ?? rangeStart) : rangeStart;
+  let typeDays = 0;
+  let bucketDays = 0;
+  for (const [day, kind] of dayKind) {
+    if (day < shownStart || day > end) continue;
+    if (kind === 'type') typeDays += 1;
+    else bucketDays += 1;
+  }
+  const typeTotals = new Map<number, { minutes: number; sources: Set<string> }>();
+  for (const hit of typeHits) {
+    if (hit.day < shownStart || hit.day > end) continue;
+    const current = typeTotals.get(hit.activityType) ?? { minutes: 0, sources: new Set<string>() };
+    current.minutes += hit.minutes;
+    current.sources.add(sourceLabel(hit.source));
+    typeTotals.set(hit.activityType, current);
+  }
+  const strength = weeks.reduce((sum, week) => sum + week.strength, 0);
+  const cardio = weeks.reduce((sum, week) => sum + week.cardio, 0);
+  const conditioning = weeks.reduce((sum, week) => sum + week.conditioning, 0);
+  const other = weeks.reduce((sum, week) => sum + week.other, 0);
+  const apps = new Map<number, Map<string, number>>();
+  for (const row of input.sourceApps ?? []) {
+    const day = row.day.slice(0, 10);
+    if (day < shownStart || day > end || !Number.isFinite(row.minutes) || row.minutes <= 0) continue;
+    const name = row.sourceName.trim().slice(0, 60);
+    if (!name) continue;
+    const perType = apps.get(row.activityType) ?? new Map<string, number>();
+    perType.set(name, (perType.get(name) ?? 0) + row.minutes);
+    apps.set(row.activityType, perType);
+  }
+  const types = [...typeTotals.entries()]
+    .map(([activityType, row]) => {
+      const named = apps.get(activityType);
+      const sources = named && named.size
+        ? [...named.entries()].sort((left, right) => right[1] - left[1]).map(([name, minutes]) => `${name} ${Math.round(minutes)} min`)
+        : [...row.sources];
+      return {
+        activityType,
+        label: workoutTypeLabel(activityType),
+        minutes: Math.round(row.minutes),
+        bucket: workoutBucket(activityType, input.overrides),
+        sources,
+      };
+    })
+    .filter((row) => row.minutes > 0)
+    .sort((left, right) => right.minutes - left.minutes || left.label.localeCompare(right.label));
+  const lines = types.map((row) => `${row.label}: ${row.minutes} min, ${row.bucket}. ${row.sources.join(', ')}.`);
+  if (typeDays === 0 && bucketDays > 0) {
+    lines.push('Workout types were not stored for this period, so these minutes are the saved strength, cardio, conditioning, and other totals.');
+  } else if (bucketDays > 0) {
+    lines.push(`${bucketDays === 1 ? '1 day has' : `${bucketDays} days have`} no workout type stored, so those minutes use the saved totals.`);
+  }
+  lines.push('Minutes are the workout duration, not a session count and not time in a heart-rate zone. Overlapping workouts from more than one app are counted once. A type Health did not name counts as other, not cardio.');
+  lines.push(CONDITIONING_NOTE);
+  return {
+    weeks,
+    strength,
+    cardio,
+    conditioning,
+    other,
+    total: strength + cardio + conditioning + other,
+    words: mixWords(strength, cardio, conditioning, other),
+    lines,
+    types,
+    typeDays,
+    bucketDays,
+  };
 }
 
 function mixWords(strength: number, cardio: number, conditioning: number, other: number): string {

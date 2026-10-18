@@ -9,6 +9,8 @@ import {
   ADDED_NOT_REDUCED,
   buildFitnessSnapshot,
   MINUTES_WHAT,
+  WORKOUT_MIX_TITLE,
+  workoutMixReport,
   RESTING_WHAT,
   VO2_WHAT,
   whyCardioMatters,
@@ -190,6 +192,12 @@ describe('fitness snapshot', () => {
     expect(workoutBucket(57)).toBe('other');
     expect(workoutBucket(66)).toBe('other');
     expect(workoutBucket(62)).toBe('other');
+    expect(workoutBucket(80)).toBe('other');
+    expect(workoutBucket(3000)).toBe('other');
+    expect(workoutBucket(999)).toBe('other');
+    expect(workoutBucket(Number.NaN)).toBe('other');
+    expect(workoutBucket(0)).toBe('other');
+    expect(workoutTypeLabel(3000)).toBe('Other');
     expect(workoutTypeLabel(20)).toBe('Functional strength');
     expect(workoutTypeLabel(73)).toBe('Mixed cardio');
     expect(workoutBucket(73, { '73': 'strength' })).toBe('strength');
@@ -207,6 +215,47 @@ describe('fitness snapshot', () => {
     ]);
     expect(kept.map((row) => row.activityType)).toEqual([50, 37]);
     expect(kept.reduce((sum, row) => sum + row.durationMin, 0)).toBe(90);
+  });
+
+  it('ignores stale cardio totals when the workout type is strength', () => {
+    const view = buildFitnessSnapshot(input({
+      health: [
+        { kind: 'workout_type_50', value: 300, recordedOn: '2026-10-16', source: 'healthkit' },
+        { kind: 'workout_type_8', value: 40, recordedOn: '2026-10-15', source: 'healthkit' },
+        { kind: 'workout_type_50', value: 300, recordedOn: '2026-10-16', source: 'manual' },
+        { kind: 'cardio_minutes', value: 900, recordedOn: '2026-10-16', source: 'healthkit' },
+        { kind: 'strength_minutes', value: 10, recordedOn: '2026-10-16', source: 'healthkit' },
+        { kind: 'workout_type_62', value: 15, recordedOn: '2026-10-14', source: 'healthkit' },
+        { kind: 'workout_type_80', value: 10, recordedOn: '2026-10-14', source: 'healthkit' },
+        { kind: 'workout_type_3000', value: 12, recordedOn: '2026-10-13', source: 'healthkit' },
+      ],
+      sourceApps: [
+        { day: '2026-10-16', activityType: 50, minutes: 200, sourceName: 'Apple Watch' },
+        { day: '2026-10-16', activityType: 50, minutes: 100, sourceName: 'Strong' },
+      ],
+    }));
+    expect(view.mix?.words).toContain('mostly strength');
+    expect(view.mix?.words).toContain('Strength 80%');
+    expect(view.mix?.words).toContain('cardio 0%');
+    expect(view.mix?.words).toContain('conditioning 11%');
+    const lines = view.mix?.lines.join('\n') ?? '';
+    expect(lines).toContain('Traditional strength: 300 min, strength. Apple Watch 200 min, Strong 100 min.');
+    expect(lines).toContain('Boxing: 40 min, conditioning.');
+    expect(lines).toContain('Flexibility: 15 min, other.');
+    expect(lines).toContain('Cooldown: 10 min, other.');
+    expect(lines).toContain('Other: 12 min, other.');
+    expect(lines).toContain('not a session count');
+    expect(lines).toContain('counts as other, not cardio');
+    expect(lines).not.toMatch(/heart rate|gps|latitude/i);
+    const report = workoutMixReport({
+      samples: [
+        { kind: 'workout_type_20', value: 10, recordedOn: '2026-10-16' },
+        { kind: 'workout_type_20', value: 50, recordedOn: '2026-10-15' },
+      ],
+      today: '2026-10-17',
+    });
+    expect(report.types[0]?.minutes).toBe(60);
+    expect(report.types).toHaveLength(1);
   });
 
   it('rebuilds bucket minutes from the stored workout types', () => {
@@ -312,6 +361,15 @@ describe('fitness snapshot', () => {
     expect(card).toContain('More info');
     expect(card).toContain('label="Close"');
     expect(card).toContain('ADDED_NOT_REDUCED');
+    expect(card).toContain('WORKOUT_MIX_TITLE');
+    expect(card).toContain('Fix ');
+    expect(WORKOUT_MIX_TITLE).toBe('How this is worked out');
+    expect(readFileSync('src/domain/healthStatTiles.ts', 'utf8')).toContain('workoutMixReport');
+    expect(readFileSync('supabase/functions/_shared/fitnessSnapshot.ts', 'utf8')).toContain('export function workoutMixReport');
+    expect(readFileSync('supabase/functions/_shared/nutritionLoad.ts', 'utf8')).toContain('workoutBuckets: settings.workoutBuckets');
+    expect(readFileSync('supabase/functions/health-plan/index.ts', 'utf8')).toContain('parseWorkoutBuckets');
+    expect(readFileSync('src/health/sync.ios.ts', 'utf8')).toContain('saveWorkoutSources');
+    expect(readFileSync('src/health/sync.ios.ts', 'utf8')).not.toContain('latitude');
   });
 
   it('explains the measures in plain words without inventing a sport range', () => {

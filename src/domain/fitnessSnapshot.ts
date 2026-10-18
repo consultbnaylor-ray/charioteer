@@ -20,8 +20,10 @@ export {
   rebucketStoredMinutes,
   withWorkoutBucket,
   workoutBucket,
+  workoutMixReport,
   workoutTypeKind,
   workoutTypeLabel,
+  WORKOUT_MIX_TITLE,
   type FitnessBand,
   type FitnessCompare,
   type FitnessLevel,
@@ -32,7 +34,9 @@ export {
   type FitnessTone,
   type FitnessTrend,
   type FitnessWeekMix,
+  type WorkoutSourceMinute,
   type WorkoutSpan,
+  type WorkoutTypeMinute,
 } from '../../supabase/functions/_shared/fitnessSnapshot.ts';
 
 import { buildFitnessSnapshot, type FitnessSnapshotInput } from '../../supabase/functions/_shared/fitnessSnapshot.ts';
@@ -64,16 +68,27 @@ export function fitnessFromSnapshot(
     goalAge: snap.nutrition?.goalAge ?? null,
     goalSex: snap.nutrition?.goalSex ?? null,
     scheduleWeekMinutes: scheduleWeekMinutes(snap.trainingSchedule),
-    health: (snap.health ?? []).map((sample) => ({ kind: sample.kind, value: sample.value, recordedOn: sample.recordedOn })),
+    health: (snap.health ?? []).map((sample) => ({
+      kind: sample.kind,
+      value: sample.value,
+      recordedOn: sample.recordedOn,
+      source: sample.source,
+    })),
+    workoutBuckets: snap.nutrition?.workoutBuckets ?? {},
     sleep,
     permission,
     build: snap.nutrition?.build ?? null,
   };
 }
 
-export function fitnessView(snap: AppSnapshot, permission: FitnessSnapshotInput['permission'] = 'unknown', now = new Date()) {
+export function fitnessView(
+  snap: AppSnapshot,
+  permission: FitnessSnapshotInput['permission'] = 'unknown',
+  now = new Date(),
+  sourceApps?: FitnessSnapshotInput['sourceApps'],
+) {
   if (!profileReady(snap)) return null;
-  return buildFitnessSnapshot(fitnessFromSnapshot(snap, permission, now));
+  return buildFitnessSnapshot({ ...fitnessFromSnapshot(snap, permission, now), sourceApps });
 }
 
 function profileReady(snap: AppSnapshot): boolean {
