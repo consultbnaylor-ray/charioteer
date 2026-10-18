@@ -15,11 +15,14 @@ export function MealEstimateStatus({
   ready,
   error,
   onRetry,
+  onShow,
 }: {
   waiting: boolean;
   ready: boolean;
   error: string | null;
   onRetry: () => void;
+  /** Scrolls to the estimate only when the person asks. */
+  onShow?: () => void;
 }) {
   const theme = useAppTheme();
   const green = statsToneColors(theme.scheme).good.ink;
@@ -42,6 +45,9 @@ export function MealEstimateStatus({
           </View>
           <T style={{ color: green }}>{ESTIMATE_READY_LINE}</T>
         </View>
+      ) : null}
+      {!waiting && ready && onShow ? (
+        <Button label="Show estimate" tone="quiet" onPress={onShow} />
       ) : null}
       {!waiting && error ? (
         <View style={{ gap: 8 }}>

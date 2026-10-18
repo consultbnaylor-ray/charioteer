@@ -1,6 +1,6 @@
 import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Platform, Pressable, ScrollView, Switch, View } from 'react-native';
 
 import { useRepository, useSnapshot } from '@/data';
@@ -239,6 +239,16 @@ function itemFromDraft(draft: DraftItem): FoodItem | null {
   };
 }
 
+function webScrollParent(node: HTMLElement | null): HTMLElement | null {
+  let current = node?.parentElement ?? null;
+  while (current) {
+    const overflow = getComputedStyle(current).overflowY;
+    if (overflow === 'auto' || overflow === 'scroll') return current;
+    current = current.parentElement;
+  }
+  return null;
+}
+
 export default function Nutrition() {
   const snap = useSnapshot();
   const repo = useRepository();
@@ -331,10 +341,11 @@ export default function Nutrition() {
   const [estimateAttempt, setEstimateAttempt] = useState<'text' | 'camera' | 'library' | 'sample'>('text');
   const [estimateFlash, setEstimateFlash] = useState(false);
   const [mealWeeks, setMealWeeks] = useState(1);
-  const [pinEstimate, setPinEstimate] = useState(0);
   const savedRowRef = useRef<View>(null);
   const dayAnchorRef = useRef<View>(null);
   const confirmRef = useRef<View>(null);
+  const logActionsRef = useRef<View>(null);
+  const placeRef = useRef<{ bottom: number; onScreen: boolean; offset: number } | null>(null);
   const scroller = useScreenScroller();
 
   useEffect(() => {
@@ -358,77 +369,106 @@ export default function Nutrition() {
     return () => clearTimeout(timer);
   }, [estimateFlash]);
 
-  useEffect(() => {
-    if (!pinEstimate) return undefined;
-    let cancelled = false;
-    const pin = () => {
-      if (cancelled) return;
-      if (Platform.OS === 'web') {
-        if (typeof document === 'undefined') return;
-        document.getElementById('meal-estimate-confirm')?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
-        return;
-      }
-      const row = confirmRef.current;
-      const inner = scroller?.current.innerRef.current;
-      const scroll = scroller?.current.scrollRef.current;
-      if (!row || !inner || !scroll) return;
-      row.measureLayout(
-        inner as never,
-        (_x, y) => {
-          scroll.scrollTo({ y: Math.max(0, y - 8), animated: true });
-        },
-        () => {},
-      );
-    };
-    const frame = requestAnimationFrame(() => {
-      pin();
-      requestAnimationFrame(pin);
+  useLayoutEffect(() => {
+    const snap = placeRef.current;
+    if (!snap) return;
+    placeRef.current = null;
+    if (!snap.onScreen) return;
+    if (Platform.OS === 'web') {
+      if (typeof document === 'undefined') return;
+      const node = document.getElementById('meal-log-actions');
+      if (!node) return;
+      const rect = node.getBoundingClientRect();
+      if (rect.top >= 0 && rect.top < window.innerHeight) return;
+      const parent = webScrollParent(node);
+      if (!parent) return;
+      parent.scrollTop = Math.max(0, parent.scrollTop + rect.bottom - snap.bottom);
+      return;
+    }
+    const actions = logActionsRef.current;
+    const scroll = scroller?.current;
+    if (!actions || !scroll?.scrollRef.current) return;
+    actions.measureInWindow((_x, y, _width, height) => {
+      if (y >= 0 && y < scroll.height) return;
+      const delta = y + height - snap.bottom;
+      scroll.scrollRef.current?.scrollTo({ y: Math.max(0, snap.offset + delta), animated: false });
     });
-    const later = setTimeout(pin, 400);
-    return () => {
-      cancelled = true;
-      cancelAnimationFrame(frame);
-      clearTimeout(later);
-    };
-  }, [pinEstimate, scroller]);
+  }, [draft, savedDayNote, scroller]);
 
-  useEffect(() => {
-    if (!revealId) return undefined;
-    let cancelled = false;
-    const pin = () => {
-      if (cancelled) return;
-      if (Platform.OS === 'web') {
-        if (typeof document === 'undefined') return;
-        const day = revealDay ? document.getElementById(`meal-day-${revealDay}`) : null;
-        const node = day ?? document.getElementById('saved-meal-row');
-        node?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
-        return;
+  function rememberConfirmPlace(done: () => void) {
+    if (Platform.OS === 'web') {
+      if (typeof document !== 'undefined') {
+        const card = document.getElementById('meal-estimate-confirm');
+        if (card) {
+          const rect = card.getBoundingClientRect();
+          const parent = webScrollParent(card);
+          placeRef.current = {
+            bottom: rect.bottom,
+            onScreen: rect.top < window.innerHeight && rect.bottom > 0,
+            offset: parent?.scrollTop ?? 0,
+          };
+        }
       }
-      const row = (revealDay ? dayAnchorRef.current : null) ?? savedRowRef.current;
-      const inner = scroller?.current.innerRef.current;
-      const scroll = scroller?.current.scrollRef.current;
-      if (!row || !inner || !scroll) return;
-      row.measureLayout(
-        inner as never,
-        (_x, y, _width, height) => {
-          const viewHeight = scroller?.current.height ?? 0;
-          const top = Math.max(0, y - Math.max(8, (viewHeight - height) / 2));
-          scroll.scrollTo({ y: top, animated: true });
-        },
-        () => {},
-      );
-    };
-    const frame = requestAnimationFrame(() => {
-      pin();
-      requestAnimationFrame(pin);
+      done();
+      return;
+    }
+    const card = confirmRef.current;
+    const scroll = scroller?.current;
+    if (!card || !scroll) {
+      done();
+      return;
+    }
+    card.measureInWindow((_x, y, _width, height) => {
+      placeRef.current = {
+        bottom: y + height,
+        onScreen: y < scroll.height && y + height > 0,
+        offset: scroll.offset,
+      };
+      done();
     });
-    const later = [400, 1200].map((wait) => setTimeout(pin, wait));
-    return () => {
-      cancelled = true;
-      cancelAnimationFrame(frame);
-      later.forEach((timer) => clearTimeout(timer));
-    };
-  }, [revealId, revealDay, scroller]);
+  }
+
+  function scrollToEstimate() {
+    if (Platform.OS === 'web') {
+      if (typeof document === 'undefined') return;
+      document.getElementById('meal-estimate-confirm')?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+      return;
+    }
+    const row = confirmRef.current;
+    const inner = scroller?.current.innerRef.current;
+    const scroll = scroller?.current.scrollRef.current;
+    if (!row || !inner || !scroll) return;
+    row.measureLayout(
+      inner as never,
+      (_x, y) => {
+        scroll.scrollTo({ y: Math.max(0, y - 8), animated: true });
+      },
+      () => {},
+    );
+  }
+
+  function scrollToSavedDay() {
+    if (Platform.OS === 'web') {
+      if (typeof document === 'undefined') return;
+      const day = revealDay ? document.getElementById(`meal-day-${revealDay}`) : null;
+      const node = day ?? document.getElementById('saved-meal-row');
+      node?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+      return;
+    }
+    const row = (revealDay ? dayAnchorRef.current : null) ?? savedRowRef.current;
+    const inner = scroller?.current.innerRef.current;
+    const scroll = scroller?.current.scrollRef.current;
+    if (!row || !inner || !scroll) return;
+    row.measureLayout(
+      inner as never,
+      (_x, y, _width, height) => {
+        const viewHeight = scroller?.current.height ?? 0;
+        const top = Math.max(0, y - Math.max(8, (viewHeight - height) / 2));
+        scroll.scrollTo({ y: top, animated: true });
+      },
+      () => {},
+    );
+  }
 
   function floorFor(age: number | null, sex: NutritionSex | null): number | null {
     const weight = latestWeight?.kg ?? null;
@@ -582,7 +622,6 @@ export default function Nutrition() {
     setEstimateReady(true);
     setEstimateFlash(true);
     openDraft(next);
-    setPinEstimate((value) => value + 1);
   }
 
   function failEstimate(message: string) {
@@ -721,15 +760,18 @@ export default function Nutrition() {
           estimated: draft.estimated,
           photoBase64: draft.photoBase64,
         });
-        setDraft(null);
-        setEstimateReady(false);
-        setEstimateFlash(false);
-        setText('');
-        setSavedDayNote(mealAddedLabel(stamp.eatenOn, new Date()));
-        setMealSavedAt(Date.now());
-        setRevealDay(stamp.eatenOn);
-        setRevealId(id);
-        playSavedHaptic();
+        const finish = () => {
+          setDraft(null);
+          setEstimateReady(false);
+          setEstimateFlash(false);
+          setText('');
+          setSavedDayNote(mealAddedLabel(stamp.eatenOn, new Date()));
+          setMealSavedAt(Date.now());
+          setRevealDay(stamp.eatenOn);
+          setRevealId(id);
+          playSavedHaptic();
+        };
+        rememberConfirmPlace(finish);
         if (Platform.OS === 'ios' && profile?.consentHealth && stamp.eatenOn === londonDay(new Date())) {
           const written = await writeDayToAppleHealth(foods, 0);
           setHealthNote(written.ok ? 'Saved to Apple Health.' : written.message);
@@ -745,7 +787,6 @@ export default function Nutrition() {
       setError(null);
       try {
         await repo.updateFoodLog(id, patch);
-        setSavedDayNote(mealAddedLabel(patch.eatenOn, new Date()));
         setMealSavedAt(Date.now());
         setRevealDay(patch.eatenOn);
         setRevealId(id);
@@ -1040,6 +1081,7 @@ export default function Nutrition() {
       eyebrow="Tools"
       title="Nutrition"
       intro={`${formatUkLong(today)}. Estimates stay labelled, and nothing is saved until you confirm it.`}
+      holdPlace
     >
       <NutritionSectionShare />
       <Card>
@@ -1069,6 +1111,7 @@ export default function Nutrition() {
         {snap.mode === 'demo' ? (
           <Button label="Use a sample photo" tone="quiet" pending={isPending('sample')} pendingLabel="Estimating..." onPress={samplePhoto} />
         ) : null}
+        <View ref={logActionsRef} nativeID="meal-log-actions" collapsable={false} style={{ gap: 8 }}>
         <Button
           label="Enter it myself"
           tone="quiet"
@@ -1092,7 +1135,18 @@ export default function Nutrition() {
           ready={estimateReady && draft?.estimated === true}
           error={estimateError}
           onRetry={retryEstimate}
+          onShow={estimateReady && draft?.estimated === true ? scrollToEstimate : undefined}
         />
+        {savedDayNote ? (
+          <View style={{ gap: 8 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              <PlanTick done />
+              <T>{savedDayNote}</T>
+            </View>
+            <Button label="View in list" tone="quiet" onPress={scrollToSavedDay} />
+          </View>
+        ) : null}
+        </View>
       </Card>
       {draft ? (
         <View ref={confirmRef} nativeID="meal-estimate-confirm" collapsable={false}>
@@ -1152,12 +1206,6 @@ export default function Nutrition() {
       ) : null}
       <Card>
         <T variant="label">Logged today</T>
-        {savedDayNote ? (
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-            <PlanTick done />
-            <T>{savedDayNote}</T>
-          </View>
-        ) : null}
         {todayGroup ? (
           <MealDayList
             groups={[todayGroup]}

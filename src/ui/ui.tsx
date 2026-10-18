@@ -92,6 +92,7 @@ export type ScreenScrollHandle = {
   scrollRef: RefObject<ScrollView | null>;
   innerRef: RefObject<View | null>;
   height: number;
+  offset: number;
 };
 
 const ScreenScrollContext = createContext<RefObject<ScreenScrollHandle> | null>(null);
@@ -127,6 +128,7 @@ export function Screen({
   introStyle,
   refreshing,
   onRefresh,
+  holdPlace,
 }: {
   children: ReactNode;
   eyebrow?: string;
@@ -138,6 +140,8 @@ export function Screen({
   introStyle?: StyleProp<TextStyle>;
   refreshing?: boolean;
   onRefresh?: () => void;
+  /** Keep the visible section still when content above it grows or shrinks. */
+  holdPlace?: boolean;
 }) {
   const theme = useAppTheme();
   const insets = useSafeAreaInsets();
@@ -147,7 +151,7 @@ export function Screen({
   const bottomInset = shell.bottomHandled ? 0 : insets.bottom;
   const scrollRef = useRef<ScrollView>(null);
   const innerRef = useRef<View>(null);
-  const scrollHandle = useRef<ScreenScrollHandle>({ scrollRef, innerRef, height: 0 });
+  const scrollHandle = useRef<ScreenScrollHandle>({ scrollRef, innerRef, height: 0, offset: 0 });
   return (
     <View ref={hostRef} style={{ flex: 1, backgroundColor: theme.colors.bg }} onLayout={onKeyboardLayout}>
       <KeyboardAvoidingView
@@ -162,6 +166,11 @@ export function Screen({
           ref={scrollRef}
           innerViewRef={innerRef as RefObject<View>}
           {...inputScrollProps}
+          maintainVisibleContentPosition={holdPlace ? { minIndexForVisible: 0 } : undefined}
+          onScroll={(event) => {
+            scrollHandle.current.offset = event.nativeEvent.contentOffset.y;
+          }}
+          scrollEventThrottle={16}
           onLayout={(event) => {
             scrollHandle.current.height = event.nativeEvent.layout.height;
           }}

@@ -7,8 +7,8 @@ import { useAppTheme } from '@/ui/theme';
 import { T } from '@/ui/ui';
 
 /**
- * One compact row per day. Today starts open. Earlier days start closed,
- * with the same Show and Hide control as the other collapsed lists.
+ * One compact row per day. Today starts open, and so does the day just saved.
+ * Other earlier days start closed, with the same Show and Hide control.
  */
 export function MealDayList({
   groups,
@@ -50,7 +50,7 @@ function MealDay({
   children: ReactNode;
 }) {
   const theme = useAppTheme();
-  const [open, setOpen] = useState(group.isToday);
+  const [open, setOpen] = useState(group.isToday || pinned);
   useEffect(() => {
     if (pinned) setOpen(true);
   }, [pinned]);
