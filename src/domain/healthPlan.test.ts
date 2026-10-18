@@ -96,6 +96,16 @@ function dailyWorkouts(minutes: number, skip: (day: string) => boolean = () => f
 
 const WEEKDAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 
+function proteinMeal(eatenOn: string, proteinG: number): FoodLog {
+  const log = mealLog('chicken');
+  return {
+    ...log,
+    id: eatenOn,
+    eatenOn,
+    items: [{ ...log.items[0], name: 'chicken', proteinG, kcal: 700 }],
+  };
+}
+
 function mealLog(name: string, note = ''): FoodLog {
   return {
     id: name,
@@ -677,6 +687,75 @@ describe('health plan writer', () => {
     expect(sql).toContain("'training_schedules'");
     expect(sql.toLowerCase()).not.toMatch(/drop table|delete from/i);
     expect(readFileSync('supabase/functions/health-plan/index.ts', 'utf8')).toContain("from('training_schedules')");
+  });
+
+  it('counts this week from Monday through Sunday in London, including the clock change', () => {
+    const schedule = {
+      days: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'],
+      typicalMinutes: 30,
+      longerDay: 'Saturday',
+      longerMinutes: 45,
+      walkDay: 'Sunday',
+      note: '',
+    };
+    const history: { kind: string; value: number; recordedOn: string }[] = [];
+    for (let offset = 0; offset < 21; offset += 1) {
+      const recordedOn = isoShift('2026-10-17', -offset);
+      const name = weekdayOf(recordedOn);
+      if (name === 'Sunday') continue;
+      history.push({ kind: 'workout_minutes', value: 30, recordedOn });
+    }
+    const meals = [proteinMeal('2026-10-16', 150), proteinMeal('2026-10-17', 134)];
+    const sunday = draftHealthPlan(input({
+      now: new Date('2026-10-18T07:00:00.000Z'),
+      salt: 'london-sunday',
+      goal: 'lose_fat_build_muscle',
+      schedule,
+      health: history,
+      foodLogs: meals,
+    }));
+    expect(sunday.fitness.intro).toMatch(/you have done 6 of 6 this week/);
+    expect(sunday.nutrition.targets).toContain('about 142 g protein');
+
+    const monday = draftHealthPlan(input({
+      now: new Date('2026-10-18T23:30:00.000Z'),
+      salt: 'london-monday',
+      goal: 'lose_fat_build_muscle',
+      schedule,
+      health: history,
+      foodLogs: meals,
+    }));
+    expect(monday.fitness.intro).not.toMatch(/you have done/);
+    expect(monday.nutrition.targets).not.toContain('about 142 g protein');
+
+    const afterFallback = draftHealthPlan(input({
+      now: new Date('2026-10-25T01:30:00.000Z'),
+      salt: 'london-gmt',
+      goal: 'lose_fat_build_muscle',
+      schedule,
+      health: [
+        ...history,
+        { kind: 'workout_minutes', value: 30, recordedOn: '2026-10-18' },
+        { kind: 'workout_minutes', value: 30, recordedOn: '2026-10-20' },
+        { kind: 'workout_minutes', value: 45, recordedOn: '2026-10-24' },
+      ],
+      foodLogs: meals,
+    }));
+    expect(afterFallback.fitness.intro).toMatch(/you have done 2 of 6 this week/);
+    const beforeFallback = draftHealthPlan(input({
+      now: new Date('2026-10-24T23:30:00.000Z'),
+      salt: 'london-bst',
+      goal: 'lose_fat_build_muscle',
+      schedule,
+      health: [
+        ...history,
+        { kind: 'workout_minutes', value: 30, recordedOn: '2026-10-18' },
+        { kind: 'workout_minutes', value: 30, recordedOn: '2026-10-20' },
+        { kind: 'workout_minutes', value: 45, recordedOn: '2026-10-24' },
+      ],
+      foodLogs: meals,
+    }));
+    expect(beforeFallback.fitness.intro).toMatch(/you have done 2 of 6 this week/);
   });
 
   it('drops a regressive model week instead of appending the stock walk rows', () => {

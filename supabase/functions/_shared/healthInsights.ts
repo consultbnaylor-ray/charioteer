@@ -177,6 +177,42 @@ export function londonDay(value: Date | string): string {
   return `${year}-${month}-${day}`;
 }
 
+/** Monday is 0 and Sunday is 6. `iso` is a calendar date, so the clock zone does not move it. */
+export function weekdayOffset(iso: string): number {
+  const [year, month, day] = iso.split('-').map(Number);
+  const index = new Date(year ?? 1970, (month ?? 1) - 1, day ?? 1).getDay();
+  return index === 0 ? 6 : index - 1;
+}
+
+/** Monday of the calendar week that contains `iso`. */
+export function mondayOf(iso: string): string {
+  return shiftDay(iso, -weekdayOffset(iso));
+}
+
+export type LondonWeek = {
+  /** Monday, YYYY-MM-DD, at 00:00 Europe/London. */
+  start: string;
+  /** Sunday, YYYY-MM-DD, through 23:59 Europe/London. */
+  end: string;
+  /** The London calendar day of `value`. */
+  today: string;
+  /** Monday through today, inclusive. Sunday still includes Monday to Saturday. */
+  days: string[];
+};
+
+/**
+ * The week Ben trains and logs in: Monday 00:00 through Sunday 23:59, Europe/London.
+ * BST and GMT both stay on that calendar. A Sunday still belongs to the week that began on Monday.
+ */
+export function londonWeek(value: Date | string = new Date()): LondonWeek {
+  const today = typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : londonDay(value);
+  const offset = weekdayOffset(today);
+  const start = shiftDay(today, -offset);
+  const days: string[] = [];
+  for (let index = 0; index <= offset; index += 1) days.push(shiftDay(start, index));
+  return { start, end: shiftDay(start, 6), today, days };
+}
+
 export function asCalendarDay(value: string): string {
   const match = /^(\d{4}-\d{2}-\d{2})/.exec(value);
   return match ? match[1] : londonDay(value);

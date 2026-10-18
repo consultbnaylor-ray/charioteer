@@ -26,6 +26,7 @@ import {
 import { buildFitnessSnapshot, fitnessFocusLines, type FitnessSnapshotInput } from './fitnessSnapshot.ts';
 import { goalWeightRange } from './goalWeightRange.ts';
 import { goalFocusLine } from './goalLed.ts';
+import { londonDay, londonWeek } from './healthInsights.ts';
 import { firstSafetyHit, SELF_HARM_NOTICE, WITHDRAWAL_NOTICE, type SafetyHit } from './safety.ts';
 import { soberElapsed } from './sober.ts';
 
@@ -215,8 +216,9 @@ function trend(recent: number | null, earlier: number | null, margin: number): '
 }
 
 function derive(input: PlanInput): Derived {
-  const today = isoDay(input.now);
-  const days = Array.from({ length: 7 }, (_, index) => shift(today, -index));
+  const week = londonWeek(input.now);
+  const today = week.today;
+  const days = week.days;
   const logged = days.flatMap((day) => {
     const totals = sumItems(dayItems(input.foodLogs, day));
     return totals.count ? [totals] : [];
@@ -693,7 +695,7 @@ function easesOff(input: PlanInput): boolean {
  * A single long day stays null so a one-off session is not treated as the week.
  */
 export function trainingBaseline(input: PlanInput): TrainingBaseline | null {
-  const today = isoDay(input.now);
+  const today = londonDay(input.now);
   const start = shift(today, -27);
   const byDay = new Map<string, number>();
   for (const row of input.health) {
@@ -830,18 +832,17 @@ export function trainingScheduleSummary(schedule: TrainingSchedule | null): stri
 }
 
 function completedThisWeek(input: PlanInput, trainDays: readonly string[]): { done: number; total: number } {
-  const today = isoDay(input.now);
-  const start = shift(today, -6);
+  const week = londonWeek(input.now);
   const byDay = new Map<string, number>();
   for (const row of input.health) {
     if (row.kind !== 'workout_minutes') continue;
-    if (row.recordedOn < start || row.recordedOn > today) continue;
+    const day = row.recordedOn.slice(0, 10);
+    if (day < week.start || day > week.today) continue;
     if (!Number.isFinite(row.value) || row.value <= 0) continue;
-    byDay.set(row.recordedOn, (byDay.get(row.recordedOn) ?? 0) + row.value);
+    byDay.set(day, (byDay.get(day) ?? 0) + row.value);
   }
   let done = 0;
-  for (let offset = 0; offset < 7; offset += 1) {
-    const day = shift(start, offset);
+  for (const day of week.days) {
     if (!trainDays.includes(weekdayName(day))) continue;
     if ((byDay.get(day) ?? 0) > 0) done += 1;
   }
@@ -1102,7 +1103,7 @@ function fitnessIntro(facts: Derived): string {
   if (facts.baseline) return baselineIntro(facts, facts.baseline);
   if (isTrainingGoal(facts.input.goal)) {
     const load = facts.workoutMinutes != null
-      ? `${facts.workoutMinutes} workout minutes over the last week`
+      ? `${facts.workoutMinutes} workout minutes this week`
       : 'no workout minutes logged yet';
     const aim = facts.input.goal === 'elite_runner'
       ? 'This week keeps fuel around the sessions and a rest day after the longer one.'
@@ -1118,7 +1119,7 @@ function fitnessIntro(facts: Derived): string {
     return clip(`${aim} Recent training load: ${load}. That load stays on Stats.`, 280);
   }
   const steps = facts.steps != null ? `${Math.round(facts.steps).toLocaleString('en-GB')} steps on a recent day` : 'no step count yet';
-  const work = facts.workoutMinutes != null ? `${facts.workoutMinutes} workout minutes over the last week` : 'no workout minutes logged';
+  const work = facts.workoutMinutes != null ? `${facts.workoutMinutes} workout minutes this week` : 'no workout minutes logged';
   const pace = facts.level === 'active'
     ? 'You are already moving, so this week adds a little, then rests.'
     : facts.level === 'some'
@@ -1209,7 +1210,7 @@ export function standaloneFocus(value: string, firstName = ''): string | null {
 }
 
 function fitnessInput(input: PlanInput): FitnessSnapshotInput {
-  const today = isoDay(input.now);
+  const today = londonDay(input.now);
   const schedule = input.schedule;
   const scheduleWeekMinutes = schedule && schedule.days.length > 0 && schedule.typicalMinutes > 0
     ? schedule.days.reduce((total, day) => {

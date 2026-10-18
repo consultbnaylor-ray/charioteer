@@ -1,6 +1,6 @@
 import type { AppSnapshot } from '@/data/types';
-import { isoDay } from '@/domain/dates';
 import type { TrainingSchedule } from '@/domain/healthPlan';
+import { londonDay } from '@/domain/healthInsights';
 
 export {
   ADDED_NOT_REDUCED,
@@ -52,7 +52,7 @@ export function fitnessFromSnapshot(
   now = new Date(),
 ): FitnessSnapshotInput {
   const profile = snap.profile;
-  const today = isoDay(now);
+  const today = londonDay(now);
   const sleep = (snap.checkIns ?? []).flatMap((row) => {
     const day = row.createdAt.slice(0, 10);
     if (!/^\d{4}-\d{2}-\d{2}$/.test(day) || row.sleepHours <= 0) return [];

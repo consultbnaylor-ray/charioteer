@@ -6,7 +6,7 @@
  * 75th and above is Strong. This is an estimate, not Apple's classification and
  * not a medical assessment.
  */
-import { shiftDay } from './healthInsights.ts';
+import { mondayOf, shiftDay } from './healthInsights.ts';
 import {
   CARRYING_FITNESS_NOTE,
   GOAL_LABEL,
@@ -519,7 +519,7 @@ export function buildFitnessSnapshot(input: FitnessSnapshotInput): FitnessSnapsh
       .map((row) => ({ day: row.day, value: row.hours }));
   const walking = dayValue(input.health, 'walking_heart_rate', today, 56);
   const recoveryDrop = dayValue(input.health, 'heart_rate_recovery', today, 56);
-  const weekStart = shiftDay(today, -6);
+  const weekStart = mondayOf(today);
   const workoutMinutes = sumKind(input.health, 'workout_minutes', weekStart, today);
   const mixWeek = sumKind(input.health, 'strength_minutes', weekStart, today)
     + sumKind(input.health, 'cardio_minutes', weekStart, today)
@@ -732,10 +732,11 @@ function minutesWords(minutes: number, schedule: number | null): string {
 }
 
 function mixWeeks(samples: readonly FitnessSample[], today: string): FitnessWeekMix[] {
+  const thisMonday = mondayOf(today);
   const weeks: FitnessWeekMix[] = [];
   for (let index = 7; index >= 0; index -= 1) {
-    const end = shiftDay(today, -index * 7);
-    const start = shiftDay(end, -6);
+    const start = shiftDay(thisMonday, -index * 7);
+    const end = index === 0 ? today : shiftDay(start, 6);
     weeks.push({
       label: index === 0 ? 'Now' : `${index}w`,
       strength: Math.round(sumKind(samples, 'strength_minutes', start, end)),

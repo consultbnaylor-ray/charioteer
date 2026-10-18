@@ -1,10 +1,9 @@
 import { buildFitnessSnapshot } from './fitnessSnapshot.ts';
 import { goalWeightRange } from './goalWeightRange.ts';
-import { goalProgressLine } from './goalLed.ts';
-import { londonDay, shiftDay } from './healthInsights.ts';
+import { figuresForLondonWeek, goalProgressLine } from './goalLed.ts';
+import { londonDay } from './healthInsights.ts';
 import {
   compositionForAssessment,
-  dayItems,
   defaultNutritionSettings,
   foodItemFromUnknown,
   isBodyBuild,
@@ -18,7 +17,6 @@ import {
   parseBodyFatPct,
   parseLeanMassKg,
   parseWaistCm,
-  sumItems,
   weightPointsFrom,
   type BodyCompositionReading,
   type FoodItem,
@@ -200,17 +198,14 @@ export async function loadNutritionLines(
   const figures = compositionForAssessment(bodyRes.error ? [] : compositionFromRows(bodyRes.data));
   const logs = logsRes.error ? [] : logsFromRows(logsRes.data);
   const settings = settingsRes.error ? defaultNutritionSettings() : settingsFromRow(settingsRes.data);
-  const weekStart = shiftDay(today, -6);
-  const workouts = samples.filter((sample) => sample.kind === 'workout_minutes' && sample.recordedOn >= weekStart && sample.recordedOn <= today);
+  const week = figuresForLondonWeek({ now, logs, health: samples, checkIns });
   const scheduleRow = scheduleRes.error || !scheduleRes.data || typeof scheduleRes.data !== 'object'
     ? null
     : scheduleRes.data as Record<string, unknown>;
   const scheduledDays = scheduleRow
     ? ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'].filter((day) => scheduleRow[day] === true).length
     : null;
-  const todayItems = dayItems(logs, today);
-  const totals = sumItems(todayItems);
-  const sleep = checkIns.find((item) => Number.isFinite(item.sleepHours))?.sleepHours ?? null;
+  const sleep = week.sleepHours;
   const lines = nutritionContextLines({
     logs,
     settings,
@@ -257,19 +252,20 @@ export async function loadNutritionLines(
     weightClassKg: settings.weightClassKg,
     blockedLoss: lossBlocked({
       goal: settings.goal,
-      weightKg: latest?.kg ?? null,
+      weightKg: week.weightKg,
       heightCm: height != null && Number.isFinite(height) ? height : null,
       phase: settings.goalPhase,
     }),
-    todayLogged: todayItems.length > 0,
-    todayKcal: totals.kcal,
-    todayProtein: totals.proteinG,
+    todayLogged: week.todayLogged,
+    todayKcal: week.todayKcal,
+    todayProtein: week.todayProtein,
+    weekProtein: week.weekProtein,
     workoutsKnown: !healthRes.error,
-    workoutDays: new Set(workouts.map((sample) => sample.recordedOn)).size,
-    workoutMinutes: workouts.reduce((sum, sample) => sum + sample.value, 0),
+    workoutDays: week.workoutDays,
+    workoutMinutes: week.workoutMinutes,
     scheduledDays: scheduledDays && scheduledDays > 0 ? scheduledDays : null,
-    weightKg: latest?.kg ?? null,
-    previousWeightKg: weights.length > 1 ? weights[weights.length - 2]?.kg ?? null : null,
+    weightKg: week.weightKg,
+    previousWeightKg: week.previousWeightKg,
     sleepHours: sleep ?? null,
   });
   const weightRange = goalWeightRange({

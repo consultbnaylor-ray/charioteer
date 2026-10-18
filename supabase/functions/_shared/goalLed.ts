@@ -1,4 +1,5 @@
-import { GOAL_LABEL, MIDDLEWEIGHT_LIMIT_KG, classBoxerLimitKg, classBoxerName, isClassBoxer, type NutritionGoal } from './nutrition.ts';
+import { londonDay, londonWeek, type LondonWeek } from './healthInsights.ts';
+import { GOAL_LABEL, MIDDLEWEIGHT_LIMIT_KG, classBoxerLimitKg, classBoxerName, dayItems, isClassBoxer, sumItems, weightPointsFrom, type FoodLog, type NutritionGoal } from './nutrition.ts';
 
 export type GoalTone = 'good' | 'watch' | 'info' | 'attention';
 
@@ -41,6 +42,11 @@ export type GoalLedInput = {
   todayLogged?: boolean;
   todayKcal?: number;
   todayProtein?: number;
+  /**
+   * Protein grams on each day in the London week that has protein.
+   * An empty list means the week-to-date has none. Omit it to use today only.
+   */
+  weekProtein?: readonly number[];
   /** False when workout figures were not loaded, so the check does not invent a rest week. */
   workoutsKnown?: boolean;
   workoutDays?: number;
@@ -75,6 +81,95 @@ const FOCUS: Record<NutritionGoal, string> = {
 export function goalFocusLine(goal: NutritionGoal | null): string | null {
   if (!goal) return null;
   return FOCUS[goal];
+}
+
+/** Days in the London week that have protein, in calendar order. A day of meals with no protein stays out. */
+export function proteinLoggedDays(logs: readonly FoodLog[], days: readonly string[]): number[] {
+  const totals: number[] = [];
+  for (const day of days) {
+    const items = dayItems(logs, day);
+    if (!items.length) continue;
+    const protein = sumItems(items).proteinG;
+    if (protein > 0) totals.push(protein);
+  }
+  return totals;
+}
+
+/** Workout days and minutes from Monday through the London today. */
+export function trainingThisWeek(
+  samples: readonly { kind: string; value: number; recordedOn: string }[],
+  week: Pick<LondonWeek, 'start' | 'today'>,
+): { days: number; minutes: number } {
+  const seen = new Set<string>();
+  let minutes = 0;
+  for (const sample of samples) {
+    if (sample.kind !== 'workout_minutes' || !(sample.value > 0)) continue;
+    const day = sample.recordedOn.slice(0, 10);
+    if (day < week.start || day > week.today) continue;
+    seen.add(day);
+    minutes += sample.value;
+  }
+  return { days: seen.size, minutes };
+}
+
+/**
+ * Latest weight inside the London week, compared with the reading before it.
+ * When the week has none, the latest reading on or before today still shows.
+ */
+export function weightThisWeek(
+  points: readonly { day: string; kg: number }[],
+  week: Pick<LondonWeek, 'start' | 'today'>,
+): { weightKg: number | null; previousWeightKg: number | null } {
+  const known = points.filter((point) => point.day <= week.today);
+  const inWeek = known.filter((point) => point.day >= week.start);
+  const latest = inWeek.at(-1) ?? known.at(-1) ?? null;
+  if (!latest) return { weightKg: null, previousWeightKg: null };
+  const previous = known.filter((point) => point.day < latest.day).at(-1);
+  return { weightKg: latest.kg, previousWeightKg: previous?.kg ?? null };
+}
+
+function checkInDay(createdAt: string): string {
+  return createdAt.length > 10 ? londonDay(createdAt) : createdAt.slice(0, 10);
+}
+
+/** Latest check-in sleep whose London day sits in the week-to-date. */
+export function sleepThisWeek(
+  checkIns: readonly { createdAt: string; sleepHours: number }[],
+  week: Pick<LondonWeek, 'start' | 'today'>,
+): number | null {
+  const rows = checkIns.filter((item) => {
+    if (!Number.isFinite(item.sleepHours)) return false;
+    const day = checkInDay(item.createdAt);
+    return day >= week.start && day <= week.today;
+  });
+  rows.sort((left, right) => right.createdAt.localeCompare(left.createdAt));
+  return rows[0]?.sleepHours ?? null;
+}
+
+/** Protein, training, weight, and sleep for the London week that contains `now`. Calories stay on today. */
+export function figuresForLondonWeek(input: {
+  now: Date;
+  logs: readonly FoodLog[];
+  health: readonly { kind: string; value: number; recordedOn: string }[];
+  checkIns: readonly { createdAt: string; sleepHours: number }[];
+}) {
+  const week = londonWeek(input.now);
+  const todayItems = dayItems(input.logs, week.today);
+  const totals = sumItems(todayItems);
+  const training = trainingThisWeek(input.health, week);
+  const weight = weightThisWeek(weightPointsFrom(input.health), week);
+  return {
+    week,
+    todayLogged: todayItems.length > 0,
+    todayKcal: totals.kcal,
+    todayProtein: totals.proteinG,
+    weekProtein: proteinLoggedDays(input.logs, week.days),
+    workoutDays: training.days,
+    workoutMinutes: training.minutes,
+    weightKg: weight.weightKg,
+    previousWeightKg: weight.previousWeightKg,
+    sleepHours: sleepThisWeek(input.checkIns, week),
+  };
 }
 
 function clamp01(value: number): number {
@@ -127,32 +222,58 @@ function cautionFor(goal: NutritionGoal | null, blocked: boolean): string | null
   return null;
 }
 
+function loggedProteinDays(input: GoalLedInput): number[] {
+  if (input.weekProtein != null) return input.weekProtein.filter((value) => Number.isFinite(value) && value > 0);
+  const today = Math.max(0, input.todayProtein ?? 0);
+  return input.todayLogged && today > 0 ? [today] : [];
+}
+
+function proteinLine(average: number, hits: number, logged: number, hasTarget: boolean): string {
+  const avg = Math.round(average);
+  const dayWord = logged === 1 ? 'logged day' : 'logged days';
+  if (!hasTarget) return `Avg ${avg} g/day across ${logged} ${dayWord}`;
+  return `Avg ${avg} g/day, target hit on ${hits} of ${logged} ${dayWord}`;
+}
+
 function proteinMeasure(input: GoalLedInput): GoalMeasure {
   const target = num(input.proteinTarget);
-  const protein = Math.max(0, input.todayProtein ?? 0);
-  if (!input.todayLogged) {
-    return { id: 'protein', label: 'Protein', centre: '0', unit: 'g', fill: 0, status: 'Nothing logged yet', tone: 'info', words: 'Log a meal and this shows protein for today.' };
-  }
-  if (target != null && target > 0) {
-    const on = protein >= target;
+  const days = loggedProteinDays(input);
+  if (!days.length) {
     return {
       id: 'protein',
       label: 'Protein',
-      centre: String(Math.round(protein)),
+      centre: '0',
       unit: 'g',
-      fill: clamp01(protein / target),
-      status: on ? 'On track' : 'Short',
+      fill: 0,
+      status: 'Nothing logged yet',
+      tone: 'info',
+      words: 'Log a meal and this shows protein for the week.',
+    };
+  }
+  const average = days.reduce((sum, value) => sum + value, 0) / days.length;
+  const centre = String(Math.round(average));
+  if (target != null && target > 0) {
+    const hits = days.filter((value) => value >= target).length;
+    const on = hits === days.length;
+    const words = proteinLine(average, hits, days.length, true);
+    return {
+      id: 'protein',
+      label: 'Protein',
+      centre,
+      unit: 'g',
+      fill: clamp01(average / target),
+      status: words,
       tone: on ? 'good' : 'watch',
-      words: on ? `Protein is at the ${Math.round(target)} g you set.` : `Protein is ${Math.round(target - protein)} g short for today.`,
+      words,
     };
   }
   return {
     id: 'protein',
     label: 'Protein',
-    centre: String(Math.round(protein)),
+    centre,
     unit: 'g',
-    fill: protein > 0 ? 1 : 0,
-    status: protein > 0 ? 'Logged' : 'Nothing logged yet',
+    fill: 1,
+    status: proteinLine(average, 0, days.length, false),
     tone: 'info',
     words: 'No protein target is saved yet.',
   };
@@ -339,7 +460,7 @@ function nudgesFor(input: GoalLedInput, measures: GoalMeasure[]): string[] {
   if (!input.goal) return [];
   const lines: string[] = [];
   const protein = measures.find((item) => item.id === 'protein');
-  if (protein?.status === 'Short' && protein.words.includes('short')) lines.push(protein.words.replace(/\.$/, '') + '.');
+  if (protein?.tone === 'watch' && protein.words.startsWith('Avg')) lines.push(protein.words.endsWith('.') ? protein.words : `${protein.words}.`);
   const sleep = measures.find((item) => item.id === 'sleep');
   if (sleep?.status === 'Short') lines.push(sleep.words);
   const weight = measures.find((item) => item.id === 'weight' && item.status === 'Above the class');
@@ -356,10 +477,10 @@ function nudgesFor(input: GoalLedInput, measures: GoalMeasure[]): string[] {
 
 function tickLabel(measure: GoalMeasure): string {
   if (measure.id === 'protein') {
-    if (measure.status === 'On track') return 'Protein is on track';
-    if (measure.status === 'Short') return 'Protein is short today';
-    if (measure.status === 'Logged') return 'Protein is logged';
-    return 'Protein is not logged yet';
+    if (measure.status === 'Nothing logged yet') return 'Protein is not logged yet';
+    if (measure.words.startsWith('No protein target')) return 'Protein is logged';
+    if (measure.tone === 'good') return 'Protein is on track';
+    return measure.status;
   }
   if (measure.id === 'kcal') {
     if (measure.status === 'Above') return 'Calories are above the target';

@@ -9,6 +9,7 @@ import {
   formatSleepHours,
   groupedReadings,
   londonDay,
+  londonWeek,
   seriesForWindow,
   type HealthPoint,
 } from './healthInsights';
@@ -35,6 +36,35 @@ describe('health insight formatting', () => {
     expect(formatReadingLine('steps', 4682, '2026-10-10', 'healthkit')).toBe('4,682 steps · 10 Oct 2026 · Apple Health');
     expect(formatReadingLine('steps', 1000, '2026-10-10', 'manual')).toContain('Logged here');
     expect(londonDay('2026-06-15T23:30:00.000Z')).toBe('2026-06-16');
+  });
+
+  it('keeps Monday to Sunday in London through the clock change', () => {
+    const sunday = londonWeek(new Date('2026-10-18T07:00:00.000Z'));
+    expect(sunday).toMatchObject({
+      start: '2026-10-12',
+      end: '2026-10-18',
+      today: '2026-10-18',
+    });
+    expect(sunday.days).toEqual([
+      '2026-10-12',
+      '2026-10-13',
+      '2026-10-14',
+      '2026-10-15',
+      '2026-10-16',
+      '2026-10-17',
+      '2026-10-18',
+    ]);
+    expect(londonWeek(new Date('2026-10-18T22:30:00.000Z')).today).toBe('2026-10-18');
+    const monday = londonWeek(new Date('2026-10-18T23:30:00.000Z'));
+    expect(monday).toMatchObject({ start: '2026-10-19', end: '2026-10-25', today: '2026-10-19', days: ['2026-10-19'] });
+    const beforeFallback = londonWeek(new Date('2026-10-24T23:30:00.000Z'));
+    const afterFallback = londonWeek(new Date('2026-10-25T01:30:00.000Z'));
+    expect(beforeFallback.today).toBe('2026-10-25');
+    expect(afterFallback.today).toBe('2026-10-25');
+    expect(beforeFallback.start).toBe('2026-10-19');
+    expect(afterFallback.start).toBe('2026-10-19');
+    expect(beforeFallback.days[0]).toBe('2026-10-19');
+    expect(beforeFallback.days).not.toContain('2026-10-18');
   });
 });
 

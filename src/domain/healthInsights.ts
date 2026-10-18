@@ -20,6 +20,8 @@ export {
   HRV_TOO_FEW,
   latestReading,
   londonDay,
+  londonWeek,
+  mondayOf,
   seriesForWindow,
   shiftDay,
   weekdayShort,
@@ -32,4 +34,5 @@ export {
   type HealthInsightReport,
   type HealthKindReport,
   type HealthPoint,
+  type LondonWeek,
 } from '../../supabase/functions/_shared/healthInsights.ts';
