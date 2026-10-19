@@ -93,14 +93,66 @@ export async function cancelScheduledNotifications(): Promise<void> {
 }
 
 /** Opens the chat or the Buddies screen named on a notification. Does not ask for permission. */
-export function listenForMessageOpens(openChat: (connectionId: string) => void, openBuddy?: () => void): () => void {
+export function listenForMessageOpens(
+  openChat: (connectionId: string) => void,
+  openBuddy?: () => void,
+  isReady: () => boolean = () => true,
+): () => void {
   if (Platform.OS === 'web') return () => undefined;
   let remove: () => void = () => undefined;
+  let wait: ReturnType<typeof setInterval> | null = null;
   let cancelled = false;
+  const seen = new Set<string>();
+  const queued: unknown[] = [];
+
+  const open = (data: unknown) => {
+    try {
+      const id = connectionIdFrom(data);
+      if (id) openChat(id);
+      if (buddyInviteIdFrom(data)) openBuddy?.();
+    } catch (error) {
+      console.error('message open', error);
+    }
+  };
+
   void (async () => {
     try {
       const Notifications = await import('expo-notifications');
       if (cancelled) return;
+      const clearLast = () => {
+        void Notifications.clearLastNotificationResponseAsync().catch(() => undefined);
+      };
+      const flush = () => {
+        if (cancelled || !isReady()) return;
+        const batch = queued.splice(0, queued.length);
+        for (const data of batch) open(data);
+        if (batch.length) clearLast();
+      };
+      const arm = () => {
+        if (wait || cancelled) return;
+        wait = setInterval(() => {
+          if (cancelled) {
+            if (wait) clearInterval(wait);
+            wait = null;
+            return;
+          }
+          if (!isReady()) return;
+          if (wait) clearInterval(wait);
+          wait = null;
+          flush();
+        }, 50);
+      };
+      const take = (data: unknown, key: string) => {
+        if (seen.has(key)) return;
+        seen.add(key);
+        if (!isReady()) {
+          queued.push(data);
+          arm();
+          return;
+        }
+        open(data);
+        clearLast();
+      };
       Notifications.setNotificationHandler({
         handleNotification: async () => ({
           shouldShowAlert: true,
@@ -110,24 +162,22 @@ export function listenForMessageOpens(openChat: (connectionId: string) => void, 
           shouldShowList: true,
         }),
       });
-      const open = (data: unknown) => {
-        const id = connectionIdFrom(data);
-        if (id) openChat(id);
-        if (buddyInviteIdFrom(data)) openBuddy?.();
-      };
       const subscription = Notifications.addNotificationResponseReceivedListener((response) => {
-        open(response.notification.request.content.data);
+        const key = response.notification.request.identifier || 'tap';
+        take(response.notification.request.content.data, key);
       });
       remove = () => subscription.remove();
       const last = await Notifications.getLastNotificationResponseAsync();
       if (cancelled || !last) return;
-      open(last.notification.request.content.data);
+      const key = last.notification.request.identifier || 'last';
+      take(last.notification.request.content.data, key);
     } catch {
       return undefined;
     }
   })();
   return () => {
     cancelled = true;
+    if (wait) clearInterval(wait);
     remove();
   };
 }

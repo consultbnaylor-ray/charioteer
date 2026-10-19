@@ -4,7 +4,7 @@ import { useFonts } from 'expo-font';
 import { Stack, usePathname, useRouter } from 'expo-router';
 import * as Linking from 'expo-linking';
 import * as SplashScreen from 'expo-splash-screen';
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { AppState, Platform, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
@@ -69,10 +69,24 @@ function Chrome() {
     }
   }, [theme.colors.bg]);
 
+  const navigationReady = useRef(false);
+  const stackMounted = useRef(false);
+  navigationReady.current = snap.ready;
+
   useEffect(() => listenForMessageOpens((connectionId) => {
-    void repo.reloadMessages().catch((error: unknown) => console.error(error));
-    router.push(`/chat/${connectionId}` as never);
-  }, () => router.push('/buddies' as never)), [router, repo]);
+    try {
+      void repo.reloadMessages().catch((error: unknown) => console.error(error));
+      router.push(`/chat/${connectionId}` as never);
+    } catch (error) {
+      console.error('message open', error);
+    }
+  }, () => {
+    try {
+      router.push('/buddies' as never);
+    } catch (error) {
+      console.error('message open', error);
+    }
+  }, () => navigationReady.current && stackMounted.current), [router, repo]);
 
   useEffect(() => {
     if (Platform.OS !== 'ios' || !snap.ready || !snap.session || !snap.profile?.consentHealth) return;
@@ -157,9 +171,21 @@ function Chrome() {
     <>
       <StatusBar style={theme.scheme === 'dark' ? 'light' : 'dark'} />
       <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: theme.colors.bg } }} />
+      <NoteStackMounted flag={stackMounted} />
       <KeyboardDoneBar />
     </>
   );
+}
+
+/** Marks the root stack as committed so a cold-start message tap can navigate. */
+function NoteStackMounted({ flag }: { flag: { current: boolean } }) {
+  useEffect(() => {
+    flag.current = true;
+    return () => {
+      flag.current = false;
+    };
+  }, [flag]);
+  return null;
 }
 
 function OpeningDay({ background }: { background: string }) {

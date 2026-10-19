@@ -94,6 +94,13 @@ describe('private message push', () => {
     expect(app).toMatch(/"buildNumber": "\d+"/);
     expect(app).toContain('expo-notifications');
     expect(layout).toContain('listenForMessageOpens');
+    expect(layout).toContain('navigationReady.current = snap.ready');
+    expect(layout).toContain('navigationReady.current && stackMounted.current');
+    expect(layout).toContain('<NoteStackMounted');
+    expect(layout).toContain("console.error('message open', error)");
+    const openChat = layout.slice(layout.indexOf('listenForMessageOpens((connectionId)'), layout.indexOf('}, () => navigationReady'));
+    expect(openChat).toContain('try {');
+    expect(openChat).toContain('router.push');
     expect(layout).not.toContain('offerMessageNotifications');
     expect(layout).not.toContain('requestPermissionsAsync');
     expect(chat).toContain('offerMessageNotifications');
@@ -164,6 +171,11 @@ describe('private message push', () => {
     expect(cancel).toContain('cancelAllScheduledNotificationsAsync');
     expect(cancel).not.toContain('requestPermissionsAsync');
     expect(register).not.toContain('scheduleNotificationAsync');
+    const opens = register.slice(register.indexOf('export function listenForMessageOpens'));
+    expect(opens).toContain('isReady');
+    expect(opens).toContain('clearLastNotificationResponseAsync');
+    expect(opens).toContain("console.error('message open', error)");
+    expect(opens).toContain('queued.push(data)');
     expect(readFileSync('src/app/(main)/notifications.tsx', 'utf8')).not.toContain('Movement reminder');
     const offer = register.slice(register.indexOf('export async function offerMessageNotifications'), register.indexOf('export async function retryMessageNotifications'));
     expect(offer).toContain('requestPermissionsAsync');
