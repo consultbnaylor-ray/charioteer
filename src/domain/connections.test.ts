@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 
 import type { Connection } from '@/data/types';
 
-import { discoverAction, incomingRequestCount, peopleTabAccessibilityLabel, requestBadgeText } from './connections';
+import { discoverAction, incomingRequestCount, peopleTabAccessibilityLabel, peopleTabBadgeCount, requestBadgeText } from './connections';
 
 const me = 'me';
 const other = 'other';
@@ -47,6 +47,11 @@ describe('discover connection actions', () => {
     expect(peopleTabAccessibilityLabel(0)).toBe('People');
     expect(peopleTabAccessibilityLabel(1)).toBe('People, 1 request');
     expect(peopleTabAccessibilityLabel(4)).toBe('People, 4 requests');
+    expect(peopleTabAccessibilityLabel(0, 1)).toBe('People, 1 new message');
+    expect(peopleTabAccessibilityLabel(0, 3)).toBe('People, 3 new messages');
+    expect(peopleTabAccessibilityLabel(2, 1)).toBe('People, 2 requests, 1 new message');
+    expect(peopleTabBadgeCount(1, 2)).toBe(3);
+    expect(peopleTabBadgeCount(0, 0)).toBe(0);
     expect(requestBadgeText(0)).toBeNull();
     expect(requestBadgeText(1)).toBe('1');
     expect(requestBadgeText(100)).toBe('99+');
@@ -66,7 +71,9 @@ describe('discover connection actions', () => {
     expect(people).not.toMatch(/thumos|xai|progress-photos/i);
     expect(layout).toContain('incomingRequestCount');
     expect(layout).toContain('peopleTabAccessibilityLabel');
+    expect(layout).toContain('peopleTabBadgeCount');
     expect(layout).toContain('requestBadgeText');
+    expect(layout).toContain('messageUnreadTotal');
     expect(layout).toContain('href === \'/people\'');
     expect(people).toContain("tone={incoming.length > 0 ? 'alert' : 'default'}");
     const choice = readFileSync('src/ui/ui.tsx', 'utf8');

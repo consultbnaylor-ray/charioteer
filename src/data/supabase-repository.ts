@@ -403,7 +403,11 @@ export class SupabaseRepository implements Repository {
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'direct_messages' }, (payload) => {
         this.ingestMessage(payload.new);
       })
-      .subscribe();
+      .subscribe((status) => {
+        if (status === 'SUBSCRIBED') {
+          void this.reloadMessages().catch((error: unknown) => console.error(error));
+        }
+      });
   }
 
   private ingestMessage(row: unknown) {

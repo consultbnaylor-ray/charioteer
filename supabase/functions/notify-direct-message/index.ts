@@ -1,6 +1,6 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.117.3';
 import { json, preflight } from '../_shared/http.ts';
-import { communityOn, messageAlert, pushSenderName } from '../_shared/messagePush.ts';
+import { communityOn, iconBadgeCount, messageAlert, pushSenderName } from '../_shared/messagePush.ts';
 
 const EXPO_PUSH_URL = 'https://exp.host/--/api/v2/push/send';
 
@@ -95,6 +95,7 @@ Deno.serve(async (req) => {
     return json({ ok: false, code: 'log' }, 500);
   }
 
+  const badge = await unreadMessageBadge(admin, recipientId);
   const sent = await fetch(EXPO_PUSH_URL, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
@@ -104,6 +105,7 @@ Deno.serve(async (req) => {
       body: decision.body,
       data: decision.data,
       sound: 'default',
+      ...(badge == null ? {} : { badge }),
     }))),
   });
   const result = await sent.json().catch(() => null) as { data?: { status?: string; message?: string; details?: { error?: string } }[] } | null;
@@ -129,3 +131,49 @@ Deno.serve(async (req) => {
   }
   return json({ ok: true });
 });
+
+/**
+ * Unread direct messages for the home-screen badge.
+ * A failed read leaves the badge off the payload so the alert still sends.
+ * The count is messages only: requests and other alerts are not included.
+ */
+async function unreadMessageBadge(
+  admin: ReturnType<typeof createClient>,
+  recipientId: string,
+): Promise<number | null> {
+  try {
+    const connections = await admin
+      .from('connections')
+      .select('id')
+      .eq('status', 'accepted')
+      .or(`requester_id.eq.${recipientId},addressee_id.eq.${recipientId}`);
+    if (connections.error || !connections.data) return null;
+    const ids = (connections.data as Row[]).map((row) => String(row.id)).filter(Boolean);
+    if (!ids.length) return 0;
+    const reads = await admin.from('chat_reads').select('connection_id, read_through').eq('user_id', recipientId);
+    if (reads.error) return null;
+    const readThrough: Record<string, string> = {};
+    for (const row of (reads.data as Row[] | null) ?? []) {
+      if (typeof row.connection_id === 'string' && typeof row.read_through === 'string') {
+        readThrough[row.connection_id] = row.read_through;
+      }
+    }
+    const messages = await admin
+      .from('direct_messages')
+      .select('connection_id, sender_id, created_at')
+      .in('connection_id', ids)
+      .neq('sender_id', recipientId);
+    if (messages.error || !messages.data) return null;
+    return iconBadgeCount(
+      (messages.data as Row[]).map((row) => ({
+        connectionId: String(row.connection_id),
+        senderId: String(row.sender_id),
+        createdAt: String(row.created_at),
+      })),
+      recipientId,
+      readThrough,
+    );
+  } catch {
+    return null;
+  }
+}

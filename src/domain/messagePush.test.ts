@@ -7,6 +7,7 @@ import {
   TURN_OFF_MESSAGE_NOTIFICATIONS,
   communityOn,
   connectionIdFrom,
+  iconBadgeCount,
   messageAlert,
   notificationsOnFromTurnOff,
   type MessagePushInput,
@@ -66,6 +67,22 @@ describe('private message push', () => {
     expect(communityOn(true, false)).toBe(false);
     expect(communityOn(false, true)).toBe(false);
     expect(communityOn(true, true)).toBe(true);
+  });
+
+  it('counts unread messages for the icon badge and ignores other alerts', () => {
+    const rows = [
+      { connectionId: CONNECTION, senderId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb1', createdAt: '2026-10-13T09:00:00.000Z' },
+      { connectionId: CONNECTION, senderId: 'cccccccc-cccc-4ccc-8ccc-ccccccccccc1', createdAt: '2026-10-13T10:00:00.000Z' },
+      { connectionId: CONNECTION, senderId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb1', createdAt: '2026-10-13T11:00:00.000Z' },
+    ];
+    expect(iconBadgeCount(rows, 'cccccccc-cccc-4ccc-8ccc-ccccccccccc1', {})).toBe(2);
+    expect(iconBadgeCount(rows, 'cccccccc-cccc-4ccc-8ccc-ccccccccccc1', { [CONNECTION]: '2026-10-13T09:00:00.000Z' })).toBe(1);
+    expect(iconBadgeCount(rows, 'cccccccc-cccc-4ccc-8ccc-ccccccccccc1', { [CONNECTION]: '2026-10-13T11:00:00.000Z' })).toBe(0);
+    expect(iconBadgeCount(Array.from({ length: 120 }, (_, index) => ({
+      connectionId: CONNECTION,
+      senderId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb1',
+      createdAt: new Date(Date.UTC(2026, 9, 13, 0, 0, index)).toISOString(),
+    })), 'cccccccc-cccc-4ccc-8ccc-ccccccccccc1', {})).toBe(99);
   });
 
   it('opens only the chat id carried on the notification', () => {
@@ -143,6 +160,19 @@ describe('private message push', () => {
     expect(fn).not.toContain(SECRET);
     expect(readFileSync('supabase/migrations/20261016010000_push_tickets.sql', 'utf8')).toContain('tickets jsonb');
     expect(fn).toContain('tickets:');
+    expect(fn).toContain('iconBadgeCount');
+    expect(fn).toContain("select('connection_id, sender_id, created_at')");
+    expect(fn).toContain('...(badge == null ? {} : { badge })');
+    expect(fn).not.toContain('record.body');
+    const register = readFileSync('src/notifications/register.ts', 'utf8');
+    const icon = register.slice(register.indexOf('export async function setAppIconBadge'));
+    expect(icon).toContain('setBadgeCountAsync');
+    expect(icon).toContain("Platform.OS !== 'ios'");
+    const arrival = register.slice(register.indexOf('export function listenForIncomingMessages'), register.indexOf('export async function setAppIconBadge'));
+    expect(arrival).toContain('addNotificationReceivedListener');
+    expect(arrival).toContain('connectionIdFrom');
+    expect(arrival).not.toContain('requestPermissionsAsync');
+    expect(register).toContain('shouldSetBadge: false');
   });
 
   it('refreshes a granted token on launch and foreground, and explains the ask once before the system sheet', () => {

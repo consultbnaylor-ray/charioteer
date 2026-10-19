@@ -24,10 +24,19 @@ export function incomingRequestCount(connections: readonly Connection[], meId: s
 }
 
 /** Spoken name for the People tab. The visible word stays “People”; the count is the badge. */
-export function peopleTabAccessibilityLabel(count: number): string {
-  if (count <= 0) return 'People';
-  if (count === 1) return 'People, 1 request';
-  return `People, ${count} requests`;
+export function peopleTabAccessibilityLabel(requestCount: number, messageUnread = 0): string {
+  const parts: string[] = [];
+  if (requestCount === 1) parts.push('1 request');
+  else if (requestCount > 1) parts.push(`${requestCount} requests`);
+  if (messageUnread === 1) parts.push('1 new message');
+  else if (messageUnread > 1) parts.push(`${messageUnread} new messages`);
+  if (parts.length === 0) return 'People';
+  return `People, ${parts.join(', ')}`;
+}
+
+/** People tab badge: waiting requests plus unread direct messages. */
+export function peopleTabBadgeCount(requestCount: number, messageUnread: number): number {
+  return Math.max(0, requestCount) + Math.max(0, messageUnread);
 }
 
 /** Digits drawn in the badge. Null hides it. Counts above 99 stay on one line. */

@@ -68,3 +68,27 @@ export function connectionIdFrom(data: unknown): string | null {
   const value = (data as { connectionId?: unknown }).connectionId;
   return typeof value === 'string' && CONNECTION_ID.test(value) ? value : null;
 }
+
+export type UnreadBadgeRow = { connectionId: string; senderId: string; createdAt: string };
+
+/**
+ * Home-screen badge for direct messages only.
+ * A message from the other person counts when it is newer than that chat's read line.
+ * No read line counts it. The number stops at 99.
+ */
+export function iconBadgeCount(
+  rows: readonly UnreadBadgeRow[],
+  meId: string,
+  readThrough: Readonly<Record<string, string | undefined>>,
+): number {
+  let count = 0;
+  for (const row of rows) {
+    if (row.senderId === meId) continue;
+    const at = Date.parse(row.createdAt);
+    if (Number.isNaN(at)) continue;
+    const line = readThrough[row.connectionId];
+    const readAt = line ? Date.parse(line) : Number.NaN;
+    if (!line || Number.isNaN(readAt) || at > readAt) count += 1;
+  }
+  return count > 99 ? 99 : count;
+}

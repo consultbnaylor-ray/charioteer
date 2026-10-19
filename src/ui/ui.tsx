@@ -20,6 +20,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Path } from 'react-native-svg';
 
 import type { Verification } from '@/data/types';
+import { requestBadgeText } from '@/domain/connections';
 import { HELMET_ASPECT, HELMET_D, HELMET_VIEWBOX } from '@/ui/helmet';
 import { DismissKeyboard, dismissKeyboardOnAction, inputScrollProps, KeyboardForm, keyboardAccessoryId, useKeyboardField, useKeyboardOffset } from '@/ui/keyboard';
 import { topSafeInset } from '@/ui/safeArea';
@@ -525,23 +526,51 @@ function PasswordEye({ revealed, color }: { revealed: boolean; color: string }) 
   );
 }
 
+/** A danger pill with a number. Colour is never used without the count. */
+export function CountBadge({ count }: { count: number }) {
+  const theme = useAppTheme();
+  const label = requestBadgeText(count);
+  if (!label) return null;
+  return (
+    <View
+      accessibilityElementsHidden
+      importantForAccessibility="no-hide-descendants"
+      style={{
+        minWidth: 18,
+        height: 18,
+        borderRadius: 9,
+        paddingHorizontal: 4,
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: theme.colors.dangerFill,
+      }}
+    >
+      <Text style={{ color: theme.colors.dangerInk, fontFamily: theme.font.bodyStrong, fontSize: 11, lineHeight: 14 }}>{label}</Text>
+    </View>
+  );
+}
+
 export function Choice({
   label,
   selected,
   onPress,
   tone = 'default',
+  badge = 0,
 }: {
   label: string;
   selected: boolean;
   onPress: () => void;
-  /** `alert` is the danger red, used when a connection request is waiting. */
+  /** `alert` is the danger red, used when something is waiting. The label or badge carries the number. */
   tone?: 'default' | 'alert';
+  /** Unread count drawn as a numbered danger pill beside the label. */
+  badge?: number;
 }) {
   const theme = useAppTheme();
   const alert = tone === 'alert';
   return (
     <Pressable
       accessibilityRole="button"
+      accessibilityLabel={label}
       accessibilityState={{ selected }}
       onPress={onPress}
       style={[
@@ -549,10 +578,14 @@ export function Choice({
         {
           borderColor: alert ? theme.colors.danger : selected ? theme.colors.ink : theme.colors.line,
           backgroundColor: selected ? theme.colors.emphasisSoft : theme.colors.surface,
+          flexDirection: 'row',
+          alignItems: 'center',
+          gap: 8,
         },
       ]}
     >
       <Text style={{ fontFamily: theme.font.bodyStrong, color: alert ? theme.colors.danger : theme.colors.ink, fontSize: 15 * theme.scale }}>{label}</Text>
+      <CountBadge count={badge} />
     </Pressable>
   );
 }

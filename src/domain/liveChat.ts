@@ -48,12 +48,25 @@ export function latestChatMessage(messages: readonly DirectMessage[], connection
 }
 
 /**
- * Saved read line when this thread already has one.
- * Otherwise the newest message time, so history already on the thread counts as read.
+ * The viewer's saved read line. No line means the chat has not been opened,
+ * so messages from the other person still count as unread.
  */
-export function initialReadThrough(newestAt: string | null, saved: string | null | undefined): string | null {
-  if (saved) return saved;
-  return newestAt;
+export function initialReadThrough(_newestAt: string | null, saved: string | null | undefined): string | null {
+  return saved || null;
+}
+
+/** Unread direct messages across accepted chats. Own lines and unsent drafts are left out. */
+export function messageUnreadTotal(
+  messages: readonly DirectMessage[],
+  connectionIds: readonly string[],
+  meId: string,
+  readMarks: Readonly<Record<string, string | null | undefined>>,
+): number {
+  let sum = 0;
+  for (const connectionId of connectionIds) {
+    sum += chatUnread(messages, connectionId, meId, readMarks[connectionId] ?? null);
+  }
+  return sum;
 }
 
 /** Later instant wins. An equal time keeps the mark already stored. */

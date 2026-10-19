@@ -181,3 +181,42 @@ export function listenForMessageOpens(
     remove();
   };
 }
+
+/**
+ * Reloads when a direct-message push arrives while the app is open.
+ * Does not ask for permission, does not open a screen, and ignores other alerts.
+ */
+export function listenForIncomingMessages(onMessage: () => void): () => void {
+  if (Platform.OS === 'web') return () => undefined;
+  let remove: () => void = () => undefined;
+  let cancelled = false;
+  void (async () => {
+    try {
+      const Notifications = await import('expo-notifications');
+      if (cancelled) return;
+      const subscription = Notifications.addNotificationReceivedListener((notification) => {
+        if (!connectionIdFrom(notification.request.content.data)) return;
+        onMessage();
+      });
+      remove = () => subscription.remove();
+    } catch (error) {
+      console.error('message arrival', error);
+    }
+  })();
+  return () => {
+    cancelled = true;
+    remove();
+  };
+}
+
+/** iOS home-screen badge. The number is unread direct messages. Zero clears it. */
+export async function setAppIconBadge(count: number): Promise<void> {
+  if (Platform.OS !== 'ios') return;
+  try {
+    const Notifications = await import('expo-notifications');
+    const next = Number.isFinite(count) ? Math.max(0, Math.min(99, Math.floor(count))) : 0;
+    await Notifications.setBadgeCountAsync(next);
+  } catch (error) {
+    console.error('app badge', error);
+  }
+}

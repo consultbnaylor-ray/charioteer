@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 
 import type { DirectMessage } from '@/data/types';
 
-import { CHAT_HISTORY_ERROR, CHAT_POLL_MS, chatInsertFilter, chatPreview, chatUnread, chatsChoiceLabel, initialReadThrough, latestChatMessage, mergeReadMarks, messageFromRealtime, withIncomingMessage } from './liveChat';
+import { CHAT_HISTORY_ERROR, CHAT_POLL_MS, chatInsertFilter, chatPreview, chatUnread, chatsChoiceLabel, initialReadThrough, latestChatMessage, mergeReadMarks, messageFromRealtime, messageUnreadTotal, withIncomingMessage } from './liveChat';
 import { PROFILE_LOAD_ERROR } from './profileSharing';
 
 function message(id: string, senderId: string, createdAt: string, connectionId = 'cccccccc-cccc-4ccc-8ccc-ccccccccccc1'): DirectMessage {
@@ -46,12 +46,14 @@ describe('live chat', () => {
     expect(chatUnread(rows, connectionId, 'ben', '2026-10-13T09:00:00.000Z')).toBe(1);
     expect(chatUnread(rows, connectionId, 'ben', '2026-10-13T10:00:00.000Z')).toBe(0);
     expect(chatUnread(rows, connectionId, 'ben', '2026-10-13T10:00:00+00:00')).toBe(0);
-    const seeded = initialReadThrough(latestChatMessage(rows, connectionId)?.createdAt ?? null, null);
-    expect(seeded).toBe('2026-10-13T10:00:00.000Z');
-    expect(chatUnread(rows, connectionId, 'ben', seeded)).toBe(0);
+    const newest = latestChatMessage(rows, connectionId)?.createdAt ?? null;
+    expect(initialReadThrough(newest, null)).toBeNull();
+    expect(chatUnread(rows, connectionId, 'ben', initialReadThrough(newest, null))).toBe(2);
     expect(initialReadThrough('2026-10-13T12:00:00.000Z', '2026-10-13T09:00:00.000Z')).toBe('2026-10-13T09:00:00.000Z');
     const later = [...rows, message('m5', 'ceri', '2026-10-13T12:00:00.000Z')];
-    expect(chatUnread(later, connectionId, 'ben', seeded)).toBe(1);
+    expect(chatUnread(later, connectionId, 'ben', '2026-10-13T09:00:00.000Z')).toBe(2);
+    expect(messageUnreadTotal(later, [connectionId, 'other-chat'], 'ben', { [connectionId]: '2026-10-13T09:00:00.000Z' })).toBe(2);
+    expect(messageUnreadTotal(later, [connectionId], 'ben', {})).toBe(3);
     expect(mergeReadMarks(
       { [connectionId]: '2026-10-13T09:00:00.000Z' },
       { [connectionId]: '2026-10-13T08:00:00+00:00', other: '2026-10-13T11:00:00.000Z' },
@@ -94,7 +96,32 @@ describe('live chat', () => {
     expect(people).toContain('chatsChoiceLabel');
     expect(people).toContain('ScreenBoundary');
     expect(people).toContain('screen="profile"');
-    expect(readFileSync('src/ui/chatRead.ts', 'utf8')).toContain('saveChatRead');
+    const chatRead = readFileSync('src/ui/chatRead.ts', 'utf8');
+    expect(chatRead).toContain('saveChatRead');
+    expect(chatRead).not.toContain('markChatRead');
+    expect(chatRead).not.toContain('initialReadThrough');
+    expect(people).toContain('CountBadge');
+    expect(people).toContain('badge={unreadTotal}');
+    expect(people).toContain("tone={unreadTotal > 0 ? 'alert' : 'default'}");
+    expect(people).toContain('messageUnreadTotal');
+    const main = readFileSync('src/app/(main)/_layout.tsx', 'utf8');
+    expect(main).toContain('peopleTabBadgeCount');
+    expect(main).toContain('messageUnreadTotal');
+    expect(layout).toContain('listenForIncomingMessages');
+    expect(layout).toContain('setAppIconBadge');
+    expect(layout).toContain('function MessageIconBadge');
+    const icon = layout.slice(layout.indexOf('function MessageIconBadge'), layout.indexOf('function NoteStackMounted'));
+    expect(icon).toContain('messageUnreadTotal');
+    expect(icon).toContain('setAppIconBadge(count)');
+    expect(icon).toContain('setAppIconBadge(0)');
+    expect(icon).not.toContain('incomingRequestCount');
+    const register = readFileSync('src/notifications/register.ts', 'utf8');
+    expect(register).toContain('addNotificationReceivedListener');
+    expect(register).toContain('setBadgeCountAsync');
+    expect(register).toContain("if (!connectionIdFrom(notification.request.content.data)) return");
+    expect(register).toContain('shouldSetBadge: false');
+    expect(repo).toContain("channel('direct-messages')");
+    expect(repo).toContain("status === 'SUBSCRIBED'");
     expect(readFileSync('src/data/chatRead.ts', 'utf8')).toContain('applyRemoteChatReads');
     const reads = readFileSync('supabase/migrations/20261015061000_chat_reads_and_client_errors.sql', 'utf8');
     expect(reads).toContain('create table public.chat_reads');

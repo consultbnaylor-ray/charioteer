@@ -14,7 +14,9 @@ import { APP_DISPLAY_NAME, APP_FULL_NAME } from '@/domain/appName';
 import { buddySecretFromUrl, holdBuddySecret, peekBuddySecret, consumeBuddySecret } from '@/domain/buddies';
 import { RepoProvider, useRepository, useSnapshot } from '@/data';
 import { catchUpAppleHealthReads } from '@/health/catchUp';
-import { cancelScheduledNotifications, listenForMessageOpens, retryMessageNotifications } from '@/notifications/register';
+import { cancelScheduledNotifications, listenForIncomingMessages, listenForMessageOpens, retryMessageNotifications, setAppIconBadge } from '@/notifications/register';
+import { messageUnreadTotal } from '@/domain/liveChat';
+import { useChatRead } from '@/ui/chatRead';
 import { CONSENT_VERSION } from '@/data/catalogue';
 import { clientAppBuild } from '@/domain/clientError';
 import { hasCurrentConsents } from '@/domain/consents';
@@ -123,11 +125,15 @@ function Chrome() {
       void repo.resignOwnerPhotos();
       registerPhone();
     });
+    const arrivals = listenForIncomingMessages(() => {
+      void repo.reloadMessages().catch((error: unknown) => console.error(error));
+    });
     const timer = setInterval(() => {
       void repo.refreshOwnerPhotosIfStale();
     }, 60_000);
     return () => {
       subscription.remove();
+      arrivals();
       clearInterval(timer);
     };
   }, [repo]);
@@ -186,11 +192,37 @@ function Chrome() {
   return (
     <>
       <StatusBar style={theme.scheme === 'dark' ? 'light' : 'dark'} />
+      <MessageIconBadge />
       <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: theme.colors.bg } }} />
       <NoteStackMounted flag={stackMounted} />
       <KeyboardDoneBar />
     </>
   );
+}
+
+/** Sets the iOS icon badge to the unread direct-message count, and clears it when those are read. */
+function MessageIconBadge() {
+  const snap = useSnapshot();
+  const meId = snap.profile?.id ?? null;
+  const { marks, ready } = useChatRead(meId);
+  const count = meId && ready
+    ? messageUnreadTotal(
+      snap.messages ?? [],
+      (snap.connections ?? []).filter((connection) => connection.status === 'accepted').map((connection) => connection.id),
+      meId,
+      marks,
+    )
+    : 0;
+  useEffect(() => {
+    if (!snap.ready) return;
+    if (!snap.session || !meId) {
+      void setAppIconBadge(0);
+      return;
+    }
+    if (!ready) return;
+    void setAppIconBadge(count);
+  }, [snap.ready, snap.session, meId, ready, count]);
+  return null;
 }
 
 /** Marks the root stack as committed so a cold-start message tap can navigate. */

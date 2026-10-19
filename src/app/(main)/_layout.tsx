@@ -4,7 +4,9 @@ import { Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-na
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useSnapshot } from '@/data';
-import { incomingRequestCount, peopleTabAccessibilityLabel, requestBadgeText } from '@/domain/connections';
+import { incomingRequestCount, peopleTabAccessibilityLabel, peopleTabBadgeCount, requestBadgeText } from '@/domain/connections';
+import { messageUnreadTotal } from '@/domain/liveChat';
+import { useChatRead } from '@/ui/chatRead';
 import { TAB_SECTIONS, type AppSection } from '@/domain/sections';
 import { tabLabelFontSize, tabSideInset } from '@/ui/tabBar';
 import { useAppTheme } from '@/ui/theme';
@@ -30,11 +32,21 @@ export default function MainLayout() {
   const labelSize = tabLabelFontSize(width, tabSide, theme.scale);
   const [menuOpen, setMenuOpen] = useState(false);
   const snap = useSnapshot();
-  const requestCount = snap.profile ? incomingRequestCount(snap.connections, snap.profile.id) : 0;
-  const peopleBadge = requestBadgeText(requestCount);
+  const meId = snap.profile?.id;
+  const { marks: readMarks, ready: readsReady } = useChatRead(meId);
+  const requestCount = meId ? incomingRequestCount(snap.connections, meId) : 0;
+  const messageUnread = meId && readsReady
+    ? messageUnreadTotal(
+      snap.messages ?? [],
+      snap.connections.filter((connection) => connection.status === 'accepted').map((connection) => connection.id),
+      meId,
+      readMarks,
+    )
+    : 0;
+  const peopleBadge = requestBadgeText(peopleTabBadgeCount(requestCount, messageUnread));
 
   const go = (href: string) => router.navigate(href as never);
-  const tabName = (tab: AppSection) => (tab.href === '/people' ? peopleTabAccessibilityLabel(requestCount) : tab.tabLabel ?? tab.label);
+  const tabName = (tab: AppSection) => (tab.href === '/people' ? peopleTabAccessibilityLabel(requestCount, messageUnread) : tab.tabLabel ?? tab.label);
 
   const brand = (
     <Pressable accessibilityRole="button" accessibilityLabel="Charioteer home" onPress={() => go('/home')} style={styles.brand}>

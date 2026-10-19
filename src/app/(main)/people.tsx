@@ -6,7 +6,7 @@ import { useRepository, useSnapshot } from '@/data';
 import { discoverAction, type DiscoverAction } from '@/domain/connections';
 import { shownError } from '@/domain/errors';
 import { randomId } from '@/domain/id';
-import { chatPreview, chatUnread, chatsChoiceLabel, latestChatMessage } from '@/domain/liveChat';
+import { chatPreview, chatUnread, chatsChoiceLabel, latestChatMessage, messageUnreadTotal } from '@/domain/liveChat';
 import { CommunityProfile } from '@/ui/CommunityProfile';
 import { CommunityPrompt } from '@/ui/CommunityPrompt';
 import { useChatRead } from '@/ui/chatRead';
@@ -15,7 +15,7 @@ import { MemberAvatar, useMemberAvatars } from '@/ui/MemberAvatar';
 import { usePendingPress } from '@/ui/pendingAction';
 import { DISCOVER_EMPTY } from '@/ui/PublicProfileCard';
 import { useAppTheme } from '@/ui/theme';
-import { Button, Card, Choice, ErrorNote, Screen, T } from '@/ui/ui';
+import { Button, Card, Choice, CountBadge, ErrorNote, Screen, T } from '@/ui/ui';
 
 export default function People() {
   const snap = useSnapshot();
@@ -38,13 +38,7 @@ export default function People() {
         return bAt.localeCompare(aAt);
       })
     : [];
-  const { marks: readMarks } = useChatRead(
-    me?.id,
-    chats.map((connection) => ({
-      id: connection.id,
-      newestAt: latestChatMessage(messages, connection.id)?.createdAt ?? null,
-    })),
-  );
+  const { marks: readMarks, ready: readsReady } = useChatRead(me?.id);
   const avatarOf = useMemberAvatars(snap.directory);
 
   // New requests and chats arrive from other people, so load them each time People opens.
@@ -57,10 +51,9 @@ export default function People() {
 
   const incoming = (snap.connections ?? []).filter((connection) => connection.status === 'pending' && connection.addresseeId === me.id);
   const sent = (snap.connections ?? []).filter((connection) => connection.status === 'pending' && connection.requesterId === me.id);
-  const unreadTotal = chats.reduce(
-    (sum, connection) => sum + chatUnread(messages, connection.id, me.id, readMarks[connection.id] ?? null),
-    0,
-  );
+  const unreadTotal = readsReady
+    ? messageUnreadTotal(messages, chats.map((connection) => connection.id), me.id, readMarks)
+    : 0;
   const nameOf = (id: string) => snap.directory.find((card) => card.id === id)?.displayName ?? 'Member';
   const labelOf = (id: string) => snap.interests.find((interest) => interest.id === id)?.label ?? 'Interest';
   const clientIdFor = (key: string) => {
@@ -89,7 +82,13 @@ export default function People() {
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
         <Choice label={`Discover`} selected={tab === 'discover'} onPress={() => setTab('discover')} />
         <Choice label={`Requests (${incoming.length})`} selected={tab === 'requests'} tone={incoming.length > 0 ? 'alert' : 'default'} onPress={() => setTab('requests')} />
-        <Choice label={chatsChoiceLabel(chats.length, unreadTotal)} selected={tab === 'chats'} onPress={() => setTab('chats')} />
+        <Choice
+          label={chatsChoiceLabel(chats.length, unreadTotal)}
+          badge={unreadTotal}
+          selected={tab === 'chats'}
+          tone={unreadTotal > 0 ? 'alert' : 'default'}
+          onPress={() => setTab('chats')}
+        />
       </View>
       <ErrorNote>{error}</ErrorNote>
       {tab === 'discover' ? snap.directory.map((card) => {
@@ -155,13 +154,16 @@ export default function People() {
         const unread = chatUnread(messages, connection.id, me.id, readMarks[connection.id] ?? null);
         return (
           <Card key={connection.id}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+            <View
+              style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}
+              accessibilityLabel={unread > 0 ? `${nameOf(other)}, ${unread === 1 ? '1 new message' : `${unread} new messages`}` : nameOf(other)}
+            >
               <MemberAvatar name={nameOf(other)} url={avatarOf(other)} />
               <View style={{ flex: 1, gap: 4 }}>
                 <T variant="title">{nameOf(other)}</T>
                 {latest?.body ? <T variant="muted">{chatPreview(latest.body)}</T> : null}
               </View>
-              {unread > 0 ? <T variant="label">{unread === 1 ? '1 new' : `${unread} new`}</T> : null}
+              <CountBadge count={unread} />
             </View>
             <Button label="Open chat" onPress={() => router.push(`/chat/${connection.id}` as never)} />
           </Card>
