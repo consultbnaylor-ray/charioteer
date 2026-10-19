@@ -13,7 +13,8 @@ import { useChatRead } from '@/ui/chatRead';
 import { ScreenBoundary } from '@/ui/ScreenBoundary';
 import { MemberAvatar, useMemberAvatars } from '@/ui/MemberAvatar';
 import { usePendingPress } from '@/ui/pendingAction';
-import { DISCOVER_EMPTY, PublicProfileCard } from '@/ui/PublicProfileCard';
+import { DISCOVER_EMPTY } from '@/ui/PublicProfileCard';
+import { useAppTheme } from '@/ui/theme';
 import { Button, Card, Choice, ErrorNote, Screen, T } from '@/ui/ui';
 
 export default function People() {
@@ -82,11 +83,9 @@ export default function People() {
   };
 
   return (
-    <Screen eyebrow="People" title="Find your people." intro="Shared interests, a town or area, and a private chat once you both agree. You can block or report at any time.">
+    <Screen eyebrow="People" title="Find your people." intro="A private chat once you both agree.">
       <CommunityPrompt userId={me.id} visible={!me.communityVisible && me.ageConfirmed18} />
-      <PublicProfileCard />
-      <Button label="What I share" tone="quiet" onPress={() => router.push('/sharing' as never)} />
-      <Button label="Buddies" onPress={() => router.push('/buddies' as never)} />
+      <YourProfileRow name={me.displayName} photoUrl={(snap.profilePhotos ?? []).find((photo) => photo.role === 'avatar')?.previewUrl} />
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
         <Choice label={`Discover`} selected={tab === 'discover'} onPress={() => setTab('discover')} />
         <Choice label={`Requests (${incoming.length})`} selected={tab === 'requests'} tone={incoming.length > 0 ? 'alert' : 'default'} onPress={() => setTab('requests')} />
@@ -169,7 +168,24 @@ export default function People() {
         );
       }) : null}
       {tab === 'chats' && chats.length === 0 ? <T variant="muted">No chats yet. Accept a request, or ask someone to connect.</T> : null}
+      <Button label="What I share" tone="quiet" onPress={() => router.push('/sharing' as never)} />
+      <Button label="Buddies" onPress={() => router.push('/buddies' as never)} />
     </Screen>
+  );
+}
+
+/** A short row. The full profile, with its share switches, opens on its own screen. */
+function YourProfileRow({ name, photoUrl }: { name: string; photoUrl?: string | null }) {
+  const theme = useAppTheme();
+  const router = useRouter();
+  return (
+    <Card>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+        <MemberAvatar name={name} url={photoUrl} size={36} />
+        <T numberOfLines={1} style={{ flex: 1, minWidth: 0, fontFamily: theme.font.bodyStrong }}>{name}</T>
+        <Button label="View public profile" tone="quiet" onPress={() => router.push('/public-profile' as never)} />
+      </View>
+    </Card>
   );
 }
 
