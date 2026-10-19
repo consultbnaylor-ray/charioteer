@@ -7,6 +7,7 @@
  * not a medical assessment.
  */
 import { mondayOf, shiftDay } from './healthInsights.ts';
+import { minuteUnit, paceJudgement, periodPhrase, rollingWindow, scaledPeriodTarget, type StatPeriod } from './statWindow.ts';
 import {
   CARRYING_FITNESS_NOTE,
   GOAL_LABEL,
@@ -57,6 +58,10 @@ export type FitnessSnapshotInput = {
   workoutBuckets?: WorkoutBucketMap | null;
   /** App names from the last iPhone sync. The chart still counts stored minutes without them. */
   sourceApps?: readonly WorkoutSourceMinute[];
+  /** Rolling window. Omitted means the last 7 days, ending on `today`. */
+  period?: StatPeriod;
+  /** Used to tell whether a Day view is still early. */
+  now?: Date | string | null;
 };
 
 export type FitnessRing = {
@@ -66,6 +71,8 @@ export type FitnessRing = {
   status: string;
   tone: FitnessTone;
   words: string;
+  signal?: string;
+  neutral?: boolean;
 };
 
 export type FitnessBand = {
@@ -92,6 +99,10 @@ export type FitnessTrend = {
   words: string;
   tone: FitnessTone;
   points: number[];
+  /** Window the reading was averaged over, or a latest-reading note. */
+  period?: string;
+  signal?: string;
+  neutral?: boolean;
 };
 
 export type FitnessWeekMix = {
@@ -559,19 +570,18 @@ export function buildFitnessSnapshot(input: FitnessSnapshotInput): FitnessSnapsh
       .map((row) => ({ day: row.day, value: row.hours }));
   const walking = dayValue(input.health, 'walking_heart_rate', today, 56);
   const recoveryDrop = dayValue(input.health, 'heart_rate_recovery', today, 56);
-  const weekStart = mondayOf(today);
-  const workoutMinutes = sumKind(input.health, 'workout_minutes', weekStart, today);
-  const mixWeek = sumKind(input.health, 'strength_minutes', weekStart, today)
-    + sumKind(input.health, 'cardio_minutes', weekStart, today)
-    + sumKind(input.health, 'conditioning_minutes', weekStart, today)
-    + sumKind(input.health, 'other_minutes', weekStart, today);
-  const minutes = workoutMinutes > 0 ? workoutMinutes : mixWeek;
-  const mixReport = workoutMixReport({
+  const period = input.period ?? '7';
+  const window = rollingWindow(today, period);
+  const active = periodActiveMinutes({
     samples: input.health,
     today,
+    start: window.start,
+    end: window.end,
     overrides: input.workoutBuckets,
     sourceApps: input.sourceApps,
   });
+  const minutes = active.minutes;
+  const mixReport = active.report;
   const strength = mixReport.strength;
   const cardioMin = mixReport.cardio;
   const conditioning = mixReport.conditioning;
@@ -587,7 +597,11 @@ export function buildFitnessSnapshot(input: FitnessSnapshotInput): FitnessSnapsh
   const latestVo2 = vo2.length ? vo2[vo2.length - 1]?.value ?? null : null;
   const band = latestVo2 != null ? bandFor(input.goalAge, input.goalSex) : null;
   const vo2Level = latestVo2 != null && band ? rateVo2(latestVo2, band) : null;
-  const fallback = vo2Level ? null : fallbackLevel(minutes, input.scheduleWeekMinutes, restingSplit);
+  const weeklySchedule = input.scheduleWeekMinutes && input.scheduleWeekMinutes > 0 ? input.scheduleWeekMinutes : null;
+  const scaledSchedule = weeklySchedule == null ? null : scaledPeriodTarget(weeklySchedule, period);
+  const guideline = scaledPeriodTarget(150, period);
+  const vigorous = scaledPeriodTarget(75, period);
+  const fallback = vo2Level ? null : fallbackLevel(minutes, scaledSchedule, restingSplit, guideline, vigorous);
   const level = vo2Level ?? fallback;
 
   const levelWordsBase = levelWordsFor({
@@ -597,7 +611,8 @@ export function buildFitnessSnapshot(input: FitnessSnapshotInput): FitnessSnapsh
     age: input.goalAge,
     sex: input.goalSex,
     minutes,
-    schedule: input.scheduleWeekMinutes,
+    schedule: scaledSchedule,
+    phrase: periodPhrase(period),
     rhrUp,
     walking: walking.length ? walking[walking.length - 1]?.value ?? null : null,
   });
@@ -626,22 +641,48 @@ export function buildFitnessSnapshot(input: FitnessSnapshotInput): FitnessSnapsh
     compare,
   };
 
-  const restingTrend = resting.length >= 2 ? {
+  const inPeriodResting = resting.filter((point) => point.day >= window.start && point.day <= today);
+  const restingShown = inPeriodResting.length
+    ? Math.round(inPeriodResting.reduce((sum, point) => sum + point.value, 0) / inPeriodResting.length)
+    : resting.length
+      ? Math.round(resting[resting.length - 1]?.value ?? 0)
+      : null;
+  const restingPace = paceJudgement({
+    period,
+    loggedDays: inPeriodResting.length,
+    now: input.now,
+    met: !rhrUp,
+    behind: 'Watch',
+  });
+  const restingTrend = restingShown != null && resting.length >= 1 ? {
     label: 'Resting heart rate',
-    reading: `${Math.round(resting[resting.length - 1]?.value ?? 0)} bpm`,
+    reading: `${restingShown} bpm`,
     words: restingWords(restingSplit),
-    tone: rhrUp ? 'watch' as const : 'good' as const,
-    points: resting.slice(-8).map((point) => Math.round(point.value)),
+    tone: restingPace.neutral ? 'info' as const : rhrUp ? 'watch' as const : 'good' as const,
+    points: (inPeriodResting.length ? inPeriodResting : resting).slice(-8).map((point) => Math.round(point.value)),
+    period: inPeriodResting.length ? periodPhrase(period) : 'latest reading',
+    signal: restingPace.neutral ? restingPace.word : rhrUp ? 'Watch' : 'On track',
+    neutral: restingPace.neutral,
   } : null;
 
-  const aim = input.scheduleWeekMinutes && input.scheduleWeekMinutes > 0 ? input.scheduleWeekMinutes : 150;
+  const aim = scaledSchedule ?? guideline;
+  const minutesMet = minutes >= aim * 0.9;
+  const minutesPace = paceJudgement({
+    period,
+    loggedDays: active.days,
+    now: input.now,
+    met: minutesMet,
+    behind: 'Short',
+  });
   const minutesRing = minutes > 0 || input.scheduleWeekMinutes ? {
     centre: String(Math.round(minutes)),
-    unit: 'min this week',
-    fill: Math.max(0, Math.min(1, minutes / aim)),
-    status: minutes >= aim * 0.9 ? 'On track' : 'Short',
-    tone: minutes >= aim * 0.9 ? 'good' as const : 'watch' as const,
-    words: minutesWords(minutes, input.scheduleWeekMinutes),
+    unit: minuteUnit(period),
+    fill: aim > 0 ? Math.max(0, Math.min(1, minutes / aim)) : 0,
+    status: minutesPace.neutral ? minutesPace.word : minutesMet ? 'On track' : 'Short',
+    tone: minutesPace.neutral ? 'info' as const : minutesMet ? 'good' as const : 'watch' as const,
+    signal: minutesPace.neutral ? minutesPace.word : undefined,
+    neutral: minutesPace.neutral,
+    words: minutesWords(minutes, weeklySchedule, period, aim),
   } : null;
 
   const mix = mixReport.total > 0
@@ -668,7 +709,8 @@ export function buildFitnessSnapshot(input: FitnessSnapshotInput): FitnessSnapsh
     conditioning,
     total: mixTotal,
     minutes,
-    schedule: input.scheduleWeekMinutes,
+    schedule: scaledSchedule,
+    guideline,
     hasWork: minutes > 0 || mixTotal > 0,
     belowGoal: Boolean(compare?.goal && latestVo2 != null && latestVo2 < compare.goal.low),
   });
@@ -716,14 +758,16 @@ function fallbackLevel(
   minutes: number,
   schedule: number | null,
   resting: { earlier: number | null; recent: number | null },
+  guideline = 150,
+  vigorous = 75,
 ): FitnessLevel | null {
   const delta = resting.earlier != null && resting.recent != null ? resting.recent - resting.earlier : null;
   if (minutes <= 0 && delta == null) return null;
   const rhrUp = delta != null && delta >= 5;
   const rhrOk = delta == null || delta < 3;
-  const underGuideline = minutes < 75;
+  const underGuideline = minutes < vigorous;
   const underSchedule = schedule != null && minutes < schedule * 0.6;
-  const meeting = minutes >= 150 && (schedule == null || minutes >= schedule * 0.9);
+  const meeting = minutes >= guideline && (schedule == null || minutes >= schedule * 0.9);
   if (meeting && rhrOk && delta != null) return 'Strong';
   if (rhrUp || (underGuideline && (schedule == null || underSchedule))) return 'Developing';
   return 'Steady';
@@ -737,6 +781,7 @@ function levelWordsFor(input: {
   sex: NutritionSex | null;
   minutes: number;
   schedule: number | null;
+  phrase?: string;
   rhrUp: boolean;
   walking: number | null;
 }): string {
@@ -752,7 +797,8 @@ function levelWordsFor(input: {
     return `Cardio fitness is about ${round1(input.vo2)} ml/kg/min. Add age and sex on Nutrition for a level.`;
   }
   if (!input.level) return 'Not enough readings yet for a level.';
-  const minutesBit = input.minutes > 0 ? `${Math.round(input.minutes)} active minutes this week` : 'no active minutes logged this week';
+  const phrase = input.phrase ?? 'this week';
+  const minutesBit = input.minutes > 0 ? `${Math.round(input.minutes)} active minutes ${phrase}` : `no active minutes logged ${phrase}`;
   const heartBit = input.rhrUp ? 'Resting heart rate is up on your earlier readings.' : 'Resting heart rate is not up on your earlier readings.';
   const scheduleBit = input.schedule ? ` Your schedule is about ${Math.round(input.schedule)} min.` : '';
   const walkingBit = input.walking != null ? ` Walking heart rate lately is about ${Math.round(input.walking)} bpm.` : '';
@@ -767,12 +813,13 @@ function restingWords(split: { earlier: number | null; recent: number | null }):
   return 'Resting heart rate is close to your earlier readings.';
 }
 
-function minutesWords(minutes: number, schedule: number | null): string {
+function minutesWords(minutes: number, schedule: number | null, period: StatPeriod, aim: number): string {
   const guideline = 'The activity guideline is 150 min a week.';
+  const phrase = periodPhrase(period);
   if (schedule && schedule > 0) {
-    return `${Math.round(minutes)} min this week. Your schedule is about ${Math.round(schedule)} min. ${guideline}`;
+    return `${Math.round(minutes)} min ${phrase}. Your schedule is about ${Math.round(aim)} min ${phrase}. ${guideline}`;
   }
-  return `${Math.round(minutes)} min this week. ${guideline}`;
+  return `${Math.round(minutes)} min ${phrase}. ${guideline}`;
 }
 
 const BUCKET_KIND_NAME = {
@@ -839,6 +886,42 @@ export type WorkoutMixReport = {
   typeDays: number;
   bucketDays: number;
 };
+
+/**
+ * Active minutes for one rolling window.
+ * Workout minutes win when they are stored. Otherwise the mix report total is used, so every page shows the same number.
+ */
+export function periodActiveMinutes(input: {
+  samples: readonly FitnessSample[];
+  today: string;
+  start: string;
+  end?: string;
+  overrides?: WorkoutBucketMap | null;
+  sourceApps?: readonly WorkoutSourceMinute[];
+}): { minutes: number; days: number; report: WorkoutMixReport } {
+  const end = input.end ?? input.today;
+  const report = workoutMixReport({
+    samples: input.samples,
+    today: input.today,
+    start: input.start,
+    end,
+    overrides: input.overrides,
+    sourceApps: input.sourceApps,
+  });
+  const days = new Map<string, number>();
+  for (const sample of input.samples) {
+    if (sample.kind !== 'workout_minutes' || !(sample.value > 0)) continue;
+    const day = sample.recordedOn.slice(0, 10);
+    if (day < input.start || day > end) continue;
+    days.set(day, (days.get(day) ?? 0) + sample.value);
+  }
+  if (days.size > 0) {
+    let minutes = 0;
+    for (const value of days.values()) minutes += value;
+    return { minutes: Math.round(minutes), days: days.size, report };
+  }
+  return { minutes: report.total, days: report.typeDays + report.bucketDays, report };
+}
 
 /**
  * The one split for the sessions chart, the Health Stats mix tile, and the plan.
@@ -1053,6 +1136,7 @@ function recommend(input: {
   total: number;
   minutes: number;
   schedule: number | null;
+  guideline?: number;
   hasWork: boolean;
   belowGoal: boolean;
 }): FitnessRecommendation[] {
@@ -1084,7 +1168,7 @@ function recommend(input: {
     add('Add one strength session beside the work you already do.', true);
   } else if ((goal === 'increase' || goal === 'body_builder') && strengthShare != null && strengthShare < 0.25 && input.total >= 30) {
     add('Add one strength session beside the work you already do.', true);
-  } else if (goal === 'lose_weight' && input.minutes > 0 && input.minutes < 150 && (input.schedule == null || input.minutes < input.schedule)) {
+  } else if (goal === 'lose_weight' && input.minutes > 0 && input.minutes < (input.guideline ?? 150) && (input.schedule == null || input.minutes < input.schedule)) {
     add(EASY_AEROBIC, true);
   } else if (goal === 'elite_runner' && input.hasWork) {
     add('Hold the sessions you already do, and keep one of them easy.', true);

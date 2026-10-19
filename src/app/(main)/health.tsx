@@ -10,9 +10,6 @@ import { parseHeightCm } from '@/domain/guidance';
 import {
   HEALTH_SHEET_ASKED,
   HEALTH_SHEET_WONT_SHOW,
-  HEALTH_STAT_PERIOD_LABEL,
-  HEALTH_STAT_PERIODS,
-  type HealthStatPeriod,
 } from '@/domain/healthStatTiles';
 import { rebucketStoredMinutes, withWorkoutBucket } from '@/domain/fitnessSnapshot';
 import type { BodyEntrySource, WorkoutBucket } from '@/domain/nutrition';
@@ -32,12 +29,13 @@ import { catchUpAppleHealthReads } from '@/health/catchUp';
 import { connectAppleHealth, openAppSettings, openHealthApp, readAppleHealthAccess, turnOnAppleHealthReads, askAppleHealthReads } from '@/health/link';
 import { readHealthVisibility } from '@/health/visibility';
 import type { HealthTurnOnResult } from '@/ui/HealthStatBoard';
-import { loadHealthStatPeriod, saveHealthStatPeriod } from '@/health/statPeriod';
+import { useStatPeriod } from '@/health/useStatPeriod';
 import { loadLastSynced, saveLastSynced } from '@/health/syncedAt';
 import { syncAppleHealth } from '@/health/sync';
 import { AppleHealthCard } from '@/ui/AppleHealthCard';
 import { HealthVisibility } from '@/ui/HealthVisibility';
 import { GoalLine } from '@/ui/GoalLine';
+import { StatPeriodToggle } from '@/ui/StatPeriodToggle';
 import { HealthStatBoard } from '@/ui/HealthStatBoard';
 import { HealthSectionShare } from '@/ui/SectionShare';
 import { HealthBoard, HealthReadings } from '@/ui/HealthBoard';
@@ -75,27 +73,12 @@ export default function Health() {
   const [syncedAt, setSyncedAt] = useState<string | null>(null);
   const [visibility, setVisibility] = useState<HealthVisibilityReport | null>(ios ? null : { kind: 'web' });
   const [visibilityPending, setVisibilityPending] = useState(false);
-  const [period, setPeriod] = useState<HealthStatPeriod>('7');
+  const [period] = useStatPeriod();
   const [updatedNow, setUpdatedNow] = useState(false);
   const [refreshError, setRefreshError] = useState<string | null>(null);
   const [turnOnNote, setTurnOnNote] = useState<string | null>(null);
   const [seeRequest, setSeeRequest] = useState(0);
   const chosen = KINDS.find((item) => item.id === kind) ?? KINDS[0];
-
-  useEffect(() => {
-    let live = true;
-    void loadHealthStatPeriod().then((saved) => {
-      if (live) setPeriod(saved);
-    });
-    return () => {
-      live = false;
-    };
-  }, []);
-
-  function choosePeriod(next: HealthStatPeriod) {
-    setPeriod(next);
-    void saveHealthStatPeriod(next);
-  }
 
   const refreshLink = useCallback(() => {
     if (!ios) return;
@@ -415,16 +398,7 @@ export default function Health() {
         onCheck={loadVisibility}
         onAsk={askUnasked}
       />
-      <View accessibilityRole="radiogroup" accessibilityLabel="Period" style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-        {HEALTH_STAT_PERIODS.map((id) => (
-          <Choice
-            key={id}
-            label={HEALTH_STAT_PERIOD_LABEL[id]}
-            selected={period === id}
-            onPress={() => choosePeriod(id)}
-          />
-        ))}
-      </View>
+      <StatPeriodToggle />
       <GoalLine />
       <HealthSectionShare />
       <HealthStatBoard

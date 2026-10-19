@@ -105,7 +105,8 @@ describe('Apple Health screen and entitlement', () => {
     expect(screen).not.toContain('Sync from Apple Health');
     const cardAt = screen.indexOf('<AppleHealthCard');
     const seeAt = screen.indexOf('<HealthVisibility\n');
-    const periodAt = screen.indexOf('accessibilityLabel="Period"');
+    const periodAt = screen.indexOf('<StatPeriodToggle');
+    expect(readFileSync('src/ui/StatPeriodToggle.tsx', 'utf8')).toContain('accessibilityLabel="Period"');
     const boardAt = screen.indexOf('<HealthStatBoard');
     expect(cardAt).toBeGreaterThan(-1);
     expect(cardAt).toBeLessThan(seeAt);

@@ -10,9 +10,11 @@ import {
   buildFitnessSnapshot,
   CONDITIONING_NOTE,
   MIX_HOW,
+  periodActiveMinutes,
   VO2_WHAT,
   workoutMixReport,
 } from '@/domain/fitnessSnapshot';
+import { paceJudgement, rollingWindow, scaledPeriodTarget } from '@/domain/statWindow';
 import { goalBandLegend, goalWeightRange, IBA_RULES_URL, NO_CUT } from '@/domain/goalWeightRange';
 import {
   BHF_HEART_RATE_URL,
@@ -163,7 +165,7 @@ const HEALTH_STAT_GAPS: Record<string, { source: string; healthType: string | nu
     manual: false,
   },
   weekly_active_minutes: {
-    source: 'Weekly active minutes come from logged workouts.',
+    source: 'Active minutes come from logged workouts.',
     healthType: 'HKWorkoutTypeIdentifier',
     manual: false,
   },
@@ -262,7 +264,7 @@ export const HEALTH_STAT_CATALOGUE: readonly { id: string; section: HealthStatSe
   { id: 'steps', section: 'activity', title: 'Steps' },
   { id: 'active_energy', section: 'activity', title: 'Active energy' },
   { id: 'workouts', section: 'activity', title: 'Workouts' },
-  { id: 'weekly_active_minutes', section: 'activity', title: 'Weekly active minutes' },
+  { id: 'weekly_active_minutes', section: 'activity', title: 'Active minutes' },
 ];
 
 export type HealthStatSample = { kind: string; value: number; recordedOn: string; source?: string };
@@ -299,6 +301,8 @@ export type HealthStatVisual =
     fill: number;
     status: string;
     tone: StatsTone;
+    signal?: string;
+    neutral?: boolean;
   }
   | {
     kind: 'zone';
@@ -314,6 +318,8 @@ export type HealthStatVisual =
     goalHigh?: number | null;
     goalCaption?: string | null;
     tone: StatsTone;
+    signal?: string;
+    neutral?: boolean;
   }
   | {
     kind: 'bars';
@@ -1098,27 +1104,40 @@ function weeklyTile(item: CatalogItem, input: HealthStatBoardInput): HealthStatT
   if (window === 'none') return null;
   if (window === 'gap') return olderReadingTile(item, input, history, (point) => `Latest ${whole(point.value)} min`);
   const period = periodOf(input);
-  const rounded = Math.round(window.current.reduce((sum, point) => sum + point.value, 0));
+  const bounds = rollingWindow(input.today, period);
+  const active = periodActiveMinutes({
+    samples: input.samples,
+    today: input.today,
+    start: bounds.start,
+    end: bounds.end,
+    overrides: input.workoutBuckets,
+  });
+  const rounded = active.minutes;
   const target = scaledActivityMinutes(CMO_MODERATE_MINUTES_WEEK, period);
   const vigorous = scaledActivityMinutes(CMO_VIGOROUS_MINUTES_WEEK, period);
   const left = Math.max(0, target - rounded);
   const met = rounded >= target;
-  const tone: StatsTone = met ? 'good' : 'info';
-  const status = met
-    ? `${whole(target)} minutes logged`
-    : rounded === 0
-      ? `${whole(target)} minutes to go`
-      : left === 1
-        ? `1 minute to ${whole(target)}`
-        : `${whole(left)} minutes to ${whole(target)}`;
+  const pace = paceJudgement({ period, loggedDays: active.days, now: new Date(), met, behind: 'Short' });
+  const tone: StatsTone = met ? 'good' : pace.neutral ? 'info' : 'info';
+  const status = pace.neutral && !met
+    ? pace.word
+    : met
+      ? `${whole(target)} minutes logged`
+      : rounded === 0
+        ? `${whole(target)} minutes to go`
+        : left === 1
+          ? `1 minute to ${whole(target)}`
+          : `${whole(left)} minutes to ${whole(target)}`;
   const scaleMax = Math.max(target * 2, rounded + 20);
   return finish(item, {
+    title: 'Active minutes',
     valueText: whole(rounded),
     unit: 'min',
     period: periodLabel(period),
     weeklyLine: period === '30' ? weeklyAverageWords(rounded, 30) : null,
     status,
     tone,
+    mark: pace.neutral ? pace.word : STATS_SIGNAL[tone],
     trend: movementTrend(window.current, window.previous, 'sum', 5, period),
     hasGuideline: true,
     visual: {
@@ -1131,6 +1150,8 @@ function weeklyTile(item: CatalogItem, input: HealthStatBoardInput): HealthStatT
       status,
       zoneCaption: activityCaption(period, target),
       tone,
+      signal: pace.neutral ? pace.word : undefined,
+      neutral: pace.neutral,
     },
     history: nums(window.current),
     about: `Active minutes: time counted over ${periodPhrase(period)}. The unit is minutes.`,
@@ -1208,8 +1229,10 @@ function plainReading(
 function finish(
   item: CatalogItem,
   tile: Omit<HealthStatTile, 'id' | 'section' | 'title' | 'mark' | 'weeklyLine' | 'empty'> & {
+    title?: string;
     weeklyLine?: string | null;
     empty?: boolean;
+    mark?: string;
   },
 ): HealthStatTile {
   return {
@@ -1234,14 +1257,12 @@ function periodOf(input: HealthStatBoardInput): HealthStatPeriod {
 }
 
 function periodDays(period: HealthStatPeriod): number {
-  if (period === 'day') return 1;
-  if (period === '30') return 30;
-  return 7;
+  return period === 'day' ? 1 : period === '30' ? 30 : 7;
 }
 
 /** The 150-minute week, scaled to the chosen period. 21 today, 150 in 7 days, 643 in 30 days. */
 export function scaledActivityMinutes(weekly: number, period: HealthStatPeriod): number {
-  return Math.round((weekly * periodDays(period)) / 7);
+  return scaledPeriodTarget(weekly, period);
 }
 
 function activityCaption(period: HealthStatPeriod, target: number): string {
@@ -1268,7 +1289,7 @@ function noReadingsLine(period: HealthStatPeriod, night: boolean): string {
 }
 
 function windowStart(today: string, period: HealthStatPeriod): string {
-  return shiftDay(today, -(periodDays(period) - 1));
+  return rollingWindow(today, period).start;
 }
 
 function previousBounds(today: string, period: HealthStatPeriod): { start: string; end: string } {

@@ -75,15 +75,18 @@ export function ToneMark({ tone, color }: { tone: StatsTone; color: string }) {
   );
 }
 
-function SignalRow({ tone }: { tone: StatsTone }) {
+function SignalRow({ tone, signal, monochrome }: { tone: StatsTone; signal?: string; monochrome?: boolean }) {
   const theme = useAppTheme();
-  const color = statsToneColors(theme.scheme)[tone].ink;
+  const word = signal ?? STATS_SIGNAL[tone];
+  const neutral = monochrome || word === 'Early days' || word === 'On pace';
+  const iconTone: StatsTone = word === 'On pace' ? 'good' : word === 'Early days' ? 'info' : tone;
+  const color = neutral ? theme.colors.ink : statsToneColors(theme.scheme)[tone].ink;
   return (
     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
       <Svg width={18} height={18} viewBox="0 0 24 24" fill="none" accessibilityElementsHidden>
-        <ToneMark tone={tone} color={color} />
+        <ToneMark tone={iconTone} color={color} />
       </Svg>
-      <T style={{ color, fontFamily: theme.font.bodyStrong }}>{STATS_SIGNAL[tone]}</T>
+      <T style={{ color, fontFamily: theme.font.bodyStrong }}>{word}</T>
     </View>
   );
 }
@@ -108,6 +111,8 @@ export function ProgressRing({
   mark = false,
   spoken = false,
   caption,
+  signal,
+  monochrome = false,
 }: {
   centre: string;
   unit: string;
@@ -119,10 +124,14 @@ export function ProgressRing({
   mark?: boolean;
   spoken?: boolean;
   caption?: string;
+  signal?: string;
+  monochrome?: boolean;
 }) {
   const theme = useAppTheme();
   const motion = useChartMotion();
-  const colors = inkFor(tone, surface);
+  const colors = monochrome
+    ? { stroke: theme.colors.ink, centre: theme.colors.ink, muted: theme.colors.muted, track: theme.colors.line }
+    : inkFor(tone, surface);
   const ring = size ?? (surface === 'tile' ? 92 : 120);
   const stroke = ring < 100 ? 9 : 12;
   const radius = (ring - stroke) / 2;
@@ -180,7 +189,7 @@ export function ProgressRing({
           ) : null}
         </View>
       </View>
-      {mark ? <SignalRow tone={tone} /> : null}
+      {mark ? <SignalRow tone={tone} signal={signal} monochrome={monochrome} /> : null}
       <T style={{ color: surface === 'tile' ? colors.centre : theme.colors.ink, textAlign: 'center' }}>{status}</T>
     </View>
   );
@@ -302,6 +311,8 @@ export function RangeTrack({
   mark = false,
   spoken = false,
   showStatus = true,
+  signal,
+  monochrome = false,
 }: {
   value: number;
   zoneLow: number;
@@ -320,6 +331,8 @@ export function RangeTrack({
   spoken?: boolean;
   /** Hide the status line when a ring above the track already says it. */
   showStatus?: boolean;
+  signal?: string;
+  monochrome?: boolean;
 }) {
   const theme = useAppTheme();
   const motion = useChartMotion();
@@ -389,7 +402,7 @@ export function RangeTrack({
       {goalCaption ? (
         <T style={{ fontSize: 13 * theme.scale, lineHeight: 18 * theme.scale, color: colors.info.ink }}>{goalCaption}</T>
       ) : null}
-      {mark ? <SignalRow tone={tone} /> : null}
+      {mark ? <SignalRow tone={tone} signal={signal} monochrome={monochrome} /> : null}
       {showStatus ? <T style={{ color: surface === 'tile' ? markerInk : theme.colors.ink }}>{status}</T> : null}
     </View>
   );

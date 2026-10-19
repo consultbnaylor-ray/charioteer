@@ -20,10 +20,13 @@ import {
   weightTrendLine,
 } from '@/domain/nutrition';
 import type { StatsTone } from '@/domain/statsOverview';
+import { paceJudgement, periodPhrase, proteinPace, type StatPeriod } from '@/domain/statWindow';
+import { useStatPeriod } from '@/health/useStatPeriod';
 import { CompareBars, ProgressRing, useChartMotion } from '@/ui/DistanceCharts';
 import { statsToneColors } from '@/ui/statsPalette';
+import { StatPeriodToggle } from '@/ui/StatPeriodToggle';
 import { useAppTheme } from '@/ui/theme';
-import { Card, Choice, T } from '@/ui/ui';
+import { Card, T } from '@/ui/ui';
 
 /**
  * Nutrition charts use react-native-svg, the same drawing library as Health.
@@ -49,21 +52,33 @@ export function NutritionBoard({
   qualitySwitch?: ReactNode;
   progressSwitch?: ReactNode;
 }) {
-  const [span, setSpan] = useState<7 | 30>(7);
+  const [period] = useStatPeriod();
+  const span = period === 'day' ? 1 : period === '30' ? 30 : 7;
   const picture = useMemo(() => {
-    const items = dayItems(logs, today);
-    const totals = sumItems(items);
+    const days = nutritionTrendDays(logs, today, span);
+    const logged = days.filter((day) => day.logged);
+    const items = logged.flatMap((day) => dayItems(logs, day.day));
+    const proteinDays = logged.map((day) => day.proteinG).filter((grams) => grams > 0);
+    const proteinAvg = proteinDays.length ? proteinDays.reduce((sum, grams) => sum + grams, 0) / proteinDays.length : 0;
+    const proteinHits = proteinTarget != null && proteinTarget > 0
+      ? proteinDays.filter((grams) => grams >= proteinTarget).length
+      : 0;
+    const kcalAvg = logged.length ? logged.reduce((sum, day) => sum + day.kcal, 0) / logged.length : 0;
     const whole = items.filter((item) => !item.processed).length;
     const processed = items.length - whole;
     const shared = {
       hideCalories,
-      kcal: totals.kcal,
+      kcal: kcalAvg,
       kcalTarget,
-      proteinG: totals.proteinG,
+      proteinG: proteinAvg,
       proteinTarget,
-      logged: items.length > 0,
+      logged: logged.length > 0,
     };
     return {
+      loggedCount: logged.length,
+      proteinDays: proteinDays.length,
+      proteinHits,
+      proteinAvg,
       kcal: hideCalories ? null : todayRing({ ...shared, hideCalories: false }),
       protein: todayRing({ ...shared, hideCalories: true }),
       macros: macroSplit(items),
@@ -80,7 +95,7 @@ export function NutritionBoard({
       dotsCaption: loggingCaption(logs, today),
       insights: eatingInsights(logs, checkIns),
     };
-  }, [logs, today, hideCalories, kcalTarget, proteinTarget, checkIns]);
+  }, [logs, today, hideCalories, kcalTarget, proteinTarget, checkIns, span]);
   const trend = useMemo(() => {
     const days = nutritionTrendDays(logs, today, span);
     return { days, caption: trendCaption(days, { hideCalories, span }) };
@@ -90,9 +105,22 @@ export function NutritionBoard({
   return (
     <>
       <Card>
+        <StatPeriodToggle />
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12, justifyContent: 'space-around' }}>
-          {picture.kcal ? <RingFigure label="Energy today" ring={picture.kcal} tone={energyTone(picture.kcal)} /> : null}
-          <RingFigure label="Protein today" ring={picture.protein} tone={proteinTone(picture.protein)} />
+          {picture.kcal ? (
+            <RingFigure
+              label={figureLabel('Energy', period)}
+              ring={picture.kcal}
+              mark={energyMark(picture.kcal, period, picture.loggedCount)}
+              period={period}
+            />
+          ) : null}
+          <RingFigure
+            label={figureLabel('Protein', period)}
+            ring={alignProteinCentre(picture.protein, picture.proteinAvg)}
+            mark={proteinMark(picture.protein, period, picture.proteinDays, picture.proteinAvg, picture.proteinHits)}
+            period={period}
+          />
         </View>
         <T variant="label">Protein, carbohydrate and fat</T>
         <MacroBars slices={picture.macros.slices} caption={picture.macros.caption} />
@@ -110,11 +138,7 @@ export function NutritionBoard({
       </Card>
 
       <Card>
-        <T variant="label">Recent days</T>
-        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-          <Choice label="7 days" selected={span === 7} onPress={() => setSpan(7)} />
-          <Choice label="30 days" selected={span === 30} onPress={() => setSpan(30)} />
-        </View>
+        <T variant="label">{period === 'day' ? 'Today' : period === '30' ? 'Last 30 days' : 'Last 7 days'}</T>
         {loggedDays ? (
           <>
             {hideCalories ? null : (
@@ -157,33 +181,64 @@ export function NutritionBoard({
   );
 }
 
-function energyTone(ring: TodayRing): StatsTone {
-  if (ring.value <= 0 || ring.target == null) return 'info';
-  if (ring.value > ring.target) return 'watch';
-  if (ring.value >= ring.target * 0.85) return 'good';
-  return 'info';
+function figureLabel(name: string, period: StatPeriod): string {
+  if (period === 'day') return `${name} today`;
+  if (period === '30') return `${name} in last 30 days`;
+  return `${name} in last 7 days`;
 }
 
-function proteinTone(ring: TodayRing): StatsTone {
-  if (ring.value <= 0 || ring.target == null) return 'info';
-  return ring.value >= ring.target ? 'good' : 'info';
+function alignProteinCentre(ring: TodayRing, average: number): TodayRing {
+  if (average <= 0) return ring;
+  return { ...ring, centre: String(Math.round(average)), value: average };
 }
 
-function RingFigure({ label, ring, tone }: { label: string; ring: TodayRing; tone: StatsTone }) {
+type RingMark = { tone: StatsTone; signal?: string; monochrome?: boolean };
+
+function energyMark(ring: TodayRing, period: StatPeriod, loggedDays: number): RingMark {
+  if (ring.value <= 0 || ring.target == null) return { tone: 'info' };
+  if (ring.value > ring.target) return { tone: 'watch' };
+  const met = ring.value >= ring.target * 0.85;
+  const pace = paceJudgement({ period, loggedDays, now: new Date(), met, behind: 'Watch' });
+  if (pace.neutral) return { tone: 'info', signal: pace.word, monochrome: true };
+  return { tone: met ? 'good' : 'info' };
+}
+
+function proteinMark(ring: TodayRing, period: StatPeriod, loggedDays: number, average: number, hits: number): RingMark {
+  if (ring.value <= 0 || ring.target == null) return { tone: 'info' };
+  const pace = proteinPace({
+    period,
+    loggedDays,
+    now: new Date(),
+    average,
+    target: ring.target,
+    hits,
+  });
+  return { tone: pace.tone, signal: pace.word, monochrome: pace.neutral };
+}
+
+function spokenPeriod(ring: TodayRing, period: StatPeriod): string {
+  if (period === 'day') return ring.caption;
+  return ring.caption.replace(/today/g, periodPhrase(period));
+}
+
+function RingFigure({ label, ring, mark, period }: { label: string; ring: TodayRing; mark: RingMark; period: StatPeriod }) {
+  const unit = ring.unit === 'g protein' ? 'g' : ring.unit;
   return (
     <View style={{ alignItems: 'center', gap: 4, flexGrow: 1, flexBasis: 140 }}>
       <T variant="label">{label}</T>
       <ProgressRing
         centre={ring.centre}
-        unit={ring.unit}
+        unit={unit}
         fill={ring.fill}
         status={ring.status}
-        tone={tone}
+        tone={mark.tone}
+        signal={mark.signal}
+        monochrome={mark.monochrome}
         surface="card"
         size={108}
         mark
         spoken
-        caption={ring.caption}
+        caption={spokenPeriod(ring, period)}
       />
     </View>
   );

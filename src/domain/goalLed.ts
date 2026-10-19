@@ -1,11 +1,13 @@
 import type { AppSnapshot } from '@/data/types';
 import { lossBlocked } from '@/domain/nutrition';
+import type { StatPeriod } from '@/domain/statWindow';
 
 export {
   buildGoalLed,
   figuresForLondonWeek,
   goalFocusLine,
   goalProgressLine,
+  latestWeight,
   proteinLoggedDays,
   sleepThisWeek,
   trainingThisWeek,
@@ -20,7 +22,7 @@ export {
 import { figuresForLondonWeek } from '../../supabase/functions/_shared/goalLed.ts';
 
 /** Figures already on the phone. Nothing here is fetched for the goal card. */
-export function goalLedFromSnapshot(snap: AppSnapshot, now = new Date()) {
+export function goalLedFromSnapshot(snap: AppSnapshot, now = new Date(), period: StatPeriod = '7') {
   const profile = snap.profile;
   const settings = snap.nutrition;
   const week = figuresForLondonWeek({
@@ -28,6 +30,7 @@ export function goalLedFromSnapshot(snap: AppSnapshot, now = new Date()) {
     logs: snap.foodLogs ?? [],
     health: snap.health ?? [],
     checkIns: snap.checkIns ?? [],
+    period,
   });
   const stage = profile?.stage === 'stopped' || profile?.stage === 'trying_to_stop' || profile?.stage === 'cutting_down' || profile?.stage === 'exploring'
     ? profile.stage
@@ -56,5 +59,7 @@ export function goalLedFromSnapshot(snap: AppSnapshot, now = new Date()) {
     weightKg: week.weightKg,
     previousWeightKg: week.previousWeightKg,
     sleepHours: week.sleepHours,
+    period,
+    now,
   };
 }

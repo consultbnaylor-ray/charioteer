@@ -1261,7 +1261,7 @@ export function macroSplit(items: readonly FoodItem[]): { slices: MacroSlice[]; 
 
 export type TrendDay = { day: string; kcal: number; proteinG: number; logged: boolean };
 
-export function nutritionTrendDays(logs: readonly FoodLog[], today: string, span: 7 | 30): TrendDay[] {
+export function nutritionTrendDays(logs: readonly FoodLog[], today: string, span: number): TrendDay[] {
   const days: TrendDay[] = [];
   for (let ago = span - 1; ago >= 0; ago -= 1) {
     const day = shiftIsoDay(today, -ago);
@@ -1274,10 +1274,13 @@ export function nutritionTrendDays(logs: readonly FoodLog[], today: string, span
 
 export function trendCaption(days: readonly TrendDay[], input: {
   hideCalories: boolean;
-  span: 7 | 30;
+  span: number;
 }): string {
   const logged = days.filter((day) => day.logged);
-  if (!logged.length) return input.span === 7 ? WEEK_CHART_EMPTY : 'Log a few meals to see the month.';
+  if (!logged.length) {
+    if (input.span <= 1) return 'Nothing logged today.';
+    return input.span <= 7 ? WEEK_CHART_EMPTY : 'Log a few meals to see the month.';
+  }
   const protein = round1(logged.reduce((sum, day) => sum + day.proteinG, 0) / logged.length);
   if (input.hideCalories) return `Logged days average ${protein} g protein.`;
   const kcal = Math.round(logged.reduce((sum, day) => sum + day.kcal, 0) / logged.length);

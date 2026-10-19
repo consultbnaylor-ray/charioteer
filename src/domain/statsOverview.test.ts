@@ -113,7 +113,8 @@ describe('stats overview', () => {
     expect(calories.signal).toBe('Watch');
     expect(calories.tone).not.toBe('attention');
     expect(calories.chart).toMatchObject({ kind: 'ring', status: '100 kcal over', fill: 1 });
-    expect(byId(tiles, 'protein').meaning).toBe('Short of your target so far');
+    expect(byId(tiles, 'protein').meaning).toBe('Early days');
+    expect(byId(tiles, 'protein').signal).toBe('Early days');
     expect(byId(tiles, 'protein').chart).toMatchObject({ kind: 'ring', status: '120 g left' });
     expect(byId(tiles, 'protein').tone).not.toBe('attention');
     expect(byId(tiles, 'quality').chart.kind).toBe('bars');

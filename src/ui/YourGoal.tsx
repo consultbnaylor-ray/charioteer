@@ -7,6 +7,8 @@ import { GoalLine } from '@/ui/GoalLine';
 import { GoalWeightRange } from '@/ui/GoalWeightRange';
 import { MeasureRingView } from '@/ui/MeasuredFigure';
 import { PlanTick } from '@/ui/PlanTick';
+import { StatPeriodToggle } from '@/ui/StatPeriodToggle';
+import { useStatPeriod } from '@/health/useStatPeriod';
 import { Card, T } from '@/ui/ui';
 
 /**
@@ -15,12 +17,14 @@ import { Card, T } from '@/ui/ui';
  */
 export function YourGoal({ place }: { place: 'today' | 'stats' | 'plan' }) {
   const snap = useSnapshot();
+  const [period] = useStatPeriod();
   if (!snap.profile) return null;
-  const view = buildGoalLed(goalLedFromSnapshot(snap));
+  const view = buildGoalLed(goalLedFromSnapshot(snap, new Date(), period));
   const showRings = place !== 'plan';
   const showNudges = place === 'today';
   return (
     <Card>
+      <StatPeriodToggle />
       {place === 'stats' ? null : <GoalLine />}
       <T variant="muted">{view.matters}</T>
       {view.caution ? <T variant="muted">{view.caution}</T> : null}
@@ -36,6 +40,8 @@ export function YourGoal({ place }: { place: 'today' | 'stats' | 'plan' }) {
                   fill: measure.fill,
                   status: measure.status,
                   tone: measure.tone,
+                  signal: measure.signal,
+                  neutral: measure.neutral,
                 }}
                 detail={measure.words}
               />

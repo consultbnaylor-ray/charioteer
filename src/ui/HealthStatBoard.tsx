@@ -20,7 +20,6 @@ import {
   type HealthStatVisual,
 } from '@/domain/healthStatTiles';
 import { BODY_ENTRY_SOURCES, BODY_SOURCE_LABEL, WORKOUT_BUCKETS, WORKOUT_BUCKET_LABEL, type BodyEntrySource, type WorkoutBucket } from '@/domain/nutrition';
-import { STATS_SIGNAL } from '@/domain/statsOverview';
 import {
   APPLE_HEALTH_CONSENT,
   APPLE_HEALTH_UNAVAILABLE,
@@ -234,7 +233,7 @@ function StatTile({ tile, onOpen }: { tile: HealthStatTile; onOpen: () => void }
       <TileValue tile={tile} />
       {tile.empty ? null : <TileVisual visual={tile.visual} />}
       {tile.empty || tile.visual.kind === 'ring' || tile.visual.kind === 'zone' ? null : (
-        <StatusMark tone={tile.tone} status={tile.status} />
+        <StatusMark tone={tile.tone} status={tile.status} word={tile.mark} />
       )}
       {!tile.empty && tile.history.length >= 2 && tile.visual.kind !== 'line' ? (
         <TrendLine points={tile.history} color={statsToneColors(theme.scheme)[tile.tone].ink} />
@@ -272,6 +271,8 @@ function TileVisual({ visual }: { visual: HealthStatVisual }) {
         fill={visual.fill}
         status={visual.status}
         tone={visual.tone}
+        signal={visual.signal}
+        monochrome={visual.neutral}
         surface="card"
         size={84}
         mark
@@ -292,6 +293,8 @@ function TileVisual({ visual }: { visual: HealthStatVisual }) {
         goalHigh={visual.goalHigh}
         goalCaption={visual.goalCaption}
         tone={visual.tone}
+        signal={visual.signal}
+        monochrome={visual.neutral}
         surface="card"
         mark
       />
@@ -308,16 +311,18 @@ function TileVisual({ visual }: { visual: HealthStatVisual }) {
   return null;
 }
 
-function StatusMark({ tone, status }: { tone: HealthStatTile['tone']; status: string }) {
+function StatusMark({ tone, status, word }: { tone: HealthStatTile['tone']; status: string; word: string }) {
   const theme = useAppTheme();
-  const color = statsToneColors(theme.scheme)[tone].ink;
+  const neutral = word === 'Early days' || word === 'On pace';
+  const iconTone = word === 'On pace' ? 'good' : word === 'Early days' ? 'info' : tone;
+  const color = neutral ? theme.colors.ink : statsToneColors(theme.scheme)[tone].ink;
   return (
     <View style={{ gap: 4 }}>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
         <Svg width={18} height={18} viewBox="0 0 24 24" fill="none" accessibilityElementsHidden>
-          <ToneMark tone={tone} color={color} />
+          <ToneMark tone={iconTone} color={color} />
         </Svg>
-        <T style={{ color, fontFamily: theme.font.bodyStrong }}>{STATS_SIGNAL[tone]}</T>
+        <T style={{ color, fontFamily: theme.font.bodyStrong }}>{word}</T>
       </View>
       <T>{status}</T>
     </View>
@@ -409,7 +414,7 @@ function StatDetail({
                 <T>{tile.about}</T>
                 <TileValue tile={tile} />
                 {tile.empty ? null : <TileVisual visual={tile.visual} />}
-                {!tile.empty && detailShowsStatusAgain(tile.visual.kind) ? <StatusMark tone={tile.tone} status={tile.status} /> : null}
+                {!tile.empty && detailShowsStatusAgain(tile.visual.kind) ? <StatusMark tone={tile.tone} status={tile.status} word={tile.mark} /> : null}
                 <T variant="label">What your number means</T>
                 <T>{tile.meaning}</T>
                 {tile.rangeNote && tile.rangeNote !== tile.meaning ? <T>{tile.rangeNote}</T> : null}

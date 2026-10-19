@@ -87,7 +87,7 @@ describe('fitness snapshot', () => {
     expect(view.level).toBe('Developing');
     expect(view.levelWords).toContain('resting heart rate');
     expect(view.minutes?.centre).toBe('30');
-    expect(view.minutes?.unit).toBe('min this week');
+    expect(view.minutes?.unit).toBe('min in last 7 days');
     expect(view.resting?.reading).toBe('62 bpm');
     expect(view.resting?.words).toContain('lower');
   });

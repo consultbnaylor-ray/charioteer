@@ -14,9 +14,9 @@ function chartStatus(chart: DistanceChart): string | null {
   return null;
 }
 
-function TileChart({ chart, tone }: { chart: DistanceChart; tone: StatTileModel['tone'] }) {
+function TileChart({ chart, tone, signal, monochrome }: { chart: DistanceChart; tone: StatTileModel['tone']; signal?: string; monochrome?: boolean }) {
   const theme = useAppTheme();
-  const ink = statsToneColors(theme.scheme)[tone].ink;
+  const ink = monochrome ? theme.colors.ink : statsToneColors(theme.scheme)[tone].ink;
   if (chart.kind === 'ring') {
     return (
       <ProgressRing
@@ -25,6 +25,8 @@ function TileChart({ chart, tone }: { chart: DistanceChart; tone: StatTileModel[
         fill={chart.fill}
         status={chart.status}
         tone={tone}
+        signal={signal}
+        monochrome={monochrome}
         surface="tile"
       />
     );
@@ -62,7 +64,10 @@ function TileChart({ chart, tone }: { chart: DistanceChart; tone: StatTileModel[
 export function StatTile({ tile }: { tile: StatTileModel }) {
   const theme = useAppTheme();
   const router = useRouter();
-  const tone = statsToneColors(theme.scheme)[tile.tone];
+  const neutral = tile.signal === 'Early days' || tile.signal === 'On pace';
+  const palette = statsToneColors(theme.scheme)[tile.tone];
+  const tone = neutral ? { bg: theme.colors.surface, ink: theme.colors.ink } : palette;
+  const iconTone = tile.signal === 'On pace' ? 'good' : tile.signal === 'Early days' ? 'info' : tile.tone;
   const ink = { color: tone.ink };
   const status = chartStatus(tile.chart);
   const meaning = tile.meaning === tile.signal || tile.meaning === status ? null : tile.meaning;
@@ -77,10 +82,10 @@ export function StatTile({ tile }: { tile: StatTileModel }) {
     >
       <T variant="label" style={ink}>{tile.title}</T>
       {tile.chart.kind === 'ring' ? null : <T variant="title" style={ink}>{tile.value}</T>}
-      <TileChart chart={tile.chart} tone={tile.tone} />
+      <TileChart chart={tile.chart} tone={tile.tone} signal={tile.signal} monochrome={neutral} />
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
         <Svg width={18} height={18} viewBox="0 0 24 24" fill="none" accessibilityElementsHidden>
-          <ToneMark tone={tile.tone} color={tone.ink} />
+          <ToneMark tone={iconTone} color={tone.ink} />
         </Svg>
         <T style={[ink, { fontFamily: theme.font.bodyStrong }]}>{tile.signal}</T>
       </View>

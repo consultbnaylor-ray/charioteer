@@ -74,8 +74,10 @@ describe('goal led summary', () => {
     expect(short.measures.find((item) => item.id === 'protein')).toMatchObject({
       centre: '100',
       status: 'Avg 100 g/day, target hit on 0 of 1 logged day',
+      signal: 'Early days',
+      neutral: true,
     });
-    expect(short.nudges.some((line) => line === 'Avg 100 g/day, target hit on 0 of 1 logged day.')).toBe(true);
+    expect(short.nudges.some((line) => line.includes('target hit'))).toBe(false);
     const hidden = buildGoalLed({ ...base, goal: 'maintain', hideCalories: true, kcalTarget: 2000 });
     const text = `${hidden.matters} ${hidden.progressWords} ${hidden.nudges.join(' ')} ${hidden.measures.map((item) => `${item.label} ${item.words} ${item.unit}`).join(' ')}`;
     expect(text).not.toMatch(/kcal/i);
@@ -165,6 +167,8 @@ describe('goal led summary', () => {
     const protein = view.measures.find((item) => item.id === 'protein');
     expect(protein?.centre).toBe('142');
     expect(protein?.status).toBe('Avg 142 g/day, target hit on 4 of 6 logged days');
+    expect(protein?.signal).toBe('On pace');
+    expect(protein?.tone).not.toBe('watch');
     expect(protein?.status).not.toBe('Nothing logged yet');
     expect(view.progressWords).toContain('avg 142 g/day, target hit on 4 of 6 logged days');
     expect(view.progressWords).not.toContain('protein is not logged yet');
@@ -178,10 +182,20 @@ describe('goal led summary', () => {
       health: [],
       checkIns: [],
     });
-    expect(mondayMorning.week).toMatchObject({ start: '2026-10-19', today: '2026-10-19', days: ['2026-10-19'] });
-    expect(mondayMorning.weekProtein).toEqual([]);
-    const fresh = buildGoalLed({ ...base, goal: 'elite_cruiser_boxer', weekProtein: mondayMorning.weekProtein, todayLogged: false, todayProtein: 0 });
-    expect(fresh.measures.find((item) => item.id === 'protein')?.status).toBe('Nothing logged yet');
+    expect(mondayMorning.week).toMatchObject({ start: '2026-10-13', today: '2026-10-19' });
+    expect(mondayMorning.week.days).toHaveLength(7);
+    expect(mondayMorning.weekProtein).toEqual([130, 160, 140, 120, 152]);
+    const fresh = buildGoalLed({
+      ...base,
+      goal: 'elite_cruiser_boxer',
+      weekProtein: mondayMorning.weekProtein,
+      todayLogged: false,
+      todayProtein: 0,
+      period: '7',
+      now: new Date('2026-10-18T23:30:00.000Z'),
+    });
+    expect(fresh.measures.find((item) => item.id === 'protein')?.status).not.toBe('Nothing logged yet');
+    expect(fresh.measures.find((item) => item.id === 'protein')?.signal).toBe('On pace');
 
     const stillSunday = figuresForLondonWeek({
       now: new Date('2026-10-18T22:30:00.000Z'),

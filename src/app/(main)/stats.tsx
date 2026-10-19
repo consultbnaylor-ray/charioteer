@@ -3,7 +3,9 @@ import { useWindowDimensions, View } from 'react-native';
 
 import { useSnapshot } from '@/data';
 import { buildStatsOverview } from '@/domain/statsOverview';
+import { useStatPeriod } from '@/health/useStatPeriod';
 import { StatTile } from '@/ui/StatTile';
+import { StatPeriodToggle } from '@/ui/StatPeriodToggle';
 import { statsToneColors } from '@/ui/statsPalette';
 import { useAppTheme } from '@/ui/theme';
 import { GoalLine } from '@/ui/GoalLine';
@@ -23,10 +25,12 @@ export default function Stats() {
   const theme = useAppTheme();
   const router = useRouter();
   const { width } = useWindowDimensions();
+  const [period] = useStatPeriod();
   const profile = snap.profile;
   if (!profile) return null;
   const tiles = buildStatsOverview({
     now: new Date(),
+    period,
     stage: profile.stage,
     sobrietyStartedAt: profile.sobrietyStartedAt,
     plannedQuitAt: profile.plannedQuitAt,
@@ -50,6 +54,7 @@ export default function Stats() {
       title="Stats"
       intro="A plain look at the figures you already keep. The words say what the colour means."
     >
+      <StatPeriodToggle />
       <GoalLine />
       <YourGoal place="stats" />
       <YourFitness />

@@ -1,6 +1,7 @@
 import type { AppSnapshot } from '@/data/types';
 import type { TrainingSchedule } from '@/domain/healthPlan';
 import { londonDay } from '@/domain/healthInsights';
+import type { StatPeriod } from '@/domain/statWindow';
 
 export {
   ADDED_NOT_REDUCED,
@@ -20,6 +21,7 @@ export {
   rebucketStoredMinutes,
   withWorkoutBucket,
   workoutBucket,
+  periodActiveMinutes,
   workoutMixReport,
   workoutTypeKind,
   workoutTypeLabel,
@@ -86,9 +88,10 @@ export function fitnessView(
   permission: FitnessSnapshotInput['permission'] = 'unknown',
   now = new Date(),
   sourceApps?: FitnessSnapshotInput['sourceApps'],
+  period: StatPeriod = '7',
 ) {
   if (!profileReady(snap)) return null;
-  return buildFitnessSnapshot({ ...fitnessFromSnapshot(snap, permission, now), sourceApps });
+  return buildFitnessSnapshot({ ...fitnessFromSnapshot(snap, permission, now), sourceApps, period, now });
 }
 
 function profileReady(snap: AppSnapshot): boolean {

@@ -5,7 +5,6 @@ import {
   bodyFatRange,
   bodyFatZoneCaption,
   drinkFreeRing,
-  gratitudeWeekRing,
   soberMilestoneRing,
   waistRange,
   type ChartBar,
@@ -31,7 +30,9 @@ import {
   type NutritionSettings,
 } from '@/domain/nutrition';
 import { soberElapsed } from '@/domain/sober';
-import { daysUntil, drinkFreeThisWeek, showsSoberRecord, type Stage } from '@/domain/stage';
+import { daysUntil, showsSoberRecord, type Stage } from '@/domain/stage';
+import { proteinLoggedDays } from '@/domain/goalLed';
+import { periodDayCount, periodPhrase, proteinPace, rollingWindow, scaledPeriodTarget, type StatPeriod } from '@/domain/statWindow';
 
 export type StatsTone = 'good' | 'watch' | 'info' | 'attention';
 
@@ -70,10 +71,20 @@ export type StatsOverviewInput = {
   waterDays: readonly NutritionDay[];
   bodyComposition: readonly BodyCompositionReading[];
   gratitude: readonly { entryDate: string }[];
+  /** Shared Day / 7 days / 30 days choice. Omitted means the last 7 days. */
+  period?: StatPeriod;
 };
 
-function tile(input: Omit<StatTileModel, 'signal'> & { tone: StatsTone }): StatTileModel {
-  return { ...input, signal: STATS_SIGNAL[input.tone] };
+function tile(input: Omit<StatTileModel, 'signal'> & { tone: StatsTone; signal?: string }): StatTileModel {
+  return { ...input, signal: input.signal ?? STATS_SIGNAL[input.tone] };
+}
+
+function chosenPeriod(input: StatsOverviewInput): StatPeriod {
+  return input.period === 'day' || input.period === '30' ? input.period : '7';
+}
+
+function periodIn(period: StatPeriod): string {
+  return period === 'day' ? 'today' : `in ${periodPhrase(period)}`;
 }
 
 function shiftDay(day: string, delta: number): string {
@@ -142,23 +153,26 @@ function soberTile(input: StatsOverviewInput, today: string): StatTileModel {
     });
   }
   if (input.stage === 'cutting_down') {
-    const free = drinkFreeThisWeek(input.drinkFreeOn, input.now);
-    const goal = input.drinkFreeDaysGoal;
+    const period = chosenPeriod(input);
+    const days = lastDays(today, periodDayCount(period));
+    const free = days.filter((day) => input.drinkFreeOn.includes(day)).length;
+    const weekly = input.drinkFreeDaysGoal;
+    const goal = weekly == null ? null : scaledPeriodTarget(weekly, period);
     const met = goal != null && free >= goal;
-    const days = lastDays(today, 7);
     const bars: ChartBar[] = days.map((day) => {
       const on = input.drinkFreeOn.includes(day);
       return { key: day, label: dayLetter(day), value: on ? 1 : 0, tone: on ? 'good' : 'empty' };
     });
+    const drinkRing = goal != null && goal > 0 ? drinkFreeRing(free, goal) : null;
     return tile({
       id: 'sober',
       title: 'Drink-free days',
       value: goal != null ? `${free} of ${goal}` : String(free),
-      meaning: met ? 'On track' : 'Drink-free days this week',
+      meaning: met ? 'On track' : `Drink-free days ${periodIn(period)}`,
       tone: met ? 'good' : 'info',
       series: days.map((day) => (input.drinkFreeOn.includes(day) ? 1 : 0)),
-      chart: goal != null && goal > 0
-        ? { kind: 'ring', ...drinkFreeRing(free, goal) }
+      chart: drinkRing
+        ? { kind: 'ring', ...drinkRing, status: met ? 'On track' : drinkRing.status }
         : { kind: 'bars', bars, max: 1, target: null },
       href: '/home?section=sober',
     });
@@ -190,7 +204,8 @@ function soberTile(input: StatsOverviewInput, today: string): StatTileModel {
 }
 
 function moodTile(input: StatsOverviewInput, today: Date): StatTileModel {
-  const days = recentCheckInDays([...input.checkIns], today);
+  const period = chosenPeriod(input);
+  const days = recentCheckInDays([...input.checkIns], today, periodDayCount(period));
   const moods = days.flatMap((day) => (day.mood == null ? [] : [day.mood]));
   const latest = moods.at(-1) ?? null;
   if (latest == null) {
@@ -198,7 +213,7 @@ function moodTile(input: StatsOverviewInput, today: Date): StatTileModel {
       id: 'mood',
       title: 'Mood',
       value: '—',
-      meaning: 'No check-in this week',
+      meaning: `No check-in ${periodIn(period)}`,
       tone: 'info',
       series: [],
       chart: moodBars(days.map((day) => ({ day: day.day, label: day.label, value: day.mood })), 'info', 10),
@@ -208,16 +223,21 @@ function moodTile(input: StatsOverviewInput, today: Date): StatTileModel {
   const earlier = moods.slice(0, -1);
   const earlierAverage = earlier.length ? earlier.reduce((sum, value) => sum + value, 0) / earlier.length : null;
   let tone: StatsTone = latest >= 6 ? 'good' : 'info';
-  let meaning = tone === 'good' ? 'On track' : 'Steady this week';
+  const phrase = periodIn(period);
+  let meaning = tone === 'good' ? 'On track' : `Steady ${phrase}`;
   if (earlierAverage != null && latest <= earlierAverage - 2) {
     tone = 'watch';
-    meaning = 'Lower than earlier this week';
+    meaning = `Lower than earlier ${phrase}`;
   } else if (earlierAverage != null && latest >= earlierAverage + 2) {
     tone = 'good';
-    meaning = 'Higher than earlier this week';
+    meaning = `Higher than earlier ${phrase}`;
   } else if (moods.reduce((sum, value) => sum + value, 0) / moods.length < 4) {
     tone = 'watch';
-    meaning = 'On the lower side this week';
+    meaning = `On the lower side ${phrase}`;
+  }
+  if (tone === 'watch' && moods.length < 2) {
+    tone = 'info';
+    meaning = 'Early days';
   }
   return tile({
     id: 'mood',
@@ -225,6 +245,7 @@ function moodTile(input: StatsOverviewInput, today: Date): StatTileModel {
     value: `${latest}/10`,
     meaning,
     tone,
+    signal: meaning === 'Early days' ? 'Early days' : undefined,
     series: moods,
     chart: moodBars(days.map((day) => ({ day: day.day, label: day.label, value: day.mood })), tone, 10),
     href: '/check-in?section=mood',
@@ -232,7 +253,8 @@ function moodTile(input: StatsOverviewInput, today: Date): StatTileModel {
 }
 
 function cravingTile(input: StatsOverviewInput, today: Date): StatTileModel {
-  const days = recentCheckInDays([...input.checkIns], today);
+  const period = chosenPeriod(input);
+  const days = recentCheckInDays([...input.checkIns], today, periodDayCount(period));
   const cravings = days.flatMap((day) => (day.craving == null ? [] : [day.craving]));
   const latest = cravings.at(-1) ?? null;
   if (latest == null) {
@@ -240,7 +262,7 @@ function cravingTile(input: StatsOverviewInput, today: Date): StatTileModel {
       id: 'craving',
       title: 'Cravings',
       value: '—',
-      meaning: 'No check-in this week',
+      meaning: `No check-in ${periodIn(period)}`,
       tone: 'info',
       series: [],
       chart: moodBars(days.map((day) => ({ day: day.day, label: day.label, value: day.craving })), 'info', 10),
@@ -262,14 +284,17 @@ function cravingTile(input: StatsOverviewInput, today: Date): StatTileModel {
 }
 
 function checkInTile(input: StatsOverviewInput, today: Date): StatTileModel {
-  const days = recentCheckInDays([...input.checkIns], today);
+  const period = chosenPeriod(input);
+  const span = periodDayCount(period);
+  const days = recentCheckInDays([...input.checkIns], today, span);
   const count = days.filter((day) => day.mood != null).length;
-  const tone: StatsTone = count >= 5 ? 'good' : 'info';
+  const aim = scaledPeriodTarget(5, period);
+  const tone: StatsTone = count >= aim ? 'good' : 'info';
   return tile({
     id: 'check-ins',
     title: 'Check-ins',
-    value: `${count} of 7`,
-    meaning: count >= 5 ? 'On track' : count === 0 ? 'None this week' : 'A few days in',
+    value: `${count} of ${span}`,
+    meaning: count >= aim ? 'On track' : count === 0 ? `None ${periodIn(period)}` : 'A few days in',
     tone,
     series: days.map((day) => (day.mood == null ? 0 : 1)),
     chart: {
@@ -535,7 +560,8 @@ function leanTile(input: StatsOverviewInput): StatTileModel | null {
 }
 
 function calorieTile(input: StatsOverviewInput, today: string): StatTileModel {
-  const trend = nutritionTrendDays(input.foodLogs, today, 7).map((day) => day.kcal);
+  const period = chosenPeriod(input);
+  const trend = nutritionTrendDays(input.foodLogs, today, periodDayCount(period)).map((day) => day.kcal);
   if (input.nutrition.hideCalories) {
     return tile({
       id: 'calories',
@@ -548,21 +574,25 @@ function calorieTile(input: StatsOverviewInput, today: string): StatTileModel {
       href: '/nutrition?section=calories',
     });
   }
-  const items = dayItems(input.foodLogs, today);
-  const kcal = sumItems(items).kcal;
+  const window = rollingWindow(today, period);
+  const loggedDays = window.days.flatMap((day) => {
+    const items = dayItems(input.foodLogs, day);
+    return items.length ? [sumItems(items).kcal] : [];
+  });
+  const kcal = loggedDays.length ? loggedDays.reduce((sum, value) => sum + value, 0) / loggedDays.length : 0;
   const target = input.nutrition.kcalTarget;
-  const value = `${Math.round(kcal).toLocaleString('en-GB')} kcal`;
+  const value = loggedDays.length ? `${Math.round(kcal).toLocaleString('en-GB')} kcal` : '0 kcal';
   const ring = todayRing({
     hideCalories: false,
     kcal,
     kcalTarget: target,
     proteinG: 0,
     proteinTarget: null,
-    logged: items.length > 0,
+    logged: loggedDays.length > 0,
   });
   const chart: DistanceChart = { kind: 'ring', centre: ring.centre, unit: 'kcal', fill: ring.fill, status: ring.status };
-  if (!items.length) {
-    return tile({ id: 'calories', title: 'Calories', value, meaning: 'Nothing logged today', tone: 'info', series: trend, chart, href: '/nutrition?section=today' });
+  if (!loggedDays.length) {
+    return tile({ id: 'calories', title: 'Calories', value, meaning: period === 'day' ? 'Nothing logged today' : `Nothing logged ${periodIn(period)}`, tone: 'info', series: trend, chart, href: '/nutrition?section=today' });
   }
   if (target == null || target <= 0) {
     return tile({ id: 'calories', title: 'Calories', value, meaning: 'No target yet', tone: 'info', series: trend, chart, href: '/nutrition?section=today' });
@@ -587,38 +617,53 @@ function calorieTile(input: StatsOverviewInput, today: string): StatTileModel {
 }
 
 function proteinTile(input: StatsOverviewInput, today: string): StatTileModel {
-  const trend = nutritionTrendDays(input.foodLogs, today, 7).map((day) => day.proteinG);
-  const items = dayItems(input.foodLogs, today);
-  const protein = sumItems(items).proteinG;
+  const period = chosenPeriod(input);
+  const trend = nutritionTrendDays(input.foodLogs, today, periodDayCount(period)).map((day) => day.proteinG);
+  const window = rollingWindow(today, period);
+  const days = proteinLoggedDays(input.foodLogs, window.days);
+  const protein = days.length ? days.reduce((sum, value) => sum + value, 0) / days.length : 0;
   const target = input.nutrition.proteinTarget;
-  const value = items.length ? `${round1(protein)} g` : '—';
+  const value = days.length ? `${Math.round(protein)} g` : '—';
   const ring = todayRing({
     hideCalories: true,
     kcal: 0,
     kcalTarget: null,
     proteinG: protein,
     proteinTarget: target,
-    logged: items.length > 0,
+    logged: days.length > 0,
   });
-  const chart: DistanceChart = { kind: 'ring', centre: ring.centre, unit: 'g', fill: ring.fill, status: ring.status };
-  if (!items.length) {
-    return tile({ id: 'protein', title: 'Protein', value, meaning: 'Nothing logged today', tone: 'info', series: trend, chart, href: '/nutrition?section=goal' });
+  const chart: DistanceChart = {
+    kind: 'ring',
+    centre: days.length ? String(Math.round(protein)) : ring.centre,
+    unit: 'g',
+    fill: ring.fill,
+    status: ring.status,
+  };
+  if (!days.length) {
+    return tile({ id: 'protein', title: 'Protein', value, meaning: period === 'day' ? 'Nothing logged today' : `Nothing logged ${periodIn(period)}`, tone: 'info', series: trend, chart, href: '/nutrition?section=goal' });
   }
   if (target == null || target <= 0) {
     return tile({ id: 'protein', title: 'Protein', value, meaning: 'No target yet', tone: 'info', series: trend, chart, href: '/nutrition?section=goal' });
   }
-  if (protein >= target) {
+  const hits = days.filter((grams) => grams >= target).length;
+  const pace = proteinPace({ period, loggedDays: days.length, now: input.now, average: protein, target, hits });
+  if (pace.word === 'On track') {
     return tile({ id: 'protein', title: 'Protein', value, meaning: 'On track', tone: 'good', series: trend, chart, href: '/nutrition?section=goal' });
   }
-  return tile({ id: 'protein', title: 'Protein', value, meaning: 'Short of your target so far', tone: 'info', series: trend, chart, href: '/nutrition?section=goal' });
+  if (pace.neutral) {
+    return tile({ id: 'protein', title: 'Protein', value, meaning: pace.word, signal: pace.word, tone: 'info', series: trend, chart, href: '/nutrition?section=goal' });
+  }
+  return tile({ id: 'protein', title: 'Protein', value, meaning: 'Short of your target so far', tone: 'watch', series: trend, chart, href: '/nutrition?section=goal' });
 }
 
 function qualityTile(input: StatsOverviewInput, today: string): StatTileModel {
-  const series = lastDays(today, 7).map((day) => dayItems(input.foodLogs, day).filter((item) => item.processed).length);
-  const items = dayItems(input.foodLogs, today);
+  const period = chosenPeriod(input);
+  const days = lastDays(today, periodDayCount(period));
+  const series = days.map((day) => dayItems(input.foodLogs, day).filter((item) => item.processed).length);
+  const items = days.flatMap((day) => dayItems(input.foodLogs, day));
   const line = processedLine(items);
   if (!line) {
-    return tile({ id: 'quality', title: 'Food quality', value: '—', meaning: 'Nothing logged today', tone: 'info', series, chart: { kind: 'none' }, href: '/nutrition?section=today' });
+    return tile({ id: 'quality', title: 'Food quality', value: '—', meaning: period === 'day' ? 'Nothing logged today' : `Nothing logged ${periodIn(period)}`, tone: 'info', series, chart: { kind: 'none' }, href: '/nutrition?section=today' });
   }
   const processed = items.filter((item) => item.processed).length;
   const whole = items.length - processed;
@@ -644,11 +689,14 @@ function qualityTile(input: StatsOverviewInput, today: string): StatTileModel {
 }
 
 function waterTile(input: StatsOverviewInput, today: string): StatTileModel {
+  const period = chosenPeriod(input);
   const byDay = new Map(input.waterDays.map((day) => [day.day, day.waterMl]));
-  const ml = byDay.get(today) ?? 0;
-  const series = lastDays(today, 7).map((day) => byDay.get(day) ?? 0);
+  const days = lastDays(today, periodDayCount(period));
+  const logged = days.flatMap((day) => (byDay.has(day) ? [byDay.get(day) ?? 0] : []));
+  const ml = logged.length ? Math.round(logged.reduce((sum, value) => sum + value, 0) / logged.length) : 0;
+  const series = days.map((day) => byDay.get(day) ?? 0);
   const tone: StatsTone = ml >= 2000 ? 'good' : 'info';
-  const meaning = ml >= 2000 ? 'On track' : ml > 0 ? 'Some logged today' : 'None logged today';
+  const meaning = ml >= 2000 ? 'On track' : ml > 0 ? `Some logged ${periodIn(period)}` : `None logged ${periodIn(period)}`;
   const water = waterProgress(ml);
   return tile({
     id: 'water',
@@ -663,22 +711,38 @@ function waterTile(input: StatsOverviewInput, today: string): StatTileModel {
 }
 
 function gratitudeTile(input: StatsOverviewInput, today: string): StatTileModel {
-  const days = lastDays(today, 7);
+  const period = chosenPeriod(input);
+  const days = lastDays(today, periodDayCount(period));
   const series = days.map((day) => input.gratitude.filter((entry) => entry.entryDate === day).length);
   const count = series.reduce((sum, value) => sum + value, 0);
+  const aim = scaledPeriodTarget(7, period);
+  const left = Math.max(0, aim - count);
+  const status = count >= aim
+    ? 'On track'
+    : count <= 0
+      ? (period === 'day' ? 'None today' : `None ${periodIn(period)}`)
+      : left === 1
+        ? '1 line to go'
+        : `${left} lines to go`;
   return tile({
     id: 'gratitude',
     title: 'Gratitude',
     value: count === 1 ? '1 line' : `${count} lines`,
-    meaning: count > 0 ? 'A line kept this week' : 'None this week',
+    meaning: count > 0 ? `A line kept ${periodIn(period)}` : `None ${periodIn(period)}`,
     tone: count > 0 ? 'good' : 'info',
     series,
-    chart: { kind: 'ring', ...gratitudeWeekRing(count) },
+    chart: {
+      kind: 'ring',
+      centre: String(count),
+      unit: count === 1 ? 'line' : 'lines',
+      fill: aim > 0 ? Math.min(1, count / aim) : 0,
+      status,
+    },
     href: '/gratitude?section=diary',
   });
 }
 
-/** One tile per figure already kept in the app. Order is the grid order. */
+/** One tile per figure already kept in the app. Order is the grid order. The period is the shared Day / 7 days / 30 days choice. */
 export function buildStatsOverview(input: StatsOverviewInput): StatTileModel[] {
   const today = isoDay(input.now);
   return [

@@ -23,6 +23,9 @@ import {
 } from '@/domain/fitnessSnapshot';
 import { applyFitnessFocus } from '@/domain/healthPlan';
 import { loadWorkoutSources } from '@/health/workoutSources';
+import { useStatPeriod } from '@/health/useStatPeriod';
+import { periodPhrase } from '@/domain/statWindow';
+import { StatPeriodToggle } from '@/ui/StatPeriodToggle';
 import { closerToGoal, whyGoalMatters, WORKOUT_BUCKET_LABEL, WORKOUT_BUCKETS, type NutritionGoal, type WorkoutBucket } from '@/domain/nutrition';
 import { GoalLine } from '@/ui/GoalLine';
 import type { AppleHealthAccess } from '@/health/connection';
@@ -49,6 +52,7 @@ export function YourFitness() {
   const snap = useSnapshot();
   const repo = useRepository();
   const theme = useAppTheme();
+  const [period] = useStatPeriod();
   const [access, setAccess] = useState<AppleHealthAccess | null>(Platform.OS === 'ios' ? null : 'web');
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<InfoFocus | null>(null);
@@ -62,7 +66,7 @@ export function YourFitness() {
     void loadWorkoutSources().then(setSourceApps).catch(() => setSourceApps([]));
   }, [snap.health]);
   if (!snap.profile) return null;
-  const view = fitnessView(snap, access === 'denied' ? 'denied' : 'unknown', new Date(), sourceApps);
+  const view = fitnessView(snap, access === 'denied' ? 'denied' : 'unknown', new Date(), sourceApps, period);
 
   async function saveBucket(activityType: number, bucket: WorkoutBucket) {
     setError(null);
@@ -101,6 +105,7 @@ export function YourFitness() {
 
   return (
     <Card>
+      <StatPeriodToggle />
       <T variant="label">Your fitness</T>
       {view.level ? <T style={{ color: ink(view.level === 'Developing' ? 'watch' : 'good'), fontFamily: theme.font.bodyStrong }}>{view.level}</T> : null}
       <T>{view.levelWords}</T>
@@ -119,6 +124,7 @@ export function YourFitness() {
               tone: view.cardio.tone,
             }}
           />
+          <T variant="muted">Latest reading</T>
           {view.cardio.trend.length >= 2 ? <TrendLine points={view.cardio.trend} color={ink(view.cardio.tone)} /> : null}
           {view.cardio.trend.length >= 2 ? <T variant="muted">Cardio fitness, oldest to newest. ml/kg/min.</T> : null}
           <Fold title="What is this?">
@@ -138,6 +144,8 @@ export function YourFitness() {
               fill: view.minutes.fill,
               status: view.minutes.status,
               tone: view.minutes.tone,
+              signal: view.minutes.signal,
+              neutral: view.minutes.neutral,
             }}
             detail={view.minutes.words}
           />
@@ -147,8 +155,8 @@ export function YourFitness() {
       {view.resting ? (
         <View style={{ gap: 6 }}>
           <T variant="label">Resting heart rate</T>
-          <T style={{ color: ink(view.resting.tone), fontFamily: theme.font.bodyStrong }}>
-            {view.resting.reading ? `${view.resting.reading} · ` : ''}{view.resting.tone === 'watch' ? 'Watch' : 'On track'}
+          <T style={{ color: view.resting.neutral ? theme.colors.ink : ink(view.resting.tone), fontFamily: theme.font.bodyStrong }}>
+            {view.resting.reading ? `${view.resting.reading} · ` : ''}{view.resting.period ? `${view.resting.period} · ` : ''}{view.resting.signal ?? (view.resting.tone === 'watch' ? 'Watch' : 'On track')}
           </T>
           <TrendLine points={view.resting.points} color={ink(view.resting.tone)} />
           <T variant="muted">{view.resting.words} Oldest to newest.</T>
@@ -519,6 +527,7 @@ function MixBar({
 }) {
   const theme = useAppTheme();
   const colors = statsToneColors(theme.scheme);
+  const [period] = useStatPeriod();
   const weeks = view.mix?.weeks ?? [];
   const max = Math.max(1, ...weeks.map((week) => week.strength + week.cardio + week.conditioning + week.other));
   return (
@@ -559,7 +568,7 @@ function MixBar({
           <T key={week.label} style={{ flex: 1, textAlign: 'center', fontSize: 11 * theme.scale, lineHeight: 14 * theme.scale, color: theme.colors.muted }}>{week.label}</T>
         ))}
       </View>
-      <T variant="muted">{view.mix?.words} Oldest week to this week.</T>
+      <T variant="muted">{view.mix?.words} {periodPhrase(period)}.</T>
       <Fold title={WORKOUT_MIX_TITLE}>
         {(view.mix?.lines ?? []).map((line) => <T key={line}>{line}</T>)}
         {(view.mix?.types ?? []).map((row) => (

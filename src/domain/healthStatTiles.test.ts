@@ -469,9 +469,13 @@ describe('health stat tiles', () => {
     expect(screen).toContain('body={snap.bodyComposition}');
     expect(screen).toContain('activityEnergyKcal={snap.nutrition.activityEnergyKcal}');
     expect(screen).toContain('period={period}');
-    expect(screen).toContain('HEALTH_STAT_PERIODS');
-    expect(screen).toContain('loadHealthStatPeriod');
-    expect(screen).toContain('saveHealthStatPeriod');
+    expect(screen).toContain('<StatPeriodToggle');
+    const toggle = readFileSync('src/ui/StatPeriodToggle.tsx', 'utf8');
+    const periodHook = readFileSync('src/health/useStatPeriod.ts', 'utf8');
+    expect(toggle).toContain('HEALTH_STAT_PERIODS');
+    expect(toggle).toContain('accessibilityLabel="Period"');
+    expect(periodHook).toContain('loadHealthStatPeriod');
+    expect(periodHook).toContain('saveHealthStatPeriod');
     expect(screen).not.toContain('communityPhotos');
     expect(screen).toContain('<HealthSectionShare />');
     expect(screen.indexOf('<HealthStatBoard')).toBeLessThan(screen.indexOf('<HealthBoard'));

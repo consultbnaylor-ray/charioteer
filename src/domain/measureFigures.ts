@@ -25,6 +25,10 @@ export type MeasureRing = {
   fill: number;
   status: string;
   tone: StatsTone;
+  /** Replaces the tone word. Early days and On pace use this. */
+  signal?: string;
+  /** Icon and word in ink, rather than a coloured signal. */
+  neutral?: boolean;
 };
 
 export type MeasureBars = {

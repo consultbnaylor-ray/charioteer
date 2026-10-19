@@ -18,6 +18,8 @@ export function MeasureRingView({ label, ring, detail }: { label: string; ring: 
         fill={ring.fill}
         status={ring.status}
         tone={ring.tone}
+        signal={ring.signal}
+        monochrome={ring.neutral}
         surface="card"
         size={108}
         mark

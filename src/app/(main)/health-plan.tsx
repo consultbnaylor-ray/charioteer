@@ -9,6 +9,8 @@ import { PLAN_DISCLAIMER, togglePlanAction, type PlanAction } from '@/domain/hea
 import { planProgressFigure } from '@/domain/measureFigures';
 import { applyWeightAndBodyShare, communitySharingOn } from '@/domain/profileSharing';
 import { buildStatsOverview } from '@/domain/statsOverview';
+import { useStatPeriod } from '@/health/useStatPeriod';
+import { StatPeriodToggle } from '@/ui/StatPeriodToggle';
 import { GoalChoices } from '@/ui/GoalChoices';
 import { GoalWeightRange } from '@/ui/GoalWeightRange';
 import { YourFitness } from '@/ui/YourFitness';
@@ -43,6 +45,7 @@ export default function HealthPlanScreen() {
   const snap = useSnapshot();
   const repo = useRepository();
   const { width } = useWindowDimensions();
+  const [period] = useStatPeriod();
   const { run, isPending } = usePendingPress();
   const profile = snap.profile;
   const plan = snap.healthPlan;
@@ -64,6 +67,7 @@ export default function HealthPlanScreen() {
 
   const tiles = buildStatsOverview({
     now: new Date(),
+    period,
     stage: profile.stage,
     sobrietyStartedAt: profile.sobrietyStartedAt,
     plannedQuitAt: profile.plannedQuitAt,
@@ -197,6 +201,7 @@ export default function HealthPlanScreen() {
       ) : null}
       <GoalWeightRange />
       <T variant="label">Progress</T>
+      <StatPeriodToggle />
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
         {tiles.map((item) => (
           <View key={item.id} style={{ flexGrow: 1, flexBasis: columns === 3 ? '30%' : '46%', minWidth: 148 }}>

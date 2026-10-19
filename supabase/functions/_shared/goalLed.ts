@@ -1,5 +1,7 @@
-import { londonDay, londonWeek, type LondonWeek } from './healthInsights.ts';
+import { periodActiveMinutes } from './fitnessSnapshot.ts';
+import { londonDay, type LondonWeek } from './healthInsights.ts';
 import { GOAL_LABEL, MIDDLEWEIGHT_LIMIT_KG, classBoxerLimitKg, classBoxerName, dayItems, isClassBoxer, sumItems, weightPointsFrom, type FoodLog, type NutritionGoal } from './nutrition.ts';
+import { minuteUnit, paceJudgement, periodHeading, periodPhrase, proteinPace, rollingWindow, scaledPeriodTarget, type StatPeriod } from './statWindow.ts';
 
 export type GoalTone = 'good' | 'watch' | 'info' | 'attention';
 
@@ -12,6 +14,10 @@ export type GoalMeasure = {
   status: string;
   tone: GoalTone;
   words: string;
+  /** Replaces the tone's signal word. Early days and On pace use this. */
+  signal?: string;
+  /** Drawn in ink, with an icon and the word, rather than a coloured Watch mark. */
+  neutral?: boolean;
 };
 
 export type GoalTick = {
@@ -55,6 +61,10 @@ export type GoalLedInput = {
   weightKg?: number | null;
   previousWeightKg?: number | null;
   sleepHours?: number | null;
+  /** Rolling window. Omitted means the last 7 days, ending today in London. */
+  period?: StatPeriod;
+  /** Used to tell whether a Day view is still early. */
+  now?: Date | string | null;
 };
 
 const FOCUS: Record<NutritionGoal, string> = {
@@ -100,16 +110,28 @@ export function trainingThisWeek(
   samples: readonly { kind: string; value: number; recordedOn: string }[],
   week: Pick<LondonWeek, 'start' | 'today'>,
 ): { days: number; minutes: number } {
-  const seen = new Set<string>();
-  let minutes = 0;
-  for (const sample of samples) {
-    if (sample.kind !== 'workout_minutes' || !(sample.value > 0)) continue;
-    const day = sample.recordedOn.slice(0, 10);
-    if (day < week.start || day > week.today) continue;
-    seen.add(day);
-    minutes += sample.value;
-  }
-  return { days: seen.size, minutes };
+  const active = periodActiveMinutes({
+    samples,
+    today: week.today,
+    start: week.start,
+    end: week.today,
+  });
+  return { days: active.days, minutes: active.minutes };
+}
+
+/**
+ * Latest weight on or before today, compared with the reading before it.
+ * Class and weight do not follow the Day / 7 days / 30 days choice.
+ */
+export function latestWeight(
+  points: readonly { day: string; kg: number }[],
+  today: string,
+): { weightKg: number | null; previousWeightKg: number | null } {
+  const known = points.filter((point) => point.day <= today);
+  const latest = known.at(-1) ?? null;
+  if (!latest) return { weightKg: null, previousWeightKg: null };
+  const previous = known.filter((point) => point.day < latest.day).at(-1);
+  return { weightKg: latest.kg, previousWeightKg: previous?.kg ?? null };
 }
 
 /**
@@ -146,20 +168,25 @@ export function sleepThisWeek(
   return rows[0]?.sleepHours ?? null;
 }
 
-/** Protein, training, weight, and sleep for the London week that contains `now`. Calories stay on today. */
+/** Protein, training, and sleep for the rolling London window ending today. Weight is the latest reading. */
 export function figuresForLondonWeek(input: {
   now: Date;
   logs: readonly FoodLog[];
   health: readonly { kind: string; value: number; recordedOn: string }[];
   checkIns: readonly { createdAt: string; sleepHours: number }[];
+  period?: StatPeriod;
 }) {
-  const week = londonWeek(input.now);
+  const today = londonDay(input.now);
+  const period = input.period ?? '7';
+  const window = rollingWindow(today, period);
+  const week: LondonWeek = { start: window.start, end: window.end, today: window.today, days: window.days };
   const todayItems = dayItems(input.logs, week.today);
   const totals = sumItems(todayItems);
   const training = trainingThisWeek(input.health, week);
-  const weight = weightThisWeek(weightPointsFrom(input.health), week);
+  const weight = latestWeight(weightPointsFrom(input.health), week.today);
   return {
     week,
+    period,
     todayLogged: todayItems.length > 0,
     todayKcal: totals.kcal,
     todayProtein: totals.proteinG,
@@ -222,6 +249,10 @@ function cautionFor(goal: NutritionGoal | null, blocked: boolean): string | null
   return null;
 }
 
+function chosenPeriod(input: GoalLedInput): StatPeriod {
+  return input.period === 'day' || input.period === '30' ? input.period : '7';
+}
+
 function loggedProteinDays(input: GoalLedInput): number[] {
   if (input.weekProtein != null) return input.weekProtein.filter((value) => Number.isFinite(value) && value > 0);
   const today = Math.max(0, input.todayProtein ?? 0);
@@ -247,15 +278,22 @@ function proteinMeasure(input: GoalLedInput): GoalMeasure {
       fill: 0,
       status: 'Nothing logged yet',
       tone: 'info',
-      words: 'Log a meal and this shows protein for the week.',
+      words: `Log a meal and this shows protein for ${periodPhrase(chosenPeriod(input))}.`,
     };
   }
   const average = days.reduce((sum, value) => sum + value, 0) / days.length;
   const centre = String(Math.round(average));
   if (target != null && target > 0) {
     const hits = days.filter((value) => value >= target).length;
-    const on = hits === days.length;
     const words = proteinLine(average, hits, days.length, true);
+    const pace = proteinPace({
+      period: chosenPeriod(input),
+      loggedDays: days.length,
+      now: input.now,
+      average,
+      target,
+      hits,
+    });
     return {
       id: 'protein',
       label: 'Protein',
@@ -263,7 +301,9 @@ function proteinMeasure(input: GoalLedInput): GoalMeasure {
       unit: 'g',
       fill: clamp01(average / target),
       status: words,
-      tone: on ? 'good' : 'watch',
+      tone: pace.tone,
+      signal: pace.word,
+      neutral: pace.neutral,
       words,
     };
   }
@@ -301,15 +341,43 @@ function kcalMeasure(input: GoalLedInput, aim: 'match' | 'under-or-at' | 'at-or-
   const under = ratio < 0.9;
   let status = 'Close';
   let tone: GoalTone = 'good';
+  let short = false;
   if (aim === 'match') {
     status = close ? 'Close' : over ? 'Above' : 'Under';
     tone = close ? 'good' : 'watch';
+    short = !close && !over;
   } else if (aim === 'under-or-at') {
     status = over ? 'Above' : 'Within';
     tone = over ? 'watch' : 'good';
   } else {
     status = under ? 'Under' : 'Enough';
     tone = under ? 'watch' : 'good';
+    short = under;
+  }
+  const loggedDays = input.weekProtein != null ? input.weekProtein.length : input.todayLogged ? 1 : 0;
+  if (short && tone === 'watch') {
+    const pace = paceJudgement({
+      period: chosenPeriod(input),
+      loggedDays,
+      now: input.now,
+      met: false,
+      behind: 'Watch',
+    });
+    if (pace.neutral) {
+      tone = 'info';
+      return {
+        id: 'kcal',
+        label: 'Calories',
+        centre: String(Math.round(kcal)),
+        unit: 'kcal',
+        fill: clamp01(ratio),
+        status,
+        tone,
+        signal: pace.word,
+        neutral: true,
+        words: `Today against the ${Math.round(target).toLocaleString('en-GB')} kcal you set. There is no failing a day.`,
+      };
+    }
   }
   return {
     id: 'kcal',
@@ -325,24 +393,44 @@ function kcalMeasure(input: GoalLedInput, aim: 'match' | 'under-or-at' | 'at-or-
 
 function sessionMeasure(input: GoalLedInput): GoalMeasure | null {
   if (!input.workoutsKnown) return null;
+  const period = chosenPeriod(input);
   const days = Math.max(0, input.workoutDays ?? 0);
   const minutes = Math.max(0, Math.round(input.workoutMinutes ?? 0));
-  const aim = input.scheduledDays != null && input.scheduledDays > 0 ? input.scheduledDays : null;
+  const weekly = input.scheduledDays != null && input.scheduledDays > 0 ? input.scheduledDays : null;
+  const aim = weekly == null ? null : scaledPeriodTarget(weekly, period);
   const fill = aim ? clamp01(days / aim) : (minutes > 0 ? 1 : 0);
-  const on = aim ? days >= aim : minutes >= 20;
+  const met = aim ? days >= aim : minutes >= 20;
+  const pace = paceJudgement({
+    period,
+    loggedDays: days,
+    now: input.now,
+    met,
+    behind: 'Watch',
+  });
+  const phrase = periodPhrase(period);
+  const quiet = days === 0 && minutes === 0;
+  const status = quiet
+    ? 'Nothing logged yet'
+    : aim
+      ? `${days} of ${aim}`
+      : `${minutes} ${minuteUnit(period)}`;
+  const tone: GoalTone = pace.neutral ? 'info' : met ? 'good' : quiet ? 'info' : pace.tone === 'watch' ? 'info' : pace.tone;
+  const signal = pace.neutral ? pace.word : met ? 'On track' : 'Note';
   return {
     id: 'sessions',
     label: 'Training',
     centre: String(days),
     unit: days === 1 ? 'day' : 'days',
     fill,
-    status: aim ? `${days} of ${aim}` : minutes > 0 ? `${minutes} min` : 'Nothing logged yet',
-    tone: on ? 'good' : days > 0 || minutes > 0 ? 'info' : 'watch',
+    status,
+    tone,
+    signal,
+    neutral: pace.neutral,
     words: aim
-      ? `${days} of ${aim} planned training days have a workout logged.`
+      ? `${days} of ${aim} planned training days have a workout logged ${phrase}.`
       : minutes > 0
-        ? `${minutes} workout minutes are logged this week.`
-        : 'No workout minutes are logged this week.',
+        ? `${minutes} workout minutes are logged ${phrase}.`
+        : `No workout minutes are logged ${phrase}.`,
   };
 }
 
@@ -475,7 +563,7 @@ function nudgesFor(input: GoalLedInput, measures: GoalMeasure[]): string[] {
   return lines.slice(0, 2);
 }
 
-function tickLabel(measure: GoalMeasure): string {
+function tickLabel(measure: GoalMeasure, period: StatPeriod): string {
   if (measure.id === 'protein') {
     if (measure.status === 'Nothing logged yet') return 'Protein is not logged yet';
     if (measure.words.startsWith('No protein target')) return 'Protein is logged';
@@ -490,7 +578,7 @@ function tickLabel(measure: GoalMeasure): string {
     return 'Calories are in range';
   }
   if (measure.id === 'sessions') {
-    if (measure.status === 'Nothing logged yet') return 'No training logged this week';
+    if (measure.status === 'Nothing logged yet') return `No training logged ${periodPhrase(period)}`;
     return `Training is ${measure.status}`;
   }
   if (measure.id === 'sleep') {
@@ -513,7 +601,7 @@ function ticksFor(input: GoalLedInput, measures: GoalMeasure[]): GoalTick[] {
   return measures.map((item) => ({
     id: item.id,
     done: item.tone === 'good',
-    label: tickLabel(item),
+    label: tickLabel(item, chosenPeriod(input)),
   }));
 }
 
@@ -533,7 +621,7 @@ export function buildGoalLed(input: GoalLedInput): GoalLed {
   const measures = measuresFor(input);
   const ticks = ticksFor(input, measures);
   const progressWords = ticks.length
-    ? `This week: ${ticks.map((tick) => tick.label.charAt(0).toLowerCase() + tick.label.slice(1)).join(', ')}.`
+    ? `${periodHeading(chosenPeriod(input))}: ${ticks.map((tick) => tick.label.charAt(0).toLowerCase() + tick.label.slice(1)).join(', ')}.`
     : 'Log a meal, a workout, or a weight reading and this check will fill in.';
   return {
     name: GOAL_LABEL[input.goal],
