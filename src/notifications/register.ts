@@ -78,7 +78,8 @@ export async function retryMessageNotifications(repo: TokenStore): Promise<strin
 }
 
 /**
- * Drops every local schedule left by an older build.
+ * Drops local schedules left by an older build.
+ * A planned-session reminder (data.kind === 'session') stays.
  * Direct messages are remote pushes and are not in this list.
  * Does not ask for permission and does not create a new schedule.
  */
@@ -86,7 +87,17 @@ export async function cancelScheduledNotifications(): Promise<void> {
   if (Platform.OS !== 'ios' && Platform.OS !== 'android') return;
   try {
     const Notifications = await import('expo-notifications');
-    await Notifications.cancelAllScheduledNotificationsAsync();
+    const scheduled = await Notifications.getAllScheduledNotificationsAsync();
+    const kept = scheduled.filter((item) => item.content.data?.kind === 'session');
+    if (kept.length === 0) {
+      await Notifications.cancelAllScheduledNotificationsAsync();
+      return;
+    }
+    await Promise.all(
+      scheduled
+        .filter((item) => item.content.data?.kind !== 'session')
+        .map((item) => Notifications.cancelScheduledNotificationAsync(item.identifier)),
+    );
   } catch {
     return undefined;
   }

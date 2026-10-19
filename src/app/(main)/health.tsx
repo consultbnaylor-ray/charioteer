@@ -12,6 +12,7 @@ import {
   HEALTH_SHEET_WONT_SHOW,
 } from '@/domain/healthStatTiles';
 import { rebucketStoredMinutes, withWorkoutBucket } from '@/domain/fitnessSnapshot';
+import { withPlannedMinutes } from '@/domain/plannedSession';
 import type { BodyEntrySource, WorkoutBucket } from '@/domain/nutrition';
 import { weightWaistWrite, type WaistSampleWrite, type WeightReadingDraft } from '@/domain/weightEntry';
 import {
@@ -403,7 +404,7 @@ export default function Health() {
       <HealthSectionShare />
       <HealthStatBoard
         today={isoDay(new Date())}
-        samples={snap.health}
+        samples={withPlannedMinutes(snap.health, snap.plannedSessions)}
         body={snap.bodyComposition}
         activityEnergyKcal={snap.nutrition.activityEnergyKcal}
         heightCm={snap.profile?.heightCm ?? null}
@@ -419,7 +420,7 @@ export default function Health() {
         onSetWorkoutBucket={setWorkoutBucket}
       />
       <HealthBoard
-        samples={snap.health}
+        samples={withPlannedMinutes(snap.health, snap.plannedSessions)}
         today={isoDay(new Date())}
         soberOn={snap.profile?.stage === 'stopped' && snap.profile.sobrietyStartedAt ? isoDay(new Date(snap.profile.sobrietyStartedAt)) : null}
         stage={snap.profile?.stage ?? null}

@@ -242,6 +242,8 @@ export type AppSnapshot = {
   healthPlan: HealthPlan | null;
   /** Usual gym week from You. Null until they save one. */
   trainingSchedule: import('@/domain/healthPlan').TrainingSchedule | null;
+  /** Workouts planned ahead. Owner only. Empty until one is saved. */
+  plannedSessions: import('@/domain/plannedSession').PlannedSession[];
 };
 
 export type NewGratitudeEntry = {
@@ -504,4 +506,10 @@ export interface Repository {
   refreshHealthPlan(limits: string): Promise<void>;
   /** Saves the usual gym week, or clears it when null. */
   saveTrainingSchedule(schedule: import('@/domain/healthPlan').TrainingSchedule | null): Promise<void>;
+  /** Adds a planned workout. The row stays on this account. */
+  savePlannedSession(input: import('@/domain/plannedSession').PlannedSessionDraft): Promise<void>;
+  /** Replaces the type, time, duration, note, or done mark on one planned workout. */
+  updatePlannedSession(id: string, input: import('@/domain/plannedSession').PlannedSessionDraft & { doneAt: string | null }): Promise<void>;
+  /** Removes one planned workout. */
+  deletePlannedSession(id: string): Promise<void>;
 }

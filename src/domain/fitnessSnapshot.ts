@@ -1,6 +1,7 @@
 import type { AppSnapshot } from '@/data/types';
 import type { TrainingSchedule } from '@/domain/healthPlan';
 import { londonDay } from '@/domain/healthInsights';
+import { withPlannedMinutes } from '@/domain/plannedSession';
 import type { StatPeriod } from '@/domain/statWindow';
 
 export {
@@ -70,12 +71,12 @@ export function fitnessFromSnapshot(
     goalAge: snap.nutrition?.goalAge ?? null,
     goalSex: snap.nutrition?.goalSex ?? null,
     scheduleWeekMinutes: scheduleWeekMinutes(snap.trainingSchedule),
-    health: (snap.health ?? []).map((sample) => ({
+    health: withPlannedMinutes((snap.health ?? []).map((sample) => ({
       kind: sample.kind,
       value: sample.value,
       recordedOn: sample.recordedOn,
       source: sample.source,
-    })),
+    })), snap.plannedSessions),
     workoutBuckets: snap.nutrition?.workoutBuckets ?? {},
     sleep,
     permission,

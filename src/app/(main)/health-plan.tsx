@@ -14,6 +14,7 @@ import { StatPeriodToggle } from '@/ui/StatPeriodToggle';
 import { GoalChoices } from '@/ui/GoalChoices';
 import { GoalWeightRange } from '@/ui/GoalWeightRange';
 import { YourFitness } from '@/ui/YourFitness';
+import { planDayFromSessionText, WorkoutCalendar } from '@/ui/WorkoutCalendar';
 import { YourGoal } from '@/ui/YourGoal';
 import { PlanTick } from '@/ui/PlanTick';
 import { ShareOnProfile } from '@/ui/ShareOnProfile';
@@ -51,6 +52,8 @@ export default function HealthPlanScreen() {
   const plan = snap.healthPlan;
   const [limits, setLimits] = useState(plan?.limits ?? '');
   const [error, setError] = useState<string | null>(null);
+  const [planDay, setPlanDay] = useState<string | null>(null);
+  const [planNonce, setPlanNonce] = useState(0);
   const limitsRef = useRef(limits);
   const planRef = useRef(plan);
   const queue = useRef(Promise.resolve());
@@ -178,9 +181,25 @@ export default function HealthPlanScreen() {
             <T variant="label">Fitness</T>
             <T>{plan.fitness.intro}</T>
             {plan.fitness.sessions.map((action) => (
-              <ActionRow key={action.id} action={action} disabled={refreshing} onToggle={tick} />
+              <View key={action.id}>
+                <ActionRow action={action} disabled={refreshing} onToggle={tick} />
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={`Plan ${action.text}`}
+                  onPress={() => {
+                    const day = planDayFromSessionText(action.text);
+                    if (!day) return;
+                    setPlanDay(day);
+                    setPlanNonce((nonce) => nonce + 1);
+                  }}
+                  style={{ minHeight: 44, justifyContent: 'center' }}
+                >
+                  <T variant="muted">Plan this day</T>
+                </Pressable>
+              </View>
             ))}
           </Card>
+          <WorkoutCalendar planDay={planDay} planNonce={planNonce} />
           <Card>
             <T variant="label">Wellbeing</T>
             {plan.wellbeing.habits.map((action) => (
@@ -189,9 +208,12 @@ export default function HealthPlanScreen() {
           </Card>
         </>
       ) : (
-        <Card>
-          <T>Thumos has not written a plan yet. Refresh to use the figures you already keep.</T>
-        </Card>
+        <>
+          <Card>
+            <T>Thumos has not written a plan yet. Refresh to use the figures you already keep.</T>
+          </Card>
+          <WorkoutCalendar planDay={planDay} planNonce={planNonce} />
+        </>
       )}
       {progress ? (
         <Card>

@@ -83,6 +83,7 @@ import {
   type NutritionSettings,
 } from '@/domain/nutrition';
 import { donePlanTexts, draftHealthPlan, normaliseTrainingSchedule, presentSharedHealthPlan, type HealthPlan, type TrainingSchedule } from '@/domain/healthPlan';
+import { isPlannedSessionType, type PlannedSession, type PlannedSessionDraft } from '@/domain/plannedSession';
 import { createDemoDb, type DemoAccount, type DemoDb } from '@/data/demo-seed';
 import { activityTypeFromKind } from '@/domain/fitnessSnapshot';
 import type {
@@ -163,6 +164,20 @@ function bytesToDataUrl(bytes: Uint8Array): string {
     binary += String.fromCharCode(...bytes.subarray(index, index + size));
   }
   return `data:image/jpeg;base64,${btoa(binary)}`;
+}
+
+function plannedFromDraft(id: string, input: PlannedSessionDraft, doneAt: string | null): PlannedSession | null {
+  if (!isPlannedSessionType(input.sessionType)) return null;
+  if (!Number.isFinite(input.durationMinutes) || input.durationMinutes < 10 || input.durationMinutes > 240) return null;
+  if (Number.isNaN(Date.parse(input.startsAt))) return null;
+  return {
+    id,
+    sessionType: input.sessionType,
+    startsAt: new Date(input.startsAt).toISOString(),
+    durationMinutes: Math.round(input.durationMinutes),
+    note: input.note.slice(0, 280),
+    doneAt: doneAt && !Number.isNaN(Date.parse(doneAt)) ? new Date(doneAt).toISOString() : null,
+  };
 }
 
 function clone<T>(value: T): T {
@@ -372,6 +387,7 @@ export class DemoRepository implements Repository {
       bodyComposition: account?.bodyComposition ?? [],
       healthPlan: account?.healthPlan ?? null,
       trainingSchedule: account?.trainingSchedule ?? null,
+      plannedSessions: account?.plannedSessions ?? [],
     };
   }
 
@@ -1235,6 +1251,36 @@ export class DemoRepository implements Repository {
     if (schedule && !next) throw new UserFacingError('Could not save that training schedule.', 'generic');
     const db = clone(this.db);
     db.accounts[account.profile.id].trainingSchedule = next;
+    this.commit(db);
+  }
+
+  async savePlannedSession(input: PlannedSessionDraft): Promise<void> {
+    const saved = plannedFromDraft(randomId(), input, null);
+    if (!saved) throw new UserFacingError('Could not save that session.', 'generic');
+    const account = this.me();
+    const db = clone(this.db);
+    const next = db.accounts[account.profile.id];
+    next.plannedSessions = [...(next.plannedSessions ?? []), saved].sort((a, b) => a.startsAt.localeCompare(b.startsAt));
+    this.commit(db);
+  }
+
+  async updatePlannedSession(id: string, input: PlannedSessionDraft & { doneAt: string | null }): Promise<void> {
+    const saved = plannedFromDraft(id, input, input.doneAt);
+    if (!saved) throw new UserFacingError('Could not save that session.', 'generic');
+    const account = this.me();
+    const db = clone(this.db);
+    const next = db.accounts[account.profile.id];
+    const rows = next.plannedSessions ?? [];
+    if (!rows.some((row) => row.id === id)) throw new UserFacingError('Could not save that session.', 'generic');
+    next.plannedSessions = rows.map((row) => (row.id === id ? saved : row)).sort((a, b) => a.startsAt.localeCompare(b.startsAt));
+    this.commit(db);
+  }
+
+  async deletePlannedSession(id: string): Promise<void> {
+    const account = this.me();
+    const db = clone(this.db);
+    const next = db.accounts[account.profile.id];
+    next.plannedSessions = (next.plannedSessions ?? []).filter((row) => row.id !== id);
     this.commit(db);
   }
 

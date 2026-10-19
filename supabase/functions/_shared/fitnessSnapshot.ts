@@ -11,6 +11,7 @@ import { minuteUnit, paceJudgement, parseStatPeriod, periodPhrase, rollingWindow
 import {
   CARRYING_FITNESS_NOTE,
   GOAL_LABEL,
+  PRO_BOXING_CLASSES,
   WORKOUT_BUCKETS,
   isAnyBoxer,
   isClassBoxer,
@@ -709,6 +710,7 @@ export function buildFitnessSnapshot(input: FitnessSnapshotInput): FitnessSnapsh
     hasHrv: hrv.length >= 2,
   });
 
+  const gap = assessCardioGap(input);
   const recommendations = recommend({
     goal: input.goal,
     easier,
@@ -720,7 +722,7 @@ export function buildFitnessSnapshot(input: FitnessSnapshotInput): FitnessSnapsh
     schedule: scaledSchedule,
     guideline,
     hasWork: minutes > 0 || mixTotal > 0,
-    belowGoal: Boolean(compare?.goal && latestVo2 != null && latestVo2 < compare.goal.low),
+    belowGoal: gap.belowGoal,
   });
 
   const missing = missingLine({
@@ -740,6 +742,8 @@ export function buildFitnessSnapshot(input: FitnessSnapshotInput): FitnessSnapsh
     recovery: recovery?.words ?? null,
     recommendation: recommendations.find((item) => item.forFocus)?.text ?? recommendations[0]?.text ?? null,
     build: input.build ?? null,
+    trendingDown: gap.trendingDown,
+    cardioBehind: gap.behind,
   });
 
   return {
@@ -1213,6 +1217,66 @@ function missingLine(input: {
   return parts.slice(0, 2).join(' ');
 }
 
+/** Short class name when a boxing goal has one. Used in a day-line reason. */
+export function goalReferenceName(goal: NutritionGoal | null): string | null {
+  if (goal && isClassBoxer(goal)) return PRO_BOXING_CLASSES[goal].short;
+  if (goal === 'elite_heavy_boxer') return 'heavyweight';
+  if (goal === 'elite_middle_boxer') return 'middleweight';
+  return null;
+}
+
+export type CardioGap = {
+  /** VO2 is under the goal or age band, or cardio is a small share of the minutes. */
+  behind: boolean;
+  belowGoal: boolean;
+  belowAge: boolean;
+  lowCardio: boolean;
+  trendingDown: boolean;
+  /** Cruiserweight, heavyweight, and the other class names. Null when the goal has none. */
+  reference: string | null;
+};
+
+/**
+ * Whether cardio is behind the goal, the age and sex band, or the recent strength minutes.
+ * The mix looks at the last 56 days, the same window as the recovery halves.
+ */
+export function assessCardioGap(input: FitnessSnapshotInput): CardioGap {
+  const today = input.today;
+  const vo2 = dayValue(input.health, 'vo2_max', today, 365);
+  const latest = vo2.length ? vo2[vo2.length - 1]?.value ?? null : null;
+  const band = latest != null ? bandFor(input.goalAge, input.goalSex) : null;
+  const compare = latest == null ? null : compareFor({
+    value: latest,
+    age: input.goalAge,
+    sex: input.goalSex,
+    goal: input.goal,
+    band,
+  });
+  const belowGoal = Boolean(compare?.goal && latest != null && latest < compare.goal.low);
+  const belowAge = Boolean(compare?.age && latest != null && latest < compare.age.low);
+  const active = periodActiveMinutes({
+    samples: input.health,
+    today,
+    start: shiftDay(today, -55),
+    end: today,
+    overrides: input.workoutBuckets,
+    sourceApps: input.sourceApps,
+  });
+  const aerobic = active.report.cardio + active.report.conditioning;
+  const lowCardio = active.report.total >= 30 && aerobic / active.report.total < 0.2 && active.report.strength > aerobic;
+  const earlier = vo2[0]?.value ?? null;
+  const recent = vo2[vo2.length - 1]?.value ?? null;
+  const trendingDown = earlier != null && recent != null && vo2.length >= 2 && recent + 0.4 < earlier;
+  return {
+    behind: belowGoal || belowAge || lowCardio,
+    belowGoal,
+    belowAge,
+    lowCardio,
+    trendingDown,
+    reference: goalReferenceName(input.goal),
+  };
+}
+
 function contextFrom(input: {
   level: FitnessLevel | null;
   vo2: number | null;
@@ -1221,8 +1285,10 @@ function contextFrom(input: {
   recovery: string | null;
   recommendation: string | null;
   build: BodyBuild | null;
+  trendingDown?: boolean;
+  cardioBehind?: boolean;
 }): string | null {
-  if (!input.level && input.minutes <= 0 && !input.recovery && !input.compare && input.build !== 'carrying_extra') return null;
+  if (!input.level && input.minutes <= 0 && !input.recovery && !input.compare && input.build !== 'carrying_extra' && !input.cardioBehind) return null;
   const bits = ['Fitness snapshot, an estimate, not a medical assessment.'];
   if (input.build === 'carrying_extra') {
     bits.push('They are carrying extra weight. Comparisons use their own readings. Do not add a mileage plan or a bigger deficit.');
@@ -1230,12 +1296,18 @@ function contextFrom(input: {
   if (input.compare) bits.push(input.compare);
   else if (input.level) bits.push(`Level ${input.level}${input.vo2 != null ? `, cardio fitness about ${round1(input.vo2)} ml/kg/min` : ''}.`);
   if (input.minutes > 0) bits.push(`${Math.round(input.minutes)} active minutes this week.`);
-  if (input.recommendation) bits.push(input.recommendation);
   bits.push('Check with a doctor before big changes.');
   let line = bits.join(' ').replace(/\s+/g, ' ').trim();
-  if (input.recovery) {
-    const extra = ` ${input.recovery.replace(/\s+/g, ' ').trim()}`;
-    if (line.length + extra.length <= 500) line += extra;
+  const extras = [
+    input.trendingDown ? 'Cardio fitness is trending down.' : null,
+    input.cardioBehind
+      ? 'Add easy Zone 2 (bike, rower, brisk walk, or easy jog) and one short interval once a base is in place. Not a running plan.'
+      : null,
+    input.recommendation,
+    input.recovery ? input.recovery.replace(/\s+/g, ' ').trim() : null,
+  ].filter((item): item is string => Boolean(item));
+  for (const extra of extras) {
+    if (line.length + 1 + extra.length <= 500) line = `${line} ${extra}`;
   }
-  return line.slice(0, 500);
+  return line;
 }

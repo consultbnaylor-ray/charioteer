@@ -2,6 +2,7 @@ import type { AppSnapshot } from '@/data/types';
 import { isoDay } from '@/domain/dates';
 import { buildHealthInsights } from '@/domain/healthInsights';
 import { buildFitnessSnapshot, fitnessFromSnapshot } from '@/domain/fitnessSnapshot';
+import { withPlannedMinutes } from '@/domain/plannedSession';
 import { goalLedFromSnapshot, goalProgressLine } from '@/domain/goalLed';
 import { goalWeightRange } from '@/domain/goalWeightRange';
 import { compositionForAssessment, defaultNutritionSettings, nutritionContextLines, weightPointsFrom } from '@/domain/nutrition';
@@ -91,7 +92,7 @@ export function briefingFromSnapshot(snap: AppSnapshot, requestedMode: ThumosMod
   const healthInsights = shareHealth
     ? buildHealthInsights({
         today: isoDay(now),
-        samples: snap.health,
+        samples: withPlannedMinutes(snap.health, snap.plannedSessions),
         soberOn,
         stage: profile.stage,
       }).headlines

@@ -77,6 +77,7 @@ import {
   type NutritionSettings,
 } from '@/domain/nutrition';
 import { PLAN_DISCLAIMER, healthPlanFromStored, normaliseTrainingSchedule, parseSharedHealthPlan, trainingScheduleFromRow, type HealthPlan, type TrainingSchedule } from '@/domain/healthPlan';
+import { plannedSessionFromRow, type PlannedSession, type PlannedSessionDraft } from '@/domain/plannedSession';
 import { parseBuddyLinkPass, parseBuddyList, parseBuddyPreview, parseBuddyShare, type BuddyLinkPass, type BuddyList, type BuddyScope, type BuddyShareView } from '@/domain/buddies';
 import { randomId } from '@/domain/id';
 import { messageFromRealtime, withIncomingMessage } from '@/domain/liveChat';
@@ -223,6 +224,7 @@ function emptySnapshot(): AppSnapshot {
     bodyComposition: [],
     healthPlan: null,
     trainingSchedule: null,
+    plannedSessions: [],
   };
 }
 
@@ -416,7 +418,7 @@ export class SupabaseRepository implements Repository {
 
     const userId = session.user.id;
     const email = session.user.email ?? '';
-    const [profileRes, reasonsRes, checkRes, relapseRes, healthRes, mineRes, thumosRes, directoryRes, interestLinks, connectionsRes, reportsRes, consentsRes, photosRes, gratitudeRes, gratitudePhotoRes, visionRes, sharingRes, quotesRes, profilePhotoRes, healthPlanRes, scheduleRes] =
+    const [profileRes, reasonsRes, checkRes, relapseRes, healthRes, mineRes, thumosRes, directoryRes, interestLinks, connectionsRes, reportsRes, consentsRes, photosRes, gratitudeRes, gratitudePhotoRes, visionRes, sharingRes, quotesRes, profilePhotoRes, healthPlanRes, scheduleRes, plannedRes] =
       await Promise.all([
         this.client.from('profiles').select('*').eq('id', userId).maybeSingle(),
         this.client.from('reasons').select('*').eq('user_id', userId).order('sort_order'),
@@ -439,6 +441,7 @@ export class SupabaseRepository implements Repository {
         this.client.from('profile_photos').select('id, user_id, role, caption, position, storage_path, created_at').eq('user_id', userId).order('position').order('created_at'),
         this.client.from('health_plans').select('focus, nutrition, fitness, wellbeing, limits, disclaimer, updated_at').eq('user_id', userId).maybeSingle(),
         this.client.from('training_schedules').select('monday, tuesday, wednesday, thursday, friday, saturday, sunday, typical_minutes, longer_day, longer_minutes, walk_day, note').eq('user_id', userId).maybeSingle(),
+        this.client.from('planned_sessions').select('id, session_type, starts_at, duration_minutes, note, done_at').eq('user_id', userId).order('starts_at'),
       ]);
 
     const profileRow = profileRes.data as Row | null;
@@ -549,6 +552,12 @@ export class SupabaseRepository implements Repository {
           }),
       healthPlan: healthPlanRes.error ? null : healthPlanFromStored(healthPlanRes.data),
       trainingSchedule: scheduleRes.error ? null : trainingScheduleFromRow(scheduleRes.data),
+      plannedSessions: plannedRes.error
+        ? []
+        : ((plannedRes.data ?? []) as Row[]).flatMap((row) => {
+          const session = plannedSessionFromRow(row);
+          return session ? [session] : [];
+        }),
     });
   }
 
@@ -2490,6 +2499,68 @@ export class SupabaseRepository implements Repository {
     });
     if (error) {
       this.emit({ ...this.snapshot, trainingSchedule: before });
+      throw asUserFacing(error, 'general');
+    }
+  }
+
+  async savePlannedSession(input: PlannedSessionDraft): Promise<void> {
+    const userId = this.snapshot.session?.userId ?? await this.userId();
+    const before = this.snapshot.plannedSessions;
+    const { data, error } = await this.client.from('planned_sessions').insert({
+      user_id: userId,
+      session_type: input.sessionType,
+      starts_at: input.startsAt,
+      duration_minutes: input.durationMinutes,
+      note: input.note.slice(0, 280),
+      done_at: null,
+    }).select('id, session_type, starts_at, duration_minutes, note, done_at').single();
+    if (error) throw asUserFacing(error, 'general');
+    const saved = plannedSessionFromRow(data);
+    if (!saved) {
+      this.emit({ ...this.snapshot, plannedSessions: before });
+      throw new UserFacingError('Could not save that session.', 'generic');
+    }
+    this.emit({ ...this.snapshot, plannedSessions: [...before.filter((row) => row.id !== saved.id), saved].sort((a, b) => a.startsAt.localeCompare(b.startsAt)) });
+  }
+
+  async updatePlannedSession(id: string, input: PlannedSessionDraft & { doneAt: string | null }): Promise<void> {
+    const userId = this.snapshot.session?.userId ?? await this.userId();
+    const before = this.snapshot.plannedSessions;
+    const current = before.find((row) => row.id === id);
+    if (!current) throw new UserFacingError('Could not save that session.', 'generic');
+    const next: PlannedSession = {
+      ...current,
+      sessionType: input.sessionType,
+      startsAt: input.startsAt,
+      durationMinutes: input.durationMinutes,
+      note: input.note.slice(0, 280),
+      doneAt: input.doneAt,
+    };
+    this.emit({
+      ...this.snapshot,
+      plannedSessions: before.map((row) => (row.id === id ? next : row)).sort((a, b) => a.startsAt.localeCompare(b.startsAt)),
+    });
+    const { error } = await this.client.from('planned_sessions').update({
+      session_type: next.sessionType,
+      starts_at: next.startsAt,
+      duration_minutes: next.durationMinutes,
+      note: next.note,
+      done_at: next.doneAt,
+      updated_at: new Date().toISOString(),
+    }).eq('id', id).eq('user_id', userId);
+    if (error) {
+      this.emit({ ...this.snapshot, plannedSessions: before });
+      throw asUserFacing(error, 'general');
+    }
+  }
+
+  async deletePlannedSession(id: string): Promise<void> {
+    const userId = this.snapshot.session?.userId ?? await this.userId();
+    const before = this.snapshot.plannedSessions;
+    this.emit({ ...this.snapshot, plannedSessions: before.filter((row) => row.id !== id) });
+    const { error } = await this.client.from('planned_sessions').delete().eq('id', id).eq('user_id', userId);
+    if (error) {
+      this.emit({ ...this.snapshot, plannedSessions: before });
       throw asUserFacing(error, 'general');
     }
   }

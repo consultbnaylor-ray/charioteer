@@ -28,6 +28,7 @@ import {
 } from './healthPlan';
 import type { FoodLog } from './nutrition';
 import { defaultNutritionSettings } from './nutrition';
+import { buildFitnessSnapshot } from './fitnessSnapshot';
 import { defaultProfileSharing, projectPublicProfile, sharedReportItems, type ShareSource } from './profileSharing';
 
 function input(partial: Partial<PlanInput> = {}): PlanInput {
@@ -687,6 +688,70 @@ describe('health plan writer', () => {
     expect(sql).toContain("'training_schedules'");
     expect(sql.toLowerCase()).not.toMatch(/drop table|delete from/i);
     expect(readFileSync('supabase/functions/health-plan/index.ts', 'utf8')).toContain("from('training_schedules')");
+  });
+
+  it('gives a cruiserweight week different cardio days when VO2 is behind', () => {
+    const schedule = {
+      days: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'],
+      typicalMinutes: 30,
+      longerDay: 'Saturday',
+      longerMinutes: 45,
+      walkDay: 'Sunday',
+      note: '',
+    };
+    const person = input({
+      salt: 'cruiser-vo2',
+      goal: 'elite_cruiser_boxer',
+      goalSex: 'male',
+      goalAge: 34,
+      schedule,
+      health: [
+        { kind: 'weight_kg', value: 90, recordedOn: '2026-10-14' },
+        { kind: 'vo2_max', value: 44, recordedOn: '2026-08-01' },
+        { kind: 'vo2_max', value: 41.7, recordedOn: '2026-10-14' },
+        { kind: 'workout_type_50', value: 40, recordedOn: '2026-10-13' },
+        { kind: 'workout_type_50', value: 40, recordedOn: '2026-10-10' },
+        { kind: 'workout_type_50', value: 40, recordedOn: '2026-10-08' },
+      ],
+    });
+    const plan = draftHealthPlan(person);
+    expect(plan.fitness.intro).toContain(PLAN_DOCTOR);
+    expect(plan.fitness.intro.length).toBeLessThanOrEqual(220);
+    const texts = plan.fitness.sessions.map((item) => item.text);
+    expect(texts).toHaveLength(7);
+    expect(texts.find((text) => text.startsWith('Sunday ·'))).toBe('Sunday · A walk. Keep it easy.');
+    expect(texts.join(' ')).not.toMatch(/\bRest\b|runna|mileage|progressive distance|\b5k\b/i);
+    const bodies = texts.map((text) => text.replace(/^[A-Za-z]+ · /, ''));
+    expect(new Set(bodies).size).toBeGreaterThan(3);
+    expect(texts.filter((text) => /Zone 2/i.test(text)).length).toBeGreaterThan(0);
+    expect(texts.filter((text) => /interval/i.test(text))).toHaveLength(1);
+    expect(texts.join(' ')).toMatch(/bike|rower|brisk walk|skipping or bag rounds/);
+    expect(texts.join(' ')).toMatch(/cruiserweight/);
+    expect(texts.join(' ')).toMatch(/trending down/);
+    expect(texts.join(' ')).not.toContain('…');
+    expect(texts.filter((text) => /Keep this boxing session/i.test(text)).length).toBeGreaterThan(0);
+    for (const day of ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday']) {
+      expect(texts.find((text) => text.startsWith(`${day} ·`))).toMatch(/about 30 min/);
+    }
+    expect(texts.find((text) => text.startsWith('Saturday ·'))).toMatch(/about 45 min/);
+    const stated = planBaseline(person);
+    for (const text of texts) expect(mentionsRegressiveSession(text, stated)).toBe(false);
+    const snapshot = buildFitnessSnapshot({
+      today: '2026-10-15',
+      goal: 'elite_cruiser_boxer',
+      goalAge: 34,
+      goalSex: 'male',
+      scheduleWeekMinutes: 30 * 5 + 45,
+      health: person.health,
+      permission: 'unknown',
+    });
+    expect(snapshot.contextLine).toContain('41.7');
+    expect(snapshot.contextLine).toContain('56 to 62');
+    expect(snapshot.contextLine).toContain('trending down');
+    expect(snapshot.contextLine).toMatch(/Zone 2/);
+    expect(snapshot.contextLine).toMatch(/not a running plan/i);
+    expect(snapshot.contextLine).toContain('Check with a doctor before big changes.');
+    expect(snapshot.contextLine).not.toMatch(/runna|mileage|\b5k\b|progressive distance/i);
   });
 
   it('counts this week from Monday through Sunday in London, including the clock change', () => {

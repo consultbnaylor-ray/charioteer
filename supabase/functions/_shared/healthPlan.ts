@@ -24,7 +24,7 @@ import {
   type NutritionSex,
   type WorkoutBucketMap,
 } from './nutrition.ts';
-import { buildFitnessSnapshot, fitnessFocusLines, type FitnessSnapshotInput } from './fitnessSnapshot.ts';
+import { assessCardioGap, buildFitnessSnapshot, fitnessFocusLines, type FitnessSnapshotInput } from './fitnessSnapshot.ts';
 import { goalWeightRange } from './goalWeightRange.ts';
 import { goalFocusLine } from './goalLed.ts';
 import { londonDay, londonWeek } from './healthInsights.ts';
@@ -946,13 +946,105 @@ function sessionKind(facts: Derived): string {
   return 'session';
 }
 
+function trendSentence(trending: boolean, state: { used: boolean }): string {
+  if (!trending || state.used) return '';
+  state.used = true;
+  return ' Cardio fitness is trending down.';
+}
+
+function dayMinutesOf(baseline: TrainingBaseline, day: string): number {
+  return Math.round(baseline.dayMinutes?.[day] ?? baseline.typicalMinutes);
+}
+
+const ZONE_FOR_BOXING = [
+  'Easy Zone 2 on the bike',
+  'Easy Zone 2 on the rower',
+  'Easy Zone 2 as a brisk walk',
+  'Easy Zone 2 with skipping or bag rounds',
+];
+
+const ZONE_FOR_OTHER = [
+  'Easy Zone 2 on the bike',
+  'Easy Zone 2 on the rower',
+  'Easy Zone 2 as a brisk walk',
+  'Easy Zone 2 as an easy jog',
+];
+
+const STRENGTH_KEEP = [
+  'Keep this strength day.',
+  'The resistance work stays on this day.',
+  'This day stays with the sessions you already do.',
+];
+
+const BOXING_KEEP = [
+  'Keep this strength and skill day.',
+  'The pads and the bag stay on this day.',
+  'This day stays with the boxing you already do.',
+];
+
+/**
+ * Specific days when cardio is behind the goal, the age band, or the strength minutes.
+ * Strength days stay. Minutes stay at that day's own floor. One interval only after a base is in place.
+ */
+function goalLedWeek(facts: Derived, baseline: TrainingBaseline): string[] | null {
+  const gap = assessCardioGap(fitnessInput(facts.input));
+  if (!gap.behind) return null;
+  const boxer = isAnyBoxer(facts.input.goal);
+  const train = WEEK_ORDER.filter((day) => baseline.trainDays.includes(day));
+  const strengthDays = new Set(train.filter((_, index) => index % 2 === 0));
+  const cardioDays = train.filter((day) => !strengthDays.has(day));
+  const base = baseline.sessionsPerWeek >= 3 && baseline.typicalMinutes >= 20;
+  const typicalCardio = cardioDays.filter((day) => dayMinutesOf(baseline, day) <= baseline.typicalMinutes);
+  const intervalPool = typicalCardio.length ? typicalCardio : cardioDays;
+  const intervalDay = base ? intervalPool[intervalPool.length - 1] ?? null : null;
+  const zoneDays = cardioDays.filter((day) => day !== intervalDay);
+  const longestZone = zoneDays.reduce<string | null>((best, day) => {
+    if (!best) return day;
+    return dayMinutesOf(baseline, day) > dayMinutesOf(baseline, best) ? day : best;
+  }, null);
+  const reason = gap.belowGoal && gap.reference
+    ? `Your VO2 max is below the ${gap.reference} reference, so this builds your aerobic base.`
+    : gap.belowAge
+      ? 'Your VO2 max is below the usual range for your age and sex, so this builds your aerobic base.'
+      : 'Cardio is a small share of these minutes, so this builds your aerobic base.';
+  const modes = boxer ? ZONE_FOR_BOXING : ZONE_FOR_OTHER;
+  const keeps = boxer ? BOXING_KEEP : STRENGTH_KEEP;
+  let zoneIndex = 0;
+  let strengthIndex = 0;
+  const trendState = { used: false };
+  const lines: string[] = [];
+  for (const day of WEEK_ORDER) {
+    if (baseline.trainDays.includes(day)) {
+      const minutes = dayMinutesOf(baseline, day);
+      if (day === intervalDay) {
+        lines.push(`${day} · A short interval session, about ${minutes} min. One short interval session this week, beside the work you already do.`);
+      } else if (!strengthDays.has(day)) {
+        const mode = boxer && day === longestZone
+          ? 'Easy Zone 2 with skipping or bag rounds'
+          : modes[zoneIndex % modes.length];
+        if (!(boxer && day === longestZone)) zoneIndex += 1;
+        lines.push(`${day} · ${mode}, about ${minutes} min. ${reason}`);
+      } else {
+        const kind = sessionKind(facts);
+        const keep = keeps[strengthIndex % keeps.length] ?? keeps[0];
+        strengthIndex += 1;
+        lines.push(`${day} · Keep this ${kind}, about ${minutes} min. ${keep}${trendSentence(gap.trendingDown, trendState)}`);
+      }
+    } else if (baseline.walkDays?.includes(day)) lines.push(`${day} · A walk. Keep it easy.`);
+    else if (baseline.restDays.includes(day)) lines.push(`${day} · Rest. You already leave this day free.`);
+  }
+  return lines;
+}
+
 function routineWeek(facts: Derived, baseline: TrainingBaseline): string[] {
+  const led = goalLedWeek(facts, baseline);
+  if (led) return led;
   const kind = sessionKind(facts);
   const progress = progressionClause(facts);
   const lines: string[] = [];
   for (const day of WEEK_ORDER) {
     if (baseline.trainDays.includes(day)) {
-      const minutes = Math.round(baseline.dayMinutes?.[day] ?? baseline.typicalMinutes);
+      const minutes = dayMinutesOf(baseline, day);
       lines.push(`${day} · Keep this ${kind}, about ${minutes} min. ${progress}`);
     } else if (baseline.walkDays?.includes(day)) lines.push(`${day} · A walk. Keep it easy.`);
     else if (baseline.restDays.includes(day)) lines.push(`${day} · Rest. You already leave this day free.`);

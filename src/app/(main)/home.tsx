@@ -11,6 +11,7 @@ import { formatGbp, savingsFromTypicalWeek } from '@/domain/savings';
 import { shownError } from '@/domain/errors';
 import { soberElapsed } from '@/domain/sober';
 import { buildHealthInsights } from '@/domain/healthInsights';
+import { withPlannedMinutes } from '@/domain/plannedSession';
 import { quoteCredit, quoteOfTheDay } from '@/domain/stoicQuotes';
 import { VISION_EMPTY_STATEMENT } from '@/domain/visionBoard';
 import { countSplit, drinkFreeFigure, soberFigure } from '@/domain/measureFigures';
@@ -144,7 +145,7 @@ export default function Home() {
   const checkedToday = today.mood != null;
   const healthHeadlines = buildHealthInsights({
     today: todayKey,
-    samples: snap.health,
+    samples: withPlannedMinutes(snap.health, snap.plannedSessions),
     soberOn: sober && profile.sobrietyStartedAt ? isoDay(new Date(profile.sobrietyStartedAt)) : null,
     stage: profile.stage,
   }).headlines.slice(0, 3);

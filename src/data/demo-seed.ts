@@ -60,6 +60,8 @@ export type DemoAccount = {
   healthPlan?: HealthPlan | null;
   /** Absent until they save a usual gym week on You. */
   trainingSchedule?: import('@/domain/healthPlan').TrainingSchedule | null;
+  /** Absent until they plan a workout. */
+  plannedSessions?: import('@/domain/plannedSession').PlannedSession[];
 };
 
 export type DemoDb = {
