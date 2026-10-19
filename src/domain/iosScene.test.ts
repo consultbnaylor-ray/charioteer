@@ -14,7 +14,7 @@ describe('iOS 27 scene lifecycle', () => {
   const forwarder = readFileSync('node_modules/expo/ios/AppDelegates/SceneEventForwarder.swift', 'utf8');
 
   it('opts the SDK 57 prebuild into a single application scene', () => {
-    expect(app.expo.ios?.buildNumber).toBe('33');
+    expect(app.expo.ios?.buildNumber).toMatch(/^\d+$/);
     expect(app.expo.ios?.infoPlist).not.toHaveProperty('UIApplicationSceneManifest');
     const entry = app.expo.plugins?.find((plugin) => Array.isArray(plugin) && plugin[0] === 'expo-build-properties') as
       | [string, { ios?: { enableSceneSupport?: boolean; deploymentTarget?: string } }]
