@@ -293,10 +293,6 @@ export class DemoRepository implements Repository {
 
   async refreshOwnerPhotosIfStale(): Promise<void> {}
 
-  watchChat(_connectionId: string): () => void {
-    return () => undefined;
-  }
-
   private derive(): AppSnapshot {
     const sessionId = this.db.sessionUserId;
     const account = sessionId ? this.db.accounts[sessionId] : undefined;

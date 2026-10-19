@@ -45,7 +45,7 @@ export default function MainLayout() {
     : 0;
   const peopleBadge = requestBadgeText(peopleTabBadgeCount(requestCount, messageUnread));
 
-  const go = (href: string) => router.navigate(href as never);
+  const go = (href: string) => router.dismissTo(href as never);
   const tabName = (tab: AppSection) => (tab.href === '/people' ? peopleTabAccessibilityLabel(requestCount, messageUnread) : tab.tabLabel ?? tab.label);
 
   const brand = (
@@ -104,7 +104,16 @@ export default function MainLayout() {
         <View style={{ flex: 1 }}>
           {snap.profile ? <MessageNotificationPrompt userId={snap.profile.id} /> : null}
           <View style={{ flex: 1 }}>
-            <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: theme.colors.bg } }} />
+            <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: theme.colors.bg } }}>
+              <Stack.Screen
+                name="chat/[id]"
+                dangerouslySingular={(_name, params) => {
+                  const raw = params?.id;
+                  const id = Array.isArray(raw) ? raw[0] : raw;
+                  return typeof id === 'string' && id ? `chat/${id}` : undefined;
+                }}
+              />
+            </Stack>
           </View>
         </View>
       </ShellInsetProvider>

@@ -72,14 +72,13 @@ function Chat() {
       });
     };
     load();
-    const stop = repo.watchChat(connectionId);
+    // Inserts arrive on the account-wide direct-messages channel. This screen filters by connection id.
     const timer = setInterval(load, CHAT_POLL_MS);
     const subscription = AppState.addEventListener('change', (state) => {
       if (state === 'active') load();
     });
     return () => {
       live = false;
-      stop();
       clearInterval(timer);
       subscription.remove();
     };

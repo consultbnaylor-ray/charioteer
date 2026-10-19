@@ -161,8 +161,7 @@ async function unreadMessageBadge(
     const messages = await admin
       .from('direct_messages')
       .select('connection_id, sender_id, created_at')
-      .in('connection_id', ids)
-      .neq('sender_id', recipientId);
+      .in('connection_id', ids);
     if (messages.error || !messages.data) return null;
     return iconBadgeCount(
       (messages.data as Row[]).map((row) => ({

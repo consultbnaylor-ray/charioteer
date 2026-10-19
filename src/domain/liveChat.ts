@@ -47,12 +47,35 @@ export function latestChatMessage(messages: readonly DirectMessage[], connection
   return latest;
 }
 
+/** The viewer's own latest sent line in one chat. Drafts still in flight do not count. */
+export function latestOwnChatMessage(messages: readonly DirectMessage[], connectionId: string, meId: string): DirectMessage | null {
+  let latest: DirectMessage | null = null;
+  for (const message of messages) {
+    if (message.connectionId !== connectionId || message.senderId !== meId || message.delivery) continue;
+    if (!latest || chatInstant(message.createdAt) > chatInstant(latest.createdAt)) latest = message;
+  }
+  return latest;
+}
+
 /**
- * The viewer's saved read line. No line means the chat has not been opened,
- * so messages from the other person still count as unread.
+ * Saved read line when this person has one.
+ * Otherwise their own latest message, so a reply that arrived after they wrote still counts.
+ * The newest message in the chat is not the line: that would hide the reply.
  */
-export function initialReadThrough(_newestAt: string | null, saved: string | null | undefined): string | null {
-  return saved || null;
+export function initialReadThrough(ownLatestAt: string | null, saved: string | null | undefined): string | null {
+  if (saved) return saved;
+  return ownLatestAt || null;
+}
+
+/** Unread count for one chat, using a saved mark or the viewer's own latest message. */
+export function viewerChatUnread(
+  messages: readonly DirectMessage[],
+  connectionId: string,
+  meId: string,
+  saved: string | null | undefined,
+): number {
+  const own = latestOwnChatMessage(messages, connectionId, meId)?.createdAt ?? null;
+  return chatUnread(messages, connectionId, meId, initialReadThrough(own, saved));
 }
 
 /** Unread direct messages across accepted chats. Own lines and unsent drafts are left out. */
@@ -64,7 +87,7 @@ export function messageUnreadTotal(
 ): number {
   let sum = 0;
   for (const connectionId of connectionIds) {
-    sum += chatUnread(messages, connectionId, meId, readMarks[connectionId] ?? null);
+    sum += viewerChatUnread(messages, connectionId, meId, readMarks[connectionId]);
   }
   return sum;
 }

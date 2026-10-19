@@ -79,7 +79,8 @@ import {
 import { PLAN_DISCLAIMER, healthPlanFromStored, normaliseTrainingSchedule, parseSharedHealthPlan, trainingScheduleFromRow, type HealthPlan, type TrainingSchedule } from '@/domain/healthPlan';
 import { parseBuddyLinkPass, parseBuddyList, parseBuddyPreview, parseBuddyShare, type BuddyLinkPass, type BuddyList, type BuddyScope, type BuddyShareView } from '@/domain/buddies';
 import { randomId } from '@/domain/id';
-import { chatInsertFilter, messageFromRealtime, withIncomingMessage } from '@/domain/liveChat';
+import { messageFromRealtime, withIncomingMessage } from '@/domain/liveChat';
+import { subscribeAccountMessages, type MessageRealtime } from '@/data/messageChannel';
 import { isDuplicateWrite, mergeOutgoingMessages, shareInflight } from '@/domain/writes';
 import { passwordResetRedirect, recoveryLink } from '@/domain/passwordReset';
 import { createUtf8Decoder } from '@/domain/utf8';
@@ -250,7 +251,7 @@ export class SupabaseRepository implements Repository {
   /** Messages shown before the server confirms them. The id is the client idempotency key. */
   private outgoingMessages = new Map<string, DirectMessage>();
   /** Unfiltered insert stream for the chats list. Recreated only when sign-in changes. */
-  private messageChannel: ReturnType<SupabaseClient['channel']> | null = null;
+  private stopMessages: (() => void) | null = null;
   private messagesListening = false;
   /** When owner progress, profile, gratitude, and vision links were last signed. */
   private ownerPhotosSignedAt: number | null = null;
@@ -334,24 +335,6 @@ export class SupabaseRepository implements Repository {
     });
   }
 
-  watchChat(connectionId: string): () => void {
-    const filter = chatInsertFilter(connectionId);
-    if (!filter) return () => undefined;
-    const channel = this.client
-      .channel(`chat:${connectionId}`)
-      .on(
-        'postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'direct_messages', filter },
-        (payload) => {
-          this.ingestMessage(payload.new);
-        },
-      )
-      .subscribe();
-    return () => {
-      void this.client.removeChannel(channel);
-    };
-  }
-
   private emit(next: AppSnapshot) {
     if (this.outgoingMessages.size === 0) {
       this.snapshot = next;
@@ -391,23 +374,19 @@ export class SupabaseRepository implements Repository {
   /** One insert stream for every chat this account can read. Realtime applies the select policy. */
   private listenForMessages(signedIn: boolean) {
     if (!signedIn) {
-      if (this.messageChannel) void this.client.removeChannel(this.messageChannel);
-      this.messageChannel = null;
+      this.stopMessages?.();
+      this.stopMessages = null;
       this.messagesListening = false;
       return;
     }
     if (this.messagesListening) return;
     this.messagesListening = true;
-    this.messageChannel = this.client
-      .channel('direct-messages')
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'direct_messages' }, (payload) => {
-        this.ingestMessage(payload.new);
-      })
-      .subscribe((status) => {
-        if (status === 'SUBSCRIBED') {
-          void this.reloadMessages().catch((error: unknown) => console.error(error));
-        }
-      });
+    // realtime-js overloads `.on`, so the client is passed as the one insert callback this account uses.
+    this.stopMessages = subscribeAccountMessages(this.client as unknown as MessageRealtime, (row) => {
+      this.ingestMessage(row);
+    }, () => {
+      void this.reloadMessages().catch((error: unknown) => console.error(error));
+    });
   }
 
   private ingestMessage(row: unknown) {

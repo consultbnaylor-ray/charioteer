@@ -75,7 +75,7 @@ describe('private message push', () => {
       { connectionId: CONNECTION, senderId: 'cccccccc-cccc-4ccc-8ccc-ccccccccccc1', createdAt: '2026-10-13T10:00:00.000Z' },
       { connectionId: CONNECTION, senderId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb1', createdAt: '2026-10-13T11:00:00.000Z' },
     ];
-    expect(iconBadgeCount(rows, 'cccccccc-cccc-4ccc-8ccc-ccccccccccc1', {})).toBe(2);
+    expect(iconBadgeCount(rows, 'cccccccc-cccc-4ccc-8ccc-ccccccccccc1', {})).toBe(1);
     expect(iconBadgeCount(rows, 'cccccccc-cccc-4ccc-8ccc-ccccccccccc1', { [CONNECTION]: '2026-10-13T09:00:00.000Z' })).toBe(1);
     expect(iconBadgeCount(rows, 'cccccccc-cccc-4ccc-8ccc-ccccccccccc1', { [CONNECTION]: '2026-10-13T11:00:00.000Z' })).toBe(0);
     expect(iconBadgeCount(Array.from({ length: 120 }, (_, index) => ({

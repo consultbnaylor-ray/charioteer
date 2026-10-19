@@ -6,7 +6,7 @@ import { useRepository, useSnapshot } from '@/data';
 import { discoverAction, type DiscoverAction } from '@/domain/connections';
 import { shownError } from '@/domain/errors';
 import { randomId } from '@/domain/id';
-import { chatPreview, chatUnread, chatsChoiceLabel, latestChatMessage, messageUnreadTotal } from '@/domain/liveChat';
+import { chatPreview, chatsChoiceLabel, latestChatMessage, messageUnreadTotal, viewerChatUnread } from '@/domain/liveChat';
 import { CommunityProfile } from '@/ui/CommunityProfile';
 import { CommunityPrompt } from '@/ui/CommunityPrompt';
 import { useChatRead } from '@/ui/chatRead';
@@ -110,7 +110,7 @@ export default function People() {
               respondPending={action.kind === 'incoming' && isPending(`respond:${action.connectionId}`)}
               onAsk={() => ask(card.id)}
               onRespond={respond}
-              onMessage={(connectionId) => router.push(`/chat/${connectionId}` as never)}
+              onMessage={(connectionId) => router.navigate(`/chat/${connectionId}` as never)}
             />
             <Button
               label={profileId === card.id ? 'Hide profile' : 'Profile'}
@@ -151,7 +151,7 @@ export default function People() {
       {tab === 'chats' ? chats.map((connection) => {
         const other = connection.requesterId === me.id ? connection.addresseeId : connection.requesterId;
         const latest = latestChatMessage(messages, connection.id);
-        const unread = chatUnread(messages, connection.id, me.id, readMarks[connection.id] ?? null);
+        const unread = viewerChatUnread(messages, connection.id, me.id, readMarks[connection.id]);
         return (
           <Card key={connection.id}>
             <View
@@ -165,7 +165,7 @@ export default function People() {
               </View>
               <CountBadge count={unread} />
             </View>
-            <Button label="Open chat" onPress={() => router.push(`/chat/${connection.id}` as never)} />
+            <Button label="Open chat" onPress={() => router.navigate(`/chat/${connection.id}` as never)} />
           </Card>
         );
       }) : null}
