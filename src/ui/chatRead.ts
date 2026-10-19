@@ -25,6 +25,9 @@ export function useChatRead(userId: string | null | undefined): { marks: Record<
         console.error(error);
       }
       if (!live) return;
+      // Let the sign-in navigation finish. Publishing during that render locks the router.
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      if (!live) return;
       const ahead = applyRemoteChatReads(userId, remote, serverLoaded);
       await Promise.all(Object.entries(ahead).map(async ([id, at]) => {
         try {
