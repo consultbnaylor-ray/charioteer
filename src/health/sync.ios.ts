@@ -112,10 +112,10 @@ function minutes(quantity: number, unit: string): number {
 }
 
 /**
- * Steps, weight, and active energy use the last 14 days.
- * Heart rate recovery, body fat, and lean mass use the last 8 weeks, so a
- * reading from earlier in that window is kept when today has none.
- * Food and water are written separately when a meal is saved.
+ * Quantity samples and daily statistics cover the last 365 days in one query
+ * each. Active energy keeps a recent daily average, because a year of empty
+ * days would pull that average down. Food and water are written separately
+ * when a meal is saved.
  */
 export async function syncAppleHealth(overrides: WorkoutBucketMap = {}): Promise<HealthSyncResult> {
   try {
@@ -126,18 +126,18 @@ export async function syncAppleHealth(overrides: WorkoutBucketMap = {}): Promise
     if (!allowed) return { ok: false, message: 'Apple Health access was not granted.' };
 
     const end = new Date();
-    const start = new Date(end.getTime() - 14 * 24 * 60 * 60 * 1000);
-    const fitnessStart = new Date(end.getTime() - HEALTH_SAMPLE_DAYS * 24 * 60 * 60 * 1000);
-    const filter = { date: { startDate: start, endDate: end } };
-    const fitnessFilter = { date: { startDate: fitnessStart, endDate: end } };
+    const recentStart = new Date(end.getTime() - 14 * 24 * 60 * 60 * 1000);
+    const historyStart = new Date(end.getTime() - HEALTH_SAMPLE_DAYS * 24 * 60 * 60 * 1000);
+    const fitnessFilter = { date: { startDate: historyStart, endDate: end } };
+    const recentFilter = { date: { startDate: recentStart, endDate: end } };
     const samples: NewHealthSample[] = [];
 
     const steps = await queryStatisticsCollectionForQuantity(
       'HKQuantityTypeIdentifierStepCount',
       ['cumulativeSum'],
-      start,
+      historyStart,
       { day: 1 },
-      { filter, unit: 'count' },
+      { filter: fitnessFilter, unit: 'count' },
     );
     const stepDays = new Map<string, number>();
     for (const row of steps) {
@@ -147,7 +147,7 @@ export async function syncAppleHealth(overrides: WorkoutBucketMap = {}): Promise
     samples.push(...rows('steps', 'steps', stepDays, Math.round));
 
     const sleep = await queryCategorySamples('HKCategoryTypeIdentifierSleepAnalysis', { limit: 0, filter: fitnessFilter });
-    // The same 8-week window as the other fitness samples. A night is the
+    // The same year as the other samples. A night is the
     // morning it ended. Watch stages win over a plain "asleep" sample, and a
     // night stored only as time in bed is still kept.
     const sleepDays = sleepHoursByWakeDay(
@@ -181,7 +181,7 @@ export async function syncAppleHealth(overrides: WorkoutBucketMap = {}): Promise
     const weight = await queryQuantitySamples('HKQuantityTypeIdentifierBodyMass', {
       limit: 0,
       unit: 'kg',
-      filter,
+      filter: fitnessFilter,
     });
     const weightDays = new Map<string, number>();
     for (const sample of weight) weightDays.set(isoDay(sample.startDate), sample.quantity);
@@ -359,9 +359,9 @@ export async function syncAppleHealth(overrides: WorkoutBucketMap = {}): Promise
       const energy = await queryStatisticsCollectionForQuantity(
         'HKQuantityTypeIdentifierActiveEnergyBurned',
         ['cumulativeSum'],
-        start,
+        recentStart,
         { day: 1 },
-        { filter, unit: 'kcal' },
+        { filter: recentFilter, unit: 'kcal' },
       );
       const days: number[] = [];
       for (const row of energy) {

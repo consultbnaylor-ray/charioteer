@@ -5,6 +5,7 @@ import Svg from 'react-native-svg';
 import type { DistanceChart } from '@/domain/distance';
 import type { StatTileModel } from '@/domain/statsOverview';
 import { CompareBars, ProgressRing, RangeTrack, ToneMark, TrendLine } from '@/ui/DistanceCharts';
+import { ReadingChart } from '@/ui/ReadingChart';
 import { statsToneColors } from '@/ui/statsPalette';
 import { useAppTheme } from '@/ui/theme';
 import { Card, T } from '@/ui/ui';
@@ -42,7 +43,21 @@ function TileChart({ chart, tone, signal, monochrome }: { chart: DistanceChart; 
       />
     );
   }
-  if (chart.kind === 'line') return <TrendLine points={chart.points} color={ink} />;
+  if (chart.kind === 'line') {
+    if (chart.readings && chart.readings.length > 0 && chart.start && chart.end) {
+      return (
+        <ReadingChart
+          points={chart.readings}
+          start={chart.start}
+          end={chart.end}
+          unit={chart.unit ?? ''}
+          aggregate="mean"
+          accessibilityLabel="Chart"
+        />
+      );
+    }
+    return <TrendLine points={chart.points} color={ink} />;
+  }
   if (chart.kind === 'range') {
     return (
       <RangeTrack

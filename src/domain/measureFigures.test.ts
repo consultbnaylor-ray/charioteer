@@ -142,10 +142,8 @@ describe('measured stats figures', () => {
 
   it('keeps the nutrition card pattern on the measured pages, and the day bars narrow', () => {
     const week = readFileSync('src/ui/CheckInWeek.tsx', 'utf8');
-    expect(week).toContain('max={10}');
-    expect(week).toContain('width: 8');
-    expect(week).toContain('flexGrow: 0');
-    expect(week).not.toContain('flex: 1');
+    expect(week).toContain('<ReadingChart');
+    expect(week).toContain('unit="/10"');
     expect(week).toContain('No check-ins in the last 7 days.');
     expect(week).toContain('<MeasureRingView');
     expect(week).toContain('<MeasureSplitView');

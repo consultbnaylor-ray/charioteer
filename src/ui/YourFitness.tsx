@@ -24,13 +24,14 @@ import {
 import { applyFitnessFocus } from '@/domain/healthPlan';
 import { loadWorkoutSources } from '@/health/workoutSources';
 import { useStatPeriod } from '@/health/useStatPeriod';
-import { periodPhrase } from '@/domain/statWindow';
+import { chartBucketForPeriod, type ChartAggregate } from '@/domain/readingChart';
+import { londonToday, periodPhrase, rollingWindow } from '@/domain/statWindow';
 import { StatPeriodToggle } from '@/ui/StatPeriodToggle';
 import { closerToGoal, whyGoalMatters, WORKOUT_BUCKET_LABEL, WORKOUT_BUCKETS, type NutritionGoal, type WorkoutBucket } from '@/domain/nutrition';
 import { GoalLine } from '@/ui/GoalLine';
 import type { AppleHealthAccess } from '@/health/connection';
 import { readAppleHealthAccess } from '@/health/link';
-import { TrendLine } from '@/ui/DistanceCharts';
+import { ReadingChart } from '@/ui/ReadingChart';
 import { MeasureRingView } from '@/ui/MeasuredFigure';
 import { PlanTick } from '@/ui/PlanTick';
 import { statsToneColors } from '@/ui/statsPalette';
@@ -125,8 +126,7 @@ export function YourFitness() {
             }}
           />
           <T variant="muted">Latest reading</T>
-          {view.cardio.trend.length >= 2 ? <TrendLine points={view.cardio.trend} color={ink(view.cardio.tone)} /> : null}
-          {view.cardio.trend.length >= 2 ? <T variant="muted">Cardio fitness, oldest to newest. ml/kg/min.</T> : null}
+          <FitnessSeries points={view.cardio.series} unit="ml/kg/min" aggregate="mean" label="Cardio fitness chart" />
           <Fold title="What is this?">
             <T>{VO2_WHAT}</T>
           </Fold>
@@ -149,6 +149,7 @@ export function YourFitness() {
             }}
             detail={view.minutes.words}
           />
+          <FitnessSeries points={view.minutes.series ?? []} unit="min" aggregate="sum" label="Active minutes chart" />
           <MoreInfo about="active minutes" onPress={() => setInfo('minutes')} />
         </View>
       ) : null}
@@ -158,8 +159,8 @@ export function YourFitness() {
           <T style={{ color: view.resting.neutral ? theme.colors.ink : ink(view.resting.tone), fontFamily: theme.font.bodyStrong }}>
             {view.resting.reading ? `${view.resting.reading} · ` : ''}{view.resting.period ? `${view.resting.period} · ` : ''}{view.resting.signal ?? (view.resting.tone === 'watch' ? 'Watch' : 'On track')}
           </T>
-          <TrendLine points={view.resting.points} color={ink(view.resting.tone)} />
-          <T variant="muted">{view.resting.words} Oldest to newest.</T>
+          <FitnessSeries points={view.resting.series ?? []} unit="bpm" aggregate="mean" label="Resting heart rate chart" />
+          <T variant="muted">{view.resting.words}</T>
           <MoreInfo about="resting heart rate" onPress={() => setInfo('resting')} />
         </View>
       ) : null}
@@ -245,8 +246,6 @@ function FitnessInfoSheet({
   const theme = useAppTheme();
   const insets = useSafeAreaInsets();
   const { height } = useWindowDimensions();
-  const colors = statsToneColors(theme.scheme);
-  const ink = (tone: FitnessTone) => colors[tone].ink;
   const bodyHeight = Math.max(280, Math.round(height * 0.92) - 168 - insets.bottom);
   const order: Array<'cardio' | 'minutes' | 'resting'> = focus === 'minutes'
     ? ['minutes', 'cardio', 'resting']
@@ -276,13 +275,13 @@ function FitnessInfoSheet({
             <View style={{ gap: 18, paddingBottom: 8 }}>
               {order.map((key) => {
                 if (key === 'cardio') {
-                  return <CardioDetail key={key} view={view} goal={goal} ink={ink} />;
+                  return <CardioDetail key={key} view={view} goal={goal} />;
                 }
                 if (key === 'minutes' && view.minutes) {
                   return <MinutesDetail key={key} view={view} goal={goal} />;
                 }
                 if (key === 'resting' && view.resting) {
-                  return <RestingDetail key={key} view={view} goal={goal} ink={ink} />;
+                  return <RestingDetail key={key} view={view} goal={goal} />;
                 }
                 return null;
               })}
@@ -321,11 +320,9 @@ function FitnessInfoSheet({
 function CardioDetail({
   view,
   goal,
-  ink,
 }: {
   view: FitnessSnapshot;
   goal: NutritionGoal | null;
-  ink: (tone: FitnessTone) => string;
 }) {
   const cardio = view.cardio;
   return (
@@ -344,8 +341,7 @@ function CardioDetail({
           }}
         />
       ) : view.missing ? <T variant="muted">{view.missing}</T> : null}
-      {cardio && cardio.trend.length >= 2 ? <TrendLine points={cardio.trend} color={ink(cardio.tone)} /> : null}
-      {cardio && cardio.trend.length >= 2 ? <T variant="muted">Cardio fitness, oldest to newest. ml/kg/min.</T> : null}
+      {cardio ? <FitnessSeries points={cardio.series} unit="ml/kg/min" aggregate="mean" label="Cardio fitness chart" /> : null}
       <T variant="label">What your number means</T>
       <T>{view.levelWords}</T>
       {cardio ? <T>{cardio.compare.words}</T> : null}
@@ -374,6 +370,7 @@ function MinutesDetail({ view, goal }: { view: FitnessSnapshot; goal: NutritionG
         }}
         detail={minutes.words}
       />
+      <FitnessSeries points={minutes.series ?? []} unit="min" aggregate="sum" label="Active minutes chart" />
       <T variant="label">What your number means</T>
       <T>{minutes.words}</T>
       <T variant="label">{whyGoalMatters(goal)}</T>
@@ -382,7 +379,7 @@ function MinutesDetail({ view, goal }: { view: FitnessSnapshot; goal: NutritionG
   );
 }
 
-function RestingDetail({ view, goal, ink }: { view: FitnessSnapshot; goal: NutritionGoal | null; ink: (tone: FitnessTone) => string }) {
+function RestingDetail({ view, goal }: { view: FitnessSnapshot; goal: NutritionGoal | null }) {
   const resting = view.resting;
   if (!resting) return null;
   return (
@@ -391,11 +388,38 @@ function RestingDetail({ view, goal, ink }: { view: FitnessSnapshot; goal: Nutri
       <T>{RESTING_WHAT}</T>
       <T variant="label">What your number means</T>
       <T>{resting.reading ? `${resting.reading}. ` : ''}{resting.words}</T>
-      <TrendLine points={resting.points} color={ink(resting.tone)} />
-      <T variant="muted">Oldest to newest.</T>
+      <FitnessSeries points={resting.series ?? []} unit="bpm" aggregate="mean" label="Resting heart rate chart" />
       <T variant="label">{whyGoalMatters(goal)}</T>
       <T>{whyRestingMatters()}</T>
     </View>
+  );
+}
+
+function FitnessSeries({
+  points,
+  unit,
+  aggregate,
+  label,
+}: {
+  points: readonly { day: string; value: number }[];
+  unit: string;
+  aggregate: ChartAggregate;
+  label: string;
+}) {
+  const [period] = useStatPeriod();
+  const today = londonToday();
+  const window = rollingWindow(today, period);
+  if (points.length === 0) return null;
+  return (
+    <ReadingChart
+      points={points}
+      start={window.start}
+      end={window.end}
+      unit={unit}
+      aggregate={aggregate}
+      bucket={chartBucketForPeriod(period)}
+      accessibilityLabel={label}
+    />
   );
 }
 

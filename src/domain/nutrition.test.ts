@@ -859,7 +859,8 @@ describe('nutrition charts', () => {
   it('draws the charts with the svg already in the app, using the stats palette', () => {
     const charts = readFileSync('src/ui/NutritionCharts.tsx', 'utf8');
     const screen = readFileSync('src/app/(main)/nutrition.tsx', 'utf8');
-    expect(charts).toContain("from 'react-native-svg'");
+    expect(charts).toContain('<ReadingChart');
+    expect(readFileSync('src/ui/ReadingChart.tsx', 'utf8')).toContain("from 'react-native-svg'");
     expect(charts).toContain('statsToneColors');
     expect(charts).toContain('<ProgressRing');
     expect(charts).toContain('<CompareBars');

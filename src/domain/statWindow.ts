@@ -4,6 +4,7 @@ export {
   londonToday,
   minuteUnit,
   paceJudgement,
+  parseStatPeriod,
   periodDayCount,
   periodFairChance,
   periodHeading,

@@ -1,7 +1,7 @@
 import { periodActiveMinutes } from './fitnessSnapshot.ts';
 import { londonDay, type LondonWeek } from './healthInsights.ts';
 import { GOAL_LABEL, MIDDLEWEIGHT_LIMIT_KG, classBoxerLimitKg, classBoxerName, dayItems, isClassBoxer, sumItems, weightPointsFrom, type FoodLog, type NutritionGoal } from './nutrition.ts';
-import { minuteUnit, paceJudgement, periodHeading, periodPhrase, proteinPace, rollingWindow, scaledPeriodTarget, type StatPeriod } from './statWindow.ts';
+import { minuteUnit, paceJudgement, parseStatPeriod, periodHeading, periodPhrase, proteinPace, rollingWindow, scaledPeriodTarget, type StatPeriod } from './statWindow.ts';
 
 export type GoalTone = 'good' | 'watch' | 'info' | 'attention';
 
@@ -250,7 +250,7 @@ function cautionFor(goal: NutritionGoal | null, blocked: boolean): string | null
 }
 
 function chosenPeriod(input: GoalLedInput): StatPeriod {
-  return input.period === 'day' || input.period === '30' ? input.period : '7';
+  return parseStatPeriod(input.period);
 }
 
 function loggedProteinDays(input: GoalLedInput): number[] {

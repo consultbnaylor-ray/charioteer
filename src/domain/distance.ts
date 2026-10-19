@@ -25,7 +25,14 @@ export type ChartBar = {
 export type DistanceChart =
   | { kind: 'ring'; centre: string; unit: string; fill: number; status: string }
   | { kind: 'bars'; bars: ChartBar[]; max: number; target: number | null; layout?: 'column' | 'row' }
-  | { kind: 'line'; points: number[] }
+  | {
+    kind: 'line';
+    points: number[];
+    readings?: { day: string; value: number }[];
+    unit?: string;
+    start?: string;
+    end?: string;
+  }
   | {
     kind: 'range';
     value: number;

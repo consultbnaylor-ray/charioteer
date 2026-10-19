@@ -32,7 +32,7 @@ import {
 import { soberElapsed } from '@/domain/sober';
 import { daysUntil, showsSoberRecord, type Stage } from '@/domain/stage';
 import { proteinLoggedDays } from '@/domain/goalLed';
-import { periodDayCount, periodPhrase, proteinPace, rollingWindow, scaledPeriodTarget, type StatPeriod } from '@/domain/statWindow';
+import { parseStatPeriod, periodDayCount, periodPhrase, proteinPace, rollingWindow, scaledPeriodTarget, type StatPeriod } from '@/domain/statWindow';
 
 export type StatsTone = 'good' | 'watch' | 'info' | 'attention';
 
@@ -80,7 +80,7 @@ function tile(input: Omit<StatTileModel, 'signal'> & { tone: StatsTone; signal?:
 }
 
 function chosenPeriod(input: StatsOverviewInput): StatPeriod {
-  return input.period === 'day' || input.period === '30' ? input.period : '7';
+  return parseStatPeriod(input.period);
 }
 
 function periodIn(period: StatPeriod): string {
@@ -107,21 +107,34 @@ function dayLetter(day: string): string {
   return 'SMTWTFS'[parseIsoDay(day).getDay()] ?? '';
 }
 
-function moodBars(
-  days: { day: string; label: string; value: number | null }[],
-  tone: StatsTone,
-  max: number,
+function scoreLine(
+  days: readonly { day: string; value: number | null }[],
+  today: Date,
+  period: StatPeriod,
 ): DistanceChart {
+  const window = rollingWindow(isoDay(today), period);
+  const readings = days.flatMap((day) => (day.value == null ? [] : [{ day: day.day, value: day.value }]));
   return {
-    kind: 'bars',
-    max,
-    target: null,
-    bars: days.map((day) => ({
-      key: day.day,
-      label: day.label.slice(0, 1),
-      value: day.value ?? 0,
-      tone: day.value == null ? 'empty' : tone,
-    })),
+    kind: 'line',
+    points: readings.map((point) => point.value),
+    readings,
+    unit: '/10',
+    start: window.start,
+    end: window.end,
+  };
+}
+
+function datedLine(points: readonly { day: string; value: number }[], unit: string): DistanceChart {
+  if (points.length < 2) return { kind: 'none' };
+  const start = points[0]?.day ?? '';
+  const end = points[points.length - 1]?.day ?? start;
+  return {
+    kind: 'line',
+    points: points.map((point) => point.value),
+    readings: [...points],
+    unit,
+    start,
+    end,
   };
 }
 
@@ -216,7 +229,7 @@ function moodTile(input: StatsOverviewInput, today: Date): StatTileModel {
       meaning: `No check-in ${periodIn(period)}`,
       tone: 'info',
       series: [],
-      chart: moodBars(days.map((day) => ({ day: day.day, label: day.label, value: day.mood })), 'info', 10),
+      chart: scoreLine(days.map((day) => ({ day: day.day, value: day.mood })), today, period),
       href: '/check-in?section=mood',
     });
   }
@@ -247,7 +260,7 @@ function moodTile(input: StatsOverviewInput, today: Date): StatTileModel {
     tone,
     signal: meaning === 'Early days' ? 'Early days' : undefined,
     series: moods,
-    chart: moodBars(days.map((day) => ({ day: day.day, label: day.label, value: day.mood })), tone, 10),
+    chart: scoreLine(days.map((day) => ({ day: day.day, value: day.mood })), today, period),
     href: '/check-in?section=mood',
   });
 }
@@ -265,7 +278,7 @@ function cravingTile(input: StatsOverviewInput, today: Date): StatTileModel {
       meaning: `No check-in ${periodIn(period)}`,
       tone: 'info',
       series: [],
-      chart: moodBars(days.map((day) => ({ day: day.day, label: day.label, value: day.craving })), 'info', 10),
+      chart: scoreLine(days.map((day) => ({ day: day.day, value: day.craving })), today, period),
       href: '/check-in?section=craving',
     });
   }
@@ -278,7 +291,7 @@ function cravingTile(input: StatsOverviewInput, today: Date): StatTileModel {
     meaning,
     tone,
     series: cravings,
-    chart: moodBars(days.map((day) => ({ day: day.day, label: day.label, value: day.craving })), tone, 10),
+    chart: scoreLine(days.map((day) => ({ day: day.day, value: day.craving })), today, period),
     href: '/check-in?section=craving',
   });
 }
@@ -318,8 +331,9 @@ function weightTile(input: StatsOverviewInput): StatTileModel {
   const direction = weightDirection(points);
   const goal = input.nutrition.goal;
   const value = latest ? `${round1(latest.kg)} kg` : '—';
-  const series = points.slice(-8).map((point) => point.kg);
-  const chart: DistanceChart = series.length >= 2 ? { kind: 'line', points: series } : { kind: 'none' };
+  const dated = points.slice(-8).map((point) => ({ day: point.day, value: point.kg }));
+  const series = dated.map((point) => point.value);
+  const chart: DistanceChart = datedLine(dated, 'kg');
   if (direction === 'unknown') {
     return tile({
       id: 'weight',
@@ -532,12 +546,14 @@ function bodyTile(input: StatsOverviewInput): StatTileModel {
 
 function leanTile(input: StatsOverviewInput): StatTileModel | null {
   if (input.nutrition.goal !== 'body_builder') return null;
-  const series = [...input.bodyComposition]
+  const all = [...input.bodyComposition]
     .filter((row) => row.leanMassKg != null)
     .sort((left, right) => left.recordedOn.localeCompare(right.recordedOn))
-    .map((row) => row.leanMassKg as number);
-  const latest = series.at(-1);
-  const earlier = series.length >= 2 ? series[0] : null;
+    .map((row) => ({ day: row.recordedOn.slice(0, 10), value: row.leanMassKg as number }));
+  const dated = all.slice(-8);
+  const series = dated.map((point) => point.value);
+  const latest = all.at(-1)?.value;
+  const earlier = all.length >= 2 ? all[0]?.value ?? null : null;
   const delta = latest != null && earlier != null ? latest - earlier : null;
   const meaning = delta == null
     ? 'Log lean mass more than once'
@@ -553,8 +569,8 @@ function leanTile(input: StatsOverviewInput): StatTileModel | null {
     value: latest == null ? '—' : `${round1(latest)} kg`,
     meaning,
     tone,
-    series: series.slice(-8),
-    chart: series.length >= 2 ? { kind: 'line', points: series.slice(-8) } : { kind: 'none' },
+    series,
+    chart: datedLine(dated, 'kg'),
     href: '/nutrition?section=body',
   });
 }

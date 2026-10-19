@@ -34,23 +34,24 @@ describe('what Charioteer can see', () => {
     expect(healthReadSetChanged(older, APPLE_HEALTH_READ_TYPES)).toBe(true);
   });
 
-  it('counts sample days in the last 8 weeks and ignores today being empty', () => {
-    expect(HEALTH_SAMPLE_DAYS).toBe(56);
+  it('counts sample days in the last 12 months and ignores today being empty', () => {
+    expect(HEALTH_SAMPLE_DAYS).toBe(365);
     expect(daysInLookback(['2026-10-17', '2026-10-17'], now)).toBe(1);
     expect(daysInLookback(['2026-09-27', '2026-09-20'], now)).toBe(2);
-    expect(daysInLookback(['2026-08-01'], now)).toBe(0);
+    expect(daysInLookback(['2026-08-01'], now)).toBe(1);
+    expect(daysInLookback(['2025-01-01'], now)).toBe(0);
     expect(daysInLookback(['2026-10-18'], now)).toBe(0);
   });
 
   it('says asked and days, and does not claim a read was allowed', () => {
     expect(healthVisibilityLine({ title: 'Heart rate recovery', asked: 'yes', days: 0 })).toBe(
-      'Heart rate recovery: asked: yes; no data found in the last 8 weeks',
+      'Heart rate recovery: asked: yes; no data found in the last 12 months',
     );
     expect(healthVisibilityLine({ title: 'Body fat', asked: 'no', days: 1 })).toBe(
-      'Body fat: asked: no; data found in the last 8 weeks: 1 day',
+      'Body fat: asked: no; data found in the last 12 months: 1 day',
     );
     expect(healthVisibilityLine({ title: 'Lean mass', asked: 'yes', days: 3 })).toBe(
-      'Lean mass: asked: yes; data found in the last 8 weeks: 3 days',
+      'Lean mass: asked: yes; data found in the last 12 months: 3 days',
     );
     expect(healthVisibilityLine({ title: 'Workouts', asked: 'yes', days: 0 })).not.toMatch(/switched off|access is off/i);
     expect(HEALTH_VISIBILITY_NOTE).toContain('does not tell an app whether a read was allowed');

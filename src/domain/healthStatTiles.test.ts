@@ -663,9 +663,14 @@ describe('health stat tiles', () => {
     expect(readFileSync('src/ui/HealthStatBoard.tsx', 'utf8')).toContain('{valueWithPeriod(tile)}');
     expect(readFileSync('src/ui/HealthStatBoard.tsx', 'utf8')).toContain('if (!tile.unit)');
     expect(readFileSync('src/domain/healthStatTiles.ts', 'utf8')).not.toContain("caption: 'Last 28 days'");
-    expect(readFileSync('src/domain/healthStatTiles.ts', 'utf8')).toContain("day: 'Day'");
-    expect(readFileSync('src/domain/healthStatTiles.ts', 'utf8')).toContain("'7': '7 days'");
-    expect(readFileSync('src/domain/healthStatTiles.ts', 'utf8')).toContain("'30': '30 days'");
+    const periodFile = readFileSync('supabase/functions/_shared/statWindow.ts', 'utf8');
+    expect(periodFile).toContain("day: 'Day'");
+    expect(periodFile).toContain("'7': '7 days'");
+    expect(periodFile).toContain("'30': '30 days'");
+    expect(periodFile).toContain("'60': '60 days'");
+    expect(periodFile).toContain("'90': '90 days'");
+    expect(periodFile).toContain("'6m': '6 months'");
+    expect(periodFile).toContain("'12m': '12 months'");
   });
 
   it('switches totals, averages, the latest VO2 reading, and the activity guide with the period', () => {

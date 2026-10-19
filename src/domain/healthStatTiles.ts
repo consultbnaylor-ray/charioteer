@@ -14,7 +14,7 @@ import {
   VO2_WHAT,
   workoutMixReport,
 } from '@/domain/fitnessSnapshot';
-import { paceJudgement, rollingWindow, scaledPeriodTarget } from '@/domain/statWindow';
+import { paceJudgement, parseStatPeriod, periodDayCount, periodPhrase as sharedPeriodPhrase, rollingWindow, scaledPeriodTarget, STAT_PERIOD_LABEL, STAT_PERIODS, type StatPeriod } from '@/domain/statWindow';
 import { goalBandLegend, goalWeightRange, IBA_RULES_URL, NO_CUT } from '@/domain/goalWeightRange';
 import {
   BHF_HEART_RATE_URL,
@@ -66,18 +66,14 @@ export const HEALTH_SHEET_ASKED =
 const ADULT_HIDDEN = 'These adult ranges are not shown under 18. Nothing here is guessed.';
 const NO_BAND = 'There is no guideline band here.';
 
-/** Day, seven days, or thirty days. Seven days is the page default. */
-export const HEALTH_STAT_PERIODS = ['day', '7', '30'] as const;
-export type HealthStatPeriod = (typeof HEALTH_STAT_PERIODS)[number];
+/** The shared Day to 12 months choice. Seven days is the page default. */
+export const HEALTH_STAT_PERIODS = STAT_PERIODS;
+export type HealthStatPeriod = StatPeriod;
 
-export const HEALTH_STAT_PERIOD_LABEL: Record<HealthStatPeriod, string> = {
-  day: 'Day',
-  '7': '7 days',
-  '30': '30 days',
-};
+export const HEALTH_STAT_PERIOD_LABEL: Record<HealthStatPeriod, string> = STAT_PERIOD_LABEL;
 
 export function parseHealthStatPeriod(value: unknown): HealthStatPeriod {
-  return value === 'day' || value === '7' || value === '30' ? value : '7';
+  return parseStatPeriod(value);
 }
 
 /** Shown on the value line, beside the number, so the window is not a footnote. */
@@ -348,6 +344,8 @@ export type HealthStatTile = {
   hasGuideline: boolean;
   visual: HealthStatVisual;
   history: number[];
+  /** Dated readings behind the chart. Empty buckets are not filled in. */
+  readings: DayValue[];
   about: string;
   meaning: string;
   rangeNote: string | null;
@@ -459,6 +457,7 @@ function heartBandTile(item: CatalogItem, input: HealthStatBoardInput, grown: bo
       hasGuideline: false,
       visual: spark(window.current, `${bpm} bpm`),
       history: nums(window.current),
+    readings: [...window.current],
       about,
       meaning: ADULT_HIDDEN,
       rangeNote: null,
@@ -494,6 +493,7 @@ function heartBandTile(item: CatalogItem, input: HealthStatBoardInput, grown: bo
       tone,
     },
     history: nums(window.current),
+    readings: [...window.current],
     about,
     meaning: 'The British Heart Foundation says a usual adult resting rate is 60 to 100 bpm. Below 60 can be normal if you are very fit. The band is the same for a day, a week, or a month.',
     rangeNote: null,
@@ -526,6 +526,7 @@ function sleepTile(item: CatalogItem, input: HealthStatBoardInput, grown: boolea
       hasGuideline: false,
       visual: spark(window.current, `${oneText(hours)} h`),
       history: nums(window.current),
+    readings: [...window.current],
       about,
       meaning: `${ADULT_HIDDEN} ${nights}`,
       rangeNote: null,
@@ -562,6 +563,7 @@ function sleepTile(item: CatalogItem, input: HealthStatBoardInput, grown: boolea
       tone,
     },
     history: nums(window.current),
+    readings: [...window.current],
     about,
     meaning: `The NHS says adults need 7 to 9 hours a night. That range is not stretched across a week or a month. ${nights}`,
     rangeNote: null,
@@ -624,6 +626,7 @@ function vo2Tile(item: CatalogItem, input: HealthStatBoardInput, grown: boolean)
     hasGuideline: band != null,
     visual,
     history: current.map((point) => Math.round(point.value * 10) / 10),
+    readings: current.map((point) => ({ day: point.day, value: Math.round(point.value * 10) / 10 })),
     about: VO2_WHAT,
     meaning: cardio?.compare.words ?? 'Apple Watch estimates this. Nothing here is guessed.',
     rangeNote: cardio?.compare.goalNote ?? null,
@@ -693,7 +696,7 @@ function mixTile(item: CatalogItem, input: HealthStatBoardInput): HealthStatTile
     valueText: whole(total),
     unit: 'min',
     period: periodLabel(period),
-    weeklyLine: period === '30' ? weeklyAverageWords(total, 30) : null,
+    weeklyLine: weeklyLineFor(period, total),
     status,
     tone: 'info',
     trend: MIX_HOW,
@@ -736,6 +739,7 @@ function hrvTile(item: CatalogItem, input: HealthStatBoardInput): HealthStatTile
     hasGuideline: false,
     visual: spark(window.current, `${ms} ms`),
     history: nums(window.current),
+    readings: [...window.current],
     about: 'Heart rate variability, in milliseconds (SDNN). Devices measure it in different ways.',
     meaning: 'There is no official UK target. This is the average of your own readings in this period.',
     rangeNote: 'There is no official UK target.',
@@ -839,6 +843,7 @@ function weightTile(
       tone,
     },
     history: nums(history),
+    readings: [...history],
     about,
     meaning,
     rangeNote: null,
@@ -909,6 +914,7 @@ function bodyFatTile(item: CatalogItem, input: HealthStatBoardInput, grown: bool
       tone,
     },
     history: nums(history),
+    readings: [...history],
     about,
     meaning: 'This is a descriptive band on this screen, not an NHS category.',
     rangeNote: 'Not an NHS category.',
@@ -966,6 +972,7 @@ function waistTile(
       tone,
     },
     history: nums(history),
+    readings: [...history],
     about,
     meaning: `Waist divided by height is ${ratio.toFixed(2)}. Under ${WAIST_HEIGHT_HEALTHY} is the healthy band on this screen.`,
     rangeNote: null,
@@ -991,6 +998,7 @@ function leanTile(item: CatalogItem, input: HealthStatBoardInput): HealthStatTil
     hasGuideline: false,
     visual: spark(window.current, `${oneText(kg)} kg`),
     history: nums(window.current),
+    readings: [...window.current],
     about: 'Lean mass: muscle, bone, and the rest of the body that is not fat. The unit is kilograms.',
     meaning: NO_BAND,
     rangeNote: NO_BAND,
@@ -1013,13 +1021,14 @@ function stepsTile(item: CatalogItem, input: HealthStatBoardInput): HealthStatTi
     valueText: whole(total),
     unit: 'steps',
     period: periodLabel(period),
-    weeklyLine: period === '30' ? weeklyAverageWords(total, 30, 'steps') : null,
+    weeklyLine: weeklyLineFor(period, total, 'steps'),
     status,
     tone: 'info',
     trend: movementTrend(window.current, window.previous, 'sum', 1, period),
     hasGuideline: false,
     visual: spark(window.current, `${whole(total)} steps`),
     history: nums(window.current),
+    readings: [...window.current],
     about: period === 'day' ? 'Steps in a day.' : `Steps over ${periodPhrase(period)}.`,
     meaning: 'There is no NHS or UK Chief Medical Officer step target.',
     rangeNote: status,
@@ -1038,7 +1047,7 @@ function energyTile(item: CatalogItem, input: HealthStatBoardInput): HealthStatT
     valueText: whole(shown),
     unit: 'kcal',
     period: periodLabel(period),
-    weeklyLine: period === '30' ? weeklyAverageWords(shown, 30, 'kcal') : null,
+    weeklyLine: weeklyLineFor(period, shown, 'kcal'),
     status: 'From the recent daily average.',
     tone: 'info',
     trend: null,
@@ -1078,13 +1087,14 @@ function workoutTile(item: CatalogItem, input: HealthStatBoardInput): HealthStat
     valueText: whole(total),
     unit: 'min',
     period: periodLabel(period),
-    weeklyLine: period === '30' ? weeklyAverageWords(total, 30) : null,
+    weeklyLine: weeklyLineFor(period, total),
     status: 'Logged workouts may not include walking.',
     tone: 'info',
     trend: movementTrend(window.current, window.previous, 'sum', 5, period),
     hasGuideline: false,
     visual,
     history: nums(window.current),
+    readings: [...window.current],
     about: `Workouts: minutes logged over ${periodPhrase(period)}. They may not include walking. The unit is minutes.`,
     meaning: 'This tile is the logged workouts. The activity-minute mark sits on active minutes.',
     rangeNote: 'Logged workouts may not include walking.',
@@ -1134,7 +1144,7 @@ function weeklyTile(item: CatalogItem, input: HealthStatBoardInput): HealthStatT
     valueText: whole(rounded),
     unit: 'min',
     period: periodLabel(period),
-    weeklyLine: period === '30' ? weeklyAverageWords(rounded, 30) : null,
+    weeklyLine: weeklyLineFor(period, rounded),
     status,
     tone,
     mark: pace.neutral ? pace.word : STATS_SIGNAL[tone],
@@ -1154,6 +1164,7 @@ function weeklyTile(item: CatalogItem, input: HealthStatBoardInput): HealthStatT
       neutral: pace.neutral,
     },
     history: nums(window.current),
+    readings: [...window.current],
     about: `Active minutes: time counted over ${periodPhrase(period)}. The unit is minutes.`,
     meaning: `The UK Chief Medical Officers recommend at least ${CMO_MODERATE_MINUTES_WEEK} minutes of moderate activity a week, or ${CMO_VIGOROUS_MINUTES_WEEK} minutes of vigorous activity. For ${periodPhrase(period)} that is at least ${whole(target)} minutes, or ${whole(vigorous)} minutes of vigorous activity. Logged workouts may not include walking, and this app cannot tell how hard the minutes were.`,
     rangeNote: null,
@@ -1188,6 +1199,7 @@ function plainSeriesTile(
     hasGuideline: false,
     visual: spark(window.current, `${shown} ${unit}`),
     history: nums(window.current),
+    readings: [...window.current],
     about,
     meaning: note,
     rangeNote: note,
@@ -1218,6 +1230,7 @@ function plainReading(
     hasGuideline: false,
     visual: spark(history, `${oneText(value)} ${unit}`),
     history: nums(history),
+    readings: [...history],
     about,
     meaning,
     rangeNote: null,
@@ -1228,11 +1241,12 @@ function plainReading(
 
 function finish(
   item: CatalogItem,
-  tile: Omit<HealthStatTile, 'id' | 'section' | 'title' | 'mark' | 'weeklyLine' | 'empty'> & {
+  tile: Omit<HealthStatTile, 'id' | 'section' | 'title' | 'mark' | 'weeklyLine' | 'empty' | 'readings'> & {
     title?: string;
     weeklyLine?: string | null;
     empty?: boolean;
     mark?: string;
+    readings?: DayValue[];
   },
 ): HealthStatTile {
   return {
@@ -1243,6 +1257,7 @@ function finish(
     weeklyLine: null,
     empty: false,
     ...tile,
+    readings: tile.readings ?? [],
   };
 }
 
@@ -1257,7 +1272,7 @@ function periodOf(input: HealthStatBoardInput): HealthStatPeriod {
 }
 
 function periodDays(period: HealthStatPeriod): number {
-  return period === 'day' ? 1 : period === '30' ? 30 : 7;
+  return periodDayCount(period);
 }
 
 /** The 150-minute week, scaled to the chosen period. 21 today, 150 in 7 days, 643 in 30 days. */
@@ -1267,25 +1282,26 @@ export function scaledActivityMinutes(weekly: number, period: HealthStatPeriod):
 
 function activityCaption(period: HealthStatPeriod, target: number): string {
   if (period === 'day') return `At least ${target} min today`;
-  return `At least ${target} min in ${period === '30' ? 30 : 7} days`;
+  const days = periodDayCount(period);
+  if (period === '6m') return `At least ${target} min in 6 months`;
+  if (period === '12m') return `At least ${target} min in 12 months`;
+  return `At least ${target} min in ${days} days`;
 }
 
 function periodLabel(period: HealthStatPeriod, night = false): string {
   if (period === 'day') return night ? PERIOD_LAST_NIGHT : PERIOD_TODAY;
+  if (period === '7') return PERIOD_LAST_7;
   if (period === '30') return PERIOD_LAST_30;
-  return PERIOD_LAST_7;
+  return sharedPeriodPhrase(period).replace(/^the /, '');
 }
 
 function periodPhrase(period: HealthStatPeriod): string {
-  if (period === 'day') return 'today';
-  if (period === '30') return 'the last 30 days';
-  return 'the last 7 days';
+  return sharedPeriodPhrase(period);
 }
 
 function noReadingsLine(period: HealthStatPeriod, night: boolean): string {
   if (period === 'day') return night ? 'No readings last night.' : 'No readings today.';
-  if (period === '30') return 'No readings in the last 30 days.';
-  return 'No readings in the last 7 days.';
+  return `No readings in ${sharedPeriodPhrase(period)}.`;
 }
 
 function windowStart(today: string, period: HealthStatPeriod): string {
@@ -1321,8 +1337,13 @@ function compactUkDay(iso: string, today: string): string {
 
 function olderThanPeriod(period: HealthStatPeriod, night: boolean): string {
   if (period === 'day') return night ? 'older than last night' : 'older than today';
-  if (period === '30') return 'older than the last 30 days';
-  return 'older than the last 7 days';
+  return `older than ${sharedPeriodPhrase(period)}`;
+}
+
+function weeklyLineFor(period: HealthStatPeriod, total: number, unit = 'min'): string | null {
+  const days = periodDayCount(period);
+  if (days <= 7) return null;
+  return weeklyAverageWords(total, days, unit);
 }
 
 function nightCountLine(count: number): string {
@@ -1392,8 +1413,9 @@ function movementTrend(
 
 function periodBefore(period: HealthStatPeriod): string {
   if (period === 'day') return 'the day before';
-  if (period === '30') return 'the 30 days before';
-  return 'the 7 days before';
+  if (period === '6m') return 'the 6 months before';
+  if (period === '12m') return 'the 12 months before';
+  return `the ${periodDayCount(period)} days before`;
 }
 
 function trendWords(latest: number, previous: number, epsilon: number, against: string): string {

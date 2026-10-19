@@ -15,7 +15,7 @@ let pending: Promise<HealthCatchUp> | null = null;
 
 /**
  * When the HealthKit read set has grown, ask for the full set and import the
- * last 8 weeks. A matching set does not show the sheet again.
+ * last 12 months. A matching set does not show the sheet again.
  */
 export function catchUpAppleHealthReads(repo: HealthSink): Promise<HealthCatchUp> {
   if (!pending) {

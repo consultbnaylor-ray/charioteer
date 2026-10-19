@@ -4,6 +4,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg from 'react-native-svg';
 
 import { isoDay, startOfLocalDay } from '@/domain/dates';
+import { chartBucketForPeriod } from '@/domain/readingChart';
+import { parseStatPeriod, rollingWindow, type StatPeriod } from '@/domain/statWindow';
 import { shownError } from '@/domain/errors';
 import {
   buildHealthStatBoard,
@@ -27,6 +29,7 @@ import {
   type AppleHealthTurnOn,
 } from '@/health/connection';
 import { CompareBars, ProgressRing, RangeTrack, ToneMark, TrendLine } from '@/ui/DistanceCharts';
+import { ReadingChart } from '@/ui/ReadingChart';
 import { DateField } from '@/ui/DateField';
 import { GoalLine } from '@/ui/GoalLine';
 import { statsToneColors } from '@/ui/statsPalette';
@@ -44,18 +47,19 @@ export function HealthStatBoard(
   },
 ) {
   const model = buildHealthStatBoard(input);
+  const period = parseStatPeriod(input.period);
   const [openId, setOpenId] = useState<string | null>(null);
   const open = model.sections.flatMap((section) => section.tiles).find((tile) => tile.id === openId) ?? null;
   if (model.sections.length === 0 && !model.missingLine) return null;
   return (
     <View style={{ gap: 14 }}>
       {model.sections.map((section) => (
-        <StatSection key={section.id} title={section.title} tiles={section.tiles} onOpen={setOpenId} />
+        <StatSection key={section.id} title={section.title} tiles={section.tiles} today={input.today} period={period} onOpen={setOpenId} />
       ))}
       {model.missingLine ? (
         <MissingReads line={model.missingLine} gaps={model.gaps} onTurnOn={input.onTurnOn} onSaveBody={input.onSaveBody} />
       ) : null}
-      <StatDetail tile={open} caveat={model.caveat} onClose={() => setOpenId(null)} onSetWorkoutBucket={input.onSetWorkoutBucket} />
+      <StatDetail tile={open} today={input.today} period={period} caveat={model.caveat} onClose={() => setOpenId(null)} onSetWorkoutBucket={input.onSetWorkoutBucket} />
     </View>
   );
 }
@@ -178,10 +182,14 @@ function BodyGapEntry({
 function StatSection({
   title,
   tiles,
+  today,
+  period,
   onOpen,
 }: {
   title: string;
   tiles: HealthStatTile[];
+  today: string;
+  period: StatPeriod;
   onOpen: (id: string) => void;
 }) {
   const theme = useAppTheme();
@@ -201,7 +209,7 @@ function StatSection({
       {open ? (
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
           {tiles.map((tile) => (
-            <StatTile key={tile.id} tile={tile} onOpen={() => onOpen(tile.id)} />
+            <StatTile key={tile.id} tile={tile} today={today} period={period} onOpen={() => onOpen(tile.id)} />
           ))}
         </View>
       ) : null}
@@ -209,17 +217,25 @@ function StatSection({
   );
 }
 
-function StatTile({ tile, onOpen }: { tile: HealthStatTile; onOpen: () => void }) {
+function StatTile({
+  tile,
+  today,
+  period,
+  onOpen,
+}: {
+  tile: HealthStatTile;
+  today: string;
+  period: StatPeriod;
+  onOpen: () => void;
+}) {
   const theme = useAppTheme();
+  const charted = tile.readings.length > 0;
   const spoken = `More info about ${tile.title}. ${valueWithPeriod(tile)}. ${tile.weeklyLine ?? ''} ${tile.mark}. ${tile.status}`;
   return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={spoken}
-      onPress={onOpen}
+    <View
       style={{
         flexGrow: 1,
-        flexBasis: '46%',
+        flexBasis: charted ? '100%' : '46%',
         minWidth: 148,
         gap: 6,
         padding: 8,
@@ -229,18 +245,21 @@ function StatTile({ tile, onOpen }: { tile: HealthStatTile; onOpen: () => void }
         backgroundColor: theme.colors.surface,
       }}
     >
-      <T variant="label">{tile.title}</T>
-      <TileValue tile={tile} />
-      {tile.empty ? null : <TileVisual visual={tile.visual} />}
-      {tile.empty || tile.visual.kind === 'ring' || tile.visual.kind === 'zone' ? null : (
-        <StatusMark tone={tile.tone} status={tile.status} word={tile.mark} />
-      )}
-      {!tile.empty && tile.history.length >= 2 && tile.visual.kind !== 'line' ? (
-        <TrendLine points={tile.history} color={statsToneColors(theme.scheme)[tile.tone].ink} />
-      ) : null}
-      {tile.trend ? <T variant="muted">{tile.trend}</T> : null}
-      <T variant="muted">More info</T>
-    </Pressable>
+      <Pressable accessibilityRole="button" accessibilityLabel={spoken} onPress={onOpen} style={{ gap: 6 }}>
+        <T variant="label">{tile.title}</T>
+        <TileValue tile={tile} />
+        {tile.empty ? null : <TileVisual visual={tile.visual} charted={charted} />}
+        {tile.empty || tile.visual.kind === 'ring' || tile.visual.kind === 'zone' ? null : (
+          <StatusMark tone={tile.tone} status={tile.status} word={tile.mark} />
+        )}
+        {!charted && !tile.empty && tile.history.length >= 2 && tile.visual.kind !== 'line' ? (
+          <TrendLine points={tile.history} color={statsToneColors(theme.scheme)[tile.tone].ink} />
+        ) : null}
+        {tile.trend ? <T variant="muted">{tile.trend}</T> : null}
+        <T variant="muted">More info</T>
+      </Pressable>
+      {charted ? <TileChart tile={tile} today={today} period={period} /> : null}
+    </View>
   );
 }
 
@@ -255,14 +274,35 @@ function TileValue({ tile }: { tile: HealthStatTile }) {
   );
 }
 
+const SUM_CHARTS = new Set(['steps', 'workouts', 'weekly_active_minutes']);
+
+function TileChart({ tile, today, period }: { tile: HealthStatTile; today: string; period: StatPeriod }) {
+  const window = rollingWindow(today, period);
+  const unit = tile.unit === 'h' ? 'hours' : tile.unit;
+  return (
+    <ReadingChart
+      points={tile.readings}
+      start={window.start}
+      end={window.end}
+      unit={unit}
+      aggregate={SUM_CHARTS.has(tile.id) ? 'sum' : 'mean'}
+      bucket={chartBucketForPeriod(period)}
+      accessibilityLabel={`${tile.title} chart`}
+    />
+  );
+}
+
 function valueWithPeriod(tile: HealthStatTile): string {
   if (!tile.unit) return `${tile.valueText} - ${tile.period}`;
   return `${tile.valueText} ${tile.unit} - ${tile.period}`;
 }
 
-function TileVisual({ visual }: { visual: HealthStatVisual }) {
+function TileVisual({ visual, charted = false }: { visual: HealthStatVisual; charted?: boolean }) {
   const theme = useAppTheme();
-  if (visual.kind === 'line') return <TrendLine points={visual.points} color={theme.colors.ink} />;
+  if (visual.kind === 'line') {
+    if (charted) return null;
+    return <TrendLine points={visual.points} color={theme.colors.ink} />;
+  }
   if (visual.kind === 'ring') {
     return (
       <ProgressRing
@@ -374,11 +414,15 @@ function WorkoutTypeChoices({
 
 function StatDetail({
   tile,
+  today,
+  period,
   caveat,
   onClose,
   onSetWorkoutBucket,
 }: {
   tile: HealthStatTile | null;
+  today: string;
+  period: StatPeriod;
   caveat: string;
   onClose: () => void;
   onSetWorkoutBucket?: (activityType: number, bucket: WorkoutBucket) => Promise<void>;
@@ -413,13 +457,14 @@ function StatDetail({
                 <T variant="label">What this is</T>
                 <T>{tile.about}</T>
                 <TileValue tile={tile} />
-                {tile.empty ? null : <TileVisual visual={tile.visual} />}
+                {tile.empty ? null : <TileVisual visual={tile.visual} charted={tile.readings.length > 0} />}
+                {tile.readings.length > 0 ? <TileChart tile={tile} today={today} period={period} /> : null}
                 {!tile.empty && detailShowsStatusAgain(tile.visual.kind) ? <StatusMark tone={tile.tone} status={tile.status} word={tile.mark} /> : null}
                 <T variant="label">What your number means</T>
                 <T>{tile.meaning}</T>
                 {tile.rangeNote && tile.rangeNote !== tile.meaning ? <T>{tile.rangeNote}</T> : null}
                 <WorkoutTypeChoices tile={tile} onSetWorkoutBucket={onSetWorkoutBucket} />
-                {!tile.empty && tile.history.length >= 2 ? <TrendLine points={tile.history} color={ink} /> : null}
+                {!tile.empty && tile.readings.length === 0 && tile.history.length >= 2 ? <TrendLine points={tile.history} color={ink} /> : null}
                 {tile.trend ? <T variant="muted">{tile.trend}</T> : null}
                 {tile.sourceUrl ? (
                   <Pressable

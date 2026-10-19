@@ -83,7 +83,7 @@ async function sampleDays(
   }
 }
 
-/** Asked is the sheet status. Days are samples in the last 8 weeks. Read permission stays hidden. */
+/** Asked is the sheet status. Days are samples in the last 12 months. Read permission stays hidden. */
 export async function readHealthVisibility(now = new Date()): Promise<HealthVisibilityReport> {
   if (!isHealthDataAvailable()) return { kind: 'unavailable' };
   const rows: HealthVisibilityRow[] = await Promise.all(APPLE_HEALTH_READ_TYPES.map(async (type) => ({

@@ -8,13 +8,13 @@
 import { APPLE_HEALTH_READ_TYPES } from '@/health/connection';
 import { isoDay } from '@/domain/dates';
 
-/** Eight weeks. Heart rate recovery, body fat, and lean mass use this window. */
-export const HEALTH_SAMPLE_DAYS = 56;
+/** A rolling year, so a 12-month chart can be filled from one HealthKit read. */
+export const HEALTH_SAMPLE_DAYS = 365;
 
 export const HEALTH_VISIBILITY_TITLE = 'What Charioteer can see';
 
 export const HEALTH_VISIBILITY_NOTE =
-  'iOS does not tell an app whether a read was allowed. Each line says whether Charioteer has asked, and whether a sample was found in the last 8 weeks. No data found means no sample came back.';
+  'iOS does not tell an app whether a read was allowed. Each line says whether Charioteer has asked, and whether a sample was found in the last 12 months. No data found means no sample came back.';
 
 export const HEALTH_ASK_AGAIN = 'Ask Health again';
 export const HEALTH_CHECK_AGAIN = 'Check again';
@@ -106,16 +106,16 @@ export function healthReadTitle(type: string): string {
 
 export function healthVisibilityLine(row: Pick<HealthVisibilityRow, 'title' | 'asked' | 'days'>): string {
   const asked = `asked: ${row.asked}`;
-  if (row.days <= 0) return `${row.title}: ${asked}; no data found in the last 8 weeks`;
+  if (row.days <= 0) return `${row.title}: ${asked}; no data found in the last 12 months`;
   const days = row.days === 1 ? '1 day' : `${row.days} days`;
-  return `${row.title}: ${asked}; data found in the last 8 weeks: ${days}`;
+  return `${row.title}: ${asked}; data found in the last 12 months: ${days}`;
 }
 
 export function unaskedHealthTypes(rows: readonly Pick<HealthVisibilityRow, 'type' | 'asked'>[]): string[] {
   return rows.filter((row) => row.asked === 'no').map((row) => row.type);
 }
 
-/** A type not yet asked, or asked with nothing in the last 8 weeks. */
+/** A type not yet asked, or asked with nothing in the last 12 months. */
 export function healthVisibilityHasGaps(report: HealthVisibilityReport | null): boolean {
   return healthMissingReadings(report).length > 0;
 }

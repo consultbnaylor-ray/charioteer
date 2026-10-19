@@ -16,6 +16,7 @@ import {
   HEALTH_METRICS,
   latestReading,
   seriesForWindow,
+  shiftDay,
   type HealthInsightKind,
 } from '@/domain/healthInsights';
 import { healthShareLabel, toggleHealthKind } from '@/domain/profileSharing';
@@ -32,6 +33,9 @@ import {
   type WeightUnitMode,
 } from '@/domain/weightEntry';
 import { healthFigure } from '@/domain/measureFigures';
+import { periodDayCount } from '@/domain/statWindow';
+import { useStatPeriod } from '@/health/useStatPeriod';
+import { ReadingChart } from '@/ui/ReadingChart';
 import { DateField } from '@/ui/DateField';
 import { GuidanceRange } from '@/ui/GuidanceRange';
 import { HealthFigureView } from '@/ui/MeasuredFigure';
@@ -41,8 +45,6 @@ import { HealthChart } from '@/ui/HealthChart';
 import { ScrollTarget } from '@/ui/ScrollTarget';
 import { useAppTheme } from '@/ui/theme';
 import { Card, Choice, Field, playSavedHaptic, T } from '@/ui/ui';
-
-const RANGES = [7, 30, 90] as const;
 
 export function HealthBoard({
   samples,
@@ -148,7 +150,8 @@ function MetricCard({
   onWeightDraftChange?: (draft: WeightReadingDraft | null) => void;
   weightReset: number;
 }) {
-  const [range, setRange] = useState<(typeof RANGES)[number]>(7);
+  const [period] = useStatPeriod();
+  const range = periodDayCount(period);
   const [heightText, setHeightText] = useState(heightCm == null ? '' : String(heightCm));
   const [heightError, setHeightError] = useState<string | null>(null);
   const [heightSaved, setHeightSaved] = useState<string | null>(null);
@@ -244,11 +247,6 @@ function MetricCard({
       ) : null}
       <GuidanceRange guidance={guidance} />
       {kind === 'hrv_sdnn' ? <HrvExplainer /> : null}
-      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-        {RANGES.map((days) => (
-          <Choice key={days} label={`${days}d`} selected={range === days} onPress={() => setRange(days)} />
-        ))}
-      </View>
       <HealthChart kind={kind} shape={chart} today={today} windowDays={range} points={points} />
       {kind === 'weight_kg' ? (
         <WaistHistory rows={snap.bodyComposition} today={today} windowDays={range} />
@@ -399,9 +397,20 @@ function WaistHistory({
       {history.points.length === 0 ? (
         <T variant="muted">{`No waist readings in the last ${windowDays} days.`}</T>
       ) : (
-        history.points.map((point) => (
-          <T key={point.day}>{`${formatWaistCm(point.cm)} · ${formatUkCompactDay(point.day)}`}</T>
-        ))
+        <>
+          <ReadingChart
+            points={history.points.map((point) => ({ day: point.day, value: point.cm }))}
+            start={shiftDay(today, -(windowDays - 1))}
+            end={today}
+            unit="cm"
+            aggregate="mean"
+            bucket={windowDays <= 90 ? 'day' : windowDays <= 200 ? 'week' : 'month'}
+            accessibilityLabel="Waist chart"
+          />
+          {history.points.map((point) => (
+            <T key={point.day}>{`${formatWaistCm(point.cm)} · ${formatUkCompactDay(point.day)}`}</T>
+          ))}
+        </>
       )}
       {history.averageCm != null ? <T variant="muted">{`Average ${formatWaistCm(history.averageCm)}`}</T> : null}
     </View>

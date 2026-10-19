@@ -1,6 +1,5 @@
-import { useMemo, useState, type ReactNode } from 'react';
+import { useMemo, type ReactNode } from 'react';
 import { View } from 'react-native';
-import Svg, { Circle, Line } from 'react-native-svg';
 
 import type { ChartBar } from '@/domain/distance';
 import type { FoodLog, NutritionGoal, TodayRing, TrendDay } from '@/domain/nutrition';
@@ -12,17 +11,18 @@ import {
   loggingDots,
   macroSplit,
   nutritionTrendDays,
-  smoothWeight,
   sumItems,
   todayRing,
   trendCaption,
   waterProgress,
   weightTrendLine,
 } from '@/domain/nutrition';
+import { chartBucketForPeriod } from '@/domain/readingChart';
 import type { StatsTone } from '@/domain/statsOverview';
-import { paceJudgement, periodPhrase, proteinPace, type StatPeriod } from '@/domain/statWindow';
+import { londonToday, paceJudgement, periodDayCount, periodHeading, periodPhrase, proteinPace, rollingWindow, type StatPeriod } from '@/domain/statWindow';
 import { useStatPeriod } from '@/health/useStatPeriod';
-import { CompareBars, ProgressRing, useChartMotion } from '@/ui/DistanceCharts';
+import { CompareBars, ProgressRing } from '@/ui/DistanceCharts';
+import { ReadingChart } from '@/ui/ReadingChart';
 import { statsToneColors } from '@/ui/statsPalette';
 import { StatPeriodToggle } from '@/ui/StatPeriodToggle';
 import { useAppTheme } from '@/ui/theme';
@@ -53,7 +53,7 @@ export function NutritionBoard({
   progressSwitch?: ReactNode;
 }) {
   const [period] = useStatPeriod();
-  const span = period === 'day' ? 1 : period === '30' ? 30 : 7;
+  const span = periodDayCount(period);
   const picture = useMemo(() => {
     const days = nutritionTrendDays(logs, today, span);
     const logged = days.filter((day) => day.logged);
@@ -138,27 +138,13 @@ export function NutritionBoard({
       </Card>
 
       <Card>
-        <T variant="label">{period === 'day' ? 'Today' : period === '30' ? 'Last 30 days' : 'Last 7 days'}</T>
+        <T variant="label">{periodHeading(period)}</T>
         {loggedDays ? (
           <>
             {hideCalories ? null : (
-              <TrendBars
-                title="Energy"
-                kind="kcal"
-                days={trend.days}
-                pick={(day) => day.kcal}
-                target={kcalTarget}
-                unit="kcal"
-              />
+              <LoggedSeries title="Energy" today={today} period={period} days={trend.days} pick={(day) => day.kcal} target={kcalTarget} unit="kcal" />
             )}
-            <TrendBars
-              title="Protein"
-              kind="protein"
-              days={trend.days}
-              pick={(day) => day.proteinG}
-              target={proteinTarget}
-              unit="g"
-            />
+            <LoggedSeries title="Protein" today={today} period={period} days={trend.days} pick={(day) => day.proteinG} target={proteinTarget} unit="g" />
             <T variant="muted">{trend.caption}</T>
           </>
         ) : (
@@ -183,8 +169,7 @@ export function NutritionBoard({
 
 function figureLabel(name: string, period: StatPeriod): string {
   if (period === 'day') return `${name} today`;
-  if (period === '30') return `${name} in last 30 days`;
-  return `${name} in last 7 days`;
+  return `${name} in ${periodPhrase(period).replace(/^the /, '')}`;
 }
 
 function alignProteinCentre(ring: TodayRing, average: number): TodayRing {
@@ -251,53 +236,24 @@ export function WeightTrendChart({
   points: readonly { day: string; kg: number }[];
   goal: NutritionGoal | null;
 }) {
-  const theme = useAppTheme();
-  const motion = useChartMotion();
-  const ink = statsToneColors(theme.scheme).info.ink;
-  const [width, setWidth] = useState(0);
-  const series = smoothWeight(points);
+  const [period] = useStatPeriod();
+  const today = londonToday();
+  const window = rollingWindow(today, period);
   const caption = weightTrendLine(points, goal);
-  if (series.length < 2) return <T variant="muted">{caption}</T>;
-  const values = series.flatMap((point) => [point.kg, point.smooth]);
-  const low = Math.min(...values);
-  const high = Math.max(...values);
-  const span = high - low || 1;
-  const height = 120;
-  const yFor = (kg: number) => 12 + (1 - (kg - (low - span * 0.15)) / (span * 1.3)) * (height - 24);
-  const xFor = (index: number) => {
-    if (series.length <= 1 || width <= 0) return 0;
-    return 8 + (index / (series.length - 1)) * (width - 16);
-  };
+  const readings = points
+    .filter((point) => point.day >= window.start && point.day <= window.end)
+    .map((point) => ({ day: point.day, value: point.kg }));
   return (
     <View accessibilityLabel={caption} style={{ gap: 8 }}>
-      <View onLayout={(event) => setWidth(Math.round(event.nativeEvent.layout.width))} style={{ overflow: 'hidden' }}>
-        {width > 0 ? (
-          <View style={{ width: Math.max(1, width * motion), overflow: 'hidden' }}>
-            <Svg width={width} height={height}>
-              {series.slice(1).map((point, index) => {
-                const previous = series[index];
-                if (!previous) return null;
-                return (
-                  <Line
-                    key={point.day}
-                    x1={xFor(index)}
-                    y1={yFor(previous.smooth)}
-                    x2={xFor(index + 1)}
-                    y2={yFor(point.smooth)}
-                    stroke={ink}
-                    strokeWidth={2}
-                  />
-                );
-              })}
-              {series.map((point, index) => (
-                <Circle key={point.day} cx={xFor(index)} cy={yFor(point.kg)} r={3.5} fill={ink} />
-              ))}
-            </Svg>
-          </View>
-        ) : (
-          <View style={{ height }} />
-        )}
-      </View>
+      <ReadingChart
+        points={readings}
+        start={window.start}
+        end={window.end}
+        unit="kg"
+        aggregate="mean"
+        bucket={chartBucketForPeriod(period)}
+        accessibilityLabel="Weight chart"
+      />
       <T variant="muted">{caption}</T>
     </View>
   );
@@ -371,55 +327,44 @@ function FatBar({ unsaturated, other, caption }: { unsaturated: number; other: n
   );
 }
 
-function barTone(kind: 'kcal' | 'protein', amount: number, logged: boolean, target: number | null): ChartBar['tone'] {
-  if (!logged) return 'empty';
-  if (target == null || target <= 0) return 'info';
-  if (kind === 'protein') return amount >= target ? 'good' : 'info';
-  return amount > target ? 'watch' : 'good';
-}
-
-function TrendBars({
+function LoggedSeries({
   title,
-  kind,
+  today,
+  period,
   days,
   pick,
   target,
   unit,
 }: {
   title: string;
-  kind: 'kcal' | 'protein';
+  today: string;
+  period: StatPeriod;
   days: readonly TrendDay[];
   pick: (day: TrendDay) => number;
   target: number | null;
   unit: string;
 }) {
-  const theme = useAppTheme();
-  const amounts = days.map((day) => pick(day));
-  const top = Math.max(...amounts, target != null && target > 0 ? target : 0, 1);
+  const window = rollingWindow(today, period);
+  const points = days.flatMap((day) => {
+    if (!day.logged) return [];
+    const value = pick(day);
+    if (!(value > 0)) return [];
+    return [{ day: day.day, value }];
+  });
   return (
-    <View accessibilityLabel={`${title} over ${days.length} days`} style={{ gap: 6 }}>
+    <View accessibilityLabel={`${title} chart`} style={{ gap: 6 }}>
       <T variant="label">{title}</T>
-      <CompareBars
-        max={top}
-        target={target != null && target > 0 ? target : null}
-        showLabels={days.length <= 7}
-        bars={days.map((day, index) => ({
-          key: day.day,
-          label: weekdayLetter(day.day),
-          value: amounts[index] ?? 0,
-          tone: barTone(kind, amounts[index] ?? 0, day.logged, target),
-          missing: day.logged ? undefined : 'line',
-        }))}
+      <ReadingChart
+        points={points}
+        start={window.start}
+        end={window.end}
+        unit={unit}
+        aggregate="mean"
+        bucket={chartBucketForPeriod(period)}
+        accessibilityLabel={`${title} chart`}
       />
-      {days.length > 7 ? (
-        <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-          {axisLabels(days.map((day) => day.day)).map((label) => (
-            <T key={label.key} style={{ fontSize: 11 * theme.scale, lineHeight: 14 * theme.scale, color: theme.colors.muted }}>{label.text}</T>
-          ))}
-        </View>
-      ) : null}
       {target != null && target > 0 ? (
-        <T variant="muted">{`Dashed line: ${target.toLocaleString('en-GB')} ${unit} target.`}</T>
+        <T variant="muted">{`Target ${target.toLocaleString('en-GB')} ${unit}.`}</T>
       ) : null}
     </View>
   );
@@ -485,24 +430,3 @@ function SnackBar({ label, value, height }: { label: string; value: number; heig
   );
 }
 
-function axisLabels(days: string[]): { key: string; text: string }[] {
-  const first = days[0];
-  const middle = days[Math.floor(days.length / 2)];
-  const last = days[days.length - 1];
-  return [first, middle, last].filter((day): day is string => Boolean(day)).map((day) => ({
-    key: day,
-    text: compactDay(day),
-  }));
-}
-
-function weekdayLetter(iso: string): string {
-  const [year, month, day] = iso.split('-').map(Number);
-  const date = new Date(Date.UTC(year ?? 1970, (month ?? 1) - 1, day ?? 1));
-  return 'SMTWTFS'[date.getUTCDay()] ?? '';
-}
-
-function compactDay(iso: string): string {
-  const [year, month, day] = iso.split('-').map(Number);
-  const date = new Date(Date.UTC(year ?? 1970, (month ?? 1) - 1, day ?? 1));
-  return date.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', timeZone: 'UTC' });
-}

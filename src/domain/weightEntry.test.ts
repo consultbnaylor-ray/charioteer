@@ -78,7 +78,8 @@ describe('weight entry', () => {
     expect(history).not.toContain('ShareOnProfile');
     expect(board).toContain('<WaistHistory');
     expect(board).toContain('windowDays={range}');
-    expect(board).toContain("label={`${days}d`}");
+    expect(board).toContain('useStatPeriod');
+    expect(board).toContain('periodDayCount(period)');
     const screen = readFileSync('src/app/(main)/health.tsx', 'utf8');
     expect(screen).toContain('label="Save reading"');
     expect(screen).toContain('!value.trim() && weightDraft == null');

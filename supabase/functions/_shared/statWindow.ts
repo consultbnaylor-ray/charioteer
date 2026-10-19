@@ -1,14 +1,33 @@
 import { londonDay, shiftDay } from './healthInsights.ts';
 
-/** Day, seven days, or thirty days. Seven days is the shared default. */
-export const STAT_PERIODS = ['day', '7', '30'] as const;
+/** Day through 12 months. Seven days is the shared default. */
+export const STAT_PERIODS = ['day', '7', '30', '60', '90', '6m', '12m'] as const;
 export type StatPeriod = (typeof STAT_PERIODS)[number];
 
 export const STAT_PERIOD_LABEL: Record<StatPeriod, string> = {
   day: 'Day',
   '7': '7 days',
   '30': '30 days',
+  '60': '60 days',
+  '90': '90 days',
+  '6m': '6 months',
+  '12m': '12 months',
 };
+
+const PERIOD_DAYS: Record<StatPeriod, number> = {
+  day: 1,
+  '7': 7,
+  '30': 30,
+  '60': 60,
+  '90': 90,
+  '6m': 183,
+  '12m': 365,
+};
+
+/** Unknown values stay on 7 days, so an older client cannot pick a window this build does not know. */
+export function parseStatPeriod(value: unknown): StatPeriod {
+  return typeof value === 'string' && (STAT_PERIODS as readonly string[]).includes(value) ? value as StatPeriod : '7';
+}
 
 /**
  * A Day view before this hour in London has not had a fair chance.
@@ -17,9 +36,7 @@ export const STAT_PERIOD_LABEL: Record<StatPeriod, string> = {
 export const EARLY_DAY_HOUR = 17;
 
 export function periodDayCount(period: StatPeriod): number {
-  if (period === 'day') return 1;
-  if (period === '30') return 30;
-  return 7;
+  return PERIOD_DAYS[period] ?? 7;
 }
 
 /** Rolling window ending on `today`. Seven days is today and the six days before it, not Monday to Sunday. */
@@ -41,25 +58,32 @@ export function scaledPeriodTarget(weekly: number, period: StatPeriod): number {
   return Math.round((weekly * periodDayCount(period)) / 7);
 }
 
+const PERIOD_PHRASE: Record<StatPeriod, string> = {
+  day: 'today',
+  '7': 'the last 7 days',
+  '30': 'the last 30 days',
+  '60': 'the last 60 days',
+  '90': 'the last 90 days',
+  '6m': 'the last 6 months',
+  '12m': 'the last 12 months',
+};
+
 /** Ring unit for active minutes. */
 export function minuteUnit(period: StatPeriod): string {
   if (period === 'day') return 'min today';
-  if (period === '30') return 'min in last 30 days';
-  return 'min in last 7 days';
+  return `min in ${PERIOD_PHRASE[period].replace(/^the /, '')}`;
 }
 
-/** "today", "the last 7 days", or "the last 30 days". */
+/** "today", "the last 7 days", or "the last 6 months". */
 export function periodPhrase(period: StatPeriod): string {
-  if (period === 'day') return 'today';
-  if (period === '30') return 'the last 30 days';
-  return 'the last 7 days';
+  return PERIOD_PHRASE[period] ?? PERIOD_PHRASE['7'];
 }
 
-/** Opening of a progress sentence: "Today", "Last 7 days", or "Last 30 days". */
+/** Opening of a progress sentence: "Today", "Last 7 days", or "Last 12 months". */
 export function periodHeading(period: StatPeriod): string {
   if (period === 'day') return 'Today';
-  if (period === '30') return 'Last 30 days';
-  return 'Last 7 days';
+  const phrase = PERIOD_PHRASE[period] ?? PERIOD_PHRASE['7'];
+  return `Last ${phrase.replace(/^the last /, '')}`;
 }
 
 export function londonHour(value: Date | string): number {

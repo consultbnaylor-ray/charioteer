@@ -265,7 +265,7 @@ describe('stats overview', () => {
     });
     expect(byId(tiles, 'water').chart).toMatchObject({ kind: 'ring', status: '1,650 ml left' });
     expect(byId(tiles, 'gratitude').chart).toMatchObject({ kind: 'ring', centre: '3', status: '4 lines to go' });
-    expect(byId(tiles, 'mood').chart.kind).toBe('bars');
+    expect(byId(tiles, 'mood').chart.kind).toBe('line');
     expect(byId(tiles, 'check-ins').chart.kind).toBe('bars');
     expect(byId(tiles, 'weight').chart.kind).toBe('line');
     expect(byId(tiles, 'calories').href).toBe('/nutrition?section=today');

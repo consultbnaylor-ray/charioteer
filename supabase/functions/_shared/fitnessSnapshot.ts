@@ -7,7 +7,7 @@
  * not a medical assessment.
  */
 import { mondayOf, shiftDay } from './healthInsights.ts';
-import { minuteUnit, paceJudgement, periodPhrase, rollingWindow, scaledPeriodTarget, type StatPeriod } from './statWindow.ts';
+import { minuteUnit, paceJudgement, parseStatPeriod, periodPhrase, rollingWindow, scaledPeriodTarget, type StatPeriod } from './statWindow.ts';
 import {
   CARRYING_FITNESS_NOTE,
   GOAL_LABEL,
@@ -73,6 +73,8 @@ export type FitnessRing = {
   words: string;
   signal?: string;
   neutral?: boolean;
+  /** Dated totals in the selected period. Days with no workout are omitted. */
+  series?: { day: string; value: number }[];
 };
 
 export type FitnessBand = {
@@ -99,6 +101,8 @@ export type FitnessTrend = {
   words: string;
   tone: FitnessTone;
   points: number[];
+  /** Dated readings in the selected period. Empty days are omitted. */
+  series?: { day: string; value: number }[];
   /** Window the reading was averaged over, or a latest-reading note. */
   period?: string;
   signal?: string;
@@ -136,7 +140,7 @@ export type FitnessSnapshot = {
   levelWords: string;
   estimate: string;
   missing: string | null;
-  cardio: (FitnessRing & { trend: number[]; compare: FitnessCompare }) | null;
+  cardio: (FitnessRing & { trend: number[]; series: { day: string; value: number }[]; compare: FitnessCompare }) | null;
   resting: FitnessTrend | null;
   minutes: FitnessRing | null;
   mix: {
@@ -559,18 +563,18 @@ function round1(value: number): number {
 
 export function buildFitnessSnapshot(input: FitnessSnapshotInput): FitnessSnapshot {
   const today = input.today;
-  const vo2 = dayValue(input.health, 'vo2_max', today, 56);
-  const resting = dayValue(input.health, 'resting_heart_rate', today, 56);
-  const hrv = dayValue(input.health, 'hrv_sdnn', today, 56);
-  const healthSleep = dayValue(input.health, 'sleep_hours', today, 56);
+  const period = parseStatPeriod(input.period);
+  const vo2 = dayValue(input.health, 'vo2_max', today, 365);
+  const resting = dayValue(input.health, 'resting_heart_rate', today, 365);
+  const hrv = dayValue(input.health, 'hrv_sdnn', today, 365);
+  const healthSleep = dayValue(input.health, 'sleep_hours', today, 365);
   const sleep = healthSleep.length
     ? healthSleep
     : (input.sleep ?? [])
-      .filter((row) => row.day <= today && row.day >= shiftDay(today, -55) && row.hours > 0)
+      .filter((row) => row.day <= today && row.day >= shiftDay(today, -364) && row.hours > 0)
       .map((row) => ({ day: row.day, value: row.hours }));
-  const walking = dayValue(input.health, 'walking_heart_rate', today, 56);
-  const recoveryDrop = dayValue(input.health, 'heart_rate_recovery', today, 56);
-  const period = input.period ?? '7';
+  const walking = dayValue(input.health, 'walking_heart_rate', today, 365);
+  const recoveryDrop = dayValue(input.health, 'heart_rate_recovery', today, 365);
   const window = rollingWindow(today, period);
   const active = periodActiveMinutes({
     samples: input.health,
@@ -587,9 +591,10 @@ export function buildFitnessSnapshot(input: FitnessSnapshotInput): FitnessSnapsh
   const conditioning = mixReport.conditioning;
   const other = mixReport.other;
   const mixTotal = mixReport.total;
-  const restingSplit = halves(resting);
-  const sleepSplit = halves(sleep);
-  const hrvSplit = halves(hrv);
+  const recentEnough = shiftDay(today, -55);
+  const restingSplit = halves(resting.filter((point) => point.day >= recentEnough));
+  const sleepSplit = halves(sleep.filter((point) => point.day >= recentEnough));
+  const hrvSplit = halves(hrv.filter((point) => point.day >= recentEnough));
   const rhrUp = restingSplit.earlier != null && restingSplit.recent != null && restingSplit.recent - restingSplit.earlier >= 5;
   const sleepDown = sleepSplit.earlier != null && sleepSplit.recent != null && sleepSplit.earlier - sleepSplit.recent >= 0.5;
   const easier = rhrUp && sleepDown;
@@ -638,6 +643,7 @@ export function buildFitnessSnapshot(input: FitnessSnapshotInput): FitnessSnapsh
     tone: vo2Level ? levelTone(vo2Level) : 'info' as const,
     words: levelWords,
     trend: vo2.slice(-8).map((point) => round1(point.value)),
+    series: vo2.filter((point) => point.day >= window.start && point.day <= today).map((point) => ({ day: point.day, value: round1(point.value) })),
     compare,
   };
 
@@ -660,6 +666,7 @@ export function buildFitnessSnapshot(input: FitnessSnapshotInput): FitnessSnapsh
     words: restingWords(restingSplit),
     tone: restingPace.neutral ? 'info' as const : rhrUp ? 'watch' as const : 'good' as const,
     points: (inPeriodResting.length ? inPeriodResting : resting).slice(-8).map((point) => Math.round(point.value)),
+    series: (inPeriodResting.length ? inPeriodResting : resting).map((point) => ({ day: point.day, value: Math.round(point.value) })),
     period: inPeriodResting.length ? periodPhrase(period) : 'latest reading',
     signal: restingPace.neutral ? restingPace.word : rhrUp ? 'Watch' : 'On track',
     neutral: restingPace.neutral,
@@ -683,6 +690,7 @@ export function buildFitnessSnapshot(input: FitnessSnapshotInput): FitnessSnapsh
     signal: minutesPace.neutral ? minutesPace.word : undefined,
     neutral: minutesPace.neutral,
     words: minutesWords(minutes, weeklySchedule, period, aim),
+    series: active.daily,
   } : null;
 
   const mix = mixReport.total > 0
@@ -898,7 +906,7 @@ export function periodActiveMinutes(input: {
   end?: string;
   overrides?: WorkoutBucketMap | null;
   sourceApps?: readonly WorkoutSourceMinute[];
-}): { minutes: number; days: number; report: WorkoutMixReport } {
+}): { minutes: number; days: number; report: WorkoutMixReport; daily: { day: string; value: number }[] } {
   const end = input.end ?? input.today;
   const report = workoutMixReport({
     samples: input.samples,
@@ -918,9 +926,12 @@ export function periodActiveMinutes(input: {
   if (days.size > 0) {
     let minutes = 0;
     for (const value of days.values()) minutes += value;
-    return { minutes: Math.round(minutes), days: days.size, report };
+    const daily = [...days.entries()]
+      .sort((left, right) => (left[0] < right[0] ? -1 : 1))
+      .map(([day, value]) => ({ day, value: Math.round(value) }));
+    return { minutes: Math.round(minutes), days: days.size, report, daily };
   }
-  return { minutes: report.total, days: report.typeDays + report.bucketDays, report };
+  return { minutes: report.total, days: report.typeDays + report.bucketDays, report, daily: [] };
 }
 
 /**
