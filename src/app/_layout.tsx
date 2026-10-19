@@ -19,6 +19,7 @@ import { hasCurrentConsents } from '@/domain/consents';
 import { font, ThemeProvider, useAppTheme } from '@/ui/theme';
 import { topSafeInset } from '@/ui/safeArea';
 import { KeyboardDoneBar } from '@/ui/keyboard';
+import { RootErrorBoundary } from '@/ui/RootErrorBoundary';
 import { Mark, T, Wordmark } from '@/ui/ui';
 
 SplashScreen.preventAutoHideAsync().catch(() => undefined);
@@ -40,9 +41,11 @@ export default function RootLayout() {
   if (!loaded && !error) return null;
 
   return (
-    <RepoProvider>
-      <ThemedShell />
-    </RepoProvider>
+    <RootErrorBoundary>
+      <RepoProvider>
+        <ThemedShell />
+      </RepoProvider>
+    </RootErrorBoundary>
   );
 }
 

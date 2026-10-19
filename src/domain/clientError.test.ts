@@ -42,4 +42,24 @@ describe('caught screen errors', () => {
     expect(method).not.toContain('this.userId()');
     expect(method).not.toContain('getUser(');
   });
+
+  it('covers the whole tree with a calm monochrome retry', () => {
+    const layout = readFileSync('src/app/_layout.tsx', 'utf8');
+    const boundary = readFileSync('src/ui/RootErrorBoundary.tsx', 'utf8');
+    expect(layout.indexOf('<RootErrorBoundary>')).toBeGreaterThan(-1);
+    expect(layout.indexOf('<RootErrorBoundary>')).toBeLessThan(layout.indexOf('<RepoProvider>'));
+    expect(layout.indexOf('</RootErrorBoundary>')).toBeGreaterThan(layout.indexOf('</RepoProvider>'));
+    expect(boundary).toContain("export const ROOT_ERROR = 'Something went wrong — Try again'");
+    expect(boundary).toContain('{ROOT_ERROR}');
+    expect(boundary).toContain('getDerivedStateFromError');
+    expect(boundary).toContain("backgroundColor: background");
+    expect(boundary).toContain("'#0C0C0C'");
+    expect(boundary).toContain("'#F2F2EE'");
+    expect(boundary).toContain("'#F3F3EE'");
+    expect(boundary).toContain("'#111111'");
+    expect(boundary).toContain('minHeight: 44');
+    expect(boundary).not.toContain('error.stack');
+    expect(boundary).not.toContain('componentStack');
+    expect(boundary).not.toMatch(/#[Ee]8|danger|red/i);
+  });
 });
