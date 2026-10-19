@@ -1,6 +1,8 @@
 import { Component, type ReactNode } from 'react';
 import { Pressable, Text, useColorScheme, View } from 'react-native';
 
+import { saveFatalLocally } from '@/domain/fatalError';
+
 /** Calm line for a crash of the whole tree. The press mounts the app again. */
 export const ROOT_ERROR = 'Something went wrong — Try again';
 
@@ -11,6 +13,10 @@ class Boundary extends Component<{ children: ReactNode }, State> {
 
   static getDerivedStateFromError(error: Error): Pick<State, 'error'> {
     return { error };
+  }
+
+  componentDidCatch(error: Error) {
+    void saveFatalLocally(error);
   }
 
   render() {

@@ -501,7 +501,8 @@ export interface Repository {
   /** Moves one chat's read line forward. An older time is ignored. */
   saveChatRead(connectionId: string, readThrough: string): Promise<void>;
   /** A caught screen error. Screen name, short message, and build only. */
-  logClientError(screen: string, message: string, appBuild: string): Promise<void>;
+  /** True when the row was stored. False leaves a local copy for a later launch. */
+  logClientError(screen: string, message: string, appBuild: string): Promise<boolean>;
   /** Writes the ticked actions and the limits. It does not call the model. */
   saveHealthPlan(plan: HealthPlan): Promise<void>;
   /** Asks Thumos for a new plan from this person's figures. Finished actions are left behind. */

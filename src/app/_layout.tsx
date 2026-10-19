@@ -1,3 +1,4 @@
+import Constants from 'expo-constants';
 import { Oswald_700Bold } from '@expo-google-fonts/oswald';
 import { Barlow_400Regular, Barlow_400Regular_Italic, Barlow_600SemiBold } from '@expo-google-fonts/barlow';
 import { useFonts } from 'expo-font';
@@ -15,12 +16,16 @@ import { RepoProvider, useRepository, useSnapshot } from '@/data';
 import { catchUpAppleHealthReads } from '@/health/catchUp';
 import { cancelScheduledNotifications, listenForMessageOpens, retryMessageNotifications } from '@/notifications/register';
 import { CONSENT_VERSION } from '@/data/catalogue';
+import { clientAppBuild } from '@/domain/clientError';
 import { hasCurrentConsents } from '@/domain/consents';
+import { installFatalHandler, uploadStoredFatal } from '@/domain/fatalError';
 import { font, ThemeProvider, useAppTheme } from '@/ui/theme';
 import { topSafeInset } from '@/ui/safeArea';
 import { KeyboardDoneBar } from '@/ui/keyboard';
 import { RootErrorBoundary } from '@/ui/RootErrorBoundary';
 import { Mark, T, Wordmark } from '@/ui/ui';
+
+installFatalHandler();
 
 SplashScreen.preventAutoHideAsync().catch(() => undefined);
 
@@ -90,6 +95,14 @@ function Chrome() {
       console.error('message open', error);
     }
   }, () => navigationReady.current && stackMounted.current), [router, repo]);
+
+  useEffect(() => {
+    if (!snap.ready || !snap.session) return;
+    void uploadStoredFatal(repo, clientAppBuild({
+      buildNumber: Constants.expoConfig?.ios?.buildNumber,
+      version: Constants.expoConfig?.version,
+    }));
+  }, [repo, snap.ready, snap.session]);
 
   useEffect(() => {
     if (Platform.OS !== 'ios' || !snap.ready || !snap.session || !snap.profile?.consentHealth) return;

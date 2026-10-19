@@ -1229,8 +1229,8 @@ export class DemoRepository implements Repository {
     this.chatReads.set(connectionId, readThrough);
   }
 
-  async logClientError(_screen: string, _message: string, _appBuild: string): Promise<void> {
-    return undefined;
+  async logClientError(_screen: string, _message: string, _appBuild: string): Promise<boolean> {
+    return false;
   }
 
   async saveTrainingSchedule(schedule: TrainingSchedule | null): Promise<void> {

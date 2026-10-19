@@ -1289,7 +1289,7 @@ export class SupabaseRepository implements Repository {
     }
   }
 
-  async logClientError(screen: string, message: string, appBuild: string): Promise<void> {
+  async logClientError(screen: string, message: string, appBuild: string): Promise<boolean> {
     try {
       const clip = (value: string, max: number) => value.replace(/\s+/g, ' ').trim().slice(0, max);
       const stored = this.snapshot.session?.userId ?? null;
@@ -1297,7 +1297,7 @@ export class SupabaseRepository implements Repository {
       const userId = stored ?? sessionUser;
       if (!userId) {
         console.error('client error log', 'no session', clip(screen, 80), clip(message, 300));
-        return;
+        return false;
       }
       const { error } = await this.client.from('client_errors').insert({
         user_id: userId,
@@ -1305,9 +1305,14 @@ export class SupabaseRepository implements Repository {
         message: clip(message, 300) || 'Unknown error',
         app_build: clip(appBuild, 40) || 'unknown',
       });
-      if (error) console.error('client error log', error.message);
+      if (error) {
+        console.error('client error log', error.message);
+        return false;
+      }
+      return true;
     } catch (error) {
       console.error('client error log', error);
+      return false;
     }
   }
 
