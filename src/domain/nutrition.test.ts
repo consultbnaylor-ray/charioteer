@@ -922,6 +922,12 @@ describe('nutrition charts', () => {
     expect(status).toContain('label="Try again"');
     expect(status).not.toContain('saveFoodLog');
     expect(log).toContain('<MealEstimateStatus');
+    const estimateButton = log.indexOf('label="Estimate from text"');
+    const statusAt = log.indexOf('<MealEstimateStatus');
+    const photoAt = log.indexOf('label="Take a photo"');
+    expect(estimateButton).toBeGreaterThan(-1);
+    expect(statusAt).toBeGreaterThan(estimateButton);
+    expect(photoAt).toBeGreaterThan(statusAt);
     expect(log).toContain('ready={estimateReady && draft?.estimated === true}');
     expect(log).toContain('error={estimateError}');
     expect(log).toContain('pendingLabel="Estimating..."');
@@ -941,6 +947,7 @@ describe('nutrition charts', () => {
     const textRead = screen.slice(screen.indexOf('function readText'), screen.indexOf('function readPhoto'));
     const photoRead = screen.slice(screen.indexOf('function readPhoto'), screen.indexOf('function samplePhoto'));
     const sampleRead = screen.slice(screen.indexOf('function samplePhoto'), screen.indexOf('function saveMeal'));
+    expect(textRead).toContain('Keyboard.dismiss()');
     expect(textRead).toContain('text.trim().length < 2');
     expect(textRead.indexOf('failEstimate(')).toBeLessThan(textRead.indexOf('estimateMeal'));
     expect(textRead).toContain('failEstimate(');

@@ -1,7 +1,7 @@
 import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { Platform, Pressable, ScrollView, Switch, View } from 'react-native';
+import { Keyboard, Platform, Pressable, ScrollView, Switch, View } from 'react-native';
 
 import { useRepository, useSnapshot } from '@/data';
 import type { FoodLogUpdate, NewHealthSample } from '@/data/types';
@@ -636,6 +636,7 @@ export default function Nutrition() {
   }
 
   function readText() {
+    Keyboard.dismiss();
     setEstimateAttempt('text');
     if (text.trim().length < 2) {
       failEstimate('Add a little more detail, or enter the meal yourself.');
@@ -1106,6 +1107,13 @@ export default function Nutrition() {
         <T>{mealLoggingLabel(logDay, new Date())}</T>
         <Field label="Describe the meal" value={text} onChangeText={setText} placeholder="2 eggs on toast" />
         <Button label="Estimate from text" pending={isPending('estimate')} pendingLabel="Estimating..." onPress={readText} />
+        <MealEstimateStatus
+          waiting={isPending('estimate') || isPending('photo') || isPending('sample')}
+          ready={estimateReady && draft?.estimated === true}
+          error={estimateError}
+          onRetry={retryEstimate}
+          onShow={estimateReady && draft?.estimated === true ? scrollToEstimate : undefined}
+        />
         <Button label="Take a photo" tone="quiet" pending={isPending('photo')} pendingLabel="Estimating..." onPress={() => readPhoto('camera')} />
         <Button label="Choose a photo" tone="quiet" pending={isPending('photo')} pendingLabel="Estimating..." onPress={() => readPhoto('library')} />
         {snap.mode === 'demo' ? (
@@ -1129,13 +1137,6 @@ export default function Nutrition() {
               photoBase64: null,
             });
           }}
-        />
-        <MealEstimateStatus
-          waiting={isPending('estimate') || isPending('photo') || isPending('sample')}
-          ready={estimateReady && draft?.estimated === true}
-          error={estimateError}
-          onRetry={retryEstimate}
-          onShow={estimateReady && draft?.estimated === true ? scrollToEstimate : undefined}
         />
         {savedDayNote ? (
           <View style={{ gap: 8 }}>
