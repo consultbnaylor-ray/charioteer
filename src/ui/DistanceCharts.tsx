@@ -113,6 +113,7 @@ export function ProgressRing({
   caption,
   signal,
   monochrome = false,
+  showStatus = true,
 }: {
   centre: string;
   unit: string;
@@ -126,6 +127,8 @@ export function ProgressRing({
   caption?: string;
   signal?: string;
   monochrome?: boolean;
+  /** The row beside a small ring can carry the status word instead. */
+  showStatus?: boolean;
 }) {
   const theme = useAppTheme();
   const motion = useChartMotion();
@@ -133,12 +136,12 @@ export function ProgressRing({
     ? { stroke: theme.colors.ink, centre: theme.colors.ink, muted: theme.colors.muted, track: theme.colors.line }
     : inkFor(tone, surface);
   const ring = size ?? (surface === 'tile' ? 92 : 120);
-  const stroke = ring < 100 ? 9 : 12;
+  const stroke = ring < 72 ? 7 : ring < 100 ? 9 : 12;
   const radius = (ring - stroke) / 2;
   const circumference = 2 * Math.PI * radius;
   const shown = Math.max(0, Math.min(1, fill)) * motion;
   const mid = ring / 2;
-  const centreSize = (ring < 100 ? 18 : 22) * theme.scale;
+  const centreSize = (ring < 72 ? (centre.length > 3 ? 13 : 16) : ring < 100 ? 18 : 22) * theme.scale;
   return (
     <View
       accessibilityElementsHidden={!spoken}
@@ -190,7 +193,7 @@ export function ProgressRing({
         </View>
       </View>
       {mark ? <SignalRow tone={tone} signal={signal} monochrome={monochrome} /> : null}
-      <T style={{ color: surface === 'tile' ? colors.centre : theme.colors.ink, textAlign: 'center' }}>{status}</T>
+      {showStatus ? <T style={{ color: surface === 'tile' ? colors.centre : theme.colors.ink, textAlign: 'center' }}>{status}</T> : null}
     </View>
   );
 }

@@ -182,7 +182,7 @@ function soberTile(input: StatsOverviewInput, today: string): StatTileModel {
     return tile({
       id: 'sober',
       title: 'Drink-free days',
-      value: goal != null ? `${free} of ${goal}` : String(free),
+      value: goal != null ? `${free} of ${goal} days` : `${free} days`,
       meaning: met ? 'On track' : `Drink-free days ${periodIn(period)}`,
       tone: met ? 'good' : 'info',
       series: days.map((day) => (input.drinkFreeOn.includes(day) ? 1 : 0)),
@@ -308,7 +308,7 @@ function checkInTile(input: StatsOverviewInput, today: Date): StatTileModel {
   return tile({
     id: 'check-ins',
     title: 'Check-ins',
-    value: `${count} of ${span}`,
+    value: `${count} of ${span} days`,
     meaning: count >= aim ? 'On track' : count === 0 ? `None ${periodIn(period)}` : 'A few days in',
     tone,
     series: days.map((day) => (day.mood == null ? 0 : 1)),

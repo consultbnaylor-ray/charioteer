@@ -109,11 +109,11 @@ describe('period windows', () => {
     expect(day.measures.find((item) => item.id === 'protein')).toMatchObject({
       centre: '122',
       signal: 'Early days',
-      status: 'Avg 122 g/day, target hit on 0 of 1 logged day',
+      status: 'Protein · average 122 g a day (target 140 g) · hit on 0 of 1 day you logged food',
     });
     expect(day.measures.find((item) => item.id === 'sessions')).toMatchObject({
       centre: '1',
-      status: '1 of 1',
+      status: 'Training · 1 of 1 planned training days done today',
       signal: 'On pace',
     });
     expect(day.measures.find((item) => item.id === 'weight')).toMatchObject({
@@ -132,8 +132,9 @@ describe('period windows', () => {
       period: '30',
       now: monday,
     });
-    expect(month.measures.find((item) => item.id === 'sessions')?.status).toBe('10 of 26');
-    expect(month.progressWords.startsWith('Last 30 days:')).toBe(true);
+    expect(month.measures.find((item) => item.id === 'sessions')?.status).toBe('Training · 10 of 26 planned training days done in the last 30 days');
+    expect(month.progressWords).toBe('Last 30 days');
+    expect(month.ticks.find((tick) => tick.id === 'sessions')?.statusWord).toBe('Not yet');
     const sameWeight = buildGoalLed({
       goal: 'elite_middle_boxer',
       weightKg: 83.8,

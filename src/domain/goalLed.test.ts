@@ -73,7 +73,7 @@ describe('goal led summary', () => {
     const short = buildGoalLed({ ...base, goal: 'lose_fat_build_muscle', todayProtein: 100, proteinTarget: 140 });
     expect(short.measures.find((item) => item.id === 'protein')).toMatchObject({
       centre: '100',
-      status: 'Avg 100 g/day, target hit on 0 of 1 logged day',
+      status: 'Protein · average 100 g a day (target 140 g) · hit on 0 of 1 day you logged food',
       signal: 'Early days',
       neutral: true,
     });
@@ -92,10 +92,12 @@ describe('goal led summary', () => {
       workoutDays: 3,
       workoutMinutes: 97,
     });
-    expect(logged.progressWords).toContain('protein is logged');
-    expect(logged.progressWords).toContain('training is 97 min');
-    expect(logged.progressWords).toContain('no calorie target yet');
-    expect(logged.progressWords).not.toContain('not logged yet');
+    const lines = logged.ticks.map((tick) => tick.label).join(' ');
+    expect(lines).toContain('Protein · average 7 g a day · 1 day you logged food · no protein target saved');
+    expect(lines).toContain('Training · 97 min in the last 7 days · no planned training days set');
+    expect(lines).toContain('Calories · 1,800 kcal today · no calorie target saved');
+    expect(lines).not.toContain('not logged yet');
+    expect(logged.progressWords).toBe('Last 7 days');
   });
 
   it('keeps a middleweight change small and does not turn a runner into a distance plan', () => {
@@ -127,12 +129,14 @@ describe('goal led summary', () => {
     expect(cruiser.caution).toMatch(/No rapid cut/);
     expect(cruiser.caution).toMatch(/doctor/i);
     expect(cruiser.matters).toMatch(/cruiserweight limit/);
-    expect(cruiser.measures.find((item) => item.id === 'weight')?.words).toContain('above the cruiserweight limit of 90.7 kg');
+    expect(cruiser.measures.find((item) => item.id === 'weight')?.words).toContain('Weight · 94 kg · cruiserweight limit 90.7 kg (200 lb) · above the class');
+    expect(cruiser.measures.find((item) => item.id === 'weight')?.words).toContain('Keep every meal');
+    expect(cruiser.measures.find((item) => item.id === 'weight')?.words).not.toMatch(/cut|sauna|skip/i);
     expect(goalFocusLine('elite_super_middle_boxer')).toContain('super middleweight');
     expect(goalFocusLine('elite_super_light_boxer')).toContain('super lightweight');
     const feather = buildGoalLed({ ...base, goal: 'elite_feather_boxer', weightKg: 62 });
     expect(feather.name).toBe('Elite Athlete (Featherweight Boxer)');
-    expect(feather.measures.find((item) => item.id === 'weight')?.words).toContain('above the featherweight limit of 57.2 kg');
+    expect(feather.measures.find((item) => item.id === 'weight')?.words).toContain('Weight · 62 kg · featherweight limit 57.2 kg (126 lb) · above the class');
   });
 
   it('averages protein across the London week, including Sunday', () => {
@@ -166,12 +170,14 @@ describe('goal led summary', () => {
     });
     const protein = view.measures.find((item) => item.id === 'protein');
     expect(protein?.centre).toBe('142');
-    expect(protein?.status).toBe('Avg 142 g/day, target hit on 4 of 6 logged days');
+    expect(protein?.status).toBe('Protein · average 142 g a day (target 140 g) · hit on 4 of 6 days you logged food');
     expect(protein?.signal).toBe('On pace');
     expect(protein?.tone).not.toBe('watch');
     expect(protein?.status).not.toBe('Nothing logged yet');
-    expect(view.progressWords).toContain('avg 142 g/day, target hit on 4 of 6 logged days');
-    expect(view.progressWords).not.toContain('protein is not logged yet');
+    expect(view.ticks.find((tick) => tick.id === 'protein')?.label).toBe(protein?.status);
+    expect(view.ticks.find((tick) => tick.id === 'protein')?.statusWord).toBe('Met');
+    expect(view.progressWords).toBe('Last 7 days');
+    expect(view.ticks.map((tick) => tick.label).join(' ')).not.toContain('not logged yet');
     expect(view.measures.find((item) => item.id === 'sessions')?.centre).toBe('2');
     expect(sunday.weightKg).toBe(92.8);
     expect(sunday.previousWeightKg).toBe(93.4);
@@ -222,7 +228,12 @@ describe('goal led summary', () => {
     expect(readFileSync('src/ui/YourGoal.tsx', 'utf8')).toContain('towardGoal(view.name)');
     expect(readFileSync('src/app/(main)/stats.tsx', 'utf8')).toContain('<GoalLine />');
     expect(readFileSync('src/app/(main)/health.tsx', 'utf8')).toContain('<GoalLine />');
-    expect(readFileSync('src/ui/YourGoal.tsx', 'utf8')).toContain('<PlanTick');
+    const goalCard = readFileSync('src/ui/YourGoal.tsx', 'utf8');
+    expect(goalCard).toContain('<ProgressRing');
+    expect(goalCard).toContain('monochrome');
+    expect(goalCard).toContain('size={64}');
+    expect(goalCard).toContain('statusWord');
+    expect(goalCard).toContain('label={view.progressWords}');
     const focus = goalFocusLine('lose_fat_build_muscle');
     expect(focus).toMatch(/protein/i);
     expect(focus).toMatch(/sessions you already do/i);

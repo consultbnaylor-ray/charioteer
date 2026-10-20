@@ -1,7 +1,7 @@
 import { periodActiveMinutes } from './fitnessSnapshot.ts';
 import { londonDay, type LondonWeek } from './healthInsights.ts';
-import { GOAL_LABEL, MIDDLEWEIGHT_LIMIT_KG, classBoxerLimitKg, classBoxerName, dayItems, isClassBoxer, sumItems, weightPointsFrom, type FoodLog, type NutritionGoal } from './nutrition.ts';
-import { minuteUnit, paceJudgement, parseStatPeriod, periodHeading, periodPhrase, proteinPace, rollingWindow, scaledPeriodTarget, type StatPeriod } from './statWindow.ts';
+import { GOAL_LABEL, MIDDLEWEIGHT_LIMIT_KG, PRO_BOXING_CLASSES, classBoxerLimitKg, classBoxerName, dayItems, isClassBoxer, sumItems, weightPointsFrom, type FoodLog, type NutritionGoal } from './nutrition.ts';
+import { paceJudgement, parseStatPeriod, periodHeading, periodPhrase, proteinPace, rollingWindow, scaledPeriodTarget, type StatPeriod } from './statWindow.ts';
 
 export type GoalTone = 'good' | 'watch' | 'info' | 'attention';
 
@@ -23,7 +23,12 @@ export type GoalMeasure = {
 export type GoalTick = {
   id: string;
   done: boolean;
+  /** Name, number, unit, and target. */
   label: string;
+  statusWord: 'Met' | 'Not yet';
+  centre: string;
+  unit: string;
+  fill: number;
 };
 
 export type GoalLed = {
@@ -259,11 +264,13 @@ function loggedProteinDays(input: GoalLedInput): number[] {
   return input.todayLogged && today > 0 ? [today] : [];
 }
 
-function proteinLine(average: number, hits: number, logged: number, hasTarget: boolean): string {
+function proteinLine(average: number, hits: number, logged: number, target: number | null): string {
   const avg = Math.round(average);
-  const dayWord = logged === 1 ? 'logged day' : 'logged days';
-  if (!hasTarget) return `Avg ${avg} g/day across ${logged} ${dayWord}`;
-  return `Avg ${avg} g/day, target hit on ${hits} of ${logged} ${dayWord}`;
+  const dayWord = logged === 1 ? 'day' : 'days';
+  if (target == null || target <= 0) {
+    return `Protein · average ${avg} g a day · ${logged} ${dayWord} you logged food · no protein target saved`;
+  }
+  return `Protein · average ${avg} g a day (target ${Math.round(target)} g) · hit on ${hits} of ${logged} ${dayWord} you logged food`;
 }
 
 function proteinMeasure(input: GoalLedInput): GoalMeasure {
@@ -285,7 +292,7 @@ function proteinMeasure(input: GoalLedInput): GoalMeasure {
   const centre = String(Math.round(average));
   if (target != null && target > 0) {
     const hits = days.filter((value) => value >= target).length;
-    const words = proteinLine(average, hits, days.length, true);
+    const words = proteinLine(average, hits, days.length, target);
     const pace = proteinPace({
       period: chosenPeriod(input),
       loggedDays: days.length,
@@ -313,7 +320,7 @@ function proteinMeasure(input: GoalLedInput): GoalMeasure {
     centre,
     unit: 'g',
     fill: 1,
-    status: proteinLine(average, 0, days.length, false),
+    status: proteinLine(average, 0, days.length, null),
     tone: 'info',
     words: 'No protein target is saved yet.',
   };
@@ -407,30 +414,26 @@ function sessionMeasure(input: GoalLedInput): GoalMeasure | null {
     met,
     behind: 'Watch',
   });
-  const phrase = periodPhrase(period);
+  const when = period === 'day' ? 'today' : `in ${periodPhrase(period)}`;
   const quiet = days === 0 && minutes === 0;
-  const status = quiet
+  const line = quiet
     ? 'Nothing logged yet'
     : aim
-      ? `${days} of ${aim}`
-      : `${minutes} ${minuteUnit(period)}`;
+      ? `Training · ${days} of ${aim} planned training days done ${when}`
+      : `Training · ${minutes} min ${when} · no planned training days set`;
   const tone: GoalTone = pace.neutral ? 'info' : met ? 'good' : quiet ? 'info' : pace.tone === 'watch' ? 'info' : pace.tone;
   const signal = pace.neutral ? pace.word : met ? 'On track' : 'Note';
   return {
     id: 'sessions',
     label: 'Training',
-    centre: String(days),
-    unit: days === 1 ? 'day' : 'days',
+    centre: quiet ? '0' : aim ? String(days) : String(minutes),
+    unit: quiet ? 'days' : aim ? `of ${aim}` : 'min',
     fill,
-    status,
+    status: line,
     tone,
     signal,
     neutral: pace.neutral,
-    words: aim
-      ? `${days} of ${aim} planned training days have a workout logged ${phrase}.`
-      : minutes > 0
-        ? `${minutes} workout minutes are logged ${phrase}.`
-        : `No workout minutes are logged ${phrase}.`,
+    words: line === 'Nothing logged yet' ? `No workout minutes are logged ${when}.` : `${line}.`,
   };
 }
 
@@ -454,6 +457,10 @@ function weightMeasure(input: GoalLedInput, hope: 'down' | 'steady' | 'up' | 'cl
       ? classBoxerLimitKg(input.goal) ?? MIDDLEWEIGHT_LIMIT_KG
       : num(input.weightClassKg) ?? MIDDLEWEIGHT_LIMIT_KG;
     const near = latest <= limit + 1;
+    const pounds = isClassBoxer(input.goal) ? PRO_BOXING_CLASSES[input.goal].limitLb : Math.round(limit * 2.2046226218);
+    const place = near ? 'near the class' : 'above the class';
+    const namedLimit = `${named} limit ${limit} kg (${pounds} lb)`;
+    const explicit = `Weight · ${round1(latest)} kg · ${namedLimit} · ${place}`;
     return {
       id: 'weight',
       label: 'Class',
@@ -462,13 +469,7 @@ function weightMeasure(input: GoalLedInput, hope: 'down' | 'steady' | 'up' | 'cl
       fill: latest > 0 ? clamp01(limit / latest) : 0,
       status: near ? 'Near the class' : 'Above the class',
       tone: near ? 'good' : 'watch',
-      words: isClassBoxer(input.goal)
-        ? near
-          ? `Weight is near the ${named} limit of ${limit} kg. Keep every meal.`
-          : `Weight is above the ${named} limit of ${limit} kg. Keep every meal. A small change only.`
-        : near
-          ? `Weight is near the ${limit} kg class. Keep every meal.`
-          : `Weight is above the ${limit} kg class. Keep every meal. A small change only.`,
+      words: near ? `${explicit}. Keep every meal.` : `${explicit}. Keep every meal. A small change only.`,
     };
   }
   const previous = num(input.previousWeightKg);
@@ -496,7 +497,9 @@ function weightMeasure(input: GoalLedInput, hope: 'down' | 'steady' | 'up' | 'cl
     fill: steady ? 1 : 0.6,
     status,
     tone: good ? 'good' : 'watch',
-    words: steady ? 'Weight is steady on the last two readings.' : `Weight is ${change > 0 ? 'up' : 'down'} ${Math.abs(change)} kg on the last two readings.`,
+    words: steady
+      ? `Weight · ${round1(latest)} kg · previous ${round1(previous)} kg · steady`
+      : `Weight · ${round1(latest)} kg · ${change > 0 ? 'up' : 'down'} ${Math.abs(change)} kg from ${round1(previous)} kg`,
   };
 }
 
@@ -514,7 +517,9 @@ function sleepMeasure(input: GoalLedInput): GoalMeasure {
     fill: usual ? 1 : hours < 7 ? clamp01(hours / 7) : clamp01(9 / hours),
     status: usual ? 'In the usual range' : hours < 7 ? 'Short' : 'Above the usual range',
     tone: usual ? 'good' : 'watch',
-    words: usual ? 'Sleep is in the usual 7 to 9 hour range.' : `Sleep was about ${round1(hours)} hours.${input.goal ? ` Recovery matters for ${GOAL_LABEL[input.goal]}.` : ''}`,
+    words: usual
+      ? `Sleep · ${round1(hours)} h · usual range 7 to 9 h · in the usual range`
+      : `Sleep · ${round1(hours)} h · usual range 7 to 9 h · ${hours < 7 ? 'short' : 'above the usual range'}${input.goal ? `. Recovery matters for ${GOAL_LABEL[input.goal]}` : ''}`,
   };
 }
 
@@ -548,7 +553,9 @@ function nudgesFor(input: GoalLedInput, measures: GoalMeasure[]): string[] {
   if (!input.goal) return [];
   const lines: string[] = [];
   const protein = measures.find((item) => item.id === 'protein');
-  if (protein?.tone === 'watch' && protein.words.startsWith('Avg')) lines.push(protein.words.endsWith('.') ? protein.words : `${protein.words}.`);
+  if (protein?.tone === 'watch' && protein.status !== 'Nothing logged yet') {
+    lines.push(protein.words.endsWith('.') ? protein.words : `${protein.words}.`);
+  }
   const sleep = measures.find((item) => item.id === 'sleep');
   if (sleep?.status === 'Short') lines.push(sleep.words);
   const weight = measures.find((item) => item.id === 'weight' && item.status === 'Above the class');
@@ -563,46 +570,77 @@ function nudgesFor(input: GoalLedInput, measures: GoalMeasure[]): string[] {
   return lines.slice(0, 2);
 }
 
+function firstSentence(words: string): string {
+  return words.split('. ')[0]?.replace(/\.$/, '') ?? words;
+}
+
 function tickLabel(measure: GoalMeasure, period: StatPeriod): string {
+  const phrase = periodPhrase(period);
   if (measure.id === 'protein') {
-    if (measure.status === 'Nothing logged yet') return 'Protein is not logged yet';
-    if (measure.words.startsWith('No protein target')) return 'Protein is logged';
-    if (measure.tone === 'good') return 'Protein is on track';
+    if (measure.status === 'Nothing logged yet') return `Protein · 0 g · nothing logged ${phrase}`;
     return measure.status;
   }
   if (measure.id === 'kcal') {
-    if (measure.status === 'Above') return 'Calories are above the target';
-    if (measure.status === 'Under') return 'Calories are under the target';
-    if (measure.status === 'No target yet') return 'No calorie target yet';
-    if (measure.status === 'Nothing logged yet') return 'Calories are not logged yet';
-    return 'Calories are in range';
+    if (measure.status === 'No target yet') {
+      const shown = Number(measure.centre);
+      if (Number.isFinite(shown) && shown > 0) {
+        return `Calories · ${shown.toLocaleString('en-GB')} kcal today · no calorie target saved`;
+      }
+      return 'Calories · no calorie target saved';
+    }
+    if (measure.status === 'Nothing logged yet') return 'Calories · 0 kcal · nothing logged today';
+    const target = measure.words.match(/([\d,]+) kcal/)?.[1];
+    const state = measure.status === 'Above'
+      ? 'above the target'
+      : measure.status === 'Under'
+        ? 'under the target'
+        : measure.status === 'Within'
+          ? 'within the target'
+          : measure.status === 'Close'
+            ? 'close to the target'
+            : measure.status === 'Enough'
+              ? 'at the target'
+              : 'in range';
+    const shown = Number(measure.centre).toLocaleString('en-GB');
+    return target
+      ? `Calories · ${shown} kcal today (target ${target} kcal) · ${state}`
+      : `Calories · ${shown} kcal today · ${state}`;
   }
   if (measure.id === 'sessions') {
-    if (measure.status === 'Nothing logged yet') return `No training logged ${periodPhrase(period)}`;
-    return `Training is ${measure.status}`;
+    if (measure.status === 'Nothing logged yet') return `Training · 0 days · nothing logged ${phrase}`;
+    return firstSentence(measure.words);
   }
   if (measure.id === 'sleep') {
-    if (measure.status === 'In the usual range') return 'Sleep is in the usual range';
-    if (measure.status === 'Short') return 'Sleep is short';
-    if (measure.status === 'Nothing logged yet') return 'Sleep is not logged yet';
-    return 'Sleep is above the usual range';
+    if (measure.status === 'Nothing logged yet') return `Sleep · nothing logged ${phrase}`;
+    return firstSentence(measure.words);
   }
-  if (measure.status === 'Above the class') return 'Weight is above the class';
-  if (measure.status === 'Near the class') return 'Weight is near the class';
-  if (measure.status === 'Steady') return 'Weight is steady';
-  if (measure.status === 'Down') return 'Weight is down';
-  if (measure.status === 'Up') return 'Weight is up';
-  if (measure.status === 'One reading') return 'Weight needs another reading';
-  return 'Weight is not logged yet';
+  if (measure.status === 'One reading') return `Weight · ${measure.centre} kg · one reading · another reading shows the change`;
+  if (measure.status === 'Nothing logged yet') return 'Weight · nothing logged yet';
+  return firstSentence(measure.words);
+}
+
+/** Met when the named target is reached. Early in a period can still be Met. */
+function targetMet(item: GoalMeasure): boolean {
+  if (item.status === 'Nothing logged yet' || item.status === 'No target yet' || item.status === 'One reading') return false;
+  if (item.id === 'protein') return /\(target \d[\d,]* g\)/.test(item.status) && item.fill >= 0.999;
+  if (item.id === 'sessions') return item.fill >= 0.999;
+  return item.tone === 'good';
 }
 
 function ticksFor(input: GoalLedInput, measures: GoalMeasure[]): GoalTick[] {
   if (!input.goal) return [];
-  return measures.map((item) => ({
-    id: item.id,
-    done: item.tone === 'good',
-    label: tickLabel(item, chosenPeriod(input)),
-  }));
+  return measures.map((item) => {
+    const done = targetMet(item);
+    return {
+      id: item.id,
+      done,
+      label: tickLabel(item, chosenPeriod(input)),
+      statusWord: done ? 'Met' : 'Not yet',
+      centre: item.centre,
+      unit: item.unit,
+      fill: item.fill,
+    };
+  });
 }
 
 /** What matters for the saved goal, from figures already logged. */
@@ -621,7 +659,7 @@ export function buildGoalLed(input: GoalLedInput): GoalLed {
   const measures = measuresFor(input);
   const ticks = ticksFor(input, measures);
   const progressWords = ticks.length
-    ? `${periodHeading(chosenPeriod(input))}: ${ticks.map((tick) => tick.label.charAt(0).toLowerCase() + tick.label.slice(1)).join(', ')}.`
+    ? periodHeading(chosenPeriod(input))
     : 'Log a meal, a workout, or a weight reading and this check will fill in.';
   return {
     name: GOAL_LABEL[input.goal],
@@ -639,6 +677,7 @@ export function goalProgressLine(input: GoalLedInput): string | null {
   const view = buildGoalLed(input);
   if (!view.name) return null;
   const nudge = view.nudges[0] ?? '';
-  const line = `How they're doing toward ${view.name}: ${view.progressWords}${nudge && !view.progressWords.includes(nudge) ? ` ${nudge}` : ''}`;
+  const detail = view.ticks.map((tick) => `${tick.label} (${tick.statusWord})`).join('. ');
+  const line = `How they're doing toward ${view.name}. ${view.progressWords}. ${detail}${nudge && !detail.includes(nudge) ? ` ${nudge}` : ''}`;
   return input.hideCalories ? line.replace(/\d[\d,]*\s*kcal/gi, 'the amount they set').replace(/\bkcal\b/gi, 'food') : line;
 }
