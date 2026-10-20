@@ -42,6 +42,7 @@ import { MeasureRingView } from '@/ui/MeasuredFigure';
 import { PlanTick } from '@/ui/PlanTick';
 import { statsToneColors } from '@/ui/statsPalette';
 import { useAppTheme } from '@/ui/theme';
+import { GarminTip } from '@/ui/GarminTip';
 import { Vo2EstimateNote } from '@/ui/Vo2EstimateNote';
 import { Button, Card, Choice, T, playSavedHaptic } from '@/ui/ui';
 
@@ -108,6 +109,7 @@ export function YourFitness({ onPlanOutdoor }: { onPlanOutdoor?: () => void }) {
     <Card>
       <StatPeriodToggle />
       <T variant="label">Your fitness</T>
+      <GarminTip />
       {view.level ? <T style={{ color: ink(view.level === 'Developing' ? 'watch' : 'good'), fontFamily: theme.font.bodyStrong }}>{view.level}</T> : null}
       <T>{view.levelWords}</T>
       <T variant="muted">{view.estimate}</T>

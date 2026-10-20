@@ -34,6 +34,7 @@ import { useStatPeriod } from '@/health/useStatPeriod';
 import { loadLastSynced, saveLastSynced } from '@/health/syncedAt';
 import { syncAppleHealth } from '@/health/sync';
 import { AppleHealthCard } from '@/ui/AppleHealthCard';
+import { GarminTip } from '@/ui/GarminTip';
 import { HealthVisibility } from '@/ui/HealthVisibility';
 import { GoalLine } from '@/ui/GoalLine';
 import { StatPeriodToggle } from '@/ui/StatPeriodToggle';
@@ -391,6 +392,7 @@ export default function Health() {
         onSee={() => setSeeRequest((current) => current + 1)}
         onTurnOn={turnOnFromRow}
       />
+      <GarminTip />
       <HealthVisibility
         report={visibility}
         pending={visibilityPending}
