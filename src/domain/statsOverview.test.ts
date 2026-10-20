@@ -119,7 +119,11 @@ describe('stats overview', () => {
     expect(byId(tiles, 'protein').tone).not.toBe('attention');
     expect(byId(tiles, 'quality').chart.kind).toBe('bars');
     expect(byId(tiles, 'quality').tone).toBe('watch');
+    expect(byId(tiles, 'quality').value).toBe('0 whole · 2 processed');
+    expect(byId(tiles, 'quality').periodLine).toBe('Last 7 days');
+    expect(byId(tiles, 'quality').processedNotes).toHaveLength(2);
     expect(byId(tiles, 'quality').meaning).toBe('2 items look highly processed');
+    expect(byId(tiles, 'quality').href).toBe('/nutrition?section=quality');
   });
 
   it('calls body fat within the healthy range and uses attention only under the BMI floor', () => {

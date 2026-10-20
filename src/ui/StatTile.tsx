@@ -1,10 +1,12 @@
 import { useRouter } from 'expo-router';
-import { View } from 'react-native';
 import Svg from 'react-native-svg';
+
+import { Pressable, View } from 'react-native';
 
 import type { DistanceChart } from '@/domain/distance';
 import type { StatTileModel } from '@/domain/statsOverview';
 import { CompareBars, ProgressRing, RangeTrack, ToneMark, TrendLine } from '@/ui/DistanceCharts';
+import { ProcessedFoodList } from '@/ui/ProcessedFoodList';
 import { ReadingChart } from '@/ui/ReadingChart';
 import { statsToneColors } from '@/ui/statsPalette';
 import { useAppTheme } from '@/ui/theme';
@@ -90,21 +92,26 @@ export function StatTile({ tile }: { tile: StatTileModel }) {
     .filter(Boolean)
     .join('. ');
   return (
-    <Card
-      accessibilityLabel={`${spoken}.`}
-      onPress={() => router.push(tile.href as never)}
-      style={{ backgroundColor: tone.bg, borderColor: tone.ink, flex: 1, minHeight: 168 }}
-    >
-      <T variant="label" style={ink}>{tile.title}</T>
-      {tile.chart.kind === 'ring' ? null : <T variant="title" style={ink}>{tile.value}</T>}
-      <TileChart chart={tile.chart} tone={tile.tone} signal={tile.signal} monochrome={neutral} />
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-        <Svg width={18} height={18} viewBox="0 0 24 24" fill="none" accessibilityElementsHidden>
-          <ToneMark tone={iconTone} color={tone.ink} />
-        </Svg>
-        <T style={[ink, { fontFamily: theme.font.bodyStrong }]}>{tile.signal}</T>
-      </View>
-      {meaning ? <T style={ink}>{meaning}</T> : null}
+    <Card style={{ backgroundColor: tone.bg, borderColor: tone.ink, flex: 1, minHeight: 168 }}>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={`${spoken}.`}
+        onPress={() => router.push(tile.href as never)}
+        style={{ gap: 8 }}
+      >
+        <T variant="label" style={ink}>{tile.title}</T>
+        {tile.chart.kind === 'ring' ? null : <T variant="title" style={ink}>{tile.value}</T>}
+        {tile.periodLine ? <T variant="muted">{tile.periodLine}</T> : null}
+        <TileChart chart={tile.chart} tone={tile.tone} signal={tile.signal} monochrome={neutral} />
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+          <Svg width={18} height={18} viewBox="0 0 24 24" fill="none" accessibilityElementsHidden>
+            <ToneMark tone={iconTone} color={tone.ink} />
+          </Svg>
+          <T style={[ink, { fontFamily: theme.font.bodyStrong }]}>{tile.signal}</T>
+        </View>
+        {meaning ? <T style={ink}>{meaning}</T> : null}
+      </Pressable>
+      <ProcessedFoodList notes={tile.processedNotes ?? []} />
     </Card>
   );
 }

@@ -12,6 +12,8 @@ import {
   loggingDots,
   macroSplit,
   nutritionTrendDays,
+  processedFoodHeading,
+  processedFoodNotes,
   sumItems,
   todayRing,
   trendCaption,
@@ -23,7 +25,9 @@ import type { StatsTone } from '@/domain/statsOverview';
 import { londonToday, paceJudgement, periodDayCount, periodHeading, periodPhrase, proteinPace, rollingWindow, type StatPeriod } from '@/domain/statWindow';
 import { useStatPeriod } from '@/health/useStatPeriod';
 import { CompareBars, ProgressRing } from '@/ui/DistanceCharts';
+import { ProcessedFoodList } from '@/ui/ProcessedFoodList';
 import { ReadingChart } from '@/ui/ReadingChart';
+import { ScrollTarget } from '@/ui/ScrollTarget';
 import { statsToneColors } from '@/ui/statsPalette';
 import { StatPeriodToggle } from '@/ui/StatPeriodToggle';
 import { useAppTheme } from '@/ui/theme';
@@ -53,6 +57,7 @@ export function NutritionBoard({
   qualitySwitch?: ReactNode;
   progressSwitch?: ReactNode;
 }) {
+  const theme = useAppTheme();
   const [period] = useStatPeriod();
   const span = periodDayCount(period);
   const picture = useMemo(() => {
@@ -65,8 +70,10 @@ export function NutritionBoard({
       ? proteinDays.filter((grams) => grams >= proteinTarget).length
       : 0;
     const kcalAvg = logged.length ? logged.reduce((sum, day) => sum + day.kcal, 0) / logged.length : 0;
-    const whole = items.filter((item) => !item.processed).length;
-    const processed = items.length - whole;
+    const qualityItems = days.flatMap((day) => dayItems(logs, day.day));
+    const notes = processedFoodNotes(logs, days.map((day) => day.day));
+    const processed = notes.length;
+    const whole = qualityItems.length - processed;
     const shared = {
       hideCalories,
       kcal: kcalAvg,
@@ -84,7 +91,11 @@ export function NutritionBoard({
       protein: todayRing({ ...shared, hideCalories: true }),
       macros: macroSplit(items),
       fats: fatBalance(items),
-      quality: items.length === 0 ? null : {
+      quality: qualityItems.length === 0 ? null : {
+        heading: processedFoodHeading(whole, processed),
+        period: periodHeading(period),
+        meaning: processed === 0 ? 'On track' : processed === 1 ? '1 item looks highly processed' : `${processed} items look highly processed`,
+        notes,
         max: Math.max(whole, processed, 1),
         caption: `Whole ${whole}, processed ${processed}.`,
         bars: [
@@ -96,7 +107,7 @@ export function NutritionBoard({
       dotsCaption: loggingCaption(logs, today),
       insights: eatingInsights(logs, checkIns),
     };
-  }, [logs, today, hideCalories, kcalTarget, proteinTarget, checkIns, span]);
+  }, [logs, today, hideCalories, kcalTarget, proteinTarget, checkIns, span, period]);
   const trend = useMemo(() => {
     const days = nutritionTrendDays(logs, today, span);
     return { days, caption: trendCaption(days, { hideCalories, span }) };
@@ -128,12 +139,16 @@ export function NutritionBoard({
         <T variant="label">Fats</T>
         <FatBar unsaturated={picture.fats.unsaturated} other={picture.fats.other} caption={picture.fats.line} />
         {picture.quality ? (
-          <>
+          <ScrollTarget id="quality">
             <T variant="label">Food quality</T>
+            <T style={{ fontFamily: theme.font.bodyStrong }}>{picture.quality.heading}</T>
+            <T variant="muted">{picture.quality.period}</T>
             <View accessibilityLabel={picture.quality.caption}>
               <CompareBars layout="row" max={picture.quality.max} bars={picture.quality.bars} />
             </View>
-          </>
+            <T>{picture.quality.meaning}</T>
+            <ProcessedFoodList notes={picture.quality.notes} cue="more" />
+          </ScrollTarget>
         ) : null}
         {qualitySwitch}
       </Card>
