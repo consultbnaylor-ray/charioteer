@@ -18,6 +18,8 @@ import {
   isClassBoxer,
   dayItems,
   nutritionTrendDays,
+  processedFoodHeading,
+  processedFoodNotes,
   processedLine,
   sumItems,
   todayRing,
@@ -29,11 +31,12 @@ import {
   type FoodLog,
   type NutritionDay,
   type NutritionSettings,
+  type ProcessedFoodNote,
 } from '@/domain/nutrition';
 import { soberElapsed } from '@/domain/sober';
 import { daysUntil, showsSoberRecord, type Stage } from '@/domain/stage';
 import { proteinLoggedDays } from '@/domain/goalLed';
-import { parseStatPeriod, periodDayCount, periodPhrase, proteinPace, rollingWindow, scaledPeriodTarget, type StatPeriod } from '@/domain/statWindow';
+import { parseStatPeriod, periodDayCount, periodHeading, periodPhrase, proteinPace, rollingWindow, scaledPeriodTarget, type StatPeriod } from '@/domain/statWindow';
 
 export type StatsTone = 'good' | 'watch' | 'info' | 'attention';
 
@@ -55,6 +58,10 @@ export type StatTileModel = {
   series: number[];
   chart: DistanceChart;
   href: string;
+  /** Named period for a heading that would otherwise be only a count. */
+  periodLine?: string;
+  /** Highly processed foods behind the count. Same length as that count. */
+  processedNotes?: ProcessedFoodNote[];
 };
 
 export type StatsOverviewInput = {
@@ -681,14 +688,17 @@ function qualityTile(input: StatsOverviewInput, today: string): StatTileModel {
   const items = days.flatMap((day) => dayItems(input.foodLogs, day));
   const line = processedLine(items);
   if (!line) {
-    return tile({ id: 'quality', title: 'Food quality', value: '—', meaning: period === 'day' ? 'Nothing logged today' : `Nothing logged ${periodIn(period)}`, tone: 'info', series, chart: { kind: 'none' }, href: '/nutrition?section=today' });
+    return tile({ id: 'quality', title: 'Food quality', value: '—', meaning: period === 'day' ? 'Nothing logged today' : `Nothing logged ${periodIn(period)}`, tone: 'info', series, chart: { kind: 'none' }, href: '/nutrition?section=quality' });
   }
-  const processed = items.filter((item) => item.processed).length;
+  const notes = processedFoodNotes(input.foodLogs, days);
+  const processed = notes.length;
   const whole = items.length - processed;
   return tile({
     id: 'quality',
     title: 'Food quality',
-    value: processed === 0 ? 'Whole foods' : processed === 1 ? '1 item' : `${processed} items`,
+    value: processedFoodHeading(whole, processed),
+    periodLine: periodHeading(period),
+    processedNotes: notes,
     meaning: processed === 0 ? 'On track' : processed === 1 ? '1 item looks highly processed' : `${processed} items look highly processed`,
     tone: processed === 0 ? 'good' : 'watch',
     series,
@@ -702,7 +712,7 @@ function qualityTile(input: StatsOverviewInput, today: string): StatTileModel {
         { key: 'processed', label: `Processed ${processed}`, value: processed, tone: processed > 0 ? 'watch' : 'info' },
       ],
     },
-    href: '/nutrition?section=today',
+    href: '/nutrition?section=quality',
   });
 }
 

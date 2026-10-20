@@ -568,6 +568,88 @@ export function processedLine(items: readonly FoodItem[]): string | null {
   return `${processed} items look highly processed. Whole foods still count.`;
 }
 
+/** Names both counts. The period is a separate line, so the heading is not only "6 items". */
+export function processedFoodHeading(whole: number, processed: number): string {
+  return `${whole} whole · ${processed} processed`;
+}
+
+export function processedSeeLabel(count: number): string {
+  return count === 1 ? 'See the 1 item ›' : `See the ${count} items ›`;
+}
+
+/** Past this many rows, the rest stays behind a second dropdown. */
+export const PROCESSED_LIST_FOLD = 5;
+
+export type ProcessedFoodNote = {
+  id: string;
+  name: string;
+  meal: string;
+  day: string;
+  date: string;
+  reason: string;
+  suggestion: string;
+};
+
+/** A short reason and one swap. Used only after the item is already counted as highly processed. */
+export function processedFoodCopy(name: string): { reason: string; suggestion: string } {
+  const plain = name.toLowerCase();
+  const rules: { test: RegExp; reason: string; suggestion: string }[] = [
+    { test: /crisp|potato chip|tortilla chip/, reason: 'Crisps are a packaged snack made in a factory.', suggestion: 'A piece of fruit or a handful of nuts instead.' },
+    { test: /biscuit|cookie/, reason: 'Biscuits are a sweet factory-made snack.', suggestion: 'Fruit or yoghurt instead.' },
+    { test: /chocolate|sweet|candy|haribo/, reason: 'Sweets and chocolate are factory-made sugar foods.', suggestion: 'Fruit instead, if you want something sweet.' },
+    { test: /fizzy|cola|\bsoda\b|lemonade|energy drink|lucozade/, reason: 'Fizzy drinks are factory-made sweet drinks.', suggestion: 'Water or sparkling water instead.' },
+    { test: /sausage|nugget|hot dog|pepperoni|salami|reconstituted/, reason: 'This is a reconstituted meat product.', suggestion: 'Plain chicken, fish, or eggs instead.' },
+  ];
+  const match = rules.find((rule) => rule.test.test(plain));
+  if (match) return { reason: match.reason, suggestion: match.suggestion };
+  return {
+    reason: 'This was logged as highly processed.',
+    suggestion: 'A whole food such as fruit, eggs, or plain meat instead.',
+  };
+}
+
+function processedFoodDate(iso: string): string {
+  const [year, month, day] = iso.split('-').map(Number);
+  const date = new Date(year ?? 1970, (month ?? 1) - 1, day ?? 1);
+  const dayText = date.toLocaleDateString('en-GB', { day: 'numeric' });
+  const monthText = date.toLocaleDateString('en-GB', { month: 'short' });
+  return `${dayText} ${monthText} ${year}`;
+}
+
+/**
+ * The same foods the period count uses, with the meal and day dayItems drops.
+ * Most recent day first. Length equals the processed count for these days.
+ */
+export function processedFoodNotes(logs: readonly FoodLog[], days: readonly string[]): ProcessedFoodNote[] {
+  const allowed = new Set(days);
+  const rows: { log: FoodLog; index: number; item: FoodItem }[] = [];
+  for (const log of logs) {
+    if (!allowed.has(log.eatenOn)) continue;
+    log.items.forEach((item, index) => {
+      if (item.processed) rows.push({ log, index, item });
+    });
+  }
+  rows.sort((a, b) => {
+    if (a.log.eatenOn !== b.log.eatenOn) return b.log.eatenOn.localeCompare(a.log.eatenOn);
+    const aAt = a.log.eatenAt ?? a.log.createdAt;
+    const bAt = b.log.eatenAt ?? b.log.createdAt;
+    if (aAt !== bAt) return bAt.localeCompare(aAt);
+    return a.index - b.index;
+  });
+  return rows.map(({ log, index, item }) => {
+    const copy = processedFoodCopy(item.name);
+    return {
+      id: `${log.id}:${index}`,
+      name: item.name.trim() || 'Food',
+      meal: MEAL_LABEL[log.meal],
+      day: log.eatenOn,
+      date: processedFoodDate(log.eatenOn),
+      reason: copy.reason,
+      suggestion: copy.suggestion,
+    };
+  });
+}
+
 export function targetLine(kcal: number, target: number | null, hideCalories: boolean): string | null {
   if (hideCalories || target == null) return null;
   if (kcal > target) return NO_SHAME_OVER;

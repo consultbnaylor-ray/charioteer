@@ -54,6 +54,9 @@ import {
   mealWeeksForDay,
   visibleMealDays,
   mealNutrientBars,
+  nutritionTrendDays,
+  processedFoodHeading,
+  processedFoodNotes,
   processedLine,
   recentDuplicateMeal,
   sugarCravingNote,
@@ -76,6 +79,8 @@ import {
   type NutritionSex,
 } from '@/domain/nutrition';
 import { healthFigure } from '@/domain/measureFigures';
+import { periodDayCount, periodHeading } from '@/domain/statWindow';
+import { useStatPeriod } from '@/health/useStatPeriod';
 import { savingsFromTypicalWeek } from '@/domain/savings';
 import { soberElapsed } from '@/domain/sober';
 import { weightReadingKg } from '@/domain/weightEntry';
@@ -85,6 +90,7 @@ import { BodyCompositionCard } from '@/ui/BodyComposition';
 import { GoalChoices } from '@/ui/GoalChoices';
 import { DateField } from '@/ui/DateField';
 import { MealEstimateStatus } from '@/ui/MealEstimateStatus';
+import { ProcessedFoodList } from '@/ui/ProcessedFoodList';
 import { PlanTick } from '@/ui/PlanTick';
 import { MealDayList } from '@/ui/MealDayList';
 import { MealBreakdown } from '@/ui/MealNutrientBars';
@@ -245,6 +251,7 @@ export default function Nutrition() {
   const repo = useRepository();
   const router = useRouter();
   const theme = useAppTheme();
+  const [period] = useStatPeriod();
   const { run, isPending } = usePendingPress();
   const profile = snap.profile;
   const today = londonDay(new Date());
@@ -252,6 +259,9 @@ export default function Nutrition() {
   const settings = snap.nutrition;
   const hide = settings.hideCalories;
   const items = dayItems(snap.foodLogs, today);
+  const periodDays = nutritionTrendDays(snap.foodLogs, today, periodDayCount(period));
+  const periodNotes = processedFoodNotes(snap.foodLogs, periodDays.map((day) => day.day));
+  const periodWhole = periodDays.reduce((sum, day) => sum + dayItems(snap.foodLogs, day.day).length, 0) - periodNotes.length;
   const totals = sumItems(items);
   const fats = fatBalance(items);
   const started = profile?.stage === 'stopped' && profile.sobrietyStartedAt ? new Date(profile.sobrietyStartedAt) : null;
@@ -1280,6 +1290,12 @@ export default function Nutrition() {
         <T>{fats.line}</T>
         <T variant="muted">{FAT_SCIENCE}</T>
         {processedLine(items) ? <T>{processedLine(items)}</T> : null}
+        <ProcessedFoodList
+          notes={periodNotes}
+          cue="more"
+          heading={processedFoodHeading(periodWhole, periodNotes.length)}
+          periodLine={periodHeading(period)}
+        />
         {patterns.map((line) => <T key={line}>{line}</T>)}
         {sugar ? <T>{sugar}</T> : null}
         {saved ? <T>{saved}</T> : null}
