@@ -2,6 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform } from 'react-native';
 
 import type { PlannedSession } from '@/domain/plannedSession';
+import { reportNotificationFailure } from '@/notifications/register';
 import {
   DEFAULT_WORKOUT_REMINDERS,
   parseWorkoutReminders,
@@ -40,7 +41,8 @@ export async function ensureReminderPermission(): Promise<boolean> {
     if (existing.status === 'granted') return true;
     const asked = await Notifications.requestPermissionsAsync();
     return asked.status === 'granted';
-  } catch {
+  } catch (error) {
+    await reportNotificationFailure(error);
     return false;
   }
 }
@@ -61,8 +63,8 @@ export async function cancelWorkoutReminders(): Promise<void> {
     const Notifications = await import('expo-notifications');
     const ids = await scheduledSessionIds();
     await Promise.all(ids.map((id) => Notifications.cancelScheduledNotificationAsync(id)));
-  } catch {
-    return undefined;
+  } catch (error) {
+    await reportNotificationFailure(error);
   }
 }
 
@@ -91,7 +93,7 @@ export async function rescheduleWorkoutReminders(
       trigger: { type: Notifications.SchedulableTriggerInputTypes.DATE, date: fire.at },
     })));
   } catch (error) {
-    console.error('workout reminders', error);
+    await reportNotificationFailure(error);
   }
 }
 
@@ -100,8 +102,10 @@ export async function cancelSessionReminder(sessionId: string): Promise<void> {
   try {
     const Notifications = await import('expo-notifications');
     const offsets: ReminderOffset[] = ['1d', '1h', '30m'];
-    await Promise.all(offsets.map((offset) => Notifications.cancelScheduledNotificationAsync(reminderIdentifier(sessionId, offset)).catch(() => undefined)));
-  } catch {
-    return undefined;
+    await Promise.all(offsets.map((offset) => Notifications.cancelScheduledNotificationAsync(reminderIdentifier(sessionId, offset)).catch((error: unknown) => {
+      void reportNotificationFailure(error);
+    })));
+  } catch (error) {
+    await reportNotificationFailure(error);
   }
 }

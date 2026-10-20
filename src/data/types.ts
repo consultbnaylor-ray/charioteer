@@ -496,7 +496,7 @@ export interface Repository {
   /** Read lines for this person's chats. Empty when none are stored yet. */
   loadChatReads(): Promise<Record<string, string>>;
   /** Moves one chat's read line forward. An older time is ignored. */
-  saveChatRead(connectionId: string, readThrough: string): Promise<void>;
+  saveChatRead(connectionId: string, readThrough: string): Promise<boolean>;
   /** A caught screen error. Screen name, short message, and build only. */
   /** True when the row was stored. False leaves a local copy for a later launch. */
   logClientError(screen: string, message: string, appBuild: string): Promise<boolean>;

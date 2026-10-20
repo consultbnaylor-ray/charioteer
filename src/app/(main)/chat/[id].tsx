@@ -3,11 +3,10 @@ import { useEffect, useRef, useState } from 'react';
 import { AppState, Pressable, View } from 'react-native';
 
 import { useRepository, useSnapshot } from '@/data';
-import { markChatRead } from '@/data/chatRead';
+import { getChatReadMarks, markChatRead, noteServerChatRead } from '@/data/chatRead';
 import { shownError } from '@/domain/errors';
 import { randomId } from '@/domain/id';
 import { CHAT_HISTORY_ERROR, CHAT_POLL_MS, latestChatMessage } from '@/domain/liveChat';
-import { MESSAGE_TOKEN_ERROR, offerMessageNotifications } from '@/notifications/register';
 import { MemberAvatar, useMemberAvatars } from '@/ui/MemberAvatar';
 import { usePendingPress } from '@/ui/pendingAction';
 import { ScreenBoundary } from '@/ui/ScreenBoundary';
@@ -38,27 +37,12 @@ function Chat() {
   const [error, setError] = useState<string | null>(null);
   const [historyError, setHistoryError] = useState<string | null>(null);
   const [historyAttempt, setHistoryAttempt] = useState(0);
-  const [notifyError, setNotifyError] = useState<string | null>(null);
-  const [notifyAttempt, setNotifyAttempt] = useState(0);
   const { run, isPending } = usePendingPress();
   const clientIds = useRef(new Map<string, string>());
   const me = snap.profile;
+  const meId = me?.id;
   const connection = snap.connections.find((item) => item.id === id);
   const connectionId = connection?.id;
-
-  useEffect(() => {
-    if (!connection) return;
-    let live = true;
-    void offerMessageNotifications(repo).then((message) => {
-      if (live) setNotifyError(message);
-    }).catch((err: unknown) => {
-      console.error(err);
-      if (live) setNotifyError(MESSAGE_TOKEN_ERROR);
-    });
-    return () => {
-      live = false;
-    };
-  }, [repo, connection, notifyAttempt]);
 
   useEffect(() => {
     if (!connectionId) return;
@@ -85,15 +69,17 @@ function Chat() {
   }, [repo, connectionId, historyAttempt]);
 
   useEffect(() => {
-    if (!me || !connectionId) return;
+    if (!meId || !connectionId) return;
     const latest = latestChatMessage(snap.messages ?? [], connectionId);
     if (!latest) return;
     const at = latest.createdAt;
-    void markChatRead(me.id, connectionId, at).then((moved) => {
-      if (!moved) return;
-      void repo.saveChatRead(connectionId, at).catch((error: unknown) => console.error(error));
+    void markChatRead(meId, connectionId, at).then(async (save) => {
+      if (!save) return;
+      const through = getChatReadMarks().marks[connectionId] ?? at;
+      const saved = await repo.saveChatRead(connectionId, through);
+      if (saved) noteServerChatRead(meId, connectionId, through);
     });
-  }, [me, connectionId, snap.messages, repo]);
+  }, [meId, connectionId, snap.messages, repo]);
 
   if (!me || !connection) {
     return <Screen title="Chat"><T>This chat is not available.</T></Screen>;
@@ -123,11 +109,6 @@ function Chat() {
       {historyError ? (
         <Pressable accessibilityRole="button" accessibilityLabel={CHAT_HISTORY_ERROR} onPress={() => setHistoryAttempt((attempt) => attempt + 1)} style={{ minHeight: 44, justifyContent: 'center' }}>
           <T>{CHAT_HISTORY_ERROR}</T>
-        </Pressable>
-      ) : null}
-      {notifyError ? (
-        <Pressable accessibilityRole="button" accessibilityLabel={MESSAGE_TOKEN_ERROR} onPress={() => setNotifyAttempt((attempt) => attempt + 1)} style={{ minHeight: 44, justifyContent: 'center' }}>
-          <T>{MESSAGE_TOKEN_ERROR}</T>
         </Pressable>
       ) : null}
       {messages.map((message) => (

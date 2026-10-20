@@ -1269,15 +1269,20 @@ export class SupabaseRepository implements Repository {
     return marks;
   }
 
-  async saveChatRead(connectionId: string, readThrough: string): Promise<void> {
+  async saveChatRead(connectionId: string, readThrough: string): Promise<boolean> {
     try {
       const { error } = await this.client.rpc('save_chat_read', {
         p_connection_id: connectionId,
         p_read_through: readThrough,
       });
-      if (error) console.error('chat read', error);
+      if (error) {
+        console.error('chat read', error.message);
+        return false;
+      }
+      return true;
     } catch (error) {
-      console.error('chat read', error);
+      console.error('chat read', error instanceof Error ? error.message : 'chat read');
+      return false;
     }
   }
 

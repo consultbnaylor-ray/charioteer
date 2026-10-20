@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Platform, View } from 'react-native';
 
 import { useRepository } from '@/data';
-import { offerMessageNotifications } from '@/notifications/register';
+import { offerMessageNotifications, reportNotificationFailure } from '@/notifications/register';
 import { markMessagePromptSeen, messagePromptSeen } from '@/ui/messagePromptStore';
 import { Button, Card, T } from '@/ui/ui';
 import { GENERIC_MESSAGE_ALERT } from '../../supabase/functions/_shared/messagePush';
@@ -30,7 +30,7 @@ export function MessageNotificationPrompt({ userId }: { userId: string }) {
         }
         setShow(true);
       } catch (error: unknown) {
-        console.error('message notifications', error);
+        void reportNotificationFailure(error);
       }
     })();
     return () => {

@@ -11,6 +11,13 @@ export function sanitizeClientError(error: unknown): string {
   return cleaned || 'Unknown error';
 }
 
+/** Error name and message only. No stack, address, or token. Safe for client_errors. */
+export function notificationFailureLine(error: unknown): string {
+  const name = error instanceof Error && error.name.trim() ? error.name.trim().slice(0, 40) : 'Error';
+  const message = sanitizeClientError(error);
+  return `${name}: ${message}`.slice(0, 300);
+}
+
 /** iOS build, then the app version. Never longer than the client_errors column. */
 export function clientAppBuild(source?: { buildNumber?: string | null; version?: string | null }): string {
   const build = source?.buildNumber ?? null;

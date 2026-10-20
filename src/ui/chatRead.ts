@@ -1,7 +1,7 @@
 import { useEffect, useSyncExternalStore } from 'react';
 
 import { useRepository } from '@/data';
-import { applyRemoteChatReads, getChatReadMarks, loadChatRead, subscribeChatRead } from '@/data/chatRead';
+import { applyRemoteChatReads, getChatReadMarks, loadChatRead, noteServerChatRead, subscribeChatRead } from '@/data/chatRead';
 
 /**
  * Saved read line for each chat. A thread with no line stays unread.
@@ -31,9 +31,10 @@ export function useChatRead(userId: string | null | undefined): { marks: Record<
       const ahead = applyRemoteChatReads(userId, remote, serverLoaded);
       await Promise.all(Object.entries(ahead).map(async ([id, at]) => {
         try {
-          await repo.saveChatRead(id, at);
+          const saved = await repo.saveChatRead(id, at);
+          if (saved) noteServerChatRead(userId, id, at);
         } catch (error) {
-          console.error(error);
+          console.error(error instanceof Error ? error.message : 'chat read');
         }
       }));
     })();

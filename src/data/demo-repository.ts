@@ -1235,10 +1235,11 @@ export class DemoRepository implements Repository {
     return Object.fromEntries(this.chatReads);
   }
 
-  async saveChatRead(connectionId: string, readThrough: string): Promise<void> {
+  async saveChatRead(connectionId: string, readThrough: string): Promise<boolean> {
     const previous = this.chatReads.get(connectionId);
-    if (previous && Date.parse(previous) >= Date.parse(readThrough)) return;
+    if (previous && Date.parse(previous) >= Date.parse(readThrough)) return true;
     this.chatReads.set(connectionId, readThrough);
+    return true;
   }
 
   async logClientError(_screen: string, _message: string, _appBuild: string): Promise<boolean> {

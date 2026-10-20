@@ -2,6 +2,7 @@ import { useFocusEffect } from 'expo-router';
 import { useCallback, useState } from 'react';
 import { Linking, Platform, Pressable } from 'react-native';
 
+import { reportNotificationFailure } from '@/notifications/register';
 import { useAppTheme } from '@/ui/theme';
 import { T } from '@/ui/ui';
 
@@ -14,7 +15,8 @@ async function iosNotificationsDenied(): Promise<boolean> {
     const Notifications = await import('expo-notifications');
     const existing = await Notifications.getPermissionsAsync();
     return existing.status === 'denied';
-  } catch {
+  } catch (error) {
+    void reportNotificationFailure(error);
     return false;
   }
 }

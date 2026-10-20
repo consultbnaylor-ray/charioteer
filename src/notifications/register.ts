@@ -2,10 +2,39 @@ import Constants from 'expo-constants';
 import { Platform } from 'react-native';
 
 import type { Repository } from '@/data/types';
+import { clientAppBuild, notificationFailureLine } from '@/domain/clientError';
 import { buddyInviteIdFrom } from '../../supabase/functions/_shared/buddyPush';
 import { connectionIdFrom } from '../../supabase/functions/_shared/messagePush';
 
 type TokenStore = Pick<Repository, 'saveDeviceToken'>;
+type NotificationLog = Pick<Repository, 'logClientError'>;
+
+/** One native token save per process. A later poll or foreground must not fetch it again. */
+let tokenSaved = false;
+/** A permission check that did not ask. An explicit Allow can still ask. */
+let permissionChecked = false;
+let registrationFlight: Promise<string | null> | null = null;
+let notificationLog: NotificationLog | null = null;
+
+/** The signed-in repository, so a native failure can be stored without a stack or a token. */
+export function bindNotificationErrorLog(log: NotificationLog): void {
+  notificationLog = log;
+}
+
+export async function reportNotificationFailure(error: unknown): Promise<void> {
+  const line = notificationFailureLine(error);
+  console.error('notifications', line);
+  const log = notificationLog;
+  if (!log) return;
+  try {
+    await log.logClientError('notifications', line, clientAppBuild({
+      buildNumber: Constants.expoConfig?.ios?.buildNumber,
+      version: Constants.expoConfig?.version,
+    }));
+  } catch {
+    return;
+  }
+}
 
 /** Shown when the phone token cannot be saved. Permission denied stays quiet. */
 export const MESSAGE_TOKEN_ERROR = "Couldn't register for message notifications – Try again";
@@ -34,25 +63,36 @@ async function currentPushToken(): Promise<string | null> {
  */
 export async function offerMessageNotifications(repo: TokenStore): Promise<string | null> {
   if (Platform.OS !== 'ios' && Platform.OS !== 'android') return null;
-  try {
-    const Notifications = await import('expo-notifications');
-    const Device = await import('expo-device');
-    if (!Device.isDevice) return null;
-    const existing = await Notifications.getPermissionsAsync();
-    let status = existing.status;
-    if (status !== 'granted') {
-      const asked = await Notifications.requestPermissionsAsync();
-      status = asked.status;
+  if (tokenSaved) return null;
+  if (registrationFlight) await registrationFlight;
+  if (tokenSaved) return null;
+  const run = (async (): Promise<string | null> => {
+    try {
+      const Notifications = await import('expo-notifications');
+      const Device = await import('expo-device');
+      if (!Device.isDevice) return null;
+      const existing = await Notifications.getPermissionsAsync();
+      let status = existing.status;
+      if (status !== 'granted') {
+        const asked = await Notifications.requestPermissionsAsync();
+        status = asked.status;
+      }
+      if (status !== 'granted') return null;
+      const token = await currentPushToken();
+      if (!token) return null;
+      await repo.saveDeviceToken(token, Platform.OS);
+      tokenSaved = true;
+      permissionChecked = true;
+      return null;
+    } catch (error) {
+      await reportNotificationFailure(error);
+      return MESSAGE_TOKEN_ERROR;
     }
-    if (status !== 'granted') return null;
-    const token = await currentPushToken();
-    if (!token) return null;
-    await repo.saveDeviceToken(token, Platform.OS);
-    return null;
-  } catch (error) {
-    console.error('message notifications', error);
-    return MESSAGE_TOKEN_ERROR;
-  }
+  })();
+  registrationFlight = run.finally(() => {
+    registrationFlight = null;
+  });
+  return registrationFlight;
 }
 
 /**
@@ -61,20 +101,33 @@ export async function offerMessageNotifications(repo: TokenStore): Promise<strin
  */
 export async function retryMessageNotifications(repo: TokenStore): Promise<string | null> {
   if (Platform.OS !== 'ios' && Platform.OS !== 'android') return null;
-  try {
-    const Notifications = await import('expo-notifications');
-    const Device = await import('expo-device');
-    if (!Device.isDevice) return null;
-    const existing = await Notifications.getPermissionsAsync();
-    if (existing.status !== 'granted') return null;
-    const token = await currentPushToken();
-    if (!token) return null;
-    await repo.saveDeviceToken(token, Platform.OS);
-    return null;
-  } catch (error) {
-    console.error('message notifications', error);
-    return MESSAGE_TOKEN_ERROR;
-  }
+  if (tokenSaved || permissionChecked) return null;
+  if (registrationFlight) return registrationFlight;
+  const run = (async (): Promise<string | null> => {
+    try {
+      const Notifications = await import('expo-notifications');
+      const Device = await import('expo-device');
+      if (!Device.isDevice) return null;
+      const existing = await Notifications.getPermissionsAsync();
+      if (existing.status !== 'granted') {
+        permissionChecked = true;
+        return null;
+      }
+      const token = await currentPushToken();
+      if (!token) return null;
+      await repo.saveDeviceToken(token, Platform.OS);
+      tokenSaved = true;
+      permissionChecked = true;
+      return null;
+    } catch (error) {
+      await reportNotificationFailure(error);
+      return MESSAGE_TOKEN_ERROR;
+    }
+  })();
+  registrationFlight = run.finally(() => {
+    registrationFlight = null;
+  });
+  return registrationFlight;
 }
 
 /**
@@ -98,8 +151,8 @@ export async function cancelScheduledNotifications(): Promise<void> {
         .filter((item) => item.content.data?.kind !== 'session')
         .map((item) => Notifications.cancelScheduledNotificationAsync(item.identifier)),
     );
-  } catch {
-    return undefined;
+  } catch (error) {
+    await reportNotificationFailure(error);
   }
 }
 
@@ -131,7 +184,9 @@ export function listenForMessageOpens(
       const Notifications = await import('expo-notifications');
       if (cancelled) return;
       const clearLast = () => {
-        void Notifications.clearLastNotificationResponseAsync().catch(() => undefined);
+        void Notifications.clearLastNotificationResponseAsync().catch((error: unknown) => {
+          void reportNotificationFailure(error);
+        });
       };
       const flush = () => {
         if (cancelled || !isReady()) return;
@@ -182,8 +237,8 @@ export function listenForMessageOpens(
       if (cancelled || !last) return;
       const key = last.notification.request.identifier || 'last';
       take(last.notification.request.content.data, key);
-    } catch {
-      return undefined;
+    } catch (error) {
+      await reportNotificationFailure(error);
     }
   })();
   return () => {
@@ -211,7 +266,7 @@ export function listenForIncomingMessages(onMessage: () => void): () => void {
       });
       remove = () => subscription.remove();
     } catch (error) {
-      console.error('message arrival', error);
+      await reportNotificationFailure(error);
     }
   })();
   return () => {
@@ -221,13 +276,31 @@ export function listenForIncomingMessages(onMessage: () => void): () => void {
 }
 
 /** iOS home-screen badge. The number is unread direct messages. Zero clears it. */
+let lastBadge: number | null = null;
+let badgeQueued: number | null = null;
+let badgeTimer: ReturnType<typeof setTimeout> | null = null;
+
 export async function setAppIconBadge(count: number): Promise<void> {
   if (Platform.OS !== 'ios') return;
+  const next = Number.isFinite(count) ? Math.max(0, Math.min(99, Math.floor(count))) : 0;
+  if (next === lastBadge && badgeQueued == null) return;
+  badgeQueued = next;
+  if (badgeTimer) clearTimeout(badgeTimer);
+  badgeTimer = setTimeout(() => {
+    badgeTimer = null;
+    const value = badgeQueued;
+    badgeQueued = null;
+    if (value == null || value === lastBadge) return;
+    void writeAppIconBadge(value);
+  }, 400);
+}
+
+async function writeAppIconBadge(next: number): Promise<void> {
   try {
     const Notifications = await import('expo-notifications');
-    const next = Number.isFinite(count) ? Math.max(0, Math.min(99, Math.floor(count))) : 0;
     await Notifications.setBadgeCountAsync(next);
+    lastBadge = next;
   } catch (error) {
-    console.error('app badge', error);
+    await reportNotificationFailure(error);
   }
 }

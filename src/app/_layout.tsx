@@ -14,7 +14,7 @@ import { APP_DISPLAY_NAME, APP_FULL_NAME } from '@/domain/appName';
 import { buddySecretFromUrl, holdBuddySecret, peekBuddySecret, consumeBuddySecret } from '@/domain/buddies';
 import { RepoProvider, useRepository, useSnapshot } from '@/data';
 import { catchUpAppleHealthReads } from '@/health/catchUp';
-import { cancelScheduledNotifications, listenForIncomingMessages, listenForMessageOpens, retryMessageNotifications, setAppIconBadge } from '@/notifications/register';
+import { bindNotificationErrorLog, cancelScheduledNotifications, listenForIncomingMessages, listenForMessageOpens, retryMessageNotifications, setAppIconBadge } from '@/notifications/register';
 import { messageUnreadTotal } from '@/domain/liveChat';
 import { useChatRead } from '@/ui/chatRead';
 import { CONSENT_VERSION } from '@/data/catalogue';
@@ -112,6 +112,7 @@ function Chrome() {
   }, [repo, snap.profile?.consentHealth, snap.ready, snap.session]);
 
   useEffect(() => {
+    bindNotificationErrorLog(repo);
     void cancelScheduledNotifications();
     const registerPhone = () => {
       void retryMessageNotifications(repo).then((message) => {

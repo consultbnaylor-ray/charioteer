@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
-import { SCREEN_ERROR, clientAppBuild, sanitizeClientError } from './clientError';
+import { SCREEN_ERROR, clientAppBuild, notificationFailureLine, sanitizeClientError } from './clientError';
 
 describe('caught screen errors', () => {
   it('keeps a short line with no address, token, or stack', () => {
@@ -14,6 +14,14 @@ describe('caught screen errors', () => {
     expect(clientAppBuild({ buildNumber: '   ', version: '1.2.3' })).toBe('1.2.3');
     expect(clientAppBuild({ buildNumber: '   ', version: '   ' })).toBe('unknown');
     expect(SCREEN_ERROR).toBe('Something went wrong – Try again');
+    const native = new Error(`token ${token} failed for ada@example.com`);
+    native.name = 'NativeError';
+    native.stack = 'NativeError: token failed\n at register.ts:40';
+    const line = notificationFailureLine(native);
+    expect(line).toBe('NativeError: token failed for');
+    expect(line).not.toContain(token);
+    expect(line).not.toContain('ada@example.com');
+    expect(line).not.toContain('register.ts');
   });
 
   it('wraps profile and chat, and logs only the safe line', () => {

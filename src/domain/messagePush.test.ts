@@ -120,7 +120,8 @@ describe('private message push', () => {
     expect(openChat).toContain('router.push');
     expect(layout).not.toContain('offerMessageNotifications');
     expect(layout).not.toContain('requestPermissionsAsync');
-    expect(chat).toContain('offerMessageNotifications');
+    expect(layout).toContain('bindNotificationErrorLog');
+    expect(chat).not.toContain('offerMessageNotifications');
     expect(card).toContain('offerMessageNotifications');
     expect(you).toContain('accessibilityLabel="Notifications"');
     expect(you).toContain('accessibilityLabel="Show the sender\'s name"');
@@ -168,6 +169,9 @@ describe('private message push', () => {
     const icon = register.slice(register.indexOf('export async function setAppIconBadge'));
     expect(icon).toContain('setBadgeCountAsync');
     expect(icon).toContain("Platform.OS !== 'ios'");
+    expect(icon).toContain('lastBadge');
+    expect(icon).toContain('setTimeout');
+    expect(icon).toContain('reportNotificationFailure');
     const arrival = register.slice(register.indexOf('export function listenForIncomingMessages'), register.indexOf('export async function setAppIconBadge'));
     expect(arrival).toContain('addNotificationReceivedListener');
     expect(arrival).toContain('connectionIdFrom');
@@ -189,9 +193,13 @@ describe('private message push', () => {
     const registerPhone = layout.slice(layout.indexOf('const registerPhone'), layout.indexOf('const timer'));
     expect(registerPhone.match(/registerPhone\(\)/g)?.length).toBe(2);
     expect(registerPhone).toContain("if (next !== 'active') return");
-    expect(chat).toContain('offerMessageNotifications');
-    expect(chat).toContain('MESSAGE_TOKEN_ERROR');
-    expect(register).toContain("console.error('message notifications', error)");
+    expect(chat).not.toContain('offerMessageNotifications');
+    expect(chat).not.toContain('notifyAttempt');
+    expect(chat).not.toContain('}, [repo, connection]');
+    expect(register).toContain('tokenSaved');
+    expect(register).toContain('permissionChecked');
+    expect(register).toContain('reportNotificationFailure');
+    expect(register).not.toContain("console.error('message notifications', error)");
     expect(register).toContain("Couldn't register for message notifications – Try again");
     const retry = register.slice(register.indexOf('export async function retryMessageNotifications'), register.indexOf('export async function cancelScheduledNotifications'));
     expect(retry).not.toContain('requestPermissionsAsync');
@@ -226,6 +234,7 @@ describe('private message push', () => {
     expect(registerPhone).toContain('retryMessageNotifications(repo).then');
     expect(registerPhone).toContain(".catch((error: unknown) => console.error('message notifications', error))");
     expect(layout).not.toContain('offerMessageNotifications');
+    expect(readFileSync('src/app/(main)/chat/[id].tsx', 'utf8')).not.toContain('offerMessageNotifications');
     for (const path of [
       'src/ui/PublicProfileCard.tsx',
       'src/app/(main)/profile.tsx',
@@ -233,7 +242,6 @@ describe('private message push', () => {
       'src/app/(main)/notifications.tsx',
       'src/app/(main)/privacy.tsx',
       'src/app/consent.tsx',
-      'src/app/(main)/chat/[id].tsx',
       'src/ui/MessageNotificationPrompt.tsx',
     ]) {
       const source = readFileSync(path, 'utf8');
