@@ -165,6 +165,7 @@ export function Screen({
         {banner ? <DismissKeyboard style={[styles.page, { paddingBottom: 0 }]}>{banner}</DismissKeyboard> : null}
         <ScrollView
           ref={scrollRef}
+          style={{ flex: 1 }}
           innerViewRef={innerRef as RefObject<View>}
           {...inputScrollProps}
           automaticallyAdjustKeyboardInsets
@@ -178,7 +179,7 @@ export function Screen({
           }}
           contentContainerStyle={[
             styles.page,
-            { paddingBottom: 40 + bottomInset + (footer ? 8 : 0) },
+            { paddingBottom: 40 + bottomInset + (footer ? 24 : 0) },
           ]}
           contentInsetAdjustmentBehavior="never"
           nestedScrollEnabled

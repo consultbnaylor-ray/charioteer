@@ -8,6 +8,7 @@ import {
   EMAIL_TAKEN_MESSAGE,
   OFFLINE_MESSAGE,
   RESET_NEEDS_EMAIL,
+  SIGN_IN_FIRST,
   UserFacingError,
   WEAK_PASSWORD_MESSAGE,
   asUserFacing,
@@ -134,6 +135,7 @@ import {
   type SessionTicket,
 } from '@/domain/edgeRetry';
 import { clientAppBuild } from '@/domain/clientError';
+import { resolveSignedInSession } from '@/domain/liveSession';
 import { OPENING_LINE, SCRIPTED_COACH_REPLY, type ThumosMode } from '@/domain/thumos';
 import Constants from 'expo-constants';
 import { CONSENT_VERSION } from '@/data/catalogue';
@@ -805,9 +807,7 @@ export class SupabaseRepository implements Repository {
   }
 
   private async userId(): Promise<string> {
-    const { data } = await this.client.auth.getUser();
-    if (!data.user) throw new Error('Sign in first.');
-    return data.user.id;
+    return (await this.signedIn()).userId;
   }
 
   async signIn(email: string, password: string): Promise<void> {
@@ -1492,10 +1492,30 @@ export class SupabaseRepository implements Repository {
   }
 
   private async accessToken(): Promise<string> {
-    const { data: sessionData } = await this.client.auth.getSession();
-    const token = sessionData.session?.access_token;
-    if (!token) throw new Error('Sign in first.');
-    return token;
+    return (await this.signedIn()).accessToken;
+  }
+
+  /**
+   * The session on the device now. An expired access token is refreshed once.
+   * "Sign in first" is only for a missing session, not a failed refresh.
+   */
+  private async signedIn(): Promise<{ userId: string; accessToken: string }> {
+    const resolved = await resolveSignedInSession({
+      read: async () => {
+        const { data, error } = await this.client.auth.getSession();
+        return { ticket: this.sessionTicket(data.session), error };
+      },
+      refresh: async () => {
+        const { data, error } = await this.client.auth.refreshSession();
+        return { ticket: this.sessionTicket(data.session), error };
+      },
+      knownUserId: this.snapshot.session?.userId ?? this.snapshot.profile?.id ?? null,
+    });
+    if ('failure' in resolved) {
+      if (resolved.failure === 'connection') throw new UserFacingError(OFFLINE_MESSAGE, 'offline');
+      throw new Error(SIGN_IN_FIRST);
+    }
+    return resolved;
   }
 
   private sessionTicket(session: { access_token?: string; expires_at?: number; user?: { id?: string } } | null): SessionTicket {

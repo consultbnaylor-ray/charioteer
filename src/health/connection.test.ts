@@ -9,9 +9,9 @@ import {
   APPLE_HEALTH_READ_TYPES,
   APPLE_HEALTH_REFRESH,
   APPLE_HEALTH_TURN_ON,
-  APPLE_HEALTH_UPDATED,
   APPLE_HEALTH_WEB,
   appleHealthStatusLine,
+  appleHealthUpdatedLine,
   connectedAppleHealthLine,
   healthCardState,
   isHealthAccessDenied,
@@ -65,7 +65,7 @@ describe('Apple Health card', () => {
     expect(appleHealthStatusLine({ ...base, consent: false })).toBe('Apple Health: Not connected');
     expect(appleHealthStatusLine({ ...base, ios: false, access: 'web' })).toBe('Apple Health: Not connected');
     expect(APPLE_HEALTH_REFRESH).toBe('Refresh now');
-    expect(APPLE_HEALTH_UPDATED).toBe('Updated just now');
+    expect(appleHealthUpdatedLine(synced)).toBe('Updated 09:10');
     expect(APPLE_HEALTH_TURN_ON).toBe('Turn on in Apple Health');
     expect(APPLE_HEALTH_DETAILS).toBe('Details');
   });
@@ -120,7 +120,9 @@ describe('Apple Health screen and entitlement', () => {
     expect(card).toContain('gap.line');
     expect(card).toContain('Connect Apple Health');
     expect(card).toContain('APPLE_HEALTH_REFRESH');
-    expect(card).toContain('APPLE_HEALTH_UPDATED');
+    expect(card).toContain('appleHealthUpdatedLine');
+    expect(card).toContain('SIGN_IN_FIRST');
+    expect(card).toContain('label="Sign in"');
     expect(card).toContain('APPLE_HEALTH_TURN_ON');
     expect(card).toContain('HEALTH_VISIBILITY_TITLE');
     expect(card).toContain('PlanTick');

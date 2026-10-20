@@ -125,6 +125,11 @@ function Chrome() {
       void repo.reloadMessages().catch((error: unknown) => console.error(error));
       void repo.resignOwnerPhotos();
       registerPhone();
+      if (Platform.OS === 'ios') {
+        void catchUpAppleHealthReads(repo).then((result) => {
+          if (result.error) console.error('apple health reads', result.error);
+        }).catch((error: unknown) => console.error('apple health reads', error));
+      }
     });
     const arrivals = listenForIncomingMessages(() => {
       void repo.reloadMessages().catch((error: unknown) => console.error(error));

@@ -37,7 +37,11 @@ export const APPLE_HEALTH_CONSENT =
 export const APPLE_HEALTH_UNAVAILABLE = 'Apple Health is not available on this device.';
 
 export const APPLE_HEALTH_REFRESH = 'Refresh now';
-export const APPLE_HEALTH_UPDATED = 'Updated just now';
+
+/** Green tick beside the clock after a refresh that saved. */
+export function appleHealthUpdatedLine(when: Date | string): string {
+  return `Updated ${formatUkTime(when)}`;
+}
 export const APPLE_HEALTH_TURN_ON = 'Turn on in Apple Health';
 export const APPLE_HEALTH_DETAILS = 'Details';
 

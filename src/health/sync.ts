@@ -13,7 +13,10 @@ export type AppleHealthBodyRead =
 const HEALTH_HERE = 'Apple Health connects in the iPhone app. Here you can log readings yourself.';
 
 /** Web and Android read the account's saved readings. Apple Health is iOS-only. */
-export async function syncAppleHealth(_overrides: WorkoutBucketMap = {}): Promise<HealthSyncResult> {
+export async function syncAppleHealth(
+  _overrides: WorkoutBucketMap = {},
+  _options?: { authorize?: boolean },
+): Promise<HealthSyncResult> {
   return { ok: false, message: HEALTH_HERE };
 }
 

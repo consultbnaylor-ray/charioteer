@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Pressable, View } from 'react-native';
 
+import { SIGN_IN_FIRST } from '@/domain/errors';
 import {
   APPLE_HEALTH_CONSENT,
   APPLE_HEALTH_DENIED,
@@ -9,9 +10,9 @@ import {
   APPLE_HEALTH_REFRESH,
   APPLE_HEALTH_TURN_ON,
   APPLE_HEALTH_UNAVAILABLE,
-  APPLE_HEALTH_UPDATED,
   APPLE_HEALTH_WEB,
   appleHealthStatusLine,
+  appleHealthUpdatedLine,
   healthCardState,
   type AppleHealthAccess,
 } from '@/health/connection';
@@ -27,10 +28,11 @@ export function AppleHealthCard({
   syncedAt,
   gaps,
   pending,
-  updated,
+  updatedAt,
   refreshError,
   turnOnNote,
   onRefresh,
+  onSignIn,
   onConnect,
   onManage,
   onSettings,
@@ -44,10 +46,11 @@ export function AppleHealthCard({
   syncedAt: string | null;
   gaps: readonly HealthMissingReading[];
   pending: boolean;
-  updated: boolean;
+  updatedAt: string | null;
   refreshError: string | null;
   turnOnNote: string | null;
   onRefresh: () => void;
+  onSignIn: () => void;
   onConnect: () => void;
   onManage: () => void;
   onSettings: () => void;
@@ -125,13 +128,14 @@ export function AppleHealthCard({
           ))}
         </View>
       ) : null}
-      {updated ? (
+      {updatedAt ? (
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
           <PlanTick done />
-          <T>{APPLE_HEALTH_UPDATED}</T>
+          <T>{appleHealthUpdatedLine(updatedAt)}</T>
         </View>
       ) : null}
       <ErrorNote>{refreshError}</ErrorNote>
+      {refreshError === SIGN_IN_FIRST ? <Button label="Sign in" onPress={onSignIn} /> : null}
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center' }}>
         <Pressable accessibilityRole="link" accessibilityLabel={HEALTH_VISIBILITY_TITLE} onPress={onSee} style={link}>
           <T style={{ textDecorationLine: 'underline' }}>{HEALTH_VISIBILITY_TITLE}</T>
