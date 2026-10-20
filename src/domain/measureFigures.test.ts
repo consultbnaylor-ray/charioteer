@@ -71,9 +71,22 @@ describe('measured stats figures', () => {
       { day: '2026-10-14', value: 46 },
       { day: today, value: 48 },
     ], today);
-    expect(hrv?.bars?.bars.bars.map((bar) => bar.label)).toEqual(['Latest 48 ms', 'Usual 46 ms']);
-    expect(hrv?.bars?.bars.caption).toBe('Near your own usual level. There is no official target.');
+    expect(hrv?.bars?.bars.bars.map((bar) => bar.label)).toEqual(['Latest 48 ms']);
+    expect(hrv?.bars?.bars.caption).toBe('There is no official target.');
     expect(healthFigure('hrv_sdnn', [{ day: today, value: 48 }], today)?.bars?.bars.caption).toBe('There is no official target.');
+    const enough = healthFigure('hrv_sdnn', [
+      { day: '2026-09-06', value: 28 },
+      { day: '2026-09-10', value: 28.5 },
+      { day: '2026-10-05', value: 45 },
+      { day: '2026-10-06', value: 45 },
+      { day: '2026-10-07', value: 45 },
+      { day: '2026-10-08', value: 45 },
+      { day: '2026-10-09', value: 45 },
+      { day: '2026-10-10', value: 45 },
+      { day: today, value: 48 },
+    ], today);
+    expect(enough?.bars?.bars.caption).toBe('HRV 48 ms, up 7% vs your 30-day average. There is no official target.');
+    expect(enough?.bars?.bars.bars.map((bar) => bar.label)).toEqual(['Latest 48 ms', '30-day average 45 ms']);
 
     const weight = healthFigure('weight_kg', [
       { day: '2026-10-01', value: 74.8 },

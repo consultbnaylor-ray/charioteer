@@ -4,7 +4,7 @@
  * Nothing here is a diagnosis.
  */
 
-import { formatSleepHours, formatUkCompactDay, HRV_MIN_READINGS, HRV_TOO_FEW, shiftDay, type DayValue } from './healthInsights';
+import { formatSleepHours, formatUkCompactDay, healthChangeNote, HRV_MIN_READINGS, HRV_TOO_FEW, percentAgainstBaseline, shiftDay, type DayValue } from './healthInsights';
 import type { HealthInsightKind } from './healthInsights';
 import { BMI_ONLY_NOTE, assessWeight, type BodyBuild, type NutritionSex } from './nutrition';
 import {
@@ -179,10 +179,10 @@ function mean(values: number[]): number | null {
 }
 
 function percentAgainst(recent: number, baseline: number): string {
-  if (baseline === 0) return 'compared with your own earlier average';
-  const change = Math.round(Math.abs(((recent - baseline) / baseline) * 100));
-  if (change < 1) return 'about the same as your own earlier average';
-  return `${change}% ${recent > baseline ? 'above' : 'below'} your own earlier average`;
+  const change = percentAgainstBaseline(recent, baseline);
+  if (change == null) return 'compared with your own earlier average';
+  if (Math.abs(change) < 1) return 'about the same as your own earlier average';
+  return `${Math.abs(change)}% ${change > 0 ? 'above' : 'below'} your own earlier average`;
 }
 
 function ownBaseline(points: DayValue[], today: string, recent: DayValue[], unit: string): string {
@@ -393,9 +393,11 @@ function hrvGuidance(points: DayValue[], today: string): GuidanceView {
       warning: null,
     });
   }
+  const note = healthChangeNote('hrv_sdnn', points, today);
+  const comparison = note ?? 'There are not enough readings in the last 30 days to compare with your 30-day average.';
   return view({
     label: null,
-    plain: `${opening} ${ownBaseline(points, today, recent, 'ms')} ${HRV_HONEST}`,
+    plain: `${opening} ${comparison}. ${HRV_HONEST}`,
     marker: null,
     ticks: [],
     sources: [],

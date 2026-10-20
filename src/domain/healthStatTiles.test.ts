@@ -226,7 +226,20 @@ describe('health stat tiles', () => {
     expect(hrv.valueText).toBe('47');
     expect(hrv.hasGuideline).toBe(false);
     expect(hrv.status).toBe('There is no official UK target.');
-    expect(hrv.trend).toBe('Steady against the earlier days in this period.');
+    expect(hrv.trend).toBeNull();
+
+    const compared = buildHealthStatBoard(alex({
+      samples: [
+        ...alex().samples.filter((sample) => sample.kind !== 'hrv_sdnn'),
+        { kind: 'hrv_sdnn', value: 45, recordedOn: '2026-10-12' },
+        { kind: 'hrv_sdnn', value: 45, recordedOn: '2026-10-13' },
+        { kind: 'hrv_sdnn', value: 45, recordedOn: '2026-10-14' },
+        { kind: 'hrv_sdnn', value: 45, recordedOn: '2026-10-15' },
+        { kind: 'hrv_sdnn', value: 45, recordedOn: '2026-10-16' },
+        { kind: 'hrv_sdnn', value: 48, recordedOn: '2026-10-17' },
+      ],
+    }));
+    expect(tile(compared, 'hrv_sdnn').trend).toBe('HRV 48 ms, up 7% vs your 30-day average');
 
     const mix = tile(board, 'mix');
     expect(mix.unit).toBe('min');

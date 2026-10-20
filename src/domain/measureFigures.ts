@@ -1,7 +1,6 @@
 import { parseIsoDay } from '@/domain/dates';
 import { drinkFreeRing, soberMilestoneRing, type ChartBar } from '@/domain/distance';
-import { shiftDay } from '@/domain/healthInsights';
-import type { HealthInsightKind } from '@/domain/healthInsights';
+import { healthChangeNote, HRV_MIN_READINGS, personalChange, shiftDay, type HealthInsightKind } from '@/domain/healthInsights';
 import {
   BHF_RESTING_MAX_BPM,
   BHF_RESTING_MIN_BPM,
@@ -396,19 +395,18 @@ function hrvFigure(points: readonly { day: string; value: number }[], today: str
   const history = ordered(points, today);
   const latest = history.at(-1);
   if (!latest) return null;
-  const earlier = history.slice(0, -1);
-  const usual = mean(earlier.map((point) => point.value));
+  const change = history.length >= HRV_MIN_READINGS ? personalChange(history, today) : null;
+  const note = change ? healthChangeNote('hrv_sdnn', history, today) : null;
   const bars: ChartBar[] = [{ key: 'latest', label: `Latest ${Math.round(latest.value)} ms`, value: latest.value, tone: 'info' }];
-  let caption = 'There is no official target.';
-  if (usual != null) {
-    bars.push({ key: 'usual', label: `Usual ${Math.round(usual)} ms`, value: usual, tone: 'info' });
-    const gap = latest.value - usual;
-    caption = Math.abs(gap) < 5
-      ? 'Near your own usual level. There is no official target.'
-      : gap > 0
-        ? 'Higher than your own usual level. There is no official target.'
-        : 'Lower than your own usual level. There is no official target.';
+  if (change) {
+    bars.push({
+      key: 'average',
+      label: `30-day average ${Math.round(change.baseline)} ms`,
+      value: change.baseline,
+      tone: 'info',
+    });
   }
+  const caption = note ? `${note}. There is no official target.` : 'There is no official target.';
   return {
     bars: {
       label: 'Your own readings',

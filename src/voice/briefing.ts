@@ -1,6 +1,6 @@
 import type { AppSnapshot } from '@/data/types';
 import { isoDay } from '@/domain/dates';
-import { buildHealthInsights } from '@/domain/healthInsights';
+import { buildHealthInsights, healthChangeNoteFromReadings } from '@/domain/healthInsights';
 import { buildFitnessSnapshot, fitnessFromSnapshot } from '@/domain/fitnessSnapshot';
 import { withPlannedMinutes } from '@/domain/plannedSession';
 import { goalLedFromSnapshot, goalProgressLine } from '@/domain/goalLed';
@@ -14,7 +14,7 @@ import { quoteById } from '@/domain/stoicQuotes';
 import { buildVoiceBriefing, type VoiceBriefing } from '@/domain/voice';
 import type { HealthTrend, ThumosMode } from '@/domain/thumos';
 
-function healthTrends(samples: AppSnapshot['health']): HealthTrend[] {
+function healthTrends(samples: AppSnapshot['health'], today: string): HealthTrend[] {
   const ordered = [...samples].sort((left, right) => (left.recordedOn < right.recordedOn ? 1 : left.recordedOn > right.recordedOn ? -1 : 0));
   const byKind = new Map<string, typeof ordered>();
   for (const sample of ordered) {
@@ -27,6 +27,7 @@ function healthTrends(samples: AppSnapshot['health']): HealthTrend[] {
     latest: rows[0]?.value ?? null,
     previous: rows[1]?.value ?? null,
     unit: rows[0]?.unit ?? '',
+    note: healthChangeNoteFromReadings(kind, rows, today),
   }));
 }
 
@@ -123,7 +124,7 @@ export function briefingFromSnapshot(snap: AppSnapshot, requestedMode: ThumosMod
         craving: item.craving,
         note: item.note,
       })),
-      health: shareHealth ? healthTrends(snap.health) : [],
+      health: shareHealth ? healthTrends(snap.health, isoDay(now)) : [],
       healthInsights,
       vision: profile.consentAi
         ? visionContextFrom(profile.visionStatement, profile.visionStartedOn, snap.visionItems)

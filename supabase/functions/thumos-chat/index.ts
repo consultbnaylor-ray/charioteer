@@ -38,7 +38,7 @@ import {
 } from '../_shared/thumos.ts';
 import { gratitudeFromRows, type GratitudeEntry } from '../_shared/gratitude.ts';
 import { visionContextFrom, type VisionContext } from '../_shared/visionBoard.ts';
-import { buildHealthInsights, londonDay } from '../_shared/healthInsights.ts';
+import { buildHealthInsights, healthChangeNoteFromReadings, londonDay } from '../_shared/healthInsights.ts';
 import { loadNutritionLines } from '../_shared/nutritionLoad.ts';
 import { moodOnTen } from '../_shared/mood.ts';
 import { GOAL_LABEL, type NutritionGoal } from '../_shared/nutrition.ts';
@@ -166,15 +166,17 @@ Deno.serve(async (req) => {
     list.push({ value: Number(row.value), unit: row.unit, recordedOn: row.recorded_on });
     byKind.set(row.kind, list);
   }
+  const healthToday = londonDay(new Date());
   const health: HealthTrend[] = [...byKind.entries()].map(([kind, rows]) => ({
     kind,
     latest: rows[0]?.value ?? null,
     previous: rows[1]?.value ?? null,
     unit: rows[0]?.unit ?? '',
+    note: healthChangeNoteFromReadings(kind, rows, healthToday),
   }));
   const healthInsights = shareHealth
     ? buildHealthInsights({
-        today: londonDay(new Date()),
+        today: healthToday,
         samples: healthRows.map((row) => ({
           kind: row.kind,
           value: Number(row.value),

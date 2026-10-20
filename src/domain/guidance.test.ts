@@ -207,7 +207,8 @@ describe('steps and heart rate variability', () => {
     expect(enough.plain).not.toContain(HRV_TOO_FEW);
     expect(enough.label).toBeNull();
     expect(enough.marker).toBeNull();
-    expect(enough.plain).toContain('your own');
+    expect(enough.plain).toContain('HRV 45 ms, up 6% vs your 30-day average');
+    expect(enough.plain).not.toContain('earlier average');
     expect(enough.caveat).toBe(GUIDANCE_CAVEAT);
   });
 

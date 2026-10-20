@@ -984,6 +984,17 @@ describe('health plan wiring', () => {
     expect(fn).toContain('isMealSlot');
     expect(fn).toContain('.limit(800)');
     expect(readFileSync('supabase/functions/_shared/healthPlan.ts', 'utf8')).toContain('not a diagnosis');
+    const hrvPlan = healthPlanModelContext(input({
+      health: [
+        { kind: 'hrv_sdnn', value: 45, recordedOn: '2026-10-10' },
+        { kind: 'hrv_sdnn', value: 45, recordedOn: '2026-10-11' },
+        { kind: 'hrv_sdnn', value: 45, recordedOn: '2026-10-12' },
+        { kind: 'hrv_sdnn', value: 45, recordedOn: '2026-10-13' },
+        { kind: 'hrv_sdnn', value: 45, recordedOn: '2026-10-14' },
+        { kind: 'hrv_sdnn', value: 48, recordedOn: '2026-10-15' },
+      ],
+    }), draftHealthPlan(input()));
+    expect(hrvPlan.changes).toEqual(['HRV 48 ms, up 7% vs your 30-day average']);
     expect(readFileSync('supabase/config.toml', 'utf8')).toContain('[functions.health-plan]');
   });
 
