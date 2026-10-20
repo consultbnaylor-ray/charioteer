@@ -1,6 +1,7 @@
 import { periodActiveMinutes } from './fitnessSnapshot.ts';
+import { boxingClassWindow, classStatus } from './goalWeightRange.ts';
 import { londonDay, type LondonWeek } from './healthInsights.ts';
-import { GOAL_LABEL, MIDDLEWEIGHT_LIMIT_KG, PRO_BOXING_CLASSES, classBoxerLimitKg, classBoxerName, dayItems, isClassBoxer, sumItems, weightPointsFrom, type FoodLog, type NutritionGoal } from './nutrition.ts';
+import { GOAL_LABEL, dayItems, isClassBoxer, sumItems, weightPointsFrom, type FoodLog, type NutritionGoal, type NutritionSex } from './nutrition.ts';
 import { paceJudgement, parseStatPeriod, periodHeading, periodPhrase, proteinPace, rollingWindow, scaledPeriodTarget, type StatPeriod } from './statWindow.ts';
 
 export type GoalTone = 'good' | 'watch' | 'info' | 'attention';
@@ -65,6 +66,8 @@ export type GoalLedInput = {
   scheduledDays?: number | null;
   weightKg?: number | null;
   previousWeightKg?: number | null;
+  /** Picks the heavyweight table. Other classes use the same edges for both. */
+  sex?: NutritionSex | null;
   sleepHours?: number | null;
   /** Rolling window. Omitted means the last 7 days, ending today in London. */
   period?: StatPeriod;
@@ -452,25 +455,22 @@ function weightMeasure(input: GoalLedInput, hope: 'down' | 'steady' | 'up' | 'cl
     };
   }
   if (hope === 'class') {
-    const named = isClassBoxer(input.goal) ? classBoxerName(input.goal) : 'middleweight';
-    const limit = isClassBoxer(input.goal)
-      ? classBoxerLimitKg(input.goal) ?? MIDDLEWEIGHT_LIMIT_KG
-      : num(input.weightClassKg) ?? MIDDLEWEIGHT_LIMIT_KG;
-    const near = latest <= limit + 1;
-    const pounds = isClassBoxer(input.goal) ? PRO_BOXING_CLASSES[input.goal].limitLb : Math.round(limit * 2.2046226218);
-    const place = near ? 'near the class' : 'above the class';
-    const namedLimit = `${named} limit ${limit} kg (${pounds} lb)`;
-    const explicit = `Weight · ${round1(latest)} kg · ${namedLimit} · ${place}`;
-    return {
-      id: 'weight',
-      label: 'Class',
-      centre: String(round1(latest)),
-      unit: 'kg',
-      fill: latest > 0 ? clamp01(limit / latest) : 0,
-      status: near ? 'Near the class' : 'Above the class',
-      tone: near ? 'good' : 'watch',
-      words: near ? `${explicit}. Keep every meal.` : `${explicit}. Keep every meal. A small change only.`,
-    };
+    const window = boxingClassWindow(input.goal, input.sex ?? null);
+    if (window) {
+      const status = classStatus(latest, window);
+      const keep = status.place === 'above' ? 'Keep every meal. A small change only.' : 'Keep every meal.';
+      return {
+        id: 'weight',
+        label: 'Class',
+        centre: String(round1(latest)),
+        unit: 'kg',
+        fill: status.fill,
+        status: status.line,
+        tone: status.tone,
+        signal: status.signal,
+        words: `${status.line} ${keep}`,
+      };
+    }
   }
   const previous = num(input.previousWeightKg);
   if (previous == null) {
@@ -558,7 +558,7 @@ function nudgesFor(input: GoalLedInput, measures: GoalMeasure[]): string[] {
   }
   const sleep = measures.find((item) => item.id === 'sleep');
   if (sleep?.status === 'Short') lines.push(sleep.words);
-  const weight = measures.find((item) => item.id === 'weight' && item.status === 'Above the class');
+  const weight = measures.find((item) => item.id === 'weight' && item.status.startsWith('Over the class'));
   if (weight) lines.push(weight.words);
   const kcal = measures.find((item) => item.id === 'kcal');
   if (!input.hideCalories && kcal?.status === 'Above' && (input.goal === 'lose_weight' || input.goal === 'lose_fat_build_muscle') && !input.blockedLoss) {

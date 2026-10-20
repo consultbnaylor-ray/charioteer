@@ -10,6 +10,7 @@ import type { FoodLogUpdate, NewHealthSample } from '@/data/types';
 import { formatUkCompact, formatUkCompactWhen, formatUkLong, formatUkTime, isoDay, parseIsoDay } from '@/domain/dates';
 import { londonDay } from '@/domain/healthInsights';
 import { shownError } from '@/domain/errors';
+import { boxingClassWindow } from '@/domain/goalWeightRange';
 import { parseHeightCm } from '@/domain/guidance';
 import { randomId } from '@/domain/id';
 import {
@@ -25,7 +26,6 @@ import {
   PRO_BOXING_CLASSES,
   isClassBoxer,
   isTrainingGoal,
-  sheetClassKg,
   HIDE_CALORIES_LINE,
   LOW_BMI_NOTE,
   MEAL_LABEL,
@@ -1349,7 +1349,7 @@ export default function Nutrition() {
             'weight_kg',
             weights.map((point) => ({ day: point.day, value: point.kg })),
             today,
-            { classKg: sheetClassKg(settings.goal, settings.weightClassKg) },
+            { classWindow: boxingClassWindow(settings.goal, settings.goalSex) },
           )}
         />
         {weights.length === 0 ? <T variant="muted">Add a weight on Health Stats and it will show here.</T> : (

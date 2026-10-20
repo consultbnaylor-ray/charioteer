@@ -1,4 +1,5 @@
 import { parseIsoDay } from '@/domain/dates';
+import { classStatus, type ClassEdges } from '@/domain/goalWeightRange';
 import { drinkFreeRing, soberMilestoneRing, type ChartBar } from '@/domain/distance';
 import { shiftDay } from '@/domain/healthInsights';
 import type { HealthInsightKind } from '@/domain/healthInsights';
@@ -420,25 +421,25 @@ function hrvFigure(points: readonly { day: string; value: number }[], today: str
 function weightFigure(
   points: readonly { day: string; value: number }[],
   today: string,
-  classKg: number | null,
+  classWindow: ClassEdges | null,
 ): HealthFigure | null {
   const history = ordered(points, today);
   const latest = history.at(-1);
   const earlier = history.length >= 2 ? history[0] : null;
   if (!latest) return null;
   const figure: HealthFigure = {};
-  if (classKg != null && classKg > 0) {
-    const gap = oneDp(Math.abs(latest.value - classKg));
-    const over = latest.value > classKg + 0.05;
-    const under = latest.value < classKg - 0.05;
+  const hasClass = classWindow != null && (classWindow.lowKg != null || classWindow.highKg != null);
+  if (hasClass && classWindow) {
+    const status = classStatus(latest.value, classWindow);
     figure.ring = {
       label: 'Against the class',
       ring: {
         centre: oneDpText(latest.value),
         unit: 'kg',
-        fill: clamp01(latest.value / classKg),
-        status: over ? `${oneDpText(gap)} kg over the class` : under ? `${oneDpText(gap)} kg under the class` : 'Level with the class',
-        tone: over ? 'watch' : 'info',
+        fill: status.fill,
+        status: status.line,
+        tone: status.tone,
+        signal: status.signal,
       },
     };
   }
@@ -453,7 +454,7 @@ function weightFigure(
       label: 'Earlier and latest',
       bars: {
         max: Math.max(earlier.value, latest.value, 1),
-        caption: classKg != null ? `${caption} This is not a cut.` : caption,
+        caption: hasClass ? `${caption} This is not a cut.` : caption,
         bars: [
           { key: 'earlier', label: `Earlier ${oneDpText(earlier.value)} kg`, value: earlier.value, tone: 'info' },
           { key: 'latest', label: `Latest ${oneDpText(latest.value)} kg`, value: latest.value, tone: 'info' },
@@ -470,7 +471,7 @@ export function healthFigure(
   kind: HealthInsightKind,
   points: readonly { day: string; value: number }[],
   today: string,
-  options?: { classKg?: number | null },
+  options?: { classWindow?: ClassEdges | null },
 ): HealthFigure | null {
   if (kind === 'sleep_hours') {
     const night = latestPoint(points, today);
@@ -487,6 +488,6 @@ export function healthFigure(
   if (kind === 'workout_minutes') return workoutFigure(points, today);
   if (kind === 'steps') return stepsFigure(points, today);
   if (kind === 'hrv_sdnn') return hrvFigure(points, today);
-  if (kind === 'weight_kg') return weightFigure(points, today, options?.classKg ?? null);
+  if (kind === 'weight_kg') return weightFigure(points, today, options?.classWindow ?? null);
   return null;
 }

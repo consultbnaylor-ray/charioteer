@@ -270,6 +270,7 @@ export async function loadNutritionLines(
     scheduledDays: scheduledDays && scheduledDays > 0 ? scheduledDays : null,
     weightKg: week.weightKg,
     previousWeightKg: week.previousWeightKg,
+    sex: settings.goalSex,
     sleepHours: sleep ?? null,
   });
   const weightRange = goalWeightRange({
