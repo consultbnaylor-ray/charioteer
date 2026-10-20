@@ -3,14 +3,15 @@ import { View } from 'react-native';
 import Svg, { Circle, Line } from 'react-native-svg';
 
 import {
-  bucketChartPoints,
   chartBucketCaption,
+  CHART_DIRECTION_HINT,
   chartExtent,
+  chartPlot,
+  datedAxisTicks,
   daySpan,
   formatAxisNumber,
   formatChartDate,
   formatChartValue,
-  xAxisTicks,
   yAxisTicks,
   type ChartAggregate,
   type ChartBucket,
@@ -50,12 +51,13 @@ export function ReadingChart({
   const theme = useAppTheme();
   const [width, setWidth] = useState(0);
   const [chosen, setChosen] = useState<string | null>(null);
-  const grain = bucket ?? bucketForSpan(start, end);
-  const shown = bucketChartPoints(
-    points.filter((point) => point.day >= start && point.day <= end),
-    grain,
-    aggregate,
-  );
+  const windowStart = start <= end ? start : end;
+  const windowEnd = start <= end ? end : start;
+  const grain = bucket ?? bucketForSpan(windowStart, windowEnd);
+  const plot = chartPlot({ points, start: windowStart, end: windowEnd, bucket: grain, aggregate });
+  const shown = plot.points;
+  const axisStart = plot.start;
+  const axisEnd = plot.end;
   const extent = chartExtent(shown);
   const ticks = yAxisTicks(shown.map((point) => point.value));
   const yName = yTitle ?? unit;
@@ -72,8 +74,8 @@ export function ReadingChart({
   }
 
   function xFor(day: string): number {
-    const span = Math.max(1, daySpan(start, end));
-    const offset = Math.min(span - 1, Math.max(0, daySpan(start, day) - 1));
+    const span = Math.max(1, daySpan(axisStart, axisEnd));
+    const offset = Math.min(span - 1, Math.max(0, daySpan(axisStart, day) - 1));
     const inner = Math.max(1, width - gutter - 12);
     if (span <= 1) return gutter + inner / 2;
     return gutter + (offset / (span - 1)) * inner;
@@ -97,11 +99,12 @@ export function ReadingChart({
     return <T variant="muted">No readings in this period.</T>;
   }
 
-  const marks = xAxisTicks(start, end);
+  const marks = datedAxisTicks(axisStart, axisEnd);
+  const grainCaption = chartBucketCaption(grain, aggregate);
   const summary = `Latest ${formatChartValue(extent.latest.value, unit)} · Min ${formatAxisNumber(extent.min)} · Max ${formatAxisNumber(extent.max)}`;
   const spoken = selected
     ? `${accessibilityLabel}. ${tooltipWhen(selected.day, grain)}, ${formatChartValue(selected.value, unit)}.`
-    : `${accessibilityLabel}. ${summary}.`;
+    : `${accessibilityLabel}. ${summary}. Older on the left, newer on the right.`;
 
   return (
     <View accessibilityLabel={spoken} style={{ gap: 6, alignSelf: 'stretch' }}>
@@ -237,7 +240,8 @@ export function ReadingChart({
           : null}
       </View>
       <T style={{ fontSize: 11 * label, lineHeight: 14 * label, color: theme.colors.muted, textAlign: 'center' }}>{xTitle}</T>
-      <T variant="muted">{chartBucketCaption(grain, aggregate)}</T>
+      <T style={{ fontSize: 11 * label, lineHeight: 14 * label, color: theme.colors.muted, textAlign: 'center' }}>{CHART_DIRECTION_HINT}</T>
+      {grainCaption ? <T variant="muted">{grainCaption}</T> : null}
     </View>
   );
 }

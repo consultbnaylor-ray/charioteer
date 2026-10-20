@@ -3,6 +3,7 @@ import { useRouter } from 'expo-router';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Keyboard, Platform, Pressable, ScrollView, Switch, View } from 'react-native';
 
+import { weightChart } from '@/domain/chartSeries';
 import { useRepository, useSnapshot } from '@/data';
 import type { FoodLogUpdate, NewHealthSample } from '@/data/types';
 import { formatUkCompact, formatUkCompactWhen, formatUkLong, formatUkTime, isoDay, parseIsoDay } from '@/domain/dates';
@@ -64,7 +65,6 @@ import {
   todayMealRows,
   todayMealTotals,
   todayRing,
-  weightPointsFrom,
   weightTrendLine,
   type BuilderPhase,
   type FoodItem,
@@ -276,7 +276,7 @@ export default function Nutrition() {
     .filter((log) => log.eatenOn !== today)
     .slice()
     .sort((a, b) => b.eatenOn.localeCompare(a.eatenOn) || b.createdAt.localeCompare(a.createdAt));
-  const weights = weightPointsFrom(snap.health);
+  const weights = weightChart(snap.health).map((point) => ({ day: point.day, kg: point.value }));
   const latestWeight = weights.length ? weights[weights.length - 1] : undefined;
   const blocked = settings.goal
     ? lossBlocked({

@@ -1,3 +1,4 @@
+import { profileTrendChart } from '@/domain/chartSeries';
 import { formatUkDate } from './dates';
 import { averageValue, formatHealthValue, HEALTH_METRICS } from './healthInsights';
 import { formatGbp } from './savings';
@@ -230,7 +231,7 @@ function chartFor(shape: 'bar' | 'line', values: number[]): ProfileStatChart | n
 
 function positivePoints(trend: SharedHealthTrend | undefined): { day: string; value: number }[] {
   if (!trend) return [];
-  return trend.points.filter((point) => Number.isFinite(point.value));
+  return profileTrendChart(trend.points);
 }
 
 function gratitudeTile(count: number): ProfileStatTile {

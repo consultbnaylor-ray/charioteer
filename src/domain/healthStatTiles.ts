@@ -33,7 +33,9 @@ import {
   NICE_BMI_HEALTHY_MIN,
   NICE_BMI_URL,
 } from '@/domain/guidance';
-import { dailyValues, formatSleepHours, shiftDay, weekdayShort, type DayValue } from '@/domain/healthInsights';
+import { healthSampleChart, sparklineFromDays } from '@/domain/chartSeries';
+import { formatSleepHours, shiftDay, weekdayShort, type DayValue } from '@/domain/healthInsights';
+import { ascendingByDay } from '@/domain/readingChart';
 import {
   GOAL_LABEL,
   isAnyBoxer,
@@ -1319,10 +1321,10 @@ function slicePeriod(points: readonly DayValue[], input: HealthStatBoardInput): 
   if (points.length === 0) return 'none';
   const period = periodOf(input);
   const start = windowStart(input.today, period);
-  const current = points.filter((point) => point.day >= start && point.day <= input.today);
+  const current = ascendingByDay(points.filter((point) => point.day >= start && point.day <= input.today));
   if (current.length === 0) return 'gap';
   const previousWindow = previousBounds(input.today, period);
-  const previous = points.filter((point) => point.day >= previousWindow.start && point.day <= previousWindow.end);
+  const previous = ascendingByDay(points.filter((point) => point.day >= previousWindow.start && point.day <= previousWindow.end));
   return { current, previous };
 }
 
@@ -1426,8 +1428,10 @@ function trendWords(latest: number, previous: number, epsilon: number, against: 
 }
 
 function spark(history: readonly DayValue[], label: string): HealthStatVisual {
-  if (history.length >= 2) return { kind: 'line', points: history.map((point) => point.value) };
-  const latest = history.at(-1);
+  const ordered = ascendingByDay(history);
+  const values = sparklineFromDays(ordered);
+  if (values.length >= 2) return { kind: 'line', points: values };
+  const latest = ordered.at(-1);
   const value = latest?.value ?? 0;
   return {
     kind: 'bars',
@@ -1438,7 +1442,7 @@ function spark(history: readonly DayValue[], label: string): HealthStatVisual {
 }
 
 function series(samples: readonly HealthStatSample[], kind: string, today: string): DayValue[] {
-  return dailyValues([...samples], kind).filter((point) => point.day <= today);
+  return healthSampleChart(samples, kind, today);
 }
 
 function bodySeries(
@@ -1455,7 +1459,7 @@ function bodySeries(
     if (value == null || !Number.isFinite(value) || value <= 0) continue;
     map.set(row.recordedOn.slice(0, 10), value);
   }
-  return [...map.entries()].map(([day, value]) => ({ day, value }));
+  return ascendingByDay([...map.entries()].map(([day, value]) => ({ day, value })));
 }
 
 function sumBetween(points: readonly DayValue[], start: string, end: string): number {

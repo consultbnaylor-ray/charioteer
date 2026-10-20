@@ -5,6 +5,9 @@ export type ChartPoint = { day: string; value: number };
 export type ChartAggregate = 'mean' | 'sum';
 export type ChartBucket = 'day' | 'week' | 'month';
 
+/** Small monochrome hint under the date axis. */
+export const CHART_DIRECTION_HINT = 'Older ← → Newer';
+
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
@@ -17,10 +20,15 @@ export function chartBucketForPeriod(period: StatPeriod): ChartBucket {
 }
 
 export function chartBucketCaption(bucket: ChartBucket, aggregate: ChartAggregate): string {
-  if (bucket === 'day') return 'Oldest to newest.';
+  if (bucket === 'day') return '';
   const grain = bucket === 'week' ? 'Weekly' : 'Monthly';
   const kind = aggregate === 'sum' ? 'totals' : 'averages';
-  return `${grain} ${kind}. Oldest to newest.`;
+  return `${grain} ${kind}.`;
+}
+
+/** Oldest day on the left. Same-day order stays as it arrived. */
+export function ascendingByDay<T extends { day: string }>(points: readonly T[]): T[] {
+  return [...points].sort((left, right) => (left.day < right.day ? -1 : left.day > right.day ? 1 : 0));
 }
 
 /** Real readings only. A day, week, or month with nothing is left out. */
@@ -44,6 +52,31 @@ export function bucketChartPoints(
       day,
       value: roundChart(aggregate === 'sum' ? values.reduce((sum, value) => sum + value, 0) : values.reduce((sum, value) => sum + value, 0) / values.length),
     }));
+}
+
+/**
+ * Readings inside the window, oldest on the left.
+ * The x-axis runs from the oldest plotted day to the latest plotted day.
+ */
+export function chartPlot(input: {
+  points: readonly ChartPoint[];
+  start: string;
+  end: string;
+  bucket: ChartBucket;
+  aggregate: ChartAggregate;
+}): { points: ChartPoint[]; start: string; end: string } {
+  const window = input.start <= input.end
+    ? { start: input.start, end: input.end }
+    : { start: input.end, end: input.start };
+  const shown = bucketChartPoints(
+    input.points.filter((point) => point.day >= window.start && point.day <= window.end),
+    input.bucket,
+    input.aggregate,
+  );
+  const first = shown[0];
+  const last = shown[shown.length - 1];
+  if (!first || !last) return { points: [], start: window.start, end: window.end };
+  return { points: shown, start: first.day, end: last.day };
 }
 
 export function chartExtent(points: readonly ChartPoint[]): { latest: ChartPoint; min: number; max: number } | null {
@@ -123,12 +156,29 @@ export function xAxisTicks(start: string, end: string): { day: string; label: st
   return unique.map((day) => ({ day, label: xLabel(day, span, crossYear) }));
 }
 
+/** The same ticks, with the oldest and newest ends written as dates. */
+export function datedAxisTicks(start: string, end: string): { day: string; label: string }[] {
+  const span = Math.max(1, daySpan(start, end));
+  const crossYear = start.slice(0, 4) !== end.slice(0, 4);
+  const ticks = xAxisTicks(start, end);
+  if (ticks.length === 0) return [{ day: start, label: axisEndLabel(start, span, crossYear) }];
+  const next = ticks.map((tick) => ({ ...tick }));
+  next[0] = { day: start, label: axisEndLabel(start, span, crossYear) };
+  if (next.length > 1) next[next.length - 1] = { day: end, label: axisEndLabel(end, span, crossYear) };
+  return next;
+}
+
 export function daySpan(start: string, end: string): number {
   const [ay, am, ad] = start.split('-').map(Number);
   const [by, bm, bd] = end.split('-').map(Number);
   const from = Date.UTC(ay ?? 1970, (am ?? 1) - 1, ad ?? 1);
   const to = Date.UTC(by ?? 1970, (bm ?? 1) - 1, bd ?? 1);
   return Math.round((to - from) / 86_400_000) + 1;
+}
+
+function axisEndLabel(day: string, span: number, crossYear: boolean): string {
+  if (span > 120) return xLabel(day, span, crossYear);
+  return xLabel(day, Math.max(span, 8), crossYear);
 }
 
 function xLabel(day: string, span: number, crossYear: boolean): string {

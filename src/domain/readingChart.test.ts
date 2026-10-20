@@ -4,6 +4,9 @@ import {
   bucketChartPoints,
   chartBucketCaption,
   chartBucketForPeriod,
+  CHART_DIRECTION_HINT,
+  chartPlot,
+  datedAxisTicks,
   formatAxisNumber,
   formatChartDate,
   xAxisTicks,
@@ -49,8 +52,10 @@ describe('chart buckets', () => {
     expect(chartBucketForPeriod('90')).toBe('day');
     expect(chartBucketForPeriod('6m')).toBe('week');
     expect(chartBucketForPeriod('12m')).toBe('month');
-    expect(chartBucketCaption('week', 'mean')).toBe('Weekly averages. Oldest to newest.');
-    expect(chartBucketCaption('month', 'sum')).toBe('Monthly totals. Oldest to newest.');
+    expect(chartBucketCaption('day', 'mean')).toBe('');
+    expect(chartBucketCaption('week', 'mean')).toBe('Weekly averages.');
+    expect(chartBucketCaption('month', 'sum')).toBe('Monthly totals.');
+    expect(CHART_DIRECTION_HINT).toBe('Older ← → Newer');
     const daily = bucketChartPoints([
       { day: '2026-10-01', value: 60 },
       { day: '2026-10-03', value: 70 },
@@ -77,6 +82,41 @@ describe('chart buckets', () => {
       { day: '2026-09-01', value: 40 },
       { day: '2026-11-01', value: 5 },
     ]);
+  });
+});
+
+describe('chart direction', () => {
+  it('ends the axis on the latest reading and keeps that date on the right', () => {
+    const plot = chartPlot({
+      points: [
+        { day: '2026-10-18', value: 41.7 },
+        { day: '2026-10-10', value: 44.3 },
+        { day: '2026-09-21', value: 42.8 },
+      ],
+      start: '2026-09-01',
+      end: '2026-10-20',
+      bucket: 'day',
+      aggregate: 'mean',
+    });
+    expect(plot.points.map((point) => point.day)).toEqual(['2026-09-21', '2026-10-10', '2026-10-18']);
+    expect(plot.start).toBe('2026-09-21');
+    expect(plot.end).toBe('2026-10-18');
+    const ticks = datedAxisTicks(plot.start, plot.end);
+    expect(ticks[0]).toEqual({ day: '2026-09-21', label: '21 Sep' });
+    expect(ticks.at(-1)).toEqual({ day: '2026-10-18', label: '18 Oct' });
+    const swapped = chartPlot({
+      points: plot.points,
+      start: '2026-10-20',
+      end: '2026-09-01',
+      bucket: 'day',
+      aggregate: 'mean',
+    });
+    expect(swapped.points.map((point) => point.day)).toEqual(['2026-09-21', '2026-10-10', '2026-10-18']);
+    expect(swapped.end).toBe('2026-10-18');
+    const week = datedAxisTicks('2026-10-13', '2026-10-19');
+    expect(week[0]?.label).toBe('13 Oct');
+    expect(week.at(-1)?.label).toBe('19 Oct');
+    expect(week[1]?.label).toBe('Wed');
   });
 });
 

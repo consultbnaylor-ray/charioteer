@@ -1,5 +1,6 @@
 import { View } from 'react-native';
 
+import { checkInChart } from '@/domain/chartSeries';
 import { formatMoodAverage, weeklyMoodAverage, type CheckInDay } from '@/domain/checkIns';
 import { checkInWeekFigure, countSplit, moodCravingBars, moodFigure } from '@/domain/measureFigures';
 import { MeasureBarsView, MeasureRingView, MeasureSplitView } from '@/ui/MeasuredFigure';
@@ -49,10 +50,7 @@ function Series({
   unit?: string;
   average?: string | null;
 }) {
-  const points = days.flatMap((day) => {
-    const value = pick(day);
-    return value == null ? [] : [{ day: day.day, value }];
-  });
+  const points = checkInChart(days.map((day) => ({ day: day.day, value: pick(day) })));
   const start = days[0]?.day;
   const end = days[days.length - 1]?.day;
   return (

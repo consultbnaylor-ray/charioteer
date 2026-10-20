@@ -1,13 +1,13 @@
 import { Fragment, useEffect, useRef, useState } from 'react';
 import { Linking, Pressable, View } from 'react-native';
 
+import { healthSampleChart, healthWindowChart, waistChart } from '@/domain/chartSeries';
 import type { HealthSample } from '@/data/types';
 import { isoDay, startOfLocalDay } from '@/domain/dates';
 import { buildMetricGuidance, parseHeightCm } from '@/domain/guidance';
 import { compositionForAssessment, sheetClassKg } from '@/domain/nutrition';
 import {
   buildHealthInsights,
-  dailyValues,
   formatHealthValue,
   formatReadingLine,
   formatUkCompactDay,
@@ -15,7 +15,6 @@ import {
   healthKindLabel,
   HEALTH_METRICS,
   latestReading,
-  seriesForWindow,
   shiftDay,
   type HealthInsightKind,
 } from '@/domain/healthInsights';
@@ -156,8 +155,8 @@ function MetricCard({
   const [heightError, setHeightError] = useState<string | null>(null);
   const [heightSaved, setHeightSaved] = useState<string | null>(null);
   const latest = latestReading(samples, kind, today);
-  const points = seriesForWindow(samples, kind, today, range);
-  const history = dailyValues(samples, kind).filter((point) => point.day <= today);
+  const points = healthWindowChart(samples, kind, today, range);
+  const history = healthSampleChart(samples, kind, today);
   const typedHeight = parseHeightCm(heightText);
   const liveHeight = typedHeight.ok ? typedHeight.value : heightCm;
   const snap = useSnapshot();
@@ -399,7 +398,7 @@ function WaistHistory({
       ) : (
         <>
           <ReadingChart
-            points={history.points.map((point) => ({ day: point.day, value: point.cm }))}
+            points={waistChart(rows, today, windowDays)}
             start={shiftDay(today, -(windowDays - 1))}
             end={today}
             unit="cm"

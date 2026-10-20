@@ -1,6 +1,7 @@
 import { useMemo, type ReactNode } from 'react';
 import { View } from 'react-native';
 
+import { loggedNutritionChart, loggingChart, overviewLineChart } from '@/domain/chartSeries';
 import type { ChartBar } from '@/domain/distance';
 import type { FoodLog, NutritionGoal, TodayRing, TrendDay } from '@/domain/nutrition';
 import {
@@ -91,7 +92,7 @@ export function NutritionBoard({
           { key: 'processed', label: `Processed ${processed}`, value: processed, tone: processed > 0 ? 'watch' : 'info' },
         ] satisfies ChartBar[],
       },
-      dots: loggingDots(logs, today),
+      dots: loggingChart(loggingDots(logs, today)),
       dotsCaption: loggingCaption(logs, today),
       insights: eatingInsights(logs, checkIns),
     };
@@ -240,9 +241,9 @@ export function WeightTrendChart({
   const today = londonToday();
   const window = rollingWindow(today, period);
   const caption = weightTrendLine(points, goal);
-  const readings = points
+  const readings = overviewLineChart(points
     .filter((point) => point.day >= window.start && point.day <= window.end)
-    .map((point) => ({ day: point.day, value: point.kg }));
+    .map((point) => ({ day: point.day, value: point.kg })));
   return (
     <View accessibilityLabel={caption} style={{ gap: 8 }}>
       <ReadingChart
@@ -345,12 +346,7 @@ function LoggedSeries({
   unit: string;
 }) {
   const window = rollingWindow(today, period);
-  const points = days.flatMap((day) => {
-    if (!day.logged) return [];
-    const value = pick(day);
-    if (!(value > 0)) return [];
-    return [{ day: day.day, value }];
-  });
+  const points = loggedNutritionChart(days, pick);
   return (
     <View accessibilityLabel={`${title} chart`} style={{ gap: 6 }}>
       <T variant="label">{title}</T>

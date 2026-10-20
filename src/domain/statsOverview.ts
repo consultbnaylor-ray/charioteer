@@ -1,3 +1,4 @@
+import { bodyCompositionChart, overviewLineChart, overviewScoreChart, weightChart } from '@/domain/chartSeries';
 import { recentCheckInDays } from '@/domain/checkIns';
 import { isoDay, parseIsoDay } from '@/domain/dates';
 import {
@@ -113,7 +114,7 @@ function scoreLine(
   period: StatPeriod,
 ): DistanceChart {
   const window = rollingWindow(isoDay(today), period);
-  const readings = days.flatMap((day) => (day.value == null ? [] : [{ day: day.day, value: day.value }]));
+  const readings = overviewScoreChart(days);
   return {
     kind: 'line',
     points: readings.map((point) => point.value),
@@ -125,13 +126,14 @@ function scoreLine(
 }
 
 function datedLine(points: readonly { day: string; value: number }[], unit: string): DistanceChart {
-  if (points.length < 2) return { kind: 'none' };
-  const start = points[0]?.day ?? '';
-  const end = points[points.length - 1]?.day ?? start;
+  const ordered = overviewLineChart(points);
+  if (ordered.length < 2) return { kind: 'none' };
+  const start = ordered[0]?.day ?? '';
+  const end = ordered[ordered.length - 1]?.day ?? start;
   return {
     kind: 'line',
-    points: points.map((point) => point.value),
-    readings: [...points],
+    points: ordered.map((point) => point.value),
+    readings: ordered,
     unit,
     start,
     end,
@@ -326,7 +328,7 @@ function checkInTile(input: StatsOverviewInput, today: Date): StatTileModel {
 }
 
 function weightTile(input: StatsOverviewInput): StatTileModel {
-  const points = weightPointsFrom(input.health);
+  const points = weightChart(input.health).map((point) => ({ day: point.day, kg: point.value }));
   const latest = points.at(-1);
   const direction = weightDirection(points);
   const goal = input.nutrition.goal;
@@ -461,17 +463,17 @@ function bodyTile(input: StatsOverviewInput): StatTileModel {
     build: input.nutrition.build,
     sex: input.nutrition.goalSex,
   });
-  const fatSeries = [...input.bodyComposition]
-    .filter((row) => row.bodyFatPct != null)
-    .sort((left, right) => left.recordedOn.localeCompare(right.recordedOn))
-    .map((row) => row.bodyFatPct as number);
-  const waistSeries = [...input.bodyComposition]
-    .filter((row) => row.waistCm != null && input.heightCm != null)
-    .sort((left, right) => left.recordedOn.localeCompare(right.recordedOn))
-    .flatMap((row) => {
-      const ratio = waistToHeight(row.waistCm as number, input.heightCm as number);
-      return ratio == null ? [] : [ratio];
-    });
+  const fatSeries = bodyCompositionChart(input.bodyComposition.map((row) => ({
+    recordedOn: row.recordedOn,
+    value: row.bodyFatPct,
+  }))).map((point) => point.value);
+  const waistSeries = bodyCompositionChart(input.bodyComposition.map((row) => ({
+    recordedOn: row.recordedOn,
+    value: row.waistCm,
+  }))).flatMap((point) => {
+    const ratio = input.heightCm == null ? null : waistToHeight(point.value, input.heightCm);
+    return ratio == null ? [] : [ratio];
+  });
   if (assessment.basis === 'body_fat' && composition.bodyFatPct != null) {
     const range = bodyFatRange(composition.bodyFatPct, input.nutrition.goalSex);
     return tile({
@@ -546,10 +548,10 @@ function bodyTile(input: StatsOverviewInput): StatTileModel {
 
 function leanTile(input: StatsOverviewInput): StatTileModel | null {
   if (input.nutrition.goal !== 'body_builder') return null;
-  const all = [...input.bodyComposition]
-    .filter((row) => row.leanMassKg != null)
-    .sort((left, right) => left.recordedOn.localeCompare(right.recordedOn))
-    .map((row) => ({ day: row.recordedOn.slice(0, 10), value: row.leanMassKg as number }));
+  const all = bodyCompositionChart(input.bodyComposition.map((row) => ({
+    recordedOn: row.recordedOn,
+    value: row.leanMassKg,
+  })));
   const dated = all.slice(-8);
   const series = dated.map((point) => point.value);
   const latest = all.at(-1)?.value;

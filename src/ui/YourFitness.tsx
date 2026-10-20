@@ -24,6 +24,7 @@ import {
 import { applyFitnessFocus } from '@/domain/healthPlan';
 import { loadWorkoutSources } from '@/health/workoutSources';
 import { useStatPeriod } from '@/health/useStatPeriod';
+import { fitnessSeriesChart } from '@/domain/chartSeries';
 import { chartBucketForPeriod, type ChartAggregate } from '@/domain/readingChart';
 import { londonToday, periodPhrase, rollingWindow } from '@/domain/statWindow';
 import { StatPeriodToggle } from '@/ui/StatPeriodToggle';
@@ -412,7 +413,7 @@ function FitnessSeries({
   if (points.length === 0) return null;
   return (
     <ReadingChart
-      points={points}
+      points={fitnessSeriesChart(points)}
       start={window.start}
       end={window.end}
       unit={unit}
