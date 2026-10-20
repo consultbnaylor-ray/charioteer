@@ -24,6 +24,7 @@ import {
   type MealSlot,
 } from '@/domain/nutrition';
 import { DateField } from '@/ui/DateField';
+import { dismissKeyboard } from '@/ui/keyboard';
 import { radius, useAppTheme } from '@/ui/theme';
 import { Button, Choice, Field, T } from '@/ui/ui';
 
@@ -129,6 +130,7 @@ export function MealEdit({
   }
 
   function save() {
+    dismissKeyboard();
     const withFats = items.map((item, index) => {
       const typed = Number(String(fatText[index] ?? '').replace(',', '.'));
       if (!Number.isFinite(typed) || typed < 0) return item;

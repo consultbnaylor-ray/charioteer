@@ -1,8 +1,9 @@
 import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Keyboard, Platform, Pressable, ScrollView, Switch, View } from 'react-native';
 
+import { dismissKeyboard } from '@/ui/keyboard';
 import { weightChart } from '@/domain/chartSeries';
 import { useRepository, useSnapshot } from '@/data';
 import type { FoodLogUpdate, NewHealthSample } from '@/data/types';
@@ -239,16 +240,6 @@ function itemFromDraft(draft: DraftItem): FoodItem | null {
   };
 }
 
-function webScrollParent(node: HTMLElement | null): HTMLElement | null {
-  let current = node?.parentElement ?? null;
-  while (current) {
-    const overflow = getComputedStyle(current).overflowY;
-    if (overflow === 'auto' || overflow === 'scroll') return current;
-    current = current.parentElement;
-  }
-  return null;
-}
-
 export default function Nutrition() {
   const snap = useSnapshot();
   const repo = useRepository();
@@ -344,8 +335,6 @@ export default function Nutrition() {
   const savedRowRef = useRef<View>(null);
   const dayAnchorRef = useRef<View>(null);
   const confirmRef = useRef<View>(null);
-  const logActionsRef = useRef<View>(null);
-  const placeRef = useRef<{ bottom: number; onScreen: boolean; offset: number } | null>(null);
   const scroller = useScreenScroller();
 
   useEffect(() => {
@@ -368,65 +357,6 @@ export default function Nutrition() {
     const timer = setTimeout(() => setEstimateFlash(false), 1800);
     return () => clearTimeout(timer);
   }, [estimateFlash]);
-
-  useLayoutEffect(() => {
-    const snap = placeRef.current;
-    if (!snap) return;
-    placeRef.current = null;
-    if (!snap.onScreen) return;
-    if (Platform.OS === 'web') {
-      if (typeof document === 'undefined') return;
-      const node = document.getElementById('meal-log-actions');
-      if (!node) return;
-      const rect = node.getBoundingClientRect();
-      if (rect.top >= 0 && rect.top < window.innerHeight) return;
-      const parent = webScrollParent(node);
-      if (!parent) return;
-      parent.scrollTop = Math.max(0, parent.scrollTop + rect.bottom - snap.bottom);
-      return;
-    }
-    const actions = logActionsRef.current;
-    const scroll = scroller?.current;
-    if (!actions || !scroll?.scrollRef.current) return;
-    actions.measureInWindow((_x, y, _width, height) => {
-      if (y >= 0 && y < scroll.height) return;
-      const delta = y + height - snap.bottom;
-      scroll.scrollRef.current?.scrollTo({ y: Math.max(0, snap.offset + delta), animated: false });
-    });
-  }, [draft, savedDayNote, scroller]);
-
-  function rememberConfirmPlace(done: () => void) {
-    if (Platform.OS === 'web') {
-      if (typeof document !== 'undefined') {
-        const card = document.getElementById('meal-estimate-confirm');
-        if (card) {
-          const rect = card.getBoundingClientRect();
-          const parent = webScrollParent(card);
-          placeRef.current = {
-            bottom: rect.bottom,
-            onScreen: rect.top < window.innerHeight && rect.bottom > 0,
-            offset: parent?.scrollTop ?? 0,
-          };
-        }
-      }
-      done();
-      return;
-    }
-    const card = confirmRef.current;
-    const scroll = scroller?.current;
-    if (!card || !scroll) {
-      done();
-      return;
-    }
-    card.measureInWindow((_x, y, _width, height) => {
-      placeRef.current = {
-        bottom: y + height,
-        onScreen: y < scroll.height && y + height > 0,
-        offset: scroll.offset,
-      };
-      done();
-    });
-  }
 
   function scrollToEstimate() {
     if (Platform.OS === 'web') {
@@ -728,6 +658,7 @@ export default function Nutrition() {
   }
 
   function saveMeal(force: boolean) {
+    dismissKeyboard();
     if (!draft) return;
     const foods = draft.items.map(itemFromDraft).filter((item): item is FoodItem => item != null);
     if (!foods.length) {
@@ -761,18 +692,15 @@ export default function Nutrition() {
           estimated: draft.estimated,
           photoBase64: draft.photoBase64,
         });
-        const finish = () => {
-          setDraft(null);
-          setEstimateReady(false);
-          setEstimateFlash(false);
-          setText('');
-          setSavedDayNote(mealAddedLabel(stamp.eatenOn, new Date()));
-          setMealSavedAt(Date.now());
-          setRevealDay(stamp.eatenOn);
-          setRevealId(id);
-          playSavedHaptic();
-        };
-        rememberConfirmPlace(finish);
+        setDraft(null);
+        setEstimateReady(false);
+        setEstimateFlash(false);
+        setText('');
+        setSavedDayNote(mealAddedLabel(stamp.eatenOn, new Date()));
+        setMealSavedAt(Date.now());
+        setRevealDay(stamp.eatenOn);
+        setRevealId(id);
+        playSavedHaptic();
         if (Platform.OS === 'ios' && profile?.consentHealth && stamp.eatenOn === londonDay(new Date())) {
           const written = await writeDayToAppleHealth(foods, 0);
           setHealthNote(written.ok ? 'Saved to Apple Health.' : written.message);
@@ -784,6 +712,7 @@ export default function Nutrition() {
   }
 
   function saveEdited(id: string, patch: FoodLogUpdate) {
+    dismissKeyboard();
     run('meal-save', async () => {
       setError(null);
       try {
@@ -1119,7 +1048,7 @@ export default function Nutrition() {
         {snap.mode === 'demo' ? (
           <Button label="Use a sample photo" tone="quiet" pending={isPending('sample')} pendingLabel="Estimating..." onPress={samplePhoto} />
         ) : null}
-        <View ref={logActionsRef} nativeID="meal-log-actions" collapsable={false} style={{ gap: 8 }}>
+        <View style={{ gap: 8 }}>
         <Button
           label="Enter it myself"
           tone="quiet"

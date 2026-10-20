@@ -2,7 +2,6 @@ import * as Haptics from 'expo-haptics';
 import { createContext, useContext, useRef, useState, type ReactNode, type RefObject } from 'react';
 import {
   ActivityIndicator,
-  Keyboard,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -23,7 +22,7 @@ import Svg, { Path } from 'react-native-svg';
 import type { Verification } from '@/data/types';
 import { requestBadgeText } from '@/domain/connections';
 import { HELMET_ASPECT, HELMET_D, HELMET_VIEWBOX } from '@/ui/helmet';
-import { DismissKeyboard, dismissKeyboardOnAction, inputScrollProps, KeyboardForm, keyboardAccessoryId, useKeyboardField, useKeyboardOffset } from '@/ui/keyboard';
+import { DismissKeyboard, dismissKeyboard, dismissKeyboardOnAction, inputScrollProps, KeyboardDoneBar, KeyboardForm, keyboardAccessoryId, useKeyboardField, useKeyboardOffset } from '@/ui/keyboard';
 import { topSafeInset } from '@/ui/safeArea';
 import { radius, useAppTheme } from '@/ui/theme';
 
@@ -168,6 +167,7 @@ export function Screen({
           ref={scrollRef}
           innerViewRef={innerRef as RefObject<View>}
           {...inputScrollProps}
+          automaticallyAdjustKeyboardInsets
           maintainVisibleContentPosition={holdPlace ? { minIndexForVisible: 0 } : undefined}
           onScroll={(event) => {
             scrollHandle.current.offset = event.nativeEvent.contentOffset.y;
@@ -193,12 +193,14 @@ export function Screen({
             ) : undefined
           }
         >
-          {eyebrow ? <T variant="label">{eyebrow}</T> : null}
-          {title ? <T variant="display" style={[{ marginTop: eyebrow ? 6 : 0 }, titleStyle]}>{title}</T> : null}
-          {intro ? <T variant="muted" style={[{ marginTop: 8 }, introStyle]}>{intro}</T> : null}
-          <KeyboardForm>
-            <View style={{ marginTop: title || intro ? 22 : 0, gap: 14 }}>{children}</View>
-          </KeyboardForm>
+          <DismissKeyboard style={{ flexGrow: 1 }}>
+            {eyebrow ? <T variant="label">{eyebrow}</T> : null}
+            {title ? <T variant="display" style={[{ marginTop: eyebrow ? 6 : 0 }, titleStyle]}>{title}</T> : null}
+            {intro ? <T variant="muted" style={[{ marginTop: 8 }, introStyle]}>{intro}</T> : null}
+            <KeyboardForm>
+              <View style={{ marginTop: title || intro ? 22 : 0, gap: 14 }}>{children}</View>
+            </KeyboardForm>
+          </DismissKeyboard>
         </ScrollView>
         {footer ? (
           <DismissKeyboard style={[styles.footer, { borderTopColor: theme.colors.line, backgroundColor: theme.colors.bg, paddingBottom: 16 + bottomInset }]}>
@@ -293,7 +295,7 @@ export function EditSheet({
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
       <View style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.45)' }}>
-        <Pressable accessibilityRole="button" accessibilityLabel="Close editor" style={{ flex: 1 }} onPress={onClose} />
+        <Pressable accessibilityRole="button" accessibilityLabel="Close editor" style={{ flex: 1 }} onPress={() => { dismissKeyboard(); onClose(); }} />
         <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
           <View
             style={{
@@ -311,11 +313,14 @@ export function EditSheet({
               <T variant="title">{title}</T>
               {intro ? <T>{intro}</T> : null}
             </DismissKeyboard>
-            <ScrollView {...inputScrollProps} style={{ flexGrow: 0, maxHeight: 420 }}>
+            <ScrollView {...inputScrollProps} automaticallyAdjustKeyboardInsets style={{ flexGrow: 0, maxHeight: 420 }}>
               <KeyboardForm>
-                <View style={{ gap: 12 }}>{children}</View>
+                <DismissKeyboard>
+                  <View style={{ gap: 12 }}>{children}</View>
+                </DismissKeyboard>
               </KeyboardForm>
             </ScrollView>
+            <KeyboardDoneBar />
             <Button label={saveLabel} pending={pending} onPress={onSave} />
             <Button label="Cancel" tone="quiet" onPress={onClose} disabled={pending} />
           </View>
@@ -440,7 +445,13 @@ export function Field({
   const [revealed, setRevealed] = useState(false);
   const password = Boolean(secureTextEntry);
   const writing = Boolean(multiline || minLines);
+  const numericPad = keyboardType === 'number-pad' || keyboardType === 'decimal-pad';
+  const closePad = numericPad || Boolean(dismissOnSubmit);
   const keys = useKeyboardField(inputRef, writing);
+  function closeKeyboard() {
+    inputRef.current?.blur();
+    dismissKeyboard();
+  }
   // iOS paints the first TextInput placeholder with `color` when a custom font
   // is set, and ignores placeholderTextColor. An empty field uses the hint
   // colour for both, so an example never looks like something already typed.
@@ -457,15 +468,15 @@ export function Field({
       onChangeText={onChangeText}
       onBlur={onBlur}
       onFocus={onFocus}
-      onSubmitEditing={dismissOnSubmit ? () => Keyboard.dismiss() : keys.onSubmitEditing}
+      onSubmitEditing={closePad ? closeKeyboard : keys.onSubmitEditing}
       placeholder={placeholder}
       placeholderTextColor={theme.colors.placeholder}
       secureTextEntry={password && !revealed}
       textContentType={contentType}
       autoComplete={contentType === 'newPassword' ? 'password-new' : contentType === 'password' ? 'password' : undefined}
       keyboardType={keyboardType}
-      returnKeyType={dismissOnSubmit ? 'done' : keys.returnKeyType}
-      blurOnSubmit={dismissOnSubmit ? true : keys.blurOnSubmit}
+      returnKeyType={closePad ? 'done' : keys.returnKeyType}
+      blurOnSubmit={closePad ? true : keys.blurOnSubmit}
       inputAccessoryViewID={keyboardAccessoryId(writing, keyboardType)}
       multiline={writing}
       editable={editable}
@@ -579,7 +590,10 @@ export function Choice({
       accessibilityRole="button"
       accessibilityLabel={label}
       accessibilityState={{ selected }}
-      onPress={onPress}
+      onPress={() => {
+        dismissKeyboard();
+        onPress();
+      }}
       style={[
         styles.choice,
         {
