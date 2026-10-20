@@ -150,9 +150,72 @@ describe('public profile projection', () => {
     const photoOnly = projectPublicProfile(source(), toggleShareId(defaultProfileSharing(), 'gratitudePhotoIds', 'gp1', true));
     expect(photoOnly.gratitudePhotos).toEqual([]);
     const withPhoto = projectPublicProfile(source(), toggleShareId(sharing, 'gratitudePhotoIds', 'gp1', true));
-    expect(withPhoto.gratitudePhotos).toEqual([{ id: 'gp1', caption: 'Window light' }]);
-    expect(JSON.stringify(withPhoto)).not.toContain('storage');
+    expect(withPhoto.gratitudePhotos).toEqual([{
+      id: 'gp1',
+      entryId: 'g1',
+      caption: 'Window light',
+      storagePath: '',
+      previewUrl: null,
+    }]);
     expect(JSON.stringify(withPhoto)).not.toContain(secret.note);
+  });
+
+  it('returns a shared gratitude photo path and drops a path that was not switched on', () => {
+    const owner = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1';
+    const line = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb1';
+    const sharedId = 'cccccccc-cccc-4ccc-8ccc-ccccccccccc1';
+    const hiddenId = 'dddddddd-dddd-4ddd-8ddd-ddddddddddd1';
+    const otherLine = 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeee1';
+    const sharedPath = `${owner}/${sharedId}.jpg`;
+    const hiddenPath = `${owner}/${hiddenId}.jpg`;
+    const preview = 'data:image/jpeg;base64,abc';
+    let sharing = toggleShareId(defaultProfileSharing(), 'gratitudeIds', line, true);
+    sharing = toggleShareId(sharing, 'gratitudePhotoIds', sharedId, true);
+    const view = projectPublicProfile(source({
+      gratitude: [
+        {
+          id: line,
+          body: 'Window light',
+          entryDate: '2026-10-11',
+          photos: [
+            { id: sharedId, caption: 'The sash', storagePath: sharedPath, previewUrl: preview },
+            { id: hiddenId, caption: 'Left private', storagePath: hiddenPath, previewUrl: 'https://photos.example/hidden.jpg' },
+            { id: 'not-a-uuid', caption: 'Bad path', storagePath: '../secret.jpg', previewUrl: 'javascript:alert(1)' },
+          ],
+        },
+        {
+          id: otherLine,
+          body: 'Not on the profile',
+          entryDate: '2026-10-10',
+          photos: [{ id: hiddenId, caption: 'Other line', storagePath: `${owner}/${otherLine}.jpg` }],
+        },
+      ],
+    }), sharing);
+    expect(view.gratitudePhotos).toEqual([{
+      id: sharedId,
+      entryId: line,
+      caption: 'The sash',
+      storagePath: sharedPath,
+      previewUrl: preview,
+    }]);
+    const packed = JSON.stringify(view);
+    expect(packed).not.toContain(hiddenPath);
+    expect(packed).not.toContain('../secret.jpg');
+    expect(packed).not.toContain('javascript:');
+    expect(packed).not.toContain('Not on the profile');
+    expect(sharedReportItems(view).find((item) => item.label === 'Gratitude photo')?.summary).toBe('The sash');
+    const parsed = parsePublicProfile({
+      displayName: 'Alex',
+      gratitude: [{ id: line, body: 'Window light', entryDate: '2026-10-11' }],
+      gratitudePhotos: [
+        { id: sharedId, entryId: line, caption: 'The sash', storagePath: sharedPath, previewUrl: 'https://photos.example/ok.jpg' },
+        { id: hiddenId, entryId: line, caption: 'Dropped path', storagePath: '../secret.jpg', previewUrl: 'http://photos.example/plain.jpg' },
+      ],
+    });
+    expect(parsed?.gratitudePhotos).toEqual([
+      { id: sharedId, entryId: line, caption: 'The sash', storagePath: sharedPath, previewUrl: 'https://photos.example/ok.jpg' },
+      { id: hiddenId, entryId: line, caption: 'Dropped path', storagePath: '', previewUrl: null },
+    ]);
   });
 
   it('hides a line as soon as its switch is off', () => {

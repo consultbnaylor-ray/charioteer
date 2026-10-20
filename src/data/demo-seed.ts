@@ -436,8 +436,13 @@ export function createDemoDb(now = new Date()): DemoDb {
       storagePath: gratitudeStoragePath(PEOPLE.alex, photoId),
       createdAt: sister.createdAt,
       previewUrl: SAMPLE_JPEG,
-      caption: '',
+      caption: 'The morning she rang.',
     }];
+    alex.sharing = {
+      ...defaultProfileSharing(),
+      gratitudeIds: [sister.id],
+      gratitudePhotoIds: [photoId],
+    };
   }
   const lowMood = checkIns.find((item) => item.mood === 4);
   alex.foodLogs = [

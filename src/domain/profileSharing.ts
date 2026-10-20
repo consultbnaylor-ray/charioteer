@@ -7,6 +7,7 @@ import { soberElapsed } from './sober';
 import { quoteById, type QuoteSchool } from './stoicQuotes';
 import { parseSharedHealthPlan, presentSharedHealthPlan, type HealthPlan, type SharedHealthPlan } from './healthPlan';
 import { presentSharedNutrition, type FoodLog, type NutritionSettings, type SharedGoal, type SharedMealPhoto, type SharedQuality } from './nutrition';
+import { sharedGratitudePreviewUrl, sharedGratitudeStoragePath } from './gratitudePhotos';
 import { STAGE_LABELS, isStage } from './stage';
 
 /** Helper under a Share on profile switch while Community is on. */
@@ -237,7 +238,7 @@ export type ShareSource = {
   reasons: { body: string; sortOrder: number }[];
   checkIns: { createdAt: string }[];
   health: { kind: string; value: number; recordedOn: string }[];
-  gratitude: { id: string; body: string; entryDate: string; photos: { id: string; caption: string }[] }[];
+  gratitude: { id: string; body: string; entryDate: string; photos: { id: string; caption: string; storagePath?: string; previewUrl?: string | null }[] }[];
   vision: { id: string; caption: string; area: string | null }[];
   /** `note` is private. `caption` is the only line copied onto a shared photo. */
   progressPhotos: { id: string; note: string; caption: string; takenOn: string; monthIndex: number; visibility: 'private' | 'community' }[];
@@ -277,7 +278,8 @@ export type PublicProfileView = {
   /** Avatar and gallery. Empty when this person has not added any. */
   profilePhotos: { id: string; role: 'avatar' | 'gallery'; caption: string; position: number }[];
   gratitude: { id: string; body: string; entryDate: string }[];
-  gratitudePhotos: { id: string; caption: string }[];
+  /** A photo under its line. The path is present only when that photo and its line are both shared. */
+  gratitudePhotos: { id: string; entryId: string; caption: string; storagePath: string; previewUrl: string | null }[];
   vision: { id: string; caption: string; area: string | null }[];
   /** Resolved from the bundled catalogue. Unknown ids are dropped. School keeps Plato Platonic. */
   pinnedQuote: { id: string; text: string; author: string; school: QuoteSchool; source: string } | null;
@@ -431,7 +433,13 @@ export function projectPublicProfile(source: ShareSource, sharing: ProfileSharin
     if (!gratitudeIds.has(entry.id)) return [];
     return (entry.photos ?? [])
       .filter((photo) => photoIds.has(photo.id))
-      .map((photo) => ({ id: photo.id, caption: typeof photo.caption === 'string' ? photo.caption : '' }));
+      .map((photo) => ({
+        id: photo.id,
+        entryId: entry.id,
+        caption: typeof photo.caption === 'string' ? photo.caption : '',
+        storagePath: sharedGratitudeStoragePath(photo.storagePath),
+        previewUrl: sharedGratitudePreviewUrl(photo.previewUrl),
+      }));
   });
   const visionIds = new Set(settings.visionIds);
   const vision = source.vision
@@ -615,9 +623,14 @@ export function parsePublicProfile(value: unknown): PublicProfileView | null {
     gratitudePhotos: gratitudePhotos.flatMap((item) => {
       if (!item || typeof item !== 'object') return [];
       const photo = item as Record<string, unknown>;
-      return typeof photo.id === 'string'
-        ? [{ id: photo.id, caption: typeof photo.caption === 'string' ? photo.caption : '' }]
-        : [];
+      if (typeof photo.id !== 'string' || !photo.id) return [];
+      return [{
+        id: photo.id,
+        entryId: typeof photo.entryId === 'string' ? photo.entryId : '',
+        caption: typeof photo.caption === 'string' ? photo.caption : '',
+        storagePath: sharedGratitudeStoragePath(photo.storagePath),
+        previewUrl: sharedGratitudePreviewUrl(photo.previewUrl),
+      }];
     }),
     vision: vision.flatMap((item) => {
       if (!item || typeof item !== 'object') return [];

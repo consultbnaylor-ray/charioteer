@@ -44,7 +44,9 @@ describe('gratitude master follows the diary', () => {
     }
     const grown = repo.getSnapshot();
     expect(grown.gratitude).toHaveLength(10);
-    expect(grown.sharing.gratitudeIds).toEqual([]);
+    const already = grown.gratitude.find((entry) => entry.body.startsWith('My sister rang'));
+    expect(grown.sharing.gratitudeIds).toEqual([already?.id]);
+    expect(grown.sharing.gratitudePhotoIds).toEqual(already?.photos.map((photo) => photo.id));
     expect(grown.sharing.shareNewGratitude).toBe(false);
     const host = grown.gratitude.find((entry) => entry.photos.length === 0);
     expect(host).toBeTruthy();

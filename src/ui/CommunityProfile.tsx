@@ -1,7 +1,7 @@
 import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { useRepository, useSnapshot } from '@/data';
 import type { ProgressPhoto } from '@/data/types';
@@ -576,9 +576,8 @@ function SharedProfileFacts({ userId, name }: { userId: string; name: string }) 
           {messageAt === 'wagon' ? <MessageFailure message={messageError} pending={pending} onRetry={() => void reach('wagon')} /> : null}
         </View>
       ) : null}
-      {shownList(shown.gratitude).map((entry) => <T key={entry.id}>{entry.body ?? ''}</T>)}
+      <SharedGratitudeLines entries={shownList(shown.gratitude)} photos={shownList(view.gratitudePhotos)} />
       {shownList(view.vision).map((item) => <T key={item.id}>{[item.caption, item.area].filter(Boolean).join(' · ')}</T>)}
-      {shownList(view.gratitudePhotos).map((photo) => photo.caption ? <T key={photo.id}>{photo.caption}</T> : null)}
       {sent && sent !== avatar?.id && !gallery.some((photo) => photo.id === sent) ? <T variant="muted">Report sent.</T> : null}
       <Button label="Invite as buddy" tone="quiet" disabled={pending} onPress={() => router.push(`/buddies?invite=${userId}` as never)} />
       <Button label="Report this profile" tone="quiet" disabled={pending} onPress={openProfileReport} />
@@ -604,6 +603,89 @@ function SharedProfileFacts({ userId, name }: { userId: string; name: string }) 
           onSend={() => void sendReport()}
         />
       ) : null}
+    </View>
+  );
+}
+
+/** Shared gratitude lines, with each switched-on photo as a thumbnail under its line. */
+export function SharedGratitudeLines({
+  entries,
+  photos,
+}: {
+  entries: readonly { id: string; body?: string }[];
+  photos: readonly { id: string; entryId: string; caption: string; previewUrl: string | null }[];
+}) {
+  const theme = useAppTheme();
+  const [open, setOpen] = useState<(typeof photos)[number] | null>(null);
+  if (!entries.length && !photos.length) return null;
+  return (
+    <View style={{ gap: 8 }}>
+      {entries.map((entry) => {
+        const linePhotos = photos.filter((photo) => photo.entryId === entry.id);
+        return (
+          <View key={entry.id} style={{ gap: 6 }}>
+            <T>{entry.body ?? ''}</T>
+            {linePhotos.map((photo) => (
+              <View key={photo.id} style={{ gap: 4 }}>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="View photo"
+                  onPress={() => setOpen(photo)}
+                  style={{ width: 96, height: 96, borderRadius: radius.md, overflow: 'hidden', backgroundColor: theme.colors.sunken }}
+                >
+                  {photo.previewUrl ? (
+                    <Image
+                      source={{ uri: photo.previewUrl }}
+                      style={{ width: 96, height: 96 }}
+                      contentFit="cover"
+                      accessibilityLabel="Gratitude photo"
+                    />
+                  ) : (
+                    <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 8 }}>
+                      <T variant="muted">Photo unavailable</T>
+                    </View>
+                  )}
+                </Pressable>
+                {photo.caption ? <T variant="muted">{photo.caption}</T> : null}
+              </View>
+            ))}
+          </View>
+        );
+      })}
+      <Modal visible={open != null} animationType="fade" transparent onRequestClose={() => setOpen(null)}>
+        <View style={{ flex: 1, justifyContent: 'center', padding: 16, backgroundColor: 'rgba(0,0,0,0.72)' }}>
+          <Pressable accessibilityRole="button" accessibilityLabel="Close photo" onPress={() => setOpen(null)} style={StyleSheet.absoluteFill} />
+          <View style={{ zIndex: 1, backgroundColor: theme.colors.bg, borderRadius: 16, padding: 16, gap: 12 }}>
+            <ScrollView
+              maximumZoomScale={4}
+              minimumZoomScale={1}
+              bouncesZoom
+              centerContent
+              pinchGestureEnabled
+              showsHorizontalScrollIndicator={false}
+              showsVerticalScrollIndicator={false}
+              style={{ height: 360 }}
+            >
+              {open?.previewUrl ? (
+                <Image
+                  pointerEvents="none"
+                  source={{ uri: open.previewUrl }}
+                  style={{ width: '100%', height: 360 }}
+                  contentFit="contain"
+                  accessibilityLabel="Gratitude photo"
+                />
+              ) : (
+                <View pointerEvents="none" style={{ height: 360, alignItems: 'center', justifyContent: 'center' }}>
+                  <T variant="muted">Photo unavailable</T>
+                </View>
+              )}
+            </ScrollView>
+            <T variant="muted">Pinch to zoom.</T>
+            {open?.caption ? <T>{open.caption}</T> : null}
+            <Button label="Close" tone="quiet" accessibilityLabel="Close photo" onPress={() => setOpen(null)} />
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }

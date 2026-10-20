@@ -1,11 +1,31 @@
 import type { GratitudeEntry, GratitudePhoto } from '../../supabase/functions/_shared/gratitude.ts';
 
-/** Private bucket. Objects live at {user_id}/{photo_id}.jpg and are never shared. */
+/** Private bucket. Objects live at {user_id}/{photo_id}.jpg. A community member can read one only after the owner shares that photo and its line. */
 export const GRATITUDE_BUCKET = 'gratitude-photos';
 export const GRATITUDE_PHOTO_LIMIT = 4;
 export const GRATITUDE_MAX_BYTES = 2_097_152;
-/** Owner signed links only. There is no community TTL. */
+/** Signed links last an hour. Community viewers get one only for a photo the owner has switched on. */
 export const GRATITUDE_SIGNED_URL_SECONDS = 3600;
+
+const SHARED_GRATITUDE_PATH = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.jpg$/i;
+
+/** A storage path that may be shown to a community member. Anything else is blank. */
+export function sharedGratitudeStoragePath(value: unknown): string {
+  if (typeof value !== 'string') return '';
+  const path = value.trim();
+  if (!path || path.includes('..') || path.includes('\\')) return '';
+  return SHARED_GRATITUDE_PATH.test(path) ? path : '';
+}
+
+/** A preview the owner already has, or a signed https link. Other schemes are dropped. */
+export function sharedGratitudePreviewUrl(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  const url = value.trim();
+  if (!url || url.includes('..')) return null;
+  if (url.startsWith('data:image/')) return url;
+  if (url.startsWith('https://')) return url;
+  return null;
+}
 
 /** Owner folder only. The file name is the photo id. */
 export function gratitudeStoragePath(userId: string, photoId: string): string {

@@ -18,7 +18,7 @@ import { ProfileStatBoard } from '@/ui/ProfileStatTiles';
 import { ShareOnProfile } from '@/ui/ShareOnProfile';
 import { progressPhotoLabel } from '@/domain/progressPhotos';
 import { formatGbp } from '@/domain/savings';
-import { SharedHealthPlanFacts, SharedPhotoFrame } from '@/ui/CommunityProfile';
+import { SharedGratitudeLines, SharedHealthPlanFacts, SharedPhotoFrame } from '@/ui/CommunityProfile';
 import { MemberAvatar } from '@/ui/MemberAvatar';
 import { OwnProfilePhotos, ProfilePhotoEditor } from '@/ui/ProfilePhotoEditor';
 import { COMMUNITY_CONSENT_BODY } from '@/ui/ConsentChoices';
@@ -359,9 +359,8 @@ export function PublicProfileCard() {
             {preview.unitsAvoided != null ? <T>{preview.unitsAvoided} units avoided</T> : null}
             {preview.moodStreak != null ? <T>Mood streak {preview.moodStreak}</T> : null}
             {preview.health.map((line) => <T key={line}>{line}</T>)}
-            {preview.gratitude.map((entry) => <T key={entry.id}>{entry.body}</T>)}
+            <SharedGratitudeLines entries={preview.gratitude} photos={preview.gratitudePhotos} />
             {preview.vision.map((item) => <T key={item.id}>{item.caption}</T>)}
-            {preview.gratitudePhotos.map((photo) => photo.caption ? <T key={photo.id}>{photo.caption}</T> : null)}
             <SharedNutritionFacts meals={preview.foodDiary} calories={preview.calories} quality={preview.quality} progress={preview.progress} goal={preview.goal} />
             <SharedHealthPlanFacts plan={preview.healthPlan} />
             {preview.wagon ? (

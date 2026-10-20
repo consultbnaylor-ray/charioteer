@@ -213,7 +213,12 @@ function shareSource(account: DemoAccount, interests: DemoDb['interests'], now =
       id: entry.id,
       body: entry.body,
       entryDate: entry.entryDate,
-      photos: (entry.photos ?? []).map((photo) => ({ id: photo.id, caption: photo.caption ?? '' })),
+      photos: (entry.photos ?? []).map((photo) => ({
+        id: photo.id,
+        caption: photo.caption ?? '',
+        storagePath: photo.storagePath,
+        previewUrl: photo.previewUrl,
+      })),
     })),
     vision: (account.visionItems ?? []).map((item) => ({ id: item.id, caption: item.caption, area: item.area })),
     progressPhotos: (account.progressPhotos ?? []).map((photo) => ({

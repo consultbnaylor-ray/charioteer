@@ -109,7 +109,7 @@ import { profileWithColumn, profileWithPatch } from '@/domain/profilePatch';
 import { planCustomInterest, validateTown } from '@/domain/privacy';
 import { fetchWithOneRetry } from '@/domain/retryFetch';
 import { planReasons } from '@/domain/reasons';
-import { BIO_LIMIT, PHOTO_CAPTION_LIMIT, defaultProfileSharing, normalizeProfileSharing, parsePublicProfile, planProfileText, sensitiveTurnedOn, shareFreshGratitude, type ProfileSharing } from '@/domain/profileSharing';
+import { BIO_LIMIT, PHOTO_CAPTION_LIMIT, defaultProfileSharing, normalizeProfileSharing, parsePublicProfile, planProfileText, sensitiveTurnedOn, shareFreshGratitude, type ProfileSharing, type PublicProfileView } from '@/domain/profileSharing';
 import { moodOnTen, planCheckInGratitude } from '@/domain/checkIns';
 import { quoteById } from '@/domain/stoicQuotes';
 import { planRelapse } from '@/domain/sober';
@@ -716,7 +716,7 @@ export class SupabaseRepository implements Repository {
     return urls;
   }
 
-  /** Owner signed links only. Gratitude photos are never asked of the community signer. */
+  /** Owner signed links for the diary. Community viewers sign through publicProfile. */
   private async signedGratitudePhotos(rows: Row[] | null, queryError: string | undefined): Promise<GratitudePhoto[]> {
     if (queryError || !rows) {
       if (queryError) console.error(queryError);
@@ -1809,7 +1809,33 @@ export class SupabaseRepository implements Repository {
   async publicProfile(userId: string): Promise<ReturnType<typeof parsePublicProfile>> {
     const { data, error } = await this.client.rpc('public_profile', { user_id: userId });
     if (error) throw asUserFacing(error, 'general');
-    return parsePublicProfile(data);
+    const parsed = parsePublicProfile(data);
+    if (!parsed) return parsed;
+    return this.signSharedGratitude(parsed);
+  }
+
+  /** Community signed links for photos public_profile already allowed. A failed sign leaves the caption. */
+  private async signSharedGratitude(view: PublicProfileView): Promise<PublicProfileView> {
+    const paths = [...new Set(view.gratitudePhotos.map((photo) => photo.storagePath).filter((path) => path.length > 0))];
+    if (!paths.length) return view;
+    try {
+      const signed = await this.client.storage.from(GRATITUDE_BUCKET).createSignedUrls(paths, GRATITUDE_SIGNED_URL_SECONDS);
+      if (signed.error || !signed.data) return view;
+      const byPath = new Map<string, string>();
+      for (const item of signed.data) {
+        if (item.path && item.signedUrl) byPath.set(item.path, item.signedUrl);
+      }
+      return {
+        ...view,
+        gratitudePhotos: view.gratitudePhotos.map((photo) => ({
+          ...photo,
+          previewUrl: byPath.get(photo.storagePath) ?? photo.previewUrl,
+        })),
+      };
+    } catch (error) {
+      console.error(error);
+      return view;
+    }
   }
 
   async addProfilePhoto(input: NewProfilePhoto): Promise<void> {
