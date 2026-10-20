@@ -417,6 +417,7 @@ export default function Health() {
         period={period}
         onTurnOn={turnOnMissing}
         onSaveBody={saveBodyGap}
+        onPlanOutdoor={() => router.push(`/health-plan?planOutdoor=${Date.now()}` as never)}
         onSetWorkoutBucket={setWorkoutBucket}
       />
       <HealthBoard

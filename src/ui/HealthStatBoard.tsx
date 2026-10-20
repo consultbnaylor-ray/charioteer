@@ -4,6 +4,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg from 'react-native-svg';
 
 import { isoDay, startOfLocalDay } from '@/domain/dates';
+import { latestVo2Day } from '@/domain/vo2Estimate';
 import { chartBucketForPeriod } from '@/domain/readingChart';
 import { parseStatPeriod, rollingWindow, type StatPeriod } from '@/domain/statWindow';
 import { shownError } from '@/domain/errors';
@@ -34,6 +35,7 @@ import { DateField } from '@/ui/DateField';
 import { GoalLine } from '@/ui/GoalLine';
 import { statsToneColors } from '@/ui/statsPalette';
 import { useAppTheme } from '@/ui/theme';
+import { Vo2EstimateNote } from '@/ui/Vo2EstimateNote';
 import { Button, Card, Choice, Field, QuietNote, T, playSavedHaptic } from '@/ui/ui';
 
 export type HealthTurnOnResult = AppleHealthTurnOn | 'consent';
@@ -44,22 +46,42 @@ export function HealthStatBoard(
     onTurnOn?: (types: readonly string[]) => Promise<HealthTurnOnResult>;
     onSaveBody?: (reading: { recordedOn: string; bodyFatPct: number | null; leanMassKg: number | null; source: BodyEntrySource }) => Promise<void>;
     onSetWorkoutBucket?: (activityType: number, bucket: WorkoutBucket) => Promise<void>;
+    onPlanOutdoor?: () => void;
   },
 ) {
   const model = buildHealthStatBoard(input);
   const period = parseStatPeriod(input.period);
+  const measuredOn = latestVo2Day(input.samples);
   const [openId, setOpenId] = useState<string | null>(null);
   const open = model.sections.flatMap((section) => section.tiles).find((tile) => tile.id === openId) ?? null;
   if (model.sections.length === 0 && !model.missingLine) return null;
   return (
     <View style={{ gap: 14 }}>
       {model.sections.map((section) => (
-        <StatSection key={section.id} title={section.title} tiles={section.tiles} today={input.today} period={period} onOpen={setOpenId} />
+        <StatSection
+          key={section.id}
+          title={section.title}
+          tiles={section.tiles}
+          today={input.today}
+          period={period}
+          measuredOn={measuredOn}
+          onPlanOutdoor={input.onPlanOutdoor}
+          onOpen={setOpenId}
+        />
       ))}
       {model.missingLine ? (
         <MissingReads line={model.missingLine} gaps={model.gaps} onTurnOn={input.onTurnOn} onSaveBody={input.onSaveBody} />
       ) : null}
-      <StatDetail tile={open} today={input.today} period={period} caveat={model.caveat} onClose={() => setOpenId(null)} onSetWorkoutBucket={input.onSetWorkoutBucket} />
+      <StatDetail
+        tile={open}
+        today={input.today}
+        period={period}
+        measuredOn={measuredOn}
+        onPlanOutdoor={input.onPlanOutdoor}
+        caveat={model.caveat}
+        onClose={() => setOpenId(null)}
+        onSetWorkoutBucket={input.onSetWorkoutBucket}
+      />
     </View>
   );
 }
@@ -184,12 +206,16 @@ function StatSection({
   tiles,
   today,
   period,
+  measuredOn,
+  onPlanOutdoor,
   onOpen,
 }: {
   title: string;
   tiles: HealthStatTile[];
   today: string;
   period: StatPeriod;
+  measuredOn: string | null;
+  onPlanOutdoor?: () => void;
   onOpen: (id: string) => void;
 }) {
   const theme = useAppTheme();
@@ -209,7 +235,7 @@ function StatSection({
       {open ? (
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
           {tiles.map((tile) => (
-            <StatTile key={tile.id} tile={tile} today={today} period={period} onOpen={() => onOpen(tile.id)} />
+            <StatTile key={tile.id} tile={tile} today={today} period={period} measuredOn={measuredOn} onPlanOutdoor={onPlanOutdoor} onOpen={() => onOpen(tile.id)} />
           ))}
         </View>
       ) : null}
@@ -221,11 +247,15 @@ function StatTile({
   tile,
   today,
   period,
+  measuredOn,
+  onPlanOutdoor,
   onOpen,
 }: {
   tile: HealthStatTile;
   today: string;
   period: StatPeriod;
+  measuredOn: string | null;
+  onPlanOutdoor?: () => void;
   onOpen: () => void;
 }) {
   const theme = useAppTheme();
@@ -259,6 +289,7 @@ function StatTile({
         <T variant="muted">More info</T>
       </Pressable>
       {charted ? <TileChart tile={tile} today={today} period={period} /> : null}
+      {tile.id === 'vo2_max' && onPlanOutdoor ? <Vo2EstimateNote measuredOn={measuredOn} today={today} onPlan={onPlanOutdoor} /> : null}
     </View>
   );
 }
@@ -416,6 +447,8 @@ function StatDetail({
   tile,
   today,
   period,
+  measuredOn,
+  onPlanOutdoor,
   caveat,
   onClose,
   onSetWorkoutBucket,
@@ -423,6 +456,8 @@ function StatDetail({
   tile: HealthStatTile | null;
   today: string;
   period: StatPeriod;
+  measuredOn: string | null;
+  onPlanOutdoor?: () => void;
   caveat: string;
   onClose: () => void;
   onSetWorkoutBucket?: (activityType: number, bucket: WorkoutBucket) => Promise<void>;
@@ -459,6 +494,7 @@ function StatDetail({
                 <TileValue tile={tile} />
                 {tile.empty ? null : <TileVisual visual={tile.visual} charted={tile.readings.length > 0} />}
                 {tile.readings.length > 0 ? <TileChart tile={tile} today={today} period={period} /> : null}
+                {tile.id === 'vo2_max' && onPlanOutdoor ? <Vo2EstimateNote measuredOn={measuredOn} today={today} onPlan={() => { onClose(); onPlanOutdoor(); }} /> : null}
                 {!tile.empty && detailShowsStatusAgain(tile.visual.kind) ? <StatusMark tone={tile.tone} status={tile.status} word={tile.mark} /> : null}
                 <T variant="label">What your number means</T>
                 <T>{tile.meaning}</T>

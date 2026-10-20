@@ -21,7 +21,7 @@ export const APPLE_HEALTH_READ_TYPES = [
 ] as const;
 
 export const APPLE_HEALTH_SHARE =
-  'Charioteer reads steps, sleep, resting heart rate, heart rate variability, cardio fitness, walking heart rate, heart rate recovery, and workouts (type, duration, energy, and average heart rate), plus weight, height, body fat, lean body mass, and active energy. Readings stay on your iPhone. A short summary is sent to write your plan only if you turn the coach on. It is not used for ads. Other people cannot see this.';
+  'Charioteer reads steps, sleep, resting heart rate, heart rate variability, cardio fitness, walking heart rate, heart rate recovery, and workouts (type, duration, energy, and average heart rate), plus weight, height, body fat, lean body mass, and active energy. Readings stay on your iPhone. A workout route is read only when you open that route, and the path stays on this iPhone. A short summary is sent to write your plan only if you turn the coach on. It is not used for ads. Other people cannot see this.';
 
 export const APPLE_HEALTH_INTRO =
   'Connect Apple Health to see your steps, sleep, heart, cardio fitness, workouts, weight, and body readings here, and to save the food and water you log. Charioteer reads those on your iPhone and keeps a short summary. It writes only the meals and water you save: energy, protein, carbohydrate, sugar, fibre, fat, sodium and water. It does not write steps, sleep, heart rate, or weight. It does not use readings for ads. Other people never see them. You can disconnect any time in Settings > Health > Data Access & Devices.';

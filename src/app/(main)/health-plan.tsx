@@ -1,3 +1,4 @@
+import { useLocalSearchParams } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import { Pressable, useWindowDimensions, View } from 'react-native';
 
@@ -14,6 +15,9 @@ import { StatPeriodToggle } from '@/ui/StatPeriodToggle';
 import { GoalChoices } from '@/ui/GoalChoices';
 import { GoalWeightRange } from '@/ui/GoalWeightRange';
 import { YourFitness } from '@/ui/YourFitness';
+import { listDeviceWorkouts } from '@/health/workoutRoute';
+import type { DeviceWorkout } from '@/domain/workoutRoute';
+import { WorkoutList } from '@/ui/WorkoutList';
 import { planDayFromSessionText, WorkoutCalendar } from '@/ui/WorkoutCalendar';
 import { YourGoal } from '@/ui/YourGoal';
 import { PlanTick } from '@/ui/PlanTick';
@@ -54,6 +58,10 @@ export default function HealthPlanScreen() {
   const [error, setError] = useState<string | null>(null);
   const [planDay, setPlanDay] = useState<string | null>(null);
   const [planNonce, setPlanNonce] = useState(0);
+  const [outdoorNonce, setOutdoorNonce] = useState(0);
+  const [workouts, setWorkouts] = useState<DeviceWorkout[]>([]);
+  const params = useLocalSearchParams<{ planOutdoor?: string }>();
+  const seenOutdoor = useRef('');
   const limitsRef = useRef(limits);
   const planRef = useRef(plan);
   const queue = useRef(Promise.resolve());
@@ -64,6 +72,25 @@ export default function HealthPlanScreen() {
   useEffect(() => {
     setLimits(plan?.limits ?? '');
   }, [plan?.updatedAt]);
+
+  useEffect(() => {
+    const flag = typeof params.planOutdoor === 'string' ? params.planOutdoor : '';
+    if (!flag || flag === seenOutdoor.current) return;
+    seenOutdoor.current = flag;
+    setOutdoorNonce((nonce) => nonce + 1);
+  }, [params.planOutdoor]);
+
+  useEffect(() => {
+    let live = true;
+    void listDeviceWorkouts().then((rows) => {
+      if (live) setWorkouts(rows);
+    }).catch(() => {
+      if (live) setWorkouts([]);
+    });
+    return () => {
+      live = false;
+    };
+  }, []);
 
   if (!profile) return null;
   const communityOn = communitySharingOn(profile);
@@ -134,7 +161,7 @@ export default function HealthPlanScreen() {
     >
       <GoalChoices />
       <YourGoal place="plan" />
-      <YourFitness />
+      <YourFitness onPlanOutdoor={() => setOutdoorNonce((nonce) => nonce + 1)} />
       <View style={{ gap: 8 }}>
         <ShareOnProfile
           label="Share on profile"
@@ -199,7 +226,8 @@ export default function HealthPlanScreen() {
               </View>
             ))}
           </Card>
-          <WorkoutCalendar planDay={planDay} planNonce={planNonce} />
+          <WorkoutList workouts={workouts} />
+          <WorkoutCalendar planDay={planDay} planNonce={planNonce} planOutdoorNonce={outdoorNonce} workouts={workouts} />
           <Card>
             <T variant="label">Wellbeing</T>
             {plan.wellbeing.habits.map((action) => (
@@ -212,7 +240,8 @@ export default function HealthPlanScreen() {
           <Card>
             <T>Thumos has not written a plan yet. Refresh to use the figures you already keep.</T>
           </Card>
-          <WorkoutCalendar planDay={planDay} planNonce={planNonce} />
+          <WorkoutList workouts={workouts} />
+          <WorkoutCalendar planDay={planDay} planNonce={planNonce} planOutdoorNonce={outdoorNonce} workouts={workouts} />
         </>
       )}
       {progress ? (

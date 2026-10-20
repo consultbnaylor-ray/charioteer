@@ -7,6 +7,7 @@ import {
   WEAK_PASSWORD_MESSAGE,
   WRONG_PASSWORD_MESSAGE,
 } from '@/domain/errors';
+import { rejectRouteCoordinates } from '@/domain/workoutRoute';
 import {
   BUDDY_ADULT,
   BUDDY_ALREADY,
@@ -758,6 +759,7 @@ export class DemoRepository implements Repository {
   }
 
   async saveHealth(samples: NewHealthSample[]): Promise<void> {
+    rejectRouteCoordinates(samples);
     const account = this.me();
     if (!account.profile.consentHealth) throw new Error('Health data stays off until you give consent.');
     const db = clone(this.db);

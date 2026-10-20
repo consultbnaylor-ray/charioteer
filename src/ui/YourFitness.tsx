@@ -29,6 +29,8 @@ import { loadWorkoutSources } from '@/health/workoutSources';
 import { useStatPeriod } from '@/health/useStatPeriod';
 import { fitnessSeriesChart } from '@/domain/chartSeries';
 import { chartBucketForPeriod, type ChartAggregate } from '@/domain/readingChart';
+import { londonDay } from '@/domain/healthInsights';
+import { latestVo2Day } from '@/domain/vo2Estimate';
 import { londonToday, periodHeading, rollingWindow } from '@/domain/statWindow';
 import { StatPeriodToggle } from '@/ui/StatPeriodToggle';
 import { closerToGoal, whyGoalMatters, WORKOUT_BUCKET_LABEL, WORKOUT_BUCKETS, type NutritionGoal, type WorkoutBucket } from '@/domain/nutrition';
@@ -40,13 +42,14 @@ import { MeasureRingView } from '@/ui/MeasuredFigure';
 import { PlanTick } from '@/ui/PlanTick';
 import { statsToneColors } from '@/ui/statsPalette';
 import { useAppTheme } from '@/ui/theme';
+import { Vo2EstimateNote } from '@/ui/Vo2EstimateNote';
 import { Button, Card, Choice, T, playSavedHaptic } from '@/ui/ui';
 
 /**
  * Fitness level, the measures that exist, and one to three goal-led lines.
  * A line can be ticked into this week's focus.
  */
-export function YourFitness() {
+export function YourFitness({ onPlanOutdoor }: { onPlanOutdoor?: () => void }) {
   const snap = useSnapshot();
   const repo = useRepository();
   const theme = useAppTheme();
@@ -124,6 +127,11 @@ export function YourFitness() {
           />
           <T variant="muted">Latest reading</T>
           <FitnessSeries points={view.cardio.series} unit="ml/kg/min" aggregate="mean" label="Cardio fitness chart" />
+          <Vo2EstimateNote
+            measuredOn={latestVo2Day(snap.health)}
+            today={londonDay(new Date())}
+            onPlan={() => onPlanOutdoor?.()}
+          />
           <Fold title="What is this?">
             <T>{VO2_WHAT}</T>
           </Fold>

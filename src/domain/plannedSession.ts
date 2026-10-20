@@ -1,7 +1,7 @@
 import { londonDay, mondayOf, shiftDay } from '@/domain/healthInsights';
 import { workoutTypeKind } from '@/domain/fitnessSnapshot';
 
-export const PLANNED_SESSION_TYPES = ['run', 'cardio', 'strength', 'boxing', 'other'] as const;
+export const PLANNED_SESSION_TYPES = ['run', 'outdoor', 'cardio', 'strength', 'boxing', 'other'] as const;
 
 export type PlannedSessionType = (typeof PLANNED_SESSION_TYPES)[number];
 
@@ -24,6 +24,7 @@ export type PlannedSessionDraft = {
 
 export const SESSION_TYPE_LABEL: Record<PlannedSessionType, string> = {
   run: 'Run',
+  outdoor: 'Run/Walk (outdoor)',
   cardio: 'Cardio',
   strength: 'Strength',
   boxing: 'Boxing',
@@ -33,6 +34,7 @@ export const SESSION_TYPE_LABEL: Record<PlannedSessionType, string> = {
 /** HealthKit activity types already used for the strength, cardio, and conditioning split. */
 const SESSION_ACTIVITY: Record<PlannedSessionType, number> = {
   run: 37,
+  outdoor: 52,
   cardio: 13,
   strength: 50,
   boxing: 8,

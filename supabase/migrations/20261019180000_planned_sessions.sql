@@ -5,7 +5,7 @@
 create table public.planned_sessions (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references public.profiles (id) on delete cascade,
-  session_type text not null check (session_type in ('run', 'cardio', 'strength', 'boxing', 'other')),
+  session_type text not null check (session_type in ('run', 'outdoor', 'cardio', 'strength', 'boxing', 'other')),
   starts_at timestamptz not null,
   duration_minutes integer not null check (duration_minutes between 10 and 240),
   note text not null default '' check (char_length(note) <= 280),

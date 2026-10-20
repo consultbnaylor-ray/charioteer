@@ -94,7 +94,7 @@ export function useKeyboardField(ref: { current: TextInput | null }, multiline: 
 
 /** Resign the focused field, then hide the keyboard. A number pad has no Return key, and dismiss alone leaves it up. */
 export function dismissKeyboard() {
-  const state = (TextInput as {
+  const state = (TextInput as unknown as {
     State?: {
       currentlyFocusedInput?: () => object | null;
       currentlyFocusedField?: () => object | null;

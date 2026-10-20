@@ -77,7 +77,11 @@ describe('planned sessions', () => {
     expect(sql).toContain('create table public.planned_sessions');
     expect(sql).toContain('planned_sessions_own');
     expect(sql).toContain('user_id = auth.uid()');
-    expect(sql).toContain("session_type in ('run', 'cardio', 'strength', 'boxing', 'other')");
+    expect(sql).toContain("session_type in ('run', 'outdoor', 'cardio', 'strength', 'boxing', 'other')");
+    const widened = readFileSync('supabase/migrations/20261020143000_outdoor_session_type.sql', 'utf8');
+    expect(widened).toContain('Not applied from this repo');
+    expect(widened).toContain("'outdoor'");
+    expect(widened.toLowerCase()).not.toMatch(/grant\s+(?:select|insert|update|delete)|latitude|longitude/);
     expect(sql).toContain('duration_minutes between 10 and 240');
     expect(sql).toContain('char_length(note) <= 280');
     expect(sql).toContain('grant delete on table public.planned_sessions to authenticated');

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Keyboard, Platform, Pressable, Switch, View } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
 
+import { useRouter } from 'expo-router';
 import { useRepository, useSnapshot } from '@/data';
 import { formatUkDate, isoDay, parseIsoDay } from '@/domain/dates';
 import { shownError } from '@/domain/errors';
@@ -31,6 +32,7 @@ import {
   rescheduleWorkoutReminders,
   saveWorkoutReminders,
 } from '@/notifications/sessionReminder';
+import type { DeviceWorkout } from '@/domain/workoutRoute';
 import { DateField } from '@/ui/DateField';
 import { PlanTick } from '@/ui/PlanTick';
 import { SessionTimeField } from '@/ui/SessionTimeField';
@@ -61,7 +63,7 @@ function Bell({ size = 18 }: { size?: number }) {
 
 function SessionMark({ type }: { type: PlannedSessionType }) {
   const theme = useAppTheme();
-  const path = type === 'run'
+  const path = type === 'run' || type === 'outdoor'
     ? 'M5 16c2-6 4-6 7-6s5 6 7 6'
     : type === 'cardio'
       ? 'M4 14c2-6 4-8 8-8s6 2 8 8'
@@ -91,9 +93,21 @@ function startsAtFrom(day: Date, time: string): string | null {
   return londonWallTime(isoDay(day), time);
 }
 
-export function WorkoutCalendar({ planDay, planNonce = 0 }: { planDay?: string | null; planNonce?: number }) {
+export function WorkoutCalendar({
+  planDay,
+  planNonce = 0,
+  planOutdoorNonce = 0,
+  workouts = [],
+}: {
+  planDay?: string | null;
+  planNonce?: number;
+  /** Opens one outdoor walk or run, 30 minutes, at the next sensible time. */
+  planOutdoorNonce?: number;
+  workouts?: readonly DeviceWorkout[];
+}) {
   const snap = useSnapshot();
   const repo = useRepository();
+  const router = useRouter();
   const theme = useAppTheme();
   const sessions = snap.plannedSessions ?? [];
   const [setting, setSetting] = useState<WorkoutReminderSetting | null>(null);
@@ -147,6 +161,21 @@ export function WorkoutCalendar({ planDay, planNonce = 0 }: { planDay?: string |
     setOpen(true);
     setError(null);
   }, [planNonce, planDay]);
+
+  useEffect(() => {
+    if (!planOutdoorNonce) return;
+    setEditing(null);
+    setSessionType('outdoor');
+    const today = new Date();
+    setDay(today);
+    setTime(nextSessionClock(today));
+    setDurationText('30');
+    setNote('');
+    setOpen(true);
+    setError(null);
+    const timer = setTimeout(revealSessionFields, 300);
+    return () => clearTimeout(timer);
+  }, [planOutdoorNonce]);
 
   function noteSaved() {
     setSaved(true);
@@ -393,8 +422,22 @@ export function WorkoutCalendar({ planDay, planNonce = 0 }: { planDay?: string |
                 <T>Plan</T>
               </Pressable>
             </View>
+            {workouts.filter((workout) => londonDay(workout.startedAt) === date).map((workout) => (
+              <Pressable
+                key={workout.id}
+                accessibilityRole="button"
+                accessibilityLabel={workout.routeExpected ? `View route, ${workout.label}` : workout.label}
+                onPress={() => router.push(`/workout/${encodeURIComponent(workout.id)}` as never)}
+                style={{ minHeight: 44, justifyContent: 'center' }}
+              >
+                <T>{workout.routeExpected ? `${workout.label} · View route` : `${workout.label} · No GPS route`}</T>
+              </Pressable>
+            ))}
             {rows.map((session) => {
               const reminded = setting ? sessionHasReminder(session, setting, now) : false;
+              const route = session.doneAt
+                ? workouts.find((workout) => workout.routeExpected && londonDay(workout.startedAt) === date)
+                : undefined;
               return (
                 <View key={session.id} style={{ gap: 4 }}>
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
@@ -412,6 +455,11 @@ export function WorkoutCalendar({ planDay, planNonce = 0 }: { planDay?: string |
                         <T>Done</T>
                       </Pressable>
                     )}
+                    {route ? (
+                      <Pressable accessibilityRole="button" accessibilityLabel={`View route for ${SESSION_TYPE_LABEL[session.sessionType]}`} onPress={() => router.push(`/workout/${encodeURIComponent(route.id)}` as never)} style={{ minHeight: 44, justifyContent: 'center' }}>
+                        <T>View route</T>
+                      </Pressable>
+                    ) : null}
                     <Pressable accessibilityRole="button" accessibilityLabel={`Edit ${SESSION_TYPE_LABEL[session.sessionType]}`} onPress={() => begin(session)} style={{ minHeight: 44, justifyContent: 'center' }}>
                       <T>Edit</T>
                     </Pressable>

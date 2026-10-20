@@ -13,6 +13,7 @@ import {
   asUserFacing,
   isTransientNetworkError,
 } from '@/domain/errors';
+import { rejectRouteCoordinates } from '@/domain/workoutRoute';
 import { gratitudeFromRows, isGratitudeCategory, localGratitudeReflect, planGratitudeEntry, type GratitudePhoto, type GratitudeReflect } from '@/domain/gratitude';
 import {
   GRATITUDE_BUCKET,
@@ -1068,6 +1069,7 @@ export class SupabaseRepository implements Repository {
   }
 
   async saveHealth(samples: NewHealthSample[]): Promise<void> {
+    rejectRouteCoordinates(samples);
     if (!this.snapshot.profile?.consentHealth) throw new Error('Health data stays off until you give consent.');
     const userId = await this.userId();
     const { error } = await this.client.from('health_samples').upsert(
@@ -1389,6 +1391,8 @@ export class SupabaseRepository implements Repository {
     const safety = detectSafety(text);
     const effectiveMode: ThumosMode = safety.selfHarm || safety.withdrawal ? 'support' : mode;
     const requestId = randomId();
+    const thumosBody = { content: text, mode: effectiveMode, request_id: requestId };
+    rejectRouteCoordinates(thumosBody);
 
     let response: Response;
     try {
@@ -1404,7 +1408,7 @@ export class SupabaseRepository implements Repository {
             'Content-Type': 'application/json',
             Accept: 'text/event-stream',
           },
-          body: JSON.stringify({ content: text, mode: effectiveMode, request_id: requestId }),
+          body: JSON.stringify(thumosBody),
         },
         onState,
       });
@@ -1552,6 +1556,7 @@ export class SupabaseRepository implements Repository {
     body: unknown,
     options?: { ai?: boolean; timeoutMs?: number },
   ): Promise<{ status: number; data: unknown }> {
+    rejectRouteCoordinates(body);
     const token = options?.ai ? await this.sessionForAiCall() : await this.accessToken();
     const controller = options?.timeoutMs ? new AbortController() : null;
     const timer = controller && options?.timeoutMs
