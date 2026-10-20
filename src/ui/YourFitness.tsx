@@ -13,7 +13,10 @@ import {
   whyCardioMatters,
   whyMinutesMatter,
   whyRestingMatters,
+  CONDITIONING_NOTE,
   rebucketStoredMinutes,
+  sessionSplitRows,
+  sessionTypeCounts,
   withWorkoutBucket,
   WORKOUT_MIX_TITLE,
   type FitnessCompare,
@@ -26,7 +29,7 @@ import { loadWorkoutSources } from '@/health/workoutSources';
 import { useStatPeriod } from '@/health/useStatPeriod';
 import { fitnessSeriesChart } from '@/domain/chartSeries';
 import { chartBucketForPeriod, type ChartAggregate } from '@/domain/readingChart';
-import { londonToday, periodPhrase, rollingWindow } from '@/domain/statWindow';
+import { londonToday, periodHeading, rollingWindow } from '@/domain/statWindow';
 import { StatPeriodToggle } from '@/ui/StatPeriodToggle';
 import { closerToGoal, whyGoalMatters, WORKOUT_BUCKET_LABEL, WORKOUT_BUCKETS, type NutritionGoal, type WorkoutBucket } from '@/domain/nutrition';
 import { GoalLine } from '@/ui/GoalLine';
@@ -38,13 +41,6 @@ import { PlanTick } from '@/ui/PlanTick';
 import { statsToneColors } from '@/ui/statsPalette';
 import { useAppTheme } from '@/ui/theme';
 import { Button, Card, Choice, T, playSavedHaptic } from '@/ui/ui';
-
-const MIX = [
-  ['strength', 'Strength', 'good'],
-  ['cardio', 'Cardio', 'info'],
-  ['conditioning', 'Conditioning', 'watch'],
-  ['other', 'Other', 'attention'],
-] as const;
 
 /**
  * Fitness level, the measures that exist, and one to three goal-led lines.
@@ -551,49 +547,48 @@ function MixBar({
   onSetBucket: (activityType: number, bucket: WorkoutBucket) => void;
 }) {
   const theme = useAppTheme();
-  const colors = statsToneColors(theme.scheme);
   const [period] = useStatPeriod();
-  const weeks = view.mix?.weeks ?? [];
-  const max = Math.max(1, ...weeks.map((week) => week.strength + week.cardio + week.conditioning + week.other));
+  const rows = view.mix ? sessionSplitRows(view.mix) : [];
+  const counts = sessionTypeCounts(view.mix?.types ?? []);
+  const caption = `${periodHeading(period)}.`;
+  const spoken = [
+    'Sessions',
+    caption,
+    ...rows.map((row) => `${row.label}, ${row.minutes} minutes, ${row.share} percent`),
+    ...counts.map((row) => `${row.label}, ${row.minutes} minutes`),
+    CONDITIONING_NOTE,
+  ].join('. ');
   return (
-    <View style={{ gap: 8 }} accessibilityLabel={view.mix?.words}>
+    <View style={{ gap: 10 }} accessibilityLabel={spoken}>
       <T variant="label">Sessions</T>
-      <View style={{ flexDirection: 'row', gap: 12 }}>
-        {MIX.map(([key, label, tone]) => (
-          <View key={key} style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-            <View style={{ width: 12, height: 12, borderRadius: 2, backgroundColor: colors[tone].ink }} />
-            <T>{label}</T>
+      <View style={{ gap: 10, alignSelf: 'stretch' }}>
+        {rows.map((row) => (
+          <View key={row.key} style={{ gap: 4, alignSelf: 'stretch' }}>
+            <T>{`${row.label} · ${row.minutes} min · ${row.share}%`}</T>
+            <View
+              accessibilityElementsHidden
+              importantForAccessibility="no-hide-descendants"
+              style={{ height: 8, borderRadius: 4, backgroundColor: theme.colors.line, overflow: 'hidden' }}
+            >
+              <View style={{
+                width: row.minutes > 0 ? `${Math.max(row.share, 2)}%` : '0%',
+                height: 8,
+                borderRadius: 4,
+                backgroundColor: theme.colors.ink,
+              }} />
+            </View>
           </View>
         ))}
       </View>
-      <View style={{ flexDirection: 'row', alignItems: 'flex-end', height: 72, gap: 4 }}>
-        {weeks.map((week) => {
-          const total = week.strength + week.cardio + week.conditioning + week.other;
-          const height = Math.max(total > 0 ? 4 : 0, (total / max) * 72);
-          return (
-            <View key={week.label} style={{ flex: 1, alignItems: 'center', justifyContent: 'flex-end', height: 72 }}>
-              <View style={{ width: '70%', maxWidth: 18, height, borderRadius: 2, overflow: 'hidden', justifyContent: 'flex-end' }}>
-                {total > 0 ? (
-                  <>
-                    <View style={{ height: `${(week.other / total) * 100}%`, backgroundColor: colors.attention.ink }} />
-                    <View style={{ height: `${(week.conditioning / total) * 100}%`, backgroundColor: colors.watch.ink }} />
-                    <View style={{ height: `${(week.cardio / total) * 100}%`, backgroundColor: colors.info.ink }} />
-                    <View style={{ height: `${(week.strength / total) * 100}%`, backgroundColor: colors.good.ink }} />
-                  </>
-                ) : (
-                  <View style={{ height: 2, backgroundColor: theme.colors.line }} />
-                )}
-              </View>
-            </View>
-          );
-        })}
-      </View>
-      <View style={{ flexDirection: 'row', gap: 4 }}>
-        {weeks.map((week) => (
-          <T key={week.label} style={{ flex: 1, textAlign: 'center', fontSize: 11 * theme.scale, lineHeight: 14 * theme.scale, color: theme.colors.muted }}>{week.label}</T>
-        ))}
-      </View>
-      <T variant="muted">{view.mix?.words} {periodPhrase(period)}.</T>
+      <T variant="muted">{caption}</T>
+      {counts.length > 0 ? (
+        <View style={{ gap: 2 }}>
+          {counts.map((row, index) => (
+            <T key={`${row.label}-${index}`} variant="muted">{`${row.label} · ${row.minutes} min`}</T>
+          ))}
+        </View>
+      ) : null}
+      <T variant="muted">{CONDITIONING_NOTE}</T>
       <Fold title={WORKOUT_MIX_TITLE}>
         {(view.mix?.lines ?? []).map((line) => <T key={line}>{line}</T>)}
         {(view.mix?.types ?? []).map((row) => (

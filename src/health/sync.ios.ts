@@ -11,7 +11,7 @@ import type { HealthKind, NewHealthSample } from '@/data/types';
 import { isoDay } from '@/domain/dates';
 import { shownError } from '@/domain/errors';
 import { parseBodyFatPct, parseLeanMassKg } from '@/domain/nutrition';
-import { dedupeWorkouts, workoutBucket, workoutTypeKind, type WorkoutSourceMinute, type WorkoutSpan } from '@/domain/fitnessSnapshot';
+import { dedupeWorkouts, workoutBucket, workoutTypeKind, workoutTypeMinutes, type WorkoutActivitySlice, type WorkoutSourceMinute, type WorkoutSpan } from '@/domain/fitnessSnapshot';
 import { saveWorkoutSources } from '@/health/workoutSources';
 import type { WorkoutBucket, WorkoutBucketMap } from '@/domain/nutrition';
 import { HEALTH_SAMPLE_DAYS } from '@/domain/healthVisibility';
@@ -102,6 +102,17 @@ export async function readAppleHealthBody(): Promise<AppleHealthBodyRead> {
   } catch (error) {
     return { ok: false, message: shownError(error, 'Apple Health could not be read.') };
   }
+}
+
+/** HealthKit activity segments. Duration is a weight in seconds, not minutes. */
+function workoutActivities(activities: readonly { activityType?: unknown; duration?: unknown }[] | null | undefined): WorkoutActivitySlice[] {
+  if (!activities) return [];
+  return activities.flatMap((activity) => {
+    const activityType = Number(activity?.activityType);
+    const duration = Number(activity?.duration);
+    if (!Number.isFinite(activityType) || !Number.isFinite(duration)) return [];
+    return [{ activityType, duration }];
+  });
 }
 
 function minutes(quantity: number, unit: string): number {
@@ -232,7 +243,7 @@ export async function syncAppleHealth(overrides: WorkoutBucketMap = {}): Promise
     };
     const typeDays = new Map<string, Map<string, number>>();
     const sessionHeart = new Map<string, { total: number; count: number }>();
-    const pending: { workout: (typeof workouts)[number]; span: WorkoutSpan; sourceName: string }[] = [];
+    const pending: { workout: (typeof workouts)[number]; span: WorkoutSpan; sourceName: string; activities: WorkoutActivitySlice[] }[] = [];
     for (const workout of workouts) {
       const plain = workout.toJSON();
       const startMs = new Date(plain.startDate).getTime();
@@ -246,6 +257,7 @@ export async function syncAppleHealth(overrides: WorkoutBucketMap = {}): Promise
       pending.push({
         workout,
         sourceName: workoutSourceName(plain.sourceRevision?.source),
+        activities: workoutActivities(plain.activities),
         span: {
           activityType: Number(plain.workoutActivityType),
           startMs,
@@ -265,21 +277,23 @@ export async function syncAppleHealth(overrides: WorkoutBucketMap = {}): Promise
       const day = isoDay(new Date(item.span.startMs));
       const length = item.span.durationMin;
       add(workoutDays, day, length);
-      const activityType = Number.isInteger(item.span.activityType) && item.span.activityType > 0
-        ? item.span.activityType
-        : 0;
-      const bucket = workoutBucket(activityType, overrides);
-      add(bucketDays[bucket], day, length);
-      if (activityType > 0) {
+      // Named segments replace a parent Other workout. The parts add up to this duration.
+      const parts = workoutTypeMinutes({
+        activityType: item.span.activityType,
+        durationMin: length,
+        activities: item.activities,
+      });
+      for (const part of parts) {
+        add(bucketDays[workoutBucket(part.activityType, overrides)], day, part.minutes);
         sourceMinutes.push({
           day,
-          activityType,
-          minutes: length,
+          activityType: part.activityType,
+          minutes: part.minutes,
           sourceName: item.sourceName,
         });
-        const typeKind = workoutTypeKind(activityType);
+        const typeKind = workoutTypeKind(part.activityType);
         const typeMap = typeDays.get(typeKind) ?? new Map<string, number>();
-        add(typeMap, day, length);
+        add(typeMap, day, part.minutes);
         typeDays.set(typeKind, typeMap);
       }
       try {

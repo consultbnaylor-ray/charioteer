@@ -146,6 +146,10 @@ export type FitnessSnapshot = {
   minutes: FitnessRing | null;
   mix: {
     weeks: FitnessWeekMix[];
+    strength: number;
+    cardio: number;
+    conditioning: number;
+    other: number;
     words: string;
     /** One line per recorded workout type, then how the minutes were chosen. */
     lines: string[];
@@ -332,6 +336,39 @@ export function withWorkoutBucket(current: WorkoutBucketMap | null | undefined, 
 
 export function workoutTypeKind(activityType: number): `workout_type_${number}` {
   return `workout_type_${activityType}`;
+}
+
+export type WorkoutActivitySlice = { activityType: number; duration: number };
+
+/**
+ * Minutes for one workout, split by HealthKit activity.
+ * Traditional strength (50), functional strength (20), and core training (59) stay strength.
+ * When a parent workout is Other but a segment names a real type, the duration follows the segments.
+ * The parts add up to the workout duration, the same minutes as the active-minute total.
+ */
+export function workoutTypeMinutes(input: {
+  activityType: number;
+  durationMin: number;
+  activities?: readonly WorkoutActivitySlice[];
+}): { activityType: number; minutes: number }[] {
+  const total = input.durationMin;
+  if (!(total > 0) || !Number.isFinite(total)) return [];
+  const parent = Number.isInteger(input.activityType) && input.activityType > 0 ? input.activityType : 3000;
+  const named = new Map<number, number>();
+  for (const activity of input.activities ?? []) {
+    const activityType = Number(activity.activityType);
+    const duration = Number(activity.duration);
+    if (!Number.isInteger(activityType) || activityType <= 0 || activityType === 3000) continue;
+    if (!(duration > 0) || !Number.isFinite(duration)) continue;
+    named.set(activityType, (named.get(activityType) ?? 0) + duration);
+  }
+  if (named.size === 0) return [{ activityType: parent, minutes: total }];
+  const weight = [...named.values()].reduce((sum, value) => sum + value, 0);
+  const parts: { activityType: number; minutes: number }[] = [];
+  for (const [activityType, duration] of named) {
+    parts.push({ activityType, minutes: total * (duration / weight) });
+  }
+  return parts;
 }
 
 export function activityTypeFromKind(kind: string): number | null {
@@ -695,7 +732,16 @@ export function buildFitnessSnapshot(input: FitnessSnapshotInput): FitnessSnapsh
   } : null;
 
   const mix = mixReport.total > 0
-    ? { weeks: mixReport.weeks, words: mixReport.words, lines: mixReport.lines, types: mixReport.types }
+    ? {
+      weeks: mixReport.weeks,
+      strength: mixReport.strength,
+      cardio: mixReport.cardio,
+      conditioning: mixReport.conditioning,
+      other: mixReport.other,
+      words: mixReport.words,
+      lines: mixReport.lines,
+      types: mixReport.types,
+    }
     : null;
 
   const recovery = recoveryView({
@@ -1097,7 +1143,43 @@ function mixWords(strength: number, cardio: number, conditioning: number, other:
     ['other', other],
   ] as const;
   const leader = [...parts].sort((left, right) => right[1] - left[1])[0]?.[0] ?? 'strength';
-  return `Recent weeks are mostly ${leader}. Strength ${share(strength)}%, cardio ${share(cardio)}%, conditioning ${share(conditioning)}%, other ${share(other)}%. ${CONDITIONING_NOTE}`;
+  return `mostly ${leader}. Strength ${share(strength)}%, cardio ${share(cardio)}%, conditioning ${share(conditioning)}%, other ${share(other)}%.`;
+}
+
+export type SessionSplitRow = {
+  key: WorkoutBucket;
+  label: string;
+  minutes: number;
+  share: number;
+};
+
+/** Strength, cardio, conditioning, and other, largest share first. */
+export function sessionSplitRows(mix: {
+  strength: number;
+  cardio: number;
+  conditioning: number;
+  other: number;
+}): SessionSplitRow[] {
+  const total = mix.strength + mix.cardio + mix.conditioning + mix.other;
+  const rows: SessionSplitRow[] = [
+    { key: 'strength', label: 'Strength', minutes: Math.round(mix.strength), share: 0 },
+    { key: 'cardio', label: 'Cardio', minutes: Math.round(mix.cardio), share: 0 },
+    { key: 'conditioning', label: 'Conditioning', minutes: Math.round(mix.conditioning), share: 0 },
+    { key: 'other', label: 'Other', minutes: Math.round(mix.other), share: 0 },
+  ];
+  for (const row of rows) {
+    row.share = total > 0 ? Math.round((row.minutes / total) * 100) : 0;
+    if (row.minutes > 0 && row.share === 0) row.share = 1;
+  }
+  return rows.sort((left, right) => right.minutes - left.minutes || left.label.localeCompare(right.label));
+}
+
+/** Per-type minute totals. Counts only: the type name and the minutes. */
+export function sessionTypeCounts(types: readonly { label: string; minutes: number }[]): { label: string; minutes: number }[] {
+  return types
+    .filter((row) => row.minutes > 0 && row.label.trim())
+    .map((row) => ({ label: row.label.trim(), minutes: Math.round(row.minutes) }))
+    .sort((left, right) => right.minutes - left.minutes || left.label.localeCompare(right.label));
 }
 
 function recoveryView(input: {

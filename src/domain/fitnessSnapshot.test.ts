@@ -10,6 +10,9 @@ import {
   buildFitnessSnapshot,
   MINUTES_WHAT,
   WORKOUT_MIX_TITLE,
+  periodActiveMinutes,
+  sessionSplitRows,
+  sessionTypeCounts,
   workoutMixReport,
   RESTING_WHAT,
   VO2_WHAT,
@@ -20,7 +23,9 @@ import {
   rebucketStoredMinutes,
   withWorkoutBucket,
   workoutBucket,
+  workoutTypeKind,
   workoutTypeLabel,
+  workoutTypeMinutes,
   type FitnessSnapshotInput,
 } from '@/domain/fitnessSnapshot';
 
@@ -205,6 +210,56 @@ describe('fitness snapshot', () => {
     expect(withWorkoutBucket({ '73': 'strength' }, 73, 'conditioning')).toEqual({});
   });
 
+  it('follows named segments inside an Other workout and keeps the same minutes', () => {
+    const parent = workoutTypeMinutes({ activityType: 50, durationMin: 40 });
+    expect(parent).toEqual([{ activityType: 50, minutes: 40 }]);
+    const unnamed = workoutTypeMinutes({ activityType: 0, durationMin: 20 });
+    expect(unnamed).toEqual([{ activityType: 3000, minutes: 20 }]);
+    expect(workoutBucket(unnamed[0]?.activityType ?? 0)).toBe('other');
+    const split = workoutTypeMinutes({
+      activityType: 3000,
+      durationMin: 60,
+      activities: [
+        { activityType: 50, duration: 45 * 60 },
+        { activityType: 52, duration: 15 * 60 },
+        { activityType: 3000, duration: 5 * 60 },
+      ],
+    });
+    expect(split).toEqual([
+      { activityType: 50, minutes: 45 },
+      { activityType: 52, minutes: 15 },
+    ]);
+    expect(split.reduce((sum, part) => sum + part.minutes, 0)).toBe(60);
+    expect(workoutBucket(50)).toBe('strength');
+    expect(workoutBucket(20)).toBe('strength');
+    expect(workoutBucket(59)).toBe('strength');
+    const samples = [
+      { kind: 'workout_minutes' as const, value: 60, recordedOn: '2026-10-16', source: 'healthkit' as const },
+      ...split.map((part) => ({
+        kind: workoutTypeKind(part.activityType),
+        value: part.minutes,
+        recordedOn: '2026-10-16',
+        source: 'healthkit' as const,
+      })),
+    ];
+    const active = periodActiveMinutes({ samples, today: '2026-10-17', start: '2026-10-11' });
+    expect(active.minutes).toBe(60);
+    expect(active.report.total).toBe(60);
+    expect(active.report.strength).toBe(45);
+    expect(active.report.cardio).toBe(15);
+    expect(active.report.other).toBe(0);
+    const rows = sessionSplitRows(active.report);
+    expect(rows.map((row) => row.label)).toEqual(['Strength', 'Cardio', 'Conditioning', 'Other']);
+    expect(rows[0]).toMatchObject({ minutes: 45, share: 75 });
+    expect(sessionTypeCounts(active.report.types)).toEqual([
+      { label: 'Traditional strength', minutes: 45 },
+      { label: 'Walking', minutes: 15 },
+    ]);
+    expect(sessionTypeCounts([{ label: 'Other', minutes: 0 }, { label: '  Core training ', minutes: 12.4 }])).toEqual([
+      { label: 'Core training', minutes: 12 },
+    ]);
+  });
+
   it('counts one session once when the Watch and another app both wrote it', () => {
     const start = Date.parse('2026-10-17T10:00:00Z');
     const minute = 60 * 1000;
@@ -363,6 +418,13 @@ describe('fitness snapshot', () => {
     expect(card).toContain('ADDED_NOT_REDUCED');
     expect(card).toContain('WORKOUT_MIX_TITLE');
     expect(card).toContain('Fix ');
+    expect(card).toContain('sessionSplitRows');
+    expect(card).toContain('sessionTypeCounts');
+    expect(card).toContain('periodHeading(period)');
+    expect(card).toContain('CONDITIONING_NOTE');
+    expect(card).toContain(' · ');
+    expect(card).not.toContain('{view.mix?.words} {periodPhrase');
+    expect(sync).toContain('workoutTypeMinutes');
     expect(WORKOUT_MIX_TITLE).toBe('How this is worked out');
     expect(readFileSync('src/domain/healthStatTiles.ts', 'utf8')).toContain('workoutMixReport');
     expect(readFileSync('supabase/functions/_shared/fitnessSnapshot.ts', 'utf8')).toContain('export function workoutMixReport');
