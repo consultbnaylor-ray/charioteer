@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
-import { londonWallTime, plannedDoneSamples, sessionClock, withPlannedMinutes, type PlannedSession } from './plannedSession';
+import { londonWallTime, nextSessionClock, plannedDoneSamples, sessionClock, snapSessionClock, withPlannedMinutes, type PlannedSession } from './plannedSession';
 
 function session(partial: Partial<PlannedSession> = {}): PlannedSession {
   return {
@@ -35,6 +35,40 @@ describe('planned sessions', () => {
     expect(startsAt).toBe('2026-10-21T17:00:00.000Z');
     expect(sessionClock({ startsAt: startsAt ?? '' })).toBe('18:00');
     expect(londonWallTime('2026-10-21', '24:00')).toBeNull();
+  });
+
+  it('defaults a new session to the next quarter hour, or 18:00 on another day', () => {
+    expect(nextSessionClock(new Date('2026-10-20T05:43:00.000Z'), '2026-10-20')).toBe('06:45');
+    expect(nextSessionClock(new Date('2026-10-20T16:01:00.000Z'), '2026-10-20')).toBe('17:15');
+    expect(nextSessionClock(new Date('2026-10-20T16:50:00.000Z'), '2026-10-20')).toBe('18:00');
+    expect(nextSessionClock(new Date('2026-10-20T17:00:00.000Z'), '2026-10-20')).toBe('18:00');
+    expect(nextSessionClock(new Date('2026-10-20T22:50:00.000Z'), '2026-10-20')).toBe('18:00');
+    expect(nextSessionClock(new Date('2026-10-20T05:43:00.000Z'), '2026-10-21')).toBe('18:00');
+    expect(snapSessionClock('18:07')).toBe('18:05');
+    expect(snapSessionClock('18:58')).toBe('19:00');
+    expect(snapSessionClock('bad')).toBe('18:00');
+  });
+
+  it('picks the time from a wheel and keeps duration on the number pad', () => {
+    const calendar = readFileSync('src/ui/WorkoutCalendar.tsx', 'utf8');
+    const time = readFileSync('src/ui/SessionTimeField.tsx', 'utf8');
+    expect(calendar).toContain('<SessionTimeField');
+    expect(calendar).not.toContain('label="Time"');
+    expect(calendar).toContain('keyboardType="number-pad"');
+    expect(calendar).toContain('dismissOnSubmit');
+    expect(calendar).toContain("['30', '45', '60']");
+    expect(calendar).toContain('revealSessionFields');
+    expect(time).toContain('display="spinner"');
+    expect(time).toContain('locale="en_GB"');
+    expect(time).toContain('minuteInterval={5}');
+    expect(time).toContain('is24Hour');
+    expect(time).toContain('Morning 07:00');
+    expect(time).toContain('Lunch 12:30');
+    expect(time).toContain('Evening 18:00');
+    expect(time).toContain("type: 'time'");
+    expect(time).toContain('step: 300');
+    expect(time).not.toContain('TextInput');
+    expect(time).not.toContain('keyboardType');
   });
 
   it('stores planned workouts for the owner only, and does not apply the migration from here', () => {

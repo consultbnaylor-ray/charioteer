@@ -2,6 +2,7 @@ import * as Haptics from 'expo-haptics';
 import { createContext, useContext, useRef, useState, type ReactNode, type RefObject } from 'react';
 import {
   ActivityIndicator,
+  Keyboard,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -411,6 +412,8 @@ export function Field({
   editable = true,
   maxLength,
   onBlur,
+  onFocus,
+  dismissOnSubmit,
 }: {
   label: string;
   value: string;
@@ -428,6 +431,9 @@ export function Field({
   editable?: boolean;
   maxLength?: number;
   onBlur?: () => void;
+  onFocus?: () => void;
+  /** Done closes the keyboard. A number pad has no Return key, so the Done bar does this. */
+  dismissOnSubmit?: boolean;
 }) {
   const theme = useAppTheme();
   const inputRef = useRef<TextInput>(null);
@@ -450,15 +456,16 @@ export function Field({
       value={value}
       onChangeText={onChangeText}
       onBlur={onBlur}
-      onSubmitEditing={keys.onSubmitEditing}
+      onFocus={onFocus}
+      onSubmitEditing={dismissOnSubmit ? () => Keyboard.dismiss() : keys.onSubmitEditing}
       placeholder={placeholder}
       placeholderTextColor={theme.colors.placeholder}
       secureTextEntry={password && !revealed}
       textContentType={contentType}
       autoComplete={contentType === 'newPassword' ? 'password-new' : contentType === 'password' ? 'password' : undefined}
       keyboardType={keyboardType}
-      returnKeyType={keys.returnKeyType}
-      blurOnSubmit={keys.blurOnSubmit}
+      returnKeyType={dismissOnSubmit ? 'done' : keys.returnKeyType}
+      blurOnSubmit={dismissOnSubmit ? true : keys.blurOnSubmit}
       inputAccessoryViewID={keyboardAccessoryId(writing, keyboardType)}
       multiline={writing}
       editable={editable}

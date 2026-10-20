@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import { Pressable, Switch, View } from 'react-native';
+import { useEffect, useRef, useState } from 'react';
+import { Keyboard, Platform, Pressable, Switch, View } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
 
 import { useRepository, useSnapshot } from '@/data';
@@ -8,12 +8,14 @@ import { shownError } from '@/domain/errors';
 import { londonDay, mondayOf, shiftDay } from '@/domain/healthInsights';
 import {
   londonWallTime,
+  nextSessionClock,
   nextWeekday,
   PLANNED_SESSION_TYPES,
   SESSION_TYPE_LABEL,
   sessionClock,
   sessionDay,
   sessionWords,
+  snapSessionClock,
   type PlannedSession,
   type PlannedSessionType,
 } from '@/domain/plannedSession';
@@ -31,9 +33,10 @@ import {
 } from '@/notifications/sessionReminder';
 import { DateField } from '@/ui/DateField';
 import { PlanTick } from '@/ui/PlanTick';
+import { SessionTimeField } from '@/ui/SessionTimeField';
 import { statsToneColors } from '@/ui/statsPalette';
 import { useAppTheme } from '@/ui/theme';
-import { Button, Card, Choice, ErrorNote, Field, T, playSavedHaptic } from '@/ui/ui';
+import { Button, Card, Choice, ErrorNote, Field, T, playSavedHaptic, useScreenScroller } from '@/ui/ui';
 
 const OFFSETS: { id: ReminderOffset; label: string }[] = [
   { id: '1d', label: '1 day before' },
@@ -101,6 +104,8 @@ export function WorkoutCalendar({ planDay, planNonce = 0 }: { planDay?: string |
   const [sessionType, setSessionType] = useState<PlannedSessionType>('boxing');
   const [day, setDay] = useState(() => new Date());
   const [time, setTime] = useState('18:00');
+  const fieldsRef = useRef<View>(null);
+  const scroller = useScreenScroller();
   const [durationText, setDurationText] = useState('30');
   const [note, setNote] = useState('');
   const [pending, setPending] = useState(false);
@@ -136,7 +141,7 @@ export function WorkoutCalendar({ planDay, planNonce = 0 }: { planDay?: string |
     setEditing(null);
     setSessionType('boxing');
     setDay(parseIsoDay(planDay));
-    setTime('18:00');
+    setTime(nextSessionClock(new Date(), planDay));
     setDurationText('30');
     setNote('');
     setOpen(true);
@@ -176,12 +181,50 @@ export function WorkoutCalendar({ planDay, planNonce = 0 }: { planDay?: string |
     noteSaved();
   }
 
+  function revealSessionFields() {
+    const marker = fieldsRef.current;
+    if (Platform.OS === 'web') {
+      if (typeof document === 'undefined') return;
+      const node = document.getElementById('planned-session-fields');
+      if (!node) return;
+      const parent = webScrollParent(node);
+      const frame = () => {
+        const rect = node.getBoundingClientRect();
+        if (!parent) {
+          if (rect.bottom > window.innerHeight - 12) node.scrollIntoView({ block: 'end', behavior: 'smooth' });
+          return;
+        }
+        const parentRect = parent.getBoundingClientRect();
+        const overflow = rect.bottom - (parentRect.bottom - 12);
+        if (overflow > 0) parent.scrollTop += overflow;
+      };
+      requestAnimationFrame(frame);
+      setTimeout(frame, 250);
+      return;
+    }
+    const inner = scroller?.current.innerRef.current;
+    const scroll = scroller?.current.scrollRef.current;
+    if (!marker || !inner || !scroll) return;
+    const pin = () => {
+      marker.measureLayout(
+        inner as never,
+        (_x, y, _width, height) => {
+          const viewHeight = scroller?.current.height ?? 0;
+          scroll.scrollTo({ y: Math.max(0, y + height - viewHeight + 16), animated: true });
+        },
+        () => {},
+      );
+    };
+    requestAnimationFrame(pin);
+    setTimeout(pin, 250);
+  }
+
   function begin(session: PlannedSession | null, date = new Date()) {
     setError(null);
     setEditing(session);
     setSessionType(session?.sessionType ?? 'boxing');
     setDay(session ? parseIsoDay(sessionDay(session)) : date);
-    setTime(session ? sessionClock(session) : '18:00');
+    setTime(session ? snapSessionClock(sessionClock(session)) : nextSessionClock(new Date(), isoDay(date)));
     setDurationText(String(session?.durationMinutes ?? 30));
     setNote(session?.note ?? '');
     setOpen(true);
@@ -312,15 +355,32 @@ export function WorkoutCalendar({ planDay, planNonce = 0 }: { planDay?: string |
             onChange={setDay}
             earliestDate={editing && parseIsoDay(sessionDay(editing)).getTime() < Date.now() ? parseIsoDay(sessionDay(editing)) : new Date()}
           />
-          <Field label="Time" value={time} onChangeText={setTime} placeholder="18:00" />
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-            {['30', '45', '60'].map((minutes) => (
-              <Choice key={minutes} label={`${minutes} min`} selected={durationText === minutes} onPress={() => setDurationText(minutes)} />
-            ))}
+          <SessionTimeField value={time} onChange={setTime} />
+          <View ref={fieldsRef} nativeID="planned-session-fields" collapsable={false} style={{ gap: 10 }}>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+              {['30', '45', '60'].map((minutes) => (
+                <Choice
+                  key={minutes}
+                  label={`${minutes} min`}
+                  selected={durationText === minutes}
+                  onPress={() => {
+                    Keyboard.dismiss();
+                    setDurationText(minutes);
+                  }}
+                />
+              ))}
+            </View>
+            <Field
+              label="Duration in minutes"
+              value={durationText}
+              onChangeText={(value) => setDurationText(value.replace(/\D/g, '').slice(0, 3))}
+              keyboardType="number-pad"
+              dismissOnSubmit
+              onFocus={revealSessionFields}
+            />
+            <Field label="Note" value={note} onChangeText={setNote} placeholder="Optional" maxLength={280} onFocus={revealSessionFields} />
+            <Button label={editing ? 'Save session' : 'Save session'} pending={pending} onPress={() => { void saveSession(); }} />
           </View>
-          <Field label="Duration in minutes" value={durationText} onChangeText={setDurationText} keyboardType="number-pad" />
-          <Field label="Note" value={note} onChangeText={setNote} placeholder="Optional" maxLength={280} />
-          <Button label={editing ? 'Save session' : 'Save session'} pending={pending} onPress={() => { void saveSession(); }} />
         </View>
       ) : null}
       {days.map((date) => {
@@ -367,6 +427,16 @@ export function WorkoutCalendar({ planDay, planNonce = 0 }: { planDay?: string |
       })}
     </Card>
   );
+}
+
+function webScrollParent(node: HTMLElement | null): HTMLElement | null {
+  let current = node?.parentElement ?? null;
+  while (current) {
+    const overflow = getComputedStyle(current).overflowY;
+    if ((overflow === 'auto' || overflow === 'scroll') && current.scrollHeight > current.clientHeight + 8) return current;
+    current = current.parentElement;
+  }
+  return null;
 }
 
 export function planDayFromSessionText(text: string, now = new Date()): string | null {

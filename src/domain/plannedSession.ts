@@ -93,6 +93,50 @@ export function londonWallTime(day: string, time: string): string | null {
   return Number.isNaN(instant.getTime()) ? null : instant.toISOString();
 }
 
+/**
+ * Clock for a new session.
+ * Another day starts at 18:00. Today uses the next quarter hour in London, and a slot after midnight stays at 18:00.
+ */
+export function nextSessionClock(now = new Date(), day?: string): string {
+  const today = londonDay(now);
+  if (day && day !== today) return '18:00';
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Europe/London',
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+  }).formatToParts(now);
+  const hour = Number(parts.find((part) => part.type === 'hour')?.value);
+  const minute = Number(parts.find((part) => part.type === 'minute')?.value);
+  if (!Number.isFinite(hour) || !Number.isFinite(minute)) return '18:00';
+  const remainder = minute % 15;
+  let nextMinute = remainder === 0 ? minute : minute + (15 - remainder);
+  let nextHour = hour;
+  if (nextMinute >= 60) {
+    nextMinute = 0;
+    nextHour += 1;
+  }
+  if (nextHour >= 24) return '18:00';
+  return `${String(nextHour).padStart(2, '0')}:${String(nextMinute).padStart(2, '0')}`;
+}
+
+/** The iOS wheel moves in 5-minute steps, so a saved clock lands on one of those steps. */
+export function snapSessionClock(time: string): string {
+  const match = /^(\d{2}):(\d{2})$/.exec(time.trim());
+  if (!match) return '18:00';
+  let hours = Number(match[1]);
+  let minutes = Number(match[2]);
+  if (hours > 23 || minutes > 59) return '18:00';
+  const snapped = Math.round(minutes / 5) * 5;
+  if (snapped === 60) {
+    minutes = 0;
+    hours = (hours + 1) % 24;
+  } else {
+    minutes = snapped;
+  }
+  return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
+}
+
 export function sessionClock(session: Pick<PlannedSession, 'startsAt'>): string {
   const time = new Intl.DateTimeFormat('en-GB', {
     timeZone: 'Europe/London',
