@@ -7,6 +7,7 @@ import {
   WEAK_PASSWORD_MESSAGE,
   WRONG_PASSWORD_MESSAGE,
 } from '@/domain/errors';
+import { omitSharedLocation } from '@/domain/sharedPayload';
 import { rejectRouteCoordinates } from '@/domain/workoutRoute';
 import {
   BUDDY_ADULT,
@@ -872,7 +873,7 @@ export class DemoRepository implements Repository {
   }
 
   async sendDirectMessage(connectionId: string, body: string, clientId?: string): Promise<void> {
-    const text = body.trim().slice(0, 2000);
+    const text = omitSharedLocation(body.trim().slice(0, 2000)).trim();
     if (!text) return;
     const id = clientId || uid();
     return this.once(`message:${id}`, async () => {

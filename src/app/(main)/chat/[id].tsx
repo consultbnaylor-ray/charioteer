@@ -7,6 +7,7 @@ import { getChatReadMarks, markChatRead, noteServerChatRead } from '@/data/chatR
 import { shownError } from '@/domain/errors';
 import { randomId } from '@/domain/id';
 import { CHAT_HISTORY_ERROR, CHAT_POLL_MS, latestChatMessage } from '@/domain/liveChat';
+import { omitSharedLocation } from '@/domain/sharedPayload';
 import { MemberAvatar, useMemberAvatars } from '@/ui/MemberAvatar';
 import { usePendingPress } from '@/ui/pendingAction';
 import { ScreenBoundary } from '@/ui/ScreenBoundary';
@@ -114,7 +115,7 @@ function Chat() {
       {messages.map((message) => (
         <Card key={message.id} style={{ backgroundColor: message.senderId === me.id ? theme.colors.emphasisSoft : theme.colors.surface }}>
           <T variant="label">{message.senderId === me.id ? 'You' : other}</T>
-          <T>{message.body ?? ''}</T>
+          <T>{omitSharedLocation(message.body ?? '')}</T>
           {message.delivery === 'sending' ? <T variant="muted">Sending…</T> : null}
           {message.delivery === 'failed' ? (
             <View style={{ gap: 8 }}>

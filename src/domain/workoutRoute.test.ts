@@ -5,7 +5,15 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 import { APPLE_HEALTH_READ_TYPES } from '@/health/connection';
+import { parseBuddyShare, projectBuddyShare } from '@/domain/buddies';
+import { HEALTH_KINDS } from '@/domain/healthInsights';
+import type { HealthPlan } from '@/domain/healthPlan';
+import { chatPreview, messageFromRealtime } from '@/domain/liveChat';
+import { defaultNutritionSettings } from '@/domain/nutrition';
+import { defaultProfileSharing, parsePublicProfile, projectPublicProfile, type ProfileSharing, type ShareSource } from '@/domain/profileSharing';
+import { omitSharedLocation, scrubSharedText } from '@/domain/sharedPayload';
 import { latestVo2Day, VO2_ESTIMATE_NOTE, VO2_PLAN_LABEL, VO2_STALE_NUDGE, vo2MeasuredLine, vo2ReadingIsStale } from '@/domain/vo2Estimate';
+import { messageAlert } from '../../supabase/functions/_shared/messagePush';
 import {
   DEV_FIXTURE_ROUTE_ID,
   ROUTE_LOAD_ERROR,
@@ -114,16 +122,215 @@ describe('workout routes stay on the phone', () => {
     const points = demoRoutePoints(walk.startedAt);
     expect(payloadHasRouteCoordinates({ samples: [{ kind: 'workout_minutes', value: 30 }] })).toBe(false);
     expect(payloadHasRouteCoordinates({ content: 'hello', mode: 'plan' })).toBe(false);
+    expect(payloadHasRouteCoordinates({ content: 'Distance 3.2 km · Duration 33 min · Average pace 10:19 / km' })).toBe(false);
     expect(payloadHasRouteCoordinates({ route: points })).toBe(true);
+    expect(payloadHasRouteCoordinates({ latitude: '51.5074' })).toBe(true);
+    expect(payloadHasRouteCoordinates({ startLocation: 'Hyde Park', endLocation: 'Serpentine' })).toBe(true);
+    expect(payloadHasRouteCoordinates({ points: [[51.5074, -0.1278]] })).toBe(true);
     expect(() => rejectRouteCoordinates(points)).toThrow(/stay on this iPhone/);
+    expect(() => rejectRouteCoordinates({ startLocation: 'Hyde Park' })).toThrow(/stay on this iPhone/);
     expect(() => rejectRouteCoordinates({ kind: 'vo2_max', value: 42 })).not.toThrow();
+    expect(() => rejectRouteCoordinates({ content: 'Distance 3.2 km · Duration 33 min · Average pace 10:19 / km' })).not.toThrow();
+  });
+
+  it('keeps coordinates out of shared profiles, buddy shares, and messages', () => {
+    const stats = 'Distance 3.2 km · Duration 33 min · Average pace 10:19 / km';
+    const place = 'Meet at 51.50740, -0.12780 after the start location Hyde Park.';
+    const plan: HealthPlan = {
+      focus: [
+        { id: 'pace', text: stats, done: true },
+        { id: 'place', text: place, done: false },
+      ],
+      nutrition: { targets: '', habits: [], swaps: [] },
+      fitness: { intro: '', sessions: [] },
+      wellbeing: { habits: [] },
+      limits: 'Start location Serpentine 51.50740, -0.12780',
+      disclaimer: '',
+      updatedAt: '2026-10-21T12:00:00.000Z',
+    };
+    const samples = [
+      {
+        kind: 'workout_minutes',
+        value: 33,
+        recordedOn: '2026-10-20',
+        latitude: 51.5074,
+        longitude: -0.1278,
+        startLocation: 'Hyde Park',
+        endLocation: 'Serpentine',
+        route: [{ latitude: 51.5074, longitude: -0.1278 }],
+      },
+    ];
+    expect(payloadHasRouteCoordinates(samples)).toBe(true);
+    const sharing: ProfileSharing = {
+      ...defaultProfileSharing(),
+      healthKinds: [...HEALTH_KINDS],
+      healthPlan: true,
+      gratitudeIds: ['g1', 'g2'],
+      visionIds: ['v1'],
+      town: true,
+    };
+    const source: ShareSource = {
+      now: new Date('2026-10-21T12:00:00.000Z'),
+      today: '2026-10-21',
+      displayName: 'Alex Hart',
+      bio: 'Gym most mornings.',
+      town: 'Bristol',
+      stage: 'stopped',
+      sobrietyStartedAt: null,
+      weeklySpendGbp: null,
+      weeklyUnits: null,
+      interestLabels: ['Hiking'],
+      reasons: [],
+      checkIns: [],
+      health: samples as ShareSource['health'],
+      gratitude: [
+        { id: 'g1', body: 'Window light', entryDate: '2026-10-21', photos: [] },
+        { id: 'g2', body: place, entryDate: '2026-10-21', photos: [] },
+      ],
+      vision: [{ id: 'v1', caption: stats, area: null }],
+      progressPhotos: [],
+      pinnedQuoteId: null,
+      healthPlan: plan,
+    };
+    const view = projectPublicProfile(source, sharing);
+    const buddy = projectBuddyShare({
+      ownerId: 'alex',
+      displayName: 'Alex Hart',
+      today: '2026-10-21',
+      nutrition: defaultNutritionSettings(),
+      foodLogs: [],
+      checkIns: [{ mood: 6, createdAt: '2026-10-21T08:00:00.000Z' }],
+      gratitude: [{ body: 'Window light' }, { body: place }],
+      visionStatement: stats,
+      visionCaptions: [],
+      healthPlan: plan,
+      health: samples as { kind: string; value: number; recordedOn: string }[],
+      bodyFatPct: null,
+      leanMassKg: null,
+      waistCm: null,
+    }, {
+      meals: true,
+      calories: true,
+      quality: true,
+      goal: true,
+      progress: true,
+      checkIns: true,
+      gratitude: true,
+      vision: true,
+      healthPlan: true,
+      healthData: true,
+    });
+    const parsed = parsePublicProfile({
+      displayName: 'Alex Hart',
+      town: 'Bristol',
+      latitude: 51.5074,
+      longitude: -0.1278,
+      startLocation: 'Hyde Park',
+      endLocation: 'Serpentine',
+      route: samples[0]?.route,
+      health: ['Workouts average 33 min', stats, place],
+      healthTrends: [{ kind: 'workout_minutes', points: [{ day: '2026-10-20', value: 33, latitude: 51.5074, longitude: -0.1278 }] }],
+      healthPlan: plan,
+    });
+    const parsedBuddy = parseBuddyShare({
+      ownerId: 'alex',
+      displayName: 'Alex Hart',
+      latitude: 51.5074,
+      longitude: -0.1278,
+      route: samples[0]?.route,
+      gratitude: ['Window light', place],
+      healthPlan: plan,
+      healthData: ['Workouts average 33 min', stats, place],
+    }, '2026-10-21');
+    for (const payload of [view, buddy, parsed, parsedBuddy]) {
+      const packed = JSON.stringify(payload);
+      expect(packed).not.toMatch(/latitude|longitude|startLocation|endLocation|start_location|end_location/i);
+      expect(packed).not.toMatch(/51\.5074|-0\.1278|51\.50740|-0\.12800|Hyde Park|Serpentine/);
+      expect(packed).not.toMatch(/View route|RouteMap/);
+      expect(payloadHasRouteCoordinates(payload)).toBe(false);
+      expect(packed).toContain(stats);
+    }
+    expect(view.town).toBe('Bristol');
+    expect(view.health.join(' ')).toContain('33 min');
+    expect(JSON.stringify(view)).toContain('Window light');
+    expect(JSON.stringify(view)).not.toContain('Serpentine');
+    expect(scrubSharedText(stats)).toBe(stats);
+    expect(omitSharedLocation(place)).not.toMatch(/51\.50740|Hyde Park/);
+    const kept = messageFromRealtime({
+      id: 'm1',
+      connection_id: '11111111-1111-4111-8111-111111111111',
+      sender_id: 'alex',
+      body: `${stats} ${place}`,
+      created_at: '2026-10-21T12:00:00.000Z',
+    });
+    expect(kept?.body).toContain(stats);
+    expect(kept?.body).not.toMatch(/51\.50740|Hyde Park/);
+    expect(messageFromRealtime({
+      id: 'm2',
+      connection_id: '11111111-1111-4111-8111-111111111111',
+      sender_id: 'alex',
+      body: '51.50740, -0.12780',
+      created_at: '2026-10-21T12:00:00.000Z',
+    })).toBeNull();
+    expect(chatPreview(`${stats}\n${place}`)).toContain('3.2 km');
+    expect(chatPreview(`${stats}\n${place}`)).not.toMatch(/51\.50740/);
+    const alert = messageAlert({
+      senderId: 'alex',
+      recipientId: 'jordan',
+      connectionId: '11111111-1111-4111-8111-111111111111',
+      connectionAccepted: true,
+      messageBody: place,
+      recipientCommunityOn: true,
+      senderCommunityOn: true,
+      blocked: false,
+      notificationsOn: true,
+      showSenderName: true,
+      senderName: 'Alex',
+    });
+    expect(alert.ok).toBe(true);
+    if (alert.ok) {
+      expect(JSON.stringify(alert)).not.toMatch(/51\.50740|Hyde Park|latitude/);
+      expect(alert.data).toEqual({ connectionId: '11111111-1111-4111-8111-111111111111' });
+    }
+    expect(readFileSync('src/data/supabase-repository.ts', 'utf8')).toContain('omitSharedLocation(body.trim()');
+    expect(readFileSync('src/data/demo-repository.ts', 'utf8')).toContain('omitSharedLocation(body.trim()');
+    expect(readFileSync('src/app/(main)/chat/[id].tsx', 'utf8')).toContain('omitSharedLocation(message.body');
+  });
+
+  it('keeps route links on the owner screens only', () => {
+    const allowed = new Set([
+      'src/ui/WorkoutList.tsx',
+      'src/ui/WorkoutCalendar.tsx',
+      'src/ui/RouteMap.tsx',
+      'src/ui/RouteMap.ios.tsx',
+      'src/app/(main)/health-plan.tsx',
+      'src/app/(main)/workout/[id].tsx',
+    ]);
+    for (const path of [...filesUnder('src/ui'), ...filesUnder('src/app')]) {
+      const source = readFileSync(path, 'utf8');
+      if (path.endsWith('health-plan.tsx')) {
+        expect(source).toContain('WorkoutList');
+        expect(source).toContain('WorkoutCalendar');
+      } else if (!path.endsWith('WorkoutList.tsx') && !path.endsWith('WorkoutCalendar.tsx')) {
+        expect(source, path).not.toContain('WorkoutList');
+        expect(source, path).not.toContain('WorkoutCalendar');
+      }
+      if (allowed.has(path)) continue;
+      expect(source, path).not.toMatch(/View route|RouteMap|routeSummaryLine|readDeviceRoute|latitude|longitude/);
+    }
+    for (const path of filesUnder('supabase/migrations')) {
+      expect(readFileSync(path, 'utf8'), path).not.toMatch(/latitude|longitude/);
+    }
+    expect(readFileSync('src/app/(main)/workout/[id].tsx', 'utf8')).toContain('readDeviceRoute');
+    expect(readFileSync('src/ui/WorkoutList.tsx', 'utf8')).toContain('View route');
+    expect(readFileSync('src/ui/WorkoutCalendar.tsx', 'utf8')).toContain('View route');
   });
 
   it('does not send a route from the repositories, sharing, or edge functions', () => {
     const watched = [
       ...filesUnder('src/data'),
       ...filesUnder('supabase/functions'),
-      ...filesUnder('src/domain').filter((path) => !path.endsWith('workoutRoute.ts') && !path.endsWith('.test.ts')),
+      ...filesUnder('src/domain').filter((path) => !path.endsWith('workoutRoute.ts') && !path.endsWith('sharedPayload.ts') && !path.endsWith('.test.ts')),
     ];
     for (const path of watched) {
       const source = readFileSync(path, 'utf8');

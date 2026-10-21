@@ -1,4 +1,5 @@
 import type { DirectMessage } from '@/data/types';
+import { omitSharedLocation } from '@/domain/sharedPayload';
 
 /** How often an open chat asks the server for messages Realtime may have missed. */
 export const CHAT_POLL_MS = 10_000;
@@ -20,7 +21,7 @@ export function messageFromRealtime(row: unknown): DirectMessage | null {
   const id = text(record.id);
   const connectionId = text(record.connection_id);
   const senderId = text(record.sender_id);
-  const body = text(record.body);
+  const body = text(omitSharedLocation(text(record.body) ?? ''));
   const createdAt = text(record.created_at);
   if (!id || !connectionId || !senderId || !body || !createdAt) return null;
   return { id, connectionId, senderId, body, createdAt };
@@ -121,7 +122,7 @@ export function chatsChoiceLabel(chatCount: number, unread: number): string {
 }
 
 export function chatPreview(body: string): string {
-  const line = body.replace(/\s+/g, ' ').trim();
+  const line = omitSharedLocation(body).replace(/\s+/g, ' ').trim();
   if (line.length <= 80) return line;
   return `${line.slice(0, 79)}…`;
 }

@@ -14,6 +14,7 @@ import {
   type FoodLog,
   type NutritionSettings,
 } from '@/domain/nutrition';
+import { omitSharedLocation } from '@/domain/sharedPayload';
 
 /** How long an invite link can be used. */
 export const BUDDY_LINK_DAYS = 7;
@@ -375,7 +376,7 @@ export function projectBuddyShare(source: BuddyShareSource, scope: BuddyScope): 
       ? `Mood ${latest.mood}. Checked in ${streak} ${streak === 1 ? 'day' : 'days'} in a row.`
       : 'No check-in yet.'
     : null;
-  return {
+  return omitSharedLocation({
     ownerId: source.ownerId,
     displayName: source.displayName,
     summary: scopeSummary(scope),
@@ -399,7 +400,7 @@ export function projectBuddyShare(source: BuddyShareSource, scope: BuddyScope): 
         waistCm: source.waistCm,
       })
       : null,
-  };
+  });
 }
 
 function textOrNull(value: unknown): string | null {
@@ -453,7 +454,7 @@ export function parseBuddyShare(value: unknown, today = isoDay(new Date())): Bud
   if (typeof row.ownerId !== 'string') return null;
   const scope = normalizeBuddyScope(row.scope);
   const healthPlan = parseSharedHealthPlan(row.healthPlan);
-  return {
+  return omitSharedLocation({
     ownerId: row.ownerId,
     displayName: typeof row.displayName === 'string' ? row.displayName : 'Member',
     summary: scopeSummary(scope),
@@ -467,7 +468,7 @@ export function parseBuddyShare(value: unknown, today = isoDay(new Date())): Bud
     vision: stringList(row.vision),
     healthPlan,
     healthData: healthFromPayload(row.healthData, today),
-  };
+  });
 }
 
 function inviteRow(value: unknown): BuddyInvite | null {

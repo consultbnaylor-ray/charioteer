@@ -265,28 +265,7 @@ export function buildRouteStats(input: {
   };
 }
 
-/** True when a value destined for the network carries a route coordinate. */
-export function payloadHasRouteCoordinates(value: unknown): boolean {
-  const seen = new Set<unknown>();
-  const walk = (node: unknown): boolean => {
-    if (!node || typeof node !== 'object') return false;
-    if (seen.has(node)) return false;
-    seen.add(node);
-    if (Array.isArray(node)) return node.some(walk);
-    const record = node as Record<string, unknown>;
-    const latitude = record.latitude ?? record.lat;
-    const longitude = record.longitude ?? record.lng ?? record.lon;
-    if (typeof latitude === 'number' && typeof longitude === 'number') return true;
-    return Object.values(record).some(walk);
-  };
-  return walk(value);
-}
-
-export function rejectRouteCoordinates(value: unknown): void {
-  if (payloadHasRouteCoordinates(value)) {
-    throw new Error('Workout routes stay on this iPhone.');
-  }
-}
+export { omitSharedLocation, payloadHasRouteCoordinates, rejectRouteCoordinates, scrubSharedText } from './sharedPayload';
 
 const COORDINATE_NUMBER = /-?\d{1,3}\.\d{4,}/g;
 

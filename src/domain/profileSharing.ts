@@ -8,6 +8,7 @@ import { quoteById, type QuoteSchool } from './stoicQuotes';
 import { parseSharedHealthPlan, presentSharedHealthPlan, type HealthPlan, type SharedHealthPlan } from './healthPlan';
 import { presentSharedNutrition, type FoodLog, type NutritionSettings, type SharedGoal, type SharedMealPhoto, type SharedQuality } from './nutrition';
 import { sharedGratitudePreviewUrl, sharedGratitudeStoragePath } from './gratitudePhotos';
+import { omitSharedLocation } from './sharedPayload';
 import { STAGE_LABELS, isStage } from './stage';
 
 /** Helper under a Share on profile switch while Community is on. */
@@ -514,7 +515,7 @@ export function projectPublicProfile(source: ShareSource, sharing: ProfileSharin
   if (healthPlan) sharedLabels.push('Health Plan');
   else hiddenLabels.push('Health Plan');
 
-  return {
+  return omitSharedLocation({
     displayName: source.displayName,
     bio,
     interests: source.interestLabels,
@@ -545,7 +546,7 @@ export function projectPublicProfile(source: ShareSource, sharing: ProfileSharin
     goal,
     healthPlan,
     healthTrends,
-  };
+  });
 }
 
 function textList(value: unknown): string[] {
@@ -576,7 +577,7 @@ export function parsePublicProfile(value: unknown): PublicProfileView | null {
   const gratitudePhotos = Array.isArray(raw.gratitudePhotos) ? raw.gratitudePhotos : [];
   const vision = Array.isArray(raw.vision) ? raw.vision : [];
   const pinned = quoteById(typeof raw.pinnedQuoteId === 'string' ? raw.pinnedQuoteId : null);
-  return {
+  return omitSharedLocation({
     displayName: typeof raw.displayName === 'string' ? raw.displayName : '',
     bio: typeof raw.bio === 'string' && raw.bio.trim() ? raw.bio.trim() : null,
     interests: textList(raw.interests),
@@ -655,7 +656,7 @@ export function parsePublicProfile(value: unknown): PublicProfileView | null {
     goal: goalFrom(raw.goal),
     healthPlan: parseSharedHealthPlan(raw.healthPlan),
     healthTrends: trendList(raw.healthTrends),
-  };
+  });
 }
 
 function trendList(value: unknown): SharedHealthTrend[] {

@@ -14,6 +14,7 @@ import {
   asUserFacing,
   isTransientNetworkError,
 } from '@/domain/errors';
+import { omitSharedLocation } from '@/domain/sharedPayload';
 import { rejectRouteCoordinates } from '@/domain/workoutRoute';
 import { gratitudeFromRows, isGratitudeCategory, localGratitudeReflect, planGratitudeEntry, type GratitudePhoto, type GratitudeReflect } from '@/domain/gratitude';
 import {
@@ -1212,7 +1213,7 @@ export class SupabaseRepository implements Repository {
   }
 
   async sendDirectMessage(connectionId: string, body: string, clientId?: string): Promise<void> {
-    const text = body.trim().slice(0, 2000);
+    const text = omitSharedLocation(body.trim().slice(0, 2000)).trim();
     if (!text) return;
     const id = clientId || randomId();
     return this.once(`message:${id}`, async () => {
@@ -3235,7 +3236,7 @@ function mapDirectMessage(row: Row): DirectMessage {
     id: String(row.id),
     connectionId: String(row.connection_id),
     senderId: String(row.sender_id),
-    body: String(row.body),
+    body: omitSharedLocation(String(row.body)),
     createdAt: String(row.created_at),
   };
 }
