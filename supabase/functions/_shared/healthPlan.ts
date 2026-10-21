@@ -27,7 +27,7 @@ import {
 import { assessCardioGap, buildFitnessSnapshot, fitnessFocusLines, type FitnessSnapshotInput } from './fitnessSnapshot.ts';
 import { goalWeightRange } from './goalWeightRange.ts';
 import { goalFocusLine } from './goalLed.ts';
-import { londonDay, londonWeek } from './healthInsights.ts';
+import { healthChangeNoteFromReadings, londonDay, londonWeek } from './healthInsights.ts';
 import { firstSafetyHit, SELF_HARM_NOTICE, WITHDRAWAL_NOTICE, type SafetyHit } from './safety.ts';
 import { soberElapsed } from './sober.ts';
 
@@ -594,6 +594,8 @@ export type HealthPlanModelContext = {
   fitnessSnapshot: string | null;
   /** Approximate weight range, or a prompt when height, sex, or age is missing. */
   weightRange: string | null;
+  /** HRV, resting heart rate, VO2, sleep, and weight, each against the 30-day average. */
+  changes: string[];
 };
 
 /** What the model may use. Swaps may use only profile, checkIns, loggedFood, and loggedDrink. */
@@ -629,7 +631,17 @@ export function healthPlanModelContext(input: PlanInput, plan: HealthPlan): Heal
     training: planBaseline(input),
     fitnessSnapshot: input.fitnessSnapshot === undefined ? fitnessSnapshotFor(input) : input.fitnessSnapshot,
     weightRange: weightRangeFor(input),
+    changes: metricChanges(input),
   };
+}
+
+const CHANGE_KINDS = ['hrv_sdnn', 'resting_heart_rate', 'vo2_max', 'sleep_hours', 'weight_kg'] as const;
+
+function metricChanges(input: PlanInput): string[] {
+  const today = londonDay(input.now);
+  return CHANGE_KINDS
+    .map((kind) => healthChangeNoteFromReadings(kind, input.health.filter((row) => row.kind === kind), today))
+    .filter((line): line is string => Boolean(line));
 }
 
 function weightRangeFor(input: PlanInput): string | null {

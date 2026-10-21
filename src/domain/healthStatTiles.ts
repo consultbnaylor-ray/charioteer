@@ -34,7 +34,7 @@ import {
   NICE_BMI_URL,
 } from '@/domain/guidance';
 import { healthSampleChart, sparklineFromDays } from '@/domain/chartSeries';
-import { formatSleepHours, shiftDay, weekdayShort, type DayValue } from '@/domain/healthInsights';
+import { formatSleepHours, healthChangeNote, shiftDay, weekdayShort, type DayValue } from '@/domain/healthInsights';
 import { ascendingByDay } from '@/domain/readingChart';
 import {
   GOAL_LABEL,
@@ -737,7 +737,7 @@ function hrvTile(item: CatalogItem, input: HealthStatBoardInput): HealthStatTile
     period: periodLabel(period),
     status: 'There is no official UK target.',
     tone: 'info',
-    trend: movementTrend(window.current, window.previous, 'mean', 5, period),
+    trend: healthChangeNote('hrv_sdnn', all, input.today),
     hasGuideline: false,
     visual: spark(window.current, `${ms} ms`),
     history: nums(window.current),

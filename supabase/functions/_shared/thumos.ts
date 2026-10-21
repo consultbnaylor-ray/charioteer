@@ -37,6 +37,8 @@ export type HealthTrend = {
   latest: number | null;
   previous: number | null;
   unit: string;
+  /** Shared 30-day change, when this kind has one. Replaces a reading-to-reading comparison. */
+  note?: string | null;
 };
 
 export type ThumosStage = 'stopped' | 'trying_to_stop' | 'cutting_down' | 'exploring';
@@ -840,6 +842,7 @@ export function buildThumosContext(input: ThumosContextInput): string {
 
   const health = input.health
     .map((item) => {
+      if (item.note) return `- ${item.note}`;
       if (item.latest == null) return `- ${item.kind}: no recent reading`;
       const trend =
         item.previous == null
