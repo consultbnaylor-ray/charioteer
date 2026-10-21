@@ -142,7 +142,7 @@ function spanText(span: WeightSpan, unit: WeightUnitMode): string {
   const low = formatWeightAmount(span.lowKg, unit);
   if (span.highKg == null) return span.lowExclusive ? `over ${low}` : `${low} and above`;
   const high = formatWeightAmount(span.highKg, unit);
-  return span.lowExclusive ? `over ${low} to ${high}` : `${low} to ${high}`;
+  return span.lowExclusive ? `over ${low} up to ${high}` : `${low} to ${high}`;
 }
 
 /** Legend for a goal band. A class limit is a reference, not an approximate target. */
@@ -187,11 +187,10 @@ function loseSentence(weightKg: number, highKg: number, unit: WeightUnitMode): s
   return `About ${formatWeightAmount(gap, unit)} to lose to reach the top of this range`;
 }
 
-function gainSentence(weightKg: number, lowKg: number, unit: WeightUnitMode, place: 'range' | 'class'): string | null {
+function gainSentence(weightKg: number, lowKg: number, unit: WeightUnitMode): string | null {
   const gap = round1(lowKg - weightKg);
   if (gap <= 0) return null;
-  const where = place === 'class' ? 'the bottom of this class' : 'the bottom of this range';
-  return `About ${formatWeightAmount(gap, unit)} to gain to reach ${where}`;
+  return `About ${formatWeightAmount(gap, unit)} to gain to reach the bottom of this range`;
 }
 
 function boxerClass(goal: NutritionGoal, sex: NutritionSex): ClassWindow | null {
@@ -283,10 +282,114 @@ function amateurIba(goal: ClassBoxerGoal, sex: NutritionSex): string {
   return sex === 'female' ? women[goal] : men[goal];
 }
 
-function classInRange(weightKg: number, klass: ClassWindow): boolean {
-  if (klass.lowOver != null && !(weightKg > klass.lowOver)) return false;
-  if (klass.highTo == null || klass.countsAbove) return true;
-  return weightKg <= klass.highTo + 0.05;
+export type ClassEdges = {
+  /** The class starts over this weight. Null when the list has no lower class. */
+  lowKg: number | null;
+  /** Inclusive upper edge. Null when the table has no upper limit. */
+  highKg: number | null;
+  /** Heavyweight also covers the super-heavyweight class above the top. */
+  countsAbove?: boolean;
+};
+
+export type ClassPlace = 'below' | 'inside' | 'above';
+
+export type ClassStatus = {
+  place: ClassPlace;
+  lowKg: number | null;
+  highKg: number | null;
+  /** Kilograms above the lower edge. Null when there is no lower edge, or the reading is not above it. */
+  aboveLowerKg: number | null;
+  /** Kilograms below the upper edge. Null when there is no upper edge, or the reading is over it. */
+  belowUpperKg: number | null;
+  /** 0 at the lower edge and 1 at the upper edge. A ceiling-only class does not fill as a shortfall. */
+  fill: number;
+  signal: string;
+  tone: 'good' | 'info';
+  line: string;
+};
+
+function kgAmount(kg: number): string {
+  const rounded = round1(Math.abs(kg));
+  return Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1);
+}
+
+function classSpanPhrase(edges: ClassEdges): string {
+  if (edges.lowKg != null && edges.highKg != null) return `over ${kgAmount(edges.lowKg)} kg up to ${kgAmount(edges.highKg)} kg`;
+  if (edges.highKg != null) return `up to ${kgAmount(edges.highKg)} kg`;
+  if (edges.lowKg != null) return `over ${kgAmount(edges.lowKg)} kg`;
+  return 'this class';
+}
+
+function classBandPhrase(edges: ClassEdges): string {
+  if (edges.lowKg != null && edges.highKg != null) return `${kgAmount(edges.lowKg)}–${kgAmount(edges.highKg)} kg`;
+  return classSpanPhrase(edges);
+}
+
+/**
+ * One place for below, inside, and above a class.
+ * Inside names both edges. Under means below the lower edge. Over means above the upper edge.
+ */
+export function classStatus(weightKg: number, edges: ClassEdges): ClassStatus {
+  const low = edges.lowKg;
+  const high = edges.highKg;
+  const countsAbove = edges.countsAbove === true;
+  let place: ClassPlace;
+  if (low != null && !(weightKg > low)) place = 'below';
+  else if (high == null || countsAbove) place = 'inside';
+  else if (weightKg <= high + 0.05) place = 'inside';
+  else place = 'above';
+
+  const aboveLowerKg = low != null && weightKg > low ? round1(weightKg - low) : null;
+  const belowUpperKg = high != null && weightKg <= high + 0.05 ? round1(Math.max(0, high - weightKg)) : null;
+  const underBy = place === 'below' && low != null ? round1(low - weightKg) : null;
+  const overBy = place === 'above' && high != null ? round1(weightKg - high) : null;
+  const fill = low != null && high != null && high > low
+    ? Math.max(0, Math.min(1, (weightKg - low) / (high - low)))
+    : place === 'below' ? 0 : 1;
+  const superHeavy = place === 'inside' && countsAbove && high != null && weightKg > high + 0.05;
+
+  let signal = 'Inside the class';
+  let tone: 'good' | 'info' = 'good';
+  let line = `✓ Inside the class (${classBandPhrase(edges)})`;
+  if (superHeavy && high != null) {
+    line = `✓ Inside the class, in the super heavyweight class, over ${kgAmount(high)} kg. This is a reference, not a target.`;
+  } else if (place === 'inside') {
+    const bits: string[] = [];
+    if (aboveLowerKg != null && aboveLowerKg > 0) bits.push(`${kgAmount(aboveLowerKg)} kg above the lower limit`);
+    if (belowUpperKg != null && belowUpperKg > 0) bits.push(`${kgAmount(belowUpperKg)} kg below the upper limit`);
+    if (bits.length) line = `${line} · ${bits.join(', ')}`;
+    line = `${line}.`;
+  } else if (place === 'below') {
+    signal = 'Under the class';
+    tone = 'info';
+    const distance = underBy != null && underBy > 0 ? ` · ${kgAmount(underBy)} kg under the lower limit (${classSpanPhrase(edges)})` : '';
+    line = `Under the class${distance}. This is a reference, not a target.`;
+  } else {
+    signal = 'Over the class';
+    tone = 'info';
+    const distance = overBy != null && overBy > 0 ? ` · ${kgAmount(overBy)} kg over the upper limit (${classSpanPhrase(edges)})` : '';
+    line = `Over the class${distance}. This is a reference, not a target. ${NO_CUT}`;
+  }
+
+  return {
+    place,
+    lowKg: low,
+    highKg: high,
+    aboveLowerKg,
+    belowUpperKg,
+    fill,
+    signal,
+    tone,
+    line,
+  };
+}
+
+/** The same window the range card uses. Sex picks the heavyweight table. Other classes do not change with sex. */
+export function boxingClassWindow(goal: NutritionGoal | null, sex: NutritionSex | null): ClassEdges | null {
+  if (!goal || !isAnyBoxer(goal)) return null;
+  const klass = boxerClass(goal, sex === 'female' ? 'female' : 'male');
+  if (!klass) return null;
+  return { lowKg: klass.lowOver, highKg: klass.highTo, countsAbove: klass.countsAbove };
 }
 
 function typedLimit(goal: NutritionGoal, weightClassKg: number | null | undefined): string | null {
@@ -425,34 +528,13 @@ function buildRange(input: GoalWeightInput, unit: WeightUnitMode): Omit<GoalWeig
     const underFloor = weightKg < healthy.lowKg - 0.05;
     const insideHealthy = weightKg >= healthy.lowKg - 0.05 && weightKg <= healthy.highKg + 0.05;
     if (underFloor) {
-      gap = gainSentence(weightKg, healthy.lowKg, unit, 'range');
+      gap = gainSentence(weightKg, healthy.lowKg, unit);
       words = gap ?? words;
       floorNote = NOT_BELOW;
     } else if (klass && input.goal) {
-      const named = `For ${GOAL_LABEL[input.goal]}`;
-      if (classInRange(weightKg, klass)) {
-        withinRange = true;
-        words = klass.countsAbove && klass.highTo != null && weightKg > klass.highTo + 0.05
-          ? `${named}, you are in the super heavyweight class, over ${formatWeightAmount(klass.highTo, unit)}. This is a reference, not a target.`
-          : `${named}, you are inside this class.`;
-      } else if (klass.lowOver != null && weightKg <= klass.lowOver) {
-        const gapKg = round1(klass.lowOver - weightKg);
-        if (gapKg > 0 && klass.lowOver + 0.05 >= healthy.lowKg) {
-          gap = `The gap to the bottom of this class is about ${formatWeightAmount(gapKg, unit)}`;
-          words = `${named}, you are under this class.`;
-        } else if (gapKg <= 0) {
-          withinRange = true;
-          words = `${named}, you are inside this class.`;
-        } else {
-          words = `${named}, you are under this class. This is a reference, not a target.`;
-        }
-      } else if (klass.highTo != null) {
-        gap = `The gap above this class is about ${formatWeightAmount(round1(weightKg - klass.highTo), unit)}`;
-        words = `${named}, you are above this class. This is a reference, not a target. ${NO_CUT}`;
-      } else {
-        words = `${named}, you are above this class. This is a reference, not a target. ${NO_CUT}`;
-      }
-      words = withProLimit(input.goal, words);
+      const status = classStatus(weightKg, { lowKg: klass.lowOver, highKg: klass.highTo, countsAbove: klass.countsAbove });
+      withinRange = status.place === 'inside';
+      words = withProLimit(input.goal, status.line);
     } else if (insideHealthy) {
       withinRange = true;
       words = 'Within range';

@@ -7,7 +7,10 @@ import {
   DOCTOR_NOTE,
   LOSS_PACE_KG,
   NOT_BELOW,
+  boxingClassWindow,
+  classStatus,
   formatWeightAmount,
+  goalBandLegend,
   goalWeightRange,
 } from './goalWeightRange';
 
@@ -171,7 +174,8 @@ describe('goal weight range', () => {
     });
     expect(inside.withinRange).toBe(true);
     expect(inside.gap).toBeNull();
-    expect(inside.words).toBe('For Elite Athlete (Middle Weight Boxer), you are inside this class. The professional limit is about 72.6 kg (160 lb).');
+    expect(inside.words).toBe('✓ Inside the class (69.9–72.6 kg) · 1.1 kg above the lower limit, 1.6 kg below the upper limit. The professional limit is about 72.6 kg (160 lb).');
+    expect(inside.words).not.toMatch(/under the class/i);
     expect(inside.goal?.label).toBe('Middleweight limit (reference)');
     expect(inside.goal?.lowKg).toBe(69.9);
     expect(inside.goal?.highKg).toBe(72.6);
@@ -184,7 +188,7 @@ describe('goal weight range', () => {
     });
     expect(heavy.withinRange).toBe(true);
     expect(heavy.gap).toBeNull();
-    expect(heavy.words).toContain('For Elite Athlete (Heavy Weight Boxer)');
+    expect(heavy.words).toBe('✓ Inside the class, in the super heavyweight class, over 100 kg. This is a reference, not a target.');
     expect(heavy.words).toContain('super heavyweight');
     expect(heavy.classReference).toContain('over 92 kg to 100 kg');
     expect(heavy.classReference).toContain('over 100 kg');
@@ -196,10 +200,10 @@ describe('goal weight range', () => {
       age: 30,
       sex: 'male',
     });
-    expect(lightHeavy.words).toContain('For Elite Athlete (Heavy Weight Boxer)');
-    expect(lightHeavy.words).toContain('under this class');
-    expect(lightHeavy.gap).toBe('The gap to the bottom of this class is about 4 kg');
-    expect(lightHeavy.gap).not.toContain('to lose');
+    expect(lightHeavy.words).toBe('Under the class · 4 kg under the lower limit (over 92 kg up to 100 kg). This is a reference, not a target.');
+    expect(lightHeavy.withinRange).toBe(false);
+    expect(lightHeavy.gap).toBeNull();
+    expect(lightHeavy.words).not.toMatch(/to lose|to gain/i);
     const sheet = goalWeightRange({
       goal: 'elite_heavy_boxer',
       weightKg: 84.1,
@@ -211,13 +215,15 @@ describe('goal weight range', () => {
     expect(sheet.healthy?.highKg).toBe(73.7);
     expect(sheet.goal?.label).toBe('Heavyweight class (reference)');
     expect(sheet.goal?.lowExclusive).toBe(true);
-    expect(sheet.words).toBe('For Elite Athlete (Heavy Weight Boxer), you are under this class.');
-    expect(sheet.gap).toBe('The gap to the bottom of this class is about 7.9 kg');
+    expect(sheet.words).toBe('Under the class · 7.9 kg under the lower limit (over 92 kg up to 100 kg). This is a reference, not a target.');
+    expect(sheet.gap).toBeNull();
     expect(sheet.classReference).toContain('IBA');
+    expect(sheet.classReference).toContain('over 92 kg to 100 kg');
     expect(sheet.classReference).toContain('will not plan a weight cut');
-    expect(`${sheet.words} ${sheet.gap}`).not.toMatch(/to lose|weight cut/i);
-    expect(sheet.contextLine).toContain('Heavyweight class (reference): over 92 kg to 100 kg');
-    expect(sheet.contextLine).toContain('For Elite Athlete (Heavy Weight Boxer)');
+    expect(sheet.words).not.toMatch(/to lose|to gain|weight cut/i);
+    expect(sheet.contextLine).toContain('Heavyweight class (reference): over 92 kg up to 100 kg');
+    expect(sheet.contextLine).toContain('Under the class · 7.9 kg under the lower limit');
+    expect(sheet.doctor).toBe(DOCTOR_NOTE);
   });
 
   it('sets a super middleweight, light heavyweight, and cruiserweight against the professional limit', () => {
@@ -231,9 +237,11 @@ describe('goal weight range', () => {
     expect(over.goal?.label).toBe('Super middleweight limit (reference)');
     expect(over.goal?.lowKg).toBe(72.6);
     expect(over.goal?.highKg).toBe(76.2);
-    expect(over.words).toContain('For Elite Athlete (Super Middleweight Boxer), you are above this class.');
+    expect(over.words).toContain('Over the class · 3.8 kg over the upper limit (over 72.6 kg up to 76.2 kg).');
+    expect(over.words).toContain('will not plan a weight cut');
     expect(over.words).toContain('The professional limit is about 76.2 kg (168 lb).');
-    expect(over.gap).toBe('The gap above this class is about 3.8 kg');
+    expect(over.words).not.toMatch(/to lose|to gain/i);
+    expect(over.gap).toBeNull();
     expect(`${over.gap ?? ''} ${over.words}`).not.toMatch(/to lose/i);
     expect(over.classReference).toContain('over 75 kg to 80 kg');
     expect(over.classReference).toContain('for reference only');
@@ -248,8 +256,9 @@ describe('goal weight range', () => {
       sex: 'male',
     });
     expect(inside.withinRange).toBe(true);
-    expect(inside.words).toContain('you are inside this class');
+    expect(inside.words).toContain('✓ Inside the class (76.2–79.4 kg) · 1.8 kg above the lower limit, 1.4 kg below the upper limit');
     expect(inside.words).toContain('79.4 kg (175 lb)');
+    expect(inside.words).not.toMatch(/under the class/i);
     expect(inside.classReference).toContain('IBA light heavyweight is over 86 kg to 92 kg');
     const under = goalWeightRange({
       goal: 'elite_cruiser_boxer',
@@ -258,7 +267,8 @@ describe('goal weight range', () => {
       age: 28,
       sex: 'female',
     });
-    expect(under.words).toContain('For Elite Athlete (Cruiserweight Boxer), you are under this class.');
+    expect(under.words).toContain('Under the class · 9.4 kg under the lower limit (over 79.4 kg up to 90.7 kg).');
+    expect(under.words).not.toMatch(/to gain|to lose/i);
     expect(under.words).toContain('90.7 kg (200 lb)');
     expect(under.classReference).toContain('over 81 kg');
     expect(under.classReference).toContain('for reference only');
@@ -280,7 +290,9 @@ describe('goal weight range', () => {
     });
     expect(feather.goal?.label).toBe('Featherweight limit (reference)');
     expect(feather.goal?.highKg).toBe(57.2);
-    expect(feather.words).toContain('For Elite Athlete (Featherweight Boxer), you are above this class.');
+    expect(feather.words).toContain('Over the class · 2.8 kg over the upper limit (up to 57.2 kg).');
+    expect(feather.words).toContain('will not plan a weight cut');
+    expect(feather.words).not.toMatch(/to lose|to gain/i);
     expect(feather.words).toContain('57.2 kg (126 lb)');
     expect(feather.classReference).toContain('over 54 kg to 57 kg');
     expect(feather.classReference).toContain('for reference only');
@@ -297,6 +309,70 @@ describe('goal weight range', () => {
     expect(welter.words).toContain('69.9 kg (154 lb)');
     expect(welter.classReference).toContain('light middleweight');
     expect(welter.classReference).toContain('over 66 kg to 70 kg');
+    expect(welter.words).toContain('✓ Inside the class');
+    expect(welter.words).not.toMatch(/under the class/i);
+  });
+
+  it('calls Ben inside cruiserweight and names both edges', () => {
+    const inside = goalWeightRange({
+      goal: 'elite_cruiser_boxer',
+      weightKg: 83.8,
+      heightCm: 178,
+      age: 30,
+      sex: 'male',
+    });
+    const line = '✓ Inside the class (79.4–90.7 kg) · 4.4 kg above the lower limit, 6.9 kg below the upper limit.';
+    expect(inside.withinRange).toBe(true);
+    expect(inside.gap).toBeNull();
+    expect(inside.words.startsWith(line)).toBe(true);
+    expect(inside.words).toContain('The professional limit is about 90.7 kg (200 lb).');
+    expect(inside.words).not.toMatch(/under the class|to lose|to gain/i);
+    expect(inside.doctor).toBe(DOCTOR_NOTE);
+    expect(inside.classReference).toContain('will not plan a weight cut');
+    expect(inside.contextLine).toContain(line);
+    expect(inside.contextLine).toContain('Cruiserweight limit (reference): over 79.4 kg up to 90.7 kg');
+    expect(inside.contextLine).toContain(DOCTOR_NOTE);
+    const edges = boxingClassWindow('elite_cruiser_boxer', 'male');
+    const status = classStatus(83.8, edges ?? { lowKg: null, highKg: null });
+    expect(status.place).toBe('inside');
+    expect(status.signal).toBe('Inside the class');
+    expect(status.tone).toBe('good');
+    expect(status.line).toBe(line);
+    expect(status.fill).toBeCloseTo(4.4 / 11.3, 5);
+    expect(status.fill).not.toBeCloseTo(83.8 / 90.7, 2);
+    const below = classStatus(79.4, { lowKg: 79.4, highKg: 90.7 });
+    expect(below.place).toBe('below');
+    expect(below.line).toContain('Under the class');
+    expect(below.line).not.toMatch(/to gain/i);
+    const over = classStatus(90.8, { lowKg: 79.4, highKg: 90.7 });
+    expect(over.place).toBe('above');
+    expect(over.signal).toBe('Over the class');
+    expect(over.line).toContain('over the upper limit');
+    expect(over.line).toContain('will not plan a weight cut');
+    expect(over.line).not.toMatch(/to lose/i);
+    expect(goalBandLegend({
+      label: 'Cruiserweight limit (reference)',
+      lowKg: 79.4,
+      highKg: 90.7,
+      lowExclusive: true,
+      ceilingOnly: false,
+    })).toBe('Cruiserweight limit (reference): over 79.4 kg up to 90.7 kg');
+    const plan = healthPlanModelContext(planInput({
+      goal: 'elite_cruiser_boxer',
+      goalSex: 'male',
+      goalAge: 30,
+      heightCm: 178,
+      health: [{ kind: 'weight_kg', value: 83.8, recordedOn: '2026-10-14' }],
+    }), draftHealthPlan(planInput({
+      goal: 'elite_cruiser_boxer',
+      goalSex: 'male',
+      goalAge: 30,
+      heightCm: 178,
+      health: [{ kind: 'weight_kg', value: 83.8, recordedOn: '2026-10-14' }],
+    })));
+    expect(plan.weightRange).toContain(line);
+    expect(plan.weightRange).toContain('up to 90.7 kg');
+    expect(plan.weightRange).not.toMatch(/under the class/i);
   });
 
   it('uses stones and pounds when that unit is asked for', () => {

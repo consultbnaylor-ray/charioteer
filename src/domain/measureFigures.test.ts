@@ -99,9 +99,26 @@ describe('measured stats figures', () => {
     const klass = healthFigure('weight_kg', [
       { day: '2026-10-01', value: 74 },
       { day: today, value: 76 },
-    ], today, { classKg: 75 });
-    expect(klass?.ring?.ring).toMatchObject({ centre: '76', status: '1 kg over the class', tone: 'watch' });
+    ], today, { classWindow: { lowKg: 70, highKg: 75 } });
+    expect(klass?.ring?.ring).toMatchObject({
+      centre: '76',
+      status: 'Over the class · 1 kg over the upper limit (over 70 kg up to 75 kg). This is a reference, not a target. This app will not plan a weight cut.',
+      tone: 'info',
+      signal: 'Over the class',
+      fill: 1,
+    });
     expect(klass?.bars?.bars.caption).toContain('This is not a cut.');
+    const cruiser = healthFigure('weight_kg', [
+      { day: today, value: 83.8 },
+    ], today, { classWindow: { lowKg: 79.4, highKg: 90.7 } });
+    expect(cruiser?.ring?.ring).toMatchObject({
+      centre: '83.8',
+      status: '✓ Inside the class (79.4–90.7 kg) · 4.4 kg above the lower limit, 6.9 kg below the upper limit.',
+      tone: 'good',
+      signal: 'Inside the class',
+    });
+    expect(cruiser?.ring?.ring.fill).toBeCloseTo(4.4 / 11.3, 5);
+    expect(cruiser?.ring?.ring.status).not.toMatch(/under the class/i);
   });
 
   it('uses a ring for mood, check-ins, a plan, breath, and units', () => {

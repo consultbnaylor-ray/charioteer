@@ -5,7 +5,8 @@ import { healthSampleChart, healthWindowChart, waistChart } from '@/domain/chart
 import type { HealthSample } from '@/data/types';
 import { isoDay, startOfLocalDay } from '@/domain/dates';
 import { buildMetricGuidance, parseHeightCm } from '@/domain/guidance';
-import { compositionForAssessment, sheetClassKg } from '@/domain/nutrition';
+import { boxingClassWindow } from '@/domain/goalWeightRange';
+import { compositionForAssessment } from '@/domain/nutrition';
 import {
   buildHealthInsights,
   formatHealthValue,
@@ -206,8 +207,8 @@ function MetricCard({
     });
   }
 
-  const classKg = kind === 'weight_kg' ? sheetClassKg(snap.nutrition.goal, snap.nutrition.weightClassKg) : null;
-  const figure = healthFigure(kind, history, today, { classKg });
+  const classWindow = kind === 'weight_kg' ? boxingClassWindow(snap.nutrition.goal, snap.nutrition.goalSex) : null;
+  const figure = healthFigure(kind, history, today, { classWindow });
 
   return (
     <Card>

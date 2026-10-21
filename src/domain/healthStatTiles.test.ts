@@ -367,15 +367,15 @@ describe('health stat tiles', () => {
     expect(weight.tone).toBe('info');
     expect(weight.mark).toBe('Note');
     expect(weight.status).not.toBe('Over the healthy BMI band');
-    expect(weight.meaning).toContain('For Elite Athlete (Heavy Weight Boxer), you are under this class.');
-    expect(weight.meaning).toContain('The gap to the bottom of this class is about 7.9 kg');
+    expect(weight.meaning).toContain('Under the class · 7.9 kg under the lower limit (over 92 kg up to 100 kg).');
+    expect(weight.meaning).not.toMatch(/to lose|to gain/i);
     expect(weight.meaning).toContain('over 92 kg to 100 kg');
     expect(weight.meaning).toContain('will not plan a weight cut');
     expect(weight.meaning).not.toMatch(/to lose/i);
     expect(weight.visual.kind).toBe('zone');
     if (weight.visual.kind === 'zone') {
       expect(weight.visual.zoneCaption).toBe('Healthy BMI band 54.7–73.7 kg');
-      expect(weight.visual.goalCaption).toBe('Heavyweight class (reference): over 92 kg to 100 kg');
+      expect(weight.visual.goalCaption).toBe('Heavyweight class (reference): over 92 kg up to 100 kg');
       expect(weight.visual.goalLow).toBe(92);
       expect(weight.visual.goalHigh).toBe(100);
       expect(weight.visual.status).toBe(weight.status);
@@ -393,12 +393,12 @@ describe('health stat tiles', () => {
     }));
     const bar = tile(klass, 'weight_kg');
     expect(bar.status).toBe(BMI_MUSCLE_NOTE);
-    expect(bar.meaning).toContain('For Elite Athlete (Super Middleweight Boxer)');
+    expect(bar.meaning).toContain('Over the class · 3.8 kg over the upper limit (over 72.6 kg up to 76.2 kg).');
     expect(bar.meaning).toContain('76.2 kg (168 lb)');
     expect(bar.meaning).toContain('for reference only');
     expect(bar.meaning).not.toMatch(/to lose/i);
     if (bar.visual.kind === 'zone') {
-      expect(bar.visual.goalCaption).toBe('Super middleweight limit (reference): over 72.6 kg to 76.2 kg');
+      expect(bar.visual.goalCaption).toBe('Super middleweight limit (reference): over 72.6 kg up to 76.2 kg');
       expect(bar.visual.goalHigh).toBe(76.2);
     }
     expect(detailShowsStatusAgain('zone')).toBe(false);

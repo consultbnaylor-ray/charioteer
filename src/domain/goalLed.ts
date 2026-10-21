@@ -58,6 +58,7 @@ export function goalLedFromSnapshot(snap: AppSnapshot, now = new Date(), period:
     scheduledDays: snap.trainingSchedule?.days.length ?? null,
     weightKg: week.weightKg,
     previousWeightKg: week.previousWeightKg,
+    sex: settings?.goalSex ?? null,
     sleepHours: week.sleepHours,
     period,
     now,

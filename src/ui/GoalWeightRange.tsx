@@ -176,7 +176,7 @@ function shownSpan(span: WeightSpan, unit: WeightUnitMode): string {
   const low = formatShown(span.lowKg, unit);
   if (span.highKg == null) return span.lowExclusive ? `over ${low}` : `${low} and above`;
   const high = formatShown(span.highKg, unit);
-  return span.lowExclusive ? `over ${low} to ${high}` : `${low} to ${high}`;
+  return span.lowExclusive ? `over ${low} up to ${high}` : `${low} to ${high}`;
 }
 
 function Legend({ swatch, label, round = false }: { swatch: string; label: string; round?: boolean }) {

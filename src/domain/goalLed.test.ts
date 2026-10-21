@@ -129,14 +129,32 @@ describe('goal led summary', () => {
     expect(cruiser.caution).toMatch(/No rapid cut/);
     expect(cruiser.caution).toMatch(/doctor/i);
     expect(cruiser.matters).toMatch(/cruiserweight limit/);
-    expect(cruiser.measures.find((item) => item.id === 'weight')?.words).toContain('Weight · 94 kg · cruiserweight limit 90.7 kg (200 lb) · above the class');
-    expect(cruiser.measures.find((item) => item.id === 'weight')?.words).toContain('Keep every meal');
-    expect(cruiser.measures.find((item) => item.id === 'weight')?.words).not.toMatch(/cut|sauna|skip/i);
+    const cruiserWeight = cruiser.measures.find((item) => item.id === 'weight');
+    expect(cruiserWeight?.words).toContain('Over the class · 3.3 kg over the upper limit (over 79.4 kg up to 90.7 kg).');
+    expect(cruiserWeight?.words).toContain('will not plan a weight cut');
+    expect(cruiserWeight?.words).toContain('Keep every meal');
+    expect(cruiserWeight?.words).toContain('A small change only');
+    expect(cruiserWeight?.words).not.toMatch(/to lose|to gain|sauna|skip/i);
+    expect(cruiserWeight?.signal).toBe('Over the class');
+    expect(cruiserWeight?.tone).toBe('info');
     expect(goalFocusLine('elite_super_middle_boxer')).toContain('super middleweight');
     expect(goalFocusLine('elite_super_light_boxer')).toContain('super lightweight');
     const feather = buildGoalLed({ ...base, goal: 'elite_feather_boxer', weightKg: 62 });
     expect(feather.name).toBe('Elite Athlete (Featherweight Boxer)');
-    expect(feather.measures.find((item) => item.id === 'weight')?.words).toContain('Weight · 62 kg · featherweight limit 57.2 kg (126 lb) · above the class');
+    expect(feather.measures.find((item) => item.id === 'weight')?.words).toContain('Over the class · 4.8 kg over the upper limit (up to 57.2 kg).');
+    expect(feather.measures.find((item) => item.id === 'weight')?.words).toContain('will not plan a weight cut');
+    expect(feather.measures.find((item) => item.id === 'weight')?.words).not.toMatch(/to lose|to gain/i);
+    const ben = buildGoalLed({ ...base, goal: 'elite_cruiser_boxer', sex: 'male', weightKg: 83.8 });
+    const benWeight = ben.measures.find((item) => item.id === 'weight');
+    expect(benWeight?.status).toBe('✓ Inside the class (79.4–90.7 kg) · 4.4 kg above the lower limit, 6.9 kg below the upper limit.');
+    expect(benWeight?.words).toContain('Keep every meal');
+    expect(benWeight?.words).not.toMatch(/under the class|to lose|to gain|weight cut/i);
+    expect(benWeight?.signal).toBe('Inside the class');
+    expect(benWeight?.tone).toBe('good');
+    expect(benWeight?.fill).toBeCloseTo(4.4 / 11.3, 5);
+    expect(ben.ticks.find((tick) => tick.id === 'weight')?.statusWord).toBe('Met');
+    expect(goalProgressLine({ ...base, goal: 'elite_cruiser_boxer', sex: 'male', weightKg: 83.8 })).toContain('✓ Inside the class (79.4–90.7 kg)');
+    expect(goalProgressLine({ ...base, goal: 'elite_cruiser_boxer', sex: 'male', weightKg: 83.8 })).not.toMatch(/under the class/i);
   });
 
   it('averages protein across the London week, including Sunday', () => {
@@ -287,7 +305,9 @@ describe('goal led summary', () => {
     });
     expect(context).toContain("How they're doing toward");
     expect(buildSystemPrompt(context, 'steady')).toContain('tie one remark back to that goal');
-    expect(readFileSync('supabase/functions/_shared/nutritionLoad.ts', 'utf8')).toContain('goalProgressLine');
+    const nutritionLoad = readFileSync('supabase/functions/_shared/nutritionLoad.ts', 'utf8');
+    expect(nutritionLoad).toContain('goalProgressLine');
+    expect(nutritionLoad.split('sex: settings.goalSex')).toHaveLength(3);
     expect(readFileSync('supabase/functions/thumos-chat/index.ts', 'utf8')).toContain('loadNutritionLines');
     expect(readFileSync('supabase/functions/thumos-voice-token/index.ts', 'utf8')).toContain('loadNutritionLines');
   });

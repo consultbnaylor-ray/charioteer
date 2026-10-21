@@ -1620,7 +1620,7 @@ describe('training nutrition goals', () => {
     expect(sql).not.toMatch(/delete from/i);
     const screen = readFileSync('src/app/(main)/nutrition.tsx', 'utf8');
     expect(screen).toContain('isClassBoxer(settings.goal)');
-    expect(screen).toContain('sheetClassKg(settings.goal, settings.weightClassKg)');
+    expect(screen).toContain('boxingClassWindow(settings.goal, settings.goalSex)');
   });
 });
 
