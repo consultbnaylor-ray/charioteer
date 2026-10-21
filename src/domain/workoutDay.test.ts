@@ -194,6 +194,10 @@ describe('workout day list', () => {
     expect(list).toContain('chartDayLabel');
     expect(list).toContain('difficultyAxis');
     expect(list).toContain('difficultyDetailLines');
+    expect(list).toContain('routeSummaryLine');
+    expect(list).toContain('>View route</T>');
+    expect(calendar).toContain('routeSummaryLine');
+    expect(calendar).toContain('matched?.routeExpected');
     expect(list).toContain('DIFFICULTY_DAY_LINK');
     expect(list).toContain('workoutsOnDay(workouts, selected)');
     expect(list).toContain('<SeriesLegend');

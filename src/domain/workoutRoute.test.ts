@@ -16,6 +16,7 @@ import {
   ROUTE_READING,
   ROUTE_RETRY,
   buildRouteStats,
+  routeSummaryLine,
   demoRoutePoints,
   demoWorkouts,
   devFixtureEnabled,
@@ -101,6 +102,12 @@ describe('workout routes stay on the phone', () => {
     const miles = buildRouteStats({ points, unit: 'mile', durationSeconds: walk.durationMinutes * 60 });
     expect(miles.splits[0]?.label).toBe('1 mi');
     expect(miles.paceLabel).toContain('/ mi');
+    expect(routeSummaryLine(walk)).toBe('Distance 3.2 km · Duration 33 min · Average pace 10:19 / km · Average heart rate 136 bpm');
+    expect(routeSummaryLine({ ...walk, routeExpected: false })).toBeNull();
+    expect(routeSummaryLine({ ...walk, averageHeartRate: null })).toBe('Distance 3.2 km · Duration 33 min · Average pace 10:19 / km');
+    expect(routeSummaryLine(walk, 'mile')).toContain('Average pace');
+    expect(routeSummaryLine(walk, 'mile')).toContain('/ mi');
+    expect(routeSummaryLine(devFixtureWorkout())).toBe('Distance 6.3 km · Duration 109 min · Average pace 17:18 / km · Average heart rate 112 bpm');
   });
 
   it('refuses route coordinates in a network payload', () => {

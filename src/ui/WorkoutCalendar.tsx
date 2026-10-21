@@ -38,7 +38,7 @@ import {
   rescheduleWorkoutReminders,
   saveWorkoutReminders,
 } from '@/notifications/sessionReminder';
-import type { DeviceWorkout } from '@/domain/workoutRoute';
+import { routeSummaryLine, type DeviceWorkout } from '@/domain/workoutRoute';
 import { DateField } from '@/ui/DateField';
 import { PlanTick } from '@/ui/PlanTick';
 import { SessionTimeField } from '@/ui/SessionTimeField';
@@ -527,9 +527,7 @@ export function WorkoutCalendar({
         const colorLabel = matched?.label ?? typeWord;
         const entry = sessionEntryWords(session, matched, age, now);
         const line = entry.startsWith(`${typeWord} ·`) ? `${colorLabel}${entry.slice(typeWord.length)}` : entry;
-        const route = session.doneAt
-          ? workouts.find((workout) => workout.routeExpected && londonDay(workout.startedAt) === selected)
-          : undefined;
+        const routeLine = matched ? routeSummaryLine(matched) : null;
         return (
           <View key={session.id} style={{ gap: 4 }}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
@@ -544,14 +542,15 @@ export function WorkoutCalendar({
                 </View>
               ) : null}
             </View>
+            {routeLine ? <T>{routeLine}</T> : null}
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
               {session.doneAt ? null : (
                 <Pressable accessibilityRole="button" accessibilityLabel={`Mark ${SESSION_TYPE_LABEL[session.sessionType]} done`} onPress={() => { void markDone(session); }} style={{ minHeight: 44, justifyContent: 'center' }}>
                   <T>Done</T>
                 </Pressable>
               )}
-              {route ? (
-                <Pressable accessibilityRole="button" accessibilityLabel={`View route for ${SESSION_TYPE_LABEL[session.sessionType]}`} onPress={() => router.push(`/workout/${encodeURIComponent(route.id)}` as never)} style={{ minHeight: 44, justifyContent: 'center' }}>
+              {matched?.routeExpected ? (
+                <Pressable accessibilityRole="button" accessibilityLabel={`View route, ${matched.label}`} onPress={() => router.push(`/workout/${encodeURIComponent(matched.id)}` as never)} style={{ minHeight: 44, justifyContent: 'center' }}>
                   <T>View route</T>
                 </Pressable>
               ) : null}

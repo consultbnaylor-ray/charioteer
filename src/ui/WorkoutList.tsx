@@ -31,7 +31,7 @@ import {
   type DurationBar,
   type WorkoutChartSpan,
 } from '@/domain/workoutDay';
-import type { DeviceWorkout } from '@/domain/workoutRoute';
+import { routeSummaryLine, type DeviceWorkout } from '@/domain/workoutRoute';
 import { workoutTypeColor } from '@/domain/workoutTypeColor';
 import { useAppTheme } from '@/ui/theme';
 import { Card, Choice, T } from '@/ui/ui';
@@ -61,10 +61,11 @@ function dayNumber(day: string): string {
   return String(Number(day.slice(8, 10)));
 }
 
-function WorkoutRow({ workout }: { workout: DeviceWorkout }) {
+function WorkoutRow({ workout, routeDetail = false }: { workout: DeviceWorkout; routeDetail?: boolean }) {
   const theme = useAppTheme();
   const router = useRouter();
   const line = workoutRowLine(workout);
+  const stats = routeDetail ? routeSummaryLine(workout) : null;
   if (!workout.routeExpected) {
     return (
       <View style={{ minHeight: 44, justifyContent: 'center' }}>
@@ -79,7 +80,9 @@ function WorkoutRow({ workout }: { workout: DeviceWorkout }) {
       onPress={() => router.push(`/workout/${encodeURIComponent(workout.id)}` as never)}
       style={{ minHeight: 44, justifyContent: 'center' }}
     >
-      <T numberOfLines={1} style={{ fontFamily: theme.font.body }}>{`${line} ${ROUTE_MARK}`}</T>
+      <T style={{ fontFamily: theme.font.body }}>{`${line} ${ROUTE_MARK}`}</T>
+      {stats ? <T>{stats}</T> : null}
+      {routeDetail ? <T style={{ textDecorationLine: 'underline' }}>View route</T> : null}
     </Pressable>
   );
 }
@@ -155,7 +158,7 @@ function DurationChart({
       {order.length > 0 ? <SeriesLegend labels={order} /> : <T variant="muted">No workouts in these days.</T>}
       <View style={{ gap: 4 }}>
         <T variant="label">{chartDayLabel(selected)}</T>
-        {dayRows.length === 0 ? <T>No workouts on this day.</T> : dayRows.map((workout) => <WorkoutRow key={workout.id} workout={workout} />)}
+        {dayRows.length === 0 ? <T>No workouts on this day.</T> : dayRows.map((workout) => <WorkoutRow key={workout.id} workout={workout} routeDetail />)}
       </View>
       <T variant="muted" style={{ textAlign: 'center' }}>{CHART_DIRECTION_HINT}</T>
     </View>
@@ -176,6 +179,7 @@ function DifficultyChart({
   onSelect: (day: string) => void;
 }) {
   const theme = useAppTheme();
+  const router = useRouter();
   const [pickedId, setPickedId] = useState<string | null>(null);
   const [plotWidth, setPlotWidth] = useState(0);
   const dayMarks = marks.filter((mark) => mark.day === day);
@@ -258,6 +262,17 @@ function DifficultyChart({
           {picked && pickedWorkout ? (
             <View style={{ gap: 4 }}>
               {difficultyDetailLines(pickedWorkout, age).map((line) => <T key={line}>{line}</T>)}
+              {routeSummaryLine(pickedWorkout) ? <T>{routeSummaryLine(pickedWorkout)}</T> : null}
+              {pickedWorkout.routeExpected ? (
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={`View route, ${pickedWorkout.label}`}
+                  onPress={() => router.push(`/workout/${encodeURIComponent(pickedWorkout.id)}` as never)}
+                  style={{ minHeight: 44, justifyContent: 'center' }}
+                >
+                  <T style={{ textDecorationLine: 'underline' }}>View route</T>
+                </Pressable>
+              ) : null}
               <Pressable
                 accessibilityRole="button"
                 accessibilityLabel={`${DIFFICULTY_DAY_LINK}, ${picked.day}`}

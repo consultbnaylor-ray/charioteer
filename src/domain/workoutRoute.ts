@@ -133,6 +133,28 @@ export function paceLabel(seconds: number, metres: number, unit: DistanceUnit): 
   return `${formatClock(perUnit)} / ${UNIT_WORD[unit]}`;
 }
 
+/**
+ * Distance, duration, average pace, and average heart rate for an outdoor workout.
+ * Uses the summary already on the phone. The path is not read here.
+ */
+export function routeSummaryLine(
+  workout: Pick<DeviceWorkout, 'routeExpected' | 'distanceMetres' | 'durationMinutes' | 'averageHeartRate'>,
+  unit: DistanceUnit = 'km',
+): string | null {
+  if (!workout.routeExpected) return null;
+  const parts: string[] = [];
+  const metres = workout.distanceMetres;
+  if (metres != null && metres > 0) parts.push(`Distance ${formatDistance(metres, unit)}`);
+  if (workout.durationMinutes > 0) parts.push(`Duration ${workout.durationMinutes} min`);
+  if (metres != null && metres > 1 && workout.durationMinutes > 0) {
+    const pace = paceLabel(workout.durationMinutes * 60, metres, unit);
+    if (pace !== 'Pace not available') parts.push(`Average pace ${pace}`);
+  }
+  const heart = workout.averageHeartRate;
+  if (heart != null && Number.isFinite(heart) && heart > 30) parts.push(`Average heart rate ${Math.round(heart)} bpm`);
+  return parts.length ? parts.join(' · ') : null;
+}
+
 type Mark = { distance: number; t: number; altitude: number; index: number };
 
 function marksFor(points: readonly RoutePoint[]): Mark[] {
