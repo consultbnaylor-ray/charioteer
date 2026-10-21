@@ -15,6 +15,7 @@ import {
   isTransientNetworkError,
 } from '@/domain/errors';
 import { omitSharedLocation } from '@/domain/sharedPayload';
+import { stripJpegBase64, stripJpegLocation } from '@/domain/photoLocation';
 import { chunkHealthRows } from '@/domain/healthUpload';
 import { rejectRouteCoordinates } from '@/domain/workoutRoute';
 import { gratitudeFromRows, isGratitudeCategory, localGratitudeReflect, planGratitudeEntry, type GratitudePhoto, type GratitudeReflect } from '@/domain/gratitude';
@@ -1695,8 +1696,7 @@ export class SupabaseRepository implements Repository {
     const userId = await this.userId();
     const photoId = randomId();
     const path = progressStoragePath(userId, photoId);
-    const body = new Uint8Array(input.bytes.byteLength);
-    body.set(input.bytes);
+    const body = stripJpegLocation(input.bytes);
     const uploaded = await this.client.storage.from(PROGRESS_BUCKET).upload(path, body, {
       contentType: 'image/jpeg',
       upsert: false,
@@ -1881,8 +1881,7 @@ export class SupabaseRepository implements Repository {
     const photoId = randomId();
     const path = profileStoragePath(userId, photoId);
     const position = input.role === 'avatar' ? 0 : gallery.reduce((max, photo) => Math.max(max, photo.position), -1) + 1;
-    const body = new Uint8Array(input.bytes.byteLength);
-    body.set(input.bytes);
+    const body = stripJpegLocation(input.bytes);
     const uploaded = await this.client.storage.from(PROFILE_PHOTO_BUCKET).upload(path, body, {
       contentType: 'image/jpeg',
       upsert: false,
@@ -2031,8 +2030,7 @@ export class SupabaseRepository implements Repository {
     const userId = await this.userId();
     const photoId = randomId();
     const path = gratitudeStoragePath(userId, photoId);
-    const body = new Uint8Array(bytes.byteLength);
-    body.set(bytes);
+    const body = stripJpegLocation(bytes);
     const uploaded = await this.client.storage.from(GRATITUDE_BUCKET).upload(path, body, {
       contentType: 'image/jpeg',
       upsert: false,
@@ -2101,8 +2099,7 @@ export class SupabaseRepository implements Repository {
     const userId = await this.userId();
     const photoId = randomId();
     const path = visionStoragePath(userId, photoId);
-    const body = new Uint8Array(bytes.byteLength);
-    body.set(bytes);
+    const body = stripJpegLocation(bytes);
     const uploaded = await this.client.storage.from(VISION_BUCKET).upload(path, body, {
       contentType: 'image/jpeg',
       upsert: false,
@@ -2291,7 +2288,8 @@ export class SupabaseRepository implements Repository {
     const text = input.text?.trim() ?? '';
     const local = (): MealEstimate => ({ items: text ? estimateFromText(text) : samplePhotoMeal(), source: 'local' });
     try {
-      const invoked = await this.callEdge('estimate-meal', { text, imageBase64: input.imageBase64 ?? '' }, {
+      const imageBase64 = input.imageBase64 ? stripJpegBase64(input.imageBase64) : '';
+      const invoked = await this.callEdge('estimate-meal', { text, imageBase64 }, {
         ai: true,
         timeoutMs: ESTIMATE_CLIENT_TIMEOUT_MS,
       });
@@ -2319,7 +2317,7 @@ export class SupabaseRepository implements Repository {
       let photoPath: string | null = null;
       if (input.photoBase64) {
         photoPath = `${userId}/${input.id}.jpg`;
-        const binary = atob(input.photoBase64);
+        const binary = atob(stripJpegBase64(input.photoBase64));
         const body = new Uint8Array(binary.length);
         for (let index = 0; index < binary.length; index += 1) body[index] = binary.charCodeAt(index);
         const uploaded = await this.client.storage.from(FOOD_BUCKET).upload(photoPath, body, { contentType: 'image/jpeg', upsert: true });

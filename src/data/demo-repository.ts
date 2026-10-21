@@ -63,6 +63,7 @@ import { detectSafety, ensureSafetyNotices } from '@/domain/safety';
 import { OPENING_LINE, SCRIPTED_COACH_REPLY, type ThumosMode } from '@/domain/thumos';
 import { CONSENT_VERSION } from '@/data/catalogue';
 import { consentRows, mergeStoredConsents } from '@/domain/consents';
+import { stripJpegBase64, stripJpegLocation } from '@/domain/photoLocation';
 import { stageFromRecord } from '@/domain/stage';
 import { BIO_LIMIT, PHOTO_CAPTION_LIMIT, defaultProfileSharing, normalizeProfileSharing, planProfileText, projectPublicProfile, sensitiveTurnedOn, shareFreshGratitude, type ProfileSharing, type PublicProfileView, type ShareSource } from '@/domain/profileSharing';
 import { quoteById } from '@/domain/stoicQuotes';
@@ -159,10 +160,11 @@ function readyPhoto(photo: ProgressPhoto, userId: string): ProgressPhoto {
 }
 
 function bytesToDataUrl(bytes: Uint8Array): string {
+  const clean = stripJpegLocation(bytes);
   let binary = '';
   const size = 0x8000;
-  for (let index = 0; index < bytes.length; index += size) {
-    binary += String.fromCharCode(...bytes.subarray(index, index + size));
+  for (let index = 0; index < clean.length; index += size) {
+    binary += String.fromCharCode(...clean.subarray(index, index + size));
   }
   return `data:image/jpeg;base64,${btoa(binary)}`;
 }
@@ -1143,7 +1145,7 @@ export class DemoRepository implements Repository {
         estimated: input.estimated,
         portion: 1,
         createdAt: new Date().toISOString(),
-        previewUrl: input.photoBase64 ? `data:image/jpeg;base64,${input.photoBase64}` : null,
+        previewUrl: input.photoBase64 ? `data:image/jpeg;base64,${stripJpegBase64(input.photoBase64)}` : null,
       };
       next.foodLogs = [log, ...logs];
       this.commit(db);

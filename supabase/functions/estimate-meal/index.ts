@@ -1,6 +1,7 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.117.3';
 
 import { json, preflight } from '../_shared/http.ts';
+import { stripJpegBase64 } from '../_shared/photoLocation.ts';
 import { MEAL_ESTIMATE_PROMPT, estimateFromText, parseMealEstimate, samplePhotoMeal } from '../_shared/nutrition.ts';
 import { buildChatCompletionBody, THUMOS_CHAT } from '../_shared/thumos.ts';
 
@@ -32,7 +33,7 @@ Deno.serve(async (req) => {
 
   const body = (await req.json().catch(() => ({}))) as Body;
   const text = (body.text ?? '').trim().slice(0, 500);
-  const image = typeof body.imageBase64 === 'string' ? body.imageBase64.trim() : '';
+  const image = typeof body.imageBase64 === 'string' ? stripJpegBase64(body.imageBase64.trim()) : '';
   if (!text && !image) return json({ ok: false, code: 'content', message: 'Add a photo or describe the meal.' }, 400);
   if (image.length > 6_000_000) return json({ ok: false, code: 'content', message: 'That photo is too large.' }, 400);
 
