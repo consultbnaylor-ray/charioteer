@@ -113,22 +113,27 @@ async function summaryFrom(workout: Awaited<ReturnType<typeof queryWorkoutSample
 
 /** Workouts for the day strip and the 30-day charts. Routes are not read here, and nothing is uploaded. */
 export async function listDeviceWorkouts(): Promise<DeviceWorkout[]> {
-  if (!isHealthDataAvailable()) return [];
-  const end = new Date();
-  const start = new Date(end.getTime() - 32 * 24 * 60 * 60 * 1000);
-  const workouts = await queryWorkoutSamples({
-    limit: 0,
-    ascending: false,
-    filter: { date: { startDate: start, endDate: end } },
-  });
   const rows: DeviceWorkout[] = [];
-  for (const workout of workouts) {
+  if (isHealthDataAvailable()) {
     try {
-      rows.push(await summaryFrom(workout));
+      const end = new Date();
+      const start = new Date(end.getTime() - 32 * 24 * 60 * 60 * 1000);
+      const workouts = await queryWorkoutSamples({
+        limit: 0,
+        ascending: false,
+        filter: { date: { startDate: start, endDate: end } },
+      });
+      for (const workout of workouts) {
+        try {
+          rows.push(await summaryFrom(workout));
+        } catch {
+          // One unreadable workout does not hide the rest.
+        } finally {
+          workout.dispose();
+        }
+      }
     } catch {
-      // One unreadable workout does not hide the rest.
-    } finally {
-      workout.dispose();
+      // A simulator with no Health data still gets the debug walk below.
     }
   }
   rememberWorkouts(rows);

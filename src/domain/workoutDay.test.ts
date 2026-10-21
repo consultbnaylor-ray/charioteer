@@ -153,5 +153,7 @@ describe('workout day list', () => {
     const listed = reader.slice(reader.indexOf('export async function listDeviceWorkouts'), reader.indexOf('async function heartSamples'));
     expect(listed).not.toContain('requestAuthorization');
     expect(listed).not.toContain('getWorkoutRoutes');
+    expect(listed).not.toContain('if (!isHealthDataAvailable()) return []');
+    expect(listed.indexOf('devFixtureWorkout()')).toBeGreaterThan(listed.lastIndexOf('isHealthDataAvailable'));
   });
 });
