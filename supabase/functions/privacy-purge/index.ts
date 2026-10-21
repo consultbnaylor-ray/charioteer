@@ -21,7 +21,8 @@ Deno.serve(async (req) => {
 
   const admin = createClient(url, service, { auth: { persistSession: false } });
   const errors = await admin.rpc('purge_client_errors');
-  if (errors.error) {
+  const reports = await admin.rpc('purge_deleted_account_reports');
+  if (errors.error || reports.error) {
     console.error('privacy purge failed');
     return json({ ok: false, code: 'purge' }, 500);
   }
