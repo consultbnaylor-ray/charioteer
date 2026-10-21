@@ -1,3 +1,4 @@
+import { sanitizeClientError } from '@/domain/clientError';
 import { workoutTypeLabel } from '@/domain/fitnessSnapshot';
 
 /** HealthKit activities that record a GPS path. Indoor sessions are excluded by the caller. */
@@ -7,6 +8,17 @@ export const ROUTE_PURPOSE =
   'Charioteer reads this workout route from Apple Health so you can see the path and the splits. The path stays on this iPhone. It is not uploaded, shared, or sent to Thumos.';
 
 export const ROUTE_READ_TYPE = 'HKWorkoutRouteTypeIdentifier';
+
+/** Shown when the map or the route read throws. A retry draws the screen again. */
+export const ROUTE_LOAD_ERROR = "Route couldn't be loaded";
+
+export const ROUTE_RETRY = 'Try again';
+
+/** About 500 points is enough to draw a two-hour walk without a huge native path. */
+export const ROUTE_POINT_LIMIT = 500;
+
+/** Debug builds only. A release build does not list or read this id. */
+export const DEV_FIXTURE_ROUTE_ID = 'dev-fixture-route';
 
 export type DistanceUnit = 'km' | 'mile';
 
@@ -235,6 +247,113 @@ export function rejectRouteCoordinates(value: unknown): void {
   if (payloadHasRouteCoordinates(value)) {
     throw new Error('Workout routes stay on this iPhone.');
   }
+}
+
+const COORDINATE_NUMBER = /-?\d{1,3}\.\d{4,}/g;
+
+/** A client_errors line. Coordinates, stacks, addresses, and tokens are removed. */
+export function routeErrorLine(error: unknown): string {
+  const line = sanitizeClientError(error)
+    .replace(/latitude|longitude/gi, '')
+    .replace(/\b(lat|lng|lon)\b/gi, '')
+    .replace(COORDINATE_NUMBER, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 300);
+  return line || 'Unknown error';
+}
+
+export function finiteRoutePoints(points: readonly RoutePoint[]): RoutePoint[] {
+  return points.filter((point) => (
+    Number.isFinite(point.latitude)
+    && Number.isFinite(point.longitude)
+    && Math.abs(point.latitude) <= 90
+    && Math.abs(point.longitude) <= 180
+  ));
+}
+
+/** Evenly keeps the first and last finite points. Shorter paths are unchanged. */
+export function downsampleRoute(points: readonly RoutePoint[], limit = ROUTE_POINT_LIMIT): RoutePoint[] {
+  const clean = finiteRoutePoints(points);
+  if (limit < 2 || clean.length <= limit) return clean;
+  const last = clean.length - 1;
+  const sampled: RoutePoint[] = [];
+  let previous = -1;
+  for (let step = 0; step < limit; step += 1) {
+    const index = Math.round((step * last) / (limit - 1));
+    if (index === previous) continue;
+    const point = clean[index];
+    if (point) sampled.push(point);
+    previous = index;
+  }
+  return sampled;
+}
+
+export type RouteMapRegion = {
+  latitude: number;
+  longitude: number;
+  latitudeDelta: number;
+  longitudeDelta: number;
+};
+
+/** Null until two finite points can form a real region. A zero span is widened. */
+export function routeMapRegion(points: readonly RoutePoint[]): RouteMapRegion | null {
+  const clean = finiteRoutePoints(points);
+  if (clean.length < 2) return null;
+  let minLat = clean[0]?.latitude ?? Number.NaN;
+  let maxLat = minLat;
+  let minLng = clean[0]?.longitude ?? Number.NaN;
+  let maxLng = minLng;
+  for (const point of clean) {
+    minLat = Math.min(minLat, point.latitude);
+    maxLat = Math.max(maxLat, point.latitude);
+    minLng = Math.min(minLng, point.longitude);
+    maxLng = Math.max(maxLng, point.longitude);
+  }
+  const region = {
+    latitude: (minLat + maxLat) / 2,
+    longitude: (minLng + maxLng) / 2,
+    latitudeDelta: Math.max(0.01, (maxLat - minLat) * 1.4),
+    longitudeDelta: Math.max(0.01, (maxLng - minLng) * 1.4),
+  };
+  const values = [region.latitude, region.longitude, region.latitudeDelta, region.longitudeDelta];
+  if (values.some((value) => !Number.isFinite(value))) return null;
+  if (region.latitudeDelta <= 0 || region.longitudeDelta <= 0) return null;
+  return region;
+}
+
+export function devFixtureEnabled(dev = typeof __DEV__ !== 'undefined' && __DEV__): boolean {
+  return dev === true;
+}
+
+/** A walking route the simulator can open. The numbers never leave the phone. */
+export function devFixtureWorkout(): DeviceWorkout {
+  return {
+    id: DEV_FIXTURE_ROUTE_ID,
+    activityType: 52,
+    label: workoutTypeLabel(52),
+    startedAt: '2026-10-18T10:16:00.000Z',
+    durationMinutes: 109,
+    distanceMetres: 6300,
+    energyKcal: 480,
+    averageHeartRate: 112,
+    routeExpected: true,
+  };
+}
+
+export function devFixturePoints(): RoutePoint[] {
+  const start = Date.parse('2026-10-18T10:16:00.000Z');
+  const points: RoutePoint[] = [];
+  for (let index = 0; index <= 36; index += 1) {
+    points.push({
+      latitude: 51.507 + Math.sin(index / 6) * 0.004,
+      longitude: -0.128 + index * 0.00035,
+      altitude: 12 + Math.round(Math.sin(index / 5) * 4),
+      at: new Date(start + index * 180_000).toISOString(),
+      heartRate: 108 + (index % 4) * 2,
+    });
+  }
+  return points;
 }
 
 const DEMO_WALK_ID = 'demo-outdoor-walk';

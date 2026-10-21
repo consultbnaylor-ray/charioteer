@@ -5,13 +5,23 @@ import { describe, expect, it } from 'vitest';
 import { APPLE_HEALTH_READ_TYPES } from '@/health/connection';
 import { latestVo2Day, VO2_ESTIMATE_NOTE, VO2_PLAN_LABEL, VO2_STALE_NUDGE, vo2MeasuredLine, vo2ReadingIsStale } from '@/domain/vo2Estimate';
 import {
+  DEV_FIXTURE_ROUTE_ID,
+  ROUTE_LOAD_ERROR,
+  ROUTE_POINT_LIMIT,
+  ROUTE_RETRY,
   buildRouteStats,
   demoRoutePoints,
   demoWorkouts,
+  devFixtureEnabled,
+  devFixturePoints,
+  devFixtureWorkout,
+  downsampleRoute,
   payloadHasRouteCoordinates,
   rejectRouteCoordinates,
   ROUTE_READ_TYPE,
+  routeErrorLine,
   routeExpected,
+  routeMapRegion,
 } from '@/domain/workoutRoute';
 
 function filesUnder(dir: string): string[] {
@@ -129,9 +139,76 @@ describe('workout routes stay on the phone', () => {
     expect(screen).toContain('<RouteMap');
     expect(screen).toContain('Kilometres');
     expect(screen).toContain('Miles');
-    expect(readFileSync('src/ui/RouteMap.ios.tsx', 'utf8')).toContain('mapType="mutedStandard"');
-    expect(readFileSync('src/ui/RouteMap.ios.tsx', 'utf8')).not.toContain('PROVIDER_GOOGLE');
+    const map = readFileSync('src/ui/RouteMap.ios.tsx', 'utf8');
+    expect(map).toContain('mapType="mutedStandard"');
+    expect(map).not.toContain('PROVIDER_GOOGLE');
+    expect(map).not.toMatch(/^import .*(react-native-maps)/m);
+    expect(map).toContain("require('react-native-maps')");
+    expect(map.indexOf('routeMapRegion')).toBeLessThan(map.indexOf('<MapView'));
+    expect(map.indexOf('if (!region || line.length < 2) return null')).toBeLessThan(map.indexOf('<MapView'));
+    expect(map.indexOf('onMapReady')).toBeLessThan(map.indexOf('<Polyline'));
+    expect(map).toContain('mapReady ? <Polyline');
     expect(readFileSync('app.json', 'utf8')).toContain('react-native-maps');
+    expect(screen).toContain('RouteBoundary');
+    expect(screen).toContain('ROUTE_LOAD_ERROR');
+    expect(screen).toContain('ROUTE_RETRY');
+    expect(ROUTE_LOAD_ERROR).toBe("Route couldn't be loaded");
+    expect(ROUTE_RETRY).toBe('Try again');
+    expect(screen).toContain("logClientError('workout-route'");
+    expect(screen).toContain('routeErrorLine');
+    expect(screen).not.toMatch(/logClientError\([^)]*points/);
+    const boundary = readFileSync('src/ui/RouteBoundary.tsx', 'utf8');
+    expect(boundary).toContain('getDerivedStateFromError');
+    expect(boundary).toContain('ROUTE_LOAD_ERROR');
+    expect(boundary).toContain('routeErrorLine');
+    expect(boundary).not.toContain('error.stack');
+    expect(boundary).not.toContain('componentStack');
+    expect(reader).toContain('downsampleRoute');
+    expect(reader).toContain('DEV_FIXTURE_ROUTE_ID');
+    expect(reader).toContain('devFixtureEnabled()');
+    expect(reader.indexOf('id === DEV_FIXTURE_ROUTE_ID && devFixtureEnabled()')).toBeLessThan(reader.indexOf('requestAuthorization({ toRead: [ROUTE_READ_TYPE] })'));
+    const native = readFileSync('node_modules/@kingstinct/react-native-healthkit/ios/WorkoutProxy.swift', 'utf8');
+    const locations = native.slice(native.indexOf('func getRouteLocations'), native.indexOf('func serializeLocation'));
+    expect(locations).toContain('cappedRouteLocations');
+    expect(locations).toContain('guard !hasFinished');
+    expect(locations).toContain('DispatchQueue.main.async');
+    expect(locations).not.toContain('Unexpected empty response');
+    expect(readFileSync('patches/@kingstinct+react-native-healthkit+16.1.0.patch', 'utf8')).toContain('cappedRouteLocations');
     expect(readFileSync('src/domain/profileSharing.ts', 'utf8')).not.toMatch(/latitude|longitude|route/);
+  });
+
+  it('downsamples a long walk, drops bad coordinates, and keeps the log free of the path', () => {
+    const started = Date.parse('2026-10-18T10:16:00.000Z');
+    const many = Array.from({ length: 2400 }, (_, index) => ({
+      latitude: 51.5 + index * 0.00001,
+      longitude: -0.12 - index * 0.00001,
+      altitude: 10,
+      at: new Date(started + index * 1000).toISOString(),
+      heartRate: null,
+    }));
+    many.splice(10, 0, { latitude: Number.NaN, longitude: -0.12, altitude: 0, at: new Date(started).toISOString(), heartRate: null });
+    const drawn = downsampleRoute(many);
+    expect(drawn).toHaveLength(ROUTE_POINT_LIMIT);
+    expect(drawn[0]?.latitude).toBeCloseTo(51.5, 5);
+    expect(drawn.at(-1)?.latitude).toBeCloseTo(51.5 + 2399 * 0.00001, 5);
+    expect(drawn.every((point) => Number.isFinite(point.latitude) && Number.isFinite(point.longitude))).toBe(true);
+    expect(routeMapRegion([])).toBeNull();
+    expect(routeMapRegion([many[0]])).toBeNull();
+    expect(routeMapRegion([{ ...many[0], latitude: Number.NaN }])).toBeNull();
+    const region = routeMapRegion(drawn);
+    expect(region?.latitudeDelta).toBeGreaterThan(0);
+    expect(region && Object.values(region).every((value) => Number.isFinite(value))).toBe(true);
+    const leaked = routeErrorLine(new Error('AIRMap failed at latitude 51.50740 longitude -0.12800'));
+    expect(leaked).not.toMatch(/51\.50740|-0\.12800|latitude|longitude/);
+    expect(leaked).not.toContain('at RouteMap');
+    expect(routeErrorLine(new Error('   '))).toBe('Unknown error');
+    expect(() => rejectRouteCoordinates(devFixturePoints())).toThrow(/stay on this iPhone/);
+    expect(devFixtureEnabled(false)).toBe(false);
+    expect(devFixtureEnabled(true)).toBe(true);
+    expect(devFixtureWorkout().id).toBe(DEV_FIXTURE_ROUTE_ID);
+    expect(devFixtureWorkout().label).toBe('Walking');
+    expect(devFixtureWorkout().durationMinutes).toBe(109);
+    expect(devFixtureWorkout().distanceMetres).toBe(6300);
+    expect(devFixturePoints().length).toBeGreaterThan(2);
   });
 });

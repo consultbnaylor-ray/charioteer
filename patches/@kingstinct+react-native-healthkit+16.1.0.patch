@@ -1,0 +1,55 @@
+diff --git a/node_modules/@kingstinct/react-native-healthkit/ios/WorkoutProxy.swift b/node_modules/@kingstinct/react-native-healthkit/ios/WorkoutProxy.swift
+index 7909fa6..cef4bdf 100644
+--- a/node_modules/@kingstinct/react-native-healthkit/ios/WorkoutProxy.swift
++++ b/node_modules/@kingstinct/react-native-healthkit/ios/WorkoutProxy.swift
+@@ -48,14 +48,30 @@ func getWorkoutRoutesInternal(
+   return routes
+ }
+ 
++func cappedRouteLocations(_ locations: [CLLocation], limit: Int = 500) -> [CLLocation] {
++  guard locations.count > limit, limit >= 2 else { return locations }
++  let last = locations.count - 1
++  var sampled: [CLLocation] = []
++  sampled.reserveCapacity(limit)
++  var previous = -1
++  for step in 0..<limit {
++    let index = Int((Double(step) * Double(last) / Double(limit - 1)).rounded())
++    if index != previous {
++      sampled.append(locations[index])
++      previous = index
++    }
++  }
++  return sampled
++}
++
+ func getRouteLocations(
+   route: HKWorkoutRoute
+ ) async throws -> [CLLocation] {
+   return try await withCheckedThrowingContinuation {
+     (continuation: CheckedContinuation<[CLLocation], Error>) in
+     var allLocations: [CLLocation] = []
+-    // HealthKit streams locations in batches through the same handler; make
+-    // sure the continuation is resumed exactly once whatever the sequence.
++    // HealthKit streams locations in batches, including a final call whose
++    // locations are nil. Resume the continuation once, on the main queue.
+     var hasFinished = false
+     let finish = { (result: Result<[CLLocation], Error>) in
+       guard !hasFinished else {
+@@ -73,14 +89,12 @@ func getRouteLocations(
+           return finish(.failure(error))
+         }
+ 
+-        guard let currentLocationBatch = locationsOrNil else {
+-          return finish(.failure(runtimeErrorWithPrefix("Unexpected empty response")))
++        if let currentLocationBatch = locationsOrNil {
++          allLocations.append(contentsOf: currentLocationBatch)
+         }
+ 
+-        allLocations.append(contentsOf: currentLocationBatch)
+-
+         if done {
+-          finish(.success(allLocations))
++          finish(.success(cappedRouteLocations(allLocations)))
+         }
+       }
+     }

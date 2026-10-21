@@ -1,14 +1,20 @@
+import Constants from 'expo-constants';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { Pressable, View } from 'react-native';
 
+import { useRepository } from '@/data';
+import { clientAppBuild } from '@/domain/clientError';
 import { formatUkCompactWhen } from '@/domain/dates';
-import { shownError } from '@/domain/errors';
 import {
+  ROUTE_LOAD_ERROR,
   ROUTE_PURPOSE,
+  ROUTE_RETRY,
   buildRouteStats,
+  downsampleRoute,
   elevationLine,
   formatClock,
+  routeErrorLine,
   type DeviceWorkout,
   type DistanceUnit,
   type RoutePoint,
@@ -16,9 +22,10 @@ import {
 } from '@/domain/workoutRoute';
 import { loadDistanceUnit, saveDistanceUnit } from '@/health/distanceUnit';
 import { readDeviceRoute } from '@/health/workoutRoute';
+import { RouteBoundary } from '@/ui/RouteBoundary';
 import { RouteMap } from '@/ui/RouteMap';
 import { useAppTheme } from '@/ui/theme';
-import { Button, Choice, ErrorNote, Screen, T } from '@/ui/ui';
+import { Button, Choice, Screen, T } from '@/ui/ui';
 
 function splitCopy(split: RouteSplit): string[] {
   return [
@@ -31,7 +38,16 @@ function splitCopy(split: RouteSplit): string[] {
 }
 
 export default function WorkoutRouteScreen() {
+  return (
+    <RouteBoundary>
+      <WorkoutRouteBody />
+    </RouteBoundary>
+  );
+}
+
+function WorkoutRouteBody() {
   const params = useLocalSearchParams<{ id?: string }>();
+  const repo = useRepository();
   const raw = Array.isArray(params.id) ? params.id[0] : params.id;
   const id = raw ? decodeURIComponent(raw) : '';
   const router = useRouter();
@@ -40,7 +56,8 @@ export default function WorkoutRouteScreen() {
   const [workout, setWorkout] = useState<DeviceWorkout | null>(null);
   const [points, setPoints] = useState<RoutePoint[]>([]);
   const [denied, setDenied] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [failed, setFailed] = useState(false);
+  const [attempt, setAttempt] = useState(0);
   const [selected, setSelected] = useState<number | null>(null);
   const [ready, setReady] = useState(false);
 
@@ -52,22 +69,28 @@ export default function WorkoutRouteScreen() {
     if (!id) return;
     let live = true;
     setReady(false);
-    setError(null);
+    setFailed(false);
     void readDeviceRoute(id).then((result) => {
       if (!live) return;
       setWorkout(result.workout);
-      setPoints(result.points);
+      setPoints(downsampleRoute(result.points));
       setDenied(result.denied);
       setReady(true);
     }).catch((err: unknown) => {
       if (!live) return;
-      setError(shownError(err, 'Could not read that route.'));
+      const line = routeErrorLine(err);
+      setFailed(true);
+      setPoints([]);
       setReady(true);
+      void repo.logClientError('workout-route', line, clientAppBuild({
+        buildNumber: Constants.expoConfig?.ios?.buildNumber,
+        version: Constants.expoConfig?.version,
+      })).catch(() => undefined);
     });
     return () => {
       live = false;
     };
-  }, [id]);
+  }, [attempt, id, repo]);
 
   const stats = points.length > 1
     ? buildRouteStats({
@@ -100,10 +123,15 @@ export default function WorkoutRouteScreen() {
         <Choice label="Kilometres" selected={unit === 'km'} onPress={() => { void chooseUnit('km'); }} />
         <Choice label="Miles" selected={unit === 'mile'} onPress={() => { void chooseUnit('mile'); }} />
       </View>
-      <ErrorNote>{error}</ErrorNote>
+      {failed ? (
+        <View style={{ gap: 8 }}>
+          <T>{ROUTE_LOAD_ERROR}</T>
+          <Button label={ROUTE_RETRY} onPress={() => setAttempt((value) => value + 1)} />
+        </View>
+      ) : null}
       {denied ? <T>Workout routes are off. Turn them on in the Health app: profile picture, Privacy, Apps, Charioteer.</T> : null}
       {!ready ? <T variant="muted">Reading the route on this iPhone.</T> : null}
-      {ready && !denied && points.length < 2 ? (
+      {ready && !failed && !denied && points.length < 2 ? (
         <T>{workout?.routeExpected ? 'No route stored for this workout yet.' : 'This workout has no GPS route.'}</T>
       ) : null}
       {stats ? (

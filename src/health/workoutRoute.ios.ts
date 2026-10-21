@@ -8,7 +8,12 @@ import {
 
 import { workoutTypeLabel } from '@/domain/fitnessSnapshot';
 import {
+  DEV_FIXTURE_ROUTE_ID,
   ROUTE_READ_TYPE,
+  devFixtureEnabled,
+  devFixturePoints,
+  devFixtureWorkout,
+  downsampleRoute,
   routeExpected,
   type DeviceWorkout,
   type HeartSample,
@@ -90,6 +95,7 @@ export async function listDeviceWorkouts(): Promise<DeviceWorkout[]> {
     }
   }
   rememberWorkouts(rows);
+  if (devFixtureEnabled()) rows.push(devFixtureWorkout());
   return rows;
 }
 
@@ -120,6 +126,9 @@ export async function readDeviceRoute(id: string): Promise<{
   heartSamples: HeartSample[];
   denied: boolean;
 }> {
+  if (id === DEV_FIXTURE_ROUTE_ID && devFixtureEnabled()) {
+    return { workout: devFixtureWorkout(), points: downsampleRoute(devFixturePoints()), heartSamples: [], denied: false };
+  }
   const known = rememberedWorkout(id);
   if (known && !known.routeExpected) {
     return { workout: known, points: [], heartSamples: [], denied: false };
@@ -150,9 +159,10 @@ export async function readDeviceRoute(id: string): Promise<{
       }
     }
     points.sort((a, b) => Date.parse(a.at) - Date.parse(b.at));
+    const drawn = downsampleRoute(points);
     const start = new Date(summary.startedAt);
     const end = new Date(start.getTime() + summary.durationMinutes * 60_000);
-    return { workout: summary, points, heartSamples: await heartSamples(start, end), denied: false };
+    return { workout: summary, points: drawn, heartSamples: await heartSamples(start, end), denied: false };
   } finally {
     workout.dispose();
   }

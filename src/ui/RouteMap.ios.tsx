@@ -1,45 +1,75 @@
+import { useState, type ComponentType, type ReactNode } from 'react';
 import { View } from 'react-native';
-import MapView, { Polyline } from 'react-native-maps';
 
-import type { RoutePoint } from '@/domain/workoutRoute';
+import {
+  downsampleRoute,
+  routeMapRegion,
+  type RoutePoint,
+} from '@/domain/workoutRoute';
 import { useAppTheme } from '@/ui/theme';
 
-function regionFor(points: readonly RoutePoint[]) {
-  const lats = points.map((point) => point.latitude);
-  const lngs = points.map((point) => point.longitude);
-  const minLat = Math.min(...lats);
-  const maxLat = Math.max(...lats);
-  const minLng = Math.min(...lngs);
-  const maxLng = Math.max(...lngs);
-  return {
-    latitude: (minLat + maxLat) / 2,
-    longitude: (minLng + maxLng) / 2,
-    latitudeDelta: Math.max(0.01, (maxLat - minLat) * 1.4),
-    longitudeDelta: Math.max(0.01, (maxLng - minLng) * 1.4),
-  };
+type LatLng = { latitude: number; longitude: number };
+
+type AppleMaps = {
+  default: ComponentType<{
+    style?: object;
+    initialRegion: NonNullable<ReturnType<typeof routeMapRegion>>;
+    mapType?: string;
+    showsUserLocation?: boolean;
+    showsMyLocationButton?: boolean;
+    showsCompass?: boolean;
+    rotateEnabled?: boolean;
+    onMapReady?: () => void;
+    children?: ReactNode;
+  }>;
+  Polyline: ComponentType<{
+    coordinates: LatLng[];
+    strokeColor?: string;
+    strokeWidth?: number;
+  }>;
+};
+
+function loadAppleMaps(): AppleMaps {
+  return require('react-native-maps') as AppleMaps;
 }
 
-function coordinates(points: readonly RoutePoint[]) {
-  return points.map((point) => ({ latitude: point.latitude, longitude: point.longitude }));
+function coordinates(points: readonly RoutePoint[]): LatLng[] {
+  return downsampleRoute(points).map((point) => ({
+    latitude: point.latitude,
+    longitude: point.longitude,
+  }));
 }
 
-/** Apple Maps. The user location is not shown, and the path is not uploaded. */
+/**
+ * Apple Maps, the default provider. The module is loaded while drawing so a
+ * missing native map becomes a screen error instead of failing the navigation.
+ * The path is not uploaded, and the user location is not shown.
+ */
 export function RouteMap({ points, active }: { points: readonly RoutePoint[]; active: readonly RoutePoint[] }) {
   const theme = useAppTheme();
-  if (points.length < 2) return null;
+  const [mapReady, setMapReady] = useState(false);
+  const drawn = downsampleRoute(points);
+  const region = routeMapRegion(drawn);
+  const line = coordinates(drawn);
+  const highlight = coordinates(active);
+  if (!region || line.length < 2) return null;
+  const maps = loadAppleMaps();
+  const MapView = maps.default;
+  const { Polyline } = maps;
   return (
     <View accessibilityLabel="Workout route" style={{ height: 280, borderWidth: 1, borderColor: theme.colors.line, overflow: 'hidden' }}>
       <MapView
         style={{ flex: 1 }}
-        initialRegion={regionFor(points)}
+        initialRegion={region}
         mapType="mutedStandard"
         showsUserLocation={false}
         showsMyLocationButton={false}
         showsCompass
         rotateEnabled={false}
+        onMapReady={() => setMapReady(true)}
       >
-        <Polyline coordinates={coordinates(points)} strokeColor={theme.colors.muted} strokeWidth={4} />
-        {active.length > 1 ? <Polyline coordinates={coordinates(active)} strokeColor={theme.colors.ink} strokeWidth={6} /> : null}
+        {mapReady ? <Polyline coordinates={line} strokeColor={theme.colors.muted} strokeWidth={4} /> : null}
+        {mapReady && highlight.length > 1 ? <Polyline coordinates={highlight} strokeColor={theme.colors.ink} strokeWidth={6} /> : null}
       </MapView>
     </View>
   );
