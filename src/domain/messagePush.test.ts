@@ -34,7 +34,7 @@ function input(overrides: Partial<MessagePushInput> = {}): MessagePushInput {
 }
 
 describe('private message push', () => {
-  it('uses the generic line and never the message text', () => {
+  it('uses the generic line unless the recipient opts in to the sender name', () => {
     const alert = messageAlert(input());
     expect(alert).toEqual({
       ok: true,
@@ -44,6 +44,12 @@ describe('private message push', () => {
     });
     expect(JSON.stringify(alert)).not.toContain(SECRET);
     expect(JSON.stringify(alert)).not.toContain('side door');
+    expect(JSON.stringify(alert)).not.toContain('Alex');
+    expect(alert.ok && alert.body).toBe('New message on Charioteer');
+    const fn = readFileSync('supabase/functions/notify-direct-message/index.ts', 'utf8');
+    expect(fn).toContain('showSenderName: Boolean(recipient.notify_sender_name)');
+    expect(fn).not.toContain('showSenderName: true');
+    expect(fn).not.toContain('New message from');
   });
 
   it('can name the sender and still leaves the message out', () => {
