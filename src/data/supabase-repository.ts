@@ -15,6 +15,7 @@ import {
   isTransientNetworkError,
 } from '@/domain/errors';
 import { omitSharedLocation } from '@/domain/sharedPayload';
+import { chunkHealthRows } from '@/domain/healthUpload';
 import { rejectRouteCoordinates } from '@/domain/workoutRoute';
 import { gratitudeFromRows, isGratitudeCategory, localGratitudeReflect, planGratitudeEntry, type GratitudePhoto, type GratitudeReflect } from '@/domain/gratitude';
 import {
@@ -1072,19 +1073,22 @@ export class SupabaseRepository implements Repository {
   async saveHealth(samples: NewHealthSample[]): Promise<void> {
     rejectRouteCoordinates(samples);
     if (!this.snapshot.profile?.consentHealth) throw new Error('Health data stays off until you give consent.');
+    if (samples.length === 0) return;
     const userId = await this.userId();
-    const { error } = await this.client.from('health_samples').upsert(
-      samples.map((sample) => ({
-        user_id: userId,
-        kind: sample.kind,
-        value: sample.value,
-        unit: sample.unit,
-        recorded_on: sample.recordedOn,
-        source: sample.source,
-      })),
-      { onConflict: 'user_id,kind,recorded_on,source' },
-    );
-    if (error) throw asUserFacing(error, 'general');
+    for (const chunk of chunkHealthRows(samples)) {
+      const { error } = await this.client.from('health_samples').upsert(
+        chunk.map((sample) => ({
+          user_id: userId,
+          kind: sample.kind,
+          value: sample.value,
+          unit: sample.unit,
+          recorded_on: sample.recordedOn,
+          source: sample.source,
+        })),
+        { onConflict: 'user_id,kind,recorded_on,source' },
+      );
+      if (error) throw asUserFacing(error, 'general');
+    }
     await this.refresh();
   }
 

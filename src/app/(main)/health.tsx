@@ -26,13 +26,12 @@ import {
   type AppleHealthTurnOn,
 } from '@/health/connection';
 import { healthMissingReadings, type HealthVisibilityReport } from '@/domain/healthVisibility';
-import { catchUpAppleHealthReads } from '@/health/catchUp';
+import { catchUpAppleHealthReads, refreshAppleHealth } from '@/health/catchUp';
 import { connectAppleHealth, openAppSettings, openHealthApp, readAppleHealthAccess, turnOnAppleHealthReads, askAppleHealthReads } from '@/health/link';
 import { readHealthVisibility } from '@/health/visibility';
 import type { HealthTurnOnResult } from '@/ui/HealthStatBoard';
 import { useStatPeriod } from '@/health/useStatPeriod';
-import { loadLastSynced, saveLastSynced } from '@/health/syncedAt';
-import { syncAppleHealth } from '@/health/sync';
+import { loadLastSynced } from '@/health/syncedAt';
 import { AppleHealthCard } from '@/ui/AppleHealthCard';
 import { GarminTip } from '@/ui/GarminTip';
 import { HealthVisibility } from '@/ui/HealthVisibility';
@@ -121,41 +120,14 @@ export default function Health() {
   }, [ios]);
 
   async function pullFromHealth(): Promise<{ ok: true; syncedAt: string } | { ok: false; message: string }> {
-    let result: Awaited<ReturnType<typeof syncAppleHealth>>;
-    try {
-      result = await syncAppleHealth(repo.getSnapshot().nutrition.workoutBuckets);
-    } catch (err: unknown) {
-      return { ok: false, message: shownError(err, 'Could not refresh Apple Health.') };
-    }
-    if (!result.ok) {
-      if (isHealthAccessDenied(result.message)) setAccess('denied');
-      return { ok: false, message: result.message || 'Could not refresh Apple Health.' };
-    }
-    try {
-      await repo.saveHealth(result.samples);
-      for (const row of result.composition ?? []) {
-        await repo.saveBodyComposition({
-          recordedOn: row.recordedOn,
-          bodyFatPct: row.bodyFatPct,
-          leanMassKg: row.leanMassKg,
-          waistCm: null,
-          source: 'healthkit',
-        });
-      }
-      if (result.activeEnergyKcal != null) {
-        await repo.setNutritionSettings({
-          ...repo.getSnapshot().nutrition,
-          activityEnergyKcal: result.activeEnergyKcal,
-        });
-      }
-      const stamp = new Date().toISOString();
-      await saveLastSynced(stamp);
-      setSyncedAt(stamp);
+    const pulled = await refreshAppleHealth(repo);
+    if (pulled.ok) {
+      setSyncedAt(pulled.syncedAt);
       setAccess('connected');
-      return { ok: true, syncedAt: stamp };
-    } catch (err: unknown) {
-      return { ok: false, message: shownError(err, 'Could not refresh Apple Health.') };
+    } else if (isHealthAccessDenied(pulled.message)) {
+      setAccess('denied');
     }
+    return pulled;
   }
 
   function noteForTurnOn(result: HealthTurnOnResult): string | null {

@@ -10,6 +10,7 @@ import {
 import type { HealthKind, NewHealthSample } from '@/data/types';
 import { isoDay } from '@/domain/dates';
 import { shownError } from '@/domain/errors';
+import { APPLE_HEALTH_READ_ERROR } from '@/domain/healthUpload';
 import { parseBodyFatPct, parseLeanMassKg } from '@/domain/nutrition';
 import { dedupeWorkouts, workoutBucket, workoutTypeKind, workoutTypeMinutes, type WorkoutActivitySlice, type WorkoutSourceMinute, type WorkoutSpan } from '@/domain/fitnessSnapshot';
 import { saveWorkoutSources } from '@/health/workoutSources';
@@ -100,7 +101,7 @@ export async function readAppleHealthBody(): Promise<AppleHealthBodyRead> {
       },
     };
   } catch (error) {
-    return { ok: false, message: shownError(error, 'Apple Health could not be read.') };
+    return { ok: false, message: shownError(error, APPLE_HEALTH_READ_ERROR) };
   }
 }
 
@@ -397,7 +398,7 @@ export async function syncAppleHealth(
 
     return { ok: true, samples, activeEnergyKcal, composition };
   } catch (error) {
-    const message = shownError(error, 'Apple Health could not be read.');
+    const message = shownError(error, APPLE_HEALTH_READ_ERROR);
     return { ok: false, message };
   }
 }

@@ -19,7 +19,7 @@ export const RESET_SENT_MESSAGE = "If an account exists for that email, we've se
 export const RESET_NEEDS_EMAIL = 'Enter the email on your account, then try Forgot password again.';
 
 const NETWORK =
-  /network connection was lost|network request failed|failed to fetch|fetch failed|load failed|internet connection|enotfound|econnreset|etimedout|network error|timed out|timeout/i;
+  /network connection was lost|network request failed|failed to fetch|fetch failed|load failed|internet connection|enotfound|econnreset|etimedout|network error|network timeout|gateway timeout|(?:request|connection) timed out/i;
 
 const TECHNICAL =
   /expomodulescore|\.swift\b|\.ts:\d|unexpectedexception|\(at\s+\S+|node_modules|pgrst\d+|stack trace|cannot read propert|is not a function|is not defined|of undefined|of null|typeerror|referenceerror|permission denied|row-level security|violates|duplicate key|invalid input syntax|null value in column|jwt|relation "|column "|syntax error|postgrest/i;

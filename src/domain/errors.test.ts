@@ -11,7 +11,8 @@ import {
   isTransientNetworkError,
   privateMessageFailure,
 } from './errors';
-import { fetchWithOneRetry } from './retryFetch';
+import { APPLE_HEALTH_READ_ERROR, healthRefreshLogLine } from './healthUpload';
+import { fetchWithOneRetry, isRetrySafeRequest } from './retryFetch';
 import { PASSWORD_RESET_REDIRECTS, passwordResetRedirect, recoveryLink } from './passwordReset';
 
 const LOST = 'fetch failed: UnexpectedException: The network connection was lost. (at ExpoModulesCore/Promise.swift:56)';
@@ -46,6 +47,17 @@ describe('user facing errors', () => {
     expect(asUserFacing(new Error('duplicate key value violates unique constraint "consents_pkey"'), 'general').message).not.toMatch(/duplicate|violates/i);
     expect(asUserFacing(new Error('duplicate key value violates unique constraint "interests_slug_key"'), 'general').message).not.toMatch(/duplicate|violates|interests_slug/i);
     expect(asUserFacing(new Error('Set a start date first.'), 'general').message).toBe('Set a start date first.');
+    const healthRead = asUserFacing(new Error('HKError timeout reading 8421 steps, heart 72'), 'general');
+    expect(healthRead.code).not.toBe('offline');
+    expect(healthRead.message).not.toBe(OFFLINE_MESSAGE);
+    expect(isTransientNetworkError(new Error('HKError timeout reading 8421 steps'))).toBe(false);
+    expect(isTransientNetworkError(new Error('The request timed out'))).toBe(true);
+    expect(asUserFacing(new Error('The request timed out'), 'general').message).toBe(OFFLINE_MESSAGE);
+    expect(APPLE_HEALTH_READ_ERROR).toBe("Apple Health couldn't be read");
+    const logged = healthRefreshLogLine('read', new Error('HKError timeout reading 8421 steps, heart 72'));
+    expect(logged).toBe('read: timeout');
+    expect(logged).not.toMatch(/\d/);
+    expect(healthRefreshLogLine('upload', new Error('The request timed out'))).toBe('upload: offline');
     error.mockRestore();
   });
 
@@ -107,6 +119,25 @@ describe('idempotent retry', () => {
     expect(gets).toBe(2);
     await expect(fetch('https://example.test/auth/v1/signup', { method: 'POST', body: '{}' })).rejects.toThrow(/network connection was lost/);
     expect(posts).toBe(1);
+    expect(isRetrySafeRequest('https://example.test/auth/v1/signup', { method: 'POST' })).toBe(false);
+  });
+
+  it('retries one dropped health upsert and leaves a plain POST as a single attempt', async () => {
+    let upserts = 0;
+    const fetch = fetchWithOneRetry(async () => {
+      upserts += 1;
+      if (upserts === 1) throw new Error('The network connection was lost');
+      return new Response('saved', { status: 200 });
+    });
+    const headers = { Prefer: 'return=minimal,resolution=merge-duplicates' };
+    const saved = await fetch('https://example.test/rest/v1/health_samples', { method: 'POST', headers, body: '[]' });
+    expect(await saved.text()).toBe('saved');
+    expect(upserts).toBe(2);
+    expect(isRetrySafeRequest('https://example.test/rest/v1/health_samples', { method: 'POST', headers })).toBe(true);
+    const repo = readFileSync('src/data/supabase-repository.ts', 'utf8');
+    const save = repo.slice(repo.indexOf('async saveHealth'), repo.indexOf('async setInterestSelected'));
+    expect(save).toContain('chunkHealthRows(samples)');
+    expect(save).toContain("onConflict: 'user_id,kind,recorded_on,source'");
   });
 
   it('retries one gateway failure on GET and leaves a second failure as the result', async () => {

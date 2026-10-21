@@ -15,7 +15,9 @@ describe('Apple Health catch-up', () => {
     const source = readFileSync('src/health/catchUp.ts', 'utf8');
     expect(source).toContain('healthCatchUpImports(status)');
     expect(source).toContain('{ authorize: false }');
-    expect(source).toContain('error: shownError');
+    expect(source).toContain('shownError');
+    expect(source).toContain('APPLE_HEALTH_READ_ERROR');
+    expect(source).toContain("logClientError('health-refresh'");
     expect(source).not.toContain("status !== 'requested'");
     const sync = readFileSync('src/health/sync.ios.ts', 'utf8');
     const body = sync.slice(sync.indexOf('export async function syncAppleHealth'), sync.indexOf('const end = new Date()'));
