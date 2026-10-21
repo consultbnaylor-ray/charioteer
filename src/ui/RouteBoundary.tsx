@@ -1,9 +1,6 @@
-import Constants from 'expo-constants';
 import { Component, type ErrorInfo, type ReactNode } from 'react';
 import { Pressable, View } from 'react-native';
 
-import { useRepository } from '@/data';
-import { clientAppBuild } from '@/domain/clientError';
 import { ROUTE_LOAD_ERROR, ROUTE_RETRY, routeErrorLine } from '@/domain/workoutRoute';
 import { T } from '@/ui/ui';
 
@@ -41,22 +38,14 @@ class BoundaryInner extends Component<Props, State> {
         </View>
       );
     }
-    return <View key={this.state.tick}>{this.props.children}</View>;
+    return <View key={this.state.tick} style={{ minHeight: 44 }}>{this.props.children}</View>;
   }
 }
 
-/** Catches a thrown route screen. The log is the error line, never the path. */
-export function RouteBoundary({ children }: { children: ReactNode }) {
-  const repo = useRepository();
+/** Catches a thrown map. The screen around it stays up. The log is the error line, never the path. */
+export function RouteBoundary({ children, onError }: { children: ReactNode; onError: (message: string) => void }) {
   return (
-    <BoundaryInner
-      onError={(message) => {
-        void repo.logClientError('workout-route', message, clientAppBuild({
-          buildNumber: Constants.expoConfig?.ios?.buildNumber,
-          version: Constants.expoConfig?.version,
-        })).catch((error: unknown) => console.error(error));
-      }}
-    >
+    <BoundaryInner onError={onError}>
       {children}
     </BoundaryInner>
   );

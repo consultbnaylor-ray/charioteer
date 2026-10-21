@@ -192,7 +192,7 @@ describe('voice processing patch', () => {
     expect(existsSync('scripts/enable-voice-processing.mjs')).toBe(false);
     const pkg = readFileSync('package.json', 'utf8');
     expect(pkg).not.toContain('enable-voice-processing');
-    expect(pkg).toContain('"postinstall": "patch-package"');
+    expect(pkg).toContain('"postinstall": "patch-package --error-on-fail"');
     const patch = readFileSync('patches/react-native-audio-api+0.13.6.patch', 'utf8');
     expect(patch).toContain('charioteerPrepareAndStartEngine');
     expect(patch).toContain('@try');

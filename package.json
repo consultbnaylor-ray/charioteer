@@ -61,7 +61,8 @@
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
     "lint": "expo lint",
-    "postinstall": "patch-package"
+    "postinstall": "patch-package --error-on-fail",
+    "ship-check": "node scripts/assert-patches.mjs"
   },
   "private": true
 }

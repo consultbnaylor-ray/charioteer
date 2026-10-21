@@ -5,7 +5,16 @@ import type { RoutePoint } from '@/domain/workoutRoute';
 import { useAppTheme } from '@/ui/theme';
 
 /** A monochrome path for the browser. The iPhone uses Apple Maps. */
-export function RouteMap({ points, active }: { points: readonly RoutePoint[]; active: readonly RoutePoint[] }) {
+export function RouteMap({
+  points,
+  active,
+  onProblem: _onProblem,
+}: {
+  points: readonly RoutePoint[];
+  active: readonly RoutePoint[];
+  /** The iPhone map reports a load failure here. The browser draws its own path. */
+  onProblem?: (line: string) => void;
+}) {
   const theme = useAppTheme();
   if (points.length < 2) return null;
   const lats = points.map((point) => point.latitude);

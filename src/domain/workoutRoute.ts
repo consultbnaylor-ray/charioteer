@@ -14,6 +14,18 @@ export const ROUTE_LOAD_ERROR = "Route couldn't be loaded";
 
 export const ROUTE_RETRY = 'Try again';
 
+/** Shown while the phone is still reading the path. */
+export const ROUTE_READING = 'Reading the route on this iPhone.';
+
+/** How long the read, or Apple Maps becoming ready, may take before the fallback. */
+export const ROUTE_MAP_TIMEOUT_MS = 10_000;
+
+/** Logged when the map view never reports ready. No coordinates. */
+export const ROUTE_MAP_TIMEOUT = 'Map did not become ready.';
+
+/** Logged when the route read never settles. No coordinates. */
+export const ROUTE_READ_TIMEOUT = 'The route did not load.';
+
 /** About 500 points is enough to draw a two-hour walk without a huge native path. */
 export const ROUTE_POINT_LIMIT = 500;
 

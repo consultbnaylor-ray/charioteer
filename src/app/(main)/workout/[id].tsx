@@ -1,6 +1,6 @@
 import Constants from 'expo-constants';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Pressable, View } from 'react-native';
 
 import { useRepository } from '@/data';
@@ -8,7 +8,10 @@ import { clientAppBuild } from '@/domain/clientError';
 import { formatUkCompactWhen } from '@/domain/dates';
 import {
   ROUTE_LOAD_ERROR,
+  ROUTE_MAP_TIMEOUT_MS,
   ROUTE_PURPOSE,
+  ROUTE_READ_TIMEOUT,
+  ROUTE_READING,
   ROUTE_RETRY,
   buildRouteStats,
   downsampleRoute,
@@ -38,11 +41,7 @@ function splitCopy(split: RouteSplit): string[] {
 }
 
 export default function WorkoutRouteScreen() {
-  return (
-    <RouteBoundary>
-      <WorkoutRouteBody />
-    </RouteBoundary>
-  );
+  return <WorkoutRouteBody />;
 }
 
 function WorkoutRouteBody() {
@@ -60,35 +59,66 @@ function WorkoutRouteBody() {
   const [attempt, setAttempt] = useState(0);
   const [selected, setSelected] = useState<number | null>(null);
   const [ready, setReady] = useState(false);
+  const [mapLine, setMapLine] = useState<string | null>(null);
+  const reported = useRef(new Set<string>());
+
+  function report(error: unknown) {
+    const line = routeErrorLine(error);
+    if (reported.current.has(line)) return;
+    reported.current.add(line);
+    setMapLine(line);
+    void repo.logClientError('workout-route', line, clientAppBuild({
+      buildNumber: Constants.expoConfig?.ios?.buildNumber,
+      version: Constants.expoConfig?.version,
+    })).catch(() => undefined);
+  }
 
   useEffect(() => {
     void loadDistanceUnit().then(setUnit);
   }, []);
 
   useEffect(() => {
-    if (!id) return;
+    reported.current.clear();
+    setMapLine(null);
+    if (!id) {
+      setReady(true);
+      setFailed(true);
+      setPoints([]);
+      report('No workout was opened.');
+      return;
+    }
     let live = true;
+    let settled = false;
     setReady(false);
     setFailed(false);
+    const timer = setTimeout(() => {
+      if (!live || settled) return;
+      settled = true;
+      setFailed(true);
+      setPoints([]);
+      setReady(true);
+      report(ROUTE_READ_TIMEOUT);
+    }, ROUTE_MAP_TIMEOUT_MS);
     void readDeviceRoute(id).then((result) => {
-      if (!live) return;
+      if (!live || settled) return;
+      settled = true;
+      clearTimeout(timer);
       setWorkout(result.workout);
       setPoints(downsampleRoute(result.points));
       setDenied(result.denied);
       setReady(true);
     }).catch((err: unknown) => {
-      if (!live) return;
-      const line = routeErrorLine(err);
+      if (!live || settled) return;
+      settled = true;
+      clearTimeout(timer);
       setFailed(true);
       setPoints([]);
       setReady(true);
-      void repo.logClientError('workout-route', line, clientAppBuild({
-        buildNumber: Constants.expoConfig?.ios?.buildNumber,
-        version: Constants.expoConfig?.version,
-      })).catch(() => undefined);
+      report(err);
     });
     return () => {
       live = false;
+      clearTimeout(timer);
     };
   }, [attempt, id, repo]);
 
@@ -123,20 +153,24 @@ function WorkoutRouteBody() {
         <Choice label="Kilometres" selected={unit === 'km'} onPress={() => { void chooseUnit('km'); }} />
         <Choice label="Miles" selected={unit === 'mile'} onPress={() => { void chooseUnit('mile'); }} />
       </View>
-      {failed ? (
+      {failed || mapLine ? (
         <View style={{ gap: 8 }}>
           <T>{ROUTE_LOAD_ERROR}</T>
           <Button label={ROUTE_RETRY} onPress={() => setAttempt((value) => value + 1)} />
         </View>
       ) : null}
       {denied ? <T>Workout routes are off. Turn them on in the Health app: profile picture, Privacy, Apps, Charioteer.</T> : null}
-      {!ready ? <T variant="muted">Reading the route on this iPhone.</T> : null}
-      {ready && !failed && !denied && points.length < 2 ? (
+      {!ready ? <T variant="muted">{ROUTE_READING}</T> : null}
+      {ready && !failed && !denied && !mapLine && points.length < 2 ? (
         <T>{workout?.routeExpected ? 'No route stored for this workout yet.' : 'This workout has no GPS route.'}</T>
       ) : null}
       {stats ? (
         <View style={{ gap: 8 }}>
-          <RouteMap points={points} active={active.length > 1 ? active : points} />
+          {mapLine || failed ? null : (
+            <RouteBoundary onError={report}>
+              <RouteMap points={points} active={active.length > 1 ? active : points} onProblem={report} />
+            </RouteBoundary>
+          )}
           <T>{stats.distanceLabel}</T>
           <T>{stats.durationLabel}</T>
           <T>{stats.paceLabel}</T>

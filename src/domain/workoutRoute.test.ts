@@ -1,4 +1,6 @@
-import { readFileSync, readdirSync, statSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
@@ -7,7 +9,11 @@ import { latestVo2Day, VO2_ESTIMATE_NOTE, VO2_PLAN_LABEL, VO2_STALE_NUDGE, vo2Me
 import {
   DEV_FIXTURE_ROUTE_ID,
   ROUTE_LOAD_ERROR,
+  ROUTE_MAP_TIMEOUT,
+  ROUTE_MAP_TIMEOUT_MS,
   ROUTE_POINT_LIMIT,
+  ROUTE_READ_TIMEOUT,
+  ROUTE_READING,
   ROUTE_RETRY,
   buildRouteStats,
   demoRoutePoints,
@@ -157,12 +163,35 @@ describe('workout routes stay on the phone', () => {
     expect(screen).toContain("logClientError('workout-route'");
     expect(screen).toContain('routeErrorLine');
     expect(screen).not.toMatch(/logClientError\([^)]*points/);
+    expect(screen.indexOf('<Screen')).toBeLessThan(screen.indexOf('<RouteBoundary'));
+    expect(screen).toContain('label="Back"');
+    expect(screen).toContain('ROUTE_READING');
+    expect(screen).toContain('ROUTE_MAP_TIMEOUT_MS');
+    expect(screen).toContain('ROUTE_READ_TIMEOUT');
+    expect(screen).toContain('onProblem={report}');
+    expect(screen).not.toMatch(/if \(!ready\) return null/);
+    expect(map).toContain('ROUTE_MAP_TIMEOUT');
+    expect(map.indexOf('try {')).toBeLessThan(map.indexOf("require('react-native-maps')"));
+    expect(ROUTE_MAP_TIMEOUT_MS).toBe(10_000);
+    expect(ROUTE_READING).toBe('Reading the route on this iPhone.');
+    expect(routeErrorLine(ROUTE_MAP_TIMEOUT)).toBe(ROUTE_MAP_TIMEOUT);
+    expect(routeErrorLine(ROUTE_READ_TIMEOUT)).toBe(ROUTE_READ_TIMEOUT);
+    expect(routeErrorLine(new Error(`${ROUTE_MAP_TIMEOUT} latitude 51.50740`))).not.toMatch(/51\.50740|latitude/);
     const boundary = readFileSync('src/ui/RouteBoundary.tsx', 'utf8');
     expect(boundary).toContain('getDerivedStateFromError');
     expect(boundary).toContain('ROUTE_LOAD_ERROR');
     expect(boundary).toContain('routeErrorLine');
     expect(boundary).not.toContain('error.stack');
     expect(boundary).not.toContain('componentStack');
+    expect(boundary).not.toContain('flex: 1');
+    const pkg = readFileSync('package.json', 'utf8');
+    expect(pkg).toContain('"postinstall": "patch-package --error-on-fail"');
+    expect(pkg).toContain('"ship-check": "node scripts/assert-patches.mjs"');
+    const checker = readFileSync('scripts/assert-patches.mjs', 'utf8');
+    expect(checker).toContain('--dry-run');
+    expect(checker).toContain('--reverse');
+    expect(checker).not.toContain('patch-package');
+    expect(readFileSync('README.md', 'utf8')).toContain('npm run ship-check');
     expect(reader).toContain('downsampleRoute');
     expect(reader).toContain('DEV_FIXTURE_ROUTE_ID');
     expect(reader).toContain('devFixtureEnabled()');
@@ -210,5 +239,37 @@ describe('workout routes stay on the phone', () => {
     expect(devFixtureWorkout().durationMinutes).toBe(109);
     expect(devFixtureWorkout().distanceMetres).toBe(6300);
     expect(devFixturePoints().length).toBeGreaterThan(2);
+  });
+
+  it('fails the ship check when a patch is missing and passes when it is applied', () => {
+    const script = join(process.cwd(), 'scripts/assert-patches.mjs');
+    const live = spawnSync(process.execPath, [script], { cwd: process.cwd(), encoding: 'utf8' });
+    expect(live.status, live.stderr).toBe(0);
+
+    const root = mkdtempSync(join(tmpdir(), 'charioteer-patches-'));
+    try {
+      const fileDir = join(root, 'node_modules', 'example');
+      mkdirSync(fileDir, { recursive: true });
+      mkdirSync(join(root, 'patches'));
+      writeFileSync(join(fileDir, 'file.txt'), 'original\n');
+      writeFileSync(join(root, 'patches', 'example+1.0.0.patch'), [
+        'diff --git a/node_modules/example/file.txt b/node_modules/example/file.txt',
+        '--- a/node_modules/example/file.txt',
+        '+++ b/node_modules/example/file.txt',
+        '@@ -1 +1 @@',
+        '-original',
+        '+patched',
+        '',
+      ].join('\n'));
+      const missing = spawnSync(process.execPath, [script], { cwd: root, encoding: 'utf8' });
+      expect(missing.status).not.toBe(0);
+      expect(`${missing.stderr}\n${missing.stdout}`).toMatch(/not applied/);
+      expect(`${missing.stderr}\n${missing.stdout}`).toMatch(/npm install/);
+      writeFileSync(join(fileDir, 'file.txt'), 'patched\n');
+      const applied = spawnSync(process.execPath, [script], { cwd: root, encoding: 'utf8' });
+      expect(applied.status, applied.stderr).toBe(0);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 });
