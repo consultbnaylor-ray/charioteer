@@ -4,13 +4,20 @@ import { describe, expect, it } from 'vitest';
 
 import { CHART_DIRECTION_HINT } from '@/domain/readingChart';
 import {
+  DIFFICULTY_DAY_LINK,
   DIFFICULTY_LIST_FOLD,
+  DIFFICULTY_MIXED_NOTE,
   DIFFICULTY_NOTE,
   EFFORT_NAME,
   HEART_DIFFICULTY_NAME,
   ROUTE_MARK,
   WORKOUT_LIST_FOLD,
+  chartDayLabel,
   chartDays,
+  chartLabelIndexes,
+  chartLabelStride,
+  difficultyAxis,
+  difficultyDetailLines,
   difficultyFor,
   difficultyMarks,
   durationBars,
@@ -130,6 +137,44 @@ describe('workout day list', () => {
     expect(marks[0] && marks[1] && marks[0].day < marks[1].day).toBe(true);
     const outside = difficultyMarks([walk], '2026-11-20', 7, 42);
     expect(outside).toEqual([]);
+    expect(chartDayLabel('2026-10-15')).toBe('15 Oct');
+    expect(chartDayLabel(walk.startedAt.slice(0, 10))).toBe('18 Oct');
+    expect(chartLabelStride(30, 300, 48)).toBe(5);
+    expect(chartLabelStride(7, 280, 48)).toBe(2);
+    expect(chartLabelStride(7, 0, 48)).toBe(7);
+    expect(chartLabelIndexes(7, 2)).toEqual([0, 2, 4, 6]);
+    const monthLabels = chartLabelIndexes(30, 6);
+    expect(monthLabels[0]).toBe(0);
+    expect(monthLabels.at(-1)).toBe(29);
+    expect(monthLabels.length).toBeLessThan(10);
+    for (let index = 1; index < monthLabels.length; index += 1) {
+      expect((monthLabels[index] ?? 0) - (monthLabels[index - 1] ?? 0)).toBeGreaterThanOrEqual(6);
+    }
+    expect(difficultyAxis([{ measureName: EFFORT_NAME }])).toEqual({
+      heading: 'Effort',
+      ticks: ['10', '5', '0'],
+      mixedNote: null,
+    });
+    expect(difficultyAxis([{ measureName: HEART_DIFFICULTY_NAME }]).heading).toBe('% of max');
+    expect(difficultyAxis([{ measureName: HEART_DIFFICULTY_NAME }]).ticks[0]).toBe('100');
+    const mixed = difficultyAxis([{ measureName: EFFORT_NAME }, { measureName: HEART_DIFFICULTY_NAME }]);
+    expect(mixed.heading).toBe('Effort or % of max');
+    expect(mixed.ticks[0]).toBe('10 or 100%');
+    expect(mixed.mixedNote).toBe(DIFFICULTY_MIXED_NOTE);
+    expect(difficultyDetailLines(walk, 42)).toEqual([
+      'Walking',
+      '18 Oct 2026, 11:16',
+      'Duration 109 min',
+      'Distance 6.3 km',
+      'Average heart rate 112 bpm, 63% of max (220 − age, 178 bpm)',
+    ]);
+    const scoredWalk = { ...walk, effortScore: 7, distanceMetres: null };
+    expect(difficultyDetailLines(scoredWalk, null)).toEqual([
+      'Walking',
+      '18 Oct 2026, 11:16',
+      'Duration 109 min',
+      'Workout effort score 7 out of 10',
+    ]);
   });
 
   it('folds a long day and keeps the chart hint on the list', () => {
@@ -137,6 +182,7 @@ describe('workout day list', () => {
     expect(foldedCount(WORKOUT_LIST_FOLD + 3, WORKOUT_LIST_FOLD)).toBe(3);
     expect(foldedCount(DIFFICULTY_LIST_FOLD + 1, DIFFICULTY_LIST_FOLD)).toBe(1);
     expect(CHART_DIRECTION_HINT).toBe('Older ← → Newer');
+    expect(DIFFICULTY_DAY_LINK).toBe('Show this day');
     expect(DIFFICULTY_NOTE).toContain(EFFORT_NAME);
     expect(DIFFICULTY_NOTE).toContain('% of max');
     const list = readFileSync('src/ui/WorkoutList.tsx', 'utf8');
@@ -145,6 +191,11 @@ describe('workout day list', () => {
     expect(list).toContain('/workout/');
     expect(list).toContain('CHART_DIRECTION_HINT');
     expect(list).toContain('workoutTypeColor');
+    expect(list).toContain('chartDayLabel');
+    expect(list).toContain('difficultyAxis');
+    expect(list).toContain('difficultyDetailLines');
+    expect(list).toContain('DIFFICULTY_DAY_LINK');
+    expect(list).toContain('workoutsOnDay(workouts, selected)');
     expect(list).toContain('<SeriesLegend');
     expect(list).toContain('<T>{label}</T>');
     expect(list).not.toContain('STACK_OPACITY');

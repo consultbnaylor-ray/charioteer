@@ -22,6 +22,16 @@ export const HEART_DIFFICULTY_UNIT = '% of max';
 export const DIFFICULTY_NOTE =
   'Workout effort score in effort when Apple Health has one. Otherwise average heart rate as % of max (220 − age).';
 
+/** Shown on the difficulty chart when some bars are effort and some are heart rate. */
+export const DIFFICULTY_MIXED_NOTE =
+  'A full bar is 10 on the effort score, or 100% of max heart rate (220 − age). Tap a bar to see which.';
+
+/** Opens the workout day already on this screen. */
+export const DIFFICULTY_DAY_LINK = 'Show this day';
+
+/** Width reserved for a date such as "15 Oct" under a bar. */
+export const CHART_DATE_LABEL_WIDTH = 48;
+
 const EFFORT_FULL = 10;
 
 export function londonClock(value: Date | string): string {
@@ -211,4 +221,81 @@ export function difficultyMarks(
 
 export function foldedCount(length: number, fold: number): number {
   return length > fold ? length - fold : 0;
+}
+
+/** "15 Oct". The year stays off the axis so neighbouring labels can thin out. */
+export function chartDayLabel(iso: string): string {
+  return formatUkCompactDay(iso).replace(/ \d{4}$/, '');
+}
+
+/** Bars between date labels. A wider chart keeps more of them. */
+export function chartLabelStride(barCount: number, chartWidth: number, labelWidth = CHART_DATE_LABEL_WIDTH): number {
+  if (barCount <= 1) return 1;
+  if (!(chartWidth > 0)) return barCount;
+  return Math.max(1, Math.ceil(labelWidth / (chartWidth / barCount)));
+}
+
+/**
+ * Indexes of bars that get a date. Oldest and newest stay labelled.
+ * Middles are dropped until the gap is at least `stride` bars.
+ */
+export function chartLabelIndexes(count: number, stride: number): number[] {
+  if (count <= 0) return [];
+  if (count === 1) return [0];
+  const step = Math.max(1, Math.floor(stride));
+  const last = count - 1;
+  if (last < step) return [0, last];
+  const indexes = [0];
+  for (let index = step; index <= last - step; index += step) indexes.push(index);
+  indexes.push(last);
+  return indexes;
+}
+
+export type DifficultyAxis = {
+  heading: string;
+  /** Top, middle, and bottom of the bar. */
+  ticks: readonly [string, string, string];
+  mixedNote: string | null;
+};
+
+/** The y-axis unit. A mixed series names both scales. */
+export function difficultyAxis(marks: readonly { measureName: string }[]): DifficultyAxis {
+  const effort = marks.some((mark) => mark.measureName === EFFORT_NAME);
+  const heart = marks.some((mark) => mark.measureName === HEART_DIFFICULTY_NAME);
+  if (effort && heart) {
+    return {
+      heading: 'Effort or % of max',
+      ticks: ['10 or 100%', '5 or 50%', '0'],
+      mixedNote: DIFFICULTY_MIXED_NOTE,
+    };
+  }
+  if (heart && !effort) {
+    return { heading: '% of max', ticks: ['100', '50', '0'], mixedNote: null };
+  }
+  return { heading: 'Effort', ticks: ['10', '5', '0'], mixedNote: null };
+}
+
+/** Type, when it started, how long, distance, and the score with its basis. */
+export function difficultyDetailLines(workout: DeviceWorkout, age: number | null | undefined): string[] {
+  const lines = [
+    workout.label,
+    `${formatUkCompactDay(londonDay(workout.startedAt))}, ${londonClock(workout.startedAt)}`,
+    `Duration ${workout.durationMinutes} min`,
+  ];
+  if (workout.distanceMetres != null && workout.distanceMetres > 0) {
+    lines.push(`Distance ${formatDistance(workout.distanceMetres, 'km')}`);
+  }
+  const effort = workout.effortScore;
+  if (effort != null && Number.isFinite(effort) && effort > 0 && effort <= EFFORT_FULL) {
+    const shown = Number.isInteger(effort) ? String(effort) : effort.toFixed(1);
+    lines.push(`${EFFORT_NAME} ${shown} out of 10`);
+    return lines;
+  }
+  const max = maxHeartRate(age);
+  const heart = workout.averageHeartRate;
+  if (max != null && heart != null && Number.isFinite(heart) && heart > 30) {
+    const percent = Math.round((heart / max) * 100);
+    lines.push(`${HEART_DIFFICULTY_NAME} ${Math.round(heart)} bpm, ${percent}% of max (220 − age, ${max} bpm)`);
+  }
+  return lines;
 }

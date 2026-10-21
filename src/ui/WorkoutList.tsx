@@ -5,11 +5,17 @@ import { Pressable, View } from 'react-native';
 import { formatUkCompactDay, londonDay, weekdayShort } from '@/domain/healthInsights';
 import { CHART_DIRECTION_HINT } from '@/domain/readingChart';
 import {
+  DIFFICULTY_DAY_LINK,
   DIFFICULTY_LIST_FOLD,
   DIFFICULTY_NOTE,
   ROUTE_MARK,
   WORKOUT_CHART_SPANS,
   WORKOUT_LIST_FOLD,
+  chartDayLabel,
+  chartLabelIndexes,
+  chartLabelStride,
+  difficultyAxis,
+  difficultyDetailLines,
   difficultyMarks,
   durationBars,
   durationScaleLabel,
@@ -32,6 +38,7 @@ import { useAppTheme } from '@/ui/theme';
 import { Card, Choice, T } from '@/ui/ui';
 
 const BAR_HEIGHT = 88;
+const AXIS_WIDTH = 72;
 
 function SeriesLegend({ labels }: { labels: readonly string[] }) {
   const theme = useAppTheme();
@@ -80,11 +87,13 @@ function WorkoutRow({ workout }: { workout: DeviceWorkout }) {
 
 function DurationChart({
   bars,
+  workouts,
   span,
   selected,
   onSelect,
 }: {
   bars: readonly DurationBar[];
+  workouts: readonly DeviceWorkout[];
   span: WorkoutChartSpan;
   selected: string;
   onSelect: (day: string) => void;
@@ -97,6 +106,7 @@ function DurationChart({
   const named = bars.filter((bar) => bar.totalMinutes > 0);
   const hidden = foldedCount(named.length, WORKOUT_LIST_FOLD);
   const listed = hidden > 0 && !open ? [] : named;
+  const dayRows = workoutsOnDay(workouts, selected);
 
   return (
     <View style={{ gap: 8 }}>
@@ -148,6 +158,10 @@ function DurationChart({
         })}
       </View>
       {order.length > 0 ? <SeriesLegend labels={order} /> : <T variant="muted">No workouts in these days.</T>}
+      <View style={{ gap: 4 }}>
+        <T variant="label">{chartDayLabel(selected)}</T>
+        {dayRows.length === 0 ? <T>No workouts on this day.</T> : dayRows.map((workout) => <WorkoutRow key={workout.id} workout={workout} />)}
+      </View>
       {hidden > 0 ? (
         <Pressable
           accessibilityRole="button"
@@ -169,45 +183,110 @@ function DurationChart({
 
 function DifficultyChart({
   marks,
+  workouts,
+  age,
   onSelect,
 }: {
   marks: readonly DifficultyMark[];
+  workouts: readonly DeviceWorkout[];
+  age: number | null;
   onSelect: (day: string) => void;
 }) {
+  const theme = useAppTheme();
   const [open, setOpen] = useState(false);
+  const [pickedId, setPickedId] = useState<string | null>(null);
+  const [plotWidth, setPlotWidth] = useState(0);
   const hidden = foldedCount(marks.length, DIFFICULTY_LIST_FOLD);
   const shown = hidden > 0 && !open ? [] : marks;
   const types: string[] = [];
   for (const mark of marks) {
     if (!types.includes(mark.typeLabel)) types.push(mark.typeLabel);
   }
+  const axis = difficultyAxis(marks);
+  const picked = marks.find((mark) => mark.id === pickedId) ?? null;
+  const pickedWorkout = picked ? workouts.find((workout) => workout.id === picked.id) ?? null : null;
+  const dateIndexes = new Set(chartLabelIndexes(marks.length, chartLabelStride(marks.length, plotWidth)));
 
   return (
     <View style={{ gap: 8 }}>
       <T variant="label">Difficulty</T>
       <T variant="muted">{DIFFICULTY_NOTE}</T>
+      {axis.mixedNote ? <T>{axis.mixedNote}</T> : null}
       {marks.length === 0 ? <T variant="muted">No workout effort score or average heart rate for these days.</T> : (
         <View style={{ gap: 8 }}>
-          <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 3, minHeight: BAR_HEIGHT }}>
-            {marks.map((mark) => (
-              <Pressable
-                key={mark.id}
-                accessibilityRole="button"
-                accessibilityLabel={`${mark.caption}. Select this day.`}
-                onPress={() => onSelect(mark.day)}
-                style={{ flex: 1, minHeight: 44, alignItems: 'center', justifyContent: 'flex-end' }}
-              >
-                <View
-                  style={{
-                    height: Math.max(4, mark.fill * BAR_HEIGHT),
-                    alignSelf: 'stretch',
-                    backgroundColor: workoutTypeColor(mark.typeLabel),
-                  }}
-                />
-              </Pressable>
-            ))}
+          <T variant="label">{axis.heading}</T>
+          <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 6 }}>
+            <View style={{ width: AXIS_WIDTH, height: BAR_HEIGHT, justifyContent: 'space-between' }}>
+              {axis.ticks.map((tick) => (
+                <T key={tick} style={{ fontSize: 10, lineHeight: 12, textAlign: 'right' }}>{tick}</T>
+              ))}
+            </View>
+            <View
+              style={{ flex: 1, flexDirection: 'row', alignItems: 'flex-end', gap: 3, minHeight: BAR_HEIGHT }}
+              onLayout={(event) => setPlotWidth(event.nativeEvent.layout.width)}
+            >
+              {marks.map((mark) => {
+                const chosen = mark.id === picked?.id;
+                return (
+                  <Pressable
+                    key={mark.id}
+                    accessibilityRole="button"
+                    accessibilityLabel={`${mark.caption}. Show this workout.`}
+                    accessibilityState={{ selected: chosen }}
+                    onPress={() => {
+                      setPickedId(mark.id);
+                      onSelect(mark.day);
+                    }}
+                    style={{ flex: 1, minHeight: 44, alignItems: 'center', justifyContent: 'flex-end' }}
+                  >
+                    <View
+                      style={{
+                        height: BAR_HEIGHT,
+                        alignSelf: 'stretch',
+                        justifyContent: 'flex-end',
+                        borderWidth: chosen ? 2 : 0,
+                        borderColor: theme.colors.ink,
+                        backgroundColor: chosen ? theme.colors.emphasisSoft : 'transparent',
+                      }}
+                    >
+                      <View
+                        style={{
+                          height: Math.max(4, mark.fill * BAR_HEIGHT),
+                          backgroundColor: workoutTypeColor(mark.typeLabel),
+                        }}
+                      />
+                    </View>
+                  </Pressable>
+                );
+              })}
+            </View>
+          </View>
+          <View style={{ flexDirection: 'row', gap: 6 }}>
+            <View style={{ width: AXIS_WIDTH }} />
+            <View style={{ flex: 1, flexDirection: 'row', gap: 3 }}>
+              {marks.map((mark, index) => (
+                <View key={mark.id} style={{ flex: 1, minWidth: 0, minHeight: 14, alignItems: 'center', overflow: 'visible' }}>
+                  {dateIndexes.has(index) ? (
+                    <T style={{ fontSize: 10, lineHeight: 12, textAlign: 'center' }}>{chartDayLabel(mark.day)}</T>
+                  ) : null}
+                </View>
+              ))}
+            </View>
           </View>
           <SeriesLegend labels={types} />
+          {picked && pickedWorkout ? (
+            <View style={{ gap: 4 }}>
+              {difficultyDetailLines(pickedWorkout, age).map((line) => <T key={line}>{line}</T>)}
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={`${DIFFICULTY_DAY_LINK}, ${picked.day}`}
+                onPress={() => onSelect(picked.day)}
+                style={{ minHeight: 44, justifyContent: 'center' }}
+              >
+                <T style={{ textDecorationLine: 'underline' }}>{DIFFICULTY_DAY_LINK}</T>
+              </Pressable>
+            </View>
+          ) : null}
         </View>
       )}
       {hidden > 0 ? (
@@ -323,8 +402,8 @@ export function WorkoutList({ workouts, age }: { workouts: readonly DeviceWorkou
           <Choice key={value} label={`${value} days`} selected={span === value} onPress={() => setSpan(value)} />
         ))}
       </View>
-      <DurationChart bars={bars} span={span} selected={day} onSelect={choose} />
-      <DifficultyChart marks={marks} onSelect={choose} />
+      <DurationChart bars={bars} workouts={workouts} span={span} selected={day} onSelect={choose} />
+      <DifficultyChart marks={marks} workouts={workouts} age={age} onSelect={choose} />
     </Card>
   );
 }
