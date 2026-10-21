@@ -84,7 +84,7 @@ import {
   type NutritionSettings,
 } from '@/domain/nutrition';
 import { donePlanTexts, draftHealthPlan, normaliseTrainingSchedule, presentSharedHealthPlan, type HealthPlan, type TrainingSchedule } from '@/domain/healthPlan';
-import { isPlannedSessionType, type PlannedSession, type PlannedSessionDraft } from '@/domain/plannedSession';
+import { isPlannedSessionType, plannedEffortFrom, type PlannedSession, type PlannedSessionDraft } from '@/domain/plannedSession';
 import { createDemoDb, type DemoAccount, type DemoDb } from '@/data/demo-seed';
 import { activityTypeFromKind } from '@/domain/fitnessSnapshot';
 import type {
@@ -177,6 +177,7 @@ function plannedFromDraft(id: string, input: PlannedSessionDraft, doneAt: string
     startsAt: new Date(input.startsAt).toISOString(),
     durationMinutes: Math.round(input.durationMinutes),
     note: input.note.slice(0, 280),
+    plannedEffort: plannedEffortFrom(input.plannedEffort),
     doneAt: doneAt && !Number.isNaN(Date.parse(doneAt)) ? new Date(doneAt).toISOString() : null,
   };
 }

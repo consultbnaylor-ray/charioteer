@@ -227,7 +227,7 @@ export default function HealthPlanScreen() {
             ))}
           </Card>
           <WorkoutList workouts={workouts} age={snap.nutrition.goalAge} />
-          <WorkoutCalendar planDay={planDay} planNonce={planNonce} planOutdoorNonce={outdoorNonce} workouts={workouts} />
+          <WorkoutCalendar planDay={planDay} planNonce={planNonce} planOutdoorNonce={outdoorNonce} workouts={workouts} age={snap.nutrition.goalAge} />
           <Card>
             <T variant="label">Wellbeing</T>
             {plan.wellbeing.habits.map((action) => (
@@ -241,7 +241,7 @@ export default function HealthPlanScreen() {
             <T>Thumos has not written a plan yet. Refresh to use the figures you already keep.</T>
           </Card>
           <WorkoutList workouts={workouts} age={snap.nutrition.goalAge} />
-          <WorkoutCalendar planDay={planDay} planNonce={planNonce} planOutdoorNonce={outdoorNonce} workouts={workouts} />
+          <WorkoutCalendar planDay={planDay} planNonce={planNonce} planOutdoorNonce={outdoorNonce} workouts={workouts} age={snap.nutrition.goalAge} />
         </>
       )}
       {progress ? (

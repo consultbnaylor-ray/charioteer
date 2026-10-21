@@ -79,7 +79,7 @@ import {
   type NutritionSettings,
 } from '@/domain/nutrition';
 import { PLAN_DISCLAIMER, healthPlanFromStored, normaliseTrainingSchedule, parseSharedHealthPlan, trainingScheduleFromRow, type HealthPlan, type TrainingSchedule } from '@/domain/healthPlan';
-import { plannedSessionFromRow, type PlannedSession, type PlannedSessionDraft } from '@/domain/plannedSession';
+import { plannedEffortToDb, plannedSessionFromRow, type PlannedSession, type PlannedSessionDraft } from '@/domain/plannedSession';
 import { parseBuddyLinkPass, parseBuddyList, parseBuddyPreview, parseBuddyShare, type BuddyLinkPass, type BuddyList, type BuddyScope, type BuddyShareView } from '@/domain/buddies';
 import { randomId } from '@/domain/id';
 import { messageFromRealtime, withIncomingMessage } from '@/domain/liveChat';
@@ -444,7 +444,7 @@ export class SupabaseRepository implements Repository {
         this.client.from('profile_photos').select('id, user_id, role, caption, position, storage_path, created_at').eq('user_id', userId).order('position').order('created_at'),
         this.client.from('health_plans').select('focus, nutrition, fitness, wellbeing, limits, disclaimer, updated_at').eq('user_id', userId).maybeSingle(),
         this.client.from('training_schedules').select('monday, tuesday, wednesday, thursday, friday, saturday, sunday, typical_minutes, longer_day, longer_minutes, walk_day, note').eq('user_id', userId).maybeSingle(),
-        this.client.from('planned_sessions').select('id, session_type, starts_at, duration_minutes, note, done_at').eq('user_id', userId).order('starts_at'),
+        this.client.from('planned_sessions').select('id, session_type, starts_at, duration_minutes, note, planned_effort, done_at').eq('user_id', userId).order('starts_at'),
       ]);
 
     const profileRow = profileRes.data as Row | null;
@@ -2568,8 +2568,9 @@ export class SupabaseRepository implements Repository {
       starts_at: input.startsAt,
       duration_minutes: input.durationMinutes,
       note: input.note.slice(0, 280),
+      planned_effort: plannedEffortToDb(input.plannedEffort),
       done_at: null,
-    }).select('id, session_type, starts_at, duration_minutes, note, done_at').single();
+    }).select('id, session_type, starts_at, duration_minutes, note, planned_effort, done_at').single();
     if (error) throw asUserFacing(error, 'general');
     const saved = plannedSessionFromRow(data);
     if (!saved) {
@@ -2590,6 +2591,7 @@ export class SupabaseRepository implements Repository {
       startsAt: input.startsAt,
       durationMinutes: input.durationMinutes,
       note: input.note.slice(0, 280),
+      plannedEffort: input.plannedEffort,
       doneAt: input.doneAt,
     };
     this.emit({
@@ -2601,6 +2603,7 @@ export class SupabaseRepository implements Repository {
       starts_at: next.startsAt,
       duration_minutes: next.durationMinutes,
       note: next.note,
+      planned_effort: plannedEffortToDb(next.plannedEffort),
       done_at: next.doneAt,
       updated_at: new Date().toISOString(),
     }).eq('id', id).eq('user_id', userId);

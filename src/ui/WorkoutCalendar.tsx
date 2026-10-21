@@ -9,17 +9,23 @@ import { shownError } from '@/domain/errors';
 import { londonDay, mondayOf, shiftDay, weekdayShort } from '@/domain/healthInsights';
 import {
   londonWallTime,
+  matchedSessionWorkouts,
   nextSessionClock,
   nextWeekday,
+  PLANNED_EFFORT_SCORES,
+  PLANNED_EFFORT_WORD_LABEL,
+  PLANNED_EFFORT_WORDS,
   PLANNED_SESSION_TYPES,
   SESSION_TYPE_LABEL,
   sessionClock,
   sessionDay,
-  sessionWords,
   snapSessionClock,
+  type PlannedEffort,
   type PlannedSession,
   type PlannedSessionType,
 } from '@/domain/plannedSession';
+import { sessionEntryWords } from '@/domain/workoutDay';
+import { workoutTypeColor } from '@/domain/workoutTypeColor';
 import {
   reminderSettingWords,
   sessionHasReminder,
@@ -61,24 +67,6 @@ function Bell({ size = 18 }: { size?: number }) {
   );
 }
 
-function SessionMark({ type }: { type: PlannedSessionType }) {
-  const theme = useAppTheme();
-  const path = type === 'run' || type === 'outdoor'
-    ? 'M5 16c2-6 4-6 7-6s5 6 7 6'
-    : type === 'cardio'
-      ? 'M4 14c2-6 4-8 8-8s6 2 8 8'
-      : type === 'strength'
-        ? 'M4 12h16M7 8v8M17 8v8'
-        : type === 'boxing'
-          ? 'M8 14c0-4 2-7 4-7s4 3 4 7-2 4-4 4-4-1-4-4Z'
-          : 'M12 7v10M7 12h10';
-  return (
-    <Svg width={18} height={18} viewBox="0 0 24 24" accessibilityElementsHidden>
-      <Path d={path} stroke={theme.colors.ink} strokeWidth={1.6} fill="none" strokeLinecap="round" strokeLinejoin="round" />
-    </Svg>
-  );
-}
-
 function weekOf(iso: string): string[] {
   const start = mondayOf(iso);
   return Array.from({ length: 7 }, (_, index) => shiftDay(start, index));
@@ -98,12 +86,15 @@ export function WorkoutCalendar({
   planNonce = 0,
   planOutdoorNonce = 0,
   workouts = [],
+  age = null,
 }: {
   planDay?: string | null;
   planNonce?: number;
   /** Opens one outdoor walk or run, 30 minutes, at the next sensible time. */
   planOutdoorNonce?: number;
   workouts?: readonly DeviceWorkout[];
+  /** Used for average heart rate as % of max. Missing age does not guess a max. */
+  age?: number | null;
 }) {
   const snap = useSnapshot();
   const repo = useRepository();
@@ -122,6 +113,7 @@ export function WorkoutCalendar({
   const fieldsRef = useRef<View>(null);
   const scroller = useScreenScroller();
   const [durationText, setDurationText] = useState('30');
+  const [plannedEffort, setPlannedEffort] = useState<PlannedEffort | null>(null);
   const [note, setNote] = useState('');
   const [pending, setPending] = useState(false);
   const now = new Date();
@@ -159,6 +151,7 @@ export function WorkoutCalendar({
     setDay(parseIsoDay(planDay));
     setTime(nextSessionClock(new Date(), planDay));
     setDurationText('30');
+    setPlannedEffort(null);
     setNote('');
     setOpen(true);
     setError(null);
@@ -173,6 +166,7 @@ export function WorkoutCalendar({
     setDay(today);
     setTime(nextSessionClock(today));
     setDurationText('30');
+    setPlannedEffort(null);
     setNote('');
     setOpen(true);
     setError(null);
@@ -260,6 +254,7 @@ export function WorkoutCalendar({
     setDay(parseIsoDay(iso));
     setTime(session ? snapSessionClock(sessionClock(session)) : nextSessionClock(new Date(), iso));
     setDurationText(String(session?.durationMinutes ?? 30));
+    setPlannedEffort(session?.plannedEffort ?? null);
     setNote(session?.note ?? '');
     setOpen(true);
   }
@@ -280,6 +275,7 @@ export function WorkoutCalendar({
       startsAt,
       durationMinutes: Math.round(duration),
       note: note.slice(0, 280),
+      plannedEffort,
     };
     setPending(true);
     setError(null);
@@ -305,6 +301,7 @@ export function WorkoutCalendar({
         startsAt: session.startsAt,
         durationMinutes: session.durationMinutes,
         note: session.note,
+        plannedEffort: session.plannedEffort,
         doneAt: new Date().toISOString(),
       });
       noteSaved();
@@ -336,6 +333,7 @@ export function WorkoutCalendar({
   const today = londonDay(now);
   const week = weekOf(selected);
   const rows = sessions.filter((session) => sessionDay(session) === selected);
+  const matches = matchedSessionWorkouts(rows, workouts);
   const green = statsToneColors(theme.scheme).good.ink;
 
   return (
@@ -494,6 +492,28 @@ export function WorkoutCalendar({
               dismissOnSubmit
               onFocus={revealSessionFields}
             />
+            <T variant="label">Planned effort</T>
+            <T variant="muted">Optional. Easy, Moderate, Hard, or 1 to 10.</T>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+              {PLANNED_EFFORT_WORDS.map((word) => (
+                <Choice
+                  key={word}
+                  label={PLANNED_EFFORT_WORD_LABEL[word]}
+                  selected={plannedEffort === word}
+                  onPress={() => setPlannedEffort((current) => (current === word ? null : word))}
+                />
+              ))}
+            </View>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+              {PLANNED_EFFORT_SCORES.map((score) => (
+                <Choice
+                  key={score}
+                  label={String(score)}
+                  selected={plannedEffort === score}
+                  onPress={() => setPlannedEffort((current) => (current === score ? null : score))}
+                />
+              ))}
+            </View>
             <Field label="Note" value={note} onChangeText={setNote} placeholder="Optional" maxLength={280} onFocus={revealSessionFields} />
             <Button label={editing ? 'Save session' : 'Save session'} pending={pending} onPress={() => { void saveSession(); }} />
           </View>
@@ -501,14 +521,23 @@ export function WorkoutCalendar({
       ) : null}
       {rows.length === 0 ? <T>No sessions on this day.</T> : rows.map((session) => {
         const reminded = setting ? sessionHasReminder(session, setting, now) : false;
+        const happened = Boolean(session.doneAt) || Date.parse(session.startsAt) <= now.getTime();
+        const matched = happened ? matches.get(session.id) ?? null : null;
+        const typeWord = SESSION_TYPE_LABEL[session.sessionType];
+        const colorLabel = matched?.label ?? typeWord;
+        const entry = sessionEntryWords(session, matched, age, now);
+        const line = entry.startsWith(`${typeWord} ·`) ? `${colorLabel}${entry.slice(typeWord.length)}` : entry;
         const route = session.doneAt
           ? workouts.find((workout) => workout.routeExpected && londonDay(workout.startedAt) === selected)
           : undefined;
         return (
           <View key={session.id} style={{ gap: 4 }}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-              <SessionMark type={session.sessionType} />
-              <T style={{ flex: 1 }}>{session.doneAt ? `${sessionWords(session)} · Done` : sessionWords(session)}</T>
+              <View
+                accessibilityElementsHidden
+                style={{ width: 10, height: 10, backgroundColor: workoutTypeColor(colorLabel), borderWidth: 1, borderColor: theme.colors.line }}
+              />
+              <T style={{ flex: 1 }}>{line}</T>
               {reminded ? (
                 <View accessibilityRole="image" accessibilityLabel="Reminder set" style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
                   <Bell size={14} />

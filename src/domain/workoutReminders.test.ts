@@ -18,6 +18,7 @@ function session(partial: Partial<PlannedSession> = {}): PlannedSession {
     startsAt: '2026-10-21T17:00:00.000Z',
     durationMinutes: 45,
     note: '',
+    plannedEffort: null,
     doneAt: null,
     ...partial,
   };

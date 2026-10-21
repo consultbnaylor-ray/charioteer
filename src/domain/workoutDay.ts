@@ -1,4 +1,5 @@
 import { formatUkCompactDay, londonDay, mondayOf, shiftDay } from '@/domain/healthInsights';
+import { plannedEffortLabel, sessionWords, type PlannedSession } from '@/domain/plannedSession';
 import { formatDistance, type DeviceWorkout } from '@/domain/workoutRoute';
 
 /** One-line rows before the rest sit behind a closed dropdown. */
@@ -273,6 +274,40 @@ export function difficultyAxis(marks: readonly { measureName: string }[]): Diffi
     return { heading: '% of max', ticks: ['100', '50', '0'], mixedNote: null };
   }
   return { heading: 'Effort', ticks: ['10', '5', '0'], mixedNote: null };
+}
+
+/**
+ * The same reading as the difficulty chart, in the short form used on a calendar entry.
+ * Apple's effort score wins. Otherwise average heart rate as % of max (220 − age).
+ */
+export function actualEffortWords(workout: DeviceWorkout, age: number | null | undefined): string | null {
+  const mark = difficultyFor(workout, age);
+  if (!mark) return null;
+  if (mark.measureName === EFFORT_NAME) {
+    const shown = Number.isInteger(mark.value) ? String(mark.value) : mark.value.toFixed(1);
+    return `Effort ${shown}/10`;
+  }
+  return `Avg HR ${Math.round(mark.value)}% of max`;
+}
+
+/**
+ * The entry line. A future plan shows the planned effort only.
+ * A past or done plan shows the actual reading, and planned versus actual when both exist.
+ */
+export function sessionEntryWords(
+  session: PlannedSession,
+  workout: DeviceWorkout | null,
+  age: number | null | undefined,
+  now = new Date(),
+): string {
+  const head = session.doneAt ? `${sessionWords(session)} · Done` : sessionWords(session);
+  const planned = plannedEffortLabel(session.plannedEffort);
+  const happened = Boolean(session.doneAt) || Date.parse(session.startsAt) <= now.getTime();
+  const actual = happened && workout ? actualEffortWords(workout, age) : null;
+  if (planned && actual) return `${head} · ${planned} · ${actual}`;
+  if (actual) return `${head} · ${actual}`;
+  if (planned) return `${head} · ${planned}`;
+  return head;
 }
 
 /** Type, when it started, how long, distance, and the score with its basis. */

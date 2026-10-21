@@ -28,6 +28,11 @@ describe('workout type colours', () => {
       expect(workoutTypeColor(label)).toBe(color);
     }
     expect(workoutTypeColor('Other')).toBe(WORKOUT_TYPE_OTHER_COLOR);
+    expect(workoutTypeColor('Run')).toBe(WORKOUT_TYPE_COLOR.Running);
+    expect(workoutTypeColor('Run/Walk (outdoor)')).toBe(WORKOUT_TYPE_COLOR.Walking);
+    expect(workoutTypeColor('Strength')).toBe(WORKOUT_TYPE_COLOR['Traditional strength']);
+    expect(workoutTypeColor('Boxing')).toBe(WORKOUT_TYPE_COLOR.Boxing);
+    expect(workoutTypeColor('Cardio')).toBe(workoutTypeColor('Mixed cardio'));
     expect(workoutTypeColor('Walking')).toBe(workoutTypeColor('Walking'));
   });
 

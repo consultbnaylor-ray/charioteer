@@ -30,6 +30,14 @@ const FURTHER_TYPE_COLOR: Record<string, string> = {
 
 const EXTRA_TYPE_COLOR = Object.values(FURTHER_TYPE_COLOR);
 
+/** Plan names that are not HealthKit labels. They share that series colour, and the plan name stays beside it. */
+const PLAN_LABEL_COLOR: Record<string, string> = {
+  Run: WORKOUT_TYPE_COLOR.Running,
+  'Run/Walk (outdoor)': WORKOUT_TYPE_COLOR.Walking,
+  Cardio: FURTHER_TYPE_COLOR['Mixed cardio'] ?? WORKOUT_TYPE_OTHER_COLOR,
+  Strength: WORKOUT_TYPE_COLOR['Traditional strength'],
+};
+
 export type NamedWorkoutType = keyof typeof WORKOUT_TYPE_COLOR;
 
 /** One fixed colour for this workout type. The same label always returns the same colour. */
@@ -38,6 +46,8 @@ export function workoutTypeColor(label: string): string {
   if (named) return named;
   const further = FURTHER_TYPE_COLOR[label];
   if (further) return further;
+  const planned = PLAN_LABEL_COLOR[label];
+  if (planned) return planned;
   if (label === 'Other') return WORKOUT_TYPE_OTHER_COLOR;
   let hash = 2166136261;
   for (let index = 0; index < label.length; index += 1) {

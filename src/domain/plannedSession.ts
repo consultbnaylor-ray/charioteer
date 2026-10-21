@@ -1,5 +1,6 @@
 import { londonDay, mondayOf, shiftDay } from '@/domain/healthInsights';
 import { workoutTypeKind } from '@/domain/fitnessSnapshot';
+import type { DeviceWorkout } from '@/domain/workoutRoute';
 
 export const PLANNED_SESSION_TYPES = ['run', 'outdoor', 'cardio', 'strength', 'boxing', 'other'] as const;
 
@@ -12,6 +13,8 @@ export type PlannedSession = {
   startsAt: string;
   durationMinutes: number;
   note: string;
+  /** Easy, Moderate, Hard, or a number from 1 to 10. Null when they left it blank. */
+  plannedEffort: PlannedEffort | null;
   doneAt: string | null;
 };
 
@@ -20,6 +23,32 @@ export type PlannedSessionDraft = {
   startsAt: string;
   durationMinutes: number;
   note: string;
+  plannedEffort: PlannedEffort | null;
+};
+
+/** Easy, Moderate, Hard, or a score from 1 to 10. One choice, and it can be left blank. */
+export const PLANNED_EFFORT_WORDS = ['easy', 'moderate', 'hard'] as const;
+
+export type PlannedEffortWord = (typeof PLANNED_EFFORT_WORDS)[number];
+
+export type PlannedEffort = PlannedEffortWord | number;
+
+export const PLANNED_EFFORT_WORD_LABEL: Record<PlannedEffortWord, string> = {
+  easy: 'Easy',
+  moderate: 'Moderate',
+  hard: 'Hard',
+};
+
+export const PLANNED_EFFORT_SCORES = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10] as const;
+
+/** HealthKit activity types that can supply the actual effort for a plan of this type. */
+const SESSION_MATCH_TYPES: Record<PlannedSessionType, readonly number[]> = {
+  run: [37],
+  outdoor: [37, 52, 24],
+  cardio: [13, 16, 35, 44, 46],
+  strength: [11, 20, 50, 59],
+  boxing: [8],
+  other: [3000],
 };
 
 export const SESSION_TYPE_LABEL: Record<PlannedSessionType, string> = {
@@ -45,6 +74,29 @@ export function isPlannedSessionType(value: string): value is PlannedSessionType
   return (PLANNED_SESSION_TYPES as readonly string[]).includes(value);
 }
 
+/** Blank, Easy, Moderate, Hard, or 1 to 10. Anything else is left blank. */
+export function plannedEffortFrom(value: unknown): PlannedEffort | null {
+  if (typeof value === 'number' && Number.isInteger(value) && value >= 1 && value <= 10) return value;
+  if (typeof value !== 'string') return null;
+  const text = value.trim().toLowerCase();
+  if (text === 'easy' || text === 'moderate' || text === 'hard') return text;
+  if (/^(10|[1-9])$/.test(text)) return Number(text);
+  return null;
+}
+
+/** Stored as text. A number is '7', a word is 'easy'. Null stays null. */
+export function plannedEffortToDb(effort: PlannedEffort | null): string | null {
+  if (effort == null) return null;
+  return String(effort);
+}
+
+/** 'Planned Easy' or 'Planned 7/10'. Null when they set none. */
+export function plannedEffortLabel(effort: PlannedEffort | null): string | null {
+  if (effort == null) return null;
+  if (typeof effort === 'number') return `Planned ${effort}/10`;
+  return `Planned ${PLANNED_EFFORT_WORD_LABEL[effort]}`;
+}
+
 export function plannedSessionFromRow(row: unknown): PlannedSession | null {
   if (!row || typeof row !== 'object') return null;
   const record = row as Record<string, unknown>;
@@ -62,6 +114,7 @@ export function plannedSessionFromRow(row: unknown): PlannedSession | null {
     startsAt: new Date(startsAt).toISOString(),
     durationMinutes: Math.round(duration),
     note: note.slice(0, 280),
+    plannedEffort: plannedEffortFrom(record.planned_effort),
     doneAt: doneAt && !Number.isNaN(Date.parse(doneAt)) ? new Date(doneAt).toISOString() : null,
   };
 }
@@ -149,7 +202,35 @@ export function sessionClock(session: Pick<PlannedSession, 'startsAt'>): string 
   return time.replace(/\s/g, '');
 }
 
-/** Words beside the icon. The type is named, so the icon is not the only cue. */
+/**
+ * One Health workout for each past or done plan. The closest start of the same kind wins.
+ * A workout is used once, so two plans on one day do not share a reading.
+ */
+export function matchedSessionWorkouts(
+  sessions: readonly PlannedSession[],
+  workouts: readonly DeviceWorkout[],
+): Map<string, DeviceWorkout> {
+  const pairs = sessions.flatMap((session) => {
+    const day = sessionDay(session);
+    const types = SESSION_MATCH_TYPES[session.sessionType];
+    const start = Date.parse(session.startsAt);
+    return workouts.flatMap((workout) => {
+      if (londonDay(workout.startedAt) !== day || !types.includes(workout.activityType)) return [];
+      return [{ sessionId: session.id, workout, gap: Math.abs(Date.parse(workout.startedAt) - start) }];
+    });
+  });
+  pairs.sort((left, right) => left.gap - right.gap || left.sessionId.localeCompare(right.sessionId));
+  const used = new Set<string>();
+  const chosen = new Map<string, DeviceWorkout>();
+  for (const pair of pairs) {
+    if (chosen.has(pair.sessionId) || used.has(pair.workout.id)) continue;
+    chosen.set(pair.sessionId, pair.workout);
+    used.add(pair.workout.id);
+  }
+  return chosen;
+}
+
+/** Words beside the swatch. The type is named, so the colour is not the only cue. */
 export function sessionWords(session: PlannedSession): string {
   const note = session.note.trim();
   const head = `${SESSION_TYPE_LABEL[session.sessionType]} · ${sessionClock(session)} · about ${session.durationMinutes} min`;
