@@ -9,6 +9,8 @@ export type UserFacingCode =
   | 'generic';
 
 export const OFFLINE_MESSAGE = "Couldn't reach Charioteer, check your connection and try again.";
+/** Shown only when the auth client has no session at all. */
+export const SIGN_IN_FIRST = 'Sign in first.';
 export const EMAIL_TAKEN_MESSAGE = 'An account with this email already exists. Sign in instead?';
 export const WRONG_PASSWORD_MESSAGE = 'That email or password is not right.';
 export const WEAK_PASSWORD_MESSAGE = 'Use at least 8 characters.';

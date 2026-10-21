@@ -1,6 +1,6 @@
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
-import { Platform, View } from 'react-native';
+import { AppState, Platform, View } from 'react-native';
 
 import { useRepository, useSnapshot } from '@/data';
 import type { HealthKind, NewHealthSample } from '@/data/types';
@@ -76,7 +76,7 @@ export default function Health() {
   const [visibility, setVisibility] = useState<HealthVisibilityReport | null>(ios ? null : { kind: 'web' });
   const [visibilityPending, setVisibilityPending] = useState(false);
   const [period] = useStatPeriod();
-  const [updatedNow, setUpdatedNow] = useState(false);
+  const [updatedAt, setUpdatedAt] = useState<string | null>(null);
   const [refreshError, setRefreshError] = useState<string | null>(null);
   const [turnOnNote, setTurnOnNote] = useState<string | null>(null);
   const [seeRequest, setSeeRequest] = useState(0);
@@ -88,13 +88,29 @@ export default function Health() {
     void loadLastSynced().then(setSyncedAt);
     if (!consent) return;
     void catchUpAppleHealthReads(repo).then((result) => {
+      if (result.error) {
+        setRefreshError(result.error);
+        setUpdatedAt(null);
+        return;
+      }
       if (!result.imported || !result.syncedAt) return;
       setSyncedAt(result.syncedAt);
       setAccess('connected');
-    }).catch(() => undefined);
+      setRefreshError(null);
+      setUpdatedAt(result.syncedAt);
+    }).catch((error: unknown) => {
+      setRefreshError(shownError(error, 'Could not refresh Apple Health.'));
+      setUpdatedAt(null);
+    });
   }, [consent, ios, repo]);
 
-  useFocusEffect(refreshLink);
+  useFocusEffect(useCallback(() => {
+    refreshLink();
+    const subscription = AppState.addEventListener('change', (next) => {
+      if (next === 'active') refreshLink();
+    });
+    return () => subscription.remove();
+  }, [refreshLink]));
 
   const loadVisibility = useCallback(() => {
     setVisibilityPending(true);
@@ -104,7 +120,7 @@ export default function Health() {
       .finally(() => setVisibilityPending(false));
   }, [ios]);
 
-  async function pullFromHealth(): Promise<{ ok: true } | { ok: false; message: string }> {
+  async function pullFromHealth(): Promise<{ ok: true; syncedAt: string } | { ok: false; message: string }> {
     let result: Awaited<ReturnType<typeof syncAppleHealth>>;
     try {
       result = await syncAppleHealth(repo.getSnapshot().nutrition.workoutBuckets);
@@ -136,7 +152,7 @@ export default function Health() {
       await saveLastSynced(stamp);
       setSyncedAt(stamp);
       setAccess('connected');
-      return { ok: true };
+      return { ok: true, syncedAt: stamp };
     } catch (err: unknown) {
       return { ok: false, message: shownError(err, 'Could not refresh Apple Health.') };
     }
@@ -154,7 +170,7 @@ export default function Health() {
   async function refreshNow() {
     setPending(true);
     setRefreshError(null);
-    setUpdatedNow(false);
+    setUpdatedAt(null);
     try {
       if (!consent) {
         setRefreshError(APPLE_HEALTH_CONSENT);
@@ -186,7 +202,7 @@ export default function Health() {
         setRefreshError(pulled.message);
         return;
       }
-      setUpdatedNow(true);
+      setUpdatedAt(pulled.syncedAt);
       loadVisibility();
     } catch (err: unknown) {
       setRefreshError(shownError(err, 'Could not refresh Apple Health.'));
@@ -215,7 +231,7 @@ export default function Health() {
     if (result === 'prompted') {
       const pulled = await pullFromHealth();
       if (!pulled.ok) setRefreshError(pulled.message);
-      else setUpdatedNow(true);
+      else setUpdatedAt(pulled.syncedAt);
     }
     loadVisibility();
     return result;
@@ -230,7 +246,7 @@ export default function Health() {
     if (result === 'prompted') {
       const pulled = await pullFromHealth();
       if (!pulled.ok) setRefreshError(pulled.message);
-      else setUpdatedNow(true);
+      else setUpdatedAt(pulled.syncedAt);
     }
     loadVisibility();
     return result;
@@ -266,7 +282,7 @@ export default function Health() {
       if (next === 'connected') {
         const pulled = await pullFromHealth();
         if (!pulled.ok) setRefreshError(pulled.message);
-        else setUpdatedNow(true);
+        else setUpdatedAt(pulled.syncedAt);
       } else if (next === 'denied') setRefreshError(APPLE_HEALTH_DENIED);
       else if (next === 'unavailable') setRefreshError(APPLE_HEALTH_UNAVAILABLE);
     } catch (err) {
@@ -352,11 +368,13 @@ export default function Health() {
     })();
   }
 
+  const saveBar = Boolean(value.trim()) || weightDraft != null || savePending || savedNote != null;
+
   return (
     <Screen
       eyebrow="Health Stats"
       title="What your body is doing."
-      footer={(
+      footer={saveBar ? (
         <View style={{ gap: 8 }}>
           {savedNote ? (
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
@@ -372,7 +390,7 @@ export default function Health() {
             onPress={saveReading}
           />
         </View>
-      )}
+      ) : undefined}
     >
       <AppleHealthCard
         consent={consent}
@@ -381,10 +399,11 @@ export default function Health() {
         syncedAt={syncedAt}
         gaps={healthMissingReadings(visibility)}
         pending={pending}
-        updated={updatedNow}
+        updatedAt={updatedAt}
         refreshError={refreshError}
         turnOnNote={turnOnNote}
         onRefresh={() => void refreshNow()}
+        onSignIn={() => router.push('/sign-in' as never)}
         onConnect={() => void connect()}
         onManage={() => void openHealthApp()}
         onSettings={() => void openAppSettings()}

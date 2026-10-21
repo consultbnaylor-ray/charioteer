@@ -128,13 +128,18 @@ function minutes(quantity: number, unit: string): number {
  * days would pull that average down. Food and water are written separately
  * when a meal is saved.
  */
-export async function syncAppleHealth(overrides: WorkoutBucketMap = {}): Promise<HealthSyncResult> {
+export async function syncAppleHealth(
+  overrides: WorkoutBucketMap = {},
+  options?: { authorize?: boolean },
+): Promise<HealthSyncResult> {
   try {
     if (!isHealthDataAvailable()) {
       return { ok: false, message: 'Apple Health is not available on this device.' };
     }
-    const allowed = await requestAuthorization({ toRead: [...APPLE_HEALTH_READ_TYPES] });
-    if (!allowed) return { ok: false, message: 'Apple Health access was not granted.' };
+    if (options?.authorize !== false) {
+      const allowed = await requestAuthorization({ toRead: [...APPLE_HEALTH_READ_TYPES] });
+      if (!allowed) return { ok: false, message: 'Apple Health access was not granted.' };
+    }
 
     const end = new Date();
     const recentStart = new Date(end.getTime() - 14 * 24 * 60 * 60 * 1000);
