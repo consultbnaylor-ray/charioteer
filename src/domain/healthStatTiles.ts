@@ -1,10 +1,28 @@
 /**
  * Compact tiles for the signed-in person's own health readings.
- * A shaded band is drawn only where this app already has a published or
- * on-screen guide. Walking heart rate, recovery, session heart rate, lean
- * mass, and active energy have no band here.
+ * A shaded band is drawn only from a published source in healthBands.
+ * Lean mass, active energy, steps, logged workout minutes, and the workout
+ * mix stay without a band, and each one says why.
  */
 
+import {
+  AHA_LINK,
+  BAND_CAVEAT,
+  BHF_LINK,
+  FRIEND_LINK,
+  NO_ENERGY_BAND,
+  NO_LEAN_BAND,
+  NO_MIX_BAND,
+  NO_STEP_BAND,
+  NO_WORKOUT_MINUTE_BAND,
+  athleteRestingNote,
+  hrvReading,
+  recoveryReading,
+  restingSexNote,
+  sessionHeartReading,
+  walkingHeartReading,
+  type BandLink,
+} from '@/domain/healthBands';
 import { bodyFatRange } from '@/domain/distance';
 import {
   buildFitnessSnapshot,
@@ -17,7 +35,6 @@ import {
 import { paceJudgement, parseStatPeriod, periodDayCount, periodPhrase as sharedPeriodPhrase, rollingWindow, scaledPeriodTarget, STAT_PERIOD_LABEL, STAT_PERIODS, type StatPeriod } from '@/domain/statWindow';
 import { goalBandLegend, goalWeightRange, IBA_RULES_URL, NO_CUT } from '@/domain/goalWeightRange';
 import {
-  BHF_HEART_RATE_URL,
   BHF_RESTING_MAX_BPM,
   BHF_RESTING_MIN_BPM,
   CMO_ACTIVITY_URL,
@@ -66,7 +83,6 @@ export const HEALTH_SHEET_ASKED =
   'Apple Health was asked again. A category it has not seen yet uses the permission sheet.';
 
 const ADULT_HIDDEN = 'These adult ranges are not shown under 18. Nothing here is guessed.';
-const NO_BAND = 'There is no guideline band here.';
 
 /** The shared Day to 12 months choice. Seven days is the page default. */
 export const HEALTH_STAT_PERIODS = STAT_PERIODS;
@@ -355,6 +371,8 @@ export type HealthStatTile = {
   sourceUrl: string | null;
   extraSourceName?: string | null;
   extraSourceUrl?: string | null;
+  /** Every opened source for this band. The year is in the name. */
+  sources?: BandLink[];
   /** Per workout type in the chosen period. Present on the mix tile when types were stored. */
   breakdown?: { activityType: number; label: string; minutes: number; bucket: WorkoutBucket }[];
 };
@@ -415,19 +433,13 @@ function tileFor(
   height: number | null,
 ): HealthStatTile | null {
   if (item.id === 'resting_heart_rate') return heartBandTile(item, input, grown);
-  if (item.id === 'walking_heart_rate') {
-    return plainSeriesTile(item, input, 'bpm', 0, 2, 'Walking heart rate: your heart rate while walking. The unit is bpm. Apple Watch can estimate it.', NO_BAND);
-  }
-  if (item.id === 'heart_rate_recovery') {
-    return plainSeriesTile(item, input, 'bpm', 0, 2, 'Heart rate recovery: how far your heart rate drops in the first minute after effort. The unit is bpm.', NO_BAND);
-  }
-  if (item.id === 'session_heart_rate') {
-    return plainSeriesTile(item, input, 'bpm', 0, 2, 'Session heart rate: the average heart rate during logged workouts. The unit is bpm.', NO_BAND);
-  }
+  if (item.id === 'walking_heart_rate') return walkingTile(item, input, grown);
+  if (item.id === 'heart_rate_recovery') return recoveryTile(item, input, grown);
+  if (item.id === 'session_heart_rate') return sessionTile(item, input, grown);
   if (item.id === 'vo2_max') return vo2Tile(item, input, grown);
   if (item.id === 'mix') return mixTile(item, input);
   if (item.id === 'sleep_hours') return sleepTile(item, input, grown);
-  if (item.id === 'hrv_sdnn') return hrvTile(item, input);
+  if (item.id === 'hrv_sdnn') return hrvTile(item, input, grown);
   if (item.id === 'weight_kg') return weightTile(item, input, grown, height);
   if (item.id === 'body_fat') return bodyFatTile(item, input, grown);
   if (item.id === 'waist') return waistTile(item, input, grown, height);
@@ -436,6 +448,128 @@ function tileFor(
   if (item.id === 'active_energy') return energyTile(item, input);
   if (item.id === 'workouts') return workoutTile(item, input);
   return weeklyTile(item, input);
+}
+
+function goalLabel(input: HealthStatBoardInput): string | null {
+  return input.goal ? GOAL_LABEL[input.goal] : null;
+}
+
+function athleteAim(goal: NutritionGoal | null): boolean {
+  if (!goal) return false;
+  return goal.startsWith('elite_') || isAnyBoxer(goal);
+}
+
+function citedFrom(
+  item: CatalogItem,
+  input: HealthStatBoardInput,
+  about: string,
+  reading: ReturnType<typeof sessionHeartReading>,
+  history: DayValue[],
+  previous: DayValue[],
+  period: HealthStatPeriod,
+  bpm: number,
+): HealthStatTile {
+  const trend = movementTrend(history, previous, 'mean', 2, period);
+  if (!reading) {
+    return finish(item, {
+      valueText: String(bpm),
+      unit: 'bpm',
+      period: periodLabel(period),
+      status: 'Add an age to place this on a published band. Nothing here is guessed.',
+      tone: 'info',
+      trend,
+      hasGuideline: false,
+      visual: spark(history, `${bpm} bpm`),
+      history: nums(history),
+      readings: [...history],
+      about,
+      meaning: 'Add an age to place this on a published band. Nothing here is guessed.',
+      rangeNote: 'No beats-per-minute band until an age is saved.',
+      sourceName: null,
+      sourceUrl: null,
+    });
+  }
+  return finish(item, {
+    valueText: String(bpm),
+    unit: 'bpm',
+    period: periodLabel(period),
+    status: reading.status,
+    tone: 'info',
+    trend,
+    hasGuideline: true,
+    visual: {
+      kind: 'zone',
+      value: bpm,
+      zoneLow: reading.zoneLow ?? bpm,
+      zoneHigh: reading.zoneHigh ?? bpm,
+      scaleMin: reading.scaleMin,
+      scaleMax: reading.scaleMax,
+      status: reading.status,
+      zoneCaption: reading.zoneCaption ?? '',
+      goalLow: reading.goalLow,
+      goalHigh: reading.goalHigh,
+      goalCaption: reading.goalCaption,
+      tone: 'info',
+    },
+    history: nums(history),
+    readings: [...history],
+    about,
+    meaning: reading.meaning,
+    rangeNote: reading.rangeNote,
+    sourceName: reading.links[0]?.name ?? null,
+    sourceUrl: reading.links[0]?.url ?? null,
+    sources: reading.links,
+  });
+}
+
+function sessionTile(item: CatalogItem, input: HealthStatBoardInput, grown: boolean): HealthStatTile | null {
+  const about = 'Session heart rate: the average heart rate during logged workouts. The unit is bpm.';
+  return bpmBandTile(item, input, grown, about, (bpm) => sessionHeartReading(bpm, input.goalAge, goalLabel(input)));
+}
+
+function walkingTile(item: CatalogItem, input: HealthStatBoardInput, grown: boolean): HealthStatTile | null {
+  const about = 'Walking heart rate: your heart rate while walking. The unit is bpm. Apple Watch can estimate it. Apple publishes no normal range.';
+  return bpmBandTile(item, input, grown, about, (bpm) => walkingHeartReading(bpm, input.goalAge, goalLabel(input)));
+}
+
+function recoveryTile(item: CatalogItem, input: HealthStatBoardInput, grown: boolean): HealthStatTile | null {
+  const about = 'Heart rate recovery: how far your heart rate drops in the first minute after effort. The unit is bpm.';
+  return bpmBandTile(item, input, grown, about, (bpm) => recoveryReading(bpm, goalLabel(input)));
+}
+
+function bpmBandTile(
+  item: CatalogItem,
+  input: HealthStatBoardInput,
+  grown: boolean,
+  about: string,
+  read: (bpm: number) => ReturnType<typeof sessionHeartReading>,
+): HealthStatTile | null {
+  const all = series(input.samples, item.id, input.today).filter((point) => point.value > 0);
+  const window = slicePeriod(all, input);
+  if (window === 'none') return null;
+  if (window === 'gap') return olderReadingTile(item, input, all, (point) => `Latest ${Math.round(point.value)} bpm`);
+  const period = periodOf(input);
+  const bpm = Math.round(averageOf(window.current));
+  if (!grown) {
+    return finish(item, {
+      valueText: String(bpm),
+      unit: 'bpm',
+      period: periodLabel(period),
+      status: ADULT_HIDDEN,
+      tone: 'info',
+      trend: movementTrend(window.current, window.previous, 'mean', 2, period),
+      hasGuideline: false,
+      visual: spark(window.current, `${bpm} bpm`),
+      history: nums(window.current),
+      readings: [...window.current],
+      about,
+      meaning: ADULT_HIDDEN,
+      rangeNote: null,
+      sourceName: null,
+      sourceUrl: null,
+    });
+  }
+  return citedFrom(item, input, about, read(bpm), window.current, window.previous, period, bpm);
 }
 
 function heartBandTile(item: CatalogItem, input: HealthStatBoardInput, grown: boolean): HealthStatTile | null {
@@ -497,10 +631,11 @@ function heartBandTile(item: CatalogItem, input: HealthStatBoardInput, grown: bo
     history: nums(window.current),
     readings: [...window.current],
     about,
-    meaning: 'The British Heart Foundation says a usual adult resting rate is 60 to 100 bpm. Below 60 can be normal if you are very fit. The band is the same for a day, a week, or a month.',
-    rangeNote: null,
-    sourceName: 'British Heart Foundation',
-    sourceUrl: BHF_HEART_RATE_URL,
+    meaning: `${restingSexNote(goalLabel(input))} The band is the same for a day, a week, or a month. ${athleteRestingNote(athleteAim(input.goal)) ?? ''} ${BAND_CAVEAT}`.replace(/\s+/g, ' ').trim(),
+    rangeNote: athleteRestingNote(athleteAim(input.goal)),
+    sourceName: BHF_LINK.name,
+    sourceUrl: BHF_LINK.url,
+    sources: athleteAim(input.goal) ? [BHF_LINK, AHA_LINK] : [BHF_LINK],
   });
 }
 
@@ -630,10 +765,11 @@ function vo2Tile(item: CatalogItem, input: HealthStatBoardInput, grown: boolean)
     history: current.map((point) => Math.round(point.value * 10) / 10),
     readings: current.map((point) => ({ day: point.day, value: Math.round(point.value * 10) / 10 })),
     about: VO2_WHAT,
-    meaning: cardio?.compare.words ?? 'Apple Watch estimates this. Nothing here is guessed.',
+    meaning: `${cardio?.compare.words ?? 'Apple Watch estimates this. Nothing here is guessed.'}${band ? ` ${BAND_CAVEAT}` : ''}`,
     rangeNote: cardio?.compare.goalNote ?? null,
     sourceName: cardio?.compare.sources.length ? cardio.compare.sources.join(' ') : null,
-    sourceUrl: null,
+    sourceUrl: band ? FRIEND_LINK.url : null,
+    sources: band ? [FRIEND_LINK] : undefined,
   });
 }
 
@@ -717,36 +853,69 @@ function mixTile(item: CatalogItem, input: HealthStatBoardInput): HealthStatTile
     history: [],
     about: `Strength, cardio, conditioning, and other: minutes from the workout type recorded over ${periodPhrase(period)}. ${MIX_HOW} ${CONDITIONING_NOTE} Overlapping workouts from more than one app are counted once. The minutes are the workout duration, not time in a heart-rate zone.`,
     meaning: [listed, ...lines].filter(Boolean).join(' '),
-    rangeNote: 'There is no guideline mix. You can count a workout type as strength, cardio, conditioning, or other. That choice stays on your account.',
+    rangeNote: `${NO_MIX_BAND} You can count a workout type as strength, cardio, conditioning, or other. That choice stays on your account.`,
     sourceName: null,
     sourceUrl: null,
     breakdown,
   });
 }
 
-function hrvTile(item: CatalogItem, input: HealthStatBoardInput): HealthStatTile | null {
+function hrvTile(item: CatalogItem, input: HealthStatBoardInput, grown: boolean): HealthStatTile | null {
   const all = series(input.samples, 'hrv_sdnn', input.today);
   const window = slicePeriod(all, input);
   if (window === 'none') return null;
   if (window === 'gap') return olderReadingTile(item, input, all, (point) => `Latest ${Math.round(point.value)} ms`);
   const period = periodOf(input);
   const ms = Math.round(averageOf(window.current));
+  const about = 'Heart rate variability, in milliseconds (SDNN). Devices measure it in different ways.';
+  const trend = healthChangeNote('hrv_sdnn', all, input.today);
+  if (!grown) {
+    return finish(item, {
+      valueText: String(ms),
+      unit: 'ms',
+      period: periodLabel(period),
+      status: ADULT_HIDDEN,
+      tone: 'info',
+      trend,
+      hasGuideline: false,
+      visual: spark(window.current, `${ms} ms`),
+      history: nums(window.current),
+      readings: [...window.current],
+      about,
+      meaning: ADULT_HIDDEN,
+      rangeNote: null,
+      sourceName: null,
+      sourceUrl: null,
+    });
+  }
+  const reading = hrvReading(ms, goalLabel(input));
   return finish(item, {
     valueText: String(ms),
     unit: 'ms',
     period: periodLabel(period),
-    status: 'There is no official UK target.',
+    status: reading.status,
     tone: 'info',
-    trend: healthChangeNote('hrv_sdnn', all, input.today),
-    hasGuideline: false,
-    visual: spark(window.current, `${ms} ms`),
+    trend,
+    hasGuideline: true,
+    visual: {
+      kind: 'zone',
+      value: ms,
+      zoneLow: reading.zoneLow ?? ms,
+      zoneHigh: reading.zoneHigh ?? ms,
+      scaleMin: reading.scaleMin,
+      scaleMax: reading.scaleMax,
+      status: reading.status,
+      zoneCaption: reading.zoneCaption ?? '',
+      tone: 'info',
+    },
     history: nums(window.current),
     readings: [...window.current],
-    about: 'Heart rate variability, in milliseconds (SDNN). Devices measure it in different ways.',
-    meaning: 'There is no official UK target. This is the average of your own readings in this period.',
-    rangeNote: 'There is no official UK target.',
-    sourceName: null,
-    sourceUrl: null,
+    about,
+    meaning: reading.meaning,
+    rangeNote: reading.rangeNote,
+    sourceName: reading.links[0]?.name ?? null,
+    sourceUrl: reading.links[0]?.url ?? null,
+    sources: reading.links,
   });
 }
 
@@ -994,7 +1163,7 @@ function leanTile(item: CatalogItem, input: HealthStatBoardInput): HealthStatTil
     valueText: oneText(kg),
     unit: 'kg',
     period: periodLabel(period),
-    status: NO_BAND,
+    status: 'No published guideline.',
     tone: 'info',
     trend: movementTrend(window.current, window.previous, 'mean', 0.3, period),
     hasGuideline: false,
@@ -1002,8 +1171,8 @@ function leanTile(item: CatalogItem, input: HealthStatBoardInput): HealthStatTil
     history: nums(window.current),
     readings: [...window.current],
     about: 'Lean mass: muscle, bone, and the rest of the body that is not fat. The unit is kilograms.',
-    meaning: NO_BAND,
-    rangeNote: NO_BAND,
+    meaning: NO_LEAN_BAND,
+    rangeNote: NO_LEAN_BAND,
     sourceName: null,
     sourceUrl: null,
   });
@@ -1017,8 +1186,8 @@ function stepsTile(item: CatalogItem, input: HealthStatBoardInput): HealthStatTi
   const period = periodOf(input);
   const total = Math.round(window.current.reduce((sum, point) => sum + point.value, 0));
   const status = period === 'day'
-    ? 'There is no daily step target.'
-    : 'There is no step target for this period.';
+    ? 'No published guideline for a daily step target.'
+    : 'No published guideline for a step target in this period.';
   return finish(item, {
     valueText: whole(total),
     unit: 'steps',
@@ -1032,7 +1201,7 @@ function stepsTile(item: CatalogItem, input: HealthStatBoardInput): HealthStatTi
     history: nums(window.current),
     readings: [...window.current],
     about: period === 'day' ? 'Steps in a day.' : `Steps over ${periodPhrase(period)}.`,
-    meaning: 'There is no NHS or UK Chief Medical Officer step target.',
+    meaning: NO_STEP_BAND,
     rangeNote: status,
     sourceName: null,
     sourceUrl: null,
@@ -1057,13 +1226,13 @@ function energyTile(item: CatalogItem, input: HealthStatBoardInput): HealthStatT
     visual: {
       kind: 'bars',
       max: Math.max(shown, 1),
-      caption: NO_BAND,
+      caption: 'No published guideline.',
       bars: [{ key: 'energy', label: `${whole(shown)} kcal`, value: shown, tone: 'info' }],
     },
     history: [],
     about: 'Active energy is scaled from the recent daily average stored from Apple Health. A day shows that average, 7 days shows seven times it, and 30 days shows thirty times it. The unit is kilocalories.',
-    meaning: 'From the recent daily average. Apple Health is not storing a separate total for each day here.',
-    rangeNote: NO_BAND,
+    meaning: NO_ENERGY_BAND,
+    rangeNote: NO_ENERGY_BAND,
     sourceName: null,
     sourceUrl: null,
   });
@@ -1098,8 +1267,8 @@ function workoutTile(item: CatalogItem, input: HealthStatBoardInput): HealthStat
     history: nums(window.current),
     readings: [...window.current],
     about: `Workouts: minutes logged over ${periodPhrase(period)}. They may not include walking. The unit is minutes.`,
-    meaning: 'This tile is the logged workouts. The activity-minute mark sits on active minutes.',
-    rangeNote: 'Logged workouts may not include walking.',
+    meaning: NO_WORKOUT_MINUTE_BAND,
+    rangeNote: NO_WORKOUT_MINUTE_BAND,
     sourceName: null,
     sourceUrl: null,
   });

@@ -24,6 +24,7 @@ import {
   type NutritionSex,
   type WorkoutBucketMap,
 } from './nutrition.ts';
+import { referenceBandsForCoach } from './healthBands.ts';
 import { assessCardioGap, buildFitnessSnapshot, fitnessFocusLines, type FitnessSnapshotInput } from './fitnessSnapshot.ts';
 import { goalWeightRange } from './goalWeightRange.ts';
 import { goalFocusLine } from './goalLed.ts';
@@ -596,6 +597,8 @@ export type HealthPlanModelContext = {
   weightRange: string | null;
   /** HRV, resting heart rate, VO2, sleep, and weight, each against the 30-day average. */
   changes: string[];
+  /** The same published bands as the health stats. Not a target. */
+  referenceBands: string;
 };
 
 /** What the model may use. Swaps may use only profile, checkIns, loggedFood, and loggedDrink. */
@@ -632,10 +635,31 @@ export function healthPlanModelContext(input: PlanInput, plan: HealthPlan): Heal
     fitnessSnapshot: input.fitnessSnapshot === undefined ? fitnessSnapshotFor(input) : input.fitnessSnapshot,
     weightRange: weightRangeFor(input),
     changes: metricChanges(input),
+    referenceBands: referenceBandsFor(input),
   };
 }
 
 const CHANGE_KINDS = ['hrv_sdnn', 'resting_heart_rate', 'vo2_max', 'sleep_hours', 'weight_kg'] as const;
+
+function latestSample(input: PlanInput, kind: string): number | null {
+  const today = londonDay(input.now);
+  const rows = input.health.filter((row) => row.kind === kind && row.recordedOn.slice(0, 10) <= today && Number.isFinite(row.value));
+  const last = rows.at(-1);
+  return last ? last.value : null;
+}
+
+function referenceBandsFor(input: PlanInput): string {
+  const goal = input.goal;
+  return referenceBandsForCoach({
+    age: input.goalAge,
+    goalLabel: goal ? GOAL_LABEL[goal] : null,
+    athlete: goal != null && (goal.startsWith('elite_') || isAnyBoxer(goal)),
+    sessionBpm: latestSample(input, 'session_heart_rate'),
+    walkingBpm: latestSample(input, 'walking_heart_rate'),
+    recoveryBpm: latestSample(input, 'heart_rate_recovery'),
+    hrvMs: latestSample(input, 'hrv_sdnn'),
+  });
+}
 
 function metricChanges(input: PlanInput): string[] {
   const today = londonDay(input.now);
@@ -1711,6 +1735,7 @@ export const HEALTH_PLAN_PROMPT = [
   'If nothing they logged or wrote supports a swap, return one swap whose text is exactly "Log a few more meals and Thumos will suggest swaps based on what you actually eat."',
   'Nutrition, fitness, wellbeing, and this week\'s focus all follow the saved nutrition goal. Do not write a running plan, a mileage build, or a progressive distance week.',
   'When fitnessSnapshot is present, it is an estimate from their own readings, not a medical assessment. You may add one session or hold the week they already do. Never prescribe fewer sessions or fewer minutes unless they report pain, illness, injury, or poor recovery. Do not turn it into a running plan. Check with a doctor before big changes.',
+  'When referenceBands is present, those lines are the same published comparisons as the health stats. They are not targets and not a reason to chase the top of a range. Do not invent a band, a beats-per-minute figure, or a source that is not written there.',
   'If the goal is an elite runner, body builder, or boxer, include training load, recovery, and fuelling around sessions. A heavyweight goal keeps size and power and does not use a deficit. A middleweight goal, and a featherweight through cruiserweight goal, stays near its limit with a small change only. Professional limits for those classes are about 57.2 kg, 59.0 kg, 61.2 kg, 63.5 kg, 66.7 kg, 69.9 kg, 72.6 kg, 76.2 kg, 79.4 kg, and 90.7 kg. Super lightweight is also called light welterweight. Super welterweight is also called light middleweight. Amateur IBA figures are a reference only. Muscular boxers can sit above the BMI band.',
   'When the user message includes training, that object is the routine from logged workouts over the last 4 weeks: sessions per week, typical minutes, train weekdays, and rest weekdays. Maintain or progress that baseline. Never prescribe fewer sessions or fewer minutes unless they report pain, illness, injury, or poor recovery. Rest only on training.restDays. Do not invent a rest day, a full rest, or "no structured workouts" on a day they train. One row per weekday. Do not append a stock walk-and-rest week. The fitness intro must say what the log shows, for example "You train about 30 min on most days." Progress with a little more weight, one more set, or about 5 to 10 percent volume. For lose fat and build muscle, emphasise resistance training, protein, and a little easy walking or steps. A runner, boxer, or body builder keeps that sport. Check with a doctor before big changes.',
   'When training.source is "stated", the person set that week on You. Follow training.trainDays and training.dayMinutes. Rest only on training.restDays. A day in training.walkDays is a walk, not a missed gym day and not a gym session. The fitness intro states the aim, for example "You aim for 30 min on weekdays and a bit more on Saturday". If the summary says how many of those sessions they have done this week, keep that comparison. Use training.note only when they wrote one. Do not invent a time of day.',

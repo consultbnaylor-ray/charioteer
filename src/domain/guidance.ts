@@ -4,6 +4,7 @@
  * Nothing here is a diagnosis.
  */
 
+import { NUNAN_LINK, NUNAN_SDNN_HIGH, NUNAN_SDNN_LOW, NUNAN_SDNN_MEAN, REFERENCE_NOT_A_TARGET } from './healthBands';
 import { formatSleepHours, formatUkCompactDay, healthChangeNote, HRV_MIN_READINGS, HRV_TOO_FEW, percentAgainstBaseline, shiftDay, type DayValue } from './healthInsights';
 import type { HealthInsightKind } from './healthInsights';
 import { BMI_ONLY_NOTE, assessWeight, type BodyBuild, type NutritionSex } from './nutrition';
@@ -135,7 +136,7 @@ const STEPS_RESEARCH =
   `There is no NHS or UK Chief Medical Officer daily step target. A 2025 review in The Lancet Public Health found that about ${uk(LANCET_STEPS_MEANINGFUL)} steps a day was linked with better health outcomes than 2,000, and that ${uk(LANCET_STEPS_MORE_ACTIVE)} can still suit people who are more active. That research is not a UK guideline.`;
 
 const HRV_HONEST =
-  'There is no official UK target for heart rate variability. Devices measure it in different ways, so this is compared with your own readings and is not placed on a national range.';
+  `There is no official UK target for heart rate variability. Nunan, Sandercock, and Brodie, 2010, found short-term SDNN study averages from ${NUNAN_SDNN_LOW} to ${NUNAN_SDNN_HIGH} ms, with an overall mean of ${NUNAN_SDNN_MEAN} ms. That spread is not a personal target and is not split by age or sex. A watch sample is also compared with your own readings. ${REFERENCE_NOT_A_TARGET}`;
 
 const ACTIVITY_LINE =
   `The UK Chief Medical Officers recommend at least ${CMO_MODERATE_MINUTES_WEEK} minutes of moderate activity a week, or ${CMO_VIGOROUS_MINUTES_WEEK} minutes of vigorous activity. Logged workouts may not include walking, and this app cannot tell how hard the minutes were.`;
@@ -379,7 +380,7 @@ function hrvGuidance(points: DayValue[], today: string): GuidanceView {
       plain: [opening, `${HRV_TOO_FEW}.`, HRV_HONEST].filter(Boolean).join(' '),
       marker: null,
       ticks: [],
-      sources: [],
+      sources: [NUNAN_LINK],
       warning: null,
     });
   }
@@ -389,7 +390,7 @@ function hrvGuidance(points: DayValue[], today: string): GuidanceView {
       plain: `${HRV_HONEST} Log a few days and this can compare you with your own earlier average.`,
       marker: null,
       ticks: [],
-      sources: [],
+      sources: [NUNAN_LINK],
       warning: null,
     });
   }
@@ -400,7 +401,7 @@ function hrvGuidance(points: DayValue[], today: string): GuidanceView {
     plain: `${opening} ${comparison}. ${HRV_HONEST}`,
     marker: null,
     ticks: [],
-    sources: [],
+    sources: [NUNAN_LINK],
     warning: null,
   });
 }

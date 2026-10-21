@@ -4,6 +4,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg from 'react-native-svg';
 
 import { isoDay, startOfLocalDay } from '@/domain/dates';
+import { BAND_CAVEAT, type BandLink } from '@/domain/healthBands';
 import { latestVo2Day } from '@/domain/vo2Estimate';
 import { chartBucketForPeriod } from '@/domain/readingChart';
 import { parseStatPeriod, rollingWindow, type StatPeriod } from '@/domain/statWindow';
@@ -443,6 +444,12 @@ function WorkoutTypeChoices({
   );
 }
 
+function sourceLabel(source: BandLink): string {
+  if (source.year == null) return `${source.name}. No year is printed on that page.`;
+  if (source.name.includes(String(source.year))) return source.name;
+  return `${source.name}, ${source.year}`;
+}
+
 function StatDetail({
   tile,
   today,
@@ -502,7 +509,17 @@ function StatDetail({
                 <WorkoutTypeChoices tile={tile} onSetWorkoutBucket={onSetWorkoutBucket} />
                 {!tile.empty && tile.readings.length === 0 && tile.history.length >= 2 ? <TrendLine points={tile.history} color={ink} /> : null}
                 {tile.trend ? <T variant="muted">{tile.trend}</T> : null}
-                {tile.sourceUrl ? (
+                {tile.sources && tile.sources.length > 0 ? tile.sources.map((source) => (
+                  <Pressable
+                    key={source.url}
+                    accessibilityRole="link"
+                    accessibilityLabel={sourceLabel(source)}
+                    onPress={() => void Linking.openURL(source.url)}
+                    style={{ minHeight: 44, justifyContent: 'center' }}
+                  >
+                    <T variant="muted">{sourceLabel(source)}</T>
+                  </Pressable>
+                )) : tile.sourceUrl ? (
                   <Pressable
                     accessibilityRole="link"
                     onPress={() => void Linking.openURL(tile.sourceUrl!)}
@@ -511,6 +528,10 @@ function StatDetail({
                     <T variant="muted">{tile.sourceName}</T>
                   </Pressable>
                 ) : tile.sourceName ? <T variant="muted">{tile.sourceName}</T> : null}
+                {tile.sources && tile.sources.length > 0 && tile.sourceName && !tile.sources.some((source) => source.name === tile.sourceName) ? (
+                  <T variant="muted">{tile.sourceName}</T>
+                ) : null}
+                {tile.hasGuideline && !tile.meaning.includes(BAND_CAVEAT) ? <T variant="muted">{BAND_CAVEAT}</T> : null}
                 {tile.extraSourceUrl ? (
                   <Pressable
                     accessibilityRole="link"

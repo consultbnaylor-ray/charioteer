@@ -6,6 +6,7 @@
  * 75th and above is Strong. This is an estimate, not Apple's classification and
  * not a medical assessment.
  */
+import { REFERENCE_NOT_A_TARGET } from './healthBands.ts';
 import { mondayOf, shiftDay } from './healthInsights.ts';
 import { minuteUnit, paceJudgement, parseStatPeriod, periodPhrase, rollingWindow, scaledPeriodTarget, type StatPeriod } from './statWindow.ts';
 import {
@@ -543,15 +544,15 @@ function goalNoteFor(
 ): string | null {
   if (hasGoalBand) return null;
   if (isAnyBoxer(goal)) {
-    return 'The boxing ranges found are for men on a national team, so they are not shown.';
+    return `The boxing ranges found are for men on a national team, so they are not shown. ${REFERENCE_NOT_A_TARGET}`;
   }
   if (!hasAgeBand) return null;
   const title = goal ? GOAL_LABEL[goal] : null;
   if (goal === 'elite_runner' || goal === 'body_builder') {
-    return `${title} has no separate published range here. The band is typical for your age and sex.`;
+    return `${title} has no separate published range here. The band is typical for your age and sex. ${REFERENCE_NOT_A_TARGET}`;
   }
-  if (!title) return 'There is no separate published cardio range. The band is typical for your age and sex.';
-  return `${title} has no separate published cardio range. The band is typical for your age and sex.`;
+  if (!title) return `There is no separate published cardio range. The band is typical for your age and sex. ${REFERENCE_NOT_A_TARGET}`;
+  return `${title} has no separate published cardio range. The band is typical for your age and sex. ${REFERENCE_NOT_A_TARGET}`;
 }
 
 function compareFor(input: {
@@ -571,7 +572,7 @@ function compareFor(input: {
     ? ` Typical for ${sexWord(input.sex)} in their ${decade(input.age)} is about ${ageBand.low} to ${ageBand.high}.`
     : '';
   const goalWords = goalBand && input.goal
-    ? ` Typical for ${GOAL_LABEL[input.goal]}, approximate, is about ${goalBand.low} to ${goalBand.high}.`
+    ? ` Typical for ${GOAL_LABEL[input.goal]}, approximate, is about ${goalBand.low} to ${goalBand.high}. This is a reference, not a target.`
     : '';
   const place = goalBand
     ? input.value < goalBand.low
@@ -1389,7 +1390,7 @@ function contextFrom(input: {
     input.recovery ? input.recovery.replace(/\s+/g, ' ').trim() : null,
   ].filter((item): item is string => Boolean(item));
   for (const extra of extras) {
-    if (line.length + 1 + extra.length <= 500) line = `${line} ${extra}`;
+    if (line.length + 1 + extra.length <= 560) line = `${line} ${extra}`;
   }
   return line;
 }

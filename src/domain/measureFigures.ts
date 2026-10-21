@@ -1,6 +1,7 @@
 import { parseIsoDay } from '@/domain/dates';
 import { classStatus, type ClassEdges } from '@/domain/goalWeightRange';
 import { drinkFreeRing, soberMilestoneRing, type ChartBar } from '@/domain/distance';
+import { hrvReading, NO_STEP_BAND } from '@/domain/healthBands';
 import { healthChangeNote, HRV_MIN_READINGS, personalChange, shiftDay, type HealthInsightKind } from '@/domain/healthInsights';
 import {
   BHF_RESTING_MAX_BPM,
@@ -375,15 +376,12 @@ function stepsFigure(points: readonly { day: string; value: number }[], today: s
   const bars: ChartBar[] = [];
   if (todayPoint) bars.push({ key: 'today', label: `Today ${uk(todayPoint.value)}`, value: todayPoint.value, tone: 'info' });
   if (average != null) bars.push({ key: 'average', label: `Recent average ${uk(average)}`, value: average, tone: 'info' });
-  let caption = 'There is no daily step target.';
-  if (todayPoint && average != null) {
-    const higher = todayPoint.value >= average;
-    caption = higher
-      ? 'Higher than your recent average. There is no daily step target.'
-      : 'Lower than your recent average. There is no daily step target.';
-  } else if (!todayPoint) {
-    caption = 'No steps logged today. There is no daily step target.';
-  }
+  const compared = todayPoint && average != null
+    ? (todayPoint.value >= average ? 'Higher than your recent average.' : 'Lower than your recent average.')
+    : !todayPoint
+      ? 'No steps logged today.'
+      : '';
+  const caption = [compared, NO_STEP_BAND].filter(Boolean).join(' ');
   return {
     bars: {
       label: 'Steps',
@@ -407,7 +405,8 @@ function hrvFigure(points: readonly { day: string; value: number }[], today: str
       tone: 'info',
     });
   }
-  const caption = note ? `${note}. There is no official target.` : 'There is no official target.';
+  const band = hrvReading(latest.value, null).status;
+  const caption = note ? `${note}. ${band}` : band;
   return {
     bars: {
       label: 'Your own readings',

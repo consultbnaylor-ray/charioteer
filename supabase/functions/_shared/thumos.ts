@@ -5,6 +5,7 @@ import { earnedMilestones } from './milestones.ts';
 import { savingsFromTypicalWeek } from './savings.ts';
 import { formatSoberElapsed, soberElapsed } from './sober.ts';
 import { hrvExplainerForCoach } from './healthInsights.ts';
+import { publishedBandGuide } from './healthBands.ts';
 import { NUTRITION_PROMPT_LINE } from './nutrition.ts';
 import { detectSafety, type SafetyHit } from './safety.ts';
 import {
@@ -895,6 +896,7 @@ export function buildThumosContext(input: ThumosContextInput): string {
     `Health readings:\n${health || '- none shared'}`,
     insightLines.length ? `Health insights, not medical advice:\n${insightLines.map((line) => `- ${line}`).join('\n')}` : '',
     `HRV explainer, general guidance and not a diagnosis. Use this if they ask what heart rate variability means. Do not turn it into a diagnosis or a personal target:\n${hrvExplainerForCoach()}`,
+    `Published comparison bands. Quote only these figures. Do not invent a band, and do not turn one into a target:\n${publishedBandGuide()}`,
     formatGratitudeContext(input.gratitude ?? []),
     formatVisionContext(input.vision),
     nutritionLines.length
@@ -929,7 +931,7 @@ export function buildSystemPrompt(
     'The messages after this system prompt are the conversation so far, oldest first, then their latest line. Use that history. Never repeat a sentence you have already sent. Vary your wording from turn to turn.',
     turn.selfHarm
       ? 'Do not mention sober time, day counts, personal reasons, savings, health readings, health insights, the gratitude diary, the vision board, the nutrition log, or a pinned Stoic quote or a pinned Platonic quote on this turn. Do not call Plato a Stoic.'
-      : 'When you mention sober time, a personal reason, a check-in, a health reading, a health insight, a gratitude line, a vision caption, or a pinned Stoic quote or a pinned Platonic quote, take it from CONTEXT. Do not invent those details. A health insight is a note from their own readings, not a diagnosis. If CONTEXT includes an HRV explainer, you may use that wording when they ask what heart rate variability means. Do not add ranges or citations that are not written there, and do not diagnose. If CONTEXT includes a pinned Stoic quote or a pinned Platonic quote, you may use it once for motivation. Quote it faithfully. Plato is Platonic, not a Stoic. Do not call Plato a Stoic.',
+      : 'When you mention sober time, a personal reason, a check-in, a health reading, a health insight, a gratitude line, a vision caption, or a pinned Stoic quote or a pinned Platonic quote, take it from CONTEXT. Do not invent those details. A health insight is a note from their own readings, not a diagnosis. If CONTEXT includes an HRV explainer, you may use that wording when they ask what heart rate variability means. Do not add ranges or citations that are not written there, and do not diagnose. If CONTEXT includes published comparison bands, you may quote those figures and name the source written there. They are not a target and not a reason to chase the top of a range. Do not add a band that is not written there. If CONTEXT includes a pinned Stoic quote or a pinned Platonic quote, you may use it once for motivation. Quote it faithfully. Plato is Platonic, not a Stoic. Do not call Plato a Stoic.',
     turn.selfHarm ? '' : GRATITUDE_PROMPT_LINE,
     turn.selfHarm ? '' : VISION_PROMPT_LINE,
     turn.selfHarm ? '' : NUTRITION_PROMPT_LINE,

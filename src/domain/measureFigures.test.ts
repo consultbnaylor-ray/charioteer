@@ -61,7 +61,8 @@ describe('measured stats figures', () => {
     ], today);
     expect(steps?.ring).toBeUndefined();
     expect(steps?.bars?.bars.bars.map((bar) => bar.label)).toEqual(['Today 9,100', 'Recent average 8,000']);
-    expect(steps?.bars?.bars.caption).toContain('There is no daily step target.');
+    expect(steps?.bars?.bars.caption).toContain('No published guideline.');
+    expect(steps?.bars?.bars.caption).toContain('do not set a daily step target');
     expect(steps?.bars?.bars.caption).toContain('Higher than your recent average.');
     expect(healthFigure('steps', [], today)).toBeNull();
   });
@@ -72,8 +73,8 @@ describe('measured stats figures', () => {
       { day: today, value: 48 },
     ], today);
     expect(hrv?.bars?.bars.bars.map((bar) => bar.label)).toEqual(['Latest 48 ms']);
-    expect(hrv?.bars?.bars.caption).toBe('There is no official target.');
-    expect(healthFigure('hrv_sdnn', [{ day: today, value: 48 }], today)?.bars?.bars.caption).toBe('There is no official target.');
+    expect(hrv?.bars?.bars.caption).toBe('Study averages ran from 32 to 93 ms. Overall mean 50 ms.');
+    expect(healthFigure('hrv_sdnn', [{ day: today, value: 48 }], today)?.bars?.bars.caption).toBe('Study averages ran from 32 to 93 ms. Overall mean 50 ms.');
     const enough = healthFigure('hrv_sdnn', [
       { day: '2026-09-06', value: 28 },
       { day: '2026-09-10', value: 28.5 },
@@ -85,7 +86,7 @@ describe('measured stats figures', () => {
       { day: '2026-10-10', value: 45 },
       { day: today, value: 48 },
     ], today);
-    expect(enough?.bars?.bars.caption).toBe('HRV 48 ms, up 7% vs your 30-day average. There is no official target.');
+    expect(enough?.bars?.bars.caption).toBe('HRV 48 ms, up 7% vs your 30-day average. Study averages ran from 32 to 93 ms. Overall mean 50 ms.');
     expect(enough?.bars?.bars.bars.map((bar) => bar.label)).toEqual(['Latest 48 ms', '30-day average 45 ms']);
 
     const weight = healthFigure('weight_kg', [

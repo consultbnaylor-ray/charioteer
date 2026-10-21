@@ -199,34 +199,87 @@ describe('health stat tiles', () => {
     expect(lean.valueText).toBe('63');
     expect(lean.hasGuideline).toBe(false);
     expect(lean.visual.kind).not.toBe('zone');
-    expect(lean.rangeNote).toBe('There is no guideline band here.');
+    expect(lean.status).toBe('No published guideline.');
+    expect(lean.rangeNote).toContain('No published guideline.');
+    expect(lean.rangeNote).toContain('kilogram band is not shown');
 
-    for (const id of ['walking_heart_rate', 'heart_rate_recovery', 'session_heart_rate']) {
-      const heart = tile(board, id);
-      expect(heart.unit).toBe('bpm');
-      expect(heart.hasGuideline).toBe(false);
-      expect(heart.visual.kind).not.toBe('zone');
-      expect(heart.rangeNote).toBe('There is no guideline band here.');
+    const session = tile(board, 'session_heart_rate');
+    expect(session.unit).toBe('bpm');
+    expect(session.valueText).toBe('132');
+    expect(session.hasGuideline).toBe(true);
+    expect(session.tone).toBe('info');
+    expect(session.status).toContain('Inside the moderate zone');
+    expect(session.status).toContain('114 to 136');
+    expect(session.meaning).toContain('208 − 0.7 × age');
+    expect(session.meaning).toContain('did not change with sex');
+    expect(session.meaning).toContain('not a target to reach the top');
+    expect(session.rangeNote).toContain('No separate published session heart-rate range for Lose Fat & Build Muscle');
+    expect(session.rangeNote).toContain('This is a reference, not a target.');
+    expect(session.meaning).toContain('Population averages vary by person, medication and fitness.');
+    if (session.visual.kind === 'zone') {
+      expect(session.visual.zoneLow).toBe(114);
+      expect(session.visual.zoneHigh).toBe(136);
+      expect(session.visual.goalLow).toBe(138);
+      expect(session.visual.goalHigh).toBe(170);
+      expect(session.visual.goalCaption).toContain('This is a reference, not a target.');
     }
-    expect(tile(board, 'walking_heart_rate').valueText).toBe('96');
-    expect(tile(board, 'heart_rate_recovery').valueText).toBe('22');
-    expect(tile(board, 'session_heart_rate').valueText).toBe('132');
-    expect(tile(board, 'walking_heart_rate').trend).toBeNull();
+    expect(session.sources?.map((source) => source.url)).toEqual([
+      'https://www.jacc.org/doi/full/10.1016/S0735-1097(00)01054-8',
+      'https://journals.lww.com/acsm-healthfitness/fulltext/2023/11000/estimating_maximal_heart_rate.4.aspx',
+      'https://www.heart.org/en/healthy-living/exercise-and-physical-activity/fitness-basics/target-heart-rates',
+      'https://www.nhs.uk/live-well/exercise/physical-activity-guidelines-for-adults-aged-19-to-64/',
+    ]);
+
+    const walking = tile(board, 'walking_heart_rate');
+    expect(walking.valueText).toBe('96');
+    expect(walking.hasGuideline).toBe(true);
+    expect(walking.tone).toBe('info');
+    expect(walking.status).toContain('Below the moderate zone');
+    expect(walking.status).toContain('This is an approximation.');
+    expect(walking.rangeNote).toContain('Approximation, not an Apple norm.');
+    expect(walking.meaning).toContain('Apple publishes no normal range');
+    expect(walking.trend).toBeNull();
+    expect(walking.sources?.[0]?.url).toBe('https://www.apple.com/health/pdf/Heart_Rate_Calorimetry_Activity_on_Apple_Watch_November_2024.pdf');
+
+    const recovery = tile(board, 'heart_rate_recovery');
+    expect(recovery.valueText).toBe('22');
+    expect(recovery.hasGuideline).toBe(true);
+    expect(recovery.tone).toBe('info');
+    expect(recovery.status).toContain('Above 12 bpm');
+    expect(recovery.meaning).toContain('not a healthy population');
+    expect(recovery.rangeNote).toContain('12 to 23 bpm');
+    expect(recovery.rangeNote).toContain('This is a reference, not a target.');
+    expect(recovery.sources?.[0]?.year).toBe(1999);
+    if (recovery.visual.kind === 'zone') {
+      expect(recovery.visual.zoneLow).toBe(12);
+      expect(recovery.visual.zoneHigh).toBe(23);
+      expect(recovery.visual.goalLow).toBeNull();
+    }
 
     const steps = tile(board, 'steps');
     expect(steps.unit).toBe('steps');
     expect(steps.valueText).toBe('17,900');
     expect(steps.period).toBe(PERIOD_LAST_7);
     expect(steps.hasGuideline).toBe(false);
-    expect(steps.status).toBe('There is no step target for this period.');
+    expect(steps.status).toBe('No published guideline for a step target in this period.');
+    expect(steps.meaning).toContain('do not set a daily step target');
     expect(steps.trend).toBe('Up from the earlier days in this period.');
 
     const hrv = tile(board, 'hrv_sdnn');
     expect(hrv.unit).toBe('ms');
     expect(hrv.valueText).toBe('47');
-    expect(hrv.hasGuideline).toBe(false);
-    expect(hrv.status).toBe('There is no official UK target.');
+    expect(hrv.hasGuideline).toBe(true);
+    expect(hrv.tone).toBe('info');
+    expect(hrv.status).toBe('Study averages ran from 32 to 93 ms. Overall mean 50 ms.');
+    expect(hrv.meaning).toContain('not split by age or sex');
+    expect(hrv.meaning).toContain('24-hour age table');
+    expect(hrv.rangeNote).toContain('No separate published heart-rate variability range for Lose Fat & Build Muscle');
+    expect(hrv.sources?.[0]?.url).toBe('https://onlinelibrary.wiley.com/doi/10.1111/j.1540-8159.2010.02841.x');
     expect(hrv.trend).toBeNull();
+    if (hrv.visual.kind === 'zone') {
+      expect(hrv.visual.zoneLow).toBe(32);
+      expect(hrv.visual.zoneHigh).toBe(93);
+    }
 
     const compared = buildHealthStatBoard(alex({
       samples: [
@@ -261,6 +314,7 @@ describe('health stat tiles', () => {
     expect(workouts.valueText).toBe('97');
     expect(workouts.hasGuideline).toBe(false);
     expect(workouts.status).toContain('may not include walking');
+    expect(workouts.meaning).toContain('No published guideline for these logged minutes');
     expect(workouts.trend).toBe('Up from the 7 days before.');
     expect(minutes.trend).toBe('Up from the 7 days before.');
   });
@@ -297,6 +351,40 @@ describe('health stat tiles', () => {
     expect(cardio.hasGuideline).toBe(false);
     expect(cardio.visual.kind).not.toBe('zone');
     expect(cardio.meaning).not.toMatch(/56 to 62/);
+    for (const id of ['walking_heart_rate', 'heart_rate_recovery', 'session_heart_rate', 'hrv_sdnn']) {
+      const item = tile(young, id);
+      expect(item.hasGuideline).toBe(false);
+      expect(item.visual.kind).not.toBe('zone');
+      expect(item.status).toContain('under 18');
+    }
+
+    const ageless = buildHealthStatBoard(alex({ goalAge: null }));
+    const unplaced = tile(ageless, 'session_heart_rate');
+    expect(unplaced.hasGuideline).toBe(false);
+    expect(unplaced.visual.kind).not.toBe('zone');
+    expect(unplaced.status).toContain('Add an age');
+    expect(unplaced.meaning).toContain('Nothing here is guessed');
+    expect(tile(ageless, 'walking_heart_rate').hasGuideline).toBe(false);
+    expect(tile(ageless, 'heart_rate_recovery').hasGuideline).toBe(true);
+
+    const cruiser = buildHealthStatBoard(alex({ goal: 'elite_cruiser_boxer' }));
+    const athleteRest = tile(cruiser, 'resting_heart_rate');
+    expect(athleteRest.meaning).toContain('as low as 40');
+    expect(athleteRest.meaning).toContain('This is a reference, not a target.');
+    expect(athleteRest.sources?.map((source) => source.name)).toEqual([
+      'British Heart Foundation, 2026',
+      'American Heart Association, 2024',
+    ]);
+    if (athleteRest.visual.kind === 'zone') {
+      expect(athleteRest.visual.zoneLow).toBe(60);
+      expect(athleteRest.visual.zoneHigh).toBe(100);
+      expect(athleteRest.visual.goalLow ?? null).toBeNull();
+    }
+    const cruiserCardio = tile(cruiser, 'vo2_max');
+    expect(cruiserCardio.meaning).toContain('56 to 62');
+    expect(cruiserCardio.meaning).toContain('This is a reference, not a target.');
+    expect(cruiserCardio.sources?.[0]?.year).toBe(2015);
+    expect(cruiserCardio.sources?.[0]?.url).toBe('https://pmc.ncbi.nlm.nih.gov/articles/PMC4919021/');
 
     const short = buildHealthStatBoard(alex({ heightCm: null }));
     expect(tile(short, 'weight_kg').hasGuideline).toBe(false);
@@ -702,7 +790,7 @@ describe('health stat tiles', () => {
     expect(tile(day, 'sleep_hours').status).toBe('Within 7 to 9 hours. 1 night.');
     expect(tile(day, 'steps').valueText).toBe('9,100');
     expect(tile(day, 'steps').period).toBe(PERIOD_TODAY);
-    expect(tile(day, 'steps').status).toBe('There is no daily step target.');
+    expect(tile(day, 'steps').status).toBe('No published guideline for a daily step target.');
     expect(tile(day, 'steps').trend).toBe('Up from the day before.');
     expect(tile(day, 'workouts').valueText).toBe('32');
     const dayMinutes = tile(day, 'weekly_active_minutes');

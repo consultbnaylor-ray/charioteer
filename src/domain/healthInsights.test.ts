@@ -455,7 +455,7 @@ describe('shared personal change', () => {
     });
     expect(context).toContain('HRV 48 ms, up 7% vs your 30-day average');
     expect(context).not.toContain('higher than the previous reading');
-    expect(context).not.toContain('70%');
+    expect(context).not.toContain('up 70%');
 
     for (const file of [
       'supabase/functions/thumos-chat/index.ts',
