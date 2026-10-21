@@ -88,3 +88,6 @@ verify_jwt = true
 
 [functions.notify-buddy-invite]
 verify_jwt = true
+
+[functions.privacy-purge]
+verify_jwt = false

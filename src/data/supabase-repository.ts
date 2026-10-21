@@ -136,7 +136,7 @@ import {
   type EdgeSendState,
   type SessionTicket,
 } from '@/domain/edgeRetry';
-import { clientAppBuild } from '@/domain/clientError';
+import { clientAppBuild, clientErrorRecord } from '@/domain/clientError';
 import { resolveSignedInSession } from '@/domain/liveSession';
 import { OPENING_LINE, SCRIPTED_COACH_REPLY, type ThumosMode } from '@/domain/thumos';
 import Constants from 'expo-constants';
@@ -1295,19 +1295,20 @@ export class SupabaseRepository implements Repository {
   }
 
   async logClientError(screen: string, message: string, appBuild: string): Promise<boolean> {
+    const line = clientErrorRecord(screen, message);
     try {
       const clip = (value: string, max: number) => value.replace(/\s+/g, ' ').trim().slice(0, max);
       const stored = this.snapshot.session?.userId ?? null;
       const sessionUser = stored ? null : (await this.client.auth.getSession()).data.session?.user?.id ?? null;
       const userId = stored ?? sessionUser;
       if (!userId) {
-        console.error('client error log', 'no session', clip(screen, 80), clip(message, 300));
+        console.error('client error log', 'no session', line.screen, line.message);
         return false;
       }
       const { error } = await this.client.from('client_errors').insert({
         user_id: userId,
-        screen: clip(screen, 80) || 'app',
-        message: clip(message, 300) || 'Unknown error',
+        screen: clip(line.screen, 80) || 'app',
+        message: clip(line.message, 300) || 'error',
         app_build: clip(appBuild, 40) || 'unknown',
       });
       if (error) {

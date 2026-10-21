@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
-import { SCREEN_ERROR, clientAppBuild, notificationFailureLine, sanitizeClientError } from './clientError';
+import { SCREEN_ERROR, clientAppBuild, clientErrorRecord, notificationFailureLine, sanitizeClientError } from './clientError';
 
 describe('caught screen errors', () => {
   it('keeps a short line with no address, token, or stack', () => {
@@ -47,8 +47,23 @@ describe('caught screen errors', () => {
     expect(method).toContain("'no session'");
     expect(method).toContain('getSession()');
     expect(method).toContain("from('client_errors')");
+    expect(method).toContain('clientErrorRecord');
     expect(method).not.toContain('this.userId()');
     expect(method).not.toContain('getUser(');
+    const kept = clientErrorRecord('health-refresh', 'read: timeout');
+    expect(kept).toEqual({ screen: 'health-refresh', message: 'read: timeout' });
+    const trimmed = clientErrorRecord('health-refresh', 'HKError timeout reading 8421 steps');
+    expect(trimmed).toEqual({ screen: 'health-refresh', message: 'timeout' });
+    expect(trimmed.message).not.toMatch(/\d/);
+    expect(clientErrorRecord('Workout route', 'NativeError: token failed for ada@example.com')).toEqual({
+      screen: 'workoutroute',
+      message: 'nativeerror',
+    });
+    const purge = readFileSync('supabase/migrations/20261021220000_client_error_purge.sql', 'utf8');
+    expect(purge).toContain('Not applied from this repo');
+    expect(purge).toContain("created_at < now() - interval '90 days'");
+    expect(purge).toContain('purge_client_errors');
+    expect(readFileSync('supabase/functions/privacy-purge/index.ts', 'utf8')).toContain("rpc('purge_client_errors')");
   });
 
   it('covers the whole tree with a calm monochrome retry', () => {
