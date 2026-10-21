@@ -52,15 +52,45 @@ function indoorFlag(metadata: Record<string, unknown> | null | undefined): boole
   return value === true || value === 1 || value === 'true' || value === '1';
 }
 
-async function averageHeart(workout: { getStatistic: (type: 'HKQuantityTypeIdentifierHeartRate', unit: string) => Promise<{ averageQuantity?: { quantity?: number } } | undefined> }): Promise<number | null> {
+type WorkoutStat = {
+  getStatistic: (type: string, unit?: string) => Promise<{
+    averageQuantity?: { quantity?: number };
+    mostRecentQuantity?: { quantity?: number };
+    sumQuantity?: { quantity?: number };
+  } | undefined>;
+};
+
+function asStat(workout: object): WorkoutStat {
+  return workout as WorkoutStat;
+}
+
+async function averageHeart(workout: object): Promise<number | null> {
   try {
-    const stat = await workout.getStatistic('HKQuantityTypeIdentifierHeartRate', 'count/min');
+    const stat = await asStat(workout).getStatistic('HKQuantityTypeIdentifierHeartRate', 'count/min');
     const value = stat?.averageQuantity?.quantity;
     if (value == null || value <= 30 || value >= 230) return null;
     return Math.round(value);
   } catch {
     return null;
   }
+}
+
+/** User score first, then Apple's estimate. Both use the 1–10 effort unit. A miss leaves the chart on heart rate. */
+async function effortFrom(workout: object): Promise<number | null> {
+  const types = [
+    'HKQuantityTypeIdentifierWorkoutEffortScore',
+    'HKQuantityTypeIdentifierEstimatedWorkoutEffortScore',
+  ];
+  for (const type of types) {
+    try {
+      const stat = await asStat(workout).getStatistic(type, 'appleEffortScore');
+      const value = stat?.averageQuantity?.quantity ?? stat?.mostRecentQuantity?.quantity ?? stat?.sumQuantity?.quantity;
+      if (value != null && Number.isFinite(value) && value > 0 && value <= 10) return Math.round(value * 10) / 10;
+    } catch {
+      // The score is optional. The list still shows the workout.
+    }
+  }
+  return null;
 }
 
 async function summaryFrom(workout: Awaited<ReturnType<typeof queryWorkoutSamples>>[number]): Promise<DeviceWorkout> {
@@ -76,14 +106,21 @@ async function summaryFrom(workout: Awaited<ReturnType<typeof queryWorkoutSample
     distanceMetres: metresFrom(plain.totalDistance),
     energyKcal: kcalFrom(plain.totalEnergyBurned),
     averageHeartRate: await averageHeart(workout),
+    effortScore: await effortFrom(workout),
     routeExpected: routeExpected(activityType, indoorFlag(plain.metadata as Record<string, unknown> | undefined)),
   };
 }
 
-/** Recent workouts. Routes are not read here, and nothing is uploaded. */
+/** Workouts for the day strip and the 30-day charts. Routes are not read here, and nothing is uploaded. */
 export async function listDeviceWorkouts(): Promise<DeviceWorkout[]> {
   if (!isHealthDataAvailable()) return [];
-  const workouts = await queryWorkoutSamples({ limit: 40, ascending: false });
+  const end = new Date();
+  const start = new Date(end.getTime() - 32 * 24 * 60 * 60 * 1000);
+  const workouts = await queryWorkoutSamples({
+    limit: 0,
+    ascending: false,
+    filter: { date: { startDate: start, endDate: end } },
+  });
   const rows: DeviceWorkout[] = [];
   for (const workout of workouts) {
     try {

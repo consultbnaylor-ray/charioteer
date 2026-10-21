@@ -226,7 +226,7 @@ export default function HealthPlanScreen() {
               </View>
             ))}
           </Card>
-          <WorkoutList workouts={workouts} />
+          <WorkoutList workouts={workouts} age={snap.nutrition.goalAge} />
           <WorkoutCalendar planDay={planDay} planNonce={planNonce} planOutdoorNonce={outdoorNonce} workouts={workouts} />
           <Card>
             <T variant="label">Wellbeing</T>
@@ -240,7 +240,7 @@ export default function HealthPlanScreen() {
           <Card>
             <T>Thumos has not written a plan yet. Refresh to use the figures you already keep.</T>
           </Card>
-          <WorkoutList workouts={workouts} />
+          <WorkoutList workouts={workouts} age={snap.nutrition.goalAge} />
           <WorkoutCalendar planDay={planDay} planNonce={planNonce} planOutdoorNonce={outdoorNonce} workouts={workouts} />
         </>
       )}

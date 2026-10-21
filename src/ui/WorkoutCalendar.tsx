@@ -422,17 +422,6 @@ export function WorkoutCalendar({
                 <T>Plan</T>
               </Pressable>
             </View>
-            {workouts.filter((workout) => londonDay(workout.startedAt) === date).map((workout) => (
-              <Pressable
-                key={workout.id}
-                accessibilityRole="button"
-                accessibilityLabel={workout.routeExpected ? `View route, ${workout.label}` : workout.label}
-                onPress={() => router.push(`/workout/${encodeURIComponent(workout.id)}` as never)}
-                style={{ minHeight: 44, justifyContent: 'center' }}
-              >
-                <T>{workout.routeExpected ? `${workout.label} · View route` : `${workout.label} · No GPS route`}</T>
-              </Pressable>
-            ))}
             {rows.map((session) => {
               const reminded = setting ? sessionHasReminder(session, setting, now) : false;
               const route = session.doneAt

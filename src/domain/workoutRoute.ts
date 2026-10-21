@@ -31,6 +31,11 @@ export type DeviceWorkout = {
   distanceMetres: number | null;
   energyKcal: number | null;
   averageHeartRate: number | null;
+  /**
+   * Apple's workout effort score, 1 to 10, when HealthKit stored one.
+   * Missing when the phone has no score. The path is never part of this summary.
+   */
+  effortScore?: number | null;
   /** An outdoor type that may have a path. The path itself is loaded later, on this phone. */
   routeExpected: boolean;
 };
