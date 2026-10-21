@@ -56,6 +56,7 @@ export default function Profile() {
   const [community, setCommunity] = useState(profile?.communityVisible ?? false);
   const [health, setHealth] = useState(profile?.consentHealth ?? false);
   const [ai, setAi] = useState(profile?.consentAi ?? false);
+  const [messages, setMessages] = useState(profile?.messageNotifications ?? false);
   const [confirm, setConfirm] = useState('');
   const [stage, setStage] = useState<Stage>(profile?.stage ?? 'exploring');
   const [soberDate, setSoberDate] = useState(() => profile?.sobrietyStartedAt ? new Date(profile.sobrietyStartedAt) : startOfLocalDay(new Date()));
@@ -93,6 +94,7 @@ export default function Profile() {
     community: profile.communityVisible,
     health: profile.consentHealth,
     ai: profile.consentAi,
+    messages: profile.messageNotifications,
     stage: profile.stage,
     soberDay: profile.sobrietyStartedAt ? isoDay(new Date(profile.sobrietyStartedAt)) : isoDay(soberDate),
     plannedQuit: profile.plannedQuitAt ?? isoDay(plannedQuit),
@@ -109,6 +111,7 @@ export default function Profile() {
     community,
     health,
     ai,
+    messages,
     stage,
     soberDay: isoDay(soberDate),
     plannedQuit: isoDay(plannedQuit),
@@ -207,8 +210,14 @@ export default function Profile() {
         drinkFreeDaysGoal: stage === 'cutting_down' && parsedDays.ok ? parsedDays.value : null,
       });
       await repo.setReasons(plannedReasons);
-      await repo.saveConsents({ communityVisible: community, consentHealth: health, consentAi: ai });
-      if (community) void offerMessageNotifications(repo).catch((error: unknown) => console.error('message notifications', error));
+      await repo.saveConsents({
+        communityVisible: community,
+        consentHealth: health,
+        consentAi: ai,
+        messageNotifications: messages,
+        termsAccepted: true,
+      });
+      if (messages) void offerMessageNotifications(repo).catch((error: unknown) => console.error('message notifications', error));
       setReasons(plannedReasons.join('\n'));
       setSavedNote('Saved');
       playSavedHaptic();
@@ -390,7 +399,16 @@ export default function Profile() {
           onPress={() => void addOwnInterest()}
         />
         <T variant="label">Consent</T>
-        <ConsentChoices community={community} health={health} ai={ai} onCommunity={setCommunity} onHealth={setHealth} onAi={setAi} />
+        <ConsentChoices
+          community={community}
+          health={health}
+          ai={ai}
+          messages={messages}
+          onCommunity={setCommunity}
+          onHealth={setHealth}
+          onAi={setAi}
+          onMessages={setMessages}
+        />
       </Card>
       <ProgressPhotos />
       <Card>
@@ -412,9 +430,16 @@ export default function Profile() {
           <T style={{ flex: 1 }}>Notifications</T>
           <Switch
             accessibilityLabel="Notifications"
-            value={profile.messageNotifications}
+            value={messages}
             onValueChange={(value) => {
-              void repo.updateProfile({ messageNotifications: value }).then(() => {
+              setMessages(value);
+              void repo.saveConsents({
+                communityVisible: community,
+                consentHealth: health,
+                consentAi: ai,
+                messageNotifications: value,
+                termsAccepted: true,
+              }).then(() => {
                 if (value) void offerMessageNotifications(repo).catch((error: unknown) => console.error('message notifications', error));
               }).catch((err: unknown) => setError(shownError(err, 'Could not save.')));
             }}

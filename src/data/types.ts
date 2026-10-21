@@ -268,12 +268,16 @@ export type OnboardingInput = {
   communityVisible: boolean;
   consentHealth: boolean;
   consentAi: boolean;
+  messageNotifications: boolean;
+  termsAccepted: boolean;
 };
 
 export type ConsentInput = {
   communityVisible: boolean;
   consentHealth: boolean;
   consentAi: boolean;
+  messageNotifications: boolean;
+  termsAccepted: boolean;
 };
 
 export type ProfilePatch = Partial<

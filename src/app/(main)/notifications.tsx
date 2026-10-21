@@ -33,7 +33,13 @@ export default function NotificationsScreen() {
             value={profile.messageNotifications}
             onValueChange={(value) => {
               setError(null);
-              void repo.updateProfile({ messageNotifications: value }).then(() => {
+              void repo.saveConsents({
+                communityVisible: profile.communityVisible,
+                consentHealth: profile.consentHealth,
+                consentAi: profile.consentAi,
+                messageNotifications: value,
+                termsAccepted: true,
+              }).then(() => {
                 if (value) void offerMessageNotifications(repo).catch((error: unknown) => console.error('message notifications', error));
               }).catch((err: unknown) => setError(shownError(err, 'Could not save.')));
             }}

@@ -62,7 +62,7 @@ import { planRelapse } from '@/domain/sober';
 import { detectSafety, ensureSafetyNotices } from '@/domain/safety';
 import { OPENING_LINE, SCRIPTED_COACH_REPLY, type ThumosMode } from '@/domain/thumos';
 import { CONSENT_VERSION } from '@/data/catalogue';
-import { consentRows, missingConsentRows } from '@/domain/consents';
+import { consentRows, mergeStoredConsents } from '@/domain/consents';
 import { stageFromRecord } from '@/domain/stage';
 import { BIO_LIMIT, PHOTO_CAPTION_LIMIT, defaultProfileSharing, normalizeProfileSharing, planProfileText, projectPublicProfile, sensitiveTurnedOn, shareFreshGratitude, type ProfileSharing, type PublicProfileView, type ShareSource } from '@/domain/profileSharing';
 import { quoteById } from '@/domain/stoicQuotes';
@@ -116,8 +116,7 @@ function uid(): string {
 }
 
 function mergeConsents(existing: DemoAccount['consents'] | undefined, input: ConsentInput): DemoAccount['consents'] {
-  const kept = existing ?? [];
-  return [...kept, ...missingConsentRows(kept, consentRows(CONSENT_VERSION, input))];
+  return mergeStoredConsents(existing ?? [], consentRows(CONSENT_VERSION, input), new Date().toISOString());
 }
 
 function readyProfile(profile: DemoAccount['profile']): DemoAccount['profile'] {
@@ -565,7 +564,7 @@ export class DemoRepository implements Repository {
         visionStartedOn: null,
         pinnedQuoteId: null,
         bio: '',
-        messageNotifications: true,
+        messageNotifications: false,
         notifySenderName: false,
         movementReminder: false,
         movementReminderMinute: null,
@@ -645,6 +644,7 @@ export class DemoRepository implements Repository {
       communityVisible: input.communityVisible,
       consentHealth: input.consentHealth,
       consentAi: input.consentAi,
+      messageNotifications: input.messageNotifications,
       onboardingComplete: true,
       interestIds: input.interestIds,
     };
@@ -662,6 +662,7 @@ export class DemoRepository implements Repository {
       communityVisible: input.communityVisible,
       consentHealth: input.consentHealth,
       consentAi: input.consentAi,
+      messageNotifications: input.messageNotifications,
     };
     next.consents = mergeConsents(next.consents, input);
     this.commit(db);

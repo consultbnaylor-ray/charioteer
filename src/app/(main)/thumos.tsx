@@ -315,7 +315,13 @@ export default function Thumos() {
         ) : !profile.consentAi ? (
           <Card>
             <T>Thumos stays quiet until you agree that messages can be sent to the coach.</T>
-            <Button label="Allow the coach" onPress={() => void repo.updateProfile({ consentAi: true }).catch((err: unknown) => setError(shownError(err, 'Could not save.')))} />
+            <Button label="Allow the coach" onPress={() => void repo.saveConsents({
+              communityVisible: profile.communityVisible,
+              consentHealth: profile.consentHealth,
+              consentAi: true,
+              messageNotifications: profile.messageNotifications,
+              termsAccepted: true,
+            }).catch((err: unknown) => setError(shownError(err, 'Could not save.')))} />
           </Card>
         ) : (
           <Field label="Message" value={draft} onChangeText={setDraft} multiline placeholder="Say it in your own words" />

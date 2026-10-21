@@ -10,6 +10,7 @@ export type ProfileFormValues = {
   community: boolean;
   health: boolean;
   ai: boolean;
+  messages?: boolean;
   stage: Stage;
   soberDay: string;
   plannedQuit: string;
@@ -49,6 +50,7 @@ export function profileDetailsDirty(current: ProfileFormValues, saved: ProfileFo
   if (current.community !== saved.community) return true;
   if (current.health !== saved.health) return true;
   if (current.ai !== saved.ai) return true;
+  if (current.messages !== undefined && saved.messages !== undefined && current.messages !== saved.messages) return true;
   if (current.stage !== saved.stage) return true;
   if (current.stage === 'stopped' && current.soberDay !== saved.soberDay) return true;
   if (current.stage === 'trying_to_stop') {

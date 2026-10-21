@@ -141,7 +141,7 @@ import { resolveSignedInSession } from '@/domain/liveSession';
 import { OPENING_LINE, SCRIPTED_COACH_REPLY, type ThumosMode } from '@/domain/thumos';
 import Constants from 'expo-constants';
 import { CONSENT_VERSION } from '@/data/catalogue';
-import { consentRows, missingConsentRows, type StoredConsent } from '@/domain/consents';
+import { consentRows, mergeStoredConsents, missingConsentRows, type StoredConsent } from '@/domain/consents';
 import { stageFromRecord } from '@/domain/stage';
 import type {
   AppSnapshot,
@@ -251,7 +251,7 @@ export class SupabaseRepository implements Repository {
   private saves = new Map<string, CoalescedSave<unknown>>();
   /** Profile to restore if a chip save fails and nothing newer has been chosen. */
   private profileBase: Profile | null = null;
-  private consentBase: Pick<Profile, 'communityVisible' | 'consentHealth' | 'consentAi'> | null = null;
+  private consentBase: ConsentInput | null = null;
   /** Consent rows from before the optimistic insert, so the real insert is not skipped. */
   private consentExisting: StoredConsent[] | null = null;
   private once = shareInflight();
@@ -436,7 +436,7 @@ export class SupabaseRepository implements Repository {
         this.client.from('profile_interests').select('user_id, interest_id'),
         this.client.from('connections').select('*').order('created_at', { ascending: false }),
         this.client.from('reports').select('*').order('created_at', { ascending: false }),
-        this.client.from('consents').select('kind, granted, version').eq('user_id', userId),
+        this.client.from('consents').select('kind, granted, version, created_at').eq('user_id', userId),
         this.client.from('progress_photos').select('id, user_id, taken_on, month_index, note, caption, storage_path, created_at, visibility').eq('user_id', userId).order('month_index').order('taken_on'),
         this.client.from('gratitude_entries').select('id, body, category, is_favourite, entry_date, created_at, updated_at, check_in_id').eq('user_id', userId).order('entry_date', { ascending: false }),
         this.client.from('gratitude_photos').select('id, entry_id, user_id, storage_path, caption, created_at').eq('user_id', userId).order('created_at'),
@@ -952,6 +952,7 @@ export class SupabaseRepository implements Repository {
         community_visible: input.communityVisible,
         consent_health: input.consentHealth,
         consent_ai: input.consentAi,
+        message_notifications: input.messageNotifications,
         onboarding_complete: true,
       })
       .eq('id', userId);
@@ -2929,16 +2930,14 @@ export class SupabaseRepository implements Repository {
         communityVisible: profile.communityVisible,
         consentHealth: profile.consentHealth,
         consentAi: profile.consentAi,
+        messageNotifications: profile.messageNotifications,
+        termsAccepted: this.snapshot.consents.some((row) => row.kind === 'terms' && row.version === CONSENT_VERSION && row.granted),
       };
       this.consentExisting = this.snapshot.consents;
-      lane.seen(canonicalConsent(this.consentBase));
+      lane.seen(this.consentBase);
     }
     const rows = consentRows(CONSENT_VERSION, next);
-    const replaced = this.snapshot.consents.map((row) => {
-      const match = rows.find((item) => item.kind === row.kind && item.version === row.version);
-      return match ? { ...row, granted: match.granted } : row;
-    });
-    const added = missingConsentRows(replaced, rows);
+    const decidedAt = new Date().toISOString();
     this.emit({
       ...this.snapshot,
       profile: {
@@ -2946,8 +2945,9 @@ export class SupabaseRepository implements Repository {
         communityVisible: next.communityVisible,
         consentHealth: next.consentHealth,
         consentAi: next.consentAi,
+        messageNotifications: next.messageNotifications,
       },
-      consents: [...replaced, ...added],
+      consents: mergeStoredConsents(this.snapshot.consents, rows, decidedAt),
     });
     try {
       await lane.choose(next);
@@ -2957,6 +2957,7 @@ export class SupabaseRepository implements Repository {
           communityVisible: next.communityVisible,
           consentHealth: next.consentHealth,
           consentAi: next.consentAi,
+          messageNotifications: next.messageNotifications,
         };
       }
     } catch (error) {
@@ -2970,6 +2971,7 @@ export class SupabaseRepository implements Repository {
               communityVisible: this.consentBase.communityVisible,
               consentHealth: this.consentBase.consentHealth,
               consentAi: this.consentBase.consentAi,
+              messageNotifications: this.consentBase.messageNotifications,
             }
             : current,
           consents: this.consentExisting ?? this.snapshot.consents,
@@ -2980,6 +2982,7 @@ export class SupabaseRepository implements Repository {
             communityVisible: this.consentBase.communityVisible,
             consentHealth: this.consentBase.consentHealth,
             consentAi: this.consentBase.consentAi,
+            messageNotifications: this.consentBase.messageNotifications,
           };
         }
       }
@@ -3029,6 +3032,7 @@ export class SupabaseRepository implements Repository {
       community_visible: input.communityVisible,
       consent_health: input.consentHealth,
       consent_ai: input.consentAi,
+      message_notifications: input.messageNotifications,
     }).eq('id', userId);
     if (error) throw error;
     await this.insertConsents(userId, input, this.consentExisting ?? []);
@@ -3075,18 +3079,14 @@ export class SupabaseRepository implements Repository {
       communityVisible: lane.value.communityVisible,
       consentHealth: lane.value.consentHealth,
       consentAi: lane.value.consentAi,
+      messageNotifications: lane.value.messageNotifications,
     };
   }
 
   private overlayConsentRows(rows: StoredConsent[]): StoredConsent[] {
     const lane = this.saves.get('consent') as CoalescedSave<ConsentInput> | undefined;
     if (!lane?.dirty) return rows;
-    const next = consentRows(CONSENT_VERSION, lane.value);
-    const replaced = rows.map((row) => {
-      const match = next.find((item) => item.kind === row.kind && item.version === row.version);
-      return match ? { ...row, granted: match.granted } : row;
-    });
-    return [...replaced, ...missingConsentRows(replaced, next)];
+    return mergeStoredConsents(rows, consentRows(CONSENT_VERSION, lane.value), new Date().toISOString());
   }
 
   private overlayVision(items: VisionItem[]): VisionItem[] {
@@ -3123,16 +3123,28 @@ export class SupabaseRepository implements Repository {
     }
   }
 
-  private async insertConsents(userId: string, input: ConsentInput, existing: readonly { kind: string; version: string }[] = this.snapshot.consents) {
-    const next = missingConsentRows(existing, consentRows(CONSENT_VERSION, input));
-    if (!next.length) return;
-    const { error } = await this.client.from('consents').insert(next.map((row) => ({
-      user_id: userId,
-      kind: row.kind,
-      granted: row.granted,
-      version: row.version,
-    })));
-    if (error && !/duplicate|23505/i.test(`${error.code ?? ''} ${error.message}`)) throw asUserFacing(error, 'general');
+  private async insertConsents(userId: string, input: ConsentInput, existing: readonly StoredConsent[] = this.snapshot.consents) {
+    const rows = consentRows(CONSENT_VERSION, input);
+    const next = missingConsentRows(existing, rows);
+    if (next.length) {
+      const { error } = await this.client.from('consents').insert(next.map((row) => ({
+        user_id: userId,
+        kind: row.kind,
+        granted: row.granted,
+        version: row.version,
+      })));
+      if (error && !/duplicate|23505/i.test(`${error.code ?? ''} ${error.message}`)) throw asUserFacing(error, 'general');
+    }
+    const decidedAt = new Date().toISOString();
+    for (const row of rows) {
+      const prior = existing.find((item) => item.kind === row.kind && item.version === row.version);
+      if (!prior || prior.granted === row.granted) continue;
+      const { error } = await this.client.from('consents').update({
+        granted: row.granted,
+        decided_at: decidedAt,
+      }).eq('user_id', userId).eq('kind', row.kind).eq('version', row.version);
+      if (error) throw asUserFacing(error, 'general');
+    }
   }
 }
 
@@ -3180,7 +3192,7 @@ function mapProfile(row: Row, email: string, interestIds: string[]): Profile {
     visionStatement: typeof row.vision_statement === 'string' ? row.vision_statement : '',
     pinnedQuoteId: typeof row.pinned_quote_id === 'string' && quoteById(row.pinned_quote_id) ? row.pinned_quote_id : null,
     bio: typeof row.bio === 'string' ? row.bio : '',
-    messageNotifications: row.message_notifications == null ? true : Boolean(row.message_notifications),
+    messageNotifications: Boolean(row.message_notifications),
     notifySenderName: Boolean(row.notify_sender_name),
     movementReminder: Boolean(row.movement_reminder),
     movementReminderMinute: row.movement_reminder_minute == null ? null : Number(row.movement_reminder_minute),
@@ -3192,10 +3204,12 @@ function mapProfile(row: Row, email: string, interestIds: string[]): Profile {
 }
 
 function mapConsent(row: Row): StoredConsent {
+  const decided = row.decided_at ?? row.created_at;
   return {
     kind: row.kind as StoredConsent['kind'],
     granted: Boolean(row.granted),
     version: String(row.version),
+    decidedAt: decided ? String(decided) : undefined,
   };
 }
 
@@ -3409,6 +3423,8 @@ function canonicalConsent(input: ConsentInput): ConsentInput {
     communityVisible: input.communityVisible,
     consentHealth: input.consentHealth,
     consentAi: input.consentAi,
+    messageNotifications: input.messageNotifications,
+    termsAccepted: input.termsAccepted,
   };
 }
 
