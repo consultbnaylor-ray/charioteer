@@ -6,7 +6,6 @@ import { formatUkCompactDay, londonDay, weekdayShort } from '@/domain/healthInsi
 import { CHART_DIRECTION_HINT } from '@/domain/readingChart';
 import {
   DIFFICULTY_DAY_LINK,
-  DIFFICULTY_LIST_FOLD,
   DIFFICULTY_NOTE,
   ROUTE_MARK,
   WORKOUT_CHART_SPANS,
@@ -99,13 +98,9 @@ function DurationChart({
   onSelect: (day: string) => void;
 }) {
   const theme = useAppTheme();
-  const [open, setOpen] = useState(false);
   const order = durationTypeOrder(bars);
   const most = Math.max(1, ...bars.map((bar) => bar.totalMinutes));
   const scale = durationScaleLabel(bars);
-  const named = bars.filter((bar) => bar.totalMinutes > 0);
-  const hidden = foldedCount(named.length, WORKOUT_LIST_FOLD);
-  const listed = hidden > 0 && !open ? [] : named;
   const dayRows = workoutsOnDay(workouts, selected);
 
   return (
@@ -162,20 +157,6 @@ function DurationChart({
         <T variant="label">{chartDayLabel(selected)}</T>
         {dayRows.length === 0 ? <T>No workouts on this day.</T> : dayRows.map((workout) => <WorkoutRow key={workout.id} workout={workout} />)}
       </View>
-      {hidden > 0 ? (
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={open ? 'Hide daily duration' : `Show daily duration, ${named.length} days`}
-          accessibilityState={{ expanded: open }}
-          onPress={() => setOpen((value) => !value)}
-          style={{ minHeight: 44, justifyContent: 'center' }}
-        >
-          <T>{open ? 'Hide daily duration' : 'Show daily duration'}</T>
-        </Pressable>
-      ) : null}
-      {listed.map((bar) => (
-        <T key={bar.day} variant="muted">{bar.label}</T>
-      ))}
       <T variant="muted" style={{ textAlign: 'center' }}>{CHART_DIRECTION_HINT}</T>
     </View>
   );
@@ -185,19 +166,19 @@ function DifficultyChart({
   marks,
   workouts,
   age,
+  day,
   onSelect,
 }: {
   marks: readonly DifficultyMark[];
   workouts: readonly DeviceWorkout[];
   age: number | null;
+  day: string;
   onSelect: (day: string) => void;
 }) {
   const theme = useAppTheme();
-  const [open, setOpen] = useState(false);
   const [pickedId, setPickedId] = useState<string | null>(null);
   const [plotWidth, setPlotWidth] = useState(0);
-  const hidden = foldedCount(marks.length, DIFFICULTY_LIST_FOLD);
-  const shown = hidden > 0 && !open ? [] : marks;
+  const dayMarks = marks.filter((mark) => mark.day === day);
   const types: string[] = [];
   for (const mark of marks) {
     if (!types.includes(mark.typeLabel)) types.push(mark.typeLabel);
@@ -287,22 +268,10 @@ function DifficultyChart({
               </Pressable>
             </View>
           ) : null}
+          <T variant="label">{chartDayLabel(day)}</T>
+          {dayMarks.length === 0 ? <T>No difficulty reading on this day.</T> : dayMarks.map((mark) => <T key={mark.id}>{mark.caption}</T>)}
         </View>
       )}
-      {hidden > 0 ? (
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={open ? 'Hide difficulty readings' : `Show difficulty readings, ${marks.length} workouts`}
-          accessibilityState={{ expanded: open }}
-          onPress={() => setOpen((value) => !value)}
-          style={{ minHeight: 44, justifyContent: 'center' }}
-        >
-          <T>{open ? 'Hide difficulty readings' : 'Show difficulty readings'}</T>
-        </Pressable>
-      ) : null}
-      {shown.map((mark) => (
-        <T key={mark.id}>{mark.caption}</T>
-      ))}
       <T variant="muted" style={{ textAlign: 'center' }}>{CHART_DIRECTION_HINT}</T>
     </View>
   );
@@ -403,7 +372,7 @@ export function WorkoutList({ workouts, age }: { workouts: readonly DeviceWorkou
         ))}
       </View>
       <DurationChart bars={bars} workouts={workouts} span={span} selected={day} onSelect={choose} />
-      <DifficultyChart marks={marks} workouts={workouts} age={age} onSelect={choose} />
+      <DifficultyChart marks={marks} workouts={workouts} age={age} day={day} onSelect={choose} />
     </Card>
   );
 }

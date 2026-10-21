@@ -204,6 +204,18 @@ describe('workout day list', () => {
     expect(list).toContain(ROUTE_MARK);
     expect(list).not.toContain('No GPS route');
     expect(list).not.toContain('scrollTo');
+    expect(list).not.toContain('Show daily duration');
+    expect(list).not.toContain('Show difficulty readings');
+    expect(calendar).toContain('Previous week');
+    expect(calendar).toContain('Next week');
+    expect(calendar).toContain('accessibilityLabel="Today"');
+    expect(calendar).toContain('planned');
+    expect(calendar).toContain('<PlanTick done />');
+    expect(calendar).toContain('horizontal');
+    expect(calendar).not.toContain('days.map');
+    const strip = calendar.slice(calendar.indexOf('Previous week'), calendar.indexOf('function webScrollParent'));
+    expect(strip).not.toContain('scrollTo');
+    expect(strip).not.toContain('scrollIntoView');
     expect(calendar).toContain('View route');
     expect(calendar).not.toContain('No GPS route');
     expect(reader).toContain('HKQuantityTypeIdentifierWorkoutEffortScore');

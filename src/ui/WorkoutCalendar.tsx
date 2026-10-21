@@ -1,12 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
-import { Keyboard, Platform, Pressable, Switch, View } from 'react-native';
+import { Keyboard, Platform, Pressable, ScrollView, Switch, View } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
 
 import { useRouter } from 'expo-router';
 import { useRepository, useSnapshot } from '@/data';
 import { formatUkDate, isoDay, parseIsoDay } from '@/domain/dates';
 import { shownError } from '@/domain/errors';
-import { londonDay, mondayOf, shiftDay } from '@/domain/healthInsights';
+import { londonDay, mondayOf, shiftDay, weekdayShort } from '@/domain/healthInsights';
 import {
   londonWallTime,
   nextSessionClock,
@@ -79,14 +79,14 @@ function SessionMark({ type }: { type: PlannedSessionType }) {
   );
 }
 
-function calendarDays(now: Date, sessions: readonly PlannedSession[]): string[] {
-  const today = londonDay(now);
-  const start = mondayOf(today);
-  const end = shiftDay(today, 13);
-  const days = new Set<string>();
-  for (let day = start; day <= end; day = shiftDay(day, 1)) days.add(day);
-  for (const session of sessions) days.add(sessionDay(session));
-  return [...days].sort();
+function weekOf(iso: string): string[] {
+  const start = mondayOf(iso);
+  return Array.from({ length: 7 }, (_, index) => shiftDay(start, index));
+}
+
+/** "22 Oct" from "Thu 22 Oct 2026". */
+function stripDate(iso: string): string {
+  return formatUkDate(iso).split(' ').slice(1, 3).join(' ');
 }
 
 function startsAtFrom(day: Date, time: string): string | null {
@@ -117,6 +117,7 @@ export function WorkoutCalendar({
   const [editing, setEditing] = useState<PlannedSession | null>(null);
   const [sessionType, setSessionType] = useState<PlannedSessionType>('boxing');
   const [day, setDay] = useState(() => new Date());
+  const [selected, setSelected] = useState(() => londonDay(new Date()));
   const [time, setTime] = useState('18:00');
   const fieldsRef = useRef<View>(null);
   const scroller = useScreenScroller();
@@ -154,6 +155,7 @@ export function WorkoutCalendar({
     if (!planNonce || !planDay) return;
     setEditing(null);
     setSessionType('boxing');
+    setSelected(planDay);
     setDay(parseIsoDay(planDay));
     setTime(nextSessionClock(new Date(), planDay));
     setDurationText('30');
@@ -167,6 +169,7 @@ export function WorkoutCalendar({
     setEditing(null);
     setSessionType('outdoor');
     const today = new Date();
+    setSelected(londonDay(today));
     setDay(today);
     setTime(nextSessionClock(today));
     setDurationText('30');
@@ -252,8 +255,10 @@ export function WorkoutCalendar({
     setError(null);
     setEditing(session);
     setSessionType(session?.sessionType ?? 'boxing');
-    setDay(session ? parseIsoDay(sessionDay(session)) : date);
-    setTime(session ? snapSessionClock(sessionClock(session)) : nextSessionClock(new Date(), isoDay(date)));
+    const iso = session ? sessionDay(session) : londonDay(date);
+    setSelected(iso);
+    setDay(parseIsoDay(iso));
+    setTime(session ? snapSessionClock(sessionClock(session)) : nextSessionClock(new Date(), iso));
     setDurationText(String(session?.durationMinutes ?? 30));
     setNote(session?.note ?? '');
     setOpen(true);
@@ -328,7 +333,9 @@ export function WorkoutCalendar({
   }
 
   const words = setting ? reminderSettingWords(setting) : null;
-  const days = calendarDays(now, sessions);
+  const today = londonDay(now);
+  const week = weekOf(selected);
+  const rows = sessions.filter((session) => sessionDay(session) === selected);
   const green = statsToneColors(theme.scheme).good.ink;
 
   return (
@@ -369,7 +376,84 @@ export function WorkoutCalendar({
         </View>
       ) : null}
       <ErrorNote>{error}</ErrorNote>
-      <Button label="Plan a session" onPress={() => begin(null, new Date())} />
+      <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Previous week"
+          onPress={() => setSelected((current) => shiftDay(current, -7))}
+          style={{ width: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center' }}
+        >
+          <T>‹</T>
+        </Pressable>
+        <View style={{ flex: 1, alignItems: 'center' }}>
+          {selected !== today ? (
+            <Pressable accessibilityRole="button" accessibilityLabel="Today" onPress={() => setSelected(today)} style={{ minHeight: 44, justifyContent: 'center', paddingHorizontal: 12 }}>
+              <T>Today</T>
+            </Pressable>
+          ) : null}
+        </View>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Next week"
+          onPress={() => setSelected((current) => shiftDay(current, 7))}
+          style={{ width: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center' }}
+        >
+          <T>›</T>
+        </Pressable>
+      </View>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ flexGrow: 1, minWidth: '100%' }}>
+        <View style={{ flexDirection: 'row', flexGrow: 1, gap: 2 }}>
+          {week.map((date) => {
+            const count = sessions.filter((session) => sessionDay(session) === date).length;
+            const chosen = date === selected;
+            const full = formatUkDate(date);
+            return (
+              <Pressable
+                key={date}
+                accessibilityRole="button"
+                accessibilityLabel={count > 0 ? `${full}, ${count} planned` : `${full}, nothing planned`}
+                accessibilityState={{ selected: chosen }}
+                onPress={() => setSelected(date)}
+                style={{
+                  flexGrow: 1,
+                  flexShrink: 1,
+                  flexBasis: 0,
+                  minWidth: 0,
+                  minHeight: 64,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 1,
+                  borderWidth: chosen ? 1 : 0,
+                  borderColor: theme.colors.ink,
+                  backgroundColor: chosen ? theme.colors.emphasisSoft : 'transparent',
+                }}
+              >
+                <T style={{ fontSize: 11, lineHeight: 14, color: theme.colors.muted }}>{weekdayShort(date)}</T>
+                <T style={{ fontSize: 12, lineHeight: 16, textAlign: 'center', fontFamily: chosen ? theme.font.bodyStrong : theme.font.body }}>{stripDate(date)}</T>
+                {count > 0 ? (
+                  <View style={{ alignItems: 'center', gap: 2, minHeight: 14 }}>
+                    <View accessibilityElementsHidden style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: theme.colors.ink }} />
+                    <T style={{ fontSize: 10, lineHeight: 12, textAlign: 'center' }}>{`${count} planned`}</T>
+                  </View>
+                ) : (
+                  <View style={{ minHeight: 14 }} />
+                )}
+              </Pressable>
+            );
+          })}
+        </View>
+      </ScrollView>
+      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+        <T style={{ flex: 1, fontFamily: theme.font.bodyStrong }}>{formatUkDate(selected)}</T>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={`Plan ${formatUkDate(selected)}`}
+          onPress={() => begin(null, parseIsoDay(selected))}
+          style={{ minHeight: 44, justifyContent: 'center' }}
+        >
+          <T>Plan</T>
+        </Pressable>
+      </View>
       {open ? (
         <View style={{ gap: 10 }}>
           <T variant="label">{editing ? 'Edit session' : 'New session'}</T>
@@ -381,7 +465,10 @@ export function WorkoutCalendar({
           <DateField
             label="Date"
             value={day}
-            onChange={setDay}
+            onChange={(value) => {
+              setDay(value);
+              setSelected(isoDay(value));
+            }}
             earliestDate={editing && parseIsoDay(sessionDay(editing)).getTime() < Date.now() ? parseIsoDay(sessionDay(editing)) : new Date()}
           />
           <SessionTimeField value={time} onChange={setTime} />
@@ -412,53 +499,40 @@ export function WorkoutCalendar({
           </View>
         </View>
       ) : null}
-      {days.map((date) => {
-        const rows = sessions.filter((session) => sessionDay(session) === date);
+      {rows.length === 0 ? <T>No sessions on this day.</T> : rows.map((session) => {
+        const reminded = setting ? sessionHasReminder(session, setting, now) : false;
+        const route = session.doneAt
+          ? workouts.find((workout) => workout.routeExpected && londonDay(workout.startedAt) === selected)
+          : undefined;
         return (
-          <View key={date} style={{ gap: 6, paddingTop: 8 }}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-              <T style={{ fontFamily: theme.font.bodyStrong }}>{formatUkDate(date)}</T>
-              <Pressable accessibilityRole="button" accessibilityLabel={`Plan ${formatUkDate(date)}`} onPress={() => begin(null, parseIsoDay(date))} style={{ minHeight: 44, justifyContent: 'center' }}>
-                <T>Plan</T>
+          <View key={session.id} style={{ gap: 4 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              <SessionMark type={session.sessionType} />
+              <T style={{ flex: 1 }}>{session.doneAt ? `${sessionWords(session)} · Done` : sessionWords(session)}</T>
+              {reminded ? (
+                <View accessibilityRole="image" accessibilityLabel="Reminder set" style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                  <Bell size={14} />
+                </View>
+              ) : null}
+            </View>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+              {session.doneAt ? null : (
+                <Pressable accessibilityRole="button" accessibilityLabel={`Mark ${SESSION_TYPE_LABEL[session.sessionType]} done`} onPress={() => { void markDone(session); }} style={{ minHeight: 44, justifyContent: 'center' }}>
+                  <T>Done</T>
+                </Pressable>
+              )}
+              {route ? (
+                <Pressable accessibilityRole="button" accessibilityLabel={`View route for ${SESSION_TYPE_LABEL[session.sessionType]}`} onPress={() => router.push(`/workout/${encodeURIComponent(route.id)}` as never)} style={{ minHeight: 44, justifyContent: 'center' }}>
+                  <T>View route</T>
+                </Pressable>
+              ) : null}
+              <Pressable accessibilityRole="button" accessibilityLabel={`Edit ${SESSION_TYPE_LABEL[session.sessionType]}`} onPress={() => begin(session)} style={{ minHeight: 44, justifyContent: 'center' }}>
+                <T>Edit</T>
+              </Pressable>
+              <Pressable accessibilityRole="button" accessibilityLabel={`Delete ${SESSION_TYPE_LABEL[session.sessionType]}`} onPress={() => { void remove(session); }} style={{ minHeight: 44, justifyContent: 'center' }}>
+                <T>Delete</T>
               </Pressable>
             </View>
-            {rows.map((session) => {
-              const reminded = setting ? sessionHasReminder(session, setting, now) : false;
-              const route = session.doneAt
-                ? workouts.find((workout) => workout.routeExpected && londonDay(workout.startedAt) === date)
-                : undefined;
-              return (
-                <View key={session.id} style={{ gap: 4 }}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                    <SessionMark type={session.sessionType} />
-                    <T style={{ flex: 1 }}>{session.doneAt ? `${sessionWords(session)} · Done` : sessionWords(session)}</T>
-                    {reminded ? (
-                      <View accessibilityRole="image" accessibilityLabel="Reminder set" style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                        <Bell size={14} />
-                      </View>
-                    ) : null}
-                  </View>
-                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-                    {session.doneAt ? null : (
-                      <Pressable accessibilityRole="button" accessibilityLabel={`Mark ${SESSION_TYPE_LABEL[session.sessionType]} done`} onPress={() => { void markDone(session); }} style={{ minHeight: 44, justifyContent: 'center' }}>
-                        <T>Done</T>
-                      </Pressable>
-                    )}
-                    {route ? (
-                      <Pressable accessibilityRole="button" accessibilityLabel={`View route for ${SESSION_TYPE_LABEL[session.sessionType]}`} onPress={() => router.push(`/workout/${encodeURIComponent(route.id)}` as never)} style={{ minHeight: 44, justifyContent: 'center' }}>
-                        <T>View route</T>
-                      </Pressable>
-                    ) : null}
-                    <Pressable accessibilityRole="button" accessibilityLabel={`Edit ${SESSION_TYPE_LABEL[session.sessionType]}`} onPress={() => begin(session)} style={{ minHeight: 44, justifyContent: 'center' }}>
-                      <T>Edit</T>
-                    </Pressable>
-                    <Pressable accessibilityRole="button" accessibilityLabel={`Delete ${SESSION_TYPE_LABEL[session.sessionType]}`} onPress={() => { void remove(session); }} style={{ minHeight: 44, justifyContent: 'center' }}>
-                      <T>Delete</T>
-                    </Pressable>
-                  </View>
-                </View>
-              );
-            })}
           </View>
         );
       })}
