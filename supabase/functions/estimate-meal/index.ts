@@ -4,6 +4,7 @@ import { json, preflight } from '../_shared/http.ts';
 import { stripJpegBase64 } from '../_shared/photoLocation.ts';
 import { MEAL_ESTIMATE_PROMPT, estimateFromText, parseMealEstimate, samplePhotoMeal } from '../_shared/nutrition.ts';
 import { buildChatCompletionBody, THUMOS_CHAT } from '../_shared/thumos.ts';
+import { xaiPersonalDataEnabled } from '../_shared/xaiPersonal.ts';
 
 type Body = { text?: string; imageBase64?: string; source?: string };
 
@@ -52,7 +53,7 @@ Deno.serve(async (req) => {
   const local = text ? estimateFromText(text) : samplePhotoMeal();
   const ESTIMATE_PROVIDER_TIMEOUT_MS = 28_000;
   const apiKey = Deno.env.get('XAI_API_KEY');
-  if (!apiKey) return json({ ok: true, items: local, source: 'local' });
+  if (!apiKey || !xaiPersonalDataEnabled(Deno.env.get('XAI_PERSONAL_DATA_ENABLED'))) return json({ ok: true, items: local, source: 'local' });
 
   const content: ({ type: 'text'; text: string } | { type: 'image_url'; image_url: { url: string } })[] = [
     { type: 'text', text: text ? `${MEAL_ESTIMATE_PROMPT}\n\nMeal: ${text}` : MEAL_ESTIMATE_PROMPT },

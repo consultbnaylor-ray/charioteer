@@ -43,6 +43,7 @@ import { loadNutritionLines } from '../_shared/nutritionLoad.ts';
 import { moodOnTen } from '../_shared/mood.ts';
 import { GOAL_LABEL, type NutritionGoal } from '../_shared/nutrition.ts';
 import { formatSoberElapsed, soberElapsed } from '../_shared/sober.ts';
+import { COACHING_PAUSED, xaiPersonalDataEnabled } from '../_shared/xaiPersonal.ts';
 
 type Body = { content?: string; mode?: ThumosMode; request_id?: string };
 
@@ -305,7 +306,11 @@ Deno.serve(async (req) => {
           }
         }
 
-        if (!apiKey) {
+        if (!xaiPersonalDataEnabled(Deno.env.get('XAI_PERSONAL_DATA_ENABLED'))) {
+          reply = COACHING_PAUSED;
+          role = 'assistant';
+          send({ type: 'delta', text: reply });
+        } else if (!apiKey) {
           console.error('thumos XAI_API_KEY is not set');
           reply = ensureSafetyNotices(OFFLINE_COACH_MESSAGE, safety);
           fallbackKind = 'offline';

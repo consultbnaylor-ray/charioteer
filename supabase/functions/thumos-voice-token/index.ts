@@ -2,6 +2,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.117.3';
 import { gratitudeFromRows } from '../_shared/gratitude.ts';
 import { visionContextFrom } from '../_shared/visionBoard.ts';
 import { json, preflight } from '../_shared/http.ts';
+import { COACHING_PAUSED, xaiPersonalDataEnabled } from '../_shared/xaiPersonal.ts';
 import {
   buildVoiceBriefing,
   GROK_VOICE,
@@ -71,6 +72,9 @@ Deno.serve(async (req) => {
       code: 'consent',
       message: 'Thumos stays off until you agree to send this conversation to the coach.',
     }, 403);
+  }
+  if (!xaiPersonalDataEnabled(Deno.env.get('XAI_PERSONAL_DATA_ENABLED'))) {
+    return json({ ok: false, code: 'paused', message: COACHING_PAUSED });
   }
   if (!apiKey) {
     return json({
