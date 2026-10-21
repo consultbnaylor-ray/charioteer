@@ -7,7 +7,6 @@ import { CHART_DIRECTION_HINT } from '@/domain/readingChart';
 import {
   DIFFICULTY_LIST_FOLD,
   DIFFICULTY_NOTE,
-  EFFORT_NAME,
   ROUTE_MARK,
   WORKOUT_CHART_SPANS,
   WORKOUT_LIST_FOLD,
@@ -28,14 +27,28 @@ import {
   type WorkoutChartSpan,
 } from '@/domain/workoutDay';
 import type { DeviceWorkout } from '@/domain/workoutRoute';
+import { workoutTypeColor } from '@/domain/workoutTypeColor';
 import { useAppTheme } from '@/ui/theme';
 import { Card, Choice, T } from '@/ui/ui';
 
 const BAR_HEIGHT = 88;
-const STACK_OPACITY = [1, 0.62, 0.4, 0.24];
 
-function typeOpacity(index: number): number {
-  return STACK_OPACITY[Math.min(index, STACK_OPACITY.length - 1)] ?? 1;
+function SeriesLegend({ labels }: { labels: readonly string[] }) {
+  const theme = useAppTheme();
+  if (labels.length === 0) return null;
+  return (
+    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
+      {labels.map((label) => (
+        <View key={label} style={{ flexDirection: 'row', alignItems: 'center', gap: 6, minHeight: 24 }}>
+          <View
+            accessibilityElementsHidden
+            style={{ width: 10, height: 10, backgroundColor: workoutTypeColor(label), borderWidth: 1, borderColor: theme.colors.line }}
+          />
+          <T>{label}</T>
+        </View>
+      ))}
+    </View>
+  );
 }
 
 function dayNumber(day: string): string {
@@ -123,8 +136,7 @@ function DurationChart({
                       key={segment.label}
                       style={{
                         height: Math.max(2, (segment.minutes / most) * BAR_HEIGHT),
-                        backgroundColor: theme.colors.ink,
-                        opacity: typeOpacity(order.indexOf(segment.label)),
+                        backgroundColor: workoutTypeColor(segment.label),
                       }}
                     />
                   ))
@@ -135,18 +147,7 @@ function DurationChart({
           );
         })}
       </View>
-      {order.length > 0 ? (
-        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
-          {order.map((label, index) => (
-            <View key={label} style={{ flexDirection: 'row', alignItems: 'center', gap: 6, minHeight: 24 }}>
-              <View style={{ width: 10, height: 10, backgroundColor: theme.colors.ink, opacity: typeOpacity(index) }} />
-              <T>{label}</T>
-            </View>
-          ))}
-        </View>
-      ) : (
-        <T variant="muted">No workouts in these days.</T>
-      )}
+      {order.length > 0 ? <SeriesLegend labels={order} /> : <T variant="muted">No workouts in these days.</T>}
       {hidden > 0 ? (
         <Pressable
           accessibilityRole="button"
@@ -173,35 +174,40 @@ function DifficultyChart({
   marks: readonly DifficultyMark[];
   onSelect: (day: string) => void;
 }) {
-  const theme = useAppTheme();
   const [open, setOpen] = useState(false);
   const hidden = foldedCount(marks.length, DIFFICULTY_LIST_FOLD);
   const shown = hidden > 0 && !open ? [] : marks;
+  const types: string[] = [];
+  for (const mark of marks) {
+    if (!types.includes(mark.typeLabel)) types.push(mark.typeLabel);
+  }
 
   return (
     <View style={{ gap: 8 }}>
       <T variant="label">Difficulty</T>
       <T variant="muted">{DIFFICULTY_NOTE}</T>
       {marks.length === 0 ? <T variant="muted">No workout effort score or average heart rate for these days.</T> : (
-        <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 3, minHeight: BAR_HEIGHT }}>
-          {marks.map((mark) => (
-            <Pressable
-              key={mark.id}
-              accessibilityRole="button"
-              accessibilityLabel={`${mark.caption}. Select this day.`}
-              onPress={() => onSelect(mark.day)}
-              style={{ flex: 1, minHeight: 44, alignItems: 'center', justifyContent: 'flex-end' }}
-            >
-              <View
-                style={{
-                  height: Math.max(4, mark.fill * BAR_HEIGHT),
-                  alignSelf: 'stretch',
-                  backgroundColor: theme.colors.ink,
-                  opacity: mark.measureName === EFFORT_NAME ? 1 : 0.55,
-                }}
-              />
-            </Pressable>
-          ))}
+        <View style={{ gap: 8 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 3, minHeight: BAR_HEIGHT }}>
+            {marks.map((mark) => (
+              <Pressable
+                key={mark.id}
+                accessibilityRole="button"
+                accessibilityLabel={`${mark.caption}. Select this day.`}
+                onPress={() => onSelect(mark.day)}
+                style={{ flex: 1, minHeight: 44, alignItems: 'center', justifyContent: 'flex-end' }}
+              >
+                <View
+                  style={{
+                    height: Math.max(4, mark.fill * BAR_HEIGHT),
+                    alignSelf: 'stretch',
+                    backgroundColor: workoutTypeColor(mark.typeLabel),
+                  }}
+                />
+              </Pressable>
+            ))}
+          </View>
+          <SeriesLegend labels={types} />
         </View>
       )}
       {hidden > 0 ? (

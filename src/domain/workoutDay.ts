@@ -148,6 +148,8 @@ export function maxHeartRate(age: number | null | undefined): number | null {
 export type DifficultyMark = {
   id: string;
   day: string;
+  /** Workout type, so the bar can use the same colour as the duration chart. */
+  typeLabel: string;
   measureName: string;
   unit: string;
   value: number;
@@ -165,6 +167,7 @@ export function difficultyFor(workout: DeviceWorkout, age: number | null | undef
     return {
       id: workout.id,
       day,
+      typeLabel: workout.label,
       measureName: EFFORT_NAME,
       unit: EFFORT_UNIT,
       value: effort,
@@ -180,6 +183,7 @@ export function difficultyFor(workout: DeviceWorkout, age: number | null | undef
   return {
     id: workout.id,
     day,
+    typeLabel: workout.label,
     measureName: HEART_DIFFICULTY_NAME,
     unit: HEART_DIFFICULTY_UNIT,
     value: percent,

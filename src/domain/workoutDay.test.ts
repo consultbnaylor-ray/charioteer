@@ -114,6 +114,7 @@ describe('workout day list', () => {
     expect(scored?.measureName).toBe(EFFORT_NAME);
     expect(scored?.unit).toBe('effort');
     expect(scored?.caption).toBe('Walking · 11:16 · Workout effort score 7 effort');
+    expect(scored?.typeLabel).toBe('Walking');
     expect(scored?.fill).toBeCloseTo(0.7);
     expect(difficultyFor({ ...walk, effortScore: 7, averageHeartRate: 112 }, 42)?.measureName).toBe(EFFORT_NAME);
     expect(difficultyFor({ ...walk, effortScore: 0, averageHeartRate: null }, 42)).toBeNull();
@@ -143,6 +144,12 @@ describe('workout day list', () => {
     const reader = readFileSync('src/health/workoutRoute.ios.ts', 'utf8');
     expect(list).toContain('/workout/');
     expect(list).toContain('CHART_DIRECTION_HINT');
+    expect(list).toContain('workoutTypeColor');
+    expect(list).toContain('<SeriesLegend');
+    expect(list).toContain('<T>{label}</T>');
+    expect(list).not.toContain('STACK_OPACITY');
+    expect(list).not.toContain('typeOpacity');
+    expect(list.match(/<SeriesLegend/g)).toHaveLength(2);
     expect(list).toContain(ROUTE_MARK);
     expect(list).not.toContain('No GPS route');
     expect(list).not.toContain('scrollTo');

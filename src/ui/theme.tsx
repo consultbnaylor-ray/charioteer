@@ -6,8 +6,9 @@ import type { TextScale, ThemePreference } from '@/data/types';
 /**
  * Monochrome system. Near-black and off-white, grey for hierarchy.
  * danger* marks SOS and safety notices, and a pending connection request
- * on People. Stats tiles and the nutrition charts are the only other
- * colours, and they live in statsPalette.ts.
+ * on People. Stats tiles and the nutrition charts use statsPalette.ts.
+ * Workout charts use one fixed colour per type, in workoutTypeColor.ts,
+ * and only so a stacked series can be told apart.
  */
 const light = {
   bg: '#F2F2EE',
