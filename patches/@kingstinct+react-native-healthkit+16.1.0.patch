@@ -23,7 +23,7 @@ index ba24aae..3e75f9e 100644
      "GCC_PREPROCESSOR_DEFINITIONS" => "$(inherited) FOLLY_NO_CONFIG FOLLY_CFG_NO_COROUTINES",
 diff --git a/node_modules/@kingstinct/react-native-healthkit/ios/AuthorizationCatcher.h b/node_modules/@kingstinct/react-native-healthkit/ios/AuthorizationCatcher.h
 new file mode 100644
-index 0000000..5c79495
+index 0000000..c0a52b2
 --- /dev/null
 +++ b/node_modules/@kingstinct/react-native-healthkit/ios/AuthorizationCatcher.h
 @@ -0,0 +1,21 @@
@@ -36,21 +36,21 @@ index 0000000..5c79495
 +@interface CharioteerAuthCatcher : NSObject
 +
 ++ (NSError * _Nullable)requestAuthorizationWithStore:(HKHealthStore * _Nonnull)store
-+                                               share:(NSSet * _Nonnull)share
-+                                                read:(NSSet * _Nonnull)read
++                                               share:(NSSet<HKSampleType *> * _Nonnull)share
++                                                read:(NSSet<HKObjectType *> * _Nonnull)read
 +                                          completion:(void (^ _Nonnull)(BOOL success, NSError * _Nullable error))completion
 +    NS_SWIFT_NAME(requestAuthorization(store:share:read:completion:));
 +
 ++ (NSError * _Nullable)requestStatusWithStore:(HKHealthStore * _Nonnull)store
-+                                        share:(NSSet * _Nonnull)share
-+                                         read:(NSSet * _Nonnull)read
++                                        share:(NSSet<HKSampleType *> * _Nonnull)share
++                                         read:(NSSet<HKObjectType *> * _Nonnull)read
 +                                   completion:(void (^ _Nonnull)(NSInteger status, NSError * _Nullable error))completion
 +    NS_SWIFT_NAME(requestStatus(store:share:read:completion:));
 +
 +@end
 diff --git a/node_modules/@kingstinct/react-native-healthkit/ios/AuthorizationCatcher.m b/node_modules/@kingstinct/react-native-healthkit/ios/AuthorizationCatcher.m
 new file mode 100644
-index 0000000..24158bb
+index 0000000..8b427de
 --- /dev/null
 +++ b/node_modules/@kingstinct/react-native-healthkit/ios/AuthorizationCatcher.m
 @@ -0,0 +1,53 @@
@@ -77,8 +77,8 @@ index 0000000..24158bb
 +@implementation CharioteerAuthCatcher
 +
 ++ (NSError * _Nullable)requestAuthorizationWithStore:(HKHealthStore *)store
-+                                               share:(NSSet *)share
-+                                                read:(NSSet *)read
++                                               share:(NSSet<HKSampleType *> *)share
++                                                read:(NSSet<HKObjectType *> *)read
 +                                          completion:(void (^)(BOOL, NSError * _Nullable))completion {
 +  NSSet *shareable = CharioteerShareWithoutRoute(share);
 +  @try {
@@ -92,8 +92,8 @@ index 0000000..24158bb
 +}
 +
 ++ (NSError * _Nullable)requestStatusWithStore:(HKHealthStore *)store
-+                                        share:(NSSet *)share
-+                                         read:(NSSet *)read
++                                        share:(NSSet<HKSampleType *> *)share
++                                         read:(NSSet<HKObjectType *> *)read
 +                                   completion:(void (^)(NSInteger, NSError * _Nullable))completion {
 +  NSSet *shareable = CharioteerShareWithoutRoute(share);
 +  @try {
@@ -108,7 +108,7 @@ index 0000000..24158bb
 +
 +@end
 diff --git a/node_modules/@kingstinct/react-native-healthkit/ios/CoreModule.swift b/node_modules/@kingstinct/react-native-healthkit/ios/CoreModule.swift
-index cf9056a..a240330 100644
+index cf9056a..66cfa42 100644
 --- a/node_modules/@kingstinct/react-native-healthkit/ios/CoreModule.swift
 +++ b/node_modules/@kingstinct/react-native-healthkit/ios/CoreModule.swift
 @@ -76,6 +76,43 @@ async throws -> [HKQuantityType: HKUnit] {
@@ -180,8 +180,8 @@ index cf9056a..a240330 100644
 +        let gate = ContinuationGate(continuation)
 +        let caught = CharioteerAuthCatcher.requestStatus(
 +          store: healthStore,
-+          share: toShare as NSSet,
-+          read: toRead as NSSet
++          share: toShare,
++          read: toRead
 +        ) { status, error in
 +          if let error = error {
 +            gate.resume(throwing: error)
@@ -218,8 +218,8 @@ index cf9056a..a240330 100644
 +        let gate = ContinuationGate(continuation)
 +        let caught = CharioteerAuthCatcher.requestAuthorization(
 +          store: healthStore,
-+          share: share as NSSet,
-+          read: toRead as NSSet
++          share: share,
++          read: toRead
 +        ) { status, error in
 +          if let error = error {
 +            gate.resume(throwing: error)
