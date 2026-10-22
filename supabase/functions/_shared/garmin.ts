@@ -215,6 +215,62 @@ export function tokenNeedsRefresh(expiresAt: string | null, now: number): boolea
   return at <= now + 600_000;
 }
 
+/** Current AES-GCM key. A later key is a new version, not an overwrite of this one. */
+export const GARMIN_TOKEN_KEY_VERSION = 1;
+
+export type SealedToken = {
+  ciphertext: string;
+  nonce: string;
+  keyVersion: number;
+};
+
+export function garminTokenAad(userId: string, kind: 'access' | 'refresh', version: number): string {
+  return `garmin:${version}:${userId}:${kind}`;
+}
+
+/** AES-GCM. The key is 32 bytes from base64. The nonce is 12 random bytes. */
+export async function sealGarminToken(plain: string, keyBase64: string, aad: string, version = GARMIN_TOKEN_KEY_VERSION): Promise<SealedToken> {
+  const nonce = crypto.getRandomValues(new Uint8Array(12));
+  const cipher = await crypto.subtle.encrypt(
+    { name: 'AES-GCM', iv: nonce, additionalData: new TextEncoder().encode(aad) },
+    await importGarminTokenKey(keyBase64),
+    new TextEncoder().encode(plain),
+  );
+  return {
+    ciphertext: encodeBase64(new Uint8Array(cipher)),
+    nonce: encodeBase64(nonce),
+    keyVersion: version,
+  };
+}
+
+/** Throws garmin-token: decrypt when the key, nonce, or version does not match. The plaintext is not included. */
+export async function openGarminToken(sealed: SealedToken, keyBase64: string, aad: string): Promise<string> {
+  if (sealed.keyVersion !== GARMIN_TOKEN_KEY_VERSION) throw new Error('garmin-token: version');
+  try {
+    const plain = await crypto.subtle.decrypt(
+      {
+        name: 'AES-GCM',
+        iv: decodeBase64(sealed.nonce),
+        additionalData: new TextEncoder().encode(aad),
+      },
+      await importGarminTokenKey(keyBase64),
+      decodeBase64(sealed.ciphertext),
+    );
+    return new TextDecoder().decode(plain);
+  } catch (error) {
+    if (error instanceof Error && error.message === 'garmin-token: key') throw error;
+    throw new Error('garmin-token: decrypt');
+  }
+}
+
+async function importGarminTokenKey(keyBase64: string): Promise<CryptoKey> {
+  const raw = decodeBase64(keyBase64.trim());
+  if (raw.length !== 32) throw new Error('garmin-token: key');
+  const copy = new Uint8Array(raw.byteLength);
+  copy.set(raw);
+  return crypto.subtle.importKey('raw', copy, { name: 'AES-GCM' }, false, ['encrypt', 'decrypt']);
+}
+
 export function mapGarminPush(body: unknown): GarminPushPlan {
   const root = record(body) ?? {};
   return {
@@ -486,11 +542,29 @@ export function readingsFromRows(input: {
   };
 }
 
-export function webhookAuthorised(header: string | null, queryToken: string | null, secret: string): boolean {
-  const expected = secret.trim();
-  if (!expected) return true;
-  const bearer = header?.replace(/^Bearer\s+/i, '').trim() ?? '';
-  return constantTimeEqual(bearer, expected) || constantTimeEqual(queryToken?.trim() ?? '', expected);
+export type WebhookGate =
+  | { ok: true }
+  | { ok: false; status: 401 | 503; log: 'garmin-webhook: secret unset' | 'garmin-webhook: token rejected' };
+
+/**
+ * Fail closed. The portal stores a URL, so the secret arrives as ?token=.
+ * Authorization: Bearer is also accepted. An empty secret is refused.
+ */
+export function webhookGate(header: string | null, queryToken: string | null, secret: string | null | undefined): WebhookGate {
+  const expected = (secret ?? '').trim();
+  if (!expected) return { ok: false, status: 503, log: 'garmin-webhook: secret unset' };
+  const bearer = bearerToken(header);
+  const query = (queryToken ?? '').trim();
+  const queryOk = constantTimeEqual(query, expected);
+  const bearerOk = constantTimeEqual(bearer, expected);
+  if (queryOk || bearerOk) return { ok: true };
+  return { ok: false, status: 401, log: 'garmin-webhook: token rejected' };
+}
+
+function bearerToken(header: string | null): string {
+  if (!header) return '';
+  const match = /^Bearer\s+(\S+)$/i.exec(header.trim());
+  return match?.[1] ?? '';
 }
 
 export function constantTimeEqual(left: string, right: string): boolean {
@@ -548,12 +622,12 @@ export async function deleteGarminRows(db: GarminDb, userId: string): Promise<vo
 export async function forgetGarminAccount(
   db: GarminDb,
   userId: string,
-  credentials: { clientId: string; clientSecret: string; now: number },
+  credentials: { clientId: string; clientSecret: string; tokenKey: string; now: number },
   fetchImpl: typeof fetch = fetch,
 ): Promise<void> {
   const selected = await db
     .from('garmin_connections')
-    .select('access_token, refresh_token, access_expires_at')
+    .select('access_token_ciphertext, access_token_nonce, refresh_token_ciphertext, refresh_token_nonce, token_key_version, access_expires_at')
     .eq('user_id', userId)
     .maybeSingle();
   if (selected.error) {
@@ -561,19 +635,45 @@ export async function forgetGarminAccount(
     throw new Error('garmin-disconnect: lookup');
   }
   const row = selected.data && typeof selected.data === 'object' ? selected.data as Record<string, unknown> : {};
-  const accessToken = text(row.access_token, 4096);
-  const refreshToken = text(row.refresh_token, 4096);
-  const expiresAt = text(row.access_expires_at, 40);
-  let bearer = accessToken;
-  if (bearer && refreshToken && credentials.clientId && credentials.clientSecret && tokenNeedsRefresh(expiresAt || null, credentials.now)) {
-    const refreshed = await refreshAccessToken({
-      clientId: credentials.clientId,
-      clientSecret: credentials.clientSecret,
-      refreshToken,
-      now: credentials.now,
-      fetchImpl,
-    });
-    if (refreshed) bearer = refreshed.accessToken;
+  const accessCipher = sealedText(row.access_token_ciphertext);
+  const refreshCipher = sealedText(row.refresh_token_ciphertext);
+  let bearer = '';
+  if (accessCipher || refreshCipher) {
+    const version = Number(row.token_key_version);
+    if (version !== GARMIN_TOKEN_KEY_VERSION) {
+      console.error('garmin-disconnect: key version');
+      throw new Error('garmin-disconnect: key version');
+    }
+    if (!credentials.tokenKey.trim()) {
+      console.error('garmin-disconnect: key');
+      throw new Error('garmin-disconnect: key');
+    }
+    try {
+      bearer = await openGarminToken({
+        ciphertext: accessCipher,
+        nonce: sealedText(row.access_token_nonce),
+        keyVersion: version,
+      }, credentials.tokenKey, garminTokenAad(userId, 'access', version));
+      const refreshToken = await openGarminToken({
+        ciphertext: refreshCipher,
+        nonce: sealedText(row.refresh_token_nonce),
+        keyVersion: version,
+      }, credentials.tokenKey, garminTokenAad(userId, 'refresh', version));
+      const expiresAt = text(row.access_expires_at, 40);
+      if (bearer && refreshToken && credentials.clientId && credentials.clientSecret && tokenNeedsRefresh(expiresAt || null, credentials.now)) {
+        const refreshed = await refreshAccessToken({
+          clientId: credentials.clientId,
+          clientSecret: credentials.clientSecret,
+          refreshToken,
+          now: credentials.now,
+          fetchImpl,
+        });
+        if (refreshed) bearer = refreshed.accessToken;
+      }
+    } catch {
+      console.error('garmin-disconnect: decrypt');
+      throw new Error('garmin-disconnect: decrypt');
+    }
   }
   if (bearer) {
     const remote = await deregisterRemote(bearer, fetchImpl);
@@ -583,6 +683,13 @@ export async function forgetGarminAccount(
     const removed = await db.from(table).delete().eq('user_id', userId);
     if (removed.error && !missingRelation(removed.error.message)) throw new Error('garmin-disconnect: delete');
   }
+}
+
+function sealedText(value: unknown): string {
+  if (typeof value !== 'string') return '';
+  const trimmed = value.trim();
+  if (!trimmed || trimmed.length > 12000) return '';
+  return trimmed;
 }
 
 async function refreshAccessToken(input: {
@@ -823,6 +930,19 @@ function instant(value: unknown): string {
 
 function unique(values: string[]): string[] {
   return [...new Set(values)];
+}
+
+function encodeBase64(bytes: Uint8Array): string {
+  let binary = '';
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return btoa(binary);
+}
+
+function decodeBase64(value: string): Uint8Array {
+  const binary = atob(value.replace(/\s/g, ''));
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
+  return bytes;
 }
 
 function base64Url(bytes: Uint8Array): string {

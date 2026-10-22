@@ -1,8 +1,7 @@
 -- Garmin Connect. Not applied from this repo. Ben reviews this file before it runs.
 -- Push summaries only. No historical backfill. No path or position columns.
--- Tokens live on garmin_connections. Authenticated cannot read that table.
--- There is no vault key in this project, so the tokens are withheld by grants
--- rather than encrypted with an application cipher.
+-- Tokens are AES-GCM ciphertext plus a nonce. Authenticated cannot read that table.
+-- The edge functions hold GARMIN_TOKEN_KEY. This file does not create a Vault secret.
 
 create table public.garmin_oauth_states (
   state text primary key,
@@ -15,15 +14,19 @@ create table public.garmin_oauth_states (
 create table public.garmin_connections (
   user_id uuid primary key references public.profiles (id) on delete cascade,
   garmin_user_id text,
-  access_token text,
-  refresh_token text,
+  access_token_ciphertext text not null default '',
+  access_token_nonce text not null default '',
+  refresh_token_ciphertext text not null default '',
+  refresh_token_nonce text not null default '',
+  token_key_version smallint not null default 1,
   access_expires_at timestamptz,
   refresh_expires_at timestamptz,
   scopes text not null default '',
   permissions text not null default '',
   connected_at timestamptz not null default now(),
   revoked_at timestamptz,
-  check (garmin_user_id is null or garmin_user_id ~ '^[A-Za-z0-9_-]{1,128}$')
+  check (garmin_user_id is null or garmin_user_id ~ '^[A-Za-z0-9_-]{1,128}$'),
+  check (token_key_version >= 1)
 );
 
 create unique index garmin_connections_garmin_user_id
@@ -124,7 +127,7 @@ select
   user_id,
   connected_at,
   revoked_at,
-  (revoked_at is null and access_token is not null) as connected
+  (revoked_at is null and access_token_ciphertext <> '') as connected
 from public.garmin_connections
 where user_id = auth.uid();
 
@@ -132,7 +135,7 @@ revoke all on table public.garmin_connection_status from public, anon;
 grant select on table public.garmin_connection_status to authenticated;
 
 comment on table public.garmin_connections is
-  'Owner tokens. Service role only. The status view exposes connected, connected_at, and revoked_at.';
+  'Owner tokens as AES-GCM ciphertext. Service role only. The status view exposes connected, connected_at, and revoked_at.';
 
 comment on table public.garmin_oauth_states is
   'Short-lived PKCE verifier. Service role only. Deleted when the code is exchanged or when it expires.';

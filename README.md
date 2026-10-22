@@ -89,6 +89,10 @@ Copy `.env.example`. Never commit a real key, and never prefix the xAI key with 
 | `EXPO_PUBLIC_APPLE_SIGN_IN_ENABLED` | Client | Set to `true` only after the Supabase Apple provider is on. Otherwise the button is hidden. |
 | `XAI_API_KEY` | Edge function only | `supabase secrets set XAI_API_KEY=…` |
 | `THUMOS_MODEL` | Edge function | Optional. Default `grok-4.3` with `reasoning_effort` `low`. |
+| `GARMIN_CLIENT_ID` | Edge function only | Garmin OAuth client id. |
+| `GARMIN_CLIENT_SECRET` | Edge function only | Garmin OAuth client secret. |
+| `GARMIN_TOKEN_KEY` | Edge function only | 32-byte AES-GCM key, base64. Seals the Garmin tokens. |
+| `GARMIN_WEBHOOK_SECRET` | Edge function only | Required shared secret on the Garmin push URL. |
 
 Supabase injects `SUPABASE_URL`, `SUPABASE_ANON_KEY`, and `SUPABASE_SERVICE_ROLE_KEY` into functions. Do not put those in the client.
 

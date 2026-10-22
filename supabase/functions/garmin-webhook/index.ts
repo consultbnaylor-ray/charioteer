@@ -6,7 +6,7 @@ import {
   deleteGarminRows,
   mapGarminPush,
   sleepRowsFor,
-  webhookAuthorised,
+  webhookGate,
   type GarminDb,
 } from '../_shared/garmin.ts';
 
@@ -16,12 +16,14 @@ Deno.serve(async (req) => {
   if (req.method !== 'POST') return json({ ok: false, code: 'method' }, 405);
 
   const url = new URL(req.url);
-  if (!webhookAuthorised(
-    req.headers.get('Authorization') ?? req.headers.get('x-garmin-token'),
+  const gate = webhookGate(
+    req.headers.get('Authorization'),
     url.searchParams.get('token'),
-    Deno.env.get('GARMIN_WEBHOOK_SECRET') ?? '',
-  )) {
-    return json({ ok: false, code: 'unauthorised' }, 401);
+    Deno.env.get('GARMIN_WEBHOOK_SECRET'),
+  );
+  if (!gate.ok) {
+    console.error(gate.log);
+    return json({ ok: false, code: gate.status === 503 ? 'config' : 'unauthorised' }, gate.status);
   }
 
   const supabaseUrl = Deno.env.get('SUPABASE_URL');

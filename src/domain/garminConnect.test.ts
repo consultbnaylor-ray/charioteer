@@ -265,6 +265,34 @@ describe('Garmin coach gate', () => {
   });
 });
 
+describe('Garmin token sealing', () => {
+  it('round-trips with the right key and fails with the wrong key', async () => {
+    const key = encodeBase64(new Uint8Array(32).fill(4));
+    const other = encodeBase64(new Uint8Array(32).fill(9));
+    const aad = garminTokenAad('user-1', 'access', 1);
+    const sealed = await sealGarminToken('access-secret', key, aad);
+    expect(sealed.keyVersion).toBe(1);
+    expect(sealed.ciphertext).not.toContain('access-secret');
+    expect(sealed.nonce).not.toContain('access-secret');
+    expect(await openGarminToken(sealed, key, aad)).toBe('access-secret');
+    await expect(openGarminToken(sealed, other, aad)).rejects.toThrow('garmin-token: decrypt');
+    await expect(openGarminToken({ ...sealed, keyVersion: 2 }, key, aad)).rejects.toThrow('garmin-token: version');
+    await expect(sealGarminToken('access-secret', encodeBase64(new Uint8Array(16).fill(1)), aad)).rejects.toThrow('garmin-token: key');
+  });
+});
+
+function encodeBase64(bytes: Uint8Array): string {
+  let binary = '';
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return btoa(binary);
+}
+
+function columnNames(sql: string, table: string): string[] {
+  const start = sql.indexOf(`create table public.${table} (`);
+  const body = sql.slice(start, sql.indexOf(');', start));
+  return [...body.matchAll(/^\s{2}([a-z0-9_]+)\s/gm)].map((match) => match[1]);
+}
+
 describe('Garmin storage rules', () => {
   const sql = readFileSync('supabase/migrations/20261022180000_garmin_connect.sql', 'utf8');
 
@@ -280,6 +308,18 @@ describe('Garmin storage rules', () => {
     expect(download).not.toContain('access_token');
     expect(download).not.toContain('refresh_token');
     expect(download).not.toContain('code_verifier');
+    const connectionColumns = columnNames(sql, 'garmin_connections');
+    expect(connectionColumns).not.toContain('access_token');
+    expect(connectionColumns).not.toContain('refresh_token');
+    expect(connectionColumns).toEqual(expect.arrayContaining([
+      'access_token_ciphertext',
+      'access_token_nonce',
+      'refresh_token_ciphertext',
+      'refresh_token_nonce',
+      'token_key_version',
+    ]));
+    const view = sql.slice(sql.indexOf('create view public.garmin_connection_status'), sql.indexOf('revoke all on table public.garmin_connection_status'));
+    expect(view).not.toMatch(/select[\s\S]*ciphertext/i);
     expect(sql).toContain('revoke all on table public.garmin_connections from public, anon, authenticated');
     expect(sql).toContain('grant select on table public.garmin_connection_status to authenticated');
     expect(sql).not.toMatch(/latitude|longitude/);
@@ -295,15 +335,19 @@ describe('Garmin storage rules', () => {
     expect(webhook).toContain("onConflict: 'user_id,calendar_date'");
     expect(webhook).toContain("onConflict: 'user_id,summary_id'");
     expect(webhook).toContain('deleteGarminRows');
-    expect(webhook).toContain('webhookAuthorised');
+    expect(webhook).toContain('webhookGate');
+    expect(webhook).toContain('console.error(gate.log)');
     expect(disconnect).toContain('forgetGarminAccount');
     expect(deleted).toContain('forgetGarminAccount');
     for (const table of GARMIN_DATA_TABLES) expect(readFileSync('supabase/functions/_shared/garmin.ts', 'utf8')).toContain(`'${table}'`);
     expect(chat.indexOf('garminAllowedForCoach(gate)')).toBeLessThan(chat.indexOf('buildThumosContext({'));
     expect(voice.indexOf('if (!xaiPersonalDataEnabled')).toBeLessThan(voice.indexOf('garminLinesFor('));
-    expect(webhookAuthorised('Bearer secret', null, 'secret')).toBe(true);
-    expect(webhookAuthorised('Bearer no', null, 'secret')).toBe(false);
-    expect(webhookAuthorised(null, null, '')).toBe(true);
+    expect(webhookGate('Bearer secret', null, 'secret')).toEqual({ ok: true });
+    expect(webhookGate(null, 'secret', 'secret')).toEqual({ ok: true });
+    expect(webhookGate(null, 'no', 'secret')).toMatchObject({ ok: false, status: 401, log: 'garmin-webhook: token rejected' });
+    expect(webhookGate(null, null, 'secret')).toMatchObject({ ok: false, status: 401 });
+    expect(webhookGate('Bearer secret', null, '')).toMatchObject({ ok: false, status: 503, log: 'garmin-webhook: secret unset' });
+    expect(webhookGate('Bearer secret', 'secret', '   ')).toMatchObject({ ok: false, status: 503 });
     expect(config).toContain('[functions.garmin-oauth-callback]\nverify_jwt = false');
     expect(config).toContain('[functions.garmin-webhook]\nverify_jwt = false');
     expect(config).toContain('[functions.garmin-oauth-start]\nverify_jwt = true');

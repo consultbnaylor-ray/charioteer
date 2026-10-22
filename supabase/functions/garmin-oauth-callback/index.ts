@@ -3,9 +3,12 @@ import {
   GARMIN_PERMISSIONS_URL,
   GARMIN_TOKEN_URL,
   GARMIN_USER_ID_URL,
+  GARMIN_TOKEN_KEY_VERSION,
   garminAppReturn,
+  garminTokenAad,
   garminTokenForm,
   readTokenResponse,
+  sealGarminToken,
 } from '../_shared/garmin.ts';
 
 Deno.serve(async (req) => {
@@ -19,7 +22,8 @@ Deno.serve(async (req) => {
   const service = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
   const clientId = (Deno.env.get('GARMIN_CLIENT_ID') ?? '').trim();
   const clientSecret = (Deno.env.get('GARMIN_CLIENT_SECRET') ?? '').trim();
-  if (!supabaseUrl || !service || !clientId || !clientSecret) {
+  const tokenKey = (Deno.env.get('GARMIN_TOKEN_KEY') ?? '').trim();
+  if (!supabaseUrl || !service || !clientId || !clientSecret || !tokenKey) {
     console.error('garmin-oauth: config');
     return redirect(false);
   }
@@ -84,11 +88,23 @@ Deno.serve(async (req) => {
   if (existing.data?.user_id && existing.data.user_id !== row.user_id) return redirect(false);
 
   const permissions = await readPermissions(tokens.accessToken);
+  let accessSeal;
+  let refreshSeal;
+  try {
+    accessSeal = await sealGarminToken(tokens.accessToken, tokenKey, garminTokenAad(String(row.user_id), 'access', GARMIN_TOKEN_KEY_VERSION));
+    refreshSeal = await sealGarminToken(tokens.refreshToken, tokenKey, garminTokenAad(String(row.user_id), 'refresh', GARMIN_TOKEN_KEY_VERSION));
+  } catch {
+    console.error('garmin-oauth: key');
+    return redirect(false);
+  }
   const stored = await admin.from('garmin_connections').upsert({
     user_id: row.user_id,
     garmin_user_id: garminUserId,
-    access_token: tokens.accessToken,
-    refresh_token: tokens.refreshToken,
+    access_token_ciphertext: accessSeal.ciphertext,
+    access_token_nonce: accessSeal.nonce,
+    refresh_token_ciphertext: refreshSeal.ciphertext,
+    refresh_token_nonce: refreshSeal.nonce,
+    token_key_version: accessSeal.keyVersion,
     access_expires_at: tokens.accessExpiresAt,
     refresh_expires_at: tokens.refreshExpiresAt,
     scopes: tokens.scopes,

@@ -38,6 +38,7 @@ Deno.serve(async (req) => {
     await forgetGarminAccount(admin as unknown as GarminDb, userData.user.id, {
       clientId: (Deno.env.get('GARMIN_CLIENT_ID') ?? '').trim(),
       clientSecret: (Deno.env.get('GARMIN_CLIENT_SECRET') ?? '').trim(),
+      tokenKey: (Deno.env.get('GARMIN_TOKEN_KEY') ?? '').trim(),
       now: Date.now(),
     });
   } catch {
