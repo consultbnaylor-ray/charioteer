@@ -5,6 +5,15 @@ import { formatDistance, type DeviceWorkout } from '@/domain/workoutRoute';
 /** One-line rows before the rest sit behind a closed dropdown. */
 export const WORKOUT_LIST_FOLD = 4;
 
+/** Recent workouts shown before the rest of the history. */
+export const WORKOUT_HISTORY_FOLD = 5;
+
+export const WORKOUT_HISTORY_EMPTY = "No workouts yet. They'll appear here from Apple Health.";
+
+export const WORKOUT_HISTORY_HINT = "Tap a bar to see that day's workouts.";
+
+export const WORKOUT_HISTORY_SHOW_ALL = 'Show all workouts';
+
 /** Named difficulty readings before the rest sit behind a closed dropdown. */
 export const DIFFICULTY_LIST_FOLD = 8;
 
@@ -50,6 +59,22 @@ export function workoutRowLine(workout: DeviceWorkout): string {
   const bits = [workout.label, londonClock(workout.startedAt), `${workout.durationMinutes} min`];
   if (workout.distanceMetres != null && workout.distanceMetres > 0) bits.push(formatDistance(workout.distanceMetres, 'km'));
   return bits.join(' · ');
+}
+
+/** Newest first. A day narrows the list. A cleared day is the full list again. */
+export function workoutHistory(workouts: readonly DeviceWorkout[], day: string | null): DeviceWorkout[] {
+  const rows = day == null ? [...workouts] : workoutsOnDay(workouts, day);
+  return rows.sort((left, right) => (left.startedAt < right.startedAt ? 1 : left.startedAt > right.startedAt ? -1 : 0));
+}
+
+/** Name or type, UK date, and duration with its name and unit. */
+export function workoutHistoryLine(workout: DeviceWorkout): string {
+  return `${workout.label} · ${formatUkCompactDay(londonDay(workout.startedAt))} · Duration ${workout.durationMinutes} min`;
+}
+
+/** `Showing 21 Oct · Clear` */
+export function workoutHistoryChip(day: string): string {
+  return `Showing ${chartDayLabel(day)} · Clear`;
 }
 
 export function workoutsOnDay(workouts: readonly DeviceWorkout[], day: string): DeviceWorkout[] {

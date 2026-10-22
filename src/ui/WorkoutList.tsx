@@ -24,9 +24,16 @@ import {
   previousWorkoutDay,
   workoutActivityDays,
   workoutDaySummary,
+  workoutHistory,
+  workoutHistoryChip,
+  workoutHistoryLine,
   workoutRowLine,
   workoutWeek,
   workoutsOnDay,
+  WORKOUT_HISTORY_EMPTY,
+  WORKOUT_HISTORY_FOLD,
+  WORKOUT_HISTORY_HINT,
+  WORKOUT_HISTORY_SHOW_ALL,
   type DifficultyMark,
   type DurationBar,
   type WorkoutChartSpan,
@@ -89,13 +96,11 @@ function WorkoutRow({ workout, routeDetail = false }: { workout: DeviceWorkout; 
 
 function DurationChart({
   bars,
-  workouts,
   span,
   selected,
   onSelect,
 }: {
   bars: readonly DurationBar[];
-  workouts: readonly DeviceWorkout[];
   span: WorkoutChartSpan;
   selected: string;
   onSelect: (day: string) => void;
@@ -104,7 +109,6 @@ function DurationChart({
   const order = durationTypeOrder(bars);
   const most = Math.max(1, ...bars.map((bar) => bar.totalMinutes));
   const scale = durationScaleLabel(bars);
-  const dayRows = workoutsOnDay(workouts, selected);
 
   return (
     <View style={{ gap: 8 }}>
@@ -156,10 +160,7 @@ function DurationChart({
         })}
       </View>
       {order.length > 0 ? <SeriesLegend labels={order} /> : <T variant="muted">No workouts in these days.</T>}
-      <View style={{ gap: 4 }}>
-        <T variant="label">{chartDayLabel(selected)}</T>
-        {dayRows.length === 0 ? <T>No workouts on this day.</T> : dayRows.map((workout) => <WorkoutRow key={workout.id} workout={workout} routeDetail />)}
-      </View>
+      <T variant="muted">{WORKOUT_HISTORY_HINT}</T>
       <T variant="muted" style={{ textAlign: 'center' }}>{CHART_DIRECTION_HINT}</T>
     </View>
   );
@@ -292,13 +293,76 @@ function DifficultyChart({
   );
 }
 
+function WorkoutHistory({
+  workouts,
+  historyDay,
+  open,
+  onToggle,
+  onClear,
+}: {
+  workouts: readonly DeviceWorkout[];
+  historyDay: string | null;
+  open: boolean;
+  onToggle: () => void;
+  onClear: () => void;
+}) {
+  const theme = useAppTheme();
+  const router = useRouter();
+  const rows = workoutHistory(workouts, historyDay);
+  const hidden = foldedCount(rows.length, WORKOUT_HISTORY_FOLD);
+  const shown = hidden > 0 && !open ? rows.slice(0, WORKOUT_HISTORY_FOLD) : rows;
+  return (
+    <View style={{ gap: 4 }}>
+      <T variant="label">Workout history</T>
+      {historyDay ? (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={workoutHistoryChip(historyDay)}
+          onPress={onClear}
+          style={{ minHeight: 44, justifyContent: 'center', alignSelf: 'flex-start', borderWidth: 1, borderColor: theme.colors.line, paddingHorizontal: 10 }}
+        >
+          <T>{workoutHistoryChip(historyDay)}</T>
+        </Pressable>
+      ) : null}
+      {rows.length === 0 ? <T>{historyDay ? 'No workouts on this day.' : WORKOUT_HISTORY_EMPTY}</T> : null}
+      {shown.map((workout) => {
+        const line = workoutHistoryLine(workout);
+        return (
+          <Pressable
+            key={workout.id}
+            accessibilityRole="button"
+            accessibilityLabel={`${line}. Open workout.`}
+            onPress={() => router.push(`/workout/${encodeURIComponent(workout.id)}` as never)}
+            style={{ minHeight: 44, justifyContent: 'center' }}
+          >
+            <T>{`${line} ${ROUTE_MARK}`}</T>
+          </Pressable>
+        );
+      })}
+      {hidden > 0 ? (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={open ? 'Hide the rest' : WORKOUT_HISTORY_SHOW_ALL}
+          accessibilityState={{ expanded: open }}
+          onPress={onToggle}
+          style={{ minHeight: 44, justifyContent: 'center' }}
+        >
+          <T>{open ? 'Hide the rest' : WORKOUT_HISTORY_SHOW_ALL}</T>
+        </Pressable>
+      ) : null}
+    </View>
+  );
+}
+
 /** The selected London day, then the last 7 or 30 days. Opening a row reads a route only when one exists. */
 export function WorkoutList({ workouts, age }: { workouts: readonly DeviceWorkout[]; age: number | null }) {
   const theme = useAppTheme();
   const today = londonDay(new Date());
   const [day, setDay] = useState(today);
+  const [historyDay, setHistoryDay] = useState<string | null>(null);
   const [span, setSpan] = useState<WorkoutChartSpan>(7);
   const [rowsOpen, setRowsOpen] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
   const rows = workoutsOnDay(workouts, day);
   const hiddenRows = foldedCount(rows.length, WORKOUT_LIST_FOLD);
   const shownRows = hiddenRows > 0 && !rowsOpen ? rows.slice(0, WORKOUT_LIST_FOLD) : rows;
@@ -309,6 +373,17 @@ export function WorkoutList({ workouts, age }: { workouts: readonly DeviceWorkou
   function choose(next: string) {
     setDay(next);
     setRowsOpen(false);
+  }
+
+  function selectBar(next: string) {
+    setHistoryDay(next);
+    setHistoryOpen(false);
+    choose(next);
+  }
+
+  function clearHistory() {
+    setHistoryDay(null);
+    setHistoryOpen(false);
   }
 
   return (
@@ -386,7 +461,8 @@ export function WorkoutList({ workouts, age }: { workouts: readonly DeviceWorkou
           <Choice key={value} label={`${value} days`} selected={span === value} onPress={() => setSpan(value)} />
         ))}
       </View>
-      <DurationChart bars={bars} workouts={workouts} span={span} selected={day} onSelect={choose} />
+      <DurationChart bars={bars} span={span} selected={historyDay ?? ''} onSelect={selectBar} />
+      <WorkoutHistory workouts={workouts} historyDay={historyDay} open={historyOpen} onToggle={() => setHistoryOpen((value) => !value)} onClear={clearHistory} />
       <DifficultyChart marks={marks} workouts={workouts} age={age} day={day} onSelect={choose} />
     </Card>
   );

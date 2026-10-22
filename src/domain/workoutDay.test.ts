@@ -11,6 +11,10 @@ import {
   EFFORT_NAME,
   HEART_DIFFICULTY_NAME,
   ROUTE_MARK,
+  WORKOUT_HISTORY_EMPTY,
+  WORKOUT_HISTORY_FOLD,
+  WORKOUT_HISTORY_HINT,
+  WORKOUT_HISTORY_SHOW_ALL,
   WORKOUT_LIST_FOLD,
   chartDayLabel,
   chartDays,
@@ -28,6 +32,9 @@ import {
   previousWorkoutDay,
   workoutActivityDays,
   workoutDaySummary,
+  workoutHistory,
+  workoutHistoryChip,
+  workoutHistoryLine,
   workoutRowLine,
   workoutWeek,
   workoutsOnDay,
@@ -177,6 +184,22 @@ describe('workout day list', () => {
     ]);
   });
 
+  it('lists every workout before a bar is tapped, then filters that day, then clears', () => {
+    const early = workout({ id: 'early', startedAt: '2026-10-16T09:00:00.000Z', durationMinutes: 20, label: 'Running' });
+    const late = workout({ id: 'late', startedAt: '2026-10-21T18:00:00.000Z', durationMinutes: 40, label: 'Walking' });
+    const mid = workout({ id: 'mid', startedAt: '2026-10-18T11:16:00.000Z', durationMinutes: 109, label: 'Walking' });
+    const rows = [early, late, mid];
+    expect(workoutHistory(rows, null).map((row) => row.id)).toEqual(['late', 'mid', 'early']);
+    expect(workoutHistoryLine(mid)).toBe('Walking · 18 Oct 2026 · Duration 109 min');
+    expect(workoutHistory(rows, '2026-10-18').map((row) => row.id)).toEqual(['mid']);
+    expect(workoutHistory(rows, null).map((row) => row.id)).toEqual(['late', 'mid', 'early']);
+    expect(workoutHistoryChip('2026-10-21')).toBe('Showing 21 Oct · Clear');
+    expect(WORKOUT_HISTORY_FOLD).toBe(5);
+    expect(foldedCount(6, WORKOUT_HISTORY_FOLD)).toBe(1);
+    expect(WORKOUT_HISTORY_EMPTY).toContain('Apple Health');
+    expect(WORKOUT_HISTORY_HINT).toBe("Tap a bar to see that day's workouts.");
+  });
+
   it('folds a long day and keeps the chart hint on the list', () => {
     expect(foldedCount(WORKOUT_LIST_FOLD, WORKOUT_LIST_FOLD)).toBe(0);
     expect(foldedCount(WORKOUT_LIST_FOLD + 3, WORKOUT_LIST_FOLD)).toBe(3);
@@ -199,7 +222,14 @@ describe('workout day list', () => {
     expect(calendar).toContain('routeSummaryLine');
     expect(calendar).toContain('matched?.routeExpected');
     expect(list).toContain('DIFFICULTY_DAY_LINK');
-    expect(list).toContain('workoutsOnDay(workouts, selected)');
+    expect(list).toContain('workoutHistory(workouts, historyDay)');
+    expect(list).toContain('Workout history');
+    expect(list).toContain('WORKOUT_HISTORY_SHOW_ALL');
+    expect(list).toContain('WORKOUT_HISTORY_EMPTY');
+    expect(list).toContain('{WORKOUT_HISTORY_HINT}');
+    expect(list).not.toContain('Show all workouts');
+    expect(list).toContain('setHistoryDay(null)');
+    expect(list.indexOf('<DurationChart')).toBeLessThan(list.indexOf('<WorkoutHistory'));
     expect(list).toContain('<SeriesLegend');
     expect(list).toContain('<T>{label}</T>');
     expect(list).not.toContain('STACK_OPACITY');
