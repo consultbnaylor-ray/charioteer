@@ -1,5 +1,6 @@
 import { londonDay, mondayOf, shiftDay } from '@/domain/healthInsights';
 import { workoutTypeKind } from '@/domain/fitnessSnapshot';
+import { isTransientNetworkError } from '@/domain/errors';
 import type { DeviceWorkout } from '@/domain/workoutRoute';
 
 export const PLANNED_SESSION_TYPES = ['run', 'outdoor', 'cardio', 'strength', 'boxing', 'other'] as const;
@@ -19,12 +20,51 @@ export type PlannedSession = {
 };
 
 export type PlannedSessionDraft = {
+  /** Set on the phone so a retry keeps the same row. */
+  id?: string;
   sessionType: PlannedSessionType;
   startsAt: string;
   durationMinutes: number;
   note: string;
   plannedEffort: PlannedEffort | null;
 };
+
+/** One pause before the second send. Short enough to stay on a weak signal. */
+export const PLANNED_SESSION_RETRY_MS = 400;
+
+export type PlannedWrite<T> = { ok: true; row: T | null } | { ok: false; error: unknown };
+
+/** The same client id, sent again once, only when the first send never got a response. */
+export async function plannedSessionWrite<T>(
+  attempt: () => Promise<PlannedWrite<T>>,
+  wait: (ms: number) => Promise<void> = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+): Promise<PlannedWrite<T>> {
+  const first = await runPlannedAttempt(attempt);
+  if (first.ok || !isTransientNetworkError(first.error)) return first;
+  await wait(PLANNED_SESSION_RETRY_MS);
+  return runPlannedAttempt(attempt);
+}
+
+async function runPlannedAttempt<T>(attempt: () => Promise<PlannedWrite<T>>): Promise<PlannedWrite<T>> {
+  try {
+    return await attempt();
+  } catch (error) {
+    return { ok: false, error };
+  }
+}
+
+/** A row the phone already knows, used when the server ignored a duplicate id. */
+export function plannedSessionFromDraft(id: string, input: PlannedSessionDraft): PlannedSession | null {
+  return plannedSessionFromRow({
+    id,
+    session_type: input.sessionType,
+    starts_at: input.startsAt,
+    duration_minutes: input.durationMinutes,
+    note: input.note,
+    planned_effort: plannedEffortToDb(input.plannedEffort),
+    done_at: null,
+  });
+}
 
 /** Easy, Moderate, Hard, or a score from 1 to 10. One choice, and it can be left blank. */
 export const PLANNED_EFFORT_WORDS = ['easy', 'moderate', 'hard'] as const;

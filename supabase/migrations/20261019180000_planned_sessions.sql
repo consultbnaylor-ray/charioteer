@@ -21,7 +21,7 @@ grant select (
   id, user_id, session_type, starts_at, duration_minutes, note, done_at, created_at, updated_at
 ) on public.planned_sessions to authenticated;
 grant insert (
-  user_id, session_type, starts_at, duration_minutes, note, done_at
+  id, user_id, session_type, starts_at, duration_minutes, note, done_at
 ) on public.planned_sessions to authenticated;
 grant update (
   session_type, starts_at, duration_minutes, note, done_at, updated_at

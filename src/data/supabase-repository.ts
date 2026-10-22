@@ -82,7 +82,7 @@ import {
   type NutritionSettings,
 } from '@/domain/nutrition';
 import { PLAN_DISCLAIMER, healthPlanFromStored, normaliseTrainingSchedule, parseSharedHealthPlan, trainingScheduleFromRow, type HealthPlan, type TrainingSchedule } from '@/domain/healthPlan';
-import { plannedEffortToDb, plannedSessionFromRow, type PlannedSession, type PlannedSessionDraft } from '@/domain/plannedSession';
+import { plannedEffortToDb, plannedSessionFromDraft, plannedSessionFromRow, plannedSessionWrite, type PlannedSession, type PlannedSessionDraft } from '@/domain/plannedSession';
 import { parseBuddyLinkPass, parseBuddyList, parseBuddyPreview, parseBuddyShare, type BuddyLinkPass, type BuddyList, type BuddyScope, type BuddyShareView } from '@/domain/buddies';
 import { randomId } from '@/domain/id';
 import { messageFromRealtime, withIncomingMessage } from '@/domain/liveChat';
@@ -2566,8 +2566,30 @@ export class SupabaseRepository implements Repository {
 
   async savePlannedSession(input: PlannedSessionDraft): Promise<void> {
     const userId = this.snapshot.session?.userId ?? await this.userId();
+    const id = input.id?.trim() || randomId();
     const before = this.snapshot.plannedSessions;
-    const { data, error } = await this.client.from('planned_sessions').insert({
+    const result = await plannedSessionWrite(() => this.writePlannedSession(userId, id, input));
+    if (!result.ok) {
+      if (isTransientNetworkError(result.error)) {
+        await this.logClientError('planned-session', 'planned-session: offline', clientAppBuild({
+          buildNumber: Constants.expoConfig?.ios?.buildNumber,
+          version: Constants.expoConfig?.version,
+        })).catch(() => false);
+      }
+      throw asUserFacing(result.error, 'general');
+    }
+    const saved = result.row ?? plannedSessionFromDraft(id, input);
+    if (!saved) {
+      this.emit({ ...this.snapshot, plannedSessions: before });
+      throw new UserFacingError('Could not save that session.', 'generic');
+    }
+    this.emit({ ...this.snapshot, plannedSessions: [...before.filter((row) => row.id !== saved.id), saved].sort((a, b) => a.startsAt.localeCompare(b.startsAt)) });
+  }
+
+  /** Inserts the phone's id. A second send with that id does not add another row. */
+  private async writePlannedSession(userId: string, id: string, input: PlannedSessionDraft) {
+    const { data, error } = await this.client.from('planned_sessions').upsert({
+      id,
       user_id: userId,
       session_type: input.sessionType,
       starts_at: input.startsAt,
@@ -2575,14 +2597,13 @@ export class SupabaseRepository implements Repository {
       note: input.note.slice(0, 280),
       planned_effort: plannedEffortToDb(input.plannedEffort),
       done_at: null,
-    }).select('id, session_type, starts_at, duration_minutes, note, planned_effort, done_at').single();
-    if (error) throw asUserFacing(error, 'general');
+    }, { onConflict: 'id', ignoreDuplicates: true }).select('id, session_type, starts_at, duration_minutes, note, planned_effort, done_at').maybeSingle();
+    if (error && isDuplicateWrite(error)) return { ok: true as const, row: null };
+    if (error) return { ok: false as const, error };
+    if (!data) return { ok: true as const, row: null };
     const saved = plannedSessionFromRow(data);
-    if (!saved) {
-      this.emit({ ...this.snapshot, plannedSessions: before });
-      throw new UserFacingError('Could not save that session.', 'generic');
-    }
-    this.emit({ ...this.snapshot, plannedSessions: [...before.filter((row) => row.id !== saved.id), saved].sort((a, b) => a.startsAt.localeCompare(b.startsAt)) });
+    if (!saved) return { ok: false as const, error: new UserFacingError('Could not save that session.', 'generic') };
+    return { ok: true as const, row: saved };
   }
 
   async updatePlannedSession(id: string, input: PlannedSessionDraft & { doneAt: string | null }): Promise<void> {

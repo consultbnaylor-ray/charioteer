@@ -1,16 +1,20 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
+import { clientErrorRecord } from './clientError';
 import { actualEffortWords, sessionEntryWords } from './workoutDay';
 import type { DeviceWorkout } from './workoutRoute';
 import {
+  PLANNED_SESSION_RETRY_MS,
   londonWallTime,
   matchedSessionWorkouts,
   nextSessionClock,
   plannedDoneSamples,
   plannedEffortFrom,
   plannedEffortToDb,
+  plannedSessionFromDraft,
   plannedSessionFromRow,
+  plannedSessionWrite,
   sessionClock,
   snapSessionClock,
   withPlannedMinutes,
@@ -106,10 +110,13 @@ describe('planned sessions', () => {
     expect(sql).toContain('does not change export_my_data');
     expect(sql).not.toContain('create or replace function public.export_my_data');
     const repo = readFileSync('src/data/supabase-repository.ts', 'utf8');
-    expect(repo).toContain(".from('planned_sessions').insert(");
+    expect(repo).toContain(".from('planned_sessions').upsert(");
+    expect(repo).toContain("onConflict: 'id'");
+    expect(repo).toContain('ignoreDuplicates: true');
+    expect(repo).not.toContain(".from('planned_sessions').insert(");
     expect(repo).toContain(".from('planned_sessions').update(");
     expect(repo).toContain(".from('planned_sessions').delete(");
-    expect(repo).not.toContain(".from('planned_sessions').upsert(");
+    expect(repo).toContain("logClientError('planned-session', 'planned-session: offline'");
     const effort = readFileSync('supabase/migrations/20261021180000_planned_session_effort.sql', 'utf8');
     expect(effort).toContain('Not applied from this repo');
     expect(effort).toContain('add column if not exists planned_effort text');
@@ -197,6 +204,61 @@ describe('planned sessions', () => {
     const entryRow = calendar.slice(calendar.indexOf('workoutTypeColor(colorLabel)'), calendar.indexOf('accessibilityLabel="Reminder set"'));
     expect(entryRow).toContain('{line}');
     expect(entryRow.indexOf('workoutTypeColor(colorLabel)')).toBeLessThan(entryRow.indexOf('{line}'));
+  });
+
+  it('retries one dropped save with the same id and keeps the form entries', async () => {
+    const lost = { message: 'TypeError: Network request failed' };
+    const waits: number[] = [];
+    let calls = 0;
+    const saved = await plannedSessionWrite(async () => {
+      calls += 1;
+      if (calls === 1) return { ok: false, error: lost };
+      return { ok: true, row: session({ id: 'same-id' }) };
+    }, async (ms) => {
+      waits.push(ms);
+    });
+    expect(saved).toEqual({ ok: true, row: session({ id: 'same-id' }) });
+    expect(calls).toBe(2);
+    expect(waits).toEqual([PLANNED_SESSION_RETRY_MS]);
+
+    let refused = 0;
+    const once = await plannedSessionWrite(async () => {
+      refused += 1;
+      return { ok: false, error: { message: 'permission denied for column id' } };
+    }, async () => {
+      throw new Error('should not retry a stored refusal');
+    });
+    expect(once.ok).toBe(false);
+    expect(refused).toBe(1);
+
+    const draft = plannedSessionFromDraft('same-id', {
+      sessionType: 'boxing',
+      startsAt: '2026-10-21T17:00:00.000Z',
+      durationMinutes: 45,
+      note: 'Pads',
+      plannedEffort: null,
+    });
+    expect(draft?.id).toBe('same-id');
+    expect(draft?.note).toBe('Pads');
+    expect(clientErrorRecord('planned-session', 'planned-session: offline')).toEqual({
+      screen: 'planned-session',
+      message: 'planned-session: offline',
+    });
+
+    const calendar = readFileSync('src/ui/WorkoutCalendar.tsx', 'utf8');
+    const save = calendar.slice(calendar.indexOf('async function saveSession'), calendar.indexOf('async function markDone'));
+    const caught = save.slice(save.indexOf('} catch'));
+    expect(save).toContain('id: editing?.id ?? draftId');
+    expect(save.indexOf('setOpen(false)')).toBeGreaterThan(-1);
+    expect(save.indexOf('setOpen(false)')).toBeLessThan(save.indexOf('} catch'));
+    expect(caught).not.toContain('setOpen(false)');
+    expect(caught).not.toContain('setDurationText');
+    expect(caught).not.toContain('setNote(');
+    expect(caught).not.toContain('setSessionType');
+    expect(caught).not.toContain('setTime(');
+    expect(caught).not.toContain('setPlannedEffort');
+    expect(calendar).toContain('setDraftId(randomId())');
+    expect(calendar).toContain('setDraftId(session?.id ?? randomId())');
   });
 });
 

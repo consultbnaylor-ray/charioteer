@@ -4,6 +4,7 @@ import Svg, { Path } from 'react-native-svg';
 
 import { useRouter } from 'expo-router';
 import { useRepository, useSnapshot } from '@/data';
+import { randomId } from '@/domain/id';
 import { formatUkDate, isoDay, parseIsoDay } from '@/domain/dates';
 import { shownError } from '@/domain/errors';
 import { londonDay, mondayOf, shiftDay, weekdayShort } from '@/domain/healthInsights';
@@ -115,6 +116,7 @@ export function WorkoutCalendar({
   const [durationText, setDurationText] = useState('30');
   const [plannedEffort, setPlannedEffort] = useState<PlannedEffort | null>(null);
   const [note, setNote] = useState('');
+  const [draftId, setDraftId] = useState(randomId);
   const [pending, setPending] = useState(false);
   const now = new Date();
 
@@ -146,6 +148,7 @@ export function WorkoutCalendar({
   useEffect(() => {
     if (!planNonce || !planDay) return;
     setEditing(null);
+    setDraftId(randomId());
     setSessionType('boxing');
     setSelected(planDay);
     setDay(parseIsoDay(planDay));
@@ -160,6 +163,7 @@ export function WorkoutCalendar({
   useEffect(() => {
     if (!planOutdoorNonce) return;
     setEditing(null);
+    setDraftId(randomId());
     setSessionType('outdoor');
     const today = new Date();
     setSelected(londonDay(today));
@@ -256,6 +260,7 @@ export function WorkoutCalendar({
     setDurationText(String(session?.durationMinutes ?? 30));
     setPlannedEffort(session?.plannedEffort ?? null);
     setNote(session?.note ?? '');
+    setDraftId(session?.id ?? randomId());
     setOpen(true);
   }
 
@@ -271,6 +276,7 @@ export function WorkoutCalendar({
       return;
     }
     const draft = {
+      id: editing?.id ?? draftId,
       sessionType,
       startsAt,
       durationMinutes: Math.round(duration),

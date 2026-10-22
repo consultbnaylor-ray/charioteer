@@ -1268,7 +1268,7 @@ export class DemoRepository implements Repository {
   }
 
   async savePlannedSession(input: PlannedSessionDraft): Promise<void> {
-    const saved = plannedFromDraft(randomId(), input, null);
+    const saved = plannedFromDraft(input.id ?? randomId(), input, null);
     if (!saved) throw new UserFacingError('Could not save that session.', 'generic');
     const account = this.me();
     const db = clone(this.db);

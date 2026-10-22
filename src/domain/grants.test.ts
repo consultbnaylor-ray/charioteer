@@ -331,8 +331,8 @@ function splitPrivileges(list: string): string[] {
   return parts;
 }
 
-/** Column and table UPDATE grants after every migration, in filename order. */
-function authenticatedUpdateGrants(): Map<string, UpsertGrant> {
+/** Column and table UPDATE or INSERT grants after every migration, in filename order. */
+function authenticatedUpdateGrants(kind: 'update' | 'insert' = 'update'): Map<string, UpsertGrant> {
   const tables = new Map<string, UpsertGrant>();
   const files = readdirSync('supabase/migrations').filter((name) => name.endsWith('.sql')).sort();
   const grantRe = /grant\s+([\s\S]+?)\s+on\s+(?:table\s+)?public\.([a-z_]+)\s+to\s+authenticated\b/gi;
@@ -357,13 +357,13 @@ function authenticatedUpdateGrants(): Map<string, UpsertGrant> {
         apply: () => {
           const state = tables.get(table) ?? { tableLevel: false, columns: new Set<string>() };
           for (const privilege of privileges) {
-            const columns = /^update\s*\(([^)]+)\)$/i.exec(privilege);
+            const columns = new RegExp(`^${kind}\\s*\\(([^)]+)\\)$`, 'i').exec(privilege);
             if (columns) {
               for (const column of columns[1].split(',')) {
                 const name = column.trim();
                 if (name) state.columns.add(name);
               }
-            } else if (/^update$/i.test(privilege)) {
+            } else if (new RegExp(`^${kind}$`, 'i').test(privilege)) {
               state.tableLevel = true;
             }
           }
@@ -399,10 +399,11 @@ function upsertArgument(source: string, table: string): string {
 
 describe('client upsert update grants', () => {
   const grants = authenticatedUpdateGrants();
+  const inserted = authenticatedUpdateGrants('insert');
   const repo = readFileSync('src/data/supabase-repository.ts', 'utf8');
   const added = readFileSync('supabase/migrations/20261015230000_upsert_update_grants.sql', 'utf8');
 
-  const sent: Record<string, { columns: string[]; withheld: string[] }> = {
+  const sent: Record<string, { columns: string[]; withheld: string[]; insertOnly?: boolean }> = {
     health_samples: {
       columns: ['user_id', 'kind', 'value', 'unit', 'recorded_on', 'source'],
       withheld: ['id', 'created_at'],
@@ -447,6 +448,11 @@ describe('client upsert update grants', () => {
       columns: ['user_id', 'settings', 'updated_at'],
       withheld: [],
     },
+    planned_sessions: {
+      columns: ['id', 'user_id', 'session_type', 'starts_at', 'duration_minutes', 'note', 'planned_effort', 'done_at'],
+      withheld: ['created_at', 'updated_at'],
+      insertOnly: true,
+    },
   };
 
   it('covers every column a client upsert sends, and not the key columns it leaves out', () => {
@@ -454,17 +460,19 @@ describe('client upsert update grants', () => {
     expect([...new Set(calls)].sort()).toEqual(Object.keys(sent).sort());
     for (const [table, spec] of Object.entries(sent)) {
       const argument = upsertArgument(repo, table);
+      const covers = spec.insertOnly ? inserted : grants;
+      if (spec.insertOnly) expect(argument).toContain('ignoreDuplicates: true');
       for (const column of spec.columns) {
-        expect(updateCovers(grants, table, column), `${table}.${column}`).toBe(true);
+        expect(updateCovers(covers, table, column), `${table}.${column}`).toBe(true);
         if (argument.trimStart().startsWith('{') || argument.includes('=>')) {
           expect(argument).toMatch(new RegExp(`\\b${column}\\b`));
         }
       }
       for (const column of spec.withheld) {
         expect(argument).not.toMatch(new RegExp(`\\b${column}\\s*:`));
-        const tableLevel = grants.get(table)?.tableLevel === true;
+        const tableLevel = covers.get(table)?.tableLevel === true;
         if (tableLevel) continue;
-        expect(updateCovers(grants, table, column), `${table}.${column}`).toBe(false);
+        expect(updateCovers(covers, table, column), `${table}.${column}`).toBe(false);
       }
     }
     expect(grants.get('nutrition_settings')?.tableLevel).toBe(true);
