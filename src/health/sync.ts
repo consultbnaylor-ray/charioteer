@@ -8,7 +8,6 @@ export type HealthSyncResult =
     samples: NewHealthSample[];
     activeEnergyKcal: number | null;
     composition?: AppleHealthComposition[];
-    workoutSpans?: { workoutId: string; startedAt: string; durationMinutes: number }[];
   }
   | { ok: false; message: string };
 

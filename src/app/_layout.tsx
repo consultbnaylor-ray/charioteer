@@ -5,14 +5,14 @@ import { useFonts } from 'expo-font';
 import { Stack, usePathname, useRouter } from 'expo-router';
 import * as Linking from 'expo-linking';
 import * as SplashScreen from 'expo-splash-screen';
-import { useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import { AppState, Platform, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 
 import { APP_DISPLAY_NAME, APP_FULL_NAME } from '@/domain/appName';
 import { buddySecretFromUrl, holdBuddySecret, peekBuddySecret, consumeBuddySecret } from '@/domain/buddies';
-import { garminReturnFromUrl } from '@/domain/garminConnect';
+import { garminReturnFromUrl, holdOnboardingGarminStep, noteGarminAppReturn } from '@/domain/garminConnect';
 import { RepoProvider, useRepository, useSnapshot } from '@/data';
 import { catchUpAppleHealthReads } from '@/health/catchUp';
 import { bindNotificationErrorLog, cancelScheduledNotifications, listenForIncomingMessages, listenForMessageOpens, retryMessageNotifications, setAppIconBadge } from '@/notifications/register';
@@ -82,7 +82,29 @@ function Chrome() {
 
   const navigationReady = useRef(false);
   const stackMounted = useRef(false);
+  const pathnameRef = useRef(pathname);
+  const onboardedRef = useRef(Boolean(snap.profile?.onboardingComplete));
+  const readyRef = useRef(snap.ready);
+  const pendingGarmin = useRef<'connected' | 'cancelled' | null>(null);
   navigationReady.current = snap.ready;
+  pathnameRef.current = pathname;
+  onboardedRef.current = Boolean(snap.profile?.onboardingComplete);
+  readyRef.current = snap.ready;
+
+  const sendGarminReturn = useCallback((outcome: 'connected' | 'cancelled') => {
+    noteGarminAppReturn(outcome);
+    if (!readyRef.current) {
+      pendingGarmin.current = outcome;
+      return;
+    }
+    pendingGarmin.current = null;
+    const stayOnOnboarding = pathnameRef.current === '/onboarding' || !onboardedRef.current;
+    if (stayOnOnboarding) {
+      holdOnboardingGarminStep();
+      return;
+    }
+    router.push(`/profile?garmin=${outcome === 'connected' ? 'connected' : 'cancelled'}` as never);
+  }, [router]);
 
   useEffect(() => listenForMessageOpens((connectionId) => {
     try {
@@ -152,9 +174,8 @@ function Chrome() {
         holdBuddySecret(secret);
         router.push(`/buddies?token=${encodeURIComponent(secret)}` as never);
       }
-      if (url && garminReturnFromUrl(url)) {
-        router.push(`/profile?garmin=${garminReturnFromUrl(url) === 'connected' ? 'connected' : 'cancelled'}` as never);
-      }
+      const garmin = url ? garminReturnFromUrl(url) : null;
+      if (garmin) sendGarminReturn(garmin);
       if (!url || !url.includes('set-password') || handledResetUrl === url) return;
       handledResetUrl = url;
       if (Platform.OS === 'web' && typeof window !== 'undefined' && window.location.pathname.includes('set-password')) return;
@@ -163,7 +184,12 @@ function Chrome() {
     void Linking.getInitialURL().then(openReset);
     const subscription = Linking.addEventListener('url', (event) => openReset(event.url));
     return () => subscription.remove();
-  }, [router]);
+  }, [router, sendGarminReturn]);
+
+  useEffect(() => {
+    if (!snap.ready || !pendingGarmin.current) return;
+    sendGarminReturn(pendingGarmin.current);
+  }, [pathname, sendGarminReturn, snap.profile?.onboardingComplete, snap.ready]);
 
   useEffect(() => {
     if (!snap.ready) return;

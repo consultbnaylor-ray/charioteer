@@ -1,56 +1,14 @@
-import { useFocusEffect, useLocalSearchParams } from 'expo-router';
-import { useCallback, useState } from 'react';
-import { Linking, View } from 'react-native';
+import { View } from 'react-native';
 
-import { useRepository } from '@/data';
-import { GARMIN_PRIVACY, emptyGarminReadings, type GarminReadings } from '@/domain/garminConnect';
-import { shownError } from '@/domain/errors';
+import { GARMIN_PRIVACY } from '@/domain/garminConnect';
+import { GARMIN_CONNECT_BUTTON } from '@/domain/garminTip';
 import { PlanTick } from '@/ui/PlanTick';
+import { useGarminConnect } from '@/ui/useGarminConnect';
 import { Button, Card, ErrorNote, T } from '@/ui/ui';
 
-/** Profile row. Connect opens Garmin. A green tick means the link succeeded. */
+/** You tab. Connect opens Garmin. A green tick means the link succeeded. */
 export function GarminConnectRow() {
-  const repo = useRepository();
-  const params = useLocalSearchParams<{ garmin?: string }>();
-  const [readings, setReadings] = useState<GarminReadings>(emptyGarminReadings);
-  const [pending, setPending] = useState<'connect' | 'disconnect' | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [cleared, setCleared] = useState(false);
-  const justConnected = params.garmin === 'connected';
-  const connected = readings.connected || (justConnected && !cleared);
-
-  const load = useCallback(() => {
-    void repo.loadGarmin().then(setReadings).catch(() => setReadings(emptyGarminReadings()));
-  }, [repo]);
-
-  useFocusEffect(load);
-
-  async function connect() {
-    setPending('connect');
-    setError(null);
-    try {
-      const url = await repo.startGarminConnect();
-      await Linking.openURL(url);
-    } catch (err) {
-      setError(shownError(err, 'Could not open Garmin Connect.'));
-    } finally {
-      setPending(null);
-    }
-  }
-
-  async function disconnect() {
-    setPending('disconnect');
-    setError(null);
-    try {
-      await repo.disconnectGarmin();
-      setCleared(true);
-      setReadings(emptyGarminReadings());
-    } catch (err) {
-      setError(shownError(err, 'Could not disconnect Garmin Connect.'));
-    } finally {
-      setPending(null);
-    }
-  }
+  const { connected, pending, error, connect, disconnect } = useGarminConnect();
 
   return (
     <Card>
@@ -63,7 +21,7 @@ export function GarminConnectRow() {
       {connected ? (
         <Button label="Disconnect" tone="quiet" pending={pending === 'disconnect'} disabled={pending != null} onPress={() => void disconnect()} />
       ) : (
-        <Button label="Connect" pending={pending === 'connect'} disabled={pending != null} onPress={() => void connect()} />
+        <Button label={GARMIN_CONNECT_BUTTON} pending={pending === 'connect'} disabled={pending != null} onPress={() => void connect()} />
       )}
       <ErrorNote>{error}</ErrorNote>
     </Card>

@@ -7,7 +7,7 @@ import {
   requestAuthorization,
 } from '@kingstinct/react-native-healthkit';
 
-import type { AppleWorkoutSpan, HealthKind, NewHealthSample } from '@/data/types';
+import type { HealthKind, NewHealthSample } from '@/data/types';
 import { isoDay } from '@/domain/dates';
 import { shownError } from '@/domain/errors';
 import { APPLE_HEALTH_READ_ERROR } from '@/domain/healthUpload';
@@ -29,7 +29,6 @@ export type HealthSyncResult =
     samples: NewHealthSample[];
     activeEnergyKcal: number | null;
     composition?: AppleHealthComposition[];
-    workoutSpans?: AppleWorkoutSpan[];
   }
   | { ok: false; message: string };
 
@@ -255,7 +254,7 @@ export async function syncAppleHealth(
     };
     const typeDays = new Map<string, Map<string, number>>();
     const sessionHeart = new Map<string, { total: number; count: number }>();
-    const pending: { workout: (typeof workouts)[number]; span: WorkoutSpan; sourceName: string; activities: WorkoutActivitySlice[]; workoutId: string }[] = [];
+    const pending: { workout: (typeof workouts)[number]; span: WorkoutSpan; sourceName: string; activities: WorkoutActivitySlice[] }[] = [];
     for (const workout of workouts) {
       const plain = workout.toJSON();
       const startMs = new Date(plain.startDate).getTime();
@@ -268,7 +267,6 @@ export async function syncAppleHealth(
       }
       pending.push({
         workout,
-        workoutId: typeof plain.uuid === 'string' ? plain.uuid : '',
         sourceName: workoutSourceName(plain.sourceRevision?.source),
         activities: workoutActivities(plain.activities),
         span: {
@@ -281,7 +279,6 @@ export async function syncAppleHealth(
       });
     }
     const kept = new Set(dedupeWorkouts(pending.map((item) => item.span)));
-    const workoutSpans: AppleWorkoutSpan[] = [];
     const sourceMinutes: WorkoutSourceMinute[] = [];
     for (const item of pending) {
       if (!kept.has(item.span)) {
@@ -291,13 +288,6 @@ export async function syncAppleHealth(
       const day = isoDay(new Date(item.span.startMs));
       const length = item.span.durationMin;
       add(workoutDays, day, length);
-      if (/^[A-Za-z0-9-]{1,80}$/.test(item.workoutId)) {
-        workoutSpans.push({
-          workoutId: item.workoutId,
-          startedAt: new Date(item.span.startMs).toISOString(),
-          durationMinutes: Math.max(1, Math.round(length)),
-        });
-      }
       // Named segments replace a parent Other workout. The parts add up to this duration.
       const parts = workoutTypeMinutes({
         activityType: item.span.activityType,
@@ -411,7 +401,7 @@ export async function syncAppleHealth(
       activeEnergyKcal = null;
     }
 
-    return { ok: true, samples, activeEnergyKcal, composition, workoutSpans };
+    return { ok: true, samples, activeEnergyKcal, composition };
   } catch (error) {
     const message = shownError(error, APPLE_HEALTH_READ_ERROR);
     return { ok: false, message };

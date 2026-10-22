@@ -92,7 +92,6 @@ import { createDemoDb, type DemoAccount, type DemoDb } from '@/data/demo-seed';
 import { activityTypeFromKind } from '@/domain/fitnessSnapshot';
 import type {
   AppSnapshot,
-  AppleWorkoutSpan,
   ConsentInput,
   DirectoryCard,
   NewCheckIn,
@@ -783,10 +782,6 @@ export class DemoRepository implements Repository {
       }
     }
     this.commit(db);
-  }
-
-  async replaceAppleWorkoutSpans(_spans: AppleWorkoutSpan[]): Promise<void> {
-    return undefined;
   }
 
   async setInterestSelected(interestId: string, selected: boolean): Promise<void> {

@@ -149,8 +149,9 @@ describe('shared health uses the merged series', () => {
     const card = readFileSync('src/ui/PublicProfileCard.tsx', 'utf8');
     expect(card).toContain('useHealthSources');
     expect(card).toContain('health: mergedHealth.map');
-    expect(readFileSync('src/health/catchUp.ts', 'utf8')).toContain('replaceAppleWorkoutSpans(result.workoutSpans)');
-    expect(readFileSync('src/health/sync.ios.ts', 'utf8')).toContain('workoutSpans');
+    expect(readFileSync('src/health/catchUp.ts', 'utf8')).not.toContain('replaceAppleWorkoutSpans');
+    expect(readFileSync('src/health/sync.ios.ts', 'utf8')).not.toContain('workoutSpans');
+    expect(readFileSync('src/data/supabase-repository.ts', 'utf8')).not.toContain('apple_workout_spans');
     expect(readFileSync('src/app/(main)/workout/[id].tsx', 'utf8')).toContain('workoutSourceLine');
   });
 

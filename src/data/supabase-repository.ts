@@ -159,7 +159,6 @@ import type {
   FoodLogUpdate,
   NewFoodLog,
   NewGratitudeEntry,
-  AppleWorkoutSpan,
   NewHealthSample,
   NewProfilePhoto,
   NewProgressPhoto,
@@ -1094,33 +1093,6 @@ export class SupabaseRepository implements Repository {
       if (error) throw asUserFacing(error, 'general');
     }
     await this.refresh();
-  }
-
-  async replaceAppleWorkoutSpans(spans: AppleWorkoutSpan[]): Promise<void> {
-    if (!this.snapshot.profile?.consentHealth) throw new Error('Health data stays off until you give consent.');
-    const userId = await this.userId();
-    const safe = spans.flatMap((span) => {
-      const workoutId = span.workoutId.trim();
-      const startedAt = new Date(span.startedAt);
-      const durationMinutes = Math.round(span.durationMinutes);
-      if (!/^[A-Za-z0-9-]{1,80}$/.test(workoutId) || Number.isNaN(startedAt.getTime())) return [];
-      if (!Number.isFinite(durationMinutes) || durationMinutes < 1 || durationMinutes > 1440) return [];
-      return [{ workout_id: workoutId, started_at: startedAt.toISOString(), duration_minutes: durationMinutes }];
-    });
-    const cleared = await this.client.from('apple_workout_spans').delete().eq('user_id', userId);
-    if (cleared.error) {
-      console.warn('[health] workout intervals were not saved');
-      return;
-    }
-    for (const chunk of chunkHealthRows(safe)) {
-      const { error } = await this.client.from('apple_workout_spans').insert(
-        chunk.map((span) => ({ user_id: userId, ...span })),
-      );
-      if (error) {
-        console.warn('[health] workout intervals were not saved');
-        return;
-      }
-    }
   }
 
   async setInterestSelected(interestId: string, selected: boolean): Promise<void> {

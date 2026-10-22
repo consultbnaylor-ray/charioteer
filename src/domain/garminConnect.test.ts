@@ -364,7 +364,7 @@ describe('Garmin storage rules', () => {
     const health = readFileSync('src/app/(main)/health.tsx', 'utf8');
     const row = readFileSync('src/ui/GarminConnectRow.tsx', 'utf8');
     expect(profile).toContain('<GarminConnectRow />');
-    expect(row).toContain('Connect');
+    expect(row).toContain('GARMIN_CONNECT_BUTTON');
     expect(row).toContain('Disconnect');
     expect(row).toContain('<PlanTick done />');
     expect(row).toContain('Connected');
