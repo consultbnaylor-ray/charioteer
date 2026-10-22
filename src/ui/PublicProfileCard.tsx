@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Switch, View } from 'react-native';
 
 import { useRepository, useSnapshot } from '@/data';
+import { sharedHealthSamples } from '@/domain/sharedHealth';
 import { useHealthSources } from '@/health/useHealthSources';
 import type { ProgressPhoto } from '@/data/types';
 import { isoDay } from '@/domain/dates';
@@ -40,7 +41,7 @@ type SavedField = 'name' | 'town' | 'interests' | 'bio';
 export function PublicProfileCard() {
   const snap = useSnapshot();
   const repo = useRepository();
-  const { samples: mergedHealth } = useHealthSources();
+  const { readings } = useHealthSources();
   const theme = useAppTheme();
   const router = useRouter();
   const editParam = useLocalSearchParams<{ edit?: string | string[] }>().edit;
@@ -109,7 +110,7 @@ export function PublicProfileCard() {
     interestLabels: me.interestIds.map((id) => labels.get(id) ?? 'Interest'),
     reasons: snap.reasons.map((reason) => ({ body: reason.body, sortOrder: reason.sortOrder })),
     checkIns: snap.checkIns.map((item) => ({ createdAt: item.createdAt })),
-    health: mergedHealth.map((item) => ({ kind: item.kind, value: item.value, recordedOn: item.recordedOn })),
+    health: sharedHealthSamples(snap.health, readings),
     gratitude: snap.gratitude.map((entry) => ({
       id: entry.id,
       body: entry.body,

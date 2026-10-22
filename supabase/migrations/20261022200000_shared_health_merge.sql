@@ -1,70 +1,15 @@
 -- Shared health totals. Not applied from this repo. Ben reviews this file before it runs.
--- Apply 20261022180000_garmin_connect.sql first. The Garmin tables stay closed to other members.
--- A shared box returns the same daily figure the owner sees: Garmin replaces that day, and the two sources are not added.
--- Apple workout intervals are the owner's start and length only. No path is stored. Other members never read that table.
-
-create table public.apple_workout_spans (
-  user_id uuid not null references public.profiles (id) on delete cascade,
-  workout_id text not null,
-  started_at timestamptz not null,
-  duration_minutes integer not null,
-  primary key (user_id, workout_id),
-  check (workout_id ~ '^[A-Za-z0-9-]{1,80}$'),
-  check (duration_minutes between 1 and 1440)
-);
-
-alter table public.apple_workout_spans enable row level security;
-
-create policy apple_workout_spans_own on public.apple_workout_spans
-  for all to authenticated
-  using (user_id = auth.uid())
-  with check (user_id = auth.uid());
-
-revoke all on table public.apple_workout_spans from public, anon, authenticated;
-grant select, insert, delete on table public.apple_workout_spans to authenticated;
-
-comment on table public.apple_workout_spans is
-  'Owner Apple workout start and length, so a shared workout total can count one session once. No path is stored.';
-
-create or replace function public.shared_workout_same_session(
-  a_start timestamptz,
-  a_ms bigint,
-  b_start timestamptz,
-  b_ms bigint
-) returns boolean
-language sql
-immutable
-as $$
-  select
-    a_ms > 0
-    and b_ms > 0
-    and a_start is not null
-    and b_start is not null
-    and (
-      (
-        least(
-          a_start + (a_ms * interval '1 millisecond'),
-          b_start + (b_ms * interval '1 millisecond')
-        ) - greatest(a_start, b_start)
-      ) >= ((least(a_ms, b_ms)::numeric * 0.5) * interval '1 millisecond')
-      or (
-        abs(extract(epoch from (a_start - b_start))) * 1000 <= 120000
-        and (
-          least(a_ms, b_ms) >= greatest(a_ms, b_ms)::numeric * 0.8
-          or abs(a_ms - b_ms) <= 120000
-        )
-      )
-    );
-$$;
-
-revoke all on function public.shared_workout_same_session(timestamptz, bigint, timestamptz, bigint) from public, anon, authenticated;
+-- 20261022180000_garmin_connect.sql is already applied. This file adds no tables and no Apple workout upload.
+-- One figure per shared box per day. If Garmin recorded any activity that day, the workout minutes are Garmin's alone.
+-- Otherwise the Apple workout total already stored is used. The two are never added.
+-- Resting heart rate uses a resting value only. A day with no resting value is left out. Average heart rate is not used.
 
 create or replace function public.shared_health_days(target uuid)
 returns table(kind text, recorded_on date, value numeric, created_at timestamptz)
 language plpgsql
 stable
 security definer
-set search_path = public
+set search_path = public, pg_temp
 as $$
 declare
   uid uuid := auth.uid();
@@ -72,32 +17,6 @@ declare
   health_kinds text[] := array[]::text[];
   window_start date := (timezone('Europe/London', now()))::date - 6;
   window_end date := (timezone('Europe/London', now()))::date;
-  span_count int := 0;
-  garmin jsonb := '[]'::jsonb;
-  apple jsonb := '[]'::jsonb;
-  merged jsonb := '[]'::jsonb;
-  used boolean[] := array[]::boolean[];
-  replaced jsonb := '[]'::jsonb;
-  workout_rows jsonb := '[]'::jsonb;
-  item jsonb;
-  kept jsonb;
-  other jsonb;
-  primary_row jsonb;
-  day_totals jsonb := '{}'::jsonb;
-  current jsonb;
-  day text;
-  i int;
-  j int;
-  best int;
-  best_score numeric;
-  score numeric;
-  overlap_ms numeric;
-  shorter numeric;
-  g_start timestamptz;
-  a_start timestamptz;
-  g_ms bigint;
-  a_ms bigint;
-  rec record;
 begin
   if uid is null or target is null then
     return;
@@ -128,263 +47,111 @@ begin
   from jsonb_array_elements_text(coalesce(settings->'healthKinds', '[]'::jsonb)) as listed(item)
   where listed.item in ('steps', 'sleep_hours', 'resting_heart_rate', 'hrv_sdnn', 'workout_minutes', 'weight_kg');
 
-  if 'resting_heart_rate' = any(health_kinds) then
-    for rec in
-      select d.calendar_date, round(coalesce(d.resting_heart_rate_bpm, d.average_heart_rate_bpm)::numeric) as bpm
-      from public.garmin_dailies d
-      where d.user_id = target
-        and d.calendar_date between window_start and window_end
-        and coalesce(d.resting_heart_rate_bpm, d.average_heart_rate_bpm) is not null
-    loop
-      replaced := replaced || jsonb_build_array(jsonb_build_object('kind', 'resting_heart_rate', 'day', rec.calendar_date));
-      workout_rows := workout_rows || jsonb_build_array(jsonb_build_object(
-        'kind', 'resting_heart_rate',
-        'recorded_on', rec.calendar_date,
-        'value', rec.bpm,
-        'created_at', 'infinity'
-      ));
-    end loop;
-  end if;
-
-  if 'sleep_hours' = any(health_kinds) then
-    for rec in
-      select n.calendar_date, max(round((n.duration_seconds / 3600.0)::numeric, 1)) as hours
-      from public.garmin_sleep n
-      where n.user_id = target
-        and n.calendar_date between window_start and window_end
-        and n.duration_seconds > 0
-      group by n.calendar_date
-    loop
-      replaced := replaced || jsonb_build_array(jsonb_build_object('kind', 'sleep_hours', 'day', rec.calendar_date));
-      workout_rows := workout_rows || jsonb_build_array(jsonb_build_object(
-        'kind', 'sleep_hours',
-        'recorded_on', rec.calendar_date,
-        'value', rec.hours,
-        'created_at', 'infinity'
-      ));
-    end loop;
-  end if;
-
-  if 'workout_minutes' = any(health_kinds) then
-    select count(*) into span_count from public.apple_workout_spans where user_id = target;
-
-    for rec in
-      select
-        a.started_at,
-        a.duration_seconds * 1000 as duration_ms,
-        greatest(1, round(a.duration_seconds::numeric / 60)::int) as duration_minutes,
-        (
-          (case when a.training_effect is not null then 2 else 0 end)
-          + (case when a.average_heart_rate_bpm is not null then 1 else 0 end)
-          + (case when a.anaerobic_effect is not null then 1 else 0 end)
-          + a.duration_seconds
-        )::numeric as richness
-      from public.garmin_activities a
-      where a.user_id = target
-        and a.duration_seconds > 0
-        and (a.started_at at time zone 'Europe/London')::date between window_start and window_end
-      order by a.started_at, a.summary_id
-    loop
-      item := jsonb_build_object(
-        'start', rec.started_at,
-        'ms', rec.duration_ms,
-        'minutes', rec.duration_minutes,
-        'rich', rec.richness,
-        'origin', 'garmin'
-      );
-      j := -1;
-      for i in 0 .. jsonb_array_length(garmin) - 1 loop
-        kept := garmin->i;
-        if public.shared_workout_same_session(
-          (item->>'start')::timestamptz,
-          (item->>'ms')::bigint,
-          (kept->>'start')::timestamptz,
-          (kept->>'ms')::bigint
-        ) then
-          if (kept->>'rich')::numeric >= (item->>'rich')::numeric then
-            primary_row := kept;
-            other := item;
-          else
-            primary_row := item;
-            other := kept;
-          end if;
-          garmin := jsonb_set(garmin, array[i::text], jsonb_build_object(
-            'start', primary_row->>'start',
-            'ms', greatest((primary_row->>'ms')::bigint, (other->>'ms')::bigint),
-            'minutes', greatest((primary_row->>'minutes')::int, (other->>'minutes')::int),
-            'rich', greatest((primary_row->>'rich')::numeric, (other->>'rich')::numeric),
-            'origin', 'garmin'
-          ));
-          j := i;
-          exit;
-        end if;
-      end loop;
-      if j < 0 then
-        garmin := garmin || jsonb_build_array(item);
-      end if;
-    end loop;
-
-    if span_count > 0 then
-      for rec in
-        select s.started_at, s.duration_minutes
-        from public.apple_workout_spans s
-        where s.user_id = target
-          and (s.started_at at time zone 'Europe/London')::date between window_start and window_end
-        order by s.started_at, s.workout_id
-      loop
-        apple := apple || jsonb_build_array(jsonb_build_object(
-          'start', rec.started_at,
-          'ms', rec.duration_minutes::bigint * 60 * 1000,
-          'minutes', rec.duration_minutes,
-          'origin', 'apple'
-        ));
-      end loop;
-      if jsonb_array_length(apple) > 0 then
-        used := array_fill(false, array[jsonb_array_length(apple)]);
-      end if;
-
-      for i in 0 .. jsonb_array_length(garmin) - 1 loop
-        item := garmin->i;
-        g_start := (item->>'start')::timestamptz;
-        g_ms := (item->>'ms')::bigint;
-        best := -1;
-        best_score := 0;
-        for j in 0 .. jsonb_array_length(apple) - 1 loop
-          if used[j + 1] then
-            continue;
-          end if;
-          kept := apple->j;
-          a_start := (kept->>'start')::timestamptz;
-          a_ms := (kept->>'ms')::bigint;
-          if not public.shared_workout_same_session(g_start, g_ms, a_start, a_ms) then
-            continue;
-          end if;
-          shorter := least(g_ms, a_ms);
-          overlap_ms := extract(epoch from (
-            least(
-              g_start + (g_ms * interval '1 millisecond'),
-              a_start + (a_ms * interval '1 millisecond')
-            ) - greatest(g_start, a_start)
-          )) * 1000;
-          if overlap_ms > 0 and shorter > 0 then
-            score := overlap_ms / shorter;
-          else
-            score := 0.5;
-          end if;
-          if score > best_score then
-            best_score := score;
-            best := j;
-          end if;
-        end loop;
-        if best >= 0 then
-          used[best + 1] := true;
-        end if;
-        merged := merged || jsonb_build_array(jsonb_build_object(
-          'start', item->>'start',
-          'minutes', (item->>'minutes')::int,
-          'origin', 'garmin'
-        ));
-      end loop;
-
-      for j in 0 .. jsonb_array_length(apple) - 1 loop
-        if used[j + 1] then
-          continue;
-        end if;
-        kept := apple->j;
-        merged := merged || jsonb_build_array(jsonb_build_object(
-          'start', kept->>'start',
-          'minutes', (kept->>'minutes')::int,
-          'origin', 'apple'
-        ));
-      end loop;
-
-      for i in 0 .. jsonb_array_length(merged) - 1 loop
-        item := merged->i;
-        day := to_char((item->>'start')::timestamptz at time zone 'Europe/London', 'YYYY-MM-DD');
-        current := coalesce(day_totals->day, '{}'::jsonb);
-        day_totals := jsonb_set(
-          day_totals,
-          array[day],
-          jsonb_build_object(
-            'minutes', coalesce((current->>'minutes')::int, 0) + (item->>'minutes')::int,
-            'garmin', coalesce((current->>'garmin')::boolean, false) or (item->>'origin') = 'garmin'
-          ),
-          true
-        );
-      end loop;
-
-      for day in select jsonb_object_keys(day_totals) loop
-        current := day_totals->day;
-        if coalesce((current->>'garmin')::boolean, false) then
-          replaced := replaced || jsonb_build_array(jsonb_build_object('kind', 'workout_minutes', 'day', day));
-          workout_rows := workout_rows || jsonb_build_array(jsonb_build_object(
-            'kind', 'workout_minutes',
-            'recorded_on', day,
-            'value', (current->>'minutes')::int,
-            'created_at', 'infinity'
-          ));
-        end if;
-      end loop;
-    else
-      for i in 0 .. jsonb_array_length(garmin) - 1 loop
-        item := garmin->i;
-        day := to_char((item->>'start')::timestamptz at time zone 'Europe/London', 'YYYY-MM-DD');
-        current := coalesce(day_totals->day, '{}'::jsonb);
-        day_totals := jsonb_set(
-          day_totals,
-          array[day],
-          jsonb_build_object('minutes', coalesce((current->>'minutes')::int, 0) + (item->>'minutes')::int),
-          true
-        );
-      end loop;
-      for day in select jsonb_object_keys(day_totals) loop
-        if exists (
-          select 1 from public.health_samples s
-          where s.user_id = target
-            and s.kind = 'workout_minutes'
-            and s.recorded_on = day::date
-        ) then
-          continue;
-        end if;
-        workout_rows := workout_rows || jsonb_build_array(jsonb_build_object(
-          'kind', 'workout_minutes',
-          'recorded_on', day,
-          'value', ((day_totals->day)->>'minutes')::int,
-          'created_at', 'infinity'
-        ));
-      end loop;
-    end if;
-  end if;
-
   return query
   select s.kind, s.recorded_on, s.value, s.created_at
   from public.health_samples s
   where s.user_id = target
     and s.kind = any(health_kinds)
     and s.recorded_on between window_start and window_end
-    and not exists (
-      select 1
-      from jsonb_to_recordset(replaced) as d(kind text, day date)
-      where d.kind = s.kind and d.day = s.recorded_on
+    and not (
+      s.kind = 'resting_heart_rate'
+      and exists (
+        select 1 from public.garmin_dailies d
+        where d.user_id = target
+          and d.calendar_date = s.recorded_on
+          and d.resting_heart_rate_bpm is not null
+      )
+    )
+    and not (
+      s.kind = 'sleep_hours'
+      and exists (
+        select 1 from public.garmin_sleep n
+        where n.user_id = target
+          and n.calendar_date = s.recorded_on
+          and n.duration_seconds > 0
+      )
+    )
+    and not (
+      s.kind = 'workout_minutes'
+      and exists (
+        select 1 from public.garmin_activities a
+        where a.user_id = target
+          and a.duration_seconds > 0
+          and (a.started_at at time zone 'Europe/London')::date = s.recorded_on
+      )
     )
   union all
-  select r.kind, r.recorded_on, r.value, r.created_at
-  from jsonb_to_recordset(workout_rows) as r(kind text, recorded_on date, value numeric, created_at timestamptz);
+  select
+    'resting_heart_rate'::text,
+    d.calendar_date,
+    round(d.resting_heart_rate_bpm::numeric),
+    'infinity'::timestamptz
+  from public.garmin_dailies d
+  where 'resting_heart_rate' = any(health_kinds)
+    and d.user_id = target
+    and d.calendar_date between window_start and window_end
+    and d.resting_heart_rate_bpm is not null
+  union all
+  select
+    'sleep_hours'::text,
+    n.calendar_date,
+    max(round((n.duration_seconds / 3600.0)::numeric, 1)),
+    'infinity'::timestamptz
+  from public.garmin_sleep n
+  where 'sleep_hours' = any(health_kinds)
+    and n.user_id = target
+    and n.calendar_date between window_start and window_end
+    and n.duration_seconds > 0
+  group by n.calendar_date
+  union all
+  select
+    'workout_minutes'::text,
+    (a.started_at at time zone 'Europe/London')::date,
+    sum(greatest(1, round(a.duration_seconds::numeric / 60)))::numeric,
+    'infinity'::timestamptz
+  from public.garmin_activities a
+  where 'workout_minutes' = any(health_kinds)
+    and a.user_id = target
+    and a.duration_seconds > 0
+    and (a.started_at at time zone 'Europe/London')::date between window_start and window_end
+  group by (a.started_at at time zone 'Europe/London')::date;
 end;
 $$;
 
-revoke all on function public.shared_health_days(uuid) from public, anon;
-grant execute on function public.shared_health_days(uuid) to authenticated;
+revoke all on function public.shared_health_days(uuid) from public, anon, authenticated;
 
 comment on function public.shared_health_days(uuid) is
-  'Daily figures for health boxes that member has shared. Garmin replaces that day. No connection, token, or raw row is returned.';
+  'Daily figures for health boxes that member has shared. Members cannot call this directly. No connection, token, or raw row is returned.';
+
+create or replace function public.shared_health_preview()
+returns table(kind text, recorded_on date, value numeric, created_at timestamptz)
+language plpgsql
+stable
+security definer
+set search_path = public, pg_temp
+as $$
+begin
+  if auth.uid() is null then
+    return;
+  end if;
+  return query
+  select days.kind, days.recorded_on, days.value, days.created_at
+  from public.shared_health_days(auth.uid()) as days;
+end;
+$$;
+
+revoke all on function public.shared_health_preview() from public, anon;
+grant execute on function public.shared_health_preview() to authenticated;
+
+comment on function public.shared_health_preview() is
+  'The signed-in member previews only their own shared health days.';
 
 
 CREATE OR REPLACE FUNCTION public.public_profile(user_id uuid)
  RETURNS jsonb
  LANGUAGE plpgsql
  STABLE SECURITY DEFINER
- SET search_path TO 'public'
+ set search_path = public, pg_temp
 AS $function$
 declare
   uid uuid := auth.uid();
