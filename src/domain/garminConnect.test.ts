@@ -23,7 +23,10 @@ import {
   readTokenResponse,
   sleepRowsFor,
   takePkceState,
-  webhookAuthorised,
+  garminTokenAad,
+  openGarminToken,
+  sealGarminToken,
+  webhookGate,
   withoutGarminUser,
   type GarminReadings,
   type GarminStore,
@@ -276,6 +279,7 @@ describe('Garmin token sealing', () => {
     expect(sealed.nonce).not.toContain('access-secret');
     expect(await openGarminToken(sealed, key, aad)).toBe('access-secret');
     await expect(openGarminToken(sealed, other, aad)).rejects.toThrow('garmin-token: decrypt');
+    await expect(openGarminToken(sealed, key, garminTokenAad('user-2', 'access', 1))).rejects.toThrow('garmin-token: decrypt');
     await expect(openGarminToken({ ...sealed, keyVersion: 2 }, key, aad)).rejects.toThrow('garmin-token: version');
     await expect(sealGarminToken('access-secret', encodeBase64(new Uint8Array(16).fill(1)), aad)).rejects.toThrow('garmin-token: key');
   });
@@ -319,7 +323,11 @@ describe('Garmin storage rules', () => {
       'token_key_version',
     ]));
     const view = sql.slice(sql.indexOf('create view public.garmin_connection_status'), sql.indexOf('revoke all on table public.garmin_connection_status'));
-    expect(view).not.toMatch(/select[\s\S]*ciphertext/i);
+    const selectList = view.slice(view.search(/\bselect\b/i), view.search(/\bfrom\b/i));
+    expect(selectList).toContain("(revoked_at is null and access_token_ciphertext <> '') as connected");
+    expect(selectList).not.toMatch(/\b(access_token_nonce|refresh_token_ciphertext|refresh_token_nonce|token_key_version)\b/);
+    expect(selectList).not.toMatch(/\baccess_token\b/);
+    expect(selectList).not.toMatch(/\brefresh_token\b/);
     expect(sql).toContain('revoke all on table public.garmin_connections from public, anon, authenticated');
     expect(sql).toContain('grant select on table public.garmin_connection_status to authenticated');
     expect(sql).not.toMatch(/latitude|longitude/);
