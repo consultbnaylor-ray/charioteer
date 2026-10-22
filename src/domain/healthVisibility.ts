@@ -19,7 +19,9 @@ export const HEALTH_VISIBILITY_NOTE =
 export const HEALTH_ASK_AGAIN = 'Ask Health again';
 export const HEALTH_CHECK_AGAIN = 'Check again';
 
-const TITLES: Record<(typeof APPLE_HEALTH_READ_TYPES)[number], string> = {
+const routeReadType = APPLE_HEALTH_READ_TYPES.find((type) => type.endsWith('RouteTypeIdentifier'));
+
+const TITLES = {
   HKQuantityTypeIdentifierStepCount: 'Steps',
   HKQuantityTypeIdentifierRestingHeartRate: 'Resting heart rate',
   HKQuantityTypeIdentifierHeartRateVariabilitySDNN: 'Heart rate variability',
@@ -33,7 +35,8 @@ const TITLES: Record<(typeof APPLE_HEALTH_READ_TYPES)[number], string> = {
   HKCategoryTypeIdentifierSleepAnalysis: 'Sleep',
   HKWorkoutTypeIdentifier: 'Workouts',
   HKQuantityTypeIdentifierActiveEnergyBurned: 'Active energy',
-};
+  ...(routeReadType ? { [routeReadType]: 'Workout routes' } : {}),
+} as Record<(typeof APPLE_HEALTH_READ_TYPES)[number], string>;
 
 export type HealthAsk = 'yes' | 'no';
 
@@ -56,7 +59,7 @@ export const HEALTH_MISSING_DETAIL = 'Why these are missing';
  * One action for a reading with no sample.
  * HealthKit does not say the read was refused, so these assume no data was found.
  */
-const MISSING_ACTION: Record<(typeof APPLE_HEALTH_READ_TYPES)[number], string> = {
+const MISSING_ACTION = {
   HKQuantityTypeIdentifierStepCount: 'Carry your iPhone or wear Apple Watch.',
   HKQuantityTypeIdentifierRestingHeartRate: 'Wear Apple Watch while you are still.',
   HKQuantityTypeIdentifierHeartRateVariabilitySDNN: 'Wear Apple Watch overnight.',
@@ -70,7 +73,8 @@ const MISSING_ACTION: Record<(typeof APPLE_HEALTH_READ_TYPES)[number], string> =
   HKCategoryTypeIdentifierSleepAnalysis: 'No recent night recorded.',
   HKWorkoutTypeIdentifier: 'Record a workout on Apple Watch or in a workout app.',
   HKQuantityTypeIdentifierActiveEnergyBurned: 'Wear Apple Watch so movement is recorded.',
-};
+  ...(routeReadType ? { [routeReadType]: 'Turn on Workouts in Apple Health. The path stays on this iPhone.' } : {}),
+} as Record<(typeof APPLE_HEALTH_READ_TYPES)[number], string>;
 
 export type HealthReadFinding = 'no_data' | 'not_permitted';
 

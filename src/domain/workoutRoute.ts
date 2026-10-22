@@ -16,6 +16,17 @@ export const ROUTE_READ_TYPE = 'HKWorkoutRouteTypeIdentifier';
  */
 export const ROUTE_LOAD_ERROR = 'Route not available';
 
+/** The route screen shows the unavailable line. A missing grant uses that same line. */
+export function routeUnavailable(state: {
+  ready: boolean;
+  denied: boolean;
+  failed: boolean;
+  mapLine: boolean;
+  drawable: boolean;
+}): boolean {
+  return state.ready && (state.denied || state.failed || state.mapLine || !state.drawable);
+}
+
 export const ROUTE_RETRY = 'Try again';
 
 /** Shown while the phone is still reading the path. */

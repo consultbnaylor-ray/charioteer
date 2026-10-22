@@ -17,6 +17,7 @@ export const APPLE_HEALTH_READ_TYPES = [
   'HKQuantityTypeIdentifierLeanBodyMass',
   'HKCategoryTypeIdentifierSleepAnalysis',
   'HKWorkoutTypeIdentifier',
+  'HKWorkoutRouteTypeIdentifier',
   'HKQuantityTypeIdentifierActiveEnergyBurned',
 ] as const;
 

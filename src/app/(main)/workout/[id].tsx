@@ -19,6 +19,7 @@ import {
   formatClock,
   routeErrorLine,
   routeMapRegion,
+  routeUnavailable,
   type DeviceWorkout,
   type DistanceUnit,
   type HeartSample,
@@ -163,12 +164,11 @@ function WorkoutRouteBody() {
         <Choice label="Kilometres" selected={unit === 'km'} onPress={() => { void chooseUnit('km'); }} />
         <Choice label="Miles" selected={unit === 'mile'} onPress={() => { void chooseUnit('mile'); }} />
       </View>
-      {denied ? <T>Workout routes are off. Turn them on in the Health app: profile picture, Privacy, Apps, Charioteer.</T> : null}
       {!ready ? <T variant="muted">{ROUTE_READING}</T> : null}
-      {ready && !denied && (failed || mapLine || !drawable) ? (
+      {routeUnavailable({ ready, denied, failed, mapLine: mapLine != null, drawable }) ? (
         <View style={{ gap: 8 }}>
           <T>{ROUTE_LOAD_ERROR}</T>
-          {failed || mapLine ? <Button label={ROUTE_RETRY} onPress={() => setAttempt((value) => value + 1)} /> : null}
+          {failed || mapLine || denied ? <Button label={ROUTE_RETRY} onPress={() => setAttempt((value) => value + 1)} /> : null}
         </View>
       ) : null}
       {stats ? (

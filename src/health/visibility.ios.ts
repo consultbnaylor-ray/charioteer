@@ -44,6 +44,7 @@ async function sampleDays(
   type: (typeof APPLE_HEALTH_READ_TYPES)[number],
   now: Date,
 ): Promise<number> {
+  if (type === 'HKWorkoutRouteTypeIdentifier') return 0;
   const start = new Date(now.getTime() - HEALTH_SAMPLE_DAYS * 24 * 60 * 60 * 1000);
   const filter = { date: { startDate: start, endDate: now } };
   try {
@@ -86,7 +87,8 @@ async function sampleDays(
 /** Asked is the sheet status. Days are samples in the last 12 months. Read permission stays hidden. */
 export async function readHealthVisibility(now = new Date()): Promise<HealthVisibilityReport> {
   if (!isHealthDataAvailable()) return { kind: 'unavailable' };
-  const rows: HealthVisibilityRow[] = await Promise.all(APPLE_HEALTH_READ_TYPES.map(async (type) => ({
+  const counted = APPLE_HEALTH_READ_TYPES.filter((type) => !type.endsWith('RouteTypeIdentifier'));
+  const rows: HealthVisibilityRow[] = await Promise.all(counted.map(async (type) => ({
     type,
     title: healthReadTitle(type),
     asked: await askedFor(type),

@@ -38,6 +38,7 @@ import {
   routeErrorLine,
   routeExpected,
   routeMapRegion,
+  routeUnavailable,
 } from '@/domain/workoutRoute';
 
 function filesUnder(dir: string): string[] {
@@ -343,15 +344,21 @@ describe('workout routes stay on the phone', () => {
     expect(repo).toContain('rejectRouteCoordinates(thumosBody)');
     expect(repo).toContain('rejectRouteCoordinates(body)');
     expect(demo).toContain('rejectRouteCoordinates(samples)');
-    expect(APPLE_HEALTH_READ_TYPES).not.toContain(ROUTE_READ_TYPE);
+    expect(APPLE_HEALTH_READ_TYPES).toContain(ROUTE_READ_TYPE);
     const sync = readFileSync('src/health/sync.ios.ts', 'utf8');
+    const connect = readFileSync('src/health/link.ios.ts', 'utf8');
     expect(sync).not.toContain('getWorkoutRoutes');
     expect(sync).not.toContain(ROUTE_READ_TYPE);
+    expect(sync).toContain('[...APPLE_HEALTH_READ_TYPES]');
+    expect(connect).toContain('const toRead = [...APPLE_HEALTH_READ_TYPES]');
+    expect(connect).toContain('requestAuthorization({ toRead: [...APPLE_HEALTH_READ_TYPES] })');
     const reader = readFileSync('src/health/workoutRoute.ios.ts', 'utf8');
     expect(reader).toContain('getWorkoutRoutes');
-    expect(reader).toContain('requestAuthorization({ toRead: [ROUTE_READ_TYPE] })');
-    expect(reader.indexOf('!known.routeExpected')).toBeLessThan(reader.indexOf('requestAuthorization({ toRead: [ROUTE_READ_TYPE] })'));
-    expect(reader.indexOf('listDeviceWorkouts')).toBeLessThan(reader.indexOf('requestAuthorization({ toRead: [ROUTE_READ_TYPE] })'));
+    expect(reader).not.toContain('requestAuthorization');
+    expect(reader).toContain('getRequestStatusForAuthorization({ toRead: [ROUTE_READ_TYPE] })');
+    expect(reader).toContain('AuthorizationRequestStatus.unnecessary');
+    expect(reader.indexOf('!known.routeExpected')).toBeLessThan(reader.indexOf('await routeReadGranted()'));
+    expect(reader.indexOf('listDeviceWorkouts')).toBeLessThan(reader.indexOf('await routeReadGranted()'));
     const screen = readFileSync('src/app/(main)/workout/[id].tsx', 'utf8');
     const list = readFileSync('src/ui/WorkoutList.tsx', 'utf8');
     const calendar = readFileSync('src/ui/WorkoutCalendar.tsx', 'utf8');
@@ -372,6 +379,8 @@ describe('workout routes stay on the phone', () => {
     expect(readFileSync('app.json', 'utf8')).toContain('react-native-maps');
     expect(screen).toContain('RouteBoundary');
     expect(screen).toContain('ROUTE_LOAD_ERROR');
+    expect(screen).toContain('routeUnavailable(');
+    expect(screen).not.toContain('requestAuthorization');
     expect(screen).toContain('ROUTE_RETRY');
     expect(ROUTE_LOAD_ERROR).toBe('Route not available');
     expect(screen).toContain('routeMapRegion(points)');
@@ -415,7 +424,10 @@ describe('workout routes stay on the phone', () => {
     expect(reader).toContain('downsampleRoute');
     expect(reader).toContain('DEV_FIXTURE_ROUTE_ID');
     expect(reader).toContain('devFixtureEnabled()');
-    expect(reader.indexOf('id === DEV_FIXTURE_ROUTE_ID && devFixtureEnabled()')).toBeLessThan(reader.indexOf('requestAuthorization({ toRead: [ROUTE_READ_TYPE] })'));
+    expect(reader.indexOf('id === DEV_FIXTURE_ROUTE_ID && devFixtureEnabled()')).toBeLessThan(reader.indexOf('await routeReadGranted()'));
+    const opened = reader.slice(reader.indexOf('export async function readDeviceRoute'));
+    expect(opened.indexOf('await routeReadGranted()')).toBeLessThan(opened.indexOf('denied: true'));
+    expect(opened).not.toContain('requestAuthorization');
     const native = readFileSync('node_modules/@kingstinct/react-native-healthkit/ios/WorkoutProxy.swift', 'utf8');
     const locations = native.slice(native.indexOf('func getRouteLocations'), native.indexOf('func serializeLocation'));
     expect(locations).toContain('cappedRouteLocations');
@@ -427,7 +439,20 @@ describe('workout routes stay on the phone', () => {
     expect(serialized).not.toContain('getDouble(');
     expect(serialized).toContain('CLLocationCoordinate2DIsValid');
     expect(serialized).toContain('HKMetadataKeySyncIdentifier: nil');
-    expect(readFileSync('patches/@kingstinct+react-native-healthkit+16.1.0.patch', 'utf8')).toContain('cappedRouteLocations');
+    const healthPatch = readFileSync('patches/@kingstinct+react-native-healthkit+16.1.0.patch', 'utf8');
+    expect(healthPatch).toContain('cappedRouteLocations');
+    expect(healthPatch).toContain('CharioteerRequestAuthorizationCatchingExceptions');
+    expect(healthPatch).toContain('@try');
+    expect(healthPatch).toContain('@catch (NSException');
+    expect(healthPatch).toContain('requestAuthorizationToShareTypes');
+    const core = readFileSync('node_modules/@kingstinct/react-native-healthkit/ios/CoreModule.swift', 'utf8');
+    expect(core).toContain('CharioteerRequestAuthorizationCatchingExceptions');
+    expect(core).toContain('CharioteerGetRequestStatusCatchingExceptions');
+    expect(core).not.toContain('runCatchingObjCExceptions');
+    const catcher = readFileSync('node_modules/@kingstinct/react-native-healthkit/ios/AuthorizationCatcher.m', 'utf8');
+    expect(catcher.indexOf('@try')).toBeLessThan(catcher.indexOf('requestAuthorizationToShareTypes'));
+    expect(catcher.indexOf('requestAuthorizationToShareTypes')).toBeLessThan(catcher.indexOf('@catch (NSException'));
+    expect(catcher).not.toMatch(/latitude|longitude/);
     expect(readFileSync('src/domain/profileSharing.ts', 'utf8')).not.toMatch(/latitude|longitude|route/);
   });
 
@@ -486,6 +511,9 @@ describe('workout routes stay on the phone', () => {
     expect(wide?.longitudeDelta).toBeLessThanOrEqual(360);
     expect(wide?.latitudeDelta).toBeGreaterThan(0);
     expect(wide?.longitudeDelta).toBeGreaterThan(0);
+    expect(routeUnavailable({ ready: true, denied: true, failed: false, mapLine: false, drawable: false })).toBe(true);
+    expect(routeUnavailable({ ready: false, denied: true, failed: false, mapLine: false, drawable: false })).toBe(false);
+    expect(routeUnavailable({ ready: true, denied: false, failed: false, mapLine: false, drawable: true })).toBe(false);
     expect(clientErrorRecord('workout-route', routeErrorLine(new Error('NSInvalidArgumentException: Invalid Region latitude 51.50740')))).toEqual({
       screen: 'workout-route',
       message: 'nsinvalidargumentexception',

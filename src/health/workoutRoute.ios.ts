@@ -1,9 +1,10 @@
 import {
+  AuthorizationRequestStatus,
   authorizationStatusFor,
+  getRequestStatusForAuthorization,
   isHealthDataAvailable,
   queryQuantitySamples,
   queryWorkoutSamples,
-  requestAuthorization,
 } from '@kingstinct/react-native-healthkit';
 
 import { workoutTypeLabel } from '@/domain/fitnessSnapshot';
@@ -159,7 +160,20 @@ async function heartSamples(start: Date, end: Date): Promise<HeartSample[]> {
 }
 
 /**
- * Asks for workout routes the first time a route is opened.
+ * Sheet status only. Read permission cannot be read back, and this screen does not ask again.
+ * The route type is included in the normal Health sheet. The path stays on this iPhone.
+ */
+async function routeReadGranted(): Promise<boolean> {
+  try {
+    const status = await getRequestStatusForAuthorization({ toRead: [ROUTE_READ_TYPE] });
+    return status === AuthorizationRequestStatus.unnecessary;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Reads a workout route that Health was already asked for.
  * The path is returned to the screen and is not stored or uploaded.
  */
 export async function readDeviceRoute(id: string): Promise<{
@@ -178,7 +192,7 @@ export async function readDeviceRoute(id: string): Promise<{
   if (!isHealthDataAvailable()) {
     return { workout: known, points: [], heartSamples: [], denied: false };
   }
-  const allowed = await requestAuthorization({ toRead: [ROUTE_READ_TYPE] });
+  const allowed = await routeReadGranted();
   if (!allowed) return { workout: known, points: [], heartSamples: [], denied: true };
   const workouts = await queryWorkoutSamples({ limit: 1, filter: { uuids: [id] } });
   const workout = workouts[0];

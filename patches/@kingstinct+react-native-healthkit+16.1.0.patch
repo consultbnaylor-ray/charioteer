@@ -1,3 +1,203 @@
+diff --git a/node_modules/@kingstinct/react-native-healthkit/ReactNativeHealthkit.podspec b/node_modules/@kingstinct/react-native-healthkit/ReactNativeHealthkit.podspec
+index ba24aae..60f55ef 100644
+--- a/node_modules/@kingstinct/react-native-healthkit/ReactNativeHealthkit.podspec
++++ b/node_modules/@kingstinct/react-native-healthkit/ReactNativeHealthkit.podspec
+@@ -19,12 +19,14 @@ Pod::Spec.new do |s|
+   s.source       = { :git => "https://github.com/kingstinct/react-native-healthkit.git", :tag => "#{s.version}" }
+ 
+   s.source_files = [
+-    # Implementation (Swift)
+-    "ios/**/*.{swift}",
++    # Implementation (Swift) and the Objective-C exception catcher
++    "ios/**/*.{swift,m,h}",
+         # Implementation (C++ objects)
+     "cpp/**/*.{hpp,cpp}",
+   ]
+ 
++  s.private_header_files = "ios/**/*.h"
++
+   s.pod_target_xcconfig = {
+     # C++ compiler flags, mainly for folly.
+     "GCC_PREPROCESSOR_DEFINITIONS" => "$(inherited) FOLLY_NO_CONFIG FOLLY_CFG_NO_COROUTINES",
+diff --git a/node_modules/@kingstinct/react-native-healthkit/ios/AuthorizationCatcher.h b/node_modules/@kingstinct/react-native-healthkit/ios/AuthorizationCatcher.h
+new file mode 100644
+index 0000000..e3c01d3
+--- /dev/null
++++ b/node_modules/@kingstinct/react-native-healthkit/ios/AuthorizationCatcher.h
+@@ -0,0 +1,18 @@
++#import <Foundation/Foundation.h>
++#import <HealthKit/HealthKit.h>
++
++/// HealthKit can raise an Objective-C exception from these calls.
++/// The @try stays in this file so no Swift frame sits between the throw and the catch.
++NSError * _Nullable CharioteerRequestAuthorizationCatchingExceptions(
++  HKHealthStore * _Nonnull store,
++  NSSet * _Nonnull share,
++  NSSet * _Nonnull read,
++  void (^ _Nonnull completion)(BOOL success, NSError * _Nullable error)
++);
++
++NSError * _Nullable CharioteerGetRequestStatusCatchingExceptions(
++  HKHealthStore * _Nonnull store,
++  NSSet * _Nonnull share,
++  NSSet * _Nonnull read,
++  void (^ _Nonnull completion)(NSInteger status, NSError * _Nullable error)
++);
+diff --git a/node_modules/@kingstinct/react-native-healthkit/ios/AuthorizationCatcher.m b/node_modules/@kingstinct/react-native-healthkit/ios/AuthorizationCatcher.m
+new file mode 100644
+index 0000000..0935a11
+--- /dev/null
++++ b/node_modules/@kingstinct/react-native-healthkit/ios/AuthorizationCatcher.m
+@@ -0,0 +1,42 @@
++#import "AuthorizationCatcher.h"
++
++static NSError *CharioteerExceptionError(NSException *exception) {
++  NSString *reason = exception.reason;
++  if (reason.length == 0) reason = exception.name;
++  if (reason.length == 0) reason = @"HealthKit authorization failed";
++  return [NSError errorWithDomain:@"CharioteerHealthKit"
++                             code:1
++                         userInfo:@{ NSLocalizedDescriptionKey: reason }];
++}
++
++NSError * _Nullable CharioteerRequestAuthorizationCatchingExceptions(
++  HKHealthStore * _Nonnull store,
++  NSSet * _Nonnull share,
++  NSSet * _Nonnull read,
++  void (^ _Nonnull completion)(BOOL success, NSError * _Nullable error)
++) {
++  @try {
++    [store requestAuthorizationToShareTypes:share readTypes:read completion:^(BOOL success, NSError *error) {
++      completion(success, error);
++    }];
++    return nil;
++  } @catch (NSException *exception) {
++    return CharioteerExceptionError(exception);
++  }
++}
++
++NSError * _Nullable CharioteerGetRequestStatusCatchingExceptions(
++  HKHealthStore * _Nonnull store,
++  NSSet * _Nonnull share,
++  NSSet * _Nonnull read,
++  void (^ _Nonnull completion)(NSInteger status, NSError * _Nullable error)
++) {
++  @try {
++    [store getRequestStatusForAuthorizationToShareTypes:share readTypes:read completion:^(HKAuthorizationRequestStatus status, NSError *error) {
++      completion((NSInteger)status, error);
++    }];
++    return nil;
++  } @catch (NSException *exception) {
++    return CharioteerExceptionError(exception);
++  }
++}
+diff --git a/node_modules/@kingstinct/react-native-healthkit/ios/CoreModule.swift b/node_modules/@kingstinct/react-native-healthkit/ios/CoreModule.swift
+index cf9056a..39e77ef 100644
+--- a/node_modules/@kingstinct/react-native-healthkit/ios/CoreModule.swift
++++ b/node_modules/@kingstinct/react-native-healthkit/ios/CoreModule.swift
+@@ -76,6 +76,23 @@ async throws -> [HKQuantityType: HKUnit] {
+   }
+ }
+ 
++// The HealthKit call runs in Objective-C. A Swift closure between the throw and @catch traps.
++@_silgen_name("CharioteerRequestAuthorizationCatchingExceptions")
++func CharioteerRequestAuthorizationCatchingExceptions(
++  _ store: HKHealthStore,
++  _ share: NSSet,
++  _ read: NSSet,
++  _ completion: @convention(block) (Bool, NSError?) -> Void
++) -> NSError?
++
++@_silgen_name("CharioteerGetRequestStatusCatchingExceptions")
++func CharioteerGetRequestStatusCatchingExceptions(
++  _ store: HKHealthStore,
++  _ share: NSSet,
++  _ read: NSSet,
++  _ completion: @convention(block) (Int, NSError?) -> Void
++) -> NSError?
++
+ class CoreModule: HybridCoreModuleSpec {
+   func requestPerObjectReadAuthorization(typeIdentifier: PerObjectTypeIdentifier) -> Promise<Void> {
+     return Promise.async {
+@@ -187,27 +204,25 @@ class CoreModule: HybridCoreModuleSpec {
+             returning: .unnecessary
+           )
+         }
+-        do {
+-          try runCatchingObjCExceptions {
+-            healthStore.getRequestStatusForAuthorization(toShare: toShare, read: toRead) {
+-              status, error in
+-              DispatchQueue.main.async {
+-                if let error = error {
+-                  continuation.resume(throwing: error)
+-                } else {
+-                  if let authStatus = AuthorizationRequestStatus(rawValue: Int32(status.rawValue)) {
+-                    continuation.resume(returning: authStatus)
+-                  } else {
+-                    continuation.resume(
+-                      throwing: runtimeErrorWithPrefix(
+-                        "Unrecognized authStatus returned: \(status.rawValue)"))
+-                  }
+-                }
+-              }
++        let caught = CharioteerGetRequestStatusCatchingExceptions(
++          healthStore,
++          toShare as NSSet,
++          toRead as NSSet
++        ) { status, error in
++          DispatchQueue.main.async {
++            if let error = error {
++              continuation.resume(throwing: error)
++            } else if let authStatus = AuthorizationRequestStatus(rawValue: Int32(status)) {
++              continuation.resume(returning: authStatus)
++            } else {
++              continuation.resume(
++                throwing: runtimeErrorWithPrefix(
++                  "Unrecognized authStatus returned: \(status)"))
+             }
+           }
+-        } catch {
+-          continuation.resume(throwing: error)
++        }
++        if let caught = caught {
++          continuation.resume(throwing: caught)
+         }
+       }
+     }
+@@ -219,20 +234,21 @@ class CoreModule: HybridCoreModuleSpec {
+       let toRead = objectTypesFromArray(typeIdentifiers: toRequest.toRead ?? [])
+ 
+       return try await withCheckedThrowingContinuation { continuation in
+-        do {
+-          try runCatchingObjCExceptions {
+-            healthStore.requestAuthorization(toShare: share, read: toRead) { status, error in
+-              DispatchQueue.main.async {
+-                if let error = error {
+-                  continuation.resume(throwing: error)
+-                } else {
+-                  continuation.resume(returning: status)
+-                }
+-              }
++        let caught = CharioteerRequestAuthorizationCatchingExceptions(
++          healthStore,
++          share as NSSet,
++          toRead as NSSet
++        ) { status, error in
++          DispatchQueue.main.async {
++            if let error = error {
++              continuation.resume(throwing: error)
++            } else {
++              continuation.resume(returning: status)
+             }
+           }
+-        } catch {
+-          continuation.resume(throwing: error)
++        }
++        if let caught = caught {
++          continuation.resume(throwing: caught)
+         }
+       }
+     }
 diff --git a/node_modules/@kingstinct/react-native-healthkit/ios/WorkoutProxy.swift b/node_modules/@kingstinct/react-native-healthkit/ios/WorkoutProxy.swift
 index 7909fa6..748849b 100644
 --- a/node_modules/@kingstinct/react-native-healthkit/ios/WorkoutProxy.swift
