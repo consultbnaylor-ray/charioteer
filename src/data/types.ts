@@ -516,4 +516,10 @@ export interface Repository {
   updatePlannedSession(id: string, input: import('@/domain/plannedSession').PlannedSessionDraft & { doneAt: string | null }): Promise<void>;
   /** Removes one planned workout. */
   deletePlannedSession(id: string): Promise<void>;
+  /** Connection flag and the summaries this phone shows. Tokens stay on the server. */
+  loadGarmin(): Promise<import('@/domain/garminConnect').GarminReadings>;
+  /** Signed-in link to Garmin. Returns the authorise URL. */
+  startGarminConnect(): Promise<string>;
+  /** Asks Garmin to drop the registration, then deletes the summaries. */
+  disconnectGarmin(): Promise<void>;
 }

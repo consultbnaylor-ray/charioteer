@@ -5,7 +5,7 @@
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/brand/ios/icon-1024.png",
-    "scheme": "charioteer",
+    "scheme": ["charioteer", "uk.co.quanticalabs.charioteer"],
     "userInterfaceStyle": "dark",
     "ios": {
       "bundleIdentifier": "uk.co.quanticalabs.charioteer",

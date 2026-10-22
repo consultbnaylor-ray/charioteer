@@ -44,6 +44,7 @@ import { moodOnTen } from '../_shared/mood.ts';
 import { GOAL_LABEL, type NutritionGoal } from '../_shared/nutrition.ts';
 import { formatSoberElapsed, soberElapsed } from '../_shared/sober.ts';
 import { COACHING_PAUSED, xaiPersonalDataEnabled } from '../_shared/xaiPersonal.ts';
+import { garminAllowedForCoach, garminCoachLines, missingRelation, readingsFromRows } from '../_shared/garmin.ts';
 
 type Body = { content?: string; mode?: ThumosMode; request_id?: string };
 
@@ -98,6 +99,36 @@ async function loadGratitude(userClient: SupabaseClient, userId: string): Promis
     .limit(40);
   if (gratitudeRes.error) return [];
   return gratitudeFromRows(gratitudeRes.data);
+}
+
+async function garminLinesFor(
+  userClient: SupabaseClient,
+  userId: string,
+  gate: { consentAi: boolean; consentHealth: boolean; personalDataEnabled: boolean },
+): Promise<string[]> {
+  if (!garminAllowedForCoach(gate)) return [];
+  const [dailies, activities, sleep] = await Promise.all([
+    userClient.from('garmin_dailies').select('calendar_date, resting_heart_rate_bpm, average_heart_rate_bpm, moderate_minutes, vigorous_minutes').eq('user_id', userId).order('calendar_date'),
+    userClient.from('garmin_activities').select('summary_id, activity_type, activity_name, started_at, duration_seconds, average_heart_rate_bpm, training_effect, anaerobic_effect').eq('user_id', userId).order('started_at'),
+    userClient.from('garmin_sleep').select('summary_id, calendar_date, duration_seconds, deep_seconds, light_seconds, rem_seconds, awake_seconds, sleep_score').eq('user_id', userId).order('calendar_date'),
+  ]);
+  if (
+    (dailies.error && !missingRelation(dailies.error.message))
+    || (activities.error && !missingRelation(activities.error.message))
+    || (sleep.error && !missingRelation(sleep.error.message))
+  ) {
+    return [];
+  }
+  return garminCoachLines({
+    ...gate,
+    readings: readingsFromRows({
+      connected: true,
+      connectedAt: null,
+      dailies: dailies.data,
+      activities: activities.data,
+      sleep: sleep.data,
+    }),
+  });
 }
 
 Deno.serve(async (req) => {
@@ -196,6 +227,12 @@ Deno.serve(async (req) => {
     note: row.note ?? '',
   }));
   const nutritionLines = safety.selfHarm ? [] : await loadNutritionLines(userClient, profile, checkIns);
+  const personalDataEnabled = xaiPersonalDataEnabled(Deno.env.get('XAI_PERSONAL_DATA_ENABLED'));
+  const garminLines = await garminLinesFor(userClient, userId, {
+    consentAi: profile.consent_ai === true,
+    consentHealth: shareHealth,
+    personalDataEnabled,
+  });
 
   const context = buildThumosContext({
     now: new Date(),
@@ -219,6 +256,7 @@ Deno.serve(async (req) => {
     interests: interestRes.error ? [] : interestLabelsFromRows(interestRes.data),
     pinnedQuote: pinnedStoicQuote(profile.pinned_quote_id),
     nutritionLines,
+    garminLines,
   });
 
   const admin = createClient(url, service, { auth: { persistSession: false } });
@@ -306,7 +344,7 @@ Deno.serve(async (req) => {
           }
         }
 
-        if (!xaiPersonalDataEnabled(Deno.env.get('XAI_PERSONAL_DATA_ENABLED'))) {
+        if (!personalDataEnabled) {
           reply = COACHING_PAUSED;
           role = 'assistant';
           send({ type: 'delta', text: reply });

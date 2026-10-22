@@ -91,3 +91,15 @@ verify_jwt = true
 
 [functions.privacy-purge]
 verify_jwt = false
+
+[functions.garmin-oauth-start]
+verify_jwt = true
+
+[functions.garmin-oauth-callback]
+verify_jwt = false
+
+[functions.garmin-webhook]
+verify_jwt = false
+
+[functions.garmin-disconnect]
+verify_jwt = true

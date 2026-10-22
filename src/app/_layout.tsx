@@ -12,6 +12,7 @@ import { StatusBar } from 'expo-status-bar';
 
 import { APP_DISPLAY_NAME, APP_FULL_NAME } from '@/domain/appName';
 import { buddySecretFromUrl, holdBuddySecret, peekBuddySecret, consumeBuddySecret } from '@/domain/buddies';
+import { garminReturnFromUrl } from '@/domain/garminConnect';
 import { RepoProvider, useRepository, useSnapshot } from '@/data';
 import { catchUpAppleHealthReads } from '@/health/catchUp';
 import { bindNotificationErrorLog, cancelScheduledNotifications, listenForIncomingMessages, listenForMessageOpens, retryMessageNotifications, setAppIconBadge } from '@/notifications/register';
@@ -150,6 +151,9 @@ function Chrome() {
       if (secret) {
         holdBuddySecret(secret);
         router.push(`/buddies?token=${encodeURIComponent(secret)}` as never);
+      }
+      if (url && garminReturnFromUrl(url)) {
+        router.push(`/profile?garmin=${garminReturnFromUrl(url) === 'connected' ? 'connected' : 'cancelled'}` as never);
       }
       if (!url || !url.includes('set-password') || handledResetUrl === url) return;
       handledResetUrl = url;

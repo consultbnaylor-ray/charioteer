@@ -1,5 +1,6 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.117.3';
 import { json, preflight } from '../_shared/http.ts';
+import { forgetGarminAccount, type GarminDb } from '../_shared/garmin.ts';
 
 const PHOTO_BUCKET = 'progress-photos';
 const GRATITUDE_BUCKET = 'gratitude-photos';
@@ -32,6 +33,20 @@ Deno.serve(async (req) => {
   if (visionPhotos) return json({ ok: false, code: 'storage', message: visionPhotos }, 500);
   const profilePhotos = await removeProfilePhotos(admin, userData.user.id);
   if (profilePhotos) return json({ ok: false, code: 'storage', message: profilePhotos }, 500);
+
+  try {
+    await forgetGarminAccount(admin as unknown as GarminDb, userData.user.id, {
+      clientId: (Deno.env.get('GARMIN_CLIENT_ID') ?? '').trim(),
+      clientSecret: (Deno.env.get('GARMIN_CLIENT_SECRET') ?? '').trim(),
+      now: Date.now(),
+    });
+  } catch {
+    return json({
+      ok: false,
+      code: 'garmin',
+      message: 'Could not remove Garmin Connect, so the account was left in place.',
+    }, 500);
+  }
 
   const savedQuotes = await admin.from('user_quotes').delete().eq('user_id', userData.user.id);
   if (savedQuotes.error && !/does not exist|schema cache|could not find the table/i.test(savedQuotes.error.message)) {
