@@ -1,7 +1,7 @@
 import { useState } from 'react';
 
 import { useRepository, useSnapshot } from '@/data';
-import { TERMS_REQUIRED } from '@/domain/consents';
+import { CONSENT_INTRO, TERMS_REQUIRED } from '@/domain/consents';
 import { shownError } from '@/domain/errors';
 import { ConsentChoices } from '@/ui/ConsentChoices';
 import { offerMessageNotifications } from '@/notifications/register';
@@ -43,11 +43,8 @@ export default function Consent() {
   }
 
   return (
-    <Screen
-      eyebrow="Consent"
-      title="What may we keep?"
-      intro="Your name, reasons, and interests are already saved. Choose each item separately. They all start off."
-    >
+    <Screen eyebrow="Consent" intro={CONSENT_INTRO}>
+      <T>Your name, reasons, and interests are already saved. Choose each item separately. They all start off.</T>
       <T>You already confirmed you are 18 or over. The terms tick is separate from the three choices below.</T>
       <ConsentChoices
         community={community}

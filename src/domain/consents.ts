@@ -20,6 +20,9 @@ export type ConsentChoice = {
 
 export const TERMS_REQUIRED = 'Tick the terms to continue.';
 
+export const CONSENT_INTRO =
+  'We only use your details for the function of the app. We never share your information with third parties for marketing purposes. However, we need your permission for the following:';
+
 export function hasCurrentConsents(rows: readonly { kind: string; version: string }[], version: string): boolean {
   const present = new Set(rows.filter((row) => row.version === version).map((row) => row.kind));
   return CONSENT_KINDS.every((kind) => present.has(kind));

@@ -9,7 +9,7 @@ import { planCustomInterest, validateTown } from '@/domain/privacy';
 import { reasonPlaceholder } from '@/domain/reasons';
 import { parseDrinkFreeGoal, parseUnitsGoal, STAGE_LABELS, STAGES, SUDDEN_STOP_WARNING, USUAL_WEEK_HELPER, validateStageStep, type Stage } from '@/domain/stage';
 import { APP_FULL_NAME } from '@/domain/appName';
-import { TERMS_REQUIRED } from '@/domain/consents';
+import { CONSENT_INTRO, TERMS_REQUIRED } from '@/domain/consents';
 import { offerMessageNotifications } from '@/notifications/register';
 import { ConsentChoices } from '@/ui/ConsentChoices';
 import { DateField } from '@/ui/DateField';
@@ -243,18 +243,21 @@ export default function Onboarding() {
         <Field label="Town or area" value={town} onChangeText={setTown} placeholder="Bristol, or leave blank" hint="Never a street or postcode. Other people only see this if you turn community on." />
       ) : null}
       {step === 7 ? (
-        <ConsentChoices
-          community={community}
-          health={health}
-          ai={ai}
-          messages={messages}
-          terms={terms}
-          onCommunity={setCommunity}
-          onHealth={setHealth}
-          onAi={setAi}
-          onMessages={setMessages}
-          onTerms={setTerms}
-        />
+        <View style={{ gap: 10 }}>
+          <T>Health and drinking data are sensitive. Nothing is turned on unless you agree.</T>
+          <ConsentChoices
+            community={community}
+            health={health}
+            ai={ai}
+            messages={messages}
+            terms={terms}
+            onCommunity={setCommunity}
+            onHealth={setHealth}
+            onAi={setAi}
+            onMessages={setMessages}
+            onTerms={setTerms}
+          />
+        </View>
       ) : null}
       <ErrorNote>{error}</ErrorNote>
       <View style={{ flexDirection: 'row', gap: 10 }}>
@@ -304,7 +307,7 @@ const titles = [
   'Your usual week',
   'What do you like doing?',
   'Roughly where are you?',
-  'What may we keep?',
+  '',
 ];
 
 const intros = [
@@ -315,6 +318,6 @@ const intros = [
   'Your own usual week. It is an estimate from what you tell us, not a medical calculation.',
   'Comedy, films, travel, a night in or out — or something of your own.',
   'Optional. Town or area only.',
-  'Health and drinking data are sensitive. Nothing is turned on unless you agree.',
+  CONSENT_INTRO,
 ];
 

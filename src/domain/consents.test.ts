@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 
 import { CONSENT_VERSION } from '@/data/catalogue';
-import { consentRows, hasCurrentConsents, mergeStoredConsents, missingConsentRows, TERMS_REQUIRED } from './consents';
+import { CONSENT_INTRO, consentRows, hasCurrentConsents, mergeStoredConsents, missingConsentRows, TERMS_REQUIRED } from './consents';
 
 const version = '2026-10-21';
 const choice = {
@@ -56,6 +56,12 @@ describe('current consents', () => {
     expect(onboarding).toContain('const [messages, setMessages] = useState(false)');
     expect(onboarding).toContain('const [terms, setTerms] = useState(false)');
     expect(onboarding).toContain('TERMS_REQUIRED');
+    expect(onboarding).toContain('CONSENT_INTRO');
+    expect(onboarding).not.toContain('What may we keep');
+    expect(consent).toContain('intro={CONSENT_INTRO}');
+    expect(consent).not.toContain('What may we keep');
+    expect(CONSENT_INTRO).toBe('We only use your details for the function of the app. We never share your information with third parties for marketing purposes. However, we need your permission for the following:');
+    expect(readFileSync('src/app/(main)/privacy.tsx', 'utf8')).toContain('title="Privacy & consent"');
     expect(consent).toContain('const [health, setHealth] = useState(false)');
     expect(consent).toContain('const [ai, setAi] = useState(false)');
     expect(consent).toContain('const [messages, setMessages] = useState(false)');
