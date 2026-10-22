@@ -1,8 +1,10 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.117.3';
 
 import { json, preflight } from '../_shared/http.ts';
+import { stripJpegBase64 } from '../_shared/photoLocation.ts';
 import { MEAL_ESTIMATE_PROMPT, estimateFromText, parseMealEstimate, samplePhotoMeal } from '../_shared/nutrition.ts';
 import { buildChatCompletionBody, THUMOS_CHAT } from '../_shared/thumos.ts';
+import { xaiPersonalDataEnabled } from '../_shared/xaiPersonal.ts';
 
 type Body = { text?: string; imageBase64?: string; source?: string };
 
@@ -32,7 +34,7 @@ Deno.serve(async (req) => {
 
   const body = (await req.json().catch(() => ({}))) as Body;
   const text = (body.text ?? '').trim().slice(0, 500);
-  const image = typeof body.imageBase64 === 'string' ? body.imageBase64.trim() : '';
+  const image = typeof body.imageBase64 === 'string' ? stripJpegBase64(body.imageBase64.trim()) : '';
   if (!text && !image) return json({ ok: false, code: 'content', message: 'Add a photo or describe the meal.' }, 400);
   if (image.length > 6_000_000) return json({ ok: false, code: 'content', message: 'That photo is too large.' }, 400);
 
@@ -49,8 +51,9 @@ Deno.serve(async (req) => {
   }
 
   const local = text ? estimateFromText(text) : samplePhotoMeal();
+  const ESTIMATE_PROVIDER_TIMEOUT_MS = 28_000;
   const apiKey = Deno.env.get('XAI_API_KEY');
-  if (!apiKey) return json({ ok: true, items: local, source: 'local' });
+  if (!apiKey || !xaiPersonalDataEnabled(Deno.env.get('XAI_PERSONAL_DATA_ENABLED'))) return json({ ok: true, items: local, source: 'local' });
 
   const content: ({ type: 'text'; text: string } | { type: 'image_url'; image_url: { url: string } })[] = [
     { type: 'text', text: text ? `${MEAL_ESTIMATE_PROMPT}\n\nMeal: ${text}` : MEAL_ESTIMATE_PROMPT },
@@ -80,6 +83,7 @@ Deno.serve(async (req) => {
           { role: 'user', content },
         ],
       }),
+      signal: AbortSignal.timeout(ESTIMATE_PROVIDER_TIMEOUT_MS),
     });
     if (!response.ok) return json({ ok: true, items: local, source: 'local' });
     const parsed = parseMealEstimate(completionText(await response.json()));

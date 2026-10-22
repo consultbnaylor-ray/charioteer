@@ -4,12 +4,15 @@ import { describe, expect, it } from 'vitest';
 
 import {
   BIO_EXAMPLE,
+  applyWeightAndBodyShare,
   defaultProfileSharing,
   healthShareLabel,
   moodStreakCount,
   normalizeProfileSharing,
+  parsePublicProfile,
   projectPublicProfile,
   SHARE_HINT,
+  shownList,
   sensitiveShareConfirm,
   sensitiveTurnedOn,
   sharedReportItems,
@@ -147,9 +150,72 @@ describe('public profile projection', () => {
     const photoOnly = projectPublicProfile(source(), toggleShareId(defaultProfileSharing(), 'gratitudePhotoIds', 'gp1', true));
     expect(photoOnly.gratitudePhotos).toEqual([]);
     const withPhoto = projectPublicProfile(source(), toggleShareId(sharing, 'gratitudePhotoIds', 'gp1', true));
-    expect(withPhoto.gratitudePhotos).toEqual([{ id: 'gp1', caption: 'Window light' }]);
-    expect(JSON.stringify(withPhoto)).not.toContain('storage');
+    expect(withPhoto.gratitudePhotos).toEqual([{
+      id: 'gp1',
+      entryId: 'g1',
+      caption: 'Window light',
+      storagePath: '',
+      previewUrl: null,
+    }]);
     expect(JSON.stringify(withPhoto)).not.toContain(secret.note);
+  });
+
+  it('returns a shared gratitude photo path and drops a path that was not switched on', () => {
+    const owner = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1';
+    const line = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb1';
+    const sharedId = 'cccccccc-cccc-4ccc-8ccc-ccccccccccc1';
+    const hiddenId = 'dddddddd-dddd-4ddd-8ddd-ddddddddddd1';
+    const otherLine = 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeee1';
+    const sharedPath = `${owner}/${sharedId}.jpg`;
+    const hiddenPath = `${owner}/${hiddenId}.jpg`;
+    const preview = 'data:image/jpeg;base64,abc';
+    let sharing = toggleShareId(defaultProfileSharing(), 'gratitudeIds', line, true);
+    sharing = toggleShareId(sharing, 'gratitudePhotoIds', sharedId, true);
+    const view = projectPublicProfile(source({
+      gratitude: [
+        {
+          id: line,
+          body: 'Window light',
+          entryDate: '2026-10-11',
+          photos: [
+            { id: sharedId, caption: 'The sash', storagePath: sharedPath, previewUrl: preview },
+            { id: hiddenId, caption: 'Left private', storagePath: hiddenPath, previewUrl: 'https://photos.example/hidden.jpg' },
+            { id: 'not-a-uuid', caption: 'Bad path', storagePath: '../secret.jpg', previewUrl: 'javascript:alert(1)' },
+          ],
+        },
+        {
+          id: otherLine,
+          body: 'Not on the profile',
+          entryDate: '2026-10-10',
+          photos: [{ id: hiddenId, caption: 'Other line', storagePath: `${owner}/${otherLine}.jpg` }],
+        },
+      ],
+    }), sharing);
+    expect(view.gratitudePhotos).toEqual([{
+      id: sharedId,
+      entryId: line,
+      caption: 'The sash',
+      storagePath: sharedPath,
+      previewUrl: preview,
+    }]);
+    const packed = JSON.stringify(view);
+    expect(packed).not.toContain(hiddenPath);
+    expect(packed).not.toContain('../secret.jpg');
+    expect(packed).not.toContain('javascript:');
+    expect(packed).not.toContain('Not on the profile');
+    expect(sharedReportItems(view).find((item) => item.label === 'Gratitude photo')?.summary).toBe('The sash');
+    const parsed = parsePublicProfile({
+      displayName: 'Alex',
+      gratitude: [{ id: line, body: 'Window light', entryDate: '2026-10-11' }],
+      gratitudePhotos: [
+        { id: sharedId, entryId: line, caption: 'The sash', storagePath: sharedPath, previewUrl: 'https://photos.example/ok.jpg' },
+        { id: hiddenId, entryId: line, caption: 'Dropped path', storagePath: '../secret.jpg', previewUrl: 'http://photos.example/plain.jpg' },
+      ],
+    });
+    expect(parsed?.gratitudePhotos).toEqual([
+      { id: sharedId, entryId: line, caption: 'The sash', storagePath: sharedPath, previewUrl: 'https://photos.example/ok.jpg' },
+      { id: hiddenId, entryId: line, caption: 'Dropped path', storagePath: '', previewUrl: null },
+    ]);
   });
 
   it('hides a line as soon as its switch is off', () => {
@@ -227,6 +293,7 @@ describe('public profile projection', () => {
     const before = defaultProfileSharing();
     expect(sensitiveTurnedOn(before, { ...before, town: true })).toBe(false);
     expect(sensitiveTurnedOn(before, { ...before, soberDays: true })).toBe(true);
+    expect(sensitiveTurnedOn(before, { ...before, healthPlan: true })).toBe(true);
     expect(sensitiveTurnedOn(before, { ...before, moneySaved: true })).toBe(true);
     expect(sensitiveTurnedOn(before, toggleHealthKind(before, 'sleep_hours', true))).toBe(true);
     expect(sensitiveTurnedOn(before, toggleShareId(before, 'gratitudeIds', 'g1', true))).toBe(false);
@@ -248,6 +315,17 @@ describe('public profile projection', () => {
     expect(normalizeProfileSharing({ bio: false }).bio).toBe(false);
     expect(parsed.healthKinds).toEqual(['steps']);
     expect(parsed.reasonBodies).toEqual(['A']);
+    expect(parsed.shareNewGratitude).toBe(false);
+    expect(parsed.healthPlan).toBe(false);
+    expect(defaultProfileSharing().healthPlan).toBe(false);
+    expect(defaultProfileSharing().shareBodyFigures).toBe(false);
+    expect(defaultProfileSharing().shareNewGratitude).toBe(false);
+    const figures = applyWeightAndBodyShare(defaultProfileSharing(), true);
+    expect(figures.shareBodyFigures).toBe(true);
+    expect(figures.healthKinds).toEqual(['weight_kg']);
+    expect(applyWeightAndBodyShare(figures, false)).toMatchObject({ shareBodyFigures: false, healthKinds: [] });
+    expect(sensitiveTurnedOn(defaultProfileSharing(), figures)).toBe(true);
+    expect(normalizeProfileSharing({ shareNewGratitude: true }).shareNewGratitude).toBe(true);
   });
 });
 
@@ -391,6 +469,14 @@ describe('public_profile database function', () => {
     expect(people).toContain('photo.caption');
     expect(people).not.toContain('photo.note');
     expect(people).toContain("reason: 'Shared profile'");
+    expect(people).toContain('Report this profile');
+    expect(people).toContain('label="Reason"');
+    expect(people).toContain('⋯');
+    expect(people).toContain('privateMessageFailure');
+    expect(people).toContain('label="Try again"');
+    expect(people).not.toContain('`Report ${item.label}`');
+    expect(people).not.toContain('label="Report photo"');
+    expect(people).not.toContain('label="Report profile"');
     expect(people).toContain('publicProfile');
     expect(people).toContain('formatSoberShare');
     expect(peopleScreen).not.toMatch(/gratitude/);
@@ -409,6 +495,7 @@ describe('public_profile database function', () => {
       'src/ui/VisionBoard.tsx',
       'src/app/(main)/profile.tsx',
       'src/ui/PublicProfileCard.tsx',
+      'src/app/(main)/health-plan.tsx',
     ];
     const found = filesUnder('src')
       .filter((path) => !/\.test\.tsx?$/.test(path))
@@ -447,5 +534,43 @@ describe('bio and photo captions', () => {
     expect(profile).toContain('security definer');
     expect(profile).not.toContain('storage_path');
     expect(profile).not.toContain('height_cm');
+  });
+
+  it('reads a null public profile without throwing', () => {
+    const parsed = parsePublicProfile({
+      displayName: 'Jordan Ellis',
+      gratitudePhotos: null,
+      vision: null,
+      gratitude: null,
+      profilePhotos: null,
+      progressPhotos: null,
+      interests: null,
+      milestones: null,
+      reasons: null,
+      health: null,
+      foodDiary: null,
+      quality: null,
+      goal: null,
+      calories: null,
+      progress: null,
+      wagon: null,
+      bodyComposition: null,
+    });
+    expect(parsed?.gratitudePhotos).toEqual([]);
+    expect(parsed?.vision).toEqual([]);
+    expect(parsed?.gratitude).toEqual([]);
+    expect(parsed?.profilePhotos).toEqual([]);
+    expect(parsed?.progressPhotos).toEqual([]);
+    expect(parsed?.interests).toEqual([]);
+    expect(parsed?.foodDiary).toBeNull();
+    expect(parsed?.quality).toBeNull();
+    expect(parsed?.goal).toBeNull();
+    expect(sharedReportItems(parsed!)).toEqual([]);
+    expect(shownList(null)).toEqual([]);
+    expect(JSON.stringify(parsed)).not.toContain('bodyComposition');
+    const facts = readFileSync('src/ui/CommunityProfile.tsx', 'utf8');
+    const nutritionUi = readFileSync('src/ui/NutritionShare.tsx', 'utf8');
+    expect(facts).toContain('shownList(');
+    expect(nutritionUi).toContain('Array.isArray(meals)');
   });
 });

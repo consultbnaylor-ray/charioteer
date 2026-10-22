@@ -148,16 +148,13 @@ describe('Today refresh and chart', () => {
     expect(screen).not.toContain('function Meter');
   });
 
-  it('draws narrow bars with day labels instead of a stretched fill', () => {
-    expect(chart).toContain('max={10}');
+  it('draws mood and craving on the shared line chart', () => {
+    expect(chart).toContain('<ReadingChart');
+    expect(chart).toContain('unit="/10"');
     expect(chart).not.toContain('max={5}');
     expect(chart).toContain('weeklyMoodAverage');
     expect(chart).toContain('formatMoodAverage');
-    expect(chart).toContain('width: 8');
-    expect(chart).toContain('flexGrow: 0');
-    expect(chart).not.toContain('flex: 1');
     expect(chart).toContain('No check-ins in the last 7 days.');
-    expect(chart).toContain('{day.label}');
   });
 });
 

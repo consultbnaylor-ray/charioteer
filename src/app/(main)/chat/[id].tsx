@@ -1,22 +1,32 @@
-import { useLocalSearchParams } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
-import { View } from 'react-native';
+import { AppState, Pressable, View } from 'react-native';
 
 import { useRepository, useSnapshot } from '@/data';
-import { markChatRead } from '@/data/chatRead';
+import { getChatReadMarks, markChatRead, noteServerChatRead } from '@/data/chatRead';
 import { shownError } from '@/domain/errors';
 import { randomId } from '@/domain/id';
-import { CHAT_POLL_MS, latestChatMessage } from '@/domain/liveChat';
-import { offerMessageNotifications } from '@/notifications/register';
+import { CHAT_HISTORY_ERROR, CHAT_POLL_MS, latestChatMessage } from '@/domain/liveChat';
+import { omitSharedLocation } from '@/domain/sharedPayload';
 import { MemberAvatar, useMemberAvatars } from '@/ui/MemberAvatar';
 import { usePendingPress } from '@/ui/pendingAction';
+import { ScreenBoundary } from '@/ui/ScreenBoundary';
 import { Button, Card, Choice, ErrorNote, Field, Screen, T } from '@/ui/ui';
 import { useAppTheme } from '@/ui/theme';
 
 const REASONS = ['Unwanted contact', 'Safety concern', 'Spam', 'Something else'];
 
-export default function Chat() {
+export default function ChatScreen() {
+  return (
+    <ScreenBoundary screen="chat">
+      <Chat />
+    </ScreenBoundary>
+  );
+}
+
+function Chat() {
   const { id } = useLocalSearchParams<{ id: string }>();
+  const router = useRouter();
   const snap = useSnapshot();
   const repo = useRepository();
   const theme = useAppTheme();
@@ -26,35 +36,51 @@ export default function Chat() {
   const [reason, setReason] = useState(REASONS[0]);
   const [details, setDetails] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [historyError, setHistoryError] = useState<string | null>(null);
+  const [historyAttempt, setHistoryAttempt] = useState(0);
   const { run, isPending } = usePendingPress();
   const clientIds = useRef(new Map<string, string>());
   const me = snap.profile;
+  const meId = me?.id;
   const connection = snap.connections.find((item) => item.id === id);
   const connectionId = connection?.id;
 
   useEffect(() => {
-    if (!connection) return;
-    void offerMessageNotifications(repo);
-  }, [repo, connection]);
-
-  useEffect(() => {
     if (!connectionId) return;
-    const stop = repo.watchChat(connectionId);
-    const timer = setInterval(() => {
-      void repo.reloadMessages();
-    }, CHAT_POLL_MS);
-    return () => {
-      stop();
-      clearInterval(timer);
+    let live = true;
+    const load = () => {
+      void repo.reloadMessages().then(() => {
+        if (live) setHistoryError(null);
+      }).catch((err: unknown) => {
+        console.error(err);
+        if (live) setHistoryError(CHAT_HISTORY_ERROR);
+      });
     };
-  }, [repo, connectionId]);
+    load();
+    // Inserts arrive on the account-wide direct-messages channel. This screen filters by connection id.
+    const timer = setInterval(load, CHAT_POLL_MS);
+    const subscription = AppState.addEventListener('change', (state) => {
+      if (state === 'active') load();
+    });
+    return () => {
+      live = false;
+      clearInterval(timer);
+      subscription.remove();
+    };
+  }, [repo, connectionId, historyAttempt]);
 
   useEffect(() => {
-    if (!me || !connectionId) return;
-    const latest = latestChatMessage(snap.messages, connectionId);
+    if (!meId || !connectionId) return;
+    const latest = latestChatMessage(snap.messages ?? [], connectionId);
     if (!latest) return;
-    void markChatRead(me.id, connectionId, latest.createdAt);
-  }, [me, connectionId, snap.messages]);
+    const at = latest.createdAt;
+    void markChatRead(meId, connectionId, at).then(async (save) => {
+      if (!save) return;
+      const through = getChatReadMarks().marks[connectionId] ?? at;
+      const saved = await repo.saveChatRead(connectionId, through);
+      if (saved) noteServerChatRead(meId, connectionId, through);
+    });
+  }, [meId, connectionId, snap.messages, repo]);
 
   if (!me || !connection) {
     return <Screen title="Chat"><T>This chat is not available.</T></Screen>;
@@ -62,7 +88,7 @@ export default function Chat() {
   const otherId = connection.requesterId === me.id ? connection.addresseeId : connection.requesterId;
   const otherCard = snap.directory.find((card) => card.id === otherId);
   const other = otherCard?.displayName ?? 'Member';
-  const messages = snap.messages.filter((message) => message.connectionId === connection.id);
+  const messages = (snap.messages ?? []).filter((message) => message?.connectionId === connection.id);
   const clientIdFor = (key: string) => {
     const existing = clientIds.current.get(key);
     if (existing) return existing;
@@ -81,20 +107,25 @@ export default function Chat() {
         <MemberAvatar name={other} url={avatarOf(otherId)} />
         <T variant="title">{other}</T>
       </View>
+      {historyError ? (
+        <Pressable accessibilityRole="button" accessibilityLabel={CHAT_HISTORY_ERROR} onPress={() => setHistoryAttempt((attempt) => attempt + 1)} style={{ minHeight: 44, justifyContent: 'center' }}>
+          <T>{CHAT_HISTORY_ERROR}</T>
+        </Pressable>
+      ) : null}
       {messages.map((message) => (
         <Card key={message.id} style={{ backgroundColor: message.senderId === me.id ? theme.colors.emphasisSoft : theme.colors.surface }}>
           <T variant="label">{message.senderId === me.id ? 'You' : other}</T>
-          <T>{message.body}</T>
+          <T>{omitSharedLocation(message.body ?? '')}</T>
           {message.delivery === 'sending' ? <T variant="muted">Sending…</T> : null}
           {message.delivery === 'failed' ? (
             <View style={{ gap: 8 }}>
               <T variant="muted">That message was not sent.</T>
-              <Button label="Try again" tone="quiet" pending={isPending(`send:${message.id}`)} pendingLabel="Sending..." onPress={() => send(message.body, message.id, `send:${message.id}`)} />
+              <Button label="Try again" tone="quiet" pending={isPending(`send:${message.id}`)} pendingLabel="Sending..." onPress={() => send(message.body ?? '', message.id, `send:${message.id}`)} />
             </View>
           ) : null}
         </Card>
       ))}
-      {messages.length === 0 ? <T variant="muted">No messages yet. Say hello when you are ready.</T> : null}
+      {messages.length === 0 && !historyError ? <T variant="muted">No messages yet. Say hello when you are ready.</T> : null}
       <Field label="Message" value={draft} onChangeText={setDraft} placeholder="Write a message" multiline minLines={4} maxLines={6} />
       <ErrorNote>{error}</ErrorNote>
       <Button label="Send" pending={isPending('compose')} pendingLabel="Sending..." onPress={() => {
@@ -112,6 +143,7 @@ export default function Chat() {
           else clientIds.current.delete('compose');
         }));
       }} />
+      <Button label="Invite as buddy" tone="quiet" onPress={() => router.push(`/buddies?invite=${otherId}` as never)} />
       <View style={{ flexDirection: 'row', gap: 10 }}>
         <View style={{ flex: 1 }}><Button label="Block" tone="quiet" pending={isPending(`block:${otherId}`)} pendingLabel="Sending..." onPress={() => {
           setError(null);

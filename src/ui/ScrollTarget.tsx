@@ -15,11 +15,21 @@ export function ScrollTarget({ id, children }: { id: string; children: ReactNode
     useCallback(() => {
       if (wanted !== id) return undefined;
       let cancelled = false;
-      const pin = () => {
+      const pin = (behavior: ScrollBehavior = 'smooth') => {
         if (cancelled) return;
         if (Platform.OS === 'web') {
           if (typeof document === 'undefined') return;
-          document.getElementById(`section-${id}`)?.scrollIntoView({ block: 'start', behavior: 'smooth' });
+          // A Stats link can open this screen while an earlier copy is still mounted.
+          const markers = [...document.querySelectorAll(`[id="section-${id}"]`)];
+          let visible = markers[markers.length - 1];
+          for (let index = markers.length - 1; index >= 0; index -= 1) {
+            const rect = markers[index].getBoundingClientRect();
+            if (rect.height > 1 && rect.width > 1) {
+              visible = markers[index];
+              break;
+            }
+          }
+          visible?.scrollIntoView({ block: 'start', behavior });
           return;
         }
         const markerView = marker.current;
@@ -36,13 +46,18 @@ export function ScrollTarget({ id, children }: { id: string; children: ReactNode
       };
       const frame = requestAnimationFrame(() => {
         pin();
-        requestAnimationFrame(pin);
+        requestAnimationFrame(() => pin());
       });
-      const later = setTimeout(pin, 120);
+      // A long screen, such as Health Stats, may not have laid the target out at 120ms.
+      const later = [
+        setTimeout(() => pin('auto'), 120),
+        setTimeout(() => pin('auto'), 500),
+        setTimeout(() => pin('auto'), 1200),
+      ];
       return () => {
         cancelled = true;
         cancelAnimationFrame(frame);
-        clearTimeout(later);
+        later.forEach((timer) => clearTimeout(timer));
       };
     }, [wanted, id, handle]),
   );

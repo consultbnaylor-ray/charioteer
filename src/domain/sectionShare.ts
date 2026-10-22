@@ -4,7 +4,7 @@ import { progressPhotoLabel } from './progressPhotos';
 import type { ProfileSharing } from './profileSharing';
 
 /** Master switch copy. The same words sit at the top of each section. */
-export const SECTION_SHARE_LABEL = 'Share this section on profile';
+export const SECTION_SHARE_LABEL = 'Share Whole Section';
 
 /** Shown beside the master when only some boxes in the section are on. */
 export const SECTION_SHARE_SOME = 'Some shared';
@@ -102,6 +102,7 @@ export type ProfileSectionPatch = {
   unitsAvoided?: boolean;
   moodStreak?: boolean;
   pinnedQuote?: boolean;
+  healthPlan?: boolean;
   reasonBodies?: readonly string[];
   healthKinds?: readonly string[];
   gratitudeIds?: readonly string[];
@@ -109,7 +110,7 @@ export type ProfileSectionPatch = {
   visionIds?: readonly string[];
 };
 
-const FLAG_KEYS = ['bio', 'town', 'stage', 'soberDays', 'milestones', 'moneySaved', 'unitsAvoided', 'moodStreak', 'pinnedQuote'] as const;
+const FLAG_KEYS = ['bio', 'town', 'stage', 'soberDays', 'milestones', 'moneySaved', 'unitsAvoided', 'moodStreak', 'pinnedQuote', 'healthPlan'] as const;
 
 function withIds(current: string[], ids: readonly string[] | undefined, on: boolean): string[] {
   if (!ids) return current;
@@ -147,14 +148,23 @@ const NUTRITION_SHARE_BOXES: { key: 'shareFoodDiary' | 'shareCalories' | 'shareQ
   { key: 'wagonVisible', label: 'The wagon flag' },
 ];
 
-/** The six nutrition share switches. The personal wagon flag is not one of them. */
-export function nutritionSectionBoxes(settings: Pick<NutritionSettings, 'shareFoodDiary' | 'shareCalories' | 'shareQuality' | 'shareProgress' | 'shareGoal' | 'wagonVisible'>): ShareBox[] {
-  return NUTRITION_SHARE_BOXES.map((box) => ({
-    id: box.key,
-    label: box.label,
-    on: settings[box.key],
-    sensitive: true,
-  }));
+/**
+ * The six nutrition share switches, plus the Health Plan headline switch.
+ * `planShared` lives on profile sharing, not on the nutrition settings.
+ */
+export function nutritionSectionBoxes(
+  settings: Pick<NutritionSettings, 'shareFoodDiary' | 'shareCalories' | 'shareQuality' | 'shareProgress' | 'shareGoal' | 'wagonVisible'>,
+  planShared = false,
+): ShareBox[] {
+  return [
+    ...NUTRITION_SHARE_BOXES.map((box) => ({
+      id: box.key,
+      label: box.label,
+      on: settings[box.key],
+      sensitive: true,
+    })),
+    { id: 'healthPlan', label: 'Health plan', on: planShared, sensitive: true },
+  ];
 }
 
 /** Sets the six share switches. `wagonOn` and the targets stay as they were. */
@@ -194,6 +204,7 @@ export function youSectionBoxes(input: {
   reasons: { body: string }[];
   reasonBodies: string[];
   wagonVisible: boolean;
+  planShared: boolean;
 }): ShareBox[] {
   const boxes: ShareBox[] = [];
   if (input.pinned) boxes.push({ id: 'pinnedQuote', label: 'Pinned quote', on: input.pinnedOn, sensitive: false });
@@ -203,6 +214,7 @@ export function youSectionBoxes(input: {
     boxes.push({ id: `reason:${body}`, label: body, on: input.reasonBodies.includes(body), sensitive: true });
   }
   boxes.push({ id: 'wagonVisible', label: 'The wagon flag', on: input.wagonVisible, sensitive: true });
+  boxes.push({ id: 'healthPlan', label: 'Health plan', on: input.planShared, sensitive: true });
   return boxes;
 }
 
@@ -210,6 +222,7 @@ export function youSectionPatch(pinned: boolean, reasonBodies: readonly string[]
   return {
     stage: true,
     town: true,
+    healthPlan: true,
     ...(pinned ? { pinnedQuote: true } : {}),
     reasonBodies,
   };
@@ -313,7 +326,7 @@ export function reviewSectionBoxes(input: {
     { id: 'unitsAvoided', label: 'Units avoided', on: input.sharing.unitsAvoided, sensitive: true },
     { id: 'moodStreak', label: 'Mood streak', on: input.sharing.moodStreak, sensitive: true },
     ...healthSectionBoxes(input.sharing.healthKinds),
-    ...nutritionSectionBoxes(input.nutrition),
+    ...nutritionSectionBoxes(input.nutrition, input.sharing.healthPlan),
     { id: 'pinnedQuote', label: 'Pinned quote', on: input.sharing.pinnedQuote, sensitive: false },
     ...gratitudeSectionBoxes(input.gratitude, input.sharing.gratitudeIds, input.sharing.gratitudePhotoIds),
     ...visionSectionBoxes(input.vision, input.sharing.visionIds),
@@ -335,6 +348,7 @@ export function reviewSectionPatch(input: {
     unitsAvoided: true,
     moodStreak: true,
     pinnedQuote: true,
+    healthPlan: true,
     reasonBodies: reasonBodiesOf(input.reasons),
     healthKinds: [...HEALTH_KINDS],
     ...gratitudeSectionPatch(input.gratitude),

@@ -8,6 +8,7 @@ import {
 import { manipulateAsync, SaveFormat } from 'expo-image-manipulator';
 
 import { isoDay } from '@/domain/dates';
+import { stripJpegLocation } from '@/domain/photoLocation';
 import { UserFacingError } from '@/domain/errors';
 import { captureDayFromExif, PROGRESS_JPEG_QUALITY, PROGRESS_MAX_BYTES, progressResize } from '@/domain/progressPhotos';
 import type { CropRect } from '@/domain/photoCrop';
@@ -38,7 +39,7 @@ export async function pickProgressPhoto(source: 'camera' | 'library'): Promise<{
     { compress: PROGRESS_JPEG_QUALITY, format: SaveFormat.JPEG, base64: true },
   );
   if (!prepared.base64) throw new UserFacingError('Could not prepare that photo.', 'generic');
-  const bytes = decodeBase64(prepared.base64);
+  const bytes = stripJpegLocation(decodeBase64(prepared.base64));
   if (bytes.byteLength > PROGRESS_MAX_BYTES) throw new UserFacingError('That photo is still too large.', 'generic');
   return { bytes, takenOn, previewUri: prepared.uri };
 }
@@ -100,7 +101,7 @@ export async function encodeProfileCrop(
     { compress: PROGRESS_JPEG_QUALITY, format: SaveFormat.JPEG, base64: true },
   );
   if (!prepared.base64) throw new UserFacingError('Could not prepare that photo.', 'generic');
-  const bytes = decodeBase64(prepared.base64);
+  const bytes = stripJpegLocation(decodeBase64(prepared.base64));
   if (bytes.byteLength > PROGRESS_MAX_BYTES) throw new UserFacingError('That photo is still too large.', 'generic');
   return { bytes, previewUri: prepared.uri };
 }

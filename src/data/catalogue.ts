@@ -1,6 +1,6 @@
 import type { Interest, Resource } from '@/data/types';
 
-export const CONSENT_VERSION = '2026-10-10';
+export const CONSENT_VERSION = '2026-10-21';
 
 export const INTEREST_CATALOGUE: Interest[] = [
   { id: '10000000-0000-4000-8000-000000000014', slug: 'comedy', label: 'Comedy', custom: false },
@@ -281,5 +281,12 @@ export const HEALTH_LABELS: Record<string, string> = {
   hrv_sdnn: 'Heart rate variability',
   workout_minutes: 'Workouts',
   weight_kg: 'Weight',
+  vo2_max: 'Cardio fitness',
+  walking_heart_rate: 'Walking heart rate',
+  heart_rate_recovery: 'Heart rate recovery',
+  strength_minutes: 'Strength minutes',
+  cardio_minutes: 'Cardio minutes',
+  other_minutes: 'Other minutes',
+  session_heart_rate: 'Session heart rate',
 };
 

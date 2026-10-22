@@ -7,6 +7,7 @@ import {
 } from '../_shared/gratitude.ts';
 import { json, preflight } from '../_shared/http.ts';
 import { buildChatCompletionBody, THUMOS_CHAT } from '../_shared/thumos.ts';
+import { xaiPersonalDataEnabled } from '../_shared/xaiPersonal.ts';
 
 type Body = { body?: string; category?: string | null };
 
@@ -55,7 +56,9 @@ Deno.serve(async (req) => {
 
   const local = localGratitudeReflect(text, category);
   const apiKey = Deno.env.get('XAI_API_KEY');
-  if (!apiKey) return json({ ok: true, comment: local.comment, suggestions: local.suggestions, source: 'local' });
+  if (!apiKey || !xaiPersonalDataEnabled(Deno.env.get('XAI_PERSONAL_DATA_ENABLED'))) {
+    return json({ ok: true, comment: local.comment, suggestions: local.suggestions, source: 'local' });
+  }
 
   const messages = gratitudeReflectMessages(text, category);
   try {

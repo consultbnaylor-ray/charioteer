@@ -1,7 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { crisisHelplines, RESOURCE_CATALOGUE } from '../data/catalogue';
 import { planCustomInterest, slugifyInterest, validateTown } from './privacy';
+import { readFileSync } from 'node:fs';
+
+import { clearUrge, ensureUrge, restartUrge, urgeStartedAt } from '@/features/urgeSession';
 import { formatClock, urgeRemainingSeconds } from './urge';
+import { detectRisk } from './thumos';
 
 describe('town privacy', () => {
   it('accepts a town and rejects a postcode or street number', () => {
@@ -36,6 +40,43 @@ describe('urge timer', () => {
     expect(formatClock(600)).toBe('10:00');
     expect(formatClock(65)).toBe('1:05');
     expect(urgeRemainingSeconds(0, 11 * 60 * 1000)).toBe(0);
+  });
+
+  it('starts only when asked, and forgets the countdown when the chat closes', () => {
+    clearUrge();
+    expect(urgeStartedAt()).toBeNull();
+    restartUrge(5_000);
+    expect(urgeStartedAt()).toBe(5_000);
+    clearUrge();
+    expect(urgeStartedAt()).toBeNull();
+    expect(ensureUrge(6_000)).toBe(6_000);
+    clearUrge();
+    expect(urgeStartedAt()).toBeNull();
+  });
+
+  it('treats a finished word such as pub as planning, and leaves a longer word alone', () => {
+    expect(detectRisk('pub')).toBe('planning');
+    expect(detectRisk('the pub')).toBe('planning');
+    expect(detectRisk('public')).toBe('none');
+    expect(detectRisk('pubs')).toBe('none');
+    expect(detectRisk('crav')).toBe('acute');
+  });
+
+  it('reads craving words only from a sent Thumos message, and waits for Start ten minutes', () => {
+    const screen = readFileSync('src/app/(main)/thumos.tsx', 'utf8');
+    const modeBlock = screen.slice(screen.indexOf('const mode: ThumosMode'), screen.indexOf('const showSupport'));
+    expect(modeBlock).not.toContain('draft');
+    expect(modeBlock).not.toContain('userText');
+    const sendBlock = screen.slice(screen.indexOf('async function send'), screen.indexOf('const inCall'));
+    expect(sendBlock).toContain('userText: trimmed');
+    expect(sendBlock).not.toContain('userText: draft');
+    expect(screen).not.toContain('ensureUrge');
+    expect(screen).toContain('clearUrge()');
+    expect(screen).toContain("label={urgeStart == null ? 'Start ten minutes' : 'Start the ten minutes again'}");
+    expect(screen).toContain('if (urgeStart == null) return');
+    const safety = screen.slice(screen.indexOf('const safety'), screen.indexOf('const notices'));
+    expect(safety).toContain('draft,');
+    expect(safety).toContain('firstSafetyHit');
   });
 });
 

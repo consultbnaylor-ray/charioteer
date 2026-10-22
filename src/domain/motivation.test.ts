@@ -109,8 +109,11 @@ describe('thumos motivation', () => {
     expect(sql).toContain('user_id = auth.uid()');
     expect(sql).toContain('cardinality(recent_ids) <= 10');
     const screen = readFileSync('src/app/(main)/notifications.tsx', 'utf8');
-    expect(screen).toContain('accessibilityLabel="Movement reminder"');
-    expect(screen).toContain('movementReminder: value');
+    expect(screen).not.toContain('Movement reminder');
+    expect(screen).not.toContain('movementReminder');
+    const register = readFileSync('src/notifications/register.ts', 'utf8');
+    expect(register).toContain('cancelAllScheduledNotificationsAsync');
+    expect(register).not.toContain('scheduleNotificationAsync');
     const chat = readFileSync('supabase/functions/thumos-chat/index.ts', 'utf8');
     const modeAt = chat.indexOf('resolveThumosMode(');
     const planAt = chat.indexOf('motivationForTurn(');

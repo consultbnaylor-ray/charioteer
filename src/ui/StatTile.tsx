@@ -1,74 +1,117 @@
 import { useRouter } from 'expo-router';
-import Svg, { Circle, Line, Path, Polyline } from 'react-native-svg';
+import Svg from 'react-native-svg';
 
+import { Pressable, View } from 'react-native';
+
+import type { DistanceChart } from '@/domain/distance';
 import type { StatTileModel } from '@/domain/statsOverview';
+import { CompareBars, ProgressRing, RangeTrack, ToneMark, TrendLine } from '@/ui/DistanceCharts';
+import { ProcessedFoodList } from '@/ui/ProcessedFoodList';
+import { ReadingChart } from '@/ui/ReadingChart';
 import { statsToneColors } from '@/ui/statsPalette';
 import { useAppTheme } from '@/ui/theme';
 import { Card, T } from '@/ui/ui';
 
-function ToneMark({ tone, color }: { tone: StatTileModel['tone']; color: string }) {
-  if (tone === 'good') {
-    return <Path d="M5 12.2 9.2 16.2 19 7" stroke={color} strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" />;
-  }
-  if (tone === 'watch') {
-    return <Path d="M12 5.2 20 18.2H4L12 5.2zM12 10v3.4M12 16.2v.2" stroke={color} strokeWidth={1.6} strokeLinejoin="round" strokeLinecap="round" />;
-  }
-  if (tone === 'attention') {
-    return <Path d="M12 6v7M12 16.4v.3" stroke={color} strokeWidth={1.8} strokeLinecap="round" />;
-  }
-  return (
-    <>
-      <Circle cx={12} cy={12} r={7} stroke={color} strokeWidth={1.6} />
-      <Path d="M12 11v5M12 8.2v.2" stroke={color} strokeWidth={1.6} strokeLinecap="round" />
-    </>
-  );
+function chartStatus(chart: DistanceChart): string | null {
+  if (chart.kind === 'ring' || chart.kind === 'range') return chart.status;
+  return null;
 }
 
-function Sparkline({ values, color }: { values: number[]; color: string }) {
-  const width = 132;
-  const height = 36;
-  if (values.length < 2) {
+function TileChart({ chart, tone, signal, monochrome }: { chart: DistanceChart; tone: StatTileModel['tone']; signal?: string; monochrome?: boolean }) {
+  const theme = useAppTheme();
+  const ink = monochrome ? theme.colors.ink : statsToneColors(theme.scheme)[tone].ink;
+  if (chart.kind === 'ring') {
     return (
-      <Svg width={width} height={height} accessibilityElementsHidden>
-        <Line x1={4} y1={height / 2} x2={width - 4} y2={height / 2} stroke={color} strokeWidth={1.5} strokeDasharray="3 3" />
-      </Svg>
+      <ProgressRing
+        centre={chart.centre}
+        unit={chart.unit}
+        fill={chart.fill}
+        status={chart.status}
+        tone={tone}
+        signal={signal}
+        monochrome={monochrome}
+        surface="tile"
+      />
     );
   }
-  const low = Math.min(...values);
-  const high = Math.max(...values);
-  const span = high - low || 1;
-  const points = values.map((value, index) => {
-    const x = 4 + (index / (values.length - 1)) * (width - 8);
-    const y = 4 + (1 - (value - low) / span) * (height - 8);
-    return `${x.toFixed(1)},${y.toFixed(1)}`;
-  }).join(' ');
-  return (
-    <Svg width={width} height={height} accessibilityElementsHidden>
-      <Polyline points={points} fill="none" stroke={color} strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" />
-    </Svg>
-  );
+  if (chart.kind === 'bars') {
+    return (
+      <CompareBars
+        bars={chart.bars}
+        max={chart.max}
+        target={chart.target}
+        layout={chart.layout ?? 'column'}
+        showLabels={chart.bars.length <= 7}
+      />
+    );
+  }
+  if (chart.kind === 'line') {
+    if (chart.readings && chart.readings.length > 0 && chart.start && chart.end) {
+      return (
+        <ReadingChart
+          points={chart.readings}
+          start={chart.start}
+          end={chart.end}
+          unit={chart.unit ?? ''}
+          aggregate="mean"
+          accessibilityLabel="Chart"
+        />
+      );
+    }
+    return <TrendLine points={chart.points} color={ink} />;
+  }
+  if (chart.kind === 'range') {
+    return (
+      <RangeTrack
+        value={chart.value}
+        zoneLow={chart.zoneLow}
+        zoneHigh={chart.zoneHigh}
+        scaleMin={chart.scaleMin}
+        scaleMax={chart.scaleMax}
+        status={chart.status}
+        zoneCaption={chart.zoneCaption}
+        tone={tone}
+        surface="tile"
+      />
+    );
+  }
+  return null;
 }
 
 export function StatTile({ tile }: { tile: StatTileModel }) {
   const theme = useAppTheme();
   const router = useRouter();
-  const tone = statsToneColors(theme.scheme)[tile.tone];
+  const neutral = tile.signal === 'Early days' || tile.signal === 'On pace';
+  const palette = statsToneColors(theme.scheme)[tile.tone];
+  const tone = neutral ? { bg: theme.colors.surface, ink: theme.colors.ink } : palette;
+  const iconTone = tile.signal === 'On pace' ? 'good' : tile.signal === 'Early days' ? 'info' : tile.tone;
   const ink = { color: tone.ink };
-  const meaning = tile.meaning === tile.signal ? null : tile.meaning;
+  const status = chartStatus(tile.chart);
+  const meaning = tile.meaning === tile.signal || tile.meaning === status ? null : tile.meaning;
+  const spoken = [tile.title, tile.value, tile.signal, tile.meaning, status && status !== tile.meaning ? status : '']
+    .filter(Boolean)
+    .join('. ');
   return (
-    <Card
-      accessibilityLabel={`${tile.title}. ${tile.value}. ${tile.signal}. ${tile.meaning}.`}
-      onPress={() => router.push(tile.href as never)}
-      style={{ backgroundColor: tone.bg, borderColor: tone.ink, flex: 1, minHeight: 168 }}
-    >
-      <T variant="label" style={ink}>{tile.title}</T>
-      <T variant="title" style={ink}>{tile.value}</T>
-      <Sparkline values={tile.series} color={tone.ink} />
-      <Svg width={18} height={18} viewBox="0 0 24 24" fill="none" accessibilityElementsHidden>
-        <ToneMark tone={tile.tone} color={tone.ink} />
-      </Svg>
-      <T style={[ink, { fontFamily: theme.font.bodyStrong }]}>{tile.signal}</T>
-      {meaning ? <T style={ink}>{meaning}</T> : null}
+    <Card style={{ backgroundColor: tone.bg, borderColor: tone.ink, flex: 1, minHeight: 168 }}>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={`${spoken}.`}
+        onPress={() => router.push(tile.href as never)}
+        style={{ gap: 8 }}
+      >
+        <T variant="label" style={ink}>{tile.title}</T>
+        {tile.chart.kind === 'ring' ? null : <T variant="title" style={ink}>{tile.value}</T>}
+        {tile.periodLine ? <T variant="muted">{tile.periodLine}</T> : null}
+        <TileChart chart={tile.chart} tone={tile.tone} signal={tile.signal} monochrome={neutral} />
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+          <Svg width={18} height={18} viewBox="0 0 24 24" fill="none" accessibilityElementsHidden>
+            <ToneMark tone={iconTone} color={tone.ink} />
+          </Svg>
+          <T style={[ink, { fontFamily: theme.font.bodyStrong }]}>{tile.signal}</T>
+        </View>
+        {meaning ? <T style={ink}>{meaning}</T> : null}
+      </Pressable>
+      <ProcessedFoodList notes={tile.processedNotes ?? []} />
     </Card>
   );
 }

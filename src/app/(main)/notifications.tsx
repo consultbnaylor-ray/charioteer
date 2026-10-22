@@ -1,29 +1,13 @@
-import { useFocusEffect } from 'expo-router';
-import { useCallback, useState } from 'react';
-import { Linking, Platform, Switch, View } from 'react-native';
+import { useState } from 'react';
+import { Switch, View } from 'react-native';
 
 import { useRepository, useSnapshot } from '@/data';
 import { shownError } from '@/domain/errors';
-import { formatReminderClock, parseReminderClock } from '@/domain/thumos';
-import { offerMessageNotifications, syncMovementReminder } from '@/notifications/register';
+import { offerMessageNotifications } from '@/notifications/register';
+import { IosNotificationOffRow } from '@/ui/IosNotificationOffRow';
 import { useAppTheme } from '@/ui/theme';
-import { Button, Card, Choice, ErrorNote, Field, Screen, T } from '@/ui/ui';
+import { Card, ErrorNote, Screen, T } from '@/ui/ui';
 import { GENERIC_MESSAGE_ALERT } from '../../../supabase/functions/_shared/messagePush';
-import { MOVEMENT_REMINDER_BODY } from '../../../supabase/functions/_shared/motivation';
-
-const REMINDER_CHOICES = [7 * 60, 12 * 60 + 30, 18 * 60, 21 * 60];
-
-/** iOS only. Denied means the system will not show the permission sheet again. */
-async function iosNotificationsDenied(): Promise<boolean> {
-  if (Platform.OS !== 'ios') return false;
-  try {
-    const Notifications = await import('expo-notifications');
-    const existing = await Notifications.getPermissionsAsync();
-    return existing.status === 'denied';
-  } catch {
-    return false;
-  }
-}
 
 export default function NotificationsScreen() {
   const snap = useSnapshot();
@@ -31,24 +15,6 @@ export default function NotificationsScreen() {
   const theme = useAppTheme();
   const profile = snap.profile;
   const [error, setError] = useState<string | null>(null);
-  const [denied, setDenied] = useState(false);
-  const [timeDraft, setTimeDraft] = useState('');
-
-  useFocusEffect(
-    useCallback(() => {
-      let live = true;
-      void iosNotificationsDenied().then((next) => {
-        if (live) setDenied(next);
-      });
-      if (profile?.movementReminder) {
-        void syncMovementReminder(true, profile.movementReminderMinute);
-      }
-      setTimeDraft(profile?.movementReminderMinute == null ? '' : formatReminderClock(profile.movementReminderMinute));
-      return () => {
-        live = false;
-      };
-    }, [profile?.movementReminder, profile?.movementReminderMinute]),
-  );
 
   if (!profile) return null;
 
@@ -56,7 +22,7 @@ export default function NotificationsScreen() {
     <Screen
       eyebrow="Account"
       title="Notifications"
-      intro="A private message can alert this phone. The alert does not include what they wrote. A movement nudge is separate, and it stays off until you turn it on."
+      intro="A private message can alert this phone. The alert does not include what they wrote."
     >
       <ErrorNote>{error}</ErrorNote>
       <Card>
@@ -67,8 +33,14 @@ export default function NotificationsScreen() {
             value={profile.messageNotifications}
             onValueChange={(value) => {
               setError(null);
-              void repo.updateProfile({ messageNotifications: value }).then(() => {
-                if (value) void offerMessageNotifications(repo);
+              void repo.saveConsents({
+                communityVisible: profile.communityVisible,
+                consentHealth: profile.consentHealth,
+                consentAi: profile.consentAi,
+                messageNotifications: value,
+                termsAccepted: true,
+              }).then(() => {
+                if (value) void offerMessageNotifications(repo).catch((error: unknown) => console.error('message notifications', error));
               }).catch((err: unknown) => setError(shownError(err, 'Could not save.')));
             }}
             trackColor={{ true: theme.colors.ink, false: theme.colors.line }}
@@ -90,66 +62,8 @@ export default function NotificationsScreen() {
           />
         </View>
         <T variant="muted">Off, the alert says {GENERIC_MESSAGE_ALERT}.</T>
+        <IosNotificationOffRow />
       </Card>
-      <Card>
-        <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 12, alignItems: 'center' }}>
-          <T style={{ flex: 1 }}>Movement reminder</T>
-          <Switch
-            accessibilityLabel="Movement reminder"
-            value={profile.movementReminder}
-            onValueChange={(value) => {
-              setError(null);
-              const minute = profile.movementReminderMinute ?? 18 * 60;
-              void repo.updateProfile({
-                movementReminder: value,
-                movementReminderMinute: minute,
-              }).then(() => syncMovementReminder(value, minute)).catch((err: unknown) => setError(shownError(err, 'Could not save.')));
-            }}
-            trackColor={{ true: theme.colors.ink, false: theme.colors.line }}
-            thumbColor={theme.colors.surface}
-          />
-        </View>
-        <T variant="muted">Off unless you choose it. The alert says: {MOVEMENT_REMINDER_BODY} It does not name your mood, streak, food, or body. Skip it if you are injured or unwell.</T>
-        {profile.movementReminder ? (
-          <View style={{ gap: 8 }}>
-            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-              {REMINDER_CHOICES.map((minute) => (
-                <Choice
-                  key={minute}
-                  label={formatReminderClock(minute)}
-                  selected={profile.movementReminderMinute === minute}
-                  onPress={() => {
-                    setError(null);
-                    setTimeDraft(formatReminderClock(minute));
-                    void repo.updateProfile({ movementReminderMinute: minute }).then(() => syncMovementReminder(true, minute)).catch((err: unknown) => setError(shownError(err, 'Could not save.')));
-                  }}
-                />
-              ))}
-            </View>
-            <Field
-              label="Or type a time"
-              value={timeDraft}
-              onChangeText={setTimeDraft}
-              placeholder="18:00"
-              onBlur={() => {
-                const minute = parseReminderClock(timeDraft);
-                if (minute == null) {
-                  setError('Use a time like 18:00.');
-                  setTimeDraft(profile.movementReminderMinute == null ? '' : formatReminderClock(profile.movementReminderMinute));
-                  return;
-                }
-                if (minute === profile.movementReminderMinute) return;
-                setError(null);
-                setTimeDraft(formatReminderClock(minute));
-                void repo.updateProfile({ movementReminderMinute: minute }).then(() => syncMovementReminder(true, minute)).catch((err: unknown) => setError(shownError(err, 'Could not save.')));
-              }}
-            />
-          </View>
-        ) : null}
-      </Card>
-      {denied ? (
-        <Button label="Open iOS Settings" onPress={() => void Linking.openSettings()} />
-      ) : null}
     </Screen>
   );
 }

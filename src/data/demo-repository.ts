@@ -7,6 +7,32 @@ import {
   WEAK_PASSWORD_MESSAGE,
   WRONG_PASSWORD_MESSAGE,
 } from '@/domain/errors';
+import { omitSharedLocation } from '@/domain/sharedPayload';
+import { rejectRouteCoordinates } from '@/domain/workoutRoute';
+import {
+  BUDDY_ADULT,
+  BUDDY_ALREADY,
+  BUDDY_CANNOT_INVITE,
+  BUDDY_CHOOSE,
+  BUDDY_INVITE_DAILY_LIMIT,
+  BUDDY_INVITE_LIMIT,
+  BUDDY_LINK_DAILY_LIMIT,
+  BUDDY_LINK_DAYS,
+  BUDDY_LINK_LIMIT,
+  BUDDY_UNAVAILABLE,
+  buddyLinkUrl,
+  makeBuddyCode,
+  makeBuddyToken,
+  normalizeBuddyScope,
+  parseBuddyPreview,
+  projectBuddyShare,
+  scopeHasShare,
+  type BuddyLinkPass,
+  type BuddyList,
+  type BuddyScope,
+  type BuddyShareSource,
+  type BuddyShareView,
+} from '@/domain/buddies';
 import { convertStoredMoods, planCheckInGratitudeSync } from '@/domain/checkIns';
 import { randomId } from '@/domain/id';
 import { shareInflight } from '@/domain/writes';
@@ -34,11 +60,12 @@ import { planCustomInterest, validateTown } from '@/domain/privacy';
 import { planReasons } from '@/domain/reasons';
 import { planRelapse } from '@/domain/sober';
 import { detectSafety, ensureSafetyNotices } from '@/domain/safety';
-import { OFFLINE_COACH_MESSAGE, OPENING_LINE, type ThumosMode } from '@/domain/thumos';
+import { OPENING_LINE, SCRIPTED_COACH_REPLY, type ThumosMode } from '@/domain/thumos';
 import { CONSENT_VERSION } from '@/data/catalogue';
-import { consentRows, missingConsentRows } from '@/domain/consents';
+import { consentRows, mergeStoredConsents } from '@/domain/consents';
+import { stripJpegBase64, stripJpegLocation } from '@/domain/photoLocation';
 import { stageFromRecord } from '@/domain/stage';
-import { BIO_LIMIT, PHOTO_CAPTION_LIMIT, defaultProfileSharing, normalizeProfileSharing, planProfileText, projectPublicProfile, sensitiveTurnedOn, type ProfileSharing, type PublicProfileView, type ShareSource } from '@/domain/profileSharing';
+import { BIO_LIMIT, PHOTO_CAPTION_LIMIT, defaultProfileSharing, normalizeProfileSharing, planProfileText, projectPublicProfile, sensitiveTurnedOn, shareFreshGratitude, type ProfileSharing, type PublicProfileView, type ShareSource } from '@/domain/profileSharing';
 import { quoteById } from '@/domain/stoicQuotes';
 import {
   compositionForAssessment,
@@ -52,12 +79,16 @@ import {
   parseWaistCm,
   presentSharedNutrition,
   samplePhotoMeal,
+  storedMealInstant,
   weightPointsFrom,
   type BodyCompositionReading,
   type FoodLog,
   type NutritionSettings,
 } from '@/domain/nutrition';
+import { donePlanTexts, draftHealthPlan, normaliseTrainingSchedule, presentSharedHealthPlan, type HealthPlan, type TrainingSchedule } from '@/domain/healthPlan';
+import { isPlannedSessionType, plannedEffortFrom, type PlannedSession, type PlannedSessionDraft } from '@/domain/plannedSession';
 import { createDemoDb, type DemoAccount, type DemoDb } from '@/data/demo-seed';
+import { activityTypeFromKind } from '@/domain/fitnessSnapshot';
 import type {
   AppSnapshot,
   ConsentInput,
@@ -86,8 +117,7 @@ function uid(): string {
 }
 
 function mergeConsents(existing: DemoAccount['consents'] | undefined, input: ConsentInput): DemoAccount['consents'] {
-  const kept = existing ?? [];
-  return [...kept, ...missingConsentRows(kept, consentRows(CONSENT_VERSION, input))];
+  return mergeStoredConsents(existing ?? [], consentRows(CONSENT_VERSION, input), new Date().toISOString());
 }
 
 function readyProfile(profile: DemoAccount['profile']): DemoAccount['profile'] {
@@ -130,16 +160,41 @@ function readyPhoto(photo: ProgressPhoto, userId: string): ProgressPhoto {
 }
 
 function bytesToDataUrl(bytes: Uint8Array): string {
+  const clean = stripJpegLocation(bytes);
   let binary = '';
   const size = 0x8000;
-  for (let index = 0; index < bytes.length; index += size) {
-    binary += String.fromCharCode(...bytes.subarray(index, index + size));
+  for (let index = 0; index < clean.length; index += size) {
+    binary += String.fromCharCode(...clean.subarray(index, index + size));
   }
   return `data:image/jpeg;base64,${btoa(binary)}`;
 }
 
+function plannedFromDraft(id: string, input: PlannedSessionDraft, doneAt: string | null): PlannedSession | null {
+  if (!isPlannedSessionType(input.sessionType)) return null;
+  if (!Number.isFinite(input.durationMinutes) || input.durationMinutes < 10 || input.durationMinutes > 240) return null;
+  if (Number.isNaN(Date.parse(input.startsAt))) return null;
+  return {
+    id,
+    sessionType: input.sessionType,
+    startsAt: new Date(input.startsAt).toISOString(),
+    durationMinutes: Math.round(input.durationMinutes),
+    note: input.note.slice(0, 280),
+    plannedEffort: plannedEffortFrom(input.plannedEffort),
+    doneAt: doneAt && !Number.isNaN(Date.parse(doneAt)) ? new Date(doneAt).toISOString() : null,
+  };
+}
+
 function clone<T>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T;
+}
+
+function latestBody(rows: NonNullable<DemoAccount['bodyComposition']>): { bodyFatPct: number | null; leanMassKg: number | null; waistCm: number | null } {
+  const ordered = [...rows].sort((a, b) => b.recordedOn.localeCompare(a.recordedOn));
+  return {
+    bodyFatPct: ordered.find((row) => row.bodyFatPct != null)?.bodyFatPct ?? null,
+    leanMassKg: ordered.find((row) => row.leanMassKg != null)?.leanMassKg ?? null,
+    waistCm: ordered.find((row) => row.waistCm != null)?.waistCm ?? null,
+  };
 }
 
 function shareSource(account: DemoAccount, interests: DemoDb['interests'], now = new Date()): ShareSource {
@@ -162,7 +217,12 @@ function shareSource(account: DemoAccount, interests: DemoDb['interests'], now =
       id: entry.id,
       body: entry.body,
       entryDate: entry.entryDate,
-      photos: (entry.photos ?? []).map((photo) => ({ id: photo.id, caption: photo.caption ?? '' })),
+      photos: (entry.photos ?? []).map((photo) => ({
+        id: photo.id,
+        caption: photo.caption ?? '',
+        storagePath: photo.storagePath,
+        previewUrl: photo.previewUrl,
+      })),
     })),
     vision: (account.visionItems ?? []).map((item) => ({ id: item.id, caption: item.caption, area: item.area })),
     progressPhotos: (account.progressPhotos ?? []).map((photo) => ({
@@ -179,13 +239,40 @@ function shareSource(account: DemoAccount, interests: DemoDb['interests'], now =
       settings: account.nutrition ?? defaultNutritionSettings(),
       heightCm: account.profile.heightCm,
       weights: weightPointsFrom(account.health),
+      ...latestBody(account.bodyComposition ?? []),
     },
+    healthPlan: account.healthPlan ?? null,
     profilePhotos: sortProfilePhotos(account.profilePhotos ?? []).map((photo) => ({
       id: photo.id,
       role: photo.role === 'avatar' ? 'avatar' as const : 'gallery' as const,
       caption: photo.caption ?? '',
       position: photo.position ?? 0,
     })),
+  };
+}
+
+function buddyName(db: DemoDb, id: string): string {
+  return db.accounts[id]?.profile.displayName || 'Member';
+}
+
+function buddySource(account: DemoAccount, today: string): BuddyShareSource {
+  const latest = [...(account.bodyComposition ?? [])].sort((a, b) => b.recordedOn.localeCompare(a.recordedOn))[0];
+  return {
+    ownerId: account.profile.id,
+    displayName: account.profile.displayName,
+    today,
+    nutrition: account.nutrition ?? defaultNutritionSettings(),
+    foodLogs: account.foodLogs ?? [],
+    checkIns: account.checkIns,
+    gratitude: (account.gratitude ?? []).map((entry) => ({ body: entry.body })),
+    visionStatement: account.profile.visionStatement || null,
+    visionCaptions: (account.visionItems ?? []).map((item) => item.caption),
+    healthPlan: account.healthPlan ?? null,
+    health: account.health.map((row) => ({ kind: row.kind, value: row.value, recordedOn: row.recordedOn })),
+    bodyFatPct: latest?.bodyFatPct ?? null,
+    leanMassKg: latest?.leanMassKg ?? null,
+    waistCm: latest?.waistCm ?? null,
+    heightCm: account.profile.heightCm,
   };
 }
 
@@ -201,6 +288,7 @@ export class DemoRepository implements Repository {
   private snapshot: AppSnapshot = this.derive();
   private listeners = new Set<() => void>();
   private once = shareInflight();
+  private chatReads = new Map<string, string>();
 
   constructor() {
     void this.hydrate();
@@ -225,13 +313,9 @@ export class DemoRepository implements Repository {
   }
 
   /** Demo pictures are data URLs, so there is nothing to sign again. */
-  async resignOwnerPhotos(): Promise<void> {}
+  async resignOwnerPhotos(_options?: { force?: boolean }): Promise<void> {}
 
   async refreshOwnerPhotosIfStale(): Promise<void> {}
-
-  watchChat(_connectionId: string): () => void {
-    return () => undefined;
-  }
 
   private derive(): AppSnapshot {
     const sessionId = this.db.sessionUserId;
@@ -310,6 +394,9 @@ export class DemoRepository implements Repository {
       nutrition: { ...defaultNutritionSettings(), ...(account?.nutrition ?? {}) },
       waterDays: account?.waterDays ?? [],
       bodyComposition: account?.bodyComposition ?? [],
+      healthPlan: account?.healthPlan ?? null,
+      trainingSchedule: account?.trainingSchedule ?? null,
+      plannedSessions: account?.plannedSessions ?? [],
     };
   }
 
@@ -330,9 +417,20 @@ export class DemoRepository implements Repository {
     this.backfillMoodScale();
     this.backfillProgressPhotos();
     this.backfillNutrition();
+    this.backfillBuddies();
+    this.backfillWorkoutTypes();
     this.ready = true;
     this.snapshot = this.derive();
     this.listeners.forEach((listener) => listener());
+  }
+
+  /** Sample invites for a demo account saved before buddies existed. */
+  private backfillBuddies() {
+    if (this.db.buddyInvites && this.db.buddyLinks) return;
+    const fresh = createDemoDb();
+    if (!this.db.buddyInvites) this.db.buddyInvites = fresh.buddyInvites ?? [];
+    if (!this.db.buddyLinks) this.db.buddyLinks = fresh.buddyLinks ?? [];
+    void AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(this.db));
   }
 
   /** Older sample data stored mood from 1 to 5. Double it once, then leave a real 4 alone. */
@@ -372,6 +470,28 @@ export class DemoRepository implements Repository {
     }
   }
 
+  /** Sample workout types for a demo account saved before the mix split existed. */
+  private backfillWorkoutTypes() {
+    if (this.db.workoutTypes === 1) return;
+    const fresh = createDemoDb();
+    let changed = false;
+    for (const [id, account] of Object.entries(this.db.accounts)) {
+      const health = account.health ?? [];
+      const seeded = fresh.accounts[id]?.health ?? [];
+      const have = new Set(health.map((row) => `${row.kind}|${row.recordedOn}`));
+      const extra = seeded.filter((row) => {
+        const typed = activityTypeFromKind(row.kind) != null;
+        const bucket = row.kind === 'strength_minutes' || row.kind === 'cardio_minutes' || row.kind === 'conditioning_minutes' || row.kind === 'other_minutes';
+        return (typed || bucket) && !have.has(`${row.kind}|${row.recordedOn}`);
+      });
+      if (!extra.length) continue;
+      account.health = [...health, ...extra];
+      changed = true;
+    }
+    this.db.workoutTypes = 1;
+    if ((changed || this.db.workoutTypes === 1) && typeof window !== 'undefined') void AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(this.db));
+  }
+
   /** Sample meals for a demo account saved before the food log existed. An empty list stays empty. */
   private backfillNutrition() {
     const fresh = createDemoDb();
@@ -389,6 +509,7 @@ export class DemoRepository implements Repository {
       }
       if (!account.waterDays) account.waterDays = fresh.accounts[id]?.waterDays ?? [];
       if (!account.bodyComposition) account.bodyComposition = fresh.accounts[id]?.bodyComposition ?? [];
+      if (account.healthPlan === undefined) account.healthPlan = fresh.accounts[id]?.healthPlan ?? null;
     }
   }
 
@@ -445,7 +566,7 @@ export class DemoRepository implements Repository {
         visionStartedOn: null,
         pinnedQuoteId: null,
         bio: '',
-        messageNotifications: true,
+        messageNotifications: false,
         notifySenderName: false,
         movementReminder: false,
         movementReminderMinute: null,
@@ -466,6 +587,7 @@ export class DemoRepository implements Repository {
       nutrition: defaultNutritionSettings(),
       waterDays: [],
       bodyComposition: [],
+      healthPlan: null,
     };
     const db = clone(this.db);
     db.accounts[id] = account;
@@ -524,6 +646,7 @@ export class DemoRepository implements Repository {
       communityVisible: input.communityVisible,
       consentHealth: input.consentHealth,
       consentAi: input.consentAi,
+      messageNotifications: input.messageNotifications,
       onboardingComplete: true,
       interestIds: input.interestIds,
     };
@@ -541,6 +664,7 @@ export class DemoRepository implements Repository {
       communityVisible: input.communityVisible,
       consentHealth: input.consentHealth,
       consentAi: input.consentAi,
+      messageNotifications: input.messageNotifications,
     };
     next.consents = mergeConsents(next.consents, input);
     this.commit(db);
@@ -640,6 +764,7 @@ export class DemoRepository implements Repository {
   }
 
   async saveHealth(samples: NewHealthSample[]): Promise<void> {
+    rejectRouteCoordinates(samples);
     const account = this.me();
     if (!account.profile.consentHealth) throw new Error('Health data stays off until you give consent.');
     const db = clone(this.db);
@@ -751,7 +876,7 @@ export class DemoRepository implements Repository {
   }
 
   async sendDirectMessage(connectionId: string, body: string, clientId?: string): Promise<void> {
-    const text = body.trim().slice(0, 2000);
+    const text = omitSharedLocation(body.trim().slice(0, 2000)).trim();
     if (!text) return;
     const id = clientId || uid();
     return this.once(`message:${id}`, async () => {
@@ -840,15 +965,17 @@ export class DemoRepository implements Repository {
     this.commit(db);
   }
 
-  async sendThumos(content: string, mode: ThumosMode, onDelta?: (text: string) => void): Promise<void> {
+  async sendThumos(content: string, mode: ThumosMode, onDelta?: (text: string) => void, onState?: (state: 'sending' | 'waiting' | 'retrying') => void): Promise<void> {
     const text = content.trim();
     if (!text) return;
     const account = this.me();
     if (!account.profile.consentAi) {
       throw new Error('Agree to the coach consent before sending a message to Thumos.');
     }
+    onState?.('sending');
     const safety = detectSafety(text);
-    const reply = ensureSafetyNotices(OFFLINE_COACH_MESSAGE, safety);
+    const reply = ensureSafetyNotices(SCRIPTED_COACH_REPLY, safety);
+    onState?.('waiting');
     onDelta?.(reply);
     const db = clone(this.db);
     const thread = db.accounts[account.profile.id].thumos;
@@ -856,7 +983,7 @@ export class DemoRepository implements Repository {
     thread.push({ id: uid(), role: 'user', content: text, mode, createdAt: stamp.toISOString() });
     thread.push({
       id: uid(),
-      role: 'offline',
+      role: 'guide',
       content: reply,
       mode: safety.selfHarm || safety.withdrawal ? 'support' : mode,
       createdAt: new Date(stamp.getTime() + 1).toISOString(),
@@ -868,7 +995,7 @@ export class DemoRepository implements Repository {
     return {
       ok: false,
       code: 'missing_key',
-      message: 'Voice needs XAI_API_KEY on the Supabase edge function. The sample on this device does not call xAI.',
+      message: 'Couldn\'t reach voice. Text chat is still here.',
     };
   }
 
@@ -1010,7 +1137,7 @@ export class DemoRepository implements Repository {
         id: input.id,
         userId: account.profile.id,
         eatenOn: input.eatenOn,
-        eatenAt: new Date().toISOString(),
+        eatenAt: storedMealInstant(input),
         meal: input.meal,
         source: input.source,
         note: input.note.slice(0, 500),
@@ -1018,7 +1145,7 @@ export class DemoRepository implements Repository {
         estimated: input.estimated,
         portion: 1,
         createdAt: new Date().toISOString(),
-        previewUrl: input.photoBase64 ? `data:image/jpeg;base64,${input.photoBase64}` : null,
+        previewUrl: input.photoBase64 ? `data:image/jpeg;base64,${stripJpegBase64(input.photoBase64)}` : null,
       };
       next.foodLogs = [log, ...logs];
       this.commit(db);
@@ -1114,6 +1241,326 @@ export class DemoRepository implements Repository {
     const days = (next.waterDays ?? []).filter((item) => item.day !== day);
     next.waterDays = [...days, { day, waterMl: ml }];
     this.commit(db);
+  }
+
+  async loadChatReads(): Promise<Record<string, string>> {
+    return Object.fromEntries(this.chatReads);
+  }
+
+  async saveChatRead(connectionId: string, readThrough: string): Promise<boolean> {
+    const previous = this.chatReads.get(connectionId);
+    if (previous && Date.parse(previous) >= Date.parse(readThrough)) return true;
+    this.chatReads.set(connectionId, readThrough);
+    return true;
+  }
+
+  async logClientError(_screen: string, _message: string, _appBuild: string): Promise<boolean> {
+    return false;
+  }
+
+  async saveTrainingSchedule(schedule: TrainingSchedule | null): Promise<void> {
+    const account = this.me();
+    const next = schedule ? normaliseTrainingSchedule(schedule) : null;
+    if (schedule && !next) throw new UserFacingError('Could not save that training schedule.', 'generic');
+    const db = clone(this.db);
+    db.accounts[account.profile.id].trainingSchedule = next;
+    this.commit(db);
+  }
+
+  async savePlannedSession(input: PlannedSessionDraft): Promise<void> {
+    const saved = plannedFromDraft(input.id ?? randomId(), input, null);
+    if (!saved) throw new UserFacingError('Could not save that session.', 'generic');
+    const account = this.me();
+    const db = clone(this.db);
+    const next = db.accounts[account.profile.id];
+    next.plannedSessions = [...(next.plannedSessions ?? []), saved].sort((a, b) => a.startsAt.localeCompare(b.startsAt));
+    this.commit(db);
+  }
+
+  async updatePlannedSession(id: string, input: PlannedSessionDraft & { doneAt: string | null }): Promise<void> {
+    const saved = plannedFromDraft(id, input, input.doneAt);
+    if (!saved) throw new UserFacingError('Could not save that session.', 'generic');
+    const account = this.me();
+    const db = clone(this.db);
+    const next = db.accounts[account.profile.id];
+    const rows = next.plannedSessions ?? [];
+    if (!rows.some((row) => row.id === id)) throw new UserFacingError('Could not save that session.', 'generic');
+    next.plannedSessions = rows.map((row) => (row.id === id ? saved : row)).sort((a, b) => a.startsAt.localeCompare(b.startsAt));
+    this.commit(db);
+  }
+
+  async deletePlannedSession(id: string): Promise<void> {
+    const account = this.me();
+    const db = clone(this.db);
+    const next = db.accounts[account.profile.id];
+    next.plannedSessions = (next.plannedSessions ?? []).filter((row) => row.id !== id);
+    this.commit(db);
+  }
+
+  async saveHealthPlan(plan: HealthPlan): Promise<void> {
+    const account = this.me();
+    const db = clone(this.db);
+    db.accounts[account.profile.id].healthPlan = { ...plan, limits: plan.limits.slice(0, 280) };
+    this.commit(db);
+  }
+
+  async refreshHealthPlan(limits: string): Promise<void> {
+    const account = this.me();
+    if (!account.profile.consentAi) {
+      throw new UserFacingError('Writing a plan needs the coach consent, because your figures are sent to the model.', 'generic');
+    }
+    const nutrition = { ...defaultNutritionSettings(), ...(account.nutrition ?? {}) };
+    const figures = compositionForAssessment(account.bodyComposition ?? []);
+    const interestLabels = account.profile.interestIds.flatMap((id) => {
+      const label = this.db.interests.find((item) => item.id === id)?.label;
+      return label ? [label] : [];
+    });
+    const plan = draftHealthPlan({
+      now: new Date(),
+      salt: new Date().toISOString(),
+      displayName: account.profile.displayName,
+      stage: account.profile.stage,
+      sobrietyStartedAt: account.profile.sobrietyStartedAt,
+      heightCm: account.profile.heightCm,
+      visionStatement: account.profile.visionStatement,
+      visionCaptions: (account.visionItems ?? []).map((item) => item.caption).filter(Boolean),
+      interestLabels,
+      reasons: account.reasons.map((reason) => reason.body),
+      limits: limits.trim().slice(0, 280),
+      weeklyUnits: account.profile.weeklyUnits,
+      goal: nutrition.goal,
+      goalSex: nutrition.goalSex,
+      goalAge: nutrition.goalAge,
+      build: nutrition.build,
+      kcalTarget: nutrition.kcalTarget,
+      proteinTarget: nutrition.proteinTarget,
+      carbTarget: nutrition.carbTarget,
+      fatTarget: nutrition.fatTarget,
+      goalPhase: nutrition.goalPhase,
+      weightClassKg: nutrition.weightClassKg,
+      hideCalories: nutrition.hideCalories,
+      foodLogs: account.foodLogs ?? [],
+      checkIns: account.checkIns.map((row) => ({
+        mood: row.mood,
+        craving: row.craving,
+        sleepHours: row.sleepHours,
+        note: row.note,
+        createdAt: row.createdAt,
+      })),
+      health: account.health.map((row) => ({ kind: row.kind, value: row.value, recordedOn: row.recordedOn, source: row.source })),
+      workoutBuckets: nutrition.workoutBuckets,
+      bodyFatPct: figures.bodyFatPct,
+      leanMassKg: figures.leanMassKg,
+      waistCm: figures.waistCm,
+      doneTexts: account.healthPlan ? donePlanTexts(account.healthPlan) : [],
+      schedule: account.trainingSchedule ?? null,
+    });
+    const db = clone(this.db);
+    db.accounts[account.profile.id].healthPlan = plan;
+    this.commit(db);
+  }
+
+  private liveInvites() {
+    return this.db.buddyInvites ?? [];
+  }
+
+  async listBuddies(): Promise<BuddyList> {
+    const account = this.me();
+    const id = account.profile.id;
+    const invites = this.liveInvites().filter((invite) => invite.status === 'pending' || invite.status === 'accepted');
+    const now = new Date().toISOString();
+    return {
+      sharing: invites
+        .filter((invite) => invite.ownerId === id)
+        .map((invite) => ({ ...invite, scope: normalizeBuddyScope(invite.scope), name: buddyName(this.db, invite.buddyId) })),
+      watching: invites
+        .filter((invite) => invite.buddyId === id)
+        .map((invite) => ({ ...invite, scope: normalizeBuddyScope(invite.scope), name: buddyName(this.db, invite.ownerId) })),
+      links: (this.db.buddyLinks ?? [])
+        .filter((link) => link.ownerId === id && !link.usedBy && !link.revokedAt && link.expiresAt > now)
+        .map((link) => ({ id: link.id, expiresAt: link.expiresAt, scope: normalizeBuddyScope(link.scope), createdAt: link.createdAt })),
+    };
+  }
+
+  async createBuddyInvite(buddyId: string, scope: BuddyScope): Promise<void> {
+    const account = this.me();
+    const chosen = normalizeBuddyScope(scope);
+    if (!scopeHasShare(chosen)) throw new UserFacingError(BUDDY_CHOOSE, 'generic');
+    if (!account.profile.ageConfirmed18) throw new UserFacingError(BUDDY_ADULT, 'generic');
+    const other = this.db.accounts[buddyId];
+    if (!other || other.profile.id === account.profile.id || !other.profile.ageConfirmed18 || blocked(this.db, account.profile.id, buddyId)) {
+      throw new UserFacingError(BUDDY_CANNOT_INVITE, 'generic');
+    }
+    const db = clone(this.db);
+    const invites = db.buddyInvites ?? [];
+    const live = invites.find((invite) => invite.ownerId === account.profile.id && invite.buddyId === buddyId && (invite.status === 'pending' || invite.status === 'accepted'));
+    if (live?.status === 'accepted') throw new UserFacingError(BUDDY_ALREADY, 'generic');
+    if (live) {
+      live.scope = chosen;
+      db.buddyInvites = invites;
+      this.commit(db);
+      return;
+    }
+    const dayAgo = Date.now() - 86_400_000;
+    const recent = invites.filter((invite) => invite.ownerId === account.profile.id && Date.parse(invite.createdAt) > dayAgo).length;
+    if (recent >= BUDDY_INVITE_DAILY_LIMIT) throw new UserFacingError(BUDDY_INVITE_LIMIT, 'generic');
+    invites.push({
+      id: randomId(),
+      ownerId: account.profile.id,
+      buddyId,
+      status: 'pending',
+      scope: chosen,
+      createdAt: new Date().toISOString(),
+    });
+    db.buddyInvites = invites;
+    this.commit(db);
+  }
+
+  async createBuddyLink(scope: BuddyScope): Promise<BuddyLinkPass> {
+    const account = this.me();
+    const chosen = normalizeBuddyScope(scope);
+    if (!scopeHasShare(chosen)) throw new UserFacingError(BUDDY_CHOOSE, 'generic');
+    if (!account.profile.ageConfirmed18) throw new UserFacingError(BUDDY_ADULT, 'generic');
+    const db = clone(this.db);
+    const links = db.buddyLinks ?? [];
+    const dayAgo = Date.now() - 86_400_000;
+    const recent = links.filter((link) => link.ownerId === account.profile.id && Date.parse(link.createdAt) > dayAgo).length;
+    if (recent >= BUDDY_LINK_DAILY_LIMIT) throw new UserFacingError(BUDDY_LINK_LIMIT, 'generic');
+    const bytes = Uint8Array.from({ length: 16 }, () => Math.floor(Math.random() * 256));
+    const token = makeBuddyToken(bytes);
+    const code = makeBuddyCode(bytes);
+    const expiresAt = new Date(Date.now() + BUDDY_LINK_DAYS * 86_400_000).toISOString();
+    const id = randomId();
+    links.push({
+      id,
+      ownerId: account.profile.id,
+      token,
+      code,
+      scope: chosen,
+      expiresAt,
+      createdAt: new Date().toISOString(),
+      usedBy: null,
+      revokedAt: null,
+    });
+    db.buddyLinks = links;
+    this.commit(db);
+    return { id, token, code, expiresAt, url: buddyLinkUrl(token) };
+  }
+
+  async acceptBuddyInvite(inviteId: string): Promise<void> {
+    const account = this.me();
+    const db = clone(this.db);
+    const invite = (db.buddyInvites ?? []).find((item) => item.id === inviteId && item.buddyId === account.profile.id && item.status === 'pending');
+    if (!invite || !account.profile.ageConfirmed18 || blocked(this.db, account.profile.id, invite.ownerId)) {
+      throw new UserFacingError(BUDDY_UNAVAILABLE, 'generic');
+    }
+    invite.status = 'accepted';
+    this.commit(db);
+  }
+
+  async declineBuddyInvite(inviteId: string): Promise<void> {
+    const account = this.me();
+    const db = clone(this.db);
+    const invite = (db.buddyInvites ?? []).find((item) => item.id === inviteId && item.buddyId === account.profile.id && item.status === 'pending');
+    if (!invite) throw new UserFacingError(BUDDY_UNAVAILABLE, 'generic');
+    invite.status = 'declined';
+    this.commit(db);
+  }
+
+  async previewBuddyLink(secret: string): Promise<{ name: string; scope: BuddyScope }> {
+    const account = this.me();
+    const cleaned = secret.trim();
+    const wanted = cleaned.length === 8 ? cleaned.toUpperCase() : cleaned.toLowerCase();
+    const link = (this.db.buddyLinks ?? []).find((item) => {
+      if (item.usedBy || item.revokedAt || item.expiresAt <= new Date().toISOString()) return false;
+      return item.token === wanted || item.code === wanted;
+    });
+    if (!link || link.ownerId === account.profile.id || !account.profile.ageConfirmed18 || blocked(this.db, account.profile.id, link.ownerId)) {
+      throw new UserFacingError(BUDDY_UNAVAILABLE, 'generic');
+    }
+    return parseBuddyPreview({ name: buddyName(this.db, link.ownerId), scope: link.scope }) ?? { name: 'Member', scope: normalizeBuddyScope(link.scope) };
+  }
+
+  async acceptBuddyLink(secret: string): Promise<void> {
+    const account = this.me();
+    const cleaned = secret.trim();
+    const wanted = cleaned.length === 8 ? cleaned.toUpperCase() : cleaned.toLowerCase();
+    const db = clone(this.db);
+    const link = (db.buddyLinks ?? []).find((item) => {
+      if (item.usedBy || item.revokedAt || item.expiresAt <= new Date().toISOString()) return false;
+      return item.token === wanted || item.code === wanted;
+    });
+    if (!link || link.ownerId === account.profile.id || !account.profile.ageConfirmed18 || blocked(this.db, account.profile.id, link.ownerId)) {
+      throw new UserFacingError(BUDDY_UNAVAILABLE, 'generic');
+    }
+    const invites = db.buddyInvites ?? [];
+    const live = invites.find((invite) => invite.ownerId === link.ownerId && invite.buddyId === account.profile.id && (invite.status === 'pending' || invite.status === 'accepted'));
+    if (live) {
+      live.status = 'accepted';
+      live.scope = link.scope;
+    } else {
+      invites.push({
+        id: randomId(),
+        ownerId: link.ownerId,
+        buddyId: account.profile.id,
+        status: 'accepted',
+        scope: link.scope,
+        createdAt: new Date().toISOString(),
+      });
+    }
+    link.usedBy = account.profile.id;
+    db.buddyInvites = invites;
+    this.commit(db);
+  }
+
+  async revokeBuddy(inviteId: string): Promise<void> {
+    const account = this.me();
+    const db = clone(this.db);
+    const invite = (db.buddyInvites ?? []).find((item) => item.id === inviteId && (item.ownerId === account.profile.id || item.buddyId === account.profile.id) && (item.status === 'pending' || item.status === 'accepted'));
+    if (!invite) throw new UserFacingError(BUDDY_UNAVAILABLE, 'generic');
+    invite.status = 'revoked';
+    this.commit(db);
+  }
+
+  async revokeBuddyLink(linkId: string): Promise<void> {
+    const account = this.me();
+    const db = clone(this.db);
+    const link = (db.buddyLinks ?? []).find((item) => item.id === linkId && item.ownerId === account.profile.id && !item.usedBy && !item.revokedAt);
+    if (!link) throw new UserFacingError(BUDDY_UNAVAILABLE, 'generic');
+    link.revokedAt = new Date().toISOString();
+    this.commit(db);
+  }
+
+  async updateBuddyScope(inviteId: string, scope: BuddyScope): Promise<void> {
+    const account = this.me();
+    const chosen = normalizeBuddyScope(scope);
+    if (!scopeHasShare(chosen)) throw new UserFacingError(BUDDY_CHOOSE, 'generic');
+    const db = clone(this.db);
+    const invite = (db.buddyInvites ?? []).find((item) => item.id === inviteId && item.ownerId === account.profile.id && (item.status === 'pending' || item.status === 'accepted'));
+    if (!invite) throw new UserFacingError(BUDDY_UNAVAILABLE, 'generic');
+    invite.scope = chosen;
+    this.commit(db);
+  }
+
+  async sharedBuddyData(ownerId: string): Promise<BuddyShareView | null> {
+    const account = this.me();
+    const invite = this.liveInvites().find((item) => item.ownerId === ownerId && item.buddyId === account.profile.id && item.status === 'accepted');
+    const owner = this.db.accounts[ownerId];
+    if (!invite || !owner || !account.profile.ageConfirmed18 || !owner.profile.ageConfirmed18 || blocked(this.db, account.profile.id, ownerId)) return null;
+    return projectBuddyShare(buddySource(owner, isoDay(new Date())), normalizeBuddyScope(invite.scope));
+  }
+
+  async sharedHealthPlan(userId: string) {
+    const session = this.snapshot.session;
+    if (!session) return null;
+    const viewer = this.db.accounts[session.userId];
+    const other = this.db.accounts[userId];
+    if (!viewer || !other?.profile.onboardingComplete) return null;
+    if (blocked(this.db, session.userId, userId)) return null;
+    if (!other.profile.communityVisible || !other.profile.ageConfirmed18) return null;
+    if (session.userId !== userId && (!viewer.profile.communityVisible || !viewer.profile.ageConfirmed18)) return null;
+    const sharing = normalizeProfileSharing(other.sharing);
+    return presentSharedHealthPlan(other.healthPlan ?? null, sharing.healthPlan, other.nutrition?.goal ?? null);
   }
 
   async sharedNutrition(userId: string) {
@@ -1267,6 +1714,8 @@ export class DemoRepository implements Repository {
       photos: [],
     };
     next.gratitude = [entry, ...(next.gratitude ?? [])];
+    const followed = shareFreshGratitude(normalizeProfileSharing(next.sharing), { entryId: entry.id });
+    if (followed) next.sharing = followed;
     this.commit(db);
     return entry.id;
   }
@@ -1319,6 +1768,8 @@ export class DemoRepository implements Repository {
       caption: '',
     });
     entry.photos = photos;
+    const followed = shareFreshGratitude(normalizeProfileSharing(db.accounts[account.profile.id].sharing), { photoId: id });
+    if (followed) db.accounts[account.profile.id].sharing = followed;
     this.commit(db);
   }
 

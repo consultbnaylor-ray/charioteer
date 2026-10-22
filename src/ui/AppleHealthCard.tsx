@@ -1,75 +1,201 @@
-import { Pressable } from 'react-native';
+import { useState } from 'react';
+import { Pressable, View } from 'react-native';
 
+import { SIGN_IN_FIRST } from '@/domain/errors';
 import {
   APPLE_HEALTH_CONSENT,
   APPLE_HEALTH_DENIED,
+  APPLE_HEALTH_DETAILS,
   APPLE_HEALTH_INTRO,
+  APPLE_HEALTH_REFRESH,
+  APPLE_HEALTH_TURN_ON,
   APPLE_HEALTH_UNAVAILABLE,
   APPLE_HEALTH_WEB,
+  appleHealthStatusLine,
+  appleHealthUpdatedLine,
   healthCardState,
   type AppleHealthAccess,
 } from '@/health/connection';
-import { Button, Card, T } from '@/ui/ui';
+import { HEALTH_MISSING_DETAIL, HEALTH_VISIBILITY_TITLE, type HealthMissingReading } from '@/domain/healthVisibility';
+import { PlanTick } from '@/ui/PlanTick';
+import { useAppTheme } from '@/ui/theme';
+import { Button, Card, ErrorNote, T } from '@/ui/ui';
 
 export function AppleHealthCard({
   consent,
   ios,
   access,
   syncedAt,
+  gaps,
   pending,
+  updatedAt,
+  refreshError,
+  turnOnNote,
+  onRefresh,
+  onSignIn,
   onConnect,
-  onSync,
   onManage,
   onSettings,
   onPrivacy,
+  onSee,
+  onTurnOn,
 }: {
   consent: boolean;
   ios: boolean;
   access: AppleHealthAccess | null;
   syncedAt: string | null;
+  gaps: readonly HealthMissingReading[];
   pending: boolean;
+  updatedAt: string | null;
+  refreshError: string | null;
+  turnOnNote: string | null;
+  onRefresh: () => void;
+  onSignIn: () => void;
   onConnect: () => void;
-  onSync: () => void;
   onManage: () => void;
   onSettings: () => void;
   onPrivacy: () => void;
+  onSee: () => void;
+  onTurnOn: () => Promise<void>;
 }) {
+  const theme = useAppTheme();
+  const [details, setDetails] = useState(false);
+  const [missingOpen, setMissingOpen] = useState(false);
+  const [asking, setAsking] = useState(false);
   const state = healthCardState({ consent, ios, access, syncedAt });
+  const line = appleHealthStatusLine({
+    consent,
+    ios,
+    access,
+    syncedAt,
+    missingTitles: gaps.map((gap) => gap.title),
+  });
+  const link = {
+    minHeight: 44,
+    justifyContent: 'center' as const,
+    paddingRight: 12,
+  };
+
   return (
     <Card>
-      <T variant="label">Apple Health</T>
-      {state.kind === 'consent' ? (
-        <>
-          <T>{APPLE_HEALTH_CONSENT}</T>
-          <Button label="Turn on health data" onPress={onPrivacy} />
-        </>
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 10 }}>
+        <Pressable
+          accessibilityRole={gaps.length ? 'button' : 'text'}
+          accessibilityLabel={line}
+          accessibilityState={gaps.length ? { expanded: missingOpen } : undefined}
+          disabled={!gaps.length}
+          onPress={() => setMissingOpen((value) => !value)}
+          style={{ flexGrow: 1, flexShrink: 1, minWidth: 180, minHeight: 44, justifyContent: 'center' }}
+        >
+          <T style={{ fontFamily: theme.font.bodyStrong }}>{line}</T>
+        </Pressable>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={pending ? 'Refreshing' : APPLE_HEALTH_REFRESH}
+          accessibilityState={{ disabled: pending }}
+          disabled={pending}
+          onPress={onRefresh}
+          style={{
+            minHeight: 44,
+            justifyContent: 'center',
+            paddingHorizontal: 14,
+            borderWidth: 1,
+            borderColor: theme.colors.ink,
+            borderRadius: theme.radius.md,
+            backgroundColor: theme.colors.surface,
+            opacity: pending ? 0.45 : 1,
+          }}
+        >
+          <T style={{ fontFamily: theme.font.bodyStrong }}>{pending ? 'Refreshing' : APPLE_HEALTH_REFRESH}</T>
+        </Pressable>
+      </View>
+      {gaps.length ? (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={HEALTH_MISSING_DETAIL}
+          accessibilityState={{ expanded: missingOpen }}
+          onPress={() => setMissingOpen((value) => !value)}
+          style={{ minHeight: 44, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}
+        >
+          <T style={{ fontFamily: theme.font.bodyStrong }}>{HEALTH_MISSING_DETAIL}</T>
+          <T variant="muted">{missingOpen ? 'Hide' : 'Show'}</T>
+        </Pressable>
       ) : null}
-      {state.kind === 'web' ? <T>{APPLE_HEALTH_WEB}</T> : null}
-      {state.kind === 'checking' || state.kind === 'prompt' ? <T>{APPLE_HEALTH_INTRO}</T> : null}
-      {state.kind === 'prompt' ? (
-        <Button label="Connect Apple Health" pending={pending} onPress={onConnect} />
+      {missingOpen && gaps.length ? (
+        <View style={{ gap: 8 }}>
+          {gaps.map((gap) => (
+            <T key={gap.type}>{gap.line}</T>
+          ))}
+        </View>
       ) : null}
-      {state.kind === 'connected' ? (
-        <>
-          <T>{state.line}</T>
-          <Button label="Sync now" pending={pending} onPress={onSync} />
-          <Pressable
-            accessibilityRole="link"
-            accessibilityLabel="Manage in Health app"
-            onPress={onManage}
-            style={{ minHeight: 44, justifyContent: 'center' }}
-          >
-            <T>Manage in Health app</T>
-          </Pressable>
-        </>
+      {updatedAt ? (
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          <PlanTick done />
+          <T>{appleHealthUpdatedLine(updatedAt)}</T>
+        </View>
       ) : null}
-      {state.kind === 'denied' ? (
-        <>
-          <T>{APPLE_HEALTH_DENIED}</T>
-          <Button label="Open Settings" onPress={onSettings} />
-        </>
+      <ErrorNote>{refreshError}</ErrorNote>
+      {refreshError === SIGN_IN_FIRST ? <Button label="Sign in" onPress={onSignIn} /> : null}
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center' }}>
+        <Pressable accessibilityRole="link" accessibilityLabel={HEALTH_VISIBILITY_TITLE} onPress={onSee} style={link}>
+          <T style={{ textDecorationLine: 'underline' }}>{HEALTH_VISIBILITY_TITLE}</T>
+        </Pressable>
+        <Pressable
+          accessibilityRole="link"
+          accessibilityLabel={asking ? 'Asking Apple Health' : APPLE_HEALTH_TURN_ON}
+          disabled={asking}
+          onPress={() => {
+            setAsking(true);
+            void onTurnOn().finally(() => setAsking(false));
+          }}
+          style={link}
+        >
+          <T style={{ textDecorationLine: 'underline' }}>{asking ? 'Asking Apple Health' : APPLE_HEALTH_TURN_ON}</T>
+        </Pressable>
+      </View>
+      {turnOnNote ? <T>{turnOnNote}</T> : null}
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={APPLE_HEALTH_DETAILS}
+        accessibilityState={{ expanded: details }}
+        onPress={() => setDetails((value) => !value)}
+        style={{ minHeight: 44, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}
+      >
+        <T style={{ fontFamily: theme.font.bodyStrong }}>{APPLE_HEALTH_DETAILS}</T>
+        <T variant="muted">{details ? 'Hide' : 'Show'}</T>
+      </Pressable>
+      {details ? (
+        <View style={{ gap: 8 }}>
+          {state.kind === 'consent' ? (
+            <>
+              <T>{APPLE_HEALTH_CONSENT}</T>
+              <Button label="Turn on health data" onPress={onPrivacy} />
+            </>
+          ) : null}
+          {state.kind === 'web' ? <T>{APPLE_HEALTH_WEB}</T> : null}
+          {state.kind === 'checking' || state.kind === 'prompt' || state.kind === 'connected' ? <T>{APPLE_HEALTH_INTRO}</T> : null}
+          {state.kind === 'prompt' ? (
+            <Button label="Connect Apple Health" pending={pending} onPress={onConnect} />
+          ) : null}
+          {state.kind === 'connected' ? (
+            <Pressable
+              accessibilityRole="link"
+              accessibilityLabel="Manage in Health app"
+              onPress={onManage}
+              style={link}
+            >
+              <T style={{ textDecorationLine: 'underline' }}>Manage in Health app</T>
+            </Pressable>
+          ) : null}
+          {state.kind === 'denied' ? (
+            <>
+              <T>{APPLE_HEALTH_DENIED}</T>
+              <Button label="Open Settings" onPress={onSettings} />
+            </>
+          ) : null}
+          {state.kind === 'unavailable' ? <T>{APPLE_HEALTH_UNAVAILABLE}</T> : null}
+        </View>
       ) : null}
-      {state.kind === 'unavailable' ? <T>{APPLE_HEALTH_UNAVAILABLE}</T> : null}
     </Card>
   );
 }

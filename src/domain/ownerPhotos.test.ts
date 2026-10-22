@@ -3,11 +3,18 @@ import { describe, expect, it } from 'vitest';
 
 import { GRATITUDE_SIGNED_URL_SECONDS } from './gratitudePhotos';
 import {
+  OWNER_PHOTO_ERROR_BACKOFF_MS,
   OWNER_PHOTO_RESIGN_GAP_MS,
   OWNER_PHOTO_RESIGN_MS,
   OWNER_PHOTO_URL_SECONDS,
+  PHOTO_RETRY,
+  PHOTO_UNAVAILABLE,
+  foodPhotoStoragePath,
+  ownerPhotoErrorDelay,
+  ownerPhotoIdentity,
   ownerPhotoResignCooling,
   ownerPhotoUrlsStale,
+  withSignedFoodPhotos,
   withSignedGratitudePhotos,
   withSignedPreviewUrls,
 } from './ownerPhotos';
@@ -60,6 +67,39 @@ describe('owner photo lifetimes', () => {
     expect(withSignedPreviewUrls(photos, new Map([['u/a.jpg', '']]))).toBe(photos);
   });
 
+  it('waits 1s, then 3s, then 8s after an image error, and then stops', () => {
+    expect(OWNER_PHOTO_ERROR_BACKOFF_MS).toEqual([1_000, 3_000, 8_000]);
+    expect(ownerPhotoErrorDelay(0)).toBe(1_000);
+    expect(ownerPhotoErrorDelay(1)).toBe(3_000);
+    expect(ownerPhotoErrorDelay(2)).toBe(8_000);
+    expect(ownerPhotoErrorDelay(3)).toBeNull();
+    expect(ownerPhotoErrorDelay(-1)).toBeNull();
+    expect(ownerPhotoErrorDelay(1.5)).toBeNull();
+  });
+
+  it('treats a new token as the same photo and a new path as a different one', () => {
+    const path = 'https://example.test/storage/v1/object/sign/progress-photos/user/a.jpg';
+    expect(ownerPhotoIdentity(`${path}?token=one`)).toBe(path);
+    expect(ownerPhotoIdentity(`${path}?token=two`)).toBe(ownerPhotoIdentity(`${path}?token=one`));
+    expect(ownerPhotoIdentity(`${path.replace('/a.jpg', '/b.jpg')}?token=one`)).not.toBe(path);
+    expect(ownerPhotoIdentity(null)).toBe('');
+    expect(ownerPhotoIdentity('data:image/jpeg;base64,abc')).toBe('data:image/jpeg;base64,abc');
+  });
+
+  it('refreshes a meal photo link and leaves a meal without a photo', () => {
+    const logs = [
+      { id: 'meal-1', userId: 'user-1', previewUrl: 'old', note: 'Eggs' },
+      { id: 'meal-2', userId: 'user-1', previewUrl: null, note: 'Soup' },
+    ];
+    expect(foodPhotoStoragePath('user-1', 'meal-1')).toBe('user-1/meal-1.jpg');
+    expect(withSignedFoodPhotos(logs, new Map())).toBe(logs);
+    const next = withSignedFoodPhotos(logs, new Map([['user-1/meal-1.jpg', 'new']]));
+    expect(next[0]).toEqual({ id: 'meal-1', userId: 'user-1', previewUrl: 'new', note: 'Eggs' });
+    expect(next[1]).toBe(logs[1]);
+    expect(PHOTO_UNAVAILABLE).toBe('Photo unavailable');
+    expect(PHOTO_RETRY).toBe('Tap to retry');
+  });
+
   it('patches gratitude photos without rewriting the diary line', () => {
     const entries = [
       { id: 'line', body: 'Breakfast', photos: [{ storagePath: 'u/g.jpg', previewUrl: 'old' }] },
@@ -80,6 +120,7 @@ describe('owner photo refresh', () => {
   const repo = readFileSync('src/data/supabase-repository.ts', 'utf8');
   const avatar = readFileSync('src/ui/MemberAvatar.tsx', 'utf8');
   const ownerPhoto = readFileSync('src/ui/OwnerPhoto.tsx', 'utf8');
+  const retry = readFileSync('src/ui/signedPhotoRetry.ts', 'utf8');
 
   it('reloads You and progress photos when those screens open', () => {
     expect(profile).toContain('useFocusEffect');
@@ -97,25 +138,54 @@ describe('owner photo refresh', () => {
     expect(layout).toContain('refreshOwnerPhotosIfStale');
     const resign = repo.slice(repo.indexOf('async resignOwnerPhotos'), repo.indexOf('async reloadMessages'));
     expect(resign).toContain('ownerPhotoResignCooling');
+    expect(resign).toContain('options?.force');
+    expect(resign).toContain('if (!force && ownerPhotoResignCooling');
     expect(resign).not.toContain('this.refresh');
     const again = repo.slice(repo.indexOf('private async resignOwnerPhotosNow'), repo.indexOf('private async signedUrlMap'));
     expect(again).toContain('withSignedPreviewUrls');
     expect(again).toContain('withSignedGratitudePhotos');
+    expect(again).toContain('withSignedFoodPhotos');
+    expect(again).toContain('FOOD_BUCKET');
+    expect(again).toContain('foodPhotoStoragePath');
     expect(again).toContain('PROGRESS_SIGNED_URL_SECONDS');
     expect(again).toContain('PROFILE_SIGNED_URL_SECONDS');
     expect(again).toContain('GRATITUDE_SIGNED_URL_SECONDS');
     expect(again).toContain('VISION_SIGNED_URL_SECONDS');
+    expect(again).toContain('OWNER_PHOTO_URL_SECONDS');
     expect(again).not.toContain('this.refresh(');
     expect(repo).toContain('this.ownerPhotosSignedAt = Date.now()');
+    expect(layout).toContain('repo.resignOwnerPhotos()');
+    expect(layout).not.toContain('resignOwnerPhotos({ force');
   });
 
-  it('asks for a new link when an image fails instead of keeping the broken picture', () => {
-    expect(avatar).toContain('onError');
-    expect(avatar).toContain('resignOwnerPhotos');
-    expect(avatar).toContain('setFailed(false)');
+  it('asks for a fresh link after an image error and keeps a way to try again', () => {
+    expect(retry).toContain('ownerPhotoErrorDelay');
+    expect(retry).toContain('resignOwnerPhotos({ force: true })');
+    expect(retry).toContain('ownerPhotoIdentity');
+    expect(retry).not.toContain('attempt < 1');
     expect(ownerPhoto).toContain('onError');
-    expect(ownerPhoto).toContain('resignOwnerPhotos');
-    expect(ownerPhoto).toContain('setFailed(false)');
+    expect(ownerPhoto).toContain('useSignedPhotoRetry');
+    expect(ownerPhoto).toContain('PHOTO_UNAVAILABLE');
+    expect(ownerPhoto).toContain('PHOTO_RETRY');
+    expect(ownerPhoto).toContain('retryState.retry');
+    expect(ownerPhoto).not.toContain('attempt < 1');
+    expect(ownerPhoto).not.toContain('if (!uri || failed) return null');
+    expect(avatar).toContain('onError');
+    expect(avatar).toContain('useSignedPhotoRetry');
+    expect(avatar).toContain('PHOTO_UNAVAILABLE');
+    expect(avatar).toContain('PHOTO_RETRY');
+    expect(avatar).toContain('retryState.retry');
+    expect(avatar).toContain('profileInitials');
+    expect(avatar).not.toContain('attempt < 1');
+    const meals = readFileSync('src/ui/TodayMeals.tsx', 'utf8');
+    const nutrition = readFileSync('src/app/(main)/nutrition.tsx', 'utf8');
+    const renderLog = nutrition.slice(nutrition.indexOf('function renderLog'), nutrition.indexOf('function kcalFromField'));
+    expect(meals).toContain('<OwnerPhoto');
+    expect(meals).toContain('row.previewUrl');
+    expect(renderLog).toContain('<OwnerPhoto');
+    expect(renderLog).toContain('log.previewUrl');
+    const frames = readFileSync('src/ui/ProgressPhotos.tsx', 'utf8');
+    expect(frames).toContain('pointerEvents="box-none"');
     for (const file of [
       'src/ui/ProgressPhotos.tsx',
       'src/ui/VisionBoard.tsx',

@@ -1,6 +1,7 @@
 import { OwnerPhoto } from '@/ui/OwnerPhoto';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
-import { StyleSheet, Switch, View } from 'react-native';
+import { Pressable, StyleSheet, Switch, View } from 'react-native';
 
 import { useRepository, useSnapshot } from '@/data';
 import type { ProgressPhoto } from '@/data/types';
@@ -8,13 +9,16 @@ import { isoDay } from '@/domain/dates';
 import { shownError } from '@/domain/errors';
 import { interestChipRemovable, interestChipVisible } from '@/domain/interests';
 import { planCustomInterest, validateTown } from '@/domain/privacy';
-import { WAGON_PUBLIC_LINE, weightPointsFrom } from '@/domain/nutrition';
+import { compositionForAssessment, WAGON_PUBLIC_LINE, weightPointsFrom } from '@/domain/nutrition';
 import { SharedNutritionFacts } from '@/ui/NutritionShare';
+import { hiddenShareHref } from '@/domain/hiddenShareTargets';
+import { profileStatBoard } from '@/domain/profileStatTiles';
 import { BIO_EXAMPLE, BIO_LIMIT, NEVER_SHARED, PHOTO_CAPTION_LIMIT, formatSoberShare, projectPublicProfile } from '@/domain/profileSharing';
+import { ProfileStatBoard } from '@/ui/ProfileStatTiles';
 import { ShareOnProfile } from '@/ui/ShareOnProfile';
 import { progressPhotoLabel } from '@/domain/progressPhotos';
 import { formatGbp } from '@/domain/savings';
-import { SharedPhotoFrame } from '@/ui/CommunityProfile';
+import { SharedGratitudeLines, SharedHealthPlanFacts, SharedPhotoFrame } from '@/ui/CommunityProfile';
 import { MemberAvatar } from '@/ui/MemberAvatar';
 import { OwnProfilePhotos, ProfilePhotoEditor } from '@/ui/ProfilePhotoEditor';
 import { COMMUNITY_CONSENT_BODY } from '@/ui/ConsentChoices';
@@ -36,8 +40,11 @@ export function PublicProfileCard() {
   const snap = useSnapshot();
   const repo = useRepository();
   const theme = useAppTheme();
+  const router = useRouter();
+  const editParam = useLocalSearchParams<{ edit?: string | string[] }>().edit;
+  const editPhotos = (Array.isArray(editParam) ? editParam[0] : editParam) === 'photos';
   const profile = snap.profile;
-  const [editing, setEditing] = useState(false);
+  const [editing, setEditing] = useState(editPhotos);
   const [name, setName] = useState(profile?.displayName ?? '');
   const [town, setTown] = useState(profile?.town ?? '');
   const [bio, setBio] = useState(profile?.bio ?? '');
@@ -70,6 +77,10 @@ export function PublicProfileCard() {
     setBio(next);
   }, [profile?.bio]);
 
+  useEffect(() => {
+    if (editPhotos) setEditing(true);
+  }, [editPhotos]);
+
   useEffect(() => () => {
     for (const timer of Object.values(timers.current)) {
       if (timer) clearTimeout(timer);
@@ -82,6 +93,7 @@ export function PublicProfileCard() {
   const hidden = !me.communityVisible || !me.ageConfirmed18;
   const labels = new Map(snap.interests.map((interest) => [interest.id, interest.label]));
   const now = new Date();
+  const figures = compositionForAssessment(snap.bodyComposition);
   const preview = projectPublicProfile({
     now,
     today: isoDay(now),
@@ -111,13 +123,23 @@ export function PublicProfileCard() {
       monthIndex: photo.monthIndex,
       visibility: photo.visibility === 'community' ? 'community' : 'private',
     })),
+    profilePhotos: (snap.profilePhotos ?? []).map((photo) => ({
+      id: photo.id,
+      role: photo.role === 'avatar' ? 'avatar' as const : 'gallery' as const,
+      caption: photo.caption ?? '',
+      position: photo.position ?? 0,
+    })),
     pinnedQuoteId: me.pinnedQuoteId,
     nutrition: {
       logs: snap.foodLogs,
       settings: snap.nutrition,
       heightCm: me.heightCm,
       weights: weightPointsFrom(snap.health),
+      bodyFatPct: figures.bodyFatPct,
+      leanMassKg: figures.leanMassKg,
+      waistCm: figures.waistCm,
     },
+    healthPlan: snap.healthPlan,
   }, snap.sharing);
   const interestLine = preview.interests.join(' · ');
   const avatar = (snap.profilePhotos ?? []).find((photo) => photo.role === 'avatar');
@@ -253,8 +275,8 @@ export function PublicProfileCard() {
       communityVisible: on,
       consentHealth: me.consentHealth,
       consentAi: me.consentAi,
-    }).then(() => {
-      if (on) void offerMessageNotifications(repo);
+      messageNotifications: me.messageNotifications,
+      termsAccepted: true,
     }).catch((err: unknown) => {
       setChoiceNote(shownError(err, 'Could not save that.'));
     });
@@ -262,8 +284,14 @@ export function PublicProfileCard() {
 
   function setMessageNotifications(on: boolean) {
     setError(null);
-    void repo.updateProfile({ messageNotifications: on }).then(() => {
-      if (on) void offerMessageNotifications(repo);
+    void repo.saveConsents({
+      communityVisible: me.communityVisible,
+      consentHealth: me.consentHealth,
+      consentAi: me.consentAi,
+      messageNotifications: on,
+      termsAccepted: true,
+    }).then(() => {
+      if (on) void offerMessageNotifications(repo).catch((error: unknown) => console.error('message notifications', error));
     }).catch((err: unknown) => setError(shownError(err, 'Could not save that.')));
   }
 
@@ -328,6 +356,7 @@ export function PublicProfileCard() {
             ) : null}
             <T variant="muted">{preview.town || 'Area not shared'}</T>
             {interestLine ? <T>{interestLine}</T> : null}
+            <ProfileStatBoard {...profileStatBoard(preview, { audience: 'owner', sharing: snap.sharing })} mealPhotos={preview.mealPhotos} />
             {preview.stage ? <T>Stage: {preview.stage}</T> : null}
             {preview.sober ? <T>{formatSoberShare(preview.sober)}</T> : null}
             {preview.milestones.length ? <T>{preview.milestones.join(', ')}</T> : null}
@@ -336,10 +365,10 @@ export function PublicProfileCard() {
             {preview.unitsAvoided != null ? <T>{preview.unitsAvoided} units avoided</T> : null}
             {preview.moodStreak != null ? <T>Mood streak {preview.moodStreak}</T> : null}
             {preview.health.map((line) => <T key={line}>{line}</T>)}
-            {preview.gratitude.map((entry) => <T key={entry.id}>{entry.body}</T>)}
+            <SharedGratitudeLines entries={preview.gratitude} photos={preview.gratitudePhotos} />
             {preview.vision.map((item) => <T key={item.id}>{item.caption}</T>)}
-            {preview.gratitudePhotos.map((photo) => photo.caption ? <T key={photo.id}>{photo.caption}</T> : null)}
             <SharedNutritionFacts meals={preview.foodDiary} calories={preview.calories} quality={preview.quality} progress={preview.progress} goal={preview.goal} />
+            <SharedHealthPlanFacts plan={preview.healthPlan} />
             {preview.wagon ? (
               <View style={{ gap: 4 }}>
                 <T>{WAGON_PUBLIC_LINE}</T>
@@ -435,8 +464,38 @@ export function PublicProfileCard() {
           </View>
         ) : null}
       </Card>
-      <T>Hidden: {preview.hiddenLabels.join(', ')}</T>
+      <HiddenShareLine labels={preview.hiddenLabels} onOpen={(href) => router.push(href as never)} />
       <T variant="muted">{NEVER_SHARED}</T>
+    </View>
+  );
+}
+
+function HiddenShareLine({ labels, onOpen }: { labels: string[]; onOpen: (href: string) => void }) {
+  if (!labels.length) return null;
+  return (
+    <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 6 }}>
+      <View style={{ minHeight: 44, justifyContent: 'center' }}>
+        <T>Hidden:</T>
+      </View>
+      {labels.map((label, index) => (
+        <Pressable
+          key={label}
+          accessibilityRole="link"
+          accessibilityLabel={`Share ${label}`}
+          onPress={() => onOpen(hiddenShareHref(label))}
+          style={{ minHeight: 44, justifyContent: 'center' }}
+        >
+          <T style={{ textDecorationLine: 'underline' }}>{index < labels.length - 1 ? `${label},` : label}</T>
+        </Pressable>
+      ))}
+      <Pressable
+        accessibilityRole="link"
+        accessibilityLabel="Change what I share"
+        onPress={() => onOpen(hiddenShareHref())}
+        style={{ minHeight: 44, justifyContent: 'center' }}
+      >
+        <T style={{ textDecorationLine: 'underline' }}>Change ›</T>
+      </Pressable>
     </View>
   );
 }

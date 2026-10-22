@@ -1,23 +1,33 @@
+import Constants from 'expo-constants';
 import { Oswald_700Bold } from '@expo-google-fonts/oswald';
 import { Barlow_400Regular, Barlow_400Regular_Italic, Barlow_600SemiBold } from '@expo-google-fonts/barlow';
 import { useFonts } from 'expo-font';
 import { Stack, usePathname, useRouter } from 'expo-router';
 import * as Linking from 'expo-linking';
 import * as SplashScreen from 'expo-splash-screen';
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { AppState, Platform, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 
 import { APP_DISPLAY_NAME, APP_FULL_NAME } from '@/domain/appName';
+import { buddySecretFromUrl, holdBuddySecret, peekBuddySecret, consumeBuddySecret } from '@/domain/buddies';
 import { RepoProvider, useRepository, useSnapshot } from '@/data';
-import { listenForMessageOpens } from '@/notifications/register';
+import { catchUpAppleHealthReads } from '@/health/catchUp';
+import { bindNotificationErrorLog, cancelScheduledNotifications, listenForIncomingMessages, listenForMessageOpens, retryMessageNotifications, setAppIconBadge } from '@/notifications/register';
+import { messageUnreadTotal } from '@/domain/liveChat';
+import { useChatRead } from '@/ui/chatRead';
 import { CONSENT_VERSION } from '@/data/catalogue';
+import { clientAppBuild } from '@/domain/clientError';
 import { hasCurrentConsents } from '@/domain/consents';
+import { installFatalHandler, uploadStoredFatal } from '@/domain/fatalError';
 import { font, ThemeProvider, useAppTheme } from '@/ui/theme';
 import { topSafeInset } from '@/ui/safeArea';
 import { KeyboardDoneBar } from '@/ui/keyboard';
+import { RootErrorBoundary } from '@/ui/RootErrorBoundary';
 import { Mark, T, Wordmark } from '@/ui/ui';
+
+installFatalHandler();
 
 SplashScreen.preventAutoHideAsync().catch(() => undefined);
 
@@ -38,9 +48,11 @@ export default function RootLayout() {
   if (!loaded && !error) return null;
 
   return (
-    <RepoProvider>
-      <ThemedShell />
-    </RepoProvider>
+    <RootErrorBoundary>
+      <RepoProvider>
+        <ThemedShell />
+      </RepoProvider>
+    </RootErrorBoundary>
   );
 }
 
@@ -67,28 +79,78 @@ function Chrome() {
     }
   }, [theme.colors.bg]);
 
+  const navigationReady = useRef(false);
+  const stackMounted = useRef(false);
+  navigationReady.current = snap.ready;
+
   useEffect(() => listenForMessageOpens((connectionId) => {
-    void repo.reloadMessages();
-    router.push(`/chat/${connectionId}` as never);
-  }), [router, repo]);
+    try {
+      void repo.reloadMessages().catch((error: unknown) => console.error(error));
+      router.push(`/chat/${connectionId}` as never);
+    } catch (error) {
+      console.error('message open', error);
+    }
+  }, () => {
+    try {
+      router.push('/buddies' as never);
+    } catch (error) {
+      console.error('message open', error);
+    }
+  }, () => navigationReady.current && stackMounted.current), [router, repo]);
 
   useEffect(() => {
+    if (!snap.ready || !snap.session) return;
+    void uploadStoredFatal(repo, clientAppBuild({
+      buildNumber: Constants.expoConfig?.ios?.buildNumber,
+      version: Constants.expoConfig?.version,
+    }));
+  }, [repo, snap.ready, snap.session]);
+
+  useEffect(() => {
+    if (Platform.OS !== 'ios' || !snap.ready || !snap.session || !snap.profile?.consentHealth) return;
+    void catchUpAppleHealthReads(repo).catch((error: unknown) => console.error('apple health reads', error));
+  }, [repo, snap.profile?.consentHealth, snap.ready, snap.session]);
+
+  useEffect(() => {
+    bindNotificationErrorLog(repo);
+    void cancelScheduledNotifications();
+    const registerPhone = () => {
+      void retryMessageNotifications(repo).then((message) => {
+        if (message) console.error(message);
+      }).catch((error: unknown) => console.error('message notifications', error));
+    };
+    registerPhone();
     const subscription = AppState.addEventListener('change', (next) => {
       if (next !== 'active') return;
-      void repo.reloadMessages();
+      void repo.reloadMessages().catch((error: unknown) => console.error(error));
       void repo.resignOwnerPhotos();
+      registerPhone();
+      if (Platform.OS === 'ios') {
+        void catchUpAppleHealthReads(repo).then((result) => {
+          if (result.error) console.error('apple health reads', result.error);
+        }).catch((error: unknown) => console.error('apple health reads', error));
+      }
+    });
+    const arrivals = listenForIncomingMessages(() => {
+      void repo.reloadMessages().catch((error: unknown) => console.error(error));
     });
     const timer = setInterval(() => {
       void repo.refreshOwnerPhotosIfStale();
     }, 60_000);
     return () => {
       subscription.remove();
+      arrivals();
       clearInterval(timer);
     };
   }, [repo]);
 
   useEffect(() => {
     const openReset = (url: string | null) => {
+      const secret = url ? buddySecretFromUrl(url) : null;
+      if (secret) {
+        holdBuddySecret(secret);
+        router.push(`/buddies?token=${encodeURIComponent(secret)}` as never);
+      }
       if (!url || !url.includes('set-password') || handledResetUrl === url) return;
       handledResetUrl = url;
       if (Platform.OS === 'web' && typeof window !== 'undefined' && window.location.pathname.includes('set-password')) return;
@@ -119,6 +181,13 @@ function Chrome() {
       if (pathname !== '/consent') router.replace('/consent');
       return;
     }
+    if (pathname.startsWith('/buddies')) consumeBuddySecret();
+    const buddySecret = peekBuddySecret();
+    if (buddySecret) {
+      consumeBuddySecret();
+      router.replace(`/buddies?token=${encodeURIComponent(buddySecret)}` as never);
+      return;
+    }
     if (authRoute || onboarding || pathname === '/consent' || pathname === '/') router.replace('/home');
   }, [snap.ready, snap.session, snap.profile?.onboardingComplete, snap.consents, pathname, router]);
 
@@ -129,10 +198,48 @@ function Chrome() {
   return (
     <>
       <StatusBar style={theme.scheme === 'dark' ? 'light' : 'dark'} />
+      <MessageIconBadge />
       <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: theme.colors.bg } }} />
+      <NoteStackMounted flag={stackMounted} />
       <KeyboardDoneBar />
     </>
   );
+}
+
+/** Sets the iOS icon badge to the unread direct-message count, and clears it when those are read. */
+function MessageIconBadge() {
+  const snap = useSnapshot();
+  const meId = snap.profile?.id ?? null;
+  const { marks, ready } = useChatRead(meId);
+  const count = meId && ready
+    ? messageUnreadTotal(
+      snap.messages ?? [],
+      (snap.connections ?? []).filter((connection) => connection.status === 'accepted').map((connection) => connection.id),
+      meId,
+      marks,
+    )
+    : 0;
+  useEffect(() => {
+    if (!snap.ready) return;
+    if (!snap.session || !meId) {
+      void setAppIconBadge(0);
+      return;
+    }
+    if (!ready) return;
+    void setAppIconBadge(count);
+  }, [snap.ready, snap.session, meId, ready, count]);
+  return null;
+}
+
+/** Marks the root stack as committed so a cold-start message tap can navigate. */
+function NoteStackMounted({ flag }: { flag: { current: boolean } }) {
+  useEffect(() => {
+    flag.current = true;
+    return () => {
+      flag.current = false;
+    };
+  }, [flag]);
+  return null;
 }
 
 function OpeningDay({ background }: { background: string }) {

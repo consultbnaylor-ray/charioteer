@@ -2,6 +2,7 @@ import type { StoredConsent } from '@/domain/consents';
 import type { BodyCompositionReading, BodyCompositionSource, FoodItem, FoodLog, MealSlot, MealSource, NutritionDay, NutritionSettings, SharedNutritionView } from '@/domain/nutrition';
 import type { ProfileSharing, PublicProfileView } from '@/domain/profileSharing';
 import type { GratitudeCategory, GratitudeEntry, GratitudeReflect } from '@/domain/gratitude';
+import type { HealthPlan, SharedHealthPlan } from '@/domain/healthPlan';
 import type { Stage } from '@/domain/stage';
 import type { ThumosMode } from '@/domain/thumos';
 import type { VisionArea, VisionItem, VisionSize } from '@/domain/visionBoard';
@@ -16,7 +17,16 @@ export type HealthKind =
   | 'resting_heart_rate'
   | 'hrv_sdnn'
   | 'workout_minutes'
-  | 'weight_kg';
+  | 'weight_kg'
+  | 'vo2_max'
+  | 'walking_heart_rate'
+  | 'heart_rate_recovery'
+  | 'strength_minutes'
+  | 'cardio_minutes'
+  | 'conditioning_minutes'
+  | 'other_minutes'
+  | 'session_heart_rate'
+  | `workout_type_${number}`;
 
 export type ResourceCategory = 'quit_lit' | 'groups' | 'helplines' | 'health';
 export type Verification = 'verified' | 'partial' | 'unverified';
@@ -228,6 +238,12 @@ export type AppSnapshot = {
   waterDays: NutritionDay[];
   /** Private body-fat, lean-mass, and waist history. Shared only as a progress line when that switch is on. */
   bodyComposition: BodyCompositionReading[];
+  /** Private Thumos plan. Never included in the community directory. */
+  healthPlan: HealthPlan | null;
+  /** Usual gym week from You. Null until they save one. */
+  trainingSchedule: import('@/domain/healthPlan').TrainingSchedule | null;
+  /** Workouts planned ahead. Owner only. Empty until one is saved. */
+  plannedSessions: import('@/domain/plannedSession').PlannedSession[];
 };
 
 export type NewGratitudeEntry = {
@@ -252,12 +268,16 @@ export type OnboardingInput = {
   communityVisible: boolean;
   consentHealth: boolean;
   consentAi: boolean;
+  messageNotifications: boolean;
+  termsAccepted: boolean;
 };
 
 export type ConsentInput = {
   communityVisible: boolean;
   consentHealth: boolean;
   consentAi: boolean;
+  messageNotifications: boolean;
+  termsAccepted: boolean;
 };
 
 export type ProfilePatch = Partial<
@@ -343,6 +363,8 @@ export type NewFoodLog = {
   /** Stable for one save, including a retry, so the meal is not inserted twice. */
   id: string;
   eatenOn: string;
+  /** London meal time. When omitted, the save uses the slot clock on eatenOn, not the moment of the tap. */
+  eatenAt?: string | null;
   meal: MealSlot;
   source: MealSource;
   note: string;
@@ -371,17 +393,13 @@ export interface Repository {
   /** Messages only. Used while a chat is open and when the app returns. */
   reloadMessages(): Promise<void>;
   /**
-   * New owner signed URLs for progress, profile, gratitude, and vision photos.
+   * New owner signed URLs for progress, profile, gratitude, vision, and meal photos.
    * Patches those links only, so a chip save in flight is left as it is.
+   * `force` skips the short gap after the last sign. Image errors use it.
    */
-  resignOwnerPhotos(): Promise<void>;
+  resignOwnerPhotos(options?: { force?: boolean }): Promise<void>;
   /** Re-signs those owner URLs when the last sign is more than about eight minutes old. */
   refreshOwnerPhotosIfStale(): Promise<void>;
-  /**
-   * Inserts for one chat. Realtime applies the select policy, and the filter
-   * limits the stream to this connection. Call the returned function to stop.
-   */
-  watchChat(connectionId: string): () => void;
   signIn(email: string, password: string): Promise<void>;
   signUp(email: string, password: string, displayName: string): Promise<void>;
   signInWithApple(): Promise<void>;
@@ -408,7 +426,7 @@ export interface Repository {
   reportUser(input: NewReport): Promise<void>;
   reviewReport(id: string): Promise<void>;
   ensureThumosGuide(kind: 'opening' | 'craving'): Promise<void>;
-  sendThumos(content: string, mode: ThumosMode, onDelta?: (text: string) => void): Promise<void>;
+  sendThumos(content: string, mode: ThumosMode, onDelta?: (text: string) => void, onState?: (state: 'sending' | 'waiting' | 'retrying') => void): Promise<void>;
   mintVoiceToken(mode?: ThumosMode): Promise<VoiceMint>;
   saveVoiceTurn(input: VoiceTurnInput): Promise<void>;
   addProgressPhoto(input: NewProgressPhoto): Promise<void>;
@@ -461,4 +479,41 @@ export interface Repository {
   }): Promise<void>;
   /** Shared nutrition items. Each field is null unless that switch is on. Null when the profile is hidden or blocked. */
   sharedNutrition(userId: string): Promise<SharedNutritionView | null>;
+  /** Headline, focus, and tick count. Null when the switch is off, the profile is hidden, or the viewer is outside Community. */
+  sharedHealthPlan(userId: string): Promise<SharedHealthPlan | null>;
+  /** Invites this person sent, invites waiting for them, and unused links. */
+  listBuddies(): Promise<import('@/domain/buddies').BuddyList>;
+  /** In-app invite. The scope is what the buddy will be able to see. */
+  createBuddyInvite(buddyId: string, scope: import('@/domain/buddies').BuddyScope): Promise<void>;
+  /** Single-use link. The token and code are returned once. */
+  createBuddyLink(scope: import('@/domain/buddies').BuddyScope): Promise<import('@/domain/buddies').BuddyLinkPass>;
+  acceptBuddyInvite(inviteId: string): Promise<void>;
+  declineBuddyInvite(inviteId: string): Promise<void>;
+  /** Scope summary for a link, before it is used. */
+  previewBuddyLink(secret: string): Promise<{ name: string; scope: import('@/domain/buddies').BuddyScope }>;
+  acceptBuddyLink(secret: string): Promise<void>;
+  revokeBuddy(inviteId: string): Promise<void>;
+  revokeBuddyLink(linkId: string): Promise<void>;
+  updateBuddyScope(inviteId: string, scope: import('@/domain/buddies').BuddyScope): Promise<void>;
+  /** Sections the caller is allowed to see. Null when they are not an accepted buddy. Community is not required. */
+  sharedBuddyData(ownerId: string): Promise<import('@/domain/buddies').BuddyShareView | null>;
+  /** Read lines for this person's chats. Empty when none are stored yet. */
+  loadChatReads(): Promise<Record<string, string>>;
+  /** Moves one chat's read line forward. An older time is ignored. */
+  saveChatRead(connectionId: string, readThrough: string): Promise<boolean>;
+  /** A caught screen error. Screen name, short message, and build only. */
+  /** True when the row was stored. False leaves a local copy for a later launch. */
+  logClientError(screen: string, message: string, appBuild: string): Promise<boolean>;
+  /** Writes the ticked actions and the limits. It does not call the model. */
+  saveHealthPlan(plan: HealthPlan): Promise<void>;
+  /** Asks Thumos for a new plan from this person's figures. Finished actions are left behind. */
+  refreshHealthPlan(limits: string): Promise<void>;
+  /** Saves the usual gym week, or clears it when null. */
+  saveTrainingSchedule(schedule: import('@/domain/healthPlan').TrainingSchedule | null): Promise<void>;
+  /** Adds a planned workout. The row stays on this account. */
+  savePlannedSession(input: import('@/domain/plannedSession').PlannedSessionDraft): Promise<void>;
+  /** Replaces the type, time, duration, note, or done mark on one planned workout. */
+  updatePlannedSession(id: string, input: import('@/domain/plannedSession').PlannedSessionDraft & { doneAt: string | null }): Promise<void>;
+  /** Removes one planned workout. */
+  deletePlannedSession(id: string): Promise<void>;
 }

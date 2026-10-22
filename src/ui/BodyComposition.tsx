@@ -4,26 +4,32 @@ import { Platform, View } from 'react-native';
 import { useRepository, useSnapshot } from '@/data';
 import { formatUkLong, isoDay, startOfLocalDay } from '@/domain/dates';
 import { shownError } from '@/domain/errors';
+import { WAIST_ZONE_CAPTION, bodyFatRange, bodyFatZoneCaption, waistRange } from '@/domain/distance';
 import {
   BMI_ONLY_NOTE,
   BODY_BUILDS,
+  BUILD_WHY,
   BODY_ENTRY_SOURCES,
   BODY_SOURCE_LABEL,
   BUILD_LABEL,
   assessWeight,
   compositionForAssessment,
+  compositionTrendLine,
   fatFreeMassKg,
   ffmiPlain,
   ffmiValue,
   parseBodyFatPct,
   parseLeanMassKg,
-  parseWaistCm,
   waistToHeight,
   weightPointsFrom,
   type BodyBuild,
   type BodyEntrySource,
 } from '@/domain/nutrition';
 import { readAppleHealthBody } from '@/health/sync';
+import { rangedRing } from '@/domain/measureFigures';
+import { formatWaistCm } from '@/domain/weightEntry';
+import { RangeTrack } from '@/ui/DistanceCharts';
+import { MeasureRingView } from '@/ui/MeasuredFigure';
 import { DateField } from '@/ui/DateField';
 import { usePendingPress } from '@/ui/pendingAction';
 import { Button, Card, Choice, Field, QuietNote, T, playSavedHaptic } from '@/ui/ui';
@@ -44,7 +50,7 @@ export function BuildChoices() {
 
   return (
     <View style={{ gap: 8 }}>
-      <T variant="muted">Muscular turns BMI category labels off and uses a higher protein suggestion.</T>
+      <T variant="muted">{BUILD_WHY}</T>
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
         {BODY_BUILDS.map((id) => (
           <Choice key={id} label={BUILD_LABEL[id]} selected={settings.build === id} onPress={() => choose(id)} />
@@ -79,13 +85,14 @@ export function BodyCompositionCard() {
   });
   const ffmi = lean != null && profile?.heightCm != null ? ffmiValue(lean, profile.heightCm) : null;
   const ratio = figures.waistCm != null && profile?.heightCm != null ? waistToHeight(figures.waistCm, profile.heightCm) : null;
+  const fatRange = figures.bodyFatPct != null ? bodyFatRange(figures.bodyFatPct, settings.goalSex) : null;
+  const waistFigure = ratio != null ? waistRange(ratio) : null;
   const [fat, setFat] = useState('');
   const [leanText, setLeanText] = useState('');
-  const [waist, setWaist] = useState('');
-  const [unit, setUnit] = useState<'cm' | 'in'>('cm');
   const [source, setSource] = useState<BodyEntrySource>('smart_scale');
   const [day, setDay] = useState(() => startOfLocalDay(new Date()));
   const [note, setNote] = useState<string | null>(null);
+  const compositionTrend = compositionTrendLine(snap.bodyComposition, settings.goal);
   const history = [...snap.bodyComposition]
     .sort((left, right) => right.recordedOn.localeCompare(left.recordedOn) || right.createdAt.localeCompare(left.createdAt))
     .slice(0, 5);
@@ -104,13 +111,8 @@ export function BodyCompositionCard() {
         setNote('Lean body mass sits between 20 and 200 kg.');
         return;
       }
-      const waistCm = waist.trim() ? parseWaistCm(Number(waist), unit) : null;
-      if (waist.trim() && waistCm == null) {
-        setNote(unit === 'in' ? 'Waist sits between about 16 and 79 inches.' : 'Waist sits between 40 and 200 cm.');
-        return;
-      }
-      if (bodyFatPct == null && leanMassKg == null && waistCm == null) {
-        setNote('Add body fat, lean mass, or a waist measurement.');
+      if (bodyFatPct == null && leanMassKg == null) {
+        setNote('Add body fat or lean mass.');
         return;
       }
       try {
@@ -118,7 +120,7 @@ export function BodyCompositionCard() {
           recordedOn: isoDay(day),
           bodyFatPct,
           leanMassKg,
-          waistCm,
+          waistCm: null,
           source,
         });
         setNote('Saved');
@@ -163,19 +165,78 @@ export function BodyCompositionCard() {
       <T variant="muted">Body fat is used before waist-to-height, and waist-to-height before BMI. This is not a diagnosis, and it is not estimated from a photo.</T>
       <BuildChoices />
       {assessment.plain ? <T>{assessment.plain}</T> : <T variant="muted">{BMI_ONLY_NOTE}</T>}
+      {fatRange && figures.bodyFatPct != null ? (
+        <>
+          <MeasureRingView
+            label="Body fat"
+            detail={bodyFatZoneCaption(fatRange)}
+            ring={rangedRing(
+              String(Math.round(figures.bodyFatPct * 10) / 10),
+              '%',
+              figures.bodyFatPct,
+              fatRange.zoneLow,
+              fatRange.zoneHigh,
+              fatRange.within,
+              fatRange.status,
+            )}
+          />
+          <RangeTrack
+            value={figures.bodyFatPct}
+            zoneLow={fatRange.zoneLow}
+            zoneHigh={fatRange.zoneHigh}
+            scaleMin={fatRange.scaleMin}
+            scaleMax={fatRange.scaleMax}
+            status={fatRange.status}
+            zoneCaption={bodyFatZoneCaption(fatRange)}
+            tone={fatRange.within ? 'good' : 'watch'}
+            surface="card"
+            showStatus={false}
+          />
+        </>
+      ) : null}
+      {waistFigure && ratio != null ? (
+        <>
+          <MeasureRingView
+            label="Waist to height"
+            detail={WAIST_ZONE_CAPTION}
+            ring={rangedRing(
+              ratio.toFixed(2),
+              'ratio',
+              ratio,
+              waistFigure.zoneLow,
+              waistFigure.zoneHigh,
+              waistFigure.within,
+              waistFigure.status,
+            )}
+          />
+          <RangeTrack
+            value={ratio}
+            zoneLow={waistFigure.zoneLow}
+            zoneHigh={waistFigure.zoneHigh}
+            scaleMin={waistFigure.scaleMin}
+            scaleMax={waistFigure.scaleMax}
+            status={waistFigure.status}
+            zoneCaption={WAIST_ZONE_CAPTION}
+            tone={waistFigure.within ? 'good' : 'watch'}
+            surface="card"
+            showStatus={false}
+          />
+        </>
+      ) : null}
       {ratio != null && assessment.basis !== 'waist' ? (
         <T>{ratio < 0.5
           ? `Waist-to-height is ${ratio.toFixed(2)}. Under 0.5 is the healthy band: waist is less than half your height.`
           : `Waist-to-height is ${ratio.toFixed(2)}. 0.5 or more sits outside the healthy band on this screen.`}</T>
       ) : null}
       {ffmi != null ? <T>{ffmiPlain({ ffmi, sex: settings.goalSex })}</T> : null}
+      {compositionTrend ? <T variant="muted">{compositionTrend}</T> : null}
+      <T variant="muted">
+        {figures.waistCm != null
+          ? `Latest waist ${formatWaistCm(figures.waistCm)}, from a weight reading. Waist-to-height uses that figure.`
+          : 'Add a waist with a weight reading. Waist-to-height uses the latest one.'}
+      </T>
       <Field label="Body fat (%)" value={fat} onChangeText={setFat} keyboardType="decimal-pad" placeholder="15" />
       <Field label="Lean body mass (kg)" value={leanText} onChangeText={setLeanText} keyboardType="decimal-pad" placeholder="63" />
-      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-        <Choice label="cm" selected={unit === 'cm'} onPress={() => setUnit('cm')} />
-        <Choice label="inches" selected={unit === 'in'} onPress={() => setUnit('in')} />
-      </View>
-      <Field label={unit === 'cm' ? 'Waist (cm)' : 'Waist (inches)'} value={waist} onChangeText={setWaist} keyboardType="decimal-pad" placeholder={unit === 'cm' ? '84' : '33'} />
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
         {BODY_ENTRY_SOURCES.map((id) => (
           <Choice key={id} label={BODY_SOURCE_LABEL[id]} selected={source === id} onPress={() => setSource(id)} />

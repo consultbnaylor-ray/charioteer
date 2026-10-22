@@ -11,10 +11,11 @@ import { earnedMilestones } from '@/domain/milestones';
 import { firstSafetyHit, pinnedSafetyNotices } from '@/domain/safety';
 import { asUserFacing, shownError } from '@/domain/errors';
 import { showsSoberRecord } from '@/domain/stage';
-import { CRAVING_LINE, inferThumosMode, THUMOS_INTRO, OPENING_LINE, type ThumosMode } from '@/domain/thumos';
+import { CHECK_CONNECTION, EDGE_STATE_LABEL, SIGN_IN_AGAIN, isThumosFallback, type EdgeSendState } from '@/domain/edgeRetry';
+import { CRAVING_LINE, inferThumosMode, SCRIPTED_COACH_REPLY, THUMOS_INTRO, THUMOS_UNREACHABLE, OPENING_LINE, type ThumosMode } from '@/domain/thumos';
 import { THUMOS_LINE_CAP, groupThumosByDay, messageNeedsMore, visibleThumos } from '@/domain/thumosThread';
 import { formatClock, urgeRemainingSeconds } from '@/domain/urge';
-import { ensureUrge, restartUrge } from '@/features/urgeSession';
+import { clearUrge, restartUrge } from '@/features/urgeSession';
 import { VOICE_COPY } from '@/domain/voice';
 import { VOICE_ENABLED } from '@/domain/voiceFlag';
 import { createVoiceRuntime, voiceStatusLabel, type VoiceRuntime } from '@/domain/voiceSession';
@@ -36,6 +37,8 @@ export default function Thumos() {
   const [draft, setDraft] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
+  const [sendState, setSendState] = useState<EdgeSendState | null>(null);
+  const [unreachable, setUnreachable] = useState<string | null>(null);
   const [liveReply, setLiveReply] = useState('');
   const [outgoing, setOutgoing] = useState<string | null>(null);
   const [supportLatch, setSupportLatch] = useState(sos);
@@ -53,6 +56,12 @@ export default function Thumos() {
   useFocusEffect(useCallback(() => {
     setThreadVisit((current) => current + 1);
     setKeptSend(null);
+    setUrgeStart(null);
+    clearUrge();
+    return () => {
+      setUrgeStart(null);
+      clearUrge();
+    };
   }, []));
 
   useEffect(() => {
@@ -75,26 +84,26 @@ export default function Thumos() {
   }, [profile?.id]);
 
   const latest = snap.checkIns[0];
+  // Draft text is not a message. Craving words are read only after Send.
   const mode: ThumosMode = inferThumosMode({
     sos,
     hasHistory: snap.thumos.length > 0,
     latestCraving: latest?.craving,
     latestMood: latest?.mood,
-    userText: draft,
   });
   const showSupport = sos || supportLatch || mode === 'support';
 
   useEffect(() => () => {
     voiceTicket.current += 1;
     void callRef.current?.end();
+    clearUrge();
   }, []);
 
   useEffect(() => {
-    if (!showSupport) return;
-    setUrgeStart((current) => current ?? ensureUrge());
+    if (urgeStart == null) return;
     const timer = setInterval(() => setNow(Date.now()), 250);
     return () => clearInterval(timer);
-  }, [showSupport]);
+  }, [urgeStart]);
 
   if (!profile) return null;
   const thread = snap.thumos.filter((message) => !(message.role === 'guide' && message.content === CRAVING_LINE));
@@ -114,28 +123,48 @@ export default function Thumos() {
     lastUser?.content ?? '',
   ]);
   const notices = pinnedSafetyNotices(safety);
-  const remaining = urgeStart == null ? 0 : urgeRemainingSeconds(urgeStart, now);
+  const remaining = urgeStart == null ? 600 : urgeRemainingSeconds(urgeStart, now);
   const fact = ALCOHOL_FACTS[0];
 
   async function send(text = draft) {
     const trimmed = text.trim();
     if (!trimmed) return;
     setKeptSend(trimmed);
-    const support = sos || mode === 'support' || inferThumosMode({ sos, hasHistory: true, userText: trimmed }) === 'support';
+    const sentMode = inferThumosMode({
+      sos,
+      hasHistory: true,
+      latestCraving: latest?.craving,
+      latestMood: latest?.mood,
+      userText: trimmed,
+    });
+    const support = sentMode === 'support';
     setSupportLatch(support);
     setPending(true);
+    setSendState('sending');
+    setUnreachable(null);
     setLiveReply('');
     setOutgoing(trimmed);
     setError(null);
     setDraft('');
     try {
-      await repo.sendThumos(trimmed, support ? 'support' : mode === 'opening' ? 'steady' : mode, (next) => setLiveReply(next));
+      await repo.sendThumos(
+        trimmed,
+        support ? 'support' : sentMode === 'opening' ? 'steady' : sentMode,
+        (next) => setLiveReply(next),
+        (state) => setSendState(state),
+      );
     } catch (err) {
       setKeptSend(null);
       setDraft(trimmed);
-      setError(asUserFacing(err, 'thumos').message);
+      const message = asUserFacing(err, 'thumos').message;
+      if (message === SIGN_IN_AGAIN || message === CHECK_CONNECTION) setError(message);
+      else if (isThumosFallback(message)) {
+        const scriptedAt = message.indexOf(SCRIPTED_COACH_REPLY);
+        setUnreachable(scriptedAt >= 0 ? message.slice(0, scriptedAt).trim() : message);
+      } else setError(message);
     } finally {
       setPending(false);
+      setSendState(null);
       setLiveReply('');
       setOutgoing(null);
     }
@@ -225,8 +254,12 @@ export default function Thumos() {
           <T variant="label">Urge timer</T>
           <T variant="hero">{formatClock(remaining)}</T>
           <T>Cravings rise, peak, and pass. Many people find the sharpest part eases within about 20 to 30 minutes. That is a guide, not a measurement.</T>
-          {remaining === 0 ? <T>The ten minutes are up. How do you feel now?</T> : null}
-          <Button label="Start the ten minutes again" tone="quiet" onPress={() => { setUrgeStart(restartUrge()); setNow(Date.now()); }} />
+          {urgeStart != null && remaining === 0 ? <T>The ten minutes are up. How do you feel now?</T> : null}
+          <Button
+            label={urgeStart == null ? 'Start ten minutes' : 'Start the ten minutes again'}
+            tone="quiet"
+            onPress={() => { setUrgeStart(restartUrge()); setNow(Date.now()); }}
+          />
           <Button label="Breathe" onPress={() => router.push('/breathe?exercise=sigh' as never)} />
           <T variant="label">What happens if you drink?</T>
           <T>Ask it plainly: what do you think will happen, and is it worth it? A walk, jog, or run can carry you through the peak if you are able.</T>
@@ -256,6 +289,7 @@ export default function Thumos() {
           pending={pending}
           outgoing={outgoing}
           liveReply={liveReply}
+          statusLine={sendState ? EDGE_STATE_LABEL[sendState] : null}
         />
         {VOICE_ENABLED && inCall && voice ? (
           <Card style={{ borderColor: theme.colors.ink, borderWidth: 2 }}>
@@ -281,24 +315,37 @@ export default function Thumos() {
         ) : !profile.consentAi ? (
           <Card>
             <T>Thumos stays quiet until you agree that messages can be sent to the coach.</T>
-            <Button label="Allow the coach" onPress={() => void repo.updateProfile({ consentAi: true }).catch((err: unknown) => setError(shownError(err, 'Could not save.')))} />
+            <Button label="Allow the coach" onPress={() => void repo.saveConsents({
+              communityVisible: profile.communityVisible,
+              consentHealth: profile.consentHealth,
+              consentAi: true,
+              messageNotifications: profile.messageNotifications,
+              termsAccepted: true,
+            }).catch((err: unknown) => setError(shownError(err, 'Could not save.')))} />
           </Card>
         ) : (
           <Field label="Message" value={draft} onChangeText={setDraft} multiline placeholder="Say it in your own words" />
         )}
+        {unreachable ? (
+          <Card>
+            <T>{unreachable ?? THUMOS_UNREACHABLE}</T>
+            <T>{SCRIPTED_COACH_REPLY}</T>
+            <Button label="Try again" onPress={() => void send()} />
+          </Card>
+        ) : null}
         <ErrorNote>{error || (VOICE_ENABLED && voice?.phase === 'error' ? voice.message : null)}</ErrorNote>
         {VOICE_ENABLED && !error && voice?.phase === 'error' && voice.detail ? <T variant="muted" style={{ width: '100%', flexShrink: 1 }}>{voice.detail}</T> : null}
         {VOICE_ENABLED && inCall ? null : VOICE_ENABLED ? (
           <View style={{ flexDirection: 'row', gap: 10 }}>
             <View style={{ flex: 1 }}>
-              <Button label="Send" pending={pending} disabled={!profile.consentAi} onPress={() => void send()} />
+              <Button label="Send" pending={pending} disabled={!profile.consentAi} disabledReason={profile.consentAi ? undefined : 'Allow the coach before sending.'} onPress={() => void send()} />
             </View>
             <View style={{ flex: 1 }}>
-              <Button label="Voice" disabled={!profile.consentAi || pending} onPress={() => void startVoice()} />
+              <Button label="Voice" disabled={!profile.consentAi || pending} disabledReason={profile.consentAi ? undefined : 'Allow the coach before a voice call.'} onPress={() => void startVoice()} />
             </View>
           </View>
         ) : (
-          <Button label="Send" pending={pending} disabled={!profile.consentAi} onPress={() => void send()} />
+          <Button label="Send" pending={pending} disabled={!profile.consentAi} disabledReason={profile.consentAi ? undefined : 'Allow the coach before sending.'} onPress={() => void send()} />
         )}
         <PinLatest token={pinToken} />
       </View>
@@ -414,12 +461,14 @@ function ThumosTranscript({
   pending,
   outgoing,
   liveReply,
+  statusLine,
 }: {
   messages: ThumosMessage[];
   earlier: ThumosMessage[];
   pending: boolean;
   outgoing: string | null;
   liveReply: string;
+  statusLine?: string | null;
 }) {
   const [earlierOpen, setEarlierOpen] = useState(false);
   const days = groupThumosByDay(earlier);
@@ -441,7 +490,7 @@ function ThumosTranscript({
         <Bubble key={message.id} mine={message.role === 'user'} text={message.content} />
       ))}
       {pending && outgoing && !messages.some((message) => message.role === 'user' && message.content === outgoing) ? <Bubble mine text={outgoing} /> : null}
-      {pending && !messages.some((message) => message.role !== 'user' && message.content === liveReply) ? <Bubble mine={false} text={liveReply || 'Thumos is thinking'} /> : null}
+      {pending && !messages.some((message) => message.role !== 'user' && message.content === liveReply) ? <Bubble mine={false} text={liveReply || statusLine || 'Waiting for Thumos…'} /> : null}
     </View>
   );
 }

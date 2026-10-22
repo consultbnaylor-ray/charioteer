@@ -1,33 +1,59 @@
-import { formatUkLongWhen } from '../domain/dates';
+import { formatUkLongWhen, formatUkTime } from '../domain/dates';
 
-/** Types Charioteer asks to read. It does not request write access. */
+/**
+ * Types Charioteer asks to read. It does not request write access.
+ * Blood oxygen is not requested: the fitness snapshot does not use it.
+ */
 export const APPLE_HEALTH_READ_TYPES = [
   'HKQuantityTypeIdentifierStepCount',
   'HKQuantityTypeIdentifierRestingHeartRate',
   'HKQuantityTypeIdentifierHeartRateVariabilitySDNN',
+  'HKQuantityTypeIdentifierVO2Max',
+  'HKQuantityTypeIdentifierWalkingHeartRateAverage',
+  'HKQuantityTypeIdentifierHeartRateRecoveryOneMinute',
   'HKQuantityTypeIdentifierBodyMass',
   'HKQuantityTypeIdentifierHeight',
   'HKQuantityTypeIdentifierBodyFatPercentage',
   'HKQuantityTypeIdentifierLeanBodyMass',
   'HKCategoryTypeIdentifierSleepAnalysis',
   'HKWorkoutTypeIdentifier',
+  'HKWorkoutRouteTypeIdentifier',
+  'HKQuantityTypeIdentifierDistanceWalkingRunning',
+  'HKQuantityTypeIdentifierDistanceCycling',
+  'HKQuantityTypeIdentifierDistanceSwimming',
+  'HKQuantityTypeIdentifierHeartRate',
   'HKQuantityTypeIdentifierActiveEnergyBurned',
 ] as const;
 
+export const APPLE_HEALTH_SHARE =
+  'Charioteer reads steps, sleep, heart rate, resting heart rate, heart rate variability, cardio fitness, walking heart rate, heart rate recovery, workouts (type, duration, distance, energy, and average heart rate), and walking, cycling and swimming distance, plus weight, height, body fat, lean body mass, and active energy. Readings stay on your iPhone. A workout route is read only when you open that route, and the path stays on this iPhone. A short summary is sent to write your plan only if you turn the coach on. It is not used for ads. Other people cannot see this.';
+
 export const APPLE_HEALTH_INTRO =
-  'Connect Apple Health to see your steps, sleep, resting heart rate, HRV, workouts, weight, height, body fat, lean body mass and active energy here, and to save the food and water you log. Charioteer reads steps, sleep, heart rate, HRV, workouts, weight, height, body fat, lean body mass and active energy. It writes only the meals and water you save: energy, protein, carbohydrate, sugar, fibre, fat, sodium and water. It does not write steps, sleep, heart rate, or weight. Other people never see these readings. You can disconnect any time in Settings > Health > Data Access & Devices.';
+  'Connect Apple Health to see your steps, sleep, heart rate, cardio fitness, workouts, walking, cycling and swimming distance, weight, and body readings here, and to save the food and water you log. Charioteer reads those on your iPhone and keeps a short summary. It writes only the meals and water you save: energy, protein, carbohydrate, sugar, fibre, fat, sodium and water. It does not write steps, sleep, heart rate, or weight. It does not use readings for ads. Other people never see them. You can disconnect any time in Settings > Health > Data Access & Devices.';
 
 export const APPLE_HEALTH_WEB = 'Apple Health connects in the iPhone app. Here you can log readings yourself.';
 
 export const APPLE_HEALTH_DENIED =
-  'Apple Health access is off. Turn it on in Settings > Health > Data Access & Devices > Charioteer.';
+  'Apple Health did not finish the permission request. Turn categories on in the Health app: profile picture (top right) > Privacy > Apps > Charioteer. On iOS versions that have it: Settings > Health > Data Access & Devices > Charioteer.';
 
 export const APPLE_HEALTH_CONSENT =
   'Health data is off. Turn it on in Privacy & consent if you want steps, sleep, and the other readings kept here.';
 
 export const APPLE_HEALTH_UNAVAILABLE = 'Apple Health is not available on this device.';
 
+export const APPLE_HEALTH_REFRESH = 'Refresh now';
+
+/** Green tick beside the clock after a refresh that saved. */
+export function appleHealthUpdatedLine(when: Date | string): string {
+  return `Updated ${formatUkTime(when)}`;
+}
+export const APPLE_HEALTH_TURN_ON = 'Turn on in Apple Health';
+export const APPLE_HEALTH_DETAILS = 'Details';
+
 export type AppleHealthAccess = 'prompt' | 'connected' | 'denied' | 'unavailable' | 'web';
+
+/** What happened when the missing-readings button asked Apple Health. */
+export type AppleHealthTurnOn = 'prompted' | 'opened' | 'unavailable' | 'web';
 
 /** The latest body mass and height Apple Health can offer for a nutrition target. */
 export type AppleHealthBody = {
@@ -54,6 +80,33 @@ export type HealthCardKind =
   | { kind: 'connected'; line: string }
   | { kind: 'denied' }
   | { kind: 'unavailable' };
+
+/**
+ * One line for the top of Health Stats.
+ * Connected names the clock. Gaps name each missing reading. Otherwise the row says not connected.
+ */
+export function appleHealthStatusLine(input: {
+  consent: boolean;
+  ios: boolean;
+  access: AppleHealthAccess | null;
+  syncedAt: string | null;
+  missingTitles?: readonly string[];
+}): string {
+  if (!input.consent || !input.ios) return 'Apple Health: Not connected';
+  if (input.access == null || input.access === 'web') return 'Apple Health: checking';
+  if (input.access !== 'connected') return 'Apple Health: Not connected';
+  if (input.missingTitles?.length) return `Apple Health: Missing: ${input.missingTitles.join(', ')}`;
+  const when = appleHealthClock(input.syncedAt);
+  if (!when) return 'Apple Health: connected';
+  return `Apple Health: connected, last updated ${when}`;
+}
+
+function appleHealthClock(syncedAt: string | null): string | null {
+  if (!syncedAt) return null;
+  const date = new Date(syncedAt);
+  if (Number.isNaN(date.getTime())) return null;
+  return formatUkTime(date);
+}
 
 export function connectedAppleHealthLine(syncedAt: Date | string | null): string {
   if (syncedAt == null) return 'Connected to Apple Health';

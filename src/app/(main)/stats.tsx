@@ -1,11 +1,17 @@
+import { useRouter } from 'expo-router';
 import { useWindowDimensions, View } from 'react-native';
 
 import { useSnapshot } from '@/data';
 import { buildStatsOverview } from '@/domain/statsOverview';
+import { useStatPeriod } from '@/health/useStatPeriod';
 import { StatTile } from '@/ui/StatTile';
+import { StatPeriodToggle } from '@/ui/StatPeriodToggle';
 import { statsToneColors } from '@/ui/statsPalette';
 import { useAppTheme } from '@/ui/theme';
-import { Screen, T } from '@/ui/ui';
+import { GoalLine } from '@/ui/GoalLine';
+import { YourFitness } from '@/ui/YourFitness';
+import { YourGoal } from '@/ui/YourGoal';
+import { Card, Screen, T } from '@/ui/ui';
 
 const LEGEND = [
   ['good', 'On track'],
@@ -17,11 +23,14 @@ const LEGEND = [
 export default function Stats() {
   const snap = useSnapshot();
   const theme = useAppTheme();
+  const router = useRouter();
   const { width } = useWindowDimensions();
+  const [period] = useStatPeriod();
   const profile = snap.profile;
   if (!profile) return null;
   const tiles = buildStatsOverview({
     now: new Date(),
+    period,
     stage: profile.stage,
     sobrietyStartedAt: profile.sobrietyStartedAt,
     plannedQuitAt: profile.plannedQuitAt,
@@ -45,6 +54,14 @@ export default function Stats() {
       title="Stats"
       intro="A plain look at the figures you already keep. The words say what the colour means."
     >
+      <StatPeriodToggle />
+      <GoalLine />
+      <YourGoal place="stats" />
+      <YourFitness />
+      <Card accessibilityLabel="Open Health Plan" onPress={() => router.push('/health-plan' as never)}>
+        <T style={{ fontFamily: theme.font.bodyStrong }}>Health Plan</T>
+        <T variant="muted">A short plan from the figures you already keep.</T>
+      </Card>
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12 }}>
         {LEGEND.map(([tone, label]) => (
           <View key={tone} style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>

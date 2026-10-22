@@ -6,10 +6,10 @@ import {
   Pressable,
   StyleSheet,
   Text,
+  TextInput,
   TouchableWithoutFeedback,
   View,
   type StyleProp,
-  type TextInput,
   type ViewStyle,
 } from 'react-native';
 
@@ -82,7 +82,7 @@ export function useKeyboardField(ref: { current: TextInput | null }, multiline: 
   const submit = useCallback(() => {
     if (multiline) return;
     if (fieldId != null && registry?.focusAfter(fieldId)) return;
-    Keyboard.dismiss();
+    dismissKeyboard();
   }, [fieldId, multiline, registry]);
 
   return {
@@ -92,10 +92,24 @@ export function useKeyboardField(ref: { current: TextInput | null }, multiline: 
   };
 }
 
+/** Resign the focused field, then hide the keyboard. A number pad has no Return key, and dismiss alone leaves it up. */
+export function dismissKeyboard() {
+  const state = (TextInput as unknown as {
+    State?: {
+      currentlyFocusedInput?: () => object | null;
+      currentlyFocusedField?: () => object | null;
+      blurTextInput?: (field: object) => void;
+    };
+  }).State;
+  const focused = state?.currentlyFocusedInput?.() ?? state?.currentlyFocusedField?.() ?? null;
+  if (focused) state?.blurTextInput?.(focused);
+  Keyboard.dismiss();
+}
+
 /** A tap on a region that does not scroll dismisses the keyboard. */
 export function DismissKeyboard({ children, style }: { children: ReactNode; style?: StyleProp<ViewStyle> }) {
   return (
-    <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
+    <TouchableWithoutFeedback onPress={dismissKeyboard} accessible={false}>
       <View style={style}>{children}</View>
     </TouchableWithoutFeedback>
   );
@@ -108,7 +122,7 @@ export function KeyboardDoneBar() {
   return (
     <InputAccessoryView nativeID={KEYBOARD_DONE_ID}>
       <View style={[styles.bar, { backgroundColor: theme.colors.surface, borderTopColor: theme.colors.line }]}>
-        <Pressable accessibilityRole="button" accessibilityLabel="Done" onPress={Keyboard.dismiss} style={styles.done}>
+        <Pressable accessibilityRole="button" accessibilityLabel="Done" onPress={dismissKeyboard} onPressIn={dismissKeyboard} style={styles.done}>
           <Text style={{ color: theme.colors.ink, fontFamily: theme.font.bodyStrong, fontSize: 17 }}>Done</Text>
         </Pressable>
       </View>
@@ -136,7 +150,7 @@ export function useKeyboardOffset() {
 }
 
 export function dismissKeyboardOnAction(label: string) {
-  if (/^(send|save)\b/i.test(label.trim())) Keyboard.dismiss();
+  if (/^(send|save|cancel)\b/i.test(label.trim())) dismissKeyboard();
 }
 
 const styles = StyleSheet.create({

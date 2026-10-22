@@ -137,7 +137,7 @@ An allow-list entry of exactly `charioteer://` does not cover `charioteer://set-
 supabase secrets set XAI_API_KEY=your-key
 supabase functions serve
 # or, for a hosted project:
-supabase functions deploy thumos-chat thumos-voice-token thumos-voice-turn account-export account-delete progress-photo-url gratitude-reflect
+supabase functions deploy thumos-chat thumos-voice-token thumos-voice-turn account-export account-delete progress-photo-url gratitude-reflect health-plan
 ```
 
 | Function | Role |
@@ -148,6 +148,7 @@ supabase functions deploy thumos-chat thumos-voice-token thumos-voice-turn accou
 | `account-export` | Calls `export_my_data()` and adds a one-hour signed link for each private progress photo. The file does not contain the image bytes. |
 | `account-delete` | Removes the caller’s objects in the private `progress-photos` bucket, deletes their `gratitude_entries` rows, then deletes the auth user. `delete_my_account()` is the fallback, and the app removes those objects before it uses the fallback. |
 | `gratitude-reflect` | With coach consent, sends one diary line and its optional tag to xAI and returns a short comment plus two or three suggestions. It does not read check-ins, health, reasons, photos, or other diary lines. Missing key or a bad reply uses a local note and nothing is sent. |
+| `health-plan` | With coach consent, reads this person’s own figures and asks Grok for a short nutrition, fitness, and wellbeing plan. A missing key, a safety hit, or a bad reply uses the local plan. The function does not store the row. Sharing, when switched on, shows only the headline, this week’s focus, and the tick count. |
 | `progress-photo-url` | Signs a 60-second URL for a progress photo the caller is allowed to see: their own, or one whose `visibility` is `community`. A private photo belonging to someone else is not signed. |
 
 The client tries the function first, then the SQL function, for export and deletion.
@@ -163,7 +164,7 @@ npx expo run:ios
 
 Or use EAS: `eas build --profile development --platform ios`.
 
-The bundle id is `uk.co.quanticalabs.charioteer`. `app.json` sets Sign in with Apple, the microphone string, the `react-native-audio-api` plugin, and the HealthKit plugin. The share string covers steps, sleep, resting heart rate, HRV, workouts, and weight. The update string says the app does not write to Apple Health; the capability still asks for it. `ios.entitlements` sets `com.apple.developer.healthkit`, and the plugin writes the same entitlement plus `NSHealthShareUsageDescription` at prebuild. Background delivery is off, because Charioteer only reads when someone asks it to. The Apple team is Quantica Labs Ltd, `5FMDXKAX7V`. `ios.config.usesNonExemptEncryption` is `false`. `expo.ios.buildNumber` is `"10"` for the next upload. Build 7 is the TestFlight build Ben reviewed. Echo control is the audio session: `playAndRecord` with mode `voiceChat`. Voice processing is not turned on in native code. A small patch, re-applied by `patch-package` on `npm install`, wraps `AVAudioEngine` `prepare` and `startAndReturnError:` in `@try`/`@catch` and returns false, so a route change cannot kill the app. On a Mac, remove a previously patched copy before installing, or the old `AudioEngine.mm` is reused and the new patch will not apply:
+The bundle id is `uk.co.quanticalabs.charioteer`. `app.json` sets Sign in with Apple, the microphone string, the `react-native-audio-api` plugin, and the HealthKit plugin. The share string covers steps, sleep, resting heart rate, HRV, workouts, and weight. The update string says the app does not write to Apple Health; the capability still asks for it. `ios.entitlements` sets `com.apple.developer.healthkit`, and the plugin writes the same entitlement plus `NSHealthShareUsageDescription` at prebuild. Background delivery is off, because Charioteer only reads when someone asks it to. The Apple team is Quantica Labs Ltd, `5FMDXKAX7V`. `ios.config.usesNonExemptEncryption` is `false`. `expo.ios.buildNumber` is `"10"` for the next upload. Build 7 is the TestFlight build Ben reviewed. Echo control is the audio session: `playAndRecord` with mode `voiceChat`. Voice processing is not turned on in native code. A small patch, re-applied by `patch-package --error-on-fail` on `npm install`, wraps `AVAudioEngine` `prepare` and `startAndReturnError:` in `@try`/`@catch` and returns false, so a route change cannot kill the app. The same install applies the HealthKit route patch. If a patch does not apply, the install fails. On a Mac, remove a previously patched copy before installing, or the old `AudioEngine.mm` is reused and the new patch will not apply:
 
 ```bash
 rm -rf node_modules/react-native-audio-api
@@ -180,11 +181,12 @@ On a Mac with Xcode, enable the HealthKit and Sign in with Apple capabilities if
 
 ## TestFlight from a Mac
 
-Build 4 is the TestFlight archive from commit `054cf18`. Build 7 is the upload Ben reviewed. `expo.ios.buildNumber` is `"10"` for the next upload. From the repo on a Mac, signed into Xcode as Quantica Labs Ltd, clear any patched audio package first, then install and prebuild:
+Build 4 is the TestFlight archive from commit `054cf18`. Build 7 is the upload Ben reviewed. `expo.ios.buildNumber` is `"10"` for the next upload. From the repo on a Mac, signed into Xcode as Quantica Labs Ltd, clear any patched audio package first, then install, confirm every patch is in `node_modules`, and prebuild. `npm run ship-check` fails the ship if any file in `patches/` is missing, including the HealthKit route patch. It does not apply the patch.
 
 ```bash
 rm -rf node_modules/react-native-audio-api
 npm install
+npm run ship-check
 npx expo prebuild --platform ios
 xcodebuild \
   -workspace ios/Charioteer.xcworkspace \

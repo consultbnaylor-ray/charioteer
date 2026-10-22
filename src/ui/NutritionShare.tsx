@@ -244,25 +244,32 @@ export function SharedNutritionFacts({
   calories,
   quality,
   progress,
+  bodyFigures = null,
   goal = null,
 }: {
   meals: { meal: string; detail: string }[] | null;
   calories: string | null;
   quality: SharedQuality | null;
   progress: string | null;
+  bodyFigures?: string | null;
   goal?: SharedGoal | null;
 }) {
+  const rows = Array.isArray(meals) ? meals : null;
+  const unsaturated = quality && typeof quality.unsaturated === 'number' && Number.isFinite(quality.unsaturated) ? quality.unsaturated : 0;
+  const other = quality && typeof quality.other === 'number' && Number.isFinite(quality.other) ? quality.other : 0;
+  const qualityLine = quality && typeof quality.line === 'string' ? quality.line : '';
+  const goalLine = goal && typeof goal.line === 'string' ? goal.line : '';
   return (
     <>
-      {meals ? (
+      {rows ? (
         <View style={{ gap: 4 }}>
           <T variant="label">Today’s meals</T>
-          {meals.length === 0 ? <T variant="muted">Nothing logged today.</T> : meals.map((meal) => (
-            <T key={`${meal.meal}:${meal.detail}`}>{meal.meal}: {meal.detail}</T>
+          {rows.length === 0 ? <T variant="muted">Nothing logged today.</T> : rows.map((meal) => (
+            <T key={`${meal?.meal ?? ''}:${meal?.detail ?? ''}`}>{meal?.meal ?? ''}: {meal?.detail ?? ''}</T>
           ))}
         </View>
       ) : null}
-      {calories ? (
+      {typeof calories === 'string' && calories ? (
         <View style={{ gap: 4 }}>
           <T variant="label">Calories and macros</T>
           <T>{calories}</T>
@@ -271,21 +278,27 @@ export function SharedNutritionFacts({
       {quality ? (
         <View style={{ gap: 4 }}>
           <T variant="label">Food quality</T>
-          <FatShareBar unsaturated={quality.unsaturated} other={quality.other} />
-          <T variant="muted">{`Unsaturated ${quality.unsaturated} g · saturated and trans ${quality.other} g`}</T>
-          <T>{quality.line}</T>
+          <FatShareBar unsaturated={unsaturated} other={other} />
+          <T variant="muted">{`Unsaturated ${unsaturated} g · saturated and trans ${other} g`}</T>
+          {qualityLine ? <T>{qualityLine}</T> : null}
         </View>
       ) : null}
-      {progress ? (
+      {typeof progress === 'string' && progress ? (
         <View style={{ gap: 4 }}>
           <T variant="label">Progress</T>
           <T>{progress}</T>
         </View>
       ) : null}
-      {goal ? (
+      {typeof bodyFigures === 'string' && bodyFigures ? (
+        <View style={{ gap: 4 }}>
+          <T variant="label">Body figures</T>
+          <T>{bodyFigures}</T>
+        </View>
+      ) : null}
+      {goal && goalLine ? (
         <View style={{ gap: 4 }}>
           <T variant="label">Nutrition goal</T>
-          <T>{goal.line}</T>
+          <T>{goalLine}</T>
         </View>
       ) : null}
     </>

@@ -21,11 +21,12 @@ export type CheckInDay = {
 
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'] as const;
 
-/** Seven local days ending today. The newest check-in on a day replaces an earlier one. */
-export function recentCheckInDays(checkIns: CheckInPoint[], today: Date): CheckInDay[] {
+/** Local days ending today. The newest check-in on a day replaces an earlier one. Seven days when the count is omitted. */
+export function recentCheckInDays(checkIns: CheckInPoint[], today: Date, count = 7): CheckInDay[] {
   const end = new Date(today.getFullYear(), today.getMonth(), today.getDate());
   const days: CheckInDay[] = [];
-  for (let offset = 6; offset >= 0; offset -= 1) {
+  const span = Math.max(1, count);
+  for (let offset = span - 1; offset >= 0; offset -= 1) {
     const date = new Date(end.getFullYear(), end.getMonth(), end.getDate() - offset);
     days.push({
       day: isoDay(date),

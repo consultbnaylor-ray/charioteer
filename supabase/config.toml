@@ -53,6 +53,9 @@ enabled = true
 [functions.thumos-chat]
 verify_jwt = true
 
+[functions.thumos-health]
+verify_jwt = false
+
 [functions.thumos-voice-token]
 verify_jwt = true
 
@@ -77,5 +80,14 @@ verify_jwt = true
 [functions.estimate-meal]
 verify_jwt = true
 
+[functions.health-plan]
+verify_jwt = true
+
 [functions.notify-direct-message]
 verify_jwt = true
+
+[functions.notify-buddy-invite]
+verify_jwt = true
+
+[functions.privacy-purge]
+verify_jwt = false

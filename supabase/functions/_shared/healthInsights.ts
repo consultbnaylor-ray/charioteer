@@ -177,6 +177,42 @@ export function londonDay(value: Date | string): string {
   return `${year}-${month}-${day}`;
 }
 
+/** Monday is 0 and Sunday is 6. `iso` is a calendar date, so the clock zone does not move it. */
+export function weekdayOffset(iso: string): number {
+  const [year, month, day] = iso.split('-').map(Number);
+  const index = new Date(year ?? 1970, (month ?? 1) - 1, day ?? 1).getDay();
+  return index === 0 ? 6 : index - 1;
+}
+
+/** Monday of the calendar week that contains `iso`. */
+export function mondayOf(iso: string): string {
+  return shiftDay(iso, -weekdayOffset(iso));
+}
+
+export type LondonWeek = {
+  /** Monday, YYYY-MM-DD, at 00:00 Europe/London. */
+  start: string;
+  /** Sunday, YYYY-MM-DD, through 23:59 Europe/London. */
+  end: string;
+  /** The London calendar day of `value`. */
+  today: string;
+  /** Monday through today, inclusive. Sunday still includes Monday to Saturday. */
+  days: string[];
+};
+
+/**
+ * The week Ben trains and logs in: Monday 00:00 through Sunday 23:59, Europe/London.
+ * BST and GMT both stay on that calendar. A Sunday still belongs to the week that began on Monday.
+ */
+export function londonWeek(value: Date | string = new Date()): LondonWeek {
+  const today = typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : londonDay(value);
+  const offset = weekdayOffset(today);
+  const start = shiftDay(today, -offset);
+  const days: string[] = [];
+  for (let index = 0; index <= offset; index += 1) days.push(shiftDay(start, index));
+  return { start, end: shiftDay(start, 6), today, days };
+}
+
 export function asCalendarDay(value: string): string {
   const match = /^(\d{4}-\d{2}-\d{2})/.exec(value);
   return match ? match[1] : londonDay(value);
@@ -220,12 +256,30 @@ export function formatSleepHours(hours: number): string {
   return `${whole}h ${minutes}m`;
 }
 
+const FITNESS_LABELS: Record<string, string> = {
+  vo2_max: 'Cardio fitness',
+  walking_heart_rate: 'Walking heart rate',
+  heart_rate_recovery: 'Heart rate recovery',
+  strength_minutes: 'Strength minutes',
+  cardio_minutes: 'Cardio minutes',
+  other_minutes: 'Other minutes',
+  session_heart_rate: 'Session heart rate',
+};
+
+export function healthKindLabel(kind: string): string {
+  return HEALTH_METRICS.find((metric) => metric.kind === kind)?.label ?? FITNESS_LABELS[kind] ?? kind;
+}
+
 export function formatHealthValue(kind: string, value: number): string {
   if (kind === 'steps') return `${ukNumber(Math.round(value))} steps`;
   if (kind === 'sleep_hours') return formatSleepHours(value);
-  if (kind === 'resting_heart_rate') return `${Math.round(value)} bpm`;
+  if (kind === 'resting_heart_rate' || kind === 'walking_heart_rate' || kind === 'session_heart_rate') return `${Math.round(value)} bpm`;
+  if (kind === 'heart_rate_recovery') return `${Math.round(value)} bpm`;
   if (kind === 'hrv_sdnn') return `${Math.round(value)} ms`;
-  if (kind === 'workout_minutes') return `${Math.round(value)} min`;
+  if (kind === 'workout_minutes' || kind === 'strength_minutes' || kind === 'cardio_minutes' || kind === 'other_minutes') {
+    return `${Math.round(value)} min`;
+  }
+  if (kind === 'vo2_max') return `${ukNumber(value, 1)}`;
   if (kind === 'weight_kg') return `${ukNumber(value, 1)} kg`;
   return ukNumber(value, Number.isInteger(value) ? 0 : 1);
 }
@@ -299,17 +353,139 @@ function inSpan(points: DayValue[], start: string, end: string): DayValue[] {
   return points.filter((point) => point.day >= start && point.day <= end);
 }
 
+/** How many days the personal change looks back, including today. */
+export const PERSONAL_WINDOW_DAYS = 30;
+
+/** Other days required in that window before a percent is shown. */
+export const PERSONAL_BASELINE_MIN = 3;
+
+/**
+ * A smaller move than this is called "about the same".
+ * The percent itself is still one rounding of (latest − baseline) / baseline × 100.
+ */
+export const PERSONAL_CHANGE_QUIET_PERCENT = 5;
+
+const PERSONAL_CHANGE_KINDS = new Set([
+  'hrv_sdnn',
+  'resting_heart_rate',
+  'sleep_hours',
+  'weight_kg',
+  'vo2_max',
+]);
+
+const CHANGE_NAME: Record<string, string> = {
+  hrv_sdnn: 'HRV',
+  resting_heart_rate: 'Resting HR',
+  sleep_hours: 'Sleep',
+  weight_kg: 'Weight',
+  vo2_max: 'VO2',
+};
+
+export type PersonalChange = {
+  latest: number;
+  latestDay: string;
+  baseline: number;
+  baselineCount: number;
+  windowDays: number;
+  /** Rounded once. Positive means the latest reading is above the baseline. */
+  percent: number;
+};
+
+/**
+ * Percent change of one reading against a baseline.
+ * Multiplies by 100 once. A ratio of 0.07 is 7, not 70.
+ */
+export function percentAgainstBaseline(value: number, baseline: number): number | null {
+  if (!Number.isFinite(value) || !Number.isFinite(baseline) || baseline === 0) return null;
+  return Math.round(((value - baseline) / baseline) * 100);
+}
+
+/**
+ * Latest reading against the mean of the other days in the last 30 days.
+ * The latest day is left out of the mean, so one reading is not compared with itself.
+ */
+export function personalChange(
+  points: readonly DayValue[],
+  today: string,
+  options?: { windowDays?: number; minBaseline?: number },
+): PersonalChange | null {
+  const windowDays = options?.windowDays ?? PERSONAL_WINDOW_DAYS;
+  const minBaseline = options?.minBaseline ?? PERSONAL_BASELINE_MIN;
+  const start = shiftDay(today, -(windowDays - 1));
+  const window = [...points]
+    .filter((point) => point.day >= start && point.day <= today)
+    .sort((left, right) => (left.day < right.day ? -1 : left.day > right.day ? 1 : 0));
+  const latest = window[window.length - 1];
+  if (!latest) return null;
+  const earlier = window.filter((point) => point.day !== latest.day);
+  if (earlier.length < minBaseline) return null;
+  const baseline = mean(earlier.map((point) => point.value));
+  if (baseline == null) return null;
+  const percent = percentAgainstBaseline(latest.value, baseline);
+  if (percent == null) return null;
+  return {
+    latest: latest.value,
+    latestDay: latest.day,
+    baseline,
+    baselineCount: earlier.length,
+    windowDays,
+    percent,
+  };
+}
+
+function changeValue(kind: string, value: number): string {
+  if (kind === 'vo2_max') return `${formatHealthValue(kind, value)} ml/kg/min`;
+  return formatHealthValue(kind, value);
+}
+
+/** One sentence: the reading, the percent, the period, and the baseline. */
+export function formatPersonalChange(kind: string, change: PersonalChange): string {
+  const name = CHANGE_NAME[kind] ?? healthKindLabel(kind);
+  const value = changeValue(kind, change.latest);
+  const baseline = `your ${change.windowDays}-day average`;
+  if (Math.abs(change.percent) < PERSONAL_CHANGE_QUIET_PERCENT) {
+    return `${name} ${value}, about the same as ${baseline}`;
+  }
+  const verb = change.percent > 0 ? 'up' : 'down';
+  return `${name} ${value}, ${verb} ${Math.abs(change.percent)}% vs ${baseline}`;
+}
+
+/**
+ * The shared change for HRV, resting heart rate, VO2, sleep, and weight.
+ * HRV stays quiet until there are enough of the person's own days.
+ */
+export function healthChangeNote(kind: string, points: readonly DayValue[], today: string): string | null {
+  if (!PERSONAL_CHANGE_KINDS.has(kind)) return null;
+  if (kind === 'hrv_sdnn' && points.length < HRV_MIN_READINGS) return null;
+  const change = personalChange(points, today);
+  if (!change) return null;
+  return formatPersonalChange(kind, change);
+}
+
+export function healthChangeNoteFromReadings(
+  kind: string,
+  readings: readonly { value: number; recordedOn: string }[],
+  today: string,
+): string | null {
+  const points = dailyValues(
+    readings.map((row) => ({ kind, value: row.value, recordedOn: row.recordedOn })),
+    kind,
+  );
+  return healthChangeNote(kind, points, today);
+}
+
 function weekLine(kind: HealthInsightKind, points: DayValue[], today: string): string | null {
   const current = inSpan(points, shiftDay(today, -6), today);
   const previous = inSpan(points, shiftDay(today, -13), shiftDay(today, -7));
   if (current.length < 2 || previous.length < 2) return null;
   const currentMean = mean(current.map((point) => point.value));
   const previousMean = mean(previous.map((point) => point.value));
-  if (currentMean == null || previousMean == null || previousMean === 0) return null;
-  const percent = Math.round(((currentMean - previousMean) / previousMean) * 100);
+  if (currentMean == null || previousMean == null) return null;
+  const percent = percentAgainstBaseline(currentMean, previousMean);
+  if (percent == null) return null;
   const subject = SUBJECT[kind];
   const plural = kind === 'steps' || kind === 'workout_minutes';
-  if (Math.abs(((currentMean - previousMean) / previousMean) * 100) < 5) {
+  if (Math.abs(percent) < PERSONAL_CHANGE_QUIET_PERCENT) {
     return `${subject} ${plural ? 'are' : 'is'} about the same as last week`;
   }
   const verb = percent > 0 ? 'up' : 'down';
@@ -384,13 +560,14 @@ function sobrietyLine(kind: HealthInsightKind, points: DayValue[], soberOn: stri
   if (before.length < 2 || after.length < 2) return null;
   const beforeMean = mean(before.map((point) => point.value));
   const afterMean = mean(after.map((point) => point.value));
-  if (beforeMean == null || afterMean == null || beforeMean === 0) return null;
+  if (beforeMean == null || afterMean == null) return null;
   const subject = kind === 'resting_heart_rate' ? 'your resting heart rate' : `your ${SUBJECT[kind].toLowerCase()}`;
   const from = amountPhrase(kind, beforeMean);
   const to = amountPhrase(kind, afterMean);
   const tail = unitTail(kind);
-  const change = ((afterMean - beforeMean) / beforeMean) * 100;
-  if (Math.abs(change) < 5) {
+  const change = percentAgainstBaseline(afterMean, beforeMean);
+  if (change == null) return null;
+  if (Math.abs(change) < PERSONAL_CHANGE_QUIET_PERCENT) {
     return `Since you stopped drinking, ${subject} is about the same, averaging ${to}${tail}.`;
   }
   if (kind === 'resting_heart_rate') {
@@ -544,7 +721,9 @@ function reportFor(kind: HealthInsightKind, input: HealthInsightInput): HealthKi
   const stopped = stoppedStage(input);
   const notes: { rank: HealthNoteRank; text: string }[] = [];
   const tooFewHrv = kind === 'hrv_sdnn' && points.length < HRV_MIN_READINGS;
-  const week = tooFewHrv ? null : weekLine(kind, points, input.today);
+  const week = PERSONAL_CHANGE_KINDS.has(kind)
+    ? healthChangeNote(kind, points, input.today)
+    : weekLine(kind, points, input.today);
   if (week) notes.push({ rank: 'week', text: week });
   const streak = tooFewHrv ? null : streakLine(kind, points, input.today);
   if (streak) notes.push({ rank: 'streak', text: streak });

@@ -11,10 +11,13 @@ import { formatGbp, savingsFromTypicalWeek } from '@/domain/savings';
 import { shownError } from '@/domain/errors';
 import { soberElapsed } from '@/domain/sober';
 import { buildHealthInsights } from '@/domain/healthInsights';
+import { withPlannedMinutes } from '@/domain/plannedSession';
 import { quoteCredit, quoteOfTheDay } from '@/domain/stoicQuotes';
 import { VISION_EMPTY_STATEMENT } from '@/domain/visionBoard';
+import { countSplit, drinkFreeFigure, soberFigure } from '@/domain/measureFigures';
 import { daysUntil, drinkFreeThisWeek, showsSoberRecord, SUDDEN_STOP_WARNING, toggleDrinkFreeDay } from '@/domain/stage';
 import { CheckInWeek } from '@/ui/CheckInWeek';
+import { MeasureRingView, MeasureSplitView } from '@/ui/MeasuredFigure';
 import { SoberSectionShare } from '@/ui/SectionShare';
 import { ShareOnProfile } from '@/ui/ShareOnProfile';
 import { UnitsGuide } from '@/ui/UnitsGuide';
@@ -24,6 +27,7 @@ import { InPlainWords } from '@/ui/InPlainWords';
 import { usePendingPress } from '@/ui/pendingAction';
 import { Button, Card, EditMark, EditSheet, ErrorNote, Field, Screen, T } from '@/ui/ui';
 import { ScrollTarget } from '@/ui/ScrollTarget';
+import { YourGoal } from '@/ui/YourGoal';
 import { radius, useAppTheme } from '@/ui/theme';
 
 function greeting(date: Date) {
@@ -141,7 +145,7 @@ export default function Home() {
   const checkedToday = today.mood != null;
   const healthHeadlines = buildHealthInsights({
     today: todayKey,
-    samples: snap.health,
+    samples: withPlannedMinutes(snap.health, snap.plannedSessions),
     soberOn: sober && profile.sobrietyStartedAt ? isoDay(new Date(profile.sobrietyStartedAt)) : null,
     stage: profile.stage,
   }).headlines.slice(0, 3);
@@ -154,8 +158,11 @@ export default function Home() {
       <SoberSectionShare />
       <Card onPress={openCorrection} accessibilityLabel="Correct the sober start date">
         <EditMark label="Sober" />
-        <T variant="hero">{elapsed ? elapsed.days : '—'}</T>
-        <T variant="title">{elapsed ? (elapsed.days === 1 ? 'day' : 'days') : 'Set a start date'}</T>
+        {elapsed && started ? (
+          <MeasureRingView label="Sober days" ring={soberFigure(started, now)} />
+        ) : (
+          <T variant="title">Set a start date</T>
+        )}
         {elapsed ? (
           <T variant="muted">
             {elapsed.days === 0 && elapsed.hours === 0
@@ -188,12 +195,8 @@ export default function Home() {
         {profile.stage === 'cutting_down' ? (
           <>
             <T variant="label">Cutting down</T>
-            {profile.drinkFreeDaysGoal != null ? (
-              <T variant="title">{freeThisWeek} of {profile.drinkFreeDaysGoal}</T>
-            ) : (
-              <T variant="title">{freeThisWeek}</T>
-            )}
-            <T>{profile.drinkFreeDaysGoal != null ? 'drink-free days this week, against your goal.' : 'drink-free days this week.'}</T>
+            <MeasureRingView label="Drink-free days" ring={drinkFreeFigure(freeThisWeek, profile.drinkFreeDaysGoal)} />
+            <MeasureSplitView label="This week" split={countSplit(freeThisWeek, 7, 'drink-free days', 'days not marked')} />
             {profile.weeklyUnitsGoal != null ? <T variant="muted">Units goal: {profile.weeklyUnitsGoal} a week.</T> : null}
             <Button
               label={profile.drinkFreeOn.includes(todayKey) ? 'Today stays drink-free' : 'Mark today drink-free'}
@@ -213,6 +216,7 @@ export default function Home() {
       </Card>
       )}
       </ScrollTarget>
+      <YourGoal place="today" />
       <Card accessibilityLabel="Open Stats" onPress={() => router.push('/stats' as never)}>
         <T variant="label">Stats</T>
         <T>A plain look at sober days, check-ins, food, and the rest.</T>

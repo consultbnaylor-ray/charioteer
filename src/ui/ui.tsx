@@ -20,8 +20,9 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Path } from 'react-native-svg';
 
 import type { Verification } from '@/data/types';
+import { requestBadgeText } from '@/domain/connections';
 import { HELMET_ASPECT, HELMET_D, HELMET_VIEWBOX } from '@/ui/helmet';
-import { DismissKeyboard, dismissKeyboardOnAction, inputScrollProps, KeyboardForm, keyboardAccessoryId, useKeyboardField, useKeyboardOffset } from '@/ui/keyboard';
+import { DismissKeyboard, dismissKeyboard, dismissKeyboardOnAction, inputScrollProps, KeyboardDoneBar, KeyboardForm, keyboardAccessoryId, useKeyboardField, useKeyboardOffset } from '@/ui/keyboard';
 import { topSafeInset } from '@/ui/safeArea';
 import { radius, useAppTheme } from '@/ui/theme';
 
@@ -31,10 +32,12 @@ export function T({
   variant = 'body',
   style,
   children,
+  numberOfLines,
 }: {
   variant?: Variant;
   style?: StyleProp<TextStyle>;
   children: ReactNode;
+  numberOfLines?: number;
 }) {
   const theme = useAppTheme();
   const size = theme.scale;
@@ -54,7 +57,7 @@ export function T({
     },
   };
   return (
-    <Text maxFontSizeMultiplier={2} style={[styles[variant], style]}>
+    <Text maxFontSizeMultiplier={2} numberOfLines={numberOfLines} style={[styles[variant], style]}>
       {children}
     </Text>
   );
@@ -90,6 +93,7 @@ export type ScreenScrollHandle = {
   scrollRef: RefObject<ScrollView | null>;
   innerRef: RefObject<View | null>;
   height: number;
+  offset: number;
 };
 
 const ScreenScrollContext = createContext<RefObject<ScreenScrollHandle> | null>(null);
@@ -125,6 +129,7 @@ export function Screen({
   introStyle,
   refreshing,
   onRefresh,
+  holdPlace,
 }: {
   children: ReactNode;
   eyebrow?: string;
@@ -136,6 +141,8 @@ export function Screen({
   introStyle?: StyleProp<TextStyle>;
   refreshing?: boolean;
   onRefresh?: () => void;
+  /** Keep the visible section still when content above it grows or shrinks. */
+  holdPlace?: boolean;
 }) {
   const theme = useAppTheme();
   const insets = useSafeAreaInsets();
@@ -145,7 +152,7 @@ export function Screen({
   const bottomInset = shell.bottomHandled ? 0 : insets.bottom;
   const scrollRef = useRef<ScrollView>(null);
   const innerRef = useRef<View>(null);
-  const scrollHandle = useRef<ScreenScrollHandle>({ scrollRef, innerRef, height: 0 });
+  const scrollHandle = useRef<ScreenScrollHandle>({ scrollRef, innerRef, height: 0, offset: 0 });
   return (
     <View ref={hostRef} style={{ flex: 1, backgroundColor: theme.colors.bg }} onLayout={onKeyboardLayout}>
       <KeyboardAvoidingView
@@ -158,14 +165,21 @@ export function Screen({
         {banner ? <DismissKeyboard style={[styles.page, { paddingBottom: 0 }]}>{banner}</DismissKeyboard> : null}
         <ScrollView
           ref={scrollRef}
+          style={{ flex: 1 }}
           innerViewRef={innerRef as RefObject<View>}
           {...inputScrollProps}
+          automaticallyAdjustKeyboardInsets
+          maintainVisibleContentPosition={holdPlace ? { minIndexForVisible: 0 } : undefined}
+          onScroll={(event) => {
+            scrollHandle.current.offset = event.nativeEvent.contentOffset.y;
+          }}
+          scrollEventThrottle={16}
           onLayout={(event) => {
             scrollHandle.current.height = event.nativeEvent.layout.height;
           }}
           contentContainerStyle={[
             styles.page,
-            { paddingBottom: 40 + bottomInset + (footer ? 8 : 0) },
+            { paddingBottom: 40 + bottomInset + (footer ? 24 : 0) },
           ]}
           contentInsetAdjustmentBehavior="never"
           nestedScrollEnabled
@@ -180,12 +194,14 @@ export function Screen({
             ) : undefined
           }
         >
-          {eyebrow ? <T variant="label">{eyebrow}</T> : null}
-          {title ? <T variant="display" style={[{ marginTop: eyebrow ? 6 : 0 }, titleStyle]}>{title}</T> : null}
-          {intro ? <T variant="muted" style={[{ marginTop: 8 }, introStyle]}>{intro}</T> : null}
-          <KeyboardForm>
-            <View style={{ marginTop: title || intro ? 22 : 0, gap: 14 }}>{children}</View>
-          </KeyboardForm>
+          <DismissKeyboard style={{ flexGrow: 1 }}>
+            {eyebrow ? <T variant="label">{eyebrow}</T> : null}
+            {title ? <T variant="display" style={[{ marginTop: eyebrow ? 6 : 0 }, titleStyle]}>{title}</T> : null}
+            {intro ? <T variant="muted" style={[{ marginTop: 8 }, introStyle]}>{intro}</T> : null}
+            <KeyboardForm>
+              <View style={{ marginTop: title || intro ? 22 : 0, gap: 14 }}>{children}</View>
+            </KeyboardForm>
+          </DismissKeyboard>
         </ScrollView>
         {footer ? (
           <DismissKeyboard style={[styles.footer, { borderTopColor: theme.colors.line, backgroundColor: theme.colors.bg, paddingBottom: 16 + bottomInset }]}>
@@ -280,7 +296,7 @@ export function EditSheet({
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
       <View style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.45)' }}>
-        <Pressable accessibilityRole="button" accessibilityLabel="Close editor" style={{ flex: 1 }} onPress={onClose} />
+        <Pressable accessibilityRole="button" accessibilityLabel="Close editor" style={{ flex: 1 }} onPress={() => { dismissKeyboard(); onClose(); }} />
         <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
           <View
             style={{
@@ -298,11 +314,14 @@ export function EditSheet({
               <T variant="title">{title}</T>
               {intro ? <T>{intro}</T> : null}
             </DismissKeyboard>
-            <ScrollView {...inputScrollProps} style={{ flexGrow: 0, maxHeight: 420 }}>
+            <ScrollView {...inputScrollProps} automaticallyAdjustKeyboardInsets style={{ flexGrow: 0, maxHeight: 420 }}>
               <KeyboardForm>
-                <View style={{ gap: 12 }}>{children}</View>
+                <DismissKeyboard>
+                  <View style={{ gap: 12 }}>{children}</View>
+                </DismissKeyboard>
               </KeyboardForm>
             </ScrollView>
+            <KeyboardDoneBar />
             <Button label={saveLabel} pending={pending} onPress={onSave} />
             <Button label="Cancel" tone="quiet" onPress={onClose} disabled={pending} />
           </View>
@@ -326,6 +345,7 @@ export function Button({
   pending,
   pendingLabel,
   accessibilityLabel,
+  disabledReason,
 }: {
   label: string;
   onPress: () => void;
@@ -335,35 +355,51 @@ export function Button({
   /** Shown beside the spinner while the press is in flight. */
   pendingLabel?: string;
   accessibilityLabel?: string;
+  /** Shown under a disabled button, and read with it. Pending uses pendingLabel instead. */
+  disabledReason?: string;
 }) {
   const theme = useAppTheme();
+  const inactive = Boolean(disabled || pending);
+  const reason = disabled && !pending ? disabledReason?.trim() : '';
+  // Primary is a solid fill: light with dark text in the dark theme, dark with light text in the light theme.
+  // Quiet is an outline on the card, so a secondary action is not mistaken for a switched-off control.
   const tones = {
-    primary: { bg: theme.colors.ink, fg: theme.colors.bg },
-    quiet: { bg: theme.colors.sunken, fg: theme.colors.ink },
-    sos: { bg: theme.colors.dangerFill, fg: theme.colors.dangerInk },
+    primary: { bg: theme.colors.ink, fg: theme.colors.bg, border: 'transparent' },
+    quiet: { bg: 'transparent', fg: theme.colors.ink, border: theme.colors.ink },
+    sos: { bg: theme.colors.dangerFill, fg: theme.colors.dangerInk, border: 'transparent' },
   }[tone];
   const textStyle = [styles.buttonText, { color: tones.fg, fontFamily: theme.font.bodyStrong, fontSize: 16 * theme.scale }];
   return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={pending && pendingLabel ? pendingLabel : accessibilityLabel ?? label}
-      disabled={disabled || pending}
-      onPress={() => {
-        dismissKeyboardOnAction(label);
-        onPress();
-      }}
-      style={({ pressed }) => [
-        styles.button,
-        { backgroundColor: tones.bg, opacity: disabled || pending ? 0.45 : pressed ? 0.86 : 1 },
-      ]}
-    >
-      {pending ? (
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-          <ActivityIndicator color={tones.fg} />
-          {pendingLabel ? <Text style={textStyle}>{pendingLabel}</Text> : null}
-        </View>
-      ) : <Text style={textStyle}>{label}</Text>}
-    </Pressable>
+    <View style={{ gap: 6 }}>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={pending && pendingLabel ? pendingLabel : accessibilityLabel ?? label}
+        accessibilityHint={reason || undefined}
+        accessibilityState={{ disabled: inactive }}
+        disabled={inactive}
+        onPress={() => {
+          dismissKeyboardOnAction(label);
+          onPress();
+        }}
+        style={({ pressed }) => [
+          styles.button,
+          {
+            backgroundColor: tones.bg,
+            borderColor: tones.border,
+            borderWidth: tone === 'quiet' ? 1.5 : 0,
+            opacity: inactive ? 0.45 : pressed ? 0.86 : 1,
+          },
+        ]}
+      >
+        {pending ? (
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            <ActivityIndicator color={tones.fg} />
+            {pendingLabel ? <Text style={textStyle}>{pendingLabel}</Text> : null}
+          </View>
+        ) : <Text style={textStyle}>{label}</Text>}
+      </Pressable>
+      {reason ? <T variant="muted">{reason}</T> : null}
+    </View>
   );
 }
 
@@ -382,6 +418,8 @@ export function Field({
   editable = true,
   maxLength,
   onBlur,
+  onFocus,
+  dismissOnSubmit,
 }: {
   label: string;
   value: string;
@@ -399,13 +437,22 @@ export function Field({
   editable?: boolean;
   maxLength?: number;
   onBlur?: () => void;
+  onFocus?: () => void;
+  /** Done closes the keyboard. A number pad has no Return key, so the Done bar does this. */
+  dismissOnSubmit?: boolean;
 }) {
   const theme = useAppTheme();
   const inputRef = useRef<TextInput>(null);
   const [revealed, setRevealed] = useState(false);
   const password = Boolean(secureTextEntry);
   const writing = Boolean(multiline || minLines);
+  const numericPad = keyboardType === 'number-pad' || keyboardType === 'decimal-pad';
+  const closePad = numericPad || Boolean(dismissOnSubmit);
   const keys = useKeyboardField(inputRef, writing);
+  function closeKeyboard() {
+    inputRef.current?.blur();
+    dismissKeyboard();
+  }
   // iOS paints the first TextInput placeholder with `color` when a custom font
   // is set, and ignores placeholderTextColor. An empty field uses the hint
   // colour for both, so an example never looks like something already typed.
@@ -421,15 +468,16 @@ export function Field({
       value={value}
       onChangeText={onChangeText}
       onBlur={onBlur}
-      onSubmitEditing={keys.onSubmitEditing}
+      onFocus={onFocus}
+      onSubmitEditing={closePad ? closeKeyboard : keys.onSubmitEditing}
       placeholder={placeholder}
       placeholderTextColor={theme.colors.placeholder}
       secureTextEntry={password && !revealed}
       textContentType={contentType}
       autoComplete={contentType === 'newPassword' ? 'password-new' : contentType === 'password' ? 'password' : undefined}
       keyboardType={keyboardType}
-      returnKeyType={keys.returnKeyType}
-      blurOnSubmit={keys.blurOnSubmit}
+      returnKeyType={closePad ? 'done' : keys.returnKeyType}
+      blurOnSubmit={closePad ? true : keys.blurOnSubmit}
       inputAccessoryViewID={keyboardAccessoryId(writing, keyboardType)}
       multiline={writing}
       editable={editable}
@@ -497,34 +545,69 @@ function PasswordEye({ revealed, color }: { revealed: boolean; color: string }) 
   );
 }
 
+/** A danger pill with a number. Colour is never used without the count. */
+export function CountBadge({ count }: { count: number }) {
+  const theme = useAppTheme();
+  const label = requestBadgeText(count);
+  if (!label) return null;
+  return (
+    <View
+      accessibilityElementsHidden
+      importantForAccessibility="no-hide-descendants"
+      style={{
+        minWidth: 18,
+        height: 18,
+        borderRadius: 9,
+        paddingHorizontal: 4,
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: theme.colors.dangerFill,
+      }}
+    >
+      <Text style={{ color: theme.colors.dangerInk, fontFamily: theme.font.bodyStrong, fontSize: 11, lineHeight: 14 }}>{label}</Text>
+    </View>
+  );
+}
+
 export function Choice({
   label,
   selected,
   onPress,
   tone = 'default',
+  badge = 0,
 }: {
   label: string;
   selected: boolean;
   onPress: () => void;
-  /** `alert` is the danger red, used when a connection request is waiting. */
+  /** `alert` is the danger red, used when something is waiting. The label or badge carries the number. */
   tone?: 'default' | 'alert';
+  /** Unread count drawn as a numbered danger pill beside the label. */
+  badge?: number;
 }) {
   const theme = useAppTheme();
   const alert = tone === 'alert';
   return (
     <Pressable
       accessibilityRole="button"
+      accessibilityLabel={label}
       accessibilityState={{ selected }}
-      onPress={onPress}
+      onPress={() => {
+        dismissKeyboard();
+        onPress();
+      }}
       style={[
         styles.choice,
         {
           borderColor: alert ? theme.colors.danger : selected ? theme.colors.ink : theme.colors.line,
           backgroundColor: selected ? theme.colors.emphasisSoft : theme.colors.surface,
+          flexDirection: 'row',
+          alignItems: 'center',
+          gap: 8,
         },
       ]}
     >
       <Text style={{ fontFamily: theme.font.bodyStrong, color: alert ? theme.colors.danger : theme.colors.ink, fontSize: 15 * theme.scale }}>{label}</Text>
+      <CountBadge count={badge} />
     </Pressable>
   );
 }

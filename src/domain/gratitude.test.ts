@@ -255,6 +255,7 @@ describe('gratitude diary wiring', () => {
       'Stats',
       'Health Stats',
       'Nutrition',
+      'Health Plan',
       'Progress photos',
       'Vision Board',
       'Drinks & units calculator',
@@ -340,12 +341,52 @@ describe('gratitude diary wiring', () => {
     expect(readFileSync('src/ui/CommunityProfile.tsx', 'utf8')).not.toMatch(/gratitude_photos|gratitude-photos/);
     expect(readFileSync('src/app/(main)/people.tsx', 'utf8')).not.toMatch(/gratitude/);
     const repo = readFileSync('src/data/supabase-repository.ts', 'utf8');
-    const reflectMethod = repo.slice(repo.indexOf('async reflectOnGratitude'), repo.indexOf('async exportData'));
-    expect(reflectMethod).toContain('body: { body, category }');
+    const reflectMethod = repo.slice(repo.indexOf('async reflectOnGratitude'), repo.indexOf('private async nutritionSettingsRow'));
+    expect(reflectMethod).toContain("callEdge('gratitude-reflect', { body, category }, { ai: true })");
     expect(reflectMethod).not.toMatch(/gratitude_photos|storage_path|previewUrl/);
     expect(consent).toContain('Gratitude photos are not sent');
     expect(consent).toContain('Gratitude photos stay private unless you switch that photo on');
     expect(readFileSync('src/app/(main)/check-in.tsx', 'utf8')).toContain('Add to your Gratitude Diary');
     expect(readFileSync('src/app/(main)/people.tsx', 'utf8')).not.toContain('gratitude');
+  });
+
+  it('shows a shared gratitude photo under its line and keeps the bucket closed to anonymous users', () => {
+    const peopleCard = readFileSync('src/ui/CommunityProfile.tsx', 'utf8');
+    expect(peopleCard).toContain('photo.entryId === entry.id');
+    expect(peopleCard).toContain('accessibilityLabel="View photo"');
+    expect(peopleCard).toContain('maximumZoomScale={4}');
+    expect(peopleCard).toContain('Pinch to zoom.');
+    expect(peopleCard).toContain('{photo.caption ? <T variant="muted">{photo.caption}</T> : null}');
+    expect(peopleCard).not.toMatch(/gratitude_photos|gratitude-photos/);
+    const ownCard = readFileSync('src/ui/PublicProfileCard.tsx', 'utf8');
+    expect(ownCard).toContain('<SharedGratitudeLines');
+    expect(ownCard).not.toMatch(/gratitude_photos|gratitude-photos/);
+    const repo = readFileSync('src/data/supabase-repository.ts', 'utf8');
+    const profileMethod = repo.slice(repo.indexOf('async publicProfile'), repo.indexOf('async addProfilePhoto'));
+    expect(profileMethod.indexOf("rpc('public_profile'")).toBeGreaterThan(-1);
+    expect(profileMethod.indexOf("rpc('public_profile'")).toBeLessThan(profileMethod.indexOf('createSignedUrls'));
+    expect(profileMethod).toContain('GRATITUDE_BUCKET');
+    expect(profileMethod).toContain('GRATITUDE_SIGNED_URL_SECONDS');
+    const sharedRead = readFileSync('supabase/migrations/20261020120000_shared_gratitude_photos.sql', 'utf8');
+    const gate = sharedRead.slice(sharedRead.indexOf('function public.gratitude_photo_shared'));
+    expect(gate).toContain('auth.uid() is not null');
+    expect(gate).toContain('viewer_in_community()');
+    expect(gate).toContain("settings->'gratitudePhotoIds'");
+    expect(gate).toContain("settings->'gratitudeIds'");
+    expect(gate).toContain('community_visible is true');
+    expect(gate).toContain('age_confirmed_18 is true');
+    expect(gate).toContain('not like \'%..%\'');
+    expect(gate).toContain('from public.blocks b');
+    expect(sharedRead).toContain("revoke all on function public.gratitude_photo_shared(text) from public, anon");
+    expect(sharedRead).toContain('grant execute on function public.gratitude_photo_shared(text) to authenticated');
+    expect(sharedRead).not.toMatch(/grant execute on function public\.gratitude_photo_shared\(text\) to anon/i);
+    expect(sharedRead).toContain('create policy gratitude_photos_storage_shared_read');
+    expect(sharedRead).toContain('for select to authenticated');
+    expect(sharedRead).not.toMatch(/for select to anon/i);
+    expect(sharedRead).not.toMatch(/grant select on public\.gratitude_photos/i);
+    expect(sharedRead).toContain("'entryId', gp.entry_id");
+    expect(sharedRead).toContain("'storagePath', gp.storage_path");
+    expect(sharedRead).toContain('gp.entry_id = any(gratitude_ids)');
+    expect(sharedRead).toContain('gp.id = any(gratitude_photo_ids)');
   });
 });

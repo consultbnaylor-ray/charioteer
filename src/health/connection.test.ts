@@ -4,9 +4,14 @@ import { describe, expect, it } from 'vitest';
 import {
   APPLE_HEALTH_CONSENT,
   APPLE_HEALTH_DENIED,
+  APPLE_HEALTH_DETAILS,
   APPLE_HEALTH_INTRO,
   APPLE_HEALTH_READ_TYPES,
+  APPLE_HEALTH_REFRESH,
+  APPLE_HEALTH_TURN_ON,
   APPLE_HEALTH_WEB,
+  appleHealthStatusLine,
+  appleHealthUpdatedLine,
   connectedAppleHealthLine,
   healthCardState,
   isHealthAccessDenied,
@@ -39,11 +44,30 @@ describe('Apple Health card', () => {
     });
     expect(connectedAppleHealthLine(null)).toBe('Connected to Apple Health');
     expect(healthCardState({ consent: true, ios: true, access: 'denied', syncedAt: null }).kind).toBe('denied');
-    expect(APPLE_HEALTH_DENIED).toBe(
-      'Apple Health access is off. Turn it on in Settings > Health > Data Access & Devices > Charioteer.',
-    );
+    expect(APPLE_HEALTH_DENIED).toContain('profile picture (top right) > Privacy > Apps > Charioteer');
+    expect(APPLE_HEALTH_DENIED).toContain('Settings > Health > Data Access & Devices > Charioteer');
+    expect(APPLE_HEALTH_DENIED).not.toMatch(/access is off|switched off/i);
     expect(isHealthAccessDenied('Apple Health access was not granted.')).toBe(true);
     expect(isHealthAccessDenied('Apple Health is not available on this device.')).toBe(false);
+  });
+
+  it('names connected with the clock, or not connected, or each missing reading', () => {
+    const base = { consent: true, ios: true, access: 'connected' as const, syncedAt: synced, missingTitles: [] as string[] };
+    expect(appleHealthStatusLine(base)).toBe('Apple Health: connected, last updated 09:10');
+    expect(appleHealthStatusLine({ ...base, syncedAt: null })).toBe('Apple Health: connected');
+    expect(appleHealthStatusLine({
+      ...base,
+      missingTitles: ['Heart rate recovery', 'Body fat', 'Lean mass'],
+    })).toBe('Apple Health: Missing: Heart rate recovery, Body fat, Lean mass');
+    expect(appleHealthStatusLine({ ...base, access: 'denied' })).toBe('Apple Health: Not connected');
+    expect(appleHealthStatusLine({ ...base, access: 'prompt' })).toBe('Apple Health: Not connected');
+    expect(appleHealthStatusLine({ ...base, access: null })).toBe('Apple Health: checking');
+    expect(appleHealthStatusLine({ ...base, consent: false })).toBe('Apple Health: Not connected');
+    expect(appleHealthStatusLine({ ...base, ios: false, access: 'web' })).toBe('Apple Health: Not connected');
+    expect(APPLE_HEALTH_REFRESH).toBe('Refresh now');
+    expect(appleHealthUpdatedLine(synced)).toBe('Updated 09:10');
+    expect(APPLE_HEALTH_TURN_ON).toBe('Turn on in Apple Health');
+    expect(APPLE_HEALTH_DETAILS).toBe('Details');
   });
 });
 
@@ -79,11 +103,36 @@ describe('Apple Health screen and entitlement', () => {
     expect(screen).toContain('AppleHealthCard');
     expect(screen).toContain("router.push('/privacy'");
     expect(screen).not.toContain('Sync from Apple Health');
+    const cardAt = screen.indexOf('<AppleHealthCard');
+    const seeAt = screen.indexOf('<HealthVisibility\n');
+    const periodAt = screen.indexOf('<StatPeriodToggle');
+    expect(readFileSync('src/ui/StatPeriodToggle.tsx', 'utf8')).toContain('accessibilityLabel="Period"');
+    const boardAt = screen.indexOf('<HealthStatBoard');
+    expect(cardAt).toBeGreaterThan(-1);
+    expect(cardAt).toBeLessThan(seeAt);
+    expect(seeAt).toBeLessThan(periodAt);
+    expect(periodAt).toBeLessThan(boardAt);
+    expect(screen).toContain('onRefresh={() => void refreshNow()}');
+    expect(screen).toContain('request={seeRequest}');
+    expect(screen).toContain('healthMissingReadings');
+    expect(card).toContain('HEALTH_MISSING_DETAIL');
+    expect(card).toContain('missingOpen');
+    expect(card).toContain('gap.line');
     expect(card).toContain('Connect Apple Health');
-    expect(card).toContain('Sync now');
+    expect(card).toContain('APPLE_HEALTH_REFRESH');
+    expect(card).toContain('appleHealthUpdatedLine');
+    expect(card).toContain('SIGN_IN_FIRST');
+    expect(card).toContain('label="Sign in"');
+    expect(card).toContain('APPLE_HEALTH_TURN_ON');
+    expect(card).toContain('HEALTH_VISIBILITY_TITLE');
+    expect(card).toContain('PlanTick');
+    expect(card).toContain('useState(false)');
+    expect(card).toContain('ErrorNote');
+    expect(card).not.toContain('Sync now');
     expect(card).toContain('Manage in Health app');
     expect(card).toContain('Open Settings');
     expect(card).toContain('Turn on health data');
+    expect(card).toContain('APPLE_HEALTH_INTRO');
   });
 
   it('opens the Health app and falls back to Settings', () => {

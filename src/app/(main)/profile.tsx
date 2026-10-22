@@ -18,6 +18,9 @@ import { profileDetailsDirty, type ProfileFormValues } from '@/domain/profileFor
 import { InterestChip } from '@/ui/InterestChip';
 import { MemberAvatar } from '@/ui/MemberAvatar';
 import { BuildChoices } from '@/ui/BodyComposition';
+import { GoalChoices } from '@/ui/GoalChoices';
+import { WeightWaistPanel } from '@/ui/WeightWaistPanel';
+import { TrainingScheduleCard } from '@/ui/TrainingSchedule';
 import { WagonFlag } from '@/ui/NutritionShare';
 import { YouSectionShare } from '@/ui/SectionShare';
 import { ShareOnProfile } from '@/ui/ShareOnProfile';
@@ -30,6 +33,7 @@ import { usePendingPress } from '@/ui/pendingAction';
 import { Button, Card, Choice, ErrorNote, Field, playSavedHaptic, Screen, T } from '@/ui/ui';
 import { useAppTheme } from '@/ui/theme';
 import { offerMessageNotifications } from '@/notifications/register';
+import { IosNotificationOffRow } from '@/ui/IosNotificationOffRow';
 import { GENERIC_MESSAGE_ALERT } from '../../../supabase/functions/_shared/messagePush';
 import { useFocusEffect, useRouter } from 'expo-router';
 
@@ -52,6 +56,7 @@ export default function Profile() {
   const [community, setCommunity] = useState(profile?.communityVisible ?? false);
   const [health, setHealth] = useState(profile?.consentHealth ?? false);
   const [ai, setAi] = useState(profile?.consentAi ?? false);
+  const [messages, setMessages] = useState(profile?.messageNotifications ?? false);
   const [confirm, setConfirm] = useState('');
   const [stage, setStage] = useState<Stage>(profile?.stage ?? 'exploring');
   const [soberDate, setSoberDate] = useState(() => profile?.sobrietyStartedAt ? new Date(profile.sobrietyStartedAt) : startOfLocalDay(new Date()));
@@ -89,6 +94,7 @@ export default function Profile() {
     community: profile.communityVisible,
     health: profile.consentHealth,
     ai: profile.consentAi,
+    messages: profile.messageNotifications,
     stage: profile.stage,
     soberDay: profile.sobrietyStartedAt ? isoDay(new Date(profile.sobrietyStartedAt)) : isoDay(soberDate),
     plannedQuit: profile.plannedQuitAt ?? isoDay(plannedQuit),
@@ -105,6 +111,7 @@ export default function Profile() {
     community,
     health,
     ai,
+    messages,
     stage,
     soberDay: isoDay(soberDate),
     plannedQuit: isoDay(plannedQuit),
@@ -203,8 +210,14 @@ export default function Profile() {
         drinkFreeDaysGoal: stage === 'cutting_down' && parsedDays.ok ? parsedDays.value : null,
       });
       await repo.setReasons(plannedReasons);
-      await repo.saveConsents({ communityVisible: community, consentHealth: health, consentAi: ai });
-      if (community) void offerMessageNotifications(repo);
+      await repo.saveConsents({
+        communityVisible: community,
+        consentHealth: health,
+        consentAi: ai,
+        messageNotifications: messages,
+        termsAccepted: true,
+      });
+      if (messages) void offerMessageNotifications(repo).catch((error: unknown) => console.error('message notifications', error));
       setReasons(plannedReasons.join('\n'));
       setSavedNote('Saved');
       playSavedHaptic();
@@ -246,7 +259,7 @@ export default function Profile() {
       footer={(
         <View style={{ gap: 8 }}>
           {savedNote ? <T>{savedNote}</T> : null}
-          <Button label="Save your details" pending={pending} disabled={!dirty || pending} onPress={() => void saveDetails()} />
+          <Button label="Save your details" pending={pending} disabled={!dirty || pending} disabledReason={dirty ? undefined : 'Change a detail to save.'} onPress={() => void saveDetails()} />
         </View>
       )}
     >
@@ -264,6 +277,11 @@ export default function Profile() {
         <T style={{ fontFamily: theme.font.bodyStrong }}>Stats</T>
         <T variant="muted">Sober days, mood, food, and body, in one place.</T>
       </Card>
+      <Card accessibilityLabel="Open Health Plan" onPress={() => router.push('/health-plan' as never)}>
+        <T style={{ fontFamily: theme.font.bodyStrong }}>Health Plan</T>
+        <T variant="muted">Nutrition, fitness, and a week of wellbeing, written from your own figures.</T>
+      </Card>
+      <TrainingScheduleCard />
       {pinned ? (
         <View style={{ gap: 8 }}>
           <T variant="label">Pinned quote</T>
@@ -283,10 +301,13 @@ export default function Profile() {
         <Button label="Pin a quote" tone="quiet" onPress={() => router.push('/quotes' as never)} />
       )}
       <Button label="What I share" tone="quiet" onPress={() => router.push('/sharing' as never)} />
+      <Button label="Buddies" onPress={() => router.push('/buddies' as never)} />
+      <WeightWaistPanel />
       <Card>
         <T variant="label">Build</T>
         <BuildChoices />
       </Card>
+      <GoalChoices />
       <WagonFlag />
       <T variant="label">Your details</T>
       <T>Name, where you are, the sober date, your usual week, reasons, interests, town, and consents. A new sober date is a correction, not a relapse.</T>
@@ -378,7 +399,16 @@ export default function Profile() {
           onPress={() => void addOwnInterest()}
         />
         <T variant="label">Consent</T>
-        <ConsentChoices community={community} health={health} ai={ai} onCommunity={setCommunity} onHealth={setHealth} onAi={setAi} />
+        <ConsentChoices
+          community={community}
+          health={health}
+          ai={ai}
+          messages={messages}
+          onCommunity={setCommunity}
+          onHealth={setHealth}
+          onAi={setAi}
+          onMessages={setMessages}
+        />
       </Card>
       <ProgressPhotos />
       <Card>
@@ -400,10 +430,17 @@ export default function Profile() {
           <T style={{ flex: 1 }}>Notifications</T>
           <Switch
             accessibilityLabel="Notifications"
-            value={profile.messageNotifications}
+            value={messages}
             onValueChange={(value) => {
-              void repo.updateProfile({ messageNotifications: value }).then(() => {
-                if (value) void offerMessageNotifications(repo);
+              setMessages(value);
+              void repo.saveConsents({
+                communityVisible: community,
+                consentHealth: health,
+                consentAi: ai,
+                messageNotifications: value,
+                termsAccepted: true,
+              }).then(() => {
+                if (value) void offerMessageNotifications(repo).catch((error: unknown) => console.error('message notifications', error));
               }).catch((err: unknown) => setError(shownError(err, 'Could not save.')));
             }}
             trackColor={{ true: theme.colors.ink, false: theme.colors.line }}
@@ -424,6 +461,7 @@ export default function Profile() {
           />
         </View>
         <T variant="muted">Off, the alert says {GENERIC_MESSAGE_ALERT}.</T>
+        <IosNotificationOffRow />
       </Card>
       {profile.isModerator ? (
         <Card>
@@ -457,6 +495,7 @@ export default function Profile() {
         label="Delete account and data"
         tone="sos"
         disabled={confirm !== 'DELETE' || writePending('delete')}
+        disabledReason={confirm === 'DELETE' ? undefined : 'Type DELETE to remove the account.'}
         pending={writePending('delete')}
         onPress={() => {
           runWrite('delete', () => repo.deleteAccount().catch((err: unknown) => setError(shownError(err, 'Could not delete the account.'))));

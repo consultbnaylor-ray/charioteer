@@ -21,16 +21,24 @@ export function ConsentChoices({
   community,
   health,
   ai,
+  messages,
   onCommunity,
   onHealth,
   onAi,
+  onMessages,
+  terms,
+  onTerms,
 }: {
   community: boolean;
   health: boolean;
   ai: boolean;
+  messages: boolean;
   onCommunity: (value: boolean) => void;
   onHealth: (value: boolean) => void;
   onAi: (value: boolean) => void;
+  onMessages: (value: boolean) => void;
+  terms?: boolean;
+  onTerms?: (value: boolean) => void;
 }) {
   return (
     <View style={{ gap: 16 }}>
@@ -42,16 +50,30 @@ export function ConsentChoices({
       />
       <ConsentRow
         title="Health data"
-        body="Steps, sleep, heart rate, heart-rate variability, workouts, and weight are special category data under UK GDPR. Stored so you and Thumos can see trends. Quantica Labs Ltd is the controller. You can export or delete them with your account."
+        body="Health data processed in the app covers steps, sleep, heart rate, heart-rate variability, cardio fitness, walking heart rate, heart rate recovery, workouts, walking, cycling and swimming distance, and weight. They are special category data under UK GDPR. They are read on your iPhone and stored as daily totals so you can see a fitness summary. Quantica Labs Ltd is the controller. They are not used for ads. You can turn this off at any time, and you can export or delete them with your account."
         value={health}
         onChange={onHealth}
       />
       <ConsentRow
-        title="Thumos, the coach"
-        body="What you type, plus check-ins, reasons, and health summaries, is sent to xAI to write a reply. A few gratitude lines, the latest and the starred ones, are included when this coach is on. A reflection sends only that one line. Your vision statement and photo captions may be included when this coach is on. A gratitude line you have not switched on is never shown to the community. Gratitude photos are not sent. Vision board photos are not sent. Progress photos are not sent. Thumos is not a doctor."
+        title="AI coach and personalised notifications"
+        body="This covers Thumos and personalised notifications via xAI. What you type, plus check-ins, reasons, and health summaries, is sent to xAI to write a reply. When health data is also on, that includes a short fitness summary (level, trends, weekly minutes, session mix, and recovery), not the raw samples. A few gratitude lines, the latest and the starred ones, are included when this coach is on. A reflection sends only that one line. Your vision statement and photo captions may be included when this coach is on. A gratitude line you have not switched on is never shown to the community. Gratitude photos are not sent. Vision board photos are not sent. Progress photos are not sent. This is not used for ads. Thumos is not a doctor. Turning this off stops every call that would send personal or health details to xAI."
         value={ai}
         onChange={onAi}
       />
+      <ConsentRow
+        title="Message notifications"
+        body="Message notifications start off. When you turn them on, a private message can alert this phone. The alert says New message on Charioteer and does not include the sender's name unless you turn that on separately. You can turn this off at any time."
+        value={messages}
+        onChange={onMessages}
+      />
+      {onTerms ? (
+        <ConsentRow
+          title="Terms"
+          body="I accept the terms. This tick is separate from health data, the coach, and message notifications."
+          value={Boolean(terms)}
+          onChange={onTerms}
+        />
+      ) : null}
       <T>Progress photos stay private unless you share one. Anyone in the Charioteer community can then see that photo. Photos are not sent to Thumos. Gratitude photos stay private unless you switch that photo on. They are not sent to Thumos. Vision board photos always stay private. They are not sent to Thumos. A vision caption can be shown if you switch that item on. {PROFILE_PHOTO_WORDING}</T>
       <T variant="muted">This consent screen is plain language, not a solicitor’s privacy notice. Have it reviewed before a public launch. Version {formatUkLong(parseIsoDay(CONSENT_VERSION))}.</T>
     </View>

@@ -8,11 +8,16 @@ import {
   EMAIL_TAKEN_MESSAGE,
   OFFLINE_MESSAGE,
   RESET_NEEDS_EMAIL,
+  SIGN_IN_FIRST,
   UserFacingError,
   WEAK_PASSWORD_MESSAGE,
   asUserFacing,
   isTransientNetworkError,
 } from '@/domain/errors';
+import { omitSharedLocation } from '@/domain/sharedPayload';
+import { stripJpegBase64, stripJpegLocation } from '@/domain/photoLocation';
+import { chunkHealthRows } from '@/domain/healthUpload';
+import { rejectRouteCoordinates } from '@/domain/workoutRoute';
 import { gratitudeFromRows, isGratitudeCategory, localGratitudeReflect, planGratitudeEntry, type GratitudePhoto, type GratitudeReflect } from '@/domain/gratitude';
 import {
   GRATITUDE_BUCKET,
@@ -43,8 +48,11 @@ import {
 } from '@/domain/visionBoard';
 import { isoDay } from '@/domain/dates';
 import {
+  foodPhotoStoragePath,
+  OWNER_PHOTO_URL_SECONDS,
   ownerPhotoResignCooling,
   ownerPhotoUrlsStale,
+  withSignedFoodPhotos,
   withSignedGratitudePhotos,
   withSignedPreviewUrls,
 } from '@/domain/ownerPhotos';
@@ -53,6 +61,7 @@ import {
   estimateFromText,
   foodItemFromUnknown,
   isBodyBuild,
+  isBuilderPhase,
   parsePortion,
   isBodyCompositionSource,
   isMealSlot,
@@ -63,15 +72,21 @@ import {
   parseMealEstimate,
   parseSharedNutrition,
   parseWaistCm,
+  parseWorkoutBuckets,
   samplePhotoMeal,
+  storedMealInstant,
   type BodyCompositionReading,
   type FoodItem,
   type FoodLog,
   type NutritionDay,
   type NutritionSettings,
 } from '@/domain/nutrition';
+import { PLAN_DISCLAIMER, healthPlanFromStored, normaliseTrainingSchedule, parseSharedHealthPlan, trainingScheduleFromRow, type HealthPlan, type TrainingSchedule } from '@/domain/healthPlan';
+import { plannedEffortToDb, plannedSessionFromDraft, plannedSessionFromRow, plannedSessionWrite, type PlannedSession, type PlannedSessionDraft } from '@/domain/plannedSession';
+import { parseBuddyLinkPass, parseBuddyList, parseBuddyPreview, parseBuddyShare, type BuddyLinkPass, type BuddyList, type BuddyScope, type BuddyShareView } from '@/domain/buddies';
 import { randomId } from '@/domain/id';
-import { chatInsertFilter, messageFromRealtime, withIncomingMessage } from '@/domain/liveChat';
+import { messageFromRealtime, withIncomingMessage } from '@/domain/liveChat';
+import { subscribeAccountMessages, type MessageRealtime } from '@/data/messageChannel';
 import { isDuplicateWrite, mergeOutgoingMessages, shareInflight } from '@/domain/writes';
 import { passwordResetRedirect, recoveryLink } from '@/domain/passwordReset';
 import { createUtf8Decoder } from '@/domain/utf8';
@@ -99,15 +114,35 @@ import { profileWithColumn, profileWithPatch } from '@/domain/profilePatch';
 import { planCustomInterest, validateTown } from '@/domain/privacy';
 import { fetchWithOneRetry } from '@/domain/retryFetch';
 import { planReasons } from '@/domain/reasons';
-import { BIO_LIMIT, PHOTO_CAPTION_LIMIT, defaultProfileSharing, normalizeProfileSharing, parsePublicProfile, planProfileText, sensitiveTurnedOn, type ProfileSharing } from '@/domain/profileSharing';
+import { BIO_LIMIT, PHOTO_CAPTION_LIMIT, defaultProfileSharing, normalizeProfileSharing, parsePublicProfile, planProfileText, sensitiveTurnedOn, shareFreshGratitude, type ProfileSharing, type PublicProfileView } from '@/domain/profileSharing';
 import { moodOnTen, planCheckInGratitude } from '@/domain/checkIns';
 import { quoteById } from '@/domain/stoicQuotes';
 import { planRelapse } from '@/domain/sober';
 import { parseSseBuffer } from '@/domain/sse';
 import { detectSafety } from '@/domain/safety';
-import { OFFLINE_COACH_MESSAGE, OPENING_LINE, type ThumosMode } from '@/domain/thumos';
+import {
+  ESTIMATE_CLIENT_TIMEOUT_MS,
+  PLAN_NOT_SAVED,
+  PLAN_UNREACHABLE,
+  VOICE_UNREACHABLE,
+  EdgeSessionError,
+  aiCallMessage,
+  classifyEdgeError,
+  classifyEdgeStatus,
+  edgeFailureLog,
+  postWithRetry,
+  prepareAiSession,
+  type AiFeature,
+  type EdgeFailureKind,
+  type EdgeSendState,
+  type SessionTicket,
+} from '@/domain/edgeRetry';
+import { clientAppBuild, clientErrorRecord } from '@/domain/clientError';
+import { resolveSignedInSession } from '@/domain/liveSession';
+import { OPENING_LINE, SCRIPTED_COACH_REPLY, type ThumosMode } from '@/domain/thumos';
+import Constants from 'expo-constants';
 import { CONSENT_VERSION } from '@/data/catalogue';
-import { consentRows, missingConsentRows, type StoredConsent } from '@/domain/consents';
+import { consentRows, mergeStoredConsents, missingConsentRows, type StoredConsent } from '@/domain/consents';
 import { stageFromRecord } from '@/domain/stage';
 import type {
   AppSnapshot,
@@ -193,6 +228,9 @@ function emptySnapshot(): AppSnapshot {
     nutrition: defaultNutritionSettings(),
     waterDays: [],
     bodyComposition: [],
+    healthPlan: null,
+    trainingSchedule: null,
+    plannedSessions: [],
   };
 }
 
@@ -214,18 +252,22 @@ export class SupabaseRepository implements Repository {
   private saves = new Map<string, CoalescedSave<unknown>>();
   /** Profile to restore if a chip save fails and nothing newer has been chosen. */
   private profileBase: Profile | null = null;
-  private consentBase: Pick<Profile, 'communityVisible' | 'consentHealth' | 'consentAi'> | null = null;
+  private consentBase: ConsentInput | null = null;
   /** Consent rows from before the optimistic insert, so the real insert is not skipped. */
   private consentExisting: StoredConsent[] | null = null;
   private once = shareInflight();
   /** Messages shown before the server confirms them. The id is the client idempotency key. */
   private outgoingMessages = new Map<string, DirectMessage>();
   /** Unfiltered insert stream for the chats list. Recreated only when sign-in changes. */
-  private messageChannel: ReturnType<SupabaseClient['channel']> | null = null;
+  private stopMessages: (() => void) | null = null;
   private messagesListening = false;
   /** When owner progress, profile, gratitude, and vision links were last signed. */
   private ownerPhotosSignedAt: number | null = null;
   private ownerPhotoResign: Promise<void> | null = null;
+  /** One extra sign after the current one, shared by every image error that arrives mid-sign. */
+  private ownerPhotoResignFollowUp: Promise<void> | null = null;
+  /** One shared session refresh for AI calls that start together. */
+  private aiSession: Promise<string> | null = null;
 
   constructor(url: string, anonKey: string) {
     this.url = url;
@@ -256,13 +298,25 @@ export class SupabaseRepository implements Repository {
     await this.refresh();
   }
 
-  async resignOwnerPhotos(): Promise<void> {
-    if (this.ownerPhotoResign) return this.ownerPhotoResign;
-    if (ownerPhotoResignCooling(this.ownerPhotosSignedAt)) return;
-    this.ownerPhotoResign = this.resignOwnerPhotosNow().finally(() => {
-      this.ownerPhotoResign = null;
+  async resignOwnerPhotos(options?: { force?: boolean }): Promise<void> {
+    const force = options?.force === true;
+    if (this.ownerPhotoResign) {
+      if (!force) return this.ownerPhotoResign;
+      if (!this.ownerPhotoResignFollowUp) {
+        const running = this.ownerPhotoResign;
+        this.ownerPhotoResignFollowUp = running.then(() => {
+          this.ownerPhotoResignFollowUp = null;
+          return this.resignOwnerPhotos({ force: true });
+        });
+      }
+      return this.ownerPhotoResignFollowUp;
+    }
+    if (!force && ownerPhotoResignCooling(this.ownerPhotosSignedAt)) return;
+    const run = this.resignOwnerPhotosNow().finally(() => {
+      if (this.ownerPhotoResign === run) this.ownerPhotoResign = null;
     });
-    return this.ownerPhotoResign;
+    this.ownerPhotoResign = run;
+    return run;
   }
 
   async refreshOwnerPhotosIfStale(): Promise<void> {
@@ -280,31 +334,13 @@ export class SupabaseRepository implements Repository {
       .select('*')
       .in('connection_id', connectionIds)
       .order('created_at');
-    if (messageRes.error) return;
+    if (messageRes.error) throw asUserFacing(messageRes.error, 'general');
     const fetched = ((messageRes.data ?? []) as Row[]).map(mapDirectMessage);
     const allowed = new Set(connectionIds);
     this.emit({
       ...this.snapshot,
       messages: mergeFetchedMessages(this.snapshot.messages, fetched, allowed),
     });
-  }
-
-  watchChat(connectionId: string): () => void {
-    const filter = chatInsertFilter(connectionId);
-    if (!filter) return () => undefined;
-    const channel = this.client
-      .channel(`chat:${connectionId}`)
-      .on(
-        'postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'direct_messages', filter },
-        (payload) => {
-          this.ingestMessage(payload.new);
-        },
-      )
-      .subscribe();
-    return () => {
-      void this.client.removeChannel(channel);
-    };
   }
 
   private emit(next: AppSnapshot) {
@@ -346,19 +382,19 @@ export class SupabaseRepository implements Repository {
   /** One insert stream for every chat this account can read. Realtime applies the select policy. */
   private listenForMessages(signedIn: boolean) {
     if (!signedIn) {
-      if (this.messageChannel) void this.client.removeChannel(this.messageChannel);
-      this.messageChannel = null;
+      this.stopMessages?.();
+      this.stopMessages = null;
       this.messagesListening = false;
       return;
     }
     if (this.messagesListening) return;
     this.messagesListening = true;
-    this.messageChannel = this.client
-      .channel('direct-messages')
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'direct_messages' }, (payload) => {
-        this.ingestMessage(payload.new);
-      })
-      .subscribe();
+    // realtime-js overloads `.on`, so the client is passed as the one insert callback this account uses.
+    this.stopMessages = subscribeAccountMessages(this.client as unknown as MessageRealtime, (row) => {
+      this.ingestMessage(row);
+    }, () => {
+      void this.reloadMessages().catch((error: unknown) => console.error(error));
+    });
   }
 
   private ingestMessage(row: unknown) {
@@ -388,7 +424,7 @@ export class SupabaseRepository implements Repository {
 
     const userId = session.user.id;
     const email = session.user.email ?? '';
-    const [profileRes, reasonsRes, checkRes, relapseRes, healthRes, mineRes, thumosRes, directoryRes, interestLinks, connectionsRes, reportsRes, consentsRes, photosRes, gratitudeRes, gratitudePhotoRes, visionRes, sharingRes, quotesRes, profilePhotoRes] =
+    const [profileRes, reasonsRes, checkRes, relapseRes, healthRes, mineRes, thumosRes, directoryRes, interestLinks, connectionsRes, reportsRes, consentsRes, photosRes, gratitudeRes, gratitudePhotoRes, visionRes, sharingRes, quotesRes, profilePhotoRes, healthPlanRes, scheduleRes, plannedRes] =
       await Promise.all([
         this.client.from('profiles').select('*').eq('id', userId).maybeSingle(),
         this.client.from('reasons').select('*').eq('user_id', userId).order('sort_order'),
@@ -401,7 +437,7 @@ export class SupabaseRepository implements Repository {
         this.client.from('profile_interests').select('user_id, interest_id'),
         this.client.from('connections').select('*').order('created_at', { ascending: false }),
         this.client.from('reports').select('*').order('created_at', { ascending: false }),
-        this.client.from('consents').select('kind, granted, version').eq('user_id', userId),
+        this.client.from('consents').select('kind, granted, version, created_at').eq('user_id', userId),
         this.client.from('progress_photos').select('id, user_id, taken_on, month_index, note, caption, storage_path, created_at, visibility').eq('user_id', userId).order('month_index').order('taken_on'),
         this.client.from('gratitude_entries').select('id, body, category, is_favourite, entry_date, created_at, updated_at, check_in_id').eq('user_id', userId).order('entry_date', { ascending: false }),
         this.client.from('gratitude_photos').select('id, entry_id, user_id, storage_path, caption, created_at').eq('user_id', userId).order('created_at'),
@@ -409,6 +445,9 @@ export class SupabaseRepository implements Repository {
         this.client.from('profile_sharing').select('settings').eq('user_id', userId).maybeSingle(),
         this.client.from('user_quotes').select('quote_id, created_at').eq('user_id', userId).order('created_at', { ascending: false }),
         this.client.from('profile_photos').select('id, user_id, role, caption, position, storage_path, created_at').eq('user_id', userId).order('position').order('created_at'),
+        this.client.from('health_plans').select('focus, nutrition, fitness, wellbeing, limits, disclaimer, updated_at').eq('user_id', userId).maybeSingle(),
+        this.client.from('training_schedules').select('monday, tuesday, wednesday, thursday, friday, saturday, sunday, typical_minutes, longer_day, longer_minutes, walk_day, note').eq('user_id', userId).maybeSingle(),
+        this.client.from('planned_sessions').select('id, session_type, starts_at, duration_minutes, note, planned_effort, done_at').eq('user_id', userId).order('starts_at'),
       ]);
 
     const profileRow = profileRes.data as Row | null;
@@ -517,6 +556,14 @@ export class SupabaseRepository implements Repository {
             if (!quoteById(quoteId)) return [];
             return [{ quoteId, createdAt: String(row.created_at ?? '') }];
           }),
+      healthPlan: healthPlanRes.error ? null : healthPlanFromStored(healthPlanRes.data),
+      trainingSchedule: scheduleRes.error ? null : trainingScheduleFromRow(scheduleRes.data),
+      plannedSessions: plannedRes.error
+        ? []
+        : ((plannedRes.data ?? []) as Row[]).flatMap((row) => {
+          const session = plannedSessionFromRow(row);
+          return session ? [session] : [];
+        }),
     });
   }
 
@@ -525,7 +572,10 @@ export class SupabaseRepository implements Repository {
     const { data } = await this.client.auth.getSession();
     if (!data.session) return;
     const currentPaths = this.snapshot;
-    const [progress, profile, gratitude, vision] = await Promise.all([
+    const mealPaths = currentPaths.foodLogs.flatMap((log) => (
+      log.previewUrl ? [foodPhotoStoragePath(log.userId, log.id)] : []
+    ));
+    const [progress, profile, gratitude, vision, meals] = await Promise.all([
       this.signedUrlMap(PROGRESS_BUCKET, currentPaths.progressPhotos.map((photo) => photo.storagePath), PROGRESS_SIGNED_URL_SECONDS),
       this.signedUrlMap(PROFILE_PHOTO_BUCKET, currentPaths.profilePhotos.map((photo) => photo.storagePath), PROFILE_SIGNED_URL_SECONDS),
       this.signedUrlMap(
@@ -534,23 +584,27 @@ export class SupabaseRepository implements Repository {
         GRATITUDE_SIGNED_URL_SECONDS,
       ),
       this.signedUrlMap(VISION_BUCKET, currentPaths.visionItems.map((item) => item.storagePath), VISION_SIGNED_URL_SECONDS),
+      this.signedUrlMap(FOOD_BUCKET, mealPaths, OWNER_PHOTO_URL_SECONDS),
     ]);
     const wanted = currentPaths.progressPhotos.length
       + currentPaths.profilePhotos.length
       + currentPaths.gratitude.reduce((sum, entry) => sum + entry.photos.length, 0)
-      + currentPaths.visionItems.length;
-    const signedCount = progress.size + profile.size + gratitude.size + vision.size;
+      + currentPaths.visionItems.length
+      + mealPaths.length;
+    const signedCount = progress.size + profile.size + gratitude.size + vision.size + meals.size;
     if (wanted === 0 || signedCount > 0) this.ownerPhotosSignedAt = Date.now();
     const latest = this.snapshot;
     const progressPhotos = withSignedPreviewUrls(latest.progressPhotos, progress);
     const profilePhotos = withSignedPreviewUrls(latest.profilePhotos, profile);
     const gratitudeEntries = withSignedGratitudePhotos(latest.gratitude, gratitude);
     const visionItems = withSignedPreviewUrls(latest.visionItems, vision);
+    const foodLogs = withSignedFoodPhotos(latest.foodLogs, meals);
     if (
       progressPhotos === latest.progressPhotos
       && profilePhotos === latest.profilePhotos
       && gratitudeEntries === latest.gratitude
       && visionItems === latest.visionItems
+      && foodLogs === latest.foodLogs
     ) return;
     this.emit({
       ...latest,
@@ -558,6 +612,7 @@ export class SupabaseRepository implements Repository {
       profilePhotos,
       gratitude: gratitudeEntries,
       visionItems,
+      foodLogs,
     });
   }
 
@@ -667,7 +722,7 @@ export class SupabaseRepository implements Repository {
     return urls;
   }
 
-  /** Owner signed links only. Gratitude photos are never asked of the community signer. */
+  /** Owner signed links for the diary. Community viewers sign through publicProfile. */
   private async signedGratitudePhotos(rows: Row[] | null, queryError: string | undefined): Promise<GratitudePhoto[]> {
     if (queryError || !rows) {
       if (queryError) console.error(queryError);
@@ -755,9 +810,7 @@ export class SupabaseRepository implements Repository {
   }
 
   private async userId(): Promise<string> {
-    const { data } = await this.client.auth.getUser();
-    if (!data.user) throw new Error('Sign in first.');
-    return data.user.id;
+    return (await this.signedIn()).userId;
   }
 
   async signIn(email: string, password: string): Promise<void> {
@@ -900,6 +953,7 @@ export class SupabaseRepository implements Repository {
         community_visible: input.communityVisible,
         consent_health: input.consentHealth,
         consent_ai: input.consentAi,
+        message_notifications: input.messageNotifications,
         onboarding_complete: true,
       })
       .eq('id', userId);
@@ -1019,20 +1073,24 @@ export class SupabaseRepository implements Repository {
   }
 
   async saveHealth(samples: NewHealthSample[]): Promise<void> {
+    rejectRouteCoordinates(samples);
     if (!this.snapshot.profile?.consentHealth) throw new Error('Health data stays off until you give consent.');
+    if (samples.length === 0) return;
     const userId = await this.userId();
-    const { error } = await this.client.from('health_samples').upsert(
-      samples.map((sample) => ({
-        user_id: userId,
-        kind: sample.kind,
-        value: sample.value,
-        unit: sample.unit,
-        recorded_on: sample.recordedOn,
-        source: sample.source,
-      })),
-      { onConflict: 'user_id,kind,recorded_on,source' },
-    );
-    if (error) throw asUserFacing(error, 'general');
+    for (const chunk of chunkHealthRows(samples)) {
+      const { error } = await this.client.from('health_samples').upsert(
+        chunk.map((sample) => ({
+          user_id: userId,
+          kind: sample.kind,
+          value: sample.value,
+          unit: sample.unit,
+          recorded_on: sample.recordedOn,
+          source: sample.source,
+        })),
+        { onConflict: 'user_id,kind,recorded_on,source' },
+      );
+      if (error) throw asUserFacing(error, 'general');
+    }
     await this.refresh();
   }
 
@@ -1116,13 +1174,8 @@ export class SupabaseRepository implements Repository {
       throw new UserFacingError('Turn on community, and confirm you are 18 or over, before you message.', 'generic');
     }
     if (userId === me) throw new UserFacingError('You cannot message yourself.', 'generic');
-    const blocks = await this.client.from('blocks').select('blocker_id, blocked_id').or(`blocker_id.eq.${userId},blocked_id.eq.${userId}`);
-    if (blocks.error) throw asUserFacing(blocks.error, 'general');
-    const closed = (blocks.data ?? []).some((row) => {
-      const record = row as { blocker_id?: string; blocked_id?: string };
-      return (record.blocker_id === me && record.blocked_id === userId) || (record.blocker_id === userId && record.blocked_id === me);
-    });
-    if (closed) throw new UserFacingError('You cannot contact this person.', 'generic');
+    // A block, the age check, and who may read the chat are enforced on the server.
+    // authenticated cannot select blocks, so this does not read that table.
     const existing = this.snapshot.connections.find((connection) =>
       connection.status !== 'declined' &&
       ((connection.requesterId === me && connection.addresseeId === userId) ||
@@ -1147,7 +1200,8 @@ export class SupabaseRepository implements Repository {
           (connection.requesterId === userId && connection.addresseeId === me)));
       if (live) return;
       const { error } = await this.client.from('connections').insert({ id, requester_id: me, addressee_id: userId, status: 'pending' });
-      if (error && !isDuplicateWrite(error)) throw asUserFacing(error, 'general');
+      // The private-message screen shows this server reason. Other callers still run it through shownError.
+      if (error && !isDuplicateWrite(error)) throw error;
       // The request is saved. A slow or failed reload afterwards must not report
       // it as unsent, or the card stays on "Ask to connect" after an error.
       await this.refresh().catch((reloadError: unknown) => console.error(reloadError));
@@ -1165,7 +1219,7 @@ export class SupabaseRepository implements Repository {
   }
 
   async sendDirectMessage(connectionId: string, body: string, clientId?: string): Promise<void> {
-    const text = body.trim().slice(0, 2000);
+    const text = omitSharedLocation(body.trim().slice(0, 2000)).trim();
     if (!text) return;
     const id = clientId || randomId();
     return this.once(`message:${id}`, async () => {
@@ -1194,7 +1248,11 @@ export class SupabaseRepository implements Repository {
       }
       const messageId = !error && data && typeof data.id === 'string' ? data.id : '';
       if (messageId) {
-        void this.client.functions.invoke('notify-direct-message', { body: { messageId } }).catch(() => undefined);
+        void this.client.functions.invoke('notify-direct-message', { body: { messageId } }).then(({ error: pushError }) => {
+          if (pushError) this.rememberEdgeFailure('notify-direct-message', new Error('Push send failed'));
+        }).catch(() => {
+          this.rememberEdgeFailure('notify-direct-message', new Error('Push send failed'));
+        });
       }
       const { delivery: _delivery, ...confirmed } = optimistic;
       this.outgoingMessages.set(id, confirmed);
@@ -1206,6 +1264,63 @@ export class SupabaseRepository implements Repository {
       }
       this.emit({ ...this.snapshot });
     });
+  }
+
+  async loadChatReads(): Promise<Record<string, string>> {
+    const { data, error } = await this.client.from('chat_reads').select('connection_id, read_through');
+    if (error) throw error;
+    const marks: Record<string, string> = {};
+    for (const row of data ?? []) {
+      const id = (row as { connection_id?: unknown }).connection_id;
+      const at = (row as { read_through?: unknown }).read_through;
+      if (typeof id === 'string' && typeof at === 'string' && at) marks[id] = at;
+    }
+    return marks;
+  }
+
+  async saveChatRead(connectionId: string, readThrough: string): Promise<boolean> {
+    try {
+      const { error } = await this.client.rpc('save_chat_read', {
+        p_connection_id: connectionId,
+        p_read_through: readThrough,
+      });
+      if (error) {
+        console.error('chat read', error.message);
+        return false;
+      }
+      return true;
+    } catch (error) {
+      console.error('chat read', error instanceof Error ? error.message : 'chat read');
+      return false;
+    }
+  }
+
+  async logClientError(screen: string, message: string, appBuild: string): Promise<boolean> {
+    const line = clientErrorRecord(screen, message);
+    try {
+      const clip = (value: string, max: number) => value.replace(/\s+/g, ' ').trim().slice(0, max);
+      const stored = this.snapshot.session?.userId ?? null;
+      const sessionUser = stored ? null : (await this.client.auth.getSession()).data.session?.user?.id ?? null;
+      const userId = stored ?? sessionUser;
+      if (!userId) {
+        console.error('client error log', 'no session', line.screen, line.message);
+        return false;
+      }
+      const { error } = await this.client.from('client_errors').insert({
+        user_id: userId,
+        screen: clip(line.screen, 80) || 'app',
+        message: clip(line.message, 300) || 'error',
+        app_build: clip(appBuild, 40) || 'unknown',
+      });
+      if (error) {
+        console.error('client error log', error.message);
+        return false;
+      }
+      return true;
+    } catch (error) {
+      console.error('client error log', error);
+      return false;
+    }
   }
 
   async saveDeviceToken(token: string, platform: 'ios' | 'android'): Promise<void> {
@@ -1230,8 +1345,8 @@ export class SupabaseRepository implements Repository {
   }
 
   async unblockUser(userId: string): Promise<void> {
-    const me = await this.userId();
-    const { error } = await this.client.from('blocks').delete().eq('blocker_id', me).eq('blocked_id', userId);
+    // A filtered delete needs SELECT. Authenticated must not have that on blocks.
+    const { error } = await this.client.rpc('unblock_user', { target: userId });
     if (error) throw asUserFacing(error, 'general');
     await this.refresh();
   }
@@ -1272,38 +1387,47 @@ export class SupabaseRepository implements Repository {
     await this.refresh();
   }
 
-  async sendThumos(content: string, mode: ThumosMode, onDelta?: (text: string) => void): Promise<void> {
+  async sendThumos(
+    content: string,
+    mode: ThumosMode,
+    onDelta?: (text: string) => void,
+    onState?: (state: EdgeSendState) => void,
+  ): Promise<void> {
     const text = content.trim();
     if (!text) return;
     if (!this.snapshot.profile?.consentAi) throw new Error('Agree to the coach consent before sending a message to Thumos.');
     const safety = detectSafety(text);
     const effectiveMode: ThumosMode = safety.selfHarm || safety.withdrawal ? 'support' : mode;
+    const requestId = randomId();
+    const thumosBody = { content: text, mode: effectiveMode, request_id: requestId };
+    rejectRouteCoordinates(thumosBody);
 
     let response: Response;
     try {
-      const { data: sessionData } = await this.client.auth.getSession();
-      const token = sessionData.session?.access_token;
-      if (!token) throw new Error('Sign in first.');
-      response = await fetch(`${this.url}/functions/v1/thumos-chat`, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${token}`,
-          apikey: this.anonKey,
-          'Content-Type': 'application/json',
-          Accept: 'text/event-stream',
+      const token = await this.sessionForAiCall();
+      response = await postWithRetry({
+        fetchImpl: (url, init) => fetch(url, init),
+        url: `${this.url}/functions/v1/thumos-chat`,
+        init: {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${token}`,
+            apikey: this.anonKey,
+            'Content-Type': 'application/json',
+            Accept: 'text/event-stream',
+          },
+          body: JSON.stringify(thumosBody),
         },
-        body: JSON.stringify({ content: text, mode: effectiveMode }),
+        onState,
       });
-    } catch {
-      await this.insertOfflinePair(text, effectiveMode);
-      return;
+    } catch (error) {
+      if (error instanceof UserFacingError) throw error;
+      throw this.aiFailure('thumos', 'thumos', error);
     }
 
     if (!response.ok) {
-      if (response.status >= 500) {
-        await this.insertOfflinePair(text, effectiveMode);
-        return;
-      }
+      const kind = classifyEdgeStatus(response.status);
+      if (kind) throw this.aiFailure('thumos', 'thumos', new Error('Thumos did not answer.'), response.status);
       const body = (await response.json().catch(() => null)) as { message?: string } | null;
       throw asUserFacing(new Error(body?.message ?? 'Could not send that.'), 'thumos');
     }
@@ -1318,9 +1442,16 @@ export class SupabaseRepository implements Repository {
     let failed: string | null = null;
     const apply = (chunk: string) => {
       parseSseBuffer(chunk, (event) => {
-        if (event.type === 'delta') {
+        if (event.type === 'ping') {
+          onState?.('waiting');
+        } else if (event.type === 'status') {
+          onState?.(event.state === 'retrying' ? 'retrying' : 'waiting');
+        } else if (event.type === 'delta') {
           accumulated += event.text;
           onDelta?.(accumulated);
+        } else if (event.type === 'replace') {
+          accumulated = event.reply;
+          onDelta?.(event.reply);
         } else if (event.type === 'done') {
           accumulated = event.reply;
           onDelta?.(event.reply);
@@ -1339,9 +1470,16 @@ export class SupabaseRepository implements Repository {
         if (done) break;
         buffer += decoder.decode(value);
         const leftover = parseSseBuffer(buffer, (event) => {
-          if (event.type === 'delta') {
+          if (event.type === 'ping') {
+            onState?.('waiting');
+          } else if (event.type === 'status') {
+            onState?.(event.state === 'retrying' ? 'retrying' : 'waiting');
+          } else if (event.type === 'delta') {
             accumulated += event.text;
             onDelta?.(accumulated);
+          } else if (event.type === 'replace') {
+            accumulated = event.reply;
+            onDelta?.(event.reply);
           } else if (event.type === 'done') {
             accumulated = event.reply;
             onDelta?.(event.reply);
@@ -1361,33 +1499,162 @@ export class SupabaseRepository implements Repository {
     await this.refresh();
   }
 
-  private async insertOfflinePair(text: string, mode: ThumosMode) {
-    const userId = await this.userId();
-    const { error: insertError } = await this.client.from('thumos_messages').insert([
-      { user_id: userId, role: 'user', content: text, mode },
-      { user_id: userId, role: 'offline', content: OFFLINE_COACH_MESSAGE, mode: 'support' },
-    ]);
-    if (insertError) throw asUserFacing(insertError, 'thumos');
-    await this.refresh();
+  private async accessToken(): Promise<string> {
+    return (await this.signedIn()).accessToken;
+  }
+
+  /**
+   * The session on the device now. An expired access token is refreshed once.
+   * "Sign in first" is only for a missing session, not a failed refresh.
+   */
+  private async signedIn(): Promise<{ userId: string; accessToken: string }> {
+    const resolved = await resolveSignedInSession({
+      read: async () => {
+        const { data, error } = await this.client.auth.getSession();
+        return { ticket: this.sessionTicket(data.session), error };
+      },
+      refresh: async () => {
+        const { data, error } = await this.client.auth.refreshSession();
+        return { ticket: this.sessionTicket(data.session), error };
+      },
+      knownUserId: this.snapshot.session?.userId ?? this.snapshot.profile?.id ?? null,
+    });
+    if ('failure' in resolved) {
+      if (resolved.failure === 'connection') throw new UserFacingError(OFFLINE_MESSAGE, 'offline');
+      throw new Error(SIGN_IN_FIRST);
+    }
+    return resolved;
+  }
+
+  private sessionTicket(session: { access_token?: string; expires_at?: number; user?: { id?: string } } | null): SessionTicket {
+    return {
+      accessToken: session?.access_token ?? null,
+      expiresAt: typeof session?.expires_at === 'number' ? session.expires_at : null,
+      userId: session?.user?.id ?? null,
+    };
+  }
+
+  /** Refresh the session once, then once more if that refresh does not return a token. */
+  private sessionForAiCall(): Promise<string> {
+    if (this.aiSession) return this.aiSession;
+    this.aiSession = this.loadAiSession().finally(() => {
+      this.aiSession = null;
+    });
+    return this.aiSession;
+  }
+
+  private async loadAiSession(): Promise<string> {
+    const ready = await prepareAiSession({
+      read: async () => this.sessionTicket((await this.client.auth.getSession()).data.session),
+      refresh: async () => {
+        const { data, error } = await this.client.auth.refreshSession();
+        return { ticket: this.sessionTicket(data.session), error };
+      },
+    });
+    if ('failure' in ready) throw new EdgeSessionError(ready.failure);
+    return ready.accessToken;
+  }
+
+  private rememberEdgeFailure(screen: string, error: unknown, status?: number, kind?: EdgeFailureKind) {
+    const detail = edgeFailureLog(error, status);
+    const line = kind ? `${kind}: ${detail}` : detail;
+    console.error(screen, line);
+    void this.logClientError(screen, line, clientAppBuild({
+      buildNumber: Constants.expoConfig?.ios?.buildNumber,
+      version: Constants.expoConfig?.version,
+    }));
+  }
+
+  private aiFailure(feature: AiFeature, screen: string, error: unknown, status?: number): UserFacingError {
+    if (error instanceof UserFacingError) return error;
+    const kind: EdgeFailureKind = error instanceof EdgeSessionError
+      ? error.kind
+      : status != null
+        ? (classifyEdgeStatus(status) ?? 'server')
+        : classifyEdgeError(error);
+    this.rememberEdgeFailure(screen, error, status, kind);
+    const message = feature === 'thumos' && (kind === 'network' || kind === 'timeout' || kind === 'server')
+      ? `${aiCallMessage(feature, kind)} ${SCRIPTED_COACH_REPLY}`
+      : aiCallMessage(feature, kind);
+    return new UserFacingError(message, 'generic');
+  }
+
+  private async callEdge(
+    name: string,
+    body: unknown,
+    options?: { ai?: boolean; timeoutMs?: number },
+  ): Promise<{ status: number; data: unknown }> {
+    rejectRouteCoordinates(body);
+    const token = options?.ai ? await this.sessionForAiCall() : await this.accessToken();
+    const controller = options?.timeoutMs ? new AbortController() : null;
+    const timer = controller && options?.timeoutMs
+      ? setTimeout(() => controller.abort(), options.timeoutMs)
+      : null;
+    try {
+      const response = await postWithRetry({
+        fetchImpl: (url, init) => fetch(url, init),
+        url: `${this.url}/functions/v1/${name}`,
+        init: {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${token}`,
+            apikey: this.anonKey,
+            'Content-Type': 'application/json',
+            Accept: 'application/json',
+          },
+          body: JSON.stringify(body),
+          signal: controller?.signal,
+        },
+      });
+      return { status: response.status, data: await response.json().catch(() => null) };
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
   }
 
   async mintVoiceToken(mode?: ThumosMode): Promise<VoiceMint> {
-    const { data, error } = await this.client.functions.invoke('thumos-voice-token', { body: { mode } });
-    if (error || !data?.ok || typeof data?.token !== 'string') {
+    type VoicePayload = {
+      ok?: boolean;
+      code?: string;
+      message?: string;
+      token?: unknown;
+      expiresAt?: unknown;
+      instructions?: unknown;
+      crisisInstructions?: unknown;
+      history?: unknown;
+      greeting?: unknown;
+      mode?: unknown;
+    };
+    let data: VoicePayload | null = null;
+    try {
+      const invoked = await this.callEdge('thumos-voice-token', { mode });
+      data = invoked.data as VoicePayload | null;
+      if (invoked.status >= 500) {
+        this.rememberEdgeFailure('voice', new Error('Voice did not answer.'), invoked.status);
+        return { ok: false, code: 'unavailable', message: VOICE_UNREACHABLE };
+      }
+    } catch (error) {
+      this.rememberEdgeFailure('voice', error);
+      return { ok: false, code: 'unavailable', message: VOICE_UNREACHABLE };
+    }
+    if (!data?.ok || typeof data?.token !== 'string') {
       const message = typeof data?.message === 'string' ? data.message : '';
+      const honest = message.length > 0 && message.length < 180 && !/xAI key|XAI_API_KEY/i.test(message) ? message : '';
       return {
         ok: false,
         code: typeof data?.code === 'string' ? data.code : 'unavailable',
-        message: message && message.length < 180 ? message : 'Voice is unavailable just now. Text chat is still here.',
+        message: honest || VOICE_UNREACHABLE,
       };
     }
-    const history = Array.isArray(data.history)
-      ? data.history.flatMap((turn: { role?: string; content?: string }) => (
-          (turn?.role === 'user' || turn?.role === 'assistant') && typeof turn.content === 'string'
-            ? [{ role: turn.role, content: turn.content }]
-            : []
-        ))
-      : [];
+    const history: { role: 'user' | 'assistant'; content: string }[] = [];
+    if (Array.isArray(data.history)) {
+      for (const turn of data.history) {
+        if (!turn || typeof turn !== 'object') continue;
+        const role = (turn as { role?: unknown }).role;
+        const content = (turn as { content?: unknown }).content;
+        if ((role === 'user' || role === 'assistant') && typeof content === 'string') history.push({ role, content });
+      }
+    }
     return {
       ok: true,
       token: data.token,
@@ -1429,8 +1696,7 @@ export class SupabaseRepository implements Repository {
     const userId = await this.userId();
     const photoId = randomId();
     const path = progressStoragePath(userId, photoId);
-    const body = new Uint8Array(input.bytes.byteLength);
-    body.set(input.bytes);
+    const body = stripJpegLocation(input.bytes);
     const uploaded = await this.client.storage.from(PROGRESS_BUCKET).upload(path, body, {
       contentType: 'image/jpeg',
       upsert: false,
@@ -1574,8 +1840,34 @@ export class SupabaseRepository implements Repository {
 
   async publicProfile(userId: string): Promise<ReturnType<typeof parsePublicProfile>> {
     const { data, error } = await this.client.rpc('public_profile', { user_id: userId });
-    if (error) return null;
-    return parsePublicProfile(data);
+    if (error) throw asUserFacing(error, 'general');
+    const parsed = parsePublicProfile(data);
+    if (!parsed) return parsed;
+    return this.signSharedGratitude(parsed);
+  }
+
+  /** Community signed links for photos public_profile already allowed. A failed sign leaves the caption. */
+  private async signSharedGratitude(view: PublicProfileView): Promise<PublicProfileView> {
+    const paths = [...new Set(view.gratitudePhotos.map((photo) => photo.storagePath).filter((path) => path.length > 0))];
+    if (!paths.length) return view;
+    try {
+      const signed = await this.client.storage.from(GRATITUDE_BUCKET).createSignedUrls(paths, GRATITUDE_SIGNED_URL_SECONDS);
+      if (signed.error || !signed.data) return view;
+      const byPath = new Map<string, string>();
+      for (const item of signed.data) {
+        if (item.path && item.signedUrl) byPath.set(item.path, item.signedUrl);
+      }
+      return {
+        ...view,
+        gratitudePhotos: view.gratitudePhotos.map((photo) => ({
+          ...photo,
+          previewUrl: byPath.get(photo.storagePath) ?? photo.previewUrl,
+        })),
+      };
+    } catch (error) {
+      console.error(error);
+      return view;
+    }
   }
 
   async addProfilePhoto(input: NewProfilePhoto): Promise<void> {
@@ -1589,8 +1881,7 @@ export class SupabaseRepository implements Repository {
     const photoId = randomId();
     const path = profileStoragePath(userId, photoId);
     const position = input.role === 'avatar' ? 0 : gallery.reduce((max, photo) => Math.max(max, photo.position), -1) + 1;
-    const body = new Uint8Array(input.bytes.byteLength);
-    body.set(input.bytes);
+    const body = stripJpegLocation(input.bytes);
     const uploaded = await this.client.storage.from(PROFILE_PHOTO_BUCKET).upload(path, body, {
       contentType: 'image/jpeg',
       upsert: false,
@@ -1697,6 +1988,7 @@ export class SupabaseRepository implements Repository {
     const id = inserted.data?.id;
     if (typeof id !== 'string' || !id) throw new UserFacingError('Could not save that line.', 'generic');
     await this.refresh();
+    await this.shareAddedGratitude({ entryId: id });
     return id;
   }
 
@@ -1738,8 +2030,7 @@ export class SupabaseRepository implements Repository {
     const userId = await this.userId();
     const photoId = randomId();
     const path = gratitudeStoragePath(userId, photoId);
-    const body = new Uint8Array(bytes.byteLength);
-    body.set(bytes);
+    const body = stripJpegLocation(bytes);
     const uploaded = await this.client.storage.from(GRATITUDE_BUCKET).upload(path, body, {
       contentType: 'image/jpeg',
       upsert: false,
@@ -1756,6 +2047,14 @@ export class SupabaseRepository implements Repository {
       throw asUserFacing(inserted.error, 'general');
     }
     await this.refresh();
+    await this.shareAddedGratitude({ photoId });
+  }
+
+  /** A new line or photo follows Share Whole Section only when the person opted in. */
+  private async shareAddedGratitude(added: { entryId?: string; photoId?: string }): Promise<void> {
+    const next = shareFreshGratitude(this.snapshot.sharing, added);
+    if (!next) return;
+    await this.setProfileSharing(next);
   }
 
   async updateGratitudePhoto(id: string, input: { caption: string }): Promise<void> {
@@ -1800,8 +2099,7 @@ export class SupabaseRepository implements Repository {
     const userId = await this.userId();
     const photoId = randomId();
     const path = visionStoragePath(userId, photoId);
-    const body = new Uint8Array(bytes.byteLength);
-    body.set(bytes);
+    const body = stripJpegLocation(bytes);
     const uploaded = await this.client.storage.from(VISION_BUCKET).upload(path, body, {
       contentType: 'image/jpeg',
       upsert: false,
@@ -1897,23 +2195,31 @@ export class SupabaseRepository implements Repository {
       throw new Error('Agree to the coach consent before sending a message to Thumos.');
     }
     try {
-      const invoked = await this.client.functions.invoke('gratitude-reflect', { body: { body, category } });
+      const invoked = await this.callEdge('gratitude-reflect', { body, category }, { ai: true });
       const data = invoked.data as { ok?: boolean; code?: string; comment?: unknown; suggestions?: unknown } | null;
       if (data?.code === 'consent') {
         throw new Error('Agree to the coach consent before sending a message to Thumos.');
       }
-      if (!invoked.error && data?.ok === true && typeof data.comment === 'string' && Array.isArray(data.suggestions)) {
+      if (invoked.status === 401 || invoked.status >= 500) {
+        throw this.aiFailure('reflect', 'gratitude', new Error('Reflection did not answer.'), invoked.status);
+      }
+      if (invoked.status < 400 && data?.ok === true && typeof data.comment === 'string' && Array.isArray(data.suggestions)) {
         const suggestions = data.suggestions.filter((item): item is string => typeof item === 'string' && item.trim().length > 0);
         if (suggestions.length >= 2) return { comment: data.comment, suggestions: suggestions.slice(0, 3) };
       }
     } catch (error) {
+      if (error instanceof UserFacingError) throw error;
       if (error instanceof Error && error.message.includes('Agree to the coach consent')) throw error;
+      throw this.aiFailure('reflect', 'gratitude', error);
     }
     return localGratitudeReflect(body, category);
   }
 
   /** Older databases lack the later share and goal columns. A missing column stays off. */
   private async nutritionSettingsRow(userId: string) {
+    const athlete = 'kcal_target, hide_calories, share_food_diary, share_calories, share_quality, share_progress, goal, goal_age, goal_sex, protein_target_g, carb_target_g, fat_target_g, goal_phase, weight_class_kg, activity_energy_kcal, share_goal, wagon_on, wagon_note, wagon_visible, build, workout_buckets, updated_at';
+    const widened = await this.client.from('nutrition_settings').select(athlete).eq('user_id', userId).maybeSingle();
+    if (!widened.error) return widened;
     const goal = 'kcal_target, hide_calories, share_food_diary, share_calories, share_quality, share_progress, goal, goal_age, goal_sex, protein_target_g, activity_energy_kcal, share_goal, wagon_on, wagon_note, wagon_visible, build, updated_at';
     const first = await this.client.from('nutrition_settings').select(goal).eq('user_id', userId).maybeSingle();
     if (!first.error) return first;
@@ -1982,17 +2288,23 @@ export class SupabaseRepository implements Repository {
     const text = input.text?.trim() ?? '';
     const local = (): MealEstimate => ({ items: text ? estimateFromText(text) : samplePhotoMeal(), source: 'local' });
     try {
-      const invoked = await this.client.functions.invoke('estimate-meal', {
-        body: { text, imageBase64: input.imageBase64 ?? '' },
+      const imageBase64 = input.imageBase64 ? stripJpegBase64(input.imageBase64) : '';
+      const invoked = await this.callEdge('estimate-meal', { text, imageBase64 }, {
+        ai: true,
+        timeoutMs: ESTIMATE_CLIENT_TIMEOUT_MS,
       });
       const data = invoked.data as { ok?: boolean; items?: unknown; source?: string; code?: string; message?: string } | null;
       if (data?.code === 'consent') return local();
+      if (invoked.status === 401 || invoked.status >= 500) {
+        throw this.aiFailure('meal', 'estimate-meal', new Error('Meal estimate did not answer.'), invoked.status);
+      }
       const items = parseMealEstimate({ items: data?.items });
-      if (!invoked.error && data?.ok === true && items) {
+      if (invoked.status < 400 && data?.ok === true && items) {
         return { items, source: data.source === 'model' ? 'model' : 'local' };
       }
     } catch (error) {
-      console.error(error);
+      if (error instanceof UserFacingError) throw error;
+      throw this.aiFailure('meal', 'estimate-meal', error);
     }
     const fallback = local();
     if (!fallback.items.length) throw new UserFacingError('Could not read that meal. You can still type it in yourself.', 'generic');
@@ -2005,7 +2317,7 @@ export class SupabaseRepository implements Repository {
       let photoPath: string | null = null;
       if (input.photoBase64) {
         photoPath = `${userId}/${input.id}.jpg`;
-        const binary = atob(input.photoBase64);
+        const binary = atob(stripJpegBase64(input.photoBase64));
         const body = new Uint8Array(binary.length);
         for (let index = 0; index < binary.length; index += 1) body[index] = binary.charCodeAt(index);
         const uploaded = await this.client.storage.from(FOOD_BUCKET).upload(photoPath, body, { contentType: 'image/jpeg', upsert: true });
@@ -2015,7 +2327,7 @@ export class SupabaseRepository implements Repository {
         id: input.id,
         user_id: userId,
         eaten_on: input.eatenOn,
-        eaten_at: new Date().toISOString(),
+        eaten_at: storedMealInstant(input),
         meal: input.meal,
         source: input.source,
         note: input.note.slice(0, 500),
@@ -2111,12 +2423,17 @@ export class SupabaseRepository implements Repository {
       goal_age: settings.goalAge,
       goal_sex: settings.goalSex,
       protein_target_g: settings.proteinTarget,
+      carb_target_g: settings.carbTarget,
+      fat_target_g: settings.fatTarget,
+      goal_phase: settings.goalPhase,
+      weight_class_kg: settings.weightClassKg,
       activity_energy_kcal: settings.activityEnergyKcal,
       share_goal: settings.shareGoal,
       wagon_on: settings.wagonOn,
       wagon_note: settings.wagonNote.slice(0, 200),
       wagon_visible: settings.wagonVisible,
       build: settings.build,
+      workout_buckets: settings.workoutBuckets,
       updated_at: new Date().toISOString(),
     };
     let payload: Record<string, unknown> = row;
@@ -2132,9 +2449,23 @@ export class SupabaseRepository implements Repository {
       payload = withoutGoal;
       ({ error } = await this.client.from('nutrition_settings').upsert(payload));
     }
+    const athleteUnset = settings.carbTarget == null
+      && settings.fatTarget == null
+      && settings.goalPhase == null
+      && settings.weightClassKg == null;
+    if (error && athleteUnset && /carb_target_g|fat_target_g|goal_phase|weight_class_kg/i.test(error.message)) {
+      const { carb_target_g: _carb, fat_target_g: _fat, goal_phase: _phase, weight_class_kg: _klass, ...withoutAthlete } = payload;
+      payload = withoutAthlete;
+      ({ error } = await this.client.from('nutrition_settings').upsert(payload));
+    }
     if (error && settings.build == null && /\bbuild\b/i.test(error.message)) {
       const { build: _build, ...withoutBuild } = payload;
       payload = withoutBuild;
+      ({ error } = await this.client.from('nutrition_settings').upsert(payload));
+    }
+    if (error && Object.keys(settings.workoutBuckets).length === 0 && /workout_buckets/i.test(error.message)) {
+      const { workout_buckets: _buckets, ...withoutBuckets } = payload;
+      payload = withoutBuckets;
       ({ error } = await this.client.from('nutrition_settings').upsert(payload));
     }
     const leavingNewSharesOff = !settings.shareCalories && !settings.shareQuality && !settings.shareProgress;
@@ -2196,10 +2527,295 @@ export class SupabaseRepository implements Repository {
     });
   }
 
+  async saveTrainingSchedule(schedule: TrainingSchedule | null): Promise<void> {
+    const userId = this.snapshot.session?.userId ?? await this.userId();
+    const before = this.snapshot.trainingSchedule;
+    const next = schedule ? normaliseTrainingSchedule(schedule) : null;
+    if (schedule && !next) throw new UserFacingError('Could not save that training schedule.', 'generic');
+    this.emit({ ...this.snapshot, trainingSchedule: next });
+    if (!next) {
+      const { error } = await this.client.from('training_schedules').delete().eq('user_id', userId);
+      if (error) {
+        this.emit({ ...this.snapshot, trainingSchedule: before });
+        throw asUserFacing(error, 'general');
+      }
+      return;
+    }
+    const days = new Set(next.days);
+    const { error } = await this.client.from('training_schedules').upsert({
+      user_id: userId,
+      monday: days.has('Monday'),
+      tuesday: days.has('Tuesday'),
+      wednesday: days.has('Wednesday'),
+      thursday: days.has('Thursday'),
+      friday: days.has('Friday'),
+      saturday: days.has('Saturday'),
+      sunday: days.has('Sunday'),
+      typical_minutes: next.typicalMinutes,
+      longer_day: next.longerDay,
+      longer_minutes: next.longerMinutes,
+      walk_day: next.walkDay,
+      note: next.note,
+      updated_at: new Date().toISOString(),
+    });
+    if (error) {
+      this.emit({ ...this.snapshot, trainingSchedule: before });
+      throw asUserFacing(error, 'general');
+    }
+  }
+
+  async savePlannedSession(input: PlannedSessionDraft): Promise<void> {
+    const userId = this.snapshot.session?.userId ?? await this.userId();
+    const id = input.id?.trim() || randomId();
+    const before = this.snapshot.plannedSessions;
+    const result = await plannedSessionWrite(() => this.writePlannedSession(userId, id, input));
+    if (!result.ok) {
+      if (isTransientNetworkError(result.error)) {
+        await this.logClientError('planned-session', 'planned-session: offline', clientAppBuild({
+          buildNumber: Constants.expoConfig?.ios?.buildNumber,
+          version: Constants.expoConfig?.version,
+        })).catch(() => false);
+      }
+      throw asUserFacing(result.error, 'general');
+    }
+    const saved = result.row ?? plannedSessionFromDraft(id, input);
+    if (!saved) {
+      this.emit({ ...this.snapshot, plannedSessions: before });
+      throw new UserFacingError('Could not save that session.', 'generic');
+    }
+    this.emit({ ...this.snapshot, plannedSessions: [...before.filter((row) => row.id !== saved.id), saved].sort((a, b) => a.startsAt.localeCompare(b.startsAt)) });
+  }
+
+  /** Inserts the phone's id. A second send with that id does not add another row. */
+  private async writePlannedSession(userId: string, id: string, input: PlannedSessionDraft) {
+    const { data, error } = await this.client.from('planned_sessions').upsert({
+      id,
+      user_id: userId,
+      session_type: input.sessionType,
+      starts_at: input.startsAt,
+      duration_minutes: input.durationMinutes,
+      note: input.note.slice(0, 280),
+      planned_effort: plannedEffortToDb(input.plannedEffort),
+      done_at: null,
+    }, { onConflict: 'id', ignoreDuplicates: true }).select('id, session_type, starts_at, duration_minutes, note, planned_effort, done_at').maybeSingle();
+    if (error && isDuplicateWrite(error)) return { ok: true as const, row: null };
+    if (error) return { ok: false as const, error };
+    if (!data) return { ok: true as const, row: null };
+    const saved = plannedSessionFromRow(data);
+    if (!saved) return { ok: false as const, error: new UserFacingError('Could not save that session.', 'generic') };
+    return { ok: true as const, row: saved };
+  }
+
+  async updatePlannedSession(id: string, input: PlannedSessionDraft & { doneAt: string | null }): Promise<void> {
+    const userId = this.snapshot.session?.userId ?? await this.userId();
+    const before = this.snapshot.plannedSessions;
+    const current = before.find((row) => row.id === id);
+    if (!current) throw new UserFacingError('Could not save that session.', 'generic');
+    const next: PlannedSession = {
+      ...current,
+      sessionType: input.sessionType,
+      startsAt: input.startsAt,
+      durationMinutes: input.durationMinutes,
+      note: input.note.slice(0, 280),
+      plannedEffort: input.plannedEffort,
+      doneAt: input.doneAt,
+    };
+    this.emit({
+      ...this.snapshot,
+      plannedSessions: before.map((row) => (row.id === id ? next : row)).sort((a, b) => a.startsAt.localeCompare(b.startsAt)),
+    });
+    const { error } = await this.client.from('planned_sessions').update({
+      session_type: next.sessionType,
+      starts_at: next.startsAt,
+      duration_minutes: next.durationMinutes,
+      note: next.note,
+      planned_effort: plannedEffortToDb(next.plannedEffort),
+      done_at: next.doneAt,
+      updated_at: new Date().toISOString(),
+    }).eq('id', id).eq('user_id', userId);
+    if (error) {
+      this.emit({ ...this.snapshot, plannedSessions: before });
+      throw asUserFacing(error, 'general');
+    }
+  }
+
+  async deletePlannedSession(id: string): Promise<void> {
+    const userId = this.snapshot.session?.userId ?? await this.userId();
+    const before = this.snapshot.plannedSessions;
+    this.emit({ ...this.snapshot, plannedSessions: before.filter((row) => row.id !== id) });
+    const { error } = await this.client.from('planned_sessions').delete().eq('id', id).eq('user_id', userId);
+    if (error) {
+      this.emit({ ...this.snapshot, plannedSessions: before });
+      throw asUserFacing(error, 'general');
+    }
+  }
+
+  async saveHealthPlan(plan: HealthPlan): Promise<void> {
+    const userId = this.snapshot.session?.userId ?? await this.userId();
+    const before = this.snapshot.healthPlan;
+    const next: HealthPlan = {
+      ...plan,
+      limits: plan.limits.slice(0, 280),
+      disclaimer: (plan.disclaimer || PLAN_DISCLAIMER).slice(0, 400),
+    };
+    this.emit({ ...this.snapshot, healthPlan: next });
+    const { error } = await this.client.from('health_plans').upsert({
+      user_id: userId,
+      focus: next.focus,
+      nutrition: next.nutrition,
+      fitness: next.fitness,
+      wellbeing: next.wellbeing,
+      limits: next.limits,
+      disclaimer: next.disclaimer,
+      updated_at: next.updatedAt,
+    });
+    if (error) {
+      this.emit({ ...this.snapshot, healthPlan: before });
+      throw asUserFacing(error, 'general');
+    }
+  }
+
+  async refreshHealthPlan(limits: string): Promise<void> {
+    if (!this.snapshot.profile?.consentAi) {
+      throw new UserFacingError('Writing a plan needs the coach consent, because your figures are sent to the model.', 'generic');
+    }
+    const userId = this.snapshot.session?.userId ?? await this.userId();
+    let invoked: { status: number; data: unknown };
+    try {
+      invoked = await this.callEdge('health-plan', { limits: limits.trim().slice(0, 280) }, { ai: true });
+    } catch (error) {
+      if (error instanceof UserFacingError) throw error;
+      throw this.aiFailure('plan', 'health-plan', error);
+    }
+    if (invoked.status === 401 || invoked.status >= 500) {
+      throw this.aiFailure('plan', 'health-plan', new Error('Health Plan did not answer.'), invoked.status);
+    }
+    const data = invoked.data as { ok?: boolean; code?: string; message?: string; plan?: unknown } | null;
+    if (data?.code === 'consent') {
+      throw new UserFacingError(
+        data.message || 'Writing a plan needs the coach consent, because your figures are sent to the model.',
+        'generic',
+      );
+    }
+    const plan = healthPlanFromStored(data?.plan);
+    if (data?.ok !== true || !plan) {
+      throw new UserFacingError(PLAN_UNREACHABLE, 'generic');
+    }
+    const { error } = await this.client.from('health_plans').upsert({
+      user_id: userId,
+      focus: plan.focus,
+      nutrition: plan.nutrition,
+      fitness: plan.fitness,
+      wellbeing: plan.wellbeing,
+      limits: plan.limits,
+      disclaimer: plan.disclaimer.slice(0, 400),
+      updated_at: plan.updatedAt,
+    });
+    this.emit({ ...this.snapshot, healthPlan: plan });
+    if (error) {
+      const detail = typeof error.message === 'string' && error.message.trim()
+        ? error.message
+        : 'health plan upsert failed';
+      await this.logClientError('health-plan', detail, clientAppBuild({
+        buildNumber: Constants.expoConfig?.ios?.buildNumber,
+        version: Constants.expoConfig?.version,
+      }));
+      throw new UserFacingError(PLAN_NOT_SAVED, 'generic');
+    }
+  }
+
   async sharedNutrition(userId: string) {
     const { data, error } = await this.client.rpc('shared_nutrition', { target: userId });
     if (error || data == null) return null;
-    return parseSharedNutrition(data);
+    const parsed = parseSharedNutrition(data);
+    if (!parsed?.mealPhotos?.length) return parsed;
+    const paths = parsed.mealPhotos.map((photo) => `${userId}/${photo.id}.jpg`);
+    try {
+      const signed = await this.client.storage.from(FOOD_BUCKET).createSignedUrls(paths, 3600);
+      if (signed.error || !signed.data) return { ...parsed, mealPhotos: [] };
+      const byPath = new Map<string, string>();
+      for (const item of signed.data) {
+        if (item.path && item.signedUrl) byPath.set(item.path, item.signedUrl);
+      }
+      return {
+        ...parsed,
+        mealPhotos: parsed.mealPhotos.flatMap((photo) => {
+          const url = byPath.get(`${userId}/${photo.id}.jpg`);
+          return url ? [{ ...photo, url }] : [];
+        }),
+      };
+    } catch {
+      return { ...parsed, mealPhotos: [] };
+    }
+  }
+
+  async sharedHealthPlan(userId: string) {
+    const { data, error } = await this.client.rpc('shared_health_plan', { target: userId });
+    if (error || data == null) return null;
+    return parseSharedHealthPlan(data);
+  }
+
+  async listBuddies(): Promise<BuddyList> {
+    const { data, error } = await this.client.rpc('list_buddies');
+    if (error) throw error;
+    return parseBuddyList(data);
+  }
+
+  async createBuddyInvite(buddyId: string, scope: BuddyScope): Promise<void> {
+    const { error } = await this.client.rpc('create_buddy_invite', { buddy: buddyId, scope });
+    if (error) throw error;
+  }
+
+  async createBuddyLink(scope: BuddyScope): Promise<BuddyLinkPass> {
+    const { data, error } = await this.client.rpc('create_buddy_link', { scope });
+    if (error) throw error;
+    const pass = parseBuddyLinkPass(data);
+    if (!pass) throw new UserFacingError('Could not create that link.', 'generic');
+    return pass;
+  }
+
+  async acceptBuddyInvite(inviteId: string): Promise<void> {
+    const { error } = await this.client.rpc('accept_buddy_invite', { invite: inviteId });
+    if (error) throw error;
+  }
+
+  async declineBuddyInvite(inviteId: string): Promise<void> {
+    const { error } = await this.client.rpc('decline_buddy_invite', { invite: inviteId });
+    if (error) throw error;
+  }
+
+  async previewBuddyLink(secret: string): Promise<{ name: string; scope: BuddyScope }> {
+    const { data, error } = await this.client.rpc('preview_buddy_link', { secret });
+    if (error) throw error;
+    const preview = parseBuddyPreview(data);
+    if (!preview) throw new UserFacingError('That invite is not available.', 'generic');
+    return preview;
+  }
+
+  async acceptBuddyLink(secret: string): Promise<void> {
+    const { error } = await this.client.rpc('accept_buddy_link', { secret });
+    if (error) throw error;
+  }
+
+  async revokeBuddy(inviteId: string): Promise<void> {
+    const { error } = await this.client.rpc('revoke_buddy', { invite: inviteId });
+    if (error) throw error;
+  }
+
+  async revokeBuddyLink(linkId: string): Promise<void> {
+    const { error } = await this.client.rpc('revoke_buddy_link', { link: linkId });
+    if (error) throw error;
+  }
+
+  async updateBuddyScope(inviteId: string, scope: BuddyScope): Promise<void> {
+    const { error } = await this.client.rpc('update_buddy_scope', { invite: inviteId, scope });
+    if (error) throw error;
+  }
+
+  async sharedBuddyData(ownerId: string): Promise<BuddyShareView | null> {
+    const { data, error } = await this.client.rpc('shared_buddy_data', { owner: ownerId });
+    if (error || data == null) return null;
+    return parseBuddyShare(data);
   }
 
   async exportData(): Promise<Record<string, unknown>> {
@@ -2334,16 +2950,14 @@ export class SupabaseRepository implements Repository {
         communityVisible: profile.communityVisible,
         consentHealth: profile.consentHealth,
         consentAi: profile.consentAi,
+        messageNotifications: profile.messageNotifications,
+        termsAccepted: this.snapshot.consents.some((row) => row.kind === 'terms' && row.version === CONSENT_VERSION && row.granted),
       };
       this.consentExisting = this.snapshot.consents;
-      lane.seen(canonicalConsent(this.consentBase));
+      lane.seen(this.consentBase);
     }
     const rows = consentRows(CONSENT_VERSION, next);
-    const replaced = this.snapshot.consents.map((row) => {
-      const match = rows.find((item) => item.kind === row.kind && item.version === row.version);
-      return match ? { ...row, granted: match.granted } : row;
-    });
-    const added = missingConsentRows(replaced, rows);
+    const decidedAt = new Date().toISOString();
     this.emit({
       ...this.snapshot,
       profile: {
@@ -2351,8 +2965,9 @@ export class SupabaseRepository implements Repository {
         communityVisible: next.communityVisible,
         consentHealth: next.consentHealth,
         consentAi: next.consentAi,
+        messageNotifications: next.messageNotifications,
       },
-      consents: [...replaced, ...added],
+      consents: mergeStoredConsents(this.snapshot.consents, rows, decidedAt),
     });
     try {
       await lane.choose(next);
@@ -2362,6 +2977,7 @@ export class SupabaseRepository implements Repository {
           communityVisible: next.communityVisible,
           consentHealth: next.consentHealth,
           consentAi: next.consentAi,
+          messageNotifications: next.messageNotifications,
         };
       }
     } catch (error) {
@@ -2375,6 +2991,7 @@ export class SupabaseRepository implements Repository {
               communityVisible: this.consentBase.communityVisible,
               consentHealth: this.consentBase.consentHealth,
               consentAi: this.consentBase.consentAi,
+              messageNotifications: this.consentBase.messageNotifications,
             }
             : current,
           consents: this.consentExisting ?? this.snapshot.consents,
@@ -2385,6 +3002,7 @@ export class SupabaseRepository implements Repository {
             communityVisible: this.consentBase.communityVisible,
             consentHealth: this.consentBase.consentHealth,
             consentAi: this.consentBase.consentAi,
+            messageNotifications: this.consentBase.messageNotifications,
           };
         }
       }
@@ -2434,6 +3052,7 @@ export class SupabaseRepository implements Repository {
       community_visible: input.communityVisible,
       consent_health: input.consentHealth,
       consent_ai: input.consentAi,
+      message_notifications: input.messageNotifications,
     }).eq('id', userId);
     if (error) throw error;
     await this.insertConsents(userId, input, this.consentExisting ?? []);
@@ -2480,18 +3099,14 @@ export class SupabaseRepository implements Repository {
       communityVisible: lane.value.communityVisible,
       consentHealth: lane.value.consentHealth,
       consentAi: lane.value.consentAi,
+      messageNotifications: lane.value.messageNotifications,
     };
   }
 
   private overlayConsentRows(rows: StoredConsent[]): StoredConsent[] {
     const lane = this.saves.get('consent') as CoalescedSave<ConsentInput> | undefined;
     if (!lane?.dirty) return rows;
-    const next = consentRows(CONSENT_VERSION, lane.value);
-    const replaced = rows.map((row) => {
-      const match = next.find((item) => item.kind === row.kind && item.version === row.version);
-      return match ? { ...row, granted: match.granted } : row;
-    });
-    return [...replaced, ...missingConsentRows(replaced, next)];
+    return mergeStoredConsents(rows, consentRows(CONSENT_VERSION, lane.value), new Date().toISOString());
   }
 
   private overlayVision(items: VisionItem[]): VisionItem[] {
@@ -2528,16 +3143,28 @@ export class SupabaseRepository implements Repository {
     }
   }
 
-  private async insertConsents(userId: string, input: ConsentInput, existing: readonly { kind: string; version: string }[] = this.snapshot.consents) {
-    const next = missingConsentRows(existing, consentRows(CONSENT_VERSION, input));
-    if (!next.length) return;
-    const { error } = await this.client.from('consents').insert(next.map((row) => ({
-      user_id: userId,
-      kind: row.kind,
-      granted: row.granted,
-      version: row.version,
-    })));
-    if (error && !/duplicate|23505/i.test(`${error.code ?? ''} ${error.message}`)) throw asUserFacing(error, 'general');
+  private async insertConsents(userId: string, input: ConsentInput, existing: readonly StoredConsent[] = this.snapshot.consents) {
+    const rows = consentRows(CONSENT_VERSION, input);
+    const next = missingConsentRows(existing, rows);
+    if (next.length) {
+      const { error } = await this.client.from('consents').insert(next.map((row) => ({
+        user_id: userId,
+        kind: row.kind,
+        granted: row.granted,
+        version: row.version,
+      })));
+      if (error && !/duplicate|23505/i.test(`${error.code ?? ''} ${error.message}`)) throw asUserFacing(error, 'general');
+    }
+    const decidedAt = new Date().toISOString();
+    for (const row of rows) {
+      const prior = existing.find((item) => item.kind === row.kind && item.version === row.version);
+      if (!prior || prior.granted === row.granted) continue;
+      const { error } = await this.client.from('consents').update({
+        granted: row.granted,
+        decided_at: decidedAt,
+      }).eq('user_id', userId).eq('kind', row.kind).eq('version', row.version);
+      if (error) throw asUserFacing(error, 'general');
+    }
   }
 }
 
@@ -2585,7 +3212,7 @@ function mapProfile(row: Row, email: string, interestIds: string[]): Profile {
     visionStatement: typeof row.vision_statement === 'string' ? row.vision_statement : '',
     pinnedQuoteId: typeof row.pinned_quote_id === 'string' && quoteById(row.pinned_quote_id) ? row.pinned_quote_id : null,
     bio: typeof row.bio === 'string' ? row.bio : '',
-    messageNotifications: row.message_notifications == null ? true : Boolean(row.message_notifications),
+    messageNotifications: Boolean(row.message_notifications),
     notifySenderName: Boolean(row.notify_sender_name),
     movementReminder: Boolean(row.movement_reminder),
     movementReminderMinute: row.movement_reminder_minute == null ? null : Number(row.movement_reminder_minute),
@@ -2597,10 +3224,12 @@ function mapProfile(row: Row, email: string, interestIds: string[]): Profile {
 }
 
 function mapConsent(row: Row): StoredConsent {
+  const decided = row.decided_at ?? row.created_at;
   return {
     kind: row.kind as StoredConsent['kind'],
     granted: Boolean(row.granted),
     version: String(row.version),
+    decidedAt: decided ? String(decided) : undefined,
   };
 }
 
@@ -2645,7 +3274,7 @@ function mapDirectMessage(row: Row): DirectMessage {
     id: String(row.id),
     connectionId: String(row.connection_id),
     senderId: String(row.sender_id),
-    body: String(row.body),
+    body: omitSharedLocation(String(row.body)),
     createdAt: String(row.created_at),
   };
 }
@@ -2752,12 +3381,17 @@ function nutritionFromRow(row: Row | null): NutritionSettings {
     goalAge: age == null ? null : Math.round(age),
     goalSex: sex,
     proteinTarget: nutritionNumber(row.protein_target_g, 0, 700),
+    carbTarget: nutritionNumber(row.carb_target_g, 0, 1000),
+    fatTarget: nutritionNumber(row.fat_target_g, 0, 400),
+    goalPhase: typeof row.goal_phase === 'string' && isBuilderPhase(row.goal_phase) ? row.goal_phase : null,
+    weightClassKg: nutritionNumber(row.weight_class_kg, 40, 200),
     activityEnergyKcal: nutritionNumber(row.activity_energy_kcal, 0, 2500),
     shareGoal: row.share_goal === true,
     wagonOn: row.wagon_on === true,
     wagonNote: String(row.wagon_note ?? '').slice(0, 200),
     wagonVisible: row.wagon_visible === true,
     build: typeof row.build === 'string' && isBodyBuild(row.build) ? row.build : null,
+    workoutBuckets: parseWorkoutBuckets(row.workout_buckets),
     updatedAt: typeof row.updated_at === 'string' && row.updated_at ? row.updated_at : null,
   };
 }
@@ -2800,6 +3434,7 @@ function canonicalNutrition(settings: NutritionSettings): NutritionSettings {
     ...defaultNutritionSettings(),
     ...settings,
     wagonNote: settings.wagonNote.slice(0, 200),
+    workoutBuckets: parseWorkoutBuckets(settings.workoutBuckets),
   };
 }
 
@@ -2808,6 +3443,8 @@ function canonicalConsent(input: ConsentInput): ConsentInput {
     communityVisible: input.communityVisible,
     consentHealth: input.consentHealth,
     consentAi: input.consentAi,
+    messageNotifications: input.messageNotifications,
+    termsAccepted: input.termsAccepted,
   };
 }
 

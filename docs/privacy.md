@@ -48,3 +48,11 @@ A report can be sent about a shared profile item. The report goes to the moderat
 ## Your other choices
 
 You can export your data or delete the account. Deleting the account removes the sharing settings with the rest of the account. You can change Community, health, and coach consent at any time.
+
+## Apple Health
+
+On iPhone, Charioteer can read Apple Health when you allow it. It reads steps, sleep, heart rate, resting heart rate, heart rate variability, cardio fitness (VO2 max), walking heart rate, heart rate recovery, workouts (type, duration, distance, energy, and average heart rate), walking, cycling and swimming distance, weight, height, body fat, lean body mass, and active energy. It does not read blood oxygen. It never writes workouts, heart rate, steps, sleep, or weight. It writes only the meals and water you choose to save.
+
+Readings stay on your account as daily totals: minutes split into strength, cardio, and other, plus the latest cardio fitness, walking heart rate, heart rate recovery, and session heart rate for a day. A raw heart-rate trace from a workout is not stored. Other people cannot see these readings. They are not used for advertising or marketing.
+
+If you turn on the coach as well as health data, a short summary is sent to the model to write the Health Plan and Thumos replies. That summary is the fitness level, the trend in a sentence, weekly minutes, the mix of sessions, and recovery. The raw samples are not sent for that. You can turn the coach off, and you can turn Apple Health off in Settings > Health > Data Access & Devices > Charioteer. The fitness card is an estimate, not a medical assessment.

@@ -191,9 +191,11 @@ describe('steps and heart rate variability', () => {
     expect(hrv.marker).toBeNull();
     expect(hrv.plain).toContain(HRV_TOO_FEW);
     expect(hrv.plain).toContain('no official UK target');
-    expect(hrv.plain).not.toMatch(/\d+\s*to\s*\d+\s*ms/);
+    expect(hrv.plain).toContain('32 to 93 ms');
+    expect(hrv.plain).toContain('not a personal target');
+    expect(hrv.plain).toContain('This is a reference, not a target.');
     expect(hrv.plain).not.toContain('earlier average');
-    expect(hrv.sources).toEqual([]);
+    expect(hrv.sources.map((item) => item.url)).toEqual(['https://onlinelibrary.wiley.com/doi/10.1111/j.1540-8159.2010.02841.x']);
     expect(hrv.caveat).toBe(GUIDANCE_CAVEAT);
 
     const enough = metric('hrv_sdnn', [
@@ -207,7 +209,8 @@ describe('steps and heart rate variability', () => {
     expect(enough.plain).not.toContain(HRV_TOO_FEW);
     expect(enough.label).toBeNull();
     expect(enough.marker).toBeNull();
-    expect(enough.plain).toContain('your own');
+    expect(enough.plain).toContain('HRV 45 ms, up 6% vs your 30-day average');
+    expect(enough.plain).not.toContain('earlier average');
     expect(enough.caveat).toBe(GUIDANCE_CAVEAT);
   });
 
@@ -284,6 +287,11 @@ describe('BMI guidance', () => {
     expect(lifted.warning).toBeNull();
     expect(lifted.plain).not.toMatch(/overweight|obese/i);
     expect(lifted.plain).toContain('you lift weights');
+
+    const carrying = metric('weight_kg', [['2026-10-11', 80]], { heightCm: 170, adult: true, build: 'carrying_extra', sex: 'male' });
+    expect(carrying.label).toBe('Above the healthy range');
+    expect(carrying.plain).toContain('overweight');
+    expect(carrying.ticks.length).toBeGreaterThan(0);
 
     const fatter = metric('weight_kg', [['2026-10-11', 80]], { heightCm: 170, adult: true, build: 'muscular', bodyFatPct: 18, sex: 'male' });
     expect(fatter.plain).toContain('Body fat is 18%');

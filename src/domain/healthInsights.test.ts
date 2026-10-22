@@ -4,11 +4,17 @@ import { describe, expect, it } from 'vitest';
 import { buildThumosContext } from './thumos';
 import {
   buildHealthInsights,
+  dailyValues,
   formatHealthValue,
+  formatPersonalChange,
   formatReadingLine,
   formatSleepHours,
   groupedReadings,
+  healthChangeNote,
   londonDay,
+  londonWeek,
+  percentAgainstBaseline,
+  personalChange,
   seriesForWindow,
   type HealthPoint,
 } from './healthInsights';
@@ -35,6 +41,35 @@ describe('health insight formatting', () => {
     expect(formatReadingLine('steps', 4682, '2026-10-10', 'healthkit')).toBe('4,682 steps · 10 Oct 2026 · Apple Health');
     expect(formatReadingLine('steps', 1000, '2026-10-10', 'manual')).toContain('Logged here');
     expect(londonDay('2026-06-15T23:30:00.000Z')).toBe('2026-06-16');
+  });
+
+  it('keeps Monday to Sunday in London through the clock change', () => {
+    const sunday = londonWeek(new Date('2026-10-18T07:00:00.000Z'));
+    expect(sunday).toMatchObject({
+      start: '2026-10-12',
+      end: '2026-10-18',
+      today: '2026-10-18',
+    });
+    expect(sunday.days).toEqual([
+      '2026-10-12',
+      '2026-10-13',
+      '2026-10-14',
+      '2026-10-15',
+      '2026-10-16',
+      '2026-10-17',
+      '2026-10-18',
+    ]);
+    expect(londonWeek(new Date('2026-10-18T22:30:00.000Z')).today).toBe('2026-10-18');
+    const monday = londonWeek(new Date('2026-10-18T23:30:00.000Z'));
+    expect(monday).toMatchObject({ start: '2026-10-19', end: '2026-10-25', today: '2026-10-19', days: ['2026-10-19'] });
+    const beforeFallback = londonWeek(new Date('2026-10-24T23:30:00.000Z'));
+    const afterFallback = londonWeek(new Date('2026-10-25T01:30:00.000Z'));
+    expect(beforeFallback.today).toBe('2026-10-25');
+    expect(afterFallback.today).toBe('2026-10-25');
+    expect(beforeFallback.start).toBe('2026-10-19');
+    expect(afterFallback.start).toBe('2026-10-19');
+    expect(beforeFallback.days[0]).toBe('2026-10-19');
+    expect(beforeFallback.days).not.toContain('2026-10-18');
   });
 });
 
@@ -63,8 +98,8 @@ describe('health insights', () => {
         ['2026-10-02', 73.9],
       ]),
     });
-    expect(flat.kinds.find((kind) => kind.kind === 'weight_kg')?.lines[0]).toBe('Weight is about the same as last week');
-    expect(flat.headlines).not.toContain('Weight is about the same as last week');
+    expect(flat.kinds.find((kind) => kind.kind === 'weight_kg')?.lines[0]).toBe('Weight 74.2 kg, about the same as your 30-day average');
+    expect(flat.headlines).not.toContain('Weight 74.2 kg, about the same as your 30-day average');
 
     const zero = buildHealthInsights({
       today,
@@ -321,6 +356,115 @@ describe('health insights', () => {
     expect(seriesForWindow(samples, 'steps', today, 7).map((item) => item.value)).toEqual([1000]);
     const grouped = groupedReadings(samples);
     expect(grouped[0]?.rows.map((row) => row.value)).toEqual([1000, 9000, 2000]);
+  });
+});
+
+describe('shared personal change', () => {
+  it('reports HRV against the 30-day average, and multiplies the fraction by 100 once', () => {
+    expect(percentAgainstBaseline(48, 45)).toBe(7);
+    expect(percentAgainstBaseline(1.07, 1)).toBe(7);
+
+    const samples = [
+      point('hrv_sdnn', 28, '2026-09-06'),
+      point('hrv_sdnn', 28.5, '2026-09-10'),
+      ...days('hrv_sdnn', [
+        ['2026-10-05', 45],
+        ['2026-10-06', 45],
+        ['2026-10-07', 45],
+        ['2026-10-08', 45],
+        ['2026-10-09', 45],
+        ['2026-10-10', 45],
+        ['2026-10-11', 48],
+      ]),
+    ];
+    const points = dailyValues(samples, 'hrv_sdnn');
+    const change = personalChange(points, today);
+    expect(change?.percent).toBe(7);
+    expect(change?.baseline).toBe(45);
+    expect(formatPersonalChange('hrv_sdnn', change!)).toBe('HRV 48 ms, up 7% vs your 30-day average');
+
+    const older = points.filter((point) => point.day >= '2026-09-05' && point.day <= '2026-10-04');
+    const olderMean = older.reduce((sum, point) => sum + point.value, 0) / older.length;
+    expect(percentAgainstBaseline(48, olderMean)).toBe(70);
+
+    const report = buildHealthInsights({ today, soberOn: null, samples });
+    const lines = report.kinds.find((kind) => kind.kind === 'hrv_sdnn')?.lines.join(' ') ?? '';
+    expect(lines).toContain('HRV 48 ms, up 7% vs your 30-day average');
+    expect(lines).not.toContain('70%');
+    expect(lines).not.toContain('on last week');
+    expect(report.headlines).toContain('HRV 48 ms, up 7% vs your 30-day average');
+  });
+
+  it('uses that same 30-day line for resting heart rate, sleep, weight, and VO2', () => {
+    const resting = healthChangeNote('resting_heart_rate', [
+      { day: '2026-10-08', value: 60 },
+      { day: '2026-10-09', value: 60 },
+      { day: '2026-10-10', value: 60 },
+      { day: '2026-10-11', value: 64 },
+    ], today);
+    expect(resting).toBe('Resting HR 64 bpm, up 7% vs your 30-day average');
+
+    const sleep = healthChangeNote('sleep_hours', [
+      { day: '2026-10-08', value: 7.5 },
+      { day: '2026-10-09', value: 7.5 },
+      { day: '2026-10-10', value: 7.5 },
+      { day: '2026-10-11', value: 8 },
+    ], today);
+    expect(sleep).toBe('Sleep 8h, up 7% vs your 30-day average');
+
+    const weight = healthChangeNote('weight_kg', [
+      { day: '2026-10-08', value: 74 },
+      { day: '2026-10-09', value: 74 },
+      { day: '2026-10-10', value: 74 },
+      { day: '2026-10-11', value: 79.2 },
+    ], today);
+    expect(weight).toBe('Weight 79.2 kg, up 7% vs your 30-day average');
+
+    const vo2 = healthChangeNote('vo2_max', [
+      { day: '2026-10-01', value: 40 },
+      { day: '2026-10-05', value: 40 },
+      { day: '2026-10-08', value: 40 },
+      { day: '2026-10-11', value: 42.8 },
+    ], today);
+    expect(vo2).toBe('VO2 42.8 ml/kg/min, up 7% vs your 30-day average');
+
+    expect(healthChangeNote('steps', [{ day: today, value: 8000 }], today)).toBeNull();
+    const shared = readFileSync('supabase/functions/_shared/healthInsights.ts', 'utf8');
+    const formula = '((value - baseline) / baseline) * 100';
+    expect(shared.split(formula)).toHaveLength(2);
+  });
+
+  it('passes the shared note into Thumos, the voice briefing, and the health plan', () => {
+    const context = buildThumosContext({
+      now: new Date('2026-03-01T12:00:00.000Z'),
+      displayName: 'Alex',
+      sobrietyStartedAt: '2026-01-13T06:00:00.000Z',
+      reasons: [],
+      weeklySpendGbp: null,
+      weeklyUnits: null,
+      checkIns: [],
+      health: [{
+        kind: 'hrv_sdnn',
+        latest: 48,
+        previous: 28,
+        unit: 'ms',
+        note: 'HRV 48 ms, up 7% vs your 30-day average',
+      }],
+      mode: 'growth',
+      safety: { selfHarm: false, withdrawal: false, reasons: [] },
+    });
+    expect(context).toContain('HRV 48 ms, up 7% vs your 30-day average');
+    expect(context).not.toContain('higher than the previous reading');
+    expect(context).not.toContain('up 70%');
+
+    for (const file of [
+      'supabase/functions/thumos-chat/index.ts',
+      'supabase/functions/thumos-voice-token/index.ts',
+      'src/voice/briefing.ts',
+      'supabase/functions/_shared/healthPlan.ts',
+    ]) {
+      expect(readFileSync(file, 'utf8')).toContain('healthChangeNoteFromReadings');
+    }
   });
 });
 

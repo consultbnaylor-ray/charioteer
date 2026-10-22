@@ -68,3 +68,36 @@ export function connectionIdFrom(data: unknown): string | null {
   const value = (data as { connectionId?: unknown }).connectionId;
   return typeof value === 'string' && CONNECTION_ID.test(value) ? value : null;
 }
+
+export type UnreadBadgeRow = { connectionId: string; senderId: string; createdAt: string };
+
+/**
+ * Home-screen badge for direct messages only.
+ * A saved read line wins. With no saved line, the viewer's own latest message is the line,
+ * so a later message from the other person still counts. The number stops at 99.
+ */
+export function iconBadgeCount(
+  rows: readonly UnreadBadgeRow[],
+  meId: string,
+  readThrough: Readonly<Record<string, string | undefined>>,
+): number {
+  const ownLatest: Record<string, number> = {};
+  for (const row of rows) {
+    if (row.senderId !== meId) continue;
+    const at = Date.parse(row.createdAt);
+    if (Number.isNaN(at)) continue;
+    const previous = ownLatest[row.connectionId];
+    if (previous == null || at > previous) ownLatest[row.connectionId] = at;
+  }
+  let count = 0;
+  for (const row of rows) {
+    if (row.senderId === meId) continue;
+    const at = Date.parse(row.createdAt);
+    if (Number.isNaN(at)) continue;
+    const saved = readThrough[row.connectionId];
+    const savedAt = saved ? Date.parse(saved) : Number.NaN;
+    const line = saved && !Number.isNaN(savedAt) ? savedAt : ownLatest[row.connectionId];
+    if (line == null || at > line) count += 1;
+  }
+  return count > 99 ? 99 : count;
+}

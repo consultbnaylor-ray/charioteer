@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 
 import { describe, expect, it } from 'vitest';
 
+import { soberMilestoneRing } from './distance';
 import { defaultNutritionSettings, type FoodItem, type FoodLog } from './nutrition';
 import { APP_SECTIONS, TAB_SECTIONS } from './sections';
 import { buildStatsOverview, type StatsOverviewInput } from './statsOverview';
@@ -110,13 +111,22 @@ describe('stats overview', () => {
     expect(calories.meaning).toBe('Slightly above your target');
     expect(calories.tone).toBe('watch');
     expect(calories.signal).toBe('Watch');
-    expect(byId(tiles, 'protein').meaning).toBe('Short of your target so far');
+    expect(calories.tone).not.toBe('attention');
+    expect(calories.chart).toMatchObject({ kind: 'ring', status: '100 kcal over', fill: 1 });
+    expect(byId(tiles, 'protein').meaning).toBe('Early days');
+    expect(byId(tiles, 'protein').signal).toBe('Early days');
+    expect(byId(tiles, 'protein').chart).toMatchObject({ kind: 'ring', status: '120 g left' });
     expect(byId(tiles, 'protein').tone).not.toBe('attention');
+    expect(byId(tiles, 'quality').chart.kind).toBe('bars');
     expect(byId(tiles, 'quality').tone).toBe('watch');
+    expect(byId(tiles, 'quality').value).toBe('0 whole · 2 processed');
+    expect(byId(tiles, 'quality').periodLine).toBe('Last 7 days');
+    expect(byId(tiles, 'quality').processedNotes).toHaveLength(2);
     expect(byId(tiles, 'quality').meaning).toBe('2 items look highly processed');
+    expect(byId(tiles, 'quality').href).toBe('/nutrition?section=quality');
   });
 
-  it('calls body fat on track inside the band and uses red only under the BMI floor', () => {
+  it('calls body fat within the healthy range and uses attention only under the BMI floor', () => {
     const onTrack = buildStatsOverview(input({
       bodyComposition: [{
         id: '1',
@@ -128,7 +138,14 @@ describe('stats overview', () => {
         createdAt: '2026-10-14T12:00:00.000Z',
       }],
     }));
-    expect(byId(onTrack, 'body')).toMatchObject({ title: 'Body fat', value: '15%', meaning: 'On track', tone: 'good' });
+    expect(byId(onTrack, 'body')).toMatchObject({
+      title: 'Body fat',
+      value: '15%',
+      meaning: 'Within healthy range',
+      tone: 'good',
+      signal: 'On track',
+    });
+    expect(byId(onTrack, 'body').chart).toMatchObject({ kind: 'range', status: 'Within healthy range' });
 
     const low = buildStatsOverview(input({
       health: [
@@ -167,6 +184,96 @@ describe('stats overview', () => {
     expect(body.value).toBe('0.47');
     expect(body.tone).toBe('good');
     expect(body.href).toBe('/nutrition?section=body');
+    expect(body.meaning).toBe('Within healthy range');
+    expect(body.chart).toMatchObject({ kind: 'range', status: 'Within healthy range' });
+  });
+
+  it('keeps the scales from judging a training goal, and tracks lean mass for a body builder', () => {
+    const weights = [
+      { kind: 'weight_kg', value: 80, recordedOn: '2026-10-01' },
+      { kind: 'weight_kg', value: 79, recordedOn: '2026-10-14' },
+    ];
+    const runner = buildStatsOverview(input({
+      health: weights,
+      nutrition: { ...defaultNutritionSettings(), goal: 'elite_runner' },
+    }));
+    expect(byId(runner, 'weight').meaning).toBe('Body fat and training matter more than a small change');
+    expect(byId(runner, 'weight').tone).toBe('info');
+    const heavy = buildStatsOverview(input({
+      health: weights,
+      nutrition: { ...defaultNutritionSettings(), goal: 'elite_heavy_boxer' },
+    }));
+    expect(byId(heavy, 'weight').meaning).toBe('Size and power matter more than a small change');
+    expect(byId(heavy, 'weight').tone).toBe('info');
+    const boxer = buildStatsOverview(input({
+      health: weights,
+      nutrition: { ...defaultNutritionSettings(), goal: 'elite_middle_boxer' },
+    }));
+    expect(byId(boxer, 'weight').meaning).toBe('A middleweight limit is not a race on this screen');
+    const cruiser = buildStatsOverview(input({
+      health: weights,
+      nutrition: { ...defaultNutritionSettings(), goal: 'elite_cruiser_boxer' },
+    }));
+    expect(byId(cruiser, 'weight').meaning).toBe('A cruiserweight limit is not a race on this screen');
+    const builder = buildStatsOverview(input({
+      health: weights,
+      nutrition: { ...defaultNutritionSettings(), goal: 'body_builder' },
+      bodyComposition: [{
+        id: '1',
+        recordedOn: '2026-09-01',
+        bodyFatPct: 18,
+        leanMassKg: 62,
+        waistCm: null,
+        source: 'dexa',
+        createdAt: '2026-09-01T00:00:00.000Z',
+      }, {
+        id: '2',
+        recordedOn: '2026-10-14',
+        bodyFatPct: 16,
+        leanMassKg: 63.4,
+        waistCm: null,
+        source: 'dexa',
+        createdAt: '2026-10-14T00:00:00.000Z',
+      }],
+    }));
+    expect(byId(builder, 'weight').meaning).toBe('Body fat and lean mass matter more than the scales');
+    expect(byId(builder, 'lean')).toMatchObject({
+      title: 'Lean mass',
+      value: '63.4 kg',
+      meaning: 'Higher than the earlier reading',
+      tone: 'good',
+      href: '/nutrition?section=body',
+    });
+    expect(byId(builder, 'lean').chart.kind).toBe('line');
+  });
+
+  it('measures sober days, water, and gratitude against the next mark', () => {
+    const now = new Date(2026, 9, 14, 17, 41);
+    const tiles = buildStatsOverview(input({
+      now,
+      waterDays: [{ day: '2026-10-14', waterMl: 350 }],
+      gratitude: [
+        { entryDate: '2026-10-14' },
+        { entryDate: '2026-10-13' },
+        { entryDate: '2026-10-12' },
+      ],
+      health: [
+        { kind: 'weight_kg', value: 80, recordedOn: '2026-10-01' },
+        { kind: 'weight_kg', value: 79, recordedOn: '2026-10-14' },
+      ],
+      checkIns: [{ mood: 7, craving: 2, createdAt: '2026-10-14T09:00:00.000Z' }],
+    }));
+    expect(byId(tiles, 'sober').chart).toEqual({
+      kind: 'ring',
+      ...soberMilestoneRing(new Date('2026-08-01T00:00:00.000Z'), now),
+    });
+    expect(byId(tiles, 'water').chart).toMatchObject({ kind: 'ring', status: '1,650 ml left' });
+    expect(byId(tiles, 'gratitude').chart).toMatchObject({ kind: 'ring', centre: '3', status: '4 lines to go' });
+    expect(byId(tiles, 'mood').chart.kind).toBe('line');
+    expect(byId(tiles, 'check-ins').chart.kind).toBe('bars');
+    expect(byId(tiles, 'weight').chart.kind).toBe('line');
+    expect(byId(tiles, 'calories').href).toBe('/nutrition?section=today');
+    expect(byId(tiles, 'body').href).toBe('/nutrition?section=body');
   });
 
   it('keeps the stats colours readable and off the rest of the app', () => {
@@ -183,6 +290,11 @@ describe('stats overview', () => {
     expect(screen).not.toContain('tab: true');
     expect(tile).toContain('tile.signal');
     expect(tile).toContain('<ToneMark');
+    expect(tile).toContain('router.push(tile.href');
+    expect(tile).toContain('<ProgressRing');
+    expect(tile).toContain('<CompareBars');
+    expect(tile).toContain('<TrendLine');
+    expect(tile).toContain('<RangeTrack');
     expect(home).toContain("router.push('/stats'");
     expect(you).toContain("router.push('/stats'");
     expect(readFileSync('src/app/(main)/_layout.tsx', 'utf8')).toContain('TAB_SECTIONS');

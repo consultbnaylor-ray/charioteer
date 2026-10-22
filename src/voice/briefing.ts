@@ -1,6 +1,10 @@
 import type { AppSnapshot } from '@/data/types';
 import { isoDay } from '@/domain/dates';
-import { buildHealthInsights } from '@/domain/healthInsights';
+import { buildHealthInsights, healthChangeNoteFromReadings } from '@/domain/healthInsights';
+import { buildFitnessSnapshot, fitnessFromSnapshot } from '@/domain/fitnessSnapshot';
+import { withPlannedMinutes } from '@/domain/plannedSession';
+import { goalLedFromSnapshot, goalProgressLine } from '@/domain/goalLed';
+import { goalWeightRange } from '@/domain/goalWeightRange';
 import { compositionForAssessment, defaultNutritionSettings, nutritionContextLines, weightPointsFrom } from '@/domain/nutrition';
 import { savingsFromTypicalWeek } from '@/domain/savings';
 import { soberElapsed } from '@/domain/sober';
@@ -10,7 +14,7 @@ import { quoteById } from '@/domain/stoicQuotes';
 import { buildVoiceBriefing, type VoiceBriefing } from '@/domain/voice';
 import type { HealthTrend, ThumosMode } from '@/domain/thumos';
 
-function healthTrends(samples: AppSnapshot['health']): HealthTrend[] {
+function healthTrends(samples: AppSnapshot['health'], today: string): HealthTrend[] {
   const ordered = [...samples].sort((left, right) => (left.recordedOn < right.recordedOn ? 1 : left.recordedOn > right.recordedOn ? -1 : 0));
   const byKind = new Map<string, typeof ordered>();
   for (const sample of ordered) {
@@ -23,6 +27,7 @@ function healthTrends(samples: AppSnapshot['health']): HealthTrend[] {
     latest: rows[0]?.value ?? null,
     previous: rows[1]?.value ?? null,
     unit: rows[0]?.unit ?? '',
+    note: healthChangeNoteFromReadings(kind, rows, today),
   }));
 }
 
@@ -39,7 +44,7 @@ function nutritionLinesFrom(snap: AppSnapshot, now: Date): string[] {
   const weights = weightPointsFrom(snap.health);
   const latest = weights.length ? weights[weights.length - 1] : undefined;
   const figures = compositionForAssessment(snap.bodyComposition ?? []);
-  return nutritionContextLines({
+  const lines = nutritionContextLines({
     logs: snap.foodLogs ?? [],
     settings: snap.nutrition ?? defaultNutritionSettings(),
     waterMl: water,
@@ -56,6 +61,24 @@ function nutritionLinesFrom(snap: AppSnapshot, now: Date): string[] {
       waistCm: figures.waistCm,
     },
   });
+  const progress = goalProgressLine(goalLedFromSnapshot(snap, now));
+  const fitness = profile.consentHealth
+    ? buildFitnessSnapshot(fitnessFromSnapshot(snap, 'unknown', now)).contextLine
+    : null;
+  const settings = snap.nutrition ?? defaultNutritionSettings();
+  const weightRange = goalWeightRange({
+    goal: settings.goal,
+    phase: settings.goalPhase,
+    weightClassKg: settings.weightClassKg,
+    weightKg: latest?.kg ?? null,
+    heightCm: profile.heightCm,
+    age: settings.goalAge,
+    sex: settings.goalSex,
+    build: settings.build,
+    bodyFatPct: figures.bodyFatPct,
+    waistCm: figures.waistCm,
+  }).contextLine;
+  return [progress, fitness, weightRange, ...lines].filter((line): line is string => Boolean(line));
 }
 
 /** Client copy of the voice prompt, used when the token function has not been redeployed yet. */
@@ -70,7 +93,7 @@ export function briefingFromSnapshot(snap: AppSnapshot, requestedMode: ThumosMod
   const healthInsights = shareHealth
     ? buildHealthInsights({
         today: isoDay(now),
-        samples: snap.health,
+        samples: withPlannedMinutes(snap.health, snap.plannedSessions),
         soberOn,
         stage: profile.stage,
       }).headlines
@@ -101,7 +124,7 @@ export function briefingFromSnapshot(snap: AppSnapshot, requestedMode: ThumosMod
         craving: item.craving,
         note: item.note,
       })),
-      health: shareHealth ? healthTrends(snap.health) : [],
+      health: shareHealth ? healthTrends(snap.health, isoDay(now)) : [],
       healthInsights,
       vision: profile.consentAi
         ? visionContextFrom(profile.visionStatement, profile.visionStartedOn, snap.visionItems)

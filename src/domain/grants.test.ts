@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
 const sql = readFileSync('supabase/migrations/20261010130000_tighten_grants.sql', 'utf8');
@@ -267,3 +267,315 @@ describe('health upsert grant', () => {
     expect(intended).toEqual(['kind', 'recorded_on', 'source', 'unit', 'user_id', 'value']);
   });
 });
+
+/** Tables authenticated can read after every migration, in filename order. */
+function authenticatedSelectTables(): Set<string> {
+  const granted = new Set<string>();
+  const files = readdirSync('supabase/migrations').filter((name) => name.endsWith('.sql')).sort();
+  for (const name of files) {
+    const sql = readFileSync(`supabase/migrations/${name}`, 'utf8');
+    for (const statement of sql.split(';')) {
+      if (/revoke all privileges on all tables in schema public/i.test(statement) && /\bauthenticated\b/i.test(statement)) {
+        granted.clear();
+        continue;
+      }
+      if (/\bon\s+function\b/i.test(statement)) continue;
+      const revoke = /revoke all on (?:table\s+)?public\.([a-z_]+)\s+from\s+([^;]+)/i.exec(statement);
+      if (revoke && /\bauthenticated\b/i.test(revoke[2])) {
+        granted.delete(revoke[1]);
+        continue;
+      }
+      const revokeSelect = /revoke\s+select\b[\s\S]*?\s+on\s+(?:table\s+)?public\.([a-z_]+)\s+from\s+([^;]+)/i.exec(statement);
+      if (revokeSelect && /\bauthenticated\b/i.test(revokeSelect[2])) {
+        granted.delete(revokeSelect[1]);
+        continue;
+      }
+      const grant = /grant\s+([\s\S]+?)\s+on\s+(?:table\s+)?public\.([a-z_]+)\s+to\s+([^;]+)/i.exec(statement);
+      if (grant && /\bauthenticated\b/i.test(grant[3]) && /\bselect\b/i.test(grant[1])) granted.add(grant[2]);
+    }
+  }
+  return granted;
+}
+
+function clientSelectTables(source: string): string[] {
+  const tables = new Set<string>();
+  const re = /\.from\('([a-z_]+)'\)/g;
+  let match: RegExpExecArray | null;
+  while ((match = re.exec(source))) {
+    const after = source.slice(match.index + match[0].length, match.index + match[0].length + 320);
+    const selectAt = after.search(/\.select\s*\(/);
+    if (selectAt < 0) continue;
+    if (/\.from\(/.test(after.slice(0, selectAt))) continue;
+    tables.add(match[1]);
+  }
+  return [...tables].sort();
+}
+
+type UpsertGrant = { tableLevel: boolean; columns: Set<string> };
+
+function splitPrivileges(list: string): string[] {
+  const parts: string[] = [];
+  let current = '';
+  let depth = 0;
+  for (const char of list) {
+    if (char === '(') depth += 1;
+    if (char === ')') depth = Math.max(0, depth - 1);
+    if (char === ',' && depth === 0) {
+      parts.push(current.trim());
+      current = '';
+    } else {
+      current += char;
+    }
+  }
+  if (current.trim()) parts.push(current.trim());
+  return parts;
+}
+
+/** Column and table UPDATE or INSERT grants after every migration, in filename order. */
+function authenticatedUpdateGrants(kind: 'update' | 'insert' = 'update'): Map<string, UpsertGrant> {
+  const tables = new Map<string, UpsertGrant>();
+  const files = readdirSync('supabase/migrations').filter((name) => name.endsWith('.sql')).sort();
+  const grantRe = /grant\s+([\s\S]+?)\s+on\s+(?:table\s+)?public\.([a-z_]+)\s+to\s+authenticated\b/gi;
+  const revokeAllRe = /revoke\s+all\s+privileges\s+on\s+all\s+tables\s+in\s+schema\s+public\s+from\s+[^;]*\bauthenticated\b/gi;
+  const revokeTableRe = /revoke\s+all\s+on\s+(?:table\s+)?public\.([a-z_]+)\s+from\s+([^;]+)/gi;
+  for (const name of files) {
+    const source = readFileSync(`supabase/migrations/${name}`, 'utf8').replace(/--[^\n]*/g, ' ');
+    const events: { at: number; apply: () => void }[] = [];
+    for (const match of source.matchAll(revokeAllRe)) {
+      events.push({ at: match.index ?? 0, apply: () => tables.clear() });
+    }
+    for (const match of source.matchAll(revokeTableRe)) {
+      if (!/\bauthenticated\b/i.test(match[2])) continue;
+      const table = match[1];
+      events.push({ at: match.index ?? 0, apply: () => tables.delete(table) });
+    }
+    for (const match of source.matchAll(grantRe)) {
+      const privileges = splitPrivileges(match[1]);
+      const table = match[2];
+      events.push({
+        at: match.index ?? 0,
+        apply: () => {
+          const state = tables.get(table) ?? { tableLevel: false, columns: new Set<string>() };
+          for (const privilege of privileges) {
+            const columns = new RegExp(`^${kind}\\s*\\(([^)]+)\\)$`, 'i').exec(privilege);
+            if (columns) {
+              for (const column of columns[1].split(',')) {
+                const name = column.trim();
+                if (name) state.columns.add(name);
+              }
+            } else if (new RegExp(`^${kind}$`, 'i').test(privilege)) {
+              state.tableLevel = true;
+            }
+          }
+          tables.set(table, state);
+        },
+      });
+    }
+    events.sort((left, right) => left.at - right.at);
+    for (const event of events) event.apply();
+  }
+  return tables;
+}
+
+function updateCovers(grants: Map<string, UpsertGrant>, table: string, column: string): boolean {
+  const state = grants.get(table);
+  return Boolean(state && (state.tableLevel || state.columns.has(column)));
+}
+
+function upsertArgument(source: string, table: string): string {
+  const needle = `.from('${table}').upsert(`;
+  const start = source.indexOf(needle);
+  if (start < 0) return '';
+  let depth = 1;
+  const open = start + needle.length;
+  for (let index = open; index < source.length; index += 1) {
+    const char = source[index];
+    if (char === '(') depth += 1;
+    if (char === ')') depth -= 1;
+    if (depth === 0) return source.slice(open, index);
+  }
+  return '';
+}
+
+describe('client upsert update grants', () => {
+  const grants = authenticatedUpdateGrants();
+  const inserted = authenticatedUpdateGrants('insert');
+  const repo = readFileSync('src/data/supabase-repository.ts', 'utf8');
+  const added = readFileSync('supabase/migrations/20261015230000_upsert_update_grants.sql', 'utf8');
+
+  const sent: Record<string, { columns: string[]; withheld: string[]; insertOnly?: boolean }> = {
+    health_samples: {
+      columns: ['user_id', 'kind', 'value', 'unit', 'recorded_on', 'source'],
+      withheld: ['id', 'created_at'],
+    },
+    device_tokens: {
+      columns: ['user_id', 'expo_push_token', 'platform', 'updated_at'],
+      withheld: ['id', 'created_at'],
+    },
+    user_quotes: {
+      columns: ['user_id', 'quote_id'],
+      withheld: ['created_at'],
+    },
+    nutrition_settings: {
+      columns: [
+        'user_id', 'kcal_target', 'hide_calories', 'share_food_diary', 'share_calories',
+        'share_quality', 'share_progress', 'goal', 'goal_age', 'goal_sex', 'protein_target_g',
+        'carb_target_g', 'fat_target_g', 'goal_phase', 'weight_class_kg', 'activity_energy_kcal',
+        'share_goal', 'wagon_on', 'wagon_note', 'wagon_visible', 'build', 'updated_at',
+      ],
+      withheld: [],
+    },
+    nutrition_days: {
+      columns: ['user_id', 'day', 'water_ml'],
+      withheld: [],
+    },
+    body_composition: {
+      columns: ['user_id', 'recorded_on', 'body_fat_pct', 'lean_mass_kg', 'waist_cm', 'source'],
+      withheld: ['id', 'created_at'],
+    },
+    health_plans: {
+      columns: ['user_id', 'focus', 'nutrition', 'fitness', 'wellbeing', 'limits', 'disclaimer', 'updated_at'],
+      withheld: [],
+    },
+    training_schedules: {
+      columns: [
+        'user_id', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday',
+        'typical_minutes', 'longer_day', 'longer_minutes', 'walk_day', 'note', 'updated_at',
+      ],
+      withheld: [],
+    },
+    profile_sharing: {
+      columns: ['user_id', 'settings', 'updated_at'],
+      withheld: [],
+    },
+    planned_sessions: {
+      columns: ['id', 'user_id', 'session_type', 'starts_at', 'duration_minutes', 'note', 'planned_effort', 'done_at'],
+      withheld: ['created_at', 'updated_at'],
+      insertOnly: true,
+    },
+  };
+
+  it('covers every column a client upsert sends, and not the key columns it leaves out', () => {
+    const calls = [...repo.matchAll(/\.from\('([a-z_]+)'\)\.upsert\(/g)].map((match) => match[1]);
+    expect([...new Set(calls)].sort()).toEqual(Object.keys(sent).sort());
+    for (const [table, spec] of Object.entries(sent)) {
+      const argument = upsertArgument(repo, table);
+      const covers = spec.insertOnly ? inserted : grants;
+      if (spec.insertOnly) expect(argument).toContain('ignoreDuplicates: true');
+      for (const column of spec.columns) {
+        expect(updateCovers(covers, table, column), `${table}.${column}`).toBe(true);
+        if (argument.trimStart().startsWith('{') || argument.includes('=>')) {
+          expect(argument).toMatch(new RegExp(`\\b${column}\\b`));
+        }
+      }
+      for (const column of spec.withheld) {
+        expect(argument).not.toMatch(new RegExp(`\\b${column}\\s*:`));
+        const tableLevel = covers.get(table)?.tableLevel === true;
+        if (tableLevel) continue;
+        expect(updateCovers(covers, table, column), `${table}.${column}`).toBe(false);
+      }
+    }
+    expect(grants.get('nutrition_settings')?.tableLevel).toBe(true);
+    expect(grants.get('nutrition_days')?.tableLevel).toBe(true);
+    expect(grants.get('body_composition')?.tableLevel).toBe(true);
+    expect(grants.get('profile_sharing')?.tableLevel).toBe(true);
+    expect(grants.get('health_samples')?.tableLevel).toBe(false);
+    expect(grants.get('user_quotes')?.tableLevel).toBe(false);
+    expect(grants.get('health_plans')?.tableLevel).toBe(false);
+    expect(grants.get('training_schedules')?.tableLevel).toBe(false);
+  });
+
+  it('adds the quote conflict columns without redoing the health plan grant', () => {
+    expect(added).toContain('grant update (user_id, quote_id) on public.user_quotes to authenticated');
+    expect(added).toContain('create policy user_quotes_update on public.user_quotes');
+    expect(added).toContain('using (user_id = auth.uid())');
+    expect(added).toContain('with check (user_id = auth.uid())');
+    expect(added).toContain('user_quotes still allows updates of created_at');
+    expect(added).not.toMatch(/drop table|delete from/i);
+    expect(added).not.toMatch(/on\s+(?:table\s+)?public\.health_plans\b/i);
+    expect(added).not.toMatch(/on\s+(?:table\s+)?public\.health_samples\b/i);
+    expect(readFileSync('supabase/migrations/20261015220000_health_plans_upsert_grant.sql', 'utf8'))
+      .toContain('grant update (user_id) on public.health_plans to authenticated');
+    expect(updateCovers(grants, 'user_quotes', 'user_id')).toBe(true);
+    expect(updateCovers(grants, 'user_quotes', 'quote_id')).toBe(true);
+    expect(updateCovers(grants, 'user_quotes', 'created_at')).toBe(false);
+    expect(updateCovers(grants, 'device_tokens', 'user_id')).toBe(true);
+  });
+});
+
+describe('client reads against the live grants', () => {
+  it('does not select a table authenticated cannot read', () => {
+    const granted = authenticatedSelectTables();
+    const selected = clientSelectTables(readFileSync('src/data/supabase-repository.ts', 'utf8'));
+    expect(selected.filter((table) => !granted.has(table))).toEqual([]);
+    expect(selected).not.toContain('blocks');
+    expect(selected).not.toContain('client_errors');
+    expect(selected).not.toContain('message_push_log');
+    expect(granted.has('connections')).toBe(true);
+    expect(granted.has('direct_messages')).toBe(true);
+    expect(granted.has('blocks')).toBe(false);
+  });
+});
+
+describe('unblock user', () => {
+  const fn = readFileSync('supabase/migrations/20261015250000_unblock_user.sql', 'utf8');
+  const later = readFileSync('supabase/migrations/20261015260000_blocks_select_revoke.sql', 'utf8');
+  const repo = readFileSync('src/data/supabase-repository.ts', 'utf8');
+
+  it('deletes only the caller’s block through a definer function', () => {
+    expect(fn).toContain('create or replace function public.unblock_user(target uuid)');
+    expect(fn).toContain('security definer');
+    expect(fn).toContain('set search_path = public');
+    expect(fn).toContain('auth.uid()');
+    expect(fn).toContain('delete from public.blocks');
+    expect(fn).toContain('blocker_id = auth.uid()');
+    expect(fn).toContain('blocked_id = target');
+    expect(fn.toLowerCase()).toContain('revoke all on function public.unblock_user(uuid) from public, anon, authenticated');
+    expect(fn.toLowerCase()).toContain('grant execute on function public.unblock_user(uuid) to authenticated');
+    expect(fn.toLowerCase()).not.toContain('grant execute on function public.unblock_user(uuid) to anon');
+    expect(fn.toLowerCase()).not.toContain('grant execute on function public.unblock_user(uuid) to public');
+    expect(fn.toLowerCase()).not.toContain('revoke select');
+    expect(fn).not.toMatch(/drop table/i);
+  });
+
+  it('calls the function and does not select or delete blocks from the client', () => {
+    const method = repo.slice(repo.indexOf('async unblockUser'), repo.indexOf('async reportUser'));
+    expect(method).toContain("rpc('unblock_user'");
+    expect(method).toContain('target: userId');
+    expect(method).not.toContain(".from('blocks')");
+    expect(method).not.toContain('.delete(');
+    const touches = sourceFiles('src').filter((file) =>
+      !file.endsWith('.test.ts') && readFileSync(file, 'utf8').includes(".from('blocks')"));
+    expect(touches).toEqual(['src/data/supabase-repository.ts']);
+    expect(repo).toContain(".from('blocks').insert");
+    expect(repo).not.toContain(".from('blocks').delete");
+    expect(repo).not.toContain(".from('blocks').select");
+    expect(readFileSync('supabase/functions/notify-direct-message/index.ts', 'utf8')).toContain("admin.from('blocks')");
+    const buddyPush = readFileSync('supabase/functions/notify-buddy-invite/index.ts', 'utf8');
+    expect(buddyPush).toContain("skipped: 'messages-only'");
+    expect(buddyPush).not.toContain("admin.from('blocks')");
+    expect(buddyPush).not.toContain('exp.host');
+  });
+
+  it('revokes the stopgap select in a later file and leaves block insert', () => {
+    expect(later).toContain('revoke select (blocker_id, blocked_id) on public.blocks from authenticated');
+    expect(later).toContain('20261015250000_unblock_user.sql');
+    expect(later.toLowerCase()).not.toMatch(/grant\s+select/);
+    expect(later).not.toMatch(/drop table|delete from/i);
+    expect(authenticatedSelectTables().has('blocks')).toBe(false);
+  });
+});
+
+function sourceFiles(dir: string): string[] {
+  const out: string[] = [];
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const path = `${dir}/${entry.name}`;
+    if (entry.isDirectory()) {
+      if (entry.name === 'node_modules' || entry.name === '.expo') continue;
+      out.push(...sourceFiles(path));
+    } else if (entry.name.endsWith('.ts') || entry.name.endsWith('.tsx')) {
+      out.push(path);
+    }
+  }
+  return out;
+}

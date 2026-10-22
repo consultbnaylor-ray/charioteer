@@ -1,11 +1,14 @@
 import { Image, type ImageProps } from 'expo-image';
-import { useEffect, useState } from 'react';
+import { Pressable } from 'react-native';
 
-import { useRepository } from '@/data';
+import { PHOTO_RETRY, PHOTO_UNAVAILABLE } from '@/domain/ownerPhotos';
+import { useSignedPhotoRetry } from '@/ui/signedPhotoRetry';
+import { T } from '@/ui/ui';
 
 /**
- * An owner photo. A failed load hides the broken image and asks for a new
- * signed URL. When that URL arrives, the picture is shown again.
+ * An owner photo. A failed load asks for a fresh signed URL, with a short
+ * backoff, and never stops for good. After the automatic tries, the picture
+ * can be asked for again.
  */
 export function OwnerPhoto({
   uri,
@@ -20,31 +23,32 @@ export function OwnerPhoto({
   accessibilityLabel?: string;
   pointerEvents?: 'none' | 'auto' | 'box-none' | 'box-only';
 }) {
-  const repo = useRepository();
-  const [attempt, setAttempt] = useState(0);
-  const [failed, setFailed] = useState(false);
-  useEffect(() => {
-    setAttempt(0);
-    setFailed(false);
-  }, [uri]);
-  if (!uri || failed) return null;
+  const retryState = useSignedPhotoRetry(uri);
+  if (!uri) return null;
+  if (retryState.gaveUp) {
+    return (
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={`${PHOTO_UNAVAILABLE}. ${PHOTO_RETRY}`}
+        onPress={retryState.retry}
+        style={[style, { alignItems: 'center', justifyContent: 'center', padding: 8 }]}
+      >
+        <T variant="muted" numberOfLines={3} style={{ textAlign: 'center' }}>{PHOTO_UNAVAILABLE}</T>
+        <T variant="muted" numberOfLines={1} style={{ textAlign: 'center' }}>{PHOTO_RETRY}</T>
+      </Pressable>
+    );
+  }
   return (
     <Image
-      key={attempt}
+      key={retryState.mount}
       pointerEvents={pointerEvents}
       source={{ uri }}
       style={style}
       contentFit={contentFit}
+      cachePolicy={retryState.mount > 0 ? 'none' : 'disk'}
       accessibilityLabel={accessibilityLabel}
       accessibilityIgnoresInvertColors
-      onError={() => {
-        void repo.resignOwnerPhotos();
-        if (attempt < 1) {
-          setAttempt(1);
-          return;
-        }
-        setFailed(true);
-      }}
+      onError={retryState.onError}
     />
   );
 }

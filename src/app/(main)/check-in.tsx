@@ -4,11 +4,12 @@ import { View } from 'react-native';
 
 import { useRepository, useSnapshot } from '@/data';
 import type { Mood } from '@/data/types';
-import { gratefulForLine, MOOD_SCORES, planCheckInGratitude } from '@/domain/checkIns';
+import { gratefulForLine, MOOD_SCORES, planCheckInGratitude, recentCheckInDays } from '@/domain/checkIns';
 import { formatUkWhen, isoDay } from '@/domain/dates';
 import { shownError } from '@/domain/errors';
 import { randomId } from '@/domain/id';
 import { moodStreakCount } from '@/domain/profileSharing';
+import { CheckInWeek } from '@/ui/CheckInWeek';
 import { ScrollTarget } from '@/ui/ScrollTarget';
 import { CheckInSectionShare } from '@/ui/SectionShare';
 import { ShareOnProfile } from '@/ui/ShareOnProfile';
@@ -83,7 +84,7 @@ export default function CheckIn() {
       footer={(
         <View style={{ gap: 8 }}>
           {savedNote ? <T>{savedNote}</T> : null}
-          <Button label="Save check-in" pending={pending} disabled={!dirty || pending} onPress={save} />
+          <Button label="Save check-in" pending={pending} disabled={!dirty || pending} disabledReason={dirty ? undefined : 'Change the check-in to save.'} onPress={save} />
         </View>
       )}
     >
@@ -144,6 +145,9 @@ export default function CheckIn() {
           <Button label="Add to your Gratitude Diary" onPress={() => router.push('/gratitude' as never)} />
         </Card>
       ) : null}
+      <Card>
+        <CheckInWeek days={recentCheckInDays(snap.checkIns, new Date())} />
+      </Card>
       <ScrollTarget id="recent">
       <T variant="label">Recent</T>
       {snap.checkIns.length === 0 ? <T variant="muted">No check-ins yet.</T> : null}

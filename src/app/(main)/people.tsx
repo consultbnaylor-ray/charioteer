@@ -6,14 +6,16 @@ import { useRepository, useSnapshot } from '@/data';
 import { discoverAction, type DiscoverAction } from '@/domain/connections';
 import { shownError } from '@/domain/errors';
 import { randomId } from '@/domain/id';
-import { chatPreview, chatUnread, chatsChoiceLabel, latestChatMessage } from '@/domain/liveChat';
+import { chatPreview, chatsChoiceLabel, latestChatMessage, messageUnreadTotal, viewerChatUnread } from '@/domain/liveChat';
 import { CommunityProfile } from '@/ui/CommunityProfile';
 import { CommunityPrompt } from '@/ui/CommunityPrompt';
 import { useChatRead } from '@/ui/chatRead';
+import { ScreenBoundary } from '@/ui/ScreenBoundary';
 import { MemberAvatar, useMemberAvatars } from '@/ui/MemberAvatar';
 import { usePendingPress } from '@/ui/pendingAction';
-import { DISCOVER_EMPTY, PublicProfileCard } from '@/ui/PublicProfileCard';
-import { Button, Card, Choice, ErrorNote, Screen, T } from '@/ui/ui';
+import { DISCOVER_EMPTY } from '@/ui/PublicProfileCard';
+import { useAppTheme } from '@/ui/theme';
+import { Button, Card, Choice, CountBadge, ErrorNote, Screen, T } from '@/ui/ui';
 
 export default function People() {
   const snap = useSnapshot();
@@ -25,7 +27,18 @@ export default function People() {
   const { run, isPending } = usePendingPress();
   const clientIds = useRef(new Map<string, string>());
   const me = snap.profile;
-  const readMarks = useChatRead(me?.id);
+  const messages = snap.messages ?? [];
+  const chats = me
+    ? (snap.connections ?? [])
+      .filter((connection) => connection.status === 'accepted')
+      .slice()
+      .sort((a, b) => {
+        const aAt = latestChatMessage(messages, a.id)?.createdAt ?? a.createdAt;
+        const bAt = latestChatMessage(messages, b.id)?.createdAt ?? b.createdAt;
+        return bAt.localeCompare(aAt);
+      })
+    : [];
+  const { marks: readMarks, ready: readsReady } = useChatRead(me?.id);
   const avatarOf = useMemberAvatars(snap.directory);
 
   // New requests and chats arrive from other people, so load them each time People opens.
@@ -36,20 +49,11 @@ export default function People() {
   );
   if (!me) return null;
 
-  const incoming = snap.connections.filter((connection) => connection.status === 'pending' && connection.addresseeId === me.id);
-  const sent = snap.connections.filter((connection) => connection.status === 'pending' && connection.requesterId === me.id);
-  const chats = snap.connections
-    .filter((connection) => connection.status === 'accepted')
-    .slice()
-    .sort((a, b) => {
-      const aAt = latestChatMessage(snap.messages, a.id)?.createdAt ?? a.createdAt;
-      const bAt = latestChatMessage(snap.messages, b.id)?.createdAt ?? b.createdAt;
-      return bAt.localeCompare(aAt);
-    });
-  const unreadTotal = chats.reduce(
-    (sum, connection) => sum + chatUnread(snap.messages, connection.id, me.id, readMarks[connection.id] ?? null),
-    0,
-  );
+  const incoming = (snap.connections ?? []).filter((connection) => connection.status === 'pending' && connection.addresseeId === me.id);
+  const sent = (snap.connections ?? []).filter((connection) => connection.status === 'pending' && connection.requesterId === me.id);
+  const unreadTotal = readsReady
+    ? messageUnreadTotal(messages, chats.map((connection) => connection.id), me.id, readMarks)
+    : 0;
   const nameOf = (id: string) => snap.directory.find((card) => card.id === id)?.displayName ?? 'Member';
   const labelOf = (id: string) => snap.interests.find((interest) => interest.id === id)?.label ?? 'Interest';
   const clientIdFor = (key: string) => {
@@ -72,14 +76,19 @@ export default function People() {
   };
 
   return (
-    <Screen eyebrow="People" title="Find your people." intro="Shared interests, a town or area, and a private chat once you both agree. You can block or report at any time.">
+    <Screen eyebrow="People" title="Find your people." intro="A private chat once you both agree.">
       <CommunityPrompt userId={me.id} visible={!me.communityVisible && me.ageConfirmed18} />
-      <PublicProfileCard />
-      <Button label="What I share" tone="quiet" onPress={() => router.push('/sharing' as never)} />
+      <YourProfileRow name={me.displayName} photoUrl={(snap.profilePhotos ?? []).find((photo) => photo.role === 'avatar')?.previewUrl} />
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
         <Choice label={`Discover`} selected={tab === 'discover'} onPress={() => setTab('discover')} />
         <Choice label={`Requests (${incoming.length})`} selected={tab === 'requests'} tone={incoming.length > 0 ? 'alert' : 'default'} onPress={() => setTab('requests')} />
-        <Choice label={chatsChoiceLabel(chats.length, unreadTotal)} selected={tab === 'chats'} onPress={() => setTab('chats')} />
+        <Choice
+          label={chatsChoiceLabel(chats.length, unreadTotal)}
+          badge={unreadTotal}
+          selected={tab === 'chats'}
+          tone={unreadTotal > 0 ? 'alert' : 'default'}
+          onPress={() => setTab('chats')}
+        />
       </View>
       <ErrorNote>{error}</ErrorNote>
       {tab === 'discover' ? snap.directory.map((card) => {
@@ -93,22 +102,26 @@ export default function People() {
                 <T variant="muted">{card.town || 'Area not shared'}</T>
               </View>
             </View>
-            <T>{card.interestIds.map(labelOf).join(' · ')}</T>
-            {card.sharedInterestIds.length ? <T variant="muted">In common: {card.sharedInterestIds.map(labelOf).join(', ')}</T> : null}
+            <T>{(card.interestIds ?? []).map(labelOf).join(' · ')}</T>
+            {(card.sharedInterestIds ?? []).length ? <T variant="muted">In common: {(card.sharedInterestIds ?? []).map(labelOf).join(', ')}</T> : null}
             <DiscoverActions
               action={action}
               askPending={isPending(`ask:${card.id}`)}
               respondPending={action.kind === 'incoming' && isPending(`respond:${action.connectionId}`)}
               onAsk={() => ask(card.id)}
               onRespond={respond}
-              onMessage={(connectionId) => router.push(`/chat/${connectionId}` as never)}
+              onMessage={(connectionId) => router.navigate(`/chat/${connectionId}` as never)}
             />
             <Button
               label={profileId === card.id ? 'Hide profile' : 'Profile'}
               tone="quiet"
               onPress={() => setProfileId((current) => (current === card.id ? null : card.id))}
             />
-            {profileId === card.id ? <CommunityProfile userId={card.id} name={card.displayName} /> : null}
+            {profileId === card.id ? (
+              <ScreenBoundary screen="profile">
+                <CommunityProfile userId={card.id} name={card.displayName} />
+              </ScreenBoundary>
+            ) : null}
           </Card>
         );
       }) : null}
@@ -137,24 +150,44 @@ export default function People() {
       )) : null}
       {tab === 'chats' ? chats.map((connection) => {
         const other = connection.requesterId === me.id ? connection.addresseeId : connection.requesterId;
-        const latest = latestChatMessage(snap.messages, connection.id);
-        const unread = chatUnread(snap.messages, connection.id, me.id, readMarks[connection.id] ?? null);
+        const latest = latestChatMessage(messages, connection.id);
+        const unread = viewerChatUnread(messages, connection.id, me.id, readMarks[connection.id]);
         return (
           <Card key={connection.id}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+            <View
+              style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}
+              accessibilityLabel={unread > 0 ? `${nameOf(other)}, ${unread === 1 ? '1 new message' : `${unread} new messages`}` : nameOf(other)}
+            >
               <MemberAvatar name={nameOf(other)} url={avatarOf(other)} />
               <View style={{ flex: 1, gap: 4 }}>
                 <T variant="title">{nameOf(other)}</T>
-                {latest ? <T variant="muted">{chatPreview(latest.body)}</T> : null}
+                {latest?.body ? <T variant="muted">{chatPreview(latest.body)}</T> : null}
               </View>
-              {unread > 0 ? <T variant="label">{unread === 1 ? '1 new' : `${unread} new`}</T> : null}
+              <CountBadge count={unread} />
             </View>
-            <Button label="Open chat" onPress={() => router.push(`/chat/${connection.id}` as never)} />
+            <Button label="Open chat" onPress={() => router.navigate(`/chat/${connection.id}` as never)} />
           </Card>
         );
       }) : null}
       {tab === 'chats' && chats.length === 0 ? <T variant="muted">No chats yet. Accept a request, or ask someone to connect.</T> : null}
+      <Button label="What I share" tone="quiet" onPress={() => router.push('/sharing' as never)} />
+      <Button label="Buddies" onPress={() => router.push('/buddies' as never)} />
     </Screen>
+  );
+}
+
+/** A short row. The full profile, with its share switches, opens on its own screen. */
+function YourProfileRow({ name, photoUrl }: { name: string; photoUrl?: string | null }) {
+  const theme = useAppTheme();
+  const router = useRouter();
+  return (
+    <Card>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+        <MemberAvatar name={name} url={photoUrl} size={36} />
+        <T numberOfLines={1} style={{ flex: 1, minWidth: 0, fontFamily: theme.font.bodyStrong }}>{name}</T>
+        <Button label="View public profile" tone="quiet" onPress={() => router.push('/public-profile' as never)} />
+      </View>
+    </Card>
   );
 }
 

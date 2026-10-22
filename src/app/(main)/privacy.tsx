@@ -14,6 +14,7 @@ export default function PrivacyScreen() {
   const [community, setCommunity] = useState(profile?.communityVisible ?? false);
   const [health, setHealth] = useState(profile?.consentHealth ?? false);
   const [ai, setAi] = useState(profile?.consentAi ?? false);
+  const [messages, setMessages] = useState(profile?.messageNotifications ?? false);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const { run, isPending } = usePendingPress();
@@ -21,7 +22,16 @@ export default function PrivacyScreen() {
 
   return (
       <Screen eyebrow="You" title="Privacy & consent" intro="You can change these at any time. A diary line stays hidden until you switch it on. A photo on a line stays hidden until you switch that photo on, and is not sent to Thumos.">
-      <ConsentChoices community={community} health={health} ai={ai} onCommunity={setCommunity} onHealth={setHealth} onAi={setAi} />
+      <ConsentChoices
+        community={community}
+        health={health}
+        ai={ai}
+        messages={messages}
+        onCommunity={setCommunity}
+        onHealth={setHealth}
+        onAi={setAi}
+        onMessages={setMessages}
+      />
       <ErrorNote>{error}</ErrorNote>
       {message ? <T variant="muted">{message}</T> : null}
       <Button
@@ -30,9 +40,15 @@ export default function PrivacyScreen() {
         onPress={() => {
           setError(null);
           setMessage(null);
-          run('save', () => repo.saveConsents({ communityVisible: community, consentHealth: health, consentAi: ai }).then(() => {
+          run('save', () => repo.saveConsents({
+            communityVisible: community,
+            consentHealth: health,
+            consentAi: ai,
+            messageNotifications: messages,
+            termsAccepted: true,
+          }).then(() => {
             setMessage('Saved.');
-            if (community) void offerMessageNotifications(repo);
+            if (messages) void offerMessageNotifications(repo).catch((error: unknown) => console.error('message notifications', error));
           }).catch((err: unknown) => setError(shownError(err, 'Could not save.'))));
         }}
       />

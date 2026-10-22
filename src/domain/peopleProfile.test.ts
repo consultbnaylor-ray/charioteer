@@ -9,7 +9,11 @@ describe('your public profile on People', () => {
   const consent = readFileSync('src/ui/ConsentChoices.tsx', 'utf8');
 
   it('previews the public card and keeps private words off the People screen', () => {
-    expect(people).toContain('<PublicProfileCard');
+    expect(people).toContain('label="View public profile"');
+    expect(people).toContain("router.push('/public-profile'");
+    expect(people.indexOf('<YourProfileRow')).toBeLessThan(people.indexOf('snap.directory.map'));
+    expect(people).not.toContain('<PublicProfileCard');
+    expect(people).not.toContain('scrollTo');
     expect(people).toContain('<CommunityProfile');
     expect(people).toContain('DISCOVER_EMPTY');
     expect(people).not.toContain('No one to show. People you have blocked stay hidden.');

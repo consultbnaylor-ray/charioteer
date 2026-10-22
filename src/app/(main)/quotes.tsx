@@ -122,7 +122,7 @@ export default function StoicQuotes() {
         <InPlainWords plain={daily.plain} />
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
           <Button label="Previous day" tone="quiet" onPress={() => setDaysBack((value) => Math.min(value + 1, 364))} />
-          <Button label="Next day" tone="quiet" disabled={daysBack === 0} onPress={() => setDaysBack((value) => Math.max(0, value - 1))} />
+          <Button label="Next day" tone="quiet" disabled={daysBack === 0} disabledReason={daysBack === 0 ? 'This is today.' : undefined} onPress={() => setDaysBack((value) => Math.max(0, value - 1))} />
         </View>
         <Button label={openId === daily.id ? 'Hide actions' : 'Save or pin this line'} tone="quiet" onPress={() => setOpenId(openId === daily.id ? null : daily.id)} />
         {actions(daily)}

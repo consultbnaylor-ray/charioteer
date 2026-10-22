@@ -2,6 +2,7 @@ import { launchCameraAsync, launchImageLibraryAsync, requestCameraPermissionsAsy
 import { manipulateAsync, SaveFormat } from 'expo-image-manipulator';
 
 import { UserFacingError } from '@/domain/errors';
+import { stripJpegBase64 } from '@/domain/photoLocation';
 
 /** A JPEG the meal estimate can send. EXIF and location are dropped by the re-encode. */
 export async function pickMealPhoto(source: 'camera' | 'library'): Promise<{ base64: string; previewUri: string } | null> {
@@ -27,6 +28,7 @@ export async function pickMealPhoto(source: 'camera' | 'library'): Promise<{ bas
     { compress: 0.7, format: SaveFormat.JPEG, base64: true },
   );
   if (!prepared.base64) throw new UserFacingError('Could not prepare that photo.', 'generic');
-  if (prepared.base64.length > 6_000_000) throw new UserFacingError('That photo is still too large.', 'generic');
-  return { base64: prepared.base64, previewUri: prepared.uri };
+  const base64 = stripJpegBase64(prepared.base64);
+  if (base64.length > 6_000_000) throw new UserFacingError('That photo is still too large.', 'generic');
+  return { base64, previewUri: prepared.uri };
 }
