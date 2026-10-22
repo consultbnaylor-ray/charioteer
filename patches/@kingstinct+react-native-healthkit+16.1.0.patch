@@ -1,5 +1,5 @@
 diff --git a/node_modules/@kingstinct/react-native-healthkit/ios/WorkoutProxy.swift b/node_modules/@kingstinct/react-native-healthkit/ios/WorkoutProxy.swift
-index 7909fa6..cef4bdf 100644
+index 7909fa6..748849b 100644
 --- a/node_modules/@kingstinct/react-native-healthkit/ios/WorkoutProxy.swift
 +++ b/node_modules/@kingstinct/react-native-healthkit/ios/WorkoutProxy.swift
 @@ -48,14 +48,30 @@ func getWorkoutRoutesInternal(
@@ -53,3 +53,96 @@ index 7909fa6..cef4bdf 100644
          }
        }
      }
+@@ -89,26 +103,31 @@ func getRouteLocations(
+   }
+ }
+ 
++func finiteLocationValue(_ value: Double, fallback: Double) -> Double {
++  return value.isFinite ? value : fallback
++}
++
+ func serializeLocation(location: CLLocation, previousLocation: CLLocation?)
+   -> WorkoutRouteLocation {
+   var distance: CLLocationDistance?
+   if let previousLocation = previousLocation {
+-    distance = location.distance(from: previousLocation)
++    let step = location.distance(from: previousLocation)
++    distance = step.isFinite ? step : nil
+   } else {
+     distance = nil
+   }
+ 
+   return WorkoutRouteLocation(
+-    altitude: location.altitude,
+-    course: location.course,
++    altitude: finiteLocationValue(location.altitude, fallback: 0),
++    course: finiteLocationValue(location.course, fallback: -1),
+     date: location.timestamp,
+     distance: distance,
+-    horizontalAccuracy: location.horizontalAccuracy,
++    horizontalAccuracy: finiteLocationValue(location.horizontalAccuracy, fallback: -1),
+     latitude: location.coordinate.latitude,
+     longitude: location.coordinate.longitude,
+-    speed: location.speed,
+-    speedAccuracy: location.speedAccuracy,
+-    verticalAccuracy: location.verticalAccuracy
++    speed: finiteLocationValue(location.speed, fallback: -1),
++    speedAccuracy: finiteLocationValue(location.speedAccuracy, fallback: -1),
++    verticalAccuracy: finiteLocationValue(location.verticalAccuracy, fallback: -1)
+   )
+ }
+ 
+@@ -120,37 +139,36 @@ func getSerializedWorkoutLocations(
+   )
+ 
+   var allRoutes: [WorkoutRoute] = []
+-  guard let _routes = routes else {
+-    throw runtimeErrorWithPrefix("Unexpected empty response")
+-  }
++  // A missing route list is an empty path. Throwing here used to surface as a
++  // rejected promise; a C++ exception from the metadata getters below killed
++  // the process instead, because Swift does not catch it.
++  let _routes = routes ?? []
+   for route in _routes {
+-    let routeMetadata = serializeMetadata(
+-      route.metadata
+-    )
+-
+     let routeCLLocations = try await getRouteLocations(
+       route: route
+     )
++    let finiteLocations = routeCLLocations.filter {
++      CLLocationCoordinate2DIsValid($0.coordinate)
++    }
+ 
+-    let routeLocations = routeCLLocations.enumerated().map {
++    let routeLocations = finiteLocations.enumerated().map {
+       (i, loc) in
+       serializeLocation(
+         location: loc,
+-        previousLocation: i == 0 ? nil : routeCLLocations[i - 1]
++        previousLocation: i == 0 ? nil : finiteLocations[i - 1]
+       )
+     }
+ 
++    // Do not call AnyMap.getString or getDouble. Those throw a C++ exception
++    // when the key is missing or the value is a different type, and that
++    // exception terminates the app (kingstinct/react-native-healthkit#198).
++    // Apple Watch routes often have no sync identifier. The screen does not
++    // read these two fields.
+     allRoutes.append(
+       WorkoutRoute(
+         locations: routeLocations,
+-        HKMetadataKeySyncIdentifier: routeMetadata.isString(key: "HKMetadataKeySyncIdentifier")
+-          ? routeMetadata.getString(
+-            key: "HKMetadataKeySyncIdentifier"
+-          ) : nil,
+-        HKMetadataKeySyncVersion: routeMetadata.isDouble(key: "HKMetadataKeySyncVersion")
+-          ? routeMetadata.getDouble(
+-            key: "HKMetadataKeySyncVersion"
+-          ) : nil
++        HKMetadataKeySyncIdentifier: nil,
++        HKMetadataKeySyncVersion: nil
+       )
+     )
+   }

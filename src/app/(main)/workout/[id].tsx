@@ -18,8 +18,10 @@ import {
   elevationLine,
   formatClock,
   routeErrorLine,
+  routeMapRegion,
   type DeviceWorkout,
   type DistanceUnit,
+  type HeartSample,
   type RoutePoint,
   type RouteSplit,
 } from '@/domain/workoutRoute';
@@ -54,6 +56,7 @@ function WorkoutRouteBody() {
   const [unit, setUnit] = useState<DistanceUnit>('km');
   const [workout, setWorkout] = useState<DeviceWorkout | null>(null);
   const [points, setPoints] = useState<RoutePoint[]>([]);
+  const [samples, setSamples] = useState<HeartSample[]>([]);
   const [denied, setDenied] = useState(false);
   const [failed, setFailed] = useState(false);
   const [attempt, setAttempt] = useState(0);
@@ -84,6 +87,7 @@ function WorkoutRouteBody() {
       setReady(true);
       setFailed(true);
       setPoints([]);
+      setSamples([]);
       report('No workout was opened.');
       return;
     }
@@ -96,6 +100,7 @@ function WorkoutRouteBody() {
       settled = true;
       setFailed(true);
       setPoints([]);
+      setSamples([]);
       setReady(true);
       report(ROUTE_READ_TIMEOUT);
     }, ROUTE_MAP_TIMEOUT_MS);
@@ -105,6 +110,7 @@ function WorkoutRouteBody() {
       clearTimeout(timer);
       setWorkout(result.workout);
       setPoints(downsampleRoute(result.points));
+      setSamples(result.heartSamples ?? []);
       setDenied(result.denied);
       setReady(true);
     }).catch((err: unknown) => {
@@ -113,6 +119,7 @@ function WorkoutRouteBody() {
       clearTimeout(timer);
       setFailed(true);
       setPoints([]);
+      setSamples([]);
       setReady(true);
       report(err);
     });
@@ -122,15 +129,17 @@ function WorkoutRouteBody() {
     };
   }, [attempt, id, repo]);
 
-  const stats = points.length > 1
+  const stats = workout || points.length > 0
     ? buildRouteStats({
       points,
       unit,
       durationSeconds: workout ? workout.durationMinutes * 60 : null,
       energyKcal: workout?.energyKcal,
       averageHeartRate: workout?.averageHeartRate,
+      heartSamples: samples,
     })
     : null;
+  const drawable = routeMapRegion(points) != null;
   const active = selected == null || !stats
     ? []
     : points.slice(stats.splits[selected]?.startIndex ?? 0, (stats.splits[selected]?.endIndex ?? 0) + 1);
@@ -148,25 +157,23 @@ function WorkoutRouteBody() {
       intro={workout ? formatUkCompactWhen(workout.startedAt) : 'The path stays on this iPhone.'}
     >
       <Button label="Back" tone="quiet" onPress={() => router.back()} />
+      <RouteBoundary onError={report}>
       <T>{ROUTE_PURPOSE}</T>
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
         <Choice label="Kilometres" selected={unit === 'km'} onPress={() => { void chooseUnit('km'); }} />
         <Choice label="Miles" selected={unit === 'mile'} onPress={() => { void chooseUnit('mile'); }} />
       </View>
-      {failed || mapLine ? (
-        <View style={{ gap: 8 }}>
-          <T>{ROUTE_LOAD_ERROR}</T>
-          <Button label={ROUTE_RETRY} onPress={() => setAttempt((value) => value + 1)} />
-        </View>
-      ) : null}
       {denied ? <T>Workout routes are off. Turn them on in the Health app: profile picture, Privacy, Apps, Charioteer.</T> : null}
       {!ready ? <T variant="muted">{ROUTE_READING}</T> : null}
-      {ready && !failed && !denied && !mapLine && points.length < 2 ? (
-        <T>{workout?.routeExpected ? 'No route stored for this workout yet.' : 'This workout has no GPS route.'}</T>
+      {ready && !denied && (failed || mapLine || !drawable) ? (
+        <View style={{ gap: 8 }}>
+          <T>{ROUTE_LOAD_ERROR}</T>
+          {failed || mapLine ? <Button label={ROUTE_RETRY} onPress={() => setAttempt((value) => value + 1)} /> : null}
+        </View>
       ) : null}
       {stats ? (
         <View style={{ gap: 8 }}>
-          {mapLine || failed ? null : (
+          {mapLine || failed || !drawable ? null : (
             <RouteBoundary onError={report}>
               <RouteMap points={points} active={active.length > 1 ? active : points} onProblem={report} />
             </RouteBoundary>
@@ -201,6 +208,7 @@ function WorkoutRouteBody() {
           })}
         </View>
       ) : null}
+      </RouteBoundary>
     </Screen>
   );
 }

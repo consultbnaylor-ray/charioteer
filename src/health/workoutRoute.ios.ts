@@ -186,25 +186,35 @@ export async function readDeviceRoute(id: string): Promise<{
   try {
     const summary = await summaryFrom(workout);
     rememberWorkouts([summary]);
-    const routes = await workout.getWorkoutRoutes();
     const points: RoutePoint[] = [];
-    for (const route of routes) {
-      for (const location of route.locations) {
-        if (!Number.isFinite(location.latitude) || !Number.isFinite(location.longitude)) continue;
-        points.push({
-          latitude: location.latitude,
-          longitude: location.longitude,
-          altitude: Number.isFinite(location.altitude) ? location.altitude : 0,
-          at: new Date(location.date).toISOString(),
-          heartRate: null,
-        });
+    try {
+      const routes = await workout.getWorkoutRoutes();
+      const list = Array.isArray(routes) ? routes : [];
+      for (const route of list) {
+        const locations = Array.isArray(route?.locations) ? route.locations : [];
+        for (const location of locations) {
+          if (!location || !Number.isFinite(location.latitude) || !Number.isFinite(location.longitude)) continue;
+          if (Math.abs(location.latitude) > 90 || Math.abs(location.longitude) > 180) continue;
+          const at = new Date(location.date);
+          points.push({
+            latitude: location.latitude,
+            longitude: location.longitude,
+            altitude: Number.isFinite(location.altitude) ? location.altitude : 0,
+            at: Number.isNaN(at.getTime()) ? summary.startedAt : at.toISOString(),
+            heartRate: null,
+          });
+        }
       }
+    } catch {
+      points.length = 0;
     }
     points.sort((a, b) => Date.parse(a.at) - Date.parse(b.at));
     const drawn = downsampleRoute(points);
     const start = new Date(summary.startedAt);
     const end = new Date(start.getTime() + summary.durationMinutes * 60_000);
     return { workout: summary, points: drawn, heartSamples: await heartSamples(start, end), denied: false };
+  } catch {
+    return { workout: known, points: [], heartSamples: [], denied: false };
   } finally {
     workout.dispose();
   }

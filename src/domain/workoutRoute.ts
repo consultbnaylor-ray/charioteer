@@ -9,8 +9,12 @@ export const ROUTE_PURPOSE =
 
 export const ROUTE_READ_TYPE = 'HKWorkoutRouteTypeIdentifier';
 
-/** Shown when the map or the route read throws. A retry draws the screen again. */
-export const ROUTE_LOAD_ERROR = "Route couldn't be loaded";
+/**
+ * Shown when the path cannot be drawn. The workout summary above it stays.
+ * MapKit raises an uncaught exception for an illegal region, so the screen
+ * must not mount a map unless the region is inside Apple's limits.
+ */
+export const ROUTE_LOAD_ERROR = 'Route not available';
 
 export const ROUTE_RETRY = 'Try again';
 
@@ -106,6 +110,7 @@ export function haversineMetres(from: Pick<RoutePoint, 'latitude' | 'longitude'>
 }
 
 export function formatClock(seconds: number): string {
+  if (!Number.isFinite(seconds)) return '0:00';
   const rounded = Math.max(0, Math.round(seconds));
   const minutes = Math.floor(rounded / 60);
   const remain = rounded % 60;
@@ -169,7 +174,7 @@ function marksFor(points: readonly RoutePoint[]): Mark[] {
     marks.push({
       distance,
       t: Date.parse(point.at),
-      altitude: point.altitude,
+      altitude: Number.isFinite(point.altitude) ? point.altitude : 0,
       index,
     });
   });
@@ -195,8 +200,8 @@ function atDistance(marks: readonly Mark[], target: number): Mark {
   return marks[marks.length - 1];
 }
 
-function heartIn(points: readonly RoutePoint[], samples: readonly HeartSample[], startMs: number, endMs: number): number | null {
-  const fromSamples = samples.filter((sample) => {
+function heartIn(points: readonly RoutePoint[], samples: readonly HeartSample[] | null | undefined, startMs: number, endMs: number): number | null {
+  const fromSamples = (samples ?? []).filter((sample) => {
     const at = Date.parse(sample.at);
     return at >= startMs && at <= endMs && sample.bpm > 30 && sample.bpm < 230;
   });
@@ -328,11 +333,19 @@ export function routeMapRegion(points: readonly RoutePoint[]): RouteMapRegion | 
     minLng = Math.min(minLng, point.longitude);
     maxLng = Math.max(maxLng, point.longitude);
   }
+  const latitude = (minLat + maxLat) / 2;
+  const longitude = (minLng + maxLng) / 2;
+  // MKMapView.setRegion raises NSInvalidArgumentException when a span is
+  // outside latitude [0, 180] or longitude [0, 360]. The 1.4 padding on a
+  // route that reaches both poles, or both sides of the date line, crosses
+  // that limit. The exception is not a JavaScript error, so the route
+  // boundary cannot catch it.
+  const latitudeRoom = Math.min(90 - latitude, latitude + 90) * 2;
   const region = {
-    latitude: (minLat + maxLat) / 2,
-    longitude: (minLng + maxLng) / 2,
-    latitudeDelta: Math.max(0.01, (maxLat - minLat) * 1.4),
-    longitudeDelta: Math.max(0.01, (maxLng - minLng) * 1.4),
+    latitude,
+    longitude,
+    latitudeDelta: Math.min(179.999, latitudeRoom, Math.max(0.01, (maxLat - minLat) * 1.4)),
+    longitudeDelta: Math.min(359.999, Math.max(0.01, (maxLng - minLng) * 1.4)),
   };
   const values = [region.latitude, region.longitude, region.latitudeDelta, region.longitudeDelta];
   if (values.some((value) => !Number.isFinite(value))) return null;

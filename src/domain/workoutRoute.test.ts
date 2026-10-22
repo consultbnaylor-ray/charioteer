@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
+import { clientErrorRecord } from '@/domain/clientError';
 import { APPLE_HEALTH_READ_TYPES } from '@/health/connection';
 import { parseBuddyShare, projectBuddyShare } from '@/domain/buddies';
 import { HEALTH_KINDS } from '@/domain/healthInsights';
@@ -372,7 +373,10 @@ describe('workout routes stay on the phone', () => {
     expect(screen).toContain('RouteBoundary');
     expect(screen).toContain('ROUTE_LOAD_ERROR');
     expect(screen).toContain('ROUTE_RETRY');
-    expect(ROUTE_LOAD_ERROR).toBe("Route couldn't be loaded");
+    expect(ROUTE_LOAD_ERROR).toBe('Route not available');
+    expect(screen).toContain('routeMapRegion(points)');
+    expect(screen.indexOf('stats.distanceLabel')).toBeGreaterThan(screen.indexOf('ROUTE_LOAD_ERROR'));
+    expect(screen.indexOf('<Button label="Back"')).toBeLessThan(screen.indexOf('<RouteBoundary'));
     expect(ROUTE_RETRY).toBe('Try again');
     expect(screen).toContain("logClientError('workout-route'");
     expect(screen).toContain('routeErrorLine');
@@ -406,6 +410,8 @@ describe('workout routes stay on the phone', () => {
     expect(checker).toContain('--reverse');
     expect(checker).not.toContain('patch-package');
     expect(readFileSync('README.md', 'utf8')).toContain('npm run ship-check');
+    expect(reader).toContain('Array.isArray(routes)');
+    expect(reader).toContain('Array.isArray(route?.locations)');
     expect(reader).toContain('downsampleRoute');
     expect(reader).toContain('DEV_FIXTURE_ROUTE_ID');
     expect(reader).toContain('devFixtureEnabled()');
@@ -416,6 +422,11 @@ describe('workout routes stay on the phone', () => {
     expect(locations).toContain('guard !hasFinished');
     expect(locations).toContain('DispatchQueue.main.async');
     expect(locations).not.toContain('Unexpected empty response');
+    const serialized = native.slice(native.indexOf('func getSerializedWorkoutLocations'), native.indexOf('func saveWorkoutRouteInternal'));
+    expect(serialized).not.toContain('getString(');
+    expect(serialized).not.toContain('getDouble(');
+    expect(serialized).toContain('CLLocationCoordinate2DIsValid');
+    expect(serialized).toContain('HKMetadataKeySyncIdentifier: nil');
     expect(readFileSync('patches/@kingstinct+react-native-healthkit+16.1.0.patch', 'utf8')).toContain('cappedRouteLocations');
     expect(readFileSync('src/domain/profileSharing.ts', 'utf8')).not.toMatch(/latitude|longitude|route/);
   });
@@ -435,6 +446,50 @@ describe('workout routes stay on the phone', () => {
     expect(drawn[0]?.latitude).toBeCloseTo(51.5, 5);
     expect(drawn.at(-1)?.latitude).toBeCloseTo(51.5 + 2399 * 0.00001, 5);
     expect(drawn.every((point) => Number.isFinite(point.latitude) && Number.isFinite(point.longitude))).toBe(true);
+    const opened = '2026-10-18T10:16:00.000Z';
+    const later = '2026-10-18T10:17:00.000Z';
+    const empty = buildRouteStats({
+      points: [],
+      unit: 'km',
+      durationSeconds: 33 * 60,
+      energyKcal: 210,
+      averageHeartRate: null,
+      heartSamples: [],
+    });
+    expect(empty.splits).toEqual([]);
+    expect(empty.distanceLabel).toBe('Distance 0 km');
+    expect(empty.durationLabel).toBe('Duration 33:00');
+    expect(empty.paceLabel).toBe('Average pace Pace not available');
+    expect(empty.heartLabel).toBe('Average heart rate not available');
+    expect(empty.calorieLabel).toBe('Calories 210 kcal');
+    const onePoint = { latitude: 51.5, longitude: -0.12, altitude: 12, at: opened, heartRate: null };
+    const single = buildRouteStats({
+      points: [onePoint],
+      unit: 'km',
+      durationSeconds: 600,
+      averageHeartRate: 136,
+    });
+    expect(single.splits).toEqual([]);
+    expect(single.heartLabel).toBe('Average heart rate 136 bpm');
+    expect(single.durationLabel).toBe('Duration 10:00');
+    expect(routeMapRegion([onePoint])).toBeNull();
+    const quiet = demoRoutePoints(opened).map((point) => ({ ...point, heartRate: null as number | null }));
+    const missingHeart = buildRouteStats({ points: quiet, unit: 'km', durationSeconds: 33 * 60, heartSamples: [] });
+    expect(missingHeart.heartLabel).toBe('Average heart rate not available');
+    expect(missingHeart.splits.length).toBeGreaterThan(0);
+    expect(missingHeart.splits.every((split) => split.heartRate == null)).toBe(true);
+    const wide = routeMapRegion([
+      { latitude: -89, longitude: -179, altitude: 0, at: opened, heartRate: null },
+      { latitude: 89, longitude: 179, altitude: 0, at: later, heartRate: null },
+    ]);
+    expect(wide?.latitudeDelta).toBeLessThanOrEqual(180);
+    expect(wide?.longitudeDelta).toBeLessThanOrEqual(360);
+    expect(wide?.latitudeDelta).toBeGreaterThan(0);
+    expect(wide?.longitudeDelta).toBeGreaterThan(0);
+    expect(clientErrorRecord('workout-route', routeErrorLine(new Error('NSInvalidArgumentException: Invalid Region latitude 51.50740')))).toEqual({
+      screen: 'workout-route',
+      message: 'nsinvalidargumentexception',
+    });
     expect(routeMapRegion([])).toBeNull();
     expect(routeMapRegion([many[0]])).toBeNull();
     expect(routeMapRegion([{ ...many[0], latitude: Number.NaN }])).toBeNull();
