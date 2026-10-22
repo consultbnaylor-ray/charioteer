@@ -21,6 +21,8 @@ describe('Apple Health catch-up', () => {
     const run = source.slice(source.indexOf('async function runCatchUp'));
     expect(run.indexOf("healthCatchUpGate(repo.getSnapshot()) !== 'run'")).toBeLessThan(run.indexOf('deps.ensureReads()'));
     expect(run.indexOf('deps.ensureReads()')).toBeLessThan(run.indexOf('deps.refresh('));
+    expect(run).toContain("console.warn('[health] authorization request failed')");
+    expect(run.indexOf('try {')).toBeLessThan(run.indexOf('deps.ensureReads()'));
     const upload = source.slice(source.lastIndexOf('} catch (error) {'));
     expect(upload.indexOf('profile == null')).toBeGreaterThan(-1);
     expect(upload.indexOf('profile == null')).toBeLessThan(upload.indexOf('reportHealthRefresh'));

@@ -14,10 +14,12 @@ export async function loadHealthReadSet(): Promise<string | null> {
   }
 }
 
-export async function saveHealthReadSet(types: readonly string[]): Promise<void> {
+export async function saveHealthReadSet(types: readonly string[]): Promise<boolean> {
   try {
     await AsyncStorage.setItem(KEY, healthReadSetKey(types));
+    return true;
   } catch {
     // The next launch asks again. Readings already stored stay put.
+    return false;
   }
 }

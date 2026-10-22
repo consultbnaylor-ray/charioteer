@@ -4,7 +4,7 @@
  * A reverse dry-run succeeds only when the patch is already applied.
  * This check does not apply patches. Run npm install so postinstall can.
  */
-import { readdirSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { join } from 'node:path';
 
@@ -44,6 +44,26 @@ for (const name of names) {
 if (missing.length > 0) {
   console.error('A patch is missing from node_modules. Run npm install so postinstall can apply it. This check does not apply patches.');
   process.exit(1);
+}
+
+const health = names.find((name) => name.includes('react-native-healthkit'));
+if (health) {
+  const text = readFileSync(join(dir, health), 'utf8');
+  const banned = [
+    'CharioteerRequestAuthorizationCatchingExceptions',
+    'CharioteerGetRequestStatusCatchingExceptions',
+    '@_silgen_name',
+  ];
+  for (const token of banned) {
+    if (text.includes(token)) {
+      console.error(`${health} still declares a C function for the HealthKit auth callback (${token}).`);
+      process.exit(1);
+    }
+  }
+  if (!text.includes('@interface CharioteerAuthCatcher : NSObject')) {
+    console.error(`${health} is missing the CharioteerAuthCatcher class.`);
+    process.exit(1);
+  }
 }
 
 console.log(`All ${names.length} patches are applied.`);

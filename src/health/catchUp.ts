@@ -160,7 +160,13 @@ const defaultCatchUpDeps: CatchUpDeps = {
 
 async function runCatchUp(repo: HealthSink, deps: CatchUpDeps): Promise<HealthCatchUp> {
   if (healthCatchUpGate(repo.getSnapshot()) !== 'run') return QUIET;
-  const status = await deps.ensureReads();
+  let status: HealthReads;
+  try {
+    status = await deps.ensureReads();
+  } catch {
+    console.warn('[health] authorization request failed');
+    status = 'current';
+  }
   if (!healthCatchUpImports(status)) return { status, imported: false, syncedAt: null, error: null };
   if (healthCatchUpGate(repo.getSnapshot()) !== 'run') return { status, imported: false, syncedAt: null, error: null };
   const refreshed = await deps.refresh(repo, { authorize: false });

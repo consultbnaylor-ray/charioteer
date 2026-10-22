@@ -1,8 +1,8 @@
 diff --git a/node_modules/@kingstinct/react-native-healthkit/ReactNativeHealthkit.podspec b/node_modules/@kingstinct/react-native-healthkit/ReactNativeHealthkit.podspec
-index ba24aae..60f55ef 100644
+index ba24aae..3e75f9e 100644
 --- a/node_modules/@kingstinct/react-native-healthkit/ReactNativeHealthkit.podspec
 +++ b/node_modules/@kingstinct/react-native-healthkit/ReactNativeHealthkit.podspec
-@@ -19,12 +19,14 @@ Pod::Spec.new do |s|
+@@ -19,12 +19,16 @@ Pod::Spec.new do |s|
    s.source       = { :git => "https://github.com/kingstinct/react-native-healthkit.git", :tag => "#{s.version}" }
  
    s.source_files = [
@@ -14,41 +14,46 @@ index ba24aae..60f55ef 100644
      "cpp/**/*.{hpp,cpp}",
    ]
  
-+  s.private_header_files = "ios/**/*.h"
++  # Public so this pod's Swift can see the class. A private header stays out of
++  # the module, and a C function's block is non-escaping in objcxx interop.
++  s.public_header_files = "ios/AuthorizationCatcher.h"
 +
    s.pod_target_xcconfig = {
      # C++ compiler flags, mainly for folly.
      "GCC_PREPROCESSOR_DEFINITIONS" => "$(inherited) FOLLY_NO_CONFIG FOLLY_CFG_NO_COROUTINES",
 diff --git a/node_modules/@kingstinct/react-native-healthkit/ios/AuthorizationCatcher.h b/node_modules/@kingstinct/react-native-healthkit/ios/AuthorizationCatcher.h
 new file mode 100644
-index 0000000..e3c01d3
+index 0000000..5c79495
 --- /dev/null
 +++ b/node_modules/@kingstinct/react-native-healthkit/ios/AuthorizationCatcher.h
-@@ -0,0 +1,18 @@
+@@ -0,0 +1,21 @@
 +#import <Foundation/Foundation.h>
 +#import <HealthKit/HealthKit.h>
 +
 +/// HealthKit can raise an Objective-C exception from these calls.
-+/// The @try stays in this file so no Swift frame sits between the throw and the catch.
-+NSError * _Nullable CharioteerRequestAuthorizationCatchingExceptions(
-+  HKHealthStore * _Nonnull store,
-+  NSSet * _Nonnull share,
-+  NSSet * _Nonnull read,
-+  void (^ _Nonnull completion)(BOOL success, NSError * _Nullable error)
-+);
++/// A class method is required: under SWIFT_OBJC_INTEROP_MODE=objcxx a plain C
++/// function imports its block as non-escaping, and HealthKit calls it later.
++@interface CharioteerAuthCatcher : NSObject
 +
-+NSError * _Nullable CharioteerGetRequestStatusCatchingExceptions(
-+  HKHealthStore * _Nonnull store,
-+  NSSet * _Nonnull share,
-+  NSSet * _Nonnull read,
-+  void (^ _Nonnull completion)(NSInteger status, NSError * _Nullable error)
-+);
+++ (NSError * _Nullable)requestAuthorizationWithStore:(HKHealthStore * _Nonnull)store
++                                               share:(NSSet * _Nonnull)share
++                                                read:(NSSet * _Nonnull)read
++                                          completion:(void (^ _Nonnull)(BOOL success, NSError * _Nullable error))completion
++    NS_SWIFT_NAME(requestAuthorization(store:share:read:completion:));
++
+++ (NSError * _Nullable)requestStatusWithStore:(HKHealthStore * _Nonnull)store
++                                        share:(NSSet * _Nonnull)share
++                                         read:(NSSet * _Nonnull)read
++                                   completion:(void (^ _Nonnull)(NSInteger status, NSError * _Nullable error))completion
++    NS_SWIFT_NAME(requestStatus(store:share:read:completion:));
++
++@end
 diff --git a/node_modules/@kingstinct/react-native-healthkit/ios/AuthorizationCatcher.m b/node_modules/@kingstinct/react-native-healthkit/ios/AuthorizationCatcher.m
 new file mode 100644
-index 0000000..0935a11
+index 0000000..24158bb
 --- /dev/null
 +++ b/node_modules/@kingstinct/react-native-healthkit/ios/AuthorizationCatcher.m
-@@ -0,0 +1,42 @@
+@@ -0,0 +1,53 @@
 +#import "AuthorizationCatcher.h"
 +
 +static NSError *CharioteerExceptionError(NSException *exception) {
@@ -60,14 +65,24 @@ index 0000000..0935a11
 +                         userInfo:@{ NSLocalizedDescriptionKey: reason }];
 +}
 +
-+NSError * _Nullable CharioteerRequestAuthorizationCatchingExceptions(
-+  HKHealthStore * _Nonnull store,
-+  NSSet * _Nonnull share,
-+  NSSet * _Nonnull read,
-+  void (^ _Nonnull completion)(BOOL success, NSError * _Nullable error)
-+) {
++/// A workout route can be read. It is not a share type, and passing it there raises.
++static NSSet *CharioteerShareWithoutRoute(NSSet *share) {
++  HKSeriesType *route = [HKSeriesType workoutRouteType];
++  if (route == nil || ![share containsObject:route]) return share;
++  NSMutableSet *copy = [NSMutableSet setWithSet:share];
++  [copy removeObject:route];
++  return copy;
++}
++
++@implementation CharioteerAuthCatcher
++
+++ (NSError * _Nullable)requestAuthorizationWithStore:(HKHealthStore *)store
++                                               share:(NSSet *)share
++                                                read:(NSSet *)read
++                                          completion:(void (^)(BOOL, NSError * _Nullable))completion {
++  NSSet *shareable = CharioteerShareWithoutRoute(share);
 +  @try {
-+    [store requestAuthorizationToShareTypes:share readTypes:read completion:^(BOOL success, NSError *error) {
++    [store requestAuthorizationToShareTypes:shareable readTypes:read completion:^(BOOL success, NSError *error) {
 +      completion(success, error);
 +    }];
 +    return nil;
@@ -76,14 +91,13 @@ index 0000000..0935a11
 +  }
 +}
 +
-+NSError * _Nullable CharioteerGetRequestStatusCatchingExceptions(
-+  HKHealthStore * _Nonnull store,
-+  NSSet * _Nonnull share,
-+  NSSet * _Nonnull read,
-+  void (^ _Nonnull completion)(NSInteger status, NSError * _Nullable error)
-+) {
+++ (NSError * _Nullable)requestStatusWithStore:(HKHealthStore *)store
++                                        share:(NSSet *)share
++                                         read:(NSSet *)read
++                                   completion:(void (^)(NSInteger, NSError * _Nullable))completion {
++  NSSet *shareable = CharioteerShareWithoutRoute(share);
 +  @try {
-+    [store getRequestStatusForAuthorizationToShareTypes:share readTypes:read completion:^(HKAuthorizationRequestStatus status, NSError *error) {
++    [store getRequestStatusForAuthorizationToShareTypes:shareable readTypes:read completion:^(HKAuthorizationRequestStatus status, NSError *error) {
 +      completion((NSInteger)status, error);
 +    }];
 +    return nil;
@@ -91,35 +105,57 @@ index 0000000..0935a11
 +    return CharioteerExceptionError(exception);
 +  }
 +}
++
++@end
 diff --git a/node_modules/@kingstinct/react-native-healthkit/ios/CoreModule.swift b/node_modules/@kingstinct/react-native-healthkit/ios/CoreModule.swift
-index cf9056a..39e77ef 100644
+index cf9056a..a240330 100644
 --- a/node_modules/@kingstinct/react-native-healthkit/ios/CoreModule.swift
 +++ b/node_modules/@kingstinct/react-native-healthkit/ios/CoreModule.swift
-@@ -76,6 +76,23 @@ async throws -> [HKQuantityType: HKUnit] {
+@@ -76,6 +76,43 @@ async throws -> [HKQuantityType: HKUnit] {
    }
  }
  
-+// The HealthKit call runs in Objective-C. A Swift closure between the throw and @catch traps.
-+@_silgen_name("CharioteerRequestAuthorizationCatchingExceptions")
-+func CharioteerRequestAuthorizationCatchingExceptions(
-+  _ store: HKHealthStore,
-+  _ share: NSSet,
-+  _ read: NSSet,
-+  _ completion: @convention(block) (Bool, NSError?) -> Void
-+) -> NSError?
++/// Resumes a HealthKit continuation once. The completion and a caught exception can both arrive.
++private final class ContinuationGate<T>: @unchecked Sendable {
++  private var finished = false
++  private let lock = NSLock()
++  private let continuation: CheckedContinuation<T, Error>
 +
-+@_silgen_name("CharioteerGetRequestStatusCatchingExceptions")
-+func CharioteerGetRequestStatusCatchingExceptions(
-+  _ store: HKHealthStore,
-+  _ share: NSSet,
-+  _ read: NSSet,
-+  _ completion: @convention(block) (Int, NSError?) -> Void
-+) -> NSError?
++  init(_ continuation: CheckedContinuation<T, Error>) {
++    self.continuation = continuation
++  }
++
++  func resume(returning value: T) {
++    lock.lock()
++    if finished {
++      lock.unlock()
++      return
++    }
++    finished = true
++    lock.unlock()
++    DispatchQueue.main.async {
++      self.continuation.resume(returning: value)
++    }
++  }
++
++  func resume(throwing error: Error) {
++    lock.lock()
++    if finished {
++      lock.unlock()
++      return
++    }
++    finished = true
++    lock.unlock()
++    DispatchQueue.main.async {
++      self.continuation.resume(throwing: error)
++    }
++  }
++}
 +
  class CoreModule: HybridCoreModuleSpec {
    func requestPerObjectReadAuthorization(typeIdentifier: PerObjectTypeIdentifier) -> Promise<Void> {
      return Promise.async {
-@@ -187,27 +204,25 @@ class CoreModule: HybridCoreModuleSpec {
+@@ -187,27 +224,24 @@ class CoreModule: HybridCoreModuleSpec {
              returning: .unnecessary
            )
          }
@@ -140,31 +176,31 @@ index cf9056a..39e77ef 100644
 -                  }
 -                }
 -              }
-+        let caught = CharioteerGetRequestStatusCatchingExceptions(
-+          healthStore,
-+          toShare as NSSet,
-+          toRead as NSSet
+-            }
++        let gate = ContinuationGate(continuation)
++        let caught = CharioteerAuthCatcher.requestStatus(
++          store: healthStore,
++          share: toShare as NSSet,
++          read: toRead as NSSet
 +        ) { status, error in
-+          DispatchQueue.main.async {
-+            if let error = error {
-+              continuation.resume(throwing: error)
-+            } else if let authStatus = AuthorizationRequestStatus(rawValue: Int32(status)) {
-+              continuation.resume(returning: authStatus)
-+            } else {
-+              continuation.resume(
-+                throwing: runtimeErrorWithPrefix(
-+                  "Unrecognized authStatus returned: \(status)"))
-             }
++          if let error = error {
++            gate.resume(throwing: error)
++          } else if let authStatus = AuthorizationRequestStatus(rawValue: Int32(status)) {
++            gate.resume(returning: authStatus)
++          } else {
++            gate.resume(
++              throwing: runtimeErrorWithPrefix(
++                "Unrecognized authStatus returned: \(status)"))
            }
 -        } catch {
 -          continuation.resume(throwing: error)
 +        }
 +        if let caught = caught {
-+          continuation.resume(throwing: caught)
++          gate.resume(throwing: caught)
          }
        }
      }
-@@ -219,20 +234,21 @@ class CoreModule: HybridCoreModuleSpec {
+@@ -219,20 +253,20 @@ class CoreModule: HybridCoreModuleSpec {
        let toRead = objectTypesFromArray(typeIdentifiers: toRequest.toRead ?? [])
  
        return try await withCheckedThrowingContinuation { continuation in
@@ -178,23 +214,23 @@ index cf9056a..39e77ef 100644
 -                  continuation.resume(returning: status)
 -                }
 -              }
-+        let caught = CharioteerRequestAuthorizationCatchingExceptions(
-+          healthStore,
-+          share as NSSet,
-+          toRead as NSSet
+-            }
++        let gate = ContinuationGate(continuation)
++        let caught = CharioteerAuthCatcher.requestAuthorization(
++          store: healthStore,
++          share: share as NSSet,
++          read: toRead as NSSet
 +        ) { status, error in
-+          DispatchQueue.main.async {
-+            if let error = error {
-+              continuation.resume(throwing: error)
-+            } else {
-+              continuation.resume(returning: status)
-             }
++          if let error = error {
++            gate.resume(throwing: error)
++          } else {
++            gate.resume(returning: status)
            }
 -        } catch {
 -          continuation.resume(throwing: error)
 +        }
 +        if let caught = caught {
-+          continuation.resume(throwing: caught)
++          gate.resume(throwing: caught)
          }
        }
      }

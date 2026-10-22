@@ -104,15 +104,20 @@ export async function ensureCurrentAppleHealthReads(): Promise<'requested' | 'cu
   if (!isHealthDataAvailable()) return 'unavailable';
   const stored = await loadHealthReadSet();
   if (!healthReadSetChanged(stored, APPLE_HEALTH_READ_TYPES)) return 'current';
+  // Record the attempt before the native call. A trap in that call cannot be
+  // caught, and saving only after success made the next launch ask again.
+  const recorded = await saveHealthReadSet(APPLE_HEALTH_READ_TYPES);
+  if (!recorded) {
+    console.warn('[health] authorization request failed');
+    return 'current';
+  }
   try {
     const allowed = await requestAuthorization({ toRead: [...APPLE_HEALTH_READ_TYPES] });
     if (!allowed) return 'current';
-    await saveHealthReadSet(APPLE_HEALTH_READ_TYPES);
     return 'requested';
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    if (isHealthAccessDenied(message)) return 'current';
-    throw error;
+  } catch {
+    console.warn('[health] authorization request failed');
+    return 'current';
   }
 }
 
