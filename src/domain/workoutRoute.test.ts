@@ -19,6 +19,7 @@ import {
   DEV_FIXTURE_ROUTE_ID,
   ROUTE_LOAD_ERROR,
   ROUTE_MAP_TIMEOUT,
+  ROUTE_NONE,
   ROUTE_MAP_TIMEOUT_MS,
   ROUTE_POINT_LIMIT,
   ROUTE_READ_TIMEOUT,
@@ -35,9 +36,11 @@ import {
   payloadHasRouteCoordinates,
   rejectRouteCoordinates,
   ROUTE_READ_TYPE,
+  routeEmptyCopy,
   routeErrorLine,
   routeExpected,
   routeMapRegion,
+  routeRetryVisible,
   routeUnavailable,
 } from '@/domain/workoutRoute';
 
@@ -345,6 +348,10 @@ describe('workout routes stay on the phone', () => {
     expect(repo).toContain('rejectRouteCoordinates(body)');
     expect(demo).toContain('rejectRouteCoordinates(samples)');
     expect(APPLE_HEALTH_READ_TYPES).toContain(ROUTE_READ_TYPE);
+    expect(APPLE_HEALTH_READ_TYPES).toContain('HKQuantityTypeIdentifierDistanceWalkingRunning');
+    expect(APPLE_HEALTH_READ_TYPES).toContain('HKQuantityTypeIdentifierDistanceCycling');
+    expect(APPLE_HEALTH_READ_TYPES).toContain('HKQuantityTypeIdentifierDistanceSwimming');
+    expect(APPLE_HEALTH_READ_TYPES).toContain('HKQuantityTypeIdentifierHeartRate');
     const sync = readFileSync('src/health/sync.ios.ts', 'utf8');
     const connect = readFileSync('src/health/link.ios.ts', 'utf8');
     expect(sync).not.toContain('getWorkoutRoutes');
@@ -355,10 +362,13 @@ describe('workout routes stay on the phone', () => {
     const reader = readFileSync('src/health/workoutRoute.ios.ts', 'utf8');
     expect(reader).toContain('getWorkoutRoutes');
     expect(reader).not.toContain('requestAuthorization');
-    expect(reader).toContain('getRequestStatusForAuthorization({ toRead: [ROUTE_READ_TYPE] })');
-    expect(reader).toContain('AuthorizationRequestStatus.unnecessary');
-    expect(reader.indexOf('!known.routeExpected')).toBeLessThan(reader.indexOf('await routeReadGranted()'));
-    expect(reader.indexOf('listDeviceWorkouts')).toBeLessThan(reader.indexOf('await routeReadGranted()'));
+    expect(reader).not.toContain('getRequestStatusForAuthorization');
+    expect(reader).not.toContain('toRead: [ROUTE_READ_TYPE]');
+    expect(reader).not.toContain('authorizationStatusFor');
+    expect(reader).not.toContain('sharingAuthorized');
+    expect(reader).toContain("queryQuantitySamples('HKQuantityTypeIdentifierHeartRate'");
+    expect(reader.indexOf('!known.routeExpected')).toBeLessThan(reader.indexOf('queryWorkoutSamples({ limit: 1'));
+    expect(reader.indexOf('listDeviceWorkouts')).toBeLessThan(reader.indexOf('export async function readDeviceRoute'));
     const screen = readFileSync('src/app/(main)/workout/[id].tsx', 'utf8');
     const list = readFileSync('src/ui/WorkoutList.tsx', 'utf8');
     const calendar = readFileSync('src/ui/WorkoutCalendar.tsx', 'utf8');
@@ -382,7 +392,14 @@ describe('workout routes stay on the phone', () => {
     expect(screen).toContain('routeUnavailable(');
     expect(screen).not.toContain('requestAuthorization');
     expect(screen).toContain('ROUTE_RETRY');
+    expect(screen).toContain('routeRetryVisible(');
+    expect(screen).toContain('routeEmptyCopy(');
+    expect(screen).toContain('ROUTE_NONE');
+    expect(screen).toContain('distanceMetres: workout?.distanceMetres');
+    expect(screen).not.toContain('getRequestStatusForAuthorization');
+    expect(screen).not.toContain('failed || mapLine || denied');
     expect(ROUTE_LOAD_ERROR).toBe('Route not available');
+    expect(ROUTE_NONE).toBe('No route recorded for this workout.');
     expect(screen).toContain('routeMapRegion(points)');
     expect(screen.indexOf('stats.distanceLabel')).toBeGreaterThan(screen.indexOf('ROUTE_LOAD_ERROR'));
     expect(screen.indexOf('<Button label="Back"')).toBeLessThan(screen.indexOf('<RouteBoundary'));
@@ -424,9 +441,10 @@ describe('workout routes stay on the phone', () => {
     expect(reader).toContain('downsampleRoute');
     expect(reader).toContain('DEV_FIXTURE_ROUTE_ID');
     expect(reader).toContain('devFixtureEnabled()');
-    expect(reader.indexOf('id === DEV_FIXTURE_ROUTE_ID && devFixtureEnabled()')).toBeLessThan(reader.indexOf('await routeReadGranted()'));
+    expect(reader.indexOf('id === DEV_FIXTURE_ROUTE_ID && devFixtureEnabled()')).toBeLessThan(reader.indexOf('queryWorkoutSamples({ limit: 1'));
     const opened = reader.slice(reader.indexOf('export async function readDeviceRoute'));
-    expect(opened.indexOf('await routeReadGranted()')).toBeLessThan(opened.indexOf('denied: true'));
+    expect(opened).not.toContain('denied: true');
+    expect(opened).not.toContain('getRequestStatusForAuthorization');
     expect(opened).not.toContain('requestAuthorization');
     const native = readFileSync('node_modules/@kingstinct/react-native-healthkit/ios/WorkoutProxy.swift', 'utf8');
     const locations = native.slice(native.indexOf('func getRouteLocations'), native.indexOf('func serializeLocation'));
@@ -508,6 +526,29 @@ describe('workout routes stay on the phone', () => {
     expect(empty.paceLabel).toBe('Average pace Pace not available');
     expect(empty.heartLabel).toBe('Average heart rate not available');
     expect(empty.calorieLabel).toBe('Calories 210 kcal');
+    const fromWorkout = buildRouteStats({
+      points: [],
+      unit: 'km',
+      durationSeconds: 33 * 60,
+      energyKcal: 210,
+      distanceMetres: 3200,
+    });
+    expect(fromWorkout.distanceLabel).toBe('Distance 3.2 km');
+    expect(fromWorkout.paceLabel).toBe('Average pace 10:19 / km');
+    expect(fromWorkout.splits).toEqual([]);
+    const pathWins = buildRouteStats({
+      points: demoRoutePoints(opened),
+      unit: 'km',
+      durationSeconds: 33 * 60,
+      distanceMetres: 100,
+    });
+    expect(pathWins.distanceLabel).not.toBe('Distance 0.1 km');
+    expect(routeEmptyCopy({ ready: true, failed: false, mapLine: false, points: 0 })).toBe(ROUTE_NONE);
+    expect(routeEmptyCopy({ ready: true, failed: true, mapLine: false, points: 0 })).toBeNull();
+    expect(routeEmptyCopy({ ready: true, failed: false, mapLine: false, points: 4 })).toBeNull();
+    expect(routeRetryVisible({ failed: false, mapLine: false })).toBe(false);
+    expect(routeRetryVisible({ failed: true, mapLine: false })).toBe(true);
+    expect(routeRetryVisible({ failed: false, mapLine: true })).toBe(true);
     const onePoint = { latitude: 51.5, longitude: -0.12, altitude: 12, at: opened, heartRate: null };
     const single = buildRouteStats({
       points: [onePoint],

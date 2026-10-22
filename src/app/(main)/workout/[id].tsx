@@ -9,6 +9,7 @@ import { formatUkCompactWhen } from '@/domain/dates';
 import {
   ROUTE_LOAD_ERROR,
   ROUTE_MAP_TIMEOUT_MS,
+  ROUTE_NONE,
   ROUTE_PURPOSE,
   ROUTE_READ_TIMEOUT,
   ROUTE_READING,
@@ -17,8 +18,10 @@ import {
   downsampleRoute,
   elevationLine,
   formatClock,
+  routeEmptyCopy,
   routeErrorLine,
   routeMapRegion,
+  routeRetryVisible,
   routeUnavailable,
   type DeviceWorkout,
   type DistanceUnit,
@@ -138,6 +141,7 @@ function WorkoutRouteBody() {
       energyKcal: workout?.energyKcal,
       averageHeartRate: workout?.averageHeartRate,
       heartSamples: samples,
+      distanceMetres: workout?.distanceMetres,
     })
     : null;
   const drawable = routeMapRegion(points) != null;
@@ -168,9 +172,10 @@ function WorkoutRouteBody() {
       {routeUnavailable({ ready, denied, failed, mapLine: mapLine != null, drawable }) ? (
         <View style={{ gap: 8 }}>
           <T>{ROUTE_LOAD_ERROR}</T>
-          {failed || mapLine || denied ? <Button label={ROUTE_RETRY} onPress={() => setAttempt((value) => value + 1)} /> : null}
+          {routeRetryVisible({ failed, mapLine: mapLine != null }) ? <Button label={ROUTE_RETRY} onPress={() => setAttempt((value) => value + 1)} /> : null}
         </View>
       ) : null}
+      {routeEmptyCopy({ ready, failed, mapLine: mapLine != null, points: points.length }) ? <T>{ROUTE_NONE}</T> : null}
       {stats ? (
         <View style={{ gap: 8 }}>
           {mapLine || failed || !drawable ? null : (

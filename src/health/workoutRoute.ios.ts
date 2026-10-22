@@ -1,7 +1,4 @@
 import {
-  AuthorizationRequestStatus,
-  authorizationStatusFor,
-  getRequestStatusForAuthorization,
   isHealthDataAvailable,
   queryQuantitySamples,
   queryWorkoutSamples,
@@ -10,7 +7,6 @@ import {
 import { workoutTypeLabel } from '@/domain/fitnessSnapshot';
 import {
   DEV_FIXTURE_ROUTE_ID,
-  ROUTE_READ_TYPE,
   devFixtureEnabled,
   devFixturePoints,
   devFixtureWorkout,
@@ -142,9 +138,8 @@ export async function listDeviceWorkouts(): Promise<DeviceWorkout[]> {
   return rows;
 }
 
+/** A read. An empty result means no samples in range, including when the read was refused. */
 async function heartSamples(start: Date, end: Date): Promise<HeartSample[]> {
-  const status = authorizationStatusFor('HKQuantityTypeIdentifierHeartRate') as unknown;
-  if (status !== 2 && status !== 'sharingAuthorized') return [];
   try {
     const samples = await queryQuantitySamples('HKQuantityTypeIdentifierHeartRate', {
       limit: 0,
@@ -160,21 +155,8 @@ async function heartSamples(start: Date, end: Date): Promise<HeartSample[]> {
 }
 
 /**
- * Sheet status only. Read permission cannot be read back, and this screen does not ask again.
- * The route type is included in the normal Health sheet. The path stays on this iPhone.
- */
-async function routeReadGranted(): Promise<boolean> {
-  try {
-    const status = await getRequestStatusForAuthorization({ toRead: [ROUTE_READ_TYPE] });
-    return status === AuthorizationRequestStatus.unnecessary;
-  } catch {
-    return false;
-  }
-}
-
-/**
- * Reads a workout route that Health was already asked for.
- * The path is returned to the screen and is not stored or uploaded.
+ * Reads one workout and its route. A refused read comes back empty.
+ * A thrown query is left for the screen to log. The path is not stored or uploaded.
  */
 export async function readDeviceRoute(id: string): Promise<{
   workout: DeviceWorkout | null;
@@ -192,8 +174,6 @@ export async function readDeviceRoute(id: string): Promise<{
   if (!isHealthDataAvailable()) {
     return { workout: known, points: [], heartSamples: [], denied: false };
   }
-  const allowed = await routeReadGranted();
-  if (!allowed) return { workout: known, points: [], heartSamples: [], denied: true };
   const workouts = await queryWorkoutSamples({ limit: 1, filter: { uuids: [id] } });
   const workout = workouts[0];
   if (!workout) return { workout: known, points: [], heartSamples: [], denied: false };
@@ -201,34 +181,28 @@ export async function readDeviceRoute(id: string): Promise<{
     const summary = await summaryFrom(workout);
     rememberWorkouts([summary]);
     const points: RoutePoint[] = [];
-    try {
-      const routes = await workout.getWorkoutRoutes();
-      const list = Array.isArray(routes) ? routes : [];
-      for (const route of list) {
-        const locations = Array.isArray(route?.locations) ? route.locations : [];
-        for (const location of locations) {
-          if (!location || !Number.isFinite(location.latitude) || !Number.isFinite(location.longitude)) continue;
-          if (Math.abs(location.latitude) > 90 || Math.abs(location.longitude) > 180) continue;
-          const at = new Date(location.date);
-          points.push({
-            latitude: location.latitude,
-            longitude: location.longitude,
-            altitude: Number.isFinite(location.altitude) ? location.altitude : 0,
-            at: Number.isNaN(at.getTime()) ? summary.startedAt : at.toISOString(),
-            heartRate: null,
-          });
-        }
+    const routes = await workout.getWorkoutRoutes();
+    const list = Array.isArray(routes) ? routes : [];
+    for (const route of list) {
+      const locations = Array.isArray(route?.locations) ? route.locations : [];
+      for (const location of locations) {
+        if (!location || !Number.isFinite(location.latitude) || !Number.isFinite(location.longitude)) continue;
+        if (Math.abs(location.latitude) > 90 || Math.abs(location.longitude) > 180) continue;
+        const at = new Date(location.date);
+        points.push({
+          latitude: location.latitude,
+          longitude: location.longitude,
+          altitude: Number.isFinite(location.altitude) ? location.altitude : 0,
+          at: Number.isNaN(at.getTime()) ? summary.startedAt : at.toISOString(),
+          heartRate: null,
+        });
       }
-    } catch {
-      points.length = 0;
     }
     points.sort((a, b) => Date.parse(a.at) - Date.parse(b.at));
     const drawn = downsampleRoute(points);
     const start = new Date(summary.startedAt);
     const end = new Date(start.getTime() + summary.durationMinutes * 60_000);
     return { workout: summary, points: drawn, heartSamples: await heartSamples(start, end), denied: false };
-  } catch {
-    return { workout: known, points: [], heartSamples: [], denied: false };
   } finally {
     workout.dispose();
   }

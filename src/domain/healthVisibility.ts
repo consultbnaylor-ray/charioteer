@@ -34,6 +34,10 @@ const TITLES = {
   HKQuantityTypeIdentifierLeanBodyMass: 'Lean mass',
   HKCategoryTypeIdentifierSleepAnalysis: 'Sleep',
   HKWorkoutTypeIdentifier: 'Workouts',
+  HKQuantityTypeIdentifierDistanceWalkingRunning: 'Walking and running distance',
+  HKQuantityTypeIdentifierDistanceCycling: 'Cycling distance',
+  HKQuantityTypeIdentifierDistanceSwimming: 'Swimming distance',
+  HKQuantityTypeIdentifierHeartRate: 'Heart rate',
   HKQuantityTypeIdentifierActiveEnergyBurned: 'Active energy',
   ...(routeReadType ? { [routeReadType]: 'Workout routes' } : {}),
 } as Record<(typeof APPLE_HEALTH_READ_TYPES)[number], string>;
@@ -72,6 +76,10 @@ const MISSING_ACTION = {
   HKQuantityTypeIdentifierLeanBodyMass: 'Needs a smart scale or manual entry in Health.',
   HKCategoryTypeIdentifierSleepAnalysis: 'No recent night recorded.',
   HKWorkoutTypeIdentifier: 'Record a workout on Apple Watch or in a workout app.',
+  HKQuantityTypeIdentifierDistanceWalkingRunning: 'Record an outdoor walk or run.',
+  HKQuantityTypeIdentifierDistanceCycling: 'Record an outdoor ride.',
+  HKQuantityTypeIdentifierDistanceSwimming: 'Record a swim.',
+  HKQuantityTypeIdentifierHeartRate: 'Wear Apple Watch during the day or a workout.',
   HKQuantityTypeIdentifierActiveEnergyBurned: 'Wear Apple Watch so movement is recorded.',
   ...(routeReadType ? { [routeReadType]: 'Turn on Workouts in Apple Health. The path stays on this iPhone.' } : {}),
 } as Record<(typeof APPLE_HEALTH_READ_TYPES)[number], string>;

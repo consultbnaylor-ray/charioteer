@@ -50,7 +50,7 @@ export function ConsentChoices({
       />
       <ConsentRow
         title="Health data"
-        body="Health data processed in the app covers steps, sleep, heart rate, heart-rate variability, cardio fitness, walking heart rate, heart rate recovery, workouts, and weight. They are special category data under UK GDPR. They are read on your iPhone and stored as daily totals so you can see a fitness summary. Quantica Labs Ltd is the controller. They are not used for ads. You can turn this off at any time, and you can export or delete them with your account."
+        body="Health data processed in the app covers steps, sleep, heart rate, heart-rate variability, cardio fitness, walking heart rate, heart rate recovery, workouts, walking, cycling and swimming distance, and weight. They are special category data under UK GDPR. They are read on your iPhone and stored as daily totals so you can see a fitness summary. Quantica Labs Ltd is the controller. They are not used for ads. You can turn this off at any time, and you can export or delete them with your account."
         value={health}
         onChange={onHealth}
       />

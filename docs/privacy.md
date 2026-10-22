@@ -51,7 +51,7 @@ You can export your data or delete the account. Deleting the account removes the
 
 ## Apple Health
 
-On iPhone, Charioteer can read Apple Health when you allow it. It reads steps, sleep, resting heart rate, heart rate variability, cardio fitness (VO2 max), walking heart rate, heart rate recovery, workouts (type, duration, energy, and average heart rate), weight, height, body fat, lean body mass, and active energy. It does not read blood oxygen. It never writes workouts, heart rate, steps, sleep, or weight. It writes only the meals and water you choose to save.
+On iPhone, Charioteer can read Apple Health when you allow it. It reads steps, sleep, heart rate, resting heart rate, heart rate variability, cardio fitness (VO2 max), walking heart rate, heart rate recovery, workouts (type, duration, distance, energy, and average heart rate), walking, cycling and swimming distance, weight, height, body fat, lean body mass, and active energy. It does not read blood oxygen. It never writes workouts, heart rate, steps, sleep, or weight. It writes only the meals and water you choose to save.
 
 Readings stay on your account as daily totals: minutes split into strength, cardio, and other, plus the latest cardio fitness, walking heart rate, heart rate recovery, and session heart rate for a day. A raw heart-rate trace from a workout is not stored. Other people cannot see these readings. They are not used for advertising or marketing.
 

@@ -16,7 +16,10 @@ export const ROUTE_READ_TYPE = 'HKWorkoutRouteTypeIdentifier';
  */
 export const ROUTE_LOAD_ERROR = 'Route not available';
 
-/** The route screen shows the unavailable line. A missing grant uses that same line. */
+/** Shown when the read finished and Health had no path. Not an error. */
+export const ROUTE_NONE = 'No route recorded for this workout.';
+
+/** The route screen shows the unavailable line when a query or the map failed. */
 export function routeUnavailable(state: {
   ready: boolean;
   denied: boolean;
@@ -24,7 +27,23 @@ export function routeUnavailable(state: {
   mapLine: boolean;
   drawable: boolean;
 }): boolean {
-  return state.ready && (state.denied || state.failed || state.mapLine || !state.drawable);
+  return state.ready && (state.denied || state.failed || state.mapLine);
+}
+
+/** The empty-path line. A failed query uses the error line and Try again instead. */
+export function routeEmptyCopy(state: {
+  ready: boolean;
+  failed: boolean;
+  mapLine: boolean;
+  points: number;
+}): string | null {
+  if (!state.ready || state.failed || state.mapLine || state.points > 0) return null;
+  return ROUTE_NONE;
+}
+
+/** Try again only after a query or map error. An empty path does not offer it. */
+export function routeRetryVisible(state: { failed: boolean; mapLine: boolean }): boolean {
+  return state.failed || state.mapLine;
 }
 
 export const ROUTE_RETRY = 'Try again';
@@ -233,11 +252,14 @@ export function buildRouteStats(input: {
   energyKcal?: number | null;
   averageHeartRate?: number | null;
   heartSamples?: readonly HeartSample[];
+  /** Workout summary distance. Used only when the path itself has no points. */
+  distanceMetres?: number | null;
 }): RouteStats {
   const unit = input.unit;
   const points = [...input.points].filter((point) => Number.isFinite(point.latitude) && Number.isFinite(point.longitude)).sort((a, b) => Date.parse(a.at) - Date.parse(b.at));
   const marks = points.length ? marksFor(points) : [];
-  const totalMetres = marks.at(-1)?.distance ?? 0;
+  const summaryMetres = input.distanceMetres != null && input.distanceMetres > 0 ? input.distanceMetres : 0;
+  const totalMetres = points.length > 0 ? (marks.at(-1)?.distance ?? 0) : summaryMetres;
   const elapsed = input.durationSeconds && input.durationSeconds > 0
     ? input.durationSeconds
     : marks.length > 1 ? Math.max(0, (marks.at(-1)!.t - marks[0].t) / 1000) : 0;
@@ -287,7 +309,11 @@ const COORDINATE_NUMBER = /-?\d{1,3}\.\d{4,}/g;
 
 /** A client_errors line. Coordinates, stacks, addresses, and tokens are removed. */
 export function routeErrorLine(error: unknown): string {
-  const line = sanitizeClientError(error)
+  const name = error instanceof Error ? error.name.trim() : '';
+  const named = error instanceof Error
+    ? (name && name !== 'Error' ? `${name}: ${error.message}` : error.message)
+    : error;
+  const line = sanitizeClientError(named)
     .replace(/latitude|longitude/gi, '')
     .replace(/\b(lat|lng|lon)\b/gi, '')
     .replace(COORDINATE_NUMBER, '')

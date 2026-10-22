@@ -19,6 +19,18 @@ import {
 } from '@/domain/healthVisibility';
 import { APPLE_HEALTH_READ_TYPES } from '@/health/connection';
 
+const CUMULATIVE_UNITS: Partial<Record<(typeof APPLE_HEALTH_READ_TYPES)[number], string>> = {
+  HKQuantityTypeIdentifierStepCount: 'count',
+  HKQuantityTypeIdentifierActiveEnergyBurned: 'kcal',
+  HKQuantityTypeIdentifierDistanceWalkingRunning: 'm',
+  HKQuantityTypeIdentifierDistanceCycling: 'm',
+  HKQuantityTypeIdentifierDistanceSwimming: 'm',
+};
+
+const AVERAGE_UNITS: Partial<Record<(typeof APPLE_HEALTH_READ_TYPES)[number], string>> = {
+  HKQuantityTypeIdentifierHeartRate: 'count/min',
+};
+
 const QUANTITY_UNITS: Partial<Record<(typeof APPLE_HEALTH_READ_TYPES)[number], string>> = {
   HKQuantityTypeIdentifierRestingHeartRate: 'count/min',
   HKQuantityTypeIdentifierHeartRateVariabilitySDNN: 'ms',
@@ -61,17 +73,31 @@ async function sampleDays(
       const sleep = await queryCategorySamples(type, { limit: 0, filter });
       return daysInLookback(sleep.map((sample) => isoDay(sample.endDate)), now);
     }
-    if (type === 'HKQuantityTypeIdentifierStepCount' || type === 'HKQuantityTypeIdentifierActiveEnergyBurned') {
-      const unit = type === 'HKQuantityTypeIdentifierStepCount' ? 'count' : 'kcal';
+    const cumulative = CUMULATIVE_UNITS[type];
+    if (cumulative) {
       const rows = await queryStatisticsCollectionForQuantity(
         type,
         ['cumulativeSum'],
         start,
         { day: 1 },
-        { filter, unit },
+        { filter, unit: cumulative },
       );
       const days = rows
         .filter((row) => row.startDate && (row.sumQuantity?.quantity ?? 0) > 0)
+        .map((row) => isoDay(row.startDate!));
+      return daysInLookback(days, now);
+    }
+    const average = AVERAGE_UNITS[type];
+    if (average) {
+      const rows = await queryStatisticsCollectionForQuantity(
+        type,
+        ['discreteAverage'],
+        start,
+        { day: 1 },
+        { filter, unit: average },
+      );
+      const days = rows
+        .filter((row) => row.startDate && (row.averageQuantity?.quantity ?? 0) > 0)
         .map((row) => isoDay(row.startDate!));
       return daysInLookback(days, now);
     }
