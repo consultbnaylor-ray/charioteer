@@ -363,14 +363,14 @@ describe('Garmin storage rules', () => {
     const profile = readFileSync('src/app/(main)/profile.tsx', 'utf8');
     const health = readFileSync('src/app/(main)/health.tsx', 'utf8');
     const row = readFileSync('src/ui/GarminConnectRow.tsx', 'utf8');
-    const board = readFileSync('src/ui/GarminReadings.tsx', 'utf8');
     expect(profile).toContain('<GarminConnectRow />');
     expect(row).toContain('Connect');
     expect(row).toContain('Disconnect');
     expect(row).toContain('<PlanTick done />');
     expect(row).toContain('Connected');
-    expect(health.indexOf('<GarminTip />')).toBeLessThan(health.indexOf('<GarminReadings />'));
-    expect(board).toContain('oldest on the left');
+    expect(health).toContain('<GarminTip />');
+    expect(health).not.toContain('GarminReadings');
+    expect(health).toContain('useHealthSources');
     expect(readFileSync('supabase/functions/garmin-oauth-callback/index.ts', 'utf8')).toContain('garminAppReturn');
     expect(readFileSync('supabase/functions/_shared/garmin.ts', 'utf8')).toContain("export const GARMIN_APP_SCHEME = 'uk.co.quanticalabs.charioteer'");
     for (const path of [

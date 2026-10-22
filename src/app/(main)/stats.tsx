@@ -2,6 +2,7 @@ import { useRouter } from 'expo-router';
 import { useWindowDimensions, View } from 'react-native';
 
 import { useSnapshot } from '@/data';
+import { useHealthSources } from '@/health/useHealthSources';
 import { buildStatsOverview } from '@/domain/statsOverview';
 import { useStatPeriod } from '@/health/useStatPeriod';
 import { StatTile } from '@/ui/StatTile';
@@ -26,6 +27,7 @@ export default function Stats() {
   const router = useRouter();
   const { width } = useWindowDimensions();
   const [period] = useStatPeriod();
+  const { samples: mergedHealth } = useHealthSources();
   const profile = snap.profile;
   if (!profile) return null;
   const tiles = buildStatsOverview({
@@ -37,7 +39,7 @@ export default function Stats() {
     drinkFreeOn: profile.drinkFreeOn,
     drinkFreeDaysGoal: profile.drinkFreeDaysGoal,
     checkIns: snap.checkIns,
-    health: snap.health,
+    health: mergedHealth,
     heightCm: profile.heightCm,
     nutrition: snap.nutrition,
     foodLogs: snap.foodLogs,

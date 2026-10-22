@@ -15,8 +15,7 @@ import { StatPeriodToggle } from '@/ui/StatPeriodToggle';
 import { GoalChoices } from '@/ui/GoalChoices';
 import { GoalWeightRange } from '@/ui/GoalWeightRange';
 import { YourFitness } from '@/ui/YourFitness';
-import { listDeviceWorkouts } from '@/health/workoutRoute';
-import type { DeviceWorkout } from '@/domain/workoutRoute';
+import { useHealthSources } from '@/health/useHealthSources';
 import { WorkoutList } from '@/ui/WorkoutList';
 import { planDayFromSessionText, WorkoutCalendar } from '@/ui/WorkoutCalendar';
 import { YourGoal } from '@/ui/YourGoal';
@@ -59,7 +58,7 @@ export default function HealthPlanScreen() {
   const [planDay, setPlanDay] = useState<string | null>(null);
   const [planNonce, setPlanNonce] = useState(0);
   const [outdoorNonce, setOutdoorNonce] = useState(0);
-  const [workouts, setWorkouts] = useState<DeviceWorkout[]>([]);
+  const { samples: mergedHealth, workouts } = useHealthSources();
   const params = useLocalSearchParams<{ planOutdoor?: string }>();
   const seenOutdoor = useRef('');
   const limitsRef = useRef(limits);
@@ -80,18 +79,6 @@ export default function HealthPlanScreen() {
     setOutdoorNonce((nonce) => nonce + 1);
   }, [params.planOutdoor]);
 
-  useEffect(() => {
-    let live = true;
-    void listDeviceWorkouts().then((rows) => {
-      if (live) setWorkouts(rows);
-    }).catch(() => {
-      if (live) setWorkouts([]);
-    });
-    return () => {
-      live = false;
-    };
-  }, []);
-
   if (!profile) return null;
   const communityOn = communitySharingOn(profile);
 
@@ -104,7 +91,7 @@ export default function HealthPlanScreen() {
     drinkFreeOn: profile.drinkFreeOn,
     drinkFreeDaysGoal: profile.drinkFreeDaysGoal,
     checkIns: snap.checkIns,
-    health: snap.health,
+    health: mergedHealth,
     heightCm: profile.heightCm,
     nutrition: snap.nutrition,
     foodLogs: snap.foodLogs,
