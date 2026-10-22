@@ -89,8 +89,36 @@ Copy `.env.example`. Never commit a real key, and never prefix the xAI key with 
 | `EXPO_PUBLIC_APPLE_SIGN_IN_ENABLED` | Client | Set to `true` only after the Supabase Apple provider is on. Otherwise the button is hidden. |
 | `XAI_API_KEY` | Edge function only | `supabase secrets set XAI_API_KEY=…` |
 | `THUMOS_MODEL` | Edge function | Optional. Default `grok-4.3` with `reasoning_effort` `low`. |
+| `GARMIN_CLIENT_ID` | Edge function only | Garmin OAuth client id. |
+| `GARMIN_CLIENT_SECRET` | Edge function only | Garmin OAuth client secret. |
+| `GARMIN_TOKEN_KEY` | Edge function only | 32-byte AES-GCM key, base64. Seals the Garmin tokens. |
+| `GARMIN_WEBHOOK_SECRET` | Edge function only | Required shared secret on the Garmin push URL. |
 
 Supabase injects `SUPABASE_URL`, `SUPABASE_ANON_KEY`, and `SUPABASE_SERVICE_ROLE_KEY` into functions. Do not put those in the client.
+
+## Garmin Connect
+
+Generate `GARMIN_TOKEN_KEY` and `GARMIN_WEBHOOK_SECRET` on your machine. Run this twice and keep the two lines apart. Do not commit them.
+
+```bash
+openssl rand -base64 32
+```
+
+Each line is 32 bytes in standard base64. Set them with the OAuth client values:
+
+```bash
+supabase secrets set GARMIN_CLIENT_ID=… GARMIN_CLIENT_SECRET=… GARMIN_TOKEN_KEY=… GARMIN_WEBHOOK_SECRET=…
+```
+
+`GARMIN_TOKEN_KEY` seals the access and refresh tokens in the edge functions (AES-GCM). `garmin_connections` stores the ciphertext, a nonce, and `token_key_version`. The status view shows whether the account is connected. Signed-in users cannot read the tokens.
+
+Garmin’s portal stores a URL for each push endpoint. Paste the same address for dailies, activities, sleeps, deregistrations, and user permissions:
+
+```
+https://jvmmuhljklkahebxdsah.supabase.co/functions/v1/garmin-webhook?token=YOUR_SECRET
+```
+
+Percent-encode the secret in that URL. `openssl rand -base64 32` can include `+`, `/`, and `=`. Write those as `%2B`, `%2F`, and `%3D`. A raw `+` is read as a space, and the webhook then rejects the push. If `GARMIN_WEBHOOK_SECRET` is unset, the webhook rejects every push. Do not log the URL. It contains the secret.
 
 ## Local Supabase
 

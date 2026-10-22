@@ -1,8 +1,9 @@
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.117.3';
+import { createClient, type SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2.117.3';
 import { gratitudeFromRows } from '../_shared/gratitude.ts';
 import { visionContextFrom } from '../_shared/visionBoard.ts';
 import { json, preflight } from '../_shared/http.ts';
 import { COACHING_PAUSED, xaiPersonalDataEnabled } from '../_shared/xaiPersonal.ts';
+import { garminAllowedForCoach, garminCoachLines, missingRelation, readingsFromRows } from '../_shared/garmin.ts';
 import {
   buildVoiceBriefing,
   GROK_VOICE,
@@ -179,6 +180,11 @@ Deno.serve(async (req) => {
       interests: interestRes.error ? [] : interestLabelsFromRows(interestRes.data),
       pinnedQuote: pinnedStoicQuote(profile.pinned_quote_id),
       nutritionLines: await loadNutritionLines(userClient, profile, checkIns, now),
+      garminLines: await garminLinesFor(userClient, userId, {
+        consentAi: profile.consent_ai === true,
+        consentHealth: shareHealth,
+        personalDataEnabled: true,
+      }),
     },
   });
 
@@ -206,3 +212,33 @@ Deno.serve(async (req) => {
     mode: briefing.mode,
   });
 });
+
+async function garminLinesFor(
+  userClient: SupabaseClient,
+  userId: string,
+  gate: { consentAi: boolean; consentHealth: boolean; personalDataEnabled: boolean },
+): Promise<string[]> {
+  if (!garminAllowedForCoach(gate)) return [];
+  const [dailies, activities, sleep] = await Promise.all([
+    userClient.from('garmin_dailies').select('calendar_date, resting_heart_rate_bpm, average_heart_rate_bpm, moderate_minutes, vigorous_minutes').eq('user_id', userId).order('calendar_date'),
+    userClient.from('garmin_activities').select('summary_id, activity_type, activity_name, started_at, duration_seconds, average_heart_rate_bpm, training_effect, anaerobic_effect').eq('user_id', userId).order('started_at'),
+    userClient.from('garmin_sleep').select('summary_id, calendar_date, duration_seconds, deep_seconds, light_seconds, rem_seconds, awake_seconds, sleep_score').eq('user_id', userId).order('calendar_date'),
+  ]);
+  if (
+    (dailies.error && !missingRelation(dailies.error.message))
+    || (activities.error && !missingRelation(activities.error.message))
+    || (sleep.error && !missingRelation(sleep.error.message))
+  ) {
+    return [];
+  }
+  return garminCoachLines({
+    ...gate,
+    readings: readingsFromRows({
+      connected: true,
+      connectedAt: null,
+      dailies: dailies.data,
+      activities: activities.data,
+      sleep: sleep.data,
+    }),
+  });
+}

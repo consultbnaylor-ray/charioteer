@@ -1,37 +1,15 @@
-/** Shown near Apple Health and the fitness card until the person dismisses it. */
-export const GARMIN_TIP_TITLE = 'Using a Garmin?';
+/** Button on Health, Your fitness, onboarding, and You. */
+export const GARMIN_CONNECT_BUTTON = 'Connect Garmin';
 
-export const GARMIN_TIP_BODY =
-  "Charioteer reads from Apple Health. In the Garmin Connect app, go to the Apple Health connection setting and switch on sharing, so workouts, heart rate, steps and sleep flow in. Garmin doesn't send VO2 max or GPS routes to Apple Health, so the VO2 card and route maps need an Apple Watch or iPhone-recorded workout.";
+/** One line under the Health and fitness connect card. */
+export const GARMIN_CONNECT_HINT =
+  'Connect your Garmin to bring in workouts, heart rate and sleep. Route maps still need an Apple Watch or iPhone-recorded workout.';
 
-/** Stored when the signed-in profile has no id yet, so a dismiss still sticks on this phone. */
-export const GARMIN_TIP_DEVICE = 'device';
+/** Shown once the link has succeeded. The tick is part of the words. */
+export const GARMIN_CONNECTED_LABEL = 'Garmin connected ✓';
 
-export function garminTipProfileKey(profileId: string | null | undefined): string {
-  const id = profileId?.trim();
-  return id ? id : GARMIN_TIP_DEVICE;
-}
+/** Onboarding card. Optional, and easy to leave. */
+export const GARMIN_ONBOARDING_CARD =
+  'Using a Garmin? Connect it to bring in workouts, heart rate and sleep.';
 
-export function garminTipDismissedIn(raw: string | null, profileId: string): boolean {
-  if (!raw || !profileId) return false;
-  try {
-    const parsed = JSON.parse(raw) as Record<string, unknown>;
-    return parsed?.[profileId] === true;
-  } catch {
-    return false;
-  }
-}
-
-export function withGarminTipDismissed(raw: string | null, profileId: string): string {
-  let parsed: Record<string, boolean> = {};
-  if (raw) {
-    try {
-      const value = JSON.parse(raw) as Record<string, boolean>;
-      if (value && typeof value === 'object' && !Array.isArray(value)) parsed = value;
-    } catch {
-      parsed = {};
-    }
-  }
-  if (profileId) parsed[profileId] = true;
-  return JSON.stringify(parsed);
-}
+export const GARMIN_SKIP = 'Skip for now';

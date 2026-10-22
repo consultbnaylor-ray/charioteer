@@ -25,6 +25,7 @@ import {
   type WorkoutSourceMinute,
 } from '@/domain/fitnessSnapshot';
 import { applyFitnessFocus } from '@/domain/healthPlan';
+import { useHealthSources } from '@/health/useHealthSources';
 import { loadWorkoutSources } from '@/health/workoutSources';
 import { useStatPeriod } from '@/health/useStatPeriod';
 import { fitnessSeriesChart } from '@/domain/chartSeries';
@@ -52,6 +53,7 @@ import { Button, Card, Choice, T, playSavedHaptic } from '@/ui/ui';
  */
 export function YourFitness({ onPlanOutdoor }: { onPlanOutdoor?: () => void }) {
   const snap = useSnapshot();
+  const { samples: mergedHealth } = useHealthSources();
   const repo = useRepository();
   const theme = useAppTheme();
   const [period] = useStatPeriod();
@@ -68,7 +70,7 @@ export function YourFitness({ onPlanOutdoor }: { onPlanOutdoor?: () => void }) {
     void loadWorkoutSources().then(setSourceApps).catch(() => setSourceApps([]));
   }, [snap.health]);
   if (!snap.profile) return null;
-  const view = fitnessView(snap, access === 'denied' ? 'denied' : 'unknown', new Date(), sourceApps, period);
+  const view = fitnessView({ ...snap, health: mergedHealth }, access === 'denied' ? 'denied' : 'unknown', new Date(), sourceApps, period);
 
   async function saveBucket(activityType: number, bucket: WorkoutBucket) {
     setError(null);

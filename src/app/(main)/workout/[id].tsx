@@ -30,6 +30,7 @@ import {
   type RouteSplit,
 } from '@/domain/workoutRoute';
 import { loadDistanceUnit, saveDistanceUnit } from '@/health/distanceUnit';
+import { workoutSourceLine } from '@/domain/healthSources';
 import { readDeviceRoute } from '@/health/workoutRoute';
 import { RouteBoundary } from '@/ui/RouteBoundary';
 import { RouteMap } from '@/ui/RouteMap';
@@ -144,6 +145,7 @@ function WorkoutRouteBody() {
       distanceMetres: workout?.distanceMetres,
     })
     : null;
+  const sourceLine = workoutSourceLine(workout?.origin);
   const drawable = routeMapRegion(points) != null;
   const active = selected == null || !stats
     ? []
@@ -162,6 +164,7 @@ function WorkoutRouteBody() {
       intro={workout ? formatUkCompactWhen(workout.startedAt) : 'The path stays on this iPhone.'}
     >
       <Button label="Back" tone="quiet" onPress={() => router.back()} />
+      {sourceLine ? <T variant="muted">{sourceLine}</T> : null}
       <RouteBoundary onError={report}>
       <T>{ROUTE_PURPOSE}</T>
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>

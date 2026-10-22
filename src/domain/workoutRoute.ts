@@ -84,6 +84,12 @@ export type DeviceWorkout = {
   effortScore?: number | null;
   /** An outdoor type that may have a path. The path itself is loaded later, on this phone. */
   routeExpected: boolean;
+  /** Which feed this row came from after Apple Health and Garmin were merged. */
+  origin?: 'garmin' | 'apple';
+  /** Garmin training effect, 0 to 5. Not an Apple effort score. */
+  trainingEffect?: number | null;
+  /** Garmin anaerobic training effect, 0 to 5. */
+  anaerobicEffect?: number | null;
 };
 
 export type RoutePoint = {

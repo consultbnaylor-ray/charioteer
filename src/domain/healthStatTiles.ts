@@ -305,6 +305,11 @@ export type HealthStatBoardInput = {
   workoutBuckets?: WorkoutBucketMap;
   /** Omitted means the last 7 days. */
   period?: HealthStatPeriod;
+  /**
+   * One active-minutes value per day, already chosen from Garmin or Apple Health.
+   * When set, the active-minutes tile uses this series and does not add the two sources.
+   */
+  activeMinutes?: readonly DayValue[];
 };
 
 export type HealthStatVisual =
@@ -1280,25 +1285,30 @@ function weeklyTile(item: CatalogItem, input: HealthStatBoardInput): HealthStatT
   const cardio = series(input.samples, 'cardio_minutes', input.today);
   const conditioning = series(input.samples, 'conditioning_minutes', input.today);
   const other = series(input.samples, 'other_minutes', input.today);
-  const history = workouts.length > 0 ? workouts : mergeDays([strength, cardio, conditioning, other]);
+  const history = input.activeMinutes
+    ? ascendingByDay(input.activeMinutes)
+    : workouts.length > 0 ? workouts : mergeDays([strength, cardio, conditioning, other]);
   const window = slicePeriod(history, input);
   if (window === 'none') return null;
   if (window === 'gap') return olderReadingTile(item, input, history, (point) => `Latest ${whole(point.value)} min`);
   const period = periodOf(input);
   const bounds = rollingWindow(input.today, period);
-  const active = periodActiveMinutes({
-    samples: input.samples,
-    today: input.today,
-    start: bounds.start,
-    end: bounds.end,
-    overrides: input.workoutBuckets,
-  });
-  const rounded = active.minutes;
+  const active = input.activeMinutes
+    ? null
+    : periodActiveMinutes({
+      samples: input.samples,
+      today: input.today,
+      start: bounds.start,
+      end: bounds.end,
+      overrides: input.workoutBuckets,
+    });
+  const rounded = active ? active.minutes : Math.round(window.current.reduce((sum, point) => sum + point.value, 0));
+  const loggedDays = active ? active.days : window.current.filter((point) => point.value > 0).length;
   const target = scaledActivityMinutes(CMO_MODERATE_MINUTES_WEEK, period);
   const vigorous = scaledActivityMinutes(CMO_VIGOROUS_MINUTES_WEEK, period);
   const left = Math.max(0, target - rounded);
   const met = rounded >= target;
-  const pace = paceJudgement({ period, loggedDays: active.days, now: new Date(), met, behind: 'Short' });
+  const pace = paceJudgement({ period, loggedDays, now: new Date(), met, behind: 'Short' });
   const tone: StatsTone = met ? 'good' : pace.neutral ? 'info' : 'info';
   const status = pace.neutral && !met
     ? pace.word

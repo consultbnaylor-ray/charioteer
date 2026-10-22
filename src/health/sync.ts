@@ -3,7 +3,12 @@ import type { WorkoutBucketMap } from '@/domain/nutrition';
 import type { AppleHealthBody, AppleHealthComposition } from '@/health/connection';
 
 export type HealthSyncResult =
-  | { ok: true; samples: NewHealthSample[]; activeEnergyKcal: number | null; composition?: AppleHealthComposition[] }
+  | {
+    ok: true;
+    samples: NewHealthSample[];
+    activeEnergyKcal: number | null;
+    composition?: AppleHealthComposition[];
+  }
   | { ok: false; message: string };
 
 export type AppleHealthBodyRead =

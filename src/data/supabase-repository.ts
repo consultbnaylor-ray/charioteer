@@ -18,6 +18,7 @@ import { omitSharedLocation } from '@/domain/sharedPayload';
 import { stripJpegBase64, stripJpegLocation } from '@/domain/photoLocation';
 import { chunkHealthRows } from '@/domain/healthUpload';
 import { rejectRouteCoordinates } from '@/domain/workoutRoute';
+import { emptyGarminReadings, missingRelation, readingsFromRows, type GarminReadings } from '../../supabase/functions/_shared/garmin';
 import { gratitudeFromRows, isGratitudeCategory, localGratitudeReflect, planGratitudeEntry, type GratitudePhoto, type GratitudeReflect } from '@/domain/gratitude';
 import {
   GRATITUDE_BUCKET,
@@ -2818,6 +2819,42 @@ export class SupabaseRepository implements Repository {
     return parseBuddyShare(data);
   }
 
+  async loadGarmin(): Promise<GarminReadings> {
+    const empty = emptyGarminReadings();
+    const [status, dailies, activities, sleep] = await Promise.all([
+      this.client.from('garmin_connection_status').select('connected, connected_at').maybeSingle(),
+      this.client.from('garmin_dailies').select('calendar_date, resting_heart_rate_bpm, average_heart_rate_bpm, moderate_minutes, vigorous_minutes').order('calendar_date'),
+      this.client.from('garmin_activities').select('summary_id, activity_type, activity_name, started_at, duration_seconds, average_heart_rate_bpm, training_effect, anaerobic_effect').order('started_at'),
+      this.client.from('garmin_sleep').select('summary_id, calendar_date, duration_seconds, deep_seconds, light_seconds, rem_seconds, awake_seconds, sleep_score').order('calendar_date'),
+    ]);
+    const quiet = (error: { message: string } | null) => !error || missingRelation(error.message);
+    if (!quiet(status.error) || !quiet(dailies.error) || !quiet(activities.error) || !quiet(sleep.error)) return empty;
+    const statusRow = status.data as { connected?: boolean; connected_at?: string | null } | null;
+    return readingsFromRows({
+      connected: statusRow?.connected === true,
+      connectedAt: typeof statusRow?.connected_at === 'string' ? statusRow.connected_at : null,
+      dailies: dailies.error ? [] : dailies.data,
+      activities: activities.error ? [] : activities.data,
+      sleep: sleep.error ? [] : sleep.data,
+    });
+  }
+
+  async startGarminConnect(): Promise<string> {
+    const invoked = await this.client.functions.invoke('garmin-oauth-start', { body: {} });
+    const url = invoked.data?.url;
+    if (invoked.error || invoked.data?.ok === false || typeof url !== 'string' || !url.startsWith('https://connect.garmin.com/oauth2Confirm?')) {
+      throw new UserFacingError('Could not open Garmin Connect.', 'generic');
+    }
+    return url;
+  }
+
+  async disconnectGarmin(): Promise<void> {
+    const invoked = await this.client.functions.invoke('garmin-disconnect', { body: {} });
+    if (invoked.error || invoked.data?.ok === false) {
+      throw new UserFacingError('Could not disconnect Garmin Connect.', 'generic');
+    }
+  }
+
   async exportData(): Promise<Record<string, unknown>> {
     const invoked = await this.client.functions.invoke('account-export', { body: {} });
     if (!invoked.error && invoked.data?.data) return invoked.data.data as Record<string, unknown>;
@@ -2827,6 +2864,11 @@ export class SupabaseRepository implements Repository {
   }
 
   async deleteAccount(): Promise<void> {
+    try {
+      await this.disconnectGarmin();
+    } catch {
+      // Account deletion also asks Garmin to drop the registration.
+    }
     const removed = await this.removeOwnProgressPhotos();
     const removedDiary = await this.removeOwnGratitudePhotos();
     const removedVision = await this.removeOwnVisionPhotos();

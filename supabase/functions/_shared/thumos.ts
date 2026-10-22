@@ -72,6 +72,8 @@ export type ThumosContextInput = {
   pinnedQuote?: { text: string; author: string; source: string; school?: 'Stoic' | 'Platonic' } | null;
   /** Their own food log. Withheld on a self-harm turn. Omit kcal when calories are hidden. */
   nutritionLines?: string[];
+  /** Garmin summaries. Empty unless health consent, coach consent, and the personal-data switch are all on. */
+  garminLines?: string[];
 };
 
 function pinnedQuoteSchool(quote: { author: string; school?: string }): 'Stoic' | 'Platonic' {
@@ -859,11 +861,12 @@ export function buildThumosContext(input: ThumosContextInput): string {
 
   const insightLines = (input.healthInsights ?? []).map((line) => line.trim()).filter(Boolean).slice(0, 3);
   const nutritionLines = (input.nutritionLines ?? []).map((line) => line.trim()).filter(Boolean).slice(0, THUMOS_CHAT.nutritionLineCap);
+  const garminLines = (input.garminLines ?? []).map((line) => line.trim()).filter(Boolean).slice(0, 12);
 
   if (input.safety.selfHarm) {
     return [
       `Name: ${input.displayName || 'Friend'}`,
-      'Sober time, personal reasons, savings, milestones, check-ins, health readings, health insights, the gratitude diary, the vision board, the nutrition log, and the pinned Stoic quote or pinned Platonic quote are withheld on this turn. Do not mention them or invent them. Do not call Plato a Stoic.',
+      'Sober time, personal reasons, savings, milestones, check-ins, health readings, health insights, Garmin readings, the gratitude diary, the vision board, the nutrition log, and the pinned Stoic quote or pinned Platonic quote are withheld on this turn. Do not mention them or invent them. Do not call Plato a Stoic.',
       `Mode: ${input.mode}`,
       `Safety flags: self-harm YES, withdrawal ${input.safety.withdrawal ? 'YES' : 'no'}`,
     ].join('\n');
@@ -895,6 +898,7 @@ export function buildThumosContext(input: ThumosContextInput): string {
     `Recent check-ins (newest first):\n${checkIns || '- none yet'}`,
     `Health readings:\n${health || '- none shared'}`,
     insightLines.length ? `Health insights, not medical advice:\n${insightLines.map((line) => `- ${line}`).join('\n')}` : '',
+    garminLines.length ? `Garmin Connect, their own readings. A path is not included:\n${garminLines.map((line) => `- ${line}`).join('\n')}` : '',
     `HRV explainer, general guidance and not a diagnosis. Use this if they ask what heart rate variability means. Do not turn it into a diagnosis or a personal target:\n${hrvExplainerForCoach()}`,
     `Published comparison bands. Quote only these figures. Do not invent a band, and do not turn one into a target:\n${publishedBandGuide()}`,
     formatGratitudeContext(input.gratitude ?? []),
@@ -930,7 +934,7 @@ export function buildSystemPrompt(
     styleLine(turn),
     'The messages after this system prompt are the conversation so far, oldest first, then their latest line. Use that history. Never repeat a sentence you have already sent. Vary your wording from turn to turn.',
     turn.selfHarm
-      ? 'Do not mention sober time, day counts, personal reasons, savings, health readings, health insights, the gratitude diary, the vision board, the nutrition log, or a pinned Stoic quote or a pinned Platonic quote on this turn. Do not call Plato a Stoic.'
+      ? 'Do not mention sober time, day counts, personal reasons, savings, health readings, health insights, Garmin readings, the gratitude diary, the vision board, the nutrition log, or a pinned Stoic quote or a pinned Platonic quote on this turn. Do not call Plato a Stoic.'
       : 'When you mention sober time, a personal reason, a check-in, a health reading, a health insight, a gratitude line, a vision caption, or a pinned Stoic quote or a pinned Platonic quote, take it from CONTEXT. Do not invent those details. A health insight is a note from their own readings, not a diagnosis. If CONTEXT includes an HRV explainer, you may use that wording when they ask what heart rate variability means. Do not add ranges or citations that are not written there, and do not diagnose. If CONTEXT includes published comparison bands, you may quote those figures and name the source written there. They are not a target and not a reason to chase the top of a range. Do not add a band that is not written there. If CONTEXT includes a pinned Stoic quote or a pinned Platonic quote, you may use it once for motivation. Quote it faithfully. Plato is Platonic, not a Stoic. Do not call Plato a Stoic.',
     turn.selfHarm ? '' : GRATITUDE_PROMPT_LINE,
     turn.selfHarm ? '' : VISION_PROMPT_LINE,

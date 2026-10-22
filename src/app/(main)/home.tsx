@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Pressable, View } from 'react-native';
 
 import { useRepository, useSnapshot } from '@/data';
+import { useHealthSources } from '@/health/useHealthSources';
 import { recentCheckInDays } from '@/domain/checkIns';
 import { correctedSoberStart } from '@/domain/correctStart';
 import { formatUkDate, formatUkLong, isoDay, startOfLocalDay } from '@/domain/dates';
@@ -56,6 +57,7 @@ export default function Home() {
   const saving = useRef(false);
   const { run: runRelapse, isPending: relapsePending } = usePendingPress();
   const [refreshing, setRefreshing] = useState(false);
+  const { samples: mergedHealth } = useHealthSources();
 
   useEffect(() => {
     const timer = setInterval(() => setNow(new Date()), 30_000);
@@ -145,7 +147,7 @@ export default function Home() {
   const checkedToday = today.mood != null;
   const healthHeadlines = buildHealthInsights({
     today: todayKey,
-    samples: withPlannedMinutes(snap.health, snap.plannedSessions),
+    samples: withPlannedMinutes(mergedHealth, snap.plannedSessions),
     soberOn: sober && profile.sobrietyStartedAt ? isoDay(new Date(profile.sobrietyStartedAt)) : null,
     stage: profile.stage,
   }).headlines.slice(0, 3);

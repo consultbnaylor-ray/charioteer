@@ -154,6 +154,21 @@ async function heartSamples(start: Date, end: Date): Promise<HeartSample[]> {
   }
 }
 
+function keepOrigin(summary: DeviceWorkout, known: DeviceWorkout | null): DeviceWorkout {
+  if (known?.origin == null) return summary;
+  return {
+    ...summary,
+    origin: known.origin,
+    trainingEffect: known.trainingEffect,
+    anaerobicEffect: known.anaerobicEffect,
+    label: known.origin === 'garmin' ? known.label : summary.label,
+    averageHeartRate: summary.averageHeartRate ?? known.averageHeartRate,
+    distanceMetres: summary.distanceMetres ?? known.distanceMetres,
+    energyKcal: summary.energyKcal ?? known.energyKcal,
+    routeExpected: summary.routeExpected || known.routeExpected,
+  };
+}
+
 /**
  * Reads one workout and its route. A refused read comes back empty.
  * A thrown query is left for the screen to log. The path is not stored or uploaded.
@@ -178,7 +193,7 @@ export async function readDeviceRoute(id: string): Promise<{
   const workout = workouts[0];
   if (!workout) return { workout: known, points: [], heartSamples: [], denied: false };
   try {
-    const summary = await summaryFrom(workout);
+    const summary = keepOrigin(await summaryFrom(workout), known);
     rememberWorkouts([summary]);
     const points: RoutePoint[] = [];
     const routes = await workout.getWorkoutRoutes();
