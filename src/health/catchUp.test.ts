@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
-import { healthCatchUpImports } from './catchUp';
+import { catchUpAppleHealthReads, healthCatchUpGate, healthCatchUpImports } from './catchUp';
 
 describe('Apple Health catch-up', () => {
   it('imports when the read set is already current, and skips a device with no Health store', () => {
@@ -9,6 +9,77 @@ describe('Apple Health catch-up', () => {
     expect(healthCatchUpImports('requested')).toBe(true);
     expect(healthCatchUpImports('unavailable')).toBe(false);
     expect(healthCatchUpImports('web')).toBe(false);
+    expect(healthCatchUpImports('waiting')).toBe(false);
+  });
+
+  it('waits until the profile is loaded and does not log that pause', async () => {
+    expect(healthCatchUpGate({ profile: null })).toBe('wait');
+    expect(healthCatchUpGate({ profile: { consentHealth: false } })).toBe('skip');
+    expect(healthCatchUpGate({ profile: { consentHealth: true } })).toBe('run');
+
+    const source = readFileSync('src/health/catchUp.ts', 'utf8');
+    const run = source.slice(source.indexOf('async function runCatchUp'));
+    expect(run.indexOf("healthCatchUpGate(repo.getSnapshot()) !== 'run'")).toBeLessThan(run.indexOf('deps.ensureReads()'));
+    expect(run.indexOf('deps.ensureReads()')).toBeLessThan(run.indexOf('deps.refresh('));
+    const upload = source.slice(source.lastIndexOf('} catch (error) {'));
+    expect(upload.indexOf('profile == null')).toBeGreaterThan(-1);
+    expect(upload.indexOf('profile == null')).toBeLessThan(upload.indexOf('reportHealthRefresh'));
+    expect(source).not.toContain('Health data stays off until you give consent.');
+
+    let profile: { consentHealth: boolean } | null = null;
+    const logs: string[] = [];
+    const listeners: Array<() => void> = [];
+    const repo = {
+      getSnapshot: () => ({ profile }),
+      subscribe: (listener: () => void) => {
+        listeners.push(listener);
+        return () => {
+          const index = listeners.indexOf(listener);
+          if (index >= 0) listeners.splice(index, 1);
+        };
+      },
+      logClientError: async (screen: string, message: string) => {
+        logs.push(`${screen} ${message}`);
+        return true;
+      },
+      saveHealth: async () => {
+        throw new Error('Health data stays off until you give consent.');
+      },
+      saveBodyComposition: async () => undefined,
+      setNutritionSettings: async () => undefined,
+    };
+    let refreshes = 0;
+    const waiting = catchUpAppleHealthReads(repo as never, {
+      ensureReads: async () => 'current',
+      refresh: async () => {
+        refreshes += 1;
+        return { ok: true, syncedAt: '2026-10-22T00:00:00.000Z' };
+      },
+    });
+    await Promise.resolve();
+    expect(refreshes).toBe(0);
+    expect(logs).toEqual([]);
+    expect(listeners).toHaveLength(1);
+
+    profile = { consentHealth: false };
+    listeners[0]?.();
+    const skipped = await waiting;
+    expect(skipped).toEqual({ status: 'waiting', imported: false, syncedAt: null, error: null });
+    expect(refreshes).toBe(0);
+    expect(logs).toEqual([]);
+
+    profile = { consentHealth: true };
+    const ran = await catchUpAppleHealthReads(repo as never, {
+      ensureReads: async () => 'current',
+      refresh: async () => {
+        refreshes += 1;
+        return { ok: true, syncedAt: '2026-10-22T00:00:00.000Z' };
+      },
+    });
+    expect(ran.error).toBeNull();
+    expect(ran.imported).toBe(true);
+    expect(refreshes).toBe(1);
+    expect(logs).toEqual([]);
   });
 
   it('returns a visible error and does not authorise again on the automatic import', () => {

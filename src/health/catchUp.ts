@@ -14,17 +14,34 @@ import { loadLastSynced, saveLastSynced } from '@/health/syncedAt';
 import { syncAppleHealth } from '@/health/sync';
 
 export type HealthCatchUp = {
-  status: 'requested' | 'current' | 'unavailable' | 'web';
+  status: 'requested' | 'current' | 'unavailable' | 'web' | 'waiting';
   imported: boolean;
   syncedAt: string | null;
   error: string | null;
 };
 
-type HealthSink = Pick<Repository, 'saveHealth' | 'saveBodyComposition' | 'setNutritionSettings' | 'getSnapshot' | 'logClientError'>;
+type HealthSink = Pick<Repository, 'saveHealth' | 'saveBodyComposition' | 'setNutritionSettings' | 'getSnapshot' | 'logClientError' | 'subscribe'>;
 
 export type HealthRefresh = { ok: true; syncedAt: string } | { ok: false; message: string };
 
+type HealthReads = 'requested' | 'current' | 'unavailable' | 'web';
+
+type CatchUpDeps = {
+  ensureReads: () => Promise<HealthReads>;
+  refresh: (repo: HealthSink, options?: { authorize?: boolean }) => Promise<HealthRefresh>;
+};
+
+/** Profile missing, profile loaded without consent, or ready to import. */
+export function healthCatchUpGate(snapshot: { profile: { consentHealth?: boolean } | null }): 'wait' | 'skip' | 'run' {
+  if (snapshot.profile == null) return 'wait';
+  if (!snapshot.profile.consentHealth) return 'skip';
+  return 'run';
+}
+
+const QUIET: HealthCatchUp = { status: 'waiting', imported: false, syncedAt: null, error: null };
+
 let pending: Promise<HealthCatchUp> | null = null;
+let profileWait: Promise<HealthCatchUp> | null = null;
 
 /** A current read set still needs a fresh import. Only a missing Health store skips it. */
 export function healthCatchUpImports(status: HealthCatchUp['status']): boolean {
@@ -36,13 +53,30 @@ export function healthCatchUpImports(status: HealthCatchUp['status']): boolean {
  * A matching set does not show the sheet again. A failed import is returned
  * on `error` and does not move the last-updated clock.
  */
-export function catchUpAppleHealthReads(repo: HealthSink): Promise<HealthCatchUp> {
+export function catchUpAppleHealthReads(repo: HealthSink, deps: CatchUpDeps = defaultCatchUpDeps): Promise<HealthCatchUp> {
+  const gate = healthCatchUpGate(repo.getSnapshot());
+  if (gate === 'wait') return whenProfileLoads(repo, deps);
+  if (gate === 'skip') return Promise.resolve(QUIET);
   if (!pending) {
-    pending = runCatchUp(repo).finally(() => {
+    pending = runCatchUp(repo, deps).finally(() => {
       pending = null;
     });
   }
   return pending;
+}
+
+/** The account snapshot is still empty. Try again when the profile arrives, and do not log that wait. */
+function whenProfileLoads(repo: HealthSink, deps: CatchUpDeps): Promise<HealthCatchUp> {
+  if (profileWait) return profileWait;
+  profileWait = new Promise((resolve) => {
+    const stop = repo.subscribe(() => {
+      if (repo.getSnapshot().profile == null) return;
+      stop();
+      profileWait = null;
+      resolve(catchUpAppleHealthReads(repo, deps));
+    });
+  });
+  return profileWait;
 }
 
 async function reportHealthRefresh(repo: HealthSink, step: 'read' | 'upload', error: unknown): Promise<void> {
@@ -113,15 +147,26 @@ export async function refreshAppleHealth(
     await saveLastSynced(syncedAt);
     return { ok: true, syncedAt };
   } catch (error) {
+    if (repo.getSnapshot().profile == null) return { ok: false, message: '' };
     await reportHealthRefresh(repo, 'upload', error);
     return { ok: false, message: shownError(error, 'Could not refresh Apple Health.') };
   }
 }
 
-async function runCatchUp(repo: HealthSink): Promise<HealthCatchUp> {
-  const status = await ensureCurrentAppleHealthReads();
+const defaultCatchUpDeps: CatchUpDeps = {
+  ensureReads: () => ensureCurrentAppleHealthReads(),
+  refresh: (repo, options) => refreshAppleHealth(repo, options),
+};
+
+async function runCatchUp(repo: HealthSink, deps: CatchUpDeps): Promise<HealthCatchUp> {
+  if (healthCatchUpGate(repo.getSnapshot()) !== 'run') return QUIET;
+  const status = await deps.ensureReads();
   if (!healthCatchUpImports(status)) return { status, imported: false, syncedAt: null, error: null };
-  const refreshed = await refreshAppleHealth(repo, { authorize: false });
-  if (!refreshed.ok) return { status, imported: false, syncedAt: null, error: refreshed.message };
+  if (healthCatchUpGate(repo.getSnapshot()) !== 'run') return { status, imported: false, syncedAt: null, error: null };
+  const refreshed = await deps.refresh(repo, { authorize: false });
+  if (!refreshed.ok) {
+    if (!refreshed.message) return { status, imported: false, syncedAt: null, error: null };
+    return { status, imported: false, syncedAt: null, error: refreshed.message };
+  }
   return { status, imported: true, syncedAt: refreshed.syncedAt, error: null };
 }
