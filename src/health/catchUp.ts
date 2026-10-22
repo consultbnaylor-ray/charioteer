@@ -20,7 +20,7 @@ export type HealthCatchUp = {
   error: string | null;
 };
 
-type HealthSink = Pick<Repository, 'saveHealth' | 'saveBodyComposition' | 'setNutritionSettings' | 'getSnapshot' | 'logClientError' | 'subscribe'>;
+type HealthSink = Pick<Repository, 'saveHealth' | 'replaceAppleWorkoutSpans' | 'saveBodyComposition' | 'setNutritionSettings' | 'getSnapshot' | 'logClientError' | 'subscribe'>;
 
 export type HealthRefresh = { ok: true; syncedAt: string } | { ok: false; message: string };
 
@@ -127,6 +127,7 @@ export async function refreshAppleHealth(
       stored: repo.getSnapshot().health,
     });
     await repo.saveHealth(samples);
+    if (result.workoutSpans) await repo.replaceAppleWorkoutSpans(result.workoutSpans);
     for (const row of result.composition ?? []) {
       if (!inHealthUploadWindow(row.recordedOn, today, firstImport)) continue;
       await repo.saveBodyComposition({

@@ -330,6 +330,13 @@ export type NewHealthSample = {
   source: 'manual' | 'healthkit';
 };
 
+/** Start and length of one Apple workout. Used to share one total when Garmin recorded the same session. */
+export type AppleWorkoutSpan = {
+  workoutId: string;
+  startedAt: string;
+  durationMinutes: number;
+};
+
 export type NewReport = {
   reportedUserId: string;
   reason: string;
@@ -414,6 +421,8 @@ export interface Repository {
   addCheckIn(input: NewCheckIn): Promise<void>;
   recordRelapse(note: string): Promise<void>;
   saveHealth(samples: NewHealthSample[]): Promise<void>;
+  /** Replaces this phone's Apple workout intervals. Other members never read this table. */
+  replaceAppleWorkoutSpans(spans: AppleWorkoutSpan[]): Promise<void>;
   setInterestSelected(interestId: string, selected: boolean): Promise<void>;
   addCustomInterest(label: string): Promise<void>;
   requestConnection(userId: string, clientId?: string): Promise<void>;
