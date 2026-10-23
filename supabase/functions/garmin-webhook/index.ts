@@ -80,8 +80,17 @@ Deno.serve(async (req) => {
   for (const change of plan.permissionChanges) {
     const userId = userIdByGarmin.get(change.garminUserId);
     if (!userId) continue;
-    const saved = await admin.from('garmin_connections').update({ permissions: change.permissions }).eq('user_id', userId);
-    if (saved.error) return json({ ok: false, code: 'permissions' }, 500);
+    let saved = await admin.from('garmin_connections').update({
+      permissions: change.permissions,
+      permissions_checked_at: new Date().toISOString(),
+    }).eq('user_id', userId);
+    if (saved.error?.message.includes('permissions_checked_at')) {
+      saved = await admin.from('garmin_connections').update({ permissions: change.permissions }).eq('user_id', userId);
+    }
+    if (saved.error) {
+      console.error('garmin-webhook: permissions');
+      return json({ ok: false, code: 'permissions' }, 500);
+    }
     const named = change.permissions.split(' ').filter(Boolean);
     const keepsSummaries = named.includes('HEALTH_EXPORT') || named.includes('ACTIVITY_EXPORT');
     if (!keepsSummaries) {

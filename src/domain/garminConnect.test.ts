@@ -194,8 +194,8 @@ describe('Garmin webhook mapping', () => {
     expect(rows[0]).toMatchObject({ user_id: 'user-1', vo2_max: 46.2, fitness_age: 32 });
     expect(userMetricRowsFor(plan, new Map())).toEqual([]);
     expect(GARMIN_BACKFILL_TYPES).toEqual(['dailies', 'activities', 'sleeps', 'userMetrics']);
-    expect(garminBackfillUrl('dailies', Date.parse('2026-10-22T00:00:00Z'))).toContain('/backfill/dailies?');
-    expect(garminBackfillUrl('userMetrics', Date.parse('2026-10-22T00:00:00Z'))).not.toContain('activityDetails');
+    expect(garminBackfillUrl('dailies', 1, 2)).toContain('/backfill/dailies?summaryStartTimeInSeconds=1&summaryEndTimeInSeconds=2');
+    expect(garminBackfillUrl('userMetrics', 1, 2)).not.toContain('activityDetails');
     expect(garminRefreshCooling('2026-10-22T11:59:30Z', Date.parse('2026-10-22T12:00:00Z'))).toBe(true);
     expect(garminRefreshCooling('2026-10-22T11:58:00Z', Date.parse('2026-10-22T12:00:00Z'))).toBe(false);
     const metricsSql = readFileSync('supabase/migrations/20261023120000_garmin_user_metrics.sql', 'utf8');
@@ -209,7 +209,7 @@ describe('Garmin webhook mapping', () => {
     expect(refreshSql).toContain('last_manual_refresh_at');
     expect(refreshSql).not.toMatch(/grant /i);
     const refreshFn = readFileSync('supabase/functions/garmin-refresh/index.ts', 'utf8');
-    expect(refreshFn).toContain('GARMIN_BACKFILL_TYPES');
+    expect(refreshFn).toContain('garminBackfillTypes');
     expect(refreshFn).not.toMatch(/activityDetails|activityFile/);
     expect(readFileSync('supabase/config.toml', 'utf8')).toContain('[functions.garmin-refresh]\nverify_jwt = true');
     expect(readFileSync('supabase/functions/garmin-webhook/index.ts', 'utf8')).toContain("from('garmin_user_metrics')");
@@ -274,6 +274,8 @@ describe('Garmin coach gate', () => {
       sleepScore: 81,
     }],
     userMetrics: [],
+    needsPermissions: false,
+    missingPermissions: [],
   };
 
   it('withholds Garmin unless health consent, coach consent, and the personal-data switch are on', () => {

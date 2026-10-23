@@ -382,6 +382,7 @@ export default function Health() {
         refreshing={manual.refreshing}
         updated={manual.updated}
         error={manual.error}
+        permission={manual.permission}
         garminNote={manual.garminNote}
         onPress={() => void manual.run()}
       />

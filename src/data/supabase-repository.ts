@@ -18,7 +18,8 @@ import { omitSharedLocation } from '@/domain/sharedPayload';
 import { stripJpegBase64, stripJpegLocation } from '@/domain/photoLocation';
 import { chunkHealthRows } from '@/domain/healthUpload';
 import { rejectRouteCoordinates } from '@/domain/workoutRoute';
-import { emptyGarminReadings, missingColumn, missingRelation, readingsFromRows, type GarminReadings } from '../../supabase/functions/_shared/garmin';
+import { GARMIN_PERMISSION } from '@/domain/healthRefresh';
+import { emptyGarminReadings, garminPermissionStatus, missingColumn, missingRelation, readingsFromRows, type GarminExportPermission, type GarminReadings } from '../../supabase/functions/_shared/garmin';
 import { gratitudeFromRows, isGratitudeCategory, localGratitudeReflect, planGratitudeEntry, type GratitudePhoto, type GratitudeReflect } from '@/domain/gratitude';
 import {
   GRATITUDE_BUCKET,
@@ -2840,8 +2841,11 @@ export class SupabaseRepository implements Repository {
 
   async loadGarmin(): Promise<GarminReadings> {
     const empty = emptyGarminReadings();
-    const [status, dailiesFirst, activities, sleep, metrics] = await Promise.all([
-      this.client.from('garmin_connection_status').select('connected, connected_at').maybeSingle(),
+    const statusFirst = await this.client.from('garmin_connection_status').select('connected, connected_at, needs_permissions, missing_permissions').maybeSingle();
+    const status = statusFirst.error && missingColumn(statusFirst.error.message, 'needs_permissions')
+      ? await this.client.from('garmin_connection_status').select('connected, connected_at').maybeSingle()
+      : statusFirst;
+    const [dailiesFirst, activities, sleep, metrics] = await Promise.all([
       this.client.from('garmin_dailies').select('calendar_date, resting_heart_rate_bpm, average_heart_rate_bpm, moderate_minutes, vigorous_minutes, active_kilocalories').order('calendar_date'),
       this.client.from('garmin_activities').select('summary_id, activity_type, activity_name, started_at, duration_seconds, average_heart_rate_bpm, training_effect, anaerobic_effect').order('started_at'),
       this.client.from('garmin_sleep').select('summary_id, calendar_date, duration_seconds, deep_seconds, light_seconds, rem_seconds, awake_seconds, sleep_score').order('calendar_date'),
@@ -2852,8 +2856,13 @@ export class SupabaseRepository implements Repository {
       : dailiesFirst;
     const quiet = (error: { message: string } | null) => !error || missingRelation(error.message);
     if (!quiet(status.error) || !quiet(dailies.error) || !quiet(activities.error) || !quiet(sleep.error) || !quiet(metrics.error)) return empty;
-    const statusRow = status.data as { connected?: boolean; connected_at?: string | null } | null;
-    return readingsFromRows({
+    const statusRow = status.data as {
+      connected?: boolean;
+      connected_at?: string | null;
+      needs_permissions?: boolean;
+      missing_permissions?: string | null;
+    } | null;
+    const readings = readingsFromRows({
       connected: statusRow?.connected === true,
       connectedAt: typeof statusRow?.connected_at === 'string' ? statusRow.connected_at : null,
       dailies: dailies.error ? [] : dailies.data,
@@ -2861,16 +2870,42 @@ export class SupabaseRepository implements Repository {
       sleep: sleep.error ? [] : sleep.data,
       userMetrics: metrics.error ? [] : metrics.data,
     });
+    const permission = garminPermissionStatus({
+      connected: readings.connected,
+      connectedAt: readings.connectedAt,
+      nowMs: Date.now(),
+      garminRowCount: readings.dailies.length + readings.activities.length + readings.sleep.length + readings.userMetrics.length,
+      storedNeeds: typeof statusRow?.needs_permissions === 'boolean' ? statusRow.needs_permissions : null,
+      storedMissing: typeof statusRow?.missing_permissions === 'string' ? statusRow.missing_permissions : null,
+    });
+    return { ...readings, needsPermissions: permission.needs, missingPermissions: permission.missing };
   }
 
-  async refreshGarmin(): Promise<{ ok: true; garmin: 'off' | 'asked' | 'recent' } | { ok: false; message: string }> {
+  async refreshGarmin(): Promise<{ ok: true; garmin: 'off' | 'asked' | 'recent' } | { ok: false; message: string; code?: 'permission' | 'rate' }> {
     const invoked = await this.client.functions.invoke('garmin-refresh', { body: {} });
     const garmin = invoked.data?.garmin;
     if (!invoked.error && invoked.data?.ok === true && (garmin === 'off' || garmin === 'asked' || garmin === 'recent')) {
       return { ok: true, garmin };
     }
-    if (invoked.data?.code === 'rate') return { ok: false, message: 'Garmin is busy. Try again in a minute.' };
+    if (invoked.data?.code === 'rate') return { ok: false, code: 'rate', message: 'Garmin is busy. Try again in a minute.' };
+    if (invoked.data?.code === 'permission') return { ok: false, code: 'permission', message: GARMIN_PERMISSION };
     return { ok: false, message: 'Could not ask Garmin for new data.' };
+  }
+
+  async checkGarminPermissions(force = false): Promise<{ checked: boolean; needsPermissions: boolean; missing: GarminExportPermission[] }> {
+    const invoked = await this.client.functions.invoke('garmin-refresh', {
+      body: force ? { check: 'permissions', force: true } : { check: 'permissions' },
+    });
+    const data = invoked.data as { garmin?: unknown; checked?: unknown; needsPermissions?: unknown; missing?: unknown } | null;
+    if (data?.garmin !== 'permissions') return { checked: false, needsPermissions: false, missing: [] };
+    const missing = Array.isArray(data.missing)
+      ? data.missing.filter((name): name is GarminExportPermission => name === 'ACTIVITY_EXPORT' || name === 'HEALTH_EXPORT')
+      : [];
+    return {
+      checked: data.checked === true,
+      needsPermissions: data.needsPermissions === true,
+      missing,
+    };
   }
 
   async startGarminConnect(): Promise<string> {
