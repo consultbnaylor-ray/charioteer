@@ -1,6 +1,8 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
 
 import { useSnapshot } from '@/data';
+import { appleDayValues } from '@/domain/dailyActivity';
+import { garminStoredMark } from '@/domain/healthRefresh';
 import { useHealthSources } from '@/health/useHealthSources';
 import { HealthRefreshBar, useManualHealthRefresh } from '@/ui/HealthRefresh';
 import { GarminPermissionNotice } from '@/ui/GarminPermissionNotice';
@@ -37,6 +39,7 @@ export default function WorkoutsScreen() {
         appleCheckedAt={manual.appleCheckedAt}
         garminConnected={readings.connected}
         garminReceivedAt={readings.lastPushAt}
+        garminMark={garminStoredMark(readings)}
         error={manual.error}
         permission={manual.permission}
         history={manual.history}
@@ -52,6 +55,12 @@ export default function WorkoutsScreen() {
         exerciseMinutes={activity.exerciseMinutes}
         activeKcal={activity.activeKcal}
         dailies={readings.dailies}
+        steps={appleDayValues(snap.health, 'steps')}
+        restingHeart={appleDayValues(snap.health, 'resting_heart_rate')}
+        sleep={readings.sleep}
+        respiration={readings.respiration}
+        pulseOx={readings.pulseOx}
+        hrv={readings.hrv}
       />
       <WorkoutCalendar
         planDay={planDay}

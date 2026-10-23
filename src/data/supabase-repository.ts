@@ -2850,17 +2850,26 @@ export class SupabaseRepository implements Repository {
           : narrow
       ))
       : statusFirst;
-    const [dailiesFirst, activities, sleep, metrics] = await Promise.all([
-      this.client.from('garmin_dailies').select('calendar_date, resting_heart_rate_bpm, average_heart_rate_bpm, moderate_minutes, vigorous_minutes, active_kilocalories').order('calendar_date'),
+    const dailyFull = 'calendar_date, resting_heart_rate_bpm, average_heart_rate_bpm, min_heart_rate_bpm, max_heart_rate_bpm, moderate_minutes, vigorous_minutes, active_kilocalories, steps, distance_metres, floors_climbed, average_stress_level, body_battery_charged, body_battery_drained, body_battery_highest, body_battery_lowest, step_goal, duration_seconds';
+    const dailyWithKcal = 'calendar_date, resting_heart_rate_bpm, average_heart_rate_bpm, moderate_minutes, vigorous_minutes, active_kilocalories';
+    const [dailiesFirst, activities, sleep, metrics, respiration, pulseOx, hrv] = await Promise.all([
+      this.client.from('garmin_dailies').select(dailyFull).order('calendar_date'),
       this.client.from('garmin_activities').select('summary_id, activity_type, activity_name, started_at, duration_seconds, average_heart_rate_bpm, training_effect, anaerobic_effect').order('started_at'),
       this.client.from('garmin_sleep').select('summary_id, calendar_date, duration_seconds, deep_seconds, light_seconds, rem_seconds, awake_seconds, sleep_score').order('calendar_date'),
       this.client.from('garmin_user_metrics').select('summary_id, calendar_date, vo2_max, vo2_max_cycling, fitness_age').order('calendar_date'),
+      this.client.from('garmin_respiration').select('summary_id, calendar_date, average_breaths_per_minute, highest_breaths_per_minute, lowest_breaths_per_minute').order('calendar_date'),
+      this.client.from('garmin_pulse_ox').select('summary_id, calendar_date, average_spo2, lowest_spo2, highest_spo2').order('calendar_date'),
+      this.client.from('garmin_hrv').select('summary_id, calendar_date, last_night_avg_ms, last_night_5min_high_ms').order('calendar_date'),
     ]);
-    const dailies = dailiesFirst.error && missingColumn(dailiesFirst.error.message, 'active_kilocalories')
-      ? await this.client.from('garmin_dailies').select('calendar_date, resting_heart_rate_bpm, average_heart_rate_bpm, moderate_minutes, vigorous_minutes').order('calendar_date')
+    const dailyNewMissing = dailiesFirst.error && ['steps', 'distance_metres', 'floors_climbed', 'min_heart_rate_bpm', 'max_heart_rate_bpm', 'average_stress_level', 'body_battery_charged', 'body_battery_drained', 'body_battery_highest', 'body_battery_lowest', 'step_goal', 'duration_seconds'].some((column) => missingColumn(dailiesFirst.error?.message ?? '', column));
+    const dailiesWithKnown = dailyNewMissing
+      ? await this.client.from('garmin_dailies').select(dailyWithKcal).order('calendar_date')
       : dailiesFirst;
+    const dailies = dailiesWithKnown.error && missingColumn(dailiesWithKnown.error.message, 'active_kilocalories')
+      ? await this.client.from('garmin_dailies').select('calendar_date, resting_heart_rate_bpm, average_heart_rate_bpm, moderate_minutes, vigorous_minutes').order('calendar_date')
+      : dailiesWithKnown;
     const quiet = (error: { message: string } | null) => !error || missingRelation(error.message);
-    if (!quiet(status.error) || !quiet(dailies.error) || !quiet(activities.error) || !quiet(sleep.error) || !quiet(metrics.error)) return empty;
+    if (!quiet(status.error) || !quiet(dailies.error) || !quiet(activities.error) || !quiet(sleep.error) || !quiet(metrics.error) || !quiet(respiration.error) || !quiet(pulseOx.error) || !quiet(hrv.error)) return empty;
     const statusRow = status.data as {
       connected?: boolean;
       connected_at?: string | null;
@@ -2878,12 +2887,15 @@ export class SupabaseRepository implements Repository {
       activities: activities.error ? [] : activities.data,
       sleep: sleep.error ? [] : sleep.data,
       userMetrics: metrics.error ? [] : metrics.data,
+      respiration: respiration.error ? [] : respiration.data,
+      pulseOx: pulseOx.error ? [] : pulseOx.data,
+      hrv: hrv.error ? [] : hrv.data,
     });
     const permission = garminPermissionStatus({
       connected: readings.connected,
       connectedAt: readings.connectedAt,
       nowMs: Date.now(),
-      garminRowCount: readings.dailies.length + readings.activities.length + readings.sleep.length + readings.userMetrics.length,
+      garminRowCount: readings.dailies.length + readings.activities.length + readings.sleep.length + readings.userMetrics.length + readings.respiration.length + readings.pulseOx.length + readings.hrv.length,
       storedNeeds: typeof statusRow?.needs_permissions === 'boolean' ? statusRow.needs_permissions : null,
       storedMissing: typeof statusRow?.missing_permissions === 'string' ? statusRow.missing_permissions : null,
     });

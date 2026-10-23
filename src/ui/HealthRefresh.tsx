@@ -1,18 +1,26 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Pressable, View } from 'react-native';
+import { ActivityIndicator, Pressable, View } from 'react-native';
 
 import { useRepository, useSnapshot } from '@/data';
 import {
   GARMIN_ASKED,
+  GARMIN_CHECK_AGAIN,
   GARMIN_DATA_HINT,
   GARMIN_HISTORY_NOTE,
+  GARMIN_NO_NEW,
+  GARMIN_NO_NEW_MS,
   GARMIN_RECENT,
   REFRESH_FAILED,
   SYNC_REFRESH,
   appleCheckIsFresh,
+  garminCheckCooling,
+  garminCheckFoundNew,
+  garminStoredMark,
+  laterSyncClock,
   refreshCooling,
+  syncAppleClause,
+  syncGarminClause,
   syncStatusShowsRefresh,
-  syncStatusText,
 } from '@/domain/healthRefresh';
 import { noteGarminRefreshRefused } from '@/domain/garminPermission';
 import { GarminPermissionNotice } from '@/ui/GarminPermissionNotice';
@@ -24,6 +32,7 @@ import { useAppTheme } from '@/ui/theme';
 import { ErrorNote, T } from '@/ui/ui';
 
 let cooldownFrom: number | null = null;
+let garminCheckFrom: number | null = null;
 
 export function useManualHealthRefresh(garminConnected: boolean) {
   const repo = useRepository();
@@ -100,6 +109,7 @@ export function HealthRefreshBar({
   appleCheckedAt,
   garminConnected,
   garminReceivedAt,
+  garminMark,
   error,
   permission,
   history,
@@ -110,6 +120,7 @@ export function HealthRefreshBar({
   appleCheckedAt: string | null;
   garminConnected: boolean;
   garminReceivedAt: string | null;
+  garminMark: string;
   error: string | null;
   permission?: boolean;
   history?: boolean;
@@ -117,14 +128,73 @@ export function HealthRefreshBar({
   onPress: () => void;
 }) {
   const theme = useAppTheme();
+  const repo = useRepository();
   const fresh = appleCheckIsFresh(appleCheckedAt, Date.now());
-  const text = syncStatusText({ appleCheckedAt, garminConnected, garminReceivedAt });
   const showRefresh = syncStatusShowsRefresh({ appleCheckedAt, now: Date.now(), error: Boolean(error) });
+  const [checking, setChecking] = useState(false);
+  const [garminTick, setGarminTick] = useState(false);
+  const [noNew, setNoNew] = useState(false);
+  const [seenPushAt, setSeenPushAt] = useState<string | null>(null);
+  const receivedAt = laterSyncClock(garminReceivedAt, seenPushAt);
+
+  useEffect(() => {
+    if (!noNew) return undefined;
+    const timer = setTimeout(() => setNoNew(false), GARMIN_NO_NEW_MS);
+    return () => clearTimeout(timer);
+  }, [noNew]);
+
+  const checkStored = useCallback(async () => {
+    if (checking || garminCheckCooling(garminCheckFrom, Date.now())) return;
+    garminCheckFrom = Date.now();
+    setChecking(true);
+    setNoNew(false);
+    try {
+      const next = await repo.loadGarmin();
+      const found = garminCheckFoundNew(
+        { lastPushAt: receivedAt, mark: garminMark },
+        { connected: next.connected, lastPushAt: next.lastPushAt, mark: garminStoredMark(next) },
+      );
+      if (found) {
+        setGarminTick(true);
+        if (next.lastPushAt) setSeenPushAt(next.lastPushAt);
+      } else {
+        setGarminTick(false);
+        setNoNew(true);
+      }
+      reloadHealthSources();
+    } catch {
+      setGarminTick(false);
+      setNoNew(true);
+    } finally {
+      setChecking(false);
+    }
+  }, [checking, garminMark, receivedAt, repo]);
+
   return (
     <View style={{ gap: 8 }}>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
         {fresh ? <PlanTick done /> : null}
-        <T style={{ flexGrow: 1, flexShrink: 1 }}>{text}</T>
+        <T style={{ flexShrink: 1 }}>{syncAppleClause(appleCheckedAt)}</T>
+        {garminConnected ? (
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexShrink: 1 }}>
+            <T>·</T>
+            {garminTick ? <PlanTick done /> : null}
+            <T style={{ flexShrink: 1 }}>{syncGarminClause(receivedAt)}</T>
+            <T>·</T>
+            {checking ? (
+              <ActivityIndicator accessibilityLabel="Checking Garmin" size="small" color={theme.colors.ink} />
+            ) : (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={GARMIN_CHECK_AGAIN}
+                onPress={() => void checkStored()}
+                hitSlop={8}
+              >
+                <T variant="muted" style={{ textDecorationLine: 'underline' }}>{GARMIN_CHECK_AGAIN}</T>
+              </Pressable>
+            )}
+          </View>
+        ) : null}
         {showRefresh ? (
           <Pressable
             accessibilityRole="button"
@@ -147,6 +217,7 @@ export function HealthRefreshBar({
           </Pressable>
         ) : null}
       </View>
+      {noNew ? <T variant="muted">{GARMIN_NO_NEW}</T> : null}
       {garminConnected ? <T variant="muted">{GARMIN_DATA_HINT}</T> : null}
       {history ? <T variant="muted">{GARMIN_HISTORY_NOTE}</T> : null}
       {garminNote ? <T variant="muted">{garminNote}</T> : null}

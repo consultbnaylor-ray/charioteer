@@ -7,6 +7,9 @@ export {
   type GarminDaily,
   type GarminFigure,
   type GarminReadings,
+  type GarminHrvSummary,
+  type GarminPulseOx,
+  type GarminRespiration,
   type GarminSleep,
   type GarminUserMetric,
 } from '../../supabase/functions/_shared/garmin';

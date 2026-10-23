@@ -11,7 +11,12 @@ import {
   GARMIN_VIGOROUS_MINUTE_WEIGHT,
   activityDayName,
   calorieSeries,
+  distanceSeries,
   exerciseSeries,
+  floorsSeries,
+  garminLatestLines,
+  restingSeries,
+  stepsSeries,
   garminExerciseMinutes,
   mostInOneDay,
 } from './dailyActivity';
@@ -115,7 +120,7 @@ describe('daily activity', () => {
     expect(readFileSync('supabase/functions/thumos-voice-token/index.ts', 'utf8')).not.toContain('active_kilocalories');
     expect(readFileSync('supabase/functions/health-plan/index.ts', 'utf8')).not.toContain('active_kilocalories');
     const repo = readFileSync('src/data/supabase-repository.ts', 'utf8');
-    expect(repo).toContain('missingColumn(dailiesFirst.error.message, \'active_kilocalories\')');
+    expect(repo).toContain('missingColumn(dailiesWithKnown.error.message, \'active_kilocalories\')');
   });
 
   it('places the charts on Workouts and asks for exercise minutes', () => {
@@ -141,5 +146,50 @@ describe('daily activity', () => {
     expect(readFileSync('docs/privacy.md', 'utf8')).toContain('exercise minutes');
     expect(DAILY_ACTIVITY_RINGS_HINT).toBe('Rings and exercise minutes include all your movement, not just recorded workouts.');
     expect(DAILY_ACTIVITY_TAP_HINT).toBe("Tap a bar to see that day's activity.");
+    const steps = stepsSeries(end, 7, [{ day: '2026-10-22', value: 8000 }], [
+      { calendarDate: '2026-10-21', restingHeartRateBpm: null, averageHeartRateBpm: null, moderateMinutes: null, vigorousMinutes: null, steps: 6400, distanceMetres: 4200, floorsClimbed: 9 },
+      { calendarDate: '2026-10-22', restingHeartRateBpm: 58, averageHeartRateBpm: null, moderateMinutes: null, vigorousMinutes: null, steps: 1000 },
+    ]);
+    expect(steps[0]?.day).toBe('2026-10-16');
+    expect(steps.at(-1)?.day).toBe('2026-10-22');
+    expect(steps.find((point) => point.day === '2026-10-22')).toMatchObject({ value: 8000, source: 'apple' });
+    expect(steps.find((point) => point.day === '2026-10-22')?.label).toContain('(Apple Health)');
+    expect(steps.find((point) => point.day === '2026-10-21')).toMatchObject({ value: 6400, source: 'garmin' });
+    expect(steps.find((point) => point.day === '2026-10-21')?.label).toContain('(Garmin)');
+    expect(distanceSeries(end, 7, [
+      { calendarDate: '2026-10-21', restingHeartRateBpm: null, averageHeartRateBpm: null, moderateMinutes: null, vigorousMinutes: null, distanceMetres: 4200 },
+    ]).find((point) => point.day === '2026-10-21')?.label).toBe('Distance, Wed 21 Oct: 4.2 km (Garmin)');
+    expect(floorsSeries(end, 7, [
+      { calendarDate: '2026-10-21', restingHeartRateBpm: null, averageHeartRateBpm: null, moderateMinutes: null, vigorousMinutes: null, floorsClimbed: 9 },
+    ]).find((point) => point.day === '2026-10-21')?.label).toBe('Floors, Wed 21 Oct: 9 floors (Garmin)');
+    const resting = restingSeries(end, 7, [{ day: '2026-10-22', value: 60 }], [
+      { calendarDate: '2026-10-21', restingHeartRateBpm: 58, averageHeartRateBpm: null, moderateMinutes: null, vigorousMinutes: null },
+    ]);
+    expect(resting.find((point) => point.day === '2026-10-22')?.label).toContain('60 bpm (Apple Health)');
+    expect(resting.find((point) => point.day === '2026-10-21')?.label).toContain('58 bpm (Garmin)');
+    const lines = garminLatestLines({
+      dailies: [{
+        calendarDate: '2026-10-22',
+        restingHeartRateBpm: null,
+        averageHeartRateBpm: null,
+        moderateMinutes: null,
+        vigorousMinutes: null,
+        stepGoal: 10000,
+        averageStressLevel: 28,
+        bodyBatteryCharged: 40,
+        bodyBatteryDrained: 55,
+        bodyBatteryHighest: 80,
+        bodyBatteryLowest: 20,
+      }],
+      sleep: [{ calendarDate: '2026-10-22', sleepScore: 81 }],
+      respiration: [{ calendarDate: '2026-10-22', averageBreathsPerMinute: 15.3 }],
+      pulseOx: [{ calendarDate: '2026-10-22', averageSpo2: 96 }],
+      hrv: [{ calendarDate: '2026-10-22', lastNightAvgMs: 46 }],
+    });
+    expect(lines[0]).toContain('Step goal');
+    expect(lines.length).toBeGreaterThan(4);
+    expect(readFileSync('src/ui/DailyActivity.tsx', 'utf8')).toContain('GARMIN_LINE_FOLD');
+    expect(readFileSync('src/app/(main)/health.tsx', 'utf8')).toContain('<MovementCharts');
+    expect(readFileSync('src/ui/DailyActivity.tsx', 'utf8')).not.toContain('workoutTypeColor');
   });
 });

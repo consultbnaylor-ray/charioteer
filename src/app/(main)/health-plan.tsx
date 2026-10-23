@@ -24,6 +24,10 @@ import { ShareOnProfile } from '@/ui/ShareOnProfile';
 import { MeasureBarsView, MeasureRingView } from '@/ui/MeasuredFigure';
 import { StatTile } from '@/ui/StatTile';
 import { usePendingPress } from '@/ui/pendingAction';
+import { appleDayValues } from '@/domain/dailyActivity';
+import { londonDay } from '@/domain/healthInsights';
+import { garminStoredMark } from '@/domain/healthRefresh';
+import { MovementCharts } from '@/ui/DailyActivity';
 import { HealthRefreshBar, useManualHealthRefresh } from '@/ui/HealthRefresh';
 import { Button, Card, ErrorNote, Field, Screen, T } from '@/ui/ui';
 
@@ -144,11 +148,23 @@ export default function HealthPlanScreen() {
         appleCheckedAt={manual.appleCheckedAt}
         garminConnected={readings.connected}
         garminReceivedAt={readings.lastPushAt}
+        garminMark={garminStoredMark(readings)}
         error={manual.error}
         permission={manual.permission}
         history={manual.history}
         garminNote={manual.garminNote}
         onPress={() => void manual.run()}
+      />
+      <MovementCharts
+        endDay={londonDay(new Date())}
+        span={7}
+        steps={appleDayValues(snap.health, 'steps')}
+        restingHeart={appleDayValues(snap.health, 'resting_heart_rate')}
+        dailies={readings.dailies}
+        sleep={readings.sleep}
+        respiration={readings.respiration}
+        pulseOx={readings.pulseOx}
+        hrv={readings.hrv}
       />
       <GoalChoices />
       <YourGoal place="plan" />

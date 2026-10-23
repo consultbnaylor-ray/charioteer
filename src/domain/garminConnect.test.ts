@@ -9,6 +9,8 @@ import {
   activityRowsFor,
   applyGarminPush,
   dailyRowsFor,
+  dedupeBy,
+  emptyGarminReadings,
   garminAllowedForCoach,
   garminAppReturn,
   garminAuthorizeUrl,
@@ -20,6 +22,8 @@ import {
   garminBackfillUrl,
   garminRefreshCooling,
   mapGarminPush,
+  preferLargerDuration,
+  preferLast,
   userMetricRowsFor,
   pkceChallenge,
   pkceRecord,
@@ -165,6 +169,147 @@ describe('Garmin webhook mapping', () => {
     expect(dailyRowsFor(plan, new Map())).toEqual([]);
   });
 
+  it('keeps one daily per day, the wellness summaries, and drops sample maps', () => {
+    const plan = mapGarminPush({
+      dailies: [{
+        userId: 'garmin1',
+        calendarDate: '2026-10-22',
+        durationInSeconds: 1200,
+        steps: 4000,
+        distanceInMeters: 3100.4,
+        floorsClimbed: 8,
+        minHeartRateInBeatsPerMinute: 52,
+        maxHeartRateInBeatsPerMinute: 160,
+        averageStressLevel: 28,
+        bodyBatteryChargedValue: 40,
+        bodyBatteryDrainedValue: 55,
+        stepsGoal: 10000,
+        startLatInDegree: 51.5,
+        startLongInDegree: -0.1,
+      }, {
+        userId: 'garmin1',
+        calendarDate: '2026-10-22',
+        durationInSeconds: 5400,
+        steps: 9200,
+        distanceInMeters: 7400,
+        floorsClimbed: 12,
+      }, {
+        userId: 'garmin1',
+        calendarDate: '2026-10-22',
+        durationInSeconds: 900,
+        steps: 100,
+      }],
+      sleeps: [{
+        userId: 'garmin1',
+        summaryId: 'night1',
+        calendarDate: '2026-10-22',
+        durationInSeconds: 100,
+        overallSleepScore: { value: 70 },
+      }, {
+        userId: 'garmin1',
+        summaryId: 'night1',
+        calendarDate: '2026-10-22',
+        durationInSeconds: 27000,
+        overallSleepScore: { value: 81 },
+      }],
+      respiration: [{
+        userId: 'garmin1',
+        summaryId: 'breath1',
+        calendarDate: '2026-10-22',
+        timeOffsetEpochToBreaths: { '0': 14.2, '60': 16.4 },
+        startLatInDegree: 51.5,
+      }],
+      pulseOx: [{
+        userId: 'garmin1',
+        summaryId: 'ox1',
+        calendarDate: '2026-10-22',
+        timeOffsetSpo2Values: { '0': 96, '30': 94 },
+      }],
+      hrv: [{
+        userId: 'garmin1',
+        summaryId: 'hrv1',
+        calendarDate: '2026-10-22',
+        lastNightAvg: 46,
+        lastNight5MinHigh: 78,
+        hrvValues: { '0': 40, '300': 80 },
+      }],
+    });
+    const packed = JSON.stringify(plan);
+    expect(packed).not.toContain('timeOffset');
+    expect(packed).not.toContain('hrvValues');
+    expect(packed).not.toContain('51.5');
+    expect(packed).not.toContain('-0.1');
+    const users = new Map([['garmin1', 'user-1']]);
+    const dailies = dedupeBy(
+      dailyRowsFor(plan, users),
+      (row) => `${String(row.user_id)}:${String(row.calendar_date)}`,
+      preferLargerDuration,
+    );
+    expect(dailies).toHaveLength(1);
+    expect(dailies[0]).toMatchObject({ steps: 9200, distance_metres: 7400, floors_climbed: 12, duration_seconds: 5400 });
+    const tied = dedupeBy(
+      [
+        { user_id: 'user-1', calendar_date: '2026-10-22', duration_seconds: 10, steps: 1 },
+        { user_id: 'user-1', calendar_date: '2026-10-22', duration_seconds: 10, steps: 2 },
+      ],
+      (row) => `${row.user_id}:${row.calendar_date}`,
+      preferLargerDuration,
+    );
+    expect(tied[0]?.steps).toBe(2);
+    const nights = dedupeBy(
+      sleepRowsFor(plan, users),
+      (row) => `${String(row.user_id)}:${String(row.summary_id)}`,
+      preferLast,
+    );
+    expect(nights).toHaveLength(1);
+    expect(nights[0]).toMatchObject({ sleep_score: 81, duration_seconds: 27000 });
+    expect(plan.respiration[0]).toMatchObject({ averageBreathsPerMinute: 15.3, lowestBreathsPerMinute: 14.2, highestBreathsPerMinute: 16.4 });
+    expect(plan.pulseOx[0]).toMatchObject({ averageSpo2: 95, lowestSpo2: 94, highestSpo2: 96 });
+    expect(plan.hrv[0]).toMatchObject({ lastNightAvgMs: 46, lastNight5MinHighMs: 78 });
+    expect(plan.dailies[0]).toMatchObject({
+      steps: 4000,
+      minHeartRateBpm: 52,
+      maxHeartRateBpm: 160,
+      averageStressLevel: 28,
+      bodyBatteryCharged: 40,
+      bodyBatteryDrained: 55,
+      stepGoal: 10000,
+    });
+    const webhook = readFileSync('supabase/functions/garmin-webhook/index.ts', 'utf8');
+    expect(webhook).toContain('dedupeBy(');
+    expect(webhook).toContain('preferLargerDuration');
+    expect(webhook).toContain('preferLast');
+    expect(webhook).toContain('garmin-webhook: ${table}');
+    const sql = readFileSync('supabase/migrations/20261023220000_garmin_wellness_summaries.sql', 'utf8');
+    expect(sql).toContain('add column if not exists steps integer');
+    expect(sql).toContain('create table public.garmin_respiration');
+    expect(sql).toContain('create table public.garmin_pulse_ox');
+    expect(sql).toContain('create table public.garmin_hrv');
+    expect(sql).toContain('using (user_id = auth.uid())');
+    expect(sql).toContain('grant select on table public.garmin_respiration to authenticated');
+    expect(sql).not.toMatch(/grant insert|grant update|grant delete/i);
+    expect(sql).not.toMatch(/latitude|longitude/);
+    expect(sql).not.toContain('time_offset');
+    const lines = garminCoachLines({
+      consentAi: true,
+      consentHealth: true,
+      personalDataEnabled: true,
+      readings: {
+        ...emptyGarminReadings(),
+        connected: true,
+        dailies: [{
+          calendarDate: '2026-10-22',
+          restingHeartRateBpm: null,
+          averageHeartRateBpm: null,
+          moderateMinutes: null,
+          vigorousMinutes: null,
+          steps: 9200,
+        }],
+      },
+    });
+    expect(lines.join('\n')).not.toContain('9200');
+  });
+
   it('keeps VO2 max from a user metrics push and drops a path', () => {
     const plan = mapGarminPush({
       userMetrics: [{
@@ -274,6 +419,9 @@ describe('Garmin coach gate', () => {
       sleepScore: 81,
     }],
     userMetrics: [],
+    respiration: [],
+    pulseOx: [],
+    hrv: [],
     needsPermissions: false,
     missingPermissions: [],
     lastPushAt: null,
