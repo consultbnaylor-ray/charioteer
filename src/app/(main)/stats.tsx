@@ -11,7 +11,9 @@ import { statsToneColors } from '@/ui/statsPalette';
 import { useAppTheme } from '@/ui/theme';
 import { GoalLine } from '@/ui/GoalLine';
 import { YourFitness } from '@/ui/YourFitness';
+import { WorkoutsLink } from '@/ui/WorkoutsLink';
 import { YourGoal } from '@/ui/YourGoal';
+import { HealthRefreshBar, useManualHealthRefresh } from '@/ui/HealthRefresh';
 import { Card, Screen, T } from '@/ui/ui';
 
 const LEGEND = [
@@ -27,7 +29,8 @@ export default function Stats() {
   const router = useRouter();
   const { width } = useWindowDimensions();
   const [period] = useStatPeriod();
-  const { samples: mergedHealth } = useHealthSources();
+  const { samples: mergedHealth, workouts, readings } = useHealthSources();
+  const manual = useManualHealthRefresh(readings.connected);
   const profile = snap.profile;
   if (!profile) return null;
   const tiles = buildStatsOverview({
@@ -55,11 +58,23 @@ export default function Stats() {
       eyebrow="Overview"
       title="Stats"
       intro="A plain look at the figures you already keep. The words say what the colour means."
+      refreshing={manual.refreshing}
+      onRefresh={() => void manual.run()}
     >
+      <HealthRefreshBar
+        label={manual.label}
+        lastLine={manual.lastLine}
+        refreshing={manual.refreshing}
+        updated={manual.updated}
+        error={manual.error}
+        garminNote={manual.garminNote}
+        onPress={() => void manual.run()}
+      />
       <StatPeriodToggle />
       <GoalLine />
       <YourGoal place="stats" />
       <YourFitness />
+      <WorkoutsLink workouts={workouts} />
       <Card accessibilityLabel="Open Health Plan" onPress={() => router.push('/health-plan' as never)}>
         <T style={{ fontFamily: theme.font.bodyStrong }}>Health Plan</T>
         <T variant="muted">A short plan from the figures you already keep.</T>

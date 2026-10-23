@@ -1213,8 +1213,27 @@ export class SupabaseRepository implements Repository {
     return this.once(`respond:${connectionId}`, async () => {
       const current = this.snapshot.connections.find((connection) => connection.id === connectionId);
       if (current && current.status !== 'pending') return;
-      const { error } = await this.client.from('connections').update({ status: accept ? 'accepted' : 'declined' }).eq('id', connectionId);
-      if (error) throw asUserFacing(error, 'general');
+      const nextStatus = accept ? 'accepted' : 'declined';
+      if (current) {
+        this.emit({
+          ...this.snapshot,
+          connections: this.snapshot.connections.map((connection) => (
+            connection.id === connectionId ? { ...connection, status: nextStatus } : connection
+          )),
+        });
+      }
+      const { error } = await this.client.from('connections').update({ status: nextStatus }).eq('id', connectionId);
+      if (error) {
+        if (current) {
+          this.emit({
+            ...this.snapshot,
+            connections: this.snapshot.connections.map((connection) => (
+              connection.id === connectionId ? current : connection
+            )),
+          });
+        }
+        throw asUserFacing(error, 'general');
+      }
       await this.refresh().catch((reloadError: unknown) => console.error(reloadError));
     });
   }
@@ -2821,14 +2840,15 @@ export class SupabaseRepository implements Repository {
 
   async loadGarmin(): Promise<GarminReadings> {
     const empty = emptyGarminReadings();
-    const [status, dailies, activities, sleep] = await Promise.all([
+    const [status, dailies, activities, sleep, metrics] = await Promise.all([
       this.client.from('garmin_connection_status').select('connected, connected_at').maybeSingle(),
       this.client.from('garmin_dailies').select('calendar_date, resting_heart_rate_bpm, average_heart_rate_bpm, moderate_minutes, vigorous_minutes').order('calendar_date'),
       this.client.from('garmin_activities').select('summary_id, activity_type, activity_name, started_at, duration_seconds, average_heart_rate_bpm, training_effect, anaerobic_effect').order('started_at'),
       this.client.from('garmin_sleep').select('summary_id, calendar_date, duration_seconds, deep_seconds, light_seconds, rem_seconds, awake_seconds, sleep_score').order('calendar_date'),
+      this.client.from('garmin_user_metrics').select('summary_id, calendar_date, vo2_max, vo2_max_cycling, fitness_age').order('calendar_date'),
     ]);
     const quiet = (error: { message: string } | null) => !error || missingRelation(error.message);
-    if (!quiet(status.error) || !quiet(dailies.error) || !quiet(activities.error) || !quiet(sleep.error)) return empty;
+    if (!quiet(status.error) || !quiet(dailies.error) || !quiet(activities.error) || !quiet(sleep.error) || !quiet(metrics.error)) return empty;
     const statusRow = status.data as { connected?: boolean; connected_at?: string | null } | null;
     return readingsFromRows({
       connected: statusRow?.connected === true,
@@ -2836,7 +2856,18 @@ export class SupabaseRepository implements Repository {
       dailies: dailies.error ? [] : dailies.data,
       activities: activities.error ? [] : activities.data,
       sleep: sleep.error ? [] : sleep.data,
+      userMetrics: metrics.error ? [] : metrics.data,
     });
+  }
+
+  async refreshGarmin(): Promise<{ ok: true; garmin: 'off' | 'asked' | 'recent' } | { ok: false; message: string }> {
+    const invoked = await this.client.functions.invoke('garmin-refresh', { body: {} });
+    const garmin = invoked.data?.garmin;
+    if (!invoked.error && invoked.data?.ok === true && (garmin === 'off' || garmin === 'asked' || garmin === 'recent')) {
+      return { ok: true, garmin };
+    }
+    if (invoked.data?.code === 'rate') return { ok: false, message: 'Garmin is busy. Try again in a minute.' };
+    return { ok: false, message: 'Could not ask Garmin for new data.' };
   }
 
   async startGarminConnect(): Promise<string> {

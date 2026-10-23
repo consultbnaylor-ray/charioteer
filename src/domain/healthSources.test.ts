@@ -130,6 +130,25 @@ describe('merged daily metrics', () => {
     expect(merged.find((row) => row.kind === 'steps')?.value).toBe(8000);
   });
 
+  it('keeps Apple VO2 for a day and fills the other days from Garmin', () => {
+    const merged = mergeHealthSamples(
+      [sample({ kind: 'vo2_max', value: 42, recordedOn: '2026-10-21', unit: 'ml/kg/min' })],
+      readings({
+        userMetrics: [
+          { summaryId: 'm-21', calendarDate: '2026-10-21', vo2Max: 50, vo2MaxCycling: 48, fitnessAge: 34 },
+          { summaryId: 'm-18', calendarDate: '2026-10-18', vo2Max: null, vo2MaxCycling: 40, fitnessAge: null },
+        ],
+      }),
+      [],
+    );
+    const vo2 = merged.filter((row) => row.kind === 'vo2_max').sort((left, right) => left.recordedOn.localeCompare(right.recordedOn));
+    expect(vo2.map((row) => row.recordedOn)).toEqual(['2026-10-18', '2026-10-21']);
+    expect(vo2[0]?.value).toBe(40);
+    expect(vo2[0]?.id.startsWith('merged:vo2_max:')).toBe(true);
+    expect(vo2[1]?.value).toBe(42);
+    expect(vo2[1]?.id.startsWith('merged:vo2_max:')).toBe(false);
+  });
+
   it('does not add Apple Health and Garmin into the weekly total', () => {
     const workouts = mergeWorkouts(
       [

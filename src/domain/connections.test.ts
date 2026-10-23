@@ -1,9 +1,8 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
-import type { Connection } from '@/data/types';
-
-import { discoverAction, incomingRequestCount, peopleTabAccessibilityLabel, peopleTabBadgeCount, requestBadgeText } from './connections';
+import type { Connection, DirectoryCard } from '@/data/types';
+import { buddyCount, discoverAction, foldedRows, incomingRequestCount, peopleLists, peopleTabAccessibilityLabel, peopleTabBadgeCount, requestBadgeText } from './connections';
 
 const me = 'me';
 const other = 'other';
@@ -81,5 +80,37 @@ describe('discover connection actions', () => {
     expect(choice).toContain('alert ? theme.colors.danger');
     expect(layout).toContain('theme.colors.dangerFill');
     expect(layout).toContain('theme.colors.dangerInk');
+  });
+});
+
+function card(id: string): DirectoryCard {
+  return { id, displayName: id, town: null, interestIds: [], sharedInterestIds: [], avatarUrl: null };
+}
+
+describe('people lists', () => {
+  it('keeps an accepted person on Buddies when the directory row is missing', () => {
+    const lists = peopleLists(
+      [card('sam'), card(me)],
+      [
+        link('accepted', me, 'paul', 'accepted'),
+        link('pending', 'sam', me, 'incoming'),
+        link('pending', me, 'out', 'outgoing'),
+        link('declined', me, 'sam', 'old'),
+      ],
+      me,
+    );
+    expect(lists.accepted.map((row) => row.id)).toEqual(['accepted']);
+    expect(lists.incoming.map((row) => row.id)).toEqual(['incoming']);
+    expect(lists.outgoing.map((row) => row.id)).toEqual(['outgoing']);
+    expect(lists.community.map((row) => row.id)).toEqual([]);
+    expect(buddyCount(lists)).toBe(3);
+    const back = peopleLists(
+      [card('sam'), card('paul')],
+      [link('declined', me, 'paul', 'declined')],
+      me,
+    );
+    expect(back.community.map((row) => row.id).sort()).toEqual(['paul', 'sam']);
+    expect(back.accepted).toEqual([]);
+    expect(foldedRows([1, 2, 3, 4, 5, 6], false).hidden).toBe(1);
   });
 });

@@ -1975,6 +1975,10 @@ export class DemoRepository implements Repository {
     return;
   }
 
+  async refreshGarmin(): Promise<{ ok: true; garmin: 'off' | 'asked' | 'recent' } | { ok: false; message: string }> {
+    return { ok: true, garmin: 'off' };
+  }
+
   async deleteAccount(): Promise<void> {
     const account = this.me();
     const id = account.profile.id;

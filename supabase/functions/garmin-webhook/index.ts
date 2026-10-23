@@ -6,6 +6,7 @@ import {
   deleteGarminRows,
   mapGarminPush,
   sleepRowsFor,
+  userMetricRowsFor,
   webhookGate,
   type GarminDb,
 } from '../_shared/garmin.ts';
@@ -38,6 +39,7 @@ Deno.serve(async (req) => {
     ...plan.dailies.map((row) => row.garminUserId),
     ...plan.activities.map((row) => row.garminUserId),
     ...plan.sleep.map((row) => row.garminUserId),
+    ...plan.userMetrics.map((row) => row.garminUserId),
     ...plan.deregistered,
     ...plan.permissionChanges.map((row) => row.garminUserId),
   ];
@@ -46,6 +48,7 @@ Deno.serve(async (req) => {
   const dailies = dailyRowsFor(plan, userIdByGarmin);
   const activities = activityRowsFor(plan, userIdByGarmin);
   const sleep = sleepRowsFor(plan, userIdByGarmin);
+  const metrics = userMetricRowsFor(plan, userIdByGarmin);
   if (dailies.length) {
     const saved = await admin.from('garmin_dailies').upsert(dailies, { onConflict: 'user_id,calendar_date' });
     if (saved.error) return json({ ok: false, code: 'daily' }, 500);
@@ -57,6 +60,10 @@ Deno.serve(async (req) => {
   if (sleep.length) {
     const saved = await admin.from('garmin_sleep').upsert(sleep, { onConflict: 'user_id,summary_id' });
     if (saved.error) return json({ ok: false, code: 'sleep' }, 500);
+  }
+  if (metrics.length) {
+    const saved = await admin.from('garmin_user_metrics').upsert(metrics, { onConflict: 'user_id,summary_id' });
+    if (saved.error) return json({ ok: false, code: 'metrics' }, 500);
   }
 
   for (const garminUserId of plan.deregistered) {
@@ -75,6 +82,7 @@ Deno.serve(async (req) => {
       await admin.from('garmin_dailies').delete().eq('user_id', userId);
       await admin.from('garmin_activities').delete().eq('user_id', userId);
       await admin.from('garmin_sleep').delete().eq('user_id', userId);
+      await admin.from('garmin_user_metrics').delete().eq('user_id', userId);
     }
   }
 

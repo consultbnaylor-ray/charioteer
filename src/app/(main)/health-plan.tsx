@@ -1,4 +1,4 @@
-import { useLocalSearchParams } from 'expo-router';
+import { useRouter } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import { Pressable, useWindowDimensions, View } from 'react-native';
 
@@ -16,14 +16,15 @@ import { GoalChoices } from '@/ui/GoalChoices';
 import { GoalWeightRange } from '@/ui/GoalWeightRange';
 import { YourFitness } from '@/ui/YourFitness';
 import { useHealthSources } from '@/health/useHealthSources';
-import { WorkoutList } from '@/ui/WorkoutList';
-import { planDayFromSessionText, WorkoutCalendar } from '@/ui/WorkoutCalendar';
+import { planDayFromSessionText } from '@/domain/plannedSession';
+import { WorkoutsLink } from '@/ui/WorkoutsLink';
 import { YourGoal } from '@/ui/YourGoal';
 import { PlanTick } from '@/ui/PlanTick';
 import { ShareOnProfile } from '@/ui/ShareOnProfile';
 import { MeasureBarsView, MeasureRingView } from '@/ui/MeasuredFigure';
 import { StatTile } from '@/ui/StatTile';
 import { usePendingPress } from '@/ui/pendingAction';
+import { HealthRefreshBar, useManualHealthRefresh } from '@/ui/HealthRefresh';
 import { Button, Card, ErrorNote, Field, Screen, T } from '@/ui/ui';
 
 const PROGRESS_IDS = ['sober', 'mood', 'calories', 'protein', 'body', 'weight'];
@@ -48,6 +49,7 @@ function ActionRow({ action, disabled, onToggle }: { action: PlanAction; disable
 export default function HealthPlanScreen() {
   const snap = useSnapshot();
   const repo = useRepository();
+  const router = useRouter();
   const { width } = useWindowDimensions();
   const [period] = useStatPeriod();
   const { run, isPending } = usePendingPress();
@@ -55,12 +57,8 @@ export default function HealthPlanScreen() {
   const plan = snap.healthPlan;
   const [limits, setLimits] = useState(plan?.limits ?? '');
   const [error, setError] = useState<string | null>(null);
-  const [planDay, setPlanDay] = useState<string | null>(null);
-  const [planNonce, setPlanNonce] = useState(0);
-  const [outdoorNonce, setOutdoorNonce] = useState(0);
-  const { samples: mergedHealth, workouts } = useHealthSources();
-  const params = useLocalSearchParams<{ planOutdoor?: string }>();
-  const seenOutdoor = useRef('');
+  const { samples: mergedHealth, workouts, readings } = useHealthSources();
+  const manual = useManualHealthRefresh(readings.connected);
   const limitsRef = useRef(limits);
   const planRef = useRef(plan);
   const queue = useRef(Promise.resolve());
@@ -71,13 +69,6 @@ export default function HealthPlanScreen() {
   useEffect(() => {
     setLimits(plan?.limits ?? '');
   }, [plan?.updatedAt]);
-
-  useEffect(() => {
-    const flag = typeof params.planOutdoor === 'string' ? params.planOutdoor : '';
-    if (!flag || flag === seenOutdoor.current) return;
-    seenOutdoor.current = flag;
-    setOutdoorNonce((nonce) => nonce + 1);
-  }, [params.planOutdoor]);
 
   if (!profile) return null;
   const communityOn = communitySharingOn(profile);
@@ -145,10 +136,21 @@ export default function HealthPlanScreen() {
       eyebrow="Thumos"
       title="Health Plan"
       intro="Thumos reads the figures you already keep and writes a short plan. It is not a diagnosis."
+      refreshing={manual.refreshing}
+      onRefresh={() => void manual.run()}
     >
+      <HealthRefreshBar
+        label={manual.label}
+        lastLine={manual.lastLine}
+        refreshing={manual.refreshing}
+        updated={manual.updated}
+        error={manual.error}
+        garminNote={manual.garminNote}
+        onPress={() => void manual.run()}
+      />
       <GoalChoices />
       <YourGoal place="plan" />
-      <YourFitness onPlanOutdoor={() => setOutdoorNonce((nonce) => nonce + 1)} />
+      <YourFitness onPlanOutdoor={() => router.push(`/workouts?planOutdoor=${Date.now()}` as never)} />
       <View style={{ gap: 8 }}>
         <ShareOnProfile
           label="Share on profile"
@@ -203,8 +205,7 @@ export default function HealthPlanScreen() {
                   onPress={() => {
                     const day = planDayFromSessionText(action.text);
                     if (!day) return;
-                    setPlanDay(day);
-                    setPlanNonce((nonce) => nonce + 1);
+                    router.push(`/workouts?planDay=${encodeURIComponent(day)}&planNonce=${Date.now()}` as never);
                   }}
                   style={{ minHeight: 44, justifyContent: 'center' }}
                 >
@@ -213,8 +214,7 @@ export default function HealthPlanScreen() {
               </View>
             ))}
           </Card>
-          <WorkoutList workouts={workouts} age={snap.nutrition.goalAge} />
-          <WorkoutCalendar planDay={planDay} planNonce={planNonce} planOutdoorNonce={outdoorNonce} workouts={workouts} age={snap.nutrition.goalAge} />
+          <WorkoutsLink workouts={workouts} />
           <Card>
             <T variant="label">Wellbeing</T>
             {plan.wellbeing.habits.map((action) => (
@@ -227,8 +227,7 @@ export default function HealthPlanScreen() {
           <Card>
             <T>Thumos has not written a plan yet. Refresh to use the figures you already keep.</T>
           </Card>
-          <WorkoutList workouts={workouts} age={snap.nutrition.goalAge} />
-          <WorkoutCalendar planDay={planDay} planNonce={planNonce} planOutdoorNonce={outdoorNonce} workouts={workouts} age={snap.nutrition.goalAge} />
+          <WorkoutsLink workouts={workouts} />
         </>
       )}
       {progress ? (

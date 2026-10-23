@@ -13,7 +13,7 @@ import { chatPreview, messageFromRealtime } from '@/domain/liveChat';
 import { defaultNutritionSettings } from '@/domain/nutrition';
 import { defaultProfileSharing, parsePublicProfile, projectPublicProfile, type ProfileSharing, type ShareSource } from '@/domain/profileSharing';
 import { omitSharedLocation, scrubSharedText } from '@/domain/sharedPayload';
-import { latestVo2Day, VO2_ESTIMATE_NOTE, VO2_PLAN_LABEL, VO2_STALE_NUDGE, vo2MeasuredLine, vo2ReadingIsStale } from '@/domain/vo2Estimate';
+import { latestVo2Day, VO2_ESTIMATE_NOTE, VO2_GARMIN_NOTE, VO2_PLAN_LABEL, VO2_STALE_NUDGE, vo2MeasuredLine, vo2Note, vo2ReadingIsStale } from '@/domain/vo2Estimate';
 import { messageAlert } from '../../supabase/functions/_shared/messagePush';
 import {
   DEV_FIXTURE_ROUTE_ID,
@@ -59,6 +59,11 @@ describe('VO2 estimate note', () => {
     expect(VO2_ESTIMATE_NOTE).toContain('outdoor walk, run or hike');
     expect(VO2_ESTIMATE_NOTE).toContain('No new reading means no qualifying workout yet.');
     expect(vo2MeasuredLine('2026-10-18')).toBe('Last measured 18 Oct');
+    expect(vo2MeasuredLine('2026-10-21', 'garmin')).toBe('Last measured 21 Oct (Garmin)');
+    expect(vo2Note('apple')).toBe(VO2_ESTIMATE_NOTE);
+    expect(VO2_GARMIN_NOTE).toContain('at least 10 minutes');
+    expect(vo2Note(null)).toContain('Garmin');
+    expect(vo2Note('garmin')).toBe(VO2_GARMIN_NOTE);
     expect(vo2ReadingIsStale('2026-10-17', '2026-10-20')).toBe(false);
     expect(vo2ReadingIsStale('2026-10-16', '2026-10-20')).toBe(true);
     expect(VO2_STALE_NUDGE).toContain('more than 3 days');
@@ -82,7 +87,8 @@ describe('VO2 estimate note', () => {
     expect(calendar).toContain("setSessionType('outdoor')");
     expect(calendar).toContain("setDurationText('30')");
     expect(calendar).toContain('nextSessionClock(today)');
-    expect(plan).toContain('planOutdoorNonce={outdoorNonce}');
+    expect(readFileSync('src/app/(main)/workouts.tsx', 'utf8')).toContain('planOutdoorNonce={planOutdoorNonce}');
+    expect(plan).toContain('/workouts?planOutdoor=');
     expect(readFileSync('src/domain/plannedSession.ts', 'utf8')).toContain("outdoor: 'Run/Walk (outdoor)'");
     expect(readFileSync('src/ui/WorkoutCalendar.tsx', 'utf8')).not.toMatch(/runna|week plan|distance programme/i);
   });
@@ -308,12 +314,12 @@ describe('workout routes stay on the phone', () => {
       'src/ui/WorkoutCalendar.tsx',
       'src/ui/RouteMap.tsx',
       'src/ui/RouteMap.ios.tsx',
-      'src/app/(main)/health-plan.tsx',
+      'src/app/(main)/workouts.tsx',
       'src/app/(main)/workout/[id].tsx',
     ]);
     for (const path of [...filesUnder('src/ui'), ...filesUnder('src/app')]) {
       const source = readFileSync(path, 'utf8');
-      if (path.endsWith('health-plan.tsx')) {
+      if (path.endsWith('workouts.tsx')) {
         expect(source).toContain('WorkoutList');
         expect(source).toContain('WorkoutCalendar');
       } else if (!path.endsWith('WorkoutList.tsx') && !path.endsWith('WorkoutCalendar.tsx')) {

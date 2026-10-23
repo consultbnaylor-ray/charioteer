@@ -584,8 +584,4 @@ function webScrollParent(node: HTMLElement | null): HTMLElement | null {
   return null;
 }
 
-export function planDayFromSessionText(text: string, now = new Date()): string | null {
-  const match = /^(Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)\b/.exec(text);
-  if (!match?.[1]) return null;
-  return nextWeekday(match[1], now);
-}
+export { planDayFromSessionText } from '@/domain/plannedSession';

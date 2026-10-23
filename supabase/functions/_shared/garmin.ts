@@ -22,9 +22,18 @@ export const GARMIN_DATA_TABLES = [
   'garmin_dailies',
   'garmin_activities',
   'garmin_sleep',
+  'garmin_user_metrics',
   'garmin_oauth_states',
   'garmin_connections',
 ] as const;
+
+/** Summaries a manual refresh may ask Garmin to send again. Activity details and files stay out. */
+export const GARMIN_BACKFILL_TYPES = ['dailies', 'activities', 'sleeps', 'userMetrics'] as const;
+
+export const GARMIN_REFRESH_COOLDOWN_MS = 60_000;
+
+/** Recent days only. Garmin's backfill window is longer; this stays inside it. */
+export const GARMIN_REFRESH_LOOKBACK_SECONDS = 7 * 24 * 60 * 60;
 
 export type GarminDaily = {
   calendarDate: string;
@@ -56,12 +65,21 @@ export type GarminSleep = {
   sleepScore: number | null;
 };
 
+export type GarminUserMetric = {
+  summaryId: string;
+  calendarDate: string;
+  vo2Max: number | null;
+  vo2MaxCycling: number | null;
+  fitnessAge: number | null;
+};
+
 export type GarminReadings = {
   connected: boolean;
   connectedAt: string | null;
   dailies: GarminDaily[];
   activities: GarminActivity[];
   sleep: GarminSleep[];
+  userMetrics: GarminUserMetric[];
 };
 
 export type GarminFigure = {
@@ -83,12 +101,13 @@ export type GarminPushPlan = {
   dailies: (GarminDaily & { garminUserId: string })[];
   activities: (GarminActivity & { garminUserId: string })[];
   sleep: (GarminSleep & { garminUserId: string })[];
+  userMetrics: (GarminUserMetric & { garminUserId: string })[];
   deregistered: string[];
   permissionChanges: { garminUserId: string; permissions: string }[];
 };
 
 export function emptyGarminReadings(): GarminReadings {
-  return { connected: false, connectedAt: null, dailies: [], activities: [], sleep: [] };
+  return { connected: false, connectedAt: null, dailies: [], activities: [], sleep: [], userMetrics: [] };
 }
 
 export function pkceVerifier(random: Uint8Array): string {
@@ -277,6 +296,7 @@ export function mapGarminPush(body: unknown): GarminPushPlan {
     dailies: list(root, 'dailies').map(mapDaily).filter((row): row is GarminPushPlan['dailies'][number] => row != null),
     activities: list(root, 'activities').map(mapActivity).filter((row): row is GarminPushPlan['activities'][number] => row != null),
     sleep: [...list(root, 'sleeps'), ...list(root, 'sleep')].map(mapSleep).filter((row): row is GarminPushPlan['sleep'][number] => row != null),
+    userMetrics: list(root, 'userMetrics').map(mapUserMetric).filter((row): row is GarminPushPlan['userMetrics'][number] => row != null),
     deregistered: unique(deregisteredIds(root)),
     permissionChanges: permissionChanges(root),
   };
@@ -294,6 +314,7 @@ export type GarminStore = {
   dailies: { userId: string; calendarDate: string }[];
   activities: { userId: string; summaryId: string }[];
   sleep: { userId: string; summaryId: string }[];
+  userMetrics: { userId: string; summaryId: string }[];
   states: { userId: string; state: string }[];
 };
 
@@ -303,6 +324,7 @@ export function withoutGarminUser(store: GarminStore, userId: string): GarminSto
     dailies: store.dailies.filter((row) => row.userId !== userId),
     activities: store.activities.filter((row) => row.userId !== userId),
     sleep: store.sleep.filter((row) => row.userId !== userId),
+    userMetrics: store.userMetrics.filter((row) => row.userId !== userId),
     states: store.states.filter((row) => row.userId !== userId),
   };
 }
@@ -317,6 +339,7 @@ export function applyGarminPush(
     dailies: [...store.dailies],
     activities: [...store.activities],
     sleep: [...store.sleep],
+    userMetrics: [...store.userMetrics],
     states: [...store.states],
   };
   const owned = (garminUserId: string) => userIdByGarmin.get(garminUserId) ?? '';
@@ -339,6 +362,14 @@ export function applyGarminPush(
   next.sleep = upsertBy(
     next.sleep,
     plan.sleep.flatMap((row) => {
+      const userId = owned(row.garminUserId);
+      return userId ? [{ userId, summaryId: row.summaryId }] : [];
+    }),
+    (row) => `${row.userId}:${row.summaryId}`,
+  );
+  next.userMetrics = upsertBy(
+    next.userMetrics,
+    plan.userMetrics.flatMap((row) => {
       const userId = owned(row.garminUserId);
       return userId ? [{ userId, summaryId: row.summaryId }] : [];
     }),
@@ -400,6 +431,38 @@ export function sleepRowsFor(plan: GarminPushPlan, userIdByGarmin: ReadonlyMap<s
       sleep_score: row.sleepScore,
     }];
   });
+}
+
+export function userMetricRowsFor(plan: GarminPushPlan, userIdByGarmin: ReadonlyMap<string, string>): Record<string, unknown>[] {
+  return plan.userMetrics.flatMap((row) => {
+    const userId = userIdByGarmin.get(row.garminUserId);
+    if (!userId) return [];
+    return [{
+      user_id: userId,
+      summary_id: row.summaryId,
+      calendar_date: row.calendarDate,
+      vo2_max: row.vo2Max,
+      vo2_max_cycling: row.vo2MaxCycling,
+      fitness_age: row.fitnessAge,
+    }];
+  });
+}
+
+/**
+ * One backfill call per summary type. Garmin answers 202 and later pushes the webhook.
+ * The window is summary time, at most seven days. Activity details are not a type here.
+ */
+export function garminBackfillUrl(type: (typeof GARMIN_BACKFILL_TYPES)[number], nowMs: number): string {
+  const end = Math.floor(nowMs / 1000);
+  const start = end - GARMIN_REFRESH_LOOKBACK_SECONDS;
+  return `https://apis.garmin.com/wellness-api/rest/backfill/${type}?summaryStartTimeInSeconds=${start}&summaryEndTimeInSeconds=${end}`;
+}
+
+export function garminRefreshCooling(lastAt: string | null, nowMs: number): boolean {
+  if (!lastAt) return false;
+  const at = Date.parse(lastAt);
+  if (!Number.isFinite(at)) return false;
+  return nowMs - at < GARMIN_REFRESH_COOLDOWN_MS;
 }
 
 export function garminAllowedForCoach(input: {
@@ -492,6 +555,7 @@ export function readingsFromRows(input: {
   dailies: unknown;
   activities: unknown;
   sleep: unknown;
+  userMetrics?: unknown;
 }): GarminReadings {
   return {
     connected: input.connected,
@@ -537,6 +601,22 @@ export function readingsFromRows(input: {
         remSeconds: bounded(row.rem_seconds, 0, 24 * 60 * 60),
         awakeSeconds: bounded(row.awake_seconds, 0, 24 * 60 * 60),
         sleepScore: bounded(row.sleep_score, 0, 100),
+      }];
+    }),
+    userMetrics: asList(input.userMetrics).flatMap((row) => {
+      const summaryId = ident(row.summary_id);
+      const calendarDate = day(row.calendar_date);
+      if (!summaryId || !calendarDate) return [];
+      const vo2Max = bounded(row.vo2_max, 1, 100);
+      const vo2MaxCycling = bounded(row.vo2_max_cycling, 1, 100);
+      const fitnessAge = bounded(row.fitness_age, 1, 120);
+      if (vo2Max == null && vo2MaxCycling == null && fitnessAge == null) return [];
+      return [{
+        summaryId,
+        calendarDate,
+        vo2Max: vo2Max == null ? null : Math.round(vo2Max * 10) / 10,
+        vo2MaxCycling: vo2MaxCycling == null ? null : Math.round(vo2MaxCycling * 10) / 10,
+        fitnessAge: fitnessAge == null ? null : Math.round(fitnessAge),
       }];
     }),
   };
@@ -608,6 +688,65 @@ export async function deregisterRemote(accessToken: string, fetchImpl: typeof fe
   } catch {
     return 'failed';
   }
+}
+
+/** Opens this person's Garmin access token. An empty string means there is no live connection. */
+export async function bearerForGarminUser(
+  db: GarminDb,
+  userId: string,
+  credentials: { clientId: string; clientSecret: string; tokenKey: string; now: number },
+  fetchImpl: typeof fetch = fetch,
+): Promise<string> {
+  const selected = await db
+    .from('garmin_connections')
+    .select('access_token_ciphertext, access_token_nonce, refresh_token_ciphertext, refresh_token_nonce, token_key_version, access_expires_at, revoked_at')
+    .eq('user_id', userId)
+    .maybeSingle();
+  if (selected.error) {
+    if (missingRelation(selected.error.message)) return '';
+    throw new Error('garmin-refresh: lookup');
+  }
+  const row = selected.data && typeof selected.data === 'object' ? selected.data as Record<string, unknown> : null;
+  if (!row || row.revoked_at) return '';
+  const accessCipher = sealedText(row.access_token_ciphertext);
+  const refreshCipher = sealedText(row.refresh_token_ciphertext);
+  if (!accessCipher && !refreshCipher) return '';
+  const version = Number(row.token_key_version);
+  if (version !== GARMIN_TOKEN_KEY_VERSION || !credentials.tokenKey.trim()) throw new Error('garmin-refresh: key');
+  let bearer = await openGarminToken({
+    ciphertext: accessCipher,
+    nonce: sealedText(row.access_token_nonce),
+    keyVersion: version,
+  }, credentials.tokenKey, garminTokenAad(userId, 'access', version));
+  const refreshToken = await openGarminToken({
+    ciphertext: refreshCipher,
+    nonce: sealedText(row.refresh_token_nonce),
+    keyVersion: version,
+  }, credentials.tokenKey, garminTokenAad(userId, 'refresh', version));
+  const expiresAt = text(row.access_expires_at, 40);
+  if (bearer && refreshToken && credentials.clientId && credentials.clientSecret && tokenNeedsRefresh(expiresAt || null, credentials.now)) {
+    const refreshed = await refreshAccessToken({
+      clientId: credentials.clientId,
+      clientSecret: credentials.clientSecret,
+      refreshToken,
+      now: credentials.now,
+      fetchImpl,
+    });
+    if (refreshed) {
+      bearer = refreshed.accessToken;
+      const access = await sealGarminToken(refreshed.accessToken, credentials.tokenKey, garminTokenAad(userId, 'access', version));
+      const refresh = await sealGarminToken(refreshed.refreshToken, credentials.tokenKey, garminTokenAad(userId, 'refresh', version));
+      await db.from('garmin_connections').update({
+        access_token_ciphertext: access.ciphertext,
+        access_token_nonce: access.nonce,
+        refresh_token_ciphertext: refresh.ciphertext,
+        refresh_token_nonce: refresh.nonce,
+        access_expires_at: refreshed.accessExpiresAt,
+        refresh_expires_at: refreshed.refreshExpiresAt,
+      }).eq('user_id', userId);
+    }
+  }
+  return bearer;
 }
 
 /** Removes tokens and summaries for one account. Does not call Garmin. */
@@ -832,6 +971,25 @@ function mapActivity(row: Record<string, unknown>): GarminPushPlan['activities']
     averageHeartRateBpm: bounded(row.averageHeartRateInBeatsPerMinute, 20, 250),
     trainingEffect: bounded(row.aerobicTrainingEffect ?? row.trainingEffect, 0, 5),
     anaerobicEffect: bounded(row.anaerobicTrainingEffect, 0, 5),
+  };
+}
+
+function mapUserMetric(row: Record<string, unknown>): GarminPushPlan['userMetrics'][number] | null {
+  const garminUserId = ident(row.userId);
+  const summaryId = ident(row.summaryId);
+  const calendarDate = day(row.calendarDate);
+  const vo2Max = bounded(row.vo2Max, 1, 100);
+  const vo2MaxCycling = bounded(row.vo2MaxCycling, 1, 100);
+  const fitnessAge = bounded(row.fitnessAge, 1, 120);
+  if (!garminUserId || !summaryId || !calendarDate) return null;
+  if (vo2Max == null && vo2MaxCycling == null && fitnessAge == null) return null;
+  return {
+    garminUserId,
+    summaryId,
+    calendarDate,
+    vo2Max: vo2Max == null ? null : Math.round(vo2Max * 10) / 10,
+    vo2MaxCycling: vo2MaxCycling == null ? null : Math.round(vo2MaxCycling * 10) / 10,
+    fitnessAge: fitnessAge == null ? null : Math.round(fitnessAge),
   };
 }
 

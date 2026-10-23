@@ -522,4 +522,6 @@ export interface Repository {
   startGarminConnect(): Promise<string>;
   /** Asks Garmin to drop the registration, then deletes the summaries. */
   disconnectGarmin(): Promise<void>;
+  /** Asks Garmin to resend recent summaries. The phone does not receive a route. */
+  refreshGarmin(): Promise<{ ok: true; garmin: 'off' | 'asked' | 'recent' } | { ok: false; message: string }>;
 }
