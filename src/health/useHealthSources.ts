@@ -9,6 +9,13 @@ import type { DeviceWorkout } from '@/domain/workoutRoute';
 import { listDeviceWorkouts } from '@/health/workoutRoute';
 import { rememberWorkouts } from '@/health/workoutRouteMemory';
 
+const sourceListeners = new Set<() => void>();
+
+/** Ask every open health screen to read Apple Health workouts and Garmin again. */
+export function reloadHealthSources(): void {
+  for (const listener of sourceListeners) listener();
+}
+
 /** Apple Health and Garmin, already merged into the series the charts read. */
 export function useHealthSources(): {
   readings: GarminReadings;
@@ -19,6 +26,15 @@ export function useHealthSources(): {
   const repo = useRepository();
   const [readings, setReadings] = useState<GarminReadings>(emptyGarminReadings);
   const [apple, setApple] = useState<DeviceWorkout[]>([]);
+  const [tick, setTick] = useState(0);
+
+  useEffect(() => {
+    const bump = () => setTick((value) => value + 1);
+    sourceListeners.add(bump);
+    return () => {
+      sourceListeners.delete(bump);
+    };
+  }, []);
 
   useFocusEffect(useCallback(() => {
     let live = true;
@@ -35,7 +51,7 @@ export function useHealthSources(): {
     return () => {
       live = false;
     };
-  }, [repo]));
+  }, [repo, tick]));
 
   const workouts = useMemo(() => mergeWorkouts(apple, readings.activities), [apple, readings]);
   const samples = useMemo(

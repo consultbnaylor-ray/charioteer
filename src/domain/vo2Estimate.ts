@@ -1,8 +1,24 @@
 import { parseIsoDay } from '@/domain/dates';
 
-/** Shown under the VO2 chart. A missing reading is a missing outdoor workout, not a broken watch. */
+/** Shown under the VO2 chart when the latest reading is from Apple Watch. */
 export const VO2_ESTIMATE_NOTE =
   'Apple Watch estimates VO2 max after an outdoor walk, run or hike recorded as a workout with GPS and steady heart rate, usually every few days. No new reading means no qualifying workout yet.';
+
+/** Shown when the latest reading is from Garmin. */
+export const VO2_GARMIN_NOTE =
+  'Your Garmin estimates VO2 max after an outdoor run or walk of at least 10 minutes with GPS and heart rate (or a ride with a power meter). No new reading means no qualifying workout yet.';
+
+/** Shown when neither watch has a reading yet. */
+export const VO2_EITHER_NOTE =
+  'Apple Watch estimates VO2 max after an outdoor walk, run or hike with GPS and a steady heart rate. Garmin estimates it after an outdoor run or walk of at least 10 minutes with GPS and heart rate, or a ride with a power meter. No new reading means no qualifying workout yet.';
+
+export type Vo2Source = 'apple' | 'garmin';
+
+export function vo2Note(source: Vo2Source | null): string {
+  if (source === 'garmin') return VO2_GARMIN_NOTE;
+  if (source === 'apple') return VO2_ESTIMATE_NOTE;
+  return VO2_EITHER_NOTE;
+}
 
 export const VO2_STALE_NUDGE = 'The last reading is more than 3 days old.';
 
@@ -13,12 +29,13 @@ export const VO2_PLAN_MINUTES = 30;
 
 const STALE_AFTER_DAYS = 3;
 
-/** `Last measured 18 Oct`. The year is left off so the line matches a calendar day. */
-export function vo2MeasuredLine(day: string): string {
+/** `Last measured 18 Oct`. A Garmin reading adds the source in the same line. */
+export function vo2MeasuredLine(day: string, source?: Vo2Source | null): string {
   const date = parseIsoDay(day.slice(0, 10));
   const dateDay = date.toLocaleDateString('en-GB', { day: 'numeric' });
   const month = date.toLocaleDateString('en-GB', { month: 'short' });
-  return `Last measured ${dateDay} ${month}`;
+  const base = `Last measured ${dateDay} ${month}`;
+  return source === 'garmin' ? `${base} (Garmin)` : base;
 }
 
 export function daysSince(day: string, today: string): number {
@@ -33,9 +50,17 @@ export function vo2ReadingIsStale(day: string, today: string): boolean {
 }
 
 export function latestVo2Day(samples: readonly { kind: string; recordedOn: string }[]): string | null {
-  const days = samples
-    .filter((sample) => sample.kind === 'vo2_max' && /^\d{4}-\d{2}-\d{2}/.test(sample.recordedOn))
-    .map((sample) => sample.recordedOn.slice(0, 10))
-    .sort();
-  return days.at(-1) ?? null;
+  return latestVo2Reading(samples)?.day ?? null;
+}
+
+/** The newest VO2 day. Apple wins when that day has an Apple reading. A merged Garmin row is marked by its id. */
+export function latestVo2Reading(
+  samples: readonly { id?: string; kind: string; recordedOn: string }[],
+): { day: string; source: Vo2Source } | null {
+  const rows = samples.filter((sample) => sample.kind === 'vo2_max' && /^\d{4}-\d{2}-\d{2}/.test(sample.recordedOn));
+  const day = rows.map((sample) => sample.recordedOn.slice(0, 10)).sort().at(-1);
+  if (!day) return null;
+  const onDay = rows.filter((sample) => sample.recordedOn.slice(0, 10) === day);
+  const apple = onDay.some((sample) => !sample.id?.startsWith('merged:vo2_max:'));
+  return { day, source: apple ? 'apple' : 'garmin' };
 }

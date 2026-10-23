@@ -93,6 +93,18 @@ export function workoutWeek(selected: string): string[] {
   return Array.from({ length: 7 }, (_, index) => shiftDay(start, index));
 }
 
+/** Count and minutes for the London week that contains today. One workout is counted once. */
+export function workoutWeekSummary(
+  workouts: readonly { startedAt: string; durationMinutes: number }[],
+  today = londonDay(new Date()),
+): string {
+  const days = new Set(workoutWeek(today));
+  const rows = workouts.filter((workout) => days.has(londonDay(workout.startedAt)) && workout.durationMinutes > 0);
+  const minutes = rows.reduce((sum, workout) => sum + workout.durationMinutes, 0);
+  const noun = rows.length === 1 ? 'workout' : 'workouts';
+  return `This week: ${rows.length} ${noun}, ${minutes} min`;
+}
+
 export function previousWorkoutDay(day: string): string {
   return shiftDay(day, -1);
 }

@@ -31,7 +31,7 @@ import { useStatPeriod } from '@/health/useStatPeriod';
 import { fitnessSeriesChart } from '@/domain/chartSeries';
 import { chartBucketForPeriod, type ChartAggregate } from '@/domain/readingChart';
 import { londonDay } from '@/domain/healthInsights';
-import { latestVo2Day } from '@/domain/vo2Estimate';
+import { latestVo2Reading } from '@/domain/vo2Estimate';
 import { londonToday, periodHeading, rollingWindow } from '@/domain/statWindow';
 import { StatPeriodToggle } from '@/ui/StatPeriodToggle';
 import { closerToGoal, whyGoalMatters, WORKOUT_BUCKET_LABEL, WORKOUT_BUCKETS, type NutritionGoal, type WorkoutBucket } from '@/domain/nutrition';
@@ -132,7 +132,8 @@ export function YourFitness({ onPlanOutdoor }: { onPlanOutdoor?: () => void }) {
           <T variant="muted">Latest reading</T>
           <FitnessSeries points={view.cardio.series} unit="ml/kg/min" aggregate="mean" label="Cardio fitness chart" />
           <Vo2EstimateNote
-            measuredOn={latestVo2Day(snap.health)}
+            measuredOn={latestVo2Reading(mergedHealth)?.day ?? null}
+            source={latestVo2Reading(mergedHealth)?.source ?? null}
             today={londonDay(new Date())}
             onPlan={() => onPlanOutdoor?.()}
           />

@@ -11,7 +11,7 @@ describe('your public profile on People', () => {
   it('previews the public card and keeps private words off the People screen', () => {
     expect(people).toContain('label="View public profile"');
     expect(people).toContain("router.push('/public-profile'");
-    expect(people.indexOf('<YourProfileRow')).toBeLessThan(people.indexOf('snap.directory.map'));
+    expect(people.indexOf('<YourProfileRow')).toBeLessThan(people.indexOf('lists.community.slice'));
     expect(people).not.toContain('<PublicProfileCard');
     expect(people).not.toContain('scrollTo');
     expect(people).toContain('<CommunityProfile');

@@ -159,7 +159,7 @@ describe('live chat', () => {
     expect(people).toContain('viewerChatUnread');
     expect(people).toContain('router.navigate(`/chat/');
     expect(people).not.toContain('router.push(`/chat/');
-    expect(people).toContain('chatsChoiceLabel');
+    expect(people).toContain('Buddies (${buddyCount(lists)})');
     expect(people).toContain('ScreenBoundary');
     expect(people).toContain('screen="profile"');
     const chatRead = readFileSync('src/ui/chatRead.ts', 'utf8');

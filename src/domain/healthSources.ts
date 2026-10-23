@@ -1,5 +1,5 @@
 import type { HealthSample } from '@/data/types';
-import type { GarminActivity, GarminDaily, GarminReadings, GarminSleep } from '@/domain/garminConnect';
+import type { GarminActivity, GarminDaily, GarminReadings, GarminSleep, GarminUserMetric } from '@/domain/garminConnect';
 import { londonDay } from '@/domain/healthInsights';
 import type { DeviceWorkout } from '@/domain/workoutRoute';
 
@@ -55,6 +55,7 @@ export function mergeWorkouts(apple: readonly DeviceWorkout[], activities: reado
 /**
  * One resting heart rate, one sleep total, and one workout-minute total per day.
  * A day Garmin recorded replaces that day's Apple Health value. The two are never added.
+ * VO2 max keeps Apple's reading for a day when there is one, and uses Garmin only for a day Apple did not record.
  */
 export function mergeHealthSamples(
   samples: readonly HealthSample[],
@@ -64,6 +65,10 @@ export function mergeHealthSamples(
   const heart = garminHeartByDay(readings.dailies);
   const sleep = garminSleepByDay(readings.sleep);
   const minutes = garminWorkoutMinutesByDay(workouts);
+  const vo2 = garminVo2ByDay(readings.userMetrics);
+  const appleVo2 = new Set(
+    samples.filter((sample) => sample.kind === 'vo2_max' && sample.value > 0).map((sample) => dayKey(sample.recordedOn)),
+  );
   const kept = samples.filter((sample) => {
     const day = dayKey(sample.recordedOn);
     if (sample.kind === 'resting_heart_rate' && heart.has(day)) return false;
@@ -75,6 +80,7 @@ export function mergeHealthSamples(
     ...[...heart].map(([day, value]) => mergedSample('resting_heart_rate', value, day, 'bpm')),
     ...[...sleep].map(([day, value]) => mergedSample('sleep_hours', value, day, 'h')),
     ...[...minutes].map(([day, value]) => mergedSample('workout_minutes', value, day, 'min')),
+    ...[...vo2].flatMap(([day, value]) => (appleVo2.has(day) ? [] : [mergedSample('vo2_max', value, day, 'ml/kg/min')])),
   ];
   return [...kept, ...added];
 }
@@ -232,6 +238,18 @@ function garminLabel(activity: GarminActivity): string {
   const type = activity.activityType.trim();
   if (!type) return 'Workout';
   return type.toLowerCase().replace(/[_-]+/g, ' ').replace(/\b\w/g, (letter: string) => letter.toUpperCase());
+}
+
+/** Running VO2 when Garmin has it, otherwise the cycling estimate. One number per day. */
+function garminVo2ByDay(rows: readonly GarminUserMetric[]): Map<string, number> {
+  const days = new Map<string, number>();
+  const ordered = [...rows].sort((left, right) => left.calendarDate.localeCompare(right.calendarDate) || left.summaryId.localeCompare(right.summaryId));
+  for (const row of ordered) {
+    const value = row.vo2Max ?? row.vo2MaxCycling;
+    if (value == null || !(value > 0)) continue;
+    days.set(row.calendarDate, Math.round(value * 10) / 10);
+  }
+  return days;
 }
 
 function garminHeartByDay(dailies: readonly GarminDaily[]): Map<string, number> {

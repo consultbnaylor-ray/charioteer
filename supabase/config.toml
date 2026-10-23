@@ -103,3 +103,6 @@ verify_jwt = false
 
 [functions.garmin-disconnect]
 verify_jwt = true
+
+[functions.garmin-refresh]
+verify_jwt = true

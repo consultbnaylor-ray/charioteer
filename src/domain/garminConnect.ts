@@ -8,6 +8,7 @@ export {
   type GarminFigure,
   type GarminReadings,
   type GarminSleep,
+  type GarminUserMetric,
 } from '../../supabase/functions/_shared/garmin';
 
 export type GarminAppReturn = 'connected' | 'cancelled';

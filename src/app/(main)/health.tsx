@@ -45,6 +45,7 @@ import { HealthBoard, HealthReadings } from '@/ui/HealthBoard';
 import { DateField } from '@/ui/DateField';
 import { PlanTick } from '@/ui/PlanTick';
 import { useAppTheme } from '@/ui/theme';
+import { HealthRefreshBar, useManualHealthRefresh } from '@/ui/HealthRefresh';
 import { Button, Choice, ErrorNote, Field, playSavedHaptic, Screen, T } from '@/ui/ui';
 
 const KINDS: { id: HealthKind; unit: string; label: string }[] = [
@@ -78,6 +79,7 @@ export default function Health() {
   const [visibilityPending, setVisibilityPending] = useState(false);
   const [period] = useStatPeriod();
   const { readings, samples: mergedHealth } = useHealthSources();
+  const manual = useManualHealthRefresh(readings.connected);
   const healthSamples = withPlannedMinutes(mergedHealth, snap.plannedSessions);
   const activeSeries = readings.activities.length > 0 || readings.dailies.some((day) => day.moderateMinutes != null || day.vigorousMinutes != null)
     ? activeMinutesByDay(healthSamples, readings.dailies)
@@ -354,6 +356,8 @@ export default function Health() {
     <Screen
       eyebrow="Health Stats"
       title="What your body is doing."
+      refreshing={manual.refreshing}
+      onRefresh={() => void manual.run()}
       footer={saveBar ? (
         <View style={{ gap: 8 }}>
           {savedNote ? (
@@ -372,6 +376,15 @@ export default function Health() {
         </View>
       ) : undefined}
     >
+      <HealthRefreshBar
+        label={manual.label}
+        lastLine={manual.lastLine}
+        refreshing={manual.refreshing}
+        updated={manual.updated}
+        error={manual.error}
+        garminNote={manual.garminNote}
+        onPress={() => void manual.run()}
+      />
       <AppleHealthCard
         consent={consent}
         ios={ios}
@@ -419,7 +432,7 @@ export default function Health() {
         period={period}
         onTurnOn={turnOnMissing}
         onSaveBody={saveBodyGap}
-        onPlanOutdoor={() => router.push(`/health-plan?planOutdoor=${Date.now()}` as never)}
+        onPlanOutdoor={() => router.push(`/workouts?planOutdoor=${Date.now()}` as never)}
         onSetWorkoutBucket={setWorkoutBucket}
       />
       <HealthBoard

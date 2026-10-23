@@ -5,7 +5,7 @@ import Svg from 'react-native-svg';
 
 import { isoDay, startOfLocalDay } from '@/domain/dates';
 import { BAND_CAVEAT, type BandLink } from '@/domain/healthBands';
-import { latestVo2Day } from '@/domain/vo2Estimate';
+import { latestVo2Reading, type Vo2Source } from '@/domain/vo2Estimate';
 import { chartBucketForPeriod } from '@/domain/readingChart';
 import { parseStatPeriod, rollingWindow, type StatPeriod } from '@/domain/statWindow';
 import { shownError } from '@/domain/errors';
@@ -52,7 +52,9 @@ export function HealthStatBoard(
 ) {
   const model = buildHealthStatBoard(input);
   const period = parseStatPeriod(input.period);
-  const measuredOn = latestVo2Day(input.samples);
+  const vo2 = latestVo2Reading(input.samples);
+  const measuredOn = vo2?.day ?? null;
+  const vo2Source = vo2?.source ?? null;
   const [openId, setOpenId] = useState<string | null>(null);
   const open = model.sections.flatMap((section) => section.tiles).find((tile) => tile.id === openId) ?? null;
   if (model.sections.length === 0 && !model.missingLine) return null;
@@ -66,6 +68,7 @@ export function HealthStatBoard(
           today={input.today}
           period={period}
           measuredOn={measuredOn}
+          vo2Source={vo2Source}
           onPlanOutdoor={input.onPlanOutdoor}
           onOpen={setOpenId}
         />
@@ -78,6 +81,7 @@ export function HealthStatBoard(
         today={input.today}
         period={period}
         measuredOn={measuredOn}
+        vo2Source={vo2Source}
         onPlanOutdoor={input.onPlanOutdoor}
         caveat={model.caveat}
         onClose={() => setOpenId(null)}
@@ -208,6 +212,7 @@ function StatSection({
   today,
   period,
   measuredOn,
+  vo2Source,
   onPlanOutdoor,
   onOpen,
 }: {
@@ -216,6 +221,7 @@ function StatSection({
   today: string;
   period: StatPeriod;
   measuredOn: string | null;
+  vo2Source: Vo2Source | null;
   onPlanOutdoor?: () => void;
   onOpen: (id: string) => void;
 }) {
@@ -236,7 +242,7 @@ function StatSection({
       {open ? (
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
           {tiles.map((tile) => (
-            <StatTile key={tile.id} tile={tile} today={today} period={period} measuredOn={measuredOn} onPlanOutdoor={onPlanOutdoor} onOpen={() => onOpen(tile.id)} />
+            <StatTile key={tile.id} tile={tile} today={today} period={period} measuredOn={measuredOn} vo2Source={vo2Source} onPlanOutdoor={onPlanOutdoor} onOpen={() => onOpen(tile.id)} />
           ))}
         </View>
       ) : null}
@@ -249,6 +255,7 @@ function StatTile({
   today,
   period,
   measuredOn,
+  vo2Source,
   onPlanOutdoor,
   onOpen,
 }: {
@@ -256,6 +263,7 @@ function StatTile({
   today: string;
   period: StatPeriod;
   measuredOn: string | null;
+  vo2Source: Vo2Source | null;
   onPlanOutdoor?: () => void;
   onOpen: () => void;
 }) {
@@ -290,7 +298,7 @@ function StatTile({
         <T variant="muted">More info</T>
       </Pressable>
       {charted ? <TileChart tile={tile} today={today} period={period} /> : null}
-      {tile.id === 'vo2_max' && onPlanOutdoor ? <Vo2EstimateNote measuredOn={measuredOn} today={today} onPlan={onPlanOutdoor} /> : null}
+      {tile.id === 'vo2_max' && onPlanOutdoor ? <Vo2EstimateNote measuredOn={measuredOn} source={vo2Source} today={today} onPlan={onPlanOutdoor} /> : null}
     </View>
   );
 }
@@ -455,6 +463,7 @@ function StatDetail({
   today,
   period,
   measuredOn,
+  vo2Source,
   onPlanOutdoor,
   caveat,
   onClose,
@@ -464,6 +473,7 @@ function StatDetail({
   today: string;
   period: StatPeriod;
   measuredOn: string | null;
+  vo2Source: Vo2Source | null;
   onPlanOutdoor?: () => void;
   caveat: string;
   onClose: () => void;
@@ -501,7 +511,7 @@ function StatDetail({
                 <TileValue tile={tile} />
                 {tile.empty ? null : <TileVisual visual={tile.visual} charted={tile.readings.length > 0} />}
                 {tile.readings.length > 0 ? <TileChart tile={tile} today={today} period={period} /> : null}
-                {tile.id === 'vo2_max' && onPlanOutdoor ? <Vo2EstimateNote measuredOn={measuredOn} today={today} onPlan={() => { onClose(); onPlanOutdoor(); }} /> : null}
+                {tile.id === 'vo2_max' && onPlanOutdoor ? <Vo2EstimateNote measuredOn={measuredOn} source={vo2Source} today={today} onPlan={() => { onClose(); onPlanOutdoor(); }} /> : null}
                 {!tile.empty && detailShowsStatusAgain(tile.visual.kind) ? <StatusMark tone={tile.tone} status={tile.status} word={tile.mark} /> : null}
                 <T variant="label">What your number means</T>
                 <T>{tile.meaning}</T>

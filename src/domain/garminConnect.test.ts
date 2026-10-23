@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 
 import { buildThumosContext } from '../../supabase/functions/_shared/thumos';
 import {
+  GARMIN_BACKFILL_TYPES,
   GARMIN_DATA_TABLES,
   GARMIN_REDIRECT_URI,
   activityRowsFor,
@@ -16,7 +17,10 @@ import {
   garminRefreshForm,
   garminReturnFromUrl,
   garminTokenForm,
+  garminBackfillUrl,
+  garminRefreshCooling,
   mapGarminPush,
+  userMetricRowsFor,
   pkceChallenge,
   pkceRecord,
   pkceVerifier,
@@ -160,6 +164,56 @@ describe('Garmin webhook mapping', () => {
     expect(dailyRowsFor(plan, new Map())).toEqual([]);
   });
 
+  it('keeps VO2 max from a user metrics push and drops a path', () => {
+    const plan = mapGarminPush({
+      userMetrics: [{
+        userId: 'garmin1',
+        summaryId: 'vo2-1',
+        calendarDate: '2026-10-21',
+        vo2Max: 46.2,
+        vo2MaxCycling: 41,
+        fitnessAge: 32,
+        enhanced: true,
+      }, {
+        userId: 'garmin1',
+        summaryId: 'empty',
+        calendarDate: '2026-10-20',
+      }],
+    });
+    expect(plan.userMetrics).toEqual([{
+      garminUserId: 'garmin1',
+      summaryId: 'vo2-1',
+      calendarDate: '2026-10-21',
+      vo2Max: 46.2,
+      vo2MaxCycling: 41,
+      fitnessAge: 32,
+    }]);
+    expect(JSON.stringify(plan.userMetrics)).not.toContain('enhanced');
+    const rows = userMetricRowsFor(plan, new Map([['garmin1', 'user-1']]));
+    expect(rows[0]).toMatchObject({ user_id: 'user-1', vo2_max: 46.2, fitness_age: 32 });
+    expect(userMetricRowsFor(plan, new Map())).toEqual([]);
+    expect(GARMIN_BACKFILL_TYPES).toEqual(['dailies', 'activities', 'sleeps', 'userMetrics']);
+    expect(garminBackfillUrl('dailies', Date.parse('2026-10-22T00:00:00Z'))).toContain('/backfill/dailies?');
+    expect(garminBackfillUrl('userMetrics', Date.parse('2026-10-22T00:00:00Z'))).not.toContain('activityDetails');
+    expect(garminRefreshCooling('2026-10-22T11:59:30Z', Date.parse('2026-10-22T12:00:00Z'))).toBe(true);
+    expect(garminRefreshCooling('2026-10-22T11:58:00Z', Date.parse('2026-10-22T12:00:00Z'))).toBe(false);
+    const metricsSql = readFileSync('supabase/migrations/20261023120000_garmin_user_metrics.sql', 'utf8');
+    expect(metricsSql).toContain('grant select on table public.garmin_user_metrics to authenticated');
+    expect(metricsSql).toContain('revoke all on table public.garmin_user_metrics from public, anon, authenticated');
+    expect(metricsSql).not.toMatch(/grant insert|grant update|grant delete/i);
+    expect(metricsSql).toContain('on delete cascade');
+    expect(metricsSql).toContain("'garmin_user_metrics'");
+    expect(metricsSql).not.toMatch(/latitude|longitude/);
+    const refreshSql = readFileSync('supabase/migrations/20261023140000_garmin_manual_refresh.sql', 'utf8');
+    expect(refreshSql).toContain('last_manual_refresh_at');
+    expect(refreshSql).not.toMatch(/grant /i);
+    const refreshFn = readFileSync('supabase/functions/garmin-refresh/index.ts', 'utf8');
+    expect(refreshFn).toContain('GARMIN_BACKFILL_TYPES');
+    expect(refreshFn).not.toMatch(/activityDetails|activityFile/);
+    expect(readFileSync('supabase/config.toml', 'utf8')).toContain('[functions.garmin-refresh]\nverify_jwt = true');
+    expect(readFileSync('supabase/functions/garmin-webhook/index.ts', 'utf8')).toContain("from('garmin_user_metrics')");
+  });
+
   it('upserts on the summary key and removes that person on deregistration', () => {
     const store: GarminStore = {
       connections: [
@@ -169,6 +223,7 @@ describe('Garmin webhook mapping', () => {
       dailies: [{ userId: 'user-1', calendarDate: '2026-10-21' }],
       activities: [{ userId: 'user-1', summaryId: 'run1' }, { userId: 'user-2', summaryId: 'ride' }],
       sleep: [],
+      userMetrics: [],
       states: [{ userId: 'user-1', state: 'abc' }],
     };
     const plan = mapGarminPush(push);
@@ -217,6 +272,7 @@ describe('Garmin coach gate', () => {
       awakeSeconds: null,
       sleepScore: 81,
     }],
+    userMetrics: [],
   };
 
   it('withholds Garmin unless health consent, coach consent, and the personal-data switch are on', () => {

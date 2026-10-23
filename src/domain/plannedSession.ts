@@ -305,6 +305,13 @@ export function nextWeekday(name: string, now = new Date()): string {
   return candidate < today ? shiftDay(candidate, 7) : candidate;
 }
 
+/** The weekday named at the start of a plan line, as a London date. */
+export function planDayFromSessionText(text: string, now = new Date()): string | null {
+  const match = /^(Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)\b/.exec(text);
+  if (!match?.[1]) return null;
+  return nextWeekday(match[1], now);
+}
+
 export function withPlannedMinutes<T extends { kind: string; value: number; recordedOn: string }>(
   samples: readonly T[],
   sessions: readonly PlannedSession[] | null | undefined,
