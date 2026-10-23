@@ -4,7 +4,7 @@ import { Animated, Modal, Pressable, ScrollView, StyleSheet, View } from 'react-
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useRepository } from '@/data';
-import { APP_SECTIONS, MENU_GROUPS, type AppSection } from '@/domain/sections';
+import { APP_SECTIONS, MENU_GROUPS, menuSectionActive, type AppSection } from '@/domain/sections';
 import { CloseMark, MenuGlyph } from '@/ui/menuIcons';
 import { useAppTheme } from '@/ui/theme';
 import { T } from '@/ui/ui';
@@ -38,7 +38,7 @@ export function SectionDrawer({ open, onClose }: { open: boolean; onClose: () =>
   }
 
   function row(section: AppSection) {
-    const active = section.href !== '' && (pathname === section.href || (section.href === '/people' && pathname.startsWith('/chat')));
+    const active = menuSectionActive(pathname, section.href);
     const color = section.sos ? theme.colors.danger : theme.colors.ink;
     return (
       <Pressable
