@@ -256,6 +256,7 @@ describe('gratitude diary wiring', () => {
       'Health Stats',
       'Nutrition',
       'Health Plan',
+      'Workouts',
       'Progress photos',
       'Vision Board',
       'Drinks & units calculator',

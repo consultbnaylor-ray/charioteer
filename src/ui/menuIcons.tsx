@@ -42,6 +42,13 @@ export function MenuGlyph({ name, color }: { name: MenuIcon; color: string }) {
           <Path d="M9.5 8.5h5M9.5 12h5M9.5 15.5h3" stroke={color} {...stroke} />
         </>
       ) : null}
+      {name === 'workout' ? (
+        <>
+          <Path d="M8.8 12h6.4" stroke={color} {...stroke} />
+          <Path d="M7.4 7.4v9.2M5 9.2v5.6" stroke={color} {...stroke} />
+          <Path d="M16.6 7.4v9.2M19 9.2v5.6" stroke={color} {...stroke} />
+        </>
+      ) : null}
       {name === 'meal' ? (
         <>
           <Path d="M7 10h10c.2 3.6-2 6.4-5 6.4S6.8 13.6 7 10z" stroke={color} {...stroke} />

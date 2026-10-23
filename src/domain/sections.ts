@@ -11,6 +11,7 @@ export type MenuIcon =
   | 'star'
   | 'pulse'
   | 'plan'
+  | 'workout'
   | 'stats'
   | 'meal'
   | 'photo'
@@ -58,6 +59,7 @@ export const APP_SECTIONS: readonly AppSection[] = [
   { id: 'health', label: 'Health Stats', href: '/health', icon: 'pulse', group: 'tools' },
   { id: 'nutrition', label: 'Nutrition', href: '/nutrition', icon: 'meal', group: 'tools' },
   { id: 'health-plan', label: 'Health Plan', href: '/health-plan', icon: 'plan', group: 'tools' },
+  { id: 'workouts', label: 'Workouts', href: '/workouts', icon: 'workout', group: 'tools' },
   { id: 'photos', label: 'Progress photos', href: '/photos', icon: 'photo', group: 'tools' },
   { id: 'vision', label: 'Vision Board', href: '/vision', icon: 'board', group: 'tools' },
   { id: 'units', label: 'Drinks & units calculator', href: '/units', icon: 'glass', group: 'tools' },
@@ -71,3 +73,8 @@ export const APP_SECTIONS: readonly AppSection[] = [
 ];
 
 export const TAB_SECTIONS = APP_SECTIONS.filter((section) => section.tab);
+
+/** Menu row highlight. Exact screen match, the same rule Health Plan uses. People also covers an open chat. */
+export function menuSectionActive(pathname: string, href: string): boolean {
+  return href !== '' && (pathname === href || (href === '/people' && pathname.startsWith('/chat')));
+}
