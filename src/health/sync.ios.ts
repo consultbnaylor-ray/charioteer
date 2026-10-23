@@ -9,6 +9,7 @@ import {
 
 import type { HealthKind, NewHealthSample } from '@/data/types';
 import { isoDay } from '@/domain/dates';
+import { dailyStatisticsAnchor, dailyStatisticsEnd } from '@/health/dayBuckets';
 import { shownError } from '@/domain/errors';
 import { APPLE_HEALTH_READ_ERROR } from '@/domain/healthUpload';
 import { parseBodyFatPct, parseLeanMassKg } from '@/domain/nutrition';
@@ -157,13 +158,13 @@ export async function syncAppleHealth(
     const steps = await queryStatisticsCollectionForQuantity(
       'HKQuantityTypeIdentifierStepCount',
       ['cumulativeSum'],
-      historyStart,
+      dailyStatisticsAnchor(end),
       { day: 1 },
-      { filter: fitnessFilter, unit: 'count' },
+      { filter: { date: { startDate: historyStart, endDate: dailyStatisticsEnd(end) } }, unit: 'count' },
     );
     const stepDays = new Map<string, number>();
     for (const row of steps) {
-      if (!row.startDate || row.sumQuantity == null) continue;
+      if (!row.startDate || row.sumQuantity == null || !(row.sumQuantity.quantity > 0)) continue;
       add(stepDays, isoDay(row.startDate), row.sumQuantity.quantity);
     }
     samples.push(...rows('steps', 'steps', stepDays, Math.round));

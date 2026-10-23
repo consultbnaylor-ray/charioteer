@@ -5,6 +5,7 @@ import {
 
 import { emptyAppleDailyActivity, type AppleDailyActivity } from '@/domain/dailyActivity';
 import { londonDay } from '@/domain/healthInsights';
+import { dailyStatisticsAnchor, dailyStatisticsEnd } from '@/health/dayBuckets';
 
 /** The longest chart on Workouts. A zero bucket is not a reading. */
 const LOOKBACK_DAYS = 30;
@@ -17,9 +18,9 @@ async function readCumulative(type: CumulativeType, unit: 'min' | 'kcal'): Promi
   const rows = await queryStatisticsCollectionForQuantity(
     type,
     ['cumulativeSum'],
-    start,
+    dailyStatisticsAnchor(end),
     { day: 1 },
-    { filter: { date: { startDate: start, endDate: end } }, unit },
+    { filter: { date: { startDate: start, endDate: dailyStatisticsEnd(end) } }, unit },
   );
   const byDay = new Map<string, number>();
   for (const row of rows) {
