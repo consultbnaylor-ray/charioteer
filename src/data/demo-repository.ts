@@ -1975,7 +1975,7 @@ export class DemoRepository implements Repository {
     return;
   }
 
-  async refreshGarmin(): Promise<{ ok: true; garmin: 'off' | 'asked' | 'recent' } | { ok: false; message: string; code?: 'permission' | 'rate' }> {
+  async refreshGarmin(): Promise<{ ok: true; garmin: 'off' | 'asked' | 'recent'; code?: 'history' } | { ok: false; message: string; code?: 'permission' | 'rate' }> {
     return { ok: true, garmin: 'off' };
   }
 

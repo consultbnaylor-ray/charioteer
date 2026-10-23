@@ -140,12 +140,13 @@ export default function HealthPlanScreen() {
       onRefresh={() => void manual.run()}
     >
       <HealthRefreshBar
-        label={manual.label}
-        lastLine={manual.lastLine}
         refreshing={manual.refreshing}
-        updated={manual.updated}
+        appleCheckedAt={manual.appleCheckedAt}
+        garminConnected={readings.connected}
+        garminReceivedAt={readings.lastPushAt}
         error={manual.error}
         permission={manual.permission}
+        history={manual.history}
         garminNote={manual.garminNote}
         onPress={() => void manual.run()}
       />

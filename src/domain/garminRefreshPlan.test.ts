@@ -4,9 +4,12 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { GARMIN_PERMISSION } from './healthRefresh';
 import {
   GARMIN_PERMISSIONS_URL,
+  garminAllHistoricalRefusal,
   garminBackfillDecision,
   garminBackfillTypes,
   garminBackfillWindow,
+  garminHistoryBody,
+  garminHistoryCooling,
   garminPermissionText,
   readGarminPermissions,
 } from '../../supabase/functions/_shared/garmin';
@@ -58,6 +61,27 @@ describe('Garmin refresh permissions and window', () => {
     expect(refresh).toContain("code: 'rate'");
     expect(refresh).not.toContain('response.text()');
     expect(refresh).not.toContain('response.json()');
+    expect(garminAllHistoricalRefusal([412, 412, 412, 412])).toBe(true);
+    expect(garminAllHistoricalRefusal([412, 202])).toBe(false);
+    expect(garminAllHistoricalRefusal([412, 403])).toBe(false);
+    expect(garminAllHistoricalRefusal([])).toBe(false);
+    const day = 24 * 60 * 60 * 1000;
+    expect(garminHistoryCooling(new Date(now - day + 1000).toISOString(), now)).toBe(true);
+    expect(garminHistoryCooling(new Date(now - day).toISOString(), now)).toBe(false);
+    expect(garminHistoryCooling(null, now)).toBe(false);
+    expect(garminHistoryBody()).toEqual({ ok: true, garmin: 'recent', code: 'history' });
+    expect(refresh).toContain('garminHistoryBody()');
+    expect(refresh).toContain("code: 'rate' }, 200");
+    expect(refresh).toContain("code: 'permission', missing }, 200");
+    expect(refresh).toContain("code: 'unauthorised' }, 401");
+    expect(refresh).not.toContain("code: 'rate' }, 429");
+    expect(refresh).not.toContain("code: 'permission' }, 403");
+    expect(refresh).toContain('history_backfill_refused_at');
+    const sql = readFileSync('supabase/migrations/20261023210000_garmin_history_refusal.sql', 'utf8');
+    expect(sql).toContain('history_backfill_refused_at');
+    expect(sql).toContain('last_push_at');
+    expect(sql).not.toMatch(/latitude|longitude/);
+    expect(sql).not.toMatch(/grant /i);
   });
 
   it('stores null when the permissions lookup fails, and logs the status only', async () => {
@@ -95,9 +119,10 @@ describe('Garmin refresh permissions and window', () => {
     expect(sql).not.toMatch(/latitude|longitude/);
     expect(sql).not.toMatch(/grant /i);
     const repo = readFileSync('src/data/supabase-repository.ts', 'utf8');
-    expect(repo).toContain("invoked.data?.code === 'permission'");
+    expect(repo).toContain('readGarminRefreshBody');
+    expect(repo).toContain("code === 'permission'");
     expect(repo).toContain('GARMIN_PERMISSION');
-    expect(repo).toContain("invoked.data?.code === 'rate'");
+    expect(repo).toContain("code === 'rate'");
     expect(repo).toContain('Could not ask Garmin for new data.');
     expect(GARMIN_PERMISSION).toBe("Garmin hasn't given Charioteer permission yet. In Garmin Connect, open Charioteer under connected apps, turn on Activities and Daily Health Stats, then disconnect and reconnect Garmin here. Automatic syncing still works once those are on.");
   });

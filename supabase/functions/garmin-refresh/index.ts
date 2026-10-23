@@ -6,6 +6,9 @@ import {
   garminBackfillTypes,
   garminBackfillUrl,
   garminBackfillWindow,
+  garminAllHistoricalRefusal,
+  garminHistoryBody,
+  garminHistoryCooling,
   garminMissingPermissions,
   garminPermissionCheckDue,
   garminRefreshCooling,
@@ -48,6 +51,8 @@ Deno.serve(async (req) => {
   if (permissionCheck && !force && !garminPermissionCheckDue(checkedAt, now)) {
     return json({ ok: true, garmin: 'permissions', checked: false });
   }
+  const historyAt = typeof row.history_backfill_refused_at === 'string' ? row.history_backfill_refused_at : null;
+  if (!permissionCheck && garminHistoryCooling(historyAt, now)) return json(garminHistoryBody(), 200);
 
   const lastAt = typeof row.last_manual_refresh_at === 'string' ? row.last_manual_refresh_at : null;
   if (!permissionCheck && garminRefreshCooling(lastAt, now)) return json({ ok: true, garmin: 'recent' });
@@ -75,11 +80,13 @@ Deno.serve(async (req) => {
   }
 
   const permissions = lookedUp != null ? lookedUp : null;
+  const effective = lookedUp != null ? lookedUp : stored;
+  const missing = garminMissingPermissions(effective);
   const connectedAt = typeof row.connected_at === 'string' ? row.connected_at : null;
   const window = garminBackfillWindow(connectedAt, now);
   const types = garminBackfillTypes(permissions);
   if (!window) return json({ ok: true, garmin: 'recent' });
-  if (types.length === 0) return json({ ok: false, code: 'permission' }, 403);
+  if (types.length === 0) return json({ ok: false, code: 'permission', missing }, 200);
 
   const statuses: number[] = [];
   for (const type of types) {
@@ -99,6 +106,10 @@ Deno.serve(async (req) => {
   }
 
   const decision = garminBackfillDecision(statuses);
+  if (garminAllHistoricalRefusal(statuses) && missing.length === 0) {
+    await rememberHistoryRefusal(admin, userId, now);
+    return json(garminHistoryBody(), 200);
+  }
   if (decision.accepted) {
     const marked = await admin.from('garmin_connections').update({ last_manual_refresh_at: new Date(now).toISOString() }).eq('user_id', userId);
     if (marked.error) {
@@ -107,8 +118,8 @@ Deno.serve(async (req) => {
     }
   }
   if (decision.code === 'asked') return json({ ok: true, garmin: 'asked' });
-  if (decision.code === 'rate') return json({ ok: false, code: 'rate' }, 429);
-  if (decision.code === 'permission') return json({ ok: false, code: 'permission' }, 403);
+  if (decision.code === 'rate') return json({ ok: false, code: 'rate' }, 200);
+  if (decision.code === 'permission') return json({ ok: false, code: 'permission', missing }, 200);
   return json({ ok: false, code: 'backfill' }, 502);
 });
 
@@ -121,12 +132,20 @@ function refreshForcesPermissions(body: unknown): boolean {
 }
 
 async function loadConnection(admin: GarminDb, userId: string) {
-  const rich = 'last_manual_refresh_at, revoked_at, connected_at, permissions, permissions_checked_at';
-  const clock = await admin.from('garmin_connections').select(rich).eq('user_id', userId).maybeSingle();
+  const rich = 'last_manual_refresh_at, revoked_at, connected_at, permissions, permissions_checked_at, history_backfill_refused_at';
+  let clock = await admin.from('garmin_connections').select(rich).eq('user_id', userId).maybeSingle();
+  if (clock.error?.message.includes('history_backfill_refused_at')) {
+    clock = await admin.from('garmin_connections').select('last_manual_refresh_at, revoked_at, connected_at, permissions, permissions_checked_at').eq('user_id', userId).maybeSingle();
+  }
   if (clock.error?.message.includes('permissions_checked_at')) {
     return admin.from('garmin_connections').select('last_manual_refresh_at, revoked_at, connected_at, permissions').eq('user_id', userId).maybeSingle();
   }
   return clock;
+}
+
+async function rememberHistoryRefusal(admin: GarminDb, userId: string, now: number): Promise<void> {
+  const stamped = await admin.from('garmin_connections').update({ history_backfill_refused_at: new Date(now).toISOString() }).eq('user_id', userId);
+  if (stamped.error && !stamped.error.message.includes('history_backfill_refused_at')) console.error('garmin-refresh: history');
 }
 
 async function rememberPermissions(admin: GarminDb, userId: string, lookedUp: string | null, now: number): Promise<void> {

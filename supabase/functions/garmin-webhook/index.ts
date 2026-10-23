@@ -71,6 +71,7 @@ Deno.serve(async (req) => {
     const saved = await admin.from('garmin_user_metrics').upsert(metrics, { onConflict: 'user_id,summary_id' });
     if (saved.error) return json({ ok: false, code: 'metrics' }, 500);
   }
+  await noteGarminPush(admin, [...dailies, ...activities, ...sleep, ...metrics]);
 
   for (const garminUserId of plan.deregistered) {
     const userId = userIdByGarmin.get(garminUserId);
@@ -103,6 +104,18 @@ Deno.serve(async (req) => {
 
   return json({ ok: true });
 });
+
+async function noteGarminPush(admin: GarminDb, rows: Record<string, unknown>[]): Promise<void> {
+  const userIds = new Set<string>();
+  for (const row of rows) {
+    if (typeof row.user_id === 'string' && row.user_id) userIds.add(row.user_id);
+  }
+  const at = new Date().toISOString();
+  for (const userId of userIds) {
+    const stamped = await admin.from('garmin_connections').update({ last_push_at: at }).eq('user_id', userId);
+    if (stamped.error && !stamped.error.message.includes('last_push_at')) console.error('garmin-webhook: push clock');
+  }
+}
 
 async function loadUsers(admin: GarminDb, garminIds: string[]): Promise<Map<string, string>> {
   const map = new Map<string, string>();

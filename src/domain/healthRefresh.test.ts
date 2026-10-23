@@ -1,7 +1,21 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
-import { REFRESH_APPLE, REFRESH_BOTH, lastUpdatedLine, refreshButtonLabel, refreshCooling } from '@/domain/healthRefresh';
+import {
+  GARMIN_DATA_HINT,
+  GARMIN_HISTORY_NOTE,
+  GARMIN_WAITING,
+  REFRESH_APPLE,
+  REFRESH_BOTH,
+  SYNC_REFRESH,
+  appleCheckIsFresh,
+  lastUpdatedLine,
+  readGarminRefreshBody,
+  refreshButtonLabel,
+  refreshCooling,
+  syncStatusShowsRefresh,
+  syncStatusText,
+} from '@/domain/healthRefresh';
 import { workoutWeekSummary } from '@/domain/workoutDay';
 
 describe('manual health refresh', () => {
@@ -12,6 +26,42 @@ describe('manual health refresh', () => {
     expect(refreshCooling(1_000, 1_000 + 60_000)).toBe(false);
     expect(lastUpdatedLine(null)).toBe('Last updated —');
     expect(lastUpdatedLine('2026-10-23T20:04:00Z')).toMatch(/^Last updated \d{2}:\d{2}$/);
+  });
+
+  it('names the last Apple check and the last Garmin push, and never claims the data is complete', () => {
+    const now = Date.parse('2026-10-23T21:50:00Z');
+    const apple = new Date(now - 2 * 60 * 1000).toISOString();
+    const garmin = new Date(now - 10 * 60 * 1000).toISOString();
+    const stale = new Date(now - 16 * 60 * 1000).toISOString();
+    const line = syncStatusText({ appleCheckedAt: apple, garminConnected: true, garminReceivedAt: garmin });
+    expect(line).toMatch(/^Apple Health checked \d{2}:\d{2} · Garmin data received \d{2}:\d{2}$/);
+    expect(syncStatusText({ appleCheckedAt: apple, garminConnected: true, garminReceivedAt: null })).toBe(
+      `Apple Health checked ${line.slice('Apple Health checked '.length, line.indexOf(' ·'))} · ${GARMIN_WAITING}`,
+    );
+    expect(syncStatusText({ appleCheckedAt: null, garminConnected: false, garminReceivedAt: null })).toBe('Apple Health not checked yet');
+    expect(syncStatusText({ appleCheckedAt: apple, garminConnected: false, garminReceivedAt: garmin })).not.toContain('Garmin');
+    expect(appleCheckIsFresh(apple, now)).toBe(true);
+    expect(appleCheckIsFresh(stale, now)).toBe(false);
+    expect(appleCheckIsFresh(null, now)).toBe(false);
+    expect(syncStatusShowsRefresh({ appleCheckedAt: apple, now, error: false })).toBe(false);
+    expect(syncStatusShowsRefresh({ appleCheckedAt: stale, now, error: false })).toBe(true);
+    expect(syncStatusShowsRefresh({ appleCheckedAt: apple, now, error: true })).toBe(true);
+    expect(`${line} ${GARMIN_DATA_HINT} ${GARMIN_HISTORY_NOTE} ${SYNC_REFRESH}`).not.toMatch(/up to date/i);
+    expect(readFileSync('src/ui/HealthRefresh.tsx', 'utf8')).not.toMatch(/up to date/i);
+    expect(readFileSync('src/domain/healthRefresh.ts', 'utf8')).not.toMatch(/up to date/i);
+  });
+
+  it('reads a Garmin code from the error body when the status is not 2xx', async () => {
+    const fromData = await readGarminRefreshBody({ ok: false, code: 'rate' }, { context: { json: async () => ({ code: 'permission' }) } });
+    expect(fromData).toEqual({ ok: false, code: 'rate' });
+    const fromContext = await readGarminRefreshBody(null, { context: { json: async () => ({ ok: false, code: 'permission' }) } });
+    expect(fromContext).toEqual({ ok: false, code: 'permission' });
+    const broken = await readGarminRefreshBody(null, { context: { json: async () => { throw new Error('consumed'); } } });
+    expect(broken).toBeNull();
+    expect(readFileSync('src/data/supabase-repository.ts', 'utf8')).toContain('readGarminRefreshBody');
+    expect(readFileSync('src/ui/HealthRefresh.tsx', 'utf8')).toContain('GARMIN_HISTORY_NOTE');
+    expect(readFileSync('src/ui/HealthRefresh.tsx', 'utf8')).toContain("garmin.code === 'history'");
+    expect(readFileSync('src/ui/HealthRefresh.tsx', 'utf8')).toContain("garmin.code === 'permission'");
   });
 
   it('puts the control at the top of Health, Workouts, and Fitness', () => {
@@ -40,7 +90,11 @@ describe('manual health refresh', () => {
     expect(bar).toContain('consentHealth');
     expect(bar).toContain('refreshGarmin');
     expect(bar).toContain('<PlanTick done />');
+    expect(bar).toContain('SYNC_REFRESH');
+    expect(bar).toContain('GARMIN_DATA_HINT');
+    expect(bar).toContain('appleCheckIsFresh');
     expect(readFileSync('src/domain/healthRefresh.ts', 'utf8')).toContain('Asked Garmin for your latest data');
     expect(bar).toContain('GARMIN_ASKED');
+    expect(bar).not.toContain('REFRESH_BOTH');
   });
 });

@@ -149,50 +149,6 @@ export default function Health() {
     return null;
   }
 
-  async function refreshNow() {
-    setPending(true);
-    setRefreshError(null);
-    setUpdatedAt(null);
-    try {
-      if (!consent) {
-        setRefreshError(APPLE_HEALTH_CONSENT);
-        return;
-      }
-      if (!ios) {
-        setRefreshError(APPLE_HEALTH_WEB);
-        return;
-      }
-      let next = access;
-      if (next !== 'connected' && next !== 'unavailable') {
-        next = await connectAppleHealth();
-        setAccess(next);
-      }
-      if (next === 'unavailable') {
-        setRefreshError(APPLE_HEALTH_UNAVAILABLE);
-        return;
-      }
-      if (next === 'denied') {
-        setRefreshError(APPLE_HEALTH_DENIED);
-        return;
-      }
-      if (next !== 'connected') {
-        setRefreshError('Apple Health is not connected.');
-        return;
-      }
-      const pulled = await pullFromHealth();
-      if (!pulled.ok) {
-        setRefreshError(pulled.message);
-        return;
-      }
-      setUpdatedAt(pulled.syncedAt);
-      loadVisibility();
-    } catch (err: unknown) {
-      setRefreshError(shownError(err, 'Could not refresh Apple Health.'));
-    } finally {
-      setPending(false);
-    }
-  }
-
   async function turnOnFromRow() {
     setTurnOnNote(null);
     setRefreshError(null);
@@ -377,12 +333,13 @@ export default function Health() {
       ) : undefined}
     >
       <HealthRefreshBar
-        label={manual.label}
-        lastLine={manual.lastLine}
         refreshing={manual.refreshing}
-        updated={manual.updated}
+        appleCheckedAt={manual.appleCheckedAt}
+        garminConnected={readings.connected}
+        garminReceivedAt={readings.lastPushAt}
         error={manual.error}
         permission={manual.permission}
+        history={manual.history}
         garminNote={manual.garminNote}
         onPress={() => void manual.run()}
       />
@@ -396,7 +353,6 @@ export default function Health() {
         updatedAt={updatedAt}
         refreshError={refreshError}
         turnOnNote={turnOnNote}
-        onRefresh={() => void refreshNow()}
         onSignIn={() => router.push('/sign-in' as never)}
         onConnect={() => void connect()}
         onManage={() => void openHealthApp()}
