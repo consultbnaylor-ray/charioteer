@@ -155,8 +155,14 @@ export type PkceRow = {
   expiresAt: string;
 };
 
+export type GarminPushedDaily = GarminDaily & {
+  garminUserId: string;
+  /** UTC start plus the local offset. Used to rank duplicates. Not written to the database. */
+  localStartSeconds: number | null;
+};
+
 export type GarminPushPlan = {
-  dailies: (GarminDaily & { garminUserId: string })[];
+  dailies: GarminPushedDaily[];
   activities: (GarminActivity & { garminUserId: string })[];
   sleep: (GarminSleep & { garminUserId: string })[];
   userMetrics: (GarminUserMetric & { garminUserId: string })[];
@@ -400,6 +406,31 @@ export function preferLast<T>(_current: T, incoming: T): T {
 }
 
 /**
+ * Longer duration, then the later local start. A full tie keeps the row that arrived later.
+ * A missing duration loses to a recorded one. A missing start loses to a recorded one.
+ */
+export function preferGarminDaily<T extends { durationSeconds?: number | null; localStartSeconds?: number | null }>(
+  current: T,
+  incoming: T,
+): T {
+  const duration = compareRank(current.durationSeconds, incoming.durationSeconds);
+  if (duration !== 0) return duration > 0 ? current : incoming;
+  const start = compareRank(current.localStartSeconds, incoming.localStartSeconds);
+  if (start !== 0) return start > 0 ? current : incoming;
+  return incoming;
+}
+
+function compareRank(current: number | null | undefined, incoming: number | null | undefined): number {
+  const left = typeof current === 'number' && Number.isFinite(current) ? current : null;
+  const right = typeof incoming === 'number' && Number.isFinite(incoming) ? incoming : null;
+  if (left == null && right == null) return 0;
+  if (left == null) return -1;
+  if (right == null) return 1;
+  if (left === right) return 0;
+  return left > right ? 1 : -1;
+}
+
+/**
  * The daily with the larger duration_seconds. Equal or missing durations keep the later row.
  */
 export function preferLargerDuration(current: Record<string, unknown>, incoming: Record<string, unknown>): Record<string, unknown> {
@@ -491,7 +522,12 @@ export function applyGarminPush(
 }
 
 export function dailyRowsFor(plan: GarminPushPlan, userIdByGarmin: ReadonlyMap<string, string>): Record<string, unknown>[] {
-  return plan.dailies.flatMap((row) => {
+  const chosen = dedupeBy(
+    plan.dailies,
+    (row) => `${row.garminUserId}:${row.calendarDate}`,
+    preferGarminDaily,
+  );
+  return chosen.flatMap((row) => {
     const userId = userIdByGarmin.get(row.garminUserId);
     if (!userId) return [];
     return [{
@@ -1369,7 +1405,16 @@ function mapDaily(row: Record<string, unknown>): GarminPushPlan['dailies'][numbe
     bodyBatteryLowest: wholeNumber(row.bodyBatteryLowestValue ?? battery?.lowestValue ?? battery?.lowest, 0, 100),
     stepGoal: wholeNumber(row.stepsGoal, 0, 200_000),
     durationSeconds: wholeNumber(row.durationInSeconds, 0, 24 * 60 * 60),
+    localStartSeconds: dailyLocalStart(row),
   };
+}
+
+/** startTimeInSeconds plus the local offset. Null when the start itself is missing. */
+function dailyLocalStart(row: Record<string, unknown>): number | null {
+  const start = bounded(row.startTimeInSeconds, 1, 4_000_000_000);
+  if (start == null) return null;
+  const offset = bounded(row.startTimeOffsetInSeconds, -24 * 60 * 60, 24 * 60 * 60);
+  return start + (offset ?? 0);
 }
 
 function mapRespiration(row: Record<string, unknown>): GarminPushPlan['respiration'][number] | null {

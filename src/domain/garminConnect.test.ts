@@ -22,6 +22,7 @@ import {
   garminBackfillUrl,
   garminRefreshCooling,
   mapGarminPush,
+  preferGarminDaily,
   preferLargerDuration,
   preferLast,
   userMetricRowsFor,
@@ -280,6 +281,7 @@ describe('Garmin webhook mapping', () => {
     expect(webhook).toContain('preferLargerDuration');
     expect(webhook).toContain('preferLast');
     expect(webhook).toContain('garmin-webhook: ${table}');
+    expect(readFileSync('supabase/functions/_shared/garmin.ts', 'utf8')).toContain('preferGarminDaily');
     const sql = readFileSync('supabase/migrations/20261023220000_garmin_wellness_summaries.sql', 'utf8');
     expect(sql).toContain('add column if not exists steps integer');
     expect(sql).toContain('create table public.garmin_respiration');
@@ -308,6 +310,41 @@ describe('Garmin webhook mapping', () => {
       },
     });
     expect(lines.join('\n')).not.toContain('9200');
+  });
+
+  it('ranks duplicate dailies by duration, then local start, then arrival', () => {
+    const row = (steps: number, duration: number | null, start: number | null) => ({
+      steps,
+      durationSeconds: duration,
+      localStartSeconds: start,
+    });
+    expect(preferGarminDaily(row(1, 100, 9_000), row(2, 50, 9_999)).steps).toBe(1);
+    expect(preferGarminDaily(row(1, 100, 1_000), row(2, 100, 2_000)).steps).toBe(2);
+    expect(preferGarminDaily(row(1, 100, 1_000), row(2, 100, 1_000)).steps).toBe(2);
+    expect(preferGarminDaily(row(1, null, 1_000), row(2, null, 500)).steps).toBe(1);
+
+    const plan = mapGarminPush({
+      dailies: [{
+        userId: 'garmin1',
+        calendarDate: '2026-10-22',
+        durationInSeconds: 100,
+        steps: 10,
+        startTimeInSeconds: 1_700_000_000,
+        startTimeOffsetInSeconds: 0,
+      }, {
+        userId: 'garmin1',
+        calendarDate: '2026-10-22',
+        durationInSeconds: 100,
+        steps: 20,
+        startTimeInSeconds: 1_700_000_000,
+        startTimeOffsetInSeconds: 3600,
+      }],
+    });
+    const rows = dailyRowsFor(plan, new Map([['garmin1', 'user-1']]));
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ steps: 20, duration_seconds: 100 });
+    expect(rows[0]).not.toHaveProperty('localStartSeconds');
+    expect(JSON.stringify(rows)).not.toContain('1700000000');
   });
 
   it('keeps VO2 max from a user metrics push and drops a path', () => {
