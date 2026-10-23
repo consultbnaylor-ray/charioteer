@@ -125,6 +125,16 @@ export function healthVisibilityLine(row: Pick<HealthVisibilityRow, 'title' | 'a
   return `${row.title}: ${asked}; data found in the last 12 months: ${days}`;
 }
 
+const EXERCISE_TIME_TYPE = 'HKQuantityTypeIdentifierAppleExerciseTime';
+
+/** True when Exercise minutes was never asked, or a caller knows the read was refused. */
+export function exercisePermissionMissing(report: HealthVisibilityReport | null): boolean {
+  if (report?.kind !== 'ready') return false;
+  const row = report.rows.find((item) => item.type === EXERCISE_TIME_TYPE);
+  if (!row) return false;
+  return row.asked === 'no' || row.access === 'denied';
+}
+
 export function unaskedHealthTypes(rows: readonly Pick<HealthVisibilityRow, 'type' | 'asked'>[]): string[] {
   return rows.filter((row) => row.asked === 'no').map((row) => row.type);
 }

@@ -6,11 +6,11 @@ export const VO2_ESTIMATE_NOTE =
 
 /** Shown when the latest reading is from Garmin. */
 export const VO2_GARMIN_NOTE =
-  'Your Garmin estimates VO2 max after an outdoor run or walk of at least 10 minutes with GPS and heart rate (or a ride with a power meter). No new reading means no qualifying workout yet.';
+  'Your Garmin estimates VO2 max after an outdoor run recorded with GPS, with your heart rate above about 70% of your maximum for at least 10 minutes. Set your age, sex and weight in Garmin Connect for better accuracy. No new reading means no qualifying run yet.';
 
 /** Shown when neither watch has a reading yet. */
 export const VO2_EITHER_NOTE =
-  'Apple Watch estimates VO2 max after an outdoor walk, run or hike with GPS and a steady heart rate. Garmin estimates it after an outdoor run or walk of at least 10 minutes with GPS and heart rate, or a ride with a power meter. No new reading means no qualifying workout yet.';
+  'Apple Watch estimates VO2 max after an outdoor walk, run or hike with GPS and a steady heart rate. Your Garmin estimates it after an outdoor run recorded with GPS, with your heart rate above about 70% of your maximum for at least 10 minutes. No new reading means no qualifying workout yet.';
 
 export type Vo2Source = 'apple' | 'garmin';
 
@@ -29,13 +29,15 @@ export const VO2_PLAN_MINUTES = 30;
 
 const STALE_AFTER_DAYS = 3;
 
-/** `Last measured 18 Oct`. A Garmin reading adds the source in the same line. */
+/** `Last measured 18 Oct (Apple Health)` or `Last measured 18 Oct (Garmin)`. */
 export function vo2MeasuredLine(day: string, source?: Vo2Source | null): string {
   const date = parseIsoDay(day.slice(0, 10));
   const dateDay = date.toLocaleDateString('en-GB', { day: 'numeric' });
   const month = date.toLocaleDateString('en-GB', { month: 'short' });
   const base = `Last measured ${dateDay} ${month}`;
-  return source === 'garmin' ? `${base} (Garmin)` : base;
+  if (source === 'garmin') return `${base} (Garmin)`;
+  if (source === 'apple') return `${base} (Apple Health)`;
+  return base;
 }
 
 export function daysSince(day: string, today: string): number {
