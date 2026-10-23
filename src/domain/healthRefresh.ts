@@ -15,6 +15,9 @@ export const GARMIN_ASKED =
 export const GARMIN_RECENT =
   'Garmin was asked recently. New data can take a minute or two to arrive.';
 
+export const GARMIN_PERMISSION =
+  "Garmin hasn't given Charioteer permission yet. In Garmin Connect, open Charioteer under connected apps, turn on Activities and Daily Health Stats, then disconnect and reconnect Garmin here. Automatic syncing still works once those are on.";
+
 export function refreshButtonLabel(garminConnected: boolean): string {
   return garminConnected ? REFRESH_BOTH : REFRESH_APPLE;
 }

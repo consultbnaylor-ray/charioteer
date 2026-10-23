@@ -35,12 +35,17 @@ export const GARMIN_REFRESH_COOLDOWN_MS = 60_000;
 /** Recent days only. Garmin's backfill window is longer; this stays inside it. */
 export const GARMIN_REFRESH_LOOKBACK_SECONDS = 7 * 24 * 60 * 60;
 
+/** A window shorter than this is not worth a backfill call. */
+export const GARMIN_REFRESH_MIN_WINDOW_SECONDS = 60;
+
 export type GarminDaily = {
   calendarDate: string;
   restingHeartRateBpm: number | null;
   averageHeartRateBpm: number | null;
   moderateMinutes: number | null;
   vigorousMinutes: number | null;
+  /** Active kilocalories. Absent until a daily push includes them. */
+  activeKilocalories?: number | null;
 };
 
 export type GarminActivity = {
@@ -73,6 +78,8 @@ export type GarminUserMetric = {
   fitnessAge: number | null;
 };
 
+export type GarminExportPermission = 'ACTIVITY_EXPORT' | 'HEALTH_EXPORT';
+
 export type GarminReadings = {
   connected: boolean;
   connectedAt: string | null;
@@ -80,6 +87,10 @@ export type GarminReadings = {
   activities: GarminActivity[];
   sleep: GarminSleep[];
   userMetrics: GarminUserMetric[];
+  /** True when this person is connected and Garmin is not sending the summaries Charioteer asked for. */
+  needsPermissions: boolean;
+  /** The export names that are missing. Never a token. */
+  missingPermissions: GarminExportPermission[];
 };
 
 export type GarminFigure = {
@@ -107,7 +118,16 @@ export type GarminPushPlan = {
 };
 
 export function emptyGarminReadings(): GarminReadings {
-  return { connected: false, connectedAt: null, dailies: [], activities: [], sleep: [], userMetrics: [] };
+  return {
+    connected: false,
+    connectedAt: null,
+    dailies: [],
+    activities: [],
+    sleep: [],
+    userMetrics: [],
+    needsPermissions: false,
+    missingPermissions: [],
+  };
 }
 
 export function pkceVerifier(random: Uint8Array): string {
@@ -393,6 +413,7 @@ export function dailyRowsFor(plan: GarminPushPlan, userIdByGarmin: ReadonlyMap<s
       average_heart_rate_bpm: row.averageHeartRateBpm,
       moderate_minutes: row.moderateMinutes,
       vigorous_minutes: row.vigorousMinutes,
+      active_kilocalories: row.activeKilocalories ?? null,
     }];
   });
 }
@@ -449,13 +470,148 @@ export function userMetricRowsFor(plan: GarminPushPlan, userIdByGarmin: Readonly
 }
 
 /**
- * One backfill call per summary type. Garmin answers 202 and later pushes the webhook.
- * The window is summary time, at most seven days. Activity details are not a type here.
+ * Backfill from the later of connect time and seven days ago, through now.
+ * Null when that slice is empty or shorter than a minute. Never starts before connect.
  */
-export function garminBackfillUrl(type: (typeof GARMIN_BACKFILL_TYPES)[number], nowMs: number): string {
+export function garminBackfillWindow(connectedAt: string | null, nowMs: number): { start: number; end: number } | null {
   const end = Math.floor(nowMs / 1000);
-  const start = end - GARMIN_REFRESH_LOOKBACK_SECONDS;
+  const lookback = end - GARMIN_REFRESH_LOOKBACK_SECONDS;
+  let connected = Number.NaN;
+  if (connectedAt) {
+    const parsed = Date.parse(connectedAt);
+    if (Number.isFinite(parsed)) connected = Math.floor(parsed / 1000);
+  }
+  const start = Number.isFinite(connected) ? Math.max(lookback, connected) : lookback;
+  if (end - start < GARMIN_REFRESH_MIN_WINDOW_SECONDS) return null;
+  return { start, end };
+}
+
+/**
+ * One backfill call per summary type. Garmin answers 202 and later pushes the webhook.
+ * Activity details are not a type here.
+ */
+export function garminBackfillUrl(type: (typeof GARMIN_BACKFILL_TYPES)[number], start: number, end: number): string {
   return `https://apis.garmin.com/wellness-api/rest/backfill/${type}?summaryStartTimeInSeconds=${start}&summaryEndTimeInSeconds=${end}`;
+}
+
+/**
+ * Null means the stored list is unknown, so every summary is asked.
+ * A known list asks only for the exports it names.
+ */
+export function garminBackfillTypes(permissions: string | null): (typeof GARMIN_BACKFILL_TYPES)[number][] {
+  if (permissions == null) return [...GARMIN_BACKFILL_TYPES];
+  const names = new Set(permissions.split(/\s+/).filter(Boolean));
+  return GARMIN_BACKFILL_TYPES.filter((type) => (
+    type === 'activities' ? names.has('ACTIVITY_EXPORT') : names.has('HEALTH_EXPORT')
+  ));
+}
+
+export type GarminBackfillDecision = {
+  code: 'asked' | 'permission' | 'rate' | 'backfill';
+  /** At least one type was accepted, so the cooldown may start. */
+  accepted: boolean;
+};
+
+/**
+ * 202, 204, and 409 are accepted. 412 and 403 are permission refusals.
+ * 429 stops the summary. Any other status is a per-type refusal that is not permission.
+ */
+export function garminBackfillDecision(statuses: readonly number[]): GarminBackfillDecision {
+  let accepted = false;
+  let refused = 0;
+  for (const status of statuses) {
+    if (status === 429) return { code: 'rate', accepted };
+    if (status === 202 || status === 204 || status === 409) {
+      accepted = true;
+      continue;
+    }
+    if (status === 412 || status === 403) {
+      refused += 1;
+      continue;
+    }
+  }
+  if (accepted) return { code: 'asked', accepted: true };
+  if (statuses.length > 0 && refused === statuses.length) return { code: 'permission', accepted: false };
+  if (statuses.length === 0) return { code: 'permission', accepted: false };
+  return { code: 'backfill', accepted: false };
+}
+
+/** A permissions body. Null when the shape is not a list. An empty list is an empty string. */
+export function garminPermissionText(body: unknown): string | null {
+  const values = Array.isArray(body)
+    ? body
+    : body && typeof body === 'object' && Array.isArray((body as { permissions?: unknown }).permissions)
+      ? (body as { permissions: unknown[] }).permissions
+      : null;
+  if (!values) return null;
+  return values
+    .map((item) => (typeof item === 'string' ? item.trim() : ''))
+    .filter((item) => /^[A-Z0-9_]{1,40}$/.test(item))
+    .join(' ');
+}
+
+/**
+ * The user's own permissions. Null when Garmin did not answer with a list.
+ * The status code is the only thing written to the log.
+ */
+export async function readGarminPermissions(accessToken: string, fetchImpl: typeof fetch = fetch): Promise<string | null> {
+  if (!accessToken) return null;
+  try {
+    const response = await fetchImpl(GARMIN_PERMISSIONS_URL, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+    if (!response.ok) {
+      console.error(`garmin-permissions: ${response.status}`);
+      return null;
+    }
+    return garminPermissionText(await response.json());
+  } catch {
+    console.error('garmin-permissions: 0');
+    return null;
+  }
+}
+
+export const GARMIN_EXPORT_PERMISSIONS = ['ACTIVITY_EXPORT', 'HEALTH_EXPORT'] as const;
+
+const GARMIN_PERMISSION_DAY_MS = 24 * 60 * 60 * 1000;
+
+/** Exports named in a stored list. Null and an empty list are missing both. */
+export function garminMissingPermissions(permissions: string | null): GarminExportPermission[] {
+  const names = new Set((permissions ?? '').split(/\s+/).filter(Boolean));
+  return GARMIN_EXPORT_PERMISSIONS.filter((name) => !names.has(name));
+}
+
+/** True when the last permissions read is missing or at least a day old. */
+export function garminPermissionCheckDue(checkedAt: string | null, nowMs: number): boolean {
+  if (!checkedAt) return true;
+  const at = Date.parse(checkedAt);
+  if (!Number.isFinite(at)) return true;
+  return nowMs - at >= GARMIN_PERMISSION_DAY_MS;
+}
+
+/**
+ * Connected, and at least one of: a missing export, a refused refresh, or a day
+ * with no Garmin rows. A disconnected account does not need the banner.
+ * storedNeeds null means the status view does not say yet, so the row count is used.
+ */
+export function garminPermissionStatus(input: {
+  connected: boolean;
+  connectedAt: string | null;
+  nowMs: number;
+  garminRowCount: number;
+  storedNeeds: boolean | null;
+  storedMissing: string | null;
+  refreshRefused?: boolean;
+}): { needs: boolean; missing: GarminExportPermission[] } {
+  if (!input.connected) return { needs: false, missing: [] };
+  const named = new Set((input.storedMissing ?? '').split(/\s+/).filter(Boolean));
+  const missing = GARMIN_EXPORT_PERMISSIONS.filter((name) => named.has(name));
+  const connectedMs = input.connectedAt ? Date.parse(input.connectedAt) : Number.NaN;
+  const staleEmpty = Number.isFinite(connectedMs)
+    && input.nowMs - connectedMs > GARMIN_PERMISSION_DAY_MS
+    && input.garminRowCount === 0;
+  const fromStore = input.storedNeeds === true || (input.storedNeeds == null && (missing.length > 0 || staleEmpty));
+  return { needs: fromStore || input.refreshRefused === true, missing };
 }
 
 export function garminRefreshCooling(lastAt: string | null, nowMs: number): boolean {
@@ -556,10 +712,14 @@ export function readingsFromRows(input: {
   activities: unknown;
   sleep: unknown;
   userMetrics?: unknown;
+  needsPermissions?: boolean;
+  missingPermissions?: GarminExportPermission[];
 }): GarminReadings {
   return {
     connected: input.connected,
     connectedAt: input.connectedAt,
+    needsPermissions: input.needsPermissions === true,
+    missingPermissions: input.missingPermissions ?? [],
     dailies: asList(input.dailies).flatMap((row) => {
       const calendarDate = day(row.calendar_date);
       if (!calendarDate) return [];
@@ -569,6 +729,7 @@ export function readingsFromRows(input: {
         averageHeartRateBpm: bounded(row.average_heart_rate_bpm, 20, 250),
         moderateMinutes: bounded(row.moderate_minutes, 0, 24 * 60),
         vigorousMinutes: bounded(row.vigorous_minutes, 0, 24 * 60),
+        activeKilocalories: roundedKcal(row.active_kilocalories),
       }];
     }),
     activities: asList(input.activities).flatMap((row) => {
@@ -706,6 +867,11 @@ export function constantTimeEqual(left: string, right: string): boolean {
 
 export function missingRelation(message: string): boolean {
   return /does not exist|schema cache|could not find the table/i.test(message);
+}
+
+/** A select that names a column the live table does not have yet. The table itself can still be read. */
+export function missingColumn(message: string, column: string): boolean {
+  return missingRelation(message) && message.toLowerCase().includes(column.toLowerCase());
 }
 
 type QueryResult = { data: unknown; error: { message: string } | null };
@@ -1000,6 +1166,7 @@ function mapDaily(row: Record<string, unknown>): GarminPushPlan['dailies'][numbe
     averageHeartRateBpm: bounded(row.averageHeartRateInBeatsPerMinute, 20, 250),
     moderateMinutes: minutesFromSeconds(row.moderateIntensityDurationInSeconds),
     vigorousMinutes: minutesFromSeconds(row.vigorousIntensityDurationInSeconds),
+    activeKilocalories: roundedKcal(row.activeKilocalories),
   };
 }
 
@@ -1082,6 +1249,11 @@ function minutesFromSeconds(value: unknown): number | null {
   const seconds = bounded(value, 0, 24 * 60 * 60);
   if (seconds == null) return null;
   return Math.round(seconds / 60);
+}
+
+function roundedKcal(value: unknown): number | null {
+  const kcal = bounded(value, 0, 20000);
+  return kcal == null ? null : Math.round(kcal);
 }
 
 function list(root: Record<string, unknown>, key: string): Record<string, unknown>[] {

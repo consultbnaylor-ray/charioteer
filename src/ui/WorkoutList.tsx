@@ -2,6 +2,8 @@ import { useRouter } from 'expo-router';
 import { useState } from 'react';
 import { Pressable, View } from 'react-native';
 
+import type { AppleDayValue } from '@/domain/dailyActivity';
+import type { GarminDaily } from '@/domain/garminConnect';
 import { formatUkCompactDay, londonDay, weekdayShort } from '@/domain/healthInsights';
 import { CHART_DIRECTION_HINT } from '@/domain/readingChart';
 import {
@@ -40,6 +42,7 @@ import {
 } from '@/domain/workoutDay';
 import { routeSummaryLine, type DeviceWorkout } from '@/domain/workoutRoute';
 import { workoutTypeColor } from '@/domain/workoutTypeColor';
+import { DailyActivityCharts } from '@/ui/DailyActivity';
 import { useAppTheme } from '@/ui/theme';
 import { Card, Choice, T } from '@/ui/ui';
 
@@ -355,7 +358,21 @@ function WorkoutHistory({
 }
 
 /** The selected London day, then the last 7 or 30 days. Opening a row reads a route only when one exists. */
-export function WorkoutList({ workouts, age }: { workouts: readonly DeviceWorkout[]; age: number | null }) {
+export function WorkoutList({
+  workouts,
+  age,
+  consent,
+  exerciseMinutes,
+  activeKcal,
+  dailies,
+}: {
+  workouts: readonly DeviceWorkout[];
+  age: number | null;
+  consent: boolean;
+  exerciseMinutes: readonly AppleDayValue[];
+  activeKcal: readonly AppleDayValue[];
+  dailies: readonly GarminDaily[];
+}) {
   const theme = useAppTheme();
   const today = londonDay(new Date());
   const [day, setDay] = useState(today);
@@ -462,6 +479,14 @@ export function WorkoutList({ workouts, age }: { workouts: readonly DeviceWorkou
         ))}
       </View>
       <DurationChart bars={bars} span={span} selected={historyDay ?? ''} onSelect={selectBar} />
+      <DailyActivityCharts
+        endDay={today}
+        span={span}
+        consent={consent}
+        exerciseMinutes={exerciseMinutes}
+        activeKcal={activeKcal}
+        dailies={dailies}
+      />
       <WorkoutHistory workouts={workouts} historyDay={historyDay} open={historyOpen} onToggle={() => setHistoryOpen((value) => !value)} onClear={clearHistory} />
       <DifficultyChart marks={marks} workouts={workouts} age={age} day={day} onSelect={choose} />
     </Card>

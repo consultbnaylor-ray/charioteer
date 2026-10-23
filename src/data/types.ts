@@ -523,5 +523,7 @@ export interface Repository {
   /** Asks Garmin to drop the registration, then deletes the summaries. */
   disconnectGarmin(): Promise<void>;
   /** Asks Garmin to resend recent summaries. The phone does not receive a route. */
-  refreshGarmin(): Promise<{ ok: true; garmin: 'off' | 'asked' | 'recent' } | { ok: false; message: string }>;
+  refreshGarmin(): Promise<{ ok: true; garmin: 'off' | 'asked' | 'recent' } | { ok: false; message: string; code?: 'permission' | 'rate' }>;
+  /** Reads Garmin's export list. The server skips this when it already asked today, unless force is set. */
+  checkGarminPermissions(force?: boolean): Promise<{ checked: boolean; needsPermissions: boolean; missing: Array<'ACTIVITY_EXPORT' | 'HEALTH_EXPORT'> }>;
 }

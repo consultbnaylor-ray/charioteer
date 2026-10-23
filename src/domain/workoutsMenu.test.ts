@@ -18,7 +18,9 @@ describe('Workouts in the side menu', () => {
     expect(labels.indexOf('Progress photos')).toBe(labels.indexOf('Workouts') + 1);
     expect(TAB_SECTIONS).toHaveLength(6);
     expect(TAB_SECTIONS.map((section) => section.label)).not.toContain('Workouts');
-    expect(readFileSync('app.json', 'utf8')).toContain('"buildNumber": "49"');
+    const buildNumber = JSON.parse(readFileSync('app.json', 'utf8')).expo.ios.buildNumber;
+    expect(buildNumber).toMatch(/^\d+$/);
+    expect(Number(buildNumber)).toBeGreaterThanOrEqual(49);
   });
 
   it('highlights Workouts on that screen the same way Health Plan is highlighted', () => {

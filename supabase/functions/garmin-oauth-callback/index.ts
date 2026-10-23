@@ -1,12 +1,12 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.117.3';
 import {
-  GARMIN_PERMISSIONS_URL,
   GARMIN_TOKEN_URL,
   GARMIN_USER_ID_URL,
   GARMIN_TOKEN_KEY_VERSION,
   garminAppReturn,
   garminTokenAad,
   garminTokenForm,
+  readGarminPermissions,
   readTokenResponse,
   sealGarminToken,
 } from '../_shared/garmin.ts';
@@ -87,7 +87,7 @@ Deno.serve(async (req) => {
     .maybeSingle();
   if (existing.data?.user_id && existing.data.user_id !== row.user_id) return redirect(false);
 
-  const permissions = await readPermissions(tokens.accessToken);
+  const permissions = await readGarminPermissions(tokens.accessToken);
   let accessSeal;
   let refreshSeal;
   try {
@@ -124,25 +124,4 @@ function redirect(connected: boolean): Response {
     status: 302,
     headers: { Location: garminAppReturn(connected) },
   });
-}
-
-async function readPermissions(accessToken: string): Promise<string> {
-  try {
-    const response = await fetch(GARMIN_PERMISSIONS_URL, {
-      headers: { Authorization: `Bearer ${accessToken}` },
-    });
-    if (!response.ok) return '';
-    const body: unknown = await response.json();
-    const values = Array.isArray(body)
-      ? body
-      : body && typeof body === 'object' && Array.isArray((body as { permissions?: unknown }).permissions)
-        ? (body as { permissions: unknown[] }).permissions
-        : [];
-    return values
-      .map((item) => typeof item === 'string' ? item.trim() : '')
-      .filter((item) => /^[A-Z0-9_]{1,40}$/.test(item))
-      .join(' ');
-  } catch {
-    return '';
-  }
 }

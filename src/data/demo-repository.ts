@@ -1975,8 +1975,12 @@ export class DemoRepository implements Repository {
     return;
   }
 
-  async refreshGarmin(): Promise<{ ok: true; garmin: 'off' | 'asked' | 'recent' } | { ok: false; message: string }> {
+  async refreshGarmin(): Promise<{ ok: true; garmin: 'off' | 'asked' | 'recent' } | { ok: false; message: string; code?: 'permission' | 'rate' }> {
     return { ok: true, garmin: 'off' };
+  }
+
+  async checkGarminPermissions(): Promise<{ checked: boolean; needsPermissions: boolean; missing: Array<'ACTIVITY_EXPORT' | 'HEALTH_EXPORT'> }> {
+    return { checked: false, needsPermissions: false, missing: [] };
   }
 
   async deleteAccount(): Promise<void> {

@@ -23,13 +23,14 @@ export const APPLE_HEALTH_READ_TYPES = [
   'HKQuantityTypeIdentifierDistanceSwimming',
   'HKQuantityTypeIdentifierHeartRate',
   'HKQuantityTypeIdentifierActiveEnergyBurned',
+  'HKQuantityTypeIdentifierAppleExerciseTime',
 ] as const;
 
 export const APPLE_HEALTH_SHARE =
-  'Charioteer reads steps, sleep, heart rate, resting heart rate, heart rate variability, cardio fitness, walking heart rate, heart rate recovery, workouts (type, duration, distance, energy, and average heart rate), and walking, cycling and swimming distance, plus weight, height, body fat, lean body mass, and active energy. Readings stay on your iPhone. A workout route is read only when you open that route, and the path stays on this iPhone. A short summary is sent to write your plan only if you turn the coach on. It is not used for ads. Other people cannot see this.';
+  'Charioteer reads steps, sleep, heart rate, resting heart rate, heart rate variability, cardio fitness, walking heart rate, heart rate recovery, workouts (type, duration, distance, energy, and average heart rate), and walking, cycling and swimming distance, plus weight, height, body fat, lean body mass, active energy, and exercise minutes. Readings stay on your iPhone. A workout route is read only when you open that route, and the path stays on this iPhone. A short summary is sent to write your plan only if you turn the coach on. It is not used for ads. Other people cannot see this.';
 
 export const APPLE_HEALTH_INTRO =
-  'Connect Apple Health to see your steps, sleep, heart rate, cardio fitness, workouts, walking, cycling and swimming distance, weight, and body readings here, and to save the food and water you log. Charioteer reads those on your iPhone and keeps a short summary. It writes only the meals and water you save: energy, protein, carbohydrate, sugar, fibre, fat, sodium and water. It does not write steps, sleep, heart rate, or weight. It does not use readings for ads. Other people never see them. You can disconnect any time in Settings > Health > Data Access & Devices.';
+  'Connect Apple Health to see your steps, sleep, heart rate, cardio fitness, workouts, exercise minutes, walking, cycling and swimming distance, weight, and body readings here, and to save the food and water you log. Charioteer reads those on your iPhone and keeps a short summary. It writes only the meals and water you save: energy, protein, carbohydrate, sugar, fibre, fat, sodium and water. It does not write steps, sleep, heart rate, or weight. It does not use readings for ads. Other people never see them. You can disconnect any time in Settings > Health > Data Access & Devices.';
 
 export const APPLE_HEALTH_WEB = 'Apple Health connects in the iPhone app. Here you can log readings yourself.';
 

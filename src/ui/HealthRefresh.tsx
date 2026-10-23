@@ -11,6 +11,8 @@ import {
   refreshButtonLabel,
   refreshCooling,
 } from '@/domain/healthRefresh';
+import { noteGarminRefreshRefused } from '@/domain/garminPermission';
+import { GarminPermissionNotice } from '@/ui/GarminPermissionNotice';
 import { refreshAppleHealth } from '@/health/catchUp';
 import { reloadHealthSources } from '@/health/useHealthSources';
 import { loadLastSynced } from '@/health/syncedAt';
@@ -26,6 +28,7 @@ export function useManualHealthRefresh(garminConnected: boolean) {
   const [updated, setUpdated] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [garminNote, setGarminNote] = useState<string | null>(null);
+  const [permission, setPermission] = useState(false);
   const [updatedAt, setUpdatedAt] = useState<string | null>(null);
 
   useEffect(() => {
@@ -41,6 +44,7 @@ export function useManualHealthRefresh(garminConnected: boolean) {
     setUpdated(false);
     setError(null);
     setGarminNote(null);
+    setPermission(false);
     let failed = false;
     try {
       if (snap.profile?.consentHealth) {
@@ -56,8 +60,14 @@ export function useManualHealthRefresh(garminConnected: boolean) {
         const garmin = await repo.refreshGarmin();
         if (!garmin.ok) {
           failed = true;
-          setError(garmin.message);
+          if (garmin.code === 'permission') {
+            setPermission(true);
+            noteGarminRefreshRefused(true);
+          } else {
+            setError(garmin.message);
+          }
         } else if (garmin.garmin === 'asked') {
+          noteGarminRefreshRefused(false);
           setGarminNote(GARMIN_ASKED);
         } else if (garmin.garmin === 'recent') {
           setGarminNote(GARMIN_RECENT);
@@ -79,6 +89,7 @@ export function useManualHealthRefresh(garminConnected: boolean) {
     refreshing,
     updated,
     error,
+    permission,
     garminNote,
     label: refreshButtonLabel(garminConnected),
     lastLine: lastUpdatedLine(updatedAt),
@@ -92,6 +103,7 @@ export function HealthRefreshBar({
   refreshing,
   updated,
   error,
+  permission,
   garminNote,
   onPress,
 }: {
@@ -100,6 +112,7 @@ export function HealthRefreshBar({
   refreshing: boolean;
   updated: boolean;
   error: string | null;
+  permission?: boolean;
   garminNote: string | null;
   onPress: () => void;
 }) {
@@ -120,6 +133,7 @@ export function HealthRefreshBar({
         </View>
       ) : null}
       {garminNote ? <T variant="muted">{garminNote}</T> : null}
+      {permission ? <GarminPermissionNotice force /> : null}
       <ErrorNote>{error}</ErrorNote>
     </View>
   );

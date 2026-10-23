@@ -3,6 +3,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSnapshot } from '@/data';
 import { useHealthSources } from '@/health/useHealthSources';
 import { HealthRefreshBar, useManualHealthRefresh } from '@/ui/HealthRefresh';
+import { GarminPermissionNotice } from '@/ui/GarminPermissionNotice';
 import { WorkoutCalendar } from '@/ui/WorkoutCalendar';
 import { WorkoutList } from '@/ui/WorkoutList';
 import { Button, Screen } from '@/ui/ui';
@@ -14,7 +15,7 @@ function one(value: string | string[] | undefined): string {
 export default function WorkoutsScreen() {
   const router = useRouter();
   const snap = useSnapshot();
-  const { workouts, readings } = useHealthSources();
+  const { workouts, readings, activity } = useHealthSources();
   const manual = useManualHealthRefresh(readings.connected);
   const params = useLocalSearchParams<{ planDay?: string; planNonce?: string; planOutdoor?: string }>();
   if (!snap.profile) return null;
@@ -37,11 +38,20 @@ export default function WorkoutsScreen() {
         refreshing={manual.refreshing}
         updated={manual.updated}
         error={manual.error}
+        permission={manual.permission}
         garminNote={manual.garminNote}
         onPress={() => void manual.run()}
       />
+      <GarminPermissionNotice />
       <Button label="Back" tone="quiet" onPress={() => router.back()} />
-      <WorkoutList workouts={workouts} age={snap.nutrition.goalAge} />
+      <WorkoutList
+        workouts={workouts}
+        age={snap.nutrition.goalAge}
+        consent={snap.profile.consentHealth}
+        exerciseMinutes={activity.exerciseMinutes}
+        activeKcal={activity.activeKcal}
+        dailies={readings.dailies}
+      />
       <WorkoutCalendar
         planDay={planDay}
         planNonce={planNonce}
