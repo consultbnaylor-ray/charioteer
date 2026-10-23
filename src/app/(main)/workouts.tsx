@@ -1,8 +1,11 @@
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
+import { useCallback, useState } from 'react';
 
 import { useSnapshot } from '@/data';
 import { appleDayValues } from '@/domain/dailyActivity';
 import { garminStoredMark } from '@/domain/healthRefresh';
+import { exercisePermissionMissing, type HealthVisibilityReport } from '@/domain/healthVisibility';
+import { readHealthVisibility } from '@/health/visibility';
 import { useHealthSources } from '@/health/useHealthSources';
 import { HealthRefreshBar, useManualHealthRefresh } from '@/ui/HealthRefresh';
 import { GarminPermissionNotice } from '@/ui/GarminPermissionNotice';
@@ -20,6 +23,20 @@ export default function WorkoutsScreen() {
   const { workouts, readings, activity } = useHealthSources();
   const manual = useManualHealthRefresh(readings.connected);
   const params = useLocalSearchParams<{ planDay?: string; planNonce?: string; planOutdoor?: string }>();
+  const [visibility, setVisibility] = useState<HealthVisibilityReport | null>(null);
+  useFocusEffect(useCallback(() => {
+    let live = true;
+    void readHealthVisibility()
+      .then((report) => {
+        if (live) setVisibility(report);
+      })
+      .catch(() => {
+        if (live) setVisibility(null);
+      });
+    return () => {
+      live = false;
+    };
+  }, []));
   if (!snap.profile) return null;
   const planDayRaw = one(params.planDay);
   const planDay = /^\d{4}-\d{2}-\d{2}$/.test(planDayRaw) ? planDayRaw : null;
@@ -61,6 +78,7 @@ export default function WorkoutsScreen() {
         respiration={readings.respiration}
         pulseOx={readings.pulseOx}
         hrv={readings.hrv}
+        exercisePermissionMissing={exercisePermissionMissing(visibility)}
       />
       <WorkoutCalendar
         planDay={planDay}

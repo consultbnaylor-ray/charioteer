@@ -30,7 +30,13 @@ export const HEART_DIFFICULTY_NAME = 'Average heart rate';
 export const HEART_DIFFICULTY_UNIT = '% of max';
 
 export const DIFFICULTY_NOTE =
-  'Workout effort score in effort when Apple Health has one. Otherwise average heart rate as % of max (220 − age).';
+  "Apple's workout effort score when Health has one; otherwise average heart rate as a % of your maximum (220 minus your age).";
+
+/** Faint mark on the difficulty axis when today has no recorded workout. */
+export const NO_WORKOUT_MARKER = 'No workout';
+
+/** Above the workout history list. Names only what the detail screen shows. */
+export const WORKOUT_OPEN_HINT = 'Tap a workout to see heart rate, calories and more.';
 
 /** Shown on the difficulty chart when some bars are effort and some are heart rate. */
 export const DIFFICULTY_MIXED_NOTE =
@@ -69,7 +75,12 @@ export function workoutHistory(workouts: readonly DeviceWorkout[], day: string |
 
 /** Name or type, UK date, and duration with its name and unit. */
 export function workoutHistoryLine(workout: DeviceWorkout): string {
-  return `${workout.label} · ${formatUkCompactDay(londonDay(workout.startedAt))} · Duration ${workout.durationMinutes} min`;
+  return `${workout.label} · ${workoutHistoryDetail(workout)}`;
+}
+
+/** Date and duration, kept off the type line so the row can stack. */
+export function workoutHistoryDetail(workout: DeviceWorkout): string {
+  return `${formatUkCompactDay(londonDay(workout.startedAt))} · Duration ${workout.durationMinutes} min`;
 }
 
 /** `Showing 21 Oct · Clear` */
@@ -160,7 +171,10 @@ function durationBarLabel(day: string, totalMinutes: number, segments: readonly 
   return parts.join(' · ');
 }
 
-/** One stacked bar per day. Days with no workout stay in the row so a tap can select them. */
+/**
+ * One stacked bar per day. Days with no workout stay in the row so a tap can select them.
+ * A workout belongs to the London calendar day it started, which begins at London midnight.
+ */
 export function durationBars(workouts: readonly DeviceWorkout[], endDay: string, span: WorkoutChartSpan): DurationBar[] {
   const days = chartDays(endDay, span);
   const byDay = new Map<string, Map<string, number>>(days.map((day) => [day, new Map()]));
@@ -238,6 +252,26 @@ export function difficultyFor(workout: DeviceWorkout, age: number | null | undef
     fill: Math.min(1, percent / 100),
     caption: `${workout.label} · ${clock} · ${HEART_DIFFICULTY_NAME} ${percent}${HEART_DIFFICULTY_UNIT}`,
   };
+}
+
+export type DifficultyEmptySlot = {
+  id: string;
+  day: string;
+  empty: true;
+  marker: typeof NO_WORKOUT_MARKER;
+};
+
+/**
+ * The marks, oldest first, plus an empty slot on `endDay` when that day has no workout.
+ * The axis then reaches today instead of stopping on the last scored session.
+ */
+export function difficultySlots(
+  marks: readonly DifficultyMark[],
+  endDay: string,
+  workoutsOnEndDay: number,
+): (DifficultyMark | DifficultyEmptySlot)[] {
+  if (marks.some((mark) => mark.day === endDay) || workoutsOnEndDay > 0) return [...marks];
+  return [...marks, { id: `empty:${endDay}`, day: endDay, empty: true, marker: NO_WORKOUT_MARKER }];
 }
 
 /** One mark per workout, oldest on the left. A workout with neither score is left out. */

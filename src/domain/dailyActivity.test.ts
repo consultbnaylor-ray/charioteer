@@ -6,12 +6,16 @@ import { HEALTH_KINDS } from './healthInsights';
 import {
   DAILY_ACTIVITY_RINGS_HINT,
   DAILY_ACTIVITY_TAP_HINT,
+  APPLE_AND_GARMIN_SOURCE,
+  APPLE_SOURCE,
   GARMIN_CALORIE_SOURCE,
   GARMIN_EXERCISE_SOURCE,
+  GARMIN_SOURCE,
   GARMIN_VIGOROUS_MINUTE_WEIGHT,
   NO_STEPS_YET_TODAY,
   activityDayName,
   calorieSeries,
+  chartSourceCaption,
   distanceSeries,
   exerciseSeries,
   floorsSeries,
@@ -40,7 +44,7 @@ describe('daily activity', () => {
     expect(exercise.at(-1)?.day).toBe('2026-10-22');
     expect(exercise.find((point) => point.day === '2026-10-22')).toMatchObject({ value: 34, source: 'apple' });
     expect(exercise.find((point) => point.day === '2026-10-21')).toMatchObject({ value: 40, source: 'garmin' });
-    expect(exercise.find((point) => point.day === '2026-10-22')?.label).toBe('Exercise minutes, Thu 22 Oct: 34 min');
+    expect(exercise.find((point) => point.day === '2026-10-22')?.label).toBe('Exercise minutes, Thu 22 Oct: 34 min (Apple Health)');
     expect(exercise.find((point) => point.day === '2026-10-21')?.label).toBe(`Exercise minutes, Wed 21 Oct: 40 min ${GARMIN_EXERCISE_SOURCE}`);
     expect(activityDayName('2026-10-22')).toBe('Thu 22 Oct');
     expect(mostInOneDay(exercise, 'min')).toBe('Most in one day 40 min');
@@ -60,7 +64,7 @@ describe('daily activity', () => {
       source: 'garmin',
       label: `Active calories, Wed 21 Oct: 300 kcal ${GARMIN_CALORIE_SOURCE}`,
     });
-    expect(calories.find((point) => point.day === '2026-10-22')?.label).toBe('Active calories, Thu 22 Oct: 612 kcal');
+    expect(calories.find((point) => point.day === '2026-10-22')?.label).toBe('Active calories, Thu 22 Oct: 612 kcal (Apple Health)');
     const empty = calorieSeries(end, 7, [], []);
     expect(empty.every((point) => point.value === 0 && point.source == null)).toBe(true);
     expect(mostInOneDay(empty, 'kcal')).toBeNull();
@@ -254,6 +258,78 @@ describe('daily activity', () => {
     expect(stepsRead).toContain('dailyStatisticsEnd(end)');
     expect(stepsRead).toContain("['cumulativeSum'],\n      dailyStatisticsAnchor(end),");
     expect(readFileSync('src/health/dailyActivity.ios.ts', 'utf8')).toContain('dailyStatisticsAnchor(end)');
-    expect(readFileSync('app.json', 'utf8')).toContain('"buildNumber": "53"');
+    expect(readFileSync('app.json', 'utf8')).toContain('"buildNumber": "54"');
+  });
+
+  it('captions each chart from the days that have a number', () => {
+    const apple = [{ day: '2026-10-22', value: 80 }];
+    const garmin = {
+      calendarDate: '2026-10-21',
+      restingHeartRateBpm: 55,
+      averageHeartRateBpm: null,
+      moderateMinutes: 10,
+      vigorousMinutes: 5,
+      activeKilocalories: 200,
+      steps: 4000,
+      distanceMetres: 3000,
+      floorsClimbed: 4,
+    };
+    const zero = {
+      calendarDate: '2026-10-23',
+      restingHeartRateBpm: null,
+      averageHeartRateBpm: null,
+      moderateMinutes: 0,
+      vigorousMinutes: 0,
+      activeKilocalories: 0,
+      steps: 0,
+      distanceMetres: 0,
+      floorsClimbed: 0,
+    };
+    const today = '2026-10-23';
+
+    expect(chartSourceCaption(exerciseSeries(end, 7, apple, []), { vigorous: true })).toBe(APPLE_SOURCE);
+    expect(chartSourceCaption(exerciseSeries(end, 7, [], [garmin]), { vigorous: true })).toBe(GARMIN_EXERCISE_SOURCE);
+    expect(chartSourceCaption(exerciseSeries(end, 7, apple, [garmin]), { vigorous: true })).toBe('(Apple Health and Garmin, vigorous counted twice)');
+    const exerciseZero = exerciseSeries(today, 7, [{ day: '2026-10-22', value: 60 }], [zero]);
+    expect(exerciseZero.find((point) => point.day === today)?.source).toBeNull();
+    expect(chartSourceCaption(exerciseZero, { vigorous: true })).toBe(APPLE_SOURCE);
+
+    expect(chartSourceCaption(calorieSeries(end, 7, apple, []))).toBe(APPLE_SOURCE);
+    expect(chartSourceCaption(calorieSeries(end, 7, [], [garmin]))).toBe(GARMIN_SOURCE);
+    expect(chartSourceCaption(calorieSeries(end, 7, apple, [garmin]))).toBe(APPLE_AND_GARMIN_SOURCE);
+    const calorieZero = calorieSeries(today, 7, [{ day: '2026-10-22', value: 400 }], [zero]);
+    expect(chartSourceCaption(calorieZero)).toBe(APPLE_SOURCE);
+
+    expect(chartSourceCaption(stepsSeries(end, 7, apple, []))).toBe(APPLE_SOURCE);
+    expect(chartSourceCaption(stepsSeries(end, 7, [], [garmin]))).toBe(GARMIN_SOURCE);
+    expect(chartSourceCaption(stepsSeries(end, 7, apple, [garmin]))).toBe(APPLE_AND_GARMIN_SOURCE);
+    expect(chartSourceCaption(stepsSeries(today, 7, [{ day: '2026-10-22', value: 1000 }], [zero]))).toBe(APPLE_SOURCE);
+
+    expect(chartSourceCaption(restingSeries(end, 7, apple, []))).toBe(APPLE_SOURCE);
+    expect(chartSourceCaption(restingSeries(end, 7, [], [garmin]))).toBe(GARMIN_SOURCE);
+    expect(chartSourceCaption(restingSeries(end, 7, apple, [garmin]))).toBe(APPLE_AND_GARMIN_SOURCE);
+
+    expect(chartSourceCaption(distanceSeries(end, 7, [], apple))).toBe(APPLE_SOURCE);
+    expect(chartSourceCaption(distanceSeries(end, 7, [garmin]))).toBe(GARMIN_SOURCE);
+    expect(chartSourceCaption(distanceSeries(end, 7, [garmin], apple))).toBe(APPLE_AND_GARMIN_SOURCE);
+
+    expect(chartSourceCaption(floorsSeries(end, 7, [], apple))).toBe(APPLE_SOURCE);
+    expect(chartSourceCaption(floorsSeries(end, 7, [garmin]))).toBe(GARMIN_SOURCE);
+    expect(chartSourceCaption(floorsSeries(end, 7, [garmin], apple))).toBe(APPLE_AND_GARMIN_SOURCE);
+
+    const charts = readFileSync('src/ui/DailyActivity.tsx', 'utf8');
+    expect(charts).toContain('chartSourceCaption(exercise, { vigorous: true })');
+    expect(charts).toContain('chartSourceCaption(calories)');
+    expect(charts).toContain('chartSourceCaption(stepPoints)');
+    expect(charts).toContain('chartSourceCaption(distance)');
+    expect(charts).toContain('chartSourceCaption(floors)');
+    expect(charts).toContain('chartSourceCaption(resting)');
+    expect(charts).not.toContain('seriesUsesGarmin');
+    expect(charts).toContain('EXERCISE_PERMISSION_HINT');
+    expect(charts).toContain('openAppSettings()');
+    expect(readFileSync('src/app/(main)/workouts.tsx', 'utf8')).toContain('exercisePermissionMissing(visibility)');
+    expect(readFileSync('src/app/(main)/health.tsx', 'utf8')).toContain('<MovementCharts');
+    expect(readFileSync('src/app/(main)/health-plan.tsx', 'utf8')).toContain('<MovementCharts');
+    expect(readFileSync('src/app/(main)/stats.tsx', 'utf8')).toContain('<MovementCharts');
   });
 });

@@ -6,13 +6,13 @@ import {
   DAILY_ACTIVITY_RINGS_HINT,
   DAILY_ACTIVITY_TAP_HINT,
   DAILY_ACTIVITY_TITLE,
-  GARMIN_CALORIE_SOURCE,
-  GARMIN_EXERCISE_SOURCE,
+  EXERCISE_PERMISSION_BUTTON,
+  EXERCISE_PERMISSION_HINT,
   GARMIN_LINE_FOLD,
-  GARMIN_SOURCE,
   NO_STEPS_YET_TODAY,
   activeCaloriesLabel,
   calorieSeries,
+  chartSourceCaption,
   distanceSeries,
   distanceText,
   exerciseMinutesLabel,
@@ -22,7 +22,6 @@ import {
   mostInOneDay,
   restingSeries,
   seriesHasValue,
-  seriesUsesGarmin,
   stepsSeries,
   type AppleDayValue,
   type DailyActivityPoint,
@@ -31,8 +30,9 @@ import type { GarminDaily, GarminHrvSummary, GarminPulseOx, GarminRespiration, G
 import { weekdayShort } from '@/domain/healthInsights';
 import { CHART_DIRECTION_HINT } from '@/domain/readingChart';
 import type { WorkoutChartSpan } from '@/domain/workoutDay';
+import { openAppSettings } from '@/health/link';
 import { useAppTheme } from '@/ui/theme';
-import { T } from '@/ui/ui';
+import { Button, T } from '@/ui/ui';
 
 const BAR_HEIGHT = 88;
 
@@ -49,6 +49,7 @@ export function DailyActivityCharts({
   respiration = [],
   pulseOx = [],
   hrv = [],
+  exercisePermissionMissing = false,
 }: {
   endDay: string;
   span: WorkoutChartSpan;
@@ -62,6 +63,7 @@ export function DailyActivityCharts({
   respiration?: readonly GarminRespiration[];
   pulseOx?: readonly GarminPulseOx[];
   hrv?: readonly GarminHrvSummary[];
+  exercisePermissionMissing?: boolean;
 }) {
   const [selected, setSelected] = useState<string | null>(null);
   const exercise = consent ? exerciseSeries(endDay, span, exerciseMinutes, dailies) : [];
@@ -80,16 +82,22 @@ export function DailyActivityCharts({
         span={span}
         unit="min"
         selected={selected}
-        garminNote={seriesUsesGarmin(exercise) ? GARMIN_EXERCISE_SOURCE : null}
+        garminNote={chartSourceCaption(exercise, { vigorous: true })}
         onSelect={setSelected}
       />
+      {exercisePermissionMissing ? (
+        <View style={{ gap: 8 }}>
+          <T>{EXERCISE_PERMISSION_HINT}</T>
+          <Button label={EXERCISE_PERMISSION_BUTTON} onPress={() => void openAppSettings()} />
+        </View>
+      ) : null}
       <ActivityBars
         title="Active calories"
         points={calories}
         span={span}
         unit="kcal"
         selected={selected}
-        garminNote={seriesUsesGarmin(calories) ? GARMIN_CALORIE_SOURCE : null}
+        garminNote={chartSourceCaption(calories)}
         onSelect={setSelected}
       />
       <T variant="muted">{DAILY_ACTIVITY_TAP_HINT}</T>
@@ -165,7 +173,7 @@ export function MovementCharts({
         span={span}
         unit="steps"
         selected={selected}
-        garminNote={stepPoints.at(-1)?.label === NO_STEPS_YET_TODAY ? NO_STEPS_YET_TODAY : null}
+        garminNote={[chartSourceCaption(stepPoints), stepPoints.at(-1)?.label === NO_STEPS_YET_TODAY ? NO_STEPS_YET_TODAY : null].filter((line): line is string => line != null).join('\n') || null}
         onSelect={setSelected}
       />
       {seriesHasValue(distance) ? (
@@ -177,7 +185,7 @@ export function MovementCharts({
           selected={selected}
           scale={mostDistance(distance)}
           format={(point) => distanceText(point.value)}
-          garminNote={GARMIN_SOURCE}
+          garminNote={chartSourceCaption(distance)}
           onSelect={setSelected}
         />
       ) : null}
@@ -188,7 +196,7 @@ export function MovementCharts({
           span={span}
           unit="floors"
           selected={selected}
-          garminNote={GARMIN_SOURCE}
+          garminNote={chartSourceCaption(floors)}
           onSelect={setSelected}
         />
       ) : null}
@@ -199,7 +207,7 @@ export function MovementCharts({
           span={span}
           unit="bpm"
           selected={selected}
-          garminNote={null}
+          garminNote={chartSourceCaption(resting)}
           onSelect={setSelected}
         />
       ) : null}

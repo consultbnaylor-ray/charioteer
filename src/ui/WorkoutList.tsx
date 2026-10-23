@@ -1,5 +1,5 @@
 import { useRouter } from 'expo-router';
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { Pressable, View } from 'react-native';
 
 import type { AppleDayValue } from '@/domain/dailyActivity';
@@ -9,15 +9,18 @@ import { CHART_DIRECTION_HINT } from '@/domain/readingChart';
 import {
   DIFFICULTY_DAY_LINK,
   DIFFICULTY_NOTE,
+  NO_WORKOUT_MARKER,
   ROUTE_MARK,
   WORKOUT_CHART_SPANS,
   WORKOUT_LIST_FOLD,
+  WORKOUT_OPEN_HINT,
   chartDayLabel,
   chartLabelIndexes,
   chartLabelStride,
   difficultyAxis,
   difficultyDetailLines,
   difficultyMarks,
+  difficultySlots,
   durationBars,
   durationScaleLabel,
   durationTypeOrder,
@@ -28,6 +31,7 @@ import {
   workoutDaySummary,
   workoutHistory,
   workoutHistoryChip,
+  workoutHistoryDetail,
   workoutHistoryLine,
   workoutRowLine,
   workoutWeek,
@@ -36,6 +40,7 @@ import {
   WORKOUT_HISTORY_FOLD,
   WORKOUT_HISTORY_HINT,
   WORKOUT_HISTORY_SHOW_ALL,
+  type DifficultyEmptySlot,
   type DifficultyMark,
   type DurationBar,
   type WorkoutChartSpan,
@@ -43,7 +48,7 @@ import {
 import { routeSummaryLine, type DeviceWorkout } from '@/domain/workoutRoute';
 import { workoutTypeColor } from '@/domain/workoutTypeColor';
 import { DailyActivityCharts } from '@/ui/DailyActivity';
-import { useAppTheme } from '@/ui/theme';
+import { radius, useAppTheme } from '@/ui/theme';
 import { Card, Choice, T } from '@/ui/ui';
 
 const BAR_HEIGHT = 88;
@@ -72,7 +77,6 @@ function dayNumber(day: string): string {
 }
 
 function WorkoutRow({ workout, routeDetail = false }: { workout: DeviceWorkout; routeDetail?: boolean }) {
-  const theme = useAppTheme();
   const router = useRouter();
   const line = workoutRowLine(workout);
   const stats = routeDetail ? routeSummaryLine(workout) : null;
@@ -84,15 +88,58 @@ function WorkoutRow({ workout, routeDetail = false }: { workout: DeviceWorkout; 
     );
   }
   return (
+    <TapRow
+      label={`View route, ${line}`}
+      title={workout.label}
+      detail={workoutHistoryDetail(workout)}
+      onPress={() => router.push(`/workout/${encodeURIComponent(workout.id)}` as never)}
+      extra={stats ? <T>{stats}</T> : routeDetail ? <T style={{ textDecorationLine: 'underline' }}>View route</T> : null}
+    />
+  );
+}
+
+function TapRow({
+  label,
+  title,
+  detail,
+  onPress,
+  expanded,
+  extra,
+}: {
+  label: string;
+  title: string;
+  detail?: string;
+  onPress: () => void;
+  expanded?: boolean;
+  extra?: ReactNode;
+}) {
+  const theme = useAppTheme();
+  return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={`View route, ${line}`}
-      onPress={() => router.push(`/workout/${encodeURIComponent(workout.id)}` as never)}
-      style={{ minHeight: 44, justifyContent: 'center' }}
+      accessibilityLabel={label}
+      accessibilityState={expanded == null ? undefined : { expanded }}
+      onPress={onPress}
+      style={({ pressed }) => ({
+        minHeight: 44,
+        width: '100%',
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 12,
+        paddingVertical: 10,
+        paddingHorizontal: 12,
+        borderWidth: 1,
+        borderColor: theme.colors.line,
+        borderRadius: radius.md,
+        backgroundColor: pressed ? theme.colors.emphasisSoft : theme.colors.surface,
+      })}
     >
-      <T style={{ fontFamily: theme.font.body }}>{`${line} ${ROUTE_MARK}`}</T>
-      {stats ? <T>{stats}</T> : null}
-      {routeDetail ? <T style={{ textDecorationLine: 'underline' }}>View route</T> : null}
+      <View style={{ flex: 1, gap: 2 }}>
+        <T style={{ fontFamily: theme.font.bodyStrong }}>{title}</T>
+        {detail ? <T variant="muted">{detail}</T> : null}
+        {extra}
+      </View>
+      <T style={{ fontSize: 22, lineHeight: 26 }}>{ROUTE_MARK}</T>
     </Pressable>
   );
 }
@@ -169,14 +216,18 @@ function DurationChart({
   );
 }
 
+function isEmptySlot(slot: DifficultyMark | DifficultyEmptySlot): slot is DifficultyEmptySlot {
+  return 'empty' in slot && slot.empty;
+}
+
 function DifficultyChart({
-  marks,
+  slots,
   workouts,
   age,
   day,
   onSelect,
 }: {
-  marks: readonly DifficultyMark[];
+  slots: readonly (DifficultyMark | DifficultyEmptySlot)[];
   workouts: readonly DeviceWorkout[];
   age: number | null;
   day: string;
@@ -186,7 +237,9 @@ function DifficultyChart({
   const router = useRouter();
   const [pickedId, setPickedId] = useState<string | null>(null);
   const [plotWidth, setPlotWidth] = useState(0);
+  const marks = slots.filter((slot): slot is DifficultyMark => !isEmptySlot(slot));
   const dayMarks = marks.filter((mark) => mark.day === day);
+  const dayHasWorkout = workouts.some((workout) => londonDay(workout.startedAt) === day);
   const types: string[] = [];
   for (const mark of marks) {
     if (!types.includes(mark.typeLabel)) types.push(mark.typeLabel);
@@ -194,27 +247,55 @@ function DifficultyChart({
   const axis = difficultyAxis(marks);
   const picked = marks.find((mark) => mark.id === pickedId) ?? null;
   const pickedWorkout = picked ? workouts.find((workout) => workout.id === picked.id) ?? null : null;
-  const dateIndexes = new Set(chartLabelIndexes(marks.length, chartLabelStride(marks.length, plotWidth)));
+  const dateIndexes = new Set(chartLabelIndexes(slots.length, chartLabelStride(slots.length, plotWidth)));
 
   return (
     <View style={{ gap: 8 }}>
       <T variant="label">Difficulty</T>
       <T variant="muted">{DIFFICULTY_NOTE}</T>
       {axis.mixedNote ? <T>{axis.mixedNote}</T> : null}
-      {marks.length === 0 ? <T variant="muted">No workout effort score or average heart rate for these days.</T> : (
+      {slots.length === 0 ? <T variant="muted">No workout effort score or average heart rate for these days.</T> : (
         <View style={{ gap: 8 }}>
           <T variant="label">{axis.heading}</T>
-          <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 6 }}>
-            <View style={{ width: AXIS_WIDTH, height: BAR_HEIGHT, justifyContent: 'space-between' }}>
+          <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 6, overflow: 'visible' }}>
+            <View style={{ width: AXIS_WIDTH, flexShrink: 0, height: BAR_HEIGHT, justifyContent: 'space-between', paddingRight: 8 }}>
               {axis.ticks.map((tick) => (
-                <T key={tick} style={{ fontSize: 10, lineHeight: 12, textAlign: 'right' }}>{tick}</T>
+                <T key={tick} numberOfLines={1} style={{ fontSize: 10, lineHeight: 14, textAlign: 'right' }}>{tick}</T>
               ))}
             </View>
             <View
               style={{ flex: 1, flexDirection: 'row', alignItems: 'flex-end', gap: 3, minHeight: BAR_HEIGHT }}
               onLayout={(event) => setPlotWidth(event.nativeEvent.layout.width)}
             >
-              {marks.map((mark) => {
+              {slots.map((slot) => {
+                if (isEmptySlot(slot)) {
+                  const chosen = slot.day === day;
+                  return (
+                    <Pressable
+                      key={slot.id}
+                      accessibilityRole="button"
+                      accessibilityLabel={`${chartDayLabel(slot.day)}. ${NO_WORKOUT_MARKER}. Select this day.`}
+                      accessibilityState={{ selected: chosen }}
+                      onPress={() => onSelect(slot.day)}
+                      style={{ flex: 1, minHeight: 44, alignItems: 'center', justifyContent: 'flex-end' }}
+                    >
+                      <T style={{ fontSize: 10, lineHeight: 12, textAlign: 'center', color: theme.colors.muted }}>{NO_WORKOUT_MARKER}</T>
+                      <View
+                        style={{
+                          height: BAR_HEIGHT,
+                          alignSelf: 'stretch',
+                          justifyContent: 'flex-end',
+                          borderWidth: chosen ? 2 : 0,
+                          borderColor: theme.colors.ink,
+                          backgroundColor: chosen ? theme.colors.emphasisSoft : 'transparent',
+                        }}
+                      >
+                        <View style={{ height: 2, backgroundColor: theme.colors.line }} />
+                      </View>
+                    </Pressable>
+                  );
+                }
+                const mark = slot;
                 const chosen = mark.id === picked?.id;
                 return (
                   <Pressable
@@ -251,15 +332,17 @@ function DifficultyChart({
             </View>
           </View>
           <View style={{ flexDirection: 'row', gap: 6 }}>
-            <View style={{ width: AXIS_WIDTH }} />
+            <View style={{ width: AXIS_WIDTH, flexShrink: 0 }} />
             <View style={{ flex: 1, flexDirection: 'row', gap: 3 }}>
-              {marks.map((mark, index) => (
-                <View key={mark.id} style={{ flex: 1, minWidth: 0, minHeight: 14, alignItems: 'center', overflow: 'visible' }}>
+              {slots.map((slot, index) => {
+                return (
+                <View key={slot.id} style={{ flex: 1, minWidth: 0, minHeight: 14, alignItems: 'center', overflow: 'visible' }}>
                   {dateIndexes.has(index) ? (
-                    <T style={{ fontSize: 10, lineHeight: 12, textAlign: 'center' }}>{chartDayLabel(mark.day)}</T>
+                    <T style={{ fontSize: 10, lineHeight: 12, textAlign: 'center' }}>{chartDayLabel(slot.day)}</T>
                   ) : null}
                 </View>
-              ))}
+                );
+              })}
             </View>
           </View>
           <SeriesLegend labels={types} />
@@ -288,7 +371,7 @@ function DifficultyChart({
             </View>
           ) : null}
           <T variant="label">{chartDayLabel(day)}</T>
-          {dayMarks.length === 0 ? <T>No difficulty reading on this day.</T> : dayMarks.map((mark) => <T key={mark.id}>{mark.caption}</T>)}
+          {dayMarks.length === 0 ? <T>{dayHasWorkout ? 'No difficulty reading on this day.' : NO_WORKOUT_MARKER}</T> : dayMarks.map((mark) => <T key={mark.id}>{mark.caption}</T>)}
         </View>
       )}
       <T variant="muted" style={{ textAlign: 'center' }}>{CHART_DIRECTION_HINT}</T>
@@ -327,31 +410,26 @@ function WorkoutHistory({
           <T>{workoutHistoryChip(historyDay)}</T>
         </Pressable>
       ) : null}
-      {rows.length === 0 ? <T>{historyDay ? 'No workouts on this day.' : WORKOUT_HISTORY_EMPTY}</T> : null}
+      {rows.length === 0 ? <T>{historyDay ? 'No workouts on this day.' : WORKOUT_HISTORY_EMPTY}</T> : <T variant="muted">{WORKOUT_OPEN_HINT}</T>}
       {shown.map((workout) => {
         const line = workoutHistoryLine(workout);
         return (
-          <Pressable
+          <TapRow
             key={workout.id}
-            accessibilityRole="button"
-            accessibilityLabel={`${line}. Open workout.`}
+            label={`${line}. Open workout.`}
+            title={workout.label}
+            detail={workoutHistoryDetail(workout)}
             onPress={() => router.push(`/workout/${encodeURIComponent(workout.id)}` as never)}
-            style={{ minHeight: 44, justifyContent: 'center' }}
-          >
-            <T>{`${line} ${ROUTE_MARK}`}</T>
-          </Pressable>
+          />
         );
       })}
       {hidden > 0 ? (
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={open ? 'Hide the rest' : WORKOUT_HISTORY_SHOW_ALL}
-          accessibilityState={{ expanded: open }}
+        <TapRow
+          label={open ? 'Hide the rest' : WORKOUT_HISTORY_SHOW_ALL}
+          title={open ? 'Hide the rest' : WORKOUT_HISTORY_SHOW_ALL}
+          expanded={open}
           onPress={onToggle}
-          style={{ minHeight: 44, justifyContent: 'center' }}
-        >
-          <T>{open ? 'Hide the rest' : WORKOUT_HISTORY_SHOW_ALL}</T>
-        </Pressable>
+        />
       ) : null}
     </View>
   );
@@ -371,6 +449,7 @@ export function WorkoutList({
   respiration = [],
   pulseOx = [],
   hrv = [],
+  exercisePermissionMissing = false,
 }: {
   workouts: readonly DeviceWorkout[];
   age: number | null;
@@ -384,6 +463,7 @@ export function WorkoutList({
   respiration?: readonly GarminRespiration[];
   pulseOx?: readonly GarminPulseOx[];
   hrv?: readonly GarminHrvSummary[];
+  exercisePermissionMissing?: boolean;
 }) {
   const theme = useAppTheme();
   const today = londonDay(new Date());
@@ -398,6 +478,7 @@ export function WorkoutList({
   const dots = workoutActivityDays(workouts);
   const bars = durationBars(workouts, today, span);
   const marks = difficultyMarks(workouts, today, span, age);
+  const slots = difficultySlots(marks, today, workoutsOnDay(workouts, today).length);
 
   function choose(next: string) {
     setDay(next);
@@ -475,15 +556,12 @@ export function WorkoutList({
       {rows.length > 0 ? <T>{workoutDaySummary(rows)}</T> : <T>No workouts on this day.</T>}
       {shownRows.map((workout) => <WorkoutRow key={workout.id} workout={workout} />)}
       {hiddenRows > 0 ? (
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={rowsOpen ? 'Hide the rest' : `Show ${hiddenRows} more`}
-          accessibilityState={{ expanded: rowsOpen }}
+        <TapRow
+          label={rowsOpen ? 'Hide the rest' : `Show ${hiddenRows} more`}
+          title={rowsOpen ? 'Hide the rest' : `Show ${hiddenRows} more`}
+          expanded={rowsOpen}
           onPress={() => setRowsOpen((value) => !value)}
-          style={{ minHeight: 44, justifyContent: 'center' }}
-        >
-          <T>{rowsOpen ? 'Hide the rest' : `Show ${hiddenRows} more`}</T>
-        </Pressable>
+        />
       ) : null}
       <View accessibilityRole="radiogroup" accessibilityLabel="Chart days" style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
         {WORKOUT_CHART_SPANS.map((value) => (
@@ -504,9 +582,10 @@ export function WorkoutList({
         respiration={respiration}
         pulseOx={pulseOx}
         hrv={hrv}
+        exercisePermissionMissing={exercisePermissionMissing}
       />
       <WorkoutHistory workouts={workouts} historyDay={historyDay} open={historyOpen} onToggle={() => setHistoryOpen((value) => !value)} onClear={clearHistory} />
-      <DifficultyChart marks={marks} workouts={workouts} age={age} day={day} onSelect={choose} />
+      <DifficultyChart slots={slots} workouts={workouts} age={age} day={day} onSelect={choose} />
     </Card>
   );
 }

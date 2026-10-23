@@ -18,6 +18,7 @@ import {
   HEALTH_SAMPLE_DAYS,
   HEALTH_VISIBILITY_NOTE,
   HEALTH_VISIBILITY_TITLE,
+  exercisePermissionMissing,
   unaskedHealthTypes,
 } from '@/domain/healthVisibility';
 import { buildHealthStatBoard } from '@/domain/healthStatTiles';
@@ -211,5 +212,23 @@ describe('what Charioteer can see', () => {
     expect(screen).toContain('onCheck={loadVisibility}');
     expect(screen).toContain('catchUpAppleHealthReads');
     expect(layout).toContain('catchUpAppleHealthReads');
+  });
+
+  it('treats exercise minutes as missing only when that read was never asked or was refused', () => {
+    const row = (asked: 'yes' | 'no', access?: 'denied') => ({
+      kind: 'ready' as const,
+      rows: [{
+        type: 'HKQuantityTypeIdentifierAppleExerciseTime',
+        title: 'Exercise minutes',
+        asked,
+        days: 0,
+        access,
+      }],
+    });
+    expect(exercisePermissionMissing(row('no'))).toBe(true);
+    expect(exercisePermissionMissing(row('yes', 'denied'))).toBe(true);
+    expect(exercisePermissionMissing(row('yes'))).toBe(false);
+    expect(exercisePermissionMissing({ kind: 'web' })).toBe(false);
+    expect(exercisePermissionMissing(null)).toBe(false);
   });
 });

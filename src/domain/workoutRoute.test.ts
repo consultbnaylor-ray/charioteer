@@ -13,7 +13,7 @@ import { chatPreview, messageFromRealtime } from '@/domain/liveChat';
 import { defaultNutritionSettings } from '@/domain/nutrition';
 import { defaultProfileSharing, parsePublicProfile, projectPublicProfile, type ProfileSharing, type ShareSource } from '@/domain/profileSharing';
 import { omitSharedLocation, scrubSharedText } from '@/domain/sharedPayload';
-import { latestVo2Day, VO2_ESTIMATE_NOTE, VO2_GARMIN_NOTE, VO2_PLAN_LABEL, VO2_STALE_NUDGE, vo2MeasuredLine, vo2Note, vo2ReadingIsStale } from '@/domain/vo2Estimate';
+import { latestVo2Day, latestVo2Reading, VO2_ESTIMATE_NOTE, VO2_GARMIN_NOTE, VO2_PLAN_LABEL, VO2_STALE_NUDGE, vo2MeasuredLine, vo2Note, vo2ReadingIsStale } from '@/domain/vo2Estimate';
 import { messageAlert } from '../../supabase/functions/_shared/messagePush';
 import {
   DEV_FIXTURE_ROUTE_ID,
@@ -58,10 +58,10 @@ describe('VO2 estimate note', () => {
   it('names the last reading and nudges only after three days', () => {
     expect(VO2_ESTIMATE_NOTE).toContain('outdoor walk, run or hike');
     expect(VO2_ESTIMATE_NOTE).toContain('No new reading means no qualifying workout yet.');
-    expect(vo2MeasuredLine('2026-10-18')).toBe('Last measured 18 Oct');
+    expect(vo2MeasuredLine('2026-10-18', 'apple')).toBe('Last measured 18 Oct (Apple Health)');
     expect(vo2MeasuredLine('2026-10-21', 'garmin')).toBe('Last measured 21 Oct (Garmin)');
     expect(vo2Note('apple')).toBe(VO2_ESTIMATE_NOTE);
-    expect(VO2_GARMIN_NOTE).toContain('at least 10 minutes');
+    expect(VO2_GARMIN_NOTE).toBe('Your Garmin estimates VO2 max after an outdoor run recorded with GPS, with your heart rate above about 70% of your maximum for at least 10 minutes. Set your age, sex and weight in Garmin Connect for better accuracy. No new reading means no qualifying run yet.');
     expect(vo2Note(null)).toContain('Garmin');
     expect(vo2Note('garmin')).toBe(VO2_GARMIN_NOTE);
     expect(vo2ReadingIsStale('2026-10-17', '2026-10-20')).toBe(false);
@@ -73,6 +73,31 @@ describe('VO2 estimate note', () => {
       { kind: 'steps', recordedOn: '2026-10-20' },
       { kind: 'vo2_max', recordedOn: '2026-10-18' },
     ])).toBe('2026-10-18');
+  });
+
+  it('uses the latest stored reading, Apple first when both fall on the same day', () => {
+    const appleOnly = [{ id: 'vo2_max-2026-10-18', kind: 'vo2_max', recordedOn: '2026-10-18' }];
+    expect(latestVo2Reading(appleOnly)).toEqual({ day: '2026-10-18', source: 'apple' });
+    expect(vo2Note(latestVo2Reading(appleOnly)?.source ?? null)).toBe(VO2_ESTIMATE_NOTE);
+    expect(vo2MeasuredLine('2026-10-18', 'apple')).toBe('Last measured 18 Oct (Apple Health)');
+
+    const garminOnly = [{ id: 'merged:vo2_max:2026-10-20', kind: 'vo2_max', recordedOn: '2026-10-20' }];
+    expect(latestVo2Reading(garminOnly)).toEqual({ day: '2026-10-20', source: 'garmin' });
+    expect(vo2Note('garmin')).toBe(VO2_GARMIN_NOTE);
+    expect(vo2MeasuredLine('2026-10-20', 'garmin')).toBe('Last measured 20 Oct (Garmin)');
+
+    expect(latestVo2Reading([
+      { id: 'vo2_max-2026-10-18', kind: 'vo2_max', recordedOn: '2026-10-18' },
+      { id: 'merged:vo2_max:2026-10-21', kind: 'vo2_max', recordedOn: '2026-10-21' },
+    ])).toEqual({ day: '2026-10-21', source: 'garmin' });
+    expect(latestVo2Reading([
+      { id: 'merged:vo2_max:2026-10-18', kind: 'vo2_max', recordedOn: '2026-10-18' },
+      { id: 'vo2_max-2026-10-22', kind: 'vo2_max', recordedOn: '2026-10-22' },
+    ])).toEqual({ day: '2026-10-22', source: 'apple' });
+    expect(latestVo2Reading([
+      { id: 'merged:vo2_max:2026-10-21', kind: 'vo2_max', recordedOn: '2026-10-21' },
+      { id: 'vo2_max-2026-10-21', kind: 'vo2_max', recordedOn: '2026-10-21' },
+    ])).toEqual({ day: '2026-10-21', source: 'apple' });
   });
 
   it('puts the note under the chart and opens one outdoor session', () => {

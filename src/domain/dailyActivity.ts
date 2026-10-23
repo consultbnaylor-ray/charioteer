@@ -25,6 +25,13 @@ export const APPLE_SOURCE = '(Apple Health)';
 
 export const GARMIN_SOURCE = '(Garmin)';
 
+/** Whole-chart caption when the days on screen use both sources. */
+export const APPLE_AND_GARMIN_SOURCE = '(Apple Health and Garmin)';
+
+export const EXERCISE_PERMISSION_HINT = 'Exercise minutes need permission in Apple Health.';
+
+export const EXERCISE_PERMISSION_BUTTON = 'Open Health permissions';
+
 /** Shown for the chart's last day when neither Apple Health nor Garmin has steps. */
 export const NO_STEPS_YET_TODAY = 'No steps yet today';
 
@@ -107,12 +114,39 @@ export function dailyActivitySeries(
 
 export function exerciseMinutesLabel(day: string, minutes: number, source: ActivitySource | null): string {
   const line = `Exercise minutes, ${activityDayName(day)}: ${minutes} min`;
-  return source === 'garmin' ? `${line} ${GARMIN_EXERCISE_SOURCE}` : line;
+  if (source === 'garmin') return `${line} ${GARMIN_EXERCISE_SOURCE}`;
+  if (source === 'apple') return `${line} ${APPLE_SOURCE}`;
+  return line;
 }
 
 export function activeCaloriesLabel(day: string, kcal: number, source: ActivitySource | null): string {
   const line = `Active calories, ${activityDayName(day)}: ${kcal} kcal`;
-  return source === 'garmin' ? `${line} ${GARMIN_CALORIE_SOURCE}` : line;
+  if (source === 'garmin') return `${line} ${GARMIN_CALORIE_SOURCE}`;
+  if (source === 'apple') return `${line} ${APPLE_SOURCE}`;
+  return line;
+}
+
+/**
+ * Caption for the days that actually have a number.
+ * A zero or a Garmin row that was not used does not count.
+ */
+export function chartSourceCaption(
+  points: readonly { value: number; source: ActivitySource | null }[],
+  options?: { vigorous?: boolean },
+): string | null {
+  let apple = false;
+  let garmin = false;
+  for (const point of points) {
+    if (!(point.value > 0)) continue;
+    if (point.source === 'apple') apple = true;
+    if (point.source === 'garmin') garmin = true;
+  }
+  if (apple && garmin) {
+    return options?.vigorous ? '(Apple Health and Garmin, vigorous counted twice)' : APPLE_AND_GARMIN_SOURCE;
+  }
+  if (garmin) return options?.vigorous ? GARMIN_EXERCISE_SOURCE : GARMIN_SOURCE;
+  if (apple) return APPLE_SOURCE;
+  return null;
 }
 
 export function exerciseSeries(
@@ -124,7 +158,7 @@ export function exerciseSeries(
   const garmin = new Map<string, number>();
   for (const daily of dailies) {
     const minutes = garminExerciseMinutes(daily.moderateMinutes, daily.vigorousMinutes);
-    if (minutes == null) continue;
+    if (minutes == null || minutes <= 0) continue;
     garmin.set(daily.calendarDate, minutes);
   }
   return dailyActivitySeries(endDay, span, apple, garmin, exerciseMinutesLabel);
@@ -139,7 +173,7 @@ export function calorieSeries(
   const garmin = new Map<string, number>();
   for (const daily of dailies) {
     const kcal = garminActiveKcal(daily.activeKilocalories);
-    if (kcal == null) continue;
+    if (kcal == null || kcal <= 0) continue;
     garmin.set(daily.calendarDate, kcal);
   }
   return dailyActivitySeries(endDay, span, apple, garmin, activeCaloriesLabel);
@@ -207,8 +241,9 @@ export function distanceSeries(
   endDay: string,
   span: WorkoutChartSpan,
   dailies: readonly GarminDaily[],
+  apple: readonly AppleDayValue[] = [],
 ): DailyActivityPoint[] {
-  return dailyActivitySeries(endDay, span, [], garminNumber(dailies, (daily) => daily.distanceMetres), (day, value, source) => (
+  return dailyActivitySeries(endDay, span, apple, garminNumber(dailies, (daily) => daily.distanceMetres), (day, value, source) => (
     withSource(`Distance, ${activityDayName(day)}: ${distanceText(value)}`, source)
   ));
 }
@@ -217,8 +252,9 @@ export function floorsSeries(
   endDay: string,
   span: WorkoutChartSpan,
   dailies: readonly GarminDaily[],
+  apple: readonly AppleDayValue[] = [],
 ): DailyActivityPoint[] {
-  return dailyActivitySeries(endDay, span, [], garminNumber(dailies, (daily) => daily.floorsClimbed), (day, value, source) => (
+  return dailyActivitySeries(endDay, span, apple, garminNumber(dailies, (daily) => daily.floorsClimbed), (day, value, source) => (
     sourced('Floors', day, String(value), 'floors', source)
   ));
 }

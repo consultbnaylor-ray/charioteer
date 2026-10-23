@@ -10,6 +10,9 @@ import {
   DIFFICULTY_NOTE,
   EFFORT_NAME,
   HEART_DIFFICULTY_NAME,
+  NO_WORKOUT_MARKER,
+  WORKOUT_OPEN_HINT,
+  difficultySlots,
   ROUTE_MARK,
   WORKOUT_HISTORY_EMPTY,
   WORKOUT_HISTORY_FOLD,
@@ -34,6 +37,7 @@ import {
   workoutDaySummary,
   workoutHistory,
   workoutHistoryChip,
+  workoutHistoryDetail,
   workoutHistoryLine,
   workoutRowLine,
   workoutWeek,
@@ -119,6 +123,13 @@ describe('workout day list', () => {
     expect(month[0]?.day < month[29]?.day).toBe(true);
     expect(month[0]?.totalMinutes).toBe(0);
     expect(month[0]?.label).toContain('Duration 0 min');
+    const lateThursday = workout({ id: 'late-thu', startedAt: '2026-10-22T22:53:00.000Z', durationMinutes: 20, label: 'Running' });
+    const earlyFriday = workout({ id: 'early-fri', startedAt: '2026-10-22T23:10:00.000Z', durationMinutes: 15, label: 'Walking' });
+    const midnight = durationBars([lateThursday, earlyFriday], '2026-10-23', 7);
+    expect(londonDay(lateThursday.startedAt)).toBe('2026-10-22');
+    expect(londonDay(earlyFriday.startedAt)).toBe('2026-10-23');
+    expect(midnight.find((bar) => bar.day === '2026-10-22')?.totalMinutes).toBe(20);
+    expect(midnight.find((bar) => bar.day === '2026-10-23')?.totalMinutes).toBe(15);
   });
 
   it('uses the effort score when Health has one, otherwise heart rate as a percent of max', () => {
@@ -191,6 +202,7 @@ describe('workout day list', () => {
     const rows = [early, late, mid];
     expect(workoutHistory(rows, null).map((row) => row.id)).toEqual(['late', 'mid', 'early']);
     expect(workoutHistoryLine(mid)).toBe('Walking · 18 Oct 2026 · Duration 109 min');
+    expect(workoutHistoryDetail(mid)).toBe('18 Oct 2026 · Duration 109 min');
     expect(workoutHistory(rows, '2026-10-18').map((row) => row.id)).toEqual(['mid']);
     expect(workoutHistory(rows, null).map((row) => row.id)).toEqual(['late', 'mid', 'early']);
     expect(workoutHistoryChip('2026-10-21')).toBe('Showing 21 Oct · Clear');
@@ -206,8 +218,9 @@ describe('workout day list', () => {
     expect(foldedCount(DIFFICULTY_LIST_FOLD + 1, DIFFICULTY_LIST_FOLD)).toBe(1);
     expect(CHART_DIRECTION_HINT).toBe('Older ← → Newer');
     expect(DIFFICULTY_DAY_LINK).toBe('Show this day');
-    expect(DIFFICULTY_NOTE).toContain(EFFORT_NAME);
-    expect(DIFFICULTY_NOTE).toContain('% of max');
+    expect(DIFFICULTY_NOTE).toBe("Apple's workout effort score when Health has one; otherwise average heart rate as a % of your maximum (220 minus your age).");
+    expect(WORKOUT_OPEN_HINT).toBe('Tap a workout to see heart rate, calories and more.');
+    expect(NO_WORKOUT_MARKER).toBe('No workout');
     const list = readFileSync('src/ui/WorkoutList.tsx', 'utf8');
     const calendar = readFileSync('src/ui/WorkoutCalendar.tsx', 'utf8');
     const reader = readFileSync('src/health/workoutRoute.ios.ts', 'utf8');
@@ -227,6 +240,15 @@ describe('workout day list', () => {
     expect(list).toContain('WORKOUT_HISTORY_SHOW_ALL');
     expect(list).toContain('WORKOUT_HISTORY_EMPTY');
     expect(list).toContain('{WORKOUT_HISTORY_HINT}');
+    expect(list).toContain('{WORKOUT_OPEN_HINT}');
+    expect(list).toContain('function TapRow');
+    expect(list).toContain('accessibilityRole="button"');
+    expect(list).toContain('pressed ? theme.colors.emphasisSoft : theme.colors.surface');
+    expect(list).toContain('{ROUTE_MARK}');
+    expect(list).toContain('workoutHistoryDetail(workout)');
+    expect(list).toContain('flexShrink: 0');
+    expect(list).toContain('difficultySlots(marks, today');
+    expect(list).toContain('NO_WORKOUT_MARKER');
     expect(list).not.toContain('Show all workouts');
     expect(list).toContain('setHistoryDay(null)');
     expect(list.indexOf('<DurationChart')).toBeLessThan(list.indexOf('<WorkoutHistory'));
@@ -259,5 +281,23 @@ describe('workout day list', () => {
     expect(listed).not.toContain('getWorkoutRoutes');
     expect(listed).not.toContain('if (!isHealthDataAvailable()) return []');
     expect(listed.indexOf('devFixtureWorkout()')).toBeGreaterThan(listed.lastIndexOf('isHealthDataAvailable'));
+  });
+
+  it('reaches today with an empty slot when that day has no workout', () => {
+    const scored = workout({
+      id: 'scored',
+      startedAt: '2026-10-22T10:00:00.000Z',
+      effortScore: 6,
+      label: 'Running',
+    });
+    const marks = difficultyMarks([scored], '2026-10-23', 7, 42);
+    expect(marks.at(-1)?.day).toBe('2026-10-22');
+    const empty = difficultySlots(marks, '2026-10-23', 0);
+    expect(empty.at(-1)).toMatchObject({ day: '2026-10-23', empty: true, marker: NO_WORKOUT_MARKER });
+    expect(empty[0]?.day).toBe(marks[0]?.day);
+    expect(difficultySlots(marks, '2026-10-22', 0).some((slot) => 'empty' in slot)).toBe(false);
+    const todayWorkout = workout({ id: 'today', startedAt: '2026-10-23T09:00:00.000Z', label: 'Walking' });
+    expect(difficultySlots(marks, '2026-10-23', 1).some((slot) => 'empty' in slot)).toBe(false);
+    expect(difficultyMarks([todayWorkout], '2026-10-23', 7, null)).toEqual([]);
   });
 });

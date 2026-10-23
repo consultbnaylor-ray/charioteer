@@ -55,7 +55,7 @@ export function mergeWorkouts(apple: readonly DeviceWorkout[], activities: reado
 /**
  * One resting heart rate, one sleep total, and one workout-minute total per day.
  * A day Garmin recorded replaces that day's Apple Health value. The two are never added.
- * VO2 max keeps Apple's reading for a day when there is one, and uses Garmin only for a day Apple did not record.
+ * VO2 max keeps Apple's reading for a day when there is one, and uses a stored Garmin VO2 max only for a day Apple did not record.
  */
 export function mergeHealthSamples(
   samples: readonly HealthSample[],
@@ -240,12 +240,12 @@ function garminLabel(activity: GarminActivity): string {
   return type.toLowerCase().replace(/[_-]+/g, ' ').replace(/\b\w/g, (letter: string) => letter.toUpperCase());
 }
 
-/** Running VO2 when Garmin has it, otherwise the cycling estimate. One number per day. */
+/** Stored Garmin VO2 max only. A cycling estimate is not substituted, and a blank row is not invented. */
 function garminVo2ByDay(rows: readonly GarminUserMetric[]): Map<string, number> {
   const days = new Map<string, number>();
   const ordered = [...rows].sort((left, right) => left.calendarDate.localeCompare(right.calendarDate) || left.summaryId.localeCompare(right.summaryId));
   for (const row of ordered) {
-    const value = row.vo2Max ?? row.vo2MaxCycling;
+    const value = row.vo2Max;
     if (value == null || !(value > 0)) continue;
     days.set(row.calendarDate, Math.round(value * 10) / 10);
   }
