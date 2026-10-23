@@ -112,14 +112,15 @@ describe('Apple Health screen and entitlement', () => {
     expect(cardAt).toBeLessThan(seeAt);
     expect(seeAt).toBeLessThan(periodAt);
     expect(periodAt).toBeLessThan(boardAt);
-    expect(screen).toContain('onRefresh={() => void refreshNow()}');
+    expect(screen).not.toContain('refreshNow');
     expect(screen).toContain('request={seeRequest}');
     expect(screen).toContain('healthMissingReadings');
     expect(card).toContain('HEALTH_MISSING_DETAIL');
     expect(card).toContain('missingOpen');
     expect(card).toContain('gap.line');
     expect(card).toContain('Connect Apple Health');
-    expect(card).toContain('APPLE_HEALTH_REFRESH');
+    expect(card).not.toContain('APPLE_HEALTH_REFRESH');
+    expect(card).not.toContain('Refresh now');
     expect(card).toContain('appleHealthUpdatedLine');
     expect(card).toContain('SIGN_IN_FIRST');
     expect(card).toContain('label="Sign in"');

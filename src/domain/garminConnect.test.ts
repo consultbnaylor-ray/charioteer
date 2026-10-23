@@ -276,6 +276,8 @@ describe('Garmin coach gate', () => {
     userMetrics: [],
     needsPermissions: false,
     missingPermissions: [],
+    lastPushAt: null,
+    historyRefusedAt: null,
   };
 
   it('withholds Garmin unless health consent, coach consent, and the personal-data switch are on', () => {

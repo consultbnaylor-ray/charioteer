@@ -18,8 +18,9 @@ import { omitSharedLocation } from '@/domain/sharedPayload';
 import { stripJpegBase64, stripJpegLocation } from '@/domain/photoLocation';
 import { chunkHealthRows } from '@/domain/healthUpload';
 import { rejectRouteCoordinates } from '@/domain/workoutRoute';
-import { GARMIN_PERMISSION } from '@/domain/healthRefresh';
-import { emptyGarminReadings, garminPermissionStatus, missingColumn, missingRelation, readingsFromRows, type GarminExportPermission, type GarminReadings } from '../../supabase/functions/_shared/garmin';
+import { GARMIN_PERMISSION, readGarminRefreshBody } from '@/domain/healthRefresh';
+const GARMIN_HISTORY_KEY = 'charioteer.garmin.historyRefusedAt';
+import { emptyGarminReadings, garminHistoryCooling, garminPermissionStatus, missingColumn, missingRelation, readingsFromRows, type GarminExportPermission, type GarminReadings } from '../../supabase/functions/_shared/garmin';
 import { gratitudeFromRows, isGratitudeCategory, localGratitudeReflect, planGratitudeEntry, type GratitudePhoto, type GratitudeReflect } from '@/domain/gratitude';
 import {
   GRATITUDE_BUCKET,
@@ -2841,9 +2842,13 @@ export class SupabaseRepository implements Repository {
 
   async loadGarmin(): Promise<GarminReadings> {
     const empty = emptyGarminReadings();
-    const statusFirst = await this.client.from('garmin_connection_status').select('connected, connected_at, needs_permissions, missing_permissions').maybeSingle();
-    const status = statusFirst.error && missingColumn(statusFirst.error.message, 'needs_permissions')
-      ? await this.client.from('garmin_connection_status').select('connected, connected_at').maybeSingle()
+    const statusFirst = await this.client.from('garmin_connection_status').select('connected, connected_at, needs_permissions, missing_permissions, last_push_at, history_backfill_refused_at').maybeSingle();
+    const status = statusFirst.error && (missingColumn(statusFirst.error.message, 'needs_permissions') || missingColumn(statusFirst.error.message, 'last_push_at') || missingColumn(statusFirst.error.message, 'history_backfill_refused_at'))
+      ? await this.client.from('garmin_connection_status').select('connected, connected_at, needs_permissions, missing_permissions').maybeSingle().then(async (narrow) => (
+        narrow.error && missingColumn(narrow.error.message, 'needs_permissions')
+          ? this.client.from('garmin_connection_status').select('connected, connected_at').maybeSingle()
+          : narrow
+      ))
       : statusFirst;
     const [dailiesFirst, activities, sleep, metrics] = await Promise.all([
       this.client.from('garmin_dailies').select('calendar_date, resting_heart_rate_bpm, average_heart_rate_bpm, moderate_minutes, vigorous_minutes, active_kilocalories').order('calendar_date'),
@@ -2861,10 +2866,14 @@ export class SupabaseRepository implements Repository {
       connected_at?: string | null;
       needs_permissions?: boolean;
       missing_permissions?: string | null;
+      last_push_at?: string | null;
+      history_backfill_refused_at?: string | null;
     } | null;
     const readings = readingsFromRows({
       connected: statusRow?.connected === true,
       connectedAt: typeof statusRow?.connected_at === 'string' ? statusRow.connected_at : null,
+      lastPushAt: typeof statusRow?.last_push_at === 'string' ? statusRow.last_push_at : null,
+      historyRefusedAt: typeof statusRow?.history_backfill_refused_at === 'string' ? statusRow.history_backfill_refused_at : null,
       dailies: dailies.error ? [] : dailies.data,
       activities: activities.error ? [] : activities.data,
       sleep: sleep.error ? [] : sleep.data,
@@ -2881,15 +2890,34 @@ export class SupabaseRepository implements Repository {
     return { ...readings, needsPermissions: permission.needs, missingPermissions: permission.missing };
   }
 
-  async refreshGarmin(): Promise<{ ok: true; garmin: 'off' | 'asked' | 'recent' } | { ok: false; message: string; code?: 'permission' | 'rate' }> {
+  async refreshGarmin(): Promise<{ ok: true; garmin: 'off' | 'asked' | 'recent'; code?: 'history' } | { ok: false; message: string; code?: 'permission' | 'rate' }> {
+    const refusedAt = await this.garminHistoryRefusedAt();
+    if (garminHistoryCooling(refusedAt, Date.now())) return { ok: true, garmin: 'recent', code: 'history' };
     const invoked = await this.client.functions.invoke('garmin-refresh', { body: {} });
-    const garmin = invoked.data?.garmin;
-    if (!invoked.error && invoked.data?.ok === true && (garmin === 'off' || garmin === 'asked' || garmin === 'recent')) {
+    const body = await readGarminRefreshBody(invoked.data, invoked.error as { context?: { json?: () => Promise<unknown> } } | null);
+    const code = typeof body?.code === 'string' ? body.code : '';
+    const garmin = typeof body?.garmin === 'string' ? body.garmin : '';
+    if (code === 'history') {
+      await AsyncStorage.setItem(GARMIN_HISTORY_KEY, new Date().toISOString()).catch(() => undefined);
+      return { ok: true, garmin: 'recent', code: 'history' };
+    }
+    if (!invoked.error && body?.ok === true && (garmin === 'off' || garmin === 'asked' || garmin === 'recent')) {
       return { ok: true, garmin };
     }
-    if (invoked.data?.code === 'rate') return { ok: false, code: 'rate', message: 'Garmin is busy. Try again in a minute.' };
-    if (invoked.data?.code === 'permission') return { ok: false, code: 'permission', message: GARMIN_PERMISSION };
+    if (code === 'rate') return { ok: false, code: 'rate', message: 'Garmin is busy. Try again in a minute.' };
+    if (code === 'permission') return { ok: false, code: 'permission', message: GARMIN_PERMISSION };
     return { ok: false, message: 'Could not ask Garmin for new data.' };
+  }
+
+  private async garminHistoryRefusedAt(): Promise<string | null> {
+    const local = await AsyncStorage.getItem(GARMIN_HISTORY_KEY).catch(() => null);
+    const status = await this.client.from('garmin_connection_status').select('history_backfill_refused_at').maybeSingle();
+    const remote = !status.error && typeof (status.data as { history_backfill_refused_at?: unknown } | null)?.history_backfill_refused_at === 'string'
+      ? (status.data as { history_backfill_refused_at: string }).history_backfill_refused_at
+      : null;
+    if (!remote) return local;
+    if (!local) return remote;
+    return Date.parse(remote) > Date.parse(local) ? remote : local;
   }
 
   async checkGarminPermissions(force = false): Promise<{ checked: boolean; needsPermissions: boolean; missing: GarminExportPermission[] }> {

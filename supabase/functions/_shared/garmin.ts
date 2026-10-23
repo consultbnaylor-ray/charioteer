@@ -91,6 +91,10 @@ export type GarminReadings = {
   needsPermissions: boolean;
   /** The export names that are missing. Never a token. */
   missingPermissions: GarminExportPermission[];
+  /** When a Garmin push last arrived. Null when this phone has not been told. */
+  lastPushAt: string | null;
+  /** When Garmin last refused historical catch-up with 412. Null when it has not. */
+  historyRefusedAt: string | null;
 };
 
 export type GarminFigure = {
@@ -127,6 +131,8 @@ export function emptyGarminReadings(): GarminReadings {
     userMetrics: [],
     needsPermissions: false,
     missingPermissions: [],
+    lastPushAt: null,
+    historyRefusedAt: null,
   };
 }
 
@@ -614,6 +620,29 @@ export function garminPermissionStatus(input: {
   return { needs: fromStore || input.refreshRefused === true, missing };
 }
 
+export const GARMIN_HISTORY_WINDOW_MS = 24 * 60 * 60 * 1000;
+
+/** True for 24 hours after Garmin refused every backfill with 412. */
+export function garminHistoryCooling(refusedAt: string | null, nowMs: number): boolean {
+  if (!refusedAt) return false;
+  const at = Date.parse(refusedAt);
+  if (!Number.isFinite(at)) return false;
+  return nowMs - at < GARMIN_HISTORY_WINDOW_MS;
+}
+
+/** Every requested summary came back 412. An empty list is not a refusal. */
+export function garminAllHistoricalRefusal(statuses: readonly number[]): boolean {
+  return statuses.length > 0 && statuses.every((status) => status === 412);
+}
+
+/**
+ * Build 50 only reads a body on HTTP 200, and it treats `{ok:true, garmin:'recent'}`
+ * as a muted note. `code` is extra; that build ignores it.
+ */
+export function garminHistoryBody(): { ok: true; garmin: 'recent'; code: 'history' } {
+  return { ok: true, garmin: 'recent', code: 'history' };
+}
+
 export function garminRefreshCooling(lastAt: string | null, nowMs: number): boolean {
   if (!lastAt) return false;
   const at = Date.parse(lastAt);
@@ -714,12 +743,16 @@ export function readingsFromRows(input: {
   userMetrics?: unknown;
   needsPermissions?: boolean;
   missingPermissions?: GarminExportPermission[];
+  lastPushAt?: string | null;
+  historyRefusedAt?: string | null;
 }): GarminReadings {
   return {
     connected: input.connected,
     connectedAt: input.connectedAt,
     needsPermissions: input.needsPermissions === true,
     missingPermissions: input.missingPermissions ?? [],
+    lastPushAt: input.lastPushAt ?? null,
+    historyRefusedAt: input.historyRefusedAt ?? null,
     dailies: asList(input.dailies).flatMap((row) => {
       const calendarDate = day(row.calendar_date);
       if (!calendarDate) return [];

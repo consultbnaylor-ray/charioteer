@@ -7,7 +7,6 @@ import {
   APPLE_HEALTH_DENIED,
   APPLE_HEALTH_DETAILS,
   APPLE_HEALTH_INTRO,
-  APPLE_HEALTH_REFRESH,
   APPLE_HEALTH_TURN_ON,
   APPLE_HEALTH_UNAVAILABLE,
   APPLE_HEALTH_WEB,
@@ -31,7 +30,6 @@ export function AppleHealthCard({
   updatedAt,
   refreshError,
   turnOnNote,
-  onRefresh,
   onSignIn,
   onConnect,
   onManage,
@@ -49,7 +47,6 @@ export function AppleHealthCard({
   updatedAt: string | null;
   refreshError: string | null;
   turnOnNote: string | null;
-  onRefresh: () => void;
   onSignIn: () => void;
   onConnect: () => void;
   onManage: () => void;
@@ -88,25 +85,6 @@ export function AppleHealthCard({
           style={{ flexGrow: 1, flexShrink: 1, minWidth: 180, minHeight: 44, justifyContent: 'center' }}
         >
           <T style={{ fontFamily: theme.font.bodyStrong }}>{line}</T>
-        </Pressable>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={pending ? 'Refreshing' : APPLE_HEALTH_REFRESH}
-          accessibilityState={{ disabled: pending }}
-          disabled={pending}
-          onPress={onRefresh}
-          style={{
-            minHeight: 44,
-            justifyContent: 'center',
-            paddingHorizontal: 14,
-            borderWidth: 1,
-            borderColor: theme.colors.ink,
-            borderRadius: theme.radius.md,
-            backgroundColor: theme.colors.surface,
-            opacity: pending ? 0.45 : 1,
-          }}
-        >
-          <T style={{ fontFamily: theme.font.bodyStrong }}>{pending ? 'Refreshing' : APPLE_HEALTH_REFRESH}</T>
         </Pressable>
       </View>
       {gaps.length ? (
