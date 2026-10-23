@@ -2,13 +2,21 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
 import {
+  GARMIN_CHECK_AGAIN,
+  GARMIN_CHECK_DEBOUNCE_MS,
   GARMIN_DATA_HINT,
   GARMIN_HISTORY_NOTE,
+  GARMIN_NO_NEW,
+  GARMIN_NO_NEW_MS,
   GARMIN_WAITING,
   REFRESH_APPLE,
   REFRESH_BOTH,
   SYNC_REFRESH,
   appleCheckIsFresh,
+  garminCheckCooling,
+  garminCheckFoundNew,
+  garminReceiptAdvanced,
+  garminStoredMark,
   lastUpdatedLine,
   readGarminRefreshBody,
   refreshButtonLabel,
@@ -49,6 +57,36 @@ describe('manual health refresh', () => {
     expect(`${line} ${GARMIN_DATA_HINT} ${GARMIN_HISTORY_NOTE} ${SYNC_REFRESH}`).not.toMatch(/up to date/i);
     expect(readFileSync('src/ui/HealthRefresh.tsx', 'utf8')).not.toMatch(/up to date/i);
     expect(readFileSync('src/domain/healthRefresh.ts', 'utf8')).not.toMatch(/up to date/i);
+    expect(GARMIN_CHECK_AGAIN).toBe('Check again');
+    expect(GARMIN_NO_NEW).toBe('No new Garmin data yet');
+    expect(GARMIN_CHECK_DEBOUNCE_MS).toBe(10_000);
+    expect(GARMIN_NO_NEW_MS).toBe(4_000);
+    expect(garminCheckCooling(1_000, 1_000 + 9_999)).toBe(true);
+    expect(garminCheckCooling(1_000, 1_000 + 10_000)).toBe(false);
+    const earlier = '2026-10-23T21:40:00Z';
+    const later = '2026-10-23T21:48:00Z';
+    expect(garminReceiptAdvanced(null, later)).toBe(true);
+    expect(garminReceiptAdvanced(earlier, later)).toBe(true);
+    expect(garminReceiptAdvanced(later, earlier)).toBe(false);
+    expect(garminReceiptAdvanced(later, later)).toBe(false);
+    const before = { lastPushAt: earlier, mark: '1' };
+    expect(garminCheckFoundNew(before, { connected: true, lastPushAt: later, mark: '1' })).toBe(true);
+    expect(garminCheckFoundNew(before, { connected: true, lastPushAt: earlier, mark: '2' })).toBe(true);
+    expect(garminCheckFoundNew(before, { connected: true, lastPushAt: earlier, mark: '1' })).toBe(false);
+    expect(garminCheckFoundNew(before, { connected: false, lastPushAt: null, mark: '' })).toBe(false);
+    const mark = garminStoredMark({
+      dailies: [{ calendarDate: '2026-10-23', moderateMinutes: 1, vigorousMinutes: 0, restingHeartRateBpm: 60, steps: 100 }],
+      activities: [],
+      sleep: [],
+      userMetrics: [],
+    });
+    const more = garminStoredMark({
+      dailies: [{ calendarDate: '2026-10-23', moderateMinutes: 1, vigorousMinutes: 0, restingHeartRateBpm: 60, steps: 200 }],
+      activities: [],
+      sleep: [],
+      userMetrics: [],
+    });
+    expect(more).not.toBe(mark);
   });
 
   it('reads a Garmin code from the error body when the status is not 2xx', async () => {
@@ -93,6 +131,22 @@ describe('manual health refresh', () => {
     expect(bar).toContain('SYNC_REFRESH');
     expect(bar).toContain('GARMIN_DATA_HINT');
     expect(bar).toContain('appleCheckIsFresh');
+    expect(bar).toContain('GARMIN_CHECK_AGAIN');
+    expect(bar).toContain('loadGarmin');
+    expect(bar).toContain('ActivityIndicator');
+    const checkStart = bar.indexOf('const checkStored');
+    const check = bar.slice(checkStart, bar.indexOf('reloadHealthSources()', checkStart));
+    expect(check).toContain('repo.loadGarmin()');
+    expect(check).not.toContain('refreshGarmin');
+    expect(check).not.toContain('garmin-refresh');
+    for (const path of [
+      'src/app/(main)/health.tsx',
+      'src/app/(main)/health-plan.tsx',
+      'src/app/(main)/workouts.tsx',
+      'src/app/(main)/stats.tsx',
+    ]) {
+      expect(readFileSync(path, 'utf8'), path).toContain('garminMark={garminStoredMark(readings)}');
+    }
     expect(readFileSync('src/domain/healthRefresh.ts', 'utf8')).toContain('Asked Garmin for your latest data');
     expect(bar).toContain('GARMIN_ASKED');
     expect(bar).not.toContain('REFRESH_BOTH');

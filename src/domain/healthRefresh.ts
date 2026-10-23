@@ -27,6 +27,17 @@ export const SYNC_REFRESH = 'Refresh';
 
 export const GARMIN_WAITING = 'Garmin: waiting for first data';
 
+/** Re-read the Garmin rows already stored here. It does not ask Garmin. */
+export const GARMIN_CHECK_AGAIN = 'Check again';
+
+export const GARMIN_NO_NEW = 'No new Garmin data yet';
+
+/** Ignore another Check again until this long after the last one started. */
+export const GARMIN_CHECK_DEBOUNCE_MS = 10_000;
+
+/** How long the “nothing new” note stays up. */
+export const GARMIN_NO_NEW_MS = 4_000;
+
 /** Always shown under the status line while Garmin is connected. */
 export const GARMIN_DATA_HINT = 'New Garmin data arrives after your watch syncs with Garmin Connect.';
 
@@ -58,6 +69,16 @@ export function appleCheckIsFresh(iso: string | null, now: number, windowMs = AP
   return now - at >= 0 && now - at < windowMs;
 }
 
+export function syncAppleClause(appleCheckedAt: string | null): string {
+  const apple = syncClock(appleCheckedAt);
+  return apple ? `Apple Health checked ${apple}` : 'Apple Health not checked yet';
+}
+
+export function syncGarminClause(garminReceivedAt: string | null): string {
+  const garmin = syncClock(garminReceivedAt);
+  return garmin ? `Garmin data received ${garmin}` : GARMIN_WAITING;
+}
+
 /**
  * Names the last Apple check and, when Garmin is connected, the last push.
  * It does not claim the figures are complete.
@@ -67,12 +88,81 @@ export function syncStatusText(input: {
   garminConnected: boolean;
   garminReceivedAt: string | null;
 }): string {
-  const apple = syncClock(input.appleCheckedAt);
-  const applePart = apple ? `Apple Health checked ${apple}` : 'Apple Health not checked yet';
+  const applePart = syncAppleClause(input.appleCheckedAt);
   if (!input.garminConnected) return applePart;
-  const garmin = syncClock(input.garminReceivedAt);
-  const garminPart = garmin ? `Garmin data received ${garmin}` : GARMIN_WAITING;
-  return `${applePart} · ${garminPart}`;
+  return `${applePart} · ${syncGarminClause(input.garminReceivedAt)}`;
+}
+
+export function garminCheckCooling(startedAt: number | null, now: number, debounce = GARMIN_CHECK_DEBOUNCE_MS): boolean {
+  if (startedAt == null) return false;
+  return now - startedAt < debounce;
+}
+
+/** True when the stored push clock moved forward. */
+export function garminReceiptAdvanced(previous: string | null, next: string | null): boolean {
+  const nextAt = next ? Date.parse(next) : NaN;
+  if (!Number.isFinite(nextAt)) return false;
+  const previousAt = previous ? Date.parse(previous) : NaN;
+  if (!Number.isFinite(previousAt)) return true;
+  return nextAt > previousAt;
+}
+
+/** The later clock, keeping a missing one when the other is missing too. */
+export function laterSyncClock(left: string | null, right: string | null): string | null {
+  if (garminReceiptAdvanced(left, right)) return right;
+  return left ?? right;
+}
+
+type StoredDaily = {
+  calendarDate: string;
+  moderateMinutes: number | null;
+  vigorousMinutes: number | null;
+  activeKilocalories?: number | null;
+  restingHeartRateBpm: number | null;
+  steps?: number | null;
+  distanceMetres?: number | null;
+};
+
+type StoredActivity = { summaryId: string; startedAt: string; durationSeconds: number };
+
+type StoredSleep = { summaryId: string; calendarDate: string; durationSeconds: number };
+
+type StoredMetric = { summaryId: string; calendarDate: string; vo2Max: number | null };
+
+/** A stable picture of the latest stored Garmin rows. */
+export function garminStoredMark(input: {
+  dailies: readonly StoredDaily[];
+  activities: readonly StoredActivity[];
+  sleep: readonly StoredSleep[];
+  userMetrics: readonly StoredMetric[];
+}): string {
+  const daily = input.dailies[input.dailies.length - 1];
+  const activity = input.activities[input.activities.length - 1];
+  const sleep = input.sleep[input.sleep.length - 1];
+  const metric = input.userMetrics[input.userMetrics.length - 1];
+  return [
+    input.dailies.length,
+    daily ? `${daily.calendarDate}:${daily.moderateMinutes ?? ''}:${daily.vigorousMinutes ?? ''}:${daily.activeKilocalories ?? ''}:${daily.restingHeartRateBpm ?? ''}:${daily.steps ?? ''}:${daily.distanceMetres ?? ''}` : '',
+    input.activities.length,
+    activity ? `${activity.summaryId}:${activity.startedAt}:${activity.durationSeconds}` : '',
+    input.sleep.length,
+    sleep ? `${sleep.summaryId}:${sleep.calendarDate}:${sleep.durationSeconds}` : '',
+    input.userMetrics.length,
+    metric ? `${metric.summaryId}:${metric.calendarDate}:${metric.vo2Max ?? ''}` : '',
+  ].join('|');
+}
+
+/**
+ * A Check again found something newly stored.
+ * A failed read comes back disconnected with an empty clock, and that is not new.
+ */
+export function garminCheckFoundNew(
+  previous: { lastPushAt: string | null; mark: string },
+  next: { connected: boolean; lastPushAt: string | null; mark: string },
+): boolean {
+  if (garminReceiptAdvanced(previous.lastPushAt, next.lastPushAt)) return true;
+  if (!next.connected) return false;
+  return next.mark !== previous.mark;
 }
 
 /** The outlined Refresh control. A fresh Apple check with no error hides it. */

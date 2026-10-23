@@ -23,6 +23,9 @@ export const GARMIN_DATA_TABLES = [
   'garmin_activities',
   'garmin_sleep',
   'garmin_user_metrics',
+  'garmin_respiration',
+  'garmin_pulse_ox',
+  'garmin_hrv',
   'garmin_oauth_states',
   'garmin_connections',
 ] as const;
@@ -46,6 +49,43 @@ export type GarminDaily = {
   vigorousMinutes: number | null;
   /** Active kilocalories. Absent until a daily push includes them. */
   activeKilocalories?: number | null;
+  /** Present once a daily push included them. Older rows leave them unset. */
+  steps?: number | null;
+  distanceMetres?: number | null;
+  floorsClimbed?: number | null;
+  minHeartRateBpm?: number | null;
+  maxHeartRateBpm?: number | null;
+  averageStressLevel?: number | null;
+  bodyBatteryCharged?: number | null;
+  bodyBatteryDrained?: number | null;
+  bodyBatteryHighest?: number | null;
+  bodyBatteryLowest?: number | null;
+  stepGoal?: number | null;
+  /** Activity duration for that day. Used to choose between duplicate dailies. */
+  durationSeconds?: number | null;
+};
+
+export type GarminRespiration = {
+  summaryId: string;
+  calendarDate: string;
+  averageBreathsPerMinute: number | null;
+  highestBreathsPerMinute: number | null;
+  lowestBreathsPerMinute: number | null;
+};
+
+export type GarminPulseOx = {
+  summaryId: string;
+  calendarDate: string;
+  averageSpo2: number | null;
+  lowestSpo2: number | null;
+  highestSpo2: number | null;
+};
+
+export type GarminHrvSummary = {
+  summaryId: string;
+  calendarDate: string;
+  lastNightAvgMs: number | null;
+  lastNight5MinHighMs: number | null;
 };
 
 export type GarminActivity = {
@@ -87,6 +127,9 @@ export type GarminReadings = {
   activities: GarminActivity[];
   sleep: GarminSleep[];
   userMetrics: GarminUserMetric[];
+  respiration: GarminRespiration[];
+  pulseOx: GarminPulseOx[];
+  hrv: GarminHrvSummary[];
   /** True when this person is connected and Garmin is not sending the summaries Charioteer asked for. */
   needsPermissions: boolean;
   /** The export names that are missing. Never a token. */
@@ -112,11 +155,20 @@ export type PkceRow = {
   expiresAt: string;
 };
 
+export type GarminPushedDaily = GarminDaily & {
+  garminUserId: string;
+  /** UTC start plus the local offset. Used to rank duplicates. Not written to the database. */
+  localStartSeconds: number | null;
+};
+
 export type GarminPushPlan = {
-  dailies: (GarminDaily & { garminUserId: string })[];
+  dailies: GarminPushedDaily[];
   activities: (GarminActivity & { garminUserId: string })[];
   sleep: (GarminSleep & { garminUserId: string })[];
   userMetrics: (GarminUserMetric & { garminUserId: string })[];
+  respiration: (GarminRespiration & { garminUserId: string })[];
+  pulseOx: (GarminPulseOx & { garminUserId: string })[];
+  hrv: (GarminHrvSummary & { garminUserId: string })[];
   deregistered: string[];
   permissionChanges: { garminUserId: string; permissions: string }[];
 };
@@ -129,6 +181,9 @@ export function emptyGarminReadings(): GarminReadings {
     activities: [],
     sleep: [],
     userMetrics: [],
+    respiration: [],
+    pulseOx: [],
+    hrv: [],
     needsPermissions: false,
     missingPermissions: [],
     lastPushAt: null,
@@ -323,9 +378,67 @@ export function mapGarminPush(body: unknown): GarminPushPlan {
     activities: list(root, 'activities').map(mapActivity).filter((row): row is GarminPushPlan['activities'][number] => row != null),
     sleep: [...list(root, 'sleeps'), ...list(root, 'sleep')].map(mapSleep).filter((row): row is GarminPushPlan['sleep'][number] => row != null),
     userMetrics: list(root, 'userMetrics').map(mapUserMetric).filter((row): row is GarminPushPlan['userMetrics'][number] => row != null),
+    respiration: [...list(root, 'respiration'), ...list(root, 'allDayRespiration')].map(mapRespiration).filter((row): row is GarminPushPlan['respiration'][number] => row != null),
+    pulseOx: [...list(root, 'pulseox'), ...list(root, 'pulseOx')].map(mapPulseOx).filter((row): row is GarminPushPlan['pulseOx'][number] => row != null),
+    hrv: list(root, 'hrv').map(mapHrv).filter((row): row is GarminPushPlan['hrv'][number] => row != null),
     deregistered: unique(deregisteredIds(root)),
     permissionChanges: permissionChanges(root),
   };
+}
+
+/**
+ * One row per key. `preferFn` chooses between the row already kept and the one just seen.
+ * Order of first occurrence is kept.
+ */
+export function dedupeBy<T>(rows: readonly T[], keyFn: (row: T) => string, preferFn: (current: T, incoming: T) => T): T[] {
+  const next = new Map<string, T>();
+  for (const row of rows) {
+    const key = keyFn(row);
+    const current = next.get(key);
+    next.set(key, current === undefined ? row : preferFn(current, row));
+  }
+  return [...next.values()];
+}
+
+/** The row that arrived later. */
+export function preferLast<T>(_current: T, incoming: T): T {
+  return incoming;
+}
+
+/**
+ * Longer duration, then the later local start. A full tie keeps the row that arrived later.
+ * A missing duration loses to a recorded one. A missing start loses to a recorded one.
+ */
+export function preferGarminDaily<T extends { durationSeconds?: number | null; localStartSeconds?: number | null }>(
+  current: T,
+  incoming: T,
+): T {
+  const duration = compareRank(current.durationSeconds, incoming.durationSeconds);
+  if (duration !== 0) return duration > 0 ? current : incoming;
+  const start = compareRank(current.localStartSeconds, incoming.localStartSeconds);
+  if (start !== 0) return start > 0 ? current : incoming;
+  return incoming;
+}
+
+function compareRank(current: number | null | undefined, incoming: number | null | undefined): number {
+  const left = typeof current === 'number' && Number.isFinite(current) ? current : null;
+  const right = typeof incoming === 'number' && Number.isFinite(incoming) ? incoming : null;
+  if (left == null && right == null) return 0;
+  if (left == null) return -1;
+  if (right == null) return 1;
+  if (left === right) return 0;
+  return left > right ? 1 : -1;
+}
+
+/**
+ * The daily with the larger duration_seconds. Equal or missing durations keep the later row.
+ */
+export function preferLargerDuration(current: Record<string, unknown>, incoming: Record<string, unknown>): Record<string, unknown> {
+  const left = typeof current.duration_seconds === 'number' ? current.duration_seconds : null;
+  const right = typeof incoming.duration_seconds === 'number' ? incoming.duration_seconds : null;
+  if (right != null && (left == null || right > left)) return incoming;
+  if (left != null && (right == null || left > right)) return current;
+  return incoming;
 }
 
 export function upsertBy<T>(rows: readonly T[], incoming: readonly T[], key: (row: T) => string): T[] {
@@ -409,7 +522,12 @@ export function applyGarminPush(
 }
 
 export function dailyRowsFor(plan: GarminPushPlan, userIdByGarmin: ReadonlyMap<string, string>): Record<string, unknown>[] {
-  return plan.dailies.flatMap((row) => {
+  const chosen = dedupeBy(
+    plan.dailies,
+    (row) => `${row.garminUserId}:${row.calendarDate}`,
+    preferGarminDaily,
+  );
+  return chosen.flatMap((row) => {
     const userId = userIdByGarmin.get(row.garminUserId);
     if (!userId) return [];
     return [{
@@ -420,6 +538,18 @@ export function dailyRowsFor(plan: GarminPushPlan, userIdByGarmin: ReadonlyMap<s
       moderate_minutes: row.moderateMinutes,
       vigorous_minutes: row.vigorousMinutes,
       active_kilocalories: row.activeKilocalories ?? null,
+      steps: row.steps ?? null,
+      distance_metres: row.distanceMetres ?? null,
+      floors_climbed: row.floorsClimbed ?? null,
+      min_heart_rate_bpm: row.minHeartRateBpm ?? null,
+      max_heart_rate_bpm: row.maxHeartRateBpm ?? null,
+      average_stress_level: row.averageStressLevel ?? null,
+      body_battery_charged: row.bodyBatteryCharged ?? null,
+      body_battery_drained: row.bodyBatteryDrained ?? null,
+      body_battery_highest: row.bodyBatteryHighest ?? null,
+      body_battery_lowest: row.bodyBatteryLowest ?? null,
+      step_goal: row.stepGoal ?? null,
+      duration_seconds: row.durationSeconds ?? null,
     }];
   });
 }
@@ -456,6 +586,50 @@ export function sleepRowsFor(plan: GarminPushPlan, userIdByGarmin: ReadonlyMap<s
       rem_seconds: row.remSeconds,
       awake_seconds: row.awakeSeconds,
       sleep_score: row.sleepScore,
+    }];
+  });
+}
+
+export function respirationRowsFor(plan: GarminPushPlan, userIdByGarmin: ReadonlyMap<string, string>): Record<string, unknown>[] {
+  return plan.respiration.flatMap((row) => {
+    const userId = userIdByGarmin.get(row.garminUserId);
+    if (!userId) return [];
+    return [{
+      user_id: userId,
+      summary_id: row.summaryId,
+      calendar_date: row.calendarDate,
+      average_breaths_per_minute: row.averageBreathsPerMinute,
+      highest_breaths_per_minute: row.highestBreathsPerMinute,
+      lowest_breaths_per_minute: row.lowestBreathsPerMinute,
+    }];
+  });
+}
+
+export function pulseOxRowsFor(plan: GarminPushPlan, userIdByGarmin: ReadonlyMap<string, string>): Record<string, unknown>[] {
+  return plan.pulseOx.flatMap((row) => {
+    const userId = userIdByGarmin.get(row.garminUserId);
+    if (!userId) return [];
+    return [{
+      user_id: userId,
+      summary_id: row.summaryId,
+      calendar_date: row.calendarDate,
+      average_spo2: row.averageSpo2,
+      lowest_spo2: row.lowestSpo2,
+      highest_spo2: row.highestSpo2,
+    }];
+  });
+}
+
+export function hrvRowsFor(plan: GarminPushPlan, userIdByGarmin: ReadonlyMap<string, string>): Record<string, unknown>[] {
+  return plan.hrv.flatMap((row) => {
+    const userId = userIdByGarmin.get(row.garminUserId);
+    if (!userId) return [];
+    return [{
+      user_id: userId,
+      summary_id: row.summaryId,
+      calendar_date: row.calendarDate,
+      last_night_avg_ms: row.lastNightAvgMs,
+      last_night_5min_high_ms: row.lastNight5MinHighMs,
     }];
   });
 }
@@ -741,6 +915,9 @@ export function readingsFromRows(input: {
   activities: unknown;
   sleep: unknown;
   userMetrics?: unknown;
+  respiration?: unknown;
+  pulseOx?: unknown;
+  hrv?: unknown;
   needsPermissions?: boolean;
   missingPermissions?: GarminExportPermission[];
   lastPushAt?: string | null;
@@ -753,6 +930,9 @@ export function readingsFromRows(input: {
     missingPermissions: input.missingPermissions ?? [],
     lastPushAt: input.lastPushAt ?? null,
     historyRefusedAt: input.historyRefusedAt ?? null,
+    respiration: mapRespirationRows(input.respiration),
+    pulseOx: mapPulseOxRows(input.pulseOx),
+    hrv: mapHrvRows(input.hrv),
     dailies: asList(input.dailies).flatMap((row) => {
       const calendarDate = day(row.calendar_date);
       if (!calendarDate) return [];
@@ -763,6 +943,18 @@ export function readingsFromRows(input: {
         moderateMinutes: bounded(row.moderate_minutes, 0, 24 * 60),
         vigorousMinutes: bounded(row.vigorous_minutes, 0, 24 * 60),
         activeKilocalories: roundedKcal(row.active_kilocalories),
+        steps: wholeNumber(row.steps, 0, 200_000),
+        distanceMetres: wholeNumber(row.distance_metres, 0, 500_000),
+        floorsClimbed: wholeNumber(row.floors_climbed, 0, 1_000),
+        minHeartRateBpm: bounded(row.min_heart_rate_bpm, 20, 250),
+        maxHeartRateBpm: bounded(row.max_heart_rate_bpm, 20, 250),
+        averageStressLevel: wholeNumber(row.average_stress_level, 0, 100),
+        bodyBatteryCharged: wholeNumber(row.body_battery_charged, 0, 100),
+        bodyBatteryDrained: wholeNumber(row.body_battery_drained, 0, 100),
+        bodyBatteryHighest: wholeNumber(row.body_battery_highest, 0, 100),
+        bodyBatteryLowest: wholeNumber(row.body_battery_lowest, 0, 100),
+        stepGoal: wholeNumber(row.step_goal, 0, 200_000),
+        durationSeconds: wholeNumber(row.duration_seconds, 0, 24 * 60 * 60),
       }];
     }),
     activities: asList(input.activities).flatMap((row) => {
@@ -1192,14 +1384,149 @@ function mapDaily(row: Record<string, unknown>): GarminPushPlan['dailies'][numbe
   const garminUserId = ident(row.userId);
   const calendarDate = day(row.calendarDate);
   if (!garminUserId || !calendarDate) return null;
+  const battery = record(row.bodyBattery);
   return {
     garminUserId,
     calendarDate,
     restingHeartRateBpm: bounded(row.restingHeartRateInBeatsPerMinute, 20, 250),
     averageHeartRateBpm: bounded(row.averageHeartRateInBeatsPerMinute, 20, 250),
+    minHeartRateBpm: bounded(row.minHeartRateInBeatsPerMinute, 20, 250),
+    maxHeartRateBpm: bounded(row.maxHeartRateInBeatsPerMinute, 20, 250),
     moderateMinutes: minutesFromSeconds(row.moderateIntensityDurationInSeconds),
     vigorousMinutes: minutesFromSeconds(row.vigorousIntensityDurationInSeconds),
     activeKilocalories: roundedKcal(row.activeKilocalories),
+    steps: wholeNumber(row.steps, 0, 200_000),
+    distanceMetres: wholeNumber(row.distanceInMeters, 0, 500_000),
+    floorsClimbed: wholeNumber(row.floorsClimbed, 0, 1_000),
+    averageStressLevel: wholeNumber(row.averageStressLevel, 0, 100),
+    bodyBatteryCharged: wholeNumber(row.bodyBatteryChargedValue ?? battery?.chargedValue ?? battery?.charged, 0, 100),
+    bodyBatteryDrained: wholeNumber(row.bodyBatteryDrainedValue ?? battery?.drainedValue ?? battery?.drained, 0, 100),
+    bodyBatteryHighest: wholeNumber(row.bodyBatteryHighestValue ?? battery?.highestValue ?? battery?.highest, 0, 100),
+    bodyBatteryLowest: wholeNumber(row.bodyBatteryLowestValue ?? battery?.lowestValue ?? battery?.lowest, 0, 100),
+    stepGoal: wholeNumber(row.stepsGoal, 0, 200_000),
+    durationSeconds: wholeNumber(row.durationInSeconds, 0, 24 * 60 * 60),
+    localStartSeconds: dailyLocalStart(row),
+  };
+}
+
+/** startTimeInSeconds plus the local offset. Null when the start itself is missing. */
+function dailyLocalStart(row: Record<string, unknown>): number | null {
+  const start = bounded(row.startTimeInSeconds, 1, 4_000_000_000);
+  if (start == null) return null;
+  const offset = bounded(row.startTimeOffsetInSeconds, -24 * 60 * 60, 24 * 60 * 60);
+  return start + (offset ?? 0);
+}
+
+function mapRespiration(row: Record<string, unknown>): GarminPushPlan['respiration'][number] | null {
+  const garminUserId = ident(row.userId);
+  const calendarDate = day(row.calendarDate);
+  if (!garminUserId || !calendarDate) return null;
+  const series = sampleSpan(row.timeOffsetEpochToBreaths, 1, 80);
+  const average = oneDecimal(bounded(row.averageRespirationValue ?? row.avgWakingRespirationValue, 1, 80) ?? series.average);
+  const highest = oneDecimal(bounded(row.highestRespirationValue, 1, 80) ?? series.highest);
+  const lowest = oneDecimal(bounded(row.lowestRespirationValue, 1, 80) ?? series.lowest);
+  if (average == null && highest == null && lowest == null) return null;
+  return {
+    garminUserId,
+    summaryId: ident(row.summaryId) || `breath-${calendarDate}`,
+    calendarDate,
+    averageBreathsPerMinute: average,
+    highestBreathsPerMinute: highest,
+    lowestBreathsPerMinute: lowest,
+  };
+}
+
+function mapPulseOx(row: Record<string, unknown>): GarminPushPlan['pulseOx'][number] | null {
+  const garminUserId = ident(row.userId);
+  const calendarDate = day(row.calendarDate);
+  if (!garminUserId || !calendarDate) return null;
+  const series = sampleSpan(row.timeOffsetSpo2Values, 50, 100);
+  const average = oneDecimal(bounded(row.averageSpo2 ?? row.averageSpO2Value, 50, 100) ?? series.average);
+  const lowest = oneDecimal(bounded(row.lowestSpo2 ?? row.lowestSpO2Value, 50, 100) ?? series.lowest);
+  const highest = oneDecimal(bounded(row.highestSpo2 ?? row.highestSpO2Value, 50, 100) ?? series.highest);
+  if (average == null && lowest == null && highest == null) return null;
+  return {
+    garminUserId,
+    summaryId: ident(row.summaryId) || `spo2-${calendarDate}`,
+    calendarDate,
+    averageSpo2: average,
+    lowestSpo2: lowest,
+    highestSpo2: highest,
+  };
+}
+
+function mapHrv(row: Record<string, unknown>): GarminPushPlan['hrv'][number] | null {
+  const garminUserId = ident(row.userId);
+  const calendarDate = day(row.calendarDate);
+  if (!garminUserId || !calendarDate) return null;
+  const series = sampleSpan(row.hrvValues, 1, 300);
+  const average = wholeNumber(row.lastNightAvg, 1, 300) ?? (series.average == null ? null : Math.round(series.average));
+  const high = wholeNumber(row.lastNight5MinHigh, 1, 300);
+  if (average == null && high == null) return null;
+  return {
+    garminUserId,
+    summaryId: ident(row.summaryId) || `hrv-${calendarDate}`,
+    calendarDate,
+    lastNightAvgMs: average,
+    lastNight5MinHighMs: high,
+  };
+}
+
+function mapRespirationRows(value: unknown): GarminRespiration[] {
+  return asList(value).flatMap((row) => {
+    const summaryId = ident(row.summary_id);
+    const calendarDate = day(row.calendar_date);
+    if (!summaryId || !calendarDate) return [];
+    return [{
+      summaryId,
+      calendarDate,
+      averageBreathsPerMinute: oneDecimal(bounded(row.average_breaths_per_minute, 1, 80)),
+      highestBreathsPerMinute: oneDecimal(bounded(row.highest_breaths_per_minute, 1, 80)),
+      lowestBreathsPerMinute: oneDecimal(bounded(row.lowest_breaths_per_minute, 1, 80)),
+    }];
+  });
+}
+
+function mapPulseOxRows(value: unknown): GarminPulseOx[] {
+  return asList(value).flatMap((row) => {
+    const summaryId = ident(row.summary_id);
+    const calendarDate = day(row.calendar_date);
+    if (!summaryId || !calendarDate) return [];
+    return [{
+      summaryId,
+      calendarDate,
+      averageSpo2: oneDecimal(bounded(row.average_spo2, 50, 100)),
+      lowestSpo2: oneDecimal(bounded(row.lowest_spo2, 50, 100)),
+      highestSpo2: oneDecimal(bounded(row.highest_spo2, 50, 100)),
+    }];
+  });
+}
+
+function mapHrvRows(value: unknown): GarminHrvSummary[] {
+  return asList(value).flatMap((row) => {
+    const summaryId = ident(row.summary_id);
+    const calendarDate = day(row.calendar_date);
+    if (!summaryId || !calendarDate) return [];
+    return [{
+      summaryId,
+      calendarDate,
+      lastNightAvgMs: wholeNumber(row.last_night_avg_ms, 1, 300),
+      lastNight5MinHighMs: wholeNumber(row.last_night_5min_high_ms, 1, 300),
+    }];
+  });
+}
+
+/** Average, lowest, and highest from a time-offset map. The map itself is not returned. */
+function sampleSpan(value: unknown, min: number, max: number): { average: number | null; lowest: number | null; highest: number | null } {
+  const row = record(value);
+  if (!row) return { average: null, lowest: null, highest: null };
+  const numbers = Object.values(row).map((item) => bounded(item, min, max)).filter((item): item is number => item != null);
+  if (!numbers.length) return { average: null, lowest: null, highest: null };
+  const sum = numbers.reduce((total, item) => total + item, 0);
+  return {
+    average: sum / numbers.length,
+    lowest: Math.min(...numbers),
+    highest: Math.max(...numbers),
   };
 }
 
@@ -1287,6 +1614,16 @@ function minutesFromSeconds(value: unknown): number | null {
 function roundedKcal(value: unknown): number | null {
   const kcal = bounded(value, 0, 20000);
   return kcal == null ? null : Math.round(kcal);
+}
+
+function wholeNumber(value: unknown, min: number, max: number): number | null {
+  const number = bounded(value, min, max);
+  return number == null ? null : Math.round(number);
+}
+
+function oneDecimal(value: number | null): number | null {
+  if (value == null) return null;
+  return Math.round(value * 10) / 10;
 }
 
 function list(root: Record<string, unknown>, key: string): Record<string, unknown>[] {

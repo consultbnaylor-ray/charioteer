@@ -33,6 +33,9 @@ import type { HealthTurnOnResult } from '@/ui/HealthStatBoard';
 import { useStatPeriod } from '@/health/useStatPeriod';
 import { loadLastSynced } from '@/health/syncedAt';
 import { AppleHealthCard } from '@/ui/AppleHealthCard';
+import { appleDayValues } from '@/domain/dailyActivity';
+import { garminStoredMark } from '@/domain/healthRefresh';
+import { londonDay } from '@/domain/healthInsights';
 import { activeMinutesByDay } from '@/domain/healthSources';
 import { useHealthSources } from '@/health/useHealthSources';
 import { GarminTip } from '@/ui/GarminTip';
@@ -45,6 +48,7 @@ import { HealthBoard, HealthReadings } from '@/ui/HealthBoard';
 import { DateField } from '@/ui/DateField';
 import { PlanTick } from '@/ui/PlanTick';
 import { useAppTheme } from '@/ui/theme';
+import { MovementCharts } from '@/ui/DailyActivity';
 import { HealthRefreshBar, useManualHealthRefresh } from '@/ui/HealthRefresh';
 import { Button, Choice, ErrorNote, Field, playSavedHaptic, Screen, T } from '@/ui/ui';
 
@@ -337,6 +341,7 @@ export default function Health() {
         appleCheckedAt={manual.appleCheckedAt}
         garminConnected={readings.connected}
         garminReceivedAt={readings.lastPushAt}
+        garminMark={garminStoredMark(readings)}
         error={manual.error}
         permission={manual.permission}
         history={manual.history}
@@ -362,6 +367,17 @@ export default function Health() {
         onTurnOn={turnOnFromRow}
       />
       <GarminTip />
+      <MovementCharts
+        endDay={londonDay(new Date())}
+        span={7}
+        steps={appleDayValues(snap.health, 'steps')}
+        restingHeart={appleDayValues(snap.health, 'resting_heart_rate')}
+        dailies={readings.dailies}
+        sleep={readings.sleep}
+        respiration={readings.respiration}
+        pulseOx={readings.pulseOx}
+        hrv={readings.hrv}
+      />
       <HealthVisibility
         report={visibility}
         pending={visibilityPending}

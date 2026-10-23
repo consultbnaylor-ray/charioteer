@@ -13,6 +13,10 @@ import { GoalLine } from '@/ui/GoalLine';
 import { YourFitness } from '@/ui/YourFitness';
 import { WorkoutsLink } from '@/ui/WorkoutsLink';
 import { YourGoal } from '@/ui/YourGoal';
+import { appleDayValues } from '@/domain/dailyActivity';
+import { londonDay } from '@/domain/healthInsights';
+import { garminStoredMark } from '@/domain/healthRefresh';
+import { MovementCharts } from '@/ui/DailyActivity';
 import { HealthRefreshBar, useManualHealthRefresh } from '@/ui/HealthRefresh';
 import { Card, Screen, T } from '@/ui/ui';
 
@@ -66,11 +70,23 @@ export default function Stats() {
         appleCheckedAt={manual.appleCheckedAt}
         garminConnected={readings.connected}
         garminReceivedAt={readings.lastPushAt}
+        garminMark={garminStoredMark(readings)}
         error={manual.error}
         permission={manual.permission}
         history={manual.history}
         garminNote={manual.garminNote}
         onPress={() => void manual.run()}
+      />
+      <MovementCharts
+        endDay={londonDay(new Date())}
+        span={7}
+        steps={appleDayValues(snap.health, 'steps')}
+        restingHeart={appleDayValues(snap.health, 'resting_heart_rate')}
+        dailies={readings.dailies}
+        sleep={readings.sleep}
+        respiration={readings.respiration}
+        pulseOx={readings.pulseOx}
+        hrv={readings.hrv}
       />
       <StatPeriodToggle />
       <GoalLine />
