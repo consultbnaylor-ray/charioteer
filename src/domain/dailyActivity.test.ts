@@ -9,6 +9,7 @@ import {
   GARMIN_CALORIE_SOURCE,
   GARMIN_EXERCISE_SOURCE,
   GARMIN_VIGOROUS_MINUTE_WEIGHT,
+  NO_STEPS_YET_TODAY,
   activityDayName,
   calorieSeries,
   distanceSeries,
@@ -191,5 +192,68 @@ describe('daily activity', () => {
     expect(readFileSync('src/ui/DailyActivity.tsx', 'utf8')).toContain('GARMIN_LINE_FOLD');
     expect(readFileSync('src/app/(main)/health.tsx', 'utf8')).toContain('<MovementCharts');
     expect(readFileSync('src/ui/DailyActivity.tsx', 'utf8')).not.toContain('workoutTypeColor');
+  });
+
+  it('keeps today\'s Apple steps when Garmin stored a row with no steps', () => {
+    const today = '2026-10-23';
+    const blank = {
+      calendarDate: today,
+      restingHeartRateBpm: null,
+      averageHeartRateBpm: null,
+      moderateMinutes: null,
+      vigorousMinutes: null,
+      steps: null,
+      distanceMetres: null,
+      floorsClimbed: null,
+    };
+    const steps = stepsSeries(today, 7, [{ day: today, value: 8421 }], [blank]);
+    expect(steps.at(-1)).toMatchObject({ day: today, value: 8421, source: 'apple' });
+    expect(steps.at(-1)?.label).toContain('8,421 steps (Apple Health)');
+    expect(steps.at(-1)?.label).not.toContain(NO_STEPS_YET_TODAY);
+
+    const garminOnly = stepsSeries(today, 7, [], [{ ...blank, steps: 3000 }]);
+    expect(garminOnly.at(-1)).toMatchObject({ value: 3000, source: 'garmin' });
+    expect(garminOnly.at(-1)?.label).toContain('(Garmin)');
+
+    const neither = stepsSeries(today, 7, [], [blank, { ...blank, calendarDate: today, steps: 0 }]);
+    expect(neither.at(-1)).toMatchObject({ value: 0, source: null, label: NO_STEPS_YET_TODAY });
+    expect(neither.find((point) => point.day === '2026-10-22')?.label).not.toBe(NO_STEPS_YET_TODAY);
+
+    const resting = restingSeries(today, 7, [{ day: today, value: 59 }], [blank]);
+    expect(resting.at(-1)).toMatchObject({ value: 59, source: 'apple' });
+    expect(resting.at(-1)?.label).toContain('59 bpm (Apple Health)');
+
+    const distance = distanceSeries(today, 7, [blank, {
+      calendarDate: '2026-10-22',
+      restingHeartRateBpm: null,
+      averageHeartRateBpm: null,
+      moderateMinutes: null,
+      vigorousMinutes: null,
+      distanceMetres: 4200,
+    }]);
+    expect(distance.at(-1)).toMatchObject({ day: today, value: 0, source: null });
+    expect(distance.at(-1)?.label).not.toContain('(Garmin)');
+    expect(distance.find((point) => point.day === '2026-10-22')?.source).toBe('garmin');
+
+    const floors = floorsSeries(today, 7, [blank, {
+      calendarDate: '2026-10-22',
+      restingHeartRateBpm: null,
+      averageHeartRateBpm: null,
+      moderateMinutes: null,
+      vigorousMinutes: null,
+      floorsClimbed: 9,
+    }]);
+    expect(floors.at(-1)).toMatchObject({ day: today, value: 0, source: null });
+    expect(floors.at(-1)?.label).not.toContain('(Garmin)');
+    expect(floors.find((point) => point.day === '2026-10-22')).toMatchObject({ value: 9, source: 'garmin' });
+
+    expect(readFileSync('src/ui/DailyActivity.tsx', 'utf8')).toContain('NO_STEPS_YET_TODAY');
+    const sync = readFileSync('src/health/sync.ios.ts', 'utf8');
+    const stepsRead = sync.slice(sync.indexOf('HKQuantityTypeIdentifierStepCount'), sync.indexOf("rows('steps'"));
+    expect(stepsRead).toContain('dailyStatisticsAnchor(end)');
+    expect(stepsRead).toContain('dailyStatisticsEnd(end)');
+    expect(stepsRead).toContain("['cumulativeSum'],\n      dailyStatisticsAnchor(end),");
+    expect(readFileSync('src/health/dailyActivity.ios.ts', 'utf8')).toContain('dailyStatisticsAnchor(end)');
+    expect(readFileSync('app.json', 'utf8')).toContain('"buildNumber": "53"');
   });
 });

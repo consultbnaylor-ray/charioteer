@@ -9,6 +9,7 @@ import {
 } from '@kingstinct/react-native-healthkit';
 
 import { isoDay } from '@/domain/dates';
+import { dailyStatisticsAnchor, dailyStatisticsEnd } from '@/health/dayBuckets';
 import {
   daysInLookback,
   HEALTH_SAMPLE_DAYS,
@@ -79,9 +80,9 @@ async function sampleDays(
       const rows = await queryStatisticsCollectionForQuantity(
         type,
         ['cumulativeSum'],
-        start,
+        dailyStatisticsAnchor(now),
         { day: 1 },
-        { filter, unit: cumulative },
+        { filter: { date: { startDate: start, endDate: dailyStatisticsEnd(now) } }, unit: cumulative },
       );
       const days = rows
         .filter((row) => row.startDate && (row.sumQuantity?.quantity ?? 0) > 0)
@@ -93,9 +94,9 @@ async function sampleDays(
       const rows = await queryStatisticsCollectionForQuantity(
         type,
         ['discreteAverage'],
-        start,
+        dailyStatisticsAnchor(now),
         { day: 1 },
-        { filter, unit: average },
+        { filter: { date: { startDate: start, endDate: dailyStatisticsEnd(now) } }, unit: average },
       );
       const days = rows
         .filter((row) => row.startDate && (row.averageQuantity?.quantity ?? 0) > 0)

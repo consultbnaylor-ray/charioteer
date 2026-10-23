@@ -10,6 +10,7 @@ import {
   GARMIN_EXERCISE_SOURCE,
   GARMIN_LINE_FOLD,
   GARMIN_SOURCE,
+  NO_STEPS_YET_TODAY,
   activeCaloriesLabel,
   calorieSeries,
   distanceSeries,
@@ -164,7 +165,7 @@ export function MovementCharts({
         span={span}
         unit="steps"
         selected={selected}
-        garminNote={null}
+        garminNote={stepPoints.at(-1)?.label === NO_STEPS_YET_TODAY ? NO_STEPS_YET_TODAY : null}
         onSelect={setSelected}
       />
       {seriesHasValue(distance) ? (

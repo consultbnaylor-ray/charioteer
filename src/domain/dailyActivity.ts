@@ -25,6 +25,9 @@ export const APPLE_SOURCE = '(Apple Health)';
 
 export const GARMIN_SOURCE = '(Garmin)';
 
+/** Shown for the chart's last day when neither Apple Health nor Garmin has steps. */
+export const NO_STEPS_YET_TODAY = 'No steps yet today';
+
 /** How many extra Garmin lines stay visible before the rest are folded. */
 export const GARMIN_LINE_FOLD = 4;
 
@@ -174,7 +177,7 @@ function garminNumber(dailies: readonly GarminDaily[], pick: (daily: GarminDaily
   const garmin = new Map<string, number>();
   for (const daily of dailies) {
     const value = pick(daily);
-    if (value == null || !Number.isFinite(value) || value < 0) continue;
+    if (value == null || !Number.isFinite(value) || value <= 0) continue;
     garmin.set(daily.calendarDate, Math.round(value));
   }
   return garmin;
@@ -186,9 +189,10 @@ export function stepsSeries(
   apple: readonly AppleDayValue[],
   dailies: readonly GarminDaily[],
 ): DailyActivityPoint[] {
-  return dailyActivitySeries(endDay, span, apple, garminNumber(dailies, (daily) => daily.steps), (day, value, source) => (
-    sourced('Steps', day, value.toLocaleString('en-GB'), 'steps', source)
-  ));
+  return dailyActivitySeries(endDay, span, apple, garminNumber(dailies, (daily) => daily.steps), (day, value, source) => {
+    if (day === endDay && !(value > 0)) return NO_STEPS_YET_TODAY;
+    return sourced('Steps', day, value.toLocaleString('en-GB'), 'steps', source);
+  });
 }
 
 export function distanceText(metres: number): string {
