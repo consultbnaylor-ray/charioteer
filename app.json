@@ -9,7 +9,7 @@
     "userInterfaceStyle": "dark",
     "ios": {
       "bundleIdentifier": "uk.co.quanticalabs.charioteer",
-      "buildNumber": "49",
+      "buildNumber": "50",
       "appleTeamId": "5FMDXKAX7V",
       "usesAppleSignIn": true,
       "icon": "./assets/brand/ios/icon-1024.png",
