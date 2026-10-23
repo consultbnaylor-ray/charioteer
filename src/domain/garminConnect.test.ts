@@ -31,6 +31,7 @@ import {
   openGarminToken,
   sealGarminToken,
   webhookGate,
+  webhookPathSecret,
   withoutGarminUser,
   type GarminReadings,
   type GarminStore,
@@ -439,5 +440,76 @@ describe('Garmin storage rules', () => {
       expect(readFileSync(path, 'utf8'), path).not.toMatch(/console\.(log|error|info|debug)\([^)\n]*(access_token|refresh_token|client_secret|heart rate|sleep)/i);
       expect(readFileSync(path, 'utf8'), path).not.toMatch(/latitude|longitude/);
     }
+  });
+});
+
+describe('garmin webhook path secret', () => {
+  const secret = 'pa/th secret+1';
+  const encoded = encodeURIComponent(secret);
+  const client = 'garmin-client-1';
+  const pathGate = (pathname: string, clientHeader: string | null, clientId: string | null | undefined = client) =>
+    webhookGate(null, null, secret, { path: webhookPathSecret(pathname), clientIdHeader: clientHeader, clientId });
+
+  it('reads one URL-decoded segment after garmin-webhook/', () => {
+    expect(webhookPathSecret('/garmin-webhook')).toEqual({ kind: 'none' });
+    expect(webhookPathSecret('/garmin-webhook/')).toEqual({ kind: 'none' });
+    expect(webhookPathSecret('/functions/v1/garmin-webhook')).toEqual({ kind: 'none' });
+    expect(webhookPathSecret(`/garmin-webhook/${encoded}`)).toEqual({ kind: 'segment', value: secret });
+    expect(webhookPathSecret(`/functions/v1/garmin-webhook/${encoded}`)).toEqual({ kind: 'segment', value: secret });
+    expect(webhookPathSecret(`/garmin-webhook/${encoded}/`)).toEqual({ kind: 'invalid' });
+    expect(webhookPathSecret(`/garmin-webhook/${encoded}/extra`)).toEqual({ kind: 'invalid' });
+    expect(webhookPathSecret('/garmin-webhook//x')).toEqual({ kind: 'invalid' });
+    expect(webhookPathSecret('/garmin-webhook/%E0%A4%A')).toEqual({ kind: 'invalid' });
+    expect(webhookPathSecret('/something-else/x')).toEqual({ kind: 'invalid' });
+  });
+
+  it('accepts the path secret only with the matching garmin-client-id', () => {
+    expect(pathGate(`/garmin-webhook/${encoded}`, client)).toEqual({ ok: true });
+    expect(pathGate(`/functions/v1/garmin-webhook/${encoded}`, client)).toEqual({ ok: true });
+    expect(pathGate(`/garmin-webhook/${encoded}`, null)).toMatchObject({ ok: false, status: 401, log: 'garmin-webhook: token rejected' });
+    expect(pathGate(`/garmin-webhook/${encoded}`, 'other-client')).toMatchObject({ ok: false, status: 401 });
+    expect(pathGate(`/garmin-webhook/${encoded}`, client, '')).toMatchObject({ ok: false, status: 401 });
+    expect(pathGate(`/garmin-webhook/${encoded}`, client, null)).toMatchObject({ ok: false, status: 401 });
+    expect(webhookGate(null, null, secret, { path: webhookPathSecret(`/garmin-webhook/${encoded}`), clientIdHeader: client, clientId: undefined })).toMatchObject({ ok: false, status: 401 });
+    expect(webhookGate(null, null, secret, { path: webhookPathSecret(`/garmin-webhook/${encoded}`), clientIdHeader: client, clientId: '   ' })).toMatchObject({ ok: false, status: 401 });
+    expect(pathGate(`/garmin-webhook/${encoded}`, '', '')).toMatchObject({ ok: false, status: 401 });
+    expect(pathGate('/garmin-webhook/wrong', client)).toMatchObject({ ok: false, status: 401 });
+    expect(pathGate(`/garmin-webhook/${encoded}/extra`, client)).toMatchObject({ ok: false, status: 401 });
+    expect(pathGate(`/garmin-webhook/${secret}`, client)).toMatchObject({ ok: false, status: 401 });
+  });
+
+  it('keeps the query and Bearer routes and the 503, without needing a client id', () => {
+    const none = webhookPathSecret('/garmin-webhook');
+    expect(webhookGate(null, secret, secret, { path: none, clientIdHeader: null, clientId: null })).toEqual({ ok: true });
+    expect(webhookGate('Bearer s3', null, 's3', { path: none, clientIdHeader: null, clientId: null })).toEqual({ ok: true });
+    expect(webhookGate(null, 'no', secret, { path: none, clientIdHeader: client, clientId: client })).toMatchObject({ ok: false, status: 401 });
+    expect(webhookGate(null, null, '', { path: webhookPathSecret('/garmin-webhook/x'), clientIdHeader: client, clientId: client })).toMatchObject({ ok: false, status: 503, log: 'garmin-webhook: secret unset' });
+  });
+
+  it('a bad path is refused even when the query token is right', () => {
+    expect(webhookGate(null, secret, secret, { path: webhookPathSecret('/garmin-webhook/wrong'), clientIdHeader: client, clientId: client })).toMatchObject({ ok: false, status: 401 });
+    expect(webhookGate(null, secret, secret, { path: webhookPathSecret('/garmin-webhook/a/b'), clientIdHeader: client, clientId: client })).toMatchObject({ ok: false, status: 401 });
+  });
+
+  it('routes every push type by body, whatever the path suffix', () => {
+    const webhook = readFileSync('supabase/functions/garmin-webhook/index.ts', 'utf8');
+    expect(webhook).toContain('webhookPathSecret(url.pathname)');
+    expect(webhook).toContain("req.headers.get('garmin-client-id')");
+    expect(webhook).toContain("Deno.env.get('GARMIN_CLIENT_ID')");
+    expect(webhook).not.toMatch(/pathname\.(endsWith|includes|startsWith)\('\/(dailies|activities|sleeps|userMetrics)/);
+    const plan = mapGarminPush({
+      dailies: [{ userId: 'g1', summaryId: 'd1', calendarDate: '2026-10-23' }],
+      activities: [{ userId: 'g1', summaryId: 'a1', startTimeInSeconds: 1792700000, durationInSeconds: 60 }],
+      sleeps: [{ userId: 'g1', summaryId: 's1', calendarDate: '2026-10-23', durationInSeconds: 60 }],
+      userMetrics: [{ userId: 'g1', summaryId: 'm1', calendarDate: '2026-10-23', vo2Max: 40 }],
+      deregistrations: [{ userId: 'g2' }],
+      userPermissionsChange: [{ userId: 'g1', permissions: ['HEALTH_EXPORT'] }],
+    });
+    expect(plan.dailies).toHaveLength(1);
+    expect(plan.activities).toHaveLength(1);
+    expect(plan.sleep).toHaveLength(1);
+    expect(plan.userMetrics).toHaveLength(1);
+    expect(plan.deregistered).toEqual(['g2']);
+    expect(plan.permissionChanges).toEqual([{ garminUserId: 'g1', permissions: 'HEALTH_EXPORT' }]);
   });
 });

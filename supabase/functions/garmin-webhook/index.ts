@@ -8,6 +8,7 @@ import {
   sleepRowsFor,
   userMetricRowsFor,
   webhookGate,
+  webhookPathSecret,
   type GarminDb,
 } from '../_shared/garmin.ts';
 
@@ -21,6 +22,11 @@ Deno.serve(async (req) => {
     req.headers.get('Authorization'),
     url.searchParams.get('token'),
     Deno.env.get('GARMIN_WEBHOOK_SECRET'),
+    {
+      path: webhookPathSecret(url.pathname),
+      clientIdHeader: req.headers.get('garmin-client-id'),
+      clientId: Deno.env.get('GARMIN_CLIENT_ID'),
+    },
   );
   if (!gate.ok) {
     console.error(gate.log);
