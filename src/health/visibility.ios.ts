@@ -22,6 +22,7 @@ import { APPLE_HEALTH_READ_TYPES } from '@/health/connection';
 const CUMULATIVE_UNITS: Partial<Record<(typeof APPLE_HEALTH_READ_TYPES)[number], string>> = {
   HKQuantityTypeIdentifierStepCount: 'count',
   HKQuantityTypeIdentifierActiveEnergyBurned: 'kcal',
+  HKQuantityTypeIdentifierAppleExerciseTime: 'min',
   HKQuantityTypeIdentifierDistanceWalkingRunning: 'm',
   HKQuantityTypeIdentifierDistanceCycling: 'm',
   HKQuantityTypeIdentifierDistanceSwimming: 'm',

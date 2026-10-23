@@ -41,6 +41,8 @@ export type GarminDaily = {
   averageHeartRateBpm: number | null;
   moderateMinutes: number | null;
   vigorousMinutes: number | null;
+  /** Active kilocalories. Absent until a daily push includes them. */
+  activeKilocalories?: number | null;
 };
 
 export type GarminActivity = {
@@ -393,6 +395,7 @@ export function dailyRowsFor(plan: GarminPushPlan, userIdByGarmin: ReadonlyMap<s
       average_heart_rate_bpm: row.averageHeartRateBpm,
       moderate_minutes: row.moderateMinutes,
       vigorous_minutes: row.vigorousMinutes,
+      active_kilocalories: row.activeKilocalories ?? null,
     }];
   });
 }
@@ -569,6 +572,7 @@ export function readingsFromRows(input: {
         averageHeartRateBpm: bounded(row.average_heart_rate_bpm, 20, 250),
         moderateMinutes: bounded(row.moderate_minutes, 0, 24 * 60),
         vigorousMinutes: bounded(row.vigorous_minutes, 0, 24 * 60),
+        activeKilocalories: roundedKcal(row.active_kilocalories),
       }];
     }),
     activities: asList(input.activities).flatMap((row) => {
@@ -706,6 +710,11 @@ export function constantTimeEqual(left: string, right: string): boolean {
 
 export function missingRelation(message: string): boolean {
   return /does not exist|schema cache|could not find the table/i.test(message);
+}
+
+/** A select that names a column the live table does not have yet. The table itself can still be read. */
+export function missingColumn(message: string, column: string): boolean {
+  return missingRelation(message) && message.toLowerCase().includes(column.toLowerCase());
 }
 
 type QueryResult = { data: unknown; error: { message: string } | null };
@@ -1000,6 +1009,7 @@ function mapDaily(row: Record<string, unknown>): GarminPushPlan['dailies'][numbe
     averageHeartRateBpm: bounded(row.averageHeartRateInBeatsPerMinute, 20, 250),
     moderateMinutes: minutesFromSeconds(row.moderateIntensityDurationInSeconds),
     vigorousMinutes: minutesFromSeconds(row.vigorousIntensityDurationInSeconds),
+    activeKilocalories: roundedKcal(row.activeKilocalories),
   };
 }
 
@@ -1082,6 +1092,11 @@ function minutesFromSeconds(value: unknown): number | null {
   const seconds = bounded(value, 0, 24 * 60 * 60);
   if (seconds == null) return null;
   return Math.round(seconds / 60);
+}
+
+function roundedKcal(value: unknown): number | null {
+  const kcal = bounded(value, 0, 20000);
+  return kcal == null ? null : Math.round(kcal);
 }
 
 function list(root: Record<string, unknown>, key: string): Record<string, unknown>[] {

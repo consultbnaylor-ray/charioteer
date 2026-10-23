@@ -3,9 +3,11 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { useRepository, useSnapshot } from '@/data';
 import type { HealthSample } from '@/data/types';
+import { emptyAppleDailyActivity, type AppleDailyActivity } from '@/domain/dailyActivity';
 import { emptyGarminReadings, type GarminReadings } from '@/domain/garminConnect';
 import { mergeHealthSamples, mergeWorkouts } from '@/domain/healthSources';
 import type { DeviceWorkout } from '@/domain/workoutRoute';
+import { listDailyActivity } from '@/health/dailyActivity';
 import { listDeviceWorkouts } from '@/health/workoutRoute';
 import { rememberWorkouts } from '@/health/workoutRouteMemory';
 
@@ -21,11 +23,13 @@ export function useHealthSources(): {
   readings: GarminReadings;
   workouts: DeviceWorkout[];
   samples: HealthSample[];
+  activity: AppleDailyActivity;
 } {
   const snap = useSnapshot();
   const repo = useRepository();
   const [readings, setReadings] = useState<GarminReadings>(emptyGarminReadings);
   const [apple, setApple] = useState<DeviceWorkout[]>([]);
+  const [activity, setActivity] = useState<AppleDailyActivity>(emptyAppleDailyActivity);
   const [tick, setTick] = useState(0);
 
   useEffect(() => {
@@ -35,6 +39,8 @@ export function useHealthSources(): {
       sourceListeners.delete(bump);
     };
   }, []);
+
+  const consent = Boolean(snap.profile?.consentHealth);
 
   useFocusEffect(useCallback(() => {
     let live = true;
@@ -48,10 +54,19 @@ export function useHealthSources(): {
     }).catch(() => {
       if (live) setApple([]);
     });
+    if (!consent) {
+      setActivity(emptyAppleDailyActivity());
+    } else {
+      void listDailyActivity().then((next) => {
+        if (live) setActivity(next);
+      }).catch(() => {
+        if (live) setActivity(emptyAppleDailyActivity());
+      });
+    }
     return () => {
       live = false;
     };
-  }, [repo, tick]));
+  }, [consent, repo, tick]));
 
   const workouts = useMemo(() => mergeWorkouts(apple, readings.activities), [apple, readings]);
   const samples = useMemo(
@@ -63,5 +78,5 @@ export function useHealthSources(): {
     rememberWorkouts(workouts);
   }, [workouts]);
 
-  return { readings, workouts, samples };
+  return { readings, workouts, samples, activity };
 }

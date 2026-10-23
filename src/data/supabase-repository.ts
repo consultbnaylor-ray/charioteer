@@ -18,7 +18,7 @@ import { omitSharedLocation } from '@/domain/sharedPayload';
 import { stripJpegBase64, stripJpegLocation } from '@/domain/photoLocation';
 import { chunkHealthRows } from '@/domain/healthUpload';
 import { rejectRouteCoordinates } from '@/domain/workoutRoute';
-import { emptyGarminReadings, missingRelation, readingsFromRows, type GarminReadings } from '../../supabase/functions/_shared/garmin';
+import { emptyGarminReadings, missingColumn, missingRelation, readingsFromRows, type GarminReadings } from '../../supabase/functions/_shared/garmin';
 import { gratitudeFromRows, isGratitudeCategory, localGratitudeReflect, planGratitudeEntry, type GratitudePhoto, type GratitudeReflect } from '@/domain/gratitude';
 import {
   GRATITUDE_BUCKET,
@@ -2840,13 +2840,16 @@ export class SupabaseRepository implements Repository {
 
   async loadGarmin(): Promise<GarminReadings> {
     const empty = emptyGarminReadings();
-    const [status, dailies, activities, sleep, metrics] = await Promise.all([
+    const [status, dailiesFirst, activities, sleep, metrics] = await Promise.all([
       this.client.from('garmin_connection_status').select('connected, connected_at').maybeSingle(),
-      this.client.from('garmin_dailies').select('calendar_date, resting_heart_rate_bpm, average_heart_rate_bpm, moderate_minutes, vigorous_minutes').order('calendar_date'),
+      this.client.from('garmin_dailies').select('calendar_date, resting_heart_rate_bpm, average_heart_rate_bpm, moderate_minutes, vigorous_minutes, active_kilocalories').order('calendar_date'),
       this.client.from('garmin_activities').select('summary_id, activity_type, activity_name, started_at, duration_seconds, average_heart_rate_bpm, training_effect, anaerobic_effect').order('started_at'),
       this.client.from('garmin_sleep').select('summary_id, calendar_date, duration_seconds, deep_seconds, light_seconds, rem_seconds, awake_seconds, sleep_score').order('calendar_date'),
       this.client.from('garmin_user_metrics').select('summary_id, calendar_date, vo2_max, vo2_max_cycling, fitness_age').order('calendar_date'),
     ]);
+    const dailies = dailiesFirst.error && missingColumn(dailiesFirst.error.message, 'active_kilocalories')
+      ? await this.client.from('garmin_dailies').select('calendar_date, resting_heart_rate_bpm, average_heart_rate_bpm, moderate_minutes, vigorous_minutes').order('calendar_date')
+      : dailiesFirst;
     const quiet = (error: { message: string } | null) => !error || missingRelation(error.message);
     if (!quiet(status.error) || !quiet(dailies.error) || !quiet(activities.error) || !quiet(sleep.error) || !quiet(metrics.error)) return empty;
     const statusRow = status.data as { connected?: boolean; connected_at?: string | null } | null;

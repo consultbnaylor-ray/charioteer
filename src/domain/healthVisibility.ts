@@ -39,6 +39,7 @@ const TITLES = {
   HKQuantityTypeIdentifierDistanceSwimming: 'Swimming distance',
   HKQuantityTypeIdentifierHeartRate: 'Heart rate',
   HKQuantityTypeIdentifierActiveEnergyBurned: 'Active energy',
+  HKQuantityTypeIdentifierAppleExerciseTime: 'Exercise minutes',
   ...(routeReadType ? { [routeReadType]: 'Workout routes' } : {}),
 } as Record<(typeof APPLE_HEALTH_READ_TYPES)[number], string>;
 
@@ -81,6 +82,7 @@ const MISSING_ACTION = {
   HKQuantityTypeIdentifierDistanceSwimming: 'Record a swim.',
   HKQuantityTypeIdentifierHeartRate: 'Wear Apple Watch during the day or a workout.',
   HKQuantityTypeIdentifierActiveEnergyBurned: 'Wear Apple Watch so movement is recorded.',
+  HKQuantityTypeIdentifierAppleExerciseTime: 'Wear Apple Watch so the exercise ring is recorded.',
   ...(routeReadType ? { [routeReadType]: 'Turn on Workouts in Apple Health. The path stays on this iPhone.' } : {}),
 } as Record<(typeof APPLE_HEALTH_READ_TYPES)[number], string>;
 
