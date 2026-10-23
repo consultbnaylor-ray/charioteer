@@ -626,19 +626,67 @@ export type WebhookGate =
   | { ok: true }
   | { ok: false; status: 401 | 503; log: 'garmin-webhook: secret unset' | 'garmin-webhook: token rejected' };
 
+export type WebhookPathSecret = { kind: 'none' } | { kind: 'segment'; value: string } | { kind: 'invalid' };
+
+export type WebhookRoute = {
+  path: WebhookPathSecret;
+  clientIdHeader: string | null;
+  clientId: string | null | undefined;
+};
+
+const WEBHOOK_SLUG = 'garmin-webhook';
+
 /**
- * Fail closed. The portal stores a URL, so the secret arrives as ?token=.
- * Authorization: Bearer is also accepted. An empty secret is refused.
+ * Garmin's endpoint tool drops a query string, so the secret can ride as the one
+ * path segment after garmin-webhook/. A bare /garmin-webhook (or a trailing slash)
+ * is 'none'. Anything else, an extra segment, an empty segment or a bad escape, is 'invalid'.
  */
-export function webhookGate(header: string | null, queryToken: string | null, secret: string | null | undefined): WebhookGate {
+export function webhookPathSecret(pathname: string): WebhookPathSecret {
+  const parts = pathname.split('/');
+  const at = parts.indexOf(WEBHOOK_SLUG);
+  if (at < 0) return { kind: 'invalid' };
+  const rest = parts.slice(at + 1);
+  if (rest.length === 0 || (rest.length === 1 && rest[0] === '')) return { kind: 'none' };
+  if (rest.length !== 1) return { kind: 'invalid' };
+  try {
+    const value = decodeURIComponent(rest[0]);
+    return value ? { kind: 'segment', value } : { kind: 'invalid' };
+  } catch {
+    return { kind: 'invalid' };
+  }
+}
+
+/**
+ * Fail closed. An empty secret is refused with 503.
+ * Path route (/garmin-webhook/<secret>, what Garmin is given): the segment must match
+ * the secret and the garmin-client-id header must match GARMIN_CLIENT_ID; if that env
+ * var is unset the route is refused. Query (?token=) and Authorization: Bearer stay
+ * for our own smoke tests and need no client id. Every refusal is the same plain 401.
+ */
+export function webhookGate(
+  header: string | null,
+  queryToken: string | null,
+  secret: string | null | undefined,
+  route?: WebhookRoute,
+): WebhookGate {
   const expected = (secret ?? '').trim();
   if (!expected) return { ok: false, status: 503, log: 'garmin-webhook: secret unset' };
+  const rejected: WebhookGate = { ok: false, status: 401, log: 'garmin-webhook: token rejected' };
+  const path = route?.path ?? { kind: 'none' };
+  if (path.kind === 'invalid') return rejected;
+  if (path.kind === 'segment') {
+    const clientId = (route?.clientId ?? '').trim();
+    const presented = (route?.clientIdHeader ?? '').trim();
+    const secretOk = constantTimeEqual(path.value, expected);
+    const clientOk = clientId.length > 0 && constantTimeEqual(presented, clientId);
+    return secretOk && clientOk ? { ok: true } : rejected;
+  }
   const bearer = bearerToken(header);
   const query = (queryToken ?? '').trim();
   const queryOk = constantTimeEqual(query, expected);
   const bearerOk = constantTimeEqual(bearer, expected);
   if (queryOk || bearerOk) return { ok: true };
-  return { ok: false, status: 401, log: 'garmin-webhook: token rejected' };
+  return rejected;
 }
 
 function bearerToken(header: string | null): string {
