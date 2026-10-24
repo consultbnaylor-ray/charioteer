@@ -127,6 +127,13 @@ describe('coach consent for a target weight', () => {
     expect(voice.indexOf('coachConsentAllows')).toBeGreaterThan(-1);
     expect(voice.indexOf('coachConsentAllows')).toBeLessThan(voice.lastIndexOf('loadNutritionLines'));
     expect(voice.indexOf('if (!profileRes.data.consent_ai)')).toBeLessThan(voice.lastIndexOf('loadNutritionLines'));
+    expect(voice).not.toContain('personalDataEnabled: true');
+    const garminCall = voice.indexOf('garminLines: await garminLinesFor(');
+    const garminGate = voice.slice(garminCall, voice.indexOf('});', garminCall));
+    expect(garminGate).toContain('consentAi: profile.consent_ai === true');
+    expect(garminGate).toContain('consentHealth: shareHealth');
+    expect(garminGate).toContain("personalDataEnabled: xaiPersonalDataEnabled(Deno.env.get('XAI_PERSONAL_DATA_ENABLED'))");
+    expect(voice.indexOf('if (!xaiPersonalDataEnabled')).toBeLessThan(voice.lastIndexOf('garminLinesFor('));
     expect(meal).not.toContain('loadNutritionLines');
     expect(meal).not.toContain('targetActivityPlan');
     expect(meal).not.toContain('MEAL_LOG_INTRO');

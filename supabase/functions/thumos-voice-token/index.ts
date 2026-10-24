@@ -194,7 +194,7 @@ Deno.serve(async (req) => {
       garminLines: await garminLinesFor(userClient, userId, {
         consentAi: profile.consent_ai === true,
         consentHealth: shareHealth,
-        personalDataEnabled: true,
+        personalDataEnabled: xaiPersonalDataEnabled(Deno.env.get('XAI_PERSONAL_DATA_ENABLED')),
       }),
     },
   });
