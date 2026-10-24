@@ -50,8 +50,8 @@ describe('goal options', () => {
     expect(ui).toContain("flexWrap: 'wrap'");
     expect(ui).toContain('option.label');
     expect(ui).toContain('settings.goal === option.id');
-    expect(ui).toContain('goal: id');
-    expect(ui).toContain('if (settings.goal === id) return');
+    expect(ui).toContain('settingsForPreset(repo.getSnapshot().nutrition, id)');
+    expect(ui).toContain('if (settings.goal === id && settings.targetWeightKg == null && !draftingTarget) return');
     expect(ui).not.toContain('goal: null');
     expect(ui).not.toContain('console.');
     expect(ui).toContain('variant="label">Goal');
@@ -77,11 +77,11 @@ describe('goal options', () => {
     const ui = readFileSync('src/ui/GoalChoices.tsx', 'utf8');
     const choose = ui.slice(ui.indexOf('async function choose'), ui.indexOf('const shown'));
     const savedAt = choose.indexOf('setSaved(true)');
-    expect(choose).toContain('if (settings.goal === id) return');
+    expect(choose).toContain('if (settings.goal === id && settings.targetWeightKg == null && !draftingTarget) return');
     expect(choose.indexOf('await repo.setNutritionSettings')).toBeGreaterThan(-1);
     expect(choose.indexOf('await repo.setNutritionSettings')).toBeLessThan(savedAt);
     expect(choose.indexOf('if (ticket !== write.current) return')).toBeLessThan(savedAt);
-    expect(choose).toContain('goal: id');
+    expect(choose).toContain('settingsForPreset(repo.getSnapshot().nutrition, id)');
     expect(choose).toContain('playSavedHaptic()');
     expect(choose).toContain('Could not save that goal.');
     expect(ui).toContain("export const GOAL_SAVED_LINE = 'Goal saved'");
