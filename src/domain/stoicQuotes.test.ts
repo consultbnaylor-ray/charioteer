@@ -95,11 +95,15 @@ describe('Stoic quote catalogue', () => {
     const seen = new Set<string>();
     for (const quote of STOIC_QUOTES) {
       const words = quote.plain.trim().split(/\s+/);
-      expect(words.length, quote.id).toBeGreaterThanOrEqual(25);
-      expect(words.length, quote.id).toBeLessThanOrEqual(35);
+      expect(words.length, quote.id).toBeGreaterThanOrEqual(8);
+      expect(words.length, quote.id).toBeLessThanOrEqual(25);
       const sentences = quote.plain.split(/[.!?]+/).map((part) => part.trim()).filter(Boolean);
       expect(sentences.length, quote.id).toBeGreaterThanOrEqual(1);
       expect(sentences.length, quote.id).toBeLessThanOrEqual(2);
+      for (const sentence of sentences) {
+        expect(sentence.split(/\s+/).filter(Boolean).length, quote.id).toBeLessThanOrEqual(20);
+      }
+      expect(quote.plain, quote.id).not.toMatch(/\b(virtue|virtues|fortune|fortunes|vice|vices|temperance|prudence|adversity|impediment|impediments|wherein|ought|thou|thee|thy|thine)\b/i);
       expect(quote.plain.endsWith('.'), quote.id).toBe(true);
       expect(quote.plain, quote.id).not.toBe(quote.text);
       expect(seen.has(quote.plain), quote.id).toBe(false);
@@ -117,6 +121,10 @@ describe('Stoic quote catalogue', () => {
     expect(mark).toContain("export const IN_PLAIN_WORDS = 'In plain words'");
     expect(mark).toContain("export const PLAIN_WORDS_MARK = 'Charioteer’s own words, not the author’s.'");
     expect(mark).toContain('font.bodyItalic');
+    expect(mark).toContain('font.bodyStrong');
+    expect(mark).toContain('fontSize: 15 * size');
+    expect(mark).toContain('color: theme.colors.ink');
+    expect(mark).toContain('maxFontSizeMultiplier={2}');
   });
 
   it('shows the paraphrase under the daily quote, favourites, and the pin on You', () => {
@@ -130,6 +138,10 @@ describe('Stoic quote catalogue', () => {
     expect(quotes).toContain('<InPlainWords plain={quote.plain} />');
     expect(quotes).toContain('<InPlainWords plain={daily.plain} />');
     expect(you).toContain('<InPlainWords plain={pinned.plain} />');
+    expect(quotes).toContain('<QuoteWords>{daily.text}</QuoteWords>');
+    expect(quotes).toContain('<QuoteWords>{quote.text}</QuoteWords>');
+    expect(home).toContain('<QuoteWords>{dailyQuote.text}</QuoteWords>');
+    expect(you).toContain('<QuoteWords>{pinned.text}</QuoteWords>');
     const community = readFileSync('src/ui/CommunityProfile.tsx', 'utf8');
     expect(community).not.toContain('InPlainWords');
     expect(community).not.toContain('.plain');

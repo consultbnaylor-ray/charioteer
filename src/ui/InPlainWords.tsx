@@ -8,6 +8,25 @@ export const IN_PLAIN_WORDS = 'In plain words';
 /** Makes clear the modern line is not the author’s wording. */
 export const PLAIN_WORDS_MARK = 'Charioteer’s own words, not the author’s.';
 
+/** The old translation. Italic and quieter, so the plain-words line is the one you read. */
+export function QuoteWords({ children }: { children: string }) {
+  const theme = useAppTheme();
+  const size = theme.scale;
+  return (
+    <Text
+      maxFontSizeMultiplier={2}
+      style={{
+        fontFamily: theme.font.bodyItalic,
+        fontSize: 15 * size,
+        lineHeight: 22 * size,
+        color: theme.colors.muted,
+      }}
+    >
+      {children}
+    </Text>
+  );
+}
+
 export function InPlainWords({ plain }: { plain: string }) {
   const theme = useAppTheme();
   const size = theme.scale;
@@ -18,10 +37,10 @@ export function InPlainWords({ plain }: { plain: string }) {
       <Text
         maxFontSizeMultiplier={2}
         style={{
-          fontFamily: theme.font.bodyItalic,
-          fontSize: 13 * size,
-          lineHeight: 19 * size,
-          color: theme.colors.muted,
+          fontFamily: theme.font.bodyStrong,
+          fontSize: 15 * size,
+          lineHeight: 22 * size,
+          color: theme.colors.ink,
         }}
       >
         {IN_PLAIN_WORDS}: {text}

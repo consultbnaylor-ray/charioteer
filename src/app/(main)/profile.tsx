@@ -29,7 +29,7 @@ import { ConsentChoices } from '@/ui/ConsentChoices';
 import { ProgressPhotos } from '@/ui/ProgressPhotos';
 import { UnitsGuide } from '@/ui/UnitsGuide';
 import { DateField } from '@/ui/DateField';
-import { InPlainWords } from '@/ui/InPlainWords';
+import { InPlainWords, QuoteWords } from '@/ui/InPlainWords';
 import { usePendingPress } from '@/ui/pendingAction';
 import { Button, Card, Choice, ErrorNote, Field, playSavedHaptic, Screen, T } from '@/ui/ui';
 import { useAppTheme } from '@/ui/theme';
@@ -288,7 +288,7 @@ export default function Profile() {
       {pinned ? (
         <View style={{ gap: 8 }}>
           <T variant="label">Pinned quote</T>
-          <T variant="display">{pinned.text}</T>
+          <QuoteWords>{pinned.text}</QuoteWords>
           <T variant="muted">{quoteCredit(pinned)}</T>
           <InPlainWords plain={pinned.plain} />
           <ShareOnProfile

@@ -25,7 +25,7 @@ import { ShareOnProfile } from '@/ui/ShareOnProfile';
 import { UnitsGuide } from '@/ui/UnitsGuide';
 import { DateField } from '@/ui/DateField';
 import { OwnerPhoto } from '@/ui/OwnerPhoto';
-import { InPlainWords } from '@/ui/InPlainWords';
+import { InPlainWords, QuoteWords } from '@/ui/InPlainWords';
 import { usePendingPress } from '@/ui/pendingAction';
 import { Button, Card, EditMark, EditSheet, ErrorNote, Field, Screen, T } from '@/ui/ui';
 import { ScrollTarget } from '@/ui/ScrollTarget';
@@ -226,7 +226,7 @@ export default function Home() {
       </Card>
       <Card>
         <T variant="label">Quote of the day</T>
-        <T>{dailyQuote.text}</T>
+        <QuoteWords>{dailyQuote.text}</QuoteWords>
         <T variant="muted">{quoteCredit(dailyQuote)}</T>
         <InPlainWords plain={dailyQuote.plain} />
         <Button label="Stoic & classical wisdom" tone="quiet" onPress={() => router.push('/quotes' as never)} />
