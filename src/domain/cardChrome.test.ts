@@ -31,8 +31,8 @@ describe('card chrome', () => {
     expect(theme).toContain('control: 2, card: 2, featured: 2.5');
     const light = statsToneColors('light').good.ink;
     const dark = statsToneColors('dark').good.ink;
-    expect(light).toBe('#067453');
-    expect(dark).toBe('#34E8B0');
+    expect(light).toBe('#047857');
+    expect(dark).toBe('#2DE0A0');
     expect(light).toMatch(/^#[0-9A-F]{6}$/);
     expect(dark).toMatch(/^#[0-9A-F]{6}$/);
     expect(contrast(light, '#FFFFFF')).toBeGreaterThanOrEqual(4.5);
