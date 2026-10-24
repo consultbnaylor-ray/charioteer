@@ -159,7 +159,7 @@ export default function Home() {
       {sober ? (
       <View style={{ gap: 8 }}>
       <SoberSectionShare />
-      <Card onPress={openCorrection} accessibilityLabel="Correct the sober start date">
+      <Card featured onPress={openCorrection} accessibilityLabel="Correct the sober start date">
         <EditMark label="Sober" />
         {elapsed && started ? (
           <MeasureRingView icon="day" label="Sober days" ring={soberFigure(started, now)} />
@@ -178,6 +178,7 @@ export default function Home() {
         {started ? <T variant="muted">Since {formatUkDate(started)}</T> : null}
       </Card>
       <ShareOnProfile
+        boxed
         label="Share days sober"
         item="Days sober"
         on={snap.sharing.soberDays}
@@ -224,7 +225,7 @@ export default function Home() {
         <T variant="label">Stats</T>
         <T>A plain look at sober days, check-ins, food, and the rest.</T>
       </Card>
-      <Card>
+      <Card featured>
         <T variant="label">Quote of the day</T>
         <QuoteWords>{dailyQuote.text}</QuoteWords>
         <T variant="muted">{quoteCredit(dailyQuote)}</T>

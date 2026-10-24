@@ -2,9 +2,12 @@ import { createContext, useContext, useMemo, type ReactNode } from 'react';
 import { useColorScheme } from 'react-native';
 
 import type { TextScale, ThemePreference } from '@/data/types';
+import { statsToneColors } from '@/ui/statsPalette';
 
 /**
- * Monochrome system. Near-black and off-white, grey for hierarchy.
+ * Monochrome system, plus one accent. Near-black and off-white, grey for hierarchy.
+ * The accent is the On-track green from statsPalette.ts: pale mint in the dark
+ * theme, and the deeper green already used for that ink in the light theme.
  * danger* marks SOS and safety notices, and a pending connection request
  * on People. Stats tiles and the nutrition charts use statsPalette.ts.
  * Workout charts use one fixed colour per type, in workoutTypeColor.ts,
@@ -46,10 +49,12 @@ const dark = {
   shadow: 'rgba(0, 0, 0, 0.5)',
 };
 
-export type Palette = typeof light;
 export type Scheme = 'light' | 'dark';
+/** Base greys, plus the On-track accent for card edges. */
+export type Palette = typeof light & { accent: string };
 
-export const radius = { sm: 2, md: 4 } as const;
+/** Main cards use md. Smaller notes and badges use sm. */
+export const radius = { sm: 14, md: 20 } as const;
 
 export const font = {
   display: 'Oswald_700Bold',
@@ -84,7 +89,7 @@ export function ThemeProvider({
   const value = useMemo<ThemeValue>(
     () => ({
       scheme,
-      colors: scheme === 'dark' ? dark : light,
+      colors: { ...(scheme === 'dark' ? dark : light), accent: statsToneColors(scheme).good.ink },
       scale: scales[textScale],
       radius,
       font,

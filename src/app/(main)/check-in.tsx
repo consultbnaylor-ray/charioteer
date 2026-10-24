@@ -95,6 +95,7 @@ export default function CheckIn() {
           <T variant="muted">Check-in days in a row. Only this count can be shared.</T>
         </Card>
         <ShareOnProfile
+          boxed
           label="Share mood streak"
           item="Mood streak"
           on={snap.sharing.moodStreak}

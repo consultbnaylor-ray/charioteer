@@ -292,6 +292,7 @@ export default function Profile() {
           <T variant="muted">{quoteCredit(pinned)}</T>
           <InPlainWords plain={pinned.plain} />
           <ShareOnProfile
+            boxed
             label="Share pinned quote"
             item="Pinned quote"
             on={snap.sharing.pinnedQuote}

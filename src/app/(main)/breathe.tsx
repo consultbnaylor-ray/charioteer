@@ -228,7 +228,7 @@ function BreathRunner({ exercise }: { exercise: BreathExercise }) {
         style={({ pressed }) => ({
           minHeight: 52,
           minWidth: 44,
-          borderRadius: 4,
+          borderRadius: theme.radius.md,
           alignItems: 'center',
           justifyContent: 'center',
           paddingHorizontal: 18,

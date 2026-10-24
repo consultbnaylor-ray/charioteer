@@ -114,7 +114,7 @@ export default function StoicQuotes() {
       intro="Public-domain translations from the Stoics and from Plato. Plato is Platonic, not a Stoic. The same line for everyone on a UK date."
     >
       {error ? <ErrorNote>{error}</ErrorNote> : null}
-      <Card>
+      <Card featured>
         <T variant="label">{daysBack === 0 ? 'Quote of the day' : 'Earlier day'}</T>
         <T variant="muted">{dayLabel(day)}</T>
         <QuoteWords>{daily.text}</QuoteWords>

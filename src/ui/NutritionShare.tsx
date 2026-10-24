@@ -20,11 +20,14 @@ export function NutritionShareSwitch({
   label,
   item,
   on,
+  boxed = false,
   apply,
 }: {
   label: string;
   item: string;
   on: boolean;
+  /** Draw the row as its own card. Leave this off when the row already sits inside a card. */
+  boxed?: boolean;
   apply: (settings: NutritionSettings, selected: boolean) => NutritionSettings;
 }) {
   const snap = useSnapshot();
@@ -62,7 +65,17 @@ export function NutritionShareSwitch({
   }
 
   return (
-    <View style={{ gap: 6 }}>
+    <View
+      style={boxed ? {
+        gap: 6,
+        borderWidth: 1,
+        borderColor: theme.colors.accent,
+        borderRadius: theme.radius.md,
+        backgroundColor: theme.colors.surface,
+        paddingHorizontal: 18,
+        paddingVertical: 14,
+      } : { gap: 6 }}
+    >
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 12, alignItems: 'center' }}>
         <T style={{ flex: 1 }}>{label}</T>
         <Switch

@@ -21,6 +21,7 @@ export function ShareOnProfile({
   on,
   sensitive = false,
   lines,
+  boxed = false,
   apply,
 }: {
   label: string;
@@ -30,6 +31,8 @@ export function ShareOnProfile({
   sensitive?: boolean;
   /** Caps the visible label. The switch name stays the full text. */
   lines?: number;
+  /** Draw the row as its own card. Leave this off when the row already sits inside a card. */
+  boxed?: boolean;
   apply: (sharing: ProfileSharing, selected: boolean) => ProfileSharing;
 }) {
   const snap = useSnapshot();
@@ -64,7 +67,17 @@ export function ShareOnProfile({
   }
 
   return (
-    <View style={{ gap: 6 }}>
+    <View
+      style={boxed ? {
+        gap: 6,
+        borderWidth: 1,
+        borderColor: theme.colors.accent,
+        borderRadius: theme.radius.md,
+        backgroundColor: theme.colors.surface,
+        paddingHorizontal: 18,
+        paddingVertical: 14,
+      } : { gap: 6 }}
+    >
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 12, alignItems: 'center' }}>
         <T style={{ flex: 1 }} numberOfLines={lines}>{label}</T>
         <Switch

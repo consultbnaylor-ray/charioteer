@@ -24,7 +24,7 @@ export function YourGoal({ place }: { place: 'today' | 'stats' | 'plan' }) {
   const showNudges = place === 'today';
   const met = view.ticks.filter((tick) => tick.done).length;
   return (
-    <Card>
+    <Card featured>
       <StatPeriodToggle />
       {place === 'stats' ? null : <GoalLine />}
       <T variant="muted">{view.matters}</T>

@@ -220,14 +220,25 @@ export function Card({
   style,
   onPress,
   accessibilityLabel,
+  featured = false,
 }: {
   children: ReactNode;
   style?: StyleProp<ViewStyle>;
   onPress?: () => void;
   accessibilityLabel?: string;
+  /** A slightly heavier accent edge for a primary card, such as the sober card. */
+  featured?: boolean;
 }) {
   const theme = useAppTheme();
-  const box = [styles.card, { backgroundColor: theme.colors.surface, borderColor: theme.colors.line }, style];
+  const box = [
+    styles.card,
+    {
+      backgroundColor: theme.colors.surface,
+      borderColor: theme.colors.accent,
+      borderWidth: featured ? 1.5 : 1,
+    },
+    style,
+  ];
   if (!onPress) return <View style={box}>{children}</View>;
   return (
     <Pressable
@@ -301,8 +312,8 @@ export function EditSheet({
           <View
             style={{
               backgroundColor: theme.colors.bg,
-              borderTopLeftRadius: 16,
-              borderTopRightRadius: 16,
+              borderTopLeftRadius: radius.md,
+              borderTopRightRadius: radius.md,
               paddingHorizontal: 20,
               paddingTop: 20,
               paddingBottom: 16 + insets.bottom,

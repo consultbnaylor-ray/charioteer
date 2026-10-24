@@ -350,6 +350,7 @@ export default function GratitudeDiary() {
     >
       <GratitudeSectionShare />
       <ShareOnProfile
+        boxed
         label={SHARE_NEW_GRATITUDE}
         item="Lines I add later"
         on={snap.sharing.shareNewGratitude}

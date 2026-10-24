@@ -63,7 +63,7 @@ export function UnitsGuide({
   }
 
   return (
-    <View style={{ gap: 8, borderWidth: 1, borderColor: theme.colors.line, backgroundColor: theme.colors.sunken, borderRadius: 8, padding: 12 }}>
+    <View style={{ gap: 8, borderWidth: 1, borderColor: theme.colors.line, backgroundColor: theme.colors.sunken, borderRadius: theme.radius.sm, padding: 12 }}>
       <T variant="label">Common drinks</T>
       <T variant="muted">Tap plus or minus for a usual week. The total fills the units box, and the estimate below updates as you go.</T>
       {NHS_DRINKS.map((drink) => {
@@ -75,7 +75,7 @@ export function UnitsGuide({
               accessibilityLabel={`Fewer ${drink.name}`}
               disabled={count === 0}
               onPress={() => setCount(drink.id, count - 1)}
-              style={{ width: 44, height: 44, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: theme.colors.line, backgroundColor: theme.colors.surface, opacity: count === 0 ? 0.4 : 1 }}
+              style={{ width: 44, height: 44, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: theme.colors.line, borderRadius: theme.radius.sm, backgroundColor: theme.colors.surface, opacity: count === 0 ? 0.4 : 1 }}
             >
               <T>−</T>
             </Pressable>
@@ -84,7 +84,7 @@ export function UnitsGuide({
               accessibilityRole="button"
               accessibilityLabel={`More ${drink.name}`}
               onPress={() => setCount(drink.id, count + 1)}
-              style={{ width: 44, height: 44, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: theme.colors.line, backgroundColor: theme.colors.surface }}
+              style={{ width: 44, height: 44, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: theme.colors.line, borderRadius: theme.radius.sm, backgroundColor: theme.colors.surface }}
             >
               <T>+</T>
             </Pressable>

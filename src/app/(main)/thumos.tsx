@@ -1,6 +1,6 @@
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Platform, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { Platform, Pressable, Text, useWindowDimensions, View } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
 
 import { useRepository, useSnapshot } from '@/data';
@@ -389,8 +389,8 @@ function ThumosIntro({ open, onToggle }: { open: boolean; onToggle: () => void }
       style={{
         minHeight: 44,
         justifyContent: 'center',
-        borderWidth: StyleSheet.hairlineWidth,
-        borderColor: theme.colors.line,
+        borderWidth: 1,
+        borderColor: theme.colors.accent,
         backgroundColor: theme.colors.surface,
         borderRadius: theme.radius.md,
         paddingVertical: 8,
@@ -425,9 +425,9 @@ function Bubble({ mine, text }: { mine: boolean; text: string }) {
           alignSelf: mine ? 'flex-end' : 'flex-start',
           maxWidth: '80%',
           backgroundColor: mine ? theme.colors.emphasisSoft : theme.colors.surface,
-          borderColor: theme.colors.line,
-          borderWidth: StyleSheet.hairlineWidth,
-          borderRadius: 12,
+          borderColor: theme.colors.accent,
+          borderWidth: 1,
+          borderRadius: theme.radius.md,
           paddingVertical: 6,
           paddingHorizontal: 10,
         }}

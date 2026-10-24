@@ -173,6 +173,7 @@ export default function HealthPlanScreen() {
       <YourFitness onPlanOutdoor={() => router.push(`/workouts?planOutdoor=${Date.now()}` as never)} />
       <View style={{ gap: 8 }}>
         <ShareOnProfile
+          boxed
           label="Share on profile"
           item="Health plan"
           sensitive
@@ -181,6 +182,7 @@ export default function HealthPlanScreen() {
         />
         <T variant="muted">Other members see the goal, this week's focus, and how many are ticked.</T>
         <ShareOnProfile
+          boxed
           label="Share weight and body figures"
           item="Weight and body figures"
           sensitive

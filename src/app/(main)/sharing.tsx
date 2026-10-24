@@ -1,5 +1,5 @@
 import { useRouter } from 'expo-router';
-import { useState, type ReactNode } from 'react';
+import { Children, cloneElement, isValidElement, useState, type ReactNode } from 'react';
 import { Switch, View } from 'react-native';
 
 import { useRepository, useSnapshot } from '@/data';
@@ -338,7 +338,11 @@ function ShareAnchor({ id, title, children }: { id: string; title: string; child
     <ScrollTarget id={id}>
       <View style={{ gap: 8 }}>
         <T>{title}</T>
-        {children}
+        {Children.map(children, (child) => (
+          isValidElement<{ boxed?: boolean }>(child) && (child.type === ShareOnProfile || child.type === NutritionShareSwitch)
+            ? cloneElement(child, { boxed: true })
+            : child
+        ))}
       </View>
     </ScrollTarget>
   );
