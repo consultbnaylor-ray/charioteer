@@ -3,7 +3,8 @@ import { useState, type ReactNode } from 'react';
 import { Pressable, View } from 'react-native';
 
 import type { AppleDayValue } from '@/domain/dailyActivity';
-import type { GarminDaily, GarminHrvSummary, GarminPulseOx, GarminRespiration, GarminSleep } from '@/domain/garminConnect';
+import type { GarminDaily, GarminHrvSummary, GarminPulseOx, GarminRespiration, GarminSleep, GarminUserMetric } from '@/domain/garminConnect';
+import type { NutritionSex } from '@/domain/nutrition';
 import { formatUkCompactDay, londonDay, weekdayShort } from '@/domain/healthInsights';
 import { CHART_DIRECTION_HINT } from '@/domain/readingChart';
 import {
@@ -449,6 +450,8 @@ export function WorkoutList({
   respiration = [],
   pulseOx = [],
   hrv = [],
+  userMetrics = [],
+  sex = null,
   exercisePermissionMissing = false,
 }: {
   workouts: readonly DeviceWorkout[];
@@ -463,6 +466,8 @@ export function WorkoutList({
   respiration?: readonly GarminRespiration[];
   pulseOx?: readonly GarminPulseOx[];
   hrv?: readonly GarminHrvSummary[];
+  userMetrics?: readonly GarminUserMetric[];
+  sex?: NutritionSex | null;
   exercisePermissionMissing?: boolean;
 }) {
   const theme = useAppTheme();
@@ -582,6 +587,9 @@ export function WorkoutList({
         respiration={respiration}
         pulseOx={pulseOx}
         hrv={hrv}
+        userMetrics={userMetrics}
+        age={age}
+        sex={sex}
         exercisePermissionMissing={exercisePermissionMissing}
       />
       <WorkoutHistory workouts={workouts} historyDay={historyDay} open={historyOpen} onToggle={() => setHistoryOpen((value) => !value)} onClear={clearHistory} />

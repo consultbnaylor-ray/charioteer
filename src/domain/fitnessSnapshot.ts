@@ -23,6 +23,7 @@ export {
   withWorkoutBucket,
   workoutBucket,
   periodActiveMinutes,
+  publishedCardioBand,
   sessionSplitRows,
   sessionTypeCounts,
   workoutMixReport,

@@ -1,6 +1,6 @@
 import { Pressable, View } from 'react-native';
 
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import {
   DAILY_ACTIVITY_CONSENT,
   DAILY_ACTIVITY_RINGS_HINT,
@@ -8,7 +8,6 @@ import {
   DAILY_ACTIVITY_TITLE,
   EXERCISE_PERMISSION_BUTTON,
   EXERCISE_PERMISSION_HINT,
-  GARMIN_LINE_FOLD,
   NO_STEPS_YET_TODAY,
   activeCaloriesLabel,
   calorieSeries,
@@ -18,7 +17,6 @@ import {
   exerciseMinutesLabel,
   exerciseSeries,
   floorsSeries,
-  garminLatestLines,
   mostInOneDay,
   restingSeries,
   seriesHasValue,
@@ -26,11 +24,30 @@ import {
   type AppleDayValue,
   type DailyActivityPoint,
 } from '@/domain/dailyActivity';
-import type { GarminDaily, GarminHrvSummary, GarminPulseOx, GarminRespiration, GarminSleep } from '@/domain/garminConnect';
+import {
+  GARMIN_DETAILS_TITLE,
+  TAP_FOR_MORE,
+  activityChartGuide,
+  distanceChartGuide,
+  floorsChartGuide,
+  garminBarPoints,
+  garminDetailCharts,
+  garminSourceCaption,
+  intensitySeries,
+  movementPeriod,
+  restingChartGuide,
+  stepGoalInPeriod,
+  stepsChartGuide,
+  type ChartGuide,
+} from '@/domain/garminCharts';
+import type { GarminDaily, GarminHrvSummary, GarminPulseOx, GarminRespiration, GarminSleep, GarminUserMetric } from '@/domain/garminConnect';
+import type { NutritionSex } from '@/domain/nutrition';
 import { weekdayShort } from '@/domain/healthInsights';
 import { CHART_DIRECTION_HINT } from '@/domain/readingChart';
 import type { WorkoutChartSpan } from '@/domain/workoutDay';
+import { useStatPeriod } from '@/health/useStatPeriod';
 import { openAppSettings } from '@/health/link';
+import { StatPeriodToggle } from '@/ui/StatPeriodToggle';
 import { useAppTheme } from '@/ui/theme';
 import { Button, T } from '@/ui/ui';
 
@@ -49,6 +66,9 @@ export function DailyActivityCharts({
   respiration = [],
   pulseOx = [],
   hrv = [],
+  userMetrics = [],
+  age = null,
+  sex = null,
   exercisePermissionMissing = false,
 }: {
   endDay: string;
@@ -63,9 +83,13 @@ export function DailyActivityCharts({
   respiration?: readonly GarminRespiration[];
   pulseOx?: readonly GarminPulseOx[];
   hrv?: readonly GarminHrvSummary[];
+  userMetrics?: readonly GarminUserMetric[];
+  age?: number | null;
+  sex?: NutritionSex | null;
   exercisePermissionMissing?: boolean;
 }) {
   const [selected, setSelected] = useState<string | null>(null);
+  const period = movementPeriod(span, '7').period;
   const exercise = consent ? exerciseSeries(endDay, span, exerciseMinutes, dailies) : [];
   const calories = consent ? calorieSeries(endDay, span, activeKcal, dailies) : [];
   const exerciseDay = exercise.find((point) => point.day === selected) ?? null;
@@ -83,6 +107,7 @@ export function DailyActivityCharts({
         unit="min"
         selected={selected}
         garminNote={chartSourceCaption(exercise, { vigorous: true })}
+        guide={seriesHasValue(exercise) ? activityChartGuide(period) : null}
         onSelect={setSelected}
       />
       {exercisePermissionMissing ? (
@@ -118,6 +143,10 @@ export function DailyActivityCharts({
         respiration={respiration}
         pulseOx={pulseOx}
         hrv={hrv}
+        userMetrics={userMetrics}
+        age={age}
+        sex={sex}
+        showIntensity={false}
       />
     </View>
   );
@@ -133,9 +162,14 @@ export function MovementCharts({
   respiration,
   pulseOx,
   hrv,
+  userMetrics = [],
+  age = null,
+  sex = null,
+  showIntensity = true,
 }: {
   endDay: string;
-  span: WorkoutChartSpan;
+  /** Set on Workouts, where that screen's 7 or 30 day control is the one the other charts use. */
+  span?: number;
   steps: readonly AppleDayValue[];
   restingHeart: readonly AppleDayValue[];
   dailies: readonly GarminDaily[];
@@ -143,49 +177,75 @@ export function MovementCharts({
   respiration: readonly GarminRespiration[];
   pulseOx: readonly GarminPulseOx[];
   hrv: readonly GarminHrvSummary[];
+  userMetrics?: readonly GarminUserMetric[];
+  age?: number | null;
+  sex?: NutritionSex | null;
+  showIntensity?: boolean;
 }) {
+  const [sharedPeriod] = useStatPeriod();
+  const chartWindow = movementPeriod(span, sharedPeriod);
   const [selected, setSelected] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
-  const stepPoints = stepsSeries(endDay, span, steps, dailies);
-  const distance = distanceSeries(endDay, span, dailies);
-  const floors = floorsSeries(endDay, span, dailies);
-  const resting = restingSeries(endDay, span, restingHeart, dailies);
+  const stepPoints = stepsSeries(endDay, chartWindow.days, steps, dailies);
+  const distance = distanceSeries(endDay, chartWindow.days, dailies);
+  const floors = floorsSeries(endDay, chartWindow.days, dailies);
+  const resting = restingSeries(endDay, chartWindow.days, restingHeart, dailies);
+  const intensity = showIntensity ? intensitySeries(endDay, chartWindow.period, dailies) : [];
+  const intensityBars = garminBarPoints(intensity);
+  const details = garminDetailCharts({
+    endDay,
+    period: chartWindow.period,
+    dailies,
+    sleep,
+    respiration,
+    pulseOx,
+    hrv,
+    userMetrics,
+    age,
+    sex,
+  });
   const chosen = stepPoints.find((point) => point.day === selected)
     ?? distance.find((point) => point.day === selected)
     ?? floors.find((point) => point.day === selected)
     ?? resting.find((point) => point.day === selected)
+    ?? intensityBars.find((point) => point.day === selected)
     ?? null;
-  const lines = garminLatestLines({ dailies, sleep, respiration, pulseOx, hrv });
-  const hidden = Math.max(0, lines.length - GARMIN_LINE_FOLD);
-  const shown = hidden > 0 && !open ? lines.slice(0, GARMIN_LINE_FOLD) : lines;
   const dayLines = [
     stepPoints.find((point) => point.day === selected),
     seriesHasValue(distance) ? distance.find((point) => point.day === selected) : null,
     seriesHasValue(floors) ? floors.find((point) => point.day === selected) : null,
     seriesHasValue(resting) ? resting.find((point) => point.day === selected) : null,
-  ].filter((point): point is DailyActivityPoint => point != null && point.value > 0);
+    seriesHasValue(intensityBars) ? intensityBars.find((point) => point.day === selected) : null,
+  ].filter((point): point is DailyActivityPoint => point != null && point.value > 0 && !point.empty);
+  const detailLines = details.flatMap((chart) => {
+    const point = chart.points.find((row) => row.day === selected && !row.empty);
+    return point ? [point.label] : [];
+  });
 
   return (
     <View style={{ gap: 8 }}>
+      {span == null ? <StatPeriodToggle /> : null}
       <ActivityBars
         title="Steps"
         points={stepPoints}
-        span={span}
+        span={chartWindow.days}
         unit="steps"
         selected={selected}
         garminNote={[chartSourceCaption(stepPoints), stepPoints.at(-1)?.label === NO_STEPS_YET_TODAY ? NO_STEPS_YET_TODAY : null].filter((line): line is string => line != null).join('\n') || null}
+        guide={stepsChartGuide(chartWindow.period, stepGoalInPeriod(dailies, endDay, chartWindow.period))}
         onSelect={setSelected}
       />
       {seriesHasValue(distance) ? (
         <ActivityBars
           title="Distance"
           points={distance}
-          span={span}
+          span={chartWindow.days}
           unit="m"
           selected={selected}
           scale={mostDistance(distance)}
           format={(point) => distanceText(point.value)}
           garminNote={chartSourceCaption(distance)}
+          guide={distanceChartGuide(chartWindow.period, distance)}
           onSelect={setSelected}
         />
       ) : null}
@@ -193,10 +253,11 @@ export function MovementCharts({
         <ActivityBars
           title="Floors"
           points={floors}
-          span={span}
+          span={chartWindow.days}
           unit="floors"
           selected={selected}
           garminNote={chartSourceCaption(floors)}
+          guide={floorsChartGuide(chartWindow.period, floors)}
           onSelect={setSelected}
         />
       ) : null}
@@ -204,30 +265,59 @@ export function MovementCharts({
         <ActivityBars
           title="Resting heart rate"
           points={resting}
-          span={span}
+          span={chartWindow.days}
           unit="bpm"
           selected={selected}
           garminNote={chartSourceCaption(resting)}
+          guide={restingChartGuide(chartWindow.period, resting)}
           onSelect={setSelected}
         />
       ) : null}
-      {chosen && dayLines.length ? (
+      {seriesHasValue(intensityBars) ? (
+        <ActivityBars
+          title="Intensity minutes"
+          points={intensityBars}
+          span={chartWindow.days}
+          unit="min"
+          selected={selected}
+          garminNote={chartSourceCaption(intensityBars, { vigorous: true })}
+          guide={activityChartGuide(chartWindow.period)}
+          onSelect={setSelected}
+        />
+      ) : null}
+      {chosen && (dayLines.length > 0 || detailLines.length > 0) ? (
         <View style={{ gap: 4 }}>
           {dayLines.map((point) => <T key={point.label}>{point.label}</T>)}
+          {detailLines.map((line) => <T key={line}>{line}</T>)}
         </View>
       ) : null}
-      {shown.map((line) => <T key={line}>{line}</T>)}
-      {hidden > 0 ? (
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={open ? 'Hide the rest' : `Show ${hidden} more`}
-          accessibilityState={{ expanded: open }}
-          onPress={() => setOpen((value) => !value)}
-          style={{ minHeight: 44, justifyContent: 'center' }}
+      {details.length > 0 ? (
+        <Fold
+          title={GARMIN_DETAILS_TITLE}
+          closedLabel={TAP_FOR_MORE}
+          accessibilityLabel={open ? `Hide ${GARMIN_DETAILS_TITLE}` : `${GARMIN_DETAILS_TITLE}. ${TAP_FOR_MORE}`}
+          open={open}
+          onToggle={() => setOpen((value) => !value)}
         >
-          <T>{open ? 'Hide the rest' : `Show ${hidden} more`}</T>
-        </Pressable>
+          {details.map((chart) => {
+            const bars = garminBarPoints(chart.points);
+            return (
+              <ActivityBars
+                key={chart.id}
+                title={chart.title}
+                points={bars}
+                span={chartWindow.days}
+                unit={chart.unit}
+                selected={selected}
+                garminNote={garminSourceCaption(chart)}
+                guide={chart.guide}
+                onSelect={setSelected}
+              />
+            );
+          })}
+        </Fold>
       ) : null}
+      {span == null ? <T variant="muted" style={{ textAlign: 'center' }}>{CHART_DIRECTION_HINT}</T> : null}
     </View>
   );
 }
@@ -236,6 +326,14 @@ function mostDistance(points: readonly { value: number }[]): string | null {
   const most = points.reduce((max, point) => Math.max(max, point.value), 0);
   if (most <= 0) return null;
   return `Most in one day ${distanceText(most)}`;
+}
+
+function chartPeak(points: readonly DailyActivityPoint[], guide: ChartGuide | null | undefined): number {
+  const marks = [1, ...points.map((point) => (point.empty ? 0 : point.value))];
+  if (guide?.dailyTypical) marks.push(guide.dailyTypical.high);
+  if (guide?.target) marks.push(guide.target.value);
+  if (guide?.ownAverage) marks.push(guide.ownAverage.value);
+  return Math.max(...marks);
 }
 
 function ActivityBars({
@@ -247,30 +345,54 @@ function ActivityBars({
   garminNote,
   scale,
   format,
+  guide = null,
   onSelect,
 }: {
   title: string;
   points: readonly DailyActivityPoint[];
-  span: WorkoutChartSpan;
+  span: number;
   unit: string;
   selected: string | null;
   garminNote: string | null;
   scale?: string | null;
   format?: (point: DailyActivityPoint) => string;
+  guide?: ChartGuide | null;
   onSelect: (day: string) => void;
 }) {
   const theme = useAppTheme();
-  const most = Math.max(1, ...points.map((point) => point.value));
+  const most = chartPeak(points, guide);
   const scaleLine = scale === undefined ? mostInOneDay(points, unit) : scale;
+  const band = guide?.dailyTypical ?? null;
+  const target = guide?.target?.value ?? null;
+  const own = guide?.ownAverage?.value ?? null;
+
+  function markStyle(value: number, ink: string) {
+    return {
+      position: 'absolute' as const,
+      left: 0,
+      right: 0,
+      bottom: (value / most) * BAR_HEIGHT,
+      height: 1,
+      backgroundColor: ink,
+    };
+  }
 
   return (
     <View style={{ gap: 8 }}>
       <T variant="label">{title}</T>
       {scaleLine ? <T variant="muted">{scaleLine}</T> : null}
       {garminNote ? <T variant="muted">{garminNote}</T> : null}
-      <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: span === 30 ? 1 : 4, minHeight: BAR_HEIGHT + 36 }}>
+      {guide?.legend ? <T variant="muted">{guide.legend}</T> : null}
+      {guide?.outside ? <T>{guide.outside}</T> : null}
+      {guide?.about ? (
+        <About title="What is this?">
+          <T>{guide.about}</T>
+        </About>
+      ) : null}
+      <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: span > 14 ? 1 : 4, minHeight: BAR_HEIGHT + 36 }}>
         {points.map((point) => {
           const chosen = point.day === selected;
+          const showValue = span <= 7 && !point.empty && (point.value > 0 || point.source != null);
           return (
             <Pressable
               key={point.day}
@@ -280,7 +402,10 @@ function ActivityBars({
               onPress={() => onSelect(point.day)}
               style={{ flex: 1, minHeight: 44, alignItems: 'center', justifyContent: 'flex-end' }}
             >
-              {span === 7 && point.value > 0 ? (
+              {point.empty && span <= 10 ? (
+                <T style={{ fontSize: 10, lineHeight: 12, textAlign: 'center', color: theme.colors.muted }}>No data</T>
+              ) : null}
+              {showValue ? (
                 <T style={{ fontSize: 10, lineHeight: 12, textAlign: 'center' }}>{format ? format(point) : `${point.value} ${unit}`}</T>
               ) : null}
               <View
@@ -293,17 +418,86 @@ function ActivityBars({
                   backgroundColor: chosen ? theme.colors.emphasisSoft : 'transparent',
                 }}
               >
-                {point.value === 0 ? (
-                  <View style={{ height: 2, backgroundColor: theme.colors.line }} />
+                {band ? (
+                  <View
+                    style={{
+                      position: 'absolute',
+                      left: 0,
+                      right: 0,
+                      bottom: (band.low / most) * BAR_HEIGHT,
+                      height: Math.max(2, ((band.high - band.low) / most) * BAR_HEIGHT),
+                      backgroundColor: theme.colors.line,
+                    }}
+                  />
+                ) : null}
+                {point.empty || (point.value === 0 && point.source == null) ? (
+                  <View style={{ height: 2, backgroundColor: theme.colors.line, opacity: point.empty ? 0.45 : 1 }} />
+                ) : point.value === 0 ? (
+                  <View style={{ height: 2, backgroundColor: theme.colors.ink }} />
                 ) : (
                   <View style={{ height: Math.max(2, (point.value / most) * BAR_HEIGHT), backgroundColor: theme.colors.ink }} />
                 )}
+                {own != null ? <View style={markStyle(own, theme.colors.muted)} /> : null}
+                {target != null ? <View style={markStyle(target, theme.colors.ink)} /> : null}
               </View>
-              <T style={{ fontSize: 10, lineHeight: 12, color: theme.colors.muted }}>{span === 7 ? weekdayShort(point.day).slice(0, 1) : String(Number(point.day.slice(8, 10)))}</T>
+              <T style={{ fontSize: 10, lineHeight: 12, color: theme.colors.muted }}>
+                {span <= 7 ? weekdayShort(point.day).slice(0, 1) : span <= 31 ? String(Number(point.day.slice(8, 10))) : ''}
+              </T>
             </Pressable>
           );
         })}
       </View>
     </View>
+  );
+}
+
+function Fold({
+  title,
+  closedLabel,
+  accessibilityLabel,
+  open,
+  onToggle,
+  children,
+}: {
+  title: string;
+  closedLabel: string;
+  accessibilityLabel: string;
+  open: boolean;
+  onToggle: () => void;
+  children: ReactNode;
+}) {
+  const theme = useAppTheme();
+  return (
+    <View style={{ alignSelf: 'stretch', gap: 8 }}>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={accessibilityLabel}
+        accessibilityState={{ expanded: open }}
+        onPress={onToggle}
+        style={{ minHeight: 44, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}
+      >
+        <T style={{ fontFamily: theme.font.bodyStrong, flex: 1 }}>{title}</T>
+        <T variant="muted">{open ? 'Hide' : closedLabel}</T>
+        <View accessibilityElementsHidden>
+          <T>{open ? '⌄' : '›'}</T>
+        </View>
+      </Pressable>
+      {open ? children : null}
+    </View>
+  );
+}
+
+function About({ title, children }: { title: string; children: ReactNode }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <Fold
+      title={title}
+      closedLabel="Show"
+      accessibilityLabel={title}
+      open={open}
+      onToggle={() => setOpen((value) => !value)}
+    >
+      {children}
+    </Fold>
   );
 }

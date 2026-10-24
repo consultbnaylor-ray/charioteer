@@ -193,7 +193,9 @@ describe('daily activity', () => {
     });
     expect(lines[0]).toContain('Step goal');
     expect(lines.length).toBeGreaterThan(4);
-    expect(readFileSync('src/ui/DailyActivity.tsx', 'utf8')).toContain('GARMIN_LINE_FOLD');
+    expect(charts).toContain('GARMIN_DETAILS_TITLE');
+    expect(charts).toContain('useStatPeriod');
+    expect(charts).not.toContain('garminLatestLines');
     expect(readFileSync('src/app/(main)/health.tsx', 'utf8')).toContain('<MovementCharts');
     expect(readFileSync('src/ui/DailyActivity.tsx', 'utf8')).not.toContain('workoutTypeColor');
   });

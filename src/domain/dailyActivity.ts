@@ -1,6 +1,6 @@
 import type { GarminDaily } from '@/domain/garminConnect';
 import { weekdayShort } from '@/domain/healthInsights';
-import { chartDayLabel, chartDays, type WorkoutChartSpan } from '@/domain/workoutDay';
+import { chartDayLabel, chartDays } from '@/domain/workoutDay';
 
 /** Garmin intensity minutes: one vigorous minute counts as two. Moderate stays one for one. */
 export const GARMIN_VIGOROUS_MINUTE_WEIGHT = 2;
@@ -35,9 +35,6 @@ export const EXERCISE_PERMISSION_BUTTON = 'Open Health permissions';
 /** Shown for the chart's last day when neither Apple Health nor Garmin has steps. */
 export const NO_STEPS_YET_TODAY = 'No steps yet today';
 
-/** How many extra Garmin lines stay visible before the rest are folded. */
-export const GARMIN_LINE_FOLD = 4;
-
 export type ActivitySource = 'apple' | 'garmin';
 
 export type DailyActivityPoint = {
@@ -45,6 +42,8 @@ export type DailyActivityPoint = {
   value: number;
   source: ActivitySource | null;
   label: string;
+  /** A day with no reading. Zero with this unset is still drawn as an empty slot by older charts. */
+  empty?: boolean;
 };
 
 export type AppleDayValue = { day: string; value: number };
@@ -88,7 +87,7 @@ export function garminActiveKcal(value: number | null | undefined): number | nul
  */
 export function dailyActivitySeries(
   endDay: string,
-  span: WorkoutChartSpan,
+  span: number,
   apple: readonly AppleDayValue[],
   garmin: ReadonlyMap<string, number>,
   labelFor: (day: string, value: number, source: ActivitySource | null) => string,
@@ -132,12 +131,13 @@ export function activeCaloriesLabel(day: string, kcal: number, source: ActivityS
  */
 export function chartSourceCaption(
   points: readonly { value: number; source: ActivitySource | null }[],
-  options?: { vigorous?: boolean },
+  options?: { vigorous?: boolean; includeZero?: boolean },
 ): string | null {
   let apple = false;
   let garmin = false;
   for (const point of points) {
-    if (!(point.value > 0)) continue;
+    if (point.source == null || !Number.isFinite(point.value)) continue;
+    if (!options?.includeZero && !(point.value > 0)) continue;
     if (point.source === 'apple') apple = true;
     if (point.source === 'garmin') garmin = true;
   }
@@ -151,7 +151,7 @@ export function chartSourceCaption(
 
 export function exerciseSeries(
   endDay: string,
-  span: WorkoutChartSpan,
+  span: number,
   apple: readonly AppleDayValue[],
   dailies: readonly GarminDaily[],
 ): DailyActivityPoint[] {
@@ -166,7 +166,7 @@ export function exerciseSeries(
 
 export function calorieSeries(
   endDay: string,
-  span: WorkoutChartSpan,
+  span: number,
   apple: readonly AppleDayValue[],
   dailies: readonly GarminDaily[],
 ): DailyActivityPoint[] {
@@ -219,7 +219,7 @@ function garminNumber(dailies: readonly GarminDaily[], pick: (daily: GarminDaily
 
 export function stepsSeries(
   endDay: string,
-  span: WorkoutChartSpan,
+  span: number,
   apple: readonly AppleDayValue[],
   dailies: readonly GarminDaily[],
 ): DailyActivityPoint[] {
@@ -239,7 +239,7 @@ export function distanceText(metres: number): string {
 
 export function distanceSeries(
   endDay: string,
-  span: WorkoutChartSpan,
+  span: number,
   dailies: readonly GarminDaily[],
   apple: readonly AppleDayValue[] = [],
 ): DailyActivityPoint[] {
@@ -250,7 +250,7 @@ export function distanceSeries(
 
 export function floorsSeries(
   endDay: string,
-  span: WorkoutChartSpan,
+  span: number,
   dailies: readonly GarminDaily[],
   apple: readonly AppleDayValue[] = [],
 ): DailyActivityPoint[] {
@@ -261,7 +261,7 @@ export function floorsSeries(
 
 export function restingSeries(
   endDay: string,
-  span: WorkoutChartSpan,
+  span: number,
   apple: readonly AppleDayValue[],
   dailies: readonly GarminDaily[],
 ): DailyActivityPoint[] {

@@ -142,8 +142,9 @@ export function workoutDaySummary(workouts: readonly DeviceWorkout[]): string {
 }
 
 /** Oldest day on the left, ending on `endDay`. */
-export function chartDays(endDay: string, span: WorkoutChartSpan): string[] {
-  return Array.from({ length: span }, (_, index) => shiftDay(endDay, index - (span - 1)));
+export function chartDays(endDay: string, span: number): string[] {
+  const count = Math.max(1, Math.floor(span));
+  return Array.from({ length: count }, (_, index) => shiftDay(endDay, index - (count - 1)));
 }
 
 export type DurationSegment = { label: string; minutes: number };

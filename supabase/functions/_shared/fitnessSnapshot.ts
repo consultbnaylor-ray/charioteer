@@ -508,6 +508,13 @@ function bandFor(age: number | null, sex: NutritionSex | null): { p25: number; p
   return rows.find((row) => age <= row.maxAge) ?? null;
 }
 
+/** Published 25th–75th percentile for ages 20–79. Null when age or sex is missing. */
+export function publishedCardioBand(age: number | null, sex: NutritionSex | null): { low: number; high: number } | null {
+  const band = bandFor(age, sex);
+  if (!band) return null;
+  return { low: band.p25, high: band.p75 };
+}
+
 function rateVo2(value: number, band: { p25: number; p75: number }): FitnessLevel {
   if (value < band.p25) return 'Developing';
   if (value < band.p75) return 'Steady';

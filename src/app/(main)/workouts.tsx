@@ -78,6 +78,8 @@ export default function WorkoutsScreen() {
         respiration={readings.respiration}
         pulseOx={readings.pulseOx}
         hrv={readings.hrv}
+        userMetrics={readings.userMetrics}
+        sex={snap.nutrition.goalSex}
         exercisePermissionMissing={exercisePermissionMissing(visibility)}
       />
       <WorkoutCalendar

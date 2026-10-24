@@ -79,7 +79,6 @@ export default function Stats() {
       />
       <MovementCharts
         endDay={londonDay(new Date())}
-        span={7}
         steps={appleDayValues(snap.health, 'steps')}
         restingHeart={appleDayValues(snap.health, 'resting_heart_rate')}
         dailies={readings.dailies}
@@ -87,6 +86,9 @@ export default function Stats() {
         respiration={readings.respiration}
         pulseOx={readings.pulseOx}
         hrv={readings.hrv}
+        userMetrics={readings.userMetrics}
+        age={snap.nutrition.goalAge}
+        sex={snap.nutrition.goalSex}
       />
       <StatPeriodToggle />
       <GoalLine />
