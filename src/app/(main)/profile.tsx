@@ -1,25 +1,126 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useRouter } from 'expo-router';
-import { useState } from 'react';
-import { Platform, Share, View } from 'react-native';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { Platform, Share, Switch, View } from 'react-native';
 
 import { useRepository, useSnapshot } from '@/data';
 import type { TextScale, ThemePreference } from '@/data/types';
-import { Button, Card, Choice, ErrorNote, Field, Screen, T } from '@/ui/ui';
+import { APP_FULL_NAME } from '@/domain/appName';
+import { correctedSoberStart } from '@/domain/correctStart';
+import { formatUkDate, isoDay, parseIsoDay, startOfLocalDay } from '@/domain/dates';
+import { parseDrinkFreeGoal, parseUnitsGoal, showsSoberRecord, STAGE_LABELS, STAGES, SUDDEN_STOP_WARNING, USUAL_WEEK_HELPER, validateStageStep, type Stage } from '@/domain/stage';
+import { shownError } from '@/domain/errors';
+import { interestChipRemovable, interestChipVisible } from '@/domain/interests';
+import { planCustomInterest } from '@/domain/privacy';
+import { toggleShareId } from '@/domain/profileSharing';
+import { quoteById, quoteCredit } from '@/domain/stoicQuotes';
+import { planReasons, reasonOverLimit } from '@/domain/reasons';
+import { profileDetailsDirty, type ProfileFormValues } from '@/domain/profileForm';
+import { InterestChip } from '@/ui/InterestChip';
+import { MemberAvatar } from '@/ui/MemberAvatar';
+import { BuildChoices } from '@/ui/BodyComposition';
+import { GoalChoices } from '@/ui/GoalChoices';
+import { WeightWaistPanel } from '@/ui/WeightWaistPanel';
+import { TrainingScheduleCard } from '@/ui/TrainingSchedule';
+import { WagonFlag } from '@/ui/NutritionShare';
+import { YouSectionShare } from '@/ui/SectionShare';
+import { GarminConnectRow } from '@/ui/GarminConnectRow';
+import { ShareOnProfile } from '@/ui/ShareOnProfile';
+import { ConsentChoices } from '@/ui/ConsentChoices';
+import { ProgressPhotos } from '@/ui/ProgressPhotos';
+import { UnitsGuide } from '@/ui/UnitsGuide';
+import { DateField } from '@/ui/DateField';
+import { InPlainWords } from '@/ui/InPlainWords';
+import { usePendingPress } from '@/ui/pendingAction';
+import { Button, Card, Choice, ErrorNote, Field, playSavedHaptic, Screen, T } from '@/ui/ui';
+import { useAppTheme } from '@/ui/theme';
+import { offerMessageNotifications } from '@/notifications/register';
+import { IosNotificationOffRow } from '@/ui/IosNotificationOffRow';
+import { GENERIC_MESSAGE_ALERT } from '../../../supabase/functions/_shared/messagePush';
+import { useFocusEffect, useRouter } from 'expo-router';
 
 export default function Profile() {
   const snap = useSnapshot();
   const repo = useRepository();
   const router = useRouter();
+  const theme = useAppTheme();
   const profile = snap.profile;
+  const pinned = quoteById(profile?.pinnedQuoteId);
+  const avatar = (snap.profilePhotos ?? []).find((photo) => photo.role === 'avatar');
+  const [name, setName] = useState(profile?.displayName ?? '');
   const [reasons, setReasons] = useState(snap.reasons.map((reason) => reason.body).join('\n'));
   const [town, setTown] = useState(profile?.town ?? '');
   const [spend, setSpend] = useState(profile?.weeklySpendGbp?.toString() ?? '');
   const [units, setUnits] = useState(profile?.weeklyUnits?.toString() ?? '');
+  const [customInterest, setCustomInterest] = useState('');
+  const [addingInterest, setAddingInterest] = useState(false);
+  const addingInterestRef = useRef(false);
+  const [community, setCommunity] = useState(profile?.communityVisible ?? false);
+  const [health, setHealth] = useState(profile?.consentHealth ?? false);
+  const [ai, setAi] = useState(profile?.consentAi ?? false);
+  const [interim, setInterim] = useState(profile?.consentXaiInterim === true);
+  const [messages, setMessages] = useState(profile?.messageNotifications ?? false);
   const [confirm, setConfirm] = useState('');
+  const [stage, setStage] = useState<Stage>(profile?.stage ?? 'exploring');
+  const [soberDate, setSoberDate] = useState(() => profile?.sobrietyStartedAt ? new Date(profile.sobrietyStartedAt) : startOfLocalDay(new Date()));
+  const [plannedQuit, setPlannedQuit] = useState(() => profile?.plannedQuitAt ? parseIsoDay(profile.plannedQuitAt) : startOfLocalDay(new Date()));
+  const [quitUnsure, setQuitUnsure] = useState(!profile?.plannedQuitAt);
+  const [unitsGoal, setUnitsGoal] = useState(profile?.weeklyUnitsGoal?.toString() ?? '');
+  const [drinkFreeGoal, setDrinkFreeGoal] = useState(profile?.drinkFreeDaysGoal?.toString() ?? '');
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const [pending, setPending] = useState(false);
+  const savingRef = useRef(false);
+  const { run: runWrite, isPending: writePending } = usePendingPress();
+  const [savedNote, setSavedNote] = useState<string | null>(null);
+  useEffect(() => {
+    if (!savedNote) return;
+    const timer = setTimeout(() => setSavedNote(null), 2500);
+    return () => clearTimeout(timer);
+  }, [savedNote]);
+
+  // Owner photo links expire while the tab stays mounted, so load them again each time You opens.
+  useFocusEffect(
+    useCallback(() => {
+      void repo.reload();
+    }, [repo]),
+  );
+
   if (!profile) return null;
+
+  const savedForm: ProfileFormValues = {
+    name: profile.displayName,
+    town: profile.town ?? '',
+    spend: profile.weeklySpendGbp?.toString() ?? '',
+    units: profile.weeklyUnits?.toString() ?? '',
+    reasons: snap.reasons.map((reason) => reason.body).join('\n'),
+    community: profile.communityVisible,
+    health: profile.consentHealth,
+    ai: profile.consentAi,
+    messages: profile.messageNotifications,
+    stage: profile.stage,
+    soberDay: profile.sobrietyStartedAt ? isoDay(new Date(profile.sobrietyStartedAt)) : isoDay(soberDate),
+    plannedQuit: profile.plannedQuitAt ?? isoDay(plannedQuit),
+    quitUnsure: !profile.plannedQuitAt,
+    unitsGoal: profile.weeklyUnitsGoal?.toString() ?? '',
+    drinkFreeGoal: profile.drinkFreeDaysGoal?.toString() ?? '',
+  };
+  const dirty = profileDetailsDirty({
+    name,
+    town,
+    spend,
+    units,
+    reasons,
+    community,
+    health,
+    ai,
+    messages,
+    stage,
+    soberDay: isoDay(soberDate),
+    plannedQuit: isoDay(plannedQuit),
+    quitUnsure,
+    unitsGoal,
+    drinkFreeGoal,
+  }, savedForm);
 
   const themes: ThemePreference[] = ['system', 'light', 'dark'];
   const scales: { id: TextScale; label: string }[] = [
@@ -28,20 +129,105 @@ export default function Profile() {
     { id: 'extra', label: 'Extra large' },
   ];
 
-  async function saveBasics() {
+  function toggleInterest(id: string, selected: boolean) {
     setError(null);
-    const weeklySpendGbp = Number(spend);
-    const weeklyUnits = Number(units);
-    if (!Number.isFinite(weeklySpendGbp) || weeklySpendGbp < 0 || !Number.isFinite(weeklyUnits) || weeklyUnits < 0) {
-      setError('Spend and units need to be zero or more.');
+    void repo.setInterestSelected(id, selected).catch((err: unknown) => setError(shownError(err, 'Could not update that interest.')));
+  }
+
+  async function addOwnInterest() {
+    if (addingInterestRef.current || !profile) return;
+    const plan = planCustomInterest(customInterest);
+    if (!plan.ok) {
+      setError(plan.message);
       return;
     }
+    const known = snap.interests.find((item) => item.slug === plan.slug);
+    if (known && profile.interestIds.includes(known.id)) {
+      setCustomInterest('');
+      setError(null);
+      return;
+    }
+    addingInterestRef.current = true;
+    setAddingInterest(true);
+    setError(null);
     try {
-      await repo.updateProfile({ town, weeklySpendGbp, weeklyUnits });
-      await repo.setReasons(reasons.split('\n'));
-      setMessage('Saved.');
+      if (known) await repo.setInterestSelected(known.id, true);
+      else await repo.addCustomInterest(plan.label);
+      setCustomInterest('');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not save.');
+      setError(shownError(err, 'Could not add that interest.'));
+    } finally {
+      addingInterestRef.current = false;
+      setAddingInterest(false);
+    }
+  }
+
+  async function saveDetails() {
+    if (!profile || pending || savingRef.current || !dirty) return;
+    savingRef.current = true;
+    setError(null);
+    setMessage(null);
+    setSavedNote(null);
+    try {
+      if (!name.trim()) {
+        setError('Add your name.');
+        return;
+      }
+      const weeklySpendGbp = Number(spend);
+      const weeklyUnits = Number(units);
+      if (!Number.isFinite(weeklySpendGbp) || weeklySpendGbp < 0 || !Number.isFinite(weeklyUnits) || weeklyUnits < 0) {
+        setError('Spend and units need to be zero or more.');
+        return;
+      }
+      const stageError = validateStageStep({
+        stage,
+        soberDay: isoDay(soberDate),
+        today: isoDay(new Date()),
+        plannedQuit: isoDay(plannedQuit),
+        quitUnsure,
+        unitsGoal,
+        drinkFreeGoal,
+      });
+      if (stageError) {
+        setError(stageError);
+        return;
+      }
+      const plannedReasons = planReasons(reasons.split('\n'));
+      if (reasonOverLimit(plannedReasons)) {
+        setError('Keep each reason to 280 characters.');
+        return;
+      }
+      setPending(true);
+      const parsedUnits = parseUnitsGoal(unitsGoal);
+      const parsedDays = parseDrinkFreeGoal(drinkFreeGoal);
+      await repo.updateProfile({
+        displayName: name.trim(),
+        town,
+        weeklySpendGbp,
+        weeklyUnits,
+        stage,
+        sobrietyStartedAt: stage === 'stopped' ? correctedSoberStart(soberDate, profile.sobrietyStartedAt) : null,
+        plannedQuitAt: stage === 'trying_to_stop' && !quitUnsure ? isoDay(plannedQuit) : null,
+        weeklyUnitsGoal: stage === 'cutting_down' && parsedUnits.ok ? parsedUnits.value : null,
+        drinkFreeDaysGoal: stage === 'cutting_down' && parsedDays.ok ? parsedDays.value : null,
+      });
+      await repo.setReasons(plannedReasons);
+      await repo.saveConsents({
+        communityVisible: community,
+        consentHealth: health,
+        consentAi: ai,
+        messageNotifications: messages,
+        termsAccepted: true,
+      });
+      if (messages) void offerMessageNotifications(repo).catch((error: unknown) => console.error('message notifications', error));
+      setReasons(plannedReasons.join('\n'));
+      setSavedNote('Saved');
+      playSavedHaptic();
+    } catch (err) {
+      setError(shownError(err, 'Could not save.'));
+    } finally {
+      savingRef.current = false;
+      setPending(false);
     }
   }
 
@@ -50,7 +236,7 @@ export default function Profile() {
     try {
       const data = await repo.exportData();
       const text = JSON.stringify(data, null, 2);
-      if (Platform.OS === 'web') {
+      if (Platform.OS === 'web' && typeof document !== 'undefined') {
         const blob = new Blob([text], { type: 'application/json' });
         const url = URL.createObjectURL(blob);
         const anchor = document.createElement('a');
@@ -63,55 +249,234 @@ export default function Profile() {
       }
       await Share.share({ message: text });
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not export.');
+      setError(shownError(err, 'Could not export.'));
     }
   }
 
   return (
-    <Screen eyebrow="You" title={profile.displayName} intro={profile.email}>
+    <Screen
+      eyebrow="You"
+      title={profile.displayName}
+      intro={profile.email}
+      footer={(
+        <View style={{ gap: 8 }}>
+          {savedNote ? <T>{savedNote}</T> : null}
+          <Button label="Save your details" pending={pending} disabled={!dirty || pending} disabledReason={dirty ? undefined : 'Change a detail to save.'} onPress={() => void saveDetails()} />
+        </View>
+      )}
+    >
+      <YouSectionShare />
+      <Card
+        accessibilityLabel="View my public profile"
+        onPress={() => router.push('/public-profile' as never)}
+      >
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+          <MemberAvatar name={profile.displayName} url={avatar?.previewUrl} size={36} />
+          <T style={{ fontFamily: theme.font.bodyStrong, flex: 1 }}>View my public profile</T>
+        </View>
+      </Card>
+      <Card accessibilityLabel="Open Stats" onPress={() => router.push('/stats' as never)}>
+        <T style={{ fontFamily: theme.font.bodyStrong }}>Stats</T>
+        <T variant="muted">Sober days, mood, food, and body, in one place.</T>
+      </Card>
+      <Card accessibilityLabel="Open Health Plan" onPress={() => router.push('/health-plan' as never)}>
+        <T style={{ fontFamily: theme.font.bodyStrong }}>Health Plan</T>
+        <T variant="muted">Nutrition, fitness, and a week of wellbeing, written from your own figures.</T>
+      </Card>
+      <TrainingScheduleCard />
+      <GarminConnectRow />
+      {pinned ? (
+        <View style={{ gap: 8 }}>
+          <T variant="label">Pinned quote</T>
+          <T variant="display">{pinned.text}</T>
+          <T variant="muted">{quoteCredit(pinned)}</T>
+          <InPlainWords plain={pinned.plain} />
+          <ShareOnProfile
+            label="Share pinned quote"
+            item="Pinned quote"
+            on={snap.sharing.pinnedQuote}
+            apply={(sharing, selected) => ({ ...sharing, pinnedQuote: selected })}
+          />
+          <Button label="Unpin" tone="quiet" pending={writePending('unpin')} onPress={() => runWrite('unpin', () => repo.pinQuote(null).catch((err: unknown) => setError(shownError(err, 'Could not unpin that quote.'))))} />
+          <Button label="Change" tone="quiet" onPress={() => router.push('/quotes' as never)} />
+        </View>
+      ) : (
+        <Button label="Pin a quote" tone="quiet" onPress={() => router.push('/quotes' as never)} />
+      )}
+      <Button label="What I share" tone="quiet" onPress={() => router.push('/sharing' as never)} />
+      <Button label="Buddies" onPress={() => router.push('/buddies' as never)} />
+      <WeightWaistPanel />
+      <Card>
+        <T variant="label">Build</T>
+        <BuildChoices />
+      </Card>
+      <GoalChoices />
+      <WagonFlag />
+      <T variant="label">Your details</T>
+      <T>Name, where you are, the sober date, your usual week, reasons, interests, town, and consents. A new sober date is a correction, not a relapse.</T>
+      <Card>
+        <Field label="Name" value={name} onChangeText={setName} placeholder="What should we call you?" />
+        <T variant="label">Where you are</T>
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+          {STAGES.map((item) => (
+            <Choice key={item} label={STAGE_LABELS[item]} selected={stage === item} onPress={() => setStage(item)} />
+          ))}
+        </View>
+        <ShareOnProfile
+          label="Share stage"
+          item="Stage"
+          on={snap.sharing.stage}
+          sensitive
+          apply={(sharing, selected) => ({ ...sharing, stage: selected })}
+        />
+        {stage === 'stopped' ? <DateField label="Sober since" value={soberDate} onChange={setSoberDate} maximumDate={new Date()} hint="Today or an earlier day. Saving this does not record a relapse." /> : null}
+        {stage === 'trying_to_stop' ? (
+          <View style={{ gap: 8 }}>
+            <T>{SUDDEN_STOP_WARNING}</T>
+            <Choice label="Not sure yet" selected={quitUnsure} onPress={() => setQuitUnsure(true)} />
+            <Choice label="Pick a date" selected={!quitUnsure} onPress={() => setQuitUnsure(false)} />
+            {quitUnsure ? null : <DateField label="Planned quit date" value={plannedQuit} onChange={setPlannedQuit} earliestDate={new Date()} />}
+          </View>
+        ) : null}
+        {stage === 'cutting_down' ? (
+          <View style={{ gap: 8 }}>
+            <Field label="Weekly units goal" value={unitsGoal} onChangeText={setUnitsGoal} keyboardType="decimal-pad" placeholder="Optional" />
+            <Field label="Drink-free days a week" value={drinkFreeGoal} onChangeText={setDrinkFreeGoal} keyboardType="number-pad" placeholder="0 to 7, optional" />
+          </View>
+        ) : null}
+        <T variant="muted">{USUAL_WEEK_HELPER}</T>
+        <Field label="Typical spend per week (£)" value={spend} onChangeText={setSpend} keyboardType="decimal-pad" />
+        <Field label="Typical units per week" value={units} onChangeText={setUnits} keyboardType="decimal-pad" />
+        <UnitsGuide onChange={setUnits} stage={stage} weeklySpend={spend} currentUnits={units} />
+        <Field label="Town or area" value={town} onChangeText={setTown} placeholder="Bristol, or leave blank" />
+        <ShareOnProfile
+          label="Share town"
+          item="Town"
+          on={snap.sharing.town}
+          apply={(sharing, selected) => ({ ...sharing, town: selected })}
+        />
+        <Field label="Reasons, one per line" value={reasons} onChangeText={setReasons} multiline />
+        {snap.reasons.map((reason) => (
+          <View key={reason.id} style={{ gap: 6 }}>
+            <T>{reason.body}</T>
+            <ShareOnProfile
+              label={`Share “${reason.body}”`}
+              item={reason.body.trim()}
+              on={snap.sharing.reasonBodies.includes(reason.body.trim())}
+              sensitive
+              apply={(sharing, selected) => toggleShareId(sharing, 'reasonBodies', reason.body.trim(), selected)}
+            />
+          </View>
+        ))}
+        <T variant="muted">Name and interests stay on your profile while Community is on.</T>
+        <T variant="label">Interests</T>
+        <T variant="muted">Tap a chip to add or remove it. Changes save straight away.</T>
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+          {snap.interests.filter((interest) => interestChipVisible(interest, profile.interestIds.includes(interest.id))).map((interest) => {
+            const selected = profile.interestIds.includes(interest.id);
+            const removable = interestChipRemovable(interest);
+            return (
+              <InterestChip
+                key={interest.id}
+                label={interest.label}
+                selected={selected}
+                custom={removable}
+                onPress={() => toggleInterest(interest.id, !selected)}
+                onRemove={removable ? () => toggleInterest(interest.id, false) : undefined}
+              />
+            );
+          })}
+        </View>
+        <Field
+          label="Add your own interest"
+          value={customInterest}
+          onChangeText={setCustomInterest}
+          placeholder="Climbing, choir, five-a-side…"
+          editable={!addingInterest}
+          maxLength={40}
+        />
+        <Button
+          label="Add"
+          pending={addingInterest}
+          disabled={addingInterest || !customInterest.trim()}
+          onPress={() => void addOwnInterest()}
+        />
+        <T variant="label">Consent</T>
+        <ConsentChoices
+          community={community}
+          health={health}
+          ai={ai}
+          interim={interim}
+          messages={messages}
+          onCommunity={setCommunity}
+          onHealth={setHealth}
+          onAi={setAi}
+          onInterim={(value) => {
+            const previous = interim;
+            setInterim(value);
+            void repo.setInterimCoachOptIn(value).then(() => {
+              setSavedNote('Saved');
+              playSavedHaptic();
+            }).catch((err: unknown) => {
+              setInterim(previous);
+              setError(shownError(err, 'Could not save.'));
+            });
+          }}
+          onMessages={setMessages}
+        />
+      </Card>
+      <ProgressPhotos />
       <Card>
         <T variant="label">Appearance</T>
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
           {themes.map((item) => (
-            <Choice key={item} label={item === 'system' ? 'Match device' : item === 'light' ? 'Light' : 'Dark'} selected={profile.themePreference === item} onPress={() => void repo.updateProfile({ themePreference: item })} />
+            <Choice key={item} label={item === 'system' ? 'Match device' : item === 'light' ? 'Light' : 'Dark'} selected={profile.themePreference === item} onPress={() => void repo.updateProfile({ themePreference: item }).catch((err: unknown) => setError(shownError(err, 'Could not save.')))} />
           ))}
         </View>
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
           {scales.map((item) => (
-            <Choice key={item.id} label={item.label} selected={profile.textScale === item.id} onPress={() => void repo.updateProfile({ textScale: item.id })} />
-          ))}
-        </View>
-      </Card>
-      <Field label="Town or area" value={town} onChangeText={setTown} />
-      <Field label="Typical spend per week (£)" value={spend} onChangeText={setSpend} keyboardType="decimal-pad" />
-      <Field label="Typical units per week" value={units} onChangeText={setUnits} keyboardType="decimal-pad" />
-      <Field label="Reasons, one per line" value={reasons} onChangeText={setReasons} multiline />
-      <Button label="Save" onPress={() => void saveBasics()} />
-      <Card>
-        <T variant="label">Interests</T>
-        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-          {snap.interests.filter((interest) => !interest.custom || profile.interestIds.includes(interest.id)).map((interest) => (
-            <Choice
-              key={interest.id}
-              label={interest.label}
-              selected={profile.interestIds.includes(interest.id)}
-              onPress={() => {
-                const next = profile.interestIds.includes(interest.id)
-                  ? profile.interestIds.filter((id) => id !== interest.id)
-                  : [...profile.interestIds, interest.id];
-                void repo.updateProfile({ interestIds: next });
-              }}
-            />
+            <Choice key={item.id} label={item.label} selected={profile.textScale === item.id} onPress={() => void repo.updateProfile({ textScale: item.id }).catch((err: unknown) => setError(shownError(err, 'Could not save.')))} />
           ))}
         </View>
       </Card>
       <Card>
-        <T variant="label">Consent</T>
-        <T variant="muted">Health data {profile.consentHealth ? 'on' : 'off'} · Coach {profile.consentAi ? 'on' : 'off'} · Community {profile.communityVisible ? 'on' : 'off'}</T>
-        <Button label={profile.consentHealth ? 'Turn health data off' : 'Allow health data'} tone="quiet" onPress={() => void repo.updateProfile({ consentHealth: !profile.consentHealth })} />
-        <Button label={profile.consentAi ? 'Turn the coach off' : 'Allow the coach'} tone="quiet" onPress={() => void repo.updateProfile({ consentAi: !profile.consentAi })} />
-        <Button label={profile.communityVisible ? 'Hide me from community' : 'Show me in community'} tone="quiet" onPress={() => void repo.updateProfile({ communityVisible: !profile.communityVisible })} />
-        <Button label="Health readings" tone="quiet" onPress={() => router.push('/health' as never)} />
+        <T variant="label">Notifications</T>
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 12, alignItems: 'center' }}>
+          <T style={{ flex: 1 }}>Notifications</T>
+          <Switch
+            accessibilityLabel="Notifications"
+            value={messages}
+            onValueChange={(value) => {
+              setMessages(value);
+              void repo.saveConsents({
+                communityVisible: community,
+                consentHealth: health,
+                consentAi: ai,
+                messageNotifications: value,
+                termsAccepted: true,
+              }).then(() => {
+                if (value) void offerMessageNotifications(repo).catch((error: unknown) => console.error('message notifications', error));
+              }).catch((err: unknown) => setError(shownError(err, 'Could not save.')));
+            }}
+            trackColor={{ true: theme.colors.ink, false: theme.colors.line }}
+            thumbColor={theme.colors.surface}
+          />
+        </View>
+        <T variant="muted">A private message can alert this phone. The alert does not include what they wrote.</T>
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 12, alignItems: 'center' }}>
+          <T style={{ flex: 1 }}>Show the sender's name</T>
+          <Switch
+            accessibilityLabel="Show the sender's name"
+            value={profile.notifySenderName}
+            onValueChange={(value) => {
+              void repo.updateProfile({ notifySenderName: value }).catch((err: unknown) => setError(shownError(err, 'Could not save.')));
+            }}
+            trackColor={{ true: theme.colors.ink, false: theme.colors.line }}
+            thumbColor={theme.colors.surface}
+          />
+        </View>
+        <T variant="muted">Off, the alert says {GENERIC_MESSAGE_ALERT}.</T>
+        <IosNotificationOffRow />
       </Card>
       {profile.isModerator ? (
         <Card>
@@ -120,8 +485,9 @@ export default function Profile() {
           {snap.reports.map((report) => (
             <View key={report.id} style={{ gap: 4, marginTop: 8 }}>
               <T>{report.reportedName} — {report.reason} ({report.status})</T>
+              <T variant="muted">{formatUkDate(report.createdAt)}</T>
               {report.details ? <T variant="muted">{report.details}</T> : null}
-              {report.status === 'open' ? <Button label="Mark reviewed" tone="quiet" onPress={() => void repo.reviewReport(report.id)} /> : null}
+              {report.status === 'open' ? <Button label="Mark reviewed" tone="quiet" pending={writePending(report.id)} onPress={() => runWrite(report.id, () => repo.reviewReport(report.id).catch((err: unknown) => setError(shownError(err, 'Could not save.'))))} /> : null}
             </View>
           ))}
         </Card>
@@ -129,18 +495,25 @@ export default function Profile() {
         <Card>
           <T variant="label">Reports you have sent</T>
           {snap.reports.length === 0 ? <T variant="muted">None.</T> : snap.reports.map((report) => (
-            <T key={report.id}>{report.reportedName}: {report.reason} · {report.status}</T>
+            <T key={report.id}>{report.reportedName}: {report.reason} · {report.status} · {formatUkDate(report.createdAt)}</T>
           ))}
         </Card>
       )}
-      <Button label="Download my data" tone="quiet" onPress={() => void download()} />
+      <Card>
+        <T variant="label">Download</T>
+        <T>The file is the stored record. Dates on this screen stay in UK form.</T>
+        {showsSoberRecord(profile.stage) && profile.sobrietyStartedAt ? <T variant="muted">Sober since {formatUkDate(profile.sobrietyStartedAt)}.</T> : null}
+        <Button label="Download my data" tone="quiet" onPress={() => void download()} />
+      </Card>
       <Field label="Type DELETE to remove the account" value={confirm} onChangeText={setConfirm} />
       <Button
         label="Delete account and data"
         tone="sos"
-        disabled={confirm !== 'DELETE'}
+        disabled={confirm !== 'DELETE' || writePending('delete')}
+        disabledReason={confirm === 'DELETE' ? undefined : 'Type DELETE to remove the account.'}
+        pending={writePending('delete')}
         onPress={() => {
-          void repo.deleteAccount().catch((err: unknown) => setError(err instanceof Error ? err.message : 'Could not delete the account.'));
+          runWrite('delete', () => repo.deleteAccount().catch((err: unknown) => setError(shownError(err, 'Could not delete the account.'))));
         }}
       />
       {snap.mode === 'demo' ? (
@@ -149,15 +522,15 @@ export default function Profile() {
           tone="quiet"
           onPress={() => {
             void AsyncStorage.removeItem('charioteer.demo.v1').then(() => {
-              if (Platform.OS === 'web') window.location.reload();
+              if (Platform.OS === 'web' && typeof window !== 'undefined') window.location.reload();
             });
           }}
         />
       ) : null}
-      <Button label="Sign out" tone="quiet" onPress={() => void repo.signOut()} />
+      <Button label="Sign out" tone="quiet" onPress={() => void repo.signOut().catch((err: unknown) => setError(shownError(err, 'Could not sign out.')))} />
       {message ? <T variant="muted">{message}</T> : null}
       <ErrorNote>{error}</ErrorNote>
-      <T variant="muted">Charioteer is operated by Quantica Labs Ltd in the UK. Ben Naylor is the owner. Deleting the account removes the profile and the data tied to it.</T>
+      <T variant="muted">{APP_FULL_NAME} is operated by Quantica Labs Ltd in the UK. Ben Naylor is the owner. Deleting the account removes the profile and the data tied to it.</T>
     </Screen>
   );
 }

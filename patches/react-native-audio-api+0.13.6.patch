@@ -1,0 +1,55 @@
+diff --git a/node_modules/react-native-audio-api/ios/audioapi/ios/system/AudioEngine.mm b/node_modules/react-native-audio-api/ios/audioapi/ios/system/AudioEngine.mm
+index d0e77d8..4a8b981 100644
+--- a/node_modules/react-native-audio-api/ios/audioapi/ios/system/AudioEngine.mm
++++ b/node_modules/react-native-audio-api/ios/audioapi/ios/system/AudioEngine.mm
+@@ -45,6 +45,7 @@
+ - (void)resetInputNode;
+ - (void)rebuildAudioEngineAndResumeIfNeeded;
+ - (void)notifyConfigurationChanges;
++- (BOOL)charioteerPrepareAndStartEngine:(NSError **)error;
+ 
+ @end
+ 
+@@ -394,10 +395,7 @@ static AudioEngine *_sharedInstance = nil;
+     return;
+   }
+ 
+-  [self.audioEngine prepare];
+-  [self.audioEngine startAndReturnError:&error];
+-
+-  if (error != nil) {
++  if (![self charioteerPrepareAndStartEngine:&error] || error != nil) {
+     NSLog(
+         @"Error while restarting the audio engine after interruption: %@",
+         [error debugDescription]);
+@@ -463,6 +461,18 @@ static AudioEngine *_sharedInstance = nil;
+   self.graphNeedsRebuild = false;
+ }
+ 
++- (BOOL)charioteerPrepareAndStartEngine:(NSError **)error
++{
++  @try {
++    [self.audioEngine prepare];
++    [self.audioEngine startAndReturnError:error];
++    return YES;
++  } @catch (NSException *exception) {
++    NSLog(@"[AudioEngine] prepare/start raised %@: %@", exception.name, exception.reason);
++    return NO;
++  }
++}
++
+ - (bool)startEngine
+ {
+   NSError *error = nil;
+@@ -491,10 +501,7 @@ static AudioEngine *_sharedInstance = nil;
+     return false;
+   }
+ 
+-  [self.audioEngine prepare];
+-  [self.audioEngine startAndReturnError:&error];
+-
+-  if (error != nil) {
++  if (![self charioteerPrepareAndStartEngine:&error] || error != nil) {
+     NSLog(@"Error while starting the audio engine: %@", [error debugDescription]);
+     return false;
+   }
