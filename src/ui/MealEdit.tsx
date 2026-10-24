@@ -25,7 +25,7 @@ import {
 } from '@/domain/nutrition';
 import { DateField } from '@/ui/DateField';
 import { dismissKeyboard } from '@/ui/keyboard';
-import { radius, useAppTheme } from '@/ui/theme';
+import { radius, stroke, useAppTheme } from '@/ui/theme';
 import { Button, Choice, Field, T } from '@/ui/ui';
 
 type DraftItem = {
@@ -302,13 +302,13 @@ function TimeField({ label, value, onChange }: { label: string; value: string; o
           accessibilityLabel={`${label}, ${shown}`}
           onPress={() => setOpen(true)}
           style={{
-            borderWidth: 1,
+            borderWidth: stroke.control,
             borderColor: theme.colors.line,
             backgroundColor: theme.colors.surface,
             borderRadius: radius.md,
             minHeight: 52,
             justifyContent: 'center',
-            paddingHorizontal: 14,
+            paddingHorizontal: 16,
           }}
         >
           <T>{shown}</T>
@@ -350,13 +350,13 @@ function WebTimeInput({ label, value, onChange }: { label: string; value: string
           else node?.focus();
         }}
         style={{
-          borderWidth: 1,
+          borderWidth: stroke.control,
           borderColor: theme.colors.line,
           backgroundColor: theme.colors.surface,
           borderRadius: radius.md,
           minHeight: 52,
           justifyContent: 'center',
-          paddingHorizontal: 14,
+          paddingHorizontal: 16,
         }}
       >
         <T>{value}</T>

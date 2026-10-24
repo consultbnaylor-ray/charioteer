@@ -25,8 +25,8 @@ import { VoiceCall } from '@/voice/call';
 import { HELMET_ASPECT, HELMET_D, HELMET_VIEWBOX } from '@/ui/helmet';
 import { PausedCoachingLink } from '@/ui/PausedCoachingLink';
 import { markThumosIntroSeen, thumosIntroSeen } from '@/ui/thumosIntroMemory';
-import { Button, Card, ErrorNote, Field, Screen, T, useScreenScroller } from '@/ui/ui';
-import { useAppTheme } from '@/ui/theme';
+import { accentFrame, Button, Card, ErrorNote, Field, Screen, T, useScreenScroller } from '@/ui/ui';
+import { stroke, useAppTheme } from '@/ui/theme';
 
 export default function Thumos() {
   const params = useLocalSearchParams<{ mode?: string }>();
@@ -378,7 +378,7 @@ function ThumosIntro({ open, onToggle }: { open: boolean; onToggle: () => void }
   const theme = useAppTheme();
   const { width } = useWindowDimensions();
   // 348 is the collapsed sentence at 15px Barlow, so it stays one line on a narrow phone.
-  const introSize = Math.min(15 * theme.scale, Math.max(0, width - 68) / (348 / 15));
+  const introSize = Math.min(15 * theme.scale, Math.max(0, width - 78) / (348 / 15));
   return (
     <Pressable
       accessibilityRole="button"
@@ -386,17 +386,9 @@ function ThumosIntro({ open, onToggle }: { open: boolean; onToggle: () => void }
       accessibilityState={{ expanded: open }}
       aria-expanded={open}
       onPress={onToggle}
-      style={{
-        minHeight: 44,
-        justifyContent: 'center',
-        borderWidth: 1,
-        borderColor: theme.colors.accent,
-        backgroundColor: theme.colors.surface,
-        borderRadius: theme.radius.md,
-        paddingVertical: 8,
-        paddingHorizontal: 10,
-      }}
+      style={[accentFrame(theme, stroke.card, false).frame, { minHeight: 44, justifyContent: 'center' }]}
     >
+      <View style={[accentFrame(theme, stroke.card, false).body, { paddingVertical: 12, paddingHorizontal: 14 }]}>
       {open ? (
         <T style={{ fontSize: 15 * theme.scale, lineHeight: 20 * theme.scale }}>{THUMOS_INTRO}</T>
       ) : (
@@ -409,6 +401,7 @@ function ThumosIntro({ open, onToggle }: { open: boolean; onToggle: () => void }
           {INTRO_LINE}
         </Text>
       )}
+      </View>
     </Pressable>
   );
 }
@@ -421,17 +414,16 @@ function Bubble({ mine, text }: { mine: boolean; text: string }) {
   return (
     <View style={{ width: paused ? '100%' : undefined, alignItems: mine ? 'flex-end' : 'flex-start', gap: 8 }}>
       <View
-        style={{
-          alignSelf: mine ? 'flex-end' : 'flex-start',
-          maxWidth: '80%',
-          backgroundColor: mine ? theme.colors.emphasisSoft : theme.colors.surface,
-          borderColor: theme.colors.accent,
-          borderWidth: 1,
-          borderRadius: theme.radius.md,
-          paddingVertical: 6,
-          paddingHorizontal: 10,
-        }}
+        style={[
+          accentFrame(theme, stroke.card, false).frame,
+          {
+            alignSelf: mine ? 'flex-end' : 'flex-start',
+            maxWidth: '80%',
+            backgroundColor: mine ? theme.colors.emphasisSoft : theme.colors.surface,
+          },
+        ]}
       >
+        <View style={[accentFrame(theme, stroke.card, false).body, { paddingVertical: 10, paddingHorizontal: 14 }]}>
         <Text
           numberOfLines={open || !long ? undefined : THUMOS_LINE_CAP}
           style={{ fontFamily: theme.font.body, fontSize: 15 * theme.scale, lineHeight: 20 * theme.scale, color: theme.colors.ink }}
@@ -448,6 +440,7 @@ function Bubble({ mine, text }: { mine: boolean; text: string }) {
             <T variant="muted">More</T>
           </Pressable>
         ) : null}
+        </View>
       </View>
       {paused ? <PausedCoachingLink /> : null}
     </View>

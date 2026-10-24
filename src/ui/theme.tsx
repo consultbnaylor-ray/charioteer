@@ -6,8 +6,8 @@ import { statsToneColors } from '@/ui/statsPalette';
 
 /**
  * Monochrome system, plus one accent. Near-black and off-white, grey for hierarchy.
- * The accent is the On-track green from statsPalette.ts: pale mint in the dark
- * theme, and the deeper green already used for that ink in the light theme.
+ * The accent is the On-track green from statsPalette.ts: a solid saturated mint
+ * in the dark theme, and a deep rich green in the light theme. Both are opaque.
  * danger* marks SOS and safety notices, and a pending connection request
  * on People. Stats tiles and the nutrition charts use statsPalette.ts.
  * Workout charts use one fixed colour per type, in workoutTypeColor.ts,
@@ -55,6 +55,9 @@ export type Palette = typeof light & { accent: string };
 
 /** Main cards use md. Smaller notes and badges use sm. */
 export const radius = { sm: 14, md: 20 } as const;
+
+/** Solid edges. Featured cards are a touch heavier. Controls match the card weight in grey or ink. */
+export const stroke = { control: 2, card: 2, featured: 2.5 } as const;
 
 export const font = {
   display: 'Oswald_700Bold',

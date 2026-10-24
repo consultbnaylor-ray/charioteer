@@ -28,24 +28,33 @@ describe('card chrome', () => {
   it('reuses the On-track green and keeps it readable on both themes', () => {
     expect(theme).toContain('statsToneColors(scheme).good.ink');
     expect(theme).toContain('sm: 14, md: 20');
+    expect(theme).toContain('control: 2, card: 2, featured: 2.5');
     const light = statsToneColors('light').good.ink;
     const dark = statsToneColors('dark').good.ink;
-    expect(light).toBe('#14532D');
-    expect(dark).toBe('#D1FAE5');
-    expect(contrast(light, '#FFFFFF')).toBeGreaterThanOrEqual(3);
-    expect(contrast(light, '#F2F2EE')).toBeGreaterThanOrEqual(3);
-    expect(contrast(dark, '#1A1A1A')).toBeGreaterThanOrEqual(3);
-    expect(contrast(dark, '#0C0C0C')).toBeGreaterThanOrEqual(3);
+    expect(light).toBe('#0F6A32');
+    expect(dark).toBe('#3DDC97');
+    expect(light).toMatch(/^#[0-9A-F]{6}$/);
+    expect(dark).toMatch(/^#[0-9A-F]{6}$/);
+    expect(contrast(light, '#FFFFFF')).toBeGreaterThanOrEqual(4.5);
+    expect(contrast(light, '#F2F2EE')).toBeGreaterThanOrEqual(4.5);
+    expect(contrast(dark, '#1A1A1A')).toBeGreaterThanOrEqual(4.5);
+    expect(contrast(dark, '#0C0C0C')).toBeGreaterThanOrEqual(4.5);
   });
 
   it('puts the accent on cards and leaves nested controls on the subtle line', () => {
-    expect(card).toContain('borderColor: theme.colors.accent');
-    expect(card).toContain('borderWidth: featured ? 1.5 : 1');
+    const frame = ui.slice(ui.indexOf('export function accentFrame'), ui.indexOf('export function Card'));
+    expect(frame).toContain('borderColor: theme.colors.accent');
+    expect(frame).toContain('radius.md - borderWidth');
+    expect(frame).toContain("overflow: 'hidden'");
+    expect(frame).toContain("theme.scheme === 'light'");
+    expect(card).toContain('featured ? stroke.featured : stroke.card');
     expect(card).not.toContain('theme.colors.line');
+    expect(ui).toContain('padding: 20');
     expect(choice).toContain('theme.colors.line');
     expect(choice).not.toContain('theme.colors.accent');
     expect(field).toContain('borderColor: theme.colors.line');
     expect(field).not.toContain('theme.colors.accent');
     expect(ui).toContain('borderRadius: radius.md');
+    expect(ui).toContain('borderWidth: stroke.control');
   });
 });

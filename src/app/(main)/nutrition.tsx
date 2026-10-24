@@ -99,7 +99,7 @@ import { NutritionSectionShare } from '@/ui/SectionShare';
 import { pickMealPhoto } from '@/ui/pickMealPhoto';
 import { usePendingPress } from '@/ui/pendingAction';
 import { ScrollTarget } from '@/ui/ScrollTarget';
-import { useAppTheme } from '@/ui/theme';
+import { stroke, useAppTheme } from '@/ui/theme';
 import { Button, Card, Choice, ErrorNote, Field, QuietNote, Screen, T, playSavedHaptic, useScreenScroller } from '@/ui/ui';
 
 type DraftItem = {
@@ -1094,7 +1094,7 @@ export default function Nutrition() {
       </Card>
       {draft ? (
         <View ref={confirmRef} nativeID="meal-estimate-confirm" collapsable={false}>
-        <Card style={estimateFlash ? { borderColor: statsToneColors(theme.scheme).good.ink, borderWidth: 2 } : undefined}>
+        <Card style={estimateFlash ? { borderColor: statsToneColors(theme.scheme).good.ink, borderWidth: stroke.featured } : undefined}>
           <T variant="label">{draft.source === 'photo' ? 'Confirm this photo' : 'Confirm this meal'}</T>
           {draft.estimated ? <T>{ESTIMATE_LABEL}</T> : null}
           {photoNote ? <T>{photoNote}</T> : null}

@@ -51,7 +51,7 @@ import { workoutTypeColor } from '@/domain/workoutTypeColor';
 import { DailyActivityCharts } from '@/ui/DailyActivity';
 import { StatGlyph, workoutStatIcon, type StatIcon } from '@/ui/statIcons';
 import { TowardTargetActivity } from '@/ui/TowardTargetActivity';
-import { radius, useAppTheme } from '@/ui/theme';
+import { radius, stroke, useAppTheme } from '@/ui/theme';
 import { Card, Choice, T } from '@/ui/ui';
 
 const BAR_HEIGHT = 88;
@@ -140,9 +140,9 @@ function TapRow({
         flexDirection: 'row',
         alignItems: 'center',
         gap: 12,
-        paddingVertical: 10,
-        paddingHorizontal: 12,
-        borderWidth: 1,
+        paddingVertical: 12,
+        paddingHorizontal: 14,
+        borderWidth: stroke.control,
         borderColor: theme.colors.line,
         borderRadius: radius.md,
         backgroundColor: pressed ? theme.colors.emphasisSoft : theme.colors.surface,

@@ -3,7 +3,7 @@ import { createElement, useRef, useState } from 'react';
 import { Platform, Pressable, View } from 'react-native';
 
 import { clampToPast, formatUkLong, isoDay, parseIsoDay, startOfLocalDay } from '@/domain/dates';
-import { radius, useAppTheme } from '@/ui/theme';
+import { radius, stroke, useAppTheme } from '@/ui/theme';
 import { T } from '@/ui/ui';
 
 export function DateField({
@@ -49,13 +49,13 @@ export function DateField({
               accessibilityLabel={`${label}, ${shown}`}
               onPress={() => setOpen(true)}
               style={{
-                borderWidth: 1,
+                borderWidth: stroke.control,
                 borderColor: theme.colors.line,
                 backgroundColor: theme.colors.surface,
                 borderRadius: radius.md,
                 minHeight: 52,
                 justifyContent: 'center',
-                paddingHorizontal: 14,
+                paddingHorizontal: 16,
               }}
             >
               <T>{shown}</T>
@@ -120,13 +120,13 @@ function WebDateInput({
           else node?.focus();
         }}
         style={{
-          borderWidth: 1,
+          borderWidth: stroke.control,
           borderColor: theme.colors.line,
           backgroundColor: theme.colors.surface,
           borderRadius: radius.md,
           minHeight: 52,
           justifyContent: 'center',
-          paddingHorizontal: 14,
+          paddingHorizontal: 16,
         }}
       >
         <T>{shown}</T>

@@ -9,7 +9,7 @@ import { weightPointsFrom } from '@/domain/nutrition';
 import { londonDay } from '@/domain/healthInsights';
 import { useHealthSources } from '@/health/useHealthSources';
 import { targetActivityPlan, TOWARD_TARGET_TITLE } from '@/domain/targetActivity';
-import { useAppTheme } from '@/ui/theme';
+import { radius, useAppTheme } from '@/ui/theme';
 import { T } from '@/ui/ui';
 
 /** Suggestions for a saved target weight. Hidden when no target is set. */
@@ -59,7 +59,7 @@ export function TowardTargetActivity({ compact = false }: { compact?: boolean })
           accessibilityRole="button"
           accessibilityLabel={item.text}
           onPress={() => router.push('/workouts' as never)}
-          style={{ minHeight: 44, justifyContent: 'center', borderWidth: 1, borderColor: theme.colors.line, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 8 }}
+          style={{ minHeight: 44, justifyContent: 'center', borderWidth: 1, borderColor: theme.colors.line, borderRadius: radius.md, paddingHorizontal: 14, paddingVertical: 10 }}
         >
           <T>{item.text}</T>
           <T variant="muted">Open workouts</T>

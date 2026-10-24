@@ -7,8 +7,8 @@ import {
   sensitiveShareConfirm,
   type ProfileSharing,
 } from '@/domain/profileSharing';
-import { useAppTheme } from '@/ui/theme';
-import { Button, QuietNote, T } from '@/ui/ui';
+import { stroke, useAppTheme } from '@/ui/theme';
+import { accentFrame, Button, QuietNote, T } from '@/ui/ui';
 
 /**
  * One labelled switch for the box above it. The first health or sobriety
@@ -66,18 +66,9 @@ export function ShareOnProfile({
     void save(true, Boolean(sensitive && !snap.sharing.sensitiveConsentAt));
   }
 
-  return (
-    <View
-      style={boxed ? {
-        gap: 6,
-        borderWidth: 1,
-        borderColor: theme.colors.accent,
-        borderRadius: theme.radius.md,
-        backgroundColor: theme.colors.surface,
-        paddingHorizontal: 18,
-        paddingVertical: 14,
-      } : { gap: 6 }}
-    >
+  const chrome = accentFrame(theme, stroke.card);
+  const body = (
+    <>
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 12, alignItems: 'center' }}>
         <T style={{ flex: 1 }} numberOfLines={lines}>{label}</T>
         <Switch
@@ -95,6 +86,12 @@ export function ShareOnProfile({
         </View>
       ) : null}
       <QuietNote>{error}</QuietNote>
+    </>
+  );
+  if (!boxed) return <View style={{ gap: 6 }}>{body}</View>;
+  return (
+    <View style={chrome.frame}>
+      <View style={[chrome.body, { gap: 6, paddingHorizontal: 20, paddingVertical: 16 }]}>{body}</View>
     </View>
   );
 }

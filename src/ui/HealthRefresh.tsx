@@ -28,7 +28,7 @@ import { refreshAppleHealth } from '@/health/catchUp';
 import { reloadHealthSources } from '@/health/useHealthSources';
 import { loadLastSynced } from '@/health/syncedAt';
 import { PlanTick } from '@/ui/PlanTick';
-import { useAppTheme } from '@/ui/theme';
+import { stroke, useAppTheme } from '@/ui/theme';
 import { ErrorNote, T } from '@/ui/ui';
 
 let cooldownFrom: number | null = null;
@@ -217,8 +217,8 @@ export function HealthRefreshBar({
               alignSelf: 'flex-start',
               minHeight: 36,
               justifyContent: 'center',
-              paddingHorizontal: 12,
-              borderWidth: 1,
+              paddingHorizontal: 14,
+              borderWidth: stroke.control,
               borderColor: theme.colors.ink,
               borderRadius: theme.radius.md,
               opacity: refreshing ? 0.45 : 1,

@@ -24,7 +24,7 @@ import { requestBadgeText } from '@/domain/connections';
 import { HELMET_ASPECT, HELMET_D, HELMET_VIEWBOX } from '@/ui/helmet';
 import { DismissKeyboard, dismissKeyboard, dismissKeyboardOnAction, inputScrollProps, KeyboardDoneBar, KeyboardForm, keyboardAccessoryId, useKeyboardField, useKeyboardOffset } from '@/ui/keyboard';
 import { topSafeInset } from '@/ui/safeArea';
-import { radius, useAppTheme } from '@/ui/theme';
+import { radius, stroke, useAppTheme, type Scheme } from '@/ui/theme';
 
 type Variant = 'hero' | 'display' | 'title' | 'body' | 'muted' | 'label';
 
@@ -215,6 +215,38 @@ export function Screen({
   );
 }
 
+type AccentTheme = { scheme: Scheme; colors: { surface: string; accent: string } };
+
+/** A very soft lift. Light theme only, so the dark theme stays a flat solid edge. */
+const lightLift: ViewStyle = Platform.OS === 'android'
+  ? { elevation: 1 }
+  : {
+      shadowColor: '#111111',
+      shadowOffset: { width: 0, height: 1 },
+      shadowOpacity: 0.06,
+      shadowRadius: 8,
+    };
+
+/**
+ * Outer accent edge plus an inner clip whose radius is the outer radius minus the border,
+ * so the corner stays concentric and children do not square off inside the stroke.
+ */
+export function accentFrame(theme: AccentTheme, borderWidth: number, lift = true): { frame: ViewStyle; body: ViewStyle } {
+  return {
+    frame: {
+      backgroundColor: theme.colors.surface,
+      borderColor: theme.colors.accent,
+      borderWidth,
+      borderRadius: radius.md,
+      ...(lift && theme.scheme === 'light' ? lightLift : null),
+    },
+    body: {
+      borderRadius: Math.max(0, radius.md - borderWidth),
+      overflow: 'hidden',
+    },
+  };
+}
+
 export function Card({
   children,
   style,
@@ -230,16 +262,12 @@ export function Card({
   featured?: boolean;
 }) {
   const theme = useAppTheme();
-  const box = [
-    styles.card,
-    {
-      backgroundColor: theme.colors.surface,
-      borderColor: theme.colors.accent,
-      borderWidth: featured ? 1.5 : 1,
-    },
-    style,
-  ];
-  if (!onPress) return <View style={box}>{children}</View>;
+  const flat = StyleSheet.flatten(style) ?? {};
+  const borderWidth = typeof flat.borderWidth === 'number' ? flat.borderWidth : featured ? stroke.featured : stroke.card;
+  const chrome = accentFrame(theme, borderWidth);
+  const box = [chrome.frame, style];
+  const inner = <View style={[styles.cardBody, chrome.body]}>{children}</View>;
+  if (!onPress) return <View style={box}>{inner}</View>;
   return (
     <Pressable
       accessibilityRole="button"
@@ -247,7 +275,7 @@ export function Card({
       onPress={onPress}
       style={({ pressed }) => [box, { opacity: pressed ? 0.86 : 1 }]}
     >
-      {children}
+      {inner}
     </Pressable>
   );
 }
@@ -397,7 +425,7 @@ export function Button({
           {
             backgroundColor: tones.bg,
             borderColor: tones.border,
-            borderWidth: tone === 'quiet' ? 1.5 : 0,
+            borderWidth: tone === 'quiet' ? stroke.control : 0,
             opacity: inactive ? 0.45 : pressed ? 0.86 : 1,
           },
         ]}
@@ -662,13 +690,13 @@ export function Stamp({ kind }: { kind: Verification }) {
 const styles = StyleSheet.create({
   page: { width: '100%', maxWidth: 760, alignSelf: 'center', paddingHorizontal: 20, paddingTop: 18, paddingBottom: 40 },
   footer: { borderTopWidth: StyleSheet.hairlineWidth, padding: 16 },
-  card: { borderWidth: 1, borderRadius: radius.md, padding: 18, gap: 8 },
+  cardBody: { padding: 20, gap: 8 },
   button: { minHeight: 52, borderRadius: radius.md, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 18 },
   buttonText: { letterSpacing: 0.4 },
-  input: { borderWidth: 1, borderRadius: radius.md, paddingHorizontal: 14, paddingVertical: 12 },
+  input: { borderWidth: stroke.control, borderRadius: radius.md, paddingHorizontal: 16, paddingVertical: 12, overflow: 'hidden' },
   passwordRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 0, paddingRight: 4, paddingLeft: 0 },
-  passwordInput: { flex: 1, borderWidth: 0, backgroundColor: 'transparent', paddingLeft: 14, paddingRight: 4, paddingVertical: 12 },
+  passwordInput: { flex: 1, borderWidth: 0, backgroundColor: 'transparent', paddingLeft: 16, paddingRight: 4, paddingVertical: 12 },
   passwordToggle: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
-  choice: { borderWidth: 1, borderRadius: radius.md, paddingHorizontal: 14, paddingVertical: 10, minHeight: 44, justifyContent: 'center' },
+  choice: { borderWidth: stroke.control, borderRadius: radius.md, paddingHorizontal: 16, paddingVertical: 10, minHeight: 44, justifyContent: 'center', overflow: 'hidden' },
   note: { borderRadius: radius.sm, borderLeftWidth: 3, padding: 14 },
 });

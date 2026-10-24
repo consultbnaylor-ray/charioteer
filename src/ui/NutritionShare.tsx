@@ -7,8 +7,8 @@ import { shownError } from '@/domain/errors';
 import { WAGON_SUPPORT, type NutritionSettings, type SharedGoal, type SharedQuality } from '@/domain/nutrition';
 import { communitySharingOn, sensitiveShareConfirm } from '@/domain/profileSharing';
 import { usePendingPress } from '@/ui/pendingAction';
-import { useAppTheme } from '@/ui/theme';
-import { Button, Card, Field, QuietNote, T } from '@/ui/ui';
+import { stroke, useAppTheme } from '@/ui/theme';
+import { accentFrame, Button, Card, Field, QuietNote, T } from '@/ui/ui';
 
 export const NUTRITION_SHARE_LOCKED = 'These stay off until Community is on.';
 
@@ -64,18 +64,9 @@ export function NutritionShareSwitch({
     void save(true, !snap.sharing.sensitiveConsentAt);
   }
 
-  return (
-    <View
-      style={boxed ? {
-        gap: 6,
-        borderWidth: 1,
-        borderColor: theme.colors.accent,
-        borderRadius: theme.radius.md,
-        backgroundColor: theme.colors.surface,
-        paddingHorizontal: 18,
-        paddingVertical: 14,
-      } : { gap: 6 }}
-    >
+  const chrome = accentFrame(theme, stroke.card);
+  const body = (
+    <>
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 12, alignItems: 'center' }}>
         <T style={{ flex: 1 }}>{label}</T>
         <Switch
@@ -95,6 +86,12 @@ export function NutritionShareSwitch({
         </View>
       ) : null}
       <QuietNote>{error}</QuietNote>
+    </>
+  );
+  if (!boxed) return <View style={{ gap: 6 }}>{body}</View>;
+  return (
+    <View style={chrome.frame}>
+      <View style={[chrome.body, { gap: 6, paddingHorizontal: 20, paddingVertical: 16 }]}>{body}</View>
     </View>
   );
 }

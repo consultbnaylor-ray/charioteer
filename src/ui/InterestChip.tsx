@@ -1,6 +1,6 @@
 import { Pressable, Text, View } from 'react-native';
 
-import { useAppTheme } from '@/ui/theme';
+import { stroke, useAppTheme } from '@/ui/theme';
 
 /** Selected interests are filled with a white border and a check. Others stay muted. */
 export function InterestChip({
@@ -24,7 +24,7 @@ export function InterestChip({
         flexDirection: 'row',
         alignItems: 'center',
         minHeight: 44,
-        borderWidth: selected ? 2 : 1,
+        borderWidth: stroke.control,
         borderColor: selected ? '#FFFFFF' : theme.colors.line,
         backgroundColor: selected ? theme.colors.ink : theme.colors.sunken,
         borderRadius: theme.radius.md,

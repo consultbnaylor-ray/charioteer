@@ -3,7 +3,7 @@ import { createElement, useMemo, useRef, useState } from 'react';
 import { Platform, Pressable, View } from 'react-native';
 
 import { snapSessionClock } from '@/domain/plannedSession';
-import { radius, useAppTheme } from '@/ui/theme';
+import { radius, stroke, useAppTheme } from '@/ui/theme';
 import { Choice, T } from '@/ui/ui';
 
 export const SESSION_TIME_CHIPS = [
@@ -44,13 +44,13 @@ function NativeTime({ shown, onChange }: { shown: string; onChange: (value: stri
     return date;
   }, [hours, minutes]);
   const box = {
-    borderWidth: 1,
+    borderWidth: stroke.control,
     borderColor: theme.colors.line,
     backgroundColor: theme.colors.surface,
     borderRadius: radius.md,
     minHeight: 52,
     justifyContent: 'center' as const,
-    paddingHorizontal: 14,
+    paddingHorizontal: 16,
   };
   return (
     <View style={{ gap: 6 }}>
@@ -112,13 +112,13 @@ function WebTime({ shown, onChange }: { shown: string; onChange: (value: string)
           else node?.focus();
         }}
         style={{
-          borderWidth: 1,
+          borderWidth: stroke.control,
           borderColor: theme.colors.line,
           backgroundColor: theme.colors.surface,
           borderRadius: radius.md,
           minHeight: 52,
           justifyContent: 'center',
-          paddingHorizontal: 14,
+          paddingHorizontal: 16,
         }}
       >
         <T>{shown}</T>

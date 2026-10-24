@@ -75,8 +75,8 @@ describe('thumos conversation window', () => {
     expect(screen).toContain("maxWidth: '80%'");
     expect(screen).toContain('fontSize: 15 * theme.scale');
     expect(screen).toContain('lineHeight: 20 * theme.scale');
-    expect(screen).toContain('paddingVertical: 6');
-    expect(screen).toContain('paddingHorizontal: 10');
+    expect(screen).toContain('paddingVertical: 10');
+    expect(screen).toContain('paddingHorizontal: 14');
     expect(screen).toContain('gap: 4');
     expect(screen).toContain('nativeID="thumos-latest"');
     expect(screen).toContain("scrollIntoView({ block: 'end' })");

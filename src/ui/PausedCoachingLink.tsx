@@ -1,8 +1,8 @@
 import { useRouter } from 'expo-router';
-import { Pressable, StyleSheet, Text } from 'react-native';
+import { Pressable, Text } from 'react-native';
 
 import { PAUSED_COACHING_HREF, PAUSED_COACHING_LINK } from '@/domain/pausedCoaching';
-import { useAppTheme } from '@/ui/theme';
+import { stroke, useAppTheme } from '@/ui/theme';
 
 /** Opens the temporary choice. The press does not change the switch. */
 export function PausedCoachingLink() {
@@ -18,11 +18,11 @@ export function PausedCoachingLink() {
         width: '100%',
         minHeight: 44,
         justifyContent: 'center',
-        borderWidth: StyleSheet.hairlineWidth,
+        borderWidth: stroke.control,
         borderColor: theme.colors.ink,
         backgroundColor: theme.colors.surface,
         borderRadius: theme.radius.md,
-        paddingHorizontal: 12,
+        paddingHorizontal: 16,
         paddingVertical: 10,
       }}
     >

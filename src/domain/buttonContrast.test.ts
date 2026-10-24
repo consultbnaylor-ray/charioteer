@@ -47,7 +47,7 @@ describe('button contrast', () => {
   it('draws a quiet action as an outline and dims a disabled one', () => {
     expect(button).toContain("quiet: { bg: 'transparent', fg: theme.colors.ink, border: theme.colors.ink }");
     expect(button).toContain('primary: { bg: theme.colors.ink, fg: theme.colors.bg, border: \'transparent\' }');
-    expect(button).toContain("borderWidth: tone === 'quiet' ? 1.5 : 0");
+    expect(button).toContain("borderWidth: tone === 'quiet' ? stroke.control : 0");
     expect(button).toContain('opacity: inactive ? 0.45 : pressed ? 0.86 : 1');
     expect(button).toContain('accessibilityHint={reason || undefined}');
     expect(button).toContain('{reason ? <T variant="muted">{reason}</T> : null}');
