@@ -43,6 +43,11 @@ export type Profile = {
   communityVisible: boolean;
   consentHealth: boolean;
   consentAi: boolean;
+  /**
+   * Temporary, private, and off until this person turns it on.
+   * It is not the AI coach consent. Buddies and the community never see it.
+   */
+  consentXaiInterim: boolean;
   onboardingComplete: boolean;
   isModerator: boolean;
   textScale: TextScale;
@@ -425,6 +430,8 @@ export interface Repository {
   signOut(): Promise<void>;
   completeOnboarding(input: OnboardingInput): Promise<void>;
   saveConsents(input: ConsentInput): Promise<void>;
+  /** Writes only the temporary Thumos choice. It does not change any other consent. */
+  setInterimCoachOptIn(granted: boolean): Promise<void>;
   updateProfile(patch: ProfilePatch): Promise<void>;
   setReasons(bodies: string[]): Promise<void>;
   addCheckIn(input: NewCheckIn): Promise<void>;

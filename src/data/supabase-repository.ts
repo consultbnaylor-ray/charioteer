@@ -151,7 +151,7 @@ import { resolveSignedInSession } from '@/domain/liveSession';
 import { OPENING_LINE, SCRIPTED_COACH_REPLY, type ThumosMode } from '@/domain/thumos';
 import Constants from 'expo-constants';
 import { CONSENT_VERSION } from '@/data/catalogue';
-import { consentRows, mergeStoredConsents, missingConsentRows, type StoredConsent } from '@/domain/consents';
+import { consentRows, interimConsentRows, mergeStoredConsents, missingConsentRows, type StoredConsent } from '@/domain/consents';
 import { stageFromRecord } from '@/domain/stage';
 import type {
   AppSnapshot,
@@ -3275,6 +3275,30 @@ export class SupabaseRepository implements Repository {
     }
   }
 
+  async setInterimCoachOptIn(granted: boolean): Promise<void> {
+    const profile = this.snapshot.profile;
+    if (!profile) throw new Error('Sign in first.');
+    const nextGranted = granted === true;
+    const previous = profile.consentXaiInterim === true;
+    const userId = this.snapshot.session?.userId ?? await this.userId();
+    const { error } = await this.client.from('profiles').update({
+      consent_xai_interim: nextGranted,
+    }).eq('id', userId);
+    if (error) throw asUserFacing(error, 'general');
+    try {
+      await this.writeInterimConsent(userId, nextGranted);
+    } catch (consentError) {
+      await this.client.from('profiles').update({ consent_xai_interim: previous }).eq('id', userId);
+      throw asUserFacing(consentError, 'general');
+    }
+    const current = this.snapshot.profile;
+    this.emit({
+      ...this.snapshot,
+      profile: current ? { ...current, consentXaiInterim: nextGranted } : current,
+      consents: mergeStoredConsents(this.snapshot.consents, interimConsentRows(CONSENT_VERSION, nextGranted), new Date().toISOString()),
+    });
+  }
+
   private saveLane<T>(
     key: string,
     initial: T,
@@ -3408,6 +3432,27 @@ export class SupabaseRepository implements Repository {
     }
   }
 
+  private async writeInterimConsent(userId: string, granted: boolean): Promise<void> {
+    const version = CONSENT_VERSION;
+    const existing = this.snapshot.consents;
+    const prior = existing.find((item) => item.kind === 'xai_interim' && item.version === version);
+    if (!prior) {
+      const { error } = await this.client.from('consents').insert({
+        user_id: userId,
+        kind: 'xai_interim',
+        granted,
+        version,
+      });
+      if (error && !/duplicate|23505/i.test(`${error.code ?? ''} ${error.message}`)) throw error;
+    }
+    if (prior && prior.granted === granted) return;
+    const { error } = await this.client.from('consents').update({
+      granted,
+      decided_at: new Date().toISOString(),
+    }).eq('user_id', userId).eq('kind', 'xai_interim').eq('version', version);
+    if (error) throw error;
+  }
+
   private async insertConsents(userId: string, input: ConsentInput, existing: readonly StoredConsent[] = this.snapshot.consents) {
     const rows = consentRows(CONSENT_VERSION, input);
     const next = missingConsentRows(existing, rows);
@@ -3463,6 +3508,7 @@ function mapProfile(row: Row, email: string, interestIds: string[]): Profile {
     communityVisible: Boolean(row.community_visible),
     consentHealth: Boolean(row.consent_health),
     consentAi: Boolean(row.consent_ai),
+    consentXaiInterim: row.consent_xai_interim === true,
     onboardingComplete: Boolean(row.onboarding_complete),
     isModerator: Boolean(row.is_moderator),
     textScale: (row.text_scale as Profile['textScale']) ?? 'default',

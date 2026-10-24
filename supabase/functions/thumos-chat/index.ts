@@ -44,7 +44,7 @@ import { loadNutritionLines } from '../_shared/nutritionLoad.ts';
 import { moodOnTen } from '../_shared/mood.ts';
 import { GOAL_LABEL, type NutritionGoal } from '../_shared/nutrition.ts';
 import { formatSoberElapsed, soberElapsed } from '../_shared/sober.ts';
-import { COACHING_PAUSED, xaiPersonalDataEnabled } from '../_shared/xaiPersonal.ts';
+import { coachingPersonalDataAllowed, pausedCoachingMessage } from '../_shared/xaiPersonal.ts';
 import { garminAllowedForCoach, garminCoachLines, missingRelation, readingsFromRows } from '../_shared/garmin.ts';
 
 type Body = { content?: string; mode?: ThumosMode; request_id?: string };
@@ -237,7 +237,11 @@ Deno.serve(async (req) => {
         consentAi: profile.consent_ai,
         consentHealth: profile.consent_health,
       });
-  const personalDataEnabled = xaiPersonalDataEnabled(Deno.env.get('XAI_PERSONAL_DATA_ENABLED'));
+  const personalDataEnabled = coachingPersonalDataAllowed({
+    personalDataFlag: Deno.env.get('XAI_PERSONAL_DATA_ENABLED'),
+    interimFlag: Deno.env.get('XAI_INTERIM_OPT_IN_ALLOWED'),
+    userOptIn: profile.consent_xai_interim,
+  });
   const garminLines = await garminLinesFor(userClient, userId, {
     consentAi: profile.consent_ai === true,
     consentHealth: shareHealth,
@@ -355,7 +359,7 @@ Deno.serve(async (req) => {
         }
 
         if (!personalDataEnabled) {
-          reply = COACHING_PAUSED;
+          reply = ensureSafetyNotices(pausedCoachingMessage(profile.consent_xai_interim), safety);
           role = 'assistant';
           send({ type: 'delta', text: reply });
         } else if (!apiKey) {

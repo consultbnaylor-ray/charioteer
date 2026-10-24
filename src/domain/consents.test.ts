@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 
 import { CONSENT_VERSION } from '@/data/catalogue';
-import { CONSENT_INTRO, consentRows, hasCurrentConsents, mergeStoredConsents, missingConsentRows, TERMS_REQUIRED } from './consents';
+import { CONSENT_INTRO, CONSENT_KINDS, consentRows, hasCurrentConsents, interimConsentRows, mergeStoredConsents, missingConsentRows, TERMS_REQUIRED } from './consents';
 
 const version = '2026-10-21';
 const choice = {
@@ -89,5 +89,82 @@ describe('current consents', () => {
     expect(sql).toContain('grant update (granted, decided_at)');
     expect(sql).toContain('message_notifications set default false');
     expect(sql).toContain('Not applied from this repo');
+  });
+
+  it('keeps the temporary Thumos choice off the other consents, and private', () => {
+    expect(CONSENT_KINDS).not.toContain('xai_interim');
+    expect(consentRows(version, choice).map((row) => row.kind)).not.toContain('xai_interim');
+    expect(hasCurrentConsents(consentRows(version, choice), version)).toBe(true);
+    const kept = mergeStoredConsents(
+      [...consentRows(version, choice), ...interimConsentRows(version, true)],
+      consentRows(version, { ...choice, consentAi: false }),
+      '2026-10-24T12:00:00.000Z',
+    );
+    expect(kept.find((row) => row.kind === 'xai_interim')).toMatchObject({ granted: true, version });
+    expect(kept.find((row) => row.kind === 'ai_coach')).toMatchObject({ granted: false });
+
+    const choices = readFileSync('src/ui/ConsentChoices.tsx', 'utf8');
+    const interimCopy = choices.slice(choices.indexOf('export const INTERIM_COACH_TITLE'), choices.indexOf('export function ConsentChoices'));
+    expect(interimCopy).toContain('Temporary: continue before xAI confirms');
+    expect(interimCopy).toContain('separate choice');
+    expect(interimCopy).toContain('starts off');
+    expect(interimCopy).toContain('has not yet confirmed in writing');
+    expect(interimCopy).toContain('will not save');
+    expect(interimCopy).toContain('messages you type');
+    expect(interimCopy).toContain('your name');
+    expect(interimCopy).toContain('reasons');
+    expect(interimCopy).toContain('check-ins');
+    expect(interimCopy).toContain('gratitude lines');
+    expect(interimCopy).toContain('vision statement');
+    expect(interimCopy).toContain('meal photo');
+    expect(interimCopy).toContain('Garmin daily totals');
+    expect(interimCopy).toContain('progress photos are not sent');
+    expect(interimCopy).toContain('turn this off at any time');
+    expect(choices.indexOf('title={INTERIM_COACH_TITLE}')).toBeGreaterThan(choices.indexOf('body={AI_COACH_CONSENT_BODY}'));
+    expect(choices.indexOf('onChange={onInterim}')).toBeGreaterThan(choices.indexOf('onChange={onAi}'));
+
+    const onboarding = readFileSync('src/app/onboarding.tsx', 'utf8');
+    const consent = readFileSync('src/app/consent.tsx', 'utf8');
+    const profile = readFileSync('src/app/(main)/profile.tsx', 'utf8');
+    const privacy = readFileSync('src/app/(main)/privacy.tsx', 'utf8');
+    expect(onboarding).toContain('const [interim, setInterim] = useState(false)');
+    expect(onboarding).not.toContain('setInterim(ai)');
+    expect(onboarding).toContain('onInterim={changeInterim}');
+    const finish = onboarding.slice(onboarding.indexOf('async function finish'), onboarding.indexOf('const catalogue'));
+    expect(finish).not.toContain('interim');
+    expect(finish).not.toContain('setInterimCoachOptIn');
+    expect(consent).toContain('useState(profile?.consentXaiInterim === true)');
+    expect(consent).toContain('const [ai, setAi] = useState(false)');
+    expect(profile).toContain('useState(profile?.consentXaiInterim === true)');
+    expect(profile).toContain('setInterimCoachOptIn');
+    expect(privacy).toContain('setInterimCoachOptIn');
+    const detailsSave = profile.slice(profile.indexOf('await repo.saveConsents'), profile.indexOf('if (messages)'));
+    expect(detailsSave).not.toContain('interim');
+    expect(detailsSave).not.toContain('consentXaiInterim');
+    expect(readFileSync('src/app/(main)/thumos.tsx', 'utf8')).not.toContain('setInterimCoachOptIn');
+
+    const repo = readFileSync('src/data/supabase-repository.ts', 'utf8');
+    const onboard = repo.slice(repo.indexOf('async completeOnboarding'), repo.indexOf('async updateProfile'));
+    const persist = repo.slice(repo.indexOf('private async persistConsents'), repo.indexOf('private async persistProgress'));
+    expect(onboard).not.toContain('consent_xai_interim');
+    expect(persist).not.toContain('consent_xai_interim');
+    expect(repo).toContain('consent_xai_interim: nextGranted');
+
+    const migration = readFileSync('supabase/migrations/20261024140000_xai_interim_opt_in.sql', 'utf8');
+    expect(migration).toContain('Not applied');
+    expect(migration).toContain('consent_xai_interim boolean not null default false');
+    expect(migration).toContain('grant update (consent_xai_interim) on public.profiles to authenticated');
+    expect(migration).toContain("'xai_interim'");
+    const statements = migration.split('\n').filter((line) => !line.trim().startsWith('--')).join('\n');
+    expect(statements).not.toContain('public_profile');
+    expect(statements).not.toContain('directory');
+    expect(statements).not.toContain('create table');
+    expect(statements.toLowerCase()).not.toContain('grant select');
+    expect(statements.toLowerCase()).not.toContain('grant all');
+    const latestExport = readFileSync('supabase/migrations/20261023220000_garmin_wellness_summaries.sql', 'utf8');
+    expect(latestExport).toContain("'profile', (select to_jsonb(p) from public.profiles p where p.id = uid)");
+    expect(latestExport).toContain('from public.consents c where c.user_id = uid');
+    expect(readFileSync('src/domain/profileSharing.ts', 'utf8')).not.toContain('consentXaiInterim');
+    expect(readFileSync('src/ui/PublicProfileCard.tsx', 'utf8')).not.toContain('consentXaiInterim');
   });
 });

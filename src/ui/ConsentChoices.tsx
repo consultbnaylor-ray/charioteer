@@ -31,14 +31,25 @@ export const AI_COACH_CONSENT_LEAD =
 export const AI_COACH_CONSENT_BODY =
   `${AI_COACH_CONSENT_LEAD} This covers Thumos and personalised notifications via xAI. What you type, plus check-ins, reasons, and health summaries, is sent to xAI to write a reply. When health data is also on, that includes a short fitness summary (level, trends, weekly minutes, session mix, and recovery), not the raw samples. A few gratitude lines, the latest and the starred ones, are included when this coach is on. A reflection sends only that one line. Your vision statement and photo captions may be included when this coach is on. A gratitude line you have not switched on is never shown to the community. Gratitude photos are not sent. Vision board photos are not sent. Progress photos are not sent. This is not used for ads. Thumos is not a doctor. Turning this off stops every call that would send personal or health details to xAI.`;
 
+/**
+ * Temporary second choice. It is not ticked when the AI coach is on.
+ * Profile, onboarding, the consent screen, and Privacy all show it under that switch.
+ */
+export const INTERIM_COACH_TITLE = 'Temporary: continue before xAI confirms';
+
+export const INTERIM_COACH_BODY =
+  'This is a separate choice from the AI coach switch, and it starts off. xAI has not yet confirmed in writing that they will not save what Thumos sends. Turning this on lets coaching continue while that confirmation is still outstanding. What can be sent is: messages you type, a voice conversation, your name, your stage, sober or cutting-down figures, reasons, check-ins, interests, a pinned quote, a few gratitude lines, your vision statement and vision captions, nutrition targets, a target weight, and meal descriptions. A meal photo is sent only when you ask for a photo estimate. A health plan can include your food, body, and check-in figures. If health data is also on, a short fitness summary and Garmin daily totals can be included. Raw health samples, workout routes, gratitude photos, vision photos, and progress photos are not sent. xAI has not confirmed they will not keep this. You can turn this off at any time, and turning it off stops those sends.';
+
 export function ConsentChoices({
   community,
   health,
   ai,
+  interim,
   messages,
   onCommunity,
   onHealth,
   onAi,
+  onInterim,
   onMessages,
   terms,
   onTerms,
@@ -46,10 +57,13 @@ export function ConsentChoices({
   community: boolean;
   health: boolean;
   ai: boolean;
+  /** Starts off. Never copied from the AI coach switch. */
+  interim: boolean;
   messages: boolean;
   onCommunity: (value: boolean) => void;
   onHealth: (value: boolean) => void;
   onAi: (value: boolean) => void;
+  onInterim: (value: boolean) => void;
   onMessages: (value: boolean) => void;
   terms?: boolean;
   onTerms?: (value: boolean) => void;
@@ -73,6 +87,12 @@ export function ConsentChoices({
         body={AI_COACH_CONSENT_BODY}
         value={ai}
         onChange={onAi}
+      />
+      <ConsentRow
+        title={INTERIM_COACH_TITLE}
+        body={INTERIM_COACH_BODY}
+        value={interim}
+        onChange={onInterim}
       />
       <ConsentRow
         title="Message notifications"

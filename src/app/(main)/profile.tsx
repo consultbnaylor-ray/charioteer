@@ -57,6 +57,7 @@ export default function Profile() {
   const [community, setCommunity] = useState(profile?.communityVisible ?? false);
   const [health, setHealth] = useState(profile?.consentHealth ?? false);
   const [ai, setAi] = useState(profile?.consentAi ?? false);
+  const [interim, setInterim] = useState(profile?.consentXaiInterim === true);
   const [messages, setMessages] = useState(profile?.messageNotifications ?? false);
   const [confirm, setConfirm] = useState('');
   const [stage, setStage] = useState<Stage>(profile?.stage ?? 'exploring');
@@ -405,10 +406,22 @@ export default function Profile() {
           community={community}
           health={health}
           ai={ai}
+          interim={interim}
           messages={messages}
           onCommunity={setCommunity}
           onHealth={setHealth}
           onAi={setAi}
+          onInterim={(value) => {
+            const previous = interim;
+            setInterim(value);
+            void repo.setInterimCoachOptIn(value).then(() => {
+              setSavedNote('Saved');
+              playSavedHaptic();
+            }).catch((err: unknown) => {
+              setInterim(previous);
+              setError(shownError(err, 'Could not save.'));
+            });
+          }}
           onMessages={setMessages}
         />
       </Card>

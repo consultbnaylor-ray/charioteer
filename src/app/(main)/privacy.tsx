@@ -14,6 +14,7 @@ export default function PrivacyScreen() {
   const [community, setCommunity] = useState(profile?.communityVisible ?? false);
   const [health, setHealth] = useState(profile?.consentHealth ?? false);
   const [ai, setAi] = useState(profile?.consentAi ?? false);
+  const [interim, setInterim] = useState(profile?.consentXaiInterim === true);
   const [messages, setMessages] = useState(profile?.messageNotifications ?? false);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
@@ -26,10 +27,20 @@ export default function PrivacyScreen() {
         community={community}
         health={health}
         ai={ai}
+        interim={interim}
         messages={messages}
         onCommunity={setCommunity}
         onHealth={setHealth}
         onAi={setAi}
+        onInterim={(value) => {
+          const previous = interim;
+          setInterim(value);
+          setError(null);
+          void repo.setInterimCoachOptIn(value).then(() => setMessage('Saved.')).catch((err: unknown) => {
+            setInterim(previous);
+            setError(shownError(err, 'Could not save.'));
+          });
+        }}
         onMessages={setMessages}
       />
       <ErrorNote>{error}</ErrorNote>

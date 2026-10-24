@@ -2,8 +2,11 @@ export const CONSENT_KINDS = ['age_18', 'health', 'community', 'ai_coach', 'mess
 
 export type ConsentKind = (typeof CONSENT_KINDS)[number];
 
+/** Kept out of CONSENT_KINDS so a missing row does not send anyone back through consent. */
+export const INTERIM_COACH_KIND = 'xai_interim' as const;
+
 export type StoredConsent = {
-  kind: ConsentKind;
+  kind: ConsentKind | typeof INTERIM_COACH_KIND;
   granted: boolean;
   version: string;
   /** When this version of the choice was last granted or withdrawn. */
@@ -37,6 +40,11 @@ export function consentRows(version: string, input: ConsentChoice): StoredConsen
     { kind: 'message_notifications', granted: input.messageNotifications, version },
     { kind: 'terms', granted: input.termsAccepted, version },
   ];
+}
+
+/** A separate row. Saving the other consents does not write this. */
+export function interimConsentRows(version: string, granted: boolean): StoredConsent[] {
+  return [{ kind: INTERIM_COACH_KIND, granted: granted === true, version }];
 }
 
 /** Rows that are not already stored for this version. A second save inserts nothing new. */

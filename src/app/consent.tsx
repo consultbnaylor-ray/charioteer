@@ -14,10 +14,20 @@ export default function Consent() {
   const [community, setCommunity] = useState(profile?.communityVisible ?? false);
   const [health, setHealth] = useState(false);
   const [ai, setAi] = useState(false);
+  const [interim, setInterim] = useState(profile?.consentXaiInterim === true);
   const [messages, setMessages] = useState(false);
   const [terms, setTerms] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
+
+  function changeInterim(value: boolean) {
+    const previous = interim;
+    setInterim(value);
+    void repo.setInterimCoachOptIn(value).catch((err: unknown) => {
+      setInterim(previous);
+      setError(shownError(err, 'Could not save.'));
+    });
+  }
 
   async function save() {
     if (!terms) {
@@ -50,11 +60,13 @@ export default function Consent() {
         community={community}
         health={health}
         ai={ai}
+        interim={interim}
         messages={messages}
         terms={terms}
         onCommunity={setCommunity}
         onHealth={setHealth}
         onAi={setAi}
+        onInterim={changeInterim}
         onMessages={setMessages}
         onTerms={setTerms}
       />

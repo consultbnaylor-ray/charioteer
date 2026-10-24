@@ -12,7 +12,7 @@ import {
 import { json, preflight } from '../_shared/http.ts';
 import { isBodyBuild, isBuilderPhase, isMealSlot, isNutritionGoal, isNutritionSex, parseWorkoutBuckets, type FoodItem, type FoodLog, type NutritionGoal } from '../_shared/nutrition.ts';
 import { buildChatCompletionBody, THUMOS_CHAT } from '../_shared/thumos.ts';
-import { xaiPersonalDataEnabled } from '../_shared/xaiPersonal.ts';
+import { coachingPersonalDataAllowed, readInterimCoachOptIn } from '../_shared/xaiPersonal.ts';
 
 type Body = { limits?: string };
 
@@ -166,7 +166,12 @@ Deno.serve(async (req) => {
   const local = draftHealthPlan(input);
   if (input.limits && local.limits !== input.limits) local.limits = input.limits;
   const apiKey = Deno.env.get('XAI_API_KEY');
-  if (!apiKey || !xaiPersonalDataEnabled(Deno.env.get('XAI_PERSONAL_DATA_ENABLED')) || local.wellbeing.habits.some((item) => item.text.includes('116 123') || item.text.includes('do not stop suddenly'))) {
+  const personalDataEnabled = coachingPersonalDataAllowed({
+    personalDataFlag: Deno.env.get('XAI_PERSONAL_DATA_ENABLED'),
+    interimFlag: Deno.env.get('XAI_INTERIM_OPT_IN_ALLOWED'),
+    userOptIn: await readInterimCoachOptIn(userClient, userId),
+  });
+  if (!apiKey || !personalDataEnabled || local.wellbeing.habits.some((item) => item.text.includes('116 123') || item.text.includes('do not stop suddenly'))) {
     return json({ ok: true, plan: { ...local, limits: input.limits }, source: 'local' });
   }
 

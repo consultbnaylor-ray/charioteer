@@ -63,7 +63,7 @@ import { planRelapse } from '@/domain/sober';
 import { detectSafety, ensureSafetyNotices } from '@/domain/safety';
 import { OPENING_LINE, SCRIPTED_COACH_REPLY, type ThumosMode } from '@/domain/thumos';
 import { CONSENT_VERSION } from '@/data/catalogue';
-import { consentRows, mergeStoredConsents } from '@/domain/consents';
+import { consentRows, interimConsentRows, mergeStoredConsents } from '@/domain/consents';
 import { stripJpegBase64, stripJpegLocation } from '@/domain/photoLocation';
 import { stageFromRecord } from '@/domain/stage';
 import { BIO_LIMIT, PHOTO_CAPTION_LIMIT, defaultProfileSharing, normalizeProfileSharing, planProfileText, projectPublicProfile, sensitiveTurnedOn, shareFreshGratitude, type ProfileSharing, type PublicProfileView, type ShareSource } from '@/domain/profileSharing';
@@ -135,6 +135,7 @@ function readyProfile(profile: DemoAccount['profile']): DemoAccount['profile'] {
     visionStartedOn: profile.visionStartedOn ?? null,
     pinnedQuoteId: profile.pinnedQuoteId ?? null,
     bio: profile.bio ?? '',
+    consentXaiInterim: profile.consentXaiInterim === true,
     createdAt: profile.createdAt || '2026-01-01T00:00:00.000Z',
   };
 }
@@ -585,6 +586,7 @@ export class DemoRepository implements Repository {
         communityVisible: false,
         consentHealth: false,
         consentAi: false,
+        consentXaiInterim: false,
         onboardingComplete: false,
         isModerator: false,
         textScale: 'default',
@@ -701,6 +703,16 @@ export class DemoRepository implements Repository {
       messageNotifications: input.messageNotifications,
     };
     next.consents = mergeConsents(next.consents, input);
+    this.commit(db);
+  }
+
+  async setInterimCoachOptIn(granted: boolean): Promise<void> {
+    const account = this.me();
+    const db = clone(this.db);
+    const next = db.accounts[account.profile.id];
+    const nextGranted = granted === true;
+    next.profile = { ...next.profile, consentXaiInterim: nextGranted };
+    next.consents = mergeStoredConsents(next.consents ?? [], interimConsentRows(CONSENT_VERSION, nextGranted), new Date().toISOString());
     this.commit(db);
   }
 

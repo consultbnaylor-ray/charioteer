@@ -2,7 +2,7 @@ import { createClient, type SupabaseClient } from 'https://esm.sh/@supabase/supa
 import { gratitudeFromRows } from '../_shared/gratitude.ts';
 import { visionContextFrom } from '../_shared/visionBoard.ts';
 import { json, preflight } from '../_shared/http.ts';
-import { COACHING_PAUSED, xaiPersonalDataEnabled } from '../_shared/xaiPersonal.ts';
+import { coachingPersonalDataAllowed, pausedCoachingMessage } from '../_shared/xaiPersonal.ts';
 import { garminAllowedForCoach, garminCoachLines, missingRelation, readingsFromRows } from '../_shared/garmin.ts';
 import {
   buildVoiceBriefing,
@@ -75,8 +75,13 @@ Deno.serve(async (req) => {
       message: 'Thumos stays off until you agree to send this conversation to the coach.',
     }, 403);
   }
-  if (!xaiPersonalDataEnabled(Deno.env.get('XAI_PERSONAL_DATA_ENABLED'))) {
-    return json({ ok: false, code: 'paused', message: COACHING_PAUSED });
+  const personalDataEnabled = coachingPersonalDataAllowed({
+    personalDataFlag: Deno.env.get('XAI_PERSONAL_DATA_ENABLED'),
+    interimFlag: Deno.env.get('XAI_INTERIM_OPT_IN_ALLOWED'),
+    userOptIn: profileRes.data.consent_xai_interim,
+  });
+  if (!personalDataEnabled) {
+    return json({ ok: false, code: 'paused', message: pausedCoachingMessage(profileRes.data.consent_xai_interim) });
   }
   if (!apiKey) {
     return json({
@@ -194,7 +199,7 @@ Deno.serve(async (req) => {
       garminLines: await garminLinesFor(userClient, userId, {
         consentAi: profile.consent_ai === true,
         consentHealth: shareHealth,
-        personalDataEnabled: xaiPersonalDataEnabled(Deno.env.get('XAI_PERSONAL_DATA_ENABLED')),
+        personalDataEnabled,
       }),
     },
   });

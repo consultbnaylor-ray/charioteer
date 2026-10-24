@@ -178,6 +178,7 @@ function profile(
     communityVisible: true,
     consentHealth: true,
     consentAi: true,
+    consentXaiInterim: false,
     onboardingComplete: true,
     isModerator: false,
     textScale: 'default',

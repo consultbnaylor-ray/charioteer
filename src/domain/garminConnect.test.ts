@@ -595,7 +595,8 @@ describe('Garmin storage rules', () => {
     expect(deleted).toContain('forgetGarminAccount');
     for (const table of GARMIN_DATA_TABLES) expect(readFileSync('supabase/functions/_shared/garmin.ts', 'utf8')).toContain(`'${table}'`);
     expect(chat.indexOf('garminAllowedForCoach(gate)')).toBeLessThan(chat.indexOf('buildThumosContext({'));
-    expect(voice.indexOf('if (!xaiPersonalDataEnabled')).toBeLessThan(voice.indexOf('garminLinesFor('));
+    expect(voice.indexOf('if (!personalDataEnabled)')).toBeLessThan(voice.indexOf('garminLinesFor('));
+    expect(voice.indexOf('coachingPersonalDataAllowed')).toBeLessThan(voice.indexOf('garminLinesFor('));
     expect(webhookGate('Bearer secret', null, 'secret')).toEqual({ ok: true });
     expect(webhookGate(null, 'secret', 'secret')).toEqual({ ok: true });
     expect(webhookGate(null, 'no', 'secret')).toMatchObject({ ok: false, status: 401, log: 'garmin-webhook: token rejected' });
