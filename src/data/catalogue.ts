@@ -1,18 +1,18 @@
 import type { Interest, Resource } from '@/data/types';
 
-export const CONSENT_VERSION = '2026-10-10';
+export const CONSENT_VERSION = '2026-10-21';
 
 export const INTEREST_CATALOGUE: Interest[] = [
-  { id: '10000000-0000-4000-8000-000000000001', slug: 'swimming', label: 'Swimming', custom: false },
+  { id: '10000000-0000-4000-8000-000000000014', slug: 'comedy', label: 'Comedy', custom: false },
+  { id: '10000000-0000-4000-8000-000000000015', slug: 'cozy-nights-in', label: 'Cozy Nights In', custom: false },
+  { id: '10000000-0000-4000-8000-000000000011', slug: 'exercise', label: 'Exercise', custom: false },
+  { id: '10000000-0000-4000-8000-000000000019', slug: 'films', label: 'Films', custom: false },
+  { id: '10000000-0000-4000-8000-000000000012', slug: 'gym', label: 'Gym', custom: false },
+  { id: '10000000-0000-4000-8000-000000000013', slug: 'health-and-fitness', label: 'Health and Fitness', custom: false },
   { id: '10000000-0000-4000-8000-000000000002', slug: 'hiking', label: 'Hiking', custom: false },
-  { id: '10000000-0000-4000-8000-000000000003', slug: 'dancing', label: 'Dancing', custom: false },
-  { id: '10000000-0000-4000-8000-000000000004', slug: 'sober-raving', label: 'Sober raving', custom: false },
-  { id: '10000000-0000-4000-8000-000000000005', slug: 'cinema-meals', label: 'Cinema/Meals', custom: false },
-  { id: '10000000-0000-4000-8000-000000000006', slug: 'nights-in', label: 'Nights in', custom: false },
-  { id: '10000000-0000-4000-8000-000000000007', slug: 'reading', label: 'Reading', custom: false },
-  { id: '10000000-0000-4000-8000-000000000008', slug: 'running', label: 'Running', custom: false },
-  { id: '10000000-0000-4000-8000-000000000009', slug: 'cooking', label: 'Cooking', custom: false },
-  { id: '10000000-0000-4000-8000-000000000010', slug: 'yoga', label: 'Yoga', custom: false },
+  { id: '10000000-0000-4000-8000-000000000016', slug: 'sober-nights-out', label: 'Sober Nights Out', custom: false },
+  { id: '10000000-0000-4000-8000-000000000017', slug: 'travel', label: 'Travel', custom: false },
+  { id: '10000000-0000-4000-8000-000000000018', slug: 'tv-series', label: 'TV Series', custom: false },
 ];
 
 const checked = 'Checked against the organisation or NHS page on 10 October 2026.';
@@ -260,6 +260,13 @@ export const RESOURCE_CATALOGUE: Resource[] = [
   },
 ];
 
+/** Helplines for the signed-out screen. Uses the database when it returned any, otherwise the bundled list. */
+export function crisisHelplines(resources: Resource[]): Resource[] {
+  const live = resources.filter((item) => item.category === 'helplines');
+  if (live.length > 0) return live;
+  return RESOURCE_CATALOGUE.filter((item) => item.category === 'helplines');
+}
+
 export const CATEGORY_LABELS: Record<Resource['category'], string> = {
   quit_lit: 'Quit lit',
   groups: 'Groups',
@@ -274,12 +281,12 @@ export const HEALTH_LABELS: Record<string, string> = {
   hrv_sdnn: 'Heart rate variability',
   workout_minutes: 'Workouts',
   weight_kg: 'Weight',
+  vo2_max: 'Cardio fitness',
+  walking_heart_rate: 'Walking heart rate',
+  heart_rate_recovery: 'Heart rate recovery',
+  strength_minutes: 'Strength minutes',
+  cardio_minutes: 'Cardio minutes',
+  other_minutes: 'Other minutes',
+  session_heart_rate: 'Session heart rate',
 };
 
-export const MOODS: { value: 1 | 2 | 3 | 4 | 5; label: string }[] = [
-  { value: 1, label: 'Low' },
-  { value: 2, label: 'Heavy' },
-  { value: 3, label: 'Steady' },
-  { value: 4, label: 'Bright' },
-  { value: 5, label: 'Light' },
-];

@@ -21,7 +21,7 @@ sql_paths = ["./seed.sql"]
 enabled = true
 port = 54323
 
-[inbucket]
+[local_smtp]
 enabled = true
 port = 54324
 
@@ -31,7 +31,7 @@ enabled = true
 [auth]
 enabled = true
 site_url = "http://127.0.0.1:43127"
-additional_redirect_urls = ["http://127.0.0.1:43127", "http://localhost:43127", "charioteer://"]
+additional_redirect_urls = ["http://127.0.0.1:43127", "http://127.0.0.1:43127/set-password", "http://localhost:43127", "http://localhost:43127/set-password", "charioteer://", "charioteer://set-password"]
 jwt_expiry = 3600
 enable_signup = true
 enable_anonymous_sign_ins = false
@@ -53,11 +53,56 @@ enabled = true
 [functions.thumos-chat]
 verify_jwt = true
 
+[functions.thumos-health]
+verify_jwt = false
+
 [functions.thumos-voice-token]
+verify_jwt = true
+
+[functions.thumos-voice-turn]
 verify_jwt = true
 
 [functions.account-export]
 verify_jwt = true
 
 [functions.account-delete]
+verify_jwt = true
+
+[functions.progress-photo-url]
+verify_jwt = true
+
+[functions.profile-photo-url]
+verify_jwt = true
+
+[functions.gratitude-reflect]
+verify_jwt = true
+
+[functions.estimate-meal]
+verify_jwt = true
+
+[functions.health-plan]
+verify_jwt = true
+
+[functions.notify-direct-message]
+verify_jwt = true
+
+[functions.notify-buddy-invite]
+verify_jwt = true
+
+[functions.privacy-purge]
+verify_jwt = false
+
+[functions.garmin-oauth-start]
+verify_jwt = true
+
+[functions.garmin-oauth-callback]
+verify_jwt = false
+
+[functions.garmin-webhook]
+verify_jwt = false
+
+[functions.garmin-disconnect]
+verify_jwt = true
+
+[functions.garmin-refresh]
 verify_jwt = true

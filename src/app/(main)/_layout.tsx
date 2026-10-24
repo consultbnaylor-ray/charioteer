@@ -1,18 +1,19 @@
 import { Stack, usePathname, useRouter } from 'expo-router';
-import { Pressable, StyleSheet, useWindowDimensions, View } from 'react-native';
+import { useState } from 'react';
+import { Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { useSnapshot } from '@/data';
+import { incomingRequestCount, peopleTabAccessibilityLabel, peopleTabBadgeCount, requestBadgeText } from '@/domain/connections';
+import { messageUnreadTotal } from '@/domain/liveChat';
+import { useChatRead } from '@/ui/chatRead';
+import { TAB_SECTIONS, type AppSection } from '@/domain/sections';
+import { tabLabelFontSize, tabSideInset } from '@/ui/tabBar';
 import { useAppTheme } from '@/ui/theme';
-import { Mark, T, Wordmark } from '@/ui/ui';
-
-const TABS = [
-  { href: '/home', label: 'Today' },
-  { href: '/check-in', label: 'Check-in' },
-  { href: '/breathe', label: 'Breathe' },
-  { href: '/thumos', label: 'Thumos' },
-  { href: '/people', label: 'People' },
-  { href: '/library', label: 'Library' },
-] as const;
+import { topSafeInset } from '@/ui/safeArea';
+import { MessageNotificationPrompt } from '@/ui/MessageNotificationPrompt';
+import { SectionDrawer } from '@/ui/SectionDrawer';
+import { Mark, ShellInsetProvider, T, Wordmark } from '@/ui/ui';
 
 function selected(pathname: string, href: string) {
   if (href === '/people' && pathname.startsWith('/chat')) return true;
@@ -22,12 +23,30 @@ function selected(pathname: string, href: string) {
 
 export default function MainLayout() {
   const theme = useAppTheme();
-  const wide = useWindowDimensions().width >= 980;
+  const { width } = useWindowDimensions();
+  const wide = width >= 980;
   const pathname = usePathname();
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const tabSide = tabSideInset(insets.left, insets.right);
+  const labelSize = tabLabelFontSize(width, tabSide, theme.scale);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const snap = useSnapshot();
+  const meId = snap.profile?.id;
+  const { marks: readMarks, ready: readsReady } = useChatRead(meId);
+  const requestCount = meId ? incomingRequestCount(snap.connections, meId) : 0;
+  const messageUnread = meId && readsReady
+    ? messageUnreadTotal(
+      snap.messages ?? [],
+      snap.connections.filter((connection) => connection.status === 'accepted').map((connection) => connection.id),
+      meId,
+      readMarks,
+    )
+    : 0;
+  const peopleBadge = requestBadgeText(peopleTabBadgeCount(requestCount, messageUnread));
 
-  const go = (href: string) => router.navigate(href as never);
+  const go = (href: string) => router.dismissTo(href as never);
+  const tabName = (tab: AppSection) => (tab.href === '/people' ? peopleTabAccessibilityLabel(requestCount, messageUnread) : tab.tabLabel ?? tab.label);
 
   const brand = (
     <Pressable accessibilityRole="button" accessibilityLabel="Charioteer home" onPress={() => go('/home')} style={styles.brand}>
@@ -36,45 +55,108 @@ export default function MainLayout() {
     </Pressable>
   );
 
+  const menuButton = (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel="Menu"
+      onPress={() => setMenuOpen(true)}
+      style={styles.menu}
+    >
+      <View accessibilityElementsHidden style={styles.menuBars}>
+        <View style={[styles.menuBar, { backgroundColor: theme.colors.ink }]} />
+        <View style={[styles.menuBar, { backgroundColor: theme.colors.ink }]} />
+        <View style={[styles.menuBar, { backgroundColor: theme.colors.ink }]} />
+      </View>
+    </Pressable>
+  );
+
   return (
     <View style={{ flex: 1, flexDirection: wide ? 'row' : 'column', backgroundColor: theme.colors.bg }}>
+      <SectionDrawer open={menuOpen} onClose={() => setMenuOpen(false)} />
       {wide ? (
-        <View style={[styles.rail, { backgroundColor: theme.colors.surface, borderRightColor: theme.colors.line, paddingTop: insets.top + 18 }]}>
+        <View style={[styles.rail, { backgroundColor: theme.colors.surface, borderRightColor: theme.colors.line, paddingTop: topSafeInset(insets.top) + 8 }]}>
+          {menuButton}
           {brand}
           <T variant="muted" style={{ marginTop: 4, marginBottom: 18 }}>Hold the reins.</T>
-          {TABS.map((tab) => (
-            <NavItem key={tab.href} label={tab.label} active={selected(pathname, tab.href)} onPress={() => go(tab.href)} />
+          {TAB_SECTIONS.map((tab) => (
+            <NavItem
+              key={tab.href}
+              label={tab.tabLabel ?? tab.label}
+              badge={tab.href === '/people' ? peopleBadge : null}
+              accessibilityLabel={tabName(tab)}
+              active={selected(pathname, tab.href)}
+              onPress={() => go(tab.href)}
+            />
           ))}
-          <View style={{ flex: 1 }} />
-          <NavItem label="Health" active={pathname === '/health'} onPress={() => go('/health')} />
-          <NavItem label="You" active={pathname === '/profile'} onPress={() => go('/profile')} />
         </View>
       ) : (
-        <View style={[styles.mobileTop, { paddingTop: insets.top + 8, borderBottomColor: theme.colors.line }]}>
-          {brand}
+        <View style={[styles.mobileTop, { paddingTop: topSafeInset(insets.top) + 8, borderBottomColor: theme.colors.line }]}>
+          <View style={styles.mobileBrand}>
+            {menuButton}
+            {brand}
+          </View>
           <Pressable accessibilityRole="button" accessibilityLabel="Your profile" onPress={() => go('/profile')}>
             <T variant="body" style={{ fontFamily: theme.font.bodyStrong }}>You</T>
           </Pressable>
         </View>
       )}
-      <View style={{ flex: 1 }}>
-        <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: theme.colors.bg } }} />
-      </View>
+      <ShellInsetProvider top bottom={!wide}>
+        <View style={{ flex: 1 }}>
+          {snap.profile ? <MessageNotificationPrompt userId={snap.profile.id} /> : null}
+          <View style={{ flex: 1 }}>
+            <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: theme.colors.bg } }}>
+              <Stack.Screen
+                name="chat/[id]"
+                dangerouslySingular={(_name, params) => {
+                  const raw = params?.id;
+                  const id = Array.isArray(raw) ? raw[0] : raw;
+                  return typeof id === 'string' && id ? `chat/${id}` : undefined;
+                }}
+              />
+            </Stack>
+          </View>
+        </View>
+      </ShellInsetProvider>
       {wide ? null : (
-        <View style={[styles.tabs, { paddingBottom: Math.max(insets.bottom, 8), borderTopColor: theme.colors.line, backgroundColor: theme.colors.surface }]}>
-          {TABS.map((tab) => (
-            <Pressable key={tab.href} accessibilityRole="button" accessibilityState={{ selected: selected(pathname, tab.href) }} onPress={() => go(tab.href)} style={[styles.tab, { borderTopColor: selected(pathname, tab.href) ? theme.colors.ink : 'transparent' }]}>
-              <T
-                variant="muted"
+        <View
+          style={[
+            styles.tabs,
+            {
+              paddingBottom: Math.max(insets.bottom, 8),
+              paddingLeft: tabSide,
+              paddingRight: tabSide,
+              borderTopColor: theme.colors.line,
+              backgroundColor: theme.colors.surface,
+            },
+          ]}
+        >
+          {TAB_SECTIONS.map((tab) => (
+            <Pressable
+              key={tab.href}
+              accessibilityRole="button"
+              accessibilityLabel={tabName(tab)}
+              accessibilityState={{ selected: selected(pathname, tab.href) }}
+              onPress={() => go(tab.href)}
+              style={[styles.tab, { borderTopColor: selected(pathname, tab.href) ? theme.colors.ink : 'transparent' }]}
+            >
+              <Text
+                numberOfLines={1}
+                adjustsFontSizeToFit
+                minimumFontScale={0.7}
+                maxFontSizeMultiplier={1.6}
                 style={{
+                  width: '100%',
+                  alignSelf: 'stretch',
+                  textAlign: 'center',
                   color: selected(pathname, tab.href) ? theme.colors.ink : theme.colors.muted,
                   fontFamily: theme.font.bodyStrong,
-                  fontSize: 12 * theme.scale,
-                  textAlign: 'center',
+                  fontSize: labelSize,
+                  lineHeight: Math.round(labelSize * 1.25),
                 }}
               >
-                {tab.label}
-              </T>
+                {tab.tabLabel ?? tab.label}
+              </Text>
+              {tab.href === '/people' && peopleBadge ? <RequestBadge label={peopleBadge} /> : null}
             </Pressable>
           ))}
         </View>
@@ -83,25 +165,53 @@ export default function MainLayout() {
   );
 }
 
-function NavItem({ label, active, onPress }: { label: string; active: boolean; onPress: () => void }) {
+function NavItem({
+  label,
+  badge,
+  accessibilityLabel,
+  active,
+  onPress,
+}: {
+  label: string;
+  badge: string | null;
+  accessibilityLabel: string;
+  active: boolean;
+  onPress: () => void;
+}) {
   const theme = useAppTheme();
   return (
     <Pressable
       accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel}
       accessibilityState={{ selected: active }}
       onPress={onPress}
       style={[styles.navItem, { backgroundColor: active ? theme.colors.emphasisSoft : 'transparent', borderLeftColor: active ? theme.colors.ink : 'transparent' }]}
     >
       <T variant="body" style={{ fontFamily: theme.font.bodyStrong, color: theme.colors.ink }}>{label}</T>
+      {badge ? <RequestBadge label={badge} /> : null}
     </Pressable>
+  );
+}
+
+function RequestBadge({ label }: { label: string }) {
+  const theme = useAppTheme();
+  return (
+    <View accessibilityElementsHidden importantForAccessibility="no-hide-descendants" style={[styles.badge, { backgroundColor: theme.colors.dangerFill }]}>
+      <Text style={{ color: theme.colors.dangerInk, fontFamily: theme.font.bodyStrong, fontSize: 11, lineHeight: 14 }}>{label}</Text>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   rail: { width: 232, borderRightWidth: StyleSheet.hairlineWidth, paddingHorizontal: 16, paddingBottom: 20 },
   brand: { flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 44 },
-  navItem: { borderRadius: 2, borderLeftWidth: 3, paddingHorizontal: 12, paddingVertical: 10, marginBottom: 4 },
-  mobileTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingBottom: 8, borderBottomWidth: StyleSheet.hairlineWidth },
-  tabs: { flexDirection: 'row', borderTopWidth: StyleSheet.hairlineWidth, paddingTop: 8 },
-  tab: { flex: 1, minHeight: 44, alignItems: 'center', justifyContent: 'center', borderTopWidth: 2 },
+  menu: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
+  menuBars: { width: 18, gap: 4 },
+  menuBar: { height: 2, width: 18 },
+  navItem: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderRadius: 2, borderLeftWidth: 3, paddingHorizontal: 12, paddingVertical: 10, marginBottom: 4 },
+  mobileTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 8, paddingBottom: 8, borderBottomWidth: StyleSheet.hairlineWidth },
+  mobileBrand: { flexDirection: 'row', alignItems: 'center', gap: 4, flex: 1 },
+  tabs: { flexDirection: 'row', alignItems: 'stretch', width: '100%', borderTopWidth: StyleSheet.hairlineWidth, paddingTop: 8 },
+  tab: { flex: 1, minWidth: 0, minHeight: 44, alignItems: 'center', justifyContent: 'center', borderTopWidth: 2 },
+  badge: { position: 'absolute', top: 2, right: 2, minWidth: 16, height: 16, borderRadius: 8, paddingHorizontal: 3, alignItems: 'center', justifyContent: 'center' },
 });
