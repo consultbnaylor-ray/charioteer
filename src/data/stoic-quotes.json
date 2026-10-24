@@ -5,7 +5,7 @@
     "source": "Discourses, A selection from the discourses of epictetus. of the things which are in our power and not in our power",
     "translator": "George Long",
     "text": "Of all the faculties (except that which I shall soon mention), you will find not one which is capable of contemplating itself, and, consequently, not capable either of approving or disapproving.",
-    "plain": "None of your abilities, apart from one still coming, can look at itself and then approve or reject it.",
+    "plain": "None of your abilities can look at itself, so none can approve or reject. The one I will name soon can.",
     "theme": "Self-mastery"
   },
   {
@@ -14,7 +14,7 @@
     "source": "Discourses, What philosophy promises",
     "translator": "George Long",
     "text": "When a man was consulting him how he should persuade his brother to cease being angry with him, Epictetus replied: Philosophy does not propose to secure for a man any external thing.",
-    "plain": "Someone asked how to make his brother stop being angry. He was told this path will not hand you any outside thing.",
+    "plain": "Someone asked how to get his brother to stop being angry. He heard that this teaching will not get him anything outside himself.",
     "theme": "Temperance"
   },
   {
@@ -41,7 +41,7 @@
     "source": "Discourses, Against those who wish to be admired",
     "translator": "George Long",
     "text": "When a man holds his proper station in life, he does not gape after things beyond it.",
-    "plain": "When you keep your proper place in life, you do not stare after things past that place.",
+    "plain": "When you keep your proper place in life, you do not long for things beyond it.",
     "theme": "Self-mastery"
   },
   {
@@ -59,7 +59,7 @@
     "source": "Discourses, How we should struggle with circumstances",
     "translator": "George Long",
     "text": "It is circumstances (difficulties) which show what men are. Therefore when a difficulty falls upon you, remember that God, like a trainer of wrestlers, has matched you with a rough young man.",
-    "plain": "Hard times show the kind of person you are. When trouble hits, it is like a trainer paired you with someone rough.",
+    "plain": "Hard times show the kind of person you are. When trouble hits, God, like a wrestling coach, has paired you with someone rough.",
     "theme": "Self-mastery"
   },
   {
@@ -95,7 +95,7 @@
     "source": "Discourses, On constancy (or firmness)",
     "translator": "George Long",
     "text": "The being (nature) of the good is a certain will; the being of the bad is a certain kind of will.",
-    "plain": "The heart of good is one kind of choosing. The heart of bad is choosing of a particular sort.",
+    "plain": "Good is one way of choosing. Bad is another way of choosing.",
     "theme": "Self-mastery"
   },
   {
@@ -131,7 +131,7 @@
     "source": "Discourses, Of indifference",
     "translator": "George Long",
     "text": "The hypothetical proposition is indifferent: the judgment about it is not indifferent, but it is either knowledge or opinion or error.",
-    "plain": "A what-if line does not matter on its own. What you decide about it does, and that is knowing, guessing, or a mistake.",
+    "plain": "An if-then claim does not matter by itself. Your judgment of it does, and it counts as knowledge, a view, or a mistake.",
     "theme": "Control"
   },
   {
@@ -356,7 +356,7 @@
     "source": "Discourses, What solitude is, and what kind of person a solitary man is",
     "translator": "George Long",
     "text": "Solitude is a certain condition of a helpless man. For because a man is alone, he is not for that reason also solitary; just as though a man is among numbers, he is not therefore not solitary.",
-    "plain": "Feeling cut off belongs to a helpless person. Being by yourself does not make that true, and a crowd does not remove it.",
+    "plain": "Feeling cut off is the state of a helpless person. Being alone does not cause it, and a crowd does not end it.",
     "theme": "Self-mastery"
   },
   {
@@ -383,7 +383,7 @@
     "source": "Discourses, That we ought with caution to enter into familiar intercourse with men",
     "translator": "George Long",
     "text": "If a man has frequent intercourse with others either for talk, or drinking together, or generally for social purposes, he must either become like them, or change them to his own fashion.",
-    "plain": "Spend lots of time talking, drinking, or hanging out with people. You become like them, or they become like you.",
+    "plain": "If you often talk, drink, or hang out with people, you grow like them or they grow like you.",
     "theme": "Self-mastery"
   },
   {
@@ -392,7 +392,7 @@
     "source": "Discourses, About cynicism",
     "translator": "George Long",
     "text": "When one of his pupils inquired of Epictetus, and he was a person who appeared to be inclined to Cynicism, what kind of person a Cynic ought to be, and what was the notion of the thing, we will inquire, said Epictetus, at leisure; but I have so much to say to you that he who without God attempts so great a matter, is hateful to God, and has no other purpose than to act indecently in public.",
-    "plain": "A student asked what a bold public challenger should be like. Without God that huge attempt is hated by God and only a shameful show.",
+    "plain": "A student asked what a bold public challenger is like. Without God, such a person is hated by God and seeks only a shameful show.",
     "theme": "Self-mastery"
   },
   {
@@ -428,7 +428,7 @@
     "source": "Discourses, About freedom",
     "translator": "George Long",
     "text": "He is free who lives as he wishes to live; who is neither subject to compulsion nor to hindrance, nor to force; whose movements to action are not impeded, whose desires attain their purpose, and who does not fall into that which he would avoid.",
-    "plain": "You are free when you live the way you wish, with nobody forcing or blocking you. Your wants land, and you miss what you dread.",
+    "plain": "You are free when you live as you wish and nobody forces or blocks you. You get what you want and avoid what you dread.",
     "theme": "Self-mastery"
   },
   {
@@ -455,7 +455,7 @@
     "source": "Discourses, To those who are desirous of passing life in tranquillity",
     "translator": "George Long",
     "text": "Remember that not only the desire of power and of riches makes us mean and subject to others, but even the desire of tranquillity, and of leisure, and of travelling abroad, and of learning.",
-    "plain": "Wanting power and money can make you small and under other people. So can wanting calm, spare time, travel, or learning.",
+    "plain": "Wanting power and money can leave you petty and under others' control. So can wanting calm, free time, travel, or learning.",
     "theme": "Self-mastery"
   },
   {
@@ -509,7 +509,7 @@
     "source": "Discourses, What things we ought to despise and what things we ought to value",
     "translator": "George Long",
     "text": "The difficulties of all men are about external things, their helplessness is about external.",
-    "plain": "The hard parts for all people sit in outside things. Their stuck feeling sits in outside things as well.",
+    "plain": "People's troubles are about outside things. So is the helplessness they feel.",
     "theme": "Control"
   },
   {
@@ -563,7 +563,7 @@
     "source": "Enchiridion, chapter 1",
     "translator": "George Long",
     "text": "Of things some are in our power, and others are not. In our power are opinion, movement towards a thing, desire, aversion, turning from a thing; and in a word, whatever are our acts.",
-    "plain": "Some things are up to you and others are not. Yours are your views, wants, turning away, and the acts you take.",
+    "plain": "Some things are up to you and others are not. Yours are what you think, what you want, and what you choose to do.",
     "theme": "Control"
   },
   {
@@ -590,7 +590,7 @@
     "source": "Enchiridion, chapter 12",
     "translator": "George Long",
     "text": "If you intend to improve, throw away such thoughts as these: if I neglect my affairs, I shall not have the means of living: unless I chastise my slave, he will be bad.",
-    "plain": "If you mean to improve, drop thoughts like these. Skipping my work leaves me unable to live, and sparing punishment makes him bad.",
+    "plain": "If you mean to improve, drop thoughts like these. I cannot live if I skip work, and my slave turns bad if I spare him.",
     "theme": "Self-mastery"
   },
   {
@@ -635,7 +635,7 @@
     "source": "Enchiridion, chapter 17",
     "translator": "George Long",
     "text": "Remember that thou art an actor in a play, of such a kind as the teacher (author) may choose; if short, of a short one; if long, of a long one: if he wishes you to act the part of a poor man, see that you act the part naturally; if the part of a lame man, of a magistrate, of a private person, (do the same). For this is your duty, to act well the part that is given to you; but to select the part, belongs to another.",
-    "plain": "You play a role someone else assigns, short or long. Do the given role well, since picking it belongs to another person.",
+    "plain": "You play a role someone else assigns, short or long. Play it well, because choosing the role falls to someone else.",
     "theme": "Discipline"
   },
   {
@@ -644,7 +644,7 @@
     "source": "Enchiridion, chapter 18",
     "translator": "George Long",
     "text": "When a raven has croaked inauspiciously, let not the appearance hurry you away with it; but straightway make a distinction in your mind and say, None of these things is signified to me, but either to my poor body, or to my small property, or to my reputation, or to my children, or to my wife: but to me all significations are auspicious if I choose.",
-    "plain": "A bad bird call need not sweep you off. It can still bode well for you, if you choose, though it names body or family.",
+    "plain": "A bad bird call need not rush you. It concerns body, goods, or family, and it can still mean well if you choose.",
     "theme": "Control"
   },
   {
@@ -662,7 +662,7 @@
     "source": "Enchiridion, chapter 2",
     "translator": "George Long",
     "text": "Remember that desire contains in it the profession (hope) of obtaining that which you desire; and the profession (hope) in aversion (turning from a thing) is that you will not fall into that which you attempt to avoid; and he who fails in his desire is unfortunate; and he who falls into that which he would avoid is unhappy.",
-    "plain": "A want hopes you get it, and turning away hopes you miss it. Fail the want, or hit what you dodge, and you hurt.",
+    "plain": "Wanting means you hope to get it, and avoiding means you hope to miss it. Fail either hope, and you end up hurt.",
     "theme": "Self-mastery"
   },
   {
@@ -671,7 +671,7 @@
     "source": "Enchiridion, chapter 20",
     "translator": "George Long",
     "text": "Remember that it is not he who reviles you or strikes you, who insults you, but it is your opinion about these things as being insulting. When then a man irritates you, you must know that it is your own opinion which has irritated you. Therefore especially try not to be carried away by the appearance. For if you once gain time and delay, you will more easily master yourself.",
-    "plain": "A harsh word or a blow does not insult you by itself. Your view does, so wait a little and you steer yourself more easily.",
+    "plain": "A harsh word or blow does not insult you by itself. Your own view does, so a short pause lets you master yourself.",
     "theme": "Control"
   },
   {
@@ -680,7 +680,7 @@
     "source": "Enchiridion, chapter 21",
     "translator": "George Long",
     "text": "Let death and exile and every other thing which appears dreadful be daily before your eyes; but most of all death: and you will never think of anything mean nor will you desire anything extravagantly.",
-    "plain": "Keep death, being sent away, and other scary things before you daily, death most. Then small thoughts and oversized wants fade.",
+    "plain": "Keep death, exile, and other scary things in mind each day, death most of all. Then petty thoughts and huge wants fade.",
     "theme": "Courage"
   },
   {
@@ -698,7 +698,7 @@
     "source": "Enchiridion, chapter 23",
     "translator": "George Long",
     "text": "If it should ever happen to you to be turned to externals in order to please some person, you must know that you have lost your purpose in life. Be satisfied then in everything with being a philosopher; and if you wish to seem also to any person to be a philosopher, appear so to yourself, and you will be able to do this.",
-    "plain": "If you turn outward just to please somebody, you lost your aim in life. Be content to seem this way to yourself, and you can.",
+    "plain": "If you turn outward just to please someone, you lose your aim. Seem right to yourself, and you can live that way.",
     "theme": "Self-mastery"
   },
   {
@@ -716,7 +716,7 @@
     "source": "Enchiridion, chapter 25",
     "translator": "George Long",
     "text": "Has any man been preferred before you at a banquet, or in being saluted, or in being invited to a consultation?",
-    "plain": "Has anyone been placed ahead of you at a meal, in a greeting, or by an invite into a meeting.",
+    "plain": "Was anyone placed ahead of you at a meal, a greeting, or an invite to a meeting.",
     "theme": "Self-mastery"
   },
   {
@@ -725,7 +725,7 @@
     "source": "Enchiridion, chapter 26",
     "translator": "George Long",
     "text": "We may learn the wish (will) of nature from the things in which we do not differ from one another: for instance, when your neighbor’s slave has broken his cup, or anything else, we are ready to say forthwith, that it is one of the things which happen.",
-    "plain": "You learn what comes naturally where people already agree. A helper breaks a neighbor's cup, and you say that sort of thing happens.",
+    "plain": "You see what is natural where people already agree. A servant breaks a neighbor's cup, and everyone says that kind of thing happens.",
     "theme": "Self-mastery"
   },
   {
@@ -743,7 +743,7 @@
     "source": "Enchiridion, chapter 28",
     "translator": "George Long",
     "text": "If any person was intending to put your body in the power of any man whom you fell in with on the way, you would be vexed; but that you put your understanding in the power of any man whom you meet, so that if he should revile you, it is disturbed and troubled, are you not ashamed at this?",
-    "plain": "You would hate it if a passer could control your body. You should feel shame if his harsh word can rattle your mind.",
+    "plain": "You would hate a stranger on the road controlling your body. Feel shame if a harsh word from him can shake your mind.",
     "theme": "Self-mastery"
   },
   {
@@ -788,7 +788,7 @@
     "source": "Enchiridion, chapter 32",
     "translator": "George Long",
     "text": "When you have recourse to divination, remember that you do not know how it will turn out, but that you are come to inquire from the diviner.",
-    "plain": "When you go to ask about signs, remember you do not know the ending. You came only to ask the reader.",
+    "plain": "When you go to ask about signs, remember the ending is still unknown. You came only to ask the person who reads them.",
     "theme": "Self-mastery"
   },
   {
@@ -797,7 +797,7 @@
     "source": "Enchiridion, chapter 33",
     "translator": "George Long",
     "text": "Immediately prescribe some character and some form to yourself, which you shall observe both when you are alone and when you meet with men.",
-    "plain": "Right away, choose a shape of character for yourself. Keep that shape both in private and around other people.",
+    "plain": "Right away, choose how you will carry yourself. Hold that same way in private and also around other people.",
     "theme": "Self-mastery"
   },
   {
@@ -806,7 +806,7 @@
     "source": "Enchiridion, chapter 34",
     "translator": "George Long",
     "text": "If you have received the impression of any pleasure, guard yourself against being carried away by it; but let the thing wait for you, and allow yourself a certain delay on your own part.",
-    "plain": "If pleasure makes a strong impression, do not let it sweep you off. Let the thing wait, and give yourself a short delay.",
+    "plain": "If pleasure hits you hard, do not let it carry you away. Let the thing wait, and give yourself a short delay.",
     "theme": "Temperance"
   },
   {
@@ -815,7 +815,7 @@
     "source": "Enchiridion, chapter 35",
     "translator": "George Long",
     "text": "When you have decided that a thing ought to be done, and are doing it, never avoid being seen doing it, though the many shall form an unfavorable opinion about it. For if it is not right to do it, avoid doing the thing; but if it is right, why are you afraid of those who shall find fault wrongly?",
-    "plain": "Once a right act is underway, never hide while doing it. Skip it if wrong, and if right do not fear unfair blame.",
+    "plain": "Once you are doing what you chose, never hide it. Skip it if wrong, and if it is right, ignore unfair blame.",
     "theme": "Control"
   },
   {
@@ -824,7 +824,7 @@
     "source": "Enchiridion, chapter 36",
     "translator": "George Long",
     "text": "As the proposition, it is either day, or it is night, is of great importance for the disjunctive argument, but for the conjunctive, is of no value, so in a symposium (entertainment) to select the larger share is of great value for the body, but for the maintenance of the social feeling is worth nothing.",
-    "plain": "Day versus night matters in one argument style, not another. The bigger portion at a party helps the body, not the bond.",
+    "plain": "Day or night matters for one kind of proof, not another. The bigger share at a party helps the body, not the friendship.",
     "theme": "Self-mastery"
   },
   {
@@ -887,7 +887,7 @@
     "source": "Enchiridion, chapter 42",
     "translator": "George Long",
     "text": "When any person treats you ill or speaks ill of you, remember that he does this or says this because he thinks that it is his duty.",
-    "plain": "When a person treats you badly or speaks badly of you, remember he believes that doing so is his job.",
+    "plain": "When a person treats you badly or speaks badly of you, remember he thinks that doing so is right.",
     "theme": "Discipline"
   },
   {
@@ -896,7 +896,7 @@
     "source": "Enchiridion, chapter 43",
     "translator": "George Long",
     "text": "Everything has two handles, the one by which it may be borne, the other by which it may not. If your brother acts unjustly, do not lay hold of the act by that handle wherein he acts unjustly, for this is the handle which cannot be borne; but lay hold of the other, that he is your brother, that he was nurtured with you, and you will lay hold of the thing by that handle by which it can be borne.",
-    "plain": "Everything has two grips, one you can carry and one you cannot. If your brother is unfair, hold on to growing up beside him.",
+    "plain": "Each thing has a bearable handle and one you cannot carry. If your brother is unfair, hold on because you grew up together.",
     "theme": "Self-mastery"
   },
   {
@@ -914,7 +914,7 @@
     "source": "Enchiridion, chapter 45",
     "translator": "George Long",
     "text": "Does a man bathe quickly (early)? do not say that he bathes badly, but that he bathes quickly. Does a man drink much wine? do not say that he does this badly, but say that he drinks much. For before you shall have determined the opinion how do you know whether he is acting wrong? Thus it will not happen to you to comprehend some appearances which are capable of being comprehended, but to assent to others.",
-    "plain": "If someone washes fast, call it fast, not bad. If they drink a lot, say that, until you have decided it is wrong.",
+    "plain": "If someone washes fast, call it fast, not bad. If they drink a lot, say only that, until you know it is wrong.",
     "theme": "Temperance"
   },
   {
@@ -1004,7 +1004,7 @@
     "source": "Enchiridion, chapter 7",
     "translator": "George Long",
     "text": "As on a voyage when the vessel has reached a port, if you go out to get water it is an amusement by the way to pick up a shellfish or some bulb, but your thoughts ought to be directed to the ship, and you ought to be constantly watching if the captain should call, and then you must throw away all those things, that you may not be bound and pitched into the ship like sheep.",
-    "plain": "Small finds on a trip are a side pleasure. When the call comes, drop them so you are not thrown on like sheep.",
+    "plain": "Small finds ashore are only a side pleasure. When the captain calls, drop them or you get tossed aboard like sheep.",
     "theme": "Self-mastery"
   },
   {
@@ -1022,7 +1022,7 @@
     "source": "Enchiridion, chapter 9",
     "translator": "George Long",
     "text": "Disease is an impediment to the body, but not to the will, unless the will itself chooses. Lameness is an impediment to the leg, but not to the will. And add this reflection on the occasion of everything that happens; for you will find it an impediment to something else, but not to yourself.",
-    "plain": "Sickness blocks the body, not your choice, unless your choice agrees. A hurt leg blocks the leg, and other hits block something else, not you.",
+    "plain": "Sickness blocks your body, not your choice, unless you let it. A hurt leg blocks the leg, and other things block something else, not you.",
     "theme": "Self-mastery"
   },
   {
@@ -1031,7 +1031,7 @@
     "source": "Meditations, Book 1, section 1",
     "translator": "Meric Casaubon",
     "text": "Of my grandfather Verus I have learned to be gentle and meek, and to refrain from all anger and passion.",
-    "plain": "From my grandfather Verus I learned gentleness, and how to hold back anger and hot feeling.",
+    "plain": "I learned gentleness from my grandfather Verus, and how to hold back anger and strong feeling.",
     "theme": "Temperance"
   },
   {
@@ -1049,7 +1049,7 @@
     "source": "Meditations, Book 1, section 11",
     "translator": "Meric Casaubon",
     "text": "From my brother Severus, to be kind and loving to all them of my house and family; by whom also I came to the knowledge of Thrasea and Helvidius, and Cato, and Dio, and Brutus.",
-    "plain": "From my brother Severus I learned kindness toward my whole household. Through him I also came to know those named men.",
+    "plain": "From my brother Severus I learned kindness at home. Through him I came to know Thrasea, Helvidius, Cato, Dio, and Brutus.",
     "theme": "Self-mastery"
   },
   {
@@ -1058,7 +1058,7 @@
     "source": "Meditations, Book 1, section 12",
     "translator": "Meric Casaubon",
     "text": "From Claudius Maximus, in all things to endeavour to have power of myself, and in nothing to be carried about; to be cheerful and courageous in all sudden chances and accidents, as in sicknesses: to love mildness, and moderation, and gravity: and to do my business, whatsoever it be, thoroughly, and without querulousness.",
-    "plain": "From Maximus I learned to hold myself, cheerful and brave in a sudden illness. Be calm and serious, and finish the work without griping.",
+    "plain": "From Maximus I learned to stay my own master, cheerful in sudden illness. Be calm and serious, and finish the work without griping.",
     "theme": "Self-mastery"
   },
   {
@@ -1067,7 +1067,7 @@
     "source": "Meditations, Book 1, section 13",
     "translator": "Meric Casaubon",
     "text": "In my father, I observed his meekness; his constancy without wavering in those things, which after a due examination and deliberation, he had determined.",
-    "plain": "In my father I saw gentleness, and a firm stick to what he chose after looking carefully.",
+    "plain": "In my father I saw gentleness, and a steady hold on what he chose after careful thought.",
     "theme": "Self-mastery"
   },
   {
@@ -1139,7 +1139,7 @@
     "source": "Meditations, Book 1, section 8",
     "translator": "Meric Casaubon",
     "text": "Of Fronto, to how much envy and fraud and hypocrisy the state of a tyrannous king is subject unto, and how they who are commonly called εὐπατρίδαι, _i.e._ nobly born, are in some sort incapable, or void of natural affection.",
-    "plain": "From Fronto I learned how much envy, fraud, and fake show hang on a cruel ruler. People called high born can lack natural love.",
+    "plain": "From Fronto I learned how much envy, fraud, and false show surround a cruel ruler. People called high born can lack real affection.",
     "theme": "Self-mastery"
   },
   {
@@ -1166,7 +1166,7 @@
     "source": "Meditations, Book 10, section 10",
     "translator": "Meric Casaubon",
     "text": "As the spider, when it hath caught the fly that it hunted after, is not little proud, nor meanly conceited of herself: as he likewise that hath caught an hare, or hath taken a fish with his net: as another for the taking of a boar, and another of a bear: so may they be proud, and applaud themselves for their valiant acts against the Sarmatai, or northern nations lately defeated.",
-    "plain": "A spider feels proud of a caught fly, and a hunter of a catch. So people may applaud beating a far nation.",
+    "plain": "A spider is proud of a caught fly, and a hunter of his catch. People may cheer the same way after beating a far nation.",
     "theme": "Self-mastery"
   },
   {
@@ -1229,7 +1229,7 @@
     "source": "Meditations, Book 10, section 17",
     "translator": "Meric Casaubon",
     "text": "So live as indifferent to the world and all worldly objects, as one who liveth by himself alone upon some desert hill.",
-    "plain": "Live loose from the world and its objects, as if you lived alone on a bare hill.",
+    "plain": "Live as unattached to the world and its things as if you lived alone on a bare hill.",
     "theme": "Self-mastery"
   },
   {
@@ -1265,7 +1265,7 @@
     "source": "Meditations, Book 10, section 20",
     "translator": "Meric Casaubon",
     "text": "Consider them through all actions and occupations, of their lives: as when they eat, and when they sleep: when they are in the act of necessary exoneration, and when in the act of lust.",
-    "plain": "Look at people in the ordinary acts of life, eating, sleeping, relieving themselves, and during sex.",
+    "plain": "Look at people in ordinary moments of life, eating, sleeping, relieving themselves, and having sex.",
     "theme": "Temperance"
   },
   {
@@ -1274,7 +1274,7 @@
     "source": "Meditations, Book 10, section 21",
     "translator": "Meric Casaubon",
     "text": "That is best for every one, that the common nature of all doth send unto every one, and then is it best, when she doth send it.",
-    "plain": "The best for each person is what shared nature sends them. It is best at the moment she sends it.",
+    "plain": "The best for each person is whatever nature sends them. It is best the moment it arrives.",
     "theme": "Self-mastery"
   },
   {
@@ -1292,7 +1292,7 @@
     "source": "Meditations, Book 10, section 23",
     "translator": "Meric Casaubon",
     "text": "Either thou dost Continue in this kind of life and that is it, which so long thou hast been used unto and therefore tolerable: or thou doest retire, or leave the world, and that of thine own accord, and then thou hast thy mind: or thy life is cut off; and then mayst thou rejoice that thou hast ended thy charge.",
-    "plain": "Either you stay, and habit makes this life bearable. Or you leave by choice, or you feel glad when the job ends.",
+    "plain": "Stay, and habit makes this life bearable. Leave by choice and get your wish, or die glad that the duty is done.",
     "theme": "Self-mastery"
   },
   {
@@ -1301,7 +1301,7 @@
     "source": "Meditations, Book 10, section 25",
     "translator": "Meric Casaubon",
     "text": "He that runs away from his master is a fugitive. But the law is every man's master.",
-    "plain": "Running from the one over you makes you a runaway. Law itself is every person's master.",
+    "plain": "If you run from your master, you are a runaway. The law is every person's master.",
     "theme": "Self-mastery"
   },
   {
@@ -1319,7 +1319,7 @@
     "source": "Meditations, Book 10, section 27",
     "translator": "Meric Casaubon",
     "text": "Ever to mind and consider with thyself; how all things that now are, have been heretofore much after the same sort, and after the same fashion that now they are: and so to think of those things which shall be hereafter also.",
-    "plain": "Always notice that things now have already been much like this, and think of later things the same way.",
+    "plain": "Notice that today's things have shown up like this before. Think about later things in the same way.",
     "theme": "Self-mastery"
   },
   {
@@ -1346,7 +1346,7 @@
     "source": "Meditations, Book 10, section 3",
     "translator": "Meric Casaubon",
     "text": "Whatsoever doth happen unto thee, thou art naturally by thy natural constitution either able, or not able to bear.",
-    "plain": "Whatever comes to you, your natural build means you can stand it, or you cannot.",
+    "plain": "Whatever happens to you, you can bear it by nature, or you cannot.",
     "theme": "Self-mastery"
   },
   {
@@ -1364,7 +1364,7 @@
     "source": "Meditations, Book 10, section 31",
     "translator": "Meric Casaubon",
     "text": "When thou seest Satyro, think of Socraticus and Eutyches, or Hymen, and when Euphrates, think of Eutychio, and Sylvanus, when Alciphron, of Tropaeophorus, when Xenophon, of Crito, or Severus.",
-    "plain": "When one face appears, call up another of that sort. Keep pairing each person you notice with someone like them.",
+    "plain": "When you see someone, think of another person like them. Keep doing that with each face you notice.",
     "theme": "Self-mastery"
   },
   {
@@ -1373,7 +1373,7 @@
     "source": "Meditations, Book 10, section 32",
     "translator": "Meric Casaubon",
     "text": "What a subject, and what a course of life is it, that thou doest so much desire to be rid of.",
-    "plain": "What a topic, and what a way of living, is this thing you want so much to escape.",
+    "plain": "What a life this is, the one you want so badly to get away from.",
     "theme": "Self-mastery"
   },
   {
@@ -1409,7 +1409,7 @@
     "source": "Meditations, Book 10, section 36",
     "translator": "Meric Casaubon",
     "text": "There is not any man that is so happy in his death, but that some of those that are by him when he dies, will be ready to rejoice at his supposed calamity.",
-    "plain": "Nobody's death is so happy that some people standing there will not be glad about what they call his disaster.",
+    "plain": "Even a happy death leaves some people nearby glad about what they call a disaster.",
     "theme": "Courage"
   },
   {
@@ -1445,7 +1445,7 @@
     "source": "Meditations, Book 10, section 5",
     "translator": "Meric Casaubon",
     "text": "Whatsoever it be that happens unto thee, it is that which from all time was appointed unto thee. For by the same coherence of causes, by which thy substance from all eternity was appointed to be, was also whatsoever should happen unto it, destinated and appointed.",
-    "plain": "Whatever meets you was assigned to you from long ago. The same chain that set your being also set what would happen to it.",
+    "plain": "Whatever happens to you was assigned long ago. The same chain that made you also fixed what would happen to you.",
     "theme": "Self-mastery"
   },
   {
@@ -1454,7 +1454,7 @@
     "source": "Meditations, Book 10, section 6",
     "translator": "Meric Casaubon",
     "text": "Either with Epicurus, we must fondly imagine the atoms to be the cause of all things, or we must needs grant a nature.",
-    "plain": "Either, as Epicurus pictured, tiny atoms make everything, or we accept that a nature is real.",
+    "plain": "Either we foolishly imagine tiny atoms make everything, like Epicurus, or we accept that nature is real.",
     "theme": "Self-mastery"
   },
   {
@@ -1499,7 +1499,7 @@
     "source": "Meditations, Book 11, section 10",
     "translator": "Meric Casaubon",
     "text": "The things themselves (which either to get or to avoid thou art put to so much trouble) come not unto thee themselves; but thou in a manner goest unto them. Let then thine own judgment and opinion concerning those things be at rest; and as for the things themselves, they stand still and quiet, without any noise or stir at all; and so shall all pursuing and flying cease.",
-    "plain": "What you strain to grab or avoid does not come over. You go toward it, so rest your view and the rush can stop.",
+    "plain": "What you strain to grab or avoid does not come to you. You go to it, so quiet your mind and the chase can stop.",
     "theme": "Control"
   },
   {
@@ -1544,7 +1544,7 @@
     "source": "Meditations, Book 11, section 15",
     "translator": "Meric Casaubon",
     "text": "To live happily is an inward power of the soul, when she is affected with indifferency, towards those things that are by their nature indifferent.",
-    "plain": "Happy living is an inner power of the mind. It comes when you can stay easy toward things that are neutral in themselves.",
+    "plain": "Happy living is an inner power of the mind. It is there when you stay easy about things that are neither good nor bad.",
     "theme": "Self-mastery"
   },
   {
@@ -1562,7 +1562,7 @@
     "source": "Meditations, Book 11, section 18",
     "translator": "Meric Casaubon",
     "text": "What portion soever, either of air or fire there be in thee, although by nature it tend upwards, submitting nevertheless to the ordinance of the universe, it abides here below in this mixed body.",
-    "plain": "Any bit of air or fire in you naturally wants to rise. It still stays down here in this mixed body, under the whole's order.",
+    "plain": "Any bit of air or fire in you naturally wants to rise. It still stays down in your body, under the world's rule.",
     "theme": "Self-mastery"
   },
   {
@@ -1580,7 +1580,7 @@
     "source": "Meditations, Book 11, section 2",
     "translator": "Meric Casaubon",
     "text": "A pleasant song or dance; the Pancratiast's exercise, sports that thou art wont to be much taken with, thou shalt easily contemn; if the harmonious voice thou shalt divide into so many particular sounds whereof it doth consist, and of every one in particular shall ask thyself; whether this or that sound is it, that doth so conquer thee.",
-    "plain": "A song, dance, or sport you enjoy gets easy to drop when you split the sound. Ask if one small piece is what hooks you.",
+    "plain": "A favorite song, dance, or sport gets easy to drop if you split it up. Ask whether one small piece is what hooks you.",
     "theme": "Discipline"
   },
   {
@@ -1616,7 +1616,7 @@
     "source": "Meditations, Book 11, section 24",
     "translator": "Meric Casaubon",
     "text": "In the ancient mystical letters of the Ephesians, there was an item, that a man should always have in his mind some one or other of the ancient worthies.",
-    "plain": "Those old secret Ephesian writings said a person should always hold some worthy from long ago in mind.",
+    "plain": "Those old secret Ephesian writings said you should always keep some admired person from long ago in mind.",
     "theme": "Self-mastery"
   },
   {
@@ -1634,7 +1634,7 @@
     "source": "Meditations, Book 11, section 26",
     "translator": "Meric Casaubon",
     "text": "How Socrates looked, when he was fain to gird himself with a skin, Xanthippe his wife having taken away his clothes, and carried them abroad with her, and what he said to his fellows and friends, who were ashamed; and out of respect to him, did retire themselves when they saw him thus decked.",
-    "plain": "Picture Socrates in a skin after his wife took his clothes away. Friends felt shame and backed off, while he still had something to say.",
+    "plain": "Picture Socrates wrapped in a skin after his wife took his clothes. His friends felt shame and backed away, but he still spoke to them.",
     "theme": "Self-mastery"
   },
   {
@@ -1679,7 +1679,7 @@
     "source": "Meditations, Book 11, section 31",
     "translator": "Meric Casaubon",
     "text": "'Of the free will there is no thief or robber:' out of Epictetus; Whose is this also: that we should find a certain art and method of assenting; and that we should always observe with great care and heed the inclinations of our minds, that they may always be with their due restraint and reservation, always charitable, and according to the true worth of every present object.",
-    "plain": "Nobody can steal your free choice. Learn a careful way to agree, and keep your mind kind and fitted to what is here.",
+    "plain": "Nobody can steal your free choice. Agree with care, and keep your mind kind, cautious, and fair to what is here.",
     "theme": "Self-mastery"
   },
   {
@@ -1697,7 +1697,7 @@
     "source": "Meditations, Book 11, section 6",
     "translator": "Meric Casaubon",
     "text": "How clearly doth it appear unto thee, that no other course of thy life could fit a true philosopher's practice better, than this very course, that thou art now already in?",
-    "plain": "See how clearly no other path fits a wise way of living better. You are already walking that fitting path.",
+    "plain": "No other path fits a wise life better than the one you are already on.",
     "theme": "Discipline"
   },
   {
@@ -1724,7 +1724,7 @@
     "source": "Meditations, Book 11, section 9",
     "translator": "Meric Casaubon",
     "text": "It is not possible that any nature should be inferior unto art, since that all arts imitate nature.",
-    "plain": "No nature can rank below a craft, since every craft copies what nature does.",
+    "plain": "Nature cannot be worse than a craft, since every craft copies nature.",
     "theme": "Self-mastery"
   },
   {
@@ -1760,7 +1760,7 @@
     "source": "Meditations, Book 12, section 12",
     "translator": "Meric Casaubon",
     "text": "At the conceit and apprehension that such and such a one hath sinned, thus reason with thyself; What do I know whether this be a sin indeed, as it seems to be?",
-    "plain": "When it strikes you that someone has done wrong, ask yourself what you know, and if it really is wrong.",
+    "plain": "When you think someone has done wrong, ask yourself what you know. Check if it really is wrong.",
     "theme": "Self-mastery"
   },
   {
@@ -1796,7 +1796,7 @@
     "source": "Meditations, Book 12, section 16",
     "translator": "Meric Casaubon",
     "text": "Remember that all is but opinion, and all opinion depends of the mind. Take thine opinion away, and then as a ship that hath stricken in within the arms and mouth of the harbour, a present calm; all things safe and steady: a bay, not capable of any storms and tempests: as the poet hath it.",
-    "plain": "All of it is only opinion, and opinion rests on the mind. Take that away, and calm holds like a sheltered ship with no storms.",
+    "plain": "Everything is only opinion, and opinion sits in the mind. Drop that, and you get calm, like a ship safe in harbor.",
     "theme": "Control"
   },
   {
@@ -1841,7 +1841,7 @@
     "source": "Meditations, Book 12, section 20",
     "translator": "Meric Casaubon",
     "text": "Let thy thoughts ever run upon them, who once for some one thing or other, were moved with extraordinary indignation; who were once in the highest pitch of either honour, or calamity; or mutual hatred and enmity; or of any other fortune or condition whatsoever.",
-    "plain": "Keep thinking of people once wildly angry, or high in fame, disaster, or hatred. Any other state counts too.",
+    "plain": "Keep in mind people once wildly angry, or at the peak of fame, disaster, or hatred. Any other condition belongs there too.",
     "theme": "Adversity"
   },
   {
@@ -1877,7 +1877,7 @@
     "source": "Meditations, Book 12, section 24",
     "translator": "Meric Casaubon",
     "text": "What doest thou desire? To live long. What? To enjoy the operations of a sensitive soul; or of the appetitive faculty? or wouldst thou grow, and then decrease again?",
-    "plain": "Do you want a long life, or just feeling, wanting, growing, and then shrinking again.",
+    "plain": "Do you want a long life, or only to feel, want, grow, and then shrink.",
     "theme": "Self-mastery"
   },
   {
@@ -1886,7 +1886,7 @@
     "source": "Meditations, Book 12, section 25",
     "translator": "Meric Casaubon",
     "text": "What a small portion of vast and infinite eternity it is, that is allowed unto every one of us, and how soon it vanisheth into the general age of the world: of the common substance, and of the common soul also what a small portion is allotted unto us: and in what a little clod of the whole earth (as it were) it is that thou doest crawl.",
-    "plain": "You get a tiny, fast-fading bit of endless time. You also get shared stuff, shared mind, and a small lump of earth to crawl on.",
+    "plain": "You get a tiny, fast-fading bit of endless time, shared matter, and shared mind. You crawl on a small lump of earth.",
     "theme": "Self-mastery"
   },
   {
@@ -1904,7 +1904,7 @@
     "source": "Meditations, Book 12, section 27",
     "translator": "Meric Casaubon",
     "text": "To stir up a man to the contempt of death this among other things, is of good power and efficacy, that even they who esteemed pleasure to be happiness, and pain misery, did nevertheless many of them contemn death as much as any.",
-    "plain": "This can help you look down on death, since even pleasure lovers still scorned dying as much as anyone.",
+    "plain": "Even people who lived for pleasure still scorned death as much as anyone. That can help you scorn it too.",
     "theme": "Temperance"
   },
   {
@@ -1913,7 +1913,7 @@
     "source": "Meditations, Book 12, section 3",
     "translator": "Meric Casaubon",
     "text": "I have often wondered how it should come to pass, that every man loving himself best, should more regard other men's opinions concerning himself than his own.",
-    "plain": "I often wonder why you love yourself most. You still care more about others' views of you than your own.",
+    "plain": "I often wonder why you love yourself most, yet care more what others think of you than what you think.",
     "theme": "Self-mastery"
   },
   {
@@ -1922,7 +1922,7 @@
     "source": "Meditations, Book 12, section 4",
     "translator": "Meric Casaubon",
     "text": "how come it to pass that the Gods having ordered all other things so well and so lovingly, should be overseen in this one only thing, that whereas then hath been some very good men that have made many covenants as it were with God and by many holy actions and outward services contracted a kind of familiarity with Him; that these men when once they are dead, should never be restored to life, but be extinct for ever.",
-    "plain": "You may wonder why the gods ordered everything so well. Good people close to God still die and stay gone forever.",
+    "plain": "You may wonder why the gods ordered everything so lovingly, yet good people close to them die and stay gone.",
     "theme": "Self-mastery"
   },
   {
@@ -1949,7 +1949,7 @@
     "source": "Meditations, Book 12, section 8",
     "translator": "Meric Casaubon",
     "text": "How happy is man in this his power that hath been granted unto him: that he needs not do anything but what God shall approve, and that he may embrace contentedly, whatsoever God doth send unto him?",
-    "plain": "You are lucky in this gift. You only need to do what God approves, and you can welcome whatever God sends.",
+    "plain": "You are lucky to have this gift. You need only do what God approves, and you can welcome whatever God sends.",
     "theme": "Self-mastery"
   },
   {
@@ -1967,7 +1967,7 @@
     "source": "Meditations, Book 2, section 1",
     "translator": "Meric Casaubon",
     "text": "Remember how long thou hast already put off these things, and how often a certain day and hour as it were, having been set unto thee by the gods, thou hast neglected it.",
-    "plain": "Remember the long delay already, and the many times you missed a day and hour the gods had set.",
+    "plain": "Remember how long you have already put this off, and how often you missed the hour the gods had set.",
     "theme": "Self-mastery"
   },
   {
@@ -1976,7 +1976,7 @@
     "source": "Meditations, Book 2, section 11",
     "translator": "Meric Casaubon",
     "text": "Consider with thyself how man, and by what part of his, is joined unto God, and how that part of man is affected, when it is said to be diffused.",
-    "plain": "Think about which part of you joins you to God. Notice what happens to that part when people say it is spread out.",
+    "plain": "Think about which part of you joins you to God. Ask what that part is like when it is spread out.",
     "theme": "Self-mastery"
   },
   {
@@ -2021,7 +2021,7 @@
     "source": "Meditations, Book 2, section 2",
     "translator": "Meric Casaubon",
     "text": "Let it be thy earnest and incessant care as a Roman and a man to perform whatsoever it is that thou art about, with true and unfeigned gravity, natural affection, freedom and justice: and as for all other cares, and imaginations, how thou mayest ease thy mind of them.",
-    "plain": "Work at what you are doing with care, warmth, freedom, and fairness, as a person should. Ease other worries and pictures from your mind.",
+    "plain": "Work at what you are doing with care, warmth, freedom, and fairness, as a person should. Ease other worries and daydreams from your mind.",
     "theme": "Self-mastery"
   },
   {
@@ -2102,7 +2102,7 @@
     "source": "Meditations, Book 3, section 12",
     "translator": "Meric Casaubon",
     "text": "What is this, that now my fancy is set upon? of what things doth it consist? how long can it last? which of all the virtues is the proper virtue for this present use? as whether meekness, fortitude, truth, faith, sincerity, contentation, or any of the rest?",
-    "plain": "Ask what your mind is fixed on, what it is made of, and how long it lasts. Then ask which good choice fits this moment.",
+    "plain": "Ask what your mind is fixed on, what it is made of, and how long it lasts. Then ask which good quality fits this moment.",
     "theme": "Self-mastery"
   },
   {
@@ -2129,7 +2129,7 @@
     "source": "Meditations, Book 3, section 16",
     "translator": "Meric Casaubon",
     "text": "To steal, to sow, to buy, to be at rest, to see what is to be done (which is not seen by the eyes, but by another kind of sight:) what these words mean, and how many ways to be understood, they do not understand. The body, the soul, the understanding. As the senses naturally belong to the body, and the desires and affections to the soul, so do the dogmata to the understanding.",
-    "plain": "People miss what taking, planting, buying, resting, and true seeing mean. Senses belong to the body, wants to the mind, ideas to understanding.",
+    "plain": "People miss what stealing, planting, buying, resting, and seeing what to do mean. The body has senses, the mind has wants, and thought has judgments.",
     "theme": "Self-mastery"
   },
   {
@@ -2138,7 +2138,7 @@
     "source": "Meditations, Book 3, section 17",
     "translator": "Meric Casaubon",
     "text": "To be capable of fancies and imaginations, is common to man and beast. To be violently drawn and moved by the lusts and desires of the soul, is proper to wild beasts and monsters, such as Phalaris and Nero were.",
-    "plain": "Pictures in the mind are common to people and animals. Being dragged by strong wants belongs to beasts and cruel people like Phalaris and Nero.",
+    "plain": "Imagining things is common to people and animals. Being dragged by strong wants belongs to beasts and cruel people like Phalaris and Nero.",
     "theme": "Self-mastery"
   },
   {
@@ -2174,7 +2174,7 @@
     "source": "Meditations, Book 3, section 6",
     "translator": "Meric Casaubon",
     "text": "To be cheerful, and to stand in no need, either of other men's help or attendance, or of that rest and tranquillity, which thou must be beholding to others for. Rather like one that is straight of himself, or hath ever been straight, than one that hath been rectified.",
-    "plain": "Be cheerful without needing help or borrowed calm from others. Be like someone already straight, not someone later fixed.",
+    "plain": "Be cheerful without needing help or borrowed calm from others. Be like someone who was always upright, not later straightened.",
     "theme": "Self-mastery"
   },
   {
@@ -2183,7 +2183,7 @@
     "source": "Meditations, Book 3, section 8",
     "translator": "Meric Casaubon",
     "text": "Never esteem of anything as profitable, which shall ever constrain thee either to break thy faith, or to lose thy modesty; to hate any man, to suspect, to curse, to dissemble, to lust after anything, that requireth the secret of walls or veils.",
-    "plain": "Never call something useful if it pushes you to break trust, drop shame, hate, or suspect. Cursing, faking, or chasing secrets counts too.",
+    "plain": "Never call something useful if it pushes you to break trust, drop shame, hate, or suspect. Cursing, faking, or craving a hidden thing counts too.",
     "theme": "Temperance"
   },
   {
@@ -2192,7 +2192,7 @@
     "source": "Meditations, Book 3, section 9",
     "translator": "Meric Casaubon",
     "text": "In the mind that is once truly disciplined and purged, thou canst not find anything, either foul or impure, or as it were festered: nothing that is either servile, or affected: no partial tie; no malicious averseness; nothing obnoxious; nothing concealed.",
-    "plain": "In a mind that is truly trained and cleaned, you find nothing rotten, slavish, fake, one-sided, bitter, risky, or hidden.",
+    "plain": "In a mind that is truly trained and cleaned, you find nothing rotten, slavish, fake, one-sided, bitter, or hidden.",
     "theme": "Self-mastery"
   },
   {
@@ -2210,7 +2210,7 @@
     "source": "Meditations, Book 4, section 10",
     "translator": "Meric Casaubon",
     "text": "These two rules, thou must have always in a readiness. First, do nothing at all, but what reason proceeding from that regal and supreme part, shall for the good and benefit of men, suggest unto thee.",
-    "plain": "Keep ready the rule to do nothing except what your highest reason suggests for people's good.",
+    "plain": "Keep this rule ready: do nothing except what your highest reason suggests for people's good.",
     "theme": "Self-mastery"
   },
   {
@@ -2237,7 +2237,7 @@
     "source": "Meditations, Book 4, section 13",
     "translator": "Meric Casaubon",
     "text": "Within ten days, if so happen, thou shalt be esteemed a god of them, who now if thou shalt return to the dogmata and to the honouring of reason, will esteem of thee no better than of a mere brute, and of an ape.",
-    "plain": "In ten days you may be called a god. The same people may call you a brute or an ape for returning to reason.",
+    "plain": "People who now call you a brute or an ape may call you a god in ten days. That happens if you return to reason.",
     "theme": "Self-mastery"
   },
   {
@@ -2300,7 +2300,7 @@
     "source": "Meditations, Book 4, section 2",
     "translator": "Meric Casaubon",
     "text": "Let nothing be done rashly, and at random, but all things according to the most exact and perfect rules of art.",
-    "plain": "Do not act in a rush or at random. Follow careful, finished rules of the craft.",
+    "plain": "Do not act in a rush or at random. Do everything by the exact rules of the craft.",
     "theme": "Self-mastery"
   },
   {
@@ -2336,7 +2336,7 @@
     "source": "Meditations, Book 4, section 23",
     "translator": "Meric Casaubon",
     "text": "A black or malign disposition, an effeminate disposition; an hard inexorable disposition, a wild inhuman disposition, a sheepish disposition, a childish disposition; a blockish, a false, a scurril, a fraudulent, a tyrannical: what then? If he be a stranger in the world, that knows not the things that are in it; why not be a stranger as well, that wonders at the things that are done in it?",
-    "plain": "If not knowing the world makes you a stranger, wonder too. You can wonder at what people do.",
+    "plain": "So what if people are cruel, false, or childish. If ignorance makes you a stranger, be one who wonders at what they do.",
     "theme": "Self-mastery"
   },
   {
@@ -2399,7 +2399,7 @@
     "source": "Meditations, Book 4, section 30",
     "translator": "Meric Casaubon",
     "text": "Thou art now ready to die, and yet hast thou not attained to that perfect simplicity: thou art yet subject to many troubles and perturbations; not yet free from all fear and suspicion of external accidents; nor yet either so meekly disposed towards all men, as thou shouldest; or so affected as one, whose only study and only wisdom is, to be just in all his actions.",
-    "plain": "You could die now, yet you stay troubled and afraid of outside hits. You are not gentle, or set only on fair actions.",
+    "plain": "You could die now, yet you stay troubled, fearful, and far from simple. You are not gentle, or set only on fair actions.",
     "theme": "Courage"
   },
   {
@@ -2408,7 +2408,7 @@
     "source": "Meditations, Book 4, section 31",
     "translator": "Meric Casaubon",
     "text": "Behold and observe, what is the state of their rational part; and those that the world doth account wise, see what things they fly and are afraid of; and what things they hunt after.",
-    "plain": "Look at the state of people's thinking part, and at what the so-called wise run from and chase after.",
+    "plain": "Look at how people think, and at what the so-called wise run from and chase.",
     "theme": "Self-mastery"
   },
   {
@@ -2435,7 +2435,7 @@
     "source": "Meditations, Book 4, section 34",
     "translator": "Meric Casaubon",
     "text": "What art thou, that better and divine part excepted, but as Epictetus said well, a wretched soul, appointed to carry a carcass up and down?",
-    "plain": "Apart from your better, higher part, you are a poor mind. Epictetus said you are hired to carry a dead body around.",
+    "plain": "Apart from your better, higher part, you are a poor mind. Epictetus said you are meant to carry a dead body around.",
     "theme": "Self-mastery"
   },
   {
@@ -2444,7 +2444,7 @@
     "source": "Meditations, Book 4, section 35",
     "translator": "Meric Casaubon",
     "text": "To suffer change can be no hurt; as no benefit it is, by change to attain to being. The age and time of the world is as it were a flood and swift current, consisting of the things that are brought to pass in the world. For as soon as anything hath appeared, and is passed away, another succeeds, and that also will presently out of sight.",
-    "plain": "Change does not hurt you, and becoming through change is no prize. The world is a fast flood where each thing shows up and vanishes.",
+    "plain": "Change does not hurt, and coming to be by change is no gain. The world is a fast flood where each thing appears, then vanishes.",
     "theme": "Adversity"
   },
   {
@@ -2507,7 +2507,7 @@
     "source": "Meditations, Book 4, section 41",
     "translator": "Meric Casaubon",
     "text": "Oh, wretched I, to whom this mischance is happened! nay, happy I, to whom this thing being happened, I can continue without grief; neither wounded by that which is present, nor in fear of that which is to come.",
-    "plain": "Say not poor me, but lucky me. You can go on without grief, unhurt now and not scared of what comes.",
+    "plain": "Don't say poor me, say lucky me. You can go on without grief, unhurt now and not scared of what comes.",
     "theme": "Courage"
   },
   {
@@ -2516,7 +2516,7 @@
     "source": "Meditations, Book 4, section 42",
     "translator": "Meric Casaubon",
     "text": "It is but an ordinary coarse one, yet it is a good effectual remedy against the fear of death, for a man to consider in his mind the examples of such, who greedily and covetously (as it were) did for a long time enjoy their lives.",
-    "plain": "A plain help against fearing death is this. Picture people who clung to life and enjoyed it for a long time.",
+    "plain": "A plain help against fearing death is to picture people who clung to life and enjoyed it for years.",
     "theme": "Courage"
   },
   {
@@ -2534,7 +2534,7 @@
     "source": "Meditations, Book 4, section 5",
     "translator": "Meric Casaubon",
     "text": "As generation is, so also death, a secret of nature's wisdom: a mixture of elements, resolved into the same elements again, a thing surely which no man ought to be ashamed of: in a series of other fatal events and consequences, which a rational creature is subject unto, not improper or incongruous, nor contrary to the natural and proper constitution of man himself.",
-    "plain": "Death, like birth, returns mixed parts to the same parts. It fits a thinking person, so there is no cause for shame.",
+    "plain": "Death, like birth, undoes a mix and sends the parts back. A thinking person has no reason to feel shame about that.",
     "theme": "Courage"
   },
   {
@@ -2552,7 +2552,7 @@
     "source": "Meditations, Book 4, section 7",
     "translator": "Meric Casaubon",
     "text": "Let opinion be taken away, and no man will think himself wronged. If no man shall think himself wronged, then is there no more any such thing as wrong. That which makes not man himself the worse, cannot make his life the worse, neither can it hurt him either inwardly or outwardly. It was expedient in nature that it should be so, and therefore necessary.",
-    "plain": "If opinion goes, nobody feels wronged, so no wrong remains. What does not make you worse cannot hurt you, and nature needed it this way.",
+    "plain": "Drop your opinion and nobody feels wronged, so no wrong remains. What does not make you worse cannot hurt you, as nature required.",
     "theme": "Control"
   },
   {
@@ -2570,7 +2570,7 @@
     "source": "Meditations, Book 4, section 9",
     "translator": "Meric Casaubon",
     "text": "Conceit no such things, as he that wrongeth thee conceiveth, or would have thee to conceive, but look into the matter itself, and see what it is in very truth.",
-    "plain": "Do not picture the story the person who hurt you wants you to hold. Look at the thing itself and see what is true.",
+    "plain": "Skip the story the person who hurt you wants you to believe. Look at the thing itself and see the truth.",
     "theme": "Self-mastery"
   },
   {
@@ -2579,7 +2579,7 @@
     "source": "Meditations, Book 5, section 1",
     "translator": "Meric Casaubon",
     "text": "In the morning when thou findest thyself unwilling to rise, consider with thyself presently, it is to go about a man's work that I am stirred up.",
-    "plain": "When you do not want to get up in the morning, remember this. You are being stirred to go do a person's work.",
+    "plain": "When you do not want to get up, remember you are rising for the work a human should do.",
     "theme": "Discipline"
   },
   {
@@ -2597,7 +2597,7 @@
     "source": "Meditations, Book 5, section 11",
     "translator": "Meric Casaubon",
     "text": "What is the use that now at this present I make of my soul? Thus from time to time and upon all occasions thou must put this question to thyself; what is now that part of mine which they call the rational mistress part, employed about? Whose soul do I now properly possess? a child's? or a youth's? a woman's? or a tyrant's? some brute, or some wild beast's soul?",
-    "plain": "Ask what your mind is busy with now. Is it a child's, a youth's, a tyrant's, or a wild animal's mind.",
+    "plain": "Ask whose mind you have right now. It could be a child's, a youth's, a woman's, a tyrant's, or an animal's.",
     "theme": "Courage"
   },
   {
@@ -2606,7 +2606,7 @@
     "source": "Meditations, Book 5, section 12",
     "translator": "Meric Casaubon",
     "text": "What those things are in themselves, which by the greatest part are esteemed good, thou mayest gather even from this.",
-    "plain": "You can tell what the things most people call good really are, even from this.",
+    "plain": "You can tell what the things most people call good really are on their own.",
     "theme": "Self-mastery"
   },
   {
@@ -2642,7 +2642,7 @@
     "source": "Meditations, Book 5, section 16",
     "translator": "Meric Casaubon",
     "text": "To desire things impossible is the part of a mad man. But it is a thing impossible, that wicked man should not commit some such things.",
-    "plain": "Wanting impossible things is a mad person's part. It is impossible that a bad person will never do bad things.",
+    "plain": "Wanting the impossible is what a mad person does. A bad person is bound to do some bad things.",
     "theme": "Self-mastery"
   },
   {
@@ -2678,7 +2678,7 @@
     "source": "Meditations, Book 5, section 2",
     "translator": "Meric Casaubon",
     "text": "How easy a thing is it for a man to put off from him all turbulent adventitious imaginations, and presently to be in perfect rest and tranquillity!",
-    "plain": "It is easy to set down all the stormy pictures that were never yours, and right away be fully calm.",
+    "plain": "It is easy to drop the stormy thoughts that were never yours and be fully calm at once.",
     "theme": "Self-mastery"
   },
   {
@@ -2687,7 +2687,7 @@
     "source": "Meditations, Book 5, section 20",
     "translator": "Meric Casaubon",
     "text": "Let not that chief commanding part of thy soul be ever subject to any variation through any corporal either pain or pleasure, neither suffer it to be mixed with these, but let it both circumscribe itself, and confine those affections to their own proper parts and members.",
-    "plain": "Keep your guiding mind from swinging with body pain or pleasure. Leave those feelings in the body parts where they belong.",
+    "plain": "Keep your guiding mind steady through pain or pleasure in the body. Leave those feelings in the parts where they belong.",
     "theme": "Temperance"
   },
   {
@@ -2696,7 +2696,7 @@
     "source": "Meditations, Book 5, section 21",
     "translator": "Meric Casaubon",
     "text": "To live with the Gods. He liveth with the Gods, who at all times affords unto them the spectacle of a soul, both contented and well pleased with whatsoever is afforded, or allotted unto her; and performing whatsoever is pleasing to that Spirit, whom (being part of himself) Jove hath appointed to every man as his overseer and governor.",
-    "plain": "Living with the gods means your mind stays glad with whatever you are given. It also does what pleases the spirit set over you.",
+    "plain": "Living with the gods means you stay glad about whatever you get, and you do what your inner guide wants.",
     "theme": "Self-mastery"
   },
   {
@@ -2714,7 +2714,7 @@
     "source": "Meditations, Book 5, section 23",
     "translator": "Meric Casaubon",
     "text": "'Where there shall neither roarer be, nor harlot.' Why so? As thou dost purpose to live, when thou hast retired thyself to some such place, where neither roarer nor harlot is: so mayest thou here.",
-    "plain": "You hope to live well somewhere without rowdy people or people selling sex. You can live that way right here.",
+    "plain": "You plan to live somewhere without rowdy people or prostitutes. You can live that way right here.",
     "theme": "Self-mastery"
   },
   {
@@ -2741,7 +2741,7 @@
     "source": "Meditations, Book 5, section 26",
     "translator": "Meric Casaubon",
     "text": "Why should imprudent unlearned souls trouble that which is both learned, and prudent? And which is that that is so? she that understandeth the beginning and the end, and hath the true knowledge of that rational essence, that passeth through all things subsisting, and through all ages being ever the same, disposing and dispensing as it were this universe by certain periods of time.",
-    "plain": "Why let an untaught mind bother the one that knows? That one sees the start, the end, and the mind that runs all time.",
+    "plain": "An untaught mind has no business troubling the one that sees the start, the end, and what guides every age.",
     "theme": "Self-mastery"
   },
   {
@@ -2786,7 +2786,7 @@
     "source": "Meditations, Book 5, section 30",
     "translator": "Meric Casaubon",
     "text": "Let death surprise me when it will, and where it will, I may be εὔμοιρος, or a happy man, nevertheless. For he is a happy man, who in his lifetime dealeth unto himself a happy lot and portion. A happy lot and portion is, good inclinations of the soul, good desires, good actions.",
-    "plain": "Let death come whenever and wherever it wants. You stay glad if your mind, wants, and actions are good.",
+    "plain": "Let death come whenever and wherever it wants. You stay glad if your mindset, wishes, and actions are good.",
     "theme": "Courage"
   },
   {
@@ -2822,7 +2822,7 @@
     "source": "Meditations, Book 5, section 7",
     "translator": "Meric Casaubon",
     "text": "The form of the Athenians' prayer did run thus: 'O rain, rain, good Jupiter, upon all the grounds and fields that belong to the Athenians.' Either we should not pray at all, or thus absolutely and freely; and not every one for himself in particular alone.",
-    "plain": "Their old prayer asked rain for every field, not one farm. Pray for everyone, or do not pray only for yourself.",
+    "plain": "Their old prayer asked rain for every field, not one person's farm. Either pray for everyone, or do not pray at all.",
     "theme": "Self-mastery"
   },
   {
@@ -2885,7 +2885,7 @@
     "source": "Meditations, Book 6, section 16",
     "translator": "Meric Casaubon",
     "text": "Under, above, and about, are the motions of the elements; but the motion of virtue, is none of those motions, but is somewhat more excellent and divine. Whose way (to speed and prosper in it) must be through a way, that is not easily comprehended.",
-    "plain": "Stuff moves down, up, and around. The movement of choice is higher, and the path to do well in it is hard to see.",
+    "plain": "Things move down, up, and around. Right living is a higher kind of movement, and the way into it is hard to see.",
     "theme": "Self-mastery"
   },
   {
@@ -2984,7 +2984,7 @@
     "source": "Meditations, Book 6, section 27",
     "translator": "Meric Casaubon",
     "text": "If in this kind of life thy body be able to hold out, it is a shame that thy soul should faint first, and give over, take heed, lest of a philosopher thou become a mere Cæsar in time, and receive a new tincture from the court.",
-    "plain": "If your body can last in this life, shame on a mind that quits first. Do not become a mere ruler dyed by the court.",
+    "plain": "If your body can last, shame on a mind that quits first. Do not become a mere ruler shaped by the court.",
     "theme": "Self-mastery"
   },
   {
@@ -3047,7 +3047,7 @@
     "source": "Meditations, Book 6, section 39",
     "translator": "Meric Casaubon",
     "text": "If so be that the Gods have deliberated in particular of those things that should happen unto me, I must stand to their deliberation, as discrete and wise.",
-    "plain": "If God has carefully decided what happens to you, stand by that choice as wise.",
+    "plain": "If God has carefully decided what happens to you, accept that decision as a wise one.",
     "theme": "Self-mastery"
   },
   {
@@ -3083,7 +3083,7 @@
     "source": "Meditations, Book 6, section 42",
     "translator": "Meric Casaubon",
     "text": "Let the several deaths of men of all sorts, and of all sorts of professions, and of all sort of nations, be a perpetual object of thy thoughts,... so that thou mayst even come down to Philistio, Phœbus, and Origanion.",
-    "plain": "Keep the deaths of every kind of person, job, and nation in your thoughts. Even go down to ordinary names.",
+    "plain": "Keep thinking about the deaths of every kind of person, job, and nation. Include even the names nobody remembers.",
     "theme": "Self-mastery"
   },
   {
@@ -3137,7 +3137,7 @@
     "source": "Meditations, Book 6, section 48",
     "translator": "Meric Casaubon",
     "text": "Use thyself when any man speaks unto thee, so to hearken unto him, as that in the interim thou give not way to any other thoughts; that so thou mayst (as far as is possible) seem fixed and fastened to his very soul, whosoever he be that speaks unto thee.",
-    "plain": "When someone speaks to you, listen so closely that other thoughts stay out. Let them feel you are right there with their mind.",
+    "plain": "When someone speaks to you, listen so hard that other thoughts stay out. Let them feel you are right there with them.",
     "theme": "Self-mastery"
   },
   {
@@ -3155,7 +3155,7 @@
     "source": "Meditations, Book 6, section 51",
     "translator": "Meric Casaubon",
     "text": "How many of them who came into the world at the same time when I did, are already gone out of it?",
-    "plain": "Count how many people born at your same time have already left this life.",
+    "plain": "How many people born when you were have already left this life.",
     "theme": "Self-mastery"
   },
   {
@@ -3164,7 +3164,7 @@
     "source": "Meditations, Book 6, section 52",
     "translator": "Meric Casaubon",
     "text": "To them that are sick of the jaundice, honey seems bitter; and to them that are bitten by a mad dog, the water terrible; and to children, a little ball seems a fine thing. And why then should I be angry? or do I think that error and false opinion is less powerful to make men transgress, than either choler, being immoderate and excessive, to cause the jaundice; or poison, to cause rage?",
-    "plain": "Honey tastes bitter in jaundice, and a ball seems grand to a child. Error twists people as hard, so there is no need for anger.",
+    "plain": "Honey tastes bitter to the sick, and a child prizes a little ball. Wrong ideas push people just as strongly, so anger is useless.",
     "theme": "Temperance"
   },
   {
@@ -3209,7 +3209,7 @@
     "source": "Meditations, Book 6, section 8",
     "translator": "Meric Casaubon",
     "text": "According to the nature of the universe all things particular are determined, not according to any other nature, either about compassing and containing; or within, dispersed and contained; or without, depending.",
-    "plain": "Each thing is set by the nature of the whole world. It is not set by some other nature around, inside, or outside it.",
+    "plain": "Each thing is set by the whole world's nature. Nothing around it, inside it, or outside it decides it.",
     "theme": "Self-mastery"
   },
   {
@@ -3245,7 +3245,7 @@
     "source": "Meditations, Book 7, section 11",
     "translator": "Meric Casaubon",
     "text": "Of things that are external, happen what will to that which can suffer by external accidents. Those things that suffer let them complain themselves, if they will; as for me, as long as I conceive no such thing, that that which is happened is evil, I have no hurt; and it is in my power not to conceive any such thing.",
-    "plain": "Let outside things happen to whatever can be hit by them. If you do not call what happened bad, you are not hurt.",
+    "plain": "Let outside events hit whatever they can hurt. You stay unharmed if you do not call what happened bad.",
     "theme": "Adversity"
   },
   {
@@ -3290,7 +3290,7 @@
     "source": "Meditations, Book 7, section 16",
     "translator": "Meric Casaubon",
     "text": "Through the substance of the universe, as through a torrent pass all particular bodies, being all of the same nature, and all joint workers with the universe itself as in one of our bodies so many members among themselves.",
-    "plain": "Every body passes through the stuff of the world like a flood. They share one nature and work together like parts of one body.",
+    "plain": "Bodies pass through the stuff of the world like a flood. They share one nature and work together like limbs.",
     "theme": "Self-mastery"
   },
   {
@@ -3326,7 +3326,7 @@
     "source": "Meditations, Book 7, section 2",
     "translator": "Meric Casaubon",
     "text": "What fear is there that thy dogmata, or philosophical resolutions and conclusions, should become dead in thee, and lose their proper power and efficacy to make thee live happy, as long as those proper and correlative fancies, and representations of things on which they mutually depend (which continually to stir up and revive is in thy power,) are still kept fresh and alive?",
-    "plain": "Why fear your settled choices will die and lose their power to help you live glad? You can keep the pictures they rest on fresh.",
+    "plain": "Do not fear your settled views will die and stop helping you live well. You can keep the pictures they depend on fresh.",
     "theme": "Courage"
   },
   {
@@ -3344,7 +3344,7 @@
     "source": "Meditations, Book 7, section 21",
     "translator": "Meric Casaubon",
     "text": "Wipe off all opinion stay the force and violence of unreasonable lusts and affections: circumscribe the present time examine whatsoever it be that is happened, either to thyself or to another: divide all present objects, either in that which is formal or material think of the last hour.",
-    "plain": "Clear opinion and hold back wild wants. Check this moment, split what happened into shape and stuff, and remember your last hour.",
+    "plain": "Drop opinions, hold back wild wants, and stay inside this moment. Take what happened apart, and remember your last hour.",
     "theme": "Control"
   },
   {
@@ -3353,7 +3353,7 @@
     "source": "Meditations, Book 7, section 22",
     "translator": "Meric Casaubon",
     "text": "All things (saith he) are by certain order and appointment. And what if the elements only.",
-    "plain": "He says all things follow a set order and plan. He even asks what if that is true of the elements only.",
+    "plain": "He says all things follow a set order and plan. He even asks whether that is true of the elements alone.",
     "theme": "Self-mastery"
   },
   {
@@ -3425,7 +3425,7 @@
     "source": "Meditations, Book 7, section 3",
     "translator": "Meric Casaubon",
     "text": "That which most men would think themselves most happy for, and would prefer before all things, if the Gods would grant it unto them after their deaths, thou mayst whilst thou livest grant unto thyself; to live again.",
-    "plain": "Most people would want most, after death, to live again. You can give yourself that while you are alive.",
+    "plain": "What people would want most after death is to live again. You can give yourself that while you are still alive.",
     "theme": "Self-mastery"
   },
   {
@@ -3443,7 +3443,7 @@
     "source": "Meditations, Book 7, section 31",
     "translator": "Meric Casaubon",
     "text": "As one who had lived, and were now to die by right, whatsoever is yet remaining, bestow that wholly as a gracious overplus upon a virtuous life.",
-    "plain": "You have lived, and you could rightly die now. Give whatever time is left as a gift to a good life.",
+    "plain": "You have lived, and you could rightly die now. Treat the time left as a bonus for living well.",
     "theme": "Courage"
   },
   {
@@ -3533,7 +3533,7 @@
     "source": "Meditations, Book 7, section 40",
     "translator": "Meric Casaubon",
     "text": "Then hath a man attained to the estate of perfection in his life and conversation, when he so spends every day, as if it were his last day: never hot and vehement in his affections, nor yet so cold and stupid as one that had no sense; and free from all manner of dissimulation.",
-    "plain": "You reach a finished life when each day is lived as your last. Be neither too hot nor numb, and free from pretending.",
+    "plain": "You live fully when you treat each day as your last. Stay neither too heated nor numb, and do not pretend.",
     "theme": "Self-mastery"
   },
   {
@@ -3551,7 +3551,7 @@
     "source": "Meditations, Book 7, section 42",
     "translator": "Meric Casaubon",
     "text": "What object soever, our reasonable and sociable faculty doth meet with, that affords nothing either for the satisfaction of reason, or for the practice of charity, she worthily doth think unworthy of herself.",
-    "plain": "When your thinking, friendly side meets something with nothing for reason or kindness, it rightly finds that thing beneath it.",
+    "plain": "If something gives nothing to reason or kindness, your friendly mind rightly finds it unworthy.",
     "theme": "Discipline"
   },
   {
@@ -3560,7 +3560,7 @@
     "source": "Meditations, Book 7, section 43",
     "translator": "Meric Casaubon",
     "text": "When thou hast done well, and another is benefited by thy action, must thou like a very fool look for a third thing besides, as that it may appear unto others also that thou hast done well, or that thou mayest in time, receive one good turn for another?",
-    "plain": "When you do well and someone gains, you need not foolishly want others to notice or a payback.",
+    "plain": "When you do well and someone benefits, do not foolishly chase praise or payback.",
     "theme": "Self-mastery"
   },
   {
@@ -3605,7 +3605,7 @@
     "source": "Meditations, Book 8, section 1",
     "translator": "Meric Casaubon",
     "text": "This also, among other things, may serve to keep thee from vainglory; if thou shalt consider, that thou art now altogether incapable of the commendation of one, who all his life long, or from his youth at least, hath lived a philosopher's life.",
-    "plain": "You cannot claim praise from someone who has lived as a thinker since youth. That thought can keep pride away.",
+    "plain": "You cannot take the praise of someone who has thought well since youth. That can keep pride away.",
     "theme": "Self-mastery"
   },
   {
@@ -3614,7 +3614,7 @@
     "source": "Meditations, Book 8, section 10",
     "translator": "Meric Casaubon",
     "text": "This, what is it in itself, and by itself, according to its proper constitution? What is the substance of it? What is the matter, or proper use? What is the form or efficient cause? What is it for in this world, and how long will it abide? Thus must thou examine all things, that present themselves unto thee.",
-    "plain": "Ask what a thing really is, what it is made of, and how long it lasts. Look at everything this way.",
+    "plain": "Ask what a thing is, what it is made of, what it is for, and how long it lasts.",
     "theme": "Self-mastery"
   },
   {
@@ -3623,7 +3623,7 @@
     "source": "Meditations, Book 8, section 11",
     "translator": "Meric Casaubon",
     "text": "When thou art hard to be stirred up and awaked out of thy sleep, admonish thyself and call to mind, that, to perform actions tending to the common good is that which thine own proper constitution, and that which the nature of man do require. But to sleep, is common to unreasonable creatures also. And what more proper and natural, yea what more kind and pleasing, than that which is according to nature?",
-    "plain": "When getting up feels hard, remember helping people is what your nature asks. Living that way feels more natural and kind.",
+    "plain": "When getting up feels hard, remember that helping people is your nature. Sleep is shared with animals, while living your nature feels better.",
     "theme": "Self-mastery"
   },
   {
@@ -3704,7 +3704,7 @@
     "source": "Meditations, Book 8, section 2",
     "translator": "Meric Casaubon",
     "text": "Upon every action that thou art about, put this question to thyself; How will this when it is done agree with me?",
-    "plain": "Before each thing you do, ask yourself how you will feel about it once it is finished.",
+    "plain": "Before each thing you do, ask whether it will still fit you once it is done.",
     "theme": "Self-mastery"
   },
   {
@@ -3740,7 +3740,7 @@
     "source": "Meditations, Book 8, section 23",
     "translator": "Meric Casaubon",
     "text": "By one action judge of the rest: this bathing which usually takes up so much of our time, what is it? Oil, sweat, filth; or the sordes of the body: an excrementitious viscosity, the excrements of oil and other ointments used about the body, and mixed with the sordes of the body: all base and loathsome. And such almost is every part of our life; and every worldly object.",
-    "plain": "Judge the rest of life by one act, like bathing: oil, sweat, and dirt. Almost every part of life is that plain and low.",
+    "plain": "Judge the rest of life by a bath: oil, sweat, and dirt. Almost every part of life is that low and foul.",
     "theme": "Self-mastery"
   },
   {
@@ -3758,7 +3758,7 @@
     "source": "Meditations, Book 8, section 25",
     "translator": "Meric Casaubon",
     "text": "The true joy of a man, is to do that which properly belongs unto a man. That which is most proper unto a man, is, first, to be kindly affected towards them that are of the same kind and nature as he is himself to contemn all sensual motions and appetites, to discern rightly all plausible fancies and imaginations, to contemplate the nature of the universe; both it, and things that are done in it.",
-    "plain": "Real joy is doing what fits a person: kindness, turning from cravings, seeing through fancy, and looking at the world.",
+    "plain": "Real joy is doing what fits a person: be kind, drop cravings, test daydreams, and study the world.",
     "theme": "Temperance"
   },
   {
@@ -3785,7 +3785,7 @@
     "source": "Meditations, Book 8, section 28",
     "translator": "Meric Casaubon",
     "text": "Whether thou speak in the Senate or whether thou speak to any particular, let thy speech In always grave and modest. But thou must not openly and vulgarly observe that sound and exact form of speaking, concerning that which is truly good and truly civil; the vanity of the world, and of worldly men: which otherwise truth and reason doth prescribe.",
-    "plain": "Whether you speak to many or to one person, stay calm and modest. Do not show off talk about how empty the world is.",
+    "plain": "Whether you speak to a crowd or to one person, stay serious and modest. Do not lecture them on how empty the world is.",
     "theme": "Self-mastery"
   },
   {
@@ -3794,7 +3794,7 @@
     "source": "Meditations, Book 8, section 29",
     "translator": "Meric Casaubon",
     "text": "Augustus his court; his wife, his daughter, his nephews, his sons-in-law his sister, Agrippa, his kinsmen, his domestics, his friends; Areus, Mæcenas, his slayers of beasts for sacrifice and divination: there thou hast the death of a whole court together.",
-    "plain": "Augustus, his family, his friends, and his whole court are gone. You are looking at the death of all of them together.",
+    "plain": "Augustus, his family, his friends, and his whole court are dead together.",
     "theme": "Courage"
   },
   {
@@ -3803,7 +3803,7 @@
     "source": "Meditations, Book 8, section 3",
     "translator": "Meric Casaubon",
     "text": "Alexander, Caius, Pompeius; what are these to Diogenes, Heraclitus, and Socrates? These penetrated into the true nature of things; into all causes, and all subjects: and upon these did they exercise their power and authority. But as for those, as the extent of their error was, so far did their slavery extend.",
-    "plain": "Alexander, Caius, and Pompeius look small beside Diogenes, Heraclitus, and Socrates, who saw things truly. Their error stretched as far as their slavery.",
+    "plain": "Alexander, Caius, and Pompeius were enslaved by how far they went wrong. Diogenes, Heraclitus, and Socrates saw things as they truly are.",
     "theme": "Discipline"
   },
   {
@@ -3830,7 +3830,7 @@
     "source": "Meditations, Book 8, section 34",
     "translator": "Meric Casaubon",
     "text": "Let not the general representation unto thyself of the wretchedness of this our mortal life, trouble thee.",
-    "plain": "Do not let the big picture of how hard mortal life is trouble you.",
+    "plain": "Do not let the wide view of how hard mortal life is bother you.",
     "theme": "Self-mastery"
   },
   {
@@ -3839,7 +3839,7 @@
     "source": "Meditations, Book 8, section 35",
     "translator": "Meric Casaubon",
     "text": "What? are either Panthea or Pergamus abiding to this day by their masters' tombs? or either Chabrias or Diotimus by that of Adrianus?",
-    "plain": "Panthea and Pergamus are not still waiting by their masters' tombs, nor are Chabrias and Diotimus by Adrianus.",
+    "plain": "Panthea and Pergamus no longer wait by their masters' tombs. Chabrias and Diotimus no longer wait by the tomb of Adrianus.",
     "theme": "Self-mastery"
   },
   {
@@ -3848,7 +3848,7 @@
     "source": "Meditations, Book 8, section 36",
     "translator": "Meric Casaubon",
     "text": "If thou beest quick-sighted, be so in matter of judgment, and best discretion, saith he.",
-    "plain": "If you see quickly, use that sharpness in your judgment and in your best choices.",
+    "plain": "If you are quick to notice, use that in your judgment and your best choices.",
     "theme": "Control"
   },
   {
@@ -3857,7 +3857,7 @@
     "source": "Meditations, Book 8, section 37",
     "translator": "Meric Casaubon",
     "text": "In the whole constitution of man, I see not any virtue contrary to justice, whereby it may be resisted and opposed. But one whereby pleasure and voluptuousness may be resisted and opposed, I see: continence.",
-    "plain": "In a person I see no choice that fights justice. Self-control is what can stand against pleasure and indulgence.",
+    "plain": "Nothing in us fights fairness. Self-control is what fights pleasure and indulgence.",
     "theme": "Temperance"
   },
   {
@@ -3866,7 +3866,7 @@
     "source": "Meditations, Book 8, section 38",
     "translator": "Meric Casaubon",
     "text": "If thou canst but withdraw conceit and opinion concerning that which may seem hurtful and offensive, thou thyself art as safe, as safe may be. Thou thyself? and who is that? Thy reason. 'Yea, but I am not reason.' Well, be it so. However, let not thy reason or understanding admit of grief, and if there be anything in thee that is grieved, let that, (whatsoever it be,) conceive its own grief, if it can.",
-    "plain": "Drop opinions about what seems harmful, and you are safe. Let reason refuse grief, and let any hurting part carry its own pain.",
+    "plain": "Drop opinions about what seems harmful, and you are safe. Keep grief out of reason, and let the part that hurts carry its pain.",
     "theme": "Adversity"
   },
   {
@@ -3938,7 +3938,7 @@
     "source": "Meditations, Book 8, section 46",
     "translator": "Meric Casaubon",
     "text": "Remember that thy mind is of that nature as that it becometh altogether unconquerable, when once recollected in herself, she seeks no other content than this, that she cannot be forced: yea though it so fall out, that it be even against reason itself, that it cloth bandy.",
-    "plain": "Remember your mind becomes unbeatable when it gathers itself and wants only this: it cannot be forced. That can even fight reason itself.",
+    "plain": "Your mind becomes unbeatable when it pulls together and seeks only to stay unforced. It can keep that stand even against reason.",
     "theme": "Self-mastery"
   },
   {
@@ -3974,7 +3974,7 @@
     "source": "Meditations, Book 8, section 5",
     "translator": "Meric Casaubon",
     "text": "That which the nature of the universe doth busy herself about, is; that which is here, to transfer it thither, to change it, and thence again to take it away, and to carry it to another place. So that thou needest not fear any new thing. For all things are usual and ordinary; and all things are disposed by equality.",
-    "plain": "The world keeps moving things, changing them, and carrying them somewhere else. You need not fear anything new, because this is all ordinary and even.",
+    "plain": "The world keeps moving things, changing them, and carrying them somewhere else. Fear nothing new, since all of this is ordinary and balanced.",
     "theme": "Courage"
   },
   {
@@ -3983,7 +3983,7 @@
     "source": "Meditations, Book 8, section 50",
     "translator": "Meric Casaubon",
     "text": "'They kill me, they cut my flesh; they persecute my person with curses.' What then?",
-    "plain": "They can kill you, cut your flesh, and curse you, and still the question is what that really changes.",
+    "plain": "They can kill you, cut your flesh, and curse you. So what comes of that.",
     "theme": "Self-mastery"
   },
   {
@@ -4001,7 +4001,7 @@
     "source": "Meditations, Book 8, section 52",
     "translator": "Meric Casaubon",
     "text": "Not only now henceforth to have a common breath, or to hold correspondency of breath, with that air, that compasseth us about; but to have a common mind, or to hold correspondency of mind also with that rational substance, which compasseth all things.",
-    "plain": "Share more than breath with the air around you. Share your mind with the thinking stuff that surrounds everything.",
+    "plain": "Share more than breath with the air around you. Share your mind with the reason that surrounds everything.",
     "theme": "Self-mastery"
   },
   {
@@ -4064,7 +4064,7 @@
     "source": "Meditations, Book 8, section 6",
     "translator": "Meric Casaubon",
     "text": "Every particular nature hath content, when in its own proper course it speeds. A reasonable nature doth then speed, when first in matter of fancies and imaginations, it gives no consent to that which is either false uncertain.",
-    "plain": "Each nature is content when it moves well on its own path. A thinking nature does that when it refuses false or unclear ideas.",
+    "plain": "Each thing is content when its own path goes well. A thinking person gets there by refusing false or unclear ideas.",
     "theme": "Self-mastery"
   },
   {
@@ -4100,7 +4100,7 @@
     "source": "Meditations, Book 9, section 1",
     "translator": "Meric Casaubon",
     "text": "He that is unjust, is also impious. For the nature of the universe, having made all reasonable creatures one for another, to the end that they should do one another good; more or less according to the several persons and occasions but in nowise hurt one another: it is manifest that he that doth transgress against this her will, is guilty of impiety towards the most ancient and venerable of all the deities.",
-    "plain": "Being unfair is also failing the world, which made thinking beings to help each other, never to hurt. Breaking that will fails the oldest god.",
+    "plain": "Being unfair wrongs the oldest god, since the world made us to help each other and not to hurt.",
     "theme": "Self-mastery"
   },
   {
@@ -4145,7 +4145,7 @@
     "source": "Meditations, Book 9, section 14",
     "translator": "Meric Casaubon",
     "text": "As virtue and wickedness consist not in passion, but in action; so neither doth the true good or evil of a reasonable charitable man consist in passion, but in operation and action.",
-    "plain": "Choice and wrong live in action, not feeling. Real good and bad for a kind thinking person live in action too.",
+    "plain": "Right and wrong are in the doing, not the feeling. Real good and bad for a kind person are in the doing too.",
     "theme": "Self-mastery"
   },
   {
@@ -4199,7 +4199,7 @@
     "source": "Meditations, Book 9, section 2",
     "translator": "Meric Casaubon",
     "text": "It were indeed more happy and comfortable, for a man to depart out of this world, having lived all his life long clear from all falsehood, dissimulation, voluptuousness, and pride.",
-    "plain": "It is a happier leaving if you go from this world having lived clear of lies, pretending, indulgence, and pride.",
+    "plain": "It is happier to leave this world having stayed clear of lies, pretending, indulgence, and pride.",
     "theme": "Self-mastery"
   },
   {
@@ -4217,7 +4217,7 @@
     "source": "Meditations, Book 9, section 21",
     "translator": "Meric Casaubon",
     "text": "As thou thyself, whoever thou art, were made for the perfection and consummation, being a member of it, of a common society; so must every action of thine tend to the perfection and consummation of a life that is truly sociable.",
-    "plain": "You were made, as a member, to complete a shared life. So every action of yours should complete a life lived with other people.",
+    "plain": "You were made to help complete a life shared with other people. Every action of yours should serve that shared life.",
     "theme": "Self-mastery"
   },
   {
@@ -4226,7 +4226,7 @@
     "source": "Meditations, Book 9, section 22",
     "translator": "Meric Casaubon",
     "text": "Children's anger, mere babels; wretched souls bearing up dead bodies, that they may not have their fall so soon: even as it is in that common dirge song.",
-    "plain": "Their anger is childish, like little puppets, minds holding up dead bodies so the fall comes later. It is like that old funeral song.",
+    "plain": "Their anger is childish, like puppets, or like minds holding up corpses to delay the fall. It echoes an old funeral song.",
     "theme": "Temperance"
   },
   {
@@ -4235,7 +4235,7 @@
     "source": "Meditations, Book 9, section 23",
     "translator": "Meric Casaubon",
     "text": "Go to the quality of the cause from which the effect doth proceed. Behold it by itself bare and naked, separated from all that is material. Then consider the utmost bounds of time that that cause, thus and thus qualified, can subsist and abide.",
-    "plain": "Look at the cause behind the effect, bare and separate from stuff. Then ask how long a cause like that can last.",
+    "plain": "Look at the cause behind the effect, bare and free of material things. Then ask how long a cause like that can last.",
     "theme": "Self-mastery"
   },
   {
@@ -4280,7 +4280,7 @@
     "source": "Meditations, Book 9, section 28",
     "translator": "Meric Casaubon",
     "text": "And these your professed politicians, the only true practical philosophers of the world, (as they think of themselves) so full of affected gravity, or such professed lovers of virtue and honesty, what wretches be they in very deed; how vile and contemptible in themselves?",
-    "plain": "These public men think they are the true practical guides, full of fake weight and love of honesty. Really they are wretched and cheap.",
+    "plain": "These public men think they are the true practical guides, full of fake seriousness and a show of honesty. Really they are wretched and cheap.",
     "theme": "Self-mastery"
   },
   {
@@ -4325,7 +4325,7 @@
     "source": "Meditations, Book 9, section 32",
     "translator": "Meric Casaubon",
     "text": "What are their minds and understandings; and what the things that they apply themselves unto: what do they love, and what do they hate for? Fancy to thyself the estate of their souls openly to be seen. When they think they hurt them shrewdly, whom they speak ill of; and when they think they do them a very good turn, whom they commend and extol: O how full are they then of conceit, and opinion!",
-    "plain": "Notice what people care about, love, and hate, and picture their minds wide open. Praise and insults both leave them stuffed with opinion.",
+    "plain": "See what they love and hate, and picture their minds wide open. They swell up when they think insults wound or praise helps.",
     "theme": "Control"
   },
   {
@@ -4352,7 +4352,7 @@
     "source": "Meditations, Book 9, section 35",
     "translator": "Meric Casaubon",
     "text": "Will this querulousness, this murmuring, this complaining and dissembling never be at an end?",
-    "plain": "You wonder if this whining, muttering, complaining, and pretending will ever end.",
+    "plain": "This whining, muttering, complaining, and pretending never seems to end.",
     "theme": "Self-mastery"
   },
   {
@@ -4406,7 +4406,7 @@
     "source": "Meditations, Book 9, section 43",
     "translator": "Meric Casaubon",
     "text": "When at any time thou art offended with any one's impudency, put presently this question to thyself: 'What?",
-    "plain": "When you feel offended by someone's shamelessness, ask yourself what, right away.",
+    "plain": "When someone's shamelessness offends you, stop and ask yourself what this is.",
     "theme": "Self-mastery"
   },
   {
@@ -4442,7 +4442,7 @@
     "source": "Meditations, Book 9, section 8",
     "translator": "Meric Casaubon",
     "text": "Man, God, the world, every one in their kind, bear some fruits. All things have their proper time to bear.",
-    "plain": "People, God, and the world each bear fruit in their own way. Everything has its own time to bear.",
+    "plain": "People, God, and the world each bear fruit in their own way. Everything has its own time to bear fruit.",
     "theme": "Self-mastery"
   },
   {
@@ -4469,7 +4469,7 @@
     "source": "On the Happy Life, chapter 10",
     "translator": "Aubrey Stewart",
     "text": "All these are dissipated by virtue, which plucks a man by the ear, and measures the value of pleasures before she permits them to be used; nor does she set much store by those which she allows to pass current, for she merely allows their use, and her cheerfulness is not due to her use of them, but to her moderation in using them.",
-    "plain": "Choice pulls you aside and weighs pleasures before you use them. Any cheer comes from using them with limits, not from using them a lot.",
+    "plain": "Good sense pulls you by the ear and weighs pleasure first. The cheer comes from holding back, not from using it a lot.",
     "theme": "Self-mastery"
   },
   {
@@ -4478,7 +4478,7 @@
     "source": "On the Happy Life, chapter 11",
     "translator": "Aubrey Stewart",
     "text": "When I say that I do nothing for the sake of pleasure, I allude to that wise man, whom alone you admit to be capable of pleasure: now I do not call a man wise who is overcome by anything, let alone by pleasure: yet, if engrossed by pleasure, how will he resist toil, danger, want, and all the ills which surround and threaten the life of man?",
-    "plain": "Doing nothing for pleasure means a wise person is not beaten by it. If pleasure owns him, he cannot face hard work, danger, or need.",
+    "plain": "A wise person does nothing for pleasure and is not beaten by it. If pleasure owns him, he cannot face hard work, danger, or lack.",
     "theme": "Temperance"
   },
   {
@@ -4496,7 +4496,7 @@
     "source": "On the Happy Life, chapter 13",
     "translator": "Aubrey Stewart",
     "text": "I myself believe, though my Stoic comrades would be unwilling to hear me say so, that the teaching of Epicurus was upright and holy, and even, if you examine it narrowly, stern: for this much talked of pleasure is reduced to a very narrow compass, and he bids pleasure submit to the same law which we bid virtue do⁠—I mean, to obey nature.",
-    "plain": "Even if comrades hate hearing it, I find Epicurus upright, holy, and strict. Pleasure must stay small and obey nature, the same rule as choice.",
+    "plain": "Friends may hate this, but I find Epicurus upright, holy, and strict. Pleasure stays small and must obey nature, as good conduct does.",
     "theme": "Temperance"
   },
   {
@@ -4514,7 +4514,7 @@
     "source": "On the Happy Life, chapter 15",
     "translator": "Aubrey Stewart",
     "text": "Even the joy which arises from virtue, although it be a good thing, yet is not a part of absolute good, any more than cheerfulness or peace of mind, which are indeed good things, but which merely follow the highest good, and do not contribute to its perfection, although they are generated by the noblest causes.",
-    "plain": "Joy from a good choice is nice, but it is not the whole best thing. A calm mind only follows that best thing.",
+    "plain": "Joy from doing right is good, but it is not the highest good. A calm mind only follows that good and does not complete it.",
     "theme": "Self-mastery"
   },
   {
@@ -4532,7 +4532,7 @@
     "source": "On the Happy Life, chapter 17",
     "translator": "Aubrey Stewart",
     "text": "Why do you pay regard to common rumour, and feel annoyed by calumnious gossip? why is your estate more elaborately kept than its natural use requires? why do you not dine according to your own maxims? why is your furniture smarter than it need be? why do you drink wine that is older than yourself? why are your grounds laid out?",
-    "plain": "You care about gossip and keep a fancier home than you need. Your meals and wine follow show, not your own rules.",
+    "plain": "You care about gossip and keep a fancier home than you need. Your meals and wine are for show, not your own rules.",
     "theme": "Temperance"
   },
   {
@@ -4577,7 +4577,7 @@
     "source": "On the Happy Life, chapter 22",
     "translator": "Aubrey Stewart",
     "text": "Who can doubt, however, that the wise man, if he is rich, has a wider field for the development of his powers than if he is poor, seeing that in the latter case the only virtue which he can display is that of neither being perverted nor crushed by his poverty, whereas if he has riches, he will have a wide field for the exhibition of temperance, generosity, laboriousness, methodical arrangement, and grandeur.",
-    "plain": "If you are wise and poor, you can mainly show that lack does not crush you. Money gives you more ways to grow.",
+    "plain": "If you are wise and poor, you mainly show that lack neither twists nor crushes you. Money gives room for generosity, hard work, and order.",
     "theme": "Adversity"
   },
   {
@@ -4595,7 +4595,7 @@
     "source": "On the Happy Life, chapter 24",
     "translator": "Aubrey Stewart",
     "text": "He who believes giving to be an easy matter, is mistaken: it offers very great difficulties, if we bestow our bounty rationally, and do not scatter it impulsively and at random.",
-    "plain": "If you think giving is easy, you are wrong. Thoughtful giving is hard, while tossing gifts around is not the same.",
+    "plain": "If you think giving is easy, you are wrong. Careful giving is hard, and random gifts skip that work.",
     "theme": "Self-mastery"
   },
   {
@@ -4640,7 +4640,7 @@
     "source": "On the Happy Life, chapter 4",
     "translator": "Aubrey Stewart",
     "text": "Our highest good may also be defined otherwise; that is to say, the same idea may be expressed in different language.",
-    "plain": "You can describe the best good in another way. The same idea can be said with different words.",
+    "plain": "You can put the highest good into other words. The idea stays the same when the wording changes.",
     "theme": "Self-mastery"
   },
   {
@@ -4667,7 +4667,7 @@
     "source": "On the Happy Life, chapter 7",
     "translator": "Aubrey Stewart",
     "text": "Even those very people who declare the highest good to be in the belly, see what a dishonourable position they have assigned to it: and therefore they say that pleasure cannot be parted from virtue, and that no one can either live honourably without living cheerfully, nor yet live cheerfully without living honourably.",
-    "plain": "People who place the best good in the belly admit that is a low place. They say joy and good choices stay together.",
+    "plain": "People who put the highest good in the belly know that place is low. They say joy and living well cannot be split apart.",
     "theme": "Temperance"
   },
   {
@@ -4694,7 +4694,7 @@
     "source": "On Anger, Book 1, chapter 11",
     "translator": "Aubrey Stewart",
     "text": "What, indeed, is it except anger, so ruinous to itself, that overthrows barbarians, who have so much more bodily strength than we, and are so much better able to endure fatigue?",
-    "plain": "Anger wrecks itself, yet it has toppled stronger peoples than us. They had more body strength and could last longer.",
+    "plain": "Anger wrecks itself, yet it has toppled peoples stronger than us. They had tougher bodies and could last longer.",
     "theme": "Temperance"
   },
   {
@@ -4703,7 +4703,7 @@
     "source": "On Anger, Book 1, chapter 12",
     "translator": "Aubrey Stewart",
     "text": "Why do you fear that filial piety will not prove a sufficient spur to him even without anger?",
-    "plain": "You do not need to fear that family love will fail to push him without anger.",
+    "plain": "Family love can push a person well enough, even without anger.",
     "theme": "Temperance"
   },
   {
@@ -4730,7 +4730,7 @@
     "source": "On Anger, Book 1, chapter 15",
     "translator": "Aubrey Stewart",
     "text": "The sinner ought, therefore, to be corrected both by warning and by force, both by gentle and harsh means, and may be made a better man both towards himself and others by chastisement, but not by anger: for who is angry with the patient whose wounds he is tending?",
-    "plain": "Correct someone by warning or force, gently or harshly. Anger does not heal, any more than rage at a patient you are treating.",
+    "plain": "Correct someone by warning or by force, gently or harshly. A healer is not angry at the patient, and anger does not make people better.",
     "theme": "Temperance"
   },
   {
@@ -4739,7 +4739,7 @@
     "source": "On Anger, Book 1, chapter 16",
     "translator": "Aubrey Stewart",
     "text": "We do not, therefore, need an angry chastiser to punish the erring and wicked: for since anger is a crime of the mind, it is not right that sins should be punished by sin.",
-    "plain": "You do not need an angry punisher for people who mess up. Anger is a mind wrong, so it should not answer wrong with wrong.",
+    "plain": "You need no angry punisher for people who mess up. Anger is a wrong in the mind, so it should not punish wrong.",
     "theme": "Temperance"
   },
   {
@@ -4748,7 +4748,7 @@
     "source": "On Anger, Book 1, chapter 17",
     "translator": "Aubrey Stewart",
     "text": "These arms, which Aristotle assigns to virtue, fight of their own accord, do not wait to be seized by the hand, and possess a man instead of being possessed by him.",
-    "plain": "These weapons that Aristotle gives to good choice fight on their own. They take hold of you instead of waiting for your hand.",
+    "plain": "The weapons Aristotle gives to right action fight on their own. They take hold of you instead of waiting for your hand.",
     "theme": "Self-mastery"
   },
   {
@@ -4793,7 +4793,7 @@
     "source": "On Anger, Book 1, chapter 4",
     "translator": "Aubrey Stewart",
     "text": "What anger is has been sufficiently explained. The difference between it and irascibility is evident: it is the same as that between a drunken man and a drunkard; between a frightened man and a coward.",
-    "plain": "Anger and a hot temper differ like a drunk moment and a drunk life. The same gap sits between one scare and being a coward.",
+    "plain": "Anger and a hot temper differ like being drunk once and living drunk. One scare is not the same as being a coward.",
     "theme": "Temperance"
   },
   {
@@ -4811,7 +4811,7 @@
     "source": "On Anger, Book 1, chapter 6",
     "translator": "Aubrey Stewart",
     "text": "We char crooked spearshafts to straighten them, and force them by driving in wedges, not in order to break them, but to take the bends out of them; and, in like manner, by applying pain to the body or mind we correct dispositions which have been rendered crooked by vice.",
-    "plain": "We heat a bent spear to straighten it, not to snap it. Pain on body or mind can unbend a crooked character the same way.",
+    "plain": "We heat bent spears to straighten them, not to snap them. Pain on the body or the mind can unbend a crooked character too.",
     "theme": "Adversity"
   },
   {
@@ -4838,7 +4838,7 @@
     "source": "On Anger, Book 2, chapter 10",
     "translator": "Aubrey Stewart",
     "text": "You will rather think that we should not be angry with people’s faults; for what shall we say of one who is angry with those who stumble in the dark, or with deaf people who cannot hear his orders, or with children, because they forget their duty and interest themselves in the games and silly jokes of their companions?",
-    "plain": "Do not get angry at people's slips. That matches rage at a dark stumble, a deaf person, or a child lost in play.",
+    "plain": "Do not get angry at people's slips. That is like raging at a stumble in the dark, a deaf person, or a child at play.",
     "theme": "Temperance"
   },
   {
@@ -4856,7 +4856,7 @@
     "source": "On Anger, Book 2, chapter 12",
     "translator": "Aubrey Stewart",
     "text": "He may be protected against the inclement time of the year by dwelling in a favoured spot, or he may have so trained his body to endurance that it feels neither heat nor cold.",
-    "plain": "You might dodge rough weather by living in a kind spot. Or you might train your body until heat and cold barely touch you.",
+    "plain": "You might dodge rough weather by living in a sheltered spot. Or you might train until heat and cold barely touch you.",
     "theme": "Self-mastery"
   },
   {
@@ -4892,7 +4892,7 @@
     "source": "On Anger, Book 2, chapter 16",
     "translator": "Aubrey Stewart",
     "text": "Those animals, urges our opponent, are held to be the most generous who have large capacity for anger.",
-    "plain": "The other side says the most generous animals are the ones with a big capacity for anger.",
+    "plain": "The other side says the noblest animals are the ones most capable of anger.",
     "theme": "Temperance"
   },
   {
@@ -4919,7 +4919,7 @@
     "source": "On Anger, Book 2, chapter 19",
     "translator": "Aubrey Stewart",
     "text": "A hot mind is naturally the most prone to anger: for as there are four elements, consisting of fire, air, earth, and water, so there are powers corresponding and equivalent to each of these, namely, hot, cold, dry, and moist.",
-    "plain": "A hot mind is the most likely to get angry. Like fire and air, or earth and water, people run hot, cold, dry, or moist.",
+    "plain": "A hot mind, like fire, is the most likely to get angry. Cold, dry, and moist match air, earth, and water.",
     "theme": "Temperance"
   },
   {
@@ -5027,7 +5027,7 @@
     "source": "On Anger, Book 2, chapter 3",
     "translator": "Aubrey Stewart",
     "text": "None of these things which casually influence the mind deserve to be called passions: the mind, if I may so express it, rather suffers passions to act upon itself than forms them.",
-    "plain": "Passing hits on your mind are not real passions. Your mind lets those feelings act on it more than it builds them.",
+    "plain": "A passing stir in the mind is not a real passion. The mind lets a passion act on it more than it forms one.",
     "theme": "Self-mastery"
   },
   {
@@ -5045,7 +5045,7 @@
     "source": "On Anger, Book 2, chapter 31",
     "translator": "Aubrey Stewart",
     "text": "There are, as I have stated, two cases which produce anger: first, when we appear to have received an injury, about which enough has been said, and, secondly, when we appear to have been treated unjustly: this must now be discussed.",
-    "plain": "Anger comes in two cases. One is feeling hurt, which we already covered, and the other is feeling treated unfairly, which we take up now.",
+    "plain": "Two things stir anger. We already covered feeling hurt, and now we take up feeling that you were treated unfairly.",
     "theme": "Temperance"
   },
   {
@@ -5054,7 +5054,7 @@
     "source": "On Anger, Book 2, chapter 32",
     "translator": "Aubrey Stewart",
     "text": "In the latter case it is a shame to be conquered; in the former it is a shame to conquer.",
-    "plain": "In the second case, losing is a shame. In the first case, winning is a shame.",
+    "plain": "In the later case, losing is a shame. In the earlier case, winning is a shame.",
     "theme": "Self-mastery"
   },
   {
@@ -5063,7 +5063,7 @@
     "source": "On Anger, Book 2, chapter 33",
     "translator": "Aubrey Stewart",
     "text": "The wrongs of the powerful must not only be borne, but borne with a cheerful countenance: they will repeat the wrong if they think they have inflicted it.",
-    "plain": "You have to take wrongs from powerful people, and with a bright face. They will repeat the hurt if they think it landed.",
+    "plain": "Bear wrongs from powerful people, and look cheerful about it. They will repeat the hurt if they think they got to you.",
     "theme": "Self-mastery"
   },
   {
@@ -5090,7 +5090,7 @@
     "source": "On Anger, Book 2, chapter 4",
     "translator": "Aubrey Stewart",
     "text": "Furthermore, that you may know in what manner passions begin and swell and gain spirit, learn that the first emotion is involuntary, and is, as it were, a preparation for a passion, and a threatening of one.",
-    "plain": "Feelings start, swell, and gain force in a set way. The first stir is not chosen, and it only warns a passion may follow.",
+    "plain": "Passions grow and gather force. The first feeling is not chosen, and it only warns that a stronger one may follow.",
     "theme": "Self-mastery"
   },
   {
@@ -5108,7 +5108,7 @@
     "source": "On Anger, Book 2, chapter 6",
     "translator": "Aubrey Stewart",
     "text": "To rejoice and be glad is the proper and natural function of virtue: it is as much beneath her dignity to be angry, as to mourn: now, sorrow is the companion of anger, and all anger ends in sorrow, either from remorse or from failure.",
-    "plain": "A good choice is glad by nature, and anger is as low as grief. Sadness pairs with anger and follows it after regret or failure.",
+    "plain": "Being glad comes naturally to a good person, and anger is as low as grief. Sadness follows anger, from regret or from failure.",
     "theme": "Temperance"
   },
   {
@@ -5144,7 +5144,7 @@
     "source": "On Anger, Book 3, chapter 1",
     "translator": "Aubrey Stewart",
     "text": "We will now, my Novatus, attempt to do that which you so especially long to do, that is, to drive out anger from our minds, or at all events to curb it and restrain its impulses.",
-    "plain": "Now we try what you most want. That is pushing anger out of your mind, or at least holding it back.",
+    "plain": "Now we do what you most want. We push anger out of our minds, or at least hold it back.",
     "theme": "Temperance"
   },
   {
@@ -5153,7 +5153,7 @@
     "source": "On Anger, Book 3, chapter 10",
     "translator": "Aubrey Stewart",
     "text": "That which is diseased can never bear to be handled without complaining: it is best, therefore, to apply remedies to oneself as soon as we feel that anything is wrong, to allow oneself as little licence as possible in speech, and to restrain one’s impetuosity: now it is easy to detect the first growth of our passions: the symptoms precede the disorder.",
-    "plain": "A sore spot complains when touched, so treat yourself at the first wrong feeling. The signs show before the blowup, so keep your words small.",
+    "plain": "A sore spot complains when touched, so treat yourself when something first feels wrong. Signs come early, so say little and hold your temper back.",
     "theme": "Self-mastery"
   },
   {
@@ -5198,7 +5198,7 @@
     "source": "On Anger, Book 3, chapter 15",
     "translator": "Aubrey Stewart",
     "text": "I have no doubt that Harpagus must have given some such advice to the king of the Persians and of himself, in anger at which the king placed Harpagus’s own children before him on the dinner-table for him to eat, and asked him from time to time, whether he liked the seasoning.",
-    "plain": "Harpagus likely gave the Persian king that same advice. Angry, the king served him his children and kept asking if the seasoning pleased him.",
+    "plain": "Harpagus likely gave the Persian king the same advice. Angry, the king made him eat his children and kept asking if the seasoning pleased him.",
     "theme": "Temperance"
   },
   {
@@ -5216,7 +5216,7 @@
     "source": "On Anger, Book 3, chapter 19",
     "translator": "Aubrey Stewart",
     "text": "It is to the purpose that we should know how haughtily his cruelty was exercised, although someone might suppose that we are wandering from the subject and embarking on a digression; but this digression is itself connected with unusual outbursts of anger.",
-    "plain": "It helps to see how proudly his cruelty was used. This side story still ties to rare bursts of anger.",
+    "plain": "It helps to see the proud way he practiced cruelty. This side story still connects to rare bursts of anger.",
     "theme": "Temperance"
   },
   {
@@ -5243,7 +5243,7 @@
     "source": "On Anger, Book 3, chapter 22",
     "translator": "Aubrey Stewart",
     "text": "These should be regarded as examples to be avoided, and what I am about to relate, on the contrary, to be followed, being examples of gentle and lenient conduct in men who both had reasons for anger and power to avenge themselves.",
-    "plain": "Treat those stories as ones to skip. Copy the gentle people next, who had a reason to be angry and strength to hit back.",
+    "plain": "Treat those stories as examples to avoid. Copy the gentle people next, who had cause to be angry and power to hit back.",
     "theme": "Temperance"
   },
   {
@@ -5252,7 +5252,7 @@
     "source": "On Anger, Book 3, chapter 24",
     "translator": "Aubrey Stewart",
     "text": "Have I more authority in my own house than the Emperor Augustus possessed throughout the world? yet he was satisfied with leaving the society of his maligner.",
-    "plain": "Even Augustus, who ruled the world, only left the person who spoke against him. Your house does not outrank that.",
+    "plain": "Augustus ruled the world and only walked away from his critic. You do not have more power at home than that.",
     "theme": "Self-mastery"
   },
   {
@@ -5261,7 +5261,7 @@
     "source": "On Anger, Book 3, chapter 25",
     "translator": "Aubrey Stewart",
     "text": "As it is a consolation to a humble man in trouble that the greatest are subject to reverses of fortune, and a man weeps more calmly over his dead son in the corner of his hovel if he sees a piteous funeral proceed out of the palace as well; so one bears injury or insult more calmly if one remembers that no power is so great as to be above the reach of harm.",
-    "plain": "A poor person weeps more calmly seeing a palace funeral too. You take a slight more calmly knowing no power is past harm.",
+    "plain": "A poor man weeps more calmly for his son if a palace mourns too. You bear insult more calmly, since no power is above harm.",
     "theme": "Adversity"
   },
   {
@@ -5270,7 +5270,7 @@
     "source": "On Anger, Book 3, chapter 26",
     "translator": "Aubrey Stewart",
     "text": "Besides, what you intend to do is to endure both injury and anger. Why do you bear with the delirium of a sick man, or the ravings of a madman, or the impudent blows of a child?",
-    "plain": "You mean to endure both the hurt and the anger. You already bear a sick rave, a mad fit, or a child's rude hit.",
+    "plain": "You plan to endure both the hurt and the anger. You already bear a sick person's raving, a mad fit, or a child's rude blow.",
     "theme": "Temperance"
   },
   {
@@ -5297,7 +5297,7 @@
     "source": "On Anger, Book 3, chapter 3",
     "translator": "Aubrey Stewart",
     "text": "It is therefore essential to prove its unseemliness and ferocity, and to place distinctly before our eyes how monstrous a thing it is that one man should rage against another, with what frantic violence he rushes to destroy alike himself and his foe, and overthrows those very things whose fall he himself must share.",
-    "plain": "See how ugly and fierce anger is. Raging at someone wrecks you, them, and the very things whose fall you share.",
+    "plain": "See how ugly and fierce anger is. Raging at someone wrecks you, them, and the things that fall on you too.",
     "theme": "Self-mastery"
   },
   {
@@ -5324,7 +5324,7 @@
     "source": "On Anger, Book 3, chapter 32",
     "translator": "Aubrey Stewart",
     "text": "Let different qualities in different people keep us from quarrelling with them: let us fear to be angry with some, feel ashamed of being angry with others, and disdain to be angry with others.",
-    "plain": "Let each person's different traits keep you from a fight. Fear anger with some, feel shame with others, and refuse anger with the rest.",
+    "plain": "Let each person's traits keep you from a fight. Fear being angry with some, feel shame with others, and refuse it with the rest.",
     "theme": "Temperance"
   },
   {
@@ -5333,7 +5333,7 @@
     "source": "On Anger, Book 3, chapter 34",
     "translator": "Aubrey Stewart",
     "text": "Come now, let us enumerate the other causes of anger: they are food, drink, and the showy apparatus connected with them, words, insults, disrespectful movements of the body, suspicions, obstinate cattle, lazy slaves, and spiteful construction put upon other men’s words, so that even the gift of language to mankind becomes reckoned among the wrongs of nature.",
-    "plain": "Other triggers for anger include food, drink, showy setups, words, insults, rude moves, suspicions, stubborn animals, and lazy workers. Twisting someone's words gets counted too.",
+    "plain": "Food, drink, fancy display, insults, rude moves, suspicion, stubborn animals, and lazy workers all stir anger. Twisting someone's words counts as a wrong too.",
     "theme": "Temperance"
   },
   {
@@ -5342,7 +5342,7 @@
     "source": "On Anger, Book 3, chapter 35",
     "translator": "Aubrey Stewart",
     "text": "You are indignant at being answered back by your slave, your freedman, your wife, or your client: and then you complain of the State having lost the freedom which you have destroyed in your own house: then again if he is silent when you question him, you call it sullen obstinacy.",
-    "plain": "You get mad when people at home answer back, then mourn a public freedom you ended there. Silence to your question gets named sulking.",
+    "plain": "You get mad when people at home answer back, then mourn public freedom you killed there. If they stay silent, you call it sulking.",
     "theme": "Self-mastery"
   },
   {
@@ -5369,7 +5369,7 @@
     "source": "On Anger, Book 3, chapter 38",
     "translator": "Aubrey Stewart",
     "text": "Someone has offered you an insult? Not a greater one, probably, than was offered to the Stoic philosopher Diogenes, in whose face an insolent young man spat just when he was lecturing upon anger.",
-    "plain": "An insult to you is probably no worse than the spit a rude young man put on Diogenes. He was talking about anger then.",
+    "plain": "Your insult is probably no worse than a rude young man spitting in Diogenes's face. He was talking about anger then.",
     "theme": "Temperance"
   },
   {
@@ -5378,7 +5378,7 @@
     "source": "On Anger, Book 3, chapter 39",
     "translator": "Aubrey Stewart",
     "text": "We have now succeeded, my Novatus, in properly regulating our own minds: they either do not feel anger or are above it: let us next see how we may soothe the wrath of others, for we do not only wish to be whole, but to heal.",
-    "plain": "Your mind is set, either free of anger or above it. Next, calm others too, since you want healing and not only wellness.",
+    "plain": "Our minds are set, free of anger or above it. Next we calm others too, since we want to heal, not only be well.",
     "theme": "Temperance"
   },
   {
@@ -5414,7 +5414,7 @@
     "source": "On Anger, Book 3, chapter 43",
     "translator": "Aubrey Stewart",
     "text": "Instead of acting thus, why do you not rather draw together what there is of your short life, and keep it peaceful for others and for yourself? why do you not rather make yourself beloved by everyone while you live, and regretted by everyone when you die?",
-    "plain": "Why not pull your short life together and keep it calm for you and others? Be loved while you live, and missed when you go.",
+    "plain": "Why not gather your remaining years and keep them calm for you and others? Be loved while you live, and missed when you go.",
     "theme": "Courage"
   },
   {
@@ -5441,7 +5441,7 @@
     "source": "On Anger, Book 3, chapter 7",
     "translator": "Aubrey Stewart",
     "text": "Be assured that the same rule applies both to public and private life: simple and manageable undertakings proceed according to the pleasure of the person in charge of them, but enormous ones, beyond his capacity to manage, are not easily undertaken.",
-    "plain": "One rule fits public life and private life. Easy jobs follow the leader, but huge ones past their skill do not start easily.",
+    "plain": "One rule fits public life and private life. Easy jobs go as the leader wishes, but huge ones they cannot handle do not start easily.",
     "theme": "Temperance"
   },
   {
@@ -5459,7 +5459,7 @@
     "source": "On Anger, Book 3, chapter 9",
     "translator": "Aubrey Stewart",
     "text": "Irascible men ought not to meddle with the more serious class of occupations, or, at any rate, ought to stop short of weariness in the pursuit of them; their mind ought not to be engaged upon hard subjects, but handed over to pleasing arts: let it be softened by reading poetry, and interested by legendary history: let it be treated with luxury and refinement.",
-    "plain": "Hot-tempered people should skip heavy work, or stop before they wear out. Hand the mind lighter arts, poems, old stories, and some comfort.",
+    "plain": "Hot-tempered people should skip heavy work, or stop before they wear out. Soften the mind with poems, old stories, and some comfort.",
     "theme": "Self-mastery"
   },
   {
@@ -5477,7 +5477,7 @@
     "source": "On Leisure, chapter 2",
     "translator": "Aubrey Stewart",
     "text": "Now I will prove to you that I am not deserting the tenets of the Stoics: for they themselves have not deserted them: and yet I should be able to plead a very good excuse even if I did follow, not their precepts, but their examples.",
-    "plain": "I am not leaving their rules, since they never left them. Following their actions, not their words, would still be a fair excuse.",
+    "plain": "I am not dropping their teaching, because they never dropped it. Even copying their actions instead of their words would be a fair excuse.",
     "theme": "Self-mastery"
   },
   {
@@ -5486,7 +5486,7 @@
     "source": "On Leisure, chapter 3",
     "translator": "Aubrey Stewart",
     "text": "I will show that this is approved of by the Stoics also, not that I have laid any commandment upon myself to do nothing contrary to the teaching of Zeno and Chrysippus, but because the matter itself allows me to follow the precepts of those men; for if one always follows the precepts of one man, one ceases to be a debater and becomes a partisan.",
-    "plain": "This fits their teaching too, because the matter allows it, not from a vow to Zeno or Chrysippus. Copying one man makes you a fan.",
+    "plain": "This fits their teaching because the subject allows it, not because I vowed to follow Zeno or Chrysippus. Copying one man makes you a fan.",
     "theme": "Self-mastery"
   },
   {
@@ -5513,7 +5513,7 @@
     "source": "On Leisure, chapter 6",
     "translator": "Aubrey Stewart",
     "text": "It is by no means desirable that one should merely strive to accumulate property without any love of virtue, or do nothing but hard work without any cultivation of the intellect, for these things ought to be combined and blended together; and, similarly, virtue placed in leisure without action is but an incomplete and feeble good thing, because she never displays what she has learned.",
-    "plain": "Piling up stuff without loving good choice, or only grinding without learning, misses the point. Choice sitting idle never shows what it learned.",
+    "plain": "Hoarding money without caring what is right, or only grinding without learning, misses the point. Sitting idle never shows what you learned.",
     "theme": "Self-mastery"
   },
   {
@@ -5531,7 +5531,7 @@
     "source": "On Leisure, chapter 8",
     "translator": "Aubrey Stewart",
     "text": "Add to this that, according to the doctrine of Chrysippus, a man may live at leisure: I do not say that he ought to endure leisure, but that he ought to choose it.",
-    "plain": "Chrysippus says you may live at rest, and you may choose that rest rather than merely put up with it.",
+    "plain": "Chrysippus says you may live at rest. You should choose that rest, not merely put up with it.",
     "theme": "Courage"
   },
   {
@@ -5558,7 +5558,7 @@
     "source": "On Peace of Mind, chapter 15",
     "translator": "Aubrey Stewart",
     "text": "Yet we gain nothing by getting rid of all personal causes of sadness, for sometimes we are possessed by hatred of the human race.",
-    "plain": "Clearing every personal cause of sadness still leaves you nothing, because sometimes hatred of people as a whole takes over.",
+    "plain": "Clearing every personal cause of sadness still gets you nowhere, because sometimes you hate people as a whole.",
     "theme": "Self-mastery"
   },
   {
@@ -5594,7 +5594,7 @@
     "source": "On Peace of Mind, chapter 4",
     "translator": "Aubrey Stewart",
     "text": "To me, my dearest Serenus, Athenodorus seems to have yielded too completely to the times, to have fled too soon: I will not deny that sometimes one must retire, but one ought to retire slowly, at a foot’s pace, without losing one’s ensigns or one’s honour as a soldier: those who make terms with arms in their hands are more respected by their enemies and more safe in their hands.",
-    "plain": "Serenus, Athenodorus yielded to the times and fled too soon. Step back slowly, flag up, since armed bargainers stay safer and more respected.",
+    "plain": "Serenus, Athenodorus gave way too soon. Retreat slowly without dropping your flag, since people who bargain while armed stay safer and more respected.",
     "theme": "Self-mastery"
   },
   {
@@ -5666,7 +5666,7 @@
     "source": "On Providence, chapter 3",
     "translator": "Aubrey Stewart",
     "text": "Of all these propositions that which I have stated first appears the most difficult to prove, I mean, that the things which we dread and shudder at are to the advantage of those to whom they happen.",
-    "plain": "Of these claims, the first is hardest to show. The things you dread and shake at actually help the people they happen to.",
+    "plain": "Of these claims, the first is hardest to prove. What you dread and shrink from actually helps the people it happens to.",
     "theme": "Self-mastery"
   },
   {
@@ -5675,7 +5675,7 @@
     "source": "On Providence, chapter 4",
     "translator": "Aubrey Stewart",
     "text": "You are a great man; but how am I to know it, if fortune gives you no opportunity of showing your virtue?",
-    "plain": "You are a great person. I cannot know it if luck never lets you show your choice.",
+    "plain": "You are a great person. I cannot know it if luck never gives you a chance to show it.",
     "theme": "Adversity"
   },
   {
@@ -5684,7 +5684,7 @@
     "source": "On Providence, chapter 5",
     "translator": "Aubrey Stewart",
     "text": "Add to this that it is to the advantage of everyone that the best men should, so to speak, be on active service and perform labours: God has the same purpose as the wise man, that is, to prove that the things which the herd covets and dreads are neither good nor bad in themselves.",
-    "plain": "The best staying busy and working helps everyone. God and the wise share an aim: crowd wants and fears count as neither good nor bad.",
+    "plain": "When the best people work, everyone gains. God and the wise show that what crowds want and fear is neither good nor bad.",
     "theme": "Self-mastery"
   },
   {
@@ -5702,7 +5702,7 @@
     "source": "On the Firmness of the Wise Person, chapter 1",
     "translator": "Aubrey Stewart",
     "text": "I might truly say, Serenus, that there is as wide a difference between the Stoics and the other sects of philosophers as there is between men and women, since each class contributes an equal share to human society, but the one is born to command, the other to obey.",
-    "plain": "Serenus, that group and other schools differ like men and women. Each shares equally, but one is born to lead and one to follow.",
+    "plain": "Serenus, our school and other schools differ like men and women. Each contributes equally, but one is born to lead and one to follow.",
     "theme": "Self-mastery"
   },
   {
@@ -5720,7 +5720,7 @@
     "source": "On the Firmness of the Wise Person, chapter 11",
     "translator": "Aubrey Stewart",
     "text": "Besides this, as most insults proceed from those who are haughty and arrogant and bear their prosperity ill, he has something wherewith to repel this haughty passion, namely, that noblest of all the virtues, magnanimity, which passes over everything of that kind as like unreal apparitions in dreams and visions of the night, which have nothing in them substantial or true.",
-    "plain": "Most insults come from proud people who wear success badly. A big heart lets him pass them like empty dreams, nothing real in them.",
+    "plain": "Most insults come from proud people who handle success badly. A big heart lets him pass them like empty dreams with nothing real in them.",
     "theme": "Self-mastery"
   },
   {
@@ -5738,7 +5738,7 @@
     "source": "On the Firmness of the Wise Person, chapter 13",
     "translator": "Aubrey Stewart",
     "text": "What, then, is there to prevent your believing this strength of mind to belong to the wise man, when you can see the same thing existing in others, though not from the same cause?⁠—for what physician is angry with a crazy patient? who takes to heart the curses of a fever-stricken one who is denied cold water?",
-    "plain": "You can credit the wise with this strong mind, seen in others for other causes. No doctor rages at curses from a patient denied water.",
+    "plain": "You can believe the wise have this strong mind, as doctors do. No doctor rages at a mad patient or at curses over denied water.",
     "theme": "Temperance"
   },
   {
@@ -5765,7 +5765,7 @@
     "source": "On the Firmness of the Wise Person, chapter 16",
     "translator": "Aubrey Stewart",
     "text": "Now if even Epicurus, who made more concessions to the body than anyone, takes a spirited tone with regard to injuries, what can appear beyond belief or beyond the scope of human nature amongst us Stoics?",
-    "plain": "Even Epicurus, who gave the body more than anyone, speaks boldly about hurts. So nothing in our view of human nature sits past belief.",
+    "plain": "Even Epicurus, softer on the body than anyone, speaks boldly about hurts. Nothing in our view of human nature is hard to believe.",
     "theme": "Self-mastery"
   },
   {
@@ -5774,7 +5774,7 @@
     "source": "On the Firmness of the Wise Person, chapter 17",
     "translator": "Aubrey Stewart",
     "text": "Chrysippus says that a man was enraged because someone called him a sea-sheep; we have seen Fidus Cornelius, the son-in-law of Ovidius Naso, weeping in the Senate-house because Corbulo called him a plucked ostrich; his command of his countenance did not fail him at other abusive charges, which damaged his character and way of life; at this ridiculous saying he burst into tears.",
-    "plain": "Chrysippus tells of rage at the name sea sheep. Fidus Cornelius wept at plucked ostrich, though harsher insults never shook him.",
+    "plain": "Chrysippus tells of rage at being called a sea sheep. Fidus Cornelius wept when called a plucked ostrich, though harsher insults never shook him.",
     "theme": "Self-mastery"
   },
   {
@@ -5828,7 +5828,7 @@
     "source": "On the Firmness of the Wise Person, chapter 7",
     "translator": "Aubrey Stewart",
     "text": "A man may become mischievous, and yet do no actual mischief: if a man lies with his own wife as if she were a stranger, he will commit adultery, but his wife will not; if a man gives me poison and the poison lose its strength when mixed with food, that man, by administering the poison, has made himself a criminal, even though he has done no hurt.",
-    "plain": "You can intend harm yet do none. A partner treated as a stranger stays innocent, and spoiled poison still marks the giver guilty.",
+    "plain": "You can mean harm yet do none. Treating his wife as a stranger makes him guilty, not her, and poison that fails still marks him.",
     "theme": "Self-mastery"
   },
   {
@@ -5846,7 +5846,7 @@
     "source": "On the Firmness of the Wise Person, chapter 9",
     "translator": "Aubrey Stewart",
     "text": "He therefore endures everything in the same spirit with which he endures the cold of winter and the severities of climate, fevers, diseases, and other chance accidents, nor does he entertain so high an opinion of any man as to suppose that he acts of set purpose, which belongs to the wise man alone.",
-    "plain": "He bears all things as he bears winter, storms, fever, and accidents. He does not think anyone acts on purpose, since only the wise do.",
+    "plain": "He bears everything as he bears winter, storms, fever, and accidents. He does not think those men act on purpose, since only the wise do.",
     "theme": "Control"
   },
   {
@@ -5855,7 +5855,7 @@
     "source": "On the Shortness of Life, chapter 10",
     "translator": "Aubrey Stewart",
     "text": "If I chose to divide this proposition into separate steps, supported by evidence, many things occur to me by which I could prove that the lives of busy men are the shortest of all.",
-    "plain": "If I split this claim into proved steps, many reasons come to mind that busy lives run shortest.",
+    "plain": "If I split this claim into steps with proof, many reasons show that busy lives are the shortest.",
     "theme": "Self-mastery"
   },
   {
@@ -5909,7 +5909,7 @@
     "source": "On the Shortness of Life, chapter 2",
     "translator": "Aubrey Stewart",
     "text": "Why do we complain of Nature? she has dealt kindly with us. Life is long enough, if you know how to use it.",
-    "plain": "Why complain about nature when she has been kind? A life lasts plenty long once you learn to spend it well.",
+    "plain": "Why complain about nature when she has been kind? Life gives you enough time if you learn how to use it.",
     "theme": "Self-mastery"
   },
   {
@@ -5918,7 +5918,7 @@
     "source": "On the Shortness of Life, chapter 20",
     "translator": "Aubrey Stewart",
     "text": "When, therefore, you see a man often wear the purple robes of office, and hear his name often repeated in the forum, do not envy him: he gains these things by losing so much of his life.",
-    "plain": "Someone often in purple robes, name ringing in the square, is no one to envy. He buys that by giving up much life.",
+    "plain": "Do not envy the man often in purple, his name ringing in the square. He gains that by giving up much of his life.",
     "theme": "Self-mastery"
   },
   {
@@ -5927,7 +5927,7 @@
     "source": "On the Shortness of Life, chapter 4",
     "translator": "Aubrey Stewart",
     "text": "You will find that the most powerful and highly-placed men let fall phrases in which they long for leisure, praise it, and prefer it to all the blessings which they enjoy.",
-    "plain": "You will notice the top people slip into missing free time. They praise that rest and choose it over every good thing they hold.",
+    "plain": "You will catch top people longing out loud for free time. They praise that rest and choose it over every good thing they hold.",
     "theme": "Self-mastery"
   },
   {
@@ -5981,7 +5981,7 @@
     "source": "Diogenes Laertius, Lives of the Philosophers, Book 7, Life of Zeno, section 19",
     "translator": "C. D. Yonge",
     "text": "Apollonius of Tyre tells us, that when Crates dragged him by the cloak away from Stilpo, he said, “O Crates, the proper way to take hold of philosophers is by the ears; so now do you convince me and drag me by them; but if you use force towards me, my body may be with you, but my mind with Stilpo.”",
-    "plain": "Crates yanked his cloak to haul him off Stilpo. Take thinkers by the ears, he said, or his body goes and his mind stays there.",
+    "plain": "Crates yanked his cloak to haul him from Stilpo. Take thinkers by the ears, he said, or force takes the body while the mind stays.",
     "theme": "Self-mastery"
   },
   {
@@ -5990,7 +5990,7 @@
     "source": "Diogenes Laertius, Lives of the Philosophers, Book 7, Life of Zeno, section 19",
     "translator": "C. D. Yonge",
     "text": "One of his sayings used to be, that vanity was the most unbecoming of all things, and especially so in the young.",
-    "plain": "One saying of his was that vanity looks worst of all things, and worst of all in young people.",
+    "plain": "One of his sayings was that vanity is the least fitting thing, especially in the young.",
     "theme": "Self-mastery"
   },
   {
@@ -6028,7 +6028,7 @@
   "source": "Apology 29d–30a",
   "translator": "Benjamin Jowett",
   "text": "You, my friend,—a citizen of the great and mighty and wise city of Athens,—are you not ashamed of heaping up the greatest amount of money and honour and reputation, and caring so little about wisdom and truth and the greatest improvement of the soul, which you never regard or heed at all?",
-  "plain": "Friend in mighty, wise Athens, shame sits on heaping money, honour, and fame. You barely heed wisdom, truth, or growth of your mind.",
+  "plain": "Friend in mighty Athens, shame on you for piling up money, honour, and fame. You barely heed wisdom, truth, or growth of your mind.",
   "theme": "Self-mastery"
 },
 {
@@ -6048,7 +6048,7 @@
   "source": "Apology 36c",
   "translator": "Benjamin Jowett",
   "text": "he must look to himself, and seek virtue and wisdom before he looks to his private interests, and look to the state before he looks to the interests of the state; and that this should be the order which he observes in all his actions.",
-  "plain": "He has to face himself and chase good choice and wisdom before private gain. Put the state before its interests, in that order, every act.",
+  "plain": "He must look at himself and seek what is good and wise before private gain. Care for the city before the city's interests.",
   "theme": "Discipline"
 },
 {
@@ -6058,7 +6058,7 @@
   "source": "Apology 38a",
   "translator": "Benjamin Jowett",
   "text": "and if I say again that daily to discourse about virtue, and of those other things about which you hear me examining myself and others, is the greatest good of man, and that the unexamined life is not worth living, you are still less likely to believe me.",
-  "plain": "Repeat that daily talks on good choice, testing myself and others, are our best good, and you trust me less. An untested life is pointless.",
+  "plain": "Checking myself and others each day on how we live is a person's greatest good. A life you never look at is not worth living.",
   "theme": "Self-mastery"
 },
 {
@@ -6068,7 +6068,7 @@
   "source": "Charmides 164d–165a",
   "translator": "Benjamin Jowett",
   "text": "I will withdraw them, rather than admit that a man can be temperate or wise who does not know himself; and I am not ashamed to confess that I was in error. For self-knowledge would certainly be maintained by me to be the very essence of knowledge, and in this I agree with him who dedicated the inscription, 'Know thyself!' at Delphi.",
-  "plain": "I drop that rather than call him wise without knowing himself. I was wrong, not ashamed: knowing yourself is the core of knowledge, Delphi agrees.",
+  "plain": "I take it back rather than call him wise if he does not know himself. Knowing yourself is the core of knowledge, and Delphi agrees.",
   "theme": "Self-mastery"
 },
 {
@@ -6128,7 +6128,7 @@
   "source": "Laws 659d",
   "translator": "Benjamin Jowett",
   "text": "The inference at which we arrive for the third or fourth time is, that education is the constraining and directing of youth towards that right reason, which the law affirms, and which the experience of the eldest and best has agreed to be truly right.",
-  "plain": "For a third or fourth time we land here. Education steers youth toward right thinking the law and best elders call truly right.",
+  "plain": "Again we land on the same point. Education steers the young toward the right thinking that law and elders call true.",
   "theme": "Discipline"
 },
 {
@@ -6148,7 +6148,7 @@
   "source": "Phaedrus 246e",
   "translator": "Benjamin Jowett",
   "text": "The divine is beauty, wisdom, goodness, and the like; and by these the wing of the soul is nourished, and grows apace; but when fed upon evil and foulness and the opposite of good, wastes and falls away.",
-  "plain": "Beauty, wisdom, and goodness make the divine. Those feed the mind's wing so it grows, but evil and ugliness make it shrink and drop.",
+  "plain": "Beauty, wisdom, and goodness are the divine. Those feed the mind's wing so it grows, but evil and ugliness make it shrink and drop.",
   "theme": "Temperance"
 },
 {
@@ -6178,7 +6178,7 @@
   "source": "Phaedrus 254e",
   "translator": "Benjamin Jowett",
   "text": "And when this has happened several times and the villain has ceased from his wanton way, he is tamed and humbled, and follows the will of the charioteer, and when he sees the beautiful one he is ready to die of fear.",
-  "plain": "Several times later the wild horse quits being reckless, humbled and tame under the driver. Seeing the beauty, he nearly dies from fear.",
+  "plain": "After this happens several times, the wild horse grows humble and tame under the driver. Seeing the beauty, he nearly dies of fear.",
   "theme": "Discipline"
 },
 {
@@ -6198,7 +6198,7 @@
   "source": "Republic 377a–b",
   "translator": "Benjamin Jowett",
   "text": "You know also that the beginning is the most important part of any work, especially in the case of a young and tender thing; for that is the time at which the character is being formed and the desired impression is more readily taken.",
-  "plain": "You know openings matter most in any job, above all with the young and tender. Character forms then, and a wanted mark takes more easily.",
+  "plain": "You know the start matters most in any work, especially with the young. Character forms then, and the mark you want takes more easily.",
   "theme": "Discipline"
 },
 {
@@ -6228,7 +6228,7 @@
   "source": "Republic 591c",
   "translator": "Benjamin Jowett",
   "text": "In the next place, he will regulate his bodily habit and training, and so far will he be from yielding to brutal and irrational pleasures, that he will regard even health as quite a secondary matter; his first object will be not that he may be fair or strong or well, unless he is likely thereby to gain temperance, but he will always desire so to attemper the body as to preserve the harmony of the soul?",
-  "plain": "Next he trains the body, far from brutal pleasures, health second. Looks or strength matter only when they guard choice and the mind's harmony.",
+  "plain": "Next he trains the body, shuns brutal pleasures, and treats health as second. Looks or strength matter only if they keep his mind in harmony.",
   "theme": "Temperance"
 },
 {
