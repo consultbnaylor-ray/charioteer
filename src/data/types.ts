@@ -165,7 +165,7 @@ export type DirectoryCard = {
   avatarPhotoId?: string | null;
 };
 /**
- * Name and photo for an accepted or pending connection.
+ * Name and photo for an accepted connection. A pending request has no card.
  * A hidden member is absent from the directory. This card does not include town, bio, or interests.
  */
 export type ConnectionCard = {
@@ -226,7 +226,7 @@ export type AppSnapshot = {
   interests: Interest[];
   resources: Resource[];
   directory: DirectoryCard[];
-  /** Accepted and pending connections. Name and photo only. Never merged into the Community list. */
+  /** Accepted connections. Name and photo only. Never merged into the Community list. */
   connectionCards: ConnectionCard[];
   connections: Connection[];
   messages: DirectMessage[];

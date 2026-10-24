@@ -195,7 +195,8 @@ describe('hidden members stay out of the directory', () => {
     expect(sql).toContain('security definer');
     expect(sql).toContain('set search_path = public');
     expect(sql).toContain('stable');
-    expect(sql).toContain("c.status in ('accepted', 'pending')");
+    expect(sql).toContain("c.status = 'accepted'");
+    expect(sql).not.toContain('pending');
     expect(sql).toContain('auth.uid() is not null');
     expect(sql).toContain('not public.is_blocked(auth.uid(), other.user_id)');
     expect(sql).toContain('revoke all on function public.my_connection_cards() from public, anon, authenticated');
@@ -228,6 +229,12 @@ describe('hidden members stay out of the directory', () => {
     expect(demoRequest).not.toContain('communityVisible');
     expect(demoRequest).toContain('ageConfirmed18');
     expect(demo).toContain('other.profile.communityVisible && other.profile.ageConfirmed18');
+    const cardsFor = demo.slice(demo.indexOf('function connectionCardsFor'), demo.indexOf('export class DemoRepository'));
+    expect(cardsFor).toContain("connection.status !== 'accepted'");
+    expect(cardsFor).not.toContain('pending');
+    const photoUrls = demo.slice(demo.indexOf('async profilePhotoUrls'), demo.indexOf('async deleteProgressPhoto'));
+    expect(photoUrls).toContain("connection.status !== 'accepted'");
+    expect(photoUrls).not.toContain('pending');
   });
 
   it('hides a non-connected person from search and Community, and keeps name and photo for a connection', async () => {
@@ -244,6 +251,9 @@ describe('hidden members stay out of the directory', () => {
       });
     });
     await repo.signIn('jordan.ellis@example.com', DEMO_PASSWORD);
+    await repo.updateProfile({ communityVisible: false });
+    await repo.signOut();
+    await repo.signIn('sam.okonkwo@example.com', DEMO_PASSWORD);
     await repo.updateProfile({ communityVisible: false });
     await repo.signOut();
 
@@ -268,6 +278,10 @@ describe('hidden members stay out of the directory', () => {
     expect(alex.connectionCards.find((card) => card.id === PEOPLE.jordan)?.displayName).toBe('Jordan Ellis');
     expect(alex.connectionCards.find((card) => card.id === PEOPLE.jordan)?.avatarPhotoId).toBe('e7e7e7e7-e7e7-4e7e-8e7e-e7e7e7e7e7e4');
     expect(memberDisplayName(PEOPLE.jordan, alex.directory, alex.connectionCards)).toBe('Jordan Ellis');
+    expect(alex.directory.some((card) => card.id === PEOPLE.sam)).toBe(false);
+    expect(alex.connectionCards.some((card) => card.id === PEOPLE.sam)).toBe(false);
+    expect(memberDisplayName(PEOPLE.sam, alex.directory, alex.connectionCards)).toBe('Member');
+    expect(alexLists.incoming.some((row) => row.requesterId === PEOPLE.sam)).toBe(true);
     const signed = await repo.profilePhotoUrls(['e7e7e7e7-e7e7-4e7e-8e7e-e7e7e7e7e7e4']);
     expect(signed.map((row) => row.id)).toEqual(['e7e7e7e7-e7e7-4e7e-8e7e-e7e7e7e7e7e4']);
 
@@ -279,5 +293,18 @@ describe('hidden members stay out of the directory', () => {
     expect(await repo.openPrivateChat(PEOPLE.jordan)).toEqual({ status: 'open', connectionId: expect.any(String) });
     await repo.requestConnection(PEOPLE.priya, '11111111-1111-4111-8111-111111111111');
     expect(repo.getSnapshot().connections.some((row) => row.addresseeId === PEOPLE.priya && row.requesterId === PEOPLE.alex && row.status === 'pending')).toBe(true);
+    expect(repo.getSnapshot().connectionCards.some((card) => card.id === PEOPLE.priya)).toBe(false);
+    await repo.signOut();
+
+    await repo.signIn('priya.shah@example.com', DEMO_PASSWORD);
+    const waiting = repo.getSnapshot();
+    expect(waiting.directory.some((card) => card.id === PEOPLE.alex)).toBe(false);
+    expect(waiting.connectionCards.some((card) => card.id === PEOPLE.alex)).toBe(false);
+    expect(memberDisplayName(PEOPLE.alex, waiting.directory, waiting.connectionCards)).toBe('Member');
+    expect(communitySearch(waiting.directory, 'Alex')).toEqual([]);
+    const waitingLists = peopleLists(waiting.directory, waiting.connections, waiting.profile!.id);
+    expect(waitingLists.community.some((card) => card.id === PEOPLE.alex)).toBe(false);
+    expect(waitingLists.incoming.some((row) => row.requesterId === PEOPLE.alex)).toBe(true);
+    expect(await repo.profilePhotoUrls(['e7e7e7e7-e7e7-4e7e-8e7e-e7e7e7e7e7e1'])).toEqual([]);
   });
 });

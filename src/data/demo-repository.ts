@@ -284,7 +284,7 @@ function blocked(db: DemoDb, a: string, b: string): boolean {
   );
 }
 
-/** Name and avatar for a pending or accepted connection, including someone hidden from Community. */
+/** Name and avatar for an accepted connection, including someone hidden from Community. */
 function connectionCardsFor(
   db: DemoDb,
   meId: string,
@@ -293,7 +293,7 @@ function connectionCardsFor(
   const cards: ConnectionCard[] = [];
   const seen = new Set<string>();
   for (const connection of connections) {
-    if (connection.status !== 'accepted' && connection.status !== 'pending') continue;
+    if (connection.status !== 'accepted') continue;
     const otherId = connection.requesterId === meId ? connection.addresseeId : connection.requesterId;
     if (!otherId || otherId === meId || seen.has(otherId)) continue;
     const other = db.accounts[otherId];
@@ -1692,7 +1692,7 @@ export class DemoRepository implements Repository {
     const wanted = new Set(ids);
     const buddyIds = new Set<string>();
     for (const connection of this.snapshot.connections) {
-      if (connection.status !== 'accepted' && connection.status !== 'pending') continue;
+      if (connection.status !== 'accepted') continue;
       const other = connection.requesterId === session.userId ? connection.addresseeId : connection.requesterId;
       if (other && other !== session.userId && !blocked(this.db, session.userId, other)) buddyIds.add(other);
     }

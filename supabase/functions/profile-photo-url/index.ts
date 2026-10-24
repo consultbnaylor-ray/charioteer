@@ -60,8 +60,8 @@ Deno.serve(async (req) => {
     }
   }
 
-  // A hidden buddy is absent from shared_profile_photos. The connection card
-  // returns that one avatar path, and only that path is signed.
+  // An accepted hidden buddy is absent from shared_profile_photos. The connection
+  // card returns that one avatar path, and only that path is signed.
   const cards = await userClient.rpc('my_connection_cards');
   if (!cards.error && Array.isArray(cards.data)) {
     for (const row of cards.data) {

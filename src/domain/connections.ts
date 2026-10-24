@@ -108,6 +108,7 @@ export function avatarPhotoIdFromPath(path: string | null | undefined): string |
 
 /**
  * Directory name first, then the connection card, then “Member”.
+ * A pending request has no card, so a hidden requester stays “Member” until accepted.
  * Community search does not use this. A hidden person stays off that list.
  */
 export function memberDisplayName(

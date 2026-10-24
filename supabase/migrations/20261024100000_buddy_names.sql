@@ -1,4 +1,4 @@
--- Name and profile-picture path for an accepted or pending connection.
+-- Name and profile-picture path for an accepted connection.
 -- The directory read policy is unchanged: a hidden person stays out of Community and search.
 -- This function is the only extra read, and it returns those two fields only.
 
@@ -33,7 +33,7 @@ as $$
     and photo.user_id = other.user_id
     and photo.role = 'avatar'
   where auth.uid() is not null
-    and c.status in ('accepted', 'pending')
+    and c.status = 'accepted'
     and auth.uid() in (c.requester_id, c.addressee_id)
     and other.user_id <> auth.uid()
     and not public.is_blocked(auth.uid(), other.user_id);

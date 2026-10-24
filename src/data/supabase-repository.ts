@@ -711,7 +711,7 @@ export class SupabaseRepository implements Repository {
   }
 
   /**
-   * Name and avatar path for accepted or pending connections.
+   * Name and avatar path for accepted connections. A pending request has no card.
    * A missing function, or any error, leaves the current “Member” fallback in place.
    * The payload is not logged.
    */
