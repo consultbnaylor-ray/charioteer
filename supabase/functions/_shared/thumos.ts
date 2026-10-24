@@ -8,6 +8,7 @@ import { hrvExplainerForCoach } from './healthInsights.ts';
 import { publishedBandGuide } from './healthBands.ts';
 import { NUTRITION_PROMPT_LINE } from './nutrition.ts';
 import { detectSafety, type SafetyHit } from './safety.ts';
+import { isFixedPausedCoachingText } from './xaiPersonal.ts';
 import {
   motivationGuidance,
   planMotivation,
@@ -441,6 +442,11 @@ export const THUMOS_CHAT = {
   /** Second model when the primary times out or returns 429 or 5xx. Fast, and reasoning stays off. */
   fallbackModel: 'grok-4-fast-non-reasoning',
   historyLimit: 8,
+  /**
+   * Rows read before the model window is chosen. Paused replies are dropped,
+   * then the last historyLimit real turns are kept.
+   */
+  historyFetchLimit: 32,
   checkInLimit: 4,
   noteLimit: 160,
   maxTokens: 450,
@@ -577,6 +583,7 @@ export function isThumosFollowUp(rows: { role: string }[]): boolean {
  * Recent turns for the model, oldest first. Rows may arrive newest-first from
  * the database; createdAt puts them back in order. Guide and offline lines
  * are assistant turns, which is what the chat API accepts.
+ * Fixed paused replies are left out, and older real turns fill the window.
  */
 export function historyTurnsForModel(rows: HistoryRow[]): ChatTurn[] {
   const ordered = [...rows].sort((a, b) => {
@@ -584,7 +591,7 @@ export function historyTurnsForModel(rows: HistoryRow[]): ChatTurn[] {
     return a.createdAt < b.createdAt ? -1 : 1;
   });
   return ordered
-    .filter((row) => row.content.trim())
+    .filter((row) => row.content.trim() && !isFixedPausedCoachingText(row.content))
     .slice(-THUMOS_CHAT.historyLimit)
     .map((row) => ({
       role: row.role === 'user' ? 'user' : 'assistant',
@@ -607,7 +614,9 @@ export function buildChatCompletionBody(input: {
 } {
   const model = input.model || THUMOS_CHAT.model;
   const reasoning_effort = thumosReasoningEffort(model);
-  const prior = input.history.slice(-THUMOS_CHAT.historyLimit);
+  const prior = input.history
+    .filter((turn) => turn.content.trim() && !isFixedPausedCoachingText(turn.content))
+    .slice(-THUMOS_CHAT.historyLimit);
   const last = prior[prior.length - 1];
   const history = last && last.role === 'user' && last.content.trim() === input.user.trim() ? prior.slice(0, -1) : prior;
   return {

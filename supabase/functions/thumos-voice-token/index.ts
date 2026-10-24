@@ -61,7 +61,7 @@ Deno.serve(async (req) => {
     userClient.from('reasons').select('body, sort_order').eq('user_id', userId).order('sort_order'),
     userClient.from('check_ins').select('mood, mood_10, sleep_hours, craving, note, created_at').eq('user_id', userId).order('created_at', { ascending: false }).limit(THUMOS_CHAT.checkInLimit),
     userClient.from('health_samples').select('kind, value, unit, recorded_on').eq('user_id', userId).order('recorded_on', { ascending: false }).limit(1000),
-    userClient.from('thumos_messages').select('role, content, created_at').eq('user_id', userId).order('created_at', { ascending: false }).limit(THUMOS_CHAT.historyLimit),
+    userClient.from('thumos_messages').select('role, content, created_at').eq('user_id', userId).order('created_at', { ascending: false }).limit(THUMOS_CHAT.historyFetchLimit),
     userClient.from('profile_interests').select('interests(label)').eq('user_id', userId),
   ]);
 

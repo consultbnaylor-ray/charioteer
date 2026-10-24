@@ -164,7 +164,7 @@ Deno.serve(async (req) => {
     userClient.from('reasons').select('body, sort_order').eq('user_id', userId).order('sort_order'),
     userClient.from('check_ins').select('mood, mood_10, sleep_hours, craving, note, created_at').eq('user_id', userId).order('created_at', { ascending: false }).limit(THUMOS_CHAT.checkInLimit),
     userClient.from('health_samples').select('kind, value, unit, recorded_on').eq('user_id', userId).order('recorded_on', { ascending: false }).limit(1000),
-    userClient.from('thumos_messages').select('role, content, created_at').eq('user_id', userId).order('created_at', { ascending: false }).limit(THUMOS_CHAT.historyLimit),
+    userClient.from('thumos_messages').select('role, content, created_at').eq('user_id', userId).order('created_at', { ascending: false }).limit(THUMOS_CHAT.historyFetchLimit),
     userClient.from('profile_interests').select('interests(label)').eq('user_id', userId),
     userClient.from('thumos_motivation_memory').select('recent_ids').eq('user_id', userId).maybeSingle(),
     userClient.from('nutrition_settings').select('goal').eq('user_id', userId).maybeSingle(),
@@ -283,7 +283,7 @@ Deno.serve(async (req) => {
   const history = historyTurnsForModel(historyRows);
   const model = Deno.env.get('THUMOS_MODEL') || THUMOS_CHAT.model;
   const cues = conversationCues({
-    history: historyRows,
+    history,
     reasons: (reasonsRes.data ?? []).map((row) => row.body),
   });
   const committedAction = safety.selfHarm ? null : detectCommittedAction(content);
@@ -316,12 +316,9 @@ Deno.serve(async (req) => {
     sleepHours: checkIns[0]?.sleepHours ?? null,
     stoicQuote: pinned?.school === 'Stoic' ? pinned.text : null,
   });
-  const earlierAssistant = [...historyRows]
-    .filter((row) => row.role === 'assistant' && row.content.trim())
-    .sort((a, b) => (a.createdAt < b.createdAt ? -1 : 1))
-    .map((row) => row.content);
+  const earlierAssistant = history.filter((turn) => turn.role === 'assistant').map((turn) => turn.content);
   const system = buildSystemPrompt(context, mode, ALCOHOL_FACTS, {
-    followUp: mode === 'support' && isThumosFollowUp(historyRows),
+    followUp: mode === 'support' && isThumosFollowUp(history),
     supportShape: detectRisk(content) === 'planning' ? 'planning' : 'acute',
     committedAction,
     selfHarm: safety.selfHarm,

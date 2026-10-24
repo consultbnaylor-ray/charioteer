@@ -303,18 +303,18 @@ export function buildVoiceBriefing(input: {
   const contextInput: ThumosContextInput = { ...input.context, mode, safety };
   const history = historyTurnsForModel(input.historyRows);
   const cues = conversationCues({
-    history: input.historyRows,
+    history,
     reasons: input.context.reasons,
   });
   const stage = input.context.stage;
   const instructions = adaptPromptForSpeech(buildSystemPrompt(buildThumosContext(contextInput), mode, ALCOHOL_FACTS, {
-    followUp: mode === 'support' && isThumosFollowUp(input.historyRows),
+    followUp: mode === 'support' && isThumosFollowUp(history),
     supportShape: detectRisk('') === 'planning' ? 'planning' : 'acute',
     committedAction: safety.selfHarm ? null : detectCommittedAction(''),
     selfHarm: safety.selfHarm,
     soberTimeAlreadySaid: cues.soberTimeAlreadySaid,
     reasonsAlreadyUsed: cues.reasonsAlreadyUsed,
-    healthAlreadySaid: input.historyRows.some((row) => row.role === 'assistant' && mentionsCheckInOrHealth(row.content)),
+    healthAlreadySaid: history.some((row) => row.role === 'assistant' && mentionsCheckInOrHealth(row.content)),
     stage,
   }));
   const crisisSafety: SafetyHit = {

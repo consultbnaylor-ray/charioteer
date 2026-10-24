@@ -50,6 +50,36 @@ export function pausedCoachingMessage(userOptIn: unknown): string {
   return interimCoachOptIn(userOptIn) ? COACHING_PAUSED_SAVED : COACHING_PAUSED;
 }
 
+/**
+ * Paused lines from earlier deploys. They are still stored on some threads.
+ * The first kill switch said personal details were not sent.
+ */
+export const COACHING_PAUSED_EARLIER = [
+  'Coaching is paused. Your personal details were not sent.',
+] as const;
+
+/** Every fixed paused reply the model must not see as a previous turn. */
+export function fixedPausedCoachingTexts(): readonly string[] {
+  return [COACHING_PAUSED, COACHING_PAUSED_SAVED, ...COACHING_PAUSED_EARLIER];
+}
+
+function foldedPausedText(content: string): string {
+  return content.replace(/[’‘]/g, "'").trim();
+}
+
+/**
+ * True when a stored row is one of those fixed replies.
+ * A safety notice appended after the line still counts. A real reply that only mentions the idea does not.
+ */
+export function isFixedPausedCoachingText(content: string): boolean {
+  const text = foldedPausedText(content);
+  if (!text) return false;
+  return fixedPausedCoachingTexts().some((fixed) => {
+    const line = foldedPausedText(fixed);
+    return text === line || text.startsWith(`${line}\n`) || text.startsWith(`${line} `);
+  });
+}
+
 type InterimReader = {
   from: (table: string) => {
     select: (columns: string) => {
