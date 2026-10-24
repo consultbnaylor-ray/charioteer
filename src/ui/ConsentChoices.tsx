@@ -3,6 +3,7 @@ import { Switch, View } from 'react-native';
 import { formatUkLong, parseIsoDay } from '@/domain/dates';
 import { PROFILE_PHOTO_WORDING } from '@/domain/profilePhotos';
 import { CONSENT_VERSION } from '@/data/catalogue';
+import { ScrollTarget } from '@/ui/ScrollTarget';
 import { useAppTheme } from '@/ui/theme';
 import { T } from '@/ui/ui';
 
@@ -88,12 +89,14 @@ export function ConsentChoices({
         value={ai}
         onChange={onAi}
       />
-      <ConsentRow
-        title={INTERIM_COACH_TITLE}
-        body={INTERIM_COACH_BODY}
-        value={interim}
-        onChange={onInterim}
-      />
+      <ScrollTarget id="interim">
+        <ConsentRow
+          title={INTERIM_COACH_TITLE}
+          body={INTERIM_COACH_BODY}
+          value={interim}
+          onChange={onInterim}
+        />
+      </ScrollTarget>
       <ConsentRow
         title="Message notifications"
         body="Message notifications start off. When you turn them on, a private message can alert this phone. The alert says New message on Charioteer and does not include the sender's name unless you turn that on separately. You can turn this off at any time."

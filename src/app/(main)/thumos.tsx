@@ -14,6 +14,7 @@ import { showsSoberRecord } from '@/domain/stage';
 import { CHECK_CONNECTION, EDGE_STATE_LABEL, SIGN_IN_AGAIN, isThumosFallback, type EdgeSendState } from '@/domain/edgeRetry';
 import { CRAVING_LINE, inferThumosMode, SCRIPTED_COACH_REPLY, THUMOS_INTRO, THUMOS_UNREACHABLE, OPENING_LINE, type ThumosMode } from '@/domain/thumos';
 import { THUMOS_LINE_CAP, groupThumosByDay, messageNeedsMore, visibleThumos } from '@/domain/thumosThread';
+import { isPausedCoachingText } from '@/domain/pausedCoaching';
 import { formatClock, urgeRemainingSeconds } from '@/domain/urge';
 import { clearUrge, restartUrge } from '@/features/urgeSession';
 import { VOICE_COPY } from '@/domain/voice';
@@ -22,6 +23,7 @@ import { createVoiceRuntime, voiceStatusLabel, type VoiceRuntime } from '@/domai
 import { briefingFromSnapshot } from '@/voice/briefing';
 import { VoiceCall } from '@/voice/call';
 import { HELMET_ASPECT, HELMET_D, HELMET_VIEWBOX } from '@/ui/helmet';
+import { PausedCoachingLink } from '@/ui/PausedCoachingLink';
 import { markThumosIntroSeen, thumosIntroSeen } from '@/ui/thumosIntroMemory';
 import { Button, Card, ErrorNote, Field, Screen, T, useScreenScroller } from '@/ui/ui';
 import { useAppTheme } from '@/ui/theme';
@@ -36,6 +38,7 @@ export default function Thumos() {
   const profile = snap.profile;
   const [draft, setDraft] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [pausedVoice, setPausedVoice] = useState(false);
   const [pending, setPending] = useState(false);
   const [sendState, setSendState] = useState<EdgeSendState | null>(null);
   const [unreachable, setUnreachable] = useState<string | null>(null);
@@ -66,7 +69,10 @@ export default function Thumos() {
 
   useEffect(() => {
     if (!profile) return;
-    void repo.ensureThumosGuide(sos ? 'craving' : 'opening').catch((err: unknown) => setError(shownError(err, 'Could not open the coach.')));
+    void repo.ensureThumosGuide(sos ? 'craving' : 'opening').catch((err: unknown) => {
+      setPausedVoice(false);
+      setError(shownError(err, 'Could not open the coach.'));
+    });
   }, [profile, repo, sos]);
 
   useEffect(() => {
@@ -144,6 +150,7 @@ export default function Thumos() {
     setUnreachable(null);
     setLiveReply('');
     setOutgoing(trimmed);
+    setPausedVoice(false);
     setError(null);
     setDraft('');
     try {
@@ -157,6 +164,7 @@ export default function Thumos() {
       setKeptSend(null);
       setDraft(trimmed);
       const message = asUserFacing(err, 'thumos').message;
+      setPausedVoice(false);
       if (message === SIGN_IN_AGAIN || message === CHECK_CONNECTION) setError(message);
       else if (isThumosFallback(message)) {
         const scriptedAt = message.indexOf(SCRIPTED_COACH_REPLY);
@@ -171,12 +179,14 @@ export default function Thumos() {
   }
 
   const inCall = Boolean(voice && voice.phase !== 'ended' && voice.phase !== 'error');
+  const coachNote = error || (VOICE_ENABLED && voice?.phase === 'error' ? voice.message : null);
 
   async function startVoice() {
     if (!VOICE_ENABLED) return;
     if (!profile?.consentAi || callRef.current) return;
     const ticket = voiceTicket.current + 1;
     voiceTicket.current = ticket;
+    setPausedVoice(false);
     setError(null);
     const requested = showSupport ? 'support' as const : mode === 'opening' ? 'steady' as const : mode;
     const fallback = briefingFromSnapshot(snap, requested);
@@ -187,6 +197,7 @@ export default function Thumos() {
       if (ticket !== voiceTicket.current) return;
       if (!mint.ok) {
         setVoice(null);
+        setPausedVoice(mint.code === 'paused' || isPausedCoachingText(mint.message));
         setError(mint.message);
         return;
       }
@@ -213,6 +224,7 @@ export default function Thumos() {
       if (ticket !== voiceTicket.current) return;
       console.warn('[voice] start failed', err);
       callRef.current = null;
+      setPausedVoice(false);
       setError(null);
       setVoice((current) => ({
         ...(current ?? createVoiceRuntime()),
@@ -298,6 +310,7 @@ export default function Thumos() {
             {voice.liveUser ? <T>You: {voice.liveUser}</T> : null}
             {voice.liveAssistant ? <T>Thumos: {voice.liveAssistant}</T> : null}
             {voice.message && voice.phase !== 'error' ? <T variant="muted">{voice.message}</T> : null}
+            {isPausedCoachingText(voice.message) ? <PausedCoachingLink /> : null}
             {voice.detail ? <T variant="muted" style={{ width: '100%', flexShrink: 1 }}>{voice.detail}</T> : null}
             <View style={{ flexDirection: 'row', gap: 10 }}>
               <View style={{ flex: 1 }}>
@@ -321,7 +334,10 @@ export default function Thumos() {
               consentAi: true,
               messageNotifications: profile.messageNotifications,
               termsAccepted: true,
-            }).catch((err: unknown) => setError(shownError(err, 'Could not save.')))} />
+            }).catch((err: unknown) => {
+              setPausedVoice(false);
+              setError(shownError(err, 'Could not save.'));
+            })} />
           </Card>
         ) : (
           <Field label="Message" value={draft} onChangeText={setDraft} multiline placeholder="Say it in your own words" />
@@ -333,7 +349,8 @@ export default function Thumos() {
             <Button label="Try again" onPress={() => void send()} />
           </Card>
         ) : null}
-        <ErrorNote>{error || (VOICE_ENABLED && voice?.phase === 'error' ? voice.message : null)}</ErrorNote>
+        <ErrorNote>{coachNote}</ErrorNote>
+        {pausedVoice || isPausedCoachingText(coachNote) ? <PausedCoachingLink /> : null}
         {VOICE_ENABLED && !error && voice?.phase === 'error' && voice.detail ? <T variant="muted" style={{ width: '100%', flexShrink: 1 }}>{voice.detail}</T> : null}
         {VOICE_ENABLED && inCall ? null : VOICE_ENABLED ? (
           <View style={{ flexDirection: 'row', gap: 10 }}>
@@ -400,35 +417,39 @@ function Bubble({ mine, text }: { mine: boolean; text: string }) {
   const theme = useAppTheme();
   const [open, setOpen] = useState(false);
   const long = messageNeedsMore(text);
+  const paused = !mine && isPausedCoachingText(text);
   return (
-    <View
-      style={{
-        alignSelf: mine ? 'flex-end' : 'flex-start',
-        maxWidth: '80%',
-        backgroundColor: mine ? theme.colors.emphasisSoft : theme.colors.surface,
-        borderColor: theme.colors.line,
-        borderWidth: StyleSheet.hairlineWidth,
-        borderRadius: 12,
-        paddingVertical: 6,
-        paddingHorizontal: 10,
-      }}
-    >
-      <Text
-        numberOfLines={open || !long ? undefined : THUMOS_LINE_CAP}
-        style={{ fontFamily: theme.font.body, fontSize: 15 * theme.scale, lineHeight: 20 * theme.scale, color: theme.colors.ink }}
+    <View style={{ width: paused ? '100%' : undefined, alignItems: mine ? 'flex-end' : 'flex-start', gap: 8 }}>
+      <View
+        style={{
+          alignSelf: mine ? 'flex-end' : 'flex-start',
+          maxWidth: '80%',
+          backgroundColor: mine ? theme.colors.emphasisSoft : theme.colors.surface,
+          borderColor: theme.colors.line,
+          borderWidth: StyleSheet.hairlineWidth,
+          borderRadius: 12,
+          paddingVertical: 6,
+          paddingHorizontal: 10,
+        }}
       >
-        {text}
-      </Text>
-      {long && !open ? (
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="More"
-          onPress={() => setOpen(true)}
-          style={{ minHeight: 44, justifyContent: 'center' }}
+        <Text
+          numberOfLines={open || !long ? undefined : THUMOS_LINE_CAP}
+          style={{ fontFamily: theme.font.body, fontSize: 15 * theme.scale, lineHeight: 20 * theme.scale, color: theme.colors.ink }}
         >
-          <T variant="muted">More</T>
-        </Pressable>
-      ) : null}
+          {text}
+        </Text>
+        {long && !open ? (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="More"
+            onPress={() => setOpen(true)}
+            style={{ minHeight: 44, justifyContent: 'center' }}
+          >
+            <T variant="muted">More</T>
+          </Pressable>
+        ) : null}
+      </View>
+      {paused ? <PausedCoachingLink /> : null}
     </View>
   );
 }
