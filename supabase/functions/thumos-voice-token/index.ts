@@ -10,6 +10,7 @@ import {
   VOICE_COPY,
 } from '../_shared/voice.ts';
 import { buildHealthInsights, healthChangeNoteFromReadings, londonDay } from '../_shared/healthInsights.ts';
+import { coachConsentAllows } from '../_shared/coachConsent.ts';
 import { loadNutritionLines } from '../_shared/nutritionLoad.ts';
 import { moodOnTen } from '../_shared/mood.ts';
 import { pinnedStoicQuote } from '../_shared/stoicQuotes.ts';
@@ -151,6 +152,16 @@ Deno.serve(async (req) => {
     note: row.note ?? '',
   }));
   const now = new Date();
+  const coach = coachConsentAllows({
+    consentAi: profile.consent_ai,
+    consentHealth: profile.consent_health,
+  });
+  const nutritionLines = coach.ai
+    ? await loadNutritionLines(userClient, profile, checkIns, now, {
+        consentAi: profile.consent_ai,
+        consentHealth: profile.consent_health,
+      })
+    : [];
   const briefing = buildVoiceBriefing({
     requestedMode: body.mode,
     historyRows: (historyRes.data ?? []).map((row) => ({
@@ -179,7 +190,7 @@ Deno.serve(async (req) => {
       vision,
       interests: interestRes.error ? [] : interestLabelsFromRows(interestRes.data),
       pinnedQuote: pinnedStoicQuote(profile.pinned_quote_id),
-      nutritionLines: await loadNutritionLines(userClient, profile, checkIns, now),
+      nutritionLines,
       garminLines: await garminLinesFor(userClient, userId, {
         consentAi: profile.consent_ai === true,
         consentHealth: shareHealth,

@@ -1,3 +1,4 @@
+import { coachConsentAllows, type CoachConsentInput } from './coachConsent.ts';
 import { buildFitnessSnapshot } from './fitnessSnapshot.ts';
 import { goalWeightRange } from './goalWeightRange.ts';
 import { figuresForLondonWeek, goalProgressLine } from './goalLed.ts';
@@ -157,7 +158,9 @@ export async function loadNutritionLines(
   },
   checkIns: readonly { createdAt: string; mood: number; sleepHours: number }[],
   now = new Date(),
+  consent?: CoachConsentInput | null,
 ): Promise<string[]> {
+  const coach = coachConsentAllows(consent);
   const today = londonDay(now);
   const athlete = 'kcal_target, hide_calories, share_food_diary, share_calories, share_quality, share_progress, goal, goal_age, goal_sex, protein_target_g, carb_target_g, fat_target_g, goal_phase, weight_class_kg, activity_energy_kcal, share_goal, wagon_on, wagon_note, wagon_visible, build, workout_buckets, updated_at';
   const withTarget = `target_weight_kg, target_on, target_start_kg, ${athlete}`;
@@ -233,12 +236,13 @@ export async function loadNutritionLines(
       leanMassKg: figures.leanMassKg,
       waistCm: figures.waistCm,
     },
-    activity: activityReadingsFromSamples(samples),
+    activity: coach.health ? activityReadingsFromSamples(samples) : [],
+    coach,
   });
   const stage = profile.stage === 'stopped' || profile.stage === 'trying_to_stop' || profile.stage === 'cutting_down' || profile.stage === 'exploring'
     ? profile.stage
     : null;
-  const fitness = profile.consent_health === true
+  const fitness = coach.health
     ? buildFitnessSnapshot({
       today,
       goal: settings.goal,

@@ -1,3 +1,4 @@
+import { type CoachShare } from './coachConsent.ts';
 import { londonDay } from './healthInsights.ts';
 import { targetActivityPlan, targetCoachActivityLines, type ActivityReading } from './targetActivity.ts';
 import { plannedWeeklyChangeKg, targetCoachLines, targetDirection } from './targetWeight.ts';
@@ -1508,6 +1509,19 @@ export function eatingInsights(
   return insights;
 }
 
+/** A prompt line that would be a raw sample, a route, or a location is dropped. */
+const ACTIVITY_LINE_LEAK = /\b(latitude|longitude|gps|route|waypoint|sample)\b/i;
+
+/**
+ * Omitted coach means the on-device briefing, which already chose what to send.
+ * A server caller always passes coach. Null fails closed.
+ */
+function coachLineShare(coach: CoachShare | null | undefined): { target: boolean; health: boolean } {
+  if (coach === undefined) return { target: true, health: true };
+  if (coach == null || coach.ai !== true) return { target: false, health: false };
+  return { target: true, health: coach.health === true };
+}
+
 export function nutritionContextLines(input: {
   logs: readonly FoodLog[];
   settings: NutritionSettings;
@@ -1525,6 +1539,11 @@ export function nutritionContextLines(input: {
     waistCm?: number | null;
   };
   activity?: readonly ActivityReading[];
+  /**
+   * Server prompts pass this. Null, or ai not exactly true, withholds the target
+   * and every activity line. Omitted only for the on-device briefing, which is unchanged.
+   */
+  coach?: CoachShare | null;
 }): string[] {
   const items = dayItems(input.logs, input.today);
   const totals = sumItems(items);
@@ -1590,21 +1609,22 @@ export function nutritionContextLines(input: {
     if (input.body?.weights.length) lines.push(weightTrendLine(input.body.weights, goal));
   }
   const targetKg = input.settings.targetWeightKg;
-  if (targetKg != null) {
-    const currentKg = input.body?.weightKg ?? null;
+  const share = coachLineShare(input.coach);
+  if (targetKg != null && share.target) {
+    const currentKg = share.health ? (input.body?.weightKg ?? null) : null;
     lines.push(...targetCoachLines({
       targetKg,
       currentKg,
       direction: currentKg != null ? targetDirection(currentKg, targetKg) : null,
       heightCm: input.body?.heightCm ?? null,
     }));
-    if (currentKg != null) {
+    if (share.health && currentKg != null) {
       const plan = targetActivityPlan({
         direction: targetDirection(currentKg, targetKg),
         readings: input.activity ?? [],
         today: input.today,
       });
-      lines.push(...targetCoachActivityLines(plan));
+      lines.push(...targetCoachActivityLines(plan).filter((line) => !ACTIVITY_LINE_LEAK.test(line)));
     }
   }
   return lines;

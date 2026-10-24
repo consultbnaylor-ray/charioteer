@@ -39,6 +39,7 @@ import {
 import { gratitudeFromRows, type GratitudeEntry } from '../_shared/gratitude.ts';
 import { visionContextFrom, type VisionContext } from '../_shared/visionBoard.ts';
 import { buildHealthInsights, healthChangeNoteFromReadings, londonDay } from '../_shared/healthInsights.ts';
+import { coachConsentAllows } from '../_shared/coachConsent.ts';
 import { loadNutritionLines } from '../_shared/nutritionLoad.ts';
 import { moodOnTen } from '../_shared/mood.ts';
 import { GOAL_LABEL, type NutritionGoal } from '../_shared/nutrition.ts';
@@ -226,7 +227,16 @@ Deno.serve(async (req) => {
     craving: row.craving,
     note: row.note ?? '',
   }));
-  const nutritionLines = safety.selfHarm ? [] : await loadNutritionLines(userClient, profile, checkIns);
+  const coach = coachConsentAllows({
+    consentAi: profile.consent_ai,
+    consentHealth: profile.consent_health,
+  });
+  const nutritionLines = safety.selfHarm || !coach.ai
+    ? []
+    : await loadNutritionLines(userClient, profile, checkIns, new Date(), {
+        consentAi: profile.consent_ai,
+        consentHealth: profile.consent_health,
+      });
   const personalDataEnabled = xaiPersonalDataEnabled(Deno.env.get('XAI_PERSONAL_DATA_ENABLED'));
   const garminLines = await garminLinesFor(userClient, userId, {
     consentAi: profile.consent_ai === true,
