@@ -134,10 +134,49 @@ describe('idempotent retry', () => {
     expect(await saved.text()).toBe('saved');
     expect(upserts).toBe(2);
     expect(isRetrySafeRequest('https://example.test/rest/v1/health_samples', { method: 'POST', headers })).toBe(true);
+    expect(isRetrySafeRequest('https://example.test/rest/v1/rpc/save_check_in', { method: 'POST' })).toBe(true);
+    expect(isRetrySafeRequest('https://example.test/rest/v1/rpc/set_reasons', { method: 'POST' })).toBe(true);
+    expect(isRetrySafeRequest('https://example.test/rest/v1/rpc/delete_my_account', { method: 'POST' })).toBe(false);
     const repo = readFileSync('src/data/supabase-repository.ts', 'utf8');
     const save = repo.slice(repo.indexOf('async saveHealth'), repo.indexOf('async setInterestSelected'));
     expect(save).toContain('chunkHealthRows(samples)');
     expect(save).toContain("onConflict: 'user_id,kind,recorded_on,source'");
+  });
+
+  it('retries one dropped save_check_in and set_reasons, then stops', async () => {
+    const calls = new Map<string, number>();
+    const fetch = fetchWithOneRetry(async (input) => {
+      const url = String(input);
+      const count = (calls.get(url) ?? 0) + 1;
+      calls.set(url, count);
+      if (url.endsWith('save_check_in') && count < 3) throw new Error('The network connection was lost');
+      if (count === 1) throw new Error('The network connection was lost');
+      return new Response('ok', { status: 200 });
+    });
+    const checkIn = 'https://example.supabase.co/rest/v1/rpc/save_check_in';
+    await expect(fetch(checkIn, { method: 'POST', body: '{}' })).rejects.toThrow(/network connection was lost/);
+    expect(calls.get(checkIn)).toBe(2);
+
+    const reasons = 'https://example.supabase.co/rest/v1/rpc/set_reasons';
+    const saved = await fetch(reasons, { method: 'POST', body: '{"bodies":["Family"]}' });
+    expect(await saved.text()).toBe('ok');
+    expect(calls.get(reasons)).toBe(2);
+
+    const account = 'https://example.supabase.co/rest/v1/rpc/delete_my_account';
+    await expect(fetch(account, { method: 'POST', body: '{}' })).rejects.toThrow(/network connection was lost/);
+    expect(calls.get(account)).toBe(1);
+    expect(isRetrySafeRequest(`${checkIn}?apikey=hidden`, { method: 'POST' })).toBe(true);
+    expect(isRetrySafeRequest('https://example.supabase.co/rest/v1/rpc/save_check_in_extra', { method: 'POST' })).toBe(false);
+    expect(isRetrySafeRequest('https://example.supabase.co/rest/v1/rpc/add_interest', { method: 'POST' })).toBe(false);
+
+    const checkInSql = readFileSync('supabase/migrations/20261012190000_save_check_in_conflict_target.sql', 'utf8');
+    expect(checkInSql).toContain('on conflict (id) do update');
+    expect(checkInSql).toContain('on conflict on constraint gratitude_entries_check_in_id_key do update');
+    const reasonsSql = readFileSync('supabase/migrations/20261012194500_reasons_unique.sql', 'utf8');
+    expect(reasonsSql).toContain('delete from public.reasons where user_id = uid');
+    expect(reasonsSql).toContain('for update');
+    expect(reasonsSql).toContain('on conflict (user_id, lower(btrim(body))) do nothing');
+    expect(reasonsSql).toContain('create unique index reasons_user_body_unique');
   });
 
   it('retries one gateway failure on GET and leaves a second failure as the result', async () => {

@@ -1,7 +1,8 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
-import { convertStoredMoods, formatMoodAverage, gratefulForLine, moodOnTen, planCheckInGratitude, planCheckInGratitudeSync, recentCheckInDays, weeklyMoodAverage } from './checkIns';
+import { CHECK_IN_NOT_SAVED, checkInSaveError, convertStoredMoods, formatMoodAverage, gratefulForLine, moodOnTen, planCheckInGratitude, planCheckInGratitudeSync, recentCheckInDays, weeklyMoodAverage } from './checkIns';
+import { OFFLINE_MESSAGE, UserFacingError } from './errors';
 import { moodStreakCount } from './profileSharing';
 
 describe('recent check-ins', () => {
@@ -128,6 +129,30 @@ describe('check-in gratitude', () => {
     expect(sql).not.toMatch(/function public\.public_profile/);
     expect(sql).not.toMatch(/drop table/i);
     expect(sql).toContain('Keep it to three short lines.');
+  });
+
+  it('keeps the note and the draft id when the save cannot reach the server', () => {
+    expect(CHECK_IN_NOT_SAVED).toBe('Not saved yet. Your note is still here, tap Save check-in to try again.');
+    expect(checkInSaveError(new Error('The network connection was lost'))).toBe(CHECK_IN_NOT_SAVED);
+    expect(checkInSaveError(new UserFacingError(OFFLINE_MESSAGE, 'offline'))).toBe(CHECK_IN_NOT_SAVED);
+    expect(checkInSaveError(new UserFacingError('Keep the note shorter.', 'generic'))).toBe('Keep the note shorter.');
+    expect(checkInSaveError(new Error('Choose a mood from 1 to 10.'))).toBe('Choose a mood from 1 to 10.');
+    const screen = readFileSync('src/app/(main)/check-in.tsx', 'utf8');
+    const saveAt = screen.indexOf('function save()');
+    const save = screen.slice(saveAt, screen.indexOf('return (', saveAt));
+    const success = save.slice(save.indexOf('.then('), save.indexOf('.catch'));
+    const failure = save.slice(save.indexOf('.catch'), save.indexOf('.finally'));
+    expect(success).toContain('draftId.current = randomId()');
+    expect(success).toContain("setNote('')");
+    expect(success).toContain("setGrateful('')");
+    expect(failure).toContain('checkInSaveError(err)');
+    expect(failure).not.toContain('draftId');
+    expect(failure).not.toContain('setNote');
+    expect(failure).not.toContain('setGrateful');
+    expect(failure).not.toContain('setDirty');
+    expect(screen).toContain('label="Save check-in"');
+    expect(screen).toContain('value={note}');
+    expect(screen).toContain('const draftId = useRef(randomId())');
   });
 });
 

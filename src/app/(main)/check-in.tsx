@@ -4,9 +4,8 @@ import { View } from 'react-native';
 
 import { useRepository, useSnapshot } from '@/data';
 import type { Mood } from '@/data/types';
-import { gratefulForLine, MOOD_SCORES, planCheckInGratitude, recentCheckInDays } from '@/domain/checkIns';
+import { checkInSaveError, gratefulForLine, MOOD_SCORES, planCheckInGratitude, recentCheckInDays } from '@/domain/checkIns';
 import { formatUkWhen, isoDay } from '@/domain/dates';
-import { shownError } from '@/domain/errors';
 import { randomId } from '@/domain/id';
 import { moodStreakCount } from '@/domain/profileSharing';
 import { CheckInWeek } from '@/ui/CheckInWeek';
@@ -70,7 +69,7 @@ export default function CheckIn() {
       setDirty(false);
       setSavedNote('Saved');
       playSavedHaptic();
-    }).catch((err: unknown) => setError(shownError(err, 'Could not save.'))).finally(() => {
+    }).catch((err: unknown) => setError(checkInSaveError(err))).finally(() => {
       saving.current = false;
       setPending(false);
     });

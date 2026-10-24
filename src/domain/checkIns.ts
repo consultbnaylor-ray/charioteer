@@ -1,10 +1,21 @@
 import { moodOnTen } from '../../supabase/functions/_shared/mood';
 import { isoDay } from './dates';
+import { isTransientNetworkError, shownError, UserFacingError } from './errors';
 import { londonDay } from './healthInsights';
 
 export { moodOnTen };
 
 export const MOOD_SCORES = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10] as const;
+
+/** Shown when Save check-in never reaches the server. The form is still on screen. */
+export const CHECK_IN_NOT_SAVED = 'Not saved yet. Your note is still here, tap Save check-in to try again.';
+
+/** A dropped connection names the unsaved note. Any other failure keeps its own sentence. */
+export function checkInSaveError(error: unknown): string {
+  if (error instanceof UserFacingError && error.code === 'offline') return CHECK_IN_NOT_SAVED;
+  if (isTransientNetworkError(error)) return CHECK_IN_NOT_SAVED;
+  return shownError(error, 'Could not save.');
+}
 
 export type CheckInPoint = {
   mood: number;

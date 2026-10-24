@@ -35,16 +35,44 @@ function preferHeader(input: RequestInfo | URL, init?: RequestInit): string {
   return '';
 }
 
-/** GET-style requests, plus a health upsert. A second copy of that POST is the same row. */
+function requestUrl(input: RequestInfo | URL): string {
+  if (typeof input === 'string') return input;
+  if (typeof URL !== 'undefined' && input instanceof URL) return input.toString();
+  if (typeof Request !== 'undefined' && input instanceof Request) return input.url;
+  return '';
+}
+
+/**
+ * POSTs that write the same rows if they run twice.
+ * save_check_in upserts on the check-in id. set_reasons deletes this user's rows, then inserts the list, with the profile locked.
+ */
+const RETRY_SAFE_RPC = new Set(['save_check_in', 'set_reasons']);
+
+export function retrySafeRpcName(input: RequestInfo | URL): string | null {
+  const raw = requestUrl(input);
+  if (!raw) return null;
+  let path = raw;
+  try {
+    path = new URL(raw, 'https://charioteer.invalid').pathname;
+  } catch {
+    return null;
+  }
+  const match = path.match(/\/rest\/v1\/rpc\/([^/]+)\/?$/);
+  const name = match?.[1] ?? '';
+  return RETRY_SAFE_RPC.has(name) ? name : null;
+}
+
+/** GET-style requests, a health upsert, save_check_in, and set_reasons. Those two writes cannot duplicate. */
 export function isRetrySafeRequest(input: RequestInfo | URL, init?: RequestInit): boolean {
   if (isIdempotentRequest(input, init)) return true;
-  return /resolution=merge-duplicates/i.test(preferHeader(input, init));
+  if (/resolution=merge-duplicates/i.test(preferHeader(input, init))) return true;
+  return requestMethod(input, init) === 'POST' && retrySafeRpcName(input) != null;
 }
 
 /**
  * One extra attempt when a safe request dies on the network or a gateway.
  * A plain POST is not retried, so sign-up, sign-in, Thumos, and password-reset emails cannot double-submit.
- * A merge-duplicates upsert is retried once.
+ * A merge-duplicates upsert, save_check_in, and set_reasons are retried once.
  */
 export function fetchWithOneRetry(base: FetchLike = globalThis.fetch.bind(globalThis)): FetchLike {
   return async (input, init) => {
