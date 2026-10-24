@@ -183,7 +183,7 @@ describe('stats overview', () => {
     expect(body.title).toBe('Waist to height');
     expect(body.value).toBe('0.47');
     expect(body.tone).toBe('good');
-    expect(body.href).toBe('/nutrition?section=body');
+    expect(body.href).toBe('/weight-waist?section=body');
     expect(body.meaning).toBe('Within healthy range');
     expect(body.chart).toMatchObject({ kind: 'range', status: 'Within healthy range' });
   });
@@ -242,7 +242,7 @@ describe('stats overview', () => {
       value: '63.4 kg',
       meaning: 'Higher than the earlier reading',
       tone: 'good',
-      href: '/nutrition?section=body',
+      href: '/weight-waist?section=body',
     });
     expect(byId(builder, 'lean').chart.kind).toBe('line');
   });
@@ -273,7 +273,7 @@ describe('stats overview', () => {
     expect(byId(tiles, 'check-ins').chart.kind).toBe('bars');
     expect(byId(tiles, 'weight').chart.kind).toBe('line');
     expect(byId(tiles, 'calories').href).toBe('/nutrition?section=today');
-    expect(byId(tiles, 'body').href).toBe('/nutrition?section=body');
+    expect(byId(tiles, 'body').href).toBe('/weight-waist?section=body');
   });
 
   it('keeps the stats colours readable and off the rest of the app', () => {
@@ -298,7 +298,8 @@ describe('stats overview', () => {
     expect(home).toContain("router.push('/stats'");
     expect(you).toContain("router.push('/stats'");
     expect(readFileSync('src/app/(main)/_layout.tsx', 'utf8')).toContain('TAB_SECTIONS');
-    expect(readFileSync('src/app/(main)/nutrition.tsx', 'utf8')).toContain('id="body"');
+    expect(readFileSync('src/app/(main)/weight-waist.tsx', 'utf8')).toContain('id="body"');
+    expect(readFileSync('src/app/(main)/nutrition.tsx', 'utf8')).not.toContain('id="body"');
     expect(readFileSync('src/app/(main)/check-in.tsx', 'utf8')).toContain('id="craving"');
     expect(readFileSync('src/ui/theme.tsx', 'utf8')).toContain('statsPalette.ts');
     expect(home).toContain('tone="sos"');

@@ -234,7 +234,7 @@ describe('weight entry', () => {
     expect(card).toContain("export const WEIGHT_WAIST_SHEET_HREF = '/weight-waist'");
     expect(card).toContain('router.push(WEIGHT_WAIST_SHEET_HREF');
     const link = readFileSync('src/ui/WeightWaistLink.tsx', 'utf8');
-    expect(link).toContain("export const WEIGHT_WAIST_TITLE = 'Weight, waist and BMI'");
+    expect(link).toContain("export const WEIGHT_WAIST_TITLE = 'Body: weight, waist and BMI'");
     expect(link).toContain("export const WEIGHT_WAIST_OPEN = 'Tap to open'");
     expect(link).toContain("export const WEIGHT_WAIST_HREF = '/weight-waist'");
     expect(link).toContain('latestWeightSummary');

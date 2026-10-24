@@ -4,9 +4,12 @@ import { AppState, View } from 'react-native';
 
 import { useRepository, useSnapshot } from '@/data';
 import type { NewHealthSample } from '@/data/types';
-import { isoDay } from '@/domain/dates';
+import { weightChart } from '@/domain/chartSeries';
+import { formatUkLong, isoDay } from '@/domain/dates';
 import { shownError } from '@/domain/errors';
+import { boxingClassWindow } from '@/domain/goalWeightRange';
 import { parseHeightCm } from '@/domain/guidance';
+import { healthFigure } from '@/domain/measureFigures';
 import { withPlannedMinutes } from '@/domain/plannedSession';
 import { weightWaistWrite, type WaistSampleWrite, type WeightReadingDraft } from '@/domain/weightEntry';
 import { catchUpAppleHealthReads } from '@/health/catchUp';
@@ -16,13 +19,18 @@ import { useHealthSources } from '@/health/useHealthSources';
 import { useStatPeriod } from '@/health/useStatPeriod';
 import { HealthBoard, HealthReadings } from '@/ui/HealthBoard';
 import { HealthStatBoard, type HealthTurnOnResult } from '@/ui/HealthStatBoard';
+import { HealthFigureView } from '@/ui/MeasuredFigure';
+import { WeightTrendChart } from '@/ui/NutritionCharts';
 import { PlanTick } from '@/ui/PlanTick';
+import { BodyCompositionCard } from '@/ui/BodyComposition';
+import { ScrollTarget } from '@/ui/ScrollTarget';
 import { StatPeriodToggle } from '@/ui/StatPeriodToggle';
-import { Button, ErrorNote, Screen, T, playSavedHaptic } from '@/ui/ui';
+import { WEIGHT_WAIST_TITLE } from '@/ui/WeightWaistLink';
+import { Button, Card, ErrorNote, Screen, T, playSavedHaptic } from '@/ui/ui';
 
 /**
- * Weight, waist, and BMI.
- * Route: /weight-waist. Opened from the Health stats row, and from You.
+ * Body: weight, waist, height, and BMI.
+ * Route: /weight-waist. Opened from the menu, the Health stats row, and You.
  */
 export default function WeightWaistScreen() {
   const snap = useSnapshot();
@@ -126,6 +134,8 @@ export default function WeightWaistScreen() {
   }
 
   const saveBar = weightDraft != null || savePending || savedNote != null;
+  const today = isoDay(new Date());
+  const weights = weightChart(snap.health).map((point) => ({ day: point.day, kg: point.value }));
 
   function goBack() {
     if (router.canGoBack()) router.back();
@@ -135,7 +145,7 @@ export default function WeightWaistScreen() {
   return (
     <Screen
       eyebrow="Health"
-      title="Weight and waist"
+      title={WEIGHT_WAIST_TITLE}
       intro="Weight, waist and BMI."
       footer={saveBar ? (
         <View style={{ gap: 8 }}>
@@ -157,6 +167,9 @@ export default function WeightWaistScreen() {
     >
       <Button label="Back" tone="quiet" onPress={goBack} />
       <StatPeriodToggle />
+      <ScrollTarget id="body">
+        <BodyCompositionCard />
+      </ScrollTarget>
       <HealthStatBoard
         onlyTiles={['weight_kg', 'waist']}
         today={isoDay(new Date())}
@@ -189,6 +202,27 @@ export default function WeightWaistScreen() {
         onWeightDraftChange={reportWeight}
         weightReset={weightReset}
       />
+      <ScrollTarget id="weight-chart">
+        <Card>
+          <T variant="label">Weight</T>
+          <HealthFigureView
+            figure={healthFigure(
+              'weight_kg',
+              weights.map((point) => ({ day: point.day, value: point.kg })),
+              today,
+              { classWindow: boxingClassWindow(snap.nutrition.goal, snap.nutrition.goalSex) },
+            )}
+          />
+          {weights.length === 0 ? <T variant="muted">No weight logged yet.</T> : (
+            <>
+              {weights.map((point) => (
+                <T key={point.day}>{`${formatUkLong(point.day)} · ${point.kg} kg`}</T>
+              ))}
+              <WeightTrendChart points={weights} goal={snap.nutrition.goal} />
+            </>
+          )}
+        </Card>
+      </ScrollTarget>
       <HealthReadings samples={healthSamples} kinds={['weight_kg']} />
       <ErrorNote>{error ?? refreshError}</ErrorNote>
     </Screen>

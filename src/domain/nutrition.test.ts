@@ -443,15 +443,16 @@ describe('nutrition storage and coach', () => {
     expect(screen).toContain('pendingLabel="Suggesting..."');
     expect(screen).toContain('readAppleHealthBody');
     expect(screen).toContain('goalBodyForSuggestion');
-    expect(screen).toContain('label="Weight (kg)"');
-    expect(screen).toContain('label="Height (cm)"');
-    expect(screen).toContain('Or add them on Weight and waist');
+    expect(screen).not.toContain('label="Weight (kg)"');
+    expect(screen).not.toContain('label="Height (cm)"');
+    expect(screen).toContain('Weight and waist moved to Body');
     expect(screen).toContain("router.push('/weight-waist'");
     const goalCard = screen.slice(screen.indexOf('<GoalChoices'), screen.indexOf('variant="label">Today'));
     expect(goalCard).toContain('Suggest targets');
     expect(goalCard).toContain('{suggestNote}');
-    expect(goalCard).toContain('label="Weight (kg)"');
-    expect(goalCard).toContain('label="Height (cm)"');
+    expect(goalCard).not.toContain('label="Weight (kg)"');
+    expect(goalCard).not.toContain('label="Height (cm)"');
+    expect(goalCard).toContain('Weight and waist moved to Body');
     const suggestFn = screen.slice(screen.indexOf('function suggest()'), screen.indexOf('function openDraft'));
     expect(suggestFn).toContain("run('suggest'");
     expect(suggestFn).toContain('setSuggestNote(result.message)');
@@ -872,35 +873,36 @@ describe('nutrition charts', () => {
     expect(readFileSync('src/ui/BodyComposition.tsx', 'utf8')).toContain('<RangeTrack');
     expect(readFileSync('src/ui/StatTile.tsx', 'utf8')).toContain('router.push(tile.href');
     expect(screen).toContain('<NutritionBoard');
-    expect(screen).toContain('<WeightTrendChart');
+    expect(screen).not.toContain('<WeightTrendChart');
     expect(screen).toContain('<WaterMeter');
+    const bodyPage = readFileSync('src/app/(main)/weight-waist.tsx', 'utf8');
+    expect(bodyPage).toContain('<WeightTrendChart');
+    expect(bodyPage).toContain('<BodyCompositionCard');
+    expect(bodyPage).toContain('id="body"');
     const at = (needle: string) => screen.indexOf(needle);
     const log = at('variant="label">Log a meal');
-    const body = at('<BodyCompositionCard');
     const goal = at('<GoalChoices');
     const logged = at('variant="label">Logged today');
     const summary = at('variant="label">Today');
     const board = at('<NutritionBoard');
     const water = at('variant="label">Water');
-    const weight = at('variant="label">Weight');
     const wagon = at('<WagonFlag');
     const sharing = at('<NutritionShareSummary');
     expect(log).toBeGreaterThan(-1);
     expect(log).toBeLessThan(logged);
-    expect(logged).toBeLessThan(body);
-    expect(body).toBeLessThan(goal);
+    expect(logged).toBeLessThan(goal);
     expect(goal).toBeLessThan(summary);
     expect(summary).toBeLessThan(board);
     expect(board).toBeLessThan(water);
-    expect(water).toBeLessThan(weight);
-    expect(weight).toBeLessThan(wagon);
+    expect(water).toBeLessThan(wagon);
     expect(wagon).toBeLessThan(sharing);
-    expect(screen.slice(body - 80, body)).toContain('id="body"');
-    expect(readFileSync('src/domain/statsOverview.ts', 'utf8')).toContain("href: '/nutrition?section=body'");
+    expect(screen).not.toContain('id="body"');
+    expect(readFileSync('src/domain/statsOverview.ts', 'utf8')).toContain("href: '/weight-waist?section=body'");
+    expect(readFileSync('src/domain/statsOverview.ts', 'utf8')).not.toContain("href: '/nutrition?section=body'");
     const scroller = readFileSync('src/ui/ScrollTarget.tsx', 'utf8');
     expect(scroller).toContain('querySelectorAll(`[id="section-${id}"]`)');
     expect(scroller).toContain('scrollIntoView');
-    expect(screen.slice(logged, body)).toContain("Share today's meals");
+    expect(screen.slice(logged, goal)).toContain("Share today's meals");
     expect(screen.slice(summary, board)).toContain('Share daily calories and macros');
     expect(screen.slice(board, water)).toContain('Share food quality');
     expect(screen.slice(board, water)).toContain('Share progress and streaks');
@@ -1166,6 +1168,29 @@ describe('body composition', () => {
     ).bodyFigures).toBeNull();
   });
 
+  it('keeps weight, waist, height, and BMI entry off the Nutrition screen', () => {
+    const nutrition = readFileSync('src/app/(main)/nutrition.tsx', 'utf8');
+    expect(nutrition).not.toContain('<BodyCompositionCard');
+    expect(nutrition).not.toContain('<WeightTrendChart');
+    expect(nutrition).not.toContain('label="Weight (kg)"');
+    expect(nutrition).not.toContain('label="Height (cm)"');
+    expect(nutrition).not.toContain('id="body"');
+    expect(nutrition).not.toContain('id="weight"');
+    expect(nutrition).not.toContain('variant="label">Weight');
+    expect(nutrition).not.toContain('variant="label">Body');
+    expect(nutrition).not.toContain('weightTrendLine');
+    expect(nutrition).not.toContain('compositionTrendLine');
+    expect(nutrition).not.toContain('BMI_ONLY_NOTE');
+    expect(nutrition).toContain('Weight and waist moved to Body');
+    expect(nutrition).toContain('latestWeight == null || profile?.heightCm == null');
+    const page = readFileSync('src/app/(main)/weight-waist.tsx', 'utf8');
+    expect(page).toContain('<BodyCompositionCard');
+    expect(page).toContain('<WeightTrendChart');
+    expect(page).toContain('id="body"');
+    expect(page).toContain('label="Save reading"');
+    expect(page).toContain('<PlanTick done');
+  });
+
   it('keeps the body card free of photo estimation and reloads', () => {
     expect(screen).toContain('BMI_ONLY_NOTE');
     expect(BUILD_LABEL.muscular).toBe('Muscular / I lift weights');
@@ -1371,7 +1396,9 @@ describe('training nutrition goals', () => {
     expect(screen).toContain('label="Middleweight limit (kg)"');
     expect(screen).toContain('COMPETITION_NOTE');
     expect(screen).toContain('PHASE_LABEL');
-    expect(screen).toContain('compositionTrendLine');
+    expect(screen).not.toContain('compositionTrendLine');
+    expect(readFileSync('src/ui/BodyComposition.tsx', 'utf8')).toContain('compositionTrendLine');
+    expect(readFileSync('src/app/(main)/weight-waist.tsx', 'utf8')).toContain('<BodyCompositionCard');
     const columns = readFileSync('supabase/migrations/20261015170000_training_goals.sql', 'utf8');
     expect(columns).toContain('carb_target_g');
     expect(columns).toContain('fat_target_g');
@@ -1621,7 +1648,8 @@ describe('training nutrition goals', () => {
     expect(sql).not.toMatch(/delete from/i);
     const screen = readFileSync('src/app/(main)/nutrition.tsx', 'utf8');
     expect(screen).toContain('isClassBoxer(settings.goal)');
-    expect(screen).toContain('boxingClassWindow(settings.goal, settings.goalSex)');
+    expect(screen).not.toContain('boxingClassWindow(');
+    expect(readFileSync('src/app/(main)/weight-waist.tsx', 'utf8')).toContain('boxingClassWindow(snap.nutrition.goal, snap.nutrition.goalSex)');
   });
 });
 
@@ -1857,19 +1885,20 @@ describe("today's meals on the log card", () => {
     expect(meals).toContain('onOpen(row.id)');
   });
 
-  it('sits under Log a meal and the confirm card, above Body, and stays monochrome', () => {
+  it('sits under Log a meal and the confirm card, above the goal, and stays monochrome', () => {
     const screen = readFileSync('src/app/(main)/nutrition.tsx', 'utf8');
     const meals = readFileSync('src/ui/TodayMeals.tsx', 'utf8');
     const log = screen.indexOf('variant="label">Log a meal');
     const confirm = screen.indexOf('Confirm this meal');
     const logged = screen.indexOf('variant="label">Logged today');
-    const body = screen.indexOf('<BodyCompositionCard');
+    const goal = screen.indexOf('<GoalChoices');
     expect(log).toBeGreaterThan(-1);
     expect(log).toBeLessThan(confirm);
     expect(confirm).toBeLessThan(logged);
-    expect(logged).toBeLessThan(body);
+    expect(logged).toBeLessThan(goal);
+    expect(screen).not.toContain('<BodyCompositionCard');
     expect(screen.slice(log, confirm)).not.toContain('<TodayMeals');
-    expect(screen.slice(logged, body)).toContain('<TodayMeals');
+    expect(screen.slice(logged, goal)).toContain('<TodayMeals');
     const renderLog = screen.slice(screen.indexOf('function renderLog'), screen.indexOf('function kcalFromField'));
     expect(renderLog).toContain('<MealBreakdown');
     expect(renderLog).toContain('mealNutrientBars(log.items)');
@@ -1877,9 +1906,9 @@ describe("today's meals on the log card", () => {
     expect(screen.slice(log, logged)).toContain('<PlanTick done />');
     expect(screen.slice(log, logged)).toContain('{savedDayNote}');
     expect(screen.slice(log, logged)).toContain('label="View in list"');
-    expect(screen.slice(logged, body)).not.toContain('scrollIntoView');
-    expect(screen.slice(logged, body)).toContain('>Earlier<');
-    expect(screen.slice(logged, body)).toContain("Share today's meals");
+    expect(screen.slice(logged, goal)).not.toContain('scrollIntoView');
+    expect(screen.slice(logged, goal)).toContain('>Earlier<');
+    expect(screen.slice(logged, goal)).toContain("Share today's meals");
     const save = screen.slice(screen.indexOf('function saveMeal'), screen.indexOf('function saveEdited'));
     expect(save).toContain('setMealSavedAt(Date.now())');
     expect(save).toContain('setRevealId(id)');
@@ -1908,7 +1937,7 @@ describe("today's meals on the log card", () => {
     expect(screen).toContain('<MealDayList');
     expect(screen).toContain('bare');
     expect(screen).toContain('TODAY_MEALS_EMPTY');
-    expect(screen.slice(logged, body)).toContain('renderLog(log, false)');
+    expect(screen.slice(logged, goal)).toContain('renderLog(log, false)');
     expect(days).toContain('useState(group.isToday || pinned)');
     expect(days).toContain('accessibilityState={{ expanded: open }}');
     expect(days).toContain("open ? 'Hide' : 'Show'");

@@ -5,11 +5,11 @@ import { latestWeightSummary } from '@/domain/weightEntry';
 import { useAppTheme } from '@/ui/theme';
 import { Card, T } from '@/ui/ui';
 
-export const WEIGHT_WAIST_TITLE = 'Weight, waist and BMI';
+export const WEIGHT_WAIST_TITLE = 'Body: weight, waist and BMI';
 export const WEIGHT_WAIST_OPEN = 'Tap to open';
 export const WEIGHT_WAIST_HREF = '/weight-waist';
 
-/** One tappable row on Health stats. The charts and entry boxes live on Weight and waist. */
+/** One tappable row on Health stats. The charts and entry boxes live on Body. */
 export function WeightWaistLink({
   samples,
 }: {

@@ -352,7 +352,7 @@ function weightTile(input: StatsOverviewInput): StatTileModel {
       tone: 'info',
       series,
       chart,
-      href: '/nutrition?section=weight',
+      href: '/weight-waist?section=weight',
     });
   }
   if (goal === 'lose_fat_build_muscle' || goal === 'body_builder') {
@@ -366,7 +366,7 @@ function weightTile(input: StatsOverviewInput): StatTileModel {
       tone: 'info',
       series,
       chart,
-      href: '/nutrition?section=weight',
+      href: '/weight-waist?section=weight',
     });
   }
   if (goal === 'elite_runner') {
@@ -378,7 +378,7 @@ function weightTile(input: StatsOverviewInput): StatTileModel {
       tone: 'info',
       series,
       chart,
-      href: '/nutrition?section=weight',
+      href: '/weight-waist?section=weight',
     });
   }
   if (goal === 'elite_heavy_boxer') {
@@ -390,7 +390,7 @@ function weightTile(input: StatsOverviewInput): StatTileModel {
       tone: 'info',
       series,
       chart,
-      href: '/nutrition?section=weight',
+      href: '/weight-waist?section=weight',
     });
   }
   if (goal === 'elite_middle_boxer') {
@@ -402,7 +402,7 @@ function weightTile(input: StatsOverviewInput): StatTileModel {
       tone: 'info',
       series,
       chart,
-      href: '/nutrition?section=weight',
+      href: '/weight-waist?section=weight',
     });
   }
   if (isClassBoxer(goal)) {
@@ -414,26 +414,26 @@ function weightTile(input: StatsOverviewInput): StatTileModel {
       tone: 'info',
       series,
       chart,
-      href: '/nutrition?section=weight',
+      href: '/weight-waist?section=weight',
     });
   }
   const lower = direction === 'down';
   const higher = direction === 'up';
   const steady = direction === 'steady';
   if (goal === 'lose_weight' && lower) {
-    return tile({ id: 'weight', title: 'Weight', value, meaning: 'Lower than the earlier reading', tone: 'good', series, chart, href: '/nutrition?section=weight' });
+    return tile({ id: 'weight', title: 'Weight', value, meaning: 'Lower than the earlier reading', tone: 'good', series, chart, href: '/weight-waist?section=weight' });
   }
   if (goal === 'lose_weight' && higher) {
-    return tile({ id: 'weight', title: 'Weight', value, meaning: 'Higher than the earlier reading', tone: 'watch', series, chart, href: '/nutrition?section=weight' });
+    return tile({ id: 'weight', title: 'Weight', value, meaning: 'Higher than the earlier reading', tone: 'watch', series, chart, href: '/weight-waist?section=weight' });
   }
   if (goal === 'increase' && higher) {
-    return tile({ id: 'weight', title: 'Weight', value, meaning: 'Higher than the earlier reading', tone: 'good', series, chart, href: '/nutrition?section=weight' });
+    return tile({ id: 'weight', title: 'Weight', value, meaning: 'Higher than the earlier reading', tone: 'good', series, chart, href: '/weight-waist?section=weight' });
   }
   if (goal === 'increase' && lower) {
-    return tile({ id: 'weight', title: 'Weight', value, meaning: 'Lower than you aimed for', tone: 'watch', series, chart, href: '/nutrition?section=weight' });
+    return tile({ id: 'weight', title: 'Weight', value, meaning: 'Lower than you aimed for', tone: 'watch', series, chart, href: '/weight-waist?section=weight' });
   }
   if (goal === 'maintain' && steady) {
-    return tile({ id: 'weight', title: 'Weight', value, meaning: 'On track', tone: 'good', series, chart, href: '/nutrition?section=weight' });
+    return tile({ id: 'weight', title: 'Weight', value, meaning: 'On track', tone: 'good', series, chart, href: '/weight-waist?section=weight' });
   }
   if ((goal === 'maintain' || goal === 'lose_weight') && !steady) {
     return tile({
@@ -444,7 +444,7 @@ function weightTile(input: StatsOverviewInput): StatTileModel {
       tone: 'watch',
       series,
       chart,
-      href: '/nutrition?section=weight',
+      href: '/weight-waist?section=weight',
     });
   }
   return tile({
@@ -455,7 +455,7 @@ function weightTile(input: StatsOverviewInput): StatTileModel {
     tone: 'info',
     series,
     chart,
-    href: '/nutrition?section=weight',
+    href: '/weight-waist?section=weight',
   });
 }
 
@@ -500,7 +500,7 @@ function bodyTile(input: StatsOverviewInput): StatTileModel {
         status: range.status,
         zoneCaption: bodyFatZoneCaption(range),
       },
-      href: '/nutrition?section=body',
+      href: '/weight-waist?section=body',
     });
   }
   if (assessment.basis === 'waist' && composition.waistCm != null && input.heightCm != null) {
@@ -526,7 +526,7 @@ function bodyTile(input: StatsOverviewInput): StatTileModel {
           status: range.status,
           zoneCaption: WAIST_ZONE_CAPTION,
         },
-      href: '/nutrition?section=body',
+      href: '/weight-waist?section=body',
     });
   }
   if (assessment.underweight) {
@@ -538,7 +538,7 @@ function bodyTile(input: StatsOverviewInput): StatTileModel {
       tone: 'attention',
       series: [],
       chart: { kind: 'none' },
-      href: '/nutrition?section=body',
+      href: '/weight-waist?section=body',
     });
   }
   return tile({
@@ -549,7 +549,7 @@ function bodyTile(input: StatsOverviewInput): StatTileModel {
     tone: 'info',
     series: fatSeries.length ? fatSeries : waistSeries,
     chart: { kind: 'none' },
-    href: '/nutrition?section=body',
+    href: '/weight-waist?section=body',
   });
 }
 
@@ -580,7 +580,7 @@ function leanTile(input: StatsOverviewInput): StatTileModel | null {
     tone,
     series,
     chart: datedLine(dated, 'kg'),
-    href: '/nutrition?section=body',
+    href: '/weight-waist?section=body',
   });
 }
 

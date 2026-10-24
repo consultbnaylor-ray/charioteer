@@ -1,5 +1,5 @@
 import { Image } from 'expo-image';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import { Keyboard, Platform, Pressable, ScrollView, Switch, View } from 'react-native';
 
@@ -10,8 +10,6 @@ import type { FoodLogUpdate, NewHealthSample } from '@/data/types';
 import { formatUkCompact, formatUkCompactWhen, formatUkLong, formatUkTime, isoDay, parseIsoDay } from '@/domain/dates';
 import { londonDay } from '@/domain/healthInsights';
 import { shownError } from '@/domain/errors';
-import { boxingClassWindow } from '@/domain/goalWeightRange';
-import { parseHeightCm } from '@/domain/guidance';
 import { randomId } from '@/domain/id';
 import {
   APPLE_HEALTH_MEAL_NOTE,
@@ -33,7 +31,6 @@ import {
   PHASE_LABEL,
   alcoholSavedLine,
   compositionForAssessment,
-  compositionTrendLine,
   dayItems,
   fatBalance,
   goalBodyForSuggestion,
@@ -69,7 +66,6 @@ import {
   todayMealRows,
   todayMealTotals,
   todayRing,
-  weightTrendLine,
   type BuilderPhase,
   type FoodItem,
   type FoodLog,
@@ -78,15 +74,12 @@ import {
   type MealSource,
   type NutritionSex,
 } from '@/domain/nutrition';
-import { healthFigure } from '@/domain/measureFigures';
 import { periodDayCount, periodHeading } from '@/domain/statWindow';
 import { useStatPeriod } from '@/health/useStatPeriod';
 import { savingsFromTypicalWeek } from '@/domain/savings';
 import { soberElapsed } from '@/domain/sober';
-import { weightReadingKg } from '@/domain/weightEntry';
 import { readAppleHealthBody } from '@/health/sync';
 import { writeDayToAppleHealth } from '@/health/writeNutrition';
-import { BodyCompositionCard } from '@/ui/BodyComposition';
 import { GoalChoices } from '@/ui/GoalChoices';
 import { DateField } from '@/ui/DateField';
 import { MealEstimateStatus } from '@/ui/MealEstimateStatus';
@@ -98,8 +91,7 @@ import { MealEdit } from '@/ui/MealEdit';
 import { OwnerPhoto } from '@/ui/OwnerPhoto';
 import { statsToneColors } from '@/ui/statsPalette';
 import { TodayMeals } from '@/ui/TodayMeals';
-import { HealthFigureView } from '@/ui/MeasuredFigure';
-import { NutritionBoard, WaterMeter, WeightTrendChart } from '@/ui/NutritionCharts';
+import { NutritionBoard, WaterMeter } from '@/ui/NutritionCharts';
 import { FatShareBar, NutritionShareSummary, NutritionShareSwitch, WagonFlag } from '@/ui/NutritionShare';
 import { NutritionSectionShare } from '@/ui/SectionShare';
 import { pickMealPhoto } from '@/ui/pickMealPhoto';
@@ -250,7 +242,14 @@ export default function Nutrition() {
   const snap = useSnapshot();
   const repo = useRepository();
   const router = useRouter();
+  const sectionParam = useLocalSearchParams<{ section?: string | string[] }>().section;
+  const openedSection = Array.isArray(sectionParam) ? sectionParam[0] : sectionParam;
   const theme = useAppTheme();
+  useEffect(() => {
+    if (openedSection === 'body' || openedSection === 'weight') {
+      router.replace(`/weight-waist?section=${openedSection}` as never);
+    }
+  }, [openedSection, router]);
   const [period] = useStatPeriod();
   const { run, isPending } = usePendingPress();
   const profile = snap.profile;
@@ -293,7 +292,6 @@ export default function Nutrition() {
     fatG: totals.unsaturatedG + totals.saturatedG + totals.transG,
     fatTarget: settings.fatTarget,
   });
-  const compositionTrend = compositionTrendLine(snap.bodyComposition, settings.goal);
   const dayLine = settings.goal
     ? goalDayLine({
       goal: settings.goal,
@@ -326,8 +324,6 @@ export default function Nutrition() {
   const [weightClass, setWeightClass] = useState(settings.weightClassKg == null ? '' : String(settings.weightClassKg));
   const [goalNote, setGoalNote] = useState<string | null>(null);
   const [choiceNote, setChoiceNote] = useState<string | null>(null);
-  const [goalWeight, setGoalWeight] = useState('');
-  const [goalHeight, setGoalHeight] = useState('');
   const [suggestNote, setSuggestNote] = useState<string | null>(null);
   const [targetsSavedAt, setTargetsSavedAt] = useState<number | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -477,17 +473,6 @@ export default function Nutrition() {
         setSuggestNote('Age sits between 18 and 100. Leave it blank if you would rather not say.');
         return;
       }
-      const typedWeight = weightReadingKg({ unit: 'kg', kilograms: goalWeight, stones: '', pounds: '' });
-      if (!typedWeight.ok) {
-        setSuggestNote(typedWeight.error);
-        return;
-      }
-      const typedHeight = parseHeightCm(goalHeight);
-      if (!typedHeight.ok) {
-        setSuggestNote(typedHeight.error);
-        return;
-      }
-
       let healthWeight: { kg: number; day: string } | null = null;
       let healthHeightCm: number | null = null;
       let healthDay: string | null = null;
@@ -507,8 +492,8 @@ export default function Nutrition() {
         healthWeight,
         profileHeightCm: profile?.heightCm ?? null,
         healthHeightCm,
-        typedWeightKg: typedWeight.kg,
-        typedHeightCm: typedHeight.value,
+        typedWeightKg: null,
+        typedHeightCm: null,
       });
       const klass = readWeightClass(weightClass);
       if (klass === 'bad') {
@@ -1196,9 +1181,6 @@ export default function Nutrition() {
           apply={(current, selected) => ({ ...current, shareFoodDiary: selected })}
         />
       </Card>
-      <ScrollTarget id="body">
-      <BodyCompositionCard />
-      </ScrollTarget>
       <ScrollTarget id="goal">
       <Card>
         <GoalChoices
@@ -1238,15 +1220,13 @@ export default function Nutrition() {
           <Choice label="Not set" selected={settings.goalSex == null} onPress={() => chooseSex(null)} />
         </View>
         <QuietNote>{choiceNote}</QuietNote>
-        {latestWeight == null ? (
-          <Field label="Weight (kg)" value={goalWeight} onChangeText={setGoalWeight} keyboardType="decimal-pad" placeholder="74.2" />
-        ) : null}
-        {profile?.heightCm == null ? (
-          <Field label="Height (cm)" value={goalHeight} onChangeText={setGoalHeight} keyboardType="decimal-pad" placeholder="178" />
-        ) : null}
         {latestWeight == null || profile?.heightCm == null ? (
-          <Pressable accessibilityRole="link" accessibilityLabel="Weight and waist" onPress={() => router.push('/weight-waist' as never)}>
-            <T variant="muted">Or add them on Weight and waist</T>
+          <Pressable
+            accessibilityRole="link"
+            accessibilityLabel="Weight and waist moved to Body"
+            onPress={() => router.push('/weight-waist' as never)}
+          >
+            <T variant="muted">Weight and waist moved to Body</T>
           </Pressable>
         ) : null}
         <Button label="Suggest targets" pending={isPending('suggest')} pendingLabel="Suggesting..." onPress={suggest} />
@@ -1265,8 +1245,6 @@ export default function Nutrition() {
           pendingLabel="Saving..."
           onPress={saveTargets}
         />
-        {settings.goal ? <T variant="muted">{weightTrendLine(weights, settings.goal)}</T> : null}
-        {compositionTrend ? <T variant="muted">{compositionTrend}</T> : null}
         {settings.updatedAt ? <T>{`Last updated ${formatUkCompactWhen(settings.updatedAt)}`}</T> : null}
         <NutritionShareSwitch
           label="Share the goal and progress"
@@ -1339,27 +1317,6 @@ export default function Nutrition() {
         <WaterMeter ml={water} />
         <Field label="Water today (ml)" value={waterText} onChangeText={setWaterText} keyboardType="number-pad" placeholder="350" />
         <Button label="Save water" pending={isPending('water')} pendingLabel="Saving..." onPress={saveWater} />
-      </Card>
-      </ScrollTarget>
-      <ScrollTarget id="weight">
-      <Card>
-        <T variant="label">Weight</T>
-        <HealthFigureView
-          figure={healthFigure(
-            'weight_kg',
-            weights.map((point) => ({ day: point.day, value: point.kg })),
-            today,
-            { classWindow: boxingClassWindow(settings.goal, settings.goalSex) },
-          )}
-        />
-        {weights.length === 0 ? <T variant="muted">Add a weight on Weight and waist and it will show here.</T> : (
-          <>
-            {weights.map((point) => (
-              <T key={point.day}>{`${formatUkLong(point.day)} · ${point.kg} kg`}</T>
-            ))}
-            <WeightTrendChart points={weights} goal={settings.goal} />
-          </>
-        )}
       </Card>
       </ScrollTarget>
       <ScrollTarget id="calories">

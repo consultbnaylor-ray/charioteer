@@ -14,6 +14,7 @@ export type MenuIcon =
   | 'workout'
   | 'stats'
   | 'meal'
+  | 'body'
   | 'photo'
   | 'board'
   | 'glass'
@@ -58,6 +59,7 @@ export const APP_SECTIONS: readonly AppSection[] = [
   { id: 'stats', label: 'Stats', href: '/stats', icon: 'stats', group: 'tools' },
   { id: 'health', label: 'Health Stats', href: '/health', icon: 'pulse', group: 'tools' },
   { id: 'nutrition', label: 'Nutrition', href: '/nutrition', icon: 'meal', group: 'tools' },
+  { id: 'body', label: 'Body: weight, waist and BMI', href: '/weight-waist', icon: 'body', group: 'tools' },
   { id: 'health-plan', label: 'Health Plan', href: '/health-plan', icon: 'plan', group: 'tools' },
   { id: 'workouts', label: 'Workouts', href: '/workouts', icon: 'workout', group: 'tools' },
   { id: 'photos', label: 'Progress photos', href: '/photos', icon: 'photo', group: 'tools' },
