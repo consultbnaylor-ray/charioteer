@@ -1132,7 +1132,7 @@ describe('health plan wiring', () => {
     expect(planPage).toContain('<PlanTick');
     expect(planPage).not.toContain('line-through');
     expect(tick).toContain('accessibilityLabel="Done"');
-    expect(tick).toContain('statsToneColors');
+    expect(tick).toContain('theme.colors.accent');
     expect(tick).toContain('borderRadius: SIZE / 2');
     expect(profile).toContain('Only a private message or a report.');
     expect(profile).toContain("reach('plan')");

@@ -80,13 +80,15 @@ function SignalRow({ tone, signal, monochrome }: { tone: StatsTone; signal?: str
   const word = signal ?? STATS_SIGNAL[tone];
   const neutral = monochrome || word === 'Early days' || word === 'On pace';
   const iconTone: StatsTone = word === 'On pace' ? 'good' : word === 'Early days' ? 'info' : tone;
-  const color = neutral ? theme.colors.ink : statsToneColors(theme.scheme)[tone].ink;
+  const ink = neutral ? theme.colors.ink : statsToneColors(theme.scheme)[tone].ink;
+  const mark = !neutral && iconTone === 'good' ? theme.colors.accent : ink;
+  const label = theme.scheme === 'light' ? ink : mark;
   return (
     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
       <Svg width={18} height={18} viewBox="0 0 24 24" fill="none" accessibilityElementsHidden>
-        <ToneMark tone={iconTone} color={color} />
+        <ToneMark tone={iconTone} color={mark} />
       </Svg>
-      <T style={{ color, fontFamily: theme.font.bodyStrong }}>{word}</T>
+      <T style={{ color: label, fontFamily: theme.font.bodyStrong }}>{word}</T>
     </View>
   );
 }
@@ -97,7 +99,8 @@ function inkFor(tone: StatsTone, surface: 'tile' | 'card'): { stroke: string; ce
   if (surface === 'tile') {
     return { stroke: toneInk, centre: toneInk, muted: toneInk, track: toneInk };
   }
-  return { stroke: toneInk, centre: theme.colors.ink, muted: theme.colors.muted, track: theme.colors.line };
+  const stroke = tone === 'good' ? theme.colors.accent : toneInk;
+  return { stroke, centre: theme.colors.ink, muted: theme.colors.muted, track: theme.colors.line };
 }
 
 export function ProgressRing({

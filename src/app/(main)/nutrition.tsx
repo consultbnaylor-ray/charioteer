@@ -91,7 +91,6 @@ import { MealDayList } from '@/ui/MealDayList';
 import { MealBreakdown } from '@/ui/MealNutrientBars';
 import { MealEdit } from '@/ui/MealEdit';
 import { OwnerPhoto } from '@/ui/OwnerPhoto';
-import { statsToneColors } from '@/ui/statsPalette';
 import { TodayMeals } from '@/ui/TodayMeals';
 import { NutritionBoard, WaterMeter } from '@/ui/NutritionCharts';
 import { FatShareBar, NutritionShareSummary, NutritionShareSwitch, WagonFlag } from '@/ui/NutritionShare';
@@ -1094,7 +1093,7 @@ export default function Nutrition() {
       </Card>
       {draft ? (
         <View ref={confirmRef} nativeID="meal-estimate-confirm" collapsable={false}>
-        <Card style={estimateFlash ? { borderColor: statsToneColors(theme.scheme).good.ink, borderWidth: stroke.featured } : undefined}>
+        <Card style={estimateFlash ? { borderColor: theme.colors.accent, borderWidth: stroke.featured } : undefined}>
           <T variant="label">{draft.source === 'photo' ? 'Confirm this photo' : 'Confirm this meal'}</T>
           {draft.estimated ? <T>{ESTIMATE_LABEL}</T> : null}
           {photoNote ? <T>{photoNote}</T> : null}

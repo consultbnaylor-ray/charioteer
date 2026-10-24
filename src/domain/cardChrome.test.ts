@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
-import { statsToneColors } from '@/ui/statsPalette';
+import { cardAccent, statsToneColors } from '@/ui/statsPalette';
 
 function channel(hex: string, index: number): number {
   const value = Number.parseInt(hex.slice(1 + index * 2, 3 + index * 2), 16) / 255;
@@ -21,24 +21,35 @@ function contrast(front: string, back: string): number {
 describe('card chrome', () => {
   const theme = readFileSync('src/ui/theme.tsx', 'utf8');
   const ui = readFileSync('src/ui/ui.tsx', 'utf8');
+  const rings = readFileSync('src/ui/DistanceCharts.tsx', 'utf8');
   const card = ui.slice(ui.indexOf('export function Card'), ui.indexOf('export function Pulse'));
   const choice = ui.slice(ui.indexOf('export function Choice'), ui.indexOf('export function ErrorNote'));
   const field = ui.slice(ui.indexOf('export function Field'), ui.indexOf('function PasswordEye'));
 
-  it('reuses the On-track green and keeps it readable on both themes', () => {
-    expect(theme).toContain('statsToneColors(scheme).good.ink');
+  it('keeps the card edge separate from the readable green text', () => {
+    expect(theme).toContain('cardAccent(scheme)');
+    expect(theme).not.toContain('statsToneColors(scheme).good.ink');
     expect(theme).toContain('sm: 14, md: 20');
     expect(theme).toContain('control: 2, card: 2, featured: 2.5');
-    const light = statsToneColors('light').good.ink;
-    const dark = statsToneColors('dark').good.ink;
-    expect(light).toBe('#047857');
-    expect(dark).toBe('#2DE0A0');
-    expect(light).toMatch(/^#[0-9A-F]{6}$/);
-    expect(dark).toMatch(/^#[0-9A-F]{6}$/);
-    expect(contrast(light, '#FFFFFF')).toBeGreaterThanOrEqual(4.5);
-    expect(contrast(light, '#F2F2EE')).toBeGreaterThanOrEqual(4.5);
-    expect(contrast(dark, '#1A1A1A')).toBeGreaterThanOrEqual(4.5);
-    expect(contrast(dark, '#0C0C0C')).toBeGreaterThanOrEqual(4.5);
+    const lightInk = statsToneColors('light').good.ink;
+    const darkInk = statsToneColors('dark').good.ink;
+    expect(lightInk).toBe('#047857');
+    expect(darkInk).toBe('#2DE0A0');
+    expect(cardAccent('light')).toBe('#047857');
+    expect(cardAccent('dark')).toBe('#2DE0A0');
+    expect(lightInk).toMatch(/^#[0-9A-F]{6}$/);
+    expect(darkInk).toMatch(/^#[0-9A-F]{6}$/);
+    expect(contrast(lightInk, '#FFFFFF')).toBeGreaterThanOrEqual(4.5);
+    expect(contrast(lightInk, '#F2F2EE')).toBeGreaterThanOrEqual(4.5);
+    expect(contrast(lightInk, '#E7F5EC')).toBeGreaterThanOrEqual(4.5);
+    expect(contrast(darkInk, '#1A1A1A')).toBeGreaterThanOrEqual(4.5);
+    expect(contrast(darkInk, '#0C0C0C')).toBeGreaterThanOrEqual(4.5);
+    expect(contrast(darkInk, '#143024')).toBeGreaterThanOrEqual(4.5);
+    const signal = rings.slice(rings.indexOf('function SignalRow'), rings.indexOf('function inkFor'));
+    expect(signal).toContain('theme.colors.accent');
+    expect(signal).toContain("theme.scheme === 'light' ? ink : mark");
+    expect(rings).toContain("tone === 'good' ? theme.colors.accent : toneInk");
+    expect(rings).toContain('stroke: toneInk, centre: toneInk');
   });
 
   it('puts the accent on cards and leaves nested controls on the subtle line', () => {

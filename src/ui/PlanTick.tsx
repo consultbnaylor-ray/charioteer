@@ -1,7 +1,6 @@
 import { View } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
 
-import { statsToneColors } from '@/ui/statsPalette';
 import { useAppTheme } from '@/ui/theme';
 
 const SIZE = 22;
@@ -24,7 +23,7 @@ export function PlanTick({ done }: { done: boolean }) {
       />
     );
   }
-  const green = statsToneColors(theme.scheme).good.ink;
+  const green = theme.colors.accent;
   return (
     <View accessibilityRole="image" accessibilityLabel="Done" style={{ width: SIZE, height: SIZE }}>
       <Svg width={SIZE} height={SIZE} viewBox="0 0 24 24" fill="none">
