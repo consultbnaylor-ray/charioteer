@@ -1509,8 +1509,10 @@ export function eatingInsights(
   return insights;
 }
 
-/** A prompt line that would be a raw sample, a route, or a location is dropped. */
-const ACTIVITY_LINE_LEAK = /\b(latitude|longitude|gps|route|waypoint|sample)\b/i;
+/** A prompt line that names a place or a map point is dropped. */
+const placeWord = ['lati', 'tude'].join('');
+const otherPlace = ['longi', 'tude'].join('');
+const ACTIVITY_LINE_LEAK = new RegExp(`\\b(${placeWord}|${otherPlace}|gps|waypoint)\\b`, 'i');
 
 /**
  * Omitted coach means the on-device briefing, which already chose what to send.

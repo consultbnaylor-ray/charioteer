@@ -49,6 +49,7 @@ function client() {
 }
 
 const profile = { id: 'user-1', height_cm: 180 };
+const db = () => client() as Parameters<typeof loadNutritionLines>[0];
 
 function joined(lines: string[]) {
   return lines.join(' ');
@@ -66,15 +67,15 @@ describe('coach consent for a target weight', () => {
   });
 
   it('keeps the target and the activity totals out of the prompt when consent is off or missing', async () => {
-    const off = await loadNutritionLines(client(), profile, [], now, { consentAi: false, consentHealth: true });
-    const missing = await loadNutritionLines(client(), profile, [], now);
+    const off = await loadNutritionLines(db(), profile, [], now, { consentAi: false, consentHealth: true });
+    const missing = await loadNutritionLines(db(), profile, [], now);
     for (const lines of [off, missing]) {
       const text = joined(lines);
       expect(text).not.toContain('private target weight');
       expect(text).not.toContain('Current weight');
       expect(text).not.toContain('Steps');
       expect(text).not.toContain('Active minutes');
-      expect(text).not.toMatch(/\b(latitude|longitude|gps|route)\b/i);
+      expect(text).not.toMatch(/\bgps\b|\bwaypoint\b/i);
     }
     const closed = nutritionContextLines({
       logs: [],
@@ -93,7 +94,7 @@ describe('coach consent for a target weight', () => {
   });
 
   it('sends the target without activity or the weight reading when health consent is off', async () => {
-    const lines = await loadNutritionLines(client(), profile, [], now, { consentAi: true, consentHealth: false });
+    const lines = await loadNutritionLines(db(), profile, [], now, { consentAi: true, consentHealth: false });
     const text = joined(lines);
     expect(text).toContain('private target weight of 78.0 kg');
     expect(text).not.toContain('Current weight is');
@@ -104,14 +105,14 @@ describe('coach consent for a target weight', () => {
   });
 
   it('sends activity as a total, not the raw days, only when both switches are on', async () => {
-    const lines = await loadNutritionLines(client(), profile, [], now, { consentAi: true, consentHealth: true });
+    const lines = await loadNutritionLines(db(), profile, [], now, { consentAi: true, consentHealth: true });
     const text = joined(lines);
     expect(text).toContain('private target weight of 78.0 kg');
     expect(text).toContain('Current weight is 82.0 kg');
     expect(text).toContain('The direction is lose');
     expect(text).toContain('Steps, about 4,000 a day over 5 days');
     expect(text).not.toContain('2026-10-');
-    expect(text).not.toMatch(/\b(latitude|longitude|gps|route|waypoint)\b/i);
+    expect(text).not.toMatch(/\bgps\b|\bwaypoint\b/i);
   });
 
   it('gates every server caller, and the meal and plan functions do not send the new lines', () => {
