@@ -10,6 +10,7 @@ import { StatPeriodToggle } from '@/ui/StatPeriodToggle';
 import { useStatPeriod } from '@/health/useStatPeriod';
 import { useAppTheme } from '@/ui/theme';
 import { TargetWeightProgress } from '@/ui/TargetWeightGoal';
+import { MoreInfo } from '@/ui/MoreInfo';
 import { Card, T } from '@/ui/ui';
 
 /**
@@ -27,8 +28,10 @@ export function YourGoal({ place }: { place: 'today' | 'stats' | 'plan' }) {
     <Card featured>
       <StatPeriodToggle />
       {place === 'stats' ? null : <GoalLine />}
-      <T variant="muted">{view.matters}</T>
-      {view.caution ? <T variant="muted">{view.caution}</T> : null}
+      {view.caution ? <T>{view.caution}</T> : null}
+      <MoreInfo about={view.name || 'the saved aim'}>
+        <T>{view.matters}</T>
+      </MoreInfo>
       {showNudges ? view.nudges.map((line) => <T key={line}>{line}</T>) : null}
       <T variant="label">{towardGoal(view.name)}</T>
       <TargetWeightProgress />

@@ -174,6 +174,9 @@ describe('steps and heart rate variability', () => {
     ]);
     expect(steps.label).toBeNull();
     expect(steps.marker).toBeNull();
+    expect(steps.plain).not.toContain('in the last 7 days');
+    expect(steps.lead).toContain('steps a day');
+    expect(steps.honesty).toBe('No UK daily step target. Reference only, not medical advice.');
     expect(steps.plain).toContain('no NHS or UK Chief Medical Officer daily step target');
     expect(steps.plain).toContain('7,000');
     expect(steps.plain).toContain('10,000');

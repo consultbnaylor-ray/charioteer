@@ -48,6 +48,7 @@ import type { WorkoutChartSpan } from '@/domain/workoutDay';
 import { useStatPeriod } from '@/health/useStatPeriod';
 import { openAppSettings } from '@/health/link';
 import { MoreInfo } from '@/ui/MoreInfo';
+import { statsToneColors } from '@/ui/statsPalette';
 import { StatPeriodToggle } from '@/ui/StatPeriodToggle';
 import { useAppTheme } from '@/ui/theme';
 import { activityTitleIcon } from '@/domain/statIcons';
@@ -496,6 +497,7 @@ function Fold({
   children: ReactNode;
 }) {
   const theme = useAppTheme();
+  const green = statsToneColors(theme.scheme).good.ink;
   return (
     <View style={{ alignSelf: 'stretch', gap: 8 }}>
       <Pressable
@@ -506,9 +508,9 @@ function Fold({
         style={{ minHeight: 44, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}
       >
         <T style={{ fontFamily: theme.font.bodyStrong, flex: 1 }}>{title}</T>
-        <T variant="muted">{open ? 'Hide' : closedLabel}</T>
+        <T style={{ color: green }}>{open ? 'Hide' : closedLabel}</T>
         <View accessibilityElementsHidden>
-          <T>{open ? '⌄' : '›'}</T>
+          <T style={{ color: green }}>{open ? '⌄' : '›'}</T>
         </View>
       </Pressable>
       {open ? children : null}

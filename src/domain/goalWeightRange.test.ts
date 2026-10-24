@@ -416,6 +416,9 @@ describe('goal weight range', () => {
     expect(card).toContain('Within range');
     expect(card).toContain('st-lb');
     expect(card).toContain('view.doctor');
+    expect(card).toContain('A reference, not a target. Not medical advice.');
+    expect(card).toContain('withoutProfessionalLimit');
+    expect(card).toContain('The professional limit is about');
     expect(card).not.toMatch(/crash diet|weight cutting advice/i);
   });
 });

@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Pressable, View } from 'react-native';
 
 import { PROCESSED_LIST_FOLD, processedSeeLabel, type ProcessedFoodNote } from '@/domain/nutrition';
+import { MoreInfoButton } from '@/ui/MoreInfo';
 import { useAppTheme } from '@/ui/theme';
 import { T } from '@/ui/ui';
 
@@ -45,16 +46,24 @@ export function ProcessedFoodList({
     >
       {heading ? <T style={{ color: theme.colors.ink, fontFamily: theme.font.bodyStrong }}>{heading}</T> : null}
       {periodLine ? <T variant="muted">{periodLine}</T> : null}
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel={cue === 'more' ? `More info. ${see}` : see}
-        accessibilityState={{ expanded: open }}
-        onPress={() => setOpen((value) => !value)}
-        style={{ minHeight: 44, justifyContent: 'center' }}
-      >
-        {cue === 'more' ? <T style={{ color: theme.colors.ink }}>More info</T> : null}
-        <T style={{ color: theme.colors.ink }}>{open ? 'Hide' : see}</T>
-      </Pressable>
+      {cue === 'more' ? (
+        <MoreInfoButton
+          label={open ? 'Less info' : 'More info'}
+          expanded={open}
+          accessibilityLabel={`${open ? 'Less info' : 'More info'} about processed foods`}
+          onPress={() => setOpen((value) => !value)}
+        />
+      ) : (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={see}
+          accessibilityState={{ expanded: open }}
+          onPress={() => setOpen((value) => !value)}
+          style={{ minHeight: 44, justifyContent: 'center' }}
+        >
+          <T style={{ color: theme.colors.ink }}>{open ? 'Hide' : see}</T>
+        </Pressable>
+      )}
       {open ? shown.map((note) => (
         <View key={note.id} style={{ gap: 2, paddingBottom: 10, borderTopWidth: 1, borderTopColor: theme.colors.line, paddingTop: 8 }}>
           <T style={{ color: theme.colors.ink, fontFamily: theme.font.bodyStrong }}>{note.name}</T>

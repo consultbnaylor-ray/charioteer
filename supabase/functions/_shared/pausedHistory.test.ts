@@ -67,6 +67,6 @@ describe('paused replies stay out of the model history', () => {
     expect(voice).toContain('historyTurnsForModel(input.historyRows)');
     expect(chat).toContain("history.filter((turn) => turn.role === 'assistant')");
     expect(voice).toContain('healthAlreadySaid: history.some');
-    expect(readFileSync('app.json', 'utf8')).toContain('"buildNumber": "64"');
+    expect(readFileSync('app.json', 'utf8')).toContain('"buildNumber": "65"');
   });
 });

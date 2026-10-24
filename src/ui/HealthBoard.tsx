@@ -5,10 +5,12 @@ import { healthSampleChart, healthWindowChart, waistChart } from '@/domain/chart
 import type { HealthSample } from '@/data/types';
 import { isoDay, startOfLocalDay } from '@/domain/dates';
 import { buildMetricGuidance, parseHeightCm } from '@/domain/guidance';
+import { selfCareStep, VISIBLE_SAFETY_LINE } from '@/domain/visibleSafety';
 import { boxingClassWindow } from '@/domain/goalWeightRange';
 import { compositionForAssessment } from '@/domain/nutrition';
 import {
   buildHealthInsights,
+  healthChangeNote,
   formatHealthValue,
   formatReadingLine,
   formatUkCompactDay,
@@ -38,6 +40,7 @@ import { useStatPeriod } from '@/health/useStatPeriod';
 import { ReadingChart } from '@/ui/ReadingChart';
 import { DateField } from '@/ui/DateField';
 import { GuidanceRange } from '@/ui/GuidanceRange';
+import { MoreInfo } from '@/ui/MoreInfo';
 import { HealthFigureView } from '@/ui/MeasuredFigure';
 import { HrvExplainer } from '@/ui/HrvExplainer';
 import { ShareOnProfile } from '@/ui/ShareOnProfile';
@@ -235,6 +238,10 @@ function MetricCard({
 
   const classWindow = kind === 'weight_kg' ? boxingClassWindow(snap.nutrition.goal, snap.nutrition.goalSex) : null;
   const figure = healthFigure(kind, history, today, { classWindow });
+  const change = healthChangeNote(kind, history, today);
+  const figureCaption = [figure?.bars?.bars.caption, figure?.ring?.ring.status, figure?.zone?.zoneCaption].filter(Boolean).join(' ');
+  const lead = guidance.lead && figureCaption.includes(guidance.lead) ? null : guidance.lead;
+  const shownLines = lines.filter((line) => line !== change && line !== guidance.lead);
 
   const measurements = kind === 'weight_kg' && weightPart !== 'charts' ? (
     <View style={{ gap: 6 }}>
@@ -278,32 +285,43 @@ function MetricCard({
         <T variant="muted">No readings yet</T>
       )}
       {latest?.day === today ? <T variant="muted">Today</T> : null}
-      <GuidanceRange guidance={guidance} />
+      <GuidanceRange guidance={lead === guidance.lead ? guidance : { ...guidance, lead }} />
       {kind === 'hrv_sdnn' ? <HrvExplainer /> : null}
       <HealthChart kind={kind} shape={chart} today={today} windowDays={range} points={points} />
       {kind === 'weight_kg' ? (
         <WaistHistory rows={snap.bodyComposition} today={today} windowDays={range} />
       ) : null}
-      {lines.map((line) => (
+      {shownLines.map((line) => (
         <T key={line}>{line}</T>
       ))}
-      {shownFlags.map((flag) => (
-        <View key={flag.id} style={{ gap: 4 }}>
-          <T>{flag.detail}</T>
-          <T>{flag.step}</T>
-          {flag.sourceUrl ? (
-            <Pressable
-              accessibilityRole="link"
-              onPress={() => void Linking.openURL(flag.sourceUrl)}
-              style={{ minHeight: 44, justifyContent: 'center' }}
-            >
-              <T variant="muted">{flag.sourceName}</T>
-            </Pressable>
-          ) : (
-            <T variant="muted">{flag.sourceName}</T>
-          )}
+      {shownFlags.length > 0 ? (
+        <View style={{ gap: 8 }}>
+          <T>{VISIBLE_SAFETY_LINE}</T>
+          <MoreInfo about={label}>
+            {shownFlags.map((flag) => {
+              const care = selfCareStep(flag.step);
+              return (
+                <View key={flag.id} style={{ gap: 4 }}>
+                  <T>{flag.detail}</T>
+                  {care ? <T>{care}</T> : null}
+                  {flag.sourceUrl ? (
+                    <Pressable
+                      accessibilityRole="link"
+                      accessibilityLabel={flag.sourceName}
+                      onPress={() => void Linking.openURL(flag.sourceUrl)}
+                      style={{ minHeight: 44, justifyContent: 'center' }}
+                    >
+                      <T variant="muted">{flag.sourceName}</T>
+                    </Pressable>
+                  ) : (
+                    <T variant="muted">{flag.sourceName}</T>
+                  )}
+                </View>
+              );
+            })}
+          </MoreInfo>
         </View>
-      ))}
+      ) : null}
       <ShareOnProfile
         label={healthShareLabel(label)}
         item={`${label} average`}

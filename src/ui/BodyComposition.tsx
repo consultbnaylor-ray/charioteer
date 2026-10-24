@@ -34,6 +34,7 @@ import { DateField } from '@/ui/DateField';
 import { usePendingPress } from '@/ui/pendingAction';
 import { IconLabel } from '@/ui/statIcons';
 import { MoreInfo } from '@/ui/MoreInfo';
+import { PlanTick } from '@/ui/PlanTick';
 import { Button, Card, Choice, Field, QuietNote, T, playSavedHaptic } from '@/ui/ui';
 
 /**
@@ -69,6 +70,16 @@ export function BuildChoices() {
         ))}
       </View>
       <QuietNote>{note}</QuietNote>
+    </View>
+  );
+}
+
+function StatusLine({ text, done }: { text: string; done: boolean }) {
+  if (!done) return <T>{text}</T>;
+  return (
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+      <PlanTick done />
+      <T style={{ flex: 1 }}>{text}</T>
     </View>
   );
 }
@@ -179,15 +190,30 @@ export function BodyCompositionCard() {
         summary="Without a reading, the figures below are waist-to-height and BMI, not a body-fat percentage."
       >
         <T variant="muted">{BODY_FAT_SOURCE_NOTE}</T>
+        <T variant="muted">A saved body-fat reading is used before waist-to-height, and waist-to-height before BMI. This is not a diagnosis, and body fat is not estimated from a photo.</T>
+        {assessment.plain ? <T>{assessment.plain}</T> : null}
+        {fatRange ? <T variant="muted">{bodyFatZoneCaption(fatRange)}</T> : null}
+        {waistFigure ? <T variant="muted">{WAIST_ZONE_CAPTION}</T> : null}
+        {ratio != null && assessment.basis !== 'waist' ? (
+          <T>{ratio < 0.5
+            ? `Waist-to-height is ${ratio.toFixed(2)}. Under 0.5 is the healthy band: waist is less than half your height.`
+            : `Waist-to-height is ${ratio.toFixed(2)}. 0.5 or more sits outside the healthy band on this screen.`}</T>
+        ) : null}
+        {ffmi != null ? <T>{ffmiPlain({ ffmi, sex: settings.goalSex })}</T> : null}
+        {compositionTrend ? <T variant="muted">{compositionTrend}</T> : null}
+        <T variant="muted">
+          {figures.waistCm != null
+            ? `Latest waist ${formatWaistCm(figures.waistCm)}, from a weight reading. Waist-to-height uses that figure.`
+            : 'Add a waist with a weight reading. Waist-to-height uses the latest one.'}
+        </T>
       </MoreInfo>
-      <T variant="muted">A saved body-fat reading is used before waist-to-height, and waist-to-height before BMI. This is not a diagnosis, and body fat is not estimated from a photo.</T>
+      <T variant="muted">A reference, not a target. Not a diagnosis.</T>
       <BuildChoices />
-      {assessment.plain ? <T>{assessment.plain}</T> : <T variant="muted">{BMI_ONLY_NOTE}</T>}
+      {!assessment.plain ? <T variant="muted">{BMI_ONLY_NOTE}</T> : null}
       {fatRange && figures.bodyFatPct != null ? (
         <>
           <MeasureRingView
             label="Body fat"
-            detail={bodyFatZoneCaption(fatRange)}
             ring={rangedRing(
               String(Math.round(figures.bodyFatPct * 10) / 10),
               '%',
@@ -209,14 +235,15 @@ export function BodyCompositionCard() {
             tone={fatRange.within ? 'good' : 'watch'}
             surface="card"
             showStatus={false}
+            showCaptions={false}
           />
+          <StatusLine text={fatRange.status} done={fatRange.within} />
         </>
       ) : null}
       {waistFigure && ratio != null ? (
         <>
           <MeasureRingView
             label="Waist to height"
-            detail={WAIST_ZONE_CAPTION}
             ring={rangedRing(
               ratio.toFixed(2),
               'ratio',
@@ -238,21 +265,11 @@ export function BodyCompositionCard() {
             tone={waistFigure.within ? 'good' : 'watch'}
             surface="card"
             showStatus={false}
+            showCaptions={false}
           />
+          <StatusLine text={waistFigure.status} done={waistFigure.within} />
         </>
       ) : null}
-      {ratio != null && assessment.basis !== 'waist' ? (
-        <T>{ratio < 0.5
-          ? `Waist-to-height is ${ratio.toFixed(2)}. Under 0.5 is the healthy band: waist is less than half your height.`
-          : `Waist-to-height is ${ratio.toFixed(2)}. 0.5 or more sits outside the healthy band on this screen.`}</T>
-      ) : null}
-      {ffmi != null ? <T>{ffmiPlain({ ffmi, sex: settings.goalSex })}</T> : null}
-      {compositionTrend ? <T variant="muted">{compositionTrend}</T> : null}
-      <T variant="muted">
-        {figures.waistCm != null
-          ? `Latest waist ${formatWaistCm(figures.waistCm)}, from a weight reading. Waist-to-height uses that figure.`
-          : 'Add a waist with a weight reading. Waist-to-height uses the latest one.'}
-      </T>
       <Field label="Body fat (%)" value={fat} onChangeText={setFat} keyboardType="decimal-pad" placeholder="15" />
       <Field label="Lean body mass (kg)" value={leanText} onChangeText={setLeanText} keyboardType="decimal-pad" placeholder="63" />
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>

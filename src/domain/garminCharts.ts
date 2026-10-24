@@ -21,7 +21,7 @@ import type { NutritionSex } from '@/domain/nutrition';
 import { periodDayCount, periodPhrase, scaledPeriodTarget, type StatPeriod } from '@/domain/statWindow';
 import { chartDays } from '@/domain/workoutDay';
 
-export const GARMIN_DETAILS_TITLE = 'Garmin details';
+export const GARMIN_DETAILS_TITLE = 'More Garmin Stats';
 
 export const TAP_FOR_MORE = 'Tap for more';
 

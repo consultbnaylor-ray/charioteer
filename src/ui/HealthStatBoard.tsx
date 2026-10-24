@@ -37,6 +37,7 @@ import { DateField } from '@/ui/DateField';
 import { GoalLine } from '@/ui/GoalLine';
 import { statsToneColors } from '@/ui/statsPalette';
 import { useAppTheme } from '@/ui/theme';
+import { MoreInfoButton } from '@/ui/MoreInfo';
 import { Vo2EstimateNote } from '@/ui/Vo2EstimateNote';
 import { healthTileIcon } from '@/domain/statIcons';
 import { IconLabel } from '@/ui/statIcons';
@@ -295,7 +296,8 @@ function StatTile({
       <Pressable accessibilityRole="button" accessibilityLabel={spoken} onPress={onOpen} style={{ gap: 6 }}>
         {icon ? <IconLabel name={icon}>{tile.title}</IconLabel> : <T variant="label">{tile.title}</T>}
         <TileValue tile={tile} />
-        {tile.empty ? null : <TileVisual visual={tile.visual} charted={charted} />}
+        {tile.empty ? null : <TileVisual visual={tile.visual} charted={charted} showCaptions={tile.visual.kind !== 'zone'} />}
+        {!tile.empty && tile.hasGuideline ? <T variant="muted">Not medical advice.</T> : null}
         {tile.empty || tile.visual.kind === 'ring' || tile.visual.kind === 'zone' ? null : (
           <StatusMark tone={tile.tone} status={tile.status} word={tile.mark} />
         )}
@@ -303,8 +305,12 @@ function StatTile({
           <TrendLine points={tile.history} color={statsToneColors(theme.scheme)[tile.tone].ink} />
         ) : null}
         {tile.trend ? <T variant="muted">{tile.trend}</T> : null}
-        <T variant="muted">More info</T>
       </Pressable>
+      <MoreInfoButton
+        label="More info"
+        accessibilityLabel={`More info about ${tile.title}`}
+        onPress={onOpen}
+      />
       {charted ? <TileChart tile={tile} today={today} period={period} /> : null}
       {tile.id === 'vo2_max' && onPlanOutdoor ? <Vo2EstimateNote measuredOn={measuredOn} source={vo2Source} today={today} onPlan={onPlanOutdoor} /> : null}
     </View>
@@ -345,7 +351,7 @@ function valueWithPeriod(tile: HealthStatTile): string {
   return `${tile.valueText} ${tile.unit} - ${tile.period}`;
 }
 
-function TileVisual({ visual, charted = false }: { visual: HealthStatVisual; charted?: boolean }) {
+function TileVisual({ visual, charted = false, showCaptions = true }: { visual: HealthStatVisual; charted?: boolean; showCaptions?: boolean }) {
   const theme = useAppTheme();
   if (visual.kind === 'line') {
     if (charted) return null;
@@ -385,6 +391,7 @@ function TileVisual({ visual, charted = false }: { visual: HealthStatVisual; cha
         monochrome={visual.neutral}
         surface="card"
         mark
+        showCaptions={showCaptions}
       />
     );
   }

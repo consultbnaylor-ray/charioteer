@@ -319,6 +319,7 @@ export function RangeTrack({
   showStatus = true,
   signal,
   monochrome = false,
+  showCaptions = true,
 }: {
   value: number;
   zoneLow: number;
@@ -339,6 +340,8 @@ export function RangeTrack({
   showStatus?: boolean;
   signal?: string;
   monochrome?: boolean;
+  /** Legend lines. A status card can keep the bar and move these behind More info. */
+  showCaptions?: boolean;
 }) {
   const theme = useAppTheme();
   const motion = useChartMotion();
@@ -404,8 +407,10 @@ export function RangeTrack({
           }}
         />
       </View>
-      <T style={{ fontSize: 13 * theme.scale, lineHeight: 18 * theme.scale, color: surface === 'tile' ? markerInk : theme.colors.muted }}>{zoneCaption}</T>
-      {goalCaption ? (
+      {showCaptions ? (
+        <T style={{ fontSize: 13 * theme.scale, lineHeight: 18 * theme.scale, color: surface === 'tile' ? markerInk : theme.colors.muted }}>{zoneCaption}</T>
+      ) : null}
+      {showCaptions && goalCaption ? (
         <T style={{ fontSize: 13 * theme.scale, lineHeight: 18 * theme.scale, color: colors.info.ink }}>{goalCaption}</T>
       ) : null}
       {mark ? <SignalRow tone={tone} signal={signal} monochrome={monochrome} /> : null}

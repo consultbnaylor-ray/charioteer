@@ -61,7 +61,7 @@ describe('garmin charts follow the shared period', () => {
     expect(screen).toContain('<StatPeriodToggle />');
     expect(screen).toContain('framed ? 14 : 8');
     expect(screen).toContain('garminDetailCharts');
-    expect(GARMIN_DETAILS_TITLE).toBe('Garmin details');
+    expect(GARMIN_DETAILS_TITLE).toBe('More Garmin Stats');
     expect(screen).toContain('title={GARMIN_DETAILS_TITLE}');
     expect(screen).toContain('Not medical advice.');
     expect(screen).toContain('from \'@/ui/MoreInfo\'');
