@@ -211,6 +211,21 @@ export function makeBuddyToken(bytes: ArrayLike<number>): string {
   return Array.from({ length: 16 }, (_, index) => (bytes[index] ?? 0).toString(16).padStart(2, '0')).join('');
 }
 
+/**
+ * A reminder for an invite that is already waiting in their app.
+ * It does not include a code or a new link.
+ */
+export function buddyReminderMessage(name: string): string {
+  const who = name.trim() || 'They';
+  return [
+    `Invite sent to ${who}. It is already waiting in Charioteer.`,
+    'Open the app, go to People, then Buddies, and accept it there.',
+    'This is the same invite. There is no new code.',
+    'The app is uk.co.quanticalabs.charioteer.',
+    'https://apps.apple.com/gb/search?term=Charioteer%20Sober%20Health%20Coach',
+  ].join('\n');
+}
+
 /** The link, the code to type, and the App Store search when the app is not installed. */
 export function buddyShareMessage(input: { code: string; url: string; expiresAt: string }): string {
   return [
