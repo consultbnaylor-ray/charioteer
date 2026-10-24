@@ -5,14 +5,30 @@
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/brand/ios/icon-1024.png",
-    "scheme": "charioteer",
+    "scheme": ["charioteer", "uk.co.quanticalabs.charioteer"],
     "userInterfaceStyle": "dark",
     "ios": {
       "bundleIdentifier": "uk.co.quanticalabs.charioteer",
+      "buildNumber": "57",
+      "appleTeamId": "5FMDXKAX7V",
       "usesAppleSignIn": true,
       "icon": "./assets/brand/ios/icon-1024.png",
+      "config": {
+        "usesNonExemptEncryption": false
+      },
+      "entitlements": {
+        "com.apple.developer.healthkit": true,
+        "aps-environment": "production"
+      },
       "infoPlist": {
-        "NSMicrophoneUsageDescription": "Charioteer uses the microphone if you start a voice conversation with Thumos. Full voice is not finished in this version."
+        "CFBundleDisplayName": "Charioteer",
+        "NSCameraUsageDescription": "Charioteer uses the camera so you can take a private progress photo. Other people cannot see it, and it is not sent to the coach.",
+        "NSPhotoLibraryUsageDescription": "Charioteer uses your photo library so you can add a private progress photo. Other people cannot see it, and it is not sent to the coach.",
+        "NSHealthShareUsageDescription": "Charioteer reads steps, sleep, heart rate, resting heart rate, heart rate variability, cardio fitness, walking heart rate, heart rate recovery, workouts (type, duration, distance, energy, and average heart rate), and walking, cycling and swimming distance, plus weight, height, body fat, lean body mass, active energy, and exercise minutes. Readings stay on your iPhone. A workout route is read only when you open that route, and the path stays on this iPhone. A short summary is sent to write your plan only if you turn the coach on. It is not used for ads. Other people cannot see this.",
+        "NSHealthUpdateUsageDescription": "Charioteer writes the food and water you log to Apple Health: dietary energy, protein, carbohydrate, sugar, fibre, fat, sodium and water. It does not write steps, sleep, heart rate, workouts, or weight.",
+        "LSApplicationQueriesSchemes": [
+          "x-apple-health"
+        ]
       }
     },
     "android": {
@@ -22,7 +38,10 @@
         "foregroundImage": "./assets/brand/adaptive-foreground.png",
         "monochromeImage": "./assets/brand/adaptive-monochrome.png"
       },
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "permissions": [
+        "android.permission.RECORD_AUDIO"
+      ]
     },
     "web": {
       "output": "static",
@@ -31,7 +50,15 @@
     "plugins": [
       "expo-router",
       "expo-apple-authentication",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Charioteer uses your photo library so you can add a private progress photo. Other people cannot see it, and it is not sent to the coach.",
+          "cameraPermission": "Charioteer uses the camera so you can take a private progress photo. Other people cannot see it, and it is not sent to the coach."
+        }
+      ],
       "expo-secure-store",
+      "expo-notifications",
       [
         "expo-splash-screen",
         {
@@ -41,16 +68,42 @@
         }
       ],
       [
+        "react-native-audio-api",
+        {
+          "iosBackgroundMode": false,
+          "androidForegroundService": false,
+          "androidPermissions": []
+        }
+      ],
+      [
         "@kingstinct/react-native-healthkit",
         {
-          "NSHealthShareUsageDescription": "Charioteer reads steps, sleep, resting heart rate, heart rate variability, workouts, and weight so you and Thumos can see how your body is doing. Other people cannot see this.",
-          "NSHealthUpdateUsageDescription": "Charioteer does not write to Apple Health. This message is required because the app includes the HealthKit capability."
+          "NSHealthShareUsageDescription": "Charioteer reads steps, sleep, heart rate, resting heart rate, heart rate variability, cardio fitness, walking heart rate, heart rate recovery, workouts (type, duration, distance, energy, and average heart rate), and walking, cycling and swimming distance, plus weight, height, body fat, lean body mass, active energy, and exercise minutes. Readings stay on your iPhone. A workout route is read only when you open that route, and the path stays on this iPhone. A short summary is sent to write your plan only if you turn the coach on. It is not used for ads. Other people cannot see this.",
+          "NSHealthUpdateUsageDescription": "Charioteer writes the food and water you log to Apple Health: dietary energy, protein, carbohydrate, sugar, fibre, fat, sodium and water. It does not write steps, sleep, heart rate, workouts, or weight.",
+          "background": false
+        }
+      ],
+      "react-native-maps",
+      [
+        "expo-build-properties",
+        {
+          "ios": {
+            "enableSceneSupport": true
+          }
         }
       ]
     ],
+    "extra": {
+      "voiceDiagnostics": true,
+      "router": {},
+      "eas": {
+        "projectId": "eb295a90-d9aa-48ef-9e16-c2b29d2638a9"
+      }
+    },
     "experiments": {
       "typedRoutes": false,
       "reactCompiler": false
-    }
+    },
+    "owner": "quantica-labs-ltd"
   }
 }

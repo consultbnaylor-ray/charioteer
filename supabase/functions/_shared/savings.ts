@@ -27,6 +27,18 @@ export function savingsFromTypicalWeek(
   };
 }
 
+/**
+ * The NHS yearly lager example is 5 pints × 222 kcal × 52 weeks = 57,720 kcal.
+ * https://www.nhs.uk/live-well/alcohol-advice/calories-in-alcohol/
+ */
+export const NHS_WEEKS_IN_YEAR = 52;
+
+/** A full year of a typical week. Same rounding as the sober-date savings. */
+export function yearlyFromWeekly(weekly: number, places: number): number {
+  if (!Number.isFinite(weekly) || weekly < 0) return 0;
+  return round(weekly * NHS_WEEKS_IN_YEAR, places);
+}
+
 export function formatGbp(amount: number): string {
   return new Intl.NumberFormat('en-GB', {
     style: 'currency',

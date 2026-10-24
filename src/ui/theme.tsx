@@ -5,7 +5,10 @@ import type { TextScale, ThemePreference } from '@/data/types';
 
 /**
  * Monochrome system. Near-black and off-white, grey for hierarchy.
- * danger* is the only hue, reserved for SOS and safety notices.
+ * danger* marks SOS and safety notices, and a pending connection request
+ * on People. Stats tiles and the nutrition charts use statsPalette.ts.
+ * Workout charts use one fixed colour per type, in workoutTypeColor.ts,
+ * and only so a stacked series can be told apart.
  */
 const light = {
   bg: '#F2F2EE',
@@ -13,6 +16,8 @@ const light = {
   surface: '#FFFFFF',
   ink: '#111111',
   muted: '#4C4C47',
+  /** Empty-field hint. Lighter than ink, still 4.5:1 on the white field. */
+  placeholder: '#6B6B64',
   line: '#D0D0C8',
   emphasis: '#111111',
   emphasisSoft: '#E4E4DE',
@@ -29,6 +34,8 @@ const dark = {
   surface: '#1A1A1A',
   ink: '#F3F3EE',
   muted: '#B3B3AC',
+  /** Empty-field hint. Darker than ink, still 4.5:1 on the dark field. */
+  placeholder: '#8E8E86',
   line: '#3A3A3A',
   emphasis: '#F3F3EE',
   emphasisSoft: '#2A2A2A',
@@ -47,6 +54,7 @@ export const radius = { sm: 2, md: 4 } as const;
 export const font = {
   display: 'Oswald_700Bold',
   body: 'Barlow_400Regular',
+  bodyItalic: 'Barlow_400Regular_Italic',
   bodyStrong: 'Barlow_600SemiBold',
 } as const;
 

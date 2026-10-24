@@ -1,0 +1,485 @@
+import { Fragment, useEffect, useRef, useState } from 'react';
+import { Linking, Pressable, View } from 'react-native';
+
+import { healthSampleChart, healthWindowChart, waistChart } from '@/domain/chartSeries';
+import type { HealthSample } from '@/data/types';
+import { isoDay, startOfLocalDay } from '@/domain/dates';
+import { buildMetricGuidance, parseHeightCm } from '@/domain/guidance';
+import { boxingClassWindow } from '@/domain/goalWeightRange';
+import { compositionForAssessment } from '@/domain/nutrition';
+import {
+  buildHealthInsights,
+  formatHealthValue,
+  formatReadingLine,
+  formatUkCompactDay,
+  groupedReadings,
+  healthKindLabel,
+  HEALTH_METRICS,
+  latestReading,
+  shiftDay,
+  type HealthInsightKind,
+} from '@/domain/healthInsights';
+import { healthShareLabel, toggleHealthKind } from '@/domain/profileSharing';
+import { useSnapshot } from '@/data';
+import {
+  formatWaistCm,
+  WAIST_MEASURE_NOTE,
+  WAIST_PRIVATE_NOTE,
+  waistReadingCm,
+  waistWindow,
+  weightReadingKg,
+  type WaistUnitMode,
+  type WeightReadingDraft,
+  type WeightUnitMode,
+} from '@/domain/weightEntry';
+import { healthFigure } from '@/domain/measureFigures';
+import { periodDayCount } from '@/domain/statWindow';
+import { useStatPeriod } from '@/health/useStatPeriod';
+import { ReadingChart } from '@/ui/ReadingChart';
+import { DateField } from '@/ui/DateField';
+import { GuidanceRange } from '@/ui/GuidanceRange';
+import { HealthFigureView } from '@/ui/MeasuredFigure';
+import { HrvExplainer } from '@/ui/HrvExplainer';
+import { ShareOnProfile } from '@/ui/ShareOnProfile';
+import { HealthChart } from '@/ui/HealthChart';
+import { ScrollTarget } from '@/ui/ScrollTarget';
+import { useAppTheme } from '@/ui/theme';
+import { Card, Choice, Field, playSavedHaptic, T } from '@/ui/ui';
+
+export function HealthBoard({
+  samples,
+  today,
+  soberOn,
+  stage,
+  heightCm = null,
+  adult = true,
+  canSaveHeight = false,
+  onSaveHeight,
+  onWeightDraftChange,
+  weightReset = 0,
+  kinds,
+  omitKinds,
+  showWeek = true,
+  weightPart = 'all',
+}: {
+  samples: HealthSample[];
+  today: string;
+  soberOn: string | null;
+  stage: string | null;
+  heightCm?: number | null;
+  adult?: boolean;
+  canSaveHeight?: boolean;
+  onSaveHeight?: (heightCm: number | null) => Promise<void>;
+  onWeightDraftChange?: (draft: WeightReadingDraft | null) => void;
+  weightReset?: number;
+  /** Limit the cards. Unset means every metric. */
+  kinds?: readonly HealthInsightKind[];
+  omitKinds?: readonly HealthInsightKind[];
+  /** The week summary stays on Health stats. The weight page is only weight. */
+  showWeek?: boolean;
+  /**
+   * The body page shows the measurement fields first, then the charts.
+   * `entry` is only height, weight, and waist. `charts` leaves those fields out.
+   */
+  weightPart?: 'all' | 'entry' | 'charts';
+}) {
+  const report = buildHealthInsights({ today, samples, soberOn, stage });
+  const metrics = HEALTH_METRICS.filter((metric) => {
+    if (kinds && !kinds.includes(metric.kind)) return false;
+    if (omitKinds?.includes(metric.kind)) return false;
+    return true;
+  });
+  return (
+    <View style={{ gap: 14 }}>
+      {showWeek ? (
+        <Card>
+          <T variant="title">Your health this week</T>
+          {report.headlines.length === 0 ? (
+            <T variant="muted">Not enough readings yet to compare this week with the one before.</T>
+          ) : (
+            report.headlines.map((line) => <T key={line}>{line}</T>)
+          )}
+          <T variant="muted">These notes are not medical advice.</T>
+        </Card>
+      ) : null}
+      {metrics.map((metric) => {
+        const kindReport = report.kinds.find((item) => item.kind === metric.kind);
+        const card = (
+          <MetricCard
+            kind={metric.kind}
+            label={metric.label}
+            chart={metric.chart}
+            samples={samples}
+            today={today}
+            lines={kindReport?.lines ?? []}
+            flags={kindReport?.flags ?? []}
+            heightCm={heightCm}
+            adult={adult}
+            canSaveHeight={canSaveHeight}
+            onSaveHeight={onSaveHeight}
+            onWeightDraftChange={onWeightDraftChange}
+            weightReset={weightReset}
+            weightPart={weightPart}
+          />
+        );
+        if (metric.kind !== 'weight_kg' || weightPart === 'charts') return <Fragment key={metric.kind}>{card}</Fragment>;
+        return (
+          <ScrollTarget key={metric.kind} id="weight">
+            {card}
+          </ScrollTarget>
+        );
+      })}
+    </View>
+  );
+}
+
+export function HealthReadings({ samples, kinds }: { samples: HealthSample[]; kinds?: readonly string[] }) {
+  const shown = kinds ? samples.filter((sample) => kinds.includes(sample.kind)) : samples;
+  return <Readings groups={groupedReadings(shown)} />;
+}
+
+function MetricCard({
+  kind,
+  label,
+  chart,
+  samples,
+  today,
+  lines,
+  flags,
+  heightCm,
+  adult,
+  canSaveHeight,
+  onSaveHeight,
+  onWeightDraftChange,
+  weightReset,
+  weightPart,
+}: {
+  kind: HealthInsightKind;
+  label: string;
+  chart: 'bar' | 'line';
+  samples: HealthSample[];
+  today: string;
+  lines: string[];
+  flags: {
+    id: string;
+    detail: string;
+    step: string;
+    sourceName: string;
+    sourceUrl: string;
+  }[];
+  heightCm: number | null;
+  adult: boolean;
+  canSaveHeight: boolean;
+  onSaveHeight?: (heightCm: number | null) => Promise<void>;
+  onWeightDraftChange?: (draft: WeightReadingDraft | null) => void;
+  weightReset: number;
+  weightPart: 'all' | 'entry' | 'charts';
+}) {
+  const [period] = useStatPeriod();
+  const range = periodDayCount(period);
+  const [heightText, setHeightText] = useState(heightCm == null ? '' : String(heightCm));
+  const [heightError, setHeightError] = useState<string | null>(null);
+  const [heightSaved, setHeightSaved] = useState<string | null>(null);
+  const latest = latestReading(samples, kind, today);
+  const points = healthWindowChart(samples, kind, today, range);
+  const history = healthSampleChart(samples, kind, today);
+  const typedHeight = parseHeightCm(heightText);
+  const liveHeight = typedHeight.ok ? typedHeight.value : heightCm;
+  const snap = useSnapshot();
+  const figures = compositionForAssessment(snap.bodyComposition);
+  const guidance = buildMetricGuidance({
+    kind,
+    today,
+    points: history,
+    heightCm: liveHeight,
+    adult,
+    bodyFatPct: kind === 'weight_kg' ? figures.bodyFatPct : null,
+    waistCm: kind === 'weight_kg' ? figures.waistCm : null,
+    build: kind === 'weight_kg' ? snap.nutrition.build : null,
+    sex: kind === 'weight_kg' ? snap.nutrition.goalSex : null,
+  });
+  const shownFlags = flags.filter((flag) => flag.id !== 'resting_high' && flag.id !== 'short_sleep');
+  const sharing = snap.sharing;
+
+  useEffect(() => {
+    setHeightText(heightCm == null ? '' : String(heightCm));
+  }, [heightCm]);
+
+  useEffect(() => {
+    if (!heightSaved) return;
+    const timer = setTimeout(() => setHeightSaved(null), 2500);
+    return () => clearTimeout(timer);
+  }, [heightSaved]);
+
+  function commitHeight() {
+    if (!onSaveHeight || !canSaveHeight) return;
+    const parsed = parseHeightCm(heightText);
+    if (!parsed.ok) {
+      setHeightError(parsed.error);
+      setHeightSaved(null);
+      return;
+    }
+    if (parsed.value === heightCm) {
+      setHeightError(null);
+      return;
+    }
+    setHeightError(null);
+    void onSaveHeight(parsed.value).then(() => {
+      setHeightSaved('Saved ✓');
+      playSavedHaptic();
+    }).catch(() => {
+      setHeightError('Could not save your height.');
+    });
+  }
+
+  const classWindow = kind === 'weight_kg' ? boxingClassWindow(snap.nutrition.goal, snap.nutrition.goalSex) : null;
+  const figure = healthFigure(kind, history, today, { classWindow });
+
+  const measurements = kind === 'weight_kg' && weightPart !== 'charts' ? (
+    <View style={{ gap: 6 }}>
+      <T variant="label">Measurements</T>
+      <WeightFields
+        canSave={canSaveHeight}
+        heightText={heightText}
+        resetToken={weightReset}
+        onDraft={onWeightDraftChange}
+      />
+      <Field
+        label="Height (cm)"
+        value={heightText}
+        onChangeText={setHeightText}
+        onBlur={commitHeight}
+        keyboardType="decimal-pad"
+        editable={canSaveHeight}
+        hint="Used for BMI and waist-to-height. It is not shown on your public profile."
+      />
+      {canSaveHeight ? null : <T variant="muted">Health data is off. Turn it on in Privacy & consent to save a weight or a height.</T>}
+      {heightError ? <T>{heightError}</T> : null}
+      {heightSaved ? <T>{heightSaved}</T> : null}
+    </View>
+  ) : null;
+
+  if (weightPart === 'entry') {
+    return <Card>{measurements}</Card>;
+  }
+
+  return (
+    <Card>
+      {measurements}
+      <T variant="label">{label}</T>
+      <HealthFigureView figure={figure} />
+      {latest ? (
+        <T variant="title">
+          {formatHealthValue(kind, latest.value)}
+          {latest.day === today ? '' : ` · ${formatUkCompactDay(latest.day)}`}
+        </T>
+      ) : (
+        <T variant="muted">No readings yet</T>
+      )}
+      {latest?.day === today ? <T variant="muted">Today</T> : null}
+      <GuidanceRange guidance={guidance} />
+      {kind === 'hrv_sdnn' ? <HrvExplainer /> : null}
+      <HealthChart kind={kind} shape={chart} today={today} windowDays={range} points={points} />
+      {kind === 'weight_kg' ? (
+        <WaistHistory rows={snap.bodyComposition} today={today} windowDays={range} />
+      ) : null}
+      {lines.map((line) => (
+        <T key={line}>{line}</T>
+      ))}
+      {shownFlags.map((flag) => (
+        <View key={flag.id} style={{ gap: 4 }}>
+          <T>{flag.detail}</T>
+          <T>{flag.step}</T>
+          {flag.sourceUrl ? (
+            <Pressable
+              accessibilityRole="link"
+              onPress={() => void Linking.openURL(flag.sourceUrl)}
+              style={{ minHeight: 44, justifyContent: 'center' }}
+            >
+              <T variant="muted">{flag.sourceName}</T>
+            </Pressable>
+          ) : (
+            <T variant="muted">{flag.sourceName}</T>
+          )}
+        </View>
+      ))}
+      <ShareOnProfile
+        label={healthShareLabel(label)}
+        item={`${label} average`}
+        on={sharing.healthKinds.includes(kind)}
+        sensitive
+        apply={(current, selected) => toggleHealthKind(current, kind, selected)}
+      />
+    </Card>
+  );
+}
+
+export function WeightFields({
+  canSave,
+  heightText,
+  resetToken,
+  onDraft,
+}: {
+  canSave: boolean;
+  heightText: string;
+  resetToken: number;
+  onDraft?: (draft: WeightReadingDraft | null) => void;
+}) {
+  const [unit, setUnit] = useState<WeightUnitMode>('kg');
+  const [kgText, setKgText] = useState('');
+  const [stonesText, setStonesText] = useState('');
+  const [poundsText, setPoundsText] = useState('');
+  const [waistUnit, setWaistUnit] = useState<WaistUnitMode>('cm');
+  const [cmText, setCmText] = useState('');
+  const [inchesText, setInchesText] = useState('');
+  const [day, setDay] = useState(() => startOfLocalDay(new Date()));
+  const parsed = weightReadingKg({ unit, kilograms: kgText, stones: stonesText, pounds: poundsText });
+  const waistText = waistUnit === 'cm' ? cmText : inchesText;
+  const waist = waistReadingCm(waistText, waistUnit);
+  const seenReset = useRef(resetToken);
+
+  useEffect(() => {
+    if (seenReset.current === resetToken) return;
+    seenReset.current = resetToken;
+    setUnit('kg');
+    setKgText('');
+    setStonesText('');
+    setPoundsText('');
+    setWaistUnit('cm');
+    setCmText('');
+    setInchesText('');
+    setDay(startOfLocalDay(new Date()));
+  }, [resetToken]);
+
+  useEffect(() => {
+    if (!onDraft) return;
+    const reading = weightReadingKg({ unit, kilograms: kgText, stones: stonesText, pounds: poundsText });
+    const waistReading = waistReadingCm(waistUnit === 'cm' ? cmText : inchesText, waistUnit);
+    const recordedOn = isoDay(day);
+    const waistBlocked = (waistUnit === 'cm' ? cmText : inchesText).trim() !== '' && !waistReading.ok;
+    if (!canSave || !reading.ok || !waistReading.ok || waistBlocked || recordedOn > isoDay(new Date())) {
+      onDraft(null);
+      return;
+    }
+    if (reading.kg == null && waistReading.cm == null) {
+      onDraft(null);
+      return;
+    }
+    onDraft({ kg: reading.kg, recordedOn, heightText, waistCm: waistReading.cm });
+  }, [onDraft, canSave, unit, kgText, stonesText, poundsText, waistUnit, cmText, inchesText, day, heightText]);
+
+  return (
+    <View style={{ gap: 8 }}>
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+        <Choice label="kg" selected={unit === 'kg'} onPress={() => setUnit('kg')} />
+        <Choice label="st-lb" selected={unit === 'stlb'} onPress={() => setUnit('stlb')} />
+      </View>
+      {unit === 'kg' ? (
+        <Field
+          label="Weight (kg)"
+          value={kgText}
+          onChangeText={setKgText}
+          keyboardType="decimal-pad"
+          editable={canSave}
+        />
+      ) : (
+        <View style={{ flexDirection: 'row', gap: 8 }}>
+          <View style={{ flex: 1 }}>
+            <Field label="Stones" value={stonesText} onChangeText={setStonesText} keyboardType="number-pad" editable={canSave} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Field label="Pounds" value={poundsText} onChangeText={setPoundsText} keyboardType="decimal-pad" editable={canSave} />
+          </View>
+        </View>
+      )}
+      {!parsed.ok ? <T>{parsed.error}</T> : null}
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+        <Choice label="cm" selected={waistUnit === 'cm'} onPress={() => setWaistUnit('cm')} />
+        <Choice label="inches" selected={waistUnit === 'in'} onPress={() => setWaistUnit('in')} />
+      </View>
+      <Field
+        label={waistUnit === 'cm' ? 'Waist (cm)' : 'Waist (inches)'}
+        value={waistText}
+        onChangeText={waistUnit === 'cm' ? setCmText : setInchesText}
+        keyboardType="decimal-pad"
+        editable={canSave}
+        placeholder={waistUnit === 'cm' ? '84' : '33'}
+        hint={WAIST_MEASURE_NOTE}
+      />
+      {!waist.ok ? <T>{waist.error}</T> : null}
+      <T variant="muted">{WAIST_PRIVATE_NOTE}</T>
+      <DateField label="Date" value={day} onChange={setDay} maximumDate={new Date()} />
+    </View>
+  );
+}
+
+function WaistHistory({
+  rows,
+  today,
+  windowDays,
+}: {
+  rows: readonly { recordedOn: string; waistCm: number | null; createdAt: string }[];
+  today: string;
+  windowDays: number;
+}) {
+  const history = waistWindow(rows, today, windowDays);
+  return (
+    <View style={{ gap: 4 }}>
+      <T variant="label">Waist</T>
+      {history.points.length === 0 ? (
+        <T variant="muted">{`No waist readings in the last ${windowDays} days.`}</T>
+      ) : (
+        <>
+          <ReadingChart
+            points={waistChart(rows, today, windowDays)}
+            start={shiftDay(today, -(windowDays - 1))}
+            end={today}
+            unit="cm"
+            aggregate="mean"
+            bucket={windowDays <= 90 ? 'day' : windowDays <= 200 ? 'week' : 'month'}
+            accessibilityLabel="Waist chart"
+          />
+          {history.points.map((point) => (
+            <T key={point.day}>{`${formatWaistCm(point.cm)} · ${formatUkCompactDay(point.day)}`}</T>
+          ))}
+        </>
+      )}
+      {history.averageCm != null ? <T variant="muted">{`Average ${formatWaistCm(history.averageCm)}`}</T> : null}
+    </View>
+  );
+}
+
+function Readings({ groups }: { groups: ReturnType<typeof groupedReadings> }) {
+  const theme = useAppTheme();
+  const [open, setOpen] = useState(false);
+  const count = groups.reduce((sum, group) => sum + group.rows.length, 0);
+  return (
+    <View style={{ gap: 10 }}>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityState={{ expanded: open }}
+        onPress={() => setOpen((value) => !value)}
+        style={{ minHeight: 44, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}
+      >
+        <T style={{ fontFamily: theme.font.bodyStrong }}>All readings</T>
+        <T variant="muted">{open ? 'Hide' : `Show ${count}`}</T>
+      </Pressable>
+      {open
+        ? groups.map((group) => {
+            const label = healthKindLabel(group.kind);
+            return (
+              <View key={group.kind} style={{ gap: 6 }}>
+                <T variant="label">{label}</T>
+                {group.rows.map((row, index) => (
+                  <T key={`${row.recordedOn}-${row.source ?? 'reading'}-${index}`} variant="muted">
+                    {formatReadingLine(row.kind, row.value, row.recordedOn, row.source)}
+                  </T>
+                ))}
+              </View>
+            );
+          })
+        : null}
+      {open && groups.length === 0 ? <T variant="muted">Nothing logged yet.</T> : null}
+    </View>
+  );
+}
