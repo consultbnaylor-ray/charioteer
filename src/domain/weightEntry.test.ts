@@ -8,6 +8,7 @@ import {
   latestWaistPoint,
   latestWeightLine,
   latestWeightPoint,
+  latestWeightSummary,
   stonesAndPoundsToKg,
   WAIST_MEASURE_NOTE,
   WAIST_PRIVATE_NOTE,
@@ -80,17 +81,30 @@ describe('weight entry', () => {
     expect(board).toContain('windowDays={range}');
     expect(board).toContain('useStatPeriod');
     expect(board).toContain('periodDayCount(period)');
-    const screen = readFileSync('src/app/(main)/health.tsx', 'utf8');
+    const screen = readFileSync('src/app/(main)/weight-waist.tsx', 'utf8');
     expect(screen).toContain('label="Save reading"');
-    expect(screen).toContain('!value.trim() && weightDraft == null');
+    expect(screen).toContain('weightDraft == null');
     expect(screen).toContain('weightWaistWrite(weightDraft, isoDay(new Date()))');
     expect(screen).toContain('if (planned.sample) samples.push(planned.sample)');
     expect(screen).toContain('heightCm: nextHeight');
-    expect(screen).toContain('source: \'manual\'');
     expect(screen).toContain('saveBodyComposition(waistWrite)');
     expect(screen).toContain('waistCm');
     expect(board).toContain('<ScrollTarget key={metric.kind} id="weight">');
     expect(screen).toContain('<PlanTick done');
+    expect(screen).toContain("kinds={['weight_kg']}");
+    expect(screen).toContain("onlyTiles={['weight_kg', 'waist']}");
+    expect(screen).toContain('label="Back"');
+    expect(screen).toContain('router.canGoBack()');
+    expect(screen).toContain('router.back()');
+    expect(screen).toContain('catchUpAppleHealthReads');
+    const health = readFileSync('src/app/(main)/health.tsx', 'utf8');
+    expect(health.match(/<WeightWaistLink/g)).toHaveLength(1);
+    expect(health).toContain("omitTiles={['weight_kg', 'waist']}");
+    expect(health).toContain("omitKinds={['weight_kg']}");
+    expect(health).toContain("router.replace('/weight-waist'");
+    expect(health).not.toContain('weightWaistWrite');
+    expect(health).not.toContain('<WeightFields');
+    expect(health).toContain("sample.kind !== 'weight_kg'");
     const body = readFileSync('src/ui/BodyComposition.tsx', 'utf8');
     expect(body).toContain('figures.waistCm');
     expect(body).toContain('from a weight reading');
@@ -175,6 +189,19 @@ describe('weight entry', () => {
     expect(waist).toEqual({ day: '2026-10-17', cm: 84 });
     expect(latestWaistLine(waist)).toBe(`Latest waist ${formatWaistCm(84)} · ${formatUkCompactDay('2026-10-17')}`);
     expect(latestWaistLine(null)).toBe('No waist logged yet');
+    expect(latestWeightSummary(samples)).toBe(`Latest weight 79.4 kg · ${formatUkCompactDay('2026-10-17')} · Apple Health`);
+    expect(latestWeightSummary([
+      { kind: 'weight_kg', value: 80, recordedOn: '2026-10-17', source: 'manual' },
+      { kind: 'weight_kg', value: 79.4, recordedOn: '2026-10-17', source: 'healthkit' },
+    ])).toBe(`Latest weight 79.4 kg · ${formatUkCompactDay('2026-10-17')} · Apple Health`);
+    expect(latestWeightSummary([{ kind: 'weight_kg', value: 80, recordedOn: '2026-10-01', source: 'manual' }])).toBe(
+      `Latest weight 80.0 kg · ${formatUkCompactDay('2026-10-01')} · Logged here`,
+    );
+    expect(latestWeightSummary([{ kind: 'weight_kg', value: 80, recordedOn: '2026-10-01' }])).toBe(
+      `Latest weight 80.0 kg · ${formatUkCompactDay('2026-10-01')}`,
+    );
+    expect(latestWeightSummary([])).toBe('No weight logged yet');
+    expect(latestWeightSummary([{ kind: 'steps', value: 100, recordedOn: '2026-10-17', source: 'healthkit' }])).toBe('No weight logged yet');
     expect(latestWaistPoint([{ recordedOn: '2026-10-01', waistCm: null, createdAt: '2026-10-01T00:00:00.000Z' }])).toBeNull();
   });
 
@@ -204,8 +231,28 @@ describe('weight entry', () => {
     expect(card).toContain('latestWeightLine');
     expect(card).toContain('latestWaistLine');
     expect(card).toContain('Open the weight sheet');
-    expect(card).toContain("export const WEIGHT_WAIST_SHEET_HREF = '/health?section=weight'");
+    expect(card).toContain("export const WEIGHT_WAIST_SHEET_HREF = '/weight-waist'");
     expect(card).toContain('router.push(WEIGHT_WAIST_SHEET_HREF');
+    const link = readFileSync('src/ui/WeightWaistLink.tsx', 'utf8');
+    expect(link).toContain("export const WEIGHT_WAIST_TITLE = 'Weight, waist and BMI'");
+    expect(link).toContain("export const WEIGHT_WAIST_OPEN = 'Tap to open'");
+    expect(link).toContain("export const WEIGHT_WAIST_HREF = '/weight-waist'");
+    expect(link).toContain('latestWeightSummary');
+    expect(link).toContain('<T>›</T>');
+    expect(link.match(/router.push\(WEIGHT_WAIST_HREF/g)).toHaveLength(1);
+    const home = readFileSync('src/app/(main)/home.tsx', 'utf8');
+    expect(home).toContain('buildHealthInsights');
+    expect(home).toContain("router.push('/health'");
+    const checkIn = readFileSync('src/app/(main)/check-in.tsx', 'utf8');
+    expect(checkIn).toContain('label="Save check-in"');
+    expect(checkIn).toContain('repo.addCheckIn');
+    expect(checkIn).not.toContain('weightWaistWrite');
+    expect(readFileSync('supabase/functions/_shared/thumos.ts', 'utf8')).toContain('healthInsights');
+    expect(readFileSync('supabase/functions/thumos-chat/index.ts', 'utf8')).toContain('healthChangeNoteFromReadings');
+    expect(readFileSync('src/ui/HealthBoard.tsx', 'utf8')).toContain('<HealthChart');
+    expect(readFileSync('src/ui/HealthChart.tsx', 'utf8')).toContain('<ReadingChart');
+    expect(readFileSync('src/ui/ReadingChart.tsx', 'utf8')).toContain('CHART_DIRECTION_HINT');
+    expect(readFileSync('src/domain/readingChart.ts', 'utf8')).toContain('Older ← → Newer');
     expect(card).not.toContain('ShareOnProfile');
     expect(card).not.toContain('shareBodyFigures');
     expect(card).not.toContain('syncAppleHealth');

@@ -445,7 +445,8 @@ describe('nutrition storage and coach', () => {
     expect(screen).toContain('goalBodyForSuggestion');
     expect(screen).toContain('label="Weight (kg)"');
     expect(screen).toContain('label="Height (cm)"');
-    expect(screen).toContain('Or add them on Health Stats');
+    expect(screen).toContain('Or add them on Weight and waist');
+    expect(screen).toContain("router.push('/weight-waist'");
     const goalCard = screen.slice(screen.indexOf('<GoalChoices'), screen.indexOf('variant="label">Today'));
     expect(goalCard).toContain('Suggest targets');
     expect(goalCard).toContain('{suggestNote}');

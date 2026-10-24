@@ -1245,8 +1245,8 @@ export default function Nutrition() {
           <Field label="Height (cm)" value={goalHeight} onChangeText={setGoalHeight} keyboardType="decimal-pad" placeholder="178" />
         ) : null}
         {latestWeight == null || profile?.heightCm == null ? (
-          <Pressable accessibilityRole="link" accessibilityLabel="Health Stats" onPress={() => router.push('/health' as never)}>
-            <T variant="muted">Or add them on Health Stats</T>
+          <Pressable accessibilityRole="link" accessibilityLabel="Weight and waist" onPress={() => router.push('/weight-waist' as never)}>
+            <T variant="muted">Or add them on Weight and waist</T>
           </Pressable>
         ) : null}
         <Button label="Suggest targets" pending={isPending('suggest')} pendingLabel="Suggesting..." onPress={suggest} />
@@ -1352,7 +1352,7 @@ export default function Nutrition() {
             { classWindow: boxingClassWindow(settings.goal, settings.goalSex) },
           )}
         />
-        {weights.length === 0 ? <T variant="muted">Add a weight on Health Stats and it will show here.</T> : (
+        {weights.length === 0 ? <T variant="muted">Add a weight on Weight and waist and it will show here.</T> : (
           <>
             {weights.map((point) => (
               <T key={point.day}>{`${formatUkLong(point.day)} · ${point.kg} kg`}</T>

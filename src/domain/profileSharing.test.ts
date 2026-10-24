@@ -439,7 +439,7 @@ describe('public_profile database function', () => {
     const metricCard = health.slice(health.indexOf('function MetricCard'), health.indexOf('function Readings'));
     expect(metricCard).toContain('<ShareOnProfile');
     expect(metricCard).toContain('healthShareLabel(label)');
-    const weekSummary = health.slice(health.indexOf('Your health this week'), health.indexOf('HEALTH_METRICS.map'));
+    const weekSummary = health.slice(health.indexOf('Your health this week'), health.indexOf('metrics.map'));
     expect(weekSummary).not.toContain('<ShareOnProfile');
     expect(healthShareLabel('Steps')).toBe('Share steps average');
     expect(healthShareLabel('Sleep')).toBe('Share sleep average');

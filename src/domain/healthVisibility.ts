@@ -71,7 +71,7 @@ const MISSING_ACTION = {
   HKQuantityTypeIdentifierVO2Max: 'Record an outdoor walk or run on Apple Watch.',
   HKQuantityTypeIdentifierWalkingHeartRateAverage: 'Take a walk with Apple Watch.',
   HKQuantityTypeIdentifierHeartRateRecoveryOneMinute: 'Needs a recent Apple Watch workout.',
-  HKQuantityTypeIdentifierBodyMass: 'Use a scale in Health, or log weight on this page.',
+  HKQuantityTypeIdentifierBodyMass: 'Use a scale in Health, or log weight on Weight and waist.',
   HKQuantityTypeIdentifierHeight: 'Enter height in the Health app.',
   HKQuantityTypeIdentifierBodyFatPercentage: 'Needs a smart scale or manual entry in Health.',
   HKQuantityTypeIdentifierLeanBodyMass: 'Needs a smart scale or manual entry in Health.',

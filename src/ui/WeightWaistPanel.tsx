@@ -20,7 +20,7 @@ import { useAppTheme } from '@/ui/theme';
 import { Button, Card, ErrorNote, T, playSavedHaptic } from '@/ui/ui';
 
 export const WEIGHT_WAIST_SAVED = 'Saved';
-export const WEIGHT_WAIST_SHEET_HREF = '/health?section=weight';
+export const WEIGHT_WAIST_SHEET_HREF = '/weight-waist';
 
 /**
  * Compact weight and waist entry on You.

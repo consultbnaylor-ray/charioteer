@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 import {
   BMI_MUSCLE_NOTE,
   buildHealthStatBoard,
+  narrowHealthStatBoard,
   detailShowsStatusAgain,
   gapForStat,
   healthSharingSteps,
@@ -582,6 +583,14 @@ describe('health stat tiles', () => {
     expect(screen).not.toContain('communityPhotos');
     expect(screen).toContain('<HealthSectionShare />');
     expect(screen.indexOf('<HealthStatBoard')).toBeLessThan(screen.indexOf('<HealthBoard'));
+    const moved = narrowHealthStatBoard(buildHealthStatBoard(alex()), { omit: ['weight_kg', 'waist'] });
+    const movedIds = moved.sections.flatMap((section) => section.tiles.map((item) => item.id));
+    expect(movedIds).not.toContain('weight_kg');
+    expect(movedIds).not.toContain('waist');
+    expect(movedIds).toContain('body_fat');
+    const sheet = narrowHealthStatBoard(buildHealthStatBoard(alex()), { only: ['weight_kg', 'waist'] });
+    expect(sheet.sections.flatMap((section) => section.tiles.map((item) => item.id))).toEqual(['weight_kg', 'waist']);
+    expect(sheet.missingLine ?? '').not.toMatch(/Body fat|Lean mass|Steps/);
     expect(board).toContain('valueWithPeriod');
     expect(board).toContain('tile.weeklyLine');
     expect(board).toContain('tile.empty');

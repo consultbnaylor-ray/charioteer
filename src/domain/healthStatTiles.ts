@@ -431,6 +431,31 @@ export function buildHealthStatBoard(input: HealthStatBoardInput): HealthStatBoa
   };
 }
 
+/** Keeps a subset of tiles. Missing lines follow the same ids, so a moved section does not leave a ghost. */
+export function narrowHealthStatBoard(
+  model: HealthStatBoardModel,
+  options: { only?: readonly string[]; omit?: readonly string[] },
+): HealthStatBoardModel {
+  if (!options.only && !options.omit) return model;
+  const keep = (id: string) => {
+    if (options.only && !options.only.includes(id)) return false;
+    if (options.omit?.includes(id)) return false;
+    return true;
+  };
+  const sections = model.sections
+    .map((section) => ({ ...section, tiles: section.tiles.filter((tile) => keep(tile.id)) }))
+    .filter((section) => section.tiles.length > 0);
+  const gaps = model.gaps.filter((gap) => keep(gap.id));
+  const missing = gaps.map((gap) => gap.title);
+  return {
+    ...model,
+    sections,
+    gaps,
+    missing,
+    missingLine: missing.length ? `${HEALTH_STATS_MISSING}: ${missing.join(', ')}` : null,
+  };
+}
+
 function tileFor(
   item: CatalogItem,
   input: HealthStatBoardInput,

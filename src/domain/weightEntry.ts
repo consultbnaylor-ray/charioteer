@@ -204,6 +204,33 @@ export function latestWeightLine(point: { day: string; kg: number } | null): str
   return `Latest weight ${formatHealthValue('weight_kg', point.kg)} · ${formatUkCompactDay(point.day)}`;
 }
 
+/** Names a stored weight source. An unknown source is left off rather than guessed. */
+export function weightSourceLabel(source: string | undefined): string | null {
+  if (source === 'healthkit') return 'Apple Health';
+  if (source === 'manual') return 'Logged here';
+  return null;
+}
+
+/**
+ * One line for the Health stats row.
+ * The latest day wins, and a later sample on that day replaces an earlier one.
+ */
+export function latestWeightSummary(
+  samples: readonly { kind: string; value: number; recordedOn: string; source?: string }[],
+): string {
+  let chosen: { day: string; kg: number; source?: string } | null = null;
+  for (const sample of samples) {
+    if (sample.kind !== 'weight_kg' || !(sample.value > 0)) continue;
+    const day = sample.recordedOn.slice(0, 10);
+    if (chosen && day < chosen.day) continue;
+    chosen = { day, kg: sample.value, source: sample.source };
+  }
+  if (!chosen) return 'No weight logged yet';
+  const line = `Latest weight ${formatHealthValue('weight_kg', chosen.kg)} · ${formatUkCompactDay(chosen.day)}`;
+  const source = weightSourceLabel(chosen.source);
+  return source ? `${line} · ${source}` : line;
+}
+
 export function latestWaistLine(point: { day: string; cm: number } | null): string {
   if (!point) return 'No waist logged yet';
   return `Latest waist ${formatWaistCm(point.cm)} · ${formatUkCompactDay(point.day)}`;

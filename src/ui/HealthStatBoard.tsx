@@ -11,6 +11,7 @@ import { parseStatPeriod, rollingWindow, type StatPeriod } from '@/domain/statWi
 import { shownError } from '@/domain/errors';
 import {
   buildHealthStatBoard,
+  narrowHealthStatBoard,
   detailShowsStatusAgain,
   healthSharingSteps,
   healthTypesForGaps,
@@ -48,9 +49,13 @@ export function HealthStatBoard(
     onSaveBody?: (reading: { recordedOn: string; bodyFatPct: number | null; leanMassKg: number | null; source: BodyEntrySource }) => Promise<void>;
     onSetWorkoutBucket?: (activityType: number, bucket: WorkoutBucket) => Promise<void>;
     onPlanOutdoor?: () => void;
+    /** When set, only these tile ids stay. */
+    onlyTiles?: readonly string[];
+    /** Tile ids left on another screen. */
+    omitTiles?: readonly string[];
   },
 ) {
-  const model = buildHealthStatBoard(input);
+  const model = narrowHealthStatBoard(buildHealthStatBoard(input), { only: input.onlyTiles, omit: input.omitTiles });
   const period = parseStatPeriod(input.period);
   const vo2 = latestVo2Reading(input.samples);
   const measuredOn = vo2?.day ?? null;

@@ -57,6 +57,9 @@ export function HealthBoard({
   onSaveHeight,
   onWeightDraftChange,
   weightReset = 0,
+  kinds,
+  omitKinds,
+  showWeek = true,
 }: {
   samples: HealthSample[];
   today: string;
@@ -68,20 +71,32 @@ export function HealthBoard({
   onSaveHeight?: (heightCm: number | null) => Promise<void>;
   onWeightDraftChange?: (draft: WeightReadingDraft | null) => void;
   weightReset?: number;
+  /** Limit the cards. Unset means every metric. */
+  kinds?: readonly HealthInsightKind[];
+  omitKinds?: readonly HealthInsightKind[];
+  /** The week summary stays on Health stats. The weight page is only weight. */
+  showWeek?: boolean;
 }) {
   const report = buildHealthInsights({ today, samples, soberOn, stage });
+  const metrics = HEALTH_METRICS.filter((metric) => {
+    if (kinds && !kinds.includes(metric.kind)) return false;
+    if (omitKinds?.includes(metric.kind)) return false;
+    return true;
+  });
   return (
     <View style={{ gap: 14 }}>
-      <Card>
-        <T variant="title">Your health this week</T>
-        {report.headlines.length === 0 ? (
-          <T variant="muted">Not enough readings yet to compare this week with the one before.</T>
-        ) : (
-          report.headlines.map((line) => <T key={line}>{line}</T>)
-        )}
-        <T variant="muted">These notes are not medical advice.</T>
-      </Card>
-      {HEALTH_METRICS.map((metric) => {
+      {showWeek ? (
+        <Card>
+          <T variant="title">Your health this week</T>
+          {report.headlines.length === 0 ? (
+            <T variant="muted">Not enough readings yet to compare this week with the one before.</T>
+          ) : (
+            report.headlines.map((line) => <T key={line}>{line}</T>)
+          )}
+          <T variant="muted">These notes are not medical advice.</T>
+        </Card>
+      ) : null}
+      {metrics.map((metric) => {
         const kindReport = report.kinds.find((item) => item.kind === metric.kind);
         const card = (
           <MetricCard
@@ -111,8 +126,9 @@ export function HealthBoard({
   );
 }
 
-export function HealthReadings({ samples }: { samples: HealthSample[] }) {
-  return <Readings groups={groupedReadings(samples)} />;
+export function HealthReadings({ samples, kinds }: { samples: HealthSample[]; kinds?: readonly string[] }) {
+  const shown = kinds ? samples.filter((sample) => kinds.includes(sample.kind)) : samples;
+  return <Readings groups={groupedReadings(shown)} />;
 }
 
 function MetricCard({
