@@ -60,6 +60,7 @@ export function HealthBoard({
   kinds,
   omitKinds,
   showWeek = true,
+  weightPart = 'all',
 }: {
   samples: HealthSample[];
   today: string;
@@ -76,6 +77,11 @@ export function HealthBoard({
   omitKinds?: readonly HealthInsightKind[];
   /** The week summary stays on Health stats. The weight page is only weight. */
   showWeek?: boolean;
+  /**
+   * The body page shows the measurement fields first, then the charts.
+   * `entry` is only height, weight, and waist. `charts` leaves those fields out.
+   */
+  weightPart?: 'all' | 'entry' | 'charts';
 }) {
   const report = buildHealthInsights({ today, samples, soberOn, stage });
   const metrics = HEALTH_METRICS.filter((metric) => {
@@ -113,9 +119,10 @@ export function HealthBoard({
             onSaveHeight={onSaveHeight}
             onWeightDraftChange={onWeightDraftChange}
             weightReset={weightReset}
+            weightPart={weightPart}
           />
         );
-        if (metric.kind !== 'weight_kg') return <Fragment key={metric.kind}>{card}</Fragment>;
+        if (metric.kind !== 'weight_kg' || weightPart === 'charts') return <Fragment key={metric.kind}>{card}</Fragment>;
         return (
           <ScrollTarget key={metric.kind} id="weight">
             {card}
@@ -145,6 +152,7 @@ function MetricCard({
   onSaveHeight,
   onWeightDraftChange,
   weightReset,
+  weightPart,
 }: {
   kind: HealthInsightKind;
   label: string;
@@ -165,6 +173,7 @@ function MetricCard({
   onSaveHeight?: (heightCm: number | null) => Promise<void>;
   onWeightDraftChange?: (draft: WeightReadingDraft | null) => void;
   weightReset: number;
+  weightPart: 'all' | 'entry' | 'charts';
 }) {
   const [period] = useStatPeriod();
   const range = periodDayCount(period);
@@ -226,8 +235,37 @@ function MetricCard({
   const classWindow = kind === 'weight_kg' ? boxingClassWindow(snap.nutrition.goal, snap.nutrition.goalSex) : null;
   const figure = healthFigure(kind, history, today, { classWindow });
 
+  const measurements = kind === 'weight_kg' && weightPart !== 'charts' ? (
+    <View style={{ gap: 6 }}>
+      <T variant="label">Measurements</T>
+      <WeightFields
+        canSave={canSaveHeight}
+        heightText={heightText}
+        resetToken={weightReset}
+        onDraft={onWeightDraftChange}
+      />
+      <Field
+        label="Height (cm)"
+        value={heightText}
+        onChangeText={setHeightText}
+        onBlur={commitHeight}
+        keyboardType="decimal-pad"
+        editable={canSaveHeight}
+        hint="Used for BMI and waist-to-height. It is not shown on your public profile."
+      />
+      {canSaveHeight ? null : <T variant="muted">Health data is off. Turn it on in Privacy & consent to save a weight or a height.</T>}
+      {heightError ? <T>{heightError}</T> : null}
+      {heightSaved ? <T>{heightSaved}</T> : null}
+    </View>
+  ) : null;
+
+  if (weightPart === 'entry') {
+    return <Card>{measurements}</Card>;
+  }
+
   return (
     <Card>
+      {measurements}
       <T variant="label">{label}</T>
       <HealthFigureView figure={figure} />
       {latest ? (
@@ -239,28 +277,6 @@ function MetricCard({
         <T variant="muted">No readings yet</T>
       )}
       {latest?.day === today ? <T variant="muted">Today</T> : null}
-      {kind === 'weight_kg' ? (
-        <View style={{ gap: 6 }}>
-          <WeightFields
-            canSave={canSaveHeight}
-            heightText={heightText}
-            resetToken={weightReset}
-            onDraft={onWeightDraftChange}
-          />
-          <Field
-            label="Height (cm)"
-            value={heightText}
-            onChangeText={setHeightText}
-            onBlur={commitHeight}
-            keyboardType="decimal-pad"
-            editable={canSaveHeight}
-            hint="Used for BMI and waist-to-height. It is not shown on your public profile."
-          />
-          {canSaveHeight ? null : <T variant="muted">Health data is off. Turn it on in Privacy & consent to save a weight or a height.</T>}
-          {heightError ? <T>{heightError}</T> : null}
-          {heightSaved ? <T>{heightSaved}</T> : null}
-        </View>
-      ) : null}
       <GuidanceRange guidance={guidance} />
       {kind === 'hrv_sdnn' ? <HrvExplainer /> : null}
       <HealthChart kind={kind} shape={chart} today={today} windowDays={range} points={points} />

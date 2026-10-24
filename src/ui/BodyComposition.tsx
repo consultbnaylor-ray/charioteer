@@ -34,6 +34,14 @@ import { DateField } from '@/ui/DateField';
 import { usePendingPress } from '@/ui/pendingAction';
 import { Button, Card, Choice, Field, QuietNote, T, playSavedHaptic } from '@/ui/ui';
 
+/**
+ * Body fat on this screen is a saved reading, not a percentage calculated here.
+ * Apple Health readings are labelled Apple Health. Garmin does not send body fat.
+ * With no reading, waist-to-height and BMI are shown instead.
+ */
+export const BODY_FAT_SOURCE_NOTE =
+  'Got smart scales? Weigh yourself on them and sync to Apple Health for a body-fat reading. A reading from Apple Health is labelled Apple Health. One you type is labelled smart scale, gym scan, DEXA, or other. The latest reading is the one used. Garmin does not send body fat to this screen. Without a reading, the figures below are waist-to-height and BMI, worked out from your weight, height and waist. They are not a body-fat percentage.';
+
 export function BuildChoices() {
   const snap = useSnapshot();
   const repo = useRepository();
@@ -162,7 +170,8 @@ export function BodyCompositionCard() {
   return (
     <Card>
       <T variant="label">Body</T>
-      <T variant="muted">Body fat is used before waist-to-height, and waist-to-height before BMI. This is not a diagnosis, and it is not estimated from a photo.</T>
+      <T variant="muted">{BODY_FAT_SOURCE_NOTE}</T>
+      <T variant="muted">A saved body-fat reading is used before waist-to-height, and waist-to-height before BMI. This is not a diagnosis, and body fat is not estimated from a photo.</T>
       <BuildChoices />
       {assessment.plain ? <T>{assessment.plain}</T> : <T variant="muted">{BMI_ONLY_NOTE}</T>}
       {fatRange && figures.bodyFatPct != null ? (

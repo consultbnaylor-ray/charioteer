@@ -165,11 +165,42 @@ export default function WeightWaistScreen() {
         </View>
       ) : undefined}
     >
+      <HealthBoard
+        weightPart="entry"
+        samples={healthSamples.filter((sample) => sample.kind === 'weight_kg')}
+        today={isoDay(new Date())}
+        soberOn={snap.profile?.stage === 'stopped' && snap.profile.sobrietyStartedAt ? isoDay(new Date(snap.profile.sobrietyStartedAt)) : null}
+        stage={snap.profile?.stage ?? null}
+        heightCm={snap.profile?.heightCm ?? null}
+        adult={snap.profile?.ageConfirmed18 !== false}
+        canSaveHeight={consent}
+        showWeek={false}
+        kinds={['weight_kg']}
+        onSaveHeight={async (heightCm) => {
+          await repo.updateProfile({ heightCm });
+        }}
+        onWeightDraftChange={reportWeight}
+        weightReset={weightReset}
+      />
       <Button label="Back" tone="quiet" onPress={goBack} />
       <StatPeriodToggle />
-      <ScrollTarget id="body">
-        <BodyCompositionCard />
-      </ScrollTarget>
+      <HealthBoard
+        weightPart="charts"
+        samples={healthSamples.filter((sample) => sample.kind === 'weight_kg')}
+        today={isoDay(new Date())}
+        soberOn={snap.profile?.stage === 'stopped' && snap.profile.sobrietyStartedAt ? isoDay(new Date(snap.profile.sobrietyStartedAt)) : null}
+        stage={snap.profile?.stage ?? null}
+        heightCm={snap.profile?.heightCm ?? null}
+        adult={snap.profile?.ageConfirmed18 !== false}
+        canSaveHeight={consent}
+        showWeek={false}
+        kinds={['weight_kg']}
+        onSaveHeight={async (heightCm) => {
+          await repo.updateProfile({ heightCm });
+        }}
+        onWeightDraftChange={reportWeight}
+        weightReset={weightReset}
+      />
       <HealthStatBoard
         onlyTiles={['weight_kg', 'waist']}
         today={isoDay(new Date())}
@@ -186,22 +217,9 @@ export default function WeightWaistScreen() {
         period={period}
         onTurnOn={turnOnMissing}
       />
-      <HealthBoard
-        samples={healthSamples.filter((sample) => sample.kind === 'weight_kg')}
-        today={isoDay(new Date())}
-        soberOn={snap.profile?.stage === 'stopped' && snap.profile.sobrietyStartedAt ? isoDay(new Date(snap.profile.sobrietyStartedAt)) : null}
-        stage={snap.profile?.stage ?? null}
-        heightCm={snap.profile?.heightCm ?? null}
-        adult={snap.profile?.ageConfirmed18 !== false}
-        canSaveHeight={consent}
-        showWeek={false}
-        kinds={['weight_kg']}
-        onSaveHeight={async (heightCm) => {
-          await repo.updateProfile({ heightCm });
-        }}
-        onWeightDraftChange={reportWeight}
-        weightReset={weightReset}
-      />
+      <ScrollTarget id="body">
+        <BodyCompositionCard />
+      </ScrollTarget>
       <ScrollTarget id="weight-chart">
         <Card>
           <T variant="label">Weight</T>

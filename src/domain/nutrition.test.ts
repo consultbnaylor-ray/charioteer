@@ -1189,6 +1189,22 @@ describe('body composition', () => {
     expect(page).toContain('id="body"');
     expect(page).toContain('label="Save reading"');
     expect(page).toContain('<PlanTick done');
+    const entry = page.indexOf('weightPart="entry"');
+    expect(entry).toBeGreaterThan(-1);
+    expect(entry).toBeLessThan(page.indexOf('weightPart="charts"'));
+    expect(entry).toBeLessThan(page.indexOf('<WeightTrendChart'));
+    expect(entry).toBeLessThan(page.indexOf('<BodyCompositionCard'));
+    expect(entry).toBeLessThan(page.indexOf('<StatPeriodToggle'));
+    const body = readFileSync('src/ui/BodyComposition.tsx', 'utf8');
+    const noteAt = body.indexOf('{BODY_FAT_SOURCE_NOTE}');
+    expect(noteAt).toBeGreaterThan(-1);
+    expect(noteAt).toBeLessThan(body.indexOf('label="Body fat"'));
+    expect(body).toContain('sync to Apple Health');
+    expect(body).toContain('labelled Apple Health');
+    expect(body).toContain('The latest reading is the one used');
+    expect(body).toContain('Garmin does not send body fat');
+    expect(body).toContain('not a body-fat percentage');
+    expect(body).toContain('weight, height and waist');
   });
 
   it('keeps the body card free of photo estimation and reloads', () => {
