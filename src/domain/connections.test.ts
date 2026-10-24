@@ -1,8 +1,31 @@
 import { readFileSync } from 'node:fs';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
-import type { Connection, DirectoryCard } from '@/data/types';
-import { buddyCount, discoverAction, foldedRows, incomingRequestCount, peopleLists, peopleTabAccessibilityLabel, peopleTabBadgeCount, requestBadgeText } from './connections';
+vi.mock('@react-native-async-storage/async-storage', () => ({
+  default: {
+    getItem: async () => null,
+    setItem: async () => undefined,
+    removeItem: async () => undefined,
+  },
+}));
+
+import { DemoRepository } from '@/data/demo-repository';
+import { DEMO_PASSWORD, PEOPLE } from '@/data/demo-seed';
+import type { Connection, ConnectionCard, DirectoryCard } from '@/data/types';
+import {
+  avatarPhotoIdFromPath,
+  buddyCount,
+  communitySearch,
+  discoverAction,
+  foldedRows,
+  incomingRequestCount,
+  memberAvatarSources,
+  memberDisplayName,
+  peopleLists,
+  peopleTabAccessibilityLabel,
+  peopleTabBadgeCount,
+  requestBadgeText,
+} from './connections';
 
 const me = 'me';
 const other = 'other';
@@ -112,5 +135,149 @@ describe('people lists', () => {
     expect(back.community.map((row) => row.id).sort()).toEqual(['paul', 'sam']);
     expect(back.accepted).toEqual([]);
     expect(foldedRows([1, 2, 3, 4, 5, 6], false).hidden).toBe(1);
+  });
+
+  it('uses the directory name, then the connection card, then Member', () => {
+    const directory = [{ ...card('sam'), displayName: 'Sam' }];
+    const hidden: ConnectionCard = {
+      id: 'paul',
+      displayName: 'Paul',
+      avatarPath: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa2/e7e7e7e7-e7e7-4e7e-8e7e-e7e7e7e7e7e4.jpg',
+      avatarUrl: null,
+      avatarPhotoId: 'e7e7e7e7-e7e7-4e7e-8e7e-e7e7e7e7e7e4',
+    };
+    const samePerson: ConnectionCard = { ...hidden, id: 'sam', displayName: 'Not Sam' };
+    expect(memberDisplayName('sam', directory, [samePerson])).toBe('Sam');
+    expect(memberDisplayName('paul', directory, [hidden])).toBe('Paul');
+    expect(memberDisplayName('paul', directory, [{ ...hidden, displayName: '  ' }])).toBe('Member');
+    expect(memberDisplayName('paul', directory, [])).toBe('Member');
+    expect(avatarPhotoIdFromPath(hidden.avatarPath)).toBe('e7e7e7e7-e7e7-4e7e-8e7e-e7e7e7e7e7e4');
+    expect(avatarPhotoIdFromPath('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa2/../secret.jpg')).toBeNull();
+    expect(avatarPhotoIdFromPath('not-a-path')).toBeNull();
+    const sources = memberAvatarSources(directory, [hidden, samePerson]);
+    expect(sources.map((row) => row.id)).toEqual(['sam', 'paul']);
+    expect(sources.find((row) => row.id === 'paul')?.town).toBeNull();
+    expect(sources.find((row) => row.id === 'paul')?.interestIds).toEqual([]);
+    expect(sources.find((row) => row.id === 'sam')?.displayName).toBe('Sam');
+  });
+
+  it('never puts a hidden person in search results or Community', () => {
+    const directory = [card('sam'), card('alex')];
+    const hidden: ConnectionCard = {
+      id: 'paul',
+      displayName: 'Paul',
+      avatarPath: null,
+      avatarUrl: null,
+      avatarPhotoId: null,
+    };
+    const stranger = peopleLists(directory, [], me);
+    expect(stranger.community.map((row) => row.id)).not.toContain('paul');
+    expect(communitySearch(directory, 'Paul').map((row) => row.id)).not.toContain('paul');
+    expect(communitySearch(directory, '').map((row) => row.id)).not.toContain('paul');
+    expect(communitySearch(directory, 'sam').map((row) => row.id)).toEqual(['sam']);
+    const connected = peopleLists(directory, [link('accepted', me, 'paul', 'accepted')], me);
+    expect(connected.community.map((row) => row.id)).not.toContain('paul');
+    expect(connected.accepted.map((row) => row.addresseeId)).toEqual(['paul']);
+    expect(communitySearch(directory, 'Paul')).toEqual([]);
+    expect(memberDisplayName('paul', directory, [hidden])).toBe('Paul');
+  });
+});
+
+describe('hidden members stay out of the directory', () => {
+  it('keeps directory.visible as the Community and search filter', () => {
+    const init = readFileSync('supabase/migrations/20261010120000_init.sql', 'utf8');
+    const policy = init.slice(init.indexOf('create policy directory_select'), init.indexOf('create policy consents_own'));
+    expect(policy).toContain('user_id = auth.uid()');
+    expect(policy).toContain('visible');
+    expect(policy).toContain('age_confirmed_18');
+    const sql = readFileSync('supabase/migrations/20261024100000_buddy_names.sql', 'utf8');
+    expect(sql).toContain('function public.my_connection_cards()');
+    expect(sql).toContain('security definer');
+    expect(sql).toContain('set search_path = public');
+    expect(sql).toContain('stable');
+    expect(sql).toContain("c.status in ('accepted', 'pending')");
+    expect(sql).toContain('auth.uid() is not null');
+    expect(sql).toContain('not public.is_blocked(auth.uid(), other.user_id)');
+    expect(sql).toContain('revoke all on function public.my_connection_cards() from public, anon, authenticated');
+    expect(sql).toContain('grant execute on function public.my_connection_cards() to authenticated');
+    expect(sql).not.toMatch(/create policy|alter policy|drop policy/i);
+    expect(sql).not.toMatch(/\bbio\b|\btown\b|\bstage\b|sobriety/i);
+    expect(sql).not.toMatch(/grant\s+(insert|update|delete)/i);
+    const signer = readFileSync('supabase/functions/profile-photo-url/index.ts', 'utf8');
+    expect(signer.indexOf("rpc('shared_profile_photos'")).toBeLessThan(signer.indexOf("rpc('my_connection_cards'"));
+    expect(signer.indexOf("rpc('my_connection_cards'")).toBeLessThan(signer.indexOf('createSignedUrl'));
+
+    const people = readFileSync('src/app/(main)/people.tsx', 'utf8');
+    expect(people.match(/peopleLists\([^)]*\)/)?.[0]).toBe('peopleLists(snap.directory, snap.connections ?? [], me.id)');
+    expect(people).toContain('memberDisplayName');
+    expect(people).toContain('memberAvatarSources(snap.directory, snap.connectionCards)');
+    expect(people).toContain('lists.community.slice');
+    const chat = readFileSync('src/app/(main)/chat/[id].tsx', 'utf8');
+    expect(chat).toContain('memberDisplayName(otherId, snap.directory, snap.connectionCards)');
+    expect(readFileSync('src/app/(main)/buddies.tsx', 'utf8')).toContain('memberDisplayName(inviteId, snap.directory, snap.connectionCards)');
+
+    const supabase = readFileSync('src/data/supabase-repository.ts', 'utf8');
+    const open = supabase.slice(supabase.indexOf('async openPrivateChat'), supabase.indexOf('async requestConnection'));
+    expect(open).not.toContain('communityVisible');
+    expect(open).toContain('ageConfirmed18');
+    expect(supabase).toContain("rpc('my_connection_cards')");
+    const demo = readFileSync('src/data/demo-repository.ts', 'utf8');
+    const demoOpen = demo.slice(demo.indexOf('async openPrivateChat'), demo.indexOf('async requestConnection'));
+    const demoRequest = demo.slice(demo.indexOf('async requestConnection'), demo.indexOf('async respondConnection'));
+    expect(demoOpen).not.toContain('communityVisible');
+    expect(demoRequest).not.toContain('communityVisible');
+    expect(demoRequest).toContain('ageConfirmed18');
+    expect(demo).toContain('other.profile.communityVisible && other.profile.ageConfirmed18');
+  });
+
+  it('hides a non-connected person from search and Community, and keeps name and photo for a connection', async () => {
+    const repo = new DemoRepository();
+    await new Promise<void>((resolve) => {
+      if (repo.getSnapshot().ready) {
+        resolve();
+        return;
+      }
+      const stop = repo.subscribe(() => {
+        if (!repo.getSnapshot().ready) return;
+        stop();
+        resolve();
+      });
+    });
+    await repo.signIn('jordan.ellis@example.com', DEMO_PASSWORD);
+    await repo.updateProfile({ communityVisible: false });
+    await repo.signOut();
+
+    await repo.signIn('priya.shah@example.com', DEMO_PASSWORD);
+    const priya = repo.getSnapshot();
+    expect(priya.directory.some((card) => card.id === PEOPLE.jordan)).toBe(false);
+    expect(priya.connectionCards.some((card) => card.id === PEOPLE.jordan)).toBe(false);
+    const priyaLists = peopleLists(priya.directory, priya.connections, priya.profile!.id);
+    expect(priyaLists.community.some((card) => card.id === PEOPLE.jordan)).toBe(false);
+    expect(communitySearch(priya.directory, 'Jordan')).toEqual([]);
+    expect(communitySearch(priya.directory, '').some((card) => card.id === PEOPLE.jordan)).toBe(false);
+    expect(await repo.profilePhotoUrls(['e7e7e7e7-e7e7-4e7e-8e7e-e7e7e7e7e7e4'])).toEqual([]);
+    await repo.signOut();
+
+    await repo.signIn('alex.hart@example.com', DEMO_PASSWORD);
+    const alex = repo.getSnapshot();
+    expect(alex.directory.some((card) => card.id === PEOPLE.jordan)).toBe(false);
+    expect(communitySearch(alex.directory, 'Jordan')).toEqual([]);
+    const alexLists = peopleLists(alex.directory, alex.connections, alex.profile!.id);
+    expect(alexLists.community.some((card) => card.id === PEOPLE.jordan)).toBe(false);
+    expect(alexLists.accepted.some((row) => row.requesterId === PEOPLE.jordan || row.addresseeId === PEOPLE.jordan)).toBe(true);
+    expect(alex.connectionCards.find((card) => card.id === PEOPLE.jordan)?.displayName).toBe('Jordan Ellis');
+    expect(alex.connectionCards.find((card) => card.id === PEOPLE.jordan)?.avatarPhotoId).toBe('e7e7e7e7-e7e7-4e7e-8e7e-e7e7e7e7e7e4');
+    expect(memberDisplayName(PEOPLE.jordan, alex.directory, alex.connectionCards)).toBe('Jordan Ellis');
+    const signed = await repo.profilePhotoUrls(['e7e7e7e7-e7e7-4e7e-8e7e-e7e7e7e7e7e4']);
+    expect(signed.map((row) => row.id)).toEqual(['e7e7e7e7-e7e7-4e7e-8e7e-e7e7e7e7e7e4']);
+
+    await repo.updateProfile({ communityVisible: false });
+    const hidden = repo.getSnapshot();
+    expect(hidden.directory.some((card) => card.displayName === 'Priya Shah')).toBe(true);
+    expect(communitySearch(hidden.directory, 'Priya').map((card) => card.displayName)).toContain('Priya Shah');
+    expect(hidden.directory.some((card) => card.id === PEOPLE.jordan)).toBe(false);
+    expect(await repo.openPrivateChat(PEOPLE.jordan)).toEqual({ status: 'open', connectionId: expect.any(String) });
+    await repo.requestConnection(PEOPLE.priya, '11111111-1111-4111-8111-111111111111');
+    expect(repo.getSnapshot().connections.some((row) => row.addresseeId === PEOPLE.priya && row.requesterId === PEOPLE.alex && row.status === 'pending')).toBe(true);
   });
 });

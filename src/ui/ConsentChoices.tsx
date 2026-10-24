@@ -6,16 +6,20 @@ import { CONSENT_VERSION } from '@/data/catalogue';
 import { useAppTheme } from '@/ui/theme';
 import { T } from '@/ui/ui';
 
+/** The community switch. It only controls the Community list. */
+export const COMMUNITY_SWITCH_TITLE = 'Show me in the Community list';
+
 /**
- * The community switch. Turning it on does not publish stats, photos, nutrition, or the wagon flag.
+ * Turning it on does not publish stats, photos, nutrition, or the wagon flag.
  * People and What I share reuse this wording.
+ * Search, buddies, and per-buddy shares keep working while this is off.
  */
 export const COMMUNITY_CONSENT_BODY =
-  'Turning this on lets other members find you in People, see your name, interests and profile picture, and send you a request or a private message. Nothing else is shared. Stats, photos, nutrition, the wagon flag, and each other item stay off until you switch that item on separately. You can turn Community off at any time.';
+  'Turning this on lets other members find you in People, see your name, interests and profile picture, and send you a request or a private message. You can still search for other members, and keep or message buddies, while this is off. You choose what each buddy sees. Nothing else is shared. Stats, photos, nutrition, the wagon flag, and each other item stay off until you switch that item on separately. You can turn Community off at any time.';
 
-/** A short version for the People tab, when this person has left Community off. */
+/** A short version for the People tab, when this person has left the Community list. */
 export const COMMUNITY_PROMPT_BODY =
-  'Other members cannot find you in People until Community is on. They would see your name and profile picture, and could send a request or a private message. Nothing else is shared until you switch it on.';
+  'Other members cannot find you in People until Community is on. You can still search for other members and keep buddies. They would see your name and profile picture, and could send a request or a private message. Nothing else is shared until you switch it on. You choose what each buddy sees.';
 
 export function ConsentChoices({
   community,
@@ -43,7 +47,7 @@ export function ConsentChoices({
   return (
     <View style={{ gap: 16 }}>
       <ConsentRow
-        title="Community"
+        title={COMMUNITY_SWITCH_TITLE}
         body={COMMUNITY_CONSENT_BODY}
         value={community}
         onChange={onCommunity}

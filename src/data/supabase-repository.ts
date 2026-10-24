@@ -87,6 +87,7 @@ import {
 import { PLAN_DISCLAIMER, healthPlanFromStored, normaliseTrainingSchedule, parseSharedHealthPlan, trainingScheduleFromRow, type HealthPlan, type TrainingSchedule } from '@/domain/healthPlan';
 import { plannedEffortToDb, plannedSessionFromDraft, plannedSessionFromRow, plannedSessionWrite, type PlannedSession, type PlannedSessionDraft } from '@/domain/plannedSession';
 import { parseBuddyLinkPass, parseBuddyList, parseBuddyPreview, parseBuddyShare, type BuddyLinkPass, type BuddyList, type BuddyScope, type BuddyShareView } from '@/domain/buddies';
+import { avatarPhotoIdFromPath, memberDisplayName } from '@/domain/connections';
 import { randomId } from '@/domain/id';
 import { messageFromRealtime, withIncomingMessage } from '@/domain/liveChat';
 import { subscribeAccountMessages, type MessageRealtime } from '@/data/messageChannel';
@@ -151,6 +152,7 @@ import type {
   AppSnapshot,
   CheckIn,
   Connection,
+  ConnectionCard,
   ConsentInput,
   DirectoryCard,
   DirectMessage,
@@ -215,6 +217,7 @@ function emptySnapshot(): AppSnapshot {
     interests: [],
     resources: [],
     directory: [],
+    connectionCards: [],
     connections: [],
     messages: [],
     reports: [],
@@ -490,6 +493,7 @@ export class SupabaseRepository implements Repository {
       .sort((a, b) => b.sharedInterestIds.length - a.sharedInterestIds.length || a.displayName.localeCompare(b.displayName));
 
     const connections = ((connectionsRes.data ?? []) as Row[]).map(mapConnection);
+    const connectionCards = await this.loadConnectionCards();
     const connectionIds = connections.map((connection) => connection.id);
     const allowedConnections = new Set(connectionIds);
     const sameAccount = this.snapshot.session?.userId === userId;
@@ -537,6 +541,7 @@ export class SupabaseRepository implements Repository {
       interests,
       resources,
       directory,
+      connectionCards,
       connections,
       messages,
       reports: ((reportsRes.data ?? []) as Row[]).map(mapReport),
@@ -703,6 +708,40 @@ export class SupabaseRepository implements Repository {
         previewUrl: signedByPath.get(path) ?? null,
       };
     }));
+  }
+
+  /**
+   * Name and avatar path for accepted or pending connections.
+   * A missing function, or any error, leaves the current “Member” fallback in place.
+   * The payload is not logged.
+   */
+  private async loadConnectionCards(): Promise<ConnectionCard[]> {
+    try {
+      const result = await this.client.rpc('my_connection_cards');
+      if (result.error || !Array.isArray(result.data)) return [];
+      const parsed: ConnectionCard[] = [];
+      for (const row of result.data) {
+        if (!row || typeof row !== 'object') continue;
+        const record = row as { user_id?: unknown; display_name?: unknown; avatar_path?: unknown };
+        if (typeof record.user_id !== 'string') continue;
+        const avatarPath = typeof record.avatar_path === 'string' ? record.avatar_path : null;
+        parsed.push({
+          id: record.user_id,
+          displayName: typeof record.display_name === 'string' ? record.display_name : '',
+          avatarPath,
+          avatarUrl: null,
+          avatarPhotoId: avatarPhotoIdFromPath(avatarPath),
+        });
+      }
+      const urls = await this.profilePhotoUrlMap(parsed.flatMap((card) => card.avatarPhotoId ? [card.avatarPhotoId] : []));
+      return parsed.map((card) => ({
+        ...card,
+        avatarUrl: card.avatarPhotoId ? urls.get(card.avatarPhotoId) ?? null : null,
+      }));
+    } catch {
+      console.error('connection cards unavailable');
+      return [];
+    }
   }
 
   /** Signed URLs for profile photos. A missing function leaves initials in place. */
@@ -1173,8 +1212,8 @@ export class SupabaseRepository implements Repository {
   async openPrivateChat(userId: string): Promise<{ status: 'open'; connectionId: string } | { status: 'requested'; connectionId: string | null }> {
     const me = await this.userId();
     const profile = this.snapshot.profile;
-    if (!profile?.ageConfirmed18 || !profile.communityVisible) {
-      throw new UserFacingError('Turn on community, and confirm you are 18 or over, before you message.', 'generic');
+    if (!profile?.ageConfirmed18) {
+      throw new UserFacingError('Confirm you are 18 or over before you message.', 'generic');
     }
     if (userId === me) throw new UserFacingError('You cannot message yourself.', 'generic');
     // A block, the age check, and who may read the chat are enforced on the server.
@@ -1377,7 +1416,9 @@ export class SupabaseRepository implements Repository {
     const id = input.clientId || randomId();
     return this.once(`report:${id}`, async () => {
       const me = await this.userId();
-      const name = this.snapshot.directory.find((card) => card.id === input.reportedUserId)?.displayName ?? 'Member';
+      const name = input.reportedUserId
+        ? memberDisplayName(input.reportedUserId, this.snapshot.directory, this.snapshot.connectionCards)
+        : 'Member';
       const { error } = await this.client.from('reports').insert({
         id,
         reporter_id: me,

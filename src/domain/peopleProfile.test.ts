@@ -90,9 +90,12 @@ describe('your public profile on People', () => {
 
   it('says Community shares only a way to be found, and leaves the switch off by default', () => {
     const consent = readFileSync('src/ui/ConsentChoices.tsx', 'utf8');
+    expect(consent).toContain('Show me in the Community list');
     expect(consent).toContain('find you in People');
     expect(consent).toContain('name, interests and profile picture');
     expect(consent).toContain('private message');
+    expect(consent).toContain('You can still search for other members');
+    expect(consent).toContain('You choose what each buddy sees');
     expect(consent).toContain('Nothing else is shared');
     expect(consent).toContain('wagon flag');
     expect(consent).toContain('turn Community off at any time');
@@ -104,6 +107,7 @@ describe('your public profile on People', () => {
     expect(readFileSync('src/app/consent.tsx', 'utf8')).toContain('profile?.communityVisible ?? false');
     expect(readFileSync('src/app/(main)/sharing.tsx', 'utf8')).toContain('COMMUNITY_CONSENT_BODY');
     expect(readFileSync('src/ui/PublicProfileCard.tsx', 'utf8')).toContain('COMMUNITY_CONSENT_BODY');
+    expect(readFileSync('src/ui/PublicProfileCard.tsx', 'utf8')).toContain('COMMUNITY_SWITCH_TITLE');
     const people = readFileSync('src/app/(main)/people.tsx', 'utf8');
     expect(people).toContain('<CommunityPrompt');
     expect(people).toContain('!me.communityVisible && me.ageConfirmed18');

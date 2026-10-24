@@ -16,6 +16,7 @@ import {
   type BuddyScope,
   type BuddyShareView,
 } from '@/domain/buddies';
+import { memberDisplayName } from '@/domain/connections';
 import { shownError } from '@/domain/errors';
 import { formatUkDate } from '@/domain/dates';
 import { BuddyScopeEditor } from '@/ui/BuddyScope';
@@ -63,9 +64,9 @@ export default function BuddiesScreen() {
   useEffect(() => {
     if (!inviteId || openedInvite.current === inviteId) return;
     openedInvite.current = inviteId;
-    const card = snap.directory.find((item) => item.id === inviteId);
-    setCompose({ kind: 'person', buddyId: inviteId, name: card?.displayName ?? 'Member', scope: emptyBuddyScope() });
-  }, [inviteId, snap.directory]);
+    const name = memberDisplayName(inviteId, snap.directory, snap.connectionCards);
+    setCompose({ kind: 'person', buddyId: inviteId, name, scope: emptyBuddyScope() });
+  }, [inviteId, snap.connectionCards, snap.directory]);
 
   const openLink = (value: string) => {
     setError(null);

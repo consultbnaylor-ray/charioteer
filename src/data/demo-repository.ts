@@ -92,6 +92,7 @@ import { createDemoDb, type DemoAccount, type DemoDb } from '@/data/demo-seed';
 import { activityTypeFromKind } from '@/domain/fitnessSnapshot';
 import type {
   AppSnapshot,
+  ConnectionCard,
   ConsentInput,
   DirectoryCard,
   NewCheckIn,
@@ -283,6 +284,33 @@ function blocked(db: DemoDb, a: string, b: string): boolean {
   );
 }
 
+/** Name and avatar for a pending or accepted connection, including someone hidden from Community. */
+function connectionCardsFor(
+  db: DemoDb,
+  meId: string,
+  connections: AppSnapshot['connections'],
+): ConnectionCard[] {
+  const cards: ConnectionCard[] = [];
+  const seen = new Set<string>();
+  for (const connection of connections) {
+    if (connection.status !== 'accepted' && connection.status !== 'pending') continue;
+    const otherId = connection.requesterId === meId ? connection.addresseeId : connection.requesterId;
+    if (!otherId || otherId === meId || seen.has(otherId)) continue;
+    const other = db.accounts[otherId];
+    if (!other) continue;
+    seen.add(otherId);
+    const avatar = (other.profilePhotos ?? []).find((photo) => photo.role === 'avatar');
+    cards.push({
+      id: other.profile.id,
+      displayName: other.profile.displayName,
+      avatarPath: avatar ? `${other.profile.id}/${avatar.id}.jpg` : null,
+      avatarUrl: avatar?.previewUrl ?? null,
+      avatarPhotoId: avatar?.id ?? null,
+    });
+  }
+  return cards;
+}
+
 export class DemoRepository implements Repository {
   private db: DemoDb = createDemoDb();
   private ready = false;
@@ -363,6 +391,7 @@ export class DemoRepository implements Repository {
       interests: this.db.interests,
       resources: this.db.resources,
       directory,
+      connectionCards: account ? connectionCardsFor(this.db, account.profile.id, connections) : [],
       connections,
       messages: this.db.messages.filter((message) => connectionIds.has(message.connectionId)),
       reports,
@@ -812,8 +841,8 @@ export class DemoRepository implements Repository {
 
   async openPrivateChat(userId: string): Promise<{ status: 'open'; connectionId: string } | { status: 'requested'; connectionId: string | null }> {
     const account = this.me();
-    if (!account.profile.ageConfirmed18 || !account.profile.communityVisible) {
-      throw new UserFacingError('Turn on community, and confirm you are 18 or over, before you message.', 'generic');
+    if (!account.profile.ageConfirmed18) {
+      throw new UserFacingError('Confirm you are 18 or over before you message.', 'generic');
     }
     if (blocked(this.db, account.profile.id, userId)) throw new UserFacingError('You cannot contact this person.', 'generic');
     const existing = this.db.connections.find((connection) =>
@@ -834,8 +863,8 @@ export class DemoRepository implements Repository {
     const id = clientId || uid();
     return this.once(`connect:${userId}`, async () => {
       const account = this.me();
-      if (!account.profile.ageConfirmed18 || !account.profile.communityVisible) {
-        throw new Error('Turn on community, and confirm you are 18 or over, before you connect.');
+      if (!account.profile.ageConfirmed18) {
+        throw new Error('Confirm you are 18 or over before you connect.');
       }
       if (blocked(this.db, account.profile.id, userId)) throw new Error('You cannot contact this person.');
       if (this.db.connections.some((connection) => connection.id === id)) return;
@@ -1661,12 +1690,21 @@ export class DemoRepository implements Repository {
     const session = this.snapshot.session;
     if (!session) return [];
     const wanted = new Set(ids);
+    const buddyIds = new Set<string>();
+    for (const connection of this.snapshot.connections) {
+      if (connection.status !== 'accepted' && connection.status !== 'pending') continue;
+      const other = connection.requesterId === session.userId ? connection.addresseeId : connection.requesterId;
+      if (other && other !== session.userId && !blocked(this.db, session.userId, other)) buddyIds.add(other);
+    }
     const urls: { id: string; url: string }[] = [];
     for (const account of Object.values(this.db.accounts)) {
       const own = account.profile.id === session.userId;
-      if (!own && (!account.profile.communityVisible || !account.profile.ageConfirmed18 || blocked(this.db, session.userId, account.profile.id))) continue;
+      const buddy = buddyIds.has(account.profile.id);
+      if (!own && !buddy && (!account.profile.communityVisible || !account.profile.ageConfirmed18 || blocked(this.db, session.userId, account.profile.id))) continue;
       for (const photo of account.profilePhotos ?? []) {
         if (!wanted.has(photo.id) || !photo.previewUrl) continue;
+        // A hidden buddy shares the profile picture only. Gallery stays on the community profile.
+        if (buddy && !own && !account.profile.communityVisible && photo.role !== 'avatar') continue;
         urls.push({ id: photo.id, url: photo.previewUrl });
       }
     }

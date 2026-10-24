@@ -123,7 +123,8 @@ describe('profile photos', () => {
     expect(sql).toContain("'user_quotes'");
 
     const signer = readFileSync('supabase/functions/profile-photo-url/index.ts', 'utf8');
-    expect(signer.indexOf("rpc('shared_profile_photos'")).toBeLessThan(signer.indexOf('createSignedUrl'));
+    expect(signer.indexOf("rpc('shared_profile_photos'")).toBeLessThan(signer.indexOf("rpc('my_connection_cards'"));
+    expect(signer.indexOf("rpc('my_connection_cards'")).toBeLessThan(signer.indexOf('createSignedUrl'));
     expect(signer).toContain('SHARED_SECONDS = 60');
     expect(signer).toContain("path !== `${ownerId}/${id}.jpg`");
     expect(signer).toContain('profile-photos');

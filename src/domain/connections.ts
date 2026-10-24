@@ -1,4 +1,4 @@
-import type { Connection, DirectoryCard } from '@/data/types';
+import type { Connection, ConnectionCard, DirectoryCard } from '@/data/types';
 
 /** People shown before the rest of a long list. */
 export const PEOPLE_LIST_FOLD = 5;
@@ -93,6 +93,70 @@ export function peopleLists(
 
 export function buddyCount(lists: Pick<PeopleLists, 'incoming' | 'accepted' | 'outgoing'>): number {
   return lists.incoming.length + lists.accepted.length + lists.outgoing.length;
+}
+
+/** Spoken when neither the directory nor a connection card has a name. */
+export const MEMBER_FALLBACK_NAME = 'Member';
+
+const AVATAR_PATH = /^([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\.jpg$/i;
+
+/** Photo id from a connection-card path. Anything else, including `..`, is refused. */
+export function avatarPhotoIdFromPath(path: string | null | undefined): string | null {
+  if (!path || path.includes('..')) return null;
+  return AVATAR_PATH.exec(path)?.[2] ?? null;
+}
+
+/**
+ * Directory name first, then the connection card, then “Member”.
+ * Community search does not use this. A hidden person stays off that list.
+ */
+export function memberDisplayName(
+  userId: string,
+  directory: readonly DirectoryCard[],
+  cards: readonly ConnectionCard[] | null | undefined,
+): string {
+  const fromDirectory = directory.find((card) => card.id === userId)?.displayName?.trim();
+  if (fromDirectory) return fromDirectory;
+  const fromCard = cards?.find((card) => card.id === userId)?.displayName?.trim();
+  if (fromCard) return fromCard;
+  return MEMBER_FALLBACK_NAME;
+}
+
+/**
+ * Directory rows first, then connection cards for people the directory does not include.
+ * Town and interests stay empty on those extra rows so a list cannot treat them as Community.
+ */
+export function memberAvatarSources(
+  directory: readonly DirectoryCard[],
+  cards: readonly ConnectionCard[] | null | undefined,
+): DirectoryCard[] {
+  const known = new Set(directory.map((card) => card.id));
+  const extra: DirectoryCard[] = [];
+  for (const card of cards ?? []) {
+    if (!card.id || known.has(card.id)) continue;
+    known.add(card.id);
+    extra.push({
+      id: card.id,
+      displayName: card.displayName,
+      town: null,
+      interestIds: [],
+      sharedInterestIds: [],
+      avatarUrl: card.avatarUrl,
+      avatarPhotoId: card.avatarPhotoId,
+    });
+  }
+  return [...directory, ...extra];
+}
+
+/**
+ * Search over the directory only. The directory is already limited to visible members.
+ * Connection cards are not a source, so a hidden person never matches.
+ */
+export function communitySearch(directory: readonly DirectoryCard[], query: string): DirectoryCard[] {
+  const needle = query.trim().toLocaleLowerCase();
+  const visible = directory.filter((card) => card.id);
+  if (!needle) return [...visible];
+  return visible.filter((card) => card.displayName.toLocaleLowerCase().includes(needle));
 }
 
 /** The first rows of a long list, and how many are still hidden. */

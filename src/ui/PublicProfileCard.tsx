@@ -23,7 +23,7 @@ import { formatGbp } from '@/domain/savings';
 import { SharedGratitudeLines, SharedHealthPlanFacts, SharedPhotoFrame } from '@/ui/CommunityProfile';
 import { MemberAvatar } from '@/ui/MemberAvatar';
 import { OwnProfilePhotos, ProfilePhotoEditor } from '@/ui/ProfilePhotoEditor';
-import { COMMUNITY_CONSENT_BODY } from '@/ui/ConsentChoices';
+import { COMMUNITY_CONSENT_BODY, COMMUNITY_SWITCH_TITLE } from '@/ui/ConsentChoices';
 import { offerMessageNotifications } from '@/notifications/register';
 import { TURN_OFF_MESSAGE_NOTIFICATIONS, notificationsOnFromTurnOff } from '../../supabase/functions/_shared/messagePush';
 import { InterestChip } from '@/ui/InterestChip';
@@ -315,9 +315,9 @@ export function PublicProfileCard() {
             {me.ageConfirmed18 ? (
               <View style={{ gap: 8 }}>
                 <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 12, alignItems: 'center' }}>
-                  <T variant="title" style={{ fontSize: 20, flex: 1 }}>Community</T>
+                  <T variant="title" style={{ fontSize: 20, flex: 1 }}>{COMMUNITY_SWITCH_TITLE}</T>
                   <Switch
-                    accessibilityLabel="Community"
+                    accessibilityLabel={COMMUNITY_SWITCH_TITLE}
                     value={me.communityVisible}
                     onValueChange={(value) => turnCommunity(value)}
                     trackColor={{ true: theme.colors.ink, false: theme.colors.line }}

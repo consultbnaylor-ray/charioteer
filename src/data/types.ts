@@ -164,6 +164,18 @@ export type DirectoryCard = {
   /** Profile picture id, so a screen can ask for a fresh signed URL when it opens. */
   avatarPhotoId?: string | null;
 };
+/**
+ * Name and photo for an accepted or pending connection.
+ * A hidden member is absent from the directory. This card does not include town, bio, or interests.
+ */
+export type ConnectionCard = {
+  id: string;
+  displayName: string;
+  /** Storage path `user_id/photo_id.jpg`, or null when there is no avatar. */
+  avatarPath: string | null;
+  avatarUrl: string | null;
+  avatarPhotoId: string | null;
+};
 export type Connection = {
   id: string;
   requesterId: string;
@@ -214,6 +226,8 @@ export type AppSnapshot = {
   interests: Interest[];
   resources: Resource[];
   directory: DirectoryCard[];
+  /** Accepted and pending connections. Name and photo only. Never merged into the Community list. */
+  connectionCards: ConnectionCard[];
   connections: Connection[];
   messages: DirectMessage[];
   reports: Report[];

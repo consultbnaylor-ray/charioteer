@@ -4,6 +4,7 @@ import { AppState, Pressable, View } from 'react-native';
 
 import { useRepository, useSnapshot } from '@/data';
 import { getChatReadMarks, markChatRead, noteServerChatRead } from '@/data/chatRead';
+import { memberAvatarSources, memberDisplayName } from '@/domain/connections';
 import { shownError } from '@/domain/errors';
 import { randomId } from '@/domain/id';
 import { CHAT_HISTORY_ERROR, CHAT_POLL_MS, latestChatMessage } from '@/domain/liveChat';
@@ -30,7 +31,7 @@ function Chat() {
   const snap = useSnapshot();
   const repo = useRepository();
   const theme = useAppTheme();
-  const avatarOf = useMemberAvatars(snap.directory);
+  const avatarOf = useMemberAvatars(memberAvatarSources(snap.directory, snap.connectionCards));
   const [draft, setDraft] = useState('');
   const [reporting, setReporting] = useState(false);
   const [reason, setReason] = useState(REASONS[0]);
@@ -86,8 +87,7 @@ function Chat() {
     return <Screen title="Chat"><T>This chat is not available.</T></Screen>;
   }
   const otherId = connection.requesterId === me.id ? connection.addresseeId : connection.requesterId;
-  const otherCard = snap.directory.find((card) => card.id === otherId);
-  const other = otherCard?.displayName ?? 'Member';
+  const other = memberDisplayName(otherId, snap.directory, snap.connectionCards);
   const messages = (snap.messages ?? []).filter((message) => message?.connectionId === connection.id);
   const clientIdFor = (key: string) => {
     const existing = clientIds.current.get(key);

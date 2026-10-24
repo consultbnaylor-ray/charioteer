@@ -13,6 +13,8 @@ import {
   connectionOtherId,
   discoverAction,
   foldedRows,
+  memberAvatarSources,
+  memberDisplayName,
   peopleLists,
   type DiscoverAction,
 } from '@/domain/connections';
@@ -46,7 +48,7 @@ export default function People() {
   const incoming = lists?.incoming ?? [];
   const accepted = lists?.accepted ?? [];
   const { marks: readMarks, ready: readsReady } = useChatRead(me?.id);
-  const avatarOf = useMemberAvatars(snap.directory);
+  const avatarOf = useMemberAvatars(memberAvatarSources(snap.directory, snap.connectionCards));
 
   useFocusEffect(
     useCallback(() => {
@@ -58,7 +60,7 @@ export default function People() {
   const unreadTotal = readsReady
     ? messageUnreadTotal(messages, accepted.map((connection) => connection.id), me.id, readMarks)
     : 0;
-  const nameOf = (id: string) => snap.directory.find((card) => card.id === id)?.displayName ?? 'Member';
+  const nameOf = (id: string) => memberDisplayName(id, snap.directory, snap.connectionCards);
   const labelOf = (id: string) => snap.interests.find((interest) => interest.id === id)?.label ?? 'Interest';
   const clientIdFor = (key: string) => {
     const existing = clientIds.current.get(key);

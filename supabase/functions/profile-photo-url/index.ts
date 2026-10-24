@@ -60,6 +60,25 @@ Deno.serve(async (req) => {
     }
   }
 
+  // A hidden buddy is absent from shared_profile_photos. The connection card
+  // returns that one avatar path, and only that path is signed.
+  const cards = await userClient.rpc('my_connection_cards');
+  if (!cards.error && Array.isArray(cards.data)) {
+    for (const row of cards.data) {
+      if (!row || typeof row !== 'object') continue;
+      const record = row as { user_id?: unknown; avatar_path?: unknown };
+      const ownerId = typeof record.user_id === 'string' ? record.user_id : '';
+      const path = typeof record.avatar_path === 'string' ? record.avatar_path : '';
+      if (!ID.test(ownerId) || !path || path.includes('..')) continue;
+      const match = /^([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\.jpg$/i.exec(path);
+      const pathOwner = match?.[1] ?? '';
+      const photoId = match?.[2] ?? '';
+      if (!photoId || pathOwner.toLowerCase() !== ownerId.toLowerCase()) continue;
+      if (!ids.includes(photoId) || rows.has(photoId)) continue;
+      rows.set(photoId, { id: photoId, user_id: ownerId, storage_path: path });
+    }
+  }
+
   const admin = createClient(url, service, { auth: { persistSession: false } });
   const photos: { id: string; signed_url: string }[] = [];
   for (const row of rows.values()) {
