@@ -6,8 +6,8 @@ import { statsToneColors } from '@/ui/statsPalette';
 
 /**
  * Monochrome system, plus one accent. Near-black and off-white, grey for hierarchy.
- * The accent is the On-track green from statsPalette.ts: a solid saturated mint
- * in the dark theme, and a deep rich green in the light theme. Both are opaque.
+ * The accent is the On-track green from statsPalette.ts: a bright lime-turquoise
+ * in the dark theme, and a deeper teal-green in the light theme. Both are opaque.
  * danger* marks SOS and safety notices, and a pending connection request
  * on People. Stats tiles and the nutrition charts use statsPalette.ts.
  * Workout charts use one fixed colour per type, in workoutTypeColor.ts,
