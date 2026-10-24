@@ -30,12 +30,14 @@ export default function Breathe() {
 
   return (
     <Screen eyebrow="Practice" title="Settle the body." intro="Box breathing, 4-7-8, a physiological sigh, or a short urge-surf. Haptics play on a phone, not in the browser.">
-      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-        {BREATH_EXERCISES.map((item) => (
-          <Choice key={item.id} label={item.title} selected={selected === item.id} onPress={() => setSelected(item.id)} />
-        ))}
-        <Choice label="Urge surfing" selected={selected === 'surf'} onPress={() => setSelected('surf')} />
-      </View>
+      <Card>
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+          {BREATH_EXERCISES.map((item) => (
+            <Choice key={item.id} label={item.title} selected={selected === item.id} onPress={() => setSelected(item.id)} />
+          ))}
+          <Choice label="Urge surfing" selected={selected === 'surf'} onPress={() => setSelected('surf')} />
+        </View>
+      </Card>
       {selected === 'surf' ? <UrgeSurf /> : exercise ? <BreathRunner exercise={exercise} /> : null}
     </Screen>
   );

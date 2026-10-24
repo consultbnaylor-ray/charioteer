@@ -250,7 +250,7 @@ describe('manual health refresh', () => {
     expect(row).not.toMatch(/#|rgb\(|red/i);
     const app = readFileSync('app.json', 'utf8');
     expect(app).toContain('"gcm-ciq"');
-    expect(app).toContain('"buildNumber": "63"');
+    expect(app).toContain('"buildNumber": "64"');
     for (const path of [
       'src/app/(main)/health.tsx',
       'src/app/(main)/stats.tsx',

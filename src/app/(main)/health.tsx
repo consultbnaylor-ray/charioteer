@@ -49,7 +49,7 @@ import { useAppTheme } from '@/ui/theme';
 import { MovementCharts } from '@/ui/DailyActivity';
 import { HealthRefreshBar, useManualHealthRefresh } from '@/ui/HealthRefresh';
 import { WeightWaistLink } from '@/ui/WeightWaistLink';
-import { Button, Choice, ErrorNote, Field, playSavedHaptic, Screen, T } from '@/ui/ui';
+import { Button, Card, Choice, ErrorNote, Field, playSavedHaptic, Screen, T } from '@/ui/ui';
 
 const KINDS: { id: HealthKind; unit: string; label: string }[] = [
   { id: 'steps', unit: 'steps', label: 'Steps' },
@@ -349,8 +349,12 @@ export default function Health() {
         onCheck={loadVisibility}
         onAsk={askUnasked}
       />
-      <StatPeriodToggle />
-      <GoalLine />
+      <Card>
+        <StatPeriodToggle />
+      </Card>
+      <Card>
+        <GoalLine />
+      </Card>
       <HealthSectionShare />
       <WeightWaistLink samples={healthSamples} />
       <HealthStatBoard
@@ -383,15 +387,17 @@ export default function Health() {
         canSaveHeight={consent}
         omitKinds={['weight_kg']}
       />
-      <T style={{ fontFamily: theme.font.bodyStrong }}>Or add a reading yourself</T>
-      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-        {KINDS.map((item) => (
-          <Choice key={item.id} label={item.label} selected={kind === item.id} onPress={() => setKind(item.id)} />
-        ))}
-      </View>
-      <Field label={`Value (${chosen.unit})`} value={value} onChangeText={setValue} keyboardType="decimal-pad" />
-      <DateField label="Date" value={day} onChange={setDay} maximumDate={new Date()} />
-      <ErrorNote>{error}</ErrorNote>
+      <Card>
+        <T style={{ fontFamily: theme.font.bodyStrong }}>Or add a reading yourself</T>
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+          {KINDS.map((item) => (
+            <Choice key={item.id} label={item.label} selected={kind === item.id} onPress={() => setKind(item.id)} />
+          ))}
+        </View>
+        <Field label={`Value (${chosen.unit})`} value={value} onChangeText={setValue} keyboardType="decimal-pad" />
+        <DateField label="Date" value={day} onChange={setDay} maximumDate={new Date()} />
+        <ErrorNote>{error}</ErrorNote>
+      </Card>
       <HealthReadings samples={healthSamples.filter((sample) => sample.kind !== 'weight_kg')} />
     </Screen>
   );

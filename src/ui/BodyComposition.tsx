@@ -33,6 +33,7 @@ import { MeasureRingView } from '@/ui/MeasuredFigure';
 import { DateField } from '@/ui/DateField';
 import { usePendingPress } from '@/ui/pendingAction';
 import { IconLabel } from '@/ui/statIcons';
+import { MoreInfo } from '@/ui/MoreInfo';
 import { Button, Card, Choice, Field, QuietNote, T, playSavedHaptic } from '@/ui/ui';
 
 /**
@@ -59,7 +60,9 @@ export function BuildChoices() {
 
   return (
     <View style={{ gap: 8 }}>
-      <T variant="muted">{BUILD_WHY}</T>
+      <MoreInfo about="build" summary="Other people do not see this choice.">
+        <T variant="muted">{BUILD_WHY}</T>
+      </MoreInfo>
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
         {BODY_BUILDS.map((id) => (
           <Choice key={id} label={BUILD_LABEL[id]} selected={settings.build === id} onPress={() => choose(id)} />
@@ -171,7 +174,12 @@ export function BodyCompositionCard() {
   return (
     <Card>
       <IconLabel name="body">Body</IconLabel>
-      <T variant="muted">{BODY_FAT_SOURCE_NOTE}</T>
+      <MoreInfo
+        about="body-fat readings"
+        summary="Without a reading, the figures below are waist-to-height and BMI, not a body-fat percentage."
+      >
+        <T variant="muted">{BODY_FAT_SOURCE_NOTE}</T>
+      </MoreInfo>
       <T variant="muted">A saved body-fat reading is used before waist-to-height, and waist-to-height before BMI. This is not a diagnosis, and body fat is not estimated from a photo.</T>
       <BuildChoices />
       {assessment.plain ? <T>{assessment.plain}</T> : <T variant="muted">{BMI_ONLY_NOTE}</T>}

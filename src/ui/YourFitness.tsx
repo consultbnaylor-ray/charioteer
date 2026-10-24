@@ -47,6 +47,7 @@ import { useAppTheme } from '@/ui/theme';
 import { GarminTip } from '@/ui/GarminTip';
 import { Vo2EstimateNote } from '@/ui/Vo2EstimateNote';
 import { TowardTargetActivity } from '@/ui/TowardTargetActivity';
+import { MoreInfo as InfoDisclosure } from '@/ui/MoreInfo';
 import { Button, Card, Choice, T, playSavedHaptic } from '@/ui/ui';
 
 /**
@@ -141,9 +142,9 @@ export function YourFitness({ onPlanOutdoor }: { onPlanOutdoor?: () => void }) {
             today={londonDay(new Date())}
             onPlan={() => onPlanOutdoor?.()}
           />
-          <Fold title="What is this?">
+          <InfoDisclosure about="VO2 max">
             <T>{VO2_WHAT}</T>
-          </Fold>
+          </InfoDisclosure>
           <FitnessCompareBar compare={view.cardio.compare} tone={view.cardio.tone} />
           <MoreInfo about="cardio fitness" onPress={() => setInfo('cardio')} />
         </View>
@@ -361,7 +362,7 @@ function CardioDetail({
       <T variant="label">What your number means</T>
       <T>{view.levelWords}</T>
       {cardio ? <T>{cardio.compare.words}</T> : null}
-      {cardio ? <FitnessCompareBar compare={cardio.compare} tone={cardio.tone} sourcesOpen /> : null}
+      {cardio ? <FitnessCompareBar compare={cardio.compare} tone={cardio.tone} /> : null}
       <T variant="label">{whyGoalMatters(goal)}</T>
       <T>{whyCardioMatters(goal)}</T>
     </View>
@@ -463,11 +464,9 @@ function Fold({ title, children }: { title: string; children: ReactNode }) {
 function FitnessCompareBar({
   compare,
   tone,
-  sourcesOpen = false,
 }: {
   compare: FitnessCompare;
   tone: FitnessTone;
-  sourcesOpen?: boolean;
 }) {
   const theme = useAppTheme();
   const colors = statsToneColors(theme.scheme);
@@ -532,17 +531,9 @@ function FitnessCompareBar({
       </View>
       <T>{compare.words}</T>
       {compare.sources.length > 0 ? (
-        sourcesOpen ? (
-          <View style={{ gap: 6, alignSelf: 'stretch' }}>
-            <T variant="label">About these ranges</T>
-            <T variant="muted">These ranges are estimates from the studies named here.</T>
-            {compare.sources.map((source) => <T key={source.slice(0, 24)} variant="muted">{source}</T>)}
-          </View>
-        ) : (
-          <Fold title="About these ranges">
-            {compare.sources.map((source) => <T key={source.slice(0, 24)} variant="muted">{source}</T>)}
-          </Fold>
-        )
+        <InfoDisclosure about="these ranges" summary="These ranges are estimates from the studies named here.">
+          {compare.sources.map((source) => <T key={source.slice(0, 24)} variant="muted">{source}</T>)}
+        </InfoDisclosure>
       ) : null}
     </View>
   );

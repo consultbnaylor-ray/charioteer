@@ -1,5 +1,5 @@
-import { useState, type ReactNode } from 'react';
-import { Pressable, View } from 'react-native';
+import { useState } from 'react';
+import { View } from 'react-native';
 
 import { useSnapshot } from '@/data';
 import {
@@ -16,6 +16,7 @@ import { GoalLine } from '@/ui/GoalLine';
 import { PlanTick } from '@/ui/PlanTick';
 import { statsToneColors } from '@/ui/statsPalette';
 import { useAppTheme } from '@/ui/theme';
+import { MoreInfo } from '@/ui/MoreInfo';
 import { Card, Choice, T } from '@/ui/ui';
 
 /**
@@ -67,13 +68,12 @@ function Ready({ view, unit, goalName }: { view: GoalWeightView; unit: WeightUni
       {view.pace ? <T>{view.pace}</T> : null}
       {view.doctor ? <T variant="muted">{view.doctor}</T> : null}
       {view.sources.length ? (
-        <Fold title="About these ranges">
-          <T variant="muted">{APPROXIMATE}</T>
+        <MoreInfo about="these ranges">
           {view.caveat ? <T variant="muted">{view.caveat}</T> : null}
           {view.sources.map((source) => (
             <T key={source.url} variant="muted">{`${source.name}. ${source.url}`}</T>
           ))}
-        </Fold>
+        </MoreInfo>
       ) : null}
     </View>
   );
@@ -184,26 +184,6 @@ function Legend({ swatch, label, round = false }: { swatch: string; label: strin
     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
       <View style={{ width: 12, height: 12, borderRadius: round ? 6 : 2, backgroundColor: swatch }} />
       <T style={{ flex: 1 }}>{label}</T>
-    </View>
-  );
-}
-
-function Fold({ title, children }: { title: string; children: ReactNode }) {
-  const theme = useAppTheme();
-  const [open, setOpen] = useState(false);
-  return (
-    <View style={{ alignSelf: 'stretch', gap: 6 }}>
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel={title}
-        accessibilityState={{ expanded: open }}
-        onPress={() => setOpen((value) => !value)}
-        style={{ minHeight: 44, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}
-      >
-        <T style={{ fontFamily: theme.font.bodyStrong, flex: 1 }}>{title}</T>
-        <T variant="muted">{open ? 'Hide' : 'Show'}</T>
-      </Pressable>
-      {open ? children : null}
     </View>
   );
 }

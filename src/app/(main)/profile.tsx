@@ -287,10 +287,12 @@ export default function Profile() {
       <GarminConnectRow />
       {pinned ? (
         <View style={{ gap: 8 }}>
-          <T variant="label">Pinned quote</T>
-          <QuoteWords>{pinned.text}</QuoteWords>
-          <T variant="muted">{quoteCredit(pinned)}</T>
-          <InPlainWords plain={pinned.plain} />
+          <Card>
+            <T variant="label">Pinned quote</T>
+            <QuoteWords>{pinned.text}</QuoteWords>
+            <T variant="muted">{quoteCredit(pinned)}</T>
+            <InPlainWords plain={pinned.plain} />
+          </Card>
           <ShareOnProfile
             boxed
             label="Share pinned quote"

@@ -25,6 +25,7 @@ import { VoiceCall } from '@/voice/call';
 import { HELMET_ASPECT, HELMET_D, HELMET_VIEWBOX } from '@/ui/helmet';
 import { PausedCoachingLink } from '@/ui/PausedCoachingLink';
 import { markThumosIntroSeen, thumosIntroSeen } from '@/ui/thumosIntroMemory';
+import { MoreInfo } from '@/ui/MoreInfo';
 import { accentFrame, Button, Card, ErrorNote, Field, Screen, T, useScreenScroller } from '@/ui/ui';
 import { stroke, useAppTheme } from '@/ui/theme';
 
@@ -380,29 +381,30 @@ function ThumosIntro({ open, onToggle }: { open: boolean; onToggle: () => void }
   // 348 is the collapsed sentence at 15px Barlow, so it stays one line on a narrow phone.
   const introSize = Math.min(15 * theme.scale, Math.max(0, width - 78) / (348 / 15));
   return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={open ? 'Thumos, sober and fitness coach' : INTRO_LINE}
-      accessibilityState={{ expanded: open }}
-      aria-expanded={open}
-      onPress={onToggle}
-      style={[accentFrame(theme, stroke.card, false).frame, { minHeight: 44, justifyContent: 'center' }]}
-    >
+    <View style={accentFrame(theme, stroke.card, false).frame}>
       <View style={[accentFrame(theme, stroke.card, false).body, { paddingVertical: 12, paddingHorizontal: 14 }]}>
-      {open ? (
-        <T style={{ fontSize: 15 * theme.scale, lineHeight: 20 * theme.scale }}>{THUMOS_INTRO}</T>
-      ) : (
-        <Text
-          numberOfLines={1}
-          adjustsFontSizeToFit
-          minimumFontScale={0.7}
-          style={{ fontFamily: theme.font.body, fontSize: introSize, lineHeight: Math.round(introSize * 1.25), color: theme.colors.ink }}
+        <MoreInfo
+          about="Thumos"
+          open={open}
+          onToggle={onToggle}
+          summary={(
+            <>
+              <Text
+                numberOfLines={1}
+                adjustsFontSizeToFit
+                minimumFontScale={0.7}
+                style={{ fontFamily: theme.font.body, fontSize: introSize, lineHeight: Math.round(introSize * 1.25), color: theme.colors.ink }}
+              >
+                {INTRO_LINE}
+              </Text>
+              <T>Not medical advice.</T>
+            </>
+          )}
         >
-          {INTRO_LINE}
-        </Text>
-      )}
+          <T style={{ fontSize: 15 * theme.scale, lineHeight: 20 * theme.scale }}>{THUMOS_INTRO}</T>
+        </MoreInfo>
       </View>
-    </Pressable>
+    </View>
   );
 }
 

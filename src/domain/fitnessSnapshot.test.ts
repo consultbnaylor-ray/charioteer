@@ -406,11 +406,12 @@ describe('fitness snapshot', () => {
     expect(readFileSync('src/app/(main)/stats.tsx', 'utf8')).toContain('<YourFitness');
     expect(readFileSync('src/app/(main)/health-plan.tsx', 'utf8')).toContain('<YourFitness');
     const card = readFileSync('src/ui/YourFitness.tsx', 'utf8');
-    expect(card).toContain('What is this?');
+    expect(card).toContain('about="VO2 max"');
     expect(card).toContain('closerToGoal(goal)');
     expect(card).toContain('whyGoalMatters(goal)');
     expect(card).toContain('<GoalLine note={false} />');
-    expect(card).toContain('About these ranges');
+    expect(card).toContain('about="these ranges"');
+    expect(card).toContain('These ranges are estimates from the studies named here.');
     expect(card).toContain('ml/kg/min');
     expect(card).toContain('Check with a doctor before big changes.');
     expect(card).toContain('More info');

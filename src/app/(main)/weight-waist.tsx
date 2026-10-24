@@ -184,7 +184,9 @@ export default function WeightWaistScreen() {
         weightReset={weightReset}
       />
       <Button label="Back" tone="quiet" onPress={goBack} />
-      <StatPeriodToggle />
+      <Card>
+        <StatPeriodToggle />
+      </Card>
       <HealthBoard
         weightPart="charts"
         samples={healthSamples.filter((sample) => sample.kind === 'weight_kg')}

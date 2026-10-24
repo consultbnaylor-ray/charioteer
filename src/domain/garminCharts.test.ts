@@ -58,11 +58,14 @@ describe('garmin charts follow the shared period', () => {
     const screen = readFileSync('src/ui/DailyActivity.tsx', 'utf8');
     expect(screen).toContain('useStatPeriod');
     expect(screen).toContain('movementPeriod(span, sharedPeriod)');
-    expect(screen).toContain('{span == null ? <StatPeriodToggle /> : null}');
+    expect(screen).toContain('<StatPeriodToggle />');
+    expect(screen).toContain('framed ? 14 : 8');
     expect(screen).toContain('garminDetailCharts');
     expect(GARMIN_DETAILS_TITLE).toBe('Garmin details');
     expect(screen).toContain('title={GARMIN_DETAILS_TITLE}');
-    expect(screen).toContain('What is this?');
+    expect(screen).toContain('Not medical advice.');
+    expect(screen).toContain('from \'@/ui/MoreInfo\'');
+    expect(screen).not.toContain('What is this?');
     expect(screen).not.toContain('seriesUsesGarmin');
     expect(screen).not.toContain('latitude');
     expect(screen).not.toContain('longitude');

@@ -89,25 +89,27 @@ export default function People() {
     <Screen eyebrow="People" title="Find your people." intro="A private chat once you both agree.">
       <CommunityPrompt userId={me.id} visible={!me.communityVisible && me.ageConfirmed18} />
       <YourProfileRow name={me.displayName} photoUrl={(snap.profilePhotos ?? []).find((photo) => photo.role === 'avatar')?.previewUrl} />
-      <View style={{ flexDirection: 'row', gap: 8 }}>
-        <View style={{ flex: 1 }}>
-          <Choice
-            label={`Buddies (${buddyCount(lists)})`}
-            selected={tab === 'buddies'}
-            tone={incoming.length > 0 ? 'alert' : 'default'}
-            badge={unreadTotal}
-            onPress={() => setTab('buddies')}
-          />
+      <Card>
+        <View style={{ flexDirection: 'row', gap: 8 }}>
+          <View style={{ flex: 1 }}>
+            <Choice
+              label={`Buddies (${buddyCount(lists)})`}
+              selected={tab === 'buddies'}
+              tone={incoming.length > 0 ? 'alert' : 'default'}
+              badge={unreadTotal}
+              onPress={() => setTab('buddies')}
+            />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Choice
+              label={`Community (${lists.community.length})`}
+              selected={tab === 'community'}
+              tone={unreadTotal > 0 ? 'alert' : 'default'}
+              onPress={() => setTab('community')}
+            />
+          </View>
         </View>
-        <View style={{ flex: 1 }}>
-          <Choice
-            label={`Community (${lists.community.length})`}
-            selected={tab === 'community'}
-            tone={unreadTotal > 0 ? 'alert' : 'default'}
-            onPress={() => setTab('community')}
-          />
-        </View>
-      </View>
+      </Card>
       <T variant="muted">{tab === 'buddies' ? BUDDIES_HINT : COMMUNITY_HINT}</T>
       <ErrorNote>{error}</ErrorNote>
       {tab === 'buddies' ? (

@@ -259,8 +259,10 @@ export default function HealthPlanScreen() {
         </Card>
       ) : null}
       <GoalWeightRange />
-      <T variant="label">Progress</T>
-      <StatPeriodToggle />
+      <Card>
+        <T variant="label">Progress</T>
+        <StatPeriodToggle />
+      </Card>
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
         {tiles.map((item) => (
           <View key={item.id} style={{ flexGrow: 1, flexBasis: columns === 3 ? '30%' : '46%', minWidth: 148 }}>
