@@ -1,6 +1,8 @@
 export {
   detectSafety,
   ensureSafetyNotices,
+  firstSafetyHit,
+  pinnedSafetyNotices,
   SELF_HARM_NOTICE,
   WITHDRAWAL_NOTICE,
   type SafetyHit,

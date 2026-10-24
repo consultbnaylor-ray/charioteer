@@ -18,3 +18,15 @@ export function slugifyInterest(label: string): string {
     .replace(/^-|-$/g, '')
     .slice(0, 40);
 }
+
+export type InterestPlan = { ok: true; slug: string; label: string } | { ok: false; message: string };
+
+/** Same rules the add_interest database function uses, so a repeat tap can resolve locally. */
+export function planCustomInterest(label: string): InterestPlan {
+  const name = label.trim().replace(/\s+/g, ' ');
+  if (name.length < 2) return { ok: false, message: 'Give the interest a name.' };
+  if (name.length > 40) return { ok: false, message: 'Keep the interest to 40 characters.' };
+  const slug = slugifyInterest(name);
+  if (!slug) return { ok: false, message: 'Use letters or numbers.' };
+  return { ok: true, slug, label: name };
+}

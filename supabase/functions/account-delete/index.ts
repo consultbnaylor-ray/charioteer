@@ -1,5 +1,12 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.117.3';
 import { json, preflight } from '../_shared/http.ts';
+import { forgetGarminAccount, type GarminDb } from '../_shared/garmin.ts';
+
+const PHOTO_BUCKET = 'progress-photos';
+const GRATITUDE_BUCKET = 'gratitude-photos';
+const VISION_BUCKET = 'vision-board';
+const PROFILE_BUCKET = 'profile-photos';
+const LEFT_IN_PLACE = 'Could not remove the private photos, so the account was left in place.';
 
 Deno.serve(async (req) => {
   const early = preflight(req);
@@ -18,7 +25,105 @@ Deno.serve(async (req) => {
   if (error || !userData.user) return json({ ok: false, code: 'unauthorised' }, 401);
 
   const admin = createClient(url, service, { auth: { persistSession: false } });
+  const storageError = await removeProgressPhotos(admin, userData.user.id);
+  if (storageError) return json({ ok: false, code: 'storage', message: storageError }, 500);
+  const diaryPhotos = await removeGratitudePhotos(admin, userData.user.id);
+  if (diaryPhotos) return json({ ok: false, code: 'storage', message: diaryPhotos }, 500);
+  const visionPhotos = await removeVisionPhotos(admin, userData.user.id);
+  if (visionPhotos) return json({ ok: false, code: 'storage', message: visionPhotos }, 500);
+  const profilePhotos = await removeProfilePhotos(admin, userData.user.id);
+  if (profilePhotos) return json({ ok: false, code: 'storage', message: profilePhotos }, 500);
+
+  try {
+    await forgetGarminAccount(admin as unknown as GarminDb, userData.user.id, {
+      clientId: (Deno.env.get('GARMIN_CLIENT_ID') ?? '').trim(),
+      clientSecret: (Deno.env.get('GARMIN_CLIENT_SECRET') ?? '').trim(),
+      tokenKey: (Deno.env.get('GARMIN_TOKEN_KEY') ?? '').trim(),
+      now: Date.now(),
+    });
+  } catch {
+    return json({
+      ok: false,
+      code: 'garmin',
+      message: 'Could not remove Garmin Connect, so the account was left in place.',
+    }, 500);
+  }
+
+  const savedQuotes = await admin.from('user_quotes').delete().eq('user_id', userData.user.id);
+  if (savedQuotes.error && !/does not exist|schema cache|could not find the table/i.test(savedQuotes.error.message)) {
+    return json({
+      ok: false,
+      code: 'quotes',
+      message: 'Could not remove saved quotes, so the account was left in place.',
+    }, 500);
+  }
+
+  const diary = await admin.from('gratitude_entries').delete().eq('user_id', userData.user.id);
+  if (diary.error && !/does not exist|schema cache|could not find the table/i.test(diary.error.message)) {
+    return json({
+      ok: false,
+      code: 'diary',
+      message: 'Could not remove the gratitude diary, so the account was left in place.',
+    }, 500);
+  }
+
   const { error: deleteError } = await admin.auth.admin.deleteUser(userData.user.id);
   if (deleteError) return json({ ok: false, code: 'delete', message: deleteError.message }, 500);
   return json({ ok: true });
 });
+
+type StorageAdmin = {
+  storage: {
+    from(bucket: string): {
+      list(path: string, options: { limit: number; offset: number }): Promise<{
+        data: { name?: string }[] | null;
+        error: { message: string } | null;
+      }>;
+      remove(paths: string[]): Promise<{ error: { message: string } | null }>;
+    };
+  };
+};
+
+/** Service role, before the auth user goes. A missing bucket is fine; any other storage error keeps the account. */
+async function removeProgressPhotos(admin: StorageAdmin, userId: string): Promise<string | null> {
+  return removeOwnerFolder(admin, PHOTO_BUCKET, userId);
+}
+
+async function removeGratitudePhotos(admin: StorageAdmin, userId: string): Promise<string | null> {
+  return removeOwnerFolder(admin, GRATITUDE_BUCKET, userId);
+}
+
+async function removeVisionPhotos(admin: StorageAdmin, userId: string): Promise<string | null> {
+  return removeOwnerFolder(admin, VISION_BUCKET, userId);
+}
+
+async function removeProfilePhotos(admin: StorageAdmin, userId: string): Promise<string | null> {
+  return removeOwnerFolder(admin, PROFILE_BUCKET, userId);
+}
+
+async function removeOwnerFolder(admin: StorageAdmin, bucket: string, userId: string): Promise<string | null> {
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(userId)) return LEFT_IN_PLACE;
+  const paths: string[] = [];
+  for (let offset = 0; offset < 10000; offset += 100) {
+    const listed = await admin.storage.from(bucket).list(userId, { limit: 100, offset });
+    if (listed.error) {
+      if (/bucket not found/i.test(listed.error.message)) return null;
+      return LEFT_IN_PLACE;
+    }
+    const page = listed.data ?? [];
+    for (const item of page) {
+      const name = item.name ?? '';
+      if (!name || name.includes('/') || name.includes('..') || !name.toLowerCase().endsWith('.jpg')) continue;
+      paths.push(`${userId}/${name}`);
+    }
+    if (page.length < 100) break;
+  }
+  for (let index = 0; index < paths.length; index += 100) {
+    const removed = await admin.storage.from(bucket).remove(paths.slice(index, index + 100));
+    if (removed.error) {
+      if (/bucket not found/i.test(removed.error.message)) return null;
+      return LEFT_IN_PLACE;
+    }
+  }
+  return null;
+}
