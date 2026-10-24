@@ -35,10 +35,14 @@ describe('card chrome', () => {
     const darkInk = statsToneColors('dark').good.ink;
     expect(lightInk).toBe('#047857');
     expect(darkInk).toBe('#2DE0A0');
-    expect(cardAccent('light')).toBe('#047857');
-    expect(cardAccent('dark')).toBe('#2DE0A0');
+    expect(cardAccent('light')).toBe('#6EE7B7');
+    expect(cardAccent('dark')).toBe('#D1FAE5');
     expect(lightInk).toMatch(/^#[0-9A-F]{6}$/);
     expect(darkInk).toMatch(/^#[0-9A-F]{6}$/);
+    expect(cardAccent('light')).toMatch(/^#[0-9A-F]{6}$/);
+    expect(cardAccent('dark')).toMatch(/^#[0-9A-F]{6}$/);
+    expect(contrast(cardAccent('dark'), '#1A1A1A')).toBeGreaterThanOrEqual(4.5);
+    expect(contrast(cardAccent('dark'), '#143024')).toBeGreaterThanOrEqual(4.5);
     expect(contrast(lightInk, '#FFFFFF')).toBeGreaterThanOrEqual(4.5);
     expect(contrast(lightInk, '#F2F2EE')).toBeGreaterThanOrEqual(4.5);
     expect(contrast(lightInk, '#E7F5EC')).toBeGreaterThanOrEqual(4.5);

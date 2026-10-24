@@ -28,11 +28,8 @@ export function statsToneColors(scheme: Scheme): Record<StatsTone, StatsInk> {
   };
 }
 
-/**
- * Decorative edge for cards, the sober ring, and the On-track tick.
- * Kept apart from the text ink. The committed shade is still B until a paler mint is chosen.
- */
+/** Pale mint edge for cards, the sober ring, and the On-track tick. Fully opaque, and separate from the text ink. */
 export function cardAccent(scheme: Scheme): string {
-  if (scheme === 'dark') return '#2DE0A0';
-  return '#047857';
+  if (scheme === 'dark') return '#D1FAE5';
+  return '#6EE7B7';
 }
