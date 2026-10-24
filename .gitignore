@@ -41,6 +41,7 @@ supabase/.branches
 
 example
 
-# generated native folders
+# generated native folders and local Xcode archive output
 /ios
 /android
+/build

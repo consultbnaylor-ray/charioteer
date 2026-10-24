@@ -1,0 +1,384 @@
+diff --git a/node_modules/@kingstinct/react-native-healthkit/ReactNativeHealthkit.podspec b/node_modules/@kingstinct/react-native-healthkit/ReactNativeHealthkit.podspec
+index ba24aae..3e75f9e 100644
+--- a/node_modules/@kingstinct/react-native-healthkit/ReactNativeHealthkit.podspec
++++ b/node_modules/@kingstinct/react-native-healthkit/ReactNativeHealthkit.podspec
+@@ -19,12 +19,16 @@ Pod::Spec.new do |s|
+   s.source       = { :git => "https://github.com/kingstinct/react-native-healthkit.git", :tag => "#{s.version}" }
+ 
+   s.source_files = [
+-    # Implementation (Swift)
+-    "ios/**/*.{swift}",
++    # Implementation (Swift) and the Objective-C exception catcher
++    "ios/**/*.{swift,m,h}",
+         # Implementation (C++ objects)
+     "cpp/**/*.{hpp,cpp}",
+   ]
+ 
++  # Public so this pod's Swift can see the class. A private header stays out of
++  # the module, and a C function's block is non-escaping in objcxx interop.
++  s.public_header_files = "ios/AuthorizationCatcher.h"
++
+   s.pod_target_xcconfig = {
+     # C++ compiler flags, mainly for folly.
+     "GCC_PREPROCESSOR_DEFINITIONS" => "$(inherited) FOLLY_NO_CONFIG FOLLY_CFG_NO_COROUTINES",
+diff --git a/node_modules/@kingstinct/react-native-healthkit/ios/AuthorizationCatcher.h b/node_modules/@kingstinct/react-native-healthkit/ios/AuthorizationCatcher.h
+new file mode 100644
+index 0000000..c0a52b2
+--- /dev/null
++++ b/node_modules/@kingstinct/react-native-healthkit/ios/AuthorizationCatcher.h
+@@ -0,0 +1,21 @@
++#import <Foundation/Foundation.h>
++#import <HealthKit/HealthKit.h>
++
++/// HealthKit can raise an Objective-C exception from these calls.
++/// A class method is required: under SWIFT_OBJC_INTEROP_MODE=objcxx a plain C
++/// function imports its block as non-escaping, and HealthKit calls it later.
++@interface CharioteerAuthCatcher : NSObject
++
+++ (NSError * _Nullable)requestAuthorizationWithStore:(HKHealthStore * _Nonnull)store
++                                               share:(NSSet<HKSampleType *> * _Nonnull)share
++                                                read:(NSSet<HKObjectType *> * _Nonnull)read
++                                          completion:(void (^ _Nonnull)(BOOL success, NSError * _Nullable error))completion
++    NS_SWIFT_NAME(requestAuthorization(store:share:read:completion:));
++
+++ (NSError * _Nullable)requestStatusWithStore:(HKHealthStore * _Nonnull)store
++                                        share:(NSSet<HKSampleType *> * _Nonnull)share
++                                         read:(NSSet<HKObjectType *> * _Nonnull)read
++                                   completion:(void (^ _Nonnull)(NSInteger status, NSError * _Nullable error))completion
++    NS_SWIFT_NAME(requestStatus(store:share:read:completion:));
++
++@end
+diff --git a/node_modules/@kingstinct/react-native-healthkit/ios/AuthorizationCatcher.m b/node_modules/@kingstinct/react-native-healthkit/ios/AuthorizationCatcher.m
+new file mode 100644
+index 0000000..8b427de
+--- /dev/null
++++ b/node_modules/@kingstinct/react-native-healthkit/ios/AuthorizationCatcher.m
+@@ -0,0 +1,53 @@
++#import "AuthorizationCatcher.h"
++
++static NSError *CharioteerExceptionError(NSException *exception) {
++  NSString *reason = exception.reason;
++  if (reason.length == 0) reason = exception.name;
++  if (reason.length == 0) reason = @"HealthKit authorization failed";
++  return [NSError errorWithDomain:@"CharioteerHealthKit"
++                             code:1
++                         userInfo:@{ NSLocalizedDescriptionKey: reason }];
++}
++
++/// A workout route can be read. It is not a share type, and passing it there raises.
++static NSSet *CharioteerShareWithoutRoute(NSSet *share) {
++  HKSeriesType *route = [HKSeriesType workoutRouteType];
++  if (route == nil || ![share containsObject:route]) return share;
++  NSMutableSet *copy = [NSMutableSet setWithSet:share];
++  [copy removeObject:route];
++  return copy;
++}
++
++@implementation CharioteerAuthCatcher
++
+++ (NSError * _Nullable)requestAuthorizationWithStore:(HKHealthStore *)store
++                                               share:(NSSet<HKSampleType *> *)share
++                                                read:(NSSet<HKObjectType *> *)read
++                                          completion:(void (^)(BOOL, NSError * _Nullable))completion {
++  NSSet *shareable = CharioteerShareWithoutRoute(share);
++  @try {
++    [store requestAuthorizationToShareTypes:shareable readTypes:read completion:^(BOOL success, NSError *error) {
++      completion(success, error);
++    }];
++    return nil;
++  } @catch (NSException *exception) {
++    return CharioteerExceptionError(exception);
++  }
++}
++
+++ (NSError * _Nullable)requestStatusWithStore:(HKHealthStore *)store
++                                        share:(NSSet<HKSampleType *> *)share
++                                         read:(NSSet<HKObjectType *> *)read
++                                   completion:(void (^)(NSInteger, NSError * _Nullable))completion {
++  NSSet *shareable = CharioteerShareWithoutRoute(share);
++  @try {
++    [store getRequestStatusForAuthorizationToShareTypes:shareable readTypes:read completion:^(HKAuthorizationRequestStatus status, NSError *error) {
++      completion((NSInteger)status, error);
++    }];
++    return nil;
++  } @catch (NSException *exception) {
++    return CharioteerExceptionError(exception);
++  }
++}
++
++@end
+diff --git a/node_modules/@kingstinct/react-native-healthkit/ios/CoreModule.swift b/node_modules/@kingstinct/react-native-healthkit/ios/CoreModule.swift
+index cf9056a..66cfa42 100644
+--- a/node_modules/@kingstinct/react-native-healthkit/ios/CoreModule.swift
++++ b/node_modules/@kingstinct/react-native-healthkit/ios/CoreModule.swift
+@@ -76,6 +76,43 @@ async throws -> [HKQuantityType: HKUnit] {
+   }
+ }
+ 
++/// Resumes a HealthKit continuation once. The completion and a caught exception can both arrive.
++private final class ContinuationGate<T>: @unchecked Sendable {
++  private var finished = false
++  private let lock = NSLock()
++  private let continuation: CheckedContinuation<T, Error>
++
++  init(_ continuation: CheckedContinuation<T, Error>) {
++    self.continuation = continuation
++  }
++
++  func resume(returning value: T) {
++    lock.lock()
++    if finished {
++      lock.unlock()
++      return
++    }
++    finished = true
++    lock.unlock()
++    DispatchQueue.main.async {
++      self.continuation.resume(returning: value)
++    }
++  }
++
++  func resume(throwing error: Error) {
++    lock.lock()
++    if finished {
++      lock.unlock()
++      return
++    }
++    finished = true
++    lock.unlock()
++    DispatchQueue.main.async {
++      self.continuation.resume(throwing: error)
++    }
++  }
++}
++
+ class CoreModule: HybridCoreModuleSpec {
+   func requestPerObjectReadAuthorization(typeIdentifier: PerObjectTypeIdentifier) -> Promise<Void> {
+     return Promise.async {
+@@ -187,27 +224,24 @@ class CoreModule: HybridCoreModuleSpec {
+             returning: .unnecessary
+           )
+         }
+-        do {
+-          try runCatchingObjCExceptions {
+-            healthStore.getRequestStatusForAuthorization(toShare: toShare, read: toRead) {
+-              status, error in
+-              DispatchQueue.main.async {
+-                if let error = error {
+-                  continuation.resume(throwing: error)
+-                } else {
+-                  if let authStatus = AuthorizationRequestStatus(rawValue: Int32(status.rawValue)) {
+-                    continuation.resume(returning: authStatus)
+-                  } else {
+-                    continuation.resume(
+-                      throwing: runtimeErrorWithPrefix(
+-                        "Unrecognized authStatus returned: \(status.rawValue)"))
+-                  }
+-                }
+-              }
+-            }
++        let gate = ContinuationGate(continuation)
++        let caught = CharioteerAuthCatcher.requestStatus(
++          store: healthStore,
++          share: toShare,
++          read: toRead
++        ) { status, error in
++          if let error = error {
++            gate.resume(throwing: error)
++          } else if let authStatus = AuthorizationRequestStatus(rawValue: Int32(status)) {
++            gate.resume(returning: authStatus)
++          } else {
++            gate.resume(
++              throwing: runtimeErrorWithPrefix(
++                "Unrecognized authStatus returned: \(status)"))
+           }
+-        } catch {
+-          continuation.resume(throwing: error)
++        }
++        if let caught = caught {
++          gate.resume(throwing: caught)
+         }
+       }
+     }
+@@ -219,20 +253,20 @@ class CoreModule: HybridCoreModuleSpec {
+       let toRead = objectTypesFromArray(typeIdentifiers: toRequest.toRead ?? [])
+ 
+       return try await withCheckedThrowingContinuation { continuation in
+-        do {
+-          try runCatchingObjCExceptions {
+-            healthStore.requestAuthorization(toShare: share, read: toRead) { status, error in
+-              DispatchQueue.main.async {
+-                if let error = error {
+-                  continuation.resume(throwing: error)
+-                } else {
+-                  continuation.resume(returning: status)
+-                }
+-              }
+-            }
++        let gate = ContinuationGate(continuation)
++        let caught = CharioteerAuthCatcher.requestAuthorization(
++          store: healthStore,
++          share: share,
++          read: toRead
++        ) { status, error in
++          if let error = error {
++            gate.resume(throwing: error)
++          } else {
++            gate.resume(returning: status)
+           }
+-        } catch {
+-          continuation.resume(throwing: error)
++        }
++        if let caught = caught {
++          gate.resume(throwing: caught)
+         }
+       }
+     }
+diff --git a/node_modules/@kingstinct/react-native-healthkit/ios/WorkoutProxy.swift b/node_modules/@kingstinct/react-native-healthkit/ios/WorkoutProxy.swift
+index 7909fa6..748849b 100644
+--- a/node_modules/@kingstinct/react-native-healthkit/ios/WorkoutProxy.swift
++++ b/node_modules/@kingstinct/react-native-healthkit/ios/WorkoutProxy.swift
+@@ -48,14 +48,30 @@ func getWorkoutRoutesInternal(
+   return routes
+ }
+ 
++func cappedRouteLocations(_ locations: [CLLocation], limit: Int = 500) -> [CLLocation] {
++  guard locations.count > limit, limit >= 2 else { return locations }
++  let last = locations.count - 1
++  var sampled: [CLLocation] = []
++  sampled.reserveCapacity(limit)
++  var previous = -1
++  for step in 0..<limit {
++    let index = Int((Double(step) * Double(last) / Double(limit - 1)).rounded())
++    if index != previous {
++      sampled.append(locations[index])
++      previous = index
++    }
++  }
++  return sampled
++}
++
+ func getRouteLocations(
+   route: HKWorkoutRoute
+ ) async throws -> [CLLocation] {
+   return try await withCheckedThrowingContinuation {
+     (continuation: CheckedContinuation<[CLLocation], Error>) in
+     var allLocations: [CLLocation] = []
+-    // HealthKit streams locations in batches through the same handler; make
+-    // sure the continuation is resumed exactly once whatever the sequence.
++    // HealthKit streams locations in batches, including a final call whose
++    // locations are nil. Resume the continuation once, on the main queue.
+     var hasFinished = false
+     let finish = { (result: Result<[CLLocation], Error>) in
+       guard !hasFinished else {
+@@ -73,14 +89,12 @@ func getRouteLocations(
+           return finish(.failure(error))
+         }
+ 
+-        guard let currentLocationBatch = locationsOrNil else {
+-          return finish(.failure(runtimeErrorWithPrefix("Unexpected empty response")))
++        if let currentLocationBatch = locationsOrNil {
++          allLocations.append(contentsOf: currentLocationBatch)
+         }
+ 
+-        allLocations.append(contentsOf: currentLocationBatch)
+-
+         if done {
+-          finish(.success(allLocations))
++          finish(.success(cappedRouteLocations(allLocations)))
+         }
+       }
+     }
+@@ -89,26 +103,31 @@ func getRouteLocations(
+   }
+ }
+ 
++func finiteLocationValue(_ value: Double, fallback: Double) -> Double {
++  return value.isFinite ? value : fallback
++}
++
+ func serializeLocation(location: CLLocation, previousLocation: CLLocation?)
+   -> WorkoutRouteLocation {
+   var distance: CLLocationDistance?
+   if let previousLocation = previousLocation {
+-    distance = location.distance(from: previousLocation)
++    let step = location.distance(from: previousLocation)
++    distance = step.isFinite ? step : nil
+   } else {
+     distance = nil
+   }
+ 
+   return WorkoutRouteLocation(
+-    altitude: location.altitude,
+-    course: location.course,
++    altitude: finiteLocationValue(location.altitude, fallback: 0),
++    course: finiteLocationValue(location.course, fallback: -1),
+     date: location.timestamp,
+     distance: distance,
+-    horizontalAccuracy: location.horizontalAccuracy,
++    horizontalAccuracy: finiteLocationValue(location.horizontalAccuracy, fallback: -1),
+     latitude: location.coordinate.latitude,
+     longitude: location.coordinate.longitude,
+-    speed: location.speed,
+-    speedAccuracy: location.speedAccuracy,
+-    verticalAccuracy: location.verticalAccuracy
++    speed: finiteLocationValue(location.speed, fallback: -1),
++    speedAccuracy: finiteLocationValue(location.speedAccuracy, fallback: -1),
++    verticalAccuracy: finiteLocationValue(location.verticalAccuracy, fallback: -1)
+   )
+ }
+ 
+@@ -120,37 +139,36 @@ func getSerializedWorkoutLocations(
+   )
+ 
+   var allRoutes: [WorkoutRoute] = []
+-  guard let _routes = routes else {
+-    throw runtimeErrorWithPrefix("Unexpected empty response")
+-  }
++  // A missing route list is an empty path. Throwing here used to surface as a
++  // rejected promise; a C++ exception from the metadata getters below killed
++  // the process instead, because Swift does not catch it.
++  let _routes = routes ?? []
+   for route in _routes {
+-    let routeMetadata = serializeMetadata(
+-      route.metadata
+-    )
+-
+     let routeCLLocations = try await getRouteLocations(
+       route: route
+     )
++    let finiteLocations = routeCLLocations.filter {
++      CLLocationCoordinate2DIsValid($0.coordinate)
++    }
+ 
+-    let routeLocations = routeCLLocations.enumerated().map {
++    let routeLocations = finiteLocations.enumerated().map {
+       (i, loc) in
+       serializeLocation(
+         location: loc,
+-        previousLocation: i == 0 ? nil : routeCLLocations[i - 1]
++        previousLocation: i == 0 ? nil : finiteLocations[i - 1]
+       )
+     }
+ 
++    // Do not call AnyMap.getString or getDouble. Those throw a C++ exception
++    // when the key is missing or the value is a different type, and that
++    // exception terminates the app (kingstinct/react-native-healthkit#198).
++    // Apple Watch routes often have no sync identifier. The screen does not
++    // read these two fields.
+     allRoutes.append(
+       WorkoutRoute(
+         locations: routeLocations,
+-        HKMetadataKeySyncIdentifier: routeMetadata.isString(key: "HKMetadataKeySyncIdentifier")
+-          ? routeMetadata.getString(
+-            key: "HKMetadataKeySyncIdentifier"
+-          ) : nil,
+-        HKMetadataKeySyncVersion: routeMetadata.isDouble(key: "HKMetadataKeySyncVersion")
+-          ? routeMetadata.getDouble(
+-            key: "HKMetadataKeySyncVersion"
+-          ) : nil
++        HKMetadataKeySyncIdentifier: nil,
++        HKMetadataKeySyncVersion: nil
+       )
+     )
+   }
