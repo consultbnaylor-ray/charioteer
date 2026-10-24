@@ -5,10 +5,8 @@ import { useRepository, useSnapshot } from '@/data';
 import {
   GARMIN_ASKED,
   GARMIN_CHECK_AGAIN,
-  GARMIN_DATA_HINT,
-  GARMIN_HISTORY_NOTE,
-  GARMIN_PULL_TO_SYNC,
   GARMIN_RECENT,
+  garminHintLine,
   REFRESH_FAILED,
   SYNC_REFRESH,
   appleCheckIsFresh,
@@ -113,7 +111,6 @@ export function HealthRefreshBar({
   garminMark,
   error,
   permission,
-  history,
   garminNote,
   onPress,
 }: {
@@ -124,6 +121,7 @@ export function HealthRefreshBar({
   garminMark: string;
   error: string | null;
   permission?: boolean;
+  /** Accepted from the refresh hook. A refused backfill must not add a second hint. */
   history?: boolean;
   garminNote: string | null;
   onPress: () => void;
@@ -229,9 +227,7 @@ export function HealthRefreshBar({
           </Pressable>
         ) : null}
       </View>
-      {garminConnected ? <T variant="muted">{GARMIN_DATA_HINT}</T> : null}
-      {checkView === 'nothing' && !checking ? <T variant="muted">{GARMIN_PULL_TO_SYNC}</T> : null}
-      {history ? <T variant="muted">{GARMIN_HISTORY_NOTE}</T> : null}
+      {garminConnected ? <T variant="muted">{garminHintLine(receivedAt, Date.now())}</T> : null}
       {garminNote ? <T variant="muted">{garminNote}</T> : null}
       {permission ? <GarminPermissionNotice force /> : null}
       <ErrorNote>{error}</ErrorNote>

@@ -5,13 +5,15 @@ import {
   GARMIN_CHECK_AGAIN,
   GARMIN_CHECK_DEBOUNCE_MS,
   GARMIN_CHECK_FAILED,
-  GARMIN_DATA_HINT,
-  GARMIN_HISTORY_NOTE,
   GARMIN_JUST_ARRIVED,
-  GARMIN_PULL_TO_SYNC,
+  GARMIN_PUSH_STALE_MS,
+  GARMIN_SEND_HINT,
+  GARMIN_STALE_PUSH_HINT,
   GARMIN_WAITING,
   garminAfterCheckLine,
+  garminHintLine,
   garminNothingNewLine,
+  garminPushIsStale,
   syncClock,
   REFRESH_APPLE,
   REFRESH_BOTH,
@@ -58,12 +60,14 @@ describe('manual health refresh', () => {
     expect(syncStatusShowsRefresh({ appleCheckedAt: apple, now, error: false })).toBe(false);
     expect(syncStatusShowsRefresh({ appleCheckedAt: stale, now, error: false })).toBe(true);
     expect(syncStatusShowsRefresh({ appleCheckedAt: apple, now, error: true })).toBe(true);
-    expect(`${line} ${GARMIN_DATA_HINT} ${GARMIN_HISTORY_NOTE} ${SYNC_REFRESH}`).not.toMatch(/up to date/i);
+    expect(`${line} ${GARMIN_SEND_HINT} ${GARMIN_STALE_PUSH_HINT} ${SYNC_REFRESH}`).not.toMatch(/up to date/i);
     expect(readFileSync('src/ui/HealthRefresh.tsx', 'utf8')).not.toMatch(/up to date/i);
     expect(readFileSync('src/domain/healthRefresh.ts', 'utf8')).not.toMatch(/up to date/i);
     expect(GARMIN_CHECK_AGAIN).toBe('Check again');
     expect(GARMIN_JUST_ARRIVED).toBe('New Garmin data just arrived');
-    expect(GARMIN_PULL_TO_SYNC).toBe('Pull down in Garmin Connect to sync your watch.');
+    expect(GARMIN_SEND_HINT).toBe('Garmin decides when to send data to Charioteer. It usually follows a watch sync, but can take a while.');
+    expect(GARMIN_STALE_PUSH_HINT).toBe("If your watch has synced and nothing new has arrived, Charioteer can't tell why. Pull down in Garmin Connect to sync, then check again later.");
+    expect(GARMIN_PUSH_STALE_MS).toBe(2 * 60 * 60 * 1000);
     expect(GARMIN_CHECK_FAILED).toBe("Couldn't check stored Garmin data just now.");
     expect(GARMIN_CHECK_DEBOUNCE_MS).toBe(10_000);
     const checked = '2026-10-24T06:45:00Z';
@@ -76,6 +80,18 @@ describe('manual health refresh', () => {
     expect(garminAfterCheckLine({ view: 'failed', checkedAt: checked, receivedAt: received })).toBe(GARMIN_CHECK_FAILED);
     expect(garminAfterCheckLine({ view: 'idle', checkedAt: null, receivedAt: received })).toBe(`Garmin data received ${syncClock(received)}`);
     expect(garminAfterCheckLine({ view: 'idle', checkedAt: null, receivedAt: null })).toBe(GARMIN_WAITING);
+    const freshPush = new Date(now - 30 * 60 * 1000).toISOString();
+    const almostStale = new Date(now - GARMIN_PUSH_STALE_MS + 1).toISOString();
+    const stalePush = new Date(now - GARMIN_PUSH_STALE_MS).toISOString();
+    expect(garminPushIsStale(null, now)).toBe(false);
+    expect(garminPushIsStale('not-a-clock', now)).toBe(false);
+    expect(garminPushIsStale(freshPush, now)).toBe(false);
+    expect(garminPushIsStale(almostStale, now)).toBe(false);
+    expect(garminPushIsStale(stalePush, now)).toBe(true);
+    expect(garminHintLine(null, now)).toBe(GARMIN_SEND_HINT);
+    expect(garminHintLine(freshPush, now)).toBe(GARMIN_SEND_HINT);
+    expect(garminHintLine(stalePush, now)).toBe(`${GARMIN_SEND_HINT} ${GARMIN_STALE_PUSH_HINT}`);
+    expect(garminHintLine(stalePush, now)).not.toContain('\n');
     expect(garminCheckCooling(1_000, 1_000 + 9_999)).toBe(true);
     expect(garminCheckCooling(1_000, 1_000 + 10_000)).toBe(false);
     const earlier = '2026-10-23T21:40:00Z';
@@ -112,7 +128,7 @@ describe('manual health refresh', () => {
     const broken = await readGarminRefreshBody(null, { context: { json: async () => { throw new Error('consumed'); } } });
     expect(broken).toBeNull();
     expect(readFileSync('src/data/supabase-repository.ts', 'utf8')).toContain('readGarminRefreshBody');
-    expect(readFileSync('src/ui/HealthRefresh.tsx', 'utf8')).toContain('GARMIN_HISTORY_NOTE');
+    expect(readFileSync('src/ui/HealthRefresh.tsx', 'utf8')).not.toContain('GARMIN_HISTORY_NOTE');
     expect(readFileSync('src/ui/HealthRefresh.tsx', 'utf8')).toContain("garmin.code === 'history'");
     expect(readFileSync('src/ui/HealthRefresh.tsx', 'utf8')).toContain("garmin.code === 'permission'");
   });
@@ -144,9 +160,25 @@ describe('manual health refresh', () => {
     expect(bar).toContain('refreshGarmin');
     expect(bar).toContain('<PlanTick done />');
     expect(bar).toContain('SYNC_REFRESH');
-    expect(bar).toContain('GARMIN_DATA_HINT');
-    expect(bar).toContain('GARMIN_PULL_TO_SYNC');
     expect(bar).toContain('garminAfterCheckLine');
+    expect(bar.match(/garminHintLine\(/g)).toHaveLength(1);
+    expect(bar).not.toMatch(/GARMIN_(DATA_HINT|HISTORY_NOTE|PULL_TO_SYNC|SEND_HINT|STALE_PUSH_HINT)/);
+    for (const path of [
+      'src/ui/HealthRefresh.tsx',
+      'src/domain/healthRefresh.ts',
+      'src/ui/GarminTip.tsx',
+      'src/domain/garminTip.ts',
+      'src/ui/GarminPermissionNotice.tsx',
+    ]) {
+      const source = readFileSync(path, 'utf8');
+      expect(source, path).not.toContain('New Garmin data arrives after your watch syncs');
+      expect(source, path).not.toContain('Garmin sends new data automatically');
+      expect(source, path).not.toContain('GARMIN_DATA_HINT');
+      expect(source, path).not.toContain('GARMIN_PULL_TO_SYNC');
+      expect(source, path).not.toContain('Pull down in Garmin Connect to sync your watch.');
+    }
+    expect(readFileSync('src/domain/garminTip.ts', 'utf8')).not.toContain('garminHintLine');
+    expect(readFileSync('src/ui/GarminTip.tsx', 'utf8')).not.toContain('garminHintLine');
     expect(bar).toContain('appleCheckIsFresh');
     expect(bar).toContain('GARMIN_CHECK_AGAIN');
     expect(bar).toContain('loadGarmin');

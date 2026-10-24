@@ -33,20 +33,22 @@ export const GARMIN_CHECK_AGAIN = 'Check again';
 /** Shown on the status line when a re-read finds a later push. */
 export const GARMIN_JUST_ARRIVED = 'New Garmin data just arrived';
 
-/** Added under the standing hint when the re-read found the same push. */
-export const GARMIN_PULL_TO_SYNC = 'Pull down in Garmin Connect to sync your watch.';
-
 /** A re-read that did not come back. It does not claim Garmin sent nothing. */
 export const GARMIN_CHECK_FAILED = "Couldn't check stored Garmin data just now.";
 
+/** One hint. It does not promise that a watch sync has sent, or will send, data. */
+export const GARMIN_SEND_HINT =
+  'Garmin decides when to send data to Charioteer. It usually follows a watch sync, but can take a while.';
+
+/** Added to the same hint once the last stored push is about two hours old. */
+export const GARMIN_STALE_PUSH_HINT =
+  "If your watch has synced and nothing new has arrived, Charioteer can't tell why. Pull down in Garmin Connect to sync, then check again later.";
+
+/** Last push older than this gets the stale sentence. A missing clock does not. */
+export const GARMIN_PUSH_STALE_MS = 2 * 60 * 60 * 1000;
+
 /** Ignore another Check again until this long after the last one started. */
 export const GARMIN_CHECK_DEBOUNCE_MS = 10_000;
-
-/** Always shown under the status line while Garmin is connected. */
-export const GARMIN_DATA_HINT = 'New Garmin data arrives after your watch syncs with Garmin Connect.';
-
-/** Calm note when catch-up is refused. Not a failure. */
-export const GARMIN_HISTORY_NOTE = 'Garmin sends new data automatically after your watch syncs with Garmin Connect.';
 
 export function refreshButtonLabel(garminConnected: boolean): string {
   return garminConnected ? REFRESH_BOTH : REFRESH_APPLE;
@@ -76,6 +78,20 @@ export function appleCheckIsFresh(iso: string | null, now: number, windowMs = AP
 export function syncAppleClause(appleCheckedAt: string | null): string {
   const apple = syncClock(appleCheckedAt);
   return apple ? `Apple Health checked ${apple}` : 'Apple Health not checked yet';
+}
+
+/** True when a stored push is at least about two hours behind `now`. No push yet stays false. */
+export function garminPushIsStale(receivedAt: string | null, now: number, staleMs = GARMIN_PUSH_STALE_MS): boolean {
+  if (!receivedAt) return false;
+  const at = Date.parse(receivedAt);
+  if (!Number.isFinite(at)) return false;
+  return now - at >= staleMs;
+}
+
+/** The only Garmin hint. A stale push adds the second sentence to this same line. */
+export function garminHintLine(receivedAt: string | null, now: number): string {
+  if (!garminPushIsStale(receivedAt, now)) return GARMIN_SEND_HINT;
+  return `${GARMIN_SEND_HINT} ${GARMIN_STALE_PUSH_HINT}`;
 }
 
 export function syncGarminClause(garminReceivedAt: string | null): string {
