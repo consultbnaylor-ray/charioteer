@@ -47,6 +47,25 @@ export const GARMIN_STALE_PUSH_HINT =
 /** Last push older than this gets the stale sentence. A missing clock does not. */
 export const GARMIN_PUSH_STALE_MS = 2 * 60 * 60 * 1000;
 
+/**
+ * A calm prompt once the last stored push is about three hours old.
+ * It sits beside the existing “Garmin data received” clock. It does not add another clock.
+ */
+export const GARMIN_CONNECT_NUDGE_MS = 3 * 60 * 60 * 1000;
+
+/** Local hours when a quiet sync reminder is useful. Overnight stays quiet. */
+export const GARMIN_DAY_START_HOUR = 7;
+export const GARMIN_DAY_END_HOUR = 22;
+
+export const GARMIN_CONNECT_NUDGE = 'Not updating? Open Garmin Connect so your watch can sync.';
+
+/**
+ * Garmin Connect Mobile’s documented iOS scheme.
+ * Garmin’s Connect IQ guide names `gcm-ciq` so an app can ask whether Connect is installed.
+ * Opening `gcm-ciq://` is the start page. Anything else is left as plain text.
+ */
+export const GARMIN_CONNECT_APP_URL = 'gcm-ciq://';
+
 /** Ignore another Check again until this long after the last one started. */
 export const GARMIN_CHECK_DEBOUNCE_MS = 10_000;
 
@@ -92,6 +111,24 @@ export function garminPushIsStale(receivedAt: string | null, now: number, staleM
 export function garminHintLine(receivedAt: string | null, now: number): string {
   if (!garminPushIsStale(receivedAt, now)) return GARMIN_SEND_HINT;
   return `${GARMIN_SEND_HINT} ${GARMIN_STALE_PUSH_HINT}`;
+}
+
+/**
+ * True during the day when the last stored push is about three hours old or more.
+ * A missing or unreadable clock stays false. Night hours stay false.
+ * `hour` is the local hour of `now` (0–23). Tests pass it so the clock zone does not matter.
+ */
+export function garminConnectNudge(receivedAt: string | null, now: number, hour = new Date(now).getHours()): boolean {
+  if (!Number.isInteger(hour) || hour < GARMIN_DAY_START_HOUR || hour >= GARMIN_DAY_END_HOUR) return false;
+  return garminPushIsStale(receivedAt, now, GARMIN_CONNECT_NUDGE_MS);
+}
+
+/** The Connect app URL, or null when the scheme is not the one Garmin documents. */
+export function garminConnectOpenUrl(url: string = GARMIN_CONNECT_APP_URL): string | null {
+  const match = /^([a-z][a-z0-9+.-]*):\/\/$/i.exec(url.trim());
+  if (!match) return null;
+  if (match[1].toLowerCase() !== 'gcm-ciq') return null;
+  return 'gcm-ciq://';
 }
 
 export function syncGarminClause(garminReceivedAt: string | null): string {

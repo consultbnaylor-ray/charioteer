@@ -22,6 +22,7 @@ import {
   type GarminCheckView,
 } from '@/domain/healthRefresh';
 import { noteGarminRefreshRefused } from '@/domain/garminPermission';
+import { GarminConnectNudge } from '@/ui/GarminConnectNudge';
 import { GarminPermissionNotice } from '@/ui/GarminPermissionNotice';
 import { refreshAppleHealth } from '@/health/catchUp';
 import { reloadHealthSources } from '@/health/useHealthSources';
@@ -227,6 +228,7 @@ export function HealthRefreshBar({
           </Pressable>
         ) : null}
       </View>
+      {garminConnected ? <GarminConnectNudge receivedAt={receivedAt} now={Date.now()} /> : null}
       {garminConnected ? <T variant="muted">{garminHintLine(receivedAt, Date.now())}</T> : null}
       {garminNote ? <T variant="muted">{garminNote}</T> : null}
       {permission ? <GarminPermissionNotice force /> : null}

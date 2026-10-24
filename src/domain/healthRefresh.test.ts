@@ -5,12 +5,19 @@ import {
   GARMIN_CHECK_AGAIN,
   GARMIN_CHECK_DEBOUNCE_MS,
   GARMIN_CHECK_FAILED,
+  GARMIN_CONNECT_APP_URL,
+  GARMIN_CONNECT_NUDGE,
+  GARMIN_CONNECT_NUDGE_MS,
+  GARMIN_DAY_END_HOUR,
+  GARMIN_DAY_START_HOUR,
   GARMIN_JUST_ARRIVED,
   GARMIN_PUSH_STALE_MS,
   GARMIN_SEND_HINT,
   GARMIN_STALE_PUSH_HINT,
   GARMIN_WAITING,
   garminAfterCheckLine,
+  garminConnectNudge,
+  garminConnectOpenUrl,
   garminHintLine,
   garminNothingNewLine,
   garminPushIsStale,
@@ -198,8 +205,61 @@ describe('manual health refresh', () => {
     ]) {
       expect(readFileSync(path, 'utf8'), path).toContain('garminMark={garminStoredMark(readings)}');
     }
+    expect(bar).toContain('<GarminConnectNudge');
+    expect(bar.indexOf('garminAfterCheckLine')).toBeLessThan(bar.indexOf('<GarminConnectNudge'));
+    expect(bar.indexOf('<GarminConnectNudge')).toBeLessThan(bar.indexOf('garminHintLine('));
     expect(readFileSync('src/domain/healthRefresh.ts', 'utf8')).toContain('Asked Garmin for your latest data');
     expect(bar).toContain('GARMIN_ASKED');
     expect(bar).not.toContain('REFRESH_BOTH');
+  });
+
+  it('offers Garmin Connect beside the existing clock when a daytime push is about three hours old', () => {
+    expect(GARMIN_CONNECT_NUDGE).toBe('Not updating? Open Garmin Connect so your watch can sync.');
+    expect(GARMIN_CONNECT_NUDGE).not.toMatch(/stuck|failed|error|alarm|warning|problem/i);
+    expect(GARMIN_CONNECT_NUDGE_MS).toBe(3 * 60 * 60 * 1000);
+    expect(GARMIN_DAY_START_HOUR).toBe(7);
+    expect(GARMIN_DAY_END_HOUR).toBe(22);
+    expect(GARMIN_CONNECT_APP_URL).toBe('gcm-ciq://');
+    expect(garminConnectOpenUrl()).toBe('gcm-ciq://');
+    expect(garminConnectOpenUrl('  gcm-ciq://  ')).toBe('gcm-ciq://');
+    expect(garminConnectOpenUrl('GCM-CIQ://')).toBe('gcm-ciq://');
+    expect(garminConnectOpenUrl('connect://')).toBeNull();
+    expect(garminConnectOpenUrl('gcm-ciq://sync')).toBeNull();
+    expect(garminConnectOpenUrl('https://connect.garmin.com')).toBeNull();
+    expect(garminConnectOpenUrl('javascript:alert(1)')).toBeNull();
+    const now = Date.parse('2026-10-24T12:00:00Z');
+    const old = new Date(now - GARMIN_CONNECT_NUDGE_MS).toISOString();
+    const almost = new Date(now - GARMIN_CONNECT_NUDGE_MS + 1).toISOString();
+    expect(garminConnectNudge(old, now, 12)).toBe(true);
+    expect(garminConnectNudge(almost, now, 12)).toBe(false);
+    expect(garminConnectNudge(old, now, 7)).toBe(true);
+    expect(garminConnectNudge(old, now, 21)).toBe(true);
+    expect(garminConnectNudge(old, now, 6)).toBe(false);
+    expect(garminConnectNudge(old, now, 22)).toBe(false);
+    expect(garminConnectNudge(null, now, 12)).toBe(false);
+    expect(garminConnectNudge('not-a-clock', now, 12)).toBe(false);
+    const row = readFileSync('src/ui/GarminConnectNudge.tsx', 'utf8');
+    expect(row).toContain('GARMIN_CONNECT_NUDGE');
+    expect(row).toContain('garminConnectNudge(');
+    expect(row).toContain('garminConnectOpenUrl');
+    expect(row).toContain('Linking.canOpenURL');
+    expect(row).toContain('Linking.openURL');
+    expect(row).toContain('.catch(');
+    expect(row).toContain("textDecorationLine: 'underline'");
+    expect(row).not.toContain('Garmin updated at');
+    expect(row).not.toMatch(/#|rgb\(|red/i);
+    const app = readFileSync('app.json', 'utf8');
+    expect(app).toContain('"gcm-ciq"');
+    expect(app).toContain('"buildNumber": "61"');
+    for (const path of [
+      'src/app/(main)/health.tsx',
+      'src/app/(main)/stats.tsx',
+      'src/app/(main)/health-plan.tsx',
+      'src/app/(main)/workouts.tsx',
+    ]) {
+      const source = readFileSync(path, 'utf8');
+      expect(source, path).toContain('<HealthRefreshBar');
+      expect(source, path).toContain('garminReceivedAt={readings.lastPushAt}');
+    }
   });
 });
