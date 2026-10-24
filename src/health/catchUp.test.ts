@@ -108,8 +108,15 @@ describe('Apple Health catch-up', () => {
     expect(screen).toContain('setUpdatedAt(pulled.syncedAt)');
     expect(screen).toContain('setUpdatedAt(result.syncedAt)');
     expect(screen).toContain('updatedAt={updatedAt}');
-    expect(screen).toContain('const saveBar = Boolean(value.trim()) || weightDraft != null || savePending || savedNote != null');
+    expect(screen).toContain('const saveBar = Boolean(value.trim()) || savePending || savedNote != null;');
     expect(screen).toContain('footer={saveBar ?');
+    expect(screen).not.toContain('weightDraft');
+    const weight = readFileSync('src/app/(main)/weight-waist.tsx', 'utf8');
+    expect(weight).toContain('const saveBar = weightDraft != null || savePending || savedNote != null;');
+    expect(weight).toContain('footer={saveBar ?');
+    expect(weight).toContain('<PlanTick done');
+    expect(weight).toContain('setRefreshError(result.error)');
+    expect(weight).toContain("AppState.addEventListener('change'");
     const layout = readFileSync('src/app/_layout.tsx', 'utf8');
     const resume = layout.slice(layout.indexOf("AppState.addEventListener('change'"), layout.indexOf('const arrivals'));
     expect(resume).toContain('catchUpAppleHealthReads');
