@@ -1,23 +1,29 @@
 import { useEffect, useRef, useState } from 'react';
 
 import { useRepository } from '@/data';
-import { ownerPhotoErrorDelay, ownerPhotoIdentity } from '@/domain/ownerPhotos';
+import { ownerPhotoErrorDelay, ownerPhotoIdentity, shouldRefreshSignedUrl } from '@/domain/ownerPhotos';
 
 /**
- * After an image error, ask for a fresh signed URL. The 15s gap does not apply.
- * The waits are 1s, then 3s, then 8s. A later error stops and can be started again.
+ * A failed picture retries on its own. The first failure asks for a new link
+ * for that picture only. Later tries reuse it. A loaded picture is not remounted.
  */
-export function useSignedPhotoRetry(uri: string | null | undefined) {
+export function useSignedPhotoRetry(
+  uri: string | null | undefined,
+  options?: { signWhenMissing?: boolean },
+) {
   const repo = useRepository();
   const attempt = useRef(0);
   const waiting = useRef(false);
   const live = useRef(true);
   const generation = useRef(0);
+  const loaded = useRef(false);
   const identity = useRef(ownerPhotoIdentity(uri));
   const uriRef = useRef(uri);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [gaveUp, setGaveUp] = useState(false);
-  const [mount, setMount] = useState(0);
+  const [seen, setSeen] = useState(false);
+  const [reload, setReload] = useState(0);
+  const [displayUri, setDisplayUri] = useState<string | null>(uri ?? null);
   uriRef.current = uri;
 
   useEffect(() => {
@@ -27,11 +33,16 @@ export function useSignedPhotoRetry(uri: string | null | undefined) {
       generation.current += 1;
       attempt.current = 0;
       waiting.current = false;
-      setMount(0);
+      loaded.current = false;
+      setSeen(false);
+      setDisplayUri(uri ?? null);
+      setReload(0);
       if (timer.current) {
         clearTimeout(timer.current);
         timer.current = null;
       }
+    } else if (uri) {
+      setDisplayUri(uri);
     }
     setGaveUp(false);
   }, [uri]);
@@ -41,20 +52,39 @@ export function useSignedPhotoRetry(uri: string | null | undefined) {
     if (timer.current) clearTimeout(timer.current);
   }, []);
 
-  function requestFresh(immediate: boolean) {
-    const run = () => {
-      const seen = uriRef.current;
-      const gen = generation.current;
-      void repo.resignOwnerPhotos({ force: true }).finally(() => {
-        if (!live.current || generation.current !== gen) return;
-        waiting.current = false;
-        if (uriRef.current === seen) setMount((value) => value + 1);
-      });
+  useEffect(() => {
+    if (uri || !options?.signWhenMissing) return;
+    const gen = generation.current;
+    let current = true;
+    void repo.resignOwnerPhotos({ force: true }).finally(() => {
+      if (!current || generation.current !== gen || uriRef.current) return;
+    });
+    const first = ownerPhotoErrorDelay(0) ?? 0;
+    const second = ownerPhotoErrorDelay(1) ?? 0;
+    const giveUp = setTimeout(() => {
+      if (current && generation.current === gen && !uriRef.current) setGaveUp(true);
+    }, first + second);
+    return () => {
+      current = false;
+      clearTimeout(giveUp);
     };
-    if (immediate) {
-      waiting.current = true;
-      run();
-      return;
+  }, [uri, options?.signWhenMissing, repo]);
+
+  function onLoad() {
+    loaded.current = true;
+    setSeen(true);
+    setGaveUp(false);
+  }
+
+  function onError() {
+    if (loaded.current || waiting.current) return;
+    const current = uriRef.current ?? displayUri;
+    const gen = generation.current;
+    if (current && shouldRefreshSignedUrl(attempt.current)) {
+      void repo.refreshSignedPhoto(current).then((next) => {
+        if (!live.current || generation.current !== gen || !next) return;
+        setDisplayUri(next);
+      });
     }
     const delay = ownerPhotoErrorDelay(attempt.current);
     if (delay == null) {
@@ -66,13 +96,10 @@ export function useSignedPhotoRetry(uri: string | null | undefined) {
     attempt.current += 1;
     timer.current = setTimeout(() => {
       timer.current = null;
-      run();
+      if (!live.current || generation.current !== gen) return;
+      waiting.current = false;
+      setReload((value) => value + 1);
     }, delay);
-  }
-
-  function onError() {
-    if (waiting.current) return;
-    requestFresh(false);
   }
 
   function retry() {
@@ -82,10 +109,18 @@ export function useSignedPhotoRetry(uri: string | null | undefined) {
     }
     attempt.current = 0;
     waiting.current = false;
+    loaded.current = false;
+    setSeen(false);
     setGaveUp(false);
-    setMount((value) => value + 1);
-    requestFresh(true);
+    setReload((value) => value + 1);
+    void repo.resignOwnerPhotos({ force: true });
+    const current = uriRef.current;
+    if (current) {
+      void repo.refreshSignedPhoto(current).then((next) => {
+        if (next) setDisplayUri(next);
+      });
+    }
   }
 
-  return { gaveUp, mount, onError, retry };
+  return { gaveUp, loaded: seen, reload, displayUri, onError, onLoad, retry };
 }

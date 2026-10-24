@@ -9,6 +9,7 @@ import { ProgressRing } from '@/ui/DistanceCharts';
 import { StatPeriodToggle } from '@/ui/StatPeriodToggle';
 import { useStatPeriod } from '@/health/useStatPeriod';
 import { useAppTheme } from '@/ui/theme';
+import { TargetWeightProgress } from '@/ui/TargetWeightGoal';
 import { Card, T } from '@/ui/ui';
 
 /**
@@ -30,6 +31,7 @@ export function YourGoal({ place }: { place: 'today' | 'stats' | 'plan' }) {
       {view.caution ? <T variant="muted">{view.caution}</T> : null}
       {showNudges ? view.nudges.map((line) => <T key={line}>{line}</T>) : null}
       <T variant="label">{towardGoal(view.name)}</T>
+      <TargetWeightProgress />
       {view.ticks.length ? (
         <View style={{ gap: 14, alignSelf: 'stretch' }}>
           <ProgressRow

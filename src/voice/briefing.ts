@@ -6,6 +6,7 @@ import { withPlannedMinutes } from '@/domain/plannedSession';
 import { goalLedFromSnapshot, goalProgressLine } from '@/domain/goalLed';
 import { goalWeightRange } from '@/domain/goalWeightRange';
 import { compositionForAssessment, defaultNutritionSettings, nutritionContextLines, weightPointsFrom } from '@/domain/nutrition';
+import { activityReadingsFromSamples } from '@/domain/targetActivity';
 import { savingsFromTypicalWeek } from '@/domain/savings';
 import { soberElapsed } from '@/domain/sober';
 import { visionContextFrom } from '@/domain/visionBoard';
@@ -60,6 +61,7 @@ function nutritionLinesFrom(snap: AppSnapshot, now: Date): string[] {
       leanMassKg: figures.leanMassKg,
       waistCm: figures.waistCm,
     },
+    activity: activityReadingsFromSamples(snap.health),
   });
   const progress = goalProgressLine(goalLedFromSnapshot(snap, now));
   const fitness = profile.consentHealth

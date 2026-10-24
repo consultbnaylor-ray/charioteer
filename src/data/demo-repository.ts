@@ -344,6 +344,10 @@ export class DemoRepository implements Repository {
   /** Demo pictures are data URLs, so there is nothing to sign again. */
   async resignOwnerPhotos(_options?: { force?: boolean }): Promise<void> {}
 
+  async refreshSignedPhoto(uri: string): Promise<string | null> {
+    return uri.startsWith('http') || uri.startsWith('data:') ? uri : null;
+  }
+
   async refreshOwnerPhotosIfStale(): Promise<void> {}
 
   private derive(): AppSnapshot {

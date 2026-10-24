@@ -75,6 +75,7 @@ import {
   type MealSource,
   type NutritionSex,
 } from '@/domain/nutrition';
+import { goalForTargetDirection, targetDirection } from '@/domain/targetWeight';
 import { periodDayCount, periodHeading } from '@/domain/statWindow';
 import { useStatPeriod } from '@/health/useStatPeriod';
 import { savingsFromTypicalWeek } from '@/domain/savings';
@@ -502,8 +503,16 @@ export default function Nutrition() {
         return;
       }
       const figures = compositionForAssessment(snap.bodyComposition);
+      const pace = settings.targetWeightKg != null && body.weightKg != null
+        ? targetDirection(body.weightKg, settings.targetWeightKg)
+        : null;
+      const goal = settings.goal ?? (pace ? goalForTargetDirection(pace) : null);
+      if (!goal) {
+        setSuggestNote('Pick a goal, or save a target weight.');
+        return;
+      }
       const result = suggestGoalTargets({
-        goal: settings.goal,
+        goal,
         weightKg: body.weightKg,
         heightCm: body.heightCm,
         age,
@@ -512,8 +521,9 @@ export default function Nutrition() {
         build: settings.build,
         bodyFatPct: figures.bodyFatPct,
         waistCm: figures.waistCm,
-        phase: settings.goal === 'body_builder' ? settings.goalPhase : null,
-        weightClassKg: settings.goal === 'elite_middle_boxer' ? klass : null,
+        phase: goal === 'body_builder' ? settings.goalPhase : null,
+        weightClassKg: goal === 'elite_middle_boxer' ? klass : null,
+        targetPace: pace,
       });
       if (!result.ok) {
         setGoalNote(null);

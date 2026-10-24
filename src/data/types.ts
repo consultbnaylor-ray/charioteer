@@ -412,6 +412,8 @@ export interface Repository {
    * `force` skips the short gap after the last sign. Image errors use it.
    */
   resignOwnerPhotos(options?: { force?: boolean }): Promise<void>;
+  /** A new link for one picture that failed to load. Other photos are left as they are. */
+  refreshSignedPhoto(uri: string): Promise<string | null>;
   /** Re-signs those owner URLs when the last sign is more than about eight minutes old. */
   refreshOwnerPhotosIfStale(): Promise<void>;
   signIn(email: string, password: string): Promise<void>;

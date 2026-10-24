@@ -51,10 +51,15 @@ import {
 } from '@/domain/visionBoard';
 import { isoDay } from '@/domain/dates';
 import {
+  chunkList,
   foodPhotoStoragePath,
+  mergeSignedUrls,
   OWNER_PHOTO_URL_SECONDS,
   ownerPhotoResignCooling,
   ownerPhotoUrlsStale,
+  SIGNED_URL_BATCH,
+  signedStorageRef,
+  signedUrlStillValid,
   withSignedFoodPhotos,
   withSignedGratitudePhotos,
   withSignedPreviewUrls,
@@ -272,6 +277,8 @@ export class SupabaseRepository implements Repository {
   private ownerPhotoResign: Promise<void> | null = null;
   /** One extra sign after the current one, shared by every image error that arrives mid-sign. */
   private ownerPhotoResignFollowUp: Promise<void> | null = null;
+  /** One in-flight sign per object, so a second error does not sign that picture again. */
+  private photoSignInflight = new Map<string, Promise<string | null>>();
   /** One shared session refresh for AI calls that start together. */
   private aiSession: Promise<string> | null = null;
 
@@ -625,19 +632,107 @@ export class SupabaseRepository implements Repository {
   }
 
   private async signedUrlMap(bucket: string, paths: string[], seconds: number): Promise<Map<string, string>> {
-    const signedByPath = new Map<string, string>();
+    let signedByPath = new Map<string, string>();
     const clean = [...new Set(paths.filter((path) => path && !path.includes('..')))];
     if (!clean.length) return signedByPath;
+    for (const chunk of chunkList(clean, SIGNED_URL_BATCH)) {
+      const fetched = await this.signUrlChunk(bucket, chunk, seconds);
+      const got = fetched ?? await this.signUrlChunk(bucket, chunk, seconds);
+      signedByPath = mergeSignedUrls(signedByPath, got);
+    }
+    return signedByPath;
+  }
+
+  /** One batch. Null means the call failed, so the caller can try that batch again. */
+  private async signUrlChunk(bucket: string, paths: string[], seconds: number): Promise<Map<string, string> | null> {
     try {
-      const signed = await this.client.storage.from(bucket).createSignedUrls(clean, seconds);
-      if (signed.error) console.error(signed.error.message);
+      const signed = await this.client.storage.from(bucket).createSignedUrls(paths, seconds);
+      if (signed.error) {
+        console.error(signed.error.message);
+        return null;
+      }
+      const signedByPath = new Map<string, string>();
       for (const item of signed.data ?? []) {
         if (item.path && item.signedUrl) signedByPath.set(item.path, item.signedUrl);
       }
+      return signedByPath;
     } catch (error) {
       console.error(error);
+      return null;
     }
-    return signedByPath;
+  }
+
+  /**
+   * A new link for one owner picture. Other photos keep the link they already have.
+   * A community link is left alone: this phone cannot sign someone else's file.
+   */
+  async refreshSignedPhoto(uri: string): Promise<string | null> {
+    if (!uri) return null;
+    if (uri.startsWith('data:')) return uri;
+    if (signedUrlStillValid(uri)) return uri;
+    const ref = signedStorageRef(uri);
+    const seconds = ref ? this.ownerBucketSeconds(ref.bucket) : null;
+    if (!ref || seconds == null) return null;
+    const key = `${ref.bucket}/${ref.path}`;
+    const running = this.photoSignInflight.get(key);
+    if (running) return running;
+    const job = this.signOneOwnerPhoto(ref.bucket, ref.path, seconds).finally(() => {
+      if (this.photoSignInflight.get(key) === job) this.photoSignInflight.delete(key);
+    });
+    this.photoSignInflight.set(key, job);
+    return job;
+  }
+
+  private ownerBucketSeconds(bucket: string): number | null {
+    if (bucket === PROGRESS_BUCKET) return PROGRESS_SIGNED_URL_SECONDS;
+    if (bucket === PROFILE_PHOTO_BUCKET) return PROFILE_SIGNED_URL_SECONDS;
+    if (bucket === GRATITUDE_BUCKET) return GRATITUDE_SIGNED_URL_SECONDS;
+    if (bucket === VISION_BUCKET) return VISION_SIGNED_URL_SECONDS;
+    if (bucket === FOOD_BUCKET) return OWNER_PHOTO_URL_SECONDS;
+    return null;
+  }
+
+  private async signOneOwnerPhoto(bucket: string, path: string, seconds: number): Promise<string | null> {
+    try {
+      const signed = await this.client.storage.from(bucket).createSignedUrl(path, seconds);
+      const url = signed.data?.signedUrl;
+      if (signed.error || !url) return null;
+      this.patchOwnerPreview(bucket, path, url);
+      return url;
+    } catch (error) {
+      console.error(error);
+      return null;
+    }
+  }
+
+  /** Writes one new link onto the snapshot and leaves every other picture as it is. */
+  private patchOwnerPreview(bucket: string, path: string, url: string): void {
+    const latest = this.snapshot;
+    const map = new Map([[path, url]]);
+    if (bucket === PROGRESS_BUCKET) {
+      const progressPhotos = withSignedPreviewUrls(latest.progressPhotos, map);
+      if (progressPhotos !== latest.progressPhotos) this.emit({ ...latest, progressPhotos });
+      return;
+    }
+    if (bucket === PROFILE_PHOTO_BUCKET) {
+      const profilePhotos = withSignedPreviewUrls(latest.profilePhotos, map);
+      if (profilePhotos !== latest.profilePhotos) this.emit({ ...latest, profilePhotos });
+      return;
+    }
+    if (bucket === GRATITUDE_BUCKET) {
+      const gratitude = withSignedGratitudePhotos(latest.gratitude, map);
+      if (gratitude !== latest.gratitude) this.emit({ ...latest, gratitude });
+      return;
+    }
+    if (bucket === VISION_BUCKET) {
+      const visionItems = withSignedPreviewUrls(latest.visionItems, map);
+      if (visionItems !== latest.visionItems) this.emit({ ...latest, visionItems });
+      return;
+    }
+    if (bucket === FOOD_BUCKET) {
+      const foodLogs = withSignedFoodPhotos(latest.foodLogs, map);
+      if (foodLogs !== latest.foodLogs) this.emit({ ...latest, foodLogs });
+    }
   }
 
   private async signedProgressPhotos(rows: Row[] | null, queryError: string | undefined, userId: string): Promise<ProgressPhoto[]> {
@@ -646,18 +741,7 @@ export class SupabaseRepository implements Repository {
       return [];
     }
     const paths = rows.map((row) => String(row.storage_path)).filter((path) => path && !path.includes('..'));
-    const signedByPath = new Map<string, string>();
-    if (paths.length) {
-      try {
-        const signed = await this.client.storage.from(PROGRESS_BUCKET).createSignedUrls(paths, PROGRESS_SIGNED_URL_SECONDS);
-        if (signed.error) console.error(signed.error.message);
-        for (const item of signed.data ?? []) {
-          if (item.path && item.signedUrl) signedByPath.set(item.path, item.signedUrl);
-        }
-      } catch (error) {
-        console.error(error);
-      }
-    }
+    const signedByPath = await this.signedUrlMap(PROGRESS_BUCKET, paths, PROGRESS_SIGNED_URL_SECONDS);
     return rows.map((row) => {
       const taken = String(row.taken_on ?? '');
       const path = String(row.storage_path ?? '');
@@ -682,18 +766,7 @@ export class SupabaseRepository implements Repository {
       return [];
     }
     const paths = rows.map((row) => String(row.storage_path)).filter((path) => path && !path.includes('..'));
-    const signedByPath = new Map<string, string>();
-    if (paths.length) {
-      try {
-        const signed = await this.client.storage.from(PROFILE_PHOTO_BUCKET).createSignedUrls(paths, PROFILE_SIGNED_URL_SECONDS);
-        if (signed.error) console.error(signed.error.message);
-        for (const item of signed.data ?? []) {
-          if (item.path && item.signedUrl) signedByPath.set(item.path, item.signedUrl);
-        }
-      } catch (error) {
-        console.error(error);
-      }
-    }
+    const signedByPath = await this.signedUrlMap(PROFILE_PHOTO_BUCKET, paths, PROFILE_SIGNED_URL_SECONDS);
     return sortProfilePhotos(rows.map((row) => {
       const path = String(row.storage_path ?? '');
       const role = row.role === 'avatar' ? 'avatar' as const : 'gallery' as const;
@@ -748,20 +821,30 @@ export class SupabaseRepository implements Repository {
   private async profilePhotoUrlMap(ids: string[]): Promise<Map<string, string>> {
     const urls = new Map<string, string>();
     const unique = [...new Set(ids)].filter((id) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id));
-    for (let index = 0; index < unique.length; index += 24) {
-      const slice = unique.slice(index, index + 24);
-      try {
-        const invoked = await this.client.functions.invoke('profile-photo-url', { body: { ids: slice } });
-        const photos = invoked.data?.photos;
-        if (invoked.error || !invoked.data?.ok || !Array.isArray(photos)) continue;
-        for (const photo of photos) {
-          if (photo && typeof photo.id === 'string' && typeof photo.signed_url === 'string') urls.set(photo.id, photo.signed_url);
-        }
-      } catch (error) {
-        console.error(error);
-      }
+    for (const slice of chunkList(unique, SIGNED_URL_BATCH)) {
+      const fetched = await this.profileUrlChunk(slice);
+      const got = fetched ?? await this.profileUrlChunk(slice);
+      if (!got) continue;
+      for (const [id, url] of got) urls.set(id, url);
     }
     return urls;
+  }
+
+  /** One profile-photo-url batch. Null means that batch failed and the others stay. */
+  private async profileUrlChunk(ids: string[]): Promise<Map<string, string> | null> {
+    try {
+      const invoked = await this.client.functions.invoke('profile-photo-url', { body: { ids } });
+      const photos = invoked.data?.photos;
+      if (invoked.error || !invoked.data?.ok || !Array.isArray(photos)) return null;
+      const urls = new Map<string, string>();
+      for (const photo of photos) {
+        if (photo && typeof photo.id === 'string' && typeof photo.signed_url === 'string') urls.set(photo.id, photo.signed_url);
+      }
+      return urls;
+    } catch (error) {
+      console.error(error);
+      return null;
+    }
   }
 
   /** Owner signed links for the diary. Community viewers sign through publicProfile. */
@@ -772,18 +855,7 @@ export class SupabaseRepository implements Repository {
     }
     const parsed = gratitudePhotosFromRows(rows);
     const paths = parsed.map((photo) => photo.storagePath);
-    const signedByPath = new Map<string, string>();
-    if (paths.length) {
-      try {
-        const signed = await this.client.storage.from(GRATITUDE_BUCKET).createSignedUrls(paths, GRATITUDE_SIGNED_URL_SECONDS);
-        if (signed.error) console.error(signed.error.message);
-        for (const item of signed.data ?? []) {
-          if (item.path && item.signedUrl) signedByPath.set(item.path, item.signedUrl);
-        }
-      } catch (error) {
-        console.error(error);
-      }
-    }
+    const signedByPath = await this.signedUrlMap(GRATITUDE_BUCKET, paths, GRATITUDE_SIGNED_URL_SECONDS);
     return parsed.map((photo) => ({ ...photo, previewUrl: signedByPath.get(photo.storagePath) ?? null }));
   }
 
@@ -794,18 +866,7 @@ export class SupabaseRepository implements Repository {
     }
     const parsed = visionItemsFromRows(rows);
     const paths = parsed.map((item) => item.storagePath);
-    const signedByPath = new Map<string, string>();
-    if (paths.length) {
-      try {
-        const signed = await this.client.storage.from(VISION_BUCKET).createSignedUrls(paths, VISION_SIGNED_URL_SECONDS);
-        if (signed.error) console.error(signed.error.message);
-        for (const item of signed.data ?? []) {
-          if (item.path && item.signedUrl) signedByPath.set(item.path, item.signedUrl);
-        }
-      } catch (error) {
-        console.error(error);
-      }
-    }
+    const signedByPath = await this.signedUrlMap(VISION_BUCKET, paths, VISION_SIGNED_URL_SECONDS);
     return sortVisionItems(parsed.map((item) => ({ ...item, previewUrl: signedByPath.get(item.storagePath) ?? null })));
   }
 
@@ -2281,6 +2342,9 @@ export class SupabaseRepository implements Repository {
   /** Older databases lack the later share and goal columns. A missing column stays off. */
   private async nutritionSettingsRow(userId: string) {
     const athlete = 'kcal_target, hide_calories, share_food_diary, share_calories, share_quality, share_progress, goal, goal_age, goal_sex, protein_target_g, carb_target_g, fat_target_g, goal_phase, weight_class_kg, activity_energy_kcal, share_goal, wagon_on, wagon_note, wagon_visible, build, workout_buckets, updated_at';
+    const withTarget = `target_weight_kg, target_on, target_start_kg, ${athlete}`;
+    const targeted = await this.client.from('nutrition_settings').select(withTarget).eq('user_id', userId).maybeSingle();
+    if (!targeted.error) return targeted;
     const widened = await this.client.from('nutrition_settings').select(athlete).eq('user_id', userId).maybeSingle();
     if (!widened.error) return widened;
     const goal = 'kcal_target, hide_calories, share_food_diary, share_calories, share_quality, share_progress, goal, goal_age, goal_sex, protein_target_g, activity_energy_kcal, share_goal, wagon_on, wagon_note, wagon_visible, build, updated_at';
@@ -2490,6 +2554,9 @@ export class SupabaseRepository implements Repository {
       fat_target_g: settings.fatTarget,
       goal_phase: settings.goalPhase,
       weight_class_kg: settings.weightClassKg,
+      target_weight_kg: settings.targetWeightKg,
+      target_on: settings.targetOn,
+      target_start_kg: settings.targetStartKg,
       activity_energy_kcal: settings.activityEnergyKcal,
       share_goal: settings.shareGoal,
       wagon_on: settings.wagonOn,
@@ -2524,6 +2591,12 @@ export class SupabaseRepository implements Repository {
     if (error && settings.build == null && /\bbuild\b/i.test(error.message)) {
       const { build: _build, ...withoutBuild } = payload;
       payload = withoutBuild;
+      ({ error } = await this.client.from('nutrition_settings').upsert(payload));
+    }
+    const targetUnset = settings.targetWeightKg == null && settings.targetOn == null && settings.targetStartKg == null;
+    if (error && targetUnset && /target_weight_kg|target_on|target_start_kg/i.test(error.message)) {
+      const { target_weight_kg: _target, target_on: _on, target_start_kg: _start, ...withoutTarget } = payload;
+      payload = withoutTarget;
       ({ error } = await this.client.from('nutrition_settings').upsert(payload));
     }
     if (error && Object.keys(settings.workoutBuckets).length === 0 && /workout_buckets/i.test(error.message)) {
@@ -3577,6 +3650,9 @@ function nutritionFromRow(row: Row | null): NutritionSettings {
     fatTarget: nutritionNumber(row.fat_target_g, 0, 400),
     goalPhase: typeof row.goal_phase === 'string' && isBuilderPhase(row.goal_phase) ? row.goal_phase : null,
     weightClassKg: nutritionNumber(row.weight_class_kg, 40, 200),
+    targetWeightKg: nutritionNumber(row.target_weight_kg, 30, 300),
+    targetOn: typeof row.target_on === 'string' && /^\d{4}-\d{2}-\d{2}/.test(row.target_on) ? String(row.target_on).slice(0, 10) : null,
+    targetStartKg: nutritionNumber(row.target_start_kg, 30, 300),
     activityEnergyKcal: nutritionNumber(row.activity_energy_kcal, 0, 2500),
     shareGoal: row.share_goal === true,
     wagonOn: row.wagon_on === true,

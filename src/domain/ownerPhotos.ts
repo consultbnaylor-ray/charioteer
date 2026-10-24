@@ -7,13 +7,26 @@ export const OWNER_PHOTO_RESIGN_MS = 8 * 60 * 1000;
  * An image error does not use this gap. It asks for a fresh link on its own backoff.
  */
 export const OWNER_PHOTO_RESIGN_GAP_MS = 15_000;
-/** Waits before each fresh link after an image error, then the automatic tries stop. */
-export const OWNER_PHOTO_ERROR_BACKOFF_MS = [1_000, 3_000, 8_000] as const;
+/**
+ * Waits before the second and third load. Three tries, about ten seconds, then the automatic tries stop.
+ * The first failure is the only one that asks for a new signed URL.
+ */
+export const OWNER_PHOTO_ERROR_BACKOFF_MS = [2_000, 8_000] as const;
 
-/** Shown when a private photo still will not load. */
-export const PHOTO_UNAVAILABLE = 'Photo unavailable';
+/** How many ids one profile-photo-url call accepts. Owner storage signs use the same size. */
+export const SIGNED_URL_BATCH = 24;
+
+/** Shown while a link or the file is still on its way. */
+export const PHOTO_LOADING = 'Loading photo…';
+/** Shown when a private photo still will not load after the automatic tries. */
+export const PHOTO_UNAVAILABLE = "Couldn't load this photo yet";
 /** Starts the fresh-link tries again after they have stopped. */
 export const PHOTO_RETRY = 'Tap to retry';
+
+/** Refresh the signed URL on the first failure only. Later tries reuse that link. */
+export function shouldRefreshSignedUrl(attempt: number): boolean {
+  return attempt === 0;
+}
 
 /** True when the last owner sign is missing or more than about eight minutes ago. */
 export function ownerPhotoUrlsStale(signedAt: number | null | undefined, now = Date.now()): boolean {
@@ -27,7 +40,7 @@ export function ownerPhotoResignCooling(signedAt: number | null | undefined, now
   return now - signedAt < OWNER_PHOTO_RESIGN_GAP_MS;
 }
 
-/** Delay before the next fresh link, or null when the automatic tries are used. */
+/** Delay before the next load, or null when the three tries are used up. */
 export function ownerPhotoErrorDelay(attempt: number): number | null {
   if (!Number.isInteger(attempt) || attempt < 0 || attempt >= OWNER_PHOTO_ERROR_BACKOFF_MS.length) return null;
   return OWNER_PHOTO_ERROR_BACKOFF_MS[attempt] ?? null;
@@ -38,6 +51,111 @@ export function ownerPhotoIdentity(uri: string | null | undefined): string {
   if (!uri) return '';
   const query = uri.indexOf('?');
   return query === -1 ? uri : uri.slice(0, query);
+}
+
+const SIGNED_OBJECT = /\/object\/sign\/([^/?]+)\/([^?]+)/;
+
+/** Bucket and object path inside a Supabase signed URL. A data URL has neither. */
+export function signedStorageRef(uri: string | null | undefined): { bucket: string; path: string } | null {
+  if (!uri || uri.startsWith('data:')) return null;
+  const match = SIGNED_OBJECT.exec(uri);
+  if (!match?.[1] || !match[2]) return null;
+  let bucket = match[1];
+  let path = match[2];
+  try {
+    bucket = decodeURIComponent(bucket);
+    path = decodeURIComponent(path);
+  } catch {
+    return null;
+  }
+  if (!bucket || !path || path.includes('..')) return null;
+  return { bucket, path };
+}
+
+/**
+ * Stable image cache key. A photo id wins. Otherwise the object path, which does not include the token.
+ */
+export function signedPhotoCacheKey(uri: string | null | undefined, photoId?: string | null): string {
+  const id = photoId?.trim();
+  if (id) return id;
+  const ref = signedStorageRef(uri);
+  if (ref) return `${ref.bucket}/${ref.path}`;
+  return ownerPhotoIdentity(uri) || 'photo';
+}
+
+function decodeBase64Url(value: string): string {
+  const pad = value.length % 4 === 0 ? '' : '='.repeat(4 - (value.length % 4));
+  const base64 = value.replace(/-/g, '+').replace(/_/g, '/') + pad;
+  if (typeof globalThis.atob !== 'function') return '';
+  try {
+    return globalThis.atob(base64);
+  } catch {
+    return '';
+  }
+}
+
+/** Expiry of a signed URL, in milliseconds, when the token says when it ends. */
+export function signedUrlExpiryMs(uri: string | null | undefined): number | null {
+  if (!uri || uri.startsWith('data:')) return null;
+  const token = /[?&]token=([^&]+)/.exec(uri)?.[1] ?? '';
+  const payload = token.split('.')[1] ?? '';
+  if (!payload) return null;
+  try {
+    const parsed = JSON.parse(decodeBase64Url(payload)) as { exp?: unknown };
+    return typeof parsed.exp === 'number' && Number.isFinite(parsed.exp) ? parsed.exp * 1000 : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * True when this link can still be shown. A data URL is already the picture.
+ * An unreadable token is treated as finished, so it is signed again.
+ */
+export function signedUrlStillValid(uri: string | null | undefined, now = Date.now()): boolean {
+  if (!uri) return false;
+  if (uri.startsWith('data:')) return true;
+  const expiry = signedUrlExpiryMs(uri);
+  if (expiry == null) return false;
+  return expiry - now > 60_000;
+}
+
+/** Paths whose link is missing or due to expire. A live link is left as it is. */
+export function storagePathsToSign<T extends { storagePath: string; previewUrl: string | null }>(
+  items: readonly T[],
+  now = Date.now(),
+): string[] {
+  const paths: string[] = [];
+  for (const item of items) {
+    if (!item.storagePath || item.storagePath.includes('..')) continue;
+    if (signedUrlStillValid(item.previewUrl, now)) continue;
+    paths.push(item.storagePath);
+  }
+  return [...new Set(paths)];
+}
+
+/** Groups ids so one failed call cannot drop the rest. */
+export function chunkList<T>(items: readonly T[], size = SIGNED_URL_BATCH): T[][] {
+  const count = Number.isInteger(size) && size > 0 ? size : SIGNED_URL_BATCH;
+  const chunks: T[][] = [];
+  for (let index = 0; index < items.length; index += count) chunks.push(items.slice(index, index + count));
+  return chunks;
+}
+
+/**
+ * Keeps links that a failed batch did not return.
+ * A successful URL replaces the one already held for that id.
+ */
+export function mergeSignedUrls(
+  kept: ReadonlyMap<string, string>,
+  fetched: ReadonlyMap<string, string> | null,
+): Map<string, string> {
+  const next = new Map(kept);
+  if (!fetched) return next;
+  for (const [key, url] of fetched) {
+    if (key && url) next.set(key, url);
+  }
+  return next;
 }
 
 type FoodPreview = { id: string; userId: string; previewUrl: string | null };

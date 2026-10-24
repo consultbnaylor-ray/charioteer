@@ -5,6 +5,7 @@
  * mix stay without a band, and each one says why.
  */
 
+import { targetWeightStatusLine } from '@/domain/targetWeight';
 import {
   AHA_LINK,
   BAND_CAVEAT,
@@ -300,6 +301,9 @@ export type HealthStatBoardInput = {
   goalAge: number | null;
   goalSex: NutritionSex | null;
   goal: NutritionGoal | null;
+  /** Private target weight. Omitted on screens that do not show weight. */
+  targetWeightKg?: number | null;
+  targetStartKg?: number | null;
   build: BodyBuild | null;
   /** Saved workout-type choices. Empty uses the default mapping. */
   workoutBuckets?: WorkoutBucketMap;
@@ -1020,7 +1024,12 @@ function weightTile(
     : input.build === 'muscular' || fatCount > 0 || waistCount > 0
       ? ' Body fat and waist tell more than the scales when they are logged.'
       : '';
-  const meaning = weightMeaning(input.goal, ranged, extra);
+  const targetLine = targetWeightStatusLine({
+    currentKg: kg,
+    targetKg: input.targetWeightKg ?? null,
+    startKg: input.targetStartKg ?? null,
+  });
+  const meaning = `${weightMeaning(input.goal, ranged, extra)}${targetLine ? ` ${targetLine}` : ''}`;
   return finish(item, {
     valueText: oneText(kg),
     unit: 'kg',

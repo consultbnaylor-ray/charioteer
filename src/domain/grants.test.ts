@@ -420,7 +420,8 @@ describe('client upsert update grants', () => {
       columns: [
         'user_id', 'kcal_target', 'hide_calories', 'share_food_diary', 'share_calories',
         'share_quality', 'share_progress', 'goal', 'goal_age', 'goal_sex', 'protein_target_g',
-        'carb_target_g', 'fat_target_g', 'goal_phase', 'weight_class_kg', 'activity_energy_kcal',
+        'carb_target_g', 'fat_target_g', 'goal_phase', 'weight_class_kg', 'target_weight_kg',
+        'target_on', 'target_start_kg', 'activity_energy_kcal',
         'share_goal', 'wagon_on', 'wagon_note', 'wagon_visible', 'build', 'updated_at',
       ],
       withheld: [],

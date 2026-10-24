@@ -213,6 +213,8 @@ export default function WeightWaistScreen() {
         goalAge={snap.nutrition.goalAge}
         goalSex={snap.nutrition.goalSex}
         goal={snap.nutrition.goal}
+        targetWeightKg={snap.nutrition.targetWeightKg}
+        targetStartKg={snap.nutrition.targetStartKg}
         build={snap.nutrition.build}
         workoutBuckets={snap.nutrition.workoutBuckets}
         period={period}

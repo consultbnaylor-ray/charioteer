@@ -11,7 +11,9 @@ import {
   type GoalOption,
 } from '@/domain/goalOptions';
 import { GOAL_PLAIN, boxingChipLabel, isAnyBoxer, type NutritionGoal } from '@/domain/nutrition';
+import { settingsForPreset } from '@/domain/targetWeight';
 import { PlanTick } from '@/ui/PlanTick';
+import { TargetWeightForm } from '@/ui/TargetWeightGoal';
 import { statsToneColors } from '@/ui/statsPalette';
 import { useAppTheme } from '@/ui/theme';
 import { Button, Card, Choice, ErrorNote, QuietNote, T, playSavedHaptic } from '@/ui/ui';
@@ -40,6 +42,7 @@ export function GoalChoices({
   const [saved, setSaved] = useState(false);
   const [attempt, setAttempt] = useState(0);
   const [boxingOpen, setBoxingOpen] = useState(() => isAnyBoxer(settings.goal));
+  const [draftingTarget, setDraftingTarget] = useState(false);
   const write = useRef(0);
   const green = statsToneColors(theme.scheme).good.ink;
 
@@ -69,12 +72,13 @@ export function GoalChoices({
   }, [currentBoxing]);
 
   async function choose(id: NutritionGoal) {
-    if (settings.goal === id) return;
+    if (settings.goal === id && settings.targetWeightKg == null && !draftingTarget) return;
     const ticket = ++write.current;
     setNote(null);
     setSaved(false);
     try {
-      await repo.setNutritionSettings({ ...repo.getSnapshot().nutrition, goal: id });
+      setDraftingTarget(false);
+      await repo.setNutritionSettings(settingsForPreset(repo.getSnapshot().nutrition, id));
       if (ticket !== write.current) return;
       setSaved(true);
       playSavedHaptic();
@@ -102,11 +106,17 @@ export function GoalChoices({
           <Choice
             key={option.id}
             label={option.label}
-            selected={settings.goal === option.id}
+            selected={settings.goal === option.id && settings.targetWeightKg == null && !draftingTarget}
             onPress={() => void choose(option.id)}
           />
         ))}
+        <Choice
+          label="Target weight"
+          selected={settings.targetWeightKg != null || draftingTarget}
+          onPress={() => setDraftingTarget(true)}
+        />
       </View>
+      {draftingTarget || settings.targetWeightKg != null ? <TargetWeightForm /> : null}
       <Pressable
         accessibilityRole="button"
         accessibilityLabel="Boxing weight classes"
@@ -120,7 +130,7 @@ export function GoalChoices({
       {!boxingOpen && currentBoxing ? (
         <Choice
           label={boxingChipLabel(currentBoxing) ?? 'Boxing'}
-          selected
+          selected={settings.targetWeightKg == null && !draftingTarget}
           onPress={() => setBoxingOpen(true)}
         />
       ) : null}
@@ -131,7 +141,7 @@ export function GoalChoices({
               <Choice
                 key={option.id}
                 label={boxingChipLabel(option.id) ?? option.label}
-                selected={settings.goal === option.id}
+                selected={settings.goal === option.id && settings.targetWeightKg == null && !draftingTarget}
                 onPress={() => void choose(option.id)}
               />
             ))}

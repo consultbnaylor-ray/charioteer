@@ -4,7 +4,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { useRepository } from '@/data';
 import type { DirectoryCard } from '@/data/types';
-import { PHOTO_RETRY, PHOTO_UNAVAILABLE } from '@/domain/ownerPhotos';
+import { PHOTO_RETRY, PHOTO_UNAVAILABLE, signedPhotoCacheKey } from '@/domain/ownerPhotos';
 import { profileInitials } from '@/domain/profilePhotos';
 import { useSignedPhotoRetry } from '@/ui/signedPhotoRetry';
 import { useAppTheme } from '@/ui/theme';
@@ -13,7 +13,9 @@ import { useAppTheme } from '@/ui/theme';
 export function MemberAvatar({ name, url, size = 48 }: { name: string; url?: string | null; size?: number }) {
   const theme = useAppTheme();
   const retryState = useSignedPhotoRetry(url);
-  const show = Boolean(url) && !retryState.gaveUp;
+  const shown = retryState.displayUri;
+  const cacheKey = signedPhotoCacheKey(shown);
+  const show = Boolean(shown) && !retryState.gaveUp;
   const failed = Boolean(url) && retryState.gaveUp;
   const fontSize = Math.round(size * 0.38);
   const lineHeight = Math.round(size * 0.44);
@@ -52,12 +54,14 @@ export function MemberAvatar({ name, url, size = 48 }: { name: string; url?: str
     >
       {show ? (
         <Image
-          key={retryState.mount}
-          source={{ uri: url ?? '' }}
+          key={retryState.loaded ? cacheKey : `${cacheKey}:${retryState.reload}`}
+          source={{ uri: shown ?? '', cacheKey }}
+          recyclingKey={cacheKey}
           style={StyleSheet.absoluteFill}
           contentFit="cover"
-          cachePolicy={retryState.mount > 0 ? 'none' : 'disk'}
+          cachePolicy="memory-disk"
           accessibilityLabel={`${name} profile picture`}
+          onLoad={retryState.onLoad}
           onError={retryState.onError}
         />
       ) : failed ? (
@@ -99,9 +103,11 @@ export function useMemberAvatars(cards: DirectoryCard[]): (userId: string) => st
     const load = () => {
       void repo.profilePhotoUrls(ids).then((rows) => {
         if (!live) return;
-        const next: Record<string, string> = {};
-        for (const row of rows) next[row.id] = row.url;
-        setUrls(next);
+        setUrls((current) => {
+          const next = { ...current };
+          for (const row of rows) next[row.id] = row.url;
+          return next;
+        });
       }).catch(() => undefined);
     };
     load();

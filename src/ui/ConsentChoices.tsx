@@ -21,6 +21,16 @@ export const COMMUNITY_CONSENT_BODY =
 export const COMMUNITY_PROMPT_BODY =
   'Other members cannot find you in People until Community is on. You can still search for other members and keep buddies. They would see your name and profile picture, and could send a request or a private message. Nothing else is shared until you switch it on. You choose what each buddy sees.';
 
+/**
+ * First sentence of the AI coach consent. Marketing is out; xAI is only for the coach reply.
+ * Profile, onboarding, the consent screen, and Privacy all use this through ConsentChoices.
+ */
+export const AI_COACH_CONSENT_LEAD =
+  'Your data is never shared with any party for marketing purposes, and we only use personal information for the functionality of the app.';
+
+export const AI_COACH_CONSENT_BODY =
+  `${AI_COACH_CONSENT_LEAD} This covers Thumos and personalised notifications via xAI. What you type, plus check-ins, reasons, and health summaries, is sent to xAI to write a reply. When health data is also on, that includes a short fitness summary (level, trends, weekly minutes, session mix, and recovery), not the raw samples. A few gratitude lines, the latest and the starred ones, are included when this coach is on. A reflection sends only that one line. Your vision statement and photo captions may be included when this coach is on. A gratitude line you have not switched on is never shown to the community. Gratitude photos are not sent. Vision board photos are not sent. Progress photos are not sent. This is not used for ads. Thumos is not a doctor. Turning this off stops every call that would send personal or health details to xAI.`;
+
 export function ConsentChoices({
   community,
   health,
@@ -60,7 +70,7 @@ export function ConsentChoices({
       />
       <ConsentRow
         title="AI coach and personalised notifications"
-        body="This covers Thumos and personalised notifications via xAI. What you type, plus check-ins, reasons, and health summaries, is sent to xAI to write a reply. When health data is also on, that includes a short fitness summary (level, trends, weekly minutes, session mix, and recovery), not the raw samples. A few gratitude lines, the latest and the starred ones, are included when this coach is on. A reflection sends only that one line. Your vision statement and photo captions may be included when this coach is on. A gratitude line you have not switched on is never shown to the community. Gratitude photos are not sent. Vision board photos are not sent. Progress photos are not sent. This is not used for ads. Thumos is not a doctor. Turning this off stops every call that would send personal or health details to xAI."
+        body={AI_COACH_CONSENT_BODY}
         value={ai}
         onChange={onAi}
       />

@@ -476,13 +476,14 @@ function PhotoDetailSheet({
                     showsHorizontalScrollIndicator={false}
                     showsVerticalScrollIndicator={false}
                   >
-                    {photo.previewUrl ? (
-                      <OwnerPhoto pointerEvents="none" uri={photo.previewUrl} style={{ width: '100%', height: 280 }} contentFit="contain" />
-                    ) : (
-                      <View pointerEvents="none" style={{ height: 280, alignItems: 'center', justifyContent: 'center', padding: 8 }}>
-                        <T variant="muted">Photo unavailable</T>
-                      </View>
-                    )}
+                    <OwnerPhoto
+                      pointerEvents="none"
+                      uri={photo.previewUrl}
+                      photoId={photo.id}
+                      signWhenMissing
+                      style={{ width: '100%', height: 280 }}
+                      contentFit="contain"
+                    />
                   </ScrollView>
                 </View>
                 <T variant="muted">Pinch to zoom.</T>
@@ -643,13 +644,14 @@ function PhotoFrame({ photo, marked, checked }: { photo: ProgressPhoto; marked?:
         overflow: 'hidden',
       }}
     >
-      {photo.previewUrl ? (
-        <OwnerPhoto pointerEvents="none" uri={photo.previewUrl} style={StyleSheet.absoluteFill} contentFit="cover" />
-      ) : (
-        <View pointerEvents="none" style={[StyleSheet.absoluteFill, { alignItems: 'center', justifyContent: 'center', padding: 8 }]}>
-          <T variant="muted">Photo unavailable</T>
-        </View>
-      )}
+      <OwnerPhoto
+        pointerEvents="none"
+        uri={photo.previewUrl}
+        photoId={photo.id}
+        signWhenMissing
+        style={StyleSheet.absoluteFill}
+        contentFit="cover"
+      />
       {checked ? (
         <View
           pointerEvents="none"

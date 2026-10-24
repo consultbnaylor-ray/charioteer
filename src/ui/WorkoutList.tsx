@@ -50,6 +50,7 @@ import { routeSummaryLine, type DeviceWorkout } from '@/domain/workoutRoute';
 import { workoutTypeColor } from '@/domain/workoutTypeColor';
 import { DailyActivityCharts } from '@/ui/DailyActivity';
 import { StatGlyph, workoutStatIcon, type StatIcon } from '@/ui/statIcons';
+import { TowardTargetActivity } from '@/ui/TowardTargetActivity';
 import { radius, useAppTheme } from '@/ui/theme';
 import { Card, Choice, T } from '@/ui/ui';
 
@@ -593,6 +594,7 @@ export function WorkoutList({
         ))}
       </View>
       <DurationChart bars={bars} span={span} selected={historyDay ?? ''} onSelect={selectBar} />
+      <TowardTargetActivity compact />
       <DailyActivityCharts
         endDay={today}
         span={span}

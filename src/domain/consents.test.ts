@@ -69,6 +69,15 @@ describe('current consents', () => {
     expect(choices).toContain('Health data');
     expect(choices).toContain('processed in the app');
     expect(choices).toContain('personalised notifications via xAI');
+    const lead = 'Your data is never shared with any party for marketing purposes, and we only use personal information for the functionality of the app.';
+    expect(choices).toContain('export const AI_COACH_CONSENT_LEAD');
+    expect(choices).toContain('body={AI_COACH_CONSENT_BODY}');
+    expect(choices.indexOf(lead)).toBeLessThan(choices.indexOf('This covers Thumos'));
+    expect(choices).toContain('sent to xAI to write a reply');
+    expect(choices).toContain('This is not used for ads');
+    expect(choices.slice(0, choices.indexOf('AI_COACH_CONSENT_LEAD'))).not.toContain(lead);
+    expect(choices.indexOf('They are not used for ads')).toBeGreaterThan(-1);
+    expect(choices.indexOf(lead)).toBe(choices.lastIndexOf(lead));
     expect(choices).toContain('Message notifications');
     expect(choices).toContain('title="Terms"');
     expect(TERMS_REQUIRED).toBe('Tick the terms to continue.');

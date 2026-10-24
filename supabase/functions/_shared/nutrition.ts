@@ -1,4 +1,6 @@
 import { londonDay } from './healthInsights.ts';
+import { targetActivityPlan, targetCoachActivityLines, type ActivityReading } from './targetActivity.ts';
+import { plannedWeeklyChangeKg, targetCoachLines, targetDirection } from './targetWeight.ts';
 
 /**
  * Food log maths. Figures from a photo or a sentence are estimates.
@@ -111,6 +113,12 @@ export type NutritionSettings = {
   goalPhase: BuilderPhase | null;
   /** Combat-sport weight class, kilograms. Null when they have not set one. */
   weightClassKg: number | null;
+  /** Private target weight, kilograms. Null when a preset goal is in use. */
+  targetWeightKg: number | null;
+  /** Optional day they hope to arrive. Null when they did not pick one. */
+  targetOn: string | null;
+  /** Weight when they saved the target. Null until then. */
+  targetStartKg: number | null;
   /** Recent Apple Health active energy, kcal a day. Null when it has not been read. */
   activityEnergyKcal: number | null;
   /** Goal name and a qualitative progress line. Off until switched on. */
@@ -250,6 +258,9 @@ export function defaultNutritionSettings(): NutritionSettings {
     fatTarget: null,
     goalPhase: null,
     weightClassKg: null,
+    targetWeightKg: null,
+    targetOn: null,
+    targetStartKg: null,
     activityEnergyKcal: null,
     shareGoal: false,
     wagonOn: false,
@@ -1513,6 +1524,7 @@ export function nutritionContextLines(input: {
     leanMassKg?: number | null;
     waistCm?: number | null;
   };
+  activity?: readonly ActivityReading[];
 }): string[] {
   const items = dayItems(input.logs, input.today);
   const totals = sumItems(items);
@@ -1576,6 +1588,24 @@ export function nutritionContextLines(input: {
       lines.push(`Protein today is ${totals.proteinG} g, ${mark} a target of ${input.settings.proteinTarget} g.`);
     }
     if (input.body?.weights.length) lines.push(weightTrendLine(input.body.weights, goal));
+  }
+  const targetKg = input.settings.targetWeightKg;
+  if (targetKg != null) {
+    const currentKg = input.body?.weightKg ?? null;
+    lines.push(...targetCoachLines({
+      targetKg,
+      currentKg,
+      direction: currentKg != null ? targetDirection(currentKg, targetKg) : null,
+      heightCm: input.body?.heightCm ?? null,
+    }));
+    if (currentKg != null) {
+      const plan = targetActivityPlan({
+        direction: targetDirection(currentKg, targetKg),
+        readings: input.activity ?? [],
+        today: input.today,
+      });
+      lines.push(...targetCoachActivityLines(plan));
+    }
   }
   return lines;
 }
@@ -2250,6 +2280,8 @@ export function suggestGoalTargets(input: {
   waistCm?: number | null;
   phase?: BuilderPhase | null;
   weightClassKg?: number | null;
+  /** Set when a private target weight is the goal. Preset goals leave this unset. */
+  targetPace?: 'lose' | 'hold' | 'gain' | null;
 }): { ok: true; suggestion: GoalSuggestion } | { ok: false; message: string } {
   if (input.weightKg == null || input.heightCm == null) {
     return { ok: false, message: missingGoalBodyMessage(input) ?? 'Add your weight and height' };
@@ -2278,7 +2310,7 @@ export function suggestGoalTargets(input: {
   const lossGoal = input.goal === 'lose_weight' || input.goal === 'lose_fat_build_muscle';
   const cutPhase = input.goal === 'body_builder' && phase === 'cut';
   const athleteFloor = input.goal === 'elite_runner' || input.goal === 'elite_middle_boxer' || isClassBoxer(input.goal) || cutPhase;
-  const blockedLoss = (lossGoal || athleteFloor) && bmi != null && bmi < LOW_BMI;
+  const blockedLoss = (lossGoal || athleteFloor || input.targetPace === 'lose') && bmi != null && bmi < LOW_BMI;
   let kcal = tdee;
   let classCut = false;
   if (!blockedLoss && input.goal === 'lose_weight') kcal = tdee - MODEST_ADJUSTMENT;
@@ -2300,6 +2332,12 @@ export function suggestGoalTargets(input: {
   if (classLimit != null && classLimit < input.weightKg - 0.5) {
     classCut = true;
     if (!blockedLoss && !lowFat) kcal = tdee - ATHLETE_DEFICIT;
+  }
+  if (input.targetPace) {
+    const gentle = Math.round((plannedWeeklyChangeKg(input.weightKg) * 7700) / 7);
+    if (input.targetPace === 'lose' && !blockedLoss) kcal = tdee - gentle;
+    if (input.targetPace === 'hold') kcal = tdee;
+    if (input.targetPace === 'gain') kcal = tdee + gentle;
   }
   kcal = Math.max(kcal, floor);
   const proteinBasis = proteinBasisKg({
@@ -2344,9 +2382,12 @@ export function suggestGoalTargets(input: {
       ? ` ${COMPETITION_NOTE} Check with a doctor before big changes.`
       : '';
   const carryLine = proteinBasis.usedHealthyWeight ? ` ${CARRYING_PROTEIN_NOTE}` : '';
+  const paceLine = input.targetPace && !blockedLoss
+    ? ` The target weight is paced at about ${plannedWeeklyChangeKg(input.weightKg)} kg a week. That stays inside a gentle range, and the suggestion will not go under the calorie floor.`
+    : '';
   const note = blockedLoss
     ? LOW_BMI_NOTE
-    : `A starting suggestion from the Mifflin-St Jeor equation. ${activityLine}${sexLine}${basisLine}${athleteLine}${liftLine}${carryLine}${safetyLine}${classLine} Change it if it does not suit you. This is not medical advice.`;
+    : `A starting suggestion from the Mifflin-St Jeor equation. ${activityLine}${sexLine}${basisLine}${athleteLine}${liftLine}${carryLine}${safetyLine}${classLine}${paceLine} Change it if it does not suit you. This is not medical advice.`;
   return {
     ok: true,
     suggestion: {

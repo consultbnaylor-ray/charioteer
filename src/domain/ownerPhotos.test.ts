@@ -7,8 +7,11 @@ import {
   OWNER_PHOTO_RESIGN_GAP_MS,
   OWNER_PHOTO_RESIGN_MS,
   OWNER_PHOTO_URL_SECONDS,
+  PHOTO_LOADING,
   PHOTO_RETRY,
   PHOTO_UNAVAILABLE,
+  shouldRefreshSignedUrl,
+  signedPhotoCacheKey,
   foodPhotoStoragePath,
   ownerPhotoErrorDelay,
   ownerPhotoIdentity,
@@ -67,14 +70,19 @@ describe('owner photo lifetimes', () => {
     expect(withSignedPreviewUrls(photos, new Map([['u/a.jpg', '']]))).toBe(photos);
   });
 
-  it('waits 1s, then 3s, then 8s after an image error, and then stops', () => {
-    expect(OWNER_PHOTO_ERROR_BACKOFF_MS).toEqual([1_000, 3_000, 8_000]);
-    expect(ownerPhotoErrorDelay(0)).toBe(1_000);
-    expect(ownerPhotoErrorDelay(1)).toBe(3_000);
-    expect(ownerPhotoErrorDelay(2)).toBe(8_000);
+  it('waits about ten seconds across three tries, and refreshes the link only once', () => {
+    expect(OWNER_PHOTO_ERROR_BACKOFF_MS).toEqual([2_000, 8_000]);
+    expect(ownerPhotoErrorDelay(0)).toBe(2_000);
+    expect(ownerPhotoErrorDelay(1)).toBe(8_000);
+    expect(ownerPhotoErrorDelay(2)).toBeNull();
     expect(ownerPhotoErrorDelay(3)).toBeNull();
     expect(ownerPhotoErrorDelay(-1)).toBeNull();
     expect(ownerPhotoErrorDelay(1.5)).toBeNull();
+    expect(shouldRefreshSignedUrl(0)).toBe(true);
+    expect(shouldRefreshSignedUrl(1)).toBe(false);
+    expect(PHOTO_LOADING).toBe('Loading photo…');
+    expect(signedPhotoCacheKey('https://example.test/storage/v1/object/sign/progress-photos/user/a.jpg?token=one', 'photo-1')).toBe('photo-1');
+    expect(signedPhotoCacheKey('https://example.test/storage/v1/object/sign/progress-photos/user/a.jpg?token=two')).toBe('progress-photos/user/a.jpg');
   });
 
   it('treats a new token as the same photo and a new path as a different one', () => {
@@ -96,7 +104,7 @@ describe('owner photo lifetimes', () => {
     const next = withSignedFoodPhotos(logs, new Map([['user-1/meal-1.jpg', 'new']]));
     expect(next[0]).toEqual({ id: 'meal-1', userId: 'user-1', previewUrl: 'new', note: 'Eggs' });
     expect(next[1]).toBe(logs[1]);
-    expect(PHOTO_UNAVAILABLE).toBe('Photo unavailable');
+    expect(PHOTO_UNAVAILABLE).toBe("Couldn't load this photo yet");
     expect(PHOTO_RETRY).toBe('Tap to retry');
   });
 
@@ -154,6 +162,9 @@ describe('owner photo refresh', () => {
     expect(again).toContain('OWNER_PHOTO_URL_SECONDS');
     expect(again).not.toContain('this.refresh(');
     expect(repo).toContain('this.ownerPhotosSignedAt = Date.now()');
+    expect(repo).toContain('SIGNED_URL_BATCH');
+    expect(repo).toContain('refreshSignedPhoto');
+    expect(repo).toContain('mergeSignedUrls');
     expect(layout).toContain('repo.resignOwnerPhotos()');
     expect(layout).not.toContain('resignOwnerPhotos({ force');
   });
@@ -161,13 +172,20 @@ describe('owner photo refresh', () => {
   it('asks for a fresh link after an image error and keeps a way to try again', () => {
     expect(retry).toContain('ownerPhotoErrorDelay');
     expect(retry).toContain('resignOwnerPhotos({ force: true })');
+    expect(retry).toContain('refreshSignedPhoto');
+    expect(retry).toContain('shouldRefreshSignedUrl');
     expect(retry).toContain('ownerPhotoIdentity');
     expect(retry).not.toContain('attempt < 1');
     expect(ownerPhoto).toContain('onError');
     expect(ownerPhoto).toContain('useSignedPhotoRetry');
+    expect(ownerPhoto).toContain('PHOTO_LOADING');
     expect(ownerPhoto).toContain('PHOTO_UNAVAILABLE');
     expect(ownerPhoto).toContain('PHOTO_RETRY');
     expect(ownerPhoto).toContain('retryState.retry');
+    expect(ownerPhoto).toContain('cachePolicy="memory-disk"');
+    expect(ownerPhoto).toContain('cacheKey');
+    expect(ownerPhoto).not.toContain("cachePolicy='none'");
+    expect(ownerPhoto).not.toContain('cachePolicy="none"');
     expect(ownerPhoto).not.toContain('attempt < 1');
     expect(ownerPhoto).not.toContain('if (!uri || failed) return null');
     expect(avatar).toContain('onError');
