@@ -7,20 +7,21 @@ import {
   GARMIN_CHECK_AGAIN,
   GARMIN_DATA_HINT,
   GARMIN_HISTORY_NOTE,
-  GARMIN_NO_NEW,
-  GARMIN_NO_NEW_MS,
+  GARMIN_PULL_TO_SYNC,
   GARMIN_RECENT,
   REFRESH_FAILED,
   SYNC_REFRESH,
   appleCheckIsFresh,
+  garminAfterCheckLine,
   garminCheckCooling,
   garminCheckFoundNew,
+  garminReceiptAdvanced,
   garminStoredMark,
   laterSyncClock,
   refreshCooling,
   syncAppleClause,
-  syncGarminClause,
   syncStatusShowsRefresh,
+  type GarminCheckView,
 } from '@/domain/healthRefresh';
 import { noteGarminRefreshRefused } from '@/domain/garminPermission';
 import { GarminPermissionNotice } from '@/ui/GarminPermissionNotice';
@@ -133,38 +134,49 @@ export function HealthRefreshBar({
   const showRefresh = syncStatusShowsRefresh({ appleCheckedAt, now: Date.now(), error: Boolean(error) });
   const [checking, setChecking] = useState(false);
   const [garminTick, setGarminTick] = useState(false);
-  const [noNew, setNoNew] = useState(false);
+  const [checkView, setCheckView] = useState<GarminCheckView>('idle');
+  const [checkedAt, setCheckedAt] = useState<string | null>(null);
+  const [nothingSince, setNothingSince] = useState<string | null>(null);
   const [seenPushAt, setSeenPushAt] = useState<string | null>(null);
   const receivedAt = laterSyncClock(garminReceivedAt, seenPushAt);
 
   useEffect(() => {
-    if (!noNew) return undefined;
-    const timer = setTimeout(() => setNoNew(false), GARMIN_NO_NEW_MS);
-    return () => clearTimeout(timer);
-  }, [noNew]);
+    if (checkView !== 'nothing') return;
+    if (!garminReceiptAdvanced(nothingSince, garminReceivedAt)) return;
+    setCheckView('idle');
+    setGarminTick(false);
+    setSeenPushAt(garminReceivedAt);
+  }, [checkView, garminReceivedAt, nothingSince]);
 
   const checkStored = useCallback(async () => {
     if (checking || garminCheckCooling(garminCheckFrom, Date.now())) return;
     garminCheckFrom = Date.now();
     setChecking(true);
-    setNoNew(false);
+    setCheckView('idle');
+    setGarminTick(false);
     try {
       const next = await repo.loadGarmin();
-      const found = garminCheckFoundNew(
-        { lastPushAt: receivedAt, mark: garminMark },
-        { connected: next.connected, lastPushAt: next.lastPushAt, mark: garminStoredMark(next) },
-      );
-      if (found) {
-        setGarminTick(true);
-        if (next.lastPushAt) setSeenPushAt(next.lastPushAt);
+      const at = new Date().toISOString();
+      if (!next.connected && next.lastPushAt == null) {
+        setCheckView('failed');
       } else {
-        setGarminTick(false);
-        setNoNew(true);
+        const found = garminCheckFoundNew(
+          { lastPushAt: receivedAt, mark: garminMark },
+          { connected: next.connected, lastPushAt: next.lastPushAt, mark: garminStoredMark(next) },
+        );
+        if (found) {
+          setCheckView('arrived');
+          setGarminTick(true);
+          if (next.lastPushAt) setSeenPushAt(next.lastPushAt);
+        } else {
+          setCheckView('nothing');
+          setCheckedAt(at);
+          setNothingSince(receivedAt);
+        }
       }
       reloadHealthSources();
     } catch {
-      setGarminTick(false);
-      setNoNew(true);
+      setCheckView('failed');
     } finally {
       setChecking(false);
     }
@@ -179,7 +191,7 @@ export function HealthRefreshBar({
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexShrink: 1 }}>
             <T>·</T>
             {garminTick ? <PlanTick done /> : null}
-            <T style={{ flexShrink: 1 }}>{syncGarminClause(receivedAt)}</T>
+            <T style={{ flexShrink: 1 }}>{garminAfterCheckLine({ view: checking ? 'idle' : checkView, checkedAt, receivedAt })}</T>
             <T>·</T>
             {checking ? (
               <ActivityIndicator accessibilityLabel="Checking Garmin" size="small" color={theme.colors.ink} />
@@ -217,8 +229,8 @@ export function HealthRefreshBar({
           </Pressable>
         ) : null}
       </View>
-      {noNew ? <T variant="muted">{GARMIN_NO_NEW}</T> : null}
       {garminConnected ? <T variant="muted">{GARMIN_DATA_HINT}</T> : null}
+      {checkView === 'nothing' && !checking ? <T variant="muted">{GARMIN_PULL_TO_SYNC}</T> : null}
       {history ? <T variant="muted">{GARMIN_HISTORY_NOTE}</T> : null}
       {garminNote ? <T variant="muted">{garminNote}</T> : null}
       {permission ? <GarminPermissionNotice force /> : null}

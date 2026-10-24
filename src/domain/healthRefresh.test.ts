@@ -4,11 +4,15 @@ import { describe, expect, it } from 'vitest';
 import {
   GARMIN_CHECK_AGAIN,
   GARMIN_CHECK_DEBOUNCE_MS,
+  GARMIN_CHECK_FAILED,
   GARMIN_DATA_HINT,
   GARMIN_HISTORY_NOTE,
-  GARMIN_NO_NEW,
-  GARMIN_NO_NEW_MS,
+  GARMIN_JUST_ARRIVED,
+  GARMIN_PULL_TO_SYNC,
   GARMIN_WAITING,
+  garminAfterCheckLine,
+  garminNothingNewLine,
+  syncClock,
   REFRESH_APPLE,
   REFRESH_BOTH,
   SYNC_REFRESH,
@@ -58,9 +62,20 @@ describe('manual health refresh', () => {
     expect(readFileSync('src/ui/HealthRefresh.tsx', 'utf8')).not.toMatch(/up to date/i);
     expect(readFileSync('src/domain/healthRefresh.ts', 'utf8')).not.toMatch(/up to date/i);
     expect(GARMIN_CHECK_AGAIN).toBe('Check again');
-    expect(GARMIN_NO_NEW).toBe('No new Garmin data yet');
+    expect(GARMIN_JUST_ARRIVED).toBe('New Garmin data just arrived');
+    expect(GARMIN_PULL_TO_SYNC).toBe('Pull down in Garmin Connect to sync your watch.');
+    expect(GARMIN_CHECK_FAILED).toBe("Couldn't check stored Garmin data just now.");
     expect(GARMIN_CHECK_DEBOUNCE_MS).toBe(10_000);
-    expect(GARMIN_NO_NEW_MS).toBe(4_000);
+    const checked = '2026-10-24T06:45:00Z';
+    const received = '2026-10-23T22:24:00Z';
+    expect(garminNothingNewLine(checked, received)).toBe(`Checked ${syncClock(checked)} · nothing new from Garmin since ${syncClock(received)}`);
+    expect(garminNothingNewLine(checked, received)).toMatch(/^Checked \d{2}:\d{2} · nothing new from Garmin since \d{2}:\d{2}$/);
+    expect(garminNothingNewLine(checked, null)).toBe(`Checked ${syncClock(checked)} · nothing new from Garmin`);
+    expect(garminAfterCheckLine({ view: 'arrived', checkedAt: checked, receivedAt: received })).toBe(GARMIN_JUST_ARRIVED);
+    expect(garminAfterCheckLine({ view: 'nothing', checkedAt: checked, receivedAt: received })).toBe(garminNothingNewLine(checked, received));
+    expect(garminAfterCheckLine({ view: 'failed', checkedAt: checked, receivedAt: received })).toBe(GARMIN_CHECK_FAILED);
+    expect(garminAfterCheckLine({ view: 'idle', checkedAt: null, receivedAt: received })).toBe(`Garmin data received ${syncClock(received)}`);
+    expect(garminAfterCheckLine({ view: 'idle', checkedAt: null, receivedAt: null })).toBe(GARMIN_WAITING);
     expect(garminCheckCooling(1_000, 1_000 + 9_999)).toBe(true);
     expect(garminCheckCooling(1_000, 1_000 + 10_000)).toBe(false);
     const earlier = '2026-10-23T21:40:00Z';
@@ -130,10 +145,14 @@ describe('manual health refresh', () => {
     expect(bar).toContain('<PlanTick done />');
     expect(bar).toContain('SYNC_REFRESH');
     expect(bar).toContain('GARMIN_DATA_HINT');
+    expect(bar).toContain('GARMIN_PULL_TO_SYNC');
+    expect(bar).toContain('garminAfterCheckLine');
     expect(bar).toContain('appleCheckIsFresh');
     expect(bar).toContain('GARMIN_CHECK_AGAIN');
     expect(bar).toContain('loadGarmin');
     expect(bar).toContain('ActivityIndicator');
+    expect(bar).toContain('accessibilityLabel="Checking Garmin"');
+    expect(bar).not.toContain('garmin-refresh');
     const checkStart = bar.indexOf('const checkStored');
     const check = bar.slice(checkStart, bar.indexOf('reloadHealthSources()', checkStart));
     expect(check).toContain('repo.loadGarmin()');

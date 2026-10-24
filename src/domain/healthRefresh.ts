@@ -30,13 +30,17 @@ export const GARMIN_WAITING = 'Garmin: waiting for first data';
 /** Re-read the Garmin rows already stored here. It does not ask Garmin. */
 export const GARMIN_CHECK_AGAIN = 'Check again';
 
-export const GARMIN_NO_NEW = 'No new Garmin data yet';
+/** Shown on the status line when a re-read finds a later push. */
+export const GARMIN_JUST_ARRIVED = 'New Garmin data just arrived';
+
+/** Added under the standing hint when the re-read found the same push. */
+export const GARMIN_PULL_TO_SYNC = 'Pull down in Garmin Connect to sync your watch.';
+
+/** A re-read that did not come back. It does not claim Garmin sent nothing. */
+export const GARMIN_CHECK_FAILED = "Couldn't check stored Garmin data just now.";
 
 /** Ignore another Check again until this long after the last one started. */
 export const GARMIN_CHECK_DEBOUNCE_MS = 10_000;
-
-/** How long the “nothing new” note stays up. */
-export const GARMIN_NO_NEW_MS = 4_000;
 
 /** Always shown under the status line while Garmin is connected. */
 export const GARMIN_DATA_HINT = 'New Garmin data arrives after your watch syncs with Garmin Connect.';
@@ -77,6 +81,31 @@ export function syncAppleClause(appleCheckedAt: string | null): string {
 export function syncGarminClause(garminReceivedAt: string | null): string {
   const garmin = syncClock(garminReceivedAt);
   return garmin ? `Garmin data received ${garmin}` : GARMIN_WAITING;
+}
+
+/** `Checked 07:45 · nothing new from Garmin since 23:24`. No clock means there has not been a push yet. */
+export function garminNothingNewLine(checkedAt: string, receivedAt: string | null): string {
+  const checked = syncClock(checkedAt) ?? '—';
+  const since = syncClock(receivedAt);
+  if (since) return `Checked ${checked} · nothing new from Garmin since ${since}`;
+  return `Checked ${checked} · nothing new from Garmin`;
+}
+
+export type GarminCheckView = 'idle' | 'arrived' | 'nothing' | 'failed';
+
+/**
+ * The Garmin half of the status line after Check again.
+ * Idle keeps the last push time. A check only reads what is already stored.
+ */
+export function garminAfterCheckLine(input: {
+  view: GarminCheckView;
+  checkedAt: string | null;
+  receivedAt: string | null;
+}): string {
+  if (input.view === 'arrived') return GARMIN_JUST_ARRIVED;
+  if (input.view === 'nothing' && input.checkedAt) return garminNothingNewLine(input.checkedAt, input.receivedAt);
+  if (input.view === 'failed') return GARMIN_CHECK_FAILED;
+  return syncGarminClause(input.receivedAt);
 }
 
 /**
