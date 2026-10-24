@@ -40,6 +40,7 @@ import type { AppleHealthAccess } from '@/health/connection';
 import { readAppleHealthAccess } from '@/health/link';
 import { ReadingChart } from '@/ui/ReadingChart';
 import { MeasureRingView } from '@/ui/MeasuredFigure';
+import { IconLabel } from '@/ui/statIcons';
 import { PlanTick } from '@/ui/PlanTick';
 import { statsToneColors } from '@/ui/statsPalette';
 import { useAppTheme } from '@/ui/theme';
@@ -120,6 +121,7 @@ export function YourFitness({ onPlanOutdoor }: { onPlanOutdoor?: () => void }) {
       {view.cardio ? (
         <View style={{ alignItems: 'center', gap: 6 }}>
           <MeasureRingView
+            icon="gauge"
             label="Cardio fitness"
             ring={{
               centre: view.cardio.centre,
@@ -147,6 +149,7 @@ export function YourFitness({ onPlanOutdoor }: { onPlanOutdoor?: () => void }) {
       {view.minutes ? (
         <View style={{ alignSelf: 'stretch', gap: 6 }}>
           <MeasureRingView
+            icon="timer"
             label="Active minutes"
             ring={{
               centre: view.minutes.centre,
@@ -165,7 +168,7 @@ export function YourFitness({ onPlanOutdoor }: { onPlanOutdoor?: () => void }) {
       ) : null}
       {view.resting ? (
         <View style={{ gap: 6 }}>
-          <T variant="label">Resting heart rate</T>
+          <IconLabel name="heart">Resting heart rate</IconLabel>
           <T style={{ color: view.resting.neutral ? theme.colors.ink : ink(view.resting.tone), fontFamily: theme.font.bodyStrong }}>
             {view.resting.reading ? `${view.resting.reading} · ` : ''}{view.resting.period ? `${view.resting.period} · ` : ''}{view.resting.signal ?? (view.resting.tone === 'watch' ? 'Watch' : 'On track')}
           </T>
@@ -341,6 +344,7 @@ function CardioDetail({
       <T>{VO2_WHAT}</T>
       {cardio ? (
         <MeasureRingView
+          icon="gauge"
           label="Cardio fitness"
           ring={{
             centre: cardio.centre,
@@ -370,6 +374,7 @@ function MinutesDetail({ view, goal }: { view: FitnessSnapshot; goal: NutritionG
       <T variant="label">What this is</T>
       <T>{MINUTES_WHAT}</T>
       <MeasureRingView
+        icon="timer"
         label="Active minutes"
         ring={{
           centre: minutes.centre,

@@ -26,6 +26,7 @@ import { BodyCompositionCard } from '@/ui/BodyComposition';
 import { ScrollTarget } from '@/ui/ScrollTarget';
 import { StatPeriodToggle } from '@/ui/StatPeriodToggle';
 import { WEIGHT_WAIST_TITLE } from '@/ui/WeightWaistLink';
+import { IconLabel } from '@/ui/statIcons';
 import { Button, Card, ErrorNote, Screen, T, playSavedHaptic } from '@/ui/ui';
 
 /**
@@ -222,7 +223,7 @@ export default function WeightWaistScreen() {
       </ScrollTarget>
       <ScrollTarget id="weight-chart">
         <Card>
-          <T variant="label">Weight</T>
+          <IconLabel name="scale">Weight</IconLabel>
           <HealthFigureView
             figure={healthFigure(
               'weight_kg',

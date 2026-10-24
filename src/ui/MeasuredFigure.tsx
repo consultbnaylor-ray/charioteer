@@ -1,17 +1,19 @@
 import { View } from 'react-native';
 
 import type { HealthFigure, MeasureBars, MeasureRing, MeasureSplit, MeasureZone } from '@/domain/measureFigures';
+import type { StatIcon } from '@/domain/statIcons';
 import { CompareBars, ProgressRing, RangeTrack } from '@/ui/DistanceCharts';
+import { IconLabel } from '@/ui/statIcons';
 import { statsToneColors } from '@/ui/statsPalette';
 import { useAppTheme } from '@/ui/theme';
 import { T } from '@/ui/ui';
 
 /** Ring, note, and the plain-words line. The same arrangement as Energy today. */
-export function MeasureRingView({ label, ring, detail }: { label: string; ring: MeasureRing; detail?: string }) {
+export function MeasureRingView({ label, ring, detail, icon }: { label: string; ring: MeasureRing; detail?: string; icon?: StatIcon }) {
   const caption = detail ? `${ring.centre} ${ring.unit}. ${ring.status}. ${detail}` : undefined;
   return (
     <View style={{ alignItems: 'center', gap: 4, alignSelf: 'stretch' }}>
-      <T variant="label">{label}</T>
+      {icon ? <IconLabel name={icon}>{label}</IconLabel> : <T variant="label">{label}</T>}
       <ProgressRing
         centre={ring.centre}
         unit={ring.unit}

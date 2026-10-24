@@ -49,6 +49,8 @@ import { useStatPeriod } from '@/health/useStatPeriod';
 import { openAppSettings } from '@/health/link';
 import { StatPeriodToggle } from '@/ui/StatPeriodToggle';
 import { useAppTheme } from '@/ui/theme';
+import { activityTitleIcon } from '@/domain/statIcons';
+import { IconLabel } from '@/ui/statIcons';
 import { Button, T } from '@/ui/ui';
 
 const BAR_HEIGHT = 88;
@@ -360,6 +362,7 @@ function ActivityBars({
   onSelect: (day: string) => void;
 }) {
   const theme = useAppTheme();
+  const icon = activityTitleIcon(title);
   const most = chartPeak(points, guide);
   const scaleLine = scale === undefined ? mostInOneDay(points, unit) : scale;
   const band = guide?.dailyTypical ?? null;
@@ -379,7 +382,7 @@ function ActivityBars({
 
   return (
     <View style={{ gap: 8 }}>
-      <T variant="label">{title}</T>
+      {icon ? <IconLabel name={icon}>{title}</IconLabel> : <T variant="label">{title}</T>}
       {scaleLine ? <T variant="muted">{scaleLine}</T> : null}
       {garminNote ? <T variant="muted">{garminNote}</T> : null}
       {guide?.legend ? <T variant="muted">{guide.legend}</T> : null}

@@ -34,8 +34,28 @@ import { workoutSourceLine } from '@/domain/healthSources';
 import { readDeviceRoute } from '@/health/workoutRoute';
 import { RouteBoundary } from '@/ui/RouteBoundary';
 import { RouteMap } from '@/ui/RouteMap';
+import { IconLine, type StatIcon } from '@/ui/statIcons';
 import { useAppTheme } from '@/ui/theme';
 import { Button, Choice, Screen, T } from '@/ui/ui';
+
+function StatRows({ stats }: { stats: NonNullable<ReturnType<typeof buildRouteStats>> }) {
+  const rows: { icon: StatIcon; label: string; text: string; muted?: boolean }[] = [
+    { icon: 'ruler', label: 'Distance', text: stats.distanceLabel, muted: !stats.distanceRecorded },
+    { icon: 'timer', label: 'Duration', text: stats.durationLabel },
+    { icon: 'gauge', label: 'Average pace', text: stats.paceLabel, muted: !stats.paceRecorded },
+    { icon: 'heart', label: 'Average heart rate', text: stats.heartLabel },
+  ];
+  if (stats.calorieLabel) rows.push({ icon: 'flame', label: 'Calories', text: stats.calorieLabel });
+  return (
+    <View style={{ gap: 2 }}>
+      {rows.map((row) => (
+        <IconLine key={row.label} name={row.icon} label={row.label} muted={row.muted}>
+          {row.text}
+        </IconLine>
+      ))}
+    </View>
+  );
+}
 
 function splitCopy(split: RouteSplit): string[] {
   return [
@@ -186,11 +206,7 @@ function WorkoutRouteBody() {
               <RouteMap points={points} active={active.length > 1 ? active : points} onProblem={report} />
             </RouteBoundary>
           )}
-          <T>{stats.distanceLabel}</T>
-          <T>{stats.durationLabel}</T>
-          <T>{stats.paceLabel}</T>
-          <T>{stats.heartLabel}</T>
-          {stats.calorieLabel ? <T>{stats.calorieLabel}</T> : null}
+          <StatRows stats={stats} />
           <T variant="label">Splits</T>
           {stats.splits.map((split, index) => {
             const on = selected === index;

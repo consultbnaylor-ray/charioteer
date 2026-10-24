@@ -19,6 +19,11 @@ export const ROUTE_LOAD_ERROR = 'Route not available';
 /** Shown when the read finished and Health had no path. Not an error. */
 export const ROUTE_NONE = 'No route recorded for this workout.';
 
+/** Shown when the workout has no distance. Not a measured zero. */
+export const DISTANCE_NOT_RECORDED = 'Distance: not recorded';
+/** Pace needs a distance. It is not shown as a measurement when none was recorded. */
+export const PACE_NOT_RECORDED = 'Average pace: not recorded';
+
 /** The route screen shows the unavailable line when a query or the map failed. */
 export function routeUnavailable(state: {
   ready: boolean;
@@ -116,6 +121,8 @@ export type RouteSplit = {
 
 export type RouteStats = {
   unit: DistanceUnit;
+  distanceRecorded: boolean;
+  paceRecorded: boolean;
   distanceLabel: string;
   durationLabel: string;
   paceLabel: string;
@@ -298,11 +305,16 @@ export function buildRouteStats(input: {
   const average = input.averageHeartRate && input.averageHeartRate > 30
     ? Math.round(input.averageHeartRate)
     : heartIn(points, samples, marks[0]?.t ?? 0, marks.at(-1)?.t ?? 0);
+  const distanceRecorded = totalMetres > 1;
+  const pace = distanceRecorded ? paceLabel(elapsed, totalMetres, unit) : 'Pace not available';
+  const paceRecorded = distanceRecorded && pace !== 'Pace not available';
   return {
     unit,
-    distanceLabel: `Distance ${formatDistance(totalMetres, unit)}`,
+    distanceRecorded,
+    paceRecorded,
+    distanceLabel: distanceRecorded ? `Distance ${formatDistance(totalMetres, unit)}` : DISTANCE_NOT_RECORDED,
     durationLabel: `Duration ${formatClock(elapsed)}`,
-    paceLabel: `Average pace ${paceLabel(elapsed, totalMetres, unit)}`,
+    paceLabel: paceRecorded ? `Average pace ${pace}` : PACE_NOT_RECORDED,
     heartLabel: average == null ? 'Average heart rate not available' : `Average heart rate ${average} bpm`,
     calorieLabel: input.energyKcal != null && input.energyKcal > 0 ? `Calories ${Math.round(input.energyKcal)} kcal` : null,
     splits,

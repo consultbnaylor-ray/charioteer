@@ -17,6 +17,8 @@ import { latestVo2Day, latestVo2Reading, VO2_APPLE_PART, VO2_ESTIMATE_NOTE, VO2_
 import { messageAlert } from '../../supabase/functions/_shared/messagePush';
 import {
   DEV_FIXTURE_ROUTE_ID,
+  DISTANCE_NOT_RECORDED,
+  PACE_NOT_RECORDED,
   ROUTE_LOAD_ERROR,
   ROUTE_MAP_TIMEOUT,
   ROUTE_NONE,
@@ -562,9 +564,13 @@ describe('workout routes stay on the phone', () => {
       heartSamples: [],
     });
     expect(empty.splits).toEqual([]);
-    expect(empty.distanceLabel).toBe('Distance 0 km');
+    expect(empty.distanceRecorded).toBe(false);
+    expect(empty.paceRecorded).toBe(false);
+    expect(empty.distanceLabel).toBe(DISTANCE_NOT_RECORDED);
+    expect(empty.distanceLabel).toBe('Distance: not recorded');
     expect(empty.durationLabel).toBe('Duration 33:00');
-    expect(empty.paceLabel).toBe('Average pace Pace not available');
+    expect(empty.paceLabel).toBe(PACE_NOT_RECORDED);
+    expect(empty.paceLabel).toBe('Average pace: not recorded');
     expect(empty.heartLabel).toBe('Average heart rate not available');
     expect(empty.calorieLabel).toBe('Calories 210 kcal');
     const fromWorkout = buildRouteStats({
@@ -574,6 +580,8 @@ describe('workout routes stay on the phone', () => {
       energyKcal: 210,
       distanceMetres: 3200,
     });
+    expect(fromWorkout.distanceRecorded).toBe(true);
+    expect(fromWorkout.paceRecorded).toBe(true);
     expect(fromWorkout.distanceLabel).toBe('Distance 3.2 km');
     expect(fromWorkout.paceLabel).toBe('Average pace 10:19 / km');
     expect(fromWorkout.splits).toEqual([]);

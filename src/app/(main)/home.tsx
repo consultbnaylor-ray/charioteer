@@ -19,6 +19,7 @@ import { countSplit, drinkFreeFigure, soberFigure } from '@/domain/measureFigure
 import { daysUntil, drinkFreeThisWeek, showsSoberRecord, SUDDEN_STOP_WARNING, toggleDrinkFreeDay } from '@/domain/stage';
 import { CheckInWeek } from '@/ui/CheckInWeek';
 import { MeasureRingView, MeasureSplitView } from '@/ui/MeasuredFigure';
+import { IconLabel } from '@/ui/statIcons';
 import { SoberSectionShare } from '@/ui/SectionShare';
 import { ShareOnProfile } from '@/ui/ShareOnProfile';
 import { UnitsGuide } from '@/ui/UnitsGuide';
@@ -161,7 +162,7 @@ export default function Home() {
       <Card onPress={openCorrection} accessibilityLabel="Correct the sober start date">
         <EditMark label="Sober" />
         {elapsed && started ? (
-          <MeasureRingView label="Sober days" ring={soberFigure(started, now)} />
+          <MeasureRingView icon="day" label="Sober days" ring={soberFigure(started, now)} />
         ) : (
           <T variant="title">Set a start date</T>
         )}
@@ -197,7 +198,7 @@ export default function Home() {
         {profile.stage === 'cutting_down' ? (
           <>
             <T variant="label">Cutting down</T>
-            <MeasureRingView label="Drink-free days" ring={drinkFreeFigure(freeThisWeek, profile.drinkFreeDaysGoal)} />
+            <MeasureRingView icon="day" label="Drink-free days" ring={drinkFreeFigure(freeThisWeek, profile.drinkFreeDaysGoal)} />
             <MeasureSplitView label="This week" split={countSplit(freeThisWeek, 7, 'drink-free days', 'days not marked')} />
             {profile.weeklyUnitsGoal != null ? <T variant="muted">Units goal: {profile.weeklyUnitsGoal} a week.</T> : null}
             <Button
@@ -271,12 +272,12 @@ export default function Home() {
         <CheckInWeek days={week} />
       </Card>
       <Card>
-        <T variant="label">Today</T>
+        <IconLabel name="day">Today</IconLabel>
         <T>{checkedToday ? `Mood ${today.mood}/10 · craving ${today.craving}/10. You can add another if the day changed shape.` : 'A check-in takes a few seconds: mood, sleep, craving.'}</T>
         <Button label={checkedToday ? 'Update check-in' : 'Check in'} tone="quiet" onPress={() => router.push('/check-in' as never)} />
       </Card>
       <Card>
-        <T variant="label">Health Stats</T>
+        <IconLabel name="pulse">Health Stats</IconLabel>
         {healthHeadlines.length === 0 ? (
           <T variant="muted">Not enough readings yet to compare this week with the one before.</T>
         ) : (

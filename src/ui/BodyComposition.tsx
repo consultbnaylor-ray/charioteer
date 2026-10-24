@@ -32,6 +32,7 @@ import { RangeTrack } from '@/ui/DistanceCharts';
 import { MeasureRingView } from '@/ui/MeasuredFigure';
 import { DateField } from '@/ui/DateField';
 import { usePendingPress } from '@/ui/pendingAction';
+import { IconLabel } from '@/ui/statIcons';
 import { Button, Card, Choice, Field, QuietNote, T, playSavedHaptic } from '@/ui/ui';
 
 /**
@@ -169,7 +170,7 @@ export function BodyCompositionCard() {
 
   return (
     <Card>
-      <T variant="label">Body</T>
+      <IconLabel name="body">Body</IconLabel>
       <T variant="muted">{BODY_FAT_SOURCE_NOTE}</T>
       <T variant="muted">A saved body-fat reading is used before waist-to-height, and waist-to-height before BMI. This is not a diagnosis, and body fat is not estimated from a photo.</T>
       <BuildChoices />

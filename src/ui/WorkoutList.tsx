@@ -49,6 +49,7 @@ import {
 import { routeSummaryLine, type DeviceWorkout } from '@/domain/workoutRoute';
 import { workoutTypeColor } from '@/domain/workoutTypeColor';
 import { DailyActivityCharts } from '@/ui/DailyActivity';
+import { StatGlyph, workoutStatIcon, type StatIcon } from '@/ui/statIcons';
 import { radius, useAppTheme } from '@/ui/theme';
 import { Card, Choice, T } from '@/ui/ui';
 
@@ -79,12 +80,17 @@ function dayNumber(day: string): string {
 
 function WorkoutRow({ workout, routeDetail = false }: { workout: DeviceWorkout; routeDetail?: boolean }) {
   const router = useRouter();
+  const theme = useAppTheme();
   const line = workoutRowLine(workout);
   const stats = routeDetail ? routeSummaryLine(workout) : null;
+  const glyph = workoutStatIcon(workout.activityType);
   if (!workout.routeExpected) {
     return (
-      <View style={{ minHeight: 44, justifyContent: 'center' }}>
-        <T numberOfLines={1}>{line}</T>
+      <View style={{ minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+        <View style={{ width: 28, alignItems: 'center', flexShrink: 0 }}>
+          <StatGlyph name={glyph} color={theme.colors.muted} label={workout.label} />
+        </View>
+        <T style={{ flex: 1, minWidth: 0 }}>{line}</T>
       </View>
     );
   }
@@ -93,6 +99,8 @@ function WorkoutRow({ workout, routeDetail = false }: { workout: DeviceWorkout; 
       label={`View route, ${line}`}
       title={workout.label}
       detail={workoutHistoryDetail(workout)}
+      glyph={glyph}
+      glyphLabel={workout.label}
       onPress={() => router.push(`/workout/${encodeURIComponent(workout.id)}` as never)}
       extra={stats ? <T>{stats}</T> : routeDetail ? <T style={{ textDecorationLine: 'underline' }}>View route</T> : null}
     />
@@ -106,6 +114,8 @@ function TapRow({
   onPress,
   expanded,
   extra,
+  glyph,
+  glyphLabel,
 }: {
   label: string;
   title: string;
@@ -113,6 +123,8 @@ function TapRow({
   onPress: () => void;
   expanded?: boolean;
   extra?: ReactNode;
+  glyph?: StatIcon | null;
+  glyphLabel?: string;
 }) {
   const theme = useAppTheme();
   return (
@@ -135,12 +147,17 @@ function TapRow({
         backgroundColor: pressed ? theme.colors.emphasisSoft : theme.colors.surface,
       })}
     >
-      <View style={{ flex: 1, gap: 2 }}>
+      {glyph ? (
+        <View style={{ width: 28, alignItems: 'center', flexShrink: 0 }}>
+          <StatGlyph name={glyph} color={theme.colors.muted} label={glyphLabel ?? title} />
+        </View>
+      ) : null}
+      <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
         <T style={{ fontFamily: theme.font.bodyStrong }}>{title}</T>
         {detail ? <T variant="muted">{detail}</T> : null}
         {extra}
       </View>
-      <T style={{ fontSize: 22, lineHeight: 26 }}>{ROUTE_MARK}</T>
+      <T style={{ fontSize: 22, lineHeight: 26, flexShrink: 0 }}>{ROUTE_MARK}</T>
     </Pressable>
   );
 }
@@ -420,6 +437,8 @@ function WorkoutHistory({
             label={`${line}. Open workout.`}
             title={workout.label}
             detail={workoutHistoryDetail(workout)}
+            glyph={workoutStatIcon(workout.activityType)}
+            glyphLabel={workout.label}
             onPress={() => router.push(`/workout/${encodeURIComponent(workout.id)}` as never)}
           />
         );

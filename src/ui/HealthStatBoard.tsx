@@ -38,6 +38,8 @@ import { GoalLine } from '@/ui/GoalLine';
 import { statsToneColors } from '@/ui/statsPalette';
 import { useAppTheme } from '@/ui/theme';
 import { Vo2EstimateNote } from '@/ui/Vo2EstimateNote';
+import { healthTileIcon } from '@/domain/statIcons';
+import { IconLabel } from '@/ui/statIcons';
 import { Button, Card, Choice, Field, QuietNote, T, playSavedHaptic } from '@/ui/ui';
 
 export type HealthTurnOnResult = AppleHealthTurnOn | 'consent';
@@ -273,6 +275,7 @@ function StatTile({
   onOpen: () => void;
 }) {
   const theme = useAppTheme();
+  const icon = healthTileIcon(tile.id);
   const charted = tile.readings.length > 0;
   const spoken = `More info about ${tile.title}. ${valueWithPeriod(tile)}. ${tile.weeklyLine ?? ''} ${tile.mark}. ${tile.status}`;
   return (
@@ -290,7 +293,7 @@ function StatTile({
       }}
     >
       <Pressable accessibilityRole="button" accessibilityLabel={spoken} onPress={onOpen} style={{ gap: 6 }}>
-        <T variant="label">{tile.title}</T>
+        {icon ? <IconLabel name={icon}>{tile.title}</IconLabel> : <T variant="label">{tile.title}</T>}
         <TileValue tile={tile} />
         {tile.empty ? null : <TileVisual visual={tile.visual} charted={charted} />}
         {tile.empty || tile.visual.kind === 'ring' || tile.visual.kind === 'zone' ? null : (

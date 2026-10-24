@@ -44,6 +44,7 @@ import { ShareOnProfile } from '@/ui/ShareOnProfile';
 import { HealthChart } from '@/ui/HealthChart';
 import { ScrollTarget } from '@/ui/ScrollTarget';
 import { useAppTheme } from '@/ui/theme';
+import { IconLabel } from '@/ui/statIcons';
 import { Card, Choice, Field, playSavedHaptic, T } from '@/ui/ui';
 
 export function HealthBoard({
@@ -237,7 +238,7 @@ function MetricCard({
 
   const measurements = kind === 'weight_kg' && weightPart !== 'charts' ? (
     <View style={{ gap: 6 }}>
-      <T variant="label">Measurements</T>
+      <IconLabel name="ruler">Measurements</IconLabel>
       <WeightFields
         canSave={canSaveHeight}
         heightText={heightText}
