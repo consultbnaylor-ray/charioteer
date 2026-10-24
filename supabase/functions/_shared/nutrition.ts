@@ -1193,6 +1193,22 @@ export function mealLoggingLabel(day: string, now: Date): string {
   return `Logging for ${mealDayTitle(day, londonDay(now))}`;
 }
 
+/** Ben's sentence. Shown only while Estimate from text and the photo buttons are on the log card. */
+export const MEAL_LOG_INTRO_AI = 'Describe the meal, or use a photo and AI will estimate the nutritional values for you.';
+
+/** Used when those buttons are hidden, so the line does not mention a photo or an AI estimate. */
+export const MEAL_LOG_INTRO_MANUAL = 'Describe the meal, then enter it yourself.';
+
+/**
+ * One sentence between the logging day and the description box.
+ * Pass true only when the estimate and photo buttons are rendered.
+ * Coach consent hides those buttons, because the model will not read the meal.
+ * The personal-data switch does not hide them: the server still returns a local estimate, and this screen cannot see that switch.
+ */
+export function mealLogIntro(offersAiEstimate: boolean): string {
+  return offersAiEstimate ? MEAL_LOG_INTRO_AI : MEAL_LOG_INTRO_MANUAL;
+}
+
 export function mealAddedLabel(day: string, now: Date): string {
   return `Added to ${mealDayTitle(day, londonDay(now))}, see below`;
 }

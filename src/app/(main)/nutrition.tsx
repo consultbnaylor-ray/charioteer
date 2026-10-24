@@ -45,6 +45,7 @@ import {
   mealDayGroups,
   mealEatenStamp,
   mealLoggingLabel,
+  mealLogIntro,
   mealLogWindow,
   MEAL_SHOW_MORE,
   mealWeeksAfterShowMore,
@@ -992,6 +993,9 @@ export default function Nutrition() {
     ? snap.foodLogs.find((log) => log.id === editingId || log.id === confirmId) ?? null
     : null;
 
+  // Without coach consent the model will not read the meal, so the estimate and photo buttons stay off.
+  const offersMealAi = profile?.consentAi === true;
+
   const photoNote = draft?.source === 'photo'
     ? goalMealNote({
       goal: settings.goal,
@@ -1029,19 +1033,24 @@ export default function Nutrition() {
           earliestDate={parseIsoDay(logWindow.earliest)}
         />
         <T>{mealLoggingLabel(logDay, new Date())}</T>
+        <T>{mealLogIntro(offersMealAi)}</T>
         <Field label="Describe the meal" value={text} onChangeText={setText} placeholder="2 eggs on toast" />
-        <Button label="Estimate from text" pending={isPending('estimate')} pendingLabel="Estimating..." onPress={readText} />
-        <MealEstimateStatus
-          waiting={isPending('estimate') || isPending('photo') || isPending('sample')}
-          ready={estimateReady && draft?.estimated === true}
-          error={estimateError}
-          onRetry={retryEstimate}
-          onShow={estimateReady && draft?.estimated === true ? scrollToEstimate : undefined}
-        />
-        <Button label="Take a photo" tone="quiet" pending={isPending('photo')} pendingLabel="Estimating..." onPress={() => readPhoto('camera')} />
-        <Button label="Choose a photo" tone="quiet" pending={isPending('photo')} pendingLabel="Estimating..." onPress={() => readPhoto('library')} />
-        {snap.mode === 'demo' ? (
-          <Button label="Use a sample photo" tone="quiet" pending={isPending('sample')} pendingLabel="Estimating..." onPress={samplePhoto} />
+        {offersMealAi ? (
+          <>
+            <Button label="Estimate from text" pending={isPending('estimate')} pendingLabel="Estimating..." onPress={readText} />
+            <MealEstimateStatus
+              waiting={isPending('estimate') || isPending('photo') || isPending('sample')}
+              ready={estimateReady && draft?.estimated === true}
+              error={estimateError}
+              onRetry={retryEstimate}
+              onShow={estimateReady && draft?.estimated === true ? scrollToEstimate : undefined}
+            />
+            <Button label="Take a photo" tone="quiet" pending={isPending('photo')} pendingLabel="Estimating..." onPress={() => readPhoto('camera')} />
+            <Button label="Choose a photo" tone="quiet" pending={isPending('photo')} pendingLabel="Estimating..." onPress={() => readPhoto('library')} />
+            {snap.mode === 'demo' ? (
+              <Button label="Use a sample photo" tone="quiet" pending={isPending('sample')} pendingLabel="Estimating..." onPress={samplePhoto} />
+            ) : null}
+          </>
         ) : null}
         <View style={{ gap: 8 }}>
         <Button

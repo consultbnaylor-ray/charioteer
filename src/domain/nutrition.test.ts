@@ -31,6 +31,9 @@ import {
   mealDayTitle,
   mealEatenStamp,
   mealLogDayAllowed,
+  mealLogIntro,
+  MEAL_LOG_INTRO_AI,
+  MEAL_LOG_INTRO_MANUAL,
   mealLoggingLabel,
   mealLogWindow,
   MEAL_LOG_LOOKBACK_DAYS,
@@ -2202,6 +2205,10 @@ describe('logging a meal on another day', () => {
     expect(mealLogDayAllowed('2026-09-17', midnight)).toBe(false);
     expect(mealDayChangeAllowed('2026-08-01', '2026-08-01', midnight)).toBe(true);
     expect(mealLoggingLabel('2026-10-16', midnight)).toBe('Logging for Fri 16 Oct');
+    expect(mealLogIntro(true)).toBe(MEAL_LOG_INTRO_AI);
+    expect(MEAL_LOG_INTRO_AI).toBe('Describe the meal, or use a photo and AI will estimate the nutritional values for you.');
+    expect(mealLogIntro(false)).toBe(MEAL_LOG_INTRO_MANUAL);
+    expect(MEAL_LOG_INTRO_MANUAL).not.toMatch(/\bAI\b|photo/i);
     expect(mealAddedLabel('2026-10-16', midnight)).toBe('Added to Fri 16 Oct, see below');
   });
 
@@ -2248,6 +2255,20 @@ describe('logging a meal on another day', () => {
     expect(log).toContain('label="Yesterday"');
     expect(log).toContain('label="Earlier day"');
     expect(log).toContain('mealLoggingLabel(logDay, new Date())');
+    const dayLine = log.indexOf('<T>{mealLoggingLabel(logDay, new Date())}</T>');
+    const introLine = log.indexOf('<T>{mealLogIntro(offersMealAi)}</T>');
+    const describe = log.indexOf('label="Describe the meal"');
+    expect(dayLine).toBeGreaterThan(-1);
+    expect(introLine).toBeGreaterThan(dayLine);
+    expect(describe).toBeGreaterThan(introLine);
+    expect(log.slice(dayLine, introLine)).not.toContain('<Field');
+    expect(screen).toContain('const offersMealAi = profile?.consentAi === true');
+    const gated = log.slice(log.indexOf('{offersMealAi ?'), log.indexOf('label="Enter it myself"'));
+    expect(gated).toContain('label="Estimate from text"');
+    expect(gated).toContain('label="Take a photo"');
+    expect(gated).toContain('label="Choose a photo"');
+    expect(gated).toContain('label="Use a sample photo"');
+    expect(gated).toContain('<MealEstimateStatus');
     expect(log).toContain('<PlanTick done />');
     expect(log).toContain('{savedDayNote}');
     expect(log).toContain('label="View in list"');
