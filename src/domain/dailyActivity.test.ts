@@ -258,7 +258,7 @@ describe('daily activity', () => {
     expect(stepsRead).toContain('dailyStatisticsEnd(end)');
     expect(stepsRead).toContain("['cumulativeSum'],\n      dailyStatisticsAnchor(end),");
     expect(readFileSync('src/health/dailyActivity.ios.ts', 'utf8')).toContain('dailyStatisticsAnchor(end)');
-    expect(readFileSync('app.json', 'utf8')).toContain('"buildNumber": "54"');
+    expect(readFileSync('app.json', 'utf8')).toContain('"buildNumber": "55"');
   });
 
   it('captions each chart from the days that have a number', () => {

@@ -1,6 +1,6 @@
 import { View } from 'react-native';
 
-import { VO2_PLAN_LABEL, VO2_STALE_NUDGE, vo2MeasuredLine, vo2Note, vo2ReadingIsStale, type Vo2Source } from '@/domain/vo2Estimate';
+import { VO2_PLAN_LABEL, VO2_STALE_NUDGE, vo2MeasuredLine, vo2NoteParts, vo2ReadingIsStale, type Vo2Source } from '@/domain/vo2Estimate';
 import { Button, T } from '@/ui/ui';
 
 export function Vo2EstimateNote({
@@ -17,7 +17,7 @@ export function Vo2EstimateNote({
   const stale = measuredOn != null && vo2ReadingIsStale(measuredOn, today);
   return (
     <View style={{ gap: 8, alignSelf: 'stretch' }}>
-      <T>{vo2Note(source)}</T>
+      {vo2NoteParts(source).map((part) => <T key={part.slice(0, 12)}>{part}</T>)}
       {measuredOn ? <T variant="muted">{vo2MeasuredLine(measuredOn, source)}</T> : null}
       {stale ? <T>{VO2_STALE_NUDGE}</T> : null}
       {stale ? <Button label={VO2_PLAN_LABEL} onPress={onPlan} /> : null}

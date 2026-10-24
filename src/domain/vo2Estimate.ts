@@ -1,23 +1,29 @@
 import { parseIsoDay } from '@/domain/dates';
 
-/** Shown under the VO2 chart when the latest reading is from Apple Watch. */
+/** How Apple Watch estimates VO2 max. Kept as its own sentence so the card can lead with it. */
 export const VO2_ESTIMATE_NOTE =
   'Apple Watch estimates VO2 max after an outdoor walk, run or hike recorded as a workout with GPS and steady heart rate, usually every few days. No new reading means no qualifying workout yet.';
 
-/** Shown when the latest reading is from Garmin. */
-export const VO2_GARMIN_NOTE =
-  'Your Garmin estimates VO2 max after an outdoor run recorded with GPS, with your heart rate above about 70% of your maximum for at least 10 minutes. Set your age, sex and weight in Garmin Connect for better accuracy. No new reading means no qualifying run yet.';
+/** Apple half of the card. The existing sentence, labelled so it sits beside the Garmin half. */
+export const VO2_APPLE_PART = `Apple Watch: ${VO2_ESTIMATE_NOTE.replace(/^Apple Watch /, '')}`;
 
-/** Shown when neither watch has a reading yet. */
-export const VO2_EITHER_NOTE =
-  'Apple Watch estimates VO2 max after an outdoor walk, run or hike with GPS and a steady heart rate. Your Garmin estimates it after an outdoor run recorded with GPS, with your heart rate above about 70% of your maximum for at least 10 minutes. No new reading means no qualifying workout yet.';
+/**
+ * Garmin half of the card. General, and true whether or not a reading has arrived.
+ * No watch model, and no claim that Garmin has or has not sent a number.
+ */
+export const VO2_GARMIN_PART =
+  'Garmin: watches estimate VO2 max from heart rate and pace during outdoor walks or runs with GPS (and some other activities), with a minimum effort level. The reading updates after a qualifying activity.';
 
 export type Vo2Source = 'apple' | 'garmin';
 
+/** Both sources, every time. The latest reading's source comes first. With no reading yet, Apple leads. */
+export function vo2NoteParts(source: Vo2Source | null): readonly [string, string] {
+  if (source === 'garmin') return [VO2_GARMIN_PART, VO2_APPLE_PART];
+  return [VO2_APPLE_PART, VO2_GARMIN_PART];
+}
+
 export function vo2Note(source: Vo2Source | null): string {
-  if (source === 'garmin') return VO2_GARMIN_NOTE;
-  if (source === 'apple') return VO2_ESTIMATE_NOTE;
-  return VO2_EITHER_NOTE;
+  return vo2NoteParts(source).join('\n\n');
 }
 
 export const VO2_STALE_NUDGE = 'The last reading is more than 3 days old.';
