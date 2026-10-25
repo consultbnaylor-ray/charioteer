@@ -49,7 +49,7 @@ import { useAppTheme } from '@/ui/theme';
 import { MovementCharts } from '@/ui/DailyActivity';
 import { HealthRefreshBar, useManualHealthRefresh } from '@/ui/HealthRefresh';
 import { WeightWaistLink } from '@/ui/WeightWaistLink';
-import { healthStatsOmittedTiles, hideWeightHealthRows, SHOW_WEIGHT_SECTION } from '@/domain/weightSection';
+import { healthStatsOmittedTiles, SHOW_WEIGHT_SECTION } from '@/domain/weightSection';
 import { Button, Card, Choice, ErrorNote, Field, playSavedHaptic, Screen, T } from '@/ui/ui';
 
 const KINDS: { id: HealthKind; unit: string; label: string }[] = [
@@ -315,7 +315,7 @@ export default function Health() {
         ios={ios}
         access={access}
         syncedAt={syncedAt}
-        gaps={hideWeightHealthRows(healthMissingReadings(visibility))}
+        gaps={healthMissingReadings(visibility)}
         pending={pending}
         updatedAt={updatedAt}
         refreshError={refreshError}
@@ -343,7 +343,7 @@ export default function Health() {
         sex={snap.nutrition.goalSex}
       />
       <HealthVisibility
-        report={visibility?.kind === 'ready' ? { ...visibility, rows: hideWeightHealthRows(visibility.rows) } : visibility}
+        report={visibility}
         pending={visibilityPending}
         request={seeRequest}
         onOpen={loadVisibility}

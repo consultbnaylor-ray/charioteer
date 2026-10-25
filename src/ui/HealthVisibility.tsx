@@ -11,7 +11,6 @@ import {
   type HealthVisibilityReport,
 } from '@/domain/healthVisibility';
 import { APPLE_HEALTH_UNAVAILABLE, APPLE_HEALTH_WEB, type AppleHealthTurnOn } from '@/health/connection';
-import { SHOW_WEIGHT_SECTION } from '@/domain/weightSection';
 import { useAppTheme } from '@/ui/theme';
 import { textMentionsWeight, UpdateWeightLink } from '@/ui/UpdateWeightLink';
 import { Button, Card, T } from '@/ui/ui';
@@ -75,7 +74,7 @@ export function HealthVisibility({
           {report?.kind === 'ready' ? report.rows.map((row) => (
             <T key={row.type}>{healthVisibilityLine(row)}</T>
           )) : null}
-          {SHOW_WEIGHT_SECTION && report?.kind === 'ready' && report.rows.some((row) => textMentionsWeight(healthVisibilityLine(row)) || textMentionsWeight(row.title)) ? (
+          {report?.kind === 'ready' && report.rows.some((row) => textMentionsWeight(healthVisibilityLine(row)) || textMentionsWeight(row.title)) ? (
             <UpdateWeightLink />
           ) : null}
           <Button

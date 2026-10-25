@@ -36,7 +36,6 @@ import {
 } from '@/domain/weightEntry';
 import { healthFigure } from '@/domain/measureFigures';
 import { periodDayCount } from '@/domain/statWindow';
-import { SHOW_WEIGHT_SECTION, withoutWeightSamples } from '@/domain/weightSection';
 import { useStatPeriod } from '@/health/useStatPeriod';
 import { ReadingChart } from '@/ui/ReadingChart';
 import { DateField } from '@/ui/DateField';
@@ -89,13 +88,7 @@ export function HealthBoard({
    */
   weightPart?: 'all' | 'entry' | 'charts';
 }) {
-  const keepWeightNotes = Boolean(kinds?.includes('weight_kg') && !omitKinds?.includes('weight_kg'));
-  const report = buildHealthInsights({
-    today,
-    samples: keepWeightNotes ? samples : withoutWeightSamples(samples),
-    soberOn,
-    stage,
-  });
+  const report = buildHealthInsights({ today, samples, soberOn, stage });
   const metrics = HEALTH_METRICS.filter((metric) => {
     if (kinds && !kinds.includes(metric.kind)) return false;
     if (omitKinds?.includes(metric.kind)) return false;
@@ -112,7 +105,7 @@ export function HealthBoard({
             report.headlines.map((line) => <T key={line}>{line}</T>)
           )}
           <T variant="muted">These notes are not medical advice.</T>
-          {SHOW_WEIGHT_SECTION && report.headlines.some((line) => textMentionsWeight(line)) ? <UpdateWeightLink /> : null}
+          {report.headlines.some((line) => textMentionsWeight(line)) ? <UpdateWeightLink /> : null}
         </Card>
       ) : null}
       {metrics.map((metric) => {
