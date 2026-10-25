@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest';
 import {
   ALLOW_SAVE_LABEL,
   AUTO_SAVE_LABEL,
+  SAVED_TO_LIBRARY,
   SCREENSHOT_NOTE,
   SENDER_SAVE_NOTE,
   CAMERA_USAGE,
@@ -59,6 +60,7 @@ describe('Shared Photos folder', () => {
     expect(ALLOW_SAVE_LABEL).toBe('Allow buddies to save this photo');
     expect(AUTO_SAVE_LABEL).toBe('Automatically save photos I share to my photo library');
     expect(SCREENSHOT_NOTE).toBe('A screenshot cannot be stopped.');
+    expect(SAVED_TO_LIBRARY).toBe('Saved to your photo library.');
     expect(SHARED_PHOTOS_LABEL).toBe('Shared Photos');
     expect(SAVE_PHOTOS_USAGE).toContain('never reads your other photos');
     expect(SAVE_PHOTOS_USAGE).toContain('does not');
@@ -94,6 +96,13 @@ describe('Shared Photos folder', () => {
     expect(sheet).toContain('{SHARE_PHOTO_SHEET_TITLE}');
     expect(sheet).toContain('accessibilityLabel="Share a photo"');
     expect(sheet).toContain('label="Share a photo"');
+    expect(sheet).not.toContain('ALBUM_HONEST_NOTE');
+    expect(sheet).not.toContain('A named Charioteer album cannot be created');
+    const photos = readFileSync('src/ui/SharedPhotos.tsx', 'utf8');
+    expect(photos).toContain('setNote(SAVED_TO_LIBRARY)');
+    expect(photos).not.toContain('ALBUM_HONEST_NOTE');
+    expect(photos).toContain('{SCREENSHOT_NOTE}');
+    expect(photos).toContain('{SENDER_SAVE_NOTE}');
     expect(sheet).toContain('export const HEADER_CAMERA_GLYPH = 22');
     expect(sheet).toContain('Math.max(44');
     expect(sheet).not.toMatch(/NSCameraUsageDescription|NSPhotoLibraryUsageDescription/);

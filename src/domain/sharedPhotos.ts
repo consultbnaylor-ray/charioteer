@@ -32,9 +32,8 @@ export function sharePhotoButtonLabel(buddyCount: number, gratitude: boolean): '
   return buddyCount === 0 && gratitude ? 'Save' : 'Send';
 }
 
-/** A named album needs a library read on this SDK, so Save does not create one. */
-export const ALBUM_HONEST_NOTE =
-  'A named Charioteer album cannot be created without reading your photo library. Save adds the photo to your library.';
+/** Shown once, after Save to Photos succeeds. Not a standing paragraph. */
+export const SAVED_TO_LIBRARY = 'Saved to your photo library.';
 
 export const CAMERA_USAGE =
   'Charioteer uses the camera for a private progress photo, or for a photo you choose to send to buddies. A progress photo stays private. A photo you send is shown only to the buddies you pick, not the Community, and it is not sent to the coach.';

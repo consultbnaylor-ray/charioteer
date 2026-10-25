@@ -10,7 +10,6 @@ import { shownError } from '@/domain/errors';
 import type { CropRect } from '@/domain/photoCrop';
 import {
   ALLOW_SAVE_LABEL,
-  ALBUM_HONEST_NOTE,
   AUTO_SAVE_LABEL,
   GRATITUDE_DIARY_TICK,
   SHARE_PHOTO_SHEET_TITLE,
@@ -119,7 +118,6 @@ export function SharePhotoCard() {
       <T>{ONLY_CHOSEN_NOTE}</T>
       <T>{SCREENSHOT_NOTE}</T>
       <T>{SENDER_SAVE_NOTE}</T>
-      <T>{ALBUM_HONEST_NOTE}</T>
       <Button label="Share a photo" accessibilityLabel="Share a photo" onPress={() => setOpen(true)} />
       <Button label={SHARED_PHOTOS_LABEL} tone="quiet" onPress={() => router.push('/shared-photos' as never)} />
       {open ? <SharePhotoComposer onClose={() => setOpen(false)} maxHeight={520} /> : null}
@@ -247,7 +245,6 @@ function SharePhotoComposer({ onClose, maxHeight }: { onClose: () => void; maxHe
 
   return (
     <ScrollView style={{ flexGrow: 0, maxHeight }} contentContainerStyle={{ gap: 8, paddingBottom: 8 }}>
-      <T>{ALBUM_HONEST_NOTE}</T>
       {buddies.length === 0 ? (
         <T variant="muted">No accepted buddies yet. You can still save this photo to your Gratitude diary.</T>
       ) : null}
@@ -362,7 +359,7 @@ export function AutoSaveSwitch() {
           }}
         />
       </View>
-      <T variant="muted">{ALBUM_HONEST_NOTE} This starts off. It applies only to photos you send. A photo you receive is never saved on its own.</T>
+      <T variant="muted">This starts off. It applies only to photos you send. A photo you receive is never saved on its own.</T>
       {Platform.OS === 'web' ? <T variant="muted">Saving to the photo library is available on the phone.</T> : null}
     </View>
   );

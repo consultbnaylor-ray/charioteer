@@ -5,7 +5,7 @@ import { Platform, Pressable, View } from 'react-native';
 import { useRepository } from '@/data';
 import { shownError } from '@/domain/errors';
 import {
-  ALBUM_HONEST_NOTE,
+  SAVED_TO_LIBRARY,
   SCREENSHOT_NOTE,
   SENDER_SAVE_NOTE,
   buddyMaySave,
@@ -69,7 +69,7 @@ export function SharedPhotos() {
     const result = await saveJpegToLibrary(photo.imageUrl);
     if (result === 'unavailable') setNote('Saving to the photo library is available on the phone.');
     else if (result === 'denied') setNote('Photo library save was not allowed.');
-    else setNote('Saved to your photo library. A named Charioteer album was not created.');
+    else setNote(SAVED_TO_LIBRARY);
   }
 
   function group(title: string, photos: SharedPhotoCard[]) {
@@ -108,7 +108,6 @@ export function SharedPhotos() {
     <View style={{ gap: 12 }}>
       <T>{SCREENSHOT_NOTE}</T>
       <T>{SENDER_SAVE_NOTE}</T>
-      <T>{ALBUM_HONEST_NOTE}</T>
       {Platform.OS === 'web' ? <T variant="muted">Saving to the photo library is available on the phone.</T> : null}
       <AutoSaveSwitch />
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>

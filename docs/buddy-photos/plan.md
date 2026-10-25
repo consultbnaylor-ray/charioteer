@@ -74,6 +74,8 @@ The action, once the screen exists, is **Save to Photos**. The file it writes is
 
 A setting on Shared Photos, **Automatically save photos I share to my Charioteer album**, starts off and stays on this phone only. It applies to photos this person sends. A photo received from a buddy is saved only when that person taps Save. It is never automatic. If the sender turned **Allow buddies to save this photo** off, the recipient’s Save button is hidden. The screenshot line stays.
 
+The quick-photo sheet does not explain albums. After Save to Photos, Shared Photos says “Saved to your photo library.” The add-only purpose string is unchanged.
+
 SDK 57’s `Album.create` and `Album.get` call `checkIfFullAccessGranted` before they run. That is a library read. `Asset.create` checks the add-only permission, then, if an album is passed, looks the asset up again, which is also a read. This branch does not call those. It does not switch to full library read. A named Charioteer album therefore cannot be created with the current Expo calls under the permission Ben approved. The Save button stays unwired until there is a way to add the file to that album without reading the library. `saveToLibraryAsync` is add-only and does not take an album name, so it is not used either.
 
 The purpose sentence already on the camera and the library still says other people cannot see the photo. That stays as it is in this change. It is rewritten when the buddy-photo screen is built, because a photo sent to a buddy would make it false.
