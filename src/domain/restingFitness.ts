@@ -26,6 +26,13 @@ export const RESTING_CARE =
 
 export const RESTING_CARD_CARE = 'Contact your GP or NHS 111.';
 
+/** Follows the under-60 closer-look line. It says the low rate could be fitness. It does not say it is. */
+export const LOW_RATE_COULD_BE_FIT = 'But a heart rate below 60 bpm could mean you are very fit.';
+
+function lowRateCloserLook(sentence: string): string {
+  return `${sentence} ${LOW_RATE_COULD_BE_FIT}`;
+}
+
 export type RestingReading = { day: string; bpm: number };
 export type RestingActivityDay = { day: string; moderateMinutes: number; vigorousMinutes: number };
 
@@ -108,7 +115,7 @@ function earlyVerdict(bpm: number | null): string {
   if (bpm == null || !Number.isFinite(bpm)) return "There isn't enough data yet for a month view.";
   const shown = Math.round(bpm);
   if (shown < NHS_RESTING_LOW) {
-    return "There isn't enough data yet for a month view. A reading under 60 bpm might need a closer look.";
+    return lowRateCloserLook("There isn't enough data yet for a month view. A reading under 60 bpm might need a closer look.");
   }
   if (shown > NHS_RESTING_HIGH) {
     return `There isn't enough data yet for a month view, and ${shown} bpm is above the usual adult range of 60-100 bpm (NHS).`;
@@ -233,9 +240,11 @@ export function restingFitnessComment(input: RestingFitnessInput): RestingFitnes
     return comment(
       sustainedLow ? 'unhealthy' : 'might',
       false,
-      sustainedLow
-        ? 'A resting rate that stays under 60 bpm might need a closer look.'
-        : 'A reading under 60 bpm might need a closer look.',
+      lowRateCloserLook(
+        sustainedLow
+          ? 'A resting rate that stays under 60 bpm might need a closer look.'
+          : 'A reading under 60 bpm might need a closer look.',
+      ),
       sections,
       trend,
     );

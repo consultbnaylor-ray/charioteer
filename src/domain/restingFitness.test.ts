@@ -1,7 +1,15 @@
 import { describe, expect, it } from 'vitest';
 
 import { publishedCardioBand } from '@/domain/fitnessSnapshot';
-import { restingFitnessComment, type RestingActivityDay, type RestingReading } from '@/domain/restingFitness';
+import { restingChartGuide } from '@/domain/garminCharts';
+import {
+  CARD_NOT_ADVICE,
+  LOW_RATE_COULD_BE_FIT,
+  RESTING_CARE,
+  restingFitnessComment,
+  type RestingActivityDay,
+  type RestingReading,
+} from '@/domain/restingFitness';
 
 const today = '2026-10-25';
 
@@ -40,6 +48,8 @@ describe('resting heart rate and fitness', () => {
     });
     expect(comment.tier).toBe('might');
     expect(comment.warning).toBe(false);
+    expect(comment.verdict).toBe('A low resting rate might be normal with your exercise and cardio fitness.');
+    expect(comment.verdict).not.toContain(LOW_RATE_COULD_BE_FIT);
     expect(comment.text).toContain('might be normal');
     expect(comment.text).toContain('consistent with');
     expect(comment.text).toContain('not a diagnosis');
@@ -57,8 +67,11 @@ describe('resting heart rate and fitness', () => {
       sex: 'male',
     });
     expect(oneLow.tier).toBe('early');
+    expect(oneLow.warning).toBe(false);
     expect(oneLow.text).toContain("isn't reliable yet");
-    expect(oneLow.verdict).toContain('under 60 bpm might need a closer look');
+    expect(oneLow.verdict).toBe(
+      `There isn't enough data yet for a month view. A reading under 60 bpm might need a closer look. ${LOW_RATE_COULD_BE_FIT}`,
+    );
     expect(oneLow.verdict).not.toMatch(/not used as a sign of fitness/);
     expect(oneLow.text).not.toMatch(/might be normal|GP or NHS 111/);
 
@@ -96,9 +109,16 @@ describe('resting heart rate and fitness', () => {
     });
     expect(sustained.tier).toBe('dangerous');
     expect(sustained.warning).toBe(true);
+    expect(sustained.verdict).toBe('These resting readings have stayed above 100 bpm.');
+    expect(sustained.verdict).not.toContain(LOW_RATE_COULD_BE_FIT);
     expect(sustained.text).toContain('Contact your GP or NHS 111');
     expect(sustained.text).toContain('999');
     expect(sustained.text).toContain('not a diagnosis');
+    const highGuide = restingChartGuide('30', [{ value: 108 }], sustained);
+    expect(highGuide.warning).toBe(true);
+    expect(highGuide.cardCare).toBe('Contact your GP or NHS 111.');
+    expect(highGuide.care).toBe(RESTING_CARE);
+    expect(highGuide.verdict).toBe(sustained.verdict);
   });
 
   it('asks for guidance when a low rate is sustained without the fitness pattern', () => {
@@ -112,8 +132,32 @@ describe('resting heart rate and fitness', () => {
     });
     expect(comment.tier).toBe('unhealthy');
     expect(comment.warning).toBe(false);
+    expect(comment.verdict).toBe(
+      `A resting rate that stays under 60 bpm might need a closer look. ${LOW_RATE_COULD_BE_FIT}`,
+    );
+    expect(comment.verdict.match(/could mean you are very fit/g)).toHaveLength(1);
     expect(comment.text).toContain('seek professional guidance');
     expect(comment.text).toContain('150 minutes');
     expect(comment.text).not.toContain('might be normal');
+    const guide = restingChartGuide('30', days(20, 48).map((row) => ({ value: row.bpm })), comment);
+    expect(guide.warning).toBe(false);
+    expect(guide.cardCare).toBeNull();
+    expect(guide.verdict).toBe(comment.verdict);
+    expect(guide.care).toBe(RESTING_CARE);
+    expect(guide.care).toContain('Call 999 if you have chest pain, shortness of breath, or feel faint');
+    expect(CARD_NOT_ADVICE).toBe('Not medical advice. Not a diagnosis.');
+
+    const latestLow = days(16, 70);
+    latestLow[0] = { ...latestLow[0], bpm: 54 };
+    const oneOfMany = restingFitnessComment({
+      today,
+      resting: latestLow,
+      activity: [],
+      vo2Max: 28,
+      age: 42,
+      sex: 'male',
+    });
+    expect(oneOfMany.warning).toBe(false);
+    expect(oneOfMany.verdict).toBe(`A reading under 60 bpm might need a closer look. ${LOW_RATE_COULD_BE_FIT}`);
   });
 });
