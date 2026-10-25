@@ -54,7 +54,7 @@ import { Button, Card, Choice, T, playSavedHaptic } from '@/ui/ui';
  * Fitness level, the measures that exist, and one to three goal-led lines.
  * A line can be ticked into this week's focus.
  */
-export function YourFitness({ onPlanOutdoor }: { onPlanOutdoor?: () => void }) {
+export function YourFitness({ onPlanOutdoor }: { onPlanOutdoor: () => void }) {
   const snap = useSnapshot();
   const { samples: mergedHealth } = useHealthSources();
   const repo = useRepository();
@@ -139,7 +139,7 @@ export function YourFitness({ onPlanOutdoor }: { onPlanOutdoor?: () => void }) {
             measuredOn={latestVo2Reading(mergedHealth)?.day ?? null}
             source={latestVo2Reading(mergedHealth)?.source ?? null}
             today={londonDay(new Date())}
-            onPlan={() => onPlanOutdoor?.()}
+            onPlan={onPlanOutdoor}
           />
           <InfoDisclosure about="VO2 max">
             <T>{VO2_WHAT}</T>

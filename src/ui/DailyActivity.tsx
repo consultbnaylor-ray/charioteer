@@ -1,4 +1,5 @@
-import { Pressable, View } from 'react-native';
+import { Linking, Pressable, View } from 'react-native';
+import { useRouter } from 'expo-router';
 
 import { useState, type ReactNode } from 'react';
 import {
@@ -42,6 +43,7 @@ import {
 } from '@/domain/garminCharts';
 import type { GarminDaily, GarminHrvSummary, GarminPulseOx, GarminRespiration, GarminSleep, GarminUserMetric } from '@/domain/garminConnect';
 import type { NutritionSex } from '@/domain/nutrition';
+import { crisisHelplines } from '@/data/catalogue';
 import { weekdayShort } from '@/domain/healthInsights';
 import { CHART_DIRECTION_HINT } from '@/domain/readingChart';
 import type { WorkoutChartSpan } from '@/domain/workoutDay';
@@ -342,6 +344,57 @@ export function MovementCharts({
   );
 }
 
+const CARE_LINES = new Set(['Samaritans', 'NHS 111', 'Emergency services']);
+
+/** Crisis numbers stay on the card. They are the same helplines as Help. */
+function CareLine({ text }: { text: string }) {
+  const lines = crisisHelplines([]).filter((item) => CARE_LINES.has(item.title) && item.phone);
+  return (
+    <View style={{ gap: 4 }}>
+      <T>{text}</T>
+      {lines.map((item) => {
+        const phone = item.phone ?? '';
+        const dial = phone.replace(/\s/g, '');
+        return (
+          <Pressable
+            key={item.id}
+            accessibilityRole="link"
+            accessibilityLabel={`${item.title}, ${phone}`}
+            onPress={() => void Linking.openURL(`tel:${dial}`)}
+            style={{ minHeight: 44, justifyContent: 'center' }}
+          >
+            <T style={{ textDecorationLine: 'underline' }}>{`${item.title} ${phone}`}</T>
+          </Pressable>
+        );
+      })}
+    </View>
+  );
+}
+
+function StressActions() {
+  const router = useRouter();
+  return (
+    <View style={{ gap: 4 }}>
+      <Pressable
+        accessibilityRole="link"
+        accessibilityLabel="Open Breathe"
+        onPress={() => router.push('/breathe' as never)}
+        style={{ minHeight: 44, justifyContent: 'center' }}
+      >
+        <T variant="muted" style={{ textDecorationLine: 'underline' }}>Breathe</T>
+      </Pressable>
+      <Pressable
+        accessibilityRole="link"
+        accessibilityLabel="Open Thumos"
+        onPress={() => router.push('/thumos' as never)}
+        style={{ minHeight: 44, justifyContent: 'center' }}
+      >
+        <T variant="muted" style={{ textDecorationLine: 'underline' }}>Thumos</T>
+      </Pressable>
+    </View>
+  );
+}
+
 function mostDistance(points: readonly { value: number }[]): string | null {
   const most = points.reduce((max, point) => Math.max(max, point.value), 0);
   if (most <= 0) return null;
@@ -389,7 +442,7 @@ function ActivityBars({
   const band = guide?.dailyTypical ?? null;
   const target = guide?.target?.value ?? null;
   const own = guide?.ownAverage?.value ?? null;
-  const explanation = [guide?.legend, guide?.about].filter((line): line is string => Boolean(line));
+  const explanation = [...new Set([guide?.legend, guide?.about].map((line) => line?.trim()).filter((line): line is string => Boolean(line)))];
   const medical = explanation.some((line) => /not medical advice/i.test(line));
 
   function markStyle(value: number, ink: string) {
@@ -411,10 +464,11 @@ function ActivityBars({
       {guide?.target?.label ? <T variant="muted">{guide.target.label}</T> : null}
       {guide?.ownAverage?.label ? <T variant="muted">{guide.ownAverage.label}</T> : null}
       {guide?.outside ? <T>{guide.outside}</T> : null}
+      {guide?.care ? <CareLine text={guide.care} /> : null}
       {explanation.length > 0 ? (
         <MoreInfo about={title} summary={medical ? 'Not medical advice.' : undefined}>
-          {guide?.legend ? <T variant="muted">{guide.legend}</T> : null}
-          {guide?.about ? <T variant="muted">{guide.about}</T> : null}
+          {explanation.map((line) => <T key={line.slice(0, 48)} variant="muted">{line}</T>)}
+          {title === 'Average stress' ? <StressActions /> : null}
         </MoreInfo>
       ) : null}
       <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: span > 14 ? 1 : 4, minHeight: BAR_HEIGHT + 36 }}>

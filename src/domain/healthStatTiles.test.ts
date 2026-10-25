@@ -214,7 +214,7 @@ describe('health stat tiles', () => {
     expect(session.meaning).toContain('208 − 0.7 × age');
     expect(session.meaning).toContain('did not change with sex');
     expect(session.meaning).toContain('not a target to reach the top');
-    expect(session.rangeNote).toContain('No separate published session heart-rate range for Lose Fat & Build Muscle');
+    expect(session.rangeNote).toContain('no published session heart rate range for Lose Fat & Build Muscle specifically');
     expect(session.rangeNote).toContain('This is a reference, not a target.');
     expect(session.meaning).toContain('Population averages vary by person, medication and fitness.');
     if (session.visual.kind === 'zone') {
@@ -222,7 +222,8 @@ describe('health stat tiles', () => {
       expect(session.visual.zoneHigh).toBe(136);
       expect(session.visual.goalLow).toBe(138);
       expect(session.visual.goalHigh).toBe(170);
-      expect(session.visual.goalCaption).toContain('This is a reference, not a target.');
+      expect(session.visual.goalCaption).not.toContain('This is a reference, not a target.');
+      expect(session.meaning.match(/This is a reference, not a target\./g)).toHaveLength(1);
     }
     expect(session.sources?.map((source) => source.url)).toEqual([
       'https://www.jacc.org/doi/full/10.1016/S0735-1097(00)01054-8',
@@ -249,7 +250,7 @@ describe('health stat tiles', () => {
     expect(recovery.status).toContain('Above 12 bpm');
     expect(recovery.meaning).toContain('not a healthy population');
     expect(recovery.rangeNote).toContain('12 to 23 bpm');
-    expect(recovery.rangeNote).toContain('This is a reference, not a target.');
+    expect(recovery.meaning.match(/This is a reference, not a target\./g)).toHaveLength(1);
     expect(recovery.sources?.[0]?.year).toBe(1999);
     if (recovery.visual.kind === 'zone') {
       expect(recovery.visual.zoneLow).toBe(12);
@@ -274,7 +275,7 @@ describe('health stat tiles', () => {
     expect(hrv.status).toBe('Study averages ran from 32 to 93 ms. Overall mean 50 ms.');
     expect(hrv.meaning).toContain('not split by age or sex');
     expect(hrv.meaning).toContain('24-hour age table');
-    expect(hrv.rangeNote).toContain('No separate published heart-rate variability range for Lose Fat & Build Muscle');
+    expect(hrv.rangeNote).toContain('no published heart-rate variability range for Lose Fat & Build Muscle specifically');
     expect(hrv.sources?.[0]?.url).toBe('https://onlinelibrary.wiley.com/doi/10.1111/j.1540-8159.2010.02841.x');
     expect(hrv.trend).toBeNull();
     if (hrv.visual.kind === 'zone') {
@@ -371,7 +372,10 @@ describe('health stat tiles', () => {
     const cruiser = buildHealthStatBoard(alex({ goal: 'elite_cruiser_boxer' }));
     const athleteRest = tile(cruiser, 'resting_heart_rate');
     expect(athleteRest.meaning).toContain('as low as 40');
-    expect(athleteRest.meaning).toContain('This is a reference, not a target.');
+    expect(athleteRest.meaning).toContain('a cruiserweight boxer specifically');
+    expect(athleteRest.meaning).toContain('This stand-in is not the Elite Athlete (Cruiserweight Boxer) range.');
+    expect(athleteRest.meaning.match(/This is a reference, not a target\./g)).toHaveLength(1);
+    expect(athleteRest.meaning.match(/Not medical advice/gi)).toHaveLength(1);
     expect(athleteRest.sources?.map((source) => source.name)).toEqual([
       'British Heart Foundation, 2026',
       'American Heart Association, 2024',

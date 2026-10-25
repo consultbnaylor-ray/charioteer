@@ -530,7 +530,7 @@ function StatDetail({
                 {!tile.empty && detailShowsStatusAgain(tile.visual.kind) ? <StatusMark tone={tile.tone} status={tile.status} word={tile.mark} /> : null}
                 <T variant="label">What your number means</T>
                 <T>{tile.meaning}</T>
-                {tile.rangeNote && tile.rangeNote !== tile.meaning ? <T>{tile.rangeNote}</T> : null}
+                {tile.rangeNote && !tile.meaning.includes(tile.rangeNote) ? <T>{tile.rangeNote}</T> : null}
                 <WorkoutTypeChoices tile={tile} onSetWorkoutBucket={onSetWorkoutBucket} />
                 {!tile.empty && tile.readings.length === 0 && tile.history.length >= 2 ? <TrendLine points={tile.history} color={ink} /> : null}
                 {tile.trend ? <T variant="muted">{tile.trend}</T> : null}

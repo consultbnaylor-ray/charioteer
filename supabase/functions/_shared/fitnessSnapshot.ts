@@ -6,7 +6,7 @@
  * 75th and above is Strong. This is an estimate, not Apple's classification and
  * not a medical assessment.
  */
-import { REFERENCE_NOT_A_TARGET } from './healthBands.ts';
+import { metricFallback, type FallbackCite } from './healthBands.ts';
 import { mondayOf, shiftDay } from './healthInsights.ts';
 import { minuteUnit, paceJudgement, parseStatPeriod, periodPhrase, rollingWindow, scaledPeriodTarget, type StatPeriod } from './statWindow.ts';
 import {
@@ -185,10 +185,10 @@ export function whyCardioMatters(goal: NutritionGoal | null): string {
     return `For boxing, this is how much oxygen you can use when the work stays hard, and how you recover between efforts. The ${title} range, when it is shown, is an approximate estimate from a published study.`;
   }
   if (goal === 'elite_runner') {
-    return `For running, this is how much oxygen you can use when the work is hard. ${title} has no separate published range here, so the comparison is the age and sex band.`;
+    return `For running, this is how much oxygen you can use when the work is hard. ${title} has no published range for a lean runner specifically, so the comparison is the age and sex band.`;
   }
   if (goal === 'body_builder' || goal === 'increase') {
-    return `This sits beside the strength work. It is how much oxygen you can use at full effort. ${title} has no separate published cardio range here.`;
+    return `This sits beside the strength work. It is how much oxygen you can use at full effort. There is no published cardio range for ${title ?? 'this aim'} specifically.`;
   }
   if (goal === 'lose_fat_build_muscle' || goal === 'lose_weight') {
     return 'This is one mark of how your heart and lungs keep up with the work. The sessions you already do stay in place.';
@@ -543,23 +543,32 @@ function boxerBand(goal: NutritionGoal | null, sex: NutritionSex | null): Fitnes
   return null;
 }
 
+const FRIEND_ADULT_CITE: FallbackCite = {
+  who: 'a typical adult of your age and sex',
+  source: 'Kaminsky, Arena, and Myers, 2015',
+  detail: 'the 25th to 75th percentile',
+};
+
 function goalNoteFor(
   goal: NutritionGoal | null,
-  sex: NutritionSex | null,
+  _sex: NutritionSex | null,
   hasGoalBand: boolean,
   hasAgeBand: boolean,
 ): string | null {
   if (hasGoalBand) return null;
-  if (isAnyBoxer(goal)) {
-    return `The boxing ranges found are for men on a national team, so they are not shown. ${REFERENCE_NOT_A_TARGET}`;
-  }
-  if (!hasAgeBand) return null;
   const title = goal ? GOAL_LABEL[goal] : null;
-  if (goal === 'elite_runner' || goal === 'body_builder') {
-    return `${title} has no separate published range here. The band is typical for your age and sex. ${REFERENCE_NOT_A_TARGET}`;
+  const adult = hasAgeBand ? FRIEND_ADULT_CITE : null;
+  const standIn = metricFallback({
+    metricId: 'vo2_max',
+    metricName: 'cardio fitness',
+    goalLabel: title,
+    published: { goal: null, family: null, elite: null, athlete: null, adult },
+  });
+  if (isAnyBoxer(goal)) {
+    return `The boxing ranges found are for men on a national team, so they are not shown. ${standIn.sentence}`;
   }
-  if (!title) return `There is no separate published cardio range. The band is typical for your age and sex. ${REFERENCE_NOT_A_TARGET}`;
-  return `${title} has no separate published cardio range. The band is typical for your age and sex. ${REFERENCE_NOT_A_TARGET}`;
+  if (!title && !hasAgeBand) return null;
+  return standIn.sentence;
 }
 
 function compareFor(input: {

@@ -68,8 +68,11 @@ describe('published health bands', () => {
     expect(reading?.meaning).toContain('did not change with sex');
     expect(reading?.meaning).toContain('not a target to reach the top');
     expect(reading?.meaning).toContain(CAVEAT);
-    expect(reading?.goalCaption).toContain(REFERENCE_NOT_A_TARGET);
-    expect(reading?.rangeNote).toContain('No separate published session heart-rate range for Elite Athlete (Cruiserweight Boxer)');
+    expect(reading?.goalCaption).not.toContain(REFERENCE_NOT_A_TARGET);
+    expect(reading?.rangeNote).toContain('no published session heart rate range for a cruiserweight boxer specifically');
+    expect(reading?.rangeNote).toContain('a general adult');
+    expect(reading?.rangeNote).toContain('This stand-in is not the Elite Athlete (Cruiserweight Boxer) range.');
+    expect(reading?.meaning.match(/This is a reference, not a target\./g)).toHaveLength(1);
     expect(reading?.links.map((link) => link.year)).toEqual([2001, 2023, 2024, null]);
     expect(sessionHeartReading(132, null, null)).toBeNull();
     expect(sessionHeartReading(132, 16, null)).toBeNull();
@@ -112,7 +115,9 @@ describe('published health bands', () => {
     expect(reading.meaning).toContain('not a personal target');
     expect(reading.meaning).toContain('not split by age or sex');
     expect(reading.meaning).toContain('24-hour age table');
-    expect(reading.rangeNote).toContain('No separate published heart-rate variability range');
+    expect(reading.rangeNote).toContain('no published heart-rate variability range for a cruiserweight boxer specifically');
+    expect(reading.rangeNote).toContain('Nunan, Sandercock, and Brodie, 2010');
+    expect(reading.meaning.match(/This is a reference, not a target\./g)).toHaveLength(1);
     expect(reading.goalLow).toBeNull();
     expect(reading.links[0]?.year).toBe(2010);
   });
@@ -126,8 +131,20 @@ describe('published health bands', () => {
     const resting = restingSexNote('Lose Fat & Build Muscle');
     expect(resting).toContain('60 to 100');
     expect(resting).toContain('does not split the range by age');
-    expect(resting).toContain('No separate published resting-heart-rate range for Lose Fat & Build Muscle');
-    expect(`${note} ${resting}`).not.toMatch(/this goal|your goal/i);
+    expect(resting).toContain('no published resting heart rate range for Lose Fat & Build Muscle specifically');
+    expect(resting).toContain('a general adult');
+    expect(resting).not.toContain('as low as 40');
+    expect(resting.match(/This is a reference, not a target\./g)).toHaveLength(1);
+    const cruiser = restingSexNote('Elite Athlete (Cruiserweight Boxer)');
+    expect(cruiser).toContain('no published resting heart rate range for a cruiserweight boxer specifically');
+    expect(cruiser).toContain('an athlete or a more active person');
+    expect(cruiser).toContain('American Heart Association, 2024');
+    expect(cruiser).toContain('as low as 40');
+    expect(cruiser).toContain('This stand-in is not the Elite Athlete (Cruiserweight Boxer) range.');
+    expect(cruiser).not.toContain('general elite athletes');
+    expect(cruiser.match(/This is a reference, not a target\./g)).toHaveLength(1);
+    expect(cruiser.match(/Not medical advice/gi) ?? []).toHaveLength(0);
+    expect(`${note} ${resting} ${cruiser}`).not.toMatch(/this goal|your goal/i);
   });
 
   it('gives Thumos and the health plan the same figures', () => {

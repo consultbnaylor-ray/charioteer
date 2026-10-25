@@ -126,8 +126,52 @@ describe('VO2 estimate note', () => {
     expect(calendar).toContain('nextSessionClock(today)');
     expect(readFileSync('src/app/(main)/workouts.tsx', 'utf8')).toContain('planOutdoorNonce={planOutdoorNonce}');
     expect(plan).toContain('/workouts?planOutdoor=');
+    const stats = readFileSync('src/app/(main)/stats.tsx', 'utf8');
+    const health = readFileSync('src/app/(main)/health.tsx', 'utf8');
+    expect(stats).toContain('onPlanOutdoor={() => router.push(`/workouts?planOutdoor=${Date.now()}`');
+    expect(health).toContain('/workouts?planOutdoor=');
+    expect(fitness).toContain('onPlanOutdoor: () => void');
+    expect(fitness).toContain('onPlan={onPlanOutdoor}');
+    expect(fitness).not.toContain('onPlanOutdoor?.()');
+    expect(note).toContain('<Button label={VO2_PLAN_LABEL} onPress={onPlan} />');
+    expect(note).not.toMatch(/onPlan\?:/);
+    expect(board).toContain("tile.id === 'vo2_max' && onPlanOutdoor");
     expect(readFileSync('src/domain/plannedSession.ts', 'utf8')).toContain("outdoor: 'Run/Walk (outdoor)'");
     expect(readFileSync('src/ui/WorkoutCalendar.tsx', 'utf8')).not.toMatch(/runna|week plan|distance programme/i);
+  });
+
+  it('wires every button beside a Stats More info control', () => {
+    const files = [
+      'src/app/(main)/stats.tsx',
+      'src/ui/Vo2EstimateNote.tsx',
+      'src/ui/YourFitness.tsx',
+      'src/ui/GarminTip.tsx',
+      'src/ui/GarminPermissionNotice.tsx',
+      'src/ui/DailyActivity.tsx',
+      'src/ui/HealthRefresh.tsx',
+      'src/ui/GuidanceRange.tsx',
+      'src/ui/HealthBoard.tsx',
+      'src/ui/HealthStatBoard.tsx',
+      'src/ui/YourGoal.tsx',
+      'src/ui/GoalWeightRange.tsx',
+      'src/ui/HrvExplainer.tsx',
+      'src/ui/ProcessedFoodList.tsx',
+      'src/ui/WorkoutsLink.tsx',
+    ];
+    const missing: string[] = [];
+    for (const path of files) {
+      const source = readFileSync(path, 'utf8');
+      for (const tag of ['Button', 'Pressable', 'MoreInfoButton']) {
+        const re = new RegExp(`<${tag}\\b`, 'g');
+        let match: RegExpExecArray | null;
+        while ((match = re.exec(source))) {
+          const opening = source.slice(match.index, source.indexOf('>', match.index) + 1);
+          if (!/\bonPress=/.test(opening)) missing.push(`${path}: ${opening.replace(/\s+/g, ' ').slice(0, 140)}`);
+        }
+      }
+      expect(source).not.toMatch(/onPress=\{[^}]*\?\./);
+    }
+    expect(missing).toEqual([]);
   });
 });
 

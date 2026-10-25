@@ -16,8 +16,8 @@ import {
   NO_MIX_BAND,
   NO_STEP_BAND,
   NO_WORKOUT_MINUTE_BAND,
-  athleteRestingNote,
   hrvReading,
+  metricFallback,
   recoveryReading,
   restingSexNote,
   sessionHeartReading,
@@ -488,9 +488,10 @@ function goalLabel(input: HealthStatBoardInput): string | null {
   return input.goal ? GOAL_LABEL[input.goal] : null;
 }
 
-function athleteAim(goal: NutritionGoal | null): boolean {
-  if (!goal) return false;
-  return goal.startsWith('elite_') || isAnyBoxer(goal);
+function athleticRestingSources(goal: NutritionGoal | null): BandLink[] {
+  const label = goal ? GOAL_LABEL[goal] : null;
+  const used = metricFallback({ metricId: 'resting_heart_rate', goalLabel: label }).used;
+  return used === 'athlete' ? [BHF_LINK, AHA_LINK] : [BHF_LINK];
 }
 
 function citedFrom(
@@ -665,11 +666,11 @@ function heartBandTile(item: CatalogItem, input: HealthStatBoardInput, grown: bo
     history: nums(window.current),
     readings: [...window.current],
     about,
-    meaning: `${restingSexNote(goalLabel(input))} The band is the same for a day, a week, or a month. ${athleteRestingNote(athleteAim(input.goal)) ?? ''} ${BAND_CAVEAT}`.replace(/\s+/g, ' ').trim(),
-    rangeNote: athleteRestingNote(athleteAim(input.goal)),
+    meaning: `${restingSexNote(goalLabel(input))} The band is the same for a day, a week, or a month. ${BAND_CAVEAT}`.replace(/\s+/g, ' ').trim(),
+    rangeNote: null,
     sourceName: BHF_LINK.name,
     sourceUrl: BHF_LINK.url,
-    sources: athleteAim(input.goal) ? [BHF_LINK, AHA_LINK] : [BHF_LINK],
+    sources: athleticRestingSources(input.goal),
   });
 }
 

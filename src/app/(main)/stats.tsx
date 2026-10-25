@@ -102,7 +102,7 @@ export default function Stats() {
         <GoalLine />
       </Card>
       <YourGoal place="stats" />
-      <YourFitness />
+      <YourFitness onPlanOutdoor={() => router.push(`/workouts?planOutdoor=${Date.now()}` as never)} />
       <WorkoutsLink workouts={workouts} />
       <Card accessibilityLabel="Open Health Plan" onPress={() => router.push('/health-plan' as never)}>
         <T style={{ fontFamily: theme.font.bodyStrong }}>Health Plan</T>

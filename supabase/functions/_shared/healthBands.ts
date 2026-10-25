@@ -159,9 +159,256 @@ function zoneWords(place: ReturnType<typeof zonePlace>): string {
   return 'Below the moderate zone';
 }
 
-function aimLine(metric: string, goalLabel: string | null): string {
-  const who = goalLabel ? ` for ${goalLabel}` : '';
-  return `No separate published ${metric} range${who}. ${REFERENCE_NOT_A_TARGET}`;
+/** Order is fixed: the first step with a citable figure is the comparison. */
+export const FALLBACK_STEPS = ['goal', 'family', 'elite', 'athlete', 'adult'] as const;
+export type FallbackStep = (typeof FALLBACK_STEPS)[number];
+
+export type FallbackCite = {
+  /** Who the figure describes. Never the user's own aim when this is a stand-in. */
+  who: string;
+  source: string;
+  detail: string;
+};
+
+export type FallbackChainStep = {
+  step: FallbackStep;
+  cite: FallbackCite | null;
+  skippedBecause: string | null;
+};
+
+export type MetricFallback = {
+  metricId: string;
+  used: FallbackStep | null;
+  /** True only when the figure is published for the chosen aim itself. */
+  goalSpecific: boolean;
+  chain: FallbackChainStep[];
+  sentence: string;
+};
+
+const NO_GOAL = 'No published range for this aim.';
+const NO_FAMILY = 'No citable range for this aim\'s family (combat, strength, or endurance).';
+const NO_ELITE = 'No citable general elite athlete figure for this metric.';
+const NO_ATHLETE = 'No citable athlete or highly active adult figure for this metric.';
+const NO_ADULT = 'No citable general adult figure for this metric.';
+const NOT_ATHLETIC = 'This aim is not an athlete aim, so an athlete figure is not used as a similar stand-in.';
+
+export const FALLBACK_METRIC_IDS = [
+  'resting_heart_rate',
+  'session_heart_rate',
+  'walking_heart_rate',
+  'heart_rate_recovery',
+  'hrv',
+  'vo2_max',
+  'steps',
+  'sleep_hours',
+  'stress',
+  'body_battery',
+  'weight_kg',
+  'intensity_minutes',
+  'respiration',
+] as const;
+export type FallbackMetricId = (typeof FALLBACK_METRIC_IDS)[number];
+
+const METRIC_NAMES: Record<FallbackMetricId, string> = {
+  resting_heart_rate: 'resting heart rate',
+  session_heart_rate: 'session heart rate',
+  walking_heart_rate: 'walking heart rate',
+  heart_rate_recovery: 'heart-rate recovery',
+  hrv: 'heart-rate variability',
+  vo2_max: 'cardio fitness',
+  steps: 'step',
+  sleep_hours: 'sleep',
+  stress: 'stress',
+  body_battery: 'Body Battery',
+  weight_kg: 'weight',
+  intensity_minutes: 'activity-minute',
+  respiration: 'breathing-rate',
+};
+
+/** A short "a cruiserweight boxer" from a saved aim name. The full name stays on the stand-in warning. */
+export function specificAim(goalLabel: string): string {
+  const inner = goalLabel.match(/\(([^)]+)\)/)?.[1]?.replace(/\s*etc\.?/i, '').trim();
+  if (!inner) return goalLabel;
+  return `a ${inner.toLowerCase()}`;
+}
+
+function athleticAim(goalLabel: string | null): boolean {
+  if (!goalLabel) return false;
+  return /^elite athlete\b/i.test(goalLabel) || /^body builder$/i.test(goalLabel);
+}
+
+function skipReason(metricId: string, step: FallbackStep, goalLabel: string | null): string {
+  if (step === 'goal') return NO_GOAL;
+  if (step === 'family') return NO_FAMILY;
+  if (step === 'elite') {
+    if (metricId === 'resting_heart_rate') {
+      return 'No citable general-elite resting range. The American Heart Association figure is for an athlete or a more active person, not a separate elite band.';
+    }
+    if (metricId === 'vo2_max') {
+      return 'No separate general-elite cardio figure is cited here. Male boxing classes use Kim, Song, and Min, 2016, only when that study group matches.';
+    }
+    return NO_ELITE;
+  }
+  if (step === 'athlete') {
+    if (!athleticAim(goalLabel)) return NOT_ATHLETIC;
+    return NO_ATHLETE;
+  }
+  if (metricId === 'vo2_max') {
+    return 'Kaminsky, Arena, and Myers, 2015, is the age and sex band when age and sex are set. No number is filled in without them.';
+  }
+  if (metricId === 'respiration' || metricId === 'stress' || metricId === 'body_battery') {
+    return 'No named general-adult range is cited for this metric, so none is invented.';
+  }
+  return NO_ADULT;
+}
+
+const AHA_ATHLETE_CITE: FallbackCite = {
+  who: 'an athlete or a more active person',
+  source: 'American Heart Association, 2024',
+  detail: `a resting rate may be as low as ${AHA_ATHLETE_RESTING_LOW} bpm`,
+};
+
+const BHF_ADULT_CITE: FallbackCite = {
+  who: 'a general adult',
+  source: 'British Heart Foundation, 2026',
+  detail: 'a usual resting rate is 60 to 100 bpm',
+};
+
+function emptyCites(): Record<FallbackStep, FallbackCite | null> {
+  return { goal: null, family: null, elite: null, athlete: null, adult: null };
+}
+
+/** Built-in cites. A null step is skipped. Callers may pass a real goal figure, such as a boxing cardio band. */
+export function builtinFallbackCites(metricId: string, goalLabel: string | null): Record<FallbackStep, FallbackCite | null> {
+  const cites = emptyCites();
+  if (metricId === 'resting_heart_rate') {
+    cites.athlete = athleticAim(goalLabel) ? AHA_ATHLETE_CITE : null;
+    cites.adult = BHF_ADULT_CITE;
+    return cites;
+  }
+  if (metricId === 'session_heart_rate') {
+    cites.adult = {
+      who: 'a general adult',
+      source: 'Tanaka, Monahan, and Seals, 2001, and the American College of Sports Medicine',
+      detail: 'moderate and vigorous zones estimated from age',
+    };
+    return cites;
+  }
+  if (metricId === 'walking_heart_rate') {
+    cites.adult = {
+      who: 'a general adult',
+      source: 'Tanaka, Monahan, and Seals, 2001',
+      detail: 'the moderate zone used as an approximation, not an Apple norm',
+    };
+    return cites;
+  }
+  if (metricId === 'heart_rate_recovery') {
+    cites.adult = {
+      who: 'adults referred for a treadmill test',
+      source: 'Cole and colleagues, 1999',
+      detail: `a fall of ${COLE_ABNORMAL_AT_OR_UNDER} bpm or less in the first minute was called abnormal. That group was not a healthy population`,
+    };
+    return cites;
+  }
+  if (metricId === 'hrv') {
+    cites.adult = {
+      who: 'healthy adults in that review',
+      source: 'Nunan, Sandercock, and Brodie, 2010',
+      detail: `short-term SDNN study averages from ${NUNAN_SDNN_LOW} to ${NUNAN_SDNN_HIGH} ms`,
+    };
+    return cites;
+  }
+  if (metricId === 'steps') {
+    cites.adult = {
+      who: 'a general adult',
+      source: 'Ding and colleagues, The Lancet Public Health, 2025',
+      detail: 'about 7,000 steps a day was linked with better outcomes than 2,000, and about 10,000 can still suit people who are more active. The NHS sets no daily step target',
+    };
+    return cites;
+  }
+  if (metricId === 'sleep_hours') {
+    cites.adult = {
+      who: 'a general adult',
+      source: 'NHS',
+      detail: 'most adults need 7 to 9 hours a night',
+    };
+    return cites;
+  }
+  if (metricId === 'weight_kg') {
+    cites.adult = {
+      who: 'a general adult',
+      source: 'NICE NG246 and the NHS',
+      detail: 'a healthy weight for most adults is a BMI of 18.5 to 24.9. That is not a sport range',
+    };
+    return cites;
+  }
+  if (metricId === 'intensity_minutes') {
+    cites.adult = {
+      who: 'a general adult',
+      source: 'NHS and the UK Chief Medical Officers',
+      detail: '150 minutes of moderate activity a week, or 75 minutes if it is vigorous',
+    };
+    return cites;
+  }
+  return cites;
+}
+
+function standInSentence(metricName: string, goalLabel: string | null, cite: FallbackCite, goalSpecific: boolean): string {
+  if (goalSpecific && goalLabel) {
+    return `The published ${metricName} range for ${goalLabel} is ${cite.detail} (${cite.source}). This is the published range for ${goalLabel}. ${REFERENCE_NOT_A_TARGET}`;
+  }
+  if (!goalLabel) {
+    return `No aim is set, so this compares you with ${cite.who} (${cite.source}: ${cite.detail}). ${REFERENCE_NOT_A_TARGET}`;
+  }
+  return `There is no published ${metricName} range for ${specificAim(goalLabel)} specifically, so this compares you with ${cite.who} (${cite.source}: ${cite.detail}). This stand-in is not the ${goalLabel} range. ${REFERENCE_NOT_A_TARGET}`;
+}
+
+/**
+ * Nearest citable comparison for an aim that has no published range of its own.
+ * A supplied cite replaces the built-in for that step, including an explicit null.
+ */
+export function metricFallback(input: {
+  metricId: string;
+  metricName?: string;
+  goalLabel: string | null;
+  published?: Partial<Record<FallbackStep, FallbackCite | null>>;
+}): MetricFallback {
+  const metricName = input.metricName ?? METRIC_NAMES[input.metricId as FallbackMetricId] ?? input.metricId;
+  const builtin = builtinFallbackCites(input.metricId, input.goalLabel);
+  const chain: FallbackChainStep[] = FALLBACK_STEPS.map((step) => {
+    const cite = input.published && Object.prototype.hasOwnProperty.call(input.published, step)
+      ? input.published[step] ?? null
+      : builtin[step];
+    return { step, cite, skippedBecause: cite ? null : skipReason(input.metricId, step, input.goalLabel) };
+  });
+  const hit = chain.find((step) => step.cite);
+  if (!hit?.cite) {
+    const who = input.goalLabel ? ` for ${specificAim(input.goalLabel)} specifically` : '';
+    return {
+      metricId: input.metricId,
+      used: null,
+      goalSpecific: false,
+      chain,
+      sentence: `There is no published ${metricName} range${who}, and no citable stand-in, so no number is compared. ${REFERENCE_NOT_A_TARGET}`,
+    };
+  }
+  const goalSpecific = hit.step === 'goal';
+  return {
+    metricId: input.metricId,
+    used: hit.step,
+    goalSpecific,
+    chain,
+    sentence: standInSentence(metricName, input.goalLabel, hit.cite, goalSpecific),
+  };
+}
+
+/** The chain for every metric, using only built-in cites. A boxing cardio band is passed in by the fitness card. */
+export function fallbackReport(goalLabel: string | null): MetricFallback[] {
+  return FALLBACK_METRIC_IDS.map((metricId) => metricFallback({ metricId, goalLabel }));
+}
+
+function aimLine(metricId: string, metricName: string, goalLabel: string | null): string {
+  return metricFallback({ metricId, metricName, goalLabel }).sentence;
 }
 
 function zoneSentence(zones: IntensityZones): string {
@@ -189,15 +436,15 @@ export function sessionHeartReading(bpm: number, age: number | null | undefined,
   const place = zonePlace(bpm, zones);
   return {
     status: `${zoneWords(place)}. Moderate ${zones.moderateLow} to ${zones.moderateHigh} bpm. Vigorous ${zones.vigorousLow} to ${zones.vigorousHigh} bpm.`,
-    meaning: `${zoneSentence(zones)} ${aimLine('session heart-rate', goalLabel)} ${BAND_CAVEAT}`,
-    rangeNote: aimLine('session heart-rate', goalLabel),
+    meaning: `${zoneSentence(zones)} ${aimLine('session_heart_rate', 'session heart rate', goalLabel)} ${BAND_CAVEAT}`,
+    rangeNote: aimLine('session_heart_rate', 'session heart rate', goalLabel),
     links: [TANAKA_LINK, ACSM_LINK, AHA_LINK, NHS_ACTIVITY_LINK],
     zoneLow: zones.moderateLow,
     zoneHigh: zones.moderateHigh,
     zoneCaption: `Moderate ${zones.moderateLow}–${zones.moderateHigh} bpm`,
     goalLow: zones.vigorousLow,
     goalHigh: zones.vigorousHigh,
-    goalCaption: `Vigorous ${zones.vigorousLow}–${zones.vigorousHigh} bpm. ${REFERENCE_NOT_A_TARGET}`,
+    goalCaption: `Vigorous ${zones.vigorousLow}–${zones.vigorousHigh} bpm.`,
     scaleMin: Math.min(40, zones.moderateLow - 10, Math.round(bpm) - 5),
     scaleMax: Math.max(zones.vigorousHigh + 10, Math.round(bpm) + 5),
   };
@@ -210,10 +457,11 @@ export function walkingHeartReading(bpm: number, age: number | null | undefined,
   const where = place === 'moderate'
     ? `Inside the approximate moderate zone, ${zones.moderateLow} to ${zones.moderateHigh} bpm.`
     : `${zoneWords(place)}. The approximate moderate zone is ${zones.moderateLow} to ${zones.moderateHigh} bpm.`;
+  const standIn = `Approximation, not an Apple norm. ${aimLine('walking_heart_rate', 'walking heart rate', goalLabel)}`;
   return {
     status: `${where} This is an approximation.`,
-    meaning: `Apple publishes no normal range for walking heart rate. The 2024 Apple note calls the daily average a baseline for light exercise. Brisk walking is an NHS example of moderate activity, so the moderate zone is used here as an approximation, not as an Apple norm. Ordinary walking can sit lower. ${zoneSentence(zones)} ${aimLine('walking heart-rate', goalLabel)} ${BAND_CAVEAT}`,
-    rangeNote: `Approximation, not an Apple norm. ${aimLine('walking heart-rate', goalLabel)}`,
+    meaning: `Apple publishes no normal range for walking heart rate. The 2024 Apple note calls the daily average a baseline for light exercise. Brisk walking is an NHS example of moderate activity, so the moderate zone is used here as an approximation, not as an Apple norm. Ordinary walking can sit lower. ${zoneSentence(zones)} ${standIn} ${BAND_CAVEAT}`,
+    rangeNote: standIn,
     links: [APPLE_HEART_LINK, NHS_ACTIVITY_LINK, TANAKA_LINK, ACSM_LINK],
     zoneLow: zones.moderateLow,
     zoneHigh: zones.moderateHigh,
@@ -232,8 +480,8 @@ export function recoveryReading(bpm: number, goalLabel: string | null): CitedRea
     status: above
       ? `Above ${COLE_ABNORMAL_AT_OR_UNDER} bpm. In that study, ${COLE_ABNORMAL_AT_OR_UNDER} bpm or less was called abnormal.`
       : `${Math.round(bpm)} bpm is at or under ${COLE_ABNORMAL_AT_OR_UNDER} bpm, which that study called abnormal.`,
-    meaning: `Cole and colleagues, in 1999, followed adults referred for a treadmill test. A fall of ${COLE_ABNORMAL_AT_OR_UNDER} bpm or less in the first minute was called abnormal. The middle half of that group fell by ${COLE_MIDDLE_LOW} to ${COLE_MIDDLE_HIGH} bpm. The test used a cool-down, the group was not a healthy population, and the paper has no age or sex table. Apple Watch recovery can be measured differently. ${aimLine('heart-rate recovery', goalLabel)} ${BAND_CAVEAT}`,
-    rangeNote: `Middle half of that referred group: ${COLE_MIDDLE_LOW} to ${COLE_MIDDLE_HIGH} bpm. ${REFERENCE_NOT_A_TARGET}`,
+    meaning: `Cole and colleagues, in 1999, followed adults referred for a treadmill test. A fall of ${COLE_ABNORMAL_AT_OR_UNDER} bpm or less in the first minute was called abnormal. The middle half of that group fell by ${COLE_MIDDLE_LOW} to ${COLE_MIDDLE_HIGH} bpm. The test used a cool-down, the group was not a healthy population, and the paper has no age or sex table. Apple Watch recovery can be measured differently. ${aimLine('heart_rate_recovery', 'heart-rate recovery', goalLabel)} ${BAND_CAVEAT}`,
+    rangeNote: `${COLE_MIDDLE_LOW} to ${COLE_MIDDLE_HIGH} bpm`,
     links: [COLE_LINK],
     zoneLow: COLE_MIDDLE_LOW,
     zoneHigh: COLE_MIDDLE_HIGH,
@@ -249,8 +497,8 @@ export function recoveryReading(bpm: number, goalLabel: string | null): CitedRea
 export function hrvReading(ms: number, goalLabel: string | null): CitedReading {
   return {
     status: `Study averages ran from ${NUNAN_SDNN_LOW} to ${NUNAN_SDNN_HIGH} ms. Overall mean ${NUNAN_SDNN_MEAN} ms.`,
-    meaning: `Nunan, Sandercock, and Brodie, 2010, reviewed short-term SDNN in healthy adults. Across 27 studies the values averaged ${NUNAN_SDNN_MEAN} ms, and those study values ran from ${NUNAN_SDNN_LOW} to ${NUNAN_SDNN_HIGH} ms. That spread is not a personal target, and the summary table is not split by age or sex. A 24-hour age table is a different recording from a watch sample, so it is not used here. ${aimLine('heart-rate variability', goalLabel)} ${BAND_CAVEAT}`,
-    rangeNote: aimLine('heart-rate variability', goalLabel),
+    meaning: `Nunan, Sandercock, and Brodie, 2010, reviewed short-term SDNN in healthy adults. Across 27 studies the values averaged ${NUNAN_SDNN_MEAN} ms, and those study values ran from ${NUNAN_SDNN_LOW} to ${NUNAN_SDNN_HIGH} ms. That spread is not a personal target, and the summary table is not split by age or sex. A 24-hour age table is a different recording from a watch sample, so it is not used here. ${aimLine('hrv', 'heart-rate variability', goalLabel)} ${BAND_CAVEAT}`,
+    rangeNote: aimLine('hrv', 'heart-rate variability', goalLabel),
     links: [NUNAN_LINK],
     zoneLow: NUNAN_SDNN_LOW,
     zoneHigh: NUNAN_SDNN_HIGH,
@@ -284,7 +532,12 @@ export function athleteRestingNote(athlete: boolean): string | null {
 }
 
 export function restingSexNote(goalLabel: string | null): string {
-  return `The British Heart Foundation, page updated in 2026, says a usual adult resting rate is 60 to 100 bpm. Below 60 can be usual for people who are very fit. The page says women tend to be slightly higher and does not give a separate number, and it does not split the range by age. ${aimLine('resting-heart-rate', goalLabel)}`;
+  const standIn = metricFallback({
+    metricId: 'resting_heart_rate',
+    metricName: 'resting heart rate',
+    goalLabel,
+  }).sentence;
+  return `The British Heart Foundation, page updated in 2026, says a usual adult resting rate is 60 to 100 bpm. Below 60 can be usual for people who are very fit. The page says women tend to be slightly higher and does not give a separate number, and it does not split the range by age. ${standIn}`;
 }
 
 /** Definitions the coach may quote. Personal readings are added separately. */

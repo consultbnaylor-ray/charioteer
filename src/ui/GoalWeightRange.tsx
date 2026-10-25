@@ -11,6 +11,7 @@ import {
   type WeightSpan,
   type WeightUnitMode,
 } from '@/domain/goalWeightRange';
+import { metricFallback } from '@/domain/healthBands';
 import { GOAL_LABEL } from '@/domain/nutrition';
 import { GoalLine } from '@/ui/GoalLine';
 import { PlanTick } from '@/ui/PlanTick';
@@ -183,7 +184,7 @@ function BandLegend({ view, unit, goalName }: { view: GoalWeightView; unit: Weig
       {view.goal ? (
         <Legend swatch={colors.info.ink} label={goalBandLegend(view.goal, unit)} />
       ) : (
-        <Legend swatch={colors.info.ink} label={goalName ? `No separate published range for ${goalName}` : 'No separate published range'} />
+        <Legend swatch={colors.info.ink} label={goalName ? metricFallback({ metricId: 'weight_kg', metricName: 'weight', goalLabel: goalName }).sentence : 'No aim is set, so the healthy weight band is the comparison. This is a reference, not a target.'} />
       )}
     </View>
   );
