@@ -1,7 +1,7 @@
 import { parseIsoDay } from '@/domain/dates';
 import { classStatus, type ClassEdges } from '@/domain/goalWeightRange';
 import { drinkFreeRing, soberMilestoneRing, type ChartBar } from '@/domain/distance';
-import { hrvReading, NO_STEP_BAND } from '@/domain/healthBands';
+import { hrvReading } from '@/domain/healthBands';
 import { healthChangeNote, HRV_MIN_READINGS, personalChange, shiftDay, type HealthInsightKind } from '@/domain/healthInsights';
 import {
   BHF_RESTING_MAX_BPM,
@@ -381,7 +381,7 @@ function stepsFigure(points: readonly { day: string; value: number }[], today: s
     : !todayPoint
       ? 'No steps logged today.'
       : '';
-  const caption = [compared, NO_STEP_BAND].filter(Boolean).join(' ');
+  const caption = compared || 'No steps logged today.';
   return {
     bars: {
       label: 'Steps',
@@ -406,7 +406,7 @@ function hrvFigure(points: readonly { day: string; value: number }[], today: str
     });
   }
   const band = hrvReading(latest.value, null).status;
-  const caption = note ? `${note}. ${band}` : band;
+  const caption = note ? `${note}.` : band;
   return {
     bars: {
       label: 'Your own readings',

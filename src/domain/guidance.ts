@@ -104,6 +104,10 @@ export type GuidanceTick = { position: number; label: string };
 export type GuidanceView = {
   /** Null when there is no published band, or not enough to place one. */
   label: string | null;
+  /** One fact that stays on the card. Null when the figure already says it. */
+  lead: string | null;
+  /** Short honesty line. It stays on the card. */
+  honesty: string;
   plain: string;
   marker: { position: number; warning: boolean } | null;
   ticks: GuidanceTick[];
@@ -164,8 +168,17 @@ function tick(value: number, min: number, max: number, label: string): GuidanceT
   return { position: place(value, min, max), label };
 }
 
-function view(partial: Omit<GuidanceView, 'caveat'> & { caveat?: string }): GuidanceView {
-  return { caveat: GUIDANCE_CAVEAT, ...partial };
+function view(partial: Omit<GuidanceView, 'caveat' | 'lead' | 'honesty'> & {
+  caveat?: string;
+  lead?: string | null;
+  honesty?: string;
+}): GuidanceView {
+  return {
+    lead: null,
+    honesty: 'General guidance, not a diagnosis.',
+    caveat: GUIDANCE_CAVEAT,
+    ...partial,
+  };
 }
 
 function span(points: DayValue[], today: string, startOffset: number, endOffset: number): DayValue[] {
@@ -236,7 +249,7 @@ function sleepGuidance(points: DayValue[], today: string): GuidanceView {
   const shown = formatSleepHours(average);
   const opening = recent.length === 1
     ? `The one night logged in the last 7 days was ${shown}.`
-    : `Your recent average is ${shown} a night, from ${recent.length} nights in the last 7 days.`;
+    : `Your recent average over the last 7 days is ${shown} a night.`;
   const short = recent.filter((point) => point.value < SHORT_SLEEP_HOURS);
   const warning = short.length >= SHORT_SLEEP_NIGHTS
     ? {
@@ -283,7 +296,7 @@ function restingGuidance(points: DayValue[], today: string): GuidanceView {
   const bpm = Math.round(average);
   const opening = recent.length === 1
     ? `The one resting reading in the last 7 days was ${bpm} bpm.`
-    : `Your recent average resting heart rate is ${bpm} bpm, from ${recent.length} days in the last 7 days.`;
+    : `Your recent average resting heart rate over the last 7 days is ${bpm} bpm.`;
   const high = recent.filter((point) => point.value > BHF_RESTING_MAX_BPM);
   const warning = high.length >= RESTING_HIGH_DAYS
     ? {
@@ -328,7 +341,7 @@ function workoutGuidance(points: DayValue[], today: string): GuidanceView {
     : '';
   return view({
     label: meeting ? 'Meeting the guideline' : 'Below recommended',
-    plain: `You logged ${uk(minutes)} minutes of workouts over ${recent.length} ${recent.length === 1 ? 'day' : 'days'} in the last 7 days.${incomplete} ${ACTIVITY_LINE}`,
+    plain: `You logged ${uk(minutes)} minutes of workouts over the last 7 days.${incomplete} ${ACTIVITY_LINE}`,
     marker: { position: place(total, scaleMin, scaleMax), warning: false },
     ticks,
     sources: ACTIVITY_SOURCES,
@@ -350,11 +363,19 @@ function stepsGuidance(points: DayValue[], today: string): GuidanceView {
     });
   }
   const shown = uk(Math.round(average));
+  const compared = earlierShort(points, today, recent);
   const opening = recent.length === 1
     ? `The one day logged in the last 7 days was ${shown} steps.`
-    : `Your recent average is ${shown} steps a day, from ${recent.length} days in the last 7 days.`;
+    : `Your recent average over the last 7 days is ${shown} steps a day.`;
+  const lead = recent.length === 1
+    ? opening
+    : compared
+      ? `Your recent average is ${shown} steps a day, ${compared}.`
+      : opening;
   return view({
     label: null,
+    lead,
+    honesty: 'No UK daily step target. Reference only, not medical advice.',
     plain: `${opening} ${ownBaseline(points, today, recent, 'steps')} ${STEPS_RESEARCH}`,
     marker: null,
     ticks: [],
@@ -367,7 +388,17 @@ function hrvOpening(recent: DayValue[], average: number | null): string {
   if (average == null) return '';
   const shown = uk(Math.round(average));
   if (recent.length === 1) return `The one reading in the last 7 days was ${shown} ms.`;
-  return `Your recent average is ${shown} ms, from ${recent.length} days in the last 7 days.`;
+  return `Your recent average over the last 7 days is ${shown} ms.`;
+}
+
+function earlierShort(points: DayValue[], today: string, recent: DayValue[]): string | null {
+  const earlier = span(points, today, -36, -7);
+  const baseline = mean(earlier.map((point) => point.value));
+  const recentMean = mean(recent.map((point) => point.value));
+  if (earlier.length < 3 || baseline == null || recentMean == null) return null;
+  const change = percentAgainstBaseline(recentMean, baseline);
+  if (change == null || Math.abs(change) < 1) return 'about the same as your earlier average';
+  return `${Math.abs(change)}% ${change > 0 ? 'above' : 'below'} your earlier average`;
 }
 
 function hrvGuidance(points: DayValue[], today: string): GuidanceView {
@@ -377,6 +408,7 @@ function hrvGuidance(points: DayValue[], today: string): GuidanceView {
   if (points.length < HRV_MIN_READINGS) {
     return view({
       label: null,
+      honesty: 'A reference, not a target. General guidance, not a diagnosis.',
       plain: [opening, `${HRV_TOO_FEW}.`, HRV_HONEST].filter(Boolean).join(' '),
       marker: null,
       ticks: [],
@@ -387,6 +419,7 @@ function hrvGuidance(points: DayValue[], today: string): GuidanceView {
   if (average == null) {
     return view({
       label: null,
+      honesty: 'A reference, not a target. General guidance, not a diagnosis.',
       plain: `${HRV_HONEST} Log a few days and this can compare you with your own earlier average.`,
       marker: null,
       ticks: [],
@@ -398,6 +431,8 @@ function hrvGuidance(points: DayValue[], today: string): GuidanceView {
   const comparison = note ?? 'There are not enough readings in the last 30 days to compare with your 30-day average.';
   return view({
     label: null,
+    lead: note,
+    honesty: 'A reference, not a target. General guidance, not a diagnosis.',
     plain: `${opening} ${comparison}. ${HRV_HONEST}`,
     marker: null,
     ticks: [],
@@ -498,7 +533,7 @@ function weightGuidance(
     tick(NHS_BMI_OBESE_MIN, scaleMin, scaleMax, '30'),
   ];
   const weightText = recent.length > 1
-    ? `From an average weight of ${oneDecimal(weight).toFixed(1)} kg over ${recent.length} days in the last 7 days, `
+    ? `From an average weight of ${oneDecimal(weight).toFixed(1)} kg over the last 7 days, `
     : `From a weight of ${oneDecimal(weight).toFixed(1)} kg, `;
   let label: string;
   let named: string;
@@ -526,6 +561,7 @@ function weightGuidance(
   }
   return view({
     label,
+    honesty: 'A reference, not a target. Not a diagnosis.',
     plain: `${weightText}${named} ${BMI_LIMITS}${when} ${BMI_ONLY_NOTE}`,
     marker: { position: place(bmi, scaleMin, scaleMax), warning: warning != null },
     ticks,
@@ -594,8 +630,10 @@ export function weeklyUnitsGuidance(units: number, stage?: string | null): Guida
   } else {
     plain = `${stopped}A usual week of ${shownText} units is above the UK low-risk guideline of no more than 14 units a week. It is under the higher-risk lines of 35 for women and 50 for men.${spread}`;
   }
+  const limit = plain.replace(spread, '').trim();
   return view({
     label: within ? 'Within the low-risk guideline' : 'Above recommended',
+    lead: limit,
     plain,
     marker: { position: place(units, scaleMin, scaleMax), warning: warning != null },
     ticks,

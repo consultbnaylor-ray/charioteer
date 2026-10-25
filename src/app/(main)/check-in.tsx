@@ -104,21 +104,25 @@ export default function CheckIn() {
         />
       </View>
       <ScrollTarget id="mood">
-        <T variant="label">Mood, 1 to 10</T>
-        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-          {MOOD_SCORES.map((value) => (
-            <Choice key={value} label={String(value)} selected={mood === value} onPress={() => touch(setMood)(value)} />
-          ))}
-        </View>
+        <Card>
+          <T variant="label">Mood, 1 to 10</T>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+            {MOOD_SCORES.map((value) => (
+              <Choice key={value} label={String(value)} selected={mood === value} onPress={() => touch(setMood)(value)} />
+            ))}
+          </View>
+        </Card>
       </ScrollTarget>
       <Field label="Sleep last night (hours)" value={sleep} onChangeText={touch(setSleep)} keyboardType="decimal-pad" />
       <ScrollTarget id="craving">
-        <T variant="label">Craving, 0 to 10</T>
-        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-          {Array.from({ length: 11 }, (_, value) => (
-            <Choice key={value} label={String(value)} selected={craving === value} onPress={() => touch(setCraving)(value)} />
-          ))}
-        </View>
+        <Card>
+          <T variant="label">Craving, 0 to 10</T>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+            {Array.from({ length: 11 }, (_, value) => (
+              <Choice key={value} label={String(value)} selected={craving === value} onPress={() => touch(setCraving)(value)} />
+            ))}
+          </View>
+        </Card>
       </ScrollTarget>
       <Field label="Note, if you want" value={note} onChangeText={touch(setNote)} multiline placeholder="What is actually going on?" />
       <Field

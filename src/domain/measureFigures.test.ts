@@ -61,9 +61,8 @@ describe('measured stats figures', () => {
     ], today);
     expect(steps?.ring).toBeUndefined();
     expect(steps?.bars?.bars.bars.map((bar) => bar.label)).toEqual(['Today 9,100', 'Recent average 8,000']);
-    expect(steps?.bars?.bars.caption).toContain('No published guideline.');
-    expect(steps?.bars?.bars.caption).toContain('do not set a daily step target');
-    expect(steps?.bars?.bars.caption).toContain('Higher than your recent average.');
+    expect(steps?.bars?.bars.caption).toBe('Higher than your recent average.');
+    expect(steps?.bars?.bars.caption).not.toContain('No published guideline.');
     expect(healthFigure('steps', [], today)).toBeNull();
   });
 
@@ -86,7 +85,7 @@ describe('measured stats figures', () => {
       { day: '2026-10-10', value: 45 },
       { day: today, value: 48 },
     ], today);
-    expect(enough?.bars?.bars.caption).toBe('HRV 48 ms, up 7% vs your 30-day average. Study averages ran from 32 to 93 ms. Overall mean 50 ms.');
+    expect(enough?.bars?.bars.caption).toBe('HRV 48 ms, up 7% vs your 30-day average.');
     expect(enough?.bars?.bars.bars.map((bar) => bar.label)).toEqual(['Latest 48 ms', '30-day average 45 ms']);
 
     const weight = healthFigure('weight_kg', [

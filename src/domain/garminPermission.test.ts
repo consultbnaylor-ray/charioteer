@@ -139,7 +139,7 @@ describe('Garmin permission detection', () => {
     expect(readFileSync('src/ui/YourFitness.tsx', 'utf8')).toContain('<GarminTip />');
     expect(readFileSync('src/app/(main)/health.tsx', 'utf8')).toContain('<GarminTip />');
     expect(readFileSync('src/app/(main)/health-plan.tsx', 'utf8')).toContain('<YourFitness');
-    expect(readFileSync('src/app/(main)/stats.tsx', 'utf8')).toContain('<YourFitness />');
+    expect(readFileSync('src/app/(main)/stats.tsx', 'utf8')).toContain('<YourFitness');
     expect(readFileSync('src/app/(main)/workouts.tsx', 'utf8')).toContain('<GarminPermissionNotice />');
     const bar = readFileSync('src/ui/HealthRefresh.tsx', 'utf8');
     expect(bar).toContain("garmin.code === 'permission'");

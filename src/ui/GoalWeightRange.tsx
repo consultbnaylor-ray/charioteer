@@ -1,5 +1,5 @@
-import { useState, type ReactNode } from 'react';
-import { Pressable, View } from 'react-native';
+import { useState } from 'react';
+import { View } from 'react-native';
 
 import { useSnapshot } from '@/data';
 import {
@@ -11,11 +11,13 @@ import {
   type WeightSpan,
   type WeightUnitMode,
 } from '@/domain/goalWeightRange';
+import { metricFallback } from '@/domain/healthBands';
 import { GOAL_LABEL } from '@/domain/nutrition';
 import { GoalLine } from '@/ui/GoalLine';
 import { PlanTick } from '@/ui/PlanTick';
 import { statsToneColors } from '@/ui/statsPalette';
 import { useAppTheme } from '@/ui/theme';
+import { MoreInfo } from '@/ui/MoreInfo';
 import { Card, Choice, T } from '@/ui/ui';
 
 /**
@@ -29,10 +31,9 @@ export function GoalWeightRange({ embedded = false }: { embedded?: boolean }) {
   const view = goalWeightFromSnapshot(snap, unit);
   const goalName = snap.nutrition?.goal ? GOAL_LABEL[snap.nutrition.goal] : null;
   const body = (
-    <View style={{ gap: 8 }} accessibilityLabel={view.words}>
+    <View style={{ gap: 8 }}>
       {embedded ? null : <GoalLine note={false} />}
       <T variant="label">Weight range</T>
-      {view.status === 'ready' ? <T variant="muted">{APPROXIMATE}</T> : null}
       {view.status === 'ready' ? (
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
           <Choice label="kg" selected={unit === 'kg'} onPress={() => setUnit('kg')} />
@@ -46,35 +47,47 @@ export function GoalWeightRange({ embedded = false }: { embedded?: boolean }) {
   return <Card>{body}</Card>;
 }
 
+const REFERENCE_LINE = 'A reference, not a target. Not medical advice.';
+
+/** The class sentence stays. The repeated professional-limit tail is only in More info. */
+function withoutProfessionalLimit(words: string): { headline: string; tail: string | null } {
+  const match = words.match(/\s*(The professional limit is about [\d.]+ kg \(\d+ lb\)\.)\s*$/);
+  if (!match || match.index == null) return { headline: words.trim(), tail: null };
+  return { headline: words.slice(0, match.index).trim(), tail: match[1] ?? null };
+}
+
 function Ready({ view, unit, goalName }: { view: GoalWeightView; unit: WeightUnitMode; goalName: string | null }) {
+  const { headline } = withoutProfessionalLimit(view.words);
+  const withinWords = headline === 'Within range';
   return (
     <View style={{ gap: 8 }}>
-      {view.healthy ? <RangeBar view={view} unit={unit} goalName={goalName} /> : null}
-      {view.words && view.words !== 'Within range' && view.words !== view.gap ? <T>{view.words}</T> : null}
-      {view.withinRange ? (
+      {view.healthy ? <RangeBar view={view} unit={unit} /> : null}
+      {withinWords ? (
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }} accessibilityLabel="Within range">
           <PlanTick done />
           <T>Within range</T>
         </View>
-      ) : view.gap && view.gap === view.words ? (
+      ) : view.gap && view.gap === headline ? (
         <Outside text={view.gap} />
+      ) : headline ? (
+        <T>{headline}</T>
       ) : null}
-      {view.gap && view.gap !== view.words ? <T>{view.gap}</T> : null}
-      {view.goalNote ? <T variant="muted">{view.goalNote}</T> : null}
-      {view.classReference ? <T>{view.classReference}</T> : null}
-      {view.muscle ? <T variant="muted">{view.muscle}</T> : null}
       {view.floorNote ? <T>{view.floorNote}</T> : null}
-      {view.pace ? <T>{view.pace}</T> : null}
-      {view.doctor ? <T variant="muted">{view.doctor}</T> : null}
-      {view.sources.length ? (
-        <Fold title="About these ranges">
-          <T variant="muted">{APPROXIMATE}</T>
-          {view.caveat ? <T variant="muted">{view.caveat}</T> : null}
-          {view.sources.map((source) => (
-            <T key={source.url} variant="muted">{`${source.name}. ${source.url}`}</T>
-          ))}
-        </Fold>
-      ) : null}
+      <T variant="muted">{REFERENCE_LINE}</T>
+      <MoreInfo about="these ranges">
+        {view.healthy ? <BandLegend view={view} unit={unit} goalName={goalName} /> : null}
+        {view.gap && view.gap !== view.words && view.gap !== headline ? <T>{view.gap}</T> : null}
+        {view.goalNote ? <T variant="muted">{view.goalNote}</T> : null}
+        {view.classReference ? <T>{view.classReference}</T> : null}
+        {view.muscle ? <T variant="muted">{view.muscle}</T> : null}
+        {view.pace ? <T>{view.pace}</T> : null}
+        <T variant="muted">{APPROXIMATE}</T>
+        {view.doctor ? <T variant="muted">{view.doctor}</T> : null}
+        {view.caveat ? <T variant="muted">{view.caveat}</T> : null}
+        {view.sources.map((source) => (
+          <T key={source.url} variant="muted">{`${source.name}. ${source.url}`}</T>
+        ))}
+      </MoreInfo>
     </View>
   );
 }
@@ -90,7 +103,7 @@ function Outside({ text }: { text: string }) {
   );
 }
 
-function RangeBar({ view, unit, goalName }: { view: GoalWeightView; unit: WeightUnitMode; goalName: string | null }) {
+function RangeBar({ view, unit }: { view: GoalWeightView; unit: WeightUnitMode }) {
   const theme = useAppTheme();
   const colors = statsToneColors(theme.scheme);
   const healthy = view.healthy;
@@ -153,17 +166,26 @@ function RangeBar({ view, unit, goalName }: { view: GoalWeightView; unit: Weight
           />
         ) : null}
       </View>
-      <View style={{ gap: 6 }}>
-        {view.weightKg != null ? (
-          <Legend swatch={theme.colors.ink} round label={`You, ${formatShown(view.weightKg, unit)}`} />
-        ) : null}
-        <Legend swatch={colors.good.ink} label={`Healthy weight, ${shownSpan(healthy, unit)}`} />
-        {view.goal ? (
-          <Legend swatch={colors.info.ink} label={goalBandLegend(view.goal, unit)} />
-        ) : (
-          <Legend swatch={colors.info.ink} label={goalName ? `No separate published range for ${goalName}` : 'No separate published range'} />
-        )}
-      </View>
+      {view.weightKg != null ? (
+        <Legend swatch={theme.colors.ink} round label={`You, ${formatShown(view.weightKg, unit)}`} />
+      ) : null}
+    </View>
+  );
+}
+
+function BandLegend({ view, unit, goalName }: { view: GoalWeightView; unit: WeightUnitMode; goalName: string | null }) {
+  const theme = useAppTheme();
+  const colors = statsToneColors(theme.scheme);
+  const healthy = view.healthy;
+  if (!healthy) return null;
+  return (
+    <View style={{ gap: 6 }}>
+      <Legend swatch={colors.good.ink} label={`Healthy weight, ${shownSpan(healthy, unit)}`} />
+      {view.goal ? (
+        <Legend swatch={colors.info.ink} label={goalBandLegend(view.goal, unit)} />
+      ) : (
+        <Legend swatch={colors.info.ink} label={goalName ? metricFallback({ metricId: 'weight_kg', metricName: 'weight', goalLabel: goalName }).sentence : 'No aim is set, so the healthy weight band is the comparison. This is a reference, not a target.'} />
+      )}
     </View>
   );
 }
@@ -184,26 +206,6 @@ function Legend({ swatch, label, round = false }: { swatch: string; label: strin
     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
       <View style={{ width: 12, height: 12, borderRadius: round ? 6 : 2, backgroundColor: swatch }} />
       <T style={{ flex: 1 }}>{label}</T>
-    </View>
-  );
-}
-
-function Fold({ title, children }: { title: string; children: ReactNode }) {
-  const theme = useAppTheme();
-  const [open, setOpen] = useState(false);
-  return (
-    <View style={{ alignSelf: 'stretch', gap: 6 }}>
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel={title}
-        accessibilityState={{ expanded: open }}
-        onPress={() => setOpen((value) => !value)}
-        style={{ minHeight: 44, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}
-      >
-        <T style={{ fontFamily: theme.font.bodyStrong, flex: 1 }}>{title}</T>
-        <T variant="muted">{open ? 'Hide' : 'Show'}</T>
-      </Pressable>
-      {open ? children : null}
     </View>
   );
 }

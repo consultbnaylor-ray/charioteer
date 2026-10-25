@@ -59,7 +59,8 @@ describe('fitness snapshot', () => {
     expect(view.cardio?.compare.age).toEqual({ low: 31.9, high: 45, label: 'Typical for your age and sex' });
     expect(view.cardio?.compare.goal).toBeNull();
     expect(view.cardio?.compare.words).toContain('41 ml/kg/min');
-    expect(view.cardio?.compare.goalNote).toContain('Lose Fat & Build Muscle has no separate published cardio range');
+    expect(view.cardio?.compare.goalNote).toContain('no published cardio fitness range for Lose Fat & Build Muscle specifically');
+    expect(view.cardio?.compare.goalNote).toContain('This stand-in is not the Lose Fat & Build Muscle range.');
     expect(view.cardio?.compare.sources.join(' ')).toContain('Kaminsky');
     expect(VO2_WHAT).toBe('VO2 max: how much oxygen your body can use at full effort, per kg of body weight per minute. Apple Watch estimates it.');
     expect(view.estimate).toContain('not a medical assessment');
@@ -406,11 +407,12 @@ describe('fitness snapshot', () => {
     expect(readFileSync('src/app/(main)/stats.tsx', 'utf8')).toContain('<YourFitness');
     expect(readFileSync('src/app/(main)/health-plan.tsx', 'utf8')).toContain('<YourFitness');
     const card = readFileSync('src/ui/YourFitness.tsx', 'utf8');
-    expect(card).toContain('What is this?');
+    expect(card).toContain('about="VO2 max"');
     expect(card).toContain('closerToGoal(goal)');
     expect(card).toContain('whyGoalMatters(goal)');
     expect(card).toContain('<GoalLine note={false} />');
-    expect(card).toContain('About these ranges');
+    expect(card).toContain('about="these ranges"');
+    expect(card).toContain('These ranges are estimates from the studies named here.');
     expect(card).toContain('ml/kg/min');
     expect(card).toContain('Check with a doctor before big changes.');
     expect(card).toContain('More info');
@@ -443,9 +445,9 @@ describe('fitness snapshot', () => {
     expect(whyCardioMatters('elite_heavy_boxer')).toContain('approximate estimate');
     expect(whyCardioMatters('elite_heavy_boxer')).not.toMatch(/\d/);
     expect(whyCardioMatters('elite_runner')).toContain('Elite Athlete (Lean Runner etc.)');
-    expect(whyCardioMatters('elite_runner')).toContain('no separate published range');
+    expect(whyCardioMatters('elite_runner')).toContain('no published range for a lean runner specifically');
     expect(whyCardioMatters('elite_runner')).not.toMatch(/\d/);
-    expect(whyCardioMatters('body_builder')).toContain('no separate published cardio range');
+    expect(whyCardioMatters('body_builder')).toContain('no published cardio range for Body Builder specifically');
     expect(whyCardioMatters(null)).toContain('estimate');
     expect(whyMinutesMatter()).toContain('does not cut the week');
     expect(whyRestingMatters()).toContain('earlier readings');
@@ -519,7 +521,9 @@ describe('fitness snapshot', () => {
       health: [{ kind: 'vo2_max', value: 50, recordedOn: '2026-10-16' }],
     }));
     expect(runner.cardio?.compare.goal).toBeNull();
-    expect(runner.cardio?.compare.goalNote).toContain('Elite Athlete (Lean Runner etc.) has no separate published range');
+    expect(runner.cardio?.compare.goalNote).toContain('no published cardio fitness range for a lean runner specifically');
+    expect(runner.cardio?.compare.goalNote).toContain('This stand-in is not the Elite Athlete (Lean Runner etc.) range.');
+    expect(runner.cardio?.compare.goalNote).toContain('Kaminsky, Arena, and Myers, 2015');
     expect(runner.cardio?.compare.words).toContain('Typical for men in their 40s');
   });
 

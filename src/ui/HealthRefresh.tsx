@@ -27,9 +27,10 @@ import { GarminPermissionNotice } from '@/ui/GarminPermissionNotice';
 import { refreshAppleHealth } from '@/health/catchUp';
 import { reloadHealthSources } from '@/health/useHealthSources';
 import { loadLastSynced } from '@/health/syncedAt';
+import { MoreInfo } from '@/ui/MoreInfo';
 import { PlanTick } from '@/ui/PlanTick';
 import { stroke, useAppTheme } from '@/ui/theme';
-import { ErrorNote, T } from '@/ui/ui';
+import { Card, ErrorNote, T } from '@/ui/ui';
 
 let cooldownFrom: number | null = null;
 let garminCheckFrom: number | null = null;
@@ -182,7 +183,7 @@ export function HealthRefreshBar({
   }, [checking, garminMark, receivedAt, repo]);
 
   return (
-    <View style={{ gap: 8 }}>
+    <Card>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
         {fresh ? <PlanTick done /> : null}
         <T style={{ flexShrink: 1 }}>{syncAppleClause(appleCheckedAt)}</T>
@@ -229,10 +230,14 @@ export function HealthRefreshBar({
         ) : null}
       </View>
       {garminConnected ? <GarminConnectNudge receivedAt={receivedAt} now={Date.now()} /> : null}
-      {garminConnected ? <T variant="muted">{garminHintLine(receivedAt, Date.now())}</T> : null}
+      {garminConnected ? (
+        <MoreInfo about="how Garmin sends data">
+          <T variant="muted">{garminHintLine(receivedAt, Date.now())}</T>
+        </MoreInfo>
+      ) : null}
       {garminNote ? <T variant="muted">{garminNote}</T> : null}
       {permission ? <GarminPermissionNotice force /> : null}
       <ErrorNote>{error}</ErrorNote>
-    </View>
+    </Card>
   );
 }

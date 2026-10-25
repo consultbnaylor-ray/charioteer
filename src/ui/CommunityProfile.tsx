@@ -10,10 +10,11 @@ import type { SharedHealthPlan } from '@/domain/healthPlan';
 import { WAGON_PUBLIC_LINE, type SharedNutritionView } from '@/domain/nutrition';
 import { SharedNutritionFacts } from '@/ui/NutritionShare';
 import { profileStatBoard } from '@/domain/profileStatTiles';
-import { PROFILE_LOAD_ERROR, formatSoberShare, sharedReportItems, shownList, type PublicProfileView, type SharedReportItem } from '@/domain/profileSharing';
+import { PROFILE_LOAD_ERROR, communityProfileClosedMessage, formatSoberShare, sharedReportItems, shownList, type PublicProfileView, type SharedReportItem } from '@/domain/profileSharing';
 import { ProfileStatBoard } from '@/ui/ProfileStatTiles';
 import { MemberAvatar } from '@/ui/MemberAvatar';
 import { PlanTick } from '@/ui/PlanTick';
+import { ScreenBoundary } from '@/ui/ScreenBoundary';
 import { formatGbp } from '@/domain/savings';
 import { progressPhotoLabel } from '@/domain/progressPhotos';
 import { radius, useAppTheme } from '@/ui/theme';
@@ -188,9 +189,25 @@ function ReportSheet({
   );
 }
 
+/** Outlined Profile action. Opens this person's community profile in place. */
+export function BuddyProfileButton({ userId, name }: { userId: string; name: string }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <Button label={open ? 'Hide profile' : 'Profile'} tone="quiet" onPress={() => setOpen((current) => !current)} />
+      {open ? (
+        <ScreenBoundary screen="profile">
+          <CommunityProfile userId={userId} name={name} />
+        </ScreenBoundary>
+      ) : null}
+    </>
+  );
+}
+
 export function CommunityProfile({ userId, name }: { userId: string; name: string }) {
   const snap = useSnapshot();
   const repo = useRepository();
+  const [showPhotos, setShowPhotos] = useState(false);
   const photos = shownList(snap.communityPhotos)
     .filter((photo) => photo?.userId === userId && photo.visibility === 'community')
     .sort((a, b) => a.monthIndex - b.monthIndex || a.takenOn.localeCompare(b.takenOn));
@@ -275,7 +292,9 @@ export function CommunityProfile({ userId, name }: { userId: string; name: strin
 
   return (
     <View style={{ gap: 10 }}>
-      <SharedProfileFacts userId={userId} name={name} />
+      <SharedProfileFacts userId={userId} name={name} onOpen={setShowPhotos} />
+      {showPhotos ? (
+      <>
       <T variant="label">Shared photos</T>
       <T variant="muted">{name} chose to show these. Private photos stay hidden.</T>
       {asked ? <T variant="muted">A private request is with them. You can message once you have both agreed.</T> : null}
@@ -325,6 +344,8 @@ export function CommunityProfile({ userId, name }: { userId: string; name: strin
           onSend={() => void sendReport()}
         />
       ) : null}
+      </>
+      ) : null}
     </View>
   );
 }
@@ -347,7 +368,7 @@ export function SharedHealthPlanFacts({ plan }: { plan: SharedHealthPlan | null 
   );
 }
 
-function SharedProfileFacts({ userId, name }: { userId: string; name: string }) {
+function SharedProfileFacts({ userId, name, onOpen }: { userId: string; name: string; onOpen: (open: boolean) => void }) {
   const repo = useRepository();
   const router = useRouter();
   const [view, setView] = useState<PublicProfileView | null>(null);
@@ -407,6 +428,11 @@ function SharedProfileFacts({ userId, name }: { userId: string; name: string }) 
     };
   }, [repo, view]);
 
+  const profileOpen = load === 'ready' && view != null;
+  useEffect(() => {
+    onOpen(profileOpen);
+  }, [onOpen, profileOpen]);
+
   if (load === 'loading') return null;
   if (load === 'error') {
     return (
@@ -415,7 +441,7 @@ function SharedProfileFacts({ userId, name }: { userId: string; name: string }) 
       </Pressable>
     );
   }
-  if (load === 'hidden' || !view) return <T variant="muted">This profile is hidden.</T>;
+  if (load === 'hidden' || !view) return <T variant="muted">{communityProfileClosedMessage(name)}</T>;
   const shown: PublicProfileView = {
     ...view,
     ...(nutrition

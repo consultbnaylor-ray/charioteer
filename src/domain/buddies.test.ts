@@ -17,6 +17,7 @@ import { buddyInviteAlert, GENERIC_BUDDY_ALERT } from '../../supabase/functions/
 import {
   buddyLinkUrl,
   buddySecretFromUrl,
+  buddyReminderMessage,
   buddyShareMessage,
   emptyBuddyScope,
   makeBuddyCode,
@@ -135,6 +136,17 @@ describe('accountability buddy scope', () => {
     expect(JSON.stringify(open)).not.toContain(PHOTO);
     expect(JSON.stringify(open.healthData)).not.toContain('191.5 cm');
   });
+
+  it('keeps one buddy’s choices off another buddy’s view', () => {
+    const mealsOnly = projectBuddyShare(source(), { ...emptyBuddyScope(), meals: true });
+    const moodOnly = projectBuddyShare(source(), { ...emptyBuddyScope(), checkIns: true });
+    expect(mealsOnly.meals?.[0]?.detail).toContain('Chicken');
+    expect(mealsOnly.checkIns).toBeNull();
+    expect(mealsOnly.gratitude).toBeNull();
+    expect(moodOnly.meals).toBeNull();
+    expect(moodOnly.checkIns).toContain('Mood 7');
+    expect(JSON.stringify(moodOnly)).not.toContain('Chicken');
+  });
 });
 
 describe('buddy links', () => {
@@ -144,6 +156,10 @@ describe('buddy links', () => {
     expect(buddySecretFromUrl('https://example.com/buddy/AB23CD45')).toBe('AB23CD45');
     expect(buddySecretFromUrl('charioteer://set-password')).toBeNull();
     const code = makeBuddyCode([0, 1, 2, 3, 4, 5, 6, 7]);
+    const reminder = buddyReminderMessage('Paul');
+    expect(reminder).toContain('Invite sent to Paul.');
+    expect(reminder).toContain('There is no new code.');
+    expect(reminder).not.toContain('charioteer://');
     const message = buddyShareMessage({ code, url: buddyLinkUrl('0123456789abcdef0123456789abcdef'), expiresAt: '2026-10-22T00:00:00.000Z' });
     expect(message).toContain('charioteer://buddy?token=');
     expect(message).toContain(code);
@@ -189,6 +205,60 @@ describe('buddy invite push', () => {
     const named = buddyInviteAlert({ ...input, showSenderName: true, senderName: 'Alex\nMeet at the side door' });
     expect(named.ok && named.body.includes('\n')).toBe(false);
     expect(named.ok && named.body.startsWith('Buddy request from Alex')).toBe(true);
+  });
+});
+
+describe('buddies screen', () => {
+  it('puts waiting invites above the controls and hides empty sections', () => {
+    const screen = readFileSync('src/app/(main)/buddies.tsx', 'utf8');
+    const waiting = screen.indexOf('Waiting for you');
+    const sent = screen.indexOf('Invites you sent');
+    const sharing = screen.indexOf('Sharing with you');
+    const see = screen.indexOf('Who can see your day');
+    const invite = screen.indexOf('label="Invite someone new"');
+    expect(waiting).toBeGreaterThan(-1);
+    expect(waiting).toBeLessThan(sent);
+    expect(sent).toBeLessThan(sharing);
+    expect(sharing).toBeLessThan(see);
+    expect(see).toBeLessThan(invite);
+    expect(screen).toContain('Invite sent to {invite.name}.');
+    expect(screen).toContain('Waiting for them to accept.');
+    expect(screen).toContain('Send the link again');
+    expect(screen).toContain('Cancel invite');
+    expect(screen).toContain('buddyReminderMessage');
+    expect(screen).toContain('Got a code from someone? Enter it here');
+    expect(screen).toContain('This accepts their invite. It does not send a new one.');
+    expect(screen).toContain('revokeBuddyLink');
+    expect(screen).not.toContain('No requests waiting');
+    expect(screen).not.toContain('No one is sharing with you yet');
+    expect(screen).not.toContain('You are not sharing with a buddy yet');
+    expect(screen).not.toContain('Type a code');
+    expect(screen).not.toContain('Invite by link');
+    expect(screen).not.toContain("rpc(");
+  });
+});
+
+describe('buddy share is not the community profile', () => {
+  it('reads an accepted invite and does not consult community switches', () => {
+    const sql = readFileSync('supabase/migrations/20261015210000_buddy_data_item_fix.sql', 'utf8');
+    const fn = sql.slice(sql.indexOf('FUNCTION public.shared_buddy_data'), sql.indexOf('revoke all on function public.shared_buddy_data'));
+    expect(fn).toContain("status = 'accepted'");
+    expect(fn).toContain('buddy_pair_blocked');
+    expect(fn).toContain('buddy_is_adult');
+    expect(fn).not.toContain('community_visible');
+    expect(fn).not.toContain('viewer_in_community');
+    expect(fn).not.toContain('profile_sharing');
+    const community = readFileSync('supabase/migrations/20261022200000_shared_health_merge.sql', 'utf8');
+    const profile = community.slice(community.indexOf('FUNCTION public.public_profile'), community.indexOf('revoke all on function public.public_profile'));
+    expect(profile).toContain('community_visible');
+    expect(profile).toContain('viewer_in_community');
+    expect(profile).toContain('profile_sharing');
+    const demo = readFileSync('src/data/demo-repository.ts', 'utf8');
+    const buddy = demo.slice(demo.indexOf('async sharedBuddyData'), demo.indexOf('async sharedHealthPlan'));
+    expect(buddy).toContain("status === 'accepted'");
+    expect(buddy).not.toContain('communityVisible');
+    const pub = demo.slice(demo.indexOf('async publicProfile'), demo.indexOf('async addProfilePhoto'));
+    expect(pub).toContain('communityVisible');
   });
 });
 

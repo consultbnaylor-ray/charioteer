@@ -3,6 +3,7 @@ import { Switch, View } from 'react-native';
 import {
   BUDDY_PRESETS,
   BUDDY_SCOPE_KEYS,
+  buddyOnlyShareLine,
   scopeFromPreset,
   scopeSummary,
   type BuddyPresetId,
@@ -45,15 +46,19 @@ export function BuddyScopeEditor({
   scope,
   onChange,
   heading,
+  buddyName,
 }: {
   scope: BuddyScope;
   onChange: (scope: BuddyScope) => void;
   heading: string;
+  /** The one person these switches apply to. Blank for an invite link. */
+  buddyName: string;
 }) {
   const set = (key: BuddyScopeKey, next: boolean) => onChange({ ...scope, [key]: next });
   return (
     <View style={{ gap: 12 }}>
-      <T variant="muted">This is separate from Community and from What I share. It still works when either of you has Community off.</T>
+      <T>{buddyOnlyShareLine(buddyName)}</T>
+      <T variant="muted">One switch per box. This is private to that person. It is separate from Community and from What I share, and it still works when Community is off.</T>
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
         {BUDDY_PRESETS.map((preset) => (
           <Choice

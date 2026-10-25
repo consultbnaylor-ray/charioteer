@@ -20,6 +20,7 @@ import type { Stage } from '@/domain/stage';
 import { GuidanceRange } from '@/ui/GuidanceRange';
 import { MeasureBarsView, MeasureRingView } from '@/ui/MeasuredFigure';
 import { useAppTheme } from '@/ui/theme';
+import { MoreInfo } from '@/ui/MoreInfo';
 import { T } from '@/ui/ui';
 
 const emptyCounts = Object.fromEntries(NHS_DRINKS.map((drink) => [drink.id, 0]));
@@ -110,7 +111,9 @@ export function UnitsGuide({
             <T key={note}>{note}</T>
           ))}
           {estimate.withdrawal ? <T>{estimate.withdrawal}</T> : null}
-          <T variant="muted">{CALORIE_BASIS}</T>
+          <MoreInfo about="these calorie figures">
+            <T variant="muted">{CALORIE_BASIS}</T>
+          </MoreInfo>
           <T>{ESTIMATE_DISCLAIMER}</T>
           {DRINK_SOURCES.map((source) => (
             <SourceLink key={source.url} label={source.label} url={source.url} />

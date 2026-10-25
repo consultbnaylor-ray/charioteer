@@ -18,6 +18,7 @@ import { londonDay } from '@/domain/healthInsights';
 import { garminStoredMark } from '@/domain/healthRefresh';
 import { MovementCharts } from '@/ui/DailyActivity';
 import { HealthRefreshBar, useManualHealthRefresh } from '@/ui/HealthRefresh';
+import { MoreInfo } from '@/ui/MoreInfo';
 import { Card, Screen, T } from '@/ui/ui';
 
 const LEGEND = [
@@ -61,7 +62,11 @@ export default function Stats() {
     <Screen
       eyebrow="Overview"
       title="Stats"
-      intro="A plain look at the figures you already keep. The words say what the colour means."
+      intro={(
+        <MoreInfo about="Stats">
+          <T variant="muted">A plain look at the figures you already keep. The words say what the colour means.</T>
+        </MoreInfo>
+      )}
       refreshing={manual.refreshing}
       onRefresh={() => void manual.run()}
     >
@@ -90,23 +95,29 @@ export default function Stats() {
         age={snap.nutrition.goalAge}
         sex={snap.nutrition.goalSex}
       />
-      <StatPeriodToggle />
-      <GoalLine />
+      <Card>
+        <StatPeriodToggle />
+      </Card>
+      <Card>
+        <GoalLine />
+      </Card>
       <YourGoal place="stats" />
-      <YourFitness />
+      <YourFitness onPlanOutdoor={() => router.push(`/workouts?planOutdoor=${Date.now()}` as never)} />
       <WorkoutsLink workouts={workouts} />
       <Card accessibilityLabel="Open Health Plan" onPress={() => router.push('/health-plan' as never)}>
         <T style={{ fontFamily: theme.font.bodyStrong }}>Health Plan</T>
         <T variant="muted">A short plan from the figures you already keep.</T>
       </Card>
-      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12 }}>
-        {LEGEND.map(([tone, label]) => (
-          <View key={tone} style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-            <View style={{ width: 12, height: 12, borderRadius: 2, backgroundColor: colors[tone].bg, borderWidth: 1, borderColor: colors[tone].ink }} />
-            <T>{label}</T>
-          </View>
-        ))}
-      </View>
+      <Card>
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12 }}>
+          {LEGEND.map(([tone, label]) => (
+            <View key={tone} style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+              <View style={{ width: 12, height: 12, borderRadius: 2, backgroundColor: colors[tone].bg, borderWidth: 1, borderColor: colors[tone].ink }} />
+              <T>{label}</T>
+            </View>
+          ))}
+        </View>
+      </Card>
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
         {tiles.map((item) => (
           <View key={item.id} style={{ flexGrow: 1, flexBasis: columns === 3 ? '30%' : '46%', minWidth: 148 }}>

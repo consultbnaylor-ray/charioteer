@@ -1,4 +1,5 @@
-import { Pressable, View } from 'react-native';
+import { Linking, Pressable, View } from 'react-native';
+import { useRouter } from 'expo-router';
 
 import { useState, type ReactNode } from 'react';
 import {
@@ -42,16 +43,19 @@ import {
 } from '@/domain/garminCharts';
 import type { GarminDaily, GarminHrvSummary, GarminPulseOx, GarminRespiration, GarminSleep, GarminUserMetric } from '@/domain/garminConnect';
 import type { NutritionSex } from '@/domain/nutrition';
+import { crisisHelplines } from '@/data/catalogue';
 import { weekdayShort } from '@/domain/healthInsights';
 import { CHART_DIRECTION_HINT } from '@/domain/readingChart';
 import type { WorkoutChartSpan } from '@/domain/workoutDay';
 import { useStatPeriod } from '@/health/useStatPeriod';
 import { openAppSettings } from '@/health/link';
+import { MoreInfo } from '@/ui/MoreInfo';
+import { statsToneColors } from '@/ui/statsPalette';
 import { StatPeriodToggle } from '@/ui/StatPeriodToggle';
 import { useAppTheme } from '@/ui/theme';
 import { activityTitleIcon } from '@/domain/statIcons';
 import { IconLabel } from '@/ui/statIcons';
-import { Button, T } from '@/ui/ui';
+import { Button, Card, T } from '@/ui/ui';
 
 const BAR_HEIGHT = 88;
 
@@ -103,6 +107,7 @@ export function DailyActivityCharts({
       <T variant="muted">{DAILY_ACTIVITY_RINGS_HINT}</T>
       {consent ? null : <T variant="muted">{DAILY_ACTIVITY_CONSENT}</T>}
       <ActivityBars
+        framed={false}
         title="Exercise minutes"
         points={exercise}
         span={span}
@@ -119,6 +124,7 @@ export function DailyActivityCharts({
         </View>
       ) : null}
       <ActivityBars
+        framed={false}
         title="Active calories"
         points={calories}
         span={span}
@@ -136,6 +142,7 @@ export function DailyActivityCharts({
         </View>
       ) : null}
       <MovementCharts
+        framed={false}
         endDay={endDay}
         span={span}
         steps={steps}
@@ -168,6 +175,7 @@ export function MovementCharts({
   age = null,
   sex = null,
   showIntensity = true,
+  framed = true,
 }: {
   endDay: string;
   /** Set on Workouts, where that screen's 7 or 30 day control is the one the other charts use. */
@@ -183,6 +191,8 @@ export function MovementCharts({
   age?: number | null;
   sex?: NutritionSex | null;
   showIntensity?: boolean;
+  /** False when this block already sits inside a card, so the metrics do not gain a second edge. */
+  framed?: boolean;
 }) {
   const [sharedPeriod] = useStatPeriod();
   const chartWindow = movementPeriod(span, sharedPeriod);
@@ -225,9 +235,14 @@ export function MovementCharts({
   });
 
   return (
-    <View style={{ gap: 8 }}>
-      {span == null ? <StatPeriodToggle /> : null}
+    <View style={{ gap: framed ? 14 : 8 }}>
+      {span == null ? (
+        <Card>
+          <StatPeriodToggle />
+        </Card>
+      ) : null}
       <ActivityBars
+        framed={framed}
         title="Steps"
         points={stepPoints}
         span={chartWindow.days}
@@ -239,6 +254,7 @@ export function MovementCharts({
       />
       {seriesHasValue(distance) ? (
         <ActivityBars
+          framed={framed}
           title="Distance"
           points={distance}
           span={chartWindow.days}
@@ -253,6 +269,7 @@ export function MovementCharts({
       ) : null}
       {seriesHasValue(floors) ? (
         <ActivityBars
+          framed={framed}
           title="Floors"
           points={floors}
           span={chartWindow.days}
@@ -265,6 +282,7 @@ export function MovementCharts({
       ) : null}
       {seriesHasValue(resting) ? (
         <ActivityBars
+          framed={framed}
           title="Resting heart rate"
           points={resting}
           span={chartWindow.days}
@@ -277,6 +295,7 @@ export function MovementCharts({
       ) : null}
       {seriesHasValue(intensityBars) ? (
         <ActivityBars
+          framed={framed}
           title="Intensity minutes"
           points={intensityBars}
           span={chartWindow.days}
@@ -306,6 +325,7 @@ export function MovementCharts({
             return (
               <ActivityBars
                 key={chart.id}
+                framed={framed}
                 title={chart.title}
                 points={bars}
                 span={chartWindow.days}
@@ -320,6 +340,57 @@ export function MovementCharts({
         </Fold>
       ) : null}
       {span == null ? <T variant="muted" style={{ textAlign: 'center' }}>{CHART_DIRECTION_HINT}</T> : null}
+    </View>
+  );
+}
+
+const CARE_LINES = new Set(['Samaritans', 'NHS 111', 'Emergency services']);
+
+/** Crisis numbers stay on the card. They are the same helplines as Help. */
+function CareLine({ text }: { text: string }) {
+  const lines = crisisHelplines([]).filter((item) => CARE_LINES.has(item.title) && item.phone);
+  return (
+    <View style={{ gap: 4 }}>
+      <T>{text}</T>
+      {lines.map((item) => {
+        const phone = item.phone ?? '';
+        const dial = phone.replace(/\s/g, '');
+        return (
+          <Pressable
+            key={item.id}
+            accessibilityRole="link"
+            accessibilityLabel={`${item.title}, ${phone}`}
+            onPress={() => void Linking.openURL(`tel:${dial}`)}
+            style={{ minHeight: 44, justifyContent: 'center' }}
+          >
+            <T style={{ textDecorationLine: 'underline' }}>{`${item.title} ${phone}`}</T>
+          </Pressable>
+        );
+      })}
+    </View>
+  );
+}
+
+function StressActions() {
+  const router = useRouter();
+  return (
+    <View style={{ gap: 4 }}>
+      <Pressable
+        accessibilityRole="link"
+        accessibilityLabel="Open Breathe"
+        onPress={() => router.push('/breathe' as never)}
+        style={{ minHeight: 44, justifyContent: 'center' }}
+      >
+        <T variant="muted" style={{ textDecorationLine: 'underline' }}>Breathe</T>
+      </Pressable>
+      <Pressable
+        accessibilityRole="link"
+        accessibilityLabel="Open Thumos"
+        onPress={() => router.push('/thumos' as never)}
+        style={{ minHeight: 44, justifyContent: 'center' }}
+      >
+        <T variant="muted" style={{ textDecorationLine: 'underline' }}>Thumos</T>
+      </Pressable>
     </View>
   );
 }
@@ -348,6 +419,7 @@ function ActivityBars({
   scale,
   format,
   guide = null,
+  framed = true,
   onSelect,
 }: {
   title: string;
@@ -359,6 +431,8 @@ function ActivityBars({
   scale?: string | null;
   format?: (point: DailyActivityPoint) => string;
   guide?: ChartGuide | null;
+  /** False inside a card that already has the mint edge. */
+  framed?: boolean;
   onSelect: (day: string) => void;
 }) {
   const theme = useAppTheme();
@@ -368,6 +442,7 @@ function ActivityBars({
   const band = guide?.dailyTypical ?? null;
   const target = guide?.target?.value ?? null;
   const own = guide?.ownAverage?.value ?? null;
+  const explanation = [...new Set([guide?.legend, guide?.about].map((line) => line?.trim()).filter((line): line is string => Boolean(line)))];
 
   function markStyle(value: number, ink: string) {
     return {
@@ -380,17 +455,20 @@ function ActivityBars({
     };
   }
 
-  return (
-    <View style={{ gap: 8 }}>
+  const body = (
+    <>
       {icon ? <IconLabel name={icon}>{title}</IconLabel> : <T variant="label">{title}</T>}
       {scaleLine ? <T variant="muted">{scaleLine}</T> : null}
       {garminNote ? <T variant="muted">{garminNote}</T> : null}
-      {guide?.legend ? <T variant="muted">{guide.legend}</T> : null}
+      {guide?.target?.label ? <T variant="muted">{guide.target.label}</T> : null}
+      {guide?.ownAverage?.label ? <T variant="muted">{guide.ownAverage.label}</T> : null}
       {guide?.outside ? <T>{guide.outside}</T> : null}
-      {guide?.about ? (
-        <About title="What is this?">
-          <T>{guide.about}</T>
-        </About>
+      {guide?.care ? <CareLine text={guide.care} /> : null}
+      {explanation.length > 0 ? (
+        <MoreInfo about={title} summary="Not medical advice.">
+          {explanation.map((line) => <T key={line.slice(0, 48)} variant="muted">{line}</T>)}
+          {title === 'Average stress' ? <StressActions /> : null}
+        </MoreInfo>
       ) : null}
       <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: span > 14 ? 1 : 4, minHeight: BAR_HEIGHT + 36 }}>
         {points.map((point) => {
@@ -450,8 +528,10 @@ function ActivityBars({
           );
         })}
       </View>
-    </View>
+    </>
   );
+  if (!framed) return <View style={{ gap: 8 }}>{body}</View>;
+  return <Card>{body}</Card>;
 }
 
 function Fold({
@@ -470,6 +550,7 @@ function Fold({
   children: ReactNode;
 }) {
   const theme = useAppTheme();
+  const green = statsToneColors(theme.scheme).good.ink;
   return (
     <View style={{ alignSelf: 'stretch', gap: 8 }}>
       <Pressable
@@ -480,9 +561,9 @@ function Fold({
         style={{ minHeight: 44, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}
       >
         <T style={{ fontFamily: theme.font.bodyStrong, flex: 1 }}>{title}</T>
-        <T variant="muted">{open ? 'Hide' : closedLabel}</T>
+        <T style={{ color: green }}>{open ? 'Hide' : closedLabel}</T>
         <View accessibilityElementsHidden>
-          <T>{open ? '⌄' : '›'}</T>
+          <T style={{ color: green }}>{open ? '⌄' : '›'}</T>
         </View>
       </Pressable>
       {open ? children : null}
@@ -490,17 +571,3 @@ function Fold({
   );
 }
 
-function About({ title, children }: { title: string; children: ReactNode }) {
-  const [open, setOpen] = useState(false);
-  return (
-    <Fold
-      title={title}
-      closedLabel="Show"
-      accessibilityLabel={title}
-      open={open}
-      onToggle={() => setOpen((value) => !value)}
-    >
-      {children}
-    </Fold>
-  );
-}

@@ -134,7 +134,7 @@ export function Screen({
   children: ReactNode;
   eyebrow?: string;
   title?: string;
-  intro?: string;
+  intro?: ReactNode;
   footer?: ReactNode;
   banner?: ReactNode;
   titleStyle?: StyleProp<TextStyle>;
@@ -197,7 +197,8 @@ export function Screen({
           <DismissKeyboard style={{ flexGrow: 1 }}>
             {eyebrow ? <T variant="label">{eyebrow}</T> : null}
             {title ? <T variant="display" style={[{ marginTop: eyebrow ? 6 : 0 }, titleStyle]}>{title}</T> : null}
-            {intro ? <T variant="muted" style={[{ marginTop: 8 }, introStyle]}>{intro}</T> : null}
+            {typeof intro === 'string' && intro ? <T variant="muted" style={[{ marginTop: 8 }, introStyle]}>{intro}</T> : null}
+            {intro && typeof intro !== 'string' ? <View style={{ marginTop: 8 }}>{intro}</View> : null}
             <KeyboardForm>
               <View style={{ marginTop: title || intro ? 22 : 0, gap: 14 }}>{children}</View>
             </KeyboardForm>

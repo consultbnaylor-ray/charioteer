@@ -47,13 +47,14 @@ import { useAppTheme } from '@/ui/theme';
 import { GarminTip } from '@/ui/GarminTip';
 import { Vo2EstimateNote } from '@/ui/Vo2EstimateNote';
 import { TowardTargetActivity } from '@/ui/TowardTargetActivity';
+import { MoreInfo as InfoDisclosure, MoreInfoButton } from '@/ui/MoreInfo';
 import { Button, Card, Choice, T, playSavedHaptic } from '@/ui/ui';
 
 /**
  * Fitness level, the measures that exist, and one to three goal-led lines.
  * A line can be ticked into this week's focus.
  */
-export function YourFitness({ onPlanOutdoor }: { onPlanOutdoor?: () => void }) {
+export function YourFitness({ onPlanOutdoor }: { onPlanOutdoor: () => void }) {
   const snap = useSnapshot();
   const { samples: mergedHealth } = useHealthSources();
   const repo = useRepository();
@@ -117,7 +118,6 @@ export function YourFitness({ onPlanOutdoor }: { onPlanOutdoor?: () => void }) {
       <GarminTip />
       {view.level ? <T style={{ color: ink(view.level === 'Developing' ? 'watch' : 'good'), fontFamily: theme.font.bodyStrong }}>{view.level}</T> : null}
       <T>{view.levelWords}</T>
-      <T variant="muted">{view.estimate}</T>
       <MoreInfo about="your fitness" onPress={() => setInfo('card')} />
       {view.missing ? <T variant="muted">{view.missing}</T> : null}
       {view.cardio ? (
@@ -139,13 +139,12 @@ export function YourFitness({ onPlanOutdoor }: { onPlanOutdoor?: () => void }) {
             measuredOn={latestVo2Reading(mergedHealth)?.day ?? null}
             source={latestVo2Reading(mergedHealth)?.source ?? null}
             today={londonDay(new Date())}
-            onPlan={() => onPlanOutdoor?.()}
+            onPlan={onPlanOutdoor}
           />
-          <Fold title="What is this?">
+          <InfoDisclosure about="VO2 max">
             <T>{VO2_WHAT}</T>
-          </Fold>
+          </InfoDisclosure>
           <FitnessCompareBar compare={view.cardio.compare} tone={view.cardio.tone} />
-          <MoreInfo about="cardio fitness" onPress={() => setInfo('cardio')} />
         </View>
       ) : null}
       {view.minutes ? (
@@ -175,7 +174,6 @@ export function YourFitness({ onPlanOutdoor }: { onPlanOutdoor?: () => void }) {
             {view.resting.reading ? `${view.resting.reading} · ` : ''}{view.resting.period ? `${view.resting.period} · ` : ''}{view.resting.signal ?? (view.resting.tone === 'watch' ? 'Watch' : 'On track')}
           </T>
           <FitnessSeries points={view.resting.series ?? []} unit="bpm" aggregate="mean" label="Resting heart rate chart" />
-          <T variant="muted">{view.resting.words}</T>
           <MoreInfo about="resting heart rate" onPress={() => setInfo('resting')} />
         </View>
       ) : null}
@@ -228,9 +226,11 @@ type InfoFocus = 'card' | 'cardio' | 'minutes' | 'resting';
 
 function MoreInfo({ about, onPress }: { about: string; onPress: () => void }) {
   return (
-    <View style={{ alignSelf: 'stretch' }}>
-      <Button label="More info" tone="quiet" accessibilityLabel={`More info about ${about}`} onPress={onPress} />
-    </View>
+    <MoreInfoButton
+      label="More info"
+      accessibilityLabel={`More info about ${about}`}
+      onPress={onPress}
+    />
   );
 }
 
@@ -361,7 +361,7 @@ function CardioDetail({
       <T variant="label">What your number means</T>
       <T>{view.levelWords}</T>
       {cardio ? <T>{cardio.compare.words}</T> : null}
-      {cardio ? <FitnessCompareBar compare={cardio.compare} tone={cardio.tone} sourcesOpen /> : null}
+      {cardio ? <FitnessCompareBar compare={cardio.compare} tone={cardio.tone} /> : null}
       <T variant="label">{whyGoalMatters(goal)}</T>
       <T>{whyCardioMatters(goal)}</T>
     </View>
@@ -463,11 +463,9 @@ function Fold({ title, children }: { title: string; children: ReactNode }) {
 function FitnessCompareBar({
   compare,
   tone,
-  sourcesOpen = false,
 }: {
   compare: FitnessCompare;
   tone: FitnessTone;
-  sourcesOpen?: boolean;
 }) {
   const theme = useAppTheme();
   const colors = statsToneColors(theme.scheme);
@@ -500,7 +498,7 @@ function FitnessCompareBar({
     );
   };
   return (
-    <View accessibilityLabel={compare.words} style={{ alignSelf: 'stretch', gap: 8 }}>
+    <View style={{ alignSelf: 'stretch', gap: 8 }}>
       <View accessibilityElementsHidden style={{ height: 28, justifyContent: 'flex-end' }}>
         <View style={{ height: 14, borderRadius: 7, overflow: 'hidden', backgroundColor: theme.colors.line }}>
           {band(compare.age, colors.good.bg, colors.good.ink)}
@@ -521,29 +519,18 @@ function FitnessCompareBar({
           }}
         />
       </View>
-      <View style={{ gap: 6 }}>
-        <Legend swatch={colors[tone].ink} round label={`You, ${compare.value} ml/kg/min`} />
+      <Legend swatch={colors[tone].ink} round label={`You, ${compare.value} ml/kg/min`} />
+      <T variant="muted">A reference, not a target. These ranges are estimates from the studies named here. Not medical advice.</T>
+      <InfoDisclosure about="these ranges">
         {compare.age ? (
           <Legend swatch={colors.good.ink} label={`${compare.age.label}, ${compare.age.low} to ${compare.age.high}`} />
         ) : null}
         {compare.goal ? (
           <Legend swatch={colors.info.ink} label={`${compare.goal.label}, approximate, ${compare.goal.low} to ${compare.goal.high}`} />
         ) : null}
-      </View>
-      <T>{compare.words}</T>
-      {compare.sources.length > 0 ? (
-        sourcesOpen ? (
-          <View style={{ gap: 6, alignSelf: 'stretch' }}>
-            <T variant="label">About these ranges</T>
-            <T variant="muted">These ranges are estimates from the studies named here.</T>
-            {compare.sources.map((source) => <T key={source.slice(0, 24)} variant="muted">{source}</T>)}
-          </View>
-        ) : (
-          <Fold title="About these ranges">
-            {compare.sources.map((source) => <T key={source.slice(0, 24)} variant="muted">{source}</T>)}
-          </Fold>
-        )
-      ) : null}
+        <T>{compare.words}</T>
+        {compare.sources.map((source) => <T key={source.slice(0, 24)} variant="muted">{source}</T>)}
+      </InfoDisclosure>
     </View>
   );
 }

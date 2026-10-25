@@ -40,7 +40,7 @@ export default function WhatIShare() {
     <Screen
       eyebrow="Profile"
       title="What I share"
-      intro="Each switch shares only that one item. The same switch sits under the box. A hidden name on your profile opens that switch."
+      intro="Each switch here is for Community members, and only while Community is on. It does not change what a buddy sees. On Buddies, each person has their own switches. Only that person can see those."
     >
       <ReviewSectionShare />
       <T variant="muted">{communityOn ? SHARE_HINT : PROFILE_HIDDEN_SHARE}</T>

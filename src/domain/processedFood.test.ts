@@ -130,7 +130,9 @@ describe('highly processed foods', () => {
     expect(tile).toContain('tile.periodLine');
     expect(tile).toContain('router.push(tile.href');
     expect(list).toContain('processedSeeLabel');
-    expect(list).toContain('>More info<');
+    expect(list).toContain('MoreInfoButton');
+    expect(list).toContain("open ? 'Less info' : 'More info'");
+    expect(list).not.toContain('<T variant="muted">More info</T>');
     expect(list).toContain('PROCESSED_LIST_FOLD');
     expect(list).toContain('note.meal');
     expect(list).toContain('note.date');

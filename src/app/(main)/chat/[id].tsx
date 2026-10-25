@@ -9,6 +9,7 @@ import { shownError } from '@/domain/errors';
 import { randomId } from '@/domain/id';
 import { CHAT_HISTORY_ERROR, CHAT_POLL_MS, latestChatMessage } from '@/domain/liveChat';
 import { omitSharedLocation } from '@/domain/sharedPayload';
+import { BuddyShareButton } from '@/ui/BuddySharePanel';
 import { MemberAvatar, useMemberAvatars } from '@/ui/MemberAvatar';
 import { usePendingPress } from '@/ui/pendingAction';
 import { ScreenBoundary } from '@/ui/ScreenBoundary';
@@ -105,8 +106,9 @@ function Chat() {
     <Screen eyebrow="Private chat" title={other} intro="Only the two of you can read this. Blocking hides them from you.">
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
         <MemberAvatar name={other} url={avatarOf(otherId)} />
-        <T variant="title">{other}</T>
+        <T variant="title" style={{ flex: 1 }}>{other}</T>
       </View>
+      <BuddyShareButton userId={otherId} name={other} />
       {historyError ? (
         <Pressable accessibilityRole="button" accessibilityLabel={CHAT_HISTORY_ERROR} onPress={() => setHistoryAttempt((attempt) => attempt + 1)} style={{ minHeight: 44, justifyContent: 'center' }}>
           <T>{CHAT_HISTORY_ERROR}</T>

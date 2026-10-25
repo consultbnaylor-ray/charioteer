@@ -57,7 +57,7 @@ describe('goal name on comparisons', () => {
     expect(goal).toContain('towardGoal(view.name)');
     expect(fitness).toContain('<GoalLine note={false} />');
     expect(weight).toContain('<GoalLine note={false} />');
-    expect(weight).toContain('No separate published range for ${goalName}');
+    expect(weight).toContain("metricId: 'weight_kg'");
     expect(board).toContain('<GoalLine note={false} />');
     expect(line).toContain('Your goal: ${name}');
     expect(line).toContain('>Change<');

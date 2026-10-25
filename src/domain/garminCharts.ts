@@ -21,7 +21,7 @@ import type { NutritionSex } from '@/domain/nutrition';
 import { periodDayCount, periodPhrase, scaledPeriodTarget, type StatPeriod } from '@/domain/statWindow';
 import { chartDays } from '@/domain/workoutDay';
 
-export const GARMIN_DETAILS_TITLE = 'Garmin details';
+export const GARMIN_DETAILS_TITLE = 'More Garmin Stats';
 
 export const TAP_FOR_MORE = 'Tap for more';
 
@@ -42,7 +42,18 @@ export const GARMIN_SCORE_NOTE = "Garmin's own score, not a medical measure.";
 
 export const STRESS_ZONES = '0–25 resting, 26–50 low, 51–75 medium, 76–100 high';
 
+/**
+ * Garmin's bands for the Body Battery level, from 0 to 100.
+ * Charged and drained are points gained or lost, so these bands are not shown there.
+ */
 export const BODY_BATTERY_ZONES = '0–25 very low, 26–50 low, 51–75 medium, 76–100 high';
+
+export const BODY_BATTERY_WHAT =
+  "Body Battery is Garmin's own 0–100 estimate of your energy reserve through the day. The watch works it out from heart rate variability, stress, sleep and activity.";
+
+/** Visible on Average stress. Crisis lines stay on the card, not inside More info. */
+export const STRESS_CARE =
+  'If you feel persistently low, anxious, or unable to cope, speak to your GP or NHS 111. If you are in crisis or at risk of harm, call 999 or the Samaritans on 116 123.';
 
 /** Common daily step target. The period total is this times the number of days. */
 export const STEPS_TYPICAL_LOW = 7000;
@@ -84,6 +95,8 @@ export type ChartGuide = {
   legend: string;
   about: string;
   outside: string | null;
+  /** Urgent care. Shown on the card, never inside More info. */
+  care?: string | null;
 };
 
 export type GarminChartPoint = {
@@ -147,6 +160,21 @@ function grouped(period: StatPeriod): string {
   return period === 'day' ? 'today' : periodPhrase(period);
 }
 
+/** One More info paragraph. The disclaimer is in that paragraph once, so the card can show it outside as well. */
+function advised(about: string, extra: Partial<ChartGuide> = {}): ChartGuide {
+  const body = about.replace(/\s+/g, ' ').trim().replace(/\s*Not medical advice\.?$/i, '');
+  return {
+    dailyTypical: extra.dailyTypical ?? null,
+    periodTypical: extra.periodTypical ?? null,
+    target: extra.target ?? null,
+    ownAverage: extra.ownAverage ?? null,
+    legend: '',
+    about: body,
+    outside: extra.outside ?? null,
+    care: extra.care ?? null,
+  };
+}
+
 function countText(value: number): string {
   return Math.round(value).toLocaleString('en-GB');
 }
@@ -178,16 +206,15 @@ export function stepsChartGuide(period: StatPeriod, stepGoal: number | null): Ch
   const periodTypical = { low: STEPS_TYPICAL_LOW * days, high: STEPS_TYPICAL_HIGH * days };
   const dailyTypical = { low: STEPS_TYPICAL_LOW, high: STEPS_TYPICAL_HIGH };
   const goal = stepGoal != null && stepGoal > 0 ? Math.round(stepGoal) : null;
-  const goalLine = goal == null ? '' : ` Your Garmin step goal is ${countText(goal)} steps a day.`;
-  return {
-    dailyTypical,
-    periodTypical,
-    target: goal == null ? null : { value: goal, label: `Your Garmin step goal, ${countText(goal)} steps a day` },
-    ownAverage: null,
-    legend: `Common daily target ${countText(STEPS_TYPICAL_LOW)}–${countText(STEPS_TYPICAL_HIGH)} steps. For ${grouped(period)}, that is about ${countText(periodTypical.low)}–${countText(periodTypical.high)} steps. The shaded band is the daily target.${goalLine} ${GENERAL_GUIDANCE}`,
-    about: `Steps are how many steps that day. The shaded band is a common daily target of ${countText(STEPS_TYPICAL_LOW)}–${countText(STEPS_TYPICAL_HIGH)} steps. The line, when Garmin sent a step goal, is your own target. ${GENERAL_GUIDANCE}`,
-    outside: null,
-  };
+  const goalLine = goal == null ? '' : ` The line is your Garmin step goal, ${countText(goal)} steps a day.`;
+  return advised(
+    `Steps are how many steps that day. There is no UK daily step target. A common range used in research is ${countText(STEPS_TYPICAL_LOW)}–${countText(STEPS_TYPICAL_HIGH)} steps a day. For ${grouped(period)}, that is about ${countText(periodTypical.low)}–${countText(periodTypical.high)} steps. The shaded band is that daily range.${goalLine} It is a reference, not a personal target.`,
+    {
+      dailyTypical,
+      periodTypical,
+      target: goal == null ? null : { value: goal, label: `Your Garmin step goal, ${countText(goal)} steps a day` },
+    },
+  );
 }
 
 export function restingChartGuide(period: StatPeriod, points: readonly { value: number }[]): ChartGuide {
@@ -196,47 +223,28 @@ export function restingChartGuide(period: StatPeriod, points: readonly { value: 
   if (latest != null && latest < RESTING_TYPICAL_LOW) outside = ATHLETE_RESTING_NOTE;
   if (latest != null && latest > RESTING_TYPICAL_HIGH) outside = OUTSIDE_RANGE_NOTE;
   const band = { low: RESTING_TYPICAL_LOW, high: RESTING_TYPICAL_HIGH };
-  return {
-    dailyTypical: band,
-    periodTypical: band,
-    target: null,
-    ownAverage: null,
-    legend: `Typical adult range ${RESTING_TYPICAL_LOW}–${RESTING_TYPICAL_HIGH} bpm for ${grouped(period)}. Athletes often sit lower. ${GENERAL_GUIDANCE}`,
-    about: `Resting heart rate is the beats per minute Garmin or Apple Health stored for that day. The shaded band is a general adult range of ${RESTING_TYPICAL_LOW}–${RESTING_TYPICAL_HIGH} bpm. It is not adjusted for age. ${GENERAL_GUIDANCE}`,
-    outside,
-  };
+  return advised(
+    `Resting heart rate is the beats per minute stored for that day, from Garmin or Apple Health. The shaded band is a general adult range of ${RESTING_TYPICAL_LOW}–${RESTING_TYPICAL_HIGH} bpm for ${grouped(period)}. It is not adjusted for age. Athletes often sit lower. It is a reference, not a diagnosis.`,
+    { dailyTypical: band, periodTypical: band, outside },
+  );
 }
 
 export function distanceChartGuide(period: StatPeriod, points: readonly { value: number }[]): ChartGuide {
   const mean = averageOf(positiveValues(points));
   const own = mean == null ? null : { value: mean, label: `Your average distance ${grouped(period)}: ${distanceText(mean)}` };
-  return {
-    dailyTypical: null,
-    periodTypical: null,
-    target: null,
-    ownAverage: own,
-    legend: own
-      ? `${own.label}. ${NO_STANDARD_RANGE}. ${GENERAL_GUIDANCE}`
-      : `${NO_STANDARD_RANGE}. ${GENERAL_GUIDANCE}`,
-    about: `Distance is how far that day. ${NO_STANDARD_RANGE}. The line is your own average of the days in ${grouped(period)} that have a distance. ${GENERAL_GUIDANCE}`,
-    outside: null,
-  };
+  return advised(
+    `Distance is how far you moved that day. ${NO_STANDARD_RANGE}. The line is your own average of the days in ${grouped(period)} that have a distance. Compare a day with your own usual days.`,
+    { ownAverage: own },
+  );
 }
 
 export function floorsChartGuide(period: StatPeriod, points: readonly { value: number }[]): ChartGuide {
   const mean = averageOf(positiveValues(points));
   const own = mean == null ? null : { value: mean, label: `Your average floors ${grouped(period)}: ${oneDecimal(mean)} floors` };
-  return {
-    dailyTypical: null,
-    periodTypical: null,
-    target: null,
-    ownAverage: own,
-    legend: own
-      ? `${own.label}. ${NO_STANDARD_RANGE}. ${GENERAL_GUIDANCE}`
-      : `${NO_STANDARD_RANGE}. ${GENERAL_GUIDANCE}`,
-    about: `Floors climbed that day. ${NO_STANDARD_RANGE}. The line is your own average of the days in ${grouped(period)} that have a number. ${GENERAL_GUIDANCE}`,
-    outside: null,
-  };
+  return advised(
+    `Floors are how many floors were climbed that day. ${NO_STANDARD_RANGE}. The line is your own average of the days in ${grouped(period)} that have a number. Compare a day with your own usual days.`,
+    { ownAverage: own },
+  );
 }
 
 export function activityChartGuide(period: StatPeriod): ChartGuide {
@@ -252,55 +260,38 @@ export function activityChartGuide(period: StatPeriod): ChartGuide {
     low: WHO_MODERATE_LOW / 7,
     high: WHO_MODERATE_HIGH / 7,
   };
-  return {
-    dailyTypical,
-    periodTypical,
-    target: null,
-    ownAverage: null,
-    legend: `WHO guidance is ${WHO_MODERATE_LOW}–${WHO_MODERATE_HIGH} min of moderate activity a week, or ${WHO_MODERATE_LOW / 2}–${WHO_MODERATE_HIGH / 2} min vigorous. For ${grouped(period)}, that is about ${countText(periodTypical.low)}–${countText(periodTypical.high)} moderate minutes (${countText(vigorous.low)}–${countText(vigorous.high)} vigorous). The shaded band is the daily share of the moderate range. Garmin vigorous minutes count twice. ${GENERAL_GUIDANCE}`,
-    about: `Intensity minutes add moderate minutes to vigorous minutes, and Garmin counts each vigorous minute twice. The shaded band is the daily share of the WHO moderate range, ${WHO_MODERATE_LOW}–${WHO_MODERATE_HIGH} minutes a week. ${GENERAL_GUIDANCE}`,
-    outside: null,
-  };
+  return advised(
+    `Intensity minutes add moderate minutes to vigorous minutes. Garmin counts each vigorous minute twice. A published activity range is ${WHO_MODERATE_LOW}–${WHO_MODERATE_HIGH} minutes of moderate activity a week, or ${WHO_MODERATE_LOW / 2}–${WHO_MODERATE_HIGH / 2} minutes if it is vigorous. For ${grouped(period)}, that is about ${countText(periodTypical.low)}–${countText(periodTypical.high)} moderate minutes (${countText(vigorous.low)}–${countText(vigorous.high)} vigorous). The shaded band is the daily share of the moderate range. It is a reference, not a personal target or a diagnosis.`,
+    { dailyTypical, periodTypical },
+  );
 }
 
-function scoreGuide(period: StatPeriod, title: string, zones: string): ChartGuide {
-  return {
-    dailyTypical: null,
-    periodTypical: null,
-    target: null,
-    ownAverage: null,
-    legend: `${title} for ${grouped(period)}. ${zones}. ${GARMIN_SCORE_NOTE} ${GENERAL_GUIDANCE}`,
-    about: `${title} uses Garmin's own scale: ${zones}. ${GARMIN_SCORE_NOTE} ${GENERAL_GUIDANCE}`,
-    outside: null,
-  };
+function stressGuide(period: StatPeriod): ChartGuide {
+  return advised(
+    `Average stress is Garmin's own 0–100 score. The watch estimates it from heart rate variability, the tiny variation between heartbeats, while you are still. It reflects how much your body seems to be under strain. Exercise, illness, poor sleep, caffeine, and alcohol can raise it, not only feeling mentally stressed. It is a body-signal estimate, not a measure of emotions. The number here is the average across ${grouped(period)}. Garmin's published bands are ${STRESS_ZONES}. Lower is calmer. Compare it with your own usual days, and look at the trend over weeks rather than one day. A day or two of higher numbers usually needs no action. If it stays medium or high for a couple of weeks, or you feel overwhelmed, look at sleep, alcohol and caffeine, movement, time outdoors, and a breathing or relaxation exercise. Cravings can rise when stress is high. Open Breathe, talk it through in Thumos, or speak to a buddy or a friend. Watch fit and wearing the watch matter. ${GARMIN_SCORE_NOTE}`,
+    { care: STRESS_CARE },
+  );
+}
+
+function batteryGuide(period: StatPeriod, kind: 'charged' | 'drained' | 'highest' | 'lowest'): ChartGuide {
+  const what = BODY_BATTERY_WHAT;
+  const limits = `Each bar is score points for one day, for ${grouped(period)}. Garmin's own estimate, not a medical measure. Wearing the watch overnight and syncing Garmin Connect matters.`;
+  const specific = {
+    charged: 'Charged is how many points rest and sleep added back over the day. Drained is what stress and activity take off. A bigger charged number means you got more energy back. Compare it with your own usual days, not other people. A low number after a poor or short night can be normal.',
+    drained: 'Drained is how many points your Body Battery dropped over the day, from stress and activity. Charged is what rest and sleep add back. A bigger drained number means a harder, more stressful or more active day. A big number is not bad by itself. What matters is whether sleep and rest charge you back up. Compare it with your own usual days, not other people.',
+    highest: "Highest is the top Body Battery level reached that day, on the 0–100 scale. It is the level itself, not points gained or lost. A higher number means a fuller reserve. Compare it with your own usual days, not other people.",
+    lowest: "Lowest is the bottom Body Battery level that day, on the 0–100 scale. It is the level itself, not points lost. A lower number means the reserve ran down further. Compare it with your own usual days, not other people. A low number after a poor or short night can be normal.",
+  }[kind];
+  return advised(`${what} ${specific} ${limits}`);
 }
 
 function hrvGuide(period: StatPeriod, points: readonly GarminChartPoint[]): ChartGuide {
   const mean = averageOf(points.flatMap((point) => (point.empty || point.value == null ? [] : [point.value])));
   const own = mean == null ? null : { value: mean, label: `Your average overnight HRV ${grouped(period)}: ${Math.round(mean)} ms` };
-  return {
-    dailyTypical: null,
-    periodTypical: null,
-    target: null,
-    ownAverage: own,
-    legend: own
-      ? `${own.label}. HRV varies a lot between people and with age, so this is your own recent average, not a healthy range for everyone. ${GENERAL_GUIDANCE}`
-      : `HRV varies a lot between people and with age. There is no population healthy band here. ${GENERAL_GUIDANCE}`,
-    about: `Overnight HRV is Garmin's last-night average in milliseconds. There is no population healthy band. The line is your own average of the nights in ${grouped(period)} that have a number. HRV varies a lot between people and with age. ${GENERAL_GUIDANCE}`,
-    outside: null,
-  };
-}
-
-function plainGuide(period: StatPeriod, about: string): ChartGuide {
-  return {
-    dailyTypical: null,
-    periodTypical: null,
-    target: null,
-    ownAverage: null,
-    legend: `${NO_STANDARD_RANGE} for ${grouped(period)}. ${GENERAL_GUIDANCE}`,
-    about: `${about} ${NO_STANDARD_RANGE}. ${GENERAL_GUIDANCE}`,
-    outside: null,
-  };
+  return advised(
+    `Overnight HRV is Garmin's average, in milliseconds, of the variation between heartbeats during last night's sleep. It varies a lot between people and with age, so this is your own recent average, not a healthy range for everyone. There is no population healthy band. The line is your own average of the nights in ${grouped(period)} that have a number.`,
+    { ownAverage: own },
+  );
 }
 
 function rangeGuide(input: {
@@ -316,34 +307,23 @@ function rangeGuide(input: {
   let outside: string | null = null;
   if (input.latest != null && input.latest < input.low) outside = input.belowNote ?? OUTSIDE_RANGE_NOTE;
   if (input.latest != null && input.latest > input.high) outside = OUTSIDE_RANGE_NOTE;
-  return {
-    dailyTypical: band,
-    periodTypical: band,
-    target: null,
-    ownAverage: null,
-    legend: `Typical adult range ${input.low}–${input.high} ${input.unit} for ${grouped(input.period)}. ${GENERAL_GUIDANCE}`,
-    about: `${input.what} The shaded band is a general adult range of ${input.low}–${input.high} ${input.unit}. ${GENERAL_GUIDANCE}`,
-    outside,
-  };
+  return advised(
+    `${input.what} The shaded band is a general adult range of ${input.low}–${input.high} ${input.unit} for ${grouped(input.period)}. It is a reference, not a diagnosis.`,
+    { dailyTypical: band, periodTypical: band, outside },
+  );
 }
 
 function vo2Guide(period: StatPeriod, age: number | null, sex: NutritionSex | null): ChartGuide {
   const band = publishedCardioBand(age, sex);
   if (!band) {
-    return plainGuide(
-      period,
-      'VO2 max is Garmin\'s stored estimate of how much oxygen you can use at full effort, in ml/kg/min. A cycling estimate is not used.',
+    return advised(
+      `VO2 max is Garmin's stored estimate of how much oxygen you can use at full effort, in ml/kg/min. A cycling estimate is not used. ${NO_STANDARD_RANGE} for ${grouped(period)} until age and sex are set. It is a reference, not a target.`,
     );
   }
-  return {
-    dailyTypical: band,
-    periodTypical: band,
-    target: null,
-    ownAverage: null,
-    legend: `Typical for your age and sex, ${oneDecimal(band.low)}–${oneDecimal(band.high)} ml/kg/min, for ${grouped(period)}. From Kaminsky, Arena, and Myers, 2015. ${GENERAL_GUIDANCE}`,
-    about: `VO2 max is Garmin's stored running estimate in ml/kg/min. A cycling estimate is not used. The shaded band is the published 25th to 75th percentile for your age and sex (Kaminsky, Arena, and Myers, Mayo Clinic Proceedings, 2015), for ages 20–79. ${GENERAL_GUIDANCE}`,
-    outside: null,
-  };
+  return advised(
+    `VO2 max is Garmin's stored running estimate in ml/kg/min. A cycling estimate is not used. The shaded band is the published 25th to 75th percentile for your age and sex, ${oneDecimal(band.low)}–${oneDecimal(band.high)}, from Kaminsky, Arena, and Myers, Mayo Clinic Proceedings, 2015, for ages 20–79. Shown for ${grouped(period)}. It is a reference, not a target.`,
+    { dailyTypical: band, periodTypical: band },
+  );
 }
 
 function finite(value: number | null | undefined, zeroIsValue: boolean): number | null {
@@ -465,11 +445,12 @@ export function garminDetailCharts(input: GarminChartInput): GarminDetailChart[]
     unit: 'score',
     points: stressPoints,
     includeZero: true,
-    guide: scoreGuide(input.period, 'Average stress', STRESS_ZONES),
+    guide: stressGuide(input.period),
   });
   const battery = (
     id: string,
     title: string,
+    kind: 'charged' | 'drained' | 'highest' | 'lowest',
     values: ReadonlyMap<string, number>,
   ) => {
     add({
@@ -478,20 +459,20 @@ export function garminDetailCharts(input: GarminChartInput): GarminDetailChart[]
       unit: 'score',
       points: seriesFrom(input.endDay, input.period, values, title, 'score', countText, true),
       includeZero: true,
-      guide: scoreGuide(input.period, title, BODY_BATTERY_ZONES),
+      guide: batteryGuide(input.period, kind),
     });
   };
-  battery('body_battery_charged', 'Body battery charged', charged);
-  battery('body_battery_drained', 'Body battery drained', drained);
-  battery('body_battery_highest', 'Body battery highest', highest);
-  battery('body_battery_lowest', 'Body battery lowest', lowest);
+  battery('body_battery_charged', 'Body battery charged', 'charged', charged);
+  battery('body_battery_drained', 'Body battery drained', 'drained', drained);
+  battery('body_battery_highest', 'Body battery highest', 'highest', highest);
+  battery('body_battery_lowest', 'Body battery lowest', 'lowest', lowest);
   add({
     id: 'sleep_score',
     title: 'Sleep score',
     unit: 'score',
     points: seriesFrom(input.endDay, input.period, sleepScore, 'Sleep score', 'score', countText, false),
     includeZero: false,
-    guide: plainGuide(input.period, 'Sleep score is Garmin\'s score for that night.'),
+    guide: advised(`Sleep score is Garmin's own score for that night. ${NO_STANDARD_RANGE} for ${grouped(input.period)}. It is not a medical sleep measure. Compare a night with your own usual nights.`),
   });
   add({
     id: 'sleep_duration',
@@ -499,7 +480,7 @@ export function garminDetailCharts(input: GarminChartInput): GarminDetailChart[]
     unit: 'hours',
     points: seriesFrom(input.endDay, input.period, sleepHours, 'Sleep duration', 'hours', oneDecimal, false),
     includeZero: false,
-    guide: plainGuide(input.period, 'Sleep duration is the hours Garmin stored for that night.'),
+    guide: advised(`Sleep duration is the hours Garmin stored for that night. ${NO_STANDARD_RANGE} for ${grouped(input.period)}. Compare a night with your own usual nights.`),
   });
   const breathPoints = seriesFrom(input.endDay, input.period, breath, 'Breathing rate', 'breaths/min', oneDecimal, false);
   add({
@@ -513,7 +494,7 @@ export function garminDetailCharts(input: GarminChartInput): GarminDetailChart[]
       low: BREATH_TYPICAL_LOW,
       high: BREATH_TYPICAL_HIGH,
       unit: 'breaths/min',
-      what: 'Breathing rate is the average breaths per minute Garmin stored for that day.',
+      what: 'Breathing rate is the average breaths per minute Garmin stored while you were still that day.',
       latest: latestStored(breathPoints),
     }),
   });
@@ -529,7 +510,7 @@ export function garminDetailCharts(input: GarminChartInput): GarminDetailChart[]
       low: SPO2_TYPICAL_LOW,
       high: SPO2_TYPICAL_HIGH,
       unit: '%',
-      what: 'Blood oxygen is the average resting oxygen saturation Garmin stored for that day.',
+      what: 'Blood oxygen is the average resting oxygen saturation Garmin stored for that day. Watch fit can change the reading.',
       latest: latestStored(oxygenPoints),
     }),
   });

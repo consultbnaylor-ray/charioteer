@@ -9,7 +9,7 @@
     "userInterfaceStyle": "dark",
     "ios": {
       "bundleIdentifier": "uk.co.quanticalabs.charioteer",
-      "buildNumber": "62",
+      "buildNumber": "68",
       "appleTeamId": "5FMDXKAX7V",
       "usesAppleSignIn": true,
       "icon": "./assets/brand/ios/icon-1024.png",
@@ -60,6 +60,13 @@
       ],
       "expo-secure-store",
       "expo-notifications",
+      [
+        "expo-calendar",
+        {
+          "calendarPermission": "Charioteer only opens Apple's add-event sheet when you tap Add to Calendar. It never reads your calendar.",
+          "remindersPermission": false
+        }
+      ],
       [
         "expo-splash-screen",
         {

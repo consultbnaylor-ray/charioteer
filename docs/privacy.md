@@ -35,6 +35,14 @@ Days sober, your stage, reasons, money and unit totals, a mood streak, and healt
 
 Town, a gratitude line, a vision caption, and a pinned Stoic quote are not treated as that same confirmation. A pinned quote is a public-domain line you chose. A progress photo already asks before it is shown to the community.
 
+## What one buddy can see
+
+A buddy is not the community. Community switches live in `profile_sharing` and are read only by `public_profile`. That call returns nothing unless you are signed in, Community is on for both of you, age is confirmed, and neither of you has blocked the other. Those switches are the same for every community member. They are not a private share with one person.
+
+What you choose for one buddy is stored on that buddy invite (`buddy_invites.scope`). `shared_buddy_data` returns only those sections, and only to that person after they have accepted. It does not read `profile_sharing`, and it does not ask whether Community is on. Another buddy’s invite is a different row. A block either way returns nothing. Health data on that invite stays off unless that switch is on for that person.
+
+Turning Community off hides the community profile. It does not publish the community switches to a buddy, and it does not erase a buddy invite. The app does not yet store a separate copy of every community field for each buddy. Until that is approved and applied, a buddy sees the invite sections, not the What I share switches.
+
 ## How the shared view is built
 
 Your choices are stored in `profile_sharing`, which only you can read and write. Other signed-in people do not read that table, and they do not read your private rows. They call `public_profile`, which returns only the fields you have switched on. It returns nothing if you are signed out, if Community is off, if age is not confirmed, or if either of you has blocked the other.
@@ -56,3 +64,7 @@ On iPhone, Charioteer can read Apple Health when you allow it. It reads steps, s
 Readings stay on your account as daily totals: minutes split into strength, cardio, and other, plus the latest cardio fitness, walking heart rate, heart rate recovery, and session heart rate for a day. A raw heart-rate trace from a workout is not stored. Other people cannot see these readings. They are not used for advertising or marketing.
 
 If you turn on the coach as well as health data, a short summary is sent to the model to write the Health Plan and Thumos replies. That summary is the fitness level, the trend in a sentence, weekly minutes, the mix of sessions, and recovery. The raw samples are not sent for that. You can turn the coach off, and you can turn Apple Health off in Settings > Health > Data Access & Devices > Charioteer. The fitness card is an estimate, not a medical assessment.
+
+## Calendar
+
+Add to Calendar opens Apple's add-event sheet for a planned workout. The iPhone app contains a calendar purpose sentence only so Apple's upload check can see why that code is in the app. The sentence is: "Charioteer only opens Apple's add-event sheet when you tap Add to Calendar. It never reads your calendar." The calendar plugin copies that same sentence onto the full-calendar purpose text. Reminder purpose text is left out. Tapping the button does not ask for calendar permission, and Charioteer does not read your calendar or your reminders.

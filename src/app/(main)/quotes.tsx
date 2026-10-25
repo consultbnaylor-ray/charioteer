@@ -17,6 +17,7 @@ import {
   type StoicTheme,
 } from '@/domain/stoicQuotes';
 import { InPlainWords, QuoteWords } from '@/ui/InPlainWords';
+import { MoreInfo } from '@/ui/MoreInfo';
 import { Button, Card, Choice, ErrorNote, Field, Screen, T } from '@/ui/ui';
 
 function dayLabel(day: string): string {
@@ -111,7 +112,11 @@ export default function StoicQuotes() {
     <Screen
       eyebrow="Stoic & Classical Wisdom"
       title="A line for the day."
-      intro="Public-domain translations from the Stoics and from Plato. Plato is Platonic, not a Stoic. The same line for everyone on a UK date."
+      intro={(
+        <MoreInfo about="these lines" summary="Plato is Platonic, not a Stoic.">
+          <T variant="muted">Public-domain translations from the Stoics and from Plato. Plato is Platonic, not a Stoic. The same line for everyone on a UK date.</T>
+        </MoreInfo>
+      )}
     >
       {error ? <ErrorNote>{error}</ErrorNote> : null}
       <Card featured>
@@ -128,18 +133,20 @@ export default function StoicQuotes() {
         {actions(daily)}
       </Card>
       <Field label="Search" value={query} onChangeText={(value) => { setQuery(value); setShown(24); }} placeholder="Author, theme, or words" />
-      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-        <Choice label="Any author" selected={author == null} onPress={() => { setAuthor(null); setShown(24); }} />
-        {STOIC_AUTHORS.map((name) => (
-          <Choice key={name} label={name} selected={author === name} onPress={() => { setAuthor(author === name ? null : name); setShown(24); }} />
-        ))}
-      </View>
-      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-        <Choice label="Any theme" selected={theme == null} onPress={() => { setTheme(null); setShown(24); }} />
-        {STOIC_THEMES.map((name) => (
-          <Choice key={name} label={name} selected={theme === name} onPress={() => { setTheme(theme === name ? null : name); setShown(24); }} />
-        ))}
-      </View>
+      <Card>
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+          <Choice label="Any author" selected={author == null} onPress={() => { setAuthor(null); setShown(24); }} />
+          {STOIC_AUTHORS.map((name) => (
+            <Choice key={name} label={name} selected={author === name} onPress={() => { setAuthor(author === name ? null : name); setShown(24); }} />
+          ))}
+        </View>
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+          <Choice label="Any theme" selected={theme == null} onPress={() => { setTheme(null); setShown(24); }} />
+          {STOIC_THEMES.map((name) => (
+            <Choice key={name} label={name} selected={theme === name} onPress={() => { setTheme(theme === name ? null : name); setShown(24); }} />
+          ))}
+        </View>
+      </Card>
       {filtering ? visible.map((quote) => row(quote)) : <T variant="muted">Choose an author or a theme, or search, to browse the library.</T>}
       {filtering && matches.length > visible.length ? (
         <Button label="Show more" tone="quiet" onPress={() => setShown((value) => value + 24)} />

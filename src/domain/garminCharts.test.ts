@@ -58,11 +58,14 @@ describe('garmin charts follow the shared period', () => {
     const screen = readFileSync('src/ui/DailyActivity.tsx', 'utf8');
     expect(screen).toContain('useStatPeriod');
     expect(screen).toContain('movementPeriod(span, sharedPeriod)');
-    expect(screen).toContain('{span == null ? <StatPeriodToggle /> : null}');
+    expect(screen).toContain('<StatPeriodToggle />');
+    expect(screen).toContain('framed ? 14 : 8');
     expect(screen).toContain('garminDetailCharts');
-    expect(GARMIN_DETAILS_TITLE).toBe('Garmin details');
+    expect(GARMIN_DETAILS_TITLE).toBe('More Garmin Stats');
     expect(screen).toContain('title={GARMIN_DETAILS_TITLE}');
-    expect(screen).toContain('What is this?');
+    expect(screen).toContain('Not medical advice.');
+    expect(screen).toContain('from \'@/ui/MoreInfo\'');
+    expect(screen).not.toContain('What is this?');
     expect(screen).not.toContain('seriesUsesGarmin');
     expect(screen).not.toContain('latitude');
     expect(screen).not.toContain('longitude');
@@ -102,9 +105,11 @@ describe('garmin charts follow the shared period', () => {
     expect(monthGoal.periodTypical).toEqual({ low: 210_000, high: 300_000 });
     expect(weekGoal.target?.value).toBe(8260);
     expect(monthGoal.target?.value).toBe(8260);
-    expect(weekGoal.legend).toContain('49,000');
-    expect(monthGoal.legend).toContain('210,000');
-    expect(weekGoal.legend).toContain(GENERAL_GUIDANCE);
+    expect(weekGoal.about).toContain('49,000');
+    expect(monthGoal.about).toContain('210,000');
+    expect(weekGoal.about).not.toMatch(/not medical advice/i);
+    expect(weekGoal.about).toContain('no UK daily step target');
+    expect(weekGoal.legend).toBe('');
     expect(stepGoalInPeriod([daily({ calendarDate: '2026-09-01', stepGoal: 5000 })], end, '7')).toBeNull();
   });
 
@@ -162,15 +167,17 @@ describe('garmin chart bands', () => {
     expect(resting.outside).not.toContain('doctor');
     expect(restingChartGuide('7', [{ value: 110 }]).outside).toBe(OUTSIDE_RANGE_NOTE);
     expect(restingChartGuide('7', [{ value: 72 }]).outside).toBeNull();
-    expect(resting.legend).toContain('the last 30 days');
-    expect(restingChartGuide('7', [{ value: 72 }]).legend).toContain('the last 7 days');
+    expect(resting.about).toContain('the last 30 days');
+    expect(restingChartGuide('7', [{ value: 72 }]).about).toContain('the last 7 days');
+    expect(resting.legend).toBe('');
 
     const weekMinutes = activityChartGuide('7');
     const monthMinutes = activityChartGuide('30');
     expect(weekMinutes.periodTypical).toEqual({ low: WHO_MODERATE_LOW, high: WHO_MODERATE_HIGH });
     expect(monthMinutes.periodTypical).toEqual({ low: 643, high: 1286 });
     expect(weekMinutes.dailyTypical).toEqual({ low: WHO_MODERATE_LOW / 7, high: WHO_MODERATE_HIGH / 7 });
-    expect(monthMinutes.legend).toContain('1,286');
+    expect(monthMinutes.about).toContain('1,286');
+    expect(monthMinutes.legend).toBe('');
     expect(activityChartGuide('day').periodTypical?.low).toBe(21);
 
     const charts = garminDetailCharts({
@@ -208,13 +215,52 @@ describe('garmin chart bands', () => {
       sex: 'male',
     });
     const byId = new Map(charts.map((chart) => [chart.id, chart]));
-    expect(byId.get('stress')?.guide.dailyTypical).toBeNull();
-    expect(byId.get('stress')?.guide.legend).toContain(STRESS_ZONES);
-    expect(byId.get('stress')?.guide.legend).toContain(GARMIN_SCORE_NOTE);
-    expect(byId.get('stress')?.guide.outside).toBeNull();
-    expect(byId.get('body_battery_charged')?.guide.legend).toContain(BODY_BATTERY_ZONES);
-    expect(byId.get('body_battery_charged')?.guide.about).toContain(GARMIN_SCORE_NOTE);
-    expect(byId.get('sleep_score')?.guide.legend).toContain(NO_STANDARD_RANGE);
+    const stress = byId.get('stress')?.guide;
+    expect(stress?.dailyTypical).toBeNull();
+    expect(stress?.legend).toBe('');
+    expect(stress?.about).toContain(STRESS_ZONES);
+    expect(stress?.about.match(/0–25 resting/g)).toHaveLength(1);
+    expect(stress?.about).toContain(GARMIN_SCORE_NOTE);
+    expect(stress?.about).toContain('not a measure of emotions');
+    expect(stress?.about).toContain('heart rate variability');
+    expect(stress?.about).toContain('Open Breathe');
+    expect(stress?.about).toContain('Thumos');
+    expect(stress?.about).toContain('Cravings can rise');
+    expect(stress?.about).not.toContain('116 123');
+    expect(stress?.care).toContain('116 123');
+    expect(stress?.care).toContain('NHS 111');
+    expect(stress?.care).toContain('999');
+    expect(stress?.outside).toBeNull();
+    const chargedNote = byId.get('body_battery_charged')?.guide.about ?? '';
+    const drainedNote = byId.get('body_battery_drained')?.guide.about ?? '';
+    const highestNote = byId.get('body_battery_highest')?.guide.about ?? '';
+    const lowestNote = byId.get('body_battery_lowest')?.guide.about ?? '';
+    expect(chargedNote).not.toContain(BODY_BATTERY_ZONES);
+    expect(chargedNote).toContain('rest and sleep added back');
+    expect(chargedNote).toContain('score points');
+    expect(chargedNote).toContain('not a medical measure');
+    expect(chargedNote).not.toMatch(/not medical advice/i);
+    expect(drainedNote).not.toContain(BODY_BATTERY_ZONES);
+    expect(drainedNote).not.toMatch(/0–25|very low/);
+    expect(drainedNote).toContain('how many points your Body Battery dropped');
+    expect(drainedNote).toContain('from stress and activity');
+    expect(drainedNote).toContain('rest and sleep add back');
+    expect(drainedNote).toContain('harder, more stressful or more active day');
+    expect(drainedNote).toContain('not bad by itself');
+    expect(drainedNote).toContain('charge you back up');
+    expect(drainedNote).toContain('not other people');
+    expect(drainedNote).toContain('score points');
+    expect(drainedNote).toContain('syncing Garmin Connect matters');
+    expect(drainedNote.match(/not a medical measure/gi)).toHaveLength(1);
+    expect(highestNote).toContain('top Body Battery level');
+    expect(highestNote).not.toContain(BODY_BATTERY_ZONES);
+    expect(lowestNote).toContain('bottom Body Battery level');
+    expect(lowestNote).not.toContain(BODY_BATTERY_ZONES);
+    for (const note of [chargedNote, drainedNote, highestNote, lowestNote, stress?.about ?? '']) {
+      expect(note.match(/Not medical advice/gi) ?? []).toHaveLength(0);
+      expect(note.match(/Approximate general guidance/g) ?? []).toHaveLength(0);
+    }
+    expect(byId.get('sleep_score')?.guide.about).toContain(NO_STANDARD_RANGE);
     expect(byId.get('sleep_score')?.guide.dailyTypical).toBeNull();
     expect(byId.get('sleep_duration')?.points.find((point) => point.day === end)?.label).toContain('7.5 hours');
     expect(byId.get('sleep_duration')?.guide.dailyTypical).toBeNull();
@@ -224,9 +270,10 @@ describe('garmin chart bands', () => {
     expect(byId.get('pulse_ox')?.guide.outside).toBe(OUTSIDE_RANGE_NOTE);
     expect(byId.get('hrv')?.guide.dailyTypical).toBeNull();
     expect(byId.get('hrv')?.guide.ownAverage?.value).toBe(50);
-    expect(byId.get('hrv')?.guide.legend).toContain('your own recent average');
-    expect(byId.get('hrv')?.guide.legend).toContain('not a healthy range for everyone');
+    expect(byId.get('hrv')?.guide.about).toContain('your own recent average');
+    expect(byId.get('hrv')?.guide.about).toContain('not a healthy range for everyone');
     expect(byId.get('hrv')?.guide.about).toContain('no population healthy band');
+    expect(byId.get('hrv')?.guide.legend).toBe('');
     const longer = garminDetailCharts({
       endDay: end,
       period: '30',
@@ -256,7 +303,7 @@ describe('garmin chart bands', () => {
       userMetrics: [{ summaryId: 'run', calendarDate: end, vo2Max: 42, vo2MaxCycling: null, fitnessAge: null }],
     });
     expect(noAge.find((chart) => chart.id === 'vo2')?.guide.dailyTypical).toBeNull();
-    expect(noAge.find((chart) => chart.id === 'vo2')?.guide.legend).toContain(NO_STANDARD_RANGE);
+    expect(noAge.find((chart) => chart.id === 'vo2')?.guide.about).toContain(NO_STANDARD_RANGE);
 
     const distance = [
       { value: 0 },
@@ -265,17 +312,38 @@ describe('garmin chart bands', () => {
     ];
     const distanceGuide = distanceChartGuide('7', distance);
     expect(distanceGuide.dailyTypical).toBeNull();
-    expect(distanceGuide.legend).toContain(NO_STANDARD_RANGE);
+    expect(distanceGuide.about).toContain(NO_STANDARD_RANGE);
     expect(distanceGuide.ownAverage?.label).toContain('3 km');
     expect(distanceChartGuide('30', [{ value: 1000 }, { value: 3000 }]).ownAverage?.value).toBe(2000);
     const floors = floorsChartGuide('day', [{ value: 8 }]);
     expect(floors.dailyTypical).toBeNull();
-    expect(floors.legend).toContain(NO_STANDARD_RANGE);
+    expect(floors.about).toContain(NO_STANDARD_RANGE);
     expect(floors.ownAverage?.label).toContain('today');
 
     const minutes = intensitySeries(end, '7', [daily({ calendarDate: end, moderateMinutes: 20, vigorousMinutes: 10 })]);
     expect(minutes.find((point) => point.day === end)).toMatchObject({ value: 40, source: 'garmin' });
     expect(minutes.find((point) => point.empty)?.label).not.toContain(GARMIN_SOURCE);
     expect(minutes.find((point) => point.day === end)?.label).toContain('vigorous');
+
+    const guides = [
+      stepsChartGuide('7', null),
+      restingChartGuide('7', [{ value: 72 }]),
+      distanceChartGuide('7', [{ value: 1000 }]),
+      floorsChartGuide('7', [{ value: 4 }]),
+      activityChartGuide('7'),
+      ...charts.map((chart) => chart.guide),
+    ];
+    for (const guide of guides) {
+      expect(guide.legend).toBe('');
+      expect(guide.about.match(/Not medical advice/gi) ?? []).toHaveLength(0);
+      expect(guide.about).not.toContain(GENERAL_GUIDANCE);
+    }
+    const activity = readFileSync('src/ui/DailyActivity.tsx', 'utf8');
+    const careAt = activity.indexOf('guide?.care');
+    const moreAt = activity.indexOf('<MoreInfo about={title}');
+    expect(careAt).toBeGreaterThan(-1);
+    expect(careAt).toBeLessThan(moreAt);
+    expect(activity).toContain('crisisHelplines');
+    expect(activity).toContain("title === 'Average stress'");
   });
 });

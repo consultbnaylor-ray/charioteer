@@ -1,10 +1,13 @@
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Share, View } from 'react-native';
+import { Pressable, Share, View } from 'react-native';
 
 import { useRepository, useSnapshot } from '@/data';
 import {
   BUDDY_CHOOSE,
+  BUDDY_VIEWER_PRIVATE,
+  buddyReminderMessage,
+  buddyShareEmptyMessage,
   buddyShareMessage,
   consumeBuddySecret,
   emptyBuddyScope,
@@ -43,6 +46,7 @@ export default function BuddiesScreen() {
   const [review, setReview] = useState<BuddyInvite | null>(null);
   const [linkPreview, setLinkPreview] = useState<{ secret: string; name: string; scope: BuddyScope } | null>(null);
   const [typed, setTyped] = useState('');
+  const [codeOpen, setCodeOpen] = useState(false);
   const [view, setView] = useState<BuddyShareView | null>(null);
   const [reporting, setReporting] = useState(false);
   const [reason, setReason] = useState('');
@@ -81,6 +85,7 @@ export default function BuddiesScreen() {
     const value = routeSecret || consumeBuddySecret() || '';
     if (!value || openedSecret.current === value) return;
     openedSecret.current = value;
+    setCodeOpen(true);
     openLink(value);
   }, [routeSecret]);
 
@@ -124,14 +129,19 @@ export default function BuddiesScreen() {
     }).catch((err: unknown) => setError(shownError(err, 'Could not save that.'))));
   };
 
-  const openShare = (ownerId: string) => {
+  const openShare = (ownerId: string, name: string) => {
     setError(null);
     setView(null);
     run(`view:${ownerId}`, () => repo.sharedBuddyData(ownerId).then((next) => {
       setView(next);
-      if (!next) setError('This share is not available.');
+      if (!next) setError(buddyShareEmptyMessage(name));
     }).catch((err: unknown) => setError(shownError(err, 'Could not open that.'))));
   };
+
+  const incoming = list.watching.filter((invite) => invite.status === 'pending');
+  const outgoing = list.sharing.filter((invite) => invite.status === 'pending');
+  const fromThem = list.watching.filter((invite) => invite.status === 'accepted');
+  const seeingYou = list.sharing.filter((invite) => invite.status === 'accepted');
 
   const message = (userId: string) => {
     setError(null);
@@ -164,11 +174,12 @@ export default function BuddiesScreen() {
       {compose ? (
         <View style={{ gap: 12 }}>
           <T variant="title">
-            {compose.kind === 'person' ? `Invite ${compose.name}` : compose.kind === 'link' ? 'Invite by link' : `What ${compose.invite.name} can see`}
+            {compose.kind === 'person' ? `Invite ${compose.name}` : compose.kind === 'link' ? 'Invite someone new' : `What ${compose.invite.name} can see`}
           </T>
           <BuddyScopeEditor
             scope={compose.scope}
             heading="They will see"
+            buddyName={compose.kind === 'person' ? compose.name : compose.kind === 'edit' ? compose.invite.name : ''}
             onChange={(scope) => setCompose({ ...compose, scope })}
           />
           {compose.kind === 'person' ? <Button label="Send invite" pending={isPending('send')} pendingLabel="Sending..." onPress={sendPerson} /> : null}
@@ -217,7 +228,8 @@ export default function BuddiesScreen() {
       ) : null}
       {view ? (
         <Card>
-          <T variant="title">{view.displayName}</T>
+          <T variant="title">{`What ${view.displayName} shares with you`}</T>
+          <T variant="muted">{BUDDY_VIEWER_PRIVATE}</T>
           <T variant="muted">View only. A private message is the only reply.</T>
           {view.summary.map((line) => <T key={line}>{line}</T>)}
           {view.meals?.map((meal) => <T key={`${meal.meal}-${meal.detail}`}>{meal.meal}: {meal.detail}</T>)}
@@ -246,70 +258,118 @@ export default function BuddiesScreen() {
       ) : null}
       {!compose ? (
         <View style={{ gap: 12 }}>
-          <Button label="Invite by link" onPress={() => {
+          {incoming.length ? (
+            <>
+              <T variant="label">Waiting for you</T>
+              {incoming.map((invite) => (
+                <Card key={invite.id} featured>
+                  <T variant="title">{invite.name} invited you</T>
+                  <Button label="Review" onPress={() => setReview(invite)} />
+                </Card>
+              ))}
+            </>
+          ) : null}
+          {outgoing.length || list.links.length ? (
+            <>
+              <T variant="label">Invites you sent</T>
+              {outgoing.map((invite) => (
+                <Card key={invite.id} featured>
+                  <T variant="title">Invite sent to {invite.name}.</T>
+                  <T>Waiting for them to accept.</T>
+                  <T variant="muted">They already have this invite in the app. This does not start a new one.</T>
+                  {scopeSummary(invite.scope).map((line) => <T key={line}>{line}</T>)}
+                  <Button label="Send the link again" tone="quiet" onPress={() => {
+                    void Share.share({ message: buddyReminderMessage(invite.name) }).catch(() => setError('Could not open the share sheet.'));
+                  }} />
+                  <Button label="Cancel invite" tone="quiet" pending={isPending(`revoke:${invite.id}`)} pendingLabel="Sending..." onPress={() => {
+                    setError(null);
+                    run(`revoke:${invite.id}`, () => repo.revokeBuddy(invite.id).then(load).catch((err: unknown) => setError(shownError(err, 'Could not cancel that.'))));
+                  }} />
+                </Card>
+              ))}
+              {list.links.map((link) => (
+                <Card key={link.id} featured>
+                  <T variant="title">Invite link still open</T>
+                  <T variant="muted">Expires {formatUkDate(link.expiresAt)}. The code was shown once.</T>
+                  {scopeSummary(link.scope).map((line) => <T key={line}>{line}</T>)}
+                  {pass?.id === link.id ? (
+                    <Button label="Send the link again" tone="quiet" onPress={() => {
+                      void Share.share({ message: buddyShareMessage(pass) }).catch(() => setError('Could not open the share sheet.'));
+                    }} />
+                  ) : null}
+                  <Button label="Cancel invite" tone="quiet" pending={isPending(`link:${link.id}`)} pendingLabel="Sending..." onPress={() => {
+                    setError(null);
+                    run(`link:${link.id}`, () => repo.revokeBuddyLink(link.id).then(() => {
+                      if (pass?.id === link.id) setPass(null);
+                      load();
+                    }).catch((err: unknown) => setError(shownError(err, 'Could not cancel that.'))));
+                  }} />
+                </Card>
+              ))}
+            </>
+          ) : null}
+          {fromThem.length ? (
+            <>
+              <T variant="label">Sharing with you</T>
+              {fromThem.map((invite) => (
+                <Card key={invite.id}>
+                  <T variant="title">{invite.name}</T>
+                  {scopeSummary(invite.scope).map((line) => <T key={line}>{line}</T>)}
+                  <Button label="View" pending={isPending(`view:${invite.ownerId}`)} pendingLabel="Opening..." onPress={() => openShare(invite.ownerId, invite.name)} />
+                  <Button label="Message privately" tone="quiet" onPress={() => message(invite.ownerId)} />
+                  <Button label="Remove buddy" tone="quiet" pending={isPending(`revoke:${invite.id}`)} pendingLabel="Sending..." onPress={() => {
+                    setError(null);
+                    run(`revoke:${invite.id}`, () => repo.revokeBuddy(invite.id).then(() => {
+                      if (view?.ownerId === invite.ownerId) setView(null);
+                      load();
+                    }).catch((err: unknown) => setError(shownError(err, 'Could not remove that.'))));
+                  }} />
+                </Card>
+              ))}
+            </>
+          ) : null}
+          {seeingYou.length ? (
+            <>
+              <T variant="label">Who can see your day</T>
+              {seeingYou.map((invite) => (
+                <Card key={invite.id}>
+                  <T variant="title">{invite.name}</T>
+                  {scopeSummary(invite.scope).map((line) => <T key={line}>{line}</T>)}
+                  <Button label="Edit what they see" tone="quiet" onPress={() => setCompose({ kind: 'edit', invite, scope: invite.scope })} />
+                  <Button label="Stop sharing" tone="quiet" pending={isPending(`revoke:${invite.id}`)} pendingLabel="Sending..." onPress={() => {
+                    setError(null);
+                    run(`revoke:${invite.id}`, () => repo.revokeBuddy(invite.id).then(load).catch((err: unknown) => setError(shownError(err, 'Could not stop that.'))));
+                  }} />
+                </Card>
+              ))}
+            </>
+          ) : null}
+          <Button label="Invite someone new" onPress={() => {
             setPass(null);
             setCompose({ kind: 'link', scope: emptyBuddyScope() });
           }} />
-          <Card>
-            <T variant="label">Type a code</T>
-            <Field label="Code" value={typed} onChangeText={setTyped} placeholder="8 characters" />
-            <Button label="Look up code" pending={isPending('preview')} pendingLabel="Sending..." onPress={() => {
-              const value = typed.trim();
-              if (!value) return;
-              openLink(value);
-            }} />
-            {routeSecret && !linkPreview ? <Button label="Open invite from the link" tone="quiet" onPress={() => openLink(routeSecret)} /> : null}
-          </Card>
-          <T variant="label">Waiting for you</T>
-          {list.watching.filter((invite) => invite.status === 'pending').map((invite) => (
-            <Card key={invite.id}>
-              <T variant="title">{invite.name} invited you</T>
-              <Button label="Review" onPress={() => setReview(invite)} />
-            </Card>
-          ))}
-          {list.watching.every((invite) => invite.status !== 'pending') ? <T variant="muted">No requests waiting.</T> : null}
-          <T variant="label">Sharing with you</T>
-          {list.watching.filter((invite) => invite.status === 'accepted').map((invite) => (
-            <Card key={invite.id}>
-              <T variant="title">{invite.name}</T>
-              {scopeSummary(invite.scope).map((line) => <T key={line}>{line}</T>)}
-              <Button label="View" pending={isPending(`view:${invite.ownerId}`)} pendingLabel="Opening..." onPress={() => openShare(invite.ownerId)} />
-              <Button label="Message privately" tone="quiet" onPress={() => message(invite.ownerId)} />
-              <Button label="Remove buddy" tone="quiet" pending={isPending(`revoke:${invite.id}`)} pendingLabel="Sending..." onPress={() => {
-                setError(null);
-                run(`revoke:${invite.id}`, () => repo.revokeBuddy(invite.id).then(() => {
-                  if (view?.ownerId === invite.ownerId) setView(null);
-                  load();
-                }).catch((err: unknown) => setError(shownError(err, 'Could not remove that.'))));
+          <T variant="muted">This starts a new invite. It does not change one you already sent.</T>
+          {codeOpen ? (
+            <Card>
+              <T>Got a code from someone? Enter it here.</T>
+              <T variant="muted">This accepts their invite. It does not send a new one.</T>
+              <Field label="Their code" value={typed} onChangeText={setTyped} placeholder="8 characters" />
+              <Button label="Look up their code" pending={isPending('preview')} pendingLabel="Sending..." onPress={() => {
+                const value = typed.trim();
+                if (!value) return;
+                openLink(value);
               }} />
+              {routeSecret && !linkPreview ? <Button label="Open invite from the link" tone="quiet" onPress={() => openLink(routeSecret)} /> : null}
+              <Button label="Hide" tone="quiet" onPress={() => setCodeOpen(false)} />
             </Card>
-          ))}
-          {list.watching.every((invite) => invite.status !== 'accepted') ? <T variant="muted">No one is sharing with you yet.</T> : null}
-          <T variant="label">Who can see your day</T>
-          {list.sharing.map((invite) => (
-            <Card key={invite.id}>
-              <T variant="title">{invite.name}</T>
-              <T variant="muted">{invite.status === 'pending' ? 'Waiting for them to accept' : 'Accepted'}</T>
-              {scopeSummary(invite.scope).map((line) => <T key={line}>{line}</T>)}
-              <Button label="Edit what they see" tone="quiet" onPress={() => setCompose({ kind: 'edit', invite, scope: invite.scope })} />
-              <Button label="Stop sharing" tone="quiet" pending={isPending(`revoke:${invite.id}`)} pendingLabel="Sending..." onPress={() => {
-                setError(null);
-                run(`revoke:${invite.id}`, () => repo.revokeBuddy(invite.id).then(load).catch((err: unknown) => setError(shownError(err, 'Could not stop that.'))));
-              }} />
-            </Card>
-          ))}
-          {list.sharing.length === 0 ? <T variant="muted">You are not sharing with a buddy yet.</T> : null}
-          {list.links.length ? <T variant="label">Links still open</T> : null}
-          {list.links.map((link) => (
-            <Card key={link.id}>
-              <T>Expires {formatUkDate(link.expiresAt)}</T>
-              {scopeSummary(link.scope).map((line) => <T key={line}>{line}</T>)}
-              <Button label="Cancel link" tone="quiet" pending={isPending(`link:${link.id}`)} pendingLabel="Sending..." onPress={() => {
-                setError(null);
-                run(`link:${link.id}`, () => repo.revokeBuddyLink(link.id).then(load).catch((err: unknown) => setError(shownError(err, 'Could not cancel that.'))));
-              }} />
-            </Card>
-          ))}
+          ) : (
+            <View style={{ gap: 4 }}>
+              <Pressable accessibilityRole="button" onPress={() => setCodeOpen(true)}>
+                <T style={{ textDecorationLine: 'underline' }}>Got a code from someone? Enter it here</T>
+              </Pressable>
+              <T variant="muted">This accepts their invite. It does not send a new one.</T>
+            </View>
+          )}
         </View>
       ) : null}
       <EditSheet

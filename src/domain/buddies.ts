@@ -30,6 +30,21 @@ export const BUDDY_LINK_LIMIT = 'Too many links today.';
 export const BUDDY_UNAVAILABLE = 'That invite is not available.';
 export const BUDDY_CHOOSE = 'Choose at least one thing to share.';
 
+/** Owner side, on the switches for one person. */
+export function buddyOnlyShareLine(name: string): string {
+  const who = name.trim();
+  if (!who) return 'Only the person who accepts this can see this. Community members cannot.';
+  return `Only ${who} can see this. Community members cannot.`;
+}
+
+/** Viewer side, when there is no accepted per-buddy share to show. */
+export function buddyShareEmptyMessage(name: string): string {
+  const who = name.trim() || 'They';
+  return `${who} hasn't shared anything with you yet.`;
+}
+
+export const BUDDY_VIEWER_PRIVATE = 'Only you can see this. Community members cannot.';
+
 const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 
 export const BUDDY_SCOPE_KEYS = [
@@ -209,6 +224,21 @@ export function makeBuddyCode(bytes: ArrayLike<number>): string {
 
 export function makeBuddyToken(bytes: ArrayLike<number>): string {
   return Array.from({ length: 16 }, (_, index) => (bytes[index] ?? 0).toString(16).padStart(2, '0')).join('');
+}
+
+/**
+ * A reminder for an invite that is already waiting in their app.
+ * It does not include a code or a new link.
+ */
+export function buddyReminderMessage(name: string): string {
+  const who = name.trim() || 'They';
+  return [
+    `Invite sent to ${who}. It is already waiting in Charioteer.`,
+    'Open the app, go to People, then Buddies, and accept it there.',
+    'This is the same invite. There is no new code.',
+    'The app is uk.co.quanticalabs.charioteer.',
+    'https://apps.apple.com/gb/search?term=Charioteer%20Sober%20Health%20Coach',
+  ].join('\n');
 }
 
 /** The link, the code to type, and the App Store search when the app is not installed. */

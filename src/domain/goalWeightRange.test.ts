@@ -409,13 +409,16 @@ describe('goal weight range', () => {
     expect(goal).toContain("place === 'plan'");
     expect(readFileSync('src/app/(main)/stats.tsx', 'utf8')).toContain('YourGoal');
     expect(readFileSync('src/app/(main)/health-plan.tsx', 'utf8')).toContain('<GoalWeightRange />');
-    expect(card).toContain('About these ranges');
+    expect(card).toContain('about="these ranges"');
     expect(card).toContain('APPROXIMATE');
     expect(card).toContain('goalBandLegend');
     expect(card).toContain('view.words');
     expect(card).toContain('Within range');
     expect(card).toContain('st-lb');
     expect(card).toContain('view.doctor');
+    expect(card).toContain('A reference, not a target. Not medical advice.');
+    expect(card).toContain('withoutProfessionalLimit');
+    expect(card).toContain('The professional limit is about');
     expect(card).not.toMatch(/crash diet|weight cutting advice/i);
   });
 });
