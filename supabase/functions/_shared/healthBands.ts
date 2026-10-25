@@ -415,6 +415,14 @@ function zoneSentence(zones: IntensityZones): string {
   return `Estimated maximum heart rate ${zones.tanakaMax} bpm, from 208 − 0.7 × age. That line did not change with sex. Moderate is ${ACSM_MODERATE_LOW}–${ACSM_MODERATE_HIGH}% of that maximum, ${zones.moderateLow} to ${zones.moderateHigh} bpm. Vigorous is ${ACSM_VIGOROUS_LOW}–${ACSM_VIGOROUS_HIGH}%, ${zones.vigorousLow} to ${zones.vigorousHigh} bpm. The American Heart Association uses about 220 − age, here ${zones.ahaMax} bpm, and calls moderate about ${AHA_MODERATE_LOW}–${AHA_MODERATE_HIGH}% (${zones.ahaModerateLow} to ${zones.ahaModerateHigh} bpm) and vigorous about ${AHA_VIGOROUS_LOW}–${AHA_VIGOROUS_HIGH}% (${zones.ahaVigorousLow} to ${zones.ahaVigorousHigh} bpm). ${NHS_NO_BPM} ${NOT_A_TOP}`;
 }
 
+/** Short More info sections. The formula, when there is one, stays in workedOut. */
+export type ReadingSheet = {
+  measures: string;
+  elite: string;
+  compare: string;
+  next: string;
+};
+
 export type CitedReading = {
   status: string;
   meaning: string;
@@ -428,15 +436,28 @@ export type CitedReading = {
   goalCaption: string | null;
   scaleMin: number;
   scaleMax: number;
+  sheet?: ReadingSheet;
+  workedOut?: string;
 };
+
+function withSheet(reading: CitedReading, sheet: ReadingSheet, workedOut?: string): CitedReading {
+  return {
+    ...reading,
+    sheet,
+    workedOut,
+    meaning: [sheet.measures, sheet.elite, sheet.compare, sheet.next].join(' '),
+  };
+}
 
 export function sessionHeartReading(bpm: number, age: number | null | undefined, goalLabel: string | null): CitedReading | null {
   const zones = intensityZones(age);
   if (!zones) return null;
   const place = zonePlace(bpm, zones);
-  return {
-    status: `${zoneWords(place)}. Moderate ${zones.moderateLow} to ${zones.moderateHigh} bpm. Vigorous ${zones.vigorousLow} to ${zones.vigorousHigh} bpm.`,
-    meaning: `${zoneSentence(zones)} ${aimLine('session_heart_rate', 'session heart rate', goalLabel)} ${BAND_CAVEAT}`,
+  const status = `${zoneWords(place)}. Moderate ${zones.moderateLow} to ${zones.moderateHigh} bpm. Vigorous ${zones.vigorousLow} to ${zones.vigorousHigh} bpm.`;
+  const next = `${aimLine('session_heart_rate', 'session heart rate', goalLabel)} ${BAND_CAVEAT}`;
+  return withSheet({
+    status,
+    meaning: '',
     rangeNote: aimLine('session_heart_rate', 'session heart rate', goalLabel),
     links: [TANAKA_LINK, ACSM_LINK, AHA_LINK, NHS_ACTIVITY_LINK],
     zoneLow: zones.moderateLow,
@@ -447,7 +468,12 @@ export function sessionHeartReading(bpm: number, age: number | null | undefined,
     goalCaption: `Vigorous ${zones.vigorousLow}–${zones.vigorousHigh} bpm.`,
     scaleMin: Math.min(40, zones.moderateLow - 10, Math.round(bpm) - 5),
     scaleMax: Math.max(zones.vigorousHigh + 10, Math.round(bpm) + 5),
-  };
+  }, {
+    measures: 'Session heart rate is the average heart rate during the workouts you logged. The unit is beats per minute.',
+    elite: "Nothing specific is published for an elite athlete's session heart rate on this card.",
+    compare: status,
+    next,
+  }, zoneSentence(zones));
 }
 
 export function walkingHeartReading(bpm: number, age: number | null | undefined, goalLabel: string | null): CitedReading | null {
@@ -458,9 +484,10 @@ export function walkingHeartReading(bpm: number, age: number | null | undefined,
     ? `Inside the approximate moderate zone, ${zones.moderateLow} to ${zones.moderateHigh} bpm.`
     : `${zoneWords(place)}. The approximate moderate zone is ${zones.moderateLow} to ${zones.moderateHigh} bpm.`;
   const standIn = `Approximation, not an Apple norm. ${aimLine('walking_heart_rate', 'walking heart rate', goalLabel)}`;
-  return {
-    status: `${where} This is an approximation.`,
-    meaning: `Apple publishes no normal range for walking heart rate. The 2024 Apple note calls the daily average a baseline for light exercise. Brisk walking is an NHS example of moderate activity, so the moderate zone is used here as an approximation, not as an Apple norm. Ordinary walking can sit lower. ${zoneSentence(zones)} ${standIn} ${BAND_CAVEAT}`,
+  const status = `${where} This is an approximation.`;
+  return withSheet({
+    status,
+    meaning: '',
     rangeNote: standIn,
     links: [APPLE_HEART_LINK, NHS_ACTIVITY_LINK, TANAKA_LINK, ACSM_LINK],
     zoneLow: zones.moderateLow,
@@ -471,16 +498,22 @@ export function walkingHeartReading(bpm: number, age: number | null | undefined,
     goalCaption: null,
     scaleMin: Math.min(40, Math.round(bpm) - 5, zones.moderateLow - 10),
     scaleMax: Math.max(zones.moderateHigh + 15, Math.round(bpm) + 5),
-  };
+  }, {
+    measures: 'Walking heart rate is your heart rate while you are walking. Apple Watch can estimate a daily average. Apple publishes no normal range for it. The 2024 Apple note calls that average a baseline for light exercise.',
+    elite: "Nothing specific is published for an elite athlete's walking heart rate.",
+    compare: `Brisk walking is an NHS example of moderate activity, so the moderate zone is used here as an approximation, not as an Apple norm. Ordinary walking can sit lower. ${status}`,
+    next: `${standIn} ${BAND_CAVEAT}`,
+  }, zoneSentence(zones));
 }
 
 export function recoveryReading(bpm: number, goalLabel: string | null): CitedReading {
   const above = bpm > COLE_ABNORMAL_AT_OR_UNDER;
-  return {
-    status: above
-      ? `Above ${COLE_ABNORMAL_AT_OR_UNDER} bpm. In that study, ${COLE_ABNORMAL_AT_OR_UNDER} bpm or less was called abnormal.`
-      : `${Math.round(bpm)} bpm is at or under ${COLE_ABNORMAL_AT_OR_UNDER} bpm, which that study called abnormal.`,
-    meaning: `Cole and colleagues, in 1999, followed adults referred for a treadmill test. A fall of ${COLE_ABNORMAL_AT_OR_UNDER} bpm or less in the first minute was called abnormal. The middle half of that group fell by ${COLE_MIDDLE_LOW} to ${COLE_MIDDLE_HIGH} bpm. The test used a cool-down, the group was not a healthy population, and the paper has no age or sex table. Apple Watch recovery can be measured differently. ${aimLine('heart_rate_recovery', 'heart-rate recovery', goalLabel)} ${BAND_CAVEAT}`,
+  const status = above
+    ? `Above ${COLE_ABNORMAL_AT_OR_UNDER} bpm. In that study, ${COLE_ABNORMAL_AT_OR_UNDER} bpm or less was called abnormal.`
+    : `${Math.round(bpm)} bpm is at or under ${COLE_ABNORMAL_AT_OR_UNDER} bpm, which that study called abnormal.`;
+  return withSheet({
+    status,
+    meaning: '',
     rangeNote: `${COLE_MIDDLE_LOW} to ${COLE_MIDDLE_HIGH} bpm`,
     links: [COLE_LINK],
     zoneLow: COLE_MIDDLE_LOW,
@@ -491,13 +524,19 @@ export function recoveryReading(bpm: number, goalLabel: string | null): CitedRea
     goalCaption: null,
     scaleMin: 0,
     scaleMax: Math.max(40, Math.round(bpm) + 5),
-  };
+  }, {
+    measures: 'Heart-rate recovery is how far the heart rate falls in the first minute after effort.',
+    elite: 'Nothing specific is published for an elite athlete. Cole and colleagues, in 1999, followed adults referred for a treadmill test. The group was not a healthy population.',
+    compare: `A fall of ${COLE_ABNORMAL_AT_OR_UNDER} bpm or less in the first minute was called abnormal. The middle half of that group fell by ${COLE_MIDDLE_LOW} to ${COLE_MIDDLE_HIGH} bpm. The test used a cool-down, and the paper has no age or sex table. Apple Watch recovery can be measured differently.`,
+    next: `${aimLine('heart_rate_recovery', 'heart-rate recovery', goalLabel)} ${BAND_CAVEAT}`,
+  });
 }
 
 export function hrvReading(ms: number, goalLabel: string | null): CitedReading {
-  return {
-    status: `Study averages ran from ${NUNAN_SDNN_LOW} to ${NUNAN_SDNN_HIGH} ms. Overall mean ${NUNAN_SDNN_MEAN} ms.`,
-    meaning: `Nunan, Sandercock, and Brodie, 2010, reviewed short-term SDNN in healthy adults. Across 27 studies the values averaged ${NUNAN_SDNN_MEAN} ms, and those study values ran from ${NUNAN_SDNN_LOW} to ${NUNAN_SDNN_HIGH} ms. That spread is not a personal target, and the summary table is not split by age or sex. A 24-hour age table is a different recording from a watch sample, so it is not used here. ${aimLine('hrv', 'heart-rate variability', goalLabel)} ${BAND_CAVEAT}`,
+  const status = `Study averages ran from ${NUNAN_SDNN_LOW} to ${NUNAN_SDNN_HIGH} ms. Overall mean ${NUNAN_SDNN_MEAN} ms.`;
+  return withSheet({
+    status,
+    meaning: '',
     rangeNote: aimLine('hrv', 'heart-rate variability', goalLabel),
     links: [NUNAN_LINK],
     zoneLow: NUNAN_SDNN_LOW,
@@ -508,7 +547,12 @@ export function hrvReading(ms: number, goalLabel: string | null): CitedReading {
     goalCaption: null,
     scaleMin: 0,
     scaleMax: Math.max(NUNAN_SDNN_HIGH + 10, Math.round(ms) + 5),
-  };
+  }, {
+    measures: 'Heart-rate variability here is a short recording of the variation between heartbeats, in milliseconds.',
+    elite: "Nothing specific is published here for an elite athlete's heart-rate variability.",
+    compare: `Nunan, Sandercock, and Brodie, 2010, reviewed short-term SDNN in healthy adults. Across 27 studies the values averaged ${NUNAN_SDNN_MEAN} ms, and those study values ran from ${NUNAN_SDNN_LOW} to ${NUNAN_SDNN_HIGH} ms. That spread is not a personal target, and the summary table is not split by age or sex. A 24-hour age table is a different recording from a watch sample, so it is not used here.`,
+    next: `${aimLine('hrv', 'heart-rate variability', goalLabel)} ${BAND_CAVEAT}`,
+  });
 }
 
 export const NO_LEAN_BAND =

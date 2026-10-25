@@ -549,6 +549,16 @@ export interface Repository {
   searchRoutePlaces(query: string): Promise<import('@/domain/findRoute').RoutePlace[]>;
   /** Removes one saved walk. */
   deleteOutdoorRoute(id: string): Promise<void>;
+  /** Photos this person sent, and photos a buddy sent to them. Not the Community. */
+  listSharedPhotos(): Promise<import('@/domain/sharedPhotos').SharedPhotoCard[]>;
+  /** Creates a private photo for the chosen accepted buddies. The server drops anyone who is not connected. */
+  sendSharedPhoto(input: { caption: string; bytes: Uint8Array; previewUri: string; buddyIds: string[]; allowSave: boolean }): Promise<void>;
+  /** Sender removes the photo for everyone. */
+  deleteSharedPhoto(id: string): Promise<void>;
+  /** Recipient hides one photo from their own list. The file stays for the sender. */
+  hideSharedPhoto(id: string): Promise<void>;
+  /** Sends the existing moderation report. The report can outlive the photo. */
+  reportSharedPhoto(id: string, reason: string): Promise<void>;
   /** Connection flag and the summaries this phone shows. Tokens stay on the server. */
   loadGarmin(): Promise<import('@/domain/garminConnect').GarminReadings>;
   /** Signed-in link to Garmin. Returns the authorise URL. */

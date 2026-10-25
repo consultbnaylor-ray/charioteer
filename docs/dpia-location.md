@@ -27,7 +27,23 @@ The purpose sentence is: "Charioteer uses your location only while the map is op
 
 - No background location, no "always" location, no visit monitoring.
 - No motion-activity permission.
-- No photo library permission is added for this feature.
+- No photo library permission is added for location or for Find a route.
+
+## Buddy photos
+
+This is separate from location. It is a product note for the DPIA, not the assessment and not legal advice.
+
+A buddy photo is an image and a caption (up to 140 characters). A caption about health or sobriety can be special category data. The audience is the accepted buddies the sender ticks. It is not the Community, and there is no public URL. A recipient does not receive the list of other recipients. Community switches do not publish the photo.
+
+The file is a JPEG in the private bucket `buddy-photos`, at `{owner}/{id}.jpg`, longest side limited in the app, under 2 MB, with location metadata stripped before upload. The bucket is not public. A signed link lasts about 15 minutes. The migration and the storage policies are in the repo and have not been applied. `public`, `anon`, and `authenticated` have no table grant. Security-definer functions are the only read and write. The phone's anon key cannot select the table.
+
+Retention is until the sender deletes the photo or the account. Hide marks one recipient and leaves the file. A report can outlive the photo. A gratitude tick is a second private file with its own delete. A library copy or a screenshot is outside Charioteer's delete. The screen says a screenshot cannot be stopped, and that deleting in the app does not remove a saved copy.
+
+Save uses add-only photo permission (`NSPhotoLibraryAddUsageDescription`). The purpose sentence says the photo is added to the library and that a named Charioteer album is not created, because this SDK's album calls read the library. The app does not request a library read for Save. It does not read other photos.
+
+Export includes the sender's photos, photos shared with that person (without other recipients), and the sender's recipient rows. Account deletion removes the `buddy-photos` folder before the auth user is deleted. Profile delete cascades the rows. None of this SQL has been applied from this repo.
+
+The photo is not sent to the coach and not used for ads. Someone who receives it can still show it to another person. That limit is on the screen.
 - Live routes can't be shared with anyone. That's to protect your safety. Nothing in this feature sends a route or a live fix to another person.
 
 ## Data flow

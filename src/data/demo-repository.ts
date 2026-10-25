@@ -91,7 +91,7 @@ import {
 } from '@/domain/nutrition';
 import { donePlanTexts, draftHealthPlan, normaliseTrainingSchedule, presentSharedHealthPlan, type HealthPlan, type TrainingSchedule } from '@/domain/healthPlan';
 import { isPlannedSessionType, plannedEffortFrom, type PlannedSession, type PlannedSessionDraft } from '@/domain/plannedSession';
-import { createDemoDb, type DemoAccount, type DemoDb } from '@/data/demo-seed';
+import { PEOPLE, createDemoDb, type DemoAccount, type DemoDb } from '@/data/demo-seed';
 import { activityTypeFromKind } from '@/domain/fitnessSnapshot';
 import type {
   AppSnapshot,
@@ -2069,6 +2069,100 @@ export class DemoRepository implements Repository {
 
   async checkGarminPermissions(): Promise<{ checked: boolean; needsPermissions: boolean; missing: Array<'ACTIVITY_EXPORT' | 'HEALTH_EXPORT'> }> {
     return { checked: false, needsPermissions: false, missing: [] };
+  }
+
+  private sharedPhotoRows: import('@/domain/sharedPhotos').SharedPhotoCard[] | null = null;
+
+  private demoSharedPhotos(): import('@/domain/sharedPhotos').SharedPhotoCard[] {
+    if (this.sharedPhotoRows) return this.sharedPhotoRows;
+    const me = this.me();
+    const jordan = this.db.accounts[PEOPLE.jordan];
+    this.sharedPhotoRows = [
+      {
+        id: 'dddddddd-dddd-4ddd-8ddd-ddddddddddd1',
+        mine: true,
+        caption: 'Morning on the lane',
+        createdAt: new Date('2026-10-25T07:41:00.000Z').toISOString(),
+        allowSave: true,
+        buddyNames: [jordan?.profile.displayName ?? 'Jordan Ellis'],
+        buddyIds: [PEOPLE.jordan],
+        imageUrl: null,
+      },
+      {
+        id: 'dddddddd-dddd-4ddd-8ddd-ddddddddddd2',
+        mine: false,
+        caption: 'The gate at the end',
+        createdAt: new Date('2026-10-24T18:05:00.000Z').toISOString(),
+        allowSave: true,
+        buddyNames: [jordan?.profile.displayName ?? 'Jordan Ellis'],
+        buddyIds: [jordan?.profile.id ?? PEOPLE.jordan],
+        imageUrl: null,
+      },
+    ];
+    void me;
+    return this.sharedPhotoRows;
+  }
+
+  async listSharedPhotos(): Promise<import('@/domain/sharedPhotos').SharedPhotoCard[]> {
+    this.me();
+    return this.demoSharedPhotos().slice();
+  }
+
+  async sendSharedPhoto(input: { caption: string; bytes: Uint8Array; previewUri: string; buddyIds: string[]; allowSave: boolean }): Promise<void> {
+    const me = this.me();
+    const accepted = this.db.connections.filter((row) => row.status === 'accepted' && (row.requesterId === me.profile.id || row.addresseeId === me.profile.id));
+    const names: string[] = [];
+    const ids: string[] = [];
+    for (const buddyId of input.buddyIds) {
+      const linked = accepted.some((row) => row.requesterId === buddyId || row.addresseeId === buddyId);
+      if (!linked || buddyId === me.profile.id) continue;
+      ids.push(buddyId);
+      names.push(this.db.accounts[buddyId]?.profile.displayName ?? 'Buddy');
+    }
+    if (!ids.length) throw new UserFacingError('Choose a buddy who is still connected.', 'generic');
+    const rows = this.demoSharedPhotos();
+    rows.unshift({
+      id: randomId(),
+      mine: true,
+      caption: input.caption.trim(),
+      createdAt: new Date().toISOString(),
+      allowSave: input.allowSave,
+      buddyNames: names,
+      buddyIds: ids,
+      imageUrl: input.previewUri,
+    });
+  }
+
+  async deleteSharedPhoto(id: string): Promise<void> {
+    this.me();
+    const rows = this.demoSharedPhotos();
+    const index = rows.findIndex((row) => row.id === id && row.mine);
+    if (index < 0) throw new UserFacingError('Choose a photo first.', 'generic');
+    rows.splice(index, 1);
+  }
+
+  async hideSharedPhoto(id: string): Promise<void> {
+    this.me();
+    const rows = this.demoSharedPhotos();
+    const index = rows.findIndex((row) => row.id === id && !row.mine);
+    if (index < 0) throw new UserFacingError('That photo is not available.', 'generic');
+    rows.splice(index, 1);
+  }
+
+  async reportSharedPhoto(id: string, reason: string): Promise<void> {
+    const me = this.me();
+    const photo = this.demoSharedPhotos().find((row) => row.id === id && !row.mine);
+    if (!photo) throw new UserFacingError('That photo is not available.', 'generic');
+    this.db.reports.push({
+      id: randomId(),
+      reporterId: me.profile.id,
+      reportedUserId: photo.buddyIds?.[0] ?? null,
+      reportedName: photo.buddyNames[0] ?? 'Buddy',
+      reason: reason.slice(0, 80),
+      details: 'Shared photo',
+      status: 'open',
+      createdAt: new Date().toISOString(),
+    });
   }
 
   async deleteAccount(): Promise<void> {

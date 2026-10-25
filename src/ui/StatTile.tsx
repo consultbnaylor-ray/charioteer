@@ -99,7 +99,7 @@ export function StatTile({ tile }: { tile: StatTileModel }) {
         onPress={() => router.push(tile.href as never)}
         style={{ gap: 8 }}
       >
-        <T variant="label" style={ink}>{tile.title}</T>
+        <T style={[ink, { fontFamily: theme.font.bodyStrong, fontSize: 16, lineHeight: 22, letterSpacing: 0, textTransform: 'none', marginBottom: 4 }]}>{tile.title}</T>
         {tile.chart.kind === 'ring' ? null : <T variant="title" style={ink}>{tile.value}</T>}
         {tile.periodLine ? <T variant="muted">{tile.periodLine}</T> : null}
         <TileChart chart={tile.chart} tone={tile.tone} signal={tile.signal} monochrome={neutral} />

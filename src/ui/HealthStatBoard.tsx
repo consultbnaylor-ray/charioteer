@@ -294,7 +294,12 @@ function StatTile({
       }}
     >
       <Pressable accessibilityRole="button" accessibilityLabel={spoken} onPress={onOpen} style={{ gap: 6 }}>
-        {icon ? <IconLabel name={icon}>{tile.title}</IconLabel> : <T variant="label">{tile.title}</T>}
+        {icon ? <IconLabel name={icon}>{tile.title}</IconLabel> : <T style={{ fontFamily: theme.font.bodyStrong, fontSize: 16, lineHeight: 22 }}>{tile.title}</T>}
+        {tile.warning ? (
+          <View accessibilityRole="alert" style={{ backgroundColor: '#FFE14A', borderWidth: 2, borderColor: '#1A1400', padding: 8 }}>
+            <T style={{ color: '#1A1400', fontFamily: theme.font.bodyStrong }}>⚠ Contact your GP or NHS 111.</T>
+          </View>
+        ) : null}
         <TileValue tile={tile} />
         {tile.empty ? null : <TileVisual visual={tile.visual} charted={charted} showCaptions={tile.visual.kind !== 'zone'} />}
         {!tile.empty && tile.hasGuideline ? <T variant="muted">Not medical advice.</T> : null}
@@ -528,8 +533,8 @@ function StatDetail({
                 {tile.readings.length > 0 ? <TileChart tile={tile} today={today} period={period} /> : null}
                 {tile.id === 'vo2_max' && onPlanOutdoor ? <Vo2EstimateNote measuredOn={measuredOn} source={vo2Source} today={today} onPlan={() => { onClose(); onPlanOutdoor(); }} /> : null}
                 {!tile.empty && detailShowsStatusAgain(tile.visual.kind) ? <StatusMark tone={tile.tone} status={tile.status} word={tile.mark} /> : null}
-                <T variant="label">What your number means</T>
-                <T>{tile.meaning}</T>
+                <T style={{ fontFamily: theme.font.bodyStrong, fontSize: 16, lineHeight: 22 }}>What your number means</T>
+                <ReadingSections tile={tile} />
                 {tile.rangeNote && !tile.meaning.includes(tile.rangeNote) ? <T>{tile.rangeNote}</T> : null}
                 <WorkoutTypeChoices tile={tile} onSetWorkoutBucket={onSetWorkoutBucket} />
                 {!tile.empty && tile.readings.length === 0 && tile.history.length >= 2 ? <TrendLine points={tile.history} color={ink} /> : null}
@@ -573,5 +578,37 @@ function StatDetail({
         </View>
       </View>
     </Modal>
+  );
+}
+
+function ReadingSections({ tile }: { tile: HealthStatTile }) {
+  const theme = useAppTheme();
+  const [open, setOpen] = useState(false);
+  if (!tile.sheet) return <T>{tile.meaning}</T>;
+  const rows = [
+    ['What it measures', tile.sheet.measures],
+    ['An elite athlete', tile.sheet.elite],
+    ['How you compare', tile.sheet.compare],
+    ['What to do', tile.sheet.next],
+  ] as const;
+  return (
+    <View style={{ gap: 12 }}>
+      {rows.map(([title, body]) => (
+        <View key={title} style={{ gap: 4 }}>
+          <T style={{ fontFamily: theme.font.bodyStrong, fontSize: 16, lineHeight: 22 }}>{title}</T>
+          <T>{body}</T>
+        </View>
+      ))}
+      {tile.workedOut ? (
+        <View style={{ gap: 8 }}>
+          <Button
+            label={open ? 'Hide how we worked this out' : 'How we worked this out'}
+            tone="quiet"
+            onPress={() => setOpen((value) => !value)}
+          />
+          {open ? <T>{tile.workedOut}</T> : null}
+        </View>
+      ) : null}
+    </View>
   );
 }

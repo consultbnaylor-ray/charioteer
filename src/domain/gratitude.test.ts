@@ -260,6 +260,7 @@ describe('gratitude diary wiring', () => {
       'Workouts',
       'Get Outside',
       'Progress photos',
+      'Shared Photos',
       'Vision Board',
       'Drinks & units calculator',
       'Stoic & Classical Wisdom',

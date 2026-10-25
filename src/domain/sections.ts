@@ -65,6 +65,7 @@ export const APP_SECTIONS: readonly AppSection[] = [
   { id: 'workouts', label: 'Workouts', href: '/workouts', icon: 'workout', group: 'tools' },
   { id: 'outside', label: 'Get Outside', href: '/outside', icon: 'path', group: 'tools' },
   { id: 'photos', label: 'Progress photos', href: '/photos', icon: 'photo', group: 'tools' },
+  { id: 'shared-photos', label: 'Shared Photos', href: '/shared-photos', icon: 'photo', group: 'tools' },
   { id: 'vision', label: 'Vision Board', href: '/vision', icon: 'board', group: 'tools' },
   { id: 'units', label: 'Drinks & units calculator', href: '/units', icon: 'glass', group: 'tools' },
   { id: 'quotes', label: 'Stoic & Classical Wisdom', href: '/quotes', icon: 'quote', group: 'tools' },

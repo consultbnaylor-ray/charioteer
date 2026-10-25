@@ -22,8 +22,9 @@
       },
       "infoPlist": {
         "CFBundleDisplayName": "Charioteer",
-        "NSCameraUsageDescription": "Charioteer uses the camera so you can take a private progress photo. Other people cannot see it, and it is not sent to the coach.",
-        "NSPhotoLibraryUsageDescription": "Charioteer uses your photo library so you can add a private progress photo. Other people cannot see it, and it is not sent to the coach.",
+        "NSCameraUsageDescription": "Charioteer uses the camera for a private progress photo, or for a photo you choose to send to buddies. A progress photo stays private. A photo you send is shown only to the buddies you pick, not the Community, and it is not sent to the coach.",
+        "NSPhotoLibraryUsageDescription": "Charioteer uses your photo library so you can add a private progress photo, or choose a photo to send to buddies. A progress photo stays private. A photo you send is shown only to the buddies you pick, not the Community, and it is not sent to the coach.",
+        "NSPhotoLibraryAddUsageDescription": "Charioteer adds a photo to your photo library when you tap Save. It cannot create a separate Charioteer album without reading your other photos, so it does not. It never reads your other photos.",
         "NSHealthShareUsageDescription": "Charioteer reads steps, sleep, heart rate, resting heart rate, heart rate variability, cardio fitness, walking heart rate, heart rate recovery, workouts (type, duration, distance, energy, and average heart rate), and walking, cycling and swimming distance, plus weight, height, body fat, lean body mass, active energy, and exercise minutes. Readings stay on your iPhone. A workout route is read only when you open that route, and the path stays on this iPhone. A short summary is sent to write your plan only if you turn the coach on. It is not used for ads. Other people cannot see this.",
         "NSHealthUpdateUsageDescription": "Charioteer writes the food and water you log to Apple Health: dietary energy, protein, carbohydrate, sugar, fibre, fat, sodium and water. It does not write steps, sleep, heart rate, workouts, or weight.",
         "LSApplicationQueriesSchemes": [
@@ -42,6 +43,14 @@
       "predictiveBackGestureEnabled": false,
       "permissions": [
         "android.permission.RECORD_AUDIO"
+      ],
+      "blockedPermissions": [
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.READ_MEDIA_IMAGES",
+        "android.permission.READ_MEDIA_VIDEO",
+        "android.permission.READ_MEDIA_AUDIO",
+        "android.permission.READ_MEDIA_VISUAL_USER_SELECTED",
+        "android.permission.ACCESS_MEDIA_LOCATION"
       ]
     },
     "web": {
@@ -54,8 +63,18 @@
       [
         "expo-image-picker",
         {
-          "photosPermission": "Charioteer uses your photo library so you can add a private progress photo. Other people cannot see it, and it is not sent to the coach.",
-          "cameraPermission": "Charioteer uses the camera so you can take a private progress photo. Other people cannot see it, and it is not sent to the coach."
+          "photosPermission": "Charioteer uses your photo library so you can add a private progress photo, or choose a photo to send to buddies. A progress photo stays private. A photo you send is shown only to the buddies you pick, not the Community, and it is not sent to the coach.",
+          "cameraPermission": "Charioteer uses the camera for a private progress photo, or for a photo you choose to send to buddies. A progress photo stays private. A photo you send is shown only to the buddies you pick, not the Community, and it is not sent to the coach."
+        }
+      ],
+      "./plugins/withAddOnlyPhotoSave.js",
+      [
+        "expo-media-library",
+        {
+          "photosPermission": "Charioteer uses your photo library so you can add a private progress photo, or choose a photo to send to buddies. A progress photo stays private. A photo you send is shown only to the buddies you pick, not the Community, and it is not sent to the coach.",
+          "savePhotosPermission": "Charioteer adds a photo to your photo library when you tap Save. It cannot create a separate Charioteer album without reading your other photos, so it does not. It never reads your other photos.",
+          "isAccessMediaLocationEnabled": false,
+          "granularPermissions": []
         }
       ],
       "expo-secure-store",

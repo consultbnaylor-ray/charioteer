@@ -116,7 +116,7 @@ describe('Get Outside phase 1', () => {
       isAndroidForegroundServiceEnabled: false,
       isAndroidMotionActivityEnabled: false,
     });
-    expect(JSON.stringify(app)).not.toMatch(/NSLocationAlways|ACCESS_BACKGROUND_LOCATION|FOREGROUND_SERVICE_LOCATION|expo-media-library|NSPhotoLibraryAddUsageDescription/);
+    expect(JSON.stringify(app)).not.toMatch(/NSLocationAlways|ACCESS_BACKGROUND_LOCATION|FOREGROUND_SERVICE_LOCATION/);
     expect(app.expo.android?.permissions ?? []).not.toContain('android.permission.ACCESS_BACKGROUND_LOCATION');
     expect(app.expo.android?.permissions ?? []).not.toContain('android.permission.FOREGROUND_SERVICE_LOCATION');
     const reader = readFileSync('src/location/whileUsing.ts', 'utf8');

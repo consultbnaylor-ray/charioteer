@@ -65,8 +65,10 @@ describe('published health bands', () => {
     const reading = sessionHeartReading(132, 42, 'Elite Athlete (Cruiserweight Boxer)');
     expect(reading?.status).toContain('Inside the moderate zone');
     expect(reading?.status).toContain('114 to 136');
-    expect(reading?.meaning).toContain('did not change with sex');
-    expect(reading?.meaning).toContain('not a target to reach the top');
+    expect(reading?.workedOut).toContain('did not change with sex');
+    expect(reading?.workedOut).toContain('not a target to reach the top');
+    expect(reading?.sheet?.measures).toContain('Session heart rate');
+    expect(reading?.sheet?.elite).toContain('Nothing specific is published');
     expect(reading?.meaning).toContain(CAVEAT);
     expect(reading?.goalCaption).not.toContain(REFERENCE_NOT_A_TARGET);
     expect(reading?.rangeNote).toContain('no published session heart rate range for a cruiserweight boxer specifically');

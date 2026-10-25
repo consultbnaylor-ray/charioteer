@@ -1,8 +1,9 @@
 /**
  * Compact tiles for the signed-in person's own health readings.
- * A shaded band is drawn only from a published source in healthBands.
- * Lean mass, active energy, steps, logged workout minutes, and the workout
- * mix stay without a band, and each one says why.
+ * A lime band is drawn only from a published source in healthBands.
+ * Lean mass, active energy, logged workout minutes, and the workout mix stay
+ * without a band, and each one says why. Steps name the published research
+ * and keep a spark, not a fake NHS band.
  */
 
 import { targetWeightStatusLine } from '@/domain/targetWeight';
@@ -14,7 +15,6 @@ import {
   NO_ENERGY_BAND,
   NO_LEAN_BAND,
   NO_MIX_BAND,
-  NO_STEP_BAND,
   NO_WORKOUT_MINUTE_BAND,
   hrvReading,
   metricFallback,
@@ -23,7 +23,10 @@ import {
   sessionHeartReading,
   walkingHeartReading,
   type BandLink,
+  type ReadingSheet,
 } from '@/domain/healthBands';
+import { stepsResearchMeaning } from '@/domain/garminCharts';
+import { restingFitnessComment, type RestingFitnessComment } from '@/domain/restingFitness';
 import { bodyFatRange } from '@/domain/distance';
 import {
   buildFitnessSnapshot,
@@ -375,6 +378,12 @@ export type HealthStatTile = {
   readings: DayValue[];
   about: string;
   meaning: string;
+  /** Short sections for More info. When set, the sheet is shown instead of the dense paragraph. */
+  sheet?: ReadingSheet | null;
+  /** Formula, shown only after How we worked this out. */
+  workedOut?: string | null;
+  /** Sustained resting rate above the NHS usual range. */
+  warning?: boolean;
   rangeNote: string | null;
   sourceName: string | null;
   sourceUrl: string | null;
@@ -550,6 +559,8 @@ function citedFrom(
     readings: [...history],
     about,
     meaning: reading.meaning,
+    sheet: reading.sheet ?? null,
+    workedOut: reading.workedOut ?? null,
     rangeNote: reading.rangeNote,
     sourceName: reading.links[0]?.name ?? null,
     sourceUrl: reading.links[0]?.url ?? null,
@@ -638,12 +649,23 @@ function heartBandTile(item: CatalogItem, input: HealthStatBoardInput, grown: bo
   }
   const low = bpm < BHF_RESTING_MIN_BPM;
   const high = bpm > BHF_RESTING_MAX_BPM;
-  const tone: StatsTone = high ? 'watch' : low ? 'info' : 'good';
-  const status = high
-    ? 'Over 100 bpm'
-    : low
-      ? "Under 60 bpm, which can be normal if you're very fit"
-      : 'Within 60 to 100 bpm';
+  const fitness = restingMonthComment(input);
+  const tone: StatsTone = fitness.tier === 'dangerous' ? 'attention' : high ? 'watch' : low ? 'info' : 'good';
+  const status = fitness.tier === 'dangerous'
+    ? 'Contact your GP or NHS 111.'
+    : fitness.tier === 'might'
+      ? 'A low resting heart rate like this might be normal.'
+      : fitness.tier === 'unhealthy'
+        ? 'Seek professional guidance.'
+        : low && fitness.tier === 'early'
+          ? 'Under 60 bpm. One reading is not a pattern.'
+          : high && fitness.tier === 'early'
+            ? 'Over 100 bpm. One reading is not a pattern.'
+            : high
+              ? 'Over 100 bpm'
+              : low
+                ? 'Under 60 bpm. One reading is not a pattern.'
+                : 'Within 60 to 100 bpm';
   return finish(item, {
     valueText: String(bpm),
     unit: 'bpm',
@@ -666,7 +688,8 @@ function heartBandTile(item: CatalogItem, input: HealthStatBoardInput, grown: bo
     history: nums(window.current),
     readings: [...window.current],
     about,
-    meaning: `${restingSexNote(goalLabel(input))} The band is the same for a day, a week, or a month. ${BAND_CAVEAT}`.replace(/\s+/g, ' ').trim(),
+    meaning: `${restingSexNote(goalLabel(input))} The band is the same for a day, a week, or a month. ${BAND_CAVEAT} ${fitness.note}`.replace(/\s+/g, ' ').trim(),
+    warning: fitness.warning,
     rangeNote: null,
     sourceName: BHF_LINK.name,
     sourceUrl: BHF_LINK.url,
@@ -947,6 +970,8 @@ function hrvTile(item: CatalogItem, input: HealthStatBoardInput, grown: boolean)
     readings: [...window.current],
     about,
     meaning: reading.meaning,
+    sheet: reading.sheet ?? null,
+    workedOut: reading.workedOut ?? null,
     rangeNote: reading.rangeNote,
     sourceName: reading.links[0]?.name ?? null,
     sourceUrl: reading.links[0]?.url ?? null,
@@ -1225,9 +1250,8 @@ function stepsTile(item: CatalogItem, input: HealthStatBoardInput): HealthStatTi
   if (window === 'gap') return olderReadingTile(item, input, all, (point) => `Latest ${whole(point.value)} steps`);
   const period = periodOf(input);
   const total = Math.round(window.current.reduce((sum, point) => sum + point.value, 0));
-  const status = period === 'day'
-    ? 'No published guideline for a daily step target.'
-    : 'No published guideline for a step target in this period.';
+  const daily = window.current.length ? Math.round(total / window.current.length) : null;
+  const status = 'Compared with published step research. Not an NHS step target.';
   return finish(item, {
     valueText: whole(total),
     unit: 'steps',
@@ -1236,16 +1260,58 @@ function stepsTile(item: CatalogItem, input: HealthStatBoardInput): HealthStatTi
     status,
     tone: 'info',
     trend: movementTrend(window.current, window.previous, 'sum', 1, period),
-    hasGuideline: false,
+    hasGuideline: true,
     visual: spark(window.current, `${whole(total)} steps`),
     history: nums(window.current),
     readings: [...window.current],
     about: period === 'day' ? 'Steps in a day.' : `Steps over ${periodPhrase(period)}.`,
-    meaning: NO_STEP_BAND,
-    rangeNote: status,
-    sourceName: null,
-    sourceUrl: null,
+    meaning: stepsResearchMeaning(daily),
+    rangeNote: 'The NHS publishes minutes of activity, not a daily step count. The comparison is research, not an NHS target.',
+    sourceName: 'Ding and colleagues, Lancet Public Health, 2025',
+    sourceUrl: 'https://www.thelancet.com/journals/lanpub/article/PIIS2468-2667(25)00164-1/fulltext',
+    sources: [
+      { name: 'NHS: physical activity guidelines for adults', url: 'https://www.nhs.uk/live-well/exercise/physical-activity-guidelines-for-adults-aged-19-to-64/', year: null },
+      { name: 'Paluch and colleagues, Lancet Public Health, 2022', url: 'https://www.thelancet.com/journals/lanpub/article/PIIS2468-2667(21)00302-9/fulltext', year: 2022 },
+      { name: 'Ding and colleagues, Lancet Public Health, 2025', url: 'https://www.thelancet.com/journals/lanpub/article/PIIS2468-2667(25)00164-1/fulltext', year: 2025 },
+      { name: 'Saint-Maurice and colleagues, JAMA, 2020', url: 'https://jamanetwork.com/journals/jama/fullarticle/2763292', year: 2020 },
+      { name: 'Tudor-Locke and Bassett, Sports Medicine, 2004', url: 'https://doi.org/10.2165/00007256-200434010-00001', year: 2004 },
+    ],
   });
+}
+
+function restingMonthComment(input: HealthStatBoardInput): RestingFitnessComment {
+  const start = shiftIsoDay(input.today, -29);
+  const resting = input.samples.flatMap((sample) => (
+    sample.kind === 'resting_heart_rate' && sample.recordedOn >= start && sample.recordedOn <= input.today && sample.value > 0
+      ? [{ day: sample.recordedOn, bpm: sample.value }]
+      : []
+  ));
+  const activity = (input.activeMinutes ?? []).flatMap((day) => (
+    day.day >= start && day.day <= input.today ? [{ day: day.day, moderateMinutes: day.value, vigorousMinutes: 0 }] : []
+  ));
+  let vo2Max: number | null = null;
+  let vo2Day = '';
+  for (const sample of input.samples) {
+    if (sample.kind !== 'vo2_max' || !(sample.value > 0) || sample.recordedOn > input.today) continue;
+    if (sample.recordedOn >= vo2Day) {
+      vo2Day = sample.recordedOn;
+      vo2Max = sample.value;
+    }
+  }
+  return restingFitnessComment({
+    today: input.today,
+    resting,
+    activity,
+    vo2Max,
+    age: input.goalAge,
+    sex: input.goalSex,
+  });
+}
+
+function shiftIsoDay(day: string, delta: number): string {
+  const date = new Date(`${day}T12:00:00Z`);
+  date.setUTCDate(date.getUTCDate() + delta);
+  return date.toISOString().slice(0, 10);
 }
 
 function energyTile(item: CatalogItem, input: HealthStatBoardInput): HealthStatTile | null {

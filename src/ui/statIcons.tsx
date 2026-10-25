@@ -107,12 +107,35 @@ export function StatGlyph({ name, color, label }: { name: StatIcon; color: strin
 export function IconLabel({ name, children }: { name: StatIcon; children: string }) {
   const theme = useAppTheme();
   return (
-    <View style={{ alignSelf: 'stretch', flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 32 }}>
+    <View
+      style={{
+        alignSelf: 'stretch',
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 12,
+        minHeight: 44,
+        marginTop: 10,
+        paddingBottom: 8,
+        borderBottomWidth: 1,
+        borderBottomColor: theme.colors.line,
+      }}
+    >
       <View style={{ width: 28, alignItems: 'center', flexShrink: 0 }}>
-        <StatGlyph name={name} color={theme.colors.muted} label={children} />
+        <StatGlyph name={name} color={theme.colors.ink} label={children} />
       </View>
       <View style={{ flex: 1, minWidth: 0 }}>
-        <T variant="label">{children}</T>
+        <T
+          style={{
+            fontFamily: theme.font.bodyStrong,
+            fontSize: 16,
+            lineHeight: 22,
+            color: theme.colors.ink,
+            letterSpacing: 0,
+            textTransform: 'none',
+          }}
+        >
+          {children}
+        </T>
       </View>
     </View>
   );

@@ -36,7 +36,7 @@ describe('measured stats figures', () => {
     const heart = healthFigure('resting_heart_rate', [{ day: today, value: 62 }], today);
     expect(heart?.ring?.ring).toMatchObject({ centre: '62', unit: 'bpm', status: 'Within 60 to 100 bpm', tone: 'good' });
     expect(heart?.zone?.zoneCaption).toBe('Usual range 60–100 bpm');
-    expect(healthFigure('resting_heart_rate', [{ day: today, value: 54 }], today)?.ring?.ring.status).toContain("you're very fit");
+    expect(healthFigure('resting_heart_rate', [{ day: today, value: 54 }], today)?.ring?.ring.status).toContain('One reading is not a pattern.');
     expect(healthFigure('resting_heart_rate', [{ day: today, value: 108 }], today)?.ring?.ring).toMatchObject({
       status: 'Over 100 bpm',
       tone: 'watch',

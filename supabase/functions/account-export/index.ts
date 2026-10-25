@@ -5,6 +5,7 @@ const PHOTO_BUCKET = 'progress-photos';
 const GRATITUDE_BUCKET = 'gratitude-photos';
 const VISION_BUCKET = 'vision-board';
 const PROFILE_BUCKET = 'profile-photos';
+const BUDDY_BUCKET = 'buddy-photos';
 const SIGNED_SECONDS = 3600;
 
 type Signer = {
@@ -21,12 +22,14 @@ async function withSignedUrls(
   userId: string,
   bucket: string,
   photos: Record<string, unknown>[],
+  ownerPrefix = true,
 ): Promise<Record<string, unknown>[]> {
   const signedPhotos = [];
   for (const photo of photos) {
     const path = typeof photo.storage_path === 'string' ? photo.storage_path : '';
     let signedUrl: string | null = null;
-    if (path.startsWith(`${userId}/`) && !path.includes('..')) {
+    const ownFile = ownerPrefix ? path.startsWith(`${userId}/`) : path.endsWith('.jpg');
+    if (ownFile && !path.includes('..')) {
       const signed = await client.storage.from(bucket).createSignedUrl(path, SIGNED_SECONDS);
       signedUrl = signed.data?.signedUrl ?? null;
     }
@@ -77,6 +80,23 @@ Deno.serve(async (req) => {
       userId,
       PROFILE_BUCKET,
       record.profile_photos as Record<string, unknown>[],
+    );
+  }
+  if (Array.isArray(record.buddy_photos)) {
+    record.buddy_photos = await withSignedUrls(
+      userClient,
+      userId,
+      BUDDY_BUCKET,
+      record.buddy_photos as Record<string, unknown>[],
+    );
+  }
+  if (Array.isArray(record.buddy_photos_shared_with_me)) {
+    record.buddy_photos_shared_with_me = await withSignedUrls(
+      userClient,
+      userId,
+      BUDDY_BUCKET,
+      record.buddy_photos_shared_with_me as Record<string, unknown>[],
+      false,
     );
   }
   return json({ ok: true, data: record });

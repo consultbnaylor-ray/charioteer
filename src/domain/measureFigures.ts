@@ -314,7 +314,7 @@ function heartRing(bpm: number): { ring: MeasureRing; zone: MeasureZone } {
   const status = within
     ? 'Within 60 to 100 bpm'
     : low
-      ? "Under 60 bpm, which can be normal if you're very fit"
+      ? 'Under 60 bpm. One reading is not a pattern.'
       : 'Over 100 bpm';
   const fill = within ? 1 : low ? clamp01(rounded / BHF_RESTING_MIN_BPM) : clamp01(BHF_RESTING_MAX_BPM / rounded);
   return {

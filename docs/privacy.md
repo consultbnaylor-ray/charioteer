@@ -43,6 +43,24 @@ What you choose for one buddy is stored on that buddy invite (`buddy_invites.sco
 
 Turning Community off hides the community profile. It does not publish the community switches to a buddy, and it does not erase a buddy invite. The app does not yet store a separate copy of every community field for each buddy. Until that is approved and applied, a buddy sees the invite sections, not the What I share switches.
 
+## Photos shared with a buddy
+
+A photo you send from Buddies is not a community photo. Community stays public to other adults when you turn it on. A buddy photo is private to the buddies you tick, and each buddy is a separate choice. Another buddy does not see that you sent it to someone else. The feed for a recipient does not include the other recipients.
+
+The picture and the caption stay on your account until you delete the photo or delete the account. A caption can be about health or sobriety, so it can be special category data. It is not used for advertising. A signed link lasts about 15 minutes. There is no public URL.
+
+Hide removes the photo from that buddy's list. It does not delete the file. Delete removes the row and the file for everyone. A copy already saved on a phone, or a screenshot, is not removed. The screen says so. A report can stay after the photo is gone.
+
+The tick "Also add to my Gratitude list" makes a second private copy in the gratitude diary. Deleting one does not delete the other.
+
+Save to Photos adds the JPEG to the phone's photo library. The app does not create a named Charioteer album, because creating one would read the rest of the library. The add-only purpose sentence is: "Charioteer adds a photo to your photo library when you tap Save. It cannot create a separate Charioteer album without reading your other photos, so it does not. It never reads your other photos."
+
+The camera and library sentences cover a private progress photo and a photo you choose to send. A progress photo stays private. A photo you send is shown only to the buddies you pick, not the Community, and it is not sent to the coach.
+
+The table, the bucket, and the export change are in the repo and have not been applied. Export includes the photos you sent (with their storage path), the photos shared with you (without the other recipients), and the recipient list for photos you sent. Account deletion removes the buddy-photos folder before the account goes. Rows are removed with the profile.
+
+This note is not a solicitor's DPIA.
+
 ## How the shared view is built
 
 Your choices are stored in `profile_sharing`, which only you can read and write. Other signed-in people do not read that table, and they do not read your private rows. They call `public_profile`, which returns only the fields you have switched on. It returns nothing if you are signed out, if Community is off, if age is not confirmed, or if either of you has blocked the other.

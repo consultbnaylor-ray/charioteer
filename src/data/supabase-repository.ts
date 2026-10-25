@@ -20,6 +20,7 @@ import { chunkHealthRows } from '@/domain/healthUpload';
 import { rejectRouteCoordinates } from '@/domain/workoutRoute';
 import { assertRouteFindingAllowed } from '@/data/routeConsentStore';
 import { calmRouteMessage, parseRoutePlaces, parseRoutePlan, type RoutePlace, type RoutePlan, type RoutePlanInput } from '@/domain/findRoute';
+import type { SharedPhotoCard } from '@/domain/sharedPhotos';
 import { liveOutdoorRouteInsert, outdoorRouteFromRow, outdoorRouteInsert, routeShapeRejected, routeTableMissing, type OutdoorRouteDraft } from '@/domain/outdoorRoute';
 import { GARMIN_PERMISSION, readGarminRefreshBody } from '@/domain/healthRefresh';
 const GARMIN_HISTORY_KEY = 'charioteer.garmin.historyRefusedAt';
@@ -3199,9 +3200,10 @@ export class SupabaseRepository implements Repository {
     const removedDiary = await this.removeOwnGratitudePhotos();
     const removedVision = await this.removeOwnVisionPhotos();
     const removedProfile = await this.removeOwnProfilePhotos();
+    const removedBuddy = await this.removeOwnBuddyPhotos();
     const invoked = await this.client.functions.invoke('account-delete', { body: {} });
     if (invoked.error || invoked.data?.ok === false) {
-      if (!removed || !removedDiary || !removedVision || !removedProfile) throw new UserFacingError('Could not remove the private photos, so the account was left in place.', 'generic');
+      if (!removed || !removedDiary || !removedVision || !removedProfile || !removedBuddy) throw new UserFacingError('Could not remove the private photos, so the account was left in place.', 'generic');
       const { error } = await this.client.rpc('delete_my_account');
       if (error) throw asUserFacing(error, 'general');
     }
@@ -3217,13 +3219,19 @@ export class SupabaseRepository implements Repository {
     const withVision = Array.isArray(withGratitude.vision_board_items)
       ? await this.attachBucketLinks(withGratitude, 'vision_board_items', VISION_BUCKET, seconds)
       : withGratitude;
-    if (!Array.isArray(withVision.profile_photos)) return withVision;
-    return this.attachBucketLinks(withVision, 'profile_photos', PROFILE_PHOTO_BUCKET, seconds);
+    const withProfile = Array.isArray(withVision.profile_photos)
+      ? await this.attachBucketLinks(withVision, 'profile_photos', PROFILE_PHOTO_BUCKET, seconds)
+      : withVision;
+    const withSent = Array.isArray(withProfile.buddy_photos)
+      ? await this.attachBucketLinks(withProfile, 'buddy_photos', BUDDY_PHOTO_BUCKET, seconds)
+      : withProfile;
+    if (!Array.isArray(withSent.buddy_photos_shared_with_me)) return withSent;
+    return this.attachBucketLinks(withSent, 'buddy_photos_shared_with_me', BUDDY_PHOTO_BUCKET, seconds);
   }
 
   private async attachBucketLinks(
     record: Record<string, unknown>,
-    key: 'progress_photos' | 'gratitude_photos' | 'vision_board_items' | 'profile_photos',
+    key: 'progress_photos' | 'gratitude_photos' | 'vision_board_items' | 'profile_photos' | 'buddy_photos' | 'buddy_photos_shared_with_me',
     bucket: string,
     seconds: number,
   ): Promise<Record<string, unknown>> {
@@ -3267,6 +3275,12 @@ export class SupabaseRepository implements Repository {
     const userId = this.snapshot.session?.userId;
     if (!userId) return true;
     return this.removeOwnerFolder(PROFILE_PHOTO_BUCKET, userId, this.snapshot.profilePhotos.map((photo) => photo.storagePath));
+  }
+
+  private async removeOwnBuddyPhotos(): Promise<boolean> {
+    const userId = this.snapshot.session?.userId;
+    if (!userId) return true;
+    return this.removeOwnerFolder(BUDDY_PHOTO_BUCKET, userId, []);
   }
 
   private async removeOwnVisionPhotos(): Promise<boolean> {
@@ -3579,6 +3593,105 @@ export class SupabaseRepository implements Repository {
       if (error) throw asUserFacing(error, 'general');
     }
   }
+
+  async listSharedPhotos(): Promise<SharedPhotoCard[]> {
+    const { data, error } = await this.client.rpc('buddy_photo_feed');
+    if (error) {
+      if (buddyPhotoUnavailable(error.message)) throw new UserFacingError(SHARED_PHOTOS_TABLE, 'generic');
+      throw asUserFacing(error, 'general');
+    }
+    const rows = Array.isArray(data) ? data as Record<string, unknown>[] : [];
+    const names = new Map(this.snapshot.directory.map((card) => [card.id, card.displayName]));
+    const photos: SharedPhotoCard[] = [];
+    for (const row of rows) {
+      const id = String(row.id ?? '');
+      const path = typeof row.storagePath === 'string' ? row.storagePath : '';
+      const mine = row.mine === true;
+      const recipientIds = Array.isArray(row.recipients) ? row.recipients.map((value) => String(value)) : [];
+      const ownerId = String(row.ownerId ?? '');
+      let imageUrl: string | null = null;
+      if (path && !path.includes('..') && row.published !== false) {
+        const signed = await this.client.storage.from(BUDDY_PHOTO_BUCKET).createSignedUrl(path, BUDDY_PHOTO_SIGNED_SECONDS);
+        imageUrl = signed.data?.signedUrl ?? null;
+      }
+      photos.push({
+        id,
+        mine,
+        caption: typeof row.caption === 'string' ? row.caption : '',
+        createdAt: typeof row.createdAt === 'string' ? row.createdAt : new Date().toISOString(),
+        allowSave: row.allowSave !== false,
+        buddyIds: mine ? recipientIds : [ownerId],
+        buddyNames: (mine ? recipientIds : [ownerId]).map((buddyId) => names.get(buddyId) ?? 'Buddy'),
+        imageUrl,
+      });
+    }
+    return photos;
+  }
+
+  async sendSharedPhoto(input: { caption: string; bytes: Uint8Array; previewUri: string; buddyIds: string[]; allowSave: boolean }): Promise<void> {
+    if (input.bytes.byteLength > 2_097_152) throw new UserFacingError('That photo is still too large.', 'generic');
+    const photoId = randomId();
+    const created = await this.client.rpc('create_buddy_photo', {
+      photo: photoId,
+      caption: input.caption,
+      recipients: input.buddyIds,
+      allow_save: input.allowSave,
+    });
+    if (created.error) {
+      if (buddyPhotoUnavailable(created.error.message)) throw new UserFacingError(SHARED_PHOTOS_TABLE, 'generic');
+      throw asUserFacing(created.error, 'general');
+    }
+    const userId = await this.userId();
+    const path = `${userId}/${photoId}.jpg`;
+    const uploaded = await this.client.storage.from(BUDDY_PHOTO_BUCKET).upload(path, stripJpegLocation(input.bytes), {
+      contentType: 'image/jpeg',
+      upsert: false,
+    });
+    if (uploaded.error) {
+      await this.client.rpc('delete_buddy_photo', { photo: photoId });
+      throw asUserFacing(uploaded.error, 'general');
+    }
+    const published = await this.client.rpc('publish_buddy_photo', { photo: photoId });
+    if (published.error) {
+      await this.client.storage.from(BUDDY_PHOTO_BUCKET).remove([path]);
+      await this.client.rpc('delete_buddy_photo', { photo: photoId });
+      throw asUserFacing(published.error, 'general');
+    }
+  }
+
+  async deleteSharedPhoto(id: string): Promise<void> {
+    const { error } = await this.client.rpc('delete_buddy_photo', { photo: id });
+    if (error) {
+      if (buddyPhotoUnavailable(error.message)) throw new UserFacingError(SHARED_PHOTOS_TABLE, 'generic');
+      throw asUserFacing(error, 'general');
+    }
+    const userId = await this.userId();
+    await this.client.storage.from(BUDDY_PHOTO_BUCKET).remove([`${userId}/${id}.jpg`]);
+  }
+
+  async hideSharedPhoto(id: string): Promise<void> {
+    const { error } = await this.client.rpc('hide_buddy_photo', { photo: id });
+    if (error) {
+      if (buddyPhotoUnavailable(error.message)) throw new UserFacingError(SHARED_PHOTOS_TABLE, 'generic');
+      throw asUserFacing(error, 'general');
+    }
+  }
+
+  async reportSharedPhoto(id: string, reason: string): Promise<void> {
+    const { error } = await this.client.rpc('report_buddy_photo', { photo: id, reason });
+    if (error) {
+      if (buddyPhotoUnavailable(error.message)) throw new UserFacingError(SHARED_PHOTOS_TABLE, 'generic');
+      throw asUserFacing(error, 'general');
+    }
+  }
+}
+
+const BUDDY_PHOTO_BUCKET = 'buddy-photos';
+const BUDDY_PHOTO_SIGNED_SECONDS = 900;
+const SHARED_PHOTOS_TABLE = 'Shared photos need the photo table. It has not been applied.';
+
+function buddyPhotoUnavailable(message: string): boolean {
+  return missingRelation(message) || /could not find the function|schema cache/i.test(message);
 }
 
 function mapInterest(row: Row): Interest {

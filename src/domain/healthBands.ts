@@ -46,6 +46,7 @@ export {
   zonePlace,
   type BandLink,
   type CitedReading,
+  type ReadingSheet,
   type FallbackChainStep,
   type FallbackCite,
   type FallbackMetricId,
