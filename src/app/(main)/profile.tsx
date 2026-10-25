@@ -35,6 +35,7 @@ import { Button, Card, Choice, ErrorNote, Field, playSavedHaptic, Screen, T } fr
 import { useAppTheme } from '@/ui/theme';
 import { offerMessageNotifications } from '@/notifications/register';
 import { IosNotificationOffRow } from '@/ui/IosNotificationOffRow';
+import { RouteFindingSwitch } from '@/ui/RouteFindingSwitch';
 import { GENERIC_MESSAGE_ALERT } from '../../../supabase/functions/_shared/messagePush';
 import { useFocusEffect, useRouter } from 'expo-router';
 
@@ -442,6 +443,7 @@ export default function Profile() {
           ))}
         </View>
       </Card>
+      <RouteFindingSwitch />
       <Card>
         <T variant="label">Notifications</T>
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 12, alignItems: 'center' }}>

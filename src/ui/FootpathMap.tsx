@@ -1,6 +1,7 @@
 import { useEffect, useState, type ComponentType } from 'react';
 import { View } from 'react-native';
 
+import { ORS_CREDIT, OSM_CONTRIBUTORS } from '@/domain/routeConsent';
 import {
   MAP_CREDIT,
   hereCollection,
@@ -89,6 +90,8 @@ export function FootpathMap({
         </View>
       )}
       <T variant="muted">{MAP_CREDIT}</T>
+      <T variant="muted">{ORS_CREDIT}</T>
+      <T variant="muted">{OSM_CONTRIBUTORS}</T>
     </View>
   );
 }

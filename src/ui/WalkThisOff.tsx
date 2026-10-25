@@ -17,7 +17,7 @@ export function WalkThisOff({ place }: { place: 'today' | 'breathe' }) {
     <Card>
       <T variant="label">Get Outside</T>
       <T variant="title">Walk this off</T>
-      <T>A short loop from where you are, drawn on this phone.</T>
+      <T>A 10 to 20 minute walk. Route finding stays off until you turn it on.</T>
       <T>{OUTSIDE_SAFETY_LINE}</T>
       <T>{OUTSIDE_CRISIS_LINE}</T>
       <T>{ROUTE_SAFETY_LINE}</T>

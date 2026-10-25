@@ -35,6 +35,8 @@ import {
 } from '@/domain/buddies';
 import { convertStoredMoods, planCheckInGratitudeSync } from '@/domain/checkIns';
 import { randomId } from '@/domain/id';
+import { assertRouteFindingAllowed } from '@/data/routeConsentStore';
+import { filterStarterPlaces, mockRoute, type RoutePlace, type RoutePlan, type RoutePlanInput } from '@/domain/findRoute';
 import { outdoorRouteFromDraft, type OutdoorRouteDraft } from '@/domain/outdoorRoute';
 import { emptyGarminReadings, type GarminReadings } from '../../supabase/functions/_shared/garmin';
 import { shareInflight } from '@/domain/writes';
@@ -1345,6 +1347,18 @@ export class DemoRepository implements Repository {
     const next = db.accounts[account.profile.id];
     next.outdoorRoutes = [saved, ...(next.outdoorRoutes ?? []).filter((item) => item.id !== saved.id)];
     this.commit(db);
+  }
+
+  async planOutdoorRoute(input: RoutePlanInput): Promise<RoutePlan> {
+    await assertRouteFindingAllowed();
+    const plan = mockRoute(input);
+    if (!plan) throw new UserFacingError('Choose a start, and a distance or a time.', 'generic');
+    return plan;
+  }
+
+  async searchRoutePlaces(query: string): Promise<RoutePlace[]> {
+    await assertRouteFindingAllowed();
+    return filterStarterPlaces(query);
   }
 
   async deleteOutdoorRoute(id: string): Promise<void> {

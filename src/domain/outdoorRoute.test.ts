@@ -36,30 +36,25 @@ describe('Get Outside phase 1', () => {
     expect(readFileSync('src/ui/menuIcons.tsx', 'utf8')).toContain("name === 'path'");
   });
 
-  it('draws a craving ring on the phone and does not call a router', () => {
+  it('keeps a craving walk on the phone until route finding is turned on', () => {
     const centre = { latitude: 51.45, longitude: -2.59 };
     const ring = cravingSketch(centre, 15);
     expect(ring.length).toBe(17);
     expect(ring[0]).toEqual(ring[ring.length - 1]);
-    expect(pathMetres(ring)).toBeGreaterThan(1000);
-    expect(pathMetres(ring)).toBeLessThan(1400);
-    const short = cravingSketch(centre, 10);
-    const long = cravingSketch(centre, 20);
-    expect(pathMetres(short)).toBeLessThan(pathMetres(ring));
-    expect(pathMetres(long)).toBeGreaterThan(pathMetres(ring));
     const saved = outdoorRouteFromDraft('route-1', { title: ' Craving walk ', kind: 'craving_walk', points: ring, durationMinutes: 15 });
     expect(saved?.kind).toBe('craving_walk');
     expect(saved?.title).toBe('Craving walk');
     expect(outdoorRouteFromDraft('route-1', { title: ' ', kind: 'drawn', points: ring })).toBeNull();
     expect(outdoorRouteFromDraft('route-1', { title: 'Too short', kind: 'drawn', points: [centre] })).toBeNull();
-    const source = [
-      'src/domain/outdoorRoute.ts',
-      'src/app/(main)/craving-walk.tsx',
-      'src/app/(main)/outside-map.tsx',
-      'src/location/whileUsing.ts',
-    ].map((path) => readFileSync(path, 'utf8')).join('\n');
-    expect(source).not.toMatch(/openrouteservice|api\.heigit|ors\.|graphhopper/i);
-    expect(source).toContain(SKETCH_LINE);
+    const phone = readAppSource('src');
+    expect(phone).not.toMatch(/api\.heigit\.org|api\.openrouteservice\.org|ORS_API_KEY/);
+    expect(readFileSync('src/app/(main)/craving-walk.tsx', 'utf8')).toContain('RouteConsentCard');
+    expect(readFileSync('src/app/(main)/craving-walk.tsx', 'utf8')).not.toContain('cravingSketch');
+    expect(readFileSync('src/app/(main)/craving-walk.tsx', 'utf8')).not.toContain('No routing service');
+    expect(readFileSync('src/app/(main)/find-route.tsx', 'utf8')).toContain('RouteConsentCard');
+    expect(readFileSync('src/location/whileUsing.ts', 'utf8')).not.toMatch(/openrouteservice|api\.heigit|graphhopper/i);
+    expect(readFileSync('src/domain/outdoorRoute.ts', 'utf8')).toContain(SKETCH_LINE);
+    expect(readFileSync('supabase/config.toml', 'utf8')).toMatch(/\[functions\.outdoor-route\]\s+verify_jwt = true/);
   });
 
   it('keeps a saved route private, deletable, and off the share path', () => {

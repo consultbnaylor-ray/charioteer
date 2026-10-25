@@ -421,13 +421,18 @@ describe('workout routes stay on the phone', () => {
   it('does not send a route from the repositories, sharing, or edge functions', () => {
     const watched = [
       ...filesUnder('src/data'),
-      ...filesUnder('supabase/functions'),
-      ...filesUnder('src/domain').filter((path) => !path.endsWith('workoutRoute.ts') && !path.endsWith('sharedPayload.ts') && !path.endsWith('outdoorRoute.ts') && !path.endsWith('.test.ts')),
+      ...filesUnder('supabase/functions').filter((path) => !path.endsWith('orsRoute.ts')),
+      ...filesUnder('src/domain').filter((path) => !path.endsWith('workoutRoute.ts') && !path.endsWith('sharedPayload.ts') && !path.endsWith('outdoorRoute.ts') && !path.endsWith('findRoute.ts') && !path.endsWith('.test.ts')),
     ];
     for (const path of watched) {
       const source = readFileSync(path, 'utf8');
       expect(source, path).not.toMatch(/getWorkoutRoutes|HKWorkoutRoute|latitude|longitude/);
     }
+    const routeService = readFileSync('supabase/functions/_shared/orsRoute.ts', 'utf8');
+    const findRoute = readFileSync('src/domain/findRoute.ts', 'utf8');
+    expect(routeService).not.toMatch(/getWorkoutRoutes|HKWorkoutRoute/);
+    expect(findRoute).not.toMatch(/getWorkoutRoutes|HKWorkoutRoute|api\.heigit\.org|ORS_API_KEY/);
+    expect(routeService).toContain('https://api.heigit.org');
     const repo = readFileSync('src/data/supabase-repository.ts', 'utf8');
     const demo = readFileSync('src/data/demo-repository.ts', 'utf8');
     expect(repo).toContain('rejectRouteCoordinates(samples)');

@@ -541,8 +541,12 @@ export interface Repository {
   updatePlannedSession(id: string, input: import('@/domain/plannedSession').PlannedSessionDraft & { doneAt: string | null }): Promise<void>;
   /** Removes one planned workout. */
   deletePlannedSession(id: string): Promise<void>;
-  /** Saves a drawn line or a craving sketch. The geometry stays on this account. */
+  /** Saves a route on this account. A live table may store a shorter line. */
   saveOutdoorRoute(input: import('@/domain/outdoorRoute').OutdoorRouteDraft): Promise<void>;
+  /** Asks the route function for a line. Refuses while route finding is off. */
+  planOutdoorRoute(input: import('@/domain/findRoute').RoutePlanInput): Promise<import('@/domain/findRoute').RoutePlan>;
+  /** Asks the route function for places. Refuses while route finding is off. */
+  searchRoutePlaces(query: string): Promise<import('@/domain/findRoute').RoutePlace[]>;
   /** Removes one saved walk. */
   deleteOutdoorRoute(id: string): Promise<void>;
   /** Connection flag and the summaries this phone shows. Tokens stay on the server. */

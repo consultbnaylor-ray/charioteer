@@ -5,6 +5,7 @@ import { useRepository, useSnapshot } from '@/data';
 import {
   LOCATION_PAGE_LINE,
   PATH_LINE,
+  routeKindLabel,
   routeSummary,
 } from '@/domain/outdoorRoute';
 import { shownError } from '@/domain/errors';
@@ -33,7 +34,9 @@ export default function Outside() {
       <Card>
         <OutsideFacts />
         <T>{LOCATION_PAGE_LINE}</T>
-        <Button label="Walk this off" onPress={() => router.push('/craving-walk' as never)} />
+        <T>Find a route and the craving walk ask the route service only after you turn route finding on.</T>
+        <Button label="Find a route" onPress={() => router.push('/find-route' as never)} />
+        <Button label="Walk this off" tone="quiet" onPress={() => router.push('/craving-walk' as never)} />
         <Button label="Open the map" tone="quiet" onPress={() => router.push('/outside-map' as never)} />
         <MoreInfo about="Get Outside">
           <T>{PATH_LINE}</T>
@@ -48,7 +51,7 @@ export default function Outside() {
         {routes.map((route) => (
           <Card key={route.id}>
             <T variant="title">{route.title}</T>
-            <T variant="muted">{route.kind === 'craving_walk' ? 'Craving sketch' : 'Drawn route'} · {routeSummary(route)}</T>
+            <T variant="muted">{routeKindLabel(route.kind)} · {routeSummary(route)}</T>
             <Button
               label="Delete"
               tone="quiet"

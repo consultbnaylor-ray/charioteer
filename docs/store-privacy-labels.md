@@ -20,7 +20,7 @@ The calendar purpose string from build 68 stays. This feature does not add a pho
 
 ## Google Play
 
-Declare location as approximate and precise, collected, not shared, for app functionality. The permissions requested for this feature are foreground only:
+Declare location as approximate and precise, collected, for app functionality. It is not shared with other people, not used for tracking, and not used for ads. When route finding is on, the start point and the destination are sent to HeiGIT (OpenRouteService) to make the route. That is a service provider for app functionality. Route finding is off until the person turns it on, and the choice stays on the phone. The permissions requested for this feature are foreground only:
 
 - `ACCESS_COARSE_LOCATION`
 - `ACCESS_FINE_LOCATION`
@@ -30,3 +30,5 @@ Do not declare background location. Do not add `ACCESS_BACKGROUND_LOCATION`, `FO
 ## OpenFreeMap
 
 Tile requests leave the phone while the map is open. If a form asks about map data sent to a service provider, name OpenFreeMap (and Cloudflare, which their terms say they may use) as the map host. The saved route itself is not sent to them.
+
+When route finding is on, also name HeiGIT (OpenRouteService, host api.heigit.org) as the service that receives the start point and the destination. The route-service key is not in the app. HeiGIT's privacy policy (April 2022) does not publish a fixed number of days for how long a request is kept. Do not add a new permission for this.

@@ -1,13 +1,14 @@
 /**
- * A walk the signed-in person draws or sketches.
- * The line stays on their account. It is not shared. A live fix is not stored.
+ * A walk the signed-in person saves.
+ * The line stays on their account. It is not shared with other people.
+ * A live fix is not stored. A route service is called only after route finding is on.
  */
 
 export const LOCATION_WHEN_IN_USE =
-  'Charioteer uses your location only while the map is open, to show where you are and to draw a walk. It is not tracked in the background. It is never shared. It is stored only if you save a route.';
+  'Charioteer uses your location only while the map is open, to show where you are. A route is sent to the route service only if you turn route finding on. It is not tracked in the background. It is not shared with other people. It is stored only if you save a route.';
 
 export const LOCATION_PAGE_LINE =
-  'Location is optional. It is used only while this page is open, to show where you are and to draw a walk. It is not tracked in the background. It is never shared. It is stored only if you save a route.';
+  'Location is optional. It is used only while this page is open, to show where you are. A route is sent to the route service only if you turn route finding on. It is not tracked in the background. It is not shared with other people. It is stored only if you save a route.';
 
 export const OUTSIDE_SAFETY_LINE =
   'Not medical advice. If you feel unwell, contact your GP or NHS 111. Call 999 for chest pain, fainting, or breathlessness.';
@@ -31,9 +32,12 @@ export const OPENFREEMAP_LIGHT = 'https://tiles.openfreemap.org/styles/liberty';
 
 const EARTH_M = 6_371_000;
 const WALK_METRES_PER_MINUTE = 80;
-const MAX_POINTS = 64;
+/** A line the app will hold. The live table still caps a row at LIVE_POINT_CAP until a later migration. */
+export const ROUTE_POINT_CAP = 2000;
+export const LIVE_POINT_CAP = 64;
+const MAX_POINTS = ROUTE_POINT_CAP;
 
-export type OutdoorKind = 'drawn' | 'craving_walk';
+export type OutdoorKind = 'drawn' | 'craving_walk' | 'loop' | 'point_to_point';
 
 export type OutdoorPoint = {
   latitude: number;
@@ -56,7 +60,21 @@ export type OutdoorRouteDraft = {
   kind: OutdoorKind;
   points: readonly OutdoorPoint[];
   durationMinutes?: number;
+  /** When set, this is the stored length. A shortened line does not replace it. */
+  distanceM?: number;
+  ascentM?: number | null;
 };
+
+export function isOutdoorKind(value: unknown): value is OutdoorKind {
+  return value === 'drawn' || value === 'craving_walk' || value === 'loop' || value === 'point_to_point';
+}
+
+export function routeKindLabel(kind: OutdoorKind): string {
+  if (kind === 'craving_walk') return 'Craving walk';
+  if (kind === 'loop') return 'Loop';
+  if (kind === 'point_to_point') return 'A to B';
+  return 'Saved route';
+}
 
 export function openFreeMapStyle(scheme: 'dark' | 'light'): string {
   return scheme === 'light' ? OPENFREEMAP_LIGHT : OPENFREEMAP_DARK;
@@ -140,18 +158,28 @@ function titleOf(value: string): string | null {
   return title.length > 0 ? title : null;
 }
 
+function storedDistance(draft: OutdoorRouteDraft, points: readonly OutdoorPoint[]): number | null {
+  if (typeof draft.distanceM === 'number' && Number.isFinite(draft.distanceM)) {
+    const rounded = Math.round(draft.distanceM);
+    if (rounded < 0 || rounded > 200_000) return null;
+    return rounded;
+  }
+  return pathMetres(points);
+}
+
 export function outdoorRouteFromDraft(id: string, draft: OutdoorRouteDraft, createdAt = new Date().toISOString()): OutdoorRoute | null {
   const title = titleOf(draft.title);
   const points = cleanPoints(draft.points);
   if (!title || points.length < 2) return null;
-  if (draft.kind !== 'drawn' && draft.kind !== 'craving_walk') return null;
+  if (!isOutdoorKind(draft.kind)) return null;
+  const distance = storedDistance(draft, points);
   const duration = draft.durationMinutes ?? Math.min(240, Math.max(10, Math.round(pathMetres(points) / WALK_METRES_PER_MINUTE)));
-  if (!Number.isFinite(duration) || duration < 1 || duration > 240) return null;
+  if (distance == null || !Number.isFinite(duration) || duration < 1 || duration > 240) return null;
   return {
     id,
     title,
     kind: draft.kind,
-    distanceM: pathMetres(points),
+    distanceM: distance,
     durationMinutes: Math.round(duration),
     points,
     createdAt,
@@ -168,7 +196,7 @@ export function outdoorRouteFromRow(row: {
   created_at?: unknown;
 }): OutdoorRoute | null {
   if (typeof row.id !== 'string' || typeof row.title !== 'string') return null;
-  if (row.kind !== 'drawn' && row.kind !== 'craving_walk') return null;
+  if (!isOutdoorKind(row.kind)) return null;
   const geometry = Array.isArray(row.geometry) ? row.geometry : [];
   const points = geometry.map((item) => finitePoint(item)).filter((point): point is OutdoorPoint => point != null);
   const distance = typeof row.distance_m === 'number' ? row.distance_m : Number(row.distance_m);
@@ -189,7 +217,7 @@ export function outdoorRouteFromRow(row: {
 export function outdoorRouteInsert(userId: string, id: string, draft: OutdoorRouteDraft): Record<string, unknown> | null {
   const route = outdoorRouteFromDraft(id, draft);
   if (!route) return null;
-  return {
+  const row: Record<string, unknown> = {
     id: route.id,
     user_id: userId,
     title: route.title,
@@ -198,6 +226,61 @@ export function outdoorRouteInsert(userId: string, id: string, draft: OutdoorRou
     duration_minutes: route.durationMinutes,
     geometry: route.points,
   };
+  if (typeof draft.ascentM === 'number' && Number.isFinite(draft.ascentM)) {
+    row.ascent_m = Math.min(20_000, Math.max(0, Math.round(draft.ascentM)));
+  }
+  return row;
+}
+
+/** The live table still allows only a short drawn line or a craving walk. */
+export function liveKind(kind: OutdoorKind): 'drawn' | 'craving_walk' {
+  return kind === 'craving_walk' ? 'craving_walk' : 'drawn';
+}
+
+export function simplifyLine(points: readonly OutdoorPoint[], cap = LIVE_POINT_CAP): OutdoorPoint[] {
+  const clean = cleanPoints(points);
+  if (clean.length <= cap) return clean;
+  const lastIndex = clean.length - 1;
+  const picked: OutdoorPoint[] = [];
+  for (let step = 0; step < cap; step += 1) {
+    const point = clean[Math.round((step * lastIndex) / (cap - 1))];
+    const prev = picked[picked.length - 1];
+    if (!point || (prev && prev.latitude === point.latitude && prev.longitude === point.longitude)) continue;
+    picked.push(point);
+  }
+  const end = clean[lastIndex];
+  if (end && (picked.length === 0 || picked[picked.length - 1].latitude !== end.latitude || picked[picked.length - 1].longitude !== end.longitude)) {
+    if (picked.length >= cap) picked[picked.length - 1] = end;
+    else picked.push(end);
+  }
+  return picked;
+}
+
+export function liveOutdoorRouteInsert(userId: string, id: string, draft: OutdoorRouteDraft): Record<string, unknown> | null {
+  const route = outdoorRouteFromDraft(id, draft);
+  if (!route) return null;
+  const points = simplifyLine(route.points, LIVE_POINT_CAP);
+  if (points.length < 2) return null;
+  return {
+    id: route.id,
+    user_id: userId,
+    title: route.title,
+    kind: liveKind(route.kind),
+    distance_m: route.distanceM,
+    duration_minutes: route.durationMinutes,
+    geometry: points,
+  };
+}
+
+export function routeTableMissing(message: string): boolean {
+  if (/ascent_m/i.test(message)) return false;
+  return /does not exist|schema cache|could not find the table/i.test(message);
+}
+
+/** The live row is too narrow for this line. A missing table is not this case. */
+export function routeShapeRejected(message: string): boolean {
+  if (routeTableMissing(message)) return false;
+  return /check constraint|violates check|ascent_m|invalid input|permission denied/i.test(message);
 }
 
 type LineInput = { id: string; points: readonly OutdoorPoint[] };
@@ -246,8 +329,13 @@ export function hereCollection(point: OutdoorPoint | null) {
 }
 
 export function sampleCanalLoop(): OutdoorRoute {
-  const centre = { latitude: 51.449, longitude: -2.597 };
-  const points = cravingSketch(centre, 15);
+  const points = [
+    { latitude: 51.449, longitude: -2.597 },
+    { latitude: 51.4512, longitude: -2.592 },
+    { latitude: 51.453, longitude: -2.588 },
+    { latitude: 51.4505, longitude: -2.586 },
+    { latitude: 51.449, longitude: -2.597 },
+  ];
   return {
     id: '0a0a0a0a-0a0a-4a0a-8a0a-0a0a0a0a0a01',
     title: 'Canal loop',

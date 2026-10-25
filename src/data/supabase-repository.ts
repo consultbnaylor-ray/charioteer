@@ -18,7 +18,9 @@ import { omitSharedLocation } from '@/domain/sharedPayload';
 import { stripJpegBase64, stripJpegLocation } from '@/domain/photoLocation';
 import { chunkHealthRows } from '@/domain/healthUpload';
 import { rejectRouteCoordinates } from '@/domain/workoutRoute';
-import { outdoorRouteFromRow, outdoorRouteInsert, type OutdoorRouteDraft } from '@/domain/outdoorRoute';
+import { assertRouteFindingAllowed } from '@/data/routeConsentStore';
+import { calmRouteMessage, parseRoutePlaces, parseRoutePlan, type RoutePlace, type RoutePlan, type RoutePlanInput } from '@/domain/findRoute';
+import { liveOutdoorRouteInsert, outdoorRouteFromRow, outdoorRouteInsert, routeShapeRejected, routeTableMissing, type OutdoorRouteDraft } from '@/domain/outdoorRoute';
 import { GARMIN_PERMISSION, readGarminRefreshBody } from '@/domain/healthRefresh';
 const GARMIN_HISTORY_KEY = 'charioteer.garmin.historyRefusedAt';
 import { emptyGarminReadings, garminHistoryCooling, garminPermissionStatus, missingColumn, missingRelation, readingsFromRows, type GarminExportPermission, type GarminReadings } from '../../supabase/functions/_shared/garmin';
@@ -2801,13 +2803,67 @@ export class SupabaseRepository implements Repository {
     const saved = outdoorRouteFromRow({ ...row, created_at: new Date().toISOString() });
     if (saved) this.emit({ ...this.snapshot, outdoorRoutes: [saved, ...before.filter((item) => item.id !== id)] });
     const { error } = await this.client.from('outdoor_routes').insert(row);
-    if (error) {
+    if (!error) return;
+    if (routeShapeRejected(error.message ?? '')) {
+      const live = liveOutdoorRouteInsert(userId, id, input);
+      const stored = live ? outdoorRouteFromRow({ ...live, created_at: new Date().toISOString() }) : null;
+      if (stored) this.emit({ ...this.snapshot, outdoorRoutes: [stored, ...before.filter((item) => item.id !== id)] });
+      const retry = live ? await this.client.from('outdoor_routes').insert(live) : { error: { message: 'short' } };
+      if (!retry.error) return;
       this.emit({ ...this.snapshot, outdoorRoutes: before });
-      const missing = /does not exist|schema cache|could not find the table/i.test(error.message ?? '');
       throw new UserFacingError(
-        missing ? 'Saving a route needs the route table, and that change has not been applied yet.' : 'Could not save that route.',
+        routeTableMissing(retry.error.message ?? '')
+          ? 'Saving a route needs the route table, and that change has not been applied yet.'
+          : 'Could not save that route.',
         'generic',
       );
+    }
+    this.emit({ ...this.snapshot, outdoorRoutes: before });
+    throw new UserFacingError(
+      routeTableMissing(error.message ?? '')
+        ? 'Saving a route needs the route table, and that change has not been applied yet.'
+        : 'Could not save that route.',
+      'generic',
+    );
+  }
+
+  async planOutdoorRoute(input: RoutePlanInput): Promise<RoutePlan> {
+    await assertRouteFindingAllowed();
+    try {
+      const invoked = await this.client.functions.invoke('outdoor-route', {
+        body: {
+          action: 'route',
+          mode: input.mode,
+          shape: input.shape,
+          start: input.start,
+          end: input.end ?? null,
+          distanceM: input.distanceM ?? null,
+          minutes: input.minutes ?? null,
+        },
+      });
+      const plan = parseRoutePlan(invoked.data);
+      if (plan) return plan;
+      throw new UserFacingError(calmRouteMessage(invoked.data), 'generic');
+    } catch (error) {
+      if (error instanceof UserFacingError) throw error;
+      throw new UserFacingError(calmRouteMessage(null), 'generic');
+    }
+  }
+
+  async searchRoutePlaces(query: string): Promise<RoutePlace[]> {
+    await assertRouteFindingAllowed();
+    try {
+      const invoked = await this.client.functions.invoke('outdoor-route', {
+        body: { action: 'search', query },
+      });
+      const places = parseRoutePlaces(invoked.data);
+      if (places.length > 0 || (invoked.data && typeof invoked.data === 'object' && (invoked.data as { ok?: unknown }).ok === true)) {
+        return places;
+      }
+      throw new UserFacingError(calmRouteMessage(invoked.data), 'generic');
+    } catch (error) {
+      if (error instanceof UserFacingError) throw error;
+      throw new UserFacingError(calmRouteMessage(null), 'generic');
     }
   }
 

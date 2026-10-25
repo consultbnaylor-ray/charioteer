@@ -71,9 +71,19 @@ Add to Calendar opens Apple's add-event sheet for a planned workout. The iPhone 
 
 ## Location
 
-Get Outside can use your location while the map is open, and only if you allow it. The iPhone purpose sentence is: "Charioteer uses your location only while the map is open, to show where you are and to draw a walk. It is not tracked in the background. It is never shared. It is stored only if you save a route."
+Get Outside can use your location while the map is open, and only if you allow it. The iPhone purpose sentence is: "Charioteer uses your location only while the map is open, to show where you are. A route is sent to the route service only if you turn route finding on. It is not tracked in the background. It is not shared with other people. It is stored only if you save a route."
 
-The page still opens if you say no. There is no background location and no "always" location. Android asks for fine and coarse location in the foreground only. A saved route is a line on your account. You can delete it. A live fix is not stored. Live routes can't be shared with anyone. That's to protect your safety.
+Route finding is off until you turn it on. The first time you open Find a route or the craving walk, the app asks. Not now leaves Get Outside, saved routes, and the map working, and it does not call the route service. You can turn it off again from Profile. The choice is stored on this phone only, with the time and the wording version. It is not a database column. Another phone starts off.
+
+When route finding is on, the start point and the destination are sent to our route service to make the route. The service is OpenRouteService, run by HeiGIT, built on OpenStreetMap data. Nothing from that request is shared with other people. HeiGIT's privacy policy (April 2022, https://heigit.org/privacy-policy/) says the service keeps a request only as long as it needs it, or for a legal retention period. It does not publish a fixed number of days. A 2021 forum reply said server logs were deleted after 14 days. That number is not in the current policy, so it is not stated as the retention. The forum software page mentions 90 days for forum logs. That is the forum, not a route request.
+
+The phone calls a Charioteer function. The function holds the route-service key. The key is not in the app. The old host api.openrouteservice.org is not used. Requests go to api.heigit.org. HeiGIT said that old host is switched off in the week of 16 November 2026 (https://heigit.org/changes-in-the-openrouteservice-universe/, 22 October 2026). An earlier forum note said 2–6 November 2026.
+
+OpenStreetMap data is under the Open Database Licence. The visible credit is for the contributors. Turning route finding on is not a request to accept OpenStreetMap terms. OpenRouteService results are under CC-BY-SA 4.0. The required credit is "© openrouteservice by HeiGIT | Data from OpenStreetMap", and the map also shows "© OpenStreetMap contributors" and the OpenFreeMap credit. A saved route stays on your account. It is not sent to other people.
+
+HeiGIT's terms say not to send personal data except for their own account. A start point can be personal data. This test version sends it only after you turn route finding on. The request limit is the plan on the HeiGIT account page. Confirm that limit before launch. This note does not state a quota.
+
+The page still opens if you say no to location. There is no background location and no "always" location. Android asks for fine and coarse location in the foreground only. A saved route is a line on your account. You can delete it. A live fix is not stored. Live routes can't be shared with anyone. That's to protect your safety.
 
 This is not medical advice. The walk screens say so, and they name a GP, NHS 111, and 999. The craving walk also names Samaritans on 116 123.
 
