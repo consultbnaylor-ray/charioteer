@@ -3,27 +3,34 @@ import { useState } from 'react';
 import { useRepository, useSnapshot } from '@/data';
 import { shownError } from '@/domain/errors';
 import { LOCATION_PAGE_LINE, PATH_LINE, routeKindLabel, routeSummary, type OutdoorPoint } from '@/domain/outdoorRoute';
-import { readWhileUsingFix } from '@/location/whileUsing';
+import { LOCATION_FIX_MESSAGE, LOCATION_FIX_PENDING, readWhileUsingFix } from '@/location/whileUsing';
 import { FootpathMap } from '@/ui/FootpathMap';
 import { MoreInfo } from '@/ui/MoreInfo';
 import { OutsideFacts } from '@/ui/WalkThisOff';
-import { Button, Card, ErrorNote, Screen, T } from '@/ui/ui';
+import { Button, Card, Choice, ErrorNote, Screen, T } from '@/ui/ui';
 
 export default function OutsideMap() {
   const snap = useSnapshot();
   const repo = useRepository();
   const [here, setHere] = useState<OutdoorPoint | null>(null);
+  const [locating, setLocating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const routes = snap.outdoorRoutes ?? [];
 
   async function whereIAm() {
     setError(null);
-    const fix = await readWhileUsingFix();
-    if (!fix) {
-      setError('Location stays off until you allow it while this page is open. Saved routes still open. Nothing is tracked in the background.');
-      return;
+    setLocating(true);
+    try {
+      const fix = await readWhileUsingFix();
+      if (!fix.ok) {
+        setError(LOCATION_FIX_MESSAGE);
+        return;
+      }
+      setHere(fix.point);
+      setError(null);
+    } finally {
+      setLocating(false);
     }
-    setHere(fix);
   }
 
   async function remove(id: string) {
@@ -41,7 +48,11 @@ export default function OutsideMap() {
         <FootpathMap routes={routes} sketch={[]} here={here} />
         <T>{LOCATION_PAGE_LINE}</T>
         <OutsideFacts />
-        <Button label="Where I am" onPress={() => { void whereIAm(); }} />
+        {locating ? (
+          <Button label="Where I am" tone="quiet" pending pendingLabel={LOCATION_FIX_PENDING} onPress={() => {}} />
+        ) : (
+          <Choice label="Where I am" selected={here != null} onPress={() => { void whereIAm(); }} />
+        )}
         <T variant="muted">Where I am stays on this page. It does not ask the route service for a line.</T>
         <MoreInfo about="the map">
           <T>{PATH_LINE}</T>

@@ -26,7 +26,7 @@ import {
   routeSummary,
   type OutdoorPoint,
 } from '@/domain/outdoorRoute';
-import { readWhileUsingFix } from '@/location/whileUsing';
+import { LOCATION_FIX_MESSAGE, LOCATION_FIX_PENDING, readWhileUsingFix } from '@/location/whileUsing';
 import { FootpathMap } from '@/ui/FootpathMap';
 import { MoreInfo } from '@/ui/MoreInfo';
 import { Button, Card, Choice, ErrorNote, Field, T } from '@/ui/ui';
@@ -66,7 +66,9 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
   const [title, setTitle] = useState(craving ? 'Craving walk' : 'My route');
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
+  const [locating, setLocating] = useState(false);
   const [saved, setSaved] = useState(false);
+  const hereSelected = startName === 'Where I am' && start != null;
 
   function pickStart(place: RoutePlace) {
     setStart(place);
@@ -87,14 +89,20 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
 
   async function whereIAm() {
     setError(null);
-    const fix = await readWhileUsingFix();
-    if (!fix) {
-      setError('Location stays off until you allow it while this page is open. Saved routes still open. Nothing is tracked in the background.');
-      return;
+    setLocating(true);
+    try {
+      const fix = await readWhileUsingFix();
+      if (!fix.ok) {
+        setError(LOCATION_FIX_MESSAGE);
+        return;
+      }
+      setStart(fix.point);
+      setStartName('Where I am');
+      setPlan(null);
+      setError(null);
+    } finally {
+      setLocating(false);
     }
-    setStart(fix);
-    setStartName('Where I am');
-    setPlan(null);
   }
 
   async function search() {
@@ -214,7 +222,11 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
         {STARTER_PLACES.map((place) => (
           <Choice key={place.id} label={place.name} selected={startName === place.name} onPress={() => pickStart(place)} />
         ))}
-        <Button label="Where I am" tone="quiet" onPress={() => { void whereIAm(); }} />
+        {locating ? (
+          <Button label="Where I am" tone="quiet" pending pendingLabel={LOCATION_FIX_PENDING} onPress={() => {}} />
+        ) : (
+          <Choice label="Where I am" selected={hereSelected} onPress={() => { void whereIAm(); }} />
+        )}
         {!craving && shape === 'a_to_b' ? (
           <>
             <T variant="label">Destination</T>
@@ -231,13 +243,13 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
             <Choice label="Search sets the destination" selected={picking === 'end'} onPress={() => setPicking('end')} />
           </>
         ) : null}
-        <Button label="Search" tone="quiet" disabled={query.trim().length < 2 || pending} pending={pending} onPress={() => { void search(); }} />
+        <Button label="Search" tone="quiet" disabled={query.trim().length < 2 || pending || locating} pending={pending} onPress={() => { void search(); }} />
         {results.map((place) => (
           <Choice key={`found-${place.id}`} label={place.name} selected={false} onPress={() => pickResult(place)} />
         ))}
         <Button
           label={craving ? 'Make this walk' : 'Make the route'}
-          disabled={pending}
+          disabled={pending || locating}
           pending={pending}
           onPress={() => { void make(); }}
         />
