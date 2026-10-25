@@ -141,6 +141,7 @@ export function SharePhotoCard() {
       <T>{ONLY_CHOSEN_NOTE}</T>
       <T>{SCREENSHOT_NOTE}</T>
       <T>{SENDER_SAVE_NOTE}</T>
+      <T>{ALBUM_HONEST_NOTE}</T>
       <Button label="Share a photo" accessibilityLabel="Share a photo" onPress={() => setOpen(true)} />
       <Button label={SHARED_PHOTOS_LABEL} tone="quiet" onPress={() => router.push('/shared-photos' as never)} />
       {open ? (
