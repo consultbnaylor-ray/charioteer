@@ -35,7 +35,7 @@ describe('more info disclosure', () => {
   it('keeps the medical line on the chart, and the Garmin hint behind the same control', () => {
     const charts = readFileSync('src/ui/DailyActivity.tsx', 'utf8');
     const refresh = readFileSync('src/ui/HealthRefresh.tsx', 'utf8');
-    expect(charts).toContain("summary={medical ? 'Not medical advice.' : undefined}");
+    expect(charts).toContain('summary="Not medical advice."');
     expect(charts).toContain('guide?.outside');
     expect(charts).toContain('framed={framed}');
     expect(charts).toContain('framed={false}');

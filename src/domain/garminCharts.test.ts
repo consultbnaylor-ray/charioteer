@@ -107,7 +107,7 @@ describe('garmin charts follow the shared period', () => {
     expect(monthGoal.target?.value).toBe(8260);
     expect(weekGoal.about).toContain('49,000');
     expect(monthGoal.about).toContain('210,000');
-    expect(weekGoal.about).toContain('Not medical advice.');
+    expect(weekGoal.about).not.toMatch(/not medical advice/i);
     expect(weekGoal.about).toContain('no UK daily step target');
     expect(weekGoal.legend).toBe('');
     expect(stepGoalInPeriod([daily({ calendarDate: '2026-09-01', stepGoal: 5000 })], end, '7')).toBeNull();
@@ -236,18 +236,29 @@ describe('garmin chart bands', () => {
     const highestNote = byId.get('body_battery_highest')?.guide.about ?? '';
     const lowestNote = byId.get('body_battery_lowest')?.guide.about ?? '';
     expect(chargedNote).not.toContain(BODY_BATTERY_ZONES);
-    expect(chargedNote).toContain('points your Body Battery gained');
-    expect(chargedNote).toContain('mostly from rest and sleep');
+    expect(chargedNote).toContain('rest and sleep added back');
     expect(chargedNote).toContain('score points');
     expect(chargedNote).toContain('not a medical measure');
+    expect(chargedNote).not.toMatch(/not medical advice/i);
     expect(drainedNote).not.toContain(BODY_BATTERY_ZONES);
-    expect(drainedNote).toContain('points your Body Battery lost');
+    expect(drainedNote).not.toMatch(/0–25|very low/);
+    expect(drainedNote).toContain('how many points your Body Battery dropped');
+    expect(drainedNote).toContain('from stress and activity');
+    expect(drainedNote).toContain('rest and sleep add back');
+    expect(drainedNote).toContain('harder, more stressful or more active day');
+    expect(drainedNote).toContain('not bad by itself');
+    expect(drainedNote).toContain('charge you back up');
+    expect(drainedNote).toContain('not other people');
+    expect(drainedNote).toContain('score points');
+    expect(drainedNote).toContain('syncing Garmin Connect matters');
+    expect(drainedNote.match(/not a medical measure/gi)).toHaveLength(1);
     expect(highestNote).toContain('top Body Battery level');
     expect(highestNote).not.toContain(BODY_BATTERY_ZONES);
     expect(lowestNote).toContain('bottom Body Battery level');
     expect(lowestNote).not.toContain(BODY_BATTERY_ZONES);
     for (const note of [chargedNote, drainedNote, highestNote, lowestNote, stress?.about ?? '']) {
-      expect(note.match(/Not medical advice/g)).toHaveLength(1);
+      expect(note.match(/Not medical advice/gi) ?? []).toHaveLength(0);
+      expect(note.match(/Approximate general guidance/g) ?? []).toHaveLength(0);
     }
     expect(byId.get('sleep_score')?.guide.about).toContain(NO_STANDARD_RANGE);
     expect(byId.get('sleep_score')?.guide.dailyTypical).toBeNull();
@@ -324,7 +335,7 @@ describe('garmin chart bands', () => {
     ];
     for (const guide of guides) {
       expect(guide.legend).toBe('');
-      expect(guide.about.match(/Not medical advice/gi)).toHaveLength(1);
+      expect(guide.about.match(/Not medical advice/gi) ?? []).toHaveLength(0);
       expect(guide.about).not.toContain(GENERAL_GUIDANCE);
     }
     const activity = readFileSync('src/ui/DailyActivity.tsx', 'utf8');

@@ -49,7 +49,7 @@ export const STRESS_ZONES = '0–25 resting, 26–50 low, 51–75 medium, 76–1
 export const BODY_BATTERY_ZONES = '0–25 very low, 26–50 low, 51–75 medium, 76–100 high';
 
 export const BODY_BATTERY_WHAT =
-  "Body Battery is Garmin's 0–100 estimate of your energy reserve, from heart rate variability, stress, sleep and activity.";
+  "Body Battery is Garmin's own 0–100 estimate of your energy reserve through the day. The watch works it out from heart rate variability, stress, sleep and activity.";
 
 /** Visible on Average stress. Crisis lines stay on the card, not inside More info. */
 export const STRESS_CARE =
@@ -169,7 +169,7 @@ function advised(about: string, extra: Partial<ChartGuide> = {}): ChartGuide {
     target: extra.target ?? null,
     ownAverage: extra.ownAverage ?? null,
     legend: '',
-    about: `${body} Not medical advice.`,
+    about: body,
     outside: extra.outside ?? null,
     care: extra.care ?? null,
   };
@@ -274,14 +274,15 @@ function stressGuide(period: StatPeriod): ChartGuide {
 }
 
 function batteryGuide(period: StatPeriod, kind: 'charged' | 'drained' | 'highest' | 'lowest'): ChartGuide {
-  const shared = `${BODY_BATTERY_WHAT} Each bar is score points for one day, for ${grouped(period)}. It is Garmin's own estimate, not a medical measure. Wear the watch overnight and sync.`;
+  const what = BODY_BATTERY_WHAT;
+  const limits = `Each bar is score points for one day, for ${grouped(period)}. Garmin's own estimate, not a medical measure. Wearing the watch overnight and syncing Garmin Connect matters.`;
   const specific = {
-    charged: 'Charged is the points your Body Battery gained over the day, mostly from rest and sleep, as opposed to drained. A bigger number means better recovery. Compare it with your own usual days. A low number after a poor or short night is normal. The level bands describe the battery level, not points gained, so they are not listed here.',
-    drained: 'Drained is the points your Body Battery lost over the day, as opposed to charged. A bigger number means more of the reserve was used. Compare it with your own usual days. A high number after a hard day can be normal. The level bands describe the battery level, not points lost, so they are not listed here.',
-    highest: "Highest is the top Body Battery level reached that day, on Garmin's 0–100 scale. It is the level, not points gained. A higher number means a fuller reserve. Compare it with your own usual days.",
-    lowest: "Lowest is the bottom Body Battery level that day, on Garmin's 0–100 scale. It is the level, not points lost. A lower number means the reserve ran down further. Compare it with your own usual days. A low number after a poor or short night can be normal.",
+    charged: 'Charged is how many points rest and sleep added back over the day. Drained is what stress and activity take off. A bigger charged number means you got more energy back. Compare it with your own usual days, not other people. A low number after a poor or short night can be normal.',
+    drained: 'Drained is how many points your Body Battery dropped over the day, from stress and activity. Charged is what rest and sleep add back. A bigger drained number means a harder, more stressful or more active day. A big number is not bad by itself. What matters is whether sleep and rest charge you back up. Compare it with your own usual days, not other people.',
+    highest: "Highest is the top Body Battery level reached that day, on the 0–100 scale. It is the level itself, not points gained or lost. A higher number means a fuller reserve. Compare it with your own usual days, not other people.",
+    lowest: "Lowest is the bottom Body Battery level that day, on the 0–100 scale. It is the level itself, not points lost. A lower number means the reserve ran down further. Compare it with your own usual days, not other people. A low number after a poor or short night can be normal.",
   }[kind];
-  return advised(`${specific} ${shared}`);
+  return advised(`${what} ${specific} ${limits}`);
 }
 
 function hrvGuide(period: StatPeriod, points: readonly GarminChartPoint[]): ChartGuide {

@@ -443,7 +443,6 @@ function ActivityBars({
   const target = guide?.target?.value ?? null;
   const own = guide?.ownAverage?.value ?? null;
   const explanation = [...new Set([guide?.legend, guide?.about].map((line) => line?.trim()).filter((line): line is string => Boolean(line)))];
-  const medical = explanation.some((line) => /not medical advice/i.test(line));
 
   function markStyle(value: number, ink: string) {
     return {
@@ -466,7 +465,7 @@ function ActivityBars({
       {guide?.outside ? <T>{guide.outside}</T> : null}
       {guide?.care ? <CareLine text={guide.care} /> : null}
       {explanation.length > 0 ? (
-        <MoreInfo about={title} summary={medical ? 'Not medical advice.' : undefined}>
+        <MoreInfo about={title} summary="Not medical advice.">
           {explanation.map((line) => <T key={line.slice(0, 48)} variant="muted">{line}</T>)}
           {title === 'Average stress' ? <StressActions /> : null}
         </MoreInfo>
