@@ -2,11 +2,10 @@ import { useState } from 'react';
 import { Pressable, View } from 'react-native';
 
 import { NUTRITION_BREAKDOWN_LABEL, type MealNutrientBar } from '@/domain/nutrition';
-import { goodZoneBand } from '@/ui/statsPalette';
 import { useAppTheme } from '@/ui/theme';
 import { T } from '@/ui/ui';
 
-/** Compact bars. A lime band is the healthy zone, and the words say which side of it this meal sits on. */
+/** Compact monochrome bars. A pale ink wash is the healthy zone, and the words say which side of it this meal sits on. */
 export function MealNutrientBars({ bars }: { bars: readonly MealNutrientBar[] }) {
   const theme = useAppTheme();
   if (!bars.length) return null;
@@ -30,7 +29,8 @@ export function MealNutrientBars({ bars }: { bars: readonly MealNutrientBar[] })
                     top: 0,
                     bottom: 0,
                     width: `${zone * 100}%`,
-                    backgroundColor: goodZoneBand(theme.scheme),
+                    backgroundColor: theme.colors.ink,
+                    opacity: 0.15,
                   }}
                 />
               ) : null}

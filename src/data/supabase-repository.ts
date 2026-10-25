@@ -3659,26 +3659,26 @@ export class SupabaseRepository implements Repository {
     }
   }
 
-  async deleteSharedPhoto(id: string): Promise<void> {
-    const { error } = await this.client.rpc('delete_buddy_photo', { photo: id });
+  async deleteSharedPhoto(photoId: string): Promise<void> {
+    const { error } = await this.client.rpc('delete_buddy_photo', { photo: photoId });
     if (error) {
       if (buddyPhotoUnavailable(error.message)) throw new UserFacingError(SHARED_PHOTOS_TABLE, 'generic');
       throw asUserFacing(error, 'general');
     }
     const userId = await this.userId();
-    await this.client.storage.from(BUDDY_PHOTO_BUCKET).remove([`${userId}/${id}.jpg`]);
+    await this.client.storage.from(BUDDY_PHOTO_BUCKET).remove([`${userId}/${photoId}.jpg`]);
   }
 
-  async hideSharedPhoto(id: string): Promise<void> {
-    const { error } = await this.client.rpc('hide_buddy_photo', { photo: id });
+  async hideSharedPhoto(photoId: string): Promise<void> {
+    const { error } = await this.client.rpc('hide_buddy_photo', { photo: photoId });
     if (error) {
       if (buddyPhotoUnavailable(error.message)) throw new UserFacingError(SHARED_PHOTOS_TABLE, 'generic');
       throw asUserFacing(error, 'general');
     }
   }
 
-  async reportSharedPhoto(id: string, reason: string): Promise<void> {
-    const { error } = await this.client.rpc('report_buddy_photo', { photo: id, reason });
+  async reportSharedPhoto(photoId: string, reason: string): Promise<void> {
+    const { error } = await this.client.rpc('report_buddy_photo', { photo: photoId, reason });
     if (error) {
       if (buddyPhotoUnavailable(error.message)) throw new UserFacingError(SHARED_PHOTOS_TABLE, 'generic');
       throw asUserFacing(error, 'general');
