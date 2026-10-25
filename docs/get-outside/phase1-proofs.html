@@ -1,0 +1,377 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Get Outside phase 1 layout proofs</title>
+<style>
+  :root {
+    --bg: #0C0C0C;
+    --sunken: #171717;
+    --surface: #1A1A1A;
+    --ink: #F3F3EE;
+    --muted: #B3B3AC;
+    --line: #3A3A3A;
+    --mint: #D1FAE5;
+    --green: #2DE0A0;
+    --danger: #F07167;
+    --page: #111111;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--page);
+    color: var(--ink);
+    font-family: "Avenir Next", "Segoe UI", sans-serif;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 28px;
+    padding: 28px;
+  }
+  .shot { width: 390px; }
+  .caption {
+    color: var(--muted);
+    font-size: 12px;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    margin: 0 0 8px;
+  }
+  .phone {
+    width: 390px;
+    height: 844px;
+    background: var(--bg);
+    border: 1px solid #2a2a2a;
+    border-radius: 28px;
+    overflow: hidden;
+    position: relative;
+    display: flex;
+    flex-direction: column;
+  }
+  .status {
+    height: 44px;
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    padding: 0 22px 6px;
+    font-size: 12px;
+    color: var(--ink);
+  }
+  .top {
+    height: 52px;
+    display: flex;
+    align-items: center;
+    padding: 0 16px;
+    gap: 12px;
+  }
+  .hamburger, .you {
+    width: 44px;
+    height: 44px;
+    border: 1.5px solid var(--line);
+    border-radius: 12px;
+    display: grid;
+    place-items: center;
+    color: var(--ink);
+    background: transparent;
+  }
+  .brand {
+    flex: 1;
+    text-align: center;
+    letter-spacing: 0.18em;
+    font-size: 13px;
+    font-weight: 700;
+  }
+  .body { flex: 1; overflow: hidden; padding: 0 16px 8px; }
+  .tabs {
+    height: 72px;
+    border-top: 1px solid var(--line);
+    display: flex;
+    align-items: center;
+    justify-content: space-around;
+    padding: 0 4px 8px;
+    background: var(--bg);
+  }
+  .tab { font-size: 10px; color: var(--muted); text-align: center; width: 58px; }
+  .tab.on { color: var(--ink); }
+  h1 { font-size: 28px; line-height: 1.1; margin: 4px 0 8px; font-weight: 650; letter-spacing: -0.02em; }
+  h2 { font-size: 13px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); margin: 16px 0 8px; font-weight: 650; }
+  p { margin: 0 0 8px; font-size: 15px; line-height: 1.35; }
+  .muted { color: var(--muted); font-size: 13px; }
+  .card {
+    border: 2px solid var(--mint);
+    border-radius: 20px;
+    padding: 14px;
+    margin: 0 0 8px;
+    background: var(--surface);
+  }
+  .card h3 { margin: 0 0 6px; font-size: 18px; }
+  .btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 44px;
+    border-radius: 14px;
+    background: var(--ink);
+    color: #111;
+    font-weight: 650;
+    margin-top: 10px;
+  }
+  .btn.quiet {
+    background: transparent;
+    color: var(--ink);
+    border: 1.5px solid var(--line);
+  }
+  .more {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 44px;
+    padding: 0 16px;
+    border-radius: 999px;
+    border: 1.5px solid var(--green);
+    color: var(--green);
+    background: transparent;
+    font-weight: 650;
+    margin-top: 8px;
+  }
+  .safety { color: var(--ink); font-size: 14px; line-height: 1.4; }
+  .crisis { color: var(--danger); font-size: 14px; line-height: 1.4; margin-top: 4px; }
+  .stamp {
+    position: absolute;
+    left: 12px;
+    right: 12px;
+    bottom: 78px;
+    font-size: 10px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+  .drawer-wrap { position: relative; flex: 1; }
+  .dim { position: absolute; inset: 0; background: rgba(0,0,0,0.45); }
+  .drawer {
+    position: absolute;
+    left: 0; top: 0; bottom: 0;
+    width: 320px;
+    background: var(--bg);
+    border-right: 1px solid var(--line);
+    padding: 8px 16px 16px;
+    overflow: hidden;
+  }
+  .group { font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); margin: 14px 0 6px; }
+  .row {
+    min-height: 44px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    color: var(--ink);
+    font-size: 16px;
+    border-radius: 12px;
+    padding: 0 8px;
+  }
+  .row.new { outline: 1.5px solid var(--green); background: #10241c; }
+  .glyph { width: 18px; height: 18px; border: 1.5px solid var(--ink); border-radius: 4px; flex: none; }
+  .map {
+    height: 360px;
+    border-radius: 20px;
+    border: 2px solid var(--mint);
+    background: #141816;
+    position: relative;
+    overflow: hidden;
+    margin-bottom: 12px;
+  }
+  .map svg { width: 100%; height: 100%; display: block; }
+  .attr {
+    position: absolute;
+    left: 8px;
+    bottom: 8px;
+    right: 8px;
+    font-size: 10px;
+    color: #d7d7d0;
+    background: rgba(12,12,12,0.72);
+    padding: 4px 6px;
+    border-radius: 6px;
+  }
+  .chip {
+    display: inline-block;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    padding: 4px 8px;
+    font-size: 12px;
+    color: var(--muted);
+    margin-right: 6px;
+  }
+</style>
+</head>
+<body>
+  <div class="shot" id="menu">
+    <p class="caption">Menu, dark</p>
+    <div class="phone">
+      <div class="status"><span>9:41</span><span>Charioteer</span></div>
+      <div class="drawer-wrap">
+        <div class="dim"></div>
+        <div class="drawer">
+          <div class="top" style="padding-left:0"><div class="hamburger" aria-hidden="true">≡</div><div class="brand">MENU</div></div>
+          <div class="group">Main</div>
+          <div class="row"><span class="glyph"></span>Today</div>
+          <div class="row"><span class="glyph"></span>Check-in</div>
+          <div class="row"><span class="glyph"></span>Breathe</div>
+          <div class="row"><span class="glyph"></span>Thumos</div>
+          <div class="row"><span class="glyph"></span>People</div>
+          <div class="row"><span class="glyph"></span>Gratitude Diary</div>
+          <div class="group">Tools</div>
+          <div class="row"><span class="glyph"></span>Workouts</div>
+          <div class="row new"><span class="glyph"></span>Get Outside</div>
+          <div class="row"><span class="glyph"></span>Progress photos</div>
+          <p class="muted">Get Outside sits under Workouts. It is not a seventh tab.</p>
+        </div>
+      </div>
+      <div class="tabs">
+        <div class="tab on">Today</div><div class="tab">Check-in</div><div class="tab">Breathe</div>
+        <div class="tab">Thumos</div><div class="tab">People</div><div class="tab">Gratitude</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="shot" id="home">
+    <p class="caption">Get Outside home, dark</p>
+    <div class="phone">
+      <div class="status"><span>9:41</span><span></span></div>
+      <div class="top"><div class="hamburger">≡</div><div class="brand">CHARIOTEER</div><div class="you">You</div></div>
+      <div class="body">
+        <p class="muted">Get Outside</p>
+        <h1>Go out for a bit.</h1>
+        <p class="safety">A line on the map may be unsurfaced, closed, or private. This is not medical advice, and it is not a promise that a route is safe.</p>
+        <p class="crisis">If you feel unable to cope, speak to your GP or NHS 111. In a crisis, call 999 or the Samaritans on 116 123.</p>
+        <div class="more">More info</div>
+        <p class="muted">Location is optional, and only while you are using the app. No background tracking. A buddy can receive a plan, never a live location.</p>
+        <div class="card">
+          <h3>Craving walk</h3>
+          <p class="muted">10–20 minutes. A sketch from where you are.</p>
+          <div class="btn">Walk this off</div>
+        </div>
+        <div class="card">
+          <h3>Saved routes</h3>
+          <p>Canal loop · 2.4 km · on your account</p>
+          <div class="btn quiet">Open the map</div>
+        </div>
+      </div>
+      <div class="tabs">
+        <div class="tab">Today</div><div class="tab">Check-in</div><div class="tab">Breathe</div>
+        <div class="tab">Thumos</div><div class="tab">People</div><div class="tab">Gratitude</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="shot" id="map">
+    <p class="caption">Map and saved route, dark</p>
+    <div class="phone">
+      <div class="status"><span>9:41</span><span></span></div>
+      <div class="top"><div class="hamburger">≡</div><div class="brand">CHARIOTEER</div><div class="you">You</div></div>
+      <div class="body">
+        <p class="muted">Saved route</p>
+        <h1>Canal loop</h1>
+        <div class="map" aria-hidden="true">
+          <svg viewBox="0 0 340 320">
+            <rect width="340" height="320" fill="#121614"/>
+            <path d="M20 40 H320 M20 100 H320 M20 160 H320 M20 220 H320 M20 280 H320 M40 10 V310 M110 10 V310 M180 10 V310 M250 10 V310 M310 10 V310" stroke="#2a2e2b" stroke-width="10"/>
+            <path d="M30 250 C 80 200, 90 120, 150 110 S 240 80, 300 140" fill="none" stroke="#8d8d86" stroke-width="3" stroke-dasharray="2 7"/>
+            <path d="M40 180 C 100 170, 120 230, 180 210 S 260 150, 310 190" fill="none" stroke="#6e6e68" stroke-width="2" stroke-dasharray="1 6"/>
+            <path d="M70 260 C 120 230, 150 150, 210 140 S 280 170, 300 120" fill="none" stroke="#2DE0A0" stroke-width="4"/>
+            <circle cx="70" cy="260" r="6" fill="#F3F3EE"/>
+            <circle cx="300" cy="120" r="6" fill="#2DE0A0"/>
+          </svg>
+          <div class="attr">Drawn proof, not a live tile. Example credit: OpenFreeMap © OpenMapTiles. Data from OpenStreetMap.</div>
+        </div>
+        <p><span class="chip">2.4 km</span><span class="chip">about 35 min</span><span class="chip">on your account</span></p>
+        <p class="safety">The green line is the route you saved. Dashed lines stand in for footpaths. The app does not know if a path is open.</p>
+        <div class="more">More info</div>
+      </div>
+      <div class="tabs">
+        <div class="tab">Today</div><div class="tab">Check-in</div><div class="tab">Breathe</div>
+        <div class="tab">Thumos</div><div class="tab">People</div><div class="tab">Gratitude</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="shot" id="craving">
+    <p class="caption">Craving walk, dark</p>
+    <div class="phone">
+      <div class="status"><span>9:41</span><span></span></div>
+      <div class="top"><div class="hamburger">≡</div><div class="brand">CHARIOTEER</div><div class="you">You</div></div>
+      <div class="body">
+        <p class="muted">Craving walk</p>
+        <h1>Walk this off.</h1>
+        <div class="more">More info</div>
+        <p>About 15 minutes. A rough ring around where you are now.</p>
+        <div class="map" style="height:168px" aria-hidden="true">
+          <svg viewBox="0 0 340 220">
+            <rect width="340" height="220" fill="#121614"/>
+            <circle cx="170" cy="110" r="70" fill="none" stroke="#2DE0A0" stroke-width="3" stroke-dasharray="8 6"/>
+            <circle cx="170" cy="110" r="5" fill="#F3F3EE"/>
+            <text x="170" y="188" text-anchor="middle" fill="#B3B3AC" font-size="13" font-family="sans-serif">Sketch, not a path</text>
+          </svg>
+        </div>
+        <p class="safety">Until a router is approved, this is a sketch. It does not follow footpaths.</p>
+        <p class="muted">Location is only while this page is open, if you allow it. Not in the background. A buddy gets a plan, never your live place.</p>
+        <div class="btn">Use my location for this walk</div>
+        <div class="btn quiet">Not now. Show saved routes</div>
+        <p class="crisis">Not a crisis service. GP or NHS 111. Emergency 999. Samaritans 116 123.</p>
+      </div>
+      <div class="tabs">
+        <div class="tab">Today</div><div class="tab">Check-in</div><div class="tab">Breathe</div>
+        <div class="tab">Thumos</div><div class="tab">People</div><div class="tab">Gratitude</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="shot" id="today">
+    <p class="caption">Today shortcut, dark</p>
+    <div class="phone">
+      <div class="status"><span>9:41</span><span></span></div>
+      <div class="top"><div class="hamburger">≡</div><div class="brand">CHARIOTEER</div><div class="you">You</div></div>
+      <div class="body">
+        <p class="muted">Good afternoon</p>
+        <h1>Today</h1>
+        <div class="card">
+          <h3>47 days</h3>
+          <p class="muted">On track. The rest of Today is unchanged.</p>
+        </div>
+        <div class="card">
+          <h3>Get Outside</h3>
+          <p>A short walk when a craving shows up.</p>
+          <div class="btn">Walk this off</div>
+          <div class="btn quiet">Open Get Outside</div>
+        </div>
+        <p class="safety">Walk this off opens the craving walk. It does not start tracking, and it does not tell a buddy where you are.</p>
+      </div>
+      <div class="tabs">
+        <div class="tab on">Today</div><div class="tab">Check-in</div><div class="tab">Breathe</div>
+        <div class="tab">Thumos</div><div class="tab">People</div><div class="tab">Gratitude</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="shot" id="breathe">
+    <p class="caption">Breathe shortcut, dark</p>
+    <div class="phone">
+      <div class="status"><span>9:41</span><span></span></div>
+      <div class="top"><div class="hamburger">≡</div><div class="brand">CHARIOTEER</div><div class="you">You</div></div>
+      <div class="body">
+        <p class="muted">Breathe</p>
+        <h1>That round is done.</h1>
+        <div class="card">
+          <h3>Box breathing</h3>
+          <p class="muted">Finished.</p>
+        </div>
+        <p>If you still want to move, take it outside.</p>
+        <div class="btn">Walk this off</div>
+        <div class="more">More info</div>
+        <p class="safety">Same craving walk as Today. Location stays optional and while you are using the app. No live place is sent to a buddy.</p>
+        <p class="crisis">If breathing is not enough and you are in crisis, call 999 or the Samaritans on 116 123.</p>
+      </div>
+      <div class="tabs">
+        <div class="tab">Today</div><div class="tab">Check-in</div><div class="tab on">Breathe</div>
+        <div class="tab">Thumos</div><div class="tab">People</div><div class="tab">Gratitude</div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>
