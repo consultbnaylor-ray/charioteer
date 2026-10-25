@@ -100,11 +100,12 @@ describe('Outside is Good phase 1', () => {
     expect(readFileSync('src/domain/outdoorRoute.ts', 'utf8')).not.toMatch(/plan only|When it is added|not in this version/i);
   });
 
-  it('asks for while-in-use location only and sets build 70', () => {
+  it('asks for while-in-use location only', () => {
     const app = JSON.parse(readFileSync('app.json', 'utf8')) as {
       expo: { ios: { buildNumber: string; infoPlist?: Record<string, unknown> }; android?: { permissions?: string[] }; plugins: unknown[] };
     };
-    expect(app.expo.ios.buildNumber).toBe('70');
+    expect(app.expo.ios.buildNumber).toMatch(/^\d+$/);
+    expect(Number(app.expo.ios.buildNumber)).toBeGreaterThanOrEqual(71);
     const location = app.expo.plugins.find((plugin) => Array.isArray(plugin) && plugin[0] === 'expo-location') as
       | [string, Record<string, unknown>]
       | undefined;

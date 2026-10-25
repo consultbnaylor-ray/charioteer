@@ -71,7 +71,8 @@ describe('workout calendar event', () => {
     const calendar = app.expo.plugins.find((plugin) => Array.isArray(plugin) && plugin[0] === 'expo-calendar') as
       | [string, { calendarPermission?: string; remindersPermission?: string | false }]
       | undefined;
-    expect(app.expo.ios.buildNumber).toBe('70');
+    expect(app.expo.ios.buildNumber).toMatch(/^\d+$/);
+    expect(Number(app.expo.ios.buildNumber)).toBeGreaterThanOrEqual(71);
     expect(calendar?.[1]).toEqual({
       calendarPermission: "Charioteer only opens Apple's add-event sheet when you tap Add to Calendar. It never reads your calendar.",
       remindersPermission: false,

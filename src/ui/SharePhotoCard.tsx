@@ -45,12 +45,26 @@ function acceptedBuddies(snap: ReturnType<typeof useSnapshot>, me: string) {
     });
 }
 
-/** Small monochrome camera for the header. The button name is the accessible label. */
-function CameraMark({ color }: { color: string }) {
+/**
+ * Ink box of the camera drawing. The viewBox is this box, so the SVG height is the glyph.
+ * Header wordmark is Oswald at 18pt. Its caps are about 22pt tall on screen.
+ */
+const CAMERA_INK = { x: 3.2, y: 5.4, width: 17.6, height: 13.8 };
+/** Visible camera height, matched to the header wordmark cap height. */
+export const HEADER_CAMERA_GLYPH = 22;
+
+function CameraMark({ color, height }: { color: string; height: number }) {
+  const width = height * (CAMERA_INK.width / CAMERA_INK.height);
   return (
-    <Svg width={20} height={20} viewBox="0 0 24 24" fill="none" accessibilityElementsHidden>
-      <Path d="M4 8.2h3.1l1.3-2h7.2l1.3 2H20v10.2H4V8.2z" stroke={color} strokeWidth={1.6} strokeLinejoin="round" />
-      <Circle cx={12} cy={13} r={2.7} stroke={color} strokeWidth={1.6} />
+    <Svg
+      width={width}
+      height={height}
+      viewBox={`${CAMERA_INK.x} ${CAMERA_INK.y} ${CAMERA_INK.width} ${CAMERA_INK.height}`}
+      fill="none"
+      accessibilityElementsHidden
+    >
+      <Path d="M4 8.2h3.1l1.3-2h7.2l1.3 2H20v10.2H4V8.2z" stroke={color} strokeWidth={1.35} strokeLinejoin="round" />
+      <Circle cx={12} cy={13} r={2.7} stroke={color} strokeWidth={1.35} />
     </Svg>
   );
 }
@@ -59,15 +73,18 @@ function CameraMark({ color }: { color: string }) {
 export function HeaderShareButton() {
   const theme = useAppTheme();
   const [open, setOpen] = useState(false);
+  const glyph = HEADER_CAMERA_GLYPH * theme.scale;
+  const markWidth = glyph * (CAMERA_INK.width / CAMERA_INK.height);
+  const tap = Math.max(44, Math.ceil(markWidth), Math.ceil(glyph));
   return (
     <>
       <Pressable
         accessibilityRole="button"
         accessibilityLabel="Share a photo"
         onPress={() => setOpen(true)}
-        style={{ width: 44, height: 44, alignItems: 'center', justifyContent: 'center' }}
+        style={{ width: tap, height: tap, alignItems: 'center', justifyContent: 'center' }}
       >
-        <CameraMark color={theme.colors.ink} />
+        <CameraMark color={theme.colors.ink} height={glyph} />
       </Pressable>
       <SharePhotoSheet open={open} onClose={() => setOpen(false)} />
     </>

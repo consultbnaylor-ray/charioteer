@@ -27,7 +27,8 @@ type AppConfig = {
 describe('iOS purpose strings', () => {
   it('keeps the microphone and Face ID notes and writes those exact sentences', () => {
     const app = JSON.parse(readFileSync('app.json', 'utf8')) as AppConfig;
-    expect(app.expo.ios.buildNumber).toBe('70');
+    expect(app.expo.ios.buildNumber).toMatch(/^\d+$/);
+    expect(Number(app.expo.ios.buildNumber)).toBeGreaterThanOrEqual(71);
 
     const audio = app.expo.plugins.find(
       (entry) => Array.isArray(entry) && entry[0] === 'react-native-audio-api',

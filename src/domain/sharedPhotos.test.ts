@@ -89,6 +89,8 @@ describe('Shared Photos folder', () => {
     expect(sheet).toContain('addGratitudePhoto');
     expect(sheet).toContain('No accepted buddies yet. You can still save this photo to your Gratitude diary.');
     expect(sheet).toContain('accessibilityLabel="Share a photo"');
+    expect(sheet).toContain('export const HEADER_CAMERA_GLYPH = 22');
+    expect(sheet).toContain('Math.max(44');
     expect(sheet).not.toMatch(/NSCameraUsageDescription|NSPhotoLibraryUsageDescription/);
     const layout = readFileSync('src/app/(main)/_layout.tsx', 'utf8');
     expect(layout).toContain('<HeaderShareButton />');
