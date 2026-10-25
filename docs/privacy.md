@@ -89,9 +89,11 @@ Add to Calendar opens Apple's add-event sheet for a planned workout. The iPhone 
 
 ## Location
 
-Get Outside can use your location while the map is open, and only if you allow it. The iPhone purpose sentence is: "Charioteer uses your location only while the map is open, to show where you are. A route is sent to the route service only if you turn route finding on. It is not tracked in the background. It is not shared with other people. It is stored only if you save a route."
+Outside is Good can use your location while the map is open, and only if you allow it. The iPhone purpose sentence is: "Charioteer uses your location only while the map is open, to show where you are. A route is sent to the route service only if you turn route finding on. It is not tracked in the background. It is not shared with other people. It is stored only if you save a route."
 
-Route finding is off until you turn it on. The first time you open Find a route or the craving walk, the app asks. Not now leaves Get Outside, saved routes, and the map working, and it does not call the route service. You can turn it off again from Profile. The choice is stored on this phone only, with the time and the wording version. It is not a database column. Another phone starts off.
+Route finding is off until you turn it on. The first time you open Find a route, the app asks. Not now leaves Outside is Good, saved routes, and the map working, and it does not call the route service. You can turn it off again from Profile. The choice is stored on this phone only, with the time and the wording version. It is not a database column. Another phone starts off.
+
+Walk this off (the craving walk) is parked. It is not shown. The screen and the route engine stay in the app behind `SHOW_WALK_THIS_OFF`, which is off. Turning that constant on would show it again. It is not a live feature, and the consent screen and Profile do not offer it.
 
 When route finding is on, the start point and the destination are sent to our route service to make the route. The service is OpenRouteService, run by HeiGIT, built on OpenStreetMap data. Nothing from that request is shared with other people. A route sends the coordinates and the travel type only. It does not send your name or account number. HeiGIT sees our server's address, not your phone's. A place search sends the words you type.
 
@@ -105,7 +107,7 @@ HeiGIT's terms (https://account.heigit.org/info/tos) say not to send personal da
 
 The page still opens if you say no to location. There is no background location and no "always" location. Android asks for fine and coarse location in the foreground only. A saved route is a line on your account. You can delete it. A live fix is not stored. Live routes can't be shared with anyone. That's to protect your safety.
 
-This is not medical advice. The walk screens say so, and they name a GP, NHS 111, and 999. The craving walk also names Samaritans on 116 123.
+This is not medical advice. The Outside is Good screens say so, and they name a GP, NHS 111, 999, and Samaritans on 116 123. Walk this off is parked, so that naming is on the live Outside is Good screens, not on a craving-walk screen.
 
 The iPhone app contains a motion purpose sentence only so Apple's upload check can see it. The sentence is: "Charioteer does not use your motion or fitness data. The map component in the app can reference motion sensors, so Apple requires this note." Charioteer does not read motion or fitness-activity data. Android motion activity stays off.
 

@@ -2,6 +2,7 @@ import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
+import { OUTSIDE_SECTION_LABEL, SHOW_WALK_THIS_OFF } from '@/domain/outsideSection';
 import { APP_SECTIONS, TAB_SECTIONS, menuSectionActive } from '@/domain/sections';
 import {
   LOCATION_WHEN_IN_USE,
@@ -15,21 +16,22 @@ import {
   sampleCanalLoop,
 } from '@/domain/outdoorRoute';
 
-describe('Get Outside phase 1', () => {
-  it('puts Get Outside in Tools under Workouts and keeps six tabs', () => {
+describe('Outside is Good phase 1', () => {
+  it('puts Outside is Good in Tools under Workouts and keeps six tabs', () => {
     const labels = APP_SECTIONS.map((section) => section.label);
     const outside = APP_SECTIONS.find((section) => section.id === 'outside');
     expect(outside).toMatchObject({
-      label: 'Get Outside',
+      label: 'Outside is Good',
       href: '/outside',
       icon: 'path',
       group: 'tools',
     });
+    expect(OUTSIDE_SECTION_LABEL).toBe('Outside is Good');
     expect(outside?.tab).toBeUndefined();
-    expect(labels.indexOf('Get Outside')).toBe(labels.indexOf('Workouts') + 1);
-    expect(labels.indexOf('Progress photos')).toBe(labels.indexOf('Get Outside') + 1);
+    expect(labels.indexOf('Outside is Good')).toBe(labels.indexOf('Workouts') + 1);
+    expect(labels.indexOf('Progress photos')).toBe(labels.indexOf('Outside is Good') + 1);
     expect(TAB_SECTIONS).toHaveLength(6);
-    expect(TAB_SECTIONS.map((section) => section.label)).not.toContain('Get Outside');
+    expect(TAB_SECTIONS.map((section) => section.label)).not.toContain('Outside is Good');
     expect(menuSectionActive('/outside', '/outside')).toBe(true);
     expect(menuSectionActive('/outside-map', '/outside')).toBe(false);
     expect(menuSectionActive('/craving-walk', '/outside')).toBe(false);
@@ -197,6 +199,40 @@ describe('Get Outside phase 1', () => {
     expect(walk.indexOf('label="Walk this off"')).toBeLessThan(walk.indexOf('<OutsideFacts'));
     expect(readFileSync('src/ui/RouteConsentCard.tsx', 'utf8')).toContain('ROUTE_CONSENT_LINES');
     expect(readFileSync('src/ui/RouteFindingSwitch.tsx', 'utf8')).toContain('ROUTE_CONSENT_LINES');
+  });
+
+  it('parks Walk this off behind one flag and renames the live section', () => {
+    expect(SHOW_WALK_THIS_OFF).toBe(false);
+    const outside = readFileSync('src/app/(main)/outside.tsx', 'utf8');
+    expect(outside).toContain('SHOW_WALK_THIS_OFF ?');
+    expect(outside).toContain('label="Walk this off"');
+    expect(outside).toContain('OUTSIDE_SECTION_LABEL');
+    expect(outside).not.toContain('Get Outside');
+    const walk = readFileSync('src/ui/WalkThisOff.tsx', 'utf8');
+    expect(walk).toContain('if (!SHOW_WALK_THIS_OFF) return null');
+    expect(walk).toContain('label="Walk this off"');
+    const route = readFileSync('src/app/(main)/craving-walk.tsx', 'utf8');
+    expect(route).toContain('if (!SHOW_WALK_THIS_OFF) return <Redirect href="/outside" />');
+    expect(route).toContain('<RouteMaker purpose="craving" />');
+    expect(route).toContain('RouteConsentCard');
+    const home = readFileSync('src/app/(main)/home.tsx', 'utf8');
+    const breathe = readFileSync('src/app/(main)/breathe.tsx', 'utf8');
+    expect(home).toContain('<WalkThisOff place="today" />');
+    expect(breathe).toContain('<WalkThisOff place="breathe" />');
+    expect(home).not.toContain("'/craving-walk'");
+    expect(breathe).not.toContain("'/craving-walk'");
+    const consent = readFileSync('src/domain/routeConsent.ts', 'utf8');
+    expect(consent).toContain('Not now leaves Outside is Good, saved routes, and the map working.');
+    expect(consent).not.toMatch(/craving walk/i);
+    const docs = [
+      readFileSync('docs/privacy.md', 'utf8'),
+      readFileSync('docs/privacy.html', 'utf8'),
+      readFileSync('docs/dpia-location.md', 'utf8'),
+    ].join('\n');
+    expect(docs).toContain('Outside is Good');
+    expect(docs).toMatch(/Walk this off \(the craving walk\) is parked/);
+    expect(docs).not.toContain('Get Outside');
+    expect(docs).not.toContain('or the craving walk');
   });
 });
 

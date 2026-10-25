@@ -255,7 +255,7 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
           <FootpathMap routes={[]} sketch={plan.points} here={plan.points[0] ?? null} />
           <Field label="Route name" value={title} onChangeText={setTitle} maxLength={80} />
           <Button label="Save this route" tone="quiet" disabled={pending || title.trim().length === 0} pending={pending} onPress={() => { void save(); }} />
-          {saved ? <T>Saved on your account. You can delete it from Get Outside.</T> : null}
+          {saved ? <T>Saved on your account. You can delete it from Outside is Good.</T> : null}
           {mapsUrl ? (
             <Button label="Open in Apple Maps" tone="quiet" onPress={() => { void Linking.openURL(mapsUrl); }} />
           ) : null}

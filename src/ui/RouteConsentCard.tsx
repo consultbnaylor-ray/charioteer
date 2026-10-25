@@ -18,7 +18,7 @@ import {
 import { MoreInfo } from '@/ui/MoreInfo';
 import { Button, Card, T } from '@/ui/ui';
 
-/** The first screen for Find a route and the craving walk. It does not call the route service. */
+/** The first screen for Find a route. It does not call the route service. Walk this off is parked. */
 export function RouteConsentCard({ onNotNow }: { onNotNow: () => void }) {
   const [pending, setPending] = useState(false);
 

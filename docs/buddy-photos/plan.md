@@ -2,7 +2,7 @@
 
 Plan and SQL only. The app does not have this screen yet. The migration is in the repo and has been applied on the test database only. It has not been applied to the live project, and nothing is shipped.
 
-This comes after the build 66 items. It is not a small change, so it is its own binary. The parent branch already uses iOS build number 67 for the calendar module. Get Outside was also described as build 67 on another branch. When this is built, use the next free TestFlight number if 67 is already taken. This plan does not change `app.json`.
+This comes after the build 66 items. It is not a small change, so it is its own binary. The parent branch already uses iOS build number 67 for the calendar module. Outside is Good (previously described as Get Outside) was also described as build 67 on another branch. When this is built, use the next free TestFlight number if 67 is already taken. This plan does not change `app.json`.
 
 ## Where it sits
 

@@ -7,6 +7,7 @@ import {
   routeSummary,
 } from '@/domain/outdoorRoute';
 import { shownError } from '@/domain/errors';
+import { OUTSIDE_SECTION_LABEL, SHOW_WALK_THIS_OFF } from '@/domain/outsideSection';
 import { OutsideFooter } from '@/ui/OutsideFooter';
 import { Button, Card, ErrorNote, Screen, T } from '@/ui/ui';
 
@@ -27,10 +28,12 @@ export default function Outside() {
   }
 
   return (
-    <Screen eyebrow="Tools" title="Get Outside" intro="A walk from the menu.">
+    <Screen eyebrow="Tools" title={OUTSIDE_SECTION_LABEL} intro="A walk from the menu.">
       <Card>
         <Button label="Find a route" onPress={() => router.push('/find-route' as never)} />
-        <Button label="Walk this off" tone="quiet" onPress={() => router.push('/craving-walk' as never)} />
+        {SHOW_WALK_THIS_OFF ? (
+          <Button label="Walk this off" tone="quiet" onPress={() => router.push('/craving-walk' as never)} />
+        ) : null}
         <Button label="Open the map" tone="quiet" onPress={() => router.push('/outside-map' as never)} />
         <T variant="muted">Footpaths come from OpenStreetMap, drawn with OpenFreeMap. The credit stays on the map.</T>
       </Card>

@@ -54,7 +54,7 @@ export const ROUTE_CONSENT_DEVICE_LINE =
   'This choice is stored on this phone only. Another phone starts off. Nothing is shared.';
 
 export const ROUTE_NOT_NOW_LINE =
-  'Not now leaves Get Outside, saved routes, and the map working.';
+  'Not now leaves Outside is Good, saved routes, and the map working.';
 
 export const OSM_CONTRIBUTORS = '© OpenStreetMap contributors';
 

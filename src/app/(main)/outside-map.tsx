@@ -2,6 +2,7 @@ import { useState } from 'react';
 
 import { useRepository, useSnapshot } from '@/data';
 import { shownError } from '@/domain/errors';
+import { OUTSIDE_SECTION_LABEL } from '@/domain/outsideSection';
 import { routeKindLabel, routeSummary, type OutdoorPoint } from '@/domain/outdoorRoute';
 import { LOCATION_FIX_MESSAGE, LOCATION_FIX_PENDING, readWhileUsingFix } from '@/location/whileUsing';
 import { FootpathMap } from '@/ui/FootpathMap';
@@ -42,7 +43,7 @@ export default function OutsideMap() {
   }
 
   return (
-    <Screen eyebrow="Get Outside" title="Saved routes" intro="Footpaths from OpenStreetMap. A saved line stays on your account.">
+    <Screen eyebrow={OUTSIDE_SECTION_LABEL} title="Saved routes" intro="Footpaths from OpenStreetMap. A saved line stays on your account.">
       <Card>
         <FootpathMap routes={routes} sketch={[]} here={here} />
         {locating ? (
