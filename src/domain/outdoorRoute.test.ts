@@ -1,4 +1,5 @@
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync, statSync } from 'node:fs';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 import { APP_SECTIONS, TAB_SECTIONS, menuSectionActive } from '@/domain/sections';
@@ -102,11 +103,11 @@ describe('Get Outside phase 1', () => {
     expect(readFileSync('src/domain/outdoorRoute.ts', 'utf8')).not.toMatch(/plan only|When it is added|not in this version/i);
   });
 
-  it('asks for while-in-use location only and sets build 69', () => {
+  it('asks for while-in-use location only and sets build 70', () => {
     const app = JSON.parse(readFileSync('app.json', 'utf8')) as {
       expo: { ios: { buildNumber: string; infoPlist?: Record<string, unknown> }; android?: { permissions?: string[] }; plugins: unknown[] };
     };
-    expect(app.expo.ios.buildNumber).toBe('69');
+    expect(app.expo.ios.buildNumber).toBe('70');
     const location = app.expo.plugins.find((plugin) => Array.isArray(plugin) && plugin[0] === 'expo-location') as
       | [string, Record<string, unknown>]
       | undefined;
@@ -114,7 +115,7 @@ describe('Get Outside phase 1', () => {
       locationWhenInUsePermission: LOCATION_WHEN_IN_USE,
       locationAlwaysAndWhenInUsePermission: false,
       locationAlwaysPermission: false,
-      motionUsagePermission: false,
+      motionUsagePermission: "Charioteer does not use your motion or fitness data. The map component in the app can reference motion sensors, so Apple requires this note.",
       isIosBackgroundLocationEnabled: false,
       isAndroidBackgroundLocationEnabled: false,
       isAndroidForegroundServiceEnabled: false,
@@ -126,7 +127,9 @@ describe('Get Outside phase 1', () => {
     const reader = readFileSync('src/location/whileUsing.ts', 'utf8');
     expect(reader).toContain('requestForegroundPermissionsAsync');
     expect(reader).toContain('getCurrentPositionAsync');
-    expect(reader).not.toMatch(/requestBackground|startLocationUpdates|watchPosition|ActivityRecognition|getMotionActivity/);
+    expect(reader).not.toMatch(/requestBackground|startLocationUpdates|watchPosition|ActivityRecognition|getMotionActivity|Pedometer|CMMotion|CMPedometer/);
+    const appCode = readAppSource('src');
+    expect(appCode).not.toMatch(/getMotionActivityAsync|watchMotionActivityAsync|Pedometer|CMPedometer|CMMotionActivity|CMMotionManager|useAnimatedSensor|expo-sensors|startActivityUpdatesAsync|ActivityRecognition/);
     const screens = ['src/app/(main)/home.tsx', 'src/app/(main)/breathe.tsx', 'src/ui/WalkThisOff.tsx'].map((path) => readFileSync(path, 'utf8')).join('\n');
     expect(screens).toContain('Walk this off');
     expect(screens).toContain('OUTSIDE_SAFETY_LINE');
@@ -144,5 +147,18 @@ describe('Get Outside phase 1', () => {
     expect(readFileSync('docs/privacy.html', 'utf8')).toContain('while the map is open');
     expect(readFileSync('docs/dpia-location.md', 'utf8')).toContain('while using');
     expect(readFileSync('docs/store-privacy-labels.md', 'utf8')).toContain('Precise Location');
+    const motionNote = "Charioteer does not use your motion or fitness data. The map component in the app can reference motion sensors, so Apple requires this note.";
+    expect(readFileSync('docs/privacy.md', 'utf8')).toContain(motionNote);
+    expect(readFileSync('docs/store-privacy-labels.md', 'utf8')).toContain(motionNote);
+    expect(readFileSync('docs/store-privacy-labels.md', 'utf8')).toContain('never reads motion or fitness-activity data');
   });
 });
+
+function readAppSource(dir: string): string {
+  return readdirSync(dir).flatMap((name) => {
+    const path = join(dir, name);
+    if (statSync(path).isDirectory()) return [readAppSource(path)];
+    if (!/\.(ts|tsx)$/.test(name) || name.endsWith('.test.ts') || name.endsWith('.test.tsx')) return [];
+    return [readFileSync(path, 'utf8')];
+  }).join('\n');
+}

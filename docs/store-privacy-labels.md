@@ -1,6 +1,6 @@
 # Store privacy labels for location
 
-Notes for the App Store privacy questionnaire and the Google Play Data safety form. They are not submitted. Confirm them in each console before build 69 is uploaded.
+Notes for the App Store privacy questionnaire and the Google Play Data safety form. They are not submitted. Confirm them in each console before build 70 is uploaded.
 
 ## Apple App Store
 
@@ -12,7 +12,9 @@ Add one data type for this feature:
 - Not used for tracking
 - Not used for third-party advertising
 
-The purpose string on the device is while-in-use only: `NSLocationWhenInUseUsageDescription`. Do not add `NSLocationAlwaysAndWhenInUseUsageDescription` or `NSLocationAlwaysUsageDescription`. Do not add a motion purpose string for this feature.
+The purpose string on the device is while-in-use only: `NSLocationWhenInUseUsageDescription`. Do not add `NSLocationAlwaysAndWhenInUseUsageDescription` or `NSLocationAlwaysUsageDescription`.
+
+`NSMotionUsageDescription` is present only to satisfy Apple's static check. The sentence is: "Charioteer does not use your motion or fitness data. The map component in the app can reference motion sensors, so Apple requires this note." The app never reads motion or fitness-activity data. Do not add a Fitness or Motion data type. Do not turn on Android motion activity.
 
 The calendar purpose string from build 68 stays. This feature does not add a photo purpose string.
 
