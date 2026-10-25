@@ -17,9 +17,14 @@ const MONTHLY_MODERATE_MINUTES = scaledPeriodTarget(150, '30');
 
 export const RESTING_NOT_ADVICE = 'This is not a diagnosis and not medical advice.';
 
-/** Kept on the card, including the urgent and crisis lines. */
+/** The one advice line on a Stats chart. The longer care block stays in More info. */
+export const CARD_NOT_ADVICE = 'Not medical advice. Not a diagnosis.';
+
+/** Kept for More info. It is not repeated on the card, except the dangerous contact line. */
 export const RESTING_CARE =
-  'Not medical advice. This is not a diagnosis. If you need advice, contact your GP or NHS 111. Call 999 if you have chest pain, shortness of breath, or feel faint. Samaritans 116 123.';
+  'If you need advice, contact your GP or NHS 111. Call 999 if you have chest pain, shortness of breath, or feel faint. Samaritans 116 123.';
+
+export const RESTING_CARD_CARE = 'Contact your GP or NHS 111.';
 
 export type RestingReading = { day: string; bpm: number };
 export type RestingActivityDay = { day: string; moderateMinutes: number; vigorousMinutes: number };
@@ -35,14 +40,20 @@ export type RestingFitnessInput = {
 
 export type RestingTier = 'early' | 'reassuring' | 'might' | 'unhealthy' | 'dangerous';
 
+export type RestingInfoSection = { heading: string; body: string };
+
 export type RestingFitnessComment = {
   tier: RestingTier;
   /** Bright warning only for a sustained rate above the NHS usual range. */
   warning: boolean;
-  /** Full sentence for the chart, including the diagnosis line. */
-  text: string;
-  /** Same reading without a second “not medical advice”, for a tile that already shows one. */
+  /** One short sentence for the card. It does not repeat the advice line. */
+  verdict: string;
+  /** Short blocks for More info. */
+  sections: readonly RestingInfoSection[];
+  /** Joined detail for a sheet that already shows one advice line. */
   note: string;
+  /** Detail plus the diagnosis line. The card uses `verdict` instead. */
+  text: string;
 };
 
 function shiftDay(day: string, delta: number): string {
@@ -67,14 +78,42 @@ function average(values: readonly number[]): number {
   return values.reduce((sum, value) => sum + value, 0) / values.length;
 }
 
-function comment(tier: RestingTier, warning: boolean, note: string, trend: string): RestingFitnessComment {
-  const body = [note, trend].filter(Boolean).join(' ');
+function comment(
+  tier: RestingTier,
+  warning: boolean,
+  verdict: string,
+  sections: readonly RestingInfoSection[],
+  trend: string,
+): RestingFitnessComment {
+  const blocks = trend ? [...sections, { heading: 'Across the month', body: trend }] : [...sections];
+  const note = blocks.map((section) => section.body).join(' ');
   return {
     tier,
     warning,
-    note: body,
-    text: `${body} ${RESTING_NOT_ADVICE}`,
+    verdict,
+    sections: blocks,
+    note,
+    text: note ? `${note} ${RESTING_NOT_ADVICE}` : RESTING_NOT_ADVICE,
   };
+}
+
+function shownBpm(days: readonly RestingReading[]): number | null {
+  if (!days.length) return null;
+  const ordered = [...days].sort((left, right) => left.day.localeCompare(right.day));
+  return ordered[ordered.length - 1]?.bpm ?? null;
+}
+
+/** Names the latest reading. Under 60 is mentioned only when that reading is under 60. */
+function earlyVerdict(bpm: number | null): string {
+  if (bpm == null || !Number.isFinite(bpm)) return "There isn't enough data yet for a month view.";
+  const shown = Math.round(bpm);
+  if (shown < NHS_RESTING_LOW) {
+    return "There isn't enough data yet for a month view. A reading under 60 bpm might need a closer look.";
+  }
+  if (shown > NHS_RESTING_HIGH) {
+    return `There isn't enough data yet for a month view, and ${shown} bpm is above the usual adult range of 60-100 bpm (NHS).`;
+  }
+  return `There isn't enough data yet for a month view, and ${shown} bpm is within the usual adult range of 60-100 bpm (NHS).`;
 }
 
 function trendSentence(readings: readonly RestingReading[]): string {
@@ -122,10 +161,15 @@ export function restingFitnessComment(input: RestingFitnessInput): RestingFitnes
   for (const row of readings) byDay.set(row.day, row.bpm);
   const days = [...byDay.entries()].map(([day, bpm]) => ({ day, bpm }));
   if (days.length < RESTING_RELIABLE_DAYS) {
+    const latest = shownBpm(days);
     return comment(
       'early',
       false,
-      "There are fewer than about two weeks of resting readings, so the monthly view isn't reliable yet. A single reading is not used.",
+      earlyVerdict(latest),
+      [{
+        heading: 'The month',
+        body: "Fewer than about two weeks of resting readings, so a month view isn't reliable yet. A single reading is not used.",
+      }],
       '',
     );
   }
@@ -136,38 +180,74 @@ export function restingFitnessComment(input: RestingFitnessInput): RestingFitnes
   const sustainedHigh = highDays >= 7 && highDays > values.length / 2 && mid > NHS_RESTING_HIGH;
   const sustainedLow = lowDays >= 7 && lowDays > values.length / 2 && mid < NHS_RESTING_LOW;
   const trend = trendSentence(days);
+  const latest = shownBpm(days);
+  const lowReading = latest != null && latest < NHS_RESTING_LOW;
   if (sustainedHigh) {
     return comment(
       'dangerous',
       true,
-      'These resting readings have stayed above 100 bpm across the last month. That is outside the usual adult range of 60 to 100 bpm published by the NHS. Contact your GP or NHS 111. If you also have chest pain, shortness of breath, or feel faint, call 999. This might be a sustained fast resting rate. It is consistent with that pattern. It is not a comment on one reading.',
+      'These resting readings have stayed above 100 bpm.',
+      [
+        {
+          heading: 'The month',
+          body: 'These resting readings have stayed above 100 bpm across the last month. That is outside the usual adult range of 60 to 100 bpm published by the NHS. This might be a sustained fast resting rate. It is consistent with that pattern. It is not a comment on one reading.',
+        },
+        {
+          heading: 'If you need help',
+          body: 'Contact your GP or NHS 111. If you also have chest pain, shortness of breath, or feel faint, call 999. Samaritans 116 123.',
+        },
+      ],
       trend,
     );
   }
-  if (sustainedLow) {
+  if (sustainedLow || lowReading) {
     const fitness = fitnessMatch(input, input.today);
+    const activityBody = fitness.activityReady
+      ? 'The last month of exercise is below the UK guide of about 150 minutes of moderate activity a week, spread through the week, or the cardio-fitness figure is not in the upper half of the published band.'
+      : "There are fewer than about two weeks of exercise readings, so this is not used as a sign of fitness.";
+    const sections: RestingInfoSection[] = [
+      {
+        heading: 'Fitness',
+        body: fitness.matched
+          ? 'A low resting heart rate like this might be normal. It is consistent with exercising most days and the cardio fitness you have recorded.'
+          : activityBody,
+      },
+      {
+        heading: 'Activity',
+        body: 'The UK guide is about 150 minutes of moderate activity a week, spread through the week.',
+      },
+      {
+        heading: 'A practical step',
+        body: 'Build toward that activity guide if a doctor says it is suitable, and seek professional guidance from your GP.',
+      },
+    ];
     if (fitness.matched) {
       return comment(
         'might',
         false,
-        'A low resting heart rate like this might be normal. It is consistent with exercising most days and the cardio fitness you have recorded.',
+        'A low resting rate might be normal with your exercise and cardio fitness.',
+        sections,
         trend,
       );
     }
-    const activityLine = fitness.activityReady
-      ? 'The last month of exercise is below the UK guide of about 150 minutes of moderate activity a week, spread through the week, or the cardio-fitness figure is not in the upper half of the published band.'
-      : "There are fewer than about two weeks of exercise readings, so the monthly activity view isn't reliable yet. This is not used as a sign of fitness.";
     return comment(
-      'unhealthy',
+      sustainedLow ? 'unhealthy' : 'might',
       false,
-      `A resting rate that stays under 60 bpm might need a closer look. ${activityLine} A practical step is to build toward that activity guide if a doctor says it is suitable, and to seek professional guidance from your GP.`,
+      sustainedLow
+        ? 'A resting rate that stays under 60 bpm might need a closer look.'
+        : 'A reading under 60 bpm might need a closer look.',
+      sections,
       trend,
     );
   }
   return comment(
     'reassuring',
     false,
-    'These resting readings sit in the usual adult range of 60 to 100 bpm, or they have not stayed outside it. A single reading is not used.',
+    'These readings sit in the usual adult range of 60-100 bpm.',
+    [{
+      heading: 'The month',
+      body: 'These resting readings sit in the usual adult range of 60 to 100 bpm, or they have not stayed outside it. A single reading is not used.',
+    }],
     trend,
   );
 }

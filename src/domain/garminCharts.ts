@@ -18,8 +18,8 @@ import type {
 } from '@/domain/garminConnect';
 import { publishedCardioBand } from '@/domain/fitnessSnapshot';
 import type { NutritionSex } from '@/domain/nutrition';
-import type { RestingFitnessComment } from '@/domain/restingFitness';
-import { RESTING_CARE } from '@/domain/restingFitness';
+import type { RestingFitnessComment, RestingInfoSection } from '@/domain/restingFitness';
+import { RESTING_CARE, RESTING_CARD_CARE } from '@/domain/restingFitness';
 import { periodDayCount, periodPhrase, scaledPeriodTarget, type StatPeriod } from '@/domain/statWindow';
 import { chartDays } from '@/domain/workoutDay';
 
@@ -50,7 +50,7 @@ export const BODY_BATTERY_ZONES = '0–25 very low, 26–50 low, 51–75 medium,
 export const BODY_BATTERY_WHAT =
   "Body Battery is Garmin's own 0–100 estimate of your energy reserve through the day. The watch works it out from heart rate variability, stress, sleep and activity.";
 
-/** Visible on Average stress. Crisis lines stay on the card, not inside More info. */
+/** Full care block for Average stress. Shown inside More info, with the card line left as the short advice sentence. */
 export const STRESS_CARE =
   'If you feel persistently low, anxious, or unable to cope, speak to your GP or NHS 111. If you are in crisis or at risk of harm, call 999 or the Samaritans on 116 123.';
 
@@ -103,8 +103,14 @@ export type ChartGuide = {
   legend: string;
   about: string;
   outside: string | null;
-  /** Urgent care. Shown on the card, never inside More info. */
+  /** One short sentence on the card. Longer notes stay in More info. */
+  verdict?: string | null;
+  /** Short blocks inside More info. */
+  sections?: readonly RestingInfoSection[];
+  /** Full care block. Shown inside More info, not on the card. */
   care?: string | null;
+  /** Dangerous resting tier only. Stays on the yellow warning. */
+  cardCare?: string | null;
   /** Sustained resting rate above the NHS usual range. Draws the yellow warning. */
   warning?: boolean;
 };
@@ -181,7 +187,10 @@ function advised(about: string, extra: Partial<ChartGuide> = {}): ChartGuide {
     legend: '',
     about: body,
     outside: extra.outside ?? null,
+    verdict: extra.verdict ?? null,
+    sections: extra.sections ?? [],
     care: extra.care ?? null,
+    cardCare: extra.cardCare ?? null,
     warning: extra.warning ?? false,
   };
 }
@@ -250,12 +259,17 @@ export function restingChartGuide(
 ): ChartGuide {
   const band = { low: RESTING_TYPICAL_LOW, high: RESTING_TYPICAL_HIGH };
   return advised(
-    `Resting heart rate is the beats per minute stored for that day, from Garmin or Apple Health. The lime band is the usual adult range of ${RESTING_TYPICAL_LOW}–${RESTING_TYPICAL_HIGH} bpm published by the NHS, for ${grouped(period)}. It is not adjusted for age. A comment uses the last month of readings, not one day. It is a reference, not a diagnosis.`,
+    `Resting heart rate is the beats per minute stored for that day, from Garmin or Apple Health. The lime band is the usual adult range of ${RESTING_TYPICAL_LOW}–${RESTING_TYPICAL_HIGH} bpm published by the NHS, for ${grouped(period)}. It is not adjusted for age. A comment uses the last month of readings, not one day.`,
     {
       dailyTypical: band,
       periodTypical: band,
-      outside: fitness?.text ?? null,
+      verdict: fitness?.verdict ?? null,
+      sections: [
+        { heading: 'What this shows', body: 'The lime band is a reference, not a diagnosis. It is not adjusted for age.' },
+        ...(fitness?.sections ?? []),
+      ],
       warning: fitness?.warning ?? false,
+      cardCare: fitness?.warning ? RESTING_CARD_CARE : null,
       care: fitness ? RESTING_CARE : null,
     },
   );

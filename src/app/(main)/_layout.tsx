@@ -13,6 +13,7 @@ import { useAppTheme } from '@/ui/theme';
 import { topSafeInset } from '@/ui/safeArea';
 import { MessageNotificationPrompt } from '@/ui/MessageNotificationPrompt';
 import { SectionDrawer } from '@/ui/SectionDrawer';
+import { HeaderShareButton } from '@/ui/SharePhotoCard';
 import { Mark, ShellInsetProvider, T, Wordmark } from '@/ui/ui';
 
 function selected(pathname: string, href: string) {
@@ -76,6 +77,7 @@ export default function MainLayout() {
       {wide ? (
         <View style={[styles.rail, { backgroundColor: theme.colors.surface, borderRightColor: theme.colors.line, paddingTop: topSafeInset(insets.top) + 8 }]}>
           {menuButton}
+          <HeaderShareButton />
           {brand}
           <T variant="muted" style={{ marginTop: 4, marginBottom: 18 }}>Hold the reins.</T>
           {TAB_SECTIONS.map((tab) => (
@@ -94,6 +96,7 @@ export default function MainLayout() {
           <View style={styles.mobileBrand}>
             {menuButton}
             {brand}
+            <HeaderShareButton />
           </View>
           <Pressable accessibilityRole="button" accessibilityLabel="Your profile" onPress={() => go('/profile')}>
             <T variant="body" style={{ fontFamily: theme.font.bodyStrong }}>You</T>

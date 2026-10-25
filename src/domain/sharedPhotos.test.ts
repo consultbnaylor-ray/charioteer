@@ -11,8 +11,12 @@ import {
   LIBRARY_USAGE,
   SAVE_PHOTOS_USAGE,
   SHARED_PHOTOS_LABEL,
+  GRATITUDE_DIARY_TICK,
+  GRATITUDE_ONLY_LABEL,
+  GRATITUDE_SAVED_LABEL,
   buddyMaySave,
   filterSharedPhotos,
+  sharePhotoButtonLabel,
   sharedPhotoWhen,
   shouldAutoSaveToAlbum,
   splitSharedPhotos,
@@ -66,6 +70,32 @@ describe('Shared Photos folder', () => {
     expect(filterSharedPhotos(split.sent, 'Catherine').map((row) => row.id)).toEqual(['sent-later']);
     expect(filterSharedPhotos(split.sent, 'Emma').map((row) => row.id)).toEqual(['sent-earlier']);
     expect(filterSharedPhotos([sent, received], null)).toHaveLength(2);
+  });
+
+  it('saves to Gratitude on its own and keeps the header camera on the existing photo flow', () => {
+    expect(sharePhotoButtonLabel(2, false)).toBe('Send');
+    expect(sharePhotoButtonLabel(2, true)).toBe('Send');
+    expect(sharePhotoButtonLabel(0, true)).toBe('Save');
+    expect(sharePhotoButtonLabel(0, false)).toBe('Send');
+    expect(GRATITUDE_DIARY_TICK).toBe('Also save to my Gratitude diary');
+    expect(GRATITUDE_ONLY_LABEL).toBe('No one, just save to Gratitude');
+    expect(GRATITUDE_SAVED_LABEL).toBe('Saved to Gratitude');
+    const sheet = readFileSync('src/ui/SharePhotoCard.tsx', 'utf8');
+    expect(sheet).toContain('const [diary, setDiary] = useState(false)');
+    expect(sheet).toContain('{GRATITUDE_DIARY_TICK}');
+    expect(sheet).toContain('{GRATITUDE_ONLY_LABEL}');
+    expect(sheet).toContain('{GRATITUDE_SAVED_LABEL}');
+    expect(sheet).toContain('addGratitudeEntry');
+    expect(sheet).toContain('addGratitudePhoto');
+    expect(sheet).toContain('No accepted buddies yet. You can still save this photo to your Gratitude diary.');
+    expect(sheet).toContain('accessibilityLabel="Share a photo"');
+    expect(sheet).not.toMatch(/NSCameraUsageDescription|NSPhotoLibraryUsageDescription/);
+    const layout = readFileSync('src/app/(main)/_layout.tsx', 'utf8');
+    expect(layout).toContain('<HeaderShareButton />');
+    expect(layout).toContain('accessibilityLabel="Your profile"');
+    const app = readFileSync('app.json', 'utf8');
+    expect(app).toContain(CAMERA_USAGE);
+    expect(app).toContain(LIBRARY_USAGE);
   });
 
   it('lets a buddy save only when the sender allowed it, and never saves a received photo on its own', () => {

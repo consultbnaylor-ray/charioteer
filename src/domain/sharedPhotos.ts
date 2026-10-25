@@ -14,6 +14,18 @@ export const SHARED_PHOTOS_LABEL = 'Shared Photos';
 
 export const ONLY_CHOSEN_NOTE = 'Only the buddies you choose can see this. Not the Community.';
 
+/** Quick-photo sheet. Off until the person ticks it. */
+export const GRATITUDE_DIARY_TICK = 'Also save to my Gratitude diary';
+
+export const GRATITUDE_ONLY_LABEL = 'No one, just save to Gratitude';
+
+export const GRATITUDE_SAVED_LABEL = 'Saved to Gratitude';
+
+/** Send when at least one buddy is included. Save when the photo goes to the diary only. */
+export function sharePhotoButtonLabel(buddyCount: number, gratitude: boolean): 'Send' | 'Save' {
+  return buddyCount === 0 && gratitude ? 'Save' : 'Send';
+}
+
 /** A named album needs a library read on this SDK, so Save does not create one. */
 export const ALBUM_HONEST_NOTE =
   'A named Charioteer album cannot be created without reading your photo library. Save adds the photo to your library.';

@@ -58,7 +58,22 @@ describe('resting heart rate and fitness', () => {
     });
     expect(oneLow.tier).toBe('early');
     expect(oneLow.text).toContain("isn't reliable yet");
+    expect(oneLow.verdict).toContain('under 60 bpm might need a closer look');
+    expect(oneLow.verdict).not.toMatch(/not used as a sign of fitness/);
     expect(oneLow.text).not.toMatch(/might be normal|GP or NHS 111/);
+
+    const short = restingFitnessComment({
+      today,
+      resting: days(8, 64),
+      activity: [],
+      vo2Max: null,
+      age: 42,
+      sex: 'male',
+    });
+    expect(short.tier).toBe('early');
+    expect(short.verdict).toBe("There isn't enough data yet for a month view, and 64 bpm is within the usual adult range of 60-100 bpm (NHS).");
+    expect(short.verdict).not.toMatch(/under 60/i);
+    expect(`${short.verdict} ${short.text}`).not.toMatch(/not used as a sign of fitness/i);
 
     const oneHigh = restingFitnessComment({
       today,

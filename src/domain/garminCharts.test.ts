@@ -338,10 +338,14 @@ describe('garmin chart bands', () => {
       expect(guide.about).not.toContain(GENERAL_GUIDANCE);
     }
     const activity = readFileSync('src/ui/DailyActivity.tsx', 'utf8');
-    const careAt = activity.indexOf('guide?.care');
+    const careAt = activity.indexOf('<CareLine text={guide.care}');
     const moreAt = activity.indexOf('<MoreInfo about={title}');
-    expect(careAt).toBeGreaterThan(-1);
-    expect(careAt).toBeLessThan(moreAt);
+    const warningAt = activity.indexOf('guide?.warning');
+    expect(careAt).toBeGreaterThan(moreAt);
+    expect(warningAt).toBeGreaterThan(-1);
+    expect(warningAt).toBeLessThan(moreAt);
+    expect(activity).toContain('Not medical advice. Not a diagnosis.');
+    expect(activity).toContain('guide.verdict');
     expect(activity).toContain('crisisHelplines');
     expect(activity).toContain("title === 'Average stress'");
   });

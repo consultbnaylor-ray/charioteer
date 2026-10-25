@@ -445,6 +445,21 @@ function StressActions() {
   );
 }
 
+function readingLine(scale: string | null, source: string | null): string | null {
+  const line = [scale, source].filter((part): part is string => Boolean(part)).join(' ');
+  return line || null;
+}
+
+/** The first short sentence, when a chart has no verdict of its own. */
+function chartVerdict(guide: ChartGuide | null): string | null {
+  if (!guide) return null;
+  if (guide.verdict) return guide.verdict;
+  if (!guide.outside) return null;
+  const first = guide.outside.split(/(?<=\.)\s/)[0]?.trim() ?? '';
+  if (!first || first.split(/\s+/).length > 22) return null;
+  return first;
+}
+
 function mostDistance(points: readonly { value: number }[]): string | null {
   const most = points.reduce((max, point) => Math.max(max, point.value), 0);
   if (most <= 0) return null;
@@ -508,16 +523,22 @@ function ActivityBars({
   const body = (
     <>
       {icon ? <IconLabel name={icon}>{title}</IconLabel> : <T variant="label">{title}</T>}
-      {scaleLine ? <T variant="muted">{scaleLine}</T> : null}
-      {garminNote ? <T variant="muted">{garminNote}</T> : null}
+      {readingLine(scaleLine, garminNote) ? <T variant="muted">{readingLine(scaleLine, garminNote)}</T> : null}
       {guide?.target?.label ? <T variant="muted">{guide.target.label}</T> : null}
       {guide?.ownAverage?.label ? <T variant="muted">{guide.ownAverage.label}</T> : null}
-      {guide?.warning && guide.outside ? <RestingWarning text={guide.outside} /> : null}
-      {guide?.outside && !guide.warning ? <T>{guide.outside}</T> : null}
-      {guide?.care ? <CareLine text={guide.care} /> : null}
-      {explanation.length > 0 ? (
-        <MoreInfo about={title} summary="Not medical advice.">
+      {guide?.warning ? <RestingWarning text={guide.cardCare || 'Contact your GP or NHS 111.'} /> : null}
+      {chartVerdict(guide) ? <T>{chartVerdict(guide)}</T> : null}
+      {explanation.length > 0 || (guide?.sections?.length ?? 0) > 0 || guide?.care || guide?.outside ? (
+        <MoreInfo about={title} summary="Not medical advice. Not a diagnosis.">
+          {(guide?.sections ?? []).map((section) => (
+            <View key={section.heading} style={{ gap: 4 }}>
+              <T variant="label">{section.heading}</T>
+              <T variant="muted">{section.body}</T>
+            </View>
+          ))}
           {explanation.map((line) => <T key={line.slice(0, 48)} variant="muted">{line}</T>)}
+          {guide?.outside && guide.outside !== chartVerdict(guide) ? <T variant="muted">{guide.outside}</T> : null}
+          {guide?.care ? <CareLine text={guide.care} /> : null}
           {title === 'Average stress' ? <StressActions /> : null}
         </MoreInfo>
       ) : null}
