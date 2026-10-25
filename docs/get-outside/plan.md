@@ -1,10 +1,10 @@
 # Get Outside
 
-Plan only. Ben has said go, and has placed the section in the top-left hamburger menu. This file does not add a screen, a map library, a permission, or an API key. It is not part of build 66. Nothing here is shipped.
+Plan only. Ben has said go, and has placed the section in the top-left hamburger menu. This file does not add a screen, a map library, a permission, or an API key. Nothing here is shipped.
 
-Phase 1 is built later, as its own binary, after two things are true: build 66’s content is finished, and Ben has approved this plan. That binary is build 67. See [Build number](#build-number) before anyone bumps `app.json`.
+Phase 1 is built later, as its own binary, after Ben has approved this plan and the map choice in [map-decision.md](map-decision.md). It takes the next free build number. It does not reuse 67 or 68. See [Build number](#build-number) before anyone bumps `app.json`.
 
-Prices and licence notes below were read from the vendors’ public pages on 25 October 2026. They exclude VAT where the page says so. Confirm them again before a key is created or a bill is accepted.
+Prices, free limits, and licence notes were read from the vendors’ public pages on 25 October 2026 and written up in the decision sheet. They exclude VAT where the page says so. Confirm them again before a key is created or a bill is accepted. If this file and the decision sheet disagree, use the decision sheet.
 
 ## What Ben has already decided
 
@@ -100,11 +100,25 @@ Layout proofs (drawn, not the real app):
 
 ![Layout proof. A drawn loop on a stand-in map, with the safety line and OpenStreetMap attribution.](layout-map-dark.png)
 
+Phase 1 screens, drawn in a browser as dark layout proofs. They are not screenshots of the running app. The map is a drawing, not a live tile. The source page is [phase1-proofs.html](phase1-proofs.html).
+
+![Phase 1 proof. Menu drawer, dark. Get Outside sits under Workouts and above Progress photos. The six tabs are unchanged.](phase1-menu-dark.png)
+
+![Phase 1 proof. Get Outside home, dark. Safety line, NHS 111 and 999, location optional, Walk this off.](phase1-home-dark.png)
+
+![Phase 1 proof. Map, dark. Drawn footpaths, a saved route, attribution, and the safety line.](phase1-map-dark.png)
+
+![Phase 1 proof. Craving walk, dark. A labelled sketch. Location only while the page is open.](phase1-craving-dark.png)
+
+![Phase 1 proof. Today, dark. Walk this off, with the safety line.](phase1-today-dark.png)
+
+![Phase 1 proof. Breathe, dark. Walk this off after the exercise, with the safety and crisis lines.](phase1-breathe-dark.png)
+
 ## Phased build
 
-Effort is described by the pieces that change, not by calendar time. Each phase is its own review. None of them is build 66.
+Effort is described by the pieces that change, not by calendar time. Each phase is its own review. None of them is the calendar binary.
 
-### Phase 1 — build 67, after this plan is approved
+### Phase 1 — the first Get Outside binary, after this plan is approved
 
 The smallest useful version.
 
@@ -149,7 +163,7 @@ One link to [https://www.parkrun.org.uk/](https://www.parkrun.org.uk/). Opens ou
 
 ### Later, not a phase of this page yet
 
-- Add to Calendar on a planned route, through the system sheet, with no calendar permission and no purpose string.
+- Add to Calendar on a planned route, through the system sheet. Get Outside does not add a calendar purpose string. The workout calendar sentence already lives on another branch.
 - Garmin course upload, behind its own review.
 
 ## Maps
@@ -169,40 +183,14 @@ The v11 screen component is `Map` with a `mapStyle`. It is not the older `MapVie
 
 The existing Apple Health route viewer (`react-native-maps` on iOS) stays as it is. It shows a workout the phone already has. It does not show a live location, and Get Outside does not reuse it for footpaths.
 
-### Tiles
+### Tiles and routing
 
-OpenStreetMap’s own tile server (`tile.openstreetmap.org`) is donation-funded. It has no service agreement. Its policy forbids bulk download, prefetch, and offline use, and it blocks heavy apps and generic user agents. It is not a source for this app.
+The checked prices, free limits, licences, and the recommendation are in [map-decision.md](map-decision.md). Read that before approving a provider.
 
-Attribution is required on the map itself: **© OpenStreetMap contributors**, plus the style provider’s credit. MapLibre’s attribution control is the right place. A settings screen is not a substitute.
-
-| Provider | Price read on 25 Oct 2026 | Allowance | Commercial | Notes |
-| --- | --- | --- | --- | --- |
-| OpenFreeMap public instance | £0, no key | Fair use of a shared server. No SLA. Offline packs capped at 3,000 tiles or 50 MB, at most 4 at once, with a unique user agent. | Allowed | Credit: “OpenFreeMap © OpenMapTiles Data from OpenStreetMap”. Project code is MIT. The map data is still under the OpenStreetMap licence (ODbL). No cookies, no account. |
-| Stadia Free | $0 | 200,000 credits. A vector tile is 1 credit. | No | 14-day Professional trial, then the free plan. |
-| Stadia Starter | $20 / month | 1,000,000 credits, then 3¢ per 1,000 if overage is turned on | Yes | Overage is opt-in, so a spike does not bill itself. |
-| Stadia Standard | $80 / month | 7,500,000, then 2¢ per 1,000 opt-in | Yes | |
-| Stadia Professional | $250 / month | 25,000,000, then 1.5¢ per 1,000 opt-in | Yes | |
-| MapTiler Free | $0 | 5,000 sessions a month, or 100,000 API requests a month | No | A third-party SDK such as MapLibre is billed as tile requests, not as the session allowance. |
-| MapTiler Flex | $30 / month, before VAT | 500,000 API requests, then $0.15 per 1,000, and the overage turns on by itself | Yes | The Flex session bundle (25,000 a month) does not cover MapLibre tile loads. |
-| Thunderforest Hobby | £0 | 150,000 tiles | The hobby project terms | Outdoors style is the reason to look at it. |
-| Thunderforest Solo | $125 or €115, before VAT | 1,500,000 tiles | Yes, solo | |
-| Thunderforest Small Business | $255 or €235, before VAT | 15,000,000 tiles | Yes | |
-| Thunderforest Large | $525 or €475, before VAT | The page did not state a numeric quota | Yes | Confirm the quota before choosing it. |
-
-Recommendation: draw phase 1 on **OpenFreeMap**, so no tile key exists and the prototype can be shown. Before a public launch, move to **Stadia Starter** ($20 / month, commercial, opt-in overage). Choose Thunderforest only if the outdoors colouring is worth the higher bill. Do not use MapTiler’s session numbers as the budget for a MapLibre app.
-
-### Routing
-
-HeiGIT’s OpenRouteService plans page, read the same day:
-
-- Standard is €0. The plans page allows commercial use. Read the terms again before a key exists. HeiGIT does not give legal advice on the licence.
-- Directions V2: 2,000 requests a day and 40 a minute.
-- Geocoding: 3,000 requests a day and 100 a minute.
-- Results are under CC-BY-SA 4.0. A solicitor should say whether a route shown in the app, and a route saved in the account, can be used under that licence. Do not assume it.
-- A precise GPS trace is personal data. The personal-data clause in their terms needs the same review before any trace leaves the phone. If that review says no, self-host the walking graph for the UK instead. Self-hosting has no vendor quota and keeps the trace in our own network.
-- Call `api.heigit.org`. The older `api.openrouteservice.org` host is deprecated. Its quota drops to 10% from 27 August 2026, and the shutdown window published for it is 2–6 November 2026.
-- One key per person. The key lives only as a Supabase secret, read by an edge function. It is never in the app binary and never in an `EXPO_PUBLIC_` variable.
-- Phase 1 does not call this API. The craving walk is an on-device sketch until the review is done.
+- OpenStreetMap’s own tile server (`tile.openstreetmap.org`) stays off the list. Attribution for whichever host is chosen sits on the map itself, in MapLibre’s attribution control.
+- Draw phase 1 on **OpenFreeMap**. No tile key. Commercial use is allowed on their page. There is no service agreement, and they may stop the public instance without notice.
+- Before a public launch, **Stadia Starter** ($20 a month on their pricing page) is the paid tile plan in the recommendation. Thunderforest Solo is the outdoors-style alternative, at a higher bill, and only after both styles have been looked at for footpaths. MapTiler Free is non-commercial, and a MapLibre app on MapTiler is billed per tile request.
+- Phase 1 does not call a router. The craving walk is an on-device sketch until a solicitor has read OpenRouteService’s CC-BY-SA 4.0 results and the terms’ ban on sending personal data. The phone never holds a router key. Any later call uses `api.heigit.org`, from an edge function. The older host is deprecated. Two official shutdown dates are on record; the decision sheet cites both. If the solicitor says no, host the UK walking graph ourselves.
 
 Overpass and Waymarked Trails are a later way to prefer named paths. They are not required to draw or save a route. Do not add them in phase 1.
 
@@ -248,7 +236,7 @@ The app has no location purpose string today, and no `expo-location` dependency.
 - No background location, no “always”, no significant-change updates, no visit monitoring.
 - The system prompt is preceded by a plain sentence in the app: “Charioteer uses your location to draw a walk while this page is open. It is not tracked in the background, and it is not shared.”
 - The page works without a fix. Saved routes still open. The craving walk is the action that needs a fix, and it explains why before the prompt.
-- Purpose strings are added in that phase, in the same words as the sentence above. They are not added by this plan.
+- Purpose strings are added in that phase, in the same words as the sentence above. They are not added by this plan. The decision sheet says the same thing and stops short of `app.json`.
 - Privacy policy, the DPIA, and the App Store privacy labels change when location is added. The label is precise location, linked to the user, used for app functionality, not used for tracking. This plan is not that DPIA.
 - Routes are the owner’s data. They are not a community field and not a buddy field. A buddy sees a plan only after phase 4, and only the fields in that plan.
 
@@ -284,23 +272,23 @@ None are created or requested by this plan.
 
 ## Decisions still open
 
-1. **Tiles.** Recommendation: OpenFreeMap for the prototype, Stadia Starter before public launch.
-2. **Router.** Recommendation: do not send a GPS trace until a solicitor has read the CC-BY-SA terms and the personal-data clause. Phase 1 uses an on-device sketch. If the review fails, self-host the UK walking graph.
-3. **Budget.** The prototype is £0. The first commercial tile bill in this recommendation is Stadia Starter at $20 a month, before any tax.
+1. **Tiles.** Recommendation, with the figures in the decision sheet: OpenFreeMap for the prototype, Stadia Starter before public launch.
+2. **Router.** Recommendation: keep the GPS trace on the phone until a solicitor has read the CC-BY-SA terms and the personal-data clause. Phase 1 uses an on-device sketch. If the review fails, self-host the UK walking graph.
+3. **Budget.** The prototype tile bill in the recommendation is $0. The first commercial tile bill, if we leave OpenFreeMap, is Stadia Starter at $20 a month, before tax.
 4. **Shortcuts in the phase 1 binary.** Recommendation: Today and Breathe, as Ben named them. Thumos is the same button and was in the original brief; say yes or no.
 5. **Name.** Recommendation: keep Get Outside. Outside and Roadwork stay on the list above.
-6. **Build number.** See below.
+6. **Build number.** See below. This plan does not pick a number.
 
 ## Build number
 
-On this branch, `app.json` still has iOS build number **62**. Phase 1 of Get Outside is the work Ben wants called **build 67**, and it waits until build 66’s content is done and this plan is approved.
+On this branch, `app.json` still has iOS build number **62**. This plan does not change it, and it does not add a location purpose string.
 
-Separately, the calendar work on `cursor/buddies-pending-top-daf4` already set the iOS build number to 67, because adding the calendar module needs a new binary. If that binary is the one TestFlight receives first, Get Outside cannot reuse 67. It takes the next free build number. The plan stays off that branch either way.
+Build 68 is the calendar binary on `cursor/buddies-pending-top-daf4` (PR #31). That number is taken. An earlier draft of this file called Get Outside build 67. That draft is out of date. Get Outside takes the next free build number only after Ben approves a binary.
 
 ## What this change does not do
 
 - No screen, no dependency, no config plugin, no purpose string.
 - No API key, no Supabase secret, no edge function.
 - No migration applied, and no migration file yet.
-- No mixing into build 66.
+- No mixing into the calendar binary.
 - No shipping.
