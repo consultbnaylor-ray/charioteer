@@ -15,7 +15,8 @@ describe('Workouts in the side menu', () => {
     });
     expect(workouts?.tab).toBeUndefined();
     expect(labels.indexOf('Workouts')).toBe(labels.indexOf('Health Plan') + 1);
-    expect(labels.indexOf('Progress photos')).toBe(labels.indexOf('Workouts') + 1);
+    expect(labels.indexOf('Get Outside')).toBe(labels.indexOf('Workouts') + 1);
+    expect(labels.indexOf('Progress photos')).toBe(labels.indexOf('Get Outside') + 1);
     expect(TAB_SECTIONS).toHaveLength(6);
     expect(TAB_SECTIONS.map((section) => section.label)).not.toContain('Workouts');
     const buildNumber = JSON.parse(readFileSync('app.json', 'utf8')).expo.ios.buildNumber;

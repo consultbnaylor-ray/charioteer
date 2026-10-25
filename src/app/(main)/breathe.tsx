@@ -19,6 +19,7 @@ import {
 import { BREATH_EXERCISES, URGE_SURF_STEPS, type BreathExercise, type BreathPhase } from '@/features/exercises';
 import { breathPhaseFigure, urgeStepFigure } from '@/domain/measureFigures';
 import { MeasureRingView } from '@/ui/MeasuredFigure';
+import { WalkThisOff } from '@/ui/WalkThisOff';
 import { Button, Card, Choice, Screen, T } from '@/ui/ui';
 import { useAppTheme } from '@/ui/theme';
 
@@ -39,6 +40,7 @@ export default function Breathe() {
         </View>
       </Card>
       {selected === 'surf' ? <UrgeSurf /> : exercise ? <BreathRunner exercise={exercise} /> : null}
+      <WalkThisOff place="breathe" />
     </Screen>
   );
 }

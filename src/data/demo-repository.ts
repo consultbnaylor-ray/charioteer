@@ -35,6 +35,7 @@ import {
 } from '@/domain/buddies';
 import { convertStoredMoods, planCheckInGratitudeSync } from '@/domain/checkIns';
 import { randomId } from '@/domain/id';
+import { outdoorRouteFromDraft, type OutdoorRouteDraft } from '@/domain/outdoorRoute';
 import { emptyGarminReadings, type GarminReadings } from '../../supabase/functions/_shared/garmin';
 import { shareInflight } from '@/domain/writes';
 import { isoDay } from '@/domain/dates';
@@ -432,6 +433,7 @@ export class DemoRepository implements Repository {
       healthPlan: account?.healthPlan ?? null,
       trainingSchedule: account?.trainingSchedule ?? null,
       plannedSessions: account?.plannedSessions ?? [],
+      outdoorRoutes: account?.outdoorRoutes ?? [],
     };
   }
 
@@ -1332,6 +1334,24 @@ export class DemoRepository implements Repository {
     const rows = next.plannedSessions ?? [];
     if (!rows.some((row) => row.id === id)) throw new UserFacingError('Could not save that session.', 'generic');
     next.plannedSessions = rows.map((row) => (row.id === id ? saved : row)).sort((a, b) => a.startsAt.localeCompare(b.startsAt));
+    this.commit(db);
+  }
+
+  async saveOutdoorRoute(input: OutdoorRouteDraft): Promise<void> {
+    const saved = outdoorRouteFromDraft(input.id ?? randomId(), input);
+    if (!saved) throw new UserFacingError('A route needs a name and at least two points.', 'generic');
+    const account = this.me();
+    const db = clone(this.db);
+    const next = db.accounts[account.profile.id];
+    next.outdoorRoutes = [saved, ...(next.outdoorRoutes ?? []).filter((item) => item.id !== saved.id)];
+    this.commit(db);
+  }
+
+  async deleteOutdoorRoute(id: string): Promise<void> {
+    const account = this.me();
+    const db = clone(this.db);
+    const next = db.accounts[account.profile.id];
+    next.outdoorRoutes = (next.outdoorRoutes ?? []).filter((item) => item.id !== id);
     this.commit(db);
   }
 

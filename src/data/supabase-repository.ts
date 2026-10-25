@@ -18,6 +18,7 @@ import { omitSharedLocation } from '@/domain/sharedPayload';
 import { stripJpegBase64, stripJpegLocation } from '@/domain/photoLocation';
 import { chunkHealthRows } from '@/domain/healthUpload';
 import { rejectRouteCoordinates } from '@/domain/workoutRoute';
+import { outdoorRouteFromRow, outdoorRouteInsert, type OutdoorRouteDraft } from '@/domain/outdoorRoute';
 import { GARMIN_PERMISSION, readGarminRefreshBody } from '@/domain/healthRefresh';
 const GARMIN_HISTORY_KEY = 'charioteer.garmin.historyRefusedAt';
 import { emptyGarminReadings, garminHistoryCooling, garminPermissionStatus, missingColumn, missingRelation, readingsFromRows, type GarminExportPermission, type GarminReadings } from '../../supabase/functions/_shared/garmin';
@@ -242,6 +243,7 @@ function emptySnapshot(): AppSnapshot {
     healthPlan: null,
     trainingSchedule: null,
     plannedSessions: [],
+    outdoorRoutes: [],
   };
 }
 
@@ -579,6 +581,7 @@ export class SupabaseRepository implements Repository {
           const session = plannedSessionFromRow(row);
           return session ? [session] : [];
         }),
+      outdoorRoutes: await this.loadOutdoorRoutes(userId),
     });
   }
 
@@ -2771,6 +2774,50 @@ export class SupabaseRepository implements Repository {
     }).eq('id', id).eq('user_id', userId);
     if (error) {
       this.emit({ ...this.snapshot, plannedSessions: before });
+      throw asUserFacing(error, 'general');
+    }
+  }
+
+  /** Missing table stays an empty list. This build does not apply the migration. */
+  private async loadOutdoorRoutes(userId: string) {
+    const { data, error } = await this.client
+      .from('outdoor_routes')
+      .select('id, title, kind, distance_m, duration_minutes, geometry, created_at')
+      .eq('user_id', userId)
+      .order('created_at', { ascending: false });
+    if (error) return [];
+    return ((data ?? []) as Row[]).flatMap((row) => {
+      const route = outdoorRouteFromRow(row);
+      return route ? [route] : [];
+    });
+  }
+
+  async saveOutdoorRoute(input: OutdoorRouteDraft): Promise<void> {
+    const userId = this.snapshot.session?.userId ?? await this.userId();
+    const id = input.id?.trim() || randomId();
+    const row = outdoorRouteInsert(userId, id, input);
+    if (!row) throw new UserFacingError('A route needs a name and at least two points.', 'generic');
+    const before = this.snapshot.outdoorRoutes;
+    const saved = outdoorRouteFromRow({ ...row, created_at: new Date().toISOString() });
+    if (saved) this.emit({ ...this.snapshot, outdoorRoutes: [saved, ...before.filter((item) => item.id !== id)] });
+    const { error } = await this.client.from('outdoor_routes').insert(row);
+    if (error) {
+      this.emit({ ...this.snapshot, outdoorRoutes: before });
+      const missing = /does not exist|schema cache|could not find the table/i.test(error.message ?? '');
+      throw new UserFacingError(
+        missing ? 'Saving a route needs the route table, and that change has not been applied yet.' : 'Could not save that route.',
+        'generic',
+      );
+    }
+  }
+
+  async deleteOutdoorRoute(id: string): Promise<void> {
+    const userId = this.snapshot.session?.userId ?? await this.userId();
+    const before = this.snapshot.outdoorRoutes;
+    this.emit({ ...this.snapshot, outdoorRoutes: before.filter((item) => item.id !== id) });
+    const { error } = await this.client.from('outdoor_routes').delete().eq('id', id).eq('user_id', userId);
+    if (error) {
+      this.emit({ ...this.snapshot, outdoorRoutes: before });
       throw asUserFacing(error, 'general');
     }
   }

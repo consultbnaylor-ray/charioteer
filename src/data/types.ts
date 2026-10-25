@@ -263,6 +263,8 @@ export type AppSnapshot = {
   trainingSchedule: import('@/domain/healthPlan').TrainingSchedule | null;
   /** Workouts planned ahead. Owner only. Empty until one is saved. */
   plannedSessions: import('@/domain/plannedSession').PlannedSession[];
+  /** Saved walks. Owner only. Empty until one is saved, or until the table exists. */
+  outdoorRoutes: import('@/domain/outdoorRoute').OutdoorRoute[];
 };
 
 export type NewGratitudeEntry = {
@@ -539,6 +541,10 @@ export interface Repository {
   updatePlannedSession(id: string, input: import('@/domain/plannedSession').PlannedSessionDraft & { doneAt: string | null }): Promise<void>;
   /** Removes one planned workout. */
   deletePlannedSession(id: string): Promise<void>;
+  /** Saves a drawn line or a craving sketch. The geometry stays on this account. */
+  saveOutdoorRoute(input: import('@/domain/outdoorRoute').OutdoorRouteDraft): Promise<void>;
+  /** Removes one saved walk. */
+  deleteOutdoorRoute(id: string): Promise<void>;
   /** Connection flag and the summaries this phone shows. Tokens stay on the server. */
   loadGarmin(): Promise<import('@/domain/garminConnect').GarminReadings>;
   /** Signed-in link to Garmin. Returns the authorise URL. */

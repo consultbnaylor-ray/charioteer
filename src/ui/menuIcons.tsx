@@ -113,6 +113,13 @@ export function MenuGlyph({ name, color }: { name: MenuIcon; color: string }) {
           <Path d="M12 8v4.8M12 16.2v.2" stroke={color} {...stroke} />
         </>
       ) : null}
+      {name === 'path' ? (
+        <>
+          <Path d="M4.2 18.2c2.4-1.2 3.4-3.4 3.2-5.6-.2-2.4 1.2-4 3.2-5.2" stroke={color} {...stroke} />
+          <Circle cx={16.8} cy={6.4} r={2.1} stroke={color} strokeWidth={1.6} />
+          <Path d="M16.8 8.5v3.6" stroke={color} {...stroke} />
+        </>
+      ) : null}
       {name === 'leave' ? (
         <>
           <Path d="M10 6H6.5v12H10" stroke={color} {...stroke} />

@@ -13,6 +13,7 @@ import { scopeFromPreset } from '@/domain/buddies';
 import { defaultProfileSharing } from '@/domain/profileSharing';
 import type { GratitudeEntry } from '@/domain/gratitude';
 import { gratitudeStoragePath } from '@/domain/gratitudePhotos';
+import { sampleCanalLoop } from '@/domain/outdoorRoute';
 import { planProgressPhoto, progressStoragePath } from '@/domain/progressPhotos';
 import { profileStoragePath } from '@/domain/profilePhotos';
 
@@ -62,6 +63,8 @@ export type DemoAccount = {
   trainingSchedule?: import('@/domain/healthPlan').TrainingSchedule | null;
   /** Absent until they plan a workout. */
   plannedSessions?: import('@/domain/plannedSession').PlannedSession[];
+  /** Absent until they save a walk. Owner only. */
+  outdoorRoutes?: import('@/domain/outdoorRoute').OutdoorRoute[];
 };
 
 export type DemoDb = {
@@ -364,6 +367,7 @@ export function createDemoDb(now = new Date()): DemoDb {
       source: 'dexa',
       createdAt: now.toISOString(),
     }],
+    outdoorRoutes: [sampleCanalLoop()],
   };
   alex.healthPlan = draftHealthPlan({
     now,

@@ -68,3 +68,11 @@ If you turn on the coach as well as health data, a short summary is sent to the 
 ## Calendar
 
 Add to Calendar opens Apple's add-event sheet for a planned workout. The iPhone app contains a calendar purpose sentence only so Apple's upload check can see why that code is in the app. The sentence is: "Charioteer only opens Apple's add-event sheet when you tap Add to Calendar. It never reads your calendar." The calendar plugin copies that same sentence onto the full-calendar purpose text. Reminder purpose text is left out. Tapping the button does not ask for calendar permission, and Charioteer does not read your calendar or your reminders.
+
+## Location
+
+Get Outside can use your location while the map is open, and only if you allow it. The iPhone purpose sentence is: "Charioteer uses your location only while the map is open, to show where you are and to draw a walk. It is not tracked in the background. It is never shared. It is stored only if you save a route."
+
+The page still opens if you say no. There is no background location and no "always" location. Android asks for fine and coarse location in the foreground only. A saved route is a line on your account. You can delete it. It is not sent to a buddy. A live fix is not stored. Sharing a walk plan is not in this version.
+
+This is not medical advice. The walk screens say so, and they name a GP, NHS 111, and 999. The craving walk also names Samaritans on 116 123.
