@@ -6,8 +6,7 @@ export { OSM_CONTRIBUTORS, ORS_CREDIT };
 export const ROUTE_SERVICE_LINE =
   'The start point and the destination are sent to our route service (OpenRouteService, built on OpenStreetMap data) to make the route. Nothing is shared with other people.';
 
-export const ROUTE_RETENTION_LINE =
-  "HeiGIT's privacy policy (April 2022) says the service keeps a request only as long as it needs it, or for a legal retention period. It does not publish a fixed number of days.";
+export { ROUTE_RETENTION_LINE, ROUTE_SEND_LINE } from './routeConsent';
 
 export const ROUTE_UNAVAILABLE =
   'The route service is not available right now. Nothing was saved.';

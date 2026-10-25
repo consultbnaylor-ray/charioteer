@@ -3,7 +3,12 @@ import { describe, expect, it } from 'vitest';
 
 import {
   NOT_NOW_ROUTE_FINDING,
+  ROUTE_CONSENT_CITATION,
+  ROUTE_CONSENT_LINES,
   ROUTE_CONSENT_VERSION,
+  ROUTE_RETENTION_LINE,
+  ROUTE_RETENTION_NOTE,
+  ROUTE_SEND_LINE,
   TURN_ON_ROUTE_FINDING,
   parseRouteConsent,
   routeFindingAllowed,
@@ -24,10 +29,14 @@ import {
   simplifyLine,
 } from '@/domain/outdoorRoute';
 import {
+  GLOBAL_ROUTE_DAILY_CAP,
+  ORS_FREE_DIRECTIONS_PER_DAY,
   buildDirectionsBody,
+  orsRequestHeaders,
   parseDirections,
   parseGeocode,
   routeLengthM,
+  withinGlobalRouteLimit,
   withinRouteLimit,
 } from '../../supabase/functions/_shared/orsRoute';
 
@@ -167,5 +176,45 @@ describe('route finding', () => {
     const stamps = Array.from({ length: 12 }, (_, index) => now - index * 1000);
     expect(withinRouteLimit(stamps, now).ok).toBe(false);
     expect(withinRouteLimit([now - 86_400_000 - 1], now).ok).toBe(true);
+  });
+
+  it('states the published retention and stays under the free daily quota', () => {
+    expect(ROUTE_CONSENT_VERSION).toBe('2026-10-25-2');
+    expect(ROUTE_RETENTION_LINE).toContain('7 days');
+    expect(ROUTE_RETENTION_LINE).toContain('about 1 km');
+    expect(ROUTE_RETENTION_LINE).toContain('voluntary');
+    expect(ROUTE_SEND_LINE).toContain("server's address");
+    expect(ROUTE_SEND_LINE).toContain('words you type');
+    expect(ROUTE_CONSENT_LINES.join(' ')).toContain(ROUTE_RETENTION_LINE);
+    expect(ROUTE_CONSENT_CITATION).toContain('https://account.heigit.org/info/transparency-statement');
+    expect(ROUTE_RETENTION_NOTE).toContain('https://heigit.org/privacy-policy/');
+    expect(ROUTE_RETENTION_NOTE).toContain('https://account.heigit.org/info/tos');
+    expect(ROUTE_RETENTION_NOTE).toContain('do not restate the 7 days');
+    const joined = [
+      ROUTE_RETENTION_LINE,
+      readFileSync('docs/privacy.md', 'utf8'),
+      readFileSync('docs/privacy.html', 'utf8'),
+      readFileSync('docs/dpia-location.md', 'utf8'),
+      readFileSync('docs/store-privacy-labels.md', 'utf8'),
+    ].join('\n');
+    expect(joined).not.toContain('does not publish a fixed number of days');
+    expect(joined).toContain('https://account.heigit.org/info/transparency-statement');
+    expect(readFileSync('docs/dpia-location.md', 'utf8')).toContain('HeiGIT gGmbH');
+    expect(readFileSync('docs/dpia-location.md', 'utf8')).toContain('self-host OpenRouteService in the EU');
+    expect(GLOBAL_ROUTE_DAILY_CAP).toBe(1500);
+    expect(GLOBAL_ROUTE_DAILY_CAP).toBeLessThan(ORS_FREE_DIRECTIONS_PER_DAY);
+    expect(ORS_FREE_DIRECTIONS_PER_DAY).toBe(2000);
+    const now = 1_000_000_000_000;
+    const day = Array.from({ length: GLOBAL_ROUTE_DAILY_CAP }, (_, index) => now - index);
+    expect(withinGlobalRouteLimit(day, now).ok).toBe(false);
+    expect(withinGlobalRouteLimit(day.slice(1), now).ok).toBe(true);
+    expect(Object.keys(orsRequestHeaders('secret-key', 'application/json')).sort()).toEqual(['Accept', 'Authorization']);
+    const fn = readFileSync('supabase/functions/outdoor-route/index.ts', 'utf8');
+    expect(fn).toContain('GLOBAL_ROUTE_DAILY_CAP');
+    expect(fn).toContain('orsRequestHeaders');
+    expect(fn).not.toContain('X-Forwarded-For');
+    expect(fn).not.toContain('console.error(error');
+    expect(fn).not.toMatch(/console\.(log|error|info|warn)\([^)]*ORS_API_KEY/);
+    expect(fn).not.toMatch(/console\.(log|error|info|warn)\([^)]*key/);
   });
 });

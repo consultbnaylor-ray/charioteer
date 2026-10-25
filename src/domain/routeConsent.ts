@@ -4,7 +4,7 @@
  * Another phone starts off again. Nothing here is shared.
  */
 
-export const ROUTE_CONSENT_VERSION = '2026-10-25';
+export const ROUTE_CONSENT_VERSION = '2026-10-25-2';
 
 export const ROUTE_CONSENT_STORAGE_KEY = 'charioteer.route-finding.consent';
 
@@ -14,19 +14,32 @@ export const NOT_NOW_ROUTE_FINDING = 'Not now';
 
 export const ROUTE_FINDING_SWITCH = 'Route finding';
 
+/** A route call. A place search is named in the same sentence so the limit is not overstated. */
+export const ROUTE_SEND_LINE =
+  "A route sends the coordinates and the travel type only. It does not send your name or account number. HeiGIT sees our server's address, not your phone's. A place search sends the words you type.";
+
+/**
+ * Verified 25 Oct 2026 at https://account.heigit.org/info/transparency-statement
+ * The statement says it is voluntary and non-binding. Two decimal places is their example.
+ */
+export const ROUTE_RETENTION_LINE =
+  "HeiGIT's transparency statement says the full request and response, the IP address, and the API key are kept for 7 days to look for abuse, then deleted. For a route, coordinates rounded to about 1 km, and the request metadata, are kept with no end date. This is done on servers in the EU. The statement is voluntary and not a binding promise.";
+
 /** Visible sentences. Not a request to accept OpenStreetMap's terms. */
 export const ROUTE_CONSENT_LINES = [
   'The start point and the destination are sent to our route service (OpenRouteService, built on OpenStreetMap data) to make the route.',
-  "HeiGIT's privacy policy (April 2022) says the service keeps a request only as long as it needs it, or for a legal retention period. It does not publish a fixed number of days.",
+  ROUTE_SEND_LINE,
+  ROUTE_RETENTION_LINE,
   'Nothing is shared with other people.',
   'Location is used only while the app is open.',
   'You can turn this off any time.',
 ] as const;
 
-export const ROUTE_CONSENT_CITATION = 'HeiGIT privacy policy, April 2022: https://heigit.org/privacy-policy/';
+export const ROUTE_CONSENT_CITATION =
+  'HeiGIT transparency statement: https://account.heigit.org/info/transparency-statement';
 
 export const ROUTE_RETENTION_NOTE =
-  'A 2021 reply on the OpenRouteService forum said server logs were deleted after 14 days. That number is not in the April 2022 privacy policy, so it is not the retention shown here. The forum software page mentions 90 days for forum logs. That page is the forum, not a route request.';
+  'The April 2022 privacy policy (https://heigit.org/privacy-policy/) says personal data is kept only as long as needed. It does not give these day counts. The 7 days, the coordinates kept after rounding to two decimal places, and the EU servers are in the transparency statement. That statement says it is voluntary and not a binding promise. The terms (https://account.heigit.org/info/tos) do not restate the 7 days. A place search is geocoding. The same statement says the typed place and its coordinate are not kept past those 7 days.';
 
 export const OSM_LICENCE_LINE =
   'OpenStreetMap data is available under the Open Database Licence. The credit names the contributors. This is not a request to accept OpenStreetMap terms.';

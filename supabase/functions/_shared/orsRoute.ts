@@ -77,6 +77,31 @@ export function withinRouteLimit(stamps: readonly number[], now: number): { ok: 
   return { ok: true, next: [...day, now] };
 }
 
+/**
+ * Free Standard plan, Directions V2: 2,000 a day and 40 a minute.
+ * Geocoding on that plan is 3,000 a day.
+ * https://account.heigit.org/info/plans
+ * The whole app stays under the smaller of those daily figures.
+ */
+export const ORS_FREE_DIRECTIONS_PER_DAY = 2000;
+
+export const GLOBAL_ROUTE_DAILY_CAP = 1500;
+
+export function withinGlobalRouteLimit(
+  stamps: readonly number[],
+  now: number,
+  cap = GLOBAL_ROUTE_DAILY_CAP,
+): { ok: boolean; next: number[] } {
+  const day = stamps.filter((stamp) => now - stamp < 86_400_000 && now >= stamp);
+  if (day.length >= cap) return { ok: false, next: day };
+  return { ok: true, next: [...day, now] };
+}
+
+/** Headers for a route call. The caller's address and account id are not copied across. */
+export function orsRequestHeaders(key: string, accept: string): Record<string, string> {
+  return { Authorization: key, Accept: accept };
+}
+
 export function buildDirectionsBody(input: {
   mode: Mode;
   shape: 'loop' | 'a_to_b';

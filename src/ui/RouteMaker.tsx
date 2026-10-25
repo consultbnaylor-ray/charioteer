@@ -8,6 +8,7 @@ import {
   HIKE_PROFILE_NOTE,
   ROUTE_MOCK_LINE,
   ROUTE_RETENTION_LINE,
+  ROUTE_SEND_LINE,
   ROUTE_SERVICE_LINE,
   STARTER_NOTE,
   STARTER_PLACES,
@@ -177,6 +178,7 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
     <>
       <Card>
         <T>{ROUTE_SERVICE_LINE}</T>
+        <T>{ROUTE_SEND_LINE}</T>
         <T>{ROUTE_RETENTION_LINE}</T>
         {craving ? (
           <>
@@ -249,6 +251,7 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
           {plan.mode === 'run' ? <T variant="muted">{HIKE_PROFILE_NOTE}</T> : null}
           <FootpathMap routes={[]} sketch={plan.points} here={plan.points[0] ?? null} />
           <T>{ROUTE_SERVICE_LINE}</T>
+          <T>{ROUTE_SEND_LINE}</T>
           <T>{ROUTE_RETENTION_LINE}</T>
           <Field label="Route name" value={title} onChangeText={setTitle} maxLength={80} />
           <Button label="Save this route" tone="quiet" disabled={pending || title.trim().length === 0} pending={pending} onPress={() => { void save(); }} />

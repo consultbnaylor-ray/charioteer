@@ -2,16 +2,19 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.117.3';
 
 import { json, preflight } from '../_shared/http.ts';
 import {
+  GLOBAL_ROUTE_DAILY_CAP,
   buildDirectionsBody,
   cleanPlaceQuery,
   directionsUrl,
   geocodeUrl,
+  orsRequestHeaders,
   parseDirections,
   parseGeocode,
   readMode,
   readPlace,
   readShape,
   routeLengthM,
+  withinGlobalRouteLimit,
   withinRouteLimit,
 } from '../_shared/orsRoute.ts';
 
@@ -19,11 +22,15 @@ const UNAVAILABLE = 'The route service is not available right now. Nothing was s
 const TOO_MANY = 'Too many routes just now. Wait a few minutes and try again.';
 
 const recent = new Map<string, number[]>();
+let globalRecent: number[] = [];
 
-function memoryAllows(userId: string): boolean {
-  const decision = withinRouteLimit(recent.get(userId) ?? [], Date.now());
-  if (!decision.ok) return false;
-  recent.set(userId, decision.next);
+function memoryAllows(userId: string, now = Date.now()): boolean {
+  const across = withinGlobalRouteLimit(globalRecent, now);
+  if (!across.ok) return false;
+  const person = withinRouteLimit(recent.get(userId) ?? [], now);
+  if (!person.ok) return false;
+  globalRecent = across.next;
+  recent.set(userId, person.next);
   return true;
 }
 
@@ -70,7 +77,7 @@ Deno.serve(async (req) => {
       const query = cleanPlaceQuery(body.query);
       if (!query) return json({ ok: false, code: 'input', message: 'Type at least two letters.' }, 400);
       const response = await fetch(geocodeUrl(query), {
-        headers: { Authorization: key, Accept: 'application/json' },
+        headers: orsRequestHeaders(key, 'application/json'),
         signal: AbortSignal.timeout(12000),
       });
       if (!response.ok) return json({ ok: false, code: 'unavailable', message: UNAVAILABLE }, 503);
@@ -91,8 +98,7 @@ Deno.serve(async (req) => {
     const response = await fetch(directionsUrl(mode), {
       method: 'POST',
       headers: {
-        Authorization: key,
-        Accept: 'application/geo+json, application/json',
+        ...orsRequestHeaders(key, 'application/geo+json, application/json'),
         'Content-Type': 'application/json',
       },
       body: JSON.stringify(directions),
@@ -110,16 +116,16 @@ Deno.serve(async (req) => {
 });
 
 async function requestAllowed(url: string, userId: string): Promise<boolean> {
+  const now = Date.now();
+  const across = withinGlobalRouteLimit(globalRecent, now);
+  const person = withinRouteLimit(recent.get(userId) ?? [], now);
+  if (!across.ok || !person.ok) return false;
   const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
   if (serviceKey) {
     const table = await tableAllows(url, serviceKey, userId);
     if (table === false) return false;
-    if (table === true) {
-      memoryAllows(userId);
-      return true;
-    }
   }
-  return memoryAllows(userId);
+  return memoryAllows(userId, now);
 }
 
 /** True when the count table accepted the request. False when the person is over the limit. Null when the table is not there yet. */
@@ -128,6 +134,9 @@ async function tableAllows(url: string, serviceKey: string, userId: string): Pro
     const admin = createClient(url, serviceKey, { auth: { persistSession: false } });
     const tenAgo = new Date(Date.now() - 600_000).toISOString();
     const dayAgo = new Date(Date.now() - 86_400_000).toISOString();
+    const across = await admin.from('outdoor_route_requests').select('id', { count: 'exact', head: true }).gte('created_at', dayAgo);
+    if (across.error) return null;
+    if ((across.count ?? 0) >= GLOBAL_ROUTE_DAILY_CAP) return false;
     const ten = await admin.from('outdoor_route_requests').select('id', { count: 'exact', head: true }).eq('user_id', userId).gte('created_at', tenAgo);
     if (ten.error) return null;
     if ((ten.count ?? 0) >= 12) return false;
