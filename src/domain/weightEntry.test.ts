@@ -99,7 +99,9 @@ describe('weight entry', () => {
     expect(screen).toContain('catchUpAppleHealthReads');
     const health = readFileSync('src/app/(main)/health.tsx', 'utf8');
     expect(health.match(/<WeightWaistLink/g)).toHaveLength(1);
-    expect(health).toContain("omitTiles={['weight_kg', 'waist']}");
+    expect(health).toContain('SHOW_WEIGHT_SECTION ? <WeightWaistLink');
+    expect(health).toContain('omitTiles={healthStatsOmittedTiles()}');
+    expect(health).toContain('onSaveBody={SHOW_WEIGHT_SECTION ? saveBodyGap : undefined}');
     expect(health).toContain("omitKinds={['weight_kg']}");
     expect(health).toContain("router.replace('/weight-waist'");
     expect(health).not.toContain('weightWaistWrite');

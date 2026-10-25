@@ -41,6 +41,7 @@ import { MoreInfoButton } from '@/ui/MoreInfo';
 import { Vo2EstimateNote } from '@/ui/Vo2EstimateNote';
 import { healthTileIcon } from '@/domain/statIcons';
 import { IconLabel } from '@/ui/statIcons';
+import { SHOW_WEIGHT_SECTION } from '@/domain/weightSection';
 import { textMentionsWeight, UpdateWeightLink } from '@/ui/UpdateWeightLink';
 import { Button, Card, Choice, Field, QuietNote, T, playSavedHaptic } from '@/ui/ui';
 
@@ -317,7 +318,7 @@ function StatTile({
         accessibilityLabel={`More info about ${tile.title}`}
         onPress={onOpen}
       />
-      {tileFaceMentionsWeight(tile) ? <UpdateWeightLink /> : null}
+      {SHOW_WEIGHT_SECTION && tileFaceMentionsWeight(tile) ? <UpdateWeightLink /> : null}
       {charted ? <TileChart tile={tile} today={today} period={period} /> : null}
       {tile.id === 'vo2_max' && onPlanOutdoor ? <Vo2EstimateNote measuredOn={measuredOn} source={vo2Source} today={today} onPlan={onPlanOutdoor} /> : null}
     </View>
@@ -548,7 +549,7 @@ function StatDetail({
               <View style={{ gap: 12, paddingBottom: 8 }}>
                 <T variant="label">What this is</T>
                 <T>{tile.about}</T>
-                {tileMentionsWeight(tile) ? <UpdateWeightLink /> : null}
+                {SHOW_WEIGHT_SECTION && tileMentionsWeight(tile) ? <UpdateWeightLink /> : null}
                 <TileValue tile={tile} />
                 {tile.empty ? null : <TileVisual visual={tile.visual} charted={tile.readings.length > 0} />}
                 {tile.readings.length > 0 ? <TileChart tile={tile} today={today} period={period} /> : null}

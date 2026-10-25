@@ -624,7 +624,7 @@ describe('health stat tiles', () => {
     expect(board).toContain('Body fat (%)');
     expect(board).toContain('Lean body mass (kg)');
     expect(screen).toContain('turnOnAppleHealthReads');
-    expect(screen).toContain('onSaveBody={saveBodyGap}');
+    expect(screen).toContain('onSaveBody={SHOW_WEIGHT_SECTION ? saveBodyGap : undefined}');
     const ios = readFileSync('src/health/link.ios.ts', 'utf8');
     const turnOn = ios.slice(ios.indexOf('export async function turnOnAppleHealthReads'), ios.indexOf('export async function ensureCurrentAppleHealthReads'));
     expect(ios).toContain('turnOnAppleHealthReads');
