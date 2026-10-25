@@ -5,6 +5,7 @@ import { APP_SECTIONS, TAB_SECTIONS, menuSectionActive } from '@/domain/sections
 import {
   LOCATION_WHEN_IN_USE,
   MAP_CREDIT,
+  ROUTE_SAFETY_LINE,
   SKETCH_LINE,
   cravingSketch,
   outdoorRouteFromDraft,
@@ -93,8 +94,12 @@ describe('Get Outside phase 1', () => {
     const share = readFileSync('src/domain/sharedPayload.ts', 'utf8') + readFileSync('src/domain/buddies.ts', 'utf8');
     expect(share).not.toContain('outdoor_routes');
     expect(readFileSync('src/app/(main)/outside.tsx', 'utf8')).toContain('Delete');
-    expect(readFileSync('src/app/(main)/outside.tsx', 'utf8')).toContain('PLAN_ONLY_LINE');
-    expect(readFileSync('src/domain/outdoorRoute.ts', 'utf8')).toContain('not in this version');
+    const card = readFileSync('src/ui/WalkThisOff.tsx', 'utf8');
+    expect(card.indexOf('{ROUTE_SAFETY_LINE}')).toBeGreaterThan(-1);
+    expect(card.indexOf('{ROUTE_SAFETY_LINE}')).toBeLessThan(card.indexOf('<MoreInfo'));
+    expect(card.slice(card.indexOf('function OutsideFacts'))).toContain('{ROUTE_SAFETY_LINE}');
+    expect(readFileSync('src/domain/outdoorRoute.ts', 'utf8')).toContain(ROUTE_SAFETY_LINE);
+    expect(readFileSync('src/domain/outdoorRoute.ts', 'utf8')).not.toMatch(/plan only|When it is added|not in this version/i);
   });
 
   it('asks for while-in-use location only and sets build 69', () => {
@@ -132,6 +137,10 @@ describe('Get Outside phase 1', () => {
     expect(readFileSync('src/domain/outdoorRoute.ts', 'utf8')).toContain('tiles.openfreemap.org');
     expect(MAP_CREDIT).toContain('OpenFreeMap');
     expect(readFileSync('docs/privacy.md', 'utf8')).toContain(LOCATION_WHEN_IN_USE);
+    expect(readFileSync('docs/privacy.md', 'utf8')).toContain(ROUTE_SAFETY_LINE);
+    expect(readFileSync('docs/privacy.html', 'utf8')).toContain(ROUTE_SAFETY_LINE);
+    expect(readFileSync('docs/dpia-location.md', 'utf8')).toContain(ROUTE_SAFETY_LINE);
+    expect(readFileSync('docs/privacy.md', 'utf8') + readFileSync('docs/dpia-location.md', 'utf8')).not.toMatch(/Sharing a walk plan|When it is added|plan only/i);
     expect(readFileSync('docs/privacy.html', 'utf8')).toContain('while the map is open');
     expect(readFileSync('docs/dpia-location.md', 'utf8')).toContain('while using');
     expect(readFileSync('docs/store-privacy-labels.md', 'utf8')).toContain('Precise Location');

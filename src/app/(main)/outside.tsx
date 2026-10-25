@@ -5,7 +5,6 @@ import { useRepository, useSnapshot } from '@/data';
 import {
   LOCATION_PAGE_LINE,
   PATH_LINE,
-  PLAN_ONLY_LINE,
   routeSummary,
 } from '@/domain/outdoorRoute';
 import { shownError } from '@/domain/errors';
@@ -34,7 +33,6 @@ export default function Outside() {
       <Card>
         <OutsideFacts />
         <T>{LOCATION_PAGE_LINE}</T>
-        <T>{PLAN_ONLY_LINE}</T>
         <Button label="Walk this off" onPress={() => router.push('/craving-walk' as never)} />
         <Button label="Open the map" tone="quiet" onPress={() => router.push('/outside-map' as never)} />
         <MoreInfo about="Get Outside">

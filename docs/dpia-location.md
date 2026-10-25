@@ -10,7 +10,7 @@ The purpose sentence is: "Charioteer uses your location only while the map is op
 
 ## Data
 
-- A live fix is held in memory on that screen. It is not written to the account, not sent to a buddy, and not sent to a routing service. No routing service is called.
+- A live fix is held in memory on that screen. It is not written to the account, not sent to anyone else, and not sent to a routing service. No routing service is called.
 - A saved route is a name, a kind (drawn or craving sketch), a distance, a duration, and the line. It is stored only after the person taps save. They can delete it.
 - The table is `outdoor_routes`. The policy is the signed-in person only (`user_id = auth.uid()`). `public` and `anon` have no grant. There is no update grant. There is a delete grant. The migration is in the repo and has not been applied.
 - The owner's data export does not yet include this table. That is a gap to close before launch, in a later reviewed change.
@@ -21,7 +21,7 @@ The purpose sentence is: "Charioteer uses your location only while the map is op
 - No background location, no "always" location, no visit monitoring.
 - No motion-activity permission.
 - No photo library permission is added for this feature.
-- Buddy sharing of a walk is not in this version. When it is added it must stay a plan: name, time, distance, duration, and a Done tick. No line and no live fix.
+- Live routes can't be shared with anyone. That's to protect your safety. Nothing in this feature sends a route or a live fix to another person.
 
 ## Risk
 

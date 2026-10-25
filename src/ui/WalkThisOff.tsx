@@ -5,7 +5,7 @@ import {
   OUTSIDE_CRISIS_LINE,
   OUTSIDE_SAFETY_LINE,
   PATH_LINE,
-  PLAN_ONLY_LINE,
+  ROUTE_SAFETY_LINE,
 } from '@/domain/outdoorRoute';
 import { MoreInfo } from '@/ui/MoreInfo';
 import { Button, Card, T } from '@/ui/ui';
@@ -20,6 +20,7 @@ export function WalkThisOff({ place }: { place: 'today' | 'breathe' }) {
       <T>A short loop from where you are, drawn on this phone.</T>
       <T>{OUTSIDE_SAFETY_LINE}</T>
       <T>{OUTSIDE_CRISIS_LINE}</T>
+      <T>{ROUTE_SAFETY_LINE}</T>
       <Button
         label="Walk this off"
         accessibilityLabel="Walk this off"
@@ -30,7 +31,6 @@ export function WalkThisOff({ place }: { place: 'today' | 'breathe' }) {
       ) : null}
       <MoreInfo about="walking this off">
         <T>{PATH_LINE}</T>
-        <T>{PLAN_ONLY_LINE}</T>
         <T>This is a clock and a map for a walk. It is not a training prescription and not a crisis service.</T>
       </MoreInfo>
     </Card>
@@ -42,6 +42,7 @@ export function OutsideFacts() {
     <View style={{ gap: 8 }}>
       <T>{OUTSIDE_SAFETY_LINE}</T>
       <T>{OUTSIDE_CRISIS_LINE}</T>
+      <T>{ROUTE_SAFETY_LINE}</T>
     </View>
   );
 }

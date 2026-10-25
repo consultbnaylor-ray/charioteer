@@ -73,6 +73,6 @@ Add to Calendar opens Apple's add-event sheet for a planned workout. The iPhone 
 
 Get Outside can use your location while the map is open, and only if you allow it. The iPhone purpose sentence is: "Charioteer uses your location only while the map is open, to show where you are and to draw a walk. It is not tracked in the background. It is never shared. It is stored only if you save a route."
 
-The page still opens if you say no. There is no background location and no "always" location. Android asks for fine and coarse location in the foreground only. A saved route is a line on your account. You can delete it. It is not sent to a buddy. A live fix is not stored. Sharing a walk plan is not in this version.
+The page still opens if you say no. There is no background location and no "always" location. Android asks for fine and coarse location in the foreground only. A saved route is a line on your account. You can delete it. A live fix is not stored. Live routes can't be shared with anyone. That's to protect your safety.
 
 This is not medical advice. The walk screens say so, and they name a GP, NHS 111, and 999. The craving walk also names Samaritans on 116 123.

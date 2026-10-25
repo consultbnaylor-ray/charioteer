@@ -1,6 +1,6 @@
 /**
  * A walk the signed-in person draws or sketches.
- * The line stays on their account. It is not a buddy share and not a live fix.
+ * The line stays on their account. It is not shared. A live fix is not stored.
  */
 
 export const LOCATION_WHEN_IN_USE =
@@ -21,8 +21,8 @@ export const SKETCH_LINE =
 export const PATH_LINE =
   'A line on the map may follow a path that is unsurfaced, closed, or private. The app does not know. It does not promise that a route is safe, legal, or passable.';
 
-export const PLAN_ONLY_LINE =
-  'Sharing a walk with a buddy is not in this version. When it is added, the other person will see a plan only: a name, a time, a distance, and a duration. Never where you are.';
+export const ROUTE_SAFETY_LINE =
+  "Live routes can't be shared with anyone. That's to protect your safety.";
 
 export const MAP_CREDIT = 'OpenFreeMap © OpenMapTiles. Data from OpenStreetMap.';
 
