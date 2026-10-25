@@ -1,6 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useEffect, useState } from 'react';
-import { Modal, Platform, Pressable, ScrollView, Switch, View } from 'react-native';
+import { Modal, Platform, Pressable, ScrollView, Switch, useWindowDimensions, View } from 'react-native';
 import Svg, { Circle, Path } from 'react-native-svg';
 import { useRouter } from 'expo-router';
 
@@ -76,13 +76,14 @@ export function HeaderShareButton() {
 
 export function SharePhotoSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
   const theme = useAppTheme();
+  const { height } = useWindowDimensions();
   return (
     <Modal visible={open} animationType="slide" transparent onRequestClose={onClose}>
       <View style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.45)' }}>
         <Pressable accessibilityRole="button" accessibilityLabel="Close" style={{ flex: 1 }} onPress={onClose} />
-        <View style={{ backgroundColor: theme.colors.bg, borderTopLeftRadius: 16, borderTopRightRadius: 16, maxHeight: '92%', padding: 16, gap: 8 }}>
+        <View style={{ backgroundColor: theme.colors.bg, borderTopLeftRadius: 16, borderTopRightRadius: 16, maxHeight: Math.round(height * 0.92), padding: 16, gap: 8 }}>
           <T variant="title">Share a photo</T>
-          {open ? <SharePhotoComposer onClose={onClose} /> : null}
+          {open ? <SharePhotoComposer onClose={onClose} maxHeight={Math.round(height * 0.72)} /> : null}
         </View>
       </View>
     </Modal>
@@ -103,12 +104,12 @@ export function SharePhotoCard() {
       <T>{ALBUM_HONEST_NOTE}</T>
       <Button label="Share a photo" accessibilityLabel="Share a photo" onPress={() => setOpen(true)} />
       <Button label={SHARED_PHOTOS_LABEL} tone="quiet" onPress={() => router.push('/shared-photos' as never)} />
-      {open ? <SharePhotoComposer onClose={() => setOpen(false)} /> : null}
+      {open ? <SharePhotoComposer onClose={() => setOpen(false)} maxHeight={520} /> : null}
     </Card>
   );
 }
 
-function SharePhotoComposer({ onClose }: { onClose: () => void }) {
+function SharePhotoComposer({ onClose, maxHeight }: { onClose: () => void; maxHeight?: number }) {
   const theme = useAppTheme();
   const router = useRouter();
   const repo = useRepository();
@@ -227,7 +228,7 @@ function SharePhotoComposer({ onClose }: { onClose: () => void }) {
   }
 
   return (
-    <ScrollView style={{ flexGrow: 0 }} contentContainerStyle={{ gap: 8, paddingBottom: 8 }}>
+    <ScrollView style={{ flexGrow: 0, maxHeight }} contentContainerStyle={{ gap: 8, paddingBottom: 8 }}>
       <T>{ALBUM_HONEST_NOTE}</T>
       {buddies.length === 0 ? (
         <T variant="muted">No accepted buddies yet. You can still save this photo to your Gratitude diary.</T>
