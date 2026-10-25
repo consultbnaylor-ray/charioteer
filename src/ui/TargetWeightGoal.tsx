@@ -20,6 +20,7 @@ import { DateField } from '@/ui/DateField';
 import { PlanTick } from '@/ui/PlanTick';
 import { statsToneColors } from '@/ui/statsPalette';
 import { useAppTheme } from '@/ui/theme';
+import { UpdateWeightLink } from '@/ui/UpdateWeightLink';
 import { Button, Choice, Field, T, playSavedHaptic } from '@/ui/ui';
 
 export const TARGET_SAVED_LINE = 'Target weight saved';
@@ -61,6 +62,7 @@ export function TargetWeightProgress() {
     <View style={{ gap: 8 }}>
       <T variant="label">Target weight</T>
       {lines.map((line) => <T key={line}>{line}</T>)}
+      <UpdateWeightLink />
       <View
         accessibilityLabel={`Progress ${Math.round(fill * 100)} percent of the way, from the start weight to the target`}
         style={{ height: 8, borderRadius: 4, backgroundColor: theme.colors.line, overflow: 'hidden' }}
@@ -132,6 +134,7 @@ export function TargetWeightForm() {
   return (
     <View style={{ gap: 8 }}>
       <T>{current ? `Current weight ${formatWeightAmount(current.kg, unit)}, latest reading` : 'Current weight is not logged yet. Add it on Body, or from Apple Health.'}</T>
+      <UpdateWeightLink />
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
         <Choice label="kg" selected={unit === 'kg'} onPress={() => setUnit('kg')} />
         <Choice label="st-lb" selected={unit === 'stlb'} onPress={() => setUnit('stlb')} />

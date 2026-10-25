@@ -10,6 +10,7 @@ import { londonDay } from '@/domain/healthInsights';
 import { useHealthSources } from '@/health/useHealthSources';
 import { targetActivityPlan, TOWARD_TARGET_TITLE } from '@/domain/targetActivity';
 import { radius, useAppTheme } from '@/ui/theme';
+import { UpdateWeightLink } from '@/ui/UpdateWeightLink';
 import { T } from '@/ui/ui';
 
 /** Suggestions for a saved target weight. Hidden when no target is set. */
@@ -28,6 +29,7 @@ export function TowardTargetActivity({ compact = false }: { compact?: boolean })
       <View style={{ gap: 6 }}>
         <T variant="label">{TOWARD_TARGET_TITLE}</T>
         <T>Current weight is not logged yet, so there is no activity suggestion.</T>
+        <UpdateWeightLink />
       </View>
     );
   }

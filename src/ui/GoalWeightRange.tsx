@@ -18,6 +18,7 @@ import { PlanTick } from '@/ui/PlanTick';
 import { statsToneColors } from '@/ui/statsPalette';
 import { useAppTheme } from '@/ui/theme';
 import { MoreInfo } from '@/ui/MoreInfo';
+import { UpdateWeightLink } from '@/ui/UpdateWeightLink';
 import { Card, Choice, T } from '@/ui/ui';
 
 /**
@@ -41,6 +42,7 @@ export function GoalWeightRange({ embedded = false }: { embedded?: boolean }) {
         </View>
       ) : null}
       {view.status === 'prompt' ? <T>{view.prompt}</T> : <Ready view={view} unit={unit} goalName={goalName} />}
+      <UpdateWeightLink />
     </View>
   );
   if (embedded) return body;

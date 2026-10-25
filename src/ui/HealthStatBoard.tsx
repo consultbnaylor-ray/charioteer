@@ -41,6 +41,7 @@ import { MoreInfoButton } from '@/ui/MoreInfo';
 import { Vo2EstimateNote } from '@/ui/Vo2EstimateNote';
 import { healthTileIcon } from '@/domain/statIcons';
 import { IconLabel } from '@/ui/statIcons';
+import { textMentionsWeight, UpdateWeightLink } from '@/ui/UpdateWeightLink';
 import { Button, Card, Choice, Field, QuietNote, T, playSavedHaptic } from '@/ui/ui';
 
 export type HealthTurnOnResult = AppleHealthTurnOn | 'consent';
@@ -316,6 +317,7 @@ function StatTile({
         accessibilityLabel={`More info about ${tile.title}`}
         onPress={onOpen}
       />
+      {tileFaceMentionsWeight(tile) ? <UpdateWeightLink /> : null}
       {charted ? <TileChart tile={tile} today={today} period={period} /> : null}
       {tile.id === 'vo2_max' && onPlanOutdoor ? <Vo2EstimateNote measuredOn={measuredOn} source={vo2Source} today={today} onPlan={onPlanOutdoor} /> : null}
     </View>
@@ -349,6 +351,24 @@ function TileChart({ tile, today, period }: { tile: HealthStatTile; today: strin
       accessibilityLabel={`${tile.title} chart`}
     />
   );
+}
+
+function tileFaceMentionsWeight(tile: HealthStatTile): boolean {
+  if (tile.id === 'weight_kg') return false;
+  const visual = tile.visual.kind === 'zone'
+    ? `${tile.visual.status} ${tile.visual.zoneCaption} ${tile.visual.goalCaption ?? ''}`
+    : tile.visual.kind === 'bars'
+      ? tile.visual.caption ?? ''
+      : '';
+  return textMentionsWeight([tile.title, tile.status, tile.trend ?? '', tile.unit, tile.weeklyLine ?? '', visual].join(' '));
+}
+
+function tileMentionsWeight(tile: HealthStatTile): boolean {
+  if (tile.id === 'weight_kg') return false;
+  const sheet = tile.sheet
+    ? `${tile.sheet.measures} ${tile.sheet.elite} ${tile.sheet.compare} ${tile.sheet.next} ${tile.workedOut ?? ''}`
+    : '';
+  return textMentionsWeight([tile.about, tile.meaning, tile.rangeNote ?? '', sheet].join(' ')) || tileFaceMentionsWeight(tile);
 }
 
 function valueWithPeriod(tile: HealthStatTile): string {
@@ -528,6 +548,7 @@ function StatDetail({
               <View style={{ gap: 12, paddingBottom: 8 }}>
                 <T variant="label">What this is</T>
                 <T>{tile.about}</T>
+                {tileMentionsWeight(tile) ? <UpdateWeightLink /> : null}
                 <TileValue tile={tile} />
                 {tile.empty ? null : <TileVisual visual={tile.visual} charted={tile.readings.length > 0} />}
                 {tile.readings.length > 0 ? <TileChart tile={tile} today={today} period={period} /> : null}

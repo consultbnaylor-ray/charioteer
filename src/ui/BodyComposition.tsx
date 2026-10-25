@@ -35,6 +35,7 @@ import { usePendingPress } from '@/ui/pendingAction';
 import { IconLabel } from '@/ui/statIcons';
 import { MoreInfo } from '@/ui/MoreInfo';
 import { PlanTick } from '@/ui/PlanTick';
+import { UpdateWeightLink } from '@/ui/UpdateWeightLink';
 import { Button, Card, Choice, Field, QuietNote, T, playSavedHaptic } from '@/ui/ui';
 
 /**
@@ -206,6 +207,7 @@ export function BodyCompositionCard() {
             ? `Latest waist ${formatWaistCm(figures.waistCm)}, from a weight reading. Waist-to-height uses that figure.`
             : 'Add a waist with a weight reading. Waist-to-height uses the latest one.'}
         </T>
+        <UpdateWeightLink />
       </MoreInfo>
       <T variant="muted">A reference, not a target. Not a diagnosis.</T>
       <BuildChoices />
