@@ -16,6 +16,10 @@ The purpose string on the device is while-in-use only: `NSLocationWhenInUseUsage
 
 `NSMotionUsageDescription` is present only to satisfy Apple's static check. The sentence is: "Charioteer does not use your motion or fitness data. The map component in the app can reference motion sensors, so Apple requires this note." The app never reads motion or fitness-activity data. Do not add a Fitness or Motion data type. Do not turn on Android motion activity.
 
+`NSMicrophoneUsageDescription` stays. The sentence is: "Charioteer does not record audio. Voice is switched off in this version. Apple requires this note because an audio component is included in the app." Voice is switched off. Do not add an Audio data type for a recording. Do not remove the key.
+
+`NSFaceIDUsageDescription` stays. The sentence is: "Charioteer does not use Face ID. Apple requires this note because a component in the app can reference it." Do not add a Face ID or biometric data type. Do not remove the key.
+
 The calendar purpose string from build 68 stays. This feature does not add a photo purpose string.
 
 ## Google Play

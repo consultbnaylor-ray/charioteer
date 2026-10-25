@@ -108,3 +108,7 @@ The page still opens if you say no to location. There is no background location 
 This is not medical advice. The walk screens say so, and they name a GP, NHS 111, and 999. The craving walk also names Samaritans on 116 123.
 
 The iPhone app contains a motion purpose sentence only so Apple's upload check can see it. The sentence is: "Charioteer does not use your motion or fitness data. The map component in the app can reference motion sensors, so Apple requires this note." Charioteer does not read motion or fitness-activity data. Android motion activity stays off.
+
+The iPhone app contains a microphone purpose sentence because an audio component is included. Voice is switched off in this version. The sentence is: "Charioteer does not record audio. Voice is switched off in this version. Apple requires this note because an audio component is included in the app." Charioteer does not record audio.
+
+The iPhone app contains a Face ID purpose sentence because a component in the app can reference it. The sentence is: "Charioteer does not use Face ID. Apple requires this note because a component in the app can reference it." Charioteer does not use Face ID.

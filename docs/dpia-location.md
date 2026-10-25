@@ -28,6 +28,8 @@ The purpose sentence is: "Charioteer uses your location only while the map is op
 - No background location, no "always" location, no visit monitoring.
 - No motion-activity permission.
 - No photo library permission is added for location or for Find a route.
+- The microphone purpose sentence stays, because an audio component is in the app. Voice is switched off in this version. The sentence is: "Charioteer does not record audio. Voice is switched off in this version. Apple requires this note because an audio component is included in the app." Charioteer does not record audio.
+- The Face ID purpose sentence stays, because a component can reference it. The sentence is: "Charioteer does not use Face ID. Apple requires this note because a component in the app can reference it." Charioteer does not use Face ID.
 
 ## Buddy photos
 

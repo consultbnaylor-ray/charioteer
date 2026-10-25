@@ -169,8 +169,6 @@ describe('voice call wiring', () => {
     expect(screen).toContain('if (!VOICE_ENABLED) return');
     expect(screen).toContain('label="Voice"');
     const app = readFileSync('app.json', 'utf8');
-    expect(app).not.toContain('NSMicrophoneUsageDescription');
-    expect(app).not.toContain('iosMicrophonePermission');
     expect(app).not.toContain('RECORD_AUDIO');
     expect(app).not.toMatch(/NSSpeech/);
     const native = readFileSync('src/voice/audio.native.ts', 'utf8');

@@ -77,7 +77,12 @@
           "granularPermissions": []
         }
       ],
-      "expo-secure-store",
+      [
+        "expo-secure-store",
+        {
+          "faceIDPermission": "Charioteer does not use Face ID. Apple requires this note because a component in the app can reference it."
+        }
+      ],
       "expo-notifications",
       [
         "expo-calendar",
@@ -99,7 +104,8 @@
         {
           "iosBackgroundMode": false,
           "androidForegroundService": false,
-          "androidPermissions": []
+          "androidPermissions": [],
+          "iosMicrophonePermission": "Charioteer does not record audio. Voice is switched off in this version. Apple requires this note because an audio component is included in the app."
         }
       ],
       [
