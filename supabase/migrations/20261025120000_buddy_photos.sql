@@ -14,6 +14,7 @@ create table public.buddy_photos (
   storage_path text not null,
   created_at timestamptz not null default now(),
   published_at timestamptz,
+  allow_save boolean not null default true,
   constraint buddy_photos_path_owner check (storage_path = owner_id::text || '/' || id::text || '.jpg')
 );
 
@@ -58,6 +59,9 @@ revoke all on table public.buddy_photo_recipients from public, anon, authenticat
 
 comment on table public.buddy_photos is
   'A photo the owner sent to chosen accepted buddies. Not the Community. No client table grant. Functions are the only path.';
+
+comment on column public.buddy_photos.allow_save is
+  'When false, a buddy is not offered Save to Photos. Screenshots are still possible. Default true.';
 
 alter table public.reports add column if not exists buddy_photo_id uuid;
 
@@ -159,7 +163,7 @@ $$;
 revoke all on function public.can_read_buddy_photo(text) from public, anon, authenticated;
 grant execute on function public.can_read_buddy_photo(text) to authenticated;
 
-create or replace function public.create_buddy_photo(photo uuid, caption text, recipients uuid[])
+create or replace function public.create_buddy_photo(photo uuid, caption text, recipients uuid[], allow_save boolean default true)
 returns jsonb
 language plpgsql
 security definer
@@ -233,8 +237,8 @@ begin
     raise exception 'Choose a buddy who is still connected.';
   end if;
 
-  insert into public.buddy_photos (id, owner_id, caption, storage_path)
-  values (photo, uid, clean, uid::text || '/' || photo::text || '.jpg');
+  insert into public.buddy_photos (id, owner_id, caption, storage_path, allow_save)
+  values (photo, uid, clean, uid::text || '/' || photo::text || '.jpg', coalesce(allow_save, true));
 
   insert into public.buddy_photo_recipients (photo_id, buddy_id)
   select photo, buddy_id
@@ -244,8 +248,8 @@ begin
 end;
 $$;
 
-revoke all on function public.create_buddy_photo(uuid, text, uuid[]) from public, anon, authenticated;
-grant execute on function public.create_buddy_photo(uuid, text, uuid[]) to authenticated;
+revoke all on function public.create_buddy_photo(uuid, text, uuid[], boolean) from public, anon, authenticated;
+grant execute on function public.create_buddy_photo(uuid, text, uuid[], boolean) to authenticated;
 
 create or replace function public.publish_buddy_photo(photo uuid)
 returns void
@@ -404,6 +408,7 @@ begin
         'caption', p.caption,
         'storagePath', p.storage_path,
         'createdAt', p.created_at,
+        'allowSave', p.allow_save,
         'published', p.published_at is not null,
         'mine', p.owner_id = uid,
         'recipients', case

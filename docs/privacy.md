@@ -55,6 +55,8 @@ If you also tick the gratitude box, a separate private copy is saved in your gra
 
 The photos are kept until you delete them or you delete the account. Account deletion is meant to remove the files as well as the rows. A link that was already issued can keep working until it expires, which is planned at about 15 minutes. Export of your account should include the photos you sent. That export change is part of the same approval. The photos are not used for advertising.
 
+A later, separate approval would let someone save a copy into an album named Charioteer on their own phone. That copy is theirs. Deleting the photo in Charioteer does not remove it from the phone. The sender is told that before they send, and can turn off a per-photo switch that hides the save button. A screenshot can still be taken. That phone permission is not in the app yet.
+
 ## How the shared view is built
 
 Your choices are stored in `profile_sharing`, which only you can read and write. Other signed-in people do not read that table, and they do not read your private rows. They call `public_profile`, which returns only the fields you have switched on. It returns nothing if you are signed out, if Community is off, if age is not confirmed, or if either of you has blocked the other.
