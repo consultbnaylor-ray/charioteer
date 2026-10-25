@@ -64,3 +64,7 @@ On iPhone, Charioteer can read Apple Health when you allow it. It reads steps, s
 Readings stay on your account as daily totals: minutes split into strength, cardio, and other, plus the latest cardio fitness, walking heart rate, heart rate recovery, and session heart rate for a day. A raw heart-rate trace from a workout is not stored. Other people cannot see these readings. They are not used for advertising or marketing.
 
 If you turn on the coach as well as health data, a short summary is sent to the model to write the Health Plan and Thumos replies. That summary is the fitness level, the trend in a sentence, weekly minutes, the mix of sessions, and recovery. The raw samples are not sent for that. You can turn the coach off, and you can turn Apple Health off in Settings > Health > Data Access & Devices > Charioteer. The fitness card is an estimate, not a medical assessment.
+
+## Calendar
+
+Add to Calendar opens Apple's add-event sheet for a planned workout. The iPhone app contains a calendar purpose sentence only so Apple's upload check can see why that code is in the app. The sentence is: "Charioteer only opens Apple's add-event sheet when you tap Add to Calendar. It never reads your calendar." The calendar plugin copies that same sentence onto the full-calendar purpose text. Reminder purpose text is left out. Tapping the button does not ask for calendar permission, and Charioteer does not read your calendar or your reminders.

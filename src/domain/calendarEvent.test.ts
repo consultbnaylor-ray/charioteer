@@ -1,8 +1,18 @@
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 import { calendarEventHasHealthData, workoutCalendarEventInput, workoutCalendarIcs } from '@/domain/calendarEvent';
 import type { PlannedSession } from '@/domain/plannedSession';
+
+function sourceFiles(dir: string, found: string[] = []): string[] {
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const path = join(dir, entry.name);
+    if (entry.isDirectory()) sourceFiles(path, found);
+    else if (/\.(ts|tsx)$/.test(entry.name)) found.push(path);
+  }
+  return found;
+}
 
 function session(patch: Partial<PlannedSession> = {}): PlannedSession {
   return {
@@ -52,12 +62,21 @@ describe('workout calendar event', () => {
     expect(calendarEventHasHealthData(input!)).toBe(false);
   });
 
-  it('uses the system add-event sheet and adds no calendar permission', () => {
-    const app = readFileSync('app.json', 'utf8');
+  it('uses the system add-event sheet and does not request calendar permission', () => {
+    const app = JSON.parse(readFileSync('app.json', 'utf8')) as {
+      expo: { ios: { buildNumber: string }; plugins: unknown[] };
+    };
     const presenter = readFileSync('src/ui/addToCalendar.ts', 'utf8');
     const screen = readFileSync('src/ui/WorkoutCalendar.tsx', 'utf8');
-    expect(app).toContain('"buildNumber": "67"');
-    expect(app).not.toMatch(/NSCalendars|NSReminders|READ_CALENDAR|WRITE_CALENDAR|expo-calendar/);
+    const calendar = app.expo.plugins.find((plugin) => Array.isArray(plugin) && plugin[0] === 'expo-calendar') as
+      | [string, { calendarPermission?: string; remindersPermission?: string | false }]
+      | undefined;
+    expect(app.expo.ios.buildNumber).toBe('68');
+    expect(calendar?.[1]).toEqual({
+      calendarPermission: "Charioteer only opens Apple's add-event sheet when you tap Add to Calendar. It never reads your calendar.",
+      remindersPermission: false,
+    });
+    expect(JSON.stringify(app)).not.toMatch(/NSReminders|READ_CALENDAR|WRITE_CALENDAR|Allow \$\(PRODUCT_NAME\) to access your/);
     expect(presenter).toContain("import('expo-calendar/legacy')");
     expect(presenter).toContain('createEventInCalendarAsync(input)');
     expect(presenter).not.toMatch(/requestCalendarPermissions|getEventsAsync|getCalendars|notes:/);
@@ -65,5 +84,6 @@ describe('workout calendar event', () => {
     expect(screen).toContain('presentSessionEvent');
     expect(screen).toContain('workoutCalendarEventInput');
     expect(screen).not.toMatch(/requestCalendarPermissions|getEventsAsync|NSCalendars/);
+    expect(sourceFiles('src').filter((file) => !file.endsWith('.test.ts') && readFileSync(file, 'utf8').includes('requestCalendarPermissions'))).toEqual([]);
   });
 });
