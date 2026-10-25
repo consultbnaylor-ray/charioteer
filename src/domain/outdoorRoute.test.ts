@@ -147,6 +147,57 @@ describe('Get Outside phase 1', () => {
     expect(readFileSync('docs/store-privacy-labels.md', 'utf8')).toContain(motionNote);
     expect(readFileSync('docs/store-privacy-labels.md', 'utf8')).toContain('never reads motion or fitness-activity data');
   });
+
+  it('keeps the route controls above one quiet footer', () => {
+    const home = readFileSync('src/app/(main)/outside.tsx', 'utf8');
+    expect(home.indexOf('label="Find a route"')).toBeLessThan(home.indexOf('<OutsideFooter'));
+    expect(home.indexOf('label="Walk this off"')).toBeLessThan(home.indexOf('<OutsideFooter'));
+    expect(home.indexOf('Saved routes')).toBeLessThan(home.indexOf('<OutsideFooter'));
+    expect(home).toContain('kind="full"');
+    expect(home).toContain('intro="A walk from the menu."');
+    expect(home).not.toContain('<OutsideFacts');
+
+    const find = readFileSync('src/app/(main)/find-route.tsx', 'utf8');
+    expect(find).toContain('intro="A loop or a point-to-point line."');
+    expect(find).not.toContain('Route finding stays off');
+    expect(find.indexOf('<RouteConsentCard')).toBeLessThan(find.indexOf('<OutsideFooter'));
+    expect(find.indexOf('<RouteMaker')).toBeLessThan(find.indexOf('<OutsideFooter'));
+    expect(find).toContain('kind="short"');
+    expect(find).not.toContain('<OutsideFacts');
+
+    const craving = readFileSync('src/app/(main)/craving-walk.tsx', 'utf8');
+    expect(craving).toContain('intro="A 10 to 20 minute loop."');
+    expect(craving).not.toContain('Route finding stays off');
+    expect(craving.indexOf('<RouteMaker')).toBeLessThan(craving.indexOf('<OutsideFooter'));
+    expect(craving).toContain('kind="full"');
+
+    const map = readFileSync('src/app/(main)/outside-map.tsx', 'utf8');
+    expect(map.indexOf('label="Where I am"')).toBeLessThan(map.indexOf('<OutsideFooter'));
+    expect(map).not.toContain('<OutsideFacts');
+    expect(map).toContain('kind="full"');
+
+    const maker = readFileSync('src/ui/RouteMaker.tsx', 'utf8');
+    expect(maker.indexOf('Make the route')).toBeLessThan(maker.length);
+    expect(maker).not.toContain('ROUTE_SERVICE_LINE');
+    expect(maker).not.toContain('ROUTE_RETENTION_LINE');
+    expect(maker).not.toContain('ROUTE_SEND_LINE');
+
+    const footer = readFileSync('src/ui/OutsideFooter.tsx', 'utf8');
+    expect(footer).toContain('Good to know');
+    expect(footer).toContain('variant="muted"');
+    expect(footer).toContain('OUTSIDE_SAFETY_LINE');
+    expect(footer).toContain('OUTSIDE_CRISIS_LINE');
+    expect(footer).toContain('ROUTE_SAFETY_LINE');
+    expect(footer).toContain('LOCATION_PAGE_LINE');
+    expect(footer).toContain('PATH_LINE');
+    expect(footer).toContain('ROUTE_SERVICE_LINE');
+    expect(footer).not.toContain('MoreInfo');
+
+    const walk = readFileSync('src/ui/WalkThisOff.tsx', 'utf8');
+    expect(walk.indexOf('label="Walk this off"')).toBeLessThan(walk.indexOf('<OutsideFacts'));
+    expect(readFileSync('src/ui/RouteConsentCard.tsx', 'utf8')).toContain('ROUTE_CONSENT_LINES');
+    expect(readFileSync('src/ui/RouteFindingSwitch.tsx', 'utf8')).toContain('ROUTE_CONSENT_LINES');
+  });
 });
 
 function readAppSource(dir: string): string {

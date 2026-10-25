@@ -3,14 +3,11 @@ import { useState } from 'react';
 
 import { useRepository, useSnapshot } from '@/data';
 import {
-  LOCATION_PAGE_LINE,
-  PATH_LINE,
   routeKindLabel,
   routeSummary,
 } from '@/domain/outdoorRoute';
 import { shownError } from '@/domain/errors';
-import { MoreInfo } from '@/ui/MoreInfo';
-import { OutsideFacts } from '@/ui/WalkThisOff';
+import { OutsideFooter } from '@/ui/OutsideFooter';
 import { Button, Card, ErrorNote, Screen, T } from '@/ui/ui';
 
 export default function Outside() {
@@ -30,19 +27,12 @@ export default function Outside() {
   }
 
   return (
-    <Screen eyebrow="Tools" title="Get Outside" intro="A walk from the menu. The six tabs stay as they are.">
+    <Screen eyebrow="Tools" title="Get Outside" intro="A walk from the menu.">
       <Card>
-        <OutsideFacts />
-        <T>{LOCATION_PAGE_LINE}</T>
-        <T>Find a route and the craving walk ask the route service only after you turn route finding on.</T>
         <Button label="Find a route" onPress={() => router.push('/find-route' as never)} />
         <Button label="Walk this off" tone="quiet" onPress={() => router.push('/craving-walk' as never)} />
         <Button label="Open the map" tone="quiet" onPress={() => router.push('/outside-map' as never)} />
-        <MoreInfo about="Get Outside">
-          <T>{PATH_LINE}</T>
-          <T>Footpaths come from OpenStreetMap, drawn with OpenFreeMap. The credit stays on the map.</T>
-          <T>This is not a crisis service. Help and crisis lines stay in the menu.</T>
-        </MoreInfo>
+        <T variant="muted">Footpaths come from OpenStreetMap, drawn with OpenFreeMap. The credit stays on the map.</T>
       </Card>
       <ErrorNote>{error}</ErrorNote>
       <Card>
@@ -61,6 +51,7 @@ export default function Outside() {
           </Card>
         ))}
       </Card>
+      <OutsideFooter kind="full" />
     </Screen>
   );
 }

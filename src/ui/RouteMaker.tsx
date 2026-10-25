@@ -7,9 +7,6 @@ import {
   APPLE_MAPS_NOTE,
   HIKE_PROFILE_NOTE,
   ROUTE_MOCK_LINE,
-  ROUTE_RETENTION_LINE,
-  ROUTE_SEND_LINE,
-  ROUTE_SERVICE_LINE,
   STARTER_NOTE,
   STARTER_PLACES,
   appleMapsUrl,
@@ -21,14 +18,11 @@ import {
   type RouteShape,
 } from '@/domain/findRoute';
 import {
-  PATH_LINE,
-  formatWalkDistance,
   routeSummary,
   type OutdoorPoint,
 } from '@/domain/outdoorRoute';
 import { LOCATION_FIX_MESSAGE, LOCATION_FIX_PENDING, readWhileUsingFix } from '@/location/whileUsing';
 import { FootpathMap } from '@/ui/FootpathMap';
-import { MoreInfo } from '@/ui/MoreInfo';
 import { Button, Card, Choice, ErrorNote, Field, T } from '@/ui/ui';
 
 const DISTANCES = [
@@ -185,9 +179,6 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
   return (
     <>
       <Card>
-        <T>{ROUTE_SERVICE_LINE}</T>
-        <T>{ROUTE_SEND_LINE}</T>
-        <T>{ROUTE_RETENTION_LINE}</T>
         {craving ? (
           <>
             <T variant="label">How long</T>
@@ -262,9 +253,6 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
           {plan.mocked ? <T>{ROUTE_MOCK_LINE}</T> : null}
           {plan.mode === 'run' ? <T variant="muted">{HIKE_PROFILE_NOTE}</T> : null}
           <FootpathMap routes={[]} sketch={plan.points} here={plan.points[0] ?? null} />
-          <T>{ROUTE_SERVICE_LINE}</T>
-          <T>{ROUTE_SEND_LINE}</T>
-          <T>{ROUTE_RETENTION_LINE}</T>
           <Field label="Route name" value={title} onChangeText={setTitle} maxLength={80} />
           <Button label="Save this route" tone="quiet" disabled={pending || title.trim().length === 0} pending={pending} onPress={() => { void save(); }} />
           {saved ? <T>Saved on your account. You can delete it from Get Outside.</T> : null}
@@ -272,9 +260,6 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
             <Button label="Open in Apple Maps" tone="quiet" onPress={() => { void Linking.openURL(mapsUrl); }} />
           ) : null}
           <T variant="muted">{APPLE_MAPS_NOTE}</T>
-          <MoreInfo about="this route">
-            <T>{PATH_LINE}</T>
-          </MoreInfo>
         </Card>
       ) : null}
       <ErrorNote>{error}</ErrorNote>

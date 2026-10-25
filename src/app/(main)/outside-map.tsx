@@ -2,11 +2,10 @@ import { useState } from 'react';
 
 import { useRepository, useSnapshot } from '@/data';
 import { shownError } from '@/domain/errors';
-import { LOCATION_PAGE_LINE, PATH_LINE, routeKindLabel, routeSummary, type OutdoorPoint } from '@/domain/outdoorRoute';
+import { routeKindLabel, routeSummary, type OutdoorPoint } from '@/domain/outdoorRoute';
 import { LOCATION_FIX_MESSAGE, LOCATION_FIX_PENDING, readWhileUsingFix } from '@/location/whileUsing';
 import { FootpathMap } from '@/ui/FootpathMap';
-import { MoreInfo } from '@/ui/MoreInfo';
-import { OutsideFacts } from '@/ui/WalkThisOff';
+import { OutsideFooter } from '@/ui/OutsideFooter';
 import { Button, Card, Choice, ErrorNote, Screen, T } from '@/ui/ui';
 
 export default function OutsideMap() {
@@ -46,17 +45,12 @@ export default function OutsideMap() {
     <Screen eyebrow="Get Outside" title="Saved routes" intro="Footpaths from OpenStreetMap. A saved line stays on your account.">
       <Card>
         <FootpathMap routes={routes} sketch={[]} here={here} />
-        <T>{LOCATION_PAGE_LINE}</T>
-        <OutsideFacts />
         {locating ? (
           <Button label="Where I am" tone="quiet" pending pendingLabel={LOCATION_FIX_PENDING} onPress={() => {}} />
         ) : (
           <Choice label="Where I am" selected={here != null} onPress={() => { void whereIAm(); }} />
         )}
         <T variant="muted">Where I am stays on this page. It does not ask the route service for a line.</T>
-        <MoreInfo about="the map">
-          <T>{PATH_LINE}</T>
-        </MoreInfo>
       </Card>
       <ErrorNote>{error}</ErrorNote>
       {routes.map((route) => (
@@ -66,6 +60,7 @@ export default function OutsideMap() {
           <Button label="Delete" tone="quiet" accessibilityLabel={`Delete ${route.title}`} onPress={() => { void remove(route.id); }} />
         </Card>
       ))}
+      <OutsideFooter kind="full" />
     </Screen>
   );
 }
