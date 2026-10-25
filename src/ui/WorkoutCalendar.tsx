@@ -25,6 +25,7 @@ import {
   type PlannedSession,
   type PlannedSessionType,
 } from '@/domain/plannedSession';
+import { workoutCalendarEventInput } from '@/domain/calendarEvent';
 import { sessionEntryWords } from '@/domain/workoutDay';
 import { workoutTypeColor } from '@/domain/workoutTypeColor';
 import {
@@ -40,6 +41,7 @@ import {
   saveWorkoutReminders,
 } from '@/notifications/sessionReminder';
 import { routeSummaryLine, type DeviceWorkout } from '@/domain/workoutRoute';
+import { presentSessionEvent } from '@/ui/addToCalendar';
 import { DateField } from '@/ui/DateField';
 import { PlanTick } from '@/ui/PlanTick';
 import { SessionTimeField } from '@/ui/SessionTimeField';
@@ -295,6 +297,21 @@ export function WorkoutCalendar({
       setError(shownError(err, 'Could not save that session.'));
     } finally {
       setPending(false);
+    }
+  }
+
+  async function addToCalendar(session: PlannedSession) {
+    setError(null);
+    const draft = workoutCalendarEventInput(session, setting);
+    if (!draft) {
+      setError('Add to Calendar needs a start time and a duration.');
+      return;
+    }
+    try {
+      const outcome = await presentSessionEvent(draft);
+      if (outcome === 'added') playSavedHaptic();
+    } catch {
+      setError("Add to Calendar isn't available on this phone.");
     }
   }
 
@@ -562,6 +579,9 @@ export function WorkoutCalendar({
               ) : null}
               <Pressable accessibilityRole="button" accessibilityLabel={`Edit ${SESSION_TYPE_LABEL[session.sessionType]}`} onPress={() => begin(session)} style={{ minHeight: 44, justifyContent: 'center' }}>
                 <T>Edit</T>
+              </Pressable>
+              <Pressable accessibilityRole="button" accessibilityLabel={`Add ${SESSION_TYPE_LABEL[session.sessionType]} to Calendar`} onPress={() => { void addToCalendar(session); }} style={{ minHeight: 44, justifyContent: 'center' }}>
+                <T>Add to Calendar</T>
               </Pressable>
               <Pressable accessibilityRole="button" accessibilityLabel={`Delete ${SESSION_TYPE_LABEL[session.sessionType]}`} onPress={() => { void remove(session); }} style={{ minHeight: 44, justifyContent: 'center' }}>
                 <T>Delete</T>
