@@ -55,7 +55,7 @@ If you also tick the gratitude box, a separate private copy is saved in your gra
 
 The photos are kept until you delete them or you delete the account. Account deletion is meant to remove the files as well as the rows. A link that was already issued can keep working until it expires, which is planned at about 15 minutes. Export of your account should include the photos you sent. That export change is part of the same approval. The photos are not used for advertising.
 
-A later, separate approval would let someone save a copy into an album named Charioteer on their own phone. That copy is theirs. Deleting the photo in Charioteer does not remove it from the phone. The sender is told that before they send, and can turn off a per-photo switch that hides the save button. A screenshot can still be taken. That phone permission is not in the app yet.
+Ben has approved the add-only phone permission. The app config now includes that purpose sentence. The Save button is still not in the app. A copy saved into an album named Charioteer would belong to that phone. Deleting the photo in Charioteer does not remove it from the phone. The sender is told that before they send, and can turn off a per-photo switch that hides the save button. A screenshot can still be taken. The migration is not applied, and this is not live.
 
 ## How the shared view is built
 

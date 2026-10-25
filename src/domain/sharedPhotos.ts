@@ -12,6 +12,10 @@ export const SCREENSHOT_NOTE = 'A screenshot cannot be stopped.';
 
 export const SHARED_PHOTOS_LABEL = 'Shared Photos';
 
+/** iOS add-only purpose. The app asks for this only when someone taps Save. */
+export const SAVE_PHOTOS_USAGE =
+  'Charioteer saves photos shared with you into a Charioteer album on your phone. It never reads your other photos.';
+
 /** 25 Oct 2026, 07:41. UK date, device time zone, 24-hour clock. */
 export function sharedPhotoWhen(value: Date | string): string {
   return formatUkCompactWhen(value);

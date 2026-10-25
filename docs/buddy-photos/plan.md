@@ -56,24 +56,25 @@ Tapping a tile opens the viewer: the full photo, caption, who, and when. The sen
 
 ## Save to the phone
 
-Not built. No package, no config plugin, and no `NSPhotoLibraryAddUsageDescription` are in this change. Ben’s approval is required before any of the lines below are added.
+Ben approved the add-only permission (his words: “Happy to approve”). That approval is the purpose sentence and the media-library config on this branch. It is not approval to apply the migration, and it is not approval to ship.
 
-The action is **Save to Photos**. It writes the stripped JPEG into an album named **Charioteer**, creating that album if it is missing. The file saved is the copy that already had the camera details removed, not a fresh export from the original.
+The sentence on `NSPhotoLibraryAddUsageDescription`, and on the plugin’s `savePhotosPermission`, is: “Charioteer saves photos shared with you into a Charioteer album on your phone. It never reads your other photos.”
+
+`expo-media-library` ~57.0.5 is installed. The plugin keeps the existing library sentence for Choose photo, so it does not replace it with “Allow Charioteer to access your photos.” `isAccessMediaLocationEnabled` is false. `granularPermissions` is empty, so the plugin does not add `READ_MEDIA_IMAGES`, `READ_MEDIA_VIDEO`, or `READ_MEDIA_AUDIO`. `android.blockedPermissions` removes `READ_EXTERNAL_STORAGE`, `READ_MEDIA_VISUAL_USER_SELECTED`, and `ACCESS_MEDIA_LOCATION` as well. `plugins/withAddOnlyPhotoSave.js` is listed before that plugin so it runs afterwards, and it takes off `android:requestLegacyExternalStorage`. The library’s own manifest still asks for `WRITE_EXTERNAL_STORAGE` up to Android 12, which is the add permission on those phones. A generated prebuild removes every photo read permission. `WRITE_EXTERNAL_STORAGE` stays. Android 12 and earlier need it to add a file. Android 13 and later can add a file without a storage permission. iOS build number stays 67 on this branch.
+
+The only permission call is `requestAddOnlyPhotoSave` in `src/ui/saveSharedPhoto.ts`. It calls `requestPermissionsAsync(true)`, which is add-only. Nothing in the app calls it yet. It is for the first tap on Save, not for launch. The screen is not built, so Save is still only on the layout proofs. The system sheet below is a layout proof of that first tap. It is not a capture from a phone.
+
+![Layout proof. Add-only permission sheet, dark, first Save tap.](permission-dark.png)
+
+![Layout proof. The same sheet, light.](permission-light.png)
+
+The action, once the screen exists, is **Save to Photos**. The file it writes is the JPEG that already had the camera details removed.
 
 A setting on Shared Photos, **Automatically save photos I share to my Charioteer album**, starts off and stays on this phone only. It applies to photos this person sends. A photo received from a buddy is saved only when that person taps Save. It is never automatic. If the sender turned **Allow buddies to save this photo** off, the recipient’s Save button is hidden. The screenshot line stays.
 
-On this app’s Expo SDK 57, the calls that do not throw are `Asset.create` on the stripped file, then `Album.get('Charioteer')` or `Album.create('Charioteer', [asset])`. The older `MediaLibrary.createAlbumAsync` and `MediaLibrary.requestPermissionsAsync` are marked deprecated and throw. Permission is asked only on the first Save, with write-only and photo-only scope: `writeOnly: true` and `granularPermissions: ['photo']`.
+SDK 57’s `Album.create` and `Album.get` call `checkIfFullAccessGranted` before they run. That is a library read. `Asset.create` checks the add-only permission, then, if an album is passed, looks the asset up again, which is also a read. This branch does not call those. It does not switch to full library read. A named Charioteer album therefore cannot be created with the current Expo calls under the permission Ben approved. The Save button stays unwired until there is a way to add the file to that album without reading the library. `saveToLibraryAsync` is add-only and does not take an album name, so it is not used either.
 
-iOS add-only can refuse a later lookup of an album by name, because that lookup reads the library. The intended path stores the album id on the phone after the first create, and adds the next photo to that id, so the app does not browse the library. If a device test shows iOS still blocks that under add-only, the work stops for a decision. It does not switch to full library read on its own.
-
-What would change, and only after approval:
-
-1. `npx expo install expo-media-library`, the version that matches SDK 57. This is a native module, so the binary number moves.
-2. A plugin entry in `app.json`. `savePhotosPermission` sets `NSPhotoLibraryAddUsageDescription` to: “Charioteer adds a photo to an album named Charioteer on this phone. It does not look through your other photos.” `photosPermission` must be set to the existing library sentence, or the plugin replaces it with “Allow Charioteer to access your photos.” `isAccessMediaLocationEnabled` stays false, so location in the photo library is not requested. `granularPermissions` is `["photo"]` only.
-3. Even with that limit, the plugin also adds Android `READ_EXTERNAL_STORAGE`, `WRITE_EXTERNAL_STORAGE`, `READ_MEDIA_VISUAL_USER_SELECTED`, `READ_MEDIA_IMAGES`, and `android:requestLegacyExternalStorage="true"`. It does not add video, audio, or media location if configured as above. Those Android lines are still broader than iOS add-only. They are part of the approval.
-4. The purpose sentence already on the camera and the library, which says other people cannot see the photo, is rewritten in that same binary so a buddy photo does not make it false.
-
-Until that approval, Save to Photos is drawn on the proofs and is not wired.
+The purpose sentence already on the camera and the library still says other people cannot see the photo. That stays as it is in this change. It is rewritten when the buddy-photo screen is built, because a photo sent to a buddy would make it false.
 
 ## Who can be chosen
 
@@ -143,12 +144,12 @@ This migration does not change `export_my_data` or the account-delete function. 
 - Retention: until the sender deletes that photo, or deletes the account. Hide does not delete the file. A report outlives the photo. A signed link can linger for about 15 minutes.
 - The diary tick is a separate private copy, with the diary’s own retention.
 - Not used for advertising. Screenshots and a buddy showing the picture onward cannot be prevented, and the screen says so.
-- A copy saved into the phone’s Charioteer album is on that device. Deleting the photo in Charioteer does not delete that copy. The sender is told this before they send. The album permission is not in the app until it is approved.
+- A copy saved into the phone’s Charioteer album is on that device. Deleting the photo in Charioteer does not delete that copy. The sender is told this before they send. The add-only permission sentence is in the app config. The Save button is not wired, because creating the named album with Expo’s current calls needs a library read.
 - This note is not a solicitor’s DPIA.
 
 ## Camera and library
 
-Choosing or taking a photo uses the camera and library permission the app already has. Save to Photos is a separate, add-only permission and is not added in this change. See [Save to the phone](#save-to-the-phone).
+Choosing or taking a photo uses the camera and library permission the app already has. Save to Photos uses the separate add-only permission Ben approved. See [Save to the phone](#save-to-the-phone).
 
 The current purpose sentence says the photo is private and that other people cannot see it. That stays true for a progress photo and a diary photo. It would be false for a photo sent to a buddy. When this is built, those existing sentences are rewritten so they still cover a private photo and also say a photo you send is shown to the buddies you pick. Same two permissions. That wording change is why the binary number moves.
 
@@ -156,7 +157,7 @@ The current purpose sentence says the photo is private and that other people can
 
 - The SQL is already in the repo. Applying it to the live project is a separate approval.
 - The composer, the Shared Photos page, the menu row, and the viewer, in components `people.tsx` only mounts. The diary word stays out of that file.
-- Upload, sign for 15 minutes, delete, hide, report, and the save switch. The album write waits on the permission approval.
+- Upload, sign for 15 minutes, delete, hide, report, and the save switch. The album write still waits, because Expo’s album calls require a library read and this branch does not ask for one.
 - The diary tick through the existing diary calls.
 - The account-delete folder sweep, and the owner’s export.
 - The purpose-string rewrite. No new native module beyond what the image picker already is.
@@ -172,4 +173,4 @@ The current purpose sentence says the photo is private and that other people can
 
 ## What this change does not do
 
-The screen, the upload, and the tests for the screen are not built. The live database and the live storage bucket are unchanged. Nothing is shipped.
+The screen and the upload are not built. The add-only permission and the media-library config are in this branch. The live database and the live storage bucket are unchanged. Nothing is shipped.
