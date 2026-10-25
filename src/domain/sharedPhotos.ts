@@ -14,6 +14,12 @@ export const SHARED_PHOTOS_LABEL = 'Shared Photos';
 
 export const ONLY_CHOSEN_NOTE = 'Only the buddies you choose can see this. Not the Community.';
 
+/**
+ * Header camera sheet. Buddy and list stay on one line when the heading wraps.
+ * The People card button stays "Share a photo".
+ */
+export const SHARE_PHOTO_SHEET_TITLE = 'Share a photo with your Buddy\u00A0list';
+
 /** Quick-photo sheet. Off until the person ticks it. */
 export const GRATITUDE_DIARY_TICK = 'Also save to my Gratitude diary';
 

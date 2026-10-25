@@ -12,6 +12,7 @@ import {
   SAVE_PHOTOS_USAGE,
   SHARED_PHOTOS_LABEL,
   GRATITUDE_DIARY_TICK,
+  SHARE_PHOTO_SHEET_TITLE,
   GRATITUDE_ONLY_LABEL,
   GRATITUDE_SAVED_LABEL,
   buddyMaySave,
@@ -77,6 +78,7 @@ describe('Shared Photos folder', () => {
     expect(sharePhotoButtonLabel(2, true)).toBe('Send');
     expect(sharePhotoButtonLabel(0, true)).toBe('Save');
     expect(sharePhotoButtonLabel(0, false)).toBe('Send');
+    expect(SHARE_PHOTO_SHEET_TITLE.replace(/\u00A0/g, ' ')).toBe('Share a photo with your Buddy list');
     expect(GRATITUDE_DIARY_TICK).toBe('Also save to my Gratitude diary');
     expect(GRATITUDE_ONLY_LABEL).toBe('No one, just save to Gratitude');
     expect(GRATITUDE_SAVED_LABEL).toBe('Saved to Gratitude');
@@ -88,7 +90,10 @@ describe('Shared Photos folder', () => {
     expect(sheet).toContain('addGratitudeEntry');
     expect(sheet).toContain('addGratitudePhoto');
     expect(sheet).toContain('No accepted buddies yet. You can still save this photo to your Gratitude diary.');
+    expect(sheet).toContain('accessibilityLabel={SHARE_PHOTO_SHEET_TITLE}');
+    expect(sheet).toContain('{SHARE_PHOTO_SHEET_TITLE}');
     expect(sheet).toContain('accessibilityLabel="Share a photo"');
+    expect(sheet).toContain('label="Share a photo"');
     expect(sheet).toContain('export const HEADER_CAMERA_GLYPH = 22');
     expect(sheet).toContain('Math.max(44');
     expect(sheet).not.toMatch(/NSCameraUsageDescription|NSPhotoLibraryUsageDescription/);

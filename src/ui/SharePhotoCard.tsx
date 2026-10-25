@@ -13,6 +13,7 @@ import {
   ALBUM_HONEST_NOTE,
   AUTO_SAVE_LABEL,
   GRATITUDE_DIARY_TICK,
+  SHARE_PHOTO_SHEET_TITLE,
   GRATITUDE_ONLY_LABEL,
   GRATITUDE_SAVED_LABEL,
   ONLY_CHOSEN_NOTE,
@@ -80,7 +81,7 @@ export function HeaderShareButton() {
     <>
       <Pressable
         accessibilityRole="button"
-        accessibilityLabel="Share a photo"
+        accessibilityLabel={SHARE_PHOTO_SHEET_TITLE}
         onPress={() => setOpen(true)}
         style={{ width: tap, height: tap, alignItems: 'center', justifyContent: 'center' }}
       >
@@ -99,7 +100,7 @@ export function SharePhotoSheet({ open, onClose }: { open: boolean; onClose: () 
       <View style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.45)' }}>
         <Pressable accessibilityRole="button" accessibilityLabel="Close" style={{ flex: 1 }} onPress={onClose} />
         <View style={{ backgroundColor: theme.colors.bg, borderTopLeftRadius: 16, borderTopRightRadius: 16, maxHeight: Math.round(height * 0.92), padding: 16, gap: 8 }}>
-          <T variant="title">Share a photo</T>
+          <T variant="title">{SHARE_PHOTO_SHEET_TITLE}</T>
           {open ? <SharePhotoComposer onClose={onClose} maxHeight={Math.round(height * 0.72)} /> : null}
         </View>
       </View>

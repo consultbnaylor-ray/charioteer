@@ -20,7 +20,9 @@ The composer opens in that card:
 
 The first time it opens, and again above Send, the card says: “Only the buddies you choose can see this. Not the Community.” Under that, always: “Someone you send it to can still show it to another person. A screenshot cannot be stopped.” The sender also sees, the first time and above Send: “Buddies you share with can save this photo to their phone. Deleting it in Charioteer won't remove a copy they've already saved.” There is no download button inside Charioteer. Help and the crisis lines stay where they are, in the menu.
 
-VoiceOver: the button’s name is Share a photo. The picture’s name is the caption. With no caption, it is “Photo from {name}”.
+VoiceOver: the People button’s name is Share a photo. The picture’s name is the caption. With no caption, it is “Photo from {name}”.
+
+The header camera opens this composer in a sheet. The sheet heading, and that camera’s name, are “Share a photo with your Buddy list”. The People button stays “Share a photo”.
 
 The words for the gratitude tick live in a new component, not in `people.tsx`. That screen is tested to contain no mention of the diary.
 
