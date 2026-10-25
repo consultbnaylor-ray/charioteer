@@ -30,6 +30,21 @@ export const BUDDY_LINK_LIMIT = 'Too many links today.';
 export const BUDDY_UNAVAILABLE = 'That invite is not available.';
 export const BUDDY_CHOOSE = 'Choose at least one thing to share.';
 
+/** Owner side, on the switches for one person. */
+export function buddyOnlyShareLine(name: string): string {
+  const who = name.trim();
+  if (!who) return 'Only the person who accepts this can see this. Community members cannot.';
+  return `Only ${who} can see this. Community members cannot.`;
+}
+
+/** Viewer side, when there is no accepted per-buddy share to show. */
+export function buddyShareEmptyMessage(name: string): string {
+  const who = name.trim() || 'They';
+  return `${who} hasn't shared anything with you yet.`;
+}
+
+export const BUDDY_VIEWER_PRIVATE = 'Only you can see this. Community members cannot.';
+
 const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 
 export const BUDDY_SCOPE_KEYS = [

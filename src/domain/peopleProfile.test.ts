@@ -2,6 +2,8 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
 import { COMMUNITY_PROMPT_SNOOZE_MS, communityPromptSnoozed, withCommunityPromptSnooze } from './communityPrompt';
+import { buddyOnlyShareLine, buddyShareEmptyMessage } from './buddies';
+import { communityProfileClosedMessage } from './profileSharing';
 
 describe('your public profile on People', () => {
   const people = readFileSync('src/app/(main)/people.tsx', 'utf8');
@@ -14,7 +16,8 @@ describe('your public profile on People', () => {
     expect(people.indexOf('<YourProfileRow')).toBeLessThan(people.indexOf('lists.community.slice'));
     expect(people).not.toContain('<PublicProfileCard');
     expect(people).not.toContain('scrollTo');
-    expect(people).toContain('<CommunityProfile');
+    expect(people).toContain('<BuddyProfileButton');
+    expect(readFileSync('src/ui/CommunityProfile.tsx', 'utf8')).toContain('<CommunityProfile userId={userId} name={name} />');
     expect(people).toContain('DISCOVER_EMPTY');
     expect(people).not.toContain('No one to show. People you have blocked stay hidden.');
     expect(people).not.toContain('Community is off');
@@ -124,5 +127,40 @@ describe('your public profile on People', () => {
     expect(communityPromptSnoozed(stored, 'user', now + COMMUNITY_PROMPT_SNOOZE_MS - 1)).toBe(true);
     expect(communityPromptSnoozed(stored, 'user', now + COMMUNITY_PROMPT_SNOOZE_MS)).toBe(false);
     expect(communityPromptSnoozed(stored, 'someone-else', now)).toBe(false);
+  });
+
+  it('opens an accepted buddy on their private share, not the community profile', () => {
+    const people = readFileSync('src/app/(main)/people.tsx', 'utf8');
+    const accepted = people.slice(people.indexOf("show('accepted'"), people.lastIndexOf('SENT_HEADING'));
+    expect(accepted).toContain('const other = connectionOtherId(connection, me.id)');
+    expect(accepted).toContain('<BuddyShareButton userId={other} name={nameOf(other)} />');
+    expect(accepted).not.toContain('BuddyProfileButton');
+    expect(accepted).not.toContain('CommunityProfile');
+    const incoming = people.slice(people.lastIndexOf('REQUESTS_HEADING'), people.indexOf("show('accepted'"));
+    expect(incoming).not.toContain('BuddyShareButton');
+    expect(people).toContain('<BuddyProfileButton userId={card.id} name={card.displayName} />');
+
+    const panel = readFileSync('src/ui/BuddySharePanel.tsx', 'utf8');
+    expect(panel).toContain('repo.sharedBuddyData(userId)');
+    expect(panel).not.toContain('publicProfile');
+    expect(panel).toContain("label={open ? 'Hide profile' : 'Profile'}");
+    expect(panel).toContain('tone="quiet"');
+    expect(panel).toContain('buddyShareEmptyMessage(name)');
+    expect(panel).toContain('What ${view.displayName} shares with you');
+    expect(readFileSync('src/app/(main)/chat/[id].tsx', 'utf8')).toContain('<BuddyShareButton userId={otherId} name={other} />');
+
+    const editor = readFileSync('src/ui/BuddyScope.tsx', 'utf8');
+    expect(editor).toContain('buddyOnlyShareLine(buddyName)');
+    expect(editor).toContain('One switch per box.');
+    const shareScreen = readFileSync('src/app/(main)/sharing.tsx', 'utf8');
+    expect(shareScreen).toContain('Each switch here is for Community members');
+    expect(shareScreen).toContain('It does not change what a buddy sees');
+    expect(shareScreen).not.toContain('Only the person you invite can see this');
+
+    expect(buddyOnlyShareLine('Emma')).toBe('Only Emma can see this. Community members cannot.');
+    expect(buddyOnlyShareLine('')).toBe('Only the person who accepts this can see this. Community members cannot.');
+    expect(buddyShareEmptyMessage('Paul')).toBe("Paul hasn't shared anything with you yet.");
+    expect(buddyShareEmptyMessage('Paul')).not.toMatch(/block|community/i);
+    expect(communityProfileClosedMessage('Jordan Ellis')).toBe("Jordan Ellis hasn't turned on Community, so there's no profile to show yet.");
   });
 });

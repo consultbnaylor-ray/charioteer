@@ -136,6 +136,17 @@ describe('accountability buddy scope', () => {
     expect(JSON.stringify(open)).not.toContain(PHOTO);
     expect(JSON.stringify(open.healthData)).not.toContain('191.5 cm');
   });
+
+  it('keeps one buddy’s choices off another buddy’s view', () => {
+    const mealsOnly = projectBuddyShare(source(), { ...emptyBuddyScope(), meals: true });
+    const moodOnly = projectBuddyShare(source(), { ...emptyBuddyScope(), checkIns: true });
+    expect(mealsOnly.meals?.[0]?.detail).toContain('Chicken');
+    expect(mealsOnly.checkIns).toBeNull();
+    expect(mealsOnly.gratitude).toBeNull();
+    expect(moodOnly.meals).toBeNull();
+    expect(moodOnly.checkIns).toContain('Mood 7');
+    expect(JSON.stringify(moodOnly)).not.toContain('Chicken');
+  });
 });
 
 describe('buddy links', () => {
@@ -224,6 +235,30 @@ describe('buddies screen', () => {
     expect(screen).not.toContain('Type a code');
     expect(screen).not.toContain('Invite by link');
     expect(screen).not.toContain("rpc(");
+  });
+});
+
+describe('buddy share is not the community profile', () => {
+  it('reads an accepted invite and does not consult community switches', () => {
+    const sql = readFileSync('supabase/migrations/20261015210000_buddy_data_item_fix.sql', 'utf8');
+    const fn = sql.slice(sql.indexOf('FUNCTION public.shared_buddy_data'), sql.indexOf('revoke all on function public.shared_buddy_data'));
+    expect(fn).toContain("status = 'accepted'");
+    expect(fn).toContain('buddy_pair_blocked');
+    expect(fn).toContain('buddy_is_adult');
+    expect(fn).not.toContain('community_visible');
+    expect(fn).not.toContain('viewer_in_community');
+    expect(fn).not.toContain('profile_sharing');
+    const community = readFileSync('supabase/migrations/20261022200000_shared_health_merge.sql', 'utf8');
+    const profile = community.slice(community.indexOf('FUNCTION public.public_profile'), community.indexOf('revoke all on function public.public_profile'));
+    expect(profile).toContain('community_visible');
+    expect(profile).toContain('viewer_in_community');
+    expect(profile).toContain('profile_sharing');
+    const demo = readFileSync('src/data/demo-repository.ts', 'utf8');
+    const buddy = demo.slice(demo.indexOf('async sharedBuddyData'), demo.indexOf('async sharedHealthPlan'));
+    expect(buddy).toContain("status === 'accepted'");
+    expect(buddy).not.toContain('communityVisible');
+    const pub = demo.slice(demo.indexOf('async publicProfile'), demo.indexOf('async addProfilePhoto'));
+    expect(pub).toContain('communityVisible');
   });
 });
 

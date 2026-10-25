@@ -160,8 +160,8 @@ describe('live chat', () => {
     expect(people).toContain('router.navigate(`/chat/');
     expect(people).not.toContain('router.push(`/chat/');
     expect(people).toContain('Buddies (${buddyCount(lists)})');
-    expect(people).toContain('ScreenBoundary');
-    expect(people).toContain('screen="profile"');
+    expect(people).toContain('<BuddyProfileButton');
+    expect(readFileSync('src/ui/CommunityProfile.tsx', 'utf8')).toContain('screen="profile"');
     const chatRead = readFileSync('src/ui/chatRead.ts', 'utf8');
     expect(chatRead).toContain('saveChatRead');
     expect(chatRead).not.toContain('markChatRead');
@@ -216,7 +216,8 @@ describe('live chat', () => {
     expect(profile).toContain("if (error) throw asUserFacing(error, 'general')");
     expect(profile).not.toContain('return null');
     expect(facts).toContain('{PROFILE_LOAD_ERROR}');
-    expect(facts).toContain('This profile is hidden.');
+    expect(facts).toContain('communityProfileClosedMessage(name)');
+    expect(facts).not.toContain('This profile is hidden.');
     expect(facts).toContain('setAttempt');
     expect(PROFILE_LOAD_ERROR).toBe("Couldn't load profile – Try again");
     expect(sql).toContain('supabase_realtime');

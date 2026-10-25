@@ -5,7 +5,9 @@ import { Pressable, Share, View } from 'react-native';
 import { useRepository, useSnapshot } from '@/data';
 import {
   BUDDY_CHOOSE,
+  BUDDY_VIEWER_PRIVATE,
   buddyReminderMessage,
+  buddyShareEmptyMessage,
   buddyShareMessage,
   consumeBuddySecret,
   emptyBuddyScope,
@@ -127,12 +129,12 @@ export default function BuddiesScreen() {
     }).catch((err: unknown) => setError(shownError(err, 'Could not save that.'))));
   };
 
-  const openShare = (ownerId: string) => {
+  const openShare = (ownerId: string, name: string) => {
     setError(null);
     setView(null);
     run(`view:${ownerId}`, () => repo.sharedBuddyData(ownerId).then((next) => {
       setView(next);
-      if (!next) setError('This share is not available.');
+      if (!next) setError(buddyShareEmptyMessage(name));
     }).catch((err: unknown) => setError(shownError(err, 'Could not open that.'))));
   };
 
@@ -177,6 +179,7 @@ export default function BuddiesScreen() {
           <BuddyScopeEditor
             scope={compose.scope}
             heading="They will see"
+            buddyName={compose.kind === 'person' ? compose.name : compose.kind === 'edit' ? compose.invite.name : ''}
             onChange={(scope) => setCompose({ ...compose, scope })}
           />
           {compose.kind === 'person' ? <Button label="Send invite" pending={isPending('send')} pendingLabel="Sending..." onPress={sendPerson} /> : null}
@@ -225,7 +228,8 @@ export default function BuddiesScreen() {
       ) : null}
       {view ? (
         <Card>
-          <T variant="title">{view.displayName}</T>
+          <T variant="title">{`What ${view.displayName} shares with you`}</T>
+          <T variant="muted">{BUDDY_VIEWER_PRIVATE}</T>
           <T variant="muted">View only. A private message is the only reply.</T>
           {view.summary.map((line) => <T key={line}>{line}</T>)}
           {view.meals?.map((meal) => <T key={`${meal.meal}-${meal.detail}`}>{meal.meal}: {meal.detail}</T>)}
@@ -311,7 +315,7 @@ export default function BuddiesScreen() {
                 <Card key={invite.id}>
                   <T variant="title">{invite.name}</T>
                   {scopeSummary(invite.scope).map((line) => <T key={line}>{line}</T>)}
-                  <Button label="View" pending={isPending(`view:${invite.ownerId}`)} pendingLabel="Opening..." onPress={() => openShare(invite.ownerId)} />
+                  <Button label="View" pending={isPending(`view:${invite.ownerId}`)} pendingLabel="Opening..." onPress={() => openShare(invite.ownerId, invite.name)} />
                   <Button label="Message privately" tone="quiet" onPress={() => message(invite.ownerId)} />
                   <Button label="Remove buddy" tone="quiet" pending={isPending(`revoke:${invite.id}`)} pendingLabel="Sending..." onPress={() => {
                     setError(null);

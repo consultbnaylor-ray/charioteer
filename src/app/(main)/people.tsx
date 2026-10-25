@@ -21,10 +21,10 @@ import {
 import { shownError } from '@/domain/errors';
 import { randomId } from '@/domain/id';
 import { chatPreview, latestChatMessage, messageUnreadTotal, viewerChatUnread } from '@/domain/liveChat';
-import { CommunityProfile } from '@/ui/CommunityProfile';
+import { BuddyShareButton } from '@/ui/BuddySharePanel';
+import { BuddyProfileButton } from '@/ui/CommunityProfile';
 import { CommunityPrompt } from '@/ui/CommunityPrompt';
 import { useChatRead } from '@/ui/chatRead';
-import { ScreenBoundary } from '@/ui/ScreenBoundary';
 import { MemberAvatar, useMemberAvatars } from '@/ui/MemberAvatar';
 import { usePendingPress } from '@/ui/pendingAction';
 import { PlanTick } from '@/ui/PlanTick';
@@ -38,7 +38,6 @@ export default function People() {
   const router = useRouter();
   const [tab, setTab] = useState<'buddies' | 'community'>('buddies');
   const [openLists, setOpenLists] = useState<Record<string, boolean>>({});
-  const [profileId, setProfileId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const { run, isPending } = usePendingPress();
   const clientIds = useRef(new Map<string, string>());
@@ -150,6 +149,7 @@ export default function People() {
                   <CountBadge count={unread} />
                 </View>
                 <Button label="Message" onPress={() => router.navigate(`/chat/${connection.id}` as never)} />
+                <BuddyShareButton userId={other} name={nameOf(other)} />
               </Card>
             );
           })}
@@ -199,16 +199,7 @@ export default function People() {
               onRespond={respond}
               onMessage={(connectionId) => router.navigate(`/chat/${connectionId}` as never)}
             />
-            <Button
-              label={profileId === card.id ? 'Hide profile' : 'Profile'}
-              tone="quiet"
-              onPress={() => setProfileId((current) => (current === card.id ? null : card.id))}
-            />
-            {profileId === card.id ? (
-              <ScreenBoundary screen="profile">
-                <CommunityProfile userId={card.id} name={card.displayName} />
-              </ScreenBoundary>
-            ) : null}
+            <BuddyProfileButton userId={card.id} name={card.displayName} />
           </Card>
         );
       }) : null}

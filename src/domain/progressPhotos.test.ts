@@ -125,7 +125,8 @@ describe('progress photos stay private', () => {
     const people = readFileSync('src/app/(main)/people.tsx', 'utf8');
     const profile = readFileSync('src/ui/CommunityProfile.tsx', 'utf8');
     const you = readFileSync('src/ui/ProgressPhotos.tsx', 'utf8');
-    expect(people).toContain('<CommunityProfile');
+    expect(people).toContain('<BuddyProfileButton');
+    expect(profile).toContain('<CommunityProfile');
     expect(people).not.toMatch(/thumos|xai|progress-photos/i);
     expect(profile).toContain('reportUser');
     expect(profile).toContain('Message privately');
