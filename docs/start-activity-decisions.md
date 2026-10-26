@@ -4,7 +4,7 @@ Version 1 is in the app on this branch. Ben approved it on 26 October 2026, and 
 
 Outside is Good has three buttons: **Start a walk**, **Start a run**, and **Start a cycle**. They sit on the existing card, under Find a route and above Open the map. The button opens the setup screen with that activity already chosen. The person can still switch. Walk this off stays hidden.
 
-The pictures are layout proofs. They are not screens in the app. The figures (1.42 km, 18:42, 13:10 per km) are an example, so the layout has something to show.
+The setup and finished pictures are layout proofs. The live pictures are the screen. The short outing in them is there so the map has a line to show. The example figures further down (1.42 km, 18:42, 13:10 per km) are not that outing.
 
 ## Recommendation, short
 
@@ -27,9 +27,9 @@ Setup. Activity, an optional saved route, how often Thumos speaks, and whether t
 
 During the outing. The same OpenFreeMap map as route finding is on the screen, light by default, with the light/dark switch, full screen, and the attribution. The blue dot follows the person. A chosen route is drawn in both styles. The line walked so far is drawn too, and it is not saved. Time, distance, pace, and the latest line sit under the map. Pause and Finish stay in reach. Panning the map leaves it there until Re-centre. While paused, Pause becomes Resume.
 
-![Live, 390 wide. Layout proof.](start-activity/live-390.png)
+![Live, 390 wide. The map, the line so far, and Pause and Finish.](start-activity/live-390.png)
 
-![Live, 320 wide.](start-activity/live-320.png)
+![Live, 320 wide. The same screen.](start-activity/live-320.png)
 
 The summary. Distance, time, and average pace. A note is optional. The gratitude tick is off. Done closes the screen and the summary stays. Don't keep this throws it away. Save to Apple Health is on the drawing and is not part of the first build.
 
