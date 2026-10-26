@@ -107,7 +107,15 @@ export function FootpathMap({
 }
 
 function paintMap(map: LibreMap, input: PaintInput) {
-  if (!map.isStyleLoaded()) return;
+  try {
+    if (!map.isStyleLoaded()) return;
+    paintMapLayers(map, input);
+  } catch {
+    // The style is still swapping. The next styledata event paints again.
+  }
+}
+
+function paintMapLayers(map: LibreMap, input: PaintInput) {
   const green = mapLineColour(input.scheme);
   const rows: { id: string; data: string; layer: Record<string, unknown> }[] = [
     {
@@ -189,6 +197,7 @@ function WebCanvas({
   const mapRef = useRef<LibreMap | null>(null);
   const [ready, setReady] = useState(0);
   const applied = useRef<string | null>(null);
+  const styleListener = useRef<(() => void) | null>(null);
   const paint = useRef<PaintInput>({ scheme, savedJson, sketchJson, startJson, youJson });
   paint.current = { scheme, savedJson, sketchJson, startJson, youJson };
   const heldRef = useRef(held);
@@ -269,17 +278,18 @@ function WebCanvas({
     if (applied.current !== url) {
       applied.current = url;
       const place = held.current;
-      let painted = false;
+      if (styleListener.current) map.off('styledata', styleListener.current);
       const finish = () => {
         const current = mapRef.current;
-        if (!current || painted || !current.isStyleLoaded()) return;
-        painted = true;
-        current.off('styledata', finish);
+        if (!current || !current.isStyleLoaded()) return;
+        if (current.getLayer('sketch-line') && current.getLayer('saved-line')) return;
         current.jumpTo({ center: [place.longitude, place.latitude], zoom: place.zoom });
         paintMap(current, paint.current);
       };
+      styleListener.current = finish;
       map.on('styledata', finish);
       map.setStyle(url);
+      map.once('idle', finish);
       return;
     }
     paintMap(map, paint.current);
