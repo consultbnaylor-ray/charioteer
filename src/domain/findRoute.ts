@@ -25,7 +25,7 @@ export const STARTER_NOTE =
 export const APPLE_MAPS_NOTE =
   'Opens Apple Maps with a few points from this route. Apple draws its own line. It does not need another permission.';
 
-export const NO_CLIMB_LINE = 'The route service did not return a climb for this line.';
+export const NO_CLIMB_LINE = 'Climb not available for this route.';
 
 export type RouteMode = 'walk' | 'run' | 'cycle';
 
@@ -118,6 +118,34 @@ function finitePoint(value: unknown): OutdoorPoint | null {
   return { latitude, longitude };
 }
 
+/**
+ * A start or destination for the route service.
+ * Named latitude and longitude only. An array is rejected so the order is never guessed.
+ * A negative accuracy is an invalid fix. An accuracy object is ignored.
+ * The result is only the two coordinates, rounded to six decimal places.
+ */
+export function routeCoordinate(value: unknown): OutdoorPoint | null {
+  if (value == null || typeof value !== 'object' || Array.isArray(value)) return null;
+  const row = value as { coords?: unknown; accuracy?: unknown; latitude?: unknown; longitude?: unknown };
+  if (invalidAccuracy(row.accuracy)) return null;
+  if (Array.isArray(row.coords)) return null;
+  const source = row.coords != null && typeof row.coords === 'object'
+    ? row.coords as { accuracy?: unknown; latitude?: unknown; longitude?: unknown }
+    : row;
+  if (source !== row && invalidAccuracy(source.accuracy)) return null;
+  if (typeof source.latitude !== 'number' || typeof source.longitude !== 'number') return null;
+  if (!Number.isFinite(source.latitude) || !Number.isFinite(source.longitude)) return null;
+  if (Math.abs(source.latitude) > 90 || Math.abs(source.longitude) > 180) return null;
+  const latitude = Number(source.latitude.toFixed(6));
+  const longitude = Number(source.longitude.toFixed(6));
+  if (latitude === 0 && longitude === 0) return null;
+  return { latitude, longitude };
+}
+
+function invalidAccuracy(value: unknown): boolean {
+  return typeof value === 'number' && !(value >= 0);
+}
+
 export function parseRoutePlan(value: unknown): RoutePlan | null {
   if (!value || typeof value !== 'object') return null;
   const row = value as Record<string, unknown>;
@@ -154,9 +182,9 @@ function shift(origin: OutdoorPoint, northM: number, eastM: number): OutdoorPoin
 /** A bent sample line around the start. It is not a path from the route service. */
 export function mockRoute(input: RoutePlanInput): RoutePlan | null {
   const length = targetLengthM(input);
-  const start = finitePoint(input.start);
+  const start = routeCoordinate(input.start);
   if (!length || !start) return null;
-  const end = input.shape === 'a_to_b' ? finitePoint(input.end) : null;
+  const end = input.shape === 'a_to_b' ? routeCoordinate(input.end) : null;
   if (input.shape === 'a_to_b' && !end) return null;
   const leg = length / 6;
   const points = input.shape === 'a_to_b' && end

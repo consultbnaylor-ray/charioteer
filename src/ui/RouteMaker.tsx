@@ -62,6 +62,8 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
   const [pending, setPending] = useState(false);
   const [locating, setLocating] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [you, setYou] = useState<OutdoorPoint | null>(null);
+  const [focus, setFocus] = useState(0);
   const hereSelected = startName === 'Where I am' && start != null;
 
   function pickStart(place: RoutePlace) {
@@ -92,8 +94,26 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
       }
       setStart(fix.point);
       setStartName('Where I am');
+      setYou(fix.point);
       setPlan(null);
+      setFocus(0);
       setError(null);
+    } finally {
+      setLocating(false);
+    }
+  }
+
+  async function showMyLocation() {
+    setError(null);
+    setLocating(true);
+    try {
+      const fix = await readWhileUsingFix();
+      if (!fix.ok) {
+        setError(LOCATION_FIX_MESSAGE);
+        return;
+      }
+      setYou(fix.point);
+      setFocus((value) => value + 1);
     } finally {
       setLocating(false);
     }
@@ -141,6 +161,7 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
         minutes: askedMinutes,
       });
       setPlan(next);
+      setFocus(0);
       if (!craving) {
         const label = next.mode === 'run' ? 'Run' : next.mode === 'cycle' ? 'Cycle' : 'Walk';
         setTitle(next.shape === 'a_to_b' ? `${label} to a place` : `${label} loop`);
@@ -252,7 +273,14 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
           <T>{formatClimb(plan.ascentM)}</T>
           {plan.mocked ? <T>{ROUTE_MOCK_LINE}</T> : null}
           {plan.mode === 'run' ? <T variant="muted">{HIKE_PROFILE_NOTE}</T> : null}
-          <FootpathMap routes={[]} sketch={plan.points} here={plan.points[0] ?? null} />
+          <FootpathMap
+            routes={[]}
+            sketch={plan.points}
+            here={you}
+            locationFocus={focus}
+            locating={locating}
+            onShowMyLocation={() => { void showMyLocation(); }}
+          />
           <Field label="Route name" value={title} onChangeText={setTitle} maxLength={80} />
           <Button label="Save this route" tone="quiet" disabled={pending || title.trim().length === 0} pending={pending} onPress={() => { void save(); }} />
           {saved ? <T>Saved on your account. You can delete it from Outside is Good.</T> : null}

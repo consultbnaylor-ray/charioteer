@@ -13,6 +13,7 @@ export default function OutsideMap() {
   const snap = useSnapshot();
   const repo = useRepository();
   const [here, setHere] = useState<OutdoorPoint | null>(null);
+  const [focus, setFocus] = useState(0);
   const [locating, setLocating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const routes = snap.outdoorRoutes ?? [];
@@ -27,6 +28,7 @@ export default function OutsideMap() {
         return;
       }
       setHere(fix.point);
+      setFocus((value) => value + 1);
       setError(null);
     } finally {
       setLocating(false);
@@ -45,7 +47,14 @@ export default function OutsideMap() {
   return (
     <Screen eyebrow={OUTSIDE_SECTION_LABEL} title="Saved routes" intro="Footpaths from OpenStreetMap. A saved line stays on your account.">
       <Card>
-        <FootpathMap routes={routes} sketch={[]} here={here} />
+        <FootpathMap
+          routes={routes}
+          sketch={[]}
+          here={here}
+          locationFocus={focus}
+          locating={locating}
+          onShowMyLocation={() => { void whereIAm(); }}
+        />
         {locating ? (
           <Button label="Where I am" tone="quiet" pending pendingLabel={LOCATION_FIX_PENDING} onPress={() => {}} />
         ) : (

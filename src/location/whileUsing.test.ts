@@ -104,4 +104,67 @@ describe('while-using location', () => {
     expect(reader).toContain('getCurrentPositionAsync');
     expect(reader).not.toMatch(/requestBackground|startLocationUpdates|watchPosition|NSLocationAlways|ACCESS_BACKGROUND_LOCATION/);
   });
+
+  it('drops a stale, empty, or invalid fix and recentres without asking for a route', async () => {
+    const stale = await readWhileUsingFix(deps({
+      getCurrentPositionAsync: async () => ({
+        coords: { latitude: 51.45, longitude: -2.59, accuracy: 5 },
+        timestamp: Date.now() - 130_000,
+      }),
+    }));
+    expect(stale).toEqual({ ok: false, reason: 'unavailable' });
+    const negative = await readWhileUsingFix(deps({
+      getCurrentPositionAsync: async () => ({
+        coords: { latitude: 51.45, longitude: -2.59, accuracy: -1 },
+        timestamp: Date.now(),
+      }),
+    }));
+    expect(negative).toEqual({ ok: false, reason: 'unavailable' });
+    const zero = await readWhileUsingFix(deps({
+      getCurrentPositionAsync: async () => ({ coords: { latitude: 0, longitude: 0 } }),
+    }));
+    expect(zero).toEqual({ ok: false, reason: 'unavailable' });
+    const swapped = await readWhileUsingFix(deps({
+      getCurrentPositionAsync: async () => ({ coords: [-2.59, 51.45] as never }),
+    }));
+    expect(swapped).toEqual({ ok: false, reason: 'unavailable' });
+    const fresh = await readWhileUsingFix(deps({
+      getCurrentPositionAsync: async () => ({
+        coords: { latitude: 51.450412349, longitude: -2.594512349, accuracy: 12 },
+        accuracy: { horizontalAccuracy: 12 },
+        timestamp: Date.now() - 5_000,
+      }),
+    }));
+    expect(fresh).toEqual({ ok: true, point: { latitude: 51.450412, longitude: -2.594512 } });
+    const reader = readFileSync('src/location/whileUsing.ts', 'utf8');
+    expect(reader).toContain('maximumAge: 0');
+    expect(reader).toContain('Location.Accuracy.High');
+    expect(reader).not.toContain('getLastKnownPositionAsync');
+    const maker = readFileSync('src/ui/RouteMaker.tsx', 'utf8');
+    const show = maker.slice(maker.indexOf('async function showMyLocation'), maker.indexOf('async function search'));
+    expect(show).toContain('readWhileUsingFix');
+    expect(show).toContain('setYou(fix.point)');
+    expect(show).not.toContain('planOutdoorRoute');
+    expect(show).not.toContain('setStart');
+    expect(maker).toContain('here={you}');
+    expect(maker).not.toContain('here={plan.points[0]');
+    const map = readFileSync('src/app/(main)/outside-map.tsx', 'utf8');
+    expect(map).toContain('onShowMyLocation={() => { void whereIAm(); }}');
+    expect(map).not.toContain('planOutdoorRoute');
+    for (const path of ['src/ui/FootpathMap.tsx', 'src/ui/FootpathMap.web.tsx']) {
+      const source = readFileSync(path, 'utf8');
+      expect(source).toContain('youAreHereCollection');
+      expect(source).toContain('startCollection');
+      expect(source).toContain('YOU_HERE_FILL');
+      expect(source).toContain('<ShowMyLocationButton');
+      expect(source).not.toContain('planOutdoorRoute');
+      expect(source).not.toContain('trackUserLocation');
+      expect(source).not.toContain('watchPosition');
+    }
+    const button = readFileSync('src/ui/ShowMyLocation.tsx', 'utf8');
+    expect(button).toContain("accessibilityLabel={SHOW_MY_LOCATION}");
+    expect(button).toContain("export const SHOW_MY_LOCATION = 'Show my location'");
+    expect(button).toContain('width: 44');
+    expect(button).not.toContain('planOutdoorRoute');
+  });
 });

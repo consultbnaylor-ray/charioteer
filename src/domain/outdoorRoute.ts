@@ -315,17 +315,40 @@ export function sketchLineCollection(points: readonly OutdoorPoint[]) {
   };
 }
 
-export function hereCollection(point: OutdoorPoint | null) {
-  const clean = point ? finitePoint(point) : null;
+/** Blue fill and white ring. Distinct from the green route-start dot. */
+export const YOU_HERE_FILL = '#2563EB';
+export const YOU_HERE_RING = '#FFFFFF';
+
+function pointCollection(points: readonly OutdoorPoint[], id: string) {
   return {
     type: 'FeatureCollection' as const,
-    features: clean ? [{
+    features: points.map((item, index) => ({
       type: 'Feature' as const,
-      id: 'here',
+      id: `${id}-${index}`,
       properties: {},
-      geometry: { type: 'Point' as const, coordinates: toLngLat(clean) },
-    }] : [],
+      geometry: { type: 'Point' as const, coordinates: toLngLat(item) },
+    })),
   };
+}
+
+/** Green dots at the start of a drawn line. Not the phone's location. */
+export function startCollection(routes: readonly OutdoorRoute[], sketch: readonly OutdoorPoint[]) {
+  const points: OutdoorPoint[] = [];
+  const add = (point: OutdoorPoint | undefined) => {
+    const clean = point ? finitePoint(point) : null;
+    if (!clean) return;
+    if (points.some((item) => item.latitude === clean.latitude && item.longitude === clean.longitude)) return;
+    points.push(clean);
+  };
+  if (sketch[0]) add(sketch[0]);
+  for (const route of routes) add(route.points[0]);
+  return pointCollection(points, 'start');
+}
+
+/** Shown only after the person asks to see where they are. */
+export function youAreHereCollection(point: OutdoorPoint | null) {
+  const clean = point ? finitePoint(point) : null;
+  return pointCollection(clean ? [clean] : [], 'you');
 }
 
 export function sampleCanalLoop(): OutdoorRoute {
@@ -347,9 +370,10 @@ export function sampleCanalLoop(): OutdoorRoute {
   };
 }
 
+/** A route line stays in frame. The GPS fix is the centre only when no line is on the map. */
 export function viewCentre(routes: readonly OutdoorRoute[], sketch: readonly OutdoorPoint[], here: OutdoorPoint | null): OutdoorPoint {
-  if (here) return here;
   if (sketch.length) return sketch[0];
   if (routes[0]?.points.length) return routes[0].points[0];
+  if (here) return here;
   return mapStart();
 }

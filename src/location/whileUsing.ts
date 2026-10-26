@@ -1,3 +1,4 @@
+import { routeCoordinate } from '@/domain/findRoute';
 import type { OutdoorPoint } from '@/domain/outdoorRoute';
 
 /**
@@ -17,7 +18,14 @@ export type WhileUsingFixResult =
   | { ok: true; point: OutdoorPoint }
   | { ok: false; reason: WhileUsingMiss };
 
-type PositionReading = { coords: { latitude: number; longitude: number } };
+type PositionReading = {
+  coords?: { latitude?: number; longitude?: number; accuracy?: number | null };
+  accuracy?: unknown;
+  timestamp?: number;
+};
+
+/** A millisecond timestamp older than two minutes is a cached fix, not a current one. */
+const FRESH_FIX_MS = 120_000;
 
 export type WhileUsingDeps = {
   getForegroundPermissionsAsync: () => Promise<{ status: string }>;
@@ -30,7 +38,10 @@ async function loadDeps(): Promise<WhileUsingDeps> {
   return {
     getForegroundPermissionsAsync: () => Location.getForegroundPermissionsAsync(),
     requestForegroundPermissionsAsync: () => Location.requestForegroundPermissionsAsync(),
-    getCurrentPositionAsync: () => Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }),
+    getCurrentPositionAsync: () => Location.getCurrentPositionAsync({
+      accuracy: Location.Accuracy.High,
+      maximumAge: 0,
+    } as never),
   };
 }
 
@@ -47,13 +58,18 @@ export async function readWhileUsingFix(
     if (status !== 'granted') return { ok: false, reason: 'denied' };
     const reading = await firstFix(location.getCurrentPositionAsync(), timeoutMs);
     if (reading === 'timeout') return { ok: false, reason: 'timeout' };
-    const latitude = reading.coords.latitude;
-    const longitude = reading.coords.longitude;
-    if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return { ok: false, reason: 'unavailable' };
-    return { ok: true, point: { latitude, longitude } };
+    const point = routeCoordinate(reading);
+    if (!point || !freshFix(reading)) return { ok: false, reason: 'unavailable' };
+    return { ok: true, point };
   } catch {
     return { ok: false, reason: 'unavailable' };
   }
+}
+
+function freshFix(reading: PositionReading, now = Date.now()): boolean {
+  const stamp = reading.timestamp;
+  if (typeof stamp !== 'number' || !Number.isFinite(stamp) || stamp <= 1e11) return true;
+  return now - stamp <= FRESH_FIX_MS;
 }
 
 /** The position call has no deadline of its own. A late result is ignored after the deadline. */

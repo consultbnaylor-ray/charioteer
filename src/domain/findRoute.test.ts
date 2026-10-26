@@ -14,19 +14,27 @@ import {
   routeFindingAllowed,
 } from '@/domain/routeConsent';
 import {
+  NO_CLIMB_LINE,
   appleMapsUrl,
+  formatClimb,
   mockRoute,
   parseRoutePlan,
+  routeCoordinate,
   routeKind,
   targetLengthM,
 } from '@/domain/findRoute';
 import {
+  YOU_HERE_FILL,
   liveKind,
   liveOutdoorRouteInsert,
   outdoorRouteInsert,
   routeShapeRejected,
   routeTableMissing,
+  sampleCanalLoop,
   simplifyLine,
+  startCollection,
+  viewCentre,
+  youAreHereCollection,
 } from '@/domain/outdoorRoute';
 import {
   GLOBAL_ROUTE_DAILY_CAP,
@@ -216,5 +224,49 @@ describe('route finding', () => {
     expect(fn).not.toContain('console.error(error');
     expect(fn).not.toMatch(/console\.(log|error|info|warn)\([^)]*ORS_API_KEY/);
     expect(fn).not.toMatch(/console\.(log|error|info|warn)\([^)]*key/);
+  });
+
+  it('keeps a route start as named coordinates and says when climb is missing', () => {
+    expect(NO_CLIMB_LINE).toBe('Climb not available for this route.');
+    expect(formatClimb(null)).toBe('Climb not available for this route.');
+    expect(formatClimb(12.2)).toBe('Climb 12 m');
+    expect(routeCoordinate({
+      id: 'bristol',
+      name: 'Bristol',
+      latitude: 51.450412349,
+      longitude: -2.594512349,
+      accuracy: { horizontal: 4 },
+    })).toEqual({ latitude: 51.450412, longitude: -2.594512 });
+    expect(routeCoordinate({
+      coords: { latitude: 53.48, longitude: -2.24, accuracy: 8 },
+      accuracy: { metres: 8 },
+    })).toEqual({ latitude: 53.48, longitude: -2.24 });
+    expect(routeCoordinate({ coords: { latitude: 53.48, longitude: -2.24, accuracy: -1 } })).toBeNull();
+    expect(routeCoordinate({ latitude: 0, longitude: 0 })).toBeNull();
+    expect(routeCoordinate({ latitude: Number.NaN, longitude: 1 })).toBeNull();
+    expect(routeCoordinate({ latitude: null, longitude: 1 })).toBeNull();
+    expect(routeCoordinate({ latitude: 91, longitude: 1 })).toBeNull();
+    expect(routeCoordinate([51.45, -2.59])).toBeNull();
+    expect(routeCoordinate([-2.59, 51.45])).toBeNull();
+    expect(routeCoordinate({ latitude: -2.59, longitude: 51.45 })).toEqual({ latitude: -2.59, longitude: 51.45 });
+    expect(mockRoute({
+      mode: 'walk',
+      shape: 'loop',
+      start: { latitude: 51.45, longitude: -2.59, accuracy: -1 } as never,
+      distanceM: 3000,
+    })).toBeNull();
+    const repo = readFileSync('src/data/supabase-repository.ts', 'utf8');
+    const plan = repo.slice(repo.indexOf('async planOutdoorRoute'), repo.indexOf('async searchRoutePlaces'));
+    expect(plan).toContain('routeCoordinate(input.start)');
+    expect(plan).not.toContain('start: input.start');
+    const here = { latitude: 55.9, longitude: -3.1 };
+    const sketch = [{ latitude: 51.45, longitude: -2.59 }, { latitude: 51.46, longitude: -2.5 }];
+    expect(viewCentre([], sketch, here)).toEqual(sketch[0]);
+    expect(viewCentre([sampleCanalLoop()], [], here).latitude).toBe(sampleCanalLoop().points[0].latitude);
+    expect(viewCentre([], [], here)).toEqual(here);
+    expect(startCollection([], sketch).features[0]?.geometry.coordinates).toEqual([-2.59, 51.45]);
+    expect(youAreHereCollection(null).features).toEqual([]);
+    expect(youAreHereCollection(here).features[0]?.geometry.coordinates).toEqual([-3.1, 55.9]);
+    expect(YOU_HERE_FILL).toBe('#2563EB');
   });
 });

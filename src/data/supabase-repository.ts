@@ -19,7 +19,7 @@ import { stripJpegBase64, stripJpegLocation } from '@/domain/photoLocation';
 import { chunkHealthRows } from '@/domain/healthUpload';
 import { rejectRouteCoordinates } from '@/domain/workoutRoute';
 import { assertRouteFindingAllowed } from '@/data/routeConsentStore';
-import { calmRouteMessage, parseRoutePlaces, parseRoutePlan, type RoutePlace, type RoutePlan, type RoutePlanInput } from '@/domain/findRoute';
+import { calmRouteMessage, parseRoutePlaces, parseRoutePlan, routeCoordinate, type RoutePlace, type RoutePlan, type RoutePlanInput } from '@/domain/findRoute';
 import type { SharedPhotoCard } from '@/domain/sharedPhotos';
 import { liveOutdoorRouteInsert, outdoorRouteFromRow, outdoorRouteInsert, routeShapeRejected, routeTableMissing, type OutdoorRouteDraft } from '@/domain/outdoorRoute';
 import { GARMIN_PERMISSION, readGarminRefreshBody } from '@/domain/healthRefresh';
@@ -2830,14 +2830,19 @@ export class SupabaseRepository implements Repository {
 
   async planOutdoorRoute(input: RoutePlanInput): Promise<RoutePlan> {
     await assertRouteFindingAllowed();
+    const start = routeCoordinate(input.start);
+    const end = input.shape === 'a_to_b' ? routeCoordinate(input.end) : null;
+    if (!start || (input.shape === 'a_to_b' && !end)) {
+      throw new UserFacingError('That place could not be used.', 'generic');
+    }
     try {
       const invoked = await this.client.functions.invoke('outdoor-route', {
         body: {
           action: 'route',
           mode: input.mode,
           shape: input.shape,
-          start: input.start,
-          end: input.end ?? null,
+          start,
+          end,
           distanceM: input.distanceM ?? null,
           minutes: input.minutes ?? null,
         },
