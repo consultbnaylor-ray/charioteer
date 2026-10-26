@@ -398,6 +398,11 @@ describe('workout routes stay on the phone', () => {
       'src/app/(main)/workouts.tsx',
       'src/app/(main)/workout/[id].tsx',
     ]);
+    const footpathMap = new Set([
+      'src/ui/FootpathMap.tsx',
+      'src/ui/FootpathMap.web.tsx',
+      'src/ui/mapCamera.ts',
+    ]);
     for (const path of [...filesUnder('src/ui'), ...filesUnder('src/app')]) {
       const source = readFileSync(path, 'utf8');
       if (path.endsWith('workouts.tsx')) {
@@ -408,7 +413,13 @@ describe('workout routes stay on the phone', () => {
         expect(source, path).not.toContain('WorkoutCalendar');
       }
       if (allowed.has(path)) continue;
-      expect(source, path).not.toMatch(/View route|RouteMap|routeSummaryLine|readDeviceRoute|latitude|longitude/);
+      expect(source, path).not.toMatch(/View route|RouteMap|routeSummaryLine|readDeviceRoute|getWorkoutRoutes|HKWorkoutRoute/);
+      if (footpathMap.has(path)) {
+        expect(source, path).not.toMatch(/console\.(log|info|debug|warn|error)/);
+        expect(source, path).not.toMatch(/functions\.invoke|AsyncStorage|\.from\(|fetch\(/);
+        continue;
+      }
+      expect(source, path).not.toMatch(/latitude|longitude/);
     }
     for (const path of filesUnder('supabase/migrations')) {
       expect(readFileSync(path, 'utf8'), path).not.toMatch(/latitude|longitude/);
@@ -426,7 +437,16 @@ describe('workout routes stay on the phone', () => {
     ];
     for (const path of watched) {
       const source = readFileSync(path, 'utf8');
-      expect(source, path).not.toMatch(/getWorkoutRoutes|HKWorkoutRoute|latitude|longitude/);
+      expect(source, path).not.toMatch(/getWorkoutRoutes|HKWorkoutRoute/);
+      if (path === 'supabase/functions/outdoor-route/index.ts') {
+        expect(source).toContain('buildDirectionsBody({ mode, shape, start, end, lengthM })');
+        expect(source).toContain('buildSnapBody(start)');
+        expect(source).toContain('.insert({ user_id: userId })');
+        expect(source).not.toMatch(/console\.(log|info|debug|warn|error)\([^)]*(latitude|longitude)/);
+        expect(source).not.toMatch(/outdoor_routes/);
+        continue;
+      }
+      expect(source, path).not.toMatch(/latitude|longitude/);
     }
     const routeService = readFileSync('supabase/functions/_shared/orsRoute.ts', 'utf8');
     const findRoute = readFileSync('src/domain/findRoute.ts', 'utf8');

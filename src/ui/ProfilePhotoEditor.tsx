@@ -32,11 +32,11 @@ export function OwnProfilePhotos({ name, photos }: { name: string; photos: Profi
   const tiles = front.map((photo) => ({ id: photo.id, caption: photo.caption, uri: photo.previewUrl }));
   return (
     <View accessibilityLabel={`${name} profile photos`} style={{ gap: 8 }}>
-      <ProfilePhotoTiles tiles={tiles} mode="open" onPress={setOpenId} />
+      <ProfilePhotoTiles tiles={tiles} mode="open" ownerLinks onPress={setOpenId} />
       {profileGalleryNeedsLibrary(gallery.length) ? (
         <Button label={SEE_ALL_PHOTOS} tone="quiet" onPress={() => router.push('/profile-gallery' as never)} />
       ) : null}
-      <ProfilePhotoEnlarge tile={tiles.find((tile) => tile.id === openId) ?? null} onClose={() => setOpenId(null)} />
+      <ProfilePhotoEnlarge tile={tiles.find((tile) => tile.id === openId) ?? null} ownerLinks onClose={() => setOpenId(null)} />
     </View>
   );
 }

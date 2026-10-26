@@ -119,7 +119,7 @@ export default function ProfileGalleryScreen() {
     <Screen eyebrow="You" title={title} intro={own ? PROFILE_LIBRARY_INTRO : 'Any Charioteer community member can see these photos.'}>
       {own && !communitySharingOn(snap.profile) ? <T variant="muted">{PROFILE_LIBRARY_CLOSED}</T> : null}
       {gallery.length === 0 ? <T variant="muted">No public photos yet.</T> : null}
-      <ProfilePhotoTiles tiles={tiles} mode="open" onPress={setOpenId} />
+      <ProfilePhotoTiles tiles={tiles} mode="open" ownerLinks={own} onPress={setOpenId} />
       {shown < gallery.length ? (
         <Button label={LOAD_MORE_PHOTOS} tone="quiet" onPress={() => setShown((count) => count + PROFILE_GALLERY_PAGE)} />
       ) : null}
@@ -127,7 +127,7 @@ export default function ProfileGalleryScreen() {
         <Button label="Edit profile" tone="quiet" onPress={() => router.push('/public-profile?edit=photos' as never)} />
       ) : null}
       <Button label="Back" tone="quiet" onPress={() => router.back()} />
-      <ProfilePhotoEnlarge tile={open} onClose={() => { setOpenId(null); setReported(false); setReason(''); setReportError(null); }}>
+      <ProfilePhotoEnlarge tile={open} ownerLinks={own} onClose={() => { setOpenId(null); setReported(false); setReason(''); setReportError(null); }}>
         {!own && open ? (
           <View style={{ gap: 8 }}>
             {reported ? <T variant="muted">Report sent.</T> : (

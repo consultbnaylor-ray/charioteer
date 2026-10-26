@@ -24,6 +24,7 @@ export function ProfilePhotoTiles({
   selected,
   onPress,
   corner,
+  ownerLinks,
 }: {
   tiles: readonly GalleryTile[];
   /** Open enlarges. Select marks a photo in Edit profile. */
@@ -31,7 +32,10 @@ export function ProfilePhotoTiles({
   selected?: ReadonlySet<string>;
   onPress: (id: string) => void;
   corner?: (tile: GalleryTile) => ReactNode;
+  /** The signed-in person's own pictures. A failed image asks for a fresh link. */
+  ownerLinks?: boolean;
 }) {
+  const retry = ownerLinks ?? mode === 'select';
   const { tile } = useGalleryTileSize();
   return (
     <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
@@ -47,7 +51,7 @@ export function ProfilePhotoTiles({
               onPress={() => onPress(item.id)}
               style={{ width: tile, height: tile, borderRadius: 8, overflow: 'hidden' }}
             >
-              <GalleryThumb uri={item.uri} label={name} owner={mode === 'select'} photoId={item.id} />
+              <GalleryThumb uri={item.uri} label={name} owner={retry} photoId={item.id} />
               {on ? (
                 <View pointerEvents="none" style={{ position: 'absolute', left: 6, top: 6, width: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(17,17,17,0.72)' }}>
                   <T style={{ color: '#F3F3EE' }}>✓</T>
@@ -87,10 +91,13 @@ export function ProfilePhotoEnlarge({
   tile,
   onClose,
   children,
+  ownerLinks = false,
 }: {
   tile: GalleryTile | null;
   onClose: () => void;
   children?: ReactNode;
+  /** The signed-in person's own picture. A failed image asks for a fresh link. */
+  ownerLinks?: boolean;
 }) {
   const theme = useAppTheme();
   return (
@@ -98,7 +105,9 @@ export function ProfilePhotoEnlarge({
       <View style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.72)' }}>
         <View style={{ backgroundColor: theme.colors.bg, borderTopLeftRadius: 16, borderTopRightRadius: 16, padding: 16, gap: 8, maxHeight: '92%' }}>
           <View style={{ width: '100%', aspectRatio: 1, borderRadius: 8, overflow: 'hidden', backgroundColor: theme.colors.sunken }}>
-            {tile?.uri ? (
+            {tile?.uri && ownerLinks ? (
+              <OwnerPhoto uri={tile.uri} photoId={tile.id} style={StyleSheet.absoluteFill} contentFit="contain" accessibilityLabel={tile.caption || 'Public photo'} />
+            ) : tile?.uri ? (
               <Image source={{ uri: tile.uri }} style={StyleSheet.absoluteFill} contentFit="contain" accessibilityLabel={tile.caption || 'Public photo'} />
             ) : (
               <View style={[StyleSheet.absoluteFill, { alignItems: 'center', justifyContent: 'center' }]}>
