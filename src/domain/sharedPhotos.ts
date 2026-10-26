@@ -27,9 +27,34 @@ export const GRATITUDE_ONLY_LABEL = 'No one, just save to Gratitude';
 
 export const GRATITUDE_SAVED_LABEL = 'Saved to Gratitude';
 
-/** Send when at least one buddy is included. Save when the photo goes to the diary only. */
-export function sharePhotoButtonLabel(buddyCount: number, gratitude: boolean): 'Send' | 'Save' {
-  return buddyCount === 0 && gratitude ? 'Save' : 'Send';
+/** Quick-photo sheet. Starts off every time the sheet opens. It is not remembered. */
+export const ALSO_ON_PUBLIC_PROFILE = 'Also show on my public profile';
+
+/** Under that switch. Public is the community, not the buddy list and not the diary. */
+export const PUBLIC_PROFILE_MEANS =
+  'Public means any Charioteer community member can see this photo. This is separate from the buddies you send it to, and separate from Gratitude.';
+
+export const PUBLIC_PROFILE_CLOSED =
+  'Your public profile is off, so this photo cannot be shown there yet.';
+
+export const PUBLIC_PROFILE_TURN_ON = 'Turn on my public profile';
+
+/** The gallery holds six. The owner picks which one to replace. Nothing is dropped on its own. */
+export const GALLERY_FULL_CHOICE =
+  'Your public gallery already has six photos. Choose one to replace. Nothing is replaced until you choose.';
+
+export const PUBLIC_PROFILE_SHOWN = 'Shown on your public profile.';
+
+/** Send when at least one buddy is included. Save when the photo stays with you. */
+export function sharePhotoButtonLabel(buddyCount: number, gratitude: boolean, onProfile = false): 'Send' | 'Save' {
+  if (buddyCount > 0) return 'Send';
+  if (gratitude || onProfile) return 'Save';
+  return 'Send';
+}
+
+/** True when the sheet has nowhere to put the photo yet. */
+export function quickShareNeedsDestination(input: { buddyCount: number; gratitude: boolean; onProfile: boolean }): boolean {
+  return input.buddyCount === 0 && !input.gratitude && !input.onProfile;
 }
 
 /** Shown once, after Save to Photos succeeds. Not a standing paragraph. */

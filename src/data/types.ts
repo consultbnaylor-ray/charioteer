@@ -121,6 +121,10 @@ export type ProfilePhoto = {
 export type NewProfilePhoto = {
   bytes: Uint8Array;
   role: ProfilePhotoRole;
+  /** Public line under a gallery photo. Omitted means blank. */
+  caption?: string;
+  /** Gallery photo the owner chose to replace. Absent means add, and a full gallery is refused. */
+  replaceId?: string;
 };
 
 export type Reason = { id: string; body: string; sortOrder: number };

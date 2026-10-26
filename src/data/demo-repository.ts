@@ -1681,16 +1681,28 @@ export class DemoRepository implements Repository {
     const account = this.me();
     const existing = account.profilePhotos ?? [];
     const gallery = existing.filter((photo) => photo.role === 'gallery');
-    if (input.role === 'gallery' && gallery.length >= PROFILE_GALLERY_LIMIT) {
+    const replacing = input.role === 'gallery' && input.replaceId
+      ? gallery.find((photo) => photo.id === input.replaceId)
+      : undefined;
+    if (input.role === 'gallery' && input.replaceId && !replacing) {
+      throw new UserFacingError('Choose a public photo to replace.', 'generic');
+    }
+    if (input.role === 'gallery' && gallery.length >= PROFILE_GALLERY_LIMIT && !replacing) {
       throw new UserFacingError(PROFILE_GALLERY_LIMIT_MESSAGE, 'generic');
     }
+    const caption = planProfileText(input.caption ?? '', PHOTO_CAPTION_LIMIT);
+    if (!caption.ok) throw new UserFacingError(caption.message, 'generic');
     const id = uid();
-    const position = input.role === 'avatar' ? 0 : gallery.reduce((max, photo) => Math.max(max, photo.position), -1) + 1;
+    const position = input.role === 'avatar'
+      ? 0
+      : replacing
+        ? replacing.position
+        : gallery.reduce((max, photo) => Math.max(max, photo.position), -1) + 1;
     const photo: ProfilePhoto = {
       id,
       userId: account.profile.id,
       role: input.role,
-      caption: '',
+      caption: caption.text,
       position,
       storagePath: profileStoragePath(account.profile.id, id),
       createdAt: new Date().toISOString(),
@@ -1698,7 +1710,11 @@ export class DemoRepository implements Repository {
     };
     const db = clone(this.db);
     const next = db.accounts[account.profile.id];
-    const kept = input.role === 'avatar' ? existing.filter((item) => item.role !== 'avatar') : existing;
+    const kept = input.role === 'avatar'
+      ? existing.filter((item) => item.role !== 'avatar')
+      : replacing
+        ? existing.filter((item) => item.id !== replacing.id)
+        : existing;
     next.profilePhotos = [...kept, photo];
     this.commit(db);
   }

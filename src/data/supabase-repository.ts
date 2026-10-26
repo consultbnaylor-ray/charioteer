@@ -1999,20 +1999,34 @@ export class SupabaseRepository implements Repository {
     if (input.bytes.byteLength > PROGRESS_MAX_BYTES) throw new UserFacingError('That photo is still too large.', 'generic');
     if (input.role !== 'avatar' && input.role !== 'gallery') throw new UserFacingError('Could not store that photo.', 'generic');
     const gallery = this.snapshot.profilePhotos.filter((photo) => photo.role === 'gallery');
-    if (input.role === 'gallery' && gallery.length >= PROFILE_GALLERY_LIMIT) {
+    const replacing = input.role === 'gallery' && input.replaceId
+      ? gallery.find((photo) => photo.id === input.replaceId)
+      : undefined;
+    if (input.role === 'gallery' && input.replaceId && !replacing) {
+      throw new UserFacingError('Choose a public photo to replace.', 'generic');
+    }
+    if (input.role === 'gallery' && gallery.length >= PROFILE_GALLERY_LIMIT && !replacing) {
       throw new UserFacingError(PROFILE_GALLERY_LIMIT_MESSAGE, 'generic');
     }
+    const caption = planProfileText(input.caption ?? '', PHOTO_CAPTION_LIMIT);
+    if (!caption.ok) throw new UserFacingError(caption.message, 'generic');
     const userId = await this.userId();
     const photoId = randomId();
     const path = profileStoragePath(userId, photoId);
-    const position = input.role === 'avatar' ? 0 : gallery.reduce((max, photo) => Math.max(max, photo.position), -1) + 1;
+    const position = input.role === 'avatar'
+      ? 0
+      : replacing
+        ? replacing.position
+        : gallery.reduce((max, photo) => Math.max(max, photo.position), -1) + 1;
     const body = stripJpegLocation(input.bytes);
     const uploaded = await this.client.storage.from(PROFILE_PHOTO_BUCKET).upload(path, body, {
       contentType: 'image/jpeg',
       upsert: false,
     });
     if (uploaded.error) throw asUserFacing(uploaded.error, 'general');
-    const existing = input.role === 'avatar' ? this.snapshot.profilePhotos.find((photo) => photo.role === 'avatar') : undefined;
+    const existing = input.role === 'avatar'
+      ? this.snapshot.profilePhotos.find((photo) => photo.role === 'avatar')
+      : replacing;
     if (existing) {
       const removed = await this.client.from('profile_photos').delete().eq('id', existing.id).eq('user_id', userId);
       if (removed.error) {
@@ -2024,7 +2038,7 @@ export class SupabaseRepository implements Repository {
       id: photoId,
       user_id: userId,
       role: input.role,
-      caption: '',
+      caption: caption.text,
       position,
       storage_path: path,
     });
@@ -2034,7 +2048,7 @@ export class SupabaseRepository implements Repository {
         await this.client.from('profile_photos').insert({
           id: existing.id,
           user_id: userId,
-          role: 'avatar',
+          role: existing.role,
           caption: existing.caption,
           position: existing.position,
           storage_path: existing.storagePath,

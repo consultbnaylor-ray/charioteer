@@ -8,17 +8,26 @@ import { useRepository, useSnapshot } from '@/data';
 import { connectionOtherId, memberDisplayName } from '@/domain/connections';
 import { shownError } from '@/domain/errors';
 import type { CropRect } from '@/domain/photoCrop';
+import { communitySharingOn } from '@/domain/profileSharing';
+import { PROFILE_GALLERY_LIMIT, sortProfilePhotos } from '@/domain/profilePhotos';
 import {
   ALLOW_SAVE_LABEL,
+  ALSO_ON_PUBLIC_PROFILE,
   AUTO_SAVE_LABEL,
+  GALLERY_FULL_CHOICE,
   GRATITUDE_DIARY_TICK,
   SHARE_PHOTO_SHEET_TITLE,
   GRATITUDE_ONLY_LABEL,
   GRATITUDE_SAVED_LABEL,
   ONLY_CHOSEN_NOTE,
+  PUBLIC_PROFILE_CLOSED,
+  PUBLIC_PROFILE_MEANS,
+  PUBLIC_PROFILE_SHOWN,
+  PUBLIC_PROFILE_TURN_ON,
   SCREENSHOT_NOTE,
   SENDER_SAVE_NOTE,
   SHARED_PHOTOS_LABEL,
+  quickShareNeedsDestination,
   sharePhotoButtonLabel,
 } from '@/domain/sharedPhotos';
 import { encodeProfileCrop, pickProfilePhoto } from '@/ui/prepareProgressPhoto';
@@ -130,6 +139,8 @@ function SharePhotoComposer({ onClose, maxHeight }: { onClose: () => void; maxHe
   const [prepared, setPrepared] = useState<{ bytes: Uint8Array; previewUri: string } | null>(null);
   const [caption, setCaption] = useState('');
   const [diary, setDiary] = useState(false);
+  const [onProfile, setOnProfile] = useState(false);
+  const [replaceId, setReplaceId] = useState<string | null>(null);
   const [chooserOpen, setChooserOpen] = useState(false);
   const [chosen, setChosen] = useState<string[] | null>(null);
   const [allowSave, setAllowSave] = useState(true);
@@ -139,7 +150,10 @@ function SharePhotoComposer({ onClose, maxHeight }: { onClose: () => void; maxHe
   const [gratitudeSaved, setGratitudeSaved] = useState(false);
   const [sent, setSent] = useState(false);
   const selected = chosen ?? buddies.map((buddy) => buddy.id);
-  const buttonLabel = sharePhotoButtonLabel(selected.length, diary);
+  const communityOn = communitySharingOn(snap.profile);
+  const gallery = sortProfilePhotos((snap.profilePhotos ?? []).filter((photo) => photo.role === 'gallery'));
+  const galleryFull = gallery.length >= PROFILE_GALLERY_LIMIT;
+  const buttonLabel = sharePhotoButtonLabel(selected.length, diary, onProfile);
   const green = statsToneColors(theme.scheme).good.ink;
 
   async function pick(source: 'camera' | 'library') {
@@ -183,18 +197,27 @@ function SharePhotoComposer({ onClose, maxHeight }: { onClose: () => void; maxHe
 
   async function submit() {
     if (!prepared) return;
-    if (selected.length === 0 && !diary) {
-      setError('Choose a buddy, or save it to your Gratitude diary.');
+    if (quickShareNeedsDestination({ buddyCount: selected.length, gratitude: diary, onProfile })) {
+      setError('Choose a buddy, save it to Gratitude, or show it on your public profile.');
       return;
     }
     if (diary && !caption.trim()) {
       setError('Write a line first.');
       return;
     }
+    if (onProfile && !communityOn) {
+      setError(PUBLIC_PROFILE_CLOSED);
+      return;
+    }
+    if (onProfile && galleryFull && !replaceId) {
+      setError('Choose which public photo to replace.');
+      return;
+    }
     setPending(true);
     setError(null);
     setNote(null);
     let sentNow = sent;
+    let profileSaved = false;
     try {
       if (selected.length > 0 && !sentNow) {
         await repo.sendSharedPhoto({
@@ -213,6 +236,22 @@ function SharePhotoComposer({ onClose, maxHeight }: { onClose: () => void; maxHe
           if (saved !== 'saved') setNote('The buddy photo was sent. It was not added to the photo library.');
         }
       }
+      if (onProfile) {
+        try {
+          await repo.addProfilePhoto({
+            bytes: prepared.bytes,
+            role: 'gallery',
+            caption: caption.trim(),
+            replaceId: galleryFull ? replaceId ?? undefined : undefined,
+          });
+          profileSaved = true;
+        } catch (caught) {
+          const lead = sentNow ? 'The buddy photo was sent. It was not added to your public profile. ' : '';
+          setError(`${lead}${shownError(caught, 'Could not add that photo to your public profile.')}`);
+          setPending(false);
+          return;
+        }
+      }
       if (diary) {
         try {
           await saveGratitude(prepared.bytes);
@@ -224,12 +263,14 @@ function SharePhotoComposer({ onClose, maxHeight }: { onClose: () => void; maxHe
           return;
         }
       }
-      if (sentNow && !diary) {
+      if (sentNow && !diary && !profileSaved) {
         onClose();
         router.push('/shared-photos' as never);
         return;
       }
-      if (sentNow) setNote('Sent to your buddies.');
+      if (sentNow && profileSaved) setNote(`Sent to your buddies. ${PUBLIC_PROFILE_SHOWN}`);
+      else if (sentNow) setNote('Sent to your buddies.');
+      else if (profileSaved) setNote(PUBLIC_PROFILE_SHOWN);
     } catch (caught) {
       setError(shownError(caught, 'Could not send that photo.'));
     } finally {
@@ -240,7 +281,7 @@ function SharePhotoComposer({ onClose, maxHeight }: { onClose: () => void; maxHe
   return (
     <ScrollView style={{ flexGrow: 0, maxHeight }} contentContainerStyle={{ gap: 8, paddingBottom: 8 }}>
       {buddies.length === 0 ? (
-        <T variant="muted">No accepted buddies yet. You can still save this photo to your Gratitude diary.</T>
+        <T variant="muted">No accepted buddies yet. You can still save this photo to Gratitude, or show it on your public profile.</T>
       ) : null}
       {prepared ? null : (
         <View style={{ flexDirection: 'row', gap: 8 }}>
@@ -257,6 +298,55 @@ function SharePhotoComposer({ onClose, maxHeight }: { onClose: () => void; maxHe
       >
         <T style={{ fontFamily: theme.font.bodyStrong }}>{diary ? '✓' : '○'} {GRATITUDE_DIARY_TICK}</T>
       </Pressable>
+      {communityOn ? (
+        <View style={{ gap: 8 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+            <T style={{ flex: 1 }}>{ALSO_ON_PUBLIC_PROFILE}</T>
+            <Switch
+              accessibilityLabel={ALSO_ON_PUBLIC_PROFILE}
+              value={onProfile}
+              onValueChange={(value) => {
+                setOnProfile(value);
+                if (!value) setReplaceId(null);
+              }}
+            />
+          </View>
+          <T variant="muted">{PUBLIC_PROFILE_MEANS}</T>
+          {onProfile && galleryFull ? (
+            <View style={{ gap: 8 }}>
+              <T>{GALLERY_FULL_CHOICE}</T>
+              {gallery.map((photo) => {
+                const pickedReplace = replaceId === photo.id;
+                const name = photo.caption.trim() || 'Public photo';
+                return (
+                  <Pressable
+                    key={photo.id}
+                    accessibilityRole="checkbox"
+                    accessibilityState={{ checked: pickedReplace }}
+                    accessibilityLabel={`Replace ${name}`}
+                    onPress={() => setReplaceId(photo.id)}
+                    style={{ minHeight: 44, justifyContent: 'center' }}
+                  >
+                    <T>{pickedReplace ? '✓' : '○'} Replace “{name}”</T>
+                  </Pressable>
+                );
+              })}
+            </View>
+          ) : null}
+        </View>
+      ) : (
+        <View style={{ gap: 8 }}>
+          <T variant="muted">{PUBLIC_PROFILE_CLOSED} {PUBLIC_PROFILE_MEANS}</T>
+          <Button
+            label={PUBLIC_PROFILE_TURN_ON}
+            tone="quiet"
+            onPress={() => {
+              onClose();
+              router.push('/public-profile' as never);
+            }}
+          />
+        </View>
+      )}
       {prepared ? (
         <>
           <Field label="Caption" value={caption} onChangeText={setCaption} maxLength={140} hint="Optional, unless you save to Gratitude. 140 characters." />
@@ -314,6 +404,9 @@ function SharePhotoComposer({ onClose, maxHeight }: { onClose: () => void; maxHe
       {note ? <T>{note}</T> : null}
       {gratitudeSaved && selected.length > 0 ? (
         <Button label={SHARED_PHOTOS_LABEL} tone="quiet" onPress={() => { onClose(); router.push('/shared-photos' as never); }} />
+      ) : null}
+      {note === PUBLIC_PROFILE_SHOWN || (note ?? '').includes(PUBLIC_PROFILE_SHOWN) ? (
+        <Button label="Edit profile" tone="quiet" onPress={() => { onClose(); router.push('/public-profile' as never); }} />
       ) : null}
       <Button label="Close" tone="quiet" onPress={onClose} />
       {picked ? (
