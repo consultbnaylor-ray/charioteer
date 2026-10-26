@@ -9,6 +9,8 @@ import {
   savedLineCollection,
   sketchLineCollection,
   startCollection,
+  trackLineCollection,
+  trackLineColour,
   youAreHereCollection,
   type MapScheme,
   type OutdoorPoint,
@@ -22,6 +24,7 @@ type PaintInput = {
   scheme: MapScheme;
   savedJson: string;
   sketchJson: string;
+  trackJson: string;
   startJson: string;
   youJson: string;
 };
@@ -56,6 +59,10 @@ export function FootpathMap({
   locationFocus = 0,
   locating = false,
   onShowMyLocation,
+  onRecentre,
+  follow,
+  onUserMove,
+  track = [],
   height = 280,
 }: {
   routes: readonly OutdoorRoute[];
@@ -66,14 +73,22 @@ export function FootpathMap({
   /** Increments when the person asks the map to centre on the GPS fix. */
   locationFocus?: number;
   locating?: boolean;
-  onShowMyLocation: () => void;
+  onShowMyLocation?: () => void;
+  /** An outing uses this instead of Show my location. */
+  onRecentre?: () => void;
+  /** When set, the camera follows `here` until the person pans. */
+  follow?: boolean;
+  onUserMove?: () => void;
+  /** Drawn for the outing. Not saved. */
+  track?: readonly OutdoorPoint[];
   height?: number;
 }) {
   const [scheme, choose] = useMapScheme();
-  const camera = useHeldCamera(routes, sketch, here, locationFocus);
+  const camera = useHeldCamera(routes, sketch, here, locationFocus, follow);
   const [problem, setProblem] = useState<string | null>(null);
   const savedJson = JSON.stringify(savedLineCollection(routes));
   const sketchJson = JSON.stringify(sketchLineCollection(sketch));
+  const trackJson = JSON.stringify(trackLineCollection(track));
   const startJson = JSON.stringify(startCollection(routes, sketch, startPoint));
   const youJson = JSON.stringify(youAreHereCollection(here));
 
@@ -84,6 +99,7 @@ export function FootpathMap({
       scheme={scheme}
       locating={locating}
       onShowMyLocation={onShowMyLocation}
+      onRecentre={onRecentre}
       onToggleStyle={() => choose(scheme === 'dark' ? 'light' : 'dark')}
       onRestore={camera.restore}
       problem={problem}
@@ -97,8 +113,10 @@ export function FootpathMap({
           remember={camera.remember}
           savedJson={savedJson}
           sketchJson={sketchJson}
+          trackJson={trackJson}
           startJson={startJson}
           youJson={youJson}
+          onUserMove={onUserMove}
           onProblem={() => setProblem('The map tiles did not load in this browser.')}
         />
       )}
@@ -117,6 +135,7 @@ function paintMap(map: LibreMap, input: PaintInput) {
 
 function paintMapLayers(map: LibreMap, input: PaintInput) {
   const green = mapLineColour(input.scheme);
+  const walked = trackLineColour(input.scheme);
   const rows: { id: string; data: string; layer: Record<string, unknown> }[] = [
     {
       id: 'saved',
@@ -132,6 +151,11 @@ function paintMapLayers(map: LibreMap, input: PaintInput) {
         source: 'sketch',
         paint: { 'line-color': green, 'line-width': 3, 'line-dasharray': [2, 1.4] },
       },
+    },
+    {
+      id: 'track',
+      data: input.trackJson,
+      layer: { id: 'track-line', type: 'line', source: 'track', paint: { 'line-color': walked, 'line-width': 5 } },
     },
     {
       id: 'start',
@@ -177,8 +201,10 @@ function WebCanvas({
   remember,
   savedJson,
   sketchJson,
+  trackJson,
   startJson,
   youJson,
+  onUserMove,
   onProblem,
 }: {
   height: number;
@@ -189,8 +215,10 @@ function WebCanvas({
   remember: (camera: HeldCamera) => void;
   savedJson: string;
   sketchJson: string;
+  trackJson: string;
   startJson: string;
   youJson: string;
+  onUserMove?: () => void;
   onProblem: () => void;
 }) {
   const host = useRef<View>(null);
@@ -198,8 +226,10 @@ function WebCanvas({
   const [ready, setReady] = useState(0);
   const applied = useRef<string | null>(null);
   const styleListener = useRef<(() => void) | null>(null);
-  const paint = useRef<PaintInput>({ scheme, savedJson, sketchJson, startJson, youJson });
-  paint.current = { scheme, savedJson, sketchJson, startJson, youJson };
+  const paint = useRef<PaintInput>({ scheme, savedJson, sketchJson, trackJson, startJson, youJson });
+  paint.current = { scheme, savedJson, sketchJson, trackJson, startJson, youJson };
+  const userMoveRef = useRef(onUserMove);
+  userMoveRef.current = onUserMove;
   const heldRef = useRef(held);
   heldRef.current = held;
   const rememberRef = useRef(remember);
@@ -247,6 +277,7 @@ function WebCanvas({
           if (!current) return;
           const center = current.getCenter();
           rememberRef.current({ longitude: center.lng, latitude: center.lat, zoom: current.getZoom() });
+          userMoveRef.current?.();
         });
         map.on('load', () => {
           const current = mapRef.current;
@@ -288,7 +319,7 @@ function WebCanvas({
       const finish = () => {
         const current = mapRef.current;
         if (!current || !current.isStyleLoaded()) return;
-        if (current.getLayer('sketch-line') && current.getLayer('saved-line')) return;
+        if (current.getLayer('sketch-line') && current.getLayer('saved-line') && current.getLayer('track-line')) return;
         current.jumpTo({ center: [place.longitude, place.latitude], zoom: place.zoom });
         paintMap(current, paint.current);
       };
@@ -299,7 +330,7 @@ function WebCanvas({
       return;
     }
     paintMap(map, paint.current);
-  }, [scheme, savedJson, sketchJson, startJson, youJson, ready, held]);
+  }, [scheme, savedJson, sketchJson, trackJson, startJson, youJson, ready, held]);
 
   useEffect(() => {
     mapRef.current?.resize();

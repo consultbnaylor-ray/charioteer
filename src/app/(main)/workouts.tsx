@@ -64,6 +64,7 @@ export default function WorkoutsScreen() {
         onPress={() => void manual.run()}
       />
       <GarminPermissionNotice />
+      <Button label="Start live session" onPress={() => router.push('/gym-session' as never)} />
       <Button label="Back" tone="quiet" onPress={() => router.back()} />
       <WorkoutList
         workouts={workouts}
