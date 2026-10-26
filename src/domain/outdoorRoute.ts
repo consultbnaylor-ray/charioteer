@@ -27,8 +27,18 @@ export const ROUTE_SAFETY_LINE =
 
 export const MAP_CREDIT = 'OpenFreeMap © OpenMapTiles. Data from OpenStreetMap.';
 
+export const OPENFREEMAP_HOST = 'tiles.openfreemap.org';
 export const OPENFREEMAP_DARK = 'https://tiles.openfreemap.org/styles/dark';
 export const OPENFREEMAP_LIGHT = 'https://tiles.openfreemap.org/styles/liberty';
+
+/** Remembered on this phone. The map opens light until a choice is stored. */
+export const MAP_STYLE_STORAGE_KEY = 'charioteer.map-style';
+
+export type MapScheme = 'light' | 'dark';
+
+/** Dark green on the light Liberty style. Lime on the dark style. */
+export const MAP_LINE_LIGHT = '#047857';
+export const MAP_LINE_DARK = '#2DE0A0';
 
 const EARTH_M = 6_371_000;
 const WALK_METRES_PER_MINUTE = 80;
@@ -76,8 +86,17 @@ export function routeKindLabel(kind: OutdoorKind): string {
   return 'Saved route';
 }
 
-export function openFreeMapStyle(scheme: 'dark' | 'light'): string {
+export function openFreeMapStyle(scheme: MapScheme): string {
   return scheme === 'light' ? OPENFREEMAP_LIGHT : OPENFREEMAP_DARK;
+}
+
+/** A missing or unknown value stays light. Dark is stored only after the person chooses it. */
+export function parseMapScheme(value: unknown): MapScheme {
+  return value === 'dark' ? 'dark' : 'light';
+}
+
+export function mapLineColour(scheme: MapScheme): string {
+  return scheme === 'dark' ? MAP_LINE_DARK : MAP_LINE_LIGHT;
 }
 
 export function mapStart(): OutdoorPoint {

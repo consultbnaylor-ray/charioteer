@@ -103,6 +103,8 @@ The phone calls a Charioteer function. The function holds the route-service key.
 
 OpenStreetMap data is under the Open Database Licence. The visible credit is for the contributors. Turning route finding on is not a request to accept OpenStreetMap terms. OpenRouteService results are under CC-BY-SA 4.0. The required credit is "© openrouteservice by HeiGIT | Data from OpenStreetMap", and the map also shows "© OpenStreetMap contributors" and the OpenFreeMap credit. A saved route stays on your account. It is not sent to other people.
 
+The map opens on the light OpenFreeMap Liberty style. A light or dark choice is remembered on this phone only. Both styles, and their tiles, are requested from tiles.openfreemap.org. Full screen is a larger view of the same map. It does not add a permission or another host.
+
 HeiGIT's terms (https://account.heigit.org/info/tos) say not to send personal data except for their own account. A start point can be personal data. There is no signed agreement and no data-processing agreement with HeiGIT. This test version sends a start point only after you turn route finding on. Before a public launch, ask HeiGIT in writing about end-user location coordinates and a data-processing agreement, and either self-host the route service in the EU or get that agreement in writing.
 
 The page still opens if you say no to location. There is no background location and no "always" location. Android asks for fine and coarse location in the foreground only. A saved route is a line on your account. You can delete it. A live fix is not stored. Live routes can't be shared with anyone. That's to protect your safety.

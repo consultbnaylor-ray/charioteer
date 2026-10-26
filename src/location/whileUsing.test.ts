@@ -177,11 +177,12 @@ describe('while-using location', () => {
       expect(source).toContain('youAreHereCollection');
       expect(source).toContain('startCollection');
       expect(source).toContain('YOU_HERE_FILL');
-      expect(source).toContain('<ShowMyLocationButton');
+      expect(source).toContain('<MapFrame');
       expect(source).not.toContain('planOutdoorRoute');
       expect(source).not.toContain('trackUserLocation');
       expect(source).not.toContain('watchPosition');
     }
+    expect(readFileSync('src/ui/MapChrome.tsx', 'utf8')).toContain('<ShowMyLocationButton');
     const button = readFileSync('src/ui/ShowMyLocation.tsx', 'utf8');
     expect(button).toContain("accessibilityLabel={SHOW_MY_LOCATION}");
     expect(button).toContain("export const SHOW_MY_LOCATION = 'Show my location'");

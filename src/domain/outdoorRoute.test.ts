@@ -7,10 +7,19 @@ import { APP_SECTIONS, TAB_SECTIONS, menuSectionActive } from '@/domain/sections
 import {
   LOCATION_WHEN_IN_USE,
   MAP_CREDIT,
+  MAP_LINE_DARK,
+  MAP_LINE_LIGHT,
+  MAP_STYLE_STORAGE_KEY,
+  OPENFREEMAP_DARK,
+  OPENFREEMAP_HOST,
+  OPENFREEMAP_LIGHT,
   ROUTE_SAFETY_LINE,
   SKETCH_LINE,
   cravingSketch,
+  mapLineColour,
+  openFreeMapStyle,
   outdoorRouteFromDraft,
+  parseMapScheme,
   outdoorRouteInsert,
   pathMetres,
   sampleCanalLoop,
@@ -133,8 +142,7 @@ describe('Outside is Good phase 1', () => {
     expect(screens).toContain('OUTSIDE_SAFETY_LINE');
     expect(readFileSync('src/domain/outdoorRoute.ts', 'utf8')).toContain('Not medical advice');
     expect(readFileSync('src/domain/outdoorRoute.ts', 'utf8')).toContain('116 123');
-    expect(readFileSync('src/ui/FootpathMap.tsx', 'utf8')).toContain('MAP_CREDIT');
-    expect(readFileSync('src/ui/FootpathMap.web.tsx', 'utf8')).toContain('MAP_CREDIT');
+    expect(readFileSync('src/ui/MapChrome.tsx', 'utf8')).toContain('MAP_CREDIT');
     expect(readFileSync('src/domain/outdoorRoute.ts', 'utf8')).toContain('tiles.openfreemap.org');
     expect(MAP_CREDIT).toContain('OpenFreeMap');
     expect(readFileSync('docs/privacy.md', 'utf8')).toContain(LOCATION_WHEN_IN_USE);
@@ -234,6 +242,53 @@ describe('Outside is Good phase 1', () => {
     expect(docs).toMatch(/Walk this off \(the craving walk\) is parked/);
     expect(docs).not.toContain('Get Outside');
     expect(docs).not.toContain('or the craving walk');
+  });
+
+  it('opens the map light, remembers a dark choice, and keeps one tile host', () => {
+    expect(parseMapScheme(null)).toBe('light');
+    expect(parseMapScheme(undefined)).toBe('light');
+    expect(parseMapScheme('light')).toBe('light');
+    expect(parseMapScheme('nope')).toBe('light');
+    expect(parseMapScheme('dark')).toBe('dark');
+    expect(MAP_STYLE_STORAGE_KEY).toBe('charioteer.map-style');
+    expect(openFreeMapStyle('light')).toBe(OPENFREEMAP_LIGHT);
+    expect(openFreeMapStyle('dark')).toBe(OPENFREEMAP_DARK);
+    expect(new URL(OPENFREEMAP_LIGHT).host).toBe(OPENFREEMAP_HOST);
+    expect(new URL(OPENFREEMAP_DARK).host).toBe(OPENFREEMAP_HOST);
+    expect(OPENFREEMAP_LIGHT).toContain('/styles/liberty');
+    expect(OPENFREEMAP_DARK).toContain('/styles/dark');
+    expect(mapLineColour('light')).toBe(MAP_LINE_LIGHT);
+    expect(mapLineColour('dark')).toBe(MAP_LINE_DARK);
+    expect(MAP_LINE_LIGHT).toBe('#047857');
+    expect(MAP_LINE_DARK).toBe('#2DE0A0');
+    const chrome = readFileSync('src/ui/MapChrome.tsx', 'utf8');
+    expect(chrome).toContain("export const FULL_SCREEN_MAP = 'Full screen map'");
+    expect(chrome).toContain("export const CLOSE_FULL_SCREEN_MAP = 'Close full screen map'");
+    expect(chrome).toContain("export const MAP_STYLE_SWITCH = 'Map style: light or dark'");
+    expect(chrome).toContain('width: 44');
+    expect(chrome).toContain('height: 44');
+    expect(chrome).toContain('useSafeAreaInsets');
+    expect(chrome).not.toContain('trackUserLocation');
+    const store = readFileSync('src/ui/mapStyle.ts', 'utf8');
+    expect(store).toContain('AsyncStorage');
+    expect(store).toContain('MAP_STYLE_STORAGE_KEY');
+    expect(store).toContain("useState<MapScheme>('light')");
+    for (const path of ['src/ui/FootpathMap.tsx', 'src/ui/FootpathMap.web.tsx']) {
+      const source = readFileSync(path, 'utf8');
+      expect(source).toContain('openFreeMapStyle(scheme)');
+      expect(source).not.toContain('openFreeMapStyle(theme.scheme)');
+      expect(source).toContain('mapLineColour(');
+      expect(source).toContain('<MapFrame');
+      expect(source).not.toContain('trackUserLocation');
+    }
+    const notes = [
+      readFileSync('docs/privacy.md', 'utf8'),
+      readFileSync('docs/privacy.html', 'utf8'),
+      readFileSync('docs/dpia-location.md', 'utf8'),
+      readFileSync('docs/store-privacy-labels.md', 'utf8'),
+    ].join('\n');
+    expect(notes).toContain('tiles.openfreemap.org');
+    expect(notes).toContain('Liberty');
   });
 });
 
