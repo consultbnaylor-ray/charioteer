@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const storage = vi.hoisted(() => ({
   map: new Map<string, string>(),
   removeError: null as Error | null,
+  removeFailures: 0,
 }));
 
 vi.mock('@react-native-async-storage/async-storage', () => ({
@@ -14,6 +15,10 @@ vi.mock('@react-native-async-storage/async-storage', () => ({
     },
     removeItem: async (key: string) => {
       if (storage.removeError) throw storage.removeError;
+      if (storage.removeFailures > 0) {
+        storage.removeFailures -= 1;
+        throw new Error('disk full');
+      }
       storage.map.delete(key);
     },
   },
@@ -36,6 +41,7 @@ import {
   WALKED_POINT_CAP,
   WALKED_TRIM_M,
   clearWalkedLines,
+  clearWalkedLinesForSignOut,
   deleteWalkedLine,
   fewerPoints,
   loadWalkedLines,
@@ -82,6 +88,7 @@ describe('a walked line kept on the phone', () => {
   beforeEach(() => {
     storage.map.clear();
     storage.removeError = null;
+    storage.removeFailures = 0;
     dropFinishOnLeave();
   });
 
@@ -231,7 +238,12 @@ describe('a walked line kept on the phone', () => {
     expect(storage.map.has(WALKED_LINES_KEY)).toBe(true);
     storage.removeError = new Error('disk full');
     await expect(clearWalkedLines()).rejects.toThrow('disk full');
+    await expect(clearWalkedLinesForSignOut()).resolves.toBeUndefined();
+    expect(storage.map.has(WALKED_LINES_KEY)).toBe(true);
     storage.removeError = null;
+    storage.removeFailures = 1;
+    await clearWalkedLinesForSignOut();
+    expect(storage.map.has(WALKED_LINES_KEY)).toBe(false);
 
     const store = readFileSync('src/activity/walkedLine.ts', 'utf8');
     expect(store).toContain("export const WALKED_LINES_KEY = 'charioteer.walked-lines'");
@@ -249,11 +261,21 @@ describe('a walked line kept on the phone', () => {
     const liveOut = methodBody(live, 'async signOut(): Promise<void> {');
     const demoDelete = methodBody(demo, 'async deleteAccount(): Promise<void> {');
     const liveDelete = methodBody(live, 'async deleteAccount(): Promise<void> {');
-    expect(demoOut.indexOf('clearWalkedLines()')).toBeGreaterThan(demoOut.indexOf('this.commit(db)'));
-    expect(liveOut.indexOf('clearWalkedLines()')).toBeGreaterThan(liveOut.indexOf('auth.signOut()'));
-    expect(demoDelete.indexOf('clearWalkedLines()')).toBeGreaterThan(demoDelete.indexOf('this.commit(db)'));
-    expect(liveDelete.indexOf('clearWalkedLines()')).toBeGreaterThan(liveDelete.indexOf("rpc('delete_my_account')"));
-    expect(liveDelete.indexOf('clearWalkedLines()')).toBeLessThan(liveDelete.indexOf('auth.signOut()'));
+    expect(demoOut.indexOf('clearWalkedLinesForSignOut()')).toBeGreaterThan(demoOut.indexOf('this.commit(db)'));
+    expect(demoOut).not.toContain('clearWalkedLines()');
+    expect(liveOut.indexOf('auth.signOut()')).toBeLessThan(liveOut.indexOf('clearWalkedLinesForSignOut()'));
+    expect(liveOut.indexOf('clearWalkedLinesForSignOut()')).toBeLessThan(liveOut.indexOf('this.refresh()'));
+    expect(liveOut).not.toContain('clearWalkedLines()');
+    expect(demoDelete.indexOf('clearWalkedLinesForSignOut()')).toBeGreaterThan(demoDelete.indexOf('this.commit(db)'));
+    expect(demoDelete).not.toContain('clearWalkedLines()');
+    expect(liveDelete.indexOf('clearWalkedLinesForSignOut()')).toBeGreaterThan(liveDelete.indexOf("rpc('delete_my_account')"));
+    expect(liveDelete.indexOf('clearWalkedLinesForSignOut()')).toBeLessThan(liveDelete.indexOf('auth.signOut()'));
+    expect(liveDelete.indexOf('auth.signOut()')).toBeLessThan(liveDelete.indexOf('this.refresh()'));
+    expect(liveDelete).not.toContain('clearWalkedLines()');
+    const listenerAt = live.indexOf('onAuthStateChange');
+    const signedOut = live.slice(listenerAt, live.indexOf('auth.getSession()', listenerAt));
+    expect(signedOut).toContain("event === 'SIGNED_OUT'");
+    expect(signedOut).toContain('clearWalkedLinesForSignOut()');
     expect(demo).not.toContain(WALKED_LINES_KEY);
     expect(live).not.toContain(WALKED_LINES_KEY);
   });

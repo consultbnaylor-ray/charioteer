@@ -158,7 +158,7 @@ This pull request builds option A. It adds a local store on the phone. It does n
 - Delete removes the local record. An empty list deletes the storage key. It is not a hidden flag.
 - Coordinates are not logged. There is no console line, crash breadcrumb, or analytics event for the path.
 - Leaving out the first and last 200 m reduces what a casual viewer of the phone sees. Keep the whole line stores the exact start and end. The screen still says "the first and last 200 m are left out". Use fewer points stays off unless asked. It keeps the ends. It does not stand in for that trim.
-- The phone store is one key, `charioteer.walked-lines`. It is not scoped by user id. Signing out clears it. A successful account deletion clears it. A failed deletion leaves the lines in place.
+- The phone store is one key, `charioteer.walked-lines`. It is not scoped by user id. Signing out clears it. A successful account deletion clears it. A storage error on that clear is tried once and does not stop sign-out, account deletion, or the refresh that follows. An expired session clears the same store when the auth state changes to signed out. A failed deletion leaves the lines in place.
 - At most 20 valid lines are kept. Saving another drops the oldest. A line with more than 2000 points is shortened on save, and both ends stay. A store that cannot be read is not replaced by the next save or delete. Entries that are not a line are written back.
 - The redo guide's title and points are copied into the live outing at Start. They are not passed to `summaryFrom` or `saveActivitySummary`, and Start does not send a request.
 - There is still no crash-recovery file. A kill mid-outing does not leave a path on disk.

@@ -137,7 +137,7 @@ describe('purpose strings stay on the approved text', () => {
     expect(sheet).not.toContain('New, and **not approved**');
     expect(sheet).not.toContain('privacy control');
     expect(sheet).toContain('Approve both removed-to-make-room sentences as written');
-    expect(sheet).not.toContain('NOT APPROVED, needs Ben');
+    expect(sheet).not.toMatch(/NOT APPROVED/);
     expect(sheet).toContain('An older line was removed from this phone to make room.');
     expect(sheet).toContain('Older lines were removed from this phone to make room.');
     expect(sheet).toContain('tile requests only');
@@ -150,7 +150,11 @@ describe('purpose strings stay on the approved text', () => {
       expect(note, path).toContain(casual);
       expect(note, path).toContain(leave);
       expect(note, path).not.toContain('privacy control');
+      expect(note, path).toContain('asks iOS');
+      expect(note, path).not.toMatch(/\bis excluded\b/);
     }
+    expect(sheet).toContain('asks iOS');
+    expect(sheet).not.toMatch(/\bis excluded\b/);
     expect(readFileSync('src/activity/walkedLine.ts', 'utf8')).not.toMatch(/supabase|functions\.invoke|console\.|fetch\(/);
     expect(readFileSync('app.json', 'utf8')).toContain(LOCATION_WHEN_IN_USE);
   });

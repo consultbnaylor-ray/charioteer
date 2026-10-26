@@ -261,3 +261,19 @@ export async function clearWalkedLines(): Promise<void> {
     throw error;
   }
 }
+
+/**
+ * Sign-out, account deletion, and an auth change to signed out.
+ * A real storage error is tried once. It is not thrown, so sign-out and refresh still finish.
+ */
+export async function clearWalkedLinesForSignOut(): Promise<void> {
+  try {
+    await clearWalkedLines();
+  } catch {
+    try {
+      await clearWalkedLines();
+    } catch {
+      return;
+    }
+  }
+}
