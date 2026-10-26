@@ -16,6 +16,46 @@ Outside is Good has three buttons: **Start a walk**, **Start a run**, and **Star
 
 The setup and finished pictures are layout proofs. The live pictures are the screen. The short outing in them is there so the map has a line to show. The example figures further down (1.42 km, 18:42, 13:10 per km) are not that outing.
 
+On 26 October 2026 at 12:05 GMT Ben asked where he turns Thumos updates on, and where a normal gym workout shows a live heart rate. Neither of those controls is a finished feature. The answer is the next section. Build 73 has already shipped from `fb05f08`. This note is rebased onto that commit. It does not change a purpose string.
+
+## Where each control lives
+
+Nothing in this section is a new permission. The pictures are layout proofs. They are not a build.
+
+There is no separate Settings screen. The lasting default sits on **You**, which is Account in the drawer. Notifications is a different row. These updates are not push alerts, so they do not go there.
+
+**Thumos updates for a walk, a run, or a cycle.** Drawer, Tools, **Outside is Good**. On that card, under Find a route and above Open the map: **Start a walk**, **Start a run**, **Start a cycle**. Those three buttons are already on this branch. Each one opens the setup screen with that activity chosen. He can still switch.
+
+On that setup screen the design is a switch, **Thumos updates**, and, when it is on, **3 minutes**, **5 minutes**, and **10 minutes**, plus **Spoken and on screen** or **On screen only**. That choice is for this outing. It does not change the default on You.
+
+What the branch does today, which is not what these proofs draw: the setup card is labelled **Updates from Thumos**, and the choices are **3 min**, **5 min**, **10 min**, and **Off**. There is no switch, and there is no default on You. Spoken lines play only while that screen is open. Locking the phone pauses the outing. That is version 1. It is not in the build 73 binary.
+
+**The default.** Drawer, Account, **You**. A card, **Activity updates**, after Appearance and before Notifications. The same switch and the same 3, 5, and 10 minute choice. Recommendation: the switch starts off. Five minutes and On screen only are what he sees when he turns it on. Both setup screens copy this when they open.
+
+**A normal gym workout, and its heart rate.** Drawer, Tools, **Workouts**. Above the history card, under the refresh bar: **Start live session**. That name replaces the earlier draft **I'm training now**. The history, the charts, and the calendar stay where they are.
+
+Start live session opens its own setup. **Strength** or **Cardio**. The same **Thumos updates** switch and the same 3, 5, and 10 minute choice, again for this session only. **Start** opens the live screen. That live screen is where the heart-rate row lives. It is not on the Workouts history, not on the calendar, and not on Health Stats. There is no map. If Apple Health has no recent sample, the row says **No heart-rate source**. The iPhone does not measure heart rate. This screen is not built.
+
+![Outside is Good, 390. Start a walk, Start a run, Start a cycle.](start-activity/outside-starts-390.png)
+
+![Outside is Good, 320.](start-activity/outside-starts-320.png)
+
+![Outing setup, 390. Thumos updates, and 3, 5, or 10 minutes.](start-activity/outing-setup-390.png)
+
+![Outing setup, 320.](start-activity/outing-setup-320.png)
+
+![Workouts, 390. Start live session above the history.](start-activity/workouts-live-390.png)
+
+![Workouts, 320.](start-activity/workouts-live-320.png)
+
+![Gym setup, 390. The same Thumos switch and minute choice.](start-activity/gym-setup-390.png)
+
+![Gym setup, 320.](start-activity/gym-setup-320.png)
+
+![You, 390. The lasting default. Drawn on so the minute choice is visible. It should start off.](start-activity/you-default-390.png)
+
+![You, 320.](start-activity/you-default-320.png)
+
 ## Recommendation, short
 
 1. The phone stays awake. Locking it pauses the outing. No background location, and no Always location.
@@ -436,7 +476,7 @@ The reading could be wrong. The questions at the end of this section are there s
 
 ### What it is
 
-On the Workouts screen he taps **I'm training now**, picks Strength or Cardio, and picks how often Thumos speaks. The same choices as an outing: 3, 5, or 10 minutes, or Off, and spoken or on screen only. Stop ends it.
+On the Workouts screen he taps **Start live session**. The earlier name, I'm training now, is withdrawn. He picks Strength or Cardio, and the same Thumos updates switch and 3, 5, or 10 minute choice as an outing. Stop ends it.
 
 The live screen reuses the outing's clock, heart-rate tile, spoken line, and interval. It does not reuse the map, the splits, or the pace. There is no distance.
 
@@ -454,13 +494,13 @@ He starts a workout on the Watch, in the Watch Workout app. This app does not st
 
 The same latency applies. A sample is often a few seconds to about a minute behind the Watch, and it can be slower when the phone is locked or in Low Power Mode. Health background delivery does not need a `UIBackgroundModes` entry. Immediate is a hint, not every beat. If the newest heart-rate sample is older than about a minute, the row goes back to "No heart-rate source".
 
-Active energy is the samples Apple Health has saved since he tapped I'm training now, summed in kcal. They often arrive in lumps, so the number can sit still and then jump. It can include other movement in that window. It is not guaranteed to match the total on the Watch. The Watch's own workout total, and the Watch's workout type, are properties of the workout object. That object is saved when the workout ends. Until then the iPhone cannot read them.
+Active energy is the samples Apple Health has saved since he tapped Start, summed in kcal. They often arrive in lumps, so the number can sit still and then jump. It can include other movement in that window. It is not guaranteed to match the total on the Watch. The Watch's own workout total, and the Watch's workout type, are properties of the workout object. That object is saved when the workout ends. Until then the iPhone cannot read them.
 
 So the type on this screen is the one he picked, Strength or Cardio. The phone cannot tell strength from cardio live. After the Watch saves the workout, the saved type can be shown as a note if it falls in the same window. It does not replace the label he chose unless you later say so.
 
 **Garmin.** The same Bluetooth broadcast as the outing, and only in that later build. Broadcast Heart Rate has to be on. The phone reads the standard heart-rate measurement. It does not read calories from that broadcast. Garmin's manuals describe heart rate, not energy. Energy stays "Active energy not available yet" unless Apple Health has samples. The new keys are the same ones already listed, not a second permission: `NSBluetoothAlwaysUsageDescription` and `UIBackgroundModes` `bluetooth-central`. The Bluetooth sentence in the wording list now also names this gym session, so one sentence covers both. It is not in the app.
 
-**No sensor.** He can still tap I'm training now. The clock runs. Thumos can speak the check-in on the interval he picked. The heart-rate row says "No heart-rate source". Energy says it is not available. Nothing is estimated.
+**No sensor.** He can still tap Start live session. The clock runs. Thumos can speak the check-in on the interval he picked. The heart-rate row says "No heart-rate source". Energy says it is not available. Nothing is estimated.
 
 ### What is not possible
 
@@ -498,14 +538,14 @@ This does not write a workout to Apple Health. The Health write sentence still s
 
 The Workouts screen today is the calendar and the history. The intro is "Your workout calendar and history." Under the refresh bar and the Garmin notice, the Workouts card has the day strip, the finished workouts for that day, the duration chart, and the activity charts. The workout calendar is below that card. A finished row can open a route. The card already says a route stays on the phone.
 
-**I'm training now** goes above that card. It does not replace the day strip, the history, the charts, or the calendar. It does not open a route and it does not call the route service. A kept gym summary is labelled as on this phone, so it is not mistaken for a workout Apple Health saved.
+**Start live session** goes above that card. It does not replace the day strip, the history, the charts, or the calendar. It does not open a route and it does not call the route service. A kept gym summary is labelled as on this phone, so it is not mistaken for a workout Apple Health saved.
 
 ### Questions for you
 
 These are not designed. Say if one of them is what you meant.
 
 - A buddy's live workout. This section is his own session. Showing someone else's heart rate, or that they are training, is a different feature and it is not in this note.
-- A mirror of the Watch only, with no I'm training now button. The phone still cannot see the workout type, or a reliable start time, until the Watch saves the workout. The button is what starts the clock.
+- A mirror of the Watch only, with no Start live session button. The phone still cannot see the workout type, or a reliable start time, until the Watch saves the workout. The button is what starts the clock.
 - The GPS outing. That is the earlier section. It has the map. This one does not.
 
 ## Wording that needs your OK
@@ -572,7 +612,7 @@ Lines on the screen. Not purpose strings.
 
 **Gym session. Not a purpose string, except the Health and Bluetooth sentences above.** The Health sentence gains the strength-or-cardio clause. The Bluetooth sentence gains the same session. Neither is a new key beyond the Garmin keys already waiting. The gym session adds no location key.
 
-- The button on Workouts: "I'm training now"
+- The button on Workouts: "Start live session"
 - The choices: "Strength" and "Cardio"
 - The interval, same words as an outing: "3 minutes", "5 minutes", "10 minutes", "Off"
 - Before Start: "The clock runs until you tap Stop. Heart rate shows only if your Apple Watch workout, or a Garmin broadcast, has a recent reading. The iPhone does not measure it. If the app is closed, this session is lost. This is not medical advice."
@@ -614,6 +654,38 @@ A step counter while the motion sentence says we do not use motion would be the 
 
 A Garmin broadcast needs a new Bluetooth sentence and `bluetooth-central`. Those keys are not in the Apple Watch build. Garmin Connect and the Health API are not a live source. Showing a heart rate the iPhone invented would make the Health sentence false. The tile stays on "No heart-rate source" when neither source has a recent reading.
 
+## On-screen words for the controls
+
+Ben named these on 26 October 2026 at 12:05 GMT. They are not purpose strings. This note does not write them into the app. The three Start buttons already exist on this branch. The switch, the You card, and Start live session do not.
+
+- "Thumos updates"
+- "3 minutes"
+- "5 minutes"
+- "10 minutes"
+- "This choice is for this outing. Your default stays on You."
+- "This choice is for this session. Your default stays on You."
+- "Start live session"
+- "Activity updates"
+- "Off until you turn it on. Start a walk, Start a run, Start a cycle, and Start live session begin from this. Changing it on that setup screen is for that session only."
+
+## What goes into build 74
+
+Build 73 is the binary uploading from `fb05f08`. It does not include Start a walk. This branch does. Recommendation for the next binary, and only the part that does not need a new permission sentence.
+
+Put in build 74:
+
+- The version already on this branch. Outside is Good has Start a walk, Start a run, and Start a cycle. The live screen shows the map. The screen stays awake. Locking the phone pauses the outing. That matches the while-using sentence already on this branch. Do not replace that sentence in this binary.
+- The Thumos updates switch, the 3, 5, and 10 minute choice, and the default on You. Lines stay on the screen. A spoken line, if he asks for one, plays only while that screen is open. Do not add the audio background mode, so a locked phone does not speak.
+- Start live session on Workouts, with Strength or Cardio, the same switch, and a clock. The heart-rate row says "No heart-rate source" until the Health share sentence in **Wording that needs your OK** is approved. No map. No reps.
+- Split times on the GPS outing. No new permission. The summary still has no path.
+
+Leave out of build 74 until the exact sentence is approved:
+
+- Background measuring, the blue location mark, and spoken lines over music while the phone is locked or another app is in front. That needs the while-using sentence replaced, plus `UIBackgroundModes` `location` and `audio`.
+- A live heart rate from Apple Watch. The read type is already in the app. The share sentence still has to change before the number is shown during an outing or a gym session. If that one sentence is approved before the build is cut, add the Apple Watch row in the same binary. Do not add Garmin in that binary.
+- A Garmin broadcast. New Bluetooth sentence and `bluetooth-central`. Not build 74.
+- Save to Apple Health. The write sentence still says the app does not write workouts.
+
 ## What this note does not do
 
-Version 1, including the live map, is in the app on this branch. It still pauses when the phone locks. The background section, the Security and Compliance Bot recommendations, the heart-rate and split section, and the gym-session section are decisions only. No purpose string was changed. No Info.plist key was added. No new host. Build number 72. Nothing shipped. The outdoor-route function is still not deployed. Build 73 stays on its own branch.
+Version 1, including the live map, is in the app on this branch. It still pauses when the phone locks. The background section, the Security and Compliance Bot recommendations, the heart-rate and split section, the gym-session section, and the control map above are decisions only. This update does not change a purpose string and does not add an Info.plist key. The while-using sentence already on this branch is the awake-screen sentence. Build number 72. Build 73 shipped from `fb05f08` and does not include this branch. The outdoor-route function is still not deployed.
