@@ -175,7 +175,9 @@ describe('garmin chart bands', () => {
     expect(weekMinutes.periodTypical).toEqual({ low: WHO_MODERATE_LOW, high: WHO_MODERATE_HIGH });
     expect(monthMinutes.periodTypical).toEqual({ low: 643, high: 1286 });
     expect(weekMinutes.dailyTypical).toEqual({ low: WHO_MODERATE_LOW / 7, high: WHO_MODERATE_HIGH / 7 });
-    expect(monthMinutes.about).toContain('1,286');
+    expect(monthMinutes.about).toContain('counts each vigorous minute twice');
+    expect(monthMinutes.about).not.toContain('1,286');
+    expect(monthMinutes.dailyTypical).toEqual({ low: WHO_MODERATE_LOW / 7, high: WHO_MODERATE_HIGH / 7 });
     expect(monthMinutes.legend).toBe('');
     expect(activityChartGuide('day').periodTypical?.low).toBe(21);
 

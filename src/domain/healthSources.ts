@@ -1,4 +1,5 @@
 import type { HealthSample } from '@/data/types';
+import { garminExerciseMinutes } from '@/domain/dailyActivity';
 import type { GarminActivity, GarminDaily, GarminReadings, GarminSleep, GarminUserMetric } from '@/domain/garminConnect';
 import { londonDay } from '@/domain/healthInsights';
 import type { DeviceWorkout } from '@/domain/workoutRoute';
@@ -85,18 +86,22 @@ export function mergeHealthSamples(
   return [...kept, ...added];
 }
 
+export type ActiveMinuteDay = { day: string; value: number; source: 'garmin' | 'workout' };
+
 /**
- * One active-minutes figure per day. Garmin's moderate plus vigorous minutes win when
+ * One active-minutes figure per day. Garmin moderate plus vigorous counted twice wins when
  * that day has them. Otherwise the day's workout minutes are used. The sources are not added.
  */
 export function activeMinutesByDay(
   samples: readonly { kind: string; value: number; recordedOn: string }[],
   dailies: readonly GarminDaily[],
-): { day: string; value: number }[] {
+): ActiveMinuteDay[] {
   const garmin = new Map<string, number>();
   for (const daily of dailies) {
     if (daily.moderateMinutes == null && daily.vigorousMinutes == null) continue;
-    garmin.set(daily.calendarDate, Math.round((daily.moderateMinutes ?? 0) + (daily.vigorousMinutes ?? 0)));
+    const minutes = garminExerciseMinutes(daily.moderateMinutes, daily.vigorousMinutes);
+    if (minutes == null) continue;
+    garmin.set(daily.calendarDate, minutes);
   }
   const apple = new Map<string, number>();
   for (const sample of samples) {
@@ -107,7 +112,11 @@ export function activeMinutesByDay(
   }
   return [...new Set([...garmin.keys(), ...apple.keys()])]
     .sort()
-    .map((day) => ({ day, value: garmin.get(day) ?? apple.get(day) ?? 0 }));
+    .map((day) => ({
+      day,
+      value: garmin.get(day) ?? apple.get(day) ?? 0,
+      source: garmin.has(day) ? 'garmin' as const : 'workout' as const,
+    }));
 }
 
 /** Adds the chosen daily values. A day is included once. */

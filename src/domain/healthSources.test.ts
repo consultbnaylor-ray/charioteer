@@ -208,8 +208,9 @@ describe('merged daily metrics', () => {
       { calendarDate: '2026-10-21', restingHeartRateBpm: 58, averageHeartRateBpm: null, moderateMinutes: 20, vigorousMinutes: 10 },
       { calendarDate: '2026-10-22', restingHeartRateBpm: null, averageHeartRateBpm: null, moderateMinutes: 15, vigorousMinutes: 0 },
     ]);
-    expect(sumDaily(active, '2026-10-16', '2026-10-22')).toBe(45);
-    expect(sumDaily(active, '2026-10-16', '2026-10-22')).not.toBe(95 + 45);
+    expect(sumDaily(active, '2026-10-16', '2026-10-22')).toBe(55);
+    expect(active.find((day) => day.day === '2026-10-21')).toMatchObject({ value: 40, source: 'garmin' });
+    expect(sumDaily(active, '2026-10-16', '2026-10-22')).not.toBe(95 + 55);
 
     const board = buildHealthStatBoard({
       today: '2026-10-22',
@@ -226,7 +227,9 @@ describe('merged daily metrics', () => {
       activeMinutes: active,
     });
     const tile = board.sections.flatMap((section) => section.tiles).find((item) => item.id === 'weekly_active_minutes');
-    expect(tile?.valueText).toBe('45');
+    expect(tile?.valueText).toBe('55');
+    expect(tile?.status).toBe('95 minutes to 150');
+    expect(tile?.weeklyLine).toBe('Garmin moderate minutes, with each vigorous minute counted twice.');
     const listed = board.sections.flatMap((section) => section.tiles).find((item) => item.id === 'workouts');
     expect(listed?.valueText).toBe('95');
   });

@@ -201,7 +201,7 @@ describe('period windows', () => {
       now: new Date('2026-10-19T08:00:00.000Z'),
     });
     expect(early.minutes?.unit).toBe('min today');
-    expect(early.minutes?.status).toBe('Early days');
+    expect(early.minutes?.status).toBe('5 minutes logged');
     expect(early.minutes?.tone).not.toBe('watch');
   });
 });

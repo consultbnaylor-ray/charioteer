@@ -303,7 +303,9 @@ function StatTile({
         ) : null}
         <TileValue tile={tile} />
         {tile.empty ? null : <TileVisual visual={tile.visual} charted={charted} showCaptions={tile.visual.kind !== 'zone'} />}
-        {!tile.empty && tile.hasGuideline ? <T variant="muted">Not medical advice.</T> : null}
+        {!tile.empty && tile.hasGuideline ? (
+          <T variant="muted">{tile.id === 'weekly_active_minutes' ? 'Not medical advice. Not a diagnosis.' : 'Not medical advice.'}</T>
+        ) : null}
         {tile.empty || tile.visual.kind === 'ring' || tile.visual.kind === 'zone' ? null : (
           <StatusMark tone={tile.tone} status={tile.status} word={tile.mark} />
         )}
