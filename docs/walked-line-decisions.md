@@ -1,6 +1,10 @@
 # Keep the line you walked
 
-Design only. Written 26 October 2026. **Not approved.** Nothing in this sheet is built. No SQL is applied. No deploy. `ios.buildNumber` stays 72. Branched from `e6f8474` on `cursor/start-from-route-design-daf4` (PR #41), which sits on the build 75 saved-routes tip `0571e53` (PR #38).
+Approved by Ben on 26 October 2026. His words: "Approve all seven recommendations for the walked route design as written: phone only, separate Save, 200 m trim".
+
+Built on this branch. Not shipped. No SQL is applied. No deploy. `ios.buildNumber` stays 72. No new purpose string. Branched from `e6f8474` on `cursor/start-from-route-design-daf4` (PR #41), which sits on the build 75 saved-routes tip `0571e53` (PR #38).
+
+The live path is still dropped when Finished is left without Save. A copy of the line stays on this phone only after Save this route. It is not sent. Done without Save drops the line. Delete removes it. The first and last 200 m are left out unless you keep the whole line.
 
 Ben: "Can you do it so that when you click start a walk, run, cycle on the screen before creating a route, it plots out your route on a map, so you can view the distance and pace etc and redo the route in the future."
 
@@ -22,9 +26,9 @@ These are not the design. They are here so the reading can be refused.
 
 3. Redo means spoken turns along the old line. This app does not speak turns. A saved line is a guide on the map. The approved sentence stays: "Turns are not spoken."
 
-## What the code does today
+## What the code did before this build
 
-Checked on this branch, which has the build 74 outing.
+Checked before this build, on the branch that has the build 74 outing. The paragraphs below are that starting point. The build described at the top of this sheet is what the app does now.
 
 Stop, the time limit, and Stop on the outing banner all end measuring. `summaryFrom` in `src/domain/activitySession.ts` stores `id`, `activity`, `date`, `distanceM`, `movingMs`, and `averagePaceSecPerKm`. `saveActivitySummary` writes that object on this phone. It does not write the route name, the points, or the splits. Splits on the Finished screen are the kilometre index, the time, and the pace. They have no coordinates. The heart-rate row is not in the summary.
 
@@ -50,7 +54,7 @@ Option B is not recommended. Saving the walked line as an `outdoor_routes` row p
 
 After Stop, Finished still shows the distance, the time, the pace, and the splits. It also shows the walked line on the map, from the points still in memory. Nothing is written for that line until he taps **Save this route**.
 
-The name field is the existing **Route name**, at most 80 characters. Empty is refused with the existing sentence "A route needs a name." The suggestion on the drawing is "Walk on 26 Oct". That suggestion is new and is not approved. If it is refused, the field can open on the existing "My route".
+The name field is the existing **Route name**, at most 80 characters. Empty is refused with the existing sentence "A route needs a name." The suggestion is "Walk on 26 Oct" (the activity word, " on ", then the day and the month). An unreadable date opens on the existing "My route".
 
 Two choices, both off until he taps them, except the trim, which the drawing shows on:
 
@@ -75,11 +79,9 @@ Not recommended. The same Save would insert an owner-only `outdoor_routes` row, 
 
 For option A, `NSLocationWhenInUseUsageDescription` does not change. "Your route stays on your phone and is not sent anywhere" stays true. The route-service clause stays true. No new permission. No new purpose string.
 
-The privacy note is a different document from the iOS purpose string. `docs/privacy.md` and `docs/privacy.html` still say the outing path is cleared on Stop and is not stored. That is still the app today. They were not edited in this branch. If A is approved, those two files need the same proposal as the DPIA: the live path is still cleared when Finished is left without Save, and a copy stays on the phone only after Save this route.
+The privacy note is a different document from the iOS purpose string. `docs/privacy.md`, `docs/privacy.html`, `docs/dpia-location.md`, and `docs/store-privacy-labels.md` now say the same thing as this build: the live path is dropped when Finished is left without Save, and a copy of the line stays on this phone only after Save this route. It is not sent. Done without Save drops the line. Delete removes it. The first and last 200 m are left out unless you keep the whole line.
 
-`docs/dpia-location.md` and `docs/store-privacy-labels.md` gain a proposal section in this branch. The approved paragraphs above those sections are unchanged.
-
-For option B, the purpose sentence would have to change. This wording is **not approved**, and it is not recommended:
+For option B, the purpose sentence would have to change. This wording is **not approved**, and it is not built:
 
 - Charioteer uses your location while you are on a walk, run or cycle to track distance and give you spoken updates, including when the screen is locked or you are using other apps. A line you save from that outing is stored on your account. The same permission shows where you are while the map is open. A route is sent to the route service only if you turn route finding on. That request is the start, the destination, and any points you add on the map. It is not the outing path, unless you save that path to your account.
 
@@ -87,7 +89,7 @@ Do not put that sentence in `app.json` or the purpose constant unless Ben approv
 
 ## Wording
 
-**Not approved.** New sentences are marked. Existing sentences are reused and not rewritten.
+Approved by Ben on 26 October 2026, with the seven recommendations. Existing sentences are reused and not rewritten.
 
 Already in the app:
 
@@ -105,7 +107,7 @@ Already in the app:
 - Outing in progress. Measuring is still on. Open it to see the map, or tap Stop to end it.
 - The diary gets the words, not the path.
 
-New, and **not approved**:
+Approved for this build:
 
 - Walk on 26 Oct
 - Drop the first and last 200 m
@@ -146,15 +148,15 @@ Save, then later the Start screen, where the line can be chosen and deleted.
 
 ## What the Security bot should review
 
-This pull request is a design. It does not add a store, a grant, or a function. The bot should check the proposal, not a binary.
+This pull request builds option A. It adds a local store on the phone. It does not add a grant, a migration, or a function change. The purpose sentence is unchanged.
 
-- The approved purpose sentence is still the one in `docs/dpia-location.md`. The proposal does not replace it. Option A does not need a new `NSLocationWhenInUseUsageDescription`. Option B would, and the sheet says not to ship that sentence.
-- The proposal does not weaken "the outing path is not sent". A saved copy, if built later, stays in the app's local store. It is not an `outdoor_routes` insert. It is not added to `export_my_data`. It is not sent to HeiGIT, OpenFreeMap, the coach, or a model.
+- The approved purpose sentence is still the one in `docs/dpia-location.md`. Option A does not need a new `NSLocationWhenInUseUsageDescription`. Option B would, and that sentence is not in `app.json` or the purpose constant.
+- The build does not weaken "the outing path is not sent". The saved copy stays in the app's local store (`charioteer.walked-lines`). It is not an `outdoor_routes` insert. It is not added to `export_my_data`. It is not sent to HeiGIT, OpenFreeMap, the coach, or a model.
 - Save is explicit. Stop, the six-hour limit, and the banner's Stop do not write the line. Done without Save drops it. Don't keep this deletes the summary and the line from that finish screen.
-- Delete removes the local record. The sheet says it must not be a hidden flag and must not leave the points under another key.
-- Coordinates are not logged. The sheet does not add a console line, a crash breadcrumb, or an analytics event for the path.
-- The trim is along the line, 200 m at each end, because an exact trace shows home and work. `simplifyLine` keeps the ends, so it is not treated as the privacy control.
+- Delete removes the local record. An empty list deletes the storage key. It is not a hidden flag.
+- Coordinates are not logged. There is no console line, crash breadcrumb, or analytics event for the path.
+- The trim is along the line, 200 m at each end, on by default. "Keep the whole line" is the other choice. `simplifyLine` keeps the ends, so "Use fewer points" is not the privacy control. It stays off unless asked.
 - There is still no crash-recovery file. A kill mid-outing does not leave a path on disk.
 - The banner stays tied to measuring. Finished is after `releaseLive`. The six-hour limit ends measuring before Save is offered.
-- `docs/privacy.md` and `docs/privacy.html` were not edited. They still describe the current build. They would need the same proposal if A is approved. The bot should not treat this branch as having published that change.
-- No migration is added. The build 75 grants are not applied by this note.
+- `docs/privacy.md` and `docs/privacy.html` match this build, as do the DPIA and the store privacy label notes.
+- No migration is added. The build 75 grants are not applied by this build.
