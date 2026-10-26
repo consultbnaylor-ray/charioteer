@@ -96,3 +96,13 @@ There is no data-processing agreement and no signed agreement with HeiGIT. The t
 ## Lawful basis to confirm
 
 The working basis is the person's request to draw a walk (a step they take), plus the explicit system permission. Confirm the UK GDPR basis and the App Store label before release. This note is not that confirmation.
+
+## Proposal: a walked line kept after Stop
+
+Proposal only. **Not approved.** Not built. The paragraphs above stay as they are until Ben approves a change. No SQL is applied. The purpose sentence is unchanged. It still says: "Your route stays on your phone and is not sent anywhere." That stays true for the recommended option, because the line is not sent.
+
+The sheet is `docs/walked-line-decisions.md`. Recommendation: after Stop, the Finished screen can show the walked line. A copy stays on this phone only if the person taps Save this route. Done without that tap drops the line. Delete removes the local record. The line is not an account row, not a route-service request, and not part of `export_my_data`. The first and last 200 m along the line are left out of the copy unless the person chooses the whole line. The stored summary is still the activity, the date, the distance, the time, and the pace, with no path.
+
+Saving that line to the account is the other option in the sheet. It is not recommended. It would make "is not sent anywhere" false, and it would need a new purpose sentence, a privacy-notice change, the saved-route grants, and a close of the export gap. Those are not in this proposal.
+
+`docs/privacy.md` and `docs/privacy.html` were not edited. They still say the outing path is cleared on Stop and is not stored. If this proposal is approved, those two files need the same sentences before the build.
