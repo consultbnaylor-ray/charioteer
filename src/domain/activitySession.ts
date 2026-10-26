@@ -66,7 +66,7 @@ export const BATTERY_NOTE =
 
 export const TRAFFIC_LINE = 'Stay aware of traffic, paths, and other people.';
 
-/** New wording for Ben. Not approved. Shown with a Stop button while an outing is still measuring. */
+/** Approved by Ben on 26 October 2026. Shown with a Stop button while an outing is still measuring. */
 export const OUTING_IN_PROGRESS_LINE =
   'Outing in progress. Measuring is still on. Open it to see the map, or tap Stop to end it.';
 

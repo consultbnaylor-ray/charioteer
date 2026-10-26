@@ -38,7 +38,7 @@ Phone test checklist, not done:
 
 Proxy check result: not done. The packet check includes tile requests. After the phone test, fill this slot in this form: proxy check done on build X, no coordinates in non-tile requests. The nutrition label stays open until that result is filled.
 
-New wording for Ben. Not approved. Outing in progress banner, on Outside is Good and the home screen, with a Stop button: "Outing in progress. Measuring is still on. Open it to see the map, or tap Stop to end it."
+Outing in progress banner, approved by Ben on 26 October 2026, as written: "Outing in progress. Measuring is still on. Open it to see the map, or tap Stop to end it." It is on Outside is Good and the home screen, with a Stop button.
 
 A real iOS compile is still required before TestFlight can prove any of this. The compile has to show: the location patch builds; High accuracy is about 10 metres and is not Best-for-navigation; `pausesLocationUpdatesAutomatically` is false; the fitness activity type and the blue mark are set only when the binary lists the location background mode; no significant-change monitoring; leaving the outing screen does not stop measuring; Stop, discard, the six-hour limit, and force-quit do; speech uses iOS's own speech session so music can duck, and that duck is not proven until the phone test above.
 

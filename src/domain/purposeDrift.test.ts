@@ -91,7 +91,12 @@ describe('purpose strings stay on the approved text', () => {
     expect(readFileSync('docs/dpia-location.md', 'utf8')).toContain('Hyperknot Software Kft.');
     expect(readFileSync('docs/start-activity-decisions.md', 'utf8')).toContain('proxy check done on build X, no coordinates in non-tile requests');
     expect(readFileSync('docs/start-activity-decisions.md', 'utf8')).toContain('The packet check includes tile requests.');
-    expect(readFileSync('docs/start-activity-decisions.md', 'utf8')).toContain('New wording for Ben. Not approved.');
+    const banner = 'Outing in progress banner, approved by Ben on 26 October 2026, as written: "Outing in progress. Measuring is still on. Open it to see the map, or tap Stop to end it."';
+    expect(readFileSync('docs/start-activity-decisions.md', 'utf8')).toContain(banner);
+    expect(readFileSync('docs/start-activity-decisions.md', 'utf8')).not.toContain('New wording for Ben. Not approved.');
+    expect(readFileSync('docs/dpia-location.md', 'utf8')).toContain(banner);
+    expect(readFileSync('src/domain/activitySession.ts', 'utf8')).not.toContain('Not approved');
+    expect(readFileSync('src/ui/OutingInProgressBanner.tsx', 'utf8')).not.toContain('not approved');
     expect(readFileSync('docs/start-activity-decisions.md', 'utf8')).toContain('Music ducking and release with speech on');
     expect(readFileSync('docs/app-store-activity-review.md', 'utf8')).toContain('External TestFlight groups go through Beta App Review. Guideline 2.5.4 applies to that review. Internal testers do not go through Beta App Review.');
     expect(readFileSync('docs/privacy.md', 'utf8')).toContain('No live-tracking route is sent to HeiGIT');
