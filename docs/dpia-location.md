@@ -10,6 +10,8 @@ The purpose sentence is: "Charioteer uses your location while the map is open, t
 
 A walk, run, or cycle uses that same while-using permission, and only while the activity screen is open. Locking the phone pauses it. The phone stores the activity, the date, the distance, the time, and the average pace. It does not store the path. The summary is not sent to the account, the route service, or the coach. Spoken lines are the phone's own voice, from a list on the phone. No new permission and no background mode.
 
+Proposed on 26 October 2026, not built, and not in the purpose sentence above. A later outing would keep measuring after the phone locks, with the while-using permission, the `location` background mode, and the blue location indicator, until the person taps Stop. Always location is not part of that proposal. While the outing is running, the path would be held in memory or on the phone and deleted when they tap Stop, and also on the next open if the app had been swiped away. It would not be sent to the account, the route service, the coach, or anyone else. Coordinates would not be written to a log. The saved summary would still omit the path. Spoken lines would be the phone's voice, with no microphone. The words for that proposal are in `docs/start-activity-decisions.md` and are not approved into the binary.
+
 ## Data
 
 - A live fix is held in memory on that screen. It is not written to the account and it is not sent to other people.
@@ -27,7 +29,7 @@ A walk, run, or cycle uses that same while-using permission, and only while the 
 
 ## What is not collected
 
-- No background location, no "always" location, no visit monitoring.
+- The binary has no background location, no "always" location, and no visit monitoring. The proposal in the paragraph above is not in the binary.
 - No motion-activity permission.
 - No photo library permission is added for location or for Find a route.
 - The microphone purpose sentence stays, because an audio component is in the app. Voice is switched off in this version. The sentence is: "Charioteer does not record audio. Voice is switched off in this version. Apple requires this note because an audio component is included in the app." Charioteer does not record audio.

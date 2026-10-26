@@ -12,7 +12,9 @@ Add one data type for this feature:
 - Not used for tracking
 - Not used for third-party advertising
 
-The purpose string on the device is while-in-use only: `NSLocationWhenInUseUsageDescription`. Do not add `NSLocationAlwaysAndWhenInUseUsageDescription` or `NSLocationAlwaysUsageDescription`. A walk, run, or cycle uses that same while-in-use location, only while the activity screen is open. The summary stays on the phone. It is not a server collection. Do not add a background location permission. Do not add an audio background mode. Spoken lines are on-device text to speech and do not record.
+The purpose string on the device is while-in-use only: `NSLocationWhenInUseUsageDescription`. Do not add `NSLocationAlwaysAndWhenInUseUsageDescription` or `NSLocationAlwaysUsageDescription`. A walk, run, or cycle uses that same while-in-use location, only while the activity screen is open. The summary stays on the phone. It is not a server collection. The binary has no background location mode and no audio background mode. Spoken lines are on-device text to speech and do not record.
+
+A proposal dated 26 October 2026 would, after the wording is approved and not before, add `UIBackgroundModes` entries `location` and `audio`, and replace the while-using sentence. It would still not add the Always strings. Precise Location would stay linked to the user, used for app functionality, and not used for tracking. The path of an outing would stay on the phone until Stop and would not be sent. Coordinates would not be logged. Do not fill the store form as if that proposal is already in the binary.
 
 `NSMotionUsageDescription` is present only to satisfy Apple's static check. The sentence is: "Charioteer does not use your motion or fitness data. The map component in the app can reference motion sensors, so Apple requires this note." The app never reads motion or fitness-activity data. Do not add a Fitness or Motion data type. Do not turn on Android motion activity.
 
