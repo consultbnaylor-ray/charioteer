@@ -18,7 +18,7 @@ What the branch does:
 
 Items 1, 2, and 8 in the short recommendation below described an earlier awake-screen plan. They are superseded by this section.
 
-Later on 26 October 2026 Ben kept the audio background mode and turned speech on for TestFlight. He also re-approved the Health share sentence with the locked-phone heart-rate clause removed. The location sentence still says spoken updates. Good to know now includes a battery line that Ben has not approved: "A finer location fix, about 10 metres, uses more battery than a coarse one. It stops when you tap Stop, or after six hours." iOS automatic pause of location updates is off, because a rest stop was stalling distance. Stop and the six-hour limit still end the session.
+Later on 26 October 2026 Ben kept the audio background mode and turned speech on for TestFlight. He also re-approved the Health share sentence with the locked-phone heart-rate clause removed. The location sentence still says spoken updates. Ben approved the Good to know battery line on 26 October 2026, as written: "A finer location fix, about 10 metres, uses more battery than a coarse one. It stops when you tap Stop, or after six hours." iOS automatic pause of location updates is off, because a rest stop was stalling distance. Stop and the six-hour limit still end the session.
 
 Hard release gate: App Store submission is blocked until a real phone shows music ducks, then returns to full volume after each line, with no leftover audio session, including a phone call and Bluetooth headphones. On screen only never starts an audio session. There is no silent keepalive. `APP_STORE_SPEECH_DUCK_GATE_PASSED` stays false until that phone test is recorded in this note and in `docs/app-store-activity-review.md`.
 

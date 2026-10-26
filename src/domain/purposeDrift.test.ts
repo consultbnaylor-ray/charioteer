@@ -69,6 +69,11 @@ describe('purpose strings stay on the approved text', () => {
     expect(dpia).toContain('Approved by Ben on 26 October 2026');
     expect(dpia).toContain('re-approved by Ben on 26 October 2026');
     expect(dpia).toContain('Audio is used only for Thumos spoken lines when the person picks spoken updates.');
+    const battery = 'A finer location fix, about 10 metres, uses more battery than a coarse one. It stops when you tap Stop, or after six hours.';
+    expect(dpia).toContain('Good to know battery line, approved by Ben on 26 October 2026, as written: "' + battery + '"');
+    expect(readFileSync('docs/start-activity-decisions.md', 'utf8')).toContain('Ben approved the Good to know battery line on 26 October 2026, as written: "' + battery + '"');
+    expect(readFileSync('docs/start-activity-decisions.md', 'utf8')).not.toContain('battery line that Ben has not approved');
+    expect(readFileSync('src/domain/activitySession.ts', 'utf8')).toContain('Approved by Ben on 26 October 2026');
     expect(readFileSync('docs/store-privacy-labels.md', 'utf8')).toContain('Approved by Ben on 26 October 2026, in build 74, not shipped');
     expect(readFileSync('docs/store-privacy-labels.md', 'utf8')).toContain('Audio is used only for Thumos spoken lines when the person picks spoken updates.');
     const gate = 'App Store submission is blocked until a real phone shows music ducks, then returns to full volume after each line, with no leftover audio session, including a phone call and Bluetooth headphones.';
