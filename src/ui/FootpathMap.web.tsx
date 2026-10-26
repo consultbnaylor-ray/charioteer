@@ -241,7 +241,8 @@ function WebCanvas({
         map = next as unknown as LibreMap;
         mapRef.current = map;
         applied.current = url;
-        map.on('moveend', () => {
+        map.on('moveend', (event?: { originalEvent?: unknown }) => {
+          if (!event?.originalEvent) return;
           const current = mapRef.current;
           if (!current) return;
           const center = current.getCenter();

@@ -24,7 +24,7 @@ type CameraHandle = {
 };
 
 type RegionEvent = {
-  nativeEvent?: { center?: [number, number]; zoom?: number };
+  nativeEvent?: { center?: [number, number]; zoom?: number; userInteraction?: boolean };
 };
 
 type Maps = {
@@ -152,6 +152,7 @@ function NativeCanvas({
       attributionPosition={{ bottom: 8, right: 8 }}
       style={{ height }}
       onRegionDidChange={(event: RegionEvent) => {
+        if (event.nativeEvent?.userInteraction !== true) return;
         const center = event.nativeEvent?.center;
         const zoom = event.nativeEvent?.zoom;
         if (!center || center.length < 2 || typeof zoom !== 'number') return;
