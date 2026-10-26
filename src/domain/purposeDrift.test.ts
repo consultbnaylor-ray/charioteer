@@ -120,5 +120,8 @@ describe('purpose strings stay on the approved text', () => {
       expect(note).not.toContain('prepared and not deployed');
     }
     expect(readFileSync('docs/dpia-location.md', 'utf8')).toContain('A route sends the start, the destination, any points you add on the map, and the travel type.');
+    const minutes = readFileSync('docs/activity-minutes-decisions.md', 'utf8');
+    expect(minutes).toContain('Approve the activity minutes design with all recommendations as written');
+    expect(minutes).not.toContain('NOT APPROVED');
   });
 });

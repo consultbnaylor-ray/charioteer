@@ -151,7 +151,7 @@ export function YourFitness({ onPlanOutdoor }: { onPlanOutdoor: () => void }) {
         <View style={{ alignSelf: 'stretch', gap: 6 }}>
           <MeasureRingView
             icon="timer"
-            label="Active minutes"
+            label="Workout minutes"
             ring={{
               centre: view.minutes.centre,
               unit: view.minutes.unit,
@@ -163,8 +163,8 @@ export function YourFitness({ onPlanOutdoor }: { onPlanOutdoor: () => void }) {
             }}
             detail={view.minutes.words}
           />
-          <FitnessSeries points={view.minutes.series ?? []} unit="min" aggregate="sum" label="Active minutes chart" />
-          <MoreInfo about="active minutes" onPress={() => setInfo('minutes')} />
+          <FitnessSeries points={view.minutes.series ?? []} unit="min" aggregate="sum" label="Workout minutes chart" />
+          <MoreInfo about="workout minutes" onPress={() => setInfo('minutes')} />
         </View>
       ) : null}
       {view.resting ? (
@@ -237,7 +237,7 @@ function MoreInfo({ about, onPress }: { about: string; onPress: () => void }) {
 const INFO_TITLE: Record<InfoFocus, string> = {
   card: 'Your fitness',
   cardio: 'Cardio fitness',
-  minutes: 'Active minutes',
+  minutes: 'Workout minutes',
   resting: 'Resting heart rate',
 };
 
@@ -377,7 +377,7 @@ function MinutesDetail({ view, goal }: { view: FitnessSnapshot; goal: NutritionG
       <T>{MINUTES_WHAT}</T>
       <MeasureRingView
         icon="timer"
-        label="Active minutes"
+        label="Workout minutes"
         ring={{
           centre: minutes.centre,
           unit: minutes.unit,
@@ -387,7 +387,7 @@ function MinutesDetail({ view, goal }: { view: FitnessSnapshot; goal: NutritionG
         }}
         detail={minutes.words}
       />
-      <FitnessSeries points={minutes.series ?? []} unit="min" aggregate="sum" label="Active minutes chart" />
+      <FitnessSeries points={minutes.series ?? []} unit="min" aggregate="sum" label="Workout minutes chart" />
       <T variant="label">What your number means</T>
       <T>{minutes.words}</T>
       <T variant="label">{whyGoalMatters(goal)}</T>

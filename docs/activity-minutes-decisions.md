@@ -1,6 +1,6 @@
 # Activity minutes — labels and the two types of minutes
 
-Design only. Written 26 October 2026. **Not approved.** Nothing in this sheet is built. No screen in the app changes. No migration is written or applied. No deploy. `ios.buildNumber` stays 72. Branched from the build 75 tip `0571e53` (PR #38).
+Approved by Ben on 26 October 2026, as written: "Approve the activity minutes design with all recommendations as written." All six decisions take the recommended option. Built from the design sheet on the saved-routes line `0571e53` (PR #38) plus this sheet (`f858da2`, PR #39). Not shipped. No migration is written or applied. No deploy. `ios.buildNumber` stays 72.
 
 Ben, after the You → Workouts → Daily activity Exercise minutes card: "This implies that the recorded minutes is wrong?" Then: "Label up correctly and create new bar charts for the different types of minutes vigorous vs whatever else."
 
@@ -66,7 +66,7 @@ Agreed definition, for approval:
 
 Active minutes are Garmin moderate minutes plus vigorous minutes counted twice, when Garmin has them for that day. Otherwise they are the minutes of workouts logged that day. Workout minutes are not labelled moderate or vigorous.
 
-Places that would change when this is built. None of them change in this branch.
+Places that change in this build.
 
 | Place | Where | Today | When built |
 | --- | --- | --- | --- |
@@ -89,9 +89,9 @@ No new permission and no new purpose string. Apple exercise time is already requ
 
 No server change. The charts read columns that already exist. No migration is included. Nothing is applied.
 
-## Wording, NOT APPROVED
+## Wording
 
-Every string in this section is proposed. None of it is approved. UK English. No medical claim. "Not medical advice. Not a diagnosis." stays visible on each of these cards.
+Approved by Ben on 26 October 2026, as written. UK English. No medical claim. "Not medical advice. Not a diagnosis." stays visible on each of these cards.
 
 ### Exercise minutes
 
@@ -228,5 +228,5 @@ The same files are copied to `/opt/cursor/artifacts/screenshots/` for the pull r
 2. New charts. Two separate charts, Moderate minutes and Vigorous minutes, in real minutes (recommended). Or those two plus a stacked chart.
 3. The lime reference. On the weighted Exercise minutes and Intensity minutes charts only (recommended). Or also on Moderate minutes or Vigorous minutes, with the limit written on that chart.
 4. Active minutes. The definition in section C, and Your Fitness relabelled Workout minutes (recommended). Or keep the words Active minutes on the workout-length ring.
-5. The wording in this sheet. It is not approved until Ben says so.
+5. The wording in this sheet. Approved by Ben on 26 October 2026, as written.
 6. No new permission, no new purpose string, and no database change. Confirm that none is wanted.

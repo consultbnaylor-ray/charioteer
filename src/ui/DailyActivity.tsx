@@ -3,6 +3,12 @@ import { useRouter } from 'expo-router';
 
 import { useState, type ReactNode } from 'react';
 import {
+  ACTIVITY_CARE_LINE,
+  EXERCISE_GARMIN_CAPTION,
+  INTENSITY_EMPTY,
+  MINUTE_TYPE_CAPTION,
+} from '@/domain/activityMinutes';
+import {
   DAILY_ACTIVITY_CONSENT,
   DAILY_ACTIVITY_RINGS_HINT,
   DAILY_ACTIVITY_TAP_HINT,
@@ -15,9 +21,11 @@ import {
   chartSourceCaption,
   distanceSeries,
   distanceText,
-  exerciseMinutesLabel,
+  exerciseChartCaption,
   exerciseSeries,
   floorsSeries,
+  garminMinuteSeries,
+  minuteTypeEmpty,
   mostInOneDay,
   restingSeries,
   seriesHasValue,
@@ -30,15 +38,18 @@ import {
   TAP_FOR_MORE,
   activityChartGuide,
   distanceChartGuide,
+  exerciseChartGuide,
   floorsChartGuide,
   garminBarPoints,
   garminDetailCharts,
   garminSourceCaption,
   intensitySeries,
+  moderateChartGuide,
   movementPeriod,
   restingChartGuide,
   stepGoalInPeriod,
   stepsChartGuide,
+  vigorousChartGuide,
   type ChartGuide,
 } from '@/domain/garminCharts';
 import type { GarminDaily, GarminHrvSummary, GarminPulseOx, GarminRespiration, GarminSleep, GarminUserMetric } from '@/domain/garminConnect';
@@ -127,6 +138,8 @@ export function DailyActivityCharts({
   const [selected, setSelected] = useState<string | null>(null);
   const period = movementPeriod(span, '7').period;
   const exercise = consent ? exerciseSeries(endDay, span, exerciseMinutes, dailies) : [];
+  const moderate = consent ? garminMinuteSeries(endDay, span, dailies, 'moderate') : [];
+  const vigorous = consent ? garminMinuteSeries(endDay, span, dailies, 'vigorous') : [];
   const calories = consent ? calorieSeries(endDay, span, activeKcal, dailies) : [];
   const exerciseDay = exercise.find((point) => point.day === selected) ?? null;
   const calorieDay = calories.find((point) => point.day === selected) ?? null;
@@ -143,10 +156,33 @@ export function DailyActivityCharts({
         span={span}
         unit="min"
         selected={selected}
-        garminNote={chartSourceCaption(exercise, { vigorous: true })}
-        guide={seriesHasValue(exercise) ? activityChartGuide(period) : null}
+        nameSource
+        garminNote={exerciseChartCaption(exercise)}
+        guide={consent ? exerciseChartGuide(period) : null}
         onSelect={setSelected}
       />
+      {consent ? (
+        <MinuteTypeChart
+          title="Moderate minutes"
+          points={moderate}
+          span={span}
+          selected={selected}
+          emptyLine={minuteTypeEmpty('moderate')}
+          guide={moderateChartGuide()}
+          onSelect={setSelected}
+        />
+      ) : null}
+      {consent ? (
+        <MinuteTypeChart
+          title="Vigorous minutes"
+          points={vigorous}
+          span={span}
+          selected={selected}
+          emptyLine={minuteTypeEmpty('vigorous')}
+          guide={vigorousChartGuide()}
+          onSelect={setSelected}
+        />
+      ) : null}
       {exercisePermissionMissing ? (
         <View style={{ gap: 8 }}>
           <T>{EXERCISE_PERMISSION_HINT}</T>
@@ -167,7 +203,7 @@ export function DailyActivityCharts({
       <T variant="muted" style={{ textAlign: 'center' }}>{CHART_DIRECTION_HINT}</T>
       {exerciseDay && calorieDay ? (
         <View style={{ gap: 4 }}>
-          <T>{exerciseMinutesLabel(exerciseDay.day, exerciseDay.value, exerciseDay.source)}</T>
+          <T>{exerciseDay.label}</T>
           <T>{activeCaloriesLabel(calorieDay.day, calorieDay.value, calorieDay.source)}</T>
         </View>
       ) : null}
@@ -234,6 +270,8 @@ export function MovementCharts({
   const resting = restingSeries(endDay, chartWindow.days, restingHeart, dailies);
   const intensity = showIntensity ? intensitySeries(endDay, chartWindow.period, dailies) : [];
   const intensityBars = garminBarPoints(intensity);
+  const moderate = showIntensity ? garminMinuteSeries(endDay, chartWindow.days, dailies, 'moderate') : [];
+  const vigorous = showIntensity ? garminMinuteSeries(endDay, chartWindow.days, dailies, 'vigorous') : [];
   const details = garminDetailCharts({
     endDay,
     period: chartWindow.period,
@@ -343,7 +381,7 @@ export function MovementCharts({
           onSelect={setSelected}
         />
       ) : null}
-      {seriesHasValue(intensityBars) ? (
+      {showIntensity && seriesHasValue(intensityBars) ? (
         <ActivityBars
           framed={framed}
           title="Intensity minutes"
@@ -351,8 +389,43 @@ export function MovementCharts({
           span={chartWindow.days}
           unit="min"
           selected={selected}
-          garminNote={chartSourceCaption(intensityBars, { vigorous: true })}
+          garminNote={EXERCISE_GARMIN_CAPTION}
           guide={activityChartGuide(chartWindow.period)}
+          onSelect={setSelected}
+        />
+      ) : null}
+      {showIntensity && !seriesHasValue(intensityBars) ? (
+        <MinuteTypeChart
+          title="Intensity minutes"
+          points={[]}
+          span={chartWindow.days}
+          selected={selected}
+          emptyLine={INTENSITY_EMPTY}
+          guide={activityChartGuide(chartWindow.period)}
+          onSelect={setSelected}
+        />
+      ) : null}
+      {showIntensity ? (
+        <MinuteTypeChart
+          title="Moderate minutes"
+          points={moderate}
+          span={chartWindow.days}
+          selected={selected}
+          emptyLine={minuteTypeEmpty('moderate')}
+          guide={moderateChartGuide()}
+          framed={framed}
+          onSelect={setSelected}
+        />
+      ) : null}
+      {showIntensity ? (
+        <MinuteTypeChart
+          title="Vigorous minutes"
+          points={vigorous}
+          span={chartWindow.days}
+          selected={selected}
+          emptyLine={minuteTypeEmpty('vigorous')}
+          guide={vigorousChartGuide()}
+          framed={framed}
           onSelect={setSelected}
         />
       ) : null}
@@ -474,6 +547,64 @@ function chartPeak(points: readonly DailyActivityPoint[], guide: ChartGuide | nu
   return Math.max(...marks);
 }
 
+function barSourceName(point: DailyActivityPoint): string {
+  if (point.source === 'apple') return 'Apple';
+  if (point.source === 'garmin') return 'Garmin';
+  return '—';
+}
+
+function MinuteTypeChart({
+  title,
+  points,
+  span,
+  selected,
+  emptyLine,
+  guide,
+  framed = false,
+  onSelect,
+}: {
+  title: string;
+  points: readonly DailyActivityPoint[];
+  span: number;
+  selected: string | null;
+  emptyLine: string;
+  guide: ChartGuide;
+  framed?: boolean;
+  onSelect: (day: string) => void;
+}) {
+  const hasReading = points.some((point) => point.source != null);
+  if (!hasReading) {
+    const body = (
+      <>
+        <T variant="label">{title}</T>
+        <T variant="muted">{emptyLine}</T>
+        <MoreInfo
+          about={title}
+          summary={ACTIVITY_CARE_LINE}
+        >
+          <T variant="muted">{guide.about}</T>
+        </MoreInfo>
+      </>
+    );
+    if (!framed) return <View style={{ gap: 8 }}>{body}</View>;
+    return <Card>{body}</Card>;
+  }
+  return (
+    <ActivityBars
+      framed={framed}
+      title={title}
+      points={points}
+      span={span}
+      unit="min"
+      selected={selected}
+      nameSource
+      garminNote={MINUTE_TYPE_CAPTION}
+      guide={guide}
+      onSelect={onSelect}
+    />
+  );
+}
+
 function ActivityBars({
   title,
   points,
@@ -485,6 +616,7 @@ function ActivityBars({
   format,
   guide = null,
   framed = true,
+  nameSource = false,
   onSelect,
 }: {
   title: string;
@@ -498,6 +630,8 @@ function ActivityBars({
   guide?: ChartGuide | null;
   /** False inside a card that already has the mint edge. */
   framed?: boolean;
+  /** Apple, Garmin, or a dash under each bar. */
+  nameSource?: boolean;
   onSelect: (day: string) => void;
 }) {
   const theme = useAppTheme();
@@ -542,7 +676,7 @@ function ActivityBars({
           {title === 'Average stress' ? <StressActions /> : null}
         </MoreInfo>
       ) : null}
-      <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: span > 14 ? 1 : 4, minHeight: BAR_HEIGHT + 36 }}>
+      <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: span > 14 ? 1 : 4, minHeight: BAR_HEIGHT + (nameSource ? 50 : 36) }}>
         {points.map((point) => {
           const chosen = point.day === selected;
           const showValue = span <= 7 && !point.empty && (point.value > 0 || point.source != null);
@@ -596,6 +730,9 @@ function ActivityBars({
               <T style={{ fontSize: 10, lineHeight: 12, color: theme.colors.muted }}>
                 {span <= 7 ? weekdayShort(point.day).slice(0, 1) : span <= 31 ? String(Number(point.day.slice(8, 10))) : ''}
               </T>
+              {nameSource ? (
+                <T style={{ fontSize: 10, lineHeight: 12, color: theme.colors.muted }}>{barSourceName(point)}</T>
+              ) : null}
             </Pressable>
           );
         })}

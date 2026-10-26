@@ -335,7 +335,6 @@ function heartRing(bpm: number): { ring: MeasureRing; zone: MeasureZone } {
 function workoutFigure(points: readonly { day: string; value: number }[], today: string): HealthFigure {
   const recent = recentPoints(points, today);
   const minutes = Math.round(recent.reduce((sum, point) => sum + point.value, 0));
-  const left = Math.max(0, CMO_MODERATE_MINUTES_WEEK - minutes);
   const met = minutes >= CMO_MODERATE_MINUTES_WEEK;
   const bars = recent
     .filter((point) => point.value > 0)
@@ -352,7 +351,7 @@ function workoutFigure(points: readonly { day: string; value: number }[], today:
         centre: String(minutes),
         unit: 'min',
         fill: clamp01(minutes / CMO_MODERATE_MINUTES_WEEK),
-        status: met ? '150 minutes logged' : minutes === 0 ? '150 minutes to go' : left === 1 ? '1 minute to 150' : `${left} minutes to 150`,
+        status: `${minutes} minutes logged`,
         tone: met ? 'good' : 'info',
       },
     },

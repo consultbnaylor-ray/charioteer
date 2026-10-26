@@ -169,7 +169,7 @@ export const VO2_WHAT =
   'VO2 max: how much oxygen your body can use at full effort, per kg of body weight per minute. Apple Watch estimates it.';
 
 export const MINUTES_WHAT =
-  'Active minutes: time in workouts this week. The unit is minutes. The ring fills toward 150 minutes a week, or toward the week you set when that is the mark.';
+  'These are the minutes of workouts logged this week. They are not moderate minutes and not vigorous minutes. The UK Chief Medical Officers recommend at least 150 minutes of moderate activity a week, or 75 minutes of vigorous activity. This app cannot tell how hard the logged minutes were. Not medical advice. Not a diagnosis.';
 
 export const RESTING_WHAT =
   'Resting heart rate: how many times your heart beats in a minute while you are at rest. The unit is bpm.';
@@ -728,22 +728,14 @@ export function buildFitnessSnapshot(input: FitnessSnapshotInput): FitnessSnapsh
   } : null;
 
   const aim = scaledSchedule ?? guideline;
-  const minutesMet = minutes >= aim * 0.9;
-  const minutesPace = paceJudgement({
-    period,
-    loggedDays: active.days,
-    now: input.now,
-    met: minutesMet,
-    behind: 'Short',
-  });
   const minutesRing = minutes > 0 || input.scheduleWeekMinutes ? {
     centre: String(Math.round(minutes)),
     unit: minuteUnit(period),
     fill: aim > 0 ? Math.max(0, Math.min(1, minutes / aim)) : 0,
-    status: minutesPace.neutral ? minutesPace.word : minutesMet ? 'On track' : 'Short',
-    tone: minutesPace.neutral ? 'info' as const : minutesMet ? 'good' as const : 'watch' as const,
-    signal: minutesPace.neutral ? minutesPace.word : undefined,
-    neutral: minutesPace.neutral,
+    status: `${Math.round(minutes)} minutes logged`,
+    tone: 'info' as const,
+    signal: undefined,
+    neutral: true,
     words: minutesWords(minutes, weeklySchedule, period, aim),
     series: active.daily,
   } : null;
@@ -889,12 +881,11 @@ function restingWords(split: { earlier: number | null; recent: number | null }):
 }
 
 function minutesWords(minutes: number, schedule: number | null, period: StatPeriod, aim: number): string {
-  const guideline = 'The activity guideline is 150 min a week.';
   const phrase = periodPhrase(period);
   if (schedule && schedule > 0) {
-    return `${Math.round(minutes)} min ${phrase}. Your schedule is about ${Math.round(aim)} min ${phrase}. ${guideline}`;
+    return `${Math.round(minutes)} min ${phrase}. Your schedule is about ${Math.round(aim)} min ${phrase}.`;
   }
-  return `${Math.round(minutes)} min ${phrase}. ${guideline}`;
+  return `${Math.round(minutes)} min ${phrase}.`;
 }
 
 const BUCKET_KIND_NAME = {
