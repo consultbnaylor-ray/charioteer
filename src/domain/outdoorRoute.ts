@@ -5,10 +5,10 @@
  */
 
 export const LOCATION_WHEN_IN_USE =
-  'Charioteer uses your location only while the map is open, to show where you are. A route is sent to the route service only if you turn route finding on. It is not tracked in the background. It is not shared with other people. It is stored only if you save a route.';
+  'Charioteer uses your location while you are on a walk, run or cycle to track distance and give you spoken updates, including when the screen is locked or you are using other apps. Your route stays on your phone and is not sent anywhere. The same permission shows where you are while the map is open. A route is sent to the route service only if you turn route finding on. That request is the start, the destination, and any points you add on the map. It is not the outing path.';
 
 export const LOCATION_PAGE_LINE =
-  'Location is optional. It is used only while this page is open, to show where you are. A route is sent to the route service only if you turn route finding on. It is not tracked in the background. It is not shared with other people. It is stored only if you save a route.';
+  'Location is optional. The map uses it while this page is open, to show where you are. A walk, run, or cycle you start can keep using it until you stop. A route is sent to the route service only if you turn route finding on. It is not shared with other people. It is stored only if you save a route.';
 
 export const OUTSIDE_SAFETY_LINE =
   'Not medical advice. If you feel unwell, contact your GP or NHS 111. Call 999 for chest pain, fainting, or breathlessness.';
@@ -39,6 +39,10 @@ export type MapScheme = 'light' | 'dark';
 /** Dark green on the light Liberty style. Lime on the dark style. */
 export const MAP_LINE_LIGHT = '#047857';
 export const MAP_LINE_DARK = '#2DE0A0';
+
+/** Blue on the light Liberty style. Pale blue on the dark style. Not the saved-route green. */
+export const TRACK_LINE_LIGHT = '#1D4ED8';
+export const TRACK_LINE_DARK = '#93C5FD';
 
 const EARTH_M = 6_371_000;
 const WALK_METRES_PER_MINUTE = 80;
@@ -97,6 +101,10 @@ export function parseMapScheme(value: unknown): MapScheme {
 
 export function mapLineColour(scheme: MapScheme): string {
   return scheme === 'dark' ? MAP_LINE_DARK : MAP_LINE_LIGHT;
+}
+
+export function trackLineColour(scheme: MapScheme): string {
+  return scheme === 'dark' ? TRACK_LINE_DARK : TRACK_LINE_LIGHT;
 }
 
 export function mapStart(): OutdoorPoint {
@@ -331,6 +339,14 @@ export function sketchLineCollection(points: readonly OutdoorPoint[]) {
   return {
     type: 'FeatureCollection' as const,
     features: lineFeatures([{ id: 'sketch', points }]),
+  };
+}
+
+/** The line of an outing still on screen. Callers keep the points in memory and do not save them. */
+export function trackLineCollection(points: readonly OutdoorPoint[]) {
+  return {
+    type: 'FeatureCollection' as const,
+    features: lineFeatures([{ id: 'track', points }]),
   };
 }
 

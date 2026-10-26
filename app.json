@@ -25,8 +25,9 @@
         "NSCameraUsageDescription": "Charioteer uses the camera for a private progress photo, or for a photo you choose to send to buddies. A progress photo stays private. A photo you send is shown only to the buddies you pick, not the Community, and it is not sent to the coach.",
         "NSPhotoLibraryUsageDescription": "Charioteer uses your photo library so you can add a private progress photo, or choose a photo to send to buddies. A progress photo stays private. A photo you send is shown only to the buddies you pick, not the Community, and it is not sent to the coach.",
         "NSPhotoLibraryAddUsageDescription": "Charioteer adds a photo to your photo library when you tap Save. It cannot create a separate Charioteer album without reading your other photos, so it does not. It never reads your other photos.",
-        "NSHealthShareUsageDescription": "Charioteer reads steps, sleep, heart rate, resting heart rate, heart rate variability, cardio fitness, walking heart rate, heart rate recovery, workouts (type, duration, distance, energy, and average heart rate), and walking, cycling and swimming distance, plus weight, height, body fat, lean body mass, active energy, and exercise minutes. Readings stay on your iPhone. A workout route is read only when you open that route, and the path stays on this iPhone. A short summary is sent to write your plan only if you turn the coach on. It is not used for ads. Other people cannot see this.",
+        "NSHealthShareUsageDescription": "Charioteer reads steps, sleep, heart rate, resting heart rate, heart rate variability, cardio fitness, walking heart rate, heart rate recovery, workouts (type, duration, distance, energy, and average heart rate), and walking, cycling and swimming distance, plus weight, height, body fat, lean body mass, active energy, and exercise minutes. Readings stay on your iPhone. During a walk, run, or cycle you start, the latest heart rate from Apple Health can be shown on that screen. During a strength or cardio session you start in Workouts, the latest heart rate and active energy from Apple Health can be shown while you train. The iPhone does not measure heart rate. Those readings stay on this iPhone and are not sent. A workout route is read only when you open that route, and the path stays on this iPhone. A short summary is sent to write your plan only if you turn the coach on. It is not used for ads. Other people cannot see this.",
         "NSHealthUpdateUsageDescription": "Charioteer writes the food and water you log to Apple Health: dietary energy, protein, carbohydrate, sugar, fibre, fat, sodium and water. It does not write steps, sleep, heart rate, workouts, or weight.",
+        "UIBackgroundModes": ["location", "audio"],
         "LSApplicationQueriesSchemes": [
           "x-apple-health",
           "gcm-ciq"
@@ -111,7 +112,7 @@
       [
         "@kingstinct/react-native-healthkit",
         {
-          "NSHealthShareUsageDescription": "Charioteer reads steps, sleep, heart rate, resting heart rate, heart rate variability, cardio fitness, walking heart rate, heart rate recovery, workouts (type, duration, distance, energy, and average heart rate), and walking, cycling and swimming distance, plus weight, height, body fat, lean body mass, active energy, and exercise minutes. Readings stay on your iPhone. A workout route is read only when you open that route, and the path stays on this iPhone. A short summary is sent to write your plan only if you turn the coach on. It is not used for ads. Other people cannot see this.",
+          "NSHealthShareUsageDescription": "Charioteer reads steps, sleep, heart rate, resting heart rate, heart rate variability, cardio fitness, walking heart rate, heart rate recovery, workouts (type, duration, distance, energy, and average heart rate), and walking, cycling and swimming distance, plus weight, height, body fat, lean body mass, active energy, and exercise minutes. Readings stay on your iPhone. During a walk, run, or cycle you start, the latest heart rate from Apple Health can be shown on that screen. During a strength or cardio session you start in Workouts, the latest heart rate and active energy from Apple Health can be shown while you train. The iPhone does not measure heart rate. Those readings stay on this iPhone and are not sent. A workout route is read only when you open that route, and the path stays on this iPhone. A short summary is sent to write your plan only if you turn the coach on. It is not used for ads. Other people cannot see this.",
           "NSHealthUpdateUsageDescription": "Charioteer writes the food and water you log to Apple Health: dietary energy, protein, carbohydrate, sugar, fibre, fat, sodium and water. It does not write steps, sleep, heart rate, workouts, or weight.",
           "background": false
         }
@@ -121,11 +122,11 @@
       [
         "expo-location",
         {
-          "locationWhenInUsePermission": "Charioteer uses your location only while the map is open, to show where you are. A route is sent to the route service only if you turn route finding on. It is not tracked in the background. It is not shared with other people. It is stored only if you save a route.",
+          "locationWhenInUsePermission": "Charioteer uses your location while you are on a walk, run or cycle to track distance and give you spoken updates, including when the screen is locked or you are using other apps. Your route stays on your phone and is not sent anywhere. The same permission shows where you are while the map is open. A route is sent to the route service only if you turn route finding on. That request is the start, the destination, and any points you add on the map. It is not the outing path.",
           "locationAlwaysAndWhenInUsePermission": false,
           "locationAlwaysPermission": false,
           "motionUsagePermission": "Charioteer does not use your motion or fitness data. The map component in the app can reference motion sensors, so Apple requires this note.",
-          "isIosBackgroundLocationEnabled": false,
+          "isIosBackgroundLocationEnabled": true,
           "isAndroidBackgroundLocationEnabled": false,
           "isAndroidForegroundServiceEnabled": false,
           "isAndroidMotionActivityEnabled": false

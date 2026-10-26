@@ -28,6 +28,7 @@ import { GarminConnectRow } from '@/ui/GarminConnectRow';
 import { ShareOnProfile } from '@/ui/ShareOnProfile';
 import { ConsentChoices } from '@/ui/ConsentChoices';
 import { ProgressPhotos } from '@/ui/ProgressPhotos';
+import { ActivityUpdatesCard } from '@/ui/ActivityUpdatesCard';
 import { UnitsGuide } from '@/ui/UnitsGuide';
 import { DateField } from '@/ui/DateField';
 import { InPlainWords, QuoteWords } from '@/ui/InPlainWords';
@@ -447,6 +448,7 @@ export default function Profile() {
           ))}
         </View>
       </Card>
+      <ActivityUpdatesCard />
       <RouteFindingSwitch />
       <Card>
         <T variant="label">Notifications</T>

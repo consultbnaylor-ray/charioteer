@@ -12,6 +12,7 @@ import { T } from '@/ui/ui';
 export const FULL_SCREEN_MAP = 'Full screen map';
 export const CLOSE_FULL_SCREEN_MAP = 'Close full screen map';
 export const MAP_STYLE_SWITCH = 'Map style: light or dark';
+export const RECENTRE_MAP = 'Re-centre';
 
 const INK = '#121212';
 const FILL = '#FFFFFF';
@@ -93,6 +94,33 @@ function MoonIcon() {
   );
 }
 
+function RecentreButton({ onPress }: { onPress: () => void }) {
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={RECENTRE_MAP}
+      onPress={onPress}
+      style={{
+        position: 'absolute',
+        top: 8,
+        right: 8,
+        minWidth: 44,
+        height: 44,
+        paddingHorizontal: 12,
+        borderRadius: 22,
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: FILL,
+        borderWidth: 1,
+        borderColor: INK,
+        zIndex: 3,
+      }}
+    >
+      <T style={{ color: INK, fontSize: 14, lineHeight: 18 }}>Re-centre</T>
+    </Pressable>
+  );
+}
+
 export function MapShell({
   here,
   height,
@@ -100,6 +128,7 @@ export function MapShell({
   scheme,
   locating,
   onShowMyLocation,
+  onRecentre,
   onExpand,
   onCollapse,
   onToggleStyle,
@@ -111,7 +140,8 @@ export function MapShell({
   expanded: boolean;
   scheme: MapScheme;
   locating: boolean;
-  onShowMyLocation: () => void;
+  onShowMyLocation?: () => void;
+  onRecentre?: () => void;
   onExpand: () => void;
   onCollapse: () => void;
   onToggleStyle: () => void;
@@ -145,7 +175,8 @@ export function MapShell({
         <CornerButton label={MAP_STYLE_SWITCH} bottom={8} left={8} onPress={onToggleStyle}>
           {scheme === 'dark' ? <SunIcon /> : <MoonIcon />}
         </CornerButton>
-        <ShowMyLocationButton pending={locating} onPress={onShowMyLocation} />
+        {onRecentre ? <RecentreButton onPress={onRecentre} /> : null}
+        {onRecentre || !onShowMyLocation ? null : <ShowMyLocationButton pending={locating} onPress={onShowMyLocation} />}
       </View>
       {problem ? <T variant="muted">{problem}</T> : null}
       {expanded ? null : (
@@ -165,25 +196,31 @@ export function MapFrame({
   scheme,
   locating,
   onShowMyLocation,
+  onRecentre,
   onToggleStyle,
   onRestore,
   problem,
   renderMap,
+  bar,
 }: {
   here: boolean;
   height?: number;
   scheme: MapScheme;
   locating: boolean;
-  onShowMyLocation: () => void;
+  onShowMyLocation?: () => void;
+  onRecentre?: () => void;
   onToggleStyle: () => void;
   onRestore: () => void;
   problem?: string | null;
   renderMap: (view: { height: number; expanded: boolean }) => ReactNode;
+  /** Figures and route buttons, shown under the map only while it is full screen. */
+  bar?: ReactNode;
 }) {
   const insets = useSafeAreaInsets();
   const window = useWindowDimensions();
   const [open, setOpen] = useState(false);
   const fullHeight = Math.max(240, window.height - insets.top - insets.bottom);
+  const fullMapHeight = bar ? Math.max(180, fullHeight - 260) : fullHeight;
   function collapse() {
     setOpen(false);
     onRestore();
@@ -196,6 +233,7 @@ export function MapFrame({
       scheme={scheme}
       locating={locating}
       onShowMyLocation={onShowMyLocation}
+      onRecentre={onRecentre}
       onExpand={() => setOpen(true)}
       onCollapse={collapse}
       onToggleStyle={onToggleStyle}
@@ -218,7 +256,8 @@ export function MapFrame({
             backgroundColor: scheme === 'dark' ? '#141414' : '#F7F5F0',
           }}
         >
-          {open ? shell(true, fullHeight) : null}
+          {open ? shell(true, fullMapHeight) : null}
+          {open && bar ? <View style={{ paddingHorizontal: 12, paddingBottom: 8 }}>{bar}</View> : null}
         </View>
       </Modal>
     </>

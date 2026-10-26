@@ -1,6 +1,7 @@
-import { useEffect, useRef, useState, type ComponentType, type Ref } from 'react';
+import { useEffect, useRef, useState, type ComponentType, type ReactNode, type Ref } from 'react';
 import { View } from 'react-native';
 
+import { viaPointCollection } from '@/domain/routeAdjust';
 import {
   YOU_HERE_FILL,
   YOU_HERE_RING,
@@ -9,6 +10,8 @@ import {
   savedLineCollection,
   sketchLineCollection,
   startCollection,
+  trackLineCollection,
+  trackLineColour,
   youAreHereCollection,
   type MapScheme,
   type OutdoorPoint,
@@ -56,7 +59,13 @@ export function FootpathMap({
   locationFocus = 0,
   locating = false,
   onShowMyLocation,
+  onRecentre,
+  follow,
+  onUserMove,
+  track = [],
   height = 280,
+  adjust = null,
+  bar = null,
 }: {
   routes: readonly OutdoorRoute[];
   sketch: readonly OutdoorPoint[];
@@ -66,11 +75,28 @@ export function FootpathMap({
   /** Increments when the person asks the map to centre on the GPS fix. */
   locationFocus?: number;
   locating?: boolean;
-  onShowMyLocation: () => void;
+  onShowMyLocation?: () => void;
+  /** An outing uses this instead of Show my location. */
+  onRecentre?: () => void;
+  /** When set, the camera follows `here` until the person pans. */
+  follow?: boolean;
+  onUserMove?: () => void;
+  /** Drawn for the outing. Not saved. */
+  track?: readonly OutdoorPoint[];
   height?: number;
+  adjust?: {
+    enabled: boolean;
+    vias: readonly OutdoorPoint[];
+    guide: readonly OutdoorPoint[];
+    onDown: (point: OutdoorPoint) => void;
+    onMove: (point: OutdoorPoint) => void;
+    onUp: (point: OutdoorPoint) => void;
+  } | null;
+  /** Shown under the map while it is full screen. */
+  bar?: ReactNode;
 }) {
   const [scheme, choose] = useMapScheme();
-  const camera = useHeldCamera(routes, sketch, here, locationFocus);
+  const camera = useHeldCamera(routes, sketch, here, locationFocus, follow);
   const [maps, setMaps] = useState<Maps | null>(null);
   useEffect(() => {
     setMaps(loadMaps());
@@ -83,8 +109,10 @@ export function FootpathMap({
       scheme={scheme}
       locating={locating}
       onShowMyLocation={onShowMyLocation}
+      onRecentre={onRecentre}
       onToggleStyle={() => choose(scheme === 'dark' ? 'light' : 'dark')}
       onRestore={camera.restore}
+      bar={bar}
       renderMap={({ height: viewHeight }) => (
         <NativeCanvas
           maps={maps}
@@ -98,6 +126,9 @@ export function FootpathMap({
           sketch={sketch}
           here={here}
           startPoint={startPoint}
+          track={track}
+          onUserMove={onUserMove}
+          adjust={adjust}
         />
       )}
     />
@@ -116,6 +147,9 @@ function NativeCanvas({
   sketch,
   here,
   startPoint,
+  track,
+  onUserMove,
+  adjust,
 }: {
   maps: Maps | null;
   height: number;
@@ -128,9 +162,22 @@ function NativeCanvas({
   sketch: readonly OutdoorPoint[];
   here: OutdoorPoint | null;
   startPoint: OutdoorPoint | null;
+  track: readonly OutdoorPoint[];
+  onUserMove?: () => void;
+  adjust: {
+    enabled: boolean;
+    vias: readonly OutdoorPoint[];
+    guide: readonly OutdoorPoint[];
+    onDown: (point: OutdoorPoint) => void;
+    onMove: (point: OutdoorPoint) => void;
+    onUp: (point: OutdoorPoint) => void;
+  } | null;
 }) {
   const camera = useRef<CameraHandle>(null);
+  const moved = useRef(onUserMove);
+  moved.current = onUserMove;
   const green = mapLineColour(scheme);
+  const walked = trackLineColour(scheme);
   const place = held.current;
 
   useEffect(() => {
@@ -157,6 +204,19 @@ function NativeCanvas({
         const zoom = event.nativeEvent?.zoom;
         if (!center || center.length < 2 || typeof zoom !== 'number') return;
         remember({ longitude: center[0], latitude: center[1], zoom });
+        moved.current?.();
+      }}
+      onPress={(event: { coordinates?: { latitude?: number; longitude?: number }; geometry?: { coordinates?: number[] } }) => {
+        if (!adjust?.enabled) return;
+        const pair = event.geometry?.coordinates;
+        const point = pair && pair.length >= 2
+          ? { longitude: Number(pair[0]), latitude: Number(pair[1]) }
+          : event.coordinates && typeof event.coordinates.latitude === 'number' && typeof event.coordinates.longitude === 'number'
+            ? { latitude: event.coordinates.latitude, longitude: event.coordinates.longitude }
+            : null;
+        if (!point || !Number.isFinite(point.latitude) || !Number.isFinite(point.longitude)) return;
+        adjust.onDown(point);
+        adjust.onUp(point);
       }}
     >
       <maps.Camera ref={camera} initialViewState={{ center: [place.longitude, place.latitude], zoom: place.zoom }} />
@@ -169,12 +229,28 @@ function NativeCanvas({
         source="sketch"
         paint={{ 'line-color': green, 'line-width': 3, 'line-dasharray': [2, 1.4] }}
       />
+      <maps.GeoJSONSource id="track" data={trackLineCollection(track)} />
+      <maps.Layer id="track-line" type="line" source="track" paint={{ 'line-color': walked, 'line-width': 5 }} />
       <maps.GeoJSONSource id="start" data={startCollection(routes, sketch, startPoint)} />
       <maps.Layer
         id="start-dot"
         type="circle"
         source="start"
         paint={{ 'circle-radius': 6, 'circle-color': green, 'circle-stroke-width': 2, 'circle-stroke-color': '#F3F3EE' }}
+      />
+      <maps.GeoJSONSource id="guide" data={sketchLineCollection(adjust?.guide ?? [])} />
+      <maps.Layer
+        id="guide-line"
+        type="line"
+        source="guide"
+        paint={{ 'line-color': '#D1FAE5', 'line-width': 3, 'line-dasharray': [1.2, 1.2] }}
+      />
+      <maps.GeoJSONSource id="vias" data={viaPointCollection(adjust?.vias ?? [])} />
+      <maps.Layer
+        id="via-dot"
+        type="circle"
+        source="vias"
+        paint={{ 'circle-radius': 12, 'circle-color': '#0C0C0C', 'circle-stroke-width': 3, 'circle-stroke-color': '#D1FAE5' }}
       />
       <maps.GeoJSONSource id="you" data={youAreHereCollection(here)} />
       <maps.Layer

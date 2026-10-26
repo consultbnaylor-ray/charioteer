@@ -419,6 +419,11 @@ describe('workout routes stay on the phone', () => {
         expect(source, path).not.toMatch(/functions\.invoke|AsyncStorage|\.from\(|fetch\(/);
         continue;
       }
+      if (path.endsWith('activity.tsx')) {
+        expect(source, path).not.toMatch(/console\.(log|info|debug|warn|error)/);
+        expect(source, path).not.toMatch(/planOutdoorRoute|functions\.invoke|supabase/);
+        continue;
+      }
       expect(source, path).not.toMatch(/latitude|longitude/);
     }
     for (const path of filesUnder('supabase/migrations')) {
@@ -433,13 +438,13 @@ describe('workout routes stay on the phone', () => {
     const watched = [
       ...filesUnder('src/data'),
       ...filesUnder('supabase/functions').filter((path) => !path.endsWith('orsRoute.ts')),
-      ...filesUnder('src/domain').filter((path) => !path.endsWith('workoutRoute.ts') && !path.endsWith('sharedPayload.ts') && !path.endsWith('outdoorRoute.ts') && !path.endsWith('findRoute.ts') && !path.endsWith('.test.ts')),
+      ...filesUnder('src/domain').filter((path) => !path.endsWith('workoutRoute.ts') && !path.endsWith('sharedPayload.ts') && !path.endsWith('outdoorRoute.ts') && !path.endsWith('findRoute.ts') && !path.endsWith('activitySession.ts') && !path.endsWith('routeAdjust.ts') && !path.endsWith('.test.ts')),
     ];
     for (const path of watched) {
       const source = readFileSync(path, 'utf8');
       expect(source, path).not.toMatch(/getWorkoutRoutes|HKWorkoutRoute/);
       if (path === 'supabase/functions/outdoor-route/index.ts') {
-        expect(source).toContain('buildDirectionsBody({ mode, shape, start, end, lengthM })');
+        expect(source).toContain('buildDirectionsBody({ mode, shape, start, end, lengthM: lengthM ?? 0, via: vias })');
         expect(source).toContain('buildSnapBody(start)');
         expect(source).toContain('.insert({ user_id: userId })');
         expect(source).not.toMatch(/console\.(log|info|debug|warn|error)\([^)]*(latitude|longitude)/);
@@ -453,6 +458,7 @@ describe('workout routes stay on the phone', () => {
     expect(routeService).not.toMatch(/getWorkoutRoutes|HKWorkoutRoute/);
     expect(findRoute).not.toMatch(/getWorkoutRoutes|HKWorkoutRoute|api\.heigit\.org|ORS_API_KEY/);
     expect(routeService).toContain('https://api.heigit.org');
+    expect(readFileSync('src/domain/activitySession.ts', 'utf8')).not.toMatch(/supabase|functions\.invoke|fetch\(/);
     const repo = readFileSync('src/data/supabase-repository.ts', 'utf8');
     const demo = readFileSync('src/data/demo-repository.ts', 'utf8');
     expect(repo).toContain('rejectRouteCoordinates(samples)');
@@ -720,7 +726,11 @@ describe('workout routes stay on the phone', () => {
 
   it('fails the ship check when a patch is missing and passes when it is applied', () => {
     const script = join(process.cwd(), 'scripts/assert-patches.mjs');
-    const live = spawnSync(process.execPath, [script], { cwd: process.cwd(), encoding: 'utf8' });
+    const live = spawnSync(process.execPath, [script], {
+      cwd: process.cwd(),
+      encoding: 'utf8',
+      env: { ...process.env, EXPO_PUBLIC_BUILD_PROFILE: 'testflight' },
+    });
     expect(live.status, live.stderr).toBe(0);
 
     const root = mkdtempSync(join(tmpdir(), 'charioteer-patches-'));

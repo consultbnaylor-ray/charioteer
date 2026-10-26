@@ -21,29 +21,50 @@ function frameOf(
 }
 
 /**
+ * Follow moves the centre and keeps the zoom. A pan passes follow false and the camera stays.
+ * The route map leaves follow unset and takes the framed camera, zoom included.
+ */
+export function followCamera(
+  current: HeldCamera,
+  framed: HeldCamera,
+  follow: boolean | undefined,
+): HeldCamera | null {
+  if (follow === false) return null;
+  if (follow === true) return { longitude: framed.longitude, latitude: framed.latitude, zoom: current.zoom };
+  return framed;
+}
+
+/**
  * The last pan and zoom. A new route or "show my location" frames the map.
  * Closing full screen restores this camera instead of jumping back to the start.
+ * An outing passes follow so a pan sticks until re-centre.
  */
 export function useHeldCamera(
   routes: readonly OutdoorRoute[],
   sketch: readonly OutdoorPoint[],
   here: OutdoorPoint | null,
   locationFocus: number,
+  follow?: boolean,
 ) {
   const next = frameOf(routes, sketch, here, locationFocus);
-  const held = useRef<HeldCamera>(next);
+  const held = useRef<HeldCamera>(follow === true ? { ...next, zoom: 16 } : next);
   const nextRef = useRef(next);
   nextRef.current = next;
   const [frameTick, setFrameTick] = useState(0);
   const [restoreTick, setRestoreTick] = useState(0);
   const seen = useRef('');
-  const key = `${next.latitude.toFixed(5)}:${next.longitude.toFixed(5)}:${next.zoom}:${locationFocus}`;
+  const wasFollowing = useRef(follow);
+  const key = `${next.latitude.toFixed(5)}:${next.longitude.toFixed(5)}:${next.zoom}:${locationFocus}:${follow === false ? 'still' : 'move'}`;
   useEffect(() => {
-    if (seen.current === key) return;
+    const resumed = follow === true && wasFollowing.current === false;
+    wasFollowing.current = follow;
+    if (!resumed && seen.current === key) return;
+    const nextCamera = followCamera(held.current, nextRef.current, follow);
     seen.current = key;
-    held.current = nextRef.current;
+    if (!nextCamera) return;
+    held.current = nextCamera;
     setFrameTick((value) => value + 1);
-  }, [key]);
+  }, [key, follow]);
   const remember = useCallback((camera: HeldCamera) => {
     held.current = camera;
   }, []);

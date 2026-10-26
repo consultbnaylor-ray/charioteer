@@ -1,0 +1,50 @@
+diff --git a/node_modules/expo-location/ios/LocationOptions.swift b/node_modules/expo-location/ios/LocationOptions.swift
+index 59700e7..5bea852 100644
+--- a/node_modules/expo-location/ios/LocationOptions.swift
++++ b/node_modules/expo-location/ios/LocationOptions.swift
+@@ -5,4 +5,10 @@ import ExpoModulesCore
+ internal struct LocationOptions: Record {
+   @Field var accuracy: LocationAccuracy = .balanced
+   @Field var distanceInterval: Double = 0.0
++  /// Expo's fitness activity type is 3. 0 leaves the manager's default.
++  @Field var activityType: Int = 0
++  @Field var pausesUpdatesAutomatically: Bool = false
++  @Field var showsBackgroundLocationIndicator: Bool = false
++  /// While-using updates with the blue mark. This does not request Always.
++  @Field var allowsBackgroundUpdates: Bool = false
+ }
+diff --git a/node_modules/expo-location/ios/Providers/LocationsStreamer.swift b/node_modules/expo-location/ios/Providers/LocationsStreamer.swift
+index 5cce2b6..fa183fb 100644
+--- a/node_modules/expo-location/ios/Providers/LocationsStreamer.swift
++++ b/node_modules/expo-location/ios/Providers/LocationsStreamer.swift
+@@ -2,6 +2,7 @@
+ 
+ import CoreLocation
+ import ExpoModulesCore
++import Foundation
+ 
+ internal class LocationsStreamer: BaseStreamer {
+   typealias LocationsStream = AsyncThrowingStream<[CLLocation], Error>
+@@ -9,6 +10,22 @@ internal class LocationsStreamer: BaseStreamer {
+   private var locationsStream: LocationsStream?
+   private var continuation: LocationsStream.Continuation?
+ 
++  /// Standard updates only. No significant-change monitoring and no region monitoring.
++  /// Background updates stay off unless the caller asked and the binary lists the location mode.
++  @MainActor
++  override init(options: LocationOptions) {
++    super.init(options: options)
++    guard options.allowsBackgroundUpdates else { return }
++    let modes = Bundle.main.object(forInfoDictionaryKey: "UIBackgroundModes") as? [String] ?? []
++    guard modes.contains("location") else { return }
++    manager.allowsBackgroundLocationUpdates = true
++    manager.showsBackgroundLocationIndicator = options.showsBackgroundLocationIndicator
++    manager.pausesLocationUpdatesAutomatically = options.pausesUpdatesAutomatically
++    if options.activityType == 3 {
++      manager.activityType = .fitness
++    }
++  }
++
+   deinit {
+     if continuation != nil {
+       stopStreaming()

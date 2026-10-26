@@ -209,9 +209,10 @@ On a Mac with Xcode, enable the HealthKit and Sign in with Apple capabilities if
 
 ## TestFlight from a Mac
 
-Build 4 is the TestFlight archive from commit `054cf18`. Build 7 is the upload Ben reviewed. `expo.ios.buildNumber` is `"10"` for the next upload. From the repo on a Mac, signed into Xcode as Quantica Labs Ltd, clear any patched audio package first, then install, confirm every patch is in `node_modules`, and prebuild. `npm run ship-check` fails the ship if any file in `patches/` is missing, including the HealthKit route patch. It does not apply the patch.
+Build 4 is the TestFlight archive from commit `054cf18`. Build 7 is the upload Ben reviewed. `expo.ios.buildNumber` is `"10"` for the next upload. From the repo on a Mac, signed into Xcode as Quantica Labs Ltd, set the build profile, then clear any patched audio package, install, confirm every patch is in `node_modules`, and prebuild. `npm run ship-check` fails the ship if any file in `patches/` is missing, including the HealthKit route patch. It does not apply the patch. It also exits 1 when `EXPO_PUBLIC_BUILD_PROFILE` is missing or unknown. Internal TestFlight for build 74 uses exactly `testflight`. Leave that variable exported in the same shell for ship-check, prebuild, and `xcodebuild archive`. Prebuild reads it in `app.config.ts` and writes `UIBackgroundModes`. The archive's bundle step inlines it into the JavaScript. `app.json` still lists `audio`. Without `testflight` set for prebuild, that entry is removed and speech stays off. A store archive is a fresh build with `EXPO_PUBLIC_BUILD_PROFILE=store` and a new build number. Do not upload the TestFlight archive to App Review.
 
 ```bash
+export EXPO_PUBLIC_BUILD_PROFILE=testflight
 rm -rf node_modules/react-native-audio-api
 npm install
 npm run ship-check

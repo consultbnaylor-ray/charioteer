@@ -4,7 +4,7 @@
  * A reverse dry-run succeeds only when the patch is already applied.
  * This check does not apply patches. Run npm install so postinstall can.
  */
-import { readFileSync, readdirSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { join } from 'node:path';
 
@@ -63,6 +63,57 @@ if (health) {
   if (!text.includes('@interface CharioteerAuthCatcher : NSObject')) {
     console.error(`${health} is missing the CharioteerAuthCatcher class.`);
     process.exit(1);
+  }
+}
+
+const pkgPath = join(root, 'package.json');
+if (existsSync(pkgPath)) {
+  const pkg = JSON.parse(readFileSync(pkgPath, 'utf8'));
+  const locationVersion = pkg.dependencies?.['expo-location'];
+  if (locationVersion !== '57.0.22') {
+    console.error(`expo-location must be pinned to 57.0.22. package.json has ${locationVersion}.`);
+    process.exit(1);
+  }
+  if (!names.includes('expo-location+57.0.22.patch')) {
+    console.error('patches/expo-location+57.0.22.patch is missing. The pin and the patch have to name the same version.');
+    process.exit(1);
+  }
+}
+
+const speechPath = join(root, 'src/activity/speakLine.ts');
+const sheetPath = join(root, 'docs/start-activity-decisions.md');
+const reviewPath = join(root, 'docs/app-store-activity-review.md');
+if (existsSync(speechPath) && existsSync(sheetPath) && existsSync(reviewPath)) {
+  const gate = 'App Store submission is blocked until a real phone shows music ducks, then returns to full volume after each line, with no leftover audio session, including a phone call and Bluetooth headphones.';
+  const speech = readFileSync(speechPath, 'utf8');
+  const sheet = readFileSync(sheetPath, 'utf8');
+  const review = readFileSync(reviewPath, 'utf8');
+  if (!sheet.includes(gate) || !review.includes(gate)) {
+    console.error('The App Store speech ducking gate is missing from the decisions sheet or the review notes.');
+    process.exit(1);
+  }
+  const gatePassed = /APP_STORE_SPEECH_DUCK_GATE_PASSED = true/.test(speech);
+  const recorded = sheet.includes('Phone ducking test passed on') && review.includes('Phone ducking test passed on');
+  if (gatePassed && !recorded) {
+    console.error('APP_STORE_SPEECH_DUCK_GATE_PASSED is true, but the phone ducking test is not recorded in the sheet and the review notes.');
+    process.exit(1);
+  }
+  const profile = (process.env.EXPO_PUBLIC_BUILD_PROFILE ?? '').trim().toLowerCase();
+  const storeTarget = profile === 'store' || profile === 'app-store' || profile === 'production';
+  if (!profile) {
+    console.error('EXPO_PUBLIC_BUILD_PROFILE is missing. Unset behaves as the store profile: speech stays off and the audio background mode is omitted. Set EXPO_PUBLIC_BUILD_PROFILE=testflight for an internal TestFlight archive.');
+    process.exit(1);
+  }
+  if (profile !== 'testflight' && !storeTarget) {
+    console.error('EXPO_PUBLIC_BUILD_PROFILE is unknown (' + profile + '). An unknown profile behaves as the store profile: speech stays off and the audio background mode is omitted.');
+    process.exit(1);
+  }
+  if (storeTarget && !gatePassed) {
+    console.error('Store profile target: speech stays off and the audio background mode is omitted until APP_STORE_SPEECH_DUCK_GATE_PASSED is true. EXPO_PUBLIC_BUILD_PROFILE is ' + profile + '.');
+    process.exit(1);
+  }
+  if (!gatePassed) {
+    console.log('NOTE: App Store submission is blocked until a real phone passes the speech ducking test. EXPO_PUBLIC_BUILD_PROFILE=testflight keeps speech and the audio background mode. A missing or unknown profile exits 1 and behaves as the store profile. A store profile exits 1 while the gate is false.');
   }
 }
 
