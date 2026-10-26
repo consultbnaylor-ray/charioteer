@@ -269,13 +269,18 @@ function WebCanvas({
     if (applied.current !== url) {
       applied.current = url;
       const place = held.current;
-      map.setStyle(url);
-      map.once('style.load', () => {
+      let painted = false;
+      const finish = () => {
         const current = mapRef.current;
-        if (!current) return;
+        if (!current || painted || !current.isStyleLoaded()) return;
+        painted = true;
+        current.off('style.load', finish);
         current.jumpTo({ center: [place.longitude, place.latitude], zoom: place.zoom });
         paintMap(current, paint.current);
-      });
+      };
+      map.on('style.load', finish);
+      map.setStyle(url);
+      finish();
       return;
     }
     paintMap(map, paint.current);
