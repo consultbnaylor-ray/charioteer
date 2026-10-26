@@ -325,7 +325,7 @@ export default function Activity() {
 
   if (phase === 'finish' && summary) {
     return (
-      <Screen eyebrow={activityWord(summary.activity)} title="Finished" intro="Kept on this phone. Don't keep this throws it away.">
+      <Screen key="finish" eyebrow={activityWord(summary.activity)} title="Finished" intro="Kept on this phone. Don't keep this throws it away.">
         <Card>
           <T variant="label">Distance</T>
           <T variant="title">{distanceLabel(summary.distanceM)}</T>
@@ -363,6 +363,7 @@ export default function Activity() {
     const mapHeight = windowSize.width < 360 ? 200 : 230;
     return (
       <Screen
+        key="live"
         eyebrow={activityWord(live.activity)}
         title="Out"
         intro={LIVE_INTRO}
@@ -418,7 +419,7 @@ export default function Activity() {
   }
 
   return (
-    <Screen eyebrow="Tools" title={startLabel(activity)} intro="You choose the pace. The phone keeps the time.">
+    <Screen key="setup" eyebrow="Tools" title={startLabel(activity)} intro="You choose the pace. The phone keeps the time.">
       <Card>
         <T variant="label">Activity</T>
         {(['walk', 'run', 'cycle'] as const).map((kind) => (
