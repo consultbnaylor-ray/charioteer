@@ -347,10 +347,7 @@ export function PublicProfileCard() {
                 {avatar?.caption ? <T variant="muted">{avatar.caption}</T> : null}
               </View>
             </View>
-            <OwnProfilePhotos
-              name={preview.displayName}
-              photos={(snap.profilePhotos ?? []).filter((photo) => photo.role === 'gallery' && snap.sharing.profilePhotoIds.includes(photo.id))}
-            />
+            <OwnProfilePhotos name={preview.displayName} photos={snap.profilePhotos ?? []} />
             {preview.bio ? <T>{preview.bio}</T> : null}
             {editing ? null : (
               <ShareOnProfile

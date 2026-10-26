@@ -330,8 +330,7 @@ describe('gratitude diary wiring', () => {
     expect(diary.indexOf('dismissSheetBeforePhotoPicker(Platform.OS)')).toBeGreaterThan(-1);
     expect(diary.indexOf('pickProgressPhoto(source)')).toBeGreaterThan(diary.indexOf('dismissSheetBeforePhotoPicker(Platform.OS)'));
     expect(diary).toContain('label="Share on profile"');
-    expect(diary).toContain('label={SHOW_PHOTO_ON_PROFILE}');
-    expect(readFileSync('src/domain/profileSharing.ts', 'utf8')).toContain("export const SHOW_PHOTO_ON_PROFILE = 'Show this photo on my public profile'");
+    expect(diary).toContain('label="Include photo"');
     expect(diary).toContain("toggleShareId(sharing, 'gratitudeIds'");
     expect(diary).toContain("toggleShareId(sharing, 'gratitudePhotoIds'");
     expect(diary).toContain('Saving photo…');

@@ -12,7 +12,6 @@ import {
   parsePublicProfile,
   projectPublicProfile,
   SHARE_HINT,
-  SHOW_PHOTO_ON_PROFILE,
   shownList,
   sensitiveShareConfirm,
   sensitiveTurnedOn,
@@ -448,8 +447,7 @@ describe('public_profile database function', () => {
     expect(diary).not.toContain('<SharingGroup');
     expect(diary).toContain('gratitudeIds');
     expect(diary).toContain('gratitudePhotoIds');
-    expect(diary).toContain('label={SHOW_PHOTO_ON_PROFILE}');
-    expect(SHOW_PHOTO_ON_PROFILE).toBe('Show this photo on my public profile');
+    expect(diary).toContain('label="Include photo"');
     expect(diary).toContain('label="Share on profile"');
     expect(diary).not.toContain('Share photo');
     expect(diary).not.toMatch(/Share with community|visibility/);
@@ -497,7 +495,6 @@ describe('public_profile database function', () => {
       'src/ui/VisionBoard.tsx',
       'src/app/(main)/profile.tsx',
       'src/ui/PublicProfileCard.tsx',
-      'src/ui/ProfilePhotoEditor.tsx',
       'src/app/(main)/health-plan.tsx',
     ];
     const found = filesUnder('src')

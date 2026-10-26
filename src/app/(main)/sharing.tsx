@@ -7,14 +7,13 @@ import type { ProgressPhoto } from '@/data/types';
 import { shownError } from '@/domain/errors';
 import { HEALTH_METRICS } from '@/domain/healthInsights';
 import { sortGratitude } from '@/domain/gratitude';
-import { PROFILE_PHOTO_WORDING, sortProfilePhotos } from '@/domain/profilePhotos';
+import { PROFILE_PHOTO_WORDING } from '@/domain/profilePhotos';
 import { compareNewest } from '@/domain/shareList';
 import {
   PROFILE_HIDDEN_SHARE,
   SHARE_HINT,
   SHARE_NEW_GRATITUDE,
   SHARE_NEW_GRATITUDE_HINT,
-  SHOW_PHOTO_ON_PROFILE,
   applyWeightAndBodyShare,
   communitySharingOn,
   healthShareLabel,
@@ -36,7 +35,6 @@ export default function WhatIShare() {
   const router = useRouter();
   const communityOn = communitySharingOn(snap.profile);
   const gratitudePhotos = snap.gratitude.flatMap((entry) => entry.photos);
-  const galleryPhotos = sortProfilePhotos((snap.profilePhotos ?? []).filter((photo) => photo.role === 'gallery'));
 
   return (
     <Screen
@@ -157,30 +155,8 @@ export default function WhatIShare() {
       </ShareAnchor>
       <ShareAnchor id="profilePhotos" title="Profile photos">
         <T variant="muted">{PROFILE_PHOTO_WORDING}</T>
-        <T variant="muted">The profile picture stays on while Community is on. Each gallery photo stays off until you choose it.</T>
-        {galleryPhotos.length ? (
-          <ShareSwitchList
-            title="Gallery photos"
-            shared={galleryPhotos.filter((photo) => snap.sharing.profilePhotoIds.includes(photo.id)).length}
-            items={galleryPhotos.map((photo) => (
-              <ShareOnProfile
-                key={photo.id}
-                lines={3}
-                label={photo.caption.trim() ? `${SHOW_PHOTO_ON_PROFILE}: “${photo.caption.trim()}”` : SHOW_PHOTO_ON_PROFILE}
-                item={photo.caption.trim() || 'This gallery photo'}
-                on={snap.sharing.profilePhotoIds.includes(photo.id)}
-                apply={(sharing, selected) => toggleShareId(sharing, 'profilePhotoIds', photo.id, selected)}
-              />
-            ))}
-          />
-        ) : (
-          <EmptyShare note="No gallery photos yet. A gallery photo stays off your public profile until you turn it on.">
-            <Button label="Edit profile photos" tone="quiet" onPress={() => router.push('/public-profile?edit=photos' as never)} />
-          </EmptyShare>
-        )}
-        {galleryPhotos.length ? (
-          <Button label="Edit profile photos" tone="quiet" onPress={() => router.push('/public-profile?edit=photos' as never)} />
-        ) : null}
+        <T variant="muted">There is no separate share switch. A picture shows on your profile while Community is on.</T>
+        <Button label="Edit profile photos" tone="quiet" onPress={() => router.push('/public-profile?edit=photos' as never)} />
       </ShareAnchor>
       <ShareAnchor id="gratitudeLines" title="Gratitude lines">
         <GratitudeSectionShare />
@@ -224,7 +200,7 @@ export default function WhatIShare() {
               <ShareOnProfile
                 key={photo.id}
                 lines={2}
-                label={photo.caption.trim() ? `${SHOW_PHOTO_ON_PROFILE}: “${photo.caption.trim()}”` : SHOW_PHOTO_ON_PROFILE}
+                label={photo.caption.trim() ? `Include photo “${photo.caption.trim()}”` : 'Include photo'}
                 item={photo.caption.trim() || 'This gratitude photo'}
                 on={snap.sharing.gratitudePhotoIds.includes(photo.id)}
                 apply={(sharing, selected) => toggleShareId(sharing, 'gratitudePhotoIds', photo.id, selected)}

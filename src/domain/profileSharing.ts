@@ -53,17 +53,14 @@ export const BIO_EXAMPLE = 'Dad of two, gym most mornings, 90 days sober and cou
 /** What other people see under a shared photo. Distinct from a private note. */
 export const PHOTO_CAPTION_LIMIT = 140;
 
-/** Per photo, at the moment it is added or edited. Off until the owner turns it on. */
-export const SHOW_PHOTO_ON_PROFILE = 'Show this photo on my public profile';
-
 /** Shown when public_profile fails. A hidden profile uses a different line. */
 export const PROFILE_LOAD_ERROR = "Couldn't load profile – Try again";
 
 /** Opt-in beside Share Whole Section. New lines stay private until this is on. */
 export const SHARE_NEW_GRATITUDE = 'Share lines I add later';
 
-/** Under the opt-in. A new line can follow it. A new photo stays off until its own switch. */
-export const SHARE_NEW_GRATITUDE_HINT = 'New lines follow this switch. A new photo stays off until you turn on “Show this photo on my public profile”.';
+/** Under the opt-in. The master only covers lines and photos that already exist. */
+export const SHARE_NEW_GRATITUDE_HINT = 'New lines and photos stay private until this is on.';
 
 /** Trims a profile line and refuses anything over the limit. Newlines in a bio stay. */
 export function planProfileText(value: string, limit: number): { ok: true; text: string } | { ok: false; message: string } {
@@ -87,13 +84,11 @@ export type ProfileSharing = {
   healthKinds: string[];
   gratitudeIds: string[];
   gratitudePhotoIds: string[];
-  /** Gallery photos the owner chose for the public profile. The profile picture is separate. Missing means none. */
-  profilePhotoIds: string[];
   visionIds: string[];
   /** The pinned line, Stoic or Platonic. Public-domain text, not special category data. */
   pinnedQuote: boolean;
   /**
-   * When on, a line added after this stays shared. A photo does not.
+   * When on, a line or photo added after this stays shared.
    * Share Whole Section does not turn this on. Missing means off.
    */
   shareNewGratitude: boolean;
@@ -125,7 +120,6 @@ export function defaultProfileSharing(): ProfileSharing {
     healthKinds: [],
     gratitudeIds: [],
     gratitudePhotoIds: [],
-    profilePhotoIds: [],
     visionIds: [],
     pinnedQuote: false,
     shareNewGratitude: false,
@@ -179,7 +173,6 @@ export function normalizeProfileSharing(value: unknown): ProfileSharing {
     healthKinds: kinds,
     gratitudeIds: stringList(raw.gratitudeIds),
     gratitudePhotoIds: stringList(raw.gratitudePhotoIds),
-    profilePhotoIds: stringList(raw.profilePhotoIds),
     visionIds: stringList(raw.visionIds),
     pinnedQuote: flag(raw.pinnedQuote),
     shareNewGratitude: flag(raw.shareNewGratitude),
@@ -190,16 +183,20 @@ export function normalizeProfileSharing(value: unknown): ProfileSharing {
 }
 
 /**
- * Shares a line that was just added, when the person opted in.
- * A new photo stays off. Its own switch is the only way onto the public profile.
+ * Shares a line or photo that was just added, when the person opted in.
  * Returns null when the lists should stay as they are.
  */
 export function shareFreshGratitude(
   sharing: ProfileSharing,
   added: { entryId?: string; photoId?: string },
 ): ProfileSharing | null {
-  if (!sharing.shareNewGratitude || !added.entryId || sharing.gratitudeIds.includes(added.entryId)) return null;
-  return { ...sharing, gratitudeIds: [...sharing.gratitudeIds, added.entryId] };
+  if (!sharing.shareNewGratitude) return null;
+  let gratitudeIds = sharing.gratitudeIds;
+  let gratitudePhotoIds = sharing.gratitudePhotoIds;
+  if (added.entryId && !gratitudeIds.includes(added.entryId)) gratitudeIds = [...gratitudeIds, added.entryId];
+  if (added.photoId && !gratitudePhotoIds.includes(added.photoId)) gratitudePhotoIds = [...gratitudePhotoIds, added.photoId];
+  if (gratitudeIds === sharing.gratitudeIds && gratitudePhotoIds === sharing.gratitudePhotoIds) return null;
+  return { ...sharing, gratitudeIds, gratitudePhotoIds };
 }
 
 const SENSITIVE_FLAGS = ['stage', 'soberDays', 'milestones', 'moneySaved', 'unitsAvoided', 'moodStreak', 'healthPlan', 'shareBodyFigures'] as const;
@@ -214,7 +211,7 @@ export function sensitiveTurnedOn(before: ProfileSharing, after: ProfileSharing)
   return false;
 }
 
-export function toggleShareId(sharing: ProfileSharing, key: 'reasonBodies' | 'gratitudeIds' | 'gratitudePhotoIds' | 'profilePhotoIds' | 'visionIds', id: string, on: boolean): ProfileSharing {
+export function toggleShareId(sharing: ProfileSharing, key: 'reasonBodies' | 'gratitudeIds' | 'gratitudePhotoIds' | 'visionIds', id: string, on: boolean): ProfileSharing {
   const current = sharing[key];
   const next = on ? (current.includes(id) ? current : [...current, id]) : current.filter((item) => item !== id);
   return { ...sharing, [key]: next };
@@ -255,7 +252,7 @@ export type ShareSource = {
   vision: { id: string; caption: string; area: string | null }[];
   /** `note` is private. `caption` is the only line copied onto a shared photo. */
   progressPhotos: { id: string; note: string; caption: string; takenOn: string; monthIndex: number; visibility: 'private' | 'community' }[];
-  /** Profile picture, plus gallery photos the owner switched on. No storage path. */
+  /** Profile picture and gallery. Shown whenever Community is on. No storage path. */
   profilePhotos?: { id: string; role: 'avatar' | 'gallery'; caption: string; position: number }[];
   pinnedQuoteId: string | null;
   /** Today's nutrition shares. Absent means nothing from the food log is shared. */
@@ -426,11 +423,9 @@ export function projectPublicProfile(source: ShareSource, sharing: ProfileSharin
   const progressPhotos = source.progressPhotos
     .filter((photo) => photo.visibility === 'community')
     .map((photo) => ({ id: photo.id, caption: typeof photo.caption === 'string' ? photo.caption : '', takenOn: photo.takenOn, monthIndex: photo.monthIndex }));
-  const chosenGallery = new Set(settings.profilePhotoIds);
   const profilePhotos = [...(source.profilePhotos ?? [])]
     .flatMap((photo) => {
       if (!photo || (photo.role !== 'avatar' && photo.role !== 'gallery') || typeof photo.id !== 'string') return [];
-      if (photo.role === 'gallery' && !chosenGallery.has(photo.id)) return [];
       return [{
         id: photo.id,
         role: photo.role,

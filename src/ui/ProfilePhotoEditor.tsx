@@ -4,7 +4,7 @@ import { StyleSheet, View } from 'react-native';
 import { useRepository, useSnapshot } from '@/data';
 import type { ProfilePhoto, ProfilePhotoRole } from '@/data/types';
 import { shownError } from '@/domain/errors';
-import { PHOTO_CAPTION_LIMIT, SHOW_PHOTO_ON_PROFILE, toggleShareId } from '@/domain/profileSharing';
+import { PHOTO_CAPTION_LIMIT } from '@/domain/profileSharing';
 import {
   PROFILE_GALLERY_LIMIT,
   PROFILE_GALLERY_LIMIT_MESSAGE,
@@ -17,7 +17,6 @@ import { PhotoCropper } from '@/ui/PhotoCropper';
 import { useAppTheme } from '@/ui/theme';
 import { MemberAvatar } from '@/ui/MemberAvatar';
 import { OwnerPhoto } from '@/ui/OwnerPhoto';
-import { ShareOnProfile } from '@/ui/ShareOnProfile';
 import { Button, ErrorNote, Field, playSavedHaptic, T } from '@/ui/ui';
 
 export function OwnProfilePhotos({ name, photos }: { name: string; photos: ProfilePhoto[] }) {
@@ -140,12 +139,6 @@ export function ProfilePhotoEditor() {
           <CaptionField
             initial={photo.caption}
             onSave={(caption) => repo.updateProfilePhoto(photo.id, { caption })}
-          />
-          <ShareOnProfile
-            label={SHOW_PHOTO_ON_PROFILE}
-            item={photo.caption.trim() || 'This gallery photo'}
-            on={snap.sharing.profilePhotoIds.includes(photo.id)}
-            apply={(sharing, selected) => toggleShareId(sharing, 'profilePhotoIds', photo.id, selected)}
           />
           <View style={{ flexDirection: 'row', gap: 8 }}>
             <View style={{ flex: 1 }}>

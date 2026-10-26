@@ -79,25 +79,8 @@ describe('profile photos', () => {
         { id: USER, role: 'avatar', caption: 'Morning light.', position: 0 },
       ],
     }, defaultProfileSharing());
-    expect(shown.profilePhotos.map((photo) => photo.role)).toEqual(['avatar']);
+    expect(shown.profilePhotos.map((photo) => photo.role)).toEqual(['avatar', 'gallery']);
     expect(shown.sharedLabels).toContain('Profile photos');
-    const chosen = projectPublicProfile({
-      ...source,
-      profilePhotos: [
-        { id: PHOTO, role: 'gallery', caption: 'The path after rain.', position: 1 },
-        { id: USER, role: 'avatar', caption: 'Morning light.', position: 0 },
-      ],
-    }, { ...defaultProfileSharing(), profilePhotoIds: [PHOTO] });
-    expect(chosen.profilePhotos.map((photo) => photo.role)).toEqual(['avatar', 'gallery']);
-    const hidden = projectPublicProfile({
-      ...source,
-      profilePhotos: [
-        { id: PHOTO, role: 'gallery', caption: 'The path after rain.', position: 1 },
-        { id: USER, role: 'avatar', caption: 'Morning light.', position: 0 },
-      ],
-    }, { ...defaultProfileSharing(), profilePhotoIds: [] });
-    expect(hidden.profilePhotos.map((photo) => photo.role)).toEqual(['avatar']);
-    expect(JSON.stringify(hidden.profilePhotos)).not.toContain('The path after rain.');
     expect(JSON.stringify(shown.profilePhotos)).not.toContain('storage');
     const parsed = parsePublicProfile({
       displayName: 'Jordan Ellis',
@@ -173,9 +156,6 @@ describe('profile photos', () => {
     expect(card).toContain('<ProfilePhotoEditor');
     expect(card).toContain('<OwnProfilePhotos');
     expect(editor).toContain('PROFILE_PHOTO_WORDING');
-    expect(editor).toContain('label={SHOW_PHOTO_ON_PROFILE}');
-    expect(editor).toContain("toggleShareId(sharing, 'profilePhotoIds'");
-    expect(card).toContain('snap.sharing.profilePhotoIds.includes(photo.id)');
     expect(editor).toContain('Take profile picture');
     expect(editor).toContain('Choose profile picture');
     expect(editor).not.toContain('ProfileAvatarPicker');
@@ -225,16 +205,5 @@ describe('profile photos', () => {
     expect(readFileSync('src/ui/ConsentChoices.tsx', 'utf8')).toContain('Vision board photos always stay private');
     expect(readFileSync('src/ui/ConsentChoices.tsx', 'utf8')).toContain('Gratitude photos stay private unless you switch that photo on');
     expect(readFileSync('supabase/config.toml', 'utf8')).toContain('[functions.profile-photo-url]');
-    const choice = readFileSync('supabase/migrations/20261026130000_public_gallery_choice.sql', 'utf8');
-    expect(choice).toContain('NOT APPLIED');
-    expect(choice).toContain('profilePhotoIds');
-    expect(choice).toContain("ph.role = 'avatar'");
-    expect(choice).toContain("jsonb_typeof(settings->'profilePhotoIds') = 'array'");
-    expect(choice).toContain("jsonb_typeof(sharing.settings->'profilePhotoIds') = 'array'");
-    expect(choice).toContain('revoke all on function public.shared_profile_photos(uuid[]) from public, anon, authenticated');
-    expect(choice).toContain('grant execute on function public.shared_profile_photos(uuid[]) to authenticated');
-    expect(choice).not.toMatch(/grant execute on function public\.shared_profile_photos\(uuid\[\]\) to anon/i);
-    expect(choice).not.toMatch(/grant execute on function public\.public_profile\(uuid\) to anon/i);
-    expect(choice).toContain('revoke all on function public.public_profile(uuid) from public, anon');
   });
 });

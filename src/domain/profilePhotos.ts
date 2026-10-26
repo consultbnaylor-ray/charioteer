@@ -10,7 +10,7 @@ export const PROFILE_SHARED_URL_SECONDS = 60;
 
 /** Shown in Edit profile and in the community consent. */
 export const PROFILE_PHOTO_WORDING =
-  'A profile picture is shown to signed-in community members while Community is on. A gallery photo is shown only when you turn on “Show this photo on my public profile”. They can report a photo.';
+  'A profile picture and profile gallery are shown to signed-in community members while Community is on. They can report a photo.';
 
 export type ProfilePhotoRole = 'avatar' | 'gallery';
 

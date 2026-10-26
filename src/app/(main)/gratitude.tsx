@@ -19,7 +19,7 @@ import {
   type GratitudePhoto,
 } from '@/domain/gratitude';
 import { dismissSheetBeforePhotoPicker, gratitudePhotoLimitMessage, photoPickerSheetDelay } from '@/domain/gratitudePhotos';
-import { SHARE_NEW_GRATITUDE, SHARE_NEW_GRATITUDE_HINT, SHOW_PHOTO_ON_PROFILE, toggleShareId } from '@/domain/profileSharing';
+import { SHARE_NEW_GRATITUDE, SHARE_NEW_GRATITUDE_HINT, toggleShareId } from '@/domain/profileSharing';
 import { DateField } from '@/ui/DateField';
 import { OwnerPhoto } from '@/ui/OwnerPhoto';
 import { GratitudeSectionShare } from '@/ui/SectionShare';
@@ -456,7 +456,7 @@ export default function GratitudeDiary() {
                 {entry.photos.map((photo) => (
                   <ShareOnProfile
                     key={photo.id}
-                    label={SHOW_PHOTO_ON_PROFILE}
+                    label="Include photo"
                     item={photo.caption.trim() || 'This gratitude photo'}
                     on={snap.sharing.gratitudePhotoIds.includes(photo.id)}
                     apply={(sharing, selected) => toggleShareId(sharing, 'gratitudePhotoIds', photo.id, selected)}
