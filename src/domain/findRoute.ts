@@ -4,7 +4,7 @@ import { OSM_CONTRIBUTORS, ORS_CREDIT } from './routeConsent';
 export { OSM_CONTRIBUTORS, ORS_CREDIT };
 
 export const ROUTE_SERVICE_LINE =
-  'The start point and the destination are sent to our route service (OpenRouteService, built on OpenStreetMap data) to make the route. Nothing is shared with other people.';
+  'The start point, the destination, and any points you add on the map are sent to our route service (OpenRouteService, built on OpenStreetMap data) to make the route. Nothing is shared with other people.';
 
 export { ROUTE_RETENTION_LINE, ROUTE_SEND_LINE } from './routeConsent';
 
@@ -57,6 +57,8 @@ export type RoutePlanInput = {
   end?: OutdoorPoint | null;
   distanceM?: number | null;
   minutes?: number | null;
+  /** Points the route is pulled through, between the start and the destination. At most five. */
+  via?: OutdoorPoint[] | null;
 };
 
 export type RoutePlan = {
@@ -206,6 +208,25 @@ export function mockRoute(input: RoutePlanInput): RoutePlan | null {
   if (!length || !start) return null;
   const end = input.shape === 'a_to_b' ? routeCoordinate(input.end) : null;
   if (input.shape === 'a_to_b' && !end) return null;
+  const minutes = typeof input.minutes === 'number' && input.minutes >= 10
+    ? Math.round(input.minutes)
+    : Math.max(10, Math.round(length / PACE_M_PER_MIN[input.mode]));
+  const vias = (input.via ?? []).filter((point): point is OutdoorPoint => routeCoordinate(point) != null).slice(0, 5);
+  if (vias.length > 0) {
+    const close = input.shape === 'a_to_b' && end ? end : start;
+    return {
+      mocked: true,
+      mode: input.mode,
+      shape: input.shape,
+      profile: routeProfile(input.mode),
+      distanceM: length + vias.length * 250,
+      durationMinutes: minutes + vias.length * 4,
+      ascentM: vias.length * 12,
+      points: [start, ...vias, close],
+      snappedStart: null,
+      snapDistanceM: null,
+    };
+  }
   const leg = length / 6;
   const points = input.shape === 'a_to_b' && end
     ? [start, shift(start, leg * 0.2, leg * 0.3), shift(end, leg * 0.15, -leg * 0.1), end]
@@ -217,9 +238,6 @@ export function mockRoute(input: RoutePlanInput): RoutePlan | null {
       shift(start, -leg * 0.25, leg * 0.35),
       start,
     ];
-  const minutes = typeof input.minutes === 'number' && input.minutes >= 10
-    ? Math.round(input.minutes)
-    : Math.max(10, Math.round(length / PACE_M_PER_MIN[input.mode]));
   return {
     mocked: true,
     mode: input.mode,

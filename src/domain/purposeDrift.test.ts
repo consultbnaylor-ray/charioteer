@@ -95,5 +95,10 @@ describe('purpose strings stay on the approved text', () => {
     expect(readFileSync('docs/start-activity-decisions.md', 'utf8')).toContain('Music ducking and release with speech on');
     expect(readFileSync('docs/app-store-activity-review.md', 'utf8')).toContain('External TestFlight groups go through Beta App Review. Guideline 2.5.4 applies to that review. Internal testers do not go through Beta App Review.');
     expect(readFileSync('docs/privacy.md', 'utf8')).toContain('No live-tracking route is sent to HeiGIT');
+    const routeNote = readFileSync('docs/route-editing-decisions.md', 'utf8');
+    expect(routeNote).toContain('Approved by Ben on 26 October 2026');
+    expect(routeNote).toContain('not deployed');
+    expect(routeNote).not.toContain('Keep this out of build 74');
+    expect(readFileSync('docs/dpia-location.md', 'utf8')).toContain('A route sends the start, the destination, any points you add on the map, and the travel type.');
   });
 });

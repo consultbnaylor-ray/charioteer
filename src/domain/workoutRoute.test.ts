@@ -438,13 +438,13 @@ describe('workout routes stay on the phone', () => {
     const watched = [
       ...filesUnder('src/data'),
       ...filesUnder('supabase/functions').filter((path) => !path.endsWith('orsRoute.ts')),
-      ...filesUnder('src/domain').filter((path) => !path.endsWith('workoutRoute.ts') && !path.endsWith('sharedPayload.ts') && !path.endsWith('outdoorRoute.ts') && !path.endsWith('findRoute.ts') && !path.endsWith('activitySession.ts') && !path.endsWith('.test.ts')),
+      ...filesUnder('src/domain').filter((path) => !path.endsWith('workoutRoute.ts') && !path.endsWith('sharedPayload.ts') && !path.endsWith('outdoorRoute.ts') && !path.endsWith('findRoute.ts') && !path.endsWith('activitySession.ts') && !path.endsWith('routeAdjust.ts') && !path.endsWith('.test.ts')),
     ];
     for (const path of watched) {
       const source = readFileSync(path, 'utf8');
       expect(source, path).not.toMatch(/getWorkoutRoutes|HKWorkoutRoute/);
       if (path === 'supabase/functions/outdoor-route/index.ts') {
-        expect(source).toContain('buildDirectionsBody({ mode, shape, start, end, lengthM })');
+        expect(source).toContain('buildDirectionsBody({ mode, shape, start, end, lengthM: lengthM ?? 0, via: vias })');
         expect(source).toContain('buildSnapBody(start)');
         expect(source).toContain('.insert({ user_id: userId })');
         expect(source).not.toMatch(/console\.(log|info|debug|warn|error)\([^)]*(latitude|longitude)/);

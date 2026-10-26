@@ -102,14 +102,39 @@ export function orsRequestHeaders(key: string, accept: string): Record<string, s
   return { Authorization: key, Accept: accept };
 }
 
+export const VIA_POINT_CAP = 5;
+
+/** Missing means no via-points. More than five, or a bad point, is refused. The message must not echo a coordinate. */
+export function readViaPoints(value: unknown): { latitude: number; longitude: number }[] | null {
+  if (value == null) return [];
+  if (!Array.isArray(value) || value.length > VIA_POINT_CAP) return null;
+  const points: { latitude: number; longitude: number }[] = [];
+  for (const item of value) {
+    const point = readPlace(item);
+    if (!point) return null;
+    points.push(point);
+  }
+  return points;
+}
+
 export function buildDirectionsBody(input: {
   mode: Mode;
   shape: 'loop' | 'a_to_b';
   start: { latitude: number; longitude: number };
   end?: { latitude: number; longitude: number } | null;
   lengthM: number;
+  via?: readonly { latitude: number; longitude: number }[] | null;
 }): Record<string, unknown> | null {
   const start = [round6(input.start.longitude), round6(input.start.latitude)];
+  const vias = (input.via ?? []).slice(0, VIA_POINT_CAP).map((point) => [round6(point.longitude), round6(point.latitude)]);
+  if (vias.length > 0) {
+    if (input.shape === 'loop') {
+      return { coordinates: [start, ...vias, start], elevation: true, instructions: false };
+    }
+    if (!input.end) return null;
+    const end = [round6(input.end.longitude), round6(input.end.latitude)];
+    return { coordinates: [start, ...vias, end], elevation: true, instructions: false };
+  }
   if (input.shape === 'loop') {
     return {
       coordinates: [start],

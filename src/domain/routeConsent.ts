@@ -4,7 +4,7 @@
  * Another phone starts off again. Nothing here is shared.
  */
 
-export const ROUTE_CONSENT_VERSION = '2026-10-25-2';
+export const ROUTE_CONSENT_VERSION = '2026-10-26-1';
 
 export const ROUTE_CONSENT_STORAGE_KEY = 'charioteer.route-finding.consent';
 
@@ -27,7 +27,7 @@ export const ROUTE_RETENTION_LINE =
 
 /** Visible sentences. Not a request to accept OpenStreetMap's terms. */
 export const ROUTE_CONSENT_LINES = [
-  'The start point and the destination are sent to our route service (OpenRouteService, built on OpenStreetMap data) to make the route.',
+  'The start point, the destination, and any points you add on the map are sent to our route service (OpenRouteService, built on OpenStreetMap data) to make the route.',
   ROUTE_SEND_LINE,
   ROUTE_RETENTION_LINE,
   'Nothing is shared with other people.',

@@ -1,6 +1,7 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { View } from 'react-native';
 
+import { beginDrag, viaPointCollection } from '@/domain/routeAdjust';
 import {
   YOU_HERE_FILL,
   YOU_HERE_RING,
@@ -27,6 +28,8 @@ type PaintInput = {
   trackJson: string;
   startJson: string;
   youJson: string;
+  guideJson: string;
+  viaJson: string;
 };
 
 type LibreMap = {
@@ -64,6 +67,8 @@ export function FootpathMap({
   onUserMove,
   track = [],
   height = 280,
+  adjust = null,
+  bar = null,
 }: {
   routes: readonly OutdoorRoute[];
   sketch: readonly OutdoorPoint[];
@@ -82,12 +87,24 @@ export function FootpathMap({
   /** Drawn for the outing. Not saved. */
   track?: readonly OutdoorPoint[];
   height?: number;
+  adjust?: {
+    enabled: boolean;
+    vias: readonly OutdoorPoint[];
+    guide: readonly OutdoorPoint[];
+    onDown: (point: OutdoorPoint) => void;
+    onMove: (point: OutdoorPoint) => void;
+    onUp: (point: OutdoorPoint) => void;
+  } | null;
+  /** Shown under the map while it is full screen. */
+  bar?: ReactNode;
 }) {
   const [scheme, choose] = useMapScheme();
   const camera = useHeldCamera(routes, sketch, here, locationFocus, follow);
   const [problem, setProblem] = useState<string | null>(null);
   const savedJson = JSON.stringify(savedLineCollection(routes));
   const sketchJson = JSON.stringify(sketchLineCollection(sketch));
+  const guideJson = JSON.stringify(sketchLineCollection(adjust?.guide ?? []));
+  const viaJson = JSON.stringify(viaPointCollection(adjust?.vias ?? []));
   const trackJson = JSON.stringify(trackLineCollection(track));
   const startJson = JSON.stringify(startCollection(routes, sketch, startPoint));
   const youJson = JSON.stringify(youAreHereCollection(here));
@@ -103,6 +120,7 @@ export function FootpathMap({
       onToggleStyle={() => choose(scheme === 'dark' ? 'light' : 'dark')}
       onRestore={camera.restore}
       problem={problem}
+      bar={bar}
       renderMap={({ height: viewHeight }) => (
         <WebCanvas
           height={viewHeight}
@@ -113,6 +131,10 @@ export function FootpathMap({
           remember={camera.remember}
           savedJson={savedJson}
           sketchJson={sketchJson}
+          guideJson={guideJson}
+          viaJson={viaJson}
+          adjust={adjust}
+          line={sketch}
           trackJson={trackJson}
           startJson={startJson}
           youJson={youJson}
@@ -150,6 +172,26 @@ function paintMapLayers(map: LibreMap, input: PaintInput) {
         type: 'line',
         source: 'sketch',
         paint: { 'line-color': green, 'line-width': 3, 'line-dasharray': [2, 1.4] },
+      },
+    },
+    {
+      id: 'guide',
+      data: input.guideJson,
+      layer: {
+        id: 'guide-line',
+        type: 'line',
+        source: 'guide',
+        paint: { 'line-color': '#D1FAE5', 'line-width': 3, 'line-dasharray': [1.2, 1.2] },
+      },
+    },
+    {
+      id: 'vias',
+      data: input.viaJson,
+      layer: {
+        id: 'via-dot',
+        type: 'circle',
+        source: 'vias',
+        paint: { 'circle-radius': 12, 'circle-color': '#0C0C0C', 'circle-stroke-width': 3, 'circle-stroke-color': '#D1FAE5' },
       },
     },
     {
@@ -201,6 +243,10 @@ function WebCanvas({
   remember,
   savedJson,
   sketchJson,
+  guideJson,
+  viaJson,
+  adjust,
+  line,
   trackJson,
   startJson,
   youJson,
@@ -215,6 +261,17 @@ function WebCanvas({
   remember: (camera: HeldCamera) => void;
   savedJson: string;
   sketchJson: string;
+  guideJson: string;
+  viaJson: string;
+  adjust: {
+    enabled: boolean;
+    vias: readonly OutdoorPoint[];
+    guide: readonly OutdoorPoint[];
+    onDown: (point: OutdoorPoint) => void;
+    onMove: (point: OutdoorPoint) => void;
+    onUp: (point: OutdoorPoint) => void;
+  } | null;
+  line: readonly OutdoorPoint[];
   trackJson: string;
   startJson: string;
   youJson: string;
@@ -226,8 +283,12 @@ function WebCanvas({
   const [ready, setReady] = useState(0);
   const applied = useRef<string | null>(null);
   const styleListener = useRef<(() => void) | null>(null);
-  const paint = useRef<PaintInput>({ scheme, savedJson, sketchJson, trackJson, startJson, youJson });
-  paint.current = { scheme, savedJson, sketchJson, trackJson, startJson, youJson };
+  const paint = useRef<PaintInput>({ scheme, savedJson, sketchJson, trackJson, startJson, youJson, guideJson, viaJson });
+  paint.current = { scheme, savedJson, sketchJson, trackJson, startJson, youJson, guideJson, viaJson };
+  const adjustRef = useRef(adjust);
+  adjustRef.current = adjust;
+  const lineRef = useRef(line);
+  lineRef.current = line;
   const userMoveRef = useRef(onUserMove);
   userMoveRef.current = onUserMove;
   const heldRef = useRef(held);
@@ -330,7 +391,50 @@ function WebCanvas({
       return;
     }
     paintMap(map, paint.current);
-  }, [scheme, savedJson, sketchJson, trackJson, startJson, youJson, ready, held]);
+  }, [scheme, savedJson, sketchJson, guideJson, viaJson, trackJson, startJson, youJson, ready, held]);
+
+  useEffect(() => {
+    const map = mapRef.current as (LibreMap & {
+      dragPan?: { enable: () => void; disable: () => void };
+      on: (event: string, listener: (event: { lngLat?: { lng: number; lat: number } }) => void) => void;
+      off: (event: string, listener: (event: { lngLat?: { lng: number; lat: number } }) => void) => void;
+    }) | null;
+    if (!map || !ready) return;
+    let dragging = false;
+    const pointOf = (event: { lngLat?: { lng: number; lat: number } }): OutdoorPoint | null => {
+      if (!event.lngLat || !Number.isFinite(event.lngLat.lat) || !Number.isFinite(event.lngLat.lng)) return null;
+      return { latitude: event.lngLat.lat, longitude: event.lngLat.lng };
+    };
+    const down = (event: { lngLat?: { lng: number; lat: number } }) => {
+      const current = adjustRef.current;
+      const point = pointOf(event);
+      if (!current?.enabled || !point || !beginDrag(current.vias, lineRef.current, point)) return;
+      dragging = true;
+      map.dragPan?.disable();
+      current.onDown(point);
+    };
+    const move = (event: { lngLat?: { lng: number; lat: number } }) => {
+      if (!dragging) return;
+      const point = pointOf(event);
+      if (point) adjustRef.current?.onMove(point);
+    };
+    const up = (event: { lngLat?: { lng: number; lat: number } }) => {
+      if (!dragging) return;
+      dragging = false;
+      map.dragPan?.enable();
+      const point = pointOf(event);
+      if (point) adjustRef.current?.onUp(point);
+    };
+    map.on('mousedown', down);
+    map.on('mousemove', move);
+    map.on('mouseup', up);
+    return () => {
+      map.off('mousedown', down);
+      map.off('mousemove', move);
+      map.off('mouseup', up);
+      map.dragPan?.enable();
+    };
+  }, [ready]);
 
   useEffect(() => {
     mapRef.current?.resize();

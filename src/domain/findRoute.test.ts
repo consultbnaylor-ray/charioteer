@@ -57,6 +57,7 @@ import {
   SNAP_RADIUS_M,
   UNAVAILABLE_MESSAGE,
   buildDirectionsBody,
+  readViaPoints,
   buildSnapBody,
   classifyOrsFailure,
   haversineM,
@@ -145,6 +146,21 @@ describe('route finding', () => {
     const body = buildDirectionsBody({ mode: 'walk', shape: 'loop', start, lengthM: 5000 });
     expect(body?.options).toEqual({ round_trip: { length: 5000, points: 5 } });
     expect(Array.isArray(body?.coordinates) && (body?.coordinates as unknown[]).length).toBe(1);
+    const via = { latitude: 51.456, longitude: -2.6 };
+    const through = buildDirectionsBody({ mode: 'walk', shape: 'loop', start, lengthM: 5000, via: [via] });
+    expect(through?.options).toBeUndefined();
+    expect(through?.coordinates).toEqual([[-2.5945, 51.4504], [-2.6, 51.456], [-2.5945, 51.4504]]);
+    const across = buildDirectionsBody({
+      mode: 'walk',
+      shape: 'a_to_b',
+      start,
+      end: via,
+      lengthM: 5000,
+      via: [{ latitude: 51.452, longitude: -2.595 }],
+    });
+    expect(across?.coordinates).toEqual([[-2.5945, 51.4504], [-2.595, 51.452], [-2.6, 51.456]]);
+    expect(readViaPoints(undefined)).toEqual([]);
+    expect(readViaPoints([via, via, via, via, via, via])).toBeNull();
   });
 
   it('reads a route line and shortens it for the live table', () => {
@@ -238,7 +254,7 @@ describe('route finding', () => {
   });
 
   it('states the published retention and stays under the free daily quota', () => {
-    expect(ROUTE_CONSENT_VERSION).toBe('2026-10-25-2');
+    expect(ROUTE_CONSENT_VERSION).toBe('2026-10-26-1');
     expect(ROUTE_RETENTION_LINE).toContain('7 days');
     expect(ROUTE_RETENTION_LINE).toContain('about 1 km');
     expect(ROUTE_RETENTION_LINE).toContain('voluntary');
@@ -417,7 +433,7 @@ describe('route finding', () => {
   });
 
   it('starts from the nearest path inside the same route request', () => {
-    expect(ROUTE_SERVICE_LINE).toContain('The start point and the destination are sent to our route service');
+    expect(ROUTE_SERVICE_LINE).toContain('The start point, the destination, and any points you add on the map are sent to our route service');
     expect(SNAP_RADIUS_M).toBe(350);
     expect(snapUrl('walk')).toBe('https://api.heigit.org/openrouteservice/v2/snap/foot-walking/geojson');
     expect(snapUrl('run')).toContain('/snap/foot-hiking/');

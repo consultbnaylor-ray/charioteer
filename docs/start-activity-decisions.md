@@ -318,7 +318,7 @@ Do not use significant-change monitoring. Do not use region monitoring, a geofen
 
 `startLocationUpdatesAsync` in this SDK registers `EXLocationTaskConsumer`. That consumer calls `startUpdatingLocation` and also `startMonitoringSignificantLocationChanges`, and the background-permission APIs ask for Always. Build 74 does not call them. The outing uses `watchPositionAsync` with while-using permission only. The patched watch streamer can set `allowsBackgroundLocationUpdates` and the blue mark. It does not call `startMonitoringSignificantLocationChanges` or `startMonitoringForRegion`.
 
-The map and Find a route do not start this task. Route finding stays a separate feature. It must not reuse the live path. A route request still contains only the start and the destination, plus the travel type the function already sends. The activity screen does not call the route service.
+The map and Find a route do not start this task. Route finding stays a separate feature. It must not reuse the live path. A route request contains the start, the destination, any points added on the map, and the travel type. It is not the outing path. Ben approved that sentence on 26 October 2026. The activity screen does not call the route service.
 
 The while-using sentence for this plan is in **Wording that needs your OK**. It is not the sentence in the app today. Today's sentence says locking pauses the outing. That would be false after this is built.
 
@@ -407,7 +407,7 @@ A crash-recovery file is not recommended. If you later decide to keep one, it ne
 
 No coordinates go to Supabase, to logs, or to crash or analytics breadcrumbs. A search of this repo found no Sentry, Bugsnag, Crashlytics, PostHog, Amplitude, or Mixpanel. The later build must not add a coordinate to any of those, or to a console log a crash report would collect.
 
-Route finding stays separate. It must not reuse the live path. An OpenRouteService request contains the start and the destination only, plus the travel type. It does not contain the line of the outing.
+Route finding stays separate. It must not reuse the live path. An OpenRouteService request contains the start, the destination, any points added on the map, and the travel type. It does not contain the line of the outing. Ben approved that on 26 October 2026.
 
 The saved summary, and only after they finish and choose to keep it, stays the activity, the date, the distance, the time, and the average pace. No path. Keeping the path after Stop would be a later decision, and only if you say so.
 
@@ -426,7 +426,7 @@ This is the list to run when the feature is built. It is not built now.
 - After Stop, location updates have stopped and the blue mark is gone.
 - After force-quit, updates do not continue and the app does not relaunch itself. The path is gone.
 - After six hours, the time limit Ben confirmed on 26 October 2026, updates stop and the path is cleared.
-- A proxy of the outing shows no request body, query, or header carrying a coordinate from the live path. A route-finding call, on its own screen, still sends only the start and the destination.
+- A proxy of the outing shows no request body, query, or header carrying a coordinate from the live path. A route-finding call, on its own screen, sends the start, the destination, and any points added on the map. It does not send the outing path.
 - Logs and any crash report from a test outing contain no coordinates.
 - Lock-screen behaviour is tested: the blue mark is on, one spoken line ducks the music and the music returns, and Stop in the app ends the outing. No notification is the Stop control.
 - Discard and Stop both clear the in-memory path.
@@ -600,7 +600,7 @@ The Security and Compliance Bot's text, unchanged: "Charioteer uses your locatio
 
 Recommended adaptation of that text. It keeps both of the bot's sentences. It says cycle, because that is the button. It adds the map and the route service, because this one purpose string also covers those, and "is not sent anywhere" would be false for a route the person asks for. The live path is still not sent.
 
-"Charioteer uses your location while you are on a walk, run or cycle to track distance and give you spoken updates, including when the screen is locked or you are using other apps. Your route stays on your phone and is not sent anywhere. The same permission shows where you are while the map is open. A route is sent to the route service only if you turn route finding on, and that request is the start and the destination, not this route."
+"Charioteer uses your location while you are on a walk, run or cycle to track distance and give you spoken updates, including when the screen is locked or you are using other apps. Your route stays on your phone and is not sent anywhere. The same permission shows where you are while the map is open. A route is sent to the route service only if you turn route finding on. That request is the start, the destination, and any points you add on the map. It is not the outing path."
 
 Do not add `NSLocationAlwaysAndWhenInUseUsageDescription`. Do not add `NSLocationAlwaysUsageDescription`.
 

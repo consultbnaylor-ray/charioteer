@@ -2871,6 +2871,7 @@ export class SupabaseRepository implements Repository {
           end,
           distanceM: input.distanceM ?? null,
           minutes: input.minutes ?? null,
+          via: input.via ?? [],
         },
       });
       const plan = parseRoutePlan(invoked.data);
