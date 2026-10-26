@@ -177,7 +177,7 @@ describe('iOS purpose strings', () => {
     expect(applied.NSLocationAlwaysAndWhenInUseUsageDescription).toBeUndefined();
     expect(applied.NSLocationAlwaysUsageDescription).toBeUndefined();
     expect(LOCATION_WHEN_IN_USE).toBe(
-      'Charioteer uses your location while you are on a walk, run or cycle to track distance and give you spoken updates, including when the screen is locked or you are using other apps. Your route stays on your phone and is not sent anywhere. The same permission shows where you are while the map is open. A route is sent to the route service only if you turn route finding on, and that request is the start and the destination, not this route.',
+      'Charioteer uses your location while you are on a walk, run or cycle to track distance and give you spoken updates, including when the screen is locked or you are using other apps. Your route stays on your phone and is not sent anywhere. The same permission shows where you are while the map is open. A route is sent to the route service only if you turn route finding on. That request is the start, the destination, and any points you add on the map. It is not the outing path.',
     );
     const audio = app.expo.plugins.find(
       (entry) => Array.isArray(entry) && entry[0] === 'react-native-audio-api',

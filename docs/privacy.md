@@ -91,7 +91,7 @@ Add to Calendar opens Apple's add-event sheet for a planned workout. The iPhone 
 
 ## Location
 
-Outside is Good can use your location while the map is open, and during a walk, run, or cycle you start, and only if you allow it. The iPhone purpose sentence is: "Charioteer uses your location while you are on a walk, run or cycle to track distance and give you spoken updates, including when the screen is locked or you are using other apps. Your route stays on your phone and is not sent anywhere. The same permission shows where you are while the map is open. A route is sent to the route service only if you turn route finding on, and that request is the start and the destination, not this route."
+Outside is Good can use your location while the map is open, and during a walk, run, or cycle you start, and only if you allow it. The iPhone purpose sentence is: "Charioteer uses your location while you are on a walk, run or cycle to track distance and give you spoken updates, including when the screen is locked or you are using other apps. Your route stays on your phone and is not sent anywhere. The same permission shows where you are while the map is open. A route is sent to the route service only if you turn route finding on. That request is the start, the destination, and any points you add on the map. It is not the outing path."
 
 ## Activity tracking
 
@@ -105,13 +105,13 @@ Heart rate and active energy are read from Apple Health while the outing or the 
 
 A gym session on the Workouts screen shows a clock you start, a heart-rate row, and active energy when Apple Health has it. It does not use location. It does not count reps. It is not sent.
 
-Route finding stays separate. A route you ask for still sends only the start and the destination.
+Route finding stays separate. A route sends the start, the destination, any points you add on the map, and the travel type. It does not send your name or account number. The outing path is not sent.
 
 Route finding is off until you turn it on. The first time you open Find a route, the app asks. Not now leaves Outside is Good, saved routes, and the map working, and it does not call the route service. You can turn it off again from Profile. The choice is stored on this phone only, with the time and the wording version. It is not a database column. Another phone starts off.
 
 Walk this off (the craving walk) is parked. It is not shown. The screen and the route engine stay in the app behind `SHOW_WALK_THIS_OFF`, which is off. Turning that constant on would show it again. It is not a live feature, and the consent screen and Profile do not offer it.
 
-When route finding is on, the start point and the destination are sent to our route service to make the route. The service is OpenRouteService, run by HeiGIT, built on OpenStreetMap data. Nothing from that request is shared with other people. A route sends the coordinates and the travel type only. It does not send your name or account number. HeiGIT sees our server's address, not your phone's. A place search sends the words you type.
+When route finding is on, the start point, the destination, and any points you add on the map are sent to our route service to make the route. Route adjusting was approved by Ben on 26 October 2026, in build 74, not shipped. The service is OpenRouteService, run by HeiGIT, built on OpenStreetMap data. Nothing from that request is shared with other people. A route sends the coordinates and the travel type only. It does not send your name or account number. HeiGIT sees our server's address, not your phone's. A place search sends the words you type.
 
 HeiGIT's transparency statement (https://account.heigit.org/info/transparency-statement) says the full request and response, the IP address, and the API key are kept for 7 days to look for abuse, then deleted. For openrouteservice, coordinates rounded to two decimal places (about 1 km) and the request metadata are kept with no end date. A place search is geocoding. The same statement says the typed place and its coordinate are not kept past those 7 days. The statement says the servers are in the EU, and that the statement is voluntary and not a binding promise. The April 2022 privacy policy (https://heigit.org/privacy-policy/) still says personal data is kept only as long as needed. It does not give these day counts. The terms (https://account.heigit.org/info/tos) do not restate the 7 days.
 

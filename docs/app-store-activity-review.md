@@ -8,7 +8,7 @@ Charioteer uses location while a person is on a walk, run, or cycle they start, 
 
 Measuring starts only from Start on that screen. It stops when they tap Stop, when they discard the outing, when the app is closed, and at a time limit. The limit in this build is six hours. Ben confirmed that length on 26 October 2026.
 
-The route of the outing stays on the phone in memory. It is not uploaded. A route is sent to the route service only if the person turns route finding on, and that request is the start and the destination, not the outing path.
+The route of the outing stays on the phone in memory. It is not uploaded. A route is sent to the route service only if the person turns route finding on. That request is the start, the destination, and any points you add on the map. It is not the outing path.
 
 The `audio` background mode is used only for Thumos spoken lines when the person picks spoken updates. The line is text already on the phone. Nothing is recorded. The microphone is not used. On screen only does not start an audio session. There is no silent audio. TestFlight speaks those lines. App Store submission is blocked until a real phone shows music ducks, then returns to full volume after each line, with no leftover audio session, including a phone call and Bluetooth headphones. `EXPO_PUBLIC_BUILD_PROFILE=store` keeps speech off and leaves `audio` out of `UIBackgroundModes` until that gate is true. Build 74 for TestFlight testing keeps audio and speech on.
 

@@ -1,23 +1,19 @@
 # Adjust a route on the map
 
-Design only. Written 26 October 2026 from Ben's iPhone note: "Can you add the ability to adjust the route with your finger on the map and it recalculates the distance etc."
+Approved by Ben on 26 October 2026, as written in this note, including the purpose-string sentence and the consent line. It is in build 74. It is not shipped. The iOS build number stays 72.
 
-No code in this note. No permission string is changed. No sentence here is approved. Layout proofs are drawings of this proposal, not screens from the app.
+Written the same day from Ben's iPhone note: "Can you add the ability to adjust the route with your finger on the map and it recalculates the distance etc."
 
-## Recommendation
+The `outdoor-route` function is prepared to accept via-points and is not deployed. Deploying it needs a separate yes from Ben.
 
-Keep this out of build 74. Build 74 is the outing watch: background location, speech, and the six-hour limit. This is a change to Find a route. It needs a new clause in the location purpose string Ben approved on 26 October 2026, a new route-finding consent line, and a change to the `outdoor-route` function.
-
-Build it in the next Outside is Good build after 74, on the Find a route result, after Ben accepts or rewrites the wording and the request rules below.
-
-## What Ben decides
+## What was approved
 
 1. A finger on the line adds or moves a via-point. The start and the destination stay where Find a route put them.
-2. The route is sent once, when the finger lifts, after a short pause. Five via-points is the cap. The phone shows how many requests this phone has made today.
-3. The purpose string, the route-finding consent, and the privacy note must change before this is built. The proposed sentences are below. They are not approved.
+2. The route is sent once, when the finger lifts, after a 500 millisecond pause. Five via-points is the cap. The phone shows how many route requests this phone has made today. The account limit stays 40 a day and 12 in 10 minutes, shared with place search. The phone does not show the shared remainder or the 1,500 app cap.
+3. The purpose string, the route-finding consent, the privacy note, and the DPIA use the sentences below. Ben approved them on 26 October 2026. The consent version is `2026-10-26-1`, so the question is asked again.
 4. If the redraw fails, the previous line, distance, climb, and time stay on the screen.
 5. Adjust, then Save, stores one line on the account, as Save does today. A saved route does not grow a second list of via-points. Adjusting again means Make the route again.
-6. The build is the one after 74, not build 74.
+6. Undo and Reset stay on the phone. They do not call the route service.
 
 ## How a person adjusts a found route
 
@@ -73,17 +69,17 @@ The Charioteer function still must not log the coordinates, and must not write t
 
 Saving the route still stores the line on the account, because Save already does that. The via-points are not stored as their own list. The outing path is still not sent. Start a walk, run, or cycle does not send the line.
 
-The approved location purpose string says the route request is the start and the destination. That sentence would be false once via-points are sent. It has to change before this is built. The route-finding consent says the same thing, so that sentence has to change too, and the consent version has to move so the question is asked again. The privacy note and the DPIA have to say so as well. None of that text is edited in this design.
+Ben approved the location purpose string, the consent line, and the privacy sentence on 26 October 2026. They are in the app and in the notices. The consent version moved to `2026-10-26-1`.
 
-Proposed purpose string, not approved. This is the whole sentence, so the rest of the approved text stays intact:
+Approved purpose string. This is the whole sentence:
 
 "Charioteer uses your location while you are on a walk, run or cycle to track distance and give you spoken updates, including when the screen is locked or you are using other apps. Your route stays on your phone and is not sent anywhere. The same permission shows where you are while the map is open. A route is sent to the route service only if you turn route finding on. That request is the start, the destination, and any points you add on the map. It is not the outing path."
 
-Proposed consent line, not approved. It replaces "The start point and the destination are sent to our route service (OpenRouteService, built on OpenStreetMap data) to make the route."
+Approved consent line. It replaces "The start point and the destination are sent to our route service (OpenRouteService, built on OpenStreetMap data) to make the route."
 
 "The start point, the destination, and any points you add on the map are sent to our route service (OpenRouteService, built on OpenStreetMap data) to make the route."
 
-Proposed privacy and DPIA sentence, not approved:
+Approved privacy and DPIA sentence:
 
 "A route sends the start, the destination, any points you add on the map, and the travel type. It does not send your name or account number. The outing path is not sent."
 
@@ -93,9 +89,9 @@ The send line that already says "A route sends the coordinates and the travel ty
 
 The previous line, distance, climb, and time stay. Nothing is saved by the failure. The point that was just dropped or moved is not kept.
 
-- `no_path`. Keep the current message: "We couldn't find a path near that start. Try a start nearer a street or footpath." Add, not approved: "The route on the map is unchanged."
-- `rate_limited`. Keep: "You've made a lot of route requests. Try again in a little while." Add, not approved: "The route on the map is unchanged." Adjust stays visible and the next lift tries again later. The phone does not keep sending in the meantime.
-- `unavailable`, and no connection. Keep "The route service is not available right now. Nothing was saved." or "Check your connection and try again." Add, not approved: "The route on the map is unchanged."
+- `no_path`. Keep the current message: "We couldn't find a path near that start. Try a start nearer a street or footpath." Add, approved by Ben on 26 October 2026: "The route on the map is unchanged."
+- `rate_limited`. Keep: "You've made a lot of route requests. Try again in a little while." Add, approved by Ben on 26 October 2026: "The route on the map is unchanged." Adjust stays visible and the next lift tries again later. The phone does not keep sending in the meantime.
+- `unavailable`, and no connection. Keep "The route service is not available right now. Nothing was saved." or "Check your connection and try again." Add, approved by Ben on 26 October 2026: "The route on the map is unchanged."
 
 A failure does not clear the original Make the route line. Reset can still return to it.
 
@@ -123,9 +119,21 @@ At 320 the card is one column. The figures wrap to two lines. Undo, Reset, and R
 
 At 390 the map is taller. Undo and Reset sit on one row. Remove point stays a full row. The same sentences are used. Nothing is abbreviated at the narrower width.
 
+## The outdoor-route function, prepared and not deployed
+
+Deploying this function needs a separate yes from Ben. Nothing here has been deployed.
+
+What the prepared function changes, and only this:
+
+- `supabase/functions/_shared/orsRoute.ts` reads an optional `via` list, at most five points. A missing list means none. More than five, or a point that is not a coordinate pair, is refused with "Choose up to five points on the route." The message does not echo a coordinate.
+- `buildDirectionsBody` inserts those points between the start and the destination. A loop with any via-point is `[start, ...points, start]` and does not send `round_trip`. An A to B line is `[start, ...points, end]`. A call with no via-points is unchanged: a loop still sends `round_trip` of the chosen length, and an A to B line is still the two ends.
+- `supabase/functions/outdoor-route/index.ts` reads `via` and passes the same list into the first directions call and into the snap retry. One invocation still counts as one request. The snap retry is not a second count. A redraw that already has via-points does not need the chosen length again.
+- The request row is still `insert({ user_id: userId })`. The timestamp is the row's `created_at`. No coordinate is written there.
+- The only log line is still `console.error('outdoor-route request failed')`. No coordinate is logged.
+
 ## Layout proofs
 
-Design drawings, not the app. Both show Adjust on, a finger down, the accepted line still solid, and the figures still on the last route.
+The first drawings were of the proposal. The build captures are the Find a route screen in the app, at 320 and at 390.
 
 - 390 wide: `route_edit_390.png`
 - 320 wide: `route_edit_320.png`

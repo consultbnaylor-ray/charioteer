@@ -26,7 +26,7 @@ The calendar purpose string from build 68 stays. This feature does not add a pho
 
 ## Google Play
 
-Declare location as approximate and precise, collected, for app functionality. It is not shared with other people, not used for tracking, and not used for ads. When route finding is on, the start point and the destination are sent to HeiGIT (OpenRouteService) to make the route. That is a service provider for app functionality. Route finding is off until the person turns it on, and the choice stays on the phone. The permissions requested for this feature are foreground only:
+Declare location as approximate and precise, collected, for app functionality. It is not shared with other people, not used for tracking, and not used for ads. When route finding is on, the start point, the destination, and any points you add on the map are sent to HeiGIT (OpenRouteService) to make the route. A route sends the start, the destination, any points you add on the map, and the travel type. It does not send your name or account number. The outing path is not sent. Route adjusting was approved by Ben on 26 October 2026, in build 74, not shipped. The outdoor-route function that accepts those points is prepared and not deployed. That is a service provider for app functionality. Route finding is off until the person turns it on, and the choice stays on the phone. The permissions requested for this feature are foreground only:
 
 - `ACCESS_COARSE_LOCATION`
 - `ACCESS_FINE_LOCATION`

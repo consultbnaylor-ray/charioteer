@@ -201,6 +201,7 @@ export function MapFrame({
   onRestore,
   problem,
   renderMap,
+  bar,
 }: {
   here: boolean;
   height?: number;
@@ -212,11 +213,14 @@ export function MapFrame({
   onRestore: () => void;
   problem?: string | null;
   renderMap: (view: { height: number; expanded: boolean }) => ReactNode;
+  /** Figures and route buttons, shown under the map only while it is full screen. */
+  bar?: ReactNode;
 }) {
   const insets = useSafeAreaInsets();
   const window = useWindowDimensions();
   const [open, setOpen] = useState(false);
   const fullHeight = Math.max(240, window.height - insets.top - insets.bottom);
+  const fullMapHeight = bar ? Math.max(180, fullHeight - 260) : fullHeight;
   function collapse() {
     setOpen(false);
     onRestore();
@@ -252,7 +256,8 @@ export function MapFrame({
             backgroundColor: scheme === 'dark' ? '#141414' : '#F7F5F0',
           }}
         >
-          {open ? shell(true, fullHeight) : null}
+          {open ? shell(true, fullMapHeight) : null}
+          {open && bar ? <View style={{ paddingHorizontal: 12, paddingBottom: 8 }}>{bar}</View> : null}
         </View>
       </Modal>
     </>
