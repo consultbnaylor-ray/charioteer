@@ -440,5 +440,5 @@ function WebCanvas({
     mapRef.current?.resize();
   }, [height, ready]);
 
-  return <View ref={host} style={{ height, width: '100%' }} />;
+  return <View ref={host} style={{ height, width: '100%', position: 'relative', overflow: 'hidden' }} />;
 }

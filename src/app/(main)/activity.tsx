@@ -2,6 +2,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { Platform, Switch, useWindowDimensions, View } from 'react-native';
 
+import { clearMadeRoute, copyMadeRoute, guideAsRoutes, madeRouteToken, takeMadeRoute, type MadeRouteGuide } from '@/activity/madeRouteGuide';
 import { claimLive, releaseLive } from '@/activity/oneSession';
 import { speakIfGated, stopSpeaking } from '@/activity/speakLine';
 import { readActivityUpdates, type ActivityUpdateChoice } from '@/activity/updateDefaults';
@@ -66,6 +67,8 @@ type LiveState = {
   activity: ActivityKind;
   routeId: string | null;
   routeTitle: string | null;
+  /** The made route, copied when Start is tapped. Memory only. Stop does not write this. */
+  guide: MadeRouteGuide | null;
   /** Accepted fixes for the line on the map. Memory only. Stop does not write this. */
   track: { latitude: number; longitude: number }[];
   splits: SplitMark[];
@@ -206,7 +209,7 @@ function clearPath(live: LiveState): LiveState {
 }
 
 export default function Activity() {
-  const params = useLocalSearchParams<{ kind?: string }>();
+  const params = useLocalSearchParams<{ kind?: string; made?: string | string[] }>();
   const opened = isActivityKind(params.kind) ? params.kind : 'walk';
   const router = useRouter();
   const theme = useAppTheme();
@@ -215,6 +218,7 @@ export default function Activity() {
   const routes = snap.outdoorRoutes ?? [];
   const [activity, setActivity] = useState<ActivityKind>(held?.live.activity ?? opened);
   const [routeId, setRouteId] = useState<string | null>(held?.live.routeId ?? null);
+  const [guide, setGuide] = useState<MadeRouteGuide | null>(null);
   const [updatesOn, setUpdatesOn] = useState(false);
   const [intervalMin, setIntervalMin] = useState<3 | 5 | 10>(5);
   const [spoken, setSpoken] = useState(false);
@@ -320,6 +324,22 @@ export default function Activity() {
   }, [phase, live]);
 
   useEffect(() => {
+    const token = madeRouteToken(params.made);
+    if (!token || held?.live) return;
+    const taken = takeMadeRoute(token);
+    if (!taken) return;
+    const kind = isActivityKind(params.kind) ? params.kind : taken.kind;
+    setGuide(taken);
+    setActivity(kind);
+    setRouteId(null);
+  }, [params.made, params.kind]);
+
+  function dropGuide() {
+    clearMadeRoute(madeRouteToken(params.made) ?? undefined);
+    setGuide(null);
+  }
+
+  useEffect(() => {
     if (held) return undefined;
     let gone = false;
     void readActivityUpdates().then((choice: ActivityUpdateChoice) => {
@@ -386,11 +406,13 @@ export default function Activity() {
       return;
     }
     const route = routes.find((item) => item.id === routeId);
+    const frozen = route ? null : copyMadeRoute(guide);
     const now = Date.now();
     const next: LiveState = {
       activity,
       routeId: route?.id ?? null,
-      routeTitle: route?.title ?? null,
+      routeTitle: route?.title ?? frozen?.title ?? null,
+      guide: frozen,
       track: [],
       splits: [],
       intervalMin: updatesOn ? intervalMin : 0,
@@ -513,7 +535,7 @@ export default function Activity() {
     const quiet = live.intervalMin === 0
       ? 'Updates are off. The clock still runs.'
       : 'The first line comes at the interval you chose.';
-    const planned = live.routeId ? routes.filter((item) => item.id === live.routeId) : [];
+    const planned = live.guide ? guideAsRoutes(live.guide) : live.routeId ? routes.filter((item) => item.id === live.routeId) : [];
     const here = live.anchor
       ? { latitude: live.anchor.latitude, longitude: live.anchor.longitude }
       : null;
@@ -598,11 +620,18 @@ export default function Activity() {
       <Card>
         <T variant="label">Route</T>
         <T variant="muted">Optional. A saved route is a reminder, not a guide that speaks turns.</T>
-        <Choice label="No route" selected={routeId == null} onPress={() => setRouteId(null)} />
+        {guide ? <Choice label={guide.title} selected onPress={() => undefined} /> : null}
+        <Choice label="No route" selected={routeId == null && guide == null} onPress={() => { setRouteId(null); dropGuide(); }} />
         {routes.map((route) => (
-          <Choice key={route.id} label={route.title} selected={routeId === route.id} onPress={() => setRouteId(route.id)} />
+          <Choice key={route.id} label={route.title} selected={routeId === route.id} onPress={() => { setRouteId(route.id); dropGuide(); }} />
         ))}
       </Card>
+      {guide ? (
+        <Card>
+          <FootpathMap routes={guideAsRoutes(guide)} sketch={[]} here={null} height={windowSize.width < 360 ? 200 : 230} />
+          <T variant="muted">Reminder: {guide.title}. Turns are not spoken.</T>
+        </Card>
+      ) : null}
       <Card>
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 12, alignItems: 'center' }}>
           <T style={{ flex: 1 }}>Thumos updates</T>
