@@ -11,6 +11,8 @@ import { WAGON_PUBLIC_LINE, type SharedNutritionView } from '@/domain/nutrition'
 import { SharedNutritionFacts } from '@/ui/NutritionShare';
 import { profileStatBoard } from '@/domain/profileStatTiles';
 import { PROFILE_LOAD_ERROR, communityProfileClosedMessage, formatSoberShare, sharedReportItems, shownList, type PublicProfileView, type SharedReportItem } from '@/domain/profileSharing';
+import { profileFrontPhotos, profileGalleryNeedsLibrary, SEE_ALL_PHOTOS } from '@/domain/profilePhotos';
+import { ProfilePhotoEnlarge, ProfilePhotoTiles } from '@/ui/ProfileGallery';
 import { ProfileStatBoard } from '@/ui/ProfileStatTiles';
 import { MemberAvatar } from '@/ui/MemberAvatar';
 import { PlanTick } from '@/ui/PlanTick';
@@ -407,6 +409,7 @@ function SharedProfileFacts({ userId, name, onOpen }: { userId: string; name: st
   const [messageAt, setMessageAt] = useState<'diary' | 'wagon' | 'plan' | null>(null);
   const [reportError, setReportError] = useState<string | null>(null);
   const [photoUrls, setPhotoUrls] = useState<Record<string, string>>({});
+  const [openGalleryId, setOpenGalleryId] = useState<string | null>(null);
   const busy = useRef(false);
 
   useEffect(() => {
@@ -434,7 +437,11 @@ function SharedProfileFacts({ userId, name, onOpen }: { userId: string; name: st
   }, [repo, userId, attempt]);
 
   useEffect(() => {
-    const ids = shownList(view?.profilePhotos).map((photo) => photo.id);
+    const photos = shownList(view?.profilePhotos);
+    const ids = [
+      ...photos.filter((photo) => photo.role === 'avatar').map((photo) => photo.id),
+      ...profileFrontPhotos(photos).map((photo) => photo.id),
+    ];
     if (!ids.length) return;
     let live = true;
     void repo.profilePhotoUrls(ids).then((rows) => {
@@ -484,6 +491,7 @@ function SharedProfileFacts({ userId, name, onOpen }: { userId: string; name: st
   const profilePhotos = shownList(view.profilePhotos);
   const avatar = profilePhotos.find((photo) => photo.role === 'avatar');
   const gallery = profilePhotos.filter((photo) => photo.role === 'gallery');
+  const front = profileFrontPhotos(profilePhotos);
 
   async function reach(from: 'diary' | 'wagon' | 'plan') {
     if (busy.current) return;
@@ -571,16 +579,32 @@ function SharedProfileFacts({ userId, name, onOpen }: { userId: string; name: st
       </View>
       {avatar?.caption ? <T variant="muted">{avatar.caption}</T> : null}
       {sent === avatar?.id ? <T variant="muted">Report sent.</T> : null}
-      {gallery.map((photo) => (
-        <View key={photo.id} style={{ gap: 6 }}>
-          <View>
-            <SharedPhotoFrame photo={{ id: photo.id, userId, takenOn: '', monthIndex: 0, note: '', caption: photo.caption, storagePath: '', createdAt: '', visibility: 'community', previewUrl: photoUrls[photo.id] ?? null }} />
-            <PhotoMenu overlay accessibilityLabel="Report profile photo" onPress={() => openPhotoReport(photo)} />
-          </View>
-          {photo.caption ? <T variant="muted">{photo.caption}</T> : null}
-          {sent === photo.id ? <T variant="muted">Report sent.</T> : null}
+      {front.length ? (
+        <View style={{ gap: 8 }}>
+          <ProfilePhotoTiles
+            tiles={front.map((photo) => ({ id: photo.id, caption: photo.caption, uri: photoUrls[photo.id] ?? null }))}
+            mode="open"
+            onPress={setOpenGalleryId}
+            corner={(tile) => (
+              <PhotoMenu accessibilityLabel="Report profile photo" onPress={() => {
+                const photo = front.find((item) => item.id === tile.id);
+                if (photo) openPhotoReport(photo);
+              }} />
+            )}
+          />
+          {front.some((photo) => sent === photo.id) ? <T variant="muted">Report sent.</T> : null}
+          {profileGalleryNeedsLibrary(gallery.length) ? (
+            <Button label={SEE_ALL_PHOTOS} tone="quiet" onPress={() => router.push(`/profile-gallery?user=${userId}` as never)} />
+          ) : null}
+          <ProfilePhotoEnlarge
+            tile={(() => {
+              const photo = front.find((item) => item.id === openGalleryId);
+              return photo ? { id: photo.id, caption: photo.caption, uri: photoUrls[photo.id] ?? null } : null;
+            })()}
+            onClose={() => setOpenGalleryId(null)}
+          />
         </View>
-      ))}
+      ) : null}
       {view.bio ? <T>{view.bio}</T> : null}
       {view.pinnedQuote ? (
         <View style={{ gap: 4 }}>

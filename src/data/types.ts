@@ -123,8 +123,6 @@ export type NewProfilePhoto = {
   role: ProfilePhotoRole;
   /** Public line under a gallery photo. Omitted means blank. */
   caption?: string;
-  /** Gallery photo the owner chose to replace. Absent means add, and a full gallery is refused. */
-  replaceId?: string;
 };
 
 export type Reason = { id: string; body: string; sortOrder: number };
@@ -467,6 +465,8 @@ export interface Repository {
   deleteProfilePhoto(id: string): Promise<void>;
   /** Signed URLs for profile photos the caller is allowed to see. */
   profilePhotoUrls(ids: string[]): Promise<{ id: string; url: string }[]>;
+  /** Signs the owner's own gallery page. Other people's photos use profilePhotoUrls. */
+  signProfilePhotos(ids: string[]): Promise<void>;
   setProgressPhotoVisibility(ids: string[], visibility: ProgressVisibility): Promise<void>;
   setProfileSharing(sharing: ProfileSharing): Promise<void>;
   saveQuote(quoteId: string): Promise<void>;

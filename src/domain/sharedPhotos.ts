@@ -39,10 +39,6 @@ export const PUBLIC_PROFILE_CLOSED =
 
 export const PUBLIC_PROFILE_TURN_ON = 'Turn on my public profile';
 
-/** The gallery holds six. The owner picks which one to replace. Nothing is dropped on its own. */
-export const GALLERY_FULL_CHOICE =
-  'Your public gallery already has six photos. Choose one to replace. Nothing is replaced until you choose.';
-
 export const PUBLIC_PROFILE_SHOWN = 'Shown on your public profile.';
 
 /** Send when at least one buddy is included. Save when the photo stays with you. */

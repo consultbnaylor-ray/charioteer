@@ -10,7 +10,7 @@ vi.mock('@react-native-async-storage/async-storage', () => ({
 
 import { DemoRepository } from '@/data/demo-repository';
 import { DEMO_PASSWORD } from '@/data/demo-seed';
-import { PROFILE_GALLERY_LIMIT, PROFILE_GALLERY_LIMIT_MESSAGE } from '@/domain/profilePhotos';
+import { galleryInChosenOrder, profileFrontPhotos, PUBLIC_PROFILE_FRONT_COUNT } from '@/domain/profilePhotos';
 
 async function signedIn(): Promise<DemoRepository> {
   const repo = new DemoRepository();
@@ -30,47 +30,35 @@ async function signedIn(): Promise<DemoRepository> {
 }
 
 describe('quick share on the public gallery', () => {
-  it('adds a gallery photo the public profile can show, and replaces only the one that was chosen', async () => {
+  it('adds a gallery photo with no count limit, shows it first, and delete removes it at once', async () => {
     const repo = await signedIn();
     const me = repo.getSnapshot().profile?.id ?? '';
-    const before = repo.getSnapshot().profilePhotos.filter((photo) => photo.role === 'gallery');
-    expect(before.length).toBeLessThan(PROFILE_GALLERY_LIMIT);
+    const before = galleryInChosenOrder(repo.getSnapshot().profilePhotos);
     await repo.addProfilePhoto({ bytes: new Uint8Array([1, 2, 3]), role: 'gallery', caption: 'Monday light' });
     const added = repo.getSnapshot().profilePhotos.find((photo) => photo.caption === 'Monday light');
     expect(added?.role).toBe('gallery');
+    expect(added?.position).toBe(0);
     expect(added?.previewUrl?.startsWith('data:image')).toBe(true);
+    expect(galleryInChosenOrder(repo.getSnapshot().profilePhotos)[0]?.id).toBe(added?.id);
+    expect(galleryInChosenOrder(repo.getSnapshot().profilePhotos)).toHaveLength(before.length + 1);
     const shown = await repo.publicProfile(me);
     expect(shown?.profilePhotos.some((photo) => photo.id === added?.id && photo.caption === 'Monday light')).toBe(true);
 
-    const room = PROFILE_GALLERY_LIMIT - repo.getSnapshot().profilePhotos.filter((photo) => photo.role === 'gallery').length;
-    for (let index = 0; index < room; index += 1) {
+    for (let index = 0; index < 8; index += 1) {
       await repo.addProfilePhoto({ bytes: new Uint8Array([index + 1]), role: 'gallery', caption: `Extra ${index}` });
     }
-    expect(repo.getSnapshot().profilePhotos.filter((photo) => photo.role === 'gallery')).toHaveLength(PROFILE_GALLERY_LIMIT);
-    await expect(repo.addProfilePhoto({ bytes: new Uint8Array([9]), role: 'gallery', caption: 'Too many' })).rejects.toThrow(PROFILE_GALLERY_LIMIT_MESSAGE);
-    expect(repo.getSnapshot().profilePhotos.some((photo) => photo.caption === 'Too many')).toBe(false);
-
-    const replaced = await repo.publicProfile(me);
-    const victim = replaced?.profilePhotos.find((photo) => photo.role === 'gallery' && photo.caption === 'Monday light');
-    expect(victim).toBeTruthy();
-    await repo.addProfilePhoto({
-      bytes: new Uint8Array([4, 5, 6]),
-      role: 'gallery',
-      caption: 'Chosen replacement',
-      replaceId: victim?.id,
-    });
-    const after = repo.getSnapshot().profilePhotos.filter((photo) => photo.role === 'gallery');
-    expect(after).toHaveLength(PROFILE_GALLERY_LIMIT);
-    expect(after.some((photo) => photo.id === victim?.id)).toBe(false);
-    const replacement = after.find((photo) => photo.caption === 'Chosen replacement');
-    expect(replacement?.previewUrl?.startsWith('data:image')).toBe(true);
+    const many = galleryInChosenOrder(repo.getSnapshot().profilePhotos);
+    expect(many.length).toBeGreaterThan(PUBLIC_PROFILE_FRONT_COUNT);
+    expect(many[0]?.caption).toBe('Extra 7');
+    expect(profileFrontPhotos(many)).toHaveLength(PUBLIC_PROFILE_FRONT_COUNT);
     const visible = await repo.publicProfile(me);
-    expect(visible?.profilePhotos.some((photo) => photo.id === replacement?.id)).toBe(true);
-    expect(visible?.profilePhotos.some((photo) => photo.id === victim?.id)).toBe(false);
+    expect(visible?.profilePhotos.filter((photo) => photo.role === 'gallery').length).toBe(many.length);
 
-    await repo.deleteProfilePhoto(replacement!.id);
+    const newest = many[0];
+    expect(newest).toBeTruthy();
+    await repo.deleteProfilePhoto(newest!.id);
     const gone = await repo.publicProfile(me);
-    expect(gone?.profilePhotos.some((photo) => photo.id === replacement?.id)).toBe(false);
-    expect(repo.getSnapshot().profilePhotos.some((photo) => photo.id === replacement?.id)).toBe(false);
+    expect(gone?.profilePhotos.some((photo) => photo.id === newest?.id)).toBe(false);
+    expect(repo.getSnapshot().profilePhotos.some((photo) => photo.id === newest?.id)).toBe(false);
   });
 });

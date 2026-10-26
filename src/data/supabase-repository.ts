@@ -113,11 +113,11 @@ import {
   progressVisibility,
 } from '@/domain/progressPhotos';
 import {
+  galleryPositionsAfterAdd,
   nextGalleryPositions,
-  PROFILE_GALLERY_LIMIT,
-  PROFILE_GALLERY_LIMIT_MESSAGE,
   PROFILE_PHOTO_BUCKET,
   PROFILE_SIGNED_URL_SECONDS,
+  profilePhotoSignPaths,
   profileStoragePath,
   sortProfilePhotos,
 } from '@/domain/profilePhotos';
@@ -598,7 +598,7 @@ export class SupabaseRepository implements Repository {
     ));
     const [progress, profile, gratitude, vision, meals] = await Promise.all([
       this.signedUrlMap(PROGRESS_BUCKET, currentPaths.progressPhotos.map((photo) => photo.storagePath), PROGRESS_SIGNED_URL_SECONDS),
-      this.signedUrlMap(PROFILE_PHOTO_BUCKET, currentPaths.profilePhotos.map((photo) => photo.storagePath), PROFILE_SIGNED_URL_SECONDS),
+      this.signedUrlMap(PROFILE_PHOTO_BUCKET, profilePhotoSignPaths(currentPaths.profilePhotos), PROFILE_SIGNED_URL_SECONDS),
       this.signedUrlMap(
         GRATITUDE_BUCKET,
         currentPaths.gratitude.flatMap((entry) => entry.photos.map((photo) => photo.storagePath)),
@@ -771,9 +771,7 @@ export class SupabaseRepository implements Repository {
       if (queryError) console.error(queryError);
       return [];
     }
-    const paths = rows.map((row) => String(row.storage_path)).filter((path) => path && !path.includes('..'));
-    const signedByPath = await this.signedUrlMap(PROFILE_PHOTO_BUCKET, paths, PROFILE_SIGNED_URL_SECONDS);
-    return sortProfilePhotos(rows.map((row) => {
+    const photos = sortProfilePhotos(rows.map((row) => {
       const path = String(row.storage_path ?? '');
       const role = row.role === 'avatar' ? 'avatar' as const : 'gallery' as const;
       return {
@@ -784,9 +782,11 @@ export class SupabaseRepository implements Repository {
         position: Number(row.position ?? 0),
         storagePath: path,
         createdAt: String(row.created_at ?? ''),
-        previewUrl: signedByPath.get(path) ?? null,
+        previewUrl: null,
       };
     }));
+    const signedByPath = await this.signedUrlMap(PROFILE_PHOTO_BUCKET, profilePhotoSignPaths(photos), PROFILE_SIGNED_URL_SECONDS);
+    return photos.map((photo) => ({ ...photo, previewUrl: signedByPath.get(photo.storagePath) ?? null }));
   }
 
   /**
@@ -1999,25 +1999,12 @@ export class SupabaseRepository implements Repository {
     if (input.bytes.byteLength > PROGRESS_MAX_BYTES) throw new UserFacingError('That photo is still too large.', 'generic');
     if (input.role !== 'avatar' && input.role !== 'gallery') throw new UserFacingError('Could not store that photo.', 'generic');
     const gallery = this.snapshot.profilePhotos.filter((photo) => photo.role === 'gallery');
-    const replacing = input.role === 'gallery' && input.replaceId
-      ? gallery.find((photo) => photo.id === input.replaceId)
-      : undefined;
-    if (input.role === 'gallery' && input.replaceId && !replacing) {
-      throw new UserFacingError('Choose a public photo to replace.', 'generic');
-    }
-    if (input.role === 'gallery' && gallery.length >= PROFILE_GALLERY_LIMIT && !replacing) {
-      throw new UserFacingError(PROFILE_GALLERY_LIMIT_MESSAGE, 'generic');
-    }
     const caption = planProfileText(input.caption ?? '', PHOTO_CAPTION_LIMIT);
     if (!caption.ok) throw new UserFacingError(caption.message, 'generic');
     const userId = await this.userId();
     const photoId = randomId();
     const path = profileStoragePath(userId, photoId);
-    const position = input.role === 'avatar'
-      ? 0
-      : replacing
-        ? replacing.position
-        : gallery.reduce((max, photo) => Math.max(max, photo.position), -1) + 1;
+    const position = 0;
     const body = stripJpegLocation(input.bytes);
     const uploaded = await this.client.storage.from(PROFILE_PHOTO_BUCKET).upload(path, body, {
       contentType: 'image/jpeg',
@@ -2026,7 +2013,19 @@ export class SupabaseRepository implements Repository {
     if (uploaded.error) throw asUserFacing(uploaded.error, 'general');
     const existing = input.role === 'avatar'
       ? this.snapshot.profilePhotos.find((photo) => photo.role === 'avatar')
-      : replacing;
+      : undefined;
+    if (input.role === 'gallery') {
+      const shifted = galleryPositionsAfterAdd(gallery);
+      for (const row of shifted) {
+        const current = gallery.find((photo) => photo.id === row.id);
+        if (!current || current.position === row.position) continue;
+        const moved = await this.client.from('profile_photos').update({ position: row.position }).eq('id', row.id).eq('user_id', userId);
+        if (moved.error) {
+          await this.client.storage.from(PROFILE_PHOTO_BUCKET).remove([path]);
+          throw asUserFacing(moved.error, 'general');
+        }
+      }
+    }
     if (existing) {
       const removed = await this.client.from('profile_photos').delete().eq('id', existing.id).eq('user_id', userId);
       if (removed.error) {
@@ -2044,6 +2043,11 @@ export class SupabaseRepository implements Repository {
     });
     if (inserted.error) {
       await this.client.storage.from(PROFILE_PHOTO_BUCKET).remove([path]);
+      if (input.role === 'gallery') {
+        for (const photo of gallery) {
+          await this.client.from('profile_photos').update({ position: photo.position }).eq('id', photo.id).eq('user_id', userId);
+        }
+      }
       if (existing) {
         await this.client.from('profile_photos').insert({
           id: existing.id,
@@ -2099,6 +2103,19 @@ export class SupabaseRepository implements Repository {
   async profilePhotoUrls(ids: string[]): Promise<{ id: string; url: string }[]> {
     const urls = await this.profilePhotoUrlMap(ids);
     return [...urls.entries()].map(([id, url]) => ({ id, url }));
+  }
+
+  async signProfilePhotos(ids: string[]): Promise<void> {
+    const wanted = new Set(ids);
+    const paths = this.snapshot.profilePhotos
+      .filter((photo) => wanted.has(photo.id))
+      .map((photo) => photo.storagePath);
+    if (!paths.length) return;
+    const signed = await this.signedUrlMap(PROFILE_PHOTO_BUCKET, paths, PROFILE_SIGNED_URL_SECONDS);
+    const latest = this.snapshot;
+    const profilePhotos = withSignedPreviewUrls(latest.profilePhotos, signed);
+    if (profilePhotos === latest.profilePhotos) return;
+    this.emit({ ...latest, profilePhotos });
   }
 
   async deleteProgressPhoto(id: string): Promise<void> {

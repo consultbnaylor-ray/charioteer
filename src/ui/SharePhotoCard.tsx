@@ -9,12 +9,10 @@ import { connectionOtherId, memberDisplayName } from '@/domain/connections';
 import { shownError } from '@/domain/errors';
 import type { CropRect } from '@/domain/photoCrop';
 import { communitySharingOn } from '@/domain/profileSharing';
-import { PROFILE_GALLERY_LIMIT, sortProfilePhotos } from '@/domain/profilePhotos';
 import {
   ALLOW_SAVE_LABEL,
   ALSO_ON_PUBLIC_PROFILE,
   AUTO_SAVE_LABEL,
-  GALLERY_FULL_CHOICE,
   GRATITUDE_DIARY_TICK,
   SHARE_PHOTO_SHEET_TITLE,
   GRATITUDE_ONLY_LABEL,
@@ -140,7 +138,6 @@ function SharePhotoComposer({ onClose, maxHeight }: { onClose: () => void; maxHe
   const [caption, setCaption] = useState('');
   const [diary, setDiary] = useState(false);
   const [onProfile, setOnProfile] = useState(false);
-  const [replaceId, setReplaceId] = useState<string | null>(null);
   const [chooserOpen, setChooserOpen] = useState(false);
   const [chosen, setChosen] = useState<string[] | null>(null);
   const [allowSave, setAllowSave] = useState(true);
@@ -151,8 +148,6 @@ function SharePhotoComposer({ onClose, maxHeight }: { onClose: () => void; maxHe
   const [sent, setSent] = useState(false);
   const selected = chosen ?? buddies.map((buddy) => buddy.id);
   const communityOn = communitySharingOn(snap.profile);
-  const gallery = sortProfilePhotos((snap.profilePhotos ?? []).filter((photo) => photo.role === 'gallery'));
-  const galleryFull = gallery.length >= PROFILE_GALLERY_LIMIT;
   const buttonLabel = sharePhotoButtonLabel(selected.length, diary, onProfile);
   const green = statsToneColors(theme.scheme).good.ink;
 
@@ -209,10 +204,6 @@ function SharePhotoComposer({ onClose, maxHeight }: { onClose: () => void; maxHe
       setError(PUBLIC_PROFILE_CLOSED);
       return;
     }
-    if (onProfile && galleryFull && !replaceId) {
-      setError('Choose which public photo to replace.');
-      return;
-    }
     setPending(true);
     setError(null);
     setNote(null);
@@ -242,7 +233,6 @@ function SharePhotoComposer({ onClose, maxHeight }: { onClose: () => void; maxHe
             bytes: prepared.bytes,
             role: 'gallery',
             caption: caption.trim(),
-            replaceId: galleryFull ? replaceId ?? undefined : undefined,
           });
           profileSaved = true;
         } catch (caught) {
@@ -305,34 +295,10 @@ function SharePhotoComposer({ onClose, maxHeight }: { onClose: () => void; maxHe
             <Switch
               accessibilityLabel={ALSO_ON_PUBLIC_PROFILE}
               value={onProfile}
-              onValueChange={(value) => {
-                setOnProfile(value);
-                if (!value) setReplaceId(null);
-              }}
+              onValueChange={setOnProfile}
             />
           </View>
           <T variant="muted">{PUBLIC_PROFILE_MEANS}</T>
-          {onProfile && galleryFull ? (
-            <View style={{ gap: 8 }}>
-              <T>{GALLERY_FULL_CHOICE}</T>
-              {gallery.map((photo) => {
-                const pickedReplace = replaceId === photo.id;
-                const name = photo.caption.trim() || 'Public photo';
-                return (
-                  <Pressable
-                    key={photo.id}
-                    accessibilityRole="checkbox"
-                    accessibilityState={{ checked: pickedReplace }}
-                    accessibilityLabel={`Replace ${name}`}
-                    onPress={() => setReplaceId(photo.id)}
-                    style={{ minHeight: 44, justifyContent: 'center' }}
-                  >
-                    <T>{pickedReplace ? '✓' : '○'} Replace “{name}”</T>
-                  </Pressable>
-                );
-              })}
-            </View>
-          ) : null}
         </View>
       ) : (
         <View style={{ gap: 8 }}>

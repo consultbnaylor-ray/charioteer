@@ -156,6 +156,7 @@ export default function WhatIShare() {
       <ShareAnchor id="profilePhotos" title="Profile photos">
         <T variant="muted">{PROFILE_PHOTO_WORDING}</T>
         <T variant="muted">There is no separate share switch. A picture shows on your profile while Community is on.</T>
+        <T variant="muted">There is no limit on how many gallery photos you can add. The profile shows the first ones, in the order you set. See all photos opens the rest.</T>
         <Button label="Edit profile photos" tone="quiet" onPress={() => router.push('/public-profile?edit=photos' as never)} />
       </ShareAnchor>
       <ShareAnchor id="gratitudeLines" title="Gratitude lines">

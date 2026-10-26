@@ -58,7 +58,7 @@ import {
   type VisionSize,
 } from '@/domain/visionBoard';
 import { planProgressPhoto, progressAnchor, progressPhotoLabel, progressStoragePath, progressVisibility, PROGRESS_MAX_BYTES } from '@/domain/progressPhotos';
-import { nextGalleryPositions, PROFILE_GALLERY_LIMIT, PROFILE_GALLERY_LIMIT_MESSAGE, profileStoragePath, sortProfilePhotos } from '@/domain/profilePhotos';
+import { galleryPositionsAfterAdd, nextGalleryPositions, profileStoragePath, sortProfilePhotos } from '@/domain/profilePhotos';
 import { interestSelectionUnchanged, nextInterestIds } from '@/domain/interests';
 import { planCustomInterest, validateTown } from '@/domain/privacy';
 import { planReasons } from '@/domain/reasons';
@@ -1681,23 +1681,11 @@ export class DemoRepository implements Repository {
     const account = this.me();
     const existing = account.profilePhotos ?? [];
     const gallery = existing.filter((photo) => photo.role === 'gallery');
-    const replacing = input.role === 'gallery' && input.replaceId
-      ? gallery.find((photo) => photo.id === input.replaceId)
-      : undefined;
-    if (input.role === 'gallery' && input.replaceId && !replacing) {
-      throw new UserFacingError('Choose a public photo to replace.', 'generic');
-    }
-    if (input.role === 'gallery' && gallery.length >= PROFILE_GALLERY_LIMIT && !replacing) {
-      throw new UserFacingError(PROFILE_GALLERY_LIMIT_MESSAGE, 'generic');
-    }
     const caption = planProfileText(input.caption ?? '', PHOTO_CAPTION_LIMIT);
     if (!caption.ok) throw new UserFacingError(caption.message, 'generic');
     const id = uid();
-    const position = input.role === 'avatar'
-      ? 0
-      : replacing
-        ? replacing.position
-        : gallery.reduce((max, photo) => Math.max(max, photo.position), -1) + 1;
+    const position = 0;
+    const shifted = input.role === 'gallery' ? galleryPositionsAfterAdd(gallery) : [];
     const photo: ProfilePhoto = {
       id,
       userId: account.profile.id,
@@ -1712,9 +1700,10 @@ export class DemoRepository implements Repository {
     const next = db.accounts[account.profile.id];
     const kept = input.role === 'avatar'
       ? existing.filter((item) => item.role !== 'avatar')
-      : replacing
-        ? existing.filter((item) => item.id !== replacing.id)
-        : existing;
+      : existing.map((item) => {
+        const nextPosition = shifted.find((row) => row.id === item.id);
+        return { ...item, position: nextPosition ? nextPosition.position : item.position };
+      });
     next.profilePhotos = [...kept, photo];
     this.commit(db);
   }
@@ -1775,6 +1764,10 @@ export class DemoRepository implements Repository {
       }
     }
     return urls;
+  }
+
+  async signProfilePhotos(_ids: string[]): Promise<void> {
+    // Demo pictures are already data URLs.
   }
 
   async deleteProgressPhoto(id: string): Promise<void> {

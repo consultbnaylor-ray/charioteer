@@ -15,7 +15,6 @@ import {
   SAVE_PHOTOS_USAGE,
   SHARED_PHOTOS_LABEL,
   ALSO_ON_PUBLIC_PROFILE,
-  GALLERY_FULL_CHOICE,
   GRATITUDE_DIARY_TICK,
   PUBLIC_PROFILE_CLOSED,
   PUBLIC_PROFILE_MEANS,
@@ -101,8 +100,6 @@ describe('Shared Photos folder', () => {
     expect(PUBLIC_PROFILE_MEANS).toContain('separate from Gratitude');
     expect(PUBLIC_PROFILE_CLOSED).toContain('public profile is off');
     expect(PUBLIC_PROFILE_TURN_ON).toBe('Turn on my public profile');
-    expect(GALLERY_FULL_CHOICE).toContain('six photos');
-    expect(GALLERY_FULL_CHOICE).toContain('Nothing is replaced until you choose');
     expect(PUBLIC_PROFILE_SHOWN).toBe('Shown on your public profile.');
     expect(SHARE_PHOTO_SHEET_TITLE.replace(/\u00A0/g, ' ')).toBe('Share a photo with your Buddy list');
     expect(GRATITUDE_DIARY_TICK).toBe('Also save to my Gratitude diary');
@@ -116,7 +113,8 @@ describe('Shared Photos folder', () => {
     expect(sheet).toContain('{PUBLIC_PROFILE_MEANS}');
     expect(sheet).toContain('{PUBLIC_PROFILE_CLOSED}');
     expect(sheet).toContain('{PUBLIC_PROFILE_TURN_ON}');
-    expect(sheet).toContain('{GALLERY_FULL_CHOICE}');
+    expect(sheet).not.toContain('GALLERY_FULL_CHOICE');
+    expect(sheet).not.toContain('six photos');
     expect(sheet).toContain("router.push('/public-profile' as never)");
     expect(sheet).toContain('addProfilePhoto');
     expect(sheet).not.toContain('charioteer.publicProfile');
@@ -132,7 +130,7 @@ describe('Shared Photos folder', () => {
     const sendAt = submit.indexOf('sendSharedPhoto');
     expect(submit.indexOf('selected.length > 0')).toBeLessThan(sendAt);
     expect(submit.indexOf('addProfilePhoto')).toBeGreaterThan(sendAt);
-    expect(submit).toContain('replaceId');
+    expect(submit).not.toContain('replaceId');
     expect(sheet).toContain('accessibilityLabel={SHARE_PHOTO_SHEET_TITLE}');
     expect(sheet).toContain('{SHARE_PHOTO_SHEET_TITLE}');
     expect(sheet).toContain('accessibilityLabel="Share a photo"');

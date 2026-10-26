@@ -29,6 +29,8 @@ When Community is on, other signed-in adults can see your name and your interest
 
 Turning a switch off hides that item on the next view. The People screen shows a preview of what is shared and a list of what is hidden.
 
+A profile picture and the profile gallery are shown to signed-in community members while Community is on. There is no separate switch for each gallery photo, and there is no limit on how many you can add. The profile front shows the first photos, in the order you set. See all photos opens the rest. Removing a photo in Edit profile takes it off the public profile on the next view. The file is a JPEG in the private profile-photos bucket. Location data is stripped before upload. A signed link is used to show it. There is no public file address.
+
 ## Sensitive information
 
 Days sober, your stage, reasons, money and unit totals, a mood streak, and health headlines are special category data under UK GDPR. The first time you share any of that, the app asks you to confirm. It tells you that other adults in the Charioteer community can see the items you switch on, and that Quantica Labs Ltd is the controller.
