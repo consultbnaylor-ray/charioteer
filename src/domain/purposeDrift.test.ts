@@ -136,7 +136,8 @@ describe('purpose strings stay on the approved text', () => {
     expect(sheet).toContain(walked);
     expect(sheet).not.toContain('New, and **not approved**');
     expect(sheet).not.toContain('privacy control');
-    expect(sheet).toContain('NOT APPROVED, needs Ben');
+    expect(sheet).toContain('Approve both removed-to-make-room sentences as written');
+    expect(sheet).not.toContain('NOT APPROVED, needs Ben');
     expect(sheet).toContain('An older line was removed from this phone to make room.');
     expect(sheet).toContain('Older lines were removed from this phone to make room.');
     expect(sheet).toContain('tile requests only');

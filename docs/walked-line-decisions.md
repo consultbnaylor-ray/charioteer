@@ -170,9 +170,11 @@ This pull request builds option A. It adds a local store on the phone. It does n
 
 The library file is `ios/RNCAsyncStorage.mm`. The store directory is `Application Support/<bundle id>/RCTAsyncLocalStorage_V1`. Values of 1024 bytes or more are separate files in that same directory. A walked line is larger than that. In `_ensureSetup`, if Info.plist `RCTAsyncStorageExcludeFromBackup` is nil, `isExcludedFromBackup` is `@YES`. The comment in the library is "by default, we want to exclude AsyncStorage data from backup". The directory is then marked with `NSURLIsExcludedFromBackupKey`. This app does not set `RCTAsyncStorageExcludeFromBackup`. If the mark fails, the library only logs "Could not exclude AsyncStorage dir from backup" and still writes. Exclusion is asked for, and it is not a guarantee. The notice says: "On iPhone, AsyncStorage asks iOS to leave this store out of iCloud and device backup. If that request did not apply, a deleted line can persist in an older phone backup the person made."
 
-## NOT APPROVED, needs Ben
+## Removed to make room
 
-These two sentences are on the Finished screen only when a save drops one or more older lines to make room. They are not approved.
+Approved by Ben on 26 October 2026. His words: "Approve both removed-to-make-room sentences as written".
+
+These two sentences are on the Finished screen only when a save drops one or more older lines to make room.
 
 - An older line was removed from this phone to make room.
 - Older lines were removed from this phone to make room.
