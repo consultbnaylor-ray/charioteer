@@ -1,5 +1,5 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Platform, Switch, useWindowDimensions, View } from 'react-native';
 
 import { claimLive, releaseLive } from '@/activity/oneSession';
@@ -45,6 +45,7 @@ import {
   type SplitMark,
   type UpdateInterval,
 } from '@/domain/activitySession';
+import { SAVED_LINE_ON_MAP, copyGuide, guideLine, guideRoute } from '@/domain/savedRoute';
 import { isoDay } from '@/domain/dates';
 import { shownError } from '@/domain/errors';
 import { watchLiveReading, type LiveReading } from '@/health/liveReading';
@@ -66,6 +67,8 @@ type LiveState = {
   activity: ActivityKind;
   routeId: string | null;
   routeTitle: string | null;
+  /** Saved points copied at Start. A later rename or delete does not change them. Not sent, and not written into the summary. */
+  guide: { latitude: number; longitude: number }[];
   /** Accepted fixes for the line on the map. Memory only. Stop does not write this. */
   track: { latitude: number; longitude: number }[];
   splits: SplitMark[];
@@ -205,9 +208,15 @@ function clearPath(live: LiveState): LiveState {
   return { ...live, track: [] };
 }
 
+function oneParam(value: string | string[] | undefined): string | null {
+  const raw = Array.isArray(value) ? value[0] : value;
+  return raw && raw.length > 0 ? raw : null;
+}
+
 export default function Activity() {
-  const params = useLocalSearchParams<{ kind?: string }>();
+  const params = useLocalSearchParams<{ kind?: string; route?: string | string[] }>();
   const opened = isActivityKind(params.kind) ? params.kind : 'walk';
+  const askedRoute = oneParam(params.route);
   const router = useRouter();
   const theme = useAppTheme();
   const repo = useRepository();
@@ -215,6 +224,13 @@ export default function Activity() {
   const routes = snap.outdoorRoutes ?? [];
   const [activity, setActivity] = useState<ActivityKind>(held?.live.activity ?? opened);
   const [routeId, setRouteId] = useState<string | null>(held?.live.routeId ?? null);
+  const appliedRoute = useRef(false);
+  useEffect(() => {
+    if (appliedRoute.current || held || !askedRoute) return;
+    if (!routes.some((item) => item.id === askedRoute)) return;
+    appliedRoute.current = true;
+    setRouteId(askedRoute);
+  }, [askedRoute, routes]);
   const [updatesOn, setUpdatesOn] = useState(false);
   const [intervalMin, setIntervalMin] = useState<3 | 5 | 10>(5);
   const [spoken, setSpoken] = useState(false);
@@ -385,12 +401,14 @@ export default function Activity() {
       setError(OTHER_SESSION_LINE);
       return;
     }
-    const route = routes.find((item) => item.id === routeId);
+    const route = routes.find((item) => item.id === routeId) ?? null;
+    const copied = copyGuide(route);
     const now = Date.now();
     const next: LiveState = {
       activity,
       routeId: route?.id ?? null,
-      routeTitle: route?.title ?? null,
+      routeTitle: copied?.title ?? null,
+      guide: copied?.points ?? [],
       track: [],
       splits: [],
       intervalMin: updatesOn ? intervalMin : 0,
@@ -513,7 +531,10 @@ export default function Activity() {
     const quiet = live.intervalMin === 0
       ? 'Updates are off. The clock still runs.'
       : 'The first line comes at the interval you chose.';
-    const planned = live.routeId ? routes.filter((item) => item.id === live.routeId) : [];
+    const guidePoints = live.guide ?? [];
+    const planned = guideRoute(
+      live.routeTitle && guidePoints.length >= 2 ? { title: live.routeTitle, points: guidePoints } : null,
+    );
     const here = live.anchor
       ? { latitude: live.anchor.latitude, longitude: live.anchor.longitude }
       : null;
@@ -580,7 +601,7 @@ export default function Activity() {
           <T>{live.lastLine ?? quiet}</T>
           {live.spoken ? <T variant="muted">{AUDIO_DUCK_LINE}</T> : null}
           {live.spoken ? <T variant="muted">{SPEECH_GATE_NOTE}</T> : null}
-          {live.routeTitle ? <T variant="muted">Reminder: {live.routeTitle}. Turns are not spoken.</T> : null}
+          {live.routeTitle ? <T variant="muted">{guideLine(live.routeTitle)}</T> : null}
         </Card>
         <ActivityGoodToKnow kind="live" />
       </Screen>
@@ -597,7 +618,7 @@ export default function Activity() {
       </Card>
       <Card>
         <T variant="label">Route</T>
-        <T variant="muted">Optional. A saved route is a reminder, not a guide that speaks turns.</T>
+        <T variant="muted">{SAVED_LINE_ON_MAP}</T>
         <Choice label="No route" selected={routeId == null} onPress={() => setRouteId(null)} />
         {routes.map((route) => (
           <Choice key={route.id} label={route.title} selected={routeId === route.id} onPress={() => setRouteId(route.id)} />

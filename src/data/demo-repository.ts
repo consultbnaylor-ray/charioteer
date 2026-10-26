@@ -37,7 +37,8 @@ import { convertStoredMoods, planCheckInGratitudeSync } from '@/domain/checkIns'
 import { randomId } from '@/domain/id';
 import { assertRouteFindingAllowed } from '@/data/routeConsentStore';
 import { filterStarterPlaces, mockRoute, type RoutePlace, type RoutePlan, type RoutePlanInput } from '@/domain/findRoute';
-import { outdoorRouteFromDraft, type OutdoorRouteDraft } from '@/domain/outdoorRoute';
+import { outdoorRouteFromDraft, routeTitleOf, type OutdoorRouteDraft } from '@/domain/outdoorRoute';
+import { ROUTE_NEEDS_NAME } from '@/domain/savedRoute';
 import { emptyGarminReadings, type GarminReadings } from '../../supabase/functions/_shared/garmin';
 import { shareInflight } from '@/domain/writes';
 import { isoDay } from '@/domain/dates';
@@ -1351,7 +1352,10 @@ export class DemoRepository implements Repository {
 
   async planOutdoorRoute(input: RoutePlanInput): Promise<RoutePlan> {
     await assertRouteFindingAllowed();
-    const plan = mockRoute(input);
+    const preview = input.distanceM || input.minutes || !(input.via && input.via.length > 0)
+      ? input
+      : { ...input, distanceM: 3000 };
+    const plan = mockRoute(preview);
     if (!plan) throw new UserFacingError('Choose a start, and a distance or a time.', 'generic');
     return plan;
   }
@@ -1366,6 +1370,33 @@ export class DemoRepository implements Repository {
     const db = clone(this.db);
     const next = db.accounts[account.profile.id];
     next.outdoorRoutes = (next.outdoorRoutes ?? []).filter((item) => item.id !== id);
+    this.commit(db);
+  }
+
+  async renameOutdoorRoute(id: string, title: string): Promise<void> {
+    const nextTitle = routeTitleOf(title);
+    if (!nextTitle) throw new UserFacingError(ROUTE_NEEDS_NAME, 'generic');
+    const account = this.me();
+    const db = clone(this.db);
+    const next = db.accounts[account.profile.id];
+    const rows = next.outdoorRoutes ?? [];
+    if (!rows.some((item) => item.id === id)) throw new UserFacingError('Could not rename that route.', 'generic');
+    next.outdoorRoutes = rows.map((item) => (item.id === id ? { ...item, title: nextTitle } : item));
+    this.commit(db);
+  }
+
+  async replaceOutdoorRoute(id: string, input: OutdoorRouteDraft): Promise<void> {
+    const account = this.me();
+    const db = clone(this.db);
+    const next = db.accounts[account.profile.id];
+    const rows = next.outdoorRoutes ?? [];
+    const existing = rows.find((item) => item.id === id);
+    if (!existing) throw new UserFacingError('Could not save that route.', 'generic');
+    const saved = outdoorRouteFromDraft(id, { ...input, title: input.title || existing.title });
+    if (!saved) throw new UserFacingError('Could not save that route.', 'generic');
+    next.outdoorRoutes = rows.map((item) => (item.id === id
+      ? { ...saved, createdAt: existing.createdAt, ascentM: input.ascentM ?? null }
+      : item));
     this.commit(db);
   }
 

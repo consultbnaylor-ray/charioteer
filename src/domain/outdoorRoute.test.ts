@@ -93,7 +93,12 @@ describe('Outside is Good phase 1', () => {
     const repo = readFileSync('src/data/supabase-repository.ts', 'utf8');
     expect(repo).toContain(".from('outdoor_routes').insert(row)");
     expect(repo).toContain(".from('outdoor_routes').delete()");
-    expect(repo).not.toContain(".from('outdoor_routes').update(");
+    const rename = repo.slice(repo.indexOf('async renameOutdoorRoute'), repo.indexOf('async replaceOutdoorRoute'));
+    const replace = repo.slice(repo.indexOf('async replaceOutdoorRoute'), repo.indexOf('async deletePlannedSession'));
+    expect(rename).toContain(".from('outdoor_routes').update(patch)");
+    expect(rename).not.toContain('.insert(');
+    expect(replace).toContain('.update(row)');
+    expect(replace).not.toContain('.insert(');
     const insert = outdoorRouteInsert('user-1', 'route-1', {
       title: 'Canal loop',
       kind: 'drawn',

@@ -1,17 +1,16 @@
 import { useState } from 'react';
 
-import { useRepository, useSnapshot } from '@/data';
-import { shownError } from '@/domain/errors';
+import { useSnapshot } from '@/data';
 import { OUTSIDE_SECTION_LABEL } from '@/domain/outsideSection';
-import { routeKindLabel, routeSummary, type OutdoorPoint } from '@/domain/outdoorRoute';
+import { type OutdoorPoint } from '@/domain/outdoorRoute';
 import { LOCATION_FIX_MESSAGE, LOCATION_FIX_PENDING, readWhileUsingFix } from '@/location/whileUsing';
 import { FootpathMap } from '@/ui/FootpathMap';
 import { OutsideFooter } from '@/ui/OutsideFooter';
+import { SavedRouteCard } from '@/ui/SavedRouteCard';
 import { Button, Card, Choice, ErrorNote, Screen, T } from '@/ui/ui';
 
 export default function OutsideMap() {
   const snap = useSnapshot();
-  const repo = useRepository();
   const [here, setHere] = useState<OutdoorPoint | null>(null);
   const [focus, setFocus] = useState(0);
   const [locating, setLocating] = useState(false);
@@ -35,15 +34,6 @@ export default function OutsideMap() {
     }
   }
 
-  async function remove(id: string) {
-    setError(null);
-    try {
-      await repo.deleteOutdoorRoute(id);
-    } catch (err) {
-      setError(shownError(err, 'Could not delete that route.'));
-    }
-  }
-
   return (
     <Screen eyebrow={OUTSIDE_SECTION_LABEL} title="Saved routes" intro="Footpaths from OpenStreetMap. A saved line stays on your account.">
       <Card>
@@ -63,13 +53,7 @@ export default function OutsideMap() {
         <T variant="muted">Where I am stays on this page. It does not ask the route service for a line.</T>
       </Card>
       <ErrorNote>{error}</ErrorNote>
-      {routes.map((route) => (
-        <Card key={route.id}>
-          <T variant="title">{route.title}</T>
-          <T variant="muted">{routeKindLabel(route.kind)} · {routeSummary(route)}</T>
-          <Button label="Delete" tone="quiet" accessibilityLabel={`Delete ${route.title}`} onPress={() => { void remove(route.id); }} />
-        </Card>
-      ))}
+      {routes.map((route) => <SavedRouteCard key={route.id} route={route} />)}
       <OutsideFooter kind="full" />
     </Screen>
   );

@@ -1,14 +1,14 @@
 # Open a saved route again
 
-Design only. Nothing here is built. No screen, button, or database change is in the app. No migration is applied. Build 74 is not changed by this note. The ship commit for build 74 stays `2a94a1ed0d310322418f85725b7f1ffe3c4a10c5`.
+Built for build 75. Not shipped. `ios.buildNumber` stays 72. The two update grants are files in `supabase/migrations` and have not been applied. The outdoor-route function stays the version already on the project. Build 74 is not changed by these commits.
+
+Ben approved this on 26 October 2026. His words: "Approve open, use and rename plus Adjust this route in the next build, with the wording as written".
 
 Written 26 October 2026 from Ben's iPhone: "The saved route is there but it would be good to open it up again to use the same one and the ability to Name it/rename it."
 
 ## Recommendation
 
-Keep this out of build 74. Build 74 is being finalised. Its wording is already approved, including the route-adjusting purpose sentence and the outing banner. The route-adjusting note for that build says the saved-route list does not gain an edit control. Opening, renaming, and a new database grant are a later build.
-
-The next build can do three things, once Ben approves the wording below:
+This stayed out of build 74. Build 75 does three things:
 
 1. Tap a saved route and open it.
 2. **Use this route**, which opens the existing Start screen with that route already chosen. The person still taps Start.
@@ -50,7 +50,7 @@ Where I am, if it is on this screen, is the control already on the Saved routes 
 
 **Use this route** opens the existing Start a walk screen. The route is already chosen. Walk is selected, and the person can switch to Run or Cycle before starting, as they can today. The before-start line stays. Measuring begins only when they tap Start. The route screen does not start the watch.
 
-On that Start screen the route note would change. The sentence there today is "Optional. A saved route is a reminder, not a guide that speaks turns." The proposed sentence, not approved, is: "The saved line is drawn on the map. Turns are not spoken."
+On that Start screen the route note is: "The saved line is drawn on the map. Turns are not spoken."
 
 After Start, the live map draws two lines, as it already can. The saved line is the guide, in the route colour. The line walked so far is the other colour, and it still lives only in memory. It is cleared on Stop, on discard, and if the app is closed. It is not written into the summary. It is not sent.
 
@@ -81,11 +81,11 @@ The consent already approved on 26 October 2026 has to be on before any of those
 
 If the redraw fails, the saved line, the distance, the time, and the climb stay. The screen can use the sentence already approved for a failed redraw: "The route on the map is unchanged."
 
-Saving a successful redraw replaces that same row: the line, the distance, the time, the climb, and the kind. It does not insert a second route. That replace needs the wider update grant below. Until that grant is applied, Adjust cannot be offered, because Save today only inserts and would make a copy.
+Saving a successful redraw replaces that same row: the line, the distance, the time, the climb, and the kind. It does not insert a second route. That replace needs the wider update grant below. The screen offers Adjust. Until that grant is applied, the save fails and the saved line stays. It does not insert a copy.
 
 A craving walk does not get Adjust. That line was drawn on the phone. It is not sent to the route service to be redrawn.
 
-This adjust path is not part of the recommended next build unless Ben approves it in the same breath as the wording.
+Ben approved Adjust for build 75 in the same breath as open, use, and rename.
 
 ## 3. The name
 
@@ -111,7 +111,7 @@ There is no trigger on `updated_at`. The rename sets it.
 This is the rename grant. It is listed here and it is not applied. It does not grant update of the line, the user id, or the other columns.
 
 ```sql
--- Not applied. Design only. Do not run this for build 74.
+-- Not applied. Build 75. Do not run this from the app or from a deploy.
 -- Owner-only rename of a saved route.
 -- outdoor_routes_own already requires user_id = auth.uid().
 -- This grant does not add a policy, and it does not grant anything to public or anon.
@@ -124,7 +124,7 @@ The write is the title and the time, for that owner's row. It does not send a co
 Replacing the line after Adjust needs a wider grant. It is listed here and it is not applied. It still does not grant update of `user_id`. Offer Adjust only after this grant exists, otherwise Save would insert a second row.
 
 ```sql
--- Not applied. Design only. Do not run this unless Ben has approved Adjust.
+-- Not applied. Build 75. Do not run this from the app or from a deploy.
 -- Replaces the line on the same saved route. Still owner-only.
 -- Does not grant update of user_id. Does not grant anything to public or anon.
 
@@ -157,7 +157,7 @@ Use this route copies the saved line onto the outing map. That copy stays on the
 
 Adjust, and only Adjust, sends the start, the destination, the added points, and the travel type, and only after the existing consent. The whole saved line is not in that request.
 
-New wording, all of it unapproved, for Ben:
+Wording, approved by Ben on 26 October 2026, as written:
 
 - Use this route
 - Rename
@@ -221,17 +221,21 @@ The open route. The line, the figures, the name, Use this route, Adjust, and the
 
 ![Open a saved route, 320 wide. Layout proof.](saved-routes/open-320.png)
 
-Use this route lands on the Start screen that already exists. Canal loop is already chosen. Start is still required. The route sentence on this drawing is the unapproved one. The rest of the screen is unchanged.
+Use this route lands on the Start screen that already exists. Canal loop is already chosen. Start is still required. The route sentence on this drawing is the approved one. The rest of the screen is unchanged.
 
 ![Start with the saved route chosen, 390 wide. Layout proof.](saved-routes/start-390.png)
 
 ![Start with the saved route chosen, 320 wide. Layout proof.](saved-routes/start-320.png)
 
-## What Ben decides
+## What Ben decided
 
-1. Next build, not build 74. This note recommends that. Build 74 stays the ship commit above.
-2. Open, Use this route, and rename in that next build. This note recommends yes, after the wording is approved.
-3. Duplicate names stay allowed. This note recommends that.
-4. Adjust in that same build, or later, or not at all. This note recommends later, on its own yes, because it sends the start, the destination, and the added points, and it needs the wider grant.
-5. The unapproved sentences in the wording list.
-6. The rename grant, and only if Adjust is included, the wider grant. Neither is applied now.
+On 26 October 2026 Ben wrote: "Approve open, use and rename plus Adjust this route in the next build, with the wording as written".
+
+1. Build 75, not build 74.
+2. Open, Use this route, and rename are in this build.
+3. Duplicate names stay allowed. There is no unique index.
+4. Adjust is in this build. The wider grant is a file and has not been applied.
+5. The sentences in the wording list are the ones on the screens.
+6. Both grant files are in the repo. Neither is applied. If both are approved for the database, apply the wider grant only. It includes the title.
+
+`export_my_data` still does not include a saved route. This build does not close that gap, and it does not put the outing path into the export.

@@ -66,6 +66,8 @@ export type OutdoorRoute = {
   durationMinutes: number;
   points: OutdoorPoint[];
   createdAt: string;
+  /** Present when the row stored a climb. Absent or null shows the no-climb sentence. */
+  ascentM?: number | null;
 };
 
 export type OutdoorRouteDraft = {
@@ -185,6 +187,11 @@ function titleOf(value: string): string | null {
   return title.length > 0 ? title : null;
 }
 
+/** The stored name: ends dropped, 80 characters, empty refused. */
+export function routeTitleOf(value: string): string | null {
+  return titleOf(value);
+}
+
 function storedDistance(draft: OutdoorRouteDraft, points: readonly OutdoorPoint[]): number | null {
   if (typeof draft.distanceM === 'number' && Number.isFinite(draft.distanceM)) {
     const rounded = Math.round(draft.distanceM);
@@ -220,6 +227,7 @@ export function outdoorRouteFromRow(row: {
   distance_m?: unknown;
   duration_minutes?: unknown;
   geometry?: unknown;
+  ascent_m?: unknown;
   created_at?: unknown;
 }): OutdoorRoute | null {
   if (typeof row.id !== 'string' || typeof row.title !== 'string') return null;
@@ -229,6 +237,7 @@ export function outdoorRouteFromRow(row: {
   const distance = typeof row.distance_m === 'number' ? row.distance_m : Number(row.distance_m);
   const duration = typeof row.duration_minutes === 'number' ? row.duration_minutes : Number(row.duration_minutes);
   if (points.length < 2 || !Number.isFinite(distance) || !Number.isFinite(duration)) return null;
+  const ascent = row.ascent_m == null || row.ascent_m === '' ? null : Number(row.ascent_m);
   return {
     id: row.id,
     title: row.title,
@@ -237,7 +246,40 @@ export function outdoorRouteFromRow(row: {
     durationMinutes: Math.round(duration),
     points,
     createdAt: typeof row.created_at === 'string' ? row.created_at : '',
+    ascentM: ascent != null && Number.isFinite(ascent) ? Math.round(ascent) : null,
   };
+}
+
+/** Title and time only. No coordinate, and no user id. */
+export function outdoorRouteRename(title: string, updatedAt: string): { title: string; updated_at: string } | null {
+  const next = titleOf(title);
+  if (!next) return null;
+  return { title: next, updated_at: updatedAt };
+}
+
+/**
+ * The same row after Adjust. The owner policy still applies.
+ * user_id is not in this object, so the account cannot be moved.
+ */
+export function outdoorRouteReplace(
+  route: OutdoorRoute,
+  ascentM: number | null | undefined,
+  updatedAt: string,
+): Record<string, unknown> {
+  const row: Record<string, unknown> = {
+    title: route.title,
+    kind: route.kind,
+    distance_m: route.distanceM,
+    duration_minutes: route.durationMinutes,
+    geometry: route.points,
+    updated_at: updatedAt,
+  };
+  if (typeof ascentM === 'number' && Number.isFinite(ascentM)) {
+    row.ascent_m = Math.min(20_000, Math.max(0, Math.round(ascentM)));
+  } else if (ascentM === null) {
+    row.ascent_m = null;
+  }
+  return row;
 }
 
 /** Columns the signed-in person may insert. No live fix column. */
