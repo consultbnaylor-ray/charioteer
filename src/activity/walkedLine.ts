@@ -246,7 +246,7 @@ export async function deleteWalkedLine(id: string): Promise<void> {
 function storageMissingInThisRuntime(error: unknown): boolean {
   if (typeof window !== 'undefined') return false;
   const message = error instanceof Error ? error.message : String(error);
-  return /localStorage|window is not defined/i.test(message);
+  return /window is not defined/i.test(message);
 }
 
 /**
