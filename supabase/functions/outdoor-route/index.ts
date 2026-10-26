@@ -3,7 +3,10 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.117.3';
 import { json, preflight } from '../_shared/http.ts';
 import {
   GLOBAL_ROUTE_DAILY_CAP,
+  RATE_LIMITED_MESSAGE,
+  UNAVAILABLE_MESSAGE,
   buildDirectionsBody,
+  classifyOrsFailure,
   cleanPlaceQuery,
   directionsUrl,
   geocodeUrl,
@@ -17,9 +20,6 @@ import {
   withinGlobalRouteLimit,
   withinRouteLimit,
 } from '../_shared/orsRoute.ts';
-
-const UNAVAILABLE = 'The route service is not available right now. Nothing was saved.';
-const TOO_MANY = 'Too many routes just now. Wait a few minutes and try again.';
 
 const recent = new Map<string, number[]>();
 let globalRecent: number[] = [];
@@ -42,7 +42,7 @@ Deno.serve(async (req) => {
   const url = Deno.env.get('SUPABASE_URL');
   const anon = Deno.env.get('SUPABASE_ANON_KEY');
   const authHeader = req.headers.get('Authorization');
-  if (!url || !anon || !authHeader) return json({ ok: false, code: 'unavailable', message: UNAVAILABLE }, 503);
+  if (!url || !anon || !authHeader) return json({ ok: false, code: 'unavailable', message: UNAVAILABLE_MESSAGE }, 503);
 
   const userClient = createClient(url, anon, {
     global: { headers: { Authorization: authHeader } },
@@ -63,24 +63,24 @@ Deno.serve(async (req) => {
     query?: unknown;
   } | null;
   if (!body || (body.action !== 'route' && body.action !== 'search')) {
-    return json({ ok: false, code: 'input', message: 'Choose a route or a place.' }, 400);
+    return json({ ok: false, code: 'bad_request', message: 'Choose a route or a place.' }, 400);
   }
 
   const key = Deno.env.get('ORS_API_KEY');
-  if (!key) return json({ ok: false, code: 'unavailable', message: UNAVAILABLE }, 503);
+  if (!key) return json({ ok: false, code: 'unavailable', message: UNAVAILABLE_MESSAGE }, 503);
 
   const allowed = await requestAllowed(url, userId);
-  if (!allowed) return json({ ok: false, code: 'rate', message: TOO_MANY }, 429);
+  if (!allowed) return json({ ok: false, code: 'rate_limited', message: RATE_LIMITED_MESSAGE }, 429);
 
   try {
     if (body.action === 'search') {
       const query = cleanPlaceQuery(body.query);
-      if (!query) return json({ ok: false, code: 'input', message: 'Type at least two letters.' }, 400);
+      if (!query) return json({ ok: false, code: 'bad_request', message: 'Type at least two letters.' }, 400);
       const response = await fetch(geocodeUrl(query), {
         headers: orsRequestHeaders(key, 'application/json'),
         signal: AbortSignal.timeout(12000),
       });
-      if (!response.ok) return json({ ok: false, code: 'unavailable', message: UNAVAILABLE }, 503);
+      if (!response.ok) return json({ ok: false, code: 'unavailable', message: UNAVAILABLE_MESSAGE }, 503);
       const payload = await response.json().catch(() => null);
       return json({ ok: true, places: parseGeocode(payload) });
     }
@@ -89,12 +89,12 @@ Deno.serve(async (req) => {
     const shape = readShape(body.shape);
     const start = readPlace(body.start);
     const end = readPlace(body.end);
-    if (!mode || !shape || !start) return json({ ok: false, code: 'input', message: 'Choose a start point.' }, 400);
-    if (shape === 'a_to_b' && !end) return json({ ok: false, code: 'input', message: 'Choose a destination.' }, 400);
+    if (!mode || !shape || !start) return json({ ok: false, code: 'bad_request', message: 'Choose a start point.' }, 400);
+    if (shape === 'a_to_b' && !end) return json({ ok: false, code: 'bad_request', message: 'Choose a destination.' }, 400);
     const lengthM = routeLengthM({ mode, distanceM: body.distanceM, minutes: body.minutes });
-    if (!lengthM) return json({ ok: false, code: 'input', message: 'Choose a distance or a time.' }, 400);
+    if (!lengthM) return json({ ok: false, code: 'bad_request', message: 'Choose a distance or a time.' }, 400);
     const directions = buildDirectionsBody({ mode, shape, start, end, lengthM });
-    if (!directions) return json({ ok: false, code: 'input', message: 'Choose a destination.' }, 400);
+    if (!directions) return json({ ok: false, code: 'bad_request', message: 'Choose a destination.' }, 400);
     const response = await fetch(directionsUrl(mode), {
       method: 'POST',
       headers: {
@@ -104,14 +104,18 @@ Deno.serve(async (req) => {
       body: JSON.stringify(directions),
       signal: AbortSignal.timeout(12000),
     });
-    if (!response.ok) return json({ ok: false, code: 'unavailable', message: UNAVAILABLE }, 503);
+    if (!response.ok) {
+      const payload = await response.json().catch(() => null);
+      const failure = classifyOrsFailure(response.status, payload);
+      return json(failure.body, failure.status);
+    }
     const payload = await response.json().catch(() => null);
     const plan = parseDirections(payload, mode, shape);
-    if (!plan) return json({ ok: false, code: 'unavailable', message: UNAVAILABLE }, 503);
+    if (!plan) return json({ ok: false, code: 'unavailable', message: UNAVAILABLE_MESSAGE }, 503);
     return json({ ok: true, mocked: false, mode, shape, ...plan });
   } catch {
     console.error('outdoor-route request failed');
-    return json({ ok: false, code: 'unavailable', message: UNAVAILABLE }, 503);
+    return json({ ok: false, code: 'unavailable', message: UNAVAILABLE_MESSAGE }, 503);
   }
 });
 

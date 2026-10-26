@@ -131,6 +131,56 @@ function round6(value: number): number {
   return Math.round(value * 1e6) / 1e6;
 }
 
+export const NO_PATH_MESSAGE =
+  'We couldn\'t find a path near that start. Try a start nearer a street or footpath.';
+
+export const RATE_LIMITED_MESSAGE =
+  'You\'ve made a lot of route requests. Try again in a little while.';
+
+export const BAD_REQUEST_MESSAGE = 'That route request could not be used.';
+
+export const UNAVAILABLE_MESSAGE =
+  'The route service is not available right now. Nothing was saved.';
+
+export type RouteFailureCode = 'no_path' | 'unavailable' | 'rate_limited' | 'bad_request';
+
+export type RouteFailure = {
+  status: 422 | 503 | 429 | 400;
+  body: { ok: false; code: RouteFailureCode; message: string };
+};
+
+/** ORS 404 with 2009 or 2010 means the start is not on a path. The ORS text can contain coordinates, so it is never copied. */
+export function classifyOrsFailure(status: number, payload: unknown): RouteFailure {
+  if (status === 429) {
+    return { status: 429, body: { ok: false, code: 'rate_limited', message: RATE_LIMITED_MESSAGE } };
+  }
+  if (status === 400) {
+    return { status: 400, body: { ok: false, code: 'bad_request', message: BAD_REQUEST_MESSAGE } };
+  }
+  const code = orsErrorCode(payload);
+  if (status === 404 && (code === 2009 || code === 2010)) {
+    return { status: 422, body: { ok: false, code: 'no_path', message: NO_PATH_MESSAGE } };
+  }
+  return { status: 503, body: { ok: false, code: 'unavailable', message: UNAVAILABLE_MESSAGE } };
+}
+
+function orsErrorCode(payload: unknown): number | null {
+  if (!payload || typeof payload !== 'object') return null;
+  const row = payload as { code?: unknown; error?: unknown };
+  const direct = asErrorCode(row.code);
+  if (direct != null) return direct;
+  if (row.error && typeof row.error === 'object') {
+    return asErrorCode((row.error as { code?: unknown }).code);
+  }
+  return null;
+}
+
+function asErrorCode(value: unknown): number | null {
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (typeof value === 'string' && /^\d+$/.test(value)) return Number(value);
+  return null;
+}
+
 type LngLat = [number, number];
 
 export function parseDirections(payload: unknown, mode: Mode, shape: 'loop' | 'a_to_b'): {
@@ -156,19 +206,27 @@ export function parseDirections(payload: unknown, mode: Mode, shape: 'loop' | 'a
   const distance = Number(summary.distance);
   const duration = Number(summary.duration);
   if (!Number.isFinite(distance) || !Number.isFinite(duration)) return null;
-  const ascent = Number(summary.ascent);
   return {
     profile: PROFILES[mode],
     distanceM: Math.round(distance),
     durationMinutes: Math.max(1, Math.round(duration / 60)),
-    ascentM: Number.isFinite(ascent) ? Math.round(ascent) : null,
+    ascentM: readAscent(feature.properties),
     points,
   };
 }
 
+/** ORS puts climb on `properties.ascent`. Older samples put it on `properties.summary.ascent`. */
+function readAscent(properties: { ascent?: unknown; summary?: { ascent?: unknown } } | undefined): number | null {
+  const direct = Number(properties?.ascent);
+  if (Number.isFinite(direct)) return Math.round(direct);
+  const summary = Number(properties?.summary?.ascent);
+  if (Number.isFinite(summary)) return Math.round(summary);
+  return null;
+}
+
 function firstFeature(payload: unknown): {
   geometry?: { coordinates?: LngLat[] };
-  properties?: { summary?: { distance?: number; duration?: number; ascent?: number } };
+  properties?: { ascent?: number; summary?: { distance?: number; duration?: number; ascent?: number } };
 } | null {
   if (!payload || typeof payload !== 'object') return null;
   const row = payload as { features?: unknown[]; geometry?: unknown };

@@ -19,7 +19,7 @@ import { stripJpegBase64, stripJpegLocation } from '@/domain/photoLocation';
 import { chunkHealthRows } from '@/domain/healthUpload';
 import { rejectRouteCoordinates } from '@/domain/workoutRoute';
 import { assertRouteFindingAllowed } from '@/data/routeConsentStore';
-import { calmRouteMessage, parseRoutePlaces, parseRoutePlan, routeCoordinate, type RoutePlace, type RoutePlan, type RoutePlanInput } from '@/domain/findRoute';
+import { calmRouteMessage, explainRouteFailure, parseRoutePlaces, parseRoutePlan, routeCoordinate, type RoutePlace, type RoutePlan, type RoutePlanInput } from '@/domain/findRoute';
 import type { SharedPhotoCard } from '@/domain/sharedPhotos';
 import { liveOutdoorRouteInsert, outdoorRouteFromRow, outdoorRouteInsert, routeShapeRejected, routeTableMissing, type OutdoorRouteDraft } from '@/domain/outdoorRoute';
 import { GARMIN_PERMISSION, readGarminRefreshBody } from '@/domain/healthRefresh';
@@ -2849,10 +2849,10 @@ export class SupabaseRepository implements Repository {
       });
       const plan = parseRoutePlan(invoked.data);
       if (plan) return plan;
-      throw new UserFacingError(calmRouteMessage(invoked.data), 'generic');
+      throw new UserFacingError(await explainRouteFailure(invoked.error), 'generic');
     } catch (error) {
       if (error instanceof UserFacingError) throw error;
-      throw new UserFacingError(calmRouteMessage(null), 'generic');
+      throw new UserFacingError(await explainRouteFailure(error), 'generic');
     }
   }
 

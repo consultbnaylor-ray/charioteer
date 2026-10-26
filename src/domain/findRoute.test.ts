@@ -13,9 +13,18 @@ import {
   parseRouteConsent,
   routeFindingAllowed,
 } from '@/domain/routeConsent';
+import { UserFacingError, shownError } from '@/domain/errors';
 import {
   NO_CLIMB_LINE,
+  ROUTE_BAD_REQUEST,
+  ROUTE_FINDING_OFF,
+  ROUTE_NO_PATH,
+  ROUTE_OFFLINE,
+  ROUTE_RATE_LIMITED,
+  ROUTE_SIGN_IN,
+  ROUTE_UNAVAILABLE,
   appleMapsUrl,
+  explainRouteFailure,
   formatClimb,
   mockRoute,
   parseRoutePlan,
@@ -36,10 +45,16 @@ import {
   viewCentre,
   youAreHereCollection,
 } from '@/domain/outdoorRoute';
+import { LOCATION_FIX_MESSAGE } from '@/location/whileUsing';
 import {
+  BAD_REQUEST_MESSAGE,
   GLOBAL_ROUTE_DAILY_CAP,
+  NO_PATH_MESSAGE,
   ORS_FREE_DIRECTIONS_PER_DAY,
+  RATE_LIMITED_MESSAGE,
+  UNAVAILABLE_MESSAGE,
   buildDirectionsBody,
+  classifyOrsFailure,
   orsRequestHeaders,
   parseDirections,
   parseGeocode,
@@ -142,6 +157,35 @@ describe('route finding', () => {
     }, 'walk', 'loop');
     expect(parsed).toMatchObject({ distanceM: 4820, durationMinutes: 60, ascentM: 42, profile: 'foot-walking' });
     expect(parsed?.points).toHaveLength(3);
+    const orsShape = parseDirections({
+      type: 'FeatureCollection',
+      features: [{
+        type: 'Feature',
+        properties: {
+          ascent: 18.2,
+          descent: 17.4,
+          summary: { distance: 7600.4, duration: 2700, ascent: 1 },
+          segments: [{ distance: 7600.4, duration: 2700 }],
+        },
+        geometry: {
+          type: 'LineString',
+          coordinates: [
+            [-2.5945, 51.4504],
+            [-2.59, 51.452],
+            [-2.5945, 51.4504],
+          ],
+        },
+      }],
+    }, 'walk', 'loop');
+    expect(orsShape).toMatchObject({ distanceM: 7600, durationMinutes: 45, ascentM: 18 });
+    expect(parseDirections({
+      type: 'FeatureCollection',
+      features: [{
+        type: 'Feature',
+        properties: { summary: { distance: 1000, duration: 600 } },
+        geometry: { coordinates: [[-2.59, 51.45], [-2.58, 51.451]] },
+      }],
+    }, 'walk', 'loop')?.ascentM).toBeNull();
     expect(parseGeocode({
       features: [{ geometry: { coordinates: [-2.59, 51.45] }, properties: { label: 'Queen Square', gid: 'qs' } }],
     })[0]).toMatchObject({ name: 'Queen Square', id: 'qs' });
@@ -268,5 +312,94 @@ describe('route finding', () => {
     expect(youAreHereCollection(null).features).toEqual([]);
     expect(youAreHereCollection(here).features[0]?.geometry.coordinates).toEqual([-3.1, 55.9]);
     expect(YOU_HERE_FILL).toBe('#2563EB');
+  });
+
+  it('tells a missing path, a limit, a sign-in, and a dropped connection apart', async () => {
+    expect(NO_PATH_MESSAGE).toBe(ROUTE_NO_PATH);
+    expect(RATE_LIMITED_MESSAGE).toBe(ROUTE_RATE_LIMITED);
+    expect(BAD_REQUEST_MESSAGE).toBe(ROUTE_BAD_REQUEST);
+    expect(UNAVAILABLE_MESSAGE).toBe(ROUTE_UNAVAILABLE);
+    expect(ROUTE_FINDING_OFF).toBe('Route finding is off.');
+    expect(ROUTE_FINDING_OFF).not.toBe(ROUTE_UNAVAILABLE);
+    expect(LOCATION_FIX_MESSAGE).not.toBe(ROUTE_UNAVAILABLE);
+    expect(ROUTE_SIGN_IN).toBe('Please sign in again.');
+    expect(ROUTE_OFFLINE).toBe('Check your connection and try again.');
+    const noPath = classifyOrsFailure(404, {
+      error: { code: 2010, message: 'Could not find routable point within a radius of 350.0 meters of 51.450123 -2.594123.' },
+    });
+    expect(noPath).toEqual({ status: 422, body: { ok: false, code: 'no_path', message: ROUTE_NO_PATH } });
+    expect(noPath.body.message).not.toMatch(/\d+\.\d+/);
+    expect(classifyOrsFailure(404, { code: '2009' }).body.code).toBe('no_path');
+    expect(classifyOrsFailure(404, { error: { code: 2000 } })).toMatchObject({ status: 503, body: { code: 'unavailable' } });
+    expect(classifyOrsFailure(404, null).status).toBe(503);
+    expect(classifyOrsFailure(429, { error: { code: 2010, message: '51.450000, -2.590000' } })).toEqual({
+      status: 429,
+      body: { ok: false, code: 'rate_limited', message: ROUTE_RATE_LIMITED },
+    });
+    expect(classifyOrsFailure(400, { message: 'bad coordinate 51.450123' })).toEqual({
+      status: 400,
+      body: { ok: false, code: 'bad_request', message: ROUTE_BAD_REQUEST },
+    });
+    expect(classifyOrsFailure(500, { error: { code: 2099 } }).status).toBe(503);
+
+    const http = (status: number, body: unknown, fail = false) => ({
+      name: 'FunctionsHttpError',
+      message: 'Edge Function returned a non-2xx status code',
+      context: {
+        status,
+        json: async () => {
+          if (fail) throw new Error('body already used');
+          return body;
+        },
+      },
+    });
+    expect(await explainRouteFailure(http(422, { ok: false, code: 'no_path', message: ROUTE_NO_PATH }))).toBe(ROUTE_NO_PATH);
+    expect(await explainRouteFailure(http(422, { ok: false, code: 'no_path', message: 'Near 51.450123, -2.594123' }))).toBe(ROUTE_NO_PATH);
+    expect(await explainRouteFailure(http(503, { ok: false, code: 'unavailable', message: ROUTE_UNAVAILABLE }))).toBe(ROUTE_UNAVAILABLE);
+    expect(await explainRouteFailure(http(429, { ok: false, code: 'rate_limited', message: ROUTE_RATE_LIMITED }))).toBe(ROUTE_RATE_LIMITED);
+    expect(await explainRouteFailure(http(400, { ok: false, code: 'bad_request', message: 'Choose a start point.' }))).toBe('Choose a start point.');
+    expect(await explainRouteFailure(http(401, { message: 'Invalid JWT' }))).toBe(ROUTE_SIGN_IN);
+    expect(await explainRouteFailure(http(401, null, true))).toBe(ROUTE_SIGN_IN);
+    expect(await explainRouteFailure(http(503, null, true))).toBe(ROUTE_UNAVAILABLE);
+    expect(await explainRouteFailure({
+      name: 'FunctionsFetchError',
+      message: 'Failed to send a request to the Edge Function',
+      context: new TypeError('Failed to fetch'),
+    })).toBe(ROUTE_OFFLINE);
+    expect(await explainRouteFailure(new TypeError('Failed to fetch'))).toBe(ROUTE_OFFLINE);
+    expect(await explainRouteFailure({ name: 'FunctionsRelayError', message: 'Relay Error invoking the Edge Function' })).toBe(ROUTE_UNAVAILABLE);
+    expect(shownError(new UserFacingError(ROUTE_SIGN_IN, 'generic'), ROUTE_UNAVAILABLE)).toBe(ROUTE_SIGN_IN);
+    expect(shownError(new UserFacingError(ROUTE_OFFLINE, 'generic'), ROUTE_UNAVAILABLE)).toBe(ROUTE_OFFLINE);
+    expect(shownError(new UserFacingError(ROUTE_FINDING_OFF, 'generic'), ROUTE_UNAVAILABLE)).toBe(ROUTE_FINDING_OFF);
+    expect(shownError(new UserFacingError(LOCATION_FIX_MESSAGE, 'generic'), ROUTE_UNAVAILABLE)).toBe(LOCATION_FIX_MESSAGE);
+    expect(shownError(new UserFacingError('That place could not be used.', 'generic'), ROUTE_UNAVAILABLE)).toBe('That place could not be used.');
+
+    const repo = readFileSync('src/data/supabase-repository.ts', 'utf8');
+    const plan = repo.slice(repo.indexOf('async planOutdoorRoute'), repo.indexOf('async searchRoutePlaces'));
+    expect(plan.indexOf('assertRouteFindingAllowed')).toBeLessThan(plan.indexOf('routeCoordinate'));
+    expect(plan.indexOf('routeCoordinate')).toBeLessThan(plan.indexOf("functions.invoke('outdoor-route'"));
+    expect(plan).toContain('explainRouteFailure(invoked.error)');
+    expect(plan).not.toContain('calmRouteMessage');
+    const maker = readFileSync('src/ui/RouteMaker.tsx', 'utf8');
+    const where = maker.slice(maker.indexOf('async function whereIAm'), maker.indexOf('async function showMyLocation'));
+    expect(where).toContain('LOCATION_FIX_MESSAGE');
+    expect(where).not.toContain('ROUTE_UNAVAILABLE');
+    expect(where).not.toContain('planOutdoorRoute');
+    const show = maker.slice(maker.indexOf('async function showMyLocation'), maker.indexOf('async function search'));
+    expect(show).toContain('LOCATION_FIX_MESSAGE');
+    expect(show).not.toContain('ROUTE_UNAVAILABLE');
+    expect(show).not.toContain('planOutdoorRoute');
+    const make = maker.slice(maker.indexOf('async function make'), maker.indexOf('async function save'));
+    expect(make).toContain('err instanceof UserFacingError ? err.message : shownError(err, ROUTE_UNAVAILABLE)');
+    const fn = readFileSync('supabase/functions/outdoor-route/index.ts', 'utf8');
+    expect(fn).toContain('classifyOrsFailure(response.status, payload)');
+    expect(fn).toContain("code: 'rate_limited'");
+    expect(fn).toContain("code: 'bad_request'");
+    expect(fn).not.toContain("code: 'rate'");
+    expect(fn).not.toContain("code: 'input'");
+    const failure = fn.slice(fn.indexOf('if (!response.ok)'), fn.indexOf('const plan = parseDirections'));
+    expect(failure).not.toMatch(/console\./);
+    expect(fn.match(/console\.error/g)).toEqual(['console.error']);
+    expect(fn).toContain("console.error('outdoor-route request failed')");
   });
 });

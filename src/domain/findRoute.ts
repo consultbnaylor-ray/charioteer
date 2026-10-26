@@ -11,6 +11,18 @@ export { ROUTE_RETENTION_LINE, ROUTE_SEND_LINE } from './routeConsent';
 export const ROUTE_UNAVAILABLE =
   'The route service is not available right now. Nothing was saved.';
 
+export const ROUTE_NO_PATH =
+  'We couldn\'t find a path near that start. Try a start nearer a street or footpath.';
+
+export const ROUTE_RATE_LIMITED =
+  'You\'ve made a lot of route requests. Try again in a little while.';
+
+export const ROUTE_BAD_REQUEST = 'That route request could not be used.';
+
+export const ROUTE_SIGN_IN = 'Please sign in again.';
+
+export const ROUTE_OFFLINE = 'Check your connection and try again.';
+
 export const ROUTE_FINDING_OFF = 'Route finding is off.';
 
 export const ROUTE_MOCK_LINE =
@@ -237,13 +249,84 @@ export function formatClimb(metres: number | null): string {
 
 /** A short message from our function. A body that looks like a place is not shown. */
 export function calmRouteMessage(value: unknown): string {
-  if (!value || typeof value !== 'object') return ROUTE_UNAVAILABLE;
+  return calmOr(value, ROUTE_UNAVAILABLE);
+}
+
+function calmOr(value: unknown, fallback: string): string {
+  if (!value || typeof value !== 'object') return fallback;
   const message = (value as { message?: unknown }).message;
-  if (typeof message !== 'string') return ROUTE_UNAVAILABLE;
+  if (typeof message !== 'string') return fallback;
   const text = message.trim();
-  if (text.length < 8 || text.length > 180) return ROUTE_UNAVAILABLE;
-  if (/\d+\.\d{3,}/.test(text)) return ROUTE_UNAVAILABLE;
+  if (text.length < 8 || text.length > 180) return fallback;
+  if (/\d+\.\d{3,}/.test(text)) return fallback;
+  if (/-?\d{1,3}\.\d+\s*,\s*-?\d{1,3}\.\d+/.test(text)) return fallback;
   return text;
+}
+
+/**
+ * Why a route call did not return a line.
+ * `functions.invoke` leaves a non-2xx body on `error.context`, with `data` null.
+ * A 401 or a dropped connection never reaches the function, so those are not "the route service".
+ */
+export async function explainRouteFailure(error: unknown): Promise<string> {
+  const status = statusOf(error);
+  if (status === 401) return ROUTE_SIGN_IN;
+  if (isRouteNetworkError(error)) return ROUTE_OFFLINE;
+  const body = await readInvokeBody(error);
+  return messageForRouteBody(body, status);
+}
+
+export function messageForRouteBody(body: unknown, status: number | null): string {
+  const named = body && typeof body === 'object' && typeof (body as { code?: unknown }).code === 'string'
+    ? (body as { code: string }).code
+    : '';
+  if (named === 'unauthorised' || named === 'unauthorized') return ROUTE_SIGN_IN;
+  if (named === 'no_path' || status === 422) return calmOr(body, ROUTE_NO_PATH);
+  if (named === 'rate_limited' || named === 'rate' || status === 429) return calmOr(body, ROUTE_RATE_LIMITED);
+  if (named === 'bad_request' || named === 'input' || status === 400) return calmOr(body, ROUTE_BAD_REQUEST);
+  if (named === 'unavailable' || status === 503) return calmOr(body, ROUTE_UNAVAILABLE);
+  return ROUTE_UNAVAILABLE;
+}
+
+function statusOf(value: unknown): number | null {
+  if (!value || typeof value !== 'object') return null;
+  const record = value as { status?: unknown; context?: unknown };
+  if (typeof record.status === 'number' && Number.isFinite(record.status)) return record.status;
+  if (record.context && typeof record.context === 'object') {
+    const status = (record.context as { status?: unknown }).status;
+    if (typeof status === 'number' && Number.isFinite(status)) return status;
+  }
+  return null;
+}
+
+async function readInvokeBody(error: unknown): Promise<unknown> {
+  const source = jsonCarrier(error);
+  if (!source) return null;
+  try {
+    return await source.json();
+  } catch {
+    return null;
+  }
+}
+
+function jsonCarrier(error: unknown): { json: () => Promise<unknown> } | null {
+  if (!error || typeof error !== 'object') return null;
+  const record = error as { json?: unknown; context?: unknown };
+  if (typeof record.json === 'function') return record as { json: () => Promise<unknown> };
+  if (record.context && typeof record.context === 'object' && typeof (record.context as { json?: unknown }).json === 'function') {
+    return record.context as { json: () => Promise<unknown> };
+  }
+  return null;
+}
+
+function isRouteNetworkError(error: unknown): boolean {
+  if (!error || typeof error !== 'object') return false;
+  const name = (error as { name?: unknown }).name;
+  if (name === 'FunctionsFetchError') return true;
+  if (name === 'FunctionsHttpError' || name === 'FunctionsRelayError') return false;
+  const message = (error as { message?: unknown }).message;
+  const text = typeof message === 'string' ? message : '';
+  return /failed to fetch|network request failed|load failed|network error|failed to send a request to the edge function/i.test(text);
 }
 
 export function parseRoutePlaces(value: unknown): RoutePlace[] {

@@ -2,11 +2,12 @@ import { useState } from 'react';
 import { Linking } from 'react-native';
 
 import { useRepository } from '@/data';
-import { shownError } from '@/domain/errors';
+import { UserFacingError, shownError } from '@/domain/errors';
 import {
   APPLE_MAPS_NOTE,
   HIKE_PROFILE_NOTE,
   ROUTE_MOCK_LINE,
+  ROUTE_UNAVAILABLE,
   STARTER_NOTE,
   STARTER_PLACES,
   appleMapsUrl,
@@ -168,7 +169,7 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
       }
     } catch (err) {
       setPlan(null);
-      setError(shownError(err, 'The route service is not available right now. Nothing was saved.'));
+      setError(err instanceof UserFacingError ? err.message : shownError(err, ROUTE_UNAVAILABLE));
     } finally {
       setPending(false);
     }
