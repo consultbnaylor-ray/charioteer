@@ -119,6 +119,17 @@ Approved for this build:
 - Save keeps the line on this phone. It is not sent. Done without Save drops the line.
 - On this phone
 - This removes the saved line from this phone.
+- Signing out removes your saved lines from this phone.
+
+## Sign-out
+
+Approved by Ben on 26 October 2026. His words: "Stick with saved lines then, that makes more sense."
+
+The sentence is "Signing out removes your saved lines from this phone." It is on the Save area and under On this phone, next to the phone-only walked lines. It is not on Saved routes. Saved routes also names the account-saved routes, and sign-out does not remove those. A draft that said saved routes is not used.
+
+Security note 1 is a known behaviour. The phone store is one key, `charioteer.walked-lines`. It is not scoped by user id. Signing out, a successful account deletion, and an expired session each remove every saved line on that phone. A failed deletion leaves the lines in place.
+
+Open check, to be tested on a phone: `SIGNED_OUT` may fire at cold start when there is no session.
 
 The approved delete sentence for an account route stays "This removes the saved line from your account." It is the wrong sentence for a phone-only line.
 
@@ -158,7 +169,7 @@ This pull request builds option A. It adds a local store on the phone. It does n
 - Delete removes the local record. An empty list deletes the storage key. It is not a hidden flag.
 - Coordinates are not logged. There is no console line, crash breadcrumb, or analytics event for the path.
 - Leaving out the first and last 200 m reduces what a casual viewer of the phone sees. Keep the whole line stores the exact start and end. The screen still says "the first and last 200 m are left out". Use fewer points stays off unless asked. It keeps the ends. It does not stand in for that trim.
-- The phone store is one key, `charioteer.walked-lines`. It is not scoped by user id. Signing out clears it. A successful account deletion clears it. A storage error on that clear is tried once and does not stop sign-out, account deletion, or the refresh that follows. An expired session clears the same store when the auth state changes to signed out. A failed deletion leaves the lines in place.
+- Security note 1, a known behaviour. The phone store is one key, `charioteer.walked-lines`. It is not scoped by user id. Signing out clears it. A successful account deletion clears it. A storage error on that clear is tried once and does not stop sign-out, account deletion, or the refresh that follows. An expired session clears the same store when the auth state changes to signed out. A failed deletion leaves the lines in place.
 - At most 20 valid lines are kept. Saving another drops the oldest. A line with more than 2000 points is shortened on save, and both ends stay. A store that cannot be read is not replaced by the next save or delete. Entries that are not a line are written back.
 - The redo guide's title and points are copied into the live outing at Start. They are not passed to `summaryFrom` or `saveActivitySummary`, and Start does not send a request.
 - There is still no crash-recovery file. A kill mid-outing does not leave a path on disk.

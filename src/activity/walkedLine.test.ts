@@ -36,6 +36,7 @@ import {
   ON_THIS_PHONE,
   PHONE_LINE_DELETE,
   SAVE_ON_PHONE,
+  SIGN_OUT_LINES,
   WALKED_LINE_CAP,
   WALKED_LINES_KEY,
   WALKED_POINT_CAP,
@@ -330,6 +331,8 @@ describe('a walked line kept on the phone', () => {
     expect(screen).toContain('label={FEWER_POINTS}');
     expect(screen).toContain('{LINE_TOO_SHORT}');
     expect(screen).toContain('{SAVE_ON_PHONE}');
+    expect(screen).toContain('{SIGN_OUT_LINES}');
+    expect(screen.split('{SIGN_OUT_LINES}').length - 1).toBe(2);
     expect(screen).toContain('{ON_THIS_PHONE}');
     expect(screen).toContain('{PHONE_LINE_DELETE}');
     expect(store).toContain(DROP_ENDS);
@@ -337,6 +340,10 @@ describe('a walked line kept on the phone', () => {
     expect(store).toContain(FEWER_POINTS);
     expect(store).toContain(LINE_TOO_SHORT);
     expect(store).toContain(SAVE_ON_PHONE);
+    expect(store).toContain(SIGN_OUT_LINES);
+    expect(SIGN_OUT_LINES).toBe('Signing out removes your saved lines from this phone.');
+    expect(store).not.toContain('Signing out removes your saved routes from this phone.');
+    expect(readFileSync('src/app/(main)/outside.tsx', 'utf8')).not.toContain('SIGN_OUT_LINES');
     expect(store).toContain(ON_THIS_PHONE);
     expect(store).toContain(PHONE_LINE_DELETE);
     expect(screen).toContain('label="Save this route"');

@@ -17,6 +17,7 @@ import {
   ON_THIS_PHONE,
   PHONE_LINE_DELETE,
   SAVE_ON_PHONE,
+  SIGN_OUT_LINES,
   copyWalkedPoints,
   deleteWalkedLine,
   loadWalkedLines,
@@ -628,6 +629,7 @@ export default function Activity() {
           {trimEndsOn && !prepared.trimmed ? <T variant="muted">{LINE_TOO_SHORT}</T> : null}
           <Button label="Save this route" onPress={() => { void keepLine(); }} />
           <T variant="muted">{SAVE_ON_PHONE}</T>
+          <T variant="muted">{SIGN_OUT_LINES}</T>
           {roomNote ? <T variant="muted">{roomNote}</T> : null}
         </Card>
         <Card>
@@ -744,6 +746,7 @@ export default function Activity() {
           <Choice key={route.id} label={route.title} selected={routeId === route.id} onPress={() => { setRouteId(route.id); setPhoneLineId(null); }} />
         ))}
         {phoneLines.length > 0 ? <T variant="label">{ON_THIS_PHONE}</T> : null}
+        {phoneLines.length > 0 ? <T variant="muted">{SIGN_OUT_LINES}</T> : null}
         {phoneLines.map((line) => (
           <View key={line.id}>
             <Choice

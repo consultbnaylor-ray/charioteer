@@ -28,6 +28,7 @@ export const KEEP_WHOLE_LINE = 'Keep the whole line';
 export const FEWER_POINTS = 'Use fewer points';
 export const LINE_TOO_SHORT = 'The line is too short to drop the ends.';
 export const SAVE_ON_PHONE = 'Save keeps the line on this phone. It is not sent. Done without Save drops the line.';
+export const SIGN_OUT_LINES = 'Signing out removes your saved lines from this phone.';
 export const ON_THIS_PHONE = 'On this phone';
 export const PHONE_LINE_DELETE = 'This removes the saved line from this phone.';
 export const LINE_DROPPED_ONE = 'An older line was removed from this phone to make room.';
