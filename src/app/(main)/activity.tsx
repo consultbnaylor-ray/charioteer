@@ -144,8 +144,13 @@ export default function Activity() {
   useEffect(() => {
     if (phase !== 'live' || !live || live.paused) return undefined;
     let gone = false;
-    void import('expo-keep-awake').then((mod) => {
-      if (!gone) void mod.activateKeepAwakeAsync('charioteer-activity');
+    void import('expo-keep-awake').then(async (mod) => {
+      if (gone) return;
+      try {
+        await mod.activateKeepAwakeAsync('charioteer-activity');
+      } catch {
+        // A browser can refuse the wake lock. The phone keeps the screen on without that prompt.
+      }
     }).catch(() => undefined);
     return () => {
       gone = true;
