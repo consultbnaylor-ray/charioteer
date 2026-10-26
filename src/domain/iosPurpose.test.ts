@@ -138,8 +138,10 @@ describe('iOS purpose strings', () => {
     }
   });
 
-  it('writes the while-in-use location sentence and leaves Always and background modes off', () => {
-    const app = JSON.parse(readFileSync('app.json', 'utf8')) as AppConfig;
+  it('writes the approved while-in-use sentence, location and audio background modes, and no Always keys', () => {
+    const app = JSON.parse(readFileSync('app.json', 'utf8')) as AppConfig & {
+      expo: { ios: { infoPlist?: Record<string, unknown>; entitlements?: Record<string, unknown> } };
+    };
     const location = app.expo.plugins.find(
       (entry) => Array.isArray(entry) && entry[0] === 'expo-location',
     ) as [string, {
@@ -152,9 +154,11 @@ describe('iOS purpose strings', () => {
     expect(location?.[1].locationWhenInUsePermission).toBe(LOCATION_WHEN_IN_USE);
     expect(location?.[1].locationAlwaysAndWhenInUsePermission).toBe(false);
     expect(location?.[1].locationAlwaysPermission).toBe(false);
-    expect(location?.[1].isIosBackgroundLocationEnabled).toBe(false);
+    expect(location?.[1].isIosBackgroundLocationEnabled).toBe(true);
     expect(location?.[1].isAndroidBackgroundLocationEnabled).toBe(false);
-    expect(JSON.stringify(app)).not.toMatch(/UIBackgroundModes|NSLocationAlways/);
+    expect(app.expo.ios.infoPlist?.UIBackgroundModes).toEqual(['location', 'audio']);
+    expect(JSON.stringify(app)).not.toMatch(/NSLocationAlways/);
+    expect(JSON.stringify(app.expo.ios.entitlements ?? {})).not.toMatch(/background-delivery/);
 
     const applied = applyPermissions(
       {
@@ -173,11 +177,31 @@ describe('iOS purpose strings', () => {
     expect(applied.NSLocationAlwaysAndWhenInUseUsageDescription).toBeUndefined();
     expect(applied.NSLocationAlwaysUsageDescription).toBeUndefined();
     expect(LOCATION_WHEN_IN_USE).toBe(
-      'Charioteer uses your location while the map is open, to show where you are, and during a walk, run, or cycle you start, to measure distance and pace. That measure runs only while the activity screen is open. Locking the phone pauses it. It is not tracked in the background. It is not shared with other people. A route is sent to the route service only if you turn route finding on. A route is stored only if you save it. A finished activity stores the distance, time, and pace on this phone, not the path.',
+      'Charioteer uses your location while you are on a walk, run or cycle to track distance and give you spoken updates, including when the screen is locked or you are using other apps. Your route stays on your phone and is not sent anywhere. The same permission shows where you are while the map is open. A route is sent to the route service only if you turn route finding on, and that request is the start and the destination, not this route.',
     );
     const audio = app.expo.plugins.find(
       (entry) => Array.isArray(entry) && entry[0] === 'react-native-audio-api',
     ) as [string, { iosBackgroundMode: boolean }] | undefined;
     expect(audio?.[1].iosBackgroundMode).toBe(false);
+
+    const build70Location = [
+      'Charioteer uses your location while the map is open, to show where you are, and during a walk, run, or cycle you start, to measure distance and pace. ',
+      'That measure runs only while the activity screen is open. ',
+      'Locking the phone ',
+      'pauses it. ',
+      'It is not tracked in the ',
+      'background. ',
+      'It is not shared with other people. A route is sent to the route service only if you turn route finding on. A route is stored only if you save it. A finished activity stores the distance, time, and pace on this phone, not the path.',
+    ].join('');
+    const build70Health = 'Charioteer reads steps, sleep, heart rate, resting heart rate, heart rate variability, cardio fitness, walking heart rate, heart rate recovery, workouts (type, duration, distance, energy, and average heart rate), and walking, cycling and swimming distance, plus weight, height, body fat, lean body mass, active energy, and exercise minutes. Readings stay on your iPhone. A workout route is read only when you open that route, and the path stays on this iPhone. A short summary is sent to write your plan only if you turn the coach on. It is not used for ads. Other people cannot see this.';
+    const raw = readFileSync('app.json', 'utf8');
+    expect(raw).not.toContain(build70Location);
+    expect(raw).toContain(LOCATION_WHEN_IN_USE);
+    expect(raw).not.toContain(build70Health);
+    expect(raw).toContain('During a walk, run, or cycle you start, the latest heart rate from Apple Health can be shown on that screen, including while the phone is locked.');
+    expect(raw).toContain('Charioteer writes the food and water you log to Apple Health: dietary energy, protein, carbohydrate, sugar, fibre, fat, sodium and water. It does not write steps, sleep, heart rate, workouts, or weight.');
+    expect(raw).toContain(MICROPHONE);
+    expect(raw).toContain(FACE_ID);
+    expect(raw).toContain('Charioteer does not use your motion or fitness data.');
   });
 });

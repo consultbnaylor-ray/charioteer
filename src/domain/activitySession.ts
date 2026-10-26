@@ -20,14 +20,45 @@ export const SPEED_CAP_MPS: Record<ActivityKind, number> = {
   cycle: 70 / 3.6,
 };
 
-export const SETUP_LOCK_LINE =
-  'The screen stays on. Locking the phone pauses the time and the distance.';
+/** Six hours. Ben confirmed this length on 26 October 2026. Change only this number. */
+export const OUTING_TIME_LIMIT_MS = 6 * 60 * 60 * 1000;
 
-export const LOCK_PAUSE_NOTE =
-  'Locking the phone paused the time and the distance.';
+export const HR_STALE_MS = 60_000;
+export const HR_HIGH_BPM = 180;
 
-export const ACTIVITY_LOCATION_LINE =
-  'Distance and pace use your location only while this screen is open. Locking the phone pauses them.';
+export const NO_HEART_SOURCE = 'No heart-rate source';
+export const WATCH_HEART_HINT =
+  'Start a workout on your Apple Watch to show heart rate. The iPhone does not measure it.';
+export const HEART_HIGH_LINE = 'Heart rate is 180. This is not medical advice.';
+export const HEART_FOREGROUND_LINE =
+  'Heart rate updates while Charioteer is in front. It does not update while the app is suspended. The number stays on this phone and is not sent.';
+export const ENERGY_WAITING = 'Active energy not available yet';
+export const AUDIO_DUCK_LINE =
+  'A spoken line lowers your music for a moment, then lets it return. The phone speaks. Nothing is recorded.';
+export const SPEECH_GATE_NOTE =
+  'Spoken lines stay on the screen until a phone check shows the music dips and then returns to full volume, with no leftover session, including on a call and with Bluetooth headphones. Until that check, the phone does not start an audio session.';
+export const TRACKING_ACTIVE_LINE =
+  'Tracking is active. The blue location mark stays on until you tap Stop.';
+export const LIVE_INTRO = 'You can lock the phone. Measuring continues until you tap Stop.';
+export const TIME_LIMIT_LINE = 'The time limit ended this outing.';
+export const OTHER_SESSION_LINE = 'Finish the session already running before you start another.';
+export const PAUSED_LINE = 'Paused. Resume continues measuring.';
+
+export function limitPhrase(limitMs = OUTING_TIME_LIMIT_MS): string {
+  const hours = limitMs / 3_600_000;
+  if (hours === 6) return 'six hours';
+  return `${hours} hours`;
+}
+
+export function beforeStartLine(limitMs = OUTING_TIME_LIMIT_MS): string {
+  return `You can lock the phone, take a call, or open another app. Measuring continues until you tap Stop, or for ${limitPhrase(limitMs)}. A blue location mark shows while it is on. The route stays on this phone. If the app is closed, that route is lost.`;
+}
+
+export function activityLocationLine(limitMs = OUTING_TIME_LIMIT_MS): string {
+  return `Distance and pace keep going after you lock the phone, until you tap Stop or ${limitPhrase(limitMs)} pass. The route stays in memory for that outing. It is cleared when you stop or discard it. If the app is closed, it is lost. It is not sent.`;
+}
+
+export const ACTIVITY_LOCATION_LINE = activityLocationLine();
 
 export const TRAFFIC_LINE = 'Stay aware of traffic, paths, and other people.';
 
@@ -38,8 +69,6 @@ export const FINISH_LINE = 'You went out. That counts.';
 export const SUMMARIES_HINT = 'On this phone. Deleting the app removes this list.';
 
 export const DIARY_HINT = 'Off until you tick it. The diary gets the words, not the path.';
-
-export const LIVE_INTRO = 'Screen on. Locking the phone pauses this.';
 
 const PACED: Record<ActivityKind, readonly string[]> = {
   walk: [
@@ -155,6 +184,85 @@ export function updatesDue(movingMs: number, intervalMin: UpdateInterval, sent: 
   const slots = Math.floor(Math.max(0, movingMs) / (intervalMin * 60_000));
   return Math.max(0, slots - Math.max(0, sent));
 }
+
+export function outingTimedOut(startedAtMs: number, nowMs: number, limitMs = OUTING_TIME_LIMIT_MS): boolean {
+  if (!Number.isFinite(startedAtMs) || !Number.isFinite(nowMs)) return false;
+  return nowMs - startedAtMs >= limitMs;
+}
+
+export type SplitMark = { kilometre: number; movingMs: number };
+
+/** Kilometre marks. Each row is an index and a time. No coordinates. */
+export function splitsForDistance(
+  distanceM: number,
+  movingMs: number,
+  existing: readonly SplitMark[],
+): SplitMark[] {
+  const count = Math.floor(Math.max(0, distanceM) / 1000);
+  if (count <= existing.length) return existing.slice();
+  const next = existing.slice();
+  for (let kilometre = existing.length + 1; kilometre <= count; kilometre += 1) {
+    next.push({ kilometre, movingMs });
+  }
+  return next;
+}
+
+export function splitRow(mark: SplitMark, previousMs: number): string {
+  const leg = Math.max(0, mark.movingMs - previousMs);
+  return `${mark.kilometre} km · ${clock(mark.movingMs)} · ${paceLabel(averagePaceSecPerKm(1000, leg))}`;
+}
+
+export function currentSplitLabel(distanceM: number): string | null {
+  if (!(distanceM > 0)) return null;
+  const into = distanceM % 1000;
+  return `This kilometre · ${(into / 1000).toFixed(2)} km`;
+}
+
+export function shownHeart(
+  bpm: number | null,
+  atMs: number | null,
+  nowMs: number,
+): { label: string; warning: string | null; age: string | null } {
+  if (bpm == null || atMs == null || !Number.isFinite(bpm) || nowMs - atMs > HR_STALE_MS) {
+    return { label: NO_HEART_SOURCE, warning: null, age: null };
+  }
+  const rounded = Math.round(bpm);
+  const seconds = Math.max(0, Math.round((nowMs - atMs) / 1000));
+  return {
+    label: `${rounded} bpm`,
+    warning: rounded >= HR_HIGH_BPM ? HEART_HIGH_LINE : null,
+    age: `${seconds}s ago`,
+  };
+}
+
+export function shownEnergy(kcal: number | null): string {
+  if (kcal == null || !Number.isFinite(kcal) || kcal <= 0) return ENERGY_WAITING;
+  return `${Math.round(kcal)} kcal`;
+}
+
+export type GymKind = 'strength' | 'cardio';
+
+const GYM_LINES: Record<GymKind, readonly string[]> = {
+  strength: [
+    '{time} in. Stay with the set.',
+    '{time} in. You are training. That is the work.',
+    '{time} in. Rest when you need to.',
+  ],
+  cardio: [
+    '{time} in. Keep it steady.',
+    '{time} in. You are training. That is the work.',
+    '{time} in. Breathe.',
+  ],
+};
+
+export function gymLine(kind: GymKind, movingMs: number, index: number): string {
+  const bank = GYM_LINES[kind];
+  const template = bank[Math.abs(index) % bank.length] ?? bank[0];
+  return template.replaceAll('{time}', timePhrase(movingMs));
+}
+
+export const GYM_BEFORE_START =
+  'The clock runs until you tap Stop. Heart rate shows only if Apple Health has a recent reading. The iPhone does not measure it. If the app is closed, this session is lost. This is not medical advice.';
 
 export function activityLine(
   kind: ActivityKind,

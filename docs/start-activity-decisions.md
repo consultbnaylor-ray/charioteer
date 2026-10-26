@@ -1,6 +1,24 @@
 # Start a walk, a run, or a cycle
 
-Version 1 is in the app on this branch. Ben approved it on 26 October 2026, and the same morning asked for the map on the live screen. That build keeps the screen awake and pauses when the phone locks. It has no background mode.
+## Build 74, approved 26 October 2026
+
+Ben approved background tracking and speech over music, the location purpose sentence, the Health share sentence, the audio wording, and `UIBackgroundModes` `location` and `audio`. This branch contains that build. It is not shipped. The iOS build number stays 72.
+
+Still not approved, and not in this build: Always location, Garmin or Bluetooth, and Save to Apple Health.
+
+What the branch does:
+
+- A walk, run, or cycle keeps a while-using location watch going when the phone is locked or another app is in front. The watch is `watchPositionAsync`. It does not call a background-permission API. On iOS the watch streamer is patched so a caller can set fitness activity type, the blue location mark, and standard updates only, and only when the binary lists the location background mode. It does not start significant-change or region monitoring.
+- The path stays in memory and is cleared on Stop, on discard, and when the process ends. It is not saved, logged, or sent. Route finding is not called with it. No live-tracking route goes to HeiGIT.
+- The time limit is `OUTING_TIME_LIMIT_MS`, six hours. Ben confirmed that length on 26 October 2026. Pause does not extend it. A forgotten outing is the failure mode the blue mark is there to show, and the time limit is what ends it.
+- Thumos updates are a switch, then 3, 5, or 10 minutes, and spoken or on screen only. The outing copies the default from You. That default starts off.
+- Spoken lines are on the screen. The phone does not start an audio session until a phone check shows music ducks and then returns to full volume, with no leftover session, including a phone call and Bluetooth headphones. That gate is not passed. On screen only never starts an audio session. There is no silent keepalive.
+- Heart rate uses a foreground HealthKit observer and an anchored query while the outing or gym session is in front. The background-delivery entitlement is not added. The live number is not sent, not exported, and not written next to sobriety fields.
+- Workouts has Start live session, Strength or Cardio, a heart-rate row, and an active-energy row.
+
+Items 1, 2, and 8 in the short recommendation below described an earlier awake-screen plan. They are superseded by this section.
+
+Version 1 was the awake screen. Ben approved the map on the live screen the same morning, then changed the scope.
 
 On 26 October 2026 at 07:42 GMT Ben changed the scope. Tracking must keep running when the phone is locked, during a call, in another app, and while music plays. A spoken line should lower the music for a moment and then let it return. That replaces the awake-screen plan and the rule against a background mode. It is not built. No purpose string has been changed. No Info.plist key has been added. Apple Health, a cloud summary, and live model lines are still not built. The iOS build number stays 72. Nothing is shipped.
 
@@ -28,13 +46,13 @@ There is no separate Settings screen. The lasting default sits on **You**, which
 
 On that setup screen the design is a switch, **Thumos updates**, and, when it is on, **3 minutes**, **5 minutes**, and **10 minutes**, plus **Spoken and on screen** or **On screen only**. That choice is for this outing. It does not change the default on You.
 
-What the branch does today, which is not what these proofs draw: the setup card is labelled **Updates from Thumos**, and the choices are **3 min**, **5 min**, **10 min**, and **Off**. There is no switch, and there is no default on You. Spoken lines play only while that screen is open. Locking the phone pauses the outing. That is version 1. It is not in the build 73 binary.
+The setup screen now has the switch, **Thumos updates**, and, when it is on, **3 minutes**, **5 minutes**, and **10 minutes**, plus **Spoken and on screen** or **On screen only**. That choice is for this outing. It copies the default on You and does not change it. You starts with the switch off.
 
 **The default.** Drawer, Account, **You**. A card, **Activity updates**, after Appearance and before Notifications. The same switch and the same 3, 5, and 10 minute choice. Recommendation: the switch starts off. Five minutes and On screen only are what he sees when he turns it on. Both setup screens copy this when they open.
 
 **A normal gym workout, and its heart rate.** Drawer, Tools, **Workouts**. Above the history card, under the refresh bar: **Start live session**. That name replaces the earlier draft **I'm training now**. The history, the charts, and the calendar stay where they are.
 
-Start live session opens its own setup. **Strength** or **Cardio**. The same **Thumos updates** switch and the same 3, 5, and 10 minute choice, again for this session only. **Start** opens the live screen. That live screen is where the heart-rate row lives. It is not on the Workouts history, not on the calendar, and not on Health Stats. There is no map. If Apple Health has no recent sample, the row says **No heart-rate source**. The iPhone does not measure heart rate. This screen is not built.
+Start live session opens its own setup. **Strength** or **Cardio**. The same **Thumos updates** switch and the same 3, 5, and 10 minute choice, again for this session only. **Start** opens the live screen. That live screen is where the heart-rate row lives. It is not on the Workouts history, not on the calendar, and not on Health Stats. There is no map. If Apple Health has no recent sample, the row says **No heart-rate source**. The iPhone does not measure heart rate. This screen is in build 74. It is not shipped. Heart rate is a foreground read. The row says **No heart-rate source** when Apple Health has nothing recent.
 
 ![Outside is Good, 390. Start a walk, Start a run, Start a cycle.](start-activity/outside-starts-390.png)
 
@@ -58,16 +76,16 @@ Start live session opens its own setup. **Strength** or **Cardio**. The same **T
 
 ## Recommendation, short
 
-1. The phone stays awake. Locking it pauses the outing. No background location, and no Always location.
-2. Thumos writes the line on the screen and can speak it while that screen is open. A small buzz marks the moment. No notification every few minutes.
+1. Superseded by the approved background section. The outing keeps measuring when the phone is locked. There is still no Always location.
+2. Superseded by the approved background section. Thumos writes the line on the screen. Speech waits for the phone check. A small buzz marks the moment. No notification every few minutes.
 3. The sentences are a list kept on the phone. Pace and time are filled in there. Nothing is sent. A live model comes later, only if you say so.
 4. Distance and pace come from the phone's location while the screen is open. Not from the step counter. A cycle does not make useful steps, and the motion sentence today says we do not use motion.
 5. Keep the summary on the phone: type, date, distance, time, average pace. No path, on the phone or in the cloud. While the outing is on screen, the map draws the line so far. That line stays in memory and is thrown away with the screen. It is not saved and it is not sent. The Apple Health button is drawn, and it waits for your OK on new wording.
 6. The careful lines stay in Good to know, once each, in the same quiet type as the other Outside screens. No warning banner.
 7. Leave Walk this off hidden. This is a different idea.
-8. First version is the awake screen, the local lines, the spoken line, and the summary. Lock-screen tracking, Apple Health, and a live model come later, each only after you approve the wording.
+8. Superseded by the approved background section. Build 74 is the while-using watch, the local lines, the on-screen update, the summary, the foreground heart-rate row, and the gym session. A live model is still later.
 
-Items 1, 2, and 8 are what the branch does today. They are not the plan after 07:42 GMT. The plan is the background section below. It waits for the wording. It is not in the app.
+Items 1, 2, and 8 are superseded. The background section below is what Ben approved on 26 October 2026. It is in this branch. It is not shipped.
 
 ## The screens
 
@@ -97,21 +115,21 @@ Outside is Good can list the last few summaries, with Delete. That list is not i
 
 ## 1. Tracking while the phone is locked
 
-**What the branch does today: the screen stays awake. Locking the phone pauses the time and the distance.** The plan after 07:42 GMT is the next section. This one is the history, and it is still the code.
+**History.** An earlier build kept the screen awake and stopped measuring when the phone was locked. That behaviour is superseded.
 
-Today the app may use location only while a map is open, and only if the person allows it. The purpose sentence says it is not tracked in the background. Background location is switched off. Always location is switched off. The map and the route screen still do not watch location. The activity screen reads a balanced fix only while it is open, and the live map draws that fix. The map does not start a second location watch, and it does not add a host.
+The map still asks for location only while that page is open, and only if the person allows it. Always location stays off. The map and the route screen do not watch location. The activity screen starts one continuous while-using watch when they tap Start. The map does not start a second watch, and it does not add a host.
 
 Three ways to run an outing:
 
 **Screen kept awake.** The person taps Start. The screen stays lit. If they lock the phone, the clock and the distance pause, and the screen says so before they start. This uses the location permission the app already has (while the app is in use). It does not add a new permission key. It does need new words in the existing sentence, because measuring a walk is more than showing a dot on the map. Those words are the purpose sentence in the app. Apple reads purpose sentences.
 
-**Background, with the blue location mark.** Apple lets an app keep location going after the screen locks, if the person started it, and if a blue mark stays visible so they can see location is on. It stops when they finish, and if they force-quit the app. This is still the while-using permission. It does not ask for Always. It does add a background mode (`location` under UIBackgroundModes). Apple can ask for a short video: start, lock the phone, the mark showing, then stop. The usual Expo background switch is the wrong tool for this. Turning that on and calling the background permission asks for Always. We would not do that. This can be a later version. It is a real review, and it is lighter than Always.
+**Background, with the blue location mark.** This is the build. Apple lets an app keep location going after the screen locks, if the person started it, and if a blue mark stays visible so they can see location is on. It stops when they finish, and if they force-quit the app. This is still the while-using permission. It does not ask for Always. It does add a background mode (`location` under UIBackgroundModes). Apple can ask for a short video: start, lock the phone, the mark showing, then stop. `isIosBackgroundLocationEnabled` writes that mode and, with the Always permission options left false, does not write an Always sentence. The app does not call a background-permission request. The watch is `watchPositionAsync`. A patch on the watch streamer sets the fitness activity type, the blue mark, and standard updates only when the binary lists the location mode. It does not use the task consumer, so it does not start significant-change monitoring.
 
 **Always location.** The phone could track after the app is closed, with no mark the person is watching. That is a new purpose sentence (`NSLocationAlwaysAndWhenInUseUsageDescription`), the same background mode, and a stricter review. Apple asks why while-using is not enough. For an outing the person starts and stops, while-using is enough. I would not ask for Always. The Security and Compliance Bot advisory, in the background section, is the recommendation if that later version is built. It keeps While Using, refuses Always, and refuses significant-change and region monitoring.
 
 **Apple Health or the step counter only.** Health can show a distance after a watch has already recorded a workout. It does not give a live pace every five minutes during an outing that Charioteer itself is timing. The step counter would also make today's motion sentence false. That sentence says Charioteer does not use motion or fitness data. A cycle barely registers as steps. I would not use the step counter.
 
-What Apple will ask, if we stay with the recommendation: they will read the updated while-using sentence. They should not ask for a background-location video, because the background mode stays off.
+What Apple will ask: they will read the while-using sentence, which says measuring continues when the screen is locked or another app is open. The location background mode is on, so they can ask for a short video. The script is in `docs/app-store-activity-review.md`: Start, the in-app explanation, the While Using prompt with no Always choice, lock the phone, the blue mark, one spoken line, and Stop. There is no Always prompt. The spoken line in that video is also the phone check for music ducking. That check is not passed yet, so the app does not start an audio session.
 
 On Android the first version is the same: location while the app is open. A later locked-phone version would show a visible "Walk in progress" notification. It would not ask for all-the-time location. Google Play treats all-the-time location as its own review.
 
@@ -182,7 +200,7 @@ Use the lines the other Outside screens already use, once each:
 Two short lines that belong to this screen:
 
 - Stay aware of traffic, paths, and other people.
-- Distance and pace use your location only while this screen is open. Locking the phone pauses them.
+- Distance and pace keep going after you lock the phone, until you tap Stop or the time limit. The route stays in memory for that outing.
 
 The path line the map already shows ("A line on the map may follow a path that is unsurfaced, closed, or private...") stays on setup, once, because they may have picked a saved route. It is not a banner.
 
@@ -261,11 +279,11 @@ Updates stop in all of these cases:
 
 - They tap Stop. Stop is the end of the outing. The same clear happens if they discard it.
 - The app is terminated. A swipe-away, a crash, or the system ending the process all count. iOS does not relaunch the app. Measuring does not resume on the next open.
-- A time limit. The advisory says there is a time-out and does not give the length. Recommendation: four hours from Start. Pause does not extend it. At four hours, updates stop, the path is cleared, and the screen says the outing stopped because it reached the time limit. Four hours covers a long walk or run. A long ride may need more. That number is for you to confirm.
+- A time limit. Ben confirmed six hours from Start on 26 October 2026. Pause does not extend it. At six hours, updates stop, the path is cleared, and the screen says the outing stopped because it reached the time limit.
 
 The in-app state while measuring is on, including after they come back from the lock screen or another app, says tracking is active and shows Stop. Stop is that button. No notification is posted to say tracking is on, and no notification carries Stop.
 
-When this is built, the task would be set like this.
+What build 74 sets on the while-using watch:
 
 - `showsBackgroundLocationIndicator: true`. With only While Using, iOS keeps delivering updates in the background when that mark is showing. If the mark is off, those updates stop.
 - `activityType: Fitness`. That is Apple's type for walking, running, and cycling. It is not the motion permission, and it does not read the step counter. The motion sentence stays as it is.
@@ -274,7 +292,7 @@ When this is built, the task would be set like this.
 
 Do not use significant-change monitoring. Do not use region monitoring, a geofence, or visit monitoring. This is a hard no, not a test-and-see. The earlier draft said to stop the extra monitor only if a phone test offered Always. That hedge is withdrawn.
 
-`startLocationUpdatesAsync` in this SDK registers `EXLocationTaskConsumer`. That consumer calls `startUpdatingLocation` and also `startMonitoringSignificantLocationChanges`. The later build must not ship that consumer unchanged. The task that is written for this outing calls standard updates only, with `allowsBackgroundLocationUpdates` and the blue mark, and it does not call `startMonitoringSignificantLocationChanges` or `startMonitoringForRegion`.
+`startLocationUpdatesAsync` in this SDK registers `EXLocationTaskConsumer`. That consumer calls `startUpdatingLocation` and also `startMonitoringSignificantLocationChanges`, and the background-permission APIs ask for Always. Build 74 does not call them. The outing uses `watchPositionAsync` with while-using permission only. The patched watch streamer can set `allowsBackgroundLocationUpdates` and the blue mark. It does not call `startMonitoringSignificantLocationChanges` or `startMonitoringForRegion`.
 
 The map and Find a route do not start this task. Route finding stays a separate feature. It must not reuse the live path. A route request still contains only the start and the destination, plus the travel type the function already sends. The activity screen does not call the route service.
 
@@ -371,7 +389,7 @@ The saved summary, and only after they finish and choose to keep it, stays the a
 
 Do not combine the path with sobriety logs or with exports. It is not joined to `profiles.sobriety_started_at`, to check-ins, or to gratitude entries. It does not appear in `export_my_data`. The gratitude tick stays a note only, with no path. A summary without a path on the account is the separate later decision already in section 5. It is not this path, and it is not part of this build.
 
-The DPIA note has a proposed processing activity for this, marked not built. The privacy note has a short Activity tracking section, also marked not built. Both wait for you. They do not change the purpose sentence in the binary.
+The DPIA note records this processing activity as approved by Ben on 26 October 2026, in build 74, not shipped. The forgotten-outing failure mode ends at six hours. The privacy note's Activity tracking section describes the same behaviour. The purpose sentence in the binary is the approved one.
 
 ### (f) What the screen has to show
 
@@ -383,7 +401,7 @@ This is the list to run when the feature is built. It is not built now.
 
 - After Stop, location updates have stopped and the blue mark is gone.
 - After force-quit, updates do not continue and the app does not relaunch itself. The path is gone.
-- After the time limit you confirm, updates stop and the path is cleared.
+- After six hours, the time limit Ben confirmed on 26 October 2026, updates stop and the path is cleared.
 - A proxy of the outing shows no request body, query, or header carrying a coordinate from the live path. A route-finding call, on its own screen, still sends only the start and the destination.
 - Logs and any crash report from a test outing contain no coordinates.
 - Lock-screen behaviour is tested: the blue mark is on, one spoken line ducks the music and the music returns, and Stop in the app ends the outing. No notification is the Stop control.
@@ -548,13 +566,11 @@ These are not designed. Say if one of them is what you meant.
 - A mirror of the Watch only, with no Start live session button. The phone still cannot see the workout type, or a reliable start time, until the Watch saves the workout. The button is what starts the clock.
 - The GPS outing. That is the earlier section. It has the map. This one does not.
 
-## Wording that needs your OK
+## Wording
 
-None of this is in the app. Nothing below is written into Info.plist until you approve it.
+Ben approved the location sentence, the Health share sentence, the audio line, and the background modes on 26 October 2026. Those are in this build. Always location, Garmin, and the Health write sentence are not.
 
-**While-using location, for background measuring.** Same permission as today. New words, because today's sentence would become false. There is no Always sentence. The long sentence in the first 07:42 draft is withdrawn. Two texts are here so you can choose. Neither is written into the app.
-
-Today, and still the sentence in the app: "Charioteer uses your location while the map is open, to show where you are, and during a walk, run, or cycle you start, to measure distance and pace. That measure runs only while the activity screen is open. Locking the phone pauses it. It is not tracked in the background. It is not shared with other people. A route is sent to the route service only if you turn route finding on. A route is stored only if you save it. A finished activity stores the distance, time, and pace on this phone, not the path."
+**While-using location, for background measuring.** Same permission as the map. There is no Always sentence. The long sentence from the first 07:42 draft is withdrawn. The previous while-using sentence is withdrawn and is not copied here.
 
 The Security and Compliance Bot's text, unchanged: "Charioteer uses your location while you are on a walk, run or ride to track distance and give you spoken updates, including when the screen is locked or you are using other apps. Your route stays on your phone and is not sent anywhere."
 
@@ -564,12 +580,12 @@ Recommended adaptation of that text. It keeps both of the bot's sentences. It sa
 
 Do not add `NSLocationAlwaysAndWhenInUseUsageDescription`. Do not add `NSLocationAlwaysUsageDescription`.
 
-**Lines on the screen, for the same build.** Not purpose strings. They still need the same OK, because they are what the person reads. The four hours is the time limit recommended in section (a). Change it if you confirm a different number.
+**Lines on the screen, for the same build.** Not purpose strings. Ben confirmed the time limit as six hours on 26 October 2026.
 
-- Before the location prompt, and before Start: "You can lock the phone, take a call, or open another app. Measuring continues until you tap Stop, or for four hours. A blue location mark shows while it is on. The route stays on this phone. If the app is closed, that route is lost."
+- Before the location prompt, and before Start: "You can lock the phone, take a call, or open another app. Measuring continues until you tap Stop, or for six hours. A blue location mark shows while it is on. The route stays on this phone. If the app is closed, that route is lost."
 - On the live screen: "You can lock the phone. Measuring continues until you tap Stop."
 - When they come back and it has been running: "Tracking is active. The blue location mark stays on until you tap Stop."
-- In Good to know: "Distance and pace keep going after you lock the phone, until you tap Stop or four hours pass. The route stays in memory for that outing. It is cleared when you stop or discard it. If the app is closed, it is lost. It is not sent."
+- In Good to know: "Distance and pace keep going after you lock the phone, until you tap Stop or six hours pass. The route stays in memory for that outing. It is cleared when you stop or discard it. If the app is closed, it is lost. It is not sent."
 - Beside the spoken choice: "A spoken line lowers your music for a moment, then lets it return. The phone speaks. Nothing is recorded."
 - The end control: "Stop"
 - Pause stays "Pause", and "Resume" after a pause. Pause holds the clock. Stop ends the outing. There is no notification for Stop.
@@ -578,17 +594,15 @@ Do not add `NSLocationAlwaysAndWhenInUseUsageDescription`. Do not add `NSLocatio
 
 **Motion.** No new words. The sentence stays: "Charioteer does not use your motion or fitness data. The map component in the app can reference motion sensors, so Apple requires this note."
 
-**While-using location, already in the app.** This is the purpose sentence on the device today. It matches a screen that pauses when the phone locks. The route-service sentence is in it, and that part stays true. If background measuring is built, one of the two texts above replaces this one, after you choose.
-
-"Charioteer uses your location while the map is open, to show where you are, and during a walk, run, or cycle you start, to measure distance and pace. That measure runs only while the activity screen is open. Locking the phone pauses it. It is not tracked in the background. It is not shared with other people. A route is sent to the route service only if you turn route finding on. A route is stored only if you save it. A finished activity stores the distance, time, and pace on this phone, not the path."
+**While-using location.** Ben approved the sentence in the block above on 26 October 2026. It is the sentence in this build. The previous sentence is withdrawn and is not copied here.
 
 The map screens keep their own page line. That line is about the map, not about an outing.
 
 **Heart rate and splits, for the same later build.** Not in the app. Splits need no new permission. Heart rate uses the Health read the app already has. The sentence below is a change to that existing share sentence, not a new key.
 
-Today, and still the sentence in the app: "Charioteer reads steps, sleep, heart rate, resting heart rate, heart rate variability, cardio fitness, walking heart rate, heart rate recovery, workouts (type, duration, distance, energy, and average heart rate), and walking, cycling and swimming distance, plus weight, height, body fat, lean body mass, active energy, and exercise minutes. Readings stay on your iPhone. A workout route is read only when you open that route, and the path stays on this iPhone. A short summary is sent to write your plan only if you turn the coach on. It is not used for ads. Other people cannot see this."
+The previous Health share sentence is withdrawn. Ben approved this one on 26 October 2026. The live read is still foreground only, because the background-delivery entitlement is not approved. The sentence itself is unchanged from the approval.
 
-Proposed `NSHealthShareUsageDescription`: "Charioteer reads steps, sleep, heart rate, resting heart rate, heart rate variability, cardio fitness, walking heart rate, heart rate recovery, workouts (type, duration, distance, energy, and average heart rate), and walking, cycling and swimming distance, plus weight, height, body fat, lean body mass, active energy, and exercise minutes. Readings stay on your iPhone. During a walk, run, or cycle you start, the latest heart rate from Apple Health can be shown on that screen, including while the phone is locked. During a strength or cardio session you start in Workouts, the latest heart rate and active energy from Apple Health can be shown while you train. The iPhone does not measure heart rate. Those readings stay on this iPhone and are not sent. A workout route is read only when you open that route, and the path stays on this iPhone. A short summary is sent to write your plan only if you turn the coach on. It is not used for ads. Other people cannot see this."
+Approved `NSHealthShareUsageDescription`: "Charioteer reads steps, sleep, heart rate, resting heart rate, heart rate variability, cardio fitness, walking heart rate, heart rate recovery, workouts (type, duration, distance, energy, and average heart rate), and walking, cycling and swimming distance, plus weight, height, body fat, lean body mass, active energy, and exercise minutes. Readings stay on your iPhone. During a walk, run, or cycle you start, the latest heart rate from Apple Health can be shown on that screen, including while the phone is locked. During a strength or cardio session you start in Workouts, the latest heart rate and active energy from Apple Health can be shown while you train. The iPhone does not measure heart rate. Those readings stay on this iPhone and are not sent. A workout route is read only when you open that route, and the path stays on this iPhone. A short summary is sent to write your plan only if you turn the coach on. It is not used for ads. Other people cannot see this."
 
 Lines on the screen. Not purpose strings.
 
@@ -640,13 +654,13 @@ Proposed: "Charioteer writes the food and water you log to Apple Health: dietary
 - A new microphone sentence. Speaking is not recording.
 - `NSBluetoothAlwaysUsageDescription`, and `UIBackgroundModes` `bluetooth-central`, until you approve the Garmin broadcast. Not the Apple Watch build. Garmin Connect is not a source.
 
-`UIBackgroundModes` `location` and `audio` are the keys in section (c). They are not in the binary. They wait for the wording above.
+`UIBackgroundModes` `location` and `audio` are in `app.json` for build 74. Ben approved them on 26 October 2026. They are not shipped. The audio plugin's own background switch stays off. The plist lists `audio` directly. Speech calls stay off until the phone check.
 
 ## Review risks
 
 The binary on this branch pauses when the phone locks, and it has no background mode. Its purpose sentence matches that.
 
-The plan after 07:42 GMT, as tightened by the Security and Compliance Bot, does use background location and a short burst of audio. That is a real review. Guideline 2.5.4, 5.1.1, and 5.1.2 are the ones that apply, and they are set out in section (c), with the video. An Always prompt, a sentence that still says locking pauses the outing, a silent audio keepalive, or significant-change monitoring are the likely rejections. The wording is not in the binary until you approve it. The nutrition label is checked against that final binary, not against this note.
+Build 74 uses background location. Speech stays off until the phone check, so the audio background mode is in the plist and no audio session is started yet. That is a real review. Guideline 2.5.4, 5.1.1, and 5.1.2 are the ones that apply, and they are set out in section (c), with the video script. An Always prompt, a silent audio keepalive, or significant-change monitoring are the likely rejections. Ben approved the wording on 26 October 2026. It is in this branch and it is not shipped. The nutrition label is checked against the final binary, after a proxy check, not against this note.
 
 Writing a workout while the Health sentence says we do not write workouts would be a rejection. The button stays on the drawing until the sentence is approved.
 
@@ -674,7 +688,7 @@ Build 73 is the binary uploading from `fb05f08`. It does not include Start a wal
 
 Put in build 74:
 
-- The version already on this branch. Outside is Good has Start a walk, Start a run, and Start a cycle. The live screen shows the map. The screen stays awake. Locking the phone pauses the outing. That matches the while-using sentence already on this branch. Do not replace that sentence in this binary.
+- Superseded. Outside is Good has Start a walk, Start a run, and Start a cycle. The live screen shows the map. Measuring continues when the phone is locked. The approved while-using sentence is the one in this build.
 - The Thumos updates switch, the 3, 5, and 10 minute choice, and the default on You. Lines stay on the screen. A spoken line, if he asks for one, plays only while that screen is open. Do not add the audio background mode, so a locked phone does not speak.
 - Start live session on Workouts, with Strength or Cardio, the same switch, and a clock. The heart-rate row says "No heart-rate source" until the Health share sentence in **Wording that needs your OK** is approved. No map. No reps.
 - Split times on the GPS outing. No new permission. The summary still has no path.

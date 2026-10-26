@@ -5,10 +5,10 @@
  */
 
 export const LOCATION_WHEN_IN_USE =
-  'Charioteer uses your location while the map is open, to show where you are, and during a walk, run, or cycle you start, to measure distance and pace. That measure runs only while the activity screen is open. Locking the phone pauses it. It is not tracked in the background. It is not shared with other people. A route is sent to the route service only if you turn route finding on. A route is stored only if you save it. A finished activity stores the distance, time, and pace on this phone, not the path.';
+  'Charioteer uses your location while you are on a walk, run or cycle to track distance and give you spoken updates, including when the screen is locked or you are using other apps. Your route stays on your phone and is not sent anywhere. The same permission shows where you are while the map is open. A route is sent to the route service only if you turn route finding on, and that request is the start and the destination, not this route.';
 
 export const LOCATION_PAGE_LINE =
-  'Location is optional. It is used only while this page is open, to show where you are. A route is sent to the route service only if you turn route finding on. It is not tracked in the background. It is not shared with other people. It is stored only if you save a route.';
+  'Location is optional. The map uses it while this page is open, to show where you are. A walk, run, or cycle you start can keep using it until you stop. A route is sent to the route service only if you turn route finding on. It is not shared with other people. It is stored only if you save a route.';
 
 export const OUTSIDE_SAFETY_LINE =
   'Not medical advice. If you feel unwell, contact your GP or NHS 111. Call 999 for chest pain, fainting, or breathlessness.';

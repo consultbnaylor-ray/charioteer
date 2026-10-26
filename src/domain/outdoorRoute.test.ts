@@ -127,12 +127,13 @@ describe('Outside is Good phase 1', () => {
       locationAlwaysAndWhenInUsePermission: false,
       locationAlwaysPermission: false,
       motionUsagePermission: "Charioteer does not use your motion or fitness data. The map component in the app can reference motion sensors, so Apple requires this note.",
-      isIosBackgroundLocationEnabled: false,
+      isIosBackgroundLocationEnabled: true,
       isAndroidBackgroundLocationEnabled: false,
       isAndroidForegroundServiceEnabled: false,
       isAndroidMotionActivityEnabled: false,
     });
     expect(JSON.stringify(app)).not.toMatch(/NSLocationAlways|ACCESS_BACKGROUND_LOCATION|FOREGROUND_SERVICE_LOCATION/);
+    expect(app.expo.ios.infoPlist?.UIBackgroundModes).toEqual(['location', 'audio']);
     expect(app.expo.android?.permissions ?? []).not.toContain('android.permission.ACCESS_BACKGROUND_LOCATION');
     expect(app.expo.android?.permissions ?? []).not.toContain('android.permission.FOREGROUND_SERVICE_LOCATION');
     const reader = readFileSync('src/location/whileUsing.ts', 'utf8');

@@ -1,48 +1,74 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
-import { AppState, Platform, useWindowDimensions, View } from 'react-native';
+import { Platform, Switch, useWindowDimensions, View } from 'react-native';
 
+import { claimLive, releaseLive } from '@/activity/oneSession';
+import { speakIfGated, stopSpeaking } from '@/activity/speakLine';
+import { readActivityUpdates, type ActivityUpdateChoice } from '@/activity/updateDefaults';
 import { saveActivitySummary, deleteActivitySummary } from '@/activity/summaries';
 import { useRepository, useSnapshot } from '@/data';
 import {
+  ACTIVITY_LOCATION_LINE,
+  AUDIO_DUCK_LINE,
   DIARY_HINT,
   FINISH_LINE,
+  HEART_FOREGROUND_LINE,
   LIVE_INTRO,
-  LOCK_PAUSE_NOTE,
-  SETUP_LOCK_LINE,
+  NO_HEART_SOURCE,
+  OTHER_SESSION_LINE,
+  PAUSED_LINE,
+  SPEECH_GATE_NOTE,
+  TIME_LIMIT_LINE,
+  TRACKING_ACTIVE_LINE,
   WAITING_FIX,
+  WATCH_HEART_HINT,
   activityLine,
   activityWord,
   applyFix,
   averagePaceSecPerKm,
+  beforeStartLine,
   clock,
+  currentSplitLabel,
   distanceLabel,
   extendTrack,
   isActivityKind,
   paceLabel,
+  shownHeart,
+  splitRow,
+  splitsForDistance,
   startLabel,
   summaryFrom,
   updatesDue,
   type ActivityFix,
   type ActivityKind,
   type ActivitySummary,
+  type SplitMark,
   type UpdateInterval,
 } from '@/domain/activitySession';
 import { isoDay } from '@/domain/dates';
 import { shownError } from '@/domain/errors';
+import { watchLiveReading, type LiveReading } from '@/health/liveReading';
 import { LOCATION_FIX_MESSAGE } from '@/location/whileUsing';
-import { readActivityFix } from '@/location/activityFix';
+import {
+  ensureActivityWatch,
+  pauseActivityWatch,
+  setOutingHooks,
+  stopActivityWatch,
+  type ActivityFixResult,
+} from '@/location/activityFix';
 import { GRATITUDE_DIARY_TICK } from '@/domain/sharedPhotos';
 import { ActivityGoodToKnow } from '@/ui/ActivityGoodToKnow';
 import { FootpathMap } from '@/ui/FootpathMap';
+import { useAppTheme } from '@/ui/theme';
 import { Button, Card, Choice, ErrorNote, Field, Screen, T } from '@/ui/ui';
 
 type LiveState = {
   activity: ActivityKind;
   routeId: string | null;
   routeTitle: string | null;
-  /** Accepted fixes for the line on the map. Memory only. Finish does not write this. */
+  /** Accepted fixes for the line on the map. Memory only. Stop does not write this. */
   track: { latitude: number; longitude: number }[];
+  splits: SplitMark[];
   intervalMin: UpdateInterval;
   spoken: boolean;
   movingMs: number;
@@ -51,8 +77,8 @@ type LiveState = {
   linesSent: number;
   lastLine: string | null;
   paused: boolean;
-  locked: boolean;
   runningSince: number | null;
+  limitFrom: number;
   triedFix: boolean;
   denied: boolean;
 };
@@ -67,11 +93,7 @@ function elapsed(live: LiveState, now = Date.now()): number {
 }
 
 function fold(live: LiveState, now = Date.now()): LiveState {
-  return { ...live, movingMs: elapsed(live, now), runningSince: null, paused: true };
-}
-
-function silence() {
-  void import('expo-speech').then((Speech) => Speech.stop()).catch(() => undefined);
+  return { ...live, movingMs: elapsed(live, now), runningSince: null, paused: true, track: [] };
 }
 
 function buzz() {
@@ -83,11 +105,7 @@ function buzz() {
 
 function say(text: string, spoken: boolean) {
   buzz();
-  if (!spoken || AppState.currentState !== 'active') return;
-  void import('expo-speech').then((Speech) => {
-    Speech.stop();
-    Speech.speak(text, { language: 'en-GB', rate: 0.95 });
-  }).catch(() => undefined);
+  speakIfGated(text, spoken);
 }
 
 function withLines(live: LiveState, movingMs: number): LiveState {
@@ -105,28 +123,39 @@ function withLines(live: LiveState, movingMs: number): LiveState {
   return { ...live, linesSent: sent, lastLine: last };
 }
 
+function clearPath(live: LiveState): LiveState {
+  live.track.splice(0, live.track.length);
+  return { ...live, track: [] };
+}
+
 export default function Activity() {
   const params = useLocalSearchParams<{ kind?: string }>();
   const opened = isActivityKind(params.kind) ? params.kind : 'walk';
   const router = useRouter();
+  const theme = useAppTheme();
   const repo = useRepository();
   const snap = useSnapshot();
   const routes = snap.outdoorRoutes ?? [];
   const [activity, setActivity] = useState<ActivityKind>(held?.live.activity ?? opened);
-  const [routeId, setRouteId] = useState<string | null>(null);
-  const [intervalMin, setIntervalMin] = useState<UpdateInterval>(held?.live.intervalMin ?? 5);
-  const [spoken, setSpoken] = useState(held?.live.spoken ?? true);
+  const [routeId, setRouteId] = useState<string | null>(held?.live.routeId ?? null);
+  const [updatesOn, setUpdatesOn] = useState(false);
+  const [intervalMin, setIntervalMin] = useState<3 | 5 | 10>(5);
+  const [spoken, setSpoken] = useState(false);
   const [following, setFollowing] = useState(true);
   const [phase, setPhase] = useState<'setup' | 'live' | 'finish'>(held ? 'live' : 'setup');
   const windowSize = useWindowDimensions();
   const [live, setLive] = useState<LiveState | null>(held?.live ?? null);
   const [summary, setSummary] = useState<ActivitySummary | null>(null);
+  const [endedByLimit, setEndedByLimit] = useState(false);
+  const [heart, setHeart] = useState<LiveReading>({ bpm: null, bpmAtMs: null, activeKcal: null });
   const liveRef = useRef(live);
   const draft = useRef(live);
+  const ending = useRef(false);
   const [note, setNote] = useState('');
   const [diary, setDiary] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
+  const [savedSplits, setSavedSplits] = useState<SplitMark[]>([]);
 
   function commit(next: LiveState | null) {
     draft.current = next;
@@ -134,17 +163,85 @@ export default function Activity() {
     setLive(next);
   }
 
+  function applyReading(result: ActivityFixResult) {
+    const current = draft.current;
+    if (!current || current.paused || ending.current) return;
+    if (!result.ok) {
+      commit({ ...current, triedFix: true, denied: result.reason === 'denied' });
+      return;
+    }
+    const step = applyFix(current.activity, current.anchor, result.fix);
+    const distanceM = current.distanceM + step.addedM;
+    const movingMs = elapsed(current);
+    const splits = splitsForDistance(distanceM, movingMs, current.splits);
+    commit(withLines({
+      ...current,
+      triedFix: true,
+      denied: false,
+      anchor: step.previous,
+      distanceM,
+      splits,
+      track: extendTrack(current.track, current.anchor, step),
+    }, movingMs));
+  }
+
+  async function endOuting(reason: 'stop' | 'limit') {
+    if (ending.current) return;
+    const current = liveRef.current;
+    if (!current) return;
+    ending.current = true;
+    stopSpeaking();
+    stopActivityWatch();
+    releaseLive('outing');
+    const folded = fold(clearPath(current));
+    setSavedSplits(current.splits.slice());
+    const saved = summaryFrom({
+      id: `${Date.now()}`,
+      activity: folded.activity,
+      date: isoDay(new Date()),
+      distanceM: folded.distanceM,
+      movingMs: folded.movingMs,
+    });
+    try {
+      await saveActivitySummary(saved);
+    } catch {
+      setError('Could not keep that summary on this phone.');
+    }
+    if (reason === 'stop') say(FINISH_LINE, current.spoken);
+    held = null;
+    commit(null);
+    setSummary(saved);
+    setEndedByLimit(reason === 'limit');
+    setPhase('finish');
+  }
+
   useEffect(() => {
-    held = phase === 'live' && live ? { live } : null;
+    setOutingHooks({
+      onFix: (result) => applyReading(result),
+      onLimit: () => { void endOuting('limit'); },
+    });
+    if (held?.live) claimLive('outing');
+    return () => {
+      pauseActivityWatch();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (phase === 'live' && live) held = { live };
+    else if (phase !== 'live') held = null;
   }, [phase, live]);
 
   useEffect(() => {
+    if (held) return undefined;
+    let gone = false;
+    void readActivityUpdates().then((choice: ActivityUpdateChoice) => {
+      if (gone) return;
+      setUpdatesOn(choice.enabled);
+      setIntervalMin(choice.intervalMin);
+      setSpoken(choice.spoken);
+    }).catch(() => undefined);
     return () => {
-      const current = liveRef.current;
-      if (!current || current.paused) return;
-      const paused = fold(current);
-      held = { live: paused };
-      silence();
+      gone = true;
     };
   }, []);
 
@@ -166,28 +263,12 @@ export default function Activity() {
   }, [phase, live?.paused]);
 
   useEffect(() => {
-    const sub = AppState.addEventListener('change', (next) => {
-      if (next !== 'background') return;
-      const current = draft.current;
-      if (!current) return;
-      if (current.paused) {
-        commit({ ...current, locked: true });
-        return;
-      }
-      silence();
-      commit({ ...fold(current), locked: true });
-    });
-    return () => sub.remove();
-  }, []);
-
-  useEffect(() => {
     if (phase !== 'live' || !live || live.paused) return undefined;
     const id = setInterval(() => {
       const current = draft.current;
-      if (!current || current.paused) return;
+      if (!current || current.paused || ending.current) return;
       const movingMs = elapsed(current);
-      const next = withLines({ ...current, movingMs, runningSince: Date.now() }, movingMs);
-      commit(next);
+      commit(withLines({ ...current, movingMs, runningSince: Date.now() }, movingMs));
     }, 1000);
     return () => clearInterval(id);
   }, [phase, live?.paused]);
@@ -195,54 +276,60 @@ export default function Activity() {
   useEffect(() => {
     if (phase !== 'live' || !live || live.paused || live.denied) return undefined;
     let stop = false;
-    async function poll() {
-      const result = await readActivityFix();
-      if (stop) return;
-      const current = draft.current;
-      if (!current || current.paused) return;
-      const next = !result.ok
-        ? { ...current, triedFix: true, denied: result.reason === 'denied' }
-        : (() => {
-          const step = applyFix(current.activity, current.anchor, result.fix);
-          return {
-            ...current,
-            triedFix: true,
-            denied: false,
-            anchor: step.previous,
-            distanceM: current.distanceM + step.addedM,
-            track: extendTrack(current.track, current.anchor, step),
-          };
-        })();
-      commit(next);
-    }
-    void poll();
-    const id = setInterval(() => { void poll(); }, 3000);
+    void ensureActivityWatch(live.limitFrom).then((result) => {
+      if (stop || ending.current) return;
+      if (!result.ok && result.reason === 'denied') applyReading(result);
+    });
     return () => {
       stop = true;
-      clearInterval(id);
+      pauseActivityWatch();
     };
-  }, [phase, live?.paused, live?.denied]);
+  }, [phase, live?.paused, live?.denied, live?.limitFrom]);
+
+  useEffect(() => {
+    if (phase !== 'live') return undefined;
+    let stop = () => undefined as void;
+    let gone = false;
+    void watchLiveReading(live?.limitFrom ?? Date.now(), false, (reading) => {
+      if (!gone) setHeart(reading);
+    }).then((cancel) => {
+      if (gone) cancel();
+      else stop = cancel;
+    }).catch(() => undefined);
+    return () => {
+      gone = true;
+      stop();
+    };
+  }, [phase, live?.limitFrom]);
 
   function start() {
+    const claimed = claimLive('outing');
+    if (!claimed.ok) {
+      setError(OTHER_SESSION_LINE);
+      return;
+    }
     const route = routes.find((item) => item.id === routeId);
+    const now = Date.now();
     const next: LiveState = {
       activity,
       routeId: route?.id ?? null,
       routeTitle: route?.title ?? null,
       track: [],
-      intervalMin,
-      spoken,
+      splits: [],
+      intervalMin: updatesOn ? intervalMin : 0,
+      spoken: updatesOn ? spoken : false,
       movingMs: 0,
       distanceM: 0,
       anchor: null,
       linesSent: 0,
       lastLine: null,
       paused: false,
-      locked: false,
-      runningSince: Date.now(),
+      runningSince: now,
+      limitFrom: now,
       triedFix: false,
       denied: false,
     };
+    ending.current = false;
     held = { live: next };
     commit(next);
     setFollowing(true);
@@ -252,37 +339,14 @@ export default function Activity() {
 
   function pauseOrResume() {
     const current = draft.current;
-    if (!current) return;
+    if (!current || ending.current) return;
     if (!current.paused) {
-      silence();
-      commit({ ...fold(current), locked: false });
+      stopSpeaking();
+      pauseActivityWatch();
+      commit({ ...current, movingMs: elapsed(current), runningSince: null, paused: true });
       return;
     }
-    commit({ ...current, paused: false, locked: false, runningSince: Date.now() });
-  }
-
-  async function finish() {
-    const current = liveRef.current;
-    if (!current) return;
-    silence();
-    const folded = fold(current);
-    const saved = summaryFrom({
-      id: `${Date.now()}`,
-      activity: folded.activity,
-      date: isoDay(new Date()),
-      distanceM: folded.distanceM,
-      movingMs: folded.movingMs,
-    });
-    try {
-      await saveActivitySummary(saved);
-    } catch {
-      setError('Could not keep that summary on this phone.');
-    }
-    if (spoken) say(FINISH_LINE, true);
-    held = null;
-    commit(null);
-    setSummary(saved);
-    setPhase('finish');
+    commit({ ...current, paused: false, runningSince: Date.now() });
   }
 
   async function done() {
@@ -308,6 +372,10 @@ export default function Activity() {
   }
 
   async function discard() {
+    stopActivityWatch();
+    releaseLive('outing');
+    if (liveRef.current) clearPath(liveRef.current);
+    held = null;
     if (summary) {
       try {
         await deleteActivitySummary(summary.id);
@@ -316,16 +384,16 @@ export default function Activity() {
         return;
       }
     }
-    held = null;
     router.back();
   }
 
   const moving = live ? elapsed(live) : 0;
   const pace = live ? averagePaceSecPerKm(live.distanceM, moving) : summary?.averagePaceSecPerKm ?? null;
+  const heartNow = shownHeart(heart.bpm, heart.bpmAtMs, Date.now());
 
   if (phase === 'finish' && summary) {
     return (
-      <Screen key="finish" eyebrow={activityWord(summary.activity)} title="Finished" intro="Kept on this phone. Don't keep this throws it away.">
+      <Screen key="finish" eyebrow={activityWord(summary.activity)} title="Finished" intro={endedByLimit ? TIME_LIMIT_LINE : "Kept on this phone. Don't keep this throws it away."}>
         <Card>
           <T variant="label">Distance</T>
           <T variant="title">{distanceLabel(summary.distanceM)}</T>
@@ -333,10 +401,13 @@ export default function Activity() {
           <T variant="title">{clock(summary.movingMs)}</T>
           <T variant="label">Average pace</T>
           <T variant="title">{paceLabel(summary.averagePaceSecPerKm)}</T>
+          {savedSplits.map((mark, index) => (
+            <T key={mark.kilometre} variant="muted">{splitRow(mark, index === 0 ? 0 : savedSplits[index - 1].movingMs)}</T>
+          ))}
         </Card>
         <Card>
           <T variant="label">Thumos</T>
-          <T>{FINISH_LINE}</T>
+          <T>{endedByLimit ? TIME_LIMIT_LINE : FINISH_LINE}</T>
           <Field label="A note" value={note} onChangeText={setNote} placeholder="A few words, if you want" multiline />
           <Choice label={GRATITUDE_DIARY_TICK} selected={diary} onPress={() => setDiary((value) => !value)} />
           <T variant="muted">{DIARY_HINT}</T>
@@ -361,6 +432,7 @@ export default function Activity() {
       ? { latitude: live.anchor.latitude, longitude: live.anchor.longitude }
       : null;
     const mapHeight = windowSize.width < 360 ? 200 : 230;
+    const into = currentSplitLabel(live.distanceM);
     return (
       <Screen
         key="live"
@@ -369,13 +441,12 @@ export default function Activity() {
         intro={LIVE_INTRO}
         footer={(
           <View style={{ gap: 8 }}>
-            {live.locked ? <T>{LOCK_PAUSE_NOTE}</T> : null}
             <View style={{ flexDirection: 'row', gap: 8 }}>
               <View style={{ flex: 1 }}>
                 <Button label={live.paused ? 'Resume' : 'Pause'} onPress={pauseOrResume} />
               </View>
               <View style={{ flex: 1 }}>
-                <Button label="Finish" tone="quiet" onPress={() => { void finish(); }} />
+                <Button label="Stop" tone="quiet" onPress={() => { void endOuting('stop'); }} />
               </View>
             </View>
           </View>
@@ -407,10 +478,22 @@ export default function Activity() {
               <T variant="title" numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6}>{paceLabel(pace)}</T>
             </View>
           </View>
+          <T variant="label">Heart rate</T>
+          <T>{heartNow.label}{heartNow.label !== NO_HEART_SOURCE ? ' · Apple Watch' : ''}{heartNow.age ? ` · ${heartNow.age}` : ''}</T>
+          {heartNow.label === NO_HEART_SOURCE ? <T variant="muted">{WATCH_HEART_HINT}</T> : null}
+          {heartNow.warning ? <T variant="muted">{heartNow.warning}</T> : null}
+          <T variant="muted">{HEART_FOREGROUND_LINE}</T>
+          {live.splits.map((mark, index) => (
+            <T key={mark.kilometre} variant="muted">{splitRow(mark, index === 0 ? 0 : live.splits[index - 1].movingMs)}</T>
+          ))}
+          {into ? <T variant="muted">{into}</T> : null}
           {live.triedFix && live.anchor == null && !live.denied ? <T variant="muted">{WAITING_FIX}</T> : null}
           {live.denied ? <T variant="muted">{LOCATION_FIX_MESSAGE}</T> : null}
+          {live.paused ? <T variant="muted">{PAUSED_LINE}</T> : <T variant="muted">{TRACKING_ACTIVE_LINE}</T>}
           <T variant="label">Thumos</T>
           <T>{live.lastLine ?? quiet}</T>
+          {live.spoken ? <T variant="muted">{AUDIO_DUCK_LINE}</T> : null}
+          {live.spoken ? <T variant="muted">{SPEECH_GATE_NOTE}</T> : null}
           {live.routeTitle ? <T variant="muted">Reminder: {live.routeTitle}. Turns are not spoken.</T> : null}
         </Card>
         <ActivityGoodToKnow kind="live" />
@@ -435,24 +518,40 @@ export default function Activity() {
         ))}
       </Card>
       <Card>
-        <T variant="label">Updates from Thumos</T>
-        {([
-          [3, '3 min'],
-          [5, '5 min'],
-          [10, '10 min'],
-          [0, 'Off'],
-        ] as const).map(([value, label]) => (
-          <Choice key={label} label={label} selected={intervalMin === value} onPress={() => setIntervalMin(value)} />
-        ))}
-        <Choice label="Spoken and on screen" selected={spoken} onPress={() => setSpoken(true)} />
-        <Choice label="On screen only" selected={!spoken} onPress={() => setSpoken(false)} />
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 12, alignItems: 'center' }}>
+          <T style={{ flex: 1 }}>Thumos updates</T>
+          <Switch
+            accessibilityLabel="Thumos updates"
+            value={updatesOn}
+            onValueChange={setUpdatesOn}
+            trackColor={{ true: theme.colors.ink, false: theme.colors.line }}
+            thumbColor={theme.colors.surface}
+          />
+        </View>
+        {updatesOn ? (
+          <>
+            {([
+              [3, '3 minutes'],
+              [5, '5 minutes'],
+              [10, '10 minutes'],
+            ] as const).map(([value, label]) => (
+              <Choice key={label} label={label} selected={intervalMin === value} onPress={() => setIntervalMin(value)} />
+            ))}
+            <Choice label="Spoken and on screen" selected={spoken} onPress={() => setSpoken(true)} />
+            <Choice label="On screen only" selected={!spoken} onPress={() => setSpoken(false)} />
+          </>
+        ) : <T variant="muted">Off for this outing. The default on You stays as it is.</T>}
         <T variant="muted">The lines are written on this phone. Pace and time are filled in here. Nothing is sent.</T>
+        {updatesOn && spoken ? <T variant="muted">{AUDIO_DUCK_LINE}</T> : null}
+        {updatesOn && spoken ? <T variant="muted">{SPEECH_GATE_NOTE}</T> : null}
       </Card>
       <Card>
+        <T>{beforeStartLine()}</T>
         <Button label="Start" onPress={start} />
         <Button label="Not now" tone="quiet" onPress={() => router.back()} />
-        <T variant="muted">{SETUP_LOCK_LINE}</T>
+        <T variant="muted">{ACTIVITY_LOCATION_LINE}</T>
       </Card>
+      <ErrorNote>{error}</ErrorNote>
       <ActivityGoodToKnow kind="setup" />
     </Screen>
   );
