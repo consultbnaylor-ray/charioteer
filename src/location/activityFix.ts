@@ -195,15 +195,16 @@ export async function ensureActivityWatch(
   startedAtMs: number,
   deps?: ActivityWatchDeps,
   now: () => number = Date.now,
+  load: () => Promise<ActivityWatchDeps> = loadDeps,
 ): Promise<ActivityFixResult> {
   armLimit(startedAtMs, now);
-  const location = deps ?? await loadDeps();
-  if (deps == null || location.subscribeForeground) {
-    await bindForeground(location.subscribeForeground, now);
-  }
-  if (expireIfDue(now())) return { ok: false, reason: 'waiting' };
-  if (watching) return { ok: false, reason: 'waiting' };
   try {
+    const location = deps ?? await load();
+    if (deps == null || location.subscribeForeground) {
+      await bindForeground(location.subscribeForeground, now);
+    }
+    if (expireIfDue(now())) return { ok: false, reason: 'waiting' };
+    if (watching) return { ok: false, reason: 'waiting' };
     const current = await location.getForegroundPermissionsAsync();
     const status = current.status === 'granted'
       ? current.status

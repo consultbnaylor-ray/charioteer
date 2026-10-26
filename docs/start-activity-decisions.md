@@ -9,7 +9,7 @@ Still not approved, and not in this build: Always location, Garmin or Bluetooth,
 What the branch does:
 
 - A walk, run, or cycle keeps a while-using location watch going when the phone is locked, when another app is in front, and when the outing screen is left. The watch is `watchPositionAsync`. It does not call a background-permission API. On iOS the watch streamer is patched so a caller can set fitness activity type, the blue location mark, and standard updates only, and only when the binary lists the location background mode. It does not start significant-change or region monitoring. Accuracy is High, about 10 metres, with a 10 metre distance filter. iOS is told not to pause updates while the person is standing still. Stop, discard, the six-hour limit, and process death are what stop the watch.
-- The path stays in memory and is cleared on Stop, on discard, and when the process ends. It is not saved, logged, or sent. Route finding is not called with it. No live-tracking route goes to HeiGIT.
+- The outing path stays in memory and is cleared on Stop, on discard, and when the process ends. The outing path is not saved, logged, or sent. Route finding is not called with it. No live-tracking route goes to HeiGIT.
 - The time limit is `OUTING_TIME_LIMIT_MS`, six hours. Ben confirmed that length on 26 October 2026. Pause does not extend it. It is checked on each location fix, when the app returns to the foreground, and on a one-second timer. Any of those stops the watch. A forgotten outing is the failure mode the blue mark is there to show, and the time limit is what ends it.
 - Thumos updates are a switch, then 3, 5, or 10 minutes, and spoken or on screen only. The outing copies the default from You. That default starts off.
 - Spoken lines are on for TestFlight when the person picks spoken updates. The `audio` background mode stays. On screen only never starts an audio session. There is no silent keepalive. App Store submission is blocked until a real phone shows music ducks, then returns to full volume after each line, with no leftover audio session, including a phone call and Bluetooth headphones.
@@ -21,6 +21,24 @@ Items 1, 2, and 8 in the short recommendation below described an earlier awake-s
 Later on 26 October 2026 Ben kept the audio background mode and turned speech on for TestFlight. He also re-approved the Health share sentence with the locked-phone heart-rate clause removed. The location sentence still says spoken updates. Ben approved the Good to know battery line on 26 October 2026, as written: "A finer location fix, about 10 metres, uses more battery than a coarse one. It stops when you tap Stop, or after six hours." iOS automatic pause of location updates is off, because a rest stop was stalling distance. Stop and the six-hour limit still end the session.
 
 Hard release gate: App Store submission is blocked until a real phone shows music ducks, then returns to full volume after each line, with no leftover audio session, including a phone call and Bluetooth headphones. On screen only never starts an audio session. There is no silent keepalive. `APP_STORE_SPEECH_DUCK_GATE_PASSED` stays false until that phone test is recorded in this note and in `docs/app-store-activity-review.md`.
+
+`EXPO_PUBLIC_BUILD_PROFILE` drives `TESTFLIGHT_SPEECH_ON` and the `audio` entry in `UIBackgroundModes`. Unset, or `testflight`, is this build: speech on, and `audio` stays. `store`, `app-store`, and `production` keep speech off and omit `audio` until the gate above is true. The ship check exits 1 for a store-profile target while the gate is false. Ben's decision stands: build 74 for TestFlight testing keeps audio and speech on.
+
+Phone test checklist, not done:
+
+- Blue mark and fixes with the screen locked
+- Force-quit stops it
+- Stop stops it
+- 6h limit (a debug short limit is ok)
+- A call during an outing
+- Permission denied, then granted
+- No stalls
+- Bluetooth headphones
+- Music ducking and release with speech on
+
+Proxy check result: not done. The packet check includes tile requests. After the phone test, fill this slot in this form: proxy check done on build X, no coordinates in non-tile requests. The nutrition label stays open until that result is filled.
+
+New wording for Ben. Not approved. Outing in progress banner, on Outside is Good and the home screen, with a Stop button: "Outing in progress. Measuring is still on. Open it to see the map, or tap Stop to end it."
 
 A real iOS compile is still required before TestFlight can prove any of this. The compile has to show: the location patch builds; High accuracy is about 10 metres and is not Best-for-navigation; `pausesLocationUpdatesAutomatically` is false; the fitness activity type and the blue mark are set only when the binary lists the location background mode; no significant-change monitoring; leaving the outing screen does not stop measuring; Stop, discard, the six-hour limit, and force-quit do; speech uses iOS's own speech session so music can duck, and that duck is not proven until the phone test above.
 
@@ -591,7 +609,7 @@ Do not add `NSLocationAlwaysAndWhenInUseUsageDescription`. Do not add `NSLocatio
 - Before the location prompt, and before Start: "You can lock the phone, take a call, or open another app. Measuring continues until you tap Stop, or for six hours. A blue location mark shows while it is on. The route stays on this phone. If the app is closed, that route is lost."
 - On the live screen: "You can lock the phone. Measuring continues until you tap Stop."
 - When they come back and it has been running: "Tracking is active. The blue location mark stays on until you tap Stop."
-- In Good to know: "Distance and pace keep going after you lock the phone, until you tap Stop or six hours pass. The route stays in memory for that outing. It is cleared when you stop or discard it. If the app is closed, it is lost. It is not sent."
+- In Good to know: "Distance and pace keep going after you lock the phone, until you tap Stop or six hours pass. The route stays in memory for that outing. It is cleared when you stop or discard it. If the app is closed, it is lost. The outing path is not sent."
 - Beside the spoken choice: "A spoken line lowers your music for a moment, then lets it return. The phone speaks. Nothing is recorded."
 - The end control: "Stop"
 - Pause stays "Pause", and "Resume" after a pause. Pause holds the clock. Stop ends the outing. There is no notification for Stop.

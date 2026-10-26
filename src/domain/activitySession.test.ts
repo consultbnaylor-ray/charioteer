@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 
 import { claimLive, releaseLive, resetLiveClaim } from '@/activity/oneSession';
 import { APP_STORE_SPEECH_DUCK_GATE_PASSED, TESTFLIGHT_SPEECH_ON } from '@/activity/speakLine';
+import { backgroundModesForBuild, speechOnForProfile } from '@/config/speechProfile';
 import { parseActivityUpdates } from '@/activity/updateDefaults';
 import { LOCATION_WHEN_IN_USE } from '@/domain/outdoorRoute';
 import { followCamera } from '@/ui/mapCamera';
@@ -17,6 +18,7 @@ import {
   MAX_ACCURACY_M,
   MIN_PACE_DISTANCE_M,
   NO_HEART_SOURCE,
+  OUTING_IN_PROGRESS_LINE,
   OUTING_TIME_LIMIT_MS,
   SPEED_CAP_MPS,
   TIME_LIMIT_LINE,
@@ -158,8 +160,20 @@ describe('activity session', () => {
     expect(fix).not.toMatch(/getCurrentPositionAsync|requestBackground|startLocationUpdates|BestForNavigation|NSLocationAlways|TaskManager/);
     expect(TESTFLIGHT_SPEECH_ON).toBe(true);
     expect(APP_STORE_SPEECH_DUCK_GATE_PASSED).toBe(false);
-    expect(speech).toContain('TESTFLIGHT_SPEECH_ON = true');
+    expect(speech).toContain('speechOnForProfile');
+    expect(speech).toContain('EXPO_PUBLIC_BUILD_PROFILE');
     expect(speech).toContain('APP_STORE_SPEECH_DUCK_GATE_PASSED = false');
+    expect(speechOnForProfile(undefined, false)).toBe(true);
+    expect(speechOnForProfile('testflight', false)).toBe(true);
+    expect(speechOnForProfile('store', false)).toBe(false);
+    expect(speechOnForProfile('app-store', false)).toBe(false);
+    expect(speechOnForProfile('production', false)).toBe(false);
+    expect(speechOnForProfile('store', true)).toBe(true);
+    expect(backgroundModesForBuild('testflight', ['location', 'audio'], false)).toEqual(['location', 'audio']);
+    expect(backgroundModesForBuild('store', ['location', 'audio'], false)).toEqual(['location']);
+    expect(backgroundModesForBuild('store', ['location', 'audio'], true)).toEqual(['location', 'audio']);
+    expect(readFileSync('app.config.ts', 'utf8')).toContain('EXPO_PUBLIC_BUILD_PROFILE');
+    expect(readFileSync('app.config.ts', 'utf8')).toContain('backgroundModesForBuild');
     expect(speech).toContain('useApplicationAudioSession: false');
     expect(speech).not.toContain('setAudioModeAsync');
     expect(speech).not.toMatch(/Sound\.create|silent:\s*true/);
@@ -180,6 +194,11 @@ describe('activity session', () => {
     expect(outside.indexOf('label="Start a run"')).toBeLessThan(outside.indexOf('label="Start a cycle"'));
     expect(outside.indexOf('label="Start a cycle"')).toBeLessThan(outside.indexOf('label="Open the map"'));
     expect(outside).toContain('SUMMARIES_HINT');
+    expect(outside).toContain('<OutingInProgressBanner />');
+    expect(readFileSync('src/app/(main)/home.tsx', 'utf8')).toContain('<OutingInProgressBanner />');
+    expect(OUTING_IN_PROGRESS_LINE).toBe('Outing in progress. Measuring is still on. Open it to see the map, or tap Stop to end it.');
+    expect(readFileSync('src/ui/OutingInProgressBanner.tsx', 'utf8')).toContain('OUTING_IN_PROGRESS_LINE');
+    expect(readFileSync('src/ui/OutingInProgressBanner.tsx', 'utf8')).toContain('label="Stop"');
     expect(profile.indexOf('<ActivityUpdatesCard />')).toBeGreaterThan(profile.indexOf('Appearance'));
     expect(profile.indexOf('<ActivityUpdatesCard />')).toBeLessThan(profile.indexOf('>Notifications<'));
     expect(readFileSync('src/ui/ActivityUpdatesCard.tsx', 'utf8')).toContain('Activity updates');
@@ -191,7 +210,7 @@ describe('activity session', () => {
     expect(LIVE_INTRO).toBe('You can lock the phone. Measuring continues until you tap Stop.');
     expect(beforeStartLine()).toContain('six hours');
     expect(ACTIVITY_LOCATION_LINE).toContain('six hours');
-    expect(ACTIVITY_LOCATION_LINE).toContain('It is not sent.');
+    expect(ACTIVITY_LOCATION_LINE).toContain('The outing path is not sent.');
     expect(AUDIO_DUCK_LINE).toBe('A spoken line lowers your music for a moment, then lets it return. The phone speaks. Nothing is recorded.');
     expect(LOCATION_WHEN_IN_USE).toContain('A route is sent to the route service only if you turn route finding on');
     expect(LOCATION_WHEN_IN_USE).not.toContain('NSLocationAlways');

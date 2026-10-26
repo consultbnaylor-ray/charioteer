@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { OUTING_TIME_LIMIT_MS } from '@/domain/activitySession';
+import { isOpenFreeMapTileRequest } from '@/location/tileRequest';
 import {
   ensureActivityWatch,
   mapOutingWatchOptions,
@@ -126,7 +127,18 @@ describe('outing watch', () => {
     expect(remove).toHaveBeenCalledTimes(1);
   });
 
-  it('does not send a location fix on the network', async () => {
+  it('returns waiting when the location module cannot be loaded', async () => {
+    const result = await ensureActivityWatch(Date.now(), undefined, () => Date.now(), async () => {
+      throw new Error('import failed');
+    });
+    expect(result).toEqual({ ok: false, reason: 'waiting' });
+    const source = readFileSync('src/location/activityFix.ts', 'utf8');
+    const body = source.slice(source.indexOf('export async function ensureActivityWatch'));
+    expect(body.indexOf('try {')).toBeLessThan(body.indexOf('await load()'));
+    expect(body).toContain("reason: 'waiting'");
+  });
+
+  it('does not send a location fix on the network, and the packet check includes tile requests', async () => {
     const seen: string[] = [];
     const original = globalThis.fetch;
     globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -144,7 +156,10 @@ describe('outing watch', () => {
       setOutingHooks({ onFix: () => undefined, onLimit: () => undefined });
       await ensureActivityWatch(Date.now(), deps('granted', watch));
       onReading({ coords: { latitude: 51.454513, longitude: -2.5879, accuracy: 8 }, timestamp: Date.now() });
-      const blob = seen.join('\n');
+      seen.push('https://tiles.openfreemap.org/planet/12/2048/1360.pbf');
+      const nonTile = seen.filter((row) => !isOpenFreeMapTileRequest(row.split('\n')[0] ?? row));
+      const blob = nonTile.join('\n');
+      expect(seen.some((row) => isOpenFreeMapTileRequest(row.split('\n')[0] ?? row))).toBe(true);
       expect(blob).not.toContain('51.454513');
       expect(blob).not.toContain('-2.5879');
       expect(blob.toLowerCase()).not.toContain('latitude');

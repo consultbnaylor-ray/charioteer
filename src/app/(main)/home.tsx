@@ -30,6 +30,7 @@ import { usePendingPress } from '@/ui/pendingAction';
 import { Button, Card, EditMark, EditSheet, ErrorNote, Field, Screen, T } from '@/ui/ui';
 import { ScrollTarget } from '@/ui/ScrollTarget';
 import { YourGoal } from '@/ui/YourGoal';
+import { OutingInProgressBanner } from '@/ui/OutingInProgressBanner';
 import { WalkThisOff } from '@/ui/WalkThisOff';
 import { radius, useAppTheme } from '@/ui/theme';
 
@@ -156,6 +157,7 @@ export default function Home() {
 
   return (
     <Screen eyebrow={greeting(now)} title={profile.displayName || 'Friend'} refreshing={refreshing} onRefresh={() => void pullToRefresh()}>
+      <OutingInProgressBanner />
       <ScrollTarget id="sober">
       {sober ? (
       <View style={{ gap: 8 }}>

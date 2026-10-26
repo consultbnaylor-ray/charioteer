@@ -1,16 +1,19 @@
+import { speechOnForProfile } from '@/config/speechProfile';
+
 /**
- * Spoken Thumos lines for TestFlight build 74.
- * `TESTFLIGHT_SPEECH_ON` starts the phone's voice when the person picks spoken updates.
- * `APP_STORE_SPEECH_DUCK_GATE_PASSED` stays false until a real phone shows music ducks,
- * then returns to full volume after each line, with no leftover audio session,
- * including a phone call and Bluetooth headphones.
- * App Store submission is blocked while that gate is false.
+ * Spoken Thumos lines.
+ * `EXPO_PUBLIC_BUILD_PROFILE=store` (also `app-store` or `production`) keeps speech off
+ * until `APP_STORE_SPEECH_DUCK_GATE_PASSED` is true. Unset, or `testflight`, is build 74:
+ * speech stays on.
  * On screen only never starts a session. There is no silent keepalive.
  */
-export const TESTFLIGHT_SPEECH_ON = true;
-
 /** Hard App Store release gate. Do not set this true until the phone ducking test is recorded. */
 export const APP_STORE_SPEECH_DUCK_GATE_PASSED = false;
+
+export const TESTFLIGHT_SPEECH_ON = speechOnForProfile(
+  process.env.EXPO_PUBLIC_BUILD_PROFILE,
+  APP_STORE_SPEECH_DUCK_GATE_PASSED,
+);
 
 export function stopSpeaking(): void {
   if (!TESTFLIGHT_SPEECH_ON) return;

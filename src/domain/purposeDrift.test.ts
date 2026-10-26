@@ -81,6 +81,19 @@ describe('purpose strings stay on the approved text', () => {
     expect(readFileSync('docs/app-store-activity-review.md', 'utf8')).toContain(gate);
     expect(readFileSync('docs/app-store-activity-review.md', 'utf8')).toContain('While Using');
     expect(readFileSync('docs/privacy.md', 'utf8')).toContain('on-device text to speech');
+    const tiles = 'the map downloads tiles for the area shown from OpenFreeMap, which can reveal the approximate area, not the path or your identity';
+    for (const path of ['docs/dpia-location.md', 'docs/privacy.md', 'docs/privacy.html']) {
+      const note = readFileSync(path, 'utf8');
+      expect(note).toContain(tiles);
+      expect(note).toContain('The outing path is not sent');
+    }
+    expect(readFileSync('docs/dpia-location.md', 'utf8')).toContain('https://openfreemap.org/privacy/');
+    expect(readFileSync('docs/dpia-location.md', 'utf8')).toContain('Hyperknot Software Kft.');
+    expect(readFileSync('docs/start-activity-decisions.md', 'utf8')).toContain('proxy check done on build X, no coordinates in non-tile requests');
+    expect(readFileSync('docs/start-activity-decisions.md', 'utf8')).toContain('The packet check includes tile requests.');
+    expect(readFileSync('docs/start-activity-decisions.md', 'utf8')).toContain('New wording for Ben. Not approved.');
+    expect(readFileSync('docs/start-activity-decisions.md', 'utf8')).toContain('Music ducking and release with speech on');
+    expect(readFileSync('docs/app-store-activity-review.md', 'utf8')).toContain('External TestFlight groups go through Beta App Review. Guideline 2.5.4 applies to that review. Internal testers do not go through Beta App Review.');
     expect(readFileSync('docs/privacy.md', 'utf8')).toContain('No live-tracking route is sent to HeiGIT');
   });
 });

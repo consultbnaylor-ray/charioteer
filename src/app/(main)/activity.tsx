@@ -91,8 +91,54 @@ const liveRef: { current: LiveState | null } = { current: null };
 const ending = { current: false };
 let screenMounted = false;
 let pushLiveState: ((next: LiveState | null) => void) | null = null;
+let stopFromScreen: (() => void) | null = null;
 let clockTimer: ReturnType<typeof setInterval> | null = null;
 let pendingFinish: { summary: ActivitySummary; limit: boolean; splits: SplitMark[] } | null = null;
+const presenceListeners = new Set<() => void>();
+
+export function runningOutingKind(): ActivityKind | null {
+  return held?.live.activity ?? null;
+}
+
+export function subscribeOutingPresence(listener: () => void): () => void {
+  presenceListeners.add(listener);
+  return () => {
+    presenceListeners.delete(listener);
+  };
+}
+
+function notifyOutingPresence(): void {
+  for (const listener of presenceListeners) listener();
+}
+
+/** Stops a live outing from Outside is Good or home. The outing screen uses its own Stop. */
+export function stopRunningOuting(): void {
+  if (stopFromScreen) {
+    stopFromScreen();
+    return;
+  }
+  const current = liveRef.current;
+  if (!current || ending.current) return;
+  ending.current = true;
+  stopSpeaking();
+  stopActivityWatch();
+  releaseLive('outing');
+  const folded = fold(clearPath(current));
+  const saved = summaryFrom({
+    id: `${Date.now()}`,
+    activity: folded.activity,
+    date: isoDay(new Date()),
+    distanceM: folded.distanceM,
+    movingMs: folded.movingMs,
+  });
+  void saveActivitySummary(saved).catch(() => undefined);
+  say(FINISH_LINE, current.spoken);
+  stopOutingClock();
+  pendingFinish = { summary: saved, limit: false, splits: current.splits.slice() };
+  held = null;
+  publish(null);
+  notifyOutingPresence();
+}
 
 function publish(next: LiveState | null) {
   draft.current = next;
@@ -236,6 +282,7 @@ export default function Activity() {
     if (reason === 'stop') say(FINISH_LINE, current.spoken);
     stopOutingClock();
     held = null;
+    notifyOutingPresence();
     if (!screenMounted) {
       pendingFinish = { summary: saved, limit: reason === 'limit', splits };
       publish(null);
@@ -251,6 +298,7 @@ export default function Activity() {
   useEffect(() => {
     screenMounted = true;
     pushLiveState = setLive;
+    stopFromScreen = () => { void endOuting('stop'); };
     setOutingHooks({
       onFix: (result) => applyReading(result),
       onLimit: () => { void endOuting('limit'); },
@@ -262,6 +310,7 @@ export default function Activity() {
     return () => {
       screenMounted = false;
       pushLiveState = null;
+      stopFromScreen = null;
     };
   }, []);
 
@@ -360,6 +409,7 @@ export default function Activity() {
     ending.current = false;
     held = { live: next };
     commit(next);
+    notifyOutingPresence();
     ensureOutingClock();
     setFollowing(true);
     setPhase('live');
@@ -411,6 +461,7 @@ export default function Activity() {
     if (liveRef.current) clearPath(liveRef.current);
     held = null;
     publish(null);
+    notifyOutingPresence();
     if (summary) {
       try {
         await deleteActivitySummary(summary.id);

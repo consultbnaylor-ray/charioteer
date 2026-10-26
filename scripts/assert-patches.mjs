@@ -98,8 +98,14 @@ if (existsSync(speechPath) && existsSync(sheetPath) && existsSync(reviewPath)) {
     console.error('APP_STORE_SPEECH_DUCK_GATE_PASSED is true, but the phone ducking test is not recorded in the sheet and the review notes.');
     process.exit(1);
   }
+  const profile = (process.env.EXPO_PUBLIC_BUILD_PROFILE ?? '').trim().toLowerCase();
+  const storeTarget = profile === 'store' || profile === 'app-store' || profile === 'production';
+  if (storeTarget && !gatePassed) {
+    console.error('Store profile target: speech stays off and the audio background mode is omitted until APP_STORE_SPEECH_DUCK_GATE_PASSED is true. EXPO_PUBLIC_BUILD_PROFILE is ' + profile + '.');
+    process.exit(1);
+  }
   if (!gatePassed) {
-    console.log('NOTE: App Store submission is blocked until a real phone passes the speech ducking test. TestFlight speech is on.');
+    console.log('NOTE: App Store submission is blocked until a real phone passes the speech ducking test. TestFlight speech stays on. A store profile exits 1 while the gate is false.');
   }
 }
 

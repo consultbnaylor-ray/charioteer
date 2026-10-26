@@ -55,7 +55,7 @@ export function beforeStartLine(limitMs = OUTING_TIME_LIMIT_MS): string {
 }
 
 export function activityLocationLine(limitMs = OUTING_TIME_LIMIT_MS): string {
-  return `Distance and pace keep going after you lock the phone, until you tap Stop or ${limitPhrase(limitMs)} pass. The route stays in memory for that outing. It is cleared when you stop or discard it. If the app is closed, it is lost. It is not sent.`;
+  return `Distance and pace keep going after you lock the phone, until you tap Stop or ${limitPhrase(limitMs)} pass. The route stays in memory for that outing. It is cleared when you stop or discard it. If the app is closed, it is lost. The outing path is not sent.`;
 }
 
 export const ACTIVITY_LOCATION_LINE = activityLocationLine();
@@ -65,6 +65,10 @@ export const BATTERY_NOTE =
   `A finer location fix, about 10 metres, uses more battery than a coarse one. It stops when you tap Stop, or after ${limitPhrase()}.`;
 
 export const TRAFFIC_LINE = 'Stay aware of traffic, paths, and other people.';
+
+/** New wording for Ben. Not approved. Shown with a Stop button while an outing is still measuring. */
+export const OUTING_IN_PROGRESS_LINE =
+  'Outing in progress. Measuring is still on. Open it to see the map, or tap Stop to end it.';
 
 export const WAITING_FIX = 'Waiting for a clearer fix.';
 

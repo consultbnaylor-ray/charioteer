@@ -17,6 +17,7 @@ import {
 import { shownError } from '@/domain/errors';
 import { OUTSIDE_SECTION_LABEL, SHOW_WALK_THIS_OFF } from '@/domain/outsideSection';
 import { OutsideFooter } from '@/ui/OutsideFooter';
+import { OutingInProgressBanner } from '@/ui/OutingInProgressBanner';
 import { Button, Card, ErrorNote, Screen, T } from '@/ui/ui';
 
 export default function Outside() {
@@ -54,6 +55,7 @@ export default function Outside() {
 
   return (
     <Screen eyebrow="Tools" title={OUTSIDE_SECTION_LABEL} intro="A walk from the menu.">
+      <OutingInProgressBanner />
       <Card>
         <Button label="Find a route" onPress={() => router.push('/find-route' as never)} />
         <Button label="Start a walk" onPress={() => router.push('/activity?kind=walk' as never)} />
