@@ -360,7 +360,51 @@ function isRouteNetworkError(error: unknown): boolean {
   if (name === 'FunctionsHttpError' || name === 'FunctionsRelayError') return false;
   const message = (error as { message?: unknown }).message;
   const text = typeof message === 'string' ? message : '';
-  return /failed to fetch|network request failed|load failed|network error|failed to send a request to the edge function/i.test(text);
+  return /failed to fetch|network request failed|load failed|network error|network connection was lost|failed to send a request to the edge function/i.test(text);
+}
+
+/** One pause, then one fresh connection. A second failure is shown as it is. */
+export const ROUTE_INVOKE_RETRY_MS = 300;
+
+/**
+ * True only when the phone never got an HTTP answer.
+ * A 4xx, a 401, and a rate limit are answers. They are not retried.
+ */
+export function routeInvokeShouldRetry(error: unknown): boolean {
+  if (error == null || statusOf(error) != null) return false;
+  if (isRouteNetworkError(error)) return true;
+  if (typeof error !== 'object') return false;
+  const name = (error as { name?: unknown }).name;
+  if (name === 'AbortError' || name === 'TimeoutError') return true;
+  const message = (error as { message?: unknown }).message;
+  const text = typeof message === 'string' ? message : '';
+  return /timed out|\btimeout\b/i.test(text);
+}
+
+/** The retry closes the dead socket. The first attempt keeps the pooled connection. */
+export function routeInvokeHeaders(attempt: number): Record<string, string> | undefined {
+  if (attempt === 0) return undefined;
+  return { Connection: 'close', 'Cache-Control': 'no-store' };
+}
+
+type RouteInvokeResult<T> = { data: T; error: unknown };
+
+/** One extra invoke after a network failure. The second result is the one that is used. */
+export async function retryRouteInvoke<T>(
+  send: (attempt: number) => Promise<RouteInvokeResult<T>>,
+  sleep: (ms: number) => Promise<void> = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+): Promise<RouteInvokeResult<T>> {
+  let first: RouteInvokeResult<T>;
+  try {
+    first = await send(0);
+  } catch (error) {
+    if (!routeInvokeShouldRetry(error)) throw error;
+    await sleep(ROUTE_INVOKE_RETRY_MS);
+    return send(1);
+  }
+  if (!routeInvokeShouldRetry(first.error)) return first;
+  await sleep(ROUTE_INVOKE_RETRY_MS);
+  return send(1);
 }
 
 export function parseRoutePlaces(value: unknown): RoutePlace[] {
