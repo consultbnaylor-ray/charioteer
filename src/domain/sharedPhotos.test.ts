@@ -2,6 +2,8 @@ import { readFileSync } from 'node:fs';
 
 import { describe, expect, it } from 'vitest';
 
+import { headerCameraTap } from '@/ui/headerCamera';
+
 import {
   ALLOW_SAVE_LABEL,
   AUTO_SAVE_LABEL,
@@ -103,12 +105,21 @@ describe('Shared Photos folder', () => {
     expect(photos).not.toContain('ALBUM_HONEST_NOTE');
     expect(photos).toContain('{SCREENSHOT_NOTE}');
     expect(photos).toContain('{SENDER_SAVE_NOTE}');
-    expect(sheet).toContain('export const HEADER_CAMERA_GLYPH = 22');
-    expect(sheet).toContain('Math.max(44');
+    expect(sheet).toContain('HEADER_CAMERA_GLYPH');
+    expect(sheet).toContain('headerCameraTap(theme.scale)');
+    expect(readFileSync('src/ui/headerCamera.ts', 'utf8')).toContain('export const HEADER_CAMERA_GLYPH = 22');
     expect(sheet).not.toMatch(/NSCameraUsageDescription|NSPhotoLibraryUsageDescription/);
+    expect(headerCameraTap(1)).toBe(44);
+    expect(headerCameraTap(1.32)).toBe(44);
     const layout = readFileSync('src/app/(main)/_layout.tsx', 'utf8');
     expect(layout).toContain('<HeaderShareButton />');
     expect(layout).toContain('accessibilityLabel="Your profile"');
+    expect(layout).toContain('headerCameraTap(theme.scale)');
+    expect(layout).toContain("justifyContent: 'center'");
+    const header = layout.slice(layout.indexOf('<View style={styles.mobileBrand}>'), layout.indexOf('accessibilityLabel="Your profile"'));
+    expect(header).toContain('styles.cameraGap');
+    expect(header.indexOf('styles.cameraGap')).toBeGreaterThan(0);
+    expect(layout).not.toMatch(/cameraGap:[^}]*margin/);
     const app = readFileSync('app.json', 'utf8');
     expect(app).toContain(CAMERA_USAGE);
     expect(app).toContain(LIBRARY_USAGE);

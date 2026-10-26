@@ -33,11 +33,15 @@ export function T({
   style,
   children,
   numberOfLines,
+  adjustsFontSizeToFit,
+  minimumFontScale,
 }: {
   variant?: Variant;
   style?: StyleProp<TextStyle>;
   children: ReactNode;
   numberOfLines?: number;
+  adjustsFontSizeToFit?: boolean;
+  minimumFontScale?: number;
 }) {
   const theme = useAppTheme();
   const size = theme.scale;
@@ -57,7 +61,7 @@ export function T({
     },
   };
   return (
-    <Text maxFontSizeMultiplier={2} numberOfLines={numberOfLines} style={[styles[variant], style]}>
+    <Text maxFontSizeMultiplier={2} numberOfLines={numberOfLines} adjustsFontSizeToFit={adjustsFontSizeToFit} minimumFontScale={minimumFontScale} style={[styles[variant], style]}>
       {children}
     </Text>
   );
@@ -68,7 +72,10 @@ export function Wordmark({ size = 22 }: { size?: number }) {
   return (
     <T
       variant="title"
-      style={{ fontSize: size * theme.scale, lineHeight: size * theme.scale * 1.15, letterSpacing: 1.8, textTransform: 'uppercase' }}
+      numberOfLines={1}
+      adjustsFontSizeToFit
+      minimumFontScale={0.7}
+      style={{ flexShrink: 1, fontSize: size * theme.scale, lineHeight: size * theme.scale * 1.15, letterSpacing: 1.8, textTransform: 'uppercase' }}
     >
       Charioteer
     </T>

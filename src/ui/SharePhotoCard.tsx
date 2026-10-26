@@ -23,6 +23,7 @@ import {
 } from '@/domain/sharedPhotos';
 import { encodeProfileCrop, pickProfilePhoto } from '@/ui/prepareProgressPhoto';
 import { PhotoCropper } from '@/ui/PhotoCropper';
+import { CAMERA_INK, HEADER_CAMERA_GLYPH, headerCameraTap } from '@/ui/headerCamera';
 import { cardAccent, statsToneColors } from '@/ui/statsPalette';
 import { useAppTheme } from '@/ui/theme';
 import { Button, Card, ErrorNote, Field, T } from '@/ui/ui';
@@ -45,13 +46,7 @@ function acceptedBuddies(snap: ReturnType<typeof useSnapshot>, me: string) {
     });
 }
 
-/**
- * Ink box of the camera drawing. The viewBox is this box, so the SVG height is the glyph.
- * Header wordmark is Oswald at 18pt. Its caps are about 22pt tall on screen.
- */
-const CAMERA_INK = { x: 3.2, y: 5.4, width: 17.6, height: 13.8 };
-/** Visible camera height, matched to the header wordmark cap height. */
-export const HEADER_CAMERA_GLYPH = 22;
+export { HEADER_CAMERA_GLYPH, headerCameraTap };
 
 function CameraMark({ color, height }: { color: string; height: number }) {
   const width = height * (CAMERA_INK.width / CAMERA_INK.height);
@@ -74,8 +69,7 @@ export function HeaderShareButton() {
   const theme = useAppTheme();
   const [open, setOpen] = useState(false);
   const glyph = HEADER_CAMERA_GLYPH * theme.scale;
-  const markWidth = glyph * (CAMERA_INK.width / CAMERA_INK.height);
-  const tap = Math.max(44, Math.ceil(markWidth), Math.ceil(glyph));
+  const tap = headerCameraTap(theme.scale);
   return (
     <>
       <Pressable
