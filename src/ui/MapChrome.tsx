@@ -133,6 +133,7 @@ export function MapShell({
   onCollapse,
   onToggleStyle,
   problem,
+  mapLabel,
   children,
 }: {
   here: boolean;
@@ -146,13 +147,15 @@ export function MapShell({
   onCollapse: () => void;
   onToggleStyle: () => void;
   problem?: string | null;
+  mapLabel?: string;
   children: ReactNode;
 }) {
   const theme = useAppTheme();
+  const base = mapLabel?.trim() || 'Map with footpaths';
   return (
     <View style={expanded ? { flex: 1, height } : { gap: 8 }}>
       <View
-        accessibilityLabel={here ? 'Map with footpaths. You are here.' : 'Map with footpaths'}
+        accessibilityLabel={here ? `${base}. You are here.` : base}
         style={{
           height,
           width: '100%',
@@ -202,6 +205,7 @@ export function MapFrame({
   problem,
   renderMap,
   bar,
+  mapLabel,
 }: {
   here: boolean;
   height?: number;
@@ -213,6 +217,8 @@ export function MapFrame({
   onRestore: () => void;
   problem?: string | null;
   renderMap: (view: { height: number; expanded: boolean }) => ReactNode;
+  /** Accessible name of the map. The footpath name stays when this is omitted. */
+  mapLabel?: string;
   /** Figures and route buttons, shown under the map only while it is full screen. */
   bar?: ReactNode;
 }) {
@@ -238,6 +244,7 @@ export function MapFrame({
       onCollapse={collapse}
       onToggleStyle={onToggleStyle}
       problem={expanded ? null : problem}
+      mapLabel={mapLabel}
     >
       {renderMap({ height: viewHeight, expanded })}
     </MapShell>
