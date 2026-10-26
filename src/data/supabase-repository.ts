@@ -1981,12 +1981,7 @@ export class SupabaseRepository implements Repository {
     const paths = [...new Set(view.gratitudePhotos.map((photo) => photo.storagePath).filter((path) => path.length > 0))];
     if (!paths.length) return view;
     try {
-      const signed = await this.client.storage.from(GRATITUDE_BUCKET).createSignedUrls(paths, GRATITUDE_SIGNED_URL_SECONDS);
-      if (signed.error || !signed.data) return view;
-      const byPath = new Map<string, string>();
-      for (const item of signed.data) {
-        if (item.path && item.signedUrl) byPath.set(item.path, item.signedUrl);
-      }
+      const byPath = await this.signedUrlMap(GRATITUDE_BUCKET, paths, GRATITUDE_SIGNED_URL_SECONDS);
       return {
         ...view,
         gratitudePhotos: view.gratitudePhotos.map((photo) => ({

@@ -77,7 +77,8 @@ describe('gratitude master follows the diary', () => {
     expect(after.sharing.gratitudeIds).toContain(opted);
     expect(after.sharing.gratitudeIds).not.toContain(leftOut);
     expect(addedPhoto).toBeTruthy();
-    expect(after.sharing.gratitudePhotoIds).toContain(addedPhoto!.id);
+    expect(after.sharing.gratitudePhotoIds).toEqual(mixed.sharing.gratitudePhotoIds);
+    expect(after.sharing.gratitudePhotoIds.includes(addedPhoto!.id)).toBe(false);
     expect(after.sharing.shareNewGratitude).toBe(true);
     expect(sectionShareState(gratitudeSectionBoxes(after.gratitude, after.sharing.gratitudeIds, after.sharing.gratitudePhotoIds))).toBe('mixed');
   });

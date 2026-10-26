@@ -116,7 +116,12 @@ export function PublicProfileCard() {
       id: entry.id,
       body: entry.body,
       entryDate: entry.entryDate,
-      photos: entry.photos.map((photo) => ({ id: photo.id, caption: photo.caption })),
+      photos: entry.photos.map((photo) => ({
+        id: photo.id,
+        caption: photo.caption,
+        storagePath: photo.storagePath,
+        previewUrl: photo.previewUrl,
+      })),
     })),
     vision: snap.visionItems.map((item) => ({ id: item.id, caption: item.caption, area: item.area })),
     progressPhotos: snap.progressPhotos.map((photo) => ({
@@ -342,7 +347,10 @@ export function PublicProfileCard() {
                 {avatar?.caption ? <T variant="muted">{avatar.caption}</T> : null}
               </View>
             </View>
-            <OwnProfilePhotos name={preview.displayName} photos={snap.profilePhotos ?? []} />
+            <OwnProfilePhotos
+              name={preview.displayName}
+              photos={(snap.profilePhotos ?? []).filter((photo) => photo.role === 'gallery' && snap.sharing.profilePhotoIds.includes(photo.id))}
+            />
             {preview.bio ? <T>{preview.bio}</T> : null}
             {editing ? null : (
               <ShareOnProfile

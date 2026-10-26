@@ -20,6 +20,28 @@ import { progressPhotoLabel } from '@/domain/progressPhotos';
 import { radius, useAppTheme } from '@/ui/theme';
 import { Button, Choice, EditSheet, ErrorNote, Field, T } from '@/ui/ui';
 
+/** Grey box when a shared photo has no picture link. The long word has to fit a 96px thumb. */
+export const PUBLIC_PHOTO_MISSING = 'Photo unavailable. The picture did not load.';
+
+function MissingPhotoNote({ tall = false }: { tall?: boolean }) {
+  return (
+    <View style={tall
+      ? { height: 360, width: '100%', alignItems: 'center', justifyContent: 'center', padding: 12 }
+      : { flex: 1, width: '100%', alignItems: 'center', justifyContent: 'center', padding: 6 }}
+    >
+      <T
+        variant="muted"
+        numberOfLines={4}
+        adjustsFontSizeToFit
+        minimumFontScale={0.65}
+        style={{ textAlign: 'center', width: '100%', fontSize: 12, lineHeight: 15 }}
+      >
+        {PUBLIC_PHOTO_MISSING}
+      </T>
+    </View>
+  );
+}
+
 const REPORT_REASONS = {
   photo: { reason: 'Profile photo' },
   progress: { reason: 'Shared progress photo' },
@@ -667,9 +689,7 @@ export function SharedGratitudeLines({
                       accessibilityLabel="Gratitude photo"
                     />
                   ) : (
-                    <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 8 }}>
-                      <T variant="muted">Photo unavailable</T>
-                    </View>
+                    <MissingPhotoNote />
                   )}
                 </Pressable>
                 {photo.caption ? <T variant="muted">{photo.caption}</T> : null}
@@ -701,8 +721,8 @@ export function SharedGratitudeLines({
                   accessibilityLabel="Gratitude photo"
                 />
               ) : (
-                <View pointerEvents="none" style={{ height: 360, alignItems: 'center', justifyContent: 'center' }}>
-                  <T variant="muted">Photo unavailable</T>
+                <View pointerEvents="none">
+                  <MissingPhotoNote tall />
                 </View>
               )}
             </ScrollView>
@@ -724,8 +744,8 @@ export function SharedPhotoFrame({ photo }: { photo: ProgressPhoto }) {
       {photo.previewUrl ? (
         <Image source={{ uri: photo.previewUrl }} style={StyleSheet.absoluteFill} contentFit="cover" accessibilityLabel={label} />
       ) : (
-        <View style={[StyleSheet.absoluteFill, { alignItems: 'center', justifyContent: 'center', padding: 8 }]}>
-          <T variant="muted">Photo unavailable</T>
+        <View style={StyleSheet.absoluteFill}>
+          <MissingPhotoNote />
         </View>
       )}
     </View>

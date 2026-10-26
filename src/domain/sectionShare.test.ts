@@ -147,7 +147,7 @@ describe('section share master', () => {
     expect(home.match(/<ShareOnProfile/g)).toHaveLength(1);
     expect(diary.indexOf('<GratitudeSectionShare')).toBeGreaterThan(-1);
     expect(diary).toContain('label="Share on profile"');
-    expect(diary).toContain('label="Include photo"');
+    expect(diary).toContain('label={SHOW_PHOTO_ON_PROFILE}');
     expect(vision.indexOf('<VisionSectionShare')).toBeGreaterThan(-1);
     expect(vision).toContain('visionIds');
     expect(health.indexOf('<HealthSectionShare')).toBeLessThan(health.indexOf('<HealthBoard'));
@@ -214,7 +214,8 @@ describe('section share master', () => {
     expect(shareFreshGratitude(current, { photoId: 'photo-1' })).toBeNull();
     const opted = { ...current, shareNewGratitude: true };
     expect(shareFreshGratitude(opted, { entryId: 'line-1' })?.gratitudeIds).toEqual(['line-0', 'line-1']);
-    expect(shareFreshGratitude(opted, { photoId: 'photo-1' })?.gratitudePhotoIds).toEqual(['photo-0', 'photo-1']);
+    expect(shareFreshGratitude(opted, { photoId: 'photo-1' })).toBeNull();
+    expect(shareFreshGratitude(opted, { entryId: 'line-1', photoId: 'photo-1' })?.gratitudePhotoIds).toEqual(['photo-0']);
     expect(shareFreshGratitude(opted, { entryId: 'line-0' })).toBeNull();
     const added = shareFreshGratitude(opted, { entryId: 'line-1' });
     const boxes = gratitudeSectionBoxes(
