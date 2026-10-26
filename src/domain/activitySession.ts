@@ -60,6 +60,10 @@ export function activityLocationLine(limitMs = OUTING_TIME_LIMIT_MS): string {
 
 export const ACTIVITY_LOCATION_LINE = activityLocationLine();
 
+/** New wording for Ben. Not an approved purpose string. High accuracy is about 10 metres. */
+export const BATTERY_NOTE =
+  `A finer location fix, about 10 metres, uses more battery than a coarse one. It stops when you tap Stop, or after ${limitPhrase()}.`;
+
 export const TRAFFIC_LINE = 'Stay aware of traffic, paths, and other people.';
 
 export const WAITING_FIX = 'Waiting for a clearer fix.';

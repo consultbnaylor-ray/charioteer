@@ -10,7 +10,17 @@ import {
  * Foreground permission only. The iOS watch streamer, when the location
  * background mode is in the binary, keeps standard fitness updates going
  * with the blue mark. This file does not ask for a background permission.
- * Process death ends the watch with the process. Nothing here is logged.
+ * Process death ends the watch with the process. It is not a task, so a
+ * force-quit does not relaunch it. Nothing here is logged.
+ *
+ * The six-hour limit is checked on each fix and when the app returns to
+ * the foreground, as well as on a one-second timer. Any one of those stops
+ * the watch. Leaving the outing screen does not.
+ *
+ * JS keys that the patched LocationOptions Record keeps: accuracy,
+ * distanceInterval, activityType, pausesUpdatesAutomatically,
+ * showsBackgroundLocationIndicator, allowsBackgroundUpdates.
+ * A real iOS compile still has to prove the manager applies them.
  */
 
 type Reading = {
@@ -34,6 +44,8 @@ export type ActivityWatchDeps = {
     onError?: (message: string) => void,
   ) => Promise<WatchHandle>;
   toNativeOptions?: (options: Record<string, unknown>) => Record<string, unknown>;
+  /** Test double. Production listens for AppState 'active'. */
+  subscribeForeground?: (onActive: () => void) => () => void;
 };
 
 export type OutingHooks = {
@@ -43,18 +55,33 @@ export type OutingHooks = {
 
 export const OUTING_DISTANCE_INTERVAL_M = 10;
 
+/** High is about 10 metres. Finer than that navigation setting is not used. */
 export function outingWatchOptions(os: string): Record<string, unknown> {
   const options: Record<string, unknown> = {
-    accuracy: 'balanced',
+    accuracy: 'high',
     distanceInterval: OUTING_DISTANCE_INTERVAL_M,
   };
   if (os === 'ios') {
     options.activityType = 'fitness';
-    options.pausesUpdatesAutomatically = true;
+    options.pausesUpdatesAutomatically = false;
     options.showsBackgroundLocationIndicator = true;
     options.allowsBackgroundUpdates = true;
   }
   return options;
+}
+
+/**
+ * Values passed into watchPositionAsync. Accuracy 4 is High (about 10 metres).
+ * Activity type 3 is fitness. The patched Record decodes these names.
+ */
+export function mapOutingWatchOptions(
+  logical: Record<string, unknown>,
+  native: { accuracyHigh: number; fitness: number },
+  os: string,
+): Record<string, unknown> {
+  const next = { ...logical, accuracy: native.accuracyHigh };
+  if (os === 'ios') next.activityType = native.fitness;
+  return next;
 }
 
 let hooks: OutingHooks | null = null;
@@ -62,6 +89,8 @@ let watch: WatchHandle | null = null;
 let limitTimer: ReturnType<typeof setInterval> | null = null;
 let limitFrom = 0;
 let watching = false;
+let foregroundStop: (() => void) | null = null;
+let clock: () => number = Date.now;
 
 export function setOutingHooks(next: OutingHooks | null): void {
   hooks = next;
@@ -82,6 +111,8 @@ export function stopActivityWatch(): void {
   if (limitTimer) clearInterval(limitTimer);
   limitTimer = null;
   limitFrom = 0;
+  if (foregroundStop) foregroundStop();
+  foregroundStop = null;
 }
 
 function readingToResult(reading: Reading): ActivityFixResult {
@@ -94,21 +125,51 @@ function readingToResult(reading: Reading): ActivityFixResult {
       latitude: point.latitude,
       longitude: point.longitude,
       accuracyM: typeof accuracy === 'number' && Number.isFinite(accuracy) ? accuracy : null,
-      atMs: typeof reading.timestamp === 'number' ? reading.timestamp : Date.now(),
+      atMs: typeof reading.timestamp === 'number' ? reading.timestamp : clock(),
     },
   };
 }
 
+function expireIfDue(nowMs: number): boolean {
+  if (!limitFrom || !outingTimedOut(limitFrom, nowMs, OUTING_TIME_LIMIT_MS)) return false;
+  const notify = hooks?.onLimit;
+  stopActivityWatch();
+  notify?.();
+  return true;
+}
+
 function armLimit(startedAtMs: number, now: () => number): void {
+  clock = now;
   if (limitTimer && limitFrom === startedAtMs) return;
   if (limitTimer) clearInterval(limitTimer);
   limitFrom = startedAtMs;
   limitTimer = setInterval(() => {
-    if (!outingTimedOut(limitFrom, now(), OUTING_TIME_LIMIT_MS)) return;
-    const notify = hooks?.onLimit;
-    stopActivityWatch();
-    notify?.();
+    expireIfDue(now());
   }, 1000);
+}
+
+async function defaultForeground(onActive: () => void): Promise<() => void> {
+  const { AppState } = await import('react-native');
+  const sub = AppState.addEventListener('change', (state) => {
+    if (state === 'active') onActive();
+  });
+  return () => sub.remove();
+}
+
+async function bindForeground(
+  subscribe: ActivityWatchDeps['subscribeForeground'],
+  now: () => number,
+): Promise<void> {
+  if (foregroundStop) return;
+  if (subscribe) {
+    foregroundStop = subscribe(() => {
+      expireIfDue(now());
+    });
+    return;
+  }
+  foregroundStop = await defaultForeground(() => {
+    expireIfDue(now());
+  });
 }
 
 async function loadDeps(): Promise<ActivityWatchDeps> {
@@ -123,11 +184,10 @@ async function loadDeps(): Promise<ActivityWatchDeps> {
       onReading,
       onError,
     ),
-    toNativeOptions: (watchOptions) => {
-      const next = { ...watchOptions, accuracy: Location.Accuracy.Balanced };
-      if (Platform.OS === 'ios') next.activityType = Location.ActivityType.Fitness;
-      return next;
-    },
+    toNativeOptions: (watchOptions) => mapOutingWatchOptions(watchOptions, {
+      accuracyHigh: Location.Accuracy.High,
+      fitness: Location.ActivityType.Fitness,
+    }, Platform.OS),
   };
 }
 
@@ -137,9 +197,13 @@ export async function ensureActivityWatch(
   now: () => number = Date.now,
 ): Promise<ActivityFixResult> {
   armLimit(startedAtMs, now);
+  const location = deps ?? await loadDeps();
+  if (deps == null || location.subscribeForeground) {
+    await bindForeground(location.subscribeForeground, now);
+  }
+  if (expireIfDue(now())) return { ok: false, reason: 'waiting' };
   if (watching) return { ok: false, reason: 'waiting' };
   try {
-    const location = deps ?? await loadDeps();
     const current = await location.getForegroundPermissionsAsync();
     const status = current.status === 'granted'
       ? current.status
@@ -150,6 +214,7 @@ export async function ensureActivityWatch(
     const handle = await location.watchPositionAsync(
       native,
       (reading) => {
+        if (expireIfDue(now())) return;
         hooks?.onFix(readingToResult(reading));
       },
       () => {

@@ -8,15 +8,21 @@ Still not approved, and not in this build: Always location, Garmin or Bluetooth,
 
 What the branch does:
 
-- A walk, run, or cycle keeps a while-using location watch going when the phone is locked or another app is in front. The watch is `watchPositionAsync`. It does not call a background-permission API. On iOS the watch streamer is patched so a caller can set fitness activity type, the blue location mark, and standard updates only, and only when the binary lists the location background mode. It does not start significant-change or region monitoring.
+- A walk, run, or cycle keeps a while-using location watch going when the phone is locked, when another app is in front, and when the outing screen is left. The watch is `watchPositionAsync`. It does not call a background-permission API. On iOS the watch streamer is patched so a caller can set fitness activity type, the blue location mark, and standard updates only, and only when the binary lists the location background mode. It does not start significant-change or region monitoring. Accuracy is High, about 10 metres, with a 10 metre distance filter. iOS is told not to pause updates while the person is standing still. Stop, discard, the six-hour limit, and process death are what stop the watch.
 - The path stays in memory and is cleared on Stop, on discard, and when the process ends. It is not saved, logged, or sent. Route finding is not called with it. No live-tracking route goes to HeiGIT.
-- The time limit is `OUTING_TIME_LIMIT_MS`, six hours. Ben confirmed that length on 26 October 2026. Pause does not extend it. A forgotten outing is the failure mode the blue mark is there to show, and the time limit is what ends it.
+- The time limit is `OUTING_TIME_LIMIT_MS`, six hours. Ben confirmed that length on 26 October 2026. Pause does not extend it. It is checked on each location fix, when the app returns to the foreground, and on a one-second timer. Any of those stops the watch. A forgotten outing is the failure mode the blue mark is there to show, and the time limit is what ends it.
 - Thumos updates are a switch, then 3, 5, or 10 minutes, and spoken or on screen only. The outing copies the default from You. That default starts off.
-- Spoken lines are on the screen. The phone does not start an audio session until a phone check shows music ducks and then returns to full volume, with no leftover session, including a phone call and Bluetooth headphones. That gate is not passed. On screen only never starts an audio session. There is no silent keepalive.
-- Heart rate uses a foreground HealthKit observer and an anchored query while the outing or gym session is in front. The background-delivery entitlement is not added. The live number is not sent, not exported, and not written next to sobriety fields.
+- Spoken lines are on for TestFlight when the person picks spoken updates. The `audio` background mode stays. On screen only never starts an audio session. There is no silent keepalive. App Store submission is blocked until a real phone shows music ducks, then returns to full volume after each line, with no leftover audio session, including a phone call and Bluetooth headphones.
+- Heart rate uses a foreground HealthKit observer and an anchored query while the outing or gym session is in front. The background-delivery entitlement is not added. The live number is not sent, not exported, and not written next to sobriety fields. Ben re-approved the Health share sentence on 26 October 2026. The clause that said the heart rate could show while the phone is locked was removed. The reading does not continue while the phone is locked.
 - Workouts has Start live session, Strength or Cardio, a heart-rate row, and an active-energy row.
 
 Items 1, 2, and 8 in the short recommendation below described an earlier awake-screen plan. They are superseded by this section.
+
+Later on 26 October 2026 Ben kept the audio background mode and turned speech on for TestFlight. He also re-approved the Health share sentence with the locked-phone heart-rate clause removed. The location sentence still says spoken updates. Good to know now includes a battery line that Ben has not approved: "A finer location fix, about 10 metres, uses more battery than a coarse one. It stops when you tap Stop, or after six hours." iOS automatic pause of location updates is off, because a rest stop was stalling distance. Stop and the six-hour limit still end the session.
+
+Hard release gate: App Store submission is blocked until a real phone shows music ducks, then returns to full volume after each line, with no leftover audio session, including a phone call and Bluetooth headphones. On screen only never starts an audio session. There is no silent keepalive. `APP_STORE_SPEECH_DUCK_GATE_PASSED` stays false until that phone test is recorded in this note and in `docs/app-store-activity-review.md`.
+
+A real iOS compile is still required before TestFlight can prove any of this. The compile has to show: the location patch builds; High accuracy is about 10 metres and is not Best-for-navigation; `pausesLocationUpdatesAutomatically` is false; the fitness activity type and the blue mark are set only when the binary lists the location background mode; no significant-change monitoring; leaving the outing screen does not stop measuring; Stop, discard, the six-hour limit, and force-quit do; speech uses iOS's own speech session so music can duck, and that duck is not proven until the phone test above.
 
 Version 1 was the awake screen. Ben approved the map on the live screen the same morning, then changed the scope.
 
@@ -129,7 +135,7 @@ Three ways to run an outing:
 
 **Apple Health or the step counter only.** Health can show a distance after a watch has already recorded a workout. It does not give a live pace every five minutes during an outing that Charioteer itself is timing. The step counter would also make today's motion sentence false. That sentence says Charioteer does not use motion or fitness data. A cycle barely registers as steps. I would not use the step counter.
 
-What Apple will ask: they will read the while-using sentence, which says measuring continues when the screen is locked or another app is open. The location background mode is on, so they can ask for a short video. The script is in `docs/app-store-activity-review.md`: Start, the in-app explanation, the While Using prompt with no Always choice, lock the phone, the blue mark, one spoken line, and Stop. There is no Always prompt. The spoken line in that video is also the phone check for music ducking. That check is not passed yet, so the app does not start an audio session.
+What Apple will ask: they will read the while-using sentence, which says measuring continues when the screen is locked or another app is open. The location background mode is on, so they can ask for a short video. The script is in `docs/app-store-activity-review.md`: Start, the in-app explanation, the While Using prompt with no Always choice, lock the phone, the blue mark, one spoken line, and Stop. There is no Always prompt. The spoken line in that video is the phone check for music ducking. TestFlight speaks when spoken updates are chosen. App Store submission is blocked until a real phone shows music ducks, then returns to full volume after each line, with no leftover audio session, including a phone call and Bluetooth headphones.
 
 On Android the first version is the same: location while the app is open. A later locked-phone version would show a visible "Walk in progress" notification. It would not ask for all-the-time location. Google Play treats all-the-time location as its own review.
 
@@ -137,7 +143,7 @@ The screen staying lit uses more battery than a locked phone. Say that in Good t
 
 ## 2. How Thumos delivers the update
 
-**What the branch does today: the line is on the screen. The phone can also speak it, while that screen is open. A short buzz happens with the line. Notifications stay out of it.** Speaking over music while the phone is locked is the background section. It is not built.
+**What the branch does today: the line is on the screen, and TestFlight also speaks it when spoken updates are chosen, including after the outing screen is left.** A short buzz happens with the line on a phone. Notifications stay out of it. On screen only does not speak. App Store submission is blocked until a real phone shows music ducks, then returns to full volume after each line, with no leftover audio session, including a phone call and Bluetooth headphones.
 
 The person picks 3, 5, or 10 minutes, or Off. Off keeps the clock and keeps Thumos quiet. They also pick "Spoken and on screen" or "On screen only".
 
@@ -602,7 +608,7 @@ The map screens keep their own page line. That line is about the map, not about 
 
 The previous Health share sentence is withdrawn. Ben approved this one on 26 October 2026. The live read is still foreground only, because the background-delivery entitlement is not approved. The sentence itself is unchanged from the approval.
 
-Approved `NSHealthShareUsageDescription`: "Charioteer reads steps, sleep, heart rate, resting heart rate, heart rate variability, cardio fitness, walking heart rate, heart rate recovery, workouts (type, duration, distance, energy, and average heart rate), and walking, cycling and swimming distance, plus weight, height, body fat, lean body mass, active energy, and exercise minutes. Readings stay on your iPhone. During a walk, run, or cycle you start, the latest heart rate from Apple Health can be shown on that screen, including while the phone is locked. During a strength or cardio session you start in Workouts, the latest heart rate and active energy from Apple Health can be shown while you train. The iPhone does not measure heart rate. Those readings stay on this iPhone and are not sent. A workout route is read only when you open that route, and the path stays on this iPhone. A short summary is sent to write your plan only if you turn the coach on. It is not used for ads. Other people cannot see this."
+Approved `NSHealthShareUsageDescription`: "Charioteer reads steps, sleep, heart rate, resting heart rate, heart rate variability, cardio fitness, walking heart rate, heart rate recovery, workouts (type, duration, distance, energy, and average heart rate), and walking, cycling and swimming distance, plus weight, height, body fat, lean body mass, active energy, and exercise minutes. Readings stay on your iPhone. During a walk, run, or cycle you start, the latest heart rate from Apple Health can be shown on that screen. During a strength or cardio session you start in Workouts, the latest heart rate and active energy from Apple Health can be shown while you train. The iPhone does not measure heart rate. Those readings stay on this iPhone and are not sent. A workout route is read only when you open that route, and the path stays on this iPhone. A short summary is sent to write your plan only if you turn the coach on. It is not used for ads. Other people cannot see this."
 
 Lines on the screen. Not purpose strings.
 
@@ -654,13 +660,13 @@ Proposed: "Charioteer writes the food and water you log to Apple Health: dietary
 - A new microphone sentence. Speaking is not recording.
 - `NSBluetoothAlwaysUsageDescription`, and `UIBackgroundModes` `bluetooth-central`, until you approve the Garmin broadcast. Not the Apple Watch build. Garmin Connect is not a source.
 
-`UIBackgroundModes` `location` and `audio` are in `app.json` for build 74. Ben approved them on 26 October 2026. They are not shipped. The audio plugin's own background switch stays off. The plist lists `audio` directly. Speech calls stay off until the phone check.
+`UIBackgroundModes` `location` and `audio` are in `app.json` for build 74. Ben approved them on 26 October 2026 and, later the same day, kept `audio` and turned speech on for TestFlight. They are not shipped. The audio plugin's own background switch stays off. The plist lists `audio` directly. Audio is used only for Thumos spoken lines when the person picks spoken updates. App Store submission is blocked until a real phone shows music ducks, then returns to full volume after each line, with no leftover audio session, including a phone call and Bluetooth headphones.
 
 ## Review risks
 
 The binary on this branch pauses when the phone locks, and it has no background mode. Its purpose sentence matches that.
 
-Build 74 uses background location. Speech stays off until the phone check, so the audio background mode is in the plist and no audio session is started yet. That is a real review. Guideline 2.5.4, 5.1.1, and 5.1.2 are the ones that apply, and they are set out in section (c), with the video script. An Always prompt, a silent audio keepalive, or significant-change monitoring are the likely rejections. Ben approved the wording on 26 October 2026. It is in this branch and it is not shipped. The nutrition label is checked against the final binary, after a proxy check, not against this note.
+Build 74 uses background location. Speech is on for TestFlight when spoken updates are chosen. The audio background mode is for those lines only. On screen only does not start a session. There is no silent keepalive. That is a real review. Guideline 2.5.4, 5.1.1, and 5.1.2 are the ones that apply, and they are set out in section (c), with the video script. An Always prompt, a silent audio keepalive, or significant-change monitoring are the likely rejections. Ben approved the wording on 26 October 2026. It is in this branch and it is not shipped. App Store submission is blocked until a real phone shows music ducks, then returns to full volume after each line, with no leftover audio session, including a phone call and Bluetooth headphones. The nutrition label is checked against the final binary, after a proxy check, not against this note.
 
 Writing a workout while the Health sentence says we do not write workouts would be a rejection. The button stays on the drawing until the sentence is approved.
 
@@ -689,7 +695,7 @@ Build 73 is the binary uploading from `fb05f08`. It does not include Start a wal
 Put in build 74:
 
 - Superseded. Outside is Good has Start a walk, Start a run, and Start a cycle. The live screen shows the map. Measuring continues when the phone is locked. The approved while-using sentence is the one in this build.
-- The Thumos updates switch, the 3, 5, and 10 minute choice, and the default on You. Lines stay on the screen. A spoken line, if he asks for one, plays only while that screen is open. Do not add the audio background mode, so a locked phone does not speak.
+- Superseded. The Thumos updates switch, the 3, 5, and 10 minute choice, and the default on You are in this build. Spoken lines are on for TestFlight when that choice is spoken. The `audio` background mode stays. On screen only does not start a session. App Store submission is blocked until a real phone shows music ducks, then returns to full volume after each line, with no leftover audio session, including a phone call and Bluetooth headphones.
 - Start live session on Workouts, with Strength or Cardio, the same switch, and a clock. The heart-rate row says "No heart-rate source" until the Health share sentence in **Wording that needs your OK** is approved. No map. No reps.
 - Split times on the GPS outing. No new permission. The summary still has no path.
 

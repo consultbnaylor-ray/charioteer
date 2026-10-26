@@ -1,5 +1,5 @@
 diff --git a/node_modules/expo-location/ios/LocationOptions.swift b/node_modules/expo-location/ios/LocationOptions.swift
-index 59700e7..b4effc3 100644
+index 59700e7..5bea852 100644
 --- a/node_modules/expo-location/ios/LocationOptions.swift
 +++ b/node_modules/expo-location/ios/LocationOptions.swift
 @@ -5,4 +5,10 @@ import ExpoModulesCore
@@ -8,7 +8,7 @@ index 59700e7..b4effc3 100644
    @Field var distanceInterval: Double = 0.0
 +  /// Expo's fitness activity type is 3. 0 leaves the manager's default.
 +  @Field var activityType: Int = 0
-+  @Field var pausesUpdatesAutomatically: Bool = true
++  @Field var pausesUpdatesAutomatically: Bool = false
 +  @Field var showsBackgroundLocationIndicator: Bool = false
 +  /// While-using updates with the blue mark. This does not request Always.
 +  @Field var allowsBackgroundUpdates: Bool = false

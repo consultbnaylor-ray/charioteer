@@ -198,7 +198,8 @@ describe('iOS purpose strings', () => {
     expect(raw).not.toContain(build70Location);
     expect(raw).toContain(LOCATION_WHEN_IN_USE);
     expect(raw).not.toContain(build70Health);
-    expect(raw).toContain('During a walk, run, or cycle you start, the latest heart rate from Apple Health can be shown on that screen, including while the phone is locked.');
+    expect(raw).toContain('During a walk, run, or cycle you start, the latest heart rate from Apple Health can be shown on that screen.');
+    expect(raw).not.toContain('including while the phone is locked');
     expect(raw).toContain('Charioteer writes the food and water you log to Apple Health: dietary energy, protein, carbohydrate, sugar, fibre, fat, sodium and water. It does not write steps, sleep, heart rate, workouts, or weight.');
     expect(raw).toContain(MICROPHONE);
     expect(raw).toContain(FACE_ID);

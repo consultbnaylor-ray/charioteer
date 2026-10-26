@@ -1,5 +1,5 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Platform, Switch, useWindowDimensions, View } from 'react-native';
 
 import { claimLive, releaseLive } from '@/activity/oneSession';
@@ -86,6 +86,37 @@ type LiveState = {
 type Held = { live: LiveState } | null;
 
 let held: Held = null;
+const draft: { current: LiveState | null } = { current: null };
+const liveRef: { current: LiveState | null } = { current: null };
+const ending = { current: false };
+let screenMounted = false;
+let pushLiveState: ((next: LiveState | null) => void) | null = null;
+let clockTimer: ReturnType<typeof setInterval> | null = null;
+let pendingFinish: { summary: ActivitySummary; limit: boolean; splits: SplitMark[] } | null = null;
+
+function publish(next: LiveState | null) {
+  draft.current = next;
+  liveRef.current = next;
+  if (next) held = { live: next };
+  if (screenMounted) pushLiveState?.(next);
+}
+
+function stopOutingClock() {
+  if (clockTimer == null) return;
+  clearInterval(clockTimer);
+  clockTimer = null;
+}
+
+/** Keeps time and spoken lines going after the outing screen is left. */
+function ensureOutingClock() {
+  if (clockTimer != null) return;
+  clockTimer = setInterval(() => {
+    const current = draft.current;
+    if (!current || current.paused || ending.current) return;
+    const movingMs = elapsed(current);
+    publish(withLines({ ...current, movingMs, runningSince: Date.now() }, movingMs));
+  }, 1000);
+}
 
 function elapsed(live: LiveState, now = Date.now()): number {
   if (live.paused || live.runningSince == null) return live.movingMs;
@@ -142,25 +173,20 @@ export default function Activity() {
   const [intervalMin, setIntervalMin] = useState<3 | 5 | 10>(5);
   const [spoken, setSpoken] = useState(false);
   const [following, setFollowing] = useState(true);
-  const [phase, setPhase] = useState<'setup' | 'live' | 'finish'>(held ? 'live' : 'setup');
+  const [phase, setPhase] = useState<'setup' | 'live' | 'finish'>(pendingFinish ? 'finish' : held ? 'live' : 'setup');
   const windowSize = useWindowDimensions();
   const [live, setLive] = useState<LiveState | null>(held?.live ?? null);
-  const [summary, setSummary] = useState<ActivitySummary | null>(null);
-  const [endedByLimit, setEndedByLimit] = useState(false);
+  const [summary, setSummary] = useState<ActivitySummary | null>(pendingFinish?.summary ?? null);
+  const [endedByLimit, setEndedByLimit] = useState(pendingFinish?.limit ?? false);
   const [heart, setHeart] = useState<LiveReading>({ bpm: null, bpmAtMs: null, activeKcal: null });
-  const liveRef = useRef(live);
-  const draft = useRef(live);
-  const ending = useRef(false);
   const [note, setNote] = useState('');
   const [diary, setDiary] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
-  const [savedSplits, setSavedSplits] = useState<SplitMark[]>([]);
+  const [savedSplits, setSavedSplits] = useState<SplitMark[]>(pendingFinish?.splits ?? []);
 
   function commit(next: LiveState | null) {
-    draft.current = next;
-    liveRef.current = next;
-    setLive(next);
+    publish(next);
   }
 
   function applyReading(result: ActivityFixResult) {
@@ -194,7 +220,7 @@ export default function Activity() {
     stopActivityWatch();
     releaseLive('outing');
     const folded = fold(clearPath(current));
-    setSavedSplits(current.splits.slice());
+    const splits = current.splits.slice();
     const saved = summaryFrom({
       id: `${Date.now()}`,
       activity: folded.activity,
@@ -205,24 +231,37 @@ export default function Activity() {
     try {
       await saveActivitySummary(saved);
     } catch {
-      setError('Could not keep that summary on this phone.');
+      if (screenMounted) setError('Could not keep that summary on this phone.');
     }
     if (reason === 'stop') say(FINISH_LINE, current.spoken);
+    stopOutingClock();
     held = null;
-    commit(null);
+    if (!screenMounted) {
+      pendingFinish = { summary: saved, limit: reason === 'limit', splits };
+      publish(null);
+      return;
+    }
+    publish(null);
+    setSavedSplits(splits);
     setSummary(saved);
     setEndedByLimit(reason === 'limit');
     setPhase('finish');
   }
 
   useEffect(() => {
+    screenMounted = true;
+    pushLiveState = setLive;
     setOutingHooks({
       onFix: (result) => applyReading(result),
       onLimit: () => { void endOuting('limit'); },
     });
-    if (held?.live) claimLive('outing');
+    if (held?.live) {
+      claimLive('outing');
+      ensureOutingClock();
+    }
     return () => {
-      pauseActivityWatch();
+      screenMounted = false;
+      pushLiveState = null;
     };
   }, []);
 
@@ -263,26 +302,15 @@ export default function Activity() {
   }, [phase, live?.paused]);
 
   useEffect(() => {
-    if (phase !== 'live' || !live || live.paused) return undefined;
-    const id = setInterval(() => {
-      const current = draft.current;
-      if (!current || current.paused || ending.current) return;
-      const movingMs = elapsed(current);
-      commit(withLines({ ...current, movingMs, runningSince: Date.now() }, movingMs));
-    }, 1000);
-    return () => clearInterval(id);
-  }, [phase, live?.paused]);
-
-  useEffect(() => {
     if (phase !== 'live' || !live || live.paused || live.denied) return undefined;
     let stop = false;
+    ensureOutingClock();
     void ensureActivityWatch(live.limitFrom).then((result) => {
       if (stop || ending.current) return;
       if (!result.ok && result.reason === 'denied') applyReading(result);
     });
     return () => {
       stop = true;
-      pauseActivityWatch();
     };
   }, [phase, live?.paused, live?.denied, live?.limitFrom]);
 
@@ -332,6 +360,7 @@ export default function Activity() {
     ending.current = false;
     held = { live: next };
     commit(next);
+    ensureOutingClock();
     setFollowing(true);
     setPhase('live');
     setError(null);
@@ -368,14 +397,20 @@ export default function Activity() {
       }
       setPending(false);
     }
+    pendingFinish = null;
     router.back();
   }
 
   async function discard() {
+    pendingFinish = null;
+    ending.current = true;
+    stopSpeaking();
     stopActivityWatch();
+    stopOutingClock();
     releaseLive('outing');
     if (liveRef.current) clearPath(liveRef.current);
     held = null;
+    publish(null);
     if (summary) {
       try {
         await deleteActivitySummary(summary.id);

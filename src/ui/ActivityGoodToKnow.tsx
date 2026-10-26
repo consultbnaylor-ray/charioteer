@@ -1,5 +1,6 @@
 import {
   ACTIVITY_LOCATION_LINE,
+  BATTERY_NOTE,
   TRAFFIC_LINE,
 } from '@/domain/activitySession';
 import {
@@ -25,6 +26,7 @@ export function ActivityGoodToKnow({ kind }: { kind: 'setup' | 'live' }) {
       <T variant="muted">{TRAFFIC_LINE}</T>
       {kind === 'setup' ? <T variant="muted">{PATH_LINE}</T> : null}
       <T variant="muted">{ACTIVITY_LOCATION_LINE}</T>
+      <T variant="muted">{BATTERY_NOTE}</T>
     </Card>
   );
 }
