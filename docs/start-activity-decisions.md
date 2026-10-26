@@ -8,6 +8,8 @@ Later the same day the Security and Compliance Bot sent an advisory on that plan
 
 On 26 October 2026 at 08:09 GMT Ben asked for a live heart rate and for split times. That is also design only. It is the section **Heart rate and split times**. No permission string was changed for it.
 
+On 26 October 2026 at 08:18 GMT Ben asked for a live feed on the Workouts screen for a gym session, such as cardio or strength, that is not a GPS outing. That is the section **A gym session in progress**. It is design only. No permission string was changed for it. Build 73 stays first.
+
 The decision is **Background tracking and spoken updates over music**. The pictures in that section are layout proofs. They are not screens in the app.
 
 Outside is Good has three buttons: **Start a walk**, **Start a run**, and **Start a cycle**. They sit on the existing card, under Find a route and above Open the map. The button opens the setup screen with that activity already chosen. The person can still switch. Walk this off stays hidden.
@@ -426,6 +428,86 @@ An ordinary heart-rate line, if they left spoken updates on, rides the interval 
 
 The number stays on the phone. It is not sent to xAI or to Supabase in this version. It is not written to a log. The summary does not keep a trace or a list of readings. Recommendation: the summary keeps no heart rate at all. A single average would be a later decision. If Thumos lines later use xAI, the input is aggregate numbers only, such as average pace and, only if you allow it, an average heart rate, after an explicit opt-in. Never a trace, and never coordinates. `XAI_PERSONAL_DATA_ENABLED` stays false. That later use is not this version.
 
+## A gym session in progress
+
+Ben, 26 October 2026, 08:18 GMT. This is read as his own session in the gym, for example cardio or strength, while he trains with an Apple Watch or a Garmin. It is not a walk, a run, or a cycle. It does not use the map, the path, or location. It is not built. No purpose string and no Info.plist key has been changed.
+
+The reading could be wrong. The questions at the end of this section are there so you can say if you meant something else. Nothing in those questions is designed, and nothing is built.
+
+### What it is
+
+On the Workouts screen he taps **I'm training now**, picks Strength or Cardio, and picks how often Thumos speaks. The same choices as an outing: 3, 5, or 10 minutes, or Off, and spoken or on screen only. Stop ends it.
+
+The live screen reuses the outing's clock, heart-rate tile, spoken line, and interval. It does not reuse the map, the splits, or the pace. There is no distance.
+
+![Gym session, 390 wide. Layout proof. No map.](start-activity/gym-live-390.png)
+
+![Gym session, 320 wide. Layout proof. No map.](start-activity/gym-live-320.png)
+
+These pictures are not the app. The heart-rate number and the energy number are examples of a session that already has both. If there is no recent heart rate, that row says "No heart-rate source". If Apple Health has not sent energy yet, that row says "Active energy not available yet".
+
+### What the iPhone can honestly read
+
+**Apple Watch, through Apple Health.** The same read as the outing, and the same limits.
+
+He starts a workout on the Watch, in the Watch Workout app. This app does not start it. There is no companion Watch app. While that workout session is running, the Watch writes heart-rate samples, and active-energy samples, into Apple Health. The phone reads them with an observer and an anchored query (`subscribeToChanges`, then `queryQuantitySamplesWithAnchor`), only while this session is running, and stops them on Stop, on termination, and at the same four-hour limit as an outing. Both types are already in the read list: heart rate, and `HKQuantityTypeIdentifierActiveEnergyBurned`. No new Health type.
+
+The same latency applies. A sample is often a few seconds to about a minute behind the Watch, and it can be slower when the phone is locked or in Low Power Mode. Health background delivery does not need a `UIBackgroundModes` entry. Immediate is a hint, not every beat. If the newest heart-rate sample is older than about a minute, the row goes back to "No heart-rate source".
+
+Active energy is the samples Apple Health has saved since he tapped I'm training now, summed in kcal. They often arrive in lumps, so the number can sit still and then jump. It can include other movement in that window. It is not guaranteed to match the total on the Watch. The Watch's own workout total, and the Watch's workout type, are properties of the workout object. That object is saved when the workout ends. Until then the iPhone cannot read them.
+
+So the type on this screen is the one he picked, Strength or Cardio. The phone cannot tell strength from cardio live. After the Watch saves the workout, the saved type can be shown as a note if it falls in the same window. It does not replace the label he chose unless you later say so.
+
+**Garmin.** The same Bluetooth broadcast as the outing, and only in that later build. Broadcast Heart Rate has to be on. The phone reads the standard heart-rate measurement. It does not read calories from that broadcast. Garmin's manuals describe heart rate, not energy. Energy stays "Active energy not available yet" unless Apple Health has samples. The new keys are the same ones already listed, not a second permission: `NSBluetoothAlwaysUsageDescription` and `UIBackgroundModes` `bluetooth-central`. The Bluetooth sentence in the wording list now also names this gym session, so one sentence covers both. It is not in the app.
+
+**No sensor.** He can still tap I'm training now. The clock runs. Thumos can speak the check-in on the interval he picked. The heart-rate row says "No heart-rate source". Energy says it is not available. Nothing is estimated.
+
+### What is not possible
+
+Garmin Connect and the Garmin Health API do not give a live heart rate or live calories to this app. They are not a source. Do not add a Garmin host.
+
+The phone cannot count reps or sets. It has no sensor for that, and the motion sentence says the app does not use motion. Do not count from the accelerometer. Do not invent a rep.
+
+The phone cannot see the Watch workout type while the workout is still running. A companion Watch app could send it. That is not this design.
+
+### Background
+
+The clock is a start time. It does not need a background mode. If they lock the phone, the elapsed time is right when they come back. If the app is killed, the session is lost. Say that before they start. There is no crash file.
+
+This session does not use location. It does not add `UIBackgroundModes` `location`, and it does not show the blue location mark.
+
+Spoken lines, if they asked for them and the phone is locked or another app is in front, need the `audio` background mode already proposed for an outing. Same rules: mix with other audio, duck it, deactivate when the line ends, no silent keepalive, no recording. If that mode is not approved, the line is on screen only, and only while the screen is open. The gym session does not add a second audio key.
+
+Heart-rate delivery from Apple Health needs no background mode. The Garmin broadcast, later, uses the same `bluetooth-central` entry as the outing. It is not started unless they chose Garmin or a strap.
+
+One session at a time. Starting this stops nothing by itself, but a GPS outing and this gym session should not both be running. Recommendation: starting one ends the offer to start the other until Stop.
+
+### Lines
+
+The interval is the outing's interval. The words are a list on the phone, for strength and for cardio. Time can be filled in. A heart-rate number is spoken only when a sample is recent, and only on that interval, not on every sample. No pace and no distance. No model. No zones. No alarm. The one calm line at or above 180 bpm is the same line as the outing, once. "Not medical advice" stays in Good to know, with the GP, NHS 111, and 999 line.
+
+### What is stored
+
+On the phone only, and only if they stop and choose to keep it. The summary is the label he picked, the date, the duration, and the active energy if Apple Health had any. No heart-rate trace. No path. No coordinates. It is not sent to Supabase, to xAI, or to the route service. It is not added to `export_my_data`. It is not joined to sobriety logs. It is a different list from the GPS outing summaries, and a different list from the finished workouts Apple Health and Garmin already show.
+
+Deleting the app deletes that list. If the app is killed mid-session, there is no summary.
+
+This does not write a workout to Apple Health. The Health write sentence still says the app does not write workouts.
+
+### Where it sits
+
+The Workouts screen today is the calendar and the history. The intro is "Your workout calendar and history." Under the refresh bar and the Garmin notice, the Workouts card has the day strip, the finished workouts for that day, the duration chart, and the activity charts. The workout calendar is below that card. A finished row can open a route. The card already says a route stays on the phone.
+
+**I'm training now** goes above that card. It does not replace the day strip, the history, the charts, or the calendar. It does not open a route and it does not call the route service. A kept gym summary is labelled as on this phone, so it is not mistaken for a workout Apple Health saved.
+
+### Questions for you
+
+These are not designed. Say if one of them is what you meant.
+
+- A buddy's live workout. This section is his own session. Showing someone else's heart rate, or that they are training, is a different feature and it is not in this note.
+- A mirror of the Watch only, with no I'm training now button. The phone still cannot see the workout type, or a reliable start time, until the Watch saves the workout. The button is what starts the clock.
+- The GPS outing. That is the earlier section. It has the map. This one does not.
+
 ## Wording that needs your OK
 
 None of this is in the app. Nothing below is written into Info.plist until you approve it.
@@ -466,7 +548,7 @@ The map screens keep their own page line. That line is about the map, not about 
 
 Today, and still the sentence in the app: "Charioteer reads steps, sleep, heart rate, resting heart rate, heart rate variability, cardio fitness, walking heart rate, heart rate recovery, workouts (type, duration, distance, energy, and average heart rate), and walking, cycling and swimming distance, plus weight, height, body fat, lean body mass, active energy, and exercise minutes. Readings stay on your iPhone. A workout route is read only when you open that route, and the path stays on this iPhone. A short summary is sent to write your plan only if you turn the coach on. It is not used for ads. Other people cannot see this."
 
-Proposed `NSHealthShareUsageDescription`: "Charioteer reads steps, sleep, heart rate, resting heart rate, heart rate variability, cardio fitness, walking heart rate, heart rate recovery, workouts (type, duration, distance, energy, and average heart rate), and walking, cycling and swimming distance, plus weight, height, body fat, lean body mass, active energy, and exercise minutes. Readings stay on your iPhone. During a walk, run, or cycle you start, the latest heart rate from Apple Health can be shown on that screen, including while the phone is locked. The iPhone does not measure it. That heart rate stays on this iPhone and is not sent. A workout route is read only when you open that route, and the path stays on this iPhone. A short summary is sent to write your plan only if you turn the coach on. It is not used for ads. Other people cannot see this."
+Proposed `NSHealthShareUsageDescription`: "Charioteer reads steps, sleep, heart rate, resting heart rate, heart rate variability, cardio fitness, walking heart rate, heart rate recovery, workouts (type, duration, distance, energy, and average heart rate), and walking, cycling and swimming distance, plus weight, height, body fat, lean body mass, active energy, and exercise minutes. Readings stay on your iPhone. During a walk, run, or cycle you start, the latest heart rate from Apple Health can be shown on that screen, including while the phone is locked. During a strength or cardio session you start in Workouts, the latest heart rate and active energy from Apple Health can be shown while you train. The iPhone does not measure heart rate. Those readings stay on this iPhone and are not sent. A workout route is read only when you open that route, and the path stays on this iPhone. A short summary is sent to write your plan only if you turn the coach on. It is not used for ads. Other people cannot see this."
 
 Lines on the screen. Not purpose strings.
 
@@ -486,7 +568,21 @@ Lines on the screen. Not purpose strings.
 
 **Garmin broadcast. Later. New keys. Not in the Apple Watch build.**
 
-`NSBluetoothAlwaysUsageDescription`: "Charioteer reads heart rate from a Garmin watch or strap that is broadcasting it, while a walk, run, or cycle is running, including when the phone is locked. The reading stays on this phone. It is not sent. Garmin Connect is not used."
+`NSBluetoothAlwaysUsageDescription`: "Charioteer reads heart rate from a Garmin watch or strap that is broadcasting it, while a walk, run, or cycle is running, or during a strength or cardio session you start, including when the phone is locked. The reading stays on this phone. It is not sent. Garmin Connect is not used."
+
+**Gym session. Not a purpose string, except the Health and Bluetooth sentences above.** The Health sentence gains the strength-or-cardio clause. The Bluetooth sentence gains the same session. Neither is a new key beyond the Garmin keys already waiting. The gym session adds no location key.
+
+- The button on Workouts: "I'm training now"
+- The choices: "Strength" and "Cardio"
+- The interval, same words as an outing: "3 minutes", "5 minutes", "10 minutes", "Off"
+- Before Start: "The clock runs until you tap Stop. Heart rate shows only if your Apple Watch workout, or a Garmin broadcast, has a recent reading. The iPhone does not measure it. If the app is closed, this session is lost. This is not medical advice."
+- The empty heart-rate row: "No heart-rate source"
+- The energy row when Health has nothing yet: "Active energy not available yet"
+- The energy row when it has: "86 kcal"
+- A check-in line, from the list on the phone: "Eighteen minutes. Stay with this set."
+- A heart-rate line, only when a sample is recent and only on the interval: "Heart rate 128."
+- In Good to know: "Not medical advice. If you feel unwell, contact your GP or NHS 111. Call 999 for chest pain, fainting, or breathlessness."
+- The end control: "Stop"
 
 `UIBackgroundModes` entry `bluetooth-central` goes with that sentence. Neither is in the app. Do not add them for the Apple Watch test.
 
@@ -520,4 +616,4 @@ A Garmin broadcast needs a new Bluetooth sentence and `bluetooth-central`. Those
 
 ## What this note does not do
 
-Version 1, including the live map, is in the app on this branch. It still pauses when the phone locks. The background section, the Security and Compliance Bot recommendations, and the heart-rate and split section are decisions only. No purpose string was changed. No Info.plist key was added. No new host. Build number 72. Nothing shipped. The outdoor-route function is still not deployed. Build 73 stays on its own branch.
+Version 1, including the live map, is in the app on this branch. It still pauses when the phone locks. The background section, the Security and Compliance Bot recommendations, the heart-rate and split section, and the gym-session section are decisions only. No purpose string was changed. No Info.plist key was added. No new host. Build number 72. Nothing shipped. The outdoor-route function is still not deployed. Build 73 stays on its own branch.
