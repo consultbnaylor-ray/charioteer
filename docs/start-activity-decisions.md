@@ -374,29 +374,49 @@ The earlier finish pictures in this note are the summary in the app today. They 
 
 ### Where a heart rate can come from
 
-The iPhone cannot measure heart rate for this outing. Do not estimate one from pace, and do not invent one. Do not use the camera. If there is no recent reading, the tile says "No heart-rate source" and Thumos does not mention a heart rate. The proofs above are that empty state, with the map still visible.
+Ben will test this with both an Apple Watch and a Garmin. The iPhone cannot measure heart rate. Do not estimate one from pace, and do not invent one. Do not use the camera. If neither source has a recent reading, the tile says "No heart-rate source" and Thumos does not mention a heart rate. The proofs above are that empty state, with the map still visible.
 
-Three sources. Only the first is recommended.
+Least privilege, in this order. Use the first source that actually has a recent reading. Do not turn on the next radio while the earlier one is already supplying it.
 
-**1. Apple Watch, read from Apple Health. Recommended for this version.**
+1. Apple Health, for the Apple Watch. No new Info.plist key. This is the realistic first build.
+2. Bluetooth, for a Garmin watch or strap that is broadcasting. New purpose string and a new background mode. A later build, after you approve that wording.
+3. Nothing. Hide the number.
 
-While a workout is running, the Watch writes heart-rate samples into Apple Health. Charioteer already asks to read heart rate. The read list already includes `HKQuantityTypeIdentifierHeartRate`. The share sentence already says the app reads heart rate. There is no new Health type and no new permission key. People who have already allowed heart rate are not asked again, because the read list does not change.
+Do not average the two. If both are recent, show the Apple Health sample and do not scan for Bluetooth. Say on the tile which source it is.
 
-A companion Watch app is not required. The Watch's own Workout app is enough, if they start a workout on the Watch. Charioteer does not start that workout. It has no Watch app. Without a workout running on the Watch, the Watch records heart rate only now and then. That is not a rate for this screen. The tile stays on "No heart-rate source".
+**Apple Watch. Apple Health on the iPhone. First build, if you approve the Health sentence.**
 
-When this is built, and only while the outing is running, the phone would subscribe to heart-rate changes and turn on Health background delivery at the immediate frequency. The Health library already in the app can do both (`subscribeToChanges` and `enableBackgroundDelivery`). When a change arrives, an anchored query (`queryQuantitySamplesWithAnchor`) reads samples since the last anchor. The same query the workout screen uses today is a one-off read of a finished route. The outing does not use that path, and it does not read a workout route. The subscription and the background delivery stop on Stop, on discard, on termination, and at the time limit. They are not left on for the rest of the day. Health background delivery does not need a `UIBackgroundModes` entry.
+A workout session on the Watch writes heart-rate samples into Apple Health. The phone reads those samples. Charioteer already asks to read heart rate. The read list already includes `HKQuantityTypeIdentifierHeartRate`. The share sentence already says the app reads heart rate. There is no new Health type and no new permission key. People who have already allowed heart rate are not asked again, because the read list does not change. The recommended share sentence in the wording list names the live outing. It is the same key, not a new one, and it is not written in until you approve it.
+
+How the Watch gets into a workout state.
+
+- Without a companion app. This is the recommendation. They open the Workout app on the Watch and start a walk, a run, or a cycle. That is the Watch's own workout session. The Watch then writes heart rate into Apple Health. Charioteer does not start that session, and it does not stop it. There is no Watch app in this design. Wearing the Watch without starting a workout is not that state. The Watch then records heart rate only now and then, and the tile stays on "No heart-rate source".
+- With a companion app. A later choice, not this test. A watchOS app could start the workout session when they tap Start in Charioteer. That is a new Watch target. The phone cannot put the Watch into a workout by itself. Do not build that for the first test.
+
+When this is built, and only while the outing is running, the phone would subscribe to heart-rate changes and turn on Health background delivery at the immediate frequency. The Health library already in the app can do both (`subscribeToChanges` and `enableBackgroundDelivery`). When a change arrives, an anchored query (`queryQuantitySamplesWithAnchor`) reads samples since the last anchor. The workout screen's one-off read of a finished route is a different query. This outing does not read a workout route. The subscription and the background delivery stop on Stop, on discard, on termination, and at the time limit. They are not left on for the rest of the day. Health background delivery does not need a `UIBackgroundModes` entry.
 
 What "live" honestly means. Apple does not promise every beat. Immediate is a hint. A sample is often a few seconds to about a minute behind the Watch. With the phone locked, or in Low Power Mode, it can be slower, batched, or deferred. The tile shows the latest sample and how old it is, for example "142 bpm" and "20s ago". If the newest sample is older than about a minute, the tile returns to "No heart-rate source" and the lines stop mentioning a rate. Do not draw a trace.
 
-The share sentence already allows the read. It does not say the rate is shown during a walk they start. The recommended sentence in the wording list adds that, on the same key. It is not written into the app until you approve it.
+No new Info.plist key for this source.
 
-**2. A Bluetooth heart-rate strap, or a watch that broadcasts the standard heart-rate service. Not this version.**
+**Garmin. Bluetooth broadcast only. Later build. New keys.**
 
-This needs a new purpose string, `NSBluetoothAlwaysUsageDescription`. Keeping the reading while the phone is locked would also need `UIBackgroundModes` entry `bluetooth-central`. Neither key is in the app. Both are new wording and a new review. Guideline 2.5.4 applies to that background mode, and 5.1.1 applies to the new sentence. They would also have to choose a strap and connect it. Do not add this in this version. The sentence is in the wording list only so it is not mistaken for something already approved.
+The documented control on the watch is Broadcast Heart Rate. Garmin's manuals tell the person to turn that on, and they warn that it uses more battery. The Forerunner 970 manual, for example, is Watch Settings, Health & Wellness, Wrist Heart Rate, Broadcast Heart Rate. Some manuals also let an activity start the broadcast by itself. The Edge 1060 manual pairs that broadcast over Bluetooth, either a secure connection or an open one. A strap that is already advertising as a Bluetooth heart-rate sensor is the same kind of read. The phone would use the standard Bluetooth heart-rate measurement. It would not speak ANT+. Older Garmin manuals pair Broadcast Heart Rate with an ANT+ device. An iPhone does not use ANT+. If a particular watch is only broadcasting that way, the phone will see nothing, and the tile stays empty. Do not add a radio for ANT+.
 
-**3. No sensor.** This is what the screen does when option 1 has nothing newer than about a minute. The tile says "No heart-rate source". The lines do not mention a heart rate.
+They have to turn Broadcast Heart Rate on. Charioteer cannot turn it on for them. The Bluetooth permission is asked only after they choose Garmin or a strap, not when an Apple Watch outing starts.
 
-Recommendation. Option 1, and option 3 whenever there is no recent sample. No Watch app. No Bluetooth. No estimate. The number can be behind the Watch. Say that on the screen.
+This needs two new keys, which are not in the app:
+
+- `NSBluetoothAlwaysUsageDescription`
+- `UIBackgroundModes` entry `bluetooth-central`
+
+The background mode is what keeps the reading while the phone is locked. Guideline 2.5.4 applies to that mode, and 5.1.1 applies to the new sentence. Both wait for your OK. They are not part of the Apple Watch build.
+
+Garmin Connect and the Garmin Health API are not a source. Garmin's Health API description is data the person has synced from the device to Garmin Connect, after which the API can serve it. That is not a live heart rate for this screen. Do not call it. Do not add a Garmin host. Garmin also publishes a Health Companion SDK for enterprise partners, which is a different product and can stream heart rate under that licence. It is not proposed here.
+
+**No sensor.** This is the screen when the Apple Health sample is older than about a minute and, in the later build, no Bluetooth broadcast is connected. The tile says "No heart-rate source". The lines do not mention a heart rate.
+
+What is realistic. The first heart-rate build is the Apple Watch, through the Health read the app already has, with no new key. You can test that as soon as that build exists: start a workout on the Watch, then start the outing on the phone. The Garmin test is real, and it is second. It cannot be honest until the Bluetooth sentence and `bluetooth-central` are approved and built. Turn Broadcast Heart Rate on, choose Garmin or a strap in the app, and the tile should follow that broadcast. Until then the Garmin shows "No heart-rate source", which is the honest result.
 
 ### Safeguards
 
@@ -451,7 +471,9 @@ Proposed `NSHealthShareUsageDescription`: "Charioteer reads steps, sleep, heart 
 Lines on the screen. Not purpose strings.
 
 - The empty tile: "No heart-rate source"
-- Under that tile when it is empty: "Start a workout on your Apple Watch to show heart rate. The iPhone does not measure it."
+- Under that tile on the Apple Watch build, when it is empty: "Start a workout on your Apple Watch to show heart rate. The iPhone does not measure it."
+- Under that tile on the later Garmin build, when they have chosen Garmin or a strap and nothing is broadcasting: "On a Garmin, turn on Broadcast Heart Rate. Charioteer does not read Garmin Connect."
+- On the tile when a number is showing: "Apple Watch" or "Garmin", so the source is visible.
 - A recent sample: "142 bpm" and "20s ago"
 - A finished split, kilometres: "1 km · 6:12 · 6:12 /km"
 - The split still going: "This kilometre · 0.42 km"
@@ -459,13 +481,14 @@ Lines on the screen. Not purpose strings.
 - A spoken or on-screen split line: "Kilometre 1 took 6 minutes 12." Miles: "Mile 1 took 6 minutes 12."
 - A spoken or on-screen heart-rate line, only when a sample is recent, and only on the interval they chose: "Heart rate 142."
 - Once, if the rate is 180 or above. Confirm 180 before this is used: "Heart rate is 180. This is not medical advice."
-- In Good to know: "Heart rate, if it shows, comes from Apple Health and can be a little behind. It is not medical advice."
+- In Good to know, Apple Watch build: "Heart rate, if it shows, comes from Apple Health and can be a little behind. It is not medical advice."
+- In Good to know, later Garmin build: "A Garmin heart rate is the broadcast from the watch or strap. It is not read from Garmin Connect. It is not medical advice."
 
-**Bluetooth heart rate. Not recommended, and not added unless you later choose that source.** New key. New review.
+**Garmin broadcast. Later. New keys. Not in the Apple Watch build.**
 
-`NSBluetoothAlwaysUsageDescription`: "Charioteer reads heart rate from a Bluetooth strap or watch while a walk, run, or cycle is running, including when the phone is locked. The reading stays on this phone. It is not sent."
+`NSBluetoothAlwaysUsageDescription`: "Charioteer reads heart rate from a Garmin watch or strap that is broadcasting it, while a walk, run, or cycle is running, including when the phone is locked. The reading stays on this phone. It is not sent. Garmin Connect is not used."
 
-`UIBackgroundModes` entry `bluetooth-central` would go with that sentence. Neither is in the app. Do not add them for this version.
+`UIBackgroundModes` entry `bluetooth-central` goes with that sentence. Neither is in the app. Do not add them for the Apple Watch test.
 
 **Apple Health write, only if you want that button built.** Not the first version.
 
@@ -479,7 +502,7 @@ Proposed: "Charioteer writes the food and water you log to Apple Health: dietary
 - `NSLocationAlwaysUsageDescription`.
 - A new motion sentence. The current one stays, because the app does not read motion.
 - A new microphone sentence. Speaking is not recording.
-- `NSBluetoothAlwaysUsageDescription`, and `UIBackgroundModes` `bluetooth-central`, unless you later choose a Bluetooth strap. Not this version.
+- `NSBluetoothAlwaysUsageDescription`, and `UIBackgroundModes` `bluetooth-central`, until you approve the Garmin broadcast. Not the Apple Watch build. Garmin Connect is not a source.
 
 `UIBackgroundModes` `location` and `audio` are the keys in section (c). They are not in the binary. They wait for the wording above.
 
@@ -493,7 +516,7 @@ Writing a workout while the Health sentence says we do not write workouts would 
 
 A step counter while the motion sentence says we do not use motion would be the same kind of rejection. The step counter is not in the plan.
 
-A Bluetooth heart-rate strap would be a new permission and a new background mode. It is not in this version. Showing a heart rate the iPhone invented would make the Health sentence false. The tile stays on "No heart-rate source" when Apple Health has nothing recent.
+A Garmin broadcast needs a new Bluetooth sentence and `bluetooth-central`. Those keys are not in the Apple Watch build. Garmin Connect and the Health API are not a live source. Showing a heart rate the iPhone invented would make the Health sentence false. The tile stays on "No heart-rate source" when neither source has a recent reading.
 
 ## What this note does not do
 
