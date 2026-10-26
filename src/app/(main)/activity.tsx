@@ -1,6 +1,6 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
-import { AppState, Platform } from 'react-native';
+import { AppState, Platform, useWindowDimensions, View } from 'react-native';
 
 import { saveActivitySummary, deleteActivitySummary } from '@/activity/summaries';
 import { useRepository, useSnapshot } from '@/data';
@@ -17,6 +17,7 @@ import {
   averagePaceSecPerKm,
   clock,
   distanceLabel,
+  extendTrack,
   isActivityKind,
   paceLabel,
   startLabel,
@@ -33,11 +34,15 @@ import { LOCATION_FIX_MESSAGE } from '@/location/whileUsing';
 import { readActivityFix } from '@/location/activityFix';
 import { GRATITUDE_DIARY_TICK } from '@/domain/sharedPhotos';
 import { ActivityGoodToKnow } from '@/ui/ActivityGoodToKnow';
+import { FootpathMap } from '@/ui/FootpathMap';
 import { Button, Card, Choice, ErrorNote, Field, Screen, T } from '@/ui/ui';
 
 type LiveState = {
   activity: ActivityKind;
+  routeId: string | null;
   routeTitle: string | null;
+  /** Accepted fixes for the line on the map. Memory only. Finish does not write this. */
+  track: { latitude: number; longitude: number }[];
   intervalMin: UpdateInterval;
   spoken: boolean;
   movingMs: number;
@@ -111,7 +116,9 @@ export default function Activity() {
   const [routeId, setRouteId] = useState<string | null>(null);
   const [intervalMin, setIntervalMin] = useState<UpdateInterval>(held?.live.intervalMin ?? 5);
   const [spoken, setSpoken] = useState(held?.live.spoken ?? true);
+  const [following, setFollowing] = useState(true);
   const [phase, setPhase] = useState<'setup' | 'live' | 'finish'>(held ? 'live' : 'setup');
+  const windowSize = useWindowDimensions();
   const [live, setLive] = useState<LiveState | null>(held?.live ?? null);
   const [summary, setSummary] = useState<ActivitySummary | null>(null);
   const liveRef = useRef(live);
@@ -203,6 +210,7 @@ export default function Activity() {
             denied: false,
             anchor: step.previous,
             distanceM: current.distanceM + step.addedM,
+            track: extendTrack(current.track, current.anchor, step),
           };
         })();
       commit(next);
@@ -219,7 +227,9 @@ export default function Activity() {
     const route = routes.find((item) => item.id === routeId);
     const next: LiveState = {
       activity,
+      routeId: route?.id ?? null,
       routeTitle: route?.title ?? null,
+      track: [],
       intervalMin,
       spoken,
       movingMs: 0,
@@ -235,6 +245,7 @@ export default function Activity() {
     };
     held = { live: next };
     commit(next);
+    setFollowing(true);
     setPhase('live');
     setError(null);
   }
@@ -345,27 +356,61 @@ export default function Activity() {
     const quiet = live.intervalMin === 0
       ? 'Updates are off. The clock still runs.'
       : 'The first line comes at the interval you chose.';
+    const planned = live.routeId ? routes.filter((item) => item.id === live.routeId) : [];
+    const here = live.anchor
+      ? { latitude: live.anchor.latitude, longitude: live.anchor.longitude }
+      : null;
+    const mapHeight = windowSize.width < 360 ? 200 : 230;
     return (
-      <Screen eyebrow={activityWord(live.activity)} title="Out" intro={LIVE_INTRO}>
+      <Screen
+        eyebrow={activityWord(live.activity)}
+        title="Out"
+        intro={LIVE_INTRO}
+        footer={(
+          <View style={{ gap: 8 }}>
+            {live.locked ? <T>{LOCK_PAUSE_NOTE}</T> : null}
+            <View style={{ flexDirection: 'row', gap: 8 }}>
+              <View style={{ flex: 1 }}>
+                <Button label={live.paused ? 'Resume' : 'Pause'} onPress={pauseOrResume} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Button label="Finish" tone="quiet" onPress={() => { void finish(); }} />
+              </View>
+            </View>
+          </View>
+        )}
+      >
+        <FootpathMap
+          routes={planned}
+          sketch={[]}
+          here={here}
+          track={live.track}
+          follow={following}
+          locationFocus={following && here ? 1 : 0}
+          height={mapHeight}
+          onUserMove={() => setFollowing(false)}
+          onRecentre={() => setFollowing(true)}
+        />
         <Card>
-          <T variant="label">Time</T>
-          <T variant="hero">{clock(moving)}</T>
-          <T variant="label">Distance</T>
-          <T variant="title">{distanceLabel(live.distanceM)}</T>
-          <T variant="label">Pace</T>
-          <T variant="title">{paceLabel(pace)}</T>
+          <View style={{ flexDirection: 'row', gap: 8 }}>
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <T variant="label">Time</T>
+              <T variant="title" numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6}>{clock(moving)}</T>
+            </View>
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <T variant="label">Distance</T>
+              <T variant="title" numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6}>{distanceLabel(live.distanceM)}</T>
+            </View>
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <T variant="label">Pace</T>
+              <T variant="title" numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6}>{paceLabel(pace)}</T>
+            </View>
+          </View>
           {live.triedFix && live.anchor == null && !live.denied ? <T variant="muted">{WAITING_FIX}</T> : null}
-          {live.routeTitle ? <T variant="muted">Reminder: {live.routeTitle}. Turns are not spoken.</T> : null}
-        </Card>
-        <Card>
+          {live.denied ? <T variant="muted">{LOCATION_FIX_MESSAGE}</T> : null}
           <T variant="label">Thumos</T>
           <T>{live.lastLine ?? quiet}</T>
-        </Card>
-        <Card>
-          <Button label={live.paused ? 'Resume' : 'Pause'} onPress={pauseOrResume} />
-          <Button label="Finish" tone="quiet" onPress={() => { void finish(); }} />
-          {live.locked ? <T>{LOCK_PAUSE_NOTE}</T> : null}
-          {live.denied ? <T variant="muted">{LOCATION_FIX_MESSAGE}</T> : null}
+          {live.routeTitle ? <T variant="muted">Reminder: {live.routeTitle}. Turns are not spoken.</T> : null}
         </Card>
         <ActivityGoodToKnow kind="live" />
       </Screen>

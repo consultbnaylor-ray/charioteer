@@ -1,6 +1,6 @@
 # Start a walk, a run, or a cycle
 
-Version 1 is in the app on this branch. Ben approved it on 26 October 2026. Apple Health, lock-screen tracking, a cloud summary, and live model lines are not built. The iOS build number stays 72. Nothing is shipped.
+Version 1 is in the app on this branch. Ben approved it on 26 October 2026, and the same morning asked for the map on the live screen. Apple Health, lock-screen tracking, a cloud summary, and live model lines are not built. The iOS build number stays 72. Nothing is shipped.
 
 Outside is Good has three buttons: **Start a walk**, **Start a run**, and **Start a cycle**. They sit on the existing card, under Find a route and above Open the map. The button opens the setup screen with that activity already chosen. The person can still switch. Walk this off stays hidden.
 
@@ -12,7 +12,7 @@ The pictures are layout proofs. They are not screens in the app. The figures (1.
 2. Thumos writes the line on the screen and can speak it while that screen is open. A small buzz marks the moment. No notification every few minutes.
 3. The sentences are a list kept on the phone. Pace and time are filled in there. Nothing is sent. A live model comes later, only if you say so.
 4. Distance and pace come from the phone's location while the screen is open. Not from the step counter. A cycle does not make useful steps, and the motion sentence today says we do not use motion.
-5. Keep the summary on the phone: type, date, distance, time, average pace. No path, on the phone or in the cloud. The Apple Health button is drawn, and it waits for your OK on new wording.
+5. Keep the summary on the phone: type, date, distance, time, average pace. No path, on the phone or in the cloud. While the outing is on screen, the map draws the line so far. That line stays in memory and is thrown away with the screen. It is not saved and it is not sent. The Apple Health button is drawn, and it waits for your OK on new wording.
 6. The careful lines stay in Good to know, once each, in the same quiet type as the other Outside screens. No warning banner.
 7. Leave Walk this off hidden. This is a different idea.
 8. First version is the awake screen, the local lines, the spoken line, and the summary. Lock-screen tracking, Apple Health, and a live model come later, each only after you approve the wording.
@@ -25,7 +25,7 @@ Setup. Activity, an optional saved route, how often Thumos speaks, and whether t
 
 ![Setup, 320 wide. The choices still fit.](start-activity/setup-320.png)
 
-During the outing. Time, distance, and pace are the large type. Thumos has one calm line. Pause and Finish are full-width. While paused, Pause becomes Resume.
+During the outing. The same OpenFreeMap map as route finding is on the screen, light by default, with the light/dark switch, full screen, and the attribution. The blue dot follows the person. A chosen route is drawn in both styles. The line walked so far is drawn too, and it is not saved. Time, distance, pace, and the latest line sit under the map. Pause and Finish stay in reach. Panning the map leaves it there until Re-centre. While paused, Pause becomes Resume.
 
 ![Live, 390 wide. Layout proof.](start-activity/live-390.png)
 
@@ -37,7 +37,7 @@ The summary. Distance, time, and average pace. A note is optional. The gratitude
 
 ![Finished, 320 wide.](start-activity/finish-320.png)
 
-A saved route, if they pick one, is a name on the screen ("Bristol, Queen Square" in the proof). It does not speak turns, and it does not open a second map. The map they already have is unchanged.
+A saved route, if they pick one, is drawn on that live map. It does not speak turns. Route finding's own map is unchanged, and this screen does not call the route service again. The line of the outing is only the points still in memory. Finish writes the summary, which still has no path.
 
 Outside is Good can list the last few summaries, with Delete. That list is not in the pictures. Deleting the app deletes the list. Say that in the list.
 
@@ -45,7 +45,7 @@ Outside is Good can list the last few summaries, with Delete. That list is not i
 
 **Recommendation: the screen stays awake. Locking the phone pauses the time and the distance.**
 
-Today the app may use location only while a map is open, and only if the person allows it. The purpose sentence says it is not tracked in the background. Background location is switched off. Always location is switched off. The map and the route screen still do not watch location. The activity screen reads a balanced fix only while it is open.
+Today the app may use location only while a map is open, and only if the person allows it. The purpose sentence says it is not tracked in the background. Background location is switched off. Always location is switched off. The map and the route screen still do not watch location. The activity screen reads a balanced fix only while it is open, and the live map draws that fix. The map does not start a second location watch, and it does not add a host.
 
 Three ways to run an outing:
 
@@ -105,7 +105,7 @@ The step counter stays unused, so the motion sentence stays true. Android motion
 
 **Recommendation: on the phone only. The summary is the activity, the date, the distance, the time, and the average pace. No path.**
 
-A path is a trail of where they were. The first version does not store one, even on the phone. Finish writes the summary. Don't keep this removes it. Leaving the screen keeps it, so a dropped call after Finish does not lose the outing. Outside is Good can show the last few, with Delete. Reinstalling, or deleting the app, clears them. The screen should say that.
+A path is a trail of where they were. The first version does not store one, even on the phone. The live map draws the accepted fixes while the outing is open, so the person can see where they have been. Those points are not written to the summary, not written to the account, and not sent. Leaving the live screen can keep them in memory until Finish or until the screen is left behind. Finish writes the summary and drops the line. Don't keep this removes the summary. Outside is Good can show the last few summaries, with Delete. Reinstalling, or deleting the app, clears them. The screen should say that.
 
 **Not a cloud table in the first version.** A table of outings would be location-related even without the path, because a distance and a time still say that someone went out. It would need a privacy-note update, a line in the data download (`export_my_data`), and the same delete as the rest of the account. Saved routes already sit on the account, and that migration does not add them to the download. A new activity table must not copy that gap. If you later want the summary to follow the account, store the summary only, still with no path, and add it to the download and to delete before it is switched on.
 
@@ -212,4 +212,4 @@ A step counter while the motion sentence says we do not use motion would be the 
 
 ## What this note does not do
 
-No feature code. No change to `app.json`. No new permission. Build number 72. Nothing deployed. The outdoor-route function is still not deployed. The map full-screen work on this branch is unchanged.
+Version 1, including the live map, is in the app on this branch. No new permission and no new host. Build number 72. Nothing shipped. The outdoor-route function is still not deployed.

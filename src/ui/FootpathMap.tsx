@@ -9,6 +9,8 @@ import {
   savedLineCollection,
   sketchLineCollection,
   startCollection,
+  trackLineCollection,
+  trackLineColour,
   youAreHereCollection,
   type MapScheme,
   type OutdoorPoint,
@@ -56,6 +58,10 @@ export function FootpathMap({
   locationFocus = 0,
   locating = false,
   onShowMyLocation,
+  onRecentre,
+  follow,
+  onUserMove,
+  track = [],
   height = 280,
 }: {
   routes: readonly OutdoorRoute[];
@@ -66,11 +72,18 @@ export function FootpathMap({
   /** Increments when the person asks the map to centre on the GPS fix. */
   locationFocus?: number;
   locating?: boolean;
-  onShowMyLocation: () => void;
+  onShowMyLocation?: () => void;
+  /** An outing uses this instead of Show my location. */
+  onRecentre?: () => void;
+  /** When set, the camera follows `here` until the person pans. */
+  follow?: boolean;
+  onUserMove?: () => void;
+  /** Drawn for the outing. Not saved. */
+  track?: readonly OutdoorPoint[];
   height?: number;
 }) {
   const [scheme, choose] = useMapScheme();
-  const camera = useHeldCamera(routes, sketch, here, locationFocus);
+  const camera = useHeldCamera(routes, sketch, here, locationFocus, follow);
   const [maps, setMaps] = useState<Maps | null>(null);
   useEffect(() => {
     setMaps(loadMaps());
@@ -83,6 +96,7 @@ export function FootpathMap({
       scheme={scheme}
       locating={locating}
       onShowMyLocation={onShowMyLocation}
+      onRecentre={onRecentre}
       onToggleStyle={() => choose(scheme === 'dark' ? 'light' : 'dark')}
       onRestore={camera.restore}
       renderMap={({ height: viewHeight }) => (
@@ -98,6 +112,8 @@ export function FootpathMap({
           sketch={sketch}
           here={here}
           startPoint={startPoint}
+          track={track}
+          onUserMove={onUserMove}
         />
       )}
     />
@@ -116,6 +132,8 @@ function NativeCanvas({
   sketch,
   here,
   startPoint,
+  track,
+  onUserMove,
 }: {
   maps: Maps | null;
   height: number;
@@ -128,9 +146,14 @@ function NativeCanvas({
   sketch: readonly OutdoorPoint[];
   here: OutdoorPoint | null;
   startPoint: OutdoorPoint | null;
+  track: readonly OutdoorPoint[];
+  onUserMove?: () => void;
 }) {
   const camera = useRef<CameraHandle>(null);
+  const moved = useRef(onUserMove);
+  moved.current = onUserMove;
   const green = mapLineColour(scheme);
+  const walked = trackLineColour(scheme);
   const place = held.current;
 
   useEffect(() => {
@@ -157,6 +180,7 @@ function NativeCanvas({
         const zoom = event.nativeEvent?.zoom;
         if (!center || center.length < 2 || typeof zoom !== 'number') return;
         remember({ longitude: center[0], latitude: center[1], zoom });
+        moved.current?.();
       }}
     >
       <maps.Camera ref={camera} initialViewState={{ center: [place.longitude, place.latitude], zoom: place.zoom }} />
@@ -169,6 +193,8 @@ function NativeCanvas({
         source="sketch"
         paint={{ 'line-color': green, 'line-width': 3, 'line-dasharray': [2, 1.4] }}
       />
+      <maps.GeoJSONSource id="track" data={trackLineCollection(track)} />
+      <maps.Layer id="track-line" type="line" source="track" paint={{ 'line-color': walked, 'line-width': 5 }} />
       <maps.GeoJSONSource id="start" data={startCollection(routes, sketch, startPoint)} />
       <maps.Layer
         id="start-dot"

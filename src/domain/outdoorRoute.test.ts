@@ -17,6 +17,10 @@ import {
   SKETCH_LINE,
   cravingSketch,
   mapLineColour,
+  trackLineColour,
+  trackLineCollection,
+  TRACK_LINE_DARK,
+  TRACK_LINE_LIGHT,
   openFreeMapStyle,
   outdoorRouteFromDraft,
   parseMapScheme,
@@ -261,6 +265,18 @@ describe('Outside is Good phase 1', () => {
     expect(mapLineColour('dark')).toBe(MAP_LINE_DARK);
     expect(MAP_LINE_LIGHT).toBe('#047857');
     expect(MAP_LINE_DARK).toBe('#2DE0A0');
+    expect(trackLineColour('light')).toBe(TRACK_LINE_LIGHT);
+    expect(trackLineColour('dark')).toBe(TRACK_LINE_DARK);
+    expect(TRACK_LINE_LIGHT).not.toBe(MAP_LINE_LIGHT);
+    expect(TRACK_LINE_DARK).not.toBe(MAP_LINE_DARK);
+    const line = trackLineCollection([
+      { latitude: 51.45, longitude: -2.59 },
+      { latitude: 51.451, longitude: -2.59 },
+    ]);
+    expect(line.features).toHaveLength(1);
+    expect(line.features[0]?.geometry.coordinates).toEqual([[-2.59, 51.45], [-2.59, 51.451]]);
+    expect(trackLineCollection([{ latitude: 51.45, longitude: -2.59 }]).features).toEqual([]);
+    expect(readFileSync('src/ui/MapChrome.tsx', 'utf8')).toContain("export const RECENTRE_MAP = 'Re-centre'");
     const chrome = readFileSync('src/ui/MapChrome.tsx', 'utf8');
     expect(chrome).toContain("export const FULL_SCREEN_MAP = 'Full screen map'");
     expect(chrome).toContain("export const CLOSE_FULL_SCREEN_MAP = 'Close full screen map'");

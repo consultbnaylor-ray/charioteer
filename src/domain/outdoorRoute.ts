@@ -40,6 +40,10 @@ export type MapScheme = 'light' | 'dark';
 export const MAP_LINE_LIGHT = '#047857';
 export const MAP_LINE_DARK = '#2DE0A0';
 
+/** Blue on the light Liberty style. Pale blue on the dark style. Not the saved-route green. */
+export const TRACK_LINE_LIGHT = '#1D4ED8';
+export const TRACK_LINE_DARK = '#93C5FD';
+
 const EARTH_M = 6_371_000;
 const WALK_METRES_PER_MINUTE = 80;
 /** A line the app will hold. The live table still caps a row at LIVE_POINT_CAP until a later migration. */
@@ -97,6 +101,10 @@ export function parseMapScheme(value: unknown): MapScheme {
 
 export function mapLineColour(scheme: MapScheme): string {
   return scheme === 'dark' ? MAP_LINE_DARK : MAP_LINE_LIGHT;
+}
+
+export function trackLineColour(scheme: MapScheme): string {
+  return scheme === 'dark' ? TRACK_LINE_DARK : TRACK_LINE_LIGHT;
 }
 
 export function mapStart(): OutdoorPoint {
@@ -331,6 +339,14 @@ export function sketchLineCollection(points: readonly OutdoorPoint[]) {
   return {
     type: 'FeatureCollection' as const,
     features: lineFeatures([{ id: 'sketch', points }]),
+  };
+}
+
+/** The line of an outing still on screen. Callers keep the points in memory and do not save them. */
+export function trackLineCollection(points: readonly OutdoorPoint[]) {
+  return {
+    type: 'FeatureCollection' as const,
+    features: lineFeatures([{ id: 'track', points }]),
   };
 }
 

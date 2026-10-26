@@ -190,6 +190,25 @@ function usable(fix: ActivityFix): boolean {
  * Adds the distance of a clear, possible step.
  * A poor fix or an impossible jump is ignored, and the previous point stays put.
  */
+/** Accepted fixes only. A rejected fix leaves the line where it was. The result is not stored. */
+export function extendTrack(
+  track: readonly { latitude: number; longitude: number }[],
+  anchor: ActivityFix | null,
+  step: { previous: ActivityFix | null },
+): { latitude: number; longitude: number }[] {
+  const next = step.previous;
+  if (!next) return track.slice();
+  const sameAnchor = anchor != null
+    && next.atMs === anchor.atMs
+    && next.latitude === anchor.latitude
+    && next.longitude === anchor.longitude;
+  if (sameAnchor) return track.slice();
+  const point = { latitude: next.latitude, longitude: next.longitude };
+  const last = track[track.length - 1];
+  if (last && last.latitude === point.latitude && last.longitude === point.longitude) return track.slice();
+  return [...track, point];
+}
+
 export function applyFix(
   kind: ActivityKind,
   previous: ActivityFix | null,
