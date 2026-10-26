@@ -4,6 +4,8 @@ Version 1 is in the app on this branch. Ben approved it on 26 October 2026, and 
 
 On 26 October 2026 at 07:42 GMT Ben changed the scope. Tracking must keep running when the phone is locked, during a call, in another app, and while music plays. A spoken line should lower the music for a moment and then let it return. That replaces the awake-screen plan and the rule against a background mode. It is not built. No purpose string has been changed. No Info.plist key has been added. Apple Health, a cloud summary, and live model lines are still not built. The iOS build number stays 72. Nothing is shipped.
 
+Later the same day the Security and Compliance Bot sent an advisory on that plan. The background section below records it as recommendations. Ben decides. Nothing in the advisory is built. Where the advisory is tighter than the 07:42 draft, the advisory is the recommendation.
+
 The decision is **Background tracking and spoken updates over music**. The pictures in that section are layout proofs. They are not screens in the app.
 
 Outside is Good has three buttons: **Start a walk**, **Start a run**, and **Start a cycle**. They sit on the existing card, under Find a route and above Open the map. The button opens the setup screen with that activity already chosen. The person can still switch. Walk this off stays hidden.
@@ -61,7 +63,7 @@ Three ways to run an outing:
 
 **Background, with the blue location mark.** Apple lets an app keep location going after the screen locks, if the person started it, and if a blue mark stays visible so they can see location is on. It stops when they finish, and if they force-quit the app. This is still the while-using permission. It does not ask for Always. It does add a background mode (`location` under UIBackgroundModes). Apple can ask for a short video: start, lock the phone, the mark showing, then stop. The usual Expo background switch is the wrong tool for this. Turning that on and calling the background permission asks for Always. We would not do that. This can be a later version. It is a real review, and it is lighter than Always.
 
-**Always location.** The phone could track after the app is closed, with no mark the person is watching. That is a new purpose sentence (`NSLocationAlwaysAndWhenInUseUsageDescription`), the same background mode, and a stricter review. Apple asks why while-using is not enough. For an outing the person starts and stops, while-using is enough. I would not ask for Always.
+**Always location.** The phone could track after the app is closed, with no mark the person is watching. That is a new purpose sentence (`NSLocationAlwaysAndWhenInUseUsageDescription`), the same background mode, and a stricter review. Apple asks why while-using is not enough. For an outing the person starts and stops, while-using is enough. I would not ask for Always. The Security and Compliance Bot advisory, in the background section, is the recommendation if that later version is built. It keeps While Using, refuses Always, and refuses significant-change and region monitoring.
 
 **Apple Health or the step counter only.** Health can show a distance after a watch has already recorded a workout. It does not give a live pace every five minutes during an outing that Charioteer itself is timing. The step counter would also make today's motion sentence false. That sentence says Charioteer does not use motion or fitness data. A cycle barely registers as steps. I would not use the step counter.
 
@@ -77,7 +79,7 @@ The screen staying lit uses more battery than a locked phone. Say that in Good t
 
 The person picks 3, 5, or 10 minutes, or Off. Off keeps the clock and keeps Thumos quiet. They also pick "Spoken and on screen" or "On screen only".
 
-Speaking uses the phone's own voice (a text-to-speech library, `expo-speech`). It does not use the microphone. It does not need a new permission. It does not need a background audio mode. When the screen locks, or the app is not in front, the voice stops. That matches the pause. Adding a background audio mode so a voice could keep talking on the lock screen is a common rejection. Apple expects that mode for music or podcasts, not for a sentence every five minutes. We should not add it.
+Speaking uses the phone's own voice (a text-to-speech library, `expo-speech`). It does not use the microphone. It does not need a new permission. It does not need a background audio mode. When the screen locks, or the app is not in front, the voice stops. That matches the pause. Adding a background audio mode so a voice could keep talking on the lock screen is a common rejection if the mode is used to keep the app awake. The app today does not add it. The later plan does add it, only to speak a line they asked for, and the session is released when the line ends. That plan is not built.
 
 Music: the spoken line should lower the music for a moment and then let it return. The library does not give a guarantee in writing. The first build has to be checked on a phone. If the music stops and does not come back, On screen only is the reliable choice and the spoken option should wait. The on-screen line is always there either way.
 
@@ -181,9 +183,11 @@ The lock sentence is also in the setup card, above the fold, so they see it befo
 - A calorie.
 - Any link to Walk this off.
 
+The list above is the first version, which is already in the app. The next section is the later plan. Background audio appears there only so a Thumos line can be heard, and only if you approve that build. Always location stays out.
+
 ## Background tracking and spoken updates over music
 
-Ben, 26 October 2026, 07:42 GMT. This section is the plan. It is not built. Nothing here has been written into Info.plist or into a purpose string.
+Ben, 26 October 2026, 07:42 GMT, with the Security and Compliance Bot advisory folded in the same day. This section is the plan. It is not built. Nothing here has been written into Info.plist or into a purpose string. You decide whether it is built.
 
 The person starts a walk, a run, or a cycle. They can then lock the phone, take a call, open another app, or play music. The clock and the distance keep going until they tap Stop in the app. A spoken line, if they asked for one, plays over the music. The music drops for that sentence and then comes back.
 
@@ -199,40 +203,52 @@ When the app is not in front, they do not see this screen. iOS shows a blue loca
 
 ![Tracking in the background, 320 wide.](start-activity/tracking-background-320.png)
 
+The line drawn on these proofs is the path held in memory during the outing. If the app is killed, that line is gone. The pictures do not show a saved route of the outing. Stop on these proofs is the button in the app. It is not a notification.
+
 The two pictures earlier in this note, live-390 and live-320, are the screen in the app today. That screen pauses when the phone locks.
 
 ### (a) Location
 
-The least permission that does the job is the one the app already asks for: While Using the App. Add the background mode `location`, and show the blue mark. Do not ask for Always.
+Security recommendation. While Using the App, plus the background mode `location`, plus the blue mark. Never Always. Do not add `NSLocationAlwaysAndWhenInUseUsageDescription`. Do not add `NSLocationAlwaysUsageDescription`. Do not call `requestBackgroundPermissionsAsync`. That call is the Always prompt.
 
-When this is built, it would work like this.
+Updates start only when they tap Start on the activity screen. Opening the map, opening setup, Find a route, and launching the app do not start them. If While Using is not granted yet, Start is when the app asks, with `requestForegroundPermissionsAsync`, and only after the in-app explanation in the wording list.
 
-- They tap Start. The app asks for location only if it does not already have While Using. The call is `requestForegroundPermissionsAsync`. It does not call `requestBackgroundPermissionsAsync`. That second call is the Always prompt.
-- Measuring uses `expo-task-manager` and `expo-location` `startLocationUpdatesAsync`, with `showsBackgroundLocationIndicator: true`, `pausesUpdatesAutomatically: false`, and `activityType: Fitness`.
-- The blue mark is required. With only While Using, iOS keeps delivering updates in the background when that mark is showing. If the mark is off, those updates stop.
-- `pausesUpdatesAutomatically` has to be passed as false. In this SDK the native task turns pausing on if the flag is left out. Standing at a junction must not look like the outing ended. They can tap Pause if they want the clock to hold.
-- Fitness is Apple's activity type for walking, running, and cycling. It is not the motion permission, and it does not read the step counter. The motion sentence stays as it is.
-- Stop calls `stopLocationUpdatesAsync`. The blue mark goes away.
+Updates stop in all of these cases:
 
-Always is the heavier option. It needs a second purpose string, `NSLocationAlwaysAndWhenInUseUsageDescription`, and a prompt that can say Change to Always Allow. Always is what lets iOS relaunch the app after they have swiped it away. This outing does not need that. If they swipe the app away, measuring stops. That is the right outcome. Do not add an Always string.
+- They tap Stop. Stop is the end of the outing. The same clear happens if they discard it.
+- The app is terminated. A swipe-away, a crash, or the system ending the process all count. iOS does not relaunch the app. Measuring does not resume on the next open.
+- A time limit. The advisory says there is a time-out and does not give the length. Recommendation: four hours from Start. Pause does not extend it. At four hours, updates stop, the path is cleared, and the screen says the outing stopped because it reached the time limit. Four hours covers a long walk or run. A long ride may need more. That number is for you to confirm.
 
-One limit to test on a phone before any build is called done. The Expo location task also starts significant-change monitoring. Apple uses that kind of monitor to relaunch an app that was swiped away, and it belongs with Always. With only While Using, a swipe-away should not relaunch the app. If the test shows iOS offering Always, do not add the Always sentence. Stop the extra monitor instead.
+The in-app state while measuring is on, including after they come back from the lock screen or another app, says tracking is active and shows Stop. Stop is that button. No notification is posted to say tracking is on, and no notification carries Stop.
 
-The map and Find a route do not start this task. Route finding still runs only after they turn it on. This outing does not send its path to the route service.
+When this is built, the task would be set like this.
+
+- `showsBackgroundLocationIndicator: true`. With only While Using, iOS keeps delivering updates in the background when that mark is showing. If the mark is off, those updates stop.
+- `activityType: Fitness`. That is Apple's type for walking, running, and cycling. It is not the motion permission, and it does not read the step counter. The motion sentence stays as it is.
+- `pausesLocationUpdatesAutomatically` is passed explicitly. The advisory names the property and does not say on or off. The earlier draft of this note said off, so a rest would not look like the outing ended. That mixed up two things. An automatic pause of the radios is not the end of the outing. The in-app state stays "tracking active" until Stop, the time limit, or the process ending. The security reading is to leave automatic pause on, so a long standstill can power the radios down. This SDK does not agree with itself about the default: the TypeScript comment says the default is false, and `EXLocationTaskConsumer` uses true if the option is omitted. Pass the value you choose. Recommendation: true. You decide.
+- Accuracy and `distanceFilter` no finer than the outing needs. Recommendation: Balanced accuracy, and a distance filter of 10 metres. Best-for-navigation, and a filter of 0, are finer than this needs. The filters already in version 1 stay: drop a fix worse than about 50 metres, and drop a jump that would be an impossible speed. Those numbers are for you to confirm with the 10 metres.
+
+Do not use significant-change monitoring. Do not use region monitoring, a geofence, or visit monitoring. This is a hard no, not a test-and-see. The earlier draft said to stop the extra monitor only if a phone test offered Always. That hedge is withdrawn.
+
+`startLocationUpdatesAsync` in this SDK registers `EXLocationTaskConsumer`. That consumer calls `startUpdatingLocation` and also `startMonitoringSignificantLocationChanges`. The later build must not ship that consumer unchanged. The task that is written for this outing calls standard updates only, with `allowsBackgroundLocationUpdates` and the blue mark, and it does not call `startMonitoringSignificantLocationChanges` or `startMonitoringForRegion`.
+
+The map and Find a route do not start this task. Route finding stays a separate feature. It must not reuse the live path. A route request still contains only the start and the destination, plus the travel type the function already sends. The activity screen does not call the route service.
 
 The while-using sentence for this plan is in **Wording that needs your OK**. It is not the sentence in the app today. Today's sentence says locking pauses the outing. That would be false after this is built.
 
 ### (b) Spoken lines over music
 
+Security recommendation. The background mode `audio` exists only to play a Thumos line. No other audio claim. No silent keepalive, no recording, and no music feature.
+
 The words are still the list on the phone. Time and pace are filled in on the phone. Nothing is sent. There is no microphone. The microphone sentence does not change.
 
-`expo-speech` speaks with the phone's voice. On iOS, `useApplicationAudioSession: false` tells the system to use a separate audio session that mixes with other audio and ducks it. That is the first thing to use. It is not a promise until a phone plays music, hears one line, and hears the music come back.
+The audio session mixes with other audio and ducks it: `mixWithOthers` and `duckOthers` together. Activate the session for the utterance. Deactivate it when the utterance is done, and notify the other app, so the music comes back to full volume. Do not leave the session active between lines. Do not use a record category.
 
-If that check fails, and the music stops and stays stopped, speak through a playback session set to duck others. That is `AVAudioSession` category playback with the duck-others option, the same idea as interruption mode `duckOthers`. Turn the session on for the sentence and off when the sentence ends, so the music comes back to full volume. Do not use a record category. Do not ask for the microphone. A line recorded in advance is a fallback only if the phone's own voice cannot duck. It is still not a microphone, and the words are still not sent anywhere.
+`expo-speech` with `useApplicationAudioSession: false` is acceptable only if a phone test shows that this is what it actually does: mix, duck, and release the session when the line ends. If it holds the session, do not use it that way. Speak through a playback session with both options, and deactivate that session after each line. A line recorded in advance is a fallback only if the phone's own voice cannot do this. It is still not a microphone, and the words are still not sent anywhere.
 
 Speaking while the phone is locked, or while another app is in front, needs the background mode `audio`. The location mode keeps the measuring going. It does not give permission to make a sound. Without `audio`, a line that has already started may finish as they leave, and the next line will not be heard.
 
-Do not play silence for the whole outing. A silent player, used so the app stays awake, is a common rejection under guideline 2.5.4. The location mode is what keeps the outing alive between lines. Audio runs only for the sentence they asked for. If they chose On screen only, do not start the audio session for that outing.
+Do not play silence for the whole outing. A silent player, used so the app stays awake, is a common rejection under guideline 2.5.4. The location mode is what keeps the outing alive between lines. If they chose On screen only, do not start the audio session for that outing.
 
 A phone call takes the audio. Do not speak over the call. Measuring can continue through the call. The outing does not end because the phone rang. When the call ends, the next line can speak.
 
@@ -268,22 +284,24 @@ The App Review guidelines that apply:
 - **5.1.1.** The purpose sentence must say what the app really does, in plain words, and the app must do that. Ask when they tap Start, not at first launch. Do not ask for Always when While Using is enough. A sentence that still says the app does not track in the background would be a rejection, because it would be false.
 - **5.1.2.** Say what happens to the data. This location is for the outing. It is not shared with other people. It is not used for advertising. It is not sent to the route service. The path is not uploaded. The privacy note has to say so before this ships. The store label stays Precise Location, for the app's function, and not for tracking across other companies' apps.
 
-The review note should say that in plain words, and the video should show it:
+The App Review note should say that in plain words, and the demo should be steps plus a video:
 
-1. Tap Start a walk. If the location question appears, the while-using sentence is readable.
-2. The map is on screen. The blue dot moves. Stop is on screen.
+1. Tap Start a walk. The in-app explanation is on screen before any system prompt. If the location question appears, the while-using sentence is readable. The prompt is While Using. It does not offer Always.
+2. The map is on screen. The blue dot moves. Stop is a button on the screen. No notification is the Stop control.
 3. Lock the phone. The blue location mark is visible. Music is playing.
-4. A spoken line plays. The music drops. The music comes back.
-5. Open another app, or take a call. Come back. The time and the distance have moved. The screen says tracking is in the background. Tap Stop. The blue mark is gone. The summary is distance, time, and pace, with no path.
-6. Start again and swipe the app away. Measuring stops. The app does not relaunch itself.
+4. A spoken line plays. The music drops. The music comes back to full volume when the line ends.
+5. Open another app, or take a call. Come back. The time and the distance have moved. The screen says tracking is active. Tap Stop. The blue mark is gone. The summary is distance, time, and pace, with no path.
+6. Start again and swipe the app away. Measuring stops. The app does not relaunch itself. The path from that outing is gone.
 
-The rejection risk is real. The likely causes are an Always prompt, a purpose sentence that still says locking pauses the outing, a background mode with nothing to show, a silent audio keepalive, or no video. The wording and the video come first. This note does not start the build.
+The privacy nutrition label is checked against the final binary, after this is built and not before. Do not fill the store form from this note. If the final binary matches this plan, Precise Location stays linked to the user, used for app functionality, and not used for tracking across other companies' apps. The label is not filled as if this plan is already in the app.
+
+The rejection risk is real. The likely causes are an Always prompt, a purpose sentence that still says locking pauses the outing, a background mode with nothing to show, a silent audio keepalive, significant-change monitoring, or no video. The wording and the video come first. This note does not start the build.
 
 ### (d) Battery, and what can still go wrong
 
 A live GPS fix costs battery. The fitness activity type, and a short distance between fixes, keep the phone from waking for every tiny jitter. High accuracy is the one to try first. Best-for-navigation burns more, and it waits for a phone test that shows the pace is too coarse.
 
-`pausesUpdatesAutomatically: false` means a standstill does not make iOS power the radios down. That costs more at a rest stop. Pause is there if they want the clock to hold.
+Automatic pause, if you leave it on, lets iOS power the radios down when the phone is still. That is the recommendation in section (a). Turning it off keeps the radios up at a rest stop and costs more battery. Pause is still there if they want the clock to hold. The outing does not end because the radios paused.
 
 iOS can still slow or stop updates. Low Power Mode, heat, and memory pressure do this. The blue mark is not a promise of a fix every second. A poor fix still adds no distance.
 
@@ -295,45 +313,70 @@ If they swipe the app away, the process ends. Under While Using, iOS does not st
 
 ### (e) Privacy
 
-While the outing is running, the path is on the phone. Memory is enough while the app is open. A copy on the phone is allowed so a crash can draw the line again when they come back. That copy is the points of this outing.
+Security recommendation. The path is in memory only, and only while the outing is running. It is cleared when they tap Stop, and cleared if they discard the outing.
 
-The path is deleted when they tap Stop. It is also deleted on the next open if they had swiped the app away. It is not sent to the account, the route service, the coach, or anyone else. Coordinates are not written to a log.
+If the app is killed mid-outing, the path is lost. A swipe-away, a crash, or the system ending the process all count. There is no copy to redraw the line. The unfinished distance and time are in that same memory, so they are lost as well. Say that on the setup screen, before they start. The earlier draft of this note allowed a copy on the phone so a crash could redraw the line, and it allowed the distance and the time to be written as the outing goes. Both of those are withdrawn.
 
-The saved summary stays the activity, the date, the distance, the time, and the average pace. No path. Keeping the path after Stop would be a later decision, and only if you say so.
+A crash-recovery file is not recommended. If you later decide to keep one, it needs your decision in writing, and the file has to meet all of these: Data Protection complete until first unlock (`NSFileProtectionCompleteUntilFirstUserAuthentication`), excluded from iCloud and from backups (`NSURLIsExcludedFromBackupKey`), and deleted within about 24 hours. Even then it is not sent anywhere.
 
-The summary fields, without any coordinates, can be written on the phone as the outing goes. A swipe-away then still has the distance and the time up to the last fix. That write is not a path.
+No coordinates go to Supabase, to logs, or to crash or analytics breadcrumbs. A search of this repo found no Sentry, Bugsnag, Crashlytics, PostHog, Amplitude, or Mixpanel. The later build must not add a coordinate to any of those, or to a console log a crash report would collect.
+
+Route finding stays separate. It must not reuse the live path. An OpenRouteService request contains the start and the destination only, plus the travel type. It does not contain the line of the outing.
+
+The saved summary, and only after they finish and choose to keep it, stays the activity, the date, the distance, the time, and the average pace. No path. Keeping the path after Stop would be a later decision, and only if you say so.
+
+Do not combine the path with sobriety logs or with exports. It is not joined to `profiles.sobriety_started_at`, to check-ins, or to gratitude entries. It does not appear in `export_my_data`. The gratitude tick stays a note only, with no path. A summary without a path on the account is the separate later decision already in section 5. It is not this path, and it is not part of this build.
+
+The DPIA note has a proposed processing activity for this, marked not built. The privacy note has a short Activity tracking section, also marked not built. Both wait for you. They do not change the purpose sentence in the binary.
 
 ### (f) What the screen has to show
 
-The four pictures in this section are the layout. The map stays visible while the app is open. Stop is on the screen in both states: the ordinary live screen, and the screen they see when they come back while measuring has been running in the background. The words on those pictures are the in-app lines in the wording list.
+The four pictures in this section are the layout. The map stays visible while the app is open. Stop is on the screen in both states: the ordinary live screen, and the screen they see when they come back while measuring has been running. Stop is not a notification. The words on those pictures are the in-app lines in the wording list, apart from the path sentence: the pictures do not yet say that a killed app loses the path. The wording list does.
+
+### (g) Security checklist for the later build
+
+This is the list to run when the feature is built. It is not built now.
+
+- After Stop, location updates have stopped and the blue mark is gone.
+- After force-quit, updates do not continue and the app does not relaunch itself. The path is gone.
+- After the time limit you confirm, updates stop and the path is cleared.
+- A proxy of the outing shows no request body, query, or header carrying a coordinate from the live path. A route-finding call, on its own screen, still sends only the start and the destination.
+- Logs and any crash report from a test outing contain no coordinates.
+- Lock-screen behaviour is tested: the blue mark is on, one spoken line ducks the music and the music returns, and Stop in the app ends the outing. No notification is the Stop control.
+- Discard and Stop both clear the in-memory path.
+- The native task does not start significant-change monitoring or region monitoring.
 
 ## Wording that needs your OK
 
 None of this is in the app. Nothing below is written into Info.plist until you approve it.
 
-**While-using location, for background measuring.** Same permission as today. New words, because today's sentence would become false. There is no Always sentence.
+**While-using location, for background measuring.** Same permission as today. New words, because today's sentence would become false. There is no Always sentence. The long sentence in the first 07:42 draft is withdrawn. Two texts are here so you can choose. Neither is written into the app.
 
 Today, and still the sentence in the app: "Charioteer uses your location while the map is open, to show where you are, and during a walk, run, or cycle you start, to measure distance and pace. That measure runs only while the activity screen is open. Locking the phone pauses it. It is not tracked in the background. It is not shared with other people. A route is sent to the route service only if you turn route finding on. A route is stored only if you save it. A finished activity stores the distance, time, and pace on this phone, not the path."
 
-Proposed `NSLocationWhenInUseUsageDescription`: "Charioteer uses your location while the map is open, to show where you are. During a walk, run, or cycle you start, it keeps measuring distance and pace while the phone is locked or you are in another app, until you tap Stop. iOS shows a blue location mark the whole time that measuring is on. Swiping the app away stops it. Location is not shared with other people. A route is sent to the route service only if you turn route finding on. A route is stored only if you save it. While an outing is running, the path stays on this phone and is deleted when you tap Stop. A finished activity stores the distance, time, and pace on this phone, not the path."
+The Security and Compliance Bot's text, unchanged: "Charioteer uses your location while you are on a walk, run or ride to track distance and give you spoken updates, including when the screen is locked or you are using other apps. Your route stays on your phone and is not sent anywhere."
+
+Recommended adaptation of that text. It keeps both of the bot's sentences. It says cycle, because that is the button. It adds the map and the route service, because this one purpose string also covers those, and "is not sent anywhere" would be false for a route the person asks for. The live path is still not sent.
+
+"Charioteer uses your location while you are on a walk, run or cycle to track distance and give you spoken updates, including when the screen is locked or you are using other apps. Your route stays on your phone and is not sent anywhere. The same permission shows where you are while the map is open. A route is sent to the route service only if you turn route finding on, and that request is the start and the destination, not this route."
 
 Do not add `NSLocationAlwaysAndWhenInUseUsageDescription`. Do not add `NSLocationAlwaysUsageDescription`.
 
-**Lines on the screen, for the same build.** Not purpose strings. They still need the same OK, because they are what the person reads.
+**Lines on the screen, for the same build.** Not purpose strings. They still need the same OK, because they are what the person reads. The four hours is the time limit recommended in section (a). Change it if you confirm a different number.
 
-- Before Start: "You can lock the phone, take a call, or open another app. Measuring continues until you tap Stop. A blue location mark shows while it is on."
+- Before the location prompt, and before Start: "You can lock the phone, take a call, or open another app. Measuring continues until you tap Stop, or for four hours. A blue location mark shows while it is on. The route stays on this phone. If the app is closed, that route is lost."
 - On the live screen: "You can lock the phone. Measuring continues until you tap Stop."
-- When they come back and it has been running: "Tracking in the background. The blue location mark stays on until you tap Stop."
-- In Good to know: "Distance and pace keep going after you lock the phone, until you tap Stop. The path stays on this phone for that outing and is deleted when you stop. It is not sent."
+- When they come back and it has been running: "Tracking is active. The blue location mark stays on until you tap Stop."
+- In Good to know: "Distance and pace keep going after you lock the phone, until you tap Stop or four hours pass. The route stays in memory for that outing. It is cleared when you stop or discard it. If the app is closed, it is lost. It is not sent."
 - Beside the spoken choice: "A spoken line lowers your music for a moment, then lets it return. The phone speaks. Nothing is recorded."
 - The end control: "Stop"
-- Pause stays "Pause", and "Resume" after a pause. Pause holds the clock. Stop ends the outing.
+- Pause stays "Pause", and "Resume" after a pause. Pause holds the clock. Stop ends the outing. There is no notification for Stop.
 
 **Microphone.** No new words. The sentence stays: "Charioteer does not record audio. Voice is switched off in this version. Apple requires this note because an audio component is included in the app."
 
 **Motion.** No new words. The sentence stays: "Charioteer does not use your motion or fitness data. The map component in the app can reference motion sensors, so Apple requires this note."
 
-**While-using location, already in the app.** This is the purpose sentence on the device today. It matches a screen that pauses when the phone locks. The route-service sentence is in it, and that part stays true. If background measuring is built, the proposed sentence above replaces this one.
+**While-using location, already in the app.** This is the purpose sentence on the device today. It matches a screen that pauses when the phone locks. The route-service sentence is in it, and that part stays true. If background measuring is built, one of the two texts above replaces this one, after you choose.
 
 "Charioteer uses your location while the map is open, to show where you are, and during a walk, run, or cycle you start, to measure distance and pace. That measure runs only while the activity screen is open. Locking the phone pauses it. It is not tracked in the background. It is not shared with other people. A route is sent to the route service only if you turn route finding on. A route is stored only if you save it. A finished activity stores the distance, time, and pace on this phone, not the path."
 
@@ -358,7 +401,7 @@ Proposed: "Charioteer writes the food and water you log to Apple Health: dietary
 
 The binary on this branch pauses when the phone locks, and it has no background mode. Its purpose sentence matches that.
 
-The plan after 07:42 GMT does use background location and a short burst of audio. That is a real review. Guideline 2.5.4, 5.1.1, and 5.1.2 are the ones that apply, and they are set out in section (c), with the video. An Always prompt, a sentence that still says locking pauses the outing, or a silent audio keepalive, are the likely rejections. The wording is not in the binary until you approve it.
+The plan after 07:42 GMT, as tightened by the Security and Compliance Bot, does use background location and a short burst of audio. That is a real review. Guideline 2.5.4, 5.1.1, and 5.1.2 are the ones that apply, and they are set out in section (c), with the video. An Always prompt, a sentence that still says locking pauses the outing, a silent audio keepalive, or significant-change monitoring are the likely rejections. The wording is not in the binary until you approve it. The nutrition label is checked against that final binary, not against this note.
 
 Writing a workout while the Health sentence says we do not write workouts would be a rejection. The button stays on the drawing until the sentence is approved.
 
@@ -366,4 +409,4 @@ A step counter while the motion sentence says we do not use motion would be the 
 
 ## What this note does not do
 
-Version 1, including the live map, is in the app on this branch. It still pauses when the phone locks. The background section is a decision only. No purpose string was changed. No Info.plist key was added. No new host. Build number 72. Nothing shipped. The outdoor-route function is still not deployed. Build 73 stays on its own branch.
+Version 1, including the live map, is in the app on this branch. It still pauses when the phone locks. The background section, including the Security and Compliance Bot recommendations, is a decision only. No purpose string was changed. No Info.plist key was added. No new host. Build number 72. Nothing shipped. The outdoor-route function is still not deployed. Build 73 stays on its own branch.
