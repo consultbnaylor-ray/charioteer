@@ -1,5 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
+import { clearWalkedLinesForSignOut } from '@/activity/walkedLine';
+
 import {
   EMAIL_TAKEN_MESSAGE,
   RESET_NEEDS_EMAIL,
@@ -662,6 +664,7 @@ export class DemoRepository implements Repository {
     const db = clone(this.db);
     db.sessionUserId = null;
     this.commit(db);
+    await clearWalkedLinesForSignOut();
   }
 
   async completeOnboarding(input: OnboardingInput): Promise<void> {
@@ -2217,5 +2220,6 @@ export class DemoRepository implements Repository {
     db.reports = db.reports.filter((report) => report.reporterId !== id);
     db.sessionUserId = null;
     this.commit(db);
+    await clearWalkedLinesForSignOut();
   }
 }

@@ -99,7 +99,7 @@ export function FootpathMap({
   mapLabel?: string;
 }) {
   const [scheme, choose] = useMapScheme();
-  const camera = useHeldCamera(routes, sketch, here, locationFocus, follow);
+  const camera = useHeldCamera(routes, sketch, here, locationFocus, follow, track);
   const [maps, setMaps] = useState<Maps | null>(null);
   useEffect(() => {
     setMaps(loadMaps());

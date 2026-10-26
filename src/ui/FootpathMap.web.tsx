@@ -102,7 +102,7 @@ export function FootpathMap({
   mapLabel?: string;
 }) {
   const [scheme, choose] = useMapScheme();
-  const camera = useHeldCamera(routes, sketch, here, locationFocus, follow);
+  const camera = useHeldCamera(routes, sketch, here, locationFocus, follow, track);
   const [problem, setProblem] = useState<string | null>(null);
   const savedJson = JSON.stringify(savedLineCollection(routes));
   const sketchJson = JSON.stringify(sketchLineCollection(sketch));
