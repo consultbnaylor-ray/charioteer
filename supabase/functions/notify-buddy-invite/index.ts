@@ -1,9 +1,8 @@
 import { json, preflight } from '../_shared/http.ts';
 
 /**
- * Buddy invites no longer send a push. The only remote alert is a direct message
- * from notify-direct-message. An older client that still calls this gets a quiet skip.
- * Do not post to Expo from here.
+ * Buddy invites no longer send a push. An older client that still calls this gets a quiet skip.
+ * Do not post to Expo from here. A shared photo uses notify-buddy-photo, not this function.
  */
 Deno.serve(async (req) => {
   const early = preflight(req);

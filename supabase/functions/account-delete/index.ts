@@ -6,6 +6,7 @@ const PHOTO_BUCKET = 'progress-photos';
 const GRATITUDE_BUCKET = 'gratitude-photos';
 const VISION_BUCKET = 'vision-board';
 const PROFILE_BUCKET = 'profile-photos';
+const BUDDY_BUCKET = 'buddy-photos';
 const LEFT_IN_PLACE = 'Could not remove the private photos, so the account was left in place.';
 
 Deno.serve(async (req) => {
@@ -33,6 +34,8 @@ Deno.serve(async (req) => {
   if (visionPhotos) return json({ ok: false, code: 'storage', message: visionPhotos }, 500);
   const profilePhotos = await removeProfilePhotos(admin, userData.user.id);
   if (profilePhotos) return json({ ok: false, code: 'storage', message: profilePhotos }, 500);
+  const buddyPhotos = await removeBuddyPhotos(admin, userData.user.id);
+  if (buddyPhotos) return json({ ok: false, code: 'storage', message: buddyPhotos }, 500);
 
   try {
     await forgetGarminAccount(admin as unknown as GarminDb, userData.user.id, {
@@ -99,6 +102,10 @@ async function removeVisionPhotos(admin: StorageAdmin, userId: string): Promise<
 
 async function removeProfilePhotos(admin: StorageAdmin, userId: string): Promise<string | null> {
   return removeOwnerFolder(admin, PROFILE_BUCKET, userId);
+}
+
+async function removeBuddyPhotos(admin: StorageAdmin, userId: string): Promise<string | null> {
+  return removeOwnerFolder(admin, BUDDY_BUCKET, userId);
 }
 
 async function removeOwnerFolder(admin: StorageAdmin, bucket: string, userId: string): Promise<string | null> {

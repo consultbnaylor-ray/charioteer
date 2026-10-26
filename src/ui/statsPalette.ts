@@ -33,3 +33,9 @@ export function cardAccent(scheme: Scheme): string {
   if (scheme === 'dark') return '#D1FAE5';
   return '#6EE7B7';
 }
+
+/** Lime wash for a published good zone on a bar. Empty bars stay on the hairline colour. */
+export function goodZoneBand(scheme: Scheme): string {
+  if (scheme === 'dark') return 'rgba(45, 224, 160, 0.45)';
+  return 'rgba(132, 204, 22, 0.55)';
+}

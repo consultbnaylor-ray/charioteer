@@ -49,6 +49,7 @@ import { useAppTheme } from '@/ui/theme';
 import { MovementCharts } from '@/ui/DailyActivity';
 import { HealthRefreshBar, useManualHealthRefresh } from '@/ui/HealthRefresh';
 import { WeightWaistLink } from '@/ui/WeightWaistLink';
+import { healthStatsOmittedTiles, SHOW_WEIGHT_SECTION } from '@/domain/weightSection';
 import { Button, Card, Choice, ErrorNote, Field, playSavedHaptic, Screen, T } from '@/ui/ui';
 
 const KINDS: { id: HealthKind; unit: string; label: string }[] = [
@@ -356,9 +357,9 @@ export default function Health() {
         <GoalLine />
       </Card>
       <HealthSectionShare />
-      <WeightWaistLink samples={healthSamples} />
+      {SHOW_WEIGHT_SECTION ? <WeightWaistLink samples={healthSamples} /> : null}
       <HealthStatBoard
-        omitTiles={['weight_kg', 'waist']}
+        omitTiles={healthStatsOmittedTiles()}
         today={isoDay(new Date())}
         samples={healthSamples}
         activeMinutes={activeMinutes}
@@ -373,7 +374,7 @@ export default function Health() {
         workoutBuckets={snap.nutrition.workoutBuckets}
         period={period}
         onTurnOn={turnOnMissing}
-        onSaveBody={saveBodyGap}
+        onSaveBody={SHOW_WEIGHT_SECTION ? saveBodyGap : undefined}
         onPlanOutdoor={() => router.push(`/workouts?planOutdoor=${Date.now()}` as never)}
         onSetWorkoutBucket={setWorkoutBucket}
       />

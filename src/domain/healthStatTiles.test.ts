@@ -211,9 +211,10 @@ describe('health stat tiles', () => {
     expect(session.tone).toBe('info');
     expect(session.status).toContain('Inside the moderate zone');
     expect(session.status).toContain('114 to 136');
-    expect(session.meaning).toContain('208 − 0.7 × age');
-    expect(session.meaning).toContain('did not change with sex');
-    expect(session.meaning).toContain('not a target to reach the top');
+    expect(session.workedOut).toContain('208 − 0.7 × age');
+    expect(session.workedOut).toContain('did not change with sex');
+    expect(session.workedOut).toContain('not a target to reach the top');
+    expect(session.sheet?.measures).toContain('Session heart rate');
     expect(session.rangeNote).toContain('no published session heart rate range for Lose Fat & Build Muscle specifically');
     expect(session.rangeNote).toContain('This is a reference, not a target.');
     expect(session.meaning).toContain('Population averages vary by person, medication and fitness.');
@@ -262,8 +263,11 @@ describe('health stat tiles', () => {
     expect(steps.unit).toBe('steps');
     expect(steps.valueText).toBe('17,900');
     expect(steps.period).toBe(PERIOD_LAST_7);
-    expect(steps.hasGuideline).toBe(false);
-    expect(steps.status).toBe('No published guideline for a step target in this period.');
+    expect(steps.hasGuideline).toBe(true);
+    expect(steps.visual.kind).not.toBe('zone');
+    expect(steps.meaning).toContain('Paluch');
+    expect(steps.meaning).toContain('Ding');
+    expect(steps.status).toBe('Compared with published step research. Not an NHS step target.');
     expect(steps.meaning).toContain('do not set a daily step target');
     expect(steps.trend).toBe('Up from the earlier days in this period.');
 
@@ -620,7 +624,7 @@ describe('health stat tiles', () => {
     expect(board).toContain('Body fat (%)');
     expect(board).toContain('Lean body mass (kg)');
     expect(screen).toContain('turnOnAppleHealthReads');
-    expect(screen).toContain('onSaveBody={saveBodyGap}');
+    expect(screen).toContain('onSaveBody={SHOW_WEIGHT_SECTION ? saveBodyGap : undefined}');
     const ios = readFileSync('src/health/link.ios.ts', 'utf8');
     const turnOn = ios.slice(ios.indexOf('export async function turnOnAppleHealthReads'), ios.indexOf('export async function ensureCurrentAppleHealthReads'));
     expect(ios).toContain('turnOnAppleHealthReads');
@@ -805,7 +809,7 @@ describe('health stat tiles', () => {
     expect(tile(day, 'sleep_hours').status).toBe('Within 7 to 9 hours. 1 night.');
     expect(tile(day, 'steps').valueText).toBe('9,100');
     expect(tile(day, 'steps').period).toBe(PERIOD_TODAY);
-    expect(tile(day, 'steps').status).toBe('No published guideline for a daily step target.');
+    expect(tile(day, 'steps').status).toBe('Compared with published step research. Not an NHS step target.');
     expect(tile(day, 'steps').trend).toBe('Up from the day before.');
     expect(tile(day, 'workouts').valueText).toBe('32');
     const dayMinutes = tile(day, 'weekly_active_minutes');

@@ -3,7 +3,6 @@ import { describe, expect, it } from 'vitest';
 
 import { GARMIN_SOURCE, chartSourceCaption, stepsSeries, type AppleDayValue } from '@/domain/dailyActivity';
 import {
-  ATHLETE_RESTING_NOTE,
   BODY_BATTERY_ZONES,
   BREATH_TYPICAL_HIGH,
   BREATH_TYPICAL_LOW,
@@ -59,7 +58,7 @@ describe('garmin charts follow the shared period', () => {
     expect(screen).toContain('useStatPeriod');
     expect(screen).toContain('movementPeriod(span, sharedPeriod)');
     expect(screen).toContain('<StatPeriodToggle />');
-    expect(screen).toContain('framed ? 14 : 8');
+    expect(screen).toContain('framed ? 22 : 12');
     expect(screen).toContain('garminDetailCharts');
     expect(GARMIN_DETAILS_TITLE).toBe('More Garmin Stats');
     expect(screen).toContain('title={GARMIN_DETAILS_TITLE}');
@@ -163,9 +162,9 @@ describe('garmin chart bands', () => {
     const resting = restingChartGuide('30', [{ value: 0 }, { value: 58 }]);
     expect(resting.dailyTypical).toEqual({ low: RESTING_TYPICAL_LOW, high: RESTING_TYPICAL_HIGH });
     expect(resting.periodTypical).toEqual(resting.dailyTypical);
-    expect(resting.outside).toBe(ATHLETE_RESTING_NOTE);
-    expect(resting.outside).not.toContain('doctor');
-    expect(restingChartGuide('7', [{ value: 110 }]).outside).toBe(OUTSIDE_RANGE_NOTE);
+    expect(resting.outside).toBeNull();
+    expect(resting.about).not.toContain('Athletes often sit');
+    expect(restingChartGuide('7', [{ value: 110 }]).outside).toBeNull();
     expect(restingChartGuide('7', [{ value: 72 }]).outside).toBeNull();
     expect(resting.about).toContain('the last 30 days');
     expect(restingChartGuide('7', [{ value: 72 }]).about).toContain('the last 7 days');
@@ -339,10 +338,14 @@ describe('garmin chart bands', () => {
       expect(guide.about).not.toContain(GENERAL_GUIDANCE);
     }
     const activity = readFileSync('src/ui/DailyActivity.tsx', 'utf8');
-    const careAt = activity.indexOf('guide?.care');
+    const careAt = activity.indexOf('<CareLine text={guide.care}');
     const moreAt = activity.indexOf('<MoreInfo about={title}');
-    expect(careAt).toBeGreaterThan(-1);
-    expect(careAt).toBeLessThan(moreAt);
+    const warningAt = activity.indexOf('guide?.warning');
+    expect(careAt).toBeGreaterThan(moreAt);
+    expect(warningAt).toBeGreaterThan(-1);
+    expect(warningAt).toBeLessThan(moreAt);
+    expect(activity).toContain('Not medical advice. Not a diagnosis.');
+    expect(activity).toContain('guide.verdict');
     expect(activity).toContain('crisisHelplines');
     expect(activity).toContain("title === 'Average stress'");
   });

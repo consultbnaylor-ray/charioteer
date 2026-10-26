@@ -5,7 +5,7 @@ import { NUTRITION_BREAKDOWN_LABEL, type MealNutrientBar } from '@/domain/nutrit
 import { useAppTheme } from '@/ui/theme';
 import { T } from '@/ui/ui';
 
-/** Compact monochrome bars. A shaded band is the healthy zone, and the words say which side of it this meal sits on. */
+/** Compact monochrome bars. A pale ink wash is the healthy zone, and the words say which side of it this meal sits on. */
 export function MealNutrientBars({ bars }: { bars: readonly MealNutrientBar[] }) {
   const theme = useAppTheme();
   if (!bars.length) return null;

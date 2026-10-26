@@ -18,6 +18,10 @@ import { omitSharedLocation } from '@/domain/sharedPayload';
 import { stripJpegBase64, stripJpegLocation } from '@/domain/photoLocation';
 import { chunkHealthRows } from '@/domain/healthUpload';
 import { rejectRouteCoordinates } from '@/domain/workoutRoute';
+import { assertRouteFindingAllowed } from '@/data/routeConsentStore';
+import { calmRouteMessage, explainRouteFailure, parseRoutePlaces, parseRoutePlan, routeCoordinate, type RoutePlace, type RoutePlan, type RoutePlanInput } from '@/domain/findRoute';
+import type { SharedPhotoCard } from '@/domain/sharedPhotos';
+import { liveOutdoorRouteInsert, outdoorRouteFromRow, outdoorRouteInsert, routeShapeRejected, routeTableMissing, type OutdoorRouteDraft } from '@/domain/outdoorRoute';
 import { GARMIN_PERMISSION, readGarminRefreshBody } from '@/domain/healthRefresh';
 const GARMIN_HISTORY_KEY = 'charioteer.garmin.historyRefusedAt';
 import { emptyGarminReadings, garminHistoryCooling, garminPermissionStatus, missingColumn, missingRelation, readingsFromRows, type GarminExportPermission, type GarminReadings } from '../../supabase/functions/_shared/garmin';
@@ -109,11 +113,11 @@ import {
   progressVisibility,
 } from '@/domain/progressPhotos';
 import {
+  galleryPositionsAfterAdd,
   nextGalleryPositions,
-  PROFILE_GALLERY_LIMIT,
-  PROFILE_GALLERY_LIMIT_MESSAGE,
   PROFILE_PHOTO_BUCKET,
   PROFILE_SIGNED_URL_SECONDS,
+  profilePhotoSignPaths,
   profileStoragePath,
   sortProfilePhotos,
 } from '@/domain/profilePhotos';
@@ -242,6 +246,7 @@ function emptySnapshot(): AppSnapshot {
     healthPlan: null,
     trainingSchedule: null,
     plannedSessions: [],
+    outdoorRoutes: [],
   };
 }
 
@@ -579,6 +584,7 @@ export class SupabaseRepository implements Repository {
           const session = plannedSessionFromRow(row);
           return session ? [session] : [];
         }),
+      outdoorRoutes: await this.loadOutdoorRoutes(userId),
     });
   }
 
@@ -592,7 +598,7 @@ export class SupabaseRepository implements Repository {
     ));
     const [progress, profile, gratitude, vision, meals] = await Promise.all([
       this.signedUrlMap(PROGRESS_BUCKET, currentPaths.progressPhotos.map((photo) => photo.storagePath), PROGRESS_SIGNED_URL_SECONDS),
-      this.signedUrlMap(PROFILE_PHOTO_BUCKET, currentPaths.profilePhotos.map((photo) => photo.storagePath), PROFILE_SIGNED_URL_SECONDS),
+      this.signedUrlMap(PROFILE_PHOTO_BUCKET, profilePhotoSignPaths(currentPaths.profilePhotos), PROFILE_SIGNED_URL_SECONDS),
       this.signedUrlMap(
         GRATITUDE_BUCKET,
         currentPaths.gratitude.flatMap((entry) => entry.photos.map((photo) => photo.storagePath)),
@@ -765,9 +771,7 @@ export class SupabaseRepository implements Repository {
       if (queryError) console.error(queryError);
       return [];
     }
-    const paths = rows.map((row) => String(row.storage_path)).filter((path) => path && !path.includes('..'));
-    const signedByPath = await this.signedUrlMap(PROFILE_PHOTO_BUCKET, paths, PROFILE_SIGNED_URL_SECONDS);
-    return sortProfilePhotos(rows.map((row) => {
+    const photos = sortProfilePhotos(rows.map((row) => {
       const path = String(row.storage_path ?? '');
       const role = row.role === 'avatar' ? 'avatar' as const : 'gallery' as const;
       return {
@@ -778,9 +782,11 @@ export class SupabaseRepository implements Repository {
         position: Number(row.position ?? 0),
         storagePath: path,
         createdAt: String(row.created_at ?? ''),
-        previewUrl: signedByPath.get(path) ?? null,
+        previewUrl: null,
       };
     }));
+    const signedByPath = await this.signedUrlMap(PROFILE_PHOTO_BUCKET, profilePhotoSignPaths(photos), PROFILE_SIGNED_URL_SECONDS);
+    return photos.map((photo) => ({ ...photo, previewUrl: signedByPath.get(photo.storagePath) ?? null }));
   }
 
   /**
@@ -1975,12 +1981,7 @@ export class SupabaseRepository implements Repository {
     const paths = [...new Set(view.gratitudePhotos.map((photo) => photo.storagePath).filter((path) => path.length > 0))];
     if (!paths.length) return view;
     try {
-      const signed = await this.client.storage.from(GRATITUDE_BUCKET).createSignedUrls(paths, GRATITUDE_SIGNED_URL_SECONDS);
-      if (signed.error || !signed.data) return view;
-      const byPath = new Map<string, string>();
-      for (const item of signed.data) {
-        if (item.path && item.signedUrl) byPath.set(item.path, item.signedUrl);
-      }
+      const byPath = await this.signedUrlMap(GRATITUDE_BUCKET, paths, GRATITUDE_SIGNED_URL_SECONDS);
       return {
         ...view,
         gratitudePhotos: view.gratitudePhotos.map((photo) => ({
@@ -1998,20 +1999,33 @@ export class SupabaseRepository implements Repository {
     if (input.bytes.byteLength > PROGRESS_MAX_BYTES) throw new UserFacingError('That photo is still too large.', 'generic');
     if (input.role !== 'avatar' && input.role !== 'gallery') throw new UserFacingError('Could not store that photo.', 'generic');
     const gallery = this.snapshot.profilePhotos.filter((photo) => photo.role === 'gallery');
-    if (input.role === 'gallery' && gallery.length >= PROFILE_GALLERY_LIMIT) {
-      throw new UserFacingError(PROFILE_GALLERY_LIMIT_MESSAGE, 'generic');
-    }
+    const caption = planProfileText(input.caption ?? '', PHOTO_CAPTION_LIMIT);
+    if (!caption.ok) throw new UserFacingError(caption.message, 'generic');
     const userId = await this.userId();
     const photoId = randomId();
     const path = profileStoragePath(userId, photoId);
-    const position = input.role === 'avatar' ? 0 : gallery.reduce((max, photo) => Math.max(max, photo.position), -1) + 1;
+    const position = 0;
     const body = stripJpegLocation(input.bytes);
     const uploaded = await this.client.storage.from(PROFILE_PHOTO_BUCKET).upload(path, body, {
       contentType: 'image/jpeg',
       upsert: false,
     });
     if (uploaded.error) throw asUserFacing(uploaded.error, 'general');
-    const existing = input.role === 'avatar' ? this.snapshot.profilePhotos.find((photo) => photo.role === 'avatar') : undefined;
+    const existing = input.role === 'avatar'
+      ? this.snapshot.profilePhotos.find((photo) => photo.role === 'avatar')
+      : undefined;
+    if (input.role === 'gallery') {
+      const shifted = galleryPositionsAfterAdd(gallery);
+      for (const row of shifted) {
+        const current = gallery.find((photo) => photo.id === row.id);
+        if (!current || current.position === row.position) continue;
+        const moved = await this.client.from('profile_photos').update({ position: row.position }).eq('id', row.id).eq('user_id', userId);
+        if (moved.error) {
+          await this.client.storage.from(PROFILE_PHOTO_BUCKET).remove([path]);
+          throw asUserFacing(moved.error, 'general');
+        }
+      }
+    }
     if (existing) {
       const removed = await this.client.from('profile_photos').delete().eq('id', existing.id).eq('user_id', userId);
       if (removed.error) {
@@ -2023,17 +2037,22 @@ export class SupabaseRepository implements Repository {
       id: photoId,
       user_id: userId,
       role: input.role,
-      caption: '',
+      caption: caption.text,
       position,
       storage_path: path,
     });
     if (inserted.error) {
       await this.client.storage.from(PROFILE_PHOTO_BUCKET).remove([path]);
+      if (input.role === 'gallery') {
+        for (const photo of gallery) {
+          await this.client.from('profile_photos').update({ position: photo.position }).eq('id', photo.id).eq('user_id', userId);
+        }
+      }
       if (existing) {
         await this.client.from('profile_photos').insert({
           id: existing.id,
           user_id: userId,
-          role: 'avatar',
+          role: existing.role,
           caption: existing.caption,
           position: existing.position,
           storage_path: existing.storagePath,
@@ -2084,6 +2103,19 @@ export class SupabaseRepository implements Repository {
   async profilePhotoUrls(ids: string[]): Promise<{ id: string; url: string }[]> {
     const urls = await this.profilePhotoUrlMap(ids);
     return [...urls.entries()].map(([id, url]) => ({ id, url }));
+  }
+
+  async signProfilePhotos(ids: string[]): Promise<void> {
+    const wanted = new Set(ids);
+    const paths = this.snapshot.profilePhotos
+      .filter((photo) => wanted.has(photo.id))
+      .map((photo) => photo.storagePath);
+    if (!paths.length) return;
+    const signed = await this.signedUrlMap(PROFILE_PHOTO_BUCKET, paths, PROFILE_SIGNED_URL_SECONDS);
+    const latest = this.snapshot;
+    const profilePhotos = withSignedPreviewUrls(latest.profilePhotos, signed);
+    if (profilePhotos === latest.profilePhotos) return;
+    this.emit({ ...latest, profilePhotos });
   }
 
   async deleteProgressPhoto(id: string): Promise<void> {
@@ -2775,6 +2807,109 @@ export class SupabaseRepository implements Repository {
     }
   }
 
+  /** Missing table stays an empty list. This build does not apply the migration. */
+  private async loadOutdoorRoutes(userId: string) {
+    const { data, error } = await this.client
+      .from('outdoor_routes')
+      .select('id, title, kind, distance_m, duration_minutes, geometry, created_at')
+      .eq('user_id', userId)
+      .order('created_at', { ascending: false });
+    if (error) return [];
+    return ((data ?? []) as Row[]).flatMap((row) => {
+      const route = outdoorRouteFromRow(row);
+      return route ? [route] : [];
+    });
+  }
+
+  async saveOutdoorRoute(input: OutdoorRouteDraft): Promise<void> {
+    const userId = this.snapshot.session?.userId ?? await this.userId();
+    const id = input.id?.trim() || randomId();
+    const row = outdoorRouteInsert(userId, id, input);
+    if (!row) throw new UserFacingError('A route needs a name and at least two points.', 'generic');
+    const before = this.snapshot.outdoorRoutes;
+    const saved = outdoorRouteFromRow({ ...row, created_at: new Date().toISOString() });
+    if (saved) this.emit({ ...this.snapshot, outdoorRoutes: [saved, ...before.filter((item) => item.id !== id)] });
+    const { error } = await this.client.from('outdoor_routes').insert(row);
+    if (!error) return;
+    if (routeShapeRejected(error.message ?? '')) {
+      const live = liveOutdoorRouteInsert(userId, id, input);
+      const stored = live ? outdoorRouteFromRow({ ...live, created_at: new Date().toISOString() }) : null;
+      if (stored) this.emit({ ...this.snapshot, outdoorRoutes: [stored, ...before.filter((item) => item.id !== id)] });
+      const retry = live ? await this.client.from('outdoor_routes').insert(live) : { error: { message: 'short' } };
+      if (!retry.error) return;
+      this.emit({ ...this.snapshot, outdoorRoutes: before });
+      throw new UserFacingError(
+        routeTableMissing(retry.error.message ?? '')
+          ? 'Saving a route needs the route table, and that change has not been applied yet.'
+          : 'Could not save that route.',
+        'generic',
+      );
+    }
+    this.emit({ ...this.snapshot, outdoorRoutes: before });
+    throw new UserFacingError(
+      routeTableMissing(error.message ?? '')
+        ? 'Saving a route needs the route table, and that change has not been applied yet.'
+        : 'Could not save that route.',
+      'generic',
+    );
+  }
+
+  async planOutdoorRoute(input: RoutePlanInput): Promise<RoutePlan> {
+    await assertRouteFindingAllowed();
+    const start = routeCoordinate(input.start);
+    const end = input.shape === 'a_to_b' ? routeCoordinate(input.end) : null;
+    if (!start || (input.shape === 'a_to_b' && !end)) {
+      throw new UserFacingError('That place could not be used.', 'generic');
+    }
+    try {
+      const invoked = await this.client.functions.invoke('outdoor-route', {
+        body: {
+          action: 'route',
+          mode: input.mode,
+          shape: input.shape,
+          start,
+          end,
+          distanceM: input.distanceM ?? null,
+          minutes: input.minutes ?? null,
+        },
+      });
+      const plan = parseRoutePlan(invoked.data);
+      if (plan) return plan;
+      throw new UserFacingError(await explainRouteFailure(invoked.error), 'generic');
+    } catch (error) {
+      if (error instanceof UserFacingError) throw error;
+      throw new UserFacingError(await explainRouteFailure(error), 'generic');
+    }
+  }
+
+  async searchRoutePlaces(query: string): Promise<RoutePlace[]> {
+    await assertRouteFindingAllowed();
+    try {
+      const invoked = await this.client.functions.invoke('outdoor-route', {
+        body: { action: 'search', query },
+      });
+      const places = parseRoutePlaces(invoked.data);
+      if (places.length > 0 || (invoked.data && typeof invoked.data === 'object' && (invoked.data as { ok?: unknown }).ok === true)) {
+        return places;
+      }
+      throw new UserFacingError(calmRouteMessage(invoked.data), 'generic');
+    } catch (error) {
+      if (error instanceof UserFacingError) throw error;
+      throw new UserFacingError(calmRouteMessage(null), 'generic');
+    }
+  }
+
+  async deleteOutdoorRoute(id: string): Promise<void> {
+    const userId = this.snapshot.session?.userId ?? await this.userId();
+    const before = this.snapshot.outdoorRoutes;
+    this.emit({ ...this.snapshot, outdoorRoutes: before.filter((item) => item.id !== id) });
+    const { error } = await this.client.from('outdoor_routes').delete().eq('id', id).eq('user_id', userId);
+    if (error) {
+      this.emit({ ...this.snapshot, outdoorRoutes: before });
+      throw asUserFacing(error, 'general');
+    }
+  }
+
   async deletePlannedSession(id: string): Promise<void> {
     const userId = this.snapshot.session?.userId ?? await this.userId();
     const before = this.snapshot.plannedSessions;
@@ -3096,9 +3231,10 @@ export class SupabaseRepository implements Repository {
     const removedDiary = await this.removeOwnGratitudePhotos();
     const removedVision = await this.removeOwnVisionPhotos();
     const removedProfile = await this.removeOwnProfilePhotos();
+    const removedBuddy = await this.removeOwnBuddyPhotos();
     const invoked = await this.client.functions.invoke('account-delete', { body: {} });
     if (invoked.error || invoked.data?.ok === false) {
-      if (!removed || !removedDiary || !removedVision || !removedProfile) throw new UserFacingError('Could not remove the private photos, so the account was left in place.', 'generic');
+      if (!removed || !removedDiary || !removedVision || !removedProfile || !removedBuddy) throw new UserFacingError('Could not remove the private photos, so the account was left in place.', 'generic');
       const { error } = await this.client.rpc('delete_my_account');
       if (error) throw asUserFacing(error, 'general');
     }
@@ -3114,13 +3250,19 @@ export class SupabaseRepository implements Repository {
     const withVision = Array.isArray(withGratitude.vision_board_items)
       ? await this.attachBucketLinks(withGratitude, 'vision_board_items', VISION_BUCKET, seconds)
       : withGratitude;
-    if (!Array.isArray(withVision.profile_photos)) return withVision;
-    return this.attachBucketLinks(withVision, 'profile_photos', PROFILE_PHOTO_BUCKET, seconds);
+    const withProfile = Array.isArray(withVision.profile_photos)
+      ? await this.attachBucketLinks(withVision, 'profile_photos', PROFILE_PHOTO_BUCKET, seconds)
+      : withVision;
+    const withSent = Array.isArray(withProfile.buddy_photos)
+      ? await this.attachBucketLinks(withProfile, 'buddy_photos', BUDDY_PHOTO_BUCKET, seconds)
+      : withProfile;
+    if (!Array.isArray(withSent.buddy_photos_shared_with_me)) return withSent;
+    return this.attachBucketLinks(withSent, 'buddy_photos_shared_with_me', BUDDY_PHOTO_BUCKET, seconds);
   }
 
   private async attachBucketLinks(
     record: Record<string, unknown>,
-    key: 'progress_photos' | 'gratitude_photos' | 'vision_board_items' | 'profile_photos',
+    key: 'progress_photos' | 'gratitude_photos' | 'vision_board_items' | 'profile_photos' | 'buddy_photos' | 'buddy_photos_shared_with_me',
     bucket: string,
     seconds: number,
   ): Promise<Record<string, unknown>> {
@@ -3164,6 +3306,12 @@ export class SupabaseRepository implements Repository {
     const userId = this.snapshot.session?.userId;
     if (!userId) return true;
     return this.removeOwnerFolder(PROFILE_PHOTO_BUCKET, userId, this.snapshot.profilePhotos.map((photo) => photo.storagePath));
+  }
+
+  private async removeOwnBuddyPhotos(): Promise<boolean> {
+    const userId = this.snapshot.session?.userId;
+    if (!userId) return true;
+    return this.removeOwnerFolder(BUDDY_PHOTO_BUCKET, userId, []);
   }
 
   private async removeOwnVisionPhotos(): Promise<boolean> {
@@ -3476,6 +3624,110 @@ export class SupabaseRepository implements Repository {
       if (error) throw asUserFacing(error, 'general');
     }
   }
+
+  async listSharedPhotos(): Promise<SharedPhotoCard[]> {
+    const { data, error } = await this.client.rpc('buddy_photo_feed');
+    if (error) {
+      if (buddyPhotoUnavailable(error.message)) throw new UserFacingError(SHARED_PHOTOS_TABLE, 'generic');
+      throw asUserFacing(error, 'general');
+    }
+    const rows = Array.isArray(data) ? data as Record<string, unknown>[] : [];
+    const names = new Map(this.snapshot.directory.map((card) => [card.id, card.displayName]));
+    const photos: SharedPhotoCard[] = [];
+    for (const row of rows) {
+      const id = String(row.id ?? '');
+      const path = typeof row.storagePath === 'string' ? row.storagePath : '';
+      const mine = row.mine === true;
+      const recipientIds = Array.isArray(row.recipients) ? row.recipients.map((value) => String(value)) : [];
+      const ownerId = String(row.ownerId ?? '');
+      let imageUrl: string | null = null;
+      if (path && !path.includes('..') && row.published !== false) {
+        const signed = await this.client.storage.from(BUDDY_PHOTO_BUCKET).createSignedUrl(path, BUDDY_PHOTO_SIGNED_SECONDS);
+        imageUrl = signed.data?.signedUrl ?? null;
+      }
+      photos.push({
+        id,
+        mine,
+        caption: typeof row.caption === 'string' ? row.caption : '',
+        createdAt: typeof row.createdAt === 'string' ? row.createdAt : new Date().toISOString(),
+        allowSave: row.allowSave !== false,
+        buddyIds: mine ? recipientIds : [ownerId],
+        buddyNames: (mine ? recipientIds : [ownerId]).map((buddyId) => names.get(buddyId) ?? 'Buddy'),
+        imageUrl,
+      });
+    }
+    return photos;
+  }
+
+  async sendSharedPhoto(input: { caption: string; bytes: Uint8Array; previewUri: string; buddyIds: string[]; allowSave: boolean }): Promise<void> {
+    if (input.bytes.byteLength > 2_097_152) throw new UserFacingError('That photo is still too large.', 'generic');
+    const photoId = randomId();
+    const created = await this.client.rpc('create_buddy_photo', {
+      photo: photoId,
+      caption: input.caption,
+      recipients: input.buddyIds,
+      allow_save: input.allowSave,
+    });
+    if (created.error) {
+      if (buddyPhotoUnavailable(created.error.message)) throw new UserFacingError(SHARED_PHOTOS_TABLE, 'generic');
+      throw asUserFacing(created.error, 'general');
+    }
+    const userId = await this.userId();
+    const path = `${userId}/${photoId}.jpg`;
+    const uploaded = await this.client.storage.from(BUDDY_PHOTO_BUCKET).upload(path, stripJpegLocation(input.bytes), {
+      contentType: 'image/jpeg',
+      upsert: false,
+    });
+    if (uploaded.error) {
+      await this.client.rpc('delete_buddy_photo', { photo: photoId });
+      throw asUserFacing(uploaded.error, 'general');
+    }
+    const published = await this.client.rpc('publish_buddy_photo', { photo: photoId });
+    if (published.error) {
+      await this.client.storage.from(BUDDY_PHOTO_BUCKET).remove([path]);
+      await this.client.rpc('delete_buddy_photo', { photo: photoId });
+      throw asUserFacing(published.error, 'general');
+    }
+    void this.client.functions.invoke('notify-buddy-photo', { body: { photoId } }).then(({ error: pushError }) => {
+      if (pushError) this.rememberEdgeFailure('notify-buddy-photo', new Error('Push send failed'));
+    }).catch(() => {
+      this.rememberEdgeFailure('notify-buddy-photo', new Error('Push send failed'));
+    });
+  }
+
+  async deleteSharedPhoto(photoId: string): Promise<void> {
+    const { error } = await this.client.rpc('delete_buddy_photo', { photo: photoId });
+    if (error) {
+      if (buddyPhotoUnavailable(error.message)) throw new UserFacingError(SHARED_PHOTOS_TABLE, 'generic');
+      throw asUserFacing(error, 'general');
+    }
+    const userId = await this.userId();
+    await this.client.storage.from(BUDDY_PHOTO_BUCKET).remove([`${userId}/${photoId}.jpg`]);
+  }
+
+  async hideSharedPhoto(photoId: string): Promise<void> {
+    const { error } = await this.client.rpc('hide_buddy_photo', { photo: photoId });
+    if (error) {
+      if (buddyPhotoUnavailable(error.message)) throw new UserFacingError(SHARED_PHOTOS_TABLE, 'generic');
+      throw asUserFacing(error, 'general');
+    }
+  }
+
+  async reportSharedPhoto(photoId: string, reason: string): Promise<void> {
+    const { error } = await this.client.rpc('report_buddy_photo', { photo: photoId, reason });
+    if (error) {
+      if (buddyPhotoUnavailable(error.message)) throw new UserFacingError(SHARED_PHOTOS_TABLE, 'generic');
+      throw asUserFacing(error, 'general');
+    }
+  }
+}
+
+const BUDDY_PHOTO_BUCKET = 'buddy-photos';
+const BUDDY_PHOTO_SIGNED_SECONDS = 900;
+const SHARED_PHOTOS_TABLE = 'Shared photos need the photo table. It has not been applied.';
+
+function buddyPhotoUnavailable(message: string): boolean {
+  return missingRelation(message) || /could not find the function|schema cache/i.test(message);
 }
 
 function mapInterest(row: Row): Interest {

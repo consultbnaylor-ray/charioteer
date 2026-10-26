@@ -258,7 +258,9 @@ describe('gratitude diary wiring', () => {
       'Body: weight, waist and BMI',
       'Health Plan',
       'Workouts',
+      'Outside is Good',
       'Progress photos',
+      'Shared Photos',
       'Vision Board',
       'Drinks & units calculator',
       'Stoic & Classical Wisdom',
@@ -363,10 +365,18 @@ describe('gratitude diary wiring', () => {
     const ownCard = readFileSync('src/ui/PublicProfileCard.tsx', 'utf8');
     expect(ownCard).toContain('<SharedGratitudeLines');
     expect(ownCard).not.toMatch(/gratitude_photos|gratitude-photos/);
+    const gratitudeMap = ownCard.slice(ownCard.indexOf('gratitude: snap.gratitude'), ownCard.indexOf('vision: snap.visionItems'));
+    expect(gratitudeMap).toContain('storagePath: photo.storagePath');
+    expect(gratitudeMap).toContain('previewUrl: photo.previewUrl');
+    expect(peopleCard).toContain('Photo unavailable. The picture did not load.');
+    expect(peopleCard).toContain('adjustsFontSizeToFit');
+    expect(peopleCard).toContain("textAlign: 'center'");
+    expect(peopleCard).toContain("width: '100%'");
+    expect(peopleCard).toContain('fontSize: 12');
     const repo = readFileSync('src/data/supabase-repository.ts', 'utf8');
     const profileMethod = repo.slice(repo.indexOf('async publicProfile'), repo.indexOf('async addProfilePhoto'));
     expect(profileMethod.indexOf("rpc('public_profile'")).toBeGreaterThan(-1);
-    expect(profileMethod.indexOf("rpc('public_profile'")).toBeLessThan(profileMethod.indexOf('createSignedUrls'));
+    expect(profileMethod.indexOf("rpc('public_profile'")).toBeLessThan(profileMethod.indexOf('signedUrlMap'));
     expect(profileMethod).toContain('GRATITUDE_BUCKET');
     expect(profileMethod).toContain('GRATITUDE_SIGNED_URL_SECONDS');
     const sharedRead = readFileSync('supabase/migrations/20261020120000_shared_gratitude_photos.sql', 'utf8');

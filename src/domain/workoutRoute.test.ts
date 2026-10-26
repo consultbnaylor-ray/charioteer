@@ -398,6 +398,11 @@ describe('workout routes stay on the phone', () => {
       'src/app/(main)/workouts.tsx',
       'src/app/(main)/workout/[id].tsx',
     ]);
+    const footpathMap = new Set([
+      'src/ui/FootpathMap.tsx',
+      'src/ui/FootpathMap.web.tsx',
+      'src/ui/mapCamera.ts',
+    ]);
     for (const path of [...filesUnder('src/ui'), ...filesUnder('src/app')]) {
       const source = readFileSync(path, 'utf8');
       if (path.endsWith('workouts.tsx')) {
@@ -408,7 +413,13 @@ describe('workout routes stay on the phone', () => {
         expect(source, path).not.toContain('WorkoutCalendar');
       }
       if (allowed.has(path)) continue;
-      expect(source, path).not.toMatch(/View route|RouteMap|routeSummaryLine|readDeviceRoute|latitude|longitude/);
+      expect(source, path).not.toMatch(/View route|RouteMap|routeSummaryLine|readDeviceRoute|getWorkoutRoutes|HKWorkoutRoute/);
+      if (footpathMap.has(path)) {
+        expect(source, path).not.toMatch(/console\.(log|info|debug|warn|error)/);
+        expect(source, path).not.toMatch(/functions\.invoke|AsyncStorage|\.from\(|fetch\(/);
+        continue;
+      }
+      expect(source, path).not.toMatch(/latitude|longitude/);
     }
     for (const path of filesUnder('supabase/migrations')) {
       expect(readFileSync(path, 'utf8'), path).not.toMatch(/latitude|longitude/);
@@ -421,13 +432,27 @@ describe('workout routes stay on the phone', () => {
   it('does not send a route from the repositories, sharing, or edge functions', () => {
     const watched = [
       ...filesUnder('src/data'),
-      ...filesUnder('supabase/functions'),
-      ...filesUnder('src/domain').filter((path) => !path.endsWith('workoutRoute.ts') && !path.endsWith('sharedPayload.ts') && !path.endsWith('.test.ts')),
+      ...filesUnder('supabase/functions').filter((path) => !path.endsWith('orsRoute.ts')),
+      ...filesUnder('src/domain').filter((path) => !path.endsWith('workoutRoute.ts') && !path.endsWith('sharedPayload.ts') && !path.endsWith('outdoorRoute.ts') && !path.endsWith('findRoute.ts') && !path.endsWith('.test.ts')),
     ];
     for (const path of watched) {
       const source = readFileSync(path, 'utf8');
-      expect(source, path).not.toMatch(/getWorkoutRoutes|HKWorkoutRoute|latitude|longitude/);
+      expect(source, path).not.toMatch(/getWorkoutRoutes|HKWorkoutRoute/);
+      if (path === 'supabase/functions/outdoor-route/index.ts') {
+        expect(source).toContain('buildDirectionsBody({ mode, shape, start, end, lengthM })');
+        expect(source).toContain('buildSnapBody(start)');
+        expect(source).toContain('.insert({ user_id: userId })');
+        expect(source).not.toMatch(/console\.(log|info|debug|warn|error)\([^)]*(latitude|longitude)/);
+        expect(source).not.toMatch(/outdoor_routes/);
+        continue;
+      }
+      expect(source, path).not.toMatch(/latitude|longitude/);
     }
+    const routeService = readFileSync('supabase/functions/_shared/orsRoute.ts', 'utf8');
+    const findRoute = readFileSync('src/domain/findRoute.ts', 'utf8');
+    expect(routeService).not.toMatch(/getWorkoutRoutes|HKWorkoutRoute/);
+    expect(findRoute).not.toMatch(/getWorkoutRoutes|HKWorkoutRoute|api\.heigit\.org|ORS_API_KEY/);
+    expect(routeService).toContain('https://api.heigit.org');
     const repo = readFileSync('src/data/supabase-repository.ts', 'utf8');
     const demo = readFileSync('src/data/demo-repository.ts', 'utf8');
     expect(repo).toContain('rejectRouteCoordinates(samples)');

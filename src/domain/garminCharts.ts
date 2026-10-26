@@ -18,6 +18,8 @@ import type {
 } from '@/domain/garminConnect';
 import { publishedCardioBand } from '@/domain/fitnessSnapshot';
 import type { NutritionSex } from '@/domain/nutrition';
+import type { RestingFitnessComment, RestingInfoSection } from '@/domain/restingFitness';
+import { RESTING_CARE, RESTING_CARD_CARE } from '@/domain/restingFitness';
 import { periodDayCount, periodPhrase, scaledPeriodTarget, type StatPeriod } from '@/domain/statWindow';
 import { chartDays } from '@/domain/workoutDay';
 
@@ -35,9 +37,6 @@ export const GENERAL_GUIDANCE =
 export const OUTSIDE_RANGE_NOTE =
   'This sits outside the usual adult range. If it keeps happening, speak to a doctor. This is general guidance, not a diagnosis.';
 
-export const ATHLETE_RESTING_NOTE =
-  'Athletes often sit below 60 bpm. This is general guidance, not a diagnosis.';
-
 export const GARMIN_SCORE_NOTE = "Garmin's own score, not a medical measure.";
 
 export const STRESS_ZONES = '0–25 resting, 26–50 low, 51–75 medium, 76–100 high';
@@ -51,14 +50,23 @@ export const BODY_BATTERY_ZONES = '0–25 very low, 26–50 low, 51–75 medium,
 export const BODY_BATTERY_WHAT =
   "Body Battery is Garmin's own 0–100 estimate of your energy reserve through the day. The watch works it out from heart rate variability, stress, sleep and activity.";
 
-/** Visible on Average stress. Crisis lines stay on the card, not inside More info. */
+/** Full care block for Average stress. Shown inside More info, with the card line left as the short advice sentence. */
 export const STRESS_CARE =
   'If you feel persistently low, anxious, or unable to cope, speak to your GP or NHS 111. If you are in crisis or at risk of harm, call 999 or the Samaritans on 116 123.';
 
-/** Common daily step target. The period total is this times the number of days. */
+/**
+ * Research span used when age is not set.
+ * Paluch 2022 is 6,000–8,000 at 60 or over and 8,000–10,000 under 60.
+ * 7,000–10,000 covers that wider span and the Ding 2025 inflection. It is not an NHS target.
+ */
 export const STEPS_TYPICAL_LOW = 7000;
 
 export const STEPS_TYPICAL_HIGH = 10000;
+
+export const PALUCH_OLDER_LOW = 6000;
+export const PALUCH_OLDER_HIGH = 8000;
+export const PALUCH_YOUNGER_LOW = 8000;
+export const PALUCH_YOUNGER_HIGH = 10000;
 
 export const RESTING_TYPICAL_LOW = 60;
 
@@ -95,8 +103,16 @@ export type ChartGuide = {
   legend: string;
   about: string;
   outside: string | null;
-  /** Urgent care. Shown on the card, never inside More info. */
+  /** One short sentence on the card. Longer notes stay in More info. */
+  verdict?: string | null;
+  /** Short blocks inside More info. */
+  sections?: readonly RestingInfoSection[];
+  /** Full care block. Shown inside More info, not on the card. */
   care?: string | null;
+  /** Dangerous resting tier only. Stays on the yellow warning. */
+  cardCare?: string | null;
+  /** Sustained resting rate above the NHS usual range. Draws the yellow warning. */
+  warning?: boolean;
 };
 
 export type GarminChartPoint = {
@@ -171,7 +187,11 @@ function advised(about: string, extra: Partial<ChartGuide> = {}): ChartGuide {
     legend: '',
     about: body,
     outside: extra.outside ?? null,
+    verdict: extra.verdict ?? null,
+    sections: extra.sections ?? [],
     care: extra.care ?? null,
+    cardCare: extra.cardCare ?? null,
+    warning: extra.warning ?? false,
   };
 }
 
@@ -193,22 +213,37 @@ function positiveValues(points: readonly { value: number }[]): number[] {
   return points.flatMap((point) => (point.value > 0 ? [point.value] : []));
 }
 
-function latestPositive(points: readonly { value: number }[]): number | null {
-  for (let index = points.length - 1; index >= 0; index -= 1) {
-    const value = points[index]?.value ?? 0;
-    if (value > 0) return value;
+/** Age picks the Paluch 2022 range. Unknown age keeps the wider 7,000–10,000 span. */
+export function stepResearchBand(age: number | null | undefined): { low: number; high: number; why: string } {
+  if (age != null && age >= 60) {
+    return { low: PALUCH_OLDER_LOW, high: PALUCH_OLDER_HIGH, why: 'Paluch and colleagues, 2022, for age 60 or over' };
   }
-  return null;
+  if (age != null && age < 60) {
+    return { low: PALUCH_YOUNGER_LOW, high: PALUCH_YOUNGER_HIGH, why: 'Paluch and colleagues, 2022, for under 60' };
+  }
+  return { low: STEPS_TYPICAL_LOW, high: STEPS_TYPICAL_HIGH, why: 'the wider span used when age is not set' };
 }
 
-export function stepsChartGuide(period: StatPeriod, stepGoal: number | null): ChartGuide {
+/** Named studies. The NHS publishes minutes, not a step count. */
+export function stepsResearchMeaning(dailyAverage: number | null): string {
+  const average = dailyAverage == null ? '' : ` Your daily average here is ${countText(dailyAverage)} steps.`;
+  return `The NHS and the UK Chief Medical Officers do not set a daily step target. They publish minutes of activity, not a step count. Paluch and colleagues, Lancet Public Health, 2022 (doi:10.1016/S2468-2667(21)00302-9), found the association with mortality levelled off until about 6,000–8,000 steps a day at age 60 or over, and until about 8,000–10,000 under 60. Ding and colleagues, Lancet Public Health, 2025 (doi:10.1016/S2468-2667(25)00164-1), found an inflection around 5,000–7,000 steps a day. Compared with 2,000 steps a day, 7,000 was associated with a 47% lower risk of death from any cause (hazard ratio 0.53, 95% CI 0.46–0.60). Saint-Maurice and colleagues, JAMA, 2020 (doi:10.1001/jama.2020.1382), found that 8,000 steps a day had a hazard ratio of about 0.49 compared with 4,000, and 12,000 about 0.35. Tudor-Locke and Bassett, Sports Medicine, 2004 (doi:10.2165/00007256-200434010-00001), published a preliminary index that calls 10,000 steps a day active. That index is not an NHS target.${average} The lime band is that research range for a day, not an NHS guideline.`;
+}
+
+export function stepsChartGuide(
+  period: StatPeriod,
+  stepGoal: number | null,
+  age: number | null = null,
+  dailyAverage: number | null = null,
+): ChartGuide {
   const days = periodDayCount(period);
-  const periodTypical = { low: STEPS_TYPICAL_LOW * days, high: STEPS_TYPICAL_HIGH * days };
-  const dailyTypical = { low: STEPS_TYPICAL_LOW, high: STEPS_TYPICAL_HIGH };
+  const band = stepResearchBand(age);
+  const periodTypical = { low: band.low * days, high: band.high * days };
+  const dailyTypical = { low: band.low, high: band.high };
   const goal = stepGoal != null && stepGoal > 0 ? Math.round(stepGoal) : null;
   const goalLine = goal == null ? '' : ` The line is your Garmin step goal, ${countText(goal)} steps a day.`;
   return advised(
-    `Steps are how many steps that day. There is no UK daily step target. A common range used in research is ${countText(STEPS_TYPICAL_LOW)}–${countText(STEPS_TYPICAL_HIGH)} steps a day. For ${grouped(period)}, that is about ${countText(periodTypical.low)}–${countText(periodTypical.high)} steps. The shaded band is that daily range.${goalLine} It is a reference, not a personal target.`,
+    `Steps are how many steps that day. There is no UK daily step target. ${stepsResearchMeaning(dailyAverage)} For ${grouped(period)}, the lime band is about ${countText(periodTypical.low)}–${countText(periodTypical.high)} steps (${band.why}).${goalLine} It is a reference, not a personal target.`,
     {
       dailyTypical,
       periodTypical,
@@ -217,15 +252,26 @@ export function stepsChartGuide(period: StatPeriod, stepGoal: number | null): Ch
   );
 }
 
-export function restingChartGuide(period: StatPeriod, points: readonly { value: number }[]): ChartGuide {
-  const latest = latestPositive(points);
-  let outside: string | null = null;
-  if (latest != null && latest < RESTING_TYPICAL_LOW) outside = ATHLETE_RESTING_NOTE;
-  if (latest != null && latest > RESTING_TYPICAL_HIGH) outside = OUTSIDE_RANGE_NOTE;
+export function restingChartGuide(
+  period: StatPeriod,
+  _points: readonly { value: number }[],
+  fitness?: RestingFitnessComment | null,
+): ChartGuide {
   const band = { low: RESTING_TYPICAL_LOW, high: RESTING_TYPICAL_HIGH };
   return advised(
-    `Resting heart rate is the beats per minute stored for that day, from Garmin or Apple Health. The shaded band is a general adult range of ${RESTING_TYPICAL_LOW}–${RESTING_TYPICAL_HIGH} bpm for ${grouped(period)}. It is not adjusted for age. Athletes often sit lower. It is a reference, not a diagnosis.`,
-    { dailyTypical: band, periodTypical: band, outside },
+    `Resting heart rate is the beats per minute stored for that day, from Garmin or Apple Health. The lime band is the usual adult range of ${RESTING_TYPICAL_LOW}–${RESTING_TYPICAL_HIGH} bpm published by the NHS, for ${grouped(period)}. It is not adjusted for age. A comment uses the last month of readings, not one day.`,
+    {
+      dailyTypical: band,
+      periodTypical: band,
+      verdict: fitness?.verdict ?? null,
+      sections: [
+        { heading: 'What this shows', body: 'The lime band is a reference, not a diagnosis. It is not adjusted for age.' },
+        ...(fitness?.sections ?? []),
+      ],
+      warning: fitness?.warning ?? false,
+      cardCare: fitness?.warning ? RESTING_CARD_CARE : null,
+      care: fitness ? RESTING_CARE : null,
+    },
   );
 }
 
@@ -261,7 +307,7 @@ export function activityChartGuide(period: StatPeriod): ChartGuide {
     high: WHO_MODERATE_HIGH / 7,
   };
   return advised(
-    `Intensity minutes add moderate minutes to vigorous minutes. Garmin counts each vigorous minute twice. A published activity range is ${WHO_MODERATE_LOW}–${WHO_MODERATE_HIGH} minutes of moderate activity a week, or ${WHO_MODERATE_LOW / 2}–${WHO_MODERATE_HIGH / 2} minutes if it is vigorous. For ${grouped(period)}, that is about ${countText(periodTypical.low)}–${countText(periodTypical.high)} moderate minutes (${countText(vigorous.low)}–${countText(vigorous.high)} vigorous). The shaded band is the daily share of the moderate range. It is a reference, not a personal target or a diagnosis.`,
+    `Intensity minutes add moderate minutes to vigorous minutes. Garmin counts each vigorous minute twice. The World Health Organization and the NHS publish ${WHO_MODERATE_LOW}–${WHO_MODERATE_HIGH} minutes of moderate activity a week, or ${WHO_MODERATE_LOW / 2}–${WHO_MODERATE_HIGH / 2} minutes if it is vigorous. For ${grouped(period)}, that is about ${countText(periodTypical.low)}–${countText(periodTypical.high)} moderate minutes (${countText(vigorous.low)}–${countText(vigorous.high)} vigorous). The lime band is the daily share of the moderate range. It is a reference, not a personal target or a diagnosis.`,
     { dailyTypical, periodTypical },
   );
 }
@@ -308,7 +354,7 @@ function rangeGuide(input: {
   if (input.latest != null && input.latest < input.low) outside = input.belowNote ?? OUTSIDE_RANGE_NOTE;
   if (input.latest != null && input.latest > input.high) outside = OUTSIDE_RANGE_NOTE;
   return advised(
-    `${input.what} The shaded band is a general adult range of ${input.low}–${input.high} ${input.unit} for ${grouped(input.period)}. It is a reference, not a diagnosis.`,
+    `${input.what} The lime band is a general adult range of ${input.low}–${input.high} ${input.unit} for ${grouped(input.period)}. It is a reference, not a diagnosis.`,
     { dailyTypical: band, periodTypical: band, outside },
   );
 }
@@ -321,7 +367,7 @@ function vo2Guide(period: StatPeriod, age: number | null, sex: NutritionSex | nu
     );
   }
   return advised(
-    `VO2 max is Garmin's stored running estimate in ml/kg/min. A cycling estimate is not used. The shaded band is the published 25th to 75th percentile for your age and sex, ${oneDecimal(band.low)}–${oneDecimal(band.high)}, from Kaminsky, Arena, and Myers, Mayo Clinic Proceedings, 2015, for ages 20–79. Shown for ${grouped(period)}. It is a reference, not a target.`,
+    `VO2 max is Garmin's stored running estimate in ml/kg/min. A cycling estimate is not used. The lime band is the published 25th to 75th percentile for your age and sex, ${oneDecimal(band.low)}–${oneDecimal(band.high)}, from Kaminsky, Arena, and Myers, Mayo Clinic Proceedings, 2015, for ages 20–79. Shown for ${grouped(period)}. It is a reference, not a target.`,
     { dailyTypical: band, periodTypical: band },
   );
 }

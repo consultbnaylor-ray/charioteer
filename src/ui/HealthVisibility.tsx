@@ -12,6 +12,7 @@ import {
 } from '@/domain/healthVisibility';
 import { APPLE_HEALTH_UNAVAILABLE, APPLE_HEALTH_WEB, type AppleHealthTurnOn } from '@/health/connection';
 import { useAppTheme } from '@/ui/theme';
+import { textMentionsWeight, UpdateWeightLink } from '@/ui/UpdateWeightLink';
 import { Button, Card, T } from '@/ui/ui';
 
 /** Collapsed until opened. iOS hides read permission, so the lines stay with asked and samples. */
@@ -73,6 +74,9 @@ export function HealthVisibility({
           {report?.kind === 'ready' ? report.rows.map((row) => (
             <T key={row.type}>{healthVisibilityLine(row)}</T>
           )) : null}
+          {report?.kind === 'ready' && report.rows.some((row) => textMentionsWeight(healthVisibilityLine(row)) || textMentionsWeight(row.title)) ? (
+            <UpdateWeightLink />
+          ) : null}
           <Button
             label={HEALTH_CHECK_AGAIN}
             pending={pending}

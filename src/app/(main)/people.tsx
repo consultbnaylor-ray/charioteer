@@ -22,6 +22,7 @@ import { shownError } from '@/domain/errors';
 import { randomId } from '@/domain/id';
 import { chatPreview, latestChatMessage, messageUnreadTotal, viewerChatUnread } from '@/domain/liveChat';
 import { BuddyShareButton } from '@/ui/BuddySharePanel';
+import { SharePhotoCard } from '@/ui/SharePhotoCard';
 import { BuddyProfileButton } from '@/ui/CommunityProfile';
 import { CommunityPrompt } from '@/ui/CommunityPrompt';
 import { useChatRead } from '@/ui/chatRead';
@@ -113,6 +114,7 @@ export default function People() {
       <ErrorNote>{error}</ErrorNote>
       {tab === 'buddies' ? (
         <>
+          <SharePhotoCard />
           {incoming.length ? <T variant="label">{REQUESTS_HEADING}</T> : null}
           {incoming.slice(0, show('incoming', incoming.length).shown).map((connection) => (
             <Card key={connection.id}>

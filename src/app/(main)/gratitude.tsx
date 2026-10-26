@@ -684,7 +684,7 @@ function PhotoViewer({
               <OwnerPhoto pointerEvents="none" uri={photo.previewUrl} style={{ width: '100%', height: 360 }} contentFit="contain" />
             ) : (
               <View pointerEvents="none" style={{ height: 360, alignItems: 'center', justifyContent: 'center' }}>
-                <T variant="muted">Photo unavailable</T>
+                <T variant="muted" numberOfLines={3} adjustsFontSizeToFit minimumFontScale={0.7} style={{ textAlign: 'center', width: '100%' }}>Photo unavailable. The picture did not load.</T>
               </View>
             )}
           </ScrollView>

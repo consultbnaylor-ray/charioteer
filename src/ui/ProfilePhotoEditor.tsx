@@ -1,35 +1,42 @@
+import { useRouter } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { View } from 'react-native';
 
 import { useRepository, useSnapshot } from '@/data';
 import type { ProfilePhoto, ProfilePhotoRole } from '@/data/types';
 import { shownError } from '@/domain/errors';
 import { PHOTO_CAPTION_LIMIT } from '@/domain/profileSharing';
 import {
-  PROFILE_GALLERY_LIMIT,
-  PROFILE_GALLERY_LIMIT_MESSAGE,
+  galleryInChosenOrder,
+  PROFILE_GALLERY_HINT,
+  PROFILE_GALLERY_PAGE,
   PROFILE_PHOTO_WORDING,
+  profileFrontPhotos,
+  profileGalleryNeedsLibrary,
+  SEE_ALL_PHOTOS,
   sortProfilePhotos,
 } from '@/domain/profilePhotos';
 import type { CropRect } from '@/domain/photoCrop';
 import { encodeProfileCrop, pickProfilePhoto } from '@/ui/prepareProgressPhoto';
 import { PhotoCropper } from '@/ui/PhotoCropper';
-import { useAppTheme } from '@/ui/theme';
+import { ProfilePhotoEnlarge, ProfilePhotoTiles } from '@/ui/ProfileGallery';
 import { MemberAvatar } from '@/ui/MemberAvatar';
-import { OwnerPhoto } from '@/ui/OwnerPhoto';
 import { Button, ErrorNote, Field, playSavedHaptic, T } from '@/ui/ui';
 
 export function OwnProfilePhotos({ name, photos }: { name: string; photos: ProfilePhoto[] }) {
-  const gallery = sortProfilePhotos(photos.filter((photo) => photo.role === 'gallery'));
+  const router = useRouter();
+  const gallery = galleryInChosenOrder(photos);
+  const front = profileFrontPhotos(photos);
+  const [openId, setOpenId] = useState<string | null>(null);
   if (!gallery.length) return null;
+  const tiles = front.map((photo) => ({ id: photo.id, caption: photo.caption, uri: photo.previewUrl }));
   return (
     <View accessibilityLabel={`${name} profile photos`} style={{ gap: 8 }}>
-      {gallery.map((photo) => (
-        <View key={photo.id} style={{ gap: 4 }}>
-          <PhotoFrame uri={photo.previewUrl} label={photo.caption || 'Profile photo'} />
-          {photo.caption ? <T variant="muted">{photo.caption}</T> : null}
-        </View>
-      ))}
+      <ProfilePhotoTiles tiles={tiles} mode="open" ownerLinks onPress={setOpenId} />
+      {profileGalleryNeedsLibrary(gallery.length) ? (
+        <Button label={SEE_ALL_PHOTOS} tone="quiet" onPress={() => router.push('/profile-gallery' as never)} />
+      ) : null}
+      <ProfilePhotoEnlarge tile={tiles.find((tile) => tile.id === openId) ?? null} ownerLinks onClose={() => setOpenId(null)} />
     </View>
   );
 }
@@ -37,14 +44,26 @@ export function OwnProfilePhotos({ name, photos }: { name: string; photos: Profi
 export function ProfilePhotoEditor() {
   const snap = useSnapshot();
   const repo = useRepository();
+  const router = useRouter();
   const photos = sortProfilePhotos(snap.profilePhotos ?? []);
   const avatar = photos.find((photo) => photo.role === 'avatar') ?? null;
-  const gallery = photos.filter((photo) => photo.role === 'gallery');
+  const gallery = galleryInChosenOrder(photos);
   const [pending, setPending] = useState<string | null>(null);
   const [confirmId, setConfirmId] = useState<string | null>(null);
+  const [selected, setSelected] = useState<string[]>([]);
+  const [confirmSelected, setConfirmSelected] = useState(false);
+  const [visible, setVisible] = useState(PROFILE_GALLERY_PAGE);
   const [error, setError] = useState<string | null>(null);
   const [draft, setDraft] = useState<{ uri: string; width: number; height: number; role: ProfilePhotoRole } | null>(null);
-  const full = gallery.length >= PROFILE_GALLERY_LIMIT;
+  const page = gallery.slice(0, visible);
+  const pageKey = page.map((photo) => photo.id).join(',');
+  const oneSelected = selected.length === 1 ? gallery.find((photo) => photo.id === selected[0]) ?? null : null;
+
+  useEffect(() => {
+    const ids = pageKey ? pageKey.split(',') : [];
+    if (!ids.length) return;
+    void repo.signProfilePhotos(ids);
+  }, [repo, pageKey]);
 
   async function add(source: 'camera' | 'library', role: ProfilePhotoRole) {
     setError(null);
@@ -70,6 +89,20 @@ export function ProfilePhotoEditor() {
       setDraft(null);
     } catch (err) {
       setError(shownError(err, 'Could not add that photo.'));
+    } finally {
+      setPending(null);
+    }
+  }
+
+  async function removeSelected() {
+    setError(null);
+    setPending('delete-selected');
+    try {
+      for (const id of selected) await repo.deleteProfilePhoto(id);
+      setSelected([]);
+      setConfirmSelected(false);
+    } catch (err) {
+      setError(shownError(err, 'Could not delete that photo.'));
     } finally {
       setPending(null);
     }
@@ -132,32 +165,48 @@ export function ProfilePhotoEditor() {
         </View>
       ) : null}
       <T variant="label">Gallery</T>
-      <T variant="muted">Up to {PROFILE_GALLERY_LIMIT} photos.</T>
-      {gallery.map((photo, index) => (
-        <View key={photo.id} style={{ gap: 8 }}>
-          <PhotoFrame uri={photo.previewUrl} label={photo.caption || 'Profile photo'} />
+      <T variant="muted">{PROFILE_GALLERY_HINT}</T>
+      <ProfilePhotoTiles
+        tiles={page.map((photo) => ({ id: photo.id, caption: photo.caption, uri: photo.previewUrl }))}
+        mode="select"
+        selected={new Set(selected)}
+        onPress={(id) => {
+          setConfirmSelected(false);
+          setSelected((current) => (current.includes(id) ? current.filter((item) => item !== id) : [...current, id]));
+        }}
+      />
+      {visible < gallery.length ? (
+        <Button label="Load more" tone="quiet" disabled={pending != null} onPress={() => setVisible((count) => count + PROFILE_GALLERY_PAGE)} />
+      ) : null}
+      {profileGalleryNeedsLibrary(gallery.length) ? (
+        <Button label={SEE_ALL_PHOTOS} tone="quiet" onPress={() => router.push('/profile-gallery' as never)} />
+      ) : null}
+      {oneSelected ? (
+        <View style={{ gap: 8 }}>
           <CaptionField
-            initial={photo.caption}
-            onSave={(caption) => repo.updateProfilePhoto(photo.id, { caption })}
+            initial={oneSelected.caption}
+            onSave={(caption) => repo.updateProfilePhoto(oneSelected.id, { caption })}
           />
           <View style={{ flexDirection: 'row', gap: 8 }}>
             <View style={{ flex: 1 }}>
-              <Button label="Move up" tone="quiet" disabled={pending != null || index === 0} onPress={() => void move(photo.id, 'up')} />
+              <Button label="Move up" tone="quiet" disabled={pending != null || gallery[0]?.id === oneSelected.id} onPress={() => void move(oneSelected.id, 'up')} />
             </View>
             <View style={{ flex: 1 }}>
-              <Button label="Move down" tone="quiet" disabled={pending != null || index === gallery.length - 1} onPress={() => void move(photo.id, 'down')} />
+              <Button label="Move down" tone="quiet" disabled={pending != null || gallery[gallery.length - 1]?.id === oneSelected.id} onPress={() => void move(oneSelected.id, 'down')} />
             </View>
           </View>
-          {confirmId === photo.id ? (
-            <View style={{ gap: 8 }}>
-              <Button label="Delete this photo" tone="sos" pending={pending === `delete-${photo.id}`} onPress={() => void remove(photo.id)} />
-              <Button label="Keep it" tone="quiet" disabled={pending != null} onPress={() => setConfirmId(null)} />
-            </View>
-          ) : (
-            <Button label="Delete photo" tone="quiet" disabled={pending != null} onPress={() => setConfirmId(photo.id)} />
-          )}
         </View>
-      ))}
+      ) : null}
+      {selected.length > 0 ? (
+        confirmSelected ? (
+          <View style={{ gap: 8 }}>
+            <Button label="Delete photo" tone="sos" pending={pending === 'delete-selected'} onPress={() => void removeSelected()} />
+            <Button label="Keep it" tone="quiet" disabled={pending != null} onPress={() => setConfirmSelected(false)} />
+          </View>
+        ) : (
+          <Button label="Remove selected" tone="quiet" disabled={pending != null} onPress={() => setConfirmSelected(true)} />
+        )
+      ) : null}
       {draft ? (
         <PhotoCropper
           image={draft}
@@ -172,31 +221,14 @@ export function ProfilePhotoEditor() {
           onUse={(crop) => void saveCrop(crop)}
         />
       ) : null}
-      {full ? <T variant="muted">{PROFILE_GALLERY_LIMIT_MESSAGE}</T> : (
-        <View style={{ flexDirection: 'row', gap: 8 }}>
-          <View style={{ flex: 1 }}>
-            <Button label="Take gallery photo" tone="quiet" pending={pending === 'gallery-camera'} disabled={pending != null} onPress={() => void add('camera', 'gallery')} />
-          </View>
-          <View style={{ flex: 1 }}>
-            <Button label="Choose gallery photo" tone="quiet" pending={pending === 'gallery-library'} disabled={pending != null} onPress={() => void add('library', 'gallery')} />
-          </View>
+      <View style={{ flexDirection: 'row', gap: 8 }}>
+        <View style={{ flex: 1 }}>
+          <Button label="Take gallery photo" tone="quiet" pending={pending === 'gallery-camera'} disabled={pending != null} onPress={() => void add('camera', 'gallery')} />
         </View>
-      )}
-    </View>
-  );
-}
-
-function PhotoFrame({ uri, label }: { uri: string | null; label: string }) {
-  const theme = useAppTheme();
-  return (
-    <View style={{ width: '100%', maxWidth: 280, aspectRatio: 1, borderRadius: 8, overflow: 'hidden', backgroundColor: theme.colors.sunken }}>
-      {uri ? (
-        <OwnerPhoto uri={uri} style={StyleSheet.absoluteFill} contentFit="cover" accessibilityLabel={label} />
-      ) : (
-        <View style={[StyleSheet.absoluteFill, { alignItems: 'center', justifyContent: 'center' }]}>
-          <T variant="muted">Photo</T>
+        <View style={{ flex: 1 }}>
+          <Button label="Choose gallery photo" tone="quiet" pending={pending === 'gallery-library'} disabled={pending != null} onPress={() => void add('library', 'gallery')} />
         </View>
-      )}
+      </View>
     </View>
   );
 }

@@ -2,6 +2,8 @@
  * Every place in the app. The drawer renders this list.
  * Add a new section here when you add a screen. Do not leave it only in a tab.
  */
+import { OUTSIDE_SECTION_LABEL } from '@/domain/outsideSection';
+
 export type MenuIcon =
   | 'sun'
   | 'check'
@@ -12,6 +14,7 @@ export type MenuIcon =
   | 'pulse'
   | 'plan'
   | 'workout'
+  | 'path'
   | 'stats'
   | 'meal'
   | 'body'
@@ -62,7 +65,9 @@ export const APP_SECTIONS: readonly AppSection[] = [
   { id: 'body', label: 'Body: weight, waist and BMI', href: '/weight-waist', icon: 'body', group: 'tools' },
   { id: 'health-plan', label: 'Health Plan', href: '/health-plan', icon: 'plan', group: 'tools' },
   { id: 'workouts', label: 'Workouts', href: '/workouts', icon: 'workout', group: 'tools' },
+  { id: 'outside', label: OUTSIDE_SECTION_LABEL, href: '/outside', icon: 'path', group: 'tools' },
   { id: 'photos', label: 'Progress photos', href: '/photos', icon: 'photo', group: 'tools' },
+  { id: 'shared-photos', label: 'Shared Photos', href: '/shared-photos', icon: 'photo', group: 'tools' },
   { id: 'vision', label: 'Vision Board', href: '/vision', icon: 'board', group: 'tools' },
   { id: 'units', label: 'Drinks & units calculator', href: '/units', icon: 'glass', group: 'tools' },
   { id: 'quotes', label: 'Stoic & Classical Wisdom', href: '/quotes', icon: 'quote', group: 'tools' },

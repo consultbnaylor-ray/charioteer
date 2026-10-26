@@ -100,6 +100,7 @@ import { usePendingPress } from '@/ui/pendingAction';
 import { ScrollTarget } from '@/ui/ScrollTarget';
 import { stroke, useAppTheme } from '@/ui/theme';
 import { MoreInfo } from '@/ui/MoreInfo';
+import { UpdateWeightLink } from '@/ui/UpdateWeightLink';
 import { Button, Card, Choice, ErrorNote, Field, QuietNote, Screen, T, playSavedHaptic, useScreenScroller } from '@/ui/ui';
 
 type DraftItem = {
@@ -1228,6 +1229,7 @@ export default function Nutrition() {
               <T variant="muted">{`Leave this blank and the suggestion uses ${MIDDLEWEIGHT_LIMIT_KG} kg (160 lb), the professional middleweight limit. Type your own class if it is different. The change stays small. Amateur IBA figures are a reference only. Muscular boxers can sit above the BMI band.`}</T>
             </MoreInfo>
             <Field label="Middleweight limit (kg)" value={weightClass} onChangeText={setWeightClass} keyboardType="decimal-pad" placeholder={String(MIDDLEWEIGHT_LIMIT_KG)} />
+            <UpdateWeightLink />
           </>
         ) : null}
         {isClassBoxer(settings.goal) ? (
@@ -1236,6 +1238,7 @@ export default function Nutrition() {
             <MoreInfo about="this weight class" summary="It will not plan a cut.">
               <T variant="muted">{`${GOAL_LABEL[settings.goal]} stays near about ${PRO_BOXING_CLASSES[settings.goal].limitKg} kg (${PRO_BOXING_CLASSES[settings.goal].limitLb} lb). Any change is small. It will not plan a cut. Muscular boxers can sit above the BMI band. ${COMPETITION_NOTE}`}</T>
             </MoreInfo>
+            <UpdateWeightLink />
           </>
         ) : null}
         {settings.goal && isTrainingGoal(settings.goal) && (profile?.stage === 'stopped' || profile?.stage === 'trying_to_stop') ? (
@@ -1249,13 +1252,16 @@ export default function Nutrition() {
         </View>
         <QuietNote>{choiceNote}</QuietNote>
         {latestWeight == null || profile?.heightCm == null ? (
-          <Pressable
-            accessibilityRole="link"
-            accessibilityLabel="Weight and waist moved to Body"
-            onPress={() => router.push('/weight-waist' as never)}
-          >
-            <T variant="muted">Weight and waist moved to Body</T>
-          </Pressable>
+          <View style={{ gap: 4 }}>
+            <Pressable
+              accessibilityRole="link"
+              accessibilityLabel="Weight and waist moved to Body"
+              onPress={() => router.push('/weight-waist' as never)}
+            >
+              <T variant="muted">Weight and waist moved to Body</T>
+            </Pressable>
+            <UpdateWeightLink />
+          </View>
         ) : null}
         <Button label="Suggest targets" pending={isPending('suggest')} pendingLabel="Suggesting..." onPress={suggest} />
         {suggestNote ? <T>{suggestNote}</T> : null}

@@ -89,6 +89,9 @@ verify_jwt = true
 [functions.notify-buddy-invite]
 verify_jwt = true
 
+[functions.notify-buddy-photo]
+verify_jwt = true
+
 [functions.privacy-purge]
 verify_jwt = false
 
@@ -105,4 +108,7 @@ verify_jwt = false
 verify_jwt = true
 
 [functions.garmin-refresh]
+verify_jwt = true
+
+[functions.outdoor-route]
 verify_jwt = true

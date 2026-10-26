@@ -29,6 +29,8 @@ When Community is on, other signed-in adults can see your name and your interest
 
 Turning a switch off hides that item on the next view. The People screen shows a preview of what is shared and a list of what is hidden.
 
+A profile picture and the profile gallery are shown to signed-in community members while Community is on. There is no separate switch for each gallery photo, and there is no limit on how many you can add. The profile front shows the first photos, in the order you set. See all photos opens the rest. Removing a photo in Edit profile takes it off the public profile on the next view. The file is a JPEG in the private profile-photos bucket. Location data is stripped before upload. A signed link is used to show it. There is no public file address.
+
 ## Sensitive information
 
 Days sober, your stage, reasons, money and unit totals, a mood streak, and health headlines are special category data under UK GDPR. The first time you share any of that, the app asks you to confirm. It tells you that other adults in the Charioteer community can see the items you switch on, and that Quantica Labs Ltd is the controller.
@@ -42,6 +44,24 @@ A buddy is not the community. Community switches live in `profile_sharing` and a
 What you choose for one buddy is stored on that buddy invite (`buddy_invites.scope`). `shared_buddy_data` returns only those sections, and only to that person after they have accepted. It does not read `profile_sharing`, and it does not ask whether Community is on. Another buddy’s invite is a different row. A block either way returns nothing. Health data on that invite stays off unless that switch is on for that person.
 
 Turning Community off hides the community profile. It does not publish the community switches to a buddy, and it does not erase a buddy invite. The app does not yet store a separate copy of every community field for each buddy. Until that is approved and applied, a buddy sees the invite sections, not the What I share switches.
+
+## Photos shared with a buddy
+
+A photo you send from Buddies is not a community photo. Community stays public to other adults when you turn it on. A buddy photo is private to the buddies you tick, and each buddy is a separate choice. Another buddy does not see that you sent it to someone else. The feed for a recipient does not include the other recipients.
+
+The picture and the caption stay on your account until you delete the photo or delete the account. A caption can be about health or sobriety, so it can be special category data. It is not used for advertising. A signed link lasts about 15 minutes. There is no public URL.
+
+Hide removes the photo from that buddy's list. It does not delete the file. Delete removes the row and the file for everyone. A copy already saved on a phone, or a screenshot, is not removed. The screen says so. A report can stay after the photo is gone.
+
+The tick "Also add to my Gratitude list" makes a second private copy in the gratitude diary. Deleting one does not delete the other.
+
+Save to Photos adds the JPEG to the phone's photo library. The app does not create a named Charioteer album, because creating one would read the rest of the library. The add-only purpose sentence is: "Charioteer adds a photo to your photo library when you tap Save. It cannot create a separate Charioteer album without reading your other photos, so it does not. It never reads your other photos."
+
+The camera and library sentences cover a private progress photo and a photo you choose to send. A progress photo stays private. A photo you send is shown only to the buddies you pick, not the Community, and it is not sent to the coach.
+
+The table, the bucket, and the export change are in the repo and have not been applied. Export includes the photos you sent (with their storage path), the photos shared with you (without the other recipients), and the recipient list for photos you sent. Account deletion removes the buddy-photos folder before the account goes. Rows are removed with the profile.
+
+This note is not a solicitor's DPIA.
 
 ## How the shared view is built
 
@@ -68,3 +88,33 @@ If you turn on the coach as well as health data, a short summary is sent to the 
 ## Calendar
 
 Add to Calendar opens Apple's add-event sheet for a planned workout. The iPhone app contains a calendar purpose sentence only so Apple's upload check can see why that code is in the app. The sentence is: "Charioteer only opens Apple's add-event sheet when you tap Add to Calendar. It never reads your calendar." The calendar plugin copies that same sentence onto the full-calendar purpose text. Reminder purpose text is left out. Tapping the button does not ask for calendar permission, and Charioteer does not read your calendar or your reminders.
+
+## Location
+
+Outside is Good can use your location while the map is open, and only if you allow it. The iPhone purpose sentence is: "Charioteer uses your location only while the map is open, to show where you are. A route is sent to the route service only if you turn route finding on. It is not tracked in the background. It is not shared with other people. It is stored only if you save a route."
+
+Route finding is off until you turn it on. The first time you open Find a route, the app asks. Not now leaves Outside is Good, saved routes, and the map working, and it does not call the route service. You can turn it off again from Profile. The choice is stored on this phone only, with the time and the wording version. It is not a database column. Another phone starts off.
+
+Walk this off (the craving walk) is parked. It is not shown. The screen and the route engine stay in the app behind `SHOW_WALK_THIS_OFF`, which is off. Turning that constant on would show it again. It is not a live feature, and the consent screen and Profile do not offer it.
+
+When route finding is on, the start point and the destination are sent to our route service to make the route. The service is OpenRouteService, run by HeiGIT, built on OpenStreetMap data. Nothing from that request is shared with other people. A route sends the coordinates and the travel type only. It does not send your name or account number. HeiGIT sees our server's address, not your phone's. A place search sends the words you type.
+
+HeiGIT's transparency statement (https://account.heigit.org/info/transparency-statement) says the full request and response, the IP address, and the API key are kept for 7 days to look for abuse, then deleted. For openrouteservice, coordinates rounded to two decimal places (about 1 km) and the request metadata are kept with no end date. A place search is geocoding. The same statement says the typed place and its coordinate are not kept past those 7 days. The statement says the servers are in the EU, and that the statement is voluntary and not a binding promise. The April 2022 privacy policy (https://heigit.org/privacy-policy/) still says personal data is kept only as long as needed. It does not give these day counts. The terms (https://account.heigit.org/info/tos) do not restate the 7 days.
+
+The phone calls a Charioteer function. The function holds the route-service key. The key is not in the app. The function does not log the key or the place. The old host api.openrouteservice.org is not used. Requests go to api.heigit.org. HeiGIT said that old host is switched off in the week of 16 November 2026 (https://heigit.org/changes-in-the-openrouteservice-universe/, 22 October 2026). An earlier forum note said 2–6 November 2026. The free Standard plan allows 2,000 direction requests a day (https://account.heigit.org/info/plans). The function stops the whole app at 1,500 a day, and one person at 40 a day.
+
+OpenStreetMap data is under the Open Database Licence. The visible credit is for the contributors. Turning route finding on is not a request to accept OpenStreetMap terms. OpenRouteService results are under CC-BY-SA 4.0. The required credit is "© openrouteservice by HeiGIT | Data from OpenStreetMap", and the map also shows "© OpenStreetMap contributors" and the OpenFreeMap credit. A saved route stays on your account. It is not sent to other people.
+
+The map opens on the light OpenFreeMap Liberty style. A light or dark choice is remembered on this phone only. Both styles, and their tiles, are requested from tiles.openfreemap.org. Full screen is a larger view of the same map. It does not add a permission or another host.
+
+HeiGIT's terms (https://account.heigit.org/info/tos) say not to send personal data except for their own account. A start point can be personal data. There is no signed agreement and no data-processing agreement with HeiGIT. This test version sends a start point only after you turn route finding on. Before a public launch, ask HeiGIT in writing about end-user location coordinates and a data-processing agreement, and either self-host the route service in the EU or get that agreement in writing.
+
+The page still opens if you say no to location. There is no background location and no "always" location. Android asks for fine and coarse location in the foreground only. A saved route is a line on your account. You can delete it. A live fix is not stored. Live routes can't be shared with anyone. That's to protect your safety.
+
+This is not medical advice. The Outside is Good screens say so, and they name a GP, NHS 111, 999, and Samaritans on 116 123. Walk this off is parked, so that naming is on the live Outside is Good screens, not on a craving-walk screen.
+
+The iPhone app contains a motion purpose sentence only so Apple's upload check can see it. The sentence is: "Charioteer does not use your motion or fitness data. The map component in the app can reference motion sensors, so Apple requires this note." Charioteer does not read motion or fitness-activity data. Android motion activity stays off.
+
+The iPhone app contains a microphone purpose sentence because an audio component is included. Voice is switched off in this version. The sentence is: "Charioteer does not record audio. Voice is switched off in this version. Apple requires this note because an audio component is included in the app." Charioteer does not record audio.
+
+The iPhone app contains a Face ID purpose sentence because a component in the app can reference it. The sentence is: "Charioteer does not use Face ID. Apple requires this note because a component in the app can reference it." Charioteer does not use Face ID.

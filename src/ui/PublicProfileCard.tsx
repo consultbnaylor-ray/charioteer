@@ -25,6 +25,7 @@ import { MemberAvatar } from '@/ui/MemberAvatar';
 import { OwnProfilePhotos, ProfilePhotoEditor } from '@/ui/ProfilePhotoEditor';
 import { COMMUNITY_CONSENT_BODY, COMMUNITY_SWITCH_TITLE } from '@/ui/ConsentChoices';
 import { offerMessageNotifications } from '@/notifications/register';
+import { PHOTO_ALERT_NOTE } from '../../supabase/functions/_shared/buddyPhotoPush';
 import { TURN_OFF_MESSAGE_NOTIFICATIONS, notificationsOnFromTurnOff } from '../../supabase/functions/_shared/messagePush';
 import { InterestChip } from '@/ui/InterestChip';
 import { useAppTheme } from '@/ui/theme';
@@ -115,7 +116,12 @@ export function PublicProfileCard() {
       id: entry.id,
       body: entry.body,
       entryDate: entry.entryDate,
-      photos: entry.photos.map((photo) => ({ id: photo.id, caption: photo.caption })),
+      photos: entry.photos.map((photo) => ({
+        id: photo.id,
+        caption: photo.caption,
+        storagePath: photo.storagePath,
+        previewUrl: photo.previewUrl,
+      })),
     })),
     vision: snap.visionItems.map((item) => ({ id: item.id, caption: item.caption, area: item.area })),
     progressPhotos: snap.progressPhotos.map((photo) => ({
@@ -398,6 +404,7 @@ export function PublicProfileCard() {
                 thumbColor={theme.colors.surface}
               />
             </View>
+            <T variant="muted">{PHOTO_ALERT_NOTE} This switch covers that alert as well.</T>
             <Field label="Name" value={name} onChangeText={changeName} onBlur={() => void saveName()} placeholder="What should we call you?" />
             {saved.name ? <T>Saved ✓</T> : null}
             <Field label="Town or area" value={town} onChangeText={changeTown} onBlur={() => void saveTown()} placeholder="Bristol, or leave blank" />

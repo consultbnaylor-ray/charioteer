@@ -16,6 +16,7 @@ import { PlanTick } from '@/ui/PlanTick';
 import { TargetWeightForm } from '@/ui/TargetWeightGoal';
 import { statsToneColors } from '@/ui/statsPalette';
 import { useAppTheme } from '@/ui/theme';
+import { UpdateWeightLink } from '@/ui/UpdateWeightLink';
 import { Button, Card, Choice, ErrorNote, QuietNote, T, playSavedHaptic } from '@/ui/ui';
 
 export const GOAL_SAVED_LINE = 'Goal saved';
@@ -127,6 +128,7 @@ export function GoalChoices({
         <T style={{ fontFamily: theme.font.bodyStrong, flex: 1 }}>Boxing weight classes</T>
         <T variant="muted">{boxingOpen ? 'Hide' : 'Show'}</T>
       </Pressable>
+      <UpdateWeightLink />
       {!boxingOpen && currentBoxing ? (
         <Choice
           label={boxingChipLabel(currentBoxing) ?? 'Boxing'}

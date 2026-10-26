@@ -3,6 +3,7 @@ import { Platform } from 'react-native';
 
 import type { Repository } from '@/data/types';
 import { clientAppBuild, notificationFailureLine } from '@/domain/clientError';
+import { sharedPhotosFrom } from '../../supabase/functions/_shared/buddyPhotoPush';
 import { buddyInviteIdFrom } from '../../supabase/functions/_shared/buddyPush';
 import { connectionIdFrom } from '../../supabase/functions/_shared/messagePush';
 
@@ -156,11 +157,12 @@ export async function cancelScheduledNotifications(): Promise<void> {
   }
 }
 
-/** Opens the chat or the Buddies screen named on a notification. Does not ask for permission. */
+/** Opens the chat, Buddies, or Shared Photos named on a notification. Does not ask for permission. */
 export function listenForMessageOpens(
   openChat: (connectionId: string) => void,
   openBuddy?: () => void,
   isReady: () => boolean = () => true,
+  openSharedPhotos?: () => void,
 ): () => void {
   if (Platform.OS === 'web') return () => undefined;
   let remove: () => void = () => undefined;
@@ -174,6 +176,7 @@ export function listenForMessageOpens(
       const id = connectionIdFrom(data);
       if (id) openChat(id);
       if (buddyInviteIdFrom(data)) openBuddy?.();
+      if (sharedPhotosFrom(data)) openSharedPhotos?.();
     } catch (error) {
       console.error('message open', error);
     }

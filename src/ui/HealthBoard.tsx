@@ -48,6 +48,7 @@ import { HealthChart } from '@/ui/HealthChart';
 import { ScrollTarget } from '@/ui/ScrollTarget';
 import { useAppTheme } from '@/ui/theme';
 import { IconLabel } from '@/ui/statIcons';
+import { textMentionsWeight, UpdateWeightLink } from '@/ui/UpdateWeightLink';
 import { Card, Choice, Field, playSavedHaptic, T } from '@/ui/ui';
 
 export function HealthBoard({
@@ -104,6 +105,7 @@ export function HealthBoard({
             report.headlines.map((line) => <T key={line}>{line}</T>)
           )}
           <T variant="muted">These notes are not medical advice.</T>
+          {report.headlines.some((line) => textMentionsWeight(line)) ? <UpdateWeightLink /> : null}
         </Card>
       ) : null}
       {metrics.map((metric) => {

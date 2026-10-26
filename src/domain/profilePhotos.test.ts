@@ -3,13 +3,20 @@ import { describe, expect, it } from 'vitest';
 
 import { parsePublicProfile, projectPublicProfile, defaultProfileSharing, type ShareSource } from './profileSharing';
 import {
+  galleryColumnCount,
+  galleryInChosenOrder,
+  galleryPositionsAfterAdd,
   nextGalleryPositions,
+  profileFrontPhotos,
+  profileGalleryNeedsLibrary,
   profileInitials,
+  profilePhotoSignPaths,
   profileSquareCrop,
   profileStoragePath,
-  PROFILE_GALLERY_LIMIT,
+  PROFILE_GALLERY_HINT,
   PROFILE_PHOTO_WORDING,
   PROFILE_SHARED_URL_SECONDS,
+  PUBLIC_PROFILE_FRONT_COUNT,
 } from './profilePhotos';
 
 const USER = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1';
@@ -46,7 +53,9 @@ describe('profile photos', () => {
     expect(profileInitials('Ben')).toBe('B');
     expect(profileInitials('  ')).toBe('?');
     expect(profileStoragePath(USER, PHOTO)).toBe(`${USER}/${PHOTO}.jpg`);
-    expect(PROFILE_GALLERY_LIMIT).toBe(6);
+    expect(PUBLIC_PROFILE_FRONT_COUNT).toBe(6);
+    expect(PROFILE_GALLERY_HINT).toContain('as many as you like');
+    expect(PROFILE_GALLERY_HINT.toLowerCase()).not.toContain('limit');
     expect(PROFILE_SHARED_URL_SECONDS).toBeLessThanOrEqual(60);
     expect(PROFILE_PHOTO_WORDING).toContain('signed-in community members');
     expect(PROFILE_PHOTO_WORDING).toContain('while Community is on');
@@ -66,6 +75,43 @@ describe('profile photos', () => {
     ]);
     expect(nextGalleryPositions(photos, 'a', 'up')).toBeNull();
     expect(nextGalleryPositions(photos, 'c', 'down')).toBeNull();
+  });
+
+  it('shows six on the profile front and keeps every later photo', () => {
+    const photos = Array.from({ length: 8 }, (_, index) => ({
+      id: `p${index}`,
+      role: 'gallery' as const,
+      position: index,
+      createdAt: `2026-10-0${index + 1}`,
+      storagePath: `${USER}/p${index}.jpg`,
+      previewUrl: index < 2 ? 'https://signed.example/p' : null,
+    }));
+    expect(galleryInChosenOrder(photos)).toHaveLength(8);
+    expect(profileFrontPhotos(photos).map((photo) => photo.id)).toEqual(['p0', 'p1', 'p2', 'p3', 'p4', 'p5']);
+    expect(profileGalleryNeedsLibrary(6)).toBe(false);
+    expect(profileGalleryNeedsLibrary(7)).toBe(true);
+    expect(galleryColumnCount(320)).toBe(2);
+    expect(galleryColumnCount(390)).toBe(3);
+    expect(profilePhotoSignPaths(photos)).toContain(`${USER}/p0.jpg`);
+    expect(profilePhotoSignPaths(photos)).toContain(`${USER}/p1.jpg`);
+    const many = Array.from({ length: 20 }, (_, index) => ({
+      id: `g${index}`,
+      role: 'gallery' as const,
+      position: index,
+      createdAt: '',
+      storagePath: `${USER}/g${index}.jpg`,
+      previewUrl: index === 15 ? 'https://signed.example/open' : null,
+    }));
+    const signed = profilePhotoSignPaths(many);
+    expect(signed).toContain(`${USER}/g0.jpg`);
+    expect(signed).toContain(`${USER}/g11.jpg`);
+    expect(signed).toContain(`${USER}/g15.jpg`);
+    expect(signed).not.toContain(`${USER}/g14.jpg`);
+    expect(signed).not.toContain(`${USER}/g19.jpg`);
+    expect(galleryPositionsAfterAdd([{ id: 'old', position: 0 }, { id: 'older', position: 1 }])).toEqual([
+      { id: 'old', position: 1 },
+      { id: 'older', position: 2 },
+    ]);
   });
 
   it('shows profile photos whenever Community is on, without a storage path', () => {
@@ -99,6 +145,11 @@ describe('profile photos', () => {
     expect(sql).toContain("role in ('avatar', 'gallery')");
     expect(sql).toContain('profile_photos_one_avatar');
     expect(sql).toContain('Six profile photos is the limit.');
+    const uncapped = readFileSync('supabase/migrations/20261026140000_profile_gallery_uncapped.sql', 'utf8');
+    expect(uncapped).toContain('drop trigger if exists profile_photos_limit');
+    expect(uncapped).toContain('drop function if exists public.profile_photos_limit');
+    expect(uncapped.toLowerCase()).not.toContain('raise exception');
+    expect(uncapped).not.toMatch(/>=\s*6/);
     expect(sql).toContain("values ('profile-photos', 'profile-photos', false, 2097152");
     expect(sql).toContain('set public = false');
     expect(sql).toContain('profile_photos_storage_read');
@@ -186,6 +237,21 @@ describe('profile photos', () => {
     expect(editor).toContain('Move up');
     expect(editor).toContain('Move down');
     expect(editor).toContain('Delete photo');
+    expect(editor).toContain('Remove selected');
+    expect(editor).toContain('Load more');
+    expect(editor).toContain('SEE_ALL_PHOTOS');
+    expect(editor).toContain('PROFILE_GALLERY_HINT');
+    expect(editor).not.toContain('Six profile photos is the limit.');
+    expect(editor).not.toContain('PROFILE_GALLERY_LIMIT');
+    expect(readFileSync('src/ui/CommunityProfile.tsx', 'utf8')).toContain('SEE_ALL_PHOTOS');
+    expect(readFileSync('src/ui/CommunityProfile.tsx', 'utf8')).toContain('profileFrontPhotos');
+    expect(readFileSync('src/ui/CommunityProfile.tsx', 'utf8')).toContain('profileGalleryNeedsLibrary');
+    const library = readFileSync('src/app/(main)/profile-gallery.tsx', 'utf8');
+    expect(library).toContain('LOAD_MORE_PHOTOS');
+    expect(library).toContain('PROFILE_LIBRARY_TITLE');
+    expect(library).not.toContain('Six profile');
+    expect(add).not.toContain('PROFILE_GALLERY_LIMIT');
+    expect(add).not.toContain('replaceId');
     expect(editor).toContain('Saved ✓');
     expect(picker).toContain('exif: true');
     expect(picker).toContain('profileSquareCrop');

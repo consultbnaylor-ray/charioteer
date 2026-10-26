@@ -121,6 +121,8 @@ export type ProfilePhoto = {
 export type NewProfilePhoto = {
   bytes: Uint8Array;
   role: ProfilePhotoRole;
+  /** Public line under a gallery photo. Omitted means blank. */
+  caption?: string;
 };
 
 export type Reason = { id: string; body: string; sortOrder: number };
@@ -263,6 +265,8 @@ export type AppSnapshot = {
   trainingSchedule: import('@/domain/healthPlan').TrainingSchedule | null;
   /** Workouts planned ahead. Owner only. Empty until one is saved. */
   plannedSessions: import('@/domain/plannedSession').PlannedSession[];
+  /** Saved walks. Owner only. Empty until one is saved, or until the table exists. */
+  outdoorRoutes: import('@/domain/outdoorRoute').OutdoorRoute[];
 };
 
 export type NewGratitudeEntry = {
@@ -461,6 +465,8 @@ export interface Repository {
   deleteProfilePhoto(id: string): Promise<void>;
   /** Signed URLs for profile photos the caller is allowed to see. */
   profilePhotoUrls(ids: string[]): Promise<{ id: string; url: string }[]>;
+  /** Signs the owner's own gallery page. Other people's photos use profilePhotoUrls. */
+  signProfilePhotos(ids: string[]): Promise<void>;
   setProgressPhotoVisibility(ids: string[], visibility: ProgressVisibility): Promise<void>;
   setProfileSharing(sharing: ProfileSharing): Promise<void>;
   saveQuote(quoteId: string): Promise<void>;
@@ -539,6 +545,24 @@ export interface Repository {
   updatePlannedSession(id: string, input: import('@/domain/plannedSession').PlannedSessionDraft & { doneAt: string | null }): Promise<void>;
   /** Removes one planned workout. */
   deletePlannedSession(id: string): Promise<void>;
+  /** Saves a route on this account. A live table may store a shorter line. */
+  saveOutdoorRoute(input: import('@/domain/outdoorRoute').OutdoorRouteDraft): Promise<void>;
+  /** Asks the route function for a line. Refuses while route finding is off. */
+  planOutdoorRoute(input: import('@/domain/findRoute').RoutePlanInput): Promise<import('@/domain/findRoute').RoutePlan>;
+  /** Asks the route function for places. Refuses while route finding is off. */
+  searchRoutePlaces(query: string): Promise<import('@/domain/findRoute').RoutePlace[]>;
+  /** Removes one saved walk. */
+  deleteOutdoorRoute(id: string): Promise<void>;
+  /** Photos this person sent, and photos a buddy sent to them. Not the Community. */
+  listSharedPhotos(): Promise<import('@/domain/sharedPhotos').SharedPhotoCard[]>;
+  /** Creates a private photo for the chosen accepted buddies. The server drops anyone who is not connected. */
+  sendSharedPhoto(input: { caption: string; bytes: Uint8Array; previewUri: string; buddyIds: string[]; allowSave: boolean }): Promise<void>;
+  /** Sender removes the photo for everyone. */
+  deleteSharedPhoto(id: string): Promise<void>;
+  /** Recipient hides one photo from their own list. The file stays for the sender. */
+  hideSharedPhoto(id: string): Promise<void>;
+  /** Sends the existing moderation report. The report can outlive the photo. */
+  reportSharedPhoto(id: string, reason: string): Promise<void>;
   /** Connection flag and the summaries this phone shows. Tokens stay on the server. */
   loadGarmin(): Promise<import('@/domain/garminConnect').GarminReadings>;
   /** Signed-in link to Garmin. Returns the authorise URL. */

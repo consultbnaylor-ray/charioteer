@@ -137,7 +137,7 @@ const UNIT_SOURCES: GuidanceSource[] = [
 ];
 
 const STEPS_RESEARCH =
-  `There is no NHS or UK Chief Medical Officer daily step target. A 2025 review in The Lancet Public Health found that about ${uk(LANCET_STEPS_MEANINGFUL)} steps a day was linked with better health outcomes than 2,000, and that ${uk(LANCET_STEPS_MORE_ACTIVE)} can still suit people who are more active. That research is not a UK guideline.`;
+  `There is no NHS or UK Chief Medical Officer daily step target. Paluch and colleagues, Lancet Public Health, 2022, found mortality associations levelled off around 6,000–8,000 steps a day at age 60 or over and around 8,000–10,000 under 60. A 2025 review in The Lancet Public Health found that about ${uk(LANCET_STEPS_MEANINGFUL)} steps a day was linked with better health outcomes than 2,000, and that ${uk(LANCET_STEPS_MORE_ACTIVE)} can still suit people who are more active. Saint-Maurice and colleagues, JAMA, 2020, compared 8,000 and 12,000 steps a day with 4,000. Tudor-Locke and Bassett, Sports Medicine, 2004, called 10,000 an active index, not a UK guideline. That research is not a UK guideline.`;
 
 const HRV_HONEST =
   `There is no official UK target for heart rate variability. Nunan, Sandercock, and Brodie, 2010, found short-term SDNN study averages from ${NUNAN_SDNN_LOW} to ${NUNAN_SDNN_HIGH} ms, with an overall mean of ${NUNAN_SDNN_MEAN} ms. That spread is not a personal target and is not split by age or sex. A watch sample is also compared with your own readings. ${REFERENCE_NOT_A_TARGET}`;

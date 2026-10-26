@@ -13,6 +13,7 @@ import { useAppTheme } from '@/ui/theme';
 import { topSafeInset } from '@/ui/safeArea';
 import { MessageNotificationPrompt } from '@/ui/MessageNotificationPrompt';
 import { SectionDrawer } from '@/ui/SectionDrawer';
+import { HeaderShareButton, headerCameraTap } from '@/ui/SharePhotoCard';
 import { Mark, ShellInsetProvider, T, Wordmark } from '@/ui/ui';
 
 function selected(pathname: string, href: string) {
@@ -48,8 +49,8 @@ export default function MainLayout() {
   const go = (href: string) => router.dismissTo(href as never);
   const tabName = (tab: AppSection) => (tab.href === '/people' ? peopleTabAccessibilityLabel(requestCount, messageUnread) : tab.tabLabel ?? tab.label);
 
-  const brand = (
-    <Pressable accessibilityRole="button" accessibilityLabel="Charioteer home" onPress={() => go('/home')} style={styles.brand}>
+  const brand = (shrink: boolean) => (
+    <Pressable accessibilityRole="button" accessibilityLabel="Charioteer home" onPress={() => go('/home')} style={[styles.brand, shrink ? styles.brandShrink : null]}>
       <Mark size={58} />
       <Wordmark size={18} />
     </Pressable>
@@ -76,7 +77,8 @@ export default function MainLayout() {
       {wide ? (
         <View style={[styles.rail, { backgroundColor: theme.colors.surface, borderRightColor: theme.colors.line, paddingTop: topSafeInset(insets.top) + 8 }]}>
           {menuButton}
-          {brand}
+          <HeaderShareButton />
+          {brand(false)}
           <T variant="muted" style={{ marginTop: 4, marginBottom: 18 }}>Hold the reins.</T>
           {TAB_SECTIONS.map((tab) => (
             <NavItem
@@ -93,9 +95,12 @@ export default function MainLayout() {
         <View style={[styles.mobileTop, { paddingTop: topSafeInset(insets.top) + 8, borderBottomColor: theme.colors.line }]}>
           <View style={styles.mobileBrand}>
             {menuButton}
-            {brand}
+            {brand(true)}
           </View>
-          <Pressable accessibilityRole="button" accessibilityLabel="Your profile" onPress={() => go('/profile')}>
+          <View style={[styles.cameraGap, { minWidth: headerCameraTap(theme.scale) }]}>
+            <HeaderShareButton />
+          </View>
+          <Pressable accessibilityRole="button" accessibilityLabel="Your profile" onPress={() => go('/profile')} style={styles.youLink}>
             <T variant="body" style={{ fontFamily: theme.font.bodyStrong }}>You</T>
           </Pressable>
         </View>
@@ -205,12 +210,16 @@ function RequestBadge({ label }: { label: string }) {
 const styles = StyleSheet.create({
   rail: { width: 232, borderRightWidth: StyleSheet.hairlineWidth, paddingHorizontal: 16, paddingBottom: 20 },
   brand: { flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 44 },
+  brandShrink: { flexShrink: 1, minWidth: 0 },
   menu: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
   menuBars: { width: 18, gap: 4 },
   menuBar: { height: 2, width: 18 },
   navItem: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderRadius: 2, borderLeftWidth: 3, paddingHorizontal: 12, paddingVertical: 10, marginBottom: 4 },
-  mobileTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 8, paddingBottom: 8, borderBottomWidth: StyleSheet.hairlineWidth },
-  mobileBrand: { flexDirection: 'row', alignItems: 'center', gap: 4, flex: 1 },
+  mobileTop: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 8, paddingBottom: 8, borderBottomWidth: StyleSheet.hairlineWidth },
+  mobileBrand: { flexDirection: 'row', alignItems: 'center', gap: 4, flexShrink: 1, minWidth: 0 },
+  /** Free gap between the wordmark and You. The camera sits in the middle of whatever width is left. */
+  cameraGap: { flexGrow: 1, flexShrink: 1, alignItems: 'center', justifyContent: 'center' },
+  youLink: { flexShrink: 0, minHeight: 44, justifyContent: 'center' },
   tabs: { flexDirection: 'row', alignItems: 'stretch', width: '100%', borderTopWidth: StyleSheet.hairlineWidth, paddingTop: 8 },
   tab: { flex: 1, minWidth: 0, minHeight: 44, alignItems: 'center', justifyContent: 'center', borderTopWidth: 2 },
   badge: { position: 'absolute', top: 2, right: 2, minWidth: 16, height: 16, borderRadius: 8, paddingHorizontal: 3, alignItems: 'center', justifyContent: 'center' },

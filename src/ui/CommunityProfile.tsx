@@ -11,6 +11,8 @@ import { WAGON_PUBLIC_LINE, type SharedNutritionView } from '@/domain/nutrition'
 import { SharedNutritionFacts } from '@/ui/NutritionShare';
 import { profileStatBoard } from '@/domain/profileStatTiles';
 import { PROFILE_LOAD_ERROR, communityProfileClosedMessage, formatSoberShare, sharedReportItems, shownList, type PublicProfileView, type SharedReportItem } from '@/domain/profileSharing';
+import { profileFrontPhotos, profileGalleryNeedsLibrary, SEE_ALL_PHOTOS } from '@/domain/profilePhotos';
+import { ProfilePhotoEnlarge, ProfilePhotoTiles } from '@/ui/ProfileGallery';
 import { ProfileStatBoard } from '@/ui/ProfileStatTiles';
 import { MemberAvatar } from '@/ui/MemberAvatar';
 import { PlanTick } from '@/ui/PlanTick';
@@ -19,6 +21,28 @@ import { formatGbp } from '@/domain/savings';
 import { progressPhotoLabel } from '@/domain/progressPhotos';
 import { radius, useAppTheme } from '@/ui/theme';
 import { Button, Choice, EditSheet, ErrorNote, Field, T } from '@/ui/ui';
+
+/** Grey box when a shared photo has no picture link. The long word has to fit a 96px thumb. */
+export const PUBLIC_PHOTO_MISSING = 'Photo unavailable. The picture did not load.';
+
+function MissingPhotoNote({ tall = false }: { tall?: boolean }) {
+  return (
+    <View style={tall
+      ? { height: 360, width: '100%', alignItems: 'center', justifyContent: 'center', padding: 12 }
+      : { flex: 1, width: '100%', alignItems: 'center', justifyContent: 'center', padding: 6 }}
+    >
+      <T
+        variant="muted"
+        numberOfLines={4}
+        adjustsFontSizeToFit
+        minimumFontScale={0.65}
+        style={{ textAlign: 'center', width: '100%', fontSize: 12, lineHeight: 15 }}
+      >
+        {PUBLIC_PHOTO_MISSING}
+      </T>
+    </View>
+  );
+}
 
 const REPORT_REASONS = {
   photo: { reason: 'Profile photo' },
@@ -385,6 +409,7 @@ function SharedProfileFacts({ userId, name, onOpen }: { userId: string; name: st
   const [messageAt, setMessageAt] = useState<'diary' | 'wagon' | 'plan' | null>(null);
   const [reportError, setReportError] = useState<string | null>(null);
   const [photoUrls, setPhotoUrls] = useState<Record<string, string>>({});
+  const [openGalleryId, setOpenGalleryId] = useState<string | null>(null);
   const busy = useRef(false);
 
   useEffect(() => {
@@ -412,7 +437,11 @@ function SharedProfileFacts({ userId, name, onOpen }: { userId: string; name: st
   }, [repo, userId, attempt]);
 
   useEffect(() => {
-    const ids = shownList(view?.profilePhotos).map((photo) => photo.id);
+    const photos = shownList(view?.profilePhotos);
+    const ids = [
+      ...photos.filter((photo) => photo.role === 'avatar').map((photo) => photo.id),
+      ...profileFrontPhotos(photos).map((photo) => photo.id),
+    ];
     if (!ids.length) return;
     let live = true;
     void repo.profilePhotoUrls(ids).then((rows) => {
@@ -462,6 +491,7 @@ function SharedProfileFacts({ userId, name, onOpen }: { userId: string; name: st
   const profilePhotos = shownList(view.profilePhotos);
   const avatar = profilePhotos.find((photo) => photo.role === 'avatar');
   const gallery = profilePhotos.filter((photo) => photo.role === 'gallery');
+  const front = profileFrontPhotos(profilePhotos);
 
   async function reach(from: 'diary' | 'wagon' | 'plan') {
     if (busy.current) return;
@@ -549,16 +579,32 @@ function SharedProfileFacts({ userId, name, onOpen }: { userId: string; name: st
       </View>
       {avatar?.caption ? <T variant="muted">{avatar.caption}</T> : null}
       {sent === avatar?.id ? <T variant="muted">Report sent.</T> : null}
-      {gallery.map((photo) => (
-        <View key={photo.id} style={{ gap: 6 }}>
-          <View>
-            <SharedPhotoFrame photo={{ id: photo.id, userId, takenOn: '', monthIndex: 0, note: '', caption: photo.caption, storagePath: '', createdAt: '', visibility: 'community', previewUrl: photoUrls[photo.id] ?? null }} />
-            <PhotoMenu overlay accessibilityLabel="Report profile photo" onPress={() => openPhotoReport(photo)} />
-          </View>
-          {photo.caption ? <T variant="muted">{photo.caption}</T> : null}
-          {sent === photo.id ? <T variant="muted">Report sent.</T> : null}
+      {front.length ? (
+        <View style={{ gap: 8 }}>
+          <ProfilePhotoTiles
+            tiles={front.map((photo) => ({ id: photo.id, caption: photo.caption, uri: photoUrls[photo.id] ?? null }))}
+            mode="open"
+            onPress={setOpenGalleryId}
+            corner={(tile) => (
+              <PhotoMenu accessibilityLabel="Report profile photo" onPress={() => {
+                const photo = front.find((item) => item.id === tile.id);
+                if (photo) openPhotoReport(photo);
+              }} />
+            )}
+          />
+          {front.some((photo) => sent === photo.id) ? <T variant="muted">Report sent.</T> : null}
+          {profileGalleryNeedsLibrary(gallery.length) ? (
+            <Button label={SEE_ALL_PHOTOS} tone="quiet" onPress={() => router.push(`/profile-gallery?user=${userId}` as never)} />
+          ) : null}
+          <ProfilePhotoEnlarge
+            tile={(() => {
+              const photo = front.find((item) => item.id === openGalleryId);
+              return photo ? { id: photo.id, caption: photo.caption, uri: photoUrls[photo.id] ?? null } : null;
+            })()}
+            onClose={() => setOpenGalleryId(null)}
+          />
         </View>
-      ))}
+      ) : null}
       {view.bio ? <T>{view.bio}</T> : null}
       {view.pinnedQuote ? (
         <View style={{ gap: 4 }}>
@@ -667,9 +713,7 @@ export function SharedGratitudeLines({
                       accessibilityLabel="Gratitude photo"
                     />
                   ) : (
-                    <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 8 }}>
-                      <T variant="muted">Photo unavailable</T>
-                    </View>
+                    <MissingPhotoNote />
                   )}
                 </Pressable>
                 {photo.caption ? <T variant="muted">{photo.caption}</T> : null}
@@ -701,8 +745,8 @@ export function SharedGratitudeLines({
                   accessibilityLabel="Gratitude photo"
                 />
               ) : (
-                <View pointerEvents="none" style={{ height: 360, alignItems: 'center', justifyContent: 'center' }}>
-                  <T variant="muted">Photo unavailable</T>
+                <View pointerEvents="none">
+                  <MissingPhotoNote tall />
                 </View>
               )}
             </ScrollView>
@@ -724,8 +768,8 @@ export function SharedPhotoFrame({ photo }: { photo: ProgressPhoto }) {
       {photo.previewUrl ? (
         <Image source={{ uri: photo.previewUrl }} style={StyleSheet.absoluteFill} contentFit="cover" accessibilityLabel={label} />
       ) : (
-        <View style={[StyleSheet.absoluteFill, { alignItems: 'center', justifyContent: 'center', padding: 8 }]}>
-          <T variant="muted">Photo unavailable</T>
+        <View style={StyleSheet.absoluteFill}>
+          <MissingPhotoNote />
         </View>
       )}
     </View>

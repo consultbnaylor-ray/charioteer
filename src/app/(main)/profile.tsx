@@ -19,6 +19,7 @@ import { InterestChip } from '@/ui/InterestChip';
 import { MemberAvatar } from '@/ui/MemberAvatar';
 import { BuildChoices } from '@/ui/BodyComposition';
 import { GoalChoices } from '@/ui/GoalChoices';
+import { ScrollTarget } from '@/ui/ScrollTarget';
 import { WeightWaistPanel } from '@/ui/WeightWaistPanel';
 import { TrainingScheduleCard } from '@/ui/TrainingSchedule';
 import { WagonFlag } from '@/ui/NutritionShare';
@@ -35,6 +36,8 @@ import { Button, Card, Choice, ErrorNote, Field, playSavedHaptic, Screen, T } fr
 import { useAppTheme } from '@/ui/theme';
 import { offerMessageNotifications } from '@/notifications/register';
 import { IosNotificationOffRow } from '@/ui/IosNotificationOffRow';
+import { RouteFindingSwitch } from '@/ui/RouteFindingSwitch';
+import { PHOTO_ALERT_NOTE, PHOTO_NAME_NOTE } from '../../../supabase/functions/_shared/buddyPhotoPush';
 import { GENERIC_MESSAGE_ALERT } from '../../../supabase/functions/_shared/messagePush';
 import { useFocusEffect, useRouter } from 'expo-router';
 
@@ -308,7 +311,9 @@ export default function Profile() {
       )}
       <Button label="What I share" tone="quiet" onPress={() => router.push('/sharing' as never)} />
       <Button label="Buddies" onPress={() => router.push('/buddies' as never)} />
-      <WeightWaistPanel />
+      <ScrollTarget id="weight">
+        <WeightWaistPanel />
+      </ScrollTarget>
       <Card>
         <T variant="label">Build</T>
         <BuildChoices />
@@ -442,6 +447,7 @@ export default function Profile() {
           ))}
         </View>
       </Card>
+      <RouteFindingSwitch />
       <Card>
         <T variant="label">Notifications</T>
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 12, alignItems: 'center' }}>
@@ -465,7 +471,7 @@ export default function Profile() {
             thumbColor={theme.colors.surface}
           />
         </View>
-        <T variant="muted">A private message can alert this phone. The alert does not include what they wrote.</T>
+        <T variant="muted">A private message can alert this phone. The alert does not include what they wrote. {PHOTO_ALERT_NOTE}</T>
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 12, alignItems: 'center' }}>
           <T style={{ flex: 1 }}>Show the sender's name</T>
           <Switch
@@ -478,7 +484,7 @@ export default function Profile() {
             thumbColor={theme.colors.surface}
           />
         </View>
-        <T variant="muted">Off, the alert says {GENERIC_MESSAGE_ALERT}.</T>
+        <T variant="muted">Off, the alert says {GENERIC_MESSAGE_ALERT}. {PHOTO_NAME_NOTE}</T>
         <IosNotificationOffRow />
       </Card>
       {profile.isModerator ? (

@@ -209,10 +209,20 @@ describe('owner photo refresh', () => {
       'src/ui/VisionBoard.tsx',
       'src/app/(main)/gratitude.tsx',
       'src/app/(main)/home.tsx',
-      'src/ui/ProfilePhotoEditor.tsx',
+      'src/ui/ProfileGallery.tsx',
       'src/ui/PublicProfileCard.tsx',
     ]) {
       expect(readFileSync(file, 'utf8')).toContain('OwnerPhoto');
     }
+    const gallery = readFileSync('src/ui/ProfileGallery.tsx', 'utf8');
+    expect(gallery).toContain("ownerLinks ?? mode === 'select'");
+    expect(gallery).toContain('<OwnerPhoto');
+    const editor = readFileSync('src/ui/ProfilePhotoEditor.tsx', 'utf8');
+    expect(editor).toContain('ownerLinks');
+    expect(editor).toContain('mode="select"');
+    expect(editor).not.toContain('<Image');
+    const library = readFileSync('src/app/(main)/profile-gallery.tsx', 'utf8');
+    expect(library.match(/ownerLinks=\{own\}/g)).toHaveLength(2);
+    expect(readFileSync('src/ui/CommunityProfile.tsx', 'utf8')).not.toContain('ownerLinks');
   });
 });
