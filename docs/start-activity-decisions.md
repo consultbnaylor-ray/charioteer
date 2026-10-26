@@ -6,6 +6,8 @@ On 26 October 2026 at 07:42 GMT Ben changed the scope. Tracking must keep runnin
 
 Later the same day the Security and Compliance Bot sent an advisory on that plan. The background section below records it as recommendations. Ben decides. Nothing in the advisory is built. Where the advisory is tighter than the 07:42 draft, the advisory is the recommendation.
 
+On 26 October 2026 at 08:09 GMT Ben asked for a live heart rate and for split times. That is also design only. It is the section **Heart rate and split times**. No permission string was changed for it.
+
 The decision is **Background tracking and spoken updates over music**. The pictures in that section are layout proofs. They are not screens in the app.
 
 Outside is Good has three buttons: **Start a walk**, **Start a run**, and **Start a cycle**. They sit on the existing card, under Find a route and above Open the map. The button opens the setup screen with that activity already chosen. The person can still switch. Walk this off stays hidden.
@@ -93,7 +95,7 @@ A buzz uses the haptic the app already uses when something is saved. No permissi
 
 **Recommendation: a short list of lines stored in the app. The phone fills in the time and the pace. Nothing leaves the phone.**
 
-A line is calm and short. It does not give medical advice, a heart-rate claim, or a calorie. It does not say "you should". If the pace is not ready yet, the line talks about the time only. The same list can praise a walk, a run, and a cycle without pretending to be a coach who knows the person.
+A line is calm and short. It does not give medical advice, a heart-rate claim, or a calorie. It does not say "you should". If the pace is not ready yet, the line talks about the time only. The same list can praise a walk, a run, and a cycle without pretending to be a coach who knows the person. Version 1 keeps that. The later heart-rate section may state a number that Apple Health already has. It still does not interpret the number.
 
 **A live model (Thumos through xAI) is later, and only if you explicitly opt in.** Today `XAI_PERSONAL_DATA_ENABLED=false` is the switch that keeps personal data from being sent for coaching. An update that sent pace, time, or place would be personal data. Place should not be sent even if you later opt in. Pace and time would be the most we would send, and only after a separate yes on that screen, and only while that switch allows it. The first version does not call Thumos, the model, or any server for these lines.
 
@@ -119,7 +121,7 @@ A path is a trail of where they were. The first version does not store one, even
 
 **Not a cloud table in the first version.** A table of outings would be location-related even without the path, because a distance and a time still say that someone went out. It would need a privacy-note update, a line in the data download (`export_my_data`), and the same delete as the rest of the account. Saved routes already sit on the account, and that migration does not add them to the download. A new activity table must not copy that gap. If you later want the summary to follow the account, store the summary only, still with no path, and add it to the download and to delete before it is switched on.
 
-**Apple Health.** The app can already read workouts. The sentence that covers writing says it writes food and water, and that it does not write workouts. A Save to Apple Health button would make that sentence false. The button is on the drawing so you can see it. It is not in the first build. Building it needs the new sentence at the end of this note, and your OK. What it would write, after that: the type (walk, run, or cycle), the start, the end, and the distance. It would not write the path, a heart rate, steps, or a calorie guess. We do not have a heart rate from this screen, and a guessed calorie reads like advice.
+**Apple Health.** The app can already read workouts. The sentence that covers writing says it writes food and water, and that it does not write workouts. A Save to Apple Health button would make that sentence false. The button is on the drawing so you can see it. It is not in the first build. Building it needs the new sentence at the end of this note, and your OK. What it would write, after that: the type (walk, run, or cycle), the start, the end, and the distance. It would not write the path, a heart rate, steps, or a calorie guess. Version 1 does not show a heart rate. A later read, if you approve it, only displays a rate Apple Health already has. It still does not write one. A guessed calorie reads like advice.
 
 **Gratitude.** The tick uses the words already in the app: "Also save to my Gratitude diary". It is off. If they tick it, the diary gets the note they typed, the same private diary as any other line. That note does live on the account, like the rest of the diary. It does not include the path. An empty note does not create a diary line.
 
@@ -195,9 +197,9 @@ While the app is open, the live screen still shows the map. It is the same OpenF
 
 When the app is not in front, they do not see this screen. iOS shows a blue location mark so they can see measuring is on. When they come back, the same screen is here, the time has moved, and it says tracking is in the background, with Stop.
 
-![Proposed live screen, 390 wide. Layout proof. Stop ends the outing.](start-activity/live-proposed-390.png)
+![Proposed live screen, 390 wide. Layout proof. The map stays visible. Heart rate has no source. One split is done. Stop ends the outing.](start-activity/live-proposed-390.png)
 
-![Proposed live screen, 320 wide.](start-activity/live-proposed-320.png)
+![Proposed live screen, 320 wide. The same layout.](start-activity/live-proposed-320.png)
 
 ![Tracking in the background, 390 wide. The clock has kept going. Stop is on the screen.](start-activity/tracking-background-390.png)
 
@@ -346,6 +348,64 @@ This is the list to run when the feature is built. It is not built now.
 - Discard and Stop both clear the in-memory path.
 - The native task does not start significant-change monitoring or region monitoring.
 
+## Heart rate and split times
+
+Ben, 26 October 2026, 08:09 GMT. This section is a proposal. It is not built. No purpose string and no Info.plist key has been changed. You decide. Build 73 stays first.
+
+### Splits
+
+The distance is the same filtered GPS distance the outing already uses. A fix that is too coarse, or too fast for the activity, adds nothing, so it does not finish a split either.
+
+The unit is the one already stored on this phone for workout routes, under `charioteer.distanceUnit`. The workout screen calls the choices Kilometres and Miles. Kilometres is the default. A split is one kilometre, or one mile if they have chosen miles. No new permission.
+
+On the live screen, under the time, distance, and pace, the finished splits are listed, and the kilometre or mile still in progress is shown under them. A finished row is the number, the time, and the pace, for example "1 km · 6:12 · 6:12 /km". The one in progress shows how far that kilometre has got. It is not a finished split until the full kilometre or mile is done. Under about 50 metres the pace stays a dash, as it does today.
+
+The path stays in memory only, as the security advisory already says. It is cleared on Stop and on discard, and it is lost if the app is killed. A split row has no coordinates. It is the index, the time, and the pace.
+
+If you approve it, the on-phone summary may keep the average pace and those split times, together with the activity, the date, the distance, and the time. Still no path. That write happens only when they finish and choose to keep the summary. A kill before that loses the splits with the path. The splits are not sent to Supabase, to the route service, or to xAI. They are not added to the data export. They are not joined to sobriety logs.
+
+Thumos can mention the latest finished split from the list on the phone. "Kilometre 1 took 6 minutes 12." If they use miles, the line says mile. Nothing is sent.
+
+![Proposed summary, 390 wide. Layout proof. Split times, no path.](start-activity/finish-splits-390.png)
+
+![Proposed summary, 320 wide.](start-activity/finish-splits-320.png)
+
+The earlier finish pictures in this note are the summary in the app today. They do not have splits.
+
+### Where a heart rate can come from
+
+The iPhone cannot measure heart rate for this outing. Do not estimate one from pace, and do not invent one. Do not use the camera. If there is no recent reading, the tile says "No heart-rate source" and Thumos does not mention a heart rate. The proofs above are that empty state, with the map still visible.
+
+Three sources. Only the first is recommended.
+
+**1. Apple Watch, read from Apple Health. Recommended for this version.**
+
+While a workout is running, the Watch writes heart-rate samples into Apple Health. Charioteer already asks to read heart rate. The read list already includes `HKQuantityTypeIdentifierHeartRate`. The share sentence already says the app reads heart rate. There is no new Health type and no new permission key. People who have already allowed heart rate are not asked again, because the read list does not change.
+
+A companion Watch app is not required. The Watch's own Workout app is enough, if they start a workout on the Watch. Charioteer does not start that workout. It has no Watch app. Without a workout running on the Watch, the Watch records heart rate only now and then. That is not a rate for this screen. The tile stays on "No heart-rate source".
+
+When this is built, and only while the outing is running, the phone would subscribe to heart-rate changes and turn on Health background delivery at the immediate frequency. The Health library already in the app can do both (`subscribeToChanges` and `enableBackgroundDelivery`). When a change arrives, an anchored query (`queryQuantitySamplesWithAnchor`) reads samples since the last anchor. The same query the workout screen uses today is a one-off read of a finished route. The outing does not use that path, and it does not read a workout route. The subscription and the background delivery stop on Stop, on discard, on termination, and at the time limit. They are not left on for the rest of the day. Health background delivery does not need a `UIBackgroundModes` entry.
+
+What "live" honestly means. Apple does not promise every beat. Immediate is a hint. A sample is often a few seconds to about a minute behind the Watch. With the phone locked, or in Low Power Mode, it can be slower, batched, or deferred. The tile shows the latest sample and how old it is, for example "142 bpm" and "20s ago". If the newest sample is older than about a minute, the tile returns to "No heart-rate source" and the lines stop mentioning a rate. Do not draw a trace.
+
+The share sentence already allows the read. It does not say the rate is shown during a walk they start. The recommended sentence in the wording list adds that, on the same key. It is not written into the app until you approve it.
+
+**2. A Bluetooth heart-rate strap, or a watch that broadcasts the standard heart-rate service. Not this version.**
+
+This needs a new purpose string, `NSBluetoothAlwaysUsageDescription`. Keeping the reading while the phone is locked would also need `UIBackgroundModes` entry `bluetooth-central`. Neither key is in the app. Both are new wording and a new review. Guideline 2.5.4 applies to that background mode, and 5.1.1 applies to the new sentence. They would also have to choose a strap and connect it. Do not add this in this version. The sentence is in the wording list only so it is not mistaken for something already approved.
+
+**3. No sensor.** This is what the screen does when option 1 has nothing newer than about a minute. The tile says "No heart-rate source". The lines do not mention a heart rate.
+
+Recommendation. Option 1, and option 3 whenever there is no recent sample. No Watch app. No Bluetooth. No estimate. The number can be behind the Watch. Say that on the screen.
+
+### Safeguards
+
+No medical claim. No heart-rate zones. No alarm, and no line that tells them to slow down or stop because of a number. At most one calm line if the rate is very high. The number to confirm is 180 bpm or above, once in that outing: "Heart rate is 180. This is not medical advice." Then no further heart-rate warning. The Good to know lines stay, including the GP, NHS 111, and 999 line. "Not medical advice" stays.
+
+An ordinary heart-rate line, if they left spoken updates on, rides the interval they already chose. It does not speak on every sample. "Heart rate 142." It states the number. It does not say what the number means.
+
+The number stays on the phone. It is not sent to xAI or to Supabase in this version. It is not written to a log. The summary does not keep a trace or a list of readings. Recommendation: the summary keeps no heart rate at all. A single average would be a later decision. If Thumos lines later use xAI, the input is aggregate numbers only, such as average pace and, only if you allow it, an average heart rate, after an explicit opt-in. Never a trace, and never coordinates. `XAI_PERSONAL_DATA_ENABLED` stays false. That later use is not this version.
+
 ## Wording that needs your OK
 
 None of this is in the app. Nothing below is written into Info.plist until you approve it.
@@ -382,6 +442,31 @@ Do not add `NSLocationAlwaysAndWhenInUseUsageDescription`. Do not add `NSLocatio
 
 The map screens keep their own page line. That line is about the map, not about an outing.
 
+**Heart rate and splits, for the same later build.** Not in the app. Splits need no new permission. Heart rate uses the Health read the app already has. The sentence below is a change to that existing share sentence, not a new key.
+
+Today, and still the sentence in the app: "Charioteer reads steps, sleep, heart rate, resting heart rate, heart rate variability, cardio fitness, walking heart rate, heart rate recovery, workouts (type, duration, distance, energy, and average heart rate), and walking, cycling and swimming distance, plus weight, height, body fat, lean body mass, active energy, and exercise minutes. Readings stay on your iPhone. A workout route is read only when you open that route, and the path stays on this iPhone. A short summary is sent to write your plan only if you turn the coach on. It is not used for ads. Other people cannot see this."
+
+Proposed `NSHealthShareUsageDescription`: "Charioteer reads steps, sleep, heart rate, resting heart rate, heart rate variability, cardio fitness, walking heart rate, heart rate recovery, workouts (type, duration, distance, energy, and average heart rate), and walking, cycling and swimming distance, plus weight, height, body fat, lean body mass, active energy, and exercise minutes. Readings stay on your iPhone. During a walk, run, or cycle you start, the latest heart rate from Apple Health can be shown on that screen, including while the phone is locked. The iPhone does not measure it. That heart rate stays on this iPhone and is not sent. A workout route is read only when you open that route, and the path stays on this iPhone. A short summary is sent to write your plan only if you turn the coach on. It is not used for ads. Other people cannot see this."
+
+Lines on the screen. Not purpose strings.
+
+- The empty tile: "No heart-rate source"
+- Under that tile when it is empty: "Start a workout on your Apple Watch to show heart rate. The iPhone does not measure it."
+- A recent sample: "142 bpm" and "20s ago"
+- A finished split, kilometres: "1 km · 6:12 · 6:12 /km"
+- The split still going: "This kilometre · 0.42 km"
+- The same split in miles, if that is their unit: "1 mi · 6:12 · 6:12 /mi" and "This mile · 0.42 mi"
+- A spoken or on-screen split line: "Kilometre 1 took 6 minutes 12." Miles: "Mile 1 took 6 minutes 12."
+- A spoken or on-screen heart-rate line, only when a sample is recent, and only on the interval they chose: "Heart rate 142."
+- Once, if the rate is 180 or above. Confirm 180 before this is used: "Heart rate is 180. This is not medical advice."
+- In Good to know: "Heart rate, if it shows, comes from Apple Health and can be a little behind. It is not medical advice."
+
+**Bluetooth heart rate. Not recommended, and not added unless you later choose that source.** New key. New review.
+
+`NSBluetoothAlwaysUsageDescription`: "Charioteer reads heart rate from a Bluetooth strap or watch while a walk, run, or cycle is running, including when the phone is locked. The reading stays on this phone. It is not sent."
+
+`UIBackgroundModes` entry `bluetooth-central` would go with that sentence. Neither is in the app. Do not add them for this version.
+
 **Apple Health write, only if you want that button built.** Not the first version.
 
 Today: "Charioteer writes the food and water you log to Apple Health: dietary energy, protein, carbohydrate, sugar, fibre, fat, sodium and water. It does not write steps, sleep, heart rate, workouts, or weight."
@@ -394,6 +479,7 @@ Proposed: "Charioteer writes the food and water you log to Apple Health: dietary
 - `NSLocationAlwaysUsageDescription`.
 - A new motion sentence. The current one stays, because the app does not read motion.
 - A new microphone sentence. Speaking is not recording.
+- `NSBluetoothAlwaysUsageDescription`, and `UIBackgroundModes` `bluetooth-central`, unless you later choose a Bluetooth strap. Not this version.
 
 `UIBackgroundModes` `location` and `audio` are the keys in section (c). They are not in the binary. They wait for the wording above.
 
@@ -407,6 +493,8 @@ Writing a workout while the Health sentence says we do not write workouts would 
 
 A step counter while the motion sentence says we do not use motion would be the same kind of rejection. The step counter is not in the plan.
 
+A Bluetooth heart-rate strap would be a new permission and a new background mode. It is not in this version. Showing a heart rate the iPhone invented would make the Health sentence false. The tile stays on "No heart-rate source" when Apple Health has nothing recent.
+
 ## What this note does not do
 
-Version 1, including the live map, is in the app on this branch. It still pauses when the phone locks. The background section, including the Security and Compliance Bot recommendations, is a decision only. No purpose string was changed. No Info.plist key was added. No new host. Build number 72. Nothing shipped. The outdoor-route function is still not deployed. Build 73 stays on its own branch.
+Version 1, including the live map, is in the app on this branch. It still pauses when the phone locks. The background section, the Security and Compliance Bot recommendations, and the heart-rate and split section are decisions only. No purpose string was changed. No Info.plist key was added. No new host. Build number 72. Nothing shipped. The outdoor-route function is still not deployed. Build 73 stays on its own branch.
