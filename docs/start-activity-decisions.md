@@ -1,8 +1,8 @@
 # Start a walk, a run, or a cycle
 
-Design only. Ben asked for this on 26 October 2026. There is no feature code, no new permission, and nothing is shipped. The iOS build number stays 72.
+Version 1 is in the app on this branch. Ben approved it on 26 October 2026. Apple Health, lock-screen tracking, a cloud summary, and live model lines are not built. The iOS build number stays 72. Nothing is shipped.
 
-Outside is Good would gain three buttons: **Start a walk**, **Start a run**, and **Start a cycle**. They sit on the existing card, under Find a route and above Open the map. The button opens the setup screen with that activity already chosen. The person can still switch. Walk this off stays hidden.
+Outside is Good has three buttons: **Start a walk**, **Start a run**, and **Start a cycle**. They sit on the existing card, under Find a route and above Open the map. The button opens the setup screen with that activity already chosen. The person can still switch. Walk this off stays hidden.
 
 The pictures are layout proofs. They are not screens in the app. The figures (1.42 km, 18:42, 13:10 per km) are an example, so the layout has something to show.
 
@@ -45,11 +45,11 @@ Outside is Good can list the last few summaries, with Delete. That list is not i
 
 **Recommendation: the screen stays awake. Locking the phone pauses the time and the distance.**
 
-Today the app may use location only while a map is open, and only if the person allows it. The purpose sentence says it is not tracked in the background. Background location is switched off. Always location is switched off. The tests refuse a continuous watch and a step counter. That stays true until you approve a build.
+Today the app may use location only while a map is open, and only if the person allows it. The purpose sentence says it is not tracked in the background. Background location is switched off. Always location is switched off. The map and the route screen still do not watch location. The activity screen reads a balanced fix only while it is open.
 
 Three ways to run an outing:
 
-**Screen kept awake.** The person taps Start. The screen stays lit. If they lock the phone, the clock and the distance pause, and the screen says so before they start. This uses the location permission the app already has (while the app is in use). It does not add a new permission key. It does need new words in the existing sentence, because measuring a walk is more than showing a dot on the map. Those words are at the end of this note. They are not in the app. Apple reads purpose sentences. A sentence that still said "only while the map is open, to show where you are" would be the thing they would question.
+**Screen kept awake.** The person taps Start. The screen stays lit. If they lock the phone, the clock and the distance pause, and the screen says so before they start. This uses the location permission the app already has (while the app is in use). It does not add a new permission key. It does need new words in the existing sentence, because measuring a walk is more than showing a dot on the map. Those words are the purpose sentence in the app. Apple reads purpose sentences.
 
 **Background, with the blue location mark.** Apple lets an app keep location going after the screen locks, if the person started it, and if a blue mark stays visible so they can see location is on. It stops when they finish, and if they force-quit the app. This is still the while-using permission. It does not ask for Always. It does add a background mode (`location` under UIBackgroundModes). Apple can ask for a short video: start, lock the phone, the mark showing, then stop. The usual Expo background switch is the wrong tool for this. Turning that on and calling the background permission asks for Always. We would not do that. This can be a later version. It is a real review, and it is lighter than Always.
 
@@ -181,7 +181,7 @@ None of this is in the app. Nothing below is added until you approve it.
 
 Today: "Charioteer uses your location only while the map is open, to show where you are. A route is sent to the route service only if you turn route finding on. It is not tracked in the background. It is not shared with other people. It is stored only if you save a route."
 
-Proposed: "Charioteer uses your location while the map is open, to show where you are, and during a walk, run, or cycle you start, to measure distance and pace. That measure runs only while the activity screen is open. Locking the phone pauses it. It is not tracked in the background. It is not shared with other people. A route is stored only if you save it. A finished activity stores the distance, time, and pace on this phone, not the path."
+Proposed, and now the purpose sentence, with the route-service sentence kept so that part stays true: "Charioteer uses your location while the map is open, to show where you are, and during a walk, run, or cycle you start, to measure distance and pace. That measure runs only while the activity screen is open. Locking the phone pauses it. It is not tracked in the background. It is not shared with other people. A route is sent to the route service only if you turn route finding on. A route is stored only if you save it. A finished activity stores the distance, time, and pace on this phone, not the path."
 
 The map screens keep today's page line. The activity screens use the lock sentence in section 6.
 

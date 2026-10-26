@@ -6,7 +6,9 @@ This is a product note for the data protection impact assessment. It is not the 
 
 Outside is Good, build 70, can read the phone's location while the map screen is open. Permission is while using the app. The person can refuse. The home page, the menu, and the saved-route list work without a fix. Walk this off (the craving walk) is parked: the screen stays in the repo behind `SHOW_WALK_THIS_OFF` (off) and is not shown.
 
-The purpose sentence is: "Charioteer uses your location only while the map is open, to show where you are. A route is sent to the route service only if you turn route finding on. It is not tracked in the background. It is not shared with other people. It is stored only if you save a route."
+The purpose sentence is: "Charioteer uses your location while the map is open, to show where you are, and during a walk, run, or cycle you start, to measure distance and pace. That measure runs only while the activity screen is open. Locking the phone pauses it. It is not tracked in the background. It is not shared with other people. A route is sent to the route service only if you turn route finding on. A route is stored only if you save it. A finished activity stores the distance, time, and pace on this phone, not the path."
+
+A walk, run, or cycle uses that same while-using permission, and only while the activity screen is open. Locking the phone pauses it. The phone stores the activity, the date, the distance, the time, and the average pace. It does not store the path. The summary is not sent to the account, the route service, or the coach. Spoken lines are the phone's own voice, from a list on the phone. No new permission and no background mode.
 
 ## Data
 

@@ -91,7 +91,9 @@ Add to Calendar opens Apple's add-event sheet for a planned workout. The iPhone 
 
 ## Location
 
-Outside is Good can use your location while the map is open, and only if you allow it. The iPhone purpose sentence is: "Charioteer uses your location only while the map is open, to show where you are. A route is sent to the route service only if you turn route finding on. It is not tracked in the background. It is not shared with other people. It is stored only if you save a route."
+Outside is Good can use your location while the map is open, and only if you allow it. The iPhone purpose sentence is: "Charioteer uses your location while the map is open, to show where you are, and during a walk, run, or cycle you start, to measure distance and pace. That measure runs only while the activity screen is open. Locking the phone pauses it. It is not tracked in the background. It is not shared with other people. A route is sent to the route service only if you turn route finding on. A route is stored only if you save it. A finished activity stores the distance, time, and pace on this phone, not the path."
+
+A walk, run, or cycle you start measures distance and pace only while that screen is open. Locking the phone pauses it. The phone keeps the activity, the date, the distance, the time, and the average pace. It does not keep the path. That summary stays on this phone. Deleting the app removes it. It is not sent to the route service, to the coach, or to anyone else. Spoken updates use the phone's own voice. The words are stored on the phone. Nothing is sent for them.
 
 Route finding is off until you turn it on. The first time you open Find a route, the app asks. Not now leaves Outside is Good, saved routes, and the map working, and it does not call the route service. You can turn it off again from Profile. The choice is stored on this phone only, with the time and the wording version. It is not a database column. Another phone starts off.
 

@@ -2,6 +2,8 @@ import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { describe, expect, it } from 'vitest';
 
+import { LOCATION_WHEN_IN_USE } from '@/domain/outdoorRoute';
+
 const require = createRequire(import.meta.url);
 const { applyPermissions } = require('@expo/config-plugins/build/ios/Permissions.js') as {
   applyPermissions: (
@@ -134,5 +136,48 @@ describe('iOS purpose strings', () => {
       expect(text).toContain(MICROPHONE);
       expect(text).toContain(FACE_ID);
     }
+  });
+
+  it('writes the while-in-use location sentence and leaves Always and background modes off', () => {
+    const app = JSON.parse(readFileSync('app.json', 'utf8')) as AppConfig;
+    const location = app.expo.plugins.find(
+      (entry) => Array.isArray(entry) && entry[0] === 'expo-location',
+    ) as [string, {
+      locationWhenInUsePermission: string;
+      locationAlwaysAndWhenInUsePermission: false;
+      locationAlwaysPermission: false;
+      isIosBackgroundLocationEnabled: boolean;
+      isAndroidBackgroundLocationEnabled: boolean;
+    }] | undefined;
+    expect(location?.[1].locationWhenInUsePermission).toBe(LOCATION_WHEN_IN_USE);
+    expect(location?.[1].locationAlwaysAndWhenInUsePermission).toBe(false);
+    expect(location?.[1].locationAlwaysPermission).toBe(false);
+    expect(location?.[1].isIosBackgroundLocationEnabled).toBe(false);
+    expect(location?.[1].isAndroidBackgroundLocationEnabled).toBe(false);
+    expect(JSON.stringify(app)).not.toMatch(/UIBackgroundModes|NSLocationAlways/);
+
+    const applied = applyPermissions(
+      {
+        NSLocationWhenInUseUsageDescription: 'Allow $(PRODUCT_NAME) to access your location',
+        NSLocationAlwaysAndWhenInUseUsageDescription: 'Allow $(PRODUCT_NAME) to use your location in the background',
+        NSLocationAlwaysUsageDescription: 'Allow $(PRODUCT_NAME) to use your location in the background',
+      },
+      {
+        NSLocationWhenInUseUsageDescription: LOCATION_WHEN_IN_USE,
+        NSLocationAlwaysAndWhenInUseUsageDescription: false,
+        NSLocationAlwaysUsageDescription: false,
+      },
+      {},
+    );
+    expect(applied.NSLocationWhenInUseUsageDescription).toBe(LOCATION_WHEN_IN_USE);
+    expect(applied.NSLocationAlwaysAndWhenInUseUsageDescription).toBeUndefined();
+    expect(applied.NSLocationAlwaysUsageDescription).toBeUndefined();
+    expect(LOCATION_WHEN_IN_USE).toBe(
+      'Charioteer uses your location while the map is open, to show where you are, and during a walk, run, or cycle you start, to measure distance and pace. That measure runs only while the activity screen is open. Locking the phone pauses it. It is not tracked in the background. It is not shared with other people. A route is sent to the route service only if you turn route finding on. A route is stored only if you save it. A finished activity stores the distance, time, and pace on this phone, not the path.',
+    );
+    const audio = app.expo.plugins.find(
+      (entry) => Array.isArray(entry) && entry[0] === 'react-native-audio-api',
+    ) as [string, { iosBackgroundMode: boolean }] | undefined;
+    expect(audio?.[1].iosBackgroundMode).toBe(false);
   });
 });

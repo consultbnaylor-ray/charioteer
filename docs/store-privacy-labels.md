@@ -12,7 +12,7 @@ Add one data type for this feature:
 - Not used for tracking
 - Not used for third-party advertising
 
-The purpose string on the device is while-in-use only: `NSLocationWhenInUseUsageDescription`. Do not add `NSLocationAlwaysAndWhenInUseUsageDescription` or `NSLocationAlwaysUsageDescription`.
+The purpose string on the device is while-in-use only: `NSLocationWhenInUseUsageDescription`. Do not add `NSLocationAlwaysAndWhenInUseUsageDescription` or `NSLocationAlwaysUsageDescription`. A walk, run, or cycle uses that same while-in-use location, only while the activity screen is open. The summary stays on the phone. It is not a server collection. Do not add a background location permission. Do not add an audio background mode. Spoken lines are on-device text to speech and do not record.
 
 `NSMotionUsageDescription` is present only to satisfy Apple's static check. The sentence is: "Charioteer does not use your motion or fitness data. The map component in the app can reference motion sensors, so Apple requires this note." The app never reads motion or fitness-activity data. Do not add a Fitness or Motion data type. Do not turn on Android motion activity.
 
