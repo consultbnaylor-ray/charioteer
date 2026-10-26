@@ -269,6 +269,11 @@ function WebCanvas({
     const map = mapRef.current;
     if (!map) return;
     const next = held.current;
+    const center = map.getCenter();
+    const same = Math.abs(center.lng - next.longitude) < 1e-5
+      && Math.abs(center.lat - next.latitude) < 1e-5
+      && Math.abs(map.getZoom() - next.zoom) < 0.02;
+    if (same) return;
     map.jumpTo({ center: [next.longitude, next.latitude], zoom: next.zoom });
   }, [held, frameTick, restoreTick, ready]);
 
