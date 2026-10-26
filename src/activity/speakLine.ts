@@ -2,9 +2,9 @@ import { speechOnForProfile } from '@/config/speechProfile';
 
 /**
  * Spoken Thumos lines.
- * `EXPO_PUBLIC_BUILD_PROFILE=store` (also `app-store` or `production`) keeps speech off
- * until `APP_STORE_SPEECH_DUCK_GATE_PASSED` is true. Unset, or `testflight`, is build 74:
- * speech stays on.
+ * `EXPO_PUBLIC_BUILD_PROFILE=testflight` is the only value that keeps speech on.
+ * Unset, unknown, `store`, `app-store`, and `production` stay off
+ * until `APP_STORE_SPEECH_DUCK_GATE_PASSED` is true.
  * On screen only never starts a session. There is no silent keepalive.
  */
 /** Hard App Store release gate. Do not set this true until the phone ducking test is recorded. */

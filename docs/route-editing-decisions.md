@@ -4,7 +4,7 @@ Approved by Ben on 26 October 2026, as written in this note, including the purpo
 
 Written the same day from Ben's iPhone note: "Can you add the ability to adjust the route with your finger on the map and it recalculates the distance etc."
 
-The `outdoor-route` function is prepared to accept via-points and is not deployed. Deploying it needs a separate yes from Ben.
+Ben approved the deploy on 26 October 2026. His words were: "Yes, deploy the updated outdoor-route function and smoke-test it, then clean up test data". Version 3 of outdoor-route, which accepts an optional via list of at most five points, was deployed to the live project at 14:44:52 GMT on 26 October 2026 and smoke-tested (A to B 2070 m ascent 34; one via-point 5531 m ascent 62; six via-points gave 400 bad_request; sea start gave 422 no_path; a loop with two via-points 3840 m ascent 51). Test data was cleaned up. The via-point function in this commit is supabase/functions/outdoor-route. This checkout could not read the live function body, so the stored version 3 bytes were not compared with that file. The function only logs the static line "outdoor-route request failed". A live log check with a test call is still to be recorded.
 
 ## What was approved
 
@@ -119,11 +119,11 @@ At 320 the card is one column. The figures wrap to two lines. Undo, Reset, and R
 
 At 390 the map is taller. Undo and Reset sit on one row. Remove point stays a full row. The same sentences are used. Nothing is abbreviated at the narrower width.
 
-## The outdoor-route function, prepared and not deployed
+## The outdoor-route function, version 3
 
-Deploying this function needs a separate yes from Ben. Nothing here has been deployed.
+Ben approved the deploy on 26 October 2026. His words were: "Yes, deploy the updated outdoor-route function and smoke-test it, then clean up test data". Version 3 of outdoor-route, which accepts an optional via list of at most five points, was deployed to the live project at 14:44:52 GMT on 26 October 2026 and smoke-tested (A to B 2070 m ascent 34; one via-point 5531 m ascent 62; six via-points gave 400 bad_request; sea start gave 422 no_path; a loop with two via-points 3840 m ascent 51). Test data was cleaned up. The via-point function in this commit is supabase/functions/outdoor-route. This checkout could not read the live function body, so the stored version 3 bytes were not compared with that file. The function only logs the static line "outdoor-route request failed". A live log check with a test call is still to be recorded.
 
-What the prepared function changes, and only this:
+What that deployed function does, and only this:
 
 - `supabase/functions/_shared/orsRoute.ts` reads an optional `via` list, at most five points. A missing list means none. More than five, or a point that is not a coordinate pair, is refused with "Choose up to five points on the route." The message does not echo a coordinate.
 - `buildDirectionsBody` inserts those points between the start and the destination. A loop with any via-point is `[start, ...points, start]` and does not send `round_trip`. An A to B line is `[start, ...points, end]`. A call with no via-points is unchanged: a loop still sends `round_trip` of the chosen length, and an A to B line is still the two ends.

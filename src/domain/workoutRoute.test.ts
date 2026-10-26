@@ -726,7 +726,11 @@ describe('workout routes stay on the phone', () => {
 
   it('fails the ship check when a patch is missing and passes when it is applied', () => {
     const script = join(process.cwd(), 'scripts/assert-patches.mjs');
-    const live = spawnSync(process.execPath, [script], { cwd: process.cwd(), encoding: 'utf8' });
+    const live = spawnSync(process.execPath, [script], {
+      cwd: process.cwd(),
+      encoding: 'utf8',
+      env: { ...process.env, EXPO_PUBLIC_BUILD_PROFILE: 'testflight' },
+    });
     expect(live.status, live.stderr).toBe(0);
 
     const root = mkdtempSync(join(tmpdir(), 'charioteer-patches-'));

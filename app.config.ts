@@ -5,9 +5,9 @@ import type { ConfigContext, ExpoConfig } from 'expo/config';
 import { backgroundModesForBuild } from './src/config/speechProfile.js';
 
 /**
- * Build 74 TestFlight leaves EXPO_PUBLIC_BUILD_PROFILE unset, so speech and the
- * audio background mode stay on. A store archive sets it to `store` and, while
- * the ducking gate is false, ships with speech off and no audio mode.
+ * `EXPO_PUBLIC_BUILD_PROFILE=testflight` keeps the audio background mode.
+ * Unset, unknown, and a store profile drop `audio` while the ducking gate is false.
+ * `app.json` still lists `audio`. This file is what prebuild applies.
  * The gate is the assignment in src/activity/speakLine.ts. This file reads it
  * so the config loader does not have to resolve the app path alias.
  */

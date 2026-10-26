@@ -101,9 +101,24 @@ describe('purpose strings stay on the approved text', () => {
     expect(readFileSync('docs/app-store-activity-review.md', 'utf8')).toContain('External TestFlight groups go through Beta App Review. Guideline 2.5.4 applies to that review. Internal testers do not go through Beta App Review.');
     expect(readFileSync('docs/privacy.md', 'utf8')).toContain('No live-tracking route is sent to HeiGIT');
     const routeNote = readFileSync('docs/route-editing-decisions.md', 'utf8');
+    const deployed = 'Version 3 of outdoor-route, which accepts an optional via list of at most five points, was deployed to the live project at 14:44:52 GMT on 26 October 2026';
+    const benDeploy = 'Yes, deploy the updated outdoor-route function and smoke-test it, then clean up test data';
     expect(routeNote).toContain('Approved by Ben on 26 October 2026');
-    expect(routeNote).toContain('not deployed');
+    expect(routeNote).toContain(benDeploy);
+    expect(routeNote).toContain(deployed);
+    expect(routeNote).toContain('supabase/functions/outdoor-route');
+    expect(routeNote).toContain('outdoor-route request failed');
+    expect(routeNote).toContain('A live log check with a test call is still to be recorded.');
+    expect(routeNote).not.toContain('not deployed');
+    expect(routeNote).not.toContain('needs a separate yes');
     expect(routeNote).not.toContain('Keep this out of build 74');
+    for (const path of ['docs/dpia-location.md', 'docs/privacy.md', 'docs/privacy.html', 'docs/store-privacy-labels.md', 'docs/start-activity-decisions.md']) {
+      const note = readFileSync(path, 'utf8');
+      expect(note).toContain(benDeploy);
+      expect(note).toContain(deployed);
+      expect(note).not.toContain('not deployed');
+      expect(note).not.toContain('prepared and not deployed');
+    }
     expect(readFileSync('docs/dpia-location.md', 'utf8')).toContain('A route sends the start, the destination, any points you add on the map, and the travel type.');
   });
 });

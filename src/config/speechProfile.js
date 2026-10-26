@@ -1,26 +1,30 @@
-/** Store and App Store archives. TestFlight build 74 is any other profile, including unset. */
+/** Known store archives. Anything else except `testflight` is treated as store. */
 const STORE_PROFILES = ['store', 'app-store', 'production'];
 
 function normalizeBuildProfile(profile) {
-  const name = String(profile ?? '').trim().toLowerCase();
-  return name || 'testflight';
+  return String(profile ?? '').trim().toLowerCase();
 }
 
+/** The only profile that keeps speech and the audio background mode while the ducking gate is false. */
+function isTestFlightProfile(profile) {
+  return normalizeBuildProfile(profile) === 'testflight';
+}
+
+/** Store names, an unset variable, and any unknown value. `testflight` is the exception. */
 function isStoreProfile(profile) {
-  return STORE_PROFILES.includes(normalizeBuildProfile(profile));
+  return !isTestFlightProfile(profile);
 }
 
 /**
  * Speech and the audio background mode follow the build profile.
- * A store profile stays off until the ducking gate is true.
- * TestFlight, including build 74 with the variable unset, stays on.
+ * `testflight` stays on. Unset, unknown, and a store profile stay off until the ducking gate is true.
  */
 function speechOnForProfile(profile, gatePassed) {
-  if (isStoreProfile(profile)) return Boolean(gatePassed);
-  return true;
+  if (isTestFlightProfile(profile)) return true;
+  return Boolean(gatePassed);
 }
 
-/** Drops `audio` for a store profile while the gate is false. `location` stays. */
+/** Drops `audio` unless this profile is allowed to speak. `location` stays. */
 function backgroundModesForBuild(profile, modes, gatePassed) {
   const kept = modes.filter((mode) => mode !== 'audio');
   if (speechOnForProfile(profile, gatePassed)) kept.push('audio');
@@ -28,7 +32,9 @@ function backgroundModesForBuild(profile, modes, gatePassed) {
 }
 
 module.exports = {
+  STORE_PROFILES,
   normalizeBuildProfile,
+  isTestFlightProfile,
   isStoreProfile,
   speechOnForProfile,
   backgroundModesForBuild,
