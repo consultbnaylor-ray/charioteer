@@ -6,6 +6,8 @@ Built on this branch. Not shipped. No SQL is applied. No deploy. `ios.buildNumbe
 
 The live path is still dropped when Finished is left without Save. A copy of the line stays on this phone only after Save this route. It is not sent. Done without Save drops the line. Delete removes it. The first and last 200 m are left out unless you keep the whole line.
 
+Leaving Finished without Save, including back, drops the in-memory line. It is not kept for a later opening. Save before leaving keeps the chosen copy on this phone. The raw line does not stay in memory after that screen is left.
+
 Ben: "Can you do it so that when you click start a walk, run, cycle on the screen before creating a route, it plots out your route on a map, so you can view the distance and pace etc and redo the route in the future."
 
 The layout proofs are sample drawings, labelled Sample and Not the app. They are not screenshots of the running app.
@@ -155,8 +157,26 @@ This pull request builds option A. It adds a local store on the phone. It does n
 - Save is explicit. Stop, the six-hour limit, and the banner's Stop do not write the line. Done without Save drops it. Don't keep this deletes the summary and the line from that finish screen.
 - Delete removes the local record. An empty list deletes the storage key. It is not a hidden flag.
 - Coordinates are not logged. There is no console line, crash breadcrumb, or analytics event for the path.
-- The trim is along the line, 200 m at each end, on by default. "Keep the whole line" is the other choice. `simplifyLine` keeps the ends, so "Use fewer points" is not the privacy control. It stays off unless asked.
+- Leaving out the first and last 200 m reduces what a casual viewer of the phone sees. Keep the whole line stores the exact start and end. The screen still says "the first and last 200 m are left out". Use fewer points stays off unless asked. It keeps the ends. It does not stand in for that trim.
+- The phone store is one key, `charioteer.walked-lines`. It is not scoped by user id. Signing out clears it. A successful account deletion clears it. A failed deletion leaves the lines in place.
+- At most 20 valid lines are kept. Saving another drops the oldest. A line with more than 2000 points is shortened on save, and both ends stay. A store that cannot be read is not replaced by the next save or delete. Entries that are not a line are written back.
+- The redo guide's title and points are copied into the live outing at Start. They are not passed to `summaryFrom` or `saveActivitySummary`, and Start does not send a request.
 - There is still no crash-recovery file. A kill mid-outing does not leave a path on disk.
 - The banner stays tied to measuring. Finished is after `releaseLive`. The six-hour limit ends measuring before Save is offered.
 - `docs/privacy.md` and `docs/privacy.html` match this build, as do the DPIA and the store privacy label notes.
 - No migration is added. The build 75 grants are not applied by this build.
+
+## iOS backup, checked in AsyncStorage 2.2.0
+
+The library file is `ios/RNCAsyncStorage.mm`. The store directory is `Application Support/<bundle id>/RCTAsyncLocalStorage_V1`. Values of 1024 bytes or more are separate files in that same directory. A walked line is larger than that. In `_ensureSetup`, if Info.plist `RCTAsyncStorageExcludeFromBackup` is nil, `isExcludedFromBackup` is `@YES`. The comment in the library is "by default, we want to exclude AsyncStorage data from backup". The directory is then marked with `NSURLIsExcludedFromBackupKey`. This app does not set `RCTAsyncStorageExcludeFromBackup`. If the mark fails, the library only logs "Could not exclude AsyncStorage dir from backup" and still writes. Exclusion is asked for, and it is not a guarantee. The notice says: "On iPhone, AsyncStorage asks iOS to leave this store out of iCloud and device backup. If that request did not apply, a deleted line can persist in an older phone backup the person made."
+
+## NOT APPROVED, needs Ben
+
+These two sentences are on the Finished screen only when a save drops one or more older lines to make room. They are not approved.
+
+- An older line was removed from this phone to make room.
+- Older lines were removed from this phone to make room.
+
+## Packet check, for later
+
+After the final binary, the packet check should include the Finished map (tile requests only) and a Save, Delete, and Done round trip with no non-tile traffic. This note does not run that check.

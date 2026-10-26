@@ -1,31 +1,41 @@
 import { readFileSync } from 'node:fs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const mem = vi.hoisted(() => new Map<string, string>());
+const storage = vi.hoisted(() => ({
+  map: new Map<string, string>(),
+  removeError: null as Error | null,
+}));
 
 vi.mock('@react-native-async-storage/async-storage', () => ({
   default: {
-    getItem: async (key: string) => mem.get(key) ?? null,
+    getItem: async (key: string) => storage.map.get(key) ?? null,
     setItem: async (key: string, value: string) => {
-      mem.set(key, value);
+      storage.map.set(key, value);
     },
     removeItem: async (key: string) => {
-      mem.delete(key);
+      if (storage.removeError) throw storage.removeError;
+      storage.map.delete(key);
     },
   },
 }));
 
+import { dropFinishOnLeave, readFinishHold, setFinishHold } from '@/activity/finishHold';
 import { metresBetween } from '@/domain/outdoorRoute';
 import {
   DROP_ENDS,
   FEWER_POINTS,
   KEEP_WHOLE_LINE,
+  LINE_DROPPED_MANY,
+  LINE_DROPPED_ONE,
   LINE_TOO_SHORT,
   ON_THIS_PHONE,
   PHONE_LINE_DELETE,
   SAVE_ON_PHONE,
+  WALKED_LINE_CAP,
   WALKED_LINES_KEY,
+  WALKED_POINT_CAP,
   WALKED_TRIM_M,
+  clearWalkedLines,
   deleteWalkedLine,
   fewerPoints,
   loadWalkedLines,
@@ -33,6 +43,7 @@ import {
   saveWalkedLine,
   suggestWalkedName,
   trimEnds,
+  type WalkedLine,
   type WalkedPoint,
 } from '@/activity/walkedLine';
 
@@ -54,9 +65,24 @@ function pathLength(points: readonly WalkedPoint[]): number {
   return total;
 }
 
+function storedLine(id: string, count = 2): WalkedLine {
+  return {
+    id,
+    name: `Walk ${id}`,
+    activity: 'walk',
+    date: '2026-10-26',
+    points: Array.from({ length: Math.max(2, count) }, (_, index) => ({
+      latitude: 51.45 + index * 0.00002,
+      longitude: -2.59,
+    })),
+  };
+}
+
 describe('a walked line kept on the phone', () => {
   beforeEach(() => {
-    mem.clear();
+    storage.map.clear();
+    storage.removeError = null;
+    dropFinishOnLeave();
   });
 
   it('drops the first and last 200 m along the line, and leaves a short line whole', () => {
@@ -131,12 +157,133 @@ describe('a walked line kept on the phone', () => {
     await deleteWalkedLine('one');
     const left = await loadWalkedLines();
     expect(left.map((row) => row.id)).toEqual(['two']);
-    expect(mem.get(WALKED_LINES_KEY)).not.toContain('"id":"one"');
+    expect(storage.map.get(WALKED_LINES_KEY)).not.toContain('"id":"one"');
     await deleteWalkedLine('two');
-    expect(mem.has(WALKED_LINES_KEY)).toBe(false);
+    expect(storage.map.has(WALKED_LINES_KEY)).toBe(false);
     expect(await loadWalkedLines()).toEqual([]);
     await saveWalkedLine({ id: 'bad', name: '   ', activity: 'walk', date: '2026-10-26', points });
-    expect(mem.has(WALKED_LINES_KEY)).toBe(false);
+    expect(storage.map.has(WALKED_LINES_KEY)).toBe(false);
+  });
+
+  it('caps the lines, shortens a line over the point ceiling, and does not overwrite a bad read', async () => {
+    for (let index = 0; index < WALKED_LINE_CAP; index += 1) {
+      const saved = await saveWalkedLine(storedLine(`n${index}`));
+      expect(saved.dropped).toBe(0);
+    }
+    const overflow = await saveWalkedLine(storedLine('newest'));
+    expect(overflow.dropped).toBe(1);
+    const ids = (await loadWalkedLines()).map((row) => row.id);
+    expect(ids).toHaveLength(WALKED_LINE_CAP);
+    expect(ids[0]).toBe('newest');
+    expect(ids).not.toContain('n0');
+
+    storage.map.clear();
+    const long = storedLine('long', WALKED_POINT_CAP + 1);
+    const shortened = await saveWalkedLine(long);
+    expect(shortened.dropped).toBe(0);
+    const kept = (await loadWalkedLines()).find((row) => row.id === 'long');
+    expect(kept?.points).toHaveLength(WALKED_POINT_CAP);
+    expect(kept?.points[0]).toEqual(long.points[0]);
+    expect(kept?.points[kept.points.length - 1]).toEqual(long.points[long.points.length - 1]);
+
+    const short = storedLine('short', 40);
+    await saveWalkedLine(short);
+    const whole = (await loadWalkedLines()).find((row) => row.id === 'short');
+    expect(whole?.points).toHaveLength(40);
+
+    const junk = [1, { bad: true }, storedLine('keep')];
+    storage.map.set(WALKED_LINES_KEY, JSON.stringify(junk));
+    const added = await saveWalkedLine(storedLine('fresh'));
+    expect(added.dropped).toBe(0);
+    const raw = JSON.parse(storage.map.get(WALKED_LINES_KEY) ?? '[]') as unknown[];
+    expect(raw[0]).toMatchObject({ id: 'fresh' });
+    expect(raw).toContainEqual(1);
+    expect(raw).toContainEqual({ bad: true });
+    expect(raw.some((row) => !!row && typeof row === 'object' && (row as { id?: string }).id === 'keep')).toBe(true);
+    await deleteWalkedLine('keep');
+    const afterDelete = JSON.parse(storage.map.get(WALKED_LINES_KEY) ?? '[]') as unknown[];
+    expect(afterDelete.some((row) => !!row && typeof row === 'object' && (row as { id?: string }).id === 'keep')).toBe(false);
+    expect(afterDelete).toContainEqual(1);
+    expect(storage.map.has(WALKED_LINES_KEY)).toBe(true);
+
+    storage.map.set(WALKED_LINES_KEY, '{');
+    await expect(saveWalkedLine(storedLine('x'))).rejects.toThrow(/Could not read the saved lines/);
+    await expect(deleteWalkedLine('x')).rejects.toThrow(/Could not read the saved lines/);
+    expect(await loadWalkedLines()).toEqual([]);
+    expect(storage.map.get(WALKED_LINES_KEY)).toBe('{');
+    storage.map.set(WALKED_LINES_KEY, '{"id":"nope"}');
+    await expect(saveWalkedLine(storedLine('y'))).rejects.toThrow(/Could not read the saved lines/);
+    expect(storage.map.get(WALKED_LINES_KEY)).toBe('{"id":"nope"}');
+  });
+
+  it('clears the one phone key on sign-out and on account deletion', async () => {
+    await saveWalkedLine(storedLine('mine'));
+    expect(storage.map.has(WALKED_LINES_KEY)).toBe(true);
+    await clearWalkedLines();
+    expect(storage.map.has(WALKED_LINES_KEY)).toBe(false);
+    storage.map.set(WALKED_LINES_KEY, '{');
+    await clearWalkedLines();
+    expect(storage.map.has(WALKED_LINES_KEY)).toBe(false);
+
+    await saveWalkedLine(storedLine('still'));
+    storage.removeError = new ReferenceError('window is not defined');
+    await clearWalkedLines();
+    expect(storage.map.has(WALKED_LINES_KEY)).toBe(true);
+    storage.removeError = new Error('disk full');
+    await expect(clearWalkedLines()).rejects.toThrow('disk full');
+    storage.removeError = null;
+
+    const store = readFileSync('src/activity/walkedLine.ts', 'utf8');
+    expect(store).toContain("export const WALKED_LINES_KEY = 'charioteer.walked-lines'");
+    expect(store).not.toMatch(/userId|user_id/);
+    function methodBody(source: string, signature: string): string {
+      const start = source.indexOf(signature);
+      expect(start, signature).toBeGreaterThan(-1);
+      const rest = source.slice(start + signature.length);
+      const end = rest.search(/\n  (async |private |public )/);
+      return signature + (end === -1 ? rest : rest.slice(0, end));
+    }
+    const demo = readFileSync('src/data/demo-repository.ts', 'utf8');
+    const live = readFileSync('src/data/supabase-repository.ts', 'utf8');
+    const demoOut = methodBody(demo, 'async signOut(): Promise<void> {');
+    const liveOut = methodBody(live, 'async signOut(): Promise<void> {');
+    const demoDelete = methodBody(demo, 'async deleteAccount(): Promise<void> {');
+    const liveDelete = methodBody(live, 'async deleteAccount(): Promise<void> {');
+    expect(demoOut.indexOf('clearWalkedLines()')).toBeGreaterThan(demoOut.indexOf('this.commit(db)'));
+    expect(liveOut.indexOf('clearWalkedLines()')).toBeGreaterThan(liveOut.indexOf('auth.signOut()'));
+    expect(demoDelete.indexOf('clearWalkedLines()')).toBeGreaterThan(demoDelete.indexOf('this.commit(db)'));
+    expect(liveDelete.indexOf('clearWalkedLines()')).toBeGreaterThan(liveDelete.indexOf("rpc('delete_my_account')"));
+    expect(liveDelete.indexOf('clearWalkedLines()')).toBeLessThan(liveDelete.indexOf('auth.signOut()'));
+    expect(demo).not.toContain(WALKED_LINES_KEY);
+    expect(live).not.toContain(WALKED_LINES_KEY);
+  });
+
+  it('drops the raw line when Finished is left without Save', () => {
+    const line = northLine(800, 40);
+    setFinishHold({
+      summary: {
+        id: 'sum',
+        activity: 'walk',
+        date: '2026-10-26',
+        distanceM: 800,
+        movingMs: 400000,
+        averagePaceSecPerKm: 500,
+      },
+      limit: false,
+      splits: [{ kilometre: 1, movingMs: 400000 }],
+      line,
+      savedId: null,
+    });
+    expect(readFinishHold()?.line).toHaveLength(line.length);
+    expect(readFinishHold()?.savedId).toBeNull();
+    dropFinishOnLeave();
+    expect(readFinishHold()).toBeNull();
+    const screen = readFileSync('src/app/(main)/activity.tsx', 'utf8');
+    const leave = screen.indexOf('dropFinishOnLeave()');
+    const cleanup = screen.slice(screen.lastIndexOf('return () => {', leave), leave + 'dropFinishOnLeave();'.length);
+    expect(cleanup).toContain('screenMounted = false');
+    expect(cleanup).toContain('dropFinishOnLeave()');
+    expect(cleanup).not.toContain('savedId');
   });
 
   it('keeps the line off the summary, the export, and the network', () => {
@@ -173,15 +320,38 @@ describe('a walked line kept on the phone', () => {
     expect(screen).toContain('label="Save this route"');
     expect(screen).toContain('track={prepared.points}');
     expect(screen).toContain('copyGuide({ title: phone.name, points: phone.points })');
+    expect(screen).toContain('LINE_DROPPED_ONE');
+    expect(screen).toContain('LINE_DROPPED_MANY');
+    expect(screen).toContain('roomNote ?');
+    expect(store).toContain(LINE_DROPPED_ONE);
+    expect(store).toContain(LINE_DROPPED_MANY);
     expect(screen).not.toMatch(/supabase|functions\.invoke|planOutdoorRoute|console\.(log|info|debug|warn|error)/);
     const done = screen.slice(screen.indexOf('async function done'), screen.indexOf('async function keepLine'));
     expect(done).not.toContain('deleteWalkedLine');
-    expect(done).toContain('pendingFinish = null');
+    expect(done).toContain('dropFinishOnLeave()');
     const discard = screen.slice(screen.indexOf('async function discard'), screen.indexOf('const moving = live'));
     expect(discard.indexOf('deleteWalkedLine')).toBeLessThan(discard.indexOf('deleteActivitySummary'));
+    expect(discard).toContain('readFinishHold()');
+    expect(discard).toContain('dropFinishOnLeave()');
     expect(store).not.toMatch(/supabase|functions\.invoke|console\.|fetch\(|export_my_data/);
     expect(summaries).not.toContain(WALKED_LINES_KEY);
+    expect(summaries).not.toMatch(/guide/);
     expect(readFileSync('src/data/supabase-repository.ts', 'utf8')).not.toContain(WALKED_LINES_KEY);
     expect(readFileSync('src/domain/activitySession.ts', 'utf8')).not.toContain(WALKED_LINES_KEY);
+
+    const start = screen.slice(screen.indexOf('function start()'), screen.indexOf('function pauseOrResume'));
+    expect(start).toContain('copyGuide(');
+    expect(start).not.toMatch(/summaryFrom|saveActivitySummary|fetch\(|functions\.invoke|supabase|planOutdoorRoute/);
+    let call = 0;
+    while ((call = screen.indexOf('summaryFrom(', call)) !== -1) {
+      const arg = screen.slice(call, screen.indexOf(');', call));
+      expect(arg).not.toMatch(/guide|routeTitle|latitude|points/);
+      call += 12;
+    }
+    call = 0;
+    while ((call = screen.indexOf('saveActivitySummary(', call)) !== -1) {
+      expect(screen.slice(call, call + 'saveActivitySummary(saved)'.length)).toBe('saveActivitySummary(saved)');
+      call += 20;
+    }
   });
 });

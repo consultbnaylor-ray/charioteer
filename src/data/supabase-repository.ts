@@ -1,4 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+
+import { clearWalkedLines } from '@/activity/walkedLine';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { Platform } from 'react-native';
 
@@ -1040,6 +1042,7 @@ export class SupabaseRepository implements Repository {
 
   async signOut(): Promise<void> {
     await this.client.auth.signOut();
+    await clearWalkedLines();
     await this.refresh();
   }
 
@@ -3302,6 +3305,7 @@ export class SupabaseRepository implements Repository {
       const { error } = await this.client.rpc('delete_my_account');
       if (error) throw asUserFacing(error, 'general');
     }
+    await clearWalkedLines();
     await this.client.auth.signOut();
     await this.refresh();
   }

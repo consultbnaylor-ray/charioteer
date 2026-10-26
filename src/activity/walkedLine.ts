@@ -14,6 +14,15 @@ export const WALKED_LINES_KEY = 'charioteer.walked-lines';
 /** Metres left off each end of the saved copy, measured along the line. */
 export const WALKED_TRIM_M = 200;
 
+/** Newest valid lines kept on this phone. An older line is dropped to make room. */
+export const WALKED_LINE_CAP = 20;
+
+/**
+ * A saved line longer than this is shortened, and both ends stay.
+ * A shorter line is stored as chosen. This does not replace the 200 m trim.
+ */
+export const WALKED_POINT_CAP = 2000;
+
 export const DROP_ENDS = 'Drop the first and last 200 m';
 export const KEEP_WHOLE_LINE = 'Keep the whole line';
 export const FEWER_POINTS = 'Use fewer points';
@@ -21,6 +30,8 @@ export const LINE_TOO_SHORT = 'The line is too short to drop the ends.';
 export const SAVE_ON_PHONE = 'Save keeps the line on this phone. It is not sent. Done without Save drops the line.';
 export const ON_THIS_PHONE = 'On this phone';
 export const PHONE_LINE_DELETE = 'This removes the saved line from this phone.';
+export const LINE_DROPPED_ONE = 'An older line was removed from this phone to make room.';
+export const LINE_DROPPED_MANY = 'Older lines were removed from this phone to make room.';
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
@@ -148,33 +159,105 @@ function parseLine(value: unknown): WalkedLine | null {
   return { id: row.id, name, activity: row.activity, date: row.date, points };
 }
 
-export async function loadWalkedLines(): Promise<WalkedLine[]> {
+type StoreRead = { ok: true; entries: unknown[] } | { ok: false };
+
+/** Missing key is an empty list. Invalid JSON or a non-array is not an empty list. */
+async function readStore(): Promise<StoreRead> {
+  let raw: string | null;
   try {
-    const raw = await AsyncStorage.getItem(WALKED_LINES_KEY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw) as unknown;
-    if (!Array.isArray(parsed)) return [];
-    return parsed.map(parseLine).filter((row): row is WalkedLine => row != null);
+    raw = await AsyncStorage.getItem(WALKED_LINES_KEY);
   } catch {
-    return [];
+    return { ok: false };
+  }
+  if (raw == null) return { ok: true, entries: [] };
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) return { ok: false };
+    return { ok: true, entries: parsed };
+  } catch {
+    return { ok: false };
   }
 }
 
-export async function saveWalkedLine(line: WalkedLine): Promise<void> {
-  const stored = parseLine(line);
-  if (!stored) return;
-  const current = await loadWalkedLines();
-  const next = [stored, ...current.filter((row) => row.id !== stored.id)];
-  await AsyncStorage.setItem(WALKED_LINES_KEY, JSON.stringify(next));
+function splitEntries(entries: readonly unknown[]): { valid: WalkedLine[]; other: unknown[] } {
+  const valid: WalkedLine[] = [];
+  const other: unknown[] = [];
+  for (const entry of entries) {
+    const parsed = parseLine(entry);
+    if (parsed) valid.push(parsed);
+    else other.push(entry);
+  }
+  return { valid, other };
 }
 
-/** Removes the record. An empty list deletes the key, so no points remain under it. */
+/** Shows the valid lines. A bad read returns nothing and does not write. */
+export async function loadWalkedLines(): Promise<WalkedLine[]> {
+  const read = await readStore();
+  if (!read.ok) return [];
+  return splitEntries(read.entries).valid;
+}
+
+function storedPoints(points: WalkedPoint[]): WalkedPoint[] {
+  if (points.length <= WALKED_POINT_CAP) return points;
+  return fewerPoints(points, WALKED_POINT_CAP);
+}
+
+/**
+ * Writes one line. A bad read throws and does not replace the store.
+ * Entries that are not a line are written back unchanged.
+ */
+export async function saveWalkedLine(line: WalkedLine): Promise<{ dropped: number }> {
+  const stored = parseLine(line);
+  if (!stored) return { dropped: 0 };
+  const read = await readStore();
+  if (!read.ok) throw new Error('Could not read the saved lines on this phone.');
+  const { valid, other } = splitEntries(read.entries);
+  const rest = valid.filter((row) => row.id !== stored.id);
+  const room = WALKED_LINE_CAP - 1;
+  const dropped = Math.max(0, rest.length - room);
+  const next = [{ ...stored, points: storedPoints(stored.points) }, ...rest.slice(0, room), ...other];
+  await AsyncStorage.setItem(WALKED_LINES_KEY, JSON.stringify(next));
+  return { dropped };
+}
+
+/**
+ * Removes the record. A bad read throws and does not delete the key.
+ * An empty list deletes the key. Entries that are not a line stay.
+ */
 export async function deleteWalkedLine(id: string): Promise<void> {
-  const current = await loadWalkedLines();
-  const next = current.filter((row) => row.id !== id);
+  const read = await readStore();
+  if (!read.ok) throw new Error('Could not read the saved lines on this phone.');
+  const next: unknown[] = [];
+  for (const entry of read.entries) {
+    const parsed = parseLine(entry);
+    if (parsed) {
+      if (parsed.id !== id) next.push(parsed);
+    } else {
+      next.push(entry);
+    }
+  }
   if (next.length === 0) {
     await AsyncStorage.removeItem(WALKED_LINES_KEY);
     return;
   }
   await AsyncStorage.setItem(WALKED_LINES_KEY, JSON.stringify(next));
+}
+
+function storageMissingInThisRuntime(error: unknown): boolean {
+  if (typeof window !== 'undefined') return false;
+  const message = error instanceof Error ? error.message : String(error);
+  return /localStorage|window is not defined/i.test(message);
+}
+
+/**
+ * One phone store, not a store per account.
+ * Sign-out and a successful account deletion call this.
+ */
+export async function clearWalkedLines(): Promise<void> {
+  try {
+    await AsyncStorage.removeItem(WALKED_LINES_KEY);
+  } catch (error) {
+    if (storageMissingInThisRuntime(error)) return;
+    throw error;
+  }
 }

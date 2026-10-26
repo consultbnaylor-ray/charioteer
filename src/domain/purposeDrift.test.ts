@@ -135,6 +135,21 @@ describe('purpose strings stay on the approved text', () => {
     expect(sheet).toContain('26 October 2026');
     expect(sheet).toContain(walked);
     expect(sheet).not.toContain('New, and **not approved**');
+    expect(sheet).not.toContain('privacy control');
+    expect(sheet).toContain('NOT APPROVED, needs Ben');
+    expect(sheet).toContain('An older line was removed from this phone to make room.');
+    expect(sheet).toContain('Older lines were removed from this phone to make room.');
+    expect(sheet).toContain('tile requests only');
+    const backup = 'On iPhone, AsyncStorage asks iOS to leave this store out of iCloud and device backup. If that request did not apply, a deleted line can persist in an older phone backup the person made.';
+    const casual = 'Leaving out the first and last 200 m reduces what a casual viewer of the phone sees. Keep the whole line stores the exact start and end.';
+    const leave = 'Leaving Finished without Save, including back, drops the in-memory line.';
+    for (const path of ['docs/privacy.md', 'docs/privacy.html', 'docs/dpia-location.md', 'docs/store-privacy-labels.md']) {
+      const note = readFileSync(path, 'utf8');
+      expect(note, path).toContain(backup);
+      expect(note, path).toContain(casual);
+      expect(note, path).toContain(leave);
+      expect(note, path).not.toContain('privacy control');
+    }
     expect(readFileSync('src/activity/walkedLine.ts', 'utf8')).not.toMatch(/supabase|functions\.invoke|console\.|fetch\(/);
     expect(readFileSync('app.json', 'utf8')).toContain(LOCATION_WHEN_IN_USE);
   });

@@ -6,10 +6,13 @@ import { claimLive, releaseLive } from '@/activity/oneSession';
 import { speakIfGated, stopSpeaking } from '@/activity/speakLine';
 import { readActivityUpdates, type ActivityUpdateChoice } from '@/activity/updateDefaults';
 import { saveActivitySummary, deleteActivitySummary } from '@/activity/summaries';
+import { dropFinishOnLeave, noteFinishSaved, readFinishHold, setFinishHold } from '@/activity/finishHold';
 import {
   DROP_ENDS,
   FEWER_POINTS,
   KEEP_WHOLE_LINE,
+  LINE_DROPPED_MANY,
+  LINE_DROPPED_ONE,
   LINE_TOO_SHORT,
   ON_THIS_PHONE,
   PHONE_LINE_DELETE,
@@ -113,13 +116,6 @@ let screenMounted = false;
 let pushLiveState: ((next: LiveState | null) => void) | null = null;
 let stopFromScreen: (() => void) | null = null;
 let clockTimer: ReturnType<typeof setInterval> | null = null;
-let pendingFinish: {
-  summary: ActivitySummary;
-  limit: boolean;
-  splits: SplitMark[];
-  line: WalkedPoint[];
-  savedId: string | null;
-} | null = null;
 const presenceListeners = new Set<() => void>();
 
 export function runningOutingKind(): ActivityKind | null {
@@ -161,7 +157,7 @@ export function stopRunningOuting(): void {
   void saveActivitySummary(saved).catch(() => undefined);
   say(FINISH_LINE, current.spoken);
   stopOutingClock();
-  pendingFinish = { summary: saved, limit: false, splits: current.splits.slice(), line: keptLine, savedId: null };
+  setFinishHold({ summary: saved, limit: false, splits: current.splits.slice(), line: keptLine, savedId: null });
   held = null;
   publish(null);
   notifyOutingPresence();
@@ -259,25 +255,27 @@ export default function Activity() {
   const [intervalMin, setIntervalMin] = useState<3 | 5 | 10>(5);
   const [spoken, setSpoken] = useState(false);
   const [following, setFollowing] = useState(true);
-  const [phase, setPhase] = useState<'setup' | 'live' | 'finish'>(pendingFinish ? 'finish' : held ? 'live' : 'setup');
+  const [phase, setPhase] = useState<'setup' | 'live' | 'finish'>(readFinishHold() ? 'finish' : held ? 'live' : 'setup');
   const windowSize = useWindowDimensions();
   const mapHeight = windowSize.width < 360 ? 200 : 230;
   const [live, setLive] = useState<LiveState | null>(held?.live ?? null);
-  const [summary, setSummary] = useState<ActivitySummary | null>(pendingFinish?.summary ?? null);
-  const [endedByLimit, setEndedByLimit] = useState(pendingFinish?.limit ?? false);
+  const [summary, setSummary] = useState<ActivitySummary | null>(readFinishHold()?.summary ?? null);
+  const [endedByLimit, setEndedByLimit] = useState(readFinishHold()?.limit ?? false);
   const [heart, setHeart] = useState<LiveReading>({ bpm: null, bpmAtMs: null, activeKcal: null });
   const [note, setNote] = useState('');
   const [diary, setDiary] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
-  const [savedSplits, setSavedSplits] = useState<SplitMark[]>(pendingFinish?.splits ?? []);
-  const [finishLine, setFinishLine] = useState<WalkedPoint[]>(pendingFinish?.line ?? []);
-  const [savedLineId, setSavedLineId] = useState<string | null>(pendingFinish?.savedId ?? null);
+  const [savedSplits, setSavedSplits] = useState<SplitMark[]>(readFinishHold()?.splits ?? []);
+  const [finishLine, setFinishLine] = useState<WalkedPoint[]>(readFinishHold()?.line ?? []);
+  const [savedLineId, setSavedLineId] = useState<string | null>(readFinishHold()?.savedId ?? null);
   const [trimEndsOn, setTrimEndsOn] = useState(true);
   const [fewerOn, setFewerOn] = useState(false);
-  const [lineName, setLineName] = useState(() => (
-    pendingFinish ? suggestWalkedName(pendingFinish.summary.activity, pendingFinish.summary.date) : ''
-  ));
+  const [lineName, setLineName] = useState(() => {
+    const opening = readFinishHold();
+    return opening ? suggestWalkedName(opening.summary.activity, opening.summary.date) : '';
+  });
+  const [roomNote, setRoomNote] = useState<string | null>(null);
   const [phoneLines, setPhoneLines] = useState<WalkedLine[]>([]);
   const [phoneLineId, setPhoneLineId] = useState<string | null>(null);
 
@@ -334,7 +332,7 @@ export default function Activity() {
     stopOutingClock();
     held = null;
     notifyOutingPresence();
-    pendingFinish = { summary: saved, limit: reason === 'limit', splits, line: keptLine, savedId: null };
+    setFinishHold({ summary: saved, limit: reason === 'limit', splits, line: keptLine, savedId: null });
     if (!screenMounted) {
       publish(null);
       return;
@@ -367,6 +365,7 @@ export default function Activity() {
       screenMounted = false;
       pushLiveState = null;
       stopFromScreen = null;
+      dropFinishOnLeave();
     };
   }, []);
 
@@ -517,7 +516,7 @@ export default function Activity() {
       }
       setPending(false);
     }
-    pendingFinish = null;
+    dropFinishOnLeave();
     setFinishLine([]);
     router.back();
   }
@@ -532,23 +531,24 @@ export default function Activity() {
     const prepared = prepareWalkedLine(finishLine, { trim: trimEndsOn, fewer: fewerOn });
     if (prepared.points.length < 2) return;
     const id = savedLineId ?? `${Date.now()}`;
+    let dropped = 0;
     try {
-      await saveWalkedLine({
+      const kept = await saveWalkedLine({
         id,
         name,
         activity: summary.activity,
         date: summary.date,
         points: prepared.points,
       });
+      dropped = kept.dropped;
     } catch {
       setError('Could not keep that line on this phone.');
       return;
     }
     setError(null);
     setSavedLineId(id);
-    if (pendingFinish && pendingFinish.summary.id === summary.id) {
-      pendingFinish = { ...pendingFinish, savedId: id };
-    }
+    noteFinishSaved(summary.id, id);
+    setRoomNote(dropped > 1 ? LINE_DROPPED_MANY : dropped === 1 ? LINE_DROPPED_ONE : null);
   }
 
   async function removePhoneLine(id: string) {
@@ -563,7 +563,7 @@ export default function Activity() {
   }
 
   async function discard() {
-    const dropId = pendingFinish?.savedId ?? savedLineId;
+    const dropId = readFinishHold()?.savedId ?? savedLineId;
     if (dropId) {
       try {
         await deleteWalkedLine(dropId);
@@ -580,7 +580,7 @@ export default function Activity() {
         return;
       }
     }
-    pendingFinish = null;
+    dropFinishOnLeave();
     setFinishLine([]);
     ending.current = true;
     stopSpeaking();
@@ -628,6 +628,7 @@ export default function Activity() {
           {trimEndsOn && !prepared.trimmed ? <T variant="muted">{LINE_TOO_SHORT}</T> : null}
           <Button label="Save this route" onPress={() => { void keepLine(); }} />
           <T variant="muted">{SAVE_ON_PHONE}</T>
+          {roomNote ? <T variant="muted">{roomNote}</T> : null}
         </Card>
         <Card>
           <T variant="label">Thumos</T>
