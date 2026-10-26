@@ -12,6 +12,7 @@ import {
   STARTER_PLACES,
   appleMapsUrl,
   formatClimb,
+  nearestPathLine,
   routeKind,
   type RouteMode,
   type RoutePlace,
@@ -22,7 +23,7 @@ import {
   routeSummary,
   type OutdoorPoint,
 } from '@/domain/outdoorRoute';
-import { LOCATION_FIX_MESSAGE, LOCATION_FIX_PENDING, readWhileUsingFix } from '@/location/whileUsing';
+import { LOCATION_FIX_MESSAGE, LOCATION_FIX_PENDING, ROUGH_FIX_LINE, readWhileUsingFix } from '@/location/whileUsing';
 import { FootpathMap } from '@/ui/FootpathMap';
 import { Button, Card, Choice, ErrorNote, Field, T } from '@/ui/ui';
 
@@ -65,11 +66,14 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
   const [saved, setSaved] = useState(false);
   const [you, setYou] = useState<OutdoorPoint | null>(null);
   const [focus, setFocus] = useState(0);
+  const [rough, setRough] = useState(false);
   const hereSelected = startName === 'Where I am' && start != null;
+  const nearLine = plan ? nearestPathLine(plan.snapDistanceM) : null;
 
   function pickStart(place: RoutePlace) {
     setStart(place);
     setStartName(place.name);
+    setRough(false);
     setPlan(null);
   }
 
@@ -96,6 +100,7 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
       setStart(fix.point);
       setStartName('Where I am');
       setYou(fix.point);
+      setRough(fix.approximate);
       setPlan(null);
       setFocus(0);
       setError(null);
@@ -240,6 +245,7 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
         ) : (
           <Choice label="Where I am" selected={hereSelected} onPress={() => { void whereIAm(); }} />
         )}
+        {rough && hereSelected ? <T>{ROUGH_FIX_LINE}</T> : null}
         {!craving && shape === 'a_to_b' ? (
           <>
             <T variant="label">Destination</T>
@@ -272,12 +278,15 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
           <T variant="title">{craving ? 'Craving walk' : title}</T>
           <T>{routeSummary({ distanceM: plan.distanceM, durationMinutes: plan.durationMinutes })}</T>
           <T>{formatClimb(plan.ascentM)}</T>
+          {nearLine ? <T>{nearLine}</T> : null}
+          {rough && hereSelected ? <T>{ROUGH_FIX_LINE}</T> : null}
           {plan.mocked ? <T>{ROUTE_MOCK_LINE}</T> : null}
           {plan.mode === 'run' ? <T variant="muted">{HIKE_PROFILE_NOTE}</T> : null}
           <FootpathMap
             routes={[]}
             sketch={plan.points}
             here={you}
+            startPoint={plan.snappedStart ?? plan.points[0] ?? null}
             locationFocus={focus}
             locating={locating}
             onShowMyLocation={() => { void showMyLocation(); }}

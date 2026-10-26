@@ -2,9 +2,11 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
 import {
+  LAST_KNOWN_MAX_AGE_MS,
   LOCATION_FIX_MESSAGE,
   LOCATION_FIX_PENDING,
   LOCATION_FIX_TIMEOUT_MS,
+  ROUGH_FIX_LINE,
   readWhileUsingFix,
   type WhileUsingDeps,
 } from '@/location/whileUsing';
@@ -27,7 +29,7 @@ describe('while-using location', () => {
       },
       getCurrentPositionAsync: async () => ({ coords: { latitude: 51.45, longitude: -2.59 } }),
     }));
-    expect(result).toEqual({ ok: true, point: { latitude: 51.45, longitude: -2.59 } });
+    expect(result).toEqual({ ok: true, point: { latitude: 51.45, longitude: -2.59 }, approximate: false });
     expect(asked).toBe(0);
   });
 
@@ -47,9 +49,14 @@ describe('while-using location', () => {
 
   it('reports denied without reading a position, and the screen can say so', async () => {
     let read = 0;
+    let cached = 0;
     const result = await readWhileUsingFix(deps({
       getForegroundPermissionsAsync: async () => ({ status: 'denied' }),
       requestForegroundPermissionsAsync: async () => ({ status: 'denied' }),
+      getLastKnownPositionAsync: async () => {
+        cached += 1;
+        return { coords: { latitude: 51.45, longitude: -2.59 } };
+      },
       getCurrentPositionAsync: async () => {
         read += 1;
         return { coords: { latitude: 1, longitude: 2 } };
@@ -57,6 +64,7 @@ describe('while-using location', () => {
     }));
     expect(result).toEqual({ ok: false, reason: 'denied' });
     expect(read).toBe(0);
+    expect(cached).toBe(0);
     expect(LOCATION_FIX_MESSAGE).toBe(
       "Couldn't get your location. Check Settings > Privacy > Location Services > Charioteer, or pick a start below.",
     );
@@ -105,11 +113,18 @@ describe('while-using location', () => {
     expect(reader).not.toMatch(/requestBackground|startLocationUpdates|watchPosition|NSLocationAlways|ACCESS_BACKGROUND_LOCATION/);
   });
 
-  it('drops a stale, empty, or invalid fix and recentres without asking for a route', async () => {
-    const stale = await readWhileUsingFix(deps({
+  it('keeps a recent indoor fix, drops an old one, and recentres without asking for a route', async () => {
+    const recent = await readWhileUsingFix(deps({
       getCurrentPositionAsync: async () => ({
         coords: { latitude: 51.45, longitude: -2.59, accuracy: 5 },
         timestamp: Date.now() - 130_000,
+      }),
+    }));
+    expect(recent).toEqual({ ok: true, point: { latitude: 51.45, longitude: -2.59 }, approximate: false });
+    const stale = await readWhileUsingFix(deps({
+      getCurrentPositionAsync: async () => ({
+        coords: { latitude: 51.45, longitude: -2.59, accuracy: 5 },
+        timestamp: Date.now() - LAST_KNOWN_MAX_AGE_MS - 60_000,
       }),
     }));
     expect(stale).toEqual({ ok: false, reason: 'unavailable' });
@@ -135,11 +150,17 @@ describe('while-using location', () => {
         timestamp: Date.now() - 5_000,
       }),
     }));
-    expect(fresh).toEqual({ ok: true, point: { latitude: 51.450412, longitude: -2.594512 } });
+    expect(fresh).toEqual({ ok: true, point: { latitude: 51.450412, longitude: -2.594512 }, approximate: false });
     const reader = readFileSync('src/location/whileUsing.ts', 'utf8');
     expect(reader).toContain('maximumAge: 0');
+    expect(reader).toContain('getLastKnownPositionAsync');
+    expect(reader).toContain('Location.Accuracy.Balanced');
     expect(reader).toContain('Location.Accuracy.High');
-    expect(reader).not.toContain('getLastKnownPositionAsync');
+    expect(reader.indexOf("readCurrent(location, 'balanced'")).toBeLessThan(reader.indexOf("readCurrent(location, 'high'"));
+    expect(reader).not.toMatch(/requestBackground|startLocationUpdates|watchPosition|NSLocationAlways|ACCESS_BACKGROUND_LOCATION/);
+    expect(ROUGH_FIX_LINE).toBe('Your phone\'s location is approximate indoors. We\'ll start from the nearest path.');
+    expect(readFileSync('src/ui/RouteMaker.tsx', 'utf8')).toContain('{ROUGH_FIX_LINE}');
+    expect(readFileSync('src/app/(main)/outside-map.tsx', 'utf8')).not.toContain('ROUGH_FIX_LINE');
     const maker = readFileSync('src/ui/RouteMaker.tsx', 'utf8');
     const show = maker.slice(maker.indexOf('async function showMyLocation'), maker.indexOf('async function search'));
     expect(show).toContain('readWhileUsingFix');
@@ -166,5 +187,57 @@ describe('while-using location', () => {
     expect(button).toContain("export const SHOW_MY_LOCATION = 'Show my location'");
     expect(button).toContain('width: 44');
     expect(button).not.toContain('planOutdoorRoute');
+  });
+
+  it('uses a rough or last-known fix instead of failing the page', async () => {
+    const tried: string[] = [];
+    const rough = await readWhileUsingFix(deps({
+      getCurrentPositionAsync: async (accuracy) => {
+        tried.push(accuracy ?? 'balanced');
+        return {
+          coords: { latitude: 51.45, longitude: -2.59, accuracy: 180 },
+          timestamp: Date.now(),
+        };
+      },
+    }));
+    expect(tried).toEqual(['balanced']);
+    expect(rough).toEqual({ ok: true, point: { latitude: 51.45, longitude: -2.59 }, approximate: true });
+
+    const order: string[] = [];
+    const fallback = await readWhileUsingFix(deps({
+      getLastKnownPositionAsync: async () => ({
+        coords: { latitude: 51.4545, longitude: -2.5879, accuracy: 20 },
+        timestamp: Date.now() - 60_000,
+      }),
+      getCurrentPositionAsync: async (accuracy) => {
+        order.push(accuracy ?? 'balanced');
+        throw new Error('no current fix');
+      },
+    }));
+    expect(order).toEqual(['balanced', 'high']);
+    expect(fallback).toEqual({ ok: true, point: { latitude: 51.4545, longitude: -2.5879 }, approximate: true });
+
+    const currentWins = await readWhileUsingFix(deps({
+      getLastKnownPositionAsync: async () => ({
+        coords: { latitude: 53.48, longitude: -2.24, accuracy: 8 },
+        timestamp: Date.now() - 30_000,
+      }),
+      getCurrentPositionAsync: async () => ({
+        coords: { latitude: 51.45, longitude: -2.59, accuracy: 12 },
+        timestamp: Date.now(),
+      }),
+    }));
+    expect(currentWins).toEqual({ ok: true, point: { latitude: 51.45, longitude: -2.59 }, approximate: false });
+
+    const oldCache = await readWhileUsingFix(deps({
+      getLastKnownPositionAsync: async () => ({
+        coords: { latitude: 51.45, longitude: -2.59, accuracy: 12 },
+        timestamp: Date.now() - LAST_KNOWN_MAX_AGE_MS - 60_000,
+      }),
+      getCurrentPositionAsync: async () => {
+        throw new Error('no current fix');
+      },
+    }));
+    expect(oldCache).toEqual({ ok: false, reason: 'unavailable' });
   });
 });

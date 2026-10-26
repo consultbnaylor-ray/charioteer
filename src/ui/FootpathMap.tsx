@@ -49,6 +49,7 @@ export function FootpathMap({
   routes,
   sketch,
   here,
+  startPoint = null,
   locationFocus = 0,
   locating = false,
   onShowMyLocation,
@@ -57,6 +58,8 @@ export function FootpathMap({
   routes: readonly OutdoorRoute[];
   sketch: readonly OutdoorPoint[];
   here: OutdoorPoint | null;
+  /** Green start when the route began on the nearest path, not at the GPS fix. */
+  startPoint?: OutdoorPoint | null;
   /** Increments when the person asks the map to centre on the GPS fix. */
   locationFocus?: number;
   locating?: boolean;
@@ -109,7 +112,7 @@ export function FootpathMap({
               source="sketch"
               paint={{ 'line-color': green, 'line-width': 3, 'line-dasharray': [2, 1.4] }}
             />
-            <maps.GeoJSONSource id="start" data={startCollection(routes, sketch)} />
+            <maps.GeoJSONSource id="start" data={startCollection(routes, sketch, startPoint)} />
             <maps.Layer
               id="start-dot"
               type="circle"

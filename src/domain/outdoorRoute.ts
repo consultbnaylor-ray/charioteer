@@ -331,16 +331,21 @@ function pointCollection(points: readonly OutdoorPoint[], id: string) {
   };
 }
 
-/** Green dots at the start of a drawn line. Not the phone's location. */
-export function startCollection(routes: readonly OutdoorRoute[], sketch: readonly OutdoorPoint[]) {
+/** Green dots at the start of a drawn line. Not the phone's location. An explicit start replaces the first sketch point. */
+export function startCollection(
+  routes: readonly OutdoorRoute[],
+  sketch: readonly OutdoorPoint[],
+  startPoint?: OutdoorPoint | null,
+) {
   const points: OutdoorPoint[] = [];
-  const add = (point: OutdoorPoint | undefined) => {
+  const add = (point: OutdoorPoint | undefined | null) => {
     const clean = point ? finitePoint(point) : null;
     if (!clean) return;
     if (points.some((item) => item.latitude === clean.latitude && item.longitude === clean.longitude)) return;
     points.push(clean);
   };
-  if (sketch[0]) add(sketch[0]);
+  if (startPoint) add(startPoint);
+  else if (sketch[0]) add(sketch[0]);
   for (const route of routes) add(route.points[0]);
   return pointCollection(points, 'start');
 }

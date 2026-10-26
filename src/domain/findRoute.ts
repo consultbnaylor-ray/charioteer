@@ -68,6 +68,9 @@ export type RoutePlan = {
   durationMinutes: number;
   ascentM: number | null;
   points: OutdoorPoint[];
+  /** The green start when the route service moved off the GPS point. Null when the start was already on a path. */
+  snappedStart: OutdoorPoint | null;
+  snapDistanceM: number | null;
 };
 
 /** Public places used as example starts. They are not surveyed routes. */
@@ -173,6 +176,9 @@ export function parseRoutePlan(value: unknown): RoutePlan | null {
   const duration = typeof row.durationMinutes === 'number' ? row.durationMinutes : Number(row.durationMinutes);
   if (points.length < 2 || !Number.isFinite(distance) || !Number.isFinite(duration)) return null;
   const ascent = typeof row.ascentM === 'number' && Number.isFinite(row.ascentM) ? Math.round(row.ascentM) : null;
+  const snappedStart = routeCoordinate(row.snappedStart);
+  const snapRaw = typeof row.snapDistanceM === 'number' ? row.snapDistanceM : null;
+  const snapDistanceM = snapRaw != null && Number.isFinite(snapRaw) && snapRaw >= 0 ? Math.round(snapRaw) : null;
   return {
     mocked: row.mocked === true,
     mode,
@@ -182,6 +188,8 @@ export function parseRoutePlan(value: unknown): RoutePlan | null {
     durationMinutes: Math.max(1, Math.round(duration)),
     ascentM: ascent,
     points: points.slice(0, 2000),
+    snappedStart,
+    snapDistanceM,
   };
 }
 
@@ -221,6 +229,8 @@ export function mockRoute(input: RoutePlanInput): RoutePlan | null {
     durationMinutes: minutes,
     ascentM: null,
     points,
+    snappedStart: null,
+    snapDistanceM: null,
   };
 }
 
@@ -245,6 +255,12 @@ export function appleMapsUrl(points: readonly OutdoorPoint[], mode: RouteMode): 
 export function formatClimb(metres: number | null): string {
   if (metres == null) return NO_CLIMB_LINE;
   return `Climb ${Math.max(0, Math.round(metres))} m`;
+}
+
+/** How far the green start moved from the phone. Zero and a missing distance stay quiet. */
+export function nearestPathLine(metres: number | null | undefined): string | null {
+  if (typeof metres !== 'number' || !Number.isFinite(metres) || metres <= 0) return null;
+  return `Starting from the nearest path, about ${Math.round(metres)} m away.`;
 }
 
 /** A short message from our function. A body that looks like a place is not shown. */

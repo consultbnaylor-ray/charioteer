@@ -131,6 +131,66 @@ function round6(value: number): number {
   return Math.round(value * 1e6) / 1e6;
 }
 
+/** Hosted snap search limit. A second lookup stays inside the one route request. */
+export const SNAP_RADIUS_M = 350;
+
+export function snapUrl(mode: Mode): string {
+  return `${ORS_HOST}/openrouteservice/v2/snap/${PROFILES[mode]}/geojson`;
+}
+
+export function buildSnapBody(point: { latitude: number; longitude: number }): Record<string, unknown> {
+  return {
+    locations: [[round6(point.longitude), round6(point.latitude)]],
+    radius: SNAP_RADIUS_M,
+  };
+}
+
+/** A snapped point from the geojson snap response. The service text is not kept. */
+export function parseSnap(payload: unknown): { latitude: number; longitude: number; distanceM: number | null } | null {
+  const feature = snapFeature(payload);
+  const pair = feature?.coordinates;
+  if (!pair) return null;
+  const longitude = Number(pair[0]);
+  const latitude = Number(pair[1]);
+  if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return null;
+  if (Math.abs(latitude) > 90 || Math.abs(longitude) > 180) return null;
+  if (latitude === 0 && longitude === 0) return null;
+  const distance = Number(feature?.distanceM);
+  return {
+    latitude: Number(latitude.toFixed(6)),
+    longitude: Number(longitude.toFixed(6)),
+    distanceM: Number.isFinite(distance) && distance >= 0 ? Math.round(distance) : null,
+  };
+}
+
+function snapFeature(payload: unknown): { coordinates?: unknown[]; distanceM?: unknown } | null {
+  if (!payload || typeof payload !== 'object') return null;
+  const row = payload as { features?: unknown[]; locations?: unknown[] };
+  const feature = Array.isArray(row.features) ? row.features[0] : null;
+  if (feature && typeof feature === 'object') {
+    const item = feature as { geometry?: { coordinates?: unknown[] }; properties?: { snapped_distance?: unknown } };
+    return { coordinates: item.geometry?.coordinates, distanceM: item.properties?.snapped_distance };
+  }
+  const location = Array.isArray(row.locations) ? row.locations[0] : null;
+  if (location && typeof location === 'object') {
+    const item = location as { location?: unknown[]; snapped_distance?: unknown };
+    return { coordinates: item.location, distanceM: item.snapped_distance };
+  }
+  return null;
+}
+
+export function haversineM(
+  a: { latitude: number; longitude: number },
+  b: { latitude: number; longitude: number },
+): number {
+  const lat1 = (a.latitude * Math.PI) / 180;
+  const lat2 = (b.latitude * Math.PI) / 180;
+  const dLat = ((b.latitude - a.latitude) * Math.PI) / 180;
+  const dLng = ((b.longitude - a.longitude) * Math.PI) / 180;
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) ** 2;
+  return 2 * 6_371_000 * Math.asin(Math.min(1, Math.sqrt(h)));
+}
+
 export const NO_PATH_MESSAGE =
   'We couldn\'t find a path near that start. Try a start nearer a street or footpath.';
 

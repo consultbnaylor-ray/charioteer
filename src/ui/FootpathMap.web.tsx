@@ -24,6 +24,7 @@ export function FootpathMap({
   routes,
   sketch,
   here,
+  startPoint = null,
   locationFocus = 0,
   locating = false,
   onShowMyLocation,
@@ -32,6 +33,8 @@ export function FootpathMap({
   routes: readonly OutdoorRoute[];
   sketch: readonly OutdoorPoint[];
   here: OutdoorPoint | null;
+  /** Green start when the route began on the nearest path, not at the GPS fix. */
+  startPoint?: OutdoorPoint | null;
   /** Increments when the person asks the map to centre on the GPS fix. */
   locationFocus?: number;
   locating?: boolean;
@@ -47,7 +50,7 @@ export function FootpathMap({
   const styleUrl = openFreeMapStyle(theme.scheme);
   const savedJson = JSON.stringify(savedLineCollection(routes));
   const sketchJson = JSON.stringify(sketchLineCollection(sketch));
-  const startJson = JSON.stringify(startCollection(routes, sketch));
+  const startJson = JSON.stringify(startCollection(routes, sketch, startPoint));
   const youJson = JSON.stringify(youAreHereCollection(here));
   const zoom = locationFocus > 0 || sketch.length || routes.length || here ? 15 : 12;
 

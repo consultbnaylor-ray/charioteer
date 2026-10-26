@@ -17,6 +17,7 @@ import { UserFacingError, shownError } from '@/domain/errors';
 import {
   NO_CLIMB_LINE,
   ROUTE_BAD_REQUEST,
+  ROUTE_SERVICE_LINE,
   ROUTE_FINDING_OFF,
   ROUTE_NO_PATH,
   ROUTE_OFFLINE,
@@ -27,6 +28,7 @@ import {
   explainRouteFailure,
   formatClimb,
   mockRoute,
+  nearestPathLine,
   parseRoutePlan,
   routeCoordinate,
   routeKind,
@@ -52,9 +54,14 @@ import {
   NO_PATH_MESSAGE,
   ORS_FREE_DIRECTIONS_PER_DAY,
   RATE_LIMITED_MESSAGE,
+  SNAP_RADIUS_M,
   UNAVAILABLE_MESSAGE,
   buildDirectionsBody,
+  buildSnapBody,
   classifyOrsFailure,
+  haversineM,
+  parseSnap,
+  snapUrl,
   orsRequestHeaders,
   parseDirections,
   parseGeocode,
@@ -309,6 +316,11 @@ describe('route finding', () => {
     expect(viewCentre([sampleCanalLoop()], [], here).latitude).toBe(sampleCanalLoop().points[0].latitude);
     expect(viewCentre([], [], here)).toEqual(here);
     expect(startCollection([], sketch).features[0]?.geometry.coordinates).toEqual([-2.59, 51.45]);
+    const moved = { latitude: 51.451, longitude: -2.6 };
+    const green = startCollection([], sketch, moved);
+    expect(green.features).toHaveLength(1);
+    expect(green.features[0]?.geometry.coordinates).toEqual([-2.6, 51.451]);
+    expect(youAreHereCollection(sketch[0]).features[0]?.geometry.coordinates).toEqual([-2.59, 51.45]);
     expect(youAreHereCollection(null).features).toEqual([]);
     expect(youAreHereCollection(here).features[0]?.geometry.coordinates).toEqual([-3.1, 55.9]);
     expect(YOU_HERE_FILL).toBe('#2563EB');
@@ -397,9 +409,86 @@ describe('route finding', () => {
     expect(fn).toContain("code: 'bad_request'");
     expect(fn).not.toContain("code: 'rate'");
     expect(fn).not.toContain("code: 'input'");
-    const failure = fn.slice(fn.indexOf('if (!response.ok)'), fn.indexOf('const plan = parseDirections'));
-    expect(failure).not.toMatch(/console\./);
+    const directions = fn.slice(fn.indexOf('async function postDirections'), fn.indexOf('async function snapStart'));
+    expect(directions).toContain('classifyOrsFailure(response.status, payload)');
+    expect(directions).not.toMatch(/console\./);
     expect(fn.match(/console\.error/g)).toEqual(['console.error']);
     expect(fn).toContain("console.error('outdoor-route request failed')");
+  });
+
+  it('starts from the nearest path inside the same route request', () => {
+    expect(ROUTE_SERVICE_LINE).toContain('The start point and the destination are sent to our route service');
+    expect(SNAP_RADIUS_M).toBe(350);
+    expect(snapUrl('walk')).toBe('https://api.heigit.org/openrouteservice/v2/snap/foot-walking/geojson');
+    expect(snapUrl('run')).toContain('/snap/foot-hiking/');
+    expect(snapUrl('cycle')).toContain('/snap/cycling-regular/');
+    expect(buildSnapBody({ latitude: 51.450412349, longitude: -2.594512349 })).toEqual({
+      locations: [[-2.594512, 51.450412]],
+      radius: 350,
+    });
+    expect(parseSnap({
+      type: 'FeatureCollection',
+      features: [{
+        type: 'Feature',
+        geometry: { type: 'Point', coordinates: [-2.5948, 51.4507] },
+        properties: { snapped_distance: 42.4 },
+      }],
+    })).toEqual({ latitude: 51.4507, longitude: -2.5948, distanceM: 42 });
+    expect(parseSnap({
+      locations: [{ location: [-2.59, 51.45], snapped_distance: 10 }],
+    })).toEqual({ latitude: 51.45, longitude: -2.59, distanceM: 10 });
+    expect(parseSnap({
+      features: [{ geometry: { coordinates: [0, 0] }, properties: { snapped_distance: 1 } }],
+    })).toBeNull();
+    expect(parseSnap({
+      features: [{ geometry: { coordinates: [-2.5945, 51.4504] }, properties: {} }],
+    })?.distanceM).toBeNull();
+    const queen = { latitude: 51.4504, longitude: -2.5945 };
+    const nearby = { latitude: 51.451298, longitude: -2.5945 };
+    const far = { latitude: 51.453993, longitude: -2.5945 };
+    expect(haversineM(queen, nearby)).toBeLessThan(SNAP_RADIUS_M);
+    expect(haversineM(queen, far)).toBeGreaterThan(SNAP_RADIUS_M);
+    expect(nearestPathLine(42.4)).toBe('Starting from the nearest path, about 42 m away.');
+    expect(nearestPathLine(0)).toBeNull();
+    expect(nearestPathLine(null)).toBeNull();
+    const plan = parseRoutePlan({
+      ok: true,
+      mocked: false,
+      mode: 'walk',
+      shape: 'loop',
+      profile: 'foot-walking',
+      distanceM: 5000,
+      durationMinutes: 60,
+      ascentM: 12,
+      points: [nearby, queen],
+      snappedStart: nearby,
+      snapDistanceM: 99.2,
+    });
+    expect(plan?.snappedStart).toEqual(nearby);
+    expect(plan?.snapDistanceM).toBe(99);
+    expect(nearestPathLine(plan?.snapDistanceM)).toBe('Starting from the nearest path, about 99 m away.');
+    expect(mockRoute({ mode: 'walk', shape: 'loop', start: queen, distanceM: 3000 })?.snapDistanceM).toBeNull();
+    const fn = readFileSync('supabase/functions/outdoor-route/index.ts', 'utf8');
+    expect(fn.match(/await requestAllowed\(/g)).toEqual(['await requestAllowed(']);
+    expect(fn.match(/outdoor_route_requests'\)\.insert/g)).toHaveLength(1);
+    expect(fn.indexOf('await requestAllowed')).toBeLessThan(fn.indexOf('await snapStart'));
+    expect(fn.indexOf('await snapStart')).toBeLessThan(fn.indexOf('start: snapped.point'));
+    const snap = fn.slice(fn.indexOf('async function snapStart'), fn.indexOf('async function requestAllowed'));
+    expect(snap).toContain('snapUrl(mode)');
+    expect(snap).toContain('buildSnapBody(start)');
+    expect(snap).toContain('distanceM > SNAP_RADIUS_M');
+    expect(snap).not.toMatch(/console\./);
+    const maker = readFileSync('src/ui/RouteMaker.tsx', 'utf8');
+    const where = maker.slice(maker.indexOf('async function whereIAm'), maker.indexOf('async function showMyLocation'));
+    expect(where).toContain('setRough(fix.approximate)');
+    expect(where).not.toContain('planOutdoorRoute');
+    const show = maker.slice(maker.indexOf('async function showMyLocation'), maker.indexOf('async function search'));
+    expect(show).not.toContain('setRough');
+    expect(maker).toContain('nearestPathLine(plan.snapDistanceM)');
+    expect(maker).toContain('startPoint={plan.snappedStart ?? plan.points[0] ?? null}');
+    expect(maker).toContain('here={you}');
+    expect(maker).toContain('{ROUGH_FIX_LINE}');
+    expect(readFileSync('src/app/(main)/outside-map.tsx', 'utf8')).not.toContain('ROUGH_FIX_LINE');
+    expect(readFileSync('src/ui/OutsideFooter.tsx', 'utf8')).toContain('ROUTE_SERVICE_LINE');
   });
 });
