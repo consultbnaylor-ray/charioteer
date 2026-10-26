@@ -7,6 +7,7 @@ import { offerMessageNotifications } from '@/notifications/register';
 import { IosNotificationOffRow } from '@/ui/IosNotificationOffRow';
 import { useAppTheme } from '@/ui/theme';
 import { Card, ErrorNote, Screen, T } from '@/ui/ui';
+import { PHOTO_ALERT_NOTE, PHOTO_NAME_NOTE } from '../../../supabase/functions/_shared/buddyPhotoPush';
 import { GENERIC_MESSAGE_ALERT } from '../../../supabase/functions/_shared/messagePush';
 
 export default function NotificationsScreen() {
@@ -22,7 +23,7 @@ export default function NotificationsScreen() {
     <Screen
       eyebrow="Account"
       title="Notifications"
-      intro="A private message can alert this phone. The alert does not include what they wrote."
+      intro={`A private message can alert this phone. The alert does not include what they wrote. ${PHOTO_ALERT_NOTE}`}
     >
       <ErrorNote>{error}</ErrorNote>
       <Card>
@@ -61,7 +62,7 @@ export default function NotificationsScreen() {
             thumbColor={theme.colors.surface}
           />
         </View>
-        <T variant="muted">Off, the alert says {GENERIC_MESSAGE_ALERT}.</T>
+        <T variant="muted">Off, the alert says {GENERIC_MESSAGE_ALERT}. {PHOTO_NAME_NOTE}</T>
         <IosNotificationOffRow />
       </Card>
     </Screen>

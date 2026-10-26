@@ -2,6 +2,8 @@ import { Switch, View } from 'react-native';
 
 import { formatUkLong, parseIsoDay } from '@/domain/dates';
 import { PROFILE_PHOTO_WORDING } from '@/domain/profilePhotos';
+import { PHOTO_ALERT_NOTE } from '../../supabase/functions/_shared/buddyPhotoPush';
+import { GENERIC_MESSAGE_ALERT } from '../../supabase/functions/_shared/messagePush';
 import { CONSENT_VERSION } from '@/data/catalogue';
 import { ScrollTarget } from '@/ui/ScrollTarget';
 import { useAppTheme } from '@/ui/theme';
@@ -99,7 +101,7 @@ export function ConsentChoices({
       </ScrollTarget>
       <ConsentRow
         title="Message notifications"
-        body="Message notifications start off. When you turn them on, a private message can alert this phone. The alert says New message on Charioteer and does not include the sender's name unless you turn that on separately. You can turn this off at any time."
+        body={`Message notifications start off. When you turn them on, a private message can alert this phone. The alert says ${GENERIC_MESSAGE_ALERT} and does not include the sender's name unless you turn that on separately. ${PHOTO_ALERT_NOTE} You can turn this off at any time.`}
         value={messages}
         onChange={onMessages}
       />

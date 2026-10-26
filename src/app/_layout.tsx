@@ -119,7 +119,13 @@ function Chrome() {
     } catch (error) {
       console.error('message open', error);
     }
-  }, () => navigationReady.current && stackMounted.current), [router, repo]);
+  }, () => navigationReady.current && stackMounted.current, () => {
+    try {
+      router.push('/shared-photos' as never);
+    } catch (error) {
+      console.error('message open', error);
+    }
+  }), [router, repo]);
 
   useEffect(() => {
     if (!snap.ready || !snap.session) return;

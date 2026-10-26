@@ -37,6 +37,7 @@ import { useAppTheme } from '@/ui/theme';
 import { offerMessageNotifications } from '@/notifications/register';
 import { IosNotificationOffRow } from '@/ui/IosNotificationOffRow';
 import { RouteFindingSwitch } from '@/ui/RouteFindingSwitch';
+import { PHOTO_ALERT_NOTE, PHOTO_NAME_NOTE } from '../../../supabase/functions/_shared/buddyPhotoPush';
 import { GENERIC_MESSAGE_ALERT } from '../../../supabase/functions/_shared/messagePush';
 import { useFocusEffect, useRouter } from 'expo-router';
 
@@ -470,7 +471,7 @@ export default function Profile() {
             thumbColor={theme.colors.surface}
           />
         </View>
-        <T variant="muted">A private message can alert this phone. The alert does not include what they wrote.</T>
+        <T variant="muted">A private message can alert this phone. The alert does not include what they wrote. {PHOTO_ALERT_NOTE}</T>
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 12, alignItems: 'center' }}>
           <T style={{ flex: 1 }}>Show the sender's name</T>
           <Switch
@@ -483,7 +484,7 @@ export default function Profile() {
             thumbColor={theme.colors.surface}
           />
         </View>
-        <T variant="muted">Off, the alert says {GENERIC_MESSAGE_ALERT}.</T>
+        <T variant="muted">Off, the alert says {GENERIC_MESSAGE_ALERT}. {PHOTO_NAME_NOTE}</T>
         <IosNotificationOffRow />
       </Card>
       {profile.isModerator ? (

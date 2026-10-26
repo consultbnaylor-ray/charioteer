@@ -5,6 +5,7 @@ import { useRepository } from '@/data';
 import { offerMessageNotifications, reportNotificationFailure } from '@/notifications/register';
 import { markMessagePromptSeen, messagePromptSeen } from '@/ui/messagePromptStore';
 import { Button, Card, T } from '@/ui/ui';
+import { PHOTO_ALERT_NOTE } from '../../supabase/functions/_shared/buddyPhotoPush';
 import { GENERIC_MESSAGE_ALERT } from '../../supabase/functions/_shared/messagePush';
 
 /**
@@ -49,6 +50,7 @@ export function MessageNotificationPrompt({ userId }: { userId: string }) {
     <Card style={{ marginHorizontal: 16, marginTop: 12 }}>
       <T variant="label">{GENERIC_MESSAGE_ALERT}</T>
       <T>A private message can alert this phone. The alert does not include what they wrote.</T>
+      <T>{PHOTO_ALERT_NOTE}</T>
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
         <Button
           label="Allow notifications"

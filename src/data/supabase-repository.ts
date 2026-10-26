@@ -3662,6 +3662,11 @@ export class SupabaseRepository implements Repository {
       await this.client.rpc('delete_buddy_photo', { photo: photoId });
       throw asUserFacing(published.error, 'general');
     }
+    void this.client.functions.invoke('notify-buddy-photo', { body: { photoId } }).then(({ error: pushError }) => {
+      if (pushError) this.rememberEdgeFailure('notify-buddy-photo', new Error('Push send failed'));
+    }).catch(() => {
+      this.rememberEdgeFailure('notify-buddy-photo', new Error('Push send failed'));
+    });
   }
 
   async deleteSharedPhoto(photoId: string): Promise<void> {
