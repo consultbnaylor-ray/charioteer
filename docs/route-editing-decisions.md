@@ -6,6 +6,18 @@ Written the same day from Ben's iPhone note: "Can you add the ability to adjust 
 
 Ben approved the deploy on 26 October 2026. His words were: "Yes, deploy the updated outdoor-route function and smoke-test it, then clean up test data". Version 3 of outdoor-route, which accepts an optional via list of at most five points, was deployed to the live project at 14:44:52 GMT on 26 October 2026 and smoke-tested (A to B 2070 m ascent 34; one via-point 5531 m ascent 62; six via-points gave 400 bad_request; sea start gave 422 no_path; a loop with two via-points 3840 m ascent 51). Test data was cleaned up. The via-point function in this commit is supabase/functions/outdoor-route. This checkout could not read the live function body, so the stored version 3 bytes were not compared with that file. The function only logs the static line "outdoor-route request failed". A live log check with a test call is still to be recorded.
 
+## Tap lines approved, 27 October 2026
+
+Ben approved both lines on 27 October 2026 at 14:16 GMT, in his words: "Approve both lines as written and ship build 77 after Security's GO".
+
+The lines, as written:
+
+"Tap the map to place this point."
+
+"Tap the map to move this point."
+
+On the build 77 screen, Add a point shows the first line, and a selected point shows the second. Build 77 is the proposed number for this tap-to-place build. Bluetooth heart rate moves to build 78. The app code is sha cadc1f7d4e28ee6c824a601b1c5c3e927d441379. Shipping waits for Security's GO. The iOS build number in app.json stays 72.
+
 ## What was approved
 
 1. A finger on the line adds or moves a via-point. The start and the destination stay where Find a route put them.
