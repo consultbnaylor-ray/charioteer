@@ -46,7 +46,7 @@ import { PlanTick } from '@/ui/PlanTick';
 import { statsToneColors } from '@/ui/statsPalette';
 import { useAppTheme } from '@/ui/theme';
 import { GarminTip } from '@/ui/GarminTip';
-import { Vo2EstimateNote } from '@/ui/Vo2EstimateNote';
+import { Vo2EstimateNote, Vo2MeasureBanner } from '@/ui/Vo2EstimateNote';
 import { TowardTargetActivity } from '@/ui/TowardTargetActivity';
 import { MoreInfo as InfoDisclosure, MoreInfoButton } from '@/ui/MoreInfo';
 import { Button, Card, Choice, T, playSavedHaptic } from '@/ui/ui';
@@ -124,6 +124,7 @@ export function YourFitness({ onPlanOutdoor }: { onPlanOutdoor: () => void }) {
       {view.missing ? <T variant="muted">{view.missing}</T> : null}
       {view.cardio ? (
         <View style={{ alignItems: 'center', gap: 6 }}>
+          <Vo2MeasureBanner />
           <MeasureRingView
             icon="gauge"
             label="VO2 max"

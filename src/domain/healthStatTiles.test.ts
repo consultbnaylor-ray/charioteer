@@ -142,6 +142,8 @@ describe('health stat tiles', () => {
     expect(gapForStat('vo2_max', 'VO2 max').source).toBe('VO2 max comes from Apple Watch after outdoor walks or runs.');
     const boardSource = readFileSync('src/ui/HealthStatBoard.tsx', 'utf8');
     expect(boardSource).toContain('{VO2_CARD_LINE}');
+    expect(boardSource).toContain('<Vo2MeasureBanner />');
+    expect(boardSource.indexOf('<Vo2MeasureBanner />')).toBeLessThan(boardSource.indexOf('{OUTSIDE_SAFETY_LINE}'));
     expect(boardSource).toContain('vo2MeasuredLine(measuredOn, vo2Source)');
     expect(boardSource).toContain('{OUTSIDE_SAFETY_LINE}');
     expect(boardSource).toContain('{OUTSIDE_CRISIS_LINE}');

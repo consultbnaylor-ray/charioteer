@@ -13,7 +13,7 @@ import { chatPreview, messageFromRealtime } from '@/domain/liveChat';
 import { defaultNutritionSettings } from '@/domain/nutrition';
 import { defaultProfileSharing, parsePublicProfile, projectPublicProfile, type ProfileSharing, type ShareSource } from '@/domain/profileSharing';
 import { omitSharedLocation, scrubSharedText } from '@/domain/sharedPayload';
-import { latestVo2Day, latestVo2Reading, VO2_APPLE_PART, VO2_ESTIMATE_NOTE, VO2_GARMIN_PART, VO2_PLAN_LABEL, VO2_STALE_NUDGE, vo2MeasuredLine, vo2Note, vo2NoteParts, vo2ReadingIsStale } from '@/domain/vo2Estimate';
+import { latestVo2Day, latestVo2Reading, VO2_APPLE_PART, VO2_ESTIMATE_NOTE, VO2_GARMIN_PART, VO2_MEASURE_LINE, VO2_PLAN_LABEL, VO2_STALE_NUDGE, vo2MeasuredLine, vo2Note, vo2NoteParts, vo2ReadingIsStale } from '@/domain/vo2Estimate';
 import { messageAlert } from '../../supabase/functions/_shared/messagePush';
 import {
   DEV_FIXTURE_ROUTE_ID,
@@ -118,6 +118,10 @@ describe('VO2 estimate note', () => {
     expect(fitness.indexOf('VO2 max chart')).toBeLessThan(fitness.indexOf('<Vo2EstimateNote'));
     expect(fitness).toContain('label="VO2 max"');
     expect(fitness).toContain('{VO2_CARD_LINE}');
+    expect(fitness).toContain('<Vo2MeasureBanner />');
+    expect(fitness.indexOf('<Vo2MeasureBanner />')).toBeLessThan(fitness.indexOf('label="VO2 max"'));
+    expect(fitness.indexOf('<Vo2MeasureBanner />')).toBeLessThan(fitness.indexOf('{OUTSIDE_SAFETY_LINE}'));
+    expect(VO2_MEASURE_LINE).toBe('To measure your VO2 max, track a walk, run, or cycle on your smartwatch. It is worked out over distance and therefore needs GPS.');
     expect(fitness).toContain('{OUTSIDE_SAFETY_LINE}');
     expect(fitness).toContain('{OUTSIDE_CRISIS_LINE}');
     const note = readFileSync('src/ui/Vo2EstimateNote.tsx', 'utf8');

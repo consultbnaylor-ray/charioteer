@@ -39,7 +39,7 @@ import { GoalLine } from '@/ui/GoalLine';
 import { statsToneColors } from '@/ui/statsPalette';
 import { useAppTheme } from '@/ui/theme';
 import { MoreInfoButton } from '@/ui/MoreInfo';
-import { Vo2EstimateNote } from '@/ui/Vo2EstimateNote';
+import { Vo2EstimateNote, Vo2MeasureBanner } from '@/ui/Vo2EstimateNote';
 import { healthTileIcon } from '@/domain/statIcons';
 import { IconLabel } from '@/ui/statIcons';
 import { textMentionsWeight, UpdateWeightLink } from '@/ui/UpdateWeightLink';
@@ -295,6 +295,7 @@ function StatTile({
         backgroundColor: theme.colors.surface,
       }}
     >
+      {tile.id === 'vo2_max' ? <Vo2MeasureBanner /> : null}
       <Pressable accessibilityRole="button" accessibilityLabel={spoken} onPress={onOpen} style={{ gap: 6 }}>
         {icon ? <IconLabel name={icon}>{tile.title}</IconLabel> : <T style={{ fontFamily: theme.font.bodyStrong, fontSize: 16, lineHeight: 22 }}>{tile.title}</T>}
         {tile.warning ? (

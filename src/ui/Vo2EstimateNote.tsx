@@ -1,8 +1,33 @@
 import { View } from 'react-native';
 
-import { VO2_PLAN_LABEL, VO2_STALE_NUDGE, vo2MeasuredLine, vo2NoteParts, vo2ReadingIsStale, type Vo2Source } from '@/domain/vo2Estimate';
+import { VO2_MEASURE_LINE, VO2_PLAN_LABEL, VO2_STALE_NUDGE, vo2MeasuredLine, vo2NoteParts, vo2ReadingIsStale, type Vo2Source } from '@/domain/vo2Estimate';
 import { MoreInfo } from '@/ui/MoreInfo';
+import { statsToneColors } from '@/ui/statsPalette';
+import { useAppTheme } from '@/ui/theme';
 import { Button, T } from '@/ui/ui';
+
+/** Compact strip at the top of the cardio section. The health lines stay further down. */
+export function Vo2MeasureBanner() {
+  const theme = useAppTheme();
+  const green = statsToneColors(theme.scheme).good.ink;
+  return (
+    <View
+      accessibilityRole="text"
+      style={{
+        alignSelf: 'stretch',
+        borderWidth: 1,
+        borderColor: theme.colors.line,
+        borderLeftWidth: 3,
+        borderLeftColor: green,
+        borderRadius: theme.radius.md,
+        paddingVertical: 8,
+        paddingHorizontal: 10,
+      }}
+    >
+      <T style={{ fontSize: 15 * theme.scale, lineHeight: 20 * theme.scale }}>{VO2_MEASURE_LINE}</T>
+    </View>
+  );
+}
 
 export function Vo2EstimateNote({
   measuredOn,
