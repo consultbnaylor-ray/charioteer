@@ -35,6 +35,7 @@ import {
   DIARY_HINT,
   FINISH_LINE,
   HEART_FOREGROUND_LINE,
+  OUTING_HEART_HINT,
   LIVE_INTRO,
   NO_HEART_SOURCE,
   OTHER_SESSION_LINE,
@@ -43,7 +44,6 @@ import {
   TIME_LIMIT_LINE,
   TRACKING_ACTIVE_LINE,
   WAITING_FIX,
-  WATCH_HEART_HINT,
   activityLine,
   activityWord,
   applyFix,
@@ -734,7 +734,7 @@ export default function Activity() {
           </View>
           <T variant="label">Heart rate</T>
           <T>{heartNow.label}{heartNow.label !== NO_HEART_SOURCE ? ' · Apple Watch' : ''}{heartNow.age ? ` · ${heartNow.age}` : ''}</T>
-          {heartNow.label === NO_HEART_SOURCE ? <T variant="muted">{WATCH_HEART_HINT}</T> : null}
+          {heartNow.label === NO_HEART_SOURCE ? <T variant="muted">{OUTING_HEART_HINT}</T> : null}
           {heartNow.warning ? <T variant="muted">{heartNow.warning}</T> : null}
           <T variant="muted">{HEART_FOREGROUND_LINE}</T>
           {live.splits.map((mark, index) => (

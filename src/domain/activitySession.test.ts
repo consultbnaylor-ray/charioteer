@@ -11,6 +11,7 @@ import {
   ACTIVITY_LOCATION_LINE,
   AUDIO_DUCK_LINE,
   FINISH_LINE,
+  HEART_FOREGROUND_LINE,
   HEART_HIGH_LINE,
   HR_HIGH_BPM,
   HR_STALE_MS,
@@ -18,10 +19,12 @@ import {
   MAX_ACCURACY_M,
   MIN_PACE_DISTANCE_M,
   NO_HEART_SOURCE,
+  OUTING_HEART_HINT,
   OUTING_IN_PROGRESS_LINE,
   OUTING_TIME_LIMIT_MS,
   SPEED_CAP_MPS,
   TIME_LIMIT_LINE,
+  WATCH_HEART_HINT,
   activityLine,
   applyFix,
   averagePaceSecPerKm,
@@ -239,6 +242,22 @@ describe('activity session', () => {
     expect(splitRow(one[0], 0)).toContain('1 km');
     expect(currentSplitLabel(1420)).toBe('This kilometre · 0.42 km');
     expect(JSON.stringify(two)).not.toMatch(/latitude|longitude/);
+    expect(OUTING_HEART_HINT).toBe('On an Apple Watch, start a workout. The Watch records it in Apple Health.');
+    expect(WATCH_HEART_HINT).toBe('Start a workout on your Apple Watch to show heart rate. The iPhone does not measure it.');
+    expect(HEART_FOREGROUND_LINE).toBe('Heart rate updates while Charioteer is in front. It does not update while the app is suspended. The number stays on this phone and is not sent.');
+    const outingScreen = readFileSync('src/app/(main)/activity.tsx', 'utf8');
+    const gymScreen = readFileSync('src/app/(main)/gym-session.tsx', 'utf8');
+    expect(outingScreen).toContain('{OUTING_HEART_HINT}');
+    expect(outingScreen).not.toContain('WATCH_HEART_HINT');
+    expect(outingScreen).toContain('HEART_FOREGROUND_LINE');
+    expect(outingScreen).not.toContain('Broadcast Heart Rate');
+    expect(gymScreen).toContain('{WATCH_HEART_HINT}');
+    expect(gymScreen).not.toContain('OUTING_HEART_HINT');
+    expect(gymScreen).not.toContain('Broadcast Heart Rate');
+    const manifest = readFileSync('app.json', 'utf8');
+    expect(manifest).toContain('"UIBackgroundModes": ["location", "audio"]');
+    expect(manifest).not.toContain('NSBluetoothAlwaysUsageDescription');
+    expect(manifest).not.toContain('bluetooth-central');
     expect(shownHeart(null, null, 10_000).label).toBe(NO_HEART_SOURCE);
     expect(shownHeart(142, 10_000, 10_000 + HR_STALE_MS + 1).label).toBe(NO_HEART_SOURCE);
     expect(shownHeart(142, 10_000, 30_000)).toEqual({ label: '142 bpm', warning: null, age: '20s ago' });

@@ -201,4 +201,27 @@ describe('route adjusting', () => {
     expect(savedCall).not.toMatch(/track|latitude|points|splits|bpm/);
     expect(screen).not.toMatch(/planOutdoorRoute|functions\.invoke|supabase/);
   });
+
+  it('drags a via-point on the iPhone map instead of finishing the press where it started', () => {
+    const native = readFileSync('src/ui/FootpathMap.tsx', 'utf8');
+    expect(native).toContain('ViewAnnotation');
+    expect(native).toContain('draggable');
+    expect(native).toContain('onDragStart');
+    expect(native).toContain('onDrag=');
+    expect(native).toContain('onDragEnd');
+    expect(native).toContain('onMove={liveAdjust.onMove}');
+    expect(native).toContain('width: 44');
+    expect(native).toContain('height: 44');
+    expect(native).toContain('if (viaDrag.current) return');
+    expect(native).toContain('showHandles ? []');
+    expect(native).toContain('setScrollEnabled');
+    const press = native.slice(native.indexOf('if (viaDrag.current) return'), native.indexOf('<maps.Camera'));
+    expect(press).toContain('adjust.onDown(point)');
+    expect(press).toContain('adjust.onUp(point)');
+    expect(press).not.toContain('onMove');
+    const screen = readFileSync('src/ui/ui.tsx', 'utf8');
+    expect(screen).toContain('setScrollEnabled');
+    expect(screen).toContain('scrollEnabled={pageScroll}');
+    expect(readFileSync('src/ui/FootpathMap.web.tsx', 'utf8')).toContain('onMove');
+  });
 });
