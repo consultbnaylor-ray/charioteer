@@ -6,6 +6,8 @@ Ben, 27 October 2026, 07:52 GMT, on build 75: "It says no heart rate source and 
 
 Ben, 27 October 2026, 07:53 GMT, in his words: "I approve the new permission." That is approval in principle for a Bluetooth heart rate on an outing: the watch's Broadcast Heart Rate, read as the standard Heart Rate Service. He has not seen the exact permission string, any Info.plist change, the background mode, or the words on the screen. Those stay **not approved** until he confirms each one in his own words. This note does not build them. Build 74 and build 75 stay as they are. When he confirms the strings, the build is a branch off the latest fix tip for build 76, not off build 75. That tip is not this branch.
 
+Ben, 27 October 2026, 08:02 GMT, asked whether a live session would be recorded by Garmin, and the same for Apple, and pre-approved the Bluetooth permission if it is not recorded. That condition is about the Bluetooth path. The Garmin broadcast, used as Broadcast Heart Rate, is the path that does not record an activity. The Apple Watch workout is recorded by the Watch. It uses the Health read the app already has, not this Bluetooth permission. The exact strings are still **not approved**.
+
 The 26 October decision left Garmin, Bluetooth, and Always location out of build 74 and build 75. Always location stays out. The in-principle approval is the outing broadcast only. It is not a gym session, and it is not Always location.
 
 ## What the screen says today
@@ -26,25 +28,31 @@ The read behind the row is `src/health/liveReading.ios.ts`. It asks Apple Health
 
 ## What is true for each source
 
-**Apple Watch, through Apple Health.** Verified in this app. A workout on the Watch can write heart-rate samples into Apple Health. This app already has permission to read `HKQuantityTypeIdentifierHeartRate`. It reads the latest sample only while Charioteer is in front. It does not read while the app is suspended. The iPhone does not measure heart rate. Wearing the Watch without a workout often leaves the row empty, because the Watch then writes only now and then, and a sample older than about a minute is treated as no source.
+**Apple Watch, through Apple Health.** Verified in this app. There is no broadcast-only heart rate this app can read. A live number from the Watch arrives only as an Apple Health sample, and a workout on the Watch is what keeps those samples coming. The Watch records that workout. This app reads `HKQuantityTypeIdentifierHeartRate`. It reads the latest sample only while Charioteer is in front. It does not read while the app is suspended. It does not write a heart rate or a workout. The only Apple Health writes in this app are food and water, on a different screen, and the update purpose already says heart rate and workouts are not written. The iPhone does not measure heart rate. Wearing the Watch without a workout often leaves the row empty, because the Watch then writes only now and then, and a sample older than about a minute is treated as no source.
 
 **Garmin, through Apple Health.** This app does not ask Garmin Connect for a live heart rate. If a heart-rate sample is already in Apple Health, the current query can show it, and the row would still say "Apple Watch", because the code never reads the source name.
 
 Garmin's support article is titled "Sharing Your Garmin Connect Data With Apple Health" (`https://support.garmin.com/en-US/?faq=lK5FPB9iPF5PXFkIpFlFPA`). This checkout could not read that article's body, so it does not confirm the delay, which samples are copied, or whether the Connect app has to be in front. Copies of that article say Connect shares heart rate after a device sync, that all-day heart rate is included, and that a timed activity contributes only its high and low. Those copies are not treated as the article. What this note will say, and all it will say, is that a Garmin worn during the outing is not, by itself, a live source for this row.
 
-**Garmin Broadcast Heart Rate.** Verified in the vívoactive 6 owner's manual, "Broadcasting Heart Rate Data". The watch can broadcast heart rate to a paired device. The path is Settings, Health & Wellness, Wrist Heart Rate, Broadcast Heart Rate, or the controls menu. The manual says broadcasting decreases battery life. An activity setting can start the broadcast when the activity starts. The person has to turn it on. This app cannot turn it on.
+**Garmin Broadcast Heart Rate.** Verified in the vívoactive 6 owner's manual, "Broadcasting Heart Rate Data". The watch can broadcast heart rate data and view it on paired devices. The path is Settings, Health & Wellness, Wrist Heart Rate, Broadcast Heart Rate, or the controls menu. The steps are turn that on, pair with the other device, and press to stop. The manual says broadcasting decreases battery life. The person has to turn it on. This app cannot turn it on.
+
+That page does not describe saving an activity. It does not use the words "does not record". What it describes is broadcasting, then viewing the number on a paired device. A tip says an activity setting can start the broadcast when an activity begins, for example toward an Edge bike computer. Starting an activity is a separate choice. If he starts one, the watch records that activity. Charioteer does not start one, and it does not ask the watch to save one. The Bluetooth path he pre-approved is Broadcast Heart Rate alone.
 
 The same manual does not name Bluetooth, and it does not name the standard Heart Rate Service. The watch is ANT+ certified, and it pairs other sensors with ANT+ or Bluetooth. This checkout did not see a broadcast from Ben's watch. A later reader that looks only for the standard Bluetooth Heart Rate Service will see the watch only if that is what the broadcast actually is. If a given broadcast is ANT+ only, the iPhone will see nothing. This design does not add ANT+.
 
 **Active energy.** The gym row sums Apple Health active-energy samples while that screen is in front. The standard heart-rate broadcast is a heart rate, not calories. The energy row stays "Active energy not available yet" until Apple Health has samples. Whether Garmin Connect later copies active energy is in the same unread support article, so it is not stated here.
 
-## One sentence on the row
+## The short lines on the row
 
-This sentence is **not approved**. It replaces the Apple Watch hint. It is not in the app.
+These sentences are **not approved**. They replace the Apple Watch hint. They are not in the app.
 
-"The iPhone does not measure it."
+"On a Garmin, turn on Broadcast Heart Rate. That does not record an activity."
 
-"No heart-rate source" stays. It does not name a watch. The long lines leave the row and sit behind More info, which stays closed until it is opened. That is the same rule as the other cards: one short sentence, and the rest behind More info.
+"On an Apple Watch, start a workout. The Watch records it in Apple Health."
+
+"No heart-rate source" stays. On an outing, both lines sit under it. On a gym session, only the Apple Watch line sits under it. The longer notes sit behind More info, which stays closed until it is opened.
+
+The Garmin line is shown only in the build that reads the broadcast. Until that build, the app cannot use Broadcast Heart Rate, so the line would be the wrong instruction. The Apple Watch line is already true of the Health read. It still waits for him to confirm the words.
 
 Behind More info, word for word, the line already on the card:
 
@@ -52,17 +60,19 @@ Behind More info, word for word, the line already on the card:
 
 Behind More info, these sentences are **not approved**:
 
-- "An Apple Watch workout can put heart rate into Apple Health. This screen reads it only while Charioteer is in front."
-- "Wearing a Garmin does not fill this row. A reading already in Apple Health can, after that watch has synced."
-- "On a Garmin, turn on Broadcast Heart Rate. The phone reads that broadcast only during this outing."
+- "Broadcast Heart Rate sends the number to a paired device. Those steps do not save an activity. Charioteer does not start one. If you start an activity on the Garmin, the watch records that activity. The phone reads the broadcast only during this outing."
+- "An Apple Watch has no broadcast-only heart rate. The workout runs on the Watch, and the Watch keeps it. Charioteer reads the heart rate from Apple Health while that workout runs. It writes nothing from this row to Apple Health."
+- "The iPhone does not measure it."
+- On an outing: "Wearing a Garmin does not fill this row until Broadcast Heart Rate is on. A reading already in Apple Health can, after that watch has synced."
+- On a gym session: "Wearing a Garmin does not fill this row. A reading already in Apple Health can, after that watch has synced."
 
-The line that is already on the card stays true for an Apple Health sample. It is the wrong line for a broadcast that keeps updating with the phone locked. That case uses the third sentence above, and only in the build that actually reads the broadcast. Until that build, the third sentence is not shown, because the app does not read the broadcast yet.
+The broadcast sentence, and the outing Garmin sentence, are shown only in the build that reads the broadcast. The line that is already on the card stays true for an Apple Health sample. It is the wrong line for a broadcast that keeps updating with the phone locked. The broadcast sentence covers that case, and only in that build.
 
 When a number is showing, the row stops adding " · Apple Watch". The proposed suffix for an Apple Health sample is **not approved**: " · Apple Health". The code reads Apple Health and does not know which app wrote the sample. A broadcast, in the later build, would say " · Broadcast" instead. That word is not used until that build exists.
 
 "Active energy not available yet" stays on the gym session. It is not copied onto the outing.
 
-The same empty sentence is used on the outing and on the strength or cardio session, because they share the hint.
+Today the outing and the gym session share one hint. This approval does not read a broadcast during a gym session, so the later wording splits. The outing shows both short lines, and the Garmin line only once the broadcast reader exists. The gym session shows the Apple Watch line only. Telling someone to turn on Broadcast Heart Rate there would describe a read this approval does not add.
 
 ## The permission string
 
@@ -122,6 +132,7 @@ The bot reviews the permission wording and the DPIA impact. The check is this li
 7. Guideline 2.5.4: the background mode matches a heart rate the person can see on the outing. Guideline 5.1.1: the purpose string matches that use. External TestFlight is Beta App Review. A store binary is a fresh store-profile archive.
 8. The first phone test shows whether the vívoactive 6 broadcast is the standard Heart Rate Service. The app does not claim that until the test shows it. No ANT+. No new network host. No Garmin Connect call for this reading.
 9. Screen sentences he has not confirmed in his own words are not in the binary. The nutrition label is filled from the binary after the check, not from this note.
+10. The Garmin line says Broadcast Heart Rate does not record an activity, and the app does not start a Garmin activity. The Apple line says the Watch records the workout in Apple Health, and this row does not write a heart rate or a workout. The Garmin line is absent until the broadcast reader is in that same binary.
 
 ## After the outing, from Apple Health
 
@@ -140,28 +151,40 @@ Active energy on that screen, for a gym session, stays the Apple Health sum. It 
 ## Order
 
 1. Ben confirms the exact strings in his own words. Until then nothing in this note is built. Build 75 stays as it is. The in-principle approval does not put a key into `app.json`.
-2. The empty-row sentence, and More info, on the outing and the gym session. No new key. The row stops saying Apple Watch. The Broadcast Heart Rate sentence stays off the screen until the build that reads the broadcast.
+2. The empty-row lines, and More info, once he confirms them. No new key. The row stops saying only Apple Watch. The Garmin line stays off the screen until the build that reads the broadcast. The Apple Watch line can be on the row without that key.
 3. The Finished line, from Apple Health samples already on the phone. No new key.
 4. Live Bluetooth for an outing, on a branch off the latest fix tip for build 76, not off build 75. That branch is cut only after he confirms, in his own words, the exact permission string and either `bluetooth-central` or the shorter foreground sentence. It carries tests, a drift check that the permission string matches the confirmed sentence, `purposeDrift`, a ship-check, and captures for review before any ship. A store-profile archive does not gain the new permission or `bluetooth-central` until the Security and Compliance Bot has checked the list above. That is a new native build and a fresh store archive.
 
 ## Layout proofs
 
-Proof of the design. Not the app. More info is closed. The energy row is the gym session's row, included because the photograph had it. The outing uses the same heart-rate lines and does not have that energy row.
+Proof of the design. Not the app. More info is closed.
+
+The outing card has both short lines and no active-energy row.
 
 390 wide.
 
-![Heart-rate row, 390 wide. Proof of the design. Not the app.](heart-source/empty_390.png)
+![Outing heart-rate row, 390 wide. Proof of the design. Not the app.](heart-source/outing_390.png)
 
 320 wide.
 
-![Heart-rate row, 320 wide. Proof of the design. Not the app.](heart-source/empty_320.png)
+![Outing heart-rate row, 320 wide. Proof of the design. Not the app.](heart-source/outing_320.png)
+
+The gym card is the screen in the photograph. It has the Apple Watch line only, plus the energy row. It does not say Broadcast Heart Rate.
+
+390 wide.
+
+![Gym heart-rate row, 390 wide. Proof of the design. Not the app.](heart-source/gym_390.png)
+
+320 wide.
+
+![Gym heart-rate row, 320 wide. Proof of the design. Not the app.](heart-source/gym_320.png)
 
 ## Decisions for Ben
 
 You approved a new permission in principle on 27 October 2026, 07:53 GMT, in your words: "I approve the new permission." That covers an outing broadcast only. The sentences below are still **not approved**. None of them is in the app. Confirm each one you want, in your own words, before a build.
 
-1. Replace the Apple Watch hint with "The iPhone does not measure it." Keep "No heart-rate source". Recommendation: yes.
-2. Move the foreground sentence, and the two Apple Health sentences, behind More info. Recommendation: yes. "On a Garmin, turn on Broadcast Heart Rate. The phone reads that broadcast only during this outing." is shown only in the build that reads the broadcast.
+1. On an outing, replace the Apple Watch hint with two short lines. "On a Garmin, turn on Broadcast Heart Rate. That does not record an activity." "On an Apple Watch, start a workout. The Watch records it in Apple Health." Keep "No heart-rate source". On a gym session, show the Apple Watch line only. Recommendation: yes. Show the Garmin line only in the build that reads the broadcast.
+2. Behind More info: the broadcast sends the number to a paired device and those steps do not save an activity; if he starts a Garmin activity himself, the watch records it; an Apple Watch workout is recorded by the Watch and this row writes nothing to Apple Health; "The iPhone does not measure it." Recommendation: yes. The Garmin More info sentence is shown only in the build that reads the broadcast.
 3. When a number is showing, say "Apple Health" rather than "Apple Watch". Recommendation: yes.
 4. On Finished, show an Apple Health average for that outing when samples exist. Do not store it. Recommendation: yes.
 5. Confirm this `NSBluetoothAlwaysUsageDescription` together with `bluetooth-central`: "Charioteer connects to a watch or heart-rate strap that is broadcasting heart rate, only while a walk, run, or cycle is running, including when the phone is locked or you are using another app. Your heart rate stays on your phone and is not sent anywhere." Recommendation: yes. `location` and `audio` do not keep a heart-rate broadcast updating after the phone locks. If you refuse the mode, confirm the shorter sentence instead: "Charioteer connects to a watch or heart-rate strap that is broadcasting heart rate, only while a walk, run, or cycle is on screen. Your heart rate stays on your phone and is not sent anywhere." The locked-phone clause is then left out.
