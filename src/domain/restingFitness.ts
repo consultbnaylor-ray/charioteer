@@ -29,6 +29,24 @@ export const RESTING_CARD_CARE = 'Contact your GP or NHS 111.';
 /** Follows the under-60 closer-look line. It says the low rate could be fitness. It does not say it is. */
 export const LOW_RATE_COULD_BE_FIT = 'But a heart rate below 60 bpm could mean you are very fit.';
 
+/**
+ * Short line for the Your fitness card. Shown only when the resting figure on that card is under 60 bpm,
+ * the same usual-adult floor as the NHS range and the British Heart Foundation band.
+ */
+export const LOW_RESTING_FIT_LINE =
+  'A low resting heart rate can be a sign you are very fit. Speak to a GP if you feel unwell, dizzy, or faint.';
+
+/** Longer line behind More info. The card keeps the short line. */
+export const LOW_RESTING_FIT_MORE =
+  'A resting heart rate under 60 beats a minute may come with regular training. It can also have other causes, so this is not a judgement on its own.';
+
+/** True when the figure already written on the card, such as "52 bpm", is under 60. */
+export function restingReadingIsLow(reading: string | null | undefined): boolean {
+  const match = reading?.match(/(\d+)/);
+  if (!match) return false;
+  return Number(match[1]) < NHS_RESTING_LOW;
+}
+
 function lowRateCloserLook(sentence: string): string {
   return `${sentence} ${LOW_RATE_COULD_BE_FIT}`;
 }

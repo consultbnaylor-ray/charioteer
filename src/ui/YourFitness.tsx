@@ -33,6 +33,7 @@ import { chartBucketForPeriod, type ChartAggregate } from '@/domain/readingChart
 import { londonDay } from '@/domain/healthInsights';
 import { latestVo2Reading, VO2_CARD_LINE, vo2MeasuredLine } from '@/domain/vo2Estimate';
 import { OUTSIDE_CRISIS_LINE, OUTSIDE_SAFETY_LINE } from '@/domain/outdoorRoute';
+import { LOW_RESTING_FIT_LINE, LOW_RESTING_FIT_MORE, restingReadingIsLow } from '@/domain/restingFitness';
 import { londonToday, periodHeading, rollingWindow } from '@/domain/statWindow';
 import { StatPeriodToggle } from '@/ui/StatPeriodToggle';
 import { closerToGoal, whyGoalMatters, WORKOUT_BUCKET_LABEL, WORKOUT_BUCKETS, type NutritionGoal, type WorkoutBucket } from '@/domain/nutrition';
@@ -120,6 +121,12 @@ export function YourFitness({ onPlanOutdoor }: { onPlanOutdoor: () => void }) {
       <GarminTip />
       {view.level ? <T style={{ color: ink(view.level === 'Developing' ? 'watch' : 'good'), fontFamily: theme.font.bodyStrong }}>{view.level}</T> : null}
       <T>{view.levelWords}</T>
+      {restingReadingIsLow(view.resting?.reading) ? (
+        <View style={{ alignSelf: 'stretch', gap: 6 }}>
+          <LowRestingFitNote />
+          <T variant="muted">{OUTSIDE_SAFETY_LINE}</T>
+        </View>
+      ) : null}
       <MoreInfo about="your fitness" onPress={() => setInfo('card')} />
       {view.missing ? <T variant="muted">{view.missing}</T> : null}
       {view.cardio ? (
@@ -236,6 +243,28 @@ export function YourFitness({ onPlanOutdoor }: { onPlanOutdoor: () => void }) {
 
 type InfoFocus = 'card' | 'cardio' | 'minutes' | 'resting';
 
+function LowRestingFitNote() {
+  const theme = useAppTheme();
+  const green = statsToneColors(theme.scheme).good.ink;
+  return (
+    <View
+      accessibilityRole="text"
+      style={{
+        alignSelf: 'stretch',
+        borderWidth: 1,
+        borderColor: theme.colors.line,
+        borderLeftWidth: 3,
+        borderLeftColor: green,
+        borderRadius: theme.radius.md,
+        paddingVertical: 8,
+        paddingHorizontal: 10,
+      }}
+    >
+      <T style={{ fontSize: 15 * theme.scale, lineHeight: 20 * theme.scale }}>{LOW_RESTING_FIT_LINE}</T>
+    </View>
+  );
+}
+
 function MoreInfo({ about, onPress }: { about: string; onPress: () => void }) {
   return (
     <MoreInfoButton
@@ -300,6 +329,12 @@ function FitnessInfoSheet({
           <Button label="Close" tone="quiet" onPress={onClose} />
           <ScrollView style={{ flexGrow: 0, height: bodyHeight }}>
             <View style={{ gap: 18, paddingBottom: 8 }}>
+              {restingReadingIsLow(view.resting?.reading) ? (
+                <View style={{ gap: 6 }}>
+                  <T>{LOW_RESTING_FIT_MORE}</T>
+                  <T variant="muted">{OUTSIDE_SAFETY_LINE}</T>
+                </View>
+              ) : null}
               {order.map((key) => {
                 if (key === 'cardio') {
                   return <CardioDetail key={key} view={view} goal={goal} />;

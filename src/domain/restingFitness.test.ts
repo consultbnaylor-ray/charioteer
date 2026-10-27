@@ -5,8 +5,12 @@ import { restingChartGuide } from '@/domain/garminCharts';
 import {
   CARD_NOT_ADVICE,
   LOW_RATE_COULD_BE_FIT,
+  NHS_RESTING_LOW,
+  LOW_RESTING_FIT_LINE,
+  LOW_RESTING_FIT_MORE,
   RESTING_CARE,
   restingFitnessComment,
+  restingReadingIsLow,
   type RestingActivityDay,
   type RestingReading,
 } from '@/domain/restingFitness';
@@ -35,6 +39,23 @@ function activeMonth(): RestingActivityDay[] {
 }
 
 describe('resting heart rate and fitness', () => {
+  it('marks the figure on the fitness card as low only under 60 bpm', () => {
+    expect(NHS_RESTING_LOW).toBe(60);
+    expect(restingReadingIsLow('59 bpm')).toBe(true);
+    expect(restingReadingIsLow('48 bpm')).toBe(true);
+    expect(restingReadingIsLow('60 bpm')).toBe(false);
+    expect(restingReadingIsLow('62 bpm')).toBe(false);
+    expect(restingReadingIsLow(null)).toBe(false);
+    expect(LOW_RESTING_FIT_LINE).toBe(
+      'A low resting heart rate can be a sign you are very fit. Speak to a GP if you feel unwell, dizzy, or faint.',
+    );
+    expect(LOW_RESTING_FIT_MORE).toBe(
+      'A resting heart rate under 60 beats a minute may come with regular training. It can also have other causes, so this is not a judgement on its own.',
+    );
+    expect(LOW_RESTING_FIT_LINE).toMatch(/\bcan\b/);
+    expect(LOW_RESTING_FIT_MORE).toMatch(/\bmay\b/);
+  });
+
   it('says a low rate might be normal for someone who exercises most days with a high VO2', () => {
     const band = publishedCardioBand(42, 'male');
     expect(band).not.toBeNull();
