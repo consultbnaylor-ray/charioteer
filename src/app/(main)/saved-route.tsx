@@ -1,12 +1,12 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
-import { useWindowDimensions } from 'react-native';
+import { Linking, useWindowDimensions } from 'react-native';
 
 import { currentLive } from '@/activity/oneSession';
 import { useRepository, useSnapshot } from '@/data';
 import { OTHER_SESSION_LINE, startLabel, type ActivityKind } from '@/domain/activitySession';
 import { shownError } from '@/domain/errors';
-import { formatClimb } from '@/domain/findRoute';
+import { DIRECTIONS_TO_START, DIRECTIONS_TO_START_NOTE, directionsToStartUrl, formatClimb } from '@/domain/findRoute';
 import { routeKindLabel, routeSummary, type OutdoorPoint } from '@/domain/outdoorRoute';
 import { OUTSIDE_SECTION_LABEL } from '@/domain/outsideSection';
 import {
@@ -64,6 +64,7 @@ export default function SavedRouteScreen() {
   }
 
   const name = route.title;
+  const startUrl = directionsToStartUrl(route.points[0]);
 
   function startKind(kind: ActivityKind) {
     if (currentLive()) {
@@ -121,6 +122,12 @@ export default function SavedRouteScreen() {
             <T>{routeKindLabel(route.kind)}</T>
             <T>{routeSummary(route)}</T>
             <T>{formatClimb(route.ascentM ?? null)}</T>
+            {startUrl ? (
+              <>
+                <Button label={DIRECTIONS_TO_START} tone="quiet" onPress={() => { void Linking.openURL(startUrl).catch(() => undefined); }} />
+                <T variant="muted">{DIRECTIONS_TO_START_NOTE}</T>
+              </>
+            ) : null}
             <FootpathMap
               routes={[route]}
               sketch={[]}
