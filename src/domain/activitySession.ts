@@ -27,6 +27,9 @@ export const HR_STALE_MS = 60_000;
 export const HR_HIGH_BPM = 180;
 
 export const NO_HEART_SOURCE = 'No heart-rate source';
+/** Outing empty state. Approved by Ben on 27 October 2026. The gym session keeps WATCH_HEART_HINT. */
+export const OUTING_HEART_HINT =
+  'On an Apple Watch, start a workout. The Watch records it in Apple Health.';
 export const WATCH_HEART_HINT =
   'Start a workout on your Apple Watch to show heart rate. The iPhone does not measure it.';
 export const HEART_HIGH_LINE = 'Heart rate is 180. This is not medical advice.';
