@@ -230,11 +230,14 @@ function composeReading(input: ThumosReadingInput): string {
   const fp = fingerprint(input);
   const closer = ENCOURAGING_LINES[fp % ENCOURAGING_LINES.length] ?? ENCOURAGING_LINES[0];
   const picked: string[] = [];
-  const weight = facts.find((line) => line.startsWith('Weight is ')) ?? null;
-  if (weight) picked.push(weight);
-  const rest = facts.filter((line) => line !== weight);
-  if (!trains && rest.length) picked.push(rest[fp % rest.length] ?? rest[0]);
-  else if (!weight && rest.length) picked.push(rest[fp % rest.length] ?? rest[0]);
+  if (facts.length) {
+    const lead = facts[fp % facts.length] ?? facts[0];
+    picked.push(lead);
+    if (!trains) {
+      const rest = facts.filter((line) => line !== lead);
+      if (rest.length) picked.push(rest[fp % rest.length] ?? rest[0]);
+    }
+  }
   if (trains) picked.push(THUMOS_BMI_LINE);
   picked.push(closer);
   return picked.slice(0, 3).join(' ');

@@ -141,13 +141,18 @@ describe('on-phone Thumos reading note', () => {
     expect(view.sentences.length).toBeLessThanOrEqual(3);
     expect(guardReadingComment(view.sentences.join(' '), sample())).toBeNull();
     expect(view.sentences).toContain(THUMOS_BMI_LINE);
-    expect(view.sentences.join(' ')).toContain('74.2');
+    const shown = [...view.sentences, ...view.more].join(' ');
+    expect(shown).toContain('74.2');
+    expect(shown).toContain('down from 74.8');
     expect(view.sentences.join(' ')).not.toContain(VISIBLE_SAFETY_LINE);
     const heavier = sample({ weights: [{ day: TODAY, kg: 80 }] });
     const next = thumosReadingComment(heavier);
-    expect(next.sentences.join(' ')).toContain('80');
-    expect(next.sentences.join(' ')).not.toBe(view.sentences.join(' '));
+    const nextShown = [...next.sentences, ...next.more].join(' ');
+    expect(nextShown).toContain('80');
+    expect(nextShown).not.toBe(shown);
     expect(guardReadingComment(next.sentences.join(' '), heavier)).toBeNull();
+    const openings = new Set([12, 15, 18, 21, 24, 28, 31].map((bodyFatPct) => thumosReadingComment(sample({ bodyFatPct })).sentences[0]));
+    expect(openings.size).toBeGreaterThan(1);
   });
 
   it('leaves out a figure that was not stored and still passes the guard', () => {
