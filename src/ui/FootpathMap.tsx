@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type ComponentType, type ReactNode, type Ref } from 'react';
 import { View } from 'react-native';
 
-import { viaPointCollection } from '@/domain/routeAdjust';
+import { VIA_POINT_CAP, viaPointCollection } from '@/domain/routeAdjust';
 import {
   YOU_HERE_FILL,
   YOU_HERE_RING,
@@ -20,7 +20,7 @@ import {
 import { useHeldCamera, type HeldCamera } from '@/ui/mapCamera';
 import { MapFrame } from '@/ui/MapChrome';
 import { useMapScheme } from '@/ui/mapStyle';
-import { T } from '@/ui/ui';
+import { T, useScreenScroller } from '@/ui/ui';
 
 type CameraHandle = {
   flyTo: (options: { center: [number, number]; zoom?: number; duration?: number }) => void;
@@ -30,12 +30,36 @@ type RegionEvent = {
   nativeEvent?: { center?: [number, number]; zoom?: number; userInteraction?: boolean };
 };
 
+type AnnotationEvent = { nativeEvent?: { lngLat?: unknown } };
+
+type AnnotationProps = {
+  id: string;
+  draggable?: boolean;
+  lngLat: [number, number];
+  anchor?: string;
+  onDragStart?: (event: AnnotationEvent) => void;
+  onDrag?: (event: AnnotationEvent) => void;
+  onDragEnd?: (event: AnnotationEvent) => void;
+  onPress?: (event: AnnotationEvent) => void;
+  children: ReactNode;
+};
+
 type Maps = {
   Map: ComponentType<Record<string, unknown>>;
   Camera: ComponentType<{ ref?: Ref<CameraHandle> } & Record<string, unknown>>;
   GeoJSONSource: ComponentType<Record<string, unknown>>;
   Layer: ComponentType<Record<string, unknown>>;
+  ViewAnnotation?: ComponentType<AnnotationProps>;
 };
+
+function annotationPoint(event: AnnotationEvent): OutdoorPoint | null {
+  const pair = event.nativeEvent?.lngLat;
+  if (!Array.isArray(pair) || pair.length < 2) return null;
+  const longitude = Number(pair[0]);
+  const latitude = Number(pair[1]);
+  if (!Number.isFinite(longitude) || !Number.isFinite(latitude)) return null;
+  return { latitude, longitude };
+}
 
 function loadMaps(): Maps | null {
   try {
@@ -139,6 +163,96 @@ export function FootpathMap({
   );
 }
 
+function ViaHandle({
+  Annotation,
+  via,
+  index,
+  onDown,
+  onMove,
+  onUp,
+  onActive,
+}: {
+  Annotation: ComponentType<AnnotationProps>;
+  via: OutdoorPoint;
+  index: number;
+  onDown: (point: OutdoorPoint) => void;
+  onMove: (point: OutdoorPoint) => void;
+  onUp: (point: OutdoorPoint) => void;
+  onActive: (active: boolean) => void;
+}) {
+  const [hold, setHold] = useState(via);
+  const dragging = useRef(false);
+  const holdRef = useRef(hold);
+  const onActiveRef = useRef(onActive);
+  holdRef.current = hold;
+  onActiveRef.current = onActive;
+  useEffect(() => {
+    if (dragging.current) return;
+    setHold((current) => (current.latitude === via.latitude && current.longitude === via.longitude ? current : via));
+  }, [via, via.latitude, via.longitude]);
+  useEffect(() => () => {
+    if (!dragging.current) return;
+    dragging.current = false;
+    onActiveRef.current(false);
+  }, []);
+
+  const pointOrHold = (event: AnnotationEvent): OutdoorPoint => annotationPoint(event) ?? holdRef.current;
+
+  return (
+    <Annotation
+      id={`via-${index}`}
+      draggable
+      lngLat={[hold.longitude, hold.latitude]}
+      anchor="center"
+      onDragStart={(event) => {
+        const point = pointOrHold(event);
+        dragging.current = true;
+        onActive(true);
+        setHold(point);
+        onDown(point);
+      }}
+      onDrag={(event) => {
+        const point = annotationPoint(event);
+        if (!point) return;
+        setHold(point);
+        onMove(point);
+      }}
+      onDragEnd={(event) => {
+        const point = pointOrHold(event);
+        setHold(point);
+        onUp(point);
+        requestAnimationFrame(() => {
+          dragging.current = false;
+          onActive(false);
+        });
+      }}
+      onPress={(event) => {
+        if (dragging.current) return;
+        const point = pointOrHold(event);
+        onDown(point);
+        onUp(point);
+      }}
+    >
+      <View
+        accessibilityLabel={`Via point ${index + 1} of ${VIA_POINT_CAP}`}
+        collapsable={false}
+        style={{ width: 44, height: 44, alignItems: 'center', justifyContent: 'center' }}
+      >
+        <View
+          style={{
+            width: 24,
+            height: 24,
+            borderRadius: 12,
+            backgroundColor: '#0C0C0C',
+            borderWidth: 3,
+            borderColor: '#D1FAE5',
+          }}
+        />
+      </View>
+    </Annotation>
+  );
+}
+
 function NativeCanvas({
   maps,
   height,
@@ -180,14 +294,25 @@ function NativeCanvas({
   const camera = useRef<CameraHandle>(null);
   const moved = useRef(onUserMove);
   moved.current = onUserMove;
+  const scroller = useScreenScroller();
+  const viaDrag = useRef(false);
   const green = mapLineColour(scheme);
   const walked = trackLineColour(scheme);
   const place = held.current;
+  const setViaDrag = (active: boolean) => {
+    viaDrag.current = active;
+    scroller?.current?.setScrollEnabled?.(!active);
+  };
 
   useEffect(() => {
     const next = held.current;
     camera.current?.flyTo({ center: [next.longitude, next.latitude], zoom: next.zoom, duration: 500 });
   }, [held, frameTick, restoreTick]);
+
+  useEffect(() => () => {
+    viaDrag.current = false;
+    scroller?.current?.setScrollEnabled?.(true);
+  }, [scroller]);
 
   if (!maps) {
     return (
@@ -196,6 +321,9 @@ function NativeCanvas({
       </View>
     );
   }
+  const liveAdjust = adjust?.enabled ? adjust : null;
+  const Annotation = maps.ViewAnnotation;
+  const showHandles = Boolean(liveAdjust && Annotation && liveAdjust.vias.length > 0);
   return (
     <maps.Map
       mapStyle={openFreeMapStyle(scheme)}
@@ -211,6 +339,7 @@ function NativeCanvas({
         moved.current?.();
       }}
       onPress={(event: { coordinates?: { latitude?: number; longitude?: number }; geometry?: { coordinates?: number[] } }) => {
+        if (viaDrag.current) return;
         if (!adjust?.enabled) return;
         const pair = event.geometry?.coordinates;
         const point = pair && pair.length >= 2
@@ -249,13 +378,27 @@ function NativeCanvas({
         source="guide"
         paint={{ 'line-color': '#D1FAE5', 'line-width': 3, 'line-dasharray': [1.2, 1.2] }}
       />
-      <maps.GeoJSONSource id="vias" data={viaPointCollection(adjust?.vias ?? [])} />
+      <maps.GeoJSONSource id="vias" data={viaPointCollection(showHandles ? [] : (adjust?.vias ?? []))} />
       <maps.Layer
         id="via-dot"
         type="circle"
         source="vias"
         paint={{ 'circle-radius': 12, 'circle-color': '#0C0C0C', 'circle-stroke-width': 3, 'circle-stroke-color': '#D1FAE5' }}
       />
+      {liveAdjust && Annotation
+        ? liveAdjust.vias.map((via, index) => (
+          <ViaHandle
+            key={`via-${index}`}
+            Annotation={Annotation}
+            via={via}
+            index={index}
+            onDown={liveAdjust.onDown}
+            onMove={liveAdjust.onMove}
+            onUp={liveAdjust.onUp}
+            onActive={setViaDrag}
+          />
+        ))
+        : null}
       <maps.GeoJSONSource id="you" data={youAreHereCollection(here)} />
       <maps.Layer
         id="you-dot"

@@ -101,6 +101,8 @@ export type ScreenScrollHandle = {
   innerRef: RefObject<View | null>;
   height: number;
   offset: number;
+  /** While a via-point is under a finger, the page must not steal that drag. */
+  setScrollEnabled?: (enabled: boolean) => void;
 };
 
 const ScreenScrollContext = createContext<RefObject<ScreenScrollHandle> | null>(null);
@@ -159,7 +161,9 @@ export function Screen({
   const bottomInset = shell.bottomHandled ? 0 : insets.bottom;
   const scrollRef = useRef<ScrollView>(null);
   const innerRef = useRef<View>(null);
+  const [pageScroll, setPageScroll] = useState(true);
   const scrollHandle = useRef<ScreenScrollHandle>({ scrollRef, innerRef, height: 0, offset: 0 });
+  scrollHandle.current.setScrollEnabled = setPageScroll;
   return (
     <View ref={hostRef} style={{ flex: 1, backgroundColor: theme.colors.bg }} onLayout={onKeyboardLayout}>
       <KeyboardAvoidingView
@@ -173,6 +177,7 @@ export function Screen({
         <ScrollView
           ref={scrollRef}
           style={{ flex: 1 }}
+          scrollEnabled={pageScroll}
           innerViewRef={innerRef as RefObject<View>}
           {...inputScrollProps}
           automaticallyAdjustKeyboardInsets
