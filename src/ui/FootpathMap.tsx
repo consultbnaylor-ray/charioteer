@@ -19,8 +19,9 @@ import {
 } from '@/domain/outdoorRoute';
 import { flyWhenReady, useHeldCamera, type HeldCamera } from '@/ui/mapCamera';
 import { MapFrame } from '@/ui/MapChrome';
+import { mapPressPoint } from '@/ui/mapPress';
 import { useMapScheme } from '@/ui/mapStyle';
-import { T } from '@/ui/ui';
+import { T, useScreenScroller } from '@/ui/ui';
 
 type CameraHandle = {
   flyTo: (options: { center: [number, number]; zoom?: number; duration?: number }) => void;
@@ -173,9 +174,14 @@ function NativeCanvas({
   const camera = useRef<CameraHandle>(null);
   const moved = useRef(onUserMove);
   moved.current = onUserMove;
+  const scroller = useScreenScroller();
   const green = mapLineColour(scheme);
   const walked = trackLineColour(scheme);
   const place = held.current;
+
+  const holdPage = (scrolling: boolean) => {
+    scroller?.current?.setScrollEnabled?.(scrolling);
+  };
 
   useEffect(() => {
     const place = held.current;
@@ -185,6 +191,10 @@ function NativeCanvas({
     });
     return () => cancelAnimationFrame(retry);
   }, [held, frameTick, restoreTick]);
+
+  useEffect(() => () => {
+    scroller?.current?.setScrollEnabled?.(true);
+  }, [scroller]);
 
   if (!maps) {
     return (
@@ -199,7 +209,12 @@ function NativeCanvas({
       mapStyle={openFreeMapStyle(scheme)}
       attribution
       attributionPosition={{ bottom: 8, right: 8 }}
+      dragPan
+      touchZoom
       style={{ height }}
+      onTouchStart={() => holdPage(false)}
+      onTouchEnd={() => holdPage(true)}
+      onTouchCancel={() => holdPage(true)}
       onRegionDidChange={(event: RegionEvent) => {
         if (event.nativeEvent?.userInteraction !== true) return;
         const center = event.nativeEvent?.center;
@@ -208,15 +223,10 @@ function NativeCanvas({
         remember({ longitude: center[0], latitude: center[1], zoom });
         moved.current?.();
       }}
-      onPress={(event: { coordinates?: { latitude?: number; longitude?: number }; geometry?: { coordinates?: number[] } }) => {
+      onPress={(event: unknown) => {
         if (!adjust?.enabled) return;
-        const pair = event.geometry?.coordinates;
-        const point = pair && pair.length >= 2
-          ? { longitude: Number(pair[0]), latitude: Number(pair[1]) }
-          : event.coordinates && typeof event.coordinates.latitude === 'number' && typeof event.coordinates.longitude === 'number'
-            ? { latitude: event.coordinates.latitude, longitude: event.coordinates.longitude }
-            : null;
-        if (!point || !Number.isFinite(point.latitude) || !Number.isFinite(point.longitude)) return;
+        const point = mapPressPoint(event);
+        if (!point) return;
         adjust.onTap(point);
       }}
     >

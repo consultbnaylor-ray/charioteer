@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it, vi } from 'vitest';
 
 import type { OutdoorPoint } from '@/domain/outdoorRoute';
+import { mapPressPoint } from '@/ui/mapPress';
 import { ROUTE_OFFLINE, type RoutePlan } from '@/domain/findRoute';
 import {
   VIA_POINT_CAP,
@@ -258,20 +259,36 @@ describe('route adjusting', () => {
     expect(sixth.edit).toEqual({ kind: 'idle' });
   });
 
+  it('reads the iPhone press coordinate and places that point', () => {
+    const iphone = { nativeEvent: { lngLat: [-2.59, 51.45], point: [120, 80] } };
+    const point = mapPressPoint(iphone);
+    expect(point).toEqual({ longitude: -2.59, latitude: 51.45 });
+    const placed = tapPoint({ edit: { kind: 'place' }, vias: [], point: point ?? start });
+    expect(placed.send).toBe(true);
+    expect(placed.vias).toEqual([point]);
+    expect(mapPressPoint({ geometry: { coordinates: [-2.6, 51.46] } })).toEqual({ longitude: -2.6, latitude: 51.46 });
+    expect(mapPressPoint({ coordinates: { latitude: 51.45, longitude: -2.59 } })).toEqual(start);
+    expect(mapPressPoint({ nativeEvent: {} })).toBeNull();
+    expect(mapPressPoint({ geometry: { coordinates: [Number.NaN, 51] } })).toBeNull();
+  });
+
   it('places a point from one map tap and does not drag an annotation', () => {
     const native = readFileSync('src/ui/FootpathMap.tsx', 'utf8');
     expect(native).not.toContain('ViewAnnotation');
     expect(native).not.toContain('draggable');
     expect(native).not.toContain('onDrag');
-    expect(native).not.toContain('setScrollEnabled');
     expect(native).not.toContain('onDown');
     expect(native).not.toContain('onMove');
+    expect(native).toContain('mapPressPoint(event)');
     expect(native).toContain('adjust.onTap(point)');
+    expect(native).toContain('onTouchStart={() => holdPage(false)}');
+    expect(native).toContain('touchZoom');
+    expect(native).toContain('dragPan');
     expect(native).toContain('flyWhenReady');
     expect(native).toContain('viaPointCollection(adjust?.vias ?? [])');
     const screen = readFileSync('src/ui/ui.tsx', 'utf8');
-    expect(screen).not.toContain('setScrollEnabled');
-    expect(screen).not.toContain('scrollEnabled={pageScroll}');
+    expect(screen).toContain('setScrollEnabled');
+    expect(screen).toContain('scrollEnabled={pageScroll}');
     const web = readFileSync('src/ui/FootpathMap.web.tsx', 'utf8');
     expect(web).toContain("map.on('click', tap)");
     expect(web).toContain('current.onTap(point)');
