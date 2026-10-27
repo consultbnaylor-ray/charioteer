@@ -39,6 +39,12 @@ export const APPLE_MAPS_NOTE =
 
 export const NO_CLIMB_LINE = 'Climb not available for this route.';
 
+export const ROUTE_DISTANCE_NOTE =
+  'This is the closest loop we found. It is not within about a quarter of the distance you asked for.';
+
+export const ROUTE_RETRACE_NOTE =
+  'This loop still runs back along itself. It was the cleanest line we found.';
+
 export type RouteMode = 'walk' | 'run' | 'cycle';
 
 export type RouteShape = 'loop' | 'a_to_b';
@@ -73,6 +79,8 @@ export type RoutePlan = {
   /** The green start when the route service moved off the GPS point. Null when the start was already on a path. */
   snappedStart: OutdoorPoint | null;
   snapDistanceM: number | null;
+  /** Why the shown loop is not a close, clean line. Null when it is. */
+  loopNote: 'distance' | 'retrace' | null;
 };
 
 /** Public places used as example starts. They are not surveyed routes. */
@@ -181,6 +189,7 @@ export function parseRoutePlan(value: unknown): RoutePlan | null {
   const snappedStart = routeCoordinate(row.snappedStart);
   const snapRaw = typeof row.snapDistanceM === 'number' ? row.snapDistanceM : null;
   const snapDistanceM = snapRaw != null && Number.isFinite(snapRaw) && snapRaw >= 0 ? Math.round(snapRaw) : null;
+  const loopNote = row.loopNote === 'distance' || row.loopNote === 'retrace' ? row.loopNote : null;
   return {
     mocked: row.mocked === true,
     mode,
@@ -192,7 +201,14 @@ export function parseRoutePlan(value: unknown): RoutePlan | null {
     points: points.slice(0, 2000),
     snappedStart,
     snapDistanceM,
+    loopNote,
   };
+}
+
+export function loopNoteLine(note: unknown): string | null {
+  if (note === 'distance') return ROUTE_DISTANCE_NOTE;
+  if (note === 'retrace') return ROUTE_RETRACE_NOTE;
+  return null;
 }
 
 function shift(origin: OutdoorPoint, northM: number, eastM: number): OutdoorPoint {
@@ -225,6 +241,7 @@ export function mockRoute(input: RoutePlanInput): RoutePlan | null {
       points: [start, ...vias, close],
       snappedStart: null,
       snapDistanceM: null,
+      loopNote: null,
     };
   }
   const leg = length / 6;
@@ -249,6 +266,7 @@ export function mockRoute(input: RoutePlanInput): RoutePlan | null {
     points,
     snappedStart: null,
     snapDistanceM: null,
+    loopNote: null,
   };
 }
 

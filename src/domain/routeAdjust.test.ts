@@ -57,6 +57,7 @@ function plan(distanceM: number): RoutePlan {
     points: line,
     snappedStart: null,
     snapDistanceM: null,
+    loopNote: null,
   };
 }
 

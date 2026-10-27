@@ -87,6 +87,23 @@ export const ORS_FREE_DIRECTIONS_PER_DAY = 2000;
 
 export const GLOBAL_ROUTE_DAILY_CAP = 1500;
 
+/** One plain loop may try this many direction calls, then it keeps the closest. */
+export const LOOP_ATTEMPT_CAP = 3;
+
+/** A result more than this far from the asked length is not close enough. */
+export const LOOP_LENGTH_TOLERANCE = 0.25;
+
+/** Share of the line that later runs back over an earlier part. */
+export const LOOP_RETRACE_LIMIT = 0.18;
+
+/**
+ * Free plan: 2,000 directions a day and 40 a minute.
+ * Retries stop before that daily figure. One user tap still counts as one route request.
+ */
+export const ORS_DIRECTIONS_DAILY_BUDGET = 1800;
+
+export type LoopNote = 'distance' | 'retrace';
+
 export function withinGlobalRouteLimit(
   stamps: readonly number[],
   now: number,
@@ -124,6 +141,8 @@ export function buildDirectionsBody(input: {
   end?: { latitude: number; longitude: number } | null;
   lengthM: number;
   via?: readonly { latitude: number; longitude: number }[] | null;
+  /** Fixes the round-trip direction. Omit it and the service picks a direction itself. */
+  seed?: number;
 }): Record<string, unknown> | null {
   const start = [round6(input.start.longitude), round6(input.start.latitude)];
   const vias = (input.via ?? []).slice(0, VIA_POINT_CAP).map((point) => [round6(point.longitude), round6(point.latitude)]);
@@ -136,11 +155,16 @@ export function buildDirectionsBody(input: {
     return { coordinates: [start, ...vias, end], elevation: true, instructions: false };
   }
   if (input.shape === 'loop') {
+    const roundTrip: { length: number; points: number; seed?: number } = {
+      length: input.lengthM,
+      points: 5,
+    };
+    if (typeof input.seed === 'number' && Number.isInteger(input.seed)) roundTrip.seed = input.seed;
     return {
       coordinates: [start],
       elevation: true,
       instructions: false,
-      options: { round_trip: { length: input.lengthM, points: 5 } },
+      options: { round_trip: roundTrip },
     };
   }
   if (!input.end) return null;
@@ -214,6 +238,145 @@ export function haversineM(
   const dLng = ((b.longitude - a.longitude) * Math.PI) / 180;
   const h = Math.sin(dLat / 2) ** 2 + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) ** 2;
   return 2 * 6_371_000 * Math.asin(Math.min(1, Math.sqrt(h)));
+}
+
+type LatLng = { latitude: number; longitude: number };
+
+export function loopIsClose(targetM: number, distanceM: number): boolean {
+  if (!(targetM > 0) || !Number.isFinite(distanceM)) return false;
+  return Math.abs(distanceM - targetM) / targetM <= LOOP_LENGTH_TOLERANCE;
+}
+
+/**
+ * The next length keeps the same stretch if this result missed.
+ * Bounds come from routeLengthM, including any later change to those bounds.
+ * A close result keeps the length that produced it and only changes the seed.
+ */
+export function nextLoopRequest(
+  targetM: number,
+  actualM: number,
+  askedM: number,
+  seed: number,
+): { lengthM: number; seed: number } | null {
+  if (!(actualM > 0) || !Number.isFinite(seed)) return null;
+  const basis = loopIsClose(targetM, actualM) ? askedM : (targetM * targetM) / actualM;
+  if (!Number.isFinite(basis) || basis <= 0) return null;
+  const lengthM = routeLengthM({ mode: 'walk', distanceM: Math.round(basis) });
+  if (lengthM == null) return null;
+  return { lengthM, seed: seed + 1 };
+}
+
+export function loopCandidateReady(targetM: number, candidate: { distanceM: number; points: readonly LatLng[] }): boolean {
+  return loopIsClose(targetM, candidate.distanceM) && retraceRatio(candidate.points) <= LOOP_RETRACE_LIMIT;
+}
+
+/** Closest clean line. If none is close, the nearest length, with a note code and no coordinates. */
+export function chooseLoopCandidate<T extends { distanceM: number; points: readonly LatLng[] }>(
+  targetM: number,
+  candidates: readonly T[],
+): { choice: T; note: LoopNote | null } | null {
+  if (candidates.length === 0 || !(targetM > 0)) return null;
+  const scored = candidates.map((choice) => ({
+    choice,
+    retrace: retraceRatio(choice.points),
+    gap: Math.abs(choice.distanceM - targetM),
+    close: loopIsClose(targetM, choice.distanceM),
+  }));
+  const close = scored.filter((row) => row.close);
+  const pool = close.length > 0 ? close : scored;
+  pool.sort((a, b) => (close.length > 0 ? a.retrace - b.retrace || a.gap - b.gap : a.gap - b.gap || a.retrace - b.retrace));
+  const best = pool[0];
+  if (!best) return null;
+  const note: LoopNote | null = best.close ? (best.retrace > LOOP_RETRACE_LIMIT ? 'retrace' : null) : 'distance';
+  return { choice: best.choice, note };
+}
+
+/** Share of the line that later runs back along an earlier part. A clean loop is near zero. */
+export function retraceRatio(points: readonly LatLng[]): number {
+  const spaced = spacedPoints(points, 40);
+  const segments: { a: LatLng; b: LatLng; len: number; bearing: number }[] = [];
+  let total = 0;
+  for (let index = 1; index < spaced.length; index += 1) {
+    const len = haversineM(spaced[index - 1], spaced[index]);
+    if (len < 15) continue;
+    segments.push({
+      a: spaced[index - 1],
+      b: spaced[index],
+      len,
+      bearing: travelBearing(spaced[index - 1], spaced[index]),
+    });
+    total += len;
+  }
+  if (total <= 0 || segments.length < 2) return 0;
+  let retraced = 0;
+  const used = new Set<number>();
+  for (let earlier = 0; earlier < segments.length; earlier += 1) {
+    if (used.has(earlier)) continue;
+    for (let later = earlier + 2; later < segments.length; later += 1) {
+      if (used.has(later)) continue;
+      const outbound = segments[earlier];
+      const back = segments[later];
+      if (!bearingsOpposite(outbound.bearing, back.bearing)) continue;
+      if (metresToSegment(back.a, outbound.a, outbound.b) > 35) continue;
+      if (metresToSegment(back.b, outbound.a, outbound.b) > 35) continue;
+      retraced += Math.min(outbound.len, back.len);
+      used.add(earlier);
+      used.add(later);
+      break;
+    }
+  }
+  return Math.min(1, retraced / total);
+}
+
+function spacedPoints(points: readonly LatLng[], stepM: number): LatLng[] {
+  if (points.length === 0) return [];
+  const spaced: LatLng[] = [points[0]];
+  let carried = 0;
+  for (let index = 1; index < points.length; index += 1) {
+    carried += haversineM(points[index - 1], points[index]);
+    if (carried >= stepM) {
+      spaced.push(points[index]);
+      carried = 0;
+    }
+  }
+  const last = points[points.length - 1];
+  const end = spaced[spaced.length - 1];
+  if (!end || end.latitude !== last.latitude || end.longitude !== last.longitude) spaced.push(last);
+  return spaced;
+}
+
+function travelBearing(a: LatLng, b: LatLng): number {
+  const lat1 = (a.latitude * Math.PI) / 180;
+  const lat2 = (b.latitude * Math.PI) / 180;
+  const dLng = ((b.longitude - a.longitude) * Math.PI) / 180;
+  const y = Math.sin(dLng) * Math.cos(lat2);
+  const x = Math.cos(lat1) * Math.sin(lat2) - Math.sin(lat1) * Math.cos(lat2) * Math.cos(dLng);
+  return (Math.atan2(y, x) * 180 / Math.PI + 360) % 360;
+}
+
+function bearingsOpposite(a: number, b: number): boolean {
+  const turn = Math.abs(a - b) % 360;
+  const delta = turn > 180 ? 360 - turn : turn;
+  return delta >= 150;
+}
+
+function metresToSegment(point: LatLng, a: LatLng, b: LatLng): number {
+  const bx = eastMetres(a, b);
+  const by = northMetres(a, b);
+  const px = eastMetres(a, point);
+  const py = northMetres(a, point);
+  const len2 = bx * bx + by * by;
+  if (len2 < 1) return Math.hypot(px, py);
+  const t = Math.min(1, Math.max(0, (px * bx + py * by) / len2));
+  return Math.hypot(px - bx * t, py - by * t);
+}
+
+function northMetres(a: LatLng, b: LatLng): number {
+  return (b.latitude - a.latitude) * 111_320;
+}
+
+function eastMetres(a: LatLng, b: LatLng): number {
+  return (b.longitude - a.longitude) * 111_320 * Math.cos((a.latitude * Math.PI) / 180);
 }
 
 export const NO_PATH_MESSAGE =
