@@ -54,6 +54,18 @@ import {
   type PointEdit,
 } from '@/domain/routeAdjust';
 import { LOCATION_FIX_MESSAGE, LOCATION_FIX_PENDING, ROUGH_FIX_LINE, readWhileUsingFix } from '@/location/whileUsing';
+import {
+  OWN_CHOICE_LABEL,
+  OWN_ENTRY_MAX_CHARS,
+  OWN_HOURS_LABEL,
+  OWN_KM_HINT,
+  OWN_KM_LABEL,
+  OWN_MINUTES_LABEL,
+  OWN_NUMBER_HINT,
+  ownTimeHint,
+  parseOwnDuration,
+  parseOwnKilometres,
+} from '@/domain/ownDistance';
 import { FootpathMap } from '@/ui/FootpathMap';
 import { Button, Card, Choice, ErrorNote, Field, T } from '@/ui/ui';
 
@@ -62,6 +74,7 @@ const DISTANCES = [
   { id: '5', label: '5 km', metres: 5000 },
   { id: '8', label: '8 km', metres: 8000 },
   { id: 'time', label: 'Use time', metres: null },
+  { id: 'own', label: OWN_CHOICE_LABEL, metres: null },
 ] as const;
 
 const TIMES = [
@@ -69,6 +82,7 @@ const TIMES = [
   { id: '30', label: '30 min', minutes: 30 },
   { id: '45', label: '45 min', minutes: 45 },
   { id: '60', label: '60 min', minutes: 60 },
+  { id: 'own', label: OWN_CHOICE_LABEL, minutes: null },
 ] as const;
 
 const CRAVING_MINUTES = [10, 15, 20] as const;
@@ -86,6 +100,9 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
   const [shape, setShape] = useState<RouteShape>('loop');
   const [distanceId, setDistanceId] = useState<(typeof DISTANCES)[number]['id']>('5');
   const [timeId, setTimeId] = useState<(typeof TIMES)[number]['id']>('none');
+  const [ownKm, setOwnKm] = useState('');
+  const [ownHours, setOwnHours] = useState('');
+  const [ownMinutes, setOwnMinutes] = useState('');
   const [minutes, setMinutes] = useState<(typeof CRAVING_MINUTES)[number]>(15);
   const [start, setStart] = useState<OutdoorPoint | null>(null);
   const [startName, setStartName] = useState('');
@@ -133,8 +150,10 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
   }, []);
 
   function askedRoute(): { distanceM: number | null; minutes: number | null } {
-    const distance = DISTANCES.find((item) => item.id === distanceId)?.metres ?? null;
-    const timed = TIMES.find((item) => item.id === timeId)?.minutes ?? null;
+    const presetDistance = DISTANCES.find((item) => item.id === distanceId)?.metres ?? null;
+    const presetMinutes = TIMES.find((item) => item.id === timeId)?.minutes ?? null;
+    const distance = distanceId === 'own' ? parseOwnKilometres(ownKm) : presetDistance;
+    const timed = timeId === 'own' ? parseOwnDuration(ownHours, ownMinutes) : presetMinutes;
     return {
       distanceM: craving ? null : distance,
       minutes: craving ? minutes : timed,
@@ -326,11 +345,8 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
       setError('Choose a start point.');
       return;
     }
-    const distance = DISTANCES.find((item) => item.id === distanceId)?.metres ?? null;
-    const timed = TIMES.find((item) => item.id === timeId)?.minutes ?? null;
-    const askedMinutes = craving ? minutes : distance == null ? timed : timed;
-    const askedDistance = craving ? null : distance;
-    if (!craving && askedDistance == null && askedMinutes == null) {
+    const asked = askedRoute();
+    if (!craving && asked.distanceM == null && asked.minutes == null) {
       setError('Choose a distance or a time.');
       return;
     }
@@ -345,8 +361,8 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
         shape: craving ? 'loop' : shape,
         start,
         end: !craving && shape === 'a_to_b' ? end : null,
-        distanceM: askedDistance,
-        minutes: askedMinutes,
+        distanceM: asked.distanceM,
+        minutes: asked.minutes,
       });
       setPlan(next);
       setOriginal(next);
@@ -469,11 +485,40 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
             {DISTANCES.map((item) => (
               <Choice key={item.id} label={item.label} selected={distanceId === item.id} onPress={() => setDistanceId(item.id)} />
             ))}
+            {distanceId === 'own' ? (
+              <Field
+                label={OWN_KM_LABEL}
+                value={ownKm}
+                onChangeText={setOwnKm}
+                keyboardType="decimal-pad"
+                maxLength={OWN_ENTRY_MAX_CHARS}
+                hint={ownKm.trim() && parseOwnKilometres(ownKm) == null ? OWN_NUMBER_HINT : OWN_KM_HINT}
+              />
+            ) : null}
             <T variant="muted">When both are set, the distance is used.</T>
             <T variant="label">Time</T>
             {TIMES.map((item) => (
               <Choice key={item.id} label={item.label} selected={timeId === item.id} onPress={() => setTimeId(item.id)} />
             ))}
+            {timeId === 'own' ? (
+              <>
+                <Field
+                  label={OWN_HOURS_LABEL}
+                  value={ownHours}
+                  onChangeText={setOwnHours}
+                  keyboardType="decimal-pad"
+                  maxLength={OWN_ENTRY_MAX_CHARS}
+                />
+                <Field
+                  label={OWN_MINUTES_LABEL}
+                  value={ownMinutes}
+                  onChangeText={setOwnMinutes}
+                  keyboardType="decimal-pad"
+                  maxLength={OWN_ENTRY_MAX_CHARS}
+                  hint={ownTimeHint(ownHours, ownMinutes)}
+                />
+              </>
+            ) : null}
           </>
         )}
         <T variant="label">Start</T>

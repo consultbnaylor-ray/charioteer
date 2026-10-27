@@ -52,21 +52,30 @@ export function readPlace(value: unknown): { latitude: number; longitude: number
   return { latitude, longitude };
 }
 
-/** Distance wins when both are set. Otherwise time becomes a length from the pace. */
+/**
+ * Distance wins when both are set. Otherwise time becomes a length from the pace.
+ * A positive finite number is used as typed. There is no app maximum.
+ * The route service may still refuse a loop longer than its own round-trip maximum.
+ */
 export function routeLengthM(input: { mode: Mode; distanceM?: unknown; minutes?: unknown }): number | null {
-  const distance = typeof input.distanceM === 'number' ? input.distanceM : Number(input.distanceM);
-  if (Number.isFinite(distance) && input.distanceM != null && input.distanceM !== '') {
-    return clamp(Math.round(distance), 500, 50_000);
+  const distance = positiveAmount(input.distanceM);
+  if (distance != null) {
+    const rounded = Math.round(distance);
+    if (rounded >= 1) return rounded;
   }
-  const minutes = typeof input.minutes === 'number' ? input.minutes : Number(input.minutes);
-  if (Number.isFinite(minutes) && input.minutes != null && input.minutes !== '') {
-    return clamp(clamp(Math.round(minutes), 10, 180) * PACE_M_PER_MIN[input.mode], 500, 50_000);
+  const minutes = positiveAmount(input.minutes);
+  if (minutes != null) {
+    const rounded = Math.round(minutes);
+    if (rounded < 1) return null;
+    return rounded * PACE_M_PER_MIN[input.mode];
   }
   return null;
 }
 
-function clamp(value: number, low: number, high: number): number {
-  return Math.min(high, Math.max(low, value));
+function positiveAmount(value: unknown): number | null {
+  if (typeof value === 'boolean' || value == null || value === '') return null;
+  const number = typeof value === 'number' ? value : typeof value === 'string' ? Number(value) : Number.NaN;
+  return Number.isFinite(number) && number > 0 ? number : null;
 }
 
 /** Twelve requests in ten minutes, or forty in a day, is enough for one person. */
@@ -224,20 +233,29 @@ export const RATE_LIMITED_MESSAGE =
 
 export const BAD_REQUEST_MESSAGE = 'That route request could not be used.';
 
+export const TOO_LONG_MESSAGE =
+  'The route service cannot make a route that long. Your number is still here.';
+
 export const UNAVAILABLE_MESSAGE =
   'The route service is not available right now. Nothing was saved.';
 
-export type RouteFailureCode = 'no_path' | 'unavailable' | 'rate_limited' | 'bad_request';
+export type RouteFailureCode = 'no_path' | 'unavailable' | 'rate_limited' | 'bad_request' | 'too_long';
 
 export type RouteFailure = {
   status: 422 | 503 | 429 | 400;
   body: { ok: false; code: RouteFailureCode; message: string };
 };
 
-/** ORS 404 with 2009 or 2010 means the start is not on a path. The ORS text can contain coordinates, so it is never copied. */
+/**
+ * ORS 404 with 2009 or 2010 means the start is not on a path.
+ * ORS 2004 means a length or waypoint limit. The ORS text can contain coordinates, so it is never copied.
+ */
 export function classifyOrsFailure(status: number, payload: unknown): RouteFailure {
   if (status === 429) {
     return { status: 429, body: { ok: false, code: 'rate_limited', message: RATE_LIMITED_MESSAGE } };
+  }
+  if (orsErrorCode(payload) === 2004) {
+    return { status: 400, body: { ok: false, code: 'too_long', message: TOO_LONG_MESSAGE } };
   }
   if (status === 400) {
     return { status: 400, body: { ok: false, code: 'bad_request', message: BAD_REQUEST_MESSAGE } };

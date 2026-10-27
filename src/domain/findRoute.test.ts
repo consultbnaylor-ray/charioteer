@@ -23,6 +23,7 @@ import {
   ROUTE_OFFLINE,
   ROUTE_RATE_LIMITED,
   ROUTE_SIGN_IN,
+  ROUTE_TOO_LONG,
   ROUTE_UNAVAILABLE,
   appleMapsUrl,
   explainRouteFailure,
@@ -59,6 +60,7 @@ import {
   ORS_FREE_DIRECTIONS_PER_DAY,
   RATE_LIMITED_MESSAGE,
   SNAP_RADIUS_M,
+  TOO_LONG_MESSAGE,
   UNAVAILABLE_MESSAGE,
   buildDirectionsBody,
   readViaPoints,
@@ -392,6 +394,16 @@ describe('route finding', () => {
       status: 400,
       body: { ok: false, code: 'bad_request', message: ROUTE_BAD_REQUEST },
     });
+    const tooLong = classifyOrsFailure(400, {
+      error: {
+        code: 2004,
+        message: 'Request parameters exceed the server configuration limits. The requested route length must not be greater than 100000 meters. Near 51.450000, -2.590000.',
+      },
+    });
+    expect(tooLong).toEqual({ status: 400, body: { ok: false, code: 'too_long', message: ROUTE_TOO_LONG } });
+    expect(tooLong.body.message).not.toMatch(/51\.450000/);
+    expect(tooLong.body.message).not.toContain('100000');
+    expect(TOO_LONG_MESSAGE).toBe(ROUTE_TOO_LONG);
     expect(classifyOrsFailure(500, { error: { code: 2099 } }).status).toBe(503);
 
     const http = (status: number, body: unknown, fail = false) => ({
@@ -410,6 +422,11 @@ describe('route finding', () => {
     expect(await explainRouteFailure(http(503, { ok: false, code: 'unavailable', message: ROUTE_UNAVAILABLE }))).toBe(ROUTE_UNAVAILABLE);
     expect(await explainRouteFailure(http(429, { ok: false, code: 'rate_limited', message: ROUTE_RATE_LIMITED }))).toBe(ROUTE_RATE_LIMITED);
     expect(await explainRouteFailure(http(400, { ok: false, code: 'bad_request', message: 'Choose a start point.' }))).toBe('Choose a start point.');
+    expect(await explainRouteFailure(http(400, {
+      ok: false,
+      code: 'too_long',
+      message: 'Near 51.450000, -2.590000',
+    }))).toBe(ROUTE_TOO_LONG);
     expect(await explainRouteFailure(http(401, { message: 'Invalid JWT' }))).toBe(ROUTE_SIGN_IN);
     expect(await explainRouteFailure(http(401, null, true))).toBe(ROUTE_SIGN_IN);
     expect(await explainRouteFailure(http(503, null, true))).toBe(ROUTE_UNAVAILABLE);

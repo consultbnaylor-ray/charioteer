@@ -19,6 +19,9 @@ export const ROUTE_RATE_LIMITED =
 
 export const ROUTE_BAD_REQUEST = 'That route request could not be used.';
 
+export const ROUTE_TOO_LONG =
+  'The route service cannot make a route that long. Your number is still here.';
+
 export const ROUTE_SIGN_IN = 'Please sign in again.';
 
 export const ROUTE_OFFLINE = 'Check your connection and try again.';
@@ -101,22 +104,23 @@ export function routeKind(shape: RouteShape, craving: boolean): OutdoorKind {
   return shape === 'a_to_b' ? 'point_to_point' : 'loop';
 }
 
-/** Distance wins when both are set. Otherwise time becomes a length from the pace. */
+/**
+ * Distance wins when both are set. Otherwise time becomes a length from the pace.
+ * A positive finite number is used as typed. There is no app maximum.
+ */
 export function targetLengthM(input: Pick<RoutePlanInput, 'mode' | 'distanceM' | 'minutes'>): number | null {
   const distance = input.distanceM;
-  if (typeof distance === 'number' && Number.isFinite(distance)) {
-    return clamp(Math.round(distance), 500, 50_000);
+  if (typeof distance === 'number' && Number.isFinite(distance) && distance > 0) {
+    const rounded = Math.round(distance);
+    if (rounded >= 1) return rounded;
   }
   const minutes = input.minutes;
-  if (typeof minutes === 'number' && Number.isFinite(minutes)) {
-    const bounded = clamp(Math.round(minutes), 10, 180);
-    return clamp(bounded * PACE_M_PER_MIN[input.mode], 500, 50_000);
+  if (typeof minutes === 'number' && Number.isFinite(minutes) && minutes > 0) {
+    const rounded = Math.round(minutes);
+    if (rounded < 1) return null;
+    return rounded * PACE_M_PER_MIN[input.mode];
   }
   return null;
-}
-
-function clamp(value: number, low: number, high: number): number {
-  return Math.min(high, Math.max(low, value));
 }
 
 export function filterStarterPlaces(query: string): RoutePlace[] {
@@ -208,9 +212,10 @@ export function mockRoute(input: RoutePlanInput): RoutePlan | null {
   if (!length || !start) return null;
   const end = input.shape === 'a_to_b' ? routeCoordinate(input.end) : null;
   if (input.shape === 'a_to_b' && !end) return null;
-  const minutes = typeof input.minutes === 'number' && input.minutes >= 10
+  const askedMinutes = typeof input.minutes === 'number' && Number.isFinite(input.minutes) && input.minutes > 0
     ? Math.round(input.minutes)
-    : Math.max(10, Math.round(length / PACE_M_PER_MIN[input.mode]));
+    : 0;
+  const minutes = askedMinutes >= 1 ? askedMinutes : Math.max(1, Math.round(length / PACE_M_PER_MIN[input.mode]));
   const vias = (input.via ?? []).filter((point): point is OutdoorPoint => routeCoordinate(point) != null).slice(0, 5);
   if (vias.length > 0) {
     const close = input.shape === 'a_to_b' && end ? end : start;
@@ -317,6 +322,7 @@ export function messageForRouteBody(body: unknown, status: number | null): strin
   if (named === 'unauthorised' || named === 'unauthorized') return ROUTE_SIGN_IN;
   if (named === 'no_path' || status === 422) return calmOr(body, ROUTE_NO_PATH);
   if (named === 'rate_limited' || named === 'rate' || status === 429) return calmOr(body, ROUTE_RATE_LIMITED);
+  if (named === 'too_long') return ROUTE_TOO_LONG;
   if (named === 'bad_request' || named === 'input' || status === 400) return calmOr(body, ROUTE_BAD_REQUEST);
   if (named === 'unavailable' || status === 503) return calmOr(body, ROUTE_UNAVAILABLE);
   return ROUTE_UNAVAILABLE;
