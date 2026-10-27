@@ -16,6 +16,8 @@ The same decision approves the locked-phone permission string, and it approves a
 
 The Security and Compliance Bot reviewed this plan on 27 October 2026. The conditions in "Conditions before build 77" are design only. Nothing is built. Build 76 takes nothing from that review. Its diff adds no permission, no purpose string, and no background mode. `app.json` and the ship-check are unchanged on that branch. The only Bluetooth lines in that diff are tests that `app.json` has no `NSBluetoothAlwaysUsageDescription` and no `bluetooth-central`.
 
+Ben, 27 October 2026, 08:47 GMT, in his words: "Remember and have the ability to connect a different device in case the user has an upgrade or new watch." The phone remembers the chosen device. The screen wording for choosing, changing, and forgetting it is **not approved**. The drawings are under "Layout proofs". Nothing in those drawings is in the app.
+
 The 26 October decision left Garmin, Bluetooth, and Always location out of build 74 and build 75. Always location stays out. The in-principle approval is the outing broadcast only. It is not a gym session, and it is not Always location.
 
 ## What the screen says today
@@ -119,7 +121,7 @@ Apple's Core Bluetooth guide says the common Bluetooth tasks are disabled while 
 
 `location` does not grant that. It keeps location updates going, and between those updates iOS can suspend the process. It does not turn Bluetooth tasks on. `audio` does not grant it either. In this app the audio mode is for a spoken Thumos line, and the session ends when the line ends. Holding a silent audio session open so the radio stays up would be a background use the spoken line does not have. Guideline 2.5.4 is the rule that mode must match the feature.
 
-So the existing two modes are not enough for a heart rate that keeps updating after the phone is locked, which is how an outing already runs. The recommendation is to add `bluetooth-central` for that, and only while the outing is running. The scan starts after Start, and only for the device he picked before the outing. It stops on Stop, on discard, at six hours, and if the app is killed. Those four stops are tested. It does not start at launch. It does not scan all day. It does not run for a gym session. It does not run after sign-out or after Stop. It is not added for an Apple Watch test.
+So the existing two modes are not enough for a heart rate that keeps updating after the phone is locked, which is how an outing already runs. The recommendation is to add `bluetooth-central` for that, and only while the outing is running. The connection starts after Start, and only for the device he picked before the outing. If that device is not found, the app connects to nothing else. The connection stops on Stop, on discard, at six hours, and if the app is killed. Those four stops are tested. A list scan runs only after he taps "Look for devices" or "Change device", and that list does not connect. It does not start at launch. It does not scan all day. It does not run for a gym session. It does not run after sign-out or after Stop. It is not added for an Apple Watch test.
 
 He approved the mode, so the plan is the locked-phone sentence with `bluetooth-central`. If Security later says that mode cannot ship, the broadcast would work only while Charioteer is in front, and the shorter sentence would need his words again. That shorter sentence is not approved.
 
@@ -129,7 +131,7 @@ Not this branch. Not build 75. Not build 76. After the Security and Compliance B
 
 The app has no Bluetooth library. A reader would use `react-native-ble-plx` 3.5.1, through its Expo config plugin, in a native build. The exact licence records, the plugin props, and the phone test are under "Conditions before build 77". It looks for the standard Heart Rate Service only. The vívoactive 6 manual confirms Broadcast Heart Rate and the battery cost. It does not name that service. The first phone test has to show the watch is actually advertising it. If the broadcast is ANT+ only, the phone sees nothing. This design does not add ANT+.
 
-The recommendation is to store no address and no identifier, so he picks the device every outing. If he decides to store the iOS peripheral identifier, the DPIA says so, and sign-out and account deletion delete it, the same clear as the walked line. Either choice is his, and the screen wording that goes with it is **not approved** until he writes it. A Bluetooth error, a device name, an identifier, and a heart-rate value are not written to a log, to client-error reporting, to the route request table, or to the data export, and the reading is not placed next to sobriety fields. The stored outing summary stays the activity, the date, the distance, the time, and the pace.
+On 27 October 2026, 08:47 GMT, he decided the phone remembers the device. It stores the iOS peripheral identifier and the name shown on the screen, on the phone only. Sign-out, account deletion, and an expired session clear both, the same clear as the walked line. Change device and Forget device are how he picks a new watch. The sentences on those screens are **not approved**. A Bluetooth error, a device name, an identifier, and a heart-rate value are not written to a log, to client-error reporting, to the route request table, or to the data export, and the reading is not placed next to sobriety fields. The stored outing summary stays the activity, the date, the distance, the time, and the pace. The heart-rate value is not stored with the device.
 
 **Store profile.** The fail-safe already used for speech applies here. `src/config/speechProfile.js` treats `store`, `app-store`, `production`, an unset value, and any unknown value as a store profile. `testflight` is the only exception, and it is what keeps `audio`. A store-profile archive must not gain `NSBluetoothAlwaysUsageDescription` or `bluetooth-central` until the Security and Compliance Bot has checked the list below. Today's ship-check exits when `EXPO_PUBLIC_BUILD_PROFILE` is missing or unknown, and it exits for a store profile while the speech gate is false. It does not look for a Bluetooth key. The later build extends that check so it exits if a store profile contains the Bluetooth purpose string or `bluetooth-central` before the bot's check. A store submission stays a fresh archive with `EXPO_PUBLIC_BUILD_PROFILE=store` and a new build number. Promoting a TestFlight build is not the store path.
 
@@ -142,14 +144,14 @@ The recommendation is to store no address and no identifier, so he picks the dev
 The bot reviews the permission wording and the DPIA impact. The check is this list, against the binary, not against this note alone.
 
 1. The purpose string in the binary is a sentence Ben has confirmed in his own words. The drift check proves the built plist string equals that sentence. The confirmed sentence today is the 08:36 locked-phone sentence. Security's suggested sentence, which adds "by Bluetooth" and "that you choose", is **not approved** and stays out of the binary. The plugin default `Allow $(PRODUCT_NAME) to connect to bluetooth devices` is never the string. `modes` is set explicitly to `central` only, which is the plist value `bluetooth-central`. `peripheral` is not set. `bluetooth-central` is in that same binary only after this check. The shorter on-screen sentence is not the approved wording.
-2. The string's claims are true: a watch or strap that is broadcasting, chosen by the person before the outing, and the app connects only to that device. The scan runs only during a walk, run, or cycle he started. It stops on Stop, on discard, at six hours, and if the app is killed. Those four stops are tested. The heart rate is not sent anywhere: not to the account, not to the route service, not into `client_errors` or `purge_client_errors`, not into a console log, not into analytics, not into a crash breadcrumb, and not into the data export. A packet check on the final binary shows that no heart-rate value, device name, or identifier leaves the phone, and that the binary adds no new network host.
+2. The string's claims are true: a watch or strap that is broadcasting, chosen by the person before the outing, and the app connects only to that device. If the remembered device is not found at Start, the app connects to nothing else. The connection runs only during a walk, run, or cycle he started. It stops on Stop, on discard, at six hours, and if the app is killed. Those four stops are tested. The heart rate is not sent anywhere: not to the account, not to the route service, not into `client_errors` or `purge_client_errors`, not into a console log, not into analytics, not into a crash breadcrumb, and not into the data export. A packet check on the final binary shows that no heart-rate value, device name, or identifier leaves the phone, and that the binary adds no new network host.
 3. A store profile does not contain `NSBluetoothAlwaysUsageDescription` or `bluetooth-central` until this check has passed. Unset, unknown, `store`, `app-store`, and `production` are store profiles. `testflight` is the only other name. The later build extends the ship-check so a store profile that contains either exits. Today's ship-check does not look for them. There is no external TestFlight group while `audio` is in the binary, until the ducking test passes. Build 77 still carries `location`, `audio`, and `bluetooth-central`.
-4. The scan does not start at launch, does not run all day, does not run for a gym session, and does not run after sign-out or after Stop. `audio` is not held open to keep the radio awake. `location` is not described as the Bluetooth permission.
+4. The scan does not start at launch, does not run all day, does not run for a gym session, and does not run after sign-out or after Stop. The only scan before an outing is the list he opens with "Look for devices" or "Change device". That list does not connect. If the remembered device is missing at Start, the app does not scan for a substitute. `audio` is not held open to keep the radio awake. `location` is not described as the Bluetooth permission.
 5. No Always-location string is added. `NSLocationAlwaysAndWhenInUseUsageDescription` and `NSLocationAlwaysUsageDescription` stay absent. No Android permission is added. The Android background service stays off.
-6. The DPIA describes the Bluetooth reading as a new collection path. The privacy notice and the nutrition label are updated from the checked binary before a store build. The reading stays on the phone, is not a trace in the saved summary, is not in `export_my_data`, and is not joined to sobriety fields. If an iOS peripheral identifier is stored, the DPIA says so, and sign-out and account deletion clear it, the same clear as the walked line. If none is stored, he picks the device every outing. Article 9 and the lawful basis stay with a solicitor. The Health share sentence is unchanged. It covers a live foreground read of the latest Apple Health sample. It does not cover a Finished-screen average of past samples.
+6. The DPIA describes the Bluetooth reading as a new collection path. The privacy notice and the nutrition label are updated from the checked binary before a store build. The reading stays on the phone, is not a trace in the saved summary, is not in `export_my_data`, and is not joined to sobriety fields. The phone stores the iOS peripheral identifier and the on-screen name. Both stay on the phone. Sign-out, account deletion, and an expired session clear them, the same clear as the walked line. The heart-rate value is not stored with them. Article 9 and the lawful basis stay with a solicitor. The Health share sentence is unchanged. It covers a live foreground read of the latest Apple Health sample. It does not cover a Finished-screen average of past samples.
 7. Guideline 2.5.4: the background mode matches a heart rate the person can see on the outing. Guideline 5.1.1: the purpose string matches that use. App Review notes explain the feature and give a way to test it without a Garmin, a demo or a mock reading. External TestFlight is Beta App Review. A store binary is a fresh store-profile archive.
 8. The first phone test, before any feature work, shows whether the vívoactive 6 broadcast is the standard Heart Rate Service (`180D`). The procedure is in this note. The app does not claim that until the test shows it. No ANT+. No new network host. No Garmin Connect call for this reading. The Garmin claim stays inside what the vívoactive 6 manual page says. "That does not record an activity" is manual-based, not observed, until it is verified on the phone.
-9. Screen sentences he has not confirmed in his own words are not in the binary. That includes Security's suggested permission sentence, the device-choice screen wording, and the Finished line. The nutrition label is filled from the binary after the check, not from this note.
+9. Screen sentences he has not confirmed in his own words are not in the binary. That includes Security's suggested permission sentence, every sentence on the choose, change, forget, and missing-device screens, and the Finished line. The nutrition label is filled from the binary after the check, not from this note.
 10. The Garmin line says Broadcast Heart Rate does not record an activity. That clause is manual-based, not observed, until a phone check verifies it. The app does not start a Garmin activity. The Apple line says the Watch records the workout in Apple Health, and this row does not write a heart rate or a workout. The Garmin line is absent until the broadcast reader is in that same binary. The later build adds a test, in the style of the route sanitiser and the walked-line source scan, that a Bluetooth error, a device name, an identifier, and a heart-rate value never reach those sinks.
 
 ## After the outing, from Apple Health
@@ -188,14 +190,31 @@ Report two facts: whether `180D` was advertised, and the advertised name.
 
 ### The person picks the device
 
-Before the outing starts, the person picks the watch or strap from a list. A plain explanation is on the screen before the iOS Bluetooth prompt. The app connects only to that device. It never connects to the first thing that advertises. A stranger's strap is someone else's health data.
+Ben, 27 October 2026, 08:47 GMT, in his words: "Remember and have the ability to connect a different device in case the user has an upgrade or new watch."
 
-What is remembered is Ben's decision. Both options below, and the screen wording that goes with them, stay **not approved** until he decides and writes the words.
+The phone remembers the device he chooses. What it stores is the iOS peripheral identifier, the UUID iOS gives this app for that peripheral, and the name shown on the screen. Both stay on this phone. The heart-rate value is not stored with them. Signing out clears them. Deleting the account clears them. An expired session clears them. That is the same clear as the walked line. A storage error on that clear is tried once and does not stop sign-out, account deletion, or the refresh that follows. The store is one key on the phone and is not scoped by user id, so the clear removes the remembered device. The next person on that phone does not inherit the strap.
 
-- Storing no address and no identifier means he picks the device at the start of every outing. That is the recommendation in this note.
-- Storing the iOS peripheral identifier on the phone avoids that pick. If he chooses that, the DPIA says the identifier is stored on the phone, and sign-out and account deletion delete it, the same clear as the walked line.
+He picks from a list before the outing starts. A plain explanation is on the screen before the iOS Bluetooth prompt. The app connects only to the device he taps. It never connects to the first thing that advertises. A stranger's strap is someone else's health data. Change device opens that list again, for a new watch. Forget device clears the phone. If he leaves the list without tapping a device, the remembered one stays.
 
-Security's suggested permission sentence is the candidate for the system prompt. It is **not approved**. The on-screen explanation before that prompt needs words he approves as well. This note does not invent a second sentence.
+These screens are for an outing. A gym session does not remember a Bluetooth device and does not show them.
+
+Every sentence below is **not approved**. A string he has not confirmed stays out of the binary. The names "vívoactive 6" and "Heart rate strap" in the drawings are examples of advertised names, not a scan of a watch. Security's suggested permission sentence is still the candidate for the system prompt, and it is **not approved**. The lines here are the on-screen words, separate from that prompt.
+
+**Before the iOS prompt.** Title: "Choose a heart-rate device". Short line: "Pick the watch or strap that is broadcasting. Charioteer connects only to the one you choose." Button: "Look for devices". No list yet, and no scan, until he taps that button. That tap is what can bring up the iOS prompt. More info stays closed until he opens it. The long text behind it:
+
+"Turn on Broadcast Heart Rate on your watch, or turn your strap on, before you look. This phone remembers the device you choose. Signing out removes it. Deleting your account removes it. Your heart rate stays on this phone and is not sent anywhere."
+
+**The list.** Same title and same short line. Then "Broadcasting now", then one row per advertiser of the Heart Rate Service. Each row is the advertised name and the button "Use this device". Under the rows: "Nothing connects until you tap one." Nothing is pre-selected. Tapping "Use this device" is the choice, and that is when the phone stores the identifier and the name. If the list is empty, the short line is "No heart-rate broadcast yet." The same More info text sits behind More info.
+
+**The remembered device.** Title: "Heart-rate device". Short line: "This phone uses vívoactive 6." Then "Change device" with "Pick a different watch or strap." Then "Forget device" with "This phone will ask again next time." If iOS has no name to show, the short line is "This phone uses your heart-rate device." More info, still **not approved**:
+
+"Change device shows the list again, for a new watch. The phone remembers the one you tap and drops the old one. Forget device clears this phone's memory of the device. Signing out removes it too. Deleting your account removes it too. Charioteer connects only to the device you chose."
+
+Tapping Forget device asks, still **not approved**: "Forget vívoactive 6 on this phone?" The buttons are "Forget device" and "Keep it". After it is cleared: "This phone has forgotten vívoactive 6." The next outing shows "Choose a heart-rate device" again.
+
+**If the remembered device is not found at outing start.** The outing can start. Distance and pace still run. The heart row stays "No heart-rate source". The short line, calm, is "Can't see vívoactive 6. Charioteer will not use another device." If there is no name, it is "Can't see your heart-rate device. Charioteer will not use another device." Under that, the same "Change device" and "Forget device" lines. The app does not connect to any other device. It does not scan for a substitute. The list appears only after he taps Change device, and only "Use this device" replaces the stored identifier. More info, still **not approved**:
+
+"The watch may be off, or Broadcast Heart Rate may be off. This phone is still set to vívoactive 6. It will not connect to a different watch or strap. You can start the outing, and this row stays empty until that device is on. Change device if you have a new watch. Forget device if you want to choose again later."
 
 ### Logs and error reports
 
@@ -230,7 +249,7 @@ Heart rate is health data. "Your heart rate stays on your phone and is not sent 
 
 No code in this note. No library install. No Info.plist change. Build 76 does not contain this.
 
-`UIBackgroundModes` would be `location`, `audio`, and `bluetooth-central`. The scan starts after Start, only for the device he picked, and stops on Stop, on discard, at six hours, and if the app is killed. Those four stops are tested. It does not start at launch, it does not run all day, it does not run for a gym session, and it does not run after sign-out or after Stop. The reading stays on the phone. It is not sent, not logged, not stored on the outing summary, and not placed next to sobriety fields.
+`UIBackgroundModes` would be `location`, `audio`, and `bluetooth-central`. The connection starts after Start, only for the device he picked, and stops on Stop, on discard, at six hours, and if the app is killed. Those four stops are tested. If that device is not found, the app connects to nothing else. The list scan runs only after "Look for devices" or "Change device", and it does not connect. It does not start at launch, it does not run all day, it does not run for a gym session, and it does not run after sign-out or after Stop. The reading stays on the phone. It is not sent, not logged, not stored on the outing summary, and not placed next to sobriety fields. The phone does store the iOS peripheral identifier and the on-screen name, and those are cleared with the walked line.
 
 The approved Garmin sentence is shown only in that build. "That does not record an activity" stays manual-based, not observed, until a phone check verifies it. The More info text stays **not approved** and stays off the screen.
 
@@ -246,7 +265,7 @@ There is no external TestFlight group while `audio` is in the binary, until the 
 2. Build 76 is the crash fix, the point-drag fix, and the Apple Watch outing line. It is a separate branch. This note does not contain it. More info text and the gym wording stay **not approved**.
 3. The Garmin line stays off the screen until the build that reads the broadcast. "That does not record an activity" stays manual-based, not observed, until a phone check verifies it.
 4. The Finished line stays **not approved**. The current Health share sentence does not cover an after-outing average. A new sentence needs his words. No new key until then.
-5. Ben decides whether the phone remembers the iOS peripheral identifier, and he approves the screen wording. Security's suggested sentence stays **not approved** until he confirms it in his own words.
+5. On 27 October 2026, 08:47 GMT, he decided the phone remembers the device, and that he can connect a different one after an upgrade or a new watch. The screen wording for that is **not approved**. Security's suggested sentence stays **not approved** until he confirms it in his own words.
 6. Build 77 is the Bluetooth outing, after those decisions and after Security has checked the list of 10 against the final binary. The branch is cut from the latest fix tip then, not from build 75 and not from this note. It carries tests, the drift checks named above, the extended ship-check, and captures before any ship. A store-profile archive does not gain the new permission or `bluetooth-central` until that check. There is no external TestFlight group while `audio` remains, until the ducking test passes. That is a new native build and a fresh store archive.
 
 ## Layout proofs
@@ -273,6 +292,40 @@ The gym card is the screen in the photograph. That gym wording is **not approved
 
 ![Gym heart-rate row, 320 wide. Proof of the design. Not the app.](heart-source/gym_320.png)
 
+The device screens below are **not approved**. More info is closed. The long text is in "The person picks the device". Names in the drawings are examples.
+
+Before the iOS prompt. 390 wide.
+
+![Choose a heart-rate device, before the prompt, 390 wide. Proof of the design. Not the app.](heart-source/ask_390.png)
+
+320 wide.
+
+![Choose a heart-rate device, before the prompt, 320 wide. Proof of the design. Not the app.](heart-source/ask_320.png)
+
+The list, after Look for devices. Nothing is selected. 390 wide.
+
+![Choose a heart-rate device, the list, 390 wide. Proof of the design. Not the app.](heart-source/pick_390.png)
+
+320 wide.
+
+![Choose a heart-rate device, the list, 320 wide. Proof of the design. Not the app.](heart-source/pick_320.png)
+
+The remembered device, with Change device and Forget device. 390 wide.
+
+![Remembered heart-rate device, 390 wide. Proof of the design. Not the app.](heart-source/change_390.png)
+
+320 wide.
+
+![Remembered heart-rate device, 320 wide. Proof of the design. Not the app.](heart-source/change_320.png)
+
+The remembered device is missing at outing start. The app connects to nothing else. 390 wide.
+
+![Missing heart-rate device, 390 wide. Proof of the design. Not the app.](heart-source/missing_390.png)
+
+320 wide.
+
+![Missing heart-rate device, 320 wide. Proof of the design. Not the app.](heart-source/missing_320.png)
+
 ## Decisions for Ben
 
 You approved a new permission in principle on 27 October 2026, 07:53 GMT, in your words: "I approve the new permission." That covers an outing broadcast only. On 27 October 2026, 08:28 GMT, in your words: "Approve the two heart-rate lines as written: the Garmin Broadcast Heart Rate line and the Apple Watch workout line." That covers the two outing lines only. On 27 October 2026, 08:36 GMT, you put the Apple Watch line into build 76 and approved the locked-phone Bluetooth sentence with `bluetooth-central` for a later build. More info text and the gym wording are still **not approved**. The Bluetooth sentence is approved and not built.
@@ -284,6 +337,6 @@ You approved a new permission in principle on 27 October 2026, 07:53 GMT, in you
 5. Approved on 27 October 2026, 08:36 GMT. `NSBluetoothAlwaysUsageDescription`: "Charioteer connects to a watch or heart-rate strap that is broadcasting heart rate, only while a walk, run, or cycle is running, including when the phone is locked or you are using another app. Your heart rate stays on your phone and is not sent anywhere." `bluetooth-central` goes with that sentence. Not built. Not build 76. Security checks it before build 77. The shorter on-screen sentence is not the approved wording.
 6. Build 77, after the conditions in this note, from the latest fix tip then. Tests, a permission-string drift check against the sentence you have confirmed, `purposeDrift`, a ship-check that fails a store profile carrying the Bluetooth key or `bluetooth-central`, and captures before any ship. A store-profile archive does not gain the permission or the mode until the Security and Compliance Bot has checked the list of 10 against the final binary. No external TestFlight group while audio is in the binary, until the ducking test passes.
 7. Before that build, run the scanner procedure in this note on the vívoactive 6. Report whether service `180D` is advertised, and the advertised name. No Charioteer build. If `180D` is absent, the broadcast may be ANT+ only, and the feature waits.
-8. Device choice, still open. The recommendation is to store no address and no identifier, so you pick the device at the start of every outing. If you choose to store the iOS peripheral identifier on the phone, the DPIA records it, and sign-out and account deletion delete it, the same clear as the walked line. The on-screen explanation before the iOS prompt needs words you approve.
+8. Decided on 27 October 2026, 08:47 GMT, in your words: "Remember and have the ability to connect a different device in case the user has an upgrade or new watch." The phone stores the iOS peripheral identifier and the name on the screen. Sign-out, account deletion, and an expired session clear them, the same clear as the walked line. Change device and Forget device are how a new watch is chosen. If the remembered device is missing at Start, the row says so and the app connects to nothing else. The exact sentences in "The person picks the device" are **not approved** until you confirm them.
 9. Security's suggested permission sentence is **not approved**. It adds "by Bluetooth" and "that you choose" to the sentence you confirmed at 08:36. Confirm a replacement in your own words, or the 08:36 sentence stays the only confirmed string. A string you have not confirmed stays out of the binary.
 10. The Finished line still needs a new Health purpose sentence if it is built. The current sentence covers a live foreground read of the latest sample. It does not cover an average of past samples shown afterwards. The line says "from Apple Health" only, and it is absent when samples are missing or too sparse.
