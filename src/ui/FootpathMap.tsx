@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type ComponentType, type ReactNode, type Ref } from 'react';
 import { View } from 'react-native';
 
-import { viaPointCollection } from '@/domain/routeAdjust';
+import { mapPressPoint, viaPointCollection } from '@/domain/routeAdjust';
 import {
   YOU_HERE_FILL,
   YOU_HERE_RING,
@@ -19,7 +19,6 @@ import {
 } from '@/domain/outdoorRoute';
 import { flyWhenReady, useHeldCamera, type HeldCamera } from '@/ui/mapCamera';
 import { MapFrame } from '@/ui/MapChrome';
-import { mapPressPoint } from '@/ui/mapPress';
 import { useMapScheme } from '@/ui/mapStyle';
 import { T, useScreenScroller } from '@/ui/ui';
 

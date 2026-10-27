@@ -2,7 +2,6 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it, vi } from 'vitest';
 
 import type { OutdoorPoint } from '@/domain/outdoorRoute';
-import { mapPressPoint } from '@/ui/mapPress';
 import { ROUTE_OFFLINE, type RoutePlan } from '@/domain/findRoute';
 import {
   VIA_POINT_CAP,
@@ -24,6 +23,7 @@ import {
   readRouteRequests,
   routePlanBody,
   routeRequestsTodayLine,
+  mapPressPoint,
   tapPoint,
   viaCountLine,
   withVia,
