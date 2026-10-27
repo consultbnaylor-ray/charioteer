@@ -10,12 +10,15 @@ import { OTHER_SESSION_LINE, startLabel, type ActivityKind } from '@/domain/acti
 import { UserFacingError, shownError } from '@/domain/errors';
 import {
   APPLE_MAPS_NOTE,
+  DIRECTIONS_TO_START,
+  DIRECTIONS_TO_START_NOTE,
   HIKE_PROFILE_NOTE,
   ROUTE_MOCK_LINE,
   ROUTE_UNAVAILABLE,
   STARTER_NOTE,
   STARTER_PLACES,
   appleMapsUrl,
+  directionsToStartUrl,
   formatClimb,
   nearestPathLine,
   routeKind,
@@ -405,6 +408,7 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
   }
 
   const mapsUrl = plan ? appleMapsUrl(plan.points, plan.mode) : null;
+  const startUrl = plan ? directionsToStartUrl(plan.snappedStart ?? plan.points[0] ?? null) : null;
   const mapHeight = Math.max(180, narrow ? 220 : 360);
   const canRemove = edit.kind === 'move';
   const showAdjust = adjustControlsOn({ craving, adjusting, hasPlan: plan != null });
@@ -566,6 +570,12 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
           <Field label="Route name" value={title} onChangeText={setTitle} maxLength={80} />
           <Button label="Save this route" tone="quiet" disabled={pending || title.trim().length === 0} pending={pending} onPress={() => { void save(); }} />
           {saved ? <T>Saved on your account. You can delete it from Outside is Good.</T> : null}
+          {startUrl ? (
+            <>
+              <Button label={DIRECTIONS_TO_START} tone="quiet" onPress={() => { void Linking.openURL(startUrl).catch(() => undefined); }} />
+              <T variant="muted">{DIRECTIONS_TO_START_NOTE}</T>
+            </>
+          ) : null}
           {mapsUrl ? (
             <Button label="Open in Apple Maps" tone="quiet" onPress={() => { void Linking.openURL(mapsUrl); }} />
           ) : null}

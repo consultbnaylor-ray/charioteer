@@ -37,6 +37,11 @@ export const STARTER_NOTE =
 export const APPLE_MAPS_NOTE =
   'Opens Apple Maps with a few points from this route. Apple draws its own line. It does not need another permission.';
 
+export const DIRECTIONS_TO_START = 'Directions to the start';
+
+export const DIRECTIONS_TO_START_NOTE =
+  'Opens Apple Maps with walking directions to the start. Apple uses where the phone is. This does not need another permission.';
+
 export const NO_CLIMB_LINE = 'Climb not available for this route.';
 
 export type RouteMode = 'walk' | 'run' | 'cycle';
@@ -250,6 +255,19 @@ export function mockRoute(input: RoutePlanInput): RoutePlan | null {
     snappedStart: null,
     snapDistanceM: null,
   };
+}
+
+/**
+ * Walking directions to one point. The phone's location is not read.
+ * Apple Maps treats a missing start address as the phone's current location.
+ */
+export function directionsToStartUrl(point: OutdoorPoint | null | undefined): string | null {
+  if (!point || typeof point.latitude !== 'number' || typeof point.longitude !== 'number') return null;
+  if (!Number.isFinite(point.latitude) || !Number.isFinite(point.longitude)) return null;
+  if (Math.abs(point.latitude) > 90 || Math.abs(point.longitude) > 180) return null;
+  if (point.latitude === 0 && point.longitude === 0) return null;
+  const pair = `${point.latitude.toFixed(5)},${point.longitude.toFixed(5)}`;
+  return `https://maps.apple.com/?daddr=${encodeURIComponent(pair)}&dirflg=w`;
 }
 
 /** A few points only. Apple draws its own line between them. */
