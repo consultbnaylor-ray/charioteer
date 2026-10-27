@@ -66,6 +66,7 @@ export function FootpathMap({
   height = 280,
   adjust = null,
   bar = null,
+  mapLabel,
 }: {
   routes: readonly OutdoorRoute[];
   sketch: readonly OutdoorPoint[];
@@ -94,6 +95,8 @@ export function FootpathMap({
   } | null;
   /** Shown under the map while it is full screen. */
   bar?: ReactNode;
+  /** Accessible name. Omitted maps keep "Map with footpaths". */
+  mapLabel?: string;
 }) {
   const [scheme, choose] = useMapScheme();
   const camera = useHeldCamera(routes, sketch, here, locationFocus, follow);
@@ -113,6 +116,7 @@ export function FootpathMap({
       onToggleStyle={() => choose(scheme === 'dark' ? 'light' : 'dark')}
       onRestore={camera.restore}
       bar={bar}
+      mapLabel={mapLabel}
       renderMap={({ height: viewHeight }) => (
         <NativeCanvas
           maps={maps}
