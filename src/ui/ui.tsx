@@ -627,6 +627,7 @@ export function Choice({
   onPress,
   tone = 'default',
   badge = 0,
+  selectOnPressIn = false,
 }: {
   label: string;
   selected: boolean;
@@ -635,18 +636,26 @@ export function Choice({
   tone?: 'default' | 'alert';
   /** Unread count drawn as a numbered danger pill beside the label. */
   badge?: number;
+  /**
+   * Pressable runs onPress only after the finger lifts.
+   * With the search field focused, iOS can end that press early and the lift never arrives.
+   * press-in applies the place before that.
+   */
+  selectOnPressIn?: boolean;
 }) {
   const theme = useAppTheme();
   const alert = tone === 'alert';
+  const choose = () => {
+    onPress();
+    dismissKeyboard();
+  };
   return (
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={label}
       accessibilityState={{ selected }}
-      onPress={() => {
-        dismissKeyboard();
-        onPress();
-      }}
+      onPressIn={selectOnPressIn ? choose : undefined}
+      onPress={choose}
       style={[
         styles.choice,
         {
