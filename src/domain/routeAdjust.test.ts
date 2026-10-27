@@ -2,12 +2,14 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it, vi } from 'vitest';
 
 import type { OutdoorPoint } from '@/domain/outdoorRoute';
-import type { RoutePlan } from '@/domain/findRoute';
+import { ROUTE_OFFLINE, type RoutePlan } from '@/domain/findRoute';
 import {
   VIA_POINT_CAP,
   REDRAW_PAUSE_MS,
+  adjustControlsOn,
   beginDrag,
   commitRedraw,
+  countsPhoneRouteRequest,
   createRedrawScheduler,
   finishDrag,
   noteRouteRequest,
@@ -153,5 +155,50 @@ describe('route adjusting', () => {
     const places = repo.slice(repo.indexOf('async searchRoutePlaces'), repo.indexOf('async deleteOutdoorRoute'));
     expect(places).toContain("body: { action: 'search', query }");
     expect(places).not.toMatch(/latitude|longitude|via/);
+  });
+
+  it('counts one phone request after the call, and shows adjust controls after the button', () => {
+    expect(countsPhoneRouteRequest(null)).toBe(true);
+    expect(countsPhoneRouteRequest('Choose a start point.')).toBe(true);
+    expect(countsPhoneRouteRequest(ROUTE_OFFLINE)).toBe(false);
+
+    let adjusting = false;
+    const tapAdjust = () => { adjusting = !adjusting; };
+    const planOn = { craving: false, hasPlan: true };
+    expect(adjustControlsOn({ ...planOn, adjusting })).toBe(false);
+    tapAdjust();
+    expect(adjusting).toBe(true);
+    expect(adjustControlsOn({ ...planOn, adjusting })).toBe(true);
+    expect(adjustControlsOn({ craving: true, adjusting, hasPlan: true })).toBe(false);
+    expect(viaCountLine(0)).toBe('0 of 5 points');
+    tapAdjust();
+    expect(adjustControlsOn({ ...planOn, adjusting })).toBe(false);
+
+    const maker = readFileSync('src/ui/RouteMaker.tsx', 'utf8');
+    const make = maker.slice(maker.indexOf('async function make'), maker.indexOf('async function save'));
+    const redraw = maker.slice(maker.indexOf('sendRef.current = async'), maker.indexOf('function onMapDown'));
+    expect(make.indexOf('planOutdoorRoute')).toBeGreaterThan(-1);
+    expect(make.indexOf('planOutdoorRoute')).toBeLessThan(make.indexOf('noteRouteRequest'));
+    expect(redraw.indexOf('planOutdoorRoute')).toBeLessThan(redraw.indexOf('noteRouteRequest'));
+    expect(make.split('noteRouteRequest').length - 1).toBe(2);
+    const card = maker.slice(maker.indexOf('label={startLabel'), maker.indexOf('label="Route name"'));
+    expect(card.indexOf('label={ADJUST_THE_ROUTE}')).toBeLessThan(card.indexOf('{adjustActions}'));
+    expect(card.indexOf('{adjustActions}')).toBeLessThan(card.indexOf('<FootpathMap'));
+    expect(maker).toContain('label={UNDO_ADJUST}');
+    expect(maker).toContain('label={RESET_ADJUST}');
+    expect(maker).toContain('label={ADD_A_POINT}');
+    expect(maker).toContain('viaCountLine');
+    expect(maker).toContain('vias: shownVias');
+    expect(maker).toContain('holdMadeRoute');
+    expect(maker).toContain('startLabel');
+    expect(maker).not.toMatch(/latitude|longitude/);
+
+    const screen = readFileSync('src/app/(main)/activity.tsx', 'utf8');
+    expect(screen).toContain('takeMadeRoute');
+    expect(screen).toContain('guideAsRoutes');
+    expect(screen).toContain('copyMadeRoute');
+    const savedCall = screen.slice(screen.indexOf('summaryFrom('), screen.indexOf('summaryFrom(') + 320);
+    expect(savedCall).not.toMatch(/track|latitude|points|splits|bpm/);
+    expect(screen).not.toMatch(/planOutdoorRoute|functions\.invoke|supabase/);
   });
 });

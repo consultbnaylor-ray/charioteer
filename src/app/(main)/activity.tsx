@@ -2,6 +2,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import { Platform, Switch, useWindowDimensions, View } from 'react-native';
 
+import { clearMadeRoute, copyMadeRoute, guideAsRoutes, madeRouteToken, takeMadeRoute, type MadeRouteGuide } from '@/activity/madeRouteGuide';
 import { claimLive, releaseLive } from '@/activity/oneSession';
 import { speakIfGated, stopSpeaking } from '@/activity/speakLine';
 import { readActivityUpdates, type ActivityUpdateChoice } from '@/activity/updateDefaults';
@@ -67,7 +68,7 @@ type LiveState = {
   activity: ActivityKind;
   routeId: string | null;
   routeTitle: string | null;
-  /** Saved points copied at Start. A later rename or delete does not change them. Not sent, and not written into the summary. */
+  /** Points copied at Start. A later rename or delete does not change them. Not sent, and not written into the summary. */
   guide: { latitude: number; longitude: number }[];
   /** Accepted fixes for the line on the map. Memory only. Stop does not write this. */
   track: { latitude: number; longitude: number }[];
@@ -214,7 +215,7 @@ function oneParam(value: string | string[] | undefined): string | null {
 }
 
 export default function Activity() {
-  const params = useLocalSearchParams<{ kind?: string; route?: string | string[] }>();
+  const params = useLocalSearchParams<{ kind?: string; route?: string | string[]; made?: string | string[] }>();
   const opened = isActivityKind(params.kind) ? params.kind : 'walk';
   const askedRoute = oneParam(params.route);
   const router = useRouter();
@@ -224,6 +225,7 @@ export default function Activity() {
   const routes = snap.outdoorRoutes ?? [];
   const [activity, setActivity] = useState<ActivityKind>(held?.live.activity ?? opened);
   const [routeId, setRouteId] = useState<string | null>(held?.live.routeId ?? null);
+  const [guide, setGuide] = useState<MadeRouteGuide | null>(null);
   const appliedRoute = useRef(false);
   useEffect(() => {
     if (appliedRoute.current || held || !askedRoute) return;
@@ -336,6 +338,22 @@ export default function Activity() {
   }, [phase, live]);
 
   useEffect(() => {
+    const token = madeRouteToken(params.made);
+    if (!token || held?.live) return;
+    const taken = takeMadeRoute(token);
+    if (!taken) return;
+    const kind = isActivityKind(params.kind) ? params.kind : taken.kind;
+    setGuide(taken);
+    setActivity(kind);
+    setRouteId(null);
+  }, [params.made, params.kind]);
+
+  function dropGuide() {
+    clearMadeRoute(madeRouteToken(params.made) ?? undefined);
+    setGuide(null);
+  }
+
+  useEffect(() => {
     if (held) return undefined;
     let gone = false;
     void readActivityUpdates().then((choice: ActivityUpdateChoice) => {
@@ -402,7 +420,8 @@ export default function Activity() {
       return;
     }
     const route = routes.find((item) => item.id === routeId) ?? null;
-    const copied = copyGuide(route);
+    const frozen = route ? null : copyMadeRoute(guide);
+    const copied = copyGuide(route) ?? (frozen ? { title: frozen.title, points: frozen.points } : null);
     const now = Date.now();
     const next: LiveState = {
       activity,
@@ -619,11 +638,18 @@ export default function Activity() {
       <Card>
         <T variant="label">Route</T>
         <T variant="muted">{SAVED_LINE_ON_MAP}</T>
-        <Choice label="No route" selected={routeId == null} onPress={() => setRouteId(null)} />
+        {guide ? <Choice label={guide.title} selected={routeId == null} onPress={() => setRouteId(null)} /> : null}
+        <Choice label="No route" selected={routeId == null && guide == null} onPress={() => { setRouteId(null); dropGuide(); }} />
         {routes.map((route) => (
-          <Choice key={route.id} label={route.title} selected={routeId === route.id} onPress={() => setRouteId(route.id)} />
+          <Choice key={route.id} label={route.title} selected={routeId === route.id} onPress={() => { setRouteId(route.id); dropGuide(); }} />
         ))}
       </Card>
+      {guide ? (
+        <Card>
+          <FootpathMap routes={guideAsRoutes(guide)} sketch={[]} here={null} height={windowSize.width < 360 ? 200 : 230} />
+          <T variant="muted">Reminder: {guide.title}. Turns are not spoken.</T>
+        </Card>
+      ) : null}
       <Card>
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 12, alignItems: 'center' }}>
           <T style={{ flex: 1 }}>Thumos updates</T>
