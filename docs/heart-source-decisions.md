@@ -4,9 +4,11 @@ Design only. Nothing in this note is in the app. No screen, no library, no permi
 
 Ben, 27 October 2026, 07:52 GMT, on build 75: "It says no heart rate source and refers to Apple Watch, what if the user is wearing a Garmin like I am now?" He wears a vívoactive 6, and he also tests with an Apple Watch.
 
-Ben, 27 October 2026, 07:53 GMT, in his words: "I approve the new permission." That is approval in principle for a Bluetooth heart rate on an outing: the watch's Broadcast Heart Rate, read as the standard Heart Rate Service. He has not seen the exact permission string, any Info.plist change, the background mode, or the words on the screen. Those stay **not approved** until he confirms each one in his own words. This note does not build them. Build 74 and build 75 stay as they are. When he confirms the strings, the build is a branch off the latest fix tip for build 76, not off build 75. That tip is not this branch.
+Ben, 27 October 2026, 07:53 GMT, in his words: "I approve the new permission." That is approval in principle for a Bluetooth heart rate on an outing: the watch's Broadcast Heart Rate, read as the standard Heart Rate Service. He has not confirmed the exact permission string, any Info.plist change, or the background mode. Those stay **not approved** until he confirms each one in his own words. This note does not build them. Build 74 and build 75 stay as they are. When he confirms the strings, the build is a branch off the latest fix tip for build 76, not off build 75. That tip is not this branch.
 
-Ben, 27 October 2026, 08:02 GMT, asked whether a live session would be recorded by Garmin, and the same for Apple, and pre-approved the Bluetooth permission if it is not recorded. That condition is about the Bluetooth path. The Garmin broadcast, used as Broadcast Heart Rate, is the path that does not record an activity. The Apple Watch workout is recorded by the Watch. It uses the Health read the app already has, not this Bluetooth permission. The exact strings are still **not approved**.
+Ben, 27 October 2026, 08:02 GMT, asked whether a live session would be recorded by Garmin, and the same for Apple, and pre-approved the Bluetooth permission if it is not recorded. That condition is about the Bluetooth path. The Garmin broadcast, used as Broadcast Heart Rate, is the path that does not record an activity. The Apple Watch workout is recorded by the Watch. It uses the Health read the app already has, not this Bluetooth permission. The Bluetooth permission string is still **not approved**.
+
+Ben, 27 October 2026, 08:28 GMT, in his words: "Approve the two heart-rate lines as written: the Garmin Broadcast Heart Rate line and the Apple Watch workout line." That approves the two outing lines below, as written. It does not approve the More info text, the gym wording, or the Bluetooth permission string. Those stay **not approved**. Nothing in this note is built. The Garmin line stays off the screen until a build reads the broadcast. The Apple Watch line may ship first only if he says so.
 
 The 26 October decision left Garmin, Bluetooth, and Always location out of build 74 and build 75. Always location stays out. The in-principle approval is the outing broadcast only. It is not a gym session, and it is not Always location.
 
@@ -44,15 +46,17 @@ The same manual does not name Bluetooth, and it does not name the standard Heart
 
 ## The short lines on the row
 
-These sentences are **not approved**. They replace the Apple Watch hint. They are not in the app.
+Approved by Ben on 27 October 2026, 08:28 GMT, in his words: "Approve the two heart-rate lines as written: the Garmin Broadcast Heart Rate line and the Apple Watch workout line." These two lines are for an outing. They replace the Apple Watch hint on that screen. They are not in the app.
 
 "On a Garmin, turn on Broadcast Heart Rate. That does not record an activity."
 
 "On an Apple Watch, start a workout. The Watch records it in Apple Health."
 
-"No heart-rate source" stays. On an outing, both lines sit under it. On a gym session, only the Apple Watch line sits under it. The longer notes sit behind More info, which stays closed until it is opened.
+"No heart-rate source" stays. On an outing, both lines sit under it. The longer notes sit behind More info, which stays closed until it is opened. That More info text is **not approved**.
 
-The Garmin line is shown only in the build that reads the broadcast. Until that build, the app cannot use Broadcast Heart Rate, so the line would be the wrong instruction. The Apple Watch line is already true of the Health read. It still waits for him to confirm the words.
+The gym wording is **not approved**. The proposal, still unconfirmed, is that a gym session shows the Apple Watch line only, and does not show the Garmin line.
+
+The Garmin line is approved and stays off the screen until a build reads the broadcast. Until that build, the app cannot use Broadcast Heart Rate, so the line would be the wrong instruction. The Apple Watch line is approved for an outing. It may ship first only if he says so. This note does not ship it.
 
 Behind More info, word for word, the line already on the card:
 
@@ -66,13 +70,13 @@ Behind More info, these sentences are **not approved**:
 - On an outing: "Wearing a Garmin does not fill this row until Broadcast Heart Rate is on. A reading already in Apple Health can, after that watch has synced."
 - On a gym session: "Wearing a Garmin does not fill this row. A reading already in Apple Health can, after that watch has synced."
 
-The broadcast sentence, and the outing Garmin sentence, are shown only in the build that reads the broadcast. The line that is already on the card stays true for an Apple Health sample. It is the wrong line for a broadcast that keeps updating with the phone locked. The broadcast sentence covers that case, and only in that build.
+Those More info sentences stay **not approved**. The broadcast sentence, and the outing sentence about wearing a Garmin, are shown only in the build that reads the broadcast. The approved short Garmin line is held for the same reason. The line that is already on the card stays true for an Apple Health sample. It is the wrong line for a broadcast that keeps updating with the phone locked. The broadcast sentence covers that case, and only in that build.
 
 When a number is showing, the row stops adding " · Apple Watch". The proposed suffix for an Apple Health sample is **not approved**: " · Apple Health". The code reads Apple Health and does not know which app wrote the sample. A broadcast, in the later build, would say " · Broadcast" instead. That word is not used until that build exists.
 
 "Active energy not available yet" stays on the gym session. It is not copied onto the outing.
 
-Today the outing and the gym session share one hint. This approval does not read a broadcast during a gym session, so the later wording splits. The outing shows both short lines, and the Garmin line only once the broadcast reader exists. The gym session shows the Apple Watch line only. Telling someone to turn on Broadcast Heart Rate there would describe a read this approval does not add.
+Today the outing and the gym session share one hint. The two approved lines are the outing lines. Using the Apple Watch line alone on a gym session is **not approved**. The proposal is that split, because a broadcast is not read during a gym session under this approval, and telling someone there to turn on Broadcast Heart Rate would describe a read this approval does not add. The Garmin line on an outing still waits for the broadcast reader.
 
 ## The permission string
 
@@ -150,8 +154,8 @@ Active energy on that screen, for a gym session, stays the Apple Health sum. It 
 
 ## Order
 
-1. Ben confirms the exact strings in his own words. Until then nothing in this note is built. Build 75 stays as it is. The in-principle approval does not put a key into `app.json`.
-2. The empty-row lines, and More info, once he confirms them. No new key. The row stops saying only Apple Watch. The Garmin line stays off the screen until the build that reads the broadcast. The Apple Watch line can be on the row without that key.
+1. The two outing lines are approved. They are not built. More info text, the gym wording, and the Bluetooth permission string stay **not approved** until he confirms them. Build 75 stays as it is. The in-principle approval does not put a key into `app.json`.
+2. The Garmin line stays off the screen until the build that reads the broadcast. The Apple Watch line may ship on an outing before that, and only if he says so. No new key for that line. More info stays off until he confirms it.
 3. The Finished line, from Apple Health samples already on the phone. No new key.
 4. Live Bluetooth for an outing, on a branch off the latest fix tip for build 76, not off build 75. That branch is cut only after he confirms, in his own words, the exact permission string and either `bluetooth-central` or the shorter foreground sentence. It carries tests, a drift check that the permission string matches the confirmed sentence, `purposeDrift`, a ship-check, and captures for review before any ship. A store-profile archive does not gain the new permission or `bluetooth-central` until the Security and Compliance Bot has checked the list above. That is a new native build and a fresh store archive.
 
@@ -169,7 +173,7 @@ The outing card has both short lines and no active-energy row.
 
 ![Outing heart-rate row, 320 wide. Proof of the design. Not the app.](heart-source/outing_320.png)
 
-The gym card is the screen in the photograph. It has the Apple Watch line only, plus the energy row. It does not say Broadcast Heart Rate.
+The gym card is the screen in the photograph. That gym wording is **not approved**. It has the Apple Watch line only, plus the energy row. It does not say Broadcast Heart Rate.
 
 390 wide.
 
@@ -181,9 +185,9 @@ The gym card is the screen in the photograph. It has the Apple Watch line only, 
 
 ## Decisions for Ben
 
-You approved a new permission in principle on 27 October 2026, 07:53 GMT, in your words: "I approve the new permission." That covers an outing broadcast only. The sentences below are still **not approved**. None of them is in the app. Confirm each one you want, in your own words, before a build.
+You approved a new permission in principle on 27 October 2026, 07:53 GMT, in your words: "I approve the new permission." That covers an outing broadcast only. On 27 October 2026, 08:28 GMT, in your words: "Approve the two heart-rate lines as written: the Garmin Broadcast Heart Rate line and the Apple Watch workout line." That covers the two outing lines only. They are not in the app. More info text, the gym wording, and the Bluetooth permission string are still **not approved**.
 
-1. On an outing, replace the Apple Watch hint with two short lines. "On a Garmin, turn on Broadcast Heart Rate. That does not record an activity." "On an Apple Watch, start a workout. The Watch records it in Apple Health." Keep "No heart-rate source". On a gym session, show the Apple Watch line only. Recommendation: yes. Show the Garmin line only in the build that reads the broadcast.
+1. Approved for an outing, as written. "On a Garmin, turn on Broadcast Heart Rate. That does not record an activity." "On an Apple Watch, start a workout. The Watch records it in Apple Health." Keep "No heart-rate source". Not built. The Garmin line stays off until a build reads the broadcast. The Apple Watch line ships first only if you say so. Showing the Apple Watch line alone on a gym session is **not approved**.
 2. Behind More info: the broadcast sends the number to a paired device and those steps do not save an activity; if he starts a Garmin activity himself, the watch records it; an Apple Watch workout is recorded by the Watch and this row writes nothing to Apple Health; "The iPhone does not measure it." Recommendation: yes. The Garmin More info sentence is shown only in the build that reads the broadcast.
 3. When a number is showing, say "Apple Health" rather than "Apple Watch". Recommendation: yes.
 4. On Finished, show an Apple Health average for that outing when samples exist. Do not store it. Recommendation: yes.
