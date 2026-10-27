@@ -4,11 +4,15 @@ Design only. Nothing in this note is in the app. No screen, no library, no permi
 
 Ben, 27 October 2026, 07:52 GMT, on build 75: "It says no heart rate source and refers to Apple Watch, what if the user is wearing a Garmin like I am now?" He wears a vívoactive 6, and he also tests with an Apple Watch.
 
-Ben, 27 October 2026, 07:53 GMT, in his words: "I approve the new permission." That is approval in principle for a Bluetooth heart rate on an outing: the watch's Broadcast Heart Rate, read as the standard Heart Rate Service. He has not confirmed the exact permission string, any Info.plist change, or the background mode. Those stay **not approved** until he confirms each one in his own words. This note does not build them. Build 74 and build 75 stay as they are. When he confirms the strings, the build is a branch off the latest fix tip for build 76, not off build 75. That tip is not this branch.
+Ben, 27 October 2026, 07:53 GMT, in his words: "I approve the new permission." That is approval in principle for a Bluetooth heart rate on an outing: the watch's Broadcast Heart Rate, read as the standard Heart Rate Service. At that time he had not confirmed the exact permission string or the background mode. This note does not build them. Build 74 and build 75 stay as they are.
 
-Ben, 27 October 2026, 08:02 GMT, asked whether a live session would be recorded by Garmin, and the same for Apple, and pre-approved the Bluetooth permission if it is not recorded. That condition is about the Bluetooth path. The Garmin broadcast, used as Broadcast Heart Rate, is the path that does not record an activity. The Apple Watch workout is recorded by the Watch. It uses the Health read the app already has, not this Bluetooth permission. The Bluetooth permission string is still **not approved**.
+Ben, 27 October 2026, 08:02 GMT, asked whether a live session would be recorded by Garmin, and the same for Apple, and pre-approved the Bluetooth permission if it is not recorded. That condition is about the Bluetooth path. The Garmin broadcast, used as Broadcast Heart Rate, is the path that does not record an activity. The Apple Watch workout is recorded by the Watch. It uses the Health read the app already has, not this Bluetooth permission.
 
-Ben, 27 October 2026, 08:28 GMT, in his words: "Approve the two heart-rate lines as written: the Garmin Broadcast Heart Rate line and the Apple Watch workout line." That approves the two outing lines below, as written. It does not approve the More info text, the gym wording, or the Bluetooth permission string. Those stay **not approved**. Nothing in this note is built. The Garmin line stays off the screen until a build reads the broadcast. The Apple Watch line may ship first only if he says so.
+Ben, 27 October 2026, 08:28 GMT, in his words: "Approve the two heart-rate lines as written: the Garmin Broadcast Heart Rate line and the Apple Watch workout line." That approves the two outing lines below, as written. It does not approve the More info text or the gym wording. Those stay **not approved**. The Garmin line stays off the screen until a build reads the broadcast.
+
+Ben, 27 October 2026, 08:36 GMT, decided build 76 is the Start-route crash fix, the point-drag fix, and the Apple Watch outing line only. The Garmin line stays out of that build. The gym wording stays out. Line drag and grey alternatives stay out. Bluetooth stays out of build 76. That build is a separate branch. This note does not contain it.
+
+The same decision approves the locked-phone permission string, and it approves adding `bluetooth-central`. That string is the whole `NSBluetoothAlwaysUsageDescription`. It is not in the app. It is not build 76. The Security and Compliance Bot checks it before a later build 77.
 
 The 26 October decision left Garmin, Bluetooth, and Always location out of build 74 and build 75. Always location stays out. The in-principle approval is the outing broadcast only. It is not a gym session, and it is not Always location.
 
@@ -56,7 +60,7 @@ Approved by Ben on 27 October 2026, 08:28 GMT, in his words: "Approve the two he
 
 The gym wording is **not approved**. The proposal, still unconfirmed, is that a gym session shows the Apple Watch line only, and does not show the Garmin line.
 
-The Garmin line is approved and stays off the screen until a build reads the broadcast. Until that build, the app cannot use Broadcast Heart Rate, so the line would be the wrong instruction. The Apple Watch line is approved for an outing. It may ship first only if he says so. This note does not ship it.
+The Garmin line is approved and stays off the screen until a build reads the broadcast. Until that build, the app cannot use Broadcast Heart Rate, so the line would be the wrong instruction. The Apple Watch line is approved for an outing. On 27 October 2026, 08:36 GMT, he put that line into build 76 and left the Garmin line out. This note does not contain that code.
 
 Behind More info, word for word, the line already on the card:
 
@@ -80,7 +84,7 @@ Today the outing and the gym session share one hint. The two approved lines are 
 
 ## The permission string
 
-Ben approved a new permission in principle. He has not confirmed this sentence. It is **not approved**. It is the whole `NSBluetoothAlwaysUsageDescription`. There is no such key today.
+Approved by Ben on 27 October 2026, 08:36 GMT, for the locked-phone version. It is the whole `NSBluetoothAlwaysUsageDescription`. There is no such key today. It is not in build 76. Security checks it before build 77.
 
 "Charioteer connects to a watch or heart-rate strap that is broadcasting heart rate, only while a walk, run, or cycle is running, including when the phone is locked or you are using another app. Your heart rate stays on your phone and is not sent anywhere."
 
@@ -88,10 +92,10 @@ What that sentence is doing, in order:
 
 - It connects to a watch or heart-rate strap that is broadcasting. That is Garmin's Broadcast Heart Rate, read as the standard Heart Rate Service, or another strap that uses the same service. It does not name Garmin Connect, and it does not call Connect.
 - It runs only during a walk, run, or cycle he started. Not at launch, not all day, and not for a gym session. This approval is an outing.
-- It names the background case: the phone locked, or another app in front. That clause is honest only if `bluetooth-central` is in the same binary. If that mode is refused, this sentence is the wrong one, and the sentence below is the one to confirm instead.
+- It names the background case: the phone locked, or another app in front. That clause is honest only with `bluetooth-central` in the same binary. He approved that mode with this sentence.
 - The heart rate stays on the phone. It is not sent anywhere.
 
-If the background mode is refused, this shorter sentence is the one that matches a foreground-only read. It is also **not approved**:
+This shorter sentence is not the approved wording. It would match a foreground-only read if the mode were refused. It was not:
 
 "Charioteer connects to a watch or heart-rate strap that is broadcasting heart rate, only while a walk, run, or cycle is on screen. Your heart rate stays on your phone and is not sent anywhere."
 
@@ -99,7 +103,7 @@ The 26 October draft named Garmin, included a gym session, and said "Garmin Conn
 
 ## Does the outing need `bluetooth-central`?
 
-Flagged on its own. This is a new background mode. It is **not approved**. Today `UIBackgroundModes` is `location` and `audio` only.
+Approved with the locked-phone sentence on 27 October 2026, 08:36 GMT. It is a new background mode. It is not in the app. Today `UIBackgroundModes` is `location` and `audio` only. Build 76 keeps that list. Build 77 is where `bluetooth-central` is added, after the Security and Compliance Bot has checked the list below.
 
 Apple's Core Bluetooth guide says the common Bluetooth tasks are disabled while the app is in the background or suspended, unless the app declares a Core Bluetooth background mode. An app that does not declare one cannot scan for a peripheral in the background, and events that arrive while it is suspended are delivered only when it returns to the front. Apple names a heart-rate monitor as the reason to declare the mode. The key for the central role is `bluetooth-central`.
 
@@ -107,11 +111,11 @@ Apple's Core Bluetooth guide says the common Bluetooth tasks are disabled while 
 
 So the existing two modes are not enough for a heart rate that keeps updating after the phone is locked, which is how an outing already runs. The recommendation is to add `bluetooth-central` for that, and only while the outing is running. The scan starts after Start, only if he is using a broadcast, and it stops on Stop, on discard, and at six hours. It does not start at launch. It does not scan all day. It is not added for an Apple Watch test, and it is not added for the gym session under this approval.
 
-If he refuses the new mode, the broadcast works only while Charioteer is in front, same as the Apple Health read. The permission string is then the shorter one. The locked-phone clause is not used.
+He approved the mode, so the plan is the locked-phone sentence with `bluetooth-central`. If Security later says that mode cannot ship, the broadcast would work only while Charioteer is in front, and the shorter sentence would need his words again. That shorter sentence is not approved.
 
 ## What the later build would contain
 
-Not this branch. Not build 75. After he confirms the exact strings in his own words, the branch is cut from the latest fix tip for build 76. That build carries tests, a drift check that the permission string in the binary is the sentence he confirmed, `purposeDrift`, the extended ship-check, and screen captures for his review before any ship. Until those words are confirmed, none of that is started.
+Not this branch. Not build 75. Not build 76. After the Security and Compliance Bot has checked the list below, the branch is cut from the latest fix tip for build 77. That build carries tests, a drift check that the permission string in the binary is the approved sentence, `purposeDrift`, the extended ship-check, and screen captures for his review before any ship. None of that is started in this note.
 
 The app has no Bluetooth library. A reader would use something in the class of `react-native-ble-plx`, through an Expo config plugin, in a native build. It looks for the standard Heart Rate Service only. The vívoactive 6 manual confirms Broadcast Heart Rate and the battery cost. It does not name that service. The first phone test has to show the watch is actually advertising it. If the broadcast is ANT+ only, the phone sees nothing. This design does not add ANT+.
 
@@ -127,7 +131,7 @@ The watch address is not stored and not logged. The reading is not written to a 
 
 The bot reviews the permission wording and the DPIA impact. The check is this list, against the binary, not against this note alone.
 
-1. The purpose string is one of the two sentences above, and it matches the binary. The locked-phone sentence is present only when `bluetooth-central` is in that same binary. The shorter sentence is the one when the mode is absent.
+1. The purpose string is the approved locked-phone sentence, and it matches the binary. `bluetooth-central` is in that same binary. The shorter on-screen sentence is not the approved wording.
 2. The string's claims are true: a watch or strap that is broadcasting, only during a walk, run, or cycle he started, stopped on Stop, on discard, and at six hours. The heart rate is not sent anywhere: not to the account, not to the route service, not into a log, and not into the data export.
 3. A store profile does not contain `NSBluetoothAlwaysUsageDescription` or `bluetooth-central` until this check has passed. Unset, unknown, `store`, `app-store`, and `production` are store profiles. `testflight` is the only other name.
 4. The scan does not start at launch, does not run all day, and does not run for a gym session. `audio` is not held open to keep the radio awake. `location` is not described as the Bluetooth permission.
@@ -152,12 +156,28 @@ The line is on the Finished screen. It is not added to the saved summary, and Do
 
 Active energy on that screen, for a gym session, stays the Apple Health sum. It is not estimated from a broadcast.
 
+## Build 77, design only
+
+No code in this note. No library install. No Info.plist change. Build 76 does not contain this.
+
+**Library.** `react-native-ble-plx` from dotintent. Licence: Apache License 2.0. The repository licence names Copyright 2016 Polidea and Copyright 2021 intent sp. z o.o. (`https://github.com/dotintent/react-native-ble-plx/blob/master/LICENSE`). It can scan, connect, and listen for characteristic updates, and its own notes say it supports an iOS background mode. It does not speak Bluetooth Classic, so it does not add ANT+. It needs an Expo config plugin and a native rebuild. The first phone test still has to show the vívoactive 6 is advertising the standard Heart Rate Service. The manual does not name that service.
+
+**What the binary would contain.** The approved permission string. `UIBackgroundModes` would be `location`, `audio`, and `bluetooth-central`. The scan starts after Start, only for a broadcast, and stops on Stop, on discard, and at six hours. It does not start at launch, it does not run all day, and it does not run for a gym session. The reading stays on the phone. It is not sent, not logged, not stored on the outing summary, and not placed next to sobriety fields. The watch address is not stored.
+
+**Garmin line.** The approved sentence "On a Garmin, turn on Broadcast Heart Rate. That does not record an activity." is shown only in that build. The More info text for it stays **not approved** and stays off the screen.
+
+**Privacy and the DPIA.** The location DPIA describes a heart rate as a sample Apple Health already holds, read in the foreground. A radio reading is a new collection path for the same kind of data. The DPIA and the privacy note need that path before the build. This note does not edit them. The Health share sentence does not change, because the broadcast is not an Apple Health read. Whether UK GDPR Article 9 applies stays with a solicitor. The nutrition label is filled from the binary after the Security check, not from this note.
+
+**Drift checks that build must update.** `src/domain/outdoorRoute.test.ts` expects `UIBackgroundModes` to be exactly `location` and `audio`. Build 77 changes that expectation for the testflight profile to `location`, `audio`, and `bluetooth-central`, and it checks the permission string is the approved sentence word for word. `purposeDrift` keeps the Health share sentence and the location sentence, and it gains a check that the Bluetooth sentence matches the approved words. A store profile still must not contain `NSBluetoothAlwaysUsageDescription` or `bluetooth-central` until the Security check has passed. Today's ship-check does not look for those entries. Build 77 extends it so a store profile that contains either exits. Unset, unknown, `store`, `app-store`, and `production` are store profiles. `testflight` is the only other name.
+
+**What Security checks.** The list under "What the Security and Compliance Bot should check", against the binary. The purpose string is the approved locked-phone sentence, and `bluetooth-central` is in that same binary. A store-profile archive does not gain either until that check has passed.
+
 ## Order
 
-1. The two outing lines are approved. They are not built. More info text, the gym wording, and the Bluetooth permission string stay **not approved** until he confirms them. Build 75 stays as it is. The in-principle approval does not put a key into `app.json`.
-2. The Garmin line stays off the screen until the build that reads the broadcast. The Apple Watch line may ship on an outing before that, and only if he says so. No new key for that line. More info stays off until he confirms it.
-3. The Finished line, from Apple Health samples already on the phone. No new key.
-4. Live Bluetooth for an outing, on a branch off the latest fix tip for build 76, not off build 75. That branch is cut only after he confirms, in his own words, the exact permission string and either `bluetooth-central` or the shorter foreground sentence. It carries tests, a drift check that the permission string matches the confirmed sentence, `purposeDrift`, a ship-check, and captures for review before any ship. A store-profile archive does not gain the new permission or `bluetooth-central` until the Security and Compliance Bot has checked the list above. That is a new native build and a fresh store archive.
+1. Build 76 is the crash fix, the point-drag fix, and the Apple Watch outing line. It is a separate branch. This note does not contain it. More info text and the gym wording stay **not approved**.
+2. The Garmin line stays off the screen until the build that reads the broadcast.
+3. The Finished line, from Apple Health samples already on the phone, stays **not approved**. No new key.
+4. Build 77 is the Bluetooth outing, after Security has checked the list above. The branch is cut from the latest fix tip then, not from build 75 and not from this note. It carries tests, the drift checks named above, a ship-check, and captures before any ship. A store-profile archive does not gain the new permission or `bluetooth-central` until that check. That is a new native build and a fresh store archive.
 
 ## Layout proofs
 
@@ -185,11 +205,11 @@ The gym card is the screen in the photograph. That gym wording is **not approved
 
 ## Decisions for Ben
 
-You approved a new permission in principle on 27 October 2026, 07:53 GMT, in your words: "I approve the new permission." That covers an outing broadcast only. On 27 October 2026, 08:28 GMT, in your words: "Approve the two heart-rate lines as written: the Garmin Broadcast Heart Rate line and the Apple Watch workout line." That covers the two outing lines only. They are not in the app. More info text, the gym wording, and the Bluetooth permission string are still **not approved**.
+You approved a new permission in principle on 27 October 2026, 07:53 GMT, in your words: "I approve the new permission." That covers an outing broadcast only. On 27 October 2026, 08:28 GMT, in your words: "Approve the two heart-rate lines as written: the Garmin Broadcast Heart Rate line and the Apple Watch workout line." That covers the two outing lines only. On 27 October 2026, 08:36 GMT, you put the Apple Watch line into build 76 and approved the locked-phone Bluetooth sentence with `bluetooth-central` for a later build. More info text and the gym wording are still **not approved**. The Bluetooth sentence is approved and not built.
 
-1. Approved for an outing, as written. "On a Garmin, turn on Broadcast Heart Rate. That does not record an activity." "On an Apple Watch, start a workout. The Watch records it in Apple Health." Keep "No heart-rate source". Not built. The Garmin line stays off until a build reads the broadcast. The Apple Watch line ships first only if you say so. Showing the Apple Watch line alone on a gym session is **not approved**.
+1. Approved for an outing, as written. "On a Garmin, turn on Broadcast Heart Rate. That does not record an activity." "On an Apple Watch, start a workout. The Watch records it in Apple Health." Keep "No heart-rate source". The Apple Watch line is in build 76, on a separate branch. The Garmin line stays off until a build reads the broadcast. Showing the Apple Watch line alone on a gym session is **not approved**.
 2. Behind More info: the broadcast sends the number to a paired device and those steps do not save an activity; if he starts a Garmin activity himself, the watch records it; an Apple Watch workout is recorded by the Watch and this row writes nothing to Apple Health; "The iPhone does not measure it." Recommendation: yes. The Garmin More info sentence is shown only in the build that reads the broadcast.
 3. When a number is showing, say "Apple Health" rather than "Apple Watch". Recommendation: yes.
 4. On Finished, show an Apple Health average for that outing when samples exist. Do not store it. Recommendation: yes.
-5. Confirm this `NSBluetoothAlwaysUsageDescription` together with `bluetooth-central`: "Charioteer connects to a watch or heart-rate strap that is broadcasting heart rate, only while a walk, run, or cycle is running, including when the phone is locked or you are using another app. Your heart rate stays on your phone and is not sent anywhere." Recommendation: yes. `location` and `audio` do not keep a heart-rate broadcast updating after the phone locks. If you refuse the mode, confirm the shorter sentence instead: "Charioteer connects to a watch or heart-rate strap that is broadcasting heart rate, only while a walk, run, or cycle is on screen. Your heart rate stays on your phone and is not sent anywhere." The locked-phone clause is then left out.
-6. After those words are confirmed, build on a branch off the latest fix tip for build 76, not build 75. That branch has tests, a permission-string drift check, `purposeDrift`, a ship-check, and captures before any ship. A store-profile archive does not gain the permission or the mode until the Security and Compliance Bot has checked the list in this note. Recommendation: yes.
+5. Approved on 27 October 2026, 08:36 GMT. `NSBluetoothAlwaysUsageDescription`: "Charioteer connects to a watch or heart-rate strap that is broadcasting heart rate, only while a walk, run, or cycle is running, including when the phone is locked or you are using another app. Your heart rate stays on your phone and is not sent anywhere." `bluetooth-central` goes with that sentence. Not built. Not build 76. Security checks it before build 77. The shorter on-screen sentence is not the approved wording.
+6. Build 77, after that check, from the latest fix tip then. Tests, a permission-string drift check, `purposeDrift`, a ship-check, and captures before any ship. A store-profile archive does not gain the permission or the mode until the Security and Compliance Bot has checked the list in this note.
