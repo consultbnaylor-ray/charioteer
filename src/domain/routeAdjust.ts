@@ -13,6 +13,10 @@ export const REMOVE_POINT = 'Remove point';
 export const UNDO_ADJUST = 'Undo';
 export const RESET_ADJUST = 'Reset';
 export const RELEASE_TO_REDRAW = 'Release to redraw the route.';
+export const TAP_TO_PLACE = 'Tap the map to place this point.';
+export const TAP_TO_MOVE = 'Tap the map to move this point.';
+/** A tap this close is the same spot. It is well under the old 40 m drag gap. */
+export const SAME_POINT_METRES = 8;
 export const REDRAWING_THE_ROUTE = 'Redrawing the route.';
 export const LAST_ROUTE_FIGURES = 'Last route. The figures change when the redraw finishes.';
 export const ROUTE_UNCHANGED = 'The route on the map is unchanged.';
@@ -22,8 +26,9 @@ export const ROUTE_REQUEST_LIMIT_LINE =
 export const ROUTE_REQUEST_DAY_KEY = 'charioteer.route-requests.day';
 
 export function viaCountLine(count: number): string {
-  if (count >= VIA_POINT_CAP) return '5 of 5 points. Drag one to move it, or remove one.';
-  return `${count} of 5 points`;
+  const shown = Math.max(0, Math.min(count, VIA_POINT_CAP));
+  if (shown >= VIA_POINT_CAP) return `${VIA_POINT_CAP} of ${VIA_POINT_CAP} points.`;
+  return `${shown} of ${VIA_POINT_CAP} points`;
 }
 
 export function routeRequestsTodayLine(count: number): string {
@@ -201,6 +206,62 @@ export function finishDrag(
   const next = withVia(vias, drag.current, drag.viaIndex);
   if (!next) return { vias: kept, send: false };
   return { vias: next, send: true };
+}
+
+export type PointEdit =
+  | { kind: 'idle' }
+  | { kind: 'place' }
+  | { kind: 'move'; index: number };
+
+/** Add a point arms the next tap. At the cap it stays idle and adds nothing. */
+export function armPlacement(count: number): PointEdit {
+  if (count >= VIA_POINT_CAP) return { kind: 'idle' };
+  return { kind: 'place' };
+}
+
+function copyPoints(vias: readonly OutdoorPoint[]): OutdoorPoint[] {
+  return vias.map((item) => ({ latitude: item.latitude, longitude: item.longitude }));
+}
+
+/**
+ * One map tap. Nothing here reads a move.
+ * Idle selects a point within the grab radius and never adds one.
+ * Place puts the tap down even when it is closer than 40 m to a point.
+ * Move sends that new spot even when the gap is under 40 m.
+ * A tap on the selected dot itself does not send.
+ */
+export function tapPoint(input: {
+  edit: PointEdit;
+  vias: readonly OutdoorPoint[];
+  point: OutdoorPoint;
+}): { edit: PointEdit; vias: OutdoorPoint[]; send: boolean } {
+  const vias = copyPoints(input.vias);
+  const point = { latitude: input.point.latitude, longitude: input.point.longitude };
+  const hit = nearestVia(vias, point);
+
+  if (input.edit.kind === 'idle') {
+    if (hit == null) return { edit: input.edit, vias, send: false };
+    return { edit: { kind: 'move', index: hit }, vias, send: false };
+  }
+
+  if (input.edit.kind === 'place') {
+    if (vias.length >= VIA_POINT_CAP) return { edit: { kind: 'idle' }, vias, send: false };
+    const onDot = hit != null && metresBetween(vias[hit], point) <= SAME_POINT_METRES;
+    if (onDot) return { edit: { kind: 'move', index: hit }, vias, send: false };
+    const next = withVia(vias, point, null);
+    if (!next) return { edit: { kind: 'idle' }, vias, send: false };
+    return { edit: { kind: 'idle' }, vias: next, send: true };
+  }
+
+  const index = input.edit.index;
+  if (index < 0 || index >= vias.length) return { edit: { kind: 'idle' }, vias, send: false };
+  if (hit != null && hit !== index) return { edit: { kind: 'move', index: hit }, vias, send: false };
+  if (metresBetween(vias[index], point) <= SAME_POINT_METRES) {
+    return { edit: input.edit, vias, send: false };
+  }
+  const next = withVia(vias, point, index);
+  if (!next) return { edit: input.edit, vias, send: false };
+  return { edit: { kind: 'idle' }, vias: next, send: true };
 }
 
 export type AdjustSnapshot = { plan: RoutePlan; vias: OutdoorPoint[] };
