@@ -50,6 +50,17 @@ export function flyWhenReady(
  * Follow moves the centre and keeps the zoom. A pan passes follow false and the camera stays.
  * The route map leaves follow unset and takes the framed camera, zoom included.
  */
+/**
+ * The embedded map sits in the page scroll view, so a finger there turns page scrolling off.
+ * The full-screen map is a modal outside that scroll view. Turning page scrolling off from
+ * the modal re-renders the page during the pinch, and that layout pass interrupts the zoom.
+ * Null means leave the page scroll as it is.
+ */
+export function pageScrollForMapTouch(expanded: boolean, fingerDown: boolean): boolean | null {
+  if (expanded) return null;
+  return !fingerDown;
+}
+
 export function followCamera(
   current: HeldCamera,
   framed: HeldCamera,

@@ -17,7 +17,7 @@ import {
   type OutdoorPoint,
   type OutdoorRoute,
 } from '@/domain/outdoorRoute';
-import { flyWhenReady, useHeldCamera, type HeldCamera } from '@/ui/mapCamera';
+import { flyWhenReady, pageScrollForMapTouch, useHeldCamera, type HeldCamera } from '@/ui/mapCamera';
 import { MapFrame } from '@/ui/MapChrome';
 import { useMapScheme } from '@/ui/mapStyle';
 import { T, useScreenScroller } from '@/ui/ui';
@@ -117,7 +117,7 @@ export function FootpathMap({
       onRestore={camera.restore}
       bar={bar}
       mapLabel={mapLabel}
-      renderMap={({ height: viewHeight }) => (
+      renderMap={({ height: viewHeight, expanded }) => (
         <NativeCanvas
           maps={maps}
           height={viewHeight}
@@ -133,6 +133,7 @@ export function FootpathMap({
           track={track}
           onUserMove={onUserMove}
           adjust={adjust}
+          expanded={expanded}
         />
       )}
     />
@@ -154,6 +155,7 @@ function NativeCanvas({
   track,
   onUserMove,
   adjust,
+  expanded,
 }: {
   maps: Maps | null;
   height: number;
@@ -169,6 +171,7 @@ function NativeCanvas({
   track: readonly OutdoorPoint[];
   onUserMove?: () => void;
   adjust: MapAdjust | null;
+  expanded: boolean;
 }) {
   const camera = useRef<CameraHandle>(null);
   const moved = useRef(onUserMove);
@@ -178,7 +181,9 @@ function NativeCanvas({
   const walked = trackLineColour(scheme);
   const place = held.current;
 
-  const holdPage = (scrolling: boolean) => {
+  const holdPage = (fingerDown: boolean) => {
+    const scrolling = pageScrollForMapTouch(expanded, fingerDown);
+    if (scrolling == null) return;
     scroller?.current?.setScrollEnabled?.(scrolling);
   };
 
@@ -191,9 +196,12 @@ function NativeCanvas({
     return () => cancelAnimationFrame(retry);
   }, [held, frameTick, restoreTick]);
 
-  useEffect(() => () => {
-    scroller?.current?.setScrollEnabled?.(true);
-  }, [scroller]);
+  useEffect(() => {
+    if (expanded) return undefined;
+    return () => {
+      scroller?.current?.setScrollEnabled?.(true);
+    };
+  }, [scroller, expanded]);
 
   if (!maps) {
     return (
@@ -211,9 +219,9 @@ function NativeCanvas({
       dragPan
       touchZoom
       style={{ height }}
-      onTouchStart={() => holdPage(false)}
-      onTouchEnd={() => holdPage(true)}
-      onTouchCancel={() => holdPage(true)}
+      onTouchStart={expanded ? undefined : () => holdPage(true)}
+      onTouchEnd={expanded ? undefined : () => holdPage(false)}
+      onTouchCancel={expanded ? undefined : () => holdPage(false)}
       onRegionDidChange={(event: RegionEvent) => {
         if (event.nativeEvent?.userInteraction !== true) return;
         const center = event.nativeEvent?.center;

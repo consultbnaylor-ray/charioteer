@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it, vi } from 'vitest';
 
+import { pageScrollForMapTouch } from '@/ui/mapCamera';
 import type { OutdoorPoint } from '@/domain/outdoorRoute';
 import { ROUTE_OFFLINE, type RoutePlan } from '@/domain/findRoute';
 import {
@@ -281,11 +282,27 @@ describe('route adjusting', () => {
     expect(native).not.toContain('onMove');
     expect(native).toContain('mapPressPoint(event)');
     expect(native).toContain('adjust.onTap(point)');
-    expect(native).toContain('onTouchStart={() => holdPage(false)}');
+    expect(native).toContain('onTouchStart={expanded ? undefined : () => holdPage(true)}');
+    expect(native).toContain('onTouchEnd={expanded ? undefined : () => holdPage(false)}');
+    expect(native).toContain('onTouchCancel={expanded ? undefined : () => holdPage(false)}');
+    expect(native).toContain('pageScrollForMapTouch(expanded, fingerDown)');
+    expect(native).toContain('renderMap={({ height: viewHeight, expanded }) => (');
+    expect(native).toContain('expanded={expanded}');
+    expect(native).not.toContain('minZoom');
+    expect(native).not.toContain('maxZoom');
     expect(native).toContain('touchZoom');
     expect(native).toContain('dragPan');
     expect(native).toContain('flyWhenReady');
     expect(native).toContain('viaPointCollection(adjust?.vias ?? [])');
+    const chrome = readFileSync('src/ui/MapChrome.tsx', 'utf8');
+    expect(chrome).toContain('<Modal visible={open}');
+    expect(chrome).toContain("pointerEvents={open ? 'none' : 'auto'}");
+    expect(chrome).not.toContain('pointerEvents="box-only"');
+    expect(chrome).not.toContain('pointerEvents="none"');
+    expect(pageScrollForMapTouch(false, true)).toBe(false);
+    expect(pageScrollForMapTouch(false, false)).toBe(true);
+    expect(pageScrollForMapTouch(true, true)).toBeNull();
+    expect(pageScrollForMapTouch(true, false)).toBeNull();
     const screen = readFileSync('src/ui/ui.tsx', 'utf8');
     expect(screen).toContain('setScrollEnabled');
     expect(screen).toContain('scrollEnabled={pageScroll}');
