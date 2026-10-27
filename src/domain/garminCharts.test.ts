@@ -75,6 +75,11 @@ describe('garmin charts follow the shared period', () => {
       expect(block).not.toContain('span=');
       expect(block).toContain('userMetrics={readings.userMetrics}');
     }
+    expect(readFileSync('src/app/(main)/stats.tsx', 'utf8')).toContain('showVo2Chart={false}');
+    expect(readFileSync('src/app/(main)/health-plan.tsx', 'utf8')).toContain('showVo2Chart={false}');
+    expect(readFileSync('src/app/(main)/health.tsx', 'utf8')).not.toContain('showVo2Chart');
+    expect(readFileSync('src/ui/YourFitness.tsx', 'utf8')).toContain('<Vo2MaxChart');
+    expect(readFileSync('src/ui/DailyActivity.tsx', 'utf8')).toContain("chart.id !== 'vo2'");
     expect(readFileSync('src/ui/DailyActivity.tsx', 'utf8')).toContain('span={span}');
     expect(readFileSync('src/domain/garminCharts.ts', 'utf8')).not.toMatch(/latitude|longitude|maxStress/);
   });

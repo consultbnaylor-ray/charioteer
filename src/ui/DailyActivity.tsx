@@ -242,6 +242,7 @@ export function MovementCharts({
   sex = null,
   showIntensity = true,
   framed = true,
+  showVo2Chart = true,
 }: {
   endDay: string;
   /** Set on Workouts, where that screen's 7 or 30 day control is the one the other charts use. */
@@ -259,6 +260,8 @@ export function MovementCharts({
   showIntensity?: boolean;
   /** False when this block already sits inside a card, so the metrics do not gain a second edge. */
   framed?: boolean;
+  /** False on Stats and Health Plan, where the VO2 max chart sits inside Your fitness. */
+  showVo2Chart?: boolean;
 }) {
   const [sharedPeriod] = useStatPeriod();
   const chartWindow = movementPeriod(span, sharedPeriod);
@@ -283,7 +286,7 @@ export function MovementCharts({
     userMetrics,
     age,
     sex,
-  });
+  }).filter((chart) => showVo2Chart || chart.id !== 'vo2');
   const chosen = stepPoints.find((point) => point.day === selected)
     ?? distance.find((point) => point.day === selected)
     ?? floors.find((point) => point.day === selected)
@@ -464,6 +467,49 @@ export function MovementCharts({
       ) : null}
       {span == null ? <T variant="muted" style={{ textAlign: 'center' }}>{CHART_DIRECTION_HINT}</T> : null}
     </View>
+  );
+}
+
+/** Garmin's VO2 max bars. Shown inside Your fitness, under the connected card. */
+export function Vo2MaxChart({
+  endDay,
+  userMetrics,
+  age,
+  sex,
+}: {
+  endDay: string;
+  userMetrics: readonly GarminUserMetric[];
+  age: number | null;
+  sex: NutritionSex | null;
+}) {
+  const [sharedPeriod] = useStatPeriod();
+  const chartWindow = movementPeriod(undefined, sharedPeriod);
+  const [selected, setSelected] = useState<string | null>(null);
+  const chart = garminDetailCharts({
+    endDay,
+    period: chartWindow.period,
+    dailies: [],
+    sleep: [],
+    respiration: [],
+    pulseOx: [],
+    hrv: [],
+    userMetrics,
+    age,
+    sex,
+  }).find((item) => item.id === 'vo2');
+  if (!chart) return null;
+  return (
+    <ActivityBars
+      framed
+      title={chart.title}
+      points={garminBarPoints(chart.points)}
+      span={chartWindow.days}
+      unit={chart.unit}
+      selected={selected}
+      garminNote={garminSourceCaption(chart)}
+      guide={chart.guide}
+      onSelect={setSelected}
+    />
   );
 }
 

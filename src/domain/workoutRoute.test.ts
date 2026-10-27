@@ -126,6 +126,9 @@ describe('VO2 estimate note', () => {
     expect(bannerAt).toBeLessThan(fitness.indexOf('{OUTSIDE_CRISIS_LINE}'));
     expect(VO2_MEASURE_LINE).toBe('To measure your VO2 max, track a walk, run, or cycle on your smartwatch. It is worked out over distance and therefore needs GPS.');
     const lowNote = fitness.indexOf('<LowRestingFitNote />');
+    const movedChart = fitness.indexOf('<Vo2MaxChart');
+    expect(movedChart).toBeGreaterThan(fitness.indexOf('<GarminTip />'));
+    expect(movedChart).toBeLessThan(fitness.indexOf('{view.levelWords}'));
     expect(lowNote).toBeGreaterThan(fitness.indexOf('{view.levelWords}'));
     expect(lowNote).toBeLessThan(fitness.indexOf('label="VO2 max"'));
     expect(fitness.indexOf('{OUTSIDE_SAFETY_LINE}', lowNote)).toBeGreaterThan(lowNote);
