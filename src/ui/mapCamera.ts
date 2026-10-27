@@ -26,6 +26,27 @@ function frameOf(
 }
 
 /**
+ * Moves the camera after the native map exists.
+ * MapLibre throws if flyTo runs before the native camera has a node.
+ * That throw is inside a React effect, and on iOS an effect error is fatal.
+ * A miss returns false so the caller can try again next frame. The map's
+ * initial view already has this centre.
+ */
+export function flyWhenReady(
+  camera: { flyTo: (options: { center: [number, number]; zoom?: number; duration?: number }) => void } | null,
+  place: HeldCamera,
+): boolean {
+  if (!camera) return false;
+  if (!Number.isFinite(place.longitude) || !Number.isFinite(place.latitude) || !Number.isFinite(place.zoom)) return false;
+  try {
+    camera.flyTo({ center: [place.longitude, place.latitude], zoom: place.zoom, duration: 500 });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Follow moves the centre and keeps the zoom. A pan passes follow false and the camera stays.
  * The route map leaves follow unset and takes the framed camera, zoom included.
  */

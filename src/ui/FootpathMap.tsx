@@ -17,7 +17,7 @@ import {
   type OutdoorPoint,
   type OutdoorRoute,
 } from '@/domain/outdoorRoute';
-import { useHeldCamera, type HeldCamera } from '@/ui/mapCamera';
+import { flyWhenReady, useHeldCamera, type HeldCamera } from '@/ui/mapCamera';
 import { MapFrame } from '@/ui/MapChrome';
 import { useMapScheme } from '@/ui/mapStyle';
 import { T } from '@/ui/ui';
@@ -185,8 +185,12 @@ function NativeCanvas({
   const place = held.current;
 
   useEffect(() => {
-    const next = held.current;
-    camera.current?.flyTo({ center: [next.longitude, next.latitude], zoom: next.zoom, duration: 500 });
+    const place = held.current;
+    if (flyWhenReady(camera.current, place)) return undefined;
+    const retry = requestAnimationFrame(() => {
+      flyWhenReady(camera.current, held.current);
+    });
+    return () => cancelAnimationFrame(retry);
   }, [held, frameTick, restoreTick]);
 
   if (!maps) {
