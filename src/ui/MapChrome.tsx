@@ -251,7 +251,9 @@ export function MapFrame({
   );
   return (
     <>
-      {shell(false, height)}
+      <View pointerEvents={open ? 'none' : 'auto'}>
+        {shell(false, height)}
+      </View>
       <Modal visible={open} animationType="fade" onRequestClose={collapse} statusBarTranslucent>
         <View
           style={{
