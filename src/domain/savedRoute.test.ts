@@ -20,7 +20,10 @@ import {
   adjustPlanInput,
   canAdjustSavedRoute,
   copyGuide,
+  guideForStart,
   guideLine,
+  holdMadeGuide,
+  readMadeGuide,
   kindAfterAdjust,
   openLabel,
 } from '@/domain/savedRoute';
@@ -99,7 +102,7 @@ describe('saved routes in build 75', () => {
     });
     expect(JSON.stringify(summary)).not.toMatch(/latitude|longitude|guide|points/);
     const screen = readFileSync('src/app/(main)/activity.tsx', 'utf8');
-    expect(screen).toContain('copyGuide(route)');
+    expect(screen).toContain('guideForStart(saved, madeGuide, useMade && routeId == null)');
     expect(screen).toContain('guide: copied?.points ?? []');
     expect(screen).toContain('guideRoute(');
     expect(screen).not.toContain('routes.filter((item) => item.id === live.routeId)');
@@ -152,7 +155,13 @@ describe('saved routes in build 75', () => {
     const open = readFileSync('src/app/(main)/saved-route.tsx', 'utf8');
     expect(open).toContain('canAdjustSavedRoute');
     expect(open).toContain('OTHER_SESSION_LINE');
-    expect(open).toContain('USE_THIS_ROUTE');
+    expect(open).not.toContain('USE_THIS_ROUTE');
+    expect(open.indexOf('mapLabel={SAVED_ROUTE_MAP_LABEL}')).toBeLessThan(open.indexOf("startLabel('walk')"));
+    expect(open.indexOf("startLabel('walk')")).toBeLessThan(open.indexOf("startLabel('run')"));
+    expect(open.indexOf("startLabel('run')")).toBeLessThan(open.indexOf("startLabel('cycle')"));
+    expect(open).toContain('tone="quiet"');
+    expect(open).toContain('`/activity?kind=${kind}&route=${route!.id}`');
+    expect(open).not.toContain('kind=walk&route=');
     expect(open).toContain('mapLabel={SAVED_ROUTE_MAP_LABEL}');
     expect(open).toContain('narrow ? 180 : 260');
     const card = readFileSync('src/ui/SavedRouteCard.tsx', 'utf8');
@@ -161,6 +170,51 @@ describe('saved routes in build 75', () => {
     expect(card.indexOf('label={CANCEL}')).toBeLessThan(card.indexOf('label="Delete"'));
     expect(card).toContain('disabledReason={empty ? ROUTE_NEEDS_NAME : undefined}');
     expect(readFileSync('app.json', 'utf8')).toContain(LOCATION_WHEN_IN_USE);
+    expect(readFileSync('app.json', 'utf8')).toContain('"buildNumber": "72"');
+  });
+
+  it('starts from the line on the card or the saved row, and does not redraw it', () => {
+    const route = sampleCanalLoop();
+    const cardPoints = route.points.map((point) => ({ latitude: point.latitude, longitude: point.longitude }));
+    const made = holdMadeGuide({ title: 'Walk loop', points: cardPoints });
+    cardPoints[0] = { latitude: 0, longitude: 0 };
+    expect(readMadeGuide()?.points[0]).toEqual(route.points[0]);
+    expect(readMadeGuide()?.title).toBe('Walk loop');
+    expect(guideForStart(route, made, true)?.title).toBe(route.title);
+    expect(guideForStart(route, made, true)?.points[0]).toEqual(route.points[0]);
+    expect(guideForStart(null, made, true)?.points).toEqual(made?.points);
+    expect(guideForStart(null, made, false)).toBeNull();
+    const summary = summaryFrom({
+      id: 'outing-cycle',
+      activity: 'cycle',
+      date: '2026-10-27',
+      distanceM: 1200,
+      movingMs: 400_000,
+    });
+    expect(summary.activity).toBe('cycle');
+    expect(summary.distanceM).toBe(1200);
+    expect(JSON.stringify(summary)).not.toMatch(/7700|92|latitude|Walk loop/);
+
+    const maker = readFileSync('src/ui/RouteMaker.tsx', 'utf8');
+    const card = maker.slice(maker.indexOf("variant=\"title\">{craving"));
+    expect(card.indexOf('formatClimb(plan.ascentM)')).toBeLessThan(card.indexOf("startLabel('walk')"));
+    expect(card.indexOf("startLabel('walk')")).toBeLessThan(card.indexOf("startLabel('run')"));
+    expect(card.indexOf("startLabel('run')")).toBeLessThan(card.indexOf("startLabel('cycle')"));
+    expect(card.indexOf("startLabel('cycle')")).toBeLessThan(card.indexOf('{ADJUST_THE_ROUTE}'));
+    expect(maker).toContain('!craving && plan.points.length >= 2');
+    expect(maker).toContain("holdMadeGuide({ title: title.trim() || 'My route', points: line.points })");
+    expect(maker).toContain('`/activity?kind=${kind}&made=1`');
+    const outing = maker.slice(maker.indexOf('function startOuting'), maker.indexOf('const mapHeight'));
+    expect(outing).toContain('line.points');
+    expect(outing).toContain('OTHER_SESSION_LINE');
+    expect(outing).not.toContain('shownVias');
+    expect(outing).not.toContain('saveOutdoorRoute');
+    expect(outing).not.toContain('save()');
+    expect(maker).not.toContain('This line was made for a walk');
+    const open = readFileSync('src/app/(main)/saved-route.tsx', 'utf8');
+    expect(open.indexOf('adjusting ?')).toBeLessThan(open.indexOf("startLabel('walk')"));
+    expect(readFileSync('src/ui/SavedRouteAdjust.tsx', 'utf8')).not.toContain('startLabel');
+    expect(readFileSync('src/app/(main)/activity.tsx', 'utf8')).not.toContain('This line was made for a walk');
     expect(readFileSync('app.json', 'utf8')).toContain('"buildNumber": "72"');
   });
 });

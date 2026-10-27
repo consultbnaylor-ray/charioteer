@@ -1,8 +1,11 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useRouter } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import { Linking, View, useWindowDimensions } from 'react-native';
 
+import { currentLive } from '@/activity/oneSession';
 import { useRepository } from '@/data';
+import { OTHER_SESSION_LINE, startLabel, type ActivityKind } from '@/domain/activitySession';
 import { UserFacingError, shownError } from '@/domain/errors';
 import {
   APPLE_MAPS_NOTE,
@@ -24,6 +27,7 @@ import {
   routeSummary,
   type OutdoorPoint,
 } from '@/domain/outdoorRoute';
+import { holdMadeGuide } from '@/domain/savedRoute';
 import {
   ADD_A_POINT,
   ADJUST_THE_ROUTE,
@@ -77,6 +81,7 @@ const phoneRequests = {
 
 export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
   const repo = useRepository();
+  const router = useRouter();
   const craving = purpose === 'craving';
   const [mode, setMode] = useState<RouteMode>('walk');
   const [shape, setShape] = useState<RouteShape>('loop');
@@ -424,6 +429,17 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
   }
 
   const mapsUrl = plan ? appleMapsUrl(plan.points, plan.mode) : null;
+
+  function startOuting(kind: ActivityKind) {
+    const line = planRef.current;
+    if (!line || line.points.length < 2) return;
+    if (currentLive()) {
+      setError(OTHER_SESSION_LINE);
+      return;
+    }
+    holdMadeGuide({ title: title.trim() || 'My route', points: line.points });
+    router.push(`/activity?kind=${kind}&made=1` as never);
+  }
   const mapHeight = Math.max(180, narrow ? 220 : 360);
   const canRemove = selected != null || shownVias.length > acceptedVias.length;
   const adjustActions = !craving && adjusting && plan ? (
@@ -537,6 +553,13 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
           <T variant="title">{craving ? 'Craving walk' : title}</T>
           <T>{routeSummary({ distanceM: plan.distanceM, durationMinutes: plan.durationMinutes })}</T>
           <T>{formatClimb(plan.ascentM)}</T>
+          {!craving && plan.points.length >= 2 ? (
+            <>
+              <Button label={startLabel('walk')} tone="quiet" onPress={() => startOuting('walk')} />
+              <Button label={startLabel('run')} tone="quiet" onPress={() => startOuting('run')} />
+              <Button label={startLabel('cycle')} tone="quiet" onPress={() => startOuting('cycle')} />
+            </>
+          ) : null}
           {nearLine ? <T>{nearLine}</T> : null}
           {rough && hereSelected ? <T>{ROUGH_FIX_LINE}</T> : null}
           {plan.mocked ? <T>{ROUTE_MOCK_LINE}</T> : null}

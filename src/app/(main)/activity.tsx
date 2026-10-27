@@ -45,7 +45,7 @@ import {
   type SplitMark,
   type UpdateInterval,
 } from '@/domain/activitySession';
-import { SAVED_LINE_ON_MAP, copyGuide, guideLine, guideRoute } from '@/domain/savedRoute';
+import { SAVED_LINE_ON_MAP, guideForStart, guideLine, guideRoute, readMadeGuide, type HeldGuide } from '@/domain/savedRoute';
 import { isoDay } from '@/domain/dates';
 import { shownError } from '@/domain/errors';
 import { watchLiveReading, type LiveReading } from '@/health/liveReading';
@@ -214,9 +214,10 @@ function oneParam(value: string | string[] | undefined): string | null {
 }
 
 export default function Activity() {
-  const params = useLocalSearchParams<{ kind?: string; route?: string | string[] }>();
+  const params = useLocalSearchParams<{ kind?: string; route?: string | string[]; made?: string | string[] }>();
   const opened = isActivityKind(params.kind) ? params.kind : 'walk';
   const askedRoute = oneParam(params.route);
+  const askedMade = oneParam(params.made) === '1' && !askedRoute;
   const router = useRouter();
   const theme = useAppTheme();
   const repo = useRepository();
@@ -224,13 +225,25 @@ export default function Activity() {
   const routes = snap.outdoorRoutes ?? [];
   const [activity, setActivity] = useState<ActivityKind>(held?.live.activity ?? opened);
   const [routeId, setRouteId] = useState<string | null>(held?.live.routeId ?? null);
+  const [madeGuide, setMadeGuide] = useState<HeldGuide | null>(null);
+  const [useMade, setUseMade] = useState(false);
   const appliedRoute = useRef(false);
+  const appliedMade = useRef(false);
   useEffect(() => {
     if (appliedRoute.current || held || !askedRoute) return;
     if (!routes.some((item) => item.id === askedRoute)) return;
     appliedRoute.current = true;
     setRouteId(askedRoute);
+    setUseMade(false);
   }, [askedRoute, routes]);
+  useEffect(() => {
+    if (appliedMade.current || held || !askedMade) return;
+    const guide = readMadeGuide();
+    if (!guide) return;
+    appliedMade.current = true;
+    setMadeGuide(guide);
+    setUseMade(true);
+  }, [askedMade]);
   const [updatesOn, setUpdatesOn] = useState(false);
   const [intervalMin, setIntervalMin] = useState<3 | 5 | 10>(5);
   const [spoken, setSpoken] = useState(false);
@@ -401,12 +414,12 @@ export default function Activity() {
       setError(OTHER_SESSION_LINE);
       return;
     }
-    const route = routes.find((item) => item.id === routeId) ?? null;
-    const copied = copyGuide(route);
+    const saved = routeId ? routes.find((item) => item.id === routeId) ?? null : null;
+    const copied = guideForStart(saved, madeGuide, useMade && routeId == null);
     const now = Date.now();
     const next: LiveState = {
       activity,
-      routeId: route?.id ?? null,
+      routeId: saved?.id ?? null,
       routeTitle: copied?.title ?? null,
       guide: copied?.points ?? [],
       track: [],
@@ -619,9 +632,12 @@ export default function Activity() {
       <Card>
         <T variant="label">Route</T>
         <T variant="muted">{SAVED_LINE_ON_MAP}</T>
-        <Choice label="No route" selected={routeId == null} onPress={() => setRouteId(null)} />
+        <Choice label="No route" selected={routeId == null && !useMade} onPress={() => { setRouteId(null); setUseMade(false); }} />
+        {madeGuide ? (
+          <Choice label={madeGuide.title} selected={useMade && routeId == null} onPress={() => { setRouteId(null); setUseMade(true); }} />
+        ) : null}
         {routes.map((route) => (
-          <Choice key={route.id} label={route.title} selected={routeId === route.id} onPress={() => setRouteId(route.id)} />
+          <Choice key={route.id} label={route.title} selected={routeId === route.id} onPress={() => { setRouteId(route.id); setUseMade(false); }} />
         ))}
       </Card>
       <Card>
