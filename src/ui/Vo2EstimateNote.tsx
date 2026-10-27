@@ -9,11 +9,14 @@ export function Vo2EstimateNote({
   source,
   today,
   onPlan,
+  showMeasured = true,
 }: {
   measuredOn: string | null;
   source: Vo2Source | null;
   today: string;
   onPlan: () => void;
+  /** The card shows the date beside the number. This hides the second copy. */
+  showMeasured?: boolean;
 }) {
   const stale = measuredOn != null && vo2ReadingIsStale(measuredOn, today);
   return (
@@ -26,7 +29,7 @@ export function Vo2EstimateNote({
           </MoreInfo>
         );
       })}
-      {measuredOn ? <T variant="muted">{vo2MeasuredLine(measuredOn, source)}</T> : null}
+      {showMeasured && measuredOn ? <T variant="muted">{vo2MeasuredLine(measuredOn, source)}</T> : null}
       {stale ? <T>{VO2_STALE_NUDGE}</T> : null}
       {stale ? <Button label={VO2_PLAN_LABEL} onPress={onPlan} /> : null}
     </View>

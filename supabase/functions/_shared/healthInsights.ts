@@ -257,7 +257,7 @@ export function formatSleepHours(hours: number): string {
 }
 
 const FITNESS_LABELS: Record<string, string> = {
-  vo2_max: 'Cardio fitness',
+  vo2_max: 'VO2 max',
   walking_heart_rate: 'Walking heart rate',
   heart_rate_recovery: 'Heart rate recovery',
   strength_minutes: 'Strength minutes',

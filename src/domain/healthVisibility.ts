@@ -25,7 +25,7 @@ const TITLES = {
   HKQuantityTypeIdentifierStepCount: 'Steps',
   HKQuantityTypeIdentifierRestingHeartRate: 'Resting heart rate',
   HKQuantityTypeIdentifierHeartRateVariabilitySDNN: 'Heart rate variability',
-  HKQuantityTypeIdentifierVO2Max: 'Cardio fitness',
+  HKQuantityTypeIdentifierVO2Max: 'VO2 max',
   HKQuantityTypeIdentifierWalkingHeartRateAverage: 'Walking heart rate',
   HKQuantityTypeIdentifierHeartRateRecoveryOneMinute: 'Heart rate recovery',
   HKQuantityTypeIdentifierBodyMass: 'Weight',

@@ -1,5 +1,8 @@
 import { parseIsoDay } from '@/domain/dates';
 
+/** One short sentence on the card. The longer note stays behind More info. */
+export const VO2_CARD_LINE = 'VO2 max is how much oxygen your body can use at full effort.';
+
 /** How Apple Watch estimates VO2 max. Kept as its own sentence so the card can lead with it. */
 export const VO2_ESTIMATE_NOTE =
   'Apple Watch estimates VO2 max after an outdoor walk, run or hike recorded as a workout with GPS and steady heart rate, usually every few days. No new reading means no qualifying workout yet.';

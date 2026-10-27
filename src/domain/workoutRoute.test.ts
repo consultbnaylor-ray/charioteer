@@ -115,7 +115,11 @@ describe('VO2 estimate note', () => {
     const calendar = readFileSync('src/ui/WorkoutCalendar.tsx', 'utf8');
     const plan = readFileSync('src/app/(main)/health-plan.tsx', 'utf8');
     expect(fitness).toContain('<Vo2EstimateNote');
-    expect(fitness.indexOf('Cardio fitness chart')).toBeLessThan(fitness.indexOf('<Vo2EstimateNote'));
+    expect(fitness.indexOf('VO2 max chart')).toBeLessThan(fitness.indexOf('<Vo2EstimateNote'));
+    expect(fitness).toContain('label="VO2 max"');
+    expect(fitness).toContain('{VO2_CARD_LINE}');
+    expect(fitness).toContain('{OUTSIDE_SAFETY_LINE}');
+    expect(fitness).toContain('{OUTSIDE_CRISIS_LINE}');
     const note = readFileSync('src/ui/Vo2EstimateNote.tsx', 'utf8');
     expect(note).toContain('vo2NoteParts(source).map');
     expect(note).toContain('vo2MeasuredLine(measuredOn, source)');

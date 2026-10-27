@@ -134,7 +134,7 @@ const HEALTH_STAT_GAPS: Record<string, { source: string; healthType: string | nu
     manual: false,
   },
   vo2_max: {
-    source: 'Cardio fitness comes from Apple Watch after outdoor walks or runs.',
+    source: 'VO2 max comes from Apple Watch after outdoor walks or runs.',
     healthType: 'HKQuantityTypeIdentifierVO2Max',
     manual: false,
   },
@@ -277,7 +277,7 @@ export const HEALTH_STAT_CATALOGUE: readonly { id: string; section: HealthStatSe
   { id: 'walking_heart_rate', section: 'heart', title: 'Walking heart rate' },
   { id: 'heart_rate_recovery', section: 'heart', title: 'Heart rate recovery' },
   { id: 'session_heart_rate', section: 'heart', title: 'Session heart rate' },
-  { id: 'vo2_max', section: 'fitness', title: 'Cardio fitness' },
+  { id: 'vo2_max', section: 'fitness', title: 'VO2 max' },
   { id: 'mix', section: 'fitness', title: 'Strength, cardio, and other' },
   { id: 'sleep_hours', section: 'sleep', title: 'Sleep' },
   { id: 'hrv_sdnn', section: 'sleep', title: 'Heart rate variability' },

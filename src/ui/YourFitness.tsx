@@ -31,7 +31,8 @@ import { useStatPeriod } from '@/health/useStatPeriod';
 import { fitnessSeriesChart } from '@/domain/chartSeries';
 import { chartBucketForPeriod, type ChartAggregate } from '@/domain/readingChart';
 import { londonDay } from '@/domain/healthInsights';
-import { latestVo2Reading } from '@/domain/vo2Estimate';
+import { latestVo2Reading, VO2_CARD_LINE, vo2MeasuredLine } from '@/domain/vo2Estimate';
+import { OUTSIDE_CRISIS_LINE, OUTSIDE_SAFETY_LINE } from '@/domain/outdoorRoute';
 import { londonToday, periodHeading, rollingWindow } from '@/domain/statWindow';
 import { StatPeriodToggle } from '@/ui/StatPeriodToggle';
 import { closerToGoal, whyGoalMatters, WORKOUT_BUCKET_LABEL, WORKOUT_BUCKETS, type NutritionGoal, type WorkoutBucket } from '@/domain/nutrition';
@@ -104,6 +105,7 @@ export function YourFitness({ onPlanOutdoor }: { onPlanOutdoor: () => void }) {
     }
   }
 
+  const vo2Reading = latestVo2Reading(mergedHealth);
   const goal = snap.nutrition?.goal ?? null;
   const focusState = (text: string) => {
     const saved = snap.healthPlan?.focus.find((action) => action.text.toLowerCase() === text.toLowerCase());
@@ -124,7 +126,7 @@ export function YourFitness({ onPlanOutdoor }: { onPlanOutdoor: () => void }) {
         <View style={{ alignItems: 'center', gap: 6 }}>
           <MeasureRingView
             icon="gauge"
-            label="Cardio fitness"
+            label="VO2 max"
             ring={{
               centre: view.cardio.centre,
               unit: view.cardio.unit,
@@ -133,13 +135,22 @@ export function YourFitness({ onPlanOutdoor }: { onPlanOutdoor: () => void }) {
               tone: view.cardio.tone,
             }}
           />
-          <T variant="muted">Latest reading</T>
-          <FitnessSeries points={view.cardio.series} unit="ml/kg/min" aggregate="mean" label="Cardio fitness chart" />
+          <T style={{ fontFamily: theme.font.bodyStrong }}>{`${view.cardio.centre} ${view.cardio.unit}`}</T>
+          {vo2Reading ? (
+            <T variant="muted">{vo2MeasuredLine(vo2Reading.day, vo2Reading.source)}</T>
+          ) : (
+            <T variant="muted">Latest reading</T>
+          )}
+          <T>{VO2_CARD_LINE}</T>
+          <T variant="muted">{OUTSIDE_SAFETY_LINE}</T>
+          <T variant="muted">{OUTSIDE_CRISIS_LINE}</T>
+          <FitnessSeries points={view.cardio.series} unit="ml/kg/min" aggregate="mean" label="VO2 max chart" />
           <Vo2EstimateNote
-            measuredOn={latestVo2Reading(mergedHealth)?.day ?? null}
-            source={latestVo2Reading(mergedHealth)?.source ?? null}
+            measuredOn={vo2Reading?.day ?? null}
+            source={vo2Reading?.source ?? null}
             today={londonDay(new Date())}
             onPlan={onPlanOutdoor}
+            showMeasured={false}
           />
           <InfoDisclosure about="VO2 max">
             <T>{VO2_WHAT}</T>
@@ -236,7 +247,7 @@ function MoreInfo({ about, onPress }: { about: string; onPress: () => void }) {
 
 const INFO_TITLE: Record<InfoFocus, string> = {
   card: 'Your fitness',
-  cardio: 'Cardio fitness',
+  cardio: 'VO2 max',
   minutes: 'Workout minutes',
   resting: 'Resting heart rate',
 };
@@ -347,7 +358,7 @@ function CardioDetail({
       {cardio ? (
         <MeasureRingView
           icon="gauge"
-          label="Cardio fitness"
+          label="VO2 max"
           ring={{
             centre: cardio.centre,
             unit: cardio.unit,
@@ -357,7 +368,7 @@ function CardioDetail({
           }}
         />
       ) : view.missing ? <T variant="muted">{view.missing}</T> : null}
-      {cardio ? <FitnessSeries points={cardio.series} unit="ml/kg/min" aggregate="mean" label="Cardio fitness chart" /> : null}
+      {cardio ? <FitnessSeries points={cardio.series} unit="ml/kg/min" aggregate="mean" label="VO2 max chart" /> : null}
       <T variant="label">What your number means</T>
       <T>{view.levelWords}</T>
       {cardio ? <T>{cardio.compare.words}</T> : null}

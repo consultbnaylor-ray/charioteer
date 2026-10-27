@@ -5,7 +5,8 @@ import Svg from 'react-native-svg';
 
 import { isoDay, startOfLocalDay } from '@/domain/dates';
 import { BAND_CAVEAT, type BandLink } from '@/domain/healthBands';
-import { latestVo2Reading, type Vo2Source } from '@/domain/vo2Estimate';
+import { latestVo2Reading, VO2_CARD_LINE, vo2MeasuredLine, type Vo2Source } from '@/domain/vo2Estimate';
+import { OUTSIDE_CRISIS_LINE, OUTSIDE_SAFETY_LINE } from '@/domain/outdoorRoute';
 import { chartBucketForPeriod } from '@/domain/readingChart';
 import { parseStatPeriod, rollingWindow, type StatPeriod } from '@/domain/statWindow';
 import { shownError } from '@/domain/errors';
@@ -302,8 +303,16 @@ function StatTile({
           </View>
         ) : null}
         <TileValue tile={tile} />
+        {tile.id === 'vo2_max' && measuredOn ? <T variant="muted">{vo2MeasuredLine(measuredOn, vo2Source)}</T> : null}
+        {tile.id === 'vo2_max' ? <T>{VO2_CARD_LINE}</T> : null}
         {tile.empty ? null : <TileVisual visual={tile.visual} charted={charted} showCaptions={tile.visual.kind !== 'zone'} />}
-        {!tile.empty && tile.hasGuideline ? (
+        {tile.id === 'vo2_max' ? (
+          <>
+            <T variant="muted">{OUTSIDE_SAFETY_LINE}</T>
+            <T variant="muted">{OUTSIDE_CRISIS_LINE}</T>
+          </>
+        ) : null}
+        {!tile.empty && tile.hasGuideline && tile.id !== 'vo2_max' ? (
           <T variant="muted">{tile.id === 'weekly_active_minutes' ? 'Not medical advice. Not a diagnosis.' : 'Not medical advice.'}</T>
         ) : null}
         {tile.empty || tile.visual.kind === 'ring' || tile.visual.kind === 'zone' ? null : (
@@ -321,7 +330,7 @@ function StatTile({
       />
       {tileFaceMentionsWeight(tile) ? <UpdateWeightLink /> : null}
       {charted ? <TileChart tile={tile} today={today} period={period} /> : null}
-      {tile.id === 'vo2_max' && onPlanOutdoor ? <Vo2EstimateNote measuredOn={measuredOn} source={vo2Source} today={today} onPlan={onPlanOutdoor} /> : null}
+      {tile.id === 'vo2_max' && onPlanOutdoor ? <Vo2EstimateNote measuredOn={measuredOn} source={vo2Source} today={today} onPlan={onPlanOutdoor} showMeasured={false} /> : null}
     </View>
   );
 }
