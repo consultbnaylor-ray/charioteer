@@ -6,6 +6,7 @@ import {
   buildHealthStatBoard,
   narrowHealthStatBoard,
   detailShowsStatusAgain,
+  restingTileShowsFitLine,
   gapForStat,
   healthSharingSteps,
   healthTurnOnPlan,
@@ -51,6 +52,12 @@ function input(overrides: Partial<HealthStatBoardInput> = {}): HealthStatBoardIn
     build: 'muscular',
     ...overrides,
   };
+}
+
+function shiftDay(day: string, delta: number): string {
+  const date = new Date(`${day}T12:00:00Z`);
+  date.setUTCDate(date.getUTCDate() + delta);
+  return date.toISOString().slice(0, 10);
 }
 
 function alex(overrides: Partial<HealthStatBoardInput> = {}): HealthStatBoardInput {
@@ -150,9 +157,11 @@ describe('health stat tiles', () => {
 
     const resting = tile(board, 'resting_heart_rate');
     expect(resting.unit).toBe('bpm');
+    expect(resting.valueText).toBe('62');
     expect(resting.status).toBe('Within 60 to 100 bpm');
     expect(resting.mark).toBe('On track');
     expect(resting.hasGuideline).toBe(true);
+    expect(restingTileShowsFitLine(resting)).toBe(false);
     if (resting.visual.kind === 'zone') {
       expect(resting.visual.zoneLow).toBe(60);
       expect(resting.visual.zoneHigh).toBe(100);
@@ -455,6 +464,45 @@ describe('health stat tiles', () => {
       ],
     }));
     expect(tile(down, 'resting_heart_rate').trend).toBe('Down from the 7 days before.');
+    expect(restingTileShowsFitLine(tile(down, 'resting_heart_rate'))).toBe(false);
+    const atSixty = buildHealthStatBoard(input({
+      samples: [{ kind: 'resting_heart_rate', value: 60, recordedOn: today }],
+    }));
+    expect(tile(atSixty, 'resting_heart_rate').valueText).toBe('60');
+    expect(restingTileShowsFitLine(tile(atSixty, 'resting_heart_rate'))).toBe(false);
+
+    const lowToday = '2026-10-27';
+    const week = [53, 64, 56, 58, 55, 60, 59];
+    const before = [66, 66, 66, 66, 66, 66, 66];
+    const earlier = Array.from({ length: 16 }, () => 52);
+    const lowSamples = [
+      ...earlier.map((value, index) => ({ kind: 'resting_heart_rate' as const, value, recordedOn: shiftDay(lowToday, -(29 - index)) })),
+      ...before.map((value, index) => ({ kind: 'resting_heart_rate' as const, value, recordedOn: shiftDay(lowToday, -(13 - index)) })),
+      ...week.map((value, index) => ({ kind: 'resting_heart_rate' as const, value, recordedOn: shiftDay(lowToday, -(6 - index)) })),
+    ];
+    const lowBoard = buildHealthStatBoard(input({ today: lowToday, samples: lowSamples, goalAge: 42, adult: true }));
+    const lowRest = tile(lowBoard, 'resting_heart_rate');
+    expect(lowRest.valueText).toBe('58');
+    expect(lowRest.period).toBe(PERIOD_LAST_7);
+    expect(lowRest.mark).toBe('Note');
+    expect(lowRest.status).toBe('Seek professional guidance.');
+    expect(lowRest.trend).toBe('Down from the 7 days before.');
+    expect(restingTileShowsFitLine(lowRest)).toBe(true);
+    expect(lowRest.visual.kind).toBe('zone');
+    if (lowRest.visual.kind === 'zone') {
+      expect(lowRest.visual.value).toBe(58);
+      expect(lowRest.visual.zoneLow).toBe(60);
+      expect(lowRest.visual.zoneHigh).toBe(100);
+      expect(lowRest.visual.scaleMin).toBe(40);
+      expect(lowRest.visual.scaleMax).toBe(120);
+      const span = lowRest.visual.scaleMax - lowRest.visual.scaleMin;
+      expect((lowRest.visual.value - lowRest.visual.scaleMin) / span).toBeCloseTo(18 / 80, 5);
+      expect((lowRest.visual.zoneLow - lowRest.visual.scaleMin) / span).toBeCloseTo(20 / 80, 5);
+    }
+    const shown = lowRest.readings.map((point) => point.value);
+    expect(Math.min(...shown)).toBe(53);
+    expect(Math.max(...shown)).toBe(64);
+    expect(shown[shown.length - 1]).toBe(59);
     const once = buildHealthStatBoard(input({
       samples: [{ kind: 'walking_heart_rate', value: 96, recordedOn: today }],
     }));

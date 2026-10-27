@@ -76,6 +76,7 @@ import {
   type WorkoutBucket,
   type WorkoutBucketMap,
 } from '@/domain/nutrition';
+import { NHS_RESTING_LOW, restingReadingIsLow } from '@/domain/restingFitness';
 import { STATS_SIGNAL, type StatsTone } from '@/domain/statsOverview';
 
 export const HEALTH_STATS_MISSING = 'No data found yet';
@@ -256,6 +257,17 @@ export const BMI_MUSCLE_NOTE = 'Above the BMI band - common for muscular builds;
 /** A zone or ring already draws the signal and the status. The sheet must not repeat them. */
 export function detailShowsStatusAgain(kind: HealthStatVisual['kind']): boolean {
   return kind !== 'zone' && kind !== 'ring';
+}
+
+/**
+ * The resting card's own figure, under 60. 60 does not qualify.
+ * The under-18 card hides adult ranges, so this line stays off it.
+ */
+export function restingTileShowsFitLine(tile: Pick<HealthStatTile, 'id' | 'status' | 'valueText' | 'visual'>): boolean {
+  if (tile.id !== 'resting_heart_rate') return false;
+  if (tile.status.includes('under 18')) return false;
+  if (tile.visual.kind === 'zone') return tile.visual.value < NHS_RESTING_LOW;
+  return restingReadingIsLow(tile.valueText);
 }
 
 function athleteGoal(goal: NutritionGoal | null): boolean {

@@ -30,8 +30,8 @@ export const RESTING_CARD_CARE = 'Contact your GP or NHS 111.';
 export const LOW_RATE_COULD_BE_FIT = 'But a heart rate below 60 bpm could mean you are very fit.';
 
 /**
- * Short line for the Your fitness card. Shown only when the resting figure on that card is under 60 bpm,
- * the same usual-adult floor as the NHS range and the British Heart Foundation band.
+ * Short line for the resting heart rate card. Shown only when that card's figure is under 60 bpm.
+ * 60 does not show it. The floor is the NHS usual adult range and the British Heart Foundation band.
  */
 export const LOW_RESTING_FIT_LINE =
   'A low resting heart rate can be a sign you are very fit. Speak to a GP if you feel unwell, dizzy, or faint.';
