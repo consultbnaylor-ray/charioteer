@@ -55,6 +55,7 @@ import {
 } from '@/domain/routeAdjust';
 import { LOCATION_FIX_MESSAGE, LOCATION_FIX_PENDING, ROUGH_FIX_LINE, readWhileUsingFix } from '@/location/whileUsing';
 import { FootpathMap } from '@/ui/FootpathMap';
+import { dismissKeyboard } from '@/ui/keyboard';
 import { Button, Card, Choice, ErrorNote, Field, T } from '@/ui/ui';
 
 const DISTANCES = [
@@ -312,6 +313,7 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
     setPending(true);
     try {
       setResults(await repo.searchRoutePlaces(query));
+      dismissKeyboard();
     } catch (err) {
       setError(shownError(err, 'The place search did not answer.'));
     } finally {
@@ -506,7 +508,13 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
         ) : null}
         <Button label="Search" tone="quiet" disabled={query.trim().length < 2 || pending || locating} pending={pending} onPress={() => { void search(); }} />
         {results.map((place) => (
-          <Choice key={`found-${place.id}`} label={place.name} selected={false} onPress={() => pickResult(place)} />
+          <Choice
+            key={`found-${place.id}`}
+            label={place.name}
+            selected={(picking === 'end' ? endName : startName) === place.name}
+            selectOnPressIn
+            onPress={() => pickResult(place)}
+          />
         ))}
         <Button
           label={craving ? 'Make this walk' : 'Make the route'}

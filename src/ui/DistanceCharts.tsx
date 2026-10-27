@@ -6,6 +6,7 @@ import type { ChartBar } from '@/domain/distance';
 import { STATS_SIGNAL, type StatsTone } from '@/domain/statsOverview';
 import { statsToneColors } from '@/ui/statsPalette';
 import { useAppTheme } from '@/ui/theme';
+import { ringDrawsClosed, ringStroke } from '@/ui/ringClose';
 import { T } from '@/ui/ui';
 
 const STEPS = 8;
@@ -139,10 +140,11 @@ export function ProgressRing({
     ? { stroke: theme.colors.ink, centre: theme.colors.ink, muted: theme.colors.muted, track: theme.colors.line }
     : inkFor(tone, surface);
   const ring = size ?? (surface === 'tile' ? 92 : 120);
-  const stroke = ring < 72 ? 7 : ring < 100 ? 9 : 12;
+  const stroke = ringStroke(ring);
   const radius = (ring - stroke) / 2;
   const circumference = 2 * Math.PI * radius;
   const shown = Math.max(0, Math.min(1, fill)) * motion;
+  const closed = ringDrawsClosed(shown, ring);
   const mid = ring / 2;
   const centreSize = (ring < 72 ? (centre.length > 3 ? 13 : 16) : ring < 100 ? 18 : 22) * theme.scale;
   return (
@@ -162,7 +164,7 @@ export function ProgressRing({
             strokeWidth={stroke}
             fill="none"
           />
-          {shown >= 0.999 ? (
+          {closed ? (
             <Circle cx={mid} cy={mid} r={radius} stroke={colors.stroke} strokeWidth={stroke} fill="none" />
           ) : shown > 0 ? (
             <Circle

@@ -407,21 +407,65 @@ export async function retryRouteInvoke<T>(
   return send(1);
 }
 
+function pointFromPair(value: unknown): OutdoorPoint | null {
+  if (!Array.isArray(value) || value.length < 2 || Array.isArray(value[0])) return null;
+  const longitude = Number(value[0]);
+  const latitude = Number(value[1]);
+  if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return null;
+  if (Math.abs(latitude) > 90 || Math.abs(longitude) > 180) return null;
+  return { latitude, longitude };
+}
+
+/** A saved search row, or one OpenRouteService geocode feature. Longitude comes first in the feature. */
+export function placeFromSearchHit(place: unknown): RoutePlace | null {
+  if (!place || typeof place !== 'object') return null;
+  const row = place as {
+    id?: unknown;
+    name?: unknown;
+    geometry?: { coordinates?: unknown };
+    properties?: { label?: unknown; name?: unknown; gid?: unknown; lat?: unknown; lon?: unknown };
+  };
+  const named = typeof row.name === 'string'
+    ? row.name.trim()
+    : typeof row.properties?.label === 'string'
+      ? row.properties.label.trim()
+      : typeof row.properties?.name === 'string'
+        ? row.properties.name.trim()
+        : '';
+  if (!named) return null;
+  const point = finitePoint(row)
+    ?? pointFromPair(row.geometry?.coordinates)
+    ?? finitePoint({ latitude: row.properties?.lat, longitude: row.properties?.lon });
+  if (!point) return null;
+  const rawId = typeof row.id === 'string' && row.id.trim()
+    ? row.id
+    : typeof row.properties?.gid === 'string' && row.properties.gid.trim()
+      ? row.properties.gid
+      : named;
+  return {
+    id: rawId.slice(0, 160),
+    name: named.slice(0, 120),
+    latitude: point.latitude,
+    longitude: point.longitude,
+  };
+}
+
 export function parseRoutePlaces(value: unknown): RoutePlace[] {
   if (!value || typeof value !== 'object') return [];
-  const places = (value as { places?: unknown }).places;
-  if (!Array.isArray(places)) return [];
-  return places.flatMap((place) => {
-    const point = finitePoint(place);
-    if (!point || !place || typeof place !== 'object') return [];
-    const row = place as { id?: unknown; name?: unknown };
-    const name = typeof row.name === 'string' ? row.name.trim() : '';
-    if (!name) return [];
-    return [{
-      id: typeof row.id === 'string' && row.id.trim() ? row.id : name,
-      name: name.slice(0, 120),
-      latitude: point.latitude,
-      longitude: point.longitude,
-    }];
-  }).slice(0, 5);
+  const record = value as { places?: unknown; features?: unknown };
+  const rows = Array.isArray(record.places)
+    ? record.places
+    : Array.isArray(record.features)
+      ? record.features
+      : [];
+  const places: RoutePlace[] = [];
+  const seen = new Set<string>();
+  for (const row of rows) {
+    const place = placeFromSearchHit(row);
+    if (!place || seen.has(place.id)) continue;
+    seen.add(place.id);
+    places.push(place);
+    if (places.length === 5) break;
+  }
+  return places;
 }

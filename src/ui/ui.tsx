@@ -627,6 +627,7 @@ export function Choice({
   onPress,
   tone = 'default',
   badge = 0,
+  selectOnPressIn = false,
 }: {
   label: string;
   selected: boolean;
@@ -635,15 +636,30 @@ export function Choice({
   tone?: 'default' | 'alert';
   /** Unread count drawn as a numbered danger pill beside the label. */
   badge?: number;
+  /**
+   * The search field is still focused when a place result is tapped.
+   * On iPhone that tap dismisses the keyboard and Pressable onPress does not run.
+   * press-in selects the place before the keyboard takes the touch.
+   */
+  selectOnPressIn?: boolean;
 }) {
   const theme = useAppTheme();
   const alert = tone === 'alert';
+  const choose = () => {
+    onPress();
+    dismissKeyboard();
+  };
   return (
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={label}
       accessibilityState={{ selected }}
+      onPressIn={selectOnPressIn ? choose : undefined}
       onPress={() => {
+        if (selectOnPressIn) {
+          dismissKeyboard();
+          return;
+        }
         dismissKeyboard();
         onPress();
       }}
