@@ -125,6 +125,7 @@ describe('health stat tiles', () => {
   it('uses the unit, a word beside the tone, and a shaded band only where a guide exists', () => {
     const board = buildHealthStatBoard(alex());
     const cardio = tile(board, 'vo2_max');
+    expect(cardio.title).toBe('VO2 max');
     expect(cardio.unit).toBe('ml/kg/min');
     expect(cardio.valueText).toBe('42');
     expect(cardio.status).toBe('Steady for your age and sex');
@@ -138,6 +139,14 @@ describe('health stat tiles', () => {
     }
     expect(cardio.meaning).not.toMatch(/56 to 62|59 to 65/);
     expect(cardio.about).toContain('per kg of body weight per minute');
+    expect(gapForStat('vo2_max', 'VO2 max').source).toBe('VO2 max comes from Apple Watch after outdoor walks or runs.');
+    const boardSource = readFileSync('src/ui/HealthStatBoard.tsx', 'utf8');
+    expect(boardSource).toContain('{VO2_CARD_LINE}');
+    expect(boardSource).toContain('<Vo2MeasureBanner />');
+    expect(boardSource.indexOf('<Vo2MeasureBanner />')).toBeLessThan(boardSource.indexOf('{OUTSIDE_SAFETY_LINE}'));
+    expect(boardSource).toContain('vo2MeasuredLine(measuredOn, vo2Source)');
+    expect(boardSource).toContain('{OUTSIDE_SAFETY_LINE}');
+    expect(boardSource).toContain('{OUTSIDE_CRISIS_LINE}');
 
     const resting = tile(board, 'resting_heart_rate');
     expect(resting.unit).toBe('bpm');

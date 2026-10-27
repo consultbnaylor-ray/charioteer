@@ -858,10 +858,10 @@ function levelWordsFor(input: {
       : input.level === 'Strong'
         ? 'above the middle of a published range'
         : 'in the middle of a published range';
-    return `Cardio fitness is about ${round1(input.vo2)} ml/kg/min. For ${sexWord(input.sex)} in their ${decade(input.age)}, that sits ${place}.`;
+    return `VO2 max is about ${round1(input.vo2)} ml/kg/min. For ${sexWord(input.sex)} in their ${decade(input.age)}, that sits ${place}.`;
   }
   if (input.vo2 != null && !input.band) {
-    return `Cardio fitness is about ${round1(input.vo2)} ml/kg/min. Add age and sex on Nutrition for a level.`;
+    return `VO2 max is about ${round1(input.vo2)} ml/kg/min. Add age and sex on Nutrition for a level.`;
   }
   if (!input.level) return 'Not enough readings yet for a level.';
   const phrase = input.phrase ?? 'this week';
@@ -1297,7 +1297,7 @@ function missingLine(input: {
   if (input.permission === 'denied') {
     parts.push('No data found from Apple Health, so new readings will not arrive.');
   }
-  if (!input.hasVo2) parts.push('Cardio fitness appears when the watch has a VO2 max reading.');
+  if (!input.hasVo2) parts.push('VO2 max appears when the watch has a reading.');
   if (input.hasVo2 && !input.hasAgeSex) parts.push('Age and sex on Nutrition turn that reading into a level.');
   if (!input.hasMix && input.hasWork) parts.push('A sync on iPhone keeps strength and cardio apart.');
   if (!input.hasWork && !input.hasLevel && input.permission !== 'denied') {
