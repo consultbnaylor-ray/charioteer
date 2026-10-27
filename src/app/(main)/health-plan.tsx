@@ -167,6 +167,7 @@ export default function HealthPlanScreen() {
         userMetrics={readings.userMetrics}
         age={snap.nutrition.goalAge}
         sex={snap.nutrition.goalSex}
+        showVo2Chart={false}
       />
       <GoalChoices />
       <YourGoal place="plan" />

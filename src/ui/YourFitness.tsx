@@ -46,6 +46,7 @@ import { IconLabel } from '@/ui/statIcons';
 import { PlanTick } from '@/ui/PlanTick';
 import { statsToneColors } from '@/ui/statsPalette';
 import { useAppTheme } from '@/ui/theme';
+import { Vo2MaxChart } from '@/ui/DailyActivity';
 import { GarminTip } from '@/ui/GarminTip';
 import { Vo2EstimateNote, Vo2MeasureBanner } from '@/ui/Vo2EstimateNote';
 import { TowardTargetActivity } from '@/ui/TowardTargetActivity';
@@ -58,7 +59,7 @@ import { Button, Card, Choice, T, playSavedHaptic } from '@/ui/ui';
  */
 export function YourFitness({ onPlanOutdoor }: { onPlanOutdoor: () => void }) {
   const snap = useSnapshot();
-  const { samples: mergedHealth } = useHealthSources();
+  const { samples: mergedHealth, readings } = useHealthSources();
   const repo = useRepository();
   const theme = useAppTheme();
   const [period] = useStatPeriod();
@@ -119,6 +120,12 @@ export function YourFitness({ onPlanOutdoor }: { onPlanOutdoor: () => void }) {
       <T variant="label">Your fitness</T>
       <TowardTargetActivity />
       <GarminTip />
+      <Vo2MaxChart
+        endDay={londonDay(new Date())}
+        userMetrics={readings.userMetrics}
+        age={snap.nutrition?.goalAge ?? null}
+        sex={snap.nutrition?.goalSex ?? null}
+      />
       {view.level ? <T style={{ color: ink(view.level === 'Developing' ? 'watch' : 'good'), fontFamily: theme.font.bodyStrong }}>{view.level}</T> : null}
       <T>{view.levelWords}</T>
       {restingReadingIsLow(view.resting?.reading) ? (
