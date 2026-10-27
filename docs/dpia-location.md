@@ -33,6 +33,20 @@ Saved routes, build 75, approved by Ben on 26 October 2026. His words: "Approve 
 - Rights. There is nothing server-side to export or erase, because the outing path is not sent. The path must not be added to `export_my_data`. Heart rate from this session must not be added either. It must not be combined with sobriety logs (`profiles.sobriety_started_at`, check-ins, or gratitude). A local summary without a path can be deleted on the phone. The phone-only walked line is not added to `export_my_data`. Delete removes that local record.
 - Privacy notice. The Activity tracking section in the privacy note describes this build. It is not a proposal. It is not published ahead of the build.
 
+## Planned collection path: a Bluetooth heart-rate reading
+
+This path is a note for a later build. Garmin and Bluetooth are not in this build. The current heart-rate read is unchanged and is described above: a sample Apple Health already holds, read with a foreground observer while the session is in front. That read stays foreground-only. It does not continue while the phone is locked. The Health share sentence is unchanged. A solicitor folds this planned path in before a build that would read a heart rate over Bluetooth.
+
+Heart rate is health data. Article 9 and the lawful basis stay with the solicitor, as they do for the Apple Health sample.
+
+Before an outing starts, the person picks one watch or heart-rate strap from a list. A plain explanation is on the screen before the iOS Bluetooth prompt. The app connects only to that device. It does not connect to the first device that advertises. A stranger's strap is someone else's health data. The reading runs only while a walk, run, or cycle is running, including when the phone is locked or another app is in front. It stops when the person taps Stop, when they discard the outing, at six hours, and if the app is killed. It does not start at launch. It does not run during a gym session. It does not continue after sign-out.
+
+The heart-rate value stays on the phone. A packet check on the final binary has to show that no heart-rate value, device name, or identifier leaves the phone, and that the binary adds no new network host. The value is not added to `export_my_data`, not written into the saved summary, and not placed next to sobriety fields (`profiles.sobriety_started_at`, check-ins, or gratitude). A Bluetooth error, a device name, an identifier, and a heart-rate value must not reach client-error reporting (`client_errors`, `purge_client_errors`), console logs, analytics, or crash breadcrumbs.
+
+What is remembered is still a decision. The recommendation is to store no address and no identifier, so the person picks the device at the start of every outing. If a later decision stores the iOS peripheral identifier on the phone, that identifier is phone-only. Signing out clears it. Deleting the account clears it. That is the same clear as the walked line. Until that decision, no identifier is stored.
+
+The privacy notice and the nutrition label are updated from the checked binary before a store build. This section is the DPIA note for the planned path. It does not put the path into the current notice. A Finished-screen average of past Apple Health samples is a different read from the live foreground sample, and it is not this Bluetooth path.
+
 ## Data
 
 - A live fix is held in memory on that screen. It is not written to the account and it is not sent to other people.
