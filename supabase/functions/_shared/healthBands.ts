@@ -476,6 +476,18 @@ export function sessionHeartReading(bpm: number, age: number | null | undefined,
   }, zoneSentence(zones));
 }
 
+/**
+ * Walking sheet only, and only while the figure sits under the approximate moderate zone.
+ * Not part of the status line, so the card, the coach, and the other heart sheets stay as they are.
+ */
+export const WALKING_BELOW_ZONE_NOTE =
+  'A walking heart rate below this zone can be because walking is gentle effort. It can also be because you are very fit, since a fitter heart may work less hard at the same pace.';
+
+/** Same cut as zonePlace: under means strictly below the moderate-zone floor. */
+export function walkingBelowModerateZone(bpm: number, zoneLow: number): boolean {
+  return bpm < zoneLow;
+}
+
 export function walkingHeartReading(bpm: number, age: number | null | undefined, goalLabel: string | null): CitedReading | null {
   const zones = intensityZones(age);
   if (!zones) return null;

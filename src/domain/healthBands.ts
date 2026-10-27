@@ -42,6 +42,8 @@ export {
   specificAim,
   sessionHeartReading,
   tanakaMaxHeartRate,
+  WALKING_BELOW_ZONE_NOTE,
+  walkingBelowModerateZone,
   walkingHeartReading,
   zonePlace,
   type BandLink,
