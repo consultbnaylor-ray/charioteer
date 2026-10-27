@@ -4,7 +4,7 @@ import { useWindowDimensions } from 'react-native';
 
 import { currentLive } from '@/activity/oneSession';
 import { useRepository, useSnapshot } from '@/data';
-import { OTHER_SESSION_LINE } from '@/domain/activitySession';
+import { OTHER_SESSION_LINE, startLabel, type ActivityKind } from '@/domain/activitySession';
 import { shownError } from '@/domain/errors';
 import { formatClimb } from '@/domain/findRoute';
 import { routeKindLabel, routeSummary, type OutdoorPoint } from '@/domain/outdoorRoute';
@@ -12,7 +12,6 @@ import { OUTSIDE_SECTION_LABEL } from '@/domain/outsideSection';
 import {
   ADJUST_THIS_ROUTE,
   SAVED_ROUTE_MAP_LABEL,
-  USE_THIS_ROUTE,
   canAdjustSavedRoute,
 } from '@/domain/savedRoute';
 import { LOCATION_FIX_MESSAGE, LOCATION_FIX_PENDING, readWhileUsingFix } from '@/location/whileUsing';
@@ -66,12 +65,12 @@ export default function SavedRouteScreen() {
 
   const name = route.title;
 
-  function useThisRoute() {
+  function startKind(kind: ActivityKind) {
     if (currentLive()) {
       setError(OTHER_SESSION_LINE);
       return;
     }
-    router.push(`/activity?kind=walk&route=${route!.id}` as never);
+    router.push(`/activity?kind=${kind}&route=${route!.id}` as never);
   }
 
   async function saveName() {
@@ -138,7 +137,9 @@ export default function SavedRouteScreen() {
               <Choice label="Where I am" selected={here != null} onPress={() => { void whereIAm(); }} />
             )}
           </Card>
-          <Button label={USE_THIS_ROUTE} onPress={useThisRoute} />
+          <Button label={startLabel('walk')} tone="quiet" onPress={() => startKind('walk')} />
+          <Button label={startLabel('run')} tone="quiet" onPress={() => startKind('run')} />
+          <Button label={startLabel('cycle')} tone="quiet" onPress={() => startKind('cycle')} />
           <Card>
             <RenameRouteFields
               narrow={narrow}

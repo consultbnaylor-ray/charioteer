@@ -1,6 +1,6 @@
 # Start from the route you just made
 
-Design only. Written 26 October 2026. **Not approved.** This branch does not change a screen. No migration is written or applied. No deploy. `ios.buildNumber` stays 72. Branched from the build 75 tip `0571e53` (PR #38).
+Approved by Ben on 27 October 2026, in his words: "Approve all 6". All six decisions below take the recommended option. This branch builds that. No migration is written or applied. No deploy. `ios.buildNumber` stays 72. Branched from the design tip `e6f8474` (PR #41). Not mixed with the route-button hotfix, the walked line, the More info collapse, or the activity-minute build. Not shipped.
 
 Ben, on the made-route card: "Once you've created a route, can you have the Start Walk, Start Run, Start Cycle on this screen too, so you can log the route and get feedback while you're following the map."
 
@@ -94,9 +94,7 @@ A point added and not yet released is not part of either copy. The approved rout
 
 ## Wording
 
-**Not approved.** This section is the list. Nothing new is recommended.
-
-Sentences already in the app. Reuse them. Do not rewrite them.
+Sentences already in the app. Reuse them. Do not rewrite them. The six approvals include no new wording.
 
 - Start a walk
 - Start a run
@@ -112,7 +110,7 @@ Sentences already in the app. Reuse them. Do not rewrite them.
 
 **Use this route** stays an approved sentence. This design takes the button off the open screen. The words are not deleted from the approved list. They are unused on that screen if this design is accepted.
 
-No new sentence is recommended. If a mismatch warning is wanted, it would be new, and it is **not approved**:
+No new sentence. The six approvals do not include a mismatch warning. That sentence stays **not approved**:
 
 - This line was made for a walk. Starting a cycle does not change the line.
 
@@ -136,7 +134,9 @@ The saved-route open screen. The three buttons stand where Use this route stands
 
 ## Decisions for Ben
 
-1. On the saved-route open screen, do the three buttons replace **Use this route**? Recommendation: yes. The person still taps Start.
+Approved by Ben on 27 October 2026, in his words: "Approve all 6".
+
+1. On the saved-route open screen, do the three buttons replace **Use this route**? Recommendation: yes. The person still taps Start. Approved.
 2. On a line made for a walk, Start a run and Start a cycle keep that line and record a run or a cycle. They do not redraw it. Recommendation: yes. No warning sentence.
 3. Leave all three buttons as outline buttons, including when the route was made for a walk. Recommendation: yes. A saved row has no travel type to highlight.
 4. Start from a made route that has not been saved. The outing can be logged. The account does not gain a route. Recommendation: yes.
