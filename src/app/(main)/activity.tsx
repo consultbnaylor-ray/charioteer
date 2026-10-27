@@ -46,7 +46,7 @@ import {
   type SplitMark,
   type UpdateInterval,
 } from '@/domain/activitySession';
-import { SAVED_LINE_ON_MAP, copyGuide, guideLine, guideRoute } from '@/domain/savedRoute';
+import { SAVED_LINE_ON_MAP, guideForStart, guideLine, guideRoute } from '@/domain/savedRoute';
 import { isoDay } from '@/domain/dates';
 import { shownError } from '@/domain/errors';
 import { watchLiveReading, type LiveReading } from '@/health/liveReading';
@@ -225,13 +225,15 @@ export default function Activity() {
   const routes = snap.outdoorRoutes ?? [];
   const [activity, setActivity] = useState<ActivityKind>(held?.live.activity ?? opened);
   const [routeId, setRouteId] = useState<string | null>(held?.live.routeId ?? null);
-  const [guide, setGuide] = useState<MadeRouteGuide | null>(null);
+  const [madeGuide, setMadeGuide] = useState<MadeRouteGuide | null>(null);
+  const [useMade, setUseMade] = useState(false);
   const appliedRoute = useRef(false);
   useEffect(() => {
     if (appliedRoute.current || held || !askedRoute) return;
     if (!routes.some((item) => item.id === askedRoute)) return;
     appliedRoute.current = true;
     setRouteId(askedRoute);
+    setUseMade(false);
   }, [askedRoute, routes]);
   const [updatesOn, setUpdatesOn] = useState(false);
   const [intervalMin, setIntervalMin] = useState<3 | 5 | 10>(5);
@@ -340,17 +342,19 @@ export default function Activity() {
   useEffect(() => {
     const token = madeRouteToken(params.made);
     if (!token || held?.live) return;
-    const taken = takeMadeRoute(token);
+    const taken = copyMadeRoute(takeMadeRoute(token));
     if (!taken) return;
     const kind = isActivityKind(params.kind) ? params.kind : taken.kind;
-    setGuide(taken);
+    setMadeGuide(taken);
+    setUseMade(true);
     setActivity(kind);
     setRouteId(null);
   }, [params.made, params.kind]);
 
   function dropGuide() {
     clearMadeRoute(madeRouteToken(params.made) ?? undefined);
-    setGuide(null);
+    setMadeGuide(null);
+    setUseMade(false);
   }
 
   useEffect(() => {
@@ -419,13 +423,12 @@ export default function Activity() {
       setError(OTHER_SESSION_LINE);
       return;
     }
-    const route = routes.find((item) => item.id === routeId) ?? null;
-    const frozen = route ? null : copyMadeRoute(guide);
-    const copied = copyGuide(route) ?? (frozen ? { title: frozen.title, points: frozen.points } : null);
+    const saved = routeId ? routes.find((item) => item.id === routeId) ?? null : null;
+    const copied = guideForStart(saved, madeGuide, useMade && routeId == null);
     const now = Date.now();
     const next: LiveState = {
       activity,
-      routeId: route?.id ?? null,
+      routeId: saved?.id ?? null,
       routeTitle: copied?.title ?? null,
       guide: copied?.points ?? [],
       track: [],
@@ -638,16 +641,18 @@ export default function Activity() {
       <Card>
         <T variant="label">Route</T>
         <T variant="muted">{SAVED_LINE_ON_MAP}</T>
-        {guide ? <Choice label={guide.title} selected={routeId == null} onPress={() => setRouteId(null)} /> : null}
-        <Choice label="No route" selected={routeId == null && guide == null} onPress={() => { setRouteId(null); dropGuide(); }} />
+        <Choice label="No route" selected={routeId == null && !useMade} onPress={() => { setRouteId(null); dropGuide(); }} />
+        {madeGuide ? (
+          <Choice label={madeGuide.title} selected={useMade && routeId == null} onPress={() => { setRouteId(null); setUseMade(true); }} />
+        ) : null}
         {routes.map((route) => (
-          <Choice key={route.id} label={route.title} selected={routeId === route.id} onPress={() => { setRouteId(route.id); dropGuide(); }} />
+          <Choice key={route.id} label={route.title} selected={routeId === route.id} onPress={() => { setRouteId(route.id); setUseMade(false); }} />
         ))}
       </Card>
-      {guide ? (
+      {useMade && madeGuide ? (
         <Card>
-          <FootpathMap routes={guideAsRoutes(guide)} sketch={[]} here={null} height={windowSize.width < 360 ? 200 : 230} />
-          <T variant="muted">Reminder: {guide.title}. Turns are not spoken.</T>
+          <FootpathMap routes={guideAsRoutes(madeGuide)} sketch={[]} here={null} height={windowSize.width < 360 ? 200 : 230} />
+          <T variant="muted">Reminder: {madeGuide.title}. Turns are not spoken.</T>
         </Card>
       ) : null}
       <Card>

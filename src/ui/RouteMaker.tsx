@@ -434,12 +434,13 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
   }
 
   function beginOuting(kind: ActivityKind) {
-    if (!plan) return;
+    const line = planRef.current;
+    if (!line || line.points.length < 2) return;
     if (currentLive()) {
       setError(OTHER_SESSION_LINE);
       return;
     }
-    holdMadeRoute({ title, kind, points: plan.points });
+    holdMadeRoute({ title: title.trim() || 'My route', kind, points: line.points });
     router.push(`/activity?kind=${kind}&made=${Date.now()}` as never);
   }
 
@@ -562,18 +563,20 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
           {rough && hereSelected ? <T>{ROUGH_FIX_LINE}</T> : null}
           {plan.mocked ? <T>{ROUTE_MOCK_LINE}</T> : null}
           {plan.mode === 'run' ? <T variant="muted">{HIKE_PROFILE_NOTE}</T> : null}
-          {!craving ? (
+          {!craving && plan.points.length >= 2 ? (
             <>
               <Button label={startLabel('walk')} tone="quiet" onPress={() => beginOuting('walk')} />
               <Button label={startLabel('run')} tone="quiet" onPress={() => beginOuting('run')} />
               <Button label={startLabel('cycle')} tone="quiet" onPress={() => beginOuting('cycle')} />
-              <Button
-                label={ADJUST_THE_ROUTE}
-                tone={adjusting ? 'primary' : 'quiet'}
-                disabled={redrawing}
-                onPress={() => setAdjusting((on) => !on)}
-              />
             </>
+          ) : null}
+          {!craving ? (
+            <Button
+              label={ADJUST_THE_ROUTE}
+              tone={adjusting ? 'primary' : 'quiet'}
+              disabled={redrawing}
+              onPress={() => setAdjusting((on) => !on)}
+            />
           ) : null}
           {adjustActions}
           <View accessibilityLabel="Route line">

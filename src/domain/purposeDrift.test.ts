@@ -123,5 +123,13 @@ describe('purpose strings stay on the approved text', () => {
     const minutes = readFileSync('docs/activity-minutes-decisions.md', 'utf8');
     expect(minutes).toContain('Approve the activity minutes design with all recommendations as written');
     expect(minutes).not.toContain('NOT APPROVED');
+    const startFrom = readFileSync('docs/start-from-route-decisions.md', 'utf8');
+    expect(startFrom).toContain('Approved by Ben on 27 October 2026, in his words: "Approve all 6"');
+    expect(startFrom).toContain('This line was made for a walk. Starting a cycle does not change the line.');
+    expect(startFrom).toContain('not approved');
+    expect(startFrom).not.toMatch(/NOT APPROVED/);
+    for (const path of ['src/ui/RouteMaker.tsx', 'src/app/(main)/saved-route.tsx', 'src/app/(main)/activity.tsx']) {
+      expect(readFileSync(path, 'utf8')).not.toContain('This line was made for a walk');
+    }
   });
 });

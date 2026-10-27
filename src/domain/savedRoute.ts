@@ -46,6 +46,32 @@ export function copyGuide(route: Pick<OutdoorRoute, 'title' | 'points'> | null |
   };
 }
 
+/** A made route that has not been saved. It lives in memory until the app is closed. */
+let madeGuide: HeldGuide | null = null;
+
+export function holdMadeGuide(route: { title: string; points: readonly OutdoorPoint[] } | null): HeldGuide | null {
+  madeGuide = copyGuide(route);
+  return madeGuide;
+}
+
+export function readMadeGuide(): HeldGuide | null {
+  return madeGuide ? copyGuide(madeGuide) : null;
+}
+
+/**
+ * A saved row wins. An unsaved redraw is not the guide.
+ * A made route is used only when the person kept that choice and no row is selected.
+ */
+export function guideForStart(
+  saved: Pick<OutdoorRoute, 'title' | 'points'> | null,
+  made: HeldGuide | null,
+  useMade: boolean,
+): HeldGuide | null {
+  if (saved) return copyGuide(saved);
+  if (!useMade) return null;
+  return copyGuide(made);
+}
+
 /** The guide drawn on the live map. It is not a second saved route. */
 export function guideRoute(guide: HeldGuide | null): OutdoorRoute[] {
   if (!guide || guide.points.length < 2) return [];
