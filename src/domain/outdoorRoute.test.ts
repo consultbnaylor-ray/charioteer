@@ -216,8 +216,9 @@ describe('Outside is Good phase 1', () => {
 
     const walk = readFileSync('src/ui/WalkThisOff.tsx', 'utf8');
     expect(walk.indexOf('label="Walk this off"')).toBeLessThan(walk.indexOf('<OutsideFacts'));
-    expect(readFileSync('src/ui/RouteConsentCard.tsx', 'utf8')).toContain('ROUTE_CONSENT_LINES');
-    expect(readFileSync('src/ui/RouteFindingSwitch.tsx', 'utf8')).toContain('ROUTE_CONSENT_LINES');
+    expect(readFileSync('src/ui/RouteConsentCard.tsx', 'utf8')).toContain('RouteServiceNotice');
+    expect(readFileSync('src/ui/RouteFindingSwitch.tsx', 'utf8')).toContain('RouteServiceNotice');
+    expect(readFileSync('src/ui/RouteServiceNotice.tsx', 'utf8')).toContain('ROUTE_CONSENT_LINES');
   });
 
   it('parks Walk this off behind one flag and renames the live section', () => {
