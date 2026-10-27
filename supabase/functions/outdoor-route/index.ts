@@ -3,17 +3,22 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.117.3';
 import { json, preflight } from '../_shared/http.ts';
 import {
   GLOBAL_ROUTE_DAILY_CAP,
+  LOOP_ATTEMPT_CAP,
   NO_PATH_MESSAGE,
+  ORS_DIRECTIONS_DAILY_BUDGET,
   RATE_LIMITED_MESSAGE,
   SNAP_RADIUS_M,
   UNAVAILABLE_MESSAGE,
   buildDirectionsBody,
   buildSnapBody,
+  chooseLoopCandidate,
   classifyOrsFailure,
   cleanPlaceQuery,
   directionsUrl,
   geocodeUrl,
   haversineM,
+  loopCandidateReady,
+  nextLoopRequest,
   orsRequestHeaders,
   parseDirections,
   parseGeocode,
@@ -30,6 +35,14 @@ import {
 
 const recent = new Map<string, number[]>();
 let globalRecent: number[] = [];
+let directionStamps: number[] = [];
+
+function takeDirectionsBudget(now = Date.now()): boolean {
+  const gate = withinGlobalRouteLimit(directionStamps, now, ORS_DIRECTIONS_DAILY_BUDGET);
+  if (!gate.ok) return false;
+  directionStamps = gate.next;
+  return true;
+}
 
 function memoryAllows(userId: string, now = Date.now()): boolean {
   const across = withinGlobalRouteLimit(globalRecent, now);
@@ -103,6 +116,21 @@ Deno.serve(async (req) => {
     if (!vias) return json({ ok: false, code: 'bad_request', message: 'Choose up to five points on the route.' }, 400);
     const lengthM = routeLengthM({ mode, distanceM: body.distanceM, minutes: body.minutes });
     if (!lengthM && vias.length === 0) return json({ ok: false, code: 'bad_request', message: 'Choose a distance or a time.' }, 400);
+    if (shape === 'loop' && vias.length === 0 && lengthM) {
+      const loop = await searchLoop(key, mode, start, lengthM);
+      if (loop.kind === 'failure') return json(loop.failure.body, loop.failure.status);
+      const moved = loop.hit.snapDistanceM != null && loop.hit.snapDistanceM >= 1;
+      return json({
+        ok: true,
+        mocked: false,
+        mode,
+        shape,
+        ...loop.hit.plan,
+        snappedStart: moved ? loop.hit.snappedStart : null,
+        snapDistanceM: moved ? loop.hit.snapDistanceM : null,
+        loopNote: loop.note,
+      });
+    }
     const directions = buildDirectionsBody({ mode, shape, start, end, lengthM: lengthM ?? 0, via: vias });
     if (!directions) return json({ ok: false, code: 'bad_request', message: 'Choose a destination.' }, 400);
     const first = await postDirections(key, mode, shape, directions);
@@ -136,12 +164,83 @@ Deno.serve(async (req) => {
 
 type DirectionPlan = NonNullable<ReturnType<typeof parseDirections>>;
 
+type LoopHit = {
+  plan: DirectionPlan;
+  snappedStart: { latitude: number; longitude: number } | null;
+  snapDistanceM: number | null;
+};
+
+/** Several round trips, then the closest clean line. Stops at the attempt cap and the daily budget. */
+async function searchLoop(
+  key: string,
+  mode: NonNullable<ReturnType<typeof readMode>>,
+  start: { latitude: number; longitude: number },
+  targetM: number,
+): Promise<
+  | { kind: 'plan'; hit: LoopHit; note: 'distance' | 'retrace' | null }
+  | { kind: 'failure'; failure: ReturnType<typeof classifyOrsFailure> }
+> {
+  let length = targetM;
+  let seed = 1;
+  let origin = start;
+  let carried: { point: { latitude: number; longitude: number }; distanceM: number } | null = null;
+  const hits: LoopHit[] = [];
+  let failure: ReturnType<typeof classifyOrsFailure> | null = null;
+  let calls = 0;
+  while (calls < LOOP_ATTEMPT_CAP) {
+    const body = buildDirectionsBody({ mode, shape: 'loop', start: origin, lengthM: length, seed });
+    if (!body) break;
+    calls += 1;
+    const result = await postDirections(key, mode, 'loop', body);
+    if (result.kind === 'failure') {
+      failure = result.failure;
+      if (result.failure.body.code === 'no_path' && carried == null && calls < LOOP_ATTEMPT_CAP) {
+        const snapped = await snapStart(key, mode, start);
+        if (snapped.kind === 'failure') return { kind: 'failure', failure: snapped.failure };
+        if (snapped.kind === 'none') {
+          return { kind: 'failure', failure: { status: 422, body: { ok: false, code: 'no_path', message: NO_PATH_MESSAGE } } };
+        }
+        origin = snapped.point;
+        carried = snapped;
+        continue;
+      }
+      if (hits.length === 0) return { kind: 'failure', failure: result.failure };
+      break;
+    }
+    hits.push({
+      plan: result.plan,
+      snappedStart: carried?.point ?? null,
+      snapDistanceM: carried?.distanceM ?? null,
+    });
+    if (loopCandidateReady(targetM, result.plan)) break;
+    const next = nextLoopRequest(targetM, result.plan.distanceM, length, seed);
+    if (!next) break;
+    length = next.lengthM;
+    seed = next.seed;
+  }
+  const chosen = chooseLoopCandidate(targetM, hits.map((hit) => ({
+    hit,
+    distanceM: hit.plan.distanceM,
+    points: hit.plan.points,
+  })));
+  if (!chosen) {
+    return {
+      kind: 'failure',
+      failure: failure ?? { status: 503, body: { ok: false, code: 'unavailable', message: UNAVAILABLE_MESSAGE } },
+    };
+  }
+  return { kind: 'plan', hit: chosen.choice.hit, note: chosen.note };
+}
+
 async function postDirections(
   key: string,
   mode: NonNullable<ReturnType<typeof readMode>>,
   shape: NonNullable<ReturnType<typeof readShape>>,
   body: Record<string, unknown>,
 ): Promise<{ kind: 'plan'; plan: DirectionPlan } | { kind: 'failure'; failure: ReturnType<typeof classifyOrsFailure> }> {
+  if (!takeDirectionsBudget()) {
+    return { kind: 'failure', failure: { status: 429, body: { ok: false, code: 'rate_limited', message: RATE_LIMITED_MESSAGE } } };
+  }
   const response = await fetch(directionsUrl(mode), {
     method: 'POST',
     headers: {

@@ -17,6 +17,7 @@ import {
   STARTER_PLACES,
   appleMapsUrl,
   formatClimb,
+  loopNoteLine,
   nearestPathLine,
   routeKind,
   type RouteMode,
@@ -405,6 +406,7 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
   }
 
   const mapsUrl = plan ? appleMapsUrl(plan.points, plan.mode) : null;
+  const loopLine = plan ? loopNoteLine(plan.loopNote) : null;
   const mapHeight = Math.max(180, narrow ? 220 : 360);
   const canRemove = edit.kind === 'move';
   const showAdjust = adjustControlsOn({ craving, adjusting, hasPlan: plan != null });
@@ -519,6 +521,7 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
         <Card>
           <T variant="title">{craving ? 'Craving walk' : title}</T>
           <T>{routeSummary({ distanceM: plan.distanceM, durationMinutes: plan.durationMinutes })}</T>
+          {loopLine ? <T>{loopLine}</T> : null}
           <T>{formatClimb(plan.ascentM)}</T>
           {nearLine ? <T>{nearLine}</T> : null}
           {rough && hereSelected ? <T>{ROUGH_FIX_LINE}</T> : null}
