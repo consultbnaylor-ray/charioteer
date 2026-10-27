@@ -2,7 +2,7 @@ import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useState } from 'react';
 
 import { deleteActivitySummary, loadActivitySummaries } from '@/activity/summaries';
-import { useRepository, useSnapshot } from '@/data';
+import { useSnapshot } from '@/data';
 import {
   SUMMARIES_HINT,
   activityWord,
@@ -10,19 +10,15 @@ import {
   distanceLabel,
   type ActivitySummary,
 } from '@/domain/activitySession';
-import {
-  routeKindLabel,
-  routeSummary,
-} from '@/domain/outdoorRoute';
 import { shownError } from '@/domain/errors';
 import { OUTSIDE_SECTION_LABEL, SHOW_WALK_THIS_OFF } from '@/domain/outsideSection';
 import { OutsideFooter } from '@/ui/OutsideFooter';
 import { OutingInProgressBanner } from '@/ui/OutingInProgressBanner';
+import { SavedRouteCard } from '@/ui/SavedRouteCard';
 import { Button, Card, ErrorNote, Screen, T } from '@/ui/ui';
 
 export default function Outside() {
   const snap = useSnapshot();
-  const repo = useRepository();
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   const [outings, setOutings] = useState<ActivitySummary[]>([]);
@@ -41,15 +37,6 @@ export default function Outside() {
       refreshOutings();
     } catch (err) {
       setError(shownError(err, 'Could not delete that outing.'));
-    }
-  }
-
-  async function remove(id: string) {
-    setError(null);
-    try {
-      await repo.deleteOutdoorRoute(id);
-    } catch (err) {
-      setError(shownError(err, 'Could not delete that route.'));
     }
   }
 
@@ -89,18 +76,7 @@ export default function Outside() {
       <Card>
         <T variant="label">Saved routes</T>
         {routes.length === 0 ? <T>Nothing saved yet. A route stays on your account, and you can delete it.</T> : null}
-        {routes.map((route) => (
-          <Card key={route.id}>
-            <T variant="title">{route.title}</T>
-            <T variant="muted">{routeKindLabel(route.kind)} · {routeSummary(route)}</T>
-            <Button
-              label="Delete"
-              tone="quiet"
-              accessibilityLabel={`Delete ${route.title}`}
-              onPress={() => { void remove(route.id); }}
-            />
-          </Card>
-        ))}
+        {routes.map((route) => <SavedRouteCard key={route.id} route={route} />)}
       </Card>
       <OutsideFooter kind="full" />
     </Screen>

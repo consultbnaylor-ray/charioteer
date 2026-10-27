@@ -69,6 +69,7 @@ export function FootpathMap({
   height = 280,
   adjust = null,
   bar = null,
+  mapLabel,
 }: {
   routes: readonly OutdoorRoute[];
   sketch: readonly OutdoorPoint[];
@@ -97,9 +98,11 @@ export function FootpathMap({
   } | null;
   /** Shown under the map while it is full screen. */
   bar?: ReactNode;
+  /** Accessible name. Omitted maps keep "Map with footpaths". */
+  mapLabel?: string;
 }) {
   const [scheme, choose] = useMapScheme();
-  const camera = useHeldCamera(routes, sketch, here, locationFocus, follow);
+  const camera = useHeldCamera(routes, sketch, here, locationFocus, follow, track);
   const [problem, setProblem] = useState<string | null>(null);
   const savedJson = JSON.stringify(savedLineCollection(routes));
   const sketchJson = JSON.stringify(sketchLineCollection(sketch));
@@ -121,6 +124,7 @@ export function FootpathMap({
       onRestore={camera.restore}
       problem={problem}
       bar={bar}
+      mapLabel={mapLabel}
       renderMap={({ height: viewHeight }) => (
         <WebCanvas
           height={viewHeight}
@@ -440,5 +444,5 @@ function WebCanvas({
     mapRef.current?.resize();
   }, [height, ready]);
 
-  return <View ref={host} style={{ height, width: '100%' }} />;
+  return <View ref={host} style={{ height, width: '100%', position: 'relative', overflow: 'hidden' }} />;
 }

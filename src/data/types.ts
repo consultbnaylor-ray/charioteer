@@ -553,6 +553,10 @@ export interface Repository {
   searchRoutePlaces(query: string): Promise<import('@/domain/findRoute').RoutePlace[]>;
   /** Removes one saved walk. */
   deleteOutdoorRoute(id: string): Promise<void>;
+  /** Writes the title on this owner's row. An empty name is refused. Duplicates stay allowed. */
+  renameOutdoorRoute(id: string, title: string): Promise<void>;
+  /** Replaces the line on the same row. Does not insert a second route. */
+  replaceOutdoorRoute(id: string, input: import('@/domain/outdoorRoute').OutdoorRouteDraft): Promise<void>;
   /** Photos this person sent, and photos a buddy sent to them. Not the Community. */
   listSharedPhotos(): Promise<import('@/domain/sharedPhotos').SharedPhotoCard[]>;
   /** Creates a private photo for the chosen accepted buddies. The server drops anyone who is not connected. */

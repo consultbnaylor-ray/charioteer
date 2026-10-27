@@ -13,10 +13,15 @@ function frameOf(
   sketch: readonly OutdoorPoint[],
   here: OutdoorPoint | null,
   locationFocus: number,
+  track: readonly OutdoorPoint[] = [],
 ): HeldCamera {
-  const framed = viewCentre(routes, sketch, here);
+  const hasRoute = routes.some((route) => route.points.length > 0);
+  const walked = !sketch.length && !hasRoute && !here && track.length >= 2
+    ? track[Math.floor(track.length / 2)]
+    : null;
+  const framed = walked ?? viewCentre(routes, sketch, here);
   const centre = locationFocus > 0 && here ? here : framed;
-  const zoom = locationFocus > 0 || sketch.length || routes.length || here ? 15 : 12;
+  const zoom = locationFocus > 0 || sketch.length || routes.length || here || walked ? 15 : 12;
   return { longitude: centre.longitude, latitude: centre.latitude, zoom };
 }
 
@@ -45,8 +50,9 @@ export function useHeldCamera(
   here: OutdoorPoint | null,
   locationFocus: number,
   follow?: boolean,
+  track: readonly OutdoorPoint[] = [],
 ) {
-  const next = frameOf(routes, sketch, here, locationFocus);
+  const next = frameOf(routes, sketch, here, locationFocus, track);
   const held = useRef<HeldCamera>(follow === true ? { ...next, zoom: 16 } : next);
   const nextRef = useRef(next);
   nextRef.current = next;

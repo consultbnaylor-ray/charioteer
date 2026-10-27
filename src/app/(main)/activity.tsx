@@ -1,11 +1,33 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Platform, Switch, useWindowDimensions, View } from 'react-native';
 
+import { clearMadeRoute, copyMadeRoute, guideAsRoutes, madeRouteToken, takeMadeRoute, type MadeRouteGuide } from '@/activity/madeRouteGuide';
 import { claimLive, releaseLive } from '@/activity/oneSession';
 import { speakIfGated, stopSpeaking } from '@/activity/speakLine';
 import { readActivityUpdates, type ActivityUpdateChoice } from '@/activity/updateDefaults';
 import { saveActivitySummary, deleteActivitySummary } from '@/activity/summaries';
+import { dropFinishOnLeave, noteFinishSaved, readFinishHold, setFinishHold } from '@/activity/finishHold';
+import {
+  DROP_ENDS,
+  FEWER_POINTS,
+  KEEP_WHOLE_LINE,
+  LINE_DROPPED_MANY,
+  LINE_DROPPED_ONE,
+  LINE_TOO_SHORT,
+  ON_THIS_PHONE,
+  PHONE_LINE_DELETE,
+  SAVE_ON_PHONE,
+  SIGN_OUT_LINES,
+  copyWalkedPoints,
+  deleteWalkedLine,
+  loadWalkedLines,
+  prepareWalkedLine,
+  saveWalkedLine,
+  suggestWalkedName,
+  type WalkedLine,
+  type WalkedPoint,
+} from '@/activity/walkedLine';
 import { useRepository, useSnapshot } from '@/data';
 import {
   ACTIVITY_LOCATION_LINE,
@@ -45,6 +67,7 @@ import {
   type SplitMark,
   type UpdateInterval,
 } from '@/domain/activitySession';
+import { ROUTE_NAME_FIELD, ROUTE_NEEDS_NAME, SAVED_LINE_ON_MAP, copyGuide, guideForStart, guideLine, guideRoute } from '@/domain/savedRoute';
 import { isoDay } from '@/domain/dates';
 import { shownError } from '@/domain/errors';
 import { watchLiveReading, type LiveReading } from '@/health/liveReading';
@@ -66,6 +89,8 @@ type LiveState = {
   activity: ActivityKind;
   routeId: string | null;
   routeTitle: string | null;
+  /** Points copied at Start. A later rename or delete does not change them. Not sent, and not written into the summary. */
+  guide: { latitude: number; longitude: number }[];
   /** Accepted fixes for the line on the map. Memory only. Stop does not write this. */
   track: { latitude: number; longitude: number }[];
   splits: SplitMark[];
@@ -93,7 +118,6 @@ let screenMounted = false;
 let pushLiveState: ((next: LiveState | null) => void) | null = null;
 let stopFromScreen: (() => void) | null = null;
 let clockTimer: ReturnType<typeof setInterval> | null = null;
-let pendingFinish: { summary: ActivitySummary; limit: boolean; splits: SplitMark[] } | null = null;
 const presenceListeners = new Set<() => void>();
 
 export function runningOutingKind(): ActivityKind | null {
@@ -123,6 +147,7 @@ export function stopRunningOuting(): void {
   stopSpeaking();
   stopActivityWatch();
   releaseLive('outing');
+  const keptLine = copyWalkedPoints(current.track);
   const folded = fold(clearPath(current));
   const saved = summaryFrom({
     id: `${Date.now()}`,
@@ -134,7 +159,7 @@ export function stopRunningOuting(): void {
   void saveActivitySummary(saved).catch(() => undefined);
   say(FINISH_LINE, current.spoken);
   stopOutingClock();
-  pendingFinish = { summary: saved, limit: false, splits: current.splits.slice() };
+  setFinishHold({ summary: saved, limit: false, splits: current.splits.slice(), line: keptLine, savedId: null });
   held = null;
   publish(null);
   notifyOutingPresence();
@@ -205,9 +230,15 @@ function clearPath(live: LiveState): LiveState {
   return { ...live, track: [] };
 }
 
+function oneParam(value: string | string[] | undefined): string | null {
+  const raw = Array.isArray(value) ? value[0] : value;
+  return raw && raw.length > 0 ? raw : null;
+}
+
 export default function Activity() {
-  const params = useLocalSearchParams<{ kind?: string }>();
+  const params = useLocalSearchParams<{ kind?: string; route?: string | string[]; made?: string | string[] }>();
   const opened = isActivityKind(params.kind) ? params.kind : 'walk';
+  const askedRoute = oneParam(params.route);
   const router = useRouter();
   const theme = useAppTheme();
   const repo = useRepository();
@@ -215,21 +246,43 @@ export default function Activity() {
   const routes = snap.outdoorRoutes ?? [];
   const [activity, setActivity] = useState<ActivityKind>(held?.live.activity ?? opened);
   const [routeId, setRouteId] = useState<string | null>(held?.live.routeId ?? null);
+  const [madeGuide, setMadeGuide] = useState<MadeRouteGuide | null>(null);
+  const [useMade, setUseMade] = useState(false);
+  const appliedRoute = useRef(false);
+  useEffect(() => {
+    if (appliedRoute.current || held || !askedRoute) return;
+    if (!routes.some((item) => item.id === askedRoute)) return;
+    appliedRoute.current = true;
+    setRouteId(askedRoute);
+    setUseMade(false);
+  }, [askedRoute, routes]);
   const [updatesOn, setUpdatesOn] = useState(false);
   const [intervalMin, setIntervalMin] = useState<3 | 5 | 10>(5);
   const [spoken, setSpoken] = useState(false);
   const [following, setFollowing] = useState(true);
-  const [phase, setPhase] = useState<'setup' | 'live' | 'finish'>(pendingFinish ? 'finish' : held ? 'live' : 'setup');
+  const [phase, setPhase] = useState<'setup' | 'live' | 'finish'>(readFinishHold() ? 'finish' : held ? 'live' : 'setup');
   const windowSize = useWindowDimensions();
+  const mapHeight = windowSize.width < 360 ? 200 : 230;
   const [live, setLive] = useState<LiveState | null>(held?.live ?? null);
-  const [summary, setSummary] = useState<ActivitySummary | null>(pendingFinish?.summary ?? null);
-  const [endedByLimit, setEndedByLimit] = useState(pendingFinish?.limit ?? false);
+  const [summary, setSummary] = useState<ActivitySummary | null>(readFinishHold()?.summary ?? null);
+  const [endedByLimit, setEndedByLimit] = useState(readFinishHold()?.limit ?? false);
   const [heart, setHeart] = useState<LiveReading>({ bpm: null, bpmAtMs: null, activeKcal: null });
   const [note, setNote] = useState('');
   const [diary, setDiary] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
-  const [savedSplits, setSavedSplits] = useState<SplitMark[]>(pendingFinish?.splits ?? []);
+  const [savedSplits, setSavedSplits] = useState<SplitMark[]>(readFinishHold()?.splits ?? []);
+  const [finishLine, setFinishLine] = useState<WalkedPoint[]>(readFinishHold()?.line ?? []);
+  const [savedLineId, setSavedLineId] = useState<string | null>(readFinishHold()?.savedId ?? null);
+  const [trimEndsOn, setTrimEndsOn] = useState(true);
+  const [fewerOn, setFewerOn] = useState(false);
+  const [lineName, setLineName] = useState(() => {
+    const opening = readFinishHold();
+    return opening ? suggestWalkedName(opening.summary.activity, opening.summary.date) : '';
+  });
+  const [roomNote, setRoomNote] = useState<string | null>(null);
+  const [phoneLines, setPhoneLines] = useState<WalkedLine[]>([]);
+  const [phoneLineId, setPhoneLineId] = useState<string | null>(null);
 
   function commit(next: LiveState | null) {
     publish(next);
@@ -265,6 +318,7 @@ export default function Activity() {
     stopSpeaking();
     stopActivityWatch();
     releaseLive('outing');
+    const keptLine = copyWalkedPoints(current.track);
     const folded = fold(clearPath(current));
     const splits = current.splits.slice();
     const saved = summaryFrom({
@@ -283,13 +337,18 @@ export default function Activity() {
     stopOutingClock();
     held = null;
     notifyOutingPresence();
+    setFinishHold({ summary: saved, limit: reason === 'limit', splits, line: keptLine, savedId: null });
     if (!screenMounted) {
-      pendingFinish = { summary: saved, limit: reason === 'limit', splits };
       publish(null);
       return;
     }
     publish(null);
     setSavedSplits(splits);
+    setFinishLine(keptLine);
+    setSavedLineId(null);
+    setTrimEndsOn(true);
+    setFewerOn(false);
+    setLineName(suggestWalkedName(saved.activity, saved.date));
     setSummary(saved);
     setEndedByLimit(reason === 'limit');
     setPhase('finish');
@@ -311,6 +370,7 @@ export default function Activity() {
       screenMounted = false;
       pushLiveState = null;
       stopFromScreen = null;
+      dropFinishOnLeave();
     };
   }, []);
 
@@ -318,6 +378,36 @@ export default function Activity() {
     if (phase === 'live' && live) held = { live };
     else if (phase !== 'live') held = null;
   }, [phase, live]);
+
+  useEffect(() => {
+    const token = madeRouteToken(params.made);
+    if (!token || held?.live) return;
+    const taken = copyMadeRoute(takeMadeRoute(token));
+    if (!taken) return;
+    const kind = isActivityKind(params.kind) ? params.kind : taken.kind;
+    setMadeGuide(taken);
+    setUseMade(true);
+    setActivity(kind);
+    setRouteId(null);
+    setPhoneLineId(null);
+  }, [params.made, params.kind]);
+
+  function dropGuide() {
+    clearMadeRoute(madeRouteToken(params.made) ?? undefined);
+    setMadeGuide(null);
+    setUseMade(false);
+  }
+
+  useEffect(() => {
+    if (phase !== 'setup' || held) return undefined;
+    let gone = false;
+    void loadWalkedLines().then((rows) => {
+      if (!gone) setPhoneLines(rows);
+    }).catch(() => undefined);
+    return () => {
+      gone = true;
+    };
+  }, [phase]);
 
   useEffect(() => {
     if (held) return undefined;
@@ -385,12 +475,17 @@ export default function Activity() {
       setError(OTHER_SESSION_LINE);
       return;
     }
-    const route = routes.find((item) => item.id === routeId);
+    const phone = phoneLines.find((item) => item.id === phoneLineId) ?? null;
+    const saved = phone || !routeId ? null : routes.find((item) => item.id === routeId) ?? null;
+    const copied = phone
+      ? copyGuide({ title: phone.name, points: phone.points })
+      : guideForStart(saved, madeGuide, useMade && routeId == null);
     const now = Date.now();
     const next: LiveState = {
       activity,
-      routeId: route?.id ?? null,
-      routeTitle: route?.title ?? null,
+      routeId: saved?.id ?? null,
+      routeTitle: copied?.title ?? null,
+      guide: copied?.points ?? [],
       track: [],
       splits: [],
       intervalMin: updatesOn ? intervalMin : 0,
@@ -447,12 +542,72 @@ export default function Activity() {
       }
       setPending(false);
     }
-    pendingFinish = null;
+    dropFinishOnLeave();
+    setFinishLine([]);
     router.back();
   }
 
+  async function keepLine() {
+    if (!summary) return;
+    const name = lineName.trim();
+    if (!name) {
+      setError(ROUTE_NEEDS_NAME);
+      return;
+    }
+    const prepared = prepareWalkedLine(finishLine, { trim: trimEndsOn, fewer: fewerOn });
+    if (prepared.points.length < 2) return;
+    const id = savedLineId ?? `${Date.now()}`;
+    let dropped = 0;
+    try {
+      const kept = await saveWalkedLine({
+        id,
+        name,
+        activity: summary.activity,
+        date: summary.date,
+        points: prepared.points,
+      });
+      dropped = kept.dropped;
+    } catch {
+      setError('Could not keep that line on this phone.');
+      return;
+    }
+    setError(null);
+    setSavedLineId(id);
+    noteFinishSaved(summary.id, id);
+    setRoomNote(dropped > 1 ? LINE_DROPPED_MANY : dropped === 1 ? LINE_DROPPED_ONE : null);
+  }
+
+  async function removePhoneLine(id: string) {
+    try {
+      await deleteWalkedLine(id);
+    } catch {
+      setError('Could not remove that line.');
+      return;
+    }
+    if (phoneLineId === id) setPhoneLineId(null);
+    setPhoneLines(await loadWalkedLines());
+  }
+
   async function discard() {
-    pendingFinish = null;
+    const dropId = readFinishHold()?.savedId ?? savedLineId;
+    if (dropId) {
+      try {
+        await deleteWalkedLine(dropId);
+      } catch {
+        setError('Could not remove that line.');
+        return;
+      }
+    }
+    if (summary) {
+      try {
+        await deleteActivitySummary(summary.id);
+      } catch {
+        setError('Could not remove that summary.');
+        return;
+      }
+    }
+    dropFinishOnLeave();
+    setFinishLine([]);
     ending.current = true;
     stopSpeaking();
     stopActivityWatch();
@@ -462,14 +617,6 @@ export default function Activity() {
     held = null;
     publish(null);
     notifyOutingPresence();
-    if (summary) {
-      try {
-        await deleteActivitySummary(summary.id);
-      } catch {
-        setError('Could not remove that summary.');
-        return;
-      }
-    }
     router.back();
   }
 
@@ -478,8 +625,16 @@ export default function Activity() {
   const heartNow = shownHeart(heart.bpm, heart.bpmAtMs, Date.now());
 
   if (phase === 'finish' && summary) {
+    const prepared = prepareWalkedLine(finishLine, { trim: trimEndsOn, fewer: fewerOn });
     return (
       <Screen key="finish" eyebrow={activityWord(summary.activity)} title="Finished" intro={endedByLimit ? TIME_LIMIT_LINE : "Kept on this phone. Don't keep this throws it away."}>
+        <FootpathMap
+          routes={[]}
+          sketch={[]}
+          here={null}
+          track={prepared.points}
+          height={mapHeight}
+        />
         <Card>
           <T variant="label">Distance</T>
           <T variant="title">{distanceLabel(summary.distanceM)}</T>
@@ -490,6 +645,17 @@ export default function Activity() {
           {savedSplits.map((mark, index) => (
             <T key={mark.kilometre} variant="muted">{splitRow(mark, index === 0 ? 0 : savedSplits[index - 1].movingMs)}</T>
           ))}
+        </Card>
+        <Card>
+          <Field label={ROUTE_NAME_FIELD} value={lineName} onChangeText={setLineName} maxLength={80} />
+          <Choice label={DROP_ENDS} selected={trimEndsOn} onPress={() => setTrimEndsOn(true)} />
+          <Choice label={KEEP_WHOLE_LINE} selected={!trimEndsOn} onPress={() => setTrimEndsOn(false)} />
+          <Choice label={FEWER_POINTS} selected={fewerOn} onPress={() => setFewerOn((value) => !value)} />
+          {trimEndsOn && !prepared.trimmed ? <T variant="muted">{LINE_TOO_SHORT}</T> : null}
+          <Button label="Save this route" onPress={() => { void keepLine(); }} />
+          <T variant="muted">{SAVE_ON_PHONE}</T>
+          <T variant="muted">{SIGN_OUT_LINES}</T>
+          {roomNote ? <T variant="muted">{roomNote}</T> : null}
         </Card>
         <Card>
           <T variant="label">Thumos</T>
@@ -513,11 +679,13 @@ export default function Activity() {
     const quiet = live.intervalMin === 0
       ? 'Updates are off. The clock still runs.'
       : 'The first line comes at the interval you chose.';
-    const planned = live.routeId ? routes.filter((item) => item.id === live.routeId) : [];
+    const guidePoints = live.guide ?? [];
+    const planned = guideRoute(
+      live.routeTitle && guidePoints.length >= 2 ? { title: live.routeTitle, points: guidePoints } : null,
+    );
     const here = live.anchor
       ? { latitude: live.anchor.latitude, longitude: live.anchor.longitude }
       : null;
-    const mapHeight = windowSize.width < 360 ? 200 : 230;
     const into = currentSplitLabel(live.distanceM);
     return (
       <Screen
@@ -580,7 +748,7 @@ export default function Activity() {
           <T>{live.lastLine ?? quiet}</T>
           {live.spoken ? <T variant="muted">{AUDIO_DUCK_LINE}</T> : null}
           {live.spoken ? <T variant="muted">{SPEECH_GATE_NOTE}</T> : null}
-          {live.routeTitle ? <T variant="muted">Reminder: {live.routeTitle}. Turns are not spoken.</T> : null}
+          {live.routeTitle ? <T variant="muted">{guideLine(live.routeTitle)}</T> : null}
         </Card>
         <ActivityGoodToKnow kind="live" />
       </Screen>
@@ -597,12 +765,34 @@ export default function Activity() {
       </Card>
       <Card>
         <T variant="label">Route</T>
-        <T variant="muted">Optional. A saved route is a reminder, not a guide that speaks turns.</T>
-        <Choice label="No route" selected={routeId == null} onPress={() => setRouteId(null)} />
+        <T variant="muted">{SAVED_LINE_ON_MAP}</T>
+        <Choice label="No route" selected={routeId == null && !useMade && phoneLineId == null} onPress={() => { setRouteId(null); setPhoneLineId(null); dropGuide(); }} />
+        {madeGuide ? (
+          <Choice label={madeGuide.title} selected={useMade && routeId == null && phoneLineId == null} onPress={() => { setRouteId(null); setPhoneLineId(null); setUseMade(true); }} />
+        ) : null}
         {routes.map((route) => (
-          <Choice key={route.id} label={route.title} selected={routeId === route.id} onPress={() => setRouteId(route.id)} />
+          <Choice key={route.id} label={route.title} selected={routeId === route.id} onPress={() => { setRouteId(route.id); setPhoneLineId(null); setUseMade(false); }} />
         ))}
+        {phoneLines.length > 0 ? <T variant="label">{ON_THIS_PHONE}</T> : null}
+        {phoneLines.length > 0 ? <T variant="muted">{SIGN_OUT_LINES}</T> : null}
+        {phoneLines.map((line) => (
+          <View key={line.id}>
+            <Choice
+              label={line.name}
+              selected={phoneLineId === line.id}
+              onPress={() => { setPhoneLineId(line.id); setRouteId(null); setUseMade(false); }}
+            />
+            <Button label="Delete" tone="quiet" onPress={() => { void removePhoneLine(line.id); }} />
+          </View>
+        ))}
+        {phoneLines.length > 0 ? <T variant="muted">{PHONE_LINE_DELETE}</T> : null}
       </Card>
+      {useMade && madeGuide ? (
+        <Card>
+          <FootpathMap routes={guideAsRoutes(madeGuide)} sketch={[]} here={null} height={windowSize.width < 360 ? 200 : 230} />
+          <T variant="muted">Reminder: {madeGuide.title}. Turns are not spoken.</T>
+        </Card>
+      ) : null}
       <Card>
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 12, alignItems: 'center' }}>
           <T style={{ flex: 1 }}>Thumos updates</T>

@@ -9,7 +9,6 @@ import {
   APPLE_AND_GARMIN_SOURCE,
   APPLE_SOURCE,
   GARMIN_CALORIE_SOURCE,
-  GARMIN_EXERCISE_SOURCE,
   GARMIN_SOURCE,
   GARMIN_VIGOROUS_MINUTE_WEIGHT,
   NO_STEPS_YET_TODAY,
@@ -17,7 +16,9 @@ import {
   calorieSeries,
   chartSourceCaption,
   distanceSeries,
+  exerciseChartCaption,
   exerciseSeries,
+  garminMinuteSeries,
   floorsSeries,
   garminLatestLines,
   restingSeries,
@@ -44,8 +45,9 @@ describe('daily activity', () => {
     expect(exercise.at(-1)?.day).toBe('2026-10-22');
     expect(exercise.find((point) => point.day === '2026-10-22')).toMatchObject({ value: 34, source: 'apple' });
     expect(exercise.find((point) => point.day === '2026-10-21')).toMatchObject({ value: 40, source: 'garmin' });
-    expect(exercise.find((point) => point.day === '2026-10-22')?.label).toBe('Exercise minutes, Thu 22 Oct: 34 min (Apple Health)');
-    expect(exercise.find((point) => point.day === '2026-10-21')?.label).toBe(`Exercise minutes, Wed 21 Oct: 40 min ${GARMIN_EXERCISE_SOURCE}`);
+    expect(exercise.find((point) => point.day === '2026-10-22')?.label).toBe('Exercise minutes, Thu 22 Oct: 34 min. Apple Health. Not doubled.');
+    expect(exercise.find((point) => point.day === '2026-10-21')?.label).toBe('Exercise minutes, Wed 21 Oct: 40 min. Garmin. 20 moderate and 10 vigorous, vigorous counted twice.');
+    expect(exercise.find((point) => point.day === '2026-10-20')?.label).toBe('No exercise minutes for Tue 20 Oct.');
     expect(activityDayName('2026-10-22')).toBe('Thu 22 Oct');
     expect(mostInOneDay(exercise, 'min')).toBe('Most in one day 40 min');
 
@@ -291,12 +293,19 @@ describe('daily activity', () => {
     };
     const today = '2026-10-23';
 
-    expect(chartSourceCaption(exerciseSeries(end, 7, apple, []), { vigorous: true })).toBe(APPLE_SOURCE);
-    expect(chartSourceCaption(exerciseSeries(end, 7, [], [garmin]), { vigorous: true })).toBe(GARMIN_EXERCISE_SOURCE);
-    expect(chartSourceCaption(exerciseSeries(end, 7, apple, [garmin]), { vigorous: true })).toBe('(Apple Health and Garmin, vigorous counted twice)');
+    expect(exerciseChartCaption(exerciseSeries(end, 7, apple, []))).toBe('Apple Health. Plain minutes. Not doubled.');
+    expect(exerciseChartCaption(exerciseSeries(end, 7, [], [garmin]))).toBe('Garmin. Each vigorous minute is counted twice.');
+    expect(exerciseChartCaption(exerciseSeries(end, 7, apple, [garmin]))).toBe('Apple days are plain exercise minutes. Garmin days count each vigorous minute twice.');
     const exerciseZero = exerciseSeries(today, 7, [{ day: '2026-10-22', value: 60 }], [zero]);
     expect(exerciseZero.find((point) => point.day === today)?.source).toBeNull();
-    expect(chartSourceCaption(exerciseZero, { vigorous: true })).toBe(APPLE_SOURCE);
+    expect(exerciseChartCaption(exerciseZero)).toBe('Apple Health. Plain minutes. Not doubled.');
+    const moderate = garminMinuteSeries(today, 7, [garmin, zero], 'moderate');
+    expect(moderate.find((point) => point.day === '2026-10-21')).toMatchObject({ value: 10, source: 'garmin', empty: false });
+    expect(moderate.find((point) => point.day === '2026-10-23')).toMatchObject({ value: 0, source: 'garmin', empty: false });
+    expect(moderate.find((point) => point.day === '2026-10-22')?.empty).toBe(true);
+    expect(moderate.find((point) => point.day === '2026-10-22')?.label).toContain('No Garmin moderate minutes');
+    const vigorous = garminMinuteSeries(end, 7, [garmin], 'vigorous');
+    expect(vigorous.find((point) => point.day === '2026-10-21')?.label).toBe('Vigorous minutes, Wed 21 Oct: 5 min. Garmin.');
 
     expect(chartSourceCaption(calorieSeries(end, 7, apple, []))).toBe(APPLE_SOURCE);
     expect(chartSourceCaption(calorieSeries(end, 7, [], [garmin]))).toBe(GARMIN_SOURCE);
@@ -322,7 +331,12 @@ describe('daily activity', () => {
     expect(chartSourceCaption(floorsSeries(end, 7, [garmin], apple))).toBe(APPLE_AND_GARMIN_SOURCE);
 
     const charts = readFileSync('src/ui/DailyActivity.tsx', 'utf8');
-    expect(charts).toContain('chartSourceCaption(exercise, { vigorous: true })');
+    expect(charts).toContain('exerciseChartCaption(exercise)');
+    expect(charts).toContain('{exerciseDay.label}');
+    expect(charts).toContain('title="Moderate minutes"');
+    expect(charts).toContain('title="Vigorous minutes"');
+    expect(charts.indexOf('title="Exercise minutes"')).toBeLessThan(charts.indexOf('title="Moderate minutes"'));
+    expect(charts.indexOf('title="Moderate minutes"')).toBeLessThan(charts.indexOf('title="Vigorous minutes"'));
     expect(charts).toContain('chartSourceCaption(calories)');
     expect(charts).toContain('chartSourceCaption(stepPoints)');
     expect(charts).toContain('chartSourceCaption(distance)');

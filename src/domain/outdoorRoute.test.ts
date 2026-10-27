@@ -93,7 +93,12 @@ describe('Outside is Good phase 1', () => {
     const repo = readFileSync('src/data/supabase-repository.ts', 'utf8');
     expect(repo).toContain(".from('outdoor_routes').insert(row)");
     expect(repo).toContain(".from('outdoor_routes').delete()");
-    expect(repo).not.toContain(".from('outdoor_routes').update(");
+    const rename = repo.slice(repo.indexOf('async renameOutdoorRoute'), repo.indexOf('async replaceOutdoorRoute'));
+    const replace = repo.slice(repo.indexOf('async replaceOutdoorRoute'), repo.indexOf('async deletePlannedSession'));
+    expect(rename).toContain(".from('outdoor_routes').update(patch)");
+    expect(rename).not.toContain('.insert(');
+    expect(replace).toContain('.update(row)');
+    expect(replace).not.toContain('.insert(');
     const insert = outdoorRouteInsert('user-1', 'route-1', {
       title: 'Canal loop',
       kind: 'drawn',
@@ -211,8 +216,9 @@ describe('Outside is Good phase 1', () => {
 
     const walk = readFileSync('src/ui/WalkThisOff.tsx', 'utf8');
     expect(walk.indexOf('label="Walk this off"')).toBeLessThan(walk.indexOf('<OutsideFacts'));
-    expect(readFileSync('src/ui/RouteConsentCard.tsx', 'utf8')).toContain('ROUTE_CONSENT_LINES');
-    expect(readFileSync('src/ui/RouteFindingSwitch.tsx', 'utf8')).toContain('ROUTE_CONSENT_LINES');
+    expect(readFileSync('src/ui/RouteConsentCard.tsx', 'utf8')).toContain('RouteServiceNotice');
+    expect(readFileSync('src/ui/RouteFindingSwitch.tsx', 'utf8')).toContain('RouteServiceNotice');
+    expect(readFileSync('src/ui/RouteServiceNotice.tsx', 'utf8')).toContain('ROUTE_CONSENT_LINES');
   });
 
   it('parks Walk this off behind one flag and renames the live section', () => {

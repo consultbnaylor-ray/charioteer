@@ -30,7 +30,11 @@ import {
   mockRoute,
   nearestPathLine,
   parseRoutePlan,
+  ROUTE_INVOKE_RETRY_MS,
+  retryRouteInvoke,
   routeCoordinate,
+  routeInvokeHeaders,
+  routeInvokeShouldRetry,
   routeKind,
   targetLengthM,
 } from '@/domain/findRoute';
@@ -91,12 +95,32 @@ describe('route finding', () => {
     expect(card).toContain('NOT_NOW_ROUTE_FINDING');
     expect(card).toContain('grantRouteFinding');
     expect(card).not.toContain('withdrawRouteFinding');
-    expect(card).toContain('OSM_LICENCE_LINE');
+    expect(card).toContain('RouteServiceNotice');
     expect(card).not.toMatch(/agree to OpenStreetMap|OpenStreetMap's terms/i);
+    const notice = readFileSync('src/ui/RouteServiceNotice.tsx', 'utf8');
+    expect(notice).toContain('OSM_LICENCE_LINE');
+    expect(notice).toContain('ROUTE_CONSENT_CITATION');
+    expect(notice).toContain('ROUTE_RETENTION_NOTE');
+    expect(notice).not.toContain('ROUTE_CONSENT_VERSION');
+    const lead = notice.indexOf('{ROUTE_CONSENT_LINES[0]}');
+    const more = notice.indexOf('<MoreInfo about="route finding">');
+    const folded = notice.indexOf('ROUTE_CONSENT_LINES.slice(1, -1)');
+    const citation = notice.indexOf('{ROUTE_CONSENT_CITATION}');
+    const retention = notice.indexOf('{ROUTE_RETENTION_NOTE}');
+    const closed = notice.indexOf('</MoreInfo>');
+    const turnOff = notice.indexOf('{ROUTE_CONSENT_LINES[ROUTE_CONSENT_LINES.length - 1]}');
+    expect(lead).toBeGreaterThan(-1);
+    expect(lead).toBeLessThan(more);
+    expect(folded).toBeGreaterThan(more);
+    expect(citation).toBeGreaterThan(more);
+    expect(retention).toBeGreaterThan(citation);
+    expect(closed).toBeGreaterThan(retention);
+    expect(turnOff).toBeGreaterThan(closed);
     const profile = readFileSync('src/ui/RouteFindingSwitch.tsx', 'utf8');
     expect(profile).toContain('grantRouteFinding');
     expect(profile).toContain('withdrawRouteFinding');
-    expect(profile).toContain('ROUTE_CONSENT_LINES');
+    expect(profile).toContain('RouteServiceNotice');
+    expect(profile).not.toContain('ROUTE_CONSENT_LINES');
     expect(readFileSync('src/app/(main)/profile.tsx', 'utf8')).toContain('<RouteFindingSwitch');
     expect(readFileSync('src/data/routeConsentStore.ts', 'utf8')).toContain('AsyncStorage');
     expect(readFileSync('src/data/routeConsentStore.ts', 'utf8')).toContain('assertRouteFindingAllowed');
@@ -506,5 +530,84 @@ describe('route finding', () => {
     expect(maker).toContain('{ROUGH_FIX_LINE}');
     expect(readFileSync('src/app/(main)/outside-map.tsx', 'utf8')).not.toContain('ROUGH_FIX_LINE');
     expect(readFileSync('src/ui/OutsideFooter.tsx', 'utf8')).toContain('ROUTE_SERVICE_LINE');
+  });
+
+  it('retries one route invoke after a network failure and does not retry an HTTP answer', async () => {
+    const sleep = async () => undefined;
+    const networkAnswers = [
+      { name: 'FunctionsFetchError', message: 'Failed to send a request to the Edge Function' },
+      new TypeError('Failed to fetch'),
+      new TypeError('Network request failed'),
+      new TypeError('Load failed'),
+    ];
+    for (const error of networkAnswers) {
+      const seen: number[] = [];
+      const result = await retryRouteInvoke(async (attempt) => {
+        seen.push(attempt);
+        if (attempt === 0) return { data: null, error };
+        return { data: { ok: true }, error: null };
+      }, sleep);
+      expect(seen).toEqual([0, 1]);
+      expect(result).toEqual({ data: { ok: true }, error: null });
+    }
+
+    const pauses: number[] = [];
+    await retryRouteInvoke(async (attempt) => {
+      if (attempt === 0) return { data: null, error: new TypeError('Failed to fetch') };
+      return { data: { ok: true }, error: null };
+    }, async (ms) => { pauses.push(ms); });
+    expect(pauses).toEqual([ROUTE_INVOKE_RETRY_MS]);
+
+    const thrown: number[] = [];
+    const recovered = await retryRouteInvoke(async (attempt) => {
+      thrown.push(attempt);
+      if (attempt === 0) throw new TypeError('Network request failed');
+      return { data: { ok: true }, error: null };
+    }, sleep);
+    expect(thrown).toEqual([0, 1]);
+    expect(recovered.data).toEqual({ ok: true });
+
+    const third: number[] = [];
+    const stillDown = await retryRouteInvoke(async (attempt) => {
+      third.push(attempt);
+      return { data: null, error: new TypeError('Failed to fetch') };
+    }, sleep);
+    expect(third).toEqual([0, 1]);
+    expect(stillDown.error).toBeInstanceOf(TypeError);
+
+    for (const status of [400, 401, 422, 429]) {
+      const seen: number[] = [];
+      const result = await retryRouteInvoke(async (attempt) => {
+        seen.push(attempt);
+        return {
+          data: null,
+          error: { name: 'FunctionsHttpError', message: 'non-2xx', context: { status } },
+        };
+      }, sleep);
+      expect(seen).toEqual([0]);
+      expect(result.error).toMatchObject({ context: { status } });
+    }
+
+    let rejectedCalls = 0;
+    await expect(retryRouteInvoke(async () => {
+      rejectedCalls += 1;
+      throw { name: 'FunctionsHttpError', context: { status: 400 } };
+    }, sleep)).rejects.toMatchObject({ context: { status: 400 } });
+    expect(rejectedCalls).toBe(1);
+    expect(routeInvokeShouldRetry(null)).toBe(false);
+    expect(routeInvokeShouldRetry({ name: 'FunctionsRelayError', message: 'Relay error' })).toBe(false);
+    expect(routeInvokeHeaders(0)).toBeUndefined();
+    expect(routeInvokeHeaders(1)).toEqual({ Connection: 'close', 'Cache-Control': 'no-store' });
+    expect(JSON.stringify(routeInvokeHeaders(1))).not.toMatch(/latitude|longitude/);
+
+    const repo = readFileSync('src/data/supabase-repository.ts', 'utf8');
+    const plan = repo.slice(repo.indexOf('async planOutdoorRoute'), repo.indexOf('async searchRoutePlaces'));
+    const search = repo.slice(repo.indexOf('async searchRoutePlaces'), repo.indexOf('async deleteOutdoorRoute'));
+    for (const slice of [plan, search]) {
+      expect(slice).toContain('retryRouteInvoke');
+      expect(slice).toContain('routeInvokeHeaders');
+      expect(slice).toContain("functions.invoke('outdoor-route'");
+      expect(slice).not.toMatch(/console\.(log|info|debug|warn|error)/);
+    }
   });
 });

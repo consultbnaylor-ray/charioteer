@@ -1,8 +1,12 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useRouter } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import { Linking, View, useWindowDimensions } from 'react-native';
 
+import { holdMadeRoute } from '@/activity/madeRouteGuide';
+import { currentLive } from '@/activity/oneSession';
 import { useRepository } from '@/data';
+import { OTHER_SESSION_LINE, startLabel, type ActivityKind } from '@/domain/activitySession';
 import { UserFacingError, shownError } from '@/domain/errors';
 import {
   APPLE_MAPS_NOTE,
@@ -27,6 +31,8 @@ import {
 import {
   ADD_A_POINT,
   ADJUST_THE_ROUTE,
+  adjustControlsOn,
+  countsPhoneRouteRequest,
   LAST_ROUTE_FIGURES,
   REDRAWING_THE_ROUTE,
   RELEASE_TO_REDRAW,
@@ -77,6 +83,7 @@ const phoneRequests = {
 
 export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
   const repo = useRepository();
+  const router = useRouter();
   const craving = purpose === 'craving';
   const [mode, setMode] = useState<RouteMode>('walk');
   const [shape, setShape] = useState<RouteShape>('loop');
@@ -160,7 +167,6 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
     const through = vias.length > 0;
     setRedrawing(true);
     try {
-      setRequestsToday(await noteRouteRequest(phoneRequests));
       const next = await repo.planOutdoorRoute({
         mode: craving ? 'walk' : mode,
         shape: craving ? 'loop' : shape,
@@ -174,12 +180,14 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
       setPlan(next);
       setAcceptedVias([...vias]);
       setShownVias([...vias]);
+      setRequestsToday(await noteRouteRequest(phoneRequests));
       setError(null);
     } catch (err) {
       setPlan(current.plan);
       setAcceptedVias(current.vias);
       setShownVias(current.vias);
       const message = err instanceof UserFacingError ? err.message : shownError(err, ROUTE_UNAVAILABLE);
+      if (countsPhoneRouteRequest(message)) setRequestsToday(await noteRouteRequest(phoneRequests));
       setError(`${message} ${ROUTE_UNCHANGED}`);
     } finally {
       setRedrawing(false);
@@ -371,7 +379,6 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
     }
     setPending(true);
     try {
-      setRequestsToday(await noteRouteRequest(phoneRequests));
       const next = await repo.planOutdoorRoute({
         mode: craving ? 'walk' : mode,
         shape: craving ? 'loop' : shape,
@@ -393,10 +400,13 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
         const label = next.mode === 'run' ? 'Run' : next.mode === 'cycle' ? 'Cycle' : 'Walk';
         setTitle(next.shape === 'a_to_b' ? `${label} to a place` : `${label} loop`);
       }
+      setRequestsToday(await noteRouteRequest(phoneRequests));
     } catch (err) {
       setPlan(null);
       forgetAdjust();
-      setError(err instanceof UserFacingError ? err.message : shownError(err, ROUTE_UNAVAILABLE));
+      const message = err instanceof UserFacingError ? err.message : shownError(err, ROUTE_UNAVAILABLE);
+      if (countsPhoneRouteRequest(message)) setRequestsToday(await noteRouteRequest(phoneRequests));
+      setError(message);
     } finally {
       setPending(false);
     }
@@ -423,10 +433,22 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
     }
   }
 
+  function beginOuting(kind: ActivityKind) {
+    const line = planRef.current;
+    if (!line || line.points.length < 2) return;
+    if (currentLive()) {
+      setError(OTHER_SESSION_LINE);
+      return;
+    }
+    holdMadeRoute({ title: title.trim() || 'My route', kind, points: line.points });
+    router.push(`/activity?kind=${kind}&made=${Date.now()}` as never);
+  }
+
   const mapsUrl = plan ? appleMapsUrl(plan.points, plan.mode) : null;
   const mapHeight = Math.max(180, narrow ? 220 : 360);
   const canRemove = selected != null || shownVias.length > acceptedVias.length;
-  const adjustActions = !craving && adjusting && plan ? (
+  const showAdjust = adjustControlsOn({ craving, adjusting, hasPlan: plan != null });
+  const adjustActions = showAdjust ? (
     <View style={{ gap: 8 }}>
       {guide.length > 0 ? <T>{RELEASE_TO_REDRAW}</T> : null}
       {redrawing ? <T>{REDRAWING_THE_ROUTE}</T> : null}
@@ -541,6 +563,13 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
           {rough && hereSelected ? <T>{ROUGH_FIX_LINE}</T> : null}
           {plan.mocked ? <T>{ROUTE_MOCK_LINE}</T> : null}
           {plan.mode === 'run' ? <T variant="muted">{HIKE_PROFILE_NOTE}</T> : null}
+          {!craving && plan.points.length >= 2 ? (
+            <>
+              <Button label={startLabel('walk')} tone="quiet" onPress={() => beginOuting('walk')} />
+              <Button label={startLabel('run')} tone="quiet" onPress={() => beginOuting('run')} />
+              <Button label={startLabel('cycle')} tone="quiet" onPress={() => beginOuting('cycle')} />
+            </>
+          ) : null}
           {!craving ? (
             <Button
               label={ADJUST_THE_ROUTE}
@@ -549,6 +578,7 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
               onPress={() => setAdjusting((on) => !on)}
             />
           ) : null}
+          {adjustActions}
           <View accessibilityLabel="Route line">
             <FootpathMap
               routes={[]}
@@ -559,7 +589,7 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
               locating={locating}
               height={mapHeight}
               bar={fullScreenBar}
-              adjust={!craving && adjusting ? {
+              adjust={showAdjust ? {
                 enabled: true,
                 vias: shownVias,
                 guide,
@@ -571,7 +601,6 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
             />
           </View>
           {!craving && !adjusting ? <T>{routeRequestsTodayLine(requestsToday)}</T> : null}
-          {adjustActions}
           <Field label="Route name" value={title} onChangeText={setTitle} maxLength={80} />
           <Button label="Save this route" tone="quiet" disabled={pending || title.trim().length === 0} pending={pending} onPress={() => { void save(); }} />
           {saved ? <T>Saved on your account. You can delete it from Outside is Good.</T> : null}

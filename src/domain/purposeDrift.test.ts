@@ -120,5 +120,56 @@ describe('purpose strings stay on the approved text', () => {
       expect(note).not.toContain('prepared and not deployed');
     }
     expect(readFileSync('docs/dpia-location.md', 'utf8')).toContain('A route sends the start, the destination, any points you add on the map, and the travel type.');
+    const minutes = readFileSync('docs/activity-minutes-decisions.md', 'utf8');
+    expect(minutes).toContain('Approve the activity minutes design with all recommendations as written');
+    expect(minutes).not.toContain('NOT APPROVED');
+    const startFrom = readFileSync('docs/start-from-route-decisions.md', 'utf8');
+    expect(startFrom).toContain('Approved by Ben on 27 October 2026, in his words: "Approve all 6"');
+    expect(startFrom).toContain('This line was made for a walk. Starting a cycle does not change the line.');
+    expect(startFrom).toContain('not approved');
+    expect(startFrom).not.toMatch(/NOT APPROVED/);
+    for (const path of ['src/ui/RouteMaker.tsx', 'src/app/(main)/saved-route.tsx', 'src/app/(main)/activity.tsx']) {
+      expect(readFileSync(path, 'utf8')).not.toContain('This line was made for a walk');
+    }
+    const walked = 'A copy of the line stays on this phone only after Save this route. It is not sent. Done without Save drops the line. Delete removes it. The first and last 200 m are left out unless you keep the whole line.';
+    const approved = 'Approve all seven recommendations for the walked route design as written: phone only, separate Save, 200 m trim';
+    for (const path of ['docs/privacy.md', 'docs/privacy.html', 'docs/dpia-location.md', 'docs/store-privacy-labels.md']) {
+      const note = readFileSync(path, 'utf8');
+      expect(note, path).toContain(walked);
+      expect(note, path).toContain(approved);
+      expect(note, path).not.toContain('The outing path is not stored.');
+      expect(note, path).not.toContain('Proposal: a walked line');
+      expect(note, path).not.toContain('were not edited');
+    }
+    const sheet = readFileSync('docs/walked-line-decisions.md', 'utf8');
+    expect(sheet).toContain(approved);
+    expect(sheet).toContain('26 October 2026');
+    expect(sheet).toContain(walked);
+    expect(sheet).not.toContain('New, and **not approved**');
+    expect(sheet).not.toContain('privacy control');
+    expect(sheet).toContain('Approve both removed-to-make-room sentences as written');
+    expect(sheet).not.toMatch(/NOT APPROVED/);
+    expect(sheet).toContain('Stick with saved lines then, that makes more sense');
+    expect(sheet).toContain('Signing out removes your saved lines from this phone.');
+    expect(sheet).not.toContain('Signing out removes your saved routes from this phone.');
+    expect(sheet).toContain('An older line was removed from this phone to make room.');
+    expect(sheet).toContain('Older lines were removed from this phone to make room.');
+    expect(sheet).toContain('tile requests only');
+    const backup = 'On iPhone, AsyncStorage asks iOS to leave this store out of iCloud and device backup. If that request did not apply, a deleted line can persist in an older phone backup the person made.';
+    const casual = 'Leaving out the first and last 200 m reduces what a casual viewer of the phone sees. Keep the whole line stores the exact start and end.';
+    const leave = 'Leaving Finished without Save, including back, drops the in-memory line.';
+    for (const path of ['docs/privacy.md', 'docs/privacy.html', 'docs/dpia-location.md', 'docs/store-privacy-labels.md']) {
+      const note = readFileSync(path, 'utf8');
+      expect(note, path).toContain(backup);
+      expect(note, path).toContain(casual);
+      expect(note, path).toContain(leave);
+      expect(note, path).not.toContain('privacy control');
+      expect(note, path).toContain('asks iOS');
+      expect(note, path).not.toMatch(/\bis excluded\b/);
+    }
+    expect(sheet).toContain('asks iOS');
+    expect(sheet).not.toMatch(/\bis excluded\b/);
+    expect(readFileSync('src/activity/walkedLine.ts', 'utf8')).not.toMatch(/supabase|functions\.invoke|console\.|fetch\(/);
+    expect(readFileSync('app.json', 'utf8')).toContain(LOCATION_WHEN_IN_USE);
   });
 });

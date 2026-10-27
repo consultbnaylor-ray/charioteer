@@ -1,4 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+
+import { clearWalkedLinesForSignOut } from '@/activity/walkedLine';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { Platform } from 'react-native';
 
@@ -19,9 +21,10 @@ import { stripJpegBase64, stripJpegLocation } from '@/domain/photoLocation';
 import { chunkHealthRows } from '@/domain/healthUpload';
 import { rejectRouteCoordinates } from '@/domain/workoutRoute';
 import { assertRouteFindingAllowed } from '@/data/routeConsentStore';
-import { calmRouteMessage, explainRouteFailure, parseRoutePlaces, parseRoutePlan, routeCoordinate, type RoutePlace, type RoutePlan, type RoutePlanInput } from '@/domain/findRoute';
+import { calmRouteMessage, explainRouteFailure, parseRoutePlaces, parseRoutePlan, retryRouteInvoke, routeCoordinate, routeInvokeHeaders, type RoutePlace, type RoutePlan, type RoutePlanInput } from '@/domain/findRoute';
 import type { SharedPhotoCard } from '@/domain/sharedPhotos';
-import { liveOutdoorRouteInsert, outdoorRouteFromRow, outdoorRouteInsert, routeShapeRejected, routeTableMissing, type OutdoorRouteDraft } from '@/domain/outdoorRoute';
+import { liveOutdoorRouteInsert, outdoorRouteFromDraft, outdoorRouteFromRow, outdoorRouteInsert, outdoorRouteRename, outdoorRouteReplace, routeShapeRejected, routeTableMissing, routeTitleOf, type OutdoorRouteDraft } from '@/domain/outdoorRoute';
+import { ROUTE_NEEDS_NAME, ROUTE_UPDATE_GRANT_LINE } from '@/domain/savedRoute';
 import { GARMIN_PERMISSION, readGarminRefreshBody } from '@/domain/healthRefresh';
 const GARMIN_HISTORY_KEY = 'charioteer.garmin.historyRefusedAt';
 import { emptyGarminReadings, garminHistoryCooling, garminPermissionStatus, missingColumn, missingRelation, readingsFromRows, type GarminExportPermission, type GarminReadings } from '../../supabase/functions/_shared/garmin';
@@ -386,7 +389,8 @@ export class SupabaseRepository implements Repository {
   private async start() {
     if (this.started) return;
     this.started = true;
-    this.client.auth.onAuthStateChange((_event, session) => {
+    this.client.auth.onAuthStateChange((event, session) => {
+      if (event === 'SIGNED_OUT') void clearWalkedLinesForSignOut();
       void this.client.realtime.setAuth(session?.access_token ?? null);
       this.listenForMessages(Boolean(session));
       void this.refresh();
@@ -1039,6 +1043,7 @@ export class SupabaseRepository implements Repository {
 
   async signOut(): Promise<void> {
     await this.client.auth.signOut();
+    await clearWalkedLinesForSignOut();
     await this.refresh();
   }
 
@@ -2807,15 +2812,24 @@ export class SupabaseRepository implements Repository {
     }
   }
 
-  /** Missing table stays an empty list. This build does not apply the migration. */
+  /** Missing table stays an empty list. A missing climb column still opens the route. */
   private async loadOutdoorRoutes(userId: string) {
-    const { data, error } = await this.client
+    const full = 'id, title, kind, distance_m, duration_minutes, geometry, ascent_m, created_at';
+    const short = 'id, title, kind, distance_m, duration_minutes, geometry, created_at';
+    const first = await this.client
       .from('outdoor_routes')
-      .select('id, title, kind, distance_m, duration_minutes, geometry, created_at')
+      .select(full)
       .eq('user_id', userId)
       .order('created_at', { ascending: false });
-    if (error) return [];
-    return ((data ?? []) as Row[]).flatMap((row) => {
+    const result = first.error && /ascent_m/i.test(first.error.message ?? '')
+      ? await this.client
+        .from('outdoor_routes')
+        .select(short)
+        .eq('user_id', userId)
+        .order('created_at', { ascending: false })
+      : first;
+    if (result.error) return [];
+    return ((result.data ?? []) as Row[]).flatMap((row) => {
       const route = outdoorRouteFromRow(row);
       return route ? [route] : [];
     });
@@ -2862,7 +2876,7 @@ export class SupabaseRepository implements Repository {
       throw new UserFacingError('That place could not be used.', 'generic');
     }
     try {
-      const invoked = await this.client.functions.invoke('outdoor-route', {
+      const invoked = await retryRouteInvoke((attempt) => this.client.functions.invoke('outdoor-route', {
         body: {
           action: 'route',
           mode: input.mode,
@@ -2873,7 +2887,8 @@ export class SupabaseRepository implements Repository {
           minutes: input.minutes ?? null,
           via: input.via ?? [],
         },
-      });
+        headers: routeInvokeHeaders(attempt),
+      }));
       const plan = parseRoutePlan(invoked.data);
       if (plan) return plan;
       throw new UserFacingError(await explainRouteFailure(invoked.error), 'generic');
@@ -2886,9 +2901,10 @@ export class SupabaseRepository implements Repository {
   async searchRoutePlaces(query: string): Promise<RoutePlace[]> {
     await assertRouteFindingAllowed();
     try {
-      const invoked = await this.client.functions.invoke('outdoor-route', {
+      const invoked = await retryRouteInvoke((attempt) => this.client.functions.invoke('outdoor-route', {
         body: { action: 'search', query },
-      });
+        headers: routeInvokeHeaders(attempt),
+      }));
       const places = parseRoutePlaces(invoked.data);
       if (places.length > 0 || (invoked.data && typeof invoked.data === 'object' && (invoked.data as { ok?: unknown }).ok === true)) {
         return places;
@@ -2908,6 +2924,59 @@ export class SupabaseRepository implements Repository {
     if (error) {
       this.emit({ ...this.snapshot, outdoorRoutes: before });
       throw asUserFacing(error, 'general');
+    }
+  }
+
+  async renameOutdoorRoute(id: string, title: string): Promise<void> {
+    const nextTitle = routeTitleOf(title);
+    if (!nextTitle) throw new UserFacingError(ROUTE_NEEDS_NAME, 'generic');
+    const userId = this.snapshot.session?.userId ?? await this.userId();
+    const before = this.snapshot.outdoorRoutes;
+    const patch = outdoorRouteRename(nextTitle, new Date().toISOString());
+    if (!patch) throw new UserFacingError(ROUTE_NEEDS_NAME, 'generic');
+    this.emit({
+      ...this.snapshot,
+      outdoorRoutes: before.map((item) => (item.id === id ? { ...item, title: nextTitle } : item)),
+    });
+    const { error } = await this.client.from('outdoor_routes').update(patch).eq('id', id).eq('user_id', userId);
+    if (error) {
+      this.emit({ ...this.snapshot, outdoorRoutes: before });
+      throw new UserFacingError(
+        /permission denied|42501/i.test(error.message ?? '') ? ROUTE_UPDATE_GRANT_LINE : 'Could not rename that route.',
+        'generic',
+      );
+    }
+  }
+
+  async replaceOutdoorRoute(id: string, input: OutdoorRouteDraft): Promise<void> {
+    const userId = this.snapshot.session?.userId ?? await this.userId();
+    const before = this.snapshot.outdoorRoutes;
+    const existing = before.find((item) => item.id === id);
+    if (!existing) throw new UserFacingError('Could not save that route.', 'generic');
+    const drafted = outdoorRouteFromDraft(id, { ...input, title: input.title || existing.title });
+    if (!drafted) throw new UserFacingError('Could not save that route.', 'generic');
+    const saved = { ...drafted, createdAt: existing.createdAt, ascentM: input.ascentM ?? null };
+    const patch = outdoorRouteReplace(saved, input.ascentM ?? null, new Date().toISOString());
+    this.emit({
+      ...this.snapshot,
+      outdoorRoutes: before.map((item) => (item.id === id ? saved : item)),
+    });
+    const write = async (row: Record<string, unknown>) => this.client
+      .from('outdoor_routes')
+      .update(row)
+      .eq('id', id)
+      .eq('user_id', userId);
+    let { error } = await write(patch);
+    if (error && /ascent_m/i.test(error.message ?? '') && Object.prototype.hasOwnProperty.call(patch, 'ascent_m')) {
+      const { ascent_m: _ascent, ...rest } = patch;
+      ({ error } = await write(rest));
+    }
+    if (error) {
+      this.emit({ ...this.snapshot, outdoorRoutes: before });
+      throw new UserFacingError(
+        /permission denied|42501/i.test(error.message ?? '') ? ROUTE_UPDATE_GRANT_LINE : 'Could not save that route.',
+        'generic',
+      );
     }
   }
 
@@ -3239,6 +3308,7 @@ export class SupabaseRepository implements Repository {
       const { error } = await this.client.rpc('delete_my_account');
       if (error) throw asUserFacing(error, 'general');
     }
+    await clearWalkedLinesForSignOut();
     await this.client.auth.signOut();
     await this.refresh();
   }

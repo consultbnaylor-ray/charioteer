@@ -1,6 +1,6 @@
 import { isoDay } from '@/domain/dates';
 import type { OutdoorPoint } from '@/domain/outdoorRoute';
-import type { RoutePlan, RoutePlanInput } from '@/domain/findRoute';
+import { ROUTE_OFFLINE, type RoutePlan, type RoutePlanInput } from '@/domain/findRoute';
 
 export const VIA_POINT_CAP = 5;
 export const REDRAW_PAUSE_MS = 500;
@@ -29,6 +29,19 @@ export function viaCountLine(count: number): string {
 export function routeRequestsTodayLine(count: number): string {
   const noun = count === 1 ? 'request' : 'requests';
   return `${count} route ${noun} on this phone today.`;
+}
+
+/**
+ * A request that never left the phone is not counted.
+ * A success, and an answer from the server, are counted once.
+ */
+export function countsPhoneRouteRequest(message: string | null): boolean {
+  return message !== ROUTE_OFFLINE;
+}
+
+/** Adjust is on after the button is tapped, and off after it is tapped again. */
+export function adjustControlsOn(input: { craving: boolean; adjusting: boolean; hasPlan: boolean }): boolean {
+  return !input.craving && input.adjusting && input.hasPlan;
 }
 
 export type DayStore = {
