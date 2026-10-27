@@ -4,7 +4,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg from 'react-native-svg';
 
 import { isoDay, startOfLocalDay } from '@/domain/dates';
-import { BAND_CAVEAT, type BandLink } from '@/domain/healthBands';
+import { BAND_CAVEAT, WALKING_BELOW_ZONE_NOTE, walkingBelowModerateZone, type BandLink } from '@/domain/healthBands';
 import { latestVo2Reading, VO2_CARD_LINE, vo2MeasuredLine, type Vo2Source } from '@/domain/vo2Estimate';
 import { OUTSIDE_CRISIS_LINE, OUTSIDE_SAFETY_LINE } from '@/domain/outdoorRoute';
 import { chartBucketForPeriod } from '@/domain/readingChart';
@@ -510,6 +510,12 @@ function sourceLabel(source: BandLink): string {
   return `${source.name}, ${source.year}`;
 }
 
+/** The walking sheet alone. A low session, resting, recovery, or variability figure uses its own words. */
+function showWalkingBelowZone(tile: HealthStatTile): boolean {
+  const visual = tile.visual;
+  return tile.id === 'walking_heart_rate' && visual.kind === 'zone' && walkingBelowModerateZone(visual.value, visual.zoneLow);
+}
+
 function StatDetail({
   tile,
   today,
@@ -563,6 +569,7 @@ function StatDetail({
                 {tileMentionsWeight(tile) ? <UpdateWeightLink /> : null}
                 <TileValue tile={tile} />
                 {tile.empty ? null : <TileVisual visual={tile.visual} charted={tile.readings.length > 0} />}
+                {showWalkingBelowZone(tile) ? <T>{WALKING_BELOW_ZONE_NOTE}</T> : null}
                 {tile.readings.length > 0 ? <TileChart tile={tile} today={today} period={period} /> : null}
                 {tile.id === 'vo2_max' && onPlanOutdoor ? <Vo2EstimateNote measuredOn={measuredOn} source={vo2Source} today={today} onPlan={() => { onClose(); onPlanOutdoor(); }} /> : null}
                 {!tile.empty && detailShowsStatusAgain(tile.visual.kind) ? <StatusMark tone={tile.tone} status={tile.status} word={tile.mark} /> : null}

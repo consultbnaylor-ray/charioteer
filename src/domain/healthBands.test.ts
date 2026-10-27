@@ -22,6 +22,8 @@ import {
   restingSexNote,
   sessionHeartReading,
   tanakaMaxHeartRate,
+  WALKING_BELOW_ZONE_NOTE,
+  walkingBelowModerateZone,
   walkingHeartReading,
 } from '@/domain/healthBands';
 import { HEALTH_PLAN_PROMPT, healthPlanModelContext, type PlanInput } from '@/domain/healthPlan';
@@ -91,6 +93,35 @@ describe('published health bands', () => {
     expect(reading?.goalLow).toBeNull();
     expect(reading?.links[0]?.year).toBe(2024);
     expect(walkingHeartReading(96, null, null)).toBeNull();
+    expect(WALKING_BELOW_ZONE_NOTE).toBe(
+      'A walking heart rate below this zone can be because walking is gentle effort. It can also be because you are very fit, since a fitter heart may work less hard at the same pace.',
+    );
+    expect(WALKING_BELOW_ZONE_NOTE).toMatch(/\bcan\b/);
+    expect(WALKING_BELOW_ZONE_NOTE).toMatch(/\bmay\b/);
+    expect(reading?.status).not.toContain(WALKING_BELOW_ZONE_NOTE);
+    expect(reading?.meaning).not.toContain(WALKING_BELOW_ZONE_NOTE);
+    expect(reading?.sheet?.compare).not.toContain(WALKING_BELOW_ZONE_NOTE);
+    const zones = intensityZones(42);
+    expect(zones).not.toBeNull();
+    expect(walkingBelowModerateZone(96, zones!.moderateLow)).toBe(true);
+    expect(walkingBelowModerateZone(zones!.moderateLow, zones!.moderateLow)).toBe(false);
+    expect(walkingHeartReading(zones!.moderateLow, 42, null)?.status).toContain('Inside the approximate moderate zone');
+    const easySession = sessionHeartReading(96, 42, 'Lose Fat & Build Muscle');
+    expect(easySession?.status).toContain('Below the moderate zone');
+    expect(easySession?.status).not.toContain(WALKING_BELOW_ZONE_NOTE);
+    expect(recoveryReading(8, null).status).not.toContain(WALKING_BELOW_ZONE_NOTE);
+    expect(hrvReading(20, null).status).not.toContain(WALKING_BELOW_ZONE_NOTE);
+    expect(restingSexNote('Elite Athlete (Cruiserweight Boxer)')).not.toContain(WALKING_BELOW_ZONE_NOTE);
+    expect(publishedBandGuide()).not.toContain(WALKING_BELOW_ZONE_NOTE);
+    expect(referenceBandsForCoach({
+      age: 42,
+      goalLabel: 'Lose Fat & Build Muscle',
+      athlete: false,
+      sessionBpm: 96,
+      walkingBpm: 96,
+      recoveryBpm: 8,
+      hrvMs: 20,
+    })).not.toContain(WALKING_BELOW_ZONE_NOTE);
   });
 
   it('uses the Cole recovery study without turning a larger fall into a target', () => {
@@ -256,5 +287,24 @@ describe('published health bands', () => {
     expect(shared).toContain(CAVEAT);
     expect(readFileSync('supabase/functions/_shared/thumos.ts', 'utf8')).toContain('publishedBandGuide');
     expect(readFileSync('supabase/functions/_shared/healthPlan.ts', 'utf8')).toContain('referenceBandsForCoach');
+    const tileAt = board.indexOf('function StatTile');
+    const gateAt = board.indexOf('function showWalkingBelowZone');
+    const detailAt = board.indexOf('function StatDetail');
+    expect(board.slice(0, tileAt)).toContain('WALKING_BELOW_ZONE_NOTE');
+    expect(board.slice(tileAt, gateAt)).not.toContain('WALKING_BELOW_ZONE_NOTE');
+    expect(gateAt).toBeGreaterThan(tileAt);
+    expect(detailAt).toBeGreaterThan(gateAt);
+    expect(board.slice(gateAt, detailAt)).toContain("tile.id === 'walking_heart_rate'");
+    expect(board.slice(gateAt, detailAt)).toContain('walkingBelowModerateZone(visual.value, visual.zoneLow)');
+    const detail = board.slice(detailAt);
+    const visualAt = detail.indexOf('<TileVisual visual={tile.visual}');
+    const noteAt = detail.indexOf('{WALKING_BELOW_ZONE_NOTE}');
+    const chartAt = detail.indexOf('<TileChart');
+    expect(visualAt).toBeGreaterThan(-1);
+    expect(noteAt).toBeGreaterThan(visualAt);
+    expect(chartAt).toBeGreaterThan(noteAt);
+    expect(detail).not.toContain("tile.id === 'session_heart_rate'");
+    expect(readFileSync('src/domain/healthStatTiles.ts', 'utf8')).not.toContain('WALKING_BELOW_ZONE_NOTE');
+    expect(readFileSync('src/ui/YourFitness.tsx', 'utf8')).not.toContain('WALKING_BELOW_ZONE_NOTE');
   });
 });

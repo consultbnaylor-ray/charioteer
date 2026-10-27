@@ -249,6 +249,10 @@ describe('health stat tiles', () => {
     expect(walking.tone).toBe('info');
     expect(walking.status).toContain('Below the moderate zone');
     expect(walking.status).toContain('This is an approximation.');
+    expect(walking.status).not.toContain('gentle effort');
+    if (walking.visual.kind === 'zone') {
+      expect(walking.visual.value).toBeLessThan(walking.visual.zoneLow);
+    }
     expect(walking.rangeNote).toContain('Approximation, not an Apple norm.');
     expect(walking.meaning).toContain('Apple publishes no normal range');
     expect(walking.trend).toBeNull();
