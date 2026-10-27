@@ -7,16 +7,23 @@ import {
   VIA_POINT_CAP,
   REDRAW_PAUSE_MS,
   adjustControlsOn,
+  MIN_LIFT_METRES,
+  SAME_POINT_METRES,
+  TAP_TO_MOVE,
+  TAP_TO_PLACE,
+  armPlacement,
   beginDrag,
   commitRedraw,
   countsPhoneRouteRequest,
   createRedrawScheduler,
   finishDrag,
+  metresBetween,
   noteRouteRequest,
   placeSearchBody,
   readRouteRequests,
   routePlanBody,
   routeRequestsTodayLine,
+  tapPoint,
   viaCountLine,
   withVia,
   type DayStore,
@@ -98,7 +105,7 @@ describe('route adjusting', () => {
       vias = next ?? vias;
     }
     expect(withVia(vias, far, null)).toBeNull();
-    expect(viaCountLine(5)).toBe('5 of 5 points. Drag one to move it, or remove one.');
+    expect(viaCountLine(5)).toBe('5 of 5 points.');
     expect(withVia(vias, far, 1)?.[1]).toEqual(far);
     const drag = beginDrag(vias, line, { ...vias[0] });
     expect(drag?.viaIndex).toBe(0);
@@ -176,7 +183,7 @@ describe('route adjusting', () => {
 
     const maker = readFileSync('src/ui/RouteMaker.tsx', 'utf8');
     const make = maker.slice(maker.indexOf('async function make'), maker.indexOf('async function save'));
-    const redraw = maker.slice(maker.indexOf('sendRef.current = async'), maker.indexOf('function onMapDown'));
+    const redraw = maker.slice(maker.indexOf('sendRef.current = async'), maker.indexOf('function onMapTap'));
     expect(make.indexOf('planOutdoorRoute')).toBeGreaterThan(-1);
     expect(make.indexOf('planOutdoorRoute')).toBeLessThan(make.indexOf('noteRouteRequest'));
     expect(redraw.indexOf('planOutdoorRoute')).toBeLessThan(redraw.indexOf('noteRouteRequest'));
@@ -202,26 +209,87 @@ describe('route adjusting', () => {
     expect(screen).not.toMatch(/planOutdoorRoute|functions\.invoke|supabase/);
   });
 
-  it('drags a via-point on the iPhone map instead of finishing the press where it started', () => {
+  it('arms a tap, places it, selects a nearby point, and moves one closer than 40 m', () => {
+    const shift = { latitude: start.latitude + 25 / 111_320, longitude: start.longitude };
+    expect(metresBetween(start, shift)).toBeGreaterThan(SAME_POINT_METRES);
+    expect(metresBetween(start, shift)).toBeLessThan(MIN_LIFT_METRES);
+
+    expect(armPlacement(0)).toEqual({ kind: 'place' });
+    expect(armPlacement(VIA_POINT_CAP)).toEqual({ kind: 'idle' });
+
+    const idleTap = tapPoint({ edit: { kind: 'idle' }, vias: [], point: start });
+    expect(idleTap).toEqual({ edit: { kind: 'idle' }, vias: [], send: false });
+
+    const placed = tapPoint({ edit: armPlacement(0), vias: [], point: start });
+    expect(placed.send).toBe(true);
+    expect(placed.vias).toEqual([start]);
+    expect(placed.edit).toEqual({ kind: 'idle' });
+
+    const selected = tapPoint({ edit: { kind: 'idle' }, vias: placed.vias, point: shift });
+    expect(selected.send).toBe(false);
+    expect(selected.vias).toEqual([start]);
+    expect(selected.edit).toEqual({ kind: 'move', index: 0 });
+
+    const stayed = tapPoint({ edit: { kind: 'move', index: 0 }, vias: [start], point: start });
+    expect(stayed.send).toBe(false);
+    expect(stayed.vias).toEqual([start]);
+
+    const moved = tapPoint({ edit: { kind: 'move', index: 0 }, vias: [start], point: shift });
+    expect(moved.send).toBe(true);
+    expect(moved.vias).toEqual([shift]);
+    expect(moved.edit).toEqual({ kind: 'idle' });
+
+    const beside = tapPoint({ edit: { kind: 'place' }, vias: [start], point: shift });
+    expect(beside.send).toBe(true);
+    expect(beside.vias).toEqual([start, shift]);
+
+    const missed = tapPoint({ edit: { kind: 'idle' }, vias: [start], point: far });
+    expect(missed.send).toBe(false);
+    expect(missed.edit).toEqual({ kind: 'idle' });
+    expect(missed.vias).toEqual([start]);
+
+    let full: OutdoorPoint[] = [];
+    for (let index = 0; index < VIA_POINT_CAP; index += 1) {
+      full = withVia(full, { latitude: 51.45 + index / 100, longitude: -2.59 }, null) ?? full;
+    }
+    const sixth = tapPoint({ edit: { kind: 'place' }, vias: full, point: far });
+    expect(sixth.send).toBe(false);
+    expect(sixth.vias).toHaveLength(VIA_POINT_CAP);
+    expect(sixth.edit).toEqual({ kind: 'idle' });
+  });
+
+  it('places a point from one map tap and does not drag an annotation', () => {
     const native = readFileSync('src/ui/FootpathMap.tsx', 'utf8');
-    expect(native).toContain('ViewAnnotation');
-    expect(native).toContain('draggable');
-    expect(native).toContain('onDragStart');
-    expect(native).toContain('onDrag=');
-    expect(native).toContain('onDragEnd');
-    expect(native).toContain('onMove={liveAdjust.onMove}');
-    expect(native).toContain('width: 44');
-    expect(native).toContain('height: 44');
-    expect(native).toContain('if (viaDrag.current) return');
-    expect(native).toContain('showHandles ? []');
-    expect(native).toContain('setScrollEnabled');
-    const press = native.slice(native.indexOf('if (viaDrag.current) return'), native.indexOf('<maps.Camera'));
-    expect(press).toContain('adjust.onDown(point)');
-    expect(press).toContain('adjust.onUp(point)');
-    expect(press).not.toContain('onMove');
+    expect(native).not.toContain('ViewAnnotation');
+    expect(native).not.toContain('draggable');
+    expect(native).not.toContain('onDrag');
+    expect(native).not.toContain('setScrollEnabled');
+    expect(native).not.toContain('onDown');
+    expect(native).not.toContain('onMove');
+    expect(native).toContain('adjust.onTap(point)');
+    expect(native).toContain('flyWhenReady');
+    expect(native).toContain('viaPointCollection(adjust?.vias ?? [])');
     const screen = readFileSync('src/ui/ui.tsx', 'utf8');
-    expect(screen).toContain('setScrollEnabled');
-    expect(screen).toContain('scrollEnabled={pageScroll}');
-    expect(readFileSync('src/ui/FootpathMap.web.tsx', 'utf8')).toContain('onMove');
+    expect(screen).not.toContain('setScrollEnabled');
+    expect(screen).not.toContain('scrollEnabled={pageScroll}');
+    const web = readFileSync('src/ui/FootpathMap.web.tsx', 'utf8');
+    expect(web).toContain("map.on('click', tap)");
+    expect(web).toContain('current.onTap(point)');
+    expect(web).not.toContain('mousedown');
+    expect(web).not.toContain('dragPan');
+    const maker = readFileSync('src/ui/RouteMaker.tsx', 'utf8');
+    const saved = readFileSync('src/ui/SavedRouteAdjust.tsx', 'utf8');
+    for (const source of [maker, saved]) {
+      expect(source).toContain('armPlacement');
+      expect(source).toContain('tapPoint');
+      expect(source).toContain(`<T>{TAP_TO_PLACE}</T>`);
+      expect(source).toContain(`<T>{TAP_TO_MOVE}</T>`);
+      expect(source).toContain('onTap: onMapTap');
+      expect(source).not.toContain('lineMidpoint');
+      expect(source).not.toContain('beginDrag');
+      expect(source).not.toContain('onDown');
+    }
+    expect(TAP_TO_PLACE).toBe('Tap the map to place this point.');
+    expect(TAP_TO_MOVE).toBe('Tap the map to move this point.');
   });
 });

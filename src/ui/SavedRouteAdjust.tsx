@@ -10,26 +10,23 @@ import {
   ADD_A_POINT,
   LAST_ROUTE_FIGURES,
   REDRAWING_THE_ROUTE,
-  RELEASE_TO_REDRAW,
   REMOVE_POINT,
   RESET_ADJUST,
   ROUTE_REQUEST_LIMIT_LINE,
   ROUTE_UNCHANGED,
+  TAP_TO_MOVE,
+  TAP_TO_PLACE,
   UNDO_ADJUST,
   VIA_POINT_CAP,
-  beginDrag,
+  armPlacement,
   createRedrawScheduler,
-  finishDrag,
-  lineMidpoint,
-  movedFarEnough,
-  nearestVia,
   noteRouteRequest,
   readRouteRequests,
   routeRequestsTodayLine,
+  tapPoint,
   viaCountLine,
-  withVia,
   withoutVia,
-  type DragGesture,
+  type PointEdit,
 } from '@/domain/routeAdjust';
 import {
   ADJUST_SENDS,
@@ -61,27 +58,27 @@ export function SavedRouteAdjust({ route, onClose }: { route: OutdoorRoute; onCl
   const [plan, setPlan] = useState<RoutePlan | null>(null);
   const [acceptedVias, setAcceptedVias] = useState<OutdoorPoint[]>([]);
   const [shownVias, setShownVias] = useState<OutdoorPoint[]>([]);
-  const [guide, setGuide] = useState<OutdoorPoint[]>([]);
   const [history, setHistory] = useState<{ plan: RoutePlan | null; vias: OutdoorPoint[] }[]>([]);
   const [requestsToday, setRequestsToday] = useState(0);
   const [redrawing, setRedrawing] = useState(false);
-  const [selected, setSelected] = useState<number | null>(null);
+  const [edit, setEdit] = useState<PointEdit>({ kind: 'idle' });
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [here, setHere] = useState<OutdoorPoint | null>(null);
   const [focus, setFocus] = useState(0);
   const [locating, setLocating] = useState(false);
-  const dragRef = useRef<DragGesture | null>(null);
   const acceptedRef = useRef(acceptedVias);
   const shownRef = useRef(shownVias);
   const planRef = useRef(plan);
   const modeRef = useRef(mode);
   const routeRef = useRef(route);
+  const editRef = useRef(edit);
   acceptedRef.current = acceptedVias;
   shownRef.current = shownVias;
   planRef.current = plan;
   modeRef.current = mode;
   routeRef.current = route;
+  editRef.current = edit;
   const sendRef = useRef<(vias: readonly OutdoorPoint[]) => Promise<void>>(async () => undefined);
   const queueRef = useRef(createRedrawScheduler((vias) => sendRef.current(vias)));
 
@@ -121,88 +118,53 @@ export function SavedRouteAdjust({ route, onClose }: { route: OutdoorRoute; onCl
         setError(ROUTE_UNCHANGED);
       } finally {
         setRedrawing(false);
-        setGuide([]);
       }
     };
   }, [consent.allowed, repo]);
 
-  function lineNow(): OutdoorPoint[] {
-    return planRef.current?.points ?? routeRef.current.points;
+  function clearEdit() {
+    const idle: PointEdit = { kind: 'idle' };
+    editRef.current = idle;
+    setEdit(idle);
   }
 
-  function onMapDown(point: OutdoorPoint) {
-    dragRef.current = beginDrag(shownRef.current, lineNow(), point);
-    queueRef.current.down();
-  }
-
-  function onMapMove(point: OutdoorPoint) {
-    const drag = dragRef.current;
-    if (!drag) return;
-    dragRef.current = { ...drag, current: point };
-    setGuide([drag.origin, point]);
-  }
-
-  function onMapUp(point: OutdoorPoint) {
-    const drag = dragRef.current;
-    dragRef.current = null;
-    setGuide([]);
-    const result = finishDrag(acceptedRef.current, drag ? { ...drag, current: point } : null);
-    if (result.send) {
-      setSelected(null);
-      setShownVias(result.vias);
-      setRedrawing(true);
-      queueRef.current.lift(result.vias);
-      return;
-    }
-    const parkedIndex = shownRef.current.length > acceptedRef.current.length ? shownRef.current.length - 1 : null;
-    const parked = parkedIndex == null ? null : shownRef.current[parkedIndex];
-    if (parked && movedFarEnough(parked, point)) {
-      const placed = withVia(acceptedRef.current, point, null);
-      if (placed) {
-        setSelected(null);
-        setShownVias(placed);
-        setRedrawing(true);
-        queueRef.current.lift(placed);
-        return;
-      }
-    }
-    setSelected(nearestVia(shownRef.current, point));
+  function onMapTap(point: OutdoorPoint) {
+    const result = tapPoint({ edit: editRef.current, vias: shownRef.current, point });
+    editRef.current = result.edit;
+    setEdit(result.edit);
+    if (!result.send) return;
+    setShownVias(result.vias);
+    setRedrawing(true);
+    queueRef.current.lift(result.vias);
   }
 
   function addPoint() {
-    if (shownRef.current.length > acceptedRef.current.length) return;
+    if (!consent.allowed) return;
     if (acceptedRef.current.length >= VIA_POINT_CAP) return;
-    const mid = lineMidpoint(lineNow());
-    if (!mid) return;
-    const next = withVia(shownRef.current, mid, null);
-    if (!next) return;
-    setSelected(null);
-    setShownVias(next);
+    const armed = armPlacement(acceptedRef.current.length);
+    editRef.current = armed;
+    setEdit(armed);
   }
 
   function removePoint() {
-    const index = selected ?? (shownRef.current.length > acceptedRef.current.length ? shownRef.current.length - 1 : null);
-    if (index == null) return;
-    const next = withoutVia(shownRef.current, index);
-    setSelected(null);
+    if (editRef.current.kind !== 'move') return;
+    const next = withoutVia(shownRef.current, editRef.current.index);
+    clearEdit();
     if (next.length === 0) {
       setPlan(null);
       setAcceptedVias([]);
       setShownVias([]);
-      setGuide([]);
       return;
     }
     setShownVias(next);
-    if (next.length === acceptedRef.current.length) return;
     setRedrawing(true);
     queueRef.current.lift(next);
   }
 
   function undoAdjust() {
-    setSelected(null);
+    clearEdit();
     if (shownRef.current.length !== acceptedRef.current.length) {
       setShownVias(acceptedRef.current);
-      setGuide([]);
       return;
     }
     setHistory((stack) => {
@@ -220,8 +182,7 @@ export function SavedRouteAdjust({ route, onClose }: { route: OutdoorRoute; onCl
     setAcceptedVias([]);
     setShownVias([]);
     setHistory([]);
-    setGuide([]);
-    setSelected(null);
+    clearEdit();
     setError(null);
   }
 
@@ -280,7 +241,7 @@ export function SavedRouteAdjust({ route, onClose }: { route: OutdoorRoute; onCl
       ascentM: plan.ascentM,
     }
     : route;
-  const canRemove = selected != null || shownVias.length > acceptedVias.length;
+  const canRemove = edit.kind === 'move';
 
   if (consent.ready && !consent.allowed) {
     return <RouteConsentCard onNotNow={onClose} />;
@@ -301,10 +262,8 @@ export function SavedRouteAdjust({ route, onClose }: { route: OutdoorRoute; onCl
           adjust={consent.allowed ? {
             enabled: true,
             vias: shownVias,
-            guide,
-            onDown: onMapDown,
-            onMove: onMapMove,
-            onUp: onMapUp,
+            selectedIndex: edit.kind === 'move' ? edit.index : null,
+            onTap: onMapTap,
           } : null}
         />
         {locating ? (
@@ -321,9 +280,8 @@ export function SavedRouteAdjust({ route, onClose }: { route: OutdoorRoute; onCl
         <Choice label="Run" selected={mode === 'run'} onPress={() => chooseMode('run')} />
         <Choice label="Cycle" selected={mode === 'cycle'} onPress={() => chooseMode('cycle')} />
         <T>{ADJUST_SENDS}</T>
-        {guide.length > 0 ? <T>{RELEASE_TO_REDRAW}</T> : null}
         {redrawing ? <T>{REDRAWING_THE_ROUTE}</T> : null}
-        {guide.length > 0 || redrawing ? <T>{LAST_ROUTE_FIGURES}</T> : null}
+        {redrawing ? <T>{LAST_ROUTE_FIGURES}</T> : null}
         <T>{viaCountLine(shownVias.length)}</T>
         <T>{routeRequestsTodayLine(requestsToday)}</T>
         <T variant="muted">{ROUTE_REQUEST_LIMIT_LINE}</T>
@@ -333,6 +291,8 @@ export function SavedRouteAdjust({ route, onClose }: { route: OutdoorRoute; onCl
           disabled={shownVias.length >= VIA_POINT_CAP || redrawing || !consent.allowed}
           onPress={addPoint}
         />
+        {edit.kind === 'place' ? <T>{TAP_TO_PLACE}</T> : null}
+        {edit.kind === 'move' ? <T>{TAP_TO_MOVE}</T> : null}
         <View style={narrow ? { gap: 8 } : { flexDirection: 'row', gap: 8 }}>
           <View style={narrow ? undefined : { flex: 1 }}>
             <Button label={UNDO_ADJUST} tone="quiet" disabled={history.length === 0 && shownVias.length === acceptedVias.length} onPress={undoAdjust} />

@@ -32,29 +32,26 @@ import {
   ADD_A_POINT,
   ADJUST_THE_ROUTE,
   adjustControlsOn,
+  armPlacement,
   countsPhoneRouteRequest,
   LAST_ROUTE_FIGURES,
   REDRAWING_THE_ROUTE,
-  RELEASE_TO_REDRAW,
   REMOVE_POINT,
   RESET_ADJUST,
   ROUTE_REQUEST_LIMIT_LINE,
   ROUTE_UNCHANGED,
+  TAP_TO_MOVE,
+  TAP_TO_PLACE,
   UNDO_ADJUST,
   VIA_POINT_CAP,
-  beginDrag,
   createRedrawScheduler,
-  finishDrag,
-  lineMidpoint,
-  movedFarEnough,
-  nearestVia,
   noteRouteRequest,
   readRouteRequests,
   routeRequestsTodayLine,
+  tapPoint,
   viaCountLine,
-  withVia,
   withoutVia,
-  type DragGesture,
+  type PointEdit,
 } from '@/domain/routeAdjust';
 import { LOCATION_FIX_MESSAGE, LOCATION_FIX_PENDING, ROUGH_FIX_LINE, readWhileUsingFix } from '@/location/whileUsing';
 import { FootpathMap } from '@/ui/FootpathMap';
@@ -106,12 +103,11 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
   const [adjusting, setAdjusting] = useState(false);
   const [acceptedVias, setAcceptedVias] = useState<OutdoorPoint[]>([]);
   const [shownVias, setShownVias] = useState<OutdoorPoint[]>([]);
-  const [guide, setGuide] = useState<OutdoorPoint[]>([]);
   const [original, setOriginal] = useState<RoutePlan | null>(null);
   const [history, setHistory] = useState<{ plan: RoutePlan; vias: OutdoorPoint[] }[]>([]);
   const [requestsToday, setRequestsToday] = useState(0);
   const [redrawing, setRedrawing] = useState(false);
-  const [selected, setSelected] = useState<number | null>(null);
+  const [edit, setEdit] = useState<PointEdit>({ kind: 'idle' });
   const { width } = useWindowDimensions();
   const narrow = width < 360;
   const [you, setYou] = useState<OutdoorPoint | null>(null);
@@ -119,13 +115,14 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
   const [rough, setRough] = useState(false);
   const hereSelected = startName === 'Where I am' && start != null;
   const nearLine = plan ? nearestPathLine(plan.snapDistanceM) : null;
-  const dragRef = useRef<DragGesture | null>(null);
   const acceptedRef = useRef(acceptedVias);
   const shownRef = useRef(shownVias);
   const planRef = useRef(plan);
+  const editRef = useRef(edit);
   acceptedRef.current = acceptedVias;
   shownRef.current = shownVias;
   planRef.current = plan;
+  editRef.current = edit;
   const sendRef = useRef<(vias: readonly OutdoorPoint[]) => Promise<void>>(async () => undefined);
   const queueRef = useRef(createRedrawScheduler((vias) => sendRef.current(vias)));
 
@@ -144,15 +141,19 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
     };
   }
 
+  function clearEdit() {
+    const idle: PointEdit = { kind: 'idle' };
+    editRef.current = idle;
+    setEdit(idle);
+  }
+
   function forgetAdjust() {
     setAdjusting(false);
     setAcceptedVias([]);
     setShownVias([]);
-    setGuide([]);
     setOriginal(null);
     setHistory([]);
-    setSelected(null);
-    dragRef.current = null;
+    clearEdit();
   }
 
   sendRef.current = async (vias) => {
@@ -191,81 +192,42 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
       setError(`${message} ${ROUTE_UNCHANGED}`);
     } finally {
       setRedrawing(false);
-      setGuide([]);
     }
   };
 
-  function onMapDown(point: OutdoorPoint) {
-    dragRef.current = beginDrag(shownRef.current, planRef.current?.points ?? [], point);
-    queueRef.current.down();
-  }
-
-  function onMapMove(point: OutdoorPoint) {
-    const drag = dragRef.current;
-    if (!drag) return;
-    dragRef.current = { ...drag, current: point };
-    setGuide([drag.origin, point]);
-  }
-
-  function onMapUp(point: OutdoorPoint) {
-    const drag = dragRef.current;
-    dragRef.current = null;
-    setGuide([]);
-    const result = finishDrag(acceptedRef.current, drag ? { ...drag, current: point } : null);
-    if (result.send) {
-      setSelected(null);
-      setShownVias(result.vias);
-      setRedrawing(true);
-      queueRef.current.lift(result.vias);
-      return;
-    }
-    const parkedIndex = shownRef.current.length > acceptedRef.current.length ? shownRef.current.length - 1 : null;
-    const parked = parkedIndex == null ? null : shownRef.current[parkedIndex];
-    if (parked && movedFarEnough(parked, point)) {
-      const placed = withVia(acceptedRef.current, point, null);
-      if (placed) {
-        setSelected(null);
-        setShownVias(placed);
-        setRedrawing(true);
-        queueRef.current.lift(placed);
-        return;
-      }
-    }
-    setSelected(nearestVia(shownRef.current, point));
+  function onMapTap(point: OutdoorPoint) {
+    const result = tapPoint({ edit: editRef.current, vias: shownRef.current, point });
+    editRef.current = result.edit;
+    setEdit(result.edit);
+    if (!result.send) return;
+    setShownVias(result.vias);
+    setRedrawing(true);
+    queueRef.current.lift(result.vias);
   }
 
   function addPoint() {
-    if (shownRef.current.length > acceptedRef.current.length) return;
     if (acceptedRef.current.length >= VIA_POINT_CAP) return;
-    const points = planRef.current?.points ?? [];
-    const mid = lineMidpoint(points);
-    if (!mid) return;
-    const next = withVia(acceptedRef.current, mid, null);
-    if (!next) return;
-    setShownVias(next);
-    setSelected(next.length - 1);
+    const armed = armPlacement(acceptedRef.current.length);
+    editRef.current = armed;
+    setEdit(armed);
     setAdjusting(true);
   }
 
   function removePoint() {
-    if (shownRef.current.length > acceptedRef.current.length) {
-      setShownVias(acceptedRef.current);
-      setSelected(null);
-      return;
-    }
-    if (selected == null || selected >= acceptedRef.current.length) return;
-    const next = withoutVia(acceptedRef.current, selected);
-    setSelected(null);
+    if (editRef.current.kind !== 'move') return;
+    const index = editRef.current.index;
+    if (index >= acceptedRef.current.length) return;
+    const next = withoutVia(acceptedRef.current, index);
+    clearEdit();
     setShownVias(next);
     setRedrawing(true);
     queueRef.current.lift(next);
   }
 
   function undoAdjust() {
-    setSelected(null);
+    clearEdit();
     if (shownRef.current.length !== acceptedRef.current.length) {
       setShownVias(acceptedRef.current);
-      setGuide([]);
       return;
     }
     setHistory((stack) => {
@@ -284,8 +246,7 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
     setAcceptedVias([]);
     setShownVias([]);
     setHistory([]);
-    setGuide([]);
-    setSelected(null);
+    clearEdit();
   }
 
   function pickStart(place: RoutePlace) {
@@ -391,9 +352,8 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
       setOriginal(next);
       setAcceptedVias([]);
       setShownVias([]);
-      setGuide([]);
       setHistory([]);
-      setSelected(null);
+      clearEdit();
       setAdjusting(false);
       setFocus(0);
       if (!craving) {
@@ -446,13 +406,12 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
 
   const mapsUrl = plan ? appleMapsUrl(plan.points, plan.mode) : null;
   const mapHeight = Math.max(180, narrow ? 220 : 360);
-  const canRemove = selected != null || shownVias.length > acceptedVias.length;
+  const canRemove = edit.kind === 'move';
   const showAdjust = adjustControlsOn({ craving, adjusting, hasPlan: plan != null });
   const adjustActions = showAdjust ? (
     <View style={{ gap: 8 }}>
-      {guide.length > 0 ? <T>{RELEASE_TO_REDRAW}</T> : null}
       {redrawing ? <T>{REDRAWING_THE_ROUTE}</T> : null}
-      {guide.length > 0 || redrawing ? <T>{LAST_ROUTE_FIGURES}</T> : null}
+      {redrawing ? <T>{LAST_ROUTE_FIGURES}</T> : null}
       <T>{viaCountLine(shownVias.length)}</T>
       {shownVias.map((_, index) => (
         <T key={`point-${index}`} accessibilityLabel={`Via point ${index + 1} of ${VIA_POINT_CAP}`}>{`Point ${index + 1}`}</T>
@@ -465,6 +424,8 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
         disabled={shownVias.length >= VIA_POINT_CAP || redrawing}
         onPress={addPoint}
       />
+      {edit.kind === 'place' ? <T>{TAP_TO_PLACE}</T> : null}
+      {edit.kind === 'move' ? <T>{TAP_TO_MOVE}</T> : null}
       <View style={narrow ? { gap: 8 } : { flexDirection: 'row', gap: 8 }}>
         <View style={narrow ? undefined : { flex: 1 }}>
           <Button label={UNDO_ADJUST} tone="quiet" disabled={history.length === 0 && shownVias.length === acceptedVias.length} onPress={undoAdjust} />
@@ -575,7 +536,10 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
               label={ADJUST_THE_ROUTE}
               tone={adjusting ? 'primary' : 'quiet'}
               disabled={redrawing}
-              onPress={() => setAdjusting((on) => !on)}
+              onPress={() => {
+                if (adjusting) clearEdit();
+                setAdjusting((on) => !on);
+              }}
             />
           ) : null}
           {adjustActions}
@@ -592,10 +556,8 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
               adjust={showAdjust ? {
                 enabled: true,
                 vias: shownVias,
-                guide,
-                onDown: onMapDown,
-                onMove: onMapMove,
-                onUp: onMapUp,
+                selectedIndex: edit.kind === 'move' ? edit.index : null,
+                onTap: onMapTap,
               } : null}
               onShowMyLocation={() => { void showMyLocation(); }}
             />
