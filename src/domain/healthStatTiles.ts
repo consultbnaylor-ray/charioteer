@@ -8,6 +8,13 @@
 
 import { targetWeightStatusLine } from '@/domain/targetWeight';
 import {
+  ACTIVE_MINUTES_ABOUT,
+  ACTIVE_MINUTES_GARMIN_LINE,
+  ACTIVE_MINUTES_MEANING,
+  ACTIVE_MINUTES_WORKOUT_LINE,
+  ACTIVE_MINUTES_WORKOUT_STATUS,
+} from '@/domain/activityMinutes';
+import {
   AHA_LINK,
   BAND_CAVEAT,
   BHF_LINK,
@@ -43,7 +50,6 @@ import {
   BHF_RESTING_MIN_BPM,
   CMO_ACTIVITY_URL,
   CMO_MODERATE_MINUTES_WEEK,
-  CMO_VIGOROUS_MINUTES_WEEK,
   GUIDANCE_CAVEAT,
   HEIGHT_CM_MAX,
   HEIGHT_CM_MIN,
@@ -313,10 +319,16 @@ export type HealthStatBoardInput = {
   /** Omitted means the last 7 days. */
   period?: HealthStatPeriod;
   /**
-   * One active-minutes value per day, already chosen from Garmin or Apple Health.
+   * One active-minutes value per day, already chosen from Garmin or logged workouts.
    * When set, the active-minutes tile uses this series and does not add the two sources.
+   * `source` says whether that day is the weighted Garmin figure.
    */
-  activeMinutes?: readonly DayValue[];
+  activeMinutes?: readonly (DayValue & { source?: 'garmin' | 'workout' })[];
+  /**
+   * Raw Garmin moderate and vigorous minutes. The resting comment uses this split
+   * so the double count runs once, inside resting fitness.
+   */
+  garminActivity?: readonly { day: string; moderateMinutes: number | null; vigorousMinutes: number | null }[];
 };
 
 export type HealthStatVisual =
@@ -1286,9 +1298,15 @@ function restingMonthComment(input: HealthStatBoardInput): RestingFitnessComment
       ? [{ day: sample.recordedOn, bpm: sample.value }]
       : []
   ));
-  const activity = (input.activeMinutes ?? []).flatMap((day) => (
-    day.day >= start && day.day <= input.today ? [{ day: day.day, moderateMinutes: day.value, vigorousMinutes: 0 }] : []
-  ));
+  const activity = input.garminActivity
+    ? input.garminActivity.flatMap((day) => {
+      if (day.day < start || day.day > input.today) return [];
+      if (day.moderateMinutes == null && day.vigorousMinutes == null) return [];
+      return [{ day: day.day, moderateMinutes: day.moderateMinutes ?? 0, vigorousMinutes: day.vigorousMinutes ?? 0 }];
+    })
+    : (input.activeMinutes ?? []).flatMap((day) => (
+      day.day >= start && day.day <= input.today ? [{ day: day.day, moderateMinutes: day.value, vigorousMinutes: 0 }] : []
+    ));
   let vo2Max: number | null = null;
   let vo2Day = '';
   for (const sample of input.samples) {
@@ -1406,27 +1424,32 @@ function weeklyTile(item: CatalogItem, input: HealthStatBoardInput): HealthStatT
   const rounded = active ? active.minutes : Math.round(window.current.reduce((sum, point) => sum + point.value, 0));
   const loggedDays = active ? active.days : window.current.filter((point) => point.value > 0).length;
   const target = scaledActivityMinutes(CMO_MODERATE_MINUTES_WEEK, period);
-  const vigorous = scaledActivityMinutes(CMO_VIGOROUS_MINUTES_WEEK, period);
   const left = Math.max(0, target - rounded);
   const met = rounded >= target;
   const pace = paceJudgement({ period, loggedDays, now: new Date(), met, behind: 'Short' });
   const tone: StatsTone = met ? 'good' : pace.neutral ? 'info' : 'info';
-  const status = pace.neutral && !met
-    ? pace.word
-    : met
-      ? `${whole(target)} minutes logged`
-      : rounded === 0
-        ? `${whole(target)} minutes to go`
-        : left === 1
-          ? `1 minute to ${whole(target)}`
-          : `${whole(left)} minutes to ${whole(target)}`;
+  const counted = window.current.filter((point) => point.value > 0) as readonly (DayValue & { source?: 'garmin' | 'workout' })[];
+  const garminOnly = counted.length > 0 && counted.every((point) => point.source === 'garmin');
+  const status = garminOnly
+    ? pace.neutral && !met
+      ? pace.word
+      : met
+        ? `${whole(target)} minutes logged`
+        : rounded === 0
+          ? `${whole(target)} minutes to go`
+          : left === 1
+            ? `1 minute to ${whole(target)}`
+            : `${whole(left)} minutes to ${whole(target)}`
+    : ACTIVE_MINUTES_WORKOUT_STATUS;
+  const sourceLine = garminOnly ? ACTIVE_MINUTES_GARMIN_LINE : ACTIVE_MINUTES_WORKOUT_LINE;
+  const averageLine = weeklyLineFor(period, rounded);
   const scaleMax = Math.max(target * 2, rounded + 20);
   return finish(item, {
     title: 'Active minutes',
     valueText: whole(rounded),
     unit: 'min',
     period: periodLabel(period),
-    weeklyLine: weeklyLineFor(period, rounded),
+    weeklyLine: [averageLine, sourceLine].filter((line): line is string => Boolean(line)).join(' '),
     status,
     tone,
     mark: pace.neutral ? pace.word : STATS_SIGNAL[tone],
@@ -1447,8 +1470,8 @@ function weeklyTile(item: CatalogItem, input: HealthStatBoardInput): HealthStatT
     },
     history: nums(window.current),
     readings: [...window.current],
-    about: `Active minutes: time counted over ${periodPhrase(period)}. The unit is minutes.`,
-    meaning: `The UK Chief Medical Officers recommend at least ${CMO_MODERATE_MINUTES_WEEK} minutes of moderate activity a week, or ${CMO_VIGOROUS_MINUTES_WEEK} minutes of vigorous activity. For ${periodPhrase(period)} that is at least ${whole(target)} minutes, or ${whole(vigorous)} minutes of vigorous activity. Logged workouts may not include walking, and this app cannot tell how hard the minutes were.`,
+    about: ACTIVE_MINUTES_ABOUT,
+    meaning: ACTIVE_MINUTES_MEANING,
     rangeNote: null,
     sourceName: 'UK Chief Medical Officers',
     sourceUrl: CMO_ACTIVITY_URL,

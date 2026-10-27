@@ -28,6 +28,9 @@ export const STRENGTH_A_WEEK = 2;
 
 export const ACTIVITY_DAY_MIN = 3;
 
+export const MIXED_ACTIVITY_WEEK =
+  'Apple days are exercise minutes, not doubled. Garmin days count each vigorous minute twice.';
+
 export type ActivityReading = {
   day: string;
   steps?: number | null;
@@ -219,6 +222,8 @@ export function targetActivityPlan(input: {
   const minuteRows = window.filter((row) => (row.exerciseMinutes ?? 0) > 0 || (row.vigorousMinutes ?? 0) > 0);
   const minuteTotal = minuteRows.reduce((sum, row) => sum + (row.exerciseMinutes ?? 0) + 2 * (row.vigorousMinutes ?? 0), 0);
   const minuteSource = sourceName(minuteRows.map((row) => row.minutesSource));
+  const minuteSources = new Set(minuteRows.map((row) => row.minutesSource).filter((value): value is string => Boolean(value)));
+  const mixedWeek = minuteSources.has('Apple Health') && minuteSources.has('Garmin') ? ` ${MIXED_ACTIVITY_WEEK}` : '';
   if (minuteRows.length >= ACTIVITY_DAY_MIN) {
     const addedCap = Math.min(stepUp(minuteTotal), Math.max(0, WEEKLY_MINUTES_HIGH - minuteTotal));
     if (input.direction === 'gain') {
@@ -227,7 +232,7 @@ export function targetActivityPlan(input: {
         added: 0,
         unit: 'min',
         period,
-        text: `Active minutes, ${Math.round(minuteTotal)} min over ${minuteRows.length} days in ${period} (${minuteSource}). For a gain, leave the minutes here and use the time for strength and recovery.`,
+        text: `Active minutes, ${Math.round(minuteTotal)} min over ${minuteRows.length} days in ${period} (${minuteSource}). For a gain, leave the minutes here and use the time for strength and recovery.${mixedWeek}`,
       });
     } else if (addedCap >= 1) {
       const guidance = minuteRows.length >= 5
@@ -238,7 +243,7 @@ export function targetActivityPlan(input: {
         added: addedCap,
         unit: 'min',
         period,
-        text: `Active minutes, ${Math.round(minuteTotal)} min over ${minuteRows.length} days in ${period} (${minuteSource}). A suggestion is about ${addedCap} more minutes across the week, around 10% more, and still at or under ${WEEKLY_MINUTES_HIGH} minutes.${guidance}`,
+        text: `Active minutes, ${Math.round(minuteTotal)} min over ${minuteRows.length} days in ${period} (${minuteSource}). A suggestion is about ${addedCap} more minutes across the week, around 10% more, and still at or under ${WEEKLY_MINUTES_HIGH} minutes.${guidance}${mixedWeek}`,
       });
     } else {
       suggestions.push({
@@ -246,7 +251,7 @@ export function targetActivityPlan(input: {
         added: 0,
         unit: 'min',
         period,
-        text: `Active minutes, ${Math.round(minuteTotal)} min over ${minuteRows.length} days in ${period} (${minuteSource}). That is already at ${WEEKLY_MINUTES_HIGH} minutes, the top of the usual weekly range. Hold there.`,
+        text: `Active minutes, ${Math.round(minuteTotal)} min over ${minuteRows.length} days in ${period} (${minuteSource}). That is already at ${WEEKLY_MINUTES_HIGH} minutes, the top of the usual weekly range. Hold there.${mixedWeek}`,
       });
     }
     const vigorous = minuteRows.reduce((sum, row) => sum + (row.vigorousMinutes ?? 0), 0);

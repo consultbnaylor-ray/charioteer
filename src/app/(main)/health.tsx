@@ -363,6 +363,11 @@ export default function Health() {
         today={isoDay(new Date())}
         samples={healthSamples}
         activeMinutes={activeMinutes}
+        garminActivity={readings.dailies.map((day) => ({
+          day: day.calendarDate,
+          moderateMinutes: day.moderateMinutes,
+          vigorousMinutes: day.vigorousMinutes,
+        }))}
         body={snap.bodyComposition}
         activityEnergyKcal={snap.nutrition.activityEnergyKcal}
         heightCm={snap.profile?.heightCm ?? null}

@@ -161,8 +161,9 @@ describe('health stat tiles', () => {
     expect(minutes.unit).toBe('min');
     expect(minutes.period).toBe(PERIOD_LAST_7);
     expect(minutes.valueText).toBe('97');
-    expect(minutes.weeklyLine).toBeNull();
-    expect(minutes.status).toBe('53 minutes to 150');
+    expect(minutes.status).toBe('The 150 minute figure is a moderate-activity reference. It fits the Garmin days. It does not grade the logged workouts.');
+    expect(minutes.weeklyLine).toBe('Garmin days count vigorous minutes twice. Other days are the length of logged workouts, and this app cannot tell how hard those were.');
+    expect(minutes.about).toBe('Active minutes: Garmin moderate minutes plus vigorous minutes counted twice, on days Garmin sent them. On other days, the length of workouts logged that day. The unit is minutes.');
     expect(minutes.mark).toBe('Note');
     expect(minutes.hasGuideline).toBe(true);
     if (minutes.visual.kind === 'zone') {
@@ -747,7 +748,11 @@ describe('health stat tiles', () => {
       expect(item.period).toBe(period);
       expect(item.empty).toBe(false);
       expect(`${item.valueText} ${item.unit} - ${item.period}`).toContain(period);
-      expect(item.weeklyLine).toBeNull();
+      if (id === 'weekly_active_minutes') {
+        expect(item.weeklyLine).toBe('Garmin days count vigorous minutes twice. Other days are the length of logged workouts, and this app cannot tell how hard those were.');
+      } else {
+        expect(item.weeklyLine).toBeNull();
+      }
     }
     expect(tile(board, 'sleep_hours').valueText).toBe('7.3');
     expect(tile(board, 'resting_heart_rate').valueText).toBe('62');
@@ -814,13 +819,14 @@ describe('health stat tiles', () => {
     expect(tile(day, 'workouts').valueText).toBe('32');
     const dayMinutes = tile(day, 'weekly_active_minutes');
     expect(dayMinutes.valueText).toBe('32');
-    expect(dayMinutes.status).toBe('21 minutes logged');
+    expect(dayMinutes.status).toBe('The 150 minute figure is a moderate-activity reference. It fits the Garmin days. It does not grade the logged workouts.');
     if (dayMinutes.visual.kind === 'zone') {
       expect(dayMinutes.visual.zoneLow).toBe(21);
       expect(dayMinutes.visual.zoneCaption).toBe('At least 21 min today');
     }
     expect(dayMinutes.meaning).toContain('150 minutes of moderate activity a week');
-    expect(dayMinutes.meaning).toContain('at least 21 minutes');
+    expect(dayMinutes.meaning).toContain('A vigorous minute can stand in for two moderate minutes.');
+    expect(dayMinutes.meaning).not.toContain('at least 21 minutes');
     expect(tile(day, 'vo2_max').valueText).toBe('42');
     expect(tile(day, 'vo2_max').period).toBe(PERIOD_LATEST);
     expect(tile(day, 'vo2_max').trend).toBe('No readings today.');
@@ -849,14 +855,15 @@ describe('health stat tiles', () => {
     expect(tile(month, 'workouts').weeklyLine).toBe('About 32 min a week.');
     const monthMinutes = tile(month, 'weekly_active_minutes');
     expect(monthMinutes.valueText).toBe('137');
-    expect(monthMinutes.status).toBe('506 minutes to 643');
-    expect(monthMinutes.weeklyLine).toBe('About 32 min a week.');
+    expect(monthMinutes.status).toBe('The 150 minute figure is a moderate-activity reference. It fits the Garmin days. It does not grade the logged workouts.');
+    expect(monthMinutes.weeklyLine).toContain('About 32 min a week.');
+    expect(monthMinutes.weeklyLine).toContain('cannot tell how hard those were');
     if (monthMinutes.visual.kind === 'zone') {
       expect(monthMinutes.visual.zoneLow).toBe(643);
       expect(monthMinutes.visual.zoneCaption).toBe('At least 643 min in 30 days');
     }
     expect(monthMinutes.meaning).toContain('75 minutes of vigorous activity');
-    expect(monthMinutes.meaning).toContain('321 minutes of vigorous activity');
+    expect(monthMinutes.meaning).not.toContain('321 minutes of vigorous activity');
     expect(tile(month, 'mix').valueText).toBe('90');
     expect(tile(month, 'mix').weeklyLine).toBe('About 21 min a week.');
     expect(tile(month, 'sleep_hours').valueText).toBe('7.3');

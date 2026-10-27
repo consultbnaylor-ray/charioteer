@@ -49,11 +49,11 @@ describe('measured stats figures', () => {
       { day: '2026-10-13', value: 45 },
       { day: '2026-10-08', value: 40 },
     ], today);
-    expect(workouts?.ring?.ring).toMatchObject({ centre: '77', unit: 'min', status: '73 minutes to 150', tone: 'info' });
+    expect(workouts?.ring?.ring).toMatchObject({ centre: '77', unit: 'min', status: '77 minutes logged', tone: 'info' });
     expect(workouts?.bars?.bars.bars.map((bar) => bar.label)).toEqual(['Tue 45 min', 'Thu 32 min']);
     expect(workouts?.bars?.bars.caption).toBe('Logged workouts may not include walking.');
     expect(healthFigure('workout_minutes', [{ day: today, value: 150 }], today)?.ring?.ring.status).toBe('150 minutes logged');
-    expect(healthFigure('workout_minutes', [], today)?.ring?.ring).toMatchObject({ centre: '0', status: '150 minutes to go' });
+    expect(healthFigure('workout_minutes', [], today)?.ring?.ring).toMatchObject({ centre: '0', status: '0 minutes logged' });
 
     const steps = healthFigure('steps', [
       { day: '2026-10-14', value: 8000 },

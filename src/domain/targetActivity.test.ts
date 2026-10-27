@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 import {
   ACTIVITY_NOT_A_PROMISE,
   ACTIVITY_NOT_ENOUGH,
+  MIXED_ACTIVITY_WEEK,
   TOWARD_TARGET_TITLE,
   WEEKLY_MINUTES_HIGH,
   targetActivityPlan,
@@ -58,6 +59,15 @@ describe('activity toward a target weight', () => {
     const held = full.suggestions.find((item) => item.unit === 'min');
     expect(held?.added).toBe(0);
     expect(held?.text).toContain('Hold there');
+    expect(held?.text).not.toContain(MIXED_ACTIVITY_WEEK);
+  });
+
+  it('names both sources when an Apple day and a Garmin day are in the same week', () => {
+    const readings = days(today, 4, 20, 4000);
+    readings[0] = { ...readings[0], exerciseMinutes: 20, vigorousMinutes: 10, minutesSource: 'Garmin' };
+    const plan = targetActivityPlan({ direction: 'lose', today, readings });
+    const minutes = plan.suggestions.find((item) => item.text.includes('Active minutes'));
+    expect(minutes?.text).toContain(MIXED_ACTIVITY_WEEK);
   });
 
   it('reaches the coach and the fitness and workout screens only as a suggestion', () => {

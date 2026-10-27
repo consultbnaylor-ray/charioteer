@@ -1,3 +1,10 @@
+import {
+  EXERCISE_APPLE_CAPTION,
+  EXERCISE_BOTH_CAPTION,
+  EXERCISE_GARMIN_CAPTION,
+  MODERATE_EMPTY,
+  VIGOROUS_EMPTY,
+} from '@/domain/activityMinutes';
 import type { GarminDaily } from '@/domain/garminConnect';
 import { weekdayShort } from '@/domain/healthInsights';
 import { chartDayLabel, chartDays } from '@/domain/workoutDay';
@@ -111,11 +118,35 @@ export function dailyActivitySeries(
   });
 }
 
-export function exerciseMinutesLabel(day: string, minutes: number, source: ActivitySource | null): string {
-  const line = `Exercise minutes, ${activityDayName(day)}: ${minutes} min`;
-  if (source === 'garmin') return `${line} ${GARMIN_EXERCISE_SOURCE}`;
-  if (source === 'apple') return `${line} ${APPLE_SOURCE}`;
-  return line;
+export function exerciseMinutesLabel(
+  day: string,
+  minutes: number,
+  source: ActivitySource | null,
+  parts?: { moderate: number; vigorous: number },
+): string {
+  const name = activityDayName(day);
+  if (source == null) return `No exercise minutes for ${name}.`;
+  if (source === 'apple') return `Exercise minutes, ${name}: ${minutes} min. Apple Health. Not doubled.`;
+  const moderate = parts?.moderate ?? 0;
+  const vigorous = parts?.vigorous ?? 0;
+  return `Exercise minutes, ${name}: ${minutes} min. Garmin. ${moderate} moderate and ${vigorous} vigorous, vigorous counted twice.`;
+}
+
+/** The line under Exercise minutes. It names only the sources that have a bar. */
+export function exerciseChartCaption(
+  points: readonly { value: number; source: ActivitySource | null }[],
+): string | null {
+  let apple = false;
+  let garmin = false;
+  for (const point of points) {
+    if (point.source == null || !(point.value > 0)) continue;
+    if (point.source === 'apple') apple = true;
+    if (point.source === 'garmin') garmin = true;
+  }
+  if (apple && garmin) return EXERCISE_BOTH_CAPTION;
+  if (garmin) return EXERCISE_GARMIN_CAPTION;
+  if (apple) return EXERCISE_APPLE_CAPTION;
+  return null;
 }
 
 export function activeCaloriesLabel(day: string, kcal: number, source: ActivitySource | null): string {
@@ -156,12 +187,55 @@ export function exerciseSeries(
   dailies: readonly GarminDaily[],
 ): DailyActivityPoint[] {
   const garmin = new Map<string, number>();
+  const parts = new Map<string, { moderate: number; vigorous: number }>();
   for (const daily of dailies) {
     const minutes = garminExerciseMinutes(daily.moderateMinutes, daily.vigorousMinutes);
     if (minutes == null || minutes <= 0) continue;
     garmin.set(daily.calendarDate, minutes);
+    parts.set(daily.calendarDate, {
+      moderate: Math.round(daily.moderateMinutes ?? 0),
+      vigorous: Math.round(daily.vigorousMinutes ?? 0),
+    });
   }
-  return dailyActivitySeries(endDay, span, apple, garmin, exerciseMinutesLabel);
+  return dailyActivitySeries(endDay, span, apple, garmin, (day, value, source) => (
+    exerciseMinutesLabel(day, value, source, source === 'garmin' ? parts.get(day) : undefined)
+  ));
+}
+
+/** Garmin moderate or vigorous minutes, one for one. A missing number is an empty slot. A stored 0 is a zero bar. */
+export function garminMinuteSeries(
+  endDay: string,
+  span: number,
+  dailies: readonly GarminDaily[],
+  kind: 'moderate' | 'vigorous',
+): DailyActivityPoint[] {
+  const stored = new Map<string, number>();
+  for (const daily of dailies) {
+    const raw = kind === 'moderate' ? daily.moderateMinutes : daily.vigorousMinutes;
+    if (raw == null || !Number.isFinite(raw) || raw < 0) continue;
+    stored.set(daily.calendarDate, Math.round(raw));
+  }
+  const title = kind === 'moderate' ? 'Moderate minutes' : 'Vigorous minutes';
+  return chartDays(endDay, span).map((day) => {
+    const value = stored.get(day);
+    if (value == null) {
+      const missing = kind === 'moderate'
+        ? `No Garmin moderate minutes for ${activityDayName(day)}. Apple exercise time is on Exercise minutes.`
+        : `No Garmin vigorous minutes for ${activityDayName(day)}. Apple exercise time is on Exercise minutes.`;
+      return { day, value: 0, source: null, empty: true, label: missing };
+    }
+    return {
+      day,
+      value,
+      source: 'garmin' as const,
+      empty: false,
+      label: `${title}, ${activityDayName(day)}: ${value} min. Garmin.`,
+    };
+  });
+}
+
+export function minuteTypeEmpty(kind: 'moderate' | 'vigorous'): string {
+  return kind === 'moderate' ? MODERATE_EMPTY : VIGOROUS_EMPTY;
 }
 
 export function calorieSeries(

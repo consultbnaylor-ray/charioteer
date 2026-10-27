@@ -1,5 +1,10 @@
 import {
-  GARMIN_EXERCISE_SOURCE,
+  EXERCISE_MORE_INFO,
+  INTENSITY_MORE_INFO,
+  MODERATE_MORE_INFO,
+  VIGOROUS_MORE_INFO,
+} from '@/domain/activityMinutes';
+import {
   GARMIN_SOURCE,
   activityDayName,
   chartSourceCaption,
@@ -293,23 +298,35 @@ export function floorsChartGuide(period: StatPeriod, points: readonly { value: n
   );
 }
 
+function weightedMinuteBands(period: StatPeriod): { dailyTypical: GuideSpan; periodTypical: GuideSpan } {
+  return {
+    periodTypical: {
+      low: scaledPeriodTarget(WHO_MODERATE_LOW, period),
+      high: scaledPeriodTarget(WHO_MODERATE_HIGH, period),
+    },
+    dailyTypical: {
+      low: WHO_MODERATE_LOW / 7,
+      high: WHO_MODERATE_HIGH / 7,
+    },
+  };
+}
+
+/** Lime band for the weighted total. The same band is used on Exercise minutes. */
 export function activityChartGuide(period: StatPeriod): ChartGuide {
-  const periodTypical = {
-    low: scaledPeriodTarget(WHO_MODERATE_LOW, period),
-    high: scaledPeriodTarget(WHO_MODERATE_HIGH, period),
-  };
-  const vigorous = {
-    low: scaledPeriodTarget(WHO_MODERATE_LOW / 2, period),
-    high: scaledPeriodTarget(WHO_MODERATE_HIGH / 2, period),
-  };
-  const dailyTypical = {
-    low: WHO_MODERATE_LOW / 7,
-    high: WHO_MODERATE_HIGH / 7,
-  };
-  return advised(
-    `Intensity minutes add moderate minutes to vigorous minutes. Garmin counts each vigorous minute twice. The World Health Organization and the NHS publish ${WHO_MODERATE_LOW}–${WHO_MODERATE_HIGH} minutes of moderate activity a week, or ${WHO_MODERATE_LOW / 2}–${WHO_MODERATE_HIGH / 2} minutes if it is vigorous. For ${grouped(period)}, that is about ${countText(periodTypical.low)}–${countText(periodTypical.high)} moderate minutes (${countText(vigorous.low)}–${countText(vigorous.high)} vigorous). The lime band is the daily share of the moderate range. It is a reference, not a personal target or a diagnosis.`,
-    { dailyTypical, periodTypical },
-  );
+  return advised(INTENSITY_MORE_INFO, weightedMinuteBands(period));
+}
+
+export function exerciseChartGuide(period: StatPeriod): ChartGuide {
+  return advised(EXERCISE_MORE_INFO, weightedMinuteBands(period));
+}
+
+/** Real minutes. The weekly range is not drawn on a chart that shows only one type. */
+export function moderateChartGuide(): ChartGuide {
+  return advised(MODERATE_MORE_INFO);
+}
+
+export function vigorousChartGuide(): ChartGuide {
+  return advised(VIGOROUS_MORE_INFO);
 }
 
 function stressGuide(period: StatPeriod): ChartGuide {
@@ -433,12 +450,30 @@ function byDay<T extends Dated>(rows: readonly T[]): T[] {
 }
 
 export function intensitySeries(endDay: string, period: StatPeriod, dailies: readonly GarminDaily[]): GarminChartPoint[] {
-  const values = new Map<string, number>();
-  for (const daily of byDay(dailies)) {
-    const minutes = garminExerciseMinutes(daily.moderateMinutes, daily.vigorousMinutes);
-    remember(values, daily.calendarDate, finite(minutes, false));
-  }
-  return seriesFrom(endDay, period, values, 'Intensity minutes', 'min', (value) => String(Math.round(value)), false, GARMIN_EXERCISE_SOURCE);
+  const byDate = new Map<string, GarminDaily>();
+  for (const daily of byDay(dailies)) byDate.set(daily.calendarDate, daily);
+  return chartDays(endDay, periodDayCount(period)).map((day) => {
+    const daily = byDate.get(day);
+    const minutes = daily ? garminExerciseMinutes(daily.moderateMinutes, daily.vigorousMinutes) : null;
+    if (minutes == null || minutes <= 0) {
+      return {
+        day,
+        value: null,
+        source: null,
+        empty: true,
+        label: `${NO_DATA} for Intensity minutes, ${activityDayName(day)}`,
+      };
+    }
+    const moderate = Math.round(daily?.moderateMinutes ?? 0);
+    const vigorous = Math.round(daily?.vigorousMinutes ?? 0);
+    return {
+      day,
+      value: minutes,
+      source: 'garmin' as const,
+      empty: false,
+      label: `Intensity minutes, ${activityDayName(day)}: ${minutes} min. Garmin. ${moderate} moderate and ${vigorous} vigorous, vigorous counted twice.`,
+    };
+  });
 }
 
 export function garminDetailCharts(input: GarminChartInput): GarminDetailChart[] {
