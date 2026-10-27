@@ -23,6 +23,7 @@ import { HealthFigureView } from '@/ui/MeasuredFigure';
 import { WeightTrendChart } from '@/ui/NutritionCharts';
 import { PlanTick } from '@/ui/PlanTick';
 import { BodyCompositionCard } from '@/ui/BodyComposition';
+import { ScaleReadingNote } from '@/ui/ScaleReading';
 import { ScrollTarget } from '@/ui/ScrollTarget';
 import { StatPeriodToggle } from '@/ui/StatPeriodToggle';
 import { WEIGHT_WAIST_TITLE } from '@/ui/WeightWaistLink';
@@ -223,6 +224,9 @@ export default function WeightWaistScreen() {
         onTurnOn={turnOnMissing}
       />
       <ScrollTarget id="body">
+        <Card>
+          <ScaleReadingNote />
+        </Card>
         <BodyCompositionCard />
       </ScrollTarget>
       <ScrollTarget id="weight-chart">
