@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
 import { publishedCardioBand } from '@/domain/fitnessSnapshot';
@@ -8,6 +9,7 @@ import {
   NHS_RESTING_LOW,
   LOW_RESTING_FIT_LINE,
   LOW_RESTING_FIT_MORE,
+  lowRestingFitText,
   RESTING_CARE,
   restingFitnessComment,
   restingReadingIsLow,
@@ -54,6 +56,16 @@ describe('resting heart rate and fitness', () => {
     );
     expect(LOW_RESTING_FIT_LINE).toMatch(/\bcan\b/);
     expect(LOW_RESTING_FIT_MORE).toMatch(/\bmay\b/);
+    expect(lowRestingFitText('57 bpm')).toBe(LOW_RESTING_FIT_LINE);
+    expect(lowRestingFitText('59 bpm')).toBe(LOW_RESTING_FIT_LINE);
+    expect(lowRestingFitText('57 bpm', true)).toBe(LOW_RESTING_FIT_MORE);
+    expect(lowRestingFitText('60 bpm')).toBeNull();
+    expect(lowRestingFitText('60 bpm', true)).toBeNull();
+    expect(lowRestingFitText('62 bpm')).toBeNull();
+    expect(lowRestingFitText(null)).toBeNull();
+    expect(readFileSync('src/ui/LowRestingFitNote.tsx', 'utf8')).toContain('lowRestingFitText(reading, detail)');
+    expect(readFileSync('src/ui/YourFitness.tsx', 'utf8')).toContain('<LowRestingFitNote reading={view.resting.reading} />');
+    expect(readFileSync('src/ui/HealthStatBoard.tsx', 'utf8')).toContain('<LowRestingFitNote');
   });
 
   it('says a low rate might be normal for someone who exercises most days with a high VO2', () => {
