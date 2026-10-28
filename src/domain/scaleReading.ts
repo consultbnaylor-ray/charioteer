@@ -2,6 +2,8 @@ import { NICE_BMI_URL, NHS_BMI_URL, bmiFrom } from '@/domain/guidance';
 
 /** Copy for the weight, BMI, body fat, and lean mass note. */
 
+export const SCALE_FROM_SCALES = 'From your smart scales';
+
 export const SCALE_CORE_LINE =
   'BMI cannot tell muscle from fat. Read it next to body fat and lean mass.';
 
