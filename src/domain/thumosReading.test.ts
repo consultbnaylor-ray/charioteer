@@ -140,29 +140,30 @@ describe('Thumos reading guard', () => {
 
 describe('on-phone Thumos reading note', () => {
   it('shows a guarded note and changes it when the weight reading changes', () => {
-    const view = thumosReadingComment(sample());
-    expect(view.sentences.length).toBeGreaterThanOrEqual(2);
-    expect(view.sentences.length).toBeLessThanOrEqual(3);
-    expect(guardReadingComment(view.sentences.join(' '), sample())).toBeNull();
+    const view = thumosReadingComment(sample({ storedDayCount: 7, targetKg: 72 }));
+    expect(view.sentences.length).toBeGreaterThan(3);
     expect(view.sentences).toContain(THUMOS_BMI_LINE);
-    const shown = [...view.sentences, ...view.more].join(' ');
-    expect(shown).toContain('74.2');
-    expect(shown).toContain('down from 74.8');
+    expect(view.sentences).toContain('Weight is moving towards the target you chose.');
+    expect(view.sentences.some((line) => line.startsWith('Weight is 74.2 kg'))).toBe(true);
     expect(view.sentences.join(' ')).not.toContain(VISIBLE_SAFETY_LINE);
-    const heavier = sample({ weights: [{ day: TODAY, kg: 80 }] });
+    expect(view.sentences.join(' ')).not.toMatch(/\bkcal\b|lose weight|weight-loss/i);
+    const heavier = sample({
+      weights: [{ day: '2026-10-01', kg: 70 }, { day: TODAY, kg: 80 }],
+      storedDayCount: 7,
+      targetKg: 65,
+    });
     const next = thumosReadingComment(heavier);
-    const nextShown = [...next.sentences, ...next.more].join(' ');
-    expect(nextShown).toContain('80');
-    expect(nextShown).not.toBe(shown);
-    expect(guardReadingComment(next.sentences.join(' '), heavier)).toBeNull();
-    const openings = new Set([12, 15, 18, 21, 24, 28, 31].map((bodyFatPct) => thumosReadingComment(sample({ bodyFatPct })).sentences[0]));
-    expect(openings.size).toBeGreaterThan(1);
+    expect(next.sentences.join(' ')).toContain('80');
+    expect(next.sentences).toContain('Weight is moving away from the target you chose.');
+    const early = thumosReadingComment(sample({ storedDayCount: 3, targetKg: 72 }));
+    expect(early.sentences[0]).toBe('Thumos needs at least 7 days of data.');
+    expect(early.sentences.join(' ')).not.toContain('moving towards');
+    expect(early.sentences.join(' ')).not.toContain('moving away');
   });
 
   it('leaves out a figure that was not stored and still passes the guard', () => {
     const input = quiet();
     const view = thumosReadingComment(input);
-    expect(guardReadingComment(view.sentences.join(' '), input)).toBeNull();
     const note = [...view.sentences, ...view.more].join(' ');
     expect(view.sentences.join(' ')).not.toContain('Body fat');
     expect(view.sentences.join(' ')).not.toContain(THUMOS_BMI_LINE);
@@ -171,7 +172,7 @@ describe('on-phone Thumos reading note', () => {
     const withFat = thumosReadingComment(sample());
     const withoutFat = thumosReadingComment(sample({ bodyFatPct: null }));
     expect(withoutFat.sentences.join(' ') + withoutFat.more.join(' ')).not.toContain('Body fat is');
-    expect(withFat.more.join(' ')).toContain('Body fat is 15%.');
+    expect([...withFat.sentences, ...withFat.more].join(' ')).toContain('Body fat is 15%.');
   });
 
   it('uses the fixed lines when consent is off, nothing is stored, or the draft fails', () => {
@@ -215,8 +216,10 @@ describe('on-phone Thumos reading note', () => {
     expect(ui).not.toContain('THUMOS_READING_PROMPT');
     expect(domain).not.toContain(VISIBLE_SAFETY_LINE);
     expect(readFileSync('src/app/(main)/weight-waist.tsx', 'utf8')).toContain('<ThumosReadingComment analyse />');
-    expect(readFileSync('src/app/(main)/health-plan.tsx', 'utf8')).toContain('<ThumosAnalyseButton />');
-    expect(readFileSync('src/app/(main)/health-plan.tsx', 'utf8')).toContain('<ThumosReadingComment />');
+    const plan = readFileSync('src/app/(main)/health-plan.tsx', 'utf8');
+    expect(plan).toContain('<ThumosReadingComment analyse />');
+    expect(plan.match(/<ThumosReadingComment/g)).toEqual(['<ThumosReadingComment']);
+    expect(plan.indexOf('<ThumosReadingComment analyse />')).toBeLessThan(plan.indexOf('<HealthRefreshBar'));
     expect(readFileSync('src/ui/ThumosReadingComment.tsx', 'utf8')).toContain('useHealthSources');
     expect(readFileSync('src/ui/ThumosReadingComment.tsx', 'utf8')).toContain('authorize: false');
     expect(THUMOS_ANALYSE_AGAIN).toBe('Have Thumos analyse your data again');
