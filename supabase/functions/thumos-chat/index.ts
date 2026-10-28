@@ -406,7 +406,7 @@ Deno.serve(async (req) => {
               if (!streamed) send({ type: 'delta', text: reply });
               else send({ type: 'replace', reply });
             } else {
-              if (!crisis && thumosReplyFaults(modelText, earlierAssistant).length > 0) {
+              if (!crisis && mode !== 'note' && thumosReplyFaults(modelText, earlierAssistant).length > 0) {
                 const second = await completeThumos({
                   apiKey,
                   model: primaryStep?.model ?? model,

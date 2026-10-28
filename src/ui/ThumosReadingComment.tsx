@@ -1,17 +1,21 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 
 import { useRepository, useSnapshot } from '@/data';
+import type { Repository } from '@/data/types';
 import { isoDay } from '@/domain/dates';
 import { compositionForAssessment, weightPointsFrom } from '@/domain/nutrition';
 import {
   THUMOS_ANALYSE_AGAIN,
   THUMOS_EMPTY_LINE,
   THUMOS_FAILED_LINE,
+  THUMOS_NOTE_ASK,
   THUMOS_READING_LABEL,
   countReadingDays,
   latestKind,
+  shouldRequestThumosNote,
   sumKindSince,
   thumosReadingComment,
+  visibleCoachNote,
 } from '@/domain/thumosReading';
 import { VISIBLE_SAFETY_LINE } from '@/domain/visibleSafety';
 import { refreshAppleHealth } from '@/health/catchUp';
@@ -19,8 +23,47 @@ import { reloadHealthSources, useHealthSources } from '@/health/useHealthSources
 import { MoreInfo } from '@/ui/MoreInfo';
 import { Button, Card, T } from '@/ui/ui';
 
-/** Ben's label. Re-reads Apple Health with the permission already granted. Nothing is sent. */
-export function ThumosAnalyseButton() {
+type NoteSlot = {
+  key: string;
+  text: string | null;
+  done: boolean;
+  listeners: Set<(text: string | null) => void>;
+};
+
+let noteSlot: NoteSlot | null = null;
+
+/** One request per analyse press. The body is the fixed ask and the note mode. */
+function askForNote(repo: Repository, key: string, onText: (text: string | null) => void): () => void {
+  if (!noteSlot || noteSlot.key !== key) {
+    const slot: NoteSlot = { key, text: null, done: false, listeners: new Set() };
+    noteSlot = slot;
+    void repo.sendThumos(THUMOS_NOTE_ASK, 'note', (text) => {
+      const usable = visibleCoachNote(text);
+      if (!usable || noteSlot !== slot) return;
+      slot.text = usable;
+      for (const listener of slot.listeners) listener(usable);
+    }).then(() => {
+      if (noteSlot !== slot) return;
+      slot.done = true;
+      slot.text = visibleCoachNote(slot.text);
+      for (const listener of slot.listeners) listener(slot.text);
+    }).catch(() => {
+      if (noteSlot !== slot) return;
+      slot.done = true;
+      slot.text = null;
+      for (const listener of slot.listeners) listener(null);
+    });
+  }
+  const slot = noteSlot;
+  slot.listeners.add(onText);
+  if (slot.text || slot.done) onText(slot.text);
+  return () => {
+    slot.listeners.delete(onText);
+  };
+}
+
+/** Re-reads Apple Health with the permission already granted, then asks again. */
+export function ThumosAnalyseButton({ onDone }: { onDone?: () => void }) {
   const repo = useRepository();
   const [pending, setPending] = useState(false);
   return (
@@ -32,7 +75,10 @@ export function ThumosAnalyseButton() {
         setPending(true);
         void refreshAppleHealth(repo, { authorize: false })
           .then(() => reloadHealthSources())
-          .finally(() => setPending(false));
+          .finally(() => {
+            setPending(false);
+            onDone?.();
+          });
       }}
     />
   );
@@ -64,11 +110,32 @@ function todayMeals(logs: readonly { eatenOn: string; portion: number; items: re
   return { protein: rows.length ? Math.round(protein) : null, calories };
 }
 
-/** On-phone Thumos note. It does not call the coach and does not store a new reading. */
+function noteLines(text: string): string[] {
+  const lines = text.split(/\n+/).map((line) => line.trim()).filter(Boolean);
+  return lines.length ? lines : [text];
+}
+
+/** Thumos note. The coach writes it when both switches are on and 7 days are stored. */
 export function ThumosReadingComment({ analyse = false }: { analyse?: boolean }) {
+  const repo = useRepository();
   const snap = useSnapshot();
   const { samples } = useHealthSources();
+  const [attempt, setAttempt] = useState(0);
+  const [coachText, setCoachText] = useState<string | null>(null);
   const profile = snap.profile;
+  const storedDayCount = countReadingDays(samples, (snap.bodyComposition ?? []).map((row) => row.recordedOn));
+  const ask = snap.mode === 'supabase' && profile != null && shouldRequestThumosNote({
+    consentAi: profile.consentAi === true,
+    consentHealth: profile.consentHealth === true,
+    storedDayCount,
+  });
+  useEffect(() => {
+    if (!ask) {
+      setCoachText(null);
+      return;
+    }
+    return askForNote(repo, String(attempt), setCoachText);
+  }, [ask, attempt, repo]);
   if (!profile) return null;
   const today = isoDay(new Date());
   const body = compositionForAssessment(snap.bodyComposition);
@@ -96,9 +163,11 @@ export function ThumosReadingComment({ analyse = false }: { analyse?: boolean })
     proteinG: meals.protein,
     caloriesStored: meals.calories,
     build: snap.nutrition.build,
-    storedDayCount: countReadingDays(samples, snap.bodyComposition.map((row) => row.recordedOn)),
+    storedDayCount,
   });
-  const sentences = view.sentences[0] === THUMOS_FAILED_LINE ? [THUMOS_EMPTY_LINE] : view.sentences;
+  const localSentences = view.sentences[0] === THUMOS_FAILED_LINE ? [THUMOS_EMPTY_LINE] : view.sentences;
+  const coachLines = coachText ? noteLines(coachText) : [];
+  const sentences = coachLines.length ? coachLines : localSentences;
   return (
     <Card>
       <T variant="label">{THUMOS_READING_LABEL}</T>
@@ -107,7 +176,7 @@ export function ThumosReadingComment({ analyse = false }: { analyse?: boolean })
         {view.more.map((line) => <T key={line}>{line}</T>)}
       </MoreInfo>
       <T variant="muted">{VISIBLE_SAFETY_LINE}</T>
-      {analyse ? <ThumosAnalyseButton /> : null}
+      {analyse ? <ThumosAnalyseButton onDone={() => setAttempt((value) => value + 1)} /> : null}
     </Card>
   );
 }

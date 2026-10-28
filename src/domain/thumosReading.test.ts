@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 
 import { APPLE_HEALTH_READ_TYPES } from '@/health/connection';
 import { GOAL_LABEL } from '@/domain/nutrition';
+import { buildSystemPrompt, OFFLINE_COACH_MESSAGE, resolveThumosMode, SCRIPTED_COACH_REPLY } from '@/domain/thumos';
 import { VISIBLE_SAFETY_LINE } from '@/domain/visibleSafety';
 import {
   THUMOS_BMI_LINE,
@@ -11,6 +12,7 @@ import {
   THUMOS_FAILED_LINE,
   THUMOS_HEALTH_OFF_LINE,
   THUMOS_LOCAL_LINE,
+  THUMOS_NOTE_ASK,
   THUMOS_OFF_LINE,
   THUMOS_ANALYSE_AGAIN,
   THUMOS_NO_SLEEP,
@@ -20,10 +22,12 @@ import {
   THUMOS_READING_PROMPT,
   guardReadingComment,
   latestKind,
+  shouldRequestThumosNote,
   showReadingDraft,
   sumKindSince,
   thumosReadingComment,
   trainsForReading,
+  visibleCoachNote,
   type ThumosReadingInput,
 } from '@/domain/thumosReading';
 
@@ -197,7 +201,7 @@ describe('on-phone Thumos reading note', () => {
     expect(thumosReadingComment(sample()).more).toContain(THUMOS_LOCAL_LINE);
   });
 
-  it('sums the last seven days and does not call the coach', () => {
+  it('sums the last seven days and asks the coach only through the existing chat call', () => {
     const samples = [
       { kind: 'strength_minutes', value: 40, recordedOn: '2026-10-27' },
       { kind: 'strength_minutes', value: 35, recordedOn: '2026-10-25' },
@@ -209,8 +213,18 @@ describe('on-phone Thumos reading note', () => {
     expect(latestKind(samples, 'vo2_max', TODAY)).toBe(42);
     const ui = readFileSync('src/ui/ThumosReadingComment.tsx', 'utf8');
     const domain = readFileSync('src/domain/thumosReading.ts', 'utf8');
-    expect(ui).not.toMatch(/thumos-chat|functions\/v1|xai|fetch\(|sendThumos/);
+    const client = readFileSync('src/data/supabase-repository.ts', 'utf8');
+    const chat = readFileSync('supabase/functions/thumos-chat/index.ts', 'utf8');
+    expect(ui).toContain("sendThumos(THUMOS_NOTE_ASK, 'note'");
+    expect(ui).toContain("snap.mode === 'supabase'");
+    expect(ui).toContain('shouldRequestThumosNote');
+    expect(ui).not.toMatch(/thumos-chat|functions\/v1|xai|fetch\(/);
+    expect(ui).not.toMatch(/sendThumos\([\s\S]{0,120}(weight|samples|bodyFat|bpm|kg)/);
     expect(domain).not.toMatch(/thumos-chat|functions\/v1|xai|fetch\(|sendThumos/);
+    expect(client).toContain('const thumosBody = { content: text, mode: effectiveMode, request_id: requestId }');
+    expect(chat).toContain("select('kind, value, unit, recorded_on')");
+    expect(chat).toContain("mode !== 'note' && thumosReplyFaults(modelText, earlierAssistant)");
+    expect(chat).not.toMatch(/console\.(log|info|debug)\(/);
     expect(ui).toContain('{VISIBLE_SAFETY_LINE}');
     expect(ui).toContain('THUMOS_READING_LABEL');
     expect(ui).not.toContain('THUMOS_READING_PROMPT');
@@ -259,5 +273,52 @@ describe('on-phone Thumos reading note', () => {
     expect(absent).toContain(THUMOS_NO_SLEEP);
     expect(absent).toContain('No body fat reading is stored, so it is not in this note.');
     expect(absent.join(' ')).not.toMatch(/\bkcal\b/);
+  });
+
+  it('asks the coach only when both switches are on and seven days are stored', () => {
+    expect(shouldRequestThumosNote({ consentAi: true, consentHealth: true, storedDayCount: 7 })).toBe(true);
+    expect(shouldRequestThumosNote({ consentAi: true, consentHealth: true, storedDayCount: 6 })).toBe(false);
+    expect(shouldRequestThumosNote({ consentAi: false, consentHealth: true, storedDayCount: 8 })).toBe(false);
+    expect(shouldRequestThumosNote({ consentAi: true, consentHealth: false, storedDayCount: 8 })).toBe(false);
+    expect(THUMOS_NOTE_ASK).not.toMatch(/\d/);
+    expect(THUMOS_NOTE_ASK).not.toMatch(/kg|bpm|kcal|%/);
+    expect(visibleCoachNote('Weight is moving towards the target you chose.')).toContain('towards');
+    expect(visibleCoachNote('')).toBeNull();
+    expect(visibleCoachNote(SCRIPTED_COACH_REPLY)).toBeNull();
+    expect(visibleCoachNote(OFFLINE_COACH_MESSAGE)).toBeNull();
+    expect(visibleCoachNote(`This is not the AI. ${SCRIPTED_COACH_REPLY}`)).toBeNull();
+    const safety = { selfHarm: false, withdrawal: false };
+    expect(resolveThumosMode({ requested: 'note', userText: THUMOS_NOTE_ASK, safety })).toBe('note');
+    expect(resolveThumosMode({
+      requested: 'note',
+      userText: THUMOS_NOTE_ASK,
+      safety: { selfHarm: true, withdrawal: false },
+    })).toBe('support');
+    expect(resolveThumosMode({
+      requested: 'note',
+      userText: 'The urge is loud tonight. I keep thinking about the off-licence.',
+      safety,
+    })).toBe('support');
+    const prompt = buildSystemPrompt('CONTEXT', 'note', undefined, { healthAlreadySaid: true });
+    expect(prompt).toContain('encouraging assessment');
+    expect(prompt).toContain('up to three focuses');
+    expect(prompt).toContain('Never invent a number');
+    expect(prompt).toContain('say what is missing');
+    expect(prompt).toContain('Do not diagnose');
+    expect(prompt).toContain('Do not say Overweight, Obese, or Healthy.');
+    expect(prompt).toContain('calorie target');
+    expect(prompt).toContain('weight-loss target');
+    expect(prompt).toContain('Do not estimate how long it will take to reach a target.');
+    expect(prompt).toContain('not medical advice');
+    expect(prompt).toContain('116 123');
+    expect(prompt).toContain('NHS 111');
+    expect(prompt).toContain('999');
+    expect(prompt).not.toContain('do not put each point on its own line');
+    expect(prompt).not.toContain('already mentioned in this conversation');
+    expect(prompt).not.toContain('tie one remark back to that goal');
+    expect(THUMOS_LOCAL_LINE).toBe('When Thumos and health data are on, and at least 7 days are stored, the coach writes this note from health data already loaded for Thumos. Otherwise this note stays on this phone. It is not a diagnosis, and it does not set a calorie target or a weight-loss target.');
+    expect(THUMOS_OFF_LINE).toContain('It is not sent to the coach.');
+    expect(THUMOS_BOTH_OFF_LINE).toContain('This note is not sent to the coach.');
+    expect(readFileSync('src/ui/ThumosReadingComment.tsx', 'utf8')).toContain('.catch(');
   });
 });

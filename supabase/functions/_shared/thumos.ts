@@ -24,7 +24,7 @@ export {
   parseReminderClock,
 } from './motivation.ts';
 
-export type ThumosMode = 'opening' | 'steady' | 'growth' | 'support';
+export type ThumosMode = 'opening' | 'steady' | 'growth' | 'support' | 'note';
 
 export type CheckInSummary = {
   createdAt: string;
@@ -393,7 +393,7 @@ export function inferThumosMode(input: {
   return 'steady';
 }
 
-const CLIENT_MODES: readonly ThumosMode[] = ['support', 'growth', 'opening', 'steady'];
+const CLIENT_MODES: readonly ThumosMode[] = ['support', 'growth', 'opening', 'steady', 'note'];
 
 /**
  * The edge function decides the prompt. A client `mode` flag is a hint.
@@ -720,7 +720,20 @@ const CONVERSATION_SHAPE = [
   'If they name a plan, such as getting to bed at 10pm, affirm that plan and give one concrete tip. Do not widen it into other topics.',
 ].join('\n');
 
-const OTHER_GUIDANCE: Record<Exclude<ThumosMode, 'support'>, string> = {
+const NOTE_GUIDANCE = [
+  'This turn is the health note, not a chat reply.',
+  'Write an encouraging assessment of progress toward the target they chose, then up to three focuses.',
+  'Use only figures that appear in CONTEXT. Never invent a number. If a reading is missing, say what is missing.',
+  'If CONTEXT is too thin to judge a direction, say what is missing and do not give a verdict on the target.',
+  'Do not diagnose. Do not say Overweight, Obese, or Healthy.',
+  'Do not state a calorie target or a weight-loss target, and do not repeat those numbers even if CONTEXT includes them.',
+  'Do not estimate how long it will take to reach a target.',
+  'This is not medical advice. Do not write the GP, NHS 111, or 999 lines. Those are already shown beside the note.',
+  'Do not shame the person.',
+  'Put each point on its own line.',
+].join('\n');
+
+const OTHER_GUIDANCE: Record<Exclude<ThumosMode, 'support' | 'note'>, string> = {
   opening:
     'This is the start of the conversation, or the person has not yet said how they feel. Ask how they are feeling. Do not launch into advice.',
   steady:
@@ -775,15 +788,15 @@ export function motivationForTurn(
     safety?: { selfHarm: boolean; withdrawal: boolean };
   },
 ): MotivationPlan | null {
-  if (input.mode === 'support') return null;
+  if (input.mode === 'support' || input.mode === 'note') return null;
   if (input.safety?.selfHarm || input.safety?.withdrawal) return null;
   if (detectRisk(input.text) !== 'none') return null;
   if (detectCommittedAction(input.text)) return null;
   return planMotivation(input);
 }
 
-function eventPreparationSection(turn: PromptTurn): string {
-  if (turn.selfHarm || turn.committedAction || turn.followUp) return '';
+function eventPreparationSection(turn: PromptTurn, mode: ThumosMode): string {
+  if (mode === 'note' || turn.selfHarm || turn.committedAction || turn.followUp) return '';
   return EVENT_PREPARATION;
 }
 
@@ -794,6 +807,7 @@ function motivationBlock(mode: ThumosMode, turn: PromptTurn): string {
 
 function modeGuidance(mode: ThumosMode, turn: PromptTurn): string {
   if (turn.selfHarm) return CRISIS_SUPPORT;
+  if (mode === 'note') return NOTE_GUIDANCE;
   if (turn.committedAction) return committedGuidance(turn.committedAction);
   if (mode !== 'support') return OTHER_GUIDANCE[mode];
   if (turn.followUp) return FOLLOW_UP_SUPPORT;
@@ -801,9 +815,10 @@ function modeGuidance(mode: ThumosMode, turn: PromptTurn): string {
   return ACUTE_SUPPORT;
 }
 
-function styleLine(turn: PromptTurn): string {
+function styleLine(turn: PromptTurn, mode: ThumosMode): string {
   const voice = 'Use UK English. Be calm, plain, and adult. Never punitive about a lapse. No emoji unless the person uses them first. When you mention someone they talk about, use they, unless the user has already used a pronoun for that person. Do not guess he or she.';
   if (turn.selfHarm) return `${voice} Be warm and brief: 2 to 4 sentences.`;
+  if (mode === 'note') return `${voice} Be encouraging. This is not medical advice. Put each point on its own line.`;
   if (turn.committedAction) return `${voice} Write 1 or 2 sentences. Do not ask a question.`;
   if (turn.supportShape === 'planning' && !turn.followUp) {
     return `${voice} Give 3 to 5 concise suggestions. Often end with no question. A short, specific follow-up is fine.`;
@@ -811,8 +826,8 @@ function styleLine(turn: PromptTurn): string {
   return `${voice} Usually 2 to 4 sentences. Answer what they just said. Often end with no question. Vary the ending. Do not answer in a single generic line, and do not put each point on its own line.`;
 }
 
-function conversationShape(turn: PromptTurn): string {
-  if (turn.selfHarm || turn.committedAction) return '';
+function conversationShape(turn: PromptTurn, mode: ThumosMode): string {
+  if (mode === 'note' || turn.selfHarm || turn.committedAction) return '';
   const lines = [CONVERSATION_SHAPE];
   if (turn.healthAlreadySaid) {
     lines.push('A check-in or a health figure was already mentioned in this conversation. Do not mention one in this reply.');
@@ -937,22 +952,26 @@ export function buildSystemPrompt(
         : 'Your job is to help this person stay sober and get healthier.',
     mode === 'support' || turn.selfHarm
       ? ''
+      :     mode === 'note'
+      ? ''
       : 'You also motivate movement, a healthy meal, and sleep when they cannot be bothered. Sobriety and safety still come first. That help is not medical advice. Respect an injury, an illness, and signs of overtraining, and give permission to rest.',
     'You are not a doctor, therapist, or emergency service. Say so when the conversation touches physical health, withdrawal, or mental health.',
     'You cannot act outside this chat. Never offer to set a reminder, an alarm, or a calendar entry, and never offer to contact someone. If a reminder, alarm, or calendar entry would help, suggest they set it themselves. Do not say "I can set a reminder".',
-    styleLine(turn),
-    'The messages after this system prompt are the conversation so far, oldest first, then their latest line. Use that history. Never repeat a sentence you have already sent. Vary your wording from turn to turn.',
+    styleLine(turn, mode),
+    mode === 'note'
+      ? 'Their latest line asks for the health note. Write that note from CONTEXT. Do not treat it as a chat question.'
+      : 'The messages after this system prompt are the conversation so far, oldest first, then their latest line. Use that history. Never repeat a sentence you have already sent. Vary your wording from turn to turn.',
     turn.selfHarm
       ? 'Do not mention sober time, day counts, personal reasons, savings, health readings, health insights, Garmin readings, the gratitude diary, the vision board, the nutrition log, or a pinned Stoic quote or a pinned Platonic quote on this turn. Do not call Plato a Stoic.'
       : 'When you mention sober time, a personal reason, a check-in, a health reading, a health insight, a gratitude line, a vision caption, or a pinned Stoic quote or a pinned Platonic quote, take it from CONTEXT. Do not invent those details. A health insight is a note from their own readings, not a diagnosis. If CONTEXT includes an HRV explainer, you may use that wording when they ask what heart rate variability means. Do not add ranges or citations that are not written there, and do not diagnose. If CONTEXT includes published comparison bands, you may quote those figures and name the source written there. They are not a target and not a reason to chase the top of a range. Do not add a band that is not written there. If CONTEXT includes a pinned Stoic quote or a pinned Platonic quote, you may use it once for motivation. Quote it faithfully. Plato is Platonic, not a Stoic. Do not call Plato a Stoic.',
     turn.selfHarm ? '' : GRATITUDE_PROMPT_LINE,
     turn.selfHarm ? '' : VISION_PROMPT_LINE,
-    turn.selfHarm ? '' : NUTRITION_PROMPT_LINE,
+    turn.selfHarm || mode === 'note' ? '' : NUTRITION_PROMPT_LINE,
     'Do not invent statistics, study names, or citations. If you share a number about alcohol harm, use only CURATED FACTS, quote it faithfully, and name the source. If you do not have a verified figure, say so.',
     repetitionLine(turn),
-    conversationShape(turn),
+    conversationShape(turn, mode),
     modeGuidance(mode, turn),
-    eventPreparationSection(turn),
+    eventPreparationSection(turn, mode),
     motivationBlock(mode, turn),
     'Safety rules, follow exactly:',
     '- If they describe heavy daily drinking and wanting to stop abruptly, or withdrawal symptoms (shakes, sweating, hallucinations, confusion, seizures, or feeling very unwell when not drinking): tell them alcohol withdrawal can be dangerous and they should not detox alone. Advise their GP, NHS 111, or 999 in an emergency. Do not give a taper schedule, doses, or medication advice.',

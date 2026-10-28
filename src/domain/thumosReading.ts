@@ -1,12 +1,14 @@
 import { bmiFrom } from '@/domain/guidance';
 import { shiftDay } from '@/domain/healthInsights';
 import { GOAL_LABEL, type BodyBuild, type NutritionGoal } from '@/domain/nutrition';
+import { OFFLINE_COACH_MESSAGE, SCRIPTED_COACH_REPLY } from '@/domain/thumos';
 
 /**
  * A short note for the weight section and the health plan.
- * Written on the phone from readings already stored here.
- * It does not call the coach and does not store a new reading.
- * The prompt below is the guardrail text. This build does not send it.
+ * The phone writes it from readings already stored here.
+ * When Thumos and health data are on, and at least 7 days are stored,
+ * the coach is asked to write the same note. The phone sends no readings.
+ * The prompt below is the on-device guardrail. It is not the coach request.
  */
 
 export const THUMOS_READING_LABEL = 'Thumos';
@@ -29,7 +31,11 @@ export const THUMOS_FAILED_LINE =
 export const THUMOS_BMI_LINE = 'BMI cannot tell muscle from fat.';
 
 export const THUMOS_LOCAL_LINE =
-  'This note is written on this phone from readings already stored here. It is not sent to the coach. It is not a diagnosis, and it does not set a calorie target or a weight-loss target.';
+  'When Thumos and health data are on, and at least 7 days are stored, the coach writes this note from health data already loaded for Thumos. Otherwise this note stays on this phone. It is not a diagnosis, and it does not set a calorie target or a weight-loss target.';
+
+/** Fixed request. No readings, targets, or other personal figures. */
+export const THUMOS_NOTE_ASK =
+  'Please write the health note: an encouraging assessment of progress toward the target, then up to three focuses. Use only the readings you already have. Do not invent numbers.';
 
 export const THUMOS_ANALYSE_AGAIN = 'Have Thumos analyse your data again';
 
@@ -486,6 +492,25 @@ const READING_KINDS = new Set([
   'resting_heart_rate',
   'vo2_max',
 ]);
+
+/** The coach is asked only when both switches are on and 7 days are already stored. */
+export function shouldRequestThumosNote(input: {
+  consentAi: boolean;
+  consentHealth: boolean;
+  storedDayCount: number;
+}): boolean {
+  return input.consentAi === true && input.consentHealth === true && input.storedDayCount >= THUMOS_SEVEN_DAYS;
+}
+
+/** A coach reply replaces the on-device note. A failure line does not. */
+export function visibleCoachNote(reply: string | null | undefined): string | null {
+  const text = (reply ?? '').trim();
+  if (!text) return null;
+  if (text === SCRIPTED_COACH_REPLY || text === OFFLINE_COACH_MESSAGE) return null;
+  if (text.startsWith('This is not the AI.')) return null;
+  if (text.startsWith('Thumos cannot reach the coach just now.')) return null;
+  return text;
+}
 
 export function countReadingDays(
   samples: readonly { kind: string; value: number; recordedOn: string }[],
