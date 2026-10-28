@@ -138,12 +138,15 @@ describe('health stat tiles', () => {
     expect(cardio.status).toBe('Steady for your age and sex');
     expect(cardio.mark).toBe('On track');
     expect(cardio.hasGuideline).toBe(true);
-    expect(cardio.visual.kind).toBe('zone');
-    if (cardio.visual.kind === 'zone') {
-      expect(cardio.visual.zoneLow).toBe(31.9);
-      expect(cardio.visual.zoneHigh).toBe(45);
-      expect(cardio.visual.zoneCaption).toBe('Typical for your age and sex');
+    expect(cardio.visual.kind).toBe('ring');
+    if (cardio.visual.kind === 'ring') {
+      expect(cardio.visual.centre).toBe('42');
+      expect(cardio.visual.unit).toBe('ml/kg/min');
+      expect(cardio.visual.status).toBe('Steady for your age and sex');
+      expect(cardio.visual.fill).toBeGreaterThan(0);
+      expect(cardio.visual.fill).toBeLessThan(1);
     }
+    expect(readFileSync('src/ui/HealthStatBoard.tsx', 'utf8')).toContain("stacked={section.id === 'fitness'}");
     expect(cardio.meaning).not.toMatch(/56 to 62|59 to 65/);
     expect(cardio.about).toContain('per kg of body weight per minute');
     expect(gapForStat('vo2_max', 'VO2 max').source).toBe('VO2 max comes from Apple Watch after outdoor walks or runs.');
@@ -435,10 +438,12 @@ describe('health stat tiles', () => {
     }));
     const cardio = tile(board, 'vo2_max');
     expect(cardio.meaning).toContain('not shown');
-    expect(cardio.visual.kind).toBe('zone');
-    if (cardio.visual.kind === 'zone') {
-      expect(cardio.visual.zoneLow).toBe(25.3);
-      expect(cardio.visual.zoneHigh).toBe(36.1);
+    expect(cardio.status).toBe('Strong for your age and sex');
+    expect(cardio.mark).toBe('On track');
+    expect(cardio.visual.kind).toBe('ring');
+    if (cardio.visual.kind === 'ring') {
+      expect(cardio.visual.fill).toBe(1);
+      expect(cardio.visual.status).toBe('Strong for your age and sex');
     }
   });
 

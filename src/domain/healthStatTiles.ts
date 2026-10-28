@@ -819,16 +819,13 @@ function vo2Tile(item: CatalogItem, input: HealthStatBoardInput, grown: boolean)
       ? 'Add age and sex for a typical band. Nothing here is guessed.'
       : 'Logged';
   const tone: StatsTone = cardio?.tone ?? 'info';
-  const visual: HealthStatVisual = band
+  const visual: HealthStatVisual = band && cardio
     ? {
-      kind: 'zone',
-      value,
-      zoneLow: band.low,
-      zoneHigh: band.high,
-      scaleMin: Math.max(0, band.low - 10),
-      scaleMax: Math.max(band.high + 10, value + 5),
+      kind: 'ring',
+      centre: oneText(value),
+      unit: 'ml/kg/min',
+      fill: cardio.fill,
       status,
-      zoneCaption: 'Typical for your age and sex',
       tone,
     }
     : spark(current.length > 0 ? current : [{ day: latest.day, value: latest.value }], `${oneText(value)} ml/kg/min`);

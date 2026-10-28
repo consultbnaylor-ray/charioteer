@@ -7,7 +7,7 @@ import { isoDay, startOfLocalDay } from '@/domain/dates';
 import { BAND_CAVEAT, WALKING_BELOW_ZONE_NOTE, walkingBelowModerateZone, type BandLink } from '@/domain/healthBands';
 import { latestVo2Reading, VO2_CARD_LINE, vo2MeasuredLine, type Vo2Source } from '@/domain/vo2Estimate';
 import { OUTSIDE_CRISIS_LINE, OUTSIDE_SAFETY_LINE } from '@/domain/outdoorRoute';
-import { LOW_RESTING_FIT_LINE, LOW_RESTING_FIT_MORE } from '@/domain/restingFitness';
+import { LowRestingFitNote } from '@/ui/LowRestingFitNote';
 import { chartBucketForPeriod } from '@/domain/readingChart';
 import { parseStatPeriod, rollingWindow, type StatPeriod } from '@/domain/statWindow';
 import { shownError } from '@/domain/errors';
@@ -76,6 +76,7 @@ export function HealthStatBoard(
         <StatSection
           key={section.id}
           title={section.title}
+          stacked={section.id === 'fitness'}
           tiles={section.tiles}
           today={input.today}
           period={period}
@@ -220,6 +221,7 @@ function BodyGapEntry({
 
 function StatSection({
   title,
+  stacked = false,
   tiles,
   today,
   period,
@@ -229,6 +231,7 @@ function StatSection({
   onOpen,
 }: {
   title: string;
+  stacked?: boolean;
   tiles: HealthStatTile[];
   today: string;
   period: StatPeriod;
@@ -252,9 +255,9 @@ function StatSection({
         <T variant="muted">{open ? 'Hide' : 'Show'}</T>
       </Pressable>
       {open ? (
-        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+        <View style={stacked ? { gap: 8, alignSelf: 'stretch' } : { flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
           {tiles.map((tile) => (
-            <StatTile key={tile.id} tile={tile} today={today} period={period} measuredOn={measuredOn} vo2Source={vo2Source} onPlanOutdoor={onPlanOutdoor} onOpen={() => onOpen(tile.id)} />
+            <StatTile key={tile.id} tile={tile} stacked={stacked} today={today} period={period} measuredOn={measuredOn} vo2Source={vo2Source} onPlanOutdoor={onPlanOutdoor} onOpen={() => onOpen(tile.id)} />
           ))}
         </View>
       ) : null}
@@ -264,6 +267,7 @@ function StatSection({
 
 function StatTile({
   tile,
+  stacked = false,
   today,
   period,
   measuredOn,
@@ -272,6 +276,7 @@ function StatTile({
   onOpen,
 }: {
   tile: HealthStatTile;
+  stacked?: boolean;
   today: string;
   period: StatPeriod;
   measuredOn: string | null;
@@ -286,9 +291,10 @@ function StatTile({
   return (
     <View
       style={{
-        flexGrow: 1,
-        flexBasis: charted ? '100%' : '46%',
-        minWidth: 148,
+        flexGrow: stacked ? 0 : 1,
+        flexBasis: stacked || charted ? '100%' : '46%',
+        width: stacked ? '100%' : undefined,
+        minWidth: stacked ? 0 : 148,
         gap: 6,
         padding: 8,
         borderWidth: 1,
@@ -315,7 +321,7 @@ function StatTile({
             <T variant="muted">{OUTSIDE_CRISIS_LINE}</T>
           </>
         ) : null}
-        {restingTileShowsFitLine(tile) ? <T>{LOW_RESTING_FIT_LINE}</T> : null}
+        <LowRestingFitNote reading={restingTileShowsFitLine(tile) ? tile.valueText : null} />
         {!tile.empty && tile.hasGuideline && tile.id !== 'vo2_max' ? (
           <T variant="muted">{tile.id === 'weekly_active_minutes' ? 'Not medical advice. Not a diagnosis.' : 'Not medical advice.'}</T>
         ) : null}
@@ -573,7 +579,7 @@ function StatDetail({
                 <TileValue tile={tile} />
                 {tile.empty ? null : <TileVisual visual={tile.visual} charted={tile.readings.length > 0} />}
                 {showWalkingBelowZone(tile) ? <T>{WALKING_BELOW_ZONE_NOTE}</T> : null}
-                {restingTileShowsFitLine(tile) ? <T>{LOW_RESTING_FIT_MORE}</T> : null}
+                <LowRestingFitNote reading={restingTileShowsFitLine(tile) ? tile.valueText : null} detail />
                 {tile.readings.length > 0 ? <TileChart tile={tile} today={today} period={period} /> : null}
                 {tile.id === 'vo2_max' && onPlanOutdoor ? <Vo2EstimateNote measuredOn={measuredOn} source={vo2Source} today={today} onPlan={() => { onClose(); onPlanOutdoor(); }} /> : null}
                 {!tile.empty && detailShowsStatusAgain(tile.visual.kind) ? <StatusMark tone={tile.tone} status={tile.status} word={tile.mark} /> : null}

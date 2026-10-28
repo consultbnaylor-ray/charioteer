@@ -47,6 +47,15 @@ export function restingReadingIsLow(reading: string | null | undefined): boolean
   return Number(match[1]) < NHS_RESTING_LOW;
 }
 
+/**
+ * The approved line for a resting figure under 60. 60 and above return nothing.
+ * `detail` is the longer line for More info. The short line is the one on the graph and the card.
+ */
+export function lowRestingFitText(reading: string | null | undefined, detail = false): string | null {
+  if (!restingReadingIsLow(reading)) return null;
+  return detail ? LOW_RESTING_FIT_MORE : LOW_RESTING_FIT_LINE;
+}
+
 function lowRateCloserLook(sentence: string): string {
   return `${sentence} ${LOW_RATE_COULD_BE_FIT}`;
 }
