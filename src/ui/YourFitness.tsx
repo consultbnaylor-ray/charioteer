@@ -47,6 +47,7 @@ import { statsToneColors } from '@/ui/statsPalette';
 import { useAppTheme } from '@/ui/theme';
 import { Vo2MaxChart } from '@/ui/DailyActivity';
 import { GarminTip } from '@/ui/GarminTip';
+import { LowRestingFitNote } from '@/ui/LowRestingFitNote';
 import { Vo2EstimateNote, Vo2MeasureBanner } from '@/ui/Vo2EstimateNote';
 import { TowardTargetActivity } from '@/ui/TowardTargetActivity';
 import { MoreInfo as InfoDisclosure, MoreInfoButton } from '@/ui/MoreInfo';
@@ -193,6 +194,7 @@ export function YourFitness({ onPlanOutdoor }: { onPlanOutdoor: () => void }) {
             {view.resting.reading ? `${view.resting.reading} · ` : ''}{view.resting.period ? `${view.resting.period} · ` : ''}{view.resting.signal ?? (view.resting.tone === 'watch' ? 'Watch' : 'On track')}
           </T>
           <FitnessSeries points={view.resting.series ?? []} unit="bpm" aggregate="mean" label="Resting heart rate chart" />
+          <LowRestingFitNote reading={view.resting.reading} />
           <MoreInfo about="resting heart rate" onPress={() => setInfo('resting')} />
         </View>
       ) : null}
@@ -424,6 +426,7 @@ function RestingDetail({ view, goal }: { view: FitnessSnapshot; goal: NutritionG
       <T>{RESTING_WHAT}</T>
       <T variant="label">What your number means</T>
       <T>{resting.reading ? `${resting.reading}. ` : ''}{resting.words}</T>
+      <LowRestingFitNote reading={resting.reading} detail />
       <FitnessSeries points={resting.series ?? []} unit="bpm" aggregate="mean" label="Resting heart rate chart" />
       <T variant="label">{whyGoalMatters(goal)}</T>
       <T>{whyRestingMatters()}</T>
