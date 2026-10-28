@@ -76,6 +76,7 @@ export function HealthStatBoard(
         <StatSection
           key={section.id}
           title={section.title}
+          stacked={section.id === 'fitness'}
           tiles={section.tiles}
           today={input.today}
           period={period}
@@ -220,6 +221,7 @@ function BodyGapEntry({
 
 function StatSection({
   title,
+  stacked = false,
   tiles,
   today,
   period,
@@ -229,6 +231,7 @@ function StatSection({
   onOpen,
 }: {
   title: string;
+  stacked?: boolean;
   tiles: HealthStatTile[];
   today: string;
   period: StatPeriod;
@@ -252,9 +255,9 @@ function StatSection({
         <T variant="muted">{open ? 'Hide' : 'Show'}</T>
       </Pressable>
       {open ? (
-        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+        <View style={stacked ? { gap: 8, alignSelf: 'stretch' } : { flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
           {tiles.map((tile) => (
-            <StatTile key={tile.id} tile={tile} today={today} period={period} measuredOn={measuredOn} vo2Source={vo2Source} onPlanOutdoor={onPlanOutdoor} onOpen={() => onOpen(tile.id)} />
+            <StatTile key={tile.id} tile={tile} stacked={stacked} today={today} period={period} measuredOn={measuredOn} vo2Source={vo2Source} onPlanOutdoor={onPlanOutdoor} onOpen={() => onOpen(tile.id)} />
           ))}
         </View>
       ) : null}
@@ -264,6 +267,7 @@ function StatSection({
 
 function StatTile({
   tile,
+  stacked = false,
   today,
   period,
   measuredOn,
@@ -272,6 +276,7 @@ function StatTile({
   onOpen,
 }: {
   tile: HealthStatTile;
+  stacked?: boolean;
   today: string;
   period: StatPeriod;
   measuredOn: string | null;
@@ -286,9 +291,10 @@ function StatTile({
   return (
     <View
       style={{
-        flexGrow: 1,
-        flexBasis: charted ? '100%' : '46%',
-        minWidth: 148,
+        flexGrow: stacked ? 0 : 1,
+        flexBasis: stacked || charted ? '100%' : '46%',
+        width: stacked ? '100%' : undefined,
+        minWidth: stacked ? 0 : 148,
         gap: 6,
         padding: 8,
         borderWidth: 1,
