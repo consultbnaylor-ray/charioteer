@@ -25,7 +25,9 @@ import { publishedCardioBand } from '@/domain/fitnessSnapshot';
 import type { NutritionSex } from '@/domain/nutrition';
 import type { RestingFitnessComment, RestingInfoSection } from '@/domain/restingFitness';
 import { RESTING_CARE, RESTING_CARD_CARE } from '@/domain/restingFitness';
+import { NHS_ADULT_SLEEP_MAX_HOURS, NHS_ADULT_SLEEP_MIN_HOURS } from '@/domain/guidance';
 import { periodDayCount, periodPhrase, scaledPeriodTarget, type StatPeriod } from '@/domain/statWindow';
+import { STATS_SIGNAL } from '@/domain/statsOverview';
 import { chartDays } from '@/domain/workoutDay';
 
 export const GARMIN_DETAILS_TITLE = 'More Garmin Stats';
@@ -43,6 +45,53 @@ export const OUTSIDE_RANGE_NOTE =
   'This sits outside the usual adult range. If it keeps happening, speak to a doctor. This is general guidance, not a diagnosis.';
 
 export const GARMIN_SCORE_NOTE = "Garmin's own score, not a medical measure.";
+
+/**
+ * Garmin's own sleep-score bands, not a clinical scale.
+ * Garmin, 14 March 2025: excellent 90–100, good 80–89, fair 60–79, poor 0–60.
+ * The same page says a score below 60 is the poor group.
+ * A Garmin support reply says poor is below 60. This app treats 60 as Fair.
+ * https://www.garmin.com/en-US/blog/fitness/how-well-do-you-sleep-new-data-examines-garmin-users-sleep/
+ */
+export const GARMIN_SLEEP_SCORE_POOR_BELOW = 60;
+export const GARMIN_SLEEP_SCORE_FAIR_HIGH = 79;
+export const GARMIN_SLEEP_SCORE_GOOD_LOW = 80;
+export const GARMIN_SLEEP_SCORE_GOOD_HIGH = 89;
+export const GARMIN_SLEEP_SCORE_EXCELLENT_LOW = 90;
+
+export const GARMIN_SLEEP_SCORE_BANDS =
+  "Garmin's own bands for this score: Poor below 60, Fair 60–79, Good 80–89, Excellent 90–100.";
+
+export const GARMIN_SLEEP_SCORE_AVERAGE =
+  'Garmin said its average user score was 72 from February 2024 to January 2025. That average is not a personal target.';
+
+/** Good through Excellent. Fair and Poor sit below this lime band. */
+export const GARMIN_SLEEP_SCORE_LIME = { low: GARMIN_SLEEP_SCORE_GOOD_LOW, high: 100 };
+
+export type GarminSleepScoreBand = 'Poor' | 'Fair' | 'Good' | 'Excellent';
+
+export function garminSleepScoreBand(score: number): GarminSleepScoreBand | null {
+  if (!Number.isFinite(score) || score <= 0 || score > 100) return null;
+  if (score < GARMIN_SLEEP_SCORE_POOR_BELOW) return 'Poor';
+  if (score <= GARMIN_SLEEP_SCORE_FAIR_HIGH) return 'Fair';
+  if (score <= GARMIN_SLEEP_SCORE_GOOD_HIGH) return 'Good';
+  return 'Excellent';
+}
+
+export function garminSleepScoreVerdict(score: number): string | null {
+  const band = garminSleepScoreBand(score);
+  if (!band) return null;
+  const signal = band === 'Poor' ? STATS_SIGNAL.watch : band === 'Fair' ? STATS_SIGNAL.info : STATS_SIGNAL.good;
+  return `${signal}. ${band}. ${GARMIN_SCORE_NOTE}`;
+}
+
+/** NHS adults, 7 to 9 hours. The same edges as the Sleep hours card. */
+export function sleepDurationVerdict(hours: number): string | null {
+  if (!Number.isFinite(hours) || hours <= 0) return null;
+  if (hours < NHS_ADULT_SLEEP_MIN_HOURS) return `${STATS_SIGNAL.watch}. Under 7 hours.`;
+  if (hours > NHS_ADULT_SLEEP_MAX_HOURS) return `${STATS_SIGNAL.info}. Over 9 hours, not a warning on its own.`;
+  return `${STATS_SIGNAL.good}. Within 7 to 9 hours.`;
+}
 
 export const STRESS_ZONES = '0–25 resting, 26–50 low, 51–75 medium, 76–100 high';
 
@@ -376,6 +425,29 @@ function rangeGuide(input: {
   );
 }
 
+function sleepScoreGuide(period: StatPeriod, latest: number | null): ChartGuide {
+  return advised(
+    `Sleep score is Garmin's own score for that night, powered by Firstbeat. ${GARMIN_SLEEP_SCORE_BANDS} ${GARMIN_SLEEP_SCORE_AVERAGE} The lime band is Good through Excellent, 80–100, for ${grouped(period)}. It is not a medical sleep measure. Compare a night with your own usual nights.`,
+    {
+      dailyTypical: GARMIN_SLEEP_SCORE_LIME,
+      periodTypical: GARMIN_SLEEP_SCORE_LIME,
+      verdict: latest == null ? null : garminSleepScoreVerdict(latest),
+    },
+  );
+}
+
+function sleepDurationGuide(period: StatPeriod, latest: number | null): ChartGuide {
+  const band = { low: NHS_ADULT_SLEEP_MIN_HOURS, high: NHS_ADULT_SLEEP_MAX_HOURS };
+  return advised(
+    `Sleep duration is the hours Garmin stored for that night. The NHS says adults need 7 to 9 hours a night. That range is not stretched across a week or a month. The National Heart, Lung, and Blood Institute also says adults should sleep 7 to 9 hours a night, and that more than 9 hours is not necessarily harmful. The lime band is 7–9 hours for ${grouped(period)}. Compare a night with your own usual nights.`,
+    {
+      dailyTypical: band,
+      periodTypical: band,
+      verdict: latest == null ? null : sleepDurationVerdict(latest),
+    },
+  );
+}
+
 function vo2Guide(period: StatPeriod, age: number | null, sex: NutritionSex | null): ChartGuide {
   const band = publishedCardioBand(age, sex);
   if (!band) {
@@ -547,21 +619,23 @@ export function garminDetailCharts(input: GarminChartInput): GarminDetailChart[]
   battery('body_battery_drained', 'Body battery drained', 'drained', drained);
   battery('body_battery_highest', 'Body battery highest', 'highest', highest);
   battery('body_battery_lowest', 'Body battery lowest', 'lowest', lowest);
+  const scorePoints = seriesFrom(input.endDay, input.period, sleepScore, 'Sleep score', 'score', countText, false);
   add({
     id: 'sleep_score',
     title: 'Sleep score',
     unit: 'score',
-    points: seriesFrom(input.endDay, input.period, sleepScore, 'Sleep score', 'score', countText, false),
+    points: scorePoints,
     includeZero: false,
-    guide: advised(`Sleep score is Garmin's own score for that night. ${NO_STANDARD_RANGE} for ${grouped(input.period)}. It is not a medical sleep measure. Compare a night with your own usual nights.`),
+    guide: sleepScoreGuide(input.period, latestStored(scorePoints)),
   });
+  const durationPoints = seriesFrom(input.endDay, input.period, sleepHours, 'Sleep duration', 'hours', oneDecimal, false);
   add({
     id: 'sleep_duration',
     title: 'Sleep duration',
     unit: 'hours',
-    points: seriesFrom(input.endDay, input.period, sleepHours, 'Sleep duration', 'hours', oneDecimal, false),
+    points: durationPoints,
     includeZero: false,
-    guide: advised(`Sleep duration is the hours Garmin stored for that night. ${NO_STANDARD_RANGE} for ${grouped(input.period)}. Compare a night with your own usual nights.`),
+    guide: sleepDurationGuide(input.period, latestStored(durationPoints)),
   });
   const breathPoints = seriesFrom(input.endDay, input.period, breath, 'Breathing rate', 'breaths/min', oneDecimal, false);
   add({
