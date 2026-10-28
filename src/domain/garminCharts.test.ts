@@ -10,7 +10,12 @@ import {
   GARMIN_SCORE_NOTE,
   GENERAL_GUIDANCE,
   NO_DATA,
+  GARMIN_SLEEP_SCORE_AVERAGE,
+  GARMIN_SLEEP_SCORE_BANDS,
   NO_STANDARD_RANGE,
+  garminSleepScoreBand,
+  garminSleepScoreVerdict,
+  sleepDurationVerdict,
   OUTSIDE_RANGE_NOTE,
   RESTING_TYPICAL_HIGH,
   RESTING_TYPICAL_LOW,
@@ -266,10 +271,17 @@ describe('garmin chart bands', () => {
       expect(note.match(/Not medical advice/gi) ?? []).toHaveLength(0);
       expect(note.match(/Approximate general guidance/g) ?? []).toHaveLength(0);
     }
-    expect(byId.get('sleep_score')?.guide.about).toContain(NO_STANDARD_RANGE);
-    expect(byId.get('sleep_score')?.guide.dailyTypical).toBeNull();
+    expect(byId.get('sleep_score')?.guide.about).not.toContain(NO_STANDARD_RANGE);
+    expect(byId.get('sleep_score')?.guide.about).toContain(GARMIN_SLEEP_SCORE_BANDS);
+    expect(byId.get('sleep_score')?.guide.about).toContain(GARMIN_SLEEP_SCORE_AVERAGE);
+    expect(byId.get('sleep_score')?.guide.about).toContain('not a medical sleep measure');
+    expect(byId.get('sleep_score')?.guide.dailyTypical).toEqual({ low: 80, high: 100 });
+    expect(byId.get('sleep_score')?.guide.verdict).toBe('On track. Good. Garmin\'s own score, not a medical measure.');
     expect(byId.get('sleep_duration')?.points.find((point) => point.day === end)?.label).toContain('7.5 hours');
-    expect(byId.get('sleep_duration')?.guide.dailyTypical).toBeNull();
+    expect(byId.get('sleep_duration')?.guide.dailyTypical).toEqual({ low: 7, high: 9 });
+    expect(byId.get('sleep_duration')?.guide.verdict).toBe('On track. Within 7 to 9 hours.');
+    expect(byId.get('sleep_duration')?.guide.about).toContain('The NHS says adults need 7 to 9 hours a night.');
+    expect(byId.get('sleep_duration')?.guide.about).not.toContain(NO_STANDARD_RANGE);
     expect(byId.get('respiration')?.guide.dailyTypical).toEqual({ low: BREATH_TYPICAL_LOW, high: BREATH_TYPICAL_HIGH });
     expect(byId.get('respiration')?.guide.outside).toBe(OUTSIDE_RANGE_NOTE);
     expect(byId.get('pulse_ox')?.guide.dailyTypical?.low).toBe(SPO2_TYPICAL_LOW);
@@ -355,5 +367,29 @@ describe('garmin chart bands', () => {
     expect(activity).toContain('guide.verdict');
     expect(activity).toContain('crisisHelplines');
     expect(activity).toContain("title === 'Average stress'");
+  });
+});
+
+describe('sleep score and duration bands', () => {
+  it('uses Garmin bands for the score and the NHS 7 to 9 hours for duration', () => {
+    expect(garminSleepScoreBand(59)).toBe('Poor');
+    expect(garminSleepScoreBand(60)).toBe('Fair');
+    expect(garminSleepScoreBand(79)).toBe('Fair');
+    expect(garminSleepScoreBand(80)).toBe('Good');
+    expect(garminSleepScoreBand(89)).toBe('Good');
+    expect(garminSleepScoreBand(90)).toBe('Excellent');
+    expect(garminSleepScoreBand(100)).toBe('Excellent');
+    expect(garminSleepScoreBand(0)).toBeNull();
+    expect(garminSleepScoreBand(101)).toBeNull();
+    expect(garminSleepScoreVerdict(61)).toBe("Note. Fair. Garmin's own score, not a medical measure.");
+    expect(garminSleepScoreVerdict(59)).toBe("Watch. Poor. Garmin's own score, not a medical measure.");
+    expect(garminSleepScoreVerdict(90)).toBe("On track. Excellent. Garmin's own score, not a medical measure.");
+    expect(garminSleepScoreVerdict(61)).toContain(GARMIN_SCORE_NOTE);
+    expect(sleepDurationVerdict(5.9)).toBe('Watch. Under 7 hours.');
+    expect(sleepDurationVerdict(7)).toBe('On track. Within 7 to 9 hours.');
+    expect(sleepDurationVerdict(9)).toBe('On track. Within 7 to 9 hours.');
+    expect(sleepDurationVerdict(9.1)).toBe('Note. Over 9 hours, not a warning on its own.');
+    expect(GARMIN_SLEEP_SCORE_BANDS).toContain('Poor below 60');
+    expect(GARMIN_SLEEP_SCORE_AVERAGE).toContain('72');
   });
 });
