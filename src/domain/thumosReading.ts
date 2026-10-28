@@ -54,6 +54,31 @@ export const THUMOS_CALORIES_ABSENT = 'Calories are not stored for today, so the
 export const THUMOS_NO_TARGET_TIME = 'No target weight is stored, so a time to a target is not in this note.';
 export const THUMOS_NO_TIME_ESTIMATE = 'A time to reach the target is not estimated from these readings.';
 
+export const THUMOS_NEEDS_SEVEN_DAYS = 'Thumos needs at least 7 days of data.';
+
+export const THUMOS_LOG_MORE_DAYS =
+  'Log weight, sleep, steps, and workouts on more days. A verdict on the target waits until then.';
+
+export const THUMOS_TOWARDS_TARGET = 'Weight is moving towards the target you chose.';
+
+export const THUMOS_AWAY_TARGET = 'Weight is moving away from the target you chose.';
+
+export const THUMOS_UNCLEAR_TARGET = 'Weight is holding, so the move towards the target is not clear yet.';
+
+export const THUMOS_ONE_WEIGHT_TARGET = 'One weight reading is stored, so a move towards the target is not clear yet.';
+
+export const THUMOS_FOCUS_STRENGTH = 'Strength minutes are not in these 7 days. Logging them is the next focus.';
+
+export const THUMOS_FOCUS_SLEEP = 'Sleep is not stored. Logging nights is a focus.';
+
+export const THUMOS_FOCUS_STEPS = 'Steps are not stored. Logging steps is a focus.';
+
+export const THUMOS_FOCUS_PROTEIN = 'Protein is not stored for today. Logging meals is a focus.';
+
+export const THUMOS_FOCUS_KEEP = 'Keep the readings you already store. That is the focus for now.';
+
+export const THUMOS_SEVEN_DAYS = 7;
+
 export const THUMOS_READING_PROMPT = [
   'Write a helpful, encouraging note about this reading in two or three sentences.',
   'Use only readings that are present. Leave out any figure that is missing.',
@@ -100,6 +125,8 @@ export type ThumosReadingInput = {
   proteinG?: number | null;
   /** True when today's meals have a calorie figure. The number is not written into the note. */
   caloriesStored?: boolean;
+  /** Distinct days with a stored reading. Omitted means the 7-day gate is not applied. */
+  storedDayCount?: number | null;
 };
 
 export type ThumosReadingView = {
@@ -378,7 +405,106 @@ function safeCard(input: ThumosReadingInput): string[] | null {
   return null;
 }
 
-/** Two or three sentences from the readings that exist. A new reading can change the note the same day. */
+function orderedWeights(input: ThumosReadingInput): { day: string; kg: number }[] {
+  return [...input.weights].filter((point) => point.kg > 0).sort((left, right) => left.day.localeCompare(right.day));
+}
+
+function towardsTarget(input: ThumosReadingInput): string | null {
+  if (input.targetKg == null || !(input.targetKg > 0)) return null;
+  const ordered = orderedWeights(input);
+  const latest = ordered.at(-1);
+  const earlier = ordered[0];
+  if (!latest || !earlier) return THUMOS_ONE_WEIGHT_TARGET;
+  if (earlier.day === latest.day) return THUMOS_ONE_WEIGHT_TARGET;
+  const movingDown = latest.kg < earlier.kg;
+  const movingUp = latest.kg > earlier.kg;
+  if (!movingDown && !movingUp) return THUMOS_UNCLEAR_TARGET;
+  const wantsLower = input.targetKg < earlier.kg;
+  const wantsHigher = input.targetKg > earlier.kg;
+  if ((wantsLower && movingDown) || (wantsHigher && movingUp)) return THUMOS_TOWARDS_TARGET;
+  if ((wantsLower && movingUp) || (wantsHigher && movingDown)) return THUMOS_AWAY_TARGET;
+  return THUMOS_UNCLEAR_TARGET;
+}
+
+function focusLines(input: ThumosReadingInput): string[] {
+  const lines: string[] = [];
+  const strengthGoal = trainsForReading(input);
+  if (strengthGoal && !((input.strengthMinutes7 ?? 0) > 0)) lines.push(THUMOS_FOCUS_STRENGTH);
+  if (input.sleepHours == null || !(input.sleepHours > 0)) lines.push(THUMOS_FOCUS_SLEEP);
+  if (input.steps == null || !(input.steps > 0)) lines.push(THUMOS_FOCUS_STEPS);
+  if (input.proteinG == null) lines.push(THUMOS_FOCUS_PROTEIN);
+  if (!lines.length) lines.push(THUMOS_FOCUS_KEEP);
+  return lines.slice(0, 3);
+}
+
+/** Visible lines. Fewer than 7 stored days skips any verdict on the target. */
+export function thumosAssessmentLines(input: ThumosReadingInput): string[] {
+  if (input.storedDayCount != null && input.storedDayCount < THUMOS_SEVEN_DAYS) {
+    return [THUMOS_NEEDS_SEVEN_DAYS, THUMOS_LOG_MORE_DAYS];
+  }
+  const lines: string[] = [];
+  const towards = towardsTarget(input);
+  if (towards) lines.push(towards);
+  else if (input.targetKg == null || !(input.targetKg > 0)) lines.push(THUMOS_NO_TARGET_TIME);
+  const weight = weightSentence(input.weights);
+  if (weight) lines.push(weight);
+  if (input.bodyFatPct != null) {
+    lines.push(input.bodyFatEarlier != null
+      ? directionLine(input.bodyFatPct, input.bodyFatEarlier, THUMOS_BODY_FAT_DOWN, THUMOS_BODY_FAT_UP, THUMOS_BODY_FAT_SAME)
+      : `Body fat is ${shown(input.bodyFatPct)}%.`);
+  }
+  if (input.leanMassKg != null) {
+    lines.push(input.leanEarlier != null
+      ? directionLine(input.leanMassKg, input.leanEarlier, THUMOS_LEAN_DOWN, THUMOS_LEAN_UP, THUMOS_LEAN_SAME)
+      : `Lean mass is ${shown(input.leanMassKg)} kg.`);
+  }
+  const strength = input.strengthMinutes7 ?? 0;
+  const cardio = input.cardioMinutes7 ?? 0;
+  if (strength > 0 && cardio > 0) lines.push(mixSentence(strength, cardio));
+  else if (strength > 0) lines.push(`Strength work in the last 7 days is ${minutes(strength)} min.`);
+  else if (cardio > 0) lines.push(cardioSentence(cardio));
+  else if ((input.workoutMinutes7 ?? 0) > 0) lines.push(`Logged workouts in the last 7 days are ${minutes(input.workoutMinutes7 ?? 0)} min.`);
+  if (input.vo2 != null) lines.push(`VO2 max is ${shown(input.vo2)} ml/kg/min.`);
+  if (input.restingBpm != null) lines.push(`Resting heart rate is ${shown(input.restingBpm)} bpm.`);
+  if (input.sleepHours != null && input.sleepHours > 0) lines.push(sleepSentence(input.sleepHours));
+  if (input.steps != null && input.steps > 0) lines.push(stepsSentence(input.steps));
+  if (input.proteinG != null) lines.push(proteinSentence(input.proteinG));
+  if (input.goal) lines.push(aimSentence(input.goal));
+  lines.push(...focusLines(input));
+  if (trainsForReading(input)) lines.push(THUMOS_BMI_LINE);
+  lines.push(ENCOURAGING_LINES[fingerprint(input) % ENCOURAGING_LINES.length] ?? ENCOURAGING_LINES[0]);
+  return lines;
+}
+
+const READING_KINDS = new Set([
+  'weight_kg',
+  'sleep_hours',
+  'steps',
+  'workout_minutes',
+  'strength_minutes',
+  'cardio_minutes',
+  'resting_heart_rate',
+  'vo2_max',
+]);
+
+export function countReadingDays(
+  samples: readonly { kind: string; value: number; recordedOn: string }[],
+  bodyDays: readonly string[] = [],
+): number {
+  const days = new Set<string>();
+  for (const sample of samples) {
+    if (!READING_KINDS.has(sample.kind) || !(sample.value > 0)) continue;
+    const day = sample.recordedOn.slice(0, 10);
+    if (/^\d{4}-\d{2}-\d{2}$/.test(day)) days.add(day);
+  }
+  for (const day of bodyDays) {
+    const clean = day.slice(0, 10);
+    if (/^\d{4}-\d{2}-\d{2}$/.test(clean)) days.add(clean);
+  }
+  return days.size;
+}
+
+/** A short assessment from stored readings. A new reading can change the note the same day. */
 export function thumosReadingComment(input: ThumosReadingInput): ThumosReadingView {
   if (!input.consentAi && !input.consentHealth) return fixed(THUMOS_BOTH_OFF_LINE);
   if (!input.consentAi) return fixed(THUMOS_OFF_LINE);
@@ -387,13 +513,19 @@ export function thumosReadingComment(input: ThumosReadingInput): ThumosReadingVi
   const facts = factSentences(input);
   const trains = trainsForReading(input);
   const detail = thumosDetailLines(input);
-  if (facts.length === 0 && !trains) return { sentences: [THUMOS_EMPTY_LINE], more: [...detail, THUMOS_LOCAL_LINE] };
-
-  const draft = composeReading(input);
-  const guarded = guardReadingComment(draft, input) ? null : readingSentences(draft);
-  const sentences = guarded ?? safeCard(input) ?? [THUMOS_EMPTY_LINE];
+  const early = input.storedDayCount != null && input.storedDayCount < THUMOS_SEVEN_DAYS;
+  if (!early && facts.length === 0 && !trains) {
+    return { sentences: [THUMOS_EMPTY_LINE], more: [...detail, THUMOS_LOCAL_LINE] };
+  }
+  const sentences = early
+    ? [THUMOS_NEEDS_SEVEN_DAYS, THUMOS_LOG_MORE_DAYS]
+    : thumosAssessmentLines(input);
   const used = new Set(sentences);
-  const more = [...facts.filter((line) => !used.has(line)), ...detail.filter((line) => !used.has(line)), THUMOS_LOCAL_LINE];
+  const more = [
+    ...facts.filter((line) => !used.has(line)),
+    ...detail.filter((line) => !used.has(line) && (early ? line !== THUMOS_TOWARDS_TARGET && line !== THUMOS_AWAY_TARGET && line !== THUMOS_UNCLEAR_TARGET && line !== THUMOS_ONE_WEIGHT_TARGET : true)),
+    THUMOS_LOCAL_LINE,
+  ];
   return { sentences, more };
 }
 

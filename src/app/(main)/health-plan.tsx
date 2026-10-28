@@ -14,7 +14,7 @@ import { useStatPeriod } from '@/health/useStatPeriod';
 import { StatPeriodToggle } from '@/ui/StatPeriodToggle';
 import { GoalChoices } from '@/ui/GoalChoices';
 import { GoalWeightRange } from '@/ui/GoalWeightRange';
-import { ThumosAnalyseButton, ThumosReadingComment } from '@/ui/ThumosReadingComment';
+import { ThumosReadingComment } from '@/ui/ThumosReadingComment';
 import { YourFitness } from '@/ui/YourFitness';
 import { useHealthSources } from '@/health/useHealthSources';
 import { planDayFromSessionText } from '@/domain/plannedSession';
@@ -144,7 +144,7 @@ export default function HealthPlanScreen() {
       refreshing={manual.refreshing}
       onRefresh={() => void manual.run()}
     >
-      <ThumosAnalyseButton />
+      <ThumosReadingComment analyse />
       <HealthRefreshBar
         refreshing={manual.refreshing}
         appleCheckedAt={manual.appleCheckedAt}
@@ -261,7 +261,6 @@ export default function HealthPlanScreen() {
           <MeasureBarsView label="By section" bars={progress.bars} />
         </Card>
       ) : null}
-      <ThumosReadingComment />
       <GoalWeightRange />
       <Card>
         <T variant="label">Progress</T>

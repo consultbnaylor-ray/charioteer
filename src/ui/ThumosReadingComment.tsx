@@ -8,6 +8,7 @@ import {
   THUMOS_EMPTY_LINE,
   THUMOS_FAILED_LINE,
   THUMOS_READING_LABEL,
+  countReadingDays,
   latestKind,
   sumKindSince,
   thumosReadingComment,
@@ -95,6 +96,7 @@ export function ThumosReadingComment({ analyse = false }: { analyse?: boolean })
     proteinG: meals.protein,
     caloriesStored: meals.calories,
     build: snap.nutrition.build,
+    storedDayCount: countReadingDays(samples, snap.bodyComposition.map((row) => row.recordedOn)),
   });
   const sentences = view.sentences[0] === THUMOS_FAILED_LINE ? [THUMOS_EMPTY_LINE] : view.sentences;
   return (
