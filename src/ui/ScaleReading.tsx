@@ -4,6 +4,7 @@ import { useSnapshot } from '@/data';
 import { compositionForAssessment, weightPointsFrom } from '@/domain/nutrition';
 import {
   SCALE_COMPARE_LINE,
+  SCALE_FROM_SCALES,
   SCALE_CORE_LINE,
   SCALE_EMPTY_LINE,
   SCALE_MORE_ARRIVES,
@@ -32,6 +33,7 @@ export function ScaleReadingNote() {
   });
   return (
     <View style={{ gap: 8, alignSelf: 'stretch' }} accessibilityLabel="Weight, BMI, body fat, and lean mass">
+      <T variant="label">{SCALE_FROM_SCALES}</T>
       {view.empty ? <T>{SCALE_EMPTY_LINE}</T> : (
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12 }}>
           {view.figures.map((figure) => (

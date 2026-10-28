@@ -12,7 +12,11 @@ import {
   THUMOS_HEALTH_OFF_LINE,
   THUMOS_LOCAL_LINE,
   THUMOS_OFF_LINE,
+  THUMOS_ANALYSE_AGAIN,
+  THUMOS_NO_SLEEP,
+  THUMOS_NO_TIME_ESTIMATE,
   THUMOS_READING_LABEL,
+  thumosDetailLines,
   THUMOS_READING_PROMPT,
   guardReadingComment,
   latestKind,
@@ -210,11 +214,47 @@ describe('on-phone Thumos reading note', () => {
     expect(ui).toContain('THUMOS_READING_LABEL');
     expect(ui).not.toContain('THUMOS_READING_PROMPT');
     expect(domain).not.toContain(VISIBLE_SAFETY_LINE);
-    expect(readFileSync('src/app/(main)/weight-waist.tsx', 'utf8')).toContain('<ThumosReadingComment />');
+    expect(readFileSync('src/app/(main)/weight-waist.tsx', 'utf8')).toContain('<ThumosReadingComment analyse />');
+    expect(readFileSync('src/app/(main)/health-plan.tsx', 'utf8')).toContain('<ThumosAnalyseButton />');
     expect(readFileSync('src/app/(main)/health-plan.tsx', 'utf8')).toContain('<ThumosReadingComment />');
+    expect(readFileSync('src/ui/ThumosReadingComment.tsx', 'utf8')).toContain('useHealthSources');
+    expect(readFileSync('src/ui/ThumosReadingComment.tsx', 'utf8')).toContain('authorize: false');
+    expect(THUMOS_ANALYSE_AGAIN).toBe('Have Thumos analyse your data again');
+    expect(readFileSync('src/domain/scaleReading.ts', 'utf8')).toContain("export const SCALE_FROM_SCALES = 'From your smart scales';");
     expect(readFileSync('src/ui/YourFitness.tsx', 'utf8')).not.toContain('ThumosReadingComment');
     expect(APPLE_HEALTH_READ_TYPES).not.toContain('HKQuantityTypeIdentifierBodyMassIndex');
     expect(readFileSync('app.json', 'utf8')).not.toContain('metabolic age');
     expect(THUMOS_READING_LABEL).toBe('Thumos');
+    expect(thumosReadingComment(sample()).sentences).not.toContain(THUMOS_FAILED_LINE);
+    expect(thumosReadingComment(quiet()).sentences).not.toContain(THUMOS_FAILED_LINE);
+  });
+
+  it('names stored trends in more info and says when a stat is absent', () => {
+    const detail = thumosDetailLines(sample({
+      bodyFatEarlier: 18,
+      leanEarlier: 60,
+      waistCm: 84,
+      heightCm: 178,
+      cardioMinutes7: 15,
+      sleepHours: 7.4,
+      steps: 9100,
+      proteinG: 80,
+      caloriesStored: true,
+      targetKg: 72,
+    }));
+    expect(detail).toContain('Body fat is down from the earlier reading.');
+    expect(detail).toContain('Lean mass is up from the earlier reading.');
+    expect(detail).toContain('Waist is 84 cm.');
+    expect(detail.some((line) => line.startsWith('BMI is '))).toBe(true);
+    expect(detail).toContain('Strength is 75 min and cardio is 15 min in the last 7 days.');
+    expect(detail).toContain('The latest stored sleep is 7.4 hours.');
+    expect(detail).toContain('The latest stored steps are 9100.');
+    expect(detail).toContain('Protein logged today is 80 g.');
+    expect(detail).toContain('Calories are stored for today, and this note leaves them out.');
+    expect(detail).toContain(THUMOS_NO_TIME_ESTIMATE);
+    const absent = thumosDetailLines(quiet({ weights: [], restingBpm: null }));
+    expect(absent).toContain(THUMOS_NO_SLEEP);
+    expect(absent).toContain('No body fat reading is stored, so it is not in this note.');
+    expect(absent.join(' ')).not.toMatch(/\bkcal\b/);
   });
 });

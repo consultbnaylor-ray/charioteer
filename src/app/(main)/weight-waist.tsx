@@ -13,6 +13,7 @@ import { healthFigure } from '@/domain/measureFigures';
 import { withPlannedMinutes } from '@/domain/plannedSession';
 import { weightWaistWrite, type WaistSampleWrite, type WeightReadingDraft } from '@/domain/weightEntry';
 import { catchUpAppleHealthReads } from '@/health/catchUp';
+import { reloadHealthSources } from '@/health/useHealthSources';
 import { type AppleHealthTurnOn } from '@/health/connection';
 import { turnOnAppleHealthReads } from '@/health/link';
 import { useHealthSources } from '@/health/useHealthSources';
@@ -53,6 +54,7 @@ export default function WeightWaistScreen() {
   const refreshLink = useCallback(() => {
     if (!consent) return;
     void catchUpAppleHealthReads(repo).then((result) => {
+      reloadHealthSources();
       if (result.error) setRefreshError(result.error);
       else setRefreshError(null);
     }).catch((err: unknown) => {
@@ -228,7 +230,7 @@ export default function WeightWaistScreen() {
         <Card>
           <ScaleReadingNote />
         </Card>
-        <ThumosReadingComment />
+        <ThumosReadingComment analyse />
         <BodyCompositionCard />
       </ScrollTarget>
       <ScrollTarget id="weight-chart">

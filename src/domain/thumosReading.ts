@@ -1,3 +1,4 @@
+import { bmiFrom } from '@/domain/guidance';
 import { shiftDay } from '@/domain/healthInsights';
 import { GOAL_LABEL, type BodyBuild, type NutritionGoal } from '@/domain/nutrition';
 
@@ -29,6 +30,29 @@ export const THUMOS_BMI_LINE = 'BMI cannot tell muscle from fat.';
 
 export const THUMOS_LOCAL_LINE =
   'This note is written on this phone from readings already stored here. It is not sent to the coach. It is not a diagnosis, and it does not set a calorie target or a weight-loss target.';
+
+export const THUMOS_ANALYSE_AGAIN = 'Have Thumos analyse your data again';
+
+export const THUMOS_BODY_FAT_DOWN = 'Body fat is down from the earlier reading.';
+export const THUMOS_BODY_FAT_UP = 'Body fat is up from the earlier reading.';
+export const THUMOS_BODY_FAT_SAME = 'Body fat is the same as the earlier reading.';
+export const THUMOS_LEAN_DOWN = 'Lean mass is down from the earlier reading.';
+export const THUMOS_LEAN_UP = 'Lean mass is up from the earlier reading.';
+export const THUMOS_LEAN_SAME = 'Lean mass is the same as the earlier reading.';
+export const THUMOS_NO_BODY_FAT = 'No body fat reading is stored, so it is not in this note.';
+export const THUMOS_NO_LEAN = 'No lean mass reading is stored, so it is not in this note.';
+export const THUMOS_NO_WAIST = 'No waist reading is stored, so it is not in this note.';
+export const THUMOS_NO_HEIGHT = 'No height is stored, so BMI is not in this note.';
+export const THUMOS_NO_WEIGHT_BMI = 'No weight is stored, so BMI is not in this note.';
+export const THUMOS_NO_VO2 = 'No VO2 max is stored, so it is not in this note.';
+export const THUMOS_NO_RESTING = 'No resting heart rate is stored, so it is not in this note.';
+export const THUMOS_NO_SLEEP = 'No sleep is stored, so it is not in this note.';
+export const THUMOS_NO_STEPS = 'No steps are stored, so they are not in this note.';
+export const THUMOS_NO_PROTEIN = 'No protein is stored for today, so it is not in this note.';
+export const THUMOS_CALORIES_LEFT_OUT = 'Calories are stored for today, and this note leaves them out.';
+export const THUMOS_CALORIES_ABSENT = 'Calories are not stored for today, so they are not in this note.';
+export const THUMOS_NO_TARGET_TIME = 'No target weight is stored, so a time to a target is not in this note.';
+export const THUMOS_NO_TIME_ESTIMATE = 'A time to reach the target is not estimated from these readings.';
 
 export const THUMOS_READING_PROMPT = [
   'Write a helpful, encouraging note about this reading in two or three sentences.',
@@ -65,6 +89,17 @@ export type ThumosReadingInput = {
   vo2: number | null;
   restingBpm: number | null;
   build: BodyBuild | null;
+  /** Earlier stored reading, when a second one exists. Null when there is only one. */
+  bodyFatEarlier?: number | null;
+  leanEarlier?: number | null;
+  waistCm?: number | null;
+  heightCm?: number | null;
+  cardioMinutes7?: number | null;
+  sleepHours?: number | null;
+  steps?: number | null;
+  proteinG?: number | null;
+  /** True when today's meals have a calorie figure. The number is not written into the note. */
+  caloriesStored?: boolean;
 };
 
 export type ThumosReadingView = {
@@ -112,6 +147,40 @@ function weightSentence(weights: readonly { day: string; kg: number }[]): string
 
 function aimSentence(goal: NutritionGoal): string {
   return `The aim saved here is ${GOAL_LABEL[goal]}.`;
+}
+
+function directionLine(latest: number, earlier: number, down: string, up: string, same: string): string {
+  if (latest < earlier) return down;
+  if (latest > earlier) return up;
+  return same;
+}
+
+function waistSentence(cm: number): string {
+  return `Waist is ${shown(cm)} cm.`;
+}
+
+function bmiSentence(bmi: number): string {
+  return `BMI is ${shown(bmi)}, from the weight and height stored here.`;
+}
+
+function cardioSentence(minutesValue: number): string {
+  return `Cardio work in the last 7 days is ${minutes(minutesValue)} min.`;
+}
+
+function mixSentence(strength: number, cardio: number): string {
+  return `Strength is ${minutes(strength)} min and cardio is ${minutes(cardio)} min in the last 7 days.`;
+}
+
+function sleepSentence(hours: number): string {
+  return `The latest stored sleep is ${shown(hours)} hours.`;
+}
+
+function stepsSentence(count: number): string {
+  return `The latest stored steps are ${minutes(count)}.`;
+}
+
+function proteinSentence(grams: number): string {
+  return `Protein logged today is ${minutes(grams)} g.`;
 }
 
 function factSentences(input: ThumosReadingInput): string[] {
@@ -253,6 +322,62 @@ function fixed(line: string): ThumosReadingView {
   return { sentences: [line], more: [THUMOS_LOCAL_LINE] };
 }
 
+function latestWeight(input: ThumosReadingInput): number | null {
+  const ordered = [...input.weights].filter((point) => point.kg > 0).sort((left, right) => left.day.localeCompare(right.day));
+  return ordered.at(-1)?.kg ?? null;
+}
+
+/** Lines for More info. Each one uses only a stored figure, or says that figure is absent. */
+export function thumosDetailLines(input: ThumosReadingInput): string[] {
+  const lines: string[] = [];
+  if (input.bodyFatPct == null) lines.push(THUMOS_NO_BODY_FAT);
+  else if (input.bodyFatEarlier != null) {
+    lines.push(directionLine(input.bodyFatPct, input.bodyFatEarlier, THUMOS_BODY_FAT_DOWN, THUMOS_BODY_FAT_UP, THUMOS_BODY_FAT_SAME));
+  }
+  if (input.leanMassKg == null) lines.push(THUMOS_NO_LEAN);
+  else if (input.leanEarlier != null) {
+    lines.push(directionLine(input.leanMassKg, input.leanEarlier, THUMOS_LEAN_DOWN, THUMOS_LEAN_UP, THUMOS_LEAN_SAME));
+  }
+  if (input.waistCm != null && input.waistCm > 0) lines.push(waistSentence(input.waistCm));
+  else lines.push(THUMOS_NO_WAIST);
+  const weight = latestWeight(input);
+  const bmi = weight != null && input.heightCm != null ? bmiFrom(weight, input.heightCm) : null;
+  if (bmi != null) lines.push(bmiSentence(bmi));
+  else if (weight == null) lines.push(THUMOS_NO_WEIGHT_BMI);
+  else lines.push(THUMOS_NO_HEIGHT);
+  const strength = input.strengthMinutes7 ?? 0;
+  const cardio = input.cardioMinutes7 ?? 0;
+  if (strength > 0 && cardio > 0) lines.push(mixSentence(strength, cardio));
+  else if (cardio > 0) lines.push(cardioSentence(cardio));
+  if (input.vo2 == null) lines.push(THUMOS_NO_VO2);
+  if (input.restingBpm == null) lines.push(THUMOS_NO_RESTING);
+  if (input.sleepHours != null && input.sleepHours > 0) lines.push(sleepSentence(input.sleepHours));
+  else lines.push(THUMOS_NO_SLEEP);
+  if (input.steps != null && input.steps > 0) lines.push(stepsSentence(input.steps));
+  else lines.push(THUMOS_NO_STEPS);
+  if (input.targetKg != null && input.targetKg > 0) lines.push(THUMOS_NO_TIME_ESTIMATE);
+  else lines.push(THUMOS_NO_TARGET_TIME);
+  if (input.proteinG != null) lines.push(proteinSentence(input.proteinG));
+  else lines.push(THUMOS_NO_PROTEIN);
+  lines.push(input.caloriesStored ? THUMOS_CALORIES_LEFT_OUT : THUMOS_CALORIES_ABSENT);
+  return lines;
+}
+
+function safeCard(input: ThumosReadingInput): string[] | null {
+  const closer = ENCOURAGING_LINES[0];
+  const weight = weightSentence(input.weights);
+  const trains = trainsForReading(input);
+  const candidates = [
+    trains && weight ? `${weight} ${THUMOS_BMI_LINE} ${closer}` : null,
+    weight ? `${weight} ${closer}` : null,
+    trains ? `${THUMOS_BMI_LINE} ${closer}` : null,
+  ].filter((line): line is string => Boolean(line));
+  for (const draft of candidates) {
+    if (!guardReadingComment(draft, input)) return readingSentences(draft);
+  }
+  return null;
+}
+
 /** Two or three sentences from the readings that exist. A new reading can change the note the same day. */
 export function thumosReadingComment(input: ThumosReadingInput): ThumosReadingView {
   if (!input.consentAi && !input.consentHealth) return fixed(THUMOS_BOTH_OFF_LINE);
@@ -261,13 +386,14 @@ export function thumosReadingComment(input: ThumosReadingInput): ThumosReadingVi
 
   const facts = factSentences(input);
   const trains = trainsForReading(input);
-  if (facts.length === 0 && !trains) return fixed(THUMOS_EMPTY_LINE);
+  const detail = thumosDetailLines(input);
+  if (facts.length === 0 && !trains) return { sentences: [THUMOS_EMPTY_LINE], more: [...detail, THUMOS_LOCAL_LINE] };
 
   const draft = composeReading(input);
-  const sentences = showReadingDraft(draft, input);
-  if (sentences[0] === THUMOS_FAILED_LINE) return fixed(THUMOS_FAILED_LINE);
+  const guarded = guardReadingComment(draft, input) ? null : readingSentences(draft);
+  const sentences = guarded ?? safeCard(input) ?? [THUMOS_EMPTY_LINE];
   const used = new Set(sentences);
-  const more = [...facts.filter((line) => !used.has(line)), THUMOS_LOCAL_LINE];
+  const more = [...facts.filter((line) => !used.has(line)), ...detail.filter((line) => !used.has(line)), THUMOS_LOCAL_LINE];
   return { sentences, more };
 }
 
