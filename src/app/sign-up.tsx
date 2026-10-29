@@ -1,9 +1,11 @@
 import { Link, useRouter } from 'expo-router';
 import { useState } from 'react';
+import { Linking, Pressable } from 'react-native';
 
 import { useRepository } from '@/data';
 import { APP_FULL_NAME } from '@/domain/appName';
 import { asUserFacing } from '@/domain/errors';
+import { PRIVACY_POLICY_URL } from '@/domain/privacyPolicy';
 import { Button, ErrorNote, Field, Screen, T } from '@/ui/ui';
 
 export default function SignUp() {
@@ -43,6 +45,9 @@ export default function SignUp() {
           }).finally(() => setPending(false));
         }}
       />
+      <Pressable accessibilityRole="link" onPress={() => void Linking.openURL(PRIVACY_POLICY_URL)}>
+        <T variant="body" style={{ textDecorationLine: 'underline' }}>Privacy Policy</T>
+      </Pressable>
       <Link href="/sign-in"><T variant="body" style={{ textDecorationLine: 'underline' }}>I already have an account</T></Link>
     </Screen>
   );

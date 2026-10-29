@@ -10,7 +10,9 @@ import { ALCOHOL_FACTS } from '@/domain/facts';
 import { earnedMilestones } from '@/domain/milestones';
 import { firstSafetyHit, pinnedSafetyNotices } from '@/domain/safety';
 import { asUserFacing, shownError } from '@/domain/errors';
+import { OUTSIDE_CRISIS_LINE } from '@/domain/outdoorRoute';
 import { showsSoberRecord } from '@/domain/stage';
+import { VISIBLE_SAFETY_LINE } from '@/domain/visibleSafety';
 import { CHECK_CONNECTION, EDGE_STATE_LABEL, SIGN_IN_AGAIN, isThumosFallback, type EdgeSendState } from '@/domain/edgeRetry';
 import { CRAVING_LINE, inferThumosMode, SCRIPTED_COACH_REPLY, THUMOS_INTRO, THUMOS_UNREACHABLE, OPENING_LINE, type ThumosMode } from '@/domain/thumos';
 import { THUMOS_LINE_CAP, groupThumosByDay, messageNeedsMore, visibleThumos } from '@/domain/thumosThread';
@@ -397,7 +399,8 @@ function ThumosIntro({ open, onToggle }: { open: boolean; onToggle: () => void }
               >
                 {INTRO_LINE}
               </Text>
-              <T>Not medical advice.</T>
+              <T>{VISIBLE_SAFETY_LINE}</T>
+              <T>{OUTSIDE_CRISIS_LINE}</T>
             </>
           )}
         >

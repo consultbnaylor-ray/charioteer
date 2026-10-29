@@ -2,6 +2,7 @@ import { useState } from 'react';
 
 import { useRepository, useSnapshot } from '@/data';
 import { isoDay } from '@/domain/dates';
+import { scheduleWeekMinutes } from '@/domain/fitnessSnapshot';
 import { compositionForAssessment, weightPointsFrom } from '@/domain/nutrition';
 import {
   THUMOS_ANALYSE_AGAIN,
@@ -9,13 +10,14 @@ import {
   THUMOS_FAILED_LINE,
   THUMOS_READING_LABEL,
   countReadingDays,
-  latestKind,
-  sumKindSince,
+  figuresForNote,
   thumosReadingComment,
 } from '@/domain/thumosReading';
+import { OUTSIDE_CRISIS_LINE } from '@/domain/outdoorRoute';
 import { VISIBLE_SAFETY_LINE } from '@/domain/visibleSafety';
 import { refreshAppleHealth } from '@/health/catchUp';
 import { reloadHealthSources, useHealthSources } from '@/health/useHealthSources';
+import { useStatPeriod } from '@/health/useStatPeriod';
 import { MoreInfo } from '@/ui/MoreInfo';
 import { Button, Card, T } from '@/ui/ui';
 
@@ -50,29 +52,31 @@ function earlierMeasure(
   return value == null ? null : value;
 }
 
-function todayMeals(logs: readonly { eatenOn: string; portion: number; items: readonly { proteinG: number; kcal: number }[] }[], today: string) {
-  const rows = logs.filter((log) => log.eatenOn.slice(0, 10) === today);
-  let protein = 0;
-  let calories = false;
-  for (const log of rows) {
-    const portion = log.portion > 0 ? log.portion : 1;
-    for (const item of log.items) {
-      protein += item.proteinG * portion;
-      if (item.kcal > 0) calories = true;
-    }
-  }
-  return { protein: rows.length ? Math.round(protein) : null, calories };
-}
-
 /** On-phone Thumos note. It does not call the coach and does not store a new reading. */
 export function ThumosReadingComment({ analyse = false }: { analyse?: boolean }) {
   const snap = useSnapshot();
-  const { samples } = useHealthSources();
+  const { samples, readings } = useHealthSources();
+  const [period] = useStatPeriod();
   const profile = snap.profile;
   if (!profile) return null;
   const today = isoDay(new Date());
   const body = compositionForAssessment(snap.bodyComposition);
-  const meals = todayMeals(snap.foodLogs ?? [], today);
+  const figures = figuresForNote({
+    samples,
+    today,
+    period,
+    goalAge: snap.nutrition.goalAge,
+    goalSex: snap.nutrition.goalSex,
+    goal: snap.nutrition.goal,
+    build: snap.nutrition.build,
+    scheduleWeekMinutes: scheduleWeekMinutes(snap.trainingSchedule),
+    workoutBuckets: snap.nutrition.workoutBuckets,
+    plannedSessions: snap.plannedSessions,
+    logs: snap.foodLogs ?? [],
+    ownerId: profile.id,
+    proteinTarget: snap.nutrition.proteinTarget,
+    userMetrics: readings.userMetrics,
+  });
   const view = thumosReadingComment({
     today,
     consentAi: profile.consentAi === true,
@@ -84,19 +88,11 @@ export function ThumosReadingComment({ analyse = false }: { analyse?: boolean })
     leanEarlier: earlierMeasure(snap.bodyComposition, 'leanMassKg'),
     waistCm: body.waistCm,
     heightCm: profile.heightCm,
-    strengthMinutes7: sumKindSince(samples, 'strength_minutes', today),
-    workoutMinutes7: sumKindSince(samples, 'workout_minutes', today),
-    cardioMinutes7: sumKindSince(samples, 'cardio_minutes', today),
     goal: snap.nutrition.goal,
     targetKg: snap.nutrition.targetWeightKg,
-    vo2: latestKind(samples, 'vo2_max', today),
-    restingBpm: latestKind(samples, 'resting_heart_rate', today),
-    sleepHours: latestKind(samples, 'sleep_hours', today),
-    steps: latestKind(samples, 'steps', today),
-    proteinG: meals.protein,
-    caloriesStored: meals.calories,
     build: snap.nutrition.build,
     storedDayCount: countReadingDays(samples, snap.bodyComposition.map((row) => row.recordedOn)),
+    ...figures,
   });
   const sentences = view.sentences[0] === THUMOS_FAILED_LINE ? [THUMOS_EMPTY_LINE] : view.sentences;
   return (
@@ -107,6 +103,7 @@ export function ThumosReadingComment({ analyse = false }: { analyse?: boolean })
         {view.more.map((line) => <T key={line}>{line}</T>)}
       </MoreInfo>
       <T variant="muted">{VISIBLE_SAFETY_LINE}</T>
+      <T variant="muted">{OUTSIDE_CRISIS_LINE}</T>
       {analyse ? <ThumosAnalyseButton /> : null}
     </Card>
   );

@@ -11,7 +11,7 @@ All new user-facing wording needs Ben's approval in his own words.
 - #67 directions to the start. Strings not approved.
 - #70 sleep bands. On hold.
 - #73 coach note. Not deployed. Wording not approved.
-- This pull request. Start live session is hidden for launch.
+- This pull request. Start live session is hidden for launch. The Thumos note is an assessment, wording not approved.
 
 ## Hidden for launch
 

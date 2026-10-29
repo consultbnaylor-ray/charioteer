@@ -1,6 +1,21 @@
-import { bmiFrom } from '@/domain/guidance';
+import { healthSampleChart } from '@/domain/chartSeries';
+import { buildFitnessSnapshot, periodActiveMinutes, publishedCardioBand } from '@/domain/fitnessSnapshot';
+import { stepResearchBand } from '@/domain/garminCharts';
+import { bmiFrom, BHF_RESTING_MAX_BPM, BHF_RESTING_MIN_BPM, CMO_MODERATE_MINUTES_WEEK, NHS_ADULT_SLEEP_MAX_HOURS, NHS_ADULT_SLEEP_MIN_HOURS } from '@/domain/guidance';
 import { shiftDay } from '@/domain/healthInsights';
-import { GOAL_LABEL, type BodyBuild, type NutritionGoal } from '@/domain/nutrition';
+import {
+  GOAL_LABEL,
+  loggedProteinRing,
+  todayMealTotals,
+  weightDirection,
+  type BodyBuild,
+  type FoodLog,
+  type NutritionGoal,
+  type NutritionSex,
+  type WorkoutBucketMap,
+} from '@/domain/nutrition';
+import { withPlannedMinutes, type PlannedSession } from '@/domain/plannedSession';
+import { periodPhrase, rollingWindow, scaledPeriodTarget, type StatPeriod } from '@/domain/statWindow';
 
 /**
  * A short note for the weight section and the health plan.
@@ -77,6 +92,23 @@ export const THUMOS_FOCUS_PROTEIN = 'Protein is not stored for today. Logging me
 
 export const THUMOS_FOCUS_KEEP = 'Keep the readings you already store. That is the focus for now.';
 
+export const THUMOS_HEADING_TARGET = 'Looking at the readings stored here, you seem to be heading in the right direction for your chosen target.';
+export const THUMOS_HEADING_AIM = 'Looking at the readings stored here, you seem to be heading in the right direction for the aim you saved.';
+export const THUMOS_MIXED_VERDICT = 'Looking at the readings stored here, the picture is mixed.';
+export const THUMOS_NOT_YET = 'Looking at the readings stored here, it is not yet clear that you are heading in the right direction.';
+export const THUMOS_CARDIO_FOR_VO2 = 'You could introduce another cardio session in the week to improve your VO2 max.';
+export const THUMOS_STRENGTH_NOT_RECORDED = 'Strength is not recorded for this period, so this note does not judge it.';
+export const THUMOS_STRENGTH_SESSION = 'A strength session would match the aim you saved.';
+export const THUMOS_MORE_SLEEP = 'Aim for more sleep. The nights stored here are under the 7 to 9 hour range this app already uses.';
+export const THUMOS_MORE_STEPS = 'More steps on the days you already log would lift the average toward the research range this screen uses.';
+export const THUMOS_PROTEIN_SHORT = 'Protein logged today is short of the target you set. Another protein meal would close the gap.';
+export const THUMOS_ANOTHER_SESSION = 'Another session in this period would bring the recorded workout minutes up toward what Your Fitness uses.';
+export const THUMOS_RESTING_HIGH = 'Resting heart rate is over the usual 60 to 100 bpm range for this period. Another reading on a quiet day would show whether it holds.';
+export const THUMOS_RESTING_LOW = 'Resting heart rate is under 60 bpm for this period. One reading is not a pattern.';
+export const THUMOS_FAT_HIGHER = 'Body fat is higher than the earlier reading. No standard range is used.';
+export const THUMOS_FAT_LOWER = 'Body fat is lower than the earlier reading. No standard range is used.';
+export const THUMOS_GOOD_LINE = 'What looks good: the readings that sit inside the ranges this app already uses.';
+
 export const THUMOS_SEVEN_DAYS = 7;
 
 export const THUMOS_READING_PROMPT = [
@@ -127,6 +159,14 @@ export type ThumosReadingInput = {
   caloriesStored?: boolean;
   /** Distinct days with a stored reading. Omitted means the 7-day gate is not applied. */
   storedDayCount?: number | null;
+  goalSex?: NutritionSex | null;
+  stepsDaily?: number | null;
+  stepsLow?: boolean | null;
+  strengthRecorded?: boolean;
+  workoutAim?: number | null;
+  proteinMet?: boolean | null;
+  vo2Level?: 'Developing' | 'Steady' | 'Strong' | null;
+  windowLabel?: string;
 };
 
 export type ThumosReadingView = {
@@ -167,9 +207,10 @@ function weightSentence(weights: readonly { day: string; kg: number }[]): string
   if (!latest) return null;
   const earlier = ordered[0];
   if (!earlier || earlier.day === latest.day) return `Weight is ${shown(latest.kg)} kg.`;
-  if (latest.kg < earlier.kg) return `Weight is ${shown(latest.kg)} kg, down from ${shown(earlier.kg)} kg.`;
-  if (latest.kg > earlier.kg) return `Weight is ${shown(latest.kg)} kg, up from ${shown(earlier.kg)} kg.`;
-  return `Weight is ${shown(latest.kg)} kg, the same as the earlier reading.`;
+  const direction = weightDirection([earlier, latest]);
+  if (direction === 'down') return `Weight is ${shown(latest.kg)} kg, down from ${shown(earlier.kg)} kg.`;
+  if (direction === 'up') return `Weight is ${shown(latest.kg)} kg, up from ${shown(earlier.kg)} kg.`;
+  return `Weight is ${shown(latest.kg)} kg, near the earlier reading.`;
 }
 
 function aimSentence(goal: NutritionGoal): string {
@@ -198,12 +239,12 @@ function mixSentence(strength: number, cardio: number): string {
   return `Strength is ${minutes(strength)} min and cardio is ${minutes(cardio)} min in the last 7 days.`;
 }
 
-function sleepSentence(hours: number): string {
-  return `The latest stored sleep is ${shown(hours)} hours.`;
+function sleepSentence(hours: number, label = 'the last 7 days'): string {
+  return `Sleep for ${label} averages ${shown(hours)} hours.`;
 }
 
-function stepsSentence(count: number): string {
-  return `The latest stored steps are ${minutes(count)}.`;
+function stepsSentence(count: number, label = 'the last 7 days'): string {
+  return `Steps for ${label} are ${minutes(count)}.`;
 }
 
 function proteinSentence(grams: number): string {
@@ -378,9 +419,10 @@ export function thumosDetailLines(input: ThumosReadingInput): string[] {
   else if (cardio > 0) lines.push(cardioSentence(cardio));
   if (input.vo2 == null) lines.push(THUMOS_NO_VO2);
   if (input.restingBpm == null) lines.push(THUMOS_NO_RESTING);
-  if (input.sleepHours != null && input.sleepHours > 0) lines.push(sleepSentence(input.sleepHours));
+  const label = input.windowLabel?.trim() || 'the last 7 days';
+  if (input.sleepHours != null && input.sleepHours > 0) lines.push(sleepSentence(input.sleepHours, label));
   else lines.push(THUMOS_NO_SLEEP);
-  if (input.steps != null && input.steps > 0) lines.push(stepsSentence(input.steps));
+  if (input.steps != null && input.steps > 0) lines.push(stepsSentence(input.steps, label));
   else lines.push(THUMOS_NO_STEPS);
   if (input.targetKg != null && input.targetKg > 0) lines.push(THUMOS_NO_TIME_ESTIMATE);
   else lines.push(THUMOS_NO_TARGET_TIME);
@@ -426,15 +468,76 @@ function towardsTarget(input: ThumosReadingInput): string | null {
   return THUMOS_UNCLEAR_TARGET;
 }
 
-function focusLines(input: ThumosReadingInput): string[] {
+type WeightMove = 'towards' | 'away' | 'holding' | 'one' | 'none';
+
+function weightMove(input: ThumosReadingInput): WeightMove {
+  if (input.targetKg == null || !(input.targetKg > 0)) return 'none';
+  const ordered = orderedWeights(input);
+  const latest = ordered.at(-1);
+  const earlier = ordered[0];
+  if (!latest || !earlier || earlier.day === latest.day) return ordered.length ? 'one' : 'none';
+  const direction = weightDirection(ordered);
+  if (direction === 'steady' || direction === 'unknown') return 'holding';
+  const wantsLower = input.targetKg < earlier.kg;
+  const wantsHigher = input.targetKg > earlier.kg;
+  if ((wantsLower && direction === 'down') || (wantsHigher && direction === 'up')) return 'towards';
+  if ((wantsLower && direction === 'up') || (wantsHigher && direction === 'down')) return 'away';
+  return 'holding';
+}
+
+function strengthLed(goal: NutritionGoal | null | undefined): boolean {
+  if (goal == null) return false;
+  return goal === 'lose_fat_build_muscle' || goal === 'body_builder' || goal.includes('boxer');
+}
+
+function suggestions(input: ThumosReadingInput): string[] {
   const lines: string[] = [];
-  const strengthGoal = trainsForReading(input);
-  if (strengthGoal && !((input.strengthMinutes7 ?? 0) > 0)) lines.push(THUMOS_FOCUS_STRENGTH);
-  if (input.sleepHours == null || !(input.sleepHours > 0)) lines.push(THUMOS_FOCUS_SLEEP);
-  if (input.steps == null || !(input.steps > 0)) lines.push(THUMOS_FOCUS_STEPS);
-  if (input.proteinG == null) lines.push(THUMOS_FOCUS_PROTEIN);
-  if (!lines.length) lines.push(THUMOS_FOCUS_KEEP);
-  return lines.slice(0, 3);
+  const move = weightMove(input);
+  if (move === 'away') lines.push('Weight has moved away from the target you chose. Keep logging it on the days you already weigh.');
+  if (input.vo2Level === 'Developing') lines.push(THUMOS_CARDIO_FOR_VO2);
+  const minutesLogged = input.workoutMinutes7 ?? 0;
+  if (input.strengthRecorded === false && (minutesLogged > 0 || strengthLed(input.goal))) {
+    lines.push(strengthLed(input.goal) ? `${THUMOS_STRENGTH_NOT_RECORDED} ${THUMOS_STRENGTH_SESSION}` : THUMOS_STRENGTH_NOT_RECORDED);
+  }
+  if (input.sleepHours != null && input.sleepHours > 0 && input.sleepHours < NHS_ADULT_SLEEP_MIN_HOURS) lines.push(THUMOS_MORE_SLEEP);
+  const daily = input.stepsDaily ?? (input.steps != null && input.steps > 0 ? input.steps : null);
+  const stepsUnder = input.stepsLow === true || (input.stepsLow == null && daily != null && daily < stepResearchBand(null).low);
+  if (stepsUnder) lines.push(THUMOS_MORE_STEPS);
+  if (input.proteinMet === false) lines.push(THUMOS_PROTEIN_SHORT);
+  const aim = input.workoutAim;
+  if (aim != null && aim > 0 && minutesLogged > 0 && minutesLogged < aim && !lines.includes(THUMOS_CARDIO_FOR_VO2)) lines.push(THUMOS_ANOTHER_SESSION);
+  if (input.bodyFatEarlier != null && input.bodyFatPct != null && input.bodyFatPct - input.bodyFatEarlier >= 0.3) lines.push(THUMOS_FAT_HIGHER);
+  if (input.restingBpm != null && input.restingBpm > BHF_RESTING_MAX_BPM) lines.push(THUMOS_RESTING_HIGH);
+  if (input.restingBpm != null && input.restingBpm < BHF_RESTING_MIN_BPM) lines.push(THUMOS_RESTING_LOW);
+  if (lines.length < 2) lines.push(THUMOS_FOCUS_KEEP);
+  return lines.slice(0, 4);
+}
+
+function goodLine(input: ThumosReadingInput): string {
+  const bits: string[] = [];
+  if (input.restingBpm != null && input.restingBpm >= BHF_RESTING_MIN_BPM && input.restingBpm <= BHF_RESTING_MAX_BPM) {
+    bits.push('resting heart rate is inside 60 to 100 bpm');
+  }
+  if (input.sleepHours != null && input.sleepHours >= NHS_ADULT_SLEEP_MIN_HOURS && input.sleepHours <= NHS_ADULT_SLEEP_MAX_HOURS) {
+    bits.push('sleep is inside 7 to 9 hours');
+  }
+  if (input.vo2Level === 'Steady' || input.vo2Level === 'Strong') bits.push(`VO2 max is ${input.vo2Level}`);
+  if (input.proteinMet === true) bits.push('protein today meets the target you set');
+  if (weightMove(input) === 'towards') bits.push('weight is moving toward the target you chose');
+  if (!bits.length) return THUMOS_GOOD_LINE;
+  const sentence = bits[0] ? bits[0].charAt(0).toUpperCase() + bits[0].slice(1) : '';
+  return `What looks good: ${sentence}${bits.length > 1 ? `, and ${bits.slice(1).join(', ')}` : ''}.`;
+}
+
+function verdictLine(input: ThumosReadingInput): string {
+  const move = weightMove(input);
+  const hasTarget = move !== 'none';
+  const watch = suggestions(input).some((line) => line !== THUMOS_FOCUS_KEEP && line !== THUMOS_STRENGTH_NOT_RECORDED);
+  if (move === 'away' || (input.restingBpm != null && input.restingBpm > BHF_RESTING_MAX_BPM)) return THUMOS_NOT_YET;
+  if (move === 'towards' && !watch) return hasTarget ? THUMOS_HEADING_TARGET : THUMOS_HEADING_AIM;
+  if (move === 'towards' || (input.goal && !watch)) return hasTarget ? THUMOS_HEADING_TARGET : input.goal ? THUMOS_HEADING_AIM : THUMOS_MIXED_VERDICT;
+  if (watch) return THUMOS_MIXED_VERDICT;
+  return input.goal ? THUMOS_HEADING_AIM : THUMOS_NOT_YET;
 }
 
 /** Visible lines. Fewer than 7 stored days skips any verdict on the target. */
@@ -442,37 +545,8 @@ export function thumosAssessmentLines(input: ThumosReadingInput): string[] {
   if (input.storedDayCount != null && input.storedDayCount < THUMOS_SEVEN_DAYS) {
     return [THUMOS_NEEDS_SEVEN_DAYS, THUMOS_LOG_MORE_DAYS];
   }
-  const lines: string[] = [];
-  const towards = towardsTarget(input);
-  if (towards) lines.push(towards);
-  else if (input.targetKg == null || !(input.targetKg > 0)) lines.push(THUMOS_NO_TARGET_TIME);
-  const weight = weightSentence(input.weights);
-  if (weight) lines.push(weight);
-  if (input.bodyFatPct != null) {
-    lines.push(input.bodyFatEarlier != null
-      ? directionLine(input.bodyFatPct, input.bodyFatEarlier, THUMOS_BODY_FAT_DOWN, THUMOS_BODY_FAT_UP, THUMOS_BODY_FAT_SAME)
-      : `Body fat is ${shown(input.bodyFatPct)}%.`);
-  }
-  if (input.leanMassKg != null) {
-    lines.push(input.leanEarlier != null
-      ? directionLine(input.leanMassKg, input.leanEarlier, THUMOS_LEAN_DOWN, THUMOS_LEAN_UP, THUMOS_LEAN_SAME)
-      : `Lean mass is ${shown(input.leanMassKg)} kg.`);
-  }
-  const strength = input.strengthMinutes7 ?? 0;
-  const cardio = input.cardioMinutes7 ?? 0;
-  if (strength > 0 && cardio > 0) lines.push(mixSentence(strength, cardio));
-  else if (strength > 0) lines.push(`Strength work in the last 7 days is ${minutes(strength)} min.`);
-  else if (cardio > 0) lines.push(cardioSentence(cardio));
-  else if ((input.workoutMinutes7 ?? 0) > 0) lines.push(`Logged workouts in the last 7 days are ${minutes(input.workoutMinutes7 ?? 0)} min.`);
-  if (input.vo2 != null) lines.push(`VO2 max is ${shown(input.vo2)} ml/kg/min.`);
-  if (input.restingBpm != null) lines.push(`Resting heart rate is ${shown(input.restingBpm)} bpm.`);
-  if (input.sleepHours != null && input.sleepHours > 0) lines.push(sleepSentence(input.sleepHours));
-  if (input.steps != null && input.steps > 0) lines.push(stepsSentence(input.steps));
-  if (input.proteinG != null) lines.push(proteinSentence(input.proteinG));
-  if (input.goal) lines.push(aimSentence(input.goal));
-  lines.push(...focusLines(input));
+  const lines = [verdictLine(input), ...suggestions(input), goodLine(input)];
   if (trainsForReading(input)) lines.push(THUMOS_BMI_LINE);
-  lines.push(ENCOURAGING_LINES[fingerprint(input) % ENCOURAGING_LINES.length] ?? ENCOURAGING_LINES[0]);
   return lines;
 }
 
@@ -527,6 +601,129 @@ export function thumosReadingComment(input: ThumosReadingInput): ThumosReadingVi
     THUMOS_LOCAL_LINE,
   ];
   return { sentences, more };
+}
+
+function windowMean(samples: readonly { kind: string; value: number; recordedOn: string }[], kind: string, today: string, period: StatPeriod) {
+  const window = rollingWindow(today, period);
+  const points = healthSampleChart(samples, kind, today).filter((point) => point.day >= window.start && point.day <= window.end && point.value > 0);
+  const total = points.reduce((sum, point) => sum + point.value, 0);
+  return { days: points.length, total, mean: points.length ? total / points.length : null };
+}
+
+function latestChartVo2(metrics: readonly { calendarDate: string; vo2Max: number | null }[]): { day: string; value: number } | null {
+  let day = '';
+  let value: number | null = null;
+  for (const row of metrics) {
+    if (row.vo2Max == null || !(row.vo2Max > 0)) continue;
+    if (row.calendarDate >= day) {
+      day = row.calendarDate;
+      value = Math.round(row.vo2Max * 10) / 10;
+    }
+  }
+  return value == null || !/^\d{4}-\d{2}-\d{2}$/.test(day) ? null : { day, value };
+}
+
+function latestMergedVo2(samples: readonly { kind: string; value: number; recordedOn: string }[]): { day: string; value: number } | null {
+  const byDay = new Map<string, number>();
+  for (const sample of samples) {
+    if (sample.kind !== 'vo2_max' || !(sample.value > 0)) continue;
+    const day = sample.recordedOn.slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) continue;
+    byDay.set(day, Math.round(sample.value * 10) / 10);
+  }
+  const last = [...byDay.entries()].sort((left, right) => left[0].localeCompare(right[0])).at(-1);
+  return last ? { day: last[0], value: last[1] } : null;
+}
+
+export type NoteFigures = {
+  restingBpm: number | null;
+  sleepHours: number | null;
+  steps: number | null;
+  stepsDaily: number | null;
+  stepsLow: boolean;
+  strengthMinutes7: number | null;
+  strengthRecorded: boolean;
+  cardioMinutes7: number | null;
+  workoutMinutes7: number | null;
+  workoutAim: number;
+  proteinG: number | null;
+  proteinMet: boolean | null;
+  caloriesStored: boolean;
+  vo2: number | null;
+  vo2Level: 'Developing' | 'Steady' | 'Strong' | null;
+  windowLabel: string;
+};
+
+/** Same window as Your Fitness, Heart, Sleep, and the steps tile. Cardio mix minutes are not used. */
+export function figuresForNote(input: {
+  samples: readonly { kind: string; value: number; recordedOn: string; source?: string }[];
+  today: string;
+  period?: StatPeriod;
+  goalAge?: number | null;
+  goalSex?: NutritionSex | null;
+  goal?: NutritionGoal | null;
+  build?: BodyBuild | null;
+  scheduleWeekMinutes?: number | null;
+  workoutBuckets?: WorkoutBucketMap | null;
+  plannedSessions?: readonly PlannedSession[] | null;
+  logs?: readonly FoodLog[];
+  ownerId?: string;
+  proteinTarget?: number | null;
+  userMetrics?: readonly { calendarDate: string; vo2Max: number | null }[];
+}): NoteFigures {
+  const period = input.period ?? '7';
+  const window = rollingWindow(input.today, period);
+  const prepared = withPlannedMinutes(input.samples, input.plannedSessions);
+  const active = periodActiveMinutes({
+    samples: prepared,
+    today: input.today,
+    start: window.start,
+    end: window.end,
+    overrides: input.workoutBuckets,
+  });
+  const fitness = buildFitnessSnapshot({
+    today: input.today,
+    goal: input.goal ?? null,
+    goalAge: input.goalAge ?? null,
+    goalSex: input.goalSex ?? null,
+    scheduleWeekMinutes: input.scheduleWeekMinutes ?? null,
+    health: prepared,
+    permission: 'unknown',
+    build: input.build ?? null,
+    workoutBuckets: input.workoutBuckets ?? null,
+    period,
+  });
+  const restingMatch = fitness.resting?.reading?.match(/[\d.]+/);
+  const sleep = windowMean(input.samples, 'sleep_hours', input.today, period);
+  const steps = windowMean(input.samples, 'steps', input.today, period);
+  const stepsDaily = steps.days ? Math.round(steps.total / steps.days) : null;
+  const chart = latestChartVo2(input.userMetrics ?? []);
+  const merged = latestMergedVo2(prepared);
+  const vo2 = chart && (!merged || chart.day >= merged.day) ? chart.value : merged?.value ?? null;
+  const band = vo2 != null ? publishedCardioBand(input.goalAge ?? null, input.goalSex ?? null) : null;
+  const meals = todayMealTotals(input.logs ?? [], input.today, input.ownerId ?? '');
+  const logged = (input.logs ?? []).some((log) => log.eatenOn.slice(0, 10) === input.today && log.userId === (input.ownerId ?? ''));
+  const ring = logged ? loggedProteinRing({ proteinG: meals.proteinG, proteinTarget: input.proteinTarget ?? null }) : null;
+  const weekly = input.scheduleWeekMinutes != null && input.scheduleWeekMinutes > 0 ? input.scheduleWeekMinutes : CMO_MODERATE_MINUTES_WEEK;
+  const minutes = fitness.minutes?.centre != null ? Number(fitness.minutes.centre) : active.minutes;
+  return {
+    restingBpm: restingMatch ? Math.round(Number(restingMatch[0])) : null,
+    sleepHours: sleep.mean == null ? null : Math.round(sleep.mean * 10) / 10,
+    steps: steps.days ? Math.round(steps.total) : null,
+    stepsDaily,
+    stepsLow: stepsDaily != null && stepsDaily < stepResearchBand(input.goalAge).low,
+    strengthMinutes7: active.report.strength > 0 ? active.report.strength : null,
+    strengthRecorded: active.report.strength > 0,
+    cardioMinutes7: null,
+    workoutMinutes7: minutes > 0 ? minutes : null,
+    workoutAim: scaledPeriodTarget(weekly, period),
+    proteinG: logged ? meals.proteinG : null,
+    proteinMet: ring == null ? null : ring.met,
+    caloriesStored: logged && meals.kcal > 0,
+    vo2,
+    vo2Level: vo2 == null || band == null ? null : vo2 < band.low ? 'Developing' : vo2 < band.high ? 'Steady' : 'Strong',
+    windowLabel: periodPhrase(period),
+  };
 }
 
 export function sumKindSince(samples: readonly { kind: string; value: number; recordedOn: string }[], kind: string, today: string): number | null {
