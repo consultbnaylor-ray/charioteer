@@ -1,5 +1,6 @@
 import type { AppSnapshot } from '@/data/types';
 import { lossBlocked } from '@/domain/nutrition';
+import { withPlannedMinutes } from '@/domain/plannedSession';
 import type { StatPeriod } from '@/domain/statWindow';
 
 export {
@@ -21,14 +22,18 @@ export {
 
 import { figuresForLondonWeek } from '../../supabase/functions/_shared/goalLed.ts';
 
-/** Figures already on the phone. Nothing here is fetched for the goal card. */
+/**
+ * The same workout minutes Your Fitness reads: merged Apple Health and Garmin rows,
+ * plus a planned session marked done. A raw health_samples list with no workout minutes is not enough.
+ */
 export function goalLedFromSnapshot(snap: AppSnapshot, now = new Date(), period: StatPeriod = '7') {
   const profile = snap.profile;
   const settings = snap.nutrition;
+  const health = withPlannedMinutes(snap.health ?? [], snap.plannedSessions);
   const week = figuresForLondonWeek({
     now,
     logs: snap.foodLogs ?? [],
-    health: snap.health ?? [],
+    health,
     checkIns: snap.checkIns ?? [],
     period,
   });

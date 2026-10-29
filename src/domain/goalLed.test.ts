@@ -1,8 +1,12 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
+import type { AppSnapshot } from '@/data/types';
+import { periodActiveMinutes } from '@/domain/fitnessSnapshot';
+import { withPlannedMinutes } from '@/domain/plannedSession';
+import { rollingWindow } from '@/domain/statWindow';
 import { draftHealthPlan, HEALTH_PLAN_PROMPT } from './healthPlan';
-import { buildGoalLed, figuresForLondonWeek, goalFocusLine, goalProgressLine } from './goalLed';
+import { buildGoalLed, figuresForLondonWeek, goalFocusLine, goalLedFromSnapshot, goalProgressLine } from './goalLed';
 import type { FoodLog } from './nutrition';
 import { goalShareLine, NUTRITION_GOALS, NUTRITION_PROMPT_LINE } from './nutrition';
 import { buildSystemPrompt, buildThumosContext } from './thumos';
@@ -229,6 +233,76 @@ describe('goal led summary', () => {
     });
     expect(stillSunday.week.today).toBe('2026-10-18');
     expect(stillSunday.weekProtein).toHaveLength(6);
+  });
+
+  it('uses the same training days as Your Fitness, not an empty health list', () => {
+    const now = new Date('2026-10-29T15:00:00.000Z');
+    const schedule = {
+      days: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'],
+      typicalMinutes: 30,
+      longerDay: null,
+      longerMinutes: null,
+      walkDay: null,
+      note: '',
+    };
+    const shell = {
+      health: [],
+      plannedSessions: [],
+      trainingSchedule: schedule,
+      foodLogs: [],
+      checkIns: [],
+      nutrition: { goal: 'lose_fat_build_muscle' },
+      profile: { stage: 'stopped', heightCm: 180 },
+    } as unknown as AppSnapshot;
+    const missed = goalLedFromSnapshot(shell, now, '7');
+    expect(missed.workoutDays).toBe(0);
+    expect(missed.workoutMinutes).toBe(0);
+    expect(missed.scheduledDays).toBe(7);
+    const empty = buildGoalLed({ ...base, goal: 'lose_fat_build_muscle', ...missed, period: '7', now });
+    expect(empty.measures.find((item) => item.id === 'sessions')?.status).toBe('Nothing logged yet');
+
+    const merged = [
+      { kind: 'workout_minutes', value: 40, recordedOn: '2026-10-27', source: 'healthkit' as const },
+      { kind: 'workout_minutes', value: 35, recordedOn: '2026-10-28', source: 'healthkit' as const },
+      { kind: 'workout_minutes', value: 20, recordedOn: '2026-10-22T23:30:00.000Z', source: 'healthkit' as const },
+    ];
+    const outdoor = {
+      id: 'out-1',
+      sessionType: 'outdoor' as const,
+      startsAt: '2026-10-26T18:00:00.000Z',
+      durationMinutes: 45,
+      note: '',
+      plannedEffort: null,
+      doneAt: '2026-10-26T19:00:00.000Z',
+    };
+    const agreed = goalLedFromSnapshot({
+      ...shell,
+      health: merged,
+      plannedSessions: [outdoor],
+    } as unknown as AppSnapshot, now, '7');
+    const window = rollingWindow('2026-10-29', '7');
+    const fitness = periodActiveMinutes({
+      samples: withPlannedMinutes(merged, [outdoor]),
+      today: '2026-10-29',
+      start: window.start,
+      end: window.end,
+    });
+    expect(window.start).toBe('2026-10-23');
+    expect(agreed.workoutDays).toBe(fitness.days);
+    expect(agreed.workoutMinutes).toBe(fitness.minutes);
+    expect(agreed.workoutDays).toBe(4);
+    const training = buildGoalLed({
+      ...base,
+      goal: 'lose_fat_build_muscle',
+      workoutDays: agreed.workoutDays,
+      workoutMinutes: agreed.workoutMinutes,
+      scheduledDays: 7,
+      period: '7',
+      now,
+    }).measures.find((item) => item.id === 'sessions');
+    expect(training).toMatchObject({ centre: '4', unit: 'of 7' });
+    expect(training?.status).toContain('4 of 7 planned training days');
+    expect(readFileSync('src/ui/YourGoal.tsx', 'utf8')).toContain('useHealthSources');
   });
 
   it('stays quiet until a goal is chosen', () => {

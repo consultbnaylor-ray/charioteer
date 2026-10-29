@@ -5,6 +5,7 @@ import { Pressable, View } from 'react-native';
 import { useSnapshot } from '@/data';
 import { CATEGORY_LABELS } from '@/data/catalogue';
 import type { ResourceCategory } from '@/data/types';
+import { libraryItems, ON_THE_MEND_APPS, ON_THE_MEND_ID, ON_THE_MEND_LINKS, ON_THE_MEND_PARAGRAPHS } from '@/domain/onTheMend';
 import { Card, Choice, Screen, Stamp, T } from '@/ui/ui';
 import { useAppTheme } from '@/ui/theme';
 
@@ -14,7 +15,7 @@ export default function Library() {
   const snap = useSnapshot();
   const theme = useAppTheme();
   const [category, setCategory] = useState<ResourceCategory | 'all'>('all');
-  const items = snap.resources.filter((item) => category === 'all' || item.category === category);
+  const items = libraryItems(snap.resources, category);
 
   return (
     <Screen eyebrow="Library" title="Help, books, and health." intro="Phone numbers and links were checked where the note says so. Anything we could not confirm is marked.">
@@ -28,7 +29,19 @@ export default function Library() {
         <Card key={item.id}>
           <T variant="label">{CATEGORY_LABELS[item.category]}</T>
           <T variant="title">{item.title}</T>
-          <T>{item.detail}</T>
+          {item.id === ON_THE_MEND_ID ? (
+            <>
+              {ON_THE_MEND_PARAGRAPHS.map((paragraph) => <T key={paragraph}>{paragraph}</T>)}
+              <T>{ON_THE_MEND_APPS}</T>
+              {ON_THE_MEND_LINKS?.map((link) => (
+                <Pressable key={link.url} accessibilityRole="link" accessibilityLabel={link.label} onPress={() => void Linking.openURL(link.url)}>
+                  <T style={{ color: theme.colors.ink, fontFamily: theme.font.bodyStrong, textDecorationLine: 'underline' }}>{link.label}</T>
+                </Pressable>
+              ))}
+            </>
+          ) : (
+            <T>{item.detail}</T>
+          )}
           {item.phone ? (
             <Pressable accessibilityRole="link" onPress={() => void Linking.openURL(`tel:${item.phone?.replace(/\s/g, '')}`)}>
               <T style={{ color: theme.colors.danger, fontFamily: theme.font.bodyStrong }}>{item.phone}</T>

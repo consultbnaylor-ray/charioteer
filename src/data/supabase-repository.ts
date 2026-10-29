@@ -22,7 +22,7 @@ import { chunkHealthRows } from '@/domain/healthUpload';
 import { rejectRouteCoordinates } from '@/domain/workoutRoute';
 import { assertRouteFindingAllowed } from '@/data/routeConsentStore';
 import { calmRouteMessage, explainRouteFailure, parseRoutePlaces, parseRoutePlan, retryRouteInvoke, routeCoordinate, routeInvokeHeaders, type RoutePlace, type RoutePlan, type RoutePlanInput } from '@/domain/findRoute';
-import type { SharedPhotoCard } from '@/domain/sharedPhotos';
+import { gratitudeLineFromSharedCaption, type SharedPhotoCard } from '@/domain/sharedPhotos';
 import { liveOutdoorRouteInsert, outdoorRouteFromDraft, outdoorRouteFromRow, outdoorRouteInsert, outdoorRouteRename, outdoorRouteReplace, routeGeometryStillRequired, routeShapeRejected, routeTableMissing, routeTitleOf, type OutdoorRouteDraft } from '@/domain/outdoorRoute';
 import { ROUTE_NEEDS_NAME, ROUTE_UPDATE_GRANT_LINE } from '@/domain/savedRoute';
 import { GARMIN_PERMISSION, readGarminRefreshBody } from '@/domain/healthRefresh';
@@ -2209,6 +2209,16 @@ export class SupabaseRepository implements Repository {
     }
     await this.refresh();
     await this.shareAddedGratitude({ photoId });
+  }
+
+  async saveSharedPhotoToGratitude(input: { caption: string; bytes: Uint8Array }): Promise<void> {
+    const entryId = await this.addGratitudeEntry({
+      body: gratitudeLineFromSharedCaption(input.caption),
+      category: null,
+      isFavourite: false,
+      entryDate: isoDay(new Date()),
+    });
+    await this.addGratitudePhoto(entryId, input.bytes);
   }
 
   /** A new line or photo follows Share Whole Section only when the person opted in. */
