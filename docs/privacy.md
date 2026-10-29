@@ -43,6 +43,20 @@ What you choose for one buddy is stored on that buddy invite (`buddy_invites.sco
 
 Turning Community off hides the community profile. It does not publish the community switches to a buddy, and it does not erase a buddy invite. The app does not yet store a separate copy of every community field for each buddy. Until that is approved and applied, a buddy sees the invite sections, not the What I share switches.
 
+## Buddy photos (draft, not live)
+
+This section describes a feature that is planned and not built. It is not in the app until Ben approves it and the migration is applied. It is a draft for the privacy notice and the DPIA, not a solicitor’s assessment.
+
+A photo you send from People, Buddies, goes only to the accepted buddies you tick. It does not go to the Community, and it is not a public file. The picture and the caption (up to 140 characters) are personal data. A caption that mentions health, sobriety, or another special-category fact should be treated as that kind of data. The app asks, in plain words, before the first send: only the buddies you choose can see it, and it is not the Community. It also says that a buddy can still show the picture to someone else, and that a screenshot cannot be stopped.
+
+The file is a JPEG with location and camera details removed, kept in a private storage bucket. There is no public link. A buddy opens it through a short-lived signed link. You can delete the photo at any time. That removes it for every buddy you sent it to and deletes the stored file. A buddy can hide it on their own screen, or report it. Hiding does not delete your copy. A report stays in the moderation queue even if you later delete the photo.
+
+If you also tick the gratitude box, a separate private copy is saved in your gratitude list. That copy follows the diary rules. Deleting the buddy photo does not delete the diary line, and deleting the diary line does not delete the buddy photo.
+
+The photos are kept until you delete them or you delete the account. Account deletion is meant to remove the files as well as the rows. A link that was already issued can keep working until it expires, which is planned at about 15 minutes. Export of your account should include the photos you sent. That export change is part of the same approval. The photos are not used for advertising.
+
+Ben has approved the add-only phone permission. The app config now includes that purpose sentence. The Save button is still not in the app. A copy saved into an album named Charioteer would belong to that phone. Deleting the photo in Charioteer does not remove it from the phone. The sender is told that before they send, and can turn off a per-photo switch that hides the save button. A screenshot can still be taken. The migration is not applied, and this is not live.
+
 ## How the shared view is built
 
 Your choices are stored in `profile_sharing`, which only you can read and write. Other signed-in people do not read that table, and they do not read your private rows. They call `public_profile`, which returns only the fields you have switched on. It returns nothing if you are signed out, if Community is off, if age is not confirmed, or if either of you has blocked the other.
