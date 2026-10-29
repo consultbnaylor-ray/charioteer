@@ -2,6 +2,7 @@ import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useState } from 'react';
 
 import { useSnapshot } from '@/data';
+import { LIVE_SESSION_ENABLED } from '@/domain/liveSessionFlag';
 import { appleDayValues } from '@/domain/dailyActivity';
 import { garminStoredMark } from '@/domain/healthRefresh';
 import { exercisePermissionMissing, type HealthVisibilityReport } from '@/domain/healthVisibility';
@@ -64,7 +65,7 @@ export default function WorkoutsScreen() {
         onPress={() => void manual.run()}
       />
       <GarminPermissionNotice />
-      <Button label="Start live session" onPress={() => router.push('/gym-session' as never)} />
+      {LIVE_SESSION_ENABLED ? <Button label="Start live session" onPress={() => router.push('/gym-session' as never)} /> : null}
       <Button label="Back" tone="quiet" onPress={() => router.back()} />
       <WorkoutList
         workouts={workouts}

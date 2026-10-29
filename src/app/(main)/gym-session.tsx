@@ -1,4 +1,4 @@
-import { useRouter } from 'expo-router';
+import { Redirect, useRouter } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import { Platform, Switch, View } from 'react-native';
 
@@ -20,6 +20,7 @@ import {
   updatesDue,
   type GymKind,
 } from '@/domain/activitySession';
+import { LIVE_SESSION_ENABLED } from '@/domain/liveSessionFlag';
 import { OUTSIDE_CRISIS_LINE, OUTSIDE_SAFETY_LINE } from '@/domain/outdoorRoute';
 import { watchLiveReading, type LiveReading } from '@/health/liveReading';
 import { useAppTheme } from '@/ui/theme';
@@ -35,6 +36,11 @@ function buzz() {
 }
 
 export default function GymSession() {
+  if (!LIVE_SESSION_ENABLED) return <Redirect href="/workouts" />;
+  return <GymSessionScreen />;
+}
+
+function GymSessionScreen() {
   const router = useRouter();
   const theme = useAppTheme();
   const [kind, setKind] = useState<GymKind>('strength');
