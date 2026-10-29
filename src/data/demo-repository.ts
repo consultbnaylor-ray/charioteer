@@ -35,6 +35,7 @@ import {
 } from '@/domain/buddies';
 import { convertStoredMoods, planCheckInGratitudeSync } from '@/domain/checkIns';
 import { randomId } from '@/domain/id';
+import { emptyGarminReadings, type GarminReadings } from '../../supabase/functions/_shared/garmin';
 import { shareInflight } from '@/domain/writes';
 import { isoDay } from '@/domain/dates';
 import { isGratitudeCategory, localGratitudeReflect, planGratitudeEntry, sortGratitude, type GratitudeEntry, type GratitudeReflect } from '@/domain/gratitude';
@@ -1955,7 +1956,23 @@ export class DemoRepository implements Repository {
         updated_at: item.updatedAt,
         signed_url: item.previewUrl,
       })),
+      garmin_connection: null,
+      garmin_dailies: [],
+      garmin_activities: [],
+      garmin_sleep: [],
     };
+  }
+
+  async loadGarmin(): Promise<GarminReadings> {
+    return emptyGarminReadings();
+  }
+
+  async startGarminConnect(): Promise<string> {
+    throw new UserFacingError('Garmin Connect is available on your live account.', 'generic');
+  }
+
+  async disconnectGarmin(): Promise<void> {
+    return;
   }
 
   async deleteAccount(): Promise<void> {

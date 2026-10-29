@@ -24,7 +24,12 @@ export type AppleHealthBodyRead =
   | { ok: false; message: string };
 
 export type HealthSyncResult =
-  | { ok: true; samples: NewHealthSample[]; activeEnergyKcal: number | null; composition?: AppleHealthComposition[] }
+  | {
+    ok: true;
+    samples: NewHealthSample[];
+    activeEnergyKcal: number | null;
+    composition?: AppleHealthComposition[];
+  }
   | { ok: false; message: string };
 
 function workoutSourceName(source: { name?: string; bundleIdentifier?: string } | null | undefined): string {

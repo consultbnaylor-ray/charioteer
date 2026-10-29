@@ -33,6 +33,8 @@ import type { HealthTurnOnResult } from '@/ui/HealthStatBoard';
 import { useStatPeriod } from '@/health/useStatPeriod';
 import { loadLastSynced } from '@/health/syncedAt';
 import { AppleHealthCard } from '@/ui/AppleHealthCard';
+import { activeMinutesByDay } from '@/domain/healthSources';
+import { useHealthSources } from '@/health/useHealthSources';
 import { GarminTip } from '@/ui/GarminTip';
 import { HealthVisibility } from '@/ui/HealthVisibility';
 import { GoalLine } from '@/ui/GoalLine';
@@ -75,6 +77,12 @@ export default function Health() {
   const [visibility, setVisibility] = useState<HealthVisibilityReport | null>(ios ? null : { kind: 'web' });
   const [visibilityPending, setVisibilityPending] = useState(false);
   const [period] = useStatPeriod();
+  const { readings, samples: mergedHealth } = useHealthSources();
+  const healthSamples = withPlannedMinutes(mergedHealth, snap.plannedSessions);
+  const activeSeries = readings.activities.length > 0 || readings.dailies.some((day) => day.moderateMinutes != null || day.vigorousMinutes != null)
+    ? activeMinutesByDay(healthSamples, readings.dailies)
+    : [];
+  const activeMinutes = activeSeries.length > 0 ? activeSeries : undefined;
   const [updatedAt, setUpdatedAt] = useState<string | null>(null);
   const [refreshError, setRefreshError] = useState<string | null>(null);
   const [turnOnNote, setTurnOnNote] = useState<string | null>(null);
@@ -397,7 +405,8 @@ export default function Health() {
       <HealthSectionShare />
       <HealthStatBoard
         today={isoDay(new Date())}
-        samples={withPlannedMinutes(snap.health, snap.plannedSessions)}
+        samples={healthSamples}
+        activeMinutes={activeMinutes}
         body={snap.bodyComposition}
         activityEnergyKcal={snap.nutrition.activityEnergyKcal}
         heightCm={snap.profile?.heightCm ?? null}
@@ -414,7 +423,7 @@ export default function Health() {
         onSetWorkoutBucket={setWorkoutBucket}
       />
       <HealthBoard
-        samples={withPlannedMinutes(snap.health, snap.plannedSessions)}
+        samples={healthSamples}
         today={isoDay(new Date())}
         soberOn={snap.profile?.stage === 'stopped' && snap.profile.sobrietyStartedAt ? isoDay(new Date(snap.profile.sobrietyStartedAt)) : null}
         stage={snap.profile?.stage ?? null}
@@ -436,7 +445,7 @@ export default function Health() {
       <Field label={`Value (${chosen.unit})`} value={value} onChangeText={setValue} keyboardType="decimal-pad" />
       <DateField label="Date" value={day} onChange={setDay} maximumDate={new Date()} />
       <ErrorNote>{error}</ErrorNote>
-      <HealthReadings samples={snap.health} />
+      <HealthReadings samples={healthSamples} />
     </Screen>
   );
 }

@@ -566,7 +566,9 @@ describe('health stat tiles', () => {
     const screen = readFileSync('src/app/(main)/health.tsx', 'utf8');
     const board = readFileSync('src/ui/HealthStatBoard.tsx', 'utf8');
     const share = readFileSync('src/ui/HealthBoard.tsx', 'utf8');
-    expect(screen).toContain('samples={snap.health}');
+    expect(screen).toContain('samples={healthSamples}');
+    expect(screen).toContain('useHealthSources');
+    expect(readFileSync('src/health/useHealthSources.ts', 'utf8')).toContain('mergeHealthSamples(snap.health');
     expect(screen).toContain('body={snap.bodyComposition}');
     expect(screen).toContain('activityEnergyKcal={snap.nutrition.activityEnergyKcal}');
     expect(screen).toContain('period={period}');

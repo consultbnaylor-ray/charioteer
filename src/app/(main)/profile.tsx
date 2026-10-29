@@ -23,6 +23,7 @@ import { WeightWaistPanel } from '@/ui/WeightWaistPanel';
 import { TrainingScheduleCard } from '@/ui/TrainingSchedule';
 import { WagonFlag } from '@/ui/NutritionShare';
 import { YouSectionShare } from '@/ui/SectionShare';
+import { GarminConnectRow } from '@/ui/GarminConnectRow';
 import { ShareOnProfile } from '@/ui/ShareOnProfile';
 import { ConsentChoices } from '@/ui/ConsentChoices';
 import { ProgressPhotos } from '@/ui/ProgressPhotos';
@@ -282,6 +283,7 @@ export default function Profile() {
         <T variant="muted">Nutrition, fitness, and a week of wellbeing, written from your own figures.</T>
       </Card>
       <TrainingScheduleCard />
+      <GarminConnectRow />
       {pinned ? (
         <View style={{ gap: 8 }}>
           <T variant="label">Pinned quote</T>
