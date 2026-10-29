@@ -67,7 +67,7 @@ import {
   type SplitMark,
   type UpdateInterval,
 } from '@/domain/activitySession';
-import { ROUTE_NAME_FIELD, ROUTE_NEEDS_NAME, SAVED_LINE_ON_MAP, copyGuide, guideForStart, guideLine, guideRoute } from '@/domain/savedRoute';
+import { LINE_NOT_KEPT, ROUTE_NAME_FIELD, ROUTE_NEEDS_NAME, SAVED_LINE_ON_MAP, copyGuide, guideForStart, guideLine, guideRoute } from '@/domain/savedRoute';
 import { isoDay } from '@/domain/dates';
 import { shownError } from '@/domain/errors';
 import { watchLiveReading, type LiveReading } from '@/health/liveReading';
@@ -766,6 +766,7 @@ export default function Activity() {
       <Card>
         <T variant="label">Route</T>
         <T variant="muted">{SAVED_LINE_ON_MAP}</T>
+        {routes.some((route) => route.id === routeId && route.points.length < 2) ? <T variant="muted">{LINE_NOT_KEPT}</T> : null}
         <Choice label="No route" selected={routeId == null && !useMade && phoneLineId == null} onPress={() => { setRouteId(null); setPhoneLineId(null); dropGuide(); }} />
         {madeGuide ? (
           <Choice label={madeGuide.title} selected={useMade && routeId == null && phoneLineId == null} onPress={() => { setRouteId(null); setPhoneLineId(null); setUseMade(true); }} />

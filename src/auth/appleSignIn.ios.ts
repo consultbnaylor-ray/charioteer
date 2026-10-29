@@ -16,4 +16,9 @@ export async function signInWithApple(client: SupabaseClient): Promise<void> {
     token: credential.identityToken,
   });
   if (error) throw new Error(error.message);
+  const code = credential.authorizationCode?.trim();
+  if (code) {
+    // The code is single use. A failed store does not undo the sign-in.
+    await client.functions.invoke('siwa-token', { body: { code } }).catch(() => undefined);
+  }
 }

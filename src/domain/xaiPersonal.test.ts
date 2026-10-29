@@ -21,13 +21,15 @@ const calm = { selfHarm: false, withdrawal: false, reasons: [] as string[] };
 const crisis = { selfHarm: true, withdrawal: false, reasons: ['self-harm or suicidal language'] };
 
 describe('xAI personal-data switch', () => {
-  it('stays on unless the server value is false', () => {
-    expect(xaiPersonalDataEnabled(undefined)).toBe(true);
-    expect(xaiPersonalDataEnabled(null)).toBe(true);
-    expect(xaiPersonalDataEnabled('')).toBe(true);
-    expect(xaiPersonalDataEnabled('   ')).toBe(true);
+  it('stays closed unless the server value is exactly true', () => {
+    expect(xaiPersonalDataEnabled(undefined)).toBe(false);
+    expect(xaiPersonalDataEnabled(null)).toBe(false);
+    expect(xaiPersonalDataEnabled('')).toBe(false);
+    expect(xaiPersonalDataEnabled('   ')).toBe(false);
+    expect(xaiPersonalDataEnabled('yes')).toBe(false);
     expect(xaiPersonalDataEnabled('true')).toBe(true);
     expect(xaiPersonalDataEnabled('TRUE')).toBe(true);
+    expect(xaiPersonalDataEnabled(' true ')).toBe(true);
     expect(xaiPersonalDataEnabled('false')).toBe(false);
     expect(xaiPersonalDataEnabled('FALSE')).toBe(false);
     expect(xaiPersonalDataEnabled(' false ')).toBe(false);
@@ -52,7 +54,8 @@ describe('xAI personal-data switch', () => {
     expect(coachingPersonalDataAllowed({ ...closed, userOptIn: undefined })).toBe(false);
     expect(coachingPersonalDataAllowed({ ...closed, userOptIn: null })).toBe(false);
     expect(coachingPersonalDataAllowed({ ...closed, userOptIn: 'true' })).toBe(false);
-    expect(coachingPersonalDataAllowed({ personalDataFlag: undefined, interimFlag: undefined, userOptIn: undefined })).toBe(true);
+    expect(coachingPersonalDataAllowed({ personalDataFlag: undefined, interimFlag: undefined, userOptIn: undefined })).toBe(false);
+    expect(coachingPersonalDataAllowed({ personalDataFlag: 'true', interimFlag: undefined, userOptIn: undefined })).toBe(true);
     expect(coachingPersonalDataAllowed({ personalDataFlag: 'false', interimFlag: 'true', userOptIn: true })).toBe(true);
   });
 

@@ -17,7 +17,10 @@ export const ROUTE_NEEDS_NAME = 'A route needs a name.';
 export const ADJUST_THIS_ROUTE = 'Adjust this route';
 export const ADJUST_SENDS = 'Adjusting sends the start, the destination, and any points you add. It does not send the whole saved line.';
 export const DELETE_THIS_ROUTE = 'Delete this route?';
-export const DELETE_REMOVES = 'This removes the saved line from your account.';
+export const DELETE_REMOVES = 'This removes the saved route from your account.';
+
+/** Shown when a saved route has no line. The account keeps the name, distance, and time. */
+export const LINE_NOT_KEPT = 'The line is not kept. The name, distance, and time stay on your account.';
 export const SAVED_ROUTE_MAP_LABEL = 'Map with the saved route';
 export const ROUTE_NAME_FIELD = 'Route name';
 

@@ -1,6 +1,7 @@
 /**
  * A walk the signed-in person saves.
- * The line stays on their account. It is not shared with other people.
+ * The name, distance, and time stay on their account. The line is not stored.
+ * It is not shared with other people.
  * A live fix is not stored. A route service is called only after route finding is on.
  */
 
@@ -8,7 +9,7 @@ export const LOCATION_WHEN_IN_USE =
   'Charioteer uses your location while you are on a walk, run or cycle to track distance and give you spoken updates, including when the screen is locked or you are using other apps. Your route stays on your phone and is not sent anywhere. The same permission shows where you are while the map is open. A route is sent to the route service only if you turn route finding on. That request is the start, the destination, and any points you add on the map. It is not the outing path.';
 
 export const LOCATION_PAGE_LINE =
-  'Location is optional. The map uses it while this page is open, to show where you are. A walk, run, or cycle you start can keep using it until you stop. A route is sent to the route service only if you turn route finding on. It is not shared with other people. It is stored only if you save a route.';
+  'Location is optional. The map uses it while this page is open, to show where you are. A walk, run, or cycle you start can keep using it until you stop. A route is sent to the route service only if you turn route finding on. It is not shared with other people. Saving a route keeps the name, distance, and time, not the line.';
 
 export const OUTSIDE_SAFETY_LINE =
   'Not medical advice. If you feel unwell, contact your GP or NHS 111. Call 999 for chest pain, fainting, or breathlessness.';
@@ -236,7 +237,7 @@ export function outdoorRouteFromRow(row: {
   const points = geometry.map((item) => finitePoint(item)).filter((point): point is OutdoorPoint => point != null);
   const distance = typeof row.distance_m === 'number' ? row.distance_m : Number(row.distance_m);
   const duration = typeof row.duration_minutes === 'number' ? row.duration_minutes : Number(row.duration_minutes);
-  if (points.length < 2 || !Number.isFinite(distance) || !Number.isFinite(duration)) return null;
+  if (!Number.isFinite(distance) || !Number.isFinite(duration)) return null;
   const ascent = row.ascent_m == null || row.ascent_m === '' ? null : Number(row.ascent_m);
   return {
     id: row.id,
@@ -271,7 +272,6 @@ export function outdoorRouteReplace(
     kind: route.kind,
     distance_m: route.distanceM,
     duration_minutes: route.durationMinutes,
-    geometry: route.points,
     updated_at: updatedAt,
   };
   if (typeof ascentM === 'number' && Number.isFinite(ascentM)) {
@@ -293,7 +293,6 @@ export function outdoorRouteInsert(userId: string, id: string, draft: OutdoorRou
     kind: route.kind,
     distance_m: route.distanceM,
     duration_minutes: route.durationMinutes,
-    geometry: route.points,
   };
   if (typeof draft.ascentM === 'number' && Number.isFinite(draft.ascentM)) {
     row.ascent_m = Math.min(20_000, Math.max(0, Math.round(draft.ascentM)));
@@ -337,8 +336,12 @@ export function liveOutdoorRouteInsert(userId: string, id: string, draft: Outdoo
     kind: liveKind(route.kind),
     distance_m: route.distanceM,
     duration_minutes: route.durationMinutes,
-    geometry: points,
   };
+}
+
+/** The live table still requires a line. Omitting it fails until that column can be empty. */
+export function routeGeometryStillRequired(message: string): boolean {
+  return /geometry/i.test(message) && /not-null|null value/i.test(message);
 }
 
 export function routeTableMissing(message: string): boolean {
