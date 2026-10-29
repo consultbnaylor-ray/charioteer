@@ -1,6 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Platform, Share, Switch, View } from 'react-native';
+import { Linking, Platform, Pressable, Share, Switch, View } from 'react-native';
 
 import { useRepository, useSnapshot } from '@/data';
 import type { TextScale, ThemePreference } from '@/data/types';
@@ -11,6 +11,7 @@ import { parseDrinkFreeGoal, parseUnitsGoal, showsSoberRecord, STAGE_LABELS, STA
 import { shownError } from '@/domain/errors';
 import { interestChipRemovable, interestChipVisible } from '@/domain/interests';
 import { planCustomInterest } from '@/domain/privacy';
+import { PRIVACY_POLICY_URL } from '@/domain/privacyPolicy';
 import { toggleShareId } from '@/domain/profileSharing';
 import { quoteById, quoteCredit } from '@/domain/stoicQuotes';
 import { planReasons, reasonOverLimit } from '@/domain/reasons';
@@ -516,6 +517,9 @@ export default function Profile() {
         {showsSoberRecord(profile.stage) && profile.sobrietyStartedAt ? <T variant="muted">Sober since {formatUkDate(profile.sobrietyStartedAt)}.</T> : null}
         <Button label="Download my data" tone="quiet" onPress={() => void download()} />
       </Card>
+      <Pressable accessibilityRole="link" onPress={() => void Linking.openURL(PRIVACY_POLICY_URL)}>
+        <T variant="body" style={{ textDecorationLine: 'underline' }}>Privacy Policy</T>
+      </Pressable>
       <Field label="Type DELETE to remove the account" value={confirm} onChangeText={setConfirm} />
       <Button
         label="Delete account and data"

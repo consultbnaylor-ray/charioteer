@@ -6,6 +6,8 @@ import { useRepository, useSnapshot } from '@/data';
 import type { HealthKind, NewHealthSample } from '@/data/types';
 import { isoDay, startOfLocalDay } from '@/domain/dates';
 import { shownError } from '@/domain/errors';
+import { OUTSIDE_CRISIS_LINE } from '@/domain/outdoorRoute';
+import { VISIBLE_SAFETY_LINE } from '@/domain/visibleSafety';
 import {
   HEALTH_SHEET_ASKED,
   HEALTH_SHEET_WONT_SHOW,
@@ -310,6 +312,8 @@ export default function Health() {
         garminNote={manual.garminNote}
         onPress={() => void manual.run()}
       />
+      <T variant="muted">{VISIBLE_SAFETY_LINE}</T>
+      <T variant="muted">{OUTSIDE_CRISIS_LINE}</T>
       <AppleHealthCard
         consent={consent}
         ios={ios}

@@ -408,6 +408,7 @@ function SharedProfileFacts({ userId, name, onOpen }: { userId: string; name: st
   const [messageError, setMessageError] = useState<string | null>(null);
   const [messageAt, setMessageAt] = useState<'diary' | 'wagon' | 'plan' | null>(null);
   const [reportError, setReportError] = useState<string | null>(null);
+  const [hidden, setHidden] = useState(false);
   const [photoUrls, setPhotoUrls] = useState<Record<string, string>>({});
   const [openGalleryId, setOpenGalleryId] = useState<string | null>(null);
   const busy = useRef(false);
@@ -470,7 +471,7 @@ function SharedProfileFacts({ userId, name, onOpen }: { userId: string; name: st
       </Pressable>
     );
   }
-  if (load === 'hidden' || !view) return <T variant="muted">{communityProfileClosedMessage(name)}</T>;
+  if (hidden || load === 'hidden' || !view) return <T variant="muted">{communityProfileClosedMessage(name)}</T>;
   const shown: PublicProfileView = {
     ...view,
     ...(nutrition
@@ -652,6 +653,12 @@ function SharedProfileFacts({ userId, name, onOpen }: { userId: string; name: st
       {shownList(view.vision).map((item) => <T key={item.id}>{[item.caption, item.area].filter(Boolean).join(' · ')}</T>)}
       {sent && sent !== avatar?.id && !gallery.some((photo) => photo.id === sent) ? <T variant="muted">Report sent.</T> : null}
       <Button label="Invite as buddy" tone="quiet" disabled={pending} onPress={() => router.push(`/buddies?invite=${userId}` as never)} />
+      <Button label="Block" tone="quiet" disabled={pending} onPress={() => {
+        setPending(true);
+        void repo.blockUser(userId).then(() => setHidden(true)).catch((err: unknown) => {
+          setReportError(shownError(err, 'Could not block that person.'));
+        }).finally(() => setPending(false));
+      }} />
       <Button label="Report this profile" tone="quiet" disabled={pending} onPress={openProfileReport} />
       {draft ? (
         <ReportSheet

@@ -22,6 +22,7 @@ import {
   latestKind,
   showReadingDraft,
   sumKindSince,
+  figuresForNote,
   thumosReadingComment,
   trainsForReading,
   type ThumosReadingInput,
@@ -140,21 +141,21 @@ describe('Thumos reading guard', () => {
 
 describe('on-phone Thumos reading note', () => {
   it('shows a guarded note and changes it when the weight reading changes', () => {
-    const view = thumosReadingComment(sample({ storedDayCount: 7, targetKg: 72 }));
-    expect(view.sentences.length).toBeGreaterThan(3);
+    const view = thumosReadingComment(sample({ storedDayCount: 7, targetKg: 72, sleepHours: 8, stepsDaily: 9000, stepsLow: false, proteinMet: true, proteinG: 140, vo2Level: 'Steady', workoutAim: 80 }));
+    expect(view.sentences[0]).toContain('heading in the right direction');
     expect(view.sentences).toContain(THUMOS_BMI_LINE);
-    expect(view.sentences).toContain('Weight is moving towards the target you chose.');
-    expect(view.sentences.some((line) => line.startsWith('Weight is 74.2 kg'))).toBe(true);
+    expect(view.sentences.join(' ')).not.toContain('Weight is 74.2 kg');
     expect(view.sentences.join(' ')).not.toContain(VISIBLE_SAFETY_LINE);
     expect(view.sentences.join(' ')).not.toMatch(/\bkcal\b|lose weight|weight-loss/i);
+    expect(view.more.join(' ')).toContain('74.2');
     const heavier = sample({
       weights: [{ day: '2026-10-01', kg: 70 }, { day: TODAY, kg: 80 }],
       storedDayCount: 7,
       targetKg: 65,
     });
     const next = thumosReadingComment(heavier);
-    expect(next.sentences.join(' ')).toContain('80');
-    expect(next.sentences).toContain('Weight is moving away from the target you chose.');
+    expect(next.sentences[0]).toContain('not yet clear');
+    expect(next.more.join(' ')).toContain('80');
     const early = thumosReadingComment(sample({ storedDayCount: 3, targetKg: 72 }));
     expect(early.sentences[0]).toBe('Thumos needs at least 7 days of data.');
     expect(early.sentences.join(' ')).not.toContain('moving towards');
@@ -250,8 +251,8 @@ describe('on-phone Thumos reading note', () => {
     expect(detail).toContain('Waist is 84 cm.');
     expect(detail.some((line) => line.startsWith('BMI is '))).toBe(true);
     expect(detail).toContain('Strength is 75 min and cardio is 15 min in the last 7 days.');
-    expect(detail).toContain('The latest stored sleep is 7.4 hours.');
-    expect(detail).toContain('The latest stored steps are 9100.');
+    expect(detail).toContain('Sleep for the last 7 days averages 7.4 hours.');
+    expect(detail).toContain('Steps for the last 7 days are 9100.');
     expect(detail).toContain('Protein logged today is 80 g.');
     expect(detail).toContain('Calories are stored for today, and this note leaves them out.');
     expect(detail).toContain(THUMOS_NO_TIME_ESTIMATE);
@@ -259,5 +260,32 @@ describe('on-phone Thumos reading note', () => {
     expect(absent).toContain(THUMOS_NO_SLEEP);
     expect(absent).toContain('No body fat reading is stored, so it is not in this note.');
     expect(absent.join(' ')).not.toMatch(/\bkcal\b/);
+  });
+
+  it('uses Your Fitness minutes and the VO2 chart, not the cardio mix or a stale Apple sample', () => {
+    const today = '2026-10-27';
+    const figures = figuresForNote({
+      samples: [
+        { kind: 'vo2_max', value: 41.4, recordedOn: `${today}T09:00:00Z` },
+        { kind: 'cardio_minutes', value: 5, recordedOn: today },
+        { kind: 'workout_minutes', value: 40, recordedOn: today },
+        { kind: 'resting_heart_rate', value: 59, recordedOn: `${today}T08:00:00Z` },
+        { kind: 'resting_heart_rate', value: 64, recordedOn: '2026-10-26' },
+      ],
+      today,
+      period: '7',
+      goalAge: 45,
+      goalSex: 'male',
+      userMetrics: [{ calendarDate: today, vo2Max: 45 }],
+    });
+    expect(figures.vo2).toBe(45);
+    expect(figures.workoutMinutes7).toBe(40);
+    expect(figures.cardioMinutes7).toBeNull();
+    expect(figures.strengthRecorded).toBe(false);
+    expect(figures.restingBpm).not.toBe(59);
+    const note = thumosReadingComment(sample({ ...figures, storedDayCount: 7, goal: 'elite_cruiser_boxer', targetKg: null }));
+    expect(note.sentences.join(' ')).toContain('Strength is not recorded');
+    expect(note.sentences.join(' ')).not.toContain('5 min');
+    expect(note.sentences.join(' ')).not.toContain('41.4');
   });
 });

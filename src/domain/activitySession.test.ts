@@ -211,6 +211,9 @@ describe('activity session', () => {
     expect(profile.indexOf('<ActivityUpdatesCard />')).toBeLessThan(profile.indexOf('>Notifications<'));
     expect(readFileSync('src/ui/ActivityUpdatesCard.tsx', 'utf8')).toContain('Activity updates');
     expect(workouts).toContain('Start live session');
+    expect(workouts).toContain('LIVE_SESSION_ENABLED ?');
+    expect(readFileSync('src/domain/liveSessionFlag.ts', 'utf8')).toContain('export const LIVE_SESSION_ENABLED = false');
+    expect(gym).toContain('if (!LIVE_SESSION_ENABLED) return <Redirect href="/workouts" />');
     expect(workouts).toContain('WorkoutList');
     expect(gym).toContain('NO_HEART_SOURCE');
     expect(gym).toContain('Active energy');
