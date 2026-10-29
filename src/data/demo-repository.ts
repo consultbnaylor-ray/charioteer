@@ -46,6 +46,7 @@ import { shareInflight } from '@/domain/writes';
 import { isoDay } from '@/domain/dates';
 import { isGratitudeCategory, localGratitudeReflect, planGratitudeEntry, sortGratitude, type GratitudeEntry, type GratitudeReflect } from '@/domain/gratitude';
 import { GRATITUDE_MAX_BYTES, gratitudePhotoLimitMessage, gratitudeStoragePath } from '@/domain/gratitudePhotos';
+import { gratitudeLineFromSharedCaption } from '@/domain/sharedPhotos';
 import {
   VISION_CAPTION_LIMIT,
   VISION_MAX_BYTES,
@@ -1903,6 +1904,16 @@ export class DemoRepository implements Repository {
     const followed = shareFreshGratitude(normalizeProfileSharing(db.accounts[account.profile.id].sharing), { photoId: id });
     if (followed) db.accounts[account.profile.id].sharing = followed;
     this.commit(db);
+  }
+
+  async saveSharedPhotoToGratitude(input: { caption: string; bytes: Uint8Array }): Promise<void> {
+    const entryId = await this.addGratitudeEntry({
+      body: gratitudeLineFromSharedCaption(input.caption),
+      category: null,
+      isFavourite: false,
+      entryDate: isoDay(new Date()),
+    });
+    await this.addGratitudePhoto(entryId, input.bytes);
   }
 
   async updateGratitudePhoto(id: string, input: { caption: string }): Promise<void> {

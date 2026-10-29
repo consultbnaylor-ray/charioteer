@@ -7,7 +7,7 @@
  * not a medical assessment.
  */
 import { metricFallback, type FallbackCite } from './healthBands.ts';
-import { mondayOf, shiftDay } from './healthInsights.ts';
+import { londonDay, mondayOf, shiftDay } from './healthInsights.ts';
 import { minuteUnit, paceJudgement, parseStatPeriod, periodPhrase, rollingWindow, scaledPeriodTarget, type StatPeriod } from './statWindow.ts';
 import {
   CARRYING_FITNESS_NOTE,
@@ -901,8 +901,10 @@ function blankBuckets(): MixBuckets {
   return { strength: 0, cardio: 0, conditioning: 0, other: 0 };
 }
 
+/** A stored calendar day stays put. A timestamp is the London day, not the UTC date. */
 function sampleDay(recordedOn: string): string {
-  return recordedOn.slice(0, 10);
+  if (/^\d{4}-\d{2}-\d{2}$/.test(recordedOn)) return recordedOn;
+  return londonDay(recordedOn);
 }
 
 /**
@@ -977,7 +979,7 @@ export function periodActiveMinutes(input: {
   const days = new Map<string, number>();
   for (const sample of input.samples) {
     if (sample.kind !== 'workout_minutes' || !(sample.value > 0)) continue;
-    const day = sample.recordedOn.slice(0, 10);
+    const day = sampleDay(sample.recordedOn);
     if (day < input.start || day > end) continue;
     days.set(day, (days.get(day) ?? 0) + sample.value);
   }

@@ -2,6 +2,7 @@ import { View } from 'react-native';
 
 import { useSnapshot } from '@/data';
 import { buildGoalLed, goalLedFromSnapshot, type GoalTick } from '@/domain/goalLed';
+import { useHealthSources } from '@/health/useHealthSources';
 import { towardGoal } from '@/domain/nutrition';
 import { GoalLine } from '@/ui/GoalLine';
 import { GoalWeightRange } from '@/ui/GoalWeightRange';
@@ -19,9 +20,10 @@ import { Card, T } from '@/ui/ui';
  */
 export function YourGoal({ place }: { place: 'today' | 'stats' | 'plan' }) {
   const snap = useSnapshot();
+  const { samples: mergedHealth } = useHealthSources();
   const [period] = useStatPeriod();
   if (!snap.profile) return null;
-  const view = buildGoalLed(goalLedFromSnapshot(snap, new Date(), period));
+  const view = buildGoalLed(goalLedFromSnapshot({ ...snap, health: mergedHealth }, new Date(), period));
   const showNudges = place === 'today';
   const met = view.ticks.filter((tick) => tick.done).length;
   return (

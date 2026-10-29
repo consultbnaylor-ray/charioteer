@@ -5,6 +5,7 @@ import { Platform, Pressable, View } from 'react-native';
 import { useRepository } from '@/data';
 import { shownError } from '@/domain/errors';
 import {
+  SAVED_TO_GRATITUDE,
   SAVED_TO_LIBRARY,
   SCREENSHOT_NOTE,
   SENDER_SAVE_NOTE,
@@ -61,6 +62,18 @@ export function SharedPhotos() {
     }
   }
 
+  async function saveToGratitude(photo: SharedPhotoCard) {
+    if (!photo.imageUrl) {
+      setNote('This sample photo is not a file on this phone.');
+      return;
+    }
+    const response = await fetch(photo.imageUrl);
+    if (!response.ok) throw new Error('Could not read that photo.');
+    const bytes = new Uint8Array(await response.arrayBuffer());
+    await repo.saveSharedPhotoToGratitude({ caption: photo.caption, bytes });
+    setNote(SAVED_TO_GRATITUDE);
+  }
+
   async function save(photo: SharedPhotoCard) {
     if (!photo.imageUrl) {
       setNote('This sample photo is not a file on this phone.');
@@ -98,6 +111,7 @@ export function SharedPhotos() {
               </View>
             )}
             {buddyMaySave(photo) ? <Button label="Save to Photos" tone="quiet" onPress={() => void save(photo)} /> : <T variant="muted">The sender did not allow Save to Photos.</T>}
+            <Button label="Save to Gratitude" tone="quiet" pending={pending === `gratitude-${photo.id}`} onPress={() => void act(`gratitude-${photo.id}`, () => saveToGratitude(photo))} />
           </Card>
         ))}
       </View>

@@ -481,6 +481,8 @@ export interface Repository {
   updateGratitudeEntry(id: string, input: NewGratitudeEntry): Promise<void>;
   deleteGratitudeEntry(id: string): Promise<void>;
   addGratitudePhoto(entryId: string, bytes: Uint8Array): Promise<void>;
+  /** Copies a shared photo into this person's gratitude diary. The file is theirs, not a link to the sender. */
+  saveSharedPhotoToGratitude(input: { caption: string; bytes: Uint8Array }): Promise<void>;
   updateGratitudePhoto(id: string, input: { caption: string }): Promise<void>;
   deleteGratitudePhoto(id: string): Promise<void>;
   reflectOnGratitude(body: string, category: string | null): Promise<GratitudeReflect>;

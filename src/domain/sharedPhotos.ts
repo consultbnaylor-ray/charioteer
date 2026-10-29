@@ -56,6 +56,18 @@ export function quickShareNeedsDestination(input: { buddyCount: number; gratitud
 /** Shown once, after Save to Photos succeeds. Not a standing paragraph. */
 export const SAVED_TO_LIBRARY = 'Saved to your photo library.';
 
+/** Shown once, after Save to Gratitude copies the file into this person's diary. */
+export const SAVED_TO_GRATITUDE = 'Saved to Gratitude.';
+
+/** Used when the shared photo has no caption. A gratitude line cannot be blank. */
+export const SAVED_FROM_SHARED_PHOTO = 'Saved from a shared photo.';
+
+/** The diary line. A caption is kept. A blank caption gets the short fallback. */
+export function gratitudeLineFromSharedCaption(caption: string): string {
+  const text = caption.trim().slice(0, 1000);
+  return text || SAVED_FROM_SHARED_PHOTO;
+}
+
 export const CAMERA_USAGE =
   'Charioteer uses the camera for a progress photo, a gratitude photo, a vision board photo, a profile or gallery photo, a photo you send to buddies, or a meal photo. A meal photo may be analysed by the AI coach when you ask for a photo estimate.';
 
