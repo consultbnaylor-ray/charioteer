@@ -54,7 +54,7 @@ function earlierMeasure(
 /** On-phone Thumos note. It does not call the coach and does not store a new reading. */
 export function ThumosReadingComment({ analyse = false }: { analyse?: boolean }) {
   const snap = useSnapshot();
-  const { samples } = useHealthSources();
+  const { samples, readings } = useHealthSources();
   const [period] = useStatPeriod();
   const profile = snap.profile;
   if (!profile) return null;
@@ -72,6 +72,9 @@ export function ThumosReadingComment({ analyse = false }: { analyse?: boolean })
     logs: snap.foodLogs ?? [],
     ownerId: profile.id,
     proteinTarget: snap.nutrition.proteinTarget,
+    goal: snap.nutrition.goal,
+    build: snap.nutrition.build,
+    userMetrics: readings.userMetrics,
   });
   const view = thumosReadingComment({
     today,

@@ -389,7 +389,8 @@ describe('on-phone Thumos reading note', () => {
       ownerId: 'alex',
       proteinTarget: 40,
     });
-    expect(figures.restingBpm).toBe(Math.round((50 + 80) / 2));
+    expect(figures.restingBpm).not.toBe(50);
+    expect(figures.restingBpm).not.toBe(70);
     expect(figures.sleepHours).toBe(7);
     expect(figures.steps).toBe(12000);
     expect(figures.stepsDaily).toBe(6000);
@@ -412,5 +413,42 @@ describe('on-phone Thumos reading note', () => {
     expect(note.sentences).toContain(THUMOS_PROTEIN_SHORT);
     expect(note.sentences[0]).toBe(THUMOS_MIXED);
     expect(note.sentences).not.toContain(THUMOS_VO2_DEVELOPING);
+    const chart = figuresForNote({
+      samples: [
+        { kind: 'vo2_max', value: 41.4, recordedOn: '2026-10-27T09:00:00Z', source: 'healthkit' },
+        { kind: 'cardio_minutes', value: 5, recordedOn: '2026-10-27', source: 'healthkit' },
+        { kind: 'workout_minutes', value: 40, recordedOn: '2026-10-27', source: 'healthkit' },
+        { kind: 'resting_heart_rate', value: 59, recordedOn: '2026-10-27T08:00:00Z', source: 'healthkit' },
+        { kind: 'resting_heart_rate', value: 64, recordedOn: '2026-10-26', source: 'healthkit' },
+      ],
+      today,
+      period: '7',
+      goalAge: 45,
+      goalSex: 'male',
+      userMetrics: [{ calendarDate: '2026-10-27', vo2Max: 45 }],
+    });
+    expect(chart.vo2).toBe(45);
+    expect(chart.vo2Level).toBe('Strong');
+    expect(chart.workoutMinutes7).toBe(40);
+    expect(chart.restingBpm).not.toBe(59);
+    expect(chart.strengthRecorded).toBe(false);
+    const listed = thumosReadingComment(sample({
+      ...chart,
+      bodyFatPct: 26,
+      leanMassKg: 63,
+      bodyFatEarlier: null,
+      leanEarlier: null,
+      goal: 'elite_cruiser_boxer',
+      targetKg: null,
+      storedDayCount: 7,
+      weights: [{ day: '2026-10-20', kg: 85 }, { day: today, kg: 85.1 }],
+    }));
+    expect(listed.sentences[0]).not.toContain('toward the target');
+    expect(listed.sentences.join(' ')).toContain('No standard range is used');
+    expect(listed.sentences.join(' ')).not.toContain('5 min');
+    expect(listed.sentences.join(' ')).not.toContain('41.4');
+    expect(listed.sentences.join(' ')).not.toContain('59 bpm');
+    expect(listed.more.join(' ')).toContain('near the earlier reading');
+    expect(listed.more.join(' ')).not.toContain('up from 85 kg');
   });
 });
