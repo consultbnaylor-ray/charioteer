@@ -68,6 +68,9 @@ verify_jwt = true
 [functions.account-delete]
 verify_jwt = true
 
+[functions.siwa-token]
+verify_jwt = true
+
 [functions.progress-photo-url]
 verify_jwt = true
 

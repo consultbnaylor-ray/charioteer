@@ -254,7 +254,7 @@ describe('route finding', () => {
     expect(full?.kind).toBe('loop');
     expect(full?.distance_m).toBe(8000);
     expect(full?.ascent_m).toBe(42);
-    expect((full?.geometry as unknown[]).length).toBe(100);
+    expect(full).not.toHaveProperty('geometry');
     const live = liveOutdoorRouteInsert('user-1', 'route-1', {
       title: 'Park loop',
       kind: 'loop',
@@ -266,7 +266,7 @@ describe('route finding', () => {
     expect(live?.kind).toBe('drawn');
     expect(live?.distance_m).toBe(8000);
     expect(live).not.toHaveProperty('ascent_m');
-    expect((live?.geometry as unknown[]).length).toBe(64);
+    expect(live).not.toHaveProperty('geometry');
     expect(routeShapeRejected('new row violates check constraint "outdoor_routes_kind_check"')).toBe(true);
     expect(routeShapeRejected('Could not find the ascent_m column of outdoor_routes in the schema cache')).toBe(true);
     expect(routeTableMissing('relation "public.outdoor_routes" does not exist')).toBe(true);

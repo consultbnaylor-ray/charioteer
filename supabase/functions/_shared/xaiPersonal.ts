@@ -10,12 +10,11 @@ export const COACHING_PAUSED_SAVED =
   "Your choice is saved. Thumos stays paused while we wait for xAI to confirm that they won't save your data. Nothing was sent.";
 
 /**
- * Server kill switch. Unset, empty, or any value other than false leaves coaching on.
- * Ben sets XAI_PERSONAL_DATA_ENABLED=false after checking Zero Data Retention.
+ * Server switch. Only the exact word true sends personal data.
+ * Unset, empty, or any other value stays closed.
  */
 export function xaiPersonalDataEnabled(value: string | null | undefined): boolean {
-  if (value == null || value.trim() === '') return true;
-  return value.trim().toLowerCase() !== 'false';
+  return value?.trim().toLowerCase() === 'true';
 }
 
 /**
@@ -32,7 +31,7 @@ export function interimCoachOptIn(value: unknown): boolean {
 }
 
 /**
- * XAI_PERSONAL_DATA_ENABLED=false stays the kill switch.
+ * Anything other than XAI_PERSONAL_DATA_ENABLED=true stays closed.
  * A person gets through that closed switch only when the operator has opened
  * XAI_INTERIM_OPT_IN_ALLOWED and this person's own choice is exactly true.
  */

@@ -23,7 +23,7 @@ import { rejectRouteCoordinates } from '@/domain/workoutRoute';
 import { assertRouteFindingAllowed } from '@/data/routeConsentStore';
 import { calmRouteMessage, explainRouteFailure, parseRoutePlaces, parseRoutePlan, retryRouteInvoke, routeCoordinate, routeInvokeHeaders, type RoutePlace, type RoutePlan, type RoutePlanInput } from '@/domain/findRoute';
 import type { SharedPhotoCard } from '@/domain/sharedPhotos';
-import { liveOutdoorRouteInsert, outdoorRouteFromDraft, outdoorRouteFromRow, outdoorRouteInsert, outdoorRouteRename, outdoorRouteReplace, routeShapeRejected, routeTableMissing, routeTitleOf, type OutdoorRouteDraft } from '@/domain/outdoorRoute';
+import { liveOutdoorRouteInsert, outdoorRouteFromDraft, outdoorRouteFromRow, outdoorRouteInsert, outdoorRouteRename, outdoorRouteReplace, routeGeometryStillRequired, routeShapeRejected, routeTableMissing, routeTitleOf, type OutdoorRouteDraft } from '@/domain/outdoorRoute';
 import { ROUTE_NEEDS_NAME, ROUTE_UPDATE_GRANT_LINE } from '@/domain/savedRoute';
 import { GARMIN_PERMISSION, readGarminRefreshBody } from '@/domain/healthRefresh';
 const GARMIN_HISTORY_KEY = 'charioteer.garmin.historyRefusedAt';
@@ -2814,8 +2814,8 @@ export class SupabaseRepository implements Repository {
 
   /** Missing table stays an empty list. A missing climb column still opens the route. */
   private async loadOutdoorRoutes(userId: string) {
-    const full = 'id, title, kind, distance_m, duration_minutes, geometry, ascent_m, created_at';
-    const short = 'id, title, kind, distance_m, duration_minutes, geometry, created_at';
+    const full = 'id, title, kind, distance_m, duration_minutes, ascent_m, created_at';
+    const short = 'id, title, kind, distance_m, duration_minutes, created_at';
     const first = await this.client
       .from('outdoor_routes')
       .select(full)
@@ -2845,6 +2845,10 @@ export class SupabaseRepository implements Repository {
     if (saved) this.emit({ ...this.snapshot, outdoorRoutes: [saved, ...before.filter((item) => item.id !== id)] });
     const { error } = await this.client.from('outdoor_routes').insert(row);
     if (!error) return;
+    if (routeGeometryStillRequired(error.message ?? '')) {
+      this.emit({ ...this.snapshot, outdoorRoutes: before });
+      throw new UserFacingError('Saving a route without the line needs a database change, and that change has not been applied yet.', 'generic');
+    }
     if (routeShapeRejected(error.message ?? '')) {
       const live = liveOutdoorRouteInsert(userId, id, input);
       const stored = live ? outdoorRouteFromRow({ ...live, created_at: new Date().toISOString() }) : null;

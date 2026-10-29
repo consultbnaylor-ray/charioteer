@@ -1,4 +1,5 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.117.3';
+import { appleTableMissing, readAppleSecrets, revokeAppleRefreshToken, signedInWithApple } from '../_shared/appleRevoke.ts';
 import { json, preflight } from '../_shared/http.ts';
 import { forgetGarminAccount, type GarminDb } from '../_shared/garmin.ts';
 
@@ -70,10 +71,58 @@ Deno.serve(async (req) => {
     }, 500);
   }
 
+  const apple = await revokeSignInWithApple(admin, userData.user.id, userData.user.identities);
+  if (apple === 'blocked') {
+    return json({
+      ok: false,
+      code: 'apple',
+      message: 'Could not revoke Sign in with Apple, so the account was left in place.',
+    }, 500);
+  }
+
   const { error: deleteError } = await admin.auth.admin.deleteUser(userData.user.id);
   if (deleteError) return json({ ok: false, code: 'delete', message: deleteError.message }, 500);
-  return json({ ok: true });
+  return json({ ok: true, apple });
 });
+
+type TokenAdmin = {
+  from(table: string): {
+    select(columns: string): {
+      eq(column: string, value: string): {
+        maybeSingle(): Promise<{ data: { refresh_token?: string } | null; error: { message: string } | null }>;
+      };
+    };
+    delete(): {
+      eq(column: string, value: string): Promise<{ error: { message: string } | null }>;
+    };
+  };
+};
+
+/**
+ * Apple users with a stored refresh token are revoked before the auth user goes.
+ * No stored token still deletes the account. A failed revoke leaves the account in place.
+ * The token itself is not written into the response.
+ */
+async function revokeSignInWithApple(
+  admin: TokenAdmin,
+  userId: string,
+  identities: { provider?: string | null }[] | null | undefined,
+): Promise<'not_apple' | 'skipped' | 'revoked' | 'blocked'> {
+  if (!signedInWithApple(identities)) return 'not_apple';
+  const row = await admin.from('apple_siwa_tokens').select('refresh_token').eq('user_id', userId).maybeSingle();
+  if (row.error) {
+    if (appleTableMissing(row.error.message)) return 'skipped';
+    return 'blocked';
+  }
+  const refresh = row.data?.refresh_token?.trim() ?? '';
+  if (!refresh) return 'skipped';
+  const secrets = readAppleSecrets(Deno.env);
+  if (!secrets) return 'blocked';
+  const revoked = await revokeAppleRefreshToken({ refreshToken: refresh, secrets }).catch(() => false);
+  if (!revoked) return 'blocked';
+  await admin.from('apple_siwa_tokens').delete().eq('user_id', userId);
+  return 'revoked';
+}
 
 type StorageAdmin = {
   storage: {

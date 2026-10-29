@@ -23,6 +23,7 @@ import {
   TRACK_LINE_LIGHT,
   openFreeMapStyle,
   outdoorRouteFromDraft,
+  outdoorRouteFromRow,
   parseMapScheme,
   outdoorRouteInsert,
   pathMetres,
@@ -105,8 +106,18 @@ describe('Outside is Good phase 1', () => {
       points: sampleCanalLoop().points,
     });
     expect(Object.keys(insert ?? {}).sort()).toEqual([
-      'distance_m', 'duration_minutes', 'geometry', 'id', 'kind', 'title', 'user_id',
+      'distance_m', 'duration_minutes', 'id', 'kind', 'title', 'user_id',
     ]);
+    expect(insert).not.toHaveProperty('geometry');
+    expect(outdoorRouteFromRow({
+      id: 'route-1',
+      title: 'Canal loop',
+      kind: 'drawn',
+      distance_m: 1200,
+      duration_minutes: 20,
+      geometry: null,
+      created_at: '2026-10-29T00:00:00.000Z',
+    })).toMatchObject({ title: 'Canal loop', distanceM: 1200, points: [] });
     const share = readFileSync('src/domain/sharedPayload.ts', 'utf8') + readFileSync('src/domain/buddies.ts', 'utf8');
     expect(share).not.toContain('outdoor_routes');
     expect(readFileSync('src/app/(main)/outside.tsx', 'utf8')).toContain('Delete');

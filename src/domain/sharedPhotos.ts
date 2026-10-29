@@ -57,10 +57,10 @@ export function quickShareNeedsDestination(input: { buddyCount: number; gratitud
 export const SAVED_TO_LIBRARY = 'Saved to your photo library.';
 
 export const CAMERA_USAGE =
-  'Charioteer uses the camera for a private progress photo, or for a photo you choose to send to buddies. A progress photo stays private. A photo you send is shown only to the buddies you pick, not the Community, and it is not sent to the coach.';
+  'Charioteer uses the camera for a progress photo, a gratitude photo, a vision board photo, a profile or gallery photo, a photo you send to buddies, or a meal photo. A meal photo may be analysed by the AI coach when you ask for a photo estimate.';
 
 export const LIBRARY_USAGE =
-  'Charioteer uses your photo library so you can add a private progress photo, or choose a photo to send to buddies. A progress photo stays private. A photo you send is shown only to the buddies you pick, not the Community, and it is not sent to the coach.';
+  'Charioteer uses your photo library so you can choose a progress photo, a gratitude photo, a vision board photo, a profile or gallery photo, a photo to send to buddies, or a meal photo. A meal photo may be analysed by the AI coach when you ask for a photo estimate.';
 
 /** iOS add-only purpose. The app asks for this only when someone taps Save. */
 export const SAVE_PHOTOS_USAGE =

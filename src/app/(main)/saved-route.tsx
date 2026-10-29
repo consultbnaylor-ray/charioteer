@@ -13,6 +13,7 @@ import {
   ADJUST_THIS_ROUTE,
   SAVED_ROUTE_MAP_LABEL,
   canAdjustSavedRoute,
+  LINE_NOT_KEPT,
 } from '@/domain/savedRoute';
 import { LOCATION_FIX_MESSAGE, LOCATION_FIX_PENDING, readWhileUsingFix } from '@/location/whileUsing';
 import { FootpathMap } from '@/ui/FootpathMap';
@@ -121,6 +122,7 @@ export default function SavedRouteScreen() {
             <T>{routeKindLabel(route.kind)}</T>
             <T>{routeSummary(route)}</T>
             <T>{formatClimb(route.ascentM ?? null)}</T>
+            {route.points.length < 2 ? <T variant="muted">{LINE_NOT_KEPT}</T> : null}
             <FootpathMap
               routes={[route]}
               sketch={[]}
@@ -150,7 +152,7 @@ export default function SavedRouteScreen() {
               onCancel={() => { setDraft(name); setError(null); }}
             />
           </Card>
-          {canAdjustSavedRoute(route.kind) ? (
+          {route.points.length >= 2 && canAdjustSavedRoute(route.kind) ? (
             <Button label={ADJUST_THIS_ROUTE} tone="quiet" onPress={() => { setConfirming(false); setAdjusting(true); }} />
           ) : null}
           {confirming ? (
