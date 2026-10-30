@@ -4,7 +4,7 @@ import {
   queryWorkoutSamples,
 } from '@kingstinct/react-native-healthkit';
 
-import { workoutTypeLabel } from '@/domain/fitnessSnapshot';
+import { parseWorkoutActivityType, workoutTypeLabel } from '@/domain/fitnessSnapshot';
 import {
   DEV_FIXTURE_ROUTE_ID,
   devFixtureEnabled,
@@ -92,7 +92,7 @@ async function effortFrom(workout: object): Promise<number | null> {
 
 async function summaryFrom(workout: Awaited<ReturnType<typeof queryWorkoutSamples>>[number]): Promise<DeviceWorkout> {
   const plain = workout.toJSON();
-  const activityType = Number(plain.workoutActivityType);
+  const activityType = parseWorkoutActivityType(plain.workoutActivityType);
   const length = minutesFrom(plain.duration.quantity, plain.duration.unit);
   return {
     id: plain.uuid,

@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 
 import { APPLE_HEALTH_READ_TYPES, APPLE_HEALTH_SHARE } from '@/health/connection';
 import {
+  SCALE_BIA_LINE,
   SCALE_COMPARE_LINE,
   SCALE_CORE_LINE,
   SCALE_EMPTY_LINE,
@@ -16,6 +17,7 @@ import {
 
 const PROPOSED = [
   SCALE_CORE_LINE,
+  SCALE_BIA_LINE,
   SCALE_COMPARE_LINE,
   SCALE_EMPTY_LINE,
   SCALE_NO_READING,
@@ -29,6 +31,8 @@ describe('scale reading beside BMI', () => {
   it('keeps the proposed sentences exact', () => {
     expect(SCALE_CORE_LINE).toBe('BMI cannot tell muscle from fat. Read it next to body fat and lean mass.');
     expect(SCALE_COMPARE_LINE).toBe('Compare readings at the same time of day. A home scale estimate can change from one reading to the next.');
+    expect(SCALE_BIA_LINE).toBe('Smart-scale body fat uses a tiny electrical current, called bioelectrical impedance. Hydration, time of day, and food can move a single reading, so the trend matters more than one number.');
+    expect(readFileSync('src/ui/ScaleReading.tsx', 'utf8')).toContain('SCALE_BIA_LINE');
     expect(SCALE_EMPTY_LINE).toBe('No weight, body fat, or lean mass yet.');
     expect(SCALE_MORE_BAND).toContain('may not correspond to the same degree of fatness');
     expect(SCALE_MORE_ARRIVES).toContain('no standard type');

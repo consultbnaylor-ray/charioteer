@@ -13,7 +13,7 @@ import { dailyStatisticsAnchor, dailyStatisticsEnd } from '@/health/dayBuckets';
 import { shownError } from '@/domain/errors';
 import { APPLE_HEALTH_READ_ERROR } from '@/domain/healthUpload';
 import { parseBodyFatPct, parseLeanMassKg } from '@/domain/nutrition';
-import { dedupeWorkouts, workoutBucket, workoutTypeKind, workoutTypeMinutes, type WorkoutActivitySlice, type WorkoutSourceMinute, type WorkoutSpan } from '@/domain/fitnessSnapshot';
+import { dedupeWorkouts, parseWorkoutActivityType, workoutBucket, workoutTypeKind, workoutTypeMinutes, type WorkoutActivitySlice, type WorkoutSourceMinute, type WorkoutSpan } from '@/domain/fitnessSnapshot';
 import { saveWorkoutSources } from '@/health/workoutSources';
 import type { WorkoutBucket, WorkoutBucketMap } from '@/domain/nutrition';
 import { HEALTH_SAMPLE_DAYS } from '@/domain/healthVisibility';
@@ -115,9 +115,9 @@ export async function readAppleHealthBody(): Promise<AppleHealthBodyRead> {
 function workoutActivities(activities: readonly { activityType?: unknown; duration?: unknown }[] | null | undefined): WorkoutActivitySlice[] {
   if (!activities) return [];
   return activities.flatMap((activity) => {
-    const activityType = Number(activity?.activityType);
+    const activityType = parseWorkoutActivityType(activity?.activityType);
     const duration = Number(activity?.duration);
-    if (!Number.isFinite(activityType) || !Number.isFinite(duration)) return [];
+    if (!Number.isFinite(activityType) || activityType <= 0 || !Number.isFinite(duration)) return [];
     return [{ activityType, duration }];
   });
 }
@@ -271,7 +271,7 @@ export async function syncAppleHealth(
         sourceName: workoutSourceName(plain.sourceRevision?.source),
         activities: workoutActivities(plain.activities),
         span: {
-          activityType: Number(plain.workoutActivityType),
+          activityType: parseWorkoutActivityType(plain.workoutActivityType),
           startMs,
           endMs,
           durationMin: length,

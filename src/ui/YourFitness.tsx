@@ -95,6 +95,7 @@ export function YourFitness({ onPlanOutdoor }: { onPlanOutdoor: () => void }) {
   if (!view) return null;
   const colors = statsToneColors(theme.scheme);
   const ink = (tone: FitnessTone) => colors[tone].ink;
+  const belowAthletic = view.cardio?.compare.goal != null && view.cardio.compare.value < view.cardio.compare.goal.low;
 
   async function tick(text: string) {
     setError(null);
@@ -126,7 +127,7 @@ export function YourFitness({ onPlanOutdoor }: { onPlanOutdoor: () => void }) {
         age={snap.nutrition?.goalAge ?? null}
         sex={snap.nutrition?.goalSex ?? null}
       />
-      {view.level ? <T style={{ color: ink(view.level === 'Developing' ? 'watch' : 'good'), fontFamily: theme.font.bodyStrong }}>{view.level}</T> : null}
+      {view.level ? <T style={{ color: ink(view.level === 'Developing' || belowAthletic ? 'watch' : 'good'), fontFamily: theme.font.bodyStrong }}>{view.level}</T> : null}
       <T>{view.levelWords}</T>
       <MoreInfo about="your fitness" onPress={() => setInfo('card')} />
       {view.missing ? <T variant="muted">{view.missing}</T> : null}

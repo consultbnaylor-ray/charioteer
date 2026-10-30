@@ -152,11 +152,34 @@ describe('Garmin webhook mapping', () => {
     });
     expect(plan.activities[0]).toMatchObject({
       summaryId: 'run1',
+      activityType: 'RUNNING',
       activityName: 'Morning run',
       durationSeconds: 1920,
       averageHeartRateBpm: 142,
       trainingEffect: 3.2,
     });
+    const named = mapGarminPush({
+      activities: [{
+        userId: 'garmin1',
+        summaryId: 'lift1',
+        activityType: { typeKey: 'strength_training', typeId: 0 },
+        activityName: 'Weights',
+        startTimeInSeconds: 1761000000,
+        durationInSeconds: 2400,
+      }],
+    });
+    expect(named.activities[0]?.activityType).toBe('strength_training');
+    const zero = mapGarminPush({
+      activities: [{
+        userId: 'garmin1',
+        summaryId: 'lift0',
+        activityType: 0,
+        activityName: 'Weights',
+        startTimeInSeconds: 1761000000,
+        durationInSeconds: 2400,
+      }],
+    });
+    expect(zero.activities[0]?.activityType).toBe('0');
     expect(plan.sleep[0]).toMatchObject({ durationSeconds: 27000, sleepScore: 81 });
     expect(plan.deregistered).toEqual(['garmin-old']);
     expect(plan.permissionChanges).toEqual([{

@@ -1,5 +1,6 @@
 import type { HealthSample } from '@/data/types';
 import { garminExerciseMinutes } from '@/domain/dailyActivity';
+import { classifiedWorkoutSamples, isReplacedWorkoutKind, parseWorkoutActivityType, preferredActivityType } from '@/domain/fitnessSnapshot';
 import type { GarminActivity, GarminDaily, GarminReadings, GarminSleep, GarminUserMetric } from '@/domain/garminConnect';
 import { londonDay } from '@/domain/healthInsights';
 import type { DeviceWorkout } from '@/domain/workoutRoute';
@@ -83,7 +84,16 @@ export function mergeHealthSamples(
     ...[...minutes].map(([day, value]) => mergedSample('workout_minutes', value, day, 'min')),
     ...[...vo2].flatMap(([day, value]) => (appleVo2.has(day) ? [] : [mergedSample('vo2_max', value, day, 'ml/kg/min')])),
   ];
-  return [...kept, ...added];
+  const classified = classifiedWorkoutSamples(workouts.map((workout) => ({
+    activityType: workout.activityType,
+    startedAt: workout.startedAt,
+    durationMinutes: workout.durationMinutes,
+    origin: workout.origin ?? null,
+  })));
+  const replaceDays = new Set(classified.days);
+  const base = [...kept, ...added].filter((sample) => !replaceDays.has(dayKey(sample.recordedOn)) || !isReplacedWorkoutKind(sample.kind));
+  const typed = classified.samples.map((row) => mergedSample(row.kind as HealthSample['kind'], row.value, row.recordedOn, 'min'));
+  return [...base, ...typed];
 }
 
 export type ActiveMinuteDay = { day: string; value: number; source: 'garmin' | 'workout' };
@@ -133,7 +143,7 @@ function garminWorkout(activity: GarminActivity): Span[] {
   if (!activity.summaryId || !Number.isFinite(start) || !(activity.durationSeconds > 0)) return [];
   return [{
     id: `garmin:${activity.summaryId}`,
-    activityType: 0,
+    activityType: parseWorkoutActivityType(activity.activityType, activity.activityName),
     label: garminLabel(activity),
     startedAt: new Date(start).toISOString(),
     durationMinutes: Math.max(1, Math.round(activity.durationSeconds / 60)),
@@ -181,7 +191,7 @@ function combine(garmin: Span, apple: Span): DeviceWorkout {
   return strip({
     ...garmin,
     id: apple.routeExpected ? apple.id : garmin.id,
-    activityType: apple.activityType || garmin.activityType,
+    activityType: preferredActivityType(apple.activityType, garmin.activityType),
     label: garmin.label || apple.label,
     durationMinutes: garmin.durationMinutes || apple.durationMinutes,
     distanceMetres: garmin.distanceMetres ?? apple.distanceMetres,

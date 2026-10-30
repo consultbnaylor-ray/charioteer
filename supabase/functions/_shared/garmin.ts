@@ -1539,7 +1539,7 @@ function mapActivity(row: Record<string, unknown>): GarminPushPlan['activities']
   return {
     garminUserId,
     summaryId,
-    activityType: text(row.activityType, 40),
+    activityType: activityTypeText(row.activityType),
     activityName: text(row.activityName, 80),
     startedAt: new Date(started * 1000).toISOString(),
     durationSeconds,
@@ -1657,6 +1657,16 @@ function bounded(value: unknown, min: number, max: number): number | null {
 function text(value: unknown, max: number): string {
   if (typeof value !== 'string' && typeof value !== 'number') return '';
   return String(value).replace(/[\u0000-\u001f]/g, '').trim().slice(0, max);
+}
+
+/** Garmin sends a string, a number, or `{ typeKey, typeId }`. A bare 0 is kept so the name can still classify it. */
+function activityTypeText(value: unknown): string {
+  if (typeof value === 'string' || typeof value === 'number') return text(value, 40);
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return '';
+  const row = value as Record<string, unknown>;
+  const key = text(row.typeKey ?? row.type_key ?? row.activityType, 40);
+  if (key) return key;
+  return text(row.typeId ?? row.type_id, 40);
 }
 
 function ident(value: unknown): string {

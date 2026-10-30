@@ -93,6 +93,8 @@ export function ThumosReadingComment({ analyse = false }: { analyse?: boolean })
     build: snap.nutrition.build,
     storedDayCount: countReadingDays(samples, snap.bodyComposition.map((row) => row.recordedOn)),
     ...figures,
+    goalAge: snap.nutrition.goalAge,
+    goalSex: snap.nutrition.goalSex,
   });
   const sentences = view.sentences[0] === THUMOS_FAILED_LINE ? [THUMOS_EMPTY_LINE] : view.sentences;
   return (
