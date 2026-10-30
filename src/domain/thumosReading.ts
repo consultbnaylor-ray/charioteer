@@ -1,9 +1,10 @@
 import { healthSampleChart } from '@/domain/chartSeries';
-import { buildFitnessSnapshot, periodActiveMinutes, publishedCardioBand } from '@/domain/fitnessSnapshot';
+import { buildFitnessSnapshot, periodActiveMinutes, publishedCardioBand, vo2AthleticShortfall, vo2JudgementLine } from '@/domain/fitnessSnapshot';
 import { stepResearchBand } from '@/domain/garminCharts';
-import { bmiFrom, BHF_RESTING_MAX_BPM, BHF_RESTING_MIN_BPM, CMO_MODERATE_MINUTES_WEEK, NHS_ADULT_SLEEP_MAX_HOURS, NHS_ADULT_SLEEP_MIN_HOURS } from '@/domain/guidance';
+import { bmiFrom, BHF_RESTING_MAX_BPM, BHF_RESTING_MIN_BPM, CMO_MODERATE_MINUTES_WEEK, NHS_ADULT_SLEEP_MAX_HOURS, NHS_ADULT_SLEEP_MIN_HOURS, NICE_BMI_HEALTHY_MAX } from '@/domain/guidance';
 import { shiftDay } from '@/domain/healthInsights';
 import {
+  BODY_FAT_HIGH,
   GOAL_LABEL,
   loggedProteinRing,
   todayMealTotals,
@@ -15,6 +16,7 @@ import {
   type WorkoutBucketMap,
 } from '@/domain/nutrition';
 import { withPlannedMinutes, type PlannedSession } from '@/domain/plannedSession';
+import { SCALE_BIA_LINE } from '@/domain/scaleReading';
 import { periodPhrase, rollingWindow, scaledPeriodTarget, type StatPeriod } from '@/domain/statWindow';
 
 /**
@@ -42,6 +44,27 @@ export const THUMOS_FAILED_LINE =
   'Thumos could not write a note from these readings.';
 
 export const THUMOS_BMI_LINE = 'BMI cannot tell muscle from fat.';
+
+export const THUMOS_BMI_MUSCLE =
+  'On paper your BMI is high, but looking at your stats your weight is likely largely due to muscle, and BMI cannot tell muscle from fat.';
+
+export const THUMOS_BMI_AND_FAT =
+  'On paper your BMI is high, and body fat is also above the band this app uses, so the extra weight is not only muscle. BMI cannot tell muscle from fat. This is not a diagnosis.';
+
+export const THUMOS_BODY_FAT_HIGH =
+  'Body fat is above the band this app uses. Lifting does not cancel that. This is not a diagnosis.';
+
+export const THUMOS_BIA_PROTEIN_SHORT =
+  'Protein logged today is short of the target you set. Add a protein food to a meal you already eat. Do not skip drinks to chase a lower body-fat reading.';
+
+export const THUMOS_BIA_PROTEIN_MET =
+  'Protein logged today meets the target you set. Keep that habit, and judge body fat from the trend rather than one reading.';
+
+export const THUMOS_BIA_LOG_MEALS =
+  'No protein is stored for today. Logging a meal sets food beside this body-fat trend. Do not skip drinks to chase a lower reading.';
+
+export const THUMOS_BIA_KEEP_MEALS =
+  'Keep the meals you already log, and judge body fat from the trend. Do not skip drinks to chase a lower reading.';
 
 export const THUMOS_LOCAL_LINE =
   'This note is written on this phone from readings already stored here. It is not sent to the coach. It is not a diagnosis, and it does not set a calorie target or a weight-loss target.';
@@ -159,6 +182,7 @@ export type ThumosReadingInput = {
   caloriesStored?: boolean;
   /** Distinct days with a stored reading. Omitted means the 7-day gate is not applied. */
   storedDayCount?: number | null;
+  goalAge?: number | null;
   goalSex?: NutritionSex | null;
   stepsDaily?: number | null;
   stepsLow?: boolean | null;
@@ -399,8 +423,14 @@ function latestWeight(input: ThumosReadingInput): number | null {
 export function thumosDetailLines(input: ThumosReadingInput): string[] {
   const lines: string[] = [];
   if (input.bodyFatPct == null) lines.push(THUMOS_NO_BODY_FAT);
-  else if (input.bodyFatEarlier != null) {
-    lines.push(directionLine(input.bodyFatPct, input.bodyFatEarlier, THUMOS_BODY_FAT_DOWN, THUMOS_BODY_FAT_UP, THUMOS_BODY_FAT_SAME));
+  else {
+    if (input.bodyFatEarlier != null) {
+      lines.push(directionLine(input.bodyFatPct, input.bodyFatEarlier, THUMOS_BODY_FAT_DOWN, THUMOS_BODY_FAT_UP, THUMOS_BODY_FAT_SAME));
+    }
+    lines.push(SCALE_BIA_LINE);
+    if (bodyFatIsHigh(input)) lines.push(THUMOS_BODY_FAT_HIGH);
+    const food = bodyFatFoodLine(input);
+    if (food) lines.push(food);
   }
   if (input.leanMassKg == null) lines.push(THUMOS_NO_LEAN);
   else if (input.leanEarlier != null) {
@@ -490,11 +520,51 @@ function strengthLed(goal: NutritionGoal | null | undefined): boolean {
   return goal === 'lose_fat_build_muscle' || goal === 'body_builder' || goal.includes('boxer');
 }
 
+function fatCut(sex: NutritionSex | null | undefined): number {
+  if (sex === 'female') return BODY_FAT_HIGH.female;
+  if (sex === 'male') return BODY_FAT_HIGH.male;
+  return BODY_FAT_HIGH.unset;
+}
+
+function bodyFatIsHigh(input: ThumosReadingInput): boolean {
+  return input.bodyFatPct != null && input.bodyFatPct >= fatCut(input.goalSex);
+}
+
+function strengthVerified(input: ThumosReadingInput): boolean {
+  return input.strengthRecorded === true || (input.strengthMinutes7 ?? 0) > 0;
+}
+
+function bmiEvidenceLine(input: ThumosReadingInput): string | null {
+  const weight = latestWeight(input);
+  const bmi = weight != null && input.heightCm != null ? bmiFrom(weight, input.heightCm) : null;
+  const high = bmi != null && bmi > NICE_BMI_HEALTHY_MAX;
+  const muscleEvidence = input.build === 'muscular' && strengthVerified(input) && input.bodyFatPct != null;
+  if (high && muscleEvidence && bodyFatIsHigh(input)) return THUMOS_BMI_AND_FAT;
+  if (high && muscleEvidence) return THUMOS_BMI_MUSCLE;
+  if (trainsForReading(input)) return THUMOS_BMI_LINE;
+  return null;
+}
+
+function bodyFatFoodLine(input: ThumosReadingInput): string | null {
+  if (input.bodyFatPct == null) return null;
+  if (input.proteinMet === false) return THUMOS_BIA_PROTEIN_SHORT;
+  if (input.proteinMet === true) return THUMOS_BIA_PROTEIN_MET;
+  if (input.proteinG != null && input.proteinG > 0) return THUMOS_BIA_KEEP_MEALS;
+  return THUMOS_BIA_LOG_MEALS;
+}
+
 function suggestions(input: ThumosReadingInput): string[] {
   const lines: string[] = [];
   const move = weightMove(input);
   if (move === 'away') lines.push('Weight has moved away from the target you chose. Keep logging it on the days you already weigh.');
-  if (input.vo2Level === 'Developing') lines.push(THUMOS_CARDIO_FOR_VO2);
+  const vo2Line = vo2JudgementLine({
+    vo2: input.vo2 ?? null,
+    age: input.goalAge ?? null,
+    sex: input.goalSex ?? null,
+    goal: input.goal ?? null,
+  });
+  if (vo2Line) lines.push(vo2Line);
+  else if (input.vo2Level === 'Developing') lines.push(THUMOS_CARDIO_FOR_VO2);
   const minutesLogged = input.workoutMinutes7 ?? 0;
   if (input.strengthRecorded === false && (minutesLogged > 0 || strengthLed(input.goal))) {
     lines.push(strengthLed(input.goal) ? `${THUMOS_STRENGTH_NOT_RECORDED} ${THUMOS_STRENGTH_SESSION}` : THUMOS_STRENGTH_NOT_RECORDED);
@@ -521,7 +591,12 @@ function goodLine(input: ThumosReadingInput): string {
   if (input.sleepHours != null && input.sleepHours >= NHS_ADULT_SLEEP_MIN_HOURS && input.sleepHours <= NHS_ADULT_SLEEP_MAX_HOURS) {
     bits.push('sleep is inside 7 to 9 hours');
   }
-  if (input.vo2Level === 'Steady' || input.vo2Level === 'Strong') bits.push(`VO2 max is ${input.vo2Level}`);
+  const belowSport = vo2AthleticShortfall({
+    vo2: input.vo2 ?? null,
+    sex: input.goalSex ?? null,
+    goal: input.goal ?? null,
+  });
+  if ((input.vo2Level === 'Steady' || input.vo2Level === 'Strong') && !belowSport) bits.push(`VO2 max is ${input.vo2Level}`);
   if (input.proteinMet === true) bits.push('protein today meets the target you set');
   if (weightMove(input) === 'towards') bits.push('weight is moving toward the target you chose');
   if (!bits.length) return THUMOS_GOOD_LINE;
@@ -546,7 +621,14 @@ export function thumosAssessmentLines(input: ThumosReadingInput): string[] {
     return [THUMOS_NEEDS_SEVEN_DAYS, THUMOS_LOG_MORE_DAYS];
   }
   const lines = [verdictLine(input), ...suggestions(input), goodLine(input)];
-  if (trainsForReading(input)) lines.push(THUMOS_BMI_LINE);
+  const bmiLine = bmiEvidenceLine(input);
+  if (bmiLine) lines.push(bmiLine);
+  if (input.bodyFatPct != null) {
+    lines.push(SCALE_BIA_LINE);
+    if (bodyFatIsHigh(input) && bmiLine !== THUMOS_BMI_AND_FAT) lines.push(THUMOS_BODY_FAT_HIGH);
+    const food = bodyFatFoodLine(input);
+    if (food) lines.push(food);
+  }
   return lines;
 }
 

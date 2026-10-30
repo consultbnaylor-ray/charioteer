@@ -3,6 +3,7 @@ import { View } from 'react-native';
 import { useSnapshot } from '@/data';
 import { compositionForAssessment, weightPointsFrom } from '@/domain/nutrition';
 import {
+  SCALE_BIA_LINE,
   SCALE_COMPARE_LINE,
   SCALE_FROM_SCALES,
   SCALE_CORE_LINE,
@@ -46,6 +47,7 @@ export function ScaleReadingNote() {
       )}
       <T>{SCALE_CORE_LINE}</T>
       <T>{SCALE_COMPARE_LINE}</T>
+      {body.bodyFatPct != null ? <T>{SCALE_BIA_LINE}</T> : null}
       <MoreInfo about="weight, BMI, body fat, and lean mass">
         <T>{SCALE_MORE_BAND}</T>
         <T>{SCALE_MORE_ARRIVES}</T>

@@ -309,6 +309,157 @@ export function workoutTypeLabel(activityType: number): string {
   return WORKOUT_TYPE_LABEL[activityType] ?? `Workout type ${activityType}`;
 }
 
+/**
+ * HealthKit's numeric ids, plus the same names with punctuation removed.
+ * Garmin's Health API sends strings such as STRENGTH_TRAINING, not these ids.
+ * A 0 from Garmin is not a HealthKit type. It is handled below, not here.
+ */
+const COMPACT_ACTIVITY_TYPE: Record<string, number> = {
+  americanfootball: 1,
+  archery: 2,
+  australianfootball: 3,
+  badminton: 4,
+  baseball: 5,
+  basketball: 6,
+  bowling: 7,
+  boxing: 8,
+  climbing: 9,
+  cricket: 10,
+  crosstraining: 11,
+  curling: 12,
+  cycling: 13,
+  indoorcycling: 13,
+  roadbiking: 13,
+  roadcycling: 13,
+  mountainbiking: 13,
+  gravelcycling: 13,
+  virtualride: 13,
+  virtualcycling: 13,
+  bmx: 13,
+  cyclocross: 13,
+  dance: 14,
+  elliptical: 16,
+  functionalstrengthtraining: 20,
+  functionalstrength: 20,
+  golf: 21,
+  hiking: 24,
+  rucking: 24,
+  martialarts: 28,
+  mixedmartialarts: 28,
+  mma: 28,
+  rowing: 35,
+  indoorrowing: 35,
+  running: 37,
+  indoorrunning: 37,
+  treadmillrunning: 37,
+  trailrunning: 37,
+  streetrunning: 37,
+  trackrunning: 37,
+  ultrarun: 37,
+  ultrarunning: 37,
+  virtualrun: 37,
+  virtualrunning: 37,
+  stairclimbing: 44,
+  swimming: 46,
+  lapswimming: 46,
+  openwaterswimming: 46,
+  poolswim: 46,
+  traditionalstrengthtraining: 50,
+  strengthtraining: 50,
+  strength: 50,
+  weights: 50,
+  weightlifting: 50,
+  weighttraining: 50,
+  walking: 52,
+  casualwalking: 52,
+  speedwalking: 52,
+  yoga: 57,
+  coretraining: 59,
+  flexibility: 62,
+  highintensityintervaltraining: 63,
+  hiit: 63,
+  jumprope: 64,
+  kickboxing: 65,
+  pilates: 66,
+  stairs: 68,
+  floorclimbing: 68,
+  mixedcardio: 73,
+  indoorcardio: 73,
+  cardio: 73,
+  cardiotraining: 73,
+  handcycling: 74,
+  indoorhandcycling: 74,
+  cardiodance: 77,
+  cooldown: 80,
+  swimbikerun: 82,
+  multisport: 82,
+  other: 3000,
+};
+
+function compactActivityKey(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9]/g, '');
+}
+
+/** A named sport. Health's Other (3000) and Garmin's 0 are not one. */
+export function informativeActivityType(activityType: number): boolean {
+  return Number.isInteger(activityType) && activityType > 0 && activityType !== 3000;
+}
+
+function activityTypeFromName(name: string): number {
+  const text = name.trim();
+  if (!text) return 0;
+  if (/functional strength/i.test(text)) return 20;
+  if (/\btraditional strength\b/i.test(text)) return 50;
+  if (/\bcore training\b/i.test(text)) return 59;
+  if (/\b(strength|weights?|weight ?lift|lifting|resistance|barbell|dumbbell|kettlebell|hypertrophy|powerlift|deadlifts?|squats?|bench press)\b/i.test(text)) return 50;
+  if (/\bkickboxing\b/i.test(text)) return 65;
+  if (/\bboxing\b/i.test(text)) return 8;
+  if (/\b(run|running)\b/i.test(text)) return 37;
+  if (/\b(cycle|cycling|bike|biking)\b/i.test(text)) return 13;
+  if (/\bwalk(ing)?\b/i.test(text)) return 52;
+  return 0;
+}
+
+function unwrapActivityType(value: unknown): unknown {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return value;
+  const row = value as Record<string, unknown>;
+  return row.typeKey ?? row.type_key ?? row.activityType ?? row.typeId ?? row.type_id ?? value;
+}
+
+function directActivityType(value: unknown): number {
+  const raw = unwrapActivityType(value);
+  if (typeof raw === 'number' && Number.isInteger(raw) && raw > 0 && raw <= 3000) return raw;
+  if (typeof raw !== 'string') return 0;
+  const trimmed = raw.trim();
+  if (/^\d+$/.test(trimmed)) {
+    const parsed = Number(trimmed);
+    return parsed > 0 && parsed <= 3000 ? parsed : 0;
+  }
+  return COMPACT_ACTIVITY_TYPE[compactActivityKey(trimmed)] ?? 0;
+}
+
+/**
+ * HealthKit id, enum name, or Garmin activity type.
+ * traditionalStrengthTraining and functionalStrengthTraining stay strength.
+ * Garmin 0, empty, and Other use the activity name, so a weights session is not dropped.
+ */
+export function parseWorkoutActivityType(value: unknown, name = ''): number {
+  const direct = directActivityType(value);
+  if (informativeActivityType(direct)) return direct;
+  const fromName = activityTypeFromName(name);
+  if (informativeActivityType(fromName)) return fromName;
+  return direct > 0 ? direct : 0;
+}
+
+/** Apple's named type wins. Other, 0, and a blank type give way to Garmin's named type. */
+export function preferredActivityType(apple: number, garmin: number): number {
+  if (informativeActivityType(apple)) return apple;
+  if (informativeActivityType(garmin)) return garmin;
+  if (Number.isInteger(apple) && apple > 0) return apple;
+  if (Number.isInteger(garmin) && garmin > 0) return garmin;
+  return 0;
+}
+
 export function defaultWorkoutBucket(activityType: number): WorkoutBucket {
   if (!Number.isInteger(activityType) || activityType <= 0) return 'other';
   if (STRENGTH_TYPES.has(activityType)) return 'strength';
@@ -438,6 +589,66 @@ const BUCKET_KIND = {
   other: 'other_minutes',
 } as const;
 
+const REPLACED_WORKOUT_KINDS = new Set<string>(Object.values(BUCKET_KIND));
+
+/** Per-type and per-bucket rows that a classified day replaces. Workout minutes stay. */
+export function isReplacedWorkoutKind(kind: string): boolean {
+  return REPLACED_WORKOUT_KINDS.has(kind) || activityTypeFromKind(kind) != null;
+}
+
+export type ClassifiedSession = {
+  activityType: number;
+  startedAt: string;
+  durationMinutes: number;
+  origin?: string | null;
+};
+
+/**
+ * On a day Garmin recorded, the split follows the sessions already merged once.
+ * A day with no named type is left alone, so an unknown Garmin row does not wipe a stored strength total.
+ */
+export function classifiedWorkoutSamples(sessions: readonly ClassifiedSession[]): {
+  days: string[];
+  samples: { kind: string; value: number; recordedOn: string }[];
+} {
+  const byDay = new Map<string, ClassifiedSession[]>();
+  for (const session of sessions) {
+    if (!(session.durationMinutes > 0) || !session.startedAt) continue;
+    const day = londonDay(session.startedAt);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) continue;
+    const list = byDay.get(day) ?? [];
+    list.push(session);
+    byDay.set(day, list);
+  }
+  const days: string[] = [];
+  const samples: { kind: string; value: number; recordedOn: string }[] = [];
+  for (const [day, rows] of byDay) {
+    if (!rows.some((row) => row.origin === 'garmin')) continue;
+    if (!rows.some((row) => informativeActivityType(row.activityType))) continue;
+    days.push(day);
+    const types = new Map<number, number>();
+    const buckets: Record<WorkoutBucket, number> = { strength: 0, cardio: 0, conditioning: 0, other: 0 };
+    for (const row of rows) {
+      const parts = workoutTypeMinutes({ activityType: row.activityType, durationMin: row.durationMinutes });
+      for (const part of parts) {
+        types.set(part.activityType, (types.get(part.activityType) ?? 0) + part.minutes);
+        buckets[workoutBucket(part.activityType)] += part.minutes;
+      }
+    }
+    for (const [activityType, minutes] of types) {
+      const value = Math.round(minutes);
+      if (value <= 0) continue;
+      samples.push({ kind: workoutTypeKind(activityType), value, recordedOn: day });
+    }
+    for (const bucket of WORKOUT_BUCKETS) {
+      const value = Math.round(buckets[bucket]);
+      if (value <= 0) continue;
+      samples.push({ kind: BUCKET_KIND[bucket], value, recordedOn: day });
+    }
+  }
+  return { days, samples };
+}
+
 /** Rebuild the daily bucket totals from stored per-type minutes. Days with no type stay as they were. */
 export function rebucketStoredMinutes(
   samples: readonly { kind: string; value: number; recordedOn: string }[],
@@ -541,6 +752,34 @@ function boxerBand(goal: NutritionGoal | null, sex: NutritionSex | null): Fitnes
   }
   if (goal === 'elite_middle_boxer' || isClassBoxer(goal)) return { ...MIDDLE_BOXER, label };
   return null;
+}
+
+/** Plain line when VO2 max is under the published range for the saved sport. Null when it is not. */
+export function vo2AthleticShortfall(input: {
+  vo2: number | null;
+  sex: NutritionSex | null;
+  goal: NutritionGoal | null;
+}): string | null {
+  if (input.vo2 == null || !Number.isFinite(input.vo2) || !isAnyBoxer(input.goal)) return null;
+  const sport = boxerBand(input.goal, input.sex);
+  if (!sport || input.vo2 >= sport.low) return null;
+  return `This is below the approximate athletic range for boxing, about ${sport.low} to ${sport.high} ml/kg/min.`;
+}
+
+/** Age and sex band, then the sport range when the reading sits under it. */
+export function vo2JudgementLine(input: {
+  vo2: number | null;
+  age: number | null;
+  sex: NutritionSex | null;
+  goal: NutritionGoal | null;
+}): string | null {
+  const shortfall = vo2AthleticShortfall(input);
+  if (!shortfall || input.vo2 == null) return null;
+  const band = bandFor(input.age, input.sex);
+  const ageBit = band && input.age != null && input.sex
+    ? ` For ${sexWord(input.sex)} in their ${decade(input.age)}, typical is about ${band.p25} to ${band.p75}.`
+    : '';
+  return `VO2 max is about ${round1(input.vo2)} ml/kg/min.${ageBit} ${shortfall}`;
 }
 
 const FRIEND_ADULT_CITE: FallbackCite = {
@@ -664,18 +903,22 @@ export function buildFitnessSnapshot(input: FitnessSnapshotInput): FitnessSnapsh
   const fallback = vo2Level ? null : fallbackLevel(minutes, scaledSchedule, restingSplit, guideline, vigorous);
   const level = vo2Level ?? fallback;
 
-  const levelWordsBase = levelWordsFor({
-    level,
-    vo2: latestVo2,
-    band: Boolean(band),
-    age: input.goalAge,
-    sex: input.goalSex,
-    minutes,
-    schedule: scaledSchedule,
-    phrase: periodPhrase(period),
-    rhrUp,
-    walking: walking.length ? walking[walking.length - 1]?.value ?? null : null,
-  });
+  const shortfall = vo2AthleticShortfall({ vo2: latestVo2, sex: input.goalSex, goal: input.goal });
+  const levelWordsBase = [
+    levelWordsFor({
+      level,
+      vo2: latestVo2,
+      band: Boolean(band),
+      age: input.goalAge,
+      sex: input.goalSex,
+      minutes,
+      schedule: scaledSchedule,
+      phrase: periodPhrase(period),
+      rhrUp,
+      walking: walking.length ? walking[walking.length - 1]?.value ?? null : null,
+    }),
+    shortfall,
+  ].filter(Boolean).join(' ');
 
   const compare = latestVo2 == null ? null : compareFor({
     value: latestVo2,

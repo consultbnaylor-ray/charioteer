@@ -235,6 +235,94 @@ describe('merged daily metrics', () => {
   });
 });
 
+describe('strength from Garmin and Apple Health', () => {
+  it('counts one overlapping weights session once, even when Apple Health called it Other', () => {
+    const apple = appleWorkout({
+      id: 'hk-weights',
+      startedAt: '2026-10-21T18:00:00.000Z',
+      durationMinutes: 45,
+      activityType: 3000,
+      label: 'Other',
+      routeExpected: false,
+    });
+    const garmin = activity({
+      summaryId: 'g-weights',
+      startedAt: '2026-10-21T18:01:00.000Z',
+      durationSeconds: 45 * 60,
+      activityType: 'STRENGTH_TRAINING',
+      activityName: 'Weights',
+    });
+    const rows = mergeWorkouts([apple], [garmin]);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.activityType).toBe(50);
+    const merged = mergeHealthSamples([
+      sample({ kind: 'workout_type_3000', value: 45, recordedOn: '2026-10-21' }),
+      sample({ kind: 'other_minutes', value: 45, recordedOn: '2026-10-21' }),
+      sample({ kind: 'workout_minutes', value: 45, recordedOn: '2026-10-21' }),
+      sample({ kind: 'strength_minutes', value: 30, recordedOn: '2026-10-20' }),
+    ], readings({}), rows);
+    const strength = merged.filter((row) => row.kind === 'strength_minutes');
+    expect(strength.find((row) => row.recordedOn === '2026-10-21')?.value).toBe(45);
+    expect(strength.find((row) => row.recordedOn === '2026-10-20')?.value).toBe(30);
+    expect(merged.filter((row) => row.kind === 'workout_type_50' && row.recordedOn === '2026-10-21')).toHaveLength(1);
+    expect(merged.find((row) => row.kind === 'workout_type_3000' && row.recordedOn === '2026-10-21')).toBeUndefined();
+    expect(merged.filter((row) => row.kind === 'strength_minutes' && row.recordedOn === '2026-10-21')).toHaveLength(1);
+  });
+
+  it('keeps a named Apple strength type when Garmin repeats it, and keeps a separate run', () => {
+    const weights = appleWorkout({
+      id: 'hk-strength',
+      startedAt: '2026-10-21T18:00:00.000Z',
+      durationMinutes: 40,
+      activityType: 50,
+      label: 'Traditional strength',
+      routeExpected: false,
+    });
+    const run = appleWorkout({
+      id: 'hk-run',
+      startedAt: '2026-10-21T07:00:00.000Z',
+      durationMinutes: 30,
+      activityType: 37,
+      label: 'Running',
+    });
+    const garmin = activity({
+      summaryId: 'g-strength',
+      startedAt: '2026-10-21T18:00:30.000Z',
+      durationSeconds: 40 * 60,
+      activityType: '0',
+      activityName: 'Leg day weights',
+    });
+    const rows = mergeWorkouts([weights, run], [garmin]);
+    expect(rows).toHaveLength(2);
+    expect(rows.find((row) => row.activityType === 50)?.durationMinutes).toBe(40);
+    expect(rows.find((row) => row.activityType === 37)?.id).toBe('hk-run');
+    const merged = mergeHealthSamples([
+      sample({ kind: 'workout_type_50', value: 40, recordedOn: '2026-10-21' }),
+      sample({ kind: 'workout_type_37', value: 30, recordedOn: '2026-10-21' }),
+      sample({ kind: 'strength_minutes', value: 40, recordedOn: '2026-10-21' }),
+      sample({ kind: 'cardio_minutes', value: 30, recordedOn: '2026-10-21' }),
+    ], readings({}), rows);
+    expect(merged.find((row) => row.kind === 'strength_minutes' && row.recordedOn === '2026-10-21')?.value).toBe(40);
+    expect(merged.find((row) => row.kind === 'cardio_minutes' && row.recordedOn === '2026-10-21')?.value).toBe(30);
+    expect(merged.filter((row) => row.kind === 'strength_minutes' && row.recordedOn === '2026-10-21')).toHaveLength(1);
+  });
+
+  it('maps a HealthKit strength name that would otherwise become Other', () => {
+    const functional = activity({
+      summaryId: 'g-functional',
+      startedAt: '2026-10-22T12:00:00.000Z',
+      durationSeconds: 35 * 60,
+      activityType: 'functionalStrengthTraining',
+      activityName: 'Workout',
+    });
+    const rows = mergeWorkouts([], [functional]);
+    expect(rows[0]?.activityType).toBe(20);
+    const merged = mergeHealthSamples([], readings({}), rows);
+    expect(merged.find((row) => row.kind === 'strength_minutes')?.value).toBe(35);
+    expect(merged.find((row) => row.kind === 'workout_type_20')?.value).toBe(35);
+  });
+});
+
 describe('source line', () => {
   it('names the feed on the workout detail screen and nowhere in the list or the charts', () => {
     const detail = readFileSync('src/app/(main)/workout/[id].tsx', 'utf8');

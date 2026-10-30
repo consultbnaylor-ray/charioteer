@@ -3,9 +3,13 @@ import { describe, expect, it } from 'vitest';
 
 import { APPLE_HEALTH_READ_TYPES } from '@/health/connection';
 import { GOAL_LABEL } from '@/domain/nutrition';
+import { SCALE_BIA_LINE } from '@/domain/scaleReading';
 import { VISIBLE_SAFETY_LINE } from '@/domain/visibleSafety';
 import {
+  THUMOS_BMI_AND_FAT,
   THUMOS_BMI_LINE,
+  THUMOS_BMI_MUSCLE,
+  THUMOS_BODY_FAT_HIGH,
   THUMOS_BOTH_OFF_LINE,
   THUMOS_EMPTY_LINE,
   THUMOS_FAILED_LINE,
@@ -283,9 +287,85 @@ describe('on-phone Thumos reading note', () => {
     expect(figures.cardioMinutes7).toBeNull();
     expect(figures.strengthRecorded).toBe(false);
     expect(figures.restingBpm).not.toBe(59);
-    const note = thumosReadingComment(sample({ ...figures, storedDayCount: 7, goal: 'elite_cruiser_boxer', targetKg: null }));
+    const note = thumosReadingComment(sample({
+      ...figures,
+      storedDayCount: 7,
+      goal: 'elite_cruiser_boxer',
+      goalAge: 45,
+      goalSex: 'male',
+      targetKg: null,
+    }));
     expect(note.sentences.join(' ')).toContain('Strength is not recorded');
     expect(note.sentences.join(' ')).not.toContain('5 min');
     expect(note.sentences.join(' ')).not.toContain('41.4');
+    expect(note.sentences.join(' ')).toContain('This is below the approximate athletic range for boxing, about 56 to 62 ml/kg/min.');
+    expect(note.sentences.join(' ')).not.toContain('VO2 max is Strong');
+    expect(note.sentences.join(' ')).not.toContain('What looks good: VO2 max is Strong');
+  });
+
+  it('treats verified strength and a modest body-fat reading as muscle, and says when body fat is high', () => {
+    const muscle = thumosReadingComment(sample({
+      storedDayCount: 7,
+      build: 'muscular',
+      goalSex: 'male',
+      heightCm: 178,
+      weights: [{ day: '2026-10-20', kg: 92 }, { day: TODAY, kg: 92 }],
+      bodyFatPct: 18,
+      strengthMinutes7: 80,
+      strengthRecorded: true,
+      targetKg: null,
+    }));
+    expect(muscle.sentences).toContain(THUMOS_BMI_MUSCLE);
+    expect(muscle.sentences).not.toContain(THUMOS_BMI_AND_FAT);
+    expect(muscle.sentences).toContain(SCALE_BIA_LINE);
+    const fat = thumosReadingComment(sample({
+      storedDayCount: 7,
+      build: 'muscular',
+      goalSex: 'male',
+      heightCm: 178,
+      weights: [{ day: '2026-10-20', kg: 92 }, { day: TODAY, kg: 92 }],
+      bodyFatPct: 30,
+      strengthMinutes7: 80,
+      strengthRecorded: true,
+      targetKg: null,
+    }));
+    expect(fat.sentences).toContain(THUMOS_BMI_AND_FAT);
+    expect(fat.sentences).not.toContain(THUMOS_BMI_MUSCLE);
+    expect(fat.sentences.join(' ')).not.toContain('largely due to muscle');
+    const unverified = thumosReadingComment(sample({
+      storedDayCount: 7,
+      build: 'muscular',
+      goalSex: 'male',
+      heightCm: 178,
+      weights: [{ day: TODAY, kg: 92 }],
+      bodyFatPct: 18,
+      strengthMinutes7: null,
+      strengthRecorded: false,
+      workoutMinutes7: null,
+      targetKg: null,
+    }));
+    expect(unverified.sentences).not.toContain(THUMOS_BMI_MUSCLE);
+    expect(unverified.sentences).not.toContain(THUMOS_BODY_FAT_HIGH);
+    expect(unverified.sentences.join(' ')).toContain(SCALE_BIA_LINE);
+    expect(unverified.sentences.join(' ')).toContain('Do not skip drinks to chase a lower reading.');
+  });
+
+  it('counts Garmin strength in the Today window the same way as Your Fitness', () => {
+    const today = '2026-10-21';
+    const figures = figuresForNote({
+      samples: [
+        { kind: 'workout_type_50', value: 40, recordedOn: today, source: 'healthkit' },
+        { kind: 'strength_minutes', value: 40, recordedOn: today, source: 'healthkit' },
+        { kind: 'workout_minutes', value: 40, recordedOn: today, source: 'healthkit' },
+      ],
+      today,
+      period: 'day',
+      goalAge: 42,
+      goalSex: 'male',
+      goal: 'elite_cruiser_boxer',
+    });
+    expect(figures.strengthRecorded).toBe(true);
+    expect(figures.strengthMinutes7).toBe(40);
+    expect(figures.windowLabel).toBe('today');
   });
 });

@@ -19,13 +19,18 @@ import {
   whyCardioMatters,
   whyMinutesMatter,
   whyRestingMatters,
+  classifiedWorkoutSamples,
   dedupeWorkouts,
+  parseWorkoutActivityType,
+  preferredActivityType,
   rebucketStoredMinutes,
   withWorkoutBucket,
   workoutBucket,
   workoutTypeKind,
   workoutTypeLabel,
   workoutTypeMinutes,
+  vo2AthleticShortfall,
+  vo2JudgementLine,
   type FitnessSnapshotInput,
 } from '@/domain/fitnessSnapshot';
 
@@ -546,5 +551,68 @@ describe('fitness snapshot', () => {
     }));
     expect(quiet.levelWords).toContain(CARRYING_FITNESS_NOTE);
     expect(quiet.contextLine).toContain('Do not add a mileage plan');
+  });
+
+  it('keeps traditional and functional strength, and names a Garmin strength session', () => {
+    expect(parseWorkoutActivityType('traditionalStrengthTraining')).toBe(50);
+    expect(parseWorkoutActivityType('functionalStrengthTraining')).toBe(20);
+    expect(workoutBucket(parseWorkoutActivityType('traditionalStrengthTraining'))).toBe('strength');
+    expect(workoutBucket(parseWorkoutActivityType('functionalStrengthTraining'))).toBe('strength');
+    expect(parseWorkoutActivityType('STRENGTH_TRAINING')).toBe(50);
+    expect(parseWorkoutActivityType('strength_training')).toBe(50);
+    expect(parseWorkoutActivityType(0, 'Push day weights')).toBe(50);
+    expect(parseWorkoutActivityType('0', 'Functional strength')).toBe(20);
+    expect(parseWorkoutActivityType('OTHER', 'Bench press')).toBe(50);
+    expect(parseWorkoutActivityType('RUNNING', 'Strength run')).toBe(37);
+    expect(parseWorkoutActivityType({ typeKey: 'strength_training' })).toBe(50);
+    expect(workoutBucket(parseWorkoutActivityType(0))).toBe('other');
+    expect(preferredActivityType(3000, 50)).toBe(50);
+    expect(preferredActivityType(50, 50)).toBe(50);
+    expect(preferredActivityType(37, 50)).toBe(37);
+  });
+
+  it('counts a Garmin strength session once when Apple Health stored the same bout as Other', () => {
+    const day = '2026-10-16';
+    const classified = classifiedWorkoutSamples([
+      {
+        activityType: 50,
+        startedAt: '2026-10-16T18:00:00.000Z',
+        durationMinutes: 40,
+        origin: 'garmin',
+      },
+    ]);
+    expect(classified.days).toEqual([day]);
+    const view = workoutMixReport({
+      today: '2026-10-17',
+      start: day,
+      end: day,
+      samples: [
+        { kind: 'workout_type_3000', value: 40, recordedOn: day, source: 'healthkit' },
+        { kind: 'other_minutes', value: 40, recordedOn: day, source: 'healthkit' },
+        ...classified.samples.map((row) => ({ ...row, source: 'healthkit' as const })),
+      ].filter((row) => row.kind !== 'workout_type_3000' && row.kind !== 'other_minutes'),
+    });
+    expect(view.strength).toBe(40);
+    expect(view.other).toBe(0);
+    const covered = classifiedWorkoutSamples([
+      { activityType: 50, startedAt: '2026-10-16T18:00:00.000Z', durationMinutes: 40, origin: 'garmin' },
+    ]);
+    expect(covered.samples.find((row) => row.kind === 'strength_minutes')?.value).toBe(40);
+    expect(covered.samples.filter((row) => row.kind === 'strength_minutes')).toHaveLength(1);
+  });
+
+  it('says when VO2 max is under the boxing range', () => {
+    const view = buildFitnessSnapshot(input({
+      goal: 'elite_cruiser_boxer',
+      health: [{ kind: 'vo2_max', value: 45, recordedOn: '2026-10-16' }],
+    }));
+    expect(view.levelWords).toContain('This is below the approximate athletic range for boxing, about 56 to 62 ml/kg/min.');
+    expect(view.levelWords).toContain('men in their 40s');
+    expect(vo2AthleticShortfall({ vo2: 45, sex: 'male', goal: 'elite_cruiser_boxer' })).toContain('below the approximate athletic range for boxing');
+    expect(vo2AthleticShortfall({ vo2: 60, sex: 'male', goal: 'elite_cruiser_boxer' })).toBeNull();
+    expect(vo2JudgementLine({ vo2: 45, age: 42, sex: 'male', goal: 'elite_cruiser_boxer' })).toBe(
+      'VO2 max is about 45 ml/kg/min. For men in their 40s, typical is about 31.9 to 45. This is below the approximate athletic range for boxing, about 56 to 62 ml/kg/min.',
+    );
+    expect(vo2AthleticShortfall({ vo2: 45, sex: 'female', goal: 'elite_cruiser_boxer' })).toBeNull();
   });
 });

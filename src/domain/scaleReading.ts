@@ -10,6 +10,9 @@ export const SCALE_CORE_LINE =
 export const SCALE_COMPARE_LINE =
   'Compare readings at the same time of day. A home scale estimate can change from one reading to the next.';
 
+export const SCALE_BIA_LINE =
+  'Smart-scale body fat uses a tiny electrical current, called bioelectrical impedance. Hydration, time of day, and food can move a single reading, so the trend matters more than one number.';
+
 export const SCALE_EMPTY_LINE = 'No weight, body fat, or lean mass yet.';
 
 export const SCALE_NO_READING = 'No reading';
