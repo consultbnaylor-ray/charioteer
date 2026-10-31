@@ -197,6 +197,94 @@ function bucketKey(day: string, bucket: ChartBucket): string | null {
   return shiftDay(day, delta);
 }
 
+const AXIS_CHAR_PX = 6.6;
+
+/** Width of one x-axis label at the chart's text scale. */
+export function axisLabelWidth(label: string, scale = 1): number {
+  const size = scale > 0 ? scale : 1;
+  return Math.ceil((Math.max(label.trim().length, 1) * AXIS_CHAR_PX + 8) * size);
+}
+
+export type PlacedAxisLabel = {
+  day: string;
+  label: string;
+  /** Left edge of the ink, after labels have been moved apart. */
+  left: number;
+  /** Horizontal space the ink uses. Upright text uses the full label. */
+  width: number;
+  /** Full label width, so rotated text is not clipped before it turns. */
+  textWidth: number;
+  /** True when the row is too narrow for upright labels. */
+  rotate: boolean;
+};
+
+/**
+ * Keep every label that fits. When upright text would collide, rotate it.
+ * If rotation still collides, keep the ends and as many evenly spaced labels as fit.
+ */
+export function placeAxisLabels(input: {
+  ticks: readonly { day: string; label: string }[];
+  xs: readonly number[];
+  rowWidth: number;
+  scale?: number;
+}): PlacedAxisLabel[] {
+  const scale = input.scale && input.scale > 0 ? input.scale : 1;
+  const ticks = input.ticks.flatMap((tick, index) => {
+    const label = tick.label.trim();
+    if (!label) return [];
+    return [{ day: tick.day, label, x: input.xs[index] ?? 0, width: axisLabelWidth(label, scale) }];
+  });
+  if (ticks.length === 0 || !(input.rowWidth > 0)) return [];
+  const gap = Math.max(4, Math.round(4 * scale));
+  const upright = layoutLabels(ticks, input.rowWidth, false);
+  if (!labelsCollide(upright, gap)) return upright;
+  const turned = layoutLabels(ticks, input.rowWidth, true);
+  if (!labelsCollide(turned, gap)) return turned;
+  let count = ticks.length - 1;
+  while (count > 2) {
+    const picked = pickEvenLabels(ticks, count);
+    const rotated = layoutLabels(picked, input.rowWidth, true);
+    if (!labelsCollide(rotated, gap)) return rotated;
+    const flat = layoutLabels(picked, input.rowWidth, false);
+    if (!labelsCollide(flat, gap)) return flat;
+    count -= 1;
+  }
+  return layoutLabels(pickEvenLabels(ticks, 2), input.rowWidth, true);
+}
+
+function layoutLabels(
+  ticks: readonly { day: string; label: string; x: number; width: number }[],
+  rowWidth: number,
+  rotate: boolean,
+): PlacedAxisLabel[] {
+  return ticks.map((tick) => {
+    const ink = rotate ? Math.max(12, Math.ceil(tick.width * Math.cos((55 * Math.PI) / 180))) : tick.width;
+    const left = Math.min(Math.max(0, tick.x - ink / 2), Math.max(0, rowWidth - ink));
+    return { day: tick.day, label: tick.label, left, width: ink, textWidth: tick.width, rotate };
+  });
+}
+
+function labelsCollide(labels: readonly PlacedAxisLabel[], gap: number): boolean {
+  for (let index = 1; index < labels.length; index += 1) {
+    const previous = labels[index - 1];
+    const current = labels[index];
+    if (!previous || !current) continue;
+    if (previous.left + previous.width + gap > current.left) return true;
+  }
+  return false;
+}
+
+function pickEvenLabels<T>(ticks: readonly T[], count: number): T[] {
+  if (count >= ticks.length) return [...ticks];
+  const picked: T[] = [];
+  for (let index = 0; index < count; index += 1) {
+    const at = Math.round((index * (ticks.length - 1)) / Math.max(1, count - 1));
+    const tick = ticks[at];
+    if (tick != null && picked[picked.length - 1] !== tick) picked.push(tick);
+  }
+  return picked;
+}
+
 function utcWeekday(day: string): number {
   const [year, month, date] = day.split('-').map(Number);
   return new Date(Date.UTC(year ?? 1970, (month ?? 1) - 1, date ?? 1)).getUTCDay();

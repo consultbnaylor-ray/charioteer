@@ -1,5 +1,5 @@
 import { useRouter } from 'expo-router';
-import { useWindowDimensions, View } from 'react-native';
+import { View } from 'react-native';
 
 import { useSnapshot } from '@/data';
 import { useHealthSources } from '@/health/useHealthSources';
@@ -32,7 +32,6 @@ export default function Stats() {
   const snap = useSnapshot();
   const theme = useAppTheme();
   const router = useRouter();
-  const { width } = useWindowDimensions();
   const [period] = useStatPeriod();
   const { samples: mergedHealth, workouts, readings } = useHealthSources();
   const manual = useManualHealthRefresh(readings.connected);
@@ -55,7 +54,6 @@ export default function Stats() {
     bodyComposition: snap.bodyComposition,
     gratitude: snap.gratitude,
   });
-  const columns = width >= 720 ? 3 : 2;
   const colors = statsToneColors(theme.scheme);
 
   return (
@@ -119,9 +117,9 @@ export default function Stats() {
           ))}
         </View>
       </Card>
-      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
+      <View style={{ gap: 10, alignSelf: 'stretch' }}>
         {tiles.map((item) => (
-          <View key={item.id} style={{ flexGrow: 1, flexBasis: columns === 3 ? '30%' : '46%', minWidth: 148 }}>
+          <View key={item.id} style={{ alignSelf: 'stretch' }}>
             <StatTile tile={item} />
           </View>
         ))}

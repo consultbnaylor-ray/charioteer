@@ -23,7 +23,7 @@ export function ProfileStatBoard({
   return (
     <View style={{ gap: 8 }}>
       {tiles.length ? (
-        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+        <View style={{ gap: 8, alignSelf: 'stretch' }}>
           {tiles.map((tile) => <StatTile key={tile.id} tile={tile} />)}
         </View>
       ) : null}
@@ -94,9 +94,8 @@ function StatTile({ tile }: { tile: ProfileStatTile }) {
     <View
       accessibilityLabel={`${spoken}.`}
       style={{
-        flexGrow: 1,
-        flexBasis: '46%',
-        minWidth: 140,
+        alignSelf: 'stretch',
+        width: '100%',
         gap: 4,
         padding: 8,
         borderWidth: 1,

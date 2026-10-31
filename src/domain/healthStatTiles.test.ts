@@ -146,7 +146,10 @@ describe('health stat tiles', () => {
       expect(cardio.visual.fill).toBeGreaterThan(0);
       expect(cardio.visual.fill).toBeLessThan(1);
     }
-    expect(readFileSync('src/ui/HealthStatBoard.tsx', 'utf8')).toContain("stacked={section.id === 'fitness'}");
+    const boardLayout = readFileSync('src/ui/HealthStatBoard.tsx', 'utf8');
+    expect(boardLayout).toContain("width: '100%'");
+    expect(boardLayout).not.toContain("flexBasis: '46%'");
+    expect(boardLayout).not.toContain('minWidth: 148');
     expect(cardio.meaning).not.toMatch(/56 to 62|59 to 65/);
     expect(cardio.about).toContain('per kg of body weight per minute');
     expect(gapForStat('vo2_max', 'VO2 max').source).toBe('VO2 max comes from Apple Watch after outdoor walks or runs.');

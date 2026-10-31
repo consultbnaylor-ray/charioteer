@@ -1,5 +1,5 @@
 import { coachConsentAllows, type CoachConsentInput } from './coachConsent.ts';
-import { buildFitnessSnapshot } from './fitnessSnapshot.ts';
+import { buildFitnessSnapshot, garminActivitiesForUser, samplesWithGarminActivities } from './fitnessSnapshot.ts';
 import { goalWeightRange } from './goalWeightRange.ts';
 import { figuresForLondonWeek, goalProgressLine } from './goalLed.ts';
 import { londonDay } from './healthInsights.ts';
@@ -206,13 +206,16 @@ export async function loadNutritionLines(
     const source = record.source === 'healthkit' || record.source === 'manual' ? record.source : undefined;
     return [{ kind: typeof record.kind === 'string' ? record.kind : '', value, recordedOn, source }];
   });
-  const weights = weightPointsFrom(samples);
+  const readSamples = coach.health
+    ? samplesWithGarminActivities(samples, await garminActivitiesForUser(userClient, profile.id))
+    : samples;
+  const weights = weightPointsFrom(readSamples);
   const latest = weights.length ? weights[weights.length - 1] : undefined;
   const height = profile.height_cm == null ? null : Number(profile.height_cm);
   const figures = compositionForAssessment(bodyRes.error ? [] : compositionFromRows(bodyRes.data));
   const logs = logsRes.error ? [] : logsFromRows(logsRes.data);
   const settings = settingsRes.error ? defaultNutritionSettings() : settingsFromRow(settingsRes.data);
-  const week = figuresForLondonWeek({ now, logs, health: samples, checkIns });
+  const week = figuresForLondonWeek({ now, logs, health: readSamples, checkIns });
   const scheduleRow = scheduleRes.error || !scheduleRes.data || typeof scheduleRes.data !== 'object'
     ? null
     : scheduleRes.data as Record<string, unknown>;
@@ -236,7 +239,7 @@ export async function loadNutritionLines(
       leanMassKg: figures.leanMassKg,
       waistCm: figures.waistCm,
     },
-    activity: coach.health ? activityReadingsFromSamples(samples) : [],
+    activity: coach.health ? activityReadingsFromSamples(readSamples) : [],
     coach,
   });
   const stage = profile.stage === 'stopped' || profile.stage === 'trying_to_stop' || profile.stage === 'cutting_down' || profile.stage === 'exploring'
@@ -249,7 +252,7 @@ export async function loadNutritionLines(
       goalAge: settings.goalAge,
       goalSex: settings.goalSex,
       scheduleWeekMinutes: null,
-      health: samples,
+      health: readSamples,
       sleep: checkIns.flatMap((item) => {
         const day = item.createdAt.slice(0, 10);
         if (!/^\d{4}-\d{2}-\d{2}$/.test(day) || !Number.isFinite(item.sleepHours) || item.sleepHours <= 0) return [];

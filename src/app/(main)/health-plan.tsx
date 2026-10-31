@@ -1,6 +1,6 @@
 import { useRouter } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
-import { Pressable, useWindowDimensions, View } from 'react-native';
+import { Pressable, View } from 'react-native';
 
 import { useRepository, useSnapshot } from '@/data';
 import { formatUkCompactWhen } from '@/domain/dates';
@@ -55,7 +55,6 @@ export default function HealthPlanScreen() {
   const snap = useSnapshot();
   const repo = useRepository();
   const router = useRouter();
-  const { width } = useWindowDimensions();
   const [period] = useStatPeriod();
   const { run, isPending } = usePendingPress();
   const profile = snap.profile;
@@ -95,7 +94,6 @@ export default function HealthPlanScreen() {
     bodyComposition: snap.bodyComposition,
     gratitude: snap.gratitude,
   }).filter((tile) => PROGRESS_IDS.includes(tile.id));
-  const columns = width >= 720 ? 3 : 2;
   const progress = plan
     ? planProgressFigure([
       { key: 'focus', label: 'Focus', done: plan.focus.filter((item) => item.done).length, total: plan.focus.length },
@@ -266,9 +264,9 @@ export default function HealthPlanScreen() {
         <T variant="label">Progress</T>
         <StatPeriodToggle />
       </Card>
-      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
+      <View style={{ gap: 10, alignSelf: 'stretch' }}>
         {tiles.map((item) => (
-          <View key={item.id} style={{ flexGrow: 1, flexBasis: columns === 3 ? '30%' : '46%', minWidth: 148 }}>
+          <View key={item.id} style={{ alignSelf: 'stretch' }}>
             <StatTile tile={item} />
           </View>
         ))}

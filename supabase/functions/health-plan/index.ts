@@ -9,6 +9,7 @@ import {
   trainingScheduleFromRow,
   type PlanInput,
 } from '../_shared/healthPlan.ts';
+import { garminActivitiesForUser, samplesWithGarminActivities } from '../_shared/fitnessSnapshot.ts';
 import { json, preflight } from '../_shared/http.ts';
 import { isBodyBuild, isBuilderPhase, isMealSlot, isNutritionGoal, isNutritionSex, parseWorkoutBuckets, type FoodItem, type FoodLog, type NutritionGoal } from '../_shared/nutrition.ts';
 import { buildChatCompletionBody, THUMOS_CHAT } from '../_shared/thumos.ts';
@@ -75,6 +76,8 @@ Deno.serve(async (req) => {
     userClient.from('training_schedules').select('monday, tuesday, wednesday, thursday, friday, saturday, sunday, typical_minutes, longer_day, longer_minutes, walk_day, note').eq('user_id', userId).maybeSingle(),
   ]);
 
+  const shareHealth = profileRes.data.consent_health === true;
+  const garminActivities = shareHealth ? await garminActivitiesForUser(userClient, userId) : [];
   const settings = (settingsRes.data ?? {}) as Record<string, unknown>;
   const goal = isNutritionGoal(textOf(settings.goal)) ? settings.goal as NutritionGoal : null;
   const logs: FoodLog[] = ((logsRes.data ?? []) as Record<string, unknown>[]).flatMap((row) => {
@@ -148,12 +151,12 @@ Deno.serve(async (req) => {
       note: textOf(row.note).slice(0, 160),
       createdAt: textOf(row.created_at),
     })),
-    health: ((healthRes.data ?? []) as Record<string, unknown>[]).map((row) => ({
+    health: samplesWithGarminActivities(((healthRes.data ?? []) as Record<string, unknown>[]).map((row) => ({
       kind: textOf(row.kind),
       value: Number(row.value) || 0,
       recordedOn: textOf(row.recorded_on),
       source: row.source === 'healthkit' || row.source === 'manual' ? row.source : undefined,
-    })),
+    })), garminActivities),
     bodyFatPct: typeof latestFat?.body_fat_pct === 'number' ? latestFat.body_fat_pct : null,
     leanMassKg: typeof latestLean?.lean_mass_kg === 'number' ? latestLean.lean_mass_kg : null,
     waistCm: typeof latestWaist?.waist_cm === 'number' ? latestWaist.waist_cm : null,

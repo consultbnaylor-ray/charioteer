@@ -38,6 +38,7 @@ import {
 } from '../_shared/thumos.ts';
 import { gratitudeFromRows, type GratitudeEntry } from '../_shared/gratitude.ts';
 import { visionContextFrom, type VisionContext } from '../_shared/visionBoard.ts';
+import { garminActivitiesForUser, samplesWithGarminActivities } from '../_shared/fitnessSnapshot.ts';
 import { buildHealthInsights, healthChangeNoteFromReadings, londonDay } from '../_shared/healthInsights.ts';
 import { coachConsentAllows } from '../_shared/coachConsent.ts';
 import { loadNutritionLines } from '../_shared/nutritionLoad.ts';
@@ -192,11 +193,22 @@ Deno.serve(async (req) => {
     ? profile.stage
     : profile.sobriety_started_at ? 'stopped' : 'exploring';
   const shareHealth = profile.consent_health === true;
-  const healthRows = shareHealth ? (healthRes.data ?? []) : [];
+  const garminActivities = shareHealth ? await garminActivitiesForUser(userClient, userId) : [];
+  const healthRows = samplesWithGarminActivities(shareHealth ? (healthRes.data ?? []).map((row) => ({
+    kind: row.kind,
+    value: Number(row.value),
+    recordedOn: String(row.recorded_on),
+    source: undefined,
+  })) : [], garminActivities).slice().sort((left, right) => right.recordedOn.localeCompare(left.recordedOn));
+  const storedUnits = new Map((healthRes.data ?? []).map((row) => [row.kind, row.unit]));
   const byKind = new Map<string, { value: number; unit: string; recordedOn: string }[]>();
   for (const row of healthRows) {
     const list = byKind.get(row.kind) ?? [];
-    list.push({ value: Number(row.value), unit: row.unit, recordedOn: row.recorded_on });
+    list.push({
+      value: row.value,
+      unit: storedUnits.get(row.kind) || (row.kind.endsWith('_minutes') || row.kind.startsWith('workout_type_') ? 'min' : ''),
+      recordedOn: row.recordedOn,
+    });
     byKind.set(row.kind, list);
   }
   const healthToday = londonDay(new Date());
@@ -212,8 +224,8 @@ Deno.serve(async (req) => {
         today: healthToday,
         samples: healthRows.map((row) => ({
           kind: row.kind,
-          value: Number(row.value),
-          recordedOn: String(row.recorded_on),
+          value: row.value,
+          recordedOn: row.recordedOn,
         })),
         soberOn: stage === 'stopped' && profile.sobriety_started_at ? londonDay(profile.sobriety_started_at) : null,
         stage,

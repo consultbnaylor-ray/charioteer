@@ -649,6 +649,200 @@ export function classifiedWorkoutSamples(sessions: readonly ClassifiedSession[])
   return { days, samples };
 }
 
+/** Columns already granted on garmin_activities. No new table and no extra fields. */
+export const GARMIN_ACTIVITY_SELECT = 'activity_type, activity_name, started_at, duration_seconds';
+
+export type GarminActivityInput = {
+  activityType: unknown;
+  activityName: string;
+  startedAt: string;
+  durationSeconds: number;
+};
+
+type GarminActivityClient = {
+  from(table: string): {
+    select(columns: string): {
+      eq(column: string, value: string): {
+        order(column: string, options: { ascending: boolean }): PromiseLike<{ data: unknown; error: { message?: string } | null }>;
+      };
+    };
+  };
+};
+
+/** The signed-in user's own rows. A missing table or a refused read leaves the stored samples as they are. */
+export async function garminActivitiesForUser(userClient: GarminActivityClient, userId: string): Promise<GarminActivityInput[]> {
+  try {
+    const res = await userClient
+      .from('garmin_activities')
+      .select(GARMIN_ACTIVITY_SELECT)
+      .eq('user_id', userId)
+      .order('started_at', { ascending: true });
+    if (res.error) return [];
+    return garminActivityInputs(res.data);
+  } catch {
+    return [];
+  }
+}
+
+export function garminActivityInputs(rows: unknown): GarminActivityInput[] {
+  if (!Array.isArray(rows)) return [];
+  return rows.flatMap((row) => {
+    if (!row || typeof row !== 'object') return [];
+    const record = row as Record<string, unknown>;
+    const startedAt = typeof record.started_at === 'string' ? record.started_at : '';
+    const durationSeconds = typeof record.duration_seconds === 'number'
+      ? record.duration_seconds
+      : Number(record.duration_seconds);
+    if (!startedAt || !Number.isFinite(durationSeconds) || !(durationSeconds > 0)) return [];
+    return [{
+      activityType: record.activity_type,
+      activityName: typeof record.activity_name === 'string' ? record.activity_name : '',
+      startedAt,
+      durationSeconds,
+    }];
+  });
+}
+
+/**
+ * Count Garmin activities in the same split the phone uses.
+ * A day Garmin named replaces that day's stored type and bucket rows, so a weights
+ * session Apple Health kept as Other is not added on top of itself.
+ * Workout minutes for that day follow the merged sessions. Other days stay as stored.
+ */
+export function samplesWithGarminActivities<T extends FitnessSample>(
+  samples: readonly T[],
+  activities: readonly GarminActivityInput[],
+): T[] {
+  const garminByDay = new Map<string, ClassifiedSession[]>();
+  for (const activity of activities) {
+    const activityType = parseWorkoutActivityType(activity.activityType, activity.activityName);
+    const durationMinutes = Math.max(1, Math.round(activity.durationSeconds / 60));
+    const day = londonDay(activity.startedAt);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(day) || !informativeActivityType(activityType)) continue;
+    const list = garminByDay.get(day) ?? [];
+    list.push({ activityType, startedAt: activity.startedAt, durationMinutes, origin: 'garmin' });
+    garminByDay.set(day, list);
+  }
+  if (garminByDay.size === 0) return samples.map((sample) => ({ ...sample }));
+
+  const storedTypes = new Map<string, Map<number, number>>();
+  const storedBuckets = new Map<string, MixBuckets>();
+  const storedWorkoutMinutes = new Map<string, number>();
+  for (const sample of samples) {
+    const day = sampleDay(sample.recordedOn);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(day) || !(sample.value > 0)) continue;
+    const activityType = activityTypeFromKind(sample.kind);
+    if (activityType != null) {
+      const types = storedTypes.get(day) ?? new Map<number, number>();
+      types.set(activityType, (types.get(activityType) ?? 0) + sample.value);
+      storedTypes.set(day, types);
+      continue;
+    }
+    const bucket = BUCKET_KIND_NAME[sample.kind as keyof typeof BUCKET_KIND_NAME];
+    if (bucket) {
+      const row = storedBuckets.get(day) ?? blankBuckets();
+      row[bucket] += sample.value;
+      storedBuckets.set(day, row);
+    }
+    if (sample.kind === 'workout_minutes') {
+      storedWorkoutMinutes.set(day, (storedWorkoutMinutes.get(day) ?? 0) + sample.value);
+    }
+  }
+
+  const sessions: ClassifiedSession[] = [];
+  const bucketDays = new Map<string, MixBuckets>();
+  const minuteTotals = new Map<string, number>();
+  for (const [day, rows] of garminByDay) {
+    const ordered = [...rows].sort((left, right) => right.durationMinutes - left.durationMinutes);
+    const types = new Map(storedTypes.get(day) ?? []);
+    if (types.size > 0) {
+      for (const row of ordered) consumeStoredType(types, row);
+      for (const [activityType, minutes] of types) {
+        const value = Math.round(minutes);
+        if (value <= 0) continue;
+        sessions.push({
+          activityType,
+          startedAt: `${day}T12:00:00.000Z`,
+          durationMinutes: value,
+          origin: 'apple',
+        });
+      }
+      sessions.push(...ordered);
+      minuteTotals.set(day, Math.round([...ordered, ...sessions.filter((row) => londonDay(row.startedAt) === day && row.origin === 'apple')].reduce((sum, row) => sum + row.durationMinutes, 0)));
+      continue;
+    }
+    const folded = foldGarminBuckets(storedBuckets.get(day), ordered);
+    bucketDays.set(day, folded);
+    const foldedTotal = WORKOUT_BUCKETS.reduce((sum, bucket) => sum + folded[bucket], 0);
+    minuteTotals.set(day, Math.max(Math.round(storedWorkoutMinutes.get(day) ?? 0), Math.round(foldedTotal)));
+  }
+
+  const classified = classifiedWorkoutSamples(sessions);
+  const replace = new Set<string>([...classified.days, ...bucketDays.keys()]);
+  const kept = samples.filter((sample) => {
+    const day = sampleDay(sample.recordedOn);
+    if (!replace.has(day)) return true;
+    if (sample.kind === 'workout_minutes') return false;
+    return !isReplacedWorkoutKind(sample.kind);
+  }).map((sample) => ({ ...sample }));
+
+  const added: T[] = [];
+  const push = (kind: string, value: number, recordedOn: string) => {
+    const rounded = Math.round(value);
+    if (rounded <= 0) return;
+    added.push({ kind, value: rounded, recordedOn, source: 'healthkit' } as T);
+  };
+  for (const row of classified.samples) push(row.kind, row.value, row.recordedOn);
+  for (const [day, buckets] of bucketDays) {
+    if (classified.days.includes(day)) continue;
+    for (const bucket of WORKOUT_BUCKETS) push(BUCKET_KIND[bucket], buckets[bucket], day);
+  }
+  for (const [day, minutes] of minuteTotals) push('workout_minutes', minutes, day);
+  return [...kept, ...added];
+}
+
+function consumeStoredType(types: Map<number, number>, session: ClassifiedSession) {
+  let remaining = session.durationMinutes;
+  const same = types.get(session.activityType) ?? 0;
+  if (same > 0) {
+    const took = Math.min(same, remaining);
+    const next = same - took;
+    if (next <= 1) types.delete(session.activityType);
+    else types.set(session.activityType, next);
+    remaining -= took;
+  }
+  if (remaining <= 1) return;
+  for (const [activityType, minutes] of [...types.entries()]) {
+    if (informativeActivityType(activityType)) continue;
+    const close = Math.abs(minutes - remaining) <= Math.max(2, remaining * 0.15);
+    if (close || minutes + 1 >= remaining) {
+      const next = minutes - Math.min(minutes, remaining);
+      if (next <= 1) types.delete(activityType);
+      else types.set(activityType, next);
+      return;
+    }
+  }
+}
+
+function foldGarminBuckets(stored: MixBuckets | undefined, rows: readonly ClassifiedSession[]): MixBuckets {
+  const base = stored ? { ...stored } : blankBuckets();
+  const garmin = blankBuckets();
+  for (const row of rows) {
+    for (const part of workoutTypeMinutes({ activityType: row.activityType, durationMin: row.durationMinutes })) {
+      garmin[workoutBucket(part.activityType)] += part.minutes;
+    }
+  }
+  let other = base.other;
+  const next = { ...base };
+  for (const bucket of ['strength', 'cardio', 'conditioning'] as const) {
+    const extra = Math.max(0, Math.round(garmin[bucket]) - Math.round(base[bucket]));
+    other -= Math.min(other, extra);
+    next[bucket] = Math.round(base[bucket]) + extra;
+  }
+  next.other = Math.max(0, Math.round(other));
+  return next;
+}
+
 /** Rebuild the daily bucket totals from stored per-type minutes. Days with no type stay as they were. */
 export function rebucketStoredMinutes(
   samples: readonly { kind: string; value: number; recordedOn: string }[],

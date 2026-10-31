@@ -21,7 +21,10 @@ import {
   whyRestingMatters,
   classifiedWorkoutSamples,
   dedupeWorkouts,
+  garminActivitiesForUser,
+  garminActivityInputs,
   parseWorkoutActivityType,
+  samplesWithGarminActivities,
   preferredActivityType,
   rebucketStoredMinutes,
   withWorkoutBucket,
@@ -599,6 +602,106 @@ describe('fitness snapshot', () => {
     ]);
     expect(covered.samples.find((row) => row.kind === 'strength_minutes')?.value).toBe(40);
     expect(covered.samples.filter((row) => row.kind === 'strength_minutes')).toHaveLength(1);
+  });
+
+  it('counts Garmin strength beside Apple Health without adding the same session twice', async () => {
+    const day = '2026-10-21';
+    const later = '2026-10-22';
+    const activities = garminActivityInputs([
+      {
+        activity_type: 'STRENGTH_TRAINING',
+        activity_name: 'Weights',
+        started_at: `${day}T18:00:00.000Z`,
+        duration_seconds: 45 * 60,
+      },
+      {
+        activity_type: 'functionalStrengthTraining',
+        activity_name: 'Workout',
+        started_at: `${later}T12:00:00.000Z`,
+        duration_seconds: 35 * 60,
+      },
+      {
+        activity_type: 'OTHER',
+        activity_name: '',
+        started_at: `${day}T07:00:00.000Z`,
+        duration_seconds: 20 * 60,
+      },
+    ]);
+    expect(activities).toHaveLength(3);
+    const merged = samplesWithGarminActivities([
+      { kind: 'workout_type_3000', value: 45, recordedOn: day, source: 'healthkit' },
+      { kind: 'other_minutes', value: 45, recordedOn: day, source: 'healthkit' },
+      { kind: 'workout_minutes', value: 45, recordedOn: day, source: 'healthkit' },
+      { kind: 'workout_type_37', value: 30, recordedOn: day, source: 'healthkit' },
+      { kind: 'cardio_minutes', value: 30, recordedOn: day, source: 'healthkit' },
+      { kind: 'strength_minutes', value: 40, recordedOn: '2026-10-20', source: 'healthkit' },
+      { kind: 'steps', value: 8000, recordedOn: day, source: 'healthkit' },
+    ], activities);
+    const on = (kind: string, recordedOn: string) => merged.find((row) => row.kind === kind && row.recordedOn === recordedOn)?.value;
+    expect(on('strength_minutes', day)).toBe(45);
+    expect(on('cardio_minutes', day)).toBe(30);
+    expect(on('other_minutes', day) ?? 0).toBe(0);
+    expect(on('workout_minutes', day)).toBe(75);
+    expect(on('strength_minutes', '2026-10-20')).toBe(40);
+    expect(on('strength_minutes', later)).toBe(35);
+    expect(on('steps', day)).toBe(8000);
+    expect(merged.filter((row) => row.kind === 'strength_minutes' && row.recordedOn === day)).toHaveLength(1);
+    const report = periodActiveMinutes({
+      samples: merged,
+      today: later,
+      start: '2026-10-20',
+      end: later,
+    });
+    expect(report.report.strength).toBe(45 + 40 + 35);
+    const named = samplesWithGarminActivities([
+      { kind: 'workout_type_50', value: 40, recordedOn: day, source: 'healthkit' },
+      { kind: 'strength_minutes', value: 40, recordedOn: day, source: 'healthkit' },
+      { kind: 'workout_minutes', value: 40, recordedOn: day, source: 'healthkit' },
+    ], [{
+      activityType: 'traditionalStrengthTraining',
+      activityName: 'Traditional strength',
+      startedAt: `${day}T18:00:00.000Z`,
+      durationSeconds: 40 * 60,
+    }]);
+    expect(named.find((row) => row.kind === 'strength_minutes')?.value).toBe(40);
+    expect(named.filter((row) => row.kind === 'strength_minutes')).toHaveLength(1);
+    const untouched = samplesWithGarminActivities([
+      { kind: 'strength_minutes', value: 25, recordedOn: day, source: 'healthkit' },
+    ], []);
+    expect(untouched).toEqual([{ kind: 'strength_minutes', value: 25, recordedOn: day, source: 'healthkit' }]);
+    const refused = await garminActivitiesForUser({
+      from(table: string) {
+        expect(table).toBe('garmin_activities');
+        return {
+          select(columns: string) {
+            expect(columns).toBe('activity_type, activity_name, started_at, duration_seconds');
+            return {
+              eq(column: string, value: string) {
+                expect(column).toBe('user_id');
+                expect(value).toBe('user-1');
+                return {
+                  order: async () => ({ data: null, error: { message: 'relation does not exist' } }),
+                };
+              },
+            };
+          },
+        };
+      },
+    }, 'user-1');
+    expect(refused).toEqual([]);
+    for (const path of [
+      'supabase/functions/_shared/nutritionLoad.ts',
+      'supabase/functions/health-plan/index.ts',
+      'supabase/functions/thumos-chat/index.ts',
+      'supabase/functions/thumos-voice-token/index.ts',
+    ]) {
+      const source = readFileSync(path, 'utf8');
+      expect(source).toContain('garminActivitiesForUser');
+      expect(source).toContain('samplesWithGarminActivities');
+      expect(source).not.toContain('garminActivitiesForUser(admin');
+    }
+    expect(readFileSync('supabase/functions/health-plan/index.ts', 'utf8')).toContain('consent_health === true');
+    expect(readFileSync('supabase/functions/_shared/nutritionLoad.ts', 'utf8')).toContain('coach.health');
   });
 
   it('says when VO2 max is under the boxing range', () => {
