@@ -2125,6 +2125,14 @@ export class DemoRepository implements Repository {
     return { checked: false, needsPermissions: false, missing: [] };
   }
 
+  async loadOwnSubscription(): Promise<import('@/domain/subscription').SubscriptionRecord | null> {
+    return null;
+  }
+
+  async verifyOwnSubscription(): Promise<import('@/domain/subscription').SubscriptionRecord> {
+    throw new UserFacingError('Subscriptions are confirmed on your live account.', 'generic');
+  }
+
   private sharedPhotoRows: import('@/domain/sharedPhotos').SharedPhotoCard[] | null = null;
 
   private demoSharedPhotos(): import('@/domain/sharedPhotos').SharedPhotoCard[] {

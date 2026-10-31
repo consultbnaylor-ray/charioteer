@@ -579,4 +579,8 @@ export interface Repository {
   refreshGarmin(): Promise<{ ok: true; garmin: 'off' | 'asked' | 'recent'; code?: 'history' } | { ok: false; message: string; code?: 'permission' | 'rate' }>;
   /** Reads Garmin's export list. The server skips this when it already asked today, unless force is set. */
   checkGarminPermissions(force?: boolean): Promise<{ checked: boolean; needsPermissions: boolean; missing: Array<'ACTIVITY_EXPORT' | 'HEALTH_EXPORT'> }>;
+  /** The signed-in person's subscription row. Null when they have none. */
+  loadOwnSubscription(): Promise<import('@/domain/subscription').SubscriptionRecord | null>;
+  /** Sends the StoreKit 2 signed transaction to the server and returns the stored row. */
+  verifyOwnSubscription(jws: string): Promise<import('@/domain/subscription').SubscriptionRecord>;
 }
