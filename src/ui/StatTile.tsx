@@ -92,7 +92,7 @@ export function StatTile({ tile }: { tile: StatTileModel }) {
     .filter(Boolean)
     .join('. ');
   return (
-    <Card style={{ backgroundColor: tone.bg, borderColor: tone.ink, flex: 1, minHeight: 168 }}>
+    <Card style={{ backgroundColor: tone.bg, borderColor: tone.ink, alignSelf: 'stretch' }}>
       <Pressable
         accessibilityRole="button"
         accessibilityLabel={`${spoken}.`}

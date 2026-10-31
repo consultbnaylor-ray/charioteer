@@ -62,7 +62,11 @@ describe('VO2 estimate note', () => {
     expect(VO2_ESTIMATE_NOTE).toContain('outdoor walk, run or hike');
     expect(VO2_ESTIMATE_NOTE).toContain('No new reading means no qualifying workout yet.');
     expect(VO2_APPLE_PART).toBe(`Apple Watch: ${VO2_ESTIMATE_NOTE.replace(/^Apple Watch /, '')}`);
-    expect(VO2_GARMIN_PART).toBe('Garmin: watches estimate VO2 max from heart rate and pace during outdoor walks or runs with GPS (and some other activities), with a minimum effort level. The reading updates after a qualifying activity.');
+    expect(VO2_GARMIN_PART).toBe('Garmin: watches estimate VO2 max from heart rate and pace during outdoor walks or runs with GPS (and some other activities), with a minimum effort level. The reading updates after a qualifying activity. Your heart rate needs to reach 70% of maximum for a sustained period, so a walk may not be enough if you are fit. The exercise needs to last at least 15 minutes.');
+    expect(VO2_ESTIMATE_NOTE).toContain('Your heart rate needs to reach 70% of maximum for a sustained period, so a walk may not be enough if you are fit.');
+    expect(VO2_ESTIMATE_NOTE).toContain('The exercise needs to last at least 15 minutes.');
+    expect(VO2_APPLE_PART).toContain('Your heart rate needs to reach 70% of maximum for a sustained period, so a walk may not be enough if you are fit.');
+    expect(VO2_APPLE_PART).toContain('The exercise needs to last at least 15 minutes.');
     expect(vo2MeasuredLine('2026-10-18', 'apple')).toBe('Last measured 18 Oct (Apple Health)');
     expect(vo2MeasuredLine('2026-10-21', 'garmin')).toBe('Last measured 21 Oct (Garmin)');
     expect(vo2NoteParts('apple')).toEqual([VO2_APPLE_PART, VO2_GARMIN_PART]);

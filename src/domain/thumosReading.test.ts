@@ -1,7 +1,10 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
+import type { HealthSample } from '@/data/types';
 import { APPLE_HEALTH_READ_TYPES } from '@/health/connection';
+import { emptyGarminReadings, type GarminActivity } from '@/domain/garminConnect';
+import { mergeHealthSamples, mergeWorkouts } from '@/domain/healthSources';
 import { GOAL_LABEL } from '@/domain/nutrition';
 import { SCALE_BIA_LINE } from '@/domain/scaleReading';
 import { VISIBLE_SAFETY_LINE } from '@/domain/visibleSafety';
@@ -367,5 +370,69 @@ describe('on-phone Thumos reading note', () => {
     expect(figures.strengthRecorded).toBe(true);
     expect(figures.strengthMinutes7).toBe(40);
     expect(figures.windowLabel).toBe('today');
+  });
+
+  it('counts a Garmin strength activity and an Apple Health strength name in the Thumos note', () => {
+    const today = '2026-10-21';
+    const apple: HealthSample = {
+      id: 'other',
+      kind: 'workout_type_3000',
+      value: 50,
+      unit: 'min',
+      recordedOn: today,
+      source: 'healthkit',
+    };
+    const garmin: GarminActivity = {
+      summaryId: 'g-weights',
+      activityType: 'STRENGTH_TRAINING',
+      activityName: 'Weights',
+      startedAt: `${today}T18:00:00.000Z`,
+      durationSeconds: 50 * 60,
+      averageHeartRateBpm: null,
+      trainingEffect: null,
+      anaerobicEffect: null,
+    };
+    const workouts = mergeWorkouts([], [garmin]);
+    const merged = mergeHealthSamples([
+      apple,
+      { ...apple, id: 'other-minutes', kind: 'other_minutes' },
+      { ...apple, id: 'minutes', kind: 'workout_minutes' },
+    ], emptyGarminReadings(), workouts);
+    const figures = figuresForNote({
+      samples: merged,
+      today,
+      period: '7',
+      goal: 'lose_fat_build_muscle',
+    });
+    expect(figures.strengthRecorded).toBe(true);
+    expect(figures.strengthMinutes7).toBe(50);
+    const note = thumosReadingComment(sample({
+      ...figures,
+      today,
+      storedDayCount: 7,
+      goal: 'lose_fat_build_muscle',
+      targetKg: null,
+    }));
+    const text = [...note.sentences, ...note.more].join(' ');
+    expect(text).not.toContain('Strength is not recorded');
+    expect(text).toContain('Strength work in the last 7 days is 50 min.');
+
+    const named = figuresForNote({
+      samples: [{
+        kind: 'workout_type_20',
+        value: 35,
+        recordedOn: today,
+        source: 'healthkit',
+      }, {
+        kind: 'strength_minutes',
+        value: 35,
+        recordedOn: today,
+        source: 'healthkit',
+      }],
+      today,
+      period: 'day',
+    });
+    expect(named.strengthRecorded).toBe(true);
+    expect(named.strengthMinutes7).toBe(35);
   });
 });

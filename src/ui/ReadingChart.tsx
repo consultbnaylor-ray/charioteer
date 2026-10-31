@@ -9,6 +9,7 @@ import {
   chartPlot,
   datedAxisTicks,
   daySpan,
+  placeAxisLabels,
   formatAxisNumber,
   formatChartDate,
   formatChartValue,
@@ -219,29 +220,62 @@ export function ReadingChart({
           <View style={{ height: PLOT_H }} />
         )}
       </View>
-      <View style={{ height: 16 * label, marginLeft: gutter, position: 'relative' }}>
-        {width > 0
-          ? marks.map((mark) => (
-            <T
-              key={mark.day}
-              style={{
-                position: 'absolute',
-                left: Math.min(Math.max(0, xFor(mark.day) - gutter - 28), Math.max(0, width - gutter - 56)),
-                width: 56,
-                textAlign: 'center',
-                fontSize: 11 * label,
-                lineHeight: 14 * label,
-                color: theme.colors.muted,
-              }}
-            >
-              {mark.label}
-            </T>
-          ))
-          : null}
-      </View>
+      <AxisLabels marks={marks} width={width} gutter={gutter} scale={label} xFor={xFor} />
       <T style={{ fontSize: 11 * label, lineHeight: 14 * label, color: theme.colors.muted, textAlign: 'center' }}>{xTitle}</T>
       <T style={{ fontSize: 11 * label, lineHeight: 14 * label, color: theme.colors.muted, textAlign: 'center' }}>{CHART_DIRECTION_HINT}</T>
       {grainCaption ? <T variant="muted">{grainCaption}</T> : null}
+    </View>
+  );
+}
+
+function AxisLabels({
+  marks,
+  width,
+  gutter,
+  scale,
+  xFor,
+}: {
+  marks: readonly { day: string; label: string }[];
+  width: number;
+  gutter: number;
+  scale: number;
+  xFor: (day: string) => number;
+}) {
+  const theme = useAppTheme();
+  const rowWidth = Math.max(0, width - gutter);
+  const placed = width > 0
+    ? placeAxisLabels({
+      ticks: marks,
+      xs: marks.map((mark) => xFor(mark.day) - gutter),
+      rowWidth,
+      scale,
+    })
+    : [];
+  const rotate = placed.some((mark) => mark.rotate);
+  return (
+    <View style={{ height: (rotate ? 48 : 16) * scale, marginLeft: gutter, position: 'relative' }}>
+      {placed.map((mark) => {
+        const boxLeft = mark.left - (mark.textWidth - mark.width) / 2;
+        return (
+          <T
+            key={mark.day}
+            numberOfLines={1}
+            style={{
+              position: 'absolute',
+              left: boxLeft,
+              width: mark.textWidth,
+              top: 0,
+              textAlign: 'center',
+              fontSize: 11 * scale,
+              lineHeight: 14 * scale,
+              color: theme.colors.muted,
+              transform: mark.rotate ? [{ rotate: '-55deg' }] : undefined,
+            }}
+          >
+            {mark.label}
+          </T>
+        );
+      })}
     </View>
   );
 }

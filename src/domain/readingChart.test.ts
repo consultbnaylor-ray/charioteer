@@ -6,9 +6,11 @@ import {
   chartBucketForPeriod,
   CHART_DIRECTION_HINT,
   chartPlot,
+  axisLabelWidth,
   datedAxisTicks,
   formatAxisNumber,
   formatChartDate,
+  placeAxisLabels,
   xAxisTicks,
   yAxisTicks,
 } from '@/domain/readingChart';
@@ -117,6 +119,35 @@ describe('chart direction', () => {
     expect(week[0]?.label).toBe('13 Oct');
     expect(week.at(-1)?.label).toBe('19 Oct');
     expect(week[1]?.label).toBe('Wed');
+  });
+
+  it('keeps x-axis labels from sitting on top of each other', () => {
+    const week = datedAxisTicks('2026-10-19', '2026-10-25');
+    const fits = (rowWidth: number) => placeAxisLabels({
+      ticks: week,
+      xs: week.map((_, index) => (index / Math.max(1, week.length - 1)) * rowWidth),
+      rowWidth,
+      scale: 1,
+    });
+    const separated = (labels: ReturnType<typeof placeAxisLabels>) => {
+      for (let index = 1; index < labels.length; index += 1) {
+        const previous = labels[index - 1];
+        const current = labels[index];
+        if (!previous || !current || previous.left + previous.width + 4 > current.left + 0.5) return false;
+      }
+      return true;
+    };
+    const wide = fits(360);
+    expect(wide.length).toBeGreaterThanOrEqual(2);
+    expect(separated(wide)).toBe(true);
+    expect(wide[0]?.label).toBe(week[0]?.label);
+    expect(wide.at(-1)?.label).toBe(week.at(-1)?.label);
+    const narrow = fits(120);
+    expect(narrow.length).toBeGreaterThanOrEqual(2);
+    expect(narrow.length).toBeLessThan(week.length);
+    expect(separated(narrow)).toBe(true);
+    expect(axisLabelWidth('13 Oct', 1)).toBeLessThan(56);
+    expect(axisLabelWidth('Wed', 1)).toBeLessThan(axisLabelWidth('13 Oct', 1));
   });
 });
 
