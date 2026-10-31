@@ -21,6 +21,8 @@ import { useChatRead } from '@/ui/chatRead';
 import { CONSENT_VERSION } from '@/data/catalogue';
 import { clientAppBuild } from '@/domain/clientError';
 import { hasCurrentConsents } from '@/domain/consents';
+import { paywallRequired, routeAllowedWithoutSubscription } from '@/domain/subscription';
+import { useEntitlement } from '@/ui/useEntitlement';
 import { installFatalHandler, uploadStoredFatal } from '@/domain/fatalError';
 import { font, ThemeProvider, useAppTheme } from '@/ui/theme';
 import { topSafeInset } from '@/ui/safeArea';
@@ -72,6 +74,7 @@ function Chrome() {
   const repo = useRepository();
   const pathname = usePathname();
   const router = useRouter();
+  const entitlement = useEntitlement();
 
   useEffect(() => {
     if (Platform.OS === 'web' && typeof document !== 'undefined') {
@@ -217,6 +220,18 @@ function Chrome() {
       if (pathname !== '/consent') router.replace('/consent');
       return;
     }
+    if (entitlement.enabled && entitlement.loading) return;
+    const subscriptionDue = paywallRequired({
+      enabled: entitlement.enabled,
+      authed,
+      onboarded,
+      consentDue,
+      entitled: entitlement.entitled,
+    });
+    if (subscriptionDue) {
+      if (!routeAllowedWithoutSubscription(pathname)) router.replace('/paywall');
+      return;
+    }
     if (pathname.startsWith('/buddies')) consumeBuddySecret();
     const buddySecret = peekBuddySecret();
     if (buddySecret) {
@@ -224,10 +239,11 @@ function Chrome() {
       router.replace(`/buddies?token=${encodeURIComponent(buddySecret)}` as never);
       return;
     }
-    if (authRoute || onboarding || pathname === '/consent' || pathname === '/') router.replace('/home');
-  }, [snap.ready, snap.session, snap.profile?.onboardingComplete, snap.consents, pathname, router]);
+    if (authRoute || onboarding || pathname === '/consent' || pathname === '/' || pathname === '/paywall') router.replace('/home');
+  }, [entitlement.enabled, entitlement.entitled, entitlement.loading, snap.ready, snap.session, snap.profile?.onboardingComplete, snap.consents, pathname, router]);
 
-  if (!snap.ready) {
+  const waitingForSubscription = entitlement.enabled && Boolean(snap.session) && entitlement.loading;
+  if (!snap.ready || waitingForSubscription) {
     return <OpeningDay background={theme.colors.bg} />;
   }
 

@@ -4,6 +4,7 @@ import { Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-na
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useSnapshot } from '@/data';
+import { useEntitlement } from '@/ui/useEntitlement';
 import { incomingRequestCount, peopleTabAccessibilityLabel, peopleTabBadgeCount, requestBadgeText } from '@/domain/connections';
 import { messageUnreadTotal } from '@/domain/liveChat';
 import { useChatRead } from '@/ui/chatRead';
@@ -33,6 +34,8 @@ export default function MainLayout() {
   const labelSize = tabLabelFontSize(width, tabSide, theme.scale);
   const [menuOpen, setMenuOpen] = useState(false);
   const snap = useSnapshot();
+  const entitlement = useEntitlement();
+  const subscriptionLocked = entitlement.enabled && !entitlement.loading && !entitlement.entitled;
   const meId = snap.profile?.id;
   const { marks: readMarks, ready: readsReady } = useChatRead(meId);
   const requestCount = meId ? incomingRequestCount(snap.connections, meId) : 0;
@@ -73,8 +76,17 @@ export default function MainLayout() {
 
   return (
     <View style={{ flex: 1, flexDirection: wide ? 'row' : 'column', backgroundColor: theme.colors.bg }}>
-      <SectionDrawer open={menuOpen} onClose={() => setMenuOpen(false)} />
-      {wide ? (
+      {subscriptionLocked ? null : <SectionDrawer open={menuOpen} onClose={() => setMenuOpen(false)} />}
+      {subscriptionLocked ? (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Back to subscription"
+          onPress={() => router.replace('/paywall' as never)}
+          style={{ paddingTop: topSafeInset(insets.top) + 8, paddingHorizontal: 16, paddingBottom: 8 }}
+        >
+          <T variant="body" style={{ fontFamily: theme.font.bodyStrong }}>Back</T>
+        </Pressable>
+      ) : wide ? (
         <View style={[styles.rail, { backgroundColor: theme.colors.surface, borderRightColor: theme.colors.line, paddingTop: topSafeInset(insets.top) + 8 }]}>
           {menuButton}
           <HeaderShareButton />
@@ -105,7 +117,7 @@ export default function MainLayout() {
           </Pressable>
         </View>
       )}
-      <ShellInsetProvider top bottom={!wide}>
+      <ShellInsetProvider top bottom={!wide && !subscriptionLocked}>
         <View style={{ flex: 1 }}>
           {snap.profile ? <MessageNotificationPrompt userId={snap.profile.id} /> : null}
           <View style={{ flex: 1 }}>
@@ -122,7 +134,7 @@ export default function MainLayout() {
           </View>
         </View>
       </ShellInsetProvider>
-      {wide ? null : (
+      {wide || subscriptionLocked ? null : (
         <View
           style={[
             styles.tabs,

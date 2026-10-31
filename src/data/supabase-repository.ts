@@ -17,6 +17,7 @@ import {
   isTransientNetworkError,
 } from '@/domain/errors';
 import { omitSharedLocation } from '@/domain/sharedPayload';
+import { subscriptionRecordFromDb } from '@/domain/subscription';
 import { stripJpegBase64, stripJpegLocation } from '@/domain/photoLocation';
 import { chunkHealthRows } from '@/domain/healthUpload';
 import { rejectRouteCoordinates } from '@/domain/workoutRoute';
@@ -3288,6 +3289,31 @@ export class SupabaseRepository implements Repository {
       throw new UserFacingError('Could not open Garmin Connect.', 'generic');
     }
     return url;
+  }
+
+  async loadOwnSubscription(): Promise<import('@/domain/subscription').SubscriptionRecord | null> {
+    const { data, error } = await this.client
+      .from('subscriptions')
+      .select('product_id, status, expires_at, is_trial, environment')
+      .maybeSingle();
+    if (error) throw new UserFacingError('Could not check the subscription.', 'generic');
+    return subscriptionRecordFromDb(data);
+  }
+
+  async verifyOwnSubscription(jws: string): Promise<import('@/domain/subscription').SubscriptionRecord> {
+    const invoked = await this.client.functions.invoke('subscription-verify', { body: { jws } });
+    const payload = invoked.data as { ok?: boolean; subscription?: {
+      product_id?: unknown;
+      status?: unknown;
+      expires_at?: unknown;
+      is_trial?: unknown;
+      environment?: unknown;
+    } } | null;
+    const row = subscriptionRecordFromDb(payload?.subscription ?? null);
+    if (invoked.error || payload?.ok !== true || !row) {
+      throw new UserFacingError('Could not confirm the subscription.', 'generic');
+    }
+    return row;
   }
 
   async disconnectGarmin(): Promise<void> {

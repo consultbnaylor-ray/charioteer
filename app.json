@@ -139,7 +139,8 @@
             "enableSceneSupport": true
           }
         }
-      ]
+      ],
+      "expo-iap"
     ],
     "extra": {
       "voiceDiagnostics": true,
