@@ -519,12 +519,12 @@ function OwnSharedPhotos({ name, photos }: { name: string; photos: ProgressPhoto
       <T variant="label">Shared photos</T>
       <T variant="muted">{name} chose to show these. Private photos stay hidden.</T>
       {photos.length >= 2 && before && now && before.id !== now.id ? (
-        <View style={{ flexDirection: 'row', gap: 10 }}>
-          <View style={{ flex: 1, gap: 6 }}>
+        <View style={{ gap: 10, alignSelf: 'stretch' }}>
+          <View style={{ gap: 6, alignSelf: 'stretch' }}>
             <T variant="label">Before</T>
             <SharedPhotoFrame photo={before} />
           </View>
-          <View style={{ flex: 1, gap: 6 }}>
+          <View style={{ gap: 6, alignSelf: 'stretch' }}>
             <T variant="label">Now</T>
             <SharedPhotoFrame photo={now} />
           </View>

@@ -15,6 +15,7 @@ import { profileFrontPhotos, profileGalleryNeedsLibrary, SEE_ALL_PHOTOS } from '
 import { ProfilePhotoEnlarge, ProfilePhotoTiles } from '@/ui/ProfileGallery';
 import { ProfileStatBoard } from '@/ui/ProfileStatTiles';
 import { MemberAvatar } from '@/ui/MemberAvatar';
+import { OwnerPhoto } from '@/ui/OwnerPhoto';
 import { PlanTick } from '@/ui/PlanTick';
 import { ScreenBoundary } from '@/ui/ScreenBoundary';
 import { formatGbp } from '@/domain/savings';
@@ -324,12 +325,12 @@ export function CommunityProfile({ userId, name }: { userId: string; name: strin
       {asked ? <T variant="muted">A private request is with them. You can message once you have both agreed.</T> : null}
       {photos.length === 0 ? <T variant="muted">No shared photos.</T> : null}
       {photos.length >= 2 && before && now && before.id !== now.id ? (
-        <View style={{ flexDirection: 'row', gap: 10 }}>
-          <View style={{ flex: 1, gap: 6 }}>
+        <View style={{ gap: 10, alignSelf: 'stretch' }}>
+          <View style={{ gap: 6, alignSelf: 'stretch' }}>
             <T variant="label">Before</T>
             <SharedPhotoFrame photo={before} />
           </View>
-          <View style={{ flex: 1, gap: 6 }}>
+          <View style={{ gap: 6, alignSelf: 'stretch' }}>
             <T variant="label">Now</T>
             <SharedPhotoFrame photo={now} />
           </View>
@@ -771,14 +772,15 @@ export function SharedPhotoFrame({ photo }: { photo: ProgressPhoto }) {
   const theme = useAppTheme();
   const label = progressPhotoLabel(photo.monthIndex, photo.takenOn);
   return (
-    <View style={{ width: '100%', aspectRatio: 1, borderRadius: radius.md, overflow: 'hidden', backgroundColor: theme.colors.sunken }}>
-      {photo.previewUrl ? (
-        <Image source={{ uri: photo.previewUrl }} style={StyleSheet.absoluteFill} contentFit="cover" accessibilityLabel={label} />
-      ) : (
-        <View style={StyleSheet.absoluteFill}>
-          <MissingPhotoNote />
-        </View>
-      )}
+    <View style={{ alignSelf: 'stretch', width: '100%', aspectRatio: 1, borderRadius: radius.md, overflow: 'hidden', backgroundColor: theme.colors.sunken }}>
+      <OwnerPhoto
+        uri={photo.previewUrl}
+        photoId={photo.id}
+        signWhenMissing
+        style={{ width: '100%', height: '100%' }}
+        contentFit="cover"
+        accessibilityLabel={label}
+      />
     </View>
   );
 }

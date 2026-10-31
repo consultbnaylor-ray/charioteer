@@ -347,7 +347,7 @@ export function ProgressPhotos() {
         <Card>
           <T variant="label">Before and now</T>
           <T>Tap Before or Now, then choose a photo.</T>
-          <View style={{ flexDirection: 'row', gap: 10, zIndex: 2 }}>
+          <View style={{ gap: 10, alignSelf: 'stretch', zIndex: 2 }}>
             <ComparisonSlot title="Before" photo={before} open={picking === 'before'} onPress={() => setPicking((current) => current === 'before' ? null : 'before')} />
             <ComparisonSlot title="Now" photo={now} open={picking === 'now'} onPress={() => setPicking((current) => current === 'now' ? null : 'now')} />
           </View>
@@ -564,7 +564,7 @@ function ComparisonSlot({
       accessibilityState={{ expanded: open }}
       onPress={onPress}
       collapsable={false}
-      style={{ flex: 1, gap: 6, minHeight: 44, zIndex: 2 }}
+      style={{ alignSelf: 'stretch', gap: 6, minHeight: 44, zIndex: 2 }}
     >
       <View style={{ gap: 6 }}>
         <View pointerEvents="none">

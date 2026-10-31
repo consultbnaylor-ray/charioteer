@@ -14,6 +14,13 @@ export const VO2_HEART_RATE_LINE =
 /** Approved by Ben. The session has to be long enough for the watch to estimate VO2 max. */
 export const VO2_DURATION_LINE = 'The exercise needs to last at least 15 minutes.';
 
+/**
+ * How a watch gets a VO2 max reading.
+ * The GPS sentence first, then the heart-rate line, then the 15-minute line.
+ * Every VO2 info surface renders this list.
+ */
+export const VO2_MEASURE_LINES = [VO2_MEASURE_LINE, VO2_HEART_RATE_LINE, VO2_DURATION_LINE] as const;
+
 const VO2_TRIGGER_TAIL = `${VO2_HEART_RATE_LINE} ${VO2_DURATION_LINE}`;
 
 /** How Apple Watch estimates VO2 max. Kept as its own sentence so the card can lead with it. */

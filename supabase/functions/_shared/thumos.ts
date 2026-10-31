@@ -1,3 +1,4 @@
+import { dedupeAdviceLines } from './adviceDedupe.ts';
 import { factsBlock, type CitedFact, ALCOHOL_FACTS } from './facts.ts';
 import { formatGratitudeContext, GRATITUDE_PROMPT_LINE, type GratitudeEntry } from './gratitude.ts';
 import { formatVisionContext, VISION_PROMPT_LINE, type VisionContext } from './visionBoard.ts';
@@ -868,8 +869,8 @@ export function buildThumosContext(input: ThumosContextInput): string {
     })
     .join('\n');
 
-  const insightLines = (input.healthInsights ?? []).map((line) => line.trim()).filter(Boolean).slice(0, 3);
-  const nutritionLines = (input.nutritionLines ?? []).map((line) => line.trim()).filter(Boolean).slice(0, THUMOS_CHAT.nutritionLineCap);
+  const insightLines = dedupeAdviceLines((input.healthInsights ?? []).map((line) => line.trim()).filter(Boolean)).slice(0, 3);
+  const nutritionLines = dedupeAdviceLines((input.nutritionLines ?? []).map((line) => line.trim()).filter(Boolean)).slice(0, THUMOS_CHAT.nutritionLineCap);
   const garminLines = (input.garminLines ?? []).map((line) => line.trim()).filter(Boolean).slice(0, 12);
 
   if (input.safety.selfHarm) {

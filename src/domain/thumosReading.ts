@@ -1,3 +1,4 @@
+import { dedupeAdviceLines } from '@/domain/adviceDedupe';
 import { healthSampleChart } from '@/domain/chartSeries';
 import { buildFitnessSnapshot, periodActiveMinutes, publishedCardioBand, vo2AthleticShortfall, vo2JudgementLine } from '@/domain/fitnessSnapshot';
 import { stepResearchBand } from '@/domain/garminCharts';
@@ -573,7 +574,7 @@ function suggestions(input: ThumosReadingInput): string[] {
   const daily = input.stepsDaily ?? (input.steps != null && input.steps > 0 ? input.steps : null);
   const stepsUnder = input.stepsLow === true || (input.stepsLow == null && daily != null && daily < stepResearchBand(null).low);
   if (stepsUnder) lines.push(THUMOS_MORE_STEPS);
-  if (input.proteinMet === false) lines.push(THUMOS_PROTEIN_SHORT);
+  if (input.proteinMet === false && bodyFatFoodLine(input) !== THUMOS_BIA_PROTEIN_SHORT) lines.push(THUMOS_PROTEIN_SHORT);
   const aim = input.workoutAim;
   if (aim != null && aim > 0 && minutesLogged > 0 && minutesLogged < aim && !lines.includes(THUMOS_CARDIO_FOR_VO2)) lines.push(THUMOS_ANOTHER_SESSION);
   if (input.bodyFatEarlier != null && input.bodyFatPct != null && input.bodyFatPct - input.bodyFatEarlier >= 0.3) lines.push(THUMOS_FAT_HIGHER);
@@ -629,7 +630,7 @@ export function thumosAssessmentLines(input: ThumosReadingInput): string[] {
     const food = bodyFatFoodLine(input);
     if (food) lines.push(food);
   }
-  return lines;
+  return dedupeAdviceLines(lines);
 }
 
 const READING_KINDS = new Set([
@@ -673,15 +674,15 @@ export function thumosReadingComment(input: ThumosReadingInput): ThumosReadingVi
   if (!early && facts.length === 0 && !trains) {
     return { sentences: [THUMOS_EMPTY_LINE], more: [...detail, THUMOS_LOCAL_LINE] };
   }
-  const sentences = early
+  const sentences = dedupeAdviceLines(early
     ? [THUMOS_NEEDS_SEVEN_DAYS, THUMOS_LOG_MORE_DAYS]
-    : thumosAssessmentLines(input);
+    : thumosAssessmentLines(input));
   const used = new Set(sentences);
-  const more = [
+  const more = dedupeAdviceLines([
     ...facts.filter((line) => !used.has(line)),
     ...detail.filter((line) => !used.has(line) && (early ? line !== THUMOS_TOWARDS_TARGET && line !== THUMOS_AWAY_TARGET && line !== THUMOS_UNCLEAR_TARGET && line !== THUMOS_ONE_WEIGHT_TARGET : true)),
     THUMOS_LOCAL_LINE,
-  ];
+  ]);
   return { sentences, more };
 }
 

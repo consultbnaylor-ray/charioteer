@@ -1,5 +1,6 @@
 import { type CoachShare } from './coachConsent.ts';
 import { londonDay } from './healthInsights.ts';
+import { dedupeAdviceLines } from './adviceDedupe.ts';
 import { targetActivityPlan, targetCoachActivityLines, type ActivityReading } from './targetActivity.ts';
 import { plannedWeeklyChangeKg, targetCoachLines, targetDirection } from './targetWeight.ts';
 
@@ -1629,7 +1630,7 @@ export function nutritionContextLines(input: {
       lines.push(...targetCoachActivityLines(plan).filter((line) => !ACTIVITY_LINE_LEAK.test(line)));
     }
   }
-  return lines;
+  return dedupeAdviceLines(lines);
 }
 
 /** HealthKit write list. Trans fat has no type, so it is only inside total fat. Unsaturated is saved as monounsaturated. */

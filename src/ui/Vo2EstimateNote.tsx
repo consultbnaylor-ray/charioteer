@@ -1,10 +1,19 @@
 import { View } from 'react-native';
 
-import { VO2_MEASURE_LINE, VO2_PLAN_LABEL, VO2_STALE_NUDGE, vo2MeasuredLine, vo2NoteParts, vo2ReadingIsStale, type Vo2Source } from '@/domain/vo2Estimate';
+import { VO2_MEASURE_LINES, VO2_PLAN_LABEL, VO2_STALE_NUDGE, vo2MeasuredLine, vo2NoteParts, vo2ReadingIsStale, type Vo2Source } from '@/domain/vo2Estimate';
 import { MoreInfo } from '@/ui/MoreInfo';
 import { statsToneColors } from '@/ui/statsPalette';
 import { useAppTheme } from '@/ui/theme';
 import { Button, T } from '@/ui/ui';
+
+/** The GPS line, then the heart-rate line, then the 15-minute line. */
+export function Vo2MeasureCopy() {
+  return (
+    <View style={{ gap: 6, alignSelf: 'stretch' }}>
+      {VO2_MEASURE_LINES.map((line) => <T key={line}>{line}</T>)}
+    </View>
+  );
+}
 
 /** Compact strip at the top of the cardio section. The health lines stay further down. */
 export function Vo2MeasureBanner() {
@@ -24,7 +33,7 @@ export function Vo2MeasureBanner() {
         paddingHorizontal: 10,
       }}
     >
-      <T style={{ fontSize: 15 * theme.scale, lineHeight: 20 * theme.scale }}>{VO2_MEASURE_LINE}</T>
+      <Vo2MeasureCopy />
     </View>
   );
 }

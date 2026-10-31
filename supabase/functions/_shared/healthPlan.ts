@@ -25,6 +25,7 @@ import {
   type WorkoutBucketMap,
 } from './nutrition.ts';
 import { referenceBandsForCoach } from './healthBands.ts';
+import { dedupeAdviceLines } from './adviceDedupe.ts';
 import { assessCardioGap, buildFitnessSnapshot, fitnessFocusLines, type FitnessSnapshotInput } from './fitnessSnapshot.ts';
 import { goalWeightRange } from './goalWeightRange.ts';
 import { goalFocusLine } from './goalLed.ts';
@@ -450,8 +451,8 @@ function nutritionHabits(facts: Derived): string[] {
   };
   const habits = isClassBoxer(goal) ? classLimitHabits(goal) : (banks[goal ?? 'none'] ?? banks.none);
   const chosen = take(facts.input.salt, 'habits', habits, 3, facts.done);
-  if (facts.done.some((item) => item.toLowerCase() === LOG_IN_CHARIOTEER.toLowerCase())) return chosen;
-  return [...chosen, LOG_IN_CHARIOTEER];
+  if (facts.done.some((item) => item.toLowerCase() === LOG_IN_CHARIOTEER.toLowerCase())) return dedupeAdviceLines(chosen);
+  return dedupeAdviceLines([...chosen, LOG_IN_CHARIOTEER]);
 }
 
 export const SWAP_LOG_MORE = 'Log a few more meals and Thumos will suggest swaps based on what you actually eat.';
@@ -1377,7 +1378,7 @@ function focusLines(facts: Derived, habits: string[], session: string, well: str
       const text = standaloneFocus(line, facts.firstName);
       return text ? [text] : [];
     });
-  const unique = [...new Set(lines)];
+  const unique = dedupeAdviceLines(lines);
   return unique.slice(0, facts.done.length > 2 ? 2 : 3);
 }
 
