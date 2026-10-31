@@ -27,6 +27,7 @@ import {
   garminMinuteSeries,
   minuteTypeEmpty,
   mostInOneDay,
+  hrvSdnnSeries,
   restingSeries,
   seriesHasValue,
   stepsSeries,
@@ -44,6 +45,7 @@ import {
   garminDetailCharts,
   garminSourceCaption,
   intensitySeries,
+  sdnnGuide,
   moderateChartGuide,
   movementPeriod,
   restingChartGuide,
@@ -237,6 +239,7 @@ export function MovementCharts({
   respiration,
   pulseOx,
   hrv,
+  appleHrvSdnn = [],
   userMetrics = [],
   age = null,
   sex = null,
@@ -254,6 +257,7 @@ export function MovementCharts({
   respiration: readonly GarminRespiration[];
   pulseOx: readonly GarminPulseOx[];
   hrv: readonly GarminHrvSummary[];
+  appleHrvSdnn?: readonly AppleDayValue[];
   userMetrics?: readonly GarminUserMetric[];
   age?: number | null;
   sex?: NutritionSex | null;
@@ -275,7 +279,7 @@ export function MovementCharts({
   const intensityBars = garminBarPoints(intensity);
   const moderate = showIntensity ? garminMinuteSeries(endDay, chartWindow.days, dailies, 'moderate') : [];
   const vigorous = showIntensity ? garminMinuteSeries(endDay, chartWindow.days, dailies, 'vigorous') : [];
-  const details = garminDetailCharts({
+  const detailCharts = garminDetailCharts({
     endDay,
     period: chartWindow.period,
     dailies,
@@ -286,7 +290,10 @@ export function MovementCharts({
     userMetrics,
     age,
     sex,
-  }).filter((chart) => showVo2Chart || chart.id !== 'vo2');
+  });
+  const hrvChart = detailCharts.find((chart) => chart.id === 'hrv') ?? null;
+  const details = detailCharts.filter((chart) => (showVo2Chart || chart.id !== 'vo2') && chart.id !== 'hrv');
+  const sdnnPoints = hrvSdnnSeries(endDay, chartWindow.days, appleHrvSdnn);
   const chosen = stepPoints.find((point) => point.day === selected)
     ?? distance.find((point) => point.day === selected)
     ?? floors.find((point) => point.day === selected)
@@ -437,6 +444,32 @@ export function MovementCharts({
           {dayLines.map((point) => <T key={point.label}>{point.label}</T>)}
           {detailLines.map((line) => <T key={line}>{line}</T>)}
         </View>
+      ) : null}
+      {hrvChart ? (
+        <ActivityBars
+          framed={framed}
+          title={hrvChart.title}
+          points={garminBarPoints(hrvChart.points)}
+          span={chartWindow.days}
+          unit={hrvChart.unit}
+          selected={selected}
+          garminNote={garminSourceCaption(hrvChart)}
+          guide={hrvChart.guide}
+          onSelect={setSelected}
+        />
+      ) : null}
+      {seriesHasValue(sdnnPoints) ? (
+        <ActivityBars
+          framed={framed}
+          title="Heart rate variability (Apple Health SDNN)"
+          points={sdnnPoints}
+          span={chartWindow.days}
+          unit="ms"
+          selected={selected}
+          garminNote={chartSourceCaption(sdnnPoints)}
+          guide={sdnnGuide(chartWindow.period, sdnnPoints)}
+          onSelect={setSelected}
+        />
       ) : null}
       {details.length > 0 ? (
         <Fold

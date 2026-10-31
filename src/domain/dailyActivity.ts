@@ -89,8 +89,9 @@ export function garminActiveKcal(value: number | null | undefined): number | nul
 }
 
 /**
- * One value per day, oldest first. Apple wins on a day with a total above zero.
- * A missing or zero Apple day uses Garmin when Garmin has a figure. The two are never added.
+ * One value per day, oldest first.
+ * `apple` uses Apple Health when that day is above zero, and Garmin only when Apple is missing.
+ * `higher` uses the larger daily total. The two sources are never added.
  */
 export function dailyActivitySeries(
   endDay: string,
@@ -98,6 +99,7 @@ export function dailyActivitySeries(
   apple: readonly AppleDayValue[],
   garmin: ReadonlyMap<string, number>,
   labelFor: (day: string, value: number, source: ActivitySource | null) => string,
+  pick: 'apple' | 'higher' = 'apple',
 ): DailyActivityPoint[] {
   const appleByDay = new Map<string, number>();
   for (const row of apple) {
@@ -105,14 +107,16 @@ export function dailyActivitySeries(
     appleByDay.set(row.day, (appleByDay.get(row.day) ?? 0) + row.value);
   }
   return chartDays(endDay, span).map((day) => {
-    const appleValue = appleByDay.get(day);
-    if (appleValue != null && appleValue > 0) {
-      const value = Math.round(appleValue);
-      return { day, value, source: 'apple' as const, label: labelFor(day, value, 'apple') };
+    const appleRaw = appleByDay.get(day);
+    const garminRaw = garmin.get(day);
+    const appleValue = appleRaw != null && appleRaw > 0 ? Math.round(appleRaw) : null;
+    const garminValue = garminRaw != null && garminRaw > 0 ? Math.round(garminRaw) : null;
+    const useGarmin = garminValue != null && (appleValue == null || (pick === 'higher' && garminValue > appleValue));
+    if (useGarmin && garminValue != null) {
+      return { day, value: garminValue, source: 'garmin' as const, label: labelFor(day, garminValue, 'garmin') };
     }
-    if (garmin.has(day)) {
-      const value = garmin.get(day) ?? 0;
-      return { day, value, source: 'garmin' as const, label: labelFor(day, value, 'garmin') };
+    if (appleValue != null) {
+      return { day, value: appleValue, source: 'apple' as const, label: labelFor(day, appleValue, 'apple') };
     }
     return { day, value: 0, source: null, label: labelFor(day, 0, null) };
   });
@@ -253,10 +257,20 @@ export function calorieSeries(
   return dailyActivitySeries(endDay, span, apple, garmin, activeCaloriesLabel);
 }
 
-export function mostInOneDay(points: readonly { value: number }[], unit: string): string | null {
-  const most = points.reduce((max, point) => Math.max(max, point.value), 0);
-  if (most <= 0) return null;
-  return `Most in one day ${most} ${unit}`;
+export function mostInOneDay(points: readonly { value: number; source?: ActivitySource | null }[], unit: string): string | null {
+  let best: { value: number; source: ActivitySource | null } | null = null;
+  let mixed = false;
+  for (const point of points) {
+    if (!(point.value > 0)) continue;
+    const source = point.source ?? null;
+    if (!best || point.value > best.value) {
+      best = { value: point.value, source };
+      mixed = false;
+    } else if (point.value === best.value && source !== best.source) mixed = true;
+  }
+  if (!best) return null;
+  const named = !mixed && best.source === 'garmin' ? ` ${GARMIN_SOURCE}` : !mixed && best.source === 'apple' ? ` ${APPLE_SOURCE}` : '';
+  return `Most in one day ${best.value} ${unit}${named}`;
 }
 
 export function appleDayValues(
@@ -291,6 +305,16 @@ function garminNumber(dailies: readonly GarminDaily[], pick: (daily: GarminDaily
   return garmin;
 }
 
+export function hrvSdnnSeries(
+  endDay: string,
+  span: number,
+  apple: readonly AppleDayValue[],
+): DailyActivityPoint[] {
+  return dailyActivitySeries(endDay, span, apple, new Map(), (day, value, source) => (
+    sourced('Heart rate variability SDNN', day, String(Math.round(value)), 'ms', source)
+  ));
+}
+
 export function stepsSeries(
   endDay: string,
   span: number,
@@ -300,7 +324,7 @@ export function stepsSeries(
   return dailyActivitySeries(endDay, span, apple, garminNumber(dailies, (daily) => daily.steps), (day, value, source) => {
     if (day === endDay && !(value > 0)) return NO_STEPS_YET_TODAY;
     return sourced('Steps', day, value.toLocaleString('en-GB'), 'steps', source);
-  });
+  }, 'higher');
 }
 
 export function distanceText(metres: number): string {

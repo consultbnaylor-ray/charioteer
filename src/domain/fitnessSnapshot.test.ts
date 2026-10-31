@@ -674,7 +674,7 @@ describe('fitness snapshot', () => {
         expect(table).toBe('garmin_activities');
         return {
           select(columns: string) {
-            expect(columns).toBe('activity_type, activity_name, started_at, duration_seconds');
+            expect(columns).toBe('activity_type, activity_name, started_at, duration_seconds, average_heart_rate_bpm, training_effect, anaerobic_effect');
             return {
               eq(column: string, value: string) {
                 expect(column).toBe('user_id');

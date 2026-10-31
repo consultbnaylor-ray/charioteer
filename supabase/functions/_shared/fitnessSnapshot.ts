@@ -650,13 +650,16 @@ export function classifiedWorkoutSamples(sessions: readonly ClassifiedSession[])
 }
 
 /** Columns already granted on garmin_activities. No new table and no extra fields. */
-export const GARMIN_ACTIVITY_SELECT = 'activity_type, activity_name, started_at, duration_seconds';
+export const GARMIN_ACTIVITY_SELECT = 'activity_type, activity_name, started_at, duration_seconds, average_heart_rate_bpm, training_effect, anaerobic_effect';
 
 export type GarminActivityInput = {
   activityType: unknown;
   activityName: string;
   startedAt: string;
   durationSeconds: number;
+  averageHeartRateBpm?: number | null;
+  trainingEffect?: number | null;
+  anaerobicEffect?: number | null;
 };
 
 type GarminActivityClient = {
@@ -694,11 +697,15 @@ export function garminActivityInputs(rows: unknown): GarminActivityInput[] {
       ? record.duration_seconds
       : Number(record.duration_seconds);
     if (!startedAt || !Number.isFinite(durationSeconds) || !(durationSeconds > 0)) return [];
+    const heart = typeof record.average_heart_rate_bpm === 'number' ? record.average_heart_rate_bpm : null;
+    const effect = typeof record.training_effect === 'number' ? record.training_effect : null;
     return [{
       activityType: record.activity_type,
       activityName: typeof record.activity_name === 'string' ? record.activity_name : '',
       startedAt,
       durationSeconds,
+      averageHeartRateBpm: heart,
+      trainingEffect: effect,
     }];
   });
 }

@@ -9,7 +9,9 @@ import {
   trainingScheduleFromRow,
   type PlanInput,
 } from '../_shared/healthPlan.ts';
+import { exerciseReadingLines } from '../_shared/exerciseAnalysis.ts';
 import { garminActivitiesForUser, samplesWithGarminActivities } from '../_shared/fitnessSnapshot.ts';
+import { londonDay } from '../_shared/healthInsights.ts';
 import { json, preflight } from '../_shared/http.ts';
 import { isBodyBuild, isBuilderPhase, isMealSlot, isNutritionGoal, isNutritionSex, parseWorkoutBuckets, type FoodItem, type FoodLog, type NutritionGoal } from '../_shared/nutrition.ts';
 import { buildChatCompletionBody, THUMOS_CHAT } from '../_shared/thumos.ts';
@@ -164,6 +166,18 @@ Deno.serve(async (req) => {
     schedule: scheduleRes.error ? null : trainingScheduleFromRow(scheduleRes.data),
     workoutBuckets: parseWorkoutBuckets(settings.workout_buckets),
     fitnessSnapshot: profileRes.data.consent_health === true ? undefined : null,
+    exerciseLines: shareHealth ? exerciseReadingLines({
+      today: londonDay(new Date()),
+      age: typeof settings.goal_age === 'number' ? settings.goal_age : null,
+      sessions: garminActivities.map((activity) => ({
+        name: activity.activityName || String(activity.activityType || 'Workout'),
+        startedAt: activity.startedAt,
+        durationMinutes: Math.max(1, Math.round(activity.durationSeconds / 60)),
+        averageHeartRate: activity.averageHeartRateBpm ?? null,
+        trainingEffect: activity.trainingEffect ?? null,
+        origin: 'garmin' as const,
+      })),
+    }) : [],
   };
 
   const local = draftHealthPlan(input);

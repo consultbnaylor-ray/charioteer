@@ -348,11 +348,33 @@ function batteryGuide(period: StatPeriod, kind: 'charged' | 'drained' | 'highest
   return advised(`${what} ${specific} ${limits}`);
 }
 
+/**
+ * Nunan, Sandercock and Brodie, 2010. Short-term SDNN in healthy adults.
+ * https://onlinelibrary.wiley.com/doi/10.1111/j.1540-8159.2010.02841.x
+ * The review is not split by sex. Sammito and Böckelmann, 2016, found 24-hour SDNN
+ * falls with age; a watch night is not that recording.
+ * https://pubmed.ncbi.nlm.nih.gov/26883166/
+ */
+export const HRV_SDNN_RANGE =
+  'A review of short-term SDNN in healthy adults found study averages from about 32 to 93 ms, with an overall mean near 50 ms (Nunan, Sandercock and Brodie, 2010). That review is not split by sex. 24-hour SDNN falls with age (Sammito and Böckelmann, 2016), and a watch night is not a 24-hour recording. Ranges vary widely. Your own trend matters more than one night and more than a published average. Not medical advice.';
+
+export const HRV_MEASURES_DIFFER =
+  'Apple Health HRV is SDNN. Garmin overnight HRV is RMSSD. They are different measures, so they are not averaged together.';
+
 function hrvGuide(period: StatPeriod, points: readonly GarminChartPoint[]): ChartGuide {
   const mean = averageOf(points.flatMap((point) => (point.empty || point.value == null ? [] : [point.value])));
-  const own = mean == null ? null : { value: mean, label: `Your average overnight HRV ${grouped(period)}: ${Math.round(mean)} ms` };
+  const own = mean == null ? null : { value: mean, label: `Your average Garmin overnight HRV (RMSSD) ${grouped(period)}: ${Math.round(mean)} ms` };
   return advised(
-    `Overnight HRV is Garmin's average, in milliseconds, of the variation between heartbeats during last night's sleep. It varies a lot between people and with age, so this is your own recent average, not a healthy range for everyone. There is no population healthy band. The line is your own average of the nights in ${grouped(period)} that have a number.`,
+    `Garmin overnight HRV is the average RMSSD, in milliseconds, from last night's sleep. ${HRV_MEASURES_DIFFER} ${HRV_SDNN_RANGE} The line on this card is your own RMSSD average for ${grouped(period)}, not that SDNN range.`,
+    { ownAverage: own },
+  );
+}
+
+export function sdnnGuide(period: StatPeriod, points: readonly { value: number; empty?: boolean }[]): ChartGuide {
+  const mean = averageOf(points.flatMap((point) => (point.empty || !(point.value > 0) ? [] : [point.value])));
+  const own = mean == null ? null : { value: mean, label: `Your average Apple Health SDNN ${grouped(period)}: ${Math.round(mean)} ms` };
+  return advised(
+    `Apple Health heart rate variability is SDNN, the spread of time between beats, in milliseconds. ${HRV_MEASURES_DIFFER} ${HRV_SDNN_RANGE}`,
     { ownAverage: own },
   );
 }
@@ -598,7 +620,7 @@ export function garminDetailCharts(input: GarminChartInput): GarminDetailChart[]
   const hrvPoints = seriesFrom(input.endDay, input.period, hrv, 'Overnight HRV', 'ms', countText, false);
   add({
     id: 'hrv',
-    title: 'Overnight HRV',
+    title: 'Heart rate variability (Garmin overnight RMSSD)',
     unit: 'ms',
     points: hrvPoints,
     includeZero: false,

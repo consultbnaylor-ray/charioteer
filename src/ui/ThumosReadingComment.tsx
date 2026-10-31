@@ -2,6 +2,7 @@ import { useState } from 'react';
 
 import { useRepository, useSnapshot } from '@/data';
 import { isoDay } from '@/domain/dates';
+import { exerciseReadingLines, hrvContextLines } from '@/domain/exerciseAnalysis';
 import { scheduleWeekMinutes } from '@/domain/fitnessSnapshot';
 import { compositionForAssessment, weightPointsFrom } from '@/domain/nutrition';
 import {
@@ -55,7 +56,7 @@ function earlierMeasure(
 /** On-phone Thumos note. It does not call the coach and does not store a new reading. */
 export function ThumosReadingComment({ analyse = false }: { analyse?: boolean }) {
   const snap = useSnapshot();
-  const { samples, readings } = useHealthSources();
+  const { samples, readings, workouts } = useHealthSources();
   const [period] = useStatPeriod();
   const profile = snap.profile;
   if (!profile) return null;
@@ -96,7 +97,30 @@ export function ThumosReadingComment({ analyse = false }: { analyse?: boolean })
     goalAge: snap.nutrition.goalAge,
     goalSex: snap.nutrition.goalSex,
   });
-  const sentences = view.sentences[0] === THUMOS_FAILED_LINE ? [THUMOS_EMPTY_LINE] : view.sentences;
+  const training = profile.consentHealth === true ? exerciseReadingLines({
+    today,
+    age: snap.nutrition.goalAge,
+    sessions: workouts.map((workout) => ({
+      name: workout.label || String(workout.activityType),
+      startedAt: workout.startedAt,
+      durationMinutes: workout.durationMinutes,
+      averageHeartRate: workout.averageHeartRate,
+      trainingEffect: workout.trainingEffect ?? null,
+      origin: workout.origin === 'garmin' || workout.origin === 'apple' ? workout.origin : null,
+    })),
+  }) : [];
+  const appleHrv = samples.filter((sample) => sample.kind === 'hrv_sdnn' && sample.value > 0)
+    .sort((left, right) => left.recordedOn.localeCompare(right.recordedOn))
+    .at(-1);
+  const garminHrv = [...readings.hrv].filter((row) => row.lastNightAvgMs != null)
+    .sort((left, right) => left.calendarDate.localeCompare(right.calendarDate))
+    .at(-1);
+  const hrvLines = profile.consentHealth === true ? hrvContextLines({
+    appleSdnn: appleHrv ? { day: appleHrv.recordedOn.slice(0, 10), ms: appleHrv.value } : null,
+    garminRmssd: garminHrv?.lastNightAvgMs != null ? { day: garminHrv.calendarDate, ms: garminHrv.lastNightAvgMs } : null,
+  }) : [];
+  const base = view.sentences[0] === THUMOS_FAILED_LINE ? [THUMOS_EMPTY_LINE] : view.sentences;
+  const sentences = [...base, ...training, ...hrvLines];
   return (
     <Card>
       <T variant="label">{THUMOS_READING_LABEL}</T>

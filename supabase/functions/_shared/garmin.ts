@@ -5,6 +5,8 @@
  * the Health API push shape; the portal still hides the full field list.
  */
 
+import { exerciseReadingLines } from './exerciseAnalysis.ts';
+
 export const GARMIN_AUTHORIZE_URL = 'https://connect.garmin.com/oauth2Confirm';
 export const GARMIN_TOKEN_URL = 'https://diauth.garmin.com/di-oauth2-service/oauth/token';
 export const GARMIN_USER_ID_URL = 'https://apis.garmin.com/wellness-api/rest/user/id';
@@ -905,7 +907,25 @@ export function garminCoachLines(input: {
   if (!garminAllowedForCoach(input)) return [];
   const shown = garminFigures(input.readings);
   const figures = [shown.heartRate, shown.sleep, ...shown.sleepStages, shown.effort, shown.anaerobic, ...shown.workouts].filter((item): item is GarminFigure => item != null);
-  return figures.slice(0, 12).map((item) => `Garmin ${item.name} ${item.value} ${item.unit}, ${item.period}`);
+  const lines = figures.slice(0, 12).map((item) => `Garmin ${item.name} ${item.value} ${item.unit}, ${item.period}`);
+  const latestHrv = [...input.readings.hrv]
+    .filter((row) => row.lastNightAvgMs != null)
+    .sort((left, right) => left.calendarDate.localeCompare(right.calendarDate))
+    .at(-1);
+  if (latestHrv?.lastNightAvgMs != null) {
+    lines.push(`Garmin overnight HRV (RMSSD) ${Math.round(latestHrv.lastNightAvgMs)} ms on ${latestHrv.calendarDate}. This is not Apple Health SDNN.`);
+  }
+  lines.push(...exerciseReadingLines({
+    sessions: input.readings.activities.map((activity) => ({
+      name: activity.activityName || activity.activityType || 'Workout',
+      startedAt: activity.startedAt,
+      durationMinutes: Math.max(1, Math.round(activity.durationSeconds / 60)),
+      averageHeartRate: activity.averageHeartRateBpm,
+      trainingEffect: activity.trainingEffect,
+      origin: 'garmin' as const,
+    })),
+  }));
+  return lines;
 }
 
 export function readingsFromRows(input: {
