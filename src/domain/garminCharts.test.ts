@@ -276,9 +276,11 @@ describe('garmin chart bands', () => {
     expect(byId.get('pulse_ox')?.guide.outside).toBe(OUTSIDE_RANGE_NOTE);
     expect(byId.get('hrv')?.guide.dailyTypical).toBeNull();
     expect(byId.get('hrv')?.guide.ownAverage?.value).toBe(50);
-    expect(byId.get('hrv')?.guide.about).toContain('your own recent average');
-    expect(byId.get('hrv')?.guide.about).toContain('not a healthy range for everyone');
-    expect(byId.get('hrv')?.guide.about).toContain('no population healthy band');
+    expect(byId.get('hrv')?.guide.about).toContain('RMSSD');
+    expect(byId.get('hrv')?.guide.about).toContain('SDNN');
+    expect(byId.get('hrv')?.guide.about).toContain('Nunan, Sandercock and Brodie, 2010');
+    expect(byId.get('hrv')?.guide.about).toContain('Not medical advice');
+    expect(byId.get('hrv')?.title).toContain('Garmin overnight RMSSD');
     expect(byId.get('hrv')?.guide.legend).toBe('');
     const longer = garminDetailCharts({
       endDay: end,
@@ -341,8 +343,10 @@ describe('garmin chart bands', () => {
     ];
     for (const guide of guides) {
       expect(guide.legend).toBe('');
-      expect(guide.about.match(/Not medical advice/gi) ?? []).toHaveLength(0);
       expect(guide.about).not.toContain(GENERAL_GUIDANCE);
+    }
+    for (const guide of guides.filter((guide) => guide !== byId.get('hrv')?.guide)) {
+      expect(guide.about.match(/Not medical advice/gi) ?? []).toHaveLength(0);
     }
     const activity = readFileSync('src/ui/DailyActivity.tsx', 'utf8');
     const careAt = activity.indexOf('<CareLine text={guide.care}');

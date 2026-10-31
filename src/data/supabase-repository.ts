@@ -1165,8 +1165,23 @@ export class SupabaseRepository implements Repository {
       note: input.note.trim(),
       gratitude: planned.body,
     });
-    if (error) throw asUserFacing(error, 'general');
-    await this.refresh();
+    if (error) {
+      // A void function answers 204. iOS reports that empty success as a lost connection
+      // after the row is already stored. Confirm the row before telling them it failed.
+      const stored = isTransientNetworkError(error) ? await this.checkInStored(input.id) : false;
+      if (!stored) throw asUserFacing(error, 'general');
+    }
+    try {
+      await this.refresh();
+    } catch (refreshError) {
+      if (!isTransientNetworkError(refreshError)) throw asUserFacing(refreshError, 'general');
+    }
+  }
+
+  /** True when this check-in id is already on the signed-in account. */
+  private async checkInStored(id: string): Promise<boolean> {
+    const { data, error } = await this.client.from('check_ins').select('id').eq('id', id).maybeSingle();
+    return !error && data != null;
   }
 
   async recordRelapse(note: string): Promise<void> {

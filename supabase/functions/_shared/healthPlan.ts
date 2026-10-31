@@ -91,6 +91,8 @@ export type PlanInput = {
    * Undefined computes it from health. Null withholds it, for example when health consent is off.
    */
   fitnessSnapshot?: string | null;
+  /** Plain exercise note from the person's own sessions. Empty when health consent is off. */
+  exerciseLines?: string[];
 };
 
 type Level = 'starting' | 'some' | 'active';
@@ -594,6 +596,8 @@ export type HealthPlanModelContext = {
   training: TrainingBaseline | null;
   /** One fitness sentence. Null when health consent is off or there is nothing to say. */
   fitnessSnapshot: string | null;
+  /** Sessions, intensity, and the usual week. Empty when health consent is off. */
+  exerciseLines: string[];
   /** Approximate weight range, or a prompt when height, sex, or age is missing. */
   weightRange: string | null;
   /** HRV, resting heart rate, VO2, sleep, and weight, each against the 30-day average. */
@@ -634,6 +638,7 @@ export function healthPlanModelContext(input: PlanInput, plan: HealthPlan): Heal
     proteinTarget: input.proteinTarget,
     training: planBaseline(input),
     fitnessSnapshot: input.fitnessSnapshot === undefined ? fitnessSnapshotFor(input) : input.fitnessSnapshot,
+    exerciseLines: input.exerciseLines ?? [],
     weightRange: weightRangeFor(input),
     changes: metricChanges(input),
     referenceBands: referenceBandsFor(input),

@@ -164,6 +164,7 @@ export default function HealthPlanScreen() {
         respiration={readings.respiration}
         pulseOx={readings.pulseOx}
         hrv={readings.hrv}
+        appleHrvSdnn={appleDayValues(snap.health, 'hrv_sdnn')}
         userMetrics={readings.userMetrics}
         age={snap.nutrition.goalAge}
         sex={snap.nutrition.goalSex}

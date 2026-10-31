@@ -131,6 +131,33 @@ describe('merged daily metrics', () => {
     expect(merged.find((row) => row.kind === 'steps')?.value).toBe(8000);
   });
 
+  it('uses the higher step total and a newer Garmin session heart rate when Apple has none that day', () => {
+    const merged = mergeHealthSamples(
+      [
+        sample({ kind: 'steps', value: 3799, recordedOn: '2026-10-31', unit: 'steps' }),
+        sample({ kind: 'session_heart_rate', value: 110, recordedOn: '2026-10-20', unit: 'bpm' }),
+        sample({ kind: 'walking_heart_rate', value: 96, recordedOn: '2026-10-20', unit: 'bpm' }),
+      ],
+      readings({
+        dailies: [
+          { calendarDate: '2026-10-31', restingHeartRateBpm: null, averageHeartRateBpm: null, moderateMinutes: null, vigorousMinutes: null, steps: 7880 },
+        ],
+        activities: [
+          activity({ summaryId: 'sat-run', startedAt: '2026-10-31T18:00:00.000Z', averageHeartRateBpm: 142 }),
+          activity({ summaryId: 'sat-walk', startedAt: '2026-10-31T12:00:00.000Z', activityType: 'WALKING', activityName: 'Walk', averageHeartRateBpm: 108 }),
+        ],
+      }),
+      [],
+    );
+    const steps = merged.filter((row) => row.kind === 'steps' && row.recordedOn === '2026-10-31');
+    expect(steps).toHaveLength(1);
+    expect(steps[0]?.value).toBe(7880);
+    expect(merged.find((row) => row.kind === 'session_heart_rate' && row.recordedOn === '2026-10-31')?.value).toBe(142);
+    expect(merged.find((row) => row.kind === 'session_heart_rate' && row.recordedOn === '2026-10-20')?.value).toBe(110);
+    expect(merged.find((row) => row.kind === 'walking_heart_rate' && row.recordedOn === '2026-10-31')?.value).toBe(108);
+    expect(merged.find((row) => row.kind === 'walking_heart_rate' && row.recordedOn === '2026-10-20')?.value).toBe(96);
+  });
+
   it('keeps Apple VO2 for a day and fills other days only from a stored Garmin VO2 max', () => {
     const merged = mergeHealthSamples(
       [sample({ kind: 'vo2_max', value: 42, recordedOn: '2026-10-21', unit: 'ml/kg/min' })],

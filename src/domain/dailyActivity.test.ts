@@ -49,7 +49,7 @@ describe('daily activity', () => {
     expect(exercise.find((point) => point.day === '2026-10-21')?.label).toBe('Exercise minutes, Wed 21 Oct: 40 min. Garmin. 20 moderate and 10 vigorous, vigorous counted twice.');
     expect(exercise.find((point) => point.day === '2026-10-20')?.label).toBe('No exercise minutes for Tue 20 Oct.');
     expect(activityDayName('2026-10-22')).toBe('Thu 22 Oct');
-    expect(mostInOneDay(exercise, 'min')).toBe('Most in one day 40 min');
+    expect(mostInOneDay(exercise, 'min')).toBe('Most in one day 40 min (Garmin)');
 
     const zeroApple = exerciseSeries(end, 7, [{ day: '2026-10-22', value: 0 }], dailies);
     expect(zeroApple.find((point) => point.day === '2026-10-22')).toMatchObject({ value: 25, source: 'garmin' });
@@ -160,6 +160,12 @@ describe('daily activity', () => {
     expect(steps[0]?.day).toBe('2026-10-16');
     expect(steps.at(-1)?.day).toBe('2026-10-22');
     expect(steps.find((point) => point.day === '2026-10-22')).toMatchObject({ value: 8000, source: 'apple' });
+    const fullerWatch = stepsSeries(end, 7, [{ day: '2026-10-22', value: 3799 }], [
+      { calendarDate: '2026-10-22', restingHeartRateBpm: null, averageHeartRateBpm: null, moderateMinutes: null, vigorousMinutes: null, steps: 7880 },
+    ]);
+    expect(fullerWatch.find((point) => point.day === '2026-10-22')).toMatchObject({ value: 7880, source: 'garmin' });
+    expect(fullerWatch.find((point) => point.day === '2026-10-22')?.label).toContain('(Garmin)');
+    expect(fullerWatch.find((point) => point.day === '2026-10-22')?.value).not.toBe(3799 + 7880);
     expect(steps.find((point) => point.day === '2026-10-22')?.label).toContain('(Apple Health)');
     expect(steps.find((point) => point.day === '2026-10-21')).toMatchObject({ value: 6400, source: 'garmin' });
     expect(steps.find((point) => point.day === '2026-10-21')?.label).toContain('(Garmin)');

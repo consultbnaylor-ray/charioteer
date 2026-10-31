@@ -68,6 +68,9 @@ export function mergeHealthSamples(
   const sleep = garminSleepByDay(readings.sleep);
   const minutes = garminWorkoutMinutesByDay(workouts);
   const vo2 = garminVo2ByDay(readings.userMetrics);
+  const steps = higherGarminSteps(samples, readings.dailies);
+  const sessionHeart = garminHeartSamples(readings.activities, samples, 'session_heart_rate', () => true);
+  const walkingHeart = garminHeartSamples(readings.activities, samples, 'walking_heart_rate', isWalkActivity);
   const appleVo2 = new Set(
     samples.filter((sample) => sample.kind === 'vo2_max' && sample.value > 0).map((sample) => dayKey(sample.recordedOn)),
   );
@@ -76,6 +79,7 @@ export function mergeHealthSamples(
     if (sample.kind === 'resting_heart_rate' && heart.has(day)) return false;
     if (sample.kind === 'sleep_hours' && sleep.has(day)) return false;
     if (sample.kind === 'workout_minutes' && minutes.has(day)) return false;
+    if (sample.kind === 'steps' && steps.drop.has(day)) return false;
     return true;
   });
   const added: HealthSample[] = [
@@ -83,6 +87,9 @@ export function mergeHealthSamples(
     ...[...sleep].map(([day, value]) => mergedSample('sleep_hours', value, day, 'h')),
     ...[...minutes].map(([day, value]) => mergedSample('workout_minutes', value, day, 'min')),
     ...[...vo2].flatMap(([day, value]) => (appleVo2.has(day) ? [] : [mergedSample('vo2_max', value, day, 'ml/kg/min')])),
+    ...steps.added,
+    ...sessionHeart,
+    ...walkingHeart,
   ];
   const classified = classifiedWorkoutSamples(workouts.map((workout) => ({
     activityType: workout.activityType,
@@ -269,6 +276,66 @@ function garminVo2ByDay(rows: readonly GarminUserMetric[]): Map<string, number> 
     days.set(row.calendarDate, Math.round(value * 10) / 10);
   }
   return days;
+}
+
+/** The higher daily total. Apple and Garmin steps are not added. */
+function higherGarminSteps(
+  samples: readonly HealthSample[],
+  dailies: readonly GarminDaily[],
+): { drop: Set<string>; added: HealthSample[] } {
+  const apple = new Map<string, number>();
+  for (const sample of samples) {
+    if (sample.kind !== 'steps' || !(sample.value > 0)) continue;
+    const day = dayKey(sample.recordedOn);
+    apple.set(day, (apple.get(day) ?? 0) + sample.value);
+  }
+  const garminSteps = new Map<string, number>();
+  for (const daily of dailies) {
+    if (daily.steps == null || !(daily.steps > 0)) continue;
+    const garmin = Math.round(daily.steps);
+    garminSteps.set(daily.calendarDate, Math.max(garminSteps.get(daily.calendarDate) ?? 0, garmin));
+  }
+  const drop = new Set<string>();
+  const added: HealthSample[] = [];
+  for (const [day, garmin] of garminSteps) {
+    const stored = apple.get(day) ?? 0;
+    if (garmin > stored) {
+      if (stored > 0) drop.add(day);
+      added.push(mergedSample('steps', garmin, day, 'steps'));
+    }
+  }
+  return { drop, added };
+}
+
+function isWalkActivity(activity: GarminActivity): boolean {
+  return `${activity.activityType} ${activity.activityName}`.toLowerCase().includes('walk');
+}
+
+/**
+ * A Garmin workout heart rate for a day Apple Health did not record.
+ * The same day keeps the Apple sample. A later Garmin day fills the gap.
+ */
+function garminHeartSamples(
+  activities: readonly GarminActivity[],
+  samples: readonly HealthSample[],
+  kind: 'session_heart_rate' | 'walking_heart_rate',
+  include: (activity: GarminActivity) => boolean,
+): HealthSample[] {
+  const appleDays = new Set(
+    samples.filter((sample) => sample.kind === kind && sample.value > 0).map((sample) => dayKey(sample.recordedOn)),
+  );
+  const latest = new Map<string, { bpm: number; startedAt: string }>();
+  for (const activity of activities) {
+    if (!include(activity) || activity.averageHeartRateBpm == null || !(activity.averageHeartRateBpm > 0)) continue;
+    const started = Date.parse(activity.startedAt);
+    if (!Number.isFinite(started)) continue;
+    const day = londonDay(activity.startedAt);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(day) || appleDays.has(day)) continue;
+    const current = latest.get(day);
+    if (current && current.startedAt >= activity.startedAt) continue;
+    latest.set(day, { bpm: Math.round(activity.averageHeartRateBpm), startedAt: activity.startedAt });
+  }
+  return [...latest].map(([day, row]) => mergedSample(kind, row.bpm, day, 'bpm'));
 }
 
 function garminHeartByDay(dailies: readonly GarminDaily[]): Map<string, number> {

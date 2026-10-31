@@ -226,7 +226,7 @@ describe('on-phone Thumos reading note', () => {
     expect(ui).toContain('THUMOS_READING_LABEL');
     expect(ui).not.toContain('THUMOS_READING_PROMPT');
     expect(domain).not.toContain(VISIBLE_SAFETY_LINE);
-    expect(readFileSync('src/app/(main)/weight-waist.tsx', 'utf8')).toContain('<ThumosReadingComment analyse />');
+    expect(readFileSync('src/app/(main)/weight-waist.tsx', 'utf8')).not.toContain('ThumosReadingComment');
     const plan = readFileSync('src/app/(main)/health-plan.tsx', 'utf8');
     expect(plan).toContain('<ThumosReadingComment analyse />');
     expect(plan.match(/<ThumosReadingComment/g)).toEqual(['<ThumosReadingComment']);
