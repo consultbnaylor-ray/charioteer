@@ -41,7 +41,7 @@ import { GoalLine } from '@/ui/GoalLine';
 import { statsToneColors } from '@/ui/statsPalette';
 import { useAppTheme } from '@/ui/theme';
 import { MoreInfoButton } from '@/ui/MoreInfo';
-import { Vo2EstimateNote, Vo2MeasureBanner } from '@/ui/Vo2EstimateNote';
+import { Vo2EstimateNote, Vo2MeasureBanner, Vo2MeasureCopy } from '@/ui/Vo2EstimateNote';
 import { healthTileIcon } from '@/domain/statIcons';
 import { IconLabel } from '@/ui/statIcons';
 import { textMentionsWeight, UpdateWeightLink } from '@/ui/UpdateWeightLink';
@@ -568,6 +568,7 @@ function StatDetail({
               <View style={{ gap: 12, paddingBottom: 8 }}>
                 <T variant="label">What this is</T>
                 <T>{tile.about}</T>
+                {tile.id === 'vo2_max' ? <Vo2MeasureCopy /> : null}
                 {tileMentionsWeight(tile) ? <UpdateWeightLink /> : null}
                 <TileValue tile={tile} />
                 {tile.empty ? null : <TileVisual visual={tile.visual} charted={tile.readings.length > 0} />}

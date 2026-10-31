@@ -48,7 +48,7 @@ import { useAppTheme } from '@/ui/theme';
 import { Vo2MaxChart } from '@/ui/DailyActivity';
 import { GarminTip } from '@/ui/GarminTip';
 import { LowRestingFitNote } from '@/ui/LowRestingFitNote';
-import { Vo2EstimateNote, Vo2MeasureBanner } from '@/ui/Vo2EstimateNote';
+import { Vo2EstimateNote, Vo2MeasureBanner, Vo2MeasureCopy } from '@/ui/Vo2EstimateNote';
 import { TowardTargetActivity } from '@/ui/TowardTargetActivity';
 import { MoreInfo as InfoDisclosure, MoreInfoButton } from '@/ui/MoreInfo';
 import { Button, Card, Choice, T, playSavedHaptic } from '@/ui/ui';
@@ -164,6 +164,7 @@ export function YourFitness({ onPlanOutdoor }: { onPlanOutdoor: () => void }) {
           />
           <InfoDisclosure about="VO2 max">
             <T>{VO2_WHAT}</T>
+            <Vo2MeasureCopy />
           </InfoDisclosure>
           <FitnessCompareBar compare={view.cardio.compare} tone={view.cardio.tone} />
         </View>
@@ -366,6 +367,7 @@ function CardioDetail({
     <View style={{ alignItems: 'center', gap: 8, alignSelf: 'stretch' }}>
       <T variant="label">What this is</T>
       <T>{VO2_WHAT}</T>
+      <Vo2MeasureCopy />
       {cardio ? (
         <MeasureRingView
           icon="gauge"

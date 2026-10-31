@@ -14,7 +14,7 @@ import { defaultNutritionSettings } from '@/domain/nutrition';
 import { defaultProfileSharing, parsePublicProfile, projectPublicProfile, type ProfileSharing, type ShareSource } from '@/domain/profileSharing';
 import { omitSharedLocation, scrubSharedText } from '@/domain/sharedPayload';
 import { LOW_RESTING_FIT_LINE, LOW_RESTING_FIT_MORE } from '@/domain/restingFitness';
-import { latestVo2Day, latestVo2Reading, VO2_APPLE_PART, VO2_ESTIMATE_NOTE, VO2_GARMIN_PART, VO2_MEASURE_LINE, VO2_PLAN_LABEL, VO2_STALE_NUDGE, vo2MeasuredLine, vo2Note, vo2NoteParts, vo2ReadingIsStale } from '@/domain/vo2Estimate';
+import { latestVo2Day, latestVo2Reading, VO2_APPLE_PART, VO2_DURATION_LINE, VO2_ESTIMATE_NOTE, VO2_GARMIN_PART, VO2_HEART_RATE_LINE, VO2_MEASURE_LINE, VO2_MEASURE_LINES, VO2_PLAN_LABEL, VO2_STALE_NUDGE, vo2MeasuredLine, vo2Note, vo2NoteParts, vo2ReadingIsStale } from '@/domain/vo2Estimate';
 import { messageAlert } from '../../supabase/functions/_shared/messagePush';
 import {
   DEV_FIXTURE_ROUTE_ID,
@@ -129,6 +129,20 @@ describe('VO2 estimate note', () => {
     expect(bannerAt).toBeLessThan(fitness.indexOf('{OUTSIDE_SAFETY_LINE}', bannerAt));
     expect(bannerAt).toBeLessThan(fitness.indexOf('{OUTSIDE_CRISIS_LINE}'));
     expect(VO2_MEASURE_LINE).toBe('To measure your VO2 max, track a walk, run, or cycle on your smartwatch. It is worked out over distance and therefore needs GPS.');
+    expect(VO2_HEART_RATE_LINE).toBe('Your heart rate needs to reach 70% of maximum for a sustained period, so a walk may not be enough if you are fit.');
+    expect(VO2_DURATION_LINE).toBe('The exercise needs to last at least 15 minutes.');
+    expect([...VO2_MEASURE_LINES]).toEqual([VO2_MEASURE_LINE, VO2_HEART_RATE_LINE, VO2_DURATION_LINE]);
+    const measure = readFileSync('src/ui/Vo2EstimateNote.tsx', 'utf8');
+    expect(measure).toContain('VO2_MEASURE_LINES.map');
+    expect(measure).toContain('<Vo2MeasureCopy />');
+    expect(measure).not.toContain('{VO2_MEASURE_LINE}');
+    const fitnessCopy = fitness.match(/<Vo2MeasureCopy \/>/g) ?? [];
+    expect(fitnessCopy.length).toBeGreaterThanOrEqual(2);
+    expect(board).toContain('<Vo2MeasureCopy />');
+    expect(board).toContain("tile.id === 'vo2_max' ? <Vo2MeasureCopy />");
+    for (const surface of [measure, fitness, board]) {
+      expect(surface).toContain('Vo2MeasureCopy');
+    }
     const movedChart = fitness.indexOf('<Vo2MaxChart');
     expect(movedChart).toBeGreaterThan(fitness.indexOf('<GarminTip />'));
     expect(movedChart).toBeLessThan(fitness.indexOf('{view.levelWords}'));

@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
+import { dedupeAdviceLines } from '@/domain/adviceDedupe';
 import type { HealthSample } from '@/data/types';
 import { APPLE_HEALTH_READ_TYPES } from '@/health/connection';
 import { emptyGarminReadings, type GarminActivity } from '@/domain/garminConnect';
@@ -20,8 +21,10 @@ import {
   THUMOS_LOCAL_LINE,
   THUMOS_OFF_LINE,
   THUMOS_ANALYSE_AGAIN,
+  THUMOS_BIA_PROTEIN_SHORT,
   THUMOS_NO_SLEEP,
   THUMOS_NO_TIME_ESTIMATE,
+  THUMOS_PROTEIN_SHORT,
   THUMOS_READING_LABEL,
   thumosDetailLines,
   THUMOS_READING_PROMPT,
@@ -434,5 +437,42 @@ describe('on-phone Thumos reading note', () => {
     });
     expect(named.strengthRecorded).toBe(true);
     expect(named.strengthMinutes7).toBe(35);
+  });
+
+  it('shows the protein-short line once, and keeps the body-fat wording when body fat is stored', () => {
+    const withFat = thumosReadingComment(sample({
+      storedDayCount: 7,
+      bodyFatPct: 22,
+      proteinMet: false,
+      proteinG: 40,
+      targetKg: null,
+    }));
+    const fatText = [...withFat.sentences, ...withFat.more].join('\n');
+    const fatProtein = fatText.split('\n').filter((line) => /protein logged today is short of the target/i.test(line));
+    expect(fatProtein).toEqual([THUMOS_BIA_PROTEIN_SHORT]);
+    expect(fatText).not.toContain(THUMOS_PROTEIN_SHORT);
+    expect(fatText).toContain(SCALE_BIA_LINE);
+    expect(fatText.indexOf(SCALE_BIA_LINE)).toBeLessThan(fatText.indexOf(THUMOS_BIA_PROTEIN_SHORT));
+
+    const withoutFat = thumosReadingComment(sample({
+      storedDayCount: 7,
+      bodyFatPct: null,
+      proteinMet: false,
+      proteinG: 40,
+      targetKg: null,
+    }));
+    const plainText = [...withoutFat.sentences, ...withoutFat.more].join('\n');
+    const plainProtein = plainText.split('\n').filter((line) => /protein logged today is short of the target/i.test(line));
+    expect(plainProtein).toEqual([THUMOS_PROTEIN_SHORT]);
+    expect(plainText).not.toContain('Do not skip drinks');
+
+    expect(dedupeAdviceLines([THUMOS_PROTEIN_SHORT, 'Sleep is fine.', THUMOS_BIA_PROTEIN_SHORT])).toEqual([
+      'Sleep is fine.',
+      THUMOS_BIA_PROTEIN_SHORT,
+    ]);
+    expect(dedupeAdviceLines([THUMOS_PROTEIN_SHORT, THUMOS_PROTEIN_SHORT])).toEqual([THUMOS_PROTEIN_SHORT]);
+    expect(readFileSync('supabase/functions/_shared/healthPlan.ts', 'utf8')).toContain('dedupeAdviceLines');
+    expect(readFileSync('supabase/functions/_shared/thumos.ts', 'utf8')).toContain('dedupeAdviceLines');
+    expect(readFileSync('supabase/functions/_shared/nutrition.ts', 'utf8')).toContain('dedupeAdviceLines(lines)');
   });
 });

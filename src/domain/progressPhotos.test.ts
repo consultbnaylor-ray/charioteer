@@ -142,6 +142,17 @@ describe('progress photos stay private', () => {
     expect(you).toContain('Photo saved');
     expect(you).toContain('Try again');
     expect(you).toContain('Use as Before');
+    expect(you).toContain("gap: 10, alignSelf: 'stretch', zIndex: 2");
+    expect(you).not.toContain("flexDirection: 'row', gap: 10, zIndex: 2");
+    const frame = profile.slice(profile.indexOf('export function SharedPhotoFrame'), profile.indexOf('export function SharedPhotoFrame') + 800);
+    expect(frame).toContain('<OwnerPhoto');
+    expect(frame).toContain('signWhenMissing');
+    expect(frame).toContain("width: '100%', height: '100%'");
+    expect(frame).not.toContain('StyleSheet.absoluteFill');
+    const own = readFileSync('src/ui/PublicProfileCard.tsx', 'utf8');
+    const beforeNow = own.slice(own.indexOf('function OwnSharedPhotos'), own.indexOf('function SharedCaptionEditor'));
+    expect(beforeNow).toContain("gap: 10, alignSelf: 'stretch'");
+    expect(beforeNow).not.toContain("flexDirection: 'row', gap: 10");
     expect(you).toContain('Use as Now');
     expect(you).toContain('Pinch to zoom.');
     expect(you).toContain('maximumZoomScale={4}');
