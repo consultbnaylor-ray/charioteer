@@ -9,7 +9,7 @@ import {
 import { describe, expect, it } from 'vitest';
 
 import { appleRootMatchesPin, verifyAppleJws } from './storeKitJws.ts';
-import { BUNDLE_ID, MONTHLY_PRODUCT_ID, readTransactionClaims } from './subscriptionRules.ts';
+import { BUNDLE_ID, YEARLY_PRODUCT_ID, readTransactionClaims } from './subscriptionRules.ts';
 
 const NOW = Date.parse('2026-10-31T12:00:00.000Z');
 
@@ -80,7 +80,7 @@ describe('StoreKit JWS', () => {
     const other = await fixtureChain();
     const payload = {
       bundleId: BUNDLE_ID,
-      productId: MONTHLY_PRODUCT_ID,
+      productId: YEARLY_PRODUCT_ID,
       originalTransactionId: '2000000000000099',
       expiresDate: NOW + 7 * 24 * 60 * 60 * 1000,
       environment: 'Xcode',

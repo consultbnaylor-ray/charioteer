@@ -72,7 +72,7 @@
   },
   "subscriptionGroups" : [
     {
-      "id" : "CHARIOTEER",
+      "id" : "22532571",
       "localizations" : [
 
       ],
@@ -85,7 +85,7 @@
           "codeOffers" : [
 
           ],
-          "displayPrice" : "3.99",
+          "displayPrice" : "39.99",
           "familyShareable" : false,
           "groupNumber" : 1,
           "internalID" : "6829273648",
@@ -98,14 +98,47 @@
           "localizations" : [
             {
               "description" : "Thumos coach, check-ins, health insights, and community.",
-              "displayName" : "Standard",
+              "displayName" : "Charioteer Standard",
               "locale" : "en_GB"
             }
           ],
           "productID" : "Sta",
-          "recurringSubscriptionPeriod" : "P1M",
+          "recurringSubscriptionPeriod" : "P1Y",
           "referenceName" : "Standard",
-          "subscriptionGroupID" : "CHARIOTEER",
+          "subscriptionGroupID" : "22532571",
+          "type" : "RecurringSubscription",
+          "winbackOffers" : [
+
+          ]
+        },
+        {
+          "adHocOffers" : [
+
+          ],
+          "codeOffers" : [
+
+          ],
+          "displayPrice" : "3.99",
+          "familyShareable" : false,
+          "groupNumber" : 2,
+          "internalID" : "CHARIOTEERMONTHLY",
+          "introductoryOffer" : {
+            "internalID" : "MONTHLYINTRO",
+            "numberOfPeriods" : 1,
+            "paymentMode" : "free",
+            "subscriptionPeriod" : "P1W"
+          },
+          "localizations" : [
+            {
+              "description" : "Thumos coach, check-ins, health insights, and community.",
+              "displayName" : "Monthly",
+              "locale" : "en_GB"
+            }
+          ],
+          "productID" : "charioteer.monthly",
+          "recurringSubscriptionPeriod" : "P1M",
+          "referenceName" : "Monthly",
+          "subscriptionGroupID" : "22532571",
           "type" : "RecurringSubscription",
           "winbackOffers" : [
 
