@@ -1002,6 +1002,8 @@ describe('health stat tiles', () => {
     expect(sleep.status).not.toContain('No readings');
     expect(tile(stale, 'resting_heart_rate').valueText).toBe('Latest 58 bpm · 25 Sep');
     expect(tile(stale, 'hrv_sdnn').valueText).toBe('Latest 41 ms · 20 Sep');
+    expect(tile(stale, 'hrv_sdnn').trend).toBe('Apple Health HRV comes from Apple Watch.');
+    expect(tile(stale, 'hrv_sdnn').trend).not.toContain('RMSSD');
     expect(tile(stale, 'weight_kg').valueText).toBe('Latest 76.4 kg · 25 Sep');
     expect(tile(stale, 'body_fat').valueText).toBe('Latest 19.5% · 25 Sep');
     expect(tile(stale, 'body_fat').period).toBe('older than the last 7 days');

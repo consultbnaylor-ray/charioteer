@@ -150,7 +150,7 @@ const HEALTH_STAT_GAPS: Record<string, { source: string; healthType: string | nu
     manual: false,
   },
   hrv_sdnn: {
-    source: 'Heart rate variability comes from Apple Watch overnight.',
+    source: 'Apple Health HRV comes from Apple Watch.',
     healthType: 'HKQuantityTypeIdentifierHeartRateVariabilitySDNN',
     manual: false,
   },
@@ -943,7 +943,10 @@ function hrvTile(item: CatalogItem, input: HealthStatBoardInput, grown: boolean)
   const all = series(input.samples, 'hrv_sdnn', input.today);
   const window = slicePeriod(all, input);
   if (window === 'none') return null;
-  if (window === 'gap') return olderReadingTile(item, input, all, (point) => `Latest ${Math.round(point.value)} ms`);
+  if (window === 'gap') {
+    const stale = olderReadingTile(item, input, all, (point) => `Latest ${Math.round(point.value)} ms`);
+    return { ...stale, trend: 'Apple Health HRV comes from Apple Watch.' };
+  }
   const period = periodOf(input);
   const ms = Math.round(averageOf(window.current));
   const about = 'Heart rate variability, in milliseconds (SDNN). Devices measure it in different ways.';

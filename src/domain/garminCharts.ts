@@ -361,6 +361,17 @@ export const HRV_SDNN_RANGE =
 export const HRV_MEASURES_DIFFER =
   'Apple Health HRV is SDNN. Garmin overnight HRV is RMSSD. They are different measures, so they are not averaged together.';
 
+/** One source line on the Garmin card. Not mixed with the Apple figure. */
+export const GARMIN_HRV_SOURCE = 'Garmin overnight HRV';
+
+export const GARMIN_HRV_EMPTY =
+  'Garmin records HRV overnight on supported watches; wear it to sleep and it will appear here.';
+
+/** One source line on the Apple card. Not mixed with the Garmin figure. */
+export const APPLE_HRV_SOURCE = 'Apple Health (SDNN)';
+
+export const APPLE_HRV_EMPTY = 'Apple Health HRV comes from Apple Watch.';
+
 function hrvGuide(period: StatPeriod, points: readonly GarminChartPoint[]): ChartGuide {
   const mean = averageOf(points.flatMap((point) => (point.empty || point.value == null ? [] : [point.value])));
   const own = mean == null ? null : { value: mean, label: `Your average Garmin overnight HRV (RMSSD) ${grouped(period)}: ${Math.round(mean)} ms` };

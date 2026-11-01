@@ -48,6 +48,10 @@ import {
   garminDetailCharts,
   garminSourceCaption,
   intensitySeries,
+  APPLE_HRV_EMPTY,
+  APPLE_HRV_SOURCE,
+  GARMIN_HRV_EMPTY,
+  GARMIN_HRV_SOURCE,
   sdnnGuide,
   moderateChartGuide,
   movementPeriod,
@@ -450,28 +454,42 @@ export function MovementCharts({
       {hrvChart ? (
         <ActivityBars
           framed={framed}
-          title={hrvChart.title}
+          title="Heart rate variability"
           points={garminBarPoints(hrvChart.points)}
           span={chartWindow.days}
           unit={hrvChart.unit}
           selected={selected}
-          garminNote={garminSourceCaption(hrvChart)}
+          garminNote={GARMIN_HRV_SOURCE}
           guide={hrvChart.guide}
           onSelect={setSelected}
         />
+      ) : dailies.length > 0 ? (
+        <View style={{ gap: 8 }}>
+          <T variant="label">Heart rate variability</T>
+          <T variant="muted">{GARMIN_HRV_SOURCE}</T>
+          <T>{GARMIN_HRV_EMPTY}</T>
+          <T variant="muted">Not medical advice. Not a diagnosis.</T>
+        </View>
       ) : null}
       {seriesHasValue(sdnnPoints) ? (
         <ActivityBars
           framed={framed}
-          title="Heart rate variability (Apple Health SDNN)"
+          title="Heart rate variability"
           points={sdnnPoints}
           span={chartWindow.days}
           unit="ms"
           selected={selected}
-          garminNote={chartSourceCaption(sdnnPoints)}
+          garminNote={APPLE_HRV_SOURCE}
           guide={sdnnGuide(chartWindow.period, sdnnPoints)}
           onSelect={setSelected}
         />
+      ) : appleHrvSdnn.length > 0 ? (
+        <View style={{ gap: 8 }}>
+          <T variant="label">Heart rate variability</T>
+          <T variant="muted">{APPLE_HRV_SOURCE}</T>
+          <T>{APPLE_HRV_EMPTY}</T>
+          <T variant="muted">Not medical advice. Not a diagnosis.</T>
+        </View>
       ) : null}
       {details.length > 0 ? (
         <Fold

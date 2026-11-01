@@ -305,6 +305,7 @@ function StatTile({
           </View>
         ) : null}
         <TileValue tile={tile} />
+        {tile.id === 'hrv_sdnn' ? <T variant="muted">Apple Health (SDNN)</T> : null}
         {tile.id === 'vo2_max' && measuredOn ? <T variant="muted">{vo2MeasuredLine(measuredOn, vo2Source)}</T> : null}
         {tile.id === 'vo2_max' ? <T>{VO2_CARD_LINE}</T> : null}
         {tile.empty ? null : <TileVisual visual={tile.visual} charted={charted} showCaptions={tile.visual.kind !== 'zone'} />}
@@ -315,7 +316,8 @@ function StatTile({
           </>
         ) : null}
         <LowRestingFitNote reading={restingTileShowsFitLine(tile) ? tile.valueText : null} />
-        {!tile.empty && tile.hasGuideline && tile.id !== 'vo2_max' ? (
+        {tile.id === 'hrv_sdnn' ? <T variant="muted">Not medical advice. Not a diagnosis.</T> : null}
+        {!tile.empty && tile.hasGuideline && tile.id !== 'vo2_max' && tile.id !== 'hrv_sdnn' ? (
           <T variant="muted">{tile.id === 'weekly_active_minutes' ? 'Not medical advice. Not a diagnosis.' : 'Not medical advice.'}</T>
         ) : null}
         {tile.empty || tile.visual.kind === 'ring' || tile.visual.kind === 'zone' ? null : (

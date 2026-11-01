@@ -39,10 +39,10 @@ describe('Garmin refresh permissions and window', () => {
   });
 
   it('asks only for the exports Garmin has granted, and every type when that list is unknown', () => {
-    expect(garminBackfillTypes(null)).toEqual(['dailies', 'activities', 'sleeps', 'userMetrics']);
-    expect(garminBackfillTypes('HEALTH_EXPORT')).toEqual(['dailies', 'sleeps', 'userMetrics']);
+    expect(garminBackfillTypes(null)).toEqual(['dailies', 'activities', 'sleeps', 'userMetrics', 'hrv']);
+    expect(garminBackfillTypes('HEALTH_EXPORT')).toEqual(['dailies', 'sleeps', 'userMetrics', 'hrv']);
     expect(garminBackfillTypes('ACTIVITY_EXPORT')).toEqual(['activities']);
-    expect(garminBackfillTypes('ACTIVITY_EXPORT HEALTH_EXPORT')).toEqual(['dailies', 'activities', 'sleeps', 'userMetrics']);
+    expect(garminBackfillTypes('ACTIVITY_EXPORT HEALTH_EXPORT')).toEqual(['dailies', 'activities', 'sleeps', 'userMetrics', 'hrv']);
     expect(garminBackfillTypes('')).toEqual([]);
   });
 

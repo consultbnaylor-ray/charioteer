@@ -33,7 +33,7 @@ export const GARMIN_DATA_TABLES = [
 ] as const;
 
 /** Summaries a manual refresh may ask Garmin to send again. Activity details and files stay out. */
-export const GARMIN_BACKFILL_TYPES = ['dailies', 'activities', 'sleeps', 'userMetrics'] as const;
+export const GARMIN_BACKFILL_TYPES = ['dailies', 'activities', 'sleeps', 'userMetrics', 'hrv'] as const;
 
 export const GARMIN_REFRESH_COOLDOWN_MS = 60_000;
 
