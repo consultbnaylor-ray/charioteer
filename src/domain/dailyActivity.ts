@@ -401,6 +401,47 @@ export function garminLatestLines(input: {
   return lines;
 }
 
+/**
+ * Day-of-month under a bar. A week uses a weekday letter instead.
+ * A longer chart shows every 5th column and the last day, so two-digit days fit.
+ * The label is only the number. A source name does not belong on the axis.
+ */
+export function activityAxisLabel(day: string, index: number, count: number): string {
+  if (count <= 7) return '';
+  const date = Number(day.slice(8, 10));
+  if (!Number.isInteger(date) || date < 1) return '';
+  if (index === count - 1 || index % 5 === 0) return String(date);
+  return '';
+}
+
+/** One source. The peak line's own "(Apple Health)" is dropped when the chart caption already names a source. */
+export function activityScaleLine(scale: string | null, note: string | null): string | null {
+  const left = scale?.trim() ?? '';
+  const right = note?.trim() ?? '';
+  if (!left) return right || null;
+  if (!right) return left;
+  const bare = left.replace(/\s*\([^)]*\)\s*$/, '').trim();
+  if (right.startsWith('(')) return `${bare} ${right}`;
+  const stem = bare.endsWith('.') ? bare : `${bare}.`;
+  return `${stem} ${right}`;
+}
+
+/** Highest real reading. An empty day, or a missing day stored as zero, does not set the scale. */
+export function chartScalePeak(
+  points: readonly { value: number; empty?: boolean; source?: ActivitySource | null }[],
+  marks: readonly number[] = [],
+): number {
+  const values = [1];
+  for (const point of points) {
+    if (point.empty || (point.source == null && !(point.value > 0))) continue;
+    if (point.value > 0) values.push(point.value);
+  }
+  for (const mark of marks) {
+    if (mark > 0) values.push(mark);
+  }
+  return Math.max(...values);
+}
+
 export function seriesUsesGarmin(points: readonly { source: ActivitySource | null }[]): boolean {
   return points.some((point) => point.source === 'garmin');
 }

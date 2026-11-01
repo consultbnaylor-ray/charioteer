@@ -24,6 +24,9 @@ import {
   restingSeries,
   stepsSeries,
   garminExerciseMinutes,
+  activityAxisLabel,
+  activityScaleLine,
+  chartScalePeak,
   mostInOneDay,
 } from './dailyActivity';
 
@@ -355,5 +358,29 @@ describe('daily activity', () => {
     expect(readFileSync('src/app/(main)/health.tsx', 'utf8')).toContain('<MovementCharts');
     expect(readFileSync('src/app/(main)/health-plan.tsx', 'utf8')).toContain('<MovementCharts');
     expect(readFileSync('src/app/(main)/stats.tsx', 'utf8')).toContain('<MovementCharts');
+    expect(charts).toContain('Not medical advice. Not a diagnosis.');
+    expect(charts).toContain('numberOfLines={1}');
+    expect(charts).toContain('activityAxisLabel');
+    expect(charts).not.toContain('barSourceName');
+    expect(charts).not.toContain('goodZoneBand');
+  });
+
+  it('labels every fifth day, ignores empty days on the scale, and names a source once', () => {
+    const days = Array.from({ length: 30 }, (_, index) => {
+      const date = new Date(Date.UTC(2026, 9, 3 + index));
+      return date.toISOString().slice(0, 10);
+    });
+    const labels = days.map((day, index) => activityAxisLabel(day, index, days.length));
+    expect(labels.filter(Boolean)).toEqual(['3', '8', '13', '18', '23', '28', '1']);
+    expect(labels.join('')).not.toMatch(/Garmin|Apple|—|-/);
+    expect(activityAxisLabel('2026-10-22', 3, 7)).toBe('');
+    expect(chartScalePeak([
+      { value: 0, source: null },
+      { value: 9000, empty: true, source: 'garmin' },
+      { value: 4200, source: 'apple' },
+    ], [8000])).toBe(8000);
+    expect(activityScaleLine('Most in one day 68 bpm (Apple Health)', '(Apple Health and Garmin)')).toBe('Most in one day 68 bpm (Apple Health and Garmin)');
+    expect(activityScaleLine('Most in one day 40 min (Garmin)', 'Garmin. Plain minutes, not doubled.')).toBe('Most in one day 40 min. Garmin. Plain minutes, not doubled.');
+    expect(activityScaleLine('Most in one day 4.2 km', '(Garmin)')).toBe('Most in one day 4.2 km (Garmin)');
   });
 });

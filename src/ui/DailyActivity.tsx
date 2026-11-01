@@ -20,6 +20,9 @@ import {
   calorieSeries,
   chartSourceCaption,
   distanceSeries,
+  activityAxisLabel,
+  activityScaleLine,
+  chartScalePeak,
   distanceText,
   exerciseChartCaption,
   exerciseSeries,
@@ -64,7 +67,7 @@ import type { WorkoutChartSpan } from '@/domain/workoutDay';
 import { useStatPeriod } from '@/health/useStatPeriod';
 import { openAppSettings } from '@/health/link';
 import { MoreInfo } from '@/ui/MoreInfo';
-import { goodZoneBand, statsToneColors } from '@/ui/statsPalette';
+import { statsToneColors } from '@/ui/statsPalette';
 import { StatPeriodToggle } from '@/ui/StatPeriodToggle';
 import { useAppTheme } from '@/ui/theme';
 import { activityTitleIcon } from '@/domain/statIcons';
@@ -158,7 +161,6 @@ export function DailyActivityCharts({
         span={span}
         unit="min"
         selected={selected}
-        nameSource
         garminNote={exerciseChartCaption(exercise)}
         guide={consent ? exerciseChartGuide(period) : null}
         onSelect={setSelected}
@@ -598,8 +600,7 @@ function StressActions() {
 }
 
 function readingLine(scale: string | null, source: string | null): string | null {
-  const line = [scale, source].filter((part): part is string => Boolean(part)).join(' ');
-  return line || null;
+  return activityScaleLine(scale, source);
 }
 
 /** The first short sentence, when a chart has no verdict of its own. */
@@ -619,17 +620,11 @@ function mostDistance(points: readonly { value: number }[]): string | null {
 }
 
 function chartPeak(points: readonly DailyActivityPoint[], guide: ChartGuide | null | undefined): number {
-  const marks = [1, ...points.map((point) => (point.empty ? 0 : point.value))];
+  const marks: number[] = [];
   if (guide?.dailyTypical) marks.push(guide.dailyTypical.high);
   if (guide?.target) marks.push(guide.target.value);
   if (guide?.ownAverage) marks.push(guide.ownAverage.value);
-  return Math.max(...marks);
-}
-
-function barSourceName(point: DailyActivityPoint): string {
-  if (point.source === 'apple') return 'Apple';
-  if (point.source === 'garmin') return 'Garmin';
-  return '—';
+  return chartScalePeak(points, marks);
 }
 
 function MinuteTypeChart({
@@ -676,7 +671,6 @@ function MinuteTypeChart({
       span={span}
       unit="min"
       selected={selected}
-      nameSource
       garminNote={MINUTE_TYPE_CAPTION}
       guide={guide}
       onSelect={onSelect}
@@ -695,7 +689,6 @@ function ActivityBars({
   format,
   guide = null,
   framed = true,
-  nameSource = false,
   onSelect,
 }: {
   title: string;
@@ -709,8 +702,6 @@ function ActivityBars({
   guide?: ChartGuide | null;
   /** False inside a card that already has the mint edge. */
   framed?: boolean;
-  /** Apple, Garmin, or a dash under each bar. */
-  nameSource?: boolean;
   onSelect: (day: string) => void;
 }) {
   const theme = useAppTheme();
@@ -722,16 +713,18 @@ function ActivityBars({
   const own = guide?.ownAverage?.value ?? null;
   const explanation = [...new Set([guide?.legend, guide?.about].map((line) => line?.trim()).filter((line): line is string => Boolean(line)))];
 
-  function markStyle(value: number, ink: string) {
+  function guideLine(value: number) {
     return {
       position: 'absolute' as const,
       left: 0,
       right: 0,
-      bottom: (value / most) * BAR_HEIGHT,
+      bottom: (Math.min(value, most) / most) * BAR_HEIGHT,
       height: 1,
-      backgroundColor: ink,
+      backgroundColor: theme.colors.muted,
     };
   }
+  const bandTop = band ? Math.min(band.high, most) : 0;
+  const bandBottom = band ? Math.min(band.low, bandTop) : 0;
 
   const body = (
     <>
@@ -755,66 +748,75 @@ function ActivityBars({
           {title === 'Average stress' ? <StressActions /> : null}
         </MoreInfo>
       ) : null}
-      <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: span > 14 ? 1 : 4, minHeight: BAR_HEIGHT + (nameSource ? 50 : 36) }}>
-        {points.map((point) => {
-          const chosen = point.day === selected;
-          const showValue = span <= 7 && !point.empty && (point.value > 0 || point.source != null);
-          return (
-            <Pressable
-              key={point.day}
-              accessibilityRole="button"
-              accessibilityLabel={`${point.label}. Select this day.`}
-              accessibilityState={{ selected: chosen }}
-              onPress={() => onSelect(point.day)}
-              style={{ flex: 1, minHeight: 44, alignItems: 'center', justifyContent: 'flex-end' }}
-            >
-              {point.empty && span <= 10 ? (
-                <T style={{ fontSize: 10, lineHeight: 12, textAlign: 'center', color: theme.colors.muted }}>No data</T>
-              ) : null}
-              {showValue ? (
-                <T style={{ fontSize: 10, lineHeight: 12, textAlign: 'center' }}>{format ? format(point) : `${point.value} ${unit}`}</T>
-              ) : null}
-              <View
-                style={{
-                  height: BAR_HEIGHT,
-                  alignSelf: 'stretch',
-                  justifyContent: 'flex-end',
-                  borderWidth: chosen ? 1 : 0,
-                  borderColor: theme.colors.ink,
-                  backgroundColor: chosen ? theme.colors.emphasisSoft : 'transparent',
-                }}
-              >
-                {band ? (
+      <View style={{ alignSelf: 'stretch', paddingHorizontal: 2, gap: 2 }}>
+        <View style={{ height: BAR_HEIGHT, position: 'relative' }}>
+          {band && bandTop > bandBottom ? (
+            <View
+              pointerEvents="none"
+              style={{
+                position: 'absolute',
+                left: 0,
+                right: 0,
+                bottom: (bandBottom / most) * BAR_HEIGHT,
+                height: Math.max(2, ((bandTop - bandBottom) / most) * BAR_HEIGHT),
+                backgroundColor: theme.scheme === 'dark' ? 'rgba(255,255,255,0.14)' : 'rgba(0,0,0,0.08)',
+              }}
+            />
+          ) : null}
+          {own != null ? <View pointerEvents="none" style={guideLine(own)} /> : null}
+          {target != null ? <View pointerEvents="none" style={guideLine(target)} /> : null}
+          <View style={{ flexDirection: 'row', alignItems: 'flex-end', height: BAR_HEIGHT, gap: span > 14 ? 1 : 4 }}>
+            {points.map((point) => {
+              const chosen = point.day === selected;
+              const missing = point.empty || (point.value === 0 && point.source == null);
+              const showValue = span <= 7 && !missing && (point.value > 0 || point.source != null);
+              return (
+                <Pressable
+                  key={point.day}
+                  accessibilityRole="button"
+                  accessibilityLabel={`${point.label}. Select this day.`}
+                  accessibilityState={{ selected: chosen }}
+                  onPress={() => onSelect(point.day)}
+                  style={{ flex: 1, height: BAR_HEIGHT, alignItems: 'center', justifyContent: 'flex-end' }}
+                >
+                  {showValue ? (
+                    <T numberOfLines={1} style={{ fontSize: 10, lineHeight: 12, textAlign: 'center' }}>{format ? format(point) : `${point.value} ${unit}`}</T>
+                  ) : null}
                   <View
                     style={{
-                      position: 'absolute',
-                      left: 0,
-                      right: 0,
-                      bottom: (band.low / most) * BAR_HEIGHT,
-                      height: Math.max(2, ((band.high - band.low) / most) * BAR_HEIGHT),
-                      backgroundColor: goodZoneBand(theme.scheme),
+                      height: showValue ? undefined : BAR_HEIGHT,
+                      flexGrow: showValue ? 1 : 0,
+                      alignSelf: 'stretch',
+                      justifyContent: 'flex-end',
+                      marginHorizontal: 1,
+                      borderWidth: chosen ? 1 : 0,
+                      borderColor: theme.colors.ink,
+                      backgroundColor: chosen ? theme.colors.emphasisSoft : 'transparent',
                     }}
-                  />
+                  >
+                    {missing ? null : point.value === 0 ? (
+                      <View style={{ height: 2, backgroundColor: theme.colors.ink }} />
+                    ) : (
+                      <View style={{ height: Math.max(2, (point.value / most) * BAR_HEIGHT), backgroundColor: theme.colors.ink }} />
+                    )}
+                  </View>
+                </Pressable>
+              );
+            })}
+          </View>
+        </View>
+        <View style={{ flexDirection: 'row', height: 14, overflow: 'visible' }}>
+          {points.map((point, index) => {
+            const label = span <= 7 ? weekdayShort(point.day).slice(0, 1) : activityAxisLabel(point.day, index, points.length);
+            return (
+              <View key={point.day} style={{ flex: 1, overflow: 'visible', alignItems: 'center' }}>
+                {label ? (
+                  <T numberOfLines={1} style={{ width: 22, fontSize: 9, lineHeight: 12, textAlign: 'center', color: theme.colors.muted }}>{label}</T>
                 ) : null}
-                {point.empty || (point.value === 0 && point.source == null) ? (
-                  <View style={{ height: 2, backgroundColor: theme.colors.line, opacity: point.empty ? 0.45 : 1 }} />
-                ) : point.value === 0 ? (
-                  <View style={{ height: 2, backgroundColor: theme.colors.ink }} />
-                ) : (
-                  <View style={{ height: Math.max(2, (point.value / most) * BAR_HEIGHT), backgroundColor: theme.colors.ink }} />
-                )}
-                {own != null ? <View style={markStyle(own, theme.colors.muted)} /> : null}
-                {target != null ? <View style={markStyle(target, theme.colors.ink)} /> : null}
               </View>
-              <T style={{ fontSize: 10, lineHeight: 12, color: theme.colors.muted }}>
-                {span <= 7 ? weekdayShort(point.day).slice(0, 1) : span <= 31 ? String(Number(point.day.slice(8, 10))) : ''}
-              </T>
-              {nameSource ? (
-                <T style={{ fontSize: 10, lineHeight: 12, color: theme.colors.muted }}>{barSourceName(point)}</T>
-              ) : null}
-            </Pressable>
-          );
-        })}
+            );
+          })}
+        </View>
       </View>
     </>
   );

@@ -219,5 +219,26 @@ describe('Shared Photos folder', () => {
     expect(save).not.toMatch(/Album\.(create|get)|getAssets|requestPermissionsAsync\(false\)|granularPermissions/);
     const screens = readFileSync('src/app/_layout.tsx', 'utf8');
     expect(screens).not.toMatch(/expo-media-library|requestAddOnlyPhotoSave/);
+    expect(save).toContain('downloadAsync');
+    expect(save).toContain('expo-file-system/legacy');
+  });
+
+  it('signs a shared photo only after the share feed allows it, and does not leave an empty box', () => {
+    const signer = readFileSync('supabase/functions/buddy-photo-url/index.ts', 'utf8');
+    expect(signer.indexOf("rpc('buddy_photo_feed')")).toBeLessThan(signer.indexOf('createSignedUrl'));
+    expect(signer).toContain("path !== `${ownerId}/${id}.jpg`");
+    expect(signer).toContain('published === false');
+    expect(readFileSync('supabase/config.toml', 'utf8')).toContain('[functions.buddy-photo-url]\nverify_jwt = true');
+    const list = readFileSync('src/data/supabase-repository.ts', 'utf8');
+    const feedAt = list.indexOf("rpc('buddy_photo_feed')");
+    const signAt = list.indexOf("invoke('buddy-photo-url'");
+    expect(feedAt).toBeGreaterThan(-1);
+    expect(signAt).toBeGreaterThan(feedAt);
+    expect(list.slice(feedAt, signAt + 400)).not.toContain('createSignedUrl');
+    const screen = readFileSync('src/ui/SharedPhotos.tsx', 'utf8');
+    expect(screen).toContain('Photo unavailable.');
+    expect(screen).toContain('onError');
+    expect(screen).not.toContain('#143024');
+    expect(readFileSync('supabase/migrations/20261025120000_buddy_photos.sql', 'utf8')).toContain('public = false');
   });
 });

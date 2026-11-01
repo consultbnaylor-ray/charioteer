@@ -3777,18 +3777,18 @@ export class SupabaseRepository implements Repository {
     }
     const rows = Array.isArray(data) ? data as Record<string, unknown>[] : [];
     const names = new Map(this.snapshot.directory.map((card) => [card.id, card.displayName]));
+    const signable = rows.flatMap((row) => {
+      const id = String(row.id ?? '');
+      return row.published !== false && id ? [id] : [];
+    });
+    const signedById = await this.signBuddyPhotos(signable);
     const photos: SharedPhotoCard[] = [];
     for (const row of rows) {
       const id = String(row.id ?? '');
-      const path = typeof row.storagePath === 'string' ? row.storagePath : '';
       const mine = row.mine === true;
       const recipientIds = Array.isArray(row.recipients) ? row.recipients.map((value) => String(value)) : [];
       const ownerId = String(row.ownerId ?? '');
-      let imageUrl: string | null = null;
-      if (path && !path.includes('..') && row.published !== false) {
-        const signed = await this.client.storage.from(BUDDY_PHOTO_BUCKET).createSignedUrl(path, BUDDY_PHOTO_SIGNED_SECONDS);
-        imageUrl = signed.data?.signedUrl ?? null;
-      }
+      const imageUrl = row.published === false ? null : signedById.get(id) ?? null;
       photos.push({
         id,
         mine,
@@ -3864,10 +3864,29 @@ export class SupabaseRepository implements Repository {
       throw asUserFacing(error, 'general');
     }
   }
+
+  /**
+   * A short link for a photo this person sent or was sent.
+   * The function checks the share row. The phone does not sign the sender's file itself.
+   */
+  private async signBuddyPhotos(ids: string[]): Promise<Map<string, string>> {
+    const urls = new Map<string, string>();
+    const unique = [...new Set(ids.filter((id) => /^[0-9a-f-]{36}$/i.test(id)))];
+    for (let offset = 0; offset < unique.length; offset += 40) {
+      const invoked = await this.client.functions.invoke('buddy-photo-url', { body: { ids: unique.slice(offset, offset + 40) } });
+      const payload = invoked.data as { ok?: boolean; photos?: { id?: unknown; signed_url?: unknown }[] } | null;
+      if (invoked.error || !payload || payload.ok === false || !Array.isArray(payload.photos)) continue;
+      for (const photo of payload.photos) {
+        if (typeof photo?.id === 'string' && typeof photo.signed_url === 'string' && photo.signed_url.startsWith('https://')) {
+          urls.set(photo.id, photo.signed_url);
+        }
+      }
+    }
+    return urls;
+  }
 }
 
 const BUDDY_PHOTO_BUCKET = 'buddy-photos';
-const BUDDY_PHOTO_SIGNED_SECONDS = 900;
 const SHARED_PHOTOS_TABLE = 'Shared photos need the photo table. It has not been applied.';
 
 function buddyPhotoUnavailable(message: string): boolean {
