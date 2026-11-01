@@ -7,22 +7,34 @@ import { useRepository, useSnapshot } from '@/data';
 import { shownError } from '@/domain/errors';
 import { PRIVACY_POLICY_URL } from '@/domain/privacyPolicy';
 import {
+  MONTHLY_DISPLAY_NAME,
   MONTHLY_PRODUCT_ID,
   SUBSCRIPTION_BENEFITS,
+  SUBSCRIPTION_PRODUCT_IDS,
   TERMS_URL,
+  YEARLY_DISPLAY_NAME,
+  YEARLY_PRODUCT_ID,
+  defaultPlanId,
   entitlementActive,
+  isSubscriptionProduct,
+  orderedPlanIds,
   paywallEnabled,
-  priceLine,
+  planOfferLine,
   purchaseOutcome,
   renewalDisclosure,
   storeKitJwsFromPurchase,
   trialButtonLabel,
+  yearlySavingLabel,
 } from '@/domain/subscription';
 import { rememberEntitlement } from '@/ui/useEntitlement';
+import { stroke, useAppTheme } from '@/ui/theme';
 import { Button, Card, ErrorNote, Field, Screen, T } from '@/ui/ui';
 
-type StoreProduct = {
+type StorePlan = {
+  id: string;
   displayPrice: string;
+  amount: number | null;
+  currency: string | null;
   periodUnit: string | null;
   paymentMode: string | null;
 };
@@ -38,28 +50,43 @@ const RESTORE_EMPTY = 'No subscription was found for this Apple ID.';
 const ALREADY_OWNED = 'This Apple ID already has the subscription. Use Restore Purchases.';
 const NOT_ACTIVE = 'This subscription is not active.';
 
-function readProduct(value: unknown): StoreProduct | null {
+function readPlan(value: unknown): StorePlan | null {
   if (!value || typeof value !== 'object') return null;
   const row = value as {
     id?: unknown;
     displayPrice?: unknown;
+    price?: unknown;
+    currency?: unknown;
     subscriptionPeriodUnitIOS?: unknown;
     introductoryPricePaymentModeIOS?: unknown;
   };
-  if (row.id !== MONTHLY_PRODUCT_ID || typeof row.displayPrice !== 'string' || !row.displayPrice.trim()) return null;
+  if (typeof row.id !== 'string' || !isSubscriptionProduct(row.id)) return null;
+  if (typeof row.displayPrice !== 'string' || !row.displayPrice.trim()) return null;
+  const amount = typeof row.price === 'number' && Number.isFinite(row.price) ? row.price : null;
   return {
+    id: row.id,
     displayPrice: row.displayPrice.trim(),
+    amount,
+    currency: typeof row.currency === 'string' ? row.currency : null,
     periodUnit: typeof row.subscriptionPeriodUnitIOS === 'string' ? row.subscriptionPeriodUnitIOS : null,
     paymentMode: typeof row.introductoryPricePaymentModeIOS === 'string' ? row.introductoryPricePaymentModeIOS : null,
   };
+}
+
+function planName(id: string): string {
+  if (id === YEARLY_PRODUCT_ID) return YEARLY_DISPLAY_NAME;
+  if (id === MONTHLY_PRODUCT_ID) return MONTHLY_DISPLAY_NAME;
+  return 'Subscription';
 }
 
 export default function PaywallScreen() {
   const repo = useRepository();
   const snap = useSnapshot();
   const router = useRouter();
+  const theme = useAppTheme();
   const [phase, setPhase] = useState<Phase>(Platform.OS === 'ios' && paywallEnabled() ? 'loading' : 'unavailable');
-  const [product, setProduct] = useState<StoreProduct | null>(null);
+  const [plans, setPlans] = useState<StorePlan[]>([]);
+  const [selectedId, setSelectedId] = useState<string | null>(YEARLY_PRODUCT_ID);
   const [note, setNote] = useState<string | null>(Platform.OS === 'ios' ? null : IOS_ONLY);
   const [error, setError] = useState<string | null>(null);
   const [confirm, setConfirm] = useState('');
@@ -112,12 +139,18 @@ export default function PaywallScreen() {
         });
         removeUpdate = () => updated.remove();
         removeError = () => failed.remove();
-        const listed = await iap.fetchProducts({ skus: [MONTHLY_PRODUCT_ID], type: 'subs' });
+        const listed = await iap.fetchProducts({ skus: [...SUBSCRIPTION_PRODUCT_IDS], type: 'subs' });
         if (stopped) return;
-        const match = (listed ?? []).map(readProduct).find((item) => item !== null) ?? null;
-        setProduct(match);
-        setPhase(match ? 'ready' : 'unavailable');
-        if (!match) setNote(UNAVAILABLE);
+        const byId = new Map<string, StorePlan>();
+        for (const item of listed ?? []) {
+          const plan = readPlan(item);
+          if (plan) byId.set(plan.id, plan);
+        }
+        const loaded = orderedPlanIds([...byId.keys()]).map((id) => byId.get(id)).filter((plan): plan is StorePlan => plan != null);
+        setPlans(loaded);
+        setSelectedId(defaultPlanId(loaded.map((plan) => plan.id)));
+        setPhase(loaded.length ? 'ready' : 'unavailable');
+        if (!loaded.length) setNote(UNAVAILABLE);
       } catch {
         if (!stopped) {
           setPhase('unavailable');
@@ -133,8 +166,19 @@ export default function PaywallScreen() {
     };
   }, [repo, router, snap.session?.userId]);
 
+  const selected = plans.find((plan) => plan.id === selectedId) ?? null;
+  const yearly = plans.find((plan) => plan.id === YEARLY_PRODUCT_ID) ?? null;
+  const monthly = plans.find((plan) => plan.id === MONTHLY_PRODUCT_ID) ?? null;
+  const saving = yearly && monthly
+    ? yearlySavingLabel({
+      yearlyAmount: yearly.amount,
+      monthlyAmount: monthly.amount,
+      currency: yearly.currency ?? monthly.currency,
+    })
+    : null;
+
   async function startTrial() {
-    if (!product || busy.current || Platform.OS !== 'ios') return;
+    if (!selected || busy.current || Platform.OS !== 'ios') return;
     busy.current = true;
     setPhase('purchasing');
     setNote(null);
@@ -142,7 +186,7 @@ export default function PaywallScreen() {
     try {
       const iap = await import('expo-iap');
       await iap.requestPurchase({
-        request: { apple: { sku: MONTHLY_PRODUCT_ID } },
+        request: { apple: { sku: selected.id } },
         type: 'subs',
       });
     } catch (err) {
@@ -166,10 +210,10 @@ export default function PaywallScreen() {
       await iap.initConnection();
       await iap.restorePurchases();
       const purchases = await iap.getAvailablePurchases({ onlyIncludeActiveItemsIOS: true });
-      const match = purchases.find((purchase) => purchase.productId === MONTHLY_PRODUCT_ID);
+      const match = purchases.find((purchase) => isSubscriptionProduct(purchase.productId));
       const picked = match ? storeKitJwsFromPurchase(match) : { kind: 'ignore' as const };
       if (picked.kind !== 'jws') {
-        setPhase(product ? 'ready' : 'unavailable');
+        setPhase(plans.length ? 'ready' : 'unavailable');
         setNote(RESTORE_EMPTY);
         return;
       }
@@ -182,29 +226,47 @@ export default function PaywallScreen() {
       }
       router.replace('/home');
     } catch (err) {
-      setPhase(product ? 'ready' : 'unavailable');
+      setPhase(plans.length ? 'ready' : 'unavailable');
       setError(shownError(err, FAILED));
     } finally {
       busy.current = false;
     }
   }
 
-  const freeTrial = product?.paymentMode === 'free-trial';
-  const price = product ? priceLine(product.displayPrice, product.periodUnit) : '';
+  const freeTrial = selected?.paymentMode === 'free-trial';
 
   return (
-    <Screen eyebrow="Subscription" title="Charioteer" intro="A monthly subscription keeps these available.">
+    <Screen eyebrow="Subscription" title="Charioteer" intro="A subscription keeps these available.">
       <Card>
         {SUBSCRIPTION_BENEFITS.map((benefit) => <T key={benefit}>{benefit}</T>)}
         {phase === 'loading' ? <T variant="muted">Loading the subscription.</T> : null}
-        {price ? <T>{price}</T> : null}
-        {product ? <T variant="muted">{renewalDisclosure(product.displayPrice, freeTrial)}</T> : null}
+        <View style={{ gap: 10, alignSelf: 'stretch' }}>
+          {plans.map((plan) => {
+            const chosen = plan.id === selected?.id;
+            const trial = plan.paymentMode === 'free-trial';
+            return (
+              <Card
+                key={plan.id}
+                featured={chosen}
+                accessibilityLabel={planName(plan.id)}
+                onPress={() => setSelectedId(plan.id)}
+                style={{ alignSelf: 'stretch', borderWidth: chosen ? stroke.featured : stroke.card, borderColor: chosen ? theme.colors.accent : theme.colors.line }}
+              >
+                <T variant="label">{plan.id === YEARLY_PRODUCT_ID ? 'Best value' : 'Monthly'}</T>
+                <T style={{ fontFamily: theme.font.bodyStrong }}>{planName(plan.id)}</T>
+                <T>{planOfferLine(plan.displayPrice, plan.periodUnit, trial)}</T>
+                {plan.id === YEARLY_PRODUCT_ID && saving ? <T variant="muted">{saving}</T> : null}
+              </Card>
+            );
+          })}
+        </View>
+        {selected ? <T variant="muted">{renewalDisclosure(selected.displayPrice, selected.periodUnit, freeTrial)}</T> : null}
         {note ? <T variant="muted">{note}</T> : null}
         <Button
-          label={trialButtonLabel(product?.paymentMode)}
+          label={trialButtonLabel(selected?.paymentMode)}
           pending={phase === 'purchasing'}
           pendingLabel="Starting the subscription"
-          disabled={!product || phase === 'loading' || phase === 'unavailable' || phase === 'purchasing' || phase === 'restoring'}
+          disabled={!selected || phase === 'loading' || phase === 'unavailable' || phase === 'purchasing' || phase === 'restoring'}
           onPress={() => void startTrial()}
         />
         <Button

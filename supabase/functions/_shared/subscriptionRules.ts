@@ -1,12 +1,25 @@
 /**
- * One product id for the monthly subscription. App Store Connect product `Sta`
- * (reference name Standard, subscription id 6829273648, app 6821371422).
+ * Two auto-renewable plans in App Store subscription group 22532571.
+ * Yearly `Sta` (reference name Standard, display name Charioteer Standard, subscription id 6829273648).
+ * Monthly `charioteer.monthly`. App 6821371422.
  */
-export const MONTHLY_PRODUCT_ID = 'Sta';
+export const YEARLY_PRODUCT_ID = 'Sta';
 
-export const SUBSCRIPTION_REFERENCE_NAME = 'Standard';
+export const MONTHLY_PRODUCT_ID = 'charioteer.monthly';
+
+export const SUBSCRIPTION_PRODUCT_IDS = [YEARLY_PRODUCT_ID, MONTHLY_PRODUCT_ID] as const;
+
+export const YEARLY_REFERENCE_NAME = 'Standard';
+
+export const YEARLY_DISPLAY_NAME = 'Charioteer Standard';
+
+export const MONTHLY_DISPLAY_NAME = 'Monthly';
+
+export const SUBSCRIPTION_REFERENCE_NAME = YEARLY_REFERENCE_NAME;
 
 export const SUBSCRIPTION_GROUP_NAME = 'Charioteer';
+
+export const SUBSCRIPTION_GROUP_ID = '22532571';
 
 export const APPLE_APP_ID = 6821371422;
 
@@ -57,9 +70,32 @@ export function isPaywallFlagOn(value: string | undefined): boolean {
   return value === 'true';
 }
 
+export function isSubscriptionProduct(productId: string | null | undefined): productId is string {
+  return productId === YEARLY_PRODUCT_ID || productId === MONTHLY_PRODUCT_ID;
+}
+
+export function planTitle(productId: string | null | undefined): string | null {
+  if (productId === YEARLY_PRODUCT_ID) return 'Yearly';
+  if (productId === MONTHLY_PRODUCT_ID) return 'Monthly';
+  return null;
+}
+
+/** Yearly first, then monthly. Unknown ids are left out. */
+export function orderedPlanIds(ids: readonly string[]): string[] {
+  const present = new Set(ids);
+  const ordered: string[] = [];
+  if (present.has(YEARLY_PRODUCT_ID)) ordered.push(YEARLY_PRODUCT_ID);
+  if (present.has(MONTHLY_PRODUCT_ID)) ordered.push(MONTHLY_PRODUCT_ID);
+  return ordered;
+}
+
+export function defaultPlanId(ids: readonly string[]): string | null {
+  return orderedPlanIds(ids)[0] ?? null;
+}
+
 export function entitlementActive(row: SubscriptionRecord | null, now = Date.now()): boolean {
   if (!row) return false;
-  if (row.productId !== MONTHLY_PRODUCT_ID) return false;
+  if (!isSubscriptionProduct(row.productId)) return false;
   if (row.status === 'revoked' || row.status === 'expired') return false;
   if (row.status !== 'active' && row.status !== 'grace' && row.status !== 'billing_retry' && row.status !== 'cancelled') return false;
   if (!STORE_ENVIRONMENTS.includes(row.environment)) return false;
@@ -83,34 +119,84 @@ export function routeAllowedWithoutSubscription(pathname: string): boolean {
 }
 
 export function trialButtonLabel(paymentMode: string | null | undefined): string {
-  return paymentMode === 'free-trial' ? 'Start 1-week free trial' : 'Subscribe';
+  return paymentMode === 'free-trial' ? 'Start free trial' : 'Subscribe';
+}
+
+export function periodPhrase(periodUnit: string | null | undefined, form: 'per' | 'a'): string {
+  if (periodUnit === 'year') return form === 'per' ? 'per year' : 'a year';
+  if (periodUnit === 'month') return form === 'per' ? 'per month' : 'a month';
+  return '';
 }
 
 export function priceLine(displayPrice: string, periodUnit: string | null | undefined): string {
   const price = displayPrice.trim();
   if (!price) return '';
-  return periodUnit === 'month' ? `${price} per month` : price;
+  const period = periodPhrase(periodUnit, 'per');
+  return period ? `${price} ${period}` : price;
+}
+
+/** Shown on a plan card. The price string comes from StoreKit. */
+export function planOfferLine(displayPrice: string, periodUnit: string | null | undefined, freeTrial: boolean): string {
+  const price = displayPrice.trim();
+  const period = periodPhrase(periodUnit, 'a');
+  const tail = period ? `${price} ${period}` : price;
+  return freeTrial ? `1-week free trial, then ${tail}` : tail;
 }
 
 /** Apple's auto-renew disclosure. The price string comes from StoreKit. */
-export function renewalDisclosure(displayPrice: string, freeTrial: boolean): string {
+export function renewalDisclosure(displayPrice: string, periodUnit: string | null | undefined, freeTrial: boolean): string {
   const price = displayPrice.trim();
+  const period = periodPhrase(periodUnit, 'per') || 'per period';
   const lead = freeTrial
-    ? `${price} per month after a 1-week free trial.`
-    : `${price} per month.`;
+    ? `${price} ${period} after a 1-week free trial.`
+    : `${price} ${period}.`;
   return `${lead} Renews automatically unless cancelled at least 24 hours before the end of the period. Manage or cancel in Settings > Apple ID > Subscriptions.`;
+}
+
+/**
+ * Saving of yearly against 12 monthly store prices.
+ * Amounts are the numeric StoreKit prices in one currency. The words use that currency code.
+ */
+export function yearlySavingLabel(input: {
+  yearlyAmount: number | null;
+  monthlyAmount: number | null;
+  currency: string | null;
+}): string | null {
+  const yearly = input.yearlyAmount;
+  const monthly = input.monthlyAmount;
+  const currency = input.currency?.trim().toUpperCase() ?? '';
+  if (yearly == null || monthly == null || !Number.isFinite(yearly) || !Number.isFinite(monthly)) return null;
+  if (yearly <= 0 || monthly <= 0) return null;
+  const saved = monthly * 12 - yearly;
+  if (!(saved > 0.004)) return null;
+  if (!/^[A-Z]{3}$/.test(currency)) return null;
+  try {
+    const formatted = new Intl.NumberFormat('en-GB', { style: 'currency', currency }).format(saved);
+    return `Save ${formatted} compared with 12 months`;
+  } catch {
+    return null;
+  }
 }
 
 export function subscriptionStatusLabel(row: SubscriptionRecord | null, now = Date.now()): string {
   if (!row) return 'No subscription';
-  if (row.isTrial && entitlementActive(row, now)) return 'Free trial';
-  if (row.status === 'cancelled' && entitlementActive(row, now)) return 'Cancels at period end';
-  if (row.status === 'grace' && entitlementActive(row, now)) return 'Billing grace period';
-  if (row.status === 'billing_retry' && entitlementActive(row, now)) return 'Billing retry';
-  if (entitlementActive(row, now)) return 'Active';
-  if (row.status === 'revoked') return 'Revoked';
-  if (row.status === 'expired') return 'Expired';
-  return 'Inactive';
+  const plan = planTitle(row.productId);
+  const state = row.isTrial && entitlementActive(row, now)
+    ? 'Free trial'
+    : row.status === 'cancelled' && entitlementActive(row, now)
+      ? 'Cancels at period end'
+      : row.status === 'grace' && entitlementActive(row, now)
+        ? 'Billing grace period'
+        : row.status === 'billing_retry' && entitlementActive(row, now)
+          ? 'Billing retry'
+          : entitlementActive(row, now)
+            ? 'Active'
+            : row.status === 'revoked'
+              ? 'Revoked'
+              : row.status === 'expired'
+                ? 'Expired'
+                : 'Inactive';
+  return plan ? `${plan} · ${state}` : state;
 }
 
 export function purchaseOutcome(code: string | null | undefined): 'cancelled' | 'pending' | 'restore' | 'failed' {
@@ -125,7 +211,7 @@ export function storeKitJwsFromPurchase(purchase: {
   purchaseToken?: string | null;
   purchaseState?: string | null;
 }): { kind: 'pending' } | { kind: 'ignore' } | { kind: 'jws'; jws: string } {
-  if (purchase.productId !== MONTHLY_PRODUCT_ID) return { kind: 'ignore' };
+  if (!isSubscriptionProduct(purchase.productId)) return { kind: 'ignore' };
   if (purchase.purchaseState === 'pending') return { kind: 'pending' };
   const jws = purchase.purchaseToken?.trim() ?? '';
   if (!jws) return { kind: 'ignore' };
@@ -164,7 +250,7 @@ export function readTransactionClaims(payload: unknown, now = Date.now()): Claim
   const body = asRecord(payload);
   if (!body) return { ok: false, reason: 'claims' };
   if (body.bundleId !== BUNDLE_ID) return { ok: false, reason: 'bundle' };
-  if (body.productId !== MONTHLY_PRODUCT_ID) return { ok: false, reason: 'product' };
+  if (typeof body.productId !== 'string' || !isSubscriptionProduct(body.productId)) return { ok: false, reason: 'product' };
   if (typeof body.environment !== 'string' || !STORE_ENVIRONMENTS.includes(body.environment as StoreEnvironment)) {
     return { ok: false, reason: 'environment' };
   }
@@ -183,7 +269,7 @@ export function readTransactionClaims(payload: unknown, now = Date.now()): Claim
     ok: true,
     subscription: {
       originalTransactionId: original,
-      productId: MONTHLY_PRODUCT_ID,
+      productId: body.productId,
       status,
       expiresAt,
       isTrial,

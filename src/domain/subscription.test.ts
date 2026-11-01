@@ -7,11 +7,16 @@ import {
   APPLE_APP_ID,
   MONTHLY_PRODUCT_ID,
   SUBSCRIPTION_BENEFITS,
+  SUBSCRIPTION_GROUP_ID,
   TERMS_URL,
+  YEARLY_PRODUCT_ID,
   applyServerNotification,
+  defaultPlanId,
   entitlementActive,
+  orderedPlanIds,
   paywallEnabled,
   paywallRequired,
+  planOfferLine,
   purchaseOutcome,
   readNotificationClaims,
   readTransactionClaims,
@@ -21,6 +26,7 @@ import {
   subscriptionRecordFromDb,
   subscriptionStatusLabel,
   trialButtonLabel,
+  yearlySavingLabel,
   type VerifiedSubscription,
 } from '@/domain/subscription';
 
@@ -40,36 +46,48 @@ function subscription(patch: Partial<VerifiedSubscription> = {}): VerifiedSubscr
 }
 
 describe('subscription paywall', () => {
-  it('keeps the App Store product id in one constant', () => {
-    expect(MONTHLY_PRODUCT_ID).toBe('Sta');
+  it('keeps both App Store product ids in one place', () => {
+    expect(YEARLY_PRODUCT_ID).toBe('Sta');
+    expect(MONTHLY_PRODUCT_ID).toBe('charioteer.monthly');
+    expect(SUBSCRIPTION_GROUP_ID).toBe('22532571');
     const rules = readFileSync('supabase/functions/_shared/subscriptionRules.ts', 'utf8');
-    expect(rules).toContain("export const MONTHLY_PRODUCT_ID = 'Sta'");
-    expect(rules.match(/MONTHLY_PRODUCT_ID = /g)).toHaveLength(1);
+    expect(rules).toContain("export const YEARLY_PRODUCT_ID = 'Sta'");
+    expect(rules).toContain("export const MONTHLY_PRODUCT_ID = 'charioteer.monthly'");
     const storekit = JSON.parse(readFileSync('Charioteer.storekit', 'utf8')) as {
       settings: { _applicationInternalID: string };
-      subscriptionGroups: Array<{ name: string; subscriptions: Array<{
+      subscriptionGroups: Array<{ id: string; name: string; subscriptions: Array<{
         productID: string;
         referenceName: string;
         internalID: string;
         recurringSubscriptionPeriod: string;
+        displayPrice: string;
+        localizations: Array<{ displayName: string }>;
         introductoryOffer: { paymentMode: string; subscriptionPeriod: string; numberOfPeriods: number };
       }> }>;
     };
-    const product = storekit.subscriptionGroups[0].subscriptions[0];
-    expect(storekit.subscriptionGroups[0].name).toBe('Charioteer');
-    expect(product.productID).toBe(MONTHLY_PRODUCT_ID);
-    expect(product.referenceName).toBe('Standard');
-    expect(product.internalID).toBe('6829273648');
-    expect(product.recurringSubscriptionPeriod).toBe('P1M');
-    expect(product.introductoryOffer).toEqual({
-      internalID: 'STAINTRO',
-      numberOfPeriods: 1,
-      paymentMode: 'free',
-      subscriptionPeriod: 'P1W',
-    });
+    const group = storekit.subscriptionGroups[0];
+    expect(group.name).toBe('Charioteer');
+    expect(group.id).toBe('22532571');
+    const yearly = group.subscriptions.find((item) => item.productID === 'Sta');
+    const monthly = group.subscriptions.find((item) => item.productID === 'charioteer.monthly');
+    expect(yearly?.referenceName).toBe('Standard');
+    expect(yearly?.localizations[0]?.displayName).toBe('Charioteer Standard');
+    expect(yearly?.internalID).toBe('6829273648');
+    expect(yearly?.recurringSubscriptionPeriod).toBe('P1Y');
+    expect(yearly?.displayPrice).toBe('39.99');
+    expect(yearly?.introductoryOffer.paymentMode).toBe('free');
+    expect(yearly?.introductoryOffer.subscriptionPeriod).toBe('P1W');
+    expect(monthly?.recurringSubscriptionPeriod).toBe('P1M');
+    expect(monthly?.displayPrice).toBe('3.99');
+    expect(monthly?.introductoryOffer).toMatchObject({ paymentMode: 'free', subscriptionPeriod: 'P1W', numberOfPeriods: 1 });
     expect(storekit.settings._applicationInternalID).toBe(String(APPLE_APP_ID));
-    expect(readFileSync('src/app/paywall.tsx', 'utf8')).not.toMatch(/3\.99|£/);
+    expect(readFileSync('src/app/paywall.tsx', 'utf8')).not.toMatch(/3\.99|39\.99|£/);
     expect(readFileSync('src/ui/SubscriptionRow.tsx', 'utf8')).not.toMatch(/3\.99|£/);
+    expect(orderedPlanIds(['charioteer.monthly', 'Sta', 'other'])).toEqual(['Sta', 'charioteer.monthly']);
+    expect(defaultPlanId(['charioteer.monthly'])).toBe('charioteer.monthly');
+    expect(defaultPlanId(['Sta', 'charioteer.monthly'])).toBe('Sta');
+    expect(yearlySavingLabel({ yearlyAmount: 39.99, monthlyAmount: 3.99, currency: 'GBP' })).toBe('Save £7.89 compared with 12 months');
+    expect(yearlySavingLabel({ yearlyAmount: 39.99, monthlyAmount: 3.99, currency: null })).toBeNull();
   });
 
   it('leaves the app ungated unless the build flag is exactly true', () => {
@@ -111,7 +129,9 @@ describe('subscription paywall', () => {
     expect(paywall).toContain("router.push('/help'");
     expect(paywall).toContain('TERMS_URL');
     expect(paywall).toContain('PRIVACY_POLICY_URL');
+    expect(paywall).toContain('Best value');
     expect(paywall).toContain('SUBSCRIPTION_BENEFITS.map');
+    expect(paywall).toContain('SUBSCRIPTION_PRODUCT_IDS');
     expect(TERMS_URL).toBe('https://quanticalabs.co.uk/charioteer/terms');
     expect(PRIVACY_POLICY_URL).toBe('https://quanticalabs.co.uk/charioteer/privacy');
     expect(SUBSCRIPTION_BENEFITS).toEqual(['Thumos coach', 'Check-ins', 'Health insights', 'Community']);
@@ -122,13 +142,15 @@ describe('subscription paywall', () => {
   });
 
   it('builds the Apple renewal sentence from the StoreKit price', () => {
-    expect(renewalDisclosure('£3.99', true)).toBe(
-      '£3.99 per month after a 1-week free trial. Renews automatically unless cancelled at least 24 hours before the end of the period. Manage or cancel in Settings > Apple ID > Subscriptions.',
+    expect(renewalDisclosure('£39.99', 'year', true)).toBe(
+      '£39.99 per year after a 1-week free trial. Renews automatically unless cancelled at least 24 hours before the end of the period. Manage or cancel in Settings > Apple ID > Subscriptions.',
     );
-    expect(renewalDisclosure('€4,99', true)).toContain('€4,99 per month after a 1-week free trial.');
-    expect(renewalDisclosure('$3.99', false)).toContain('$3.99 per month.');
-    expect(renewalDisclosure('$3.99', false)).not.toContain('free trial');
-    expect(trialButtonLabel('free-trial')).toBe('Start 1-week free trial');
+    expect(planOfferLine('£39.99', 'year', true)).toBe('1-week free trial, then £39.99 a year');
+    expect(planOfferLine('£3.99', 'month', true)).toBe('1-week free trial, then £3.99 a month');
+    expect(renewalDisclosure('€4,99', 'month', true)).toContain('€4,99 per month after a 1-week free trial.');
+    expect(renewalDisclosure('$39.99', 'year', false)).toContain('$39.99 per year.');
+    expect(renewalDisclosure('$39.99', 'year', false)).not.toContain('free trial');
+    expect(trialButtonLabel('free-trial')).toBe('Start free trial');
     expect(trialButtonLabel('pay-as-you-go')).toBe('Subscribe');
     expect(trialButtonLabel(null)).toBe('Subscribe');
   });
@@ -142,10 +164,11 @@ describe('subscription paywall', () => {
     expect(entitlementActive(subscription({ status: 'expired', expiresAt: new Date(NOW - 1000).toISOString() }), NOW)).toBe(false);
     expect(entitlementActive(subscription({ status: 'revoked' }), NOW)).toBe(false);
     expect(entitlementActive(subscription({ expiresAt: new Date(NOW).toISOString() }), NOW)).toBe(false);
+    expect(entitlementActive(subscription({ productId: YEARLY_PRODUCT_ID }), NOW)).toBe(true);
     expect(entitlementActive(subscription({ productId: 'Other' }), NOW)).toBe(false);
     expect(entitlementActive(null, NOW)).toBe(false);
-    expect(subscriptionStatusLabel(subscription({ isTrial: true }), NOW)).toBe('Free trial');
-    expect(subscriptionStatusLabel(subscription(), NOW)).toBe('Active');
+    expect(subscriptionStatusLabel(subscription({ isTrial: true }), NOW)).toBe('Monthly · Free trial');
+    expect(subscriptionStatusLabel(subscription({ productId: YEARLY_PRODUCT_ID }), NOW)).toBe('Yearly · Active');
     expect(subscriptionStatusLabel(null, NOW)).toBe('No subscription');
   });
 
@@ -159,6 +182,7 @@ describe('subscription paywall', () => {
       jws: 'header.payload.sig',
     });
     expect(storeKitJwsFromPurchase({ productId: 'Sta', purchaseToken: 'header.payload.sig', purchaseState: 'pending' })).toEqual({ kind: 'pending' });
+    expect(storeKitJwsFromPurchase({ productId: 'charioteer.monthly', purchaseToken: 'header.payload.sig', purchaseState: 'purchased' }).kind).toBe('jws');
     expect(storeKitJwsFromPurchase({ productId: 'Other', purchaseToken: 'header.payload.sig' })).toEqual({ kind: 'ignore' });
     expect(readFileSync('src/domain/subscription.ts', 'utf8')).not.toContain('@');
   });
@@ -175,6 +199,7 @@ describe('subscription paywall', () => {
     }, NOW);
     expect(trial.ok).toBe(true);
     if (!trial.ok) return;
+    expect(trial.subscription.productId).toBe('Sta');
     expect(trial.subscription.isTrial).toBe(true);
     expect(trial.subscription.status).toBe('active');
     expect(trial.subscription.environment).toBe('Sandbox');
