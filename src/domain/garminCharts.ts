@@ -30,7 +30,8 @@ import type {
   GarminUserMetric,
 } from '@/domain/garminConnect';
 import { publishedCardioBand } from '@/domain/fitnessSnapshot';
-import type { NutritionSex } from '@/domain/nutrition';
+import { readingFor, type MetricContext, type MetricReading } from '@/domain/metricRegistry';
+import type { NutritionGoal, NutritionSex } from '@/domain/nutrition';
 import type { RestingFitnessComment, RestingInfoSection } from '@/domain/restingFitness';
 import { RESTING_CARE, RESTING_CARD_CARE } from '@/domain/restingFitness';
 import { periodDayCount, periodPhrase, scaledPeriodTarget, type StatPeriod } from '@/domain/statWindow';
@@ -126,6 +127,8 @@ export type ChartGuide = {
   cardCare?: string | null;
   /** Sustained resting rate above the NHS usual range. Draws the yellow warning. */
   warning?: boolean;
+  /** Rating, source, and tips from the shared metric registry. */
+  rating?: MetricReading;
 };
 
 export type GarminChartPoint = {
@@ -165,6 +168,7 @@ export type GarminChartInput = {
   activityDetails?: readonly GarminActivityDetail[];
   age?: number | null;
   sex?: NutritionSex | null;
+  goal?: NutritionGoal | null;
 };
 
 /** Shown when Garmin is connected and that summary has not arrived yet. */
@@ -231,6 +235,64 @@ function advised(about: string, extra: Partial<ChartGuide> = {}): ChartGuide {
   };
 }
 
+function fillMetricContext(partial: Partial<MetricContext> | undefined, period?: StatPeriod): MetricContext {
+  return {
+    age: partial?.age ?? null,
+    sex: partial?.sex ?? null,
+    goal: partial?.goal ?? null,
+    ownUsual: partial?.ownUsual ?? null,
+    heightCm: partial?.heightCm ?? null,
+    realAge: partial?.realAge ?? partial?.age ?? null,
+    vo2: partial?.vo2 ?? null,
+    restingHr: partial?.restingHr ?? null,
+    bmi: partial?.bmi ?? null,
+    bodyFat: partial?.bodyFat ?? null,
+    vigorousWeek: partial?.vigorousWeek ?? null,
+    windowDays: partial?.windowDays ?? (period ? periodDayCount(period) : null),
+    calorieTarget: partial?.calorieTarget ?? null,
+    proteinTarget: partial?.proteinTarget ?? null,
+    drinkFreeGoal: partial?.drinkFreeGoal ?? null,
+    processedCount: partial?.processedCount ?? null,
+    wholeCount: partial?.wholeCount ?? null,
+    basis: partial?.basis ?? null,
+    scale: partial?.scale ?? null,
+  };
+}
+
+/** Attach the registry rating without writing the caveat into `about` (some charts forbid that phrase there). */
+function withMetric(guide: ChartGuide, id: string, value: number | null, ctx: MetricContext): ChartGuide {
+  const rating = readingFor(id, value, ctx);
+  const already = guide.sections?.some((section) => section.heading === 'Source');
+  const sections = already
+    ? guide.sections
+    : [
+      ...(guide.sections ?? []),
+      { heading: 'Where you sit', body: `${rating.label}. ${rating.where}` },
+      ...(rating.goalLine ? [{ heading: 'Your aim', body: rating.goalLine }] : []),
+      ...(rating.tips.length ? [{ heading: 'How to improve', body: rating.tips.join(' ') }] : []),
+      { heading: 'Source', body: rating.source },
+    ];
+  const band = rating.draw && rating.band ? rating.band : null;
+  return {
+    ...guide,
+    rating,
+    sections,
+    dailyTypical: guide.dailyTypical ?? band,
+    periodTypical: guide.periodTypical ?? band,
+  };
+}
+
+function seriesStats(points: readonly { value: number; empty?: boolean }[]): { latest: number | null; usual: number | null; sum: number | null } {
+  const values = points.flatMap((point) => (point.empty || !(point.value > 0) ? [] : [point.value]));
+  if (values.length === 0) return { latest: null, usual: null, sum: null };
+  const earlier = values.slice(0, -1);
+  return {
+    latest: values[values.length - 1] ?? null,
+    usual: earlier.length ? earlier.reduce((sum, value) => sum + value, 0) / earlier.length : null,
+    sum: values.reduce((sum, value) => sum + value, 0),
+  };
+}
+
 function countText(value: number): string {
   return Math.round(value).toLocaleString('en-GB');
 }
@@ -271,6 +333,7 @@ export function stepsChartGuide(
   stepGoal: number | null,
   age: number | null = null,
   dailyAverage: number | null = null,
+  ctx: Partial<MetricContext> = {},
 ): ChartGuide {
   const days = periodDayCount(period);
   const band = stepResearchBand(age);
@@ -278,23 +341,25 @@ export function stepsChartGuide(
   const dailyTypical = { low: band.low, high: band.high };
   const goal = stepGoal != null && stepGoal > 0 ? Math.round(stepGoal) : null;
   const goalLine = goal == null ? '' : ` The line is your Garmin step goal, ${countText(goal)} steps a day.`;
-  return advised(
+  return withMetric(advised(
     `Steps are how many steps that day. There is no UK daily step target. ${stepsResearchMeaning(dailyAverage)} For ${grouped(period)}, the lime band is about ${countText(periodTypical.low)}–${countText(periodTypical.high)} steps (${band.why}).${goalLine} It is a reference, not a personal target.`,
     {
       dailyTypical,
       periodTypical,
       target: goal == null ? null : { value: goal, label: `Your Garmin step goal, ${countText(goal)} steps a day` },
     },
-  );
+  ), 'steps', dailyAverage, fillMetricContext({ ...ctx, age: ctx.age ?? age }, period));
 }
 
 export function restingChartGuide(
   period: StatPeriod,
-  _points: readonly { value: number }[],
+  points: readonly { value: number; empty?: boolean }[],
   fitness?: RestingFitnessComment | null,
+  ctx: Partial<MetricContext> = {},
 ): ChartGuide {
   const band = { low: RESTING_TYPICAL_LOW, high: RESTING_TYPICAL_HIGH };
-  return advised(
+  const stats = seriesStats(points);
+  return withMetric(advised(
     `Resting heart rate is the beats per minute stored for that day, from Garmin or Apple Health. The lime band is the usual adult range of ${RESTING_TYPICAL_LOW}–${RESTING_TYPICAL_HIGH} bpm published by the NHS, for ${grouped(period)}. It is not adjusted for age. A comment uses the last month of readings, not one day.`,
     {
       dailyTypical: band,
@@ -308,25 +373,27 @@ export function restingChartGuide(
       cardCare: fitness?.warning ? RESTING_CARD_CARE : null,
       care: fitness ? RESTING_CARE : null,
     },
-  );
+  ), 'resting_heart_rate', stats.latest, fillMetricContext({ ...ctx, ownUsual: ctx.ownUsual ?? stats.usual }, period));
 }
 
-export function distanceChartGuide(period: StatPeriod, points: readonly { value: number }[]): ChartGuide {
+export function distanceChartGuide(period: StatPeriod, points: readonly { value: number; empty?: boolean }[], ctx: Partial<MetricContext> = {}): ChartGuide {
   const mean = averageOf(positiveValues(points));
   const own = mean == null ? null : { value: mean, label: `Your average distance ${grouped(period)}: ${distanceText(mean)}` };
-  return advised(
+  const stats = seriesStats(points);
+  return withMetric(advised(
     `Distance is how far you moved that day. ${NO_STANDARD_RANGE}. The line is your own average of the days in ${grouped(period)} that have a distance. Compare a day with your own usual days.`,
     { ownAverage: own },
-  );
+  ), 'distance', stats.latest, fillMetricContext({ ...ctx, ownUsual: stats.usual }, period));
 }
 
-export function floorsChartGuide(period: StatPeriod, points: readonly { value: number }[]): ChartGuide {
+export function floorsChartGuide(period: StatPeriod, points: readonly { value: number; empty?: boolean }[], ctx: Partial<MetricContext> = {}): ChartGuide {
   const mean = averageOf(positiveValues(points));
   const own = mean == null ? null : { value: mean, label: `Your average floors ${grouped(period)}: ${oneDecimal(mean)} floors` };
-  return advised(
+  const stats = seriesStats(points);
+  return withMetric(advised(
     `Floors are how many floors were climbed that day. ${NO_STANDARD_RANGE}. The line is your own average of the days in ${grouped(period)} that have a number. Compare a day with your own usual days.`,
     { ownAverage: own },
-  );
+  ), 'floors', stats.latest, fillMetricContext({ ...ctx, ownUsual: stats.usual }, period));
 }
 
 function weightedMinuteBands(period: StatPeriod): { dailyTypical: GuideSpan; periodTypical: GuideSpan } {
@@ -343,21 +410,31 @@ function weightedMinuteBands(period: StatPeriod): { dailyTypical: GuideSpan; per
 }
 
 /** Lime band for the weighted total. The same band is used on Exercise minutes. */
-export function activityChartGuide(period: StatPeriod): ChartGuide {
-  return advised(INTENSITY_MORE_INFO, weightedMinuteBands(period));
+export function activityChartGuide(period: StatPeriod, ctx: Partial<MetricContext> = {}, value: number | null = null): ChartGuide {
+  return withMetric(advised(INTENSITY_MORE_INFO, weightedMinuteBands(period)), 'intensity', value, fillMetricContext(ctx, period));
 }
 
-export function exerciseChartGuide(period: StatPeriod): ChartGuide {
-  return advised(EXERCISE_MORE_INFO, weightedMinuteBands(period));
+export function exerciseChartGuide(period: StatPeriod, ctx: Partial<MetricContext> = {}, value: number | null = null): ChartGuide {
+  return withMetric(advised(EXERCISE_MORE_INFO, weightedMinuteBands(period)), 'exercise', value, fillMetricContext(ctx, period));
 }
 
 /** Real minutes. The weekly range is not drawn on a chart that shows only one type. */
-export function moderateChartGuide(): ChartGuide {
-  return advised(MODERATE_MORE_INFO);
+export function moderateChartGuide(ctx: Partial<MetricContext> = {}, value: number | null = null): ChartGuide {
+  return withMetric(advised(MODERATE_MORE_INFO), 'moderate', value, fillMetricContext(ctx));
 }
 
-export function vigorousChartGuide(): ChartGuide {
-  return advised(VIGOROUS_MORE_INFO);
+export function vigorousChartGuide(ctx: Partial<MetricContext> = {}, value: number | null = null): ChartGuide {
+  return withMetric(advised(VIGOROUS_MORE_INFO), 'vigorous', value, fillMetricContext(ctx));
+}
+
+/** Active calories have no published kilocalorie range. The rating says so. */
+export function activeEnergyChartGuide(ctx: Partial<MetricContext> = {}, value: number | null = null): ChartGuide {
+  return withMetric(
+    advised('Active calories are the energy stored for movement that day, from Apple Health or Garmin. There is no single published kilocalorie range for that figure. Compare a day with your own usual days.'),
+    'active_energy',
+    value,
+    fillMetricContext(ctx),
+  );
 }
 
 function stressGuide(period: StatPeriod): ChartGuide {
@@ -412,13 +489,14 @@ function hrvGuide(period: StatPeriod, points: readonly GarminChartPoint[]): Char
   );
 }
 
-export function sdnnGuide(period: StatPeriod, points: readonly { value: number; empty?: boolean }[]): ChartGuide {
+export function sdnnGuide(period: StatPeriod, points: readonly { value: number; empty?: boolean }[], ctx: Partial<MetricContext> = {}): ChartGuide {
   const mean = averageOf(points.flatMap((point) => (point.empty || !(point.value > 0) ? [] : [point.value])));
   const own = mean == null ? null : { value: mean, label: `Your average Apple Health SDNN ${grouped(period)}: ${Math.round(mean)} ms` };
-  return advised(
+  const stats = seriesStats(points);
+  return withMetric(advised(
     `Apple Health heart rate variability is SDNN, the spread of time between beats, in milliseconds. ${HRV_MEASURES_DIFFER} ${HRV_SDNN_RANGE}`,
     { ownAverage: own },
-  );
+  ), 'hrv_sdnn', stats.latest, fillMetricContext({ ...ctx, ownUsual: stats.usual }, period));
 }
 
 function rangeGuide(input: {
@@ -542,6 +620,58 @@ export function intensitySeries(endDay: string, period: StatPeriod, dailies: rea
   });
 }
 
+function latestMapValue(values: ReadonlyMap<string, number>): number | null {
+  let day = '';
+  let value: number | null = null;
+  for (const [key, stored] of values) {
+    if (key >= day) {
+      day = key;
+      value = stored;
+    }
+  }
+  return value;
+}
+
+function detailContext(input: GarminChartInput, vo2: number | null): MetricContext {
+  const week = new Set(chartDays(input.endDay, 7));
+  let vigorous = 0;
+  let sawVigorous = false;
+  let resting: number | null = null;
+  let restingDay = '';
+  for (const daily of input.dailies) {
+    if (!week.has(daily.calendarDate)) continue;
+    if (daily.vigorousMinutes != null && daily.vigorousMinutes > 0) {
+      vigorous += daily.vigorousMinutes;
+      sawVigorous = true;
+    }
+    if (daily.restingHeartRateBpm != null && daily.restingHeartRateBpm > 0 && daily.calendarDate >= restingDay) {
+      restingDay = daily.calendarDate;
+      resting = daily.restingHeartRateBpm;
+    }
+  }
+  let bodyFat: number | null = null;
+  let bmi: number | null = null;
+  let bodyDay = '';
+  for (const row of input.bodyComp ?? []) {
+    if (row.calendarDate < bodyDay) continue;
+    bodyDay = row.calendarDate;
+    if (row.bodyFatPct != null && row.bodyFatPct > 0) bodyFat = row.bodyFatPct;
+    if (row.bmi != null && row.bmi > 0) bmi = row.bmi;
+  }
+  return fillMetricContext({
+    age: input.age ?? null,
+    sex: input.sex ?? null,
+    goal: input.goal ?? null,
+    realAge: input.age ?? null,
+    vo2,
+    restingHr: resting,
+    bodyFat,
+    bmi,
+    vigorousWeek: sawVigorous ? vigorous : null,
+    windowDays: periodDayCount(input.period),
+  });
+}
+
 export function garminDetailCharts(input: GarminChartInput): GarminDetailChart[] {
   const stress = new Map<string, number>();
   const charged = new Map<string, number>();
@@ -582,8 +712,16 @@ export function garminDetailCharts(input: GarminChartInput): GarminDetailChart[]
   }
 
   const charts: GarminDetailChart[] = [];
+  const metricCtx = detailContext(input, latestMapValue(vo2));
   const add = (chart: GarminDetailChart) => {
-    if (hasReading(chart.points)) charts.push(chart);
+    if (!hasReading(chart.points)) return;
+    const values = chart.points.flatMap((point) => (point.empty || point.value == null ? [] : [point.value]));
+    const earlier = values.slice(0, -1);
+    const ownUsual = earlier.length ? earlier.reduce((sum, value) => sum + value, 0) / earlier.length : null;
+    charts.push({
+      ...chart,
+      guide: withMetric(chart.guide, chart.id, latestStored(chart.points), { ...metricCtx, ownUsual }),
+    });
   };
   const stressPoints = seriesFrom(input.endDay, input.period, stress, 'Average stress', 'score', countText, true);
   add({
@@ -619,7 +757,7 @@ export function garminDetailCharts(input: GarminChartInput): GarminDetailChart[]
     unit: 'score',
     points: seriesFrom(input.endDay, input.period, sleepScore, 'Sleep score', 'score', countText, false),
     includeZero: false,
-    guide: advised(`Sleep score is Garmin's own score for that night. ${NO_STANDARD_RANGE} for ${grouped(input.period)}. It is not a medical sleep measure. Compare a night with your own usual nights.`),
+    guide: advised(`Sleep score is Garmin's own score for that night. Garmin's bands are Excellent 90–100, Good 80–89, Fair 60–79, and Poor under 60. The lime band is Good and Excellent, 80–100, for ${grouped(input.period)}. It is not a medical sleep measure.`),
   });
   add({
     id: 'sleep_duration',
@@ -627,7 +765,7 @@ export function garminDetailCharts(input: GarminChartInput): GarminDetailChart[]
     unit: 'hours',
     points: seriesFrom(input.endDay, input.period, sleepHours, 'Sleep duration', 'hours', oneDecimal, false),
     includeZero: false,
-    guide: advised(`Sleep duration is the hours Garmin stored for that night. ${NO_STANDARD_RANGE} for ${grouped(input.period)}. Compare a night with your own usual nights.`),
+    guide: advised(`Sleep duration is the hours Garmin stored for that night. For adults the NHS and the National Sleep Foundation describe about 7 to 9 hours (Hirshkowitz and colleagues, Sleep Health, 2015). From age 65 the Foundation's range is about 7 to 8 hours. The lime band follows that, for ${grouped(input.period)}.`),
   });
   const breathPoints = seriesFrom(input.endDay, input.period, breath, 'Breathing rate', 'breaths/min', oneDecimal, false);
   add({
@@ -687,7 +825,7 @@ export function garminDetailCharts(input: GarminChartInput): GarminDetailChart[]
   add(metricChart(input, 'skin_temp', 'Skin temperature', '°C', dailyNumber(input.skinTemp ?? [], (row) => row.deviationC, true), 'Skin temperature is how far Garmin\'s overnight reading sat from your usual skin temperature, in °C. The band is about 1 degree either side of usual. Not medical advice.', { low: -1, high: 1 }, true));
   add(metricChart(input, 'blood_pressure', 'Blood pressure', 'mmHg', dailyNumber(input.bloodPressure ?? [], (row) => row.systolic), 'Blood pressure here is the systolic reading Garmin stored, in mmHg. The band is a general adult reference of 90–120. Diastolic is a separate number and is not mixed into this bar. Not medical advice.', { low: 90, high: 120 }));
   add(metricChart(input, 'diastolic', 'Diastolic pressure', 'mmHg', dailyNumber(input.bloodPressure ?? [], (row) => row.diastolic), 'Diastolic pressure is the lower Garmin blood-pressure number, in mmHg. The band is a general adult reference of 60–80. It is not averaged with systolic. Not medical advice.', { low: 60, high: 80 }));
-  add(metricChart(input, 'body_fat', 'Body fat', '%', dailyNumber(input.bodyComp ?? [], (row) => row.bodyFatPct), 'Body fat is Garmin\'s estimate for that day. There is no single healthy band on this chart. Not medical advice.'));
+  add(metricChart(input, 'body_fat', 'Body fat', '%', dailyNumber(input.bodyComp ?? [], (row) => row.bodyFatPct), 'Body fat is Garmin\'s estimate for that day. The lime band, when sex is set, is the ACE athlete-to-fitness span. It is a reference, not a diagnosis.'));
   add(metricChart(input, 'bmi', 'BMI', 'BMI', dailyNumber(input.bodyComp ?? [], (row) => row.bmi), 'BMI is Garmin\'s stored body mass index. The band is the general adult reference of 18.5–24.9. It is not a diagnosis.', { low: 18.5, high: 24.9 }));
   add(metricChart(input, 'snapshot_heart', 'Health snapshot heart rate', 'bpm', dailyNumber(input.healthSnapshot ?? [], (row) => row.restingHeartRateBpm ?? row.heartRateBpm), 'Health snapshot heart rate is the heart rate from Garmin\'s short check, in bpm. The band is a general adult resting range of 60–100. Not medical advice.', { low: 60, high: 100 }));
   add(metricChart(input, 'epoch_minutes', 'Epoch active minutes', 'min', epochMinutes(input), 'Epochs are Garmin\'s 15-minute activity slices, added up to minutes for the day. They are not a medical measure.'));

@@ -33,7 +33,8 @@ import { chartBucketForPeriod, type ChartAggregate } from '@/domain/readingChart
 import { londonDay } from '@/domain/healthInsights';
 import { latestVo2Reading, VO2_CARD_LINE, vo2MeasuredLine } from '@/domain/vo2Estimate';
 import { OUTSIDE_CRISIS_LINE, OUTSIDE_SAFETY_LINE } from '@/domain/outdoorRoute';
-import { londonToday, periodHeading, rollingWindow } from '@/domain/statWindow';
+import { londonToday, periodDayCount, periodHeading, rollingWindow } from '@/domain/statWindow';
+import { leadingNumber, readingFor } from '@/domain/metricRegistry';
 import { StatPeriodToggle } from '@/ui/StatPeriodToggle';
 import { closerToGoal, whyGoalMatters, WORKOUT_BUCKET_LABEL, WORKOUT_BUCKETS, type NutritionGoal, type WorkoutBucket } from '@/domain/nutrition';
 import { GoalLine } from '@/ui/GoalLine';
@@ -46,6 +47,7 @@ import { PlanTick } from '@/ui/PlanTick';
 import { statsToneColors } from '@/ui/statsPalette';
 import { useAppTheme } from '@/ui/theme';
 import { Vo2MaxChart } from '@/ui/DailyActivity';
+import { MetricRatingLines } from '@/ui/MetricRating';
 import { GarminTip } from '@/ui/GarminTip';
 import { LowRestingFitNote } from '@/ui/LowRestingFitNote';
 import { Vo2EstimateNote, Vo2MeasureBanner, Vo2MeasureCopy } from '@/ui/Vo2EstimateNote';
@@ -126,6 +128,7 @@ export function YourFitness({ onPlanOutdoor }: { onPlanOutdoor: () => void }) {
         userMetrics={readings.userMetrics}
         age={snap.nutrition?.goalAge ?? null}
         sex={snap.nutrition?.goalSex ?? null}
+        goal={goal}
       />
       {view.level ? <T style={{ color: ink(view.level === 'Developing' || belowAthletic ? 'watch' : 'good'), fontFamily: theme.font.bodyStrong }}>{view.level}</T> : null}
       <T>{view.levelWords}</T>
@@ -146,6 +149,7 @@ export function YourFitness({ onPlanOutdoor }: { onPlanOutdoor: () => void }) {
             }}
           />
           <T style={{ fontFamily: theme.font.bodyStrong }}>{`${view.cardio.centre} ${view.cardio.unit}`}</T>
+          <MetricRatingLines rating={readingFor('vo2_max', leadingNumber(view.cardio.centre), { age: snap.nutrition?.goalAge ?? null, sex: snap.nutrition?.goalSex ?? null, goal, ownUsual: null, realAge: snap.nutrition?.goalAge ?? null, windowDays: periodDayCount(period) })} />
           {vo2Reading ? (
             <T variant="muted">{vo2MeasuredLine(vo2Reading.day, vo2Reading.source)}</T>
           ) : (
@@ -187,6 +191,8 @@ export function YourFitness({ onPlanOutdoor }: { onPlanOutdoor: () => void }) {
           />
           <FitnessSeries points={view.minutes.series ?? []} unit="min" aggregate="sum" label="Workout minutes chart" />
           <MoreInfo about="workout minutes" onPress={() => setInfo('minutes')} />
+          <MetricRatingLines rating={readingFor('weekly_active_minutes', leadingNumber(view.minutes.centre), { age: snap.nutrition?.goalAge ?? null, sex: snap.nutrition?.goalSex ?? null, goal, ownUsual: null, windowDays: periodDayCount(period) })} />
+          <T variant="muted">Not medical advice. Not a diagnosis.</T>
         </View>
       ) : null}
       {view.resting ? (
@@ -198,6 +204,8 @@ export function YourFitness({ onPlanOutdoor }: { onPlanOutdoor: () => void }) {
           <FitnessSeries points={view.resting.series ?? []} unit="bpm" aggregate="mean" label="Resting heart rate chart" />
           <LowRestingFitNote reading={view.resting.reading} />
           <MoreInfo about="resting heart rate" onPress={() => setInfo('resting')} />
+          <MetricRatingLines rating={readingFor('resting_heart_rate', leadingNumber(view.resting.reading), { age: snap.nutrition?.goalAge ?? null, sex: snap.nutrition?.goalSex ?? null, goal, ownUsual: null })} />
+          <T variant="muted">Not medical advice. Not a diagnosis.</T>
         </View>
       ) : null}
       {view.mix ? <MixBar view={view} note={bucketNote} onSetBucket={(activityType, bucket) => void saveBucket(activityType, bucket)} /> : null}

@@ -3,8 +3,8 @@ import { useState, type ReactNode } from 'react';
 import { Pressable, View } from 'react-native';
 
 import type { AppleDayValue } from '@/domain/dailyActivity';
-import type { GarminDaily, GarminHrvSummary, GarminPulseOx, GarminRespiration, GarminSleep, GarminUserMetric } from '@/domain/garminConnect';
-import type { NutritionSex } from '@/domain/nutrition';
+import type { GarminActivityDetail, GarminBloodPressure, GarminBodyComp, GarminDaily, GarminEpoch, GarminHealthSnapshot, GarminHrvSummary, GarminMoveIq, GarminPulseOx, GarminRespiration, GarminSkinTemp, GarminSleep, GarminStressDetail, GarminUserMetric } from '@/domain/garminConnect';
+import type { NutritionGoal, NutritionSex } from '@/domain/nutrition';
 import { formatUkCompactDay, londonDay, weekdayShort } from '@/domain/healthInsights';
 import { CHART_DIRECTION_HINT } from '@/domain/readingChart';
 import {
@@ -471,7 +471,16 @@ export function WorkoutList({
   pulseOx = [],
   hrv = [],
   userMetrics = [],
+  bloodPressure = [],
+  bodyComp = [],
+  skinTemp = [],
+  stress = [],
+  epochs = [],
+  healthSnapshot = [],
+  moveIq = [],
+  activityDetails = [],
   sex = null,
+  goal = null,
   exercisePermissionMissing = false,
 }: {
   workouts: readonly DeviceWorkout[];
@@ -487,7 +496,16 @@ export function WorkoutList({
   pulseOx?: readonly GarminPulseOx[];
   hrv?: readonly GarminHrvSummary[];
   userMetrics?: readonly GarminUserMetric[];
+  bloodPressure?: readonly GarminBloodPressure[];
+  bodyComp?: readonly GarminBodyComp[];
+  skinTemp?: readonly GarminSkinTemp[];
+  stress?: readonly GarminStressDetail[];
+  epochs?: readonly GarminEpoch[];
+  healthSnapshot?: readonly GarminHealthSnapshot[];
+  moveIq?: readonly GarminMoveIq[];
+  activityDetails?: readonly GarminActivityDetail[];
   sex?: NutritionSex | null;
+  goal?: NutritionGoal | null;
   exercisePermissionMissing?: boolean;
 }) {
   const theme = useAppTheme();
@@ -609,8 +627,17 @@ export function WorkoutList({
         pulseOx={pulseOx}
         hrv={hrv}
         userMetrics={userMetrics}
+        bloodPressure={bloodPressure}
+        bodyComp={bodyComp}
+        skinTemp={skinTemp}
+        stress={stress}
+        epochs={epochs}
+        healthSnapshot={healthSnapshot}
+        moveIq={moveIq}
+        activityDetails={activityDetails}
         age={age}
         sex={sex}
+        goal={goal}
         exercisePermissionMissing={exercisePermissionMissing}
       />
       <WorkoutHistory workouts={workouts} historyDay={historyDay} open={historyOpen} onToggle={() => setHistoryOpen((value) => !value)} onClear={clearHistory} />

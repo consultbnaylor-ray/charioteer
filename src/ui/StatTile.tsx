@@ -4,8 +4,11 @@ import Svg from 'react-native-svg';
 import { Pressable, View } from 'react-native';
 
 import type { DistanceChart } from '@/domain/distance';
+import { METRIC_CAVEAT } from '@/domain/metricRegistry';
 import type { StatTileModel } from '@/domain/statsOverview';
 import { CompareBars, ProgressRing, RangeTrack, ToneMark, TrendLine } from '@/ui/DistanceCharts';
+import { MetricRatingLines } from '@/ui/MetricRating';
+import { MoreInfo } from '@/ui/MoreInfo';
 import { ProcessedFoodList } from '@/ui/ProcessedFoodList';
 import { ReadingChart } from '@/ui/ReadingChart';
 import { statsToneColors } from '@/ui/statsPalette';
@@ -110,7 +113,15 @@ export function StatTile({ tile }: { tile: StatTileModel }) {
           <T style={[ink, { fontFamily: theme.font.bodyStrong }]}>{tile.signal}</T>
         </View>
         {meaning ? <T style={ink}>{meaning}</T> : null}
+        <MetricRatingLines rating={tile.rating} />
       </Pressable>
+      {tile.rating ? (
+        <MoreInfo about={tile.title} summary={METRIC_CAVEAT}>
+          <T variant="muted">{tile.rating.more}</T>
+          <T variant="label">Source</T>
+          <T variant="muted">{tile.rating.source}</T>
+        </MoreInfo>
+      ) : null}
       <ProcessedFoodList notes={tile.processedNotes ?? []} />
     </Card>
   );

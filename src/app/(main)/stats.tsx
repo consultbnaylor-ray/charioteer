@@ -101,6 +101,7 @@ export default function Stats() {
         activityDetails={readings.activityDetails}
         age={snap.nutrition.goalAge}
         sex={snap.nutrition.goalSex}
+        goal={snap.nutrition.goal}
         showVo2Chart={false}
       />
       <Card>

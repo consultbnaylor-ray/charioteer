@@ -60,11 +60,13 @@ import {
   stepGoalInPeriod,
   stepsChartGuide,
   vigorousChartGuide,
+  activeEnergyChartGuide,
   type ChartGuide,
   type GarminChartInput,
 } from '@/domain/garminCharts';
-import type { GarminDaily, GarminHrvSummary, GarminPulseOx, GarminRespiration, GarminSleep, GarminUserMetric } from '@/domain/garminConnect';
-import type { NutritionSex } from '@/domain/nutrition';
+import type { MetricContext } from '@/domain/metricRegistry';
+import type { GarminActivityDetail, GarminBloodPressure, GarminBodyComp, GarminDaily, GarminEpoch, GarminHealthSnapshot, GarminHrvSummary, GarminMoveIq, GarminPulseOx, GarminRespiration, GarminSkinTemp, GarminSleep, GarminStressDetail, GarminUserMetric } from '@/domain/garminConnect';
+import type { NutritionGoal, NutritionSex } from '@/domain/nutrition';
 import { crisisHelplines } from '@/data/catalogue';
 import { restingFitnessComment } from '@/domain/restingFitness';
 import { weekdayShort } from '@/domain/healthInsights';
@@ -72,6 +74,7 @@ import { CHART_DIRECTION_HINT } from '@/domain/readingChart';
 import type { WorkoutChartSpan } from '@/domain/workoutDay';
 import { useStatPeriod } from '@/health/useStatPeriod';
 import { openAppSettings } from '@/health/link';
+import { MetricRatingLines } from '@/ui/MetricRating';
 import { MoreInfo } from '@/ui/MoreInfo';
 import { goodZoneBand, statsToneColors } from '@/ui/statsPalette';
 import { StatPeriodToggle } from '@/ui/StatPeriodToggle';
@@ -81,6 +84,16 @@ import { IconLabel } from '@/ui/statIcons';
 import { Button, Card, T } from '@/ui/ui';
 
 const BAR_HEIGHT = 88;
+
+function sumPoints(points: readonly { value: number; empty?: boolean }[]): number | null {
+  const values = points.flatMap((point) => (point.empty || !(point.value > 0) ? [] : [point.value]));
+  if (values.length === 0) return null;
+  return values.reduce((sum, value) => sum + value, 0);
+}
+
+function chartContext(age: number | null, sex: NutritionSex | null, goal: NutritionGoal | null, windowDays: number): Partial<MetricContext> {
+  return { age, sex, goal, realAge: age, windowDays };
+}
 
 function dailyAverage(points: readonly DailyActivityPoint[]): number | null {
   const values = points.flatMap((point) => (point.empty || point.value <= 0 ? [] : [point.value]));
@@ -125,8 +138,17 @@ export function DailyActivityCharts({
   pulseOx = [],
   hrv = [],
   userMetrics = [],
+  bloodPressure = [],
+  bodyComp = [],
+  skinTemp = [],
+  stress = [],
+  epochs = [],
+  healthSnapshot = [],
+  moveIq = [],
+  activityDetails = [],
   age = null,
   sex = null,
+  goal = null,
   exercisePermissionMissing = false,
 }: {
   endDay: string;
@@ -142,10 +164,20 @@ export function DailyActivityCharts({
   pulseOx?: readonly GarminPulseOx[];
   hrv?: readonly GarminHrvSummary[];
   userMetrics?: readonly GarminUserMetric[];
+  bloodPressure?: readonly GarminBloodPressure[];
+  bodyComp?: readonly GarminBodyComp[];
+  skinTemp?: readonly GarminSkinTemp[];
+  stress?: readonly GarminStressDetail[];
+  epochs?: readonly GarminEpoch[];
+  healthSnapshot?: readonly GarminHealthSnapshot[];
+  moveIq?: readonly GarminMoveIq[];
+  activityDetails?: readonly GarminActivityDetail[];
   age?: number | null;
   sex?: NutritionSex | null;
+  goal?: NutritionGoal | null;
   exercisePermissionMissing?: boolean;
 }) {
+  const minuteCtx = chartContext(age, sex, goal, span);
   const [selected, setSelected] = useState<string | null>(null);
   const period = movementPeriod(span, '7').period;
   const exercise = consent ? exerciseSeries(endDay, span, exerciseMinutes, dailies) : [];
@@ -168,7 +200,7 @@ export function DailyActivityCharts({
         unit="min"
         selected={selected}
         garminNote={exerciseChartCaption(exercise)}
-        guide={consent ? exerciseChartGuide(period) : null}
+        guide={exerciseChartGuide(period, minuteCtx, sumPoints(exercise))}
         onSelect={setSelected}
       />
       {consent ? (
@@ -178,7 +210,7 @@ export function DailyActivityCharts({
           span={span}
           selected={selected}
           emptyLine={minuteTypeEmpty('moderate')}
-          guide={moderateChartGuide()}
+          guide={moderateChartGuide(minuteCtx, sumPoints(moderate))}
           onSelect={setSelected}
         />
       ) : null}
@@ -189,7 +221,7 @@ export function DailyActivityCharts({
           span={span}
           selected={selected}
           emptyLine={minuteTypeEmpty('vigorous')}
-          guide={vigorousChartGuide()}
+          guide={vigorousChartGuide(minuteCtx, sumPoints(vigorous))}
           onSelect={setSelected}
         />
       ) : null}
@@ -207,6 +239,7 @@ export function DailyActivityCharts({
         unit="kcal"
         selected={selected}
         garminNote={chartSourceCaption(calories)}
+        guide={activeEnergyChartGuide(minuteCtx, sumPoints(calories))}
         onSelect={setSelected}
       />
       <T variant="muted">{DAILY_ACTIVITY_TAP_HINT}</T>
@@ -229,8 +262,17 @@ export function DailyActivityCharts({
         pulseOx={pulseOx}
         hrv={hrv}
         userMetrics={userMetrics}
+        bloodPressure={bloodPressure}
+        bodyComp={bodyComp}
+        skinTemp={skinTemp}
+        stress={stress}
+        epochs={epochs}
+        healthSnapshot={healthSnapshot}
+        moveIq={moveIq}
+        activityDetails={activityDetails}
         age={age}
         sex={sex}
+        goal={goal}
         showIntensity={false}
       />
     </View>
@@ -259,6 +301,7 @@ export function MovementCharts({
   activityDetails = [],
   age = null,
   sex = null,
+  goal = null,
   showIntensity = true,
   framed = true,
   showVo2Chart = true,
@@ -285,6 +328,7 @@ export function MovementCharts({
   activityDetails?: GarminChartInput['activityDetails'];
   age?: number | null;
   sex?: NutritionSex | null;
+  goal?: NutritionGoal | null;
   showIntensity?: boolean;
   /** False when this block already sits inside a card, so the metrics do not gain a second edge. */
   framed?: boolean;
@@ -322,7 +366,9 @@ export function MovementCharts({
     activityDetails,
     age,
     sex,
+    goal,
   });
+  const minuteCtx = chartContext(age, sex, goal, chartWindow.days);
   const hrvChart = detailCharts.find((chart) => chart.id === 'hrv') ?? null;
   const details = detailCharts.filter((chart) => (showVo2Chart || chart.id !== 'vo2') && chart.id !== 'hrv');
   const sdnnPoints = hrvSdnnSeries(endDay, chartWindow.days, appleHrvSdnn);
@@ -364,6 +410,7 @@ export function MovementCharts({
           stepGoalInPeriod(dailies, endDay, chartWindow.period),
           age,
           dailyAverage(stepPoints),
+          minuteCtx,
         )}
         onSelect={setSelected}
       />
@@ -378,7 +425,7 @@ export function MovementCharts({
           scale={mostDistance(distance)}
           format={(point) => distanceText(point.value)}
           garminNote={chartSourceCaption(distance)}
-          guide={distanceChartGuide(chartWindow.period, distance)}
+          guide={distanceChartGuide(chartWindow.period, distance, minuteCtx)}
           onSelect={setSelected}
         />
       ) : null}
@@ -391,7 +438,7 @@ export function MovementCharts({
           unit="floors"
           selected={selected}
           garminNote={chartSourceCaption(floors)}
-          guide={floorsChartGuide(chartWindow.period, floors)}
+          guide={floorsChartGuide(chartWindow.period, floors, minuteCtx)}
           onSelect={setSelected}
         />
       ) : null}
@@ -419,7 +466,7 @@ export function MovementCharts({
             vo2Max: latestRunningVo2(userMetrics),
             age,
             sex,
-          }))}
+          }), minuteCtx)}
           onSelect={setSelected}
         />
       ) : null}
@@ -432,7 +479,7 @@ export function MovementCharts({
           unit="min"
           selected={selected}
           garminNote={EXERCISE_GARMIN_CAPTION}
-          guide={activityChartGuide(chartWindow.period)}
+          guide={activityChartGuide(chartWindow.period, minuteCtx, sumPoints(intensityBars))}
           onSelect={setSelected}
         />
       ) : null}
@@ -443,7 +490,7 @@ export function MovementCharts({
           span={chartWindow.days}
           selected={selected}
           emptyLine={INTENSITY_EMPTY}
-          guide={activityChartGuide(chartWindow.period)}
+          guide={activityChartGuide(chartWindow.period, minuteCtx, null)}
           onSelect={setSelected}
         />
       ) : null}
@@ -454,7 +501,7 @@ export function MovementCharts({
           span={chartWindow.days}
           selected={selected}
           emptyLine={minuteTypeEmpty('moderate')}
-          guide={moderateChartGuide()}
+          guide={moderateChartGuide(minuteCtx, sumPoints(moderate))}
           framed={framed}
           onSelect={setSelected}
         />
@@ -466,7 +513,7 @@ export function MovementCharts({
           span={chartWindow.days}
           selected={selected}
           emptyLine={minuteTypeEmpty('vigorous')}
-          guide={vigorousChartGuide()}
+          guide={vigorousChartGuide(minuteCtx, sumPoints(vigorous))}
           framed={framed}
           onSelect={setSelected}
         />
@@ -506,7 +553,7 @@ export function MovementCharts({
           unit="ms"
           selected={selected}
           garminNote={APPLE_HRV_SOURCE}
-          guide={sdnnGuide(chartWindow.period, sdnnPoints)}
+          guide={sdnnGuide(chartWindow.period, sdnnPoints, minuteCtx)}
           onSelect={setSelected}
         />
       ) : appleHrvSdnn.length > 0 ? (
@@ -563,11 +610,13 @@ export function Vo2MaxChart({
   userMetrics,
   age,
   sex,
+  goal = null,
 }: {
   endDay: string;
   userMetrics: readonly GarminUserMetric[];
   age: number | null;
   sex: NutritionSex | null;
+  goal?: NutritionGoal | null;
 }) {
   const [sharedPeriod] = useStatPeriod();
   const chartWindow = movementPeriod(undefined, sharedPeriod);
@@ -583,6 +632,7 @@ export function Vo2MaxChart({
     userMetrics,
     age,
     sex,
+    goal,
   }).find((item) => item.id === 'vo2');
   if (!chart) return null;
   return (
@@ -788,6 +838,7 @@ function ActivityBars({
       {guide?.ownAverage?.label ? <T variant="muted">{guide.ownAverage.label}</T> : null}
       {guide?.warning ? <RestingWarning text={guide.cardCare || 'Contact your GP or NHS 111.'} /> : null}
       {chartVerdict(guide) ? <T>{chartVerdict(guide)}</T> : null}
+      <MetricRatingLines rating={guide?.rating} />
       {explanation.length > 0 || (guide?.sections?.length ?? 0) > 0 || guide?.care || guide?.outside ? (
         <MoreInfo about={title} summary="Not medical advice. Not a diagnosis.">
           {(guide?.sections ?? []).map((section) => (

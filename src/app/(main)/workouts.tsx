@@ -90,6 +90,7 @@ export default function WorkoutsScreen() {
         moveIq={readings.moveIq}
         activityDetails={readings.activityDetails}
         sex={snap.nutrition.goalSex}
+        goal={snap.nutrition.goal}
         exercisePermissionMissing={exercisePermissionMissing(visibility)}
       />
       <WorkoutCalendar

@@ -33,6 +33,7 @@ import {
   type ReadingSheet,
 } from '@/domain/healthBands';
 import { stepsResearchMeaning } from '@/domain/garminCharts';
+import { leadingNumber, readingFor, type MetricReading } from '@/domain/metricRegistry';
 import { restingFitnessComment, type RestingFitnessComment } from '@/domain/restingFitness';
 import { bodyFatRange } from '@/domain/distance';
 import {
@@ -417,6 +418,8 @@ export type HealthStatTile = {
   sources?: BandLink[];
   /** Per workout type in the chosen period. Present on the mix tile when types were stored. */
   breakdown?: { activityType: number; label: string; minutes: number; bucket: WorkoutBucket }[];
+  /** Shared rating. The face and More info render this, so the wording cannot drift. */
+  rating?: MetricReading;
 };
 
 export type HealthStatSection = {
@@ -442,7 +445,7 @@ export function buildHealthStatBoard(input: HealthStatBoardInput): HealthStatBoa
   const missing: string[] = [];
   const gaps: HealthStatGap[] = [];
   const take = (item: CatalogItem, tile: HealthStatTile | null) => {
-    if (tile) tiles.push(tile);
+    if (tile) tiles.push(decorateHealthTile(tile, input));
     else {
       missing.push(item.title);
       gaps.push(gapForStat(item.id, item.title));
@@ -515,6 +518,25 @@ function tileFor(
   if (item.id === 'active_energy') return energyTile(item, input);
   if (item.id === 'workouts') return workoutTile(item, input);
   return weeklyTile(item, input);
+}
+
+function decorateHealthTile(tile: HealthStatTile, input: HealthStatBoardInput): HealthStatTile {
+  const readings = tile.readings.map((point) => point.value).filter((value) => Number.isFinite(value) && value > 0);
+  const parsed = leadingNumber(tile.valueText);
+  const earlier = readings.slice(0, -1);
+  const ownUsual = earlier.length ? earlier.reduce((sum, value) => sum + value, 0) / earlier.length : null;
+  return {
+    ...tile,
+    rating: readingFor(tile.id, parsed ?? readings.at(-1) ?? null, {
+      age: input.goalAge,
+      sex: input.goalSex,
+      goal: input.goal,
+      ownUsual,
+      heightCm: input.heightCm,
+      realAge: input.goalAge,
+      windowDays: periodDayCount(periodOf(input)),
+    }),
+  };
 }
 
 function goalLabel(input: HealthStatBoardInput): string | null {

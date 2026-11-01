@@ -40,6 +40,7 @@ import { DateField } from '@/ui/DateField';
 import { GoalLine } from '@/ui/GoalLine';
 import { statsToneColors } from '@/ui/statsPalette';
 import { useAppTheme } from '@/ui/theme';
+import { MetricRatingLines } from '@/ui/MetricRating';
 import { MoreInfoButton } from '@/ui/MoreInfo';
 import { Vo2EstimateNote, Vo2MeasureBanner, Vo2MeasureCopy } from '@/ui/Vo2EstimateNote';
 import { healthTileIcon } from '@/domain/statIcons';
@@ -316,10 +317,8 @@ function StatTile({
           </>
         ) : null}
         <LowRestingFitNote reading={restingTileShowsFitLine(tile) ? tile.valueText : null} />
-        {tile.id === 'hrv_sdnn' ? <T variant="muted">Not medical advice. Not a diagnosis.</T> : null}
-        {!tile.empty && tile.hasGuideline && tile.id !== 'vo2_max' && tile.id !== 'hrv_sdnn' ? (
-          <T variant="muted">{tile.id === 'weekly_active_minutes' ? 'Not medical advice. Not a diagnosis.' : 'Not medical advice.'}</T>
-        ) : null}
+        <MetricRatingLines rating={tile.rating} />
+        <T variant="muted">Not medical advice. Not a diagnosis.</T>
         {tile.empty || tile.visual.kind === 'ring' || tile.visual.kind === 'zone' ? null : (
           <StatusMark tone={tile.tone} status={tile.status} word={tile.mark} />
         )}
@@ -584,6 +583,9 @@ function StatDetail({
                 {tile.rangeNote && !tile.meaning.includes(tile.rangeNote) ? <T>{tile.rangeNote}</T> : null}
                 <WorkoutTypeChoices tile={tile} onSetWorkoutBucket={onSetWorkoutBucket} />
                 {!tile.empty && tile.readings.length === 0 && tile.history.length >= 2 ? <TrendLine points={tile.history} color={ink} /> : null}
+                {tile.rating?.goalLine ? <T>{tile.rating.goalLine}</T> : null}
+                {tile.rating?.tips.map((tip) => <T key={tip}>{tip}</T>)}
+                {tile.rating && !tile.sources?.length && !tile.sourceName ? <T variant="muted">{tile.rating.source}</T> : null}
                 {tile.trend ? <T variant="muted">{tile.trend}</T> : null}
                 {tile.sources && tile.sources.length > 0 ? tile.sources.map((source) => (
                   <Pressable

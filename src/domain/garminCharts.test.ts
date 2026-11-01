@@ -222,7 +222,7 @@ describe('garmin chart bands', () => {
     });
     const byId = new Map(charts.map((chart) => [chart.id, chart]));
     const stress = byId.get('stress')?.guide;
-    expect(stress?.dailyTypical).toBeNull();
+    expect(stress?.dailyTypical).toEqual({ low: 0, high: 50 });
     expect(stress?.legend).toBe('');
     expect(stress?.about).toContain(STRESS_ZONES);
     expect(stress?.about.match(/0–25 resting/g)).toHaveLength(1);
@@ -266,10 +266,13 @@ describe('garmin chart bands', () => {
       expect(note.match(/Not medical advice/gi) ?? []).toHaveLength(0);
       expect(note.match(/Approximate general guidance/g) ?? []).toHaveLength(0);
     }
-    expect(byId.get('sleep_score')?.guide.about).toContain(NO_STANDARD_RANGE);
-    expect(byId.get('sleep_score')?.guide.dailyTypical).toBeNull();
+    expect(byId.get('sleep_score')?.guide.about).not.toContain(NO_STANDARD_RANGE);
+    expect(byId.get('sleep_score')?.guide.about).toContain('Excellent 90–100');
+    expect(byId.get('sleep_score')?.guide.dailyTypical).toEqual({ low: 80, high: 100 });
+    expect(byId.get('sleep_score')?.guide.rating?.label).toBe('Good');
+    expect(byId.get('sleep_score')?.guide.rating?.caveat).toBe('Not medical advice. Not a diagnosis.');
     expect(byId.get('sleep_duration')?.points.find((point) => point.day === end)?.label).toContain('7.5 hours');
-    expect(byId.get('sleep_duration')?.guide.dailyTypical).toBeNull();
+    expect(byId.get('sleep_duration')?.guide.dailyTypical).toEqual({ low: 7, high: 9 });
     expect(byId.get('respiration')?.guide.dailyTypical).toEqual({ low: BREATH_TYPICAL_LOW, high: BREATH_TYPICAL_HIGH });
     expect(byId.get('respiration')?.guide.outside).toBe(OUTSIDE_RANGE_NOTE);
     expect(byId.get('pulse_ox')?.guide.dailyTypical?.low).toBe(SPO2_TYPICAL_LOW);

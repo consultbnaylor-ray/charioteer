@@ -354,6 +354,7 @@ export default function Health() {
         activityDetails={readings.activityDetails}
         age={snap.nutrition.goalAge}
         sex={snap.nutrition.goalSex}
+        goal={snap.nutrition.goal}
       />
       <HealthVisibility
         report={visibility}

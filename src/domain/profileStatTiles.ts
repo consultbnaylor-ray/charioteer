@@ -1,4 +1,5 @@
 import { profileTrendChart } from '@/domain/chartSeries';
+import { leadingNumber, readingFor, type MetricReading, type MetricScale } from '@/domain/metricRegistry';
 import { formatUkDate } from './dates';
 import { averageValue, formatHealthValue, HEALTH_METRICS } from './healthInsights';
 import { formatGbp } from './savings';
@@ -18,6 +19,7 @@ export type ProfileStatTile = {
   value: string;
   caption: string;
   chart: ProfileStatChart | null;
+  rating?: MetricReading;
 };
 
 export type ProfileStatBoard = {
@@ -81,7 +83,28 @@ export function profileStatBoard(
   pushNullable(tiles, notShared, owner, view.goal, 'Nutrition goal', () => goalTile(view));
   pushFlag(tiles, notShared, owner, sharing?.healthPlan === true, 'Health plan', () => planTile(view), 'No plan yet');
 
-  return { tiles, notShared: owner ? notShared : [] };
+  return {
+    tiles: tiles.map((tile) => withProfileRating(tile)),
+    notShared: owner ? notShared : [],
+  };
+}
+
+function withProfileRating(tile: ProfileStatTile): ProfileStatTile {
+  const scale: MetricScale | null = tile.id === 'mood' || tile.id === 'mood-streak'
+    ? 'streak'
+    : tile.id === 'calories' || tile.id === 'quality' || tile.id === 'goal' || tile.id === 'body-figures'
+      ? 'share'
+      : null;
+  return {
+    ...tile,
+    rating: readingFor(tile.id, leadingNumber(tile.value), {
+      age: null,
+      sex: null,
+      goal: null,
+      ownUsual: null,
+      scale,
+    }),
+  };
 }
 
 function pushFlag(
