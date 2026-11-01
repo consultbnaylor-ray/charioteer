@@ -3,7 +3,6 @@ import { useRouter } from 'expo-router';
 
 import { useState, type ReactNode } from 'react';
 import {
-  ACTIVITY_CARE_LINE,
   EXERCISE_GARMIN_CAPTION,
   INTENSITY_EMPTY,
   MINUTE_TYPE_CAPTION,
@@ -50,9 +49,10 @@ import {
   intensitySeries,
   APPLE_HRV_EMPTY,
   APPLE_HRV_SOURCE,
-  GARMIN_EXTRA_EMPTY,
   GARMIN_HRV_EMPTY,
   GARMIN_HRV_SOURCE,
+  NO_READINGS_YET,
+  garminPlaceholderCharts,
   sdnnGuide,
   moderateChartGuide,
   movementPeriod,
@@ -371,6 +371,34 @@ export function MovementCharts({
   const minuteCtx = chartContext(age, sex, goal, chartWindow.days);
   const hrvChart = detailCharts.find((chart) => chart.id === 'hrv') ?? null;
   const details = detailCharts.filter((chart) => (showVo2Chart || chart.id !== 'vo2') && chart.id !== 'hrv');
+  const shownGarmin = new Set<string>(details.map((chart) => chart.id));
+  if (hrvChart) shownGarmin.add('hrv');
+  if (!showVo2Chart) shownGarmin.add('vo2');
+  const missingGarmin = dailies.length > 0
+    ? garminPlaceholderCharts({
+      endDay,
+      period: chartWindow.period,
+      dailies,
+      sleep,
+      respiration,
+      pulseOx,
+      hrv,
+      userMetrics,
+      bloodPressure,
+      bodyComp,
+      skinTemp,
+      stress,
+      epochs,
+      healthSnapshot,
+      moveIq,
+      activityDetails,
+      age,
+      sex,
+      goal,
+    }, shownGarmin)
+    : [];
+  const hrvPlaceholder = missingGarmin.find((chart) => chart.id === 'hrv') ?? null;
+  const placeholders = missingGarmin.filter((chart) => chart.id !== 'hrv');
   const sdnnPoints = hrvSdnnSeries(endDay, chartWindow.days, appleHrvSdnn);
   const chosen = stepPoints.find((point) => point.day === selected)
     ?? distance.find((point) => point.day === selected)
@@ -486,11 +514,12 @@ export function MovementCharts({
       {showIntensity && !seriesHasValue(intensityBars) ? (
         <MinuteTypeChart
           title="Intensity minutes"
-          points={[]}
+          points={intensityBars}
           span={chartWindow.days}
           selected={selected}
           emptyLine={INTENSITY_EMPTY}
           guide={activityChartGuide(chartWindow.period, minuteCtx, null)}
+          framed={framed}
           onSelect={setSelected}
         />
       ) : null}
@@ -536,13 +565,19 @@ export function MovementCharts({
           guide={hrvChart.guide}
           onSelect={setSelected}
         />
-      ) : dailies.length > 0 ? (
-        <View style={{ gap: 8 }}>
-          <T variant="label">Heart rate variability</T>
-          <T variant="muted">{GARMIN_HRV_SOURCE}</T>
-          <T>{GARMIN_HRV_EMPTY}</T>
-          <T variant="muted">Not medical advice. Not a diagnosis.</T>
-        </View>
+      ) : hrvPlaceholder ? (
+        <ActivityBars
+          framed={framed}
+          title="Heart rate variability"
+          points={garminBarPoints(hrvPlaceholder.points)}
+          span={chartWindow.days}
+          unit={hrvPlaceholder.unit}
+          selected={selected}
+          garminNote={GARMIN_HRV_SOURCE}
+          guide={hrvPlaceholder.guide}
+          lead={hrvPlaceholder.note ?? GARMIN_HRV_EMPTY}
+          onSelect={setSelected}
+        />
       ) : null}
       {seriesHasValue(sdnnPoints) ? (
         <ActivityBars
@@ -557,14 +592,20 @@ export function MovementCharts({
           onSelect={setSelected}
         />
       ) : appleHrvSdnn.length > 0 ? (
-        <View style={{ gap: 8 }}>
-          <T variant="label">Heart rate variability</T>
-          <T variant="muted">{APPLE_HRV_SOURCE}</T>
-          <T>{APPLE_HRV_EMPTY}</T>
-          <T variant="muted">Not medical advice. Not a diagnosis.</T>
-        </View>
+        <ActivityBars
+          framed={framed}
+          title="Heart rate variability"
+          points={sdnnPoints}
+          span={chartWindow.days}
+          unit="ms"
+          selected={selected}
+          garminNote={APPLE_HRV_SOURCE}
+          guide={sdnnGuide(chartWindow.period, sdnnPoints, minuteCtx)}
+          lead={APPLE_HRV_EMPTY}
+          onSelect={setSelected}
+        />
       ) : null}
-      {details.length > 0 ? (
+      {details.length > 0 || placeholders.length > 0 ? (
         <Fold
           title={GARMIN_DETAILS_TITLE}
           closedLabel={TAP_FOR_MORE}
@@ -589,14 +630,21 @@ export function MovementCharts({
               />
             );
           })}
-          {dailies.length > 0 ? GARMIN_EXTRA_EMPTY.filter((item) => !details.some((chart) => chart.id === item.id)).map((item) => (
-            <View key={item.id} style={{ gap: 4 }}>
-              <T variant="label">{item.id === 'blood_pressure' ? 'Blood pressure' : item.id === 'skin_temp' ? 'Skin temperature' : item.id === 'body_fat' ? 'Body composition' : item.id === 'fitness_age' ? 'Fitness age' : item.id === 'snapshot_heart' ? 'Health snapshot' : item.id === 'epoch_minutes' ? 'Epochs' : item.id === 'move_iq' ? 'Move IQ' : item.id === 'pulse_ox' ? 'Pulse ox' : item.id === 'respiration' ? 'Breathing rate' : item.id === 'stress' ? 'Stress' : 'Body battery'}</T>
-              <T variant="muted">Garmin</T>
-              <T>{item.line}</T>
-              <T variant="muted">Not medical advice. Not a diagnosis.</T>
-            </View>
-          )) : null}
+          {placeholders.map((chart) => (
+            <ActivityBars
+              key={chart.id}
+              framed={framed}
+              title={chart.title}
+              points={garminBarPoints(chart.points)}
+              span={chartWindow.days}
+              unit={chart.unit}
+              selected={selected}
+              garminNote="Garmin"
+              guide={chart.guide}
+              lead={chart.note}
+              onSelect={setSelected}
+            />
+          ))}
         </Fold>
       ) : null}
       {span == null ? <T variant="muted" style={{ textAlign: 'center' }}>{CHART_DIRECTION_HINT}</T> : null}
@@ -749,22 +797,6 @@ function MinuteTypeChart({
   onSelect: (day: string) => void;
 }) {
   const hasReading = points.some((point) => point.source != null);
-  if (!hasReading) {
-    const body = (
-      <>
-        <T variant="label">{title}</T>
-        <T variant="muted">{emptyLine}</T>
-        <MoreInfo
-          about={title}
-          summary={ACTIVITY_CARE_LINE}
-        >
-          <T variant="muted">{guide.about}</T>
-        </MoreInfo>
-      </>
-    );
-    if (!framed) return <View style={{ gap: 8 }}>{body}</View>;
-    return <Card>{body}</Card>;
-  }
   return (
     <ActivityBars
       framed={framed}
@@ -775,6 +807,7 @@ function MinuteTypeChart({
       selected={selected}
       garminNote={MINUTE_TYPE_CAPTION}
       guide={guide}
+      lead={hasReading ? null : emptyLine}
       onSelect={onSelect}
     />
   );
@@ -791,6 +824,7 @@ function ActivityBars({
   format,
   guide = null,
   framed = true,
+  lead = null,
   onSelect,
 }: {
   title: string;
@@ -804,6 +838,8 @@ function ActivityBars({
   guide?: ChartGuide | null;
   /** False inside a card that already has the mint edge. */
   framed?: boolean;
+  /** One sentence kept on the card when the chart has no readings. */
+  lead?: string | null;
   onSelect: (day: string) => void;
 }) {
   const theme = useAppTheme();
@@ -825,8 +861,10 @@ function ActivityBars({
       backgroundColor: theme.colors.muted,
     };
   }
-  const bandTop = band ? Math.min(band.high, most) : 0;
-  const bandBottom = band ? Math.min(band.low, bandTop) : 0;
+  const hasBars = points.some((point) => point.source != null && point.empty !== true);
+  const bandLow = band ? Math.max(0, Math.min(band.low, band.high)) : 0;
+  const bandTop = band ? Math.min(Math.max(band.high, bandLow), most) : 0;
+  const bandBottom = band ? Math.min(bandLow, bandTop) : 0;
   const axis = activityAxisPlan(points.map((point) => point.day));
   const dividers = new Set(axis.filter((mark) => mark.divider).map((mark) => mark.index));
 
@@ -837,6 +875,7 @@ function ActivityBars({
       {guide?.target?.label ? <T variant="muted">{guide.target.label}</T> : null}
       {guide?.ownAverage?.label ? <T variant="muted">{guide.ownAverage.label}</T> : null}
       {guide?.warning ? <RestingWarning text={guide.cardCare || 'Contact your GP or NHS 111.'} /> : null}
+      {lead ? <T>{lead}</T> : null}
       {chartVerdict(guide) ? <T>{chartVerdict(guide)}</T> : null}
       <MetricRatingLines rating={guide?.rating} />
       {explanation.length > 0 || (guide?.sections?.length ?? 0) > 0 || guide?.care || guide?.outside ? (
@@ -901,6 +940,11 @@ function ActivityBars({
               />
             ) : null
           )) : null}
+          {!hasBars ? (
+            <View pointerEvents="none" style={{ position: 'absolute', zIndex: 3, left: 8, right: 8, top: 8 }}>
+              <T>{NO_READINGS_YET}</T>
+            </View>
+          ) : null}
           {own != null ? <View pointerEvents="none" style={{ ...guideLine(own), zIndex: 1 }} /> : null}
           {target != null ? <View pointerEvents="none" style={{ ...guideLine(target), zIndex: 1 }} /> : null}
           <View style={{ zIndex: 2, flexDirection: 'row', alignItems: 'flex-end', height: BAR_HEIGHT, gap: span > 14 ? 1 : 4 }}>

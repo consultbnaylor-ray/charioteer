@@ -68,6 +68,8 @@ export type MetricReading = {
   goalLine: string | null;
   tips: readonly string[];
   more: string;
+  /** No stored figure. The card says "No rating yet" and still shows the range. */
+  pending: boolean;
 };
 
 export type MetricDefinition = {
@@ -194,18 +196,25 @@ function usualClause(value: number, usual: number | null, unit: string): string 
   return ` This is below your usual of ${shown} ${unit}.`;
 }
 
-function blank(id: string, source: string, where: string, more = where): MetricReading {
+function blank(
+  id: string,
+  source: string,
+  where: string,
+  moreOrExtra: string | { band?: { low: number; high: number } | null; draw?: boolean; goalLine?: string | null; tips?: readonly string[]; more?: string } = where,
+): MetricReading {
+  const extra = typeof moreOrExtra === 'string' ? { more: moreOrExtra } : moreOrExtra;
   return {
     id,
     label: 'Usual',
     where,
     source,
     caveat: METRIC_CAVEAT,
-    band: null,
-    draw: false,
-    goalLine: null,
-    tips: [],
-    more,
+    band: extra.band ?? null,
+    draw: extra.draw ?? false,
+    goalLine: extra.goalLine ?? null,
+    tips: extra.tips ?? [],
+    more: extra.more ?? where,
+    pending: true,
   };
 }
 
@@ -230,6 +239,7 @@ function made(
     goalLine,
     tips: showTips ? (extra.tips ?? []) : [],
     more: extra.more ?? where,
+    pending: false,
   };
 }
 
@@ -246,7 +256,15 @@ function scaled(weekly: number, ctx: MetricContext): number {
 
 function rateSteps(id: string, value: number | null, ctx: MetricContext): MetricReading {
   const band = stepBand(ctx.age);
-  if (value == null || value <= 0) return blank(id, PALUCH, `No step figure in this window. The research range is ${band.low.toLocaleString('en-GB')}–${band.high.toLocaleString('en-GB')} steps a day (${band.why}).`);
+  if (value == null || value <= 0) {
+    const sport = sportName(ctx.goal);
+    return blank(id, PALUCH, `The research range is ${band.low.toLocaleString('en-GB')}–${band.high.toLocaleString('en-GB')} steps a day (${band.why}). ${ageNote(ctx)} The NHS does not set a daily step target.`, {
+      band,
+      draw: true,
+      goalLine: sport ? `${sport}: that step range is the same one used for other adults. There is no reading to compare yet.` : null,
+      tips: STEP_TIPS,
+    });
+  }
   const label: MetricRatingLabel = value >= band.high ? 'Excellent' : value >= band.low ? 'Good' : value >= 5000 ? 'Fair' : 'Poor';
   const sport = sportName(ctx.goal);
   const goalLine = sport
@@ -259,7 +277,19 @@ function rateSteps(id: string, value: number | null, ctx: MetricContext): Metric
 }
 
 function rateResting(id: string, value: number | null, ctx: MetricContext): MetricReading {
-  if (value == null || value <= 0) return blank(id, NHS_REST, 'No resting heart rate in this window. The usual adult range is 60–100 bpm (NHS).');
+  if (value == null || value <= 0) {
+    const sport = sportName(ctx.goal);
+    return blank(id, NHS_REST, `The usual adult range is 60–100 bpm. Good on this card is about 50–80. ${ageNote(ctx)}`, {
+      band: { low: 60, high: 100 },
+      draw: true,
+      goalLine: sport ? `${sport}: a typical trained resting rate is about 40–60 bpm. There is no reading to compare yet.` : null,
+      tips: [
+        'Easy aerobic sessions and walks, most weeks, are what usually brings a high resting rate down.',
+        'Sleep and alcohol both move the next morning’s number.',
+        'Treat one odd day as a reading, and watch the month.',
+      ],
+    });
+  }
   const bpm = Math.round(value);
   let label: MetricRatingLabel = 'Good';
   if (bpm > 100) label = 'Poor';
@@ -290,7 +320,7 @@ function rateResting(id: string, value: number | null, ctx: MetricContext): Metr
 function rateSleepHours(id: string, value: number | null, ctx: MetricContext): MetricReading {
   const older = ctx.age != null && ctx.age >= 65;
   const band = older ? { low: 7, high: 8 } : { low: NHS_ADULT_SLEEP_MIN_HOURS, high: NHS_ADULT_SLEEP_MAX_HOURS };
-  if (value == null || value <= 0) return blank(id, NHS_SLEEP, `No sleep figure in this window. The adult range used here is ${band.low}–${band.high} hours.`);
+  if (value == null || value <= 0) return blank(id, NHS_SLEEP, `The adult range used here is ${band.low}–${band.high} hours. ${older ? 'From 65, the National Sleep Foundation range is 7–8 hours.' : ageNote(ctx)}`, { band, draw: true, tips: SLEEP_TIPS });
   const label: MetricRatingLabel = value >= band.low && value <= band.high ? 'Good' : value >= band.low - 1 && value <= band.high + 1 ? 'Fair' : 'Poor';
   const where = `${Math.round(value * 10) / 10} hours against ${band.low}–${band.high} hours. ${older ? 'From 65, the National Sleep Foundation range used here is 7–8 hours.' : ageNote(ctx)}`;
   return made(id, NHS_SLEEP, label, where, { band, draw: true, tips: SLEEP_TIPS, more: where });
@@ -298,7 +328,7 @@ function rateSleepHours(id: string, value: number | null, ctx: MetricContext): M
 
 function rateSleepScore(id: string, value: number | null, ctx: MetricContext): MetricReading {
   const band = { low: 80, high: 100 };
-  if (value == null || value <= 0) return blank(id, GARMIN_SLEEP, 'No Garmin sleep score in this window. Garmin’s Good band starts at 80.');
+  if (value == null || value <= 0) return blank(id, GARMIN_SLEEP, 'Garmin calls 90–100 Excellent, 80–89 Good, 60–79 Fair, and under 60 Poor. The green band is 80–100.', { band, draw: true, tips: SLEEP_TIPS });
   const score = Math.round(value);
   const label: MetricRatingLabel = score >= 90 ? 'Excellent' : score >= 80 ? 'Good' : score >= 60 ? 'Fair' : 'Poor';
   const where = `Sleep score ${score}. Garmin calls 90–100 Excellent, 80–89 Good, 60–79 Fair, and under 60 Poor. ${ageNote(ctx)}`;
@@ -308,7 +338,17 @@ function rateSleepScore(id: string, value: number | null, ctx: MetricContext): M
 function rateVo2(id: string, value: number | null, ctx: MetricContext): MetricReading {
   const band = publishedCardioBand(ctx.age, ctx.sex);
   if (value == null || value <= 0) {
-    return blank(id, KAMINSKY, band ? `No VO2 max in this window. The 25th to 75th percentile for this age and sex is ${band.low}–${band.high}.` : 'No VO2 max in this window. Age and sex are needed before a percentile is shown.');
+    const sport = sportName(ctx.goal);
+    return blank(id, KAMINSKY, band ? `The published middle half for this age and sex is ${band.low}–${band.high}. At or above ${band.high} is Good. A cycling estimate is not used.` : `Age and sex are needed before a percentile is shown. ${ageNote(ctx)}`, {
+      band,
+      draw: Boolean(band),
+      goalLine: sport ? `${sport}: trained people often sit at or above the 75th percentile for their age and sex. There is no reading to compare yet.` : null,
+      tips: [
+        'Four repeats of four hard minutes, with easy movement between, once or twice a week.',
+        'Keep the other days easy. Walks still count.',
+        'Build up if hard efforts are new. Check with a GP if you are unsure about intense work.',
+      ],
+    });
   }
   if (!band) {
     return made(id, KAMINSKY, 'Usual', `${value} ml/kg/min. ${ageNote(ctx)} No percentile is shown until age and sex are both set.${usualClause(value, ctx.ownUsual, 'ml/kg/min')}`, {
@@ -343,7 +383,13 @@ function rateVo2(id: string, value: number | null, ctx: MetricContext): MetricRe
 function rateMinutes(id: string, value: number | null, ctx: MetricContext, weekly: number, noun: string): MetricReading {
   const aim = scaled(weekly, ctx);
   const days = ctx.windowDays != null && ctx.windowDays > 0 ? ctx.windowDays : 7;
-  if (value == null || value <= 0) return blank(id, CMO, `No ${noun} in this window. The guide is about ${aim} minutes across ${days} days (${weekly} a week).`);
+  if (value == null || value <= 0) {
+    const sport = sportName(ctx.goal);
+    return blank(id, CMO, `The guide for this window is about ${aim} minutes, from ${weekly} a week. ${ageNote(ctx)}`, {
+      goalLine: sport ? `${sport}: the general weekly guide is still about ${aim} minutes in this window. There is no reading to compare yet.` : null,
+      tips: MOVE_TIPS,
+    });
+  }
   const label: MetricRatingLabel = value >= aim ? 'Good' : value >= aim * 0.5 ? 'Fair' : 'Poor';
   const sport = sportName(ctx.goal);
   const goalLine = sport
@@ -370,7 +416,12 @@ function rateHrvSdnn(id: string, value: number | null, ctx: MetricContext): Metr
 }
 
 function rateHrvRmssd(id: string, value: number | null, ctx: MetricContext): MetricReading {
-  if (value == null || value <= 0) return blank(id, NUNAN_RMSSD, 'No Garmin overnight RMSSD in this window. This is not Apple SDNN.');
+  if (value == null || value <= 0) return blank(id, NUNAN_RMSSD, `${NUNAN_RMSSD} This is not mixed with Apple SDNN.`, {
+    tips: [
+      'Keep the next night’s sleep long enough, and make the training day easier if this keeps dropping.',
+      'One low night is common. The trend over a fortnight matters more.',
+    ],
+  });
   const ms = Math.round(value);
   const usual = ctx.ownUsual;
   let label: MetricRatingLabel = 'Usual';
@@ -434,7 +485,20 @@ function aceBand(sex: NutritionSex | null, sport: boolean): { low: number; high:
 }
 
 function rateBodyFat(id: string, value: number | null, ctx: MetricContext): MetricReading {
-  if (value == null || value <= 0) return blank(id, ACE_FAT, 'No body-fat figure in this window.');
+  if (value == null || value <= 0) {
+    const sport = sportName(ctx.goal);
+    const span = aceBand(ctx.sex, Boolean(sport));
+    const who = ctx.sex === 'female' ? 'women' : ctx.sex === 'male' ? 'men' : null;
+    return blank(id, ACE_FAT, span && who ? `For ${who}, the ACE span on this card is ${span.low}–${span.high}%. Categories are not split by age. ${ageNote(ctx)}` : `Sex is not set, so the ACE categories are not applied. ${ageNote(ctx)}`, {
+      band: span,
+      draw: Boolean(span),
+      goalLine: sport && span ? `${sport}: the comparison uses the ACE athlete span, ${span.low}–${span.high}%. There is no reading yet.` : null,
+      tips: [
+        'Steady meals with protein and vegetables, and walking most days.',
+        'This is general guidance, not a meal plan and not a judgement.',
+      ],
+    });
+  }
   const sport = sportName(ctx.goal);
   const band = aceBand(ctx.sex, Boolean(sport));
   if (!band || ctx.sex == null) {
@@ -489,7 +553,14 @@ function rateWaist(id: string, value: number | null, ctx: MetricContext): Metric
 function rateBloodPressure(id: string, value: number | null, ctx: MetricContext, kind: 'systolic' | 'diastolic'): MetricReading {
   const band = kind === 'systolic' ? { low: 90, high: 120 } : { low: 60, high: 80 };
   const name = kind === 'systolic' ? 'Systolic' : 'Diastolic';
-  if (value == null || value <= 0) return blank(id, NHS_BP, `No ${name.toLowerCase()} reading in this window. NHS ideal is about ${band.low}–${band.high} mmHg.`);
+  if (value == null || value <= 0) return blank(id, NHS_BP, `NHS ideal for ${name.toLowerCase()} is about ${band.low}–${band.high} mmHg. The other number stays on its own card. Outside that band, contact a GP or NHS 111. This is not a diagnosis.`, {
+    band,
+    draw: true,
+    tips: [
+      'A walk most days, less salt, and modest alcohol are the usual first steps.',
+      'One home reading can be off. A GP or NHS 111 can check a run of readings.',
+    ],
+  });
   const reading = Math.round(value);
   const inside = reading >= band.low && reading <= band.high;
   const high = kind === 'systolic' ? reading >= 140 : reading >= 90;
@@ -509,7 +580,11 @@ function rateBloodPressure(id: string, value: number | null, ctx: MetricContext,
 }
 
 function rateSpo2(id: string, value: number | null, ctx: MetricContext): MetricReading {
-  if (value == null || value <= 0) return blank(id, SPO2_SOURCE, 'No blood-oxygen reading in this window.');
+  if (value == null || value <= 0) return blank(id, SPO2_SOURCE, 'Usual healthy readings are at or above about 96. The green band is 95–100. At 92 or below, contact a GP or NHS 111.', {
+    band: { low: 95, high: 100 },
+    draw: true,
+    tips: ['If a low reading keeps appearing, or you feel unwell, contact a GP or NHS 111 rather than watching the watch.'],
+  });
   const pct = Math.round(value);
   const label: MetricRatingLabel = pct >= 96 ? 'Good' : pct >= 93 ? 'Fair' : 'Poor';
   const talk = pct <= 92 ? ' At 92 or below, contact a GP or NHS 111. Call 999 if you are short of breath, in pain, or feel faint.' : '';
@@ -522,7 +597,11 @@ function rateSpo2(id: string, value: number | null, ctx: MetricContext): MetricR
 
 function rateBreath(id: string, value: number | null, ctx: MetricContext): MetricReading {
   const band = { low: 12, high: 20 };
-  if (value == null || value <= 0) return blank(id, BREATH_SOURCE, 'No breathing rate in this window. A usual resting adult rate is about 12–20 breaths a minute.');
+  if (value == null || value <= 0) return blank(id, BREATH_SOURCE, 'A usual resting adult rate is about 12–20 breaths a minute. The green band is that range.', {
+    band: { low: 12, high: 20 },
+    draw: true,
+    tips: ['Slow breathing for a few minutes, and a check of whether you were still when the watch measured it.'],
+  });
   const rate = Math.round(value * 10) / 10;
   const label: MetricRatingLabel = rate >= 12 && rate <= 20 ? 'Good' : rate >= 10 && rate <= 24 ? 'Fair' : 'Poor';
   const talk = label === 'Poor' ? ' If a rate this far from 12–20 keeps happening, or you feel breathless, contact a GP or NHS 111.' : '';
@@ -536,7 +615,15 @@ function rateBreath(id: string, value: number | null, ctx: MetricContext): Metri
 
 function rateStress(id: string, value: number | null, ctx: MetricContext): MetricReading {
   const band = { low: 0, high: 50 };
-  if (value == null || value < 0) return blank(id, GARMIN_STRESS, 'No Garmin stress score in this window. Rest and low are 0–50.');
+  if (value == null || value < 0) return blank(id, GARMIN_STRESS, 'Garmin’s bands are 0–25 rest, 26–50 low, 51–75 medium, and 76–100 high. The green band is rest and low. It is a body-signal estimate, not a measure of emotions.', {
+    band: { low: 0, high: 50 },
+    draw: true,
+    tips: [
+      'A few minutes of slow breathing, or a walk outside.',
+      'Look at sleep, caffeine, and alcohol if the score stays medium or high.',
+      'If a craving shows up with it, open Breathe or talk it through with someone.',
+    ],
+  });
   const score = Math.round(value);
   const label: MetricRatingLabel = score <= 25 ? 'Excellent' : score <= 50 ? 'Good' : score <= 75 ? 'Fair' : 'Poor';
   const where = `Stress ${score}. Garmin’s bands are 0–25 rest, 26–50 low, 51–75 medium, and 76–100 high. The green band is rest and low. It is a body-signal estimate, not a measure of emotions.${usualClause(score, ctx.ownUsual, 'score')}`;
@@ -561,7 +648,9 @@ function rateOwn(
   unit: string,
   higherIsBetter: boolean,
 ): MetricReading {
-  if (value == null || Number.isNaN(value)) return blank(id, source, 'No figure in this window. There is no published healthy-person range, so nothing is guessed.');
+  if (value == null || Number.isNaN(value)) return blank(id, source, 'There is no published healthy-person range. A new reading is compared with your own usual days.', {
+    tips: ['Compare a new reading with your own recent days. There is no population line to chase.'],
+  });
   const usual = ctx.ownUsual;
   let label: MetricRatingLabel = 'Usual';
   if (usual != null && higherIsBetter && value >= usual) label = 'Good';
@@ -737,7 +826,14 @@ function rateRecovery(id: string, value: number | null, ctx: MetricContext): Met
 
 function fitnessAgeReading(id: string, value: number | null, ctx: MetricContext): MetricReading {
   const real = ctx.realAge ?? ctx.age;
-  if (value == null || value <= 0) return blank(id, GARMIN_FITNESS_AGE, 'No fitness age stored yet. Garmin builds it from VO2 max, resting heart rate, BMI or body fat, and vigorous minutes.');
+  if (value == null || value <= 0) {
+    const sport = sportName(ctx.goal);
+    const years = ctx.realAge ?? ctx.age;
+    return blank(id, GARMIN_FITNESS_AGE, `Garmin builds fitness age from VO2 max, resting heart rate, BMI or body fat, and vigorous minutes. ${years == null ? 'Age is not set, so it cannot be compared with a birthday yet.' : `It will be compared with age ${Math.round(years)}.`}`, {
+      goalLine: sport ? `${sport}: the same four inputs still decide it. There is no fitness age stored yet.` : null,
+      tips: ['Aim for 75 or more vigorous minutes a week, for example two or three interval sessions.'],
+    });
+  }
   const fitness = Math.round(value);
   const levers = fitnessLevers(ctx);
   const top = levers[0] ?? null;
@@ -765,6 +861,7 @@ function fitnessAgeReading(id: string, value: number | null, ctx: MetricContext)
     goalLine: sportName(ctx.goal) ? `${sportName(ctx.goal)}: fitness age still uses the same four Garmin inputs. The nearest lever above is the practical one.` : null,
     tips: label === 'Good' && short.length === 0 ? [] : tips,
     more: `${where} Garmin describes fitness age as an estimate, not your birthday and not a diagnosis.`,
+    pending: false,
   };
 }
 
@@ -899,7 +996,11 @@ export const METRIC_REGISTRY: Record<string, MetricDefinition> = {
   pulse_ox: define('pulse_ox', '%', SPO2_SOURCE, 'More Garmin Stats', '95–100 band and an outside note.', 'Good at or above about 96. At 92 or below: GP or NHS 111, not an alarm.', rateSpo2),
   fitness_age: define('fitness_age', 'years', GARMIN_FITNESS_AGE, 'More Garmin Stats', 'A bare years chart, easy to miss when it is close to real age.', 'Compared with real age. What moves it most ranks your own VO2, resting heart rate, body fat or BMI, and vigorous minutes. One practical tip when a lever is short.', fitnessAgeReading),
   skin_temp: define('skin_temp', '°C', 'Garmin overnight change from your usual skin temperature. The ±1 °C band is that change, not a disease cutoff.', 'More Garmin Stats', 'A ±1 °C band.', 'Usual inside that Garmin change band. No disease cutoff. Source once. Caveat.', (_id, value, ctx) => {
-    if (value == null || Number.isNaN(value)) return blank('skin_temp', 'Garmin overnight change from your usual skin temperature. The ±1 °C band is that change, not a disease cutoff.', 'No skin-temperature change in this window.');
+    if (value == null || Number.isNaN(value)) return blank('skin_temp', 'Garmin overnight change from your usual skin temperature. The ±1 °C band is that change, not a disease cutoff.', 'The green band is about 1 °C either side of your Garmin usual. It is not a fever line.', {
+      band: { low: -1, high: 1 },
+      draw: true,
+      tips: ['If you feel unwell, contact a GP or NHS 111. The watch change is not a temperature diagnosis.'],
+    });
     const label: MetricRatingLabel = Math.abs(value) <= 1 ? 'Good' : 'Fair';
     return made('skin_temp', 'Garmin overnight change from your usual skin temperature. The ±1 °C band is that change, not a disease cutoff.', label, `${Math.round(value * 10) / 10} °C from your Garmin usual. Inside ±1 °C is the watch’s own band, not a fever line.`, {
       band: { low: -1, high: 1 },
@@ -910,7 +1011,18 @@ export const METRIC_REGISTRY: Record<string, MetricDefinition> = {
   }),
   blood_pressure: define('blood_pressure', 'mmHg', NHS_BP, 'More Garmin Stats', 'A 90–120 systolic band.', 'Good inside NHS ideal. Outside: GP or NHS 111, not a diagnosis. Diastolic stays separate.', (_id, value, ctx) => rateBloodPressure('blood_pressure', value, ctx, 'systolic')),
   diastolic: define('diastolic', 'mmHg', NHS_BP, 'More Garmin Stats', 'A 60–80 band.', 'Good inside 60–80. Outside: GP or NHS 111. Not averaged with systolic.', (_id, value, ctx) => rateBloodPressure('diastolic', value, ctx, 'diastolic')),
-  bmi: define('bmi', 'BMI', NHS_BMI, 'More Garmin Stats', '18.5–24.9 band.', 'NHS label, muscular-build note, sport line, tips when outside Good.', (_id, value, ctx) => (value == null || value <= 0 ? blank('bmi', NHS_BMI, 'No BMI in this window.') : rateBmiValue('bmi', value, ctx))),
+  bmi: define('bmi', 'BMI', NHS_BMI, 'More Garmin Stats', '18.5–24.9 band.', 'NHS label, muscular-build note, sport line, tips when outside Good.', (_id, value, ctx) => {
+    if (value == null || value <= 0) {
+      const sport = sportName(ctx.goal);
+      return blank('bmi', NHS_BMI, `The NHS healthy-weight range is ${NICE_BMI_HEALTHY_MIN}–${NICE_BMI_HEALTHY_MAX}. A muscular build can sit above it. ${ageNote(ctx)}`, {
+        band: { low: NICE_BMI_HEALTHY_MIN, high: NICE_BMI_HEALTHY_MAX },
+        draw: true,
+        goalLine: sport ? `${sport}: a muscular build can sit above the NHS range. There is no BMI stored yet.` : null,
+        tips: ['Steady meals and walks most days are the general advice. This is not a diet plan.'],
+      });
+    }
+    return rateBmiValue('bmi', value, ctx);
+  }),
   snapshot_heart: define('snapshot_heart', 'bpm', NHS_REST, 'More Garmin Stats', '60–100 band.', 'Same resting rating as the resting-heart card, for Garmin’s short check.', rateResting),
   epoch_minutes: define('epoch_minutes', 'min', NO_POP, 'More Garmin Stats', 'A minutes total. No rating.', 'Usual against your own days. Not a medical measure.', (_id, value, ctx) => rateOwn('epoch_minutes', NO_POP, value, ctx, 'min', true)),
   move_iq: define('move_iq', 'min', NO_POP, 'More Garmin Stats', 'Minutes Garmin noticed. No rating.', 'Usual against your own days.', (_id, value, ctx) => rateOwn('move_iq', NO_POP, value, ctx, 'min', true)),

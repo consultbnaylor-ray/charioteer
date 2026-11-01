@@ -8,7 +8,8 @@ export function MetricRatingLines({ rating }: { rating: MetricReading | null | u
   if (!rating) return null;
   return (
     <View style={{ gap: 4 }}>
-      <T>{`${rating.label}. ${rating.where}`}</T>
+      {rating.pending ? <T>No rating yet</T> : <T>{`${rating.label}. ${rating.where}`}</T>}
+      {rating.pending && rating.where ? <T>{rating.where}</T> : null}
       {rating.goalLine ? <T variant="muted">{rating.goalLine}</T> : null}
       {rating.tips.map((tip) => <T key={tip}>{tip}</T>)}
     </View>

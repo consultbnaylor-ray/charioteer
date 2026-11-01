@@ -147,7 +147,11 @@ export type GarminDetailChart = {
   /** True when a stored zero is a real score, as with stress and Body Battery. */
   includeZero: boolean;
   guide: ChartGuide;
+  /** One plain sentence on the card when the chart has no readings yet. */
+  note?: string;
 };
+
+export const NO_READINGS_YET = 'No readings yet';
 
 export type GarminChartInput = {
   endDay: string;
@@ -875,6 +879,49 @@ function metricChart(
       ? rangeGuide({ period: input.period, low: band.low, high: band.high, unit, what: about, latest: latestStored(points) })
       : advised(about),
   };
+}
+
+/** Every More Garmin Stats card, including the ones that have not synced yet. Activity files are not a card: the file itself is not stored. */
+export const GARMIN_CARD_CATALOGUE: readonly { id: string; title: string; unit: string; line: string; signed?: boolean }[] = [
+  { id: 'stress', title: 'Average stress', unit: 'score', line: 'Stress is Garmin\'s daytime stress score. Wear the watch and it will appear here.' },
+  { id: 'body_battery_charged', title: 'Body battery charged', unit: 'score', line: 'Body battery is Garmin\'s charge and drain through the day. It appears after a sync.' },
+  { id: 'body_battery_drained', title: 'Body battery drained', unit: 'score', line: 'Drained is how many Body Battery points the day took off. It appears after a sync.' },
+  { id: 'body_battery_highest', title: 'Body battery highest', unit: 'score', line: 'Highest is the top Body Battery level that day. It appears after a sync.' },
+  { id: 'body_battery_lowest', title: 'Body battery lowest', unit: 'score', line: 'Lowest is the bottom Body Battery level that day. It appears after a sync.' },
+  { id: 'sleep_score', title: 'Sleep score', unit: 'score', line: 'Sleep score is Garmin\'s own score for that night. It appears after a night on the watch.' },
+  { id: 'sleep_duration', title: 'Sleep duration', unit: 'hours', line: 'Sleep duration is the hours Garmin stored for that night. It appears after a night on the watch.' },
+  { id: 'respiration', title: 'Breathing rate', unit: 'breaths/min', line: 'Breathing rate is Garmin\'s breaths per minute while you are still.' },
+  { id: 'pulse_ox', title: 'Pulse ox', unit: '%', line: 'Pulse ox is Garmin\'s blood oxygen while you are still. Wear the watch and it will appear here.' },
+  { id: 'hrv', title: 'Heart rate variability', unit: 'ms', line: GARMIN_HRV_EMPTY },
+  { id: 'vo2', title: 'VO2 max', unit: 'ml/kg/min', line: 'VO2 max is Garmin\'s running estimate. It appears after a qualifying activity syncs.' },
+  { id: 'fitness_age', title: 'Fitness age', unit: 'years', line: 'Fitness age is Garmin\'s estimate beside VO2 max. It appears after a sync.' },
+  { id: 'stress_detail', title: 'Stress details', unit: 'score', line: 'Stress details are Garmin\'s stress samples through the day. They appear after a sync.' },
+  { id: 'skin_temp', title: 'Skin temperature', unit: '°C', line: 'Skin temperature is Garmin\'s overnight change from your usual temperature.', signed: true },
+  { id: 'blood_pressure', title: 'Blood pressure', unit: 'mmHg', line: 'Blood pressure is a Garmin cuff or watch reading. It appears after that reading syncs.' },
+  { id: 'diastolic', title: 'Diastolic pressure', unit: 'mmHg', line: 'Diastolic pressure is the lower Garmin blood-pressure number. It is not mixed into the systolic card.' },
+  { id: 'body_fat', title: 'Body composition', unit: '%', line: 'Body composition is Garmin\'s scale or watch estimate of weight, fat, and BMI.' },
+  { id: 'bmi', title: 'BMI', unit: 'BMI', line: 'BMI is Garmin\'s stored body mass index. It appears with a body-composition sync.' },
+  { id: 'snapshot_heart', title: 'Health snapshot', unit: 'bpm', line: 'Health snapshot is a short Garmin check of heart rate, oxygen, and breathing.' },
+  { id: 'epoch_minutes', title: 'Epochs', unit: 'min', line: 'Epochs are Garmin\'s 15-minute activity slices. They appear after a sync.' },
+  { id: 'move_iq', title: 'Move IQ', unit: 'min', line: 'Move IQ is movement Garmin noticed without a started activity.' },
+  { id: 'activity_detail', title: 'Activity detail', unit: 'min', line: 'Activity detail is the length Garmin stored for a recorded activity. The sample trace is not kept.' },
+];
+
+/** Empty cards for Garmin metrics that have not arrived. Each one is a real chart, rated from the registry. */
+export function garminPlaceholderCharts(input: GarminChartInput, shownIds: ReadonlySet<string>): GarminDetailChart[] {
+  const ctx = detailContext(input, null);
+  return GARMIN_CARD_CATALOGUE.filter((spec) => !shownIds.has(spec.id)).map((spec) => {
+    const points = seriesFrom(input.endDay, input.period, new Map(), spec.title, spec.unit, oneDecimal, false, GARMIN_SOURCE, spec.signed === true);
+    return {
+      id: spec.id,
+      title: spec.title,
+      unit: spec.unit,
+      points,
+      includeZero: spec.id === 'stress' || spec.id.startsWith('body_battery'),
+      note: spec.line,
+      guide: withMetric(advised(spec.line), spec.id, null, ctx),
+    };
+  });
 }
 
 /** Bar points for a Garmin chart. An empty day stays source-less so it cannot be captioned as Garmin. */

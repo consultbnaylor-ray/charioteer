@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 
 import { describe, expect, it } from 'vitest';
 
-import { garminDetailCharts, type GarminChartInput } from '@/domain/garminCharts';
+import { GARMIN_CARD_CATALOGUE, garminDetailCharts, garminPlaceholderCharts, type GarminChartInput } from '@/domain/garminCharts';
 import { buildHealthStatBoard, HEALTH_STAT_CATALOGUE } from '@/domain/healthStatTiles';
 import {
   ACTIVITY_BAR_TITLES,
@@ -201,5 +201,56 @@ describe('metric registry', () => {
     }
     expect(readFileSync('supabase/functions/_shared/garmin.ts', 'utf8')).not.toContain('metricRegistry');
     expect(readFileSync('src/domain/thumos.ts', 'utf8')).not.toContain('metricRegistry');
+  });
+
+  it('draws empty Garmin cards through the shared chart, including the band and the rating', () => {
+    const charts = garminPlaceholderCharts({
+      endDay: end,
+      period: '7',
+      age: 45,
+      sex: 'male',
+      goal: 'elite_runner',
+      dailies: [{ calendarDate: end }],
+      sleep: [],
+      respiration: [],
+      pulseOx: [],
+      hrv: [],
+    } as unknown as GarminChartInput, new Set());
+    expect(charts.map((chart) => chart.id)).toEqual(GARMIN_CARD_CATALOGUE.map((spec) => spec.id));
+    for (const chart of charts) {
+      expect(chart.points, chart.id).toHaveLength(7);
+      expect(chart.points.every((point) => point.empty), chart.id).toBe(true);
+      expect(chart.note?.length, chart.id).toBeGreaterThan(8);
+      expect(chart.guide.rating?.pending, chart.id).toBe(true);
+      expect(chart.guide.rating?.caveat, chart.id).toBe(METRIC_CAVEAT);
+      expect(chart.guide.rating?.source, chart.id).toBe(METRIC_REGISTRY[chart.id]?.source);
+      expect(chart.guide.rating?.where.length, chart.id).toBeGreaterThan(8);
+      expect(chart.guide.rating?.tips.length, chart.id).toBeGreaterThan(0);
+    }
+    const ox = charts.find((chart) => chart.id === 'pulse_ox');
+    expect(ox?.guide.dailyTypical).toEqual({ low: 95, high: 100 });
+    expect(ox?.guide.rating?.where).toContain('96');
+    const pressure = charts.find((chart) => chart.id === 'blood_pressure');
+    expect(pressure?.guide.dailyTypical).toEqual({ low: 90, high: 120 });
+    const skin = charts.find((chart) => chart.id === 'skin_temp');
+    expect(skin?.guide.dailyTypical).toEqual({ low: -1, high: 1 });
+    const snapshot = charts.find((chart) => chart.id === 'snapshot_heart');
+    expect(snapshot?.guide.dailyTypical).toEqual({ low: 60, high: 100 });
+    const body = charts.find((chart) => chart.id === 'body_fat');
+    expect(body?.title).toBe('Body composition');
+    expect(body?.guide.rating?.goalLine).toContain('ACE');
+    const vo2 = charts.find((chart) => chart.id === 'vo2');
+    expect(vo2?.guide.rating?.goalLine).toContain('75th');
+    const screen = readFileSync('src/ui/DailyActivity.tsx', 'utf8');
+    expect(screen).toContain('garminPlaceholderCharts');
+    expect(screen).toContain('NO_READINGS_YET');
+    expect(screen).toContain('lead={chart.note}');
+    expect(screen).toContain('<ActivityBars');
+    expect(screen).not.toContain("item.id === 'pulse_ox'");
+    expect(screen).not.toContain('<T>{GARMIN_HRV_EMPTY}</T>');
+    expect(screen).not.toContain('<T>{APPLE_HRV_EMPTY}</T>');
+    const minuteChart = screen.slice(screen.indexOf('function MinuteTypeChart'), screen.indexOf('function ActivityBars'));
+    expect(minuteChart).toContain('<ActivityBars');
+    expect(minuteChart).not.toContain('variant="label"');
   });
 });
