@@ -87,7 +87,7 @@
           ],
           "displayPrice" : "39.99",
           "familyShareable" : false,
-          "groupNumber" : 1,
+          "groupNumber" : 3,
           "internalID" : "6829273648",
           "introductoryOffer" : {
             "internalID" : "STAINTRO",
@@ -120,7 +120,7 @@
           ],
           "displayPrice" : "3.99",
           "familyShareable" : false,
-          "groupNumber" : 2,
+          "groupNumber" : 3,
           "internalID" : "CHARIOTEERMONTHLY",
           "introductoryOffer" : {
             "internalID" : "MONTHLYINTRO",
@@ -138,6 +138,72 @@
           "productID" : "charioteer.monthly",
           "recurringSubscriptionPeriod" : "P1M",
           "referenceName" : "Monthly",
+          "subscriptionGroupID" : "22532571",
+          "type" : "RecurringSubscription",
+          "winbackOffers" : [
+
+          ]
+        },
+        {
+          "adHocOffers" : [
+
+          ],
+          "codeOffers" : [
+
+          ],
+          "displayPrice" : "6.99",
+          "familyShareable" : false,
+          "groupNumber" : 2,
+          "internalID" : "CHARIOTEERPRO",
+          "introductoryOffer" : {
+            "internalID" : "PROINTRO",
+            "numberOfPeriods" : 1,
+            "paymentMode" : "free",
+            "subscriptionPeriod" : "P1W"
+          },
+          "localizations" : [
+            {
+              "description" : "More coach messages, meal estimates, and health plans.",
+              "displayName" : "Pro",
+              "locale" : "en_GB"
+            }
+          ],
+          "productID" : "charioteer.pro.monthly",
+          "recurringSubscriptionPeriod" : "P1M",
+          "referenceName" : "Pro",
+          "subscriptionGroupID" : "22532571",
+          "type" : "RecurringSubscription",
+          "winbackOffers" : [
+
+          ]
+        },
+        {
+          "adHocOffers" : [
+
+          ],
+          "codeOffers" : [
+
+          ],
+          "displayPrice" : "39.99",
+          "familyShareable" : false,
+          "groupNumber" : 1,
+          "internalID" : "CHARIOTEERMAX",
+          "introductoryOffer" : {
+            "internalID" : "MAXINTRO",
+            "numberOfPeriods" : 1,
+            "paymentMode" : "free",
+            "subscriptionPeriod" : "P1W"
+          },
+          "localizations" : [
+            {
+              "description" : "The highest limits for the coach, meal estimates, and health plans.",
+              "displayName" : "Charioteer Max",
+              "locale" : "en_GB"
+            }
+          ],
+          "productID" : "charioteer.unlimited.monthly",
+          "recurringSubscriptionPeriod" : "P1M",
+          "referenceName" : "Max",
           "subscriptionGroupID" : "22532571",
           "type" : "RecurringSubscription",
           "winbackOffers" : [

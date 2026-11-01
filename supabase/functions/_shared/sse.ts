@@ -3,6 +3,7 @@ export type ThumosServerEvent =
   | { type: 'status'; state: 'waiting' | 'retrying' }
   | { type: 'delta'; text: string }
   | { type: 'replace'; reply: string }
+  | { type: 'usage'; kind: 'coach' | 'meal' | 'plan'; used: number; limit: number }
   | { type: 'done'; reply: string; role: 'assistant' | 'offline'; ok: boolean }
   | { type: 'error'; message: string };
 

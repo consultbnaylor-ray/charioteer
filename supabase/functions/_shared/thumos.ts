@@ -428,9 +428,8 @@ export function resolveThumosMode(input: {
  * https://docs.x.ai/developers/models/grok-4.3
  * "none" is no reasoning at all. A live pass with none was quick (about 1–1.4s
  * to the first token) and the replies collapsed to one generic line, so the
- * default here is low. Low was not timed in this environment. Do not set
- * max_tokens when effort is low: reasoning tokens share that budget and can
- * starve the answer.
+ * default here is low. Every call also sets max_tokens so a long reasoning
+ * trace cannot run without a cap. The budget is shared with the answer.
  *
  * Chat Completions takes reasoning_effort as a top-level field. The Responses
  * API uses reasoning.effort. This app stays on chat completions.
@@ -450,7 +449,7 @@ export const THUMOS_CHAT = {
   historyFetchLimit: 32,
   checkInLimit: 4,
   noteLimit: 160,
-  maxTokens: 450,
+  maxTokens: 1500,
   /** First try. Short enough that a fallback model can still answer. */
   firstTimeoutMs: 12_000,
   /** Crisis and withdrawal skip the long wait. A scripted reply still follows if both models fail. */
@@ -624,7 +623,7 @@ export function buildChatCompletionBody(input: {
     model,
     reasoning_effort,
     stream: input.stream,
-    ...(reasoning_effort === 'none' ? { max_tokens: THUMOS_CHAT.maxTokens } : {}),
+    max_tokens: THUMOS_CHAT.maxTokens,
     messages: [
       { role: 'system', content: input.system },
       ...history,

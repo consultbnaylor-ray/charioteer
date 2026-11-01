@@ -9,6 +9,7 @@ import {
   trainingScheduleFromRow,
   type PlanInput,
 } from '../_shared/healthPlan.ts';
+import { gateAiUse } from '../_shared/aiAllowance.ts';
 import { exerciseReadingLines } from '../_shared/exerciseAnalysis.ts';
 import { garminActivitiesForUser, samplesWithGarminActivities } from '../_shared/fitnessSnapshot.ts';
 import { londonDay } from '../_shared/healthInsights.ts';
@@ -37,8 +38,9 @@ Deno.serve(async (req) => {
 
   const url = Deno.env.get('SUPABASE_URL');
   const anon = Deno.env.get('SUPABASE_ANON_KEY');
+  const service = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
   const authHeader = req.headers.get('Authorization');
-  if (!url || !anon || !authHeader) return json({ ok: false, code: 'config' }, 500);
+  if (!url || !anon || !service || !authHeader) return json({ ok: false, code: 'config' }, 500);
 
   const userClient = createClient(url, anon, {
     global: { headers: { Authorization: authHeader } },
@@ -191,6 +193,14 @@ Deno.serve(async (req) => {
   if (!apiKey || !personalDataEnabled || local.wellbeing.habits.some((item) => item.text.includes('116 123') || item.text.includes('do not stop suddenly'))) {
     return json({ ok: true, plan: { ...local, limits: input.limits }, source: 'local' });
   }
+
+  const gate = await gateAiUse({
+    admin: createClient(url, service, { auth: { persistSession: false } }),
+    userId,
+    kind: 'plan',
+    enforcedFlag: Deno.env.get('AI_ENTITLEMENT_ENFORCED'),
+  });
+  if (!gate.ok && 'body' in gate) return json(gate.body, gate.status);
 
   try {
     const response = await fetch(THUMOS_CHAT.completionsUrl, {

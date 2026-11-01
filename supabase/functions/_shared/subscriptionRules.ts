@@ -1,19 +1,38 @@
 /**
- * Two auto-renewable plans in App Store subscription group 22532571.
- * Yearly `Sta` (reference name Standard, display name Charioteer Standard, subscription id 6829273648).
- * Monthly `charioteer.monthly`. App 6821371422.
+ * Four auto-renewable products in App Store subscription group 22532571.
+ * Standard: yearly `Sta` and monthly `charioteer.monthly`.
+ * Pro: `charioteer.pro.monthly`. Max: `charioteer.unlimited.monthly` (tier `max`).
+ * The ids and tiers live in tierLimits.ts.
  */
-export const YEARLY_PRODUCT_ID = 'Sta';
+import {
+  MONTHLY_PRODUCT_ID,
+  PRO_PRODUCT_ID,
+  UNLIMITED_PRODUCT_ID,
+  YEARLY_PRODUCT_ID,
+  isSubscriptionProduct,
+} from './tierLimits.ts';
 
-export const MONTHLY_PRODUCT_ID = 'charioteer.monthly';
-
-export const SUBSCRIPTION_PRODUCT_IDS = [YEARLY_PRODUCT_ID, MONTHLY_PRODUCT_ID] as const;
+export {
+  MONTHLY_PRODUCT_ID,
+  PRO_PRODUCT_ID,
+  SUBSCRIPTION_PRODUCT_IDS,
+  UNLIMITED_PRODUCT_ID,
+  YEARLY_PRODUCT_ID,
+  defaultPlanId,
+  isSubscriptionProduct,
+  orderedPlanIds,
+  tierForProduct,
+} from './tierLimits.ts';
 
 export const YEARLY_REFERENCE_NAME = 'Standard';
 
 export const YEARLY_DISPLAY_NAME = 'Charioteer Standard';
 
 export const MONTHLY_DISPLAY_NAME = 'Monthly';
+
+export const PRO_DISPLAY_NAME = 'Pro';
+
+export const UNLIMITED_DISPLAY_NAME = 'Charioteer Max';
 
 export const SUBSCRIPTION_REFERENCE_NAME = YEARLY_REFERENCE_NAME;
 
@@ -70,27 +89,12 @@ export function isPaywallFlagOn(value: string | undefined): boolean {
   return value === 'true';
 }
 
-export function isSubscriptionProduct(productId: string | null | undefined): productId is string {
-  return productId === YEARLY_PRODUCT_ID || productId === MONTHLY_PRODUCT_ID;
-}
-
 export function planTitle(productId: string | null | undefined): string | null {
-  if (productId === YEARLY_PRODUCT_ID) return 'Yearly';
-  if (productId === MONTHLY_PRODUCT_ID) return 'Monthly';
+  if (productId === YEARLY_PRODUCT_ID) return 'Standard yearly';
+  if (productId === MONTHLY_PRODUCT_ID) return 'Standard';
+  if (productId === PRO_PRODUCT_ID) return 'Pro';
+  if (productId === UNLIMITED_PRODUCT_ID) return 'Max';
   return null;
-}
-
-/** Yearly first, then monthly. Unknown ids are left out. */
-export function orderedPlanIds(ids: readonly string[]): string[] {
-  const present = new Set(ids);
-  const ordered: string[] = [];
-  if (present.has(YEARLY_PRODUCT_ID)) ordered.push(YEARLY_PRODUCT_ID);
-  if (present.has(MONTHLY_PRODUCT_ID)) ordered.push(MONTHLY_PRODUCT_ID);
-  return ordered;
-}
-
-export function defaultPlanId(ids: readonly string[]): string | null {
-  return orderedPlanIds(ids)[0] ?? null;
 }
 
 export function entitlementActive(row: SubscriptionRecord | null, now = Date.now()): boolean {

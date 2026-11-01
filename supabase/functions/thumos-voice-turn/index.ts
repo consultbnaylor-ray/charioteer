@@ -11,6 +11,10 @@ Deno.serve(async (req) => {
   if (early) return early;
   if (req.method !== 'POST') return json({ ok: false, code: 'method', message: VOICE_COPY.unsaved }, 405);
 
+  if (Deno.env.get('VOICE_ENABLED') !== 'true') {
+    return json({ ok: false, code: 'voice_off', message: 'Voice is switched off.' }, 403);
+  }
+
   const url = Deno.env.get('SUPABASE_URL');
   const anon = Deno.env.get('SUPABASE_ANON_KEY');
   const service = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');

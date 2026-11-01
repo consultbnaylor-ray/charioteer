@@ -1,5 +1,6 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.117.3';
 
+import { gateAiUse } from '../_shared/aiAllowance.ts';
 import { json, preflight } from '../_shared/http.ts';
 import { stripJpegBase64 } from '../_shared/photoLocation.ts';
 import { MEAL_ESTIMATE_PROMPT, estimateFromText, parseMealEstimate, samplePhotoMeal } from '../_shared/nutrition.ts';
@@ -22,8 +23,9 @@ Deno.serve(async (req) => {
 
   const url = Deno.env.get('SUPABASE_URL');
   const anon = Deno.env.get('SUPABASE_ANON_KEY');
+  const service = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
   const authHeader = req.headers.get('Authorization');
-  if (!url || !anon || !authHeader) return json({ ok: false, code: 'config' }, 500);
+  if (!url || !anon || !service || !authHeader) return json({ ok: false, code: 'config' }, 500);
 
   const userClient = createClient(url, anon, {
     global: { headers: { Authorization: authHeader } },
@@ -59,6 +61,15 @@ Deno.serve(async (req) => {
     userOptIn: await readInterimCoachOptIn(userClient, userData.user.id),
   });
   if (!apiKey || !personalDataEnabled) return json({ ok: true, items: local, source: 'local' });
+
+  const admin = createClient(url, service, { auth: { persistSession: false } });
+  const gate = await gateAiUse({
+    admin,
+    userId: userData.user.id,
+    kind: 'meal',
+    enforcedFlag: Deno.env.get('AI_ENTITLEMENT_ENFORCED'),
+  });
+  if (!gate.ok && 'body' in gate) return json({ ...gate.body, usage: null }, gate.status);
 
   const content: ({ type: 'text'; text: string } | { type: 'image_url'; image_url: { url: string } })[] = [
     { type: 'text', text: text ? `${MEAL_ESTIMATE_PROMPT}\n\nMeal: ${text}` : MEAL_ESTIMATE_PROMPT },
