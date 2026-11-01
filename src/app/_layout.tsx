@@ -241,7 +241,9 @@ function Chrome() {
       router.replace(`/buddies?token=${encodeURIComponent(buddySecret)}` as never);
       return;
     }
-    if (authRoute || onboarding || pathname === '/consent' || pathname === '/' || pathname === '/paywall') router.replace('/home');
+    // A subscribed person opens /paywall from Profile to change plan. Purchase and
+    // restore leave that screen themselves. Do not send it home from here.
+    if (authRoute || onboarding || pathname === '/consent' || pathname === '/') router.replace('/home');
   }, [entitlement.enabled, entitlement.entitled, entitlement.loading, snap.ready, snap.session, snap.profile?.onboardingComplete, snap.consents, pathname, router]);
 
   const waitingForSubscription = entitlement.enabled && Boolean(snap.session) && entitlement.loading;

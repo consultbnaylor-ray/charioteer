@@ -154,6 +154,11 @@ describe('subscription paywall', () => {
     expect(readFileSync('src/app/(main)/profile.tsx', 'utf8')).toContain('<SubscriptionRow />');
     expect(readFileSync('src/ui/SubscriptionRow.tsx', 'utf8')).toContain('showManageSubscriptionsIOS');
     expect(readFileSync('src/ui/SubscriptionRow.tsx', 'utf8')).toContain('Manage subscription');
+    const subscriptionRow = readFileSync('src/ui/SubscriptionRow.tsx', 'utf8');
+    expect(subscriptionRow).toContain('Change plan');
+    expect(subscriptionRow).toContain("router.push('/paywall'");
+    expect(subscriptionRow.indexOf('Change plan')).toBeLessThan(subscriptionRow.indexOf('Manage subscription'));
+    expect(readFileSync('src/app/_layout.tsx', 'utf8')).not.toContain("pathname === '/paywall'");
     expect(readFileSync('src/app/(main)/_layout.tsx', 'utf8')).toContain('subscriptionLocked');
   });
 
