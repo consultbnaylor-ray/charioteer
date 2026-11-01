@@ -5,6 +5,7 @@ import {
   localGratitudeReflect,
   parseGratitudeReflect,
 } from '../_shared/gratitude.ts';
+import { gateAiUse } from '../_shared/aiAllowance.ts';
 import { json, preflight } from '../_shared/http.ts';
 import { buildChatCompletionBody, THUMOS_CHAT } from '../_shared/thumos.ts';
 import { coachingPersonalDataAllowed, readInterimCoachOptIn } from '../_shared/xaiPersonal.ts';
@@ -25,8 +26,9 @@ Deno.serve(async (req) => {
 
   const url = Deno.env.get('SUPABASE_URL');
   const anon = Deno.env.get('SUPABASE_ANON_KEY');
+  const service = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
   const authHeader = req.headers.get('Authorization');
-  if (!url || !anon || !authHeader) return json({ ok: false, code: 'config' }, 500);
+  if (!url || !anon || !service || !authHeader) return json({ ok: false, code: 'config' }, 500);
 
   const userClient = createClient(url, anon, {
     global: { headers: { Authorization: authHeader } },
@@ -64,6 +66,15 @@ Deno.serve(async (req) => {
   if (!apiKey || !personalDataEnabled) {
     return json({ ok: true, comment: local.comment, suggestions: local.suggestions, source: 'local' });
   }
+
+  const admin = createClient(url, service, { auth: { persistSession: false } });
+  const gate = await gateAiUse({
+    admin,
+    userId: userData.user.id,
+    kind: 'coach',
+    enforcedFlag: Deno.env.get('AI_ENTITLEMENT_ENFORCED'),
+  });
+  if (!gate.ok && 'body' in gate) return json(gate.body, gate.status);
 
   const messages = gratitudeReflectMessages(text, category);
   try {

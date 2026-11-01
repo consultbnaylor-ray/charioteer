@@ -156,6 +156,8 @@ import {
 } from '@/domain/edgeRetry';
 import { clientAppBuild, clientErrorRecord } from '@/domain/clientError';
 import { resolveSignedInSession } from '@/domain/liveSession';
+import { aiGateFromBody, publishAiGate } from '@/domain/aiGate';
+import { rememberCoachUsage } from '@/domain/coachUsage';
 import { OPENING_LINE, SCRIPTED_COACH_REPLY, type ThumosMode } from '@/domain/thumos';
 import Constants from 'expo-constants';
 import { CONSENT_VERSION } from '@/data/catalogue';
@@ -1577,10 +1579,16 @@ export class SupabaseRepository implements Repository {
     }
 
     if (!response.ok) {
+      const body = await response.json().catch(() => null);
+      const gate = aiGateFromBody(body);
+      if (gate) {
+        publishAiGate(gate);
+        throw gate;
+      }
       const kind = classifyEdgeStatus(response.status);
       if (kind) throw this.aiFailure('thumos', 'thumos', new Error('Thumos did not answer.'), response.status);
-      const body = (await response.json().catch(() => null)) as { message?: string } | null;
-      throw asUserFacing(new Error(body?.message ?? 'Could not send that.'), 'thumos');
+      const message = body && typeof body === 'object' && 'message' in body && typeof body.message === 'string' ? body.message : 'Could not send that.';
+      throw asUserFacing(new Error(message), 'thumos');
     }
 
     const contentType = response.headers.get('content-type') ?? '';
@@ -1603,6 +1611,8 @@ export class SupabaseRepository implements Repository {
         } else if (event.type === 'replace') {
           accumulated = event.reply;
           onDelta?.(event.reply);
+        } else if (event.type === 'usage') {
+          if (event.kind === 'coach') rememberCoachUsage({ used: event.used, limit: event.limit });
         } else if (event.type === 'done') {
           accumulated = event.reply;
           onDelta?.(event.reply);
@@ -1631,6 +1641,8 @@ export class SupabaseRepository implements Repository {
           } else if (event.type === 'replace') {
             accumulated = event.reply;
             onDelta?.(event.reply);
+          } else if (event.type === 'usage') {
+            if (event.kind === 'coach') rememberCoachUsage({ used: event.used, limit: event.limit });
           } else if (event.type === 'done') {
             accumulated = event.reply;
             onDelta?.(event.reply);
@@ -1757,7 +1769,13 @@ export class SupabaseRepository implements Repository {
           signal: controller?.signal,
         },
       });
-      return { status: response.status, data: await response.json().catch(() => null) };
+      const data = await response.json().catch(() => null);
+      const gate = response.status === 402 || response.status === 429 ? aiGateFromBody(data) : null;
+      if (gate) {
+        publishAiGate(gate);
+        throw gate;
+      }
+      return { status: response.status, data };
     } finally {
       if (timer) clearTimeout(timer);
     }

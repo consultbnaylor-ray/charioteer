@@ -1,5 +1,5 @@
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { Platform, Pressable, Text, useWindowDimensions, View } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
 
@@ -9,6 +9,9 @@ import { CHARIOTEER_STORY, CHARIOTEER_STORY_TITLE } from '@/domain/charioteerSto
 import { ALCOHOL_FACTS } from '@/domain/facts';
 import { earnedMilestones } from '@/domain/milestones';
 import { firstSafetyHit, pinnedSafetyNotices } from '@/domain/safety';
+import { AiGateNotice } from '@/domain/aiGate';
+import { coachUsageSnapshot, subscribeCoachUsage } from '@/domain/coachUsage';
+import { usageNearlyFull } from '@/domain/tierLimits';
 import { asUserFacing, shownError } from '@/domain/errors';
 import { OUTSIDE_CRISIS_LINE } from '@/domain/outdoorRoute';
 import { showsSoberRecord } from '@/domain/stage';
@@ -41,6 +44,7 @@ export default function Thumos() {
   const profile = snap.profile;
   const [draft, setDraft] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const coachUsage = useSyncExternalStore(subscribeCoachUsage, coachUsageSnapshot, coachUsageSnapshot);
   const [pausedVoice, setPausedVoice] = useState(false);
   const [pending, setPending] = useState(false);
   const [sendState, setSendState] = useState<EdgeSendState | null>(null);
@@ -166,6 +170,7 @@ export default function Thumos() {
     } catch (err) {
       setKeptSend(null);
       setDraft(trimmed);
+      if (err instanceof AiGateNotice) return;
       const message = asUserFacing(err, 'thumos').message;
       setPausedVoice(false);
       if (message === SIGN_IN_AGAIN || message === CHECK_CONNECTION) setError(message);
@@ -312,7 +317,10 @@ export default function Thumos() {
             <T variant="display">{voiceStatusLabel(voice)}</T>
             {voice.liveUser ? <T>You: {voice.liveUser}</T> : null}
             {voice.liveAssistant ? <T>Thumos: {voice.liveAssistant}</T> : null}
-            {voice.message && voice.phase !== 'error' ? <T variant="muted">{voice.message}</T> : null}
+            {coachUsage && usageNearlyFull(coachUsage.used, coachUsage.limit) ? (
+          <T variant="muted">{`${coachUsage.used} of ${coachUsage.limit} messages today`}</T>
+        ) : null}
+        {voice.message && voice.phase !== 'error' ? <T variant="muted">{voice.message}</T> : null}
             {isPausedCoachingText(voice.message) ? <PausedCoachingLink /> : null}
             {voice.detail ? <T variant="muted" style={{ width: '100%', flexShrink: 1 }}>{voice.detail}</T> : null}
             <View style={{ flexDirection: 'row', gap: 10 }}>

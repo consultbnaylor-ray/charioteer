@@ -9,9 +9,13 @@ import { PRIVACY_POLICY_URL } from '@/domain/privacyPolicy';
 import {
   MONTHLY_DISPLAY_NAME,
   MONTHLY_PRODUCT_ID,
+  PRO_DISPLAY_NAME,
+  PRO_PRODUCT_ID,
   SUBSCRIPTION_BENEFITS,
   SUBSCRIPTION_PRODUCT_IDS,
   TERMS_URL,
+  UNLIMITED_DISPLAY_NAME,
+  UNLIMITED_PRODUCT_ID,
   YEARLY_DISPLAY_NAME,
   YEARLY_PRODUCT_ID,
   defaultPlanId,
@@ -26,6 +30,7 @@ import {
   trialButtonLabel,
   yearlySavingLabel,
 } from '@/domain/subscription';
+import { tierIncludedLine } from '@/domain/tierLimits';
 import { rememberEntitlement } from '@/ui/useEntitlement';
 import { stroke, useAppTheme } from '@/ui/theme';
 import { Button, Card, ErrorNote, Field, Screen, T } from '@/ui/ui';
@@ -76,6 +81,8 @@ function readPlan(value: unknown): StorePlan | null {
 function planName(id: string): string {
   if (id === YEARLY_PRODUCT_ID) return YEARLY_DISPLAY_NAME;
   if (id === MONTHLY_PRODUCT_ID) return MONTHLY_DISPLAY_NAME;
+  if (id === PRO_PRODUCT_ID) return PRO_DISPLAY_NAME;
+  if (id === UNLIMITED_PRODUCT_ID) return UNLIMITED_DISPLAY_NAME;
   return 'Subscription';
 }
 
@@ -240,23 +247,37 @@ export default function PaywallScreen() {
       <Card>
         {SUBSCRIPTION_BENEFITS.map((benefit) => <T key={benefit}>{benefit}</T>)}
         {phase === 'loading' ? <T variant="muted">Loading the subscription.</T> : null}
-        <View style={{ gap: 10, alignSelf: 'stretch' }}>
-          {plans.map((plan) => {
-            const chosen = plan.id === selected?.id;
-            const trial = plan.paymentMode === 'free-trial';
+        <View style={{ gap: 14, alignSelf: 'stretch' }}>
+          {([
+            ['Standard', 'standard', [YEARLY_PRODUCT_ID, MONTHLY_PRODUCT_ID]],
+            ['Pro', 'pro', [PRO_PRODUCT_ID]],
+            ['Unlimited', 'unlimited', [UNLIMITED_PRODUCT_ID]],
+          ] as const).map(([title, tier, ids]) => {
+            const section = ids.map((id) => plans.find((plan) => plan.id === id)).filter((plan): plan is StorePlan => plan != null);
+            if (!section.length) return null;
             return (
-              <Card
-                key={plan.id}
-                featured={chosen}
-                accessibilityLabel={planName(plan.id)}
-                onPress={() => setSelectedId(plan.id)}
-                style={{ alignSelf: 'stretch', borderWidth: chosen ? stroke.featured : stroke.card, borderColor: chosen ? theme.colors.accent : theme.colors.line }}
-              >
-                <T variant="label">{plan.id === YEARLY_PRODUCT_ID ? 'Best value' : 'Monthly'}</T>
-                <T style={{ fontFamily: theme.font.bodyStrong }}>{planName(plan.id)}</T>
-                <T>{planOfferLine(plan.displayPrice, plan.periodUnit, trial)}</T>
-                {plan.id === YEARLY_PRODUCT_ID && saving ? <T variant="muted">{saving}</T> : null}
-              </Card>
+              <View key={tier} style={{ gap: 10, alignSelf: 'stretch' }}>
+                <T variant="label">{title}</T>
+                <T variant="muted">{tierIncludedLine(tier)}</T>
+                {section.map((plan) => {
+                  const chosen = plan.id === selected?.id;
+                  const trial = plan.paymentMode === 'free-trial';
+                  return (
+                    <Card
+                      key={plan.id}
+                      featured={chosen}
+                      accessibilityLabel={planName(plan.id)}
+                      onPress={() => setSelectedId(plan.id)}
+                      style={{ alignSelf: 'stretch', borderWidth: chosen ? stroke.featured : stroke.card, borderColor: chosen ? theme.colors.accent : theme.colors.line }}
+                    >
+                      {plan.id === YEARLY_PRODUCT_ID ? <T variant="label">Best value</T> : null}
+                      <T style={{ fontFamily: theme.font.bodyStrong }}>{planName(plan.id)}</T>
+                      <T>{planOfferLine(plan.displayPrice, plan.periodUnit, trial)}</T>
+                      {plan.id === YEARLY_PRODUCT_ID && saving ? <T variant="muted">{saving}</T> : null}
+                    </Card>
+                  );
+                })}
+              </View>
             );
           })}
         </View>

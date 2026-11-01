@@ -5,7 +5,7 @@ import { useFonts } from 'expo-font';
 import { Stack, usePathname, useRouter } from 'expo-router';
 import * as Linking from 'expo-linking';
 import * as SplashScreen from 'expo-splash-screen';
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef, useSyncExternalStore } from 'react';
 import { AppState, Platform, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
@@ -28,6 +28,8 @@ import { font, ThemeProvider, useAppTheme } from '@/ui/theme';
 import { topSafeInset } from '@/ui/safeArea';
 import { KeyboardDoneBar } from '@/ui/keyboard';
 import { RootErrorBoundary } from '@/ui/RootErrorBoundary';
+import { AiLimitCard } from '@/ui/AiLimitCard';
+import { aiGateSnapshot, publishAiGate, subscribeAiGate } from '@/domain/aiGate';
 import { Mark, T, Wordmark } from '@/ui/ui';
 
 installFatalHandler();
@@ -250,6 +252,7 @@ function Chrome() {
   return (
     <>
       <StatusBar style={theme.scheme === 'dark' ? 'light' : 'dark'} />
+      <AiLimitOverlay />
       <MessageIconBadge />
       <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: theme.colors.bg } }} />
       <NoteStackMounted flag={stackMounted} />
@@ -292,6 +295,16 @@ function NoteStackMounted({ flag }: { flag: { current: boolean } }) {
     };
   }, [flag]);
   return null;
+}
+
+function AiLimitOverlay() {
+  const notice = useSyncExternalStore(subscribeAiGate, aiGateSnapshot, aiGateSnapshot);
+  if (!notice) return null;
+  return (
+    <View style={{ position: 'absolute', left: 16, right: 16, bottom: 28, zIndex: 30 }}>
+      <AiLimitCard notice={notice} onClose={() => publishAiGate(null)} />
+    </View>
+  );
 }
 
 function OpeningDay({ background }: { background: string }) {

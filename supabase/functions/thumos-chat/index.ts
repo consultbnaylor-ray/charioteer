@@ -36,6 +36,7 @@ import {
   type HealthTrend,
   type ThumosMode,
 } from '../_shared/thumos.ts';
+import { CRISIS_STATIC_REPLY, gateAiUse } from '../_shared/aiAllowance.ts';
 import { gratitudeFromRows, type GratitudeEntry } from '../_shared/gratitude.ts';
 import { visionContextFrom, type VisionContext } from '../_shared/visionBoard.ts';
 import { garminActivitiesForUser, samplesWithGarminActivities } from '../_shared/fitnessSnapshot.ts';
@@ -286,6 +287,16 @@ Deno.serve(async (req) => {
   });
 
   const admin = createClient(url, service, { auth: { persistSession: false } });
+  const gate = await gateAiUse({
+    admin,
+    userId,
+    kind: 'coach',
+    crisis: safety.selfHarm || safety.withdrawal,
+    enforcedFlag: Deno.env.get('AI_ENTITLEMENT_ENFORCED'),
+  });
+  if (!gate.ok && 'body' in gate) return json(gate.body, gate.status);
+  const crisisStatic = !gate.ok && 'crisis' in gate ? gate.reply || CRISIS_STATIC_REPLY : null;
+  const coachUsage = gate.ok && gate.limit > 0 ? { used: gate.used, limit: gate.limit } : null;
   const apiKey = Deno.env.get('XAI_API_KEY');
   const historyRows = (historyRes.data ?? []).map((row) => ({
     role: row.role as string,
@@ -349,6 +360,12 @@ Deno.serve(async (req) => {
       const encoder = new TextEncoder();
       const send = (event: ThumosServerEvent) => controller.enqueue(encoder.encode(encodeSse(event)));
       send({ type: 'ping' });
+      if (coachUsage) send({ type: 'usage', kind: 'coach', used: coachUsage.used, limit: coachUsage.limit });
+      if (crisisStatic) {
+        send({ type: 'delta', text: crisisStatic });
+        send({ type: 'done', reply: crisisStatic, role: 'assistant', ok: true });
+        return;
+      }
       let reply = OFFLINE_COACH_MESSAGE;
       let role: 'assistant' | 'offline' = 'offline';
       let fallbackKind: 'offline' | 'scripted' | null = null;

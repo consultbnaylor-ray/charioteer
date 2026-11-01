@@ -50,15 +50,18 @@ describe('subscription paywall', () => {
     expect(YEARLY_PRODUCT_ID).toBe('Sta');
     expect(MONTHLY_PRODUCT_ID).toBe('charioteer.monthly');
     expect(SUBSCRIPTION_GROUP_ID).toBe('22532571');
-    const rules = readFileSync('supabase/functions/_shared/subscriptionRules.ts', 'utf8');
+    const rules = readFileSync('supabase/functions/_shared/tierLimits.ts', 'utf8');
     expect(rules).toContain("export const YEARLY_PRODUCT_ID = 'Sta'");
     expect(rules).toContain("export const MONTHLY_PRODUCT_ID = 'charioteer.monthly'");
+    expect(rules).toContain("export const PRO_PRODUCT_ID = 'charioteer.pro.monthly'");
+    expect(rules).toContain("export const UNLIMITED_PRODUCT_ID = 'charioteer.unlimited.monthly'");
     const storekit = JSON.parse(readFileSync('Charioteer.storekit', 'utf8')) as {
       settings: { _applicationInternalID: string };
       subscriptionGroups: Array<{ id: string; name: string; subscriptions: Array<{
         productID: string;
         referenceName: string;
         internalID: string;
+        groupNumber: number;
         recurringSubscriptionPeriod: string;
         displayPrice: string;
         localizations: Array<{ displayName: string }>;
@@ -80,6 +83,14 @@ describe('subscription paywall', () => {
     expect(monthly?.recurringSubscriptionPeriod).toBe('P1M');
     expect(monthly?.displayPrice).toBe('3.99');
     expect(monthly?.introductoryOffer).toMatchObject({ paymentMode: 'free', subscriptionPeriod: 'P1W', numberOfPeriods: 1 });
+    expect(monthly?.groupNumber).toBe(3);
+    const pro = group.subscriptions.find((item) => item.productID === 'charioteer.pro.monthly');
+    const unlimited = group.subscriptions.find((item) => item.productID === 'charioteer.unlimited.monthly');
+    expect(pro?.groupNumber).toBe(2);
+    expect(pro?.introductoryOffer.paymentMode).toBe('free');
+    expect(unlimited?.groupNumber).toBe(1);
+    expect(unlimited?.introductoryOffer.subscriptionPeriod).toBe('P1W');
+    expect(yearly?.groupNumber).toBe(3);
     expect(storekit.settings._applicationInternalID).toBe(String(APPLE_APP_ID));
     expect(readFileSync('src/app/paywall.tsx', 'utf8')).not.toMatch(/3\.99|39\.99|£/);
     expect(readFileSync('src/ui/SubscriptionRow.tsx', 'utf8')).not.toMatch(/3\.99|£/);
@@ -167,8 +178,8 @@ describe('subscription paywall', () => {
     expect(entitlementActive(subscription({ productId: YEARLY_PRODUCT_ID }), NOW)).toBe(true);
     expect(entitlementActive(subscription({ productId: 'Other' }), NOW)).toBe(false);
     expect(entitlementActive(null, NOW)).toBe(false);
-    expect(subscriptionStatusLabel(subscription({ isTrial: true }), NOW)).toBe('Monthly · Free trial');
-    expect(subscriptionStatusLabel(subscription({ productId: YEARLY_PRODUCT_ID }), NOW)).toBe('Yearly · Active');
+    expect(subscriptionStatusLabel(subscription({ isTrial: true }), NOW)).toBe('Standard · Free trial');
+    expect(subscriptionStatusLabel(subscription({ productId: YEARLY_PRODUCT_ID }), NOW)).toBe('Standard yearly · Active');
     expect(subscriptionStatusLabel(null, NOW)).toBe('No subscription');
   });
 

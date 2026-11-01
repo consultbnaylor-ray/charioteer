@@ -408,14 +408,14 @@ describe('Thumos context', () => {
     expect(body.model).toBe(THUMOS_CHAT.model);
     expect(body.reasoning_effort).toBe('low');
     expect(body.stream).toBe(true);
-    expect(body.max_tokens).toBeUndefined();
+    expect(body.max_tokens).toBe(1500);
     expect(body.messages.filter((message) => message.role === 'user')).toHaveLength(THUMOS_CHAT.historyLimit + 1);
     expect(thumosReasoningEffort('grok-4.3')).toBe('low');
     expect(thumosReasoningEffort('grok-4.3-latest')).toBe('low');
     expect(thumosReasoningEffort('grok-4.7')).toBe('low');
     const older = buildChatCompletionBody({ model: 'grok-4.7', system: 'Be brief.', history: [], user: 'Hi', stream: true });
     expect(older.reasoning_effort).toBe('low');
-    expect(older.max_tokens).toBeUndefined();
+    expect(older.max_tokens).toBe(1500);
     const unknown = buildChatCompletionBody({ model: 'grok-other', system: 'Be brief.', history: [], user: 'Hi', stream: false });
     expect(unknown.reasoning_effort).toBe('none');
     expect(unknown.max_tokens).toBe(THUMOS_CHAT.maxTokens);

@@ -1,6 +1,7 @@
 import { createClient, type SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2.117.3';
 import { gratitudeFromRows } from '../_shared/gratitude.ts';
 import { visionContextFrom } from '../_shared/visionBoard.ts';
+import { gateAiUse } from '../_shared/aiAllowance.ts';
 import { json, preflight } from '../_shared/http.ts';
 import { coachingPersonalDataAllowed, pausedCoachingMessage } from '../_shared/xaiPersonal.ts';
 import { garminAllowedForCoach, garminCoachLines, missingRelation, readingsFromRows } from '../_shared/garmin.ts';
@@ -42,11 +43,16 @@ Deno.serve(async (req) => {
   if (early) return early;
   if (req.method !== 'POST') return json({ ok: false, code: 'method', message: VOICE_COPY.failed }, 405);
 
+  if (Deno.env.get('VOICE_ENABLED') !== 'true') {
+    return json({ ok: false, code: 'voice_off', message: 'Voice is switched off.' }, 403);
+  }
+
   const url = Deno.env.get('SUPABASE_URL');
   const anon = Deno.env.get('SUPABASE_ANON_KEY');
+  const service = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
   const authHeader = req.headers.get('Authorization');
   const apiKey = Deno.env.get('XAI_API_KEY');
-  if (!url || !anon || !authHeader) return json({ ok: false, code: 'config', message: VOICE_COPY.token }, 500);
+  if (!url || !anon || !service || !authHeader) return json({ ok: false, code: 'config', message: VOICE_COPY.token }, 500);
 
   const userClient = createClient(url, anon, {
     global: { headers: { Authorization: authHeader } },
@@ -57,6 +63,13 @@ Deno.serve(async (req) => {
 
   const body = (await req.json().catch(() => ({}))) as Body;
   const userId = data.user.id;
+  const gate = await gateAiUse({
+    admin: createClient(url, service, { auth: { persistSession: false } }),
+    userId,
+    kind: 'coach',
+    enforcedFlag: Deno.env.get('AI_ENTITLEMENT_ENFORCED'),
+  });
+  if (!gate.ok && 'body' in gate) return json(gate.body, gate.status);
   const [profileRes, reasonsRes, checkRes, healthRes, historyRes, interestRes] = await Promise.all([
     userClient.from('profiles').select('*').eq('id', userId).single(),
     userClient.from('reasons').select('body, sort_order').eq('user_id', userId).order('sort_order'),
