@@ -1,10 +1,11 @@
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
 import { buildThumosContext } from '../../supabase/functions/_shared/thumos';
 import {
   GARMIN_BACKFILL_TYPES,
   GARMIN_DATA_TABLES,
+  GARMIN_SUMMARY_TABLES,
   GARMIN_REDIRECT_URI,
   activityRowsFor,
   applyGarminPush,
@@ -435,7 +436,7 @@ describe('Garmin webhook mapping', () => {
     expect(refreshFn).toContain('garminBackfillTypes');
     expect(refreshFn).not.toMatch(/activityDetails|activityFile/);
     expect(readFileSync('supabase/config.toml', 'utf8')).toContain('[functions.garmin-refresh]\nverify_jwt = true');
-    expect(readFileSync('supabase/functions/garmin-webhook/index.ts', 'utf8')).toContain("from('garmin_user_metrics')");
+    expect(readFileSync('supabase/functions/garmin-webhook/index.ts', 'utf8')).toContain("'garmin_user_metrics'");
   });
 
   it('upserts on the summary key and removes that person on deregistration', () => {
@@ -634,7 +635,36 @@ describe('Garmin storage rules', () => {
     expect(webhook).toContain('console.error(gate.log)');
     expect(disconnect).toContain('forgetGarminAccount');
     expect(deleted).toContain('forgetGarminAccount');
-    for (const table of GARMIN_DATA_TABLES) expect(readFileSync('supabase/functions/_shared/garmin.ts', 'utf8')).toContain(`'${table}'`);
+    expect(webhook).toContain('deleteGarminSummaries');
+    expect(webhook).not.toContain("from('garmin_dailies').delete()");
+    const shared = readFileSync('supabase/functions/_shared/garmin.ts', 'utf8');
+    const forget = shared.slice(shared.indexOf('export async function forgetGarminAccount'), shared.indexOf('function sealedText'));
+    expect(forget).toContain('GARMIN_DATA_TABLES');
+    expect(forget).not.toContain("from('garmin_dailies')");
+    for (const table of GARMIN_DATA_TABLES) expect(shared).toContain(`'${table}'`);
+    for (const name of [
+      'garmin_blood_pressure',
+      'garmin_body_comp',
+      'garmin_skin_temp',
+      'garmin_stress',
+      'garmin_epoch',
+      'garmin_health_snapshot',
+      'garmin_move_iq',
+      'garmin_activity_detail',
+      'garmin_activity_file',
+      'garmin_hrv',
+      'garmin_respiration',
+      'garmin_pulse_ox',
+    ]) {
+      expect(GARMIN_SUMMARY_TABLES).toContain(name);
+    }
+    const created = new Set<string>();
+    for (const file of readdirSync('supabase/migrations')) {
+      if (!file.endsWith('.sql')) continue;
+      const body = readFileSync(`supabase/migrations/${file}`, 'utf8');
+      for (const match of body.matchAll(/create table public\.(garmin_[a-z0-9_]+)/g)) created.add(match[1]);
+    }
+    for (const name of created) expect(GARMIN_DATA_TABLES).toContain(name);
     expect(chat.indexOf('garminAllowedForCoach(gate)')).toBeLessThan(chat.indexOf('buildThumosContext({'));
     expect(voice.indexOf('if (!personalDataEnabled)')).toBeLessThan(voice.indexOf('garminLinesFor('));
     expect(voice.indexOf('coachingPersonalDataAllowed')).toBeLessThan(voice.indexOf('garminLinesFor('));

@@ -55,7 +55,8 @@ export const PKCE_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwx
 export const GARMIN_PRIVACY =
   'Garmin readings stay on your account, the same way Apple Health readings do. They are not sold, not shared for ads, and not used to train AI. Thumos sees them only when health data and the coach are on, and personal data is allowed. A path is not stored.';
 
-export const GARMIN_DATA_TABLES = [
+/** Every stored Garmin summary. Disconnect, account deletion, and a lost export all use this list. */
+export const GARMIN_SUMMARY_TABLES = [
   'garmin_dailies',
   'garmin_activities',
   'garmin_sleep',
@@ -72,6 +73,10 @@ export const GARMIN_DATA_TABLES = [
   'garmin_move_iq',
   'garmin_activity_detail',
   'garmin_activity_file',
+] as const;
+
+export const GARMIN_DATA_TABLES = [
+  ...GARMIN_SUMMARY_TABLES,
   'garmin_oauth_states',
   'garmin_connections',
 ] as const;
@@ -1322,11 +1327,25 @@ export async function bearerForGarminUser(
   return bearer;
 }
 
+/** Removes one person's summary rows. The connection row stays. */
+export async function deleteGarminSummaries(db: GarminDb, userId: string): Promise<void> {
+  await deleteGarminTables(db, userId, GARMIN_SUMMARY_TABLES, 'garmin-webhook: delete');
+}
+
 /** Removes tokens and summaries for one account. Does not call Garmin. */
 export async function deleteGarminRows(db: GarminDb, userId: string): Promise<void> {
-  for (const table of GARMIN_DATA_TABLES) {
+  await deleteGarminTables(db, userId, GARMIN_DATA_TABLES, 'garmin-webhook: delete');
+}
+
+async function deleteGarminTables(
+  db: GarminDb,
+  userId: string,
+  tables: readonly string[],
+  errorCode: string,
+): Promise<void> {
+  for (const table of tables) {
     const removed = await db.from(table).delete().eq('user_id', userId);
-    if (removed.error && !missingRelation(removed.error.message)) throw new Error('garmin-webhook: delete');
+    if (removed.error && !missingRelation(removed.error.message)) throw new Error(errorCode);
   }
 }
 
@@ -1391,10 +1410,7 @@ export async function forgetGarminAccount(
     const remote = await deregisterRemote(bearer, fetchImpl);
     if (remote === 'failed') console.error('garmin-disconnect: remote');
   }
-  for (const table of GARMIN_DATA_TABLES) {
-    const removed = await db.from(table).delete().eq('user_id', userId);
-    if (removed.error && !missingRelation(removed.error.message)) throw new Error('garmin-disconnect: delete');
-  }
+  await deleteGarminTables(db, userId, GARMIN_DATA_TABLES, 'garmin-disconnect: delete');
 }
 
 function sealedText(value: unknown): string {

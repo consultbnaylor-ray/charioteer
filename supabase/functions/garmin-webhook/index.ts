@@ -5,6 +5,7 @@ import {
   dailyRowsFor,
   dedupeBy,
   deleteGarminRows,
+  deleteGarminSummaries,
   hrvRowsFor,
   mapGarminPush,
   missingRelation,
@@ -163,18 +164,7 @@ Deno.serve(async (req) => {
     }
     const named = change.permissions.split(' ').filter(Boolean);
     const keepsSummaries = named.includes('HEALTH_EXPORT') || named.includes('ACTIVITY_EXPORT');
-    if (!keepsSummaries) {
-      await admin.from('garmin_dailies').delete().eq('user_id', userId);
-      await admin.from('garmin_activities').delete().eq('user_id', userId);
-      await admin.from('garmin_sleep').delete().eq('user_id', userId);
-      await admin.from('garmin_user_metrics').delete().eq('user_id', userId);
-      await admin.from('garmin_respiration').delete().eq('user_id', userId);
-      await admin.from('garmin_pulse_ox').delete().eq('user_id', userId);
-      await admin.from('garmin_hrv').delete().eq('user_id', userId);
-      for (const table of ['garmin_blood_pressure', 'garmin_body_comp', 'garmin_skin_temp', 'garmin_stress', 'garmin_epoch', 'garmin_health_snapshot', 'garmin_move_iq', 'garmin_activity_detail', 'garmin_activity_file']) {
-        await admin.from(table).delete().eq('user_id', userId);
-      }
-    }
+    if (!keepsSummaries) await deleteGarminSummaries(admin, userId);
   }
 
   return json({ ok: true });
