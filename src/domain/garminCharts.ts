@@ -14,11 +14,19 @@ import {
   type DailyActivityPoint,
 } from '@/domain/dailyActivity';
 import type {
+  GarminActivityDetail,
+  GarminBloodPressure,
+  GarminBodyComp,
   GarminDaily,
+  GarminEpoch,
+  GarminHealthSnapshot,
   GarminHrvSummary,
+  GarminMoveIq,
   GarminPulseOx,
   GarminRespiration,
+  GarminSkinTemp,
   GarminSleep,
+  GarminStressDetail,
   GarminUserMetric,
 } from '@/domain/garminConnect';
 import { publishedCardioBand } from '@/domain/fitnessSnapshot';
@@ -147,9 +155,32 @@ export type GarminChartInput = {
   pulseOx: readonly GarminPulseOx[];
   hrv: readonly GarminHrvSummary[];
   userMetrics?: readonly GarminUserMetric[];
+  bloodPressure?: readonly GarminBloodPressure[];
+  bodyComp?: readonly GarminBodyComp[];
+  skinTemp?: readonly GarminSkinTemp[];
+  stress?: readonly GarminStressDetail[];
+  epochs?: readonly GarminEpoch[];
+  healthSnapshot?: readonly GarminHealthSnapshot[];
+  moveIq?: readonly GarminMoveIq[];
+  activityDetails?: readonly GarminActivityDetail[];
   age?: number | null;
   sex?: NutritionSex | null;
 };
+
+/** Shown when Garmin is connected and that summary has not arrived yet. */
+export const GARMIN_EXTRA_EMPTY: readonly { id: string; line: string }[] = [
+  { id: 'stress', line: 'Stress is Garmin\'s daytime stress score. Wear the watch and it will appear here.' },
+  { id: 'body_battery_charged', line: 'Body battery is Garmin\'s charge and drain through the day. It appears after a sync.' },
+  { id: 'respiration', line: 'Breathing rate is Garmin\'s breaths per minute while you are still.' },
+  { id: 'pulse_ox', line: 'Pulse ox is Garmin\'s blood oxygen while you are still. Wear the watch and it will appear here.' },
+  { id: 'skin_temp', line: 'Skin temperature is Garmin\'s overnight change from your usual temperature.' },
+  { id: 'blood_pressure', line: 'Blood pressure is a Garmin cuff or watch reading. It appears after that reading syncs.' },
+  { id: 'body_fat', line: 'Body composition is Garmin\'s scale or watch estimate of weight, fat, and BMI.' },
+  { id: 'fitness_age', line: 'Fitness age is Garmin\'s estimate beside VO2 max. It appears after a sync.' },
+  { id: 'snapshot_heart', line: 'Health snapshot is a short Garmin check of heart rate, oxygen, and breathing.' },
+  { id: 'epoch_minutes', line: 'Epochs are Garmin\'s 15-minute activity slices. They appear after a sync.' },
+  { id: 'move_iq', line: 'Move IQ is movement Garmin noticed without a started activity.' },
+];
 
 /**
  * Health stats omit `span`, so the shared Day / 7 days / 30 days control decides the window.
@@ -442,10 +473,12 @@ function seriesFrom(
   format: (value: number) => string,
   zeroIsValue: boolean,
   sourceLabel = GARMIN_SOURCE,
+  signed = false,
 ): GarminChartPoint[] {
   return chartDays(endDay, periodDayCount(period)).map((day) => {
     const stored = values.get(day);
-    if (stored == null || (!zeroIsValue && !(stored > 0))) {
+    const missing = stored == null || (!signed && (zeroIsValue ? stored < 0 : !(stored > 0)));
+    if (missing) {
       return {
         day,
         value: null,
@@ -645,7 +678,65 @@ export function garminDetailCharts(input: GarminChartInput): GarminDetailChart[]
     includeZero: false,
     guide: vo2Guide(input.period, input.age ?? null, input.sex ?? null),
   });
+  const fitnessAge = new Map<string, number>();
+  for (const row of byDay(input.userMetrics ?? [])) {
+    remember(fitnessAge, row.calendarDate, finite(row.fitnessAge, false) == null ? null : Math.round(row.fitnessAge ?? 0));
+  }
+  add(metricChart(input, 'fitness_age', 'Fitness age', 'years', fitnessAge, 'Fitness age is Garmin\'s estimate of fitness compared with age. It is not your birthday and not a diagnosis.'));
+  add(metricChart(input, 'stress_detail', 'Stress details', 'score', dailyNumber(input.stress ?? [], (row) => row.averageStress), 'Stress details are Garmin\'s stress samples through the day, averaged here. 0–25 is Garmin\'s resting band. Not medical advice.', { low: 0, high: 25 }));
+  add(metricChart(input, 'skin_temp', 'Skin temperature', '°C', dailyNumber(input.skinTemp ?? [], (row) => row.deviationC, true), 'Skin temperature is how far Garmin\'s overnight reading sat from your usual skin temperature, in °C. The band is about 1 degree either side of usual. Not medical advice.', { low: -1, high: 1 }, true));
+  add(metricChart(input, 'blood_pressure', 'Blood pressure', 'mmHg', dailyNumber(input.bloodPressure ?? [], (row) => row.systolic), 'Blood pressure here is the systolic reading Garmin stored, in mmHg. The band is a general adult reference of 90–120. Diastolic is a separate number and is not mixed into this bar. Not medical advice.', { low: 90, high: 120 }));
+  add(metricChart(input, 'diastolic', 'Diastolic pressure', 'mmHg', dailyNumber(input.bloodPressure ?? [], (row) => row.diastolic), 'Diastolic pressure is the lower Garmin blood-pressure number, in mmHg. The band is a general adult reference of 60–80. It is not averaged with systolic. Not medical advice.', { low: 60, high: 80 }));
+  add(metricChart(input, 'body_fat', 'Body fat', '%', dailyNumber(input.bodyComp ?? [], (row) => row.bodyFatPct), 'Body fat is Garmin\'s estimate for that day. There is no single healthy band on this chart. Not medical advice.'));
+  add(metricChart(input, 'bmi', 'BMI', 'BMI', dailyNumber(input.bodyComp ?? [], (row) => row.bmi), 'BMI is Garmin\'s stored body mass index. The band is the general adult reference of 18.5–24.9. It is not a diagnosis.', { low: 18.5, high: 24.9 }));
+  add(metricChart(input, 'snapshot_heart', 'Health snapshot heart rate', 'bpm', dailyNumber(input.healthSnapshot ?? [], (row) => row.restingHeartRateBpm ?? row.heartRateBpm), 'Health snapshot heart rate is the heart rate from Garmin\'s short check, in bpm. The band is a general adult resting range of 60–100. Not medical advice.', { low: 60, high: 100 }));
+  add(metricChart(input, 'epoch_minutes', 'Epoch active minutes', 'min', epochMinutes(input), 'Epochs are Garmin\'s 15-minute activity slices, added up to minutes for the day. They are not a medical measure.'));
+  add(metricChart(input, 'move_iq', 'Move IQ', 'min', dailyNumber(input.moveIq ?? [], (row) => (row.durationSeconds == null ? null : row.durationSeconds / 60)), 'Move IQ is movement Garmin noticed without a started activity, in minutes. Not medical advice.'));
+  add(metricChart(input, 'activity_detail', 'Activity detail', 'min', dailyNumber(input.activityDetails ?? [], (row) => (row.durationSeconds == null ? null : row.durationSeconds / 60)), 'Activity detail is the length Garmin stored for a recorded activity, in minutes. The sample trace is not kept. Not medical advice.'));
   return charts;
+}
+
+function dailyNumber<T extends { calendarDate: string }>(rows: readonly T[], pick: (row: T) => number | null, signed = false): Map<string, number> {
+  const values = new Map<string, number>();
+  for (const row of byDay(rows)) {
+    const value = pick(row);
+    if (value == null || !Number.isFinite(value)) continue;
+    if (!signed && !(value > 0)) continue;
+    values.set(row.calendarDate, value);
+  }
+  return values;
+}
+
+function epochMinutes(input: GarminChartInput): Map<string, number> {
+  const totals = new Map<string, number>();
+  for (const row of input.epochs ?? []) {
+    if (row.activeSeconds == null || !(row.activeSeconds > 0)) continue;
+    totals.set(row.calendarDate, (totals.get(row.calendarDate) ?? 0) + row.activeSeconds / 60);
+  }
+  return totals;
+}
+
+function metricChart(
+  input: GarminChartInput,
+  id: string,
+  title: string,
+  unit: string,
+  values: ReadonlyMap<string, number>,
+  about: string,
+  band?: { low: number; high: number },
+  signed = false,
+): GarminDetailChart {
+  const points = seriesFrom(input.endDay, input.period, values, title, unit, oneDecimal, false, GARMIN_SOURCE, signed);
+  return {
+    id,
+    title,
+    unit,
+    points,
+    includeZero: false,
+    guide: band
+      ? rangeGuide({ period: input.period, low: band.low, high: band.high, unit, what: about, latest: latestStored(points) })
+      : advised(about),
+  };
 }
 
 /** Bar points for a Garmin chart. An empty day stays source-less so it cannot be captioned as Garmin. */

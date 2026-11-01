@@ -39,10 +39,10 @@ describe('Garmin refresh permissions and window', () => {
   });
 
   it('asks only for the exports Garmin has granted, and every type when that list is unknown', () => {
-    expect(garminBackfillTypes(null)).toEqual(['dailies', 'activities', 'sleeps', 'userMetrics', 'hrv']);
-    expect(garminBackfillTypes('HEALTH_EXPORT')).toEqual(['dailies', 'sleeps', 'userMetrics', 'hrv']);
-    expect(garminBackfillTypes('ACTIVITY_EXPORT')).toEqual(['activities']);
-    expect(garminBackfillTypes('ACTIVITY_EXPORT HEALTH_EXPORT')).toEqual(['dailies', 'activities', 'sleeps', 'userMetrics', 'hrv']);
+    expect(garminBackfillTypes(null)).toEqual(['dailies', 'activities', 'activityDetails', 'epochs', 'sleeps', 'bodyComps', 'stressDetails', 'userMetrics', 'pulseOx', 'respiration', 'healthSnapshot', 'hrv', 'bloodPressures', 'skinTemp', 'moveiq']);
+    expect(garminBackfillTypes('HEALTH_EXPORT')).toEqual(['dailies', 'epochs', 'sleeps', 'bodyComps', 'stressDetails', 'userMetrics', 'pulseOx', 'respiration', 'healthSnapshot', 'hrv', 'bloodPressures', 'skinTemp']);
+    expect(garminBackfillTypes('ACTIVITY_EXPORT')).toEqual(['activities', 'activityDetails', 'moveiq']);
+    expect(garminBackfillTypes('ACTIVITY_EXPORT HEALTH_EXPORT')).toEqual(['dailies', 'activities', 'activityDetails', 'epochs', 'sleeps', 'bodyComps', 'stressDetails', 'userMetrics', 'pulseOx', 'respiration', 'healthSnapshot', 'hrv', 'bloodPressures', 'skinTemp', 'moveiq']);
     expect(garminBackfillTypes('')).toEqual([]);
   });
 

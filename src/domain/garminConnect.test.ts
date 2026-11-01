@@ -290,6 +290,24 @@ describe('Garmin webhook mapping', () => {
     expect(plan.respiration[0]).toMatchObject({ averageBreathsPerMinute: 15.3, lowestBreathsPerMinute: 14.2, highestBreathsPerMinute: 16.4 });
     expect(plan.pulseOx[0]).toMatchObject({ averageSpo2: 95, lowestSpo2: 94, highestSpo2: 96 });
     expect(plan.hrv[0]).toMatchObject({ lastNightAvgMs: 46, lastNight5MinHighMs: 78 });
+    const extra = mapGarminPush({
+      mct: [{ cycle: 'private-cycle' }],
+      mysteryType: [{ secret: 'do-not-store' }],
+      bloodPressures: [{ userId: 'garmin1', summaryId: 'bp1', calendarDate: '2026-11-01', systolic: 118, diastolic: 76, pulse: 60 }],
+      activityDetails: [{ userId: 'garmin1', summaryId: 'ad1', summary: { calendarDate: '2026-11-01', durationInSeconds: 600 }, samples: [{ latitudeInDegree: 51.5, longitudeInDegree: -0.1 }] }],
+      activityFiles: [{ userId: 'garmin1', summaryId: 'af1', calendarDate: '2026-11-01', fileType: 'FIT', callbackURL: 'https://example.test/secret-file' }],
+    });
+    expect(extra.droppedTypes).toEqual(['mct', 'mysteryType']);
+    const extraText = JSON.stringify(extra);
+    expect(extraText).not.toContain('private-cycle');
+    expect(extraText).not.toContain('do-not-store');
+    expect(extraText).not.toContain('secret-file');
+    expect(extraText).not.toContain('latitude');
+    expect(extra.bloodPressure[0]).toMatchObject({ systolic: 118, diastolic: 76, pulseBpm: 60 });
+    expect(extra.activityFiles[0]).toMatchObject({ fileType: 'FIT' });
+    const coach = readFileSync('supabase/functions/_shared/garmin.ts', 'utf8');
+    const coachBody = coach.slice(coach.indexOf('export function garminCoachLines'), coach.indexOf('export function readingsFromRows'));
+    expect(coachBody).not.toMatch(/bloodPressure|skinTemp|bodyComp|menstrual/);
     expect(plan.dailies[0]).toMatchObject({
       steps: 4000,
       minHeartRateBpm: 52,
@@ -398,7 +416,7 @@ describe('Garmin webhook mapping', () => {
     const rows = userMetricRowsFor(plan, new Map([['garmin1', 'user-1']]));
     expect(rows[0]).toMatchObject({ user_id: 'user-1', vo2_max: 46.2, fitness_age: 32 });
     expect(userMetricRowsFor(plan, new Map())).toEqual([]);
-    expect(GARMIN_BACKFILL_TYPES).toEqual(['dailies', 'activities', 'sleeps', 'userMetrics', 'hrv']);
+    expect(GARMIN_BACKFILL_TYPES).toEqual(['dailies', 'activities', 'activityDetails', 'epochs', 'sleeps', 'bodyComps', 'stressDetails', 'userMetrics', 'pulseOx', 'respiration', 'healthSnapshot', 'hrv', 'bloodPressures', 'skinTemp', 'moveiq']);
     expect(garminBackfillUrl('dailies', 1, 2)).toContain('/backfill/dailies?summaryStartTimeInSeconds=1&summaryEndTimeInSeconds=2');
     expect(garminBackfillUrl('userMetrics', 1, 2)).not.toContain('activityDetails');
     expect(garminRefreshCooling('2026-10-22T11:59:30Z', Date.parse('2026-10-22T12:00:00Z'))).toBe(true);

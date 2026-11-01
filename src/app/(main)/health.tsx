@@ -344,6 +344,14 @@ export default function Health() {
         hrv={readings.hrv}
         appleHrvSdnn={appleDayValues(snap.health, 'hrv_sdnn')}
         userMetrics={readings.userMetrics}
+        bloodPressure={readings.bloodPressure}
+        bodyComp={readings.bodyComp}
+        skinTemp={readings.skinTemp}
+        stress={readings.stress}
+        epochs={readings.epochs}
+        healthSnapshot={readings.healthSnapshot}
+        moveIq={readings.moveIq}
+        activityDetails={readings.activityDetails}
         age={snap.nutrition.goalAge}
         sex={snap.nutrition.goalSex}
       />

@@ -50,6 +50,7 @@ import {
   intensitySeries,
   APPLE_HRV_EMPTY,
   APPLE_HRV_SOURCE,
+  GARMIN_EXTRA_EMPTY,
   GARMIN_HRV_EMPTY,
   GARMIN_HRV_SOURCE,
   sdnnGuide,
@@ -60,6 +61,7 @@ import {
   stepsChartGuide,
   vigorousChartGuide,
   type ChartGuide,
+  type GarminChartInput,
 } from '@/domain/garminCharts';
 import type { GarminDaily, GarminHrvSummary, GarminPulseOx, GarminRespiration, GarminSleep, GarminUserMetric } from '@/domain/garminConnect';
 import type { NutritionSex } from '@/domain/nutrition';
@@ -247,6 +249,14 @@ export function MovementCharts({
   hrv,
   appleHrvSdnn = [],
   userMetrics = [],
+  bloodPressure = [],
+  bodyComp = [],
+  skinTemp = [],
+  stress = [],
+  epochs = [],
+  healthSnapshot = [],
+  moveIq = [],
+  activityDetails = [],
   age = null,
   sex = null,
   showIntensity = true,
@@ -265,6 +275,14 @@ export function MovementCharts({
   hrv: readonly GarminHrvSummary[];
   appleHrvSdnn?: readonly AppleDayValue[];
   userMetrics?: readonly GarminUserMetric[];
+  bloodPressure?: GarminChartInput['bloodPressure'];
+  bodyComp?: GarminChartInput['bodyComp'];
+  skinTemp?: GarminChartInput['skinTemp'];
+  stress?: GarminChartInput['stress'];
+  epochs?: GarminChartInput['epochs'];
+  healthSnapshot?: GarminChartInput['healthSnapshot'];
+  moveIq?: GarminChartInput['moveIq'];
+  activityDetails?: GarminChartInput['activityDetails'];
   age?: number | null;
   sex?: NutritionSex | null;
   showIntensity?: boolean;
@@ -294,6 +312,14 @@ export function MovementCharts({
     pulseOx,
     hrv,
     userMetrics,
+    bloodPressure,
+    bodyComp,
+    skinTemp,
+    stress,
+    epochs,
+    healthSnapshot,
+    moveIq,
+    activityDetails,
     age,
     sex,
   });
@@ -510,12 +536,20 @@ export function MovementCharts({
                 span={chartWindow.days}
                 unit={chart.unit}
                 selected={selected}
-                garminNote={garminSourceCaption(chart)}
+                garminNote="Garmin"
                 guide={chart.guide}
                 onSelect={setSelected}
               />
             );
           })}
+          {dailies.length > 0 ? GARMIN_EXTRA_EMPTY.filter((item) => !details.some((chart) => chart.id === item.id)).map((item) => (
+            <View key={item.id} style={{ gap: 4 }}>
+              <T variant="label">{item.id === 'blood_pressure' ? 'Blood pressure' : item.id === 'skin_temp' ? 'Skin temperature' : item.id === 'body_fat' ? 'Body composition' : item.id === 'fitness_age' ? 'Fitness age' : item.id === 'snapshot_heart' ? 'Health snapshot' : item.id === 'epoch_minutes' ? 'Epochs' : item.id === 'move_iq' ? 'Move IQ' : item.id === 'pulse_ox' ? 'Pulse ox' : item.id === 'respiration' ? 'Breathing rate' : item.id === 'stress' ? 'Stress' : 'Body battery'}</T>
+              <T variant="muted">Garmin</T>
+              <T>{item.line}</T>
+              <T variant="muted">Not medical advice. Not a diagnosis.</T>
+            </View>
+          )) : null}
         </Fold>
       ) : null}
       {span == null ? <T variant="muted" style={{ textAlign: 'center' }}>{CHART_DIRECTION_HINT}</T> : null}
@@ -917,7 +951,10 @@ function Fold({
         onPress={onToggle}
         style={{ minHeight: 44, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}
       >
-        <T style={{ fontFamily: theme.font.bodyStrong, flex: 1 }}>{title}</T>
+        <View style={{ flex: 1, gap: 4 }}>
+          <T style={{ fontFamily: theme.font.bodyStrong, fontSize: 34 * theme.scale, lineHeight: 40 * theme.scale }}>{title}</T>
+          <View style={{ height: 3, backgroundColor: theme.colors.accent, alignSelf: 'stretch' }} />
+        </View>
         <T style={{ color: green }}>{open ? 'Hide' : closedLabel}</T>
         <View accessibilityElementsHidden>
           <T style={{ color: green }}>{open ? '⌄' : '›'}</T>
