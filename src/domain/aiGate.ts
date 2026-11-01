@@ -39,7 +39,7 @@ export function aiGateFromBody(data: unknown): AiGateNotice | null {
   if (!data || typeof data !== 'object') return null;
   const body = data as { code?: unknown; tier?: unknown; window?: unknown; message?: unknown; resets_at?: unknown };
   if (body.code !== 'limit_reached' && body.code !== 'subscription_required') return null;
-  const tier = body.tier === 'standard' || body.tier === 'pro' || body.tier === 'unlimited' ? body.tier : null;
+  const tier = body.tier === 'standard' || body.tier === 'pro' || body.tier === 'max' ? body.tier : null;
   const window = body.window === 'day' || body.window === 'month' ? body.window : null;
   const message = typeof body.message === 'string' && body.message.trim()
     ? body.message

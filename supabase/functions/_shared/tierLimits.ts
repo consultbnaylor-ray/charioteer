@@ -17,7 +17,7 @@ export const SUBSCRIPTION_PRODUCT_IDS = [
   UNLIMITED_PRODUCT_ID,
 ] as const;
 
-export type Tier = 'standard' | 'pro' | 'unlimited';
+export type Tier = 'standard' | 'pro' | 'max';
 
 export type UsageKind = 'coach' | 'meal' | 'plan';
 
@@ -25,13 +25,13 @@ export const PRODUCT_TIER: Record<(typeof SUBSCRIPTION_PRODUCT_IDS)[number], Tie
   [YEARLY_PRODUCT_ID]: 'standard',
   [MONTHLY_PRODUCT_ID]: 'standard',
   [PRO_PRODUCT_ID]: 'pro',
-  [UNLIMITED_PRODUCT_ID]: 'unlimited',
+  [UNLIMITED_PRODUCT_ID]: 'max',
 };
 
 export const TIER_LIMITS: Record<Tier, Record<UsageKind, { day: number; month: number }>> = {
   standard: { coach: { day: 20, month: 120 }, meal: { day: 6, month: 90 }, plan: { day: 1, month: 4 } },
   pro: { coach: { day: 40, month: 300 }, meal: { day: 10, month: 150 }, plan: { day: 2, month: 10 } },
-  unlimited: { coach: { day: 150, month: 1500 }, meal: { day: 30, month: 450 }, plan: { day: 5, month: 30 } },
+  max: { coach: { day: 150, month: 1500 }, meal: { day: 30, month: 450 }, plan: { day: 5, month: 30 } },
 };
 
 /** Cap on every Grok chat completion, including low-reasoning calls. */
@@ -53,7 +53,7 @@ export function isSubscriptionProduct(productId: string | null | undefined): pro
   return tierForProduct(productId) != null;
 }
 
-/** Standard yearly, Standard monthly, Pro, Unlimited. Unknown ids are left out. */
+/** Standard yearly, Standard monthly, Pro, Max. Unknown ids are left out. */
 export function orderedPlanIds(ids: readonly string[]): string[] {
   const present = new Set(ids);
   return SUBSCRIPTION_PRODUCT_IDS.filter((id) => present.has(id));
@@ -65,20 +65,19 @@ export function defaultPlanId(ids: readonly string[]): string | null {
 
 export function tierIncludedLine(tier: Tier): string {
   const day = TIER_LIMITS[tier].coach.day;
-  if (tier === 'standard') return `Up to ${day} coach messages a day`;
   if (tier === 'pro') return `Up to ${day} a day`;
-  return `Unlimited* (fair use: up to ${day} a day)`;
+  return `Up to ${day} coach messages a day`;
 }
 
 export function tierDisplayName(tier: Tier): string {
   if (tier === 'pro') return 'Pro';
-  if (tier === 'unlimited') return 'Unlimited';
+  if (tier === 'max') return 'Max';
   return 'Standard';
 }
 
 export function upgradeTier(tier: Tier): Tier | null {
   if (tier === 'standard') return 'pro';
-  if (tier === 'pro') return 'unlimited';
+  if (tier === 'pro') return 'max';
   return null;
 }
 
@@ -195,11 +194,8 @@ export function limitReachedMessage(input: {
   const name = tierDisplayName(input.tier);
   const next = upgradeTier(input.tier);
   const when = input.window === 'day' ? 'midnight' : 'the start of next month';
-  if (!next) {
-    const period = input.window === 'day' ? "today's fair-use limit" : "this month's fair-use limit";
-    return `You've reached ${period} on ${name}. It resets at ${when}.`;
-  }
   const period = input.window === 'day' ? "today's limit" : "this month's limit";
+  if (!next) return `You've reached ${period} on ${name}. It resets at ${when}.`;
   return `You've reached ${period} on ${name}. It resets at ${when}. Upgrade to ${tierDisplayName(next)} for more.`;
 }
 

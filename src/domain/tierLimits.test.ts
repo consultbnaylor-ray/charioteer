@@ -24,14 +24,14 @@ describe('tier limits', () => {
     expect(tierForProduct('Sta')).toBe('standard');
     expect(tierForProduct('charioteer.monthly')).toBe('standard');
     expect(tierForProduct(PRO_PRODUCT_ID)).toBe('pro');
-    expect(tierForProduct(UNLIMITED_PRODUCT_ID)).toBe('unlimited');
+    expect(tierForProduct(UNLIMITED_PRODUCT_ID)).toBe('max');
     expect(tierForProduct('other')).toBeNull();
     expect(TIER_LIMITS.standard.coach).toEqual({ day: 20, month: 120 });
     expect(TIER_LIMITS.pro.meal).toEqual({ day: 10, month: 150 });
-    expect(TIER_LIMITS.unlimited.plan).toEqual({ day: 5, month: 30 });
+    expect(TIER_LIMITS.max.plan).toEqual({ day: 5, month: 30 });
     expect(tierIncludedLine('standard')).toBe('Up to 20 coach messages a day');
     expect(tierIncludedLine('pro')).toBe('Up to 40 a day');
-    expect(tierIncludedLine('unlimited')).toBe('Unlimited* (fair use: up to 150 a day)');
+    expect(tierIncludedLine('max')).toBe('Up to 150 coach messages a day');
   });
 
   it('returns 402 without a subscription, 429 at the cap, and helplines for a crisis', () => {
@@ -59,17 +59,29 @@ describe('tier limits', () => {
     expect(reached.limit).toBe(20);
     expect(reached.window).toBe('day');
     expect(limitReachedMessage(reached)).toBe("You've reached today's limit on Standard. It resets at midnight. Upgrade to Pro for more.");
-    const fairUseMonth = decideAllowance({
+    const proDay = decideAllowance({
       enforced: true,
       crisis: false,
-      tier: 'unlimited',
+      tier: 'pro',
+      dayCount: 40,
+      monthCount: 40,
+      kind: 'coach',
+      now: NOW,
+    });
+    if (proDay.action === 'limit_reached') {
+      expect(limitReachedMessage(proDay)).toBe("You've reached today's limit on Pro. It resets at midnight. Upgrade to Max for more.");
+    }
+    const maxMonth = decideAllowance({
+      enforced: true,
+      crisis: false,
+      tier: 'max',
       dayCount: 1,
       monthCount: 1500,
       kind: 'coach',
       now: NOW,
     });
-    if (fairUseMonth.action === 'limit_reached') {
-      expect(limitReachedMessage(fairUseMonth)).toBe("You've reached this month's fair-use limit on Unlimited. It resets at the start of next month.");
+    if (maxMonth.action === 'limit_reached') {
+      expect(limitReachedMessage(maxMonth)).toBe("You've reached this month's limit on Max. It resets at the start of next month.");
     }
 
     const month = decideAllowance({
@@ -117,7 +129,7 @@ describe('tier limits', () => {
     expect(decideAllowance({
       enforced: true,
       crisis: false,
-      tier: 'unlimited',
+      tier: 'max',
       dayCount: 149,
       monthCount: 149,
       kind: 'coach',

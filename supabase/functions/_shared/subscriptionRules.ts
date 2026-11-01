@@ -1,7 +1,7 @@
 /**
  * Four auto-renewable products in App Store subscription group 22532571.
  * Standard: yearly `Sta` and monthly `charioteer.monthly`.
- * Pro: `charioteer.pro.monthly`. Unlimited: `charioteer.unlimited.monthly`.
+ * Pro: `charioteer.pro.monthly`. Max: `charioteer.unlimited.monthly` (tier `max`).
  * The ids and tiers live in tierLimits.ts.
  */
 import {
@@ -32,7 +32,7 @@ export const MONTHLY_DISPLAY_NAME = 'Monthly';
 
 export const PRO_DISPLAY_NAME = 'Pro';
 
-export const UNLIMITED_DISPLAY_NAME = 'Unlimited';
+export const UNLIMITED_DISPLAY_NAME = 'Charioteer Max';
 
 export const SUBSCRIPTION_REFERENCE_NAME = YEARLY_REFERENCE_NAME;
 
@@ -93,7 +93,7 @@ export function planTitle(productId: string | null | undefined): string | null {
   if (productId === YEARLY_PRODUCT_ID) return 'Standard yearly';
   if (productId === MONTHLY_PRODUCT_ID) return 'Standard';
   if (productId === PRO_PRODUCT_ID) return 'Pro';
-  if (productId === UNLIMITED_PRODUCT_ID) return 'Unlimited';
+  if (productId === UNLIMITED_PRODUCT_ID) return 'Max';
   return null;
 }
 

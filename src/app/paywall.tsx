@@ -251,7 +251,7 @@ export default function PaywallScreen() {
           {([
             ['Standard', 'standard', [YEARLY_PRODUCT_ID, MONTHLY_PRODUCT_ID]],
             ['Pro', 'pro', [PRO_PRODUCT_ID]],
-            ['Unlimited', 'unlimited', [UNLIMITED_PRODUCT_ID]],
+            ['Max', 'max', [UNLIMITED_PRODUCT_ID]],
           ] as const).map(([title, tier, ids]) => {
             const section = ids.map((id) => plans.find((plan) => plan.id === id)).filter((plan): plan is StorePlan => plan != null);
             if (!section.length) return null;
