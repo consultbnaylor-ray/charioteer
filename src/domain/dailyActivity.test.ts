@@ -24,7 +24,7 @@ import {
   restingSeries,
   stepsSeries,
   garminExerciseMinutes,
-  activityAxisLabel,
+  activityAxisPlan,
   activityScaleLine,
   chartScalePeak,
   mostInOneDay,
@@ -360,20 +360,21 @@ describe('daily activity', () => {
     expect(readFileSync('src/app/(main)/stats.tsx', 'utf8')).toContain('<MovementCharts');
     expect(charts).toContain('Not medical advice. Not a diagnosis.');
     expect(charts).toContain('numberOfLines={1}');
-    expect(charts).toContain('activityAxisLabel');
+    expect(charts).toContain('activityAxisPlan');
+    expect(charts).toContain('goodZoneBand');
     expect(charts).not.toContain('barSourceName');
-    expect(charts).not.toContain('goodZoneBand');
   });
 
-  it('labels every fifth day, ignores empty days on the scale, and names a source once', () => {
-    const days = Array.from({ length: 30 }, (_, index) => {
-      const date = new Date(Date.UTC(2026, 9, 3 + index));
-      return date.toISOString().slice(0, 10);
-    });
-    const labels = days.map((day, index) => activityAxisLabel(day, index, days.length));
-    expect(labels.filter(Boolean)).toEqual(['3', '8', '13', '18', '23', '28', '1']);
-    expect(labels.join('')).not.toMatch(/Garmin|Apple|—|-/);
-    expect(activityAxisLabel('2026-10-22', 3, 7)).toBe('');
+  it('marks Mondays on a month chart and month names on a longer one', () => {
+    const month = daysEnding('2026-11-01', 30);
+    const monthMarks = activityAxisPlan(month).filter((mark) => mark.label);
+    expect(monthMarks.map((mark) => mark.label)).toEqual(['5 Oct', '12 Oct', '19 Oct', '26 Oct', '1 Nov']);
+    expect(monthMarks.filter((mark) => mark.divider).map((mark) => month[mark.index])).toEqual(['2026-10-05', '2026-10-12', '2026-10-19', '2026-10-26']);
+    expect(activityAxisPlan(daysEnding('2026-11-03', 30)).filter((mark) => mark.label).at(-1)?.label).toBe('3 Nov');
+    expect(activityAxisPlan(daysEnding('2026-11-03', 30)).some((mark) => mark.label === '2 Nov')).toBe(false);
+    const quarter = activityAxisPlan(daysEnding('2026-11-01', 90)).filter((mark) => mark.label);
+    expect(quarter.map((mark) => mark.label)).toEqual(['Sep', 'Oct', 'Nov']);
+    expect(activityAxisPlan(daysEnding('2026-10-22', 7))).toEqual([]);
     expect(chartScalePeak([
       { value: 0, source: null },
       { value: 9000, empty: true, source: 'garmin' },
@@ -384,3 +385,11 @@ describe('daily activity', () => {
     expect(activityScaleLine('Most in one day 4.2 km', '(Garmin)')).toBe('Most in one day 4.2 km (Garmin)');
   });
 });
+
+function daysEnding(end: string, count: number): string[] {
+  const [year, month, date] = end.split('-').map(Number);
+  return Array.from({ length: count }, (_, index) => {
+    const day = new Date(Date.UTC(year, month - 1, date - (count - 1 - index)));
+    return day.toISOString().slice(0, 10);
+  });
+}

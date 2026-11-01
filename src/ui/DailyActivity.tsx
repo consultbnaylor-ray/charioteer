@@ -20,7 +20,7 @@ import {
   calorieSeries,
   chartSourceCaption,
   distanceSeries,
-  activityAxisLabel,
+  activityAxisPlan,
   activityScaleLine,
   chartScalePeak,
   distanceText,
@@ -67,7 +67,7 @@ import type { WorkoutChartSpan } from '@/domain/workoutDay';
 import { useStatPeriod } from '@/health/useStatPeriod';
 import { openAppSettings } from '@/health/link';
 import { MoreInfo } from '@/ui/MoreInfo';
-import { statsToneColors } from '@/ui/statsPalette';
+import { goodZoneBand, statsToneColors } from '@/ui/statsPalette';
 import { StatPeriodToggle } from '@/ui/StatPeriodToggle';
 import { useAppTheme } from '@/ui/theme';
 import { activityTitleIcon } from '@/domain/statIcons';
@@ -725,6 +725,8 @@ function ActivityBars({
   }
   const bandTop = band ? Math.min(band.high, most) : 0;
   const bandBottom = band ? Math.min(band.low, bandTop) : 0;
+  const axis = activityAxisPlan(points.map((point) => point.day));
+  const dividers = new Set(axis.filter((mark) => mark.divider).map((mark) => mark.index));
 
   const body = (
     <>
@@ -749,27 +751,59 @@ function ActivityBars({
         </MoreInfo>
       ) : null}
       <View style={{ alignSelf: 'stretch', paddingHorizontal: 2, gap: 2 }}>
+        {span <= 7 ? (
+          <View style={{ flexDirection: 'row', gap: span > 14 ? 1 : 4 }}>
+            {points.map((point) => {
+              const missing = point.empty || (point.value === 0 && point.source == null);
+              const showValue = !missing && (point.value > 0 || point.source != null);
+              return (
+                <View key={point.day} style={{ flex: 1, minHeight: 12, alignItems: 'center' }}>
+                  {showValue ? (
+                    <T numberOfLines={1} style={{ fontSize: 10, lineHeight: 12, textAlign: 'center' }}>{format ? format(point) : `${point.value} ${unit}`}</T>
+                  ) : null}
+                </View>
+              );
+            })}
+          </View>
+        ) : null}
         <View style={{ height: BAR_HEIGHT, position: 'relative' }}>
           {band && bandTop > bandBottom ? (
             <View
               pointerEvents="none"
               style={{
                 position: 'absolute',
+                zIndex: 0,
                 left: 0,
                 right: 0,
                 bottom: (bandBottom / most) * BAR_HEIGHT,
                 height: Math.max(2, ((bandTop - bandBottom) / most) * BAR_HEIGHT),
-                backgroundColor: theme.scheme === 'dark' ? 'rgba(255,255,255,0.14)' : 'rgba(0,0,0,0.08)',
+                backgroundColor: goodZoneBand(theme.scheme),
               }}
             />
           ) : null}
-          {own != null ? <View pointerEvents="none" style={guideLine(own)} /> : null}
-          {target != null ? <View pointerEvents="none" style={guideLine(target)} /> : null}
-          <View style={{ flexDirection: 'row', alignItems: 'flex-end', height: BAR_HEIGHT, gap: span > 14 ? 1 : 4 }}>
+          {dividers.size > 0 ? points.map((point, index) => (
+            dividers.has(index) ? (
+              <View
+                key={`tick-${point.day}`}
+                pointerEvents="none"
+                style={{
+                  position: 'absolute',
+                  zIndex: 1,
+                  top: 0,
+                  bottom: 0,
+                  width: 1,
+                  left: `${((index + 0.5) / points.length) * 100}%`,
+                  backgroundColor: theme.colors.line,
+                }}
+              />
+            ) : null
+          )) : null}
+          {own != null ? <View pointerEvents="none" style={{ ...guideLine(own), zIndex: 1 }} /> : null}
+          {target != null ? <View pointerEvents="none" style={{ ...guideLine(target), zIndex: 1 }} /> : null}
+          <View style={{ zIndex: 2, flexDirection: 'row', alignItems: 'flex-end', height: BAR_HEIGHT, gap: span > 14 ? 1 : 4 }}>
             {points.map((point) => {
               const chosen = point.day === selected;
               const missing = point.empty || (point.value === 0 && point.source == null);
-              const showValue = span <= 7 && !missing && (point.value > 0 || point.source != null);
               return (
                 <Pressable
                   key={point.day}
@@ -777,15 +811,11 @@ function ActivityBars({
                   accessibilityLabel={`${point.label}. Select this day.`}
                   accessibilityState={{ selected: chosen }}
                   onPress={() => onSelect(point.day)}
-                  style={{ flex: 1, height: BAR_HEIGHT, alignItems: 'center', justifyContent: 'flex-end' }}
+                  style={{ flex: 1, height: BAR_HEIGHT, justifyContent: 'flex-end' }}
                 >
-                  {showValue ? (
-                    <T numberOfLines={1} style={{ fontSize: 10, lineHeight: 12, textAlign: 'center' }}>{format ? format(point) : `${point.value} ${unit}`}</T>
-                  ) : null}
                   <View
                     style={{
-                      height: showValue ? undefined : BAR_HEIGHT,
-                      flexGrow: showValue ? 1 : 0,
+                      height: BAR_HEIGHT,
                       alignSelf: 'stretch',
                       justifyContent: 'flex-end',
                       marginHorizontal: 1,
@@ -805,15 +835,34 @@ function ActivityBars({
             })}
           </View>
         </View>
-        <View style={{ flexDirection: 'row', height: 14, overflow: 'visible' }}>
-          {points.map((point, index) => {
-            const label = span <= 7 ? weekdayShort(point.day).slice(0, 1) : activityAxisLabel(point.day, index, points.length);
+        <View style={{ height: 14, position: 'relative' }}>
+          {span <= 7 ? points.map((point, index) => (
+            <View key={point.day} style={{ position: 'absolute', left: `${(index / points.length) * 100}%`, width: `${100 / points.length}%`, alignItems: 'center' }}>
+              <T numberOfLines={1} style={{ fontSize: 9, lineHeight: 12, textAlign: 'center', color: theme.colors.muted }}>{weekdayShort(point.day).slice(0, 1)}</T>
+            </View>
+          )) : axis.filter((mark) => mark.label).map((mark) => {
+            const nearStart = mark.index <= 1;
+            const nearEnd = mark.index >= points.length - 2;
+            const width = Math.max(18, mark.label.length * 6 + 4);
             return (
-              <View key={point.day} style={{ flex: 1, overflow: 'visible', alignItems: 'center' }}>
-                {label ? (
-                  <T numberOfLines={1} style={{ width: 22, fontSize: 9, lineHeight: 12, textAlign: 'center', color: theme.colors.muted }}>{label}</T>
-                ) : null}
-              </View>
+              <T
+                key={points[mark.index]?.day ?? mark.index}
+                numberOfLines={1}
+                style={{
+                  position: 'absolute',
+                  top: 0,
+                  width,
+                  fontSize: 9,
+                  lineHeight: 12,
+                  textAlign: nearStart ? 'left' : nearEnd ? 'right' : 'center',
+                  color: theme.colors.muted,
+                  left: nearEnd ? undefined : nearStart ? `${(mark.index / points.length) * 100}%` : `${((mark.index + 0.5) / points.length) * 100}%`,
+                  right: nearEnd ? `${((points.length - 1 - mark.index) / points.length) * 100}%` : undefined,
+                  marginLeft: nearStart || nearEnd ? 0 : -width / 2,
+                }}
+              >
+                {mark.label}
+              </T>
             );
           })}
         </View>
