@@ -195,7 +195,10 @@ export function limitReachedMessage(input: {
   const name = tierDisplayName(input.tier);
   const next = upgradeTier(input.tier);
   const when = input.window === 'day' ? 'midnight' : 'the start of next month';
-  if (!next) return `You've reached today's fair-use limit on ${name}. It resets at ${when}.`;
+  if (!next) {
+    const period = input.window === 'day' ? "today's fair-use limit" : "this month's fair-use limit";
+    return `You've reached ${period} on ${name}. It resets at ${when}.`;
+  }
   const period = input.window === 'day' ? "today's limit" : "this month's limit";
   return `You've reached ${period} on ${name}. It resets at ${when}. Upgrade to ${tierDisplayName(next)} for more.`;
 }

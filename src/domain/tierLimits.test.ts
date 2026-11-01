@@ -59,6 +59,18 @@ describe('tier limits', () => {
     expect(reached.limit).toBe(20);
     expect(reached.window).toBe('day');
     expect(limitReachedMessage(reached)).toBe("You've reached today's limit on Standard. It resets at midnight. Upgrade to Pro for more.");
+    const fairUseMonth = decideAllowance({
+      enforced: true,
+      crisis: false,
+      tier: 'unlimited',
+      dayCount: 1,
+      monthCount: 1500,
+      kind: 'coach',
+      now: NOW,
+    });
+    if (fairUseMonth.action === 'limit_reached') {
+      expect(limitReachedMessage(fairUseMonth)).toBe("You've reached this month's fair-use limit on Unlimited. It resets at the start of next month.");
+    }
 
     const month = decideAllowance({
       enforced: true,

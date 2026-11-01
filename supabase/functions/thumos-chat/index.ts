@@ -362,8 +362,23 @@ Deno.serve(async (req) => {
       send({ type: 'ping' });
       if (coachUsage) send({ type: 'usage', kind: 'coach', used: coachUsage.used, limit: coachUsage.limit });
       if (crisisStatic) {
-        send({ type: 'delta', text: crisisStatic });
-        send({ type: 'done', reply: crisisStatic, role: 'assistant', ok: true });
+        try {
+          send({ type: 'delta', text: crisisStatic });
+          const saved = await saveThumosPair(admin, {
+            userId,
+            content,
+            reply: crisisStatic,
+            role: 'assistant',
+            mode,
+            requestId,
+          });
+          if (!saved.ok) console.error('thumos crisis save failed');
+          send({ type: 'done', reply: crisisStatic, role: 'assistant', ok: true });
+        } catch {
+          send({ type: 'error', message: 'Thumos could not finish that reply.' });
+        } finally {
+          controller.close();
+        }
         return;
       }
       let reply = OFFLINE_COACH_MESSAGE;
