@@ -1,7 +1,7 @@
 import { Linking, Pressable, View } from 'react-native';
 import { useRouter } from 'expo-router';
 
-import { useState, type ReactNode } from 'react';
+import { useState } from 'react';
 import {
   EXERCISE_GARMIN_CAPTION,
   INTENSITY_EMPTY,
@@ -38,7 +38,6 @@ import {
 } from '@/domain/dailyActivity';
 import {
   GARMIN_DETAILS_TITLE,
-  TAP_FOR_MORE,
   activityChartGuide,
   distanceChartGuide,
   exerciseChartGuide,
@@ -305,6 +304,7 @@ export function MovementCharts({
   showIntensity = true,
   framed = true,
   showVo2Chart = true,
+  detailsOnly = false,
 }: {
   endDay: string;
   /** Set on Workouts, where that screen's 7 or 30 day control is the one the other charts use. */
@@ -334,11 +334,14 @@ export function MovementCharts({
   framed?: boolean;
   /** False on Stats and Health Plan, where the VO2 max chart sits inside Your fitness. */
   showVo2Chart?: boolean;
+  /** The More Garmin Stats screen. The main charts stay on Stats. */
+  detailsOnly?: boolean;
 }) {
+  const theme = useAppTheme();
+  const router = useRouter();
   const [sharedPeriod] = useStatPeriod();
   const chartWindow = movementPeriod(span, sharedPeriod);
   const [selected, setSelected] = useState<string | null>(null);
-  const [open, setOpen] = useState(false);
   const stepPoints = stepsSeries(endDay, chartWindow.days, steps, dailies);
   const distance = distanceSeries(endDay, chartWindow.days, dailies);
   const floors = floorsSeries(endDay, chartWindow.days, dailies);
@@ -398,7 +401,11 @@ export function MovementCharts({
     }, shownGarmin)
     : [];
   const hrvPlaceholder = missingGarmin.find((chart) => chart.id === 'hrv') ?? null;
-  const placeholders = missingGarmin.filter((chart) => chart.id !== 'hrv');
+  const fitnessChart = detailCharts.find((chart) => chart.id === 'fitness_age')
+    ?? missingGarmin.find((chart) => chart.id === 'fitness_age')
+    ?? null;
+  const placeholders = missingGarmin.filter((chart) => chart.id !== 'hrv' && chart.id !== 'fitness_age');
+  const foldDetails = details.filter((chart) => chart.id !== 'fitness_age');
   const sdnnPoints = hrvSdnnSeries(endDay, chartWindow.days, appleHrvSdnn);
   const chosen = stepPoints.find((point) => point.day === selected)
     ?? distance.find((point) => point.day === selected)
@@ -417,6 +424,32 @@ export function MovementCharts({
     const point = chart.points.find((row) => row.day === selected && !row.empty);
     return point ? [point.label] : [];
   });
+  const green = statsToneColors(theme.scheme).good.ink;
+  function garminCard(chart: (typeof foldDetails)[number] | NonNullable<typeof fitnessChart>) {
+    return (
+      <ActivityBars
+        key={chart.id}
+        framed={framed}
+        title={chart.title}
+        points={garminBarPoints(chart.points)}
+        span={chartWindow.days}
+        unit={chart.unit}
+        selected={selected}
+        garminNote="Garmin"
+        guide={chart.guide}
+        lead={chart.note}
+        onSelect={setSelected}
+      />
+    );
+  }
+  if (detailsOnly) {
+    return (
+      <View style={{ gap: 12 }}>
+        {foldDetails.map((chart) => garminCard(chart))}
+        {placeholders.map((chart) => garminCard(chart))}
+      </View>
+    );
+  }
 
   return (
     <View style={{ gap: framed ? 22 : 12 }}>
@@ -605,47 +638,17 @@ export function MovementCharts({
           onSelect={setSelected}
         />
       ) : null}
-      {details.length > 0 || placeholders.length > 0 ? (
-        <Fold
-          title={GARMIN_DETAILS_TITLE}
-          closedLabel={TAP_FOR_MORE}
-          accessibilityLabel={open ? `Hide ${GARMIN_DETAILS_TITLE}` : `${GARMIN_DETAILS_TITLE}. ${TAP_FOR_MORE}`}
-          open={open}
-          onToggle={() => setOpen((value) => !value)}
+      {fitnessChart ? garminCard(fitnessChart) : null}
+      {foldDetails.length > 0 || placeholders.length > 0 ? (
+        <Pressable
+          accessibilityRole="link"
+          accessibilityLabel={`Garmin. ${GARMIN_DETAILS_TITLE}`}
+          onPress={() => router.push('/garmin-stats' as never)}
+          style={{ minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 10 }}
         >
-          {details.map((chart) => {
-            const bars = garminBarPoints(chart.points);
-            return (
-              <ActivityBars
-                key={chart.id}
-                framed={framed}
-                title={chart.title}
-                points={bars}
-                span={chartWindow.days}
-                unit={chart.unit}
-                selected={selected}
-                garminNote="Garmin"
-                guide={chart.guide}
-                onSelect={setSelected}
-              />
-            );
-          })}
-          {placeholders.map((chart) => (
-            <ActivityBars
-              key={chart.id}
-              framed={framed}
-              title={chart.title}
-              points={garminBarPoints(chart.points)}
-              span={chartWindow.days}
-              unit={chart.unit}
-              selected={selected}
-              garminNote="Garmin"
-              guide={chart.guide}
-              lead={chart.note}
-              onSelect={setSelected}
-            />
-          ))}
-        </Fold>
+          <T style={{ color: theme.colors.ink, fontFamily: theme.font.bodyStrong, fontSize: 34 * theme.scale, lineHeight: 40 * theme.scale }}>Garmin</T>
+          <T style={{ color: green, fontFamily: theme.font.bodyStrong, fontSize: 22 * theme.scale, lineHeight: 28 * theme.scale }}>{`→ ${GARMIN_DETAILS_TITLE}`}</T>
+        </Pressable>
       ) : null}
       {span == null ? <T variant="muted" style={{ textAlign: 'center' }}>{CHART_DIRECTION_HINT}</T> : null}
     </View>
@@ -849,7 +852,7 @@ function ActivityBars({
   const band = guide?.dailyTypical ?? null;
   const target = guide?.target?.value ?? null;
   const own = guide?.ownAverage?.value ?? null;
-  const explanation = [...new Set([guide?.legend, guide?.about].map((line) => line?.trim()).filter((line): line is string => Boolean(line)))];
+  const explanation = [...new Set([guide?.legend, guide?.about].map((line) => line?.trim()).filter((line): line is string => Boolean(line)))].filter((line) => !lead || line !== lead.trim());
 
   function guideLine(value: number) {
     return {
@@ -1020,43 +1023,4 @@ function ActivityBars({
   return <Card>{body}</Card>;
 }
 
-function Fold({
-  title,
-  closedLabel,
-  accessibilityLabel,
-  open,
-  onToggle,
-  children,
-}: {
-  title: string;
-  closedLabel: string;
-  accessibilityLabel: string;
-  open: boolean;
-  onToggle: () => void;
-  children: ReactNode;
-}) {
-  const theme = useAppTheme();
-  const green = statsToneColors(theme.scheme).good.ink;
-  return (
-    <View style={{ alignSelf: 'stretch', gap: 8 }}>
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel={accessibilityLabel}
-        accessibilityState={{ expanded: open }}
-        onPress={onToggle}
-        style={{ minHeight: 44, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}
-      >
-        <View style={{ flex: 1, gap: 4 }}>
-          <T style={{ fontFamily: theme.font.bodyStrong, fontSize: 34 * theme.scale, lineHeight: 40 * theme.scale }}>{title}</T>
-          <View style={{ height: 3, backgroundColor: theme.colors.accent, alignSelf: 'stretch' }} />
-        </View>
-        <T style={{ color: green }}>{open ? 'Hide' : closedLabel}</T>
-        <View accessibilityElementsHidden>
-          <T style={{ color: green }}>{open ? '⌄' : '›'}</T>
-        </View>
-      </Pressable>
-      {open ? children : null}
-    </View>
-  );
-}
 

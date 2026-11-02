@@ -173,10 +173,46 @@ describe('metric registry', () => {
       vigorousWeek: 40,
     });
     expect(close.label).toBe('Good');
-    expect(close.where).toContain('What moves it most');
-    expect(close.where.toLowerCase()).toContain('vigorous');
+    expect(close.inputs?.map((line) => line.name)).toEqual([
+      'VO2 max',
+      'Resting heart rate',
+      'BMI',
+      'Vigorous intensity minutes',
+    ]);
+    expect(close.inputs?.map((line) => line.detail).join(' ')).toContain('75');
     expect(close.tips[0]).toContain('75');
     expect(close.caveat).toBe(METRIC_CAVEAT);
+    const cruiser = readingFor('fitness_age', 44, {
+      ...EMPTY_METRIC_CONTEXT,
+      age: 45,
+      sex: 'male',
+      goal: 'elite_cruiser_boxer',
+      realAge: 45,
+      vo2: 42,
+      restingHr: 58,
+      bodyFat: 18,
+      vigorousWeek: 40,
+    });
+    expect(cruiser.goalLine).toContain('56–62');
+    expect(cruiser.goalLine).toContain('40–60');
+    expect(cruiser.goalLine).toContain('6–13%');
+    expect(cruiser.goalLine).toContain('Quickest to work on: Vigorous intensity minutes');
+    expect(cruiser.why?.body).toContain('13%');
+    expect(cruiser.why?.body).toContain('80%');
+    expect(cruiser.why?.body).toContain('watch estimate');
+    expect(cruiser.why?.body).toContain('cannot predict');
+    expect(cruiser.why?.sources).toContain('Kodama');
+    expect(cruiser.why?.sources).toContain('Mandsager');
+    expect(cruiser.why?.sources).toContain('Ross');
+    expect(cruiser.why?.sources).toContain('10.1001/jama.2009.681');
+    expect(cruiser.caveat).toBe(METRIC_CAVEAT);
+    expect(cruiser.inputs?.find((line) => line.name === 'VO2 max')?.detail).toContain('42');
+    expect(cruiser.inputs?.find((line) => line.name === 'Body fat')?.detail).toContain('18');
+    const epochs = readingFor('epoch_minutes', 346, { ...EMPTY_METRIC_CONTEXT, ownUsual: 300 });
+    expect(epochs.where).toContain('346');
+    expect(epochs.where).not.toContain('No published healthy-person range for this figure');
+    expect(epochs.source).toBe('Garmin Health API epoch summaries.');
+    expect(epochs.where).not.toContain(epochs.source);
   });
 
   it('names a source and the caveat on every registry row, and the chart titles stay registered', () => {

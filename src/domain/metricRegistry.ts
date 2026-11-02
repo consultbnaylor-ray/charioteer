@@ -70,6 +70,10 @@ export type MetricReading = {
   more: string;
   /** No stored figure. The card says "No rating yet" and still shows the range. */
   pending: boolean;
+  /** Named inputs on the card, such as the four figures behind fitness age. */
+  inputs?: readonly { name: string; detail: string }[];
+  /** Short sourced note. The card caveat stays separate. */
+  why?: { body: string; sources: string };
 };
 
 export type MetricDefinition = {
@@ -117,8 +121,20 @@ const NHS_WAIST = 'NHS: a waist of 94 cm or more for men, or 80 cm or more for w
 const ACE_FAT = 'American Council on Exercise adult categories. Men: athletes 6–13%, fitness 14–17%, average 18–24%. Women: athletes 14–20%, fitness 21–24%, average 25–31%. Not split by age.';
 const GARMIN_STRESS = 'Garmin stress bands: 0–25 rest, 26–50 low, 51–75 medium, 76–100 high.';
 const GARMIN_FITNESS_AGE = 'Garmin Fitness Age: the estimate uses VO2 max, resting heart rate, BMI or body fat, and vigorous minutes (Garmin Connect support).';
+
+/**
+ * Mortality figures are the ones those papers report, not a blend.
+ * Kodama 2009: about 13% lower all-cause mortality per 1 MET.
+ * Mandsager 2018: the fittest group had about an 80% lower risk than the least fit.
+ * Ross 2016: fitness is as strong as, or stronger than, smoking, diabetes, and high blood pressure.
+ */
+export const FITNESS_AGE_WHY = {
+  body: 'Fitness age is built mainly from VO2 max. That fitness is one of the strongest predictors of death from any cause, as strong as or stronger than smoking, diabetes, and high blood pressure. Kodama and colleagues found that each 1 MET higher fitness was linked with about a 13% lower risk of death from any cause. Mandsager and colleagues found a large drop in risk once people were above the lowest fitness group, and about an 80% lower risk in the fittest group than the least fit. Garmin’s fitness age is a watch estimate, not a clinical measure: these are links in groups of people, not a guarantee, and they cannot predict how long one person will live.',
+  sources: 'Ross and colleagues, Circulation, 2016. Kodama and colleagues, JAMA, 2009 (doi:10.1001/jama.2009.681). Mandsager and colleagues, JAMA Network Open, 2018 (doi:10.1001/jamanetworkopen.2018.3605).',
+};
+export const GARMIN_EPOCH_SOURCE = 'Garmin Health API epoch summaries.';
+export const GARMIN_EPOCH_EXPLAIN = 'Epochs are Garmin’s 15-minute activity blocks through the day. Active minutes here are the time in those blocks that Garmin counts as active, including light movement, so the total is much higher than intensity minutes. Intensity minutes count only moderate and vigorous effort, with vigorous counted twice. There is no published healthy-person range for this total.';
 const OWN_APP = 'This app’s own scale. There is no published population norm, so the comparison is with your usual or your own aim.';
-const NO_POP = 'No published healthy-person range for this figure. Compared with your own usual when that exists.';
 const SPO2_SOURCE = 'NHS pulse-oximeter guidance: usual readings are about 95–100%. At 92 or below, contact a GP or NHS 111. Not a diagnosis.';
 const BREATH_SOURCE = 'A usual resting adult breathing rate is about 12–20 breaths a minute (standard clinical observation, including British Lung Foundation descriptions).';
 const COLE = `Cole and colleagues, New England Journal of Medicine, 1999. A fall of ${COLE_ABNORMAL_AT_OR_UNDER} bpm or less in the first minute was called abnormal in adults referred for a treadmill test. Not a healthy-population cutoff.`;
@@ -647,18 +663,19 @@ function rateOwn(
   ctx: MetricContext,
   unit: string,
   higherIsBetter: boolean,
+  explain = 'There is no published healthy-person range, so this is compared with your own usual.',
 ): MetricReading {
-  if (value == null || Number.isNaN(value)) return blank(id, source, 'There is no published healthy-person range. A new reading is compared with your own usual days.', {
+  if (value == null || Number.isNaN(value)) return blank(id, source, explain, {
     tips: ['Compare a new reading with your own recent days. There is no population line to chase.'],
   });
   const usual = ctx.ownUsual;
   let label: MetricRatingLabel = 'Usual';
   if (usual != null && higherIsBetter && value >= usual) label = 'Good';
   if (usual != null && higherIsBetter && value < usual * 0.75) label = 'Fair';
-  const where = `${Math.round(value * 10) / 10} ${unit}. ${source}${usualClause(value, usual, unit)}`;
+  const where = `${Math.round(value * 10) / 10} ${unit}. ${explain}${usualClause(value, usual, unit)}`;
   return made(id, source, label, where, {
     tips: higherIsBetter ? ['Compare the chart with your own recent days. There is no population line to chase.'] : [],
-    more: where,
+    more: explain,
   });
 }
 
@@ -824,32 +841,134 @@ function rateRecovery(id: string, value: number | null, ctx: MetricContext): Met
   });
 }
 
+/** Male boxing VO2 bands already used for the sport comparison. Heavy and cruiser 56–62, other classes 59–65. */
+function boxerVo2Band(goal: NutritionGoal | null, sex: NutritionSex | null): { low: number; high: number } | null {
+  if (sex !== 'male' || !goal || !isAnyBoxer(goal)) return null;
+  if (goal === 'elite_heavy_boxer' || goal === 'elite_light_heavy_boxer' || goal === 'elite_cruiser_boxer') return { low: 56, high: 62 };
+  return { low: 59, high: 65 };
+}
+
+function fitnessPicture(ctx: MetricContext): {
+  inputs: { name: string; detail: string }[];
+  goalLine: string | null;
+  quickest: { name: string; tip: string } | null;
+} {
+  const sport = sportName(ctx.goal);
+  const cardio = publishedCardioBand(ctx.age, ctx.sex);
+  const boxing = boxerVo2Band(ctx.goal, ctx.sex);
+  const ranked: { name: string; gap: number; tip: string; gapText: string }[] = [];
+
+  const vo2Range = boxing
+    ? `Typical for this goal: ${boxing.low}–${boxing.high} ml/kg/min.`
+    : cardio
+      ? `Healthy for your age and sex: ${cardio.low}–${cardio.high} ml/kg/min (25th to 75th percentile).`
+      : 'Set age and sex to see the healthy range.';
+  let vo2Gap = 'Not stored yet.';
+  if (ctx.vo2 != null) {
+    if (boxing && ctx.vo2 < boxing.low) {
+      vo2Gap = `${roundTenth(boxing.low - ctx.vo2)} below ${boxing.low}.`;
+      ranked.push({ name: 'VO2 max', gap: (boxing.low - ctx.vo2) / boxing.low, tip: 'Four repeats of four hard minutes, with easy movement between, is one way to nudge VO2 max.', gapText: vo2Gap });
+    } else if (!boxing && cardio && ctx.vo2 < cardio.high) {
+      vo2Gap = `${roundTenth(cardio.high - ctx.vo2)} below the 75th percentile.`;
+      ranked.push({ name: 'VO2 max', gap: (cardio.high - ctx.vo2) / cardio.high, tip: 'Four repeats of four hard minutes, with easy movement between, is one way to nudge VO2 max.', gapText: vo2Gap });
+    } else vo2Gap = 'Inside the range.';
+  }
+  const vo2Value = ctx.vo2 != null ? `${ctx.vo2} ml/kg/min` : 'not stored yet';
+
+  const hrTarget = sport ? 'about 40–60 bpm for trained people' : 'about 50–80 bpm, inside the NHS usual 60–100';
+  let hrGap = 'Not stored yet.';
+  if (ctx.restingHr != null && ctx.restingHr > 0) {
+    const bpm = Math.round(ctx.restingHr);
+    const ceiling = sport ? 60 : 80;
+    if (bpm > ceiling) {
+      hrGap = `${bpm - ceiling} bpm above ${ceiling}.`;
+      ranked.push({ name: 'Resting heart rate', gap: (bpm - ceiling) / ceiling, tip: 'Easy aerobic sessions most weeks are what usually brings a high resting rate down.', gapText: hrGap });
+    } else hrGap = 'Inside the range.';
+  }
+  const hrValue = ctx.restingHr != null && ctx.restingHr > 0 ? `${Math.round(ctx.restingHr)} bpm` : 'not stored yet';
+
+  const fatHigh = ctx.sex === 'female' ? (sport ? 20 : 24) : (sport ? 13 : 17);
+  const fatLow = ctx.sex === 'female' ? 14 : 6;
+  const fatLabel = ctx.sex == null
+    ? 'Set sex to see the ACE range.'
+    : sport
+      ? `Typical athlete body fat for ${ctx.sex === 'female' ? 'women' : 'men'}: ${fatLow}–${fatHigh}%.`
+      : `ACE fitness range for ${ctx.sex === 'female' ? 'women' : 'men'}: ${fatLow}–${fatHigh}%.`;
+  let bodyName = 'Body fat';
+  let bodyValue = 'not stored yet';
+  let bodyGap = 'Not stored yet.';
+  if (ctx.bodyFat != null && ctx.sex != null) {
+    const pct = roundTenth(ctx.bodyFat);
+    bodyValue = `${pct}%`;
+    if (pct > fatHigh) {
+      bodyGap = `${roundTenth(pct - fatHigh)} points above ${fatHigh}%.`;
+      ranked.push({ name: 'Body fat', gap: (pct - fatHigh) / fatHigh, tip: 'Steady meals and walks are the general body-fat advice. This is not a diet plan.', gapText: bodyGap });
+    } else bodyGap = 'Inside the range.';
+  } else if (ctx.bmi != null) {
+    bodyName = 'BMI';
+    bodyValue = String(ctx.bmi);
+    if (ctx.bmi > NICE_BMI_HEALTHY_MAX) {
+      bodyGap = `${roundTenth(ctx.bmi - NICE_BMI_HEALTHY_MAX)} above ${NICE_BMI_HEALTHY_MAX}.`;
+      ranked.push({ name: 'BMI', gap: (ctx.bmi - NICE_BMI_HEALTHY_MAX) / NICE_BMI_HEALTHY_MAX, tip: 'Walking and steady meals are the general advice. Muscle can raise BMI without extra fat.', gapText: bodyGap });
+    } else if (ctx.bmi < NICE_BMI_HEALTHY_MIN) {
+      bodyGap = `${roundTenth(NICE_BMI_HEALTHY_MIN - ctx.bmi)} below ${NICE_BMI_HEALTHY_MIN}.`;
+      ranked.push({ name: 'BMI', gap: (NICE_BMI_HEALTHY_MIN - ctx.bmi) / NICE_BMI_HEALTHY_MIN, tip: 'If this is new or you feel unwell, contact a GP or NHS 111.', gapText: bodyGap });
+    } else bodyGap = 'Inside the NHS healthy-weight range.';
+  }
+  const bodyRange = ctx.bodyFat != null || ctx.sex != null
+    ? fatLabel
+    : `NHS healthy-weight BMI ${NICE_BMI_HEALTHY_MIN}–${NICE_BMI_HEALTHY_MAX} when body fat is missing.`;
+
+  let vigorousGap = 'Not stored yet.';
+  if (ctx.vigorousWeek != null && Number.isFinite(ctx.vigorousWeek)) {
+    const minutes = Math.round(ctx.vigorousWeek);
+    if (minutes < CMO_VIGOROUS_MINUTES_WEEK) {
+      vigorousGap = `${CMO_VIGOROUS_MINUTES_WEEK - minutes} minutes short of ${CMO_VIGOROUS_MINUTES_WEEK}.`;
+      ranked.push({ name: 'Vigorous intensity minutes', gap: (CMO_VIGOROUS_MINUTES_WEEK - minutes) / CMO_VIGOROUS_MINUTES_WEEK, tip: 'Aim for 75 or more vigorous minutes a week, for example two or three interval sessions.', gapText: vigorousGap });
+    } else vigorousGap = 'On the 75-minute line.';
+  }
+  const vigorousValue = ctx.vigorousWeek != null && Number.isFinite(ctx.vigorousWeek) ? `${Math.round(ctx.vigorousWeek)} this week` : 'not stored yet';
+
+  ranked.sort((left, right) => right.gap - left.gap);
+  const quickest = ranked[0] ?? null;
+  const inputs = [
+    { name: 'VO2 max', detail: `${vo2Value}. ${vo2Range} ${vo2Gap}` },
+    { name: 'Resting heart rate', detail: `${hrValue}. Healthy: ${hrTarget}. ${hrGap}` },
+    { name: bodyName, detail: `${bodyValue}. ${bodyRange} ${bodyGap}` },
+    { name: 'Vigorous intensity minutes', detail: `${vigorousValue}. Healthy guide: ${CMO_VIGOROUS_MINUTES_WEEK} or more a week. ${vigorousGap}` },
+  ];
+  const goalLine = sport
+    ? `${sport}. Targets: VO2 max ${boxing ? `${boxing.low}–${boxing.high} ml/kg/min` : 'at or above the 75th percentile for your age and sex'}, resting heart rate about 40–60 bpm, body fat ${ctx.sex == null ? 'the ACE athlete range once sex is set' : `${fatLow}–${fatHigh}%`}, vigorous intensity minutes 75 or more a week. Quickest to work on: ${quickest ? `${quickest.name}, ${quickest.gapText}` : 'nothing stands out until a reading is stored'}.`
+    : null;
+  return { inputs, goalLine, quickest: quickest ? { name: quickest.name, tip: quickest.tip } : null };
+}
+
+function roundTenth(value: number): number {
+  return Math.round(value * 10) / 10;
+}
+
 function fitnessAgeReading(id: string, value: number | null, ctx: MetricContext): MetricReading {
   const real = ctx.realAge ?? ctx.age;
-  if (value == null || value <= 0) {
-    const sport = sportName(ctx.goal);
-    const years = ctx.realAge ?? ctx.age;
-    return blank(id, GARMIN_FITNESS_AGE, `Garmin builds fitness age from VO2 max, resting heart rate, BMI or body fat, and vigorous minutes. ${years == null ? 'Age is not set, so it cannot be compared with a birthday yet.' : `It will be compared with age ${Math.round(years)}.`}`, {
-      goalLine: sport ? `${sport}: the same four inputs still decide it. There is no fitness age stored yet.` : null,
-      tips: ['Aim for 75 or more vigorous minutes a week, for example two or three interval sessions.'],
-    });
-  }
-  const fitness = Math.round(value);
-  const levers = fitnessLevers(ctx);
-  const top = levers[0] ?? null;
-  const close = real != null && fitness <= real + 1;
-  const label: MetricRatingLabel = real == null ? 'Usual' : fitness <= real - 3 ? 'Excellent' : close ? 'Good' : fitness <= real + 5 ? 'Fair' : 'Poor';
-  const ageLine = real == null
-    ? `Fitness age ${fitness}. Age is not set, so it is not compared with a birthday.`
-    : fitness <= real
-      ? `Fitness age ${fitness} is about the same as age ${Math.round(real)}, or a little under it.`
-      : `Fitness age ${fitness} is ${fitness - Math.round(real)} years above age ${Math.round(real)}.`;
-  const move = top
-    ? ` What moves it most: ${top.sentence}`
-    : ' Garmin did not store enough of VO2 max, resting heart rate, body fat or BMI, and vigorous minutes to rank a lever.';
-  const short = levers.filter((lever) => lever.short);
-  const tips = (label === 'Fair' || label === 'Poor' ? short : short.slice(0, 1)).map((lever) => lever.tip).slice(0, 4);
-  const where = `${ageLine}${move}`;
+  const picture = fitnessPicture(ctx);
+  const pending = value == null || value <= 0;
+  const fitness = pending ? null : Math.round(value);
+  const close = real != null && fitness != null && fitness <= real + 1;
+  const label: MetricRatingLabel = pending || real == null || fitness == null
+    ? 'Usual'
+    : fitness <= real - 3
+      ? 'Excellent'
+      : close
+        ? 'Good'
+        : fitness <= real + 5
+          ? 'Fair'
+          : 'Poor';
+  const where = pending
+    ? `Garmin builds this from the four inputs below. ${real == null ? 'Age is not set, so it cannot be compared with a birthday yet.' : `It will be compared with age ${Math.round(real)}.`}`
+    : real == null || fitness == null
+      ? `Fitness age ${fitness}. Age is not set, so it is not compared with a birthday.`
+      : fitness <= real
+        ? `Fitness age ${fitness} is about the same as age ${Math.round(real)}, or a little under it.`
+        : `Fitness age ${fitness} is ${fitness - Math.round(real)} years above age ${Math.round(real)}.`;
   return {
     id,
     label,
@@ -858,66 +977,17 @@ function fitnessAgeReading(id: string, value: number | null, ctx: MetricContext)
     caveat: METRIC_CAVEAT,
     band: null,
     draw: false,
-    goalLine: sportName(ctx.goal) ? `${sportName(ctx.goal)}: fitness age still uses the same four Garmin inputs. The nearest lever above is the practical one.` : null,
-    tips: label === 'Good' && short.length === 0 ? [] : tips,
+    goalLine: picture.goalLine,
+    tips: picture.quickest
+      ? [picture.quickest.tip]
+      : pending
+        ? ['Aim for 75 or more vigorous minutes a week, for example two or three interval sessions.']
+        : [],
     more: `${where} Garmin describes fitness age as an estimate, not your birthday and not a diagnosis.`,
-    pending: false,
+    pending,
+    inputs: picture.inputs,
+    why: FITNESS_AGE_WHY,
   };
-}
-
-function fitnessLevers(ctx: MetricContext): { gap: number; short: boolean; sentence: string; tip: string }[] {
-  const levers: { gap: number; short: boolean; sentence: string; tip: string }[] = [];
-  if (ctx.vigorousWeek != null && Number.isFinite(ctx.vigorousWeek)) {
-    const minutes = Math.round(ctx.vigorousWeek);
-    const gap = Math.max(0, CMO_VIGOROUS_MINUTES_WEEK - minutes) / CMO_VIGOROUS_MINUTES_WEEK;
-    levers.push({
-      gap,
-      short: minutes < CMO_VIGOROUS_MINUTES_WEEK,
-      sentence: minutes >= CMO_VIGOROUS_MINUTES_WEEK
-        ? `vigorous minutes are about ${minutes} this week, on the ${CMO_VIGOROUS_MINUTES_WEEK}-minute UK Chief Medical Officers line.`
-        : `vigorous minutes are about ${minutes} this week, under the ${CMO_VIGOROUS_MINUTES_WEEK}-minute line.`,
-      tip: 'Aim for 75 or more vigorous minutes a week, for example two or three interval sessions.',
-    });
-  }
-  const band = publishedCardioBand(ctx.age, ctx.sex);
-  if (ctx.vo2 != null && band) {
-    const gap = ctx.vo2 >= band.high ? 0 : (band.high - ctx.vo2) / Math.max(band.high, 1);
-    levers.push({
-      gap,
-      short: ctx.vo2 < band.low,
-      sentence: `VO2 max is ${ctx.vo2} ml/kg/min, against ${band.low}–${band.high} for your age and sex.`,
-      tip: 'Four repeats of four hard minutes, with easy movement between, is one way to nudge VO2 max.',
-    });
-  }
-  if (ctx.bodyFat != null && ctx.sex != null) {
-    const high = ctx.sex === 'male' ? 17 : 24;
-    const gap = ctx.bodyFat <= high ? 0 : (ctx.bodyFat - high) / high;
-    levers.push({
-      gap,
-      short: ctx.bodyFat > (ctx.sex === 'male' ? 24 : 31),
-      sentence: `body fat is ${Math.round(ctx.bodyFat * 10) / 10}%, against the ACE fitness top of about ${high}% for ${ctx.sex === 'male' ? 'men' : 'women'}.`,
-      tip: 'Steady meals and walks are the general body-fat advice. This is not a diet plan.',
-    });
-  } else if (ctx.bmi != null) {
-    const gap = ctx.bmi <= NICE_BMI_HEALTHY_MAX ? 0 : (ctx.bmi - NICE_BMI_HEALTHY_MAX) / NICE_BMI_HEALTHY_MAX;
-    levers.push({
-      gap,
-      short: ctx.bmi >= 30 || ctx.bmi < NICE_BMI_HEALTHY_MIN,
-      sentence: `BMI is ${ctx.bmi}, against the NHS healthy-weight range of ${NICE_BMI_HEALTHY_MIN}–${NICE_BMI_HEALTHY_MAX}.`,
-      tip: 'If BMI is the gap, walking and steady meals are the general advice. Muscle can raise BMI without extra fat.',
-    });
-  }
-  if (ctx.restingHr != null && ctx.restingHr > 0) {
-    const bpm = Math.round(ctx.restingHr);
-    const gap = bpm <= 80 ? 0 : (bpm - 80) / 80;
-    levers.push({
-      gap,
-      short: bpm > 100,
-      sentence: `resting heart rate is ${bpm} bpm. Good on the resting card is about 50–80, inside the NHS 60–100 range.`,
-      tip: 'Easy aerobic sessions most weeks are what usually brings a high resting rate down.',
-    });
-  }
-  return levers.sort((left, right) => right.gap - left.gap);
 }
 
 function rateBody(id: string, value: number | null, ctx: MetricContext): MetricReading {
@@ -957,15 +1027,15 @@ const cardioNow = 'Shared card rating against the Kaminsky 2015 age and sex perc
 
 export const METRIC_REGISTRY: Record<string, MetricDefinition> = {
   steps: define('steps', 'steps', PALUCH, 'Health, Stats, Workouts, profile', 'Research band and a step chart. No Fair/Good line.', 'Paluch age band, label, tips when under the range, source once, caveat.', rateSteps),
-  distance: define('distance', 'm', NO_POP, 'Stats, Health, Workouts charts', 'Own-average line and “no standard range”.', 'Same chart. Usual compared with your own days. Source once. Caveat.', (_id, value, ctx) => rateOwn('distance', NO_POP, value, ctx, 'm', true)),
-  floors: define('floors', 'floors', NO_POP, 'Stats, Health, Workouts charts', 'Own-average line and “no standard range”.', 'Same chart. Usual compared with your own days. Source once. Caveat.', (_id, value, ctx) => rateOwn('floors', NO_POP, value, ctx, 'floors', true)),
+  distance: define('distance', 'm', 'Garmin or Apple Health daily distance.', 'Stats, Health, Workouts charts', 'Own-average line and “no standard range”.', 'Same chart. Usual compared with your own days. Source once. Caveat.', (_id, value, ctx) => rateOwn('distance', 'Garmin or Apple Health daily distance.', value, ctx, 'm', true)),
+  floors: define('floors', 'floors', 'Garmin daily floors climbed.', 'Stats, Health, Workouts charts', 'Own-average line and “no standard range”.', 'Same chart. Usual compared with your own days. Source once. Caveat.', (_id, value, ctx) => rateOwn('floors', 'Garmin daily floors climbed.', value, ctx, 'floors', true)),
   resting_heart_rate: define('resting_heart_rate', 'bpm', NHS_REST, 'Health tiles, movement charts, Your fitness', 'NHS 60–100 band and a fitness comment.', 'Label against about 50–80 inside that NHS range, trained 40–60 when a sport goal is set, tips when under Good or above that trained range.', rateResting),
   walking_heart_rate: define('walking_heart_rate', 'bpm', TANAKA, 'Health tiles', 'Approximate moderate zone when age is set.', 'Same zone, with a Good/Fair label. Age missing stays Usual and says so.', rateWalking),
   heart_rate_recovery: define('heart_rate_recovery', 'bpm', COLE, 'Health tiles', 'Cole 1999 referred-group note.', 'Good above 12 bpm, Fair at or under, with the study’s limit named as not a healthy-population cutoff.', rateRecovery),
   session_heart_rate: define('session_heart_rate', 'bpm', TANAKA, 'Health tiles', 'Training-zone sheet when age is set.', 'Good inside an effort zone. No single healthy bpm. Age missing says so.', rateSession),
   vo2_max: define('vo2_max', 'ml/kg/min', KAMINSKY, 'Health tiles, Your fitness', 'Percentile band and level words.', cardioNow, rateVo2),
   vo2: define('vo2', 'ml/kg/min', KAMINSKY, 'Garmin VO2 chart, Your fitness chart', 'Percentile band when age and sex exist, otherwise “no standard range”.', cardioNow, rateVo2),
-  mix: define('mix', 'min', NO_POP, 'Health tiles', 'No mix guideline, said on the card.', 'Usual against your own minutes. No invented national mix. Source once. Caveat.', (_id, value, ctx) => rateOwn('mix', NO_POP, value, ctx, 'min', true)),
+  mix: define('mix', 'min', 'Workout minutes logged in this app.', 'Health tiles', 'No mix guideline, said on the card.', 'Usual against your own minutes. No invented national mix. Source once. Caveat.', (_id, value, ctx) => rateOwn('mix', 'Workout minutes logged in this app.', value, ctx, 'min', true, 'There is no published mix of strength, cardio, and other minutes, so this is compared with your own usual.')),
   sleep_hours: define('sleep_hours', 'h', NHS_SLEEP, 'Health tiles', 'NHS 7–9 hour status line.', 'Good inside 7–9 (7–8 from 65), tips when under Good, source once, caveat.', rateSleepHours),
   sleep_duration: define('sleep_duration', 'h', NHS_SLEEP, 'More Garmin Stats', '“No standard range” and no green band.', 'Green band 7–9 hours (7–8 from 65), NHS and National Sleep Foundation named once, tips when under Good.', rateSleepHours),
   sleep_score: define('sleep_score', 'score', GARMIN_SLEEP, 'More Garmin Stats', '“No standard range”, which was wrong.', 'Garmin Excellent/Good/Fair/Poor bands, green band 80–100, tips under Good, source once.', rateSleepScore),
@@ -976,9 +1046,9 @@ export const METRIC_REGISTRY: Record<string, MetricDefinition> = {
   body_fat: define('body_fat', '%', ACE_FAT, 'Health tiles and Garmin body composition', 'A wide in-app band, or no band on the Garmin chart.', 'ACE categories by sex. Athlete slice when the goal is a sport. Sex missing says so.', rateBodyFat),
   body: define('body', '% or ratio', ACE_FAT, 'Stats and Health Plan', 'Body-fat or waist-to-height status.', 'The same ACE or waist rating as the figure on the card. Source once. Caveat.', rateBody),
   waist: define('waist', 'cm', NHS_WAIST, 'Health tiles', 'Waist-to-height under 0.5 when height exists.', 'NHS centimetre cut when sex is set. Sex missing says so. Tips when over.', rateWaist),
-  lean_mass: define('lean_mass', 'kg', NO_POP, 'Health tiles', 'No kilogram guideline, said on the card.', 'Usual against your own readings. No invented kilogram norm.', (_id, value, ctx) => rateOwn('lean_mass', NO_POP, value, ctx, 'kg', true)),
-  lean: define('lean', 'kg', NO_POP, 'Stats', 'Change versus an earlier reading.', 'Usual against your own readings. No invented kilogram norm.', (_id, value, ctx) => rateOwn('lean', NO_POP, value, ctx, 'kg', true)),
-  active_energy: define('active_energy', 'kcal', NO_POP, 'Health tiles and Workouts active calories', 'A number, no published band.', 'Usual against your own days. No invented kilocalorie norm. Source once. Caveat.', (_id, value, ctx) => rateOwn('active_energy', NO_POP, value, ctx, 'kcal', true)),
+  lean_mass: define('lean_mass', 'kg', 'Body readings you stored.', 'Health tiles', 'No kilogram guideline, said on the card.', 'Usual against your own readings. No invented kilogram norm.', (_id, value, ctx) => rateOwn('lean_mass', 'Body readings you stored.', value, ctx, 'kg', true)),
+  lean: define('lean', 'kg', 'Body readings you stored.', 'Stats', 'Change versus an earlier reading.', 'Usual against your own readings. No invented kilogram norm.', (_id, value, ctx) => rateOwn('lean', 'Body readings you stored.', value, ctx, 'kg', true)),
+  active_energy: define('active_energy', 'kcal', 'Apple Health active energy or Garmin active calories.', 'Health tiles and Workouts active calories', 'A number, no published band.', 'Usual against your own days. No invented kilocalorie norm. Source once. Caveat.', (_id, value, ctx) => rateOwn('active_energy', 'Apple Health active energy or Garmin active calories.', value, ctx, 'kcal', true)),
   workouts: define('workouts', 'min', CMO, 'Health tiles', 'Logged minutes, with the guideline living on active minutes.', 'Rated against the Chief Medical Officers’ minutes, scaled to the window. Tips when under.', (_id, value, ctx) => rateMinutes('workouts', value, ctx, CMO_MODERATE_MINUTES_WEEK, 'logged minutes')),
   workout_minutes: define('workout_minutes', 'min', CMO, 'Profile', 'A shared average, no rating.', 'Same minutes guide when the figure is a week. Source once. Caveat.', (_id, value, ctx) => rateMinutes('workout_minutes', value, ctx, CMO_MODERATE_MINUTES_WEEK, 'workout minutes')),
   weekly_active_minutes: define('weekly_active_minutes', 'min', CMO, 'Health tiles', '150-minute guide scaled to the period.', 'Good/Fair/Poor against that scaled guide, sport line, tips when under.', (_id, value, ctx) => rateMinutes('weekly_active_minutes', value, ctx, CMO_MODERATE_MINUTES_WEEK, 'active minutes')),
@@ -988,10 +1058,10 @@ export const METRIC_REGISTRY: Record<string, MetricDefinition> = {
   vigorous: define('vigorous', 'min', CMO, 'Movement charts and Workouts', 'Explanation only.', 'Label against 75 vigorous minutes a week, scaled to the window.', (_id, value, ctx) => rateMinutes('vigorous', value, ctx, CMO_VIGOROUS_MINUTES_WEEK, 'vigorous minutes')),
   stress: define('stress', 'score', GARMIN_STRESS, 'More Garmin Stats', 'Bands in the text. No green band. “No standard” was not the issue; there was no label.', 'Green band 0–50. Excellent/Good/Fair/Poor from Garmin’s bands. Tips when medium or high.', rateStress),
   stress_detail: define('stress_detail', 'score', GARMIN_STRESS, 'More Garmin Stats', 'A 0–25 band and a short note.', 'Same Garmin bands and tips as average stress.', rateStress),
-  body_battery_charged: define('body_battery_charged', 'score', 'Garmin Body Battery. No population norm. Compare with your own days.', 'More Garmin Stats', 'Explanation. No rating.', 'Usual against your own charged points. Source once. Caveat.', (_id, value, ctx) => rateOwn('body_battery_charged', 'Garmin Body Battery. No population norm. Compare with your own days.', value, ctx, 'points', true)),
-  body_battery_drained: define('body_battery_drained', 'score', 'Garmin Body Battery. No population norm. A bigger drain is not bad by itself.', 'More Garmin Stats', 'Explanation. No rating.', 'Usual against your own drained points. Source once. Caveat.', (_id, value, ctx) => rateOwn('body_battery_drained', 'Garmin Body Battery. No population norm. A bigger drain is not bad by itself.', value, ctx, 'points', false)),
-  body_battery_highest: define('body_battery_highest', 'score', 'Garmin Body Battery level, 0–100. No population norm.', 'More Garmin Stats', 'Explanation. No rating.', 'Usual against your own high for the day. Source once. Caveat.', (_id, value, ctx) => rateOwn('body_battery_highest', 'Garmin Body Battery level, 0–100. No population norm.', value, ctx, 'score', true)),
-  body_battery_lowest: define('body_battery_lowest', 'score', 'Garmin Body Battery level, 0–100. No population norm.', 'More Garmin Stats', 'Explanation. No rating.', 'Usual against your own low for the day. Source once. Caveat.', (_id, value, ctx) => rateOwn('body_battery_lowest', 'Garmin Body Battery level, 0–100. No population norm.', value, ctx, 'score', false)),
+  body_battery_charged: define('body_battery_charged', 'score', 'Garmin Body Battery.', 'More Garmin Stats', 'Explanation. No rating.', 'Usual against your own charged points. Source once. Caveat.', (_id, value, ctx) => rateOwn('body_battery_charged', 'Garmin Body Battery.', value, ctx, 'points', true, 'No population norm. Compare charged points with your own days.')),
+  body_battery_drained: define('body_battery_drained', 'score', 'Garmin Body Battery.', 'More Garmin Stats', 'Explanation. No rating.', 'Usual against your own drained points. Source once. Caveat.', (_id, value, ctx) => rateOwn('body_battery_drained', 'Garmin Body Battery.', value, ctx, 'points', false, 'No population norm. A bigger drain is not bad by itself. Compare it with your own days.')),
+  body_battery_highest: define('body_battery_highest', 'score', 'Garmin Body Battery.', 'More Garmin Stats', 'Explanation. No rating.', 'Usual against your own high for the day. Source once. Caveat.', (_id, value, ctx) => rateOwn('body_battery_highest', 'Garmin Body Battery.', value, ctx, 'score', true, 'No population norm for the daily high. Compare it with your own days.')),
+  body_battery_lowest: define('body_battery_lowest', 'score', 'Garmin Body Battery.', 'More Garmin Stats', 'Explanation. No rating.', 'Usual against your own low for the day. Source once. Caveat.', (_id, value, ctx) => rateOwn('body_battery_lowest', 'Garmin Body Battery.', value, ctx, 'score', false, 'No population norm for the daily low. Compare it with your own days.')),
   respiration: define('respiration', 'breaths/min', BREATH_SOURCE, 'More Garmin Stats', '12–20 band and an outside note.', 'Good inside 12–20, Fair just outside, GP or NHS 111 only when far outside.', rateBreath),
   pulse_ox: define('pulse_ox', '%', SPO2_SOURCE, 'More Garmin Stats', '95–100 band and an outside note.', 'Good at or above about 96. At 92 or below: GP or NHS 111, not an alarm.', rateSpo2),
   fitness_age: define('fitness_age', 'years', GARMIN_FITNESS_AGE, 'More Garmin Stats', 'A bare years chart, easy to miss when it is close to real age.', 'Compared with real age. What moves it most ranks your own VO2, resting heart rate, body fat or BMI, and vigorous minutes. One practical tip when a lever is short.', fitnessAgeReading),
@@ -1024,9 +1094,9 @@ export const METRIC_REGISTRY: Record<string, MetricDefinition> = {
     return rateBmiValue('bmi', value, ctx);
   }),
   snapshot_heart: define('snapshot_heart', 'bpm', NHS_REST, 'More Garmin Stats', '60–100 band.', 'Same resting rating as the resting-heart card, for Garmin’s short check.', rateResting),
-  epoch_minutes: define('epoch_minutes', 'min', NO_POP, 'More Garmin Stats', 'A minutes total. No rating.', 'Usual against your own days. Not a medical measure.', (_id, value, ctx) => rateOwn('epoch_minutes', NO_POP, value, ctx, 'min', true)),
-  move_iq: define('move_iq', 'min', NO_POP, 'More Garmin Stats', 'Minutes Garmin noticed. No rating.', 'Usual against your own days.', (_id, value, ctx) => rateOwn('move_iq', NO_POP, value, ctx, 'min', true)),
-  activity_detail: define('activity_detail', 'min', NO_POP, 'More Garmin Stats', 'Recorded activity length. No rating.', 'Usual against your own activities. The sample trace is not kept.', (_id, value, ctx) => rateOwn('activity_detail', NO_POP, value, ctx, 'min', true)),
+  epoch_minutes: define('epoch_minutes', 'min', GARMIN_EPOCH_SOURCE, 'More Garmin Stats and the main charts', 'A minutes total that repeated “no published range”.', 'Plain explanation of 15-minute blocks versus intensity minutes. Source is the Garmin Health API.', (_id, value, ctx) => rateOwn('epoch_minutes', GARMIN_EPOCH_SOURCE, value, ctx, 'min', true, 'Compared with your own usual. The explanation above says what these minutes include.')),
+  move_iq: define('move_iq', 'min', 'Garmin Health API Move IQ summaries.', 'More Garmin Stats', 'Minutes Garmin noticed. No rating.', 'Usual against your own days.', (_id, value, ctx) => rateOwn('move_iq', 'Garmin Health API Move IQ summaries.', value, ctx, 'min', true, 'Move IQ is movement Garmin noticed without a started activity. There is no published healthy-person range, so this is compared with your own usual.')),
+  activity_detail: define('activity_detail', 'min', 'Garmin Health API activity details.', 'More Garmin Stats', 'Recorded activity length. No rating.', 'Usual against your own activities. The sample trace is not kept.', (_id, value, ctx) => rateOwn('activity_detail', 'Garmin Health API activity details.', value, ctx, 'min', true, 'This is the length Garmin stored for a recorded activity. The sample trace is not kept. There is no published healthy-person range, so this is compared with your own usual.')),
   sober: define('sober', 'days', OWN_APP, 'Stats, Health Plan, profile', 'A day count or a drink-free ring.', 'Good when the streak or your drink-free aim is met. Tips only when short of your aim.', rateSober),
   'days-sober': define('days-sober', 'days', OWN_APP, 'Profile, when the sober date is missing', 'An empty line.', 'Same sober rating, or a plain empty line. Caveat.', rateSober),
   mood: define('mood', '1–10', OWN_APP, 'Stats, Health Plan', 'Latest score and a trend word.', 'Excellent/Good/Fair/Poor on the 1–10 scale. Tips when under Good. Not clinical.', rateMood),

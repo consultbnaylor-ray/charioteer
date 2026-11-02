@@ -61,7 +61,9 @@ describe('garmin charts follow the shared period', () => {
     expect(screen).toContain('framed ? 22 : 12');
     expect(screen).toContain('garminDetailCharts');
     expect(GARMIN_DETAILS_TITLE).toBe('More Garmin Stats');
-    expect(screen).toContain('title={GARMIN_DETAILS_TITLE}');
+    expect(screen).toContain('GARMIN_DETAILS_TITLE');
+    expect(screen).toContain('→ ${GARMIN_DETAILS_TITLE}');
+    expect(screen).toContain("router.push('/garmin-stats'");
     expect(screen).toContain('Not medical advice.');
     expect(screen).toContain('from \'@/ui/MoreInfo\'');
     expect(screen).not.toContain('What is this?');

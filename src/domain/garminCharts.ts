@@ -30,7 +30,7 @@ import type {
   GarminUserMetric,
 } from '@/domain/garminConnect';
 import { publishedCardioBand } from '@/domain/fitnessSnapshot';
-import { readingFor, type MetricContext, type MetricReading } from '@/domain/metricRegistry';
+import { GARMIN_EPOCH_EXPLAIN, readingFor, type MetricContext, type MetricReading } from '@/domain/metricRegistry';
 import type { NutritionGoal, NutritionSex } from '@/domain/nutrition';
 import type { RestingFitnessComment, RestingInfoSection } from '@/domain/restingFitness';
 import { RESTING_CARE, RESTING_CARD_CARE } from '@/domain/restingFitness';
@@ -264,17 +264,23 @@ function fillMetricContext(partial: Partial<MetricContext> | undefined, period?:
 }
 
 /** Attach the registry rating without writing the caveat into `about` (some charts forbid that phrase there). */
+function sameWords(left: string, right: string): boolean {
+  return left.replace(/\s+/g, ' ').trim() === right.replace(/\s+/g, ' ').trim();
+}
+
 function withMetric(guide: ChartGuide, id: string, value: number | null, ctx: MetricContext): ChartGuide {
   const rating = readingFor(id, value, ctx);
+  const face = rating.pending ? rating.where : `${rating.label}. ${rating.where}`;
+  const source = rating.source.trim();
+  const sourceRepeats = sameWords(source, rating.where) || sameWords(source, face) || face.includes(source) || rating.where.includes(source);
   const already = guide.sections?.some((section) => section.heading === 'Source');
   const sections = already
     ? guide.sections
     : [
-      ...(guide.sections ?? []),
-      { heading: 'Where you sit', body: `${rating.label}. ${rating.where}` },
-      ...(rating.goalLine ? [{ heading: 'Your aim', body: rating.goalLine }] : []),
+      ...(guide.sections ?? []).filter((section) => section.heading !== 'Where you sit'),
+      ...(rating.goalLine && !sameWords(rating.goalLine, face) ? [{ heading: 'Your aim', body: rating.goalLine }] : []),
       ...(rating.tips.length ? [{ heading: 'How to improve', body: rating.tips.join(' ') }] : []),
-      { heading: 'Source', body: rating.source },
+      ...(sourceRepeats ? [] : [{ heading: 'Source', body: source }]),
     ];
   const band = rating.draw && rating.band ? rating.band : null;
   return {
@@ -832,7 +838,9 @@ export function garminDetailCharts(input: GarminChartInput): GarminDetailChart[]
   add(metricChart(input, 'body_fat', 'Body fat', '%', dailyNumber(input.bodyComp ?? [], (row) => row.bodyFatPct), 'Body fat is Garmin\'s estimate for that day. The lime band, when sex is set, is the ACE athlete-to-fitness span. It is a reference, not a diagnosis.'));
   add(metricChart(input, 'bmi', 'BMI', 'BMI', dailyNumber(input.bodyComp ?? [], (row) => row.bmi), 'BMI is Garmin\'s stored body mass index. The band is the general adult reference of 18.5–24.9. It is not a diagnosis.', { low: 18.5, high: 24.9 }));
   add(metricChart(input, 'snapshot_heart', 'Health snapshot heart rate', 'bpm', dailyNumber(input.healthSnapshot ?? [], (row) => row.restingHeartRateBpm ?? row.heartRateBpm), 'Health snapshot heart rate is the heart rate from Garmin\'s short check, in bpm. The band is a general adult resting range of 60–100. Not medical advice.', { low: 60, high: 100 }));
-  add(metricChart(input, 'epoch_minutes', 'Epoch active minutes', 'min', epochMinutes(input), 'Epochs are Garmin\'s 15-minute activity slices, added up to minutes for the day. They are not a medical measure.'));
+  const epochs = metricChart(input, 'epoch_minutes', 'Epoch active minutes', 'min', epochMinutes(input), GARMIN_EPOCH_EXPLAIN);
+  epochs.note = GARMIN_EPOCH_EXPLAIN;
+  add(epochs);
   add(metricChart(input, 'move_iq', 'Move IQ', 'min', dailyNumber(input.moveIq ?? [], (row) => (row.durationSeconds == null ? null : row.durationSeconds / 60)), 'Move IQ is movement Garmin noticed without a started activity, in minutes. Not medical advice.'));
   add(metricChart(input, 'activity_detail', 'Activity detail', 'min', dailyNumber(input.activityDetails ?? [], (row) => (row.durationSeconds == null ? null : row.durationSeconds / 60)), 'Activity detail is the length Garmin stored for a recorded activity, in minutes. The sample trace is not kept. Not medical advice.'));
   return charts;
@@ -902,7 +910,7 @@ export const GARMIN_CARD_CATALOGUE: readonly { id: string; title: string; unit: 
   { id: 'body_fat', title: 'Body composition', unit: '%', line: 'Body composition is Garmin\'s scale or watch estimate of weight, fat, and BMI.' },
   { id: 'bmi', title: 'BMI', unit: 'BMI', line: 'BMI is Garmin\'s stored body mass index. It appears with a body-composition sync.' },
   { id: 'snapshot_heart', title: 'Health snapshot', unit: 'bpm', line: 'Health snapshot is a short Garmin check of heart rate, oxygen, and breathing.' },
-  { id: 'epoch_minutes', title: 'Epochs', unit: 'min', line: 'Epochs are Garmin\'s 15-minute activity slices. They appear after a sync.' },
+  { id: 'epoch_minutes', title: 'Epochs', unit: 'min', line: GARMIN_EPOCH_EXPLAIN },
   { id: 'move_iq', title: 'Move IQ', unit: 'min', line: 'Move IQ is movement Garmin noticed without a started activity.' },
   { id: 'activity_detail', title: 'Activity detail', unit: 'min', line: 'Activity detail is the length Garmin stored for a recorded activity. The sample trace is not kept.' },
 ];
