@@ -30,6 +30,7 @@ import {
 import type { FoodLog } from './nutrition';
 import { defaultNutritionSettings } from './nutrition';
 import { buildFitnessSnapshot } from './fitnessSnapshot';
+import { RESTING_AEROBIC_TIP, SLEEP_WAKE_TIP, STEP_WALK_TIP } from './trainingGuidance';
 import { defaultProfileSharing, projectPublicProfile, sharedReportItems, type ShareSource } from './profileSharing';
 
 function input(partial: Partial<PlanInput> = {}): PlanInput {
@@ -728,8 +729,16 @@ describe('health plan writer', () => {
     expect(texts.join(' ')).not.toMatch(/\bRest\b|runna|mileage|progressive distance|\b5k\b/i);
     const bodies = texts.map((text) => text.replace(/^[A-Za-z]+ · /, ''));
     expect(new Set(bodies).size).toBeGreaterThan(3);
-    expect(texts.filter((text) => /Zone 2/i.test(text)).length).toBeGreaterThan(0);
-    expect(texts.filter((text) => /interval/i.test(text))).toHaveLength(1);
+    const zoneDays = texts.filter((text) => /Zone 2/i.test(text));
+    expect(zoneDays.length).toBeGreaterThan(0);
+    for (const text of zoneDays) {
+      expect(text).toMatch(/base|recovery/i);
+      expect(text).not.toMatch(/below the|below target|aerobic base so|builds your aerobic/i);
+    }
+    const intervals = texts.filter((text) => /Intervals for VO2 max/i.test(text));
+    expect(intervals.length).toBeGreaterThan(0);
+    expect(intervals.join(' ')).toMatch(/VO2/);
+    expect(texts.filter((text) => /interval/i.test(text))).toHaveLength(intervals.length);
     expect(texts.join(' ')).toMatch(/bike|rower|brisk walk|skipping or bag rounds/);
     expect(texts.join(' ')).toMatch(/cruiserweight/);
     expect(texts.join(' ')).not.toContain('…');
@@ -741,8 +750,9 @@ describe('health plan writer', () => {
     expect(plan.fitness.sessions.find((item) => item.text.startsWith('Wednesday ·'))?.done).toBe(false);
     const trend = texts.filter((text) => /trending down/i.test(text));
     expect(trend).toHaveLength(1);
-    expect(trend[0]).toMatch(/Zone 2|interval/i);
-    expect(trend[0]).not.toMatch(/Boxing/);
+    expect(trend[0]).toMatch(/Intervals for VO2 max/i);
+    expect(trend[0]).toMatch(/main lever/);
+    expect(trend[0]).not.toMatch(/Zone 2|Boxing/);
     for (const day of ['Monday', 'Thursday', 'Friday']) {
       expect(texts.find((text) => text.startsWith(`${day} ·`))).toMatch(/about 30 min/);
     }
@@ -761,7 +771,9 @@ describe('health plan writer', () => {
     expect(snapshot.contextLine).toContain('41.7');
     expect(snapshot.contextLine).toContain('56 to 62');
     expect(snapshot.contextLine).toContain('trending down');
-    expect(snapshot.contextLine).toMatch(/Zone 2/);
+    expect(snapshot.contextLine).toMatch(/intervals/i);
+    expect(snapshot.contextLine).toMatch(/85 to 95 percent/);
+    expect(snapshot.contextLine).toMatch(/Zone 2 is the base and recovery, not the main lever/);
     expect(snapshot.contextLine).toMatch(/not a running plan/i);
     expect(snapshot.contextLine).toContain('Check with a doctor before big changes.');
     expect(snapshot.contextLine).not.toMatch(/runna|mileage|\b5k\b|progressive distance/i);
@@ -810,10 +822,14 @@ describe('health plan writer', () => {
     }
     const trend = texts.filter((text) => /trending down/i.test(text));
     expect(trend).toHaveLength(1);
-    expect(trend[0]).toMatch(/Zone 2|interval/i);
-    expect(trend[0]).not.toMatch(/Boxing/);
-    expect(texts.filter((text) => /interval/i.test(text))).toHaveLength(1);
-    expect(texts.filter((text) => /Zone 2/i.test(text)).length).toBeGreaterThan(0);
+    expect(trend[0]).toMatch(/Intervals for VO2 max/i);
+    expect(trend[0]).not.toMatch(/Zone 2|Boxing/);
+    const intervals = texts.filter((text) => /Intervals for VO2 max/i.test(text));
+    expect(intervals.length).toBeGreaterThan(0);
+    for (const text of texts.filter((line) => /Zone 2/i.test(line))) {
+      expect(text).toMatch(/base|recovery/i);
+      expect(text).not.toMatch(/below the/);
+    }
     expect(texts.find((text) => text.startsWith('Sunday ·'))).toBe('Sunday · A walk. Keep it easy.');
     expect(texts.join(' ')).not.toMatch(/\bRest\b/);
     const stated = planBaseline(person);
@@ -844,6 +860,50 @@ describe('health plan writer', () => {
     const fn = readFileSync('supabase/functions/health-plan/index.ts', 'utf8');
     expect(fn).toContain("from('planned_sessions')");
     expect(fn).toContain('diaryDoneHealthSamples');
+  });
+
+  it('keeps Zone 2, sleep, and steps on the same advice as the cards', () => {
+    const schedule = {
+      days: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'],
+      typicalMinutes: 30,
+      longerDay: 'Saturday',
+      longerMinutes: 45,
+      walkDay: 'Sunday',
+      note: '',
+    };
+    const plan = draftHealthPlan(input({
+      salt: 'align-cards',
+      goal: 'elite_cruiser_boxer',
+      goalSex: 'male',
+      goalAge: 34,
+      schedule,
+      health: [
+        { kind: 'weight_kg', value: 90, recordedOn: '2026-10-14' },
+        { kind: 'vo2_max', value: 41.7, recordedOn: '2026-10-14' },
+        { kind: 'resting_heart_rate', value: 72, recordedOn: '2026-10-14' },
+        { kind: 'steps', value: 3000, recordedOn: '2026-10-14' },
+        { kind: 'sleep_hours', value: 5.5, recordedOn: '2026-10-14' },
+      ],
+    }));
+    const texts = plan.fitness.sessions.map((item) => item.text);
+    const zone = texts.filter((text) => /Zone 2/i.test(text));
+    expect(zone.length).toBeGreaterThan(0);
+    for (const text of zone) {
+      expect(text).toContain(RESTING_AEROBIC_TIP);
+      expect(text).not.toMatch(/below the|VO2 max is/i);
+    }
+    expect(texts.find((text) => text.startsWith('Sunday ·'))).toBe(`Sunday · A walk. ${STEP_WALK_TIP}`);
+    expect(texts.join(' ')).toMatch(/Intervals for VO2 max/);
+    const quiet = draftHealthPlan(input({
+      salt: 'align-sleep',
+      goal: 'maintain',
+      goalAge: 45,
+      health: [
+        { kind: 'sleep_hours', value: 5.5, recordedOn: '2026-10-14' },
+        { kind: 'weight_kg', value: 80, recordedOn: '2026-10-14' },
+      ],
+    }));
+    expect(quiet.wellbeing.habits.map((item) => item.text).join(' ')).toContain(SLEEP_WAKE_TIP);
   });
 
   it('counts this week from Monday through Sunday in London, including the clock change', () => {

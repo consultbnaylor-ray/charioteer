@@ -509,8 +509,9 @@ describe('fitness snapshot', () => {
     expect(heavy.contextLine).toContain('42.6 ml/kg/min');
     expect(heavy.contextLine).toContain('56 to 62');
     expect(heavy.contextLine).toContain('Check with a doctor before big changes.');
-    expect(heavy.recommendations.map((item) => item.text).join(' ')).toMatch(/30 to 45/);
-    expect(heavy.recommendations.map((item) => item.text).join(' ')).toMatch(/conversational/);
+    expect(heavy.recommendations[0]?.text).toMatch(/interval sessions a week for VO2 max/);
+    expect(heavy.recommendations.map((item) => item.text).join(' ')).toMatch(/not the main way to raise VO2 max/);
+    expect(heavy.recommendations.map((item) => item.text).join(' ')).not.toMatch(/conversational pace/);
     expect(heavy.recommendations.map((item) => item.text).join(' ')).not.toMatch(/mileage|runna|\bkm\b/i);
   });
 

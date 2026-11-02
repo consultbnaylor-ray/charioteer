@@ -27,6 +27,7 @@ import {
 import { referenceBandsForCoach } from './healthBands.ts';
 import { dedupeAdviceLines } from './adviceDedupe.ts';
 import { activityTypeFromKind, assessCardioGap, buildFitnessSnapshot, fitnessFocusLines, workoutBucket, type FitnessSnapshotInput } from './fitnessSnapshot.ts';
+import { intervalDayReason, SLEEP_WAKE_TIP, STEP_WALK_TIP, stepsLookLow, zone2DayReason } from './trainingGuidance.ts';
 import { goalWeightRange } from './goalWeightRange.ts';
 import { goalFocusLine } from './goalLed.ts';
 import { healthChangeNoteFromReadings, londonDay, londonWeek } from './healthInsights.ts';
@@ -1160,12 +1161,14 @@ function goalLedWeek(facts: Derived, baseline: TrainingBaseline): string[] | nul
   const strengthDays = new Set(train.filter((_, index) => index % 2 === 0));
   const cardioDays = train.filter((day) => !strengthDays.has(day));
   const base = baseline.sessionsPerWeek >= 3 && baseline.typicalMinutes >= 20;
+  const vo2Short = gap.belowGoal || gap.belowAge;
   const typicalCardio = cardioDays.filter((day) => dayMinutesOf(baseline, day) <= baseline.typicalMinutes);
   const intervalPool = typicalCardio.length ? typicalCardio : cardioDays;
-  const intervalDay = base ? intervalPool[intervalPool.length - 1] ?? null : null;
+  const intervalCount = vo2Short ? (base ? 2 : 1) : (base ? 1 : 0);
+  const intervalDays = new Set(intervalCount > 0 ? intervalPool.slice(-intervalCount) : []);
   const original = new Map<string, WeekSlot>();
   for (const day of train) {
-    if (day === intervalDay) original.set(day, 'interval');
+    if (intervalDays.has(day)) original.set(day, 'interval');
     else if (strengthDays.has(day)) original.set(day, 'strength');
     else original.set(day, 'zone');
   }
@@ -1190,7 +1193,10 @@ function goalLedWeek(facts: Derived, baseline: TrainingBaseline): string[] | nul
     assigned.set(day, slot);
     return true;
   };
-  if (needInterval > 0 && intervalDay && claim(intervalDay, 'interval')) needInterval -= 1;
+  for (const day of open) {
+    if (needInterval <= 0) break;
+    if (intervalDays.has(day) && claim(day, 'interval')) needInterval -= 1;
+  }
   for (const day of open) {
     if (needZone <= 0) break;
     if (original.get(day) === 'zone' && claim(day, 'zone')) needZone -= 1;
@@ -1200,11 +1206,13 @@ function goalLedWeek(facts: Derived, baseline: TrainingBaseline): string[] | nul
     if (original.get(day) === 'strength' && claim(day, 'strength')) needStrength -= 1;
   }
   const remaining = () => open.filter((day) => !assigned.has(day));
-  if (needInterval > 0) {
+  while (needInterval > 0) {
     const pool = remaining();
+    if (!pool.length) break;
     const typical = pool.filter((day) => dayMinutesOf(baseline, day) <= baseline.typicalMinutes);
     const day = (typical.length ? typical : pool).at(-1);
-    if (day && claim(day, 'interval')) needInterval -= 1;
+    if (!day || !claim(day, 'interval')) break;
+    needInterval -= 1;
   }
   while (needZone > 0) {
     const pool = remaining();
@@ -1228,15 +1236,11 @@ function goalLedWeek(facts: Derived, baseline: TrainingBaseline): string[] | nul
     if (slot) assigned.set(day, slot);
   }
   const trendDay = gap.trendingDown
-    ? WEEK_ORDER.find((day) => assigned.get(day) === 'interval')
-      ?? WEEK_ORDER.find((day) => assigned.get(day) === 'zone')
-      ?? null
+    ? WEEK_ORDER.find((day) => assigned.get(day) === 'interval') ?? null
     : null;
-  const aerobic = gap.belowGoal && gap.reference
-    ? `Your VO2 max is below the ${gap.reference} reference, so this builds your aerobic base.`
-    : gap.belowAge
-      ? 'Your VO2 max is below the usual range for your age and sex, so this builds your aerobic base.'
-      : 'Cardio is a small share of these minutes, so this builds your aerobic base.';
+  const restingHigh = restingLooksHigh(facts);
+  const zoneReason = zone2DayReason({ restingHigh, lowCardio: gap.lowCardio && !vo2Short });
+  let protocolUsed = false;
   const zoneAssigned = WEEK_ORDER.filter((day) => assigned.get(day) === 'zone');
   const longestZone = zoneAssigned.reduce<string | null>((best, day) => {
     if (!best) return day;
@@ -1255,24 +1259,49 @@ function goalLedWeek(facts: Derived, baseline: TrainingBaseline): string[] | nul
       const minutes = dayMinutesOf(baseline, day);
       const slot = assigned.get(day) ?? 'strength';
       if (slot === 'interval') {
-        const reason = day === trendDay
-          ? 'Cardio fitness is trending down.'
-          : 'One short interval session this week, beside the work you already do.';
-        lines.push(`${day} · A short interval session, about ${minutes} min. ${reason}`);
+        const useProtocol = vo2Short && day !== trendDay && !protocolUsed;
+        if (useProtocol) protocolUsed = true;
+        const reason = intervalDayReason({
+          vo2Short,
+          reference: gap.reference,
+          belowAge: gap.belowAge,
+          trending: day === trendDay,
+          protocol: useProtocol,
+        });
+        const title = vo2Short ? 'Intervals for VO2 max' : 'A vigorous interval session';
+        lines.push(`${day} · ${title}, about ${minutes} min. ${reason}`);
       } else if (slot === 'zone') {
         const mode = boxer && day === longestZone
           ? 'Easy Zone 2 with skipping or bag rounds'
           : modes[zoneIndex % modes.length];
         if (!(boxer && day === longestZone)) zoneIndex += 1;
-        const reason = day === trendDay ? 'Cardio fitness is trending down.' : aerobic;
-        lines.push(`${day} · ${mode}, about ${minutes} min. ${reason}`);
+        lines.push(`${day} · ${mode}, about ${minutes} min. ${zoneReason}`);
       } else {
         lines.push(prescribedStrength(facts, day, minutes));
       }
-    } else if (baseline.walkDays?.includes(day)) lines.push(`${day} · A walk. Keep it easy.`);
+    } else if (baseline.walkDays?.includes(day)) lines.push(walkLine(day, facts));
     else if (baseline.restDays.includes(day)) lines.push(`${day} · Rest. You already leave this day free.`);
   }
   return lines;
+}
+
+function restingLooksHigh(facts: Derived): boolean {
+  const today = londonDay(facts.input.now);
+  let latest: { day: string; value: number } | null = null;
+  for (const row of facts.input.health) {
+    if (row.kind !== 'resting_heart_rate') continue;
+    const day = row.recordedOn.slice(0, 10);
+    if (day > today || !(row.value > 0)) continue;
+    if (!latest || day >= latest.day) latest = { day, value: row.value };
+  }
+  if (!latest) return false;
+  const sport = isAnyBoxer(facts.input.goal) || facts.input.goal === 'elite_runner' || facts.input.goal === 'body_builder';
+  return Math.round(latest.value) > (sport ? 60 : 80);
+}
+
+function walkLine(day: string, facts: Derived): string {
+  if (stepsLookLow(facts.steps, facts.input.goalAge)) return `${day} · A walk. ${STEP_WALK_TIP}`;
+  return `${day} · A walk. Keep it easy.`;
 }
 
 function routineWeek(facts: Derived, baseline: TrainingBaseline): string[] {
@@ -1291,7 +1320,7 @@ function routineWeek(facts: Derived, baseline: TrainingBaseline): string[] {
     if (baseline.trainDays.includes(day)) {
       const minutes = dayMinutesOf(baseline, day);
       lines.push(`${day} · Keep this ${kind}, about ${minutes} min. ${progress}`);
-    } else if (baseline.walkDays?.includes(day)) lines.push(`${day} · A walk. Keep it easy.`);
+    } else if (baseline.walkDays?.includes(day)) lines.push(walkLine(day, facts));
     else if (baseline.restDays.includes(day)) lines.push(`${day} · Rest. You already leave this day free.`);
   }
   return lines;
@@ -1474,8 +1503,8 @@ function wellbeingHabits(facts: Derived): string[] {
   }
   const sleep = facts.sleepHours == null
     ? 'Pick a lights-out time and keep it on four nights.'
-    : facts.sleepHours < 6.5
-      ? `Sleep has been about ${facts.sleepHours} hours. Bring the evening forward by 20 minutes on four nights.`
+    : facts.sleepHours < 7
+      ? `Sleep has been about ${facts.sleepHours} hours. ${SLEEP_WAKE_TIP}`
       : `Sleep has been about ${facts.sleepHours} hours. Keep that, and protect it the night before a busier day.`;
   const mood = facts.moodTrend === 'lower'
     ? 'Mood has been lower than the earlier check-ins. Keep the check-in short, and one ordinary plan in the afternoon.'
@@ -1947,6 +1976,7 @@ export const HEALTH_PLAN_PROMPT = [
   'If nothing they logged or wrote supports a swap, return one swap whose text is exactly "Log a few more meals and Thumos will suggest swaps based on what you actually eat."',
   'Nutrition, fitness, wellbeing, and this week\'s focus all follow the saved nutrition goal. Do not write a running plan, a mileage build, or a progressive distance week.',
   'When fitnessSnapshot is present, it is an estimate from their own readings, not a medical assessment. You may add one session or hold the week they already do. Never prescribe fewer sessions or fewer minutes unless they report pain, illness, injury, or poor recovery. Do not turn it into a running plan. Check with a doctor before big changes.',
+  'When VO2 max is below the saved goal or the age range, the day aimed at it is an interval session, not easy Zone 2. The main lever is four repeats of four minutes at about 85 to 95 percent of max heart rate, once or twice a week. Easy Zone 2 is the base and recovery, not the reason VO2 max rises. A high resting heart rate is the easy aerobic work. Short sleep keeps a steady wake time. Low steps are a short walk.',
   'When referenceBands is present, those lines are the same published comparisons as the health stats. They are not targets and not a reason to chase the top of a range. Do not invent a band, a beats-per-minute figure, or a source that is not written there.',
   'If the goal is an elite runner, body builder, or boxer, include training load, recovery, and fuelling around sessions. A heavyweight goal keeps size and power and does not use a deficit. A middleweight goal, and a featherweight through cruiserweight goal, stays near its limit with a small change only. Professional limits for those classes are about 57.2 kg, 59.0 kg, 61.2 kg, 63.5 kg, 66.7 kg, 69.9 kg, 72.6 kg, 76.2 kg, 79.4 kg, and 90.7 kg. Super lightweight is also called light welterweight. Super welterweight is also called light middleweight. Amateur IBA figures are a reference only. Muscular boxers can sit above the BMI band.',
   'When the user message includes training, that object is the routine from logged workouts over the last 4 weeks: sessions per week, typical minutes, train weekdays, and rest weekdays. Maintain or progress that baseline. Never prescribe fewer sessions or fewer minutes unless they report pain, illness, injury, or poor recovery. Rest only on training.restDays. Do not invent a rest day, a full rest, or "no structured workouts" on a day they train. One row per weekday. Do not append a stock walk-and-rest week. The fitness intro must say what the log shows, for example "You train about 30 min on most days." Progress with a little more weight, one more set, or about 5 to 10 percent volume. For lose fat and build muscle, emphasise resistance training, protein, and a little easy walking or steps. A runner, boxer, or body builder keeps that sport. Check with a doctor before big changes.',

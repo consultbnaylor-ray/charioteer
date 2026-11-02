@@ -16,6 +16,7 @@ import { defaultNutritionSettings } from '@/domain/nutrition';
 import { profileStatBoard } from '@/domain/profileStatTiles';
 import type { PublicProfileView } from '@/domain/profileSharing';
 import { buildStatsOverview } from '@/domain/statsOverview';
+import { RESTING_AEROBIC_TIP, SLEEP_WAKE_TIP, STEP_WALK_TIP, VO2_CARD_TIPS, VO2_MAIN_TIP } from '@/domain/trainingGuidance';
 
 const end = '2026-11-01';
 
@@ -226,6 +227,26 @@ describe('metric registry', () => {
     expect(epochs.where).not.toContain('No published healthy-person range for this figure');
     expect(epochs.source).toBe('Garmin Health API epoch summaries.');
     expect(epochs.where).not.toContain(epochs.source);
+  });
+
+  it('uses the same VO2, resting, sleep, and step advice as the weekly plan', () => {
+    const cruiser = { ...EMPTY_METRIC_CONTEXT, age: 34, sex: 'male' as const, goal: 'elite_cruiser_boxer' as const };
+    const vo2 = readingFor('vo2_max', 41.7, cruiser);
+    expect(vo2.tips).toEqual([...VO2_CARD_TIPS]);
+    expect(vo2.tips[0]).toBe(VO2_MAIN_TIP);
+    expect(vo2.tips.join(' ')).toMatch(/Helgerud/);
+    expect(vo2.tips.join(' ')).toMatch(/not the main way to raise VO2 max/);
+    const age = readingFor('fitness_age', 48, { ...cruiser, realAge: 34, vo2: 41.7, restingHr: 49, bodyFat: 12, vigorousWeek: 80 });
+    expect(age.tips[0]).toBe(VO2_MAIN_TIP);
+    expect(readingFor('resting_heart_rate', 72, cruiser).tips[0]).toBe(RESTING_AEROBIC_TIP);
+    expect(readingFor('sleep_hours', 5.5, { ...EMPTY_METRIC_CONTEXT, age: 45, sex: 'male' }).tips[0]).toBe(SLEEP_WAKE_TIP);
+    expect(readingFor('steps', 3000, { ...EMPTY_METRIC_CONTEXT, age: 45, sex: 'male' }).tips[0]).toBe(STEP_WALK_TIP);
+    const plan = readFileSync('supabase/functions/_shared/healthPlan.ts', 'utf8');
+    expect(plan).toContain('intervalDayReason');
+    expect(plan).toContain('zone2DayReason');
+    expect(plan).toContain('SLEEP_WAKE_TIP');
+    expect(plan).toContain('STEP_WALK_TIP');
+    expect(plan).not.toContain('so this builds your aerobic base');
   });
 
   it('names a source and the caveat on every registry row, and the chart titles stay registered', () => {

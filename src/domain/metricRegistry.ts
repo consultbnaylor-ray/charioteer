@@ -19,6 +19,17 @@ import {
 } from '@/domain/healthBands';
 import { vo2AthleticShortfall, publishedCardioBand } from '@/domain/fitnessSnapshot';
 import {
+  RESTING_AEROBIC_TIP,
+  SLEEP_TIPS,
+  STEP_60_LOW,
+  STEP_AGE_UNKNOWN_LOW,
+  STEP_TIPS,
+  STEP_UNDER_60_LOW,
+  VO2_CARD_TIPS,
+  VO2_MAIN_TIP,
+  VO2_VIGOROUS_TIP,
+} from '@/domain/trainingGuidance';
+import {
   CMO_MODERATE_MINUTES_WEEK,
   CMO_VIGOROUS_MINUTES_WEEK,
   NHS_ADULT_SLEEP_MAX_HOURS,
@@ -142,17 +153,6 @@ const BREATH_SOURCE = 'A usual resting adult breathing rate is about 12–20 bre
 const COLE = `Cole and colleagues, New England Journal of Medicine, 1999. A fall of ${COLE_ABNORMAL_AT_OR_UNDER} bpm or less in the first minute was called abnormal in adults referred for a treadmill test. Not a healthy-population cutoff.`;
 const TANAKA = 'Walking and session heart rate use the Tanaka 2001 max (208 − 0.7 × age) and ACSM moderate and vigorous percentages. Apple publishes no normal walking-heart-rate range.';
 
-const SLEEP_TIPS = [
-  'Keep a steady wake time, including after a late night.',
-  'Dim screens in the hour before bed.',
-  'Leave caffeine for earlier in the day, and go easy on alcohol in the evening.',
-] as const;
-
-const STEP_TIPS = [
-  'A short walk after meals adds steps without a formal session.',
-  'Break up long sitting with a few minutes on your feet.',
-  'Build toward the research range for your age a little at a time.',
-] as const;
 
 const MOVE_TIPS = [
   'A brisk walk most days covers a lot of the weekly minutes.',
@@ -244,7 +244,7 @@ function made(
   extra: { band?: { low: number; high: number } | null; draw?: boolean; goalLine?: string | null; tips?: readonly string[]; more?: string },
 ): MetricReading {
   const goalLine = extra.goalLine ?? null;
-  const belowGoal = goalLine != null && /below|under the|short of|above that|higher than the trained/i.test(goalLine);
+  const belowGoal = goalLine != null && /below|under the|short of|above that|higher than the trained|above the typical trained/i.test(goalLine);
   const showTips = label === 'Fair' || label === 'Poor' || belowGoal;
   return {
     id,
@@ -262,9 +262,9 @@ function made(
 }
 
 function stepBand(age: number | null): { low: number; high: number; why: string } {
-  if (age != null && age >= 60) return { low: 6000, high: 8000, why: 'Paluch 2022 for age 60 or over' };
-  if (age != null && age < 60) return { low: 8000, high: 10000, why: 'Paluch 2022 for under 60' };
-  return { low: 7000, high: 10000, why: 'the wider adult span used when age is not set' };
+  if (age != null && age >= 60) return { low: STEP_60_LOW, high: 8000, why: 'Paluch 2022 for age 60 or over' };
+  if (age != null && age < 60) return { low: STEP_UNDER_60_LOW, high: 10000, why: 'Paluch 2022 for under 60' };
+  return { low: STEP_AGE_UNKNOWN_LOW, high: 10000, why: 'the wider adult span used when age is not set' };
 }
 
 function spanPhrase(ctx: MetricContext): string {
@@ -309,7 +309,7 @@ function rateResting(id: string, value: number | null, ctx: MetricContext): Metr
       draw: true,
       goalLine: sport ? `${sport}: a typical trained resting rate is about 40–60 bpm. There is no reading to compare yet.` : null,
       tips: [
-        'Easy aerobic sessions and walks, most weeks, are what usually brings a high resting rate down.',
+        RESTING_AEROBIC_TIP,
         'Sleep and alcohol both move the next morning’s number.',
         'Treat one odd day as a reading, and watch the month.',
       ],
@@ -336,7 +336,7 @@ function rateResting(id: string, value: number | null, ctx: MetricContext): Metr
   const tips = bpm < 40
     ? ['Under 40 is a check, not a poor fitness mark. If you feel unwell or dizzy, contact a GP or NHS 111.']
     : [
-      'Easy aerobic sessions and walks, most weeks, are what usually brings a high resting rate down.',
+      RESTING_AEROBIC_TIP,
       'Sleep and alcohol both move the next morning’s number.',
       'Treat one odd day as a reading, and watch the month.',
     ];
@@ -375,11 +375,7 @@ function rateVo2(id: string, value: number | null, ctx: MetricContext): MetricRe
       band,
       draw: Boolean(band),
       goalLine: sport ? `${sport}: trained people often sit at or above the 75th percentile for their age and sex. There is no reading to compare yet.` : null,
-      tips: [
-        'Four repeats of four hard minutes, with easy movement between, once or twice a week.',
-        'Keep the other days easy. Walks still count.',
-        'Build up if hard efforts are new. Check with a GP if you are unsure about intense work.',
-      ],
+      tips: VO2_CARD_TIPS,
     });
   }
   if (!band) {
@@ -403,11 +399,7 @@ function rateVo2(id: string, value: number | null, ctx: MetricContext): MetricRe
     band,
     draw: false,
     goalLine,
-    tips: [
-      'Four repeats of four hard minutes, with easy movement between, once or twice a week.',
-      'Keep the other days easy. Walks still count.',
-      'Build up if hard efforts are new. Check with a GP if you are unsure about intense work.',
-    ],
+    tips: VO2_CARD_TIPS,
     more: where,
   });
 }
@@ -889,10 +881,10 @@ function fitnessPicture(ctx: MetricContext): {
   if (ctx.vo2 != null) {
     if (boxing && ctx.vo2 < boxing.low) {
       vo2Gap = `${roundTenth(boxing.low - ctx.vo2)} below ${boxing.low}.`;
-      ranked.push({ name: 'VO2 max', gap: (boxing.low - ctx.vo2) / boxing.low, tip: 'Four repeats of four hard minutes, with easy movement between, is one way to nudge VO2 max.', gapText: vo2Gap });
+      ranked.push({ name: 'VO2 max', gap: (boxing.low - ctx.vo2) / boxing.low, tip: VO2_MAIN_TIP, gapText: vo2Gap });
     } else if (!boxing && cardio && ctx.vo2 < cardio.high) {
       vo2Gap = `${roundTenth(cardio.high - ctx.vo2)} below the 75th percentile.`;
-      ranked.push({ name: 'VO2 max', gap: (cardio.high - ctx.vo2) / cardio.high, tip: 'Four repeats of four hard minutes, with easy movement between, is one way to nudge VO2 max.', gapText: vo2Gap });
+      ranked.push({ name: 'VO2 max', gap: (cardio.high - ctx.vo2) / cardio.high, tip: VO2_MAIN_TIP, gapText: vo2Gap });
     } else vo2Gap = 'Inside the range.';
   }
   const vo2Value = ctx.vo2 != null ? `${ctx.vo2} ml/kg/min` : 'not stored yet';
@@ -907,7 +899,7 @@ function fitnessPicture(ctx: MetricContext): {
       ranked.push({ name: 'Resting heart rate', gap: (40 - bpm) / 40, tip: 'Under 40 is a check if you feel unwell or dizzy, not a poor fitness mark.', gapText: hrGap });
     } else if (bpm > ceiling) {
       hrGap = `${bpm - ceiling} bpm above ${ceiling}.`;
-      ranked.push({ name: 'Resting heart rate', gap: (bpm - ceiling) / ceiling, tip: 'Easy aerobic sessions most weeks are what usually brings a high resting rate down.', gapText: hrGap });
+      ranked.push({ name: 'Resting heart rate', gap: (bpm - ceiling) / ceiling, tip: RESTING_AEROBIC_TIP, gapText: hrGap });
     } else hrGap = 'Inside the range.';
   }
   const hrValue = ctx.restingHr != null && ctx.restingHr > 0 ? `${Math.round(ctx.restingHr)} bpm` : 'not stored yet';
@@ -949,7 +941,7 @@ function fitnessPicture(ctx: MetricContext): {
     const minutes = Math.round(ctx.vigorousWeek);
     if (minutes < CMO_VIGOROUS_MINUTES_WEEK) {
       vigorousGap = `${CMO_VIGOROUS_MINUTES_WEEK - minutes} minutes short of ${CMO_VIGOROUS_MINUTES_WEEK}.`;
-      ranked.push({ name: 'Vigorous intensity minutes', gap: (CMO_VIGOROUS_MINUTES_WEEK - minutes) / CMO_VIGOROUS_MINUTES_WEEK, tip: 'Aim for 75 or more vigorous minutes a week, for example two or three interval sessions.', gapText: vigorousGap });
+      ranked.push({ name: 'Vigorous intensity minutes', gap: (CMO_VIGOROUS_MINUTES_WEEK - minutes) / CMO_VIGOROUS_MINUTES_WEEK, tip: VO2_VIGOROUS_TIP, gapText: vigorousGap });
     } else vigorousGap = 'On the 75-minute line.';
   }
   const vigorousValue = ctx.vigorousWeek != null && Number.isFinite(ctx.vigorousWeek) ? `${Math.round(ctx.vigorousWeek)} in the last 7 days` : 'not stored yet';
@@ -1006,7 +998,7 @@ function fitnessAgeReading(id: string, value: number | null, ctx: MetricContext)
     tips: picture.quickest
       ? [picture.quickest.tip]
       : pending
-        ? ['Aim for 75 or more vigorous minutes a week, for example two or three interval sessions.']
+        ? [VO2_VIGOROUS_TIP]
         : [],
     more: `${where} Garmin describes fitness age as an estimate, not your birthday and not a diagnosis.`,
     pending,

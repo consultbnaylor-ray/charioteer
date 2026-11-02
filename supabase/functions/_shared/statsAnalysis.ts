@@ -2,6 +2,7 @@
  * Summaries the stats analysis may send to xAI.
  * Raw samples, epoch slices, activity files, routes, and women's health are not fields here.
  */
+import { VO2_ANALYSIS_RULE } from './trainingGuidance.ts';
 
 export const ANALYSIS_STAT_IDS = [
   'steps',
@@ -113,7 +114,8 @@ export const STATS_ANALYSIS_PROMPT = [
   'Usual and No rating yet are not strengths and not levers.',
   'Then the things to improve. Lead with the largest goalGap, then the next, then Fair and Poor. Do not mention the same thing twice.',
   'For each, say why it matters and give one or two specific steps. Do not copy the range sentence, the rating word, or the tip already in the JSON.',
-  'When VO2 max has a goalGap, the steps are one or two sessions a week of four repeats of four minutes at about 85 to 95 percent of max heart rate, easy zone 2 on the other days, and a gain of a few ml/kg/min over months. VO2 max is the main input to fitness age.',
+  VO2_ANALYSIS_RULE,
+  'A high resting heart rate is easy aerobic work and walks, not the VO2 intervals. Short sleep keeps a steady wake time. Low steps are a short walk. Do not swap those.',
   'Say how the figures fit together and the order to work on them.',
   'Quote value. That is the recent average, or a total over the last 7 days when the range says so. Do not headline today.',
   'Do not list every stat at the end.',

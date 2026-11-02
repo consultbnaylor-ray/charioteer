@@ -22,6 +22,7 @@ import {
   type WorkoutBucket,
   type WorkoutBucketMap,
 } from './nutrition.ts';
+import { LOW_CARDIO_CONTEXT_LINE, VO2_CONTEXT_LINE, VO2_FOCUS_LINE, ZONE2_BESIDE_WORK } from './trainingGuidance.ts';
 
 export type FitnessLevel = 'Developing' | 'Steady' | 'Strong';
 
@@ -1229,6 +1230,7 @@ export function buildFitnessSnapshot(input: FitnessSnapshotInput): FitnessSnapsh
     guideline,
     hasWork: minutes > 0 || mixTotal > 0,
     belowGoal: gap.belowGoal,
+    belowAge: gap.belowAge,
   });
 
   const missing = missingLine({
@@ -1250,6 +1252,7 @@ export function buildFitnessSnapshot(input: FitnessSnapshotInput): FitnessSnapsh
     build: input.build ?? null,
     trendingDown: gap.trendingDown,
     cardioBehind: gap.behind,
+    vo2Short: gap.belowGoal || gap.belowAge,
   });
 
   return {
@@ -1697,6 +1700,7 @@ function recommend(input: {
   guideline?: number;
   hasWork: boolean;
   belowGoal: boolean;
+  belowAge: boolean;
 }): FitnessRecommendation[] {
   const lines: FitnessRecommendation[] = [];
   const add = (text: string, forFocus: boolean) => {
@@ -1715,9 +1719,14 @@ function recommend(input: {
   const lowCardio = cardioShare != null && cardioShare < 0.2 && input.strength > aerobic && input.total >= 30;
   const goal = input.goal;
   const boxer = isAnyBoxer(goal);
-  if (boxer && (lowCardio || input.belowGoal)) {
+  const vo2Short = input.belowGoal || input.belowAge;
+  if (vo2Short) {
+    add(VO2_FOCUS_LINE, true);
+    add(ZONE2_BESIDE_WORK, true);
+    if (boxer || goal === 'lose_fat_build_muscle') add(SLEEP_PROTEIN, true);
+  } else if (boxer && lowCardio) {
     add(EASY_BESIDE_BOXING, true);
-    if (lowCardio) add(SHORT_INTERVAL, true);
+    add(SHORT_INTERVAL, true);
     add(SLEEP_PROTEIN, true);
   } else if (goal === 'lose_fat_build_muscle' && lowCardio) {
     add(EASY_BESIDE_STRENGTH, true);
@@ -1830,6 +1839,7 @@ function contextFrom(input: {
   build: BodyBuild | null;
   trendingDown?: boolean;
   cardioBehind?: boolean;
+  vo2Short?: boolean;
 }): string | null {
   if (!input.level && input.minutes <= 0 && !input.recovery && !input.compare && input.build !== 'carrying_extra' && !input.cardioBehind) return null;
   const bits = ['Fitness snapshot, an estimate, not a medical assessment.'];
@@ -1842,11 +1852,9 @@ function contextFrom(input: {
   bits.push('Check with a doctor before big changes.');
   let line = bits.join(' ').replace(/\s+/g, ' ').trim();
   const extras = [
+    input.vo2Short ? VO2_CONTEXT_LINE : input.cardioBehind ? LOW_CARDIO_CONTEXT_LINE : null,
     input.trendingDown ? 'Cardio fitness is trending down.' : null,
-    input.cardioBehind
-      ? 'Add easy Zone 2 (bike, rower, brisk walk, or easy jog) and one short interval once a base is in place. Not a running plan.'
-      : null,
-    input.recommendation,
+    input.vo2Short ? null : input.recommendation,
     input.recovery ? input.recovery.replace(/\s+/g, ' ').trim() : null,
   ].filter((item): item is string => Boolean(item));
   for (const extra of extras) {

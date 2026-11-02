@@ -4,7 +4,8 @@ import { describe, expect, it } from 'vitest';
 
 import { emptyGarminReadings } from '@/domain/garminConnect';
 import { buildStatsAnalysis } from '@/domain/statsAnalysis';
-import { localStatsVerdict, sanitizeStatsAnalysis } from '../../supabase/functions/_shared/statsAnalysis.ts';
+import { STATS_ANALYSIS_PROMPT, localStatsVerdict, sanitizeStatsAnalysis } from '../../supabase/functions/_shared/statsAnalysis.ts';
+import { VO2_ANALYSIS_RULE } from '../../supabase/functions/_shared/trainingGuidance.ts';
 
 describe('stats analysis summaries', () => {
   it('sends ratings and summaries, and drops location, files, and women\'s health', () => {
@@ -197,7 +198,11 @@ describe('stats analysis summaries', () => {
     expect(prompt).toContain('Good or Excellent');
     expect(prompt).toContain('at most three');
     expect(prompt).toContain('goalGap');
-    expect(prompt).toContain('85 to 95 percent');
+    expect(prompt).toContain('VO2_ANALYSIS_RULE');
+    expect(STATS_ANALYSIS_PROMPT).toContain(VO2_ANALYSIS_RULE);
+    expect(VO2_ANALYSIS_RULE).toContain('85 to 95 percent');
+    expect(VO2_ANALYSIS_RULE).toContain('Helgerud');
+    expect(VO2_ANALYSIS_RULE).toMatch(/not the main way to raise VO2 max/);
     expect(prompt).toContain('not a strength');
     expect(prompt).not.toContain('Looked at');
     expect(prompt).toContain('Do not list every stat');
