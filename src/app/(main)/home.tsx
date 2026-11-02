@@ -284,7 +284,7 @@ export default function Home() {
       <Card>
         <IconLabel name="pulse">Health Stats</IconLabel>
         {healthHeadlines.length === 0 ? (
-          <T variant="muted">Not enough readings yet to compare this week with the one before.</T>
+          <T variant="muted">Not enough readings yet to compare the last 7 days with the 7 before.</T>
         ) : (
           healthHeadlines.map((line) => <T key={line}>{line}</T>)
         )}

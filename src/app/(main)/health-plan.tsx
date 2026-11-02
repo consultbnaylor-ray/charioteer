@@ -8,28 +8,19 @@ import { PLAN_NOT_SAVED } from '@/domain/edgeRetry';
 import { UserFacingError, shownError } from '@/domain/errors';
 import { PLAN_DISCLAIMER, togglePlanAction, type PlanAction } from '@/domain/healthPlan';
 import { planProgressFigure } from '@/domain/measureFigures';
-import { applyWeightAndBodyShare, communitySharingOn } from '@/domain/profileSharing';
 import { buildStatsOverview } from '@/domain/statsOverview';
 import { useStatPeriod } from '@/health/useStatPeriod';
 import { StatPeriodToggle } from '@/ui/StatPeriodToggle';
 import { GoalChoices } from '@/ui/GoalChoices';
-import { GoalWeightRange } from '@/ui/GoalWeightRange';
 import { ThumosStatsAnalysis } from '@/ui/ThumosStatsAnalysis';
-import { YourFitness } from '@/ui/YourFitness';
 import { useHealthSources } from '@/health/useHealthSources';
 import { planDayFromSessionText } from '@/domain/plannedSession';
 import { WorkoutsLink } from '@/ui/WorkoutsLink';
 import { YourGoal } from '@/ui/YourGoal';
 import { PlanTick } from '@/ui/PlanTick';
-import { ShareOnProfile } from '@/ui/ShareOnProfile';
 import { MeasureBarsView, MeasureRingView } from '@/ui/MeasuredFigure';
 import { StatTile } from '@/ui/StatTile';
 import { usePendingPress } from '@/ui/pendingAction';
-import { appleDayValues } from '@/domain/dailyActivity';
-import { londonDay } from '@/domain/healthInsights';
-import { garminStoredMark } from '@/domain/healthRefresh';
-import { MovementCharts } from '@/ui/DailyActivity';
-import { HealthRefreshBar, useManualHealthRefresh } from '@/ui/HealthRefresh';
 import { Button, Card, ErrorNote, Field, Screen, T } from '@/ui/ui';
 
 const PROGRESS_IDS = ['sober', 'mood', 'calories', 'protein', 'body', 'weight'];
@@ -61,8 +52,7 @@ export default function HealthPlanScreen() {
   const plan = snap.healthPlan;
   const [limits, setLimits] = useState(plan?.limits ?? '');
   const [error, setError] = useState<string | null>(null);
-  const { samples: mergedHealth, workouts, readings } = useHealthSources();
-  const manual = useManualHealthRefresh(readings.connected);
+  const { samples: mergedHealth, workouts } = useHealthSources();
   const limitsRef = useRef(limits);
   const planRef = useRef(plan);
   const queue = useRef(Promise.resolve());
@@ -75,7 +65,6 @@ export default function HealthPlanScreen() {
   }, [plan?.updatedAt]);
 
   if (!profile) return null;
-  const communityOn = communitySharingOn(profile);
 
   const tiles = buildStatsOverview({
     now: new Date(),
@@ -139,72 +128,10 @@ export default function HealthPlanScreen() {
       eyebrow="Thumos"
       title="Health Plan"
       intro="Thumos reads the figures you already keep and writes a short plan. It is not a diagnosis."
-      refreshing={manual.refreshing}
-      onRefresh={() => void manual.run()}
     >
       <ThumosStatsAnalysis />
-      <HealthRefreshBar
-        refreshing={manual.refreshing}
-        appleCheckedAt={manual.appleCheckedAt}
-        garminConnected={readings.connected}
-        garminReceivedAt={readings.lastPushAt}
-        garminMark={garminStoredMark(readings)}
-        error={manual.error}
-        permission={manual.permission}
-        history={manual.history}
-        garminNote={manual.garminNote}
-        onPress={() => void manual.run()}
-      />
-      <MovementCharts
-        endDay={londonDay(new Date())}
-        steps={appleDayValues(snap.health, 'steps')}
-        restingHeart={appleDayValues(snap.health, 'resting_heart_rate')}
-        dailies={readings.dailies}
-        sleep={readings.sleep}
-        respiration={readings.respiration}
-        pulseOx={readings.pulseOx}
-        hrv={readings.hrv}
-        appleHrvSdnn={appleDayValues(snap.health, 'hrv_sdnn')}
-        userMetrics={readings.userMetrics}
-        bloodPressure={readings.bloodPressure}
-        bodyComp={readings.bodyComp}
-        skinTemp={readings.skinTemp}
-        stress={readings.stress}
-        epochs={readings.epochs}
-        healthSnapshot={readings.healthSnapshot}
-        moveIq={readings.moveIq}
-        activityDetails={readings.activityDetails}
-        age={snap.nutrition.goalAge}
-        sex={snap.nutrition.goalSex}
-        goal={snap.nutrition.goal}
-        showVo2Chart={false}
-      />
       <GoalChoices />
       <YourGoal place="plan" />
-      <YourFitness onPlanOutdoor={() => router.push(`/workouts?planOutdoor=${Date.now()}` as never)} />
-      <View style={{ gap: 8 }}>
-        <ShareOnProfile
-          boxed
-          label="Share on profile"
-          item="Health plan"
-          sensitive
-          on={snap.sharing.healthPlan}
-          apply={(sharing, selected) => ({ ...sharing, healthPlan: selected })}
-        />
-        <T variant="muted">Other members see the goal, this week's focus, and how many are ticked.</T>
-        <ShareOnProfile
-          boxed
-          label="Share weight and body figures"
-          item="Weight and body figures"
-          sensitive
-          on={snap.sharing.shareBodyFigures}
-          apply={applyWeightAndBodyShare}
-        />
-        <T variant="muted">Other members see the weight average, and body fat, waist, or lean mass. Height stays private.</T>
-        {communityOn ? null : (
-          <T>Community is off. Other members can see what you share here only when Community is on.</T>
-        )}
-      </View>
       <ErrorNote>{error}</ErrorNote>
       {error ? <Button label="Try again" pending={refreshing} onPress={refresh} /> : null}
       {plan ? (
@@ -269,7 +196,6 @@ export default function HealthPlanScreen() {
           <MeasureBarsView label="By section" bars={progress.bars} />
         </Card>
       ) : null}
-      <GoalWeightRange />
       <Card>
         <T variant="label">Progress</T>
         <StatPeriodToggle />

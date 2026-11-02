@@ -417,7 +417,7 @@ describe('Garmin webhook mapping', () => {
     const rows = userMetricRowsFor(plan, new Map([['garmin1', 'user-1']]));
     expect(rows[0]).toMatchObject({ user_id: 'user-1', vo2_max: 46.2, fitness_age: 32 });
     expect(userMetricRowsFor(plan, new Map())).toEqual([]);
-    expect(GARMIN_BACKFILL_TYPES).toEqual(['dailies', 'activities', 'activityDetails', 'epochs', 'sleeps', 'bodyComps', 'stressDetails', 'userMetrics', 'pulseOx', 'respiration', 'healthSnapshot', 'hrv', 'bloodPressures', 'skinTemp', 'moveiq']);
+    expect(GARMIN_BACKFILL_TYPES).toEqual(['dailies', 'activities', 'activityDetails', 'epochs', 'sleeps', 'bodyComps', 'stressDetails', 'userMetrics', 'pulseox', 'respiration', 'healthSnapshot', 'hrv', 'bloodPressures', 'skinTemp', 'moveiq']);
     expect(garminBackfillUrl('dailies', 1, 2)).toContain('/backfill/dailies?summaryStartTimeInSeconds=1&summaryEndTimeInSeconds=2');
     expect(garminBackfillUrl('userMetrics', 1, 2)).not.toContain('activityDetails');
     expect(garminRefreshCooling('2026-10-22T11:59:30Z', Date.parse('2026-10-22T12:00:00Z'))).toBe(true);

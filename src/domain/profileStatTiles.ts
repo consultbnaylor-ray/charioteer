@@ -69,7 +69,7 @@ export function profileStatBoard(
     const on = sharing?.healthKinds.includes(metric.kind) === true;
     const tile = healthTile(view, metric.kind, metric.label, metric.chart);
     if (owner) {
-      if (on) tiles.push(tile ?? { id: metric.kind, label: metric.label, value: 'No readings this week', caption: '', chart: null });
+      if (on) tiles.push(tile ?? { id: metric.kind, label: metric.label, value: 'No readings in the last 7 days', caption: '', chart: null });
       else notShared.push(metric.label);
     } else if (tile) tiles.push(tile);
   }
@@ -229,8 +229,8 @@ function healthTile(
     return {
       id: kind,
       label,
-      value: average == null ? 'No readings this week' : formatHealthValue(kind, average),
-      caption: 'This week',
+      value: average == null ? 'No readings in the last 7 days' : formatHealthValue(kind, average),
+      caption: 'Last 7 days',
       chart: chartFor(shape, values),
     };
   }

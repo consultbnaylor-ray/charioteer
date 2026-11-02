@@ -94,7 +94,7 @@ export const GARMIN_BACKFILL_TYPES = [
   'bodyComps',
   'stressDetails',
   'userMetrics',
-  'pulseOx',
+  'pulseox',
   'respiration',
   'healthSnapshot',
   'hrv',

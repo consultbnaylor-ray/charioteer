@@ -175,7 +175,7 @@ describe('VO2 estimate note', () => {
     expect(calendar).toContain("setDurationText('30')");
     expect(calendar).toContain('nextSessionClock(today)');
     expect(readFileSync('src/app/(main)/workouts.tsx', 'utf8')).toContain('planOutdoorNonce={planOutdoorNonce}');
-    expect(plan).toContain('/workouts?planOutdoor=');
+    expect(plan).toContain('/workouts?planDay=');
     const health = readFileSync('src/app/(main)/health.tsx', 'utf8');
     expect(health).toContain('onPlanOutdoor={() => router.push(`/workouts?planOutdoor=${Date.now()}`');
     expect(health).toContain('/workouts?planOutdoor=');

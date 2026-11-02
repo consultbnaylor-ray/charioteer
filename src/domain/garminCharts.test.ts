@@ -70,7 +70,7 @@ describe('garmin charts follow the shared period', () => {
     expect(screen).not.toContain('seriesUsesGarmin');
     expect(screen).not.toContain('latitude');
     expect(screen).not.toContain('longitude');
-    for (const file of ['src/app/(main)/health.tsx', 'src/app/(main)/health-plan.tsx']) {
+    for (const file of ['src/app/(main)/health.tsx']) {
       const source = readFileSync(file, 'utf8');
       const start = source.indexOf('<MovementCharts');
       const block = source.slice(start, source.indexOf('/>', start));
@@ -78,7 +78,7 @@ describe('garmin charts follow the shared period', () => {
       expect(block).toContain('userMetrics={readings.userMetrics}');
     }
     expect(readFileSync('src/app/(main)/health.tsx', 'utf8')).toContain('showVo2Chart={false}');
-    expect(readFileSync('src/app/(main)/health-plan.tsx', 'utf8')).toContain('showVo2Chart={false}');
+    expect(readFileSync('src/app/(main)/health-plan.tsx', 'utf8')).not.toContain('<MovementCharts');
     expect(readFileSync('src/ui/YourFitness.tsx', 'utf8')).toContain('<Vo2MaxChart');
     expect(readFileSync('src/ui/DailyActivity.tsx', 'utf8')).toContain("chart.id !== 'vo2'");
     expect(readFileSync('src/ui/DailyActivity.tsx', 'utf8')).toContain('span={span}');
@@ -282,8 +282,9 @@ describe('garmin chart bands', () => {
     expect(byId.get('hrv')?.guide.ownAverage?.value).toBe(50);
     expect(byId.get('hrv')?.guide.about).toContain('RMSSD');
     expect(byId.get('hrv')?.guide.about).toContain('SDNN');
-    expect(byId.get('hrv')?.guide.about).toContain('Nunan, Sandercock and Brodie, 2010');
-    expect(byId.get('hrv')?.guide.about).toContain('Not medical advice');
+    expect(byId.get('hrv')?.guide.about).toContain('42 ms');
+    expect(byId.get('hrv')?.guide.rating?.where).toContain('better recovery');
+    expect(byId.get('hrv')?.guide.rating?.source).toContain('Nunan, Sandercock and Brodie, 2010');
     expect(byId.get('hrv')?.title).toContain('Garmin overnight RMSSD');
     expect(byId.get('hrv')?.guide.legend).toBe('');
     const longer = garminDetailCharts({

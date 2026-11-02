@@ -356,7 +356,7 @@ describe('daily activity', () => {
     expect(charts).toContain('openAppSettings()');
     expect(readFileSync('src/app/(main)/workouts.tsx', 'utf8')).toContain('exercisePermissionMissing(visibility)');
     expect(readFileSync('src/app/(main)/health.tsx', 'utf8')).toContain('<MovementCharts');
-    expect(readFileSync('src/app/(main)/health-plan.tsx', 'utf8')).toContain('<MovementCharts');
+    expect(readFileSync('src/app/(main)/health-plan.tsx', 'utf8')).not.toContain('<MovementCharts');
     expect(charts).toContain('Not medical advice. Not a diagnosis.');
     expect(charts).toContain('numberOfLines={1}');
     expect(charts).toContain('activityAxisPlan');

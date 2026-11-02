@@ -115,7 +115,7 @@ const GARMIN_SLEEP = 'Garmin sleep-score bands published with Garmin Connect: Ex
 const NHS_REST = 'NHS and British Heart Foundation usual adult resting rate, 60–100 bpm. A trained resting rate is often about 40–60 bpm in sports-medicine texts (ACSM). That is a typical range, not a diagnosis.';
 const KAMINSKY = 'Kaminsky, Arena, and Myers, Mayo Clinic Proceedings, 2015. FRIEND treadmill percentiles, ages 20–79.';
 const NUNAN_SDNN = `Nunan, Sandercock and Brodie, 2010. Short-term SDNN study averages ${NUNAN_SDNN_LOW}–${NUNAN_SDNN_HIGH} ms, overall mean about ${NUNAN_SDNN_MEAN} ms. Not split by sex. Not a clinical cutoff.`;
-const NUNAN_RMSSD = 'Nunan, Sandercock and Brodie, 2010. Short-term RMSSD study means clustered around 42 ms and were not split by sex. It tends to fall with age. A rough guide, not a cutoff, and not averaged with SDNN.';
+const NUNAN_RMSSD = 'Nunan, Sandercock and Brodie, 2010. Short-term RMSSD averages were about 42 ms.';
 const CMO = `UK Chief Medical Officers: at least ${CMO_MODERATE_MINUTES_WEEK} moderate minutes a week, or ${CMO_VIGOROUS_MINUTES_WEEK} vigorous minutes.`;
 const NHS_BP = 'NHS, high blood pressure: ideal is about 90/60 to 120/80 mmHg (https://www.nhs.uk/conditions/high-blood-pressure/).';
 const NHS_BMI = `NHS / NICE NG246 healthy-weight BMI ${NICE_BMI_HEALTHY_MIN}–${NICE_BMI_HEALTHY_MAX}. A muscular build can sit higher. Not a diagnosis.`;
@@ -265,6 +265,13 @@ function stepBand(age: number | null): { low: number; high: number; why: string 
   if (age != null && age >= 60) return { low: 6000, high: 8000, why: 'Paluch 2022 for age 60 or over' };
   if (age != null && age < 60) return { low: 8000, high: 10000, why: 'Paluch 2022 for under 60' };
   return { low: 7000, high: 10000, why: 'the wider adult span used when age is not set' };
+}
+
+function spanPhrase(ctx: MetricContext): string {
+  const days = ctx.windowDays != null && ctx.windowDays > 0 ? Math.round(ctx.windowDays) : 7;
+  if (days <= 1) return 'today';
+  if (days === 7) return 'in the last 7 days';
+  return `in the last ${days} days`;
 }
 
 function scaled(weekly: number, ctx: MetricContext): number {
@@ -422,7 +429,7 @@ function rateMinutes(id: string, value: number | null, ctx: MetricContext, weekl
       ? `${sport}: these minutes meet the general weekly guide. A sport plan can still ask for more.`
       : `${sport}: these minutes are under the general weekly guide of about ${aim} in this window.`
     : null;
-  const where = `${Math.round(value)} ${noun}. The guide for this window is about ${aim} minutes, from ${weekly} a week. ${ageNote(ctx)}`;
+  const where = `${Math.round(value)} ${noun} ${spanPhrase(ctx)}. The guide for that span is about ${aim} minutes, from ${weekly} a week. ${ageNote(ctx)}`;
   return made(id, CMO, label, where, { goalLine, tips: MOVE_TIPS, more: where });
 }
 
@@ -430,7 +437,7 @@ function rateHrvSdnn(id: string, value: number | null, ctx: MetricContext): Metr
   if (value == null || value <= 0) return blank(id, NUNAN_SDNN, 'No Apple Health SDNN in this window. This is not Garmin RMSSD.');
   const ms = Math.round(value);
   const label: MetricRatingLabel = ms >= NUNAN_SDNN_LOW ? 'Good' : 'Fair';
-  const where = `${ms} ms SDNN. Study averages ran from ${NUNAN_SDNN_LOW} to ${NUNAN_SDNN_HIGH} ms, mean about ${NUNAN_SDNN_MEAN}. A higher figure is not marked down. That spread is not a personal target and not an age table.${usualClause(ms, ctx.ownUsual, 'ms')} Apple Health HRV is SDNN. Garmin overnight HRV is RMSSD. They are not averaged together.`;
+  const where = `Higher heart-rate variability generally means better recovery. A rough adult spread is about ${NUNAN_SDNN_LOW}–${NUNAN_SDNN_HIGH} ms. This reading is ${ms} ms. Source: Apple Health SDNN. Not the same measure as Garmin overnight HRV.`;
   return made(id, NUNAN_SDNN, label, where, {
     tips: [
       'A steady bedtime and a full night move HRV more than one evening’s trick.',
@@ -441,7 +448,7 @@ function rateHrvSdnn(id: string, value: number | null, ctx: MetricContext): Metr
 }
 
 function rateHrvRmssd(id: string, value: number | null, ctx: MetricContext): MetricReading {
-  if (value == null || value <= 0) return blank(id, NUNAN_RMSSD, `${NUNAN_RMSSD} This is not mixed with Apple SDNN.`, {
+  if (value == null || value <= 0) return blank(id, NUNAN_RMSSD, 'No overnight HRV yet. Higher overnight HRV generally means better recovery. Source: Garmin overnight HRV.', {
     tips: [
       'Keep the next night’s sleep long enough, and make the training day easier if this keeps dropping.',
       'One low night is common. The trend over a fortnight matters more.',
@@ -449,10 +456,10 @@ function rateHrvRmssd(id: string, value: number | null, ctx: MetricContext): Met
   });
   const ms = Math.round(value);
   const usual = ctx.ownUsual;
-  let label: MetricRatingLabel = 'Usual';
+  let label: MetricRatingLabel = ms >= 35 ? 'Good' : 'Fair';
   if (usual != null && ms < usual * 0.75) label = 'Fair';
   else if (usual != null && ms >= usual * 0.9) label = 'Good';
-  const where = `${ms} ms RMSSD. ${NUNAN_RMSSD}${usualClause(ms, usual, 'ms')} This is not mixed with Apple SDNN.`;
+  const where = `Higher overnight HRV generally means better recovery. A rough adult average is about 42 ms, and it tends to fall with age. This reading is ${ms} ms. Source: Garmin overnight HRV. Not the same measure as Apple SDNN.`;
   return made(id, NUNAN_RMSSD, label, where, {
     tips: [
       'Keep the next night’s sleep long enough, and make the training day easier if this keeps dropping.',
@@ -945,7 +952,7 @@ function fitnessPicture(ctx: MetricContext): {
       ranked.push({ name: 'Vigorous intensity minutes', gap: (CMO_VIGOROUS_MINUTES_WEEK - minutes) / CMO_VIGOROUS_MINUTES_WEEK, tip: 'Aim for 75 or more vigorous minutes a week, for example two or three interval sessions.', gapText: vigorousGap });
     } else vigorousGap = 'On the 75-minute line.';
   }
-  const vigorousValue = ctx.vigorousWeek != null && Number.isFinite(ctx.vigorousWeek) ? `${Math.round(ctx.vigorousWeek)} this week` : 'not stored yet';
+  const vigorousValue = ctx.vigorousWeek != null && Number.isFinite(ctx.vigorousWeek) ? `${Math.round(ctx.vigorousWeek)} in the last 7 days` : 'not stored yet';
 
   ranked.sort((left, right) => right.gap - left.gap);
   const quickest = ranked[0] ?? null;

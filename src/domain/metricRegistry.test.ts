@@ -139,7 +139,7 @@ describe('metric registry', () => {
     const ids = charts.map((chart) => chart.id);
     expect(ids).toEqual(expect.arrayContaining([
       'stress', 'body_battery_charged', 'sleep_score', 'sleep_duration', 'respiration', 'pulse_ox', 'hrv', 'vo2',
-      'fitness_age', 'stress_detail', 'skin_temp', 'blood_pressure', 'diastolic', 'body_fat', 'bmi',
+      'fitness_age', 'skin_temp', 'blood_pressure', 'diastolic', 'body_fat', 'bmi',
       'snapshot_heart', 'epoch_minutes', 'move_iq', 'activity_detail',
     ]));
     for (const chart of charts) {

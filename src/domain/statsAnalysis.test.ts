@@ -92,7 +92,7 @@ describe('stats analysis summaries', () => {
     });
     expect(mixed).toContain('reasonable');
     expect(mixed).toContain('Strengths: Steps 9000');
-    expect(mixed).toContain('Looked at: Steps, Sleep score, Stress');
+    expect(mixed).not.toContain('Looked at');
     expect(mixed).not.toMatch(/invent/);
     const strong = localStatsVerdict({
       age: 45,
@@ -105,7 +105,7 @@ describe('stats analysis summaries', () => {
       ],
     });
     expect(strong).toContain('strong');
-    expect(strong).toContain('Looked at:');
+    expect(strong).not.toContain('Looked at');
     const mostlyPoor = localStatsVerdict({
       age: 45,
       sex: 'male',
@@ -143,8 +143,9 @@ describe('stats analysis summaries', () => {
     expect(readFileSync('src/ui/ConsentChoices.tsx', 'utf8')).toContain('women\'s health are not sent');
     const prompt = readFileSync('supabase/functions/_shared/statsAnalysis.ts', 'utf8');
     expect(prompt).toContain('Good or Excellent');
-    expect(prompt).toContain('Looked at:');
-    expect(prompt).toContain('Do not skip one');
+    expect(prompt).toContain('at most three');
+    expect(prompt).not.toContain('Looked at');
+    expect(prompt).toContain('Do not list every stat');
     expect(ui).toContain('THUMOS_ANALYSIS_CAVEAT');
     expect(ui).not.toContain('VISIBLE_SAFETY_LINE');
     expect(ui).not.toContain('OUTSIDE_CRISIS_LINE');

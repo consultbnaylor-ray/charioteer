@@ -143,7 +143,6 @@ describe('manual health refresh', () => {
   it('puts the control at the top of Health, Workouts, and Fitness', () => {
     for (const path of [
       'src/app/(main)/health.tsx',
-      'src/app/(main)/health-plan.tsx',
       'src/app/(main)/workouts.tsx',
     ]) {
       const source = readFileSync(path, 'utf8');
@@ -152,14 +151,14 @@ describe('manual health refresh', () => {
       expect(source.indexOf('<HealthRefreshBar'), path).toBeLessThan(source.indexOf('<HealthRefreshBar') + 20);
     }
     const plan = readFileSync('src/app/(main)/health-plan.tsx', 'utf8');
-    expect(plan.indexOf('<HealthRefreshBar')).toBeLessThan(plan.indexOf('<GoalChoices'));
+    expect(plan).not.toContain('<HealthRefreshBar');
     expect(plan.indexOf('variant="label">Fitness')).toBeLessThan(plan.indexOf('<WorkoutsLink'));
     expect(plan.indexOf('<WorkoutsLink')).toBeLessThan(plan.indexOf('variant="label">Wellbeing'));
     expect(readFileSync('src/ui/WorkoutsLink.tsx', 'utf8')).toContain('Workouts: see your workout calendar and history');
     expect(workoutWeekSummary(
       [{ startedAt: '2026-10-21T07:00:00Z', durationMinutes: 30 }],
       '2026-10-23',
-    )).toBe('This week: 1 workout, 30 min');
+    )).toBe('This calendar week: 1 workout, 30 min');
     const bar = readFileSync('src/ui/HealthRefresh.tsx', 'utf8');
     expect(bar).toContain('refreshAppleHealth');
     expect(bar).toContain('consentHealth');
@@ -198,7 +197,6 @@ describe('manual health refresh', () => {
     expect(check).not.toContain('garmin-refresh');
     for (const path of [
       'src/app/(main)/health.tsx',
-      'src/app/(main)/health-plan.tsx',
       'src/app/(main)/workouts.tsx',
     ]) {
       expect(readFileSync(path, 'utf8'), path).toContain('garminMark={garminStoredMark(readings)}');
@@ -253,7 +251,6 @@ describe('manual health refresh', () => {
     expect(Number(buildNumber)).toBeGreaterThanOrEqual(71);
     for (const path of [
       'src/app/(main)/health.tsx',
-      'src/app/(main)/health-plan.tsx',
       'src/app/(main)/workouts.tsx',
     ]) {
       const source = readFileSync(path, 'utf8');

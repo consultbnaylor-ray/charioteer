@@ -169,7 +169,7 @@ export const VO2_WHAT =
   'VO2 max: how much oxygen your body can use at full effort, per kg of body weight per minute. Apple Watch estimates it.';
 
 export const MINUTES_WHAT =
-  'These are the minutes of workouts logged this week. They are not moderate minutes and not vigorous minutes. The UK Chief Medical Officers recommend at least 150 minutes of moderate activity a week, or 75 minutes of vigorous activity. This app cannot tell how hard the logged minutes were. Not medical advice. Not a diagnosis.';
+  'These are the minutes of workouts logged in the days shown. They are not moderate minutes and not vigorous minutes. The UK Chief Medical Officers recommend at least 150 minutes of moderate activity a week, or 75 minutes of vigorous activity. This app cannot tell how hard the logged minutes were. Not medical advice. Not a diagnosis.';
 
 export const RESTING_WHAT =
   'Resting heart rate: how many times your heart beats in a minute while you are at rest. The unit is bpm.';
@@ -1831,7 +1831,7 @@ function contextFrom(input: {
   }
   if (input.compare) bits.push(input.compare);
   else if (input.level) bits.push(`Level ${input.level}${input.vo2 != null ? `, cardio fitness about ${round1(input.vo2)} ml/kg/min` : ''}.`);
-  if (input.minutes > 0) bits.push(`${Math.round(input.minutes)} active minutes this week.`);
+  if (input.minutes > 0) bits.push(`${Math.round(input.minutes)} active minutes in the period shown.`);
   bits.push('Check with a doctor before big changes.');
   let line = bits.join(' ').replace(/\s+/g, ' ').trim();
   const extras = [

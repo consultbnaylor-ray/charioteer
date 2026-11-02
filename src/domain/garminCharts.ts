@@ -492,9 +492,9 @@ export const APPLE_HRV_EMPTY = 'Apple Health HRV comes from Apple Watch.';
 
 function hrvGuide(period: StatPeriod, points: readonly GarminChartPoint[]): ChartGuide {
   const mean = averageOf(points.flatMap((point) => (point.empty || point.value == null ? [] : [point.value])));
-  const own = mean == null ? null : { value: mean, label: `Your average Garmin overnight HRV (RMSSD) ${grouped(period)}: ${Math.round(mean)} ms` };
+  const own = mean == null ? null : { value: mean, label: `Your average Garmin overnight HRV ${grouped(period)}: ${Math.round(mean)} ms` };
   return advised(
-    `Garmin overnight HRV is the average RMSSD, in milliseconds, from last night's sleep. ${HRV_MEASURES_DIFFER} ${HRV_SDNN_RANGE} The line on this card is your own RMSSD average for ${grouped(period)}, not that SDNN range.`,
+    `Garmin overnight HRV is last night's RMSSD. A 2010 review found short-term averages around 42 ms. It is not Apple's SDNN.`,
     { ownAverage: own },
   );
 }
@@ -504,7 +504,7 @@ export function sdnnGuide(period: StatPeriod, points: readonly { value: number; 
   const own = mean == null ? null : { value: mean, label: `Your average Apple Health SDNN ${grouped(period)}: ${Math.round(mean)} ms` };
   const stats = seriesStats(points);
   return withMetric(advised(
-    `Apple Health heart rate variability is SDNN, the spread of time between beats, in milliseconds. ${HRV_MEASURES_DIFFER} ${HRV_SDNN_RANGE}`,
+    `Apple Health HRV is SDNN. A 2010 review found short-term averages from about 32 to 93 ms. It is not Garmin's overnight RMSSD.`,
     { ownAverage: own },
   ), 'hrv_sdnn', stats.latest, fillMetricContext({ ...ctx, ownUsual: stats.usual }, period));
 }
@@ -695,6 +695,10 @@ export function garminDetailCharts(input: GarminChartInput): GarminDetailChart[]
     remember(highest, daily.calendarDate, finite(daily.bodyBatteryHighest, true) == null ? null : Math.round(daily.bodyBatteryHighest ?? 0));
     remember(lowest, daily.calendarDate, finite(daily.bodyBatteryLowest, true) == null ? null : Math.round(daily.bodyBatteryLowest ?? 0));
   }
+  for (const row of byDay(input.stress ?? [])) {
+    if (stress.has(row.calendarDate)) continue;
+    remember(stress, row.calendarDate, finite(row.averageStress, true) == null ? null : Math.round(row.averageStress ?? 0));
+  }
   const sleepScore = new Map<string, number>();
   const sleepHours = new Map<string, number>();
   for (const night of byDay(input.sleep)) {
@@ -831,7 +835,6 @@ export function garminDetailCharts(input: GarminChartInput): GarminDetailChart[]
     remember(fitnessAge, row.calendarDate, finite(row.fitnessAge, false) == null ? null : Math.round(row.fitnessAge ?? 0));
   }
   add(metricChart(input, 'fitness_age', 'Fitness age', 'years', fitnessAge, 'Fitness age is Garmin\'s estimate of fitness compared with age. It is not your birthday and not a diagnosis.'));
-  add(metricChart(input, 'stress_detail', 'Stress details', 'score', dailyNumber(input.stress ?? [], (row) => row.averageStress), 'Stress details are Garmin\'s stress samples through the day, averaged here. 0–25 is Garmin\'s resting band. Not medical advice.', { low: 0, high: 25 }));
   add(metricChart(input, 'skin_temp', 'Skin temperature', '°C', dailyNumber(input.skinTemp ?? [], (row) => row.deviationC, true), 'Skin temperature is how far Garmin\'s overnight reading sat from your usual skin temperature, in °C. The band is about 1 degree either side of usual. Not medical advice.', { low: -1, high: 1 }, true));
   add(metricChart(input, 'blood_pressure', 'Blood pressure', 'mmHg', dailyNumber(input.bloodPressure ?? [], (row) => row.systolic), 'Blood pressure here is the systolic reading Garmin stored, in mmHg. The band is a general adult reference of 90–120. Diastolic is a separate number and is not mixed into this bar. Not medical advice.', { low: 90, high: 120 }));
   add(metricChart(input, 'diastolic', 'Diastolic pressure', 'mmHg', dailyNumber(input.bloodPressure ?? [], (row) => row.diastolic), 'Diastolic pressure is the lower Garmin blood-pressure number, in mmHg. The band is a general adult reference of 60–80. It is not averaged with systolic. Not medical advice.', { low: 60, high: 80 }));
@@ -903,7 +906,6 @@ export const GARMIN_CARD_CATALOGUE: readonly { id: string; title: string; unit: 
   { id: 'hrv', title: 'Heart rate variability', unit: 'ms', line: GARMIN_HRV_EMPTY },
   { id: 'vo2', title: 'VO2 max', unit: 'ml/kg/min', line: 'VO2 max is Garmin\'s running estimate. It appears after a qualifying activity syncs.' },
   { id: 'fitness_age', title: 'Fitness age', unit: 'years', line: 'Fitness age is Garmin\'s estimate beside VO2 max. It appears after a sync.' },
-  { id: 'stress_detail', title: 'Stress details', unit: 'score', line: 'Stress details are Garmin\'s stress samples through the day. They appear after a sync.' },
   { id: 'skin_temp', title: 'Skin temperature', unit: '°C', line: 'Skin temperature is Garmin\'s overnight change from your usual temperature.', signed: true },
   { id: 'blood_pressure', title: 'Blood pressure', unit: 'mmHg', line: 'Blood pressure is a Garmin cuff or watch reading. It appears after that reading syncs.' },
   { id: 'diastolic', title: 'Diastolic pressure', unit: 'mmHg', line: 'Diastolic pressure is the lower Garmin blood-pressure number. It is not mixed into the systolic card.' },

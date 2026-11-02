@@ -486,10 +486,10 @@ function weekLine(kind: HealthInsightKind, points: DayValue[], today: string): s
   const subject = SUBJECT[kind];
   const plural = kind === 'steps' || kind === 'workout_minutes';
   if (Math.abs(percent) < PERSONAL_CHANGE_QUIET_PERCENT) {
-    return `${subject} ${plural ? 'are' : 'is'} about the same as last week`;
+    return `${subject} ${plural ? 'are' : 'is'} about the same as the previous 7 days`;
   }
   const verb = percent > 0 ? 'up' : 'down';
-  return `${subject} ${verb} ${Math.abs(percent)}% on last week`;
+  return `${subject} ${verb} ${Math.abs(percent)}% on the previous 7 days`;
 }
 
 function streakLine(kind: HealthInsightKind, points: DayValue[], today: string): string | null {
@@ -623,8 +623,8 @@ function restingFlags(points: DayValue[], today: string): HealthFlag[] {
       flags.push({
         id: 'resting_rise',
         kind: 'resting_heart_rate',
-        headline: `Resting heart rate is ${shown} bpm higher than last week.`,
-        detail: `Your resting heart rate is averaging ${shown} bpm higher than last week. That compares your own readings, not a published cutoff. A usual adult resting rate is about 60 to 100 bpm (Royal Papworth NHS). ${NOT_ADVICE}`,
+        headline: `Resting heart rate is ${shown} bpm higher than the previous 7 days.`,
+        detail: `Your resting heart rate is averaging ${shown} bpm higher than the previous 7 days. That compares your own readings, not a published cutoff. A usual adult resting rate is about 60 to 100 bpm (Royal Papworth NHS). ${NOT_ADVICE}`,
         step: HEART_STEP,
         sourceName: 'Royal Papworth NHS',
         sourceUrl: PAPWORTH_URL,

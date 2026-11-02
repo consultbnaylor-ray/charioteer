@@ -189,7 +189,7 @@ function mapBodyComp(row: Record<string, unknown>): Pushed<GarminBodyComp> | nul
 function mapSkinTemp(row: Record<string, unknown>): Pushed<GarminSkinTemp> | null {
   const base = identity(row);
   if (!base) return null;
-  const deviation = bounded(row.avgDeviationCelsius ?? row.averageDeviationInCelsius, -10, 10);
+  const deviation = bounded(row.avgDeviationCelsius ?? row.averageDeviationInCelsius ?? row.deviationInCelsius, -10, 10);
   if (deviation == null) return null;
   return { ...base, deviationC: Math.round(deviation * 10) / 10 };
 }
@@ -206,7 +206,8 @@ function mapStress(row: Record<string, unknown>): Pushed<GarminStressDetail> | n
 
 function mapEpoch(row: Record<string, unknown>): Pushed<GarminEpoch> | null {
   const garminUserId = ident(row.userId);
-  const summaryId = ident(row.summaryId);
+  const start = bounded(row.startTimeInSeconds, 1, 4_000_000_000);
+  const summaryId = ident(row.summaryId) || (start == null ? '' : `epoch-${Math.round(start)}`);
   const calendarDate = day(row.calendarDate) ?? dateFromSeconds(row.startTimeInSeconds);
   if (!garminUserId || !summaryId || !calendarDate) return null;
   return {
@@ -247,7 +248,7 @@ function mapMoveIq(row: Record<string, unknown>): Pushed<GarminMoveIq> | null {
   return {
     ...base,
     activityType,
-    durationSeconds: whole(row.durationInSeconds, 0, 86_400),
+    durationSeconds: whole(row.durationInSeconds ?? row.duration, 0, 86_400),
     distanceMetres: whole(row.distanceInMeters, 0, 500_000),
   };
 }
@@ -285,7 +286,7 @@ function snapshotAverages(value: unknown): { heart: number | null; resting: numb
     const row = record(item);
     if (!row) continue;
     const kind = text(row.summaryType).toLowerCase();
-    const average = bounded(row.avgValue ?? row.average, 0, 300);
+    const average = bounded(row.avgValue ?? row.average ?? row.value, 0, 300);
     if (average == null) continue;
     if (kind.includes('resting')) found.resting = average;
     else if (kind.includes('heart')) found.heart = average;

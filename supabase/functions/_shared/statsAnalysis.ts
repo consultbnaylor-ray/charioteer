@@ -98,17 +98,18 @@ export type StatsAnalysisPayload = {
 };
 
 export const STATS_ANALYSIS_PROMPT = [
-  'Write a plain overview that considers every stat in the JSON. Do not skip one.',
-  'Open with one overall verdict against a healthy person of this age. If a sport goal is set, name that aim.',
+  'Write a plain overview from the JSON only. Do not invent numbers.',
+  'Open with one overall verdict against a healthy person of this age. Name the sport goal when one is set.',
   'If most ratings are Poor, say so plainly. Do not soften it.',
-  'If the picture is mixed, say the health looks reasonable for their age and that improvements could be made, as covered below and throughout the app.',
+  'If the picture is mixed, say it looks reasonable for their age and that improvements could be made.',
   'If the ratings are mostly Good or Excellent, say it looks strong and to keep up the good work.',
-  'Then name the genuine strengths: only stats rated Good or Excellent, each with its value. If none are Good or Excellent, do not invent a strength.',
+  'Then one short strengths line. Name at most three stats rated Good or Excellent, with their values. If none are, do not invent a strength.',
   'Usual and No rating yet are not strengths and not levers.',
-  'Then name the two or three biggest levers among Fair and Poor, each with its value and its one tip. Do not add a tip that is not in the JSON.',
-  'Quote value. That is the recent daily average, or a weekly total when the range is a week. Do not headline today. Mention today only when it is present, and say the day is still in progress.',
-  'Close with Looked at: and then every stat name in the list.',
-  'Use only the JSON. Do not invent numbers or praise.',
+  'Then the things to improve, Fair and Poor first, ranked from the largest gap for health and the sport goal down to the smaller ones.',
+  'For each, say why it matters and give one or two specific steps. Do not copy the range sentence, the rating word, or the tip already in the JSON.',
+  'Say how the figures fit together and the order to work on them.',
+  'Quote value. That is the recent average, or a total over the last 7 days when the range says so. Do not headline today.',
+  'Do not list every stat at the end.',
   'Do not diagnose. Do not predict how long the person will live. Do not mention location or women\'s health.',
   'Do not write a medical caveat. The app shows that line.',
 ].join(' ');
@@ -135,27 +136,25 @@ export function localStatsVerdict(payload: StatsAnalysisPayload): string {
   const goal = payload.goal ? ` The saved aim is ${payload.goal}.` : '';
   const poor = payload.stats.filter((stat) => stat.rating === 'Fair' || stat.rating === 'Poor');
   const good = payload.stats.filter((stat) => stat.rating === 'Good' || stat.rating === 'Excellent');
-  const looked = payload.stats.map(statName).join(', ');
-  const lookedLine = looked ? ` Looked at: ${looked}.` : '';
   const strengthLine = good.length
-    ? ` Strengths: ${good.map((stat) => `${statName(stat)}${figureOf(stat)}`).join(', ')}.`
+    ? ` Strengths: ${good.slice(0, 3).map((stat) => `${statName(stat)}${figureOf(stat)}`).join(', ')}.`
     : '';
-  const leverLine = poor.slice(0, 3).map((stat) => {
-    const tip = stat.tip ? ` ${stat.tip}` : '';
-    return `${statName(stat)}${figureOf(stat)} (${stat.rating}).${tip}`;
-  }).join(' ');
+  const leverLine = [...poor].sort((left, right) => (left.rating === right.rating ? 0 : left.rating === 'Poor' ? -1 : 1))
+    .slice(0, 3)
+    .map((stat) => `${statName(stat)}${figureOf(stat)}`)
+    .join(', ');
   if (good.length + poor.length === 0) {
-    return `There are not enough rated readings yet for an overall view${age}.${goal}${lookedLine}`.replace(/\s+/g, ' ').trim();
+    return `There are not enough rated readings yet for an overall view${age}.${goal}`.replace(/\s+/g, ' ').trim();
   }
   if (poor.length > good.length && poor.length >= 3) {
-    const levers = leverLine ? ` The biggest levers are ${leverLine}` : '';
-    return `Most of these ratings are Poor or Fair${age}.${goal}${strengthLine}${levers}${lookedLine}`.replace(/\s+/g, ' ').trim();
+    const levers = leverLine ? ` Work on ${leverLine}, in that order.` : '';
+    return `Most of these ratings are Poor or Fair${age}.${goal}${strengthLine}${levers}`.replace(/\s+/g, ' ').trim();
   }
   if (good.length >= 3 && poor.length === 0) {
-    return `Your overall health looks strong${age}.${goal}${strengthLine} Keep up the good work.${lookedLine}`.replace(/\s+/g, ' ').trim();
+    return `Your overall health looks strong${age}.${goal}${strengthLine} Keep up the good work.`.replace(/\s+/g, ' ').trim();
   }
-  const levers = leverLine ? ` The biggest levers are ${leverLine}` : '';
-  return `Your overall health looks reasonable${age}, but improvements could be made, as covered below and throughout the app.${goal}${strengthLine}${levers}${lookedLine}`.replace(/\s+/g, ' ').trim();
+  const levers = leverLine ? ` Work on ${leverLine}, in that order.` : '';
+  return `Your overall health looks reasonable${age}, but improvements could be made.${goal}${strengthLine}${levers}`.replace(/\s+/g, ' ').trim();
 }
 
 function finite(value: unknown): number | null {
