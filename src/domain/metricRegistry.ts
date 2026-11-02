@@ -13,6 +13,7 @@ import {
   NUNAN_SDNN_HIGH,
   NUNAN_SDNN_LOW,
   NUNAN_SDNN_MEAN,
+  specificAim,
   zonePlace,
   intensityZones,
 } from '@/domain/healthBands';
@@ -859,8 +860,8 @@ function fitnessPicture(ctx: MetricContext): {
   const boxing = boxerVo2Band(ctx.goal, ctx.sex);
   const ranked: { name: string; gap: number; tip: string; gapText: string }[] = [];
 
-  const vo2Range = boxing
-    ? `Typical for this goal: ${boxing.low}–${boxing.high} ml/kg/min.`
+  const vo2Range = boxing && sport
+    ? `Typical for ${specificAim(sport)}: ${boxing.low}–${boxing.high} ml/kg/min.`
     : cardio
       ? `Healthy for your age and sex: ${cardio.low}–${cardio.high} ml/kg/min (25th to 75th percentile).`
       : 'Set age and sex to see the healthy range.';

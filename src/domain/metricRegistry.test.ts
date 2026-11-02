@@ -207,6 +207,7 @@ describe('metric registry', () => {
     expect(cruiser.why?.sources).toContain('10.1001/jama.2009.681');
     expect(cruiser.caveat).toBe(METRIC_CAVEAT);
     expect(cruiser.inputs?.find((line) => line.name === 'VO2 max')?.detail).toContain('42');
+    expect(cruiser.inputs?.find((line) => line.name === 'VO2 max')?.detail).toContain('Typical for a cruiserweight boxer');
     expect(cruiser.inputs?.find((line) => line.name === 'Body fat')?.detail).toContain('18');
     const epochs = readingFor('epoch_minutes', 346, { ...EMPTY_METRIC_CONTEXT, ownUsual: 300 });
     expect(epochs.where).toContain('346');
