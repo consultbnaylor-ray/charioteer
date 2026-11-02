@@ -1,4 +1,5 @@
 /** Private gratitude diary. A catalogue of helpers shared by the app and Thumos. */
+import { londonDay } from './healthInsights.ts';
 
 export const GRATITUDE_CATEGORIES = ['People', 'Health', 'Progress', 'Small joys', 'Nature', 'Other'] as const;
 
@@ -57,10 +58,38 @@ export function gratitudeCountLabel(count: number): string {
   return `You have recorded ${count} things to be grateful for so far`;
 }
 
+/**
+ * The diary day is the saved calendar date, read in Europe/London.
+ * A timestamp is not sliced as UTC. An edit does not move the day: updatedAt is ignored.
+ */
+export function gratitudeDiaryDay(entry: { entryDate?: string | null; createdAt?: string | null }): string {
+  const raw = (entry.entryDate ?? '').trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw;
+  if (raw && !Number.isNaN(Date.parse(raw))) return londonDay(raw);
+  const created = (entry.createdAt ?? '').trim();
+  if (created && !Number.isNaN(Date.parse(created))) return londonDay(created);
+  return '1970-01-01';
+}
+
+/** 2 November 2026. A date-only value stays that calendar day in the UK, including near midnight. */
+export function formatGratitudeHeader(value: string): string {
+  const day = gratitudeDiaryDay({ entryDate: value, createdAt: value });
+  const [year, month, date] = day.split('-').map(Number);
+  const noon = new Date(Date.UTC(year ?? 1970, (month ?? 1) - 1, date ?? 1, 12, 0, 0));
+  return noon.toLocaleDateString('en-GB', {
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+    timeZone: 'Europe/London',
+  });
+}
+
 function byNewest(a: GratitudeEntry, b: GratitudeEntry): number {
-  if (a.entryDate !== b.entryDate) return a.entryDate < b.entryDate ? 1 : -1;
-  if (a.createdAt !== b.createdAt) return a.createdAt < b.createdAt ? 1 : -1;
-  return a.id < b.id ? 1 : -1;
+  const day = gratitudeDiaryDay(b).localeCompare(gratitudeDiaryDay(a));
+  if (day !== 0) return day;
+  const created = (b.createdAt || '').localeCompare(a.createdAt || '');
+  if (created !== 0) return created;
+  return b.id.localeCompare(a.id);
 }
 
 export function sortGratitude(entries: readonly GratitudeEntry[]): GratitudeEntry[] {
@@ -84,8 +113,9 @@ export function filterGratitude(
 export function groupGratitudeByDay(entries: readonly GratitudeEntry[]): { entryDate: string; entries: GratitudeEntry[] }[] {
   const groups: { entryDate: string; entries: GratitudeEntry[] }[] = [];
   for (const entry of sortGratitude(entries)) {
+    const entryDate = gratitudeDiaryDay(entry);
     const last = groups[groups.length - 1];
-    if (!last || last.entryDate !== entry.entryDate) groups.push({ entryDate: entry.entryDate, entries: [entry] });
+    if (!last || last.entryDate !== entryDate) groups.push({ entryDate, entries: [entry] });
     else last.entries.push(entry);
   }
   return groups;
@@ -202,7 +232,10 @@ export function gratitudeFromRows(rows: unknown): GratitudeEntry[] {
       body,
       category: isGratitudeCategory(rawCategory) ? rawCategory : null,
       isFavourite: record.is_favourite === true,
-      entryDate: String(record.entry_date ?? '').slice(0, 10),
+      entryDate: gratitudeDiaryDay({
+        entryDate: typeof record.entry_date === 'string' ? record.entry_date : '',
+        createdAt: typeof record.created_at === 'string' ? record.created_at : '',
+      }),
       createdAt: String(record.created_at ?? ''),
       updatedAt: String(record.updated_at ?? ''),
       photos: [],
