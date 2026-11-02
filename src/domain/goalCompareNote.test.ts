@@ -44,14 +44,12 @@ describe('goal name on comparisons', () => {
   });
 
   it('names the goal on stats, health, the overview, and the detail sheets', () => {
-    const stats = readFileSync('src/app/(main)/stats.tsx', 'utf8');
     const health = readFileSync('src/app/(main)/health.tsx', 'utf8');
     const goal = readFileSync('src/ui/YourGoal.tsx', 'utf8');
     const fitness = readFileSync('src/ui/YourFitness.tsx', 'utf8');
     const weight = readFileSync('src/ui/GoalWeightRange.tsx', 'utf8');
     const board = readFileSync('src/ui/HealthStatBoard.tsx', 'utf8');
     const line = readFileSync('src/ui/GoalLine.tsx', 'utf8');
-    expect(stats).toContain('<GoalLine />');
     expect(health).toContain('<GoalLine />');
     expect(goal).toContain('<GoalLine />');
     expect(goal).toContain('towardGoal(view.name)');

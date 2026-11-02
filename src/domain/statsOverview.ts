@@ -803,6 +803,12 @@ function attachOverview(tile: StatTileModel, input: StatsOverviewInput): StatTil
   };
 }
 
+/**
+ * Figures from the old Stats screen that Health Stats did not already show.
+ * Weight, body fat, and lean mass stay on the body page.
+ */
+export const HEALTH_LIFE_TILE_IDS = ['sober', 'mood', 'craving', 'check-ins', 'calories', 'protein', 'quality', 'water', 'gratitude'] as const;
+
 /** One tile per figure already kept in the app. Order is the grid order. The period is the shared Day / 7 days / 30 days choice. */
 export function buildStatsOverview(input: StatsOverviewInput): StatTileModel[] {
   const today = isoDay(input.now);

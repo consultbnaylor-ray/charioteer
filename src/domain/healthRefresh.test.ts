@@ -145,7 +145,6 @@ describe('manual health refresh', () => {
       'src/app/(main)/health.tsx',
       'src/app/(main)/health-plan.tsx',
       'src/app/(main)/workouts.tsx',
-      'src/app/(main)/stats.tsx',
     ]) {
       const source = readFileSync(path, 'utf8');
       expect(source, path).toContain('<HealthRefreshBar');
@@ -201,7 +200,6 @@ describe('manual health refresh', () => {
       'src/app/(main)/health.tsx',
       'src/app/(main)/health-plan.tsx',
       'src/app/(main)/workouts.tsx',
-      'src/app/(main)/stats.tsx',
     ]) {
       expect(readFileSync(path, 'utf8'), path).toContain('garminMark={garminStoredMark(readings)}');
     }
@@ -255,7 +253,6 @@ describe('manual health refresh', () => {
     expect(Number(buildNumber)).toBeGreaterThanOrEqual(71);
     for (const path of [
       'src/app/(main)/health.tsx',
-      'src/app/(main)/stats.tsx',
       'src/app/(main)/health-plan.tsx',
       'src/app/(main)/workouts.tsx',
     ]) {

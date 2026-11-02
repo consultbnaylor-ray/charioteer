@@ -407,7 +407,7 @@ describe('goal weight range', () => {
     const card = readFileSync('src/ui/GoalWeightRange.tsx', 'utf8');
     expect(goal).toContain('GoalWeightRange');
     expect(goal).toContain("place === 'plan'");
-    expect(readFileSync('src/app/(main)/stats.tsx', 'utf8')).toContain('YourGoal');
+    expect(readFileSync('src/app/(main)/health.tsx', 'utf8')).toContain('YourGoal');
     expect(readFileSync('src/app/(main)/health-plan.tsx', 'utf8')).toContain('<GoalWeightRange />');
     expect(card).toContain('about="these ranges"');
     expect(card).toContain('APPROXIMATE');

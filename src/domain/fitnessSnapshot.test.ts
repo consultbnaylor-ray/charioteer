@@ -412,7 +412,7 @@ describe('fitness snapshot', () => {
     const privacy = readFileSync('docs/privacy.md', 'utf8');
     expect(privacy).toContain('not used for advertising');
     expect(privacy).toContain('does not read blood oxygen');
-    expect(readFileSync('src/app/(main)/stats.tsx', 'utf8')).toContain('<YourFitness');
+    expect(readFileSync('src/app/(main)/health.tsx', 'utf8')).toContain('<YourFitness');
     expect(readFileSync('src/app/(main)/health-plan.tsx', 'utf8')).toContain('<YourFitness');
     const card = readFileSync('src/ui/YourFitness.tsx', 'utf8');
     expect(card).toContain('about="VO2 max"');

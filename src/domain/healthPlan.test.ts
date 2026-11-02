@@ -1018,7 +1018,7 @@ describe('health plan wiring', () => {
     expect(page).not.toContain('This stays on your account.');
     expect(TAB_SECTIONS.map((section) => section.label)).not.toContain('Health Plan');
     expect(TAB_SECTIONS).toHaveLength(6);
-    expect(readFileSync('src/app/(main)/stats.tsx', 'utf8')).toContain("'/health-plan'");
+    expect(readFileSync('src/app/(main)/health.tsx', 'utf8')).toContain("'/health-plan'");
     expect(readFileSync('src/app/(main)/profile.tsx', 'utf8')).toContain("'/health-plan'");
   });
 

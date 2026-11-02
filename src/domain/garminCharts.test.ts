@@ -70,16 +70,15 @@ describe('garmin charts follow the shared period', () => {
     expect(screen).not.toContain('seriesUsesGarmin');
     expect(screen).not.toContain('latitude');
     expect(screen).not.toContain('longitude');
-    for (const file of ['src/app/(main)/health.tsx', 'src/app/(main)/health-plan.tsx', 'src/app/(main)/stats.tsx']) {
+    for (const file of ['src/app/(main)/health.tsx', 'src/app/(main)/health-plan.tsx']) {
       const source = readFileSync(file, 'utf8');
       const start = source.indexOf('<MovementCharts');
       const block = source.slice(start, source.indexOf('/>', start));
       expect(block).not.toContain('span=');
       expect(block).toContain('userMetrics={readings.userMetrics}');
     }
-    expect(readFileSync('src/app/(main)/stats.tsx', 'utf8')).toContain('showVo2Chart={false}');
+    expect(readFileSync('src/app/(main)/health.tsx', 'utf8')).toContain('showVo2Chart={false}');
     expect(readFileSync('src/app/(main)/health-plan.tsx', 'utf8')).toContain('showVo2Chart={false}');
-    expect(readFileSync('src/app/(main)/health.tsx', 'utf8')).not.toContain('showVo2Chart');
     expect(readFileSync('src/ui/YourFitness.tsx', 'utf8')).toContain('<Vo2MaxChart');
     expect(readFileSync('src/ui/DailyActivity.tsx', 'utf8')).toContain("chart.id !== 'vo2'");
     expect(readFileSync('src/ui/DailyActivity.tsx', 'utf8')).toContain('span={span}');

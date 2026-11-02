@@ -252,7 +252,6 @@ describe('gratitude diary wiring', () => {
       'Thumos',
       'People',
       'Gratitude Diary',
-      'Stats',
       'Health Stats',
       'Nutrition',
       'Body: weight, waist and BMI',

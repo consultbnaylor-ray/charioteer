@@ -81,10 +81,10 @@ function TileChart({ chart, tone, signal, monochrome }: { chart: DistanceChart; 
   return null;
 }
 
-export function StatTile({ tile }: { tile: StatTileModel }) {
+export function StatTile({ tile, plain = false }: { tile: StatTileModel; plain?: boolean }) {
   const theme = useAppTheme();
   const router = useRouter();
-  const neutral = tile.signal === 'Early days' || tile.signal === 'On pace';
+  const neutral = plain || tile.signal === 'Early days' || tile.signal === 'On pace';
   const palette = statsToneColors(theme.scheme)[tile.tone];
   const tone = neutral ? { bg: theme.colors.surface, ink: theme.colors.ink } : palette;
   const iconTone = tile.signal === 'On pace' ? 'good' : tile.signal === 'Early days' ? 'info' : tile.tone;
@@ -95,7 +95,7 @@ export function StatTile({ tile }: { tile: StatTileModel }) {
     .filter(Boolean)
     .join('. ');
   return (
-    <Card style={{ backgroundColor: tone.bg, borderColor: tone.ink, alignSelf: 'stretch' }}>
+    <Card style={plain ? { alignSelf: 'stretch' } : { backgroundColor: tone.bg, borderColor: tone.ink, alignSelf: 'stretch' }}>
       <Pressable
         accessibilityRole="button"
         accessibilityLabel={`${spoken}.`}

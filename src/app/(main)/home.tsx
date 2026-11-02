@@ -225,8 +225,8 @@ export default function Home() {
       </ScrollTarget>
       <YourGoal place="today" />
       <WalkThisOff place="today" />
-      <Card accessibilityLabel="Open Stats" onPress={() => router.push('/stats' as never)}>
-        <T variant="label">Stats</T>
+      <Card accessibilityLabel="Open Health Stats" onPress={() => router.push('/health' as never)}>
+        <T variant="label">Health Stats</T>
         <T>A plain look at sober days, check-ins, food, and the rest.</T>
       </Card>
       <Card featured>

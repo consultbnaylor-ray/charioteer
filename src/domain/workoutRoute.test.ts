@@ -176,9 +176,8 @@ describe('VO2 estimate note', () => {
     expect(calendar).toContain('nextSessionClock(today)');
     expect(readFileSync('src/app/(main)/workouts.tsx', 'utf8')).toContain('planOutdoorNonce={planOutdoorNonce}');
     expect(plan).toContain('/workouts?planOutdoor=');
-    const stats = readFileSync('src/app/(main)/stats.tsx', 'utf8');
     const health = readFileSync('src/app/(main)/health.tsx', 'utf8');
-    expect(stats).toContain('onPlanOutdoor={() => router.push(`/workouts?planOutdoor=${Date.now()}`');
+    expect(health).toContain('onPlanOutdoor={() => router.push(`/workouts?planOutdoor=${Date.now()}`');
     expect(health).toContain('/workouts?planOutdoor=');
     expect(fitness).toContain('onPlanOutdoor: () => void');
     expect(fitness).toContain('onPlan={onPlanOutdoor}');
@@ -192,7 +191,6 @@ describe('VO2 estimate note', () => {
 
   it('wires every button beside a Stats More info control', () => {
     const files = [
-      'src/app/(main)/stats.tsx',
       'src/ui/Vo2EstimateNote.tsx',
       'src/ui/YourFitness.tsx',
       'src/ui/GarminTip.tsx',

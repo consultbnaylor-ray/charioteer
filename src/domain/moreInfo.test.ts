@@ -42,7 +42,7 @@ describe('more info disclosure', () => {
     expect(refresh).toContain('<Card>');
     expect(refresh.match(/garminHintLine\(/g)).toHaveLength(1);
     expect(refresh.indexOf('<GarminConnectNudge')).toBeLessThan(refresh.indexOf('garminHintLine('));
-    expect(readFileSync('src/app/(main)/stats.tsx', 'utf8')).toContain('A plain look at the figures you already keep.');
+    expect(readFileSync('src/app/(main)/health.tsx', 'utf8')).toContain('A plain look at the figures you already keep.');
     expect(readFileSync('src/ui/UnitsGuide.tsx', 'utf8')).toContain('{ESTIMATE_DISCLAIMER}');
     expect(readFileSync('src/app/(main)/help.tsx', 'utf8')).toContain('crisisHelplines');
     expect(readFileSync('src/ui/ConsentChoices.tsx', 'utf8')).toContain('plain language');
