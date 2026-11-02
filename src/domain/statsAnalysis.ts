@@ -1,7 +1,9 @@
 import type { GarminReadings } from '@/domain/garminConnect';
+import { activeMinutesByDay } from '@/domain/healthSources';
 import { readingFor, type MetricContext } from '@/domain/metricRegistry';
 import { GOAL_LABEL, type NutritionGoal, type NutritionSex } from '@/domain/nutrition';
 import {
+  ANALYSIS_STAT_NAMES,
   localStatsVerdict,
   sanitizeStatsAnalysis,
   type AnalysisStat,
@@ -15,7 +17,10 @@ export const THUMOS_ANALYSE = 'Have Thumos Analyze your data';
 
 export const THUMOS_ANALYSE_CREDIT = 'This uses one AI credit.';
 
-export const THUMOS_ANALYSE_LOCAL = 'Written on this phone because the coach did not answer. Not medical advice. Not a diagnosis.';
+export const THUMOS_ANALYSE_LOCAL = 'Written on this phone because the coach did not answer.';
+
+export const THUMOS_ANALYSIS_CAVEAT =
+  'Not medical advice. Not a diagnosis. If you feel unwell, contact your GP or NHS 111. Call 999 for chest pain, fainting or breathlessness. If you are in distress, call Samaritans on 116 123. Call 999 if you are in immediate danger.';
 
 type Point = { day: string; value: number };
 
@@ -44,23 +49,84 @@ function trendOf(points: readonly Point[]): AnalysisStat['trend'] {
   return latest > base ? 'up' : 'down';
 }
 
-function statFrom(id: AnalysisStatId, points: readonly Point[], ctx: MetricContext): AnalysisStat | null {
+const PARTIAL_TODAY = new Set<AnalysisStatId>([
+  'steps',
+  'weekly_active_minutes',
+  'vigorous',
+  'epoch_minutes',
+  'move_iq',
+  'activity_detail',
+  'stress',
+  'stress_detail',
+  'body_battery_charged',
+  'body_battery_drained',
+]);
+
+function mean(points: readonly Point[]): number | null {
+  if (points.length === 0) return null;
+  return points.reduce((sum, point) => sum + point.value, 0) / points.length;
+}
+
+function statFrom(
+  id: AnalysisStatId,
+  points: readonly Point[],
+  ctx: MetricContext,
+  today: string,
+  mode: 'day' | 'week',
+): AnalysisStat | null {
   const ordered = points
     .filter((point) => Number.isFinite(point.value))
     .sort((left, right) => left.day.localeCompare(right.day))
     .slice(-30);
   if (ordered.length === 0) return null;
-  const latest = ordered[ordered.length - 1]?.value ?? null;
-  if (latest == null) return null;
-  const average = ordered.reduce((sum, point) => sum + point.value, 0) / ordered.length;
-  const reading = readingFor(id, latest, ctx);
+  const partial = mode === 'week' || PARTIAL_TODAY.has(id);
+  const complete = (partial ? ordered.filter((point) => point.day < today) : ordered).slice(-30);
+  const todayPoint = ordered.find((point) => point.day === today) ?? null;
+  const name = ANALYSIS_STAT_NAMES[id];
+  if (complete.length === 0) {
+    if (!partial || !todayPoint) return null;
+    return {
+      id,
+      name,
+      value: null,
+      latest: null,
+      average: null,
+      today: round(todayPoint.value),
+      trend: 'none',
+      rating: 'No rating yet',
+      range: 'Today is still in progress, so this figure is not rated.',
+      tip: null,
+    };
+  }
+  const recent = mode === 'week'
+    ? complete.filter((point) => point.day >= shift(today, -7))
+    : complete.slice(-7);
+  const ratedPoints = recent.length > 0 ? recent : complete.slice(-7);
+  const dailyAverage = mean(ratedPoints);
+  const rated = mode === 'week'
+    ? ratedPoints.reduce((sum, point) => sum + point.value, 0)
+    : dailyAverage;
+  if (rated == null) return null;
+  const latest = ratedPoints[ratedPoints.length - 1]?.value ?? complete[complete.length - 1]?.value ?? null;
+  const earlier = complete.slice(0, -1);
+  const reading = readingFor(id, rated, {
+    ...ctx,
+    ownUsual: earlier.length > 0 ? mean(earlier) : null,
+    windowDays: mode === 'week' ? 7 : ctx.windowDays,
+  });
+  const showToday = partial && todayPoint != null && dailyAverage != null && todayPoint.value < dailyAverage * 0.6;
+  const lever = reading.label === 'Fair' || reading.label === 'Poor';
   return {
     id,
-    latest: round(latest),
-    average: round(average),
-    trend: trendOf(ordered),
+    name,
+    value: round(rated),
+    latest: latest == null ? null : round(latest),
+    average: dailyAverage == null ? null : round(dailyAverage),
+    today: showToday && todayPoint ? round(todayPoint.value) : null,
+    trend: trendOf(complete),
     rating: reading.pending ? 'No rating yet' : reading.label,
     range: reading.where.replace(/\s+/g, ' ').trim().slice(0, 220),
+    tip: lever ? (reading.tips[0] ?? '').slice(0, 180) || null : null,
   };
 }
 
@@ -79,6 +145,21 @@ function samplesOf(samples: BuildInput['samples'], kind: string): Point[] {
     if (sample.kind !== kind || !(sample.value > 0) || !/^\d{4}-\d{2}-\d{2}$/.test(day)) return [];
     return [{ day, value: sample.value }];
   });
+}
+
+function mergeMax(left: readonly Point[], right: readonly Point[]): Point[] {
+  const map = new Map<string, number>();
+  for (const point of [...left, ...right]) {
+    if (!point.day || !Number.isFinite(point.value)) continue;
+    const current = map.get(point.day);
+    map.set(point.day, current == null ? point.value : Math.max(current, point.value));
+  }
+  return [...map.entries()].map(([day, value]) => ({ day, value }));
+}
+
+function preferDays(primary: readonly Point[], fallback: readonly Point[]): Point[] {
+  const taken = new Set(primary.map((point) => point.day));
+  return [...primary, ...fallback.filter((point) => !taken.has(point.day))];
 }
 
 function sumByDay(rows: readonly { day: string; value: number }[]): Point[] {
@@ -113,38 +194,43 @@ export function buildStatsAnalysis(input: BuildInput): StatsAnalysisPayload {
     bodyFat: latestComp?.bodyFatPct ?? null,
     vigorousWeek: vigorousWeek > 0 ? vigorousWeek : null,
   };
-  const groups: [AnalysisStatId, Point[]][] = [
-    ['steps', samplesOf(input.samples, 'steps')],
-    ['sleep_hours', samplesOf(input.samples, 'sleep_hours')],
-    ['resting_heart_rate', byDay(dailies.map((row) => ({ day: row.calendarDate, value: row.restingHeartRateBpm })))],
-    ['vo2', byDay((readings.userMetrics ?? []).map((row) => ({ day: row.calendarDate, value: row.vo2Max })))],
-    ['weight_kg', samplesOf(input.samples, 'weight_kg')],
-    ['weekly_active_minutes', samplesOf(input.samples, 'workout_minutes')],
-    ['vigorous', byDay(dailies.map((row) => ({ day: row.calendarDate, value: row.vigorousMinutes })))],
-    ['stress', byDay(dailies.map((row) => ({ day: row.calendarDate, value: row.averageStressLevel })))],
-    ['stress_detail', byDay((readings.stress ?? []).map((row) => ({ day: row.calendarDate, value: row.averageStress })))],
-    ['body_battery_charged', byDay(dailies.map((row) => ({ day: row.calendarDate, value: row.bodyBatteryCharged })))],
-    ['body_battery_drained', byDay(dailies.map((row) => ({ day: row.calendarDate, value: row.bodyBatteryDrained })))],
-    ['body_battery_highest', byDay(dailies.map((row) => ({ day: row.calendarDate, value: row.bodyBatteryHighest })))],
-    ['body_battery_lowest', byDay(dailies.map((row) => ({ day: row.calendarDate, value: row.bodyBatteryLowest })))],
-    ['sleep_score', byDay((readings.sleep ?? []).map((row) => ({ day: row.calendarDate, value: row.sleepScore })))],
-    ['sleep_duration', byDay((readings.sleep ?? []).map((row) => ({ day: row.calendarDate, value: row.durationSeconds > 0 ? row.durationSeconds / 3600 : null })))],
-    ['respiration', byDay((readings.respiration ?? []).map((row) => ({ day: row.calendarDate, value: row.averageBreathsPerMinute })))],
-    ['pulse_ox', byDay((readings.pulseOx ?? []).map((row) => ({ day: row.calendarDate, value: row.averageSpo2 })))],
-    ['skin_temp', byDay((readings.skinTemp ?? []).map((row) => ({ day: row.calendarDate, value: row.deviationC })))],
-    ['blood_pressure', byDay((readings.bloodPressure ?? []).map((row) => ({ day: row.calendarDate, value: row.systolic })))],
-    ['diastolic', byDay((readings.bloodPressure ?? []).map((row) => ({ day: row.calendarDate, value: row.diastolic })))],
-    ['body_fat', byDay((readings.bodyComp ?? []).map((row) => ({ day: row.calendarDate, value: row.bodyFatPct })))],
-    ['bmi', byDay((readings.bodyComp ?? []).map((row) => ({ day: row.calendarDate, value: row.bmi })))],
-    ['snapshot_heart', byDay((readings.healthSnapshot ?? []).map((row) => ({ day: row.calendarDate, value: row.restingHeartRateBpm ?? row.heartRateBpm })))],
-    ['epoch_minutes', sumByDay((readings.epochs ?? []).flatMap((row) => row.activeSeconds != null && row.activeSeconds > 0 ? [{ day: row.calendarDate, value: row.activeSeconds / 60 }] : []))],
-    ['move_iq', sumByDay((readings.moveIq ?? []).flatMap((row) => row.durationSeconds != null && row.durationSeconds > 0 ? [{ day: row.calendarDate, value: row.durationSeconds / 60 }] : []))],
-    ['activity_detail', sumByDay((readings.activityDetails ?? []).flatMap((row) => row.durationSeconds != null && row.durationSeconds > 0 ? [{ day: row.calendarDate, value: row.durationSeconds / 60 }] : []))],
-    ['hrv', byDay((readings.hrv ?? []).map((row) => ({ day: row.calendarDate, value: row.lastNightAvgMs })))],
-    ['fitness_age', byDay((readings.userMetrics ?? []).map((row) => ({ day: row.calendarDate, value: row.fitnessAge })))],
+  const sleepHours = preferDays(
+    samplesOf(input.samples, 'sleep_hours'),
+    byDay((readings.sleep ?? []).map((row) => ({ day: row.calendarDate, value: row.durationSeconds > 0 ? row.durationSeconds / 3600 : null }))),
+  );
+  const groups: [AnalysisStatId, Point[], 'day' | 'week'][] = [
+    ['steps', mergeMax(samplesOf(input.samples, 'steps'), byDay(dailies.map((row) => ({ day: row.calendarDate, value: row.steps })))), 'day'],
+    ['sleep_hours', sleepHours, 'day'],
+    ['resting_heart_rate', preferDays(byDay(dailies.map((row) => ({ day: row.calendarDate, value: row.restingHeartRateBpm }))), samplesOf(input.samples, 'resting_heart_rate')), 'day'],
+    ['vo2', preferDays(byDay((readings.userMetrics ?? []).map((row) => ({ day: row.calendarDate, value: row.vo2Max }))), samplesOf(input.samples, 'vo2_max')), 'day'],
+    ['weight_kg', preferDays(samplesOf(input.samples, 'weight_kg'), byDay((readings.bodyComp ?? []).map((row) => ({ day: row.calendarDate, value: row.weightKg })))), 'day'],
+    ['weekly_active_minutes', activeMinutesByDay(input.samples, dailies).map((row) => ({ day: row.day, value: row.value })), 'week'],
+    ['vigorous', byDay(dailies.map((row) => ({ day: row.calendarDate, value: row.vigorousMinutes }))), 'week'],
+    ['stress', byDay(dailies.map((row) => ({ day: row.calendarDate, value: row.averageStressLevel }))), 'day'],
+    ['stress_detail', byDay((readings.stress ?? []).map((row) => ({ day: row.calendarDate, value: row.averageStress }))), 'day'],
+    ['body_battery_charged', byDay(dailies.map((row) => ({ day: row.calendarDate, value: row.bodyBatteryCharged }))), 'day'],
+    ['body_battery_drained', byDay(dailies.map((row) => ({ day: row.calendarDate, value: row.bodyBatteryDrained }))), 'day'],
+    ['body_battery_highest', byDay(dailies.map((row) => ({ day: row.calendarDate, value: row.bodyBatteryHighest }))), 'day'],
+    ['body_battery_lowest', byDay(dailies.map((row) => ({ day: row.calendarDate, value: row.bodyBatteryLowest }))), 'day'],
+    ['sleep_score', byDay((readings.sleep ?? []).map((row) => ({ day: row.calendarDate, value: row.sleepScore }))), 'day'],
+    ['sleep_duration', byDay((readings.sleep ?? []).map((row) => ({ day: row.calendarDate, value: row.durationSeconds > 0 ? row.durationSeconds / 3600 : null }))), 'day'],
+    ['respiration', byDay((readings.respiration ?? []).map((row) => ({ day: row.calendarDate, value: row.averageBreathsPerMinute }))), 'day'],
+    ['pulse_ox', byDay((readings.pulseOx ?? []).map((row) => ({ day: row.calendarDate, value: row.averageSpo2 }))), 'day'],
+    ['skin_temp', byDay((readings.skinTemp ?? []).map((row) => ({ day: row.calendarDate, value: row.deviationC }))), 'day'],
+    ['blood_pressure', byDay((readings.bloodPressure ?? []).map((row) => ({ day: row.calendarDate, value: row.systolic }))), 'day'],
+    ['diastolic', byDay((readings.bloodPressure ?? []).map((row) => ({ day: row.calendarDate, value: row.diastolic }))), 'day'],
+    ['body_fat', byDay((readings.bodyComp ?? []).map((row) => ({ day: row.calendarDate, value: row.bodyFatPct }))), 'day'],
+    ['bmi', byDay((readings.bodyComp ?? []).map((row) => ({ day: row.calendarDate, value: row.bmi }))), 'day'],
+    ['snapshot_heart', byDay((readings.healthSnapshot ?? []).map((row) => ({ day: row.calendarDate, value: row.restingHeartRateBpm ?? row.heartRateBpm }))), 'day'],
+    ['epoch_minutes', sumByDay((readings.epochs ?? []).flatMap((row) => row.activeSeconds != null && row.activeSeconds > 0 ? [{ day: row.calendarDate, value: row.activeSeconds / 60 }] : [])), 'day'],
+    ['move_iq', sumByDay((readings.moveIq ?? []).flatMap((row) => row.durationSeconds != null && row.durationSeconds > 0 ? [{ day: row.calendarDate, value: row.durationSeconds / 60 }] : [])), 'day'],
+    ['activity_detail', sumByDay((readings.activityDetails ?? []).flatMap((row) => row.durationSeconds != null && row.durationSeconds > 0 ? [{ day: row.calendarDate, value: row.durationSeconds / 60 }] : [])), 'day'],
+    ['hrv', byDay((readings.hrv ?? []).map((row) => ({ day: row.calendarDate, value: row.lastNightAvgMs }))), 'day'],
+    ['hrv_sdnn', samplesOf(input.samples, 'hrv_sdnn'), 'day'],
+    ['fitness_age', byDay((readings.userMetrics ?? []).map((row) => ({ day: row.calendarDate, value: row.fitnessAge }))), 'day'],
   ];
-  const stats = groups.flatMap(([id, points]) => {
-    const stat = statFrom(id, points, ctx);
+  const stats = groups.flatMap(([id, points, mode]) => {
+    const stat = statFrom(id, points, ctx, input.today, mode);
     return stat ? [stat] : [];
   });
   return sanitizeStatsAnalysis({

@@ -31,6 +31,7 @@ export const ANALYSIS_STAT_IDS = [
   'move_iq',
   'activity_detail',
   'hrv',
+  'hrv_sdnn',
   'fitness_age',
 ] as const;
 
@@ -42,13 +43,51 @@ export const ANALYSIS_RATINGS = ['Excellent', 'Good', 'Fair', 'Poor', 'Usual', '
 
 export const ANALYSIS_TRENDS = ['up', 'down', 'steady', 'none'] as const;
 
+export const ANALYSIS_STAT_NAMES: Record<AnalysisStatId, string> = {
+  steps: 'Steps',
+  sleep_hours: 'Sleep hours',
+  sleep_score: 'Sleep score',
+  sleep_duration: 'Sleep duration',
+  resting_heart_rate: 'Resting heart rate',
+  vo2: 'VO2 max',
+  weight_kg: 'Weight',
+  body_fat: 'Body fat',
+  bmi: 'BMI',
+  weekly_active_minutes: 'Weekly active minutes',
+  vigorous: 'Vigorous minutes',
+  stress: 'Stress',
+  stress_detail: 'Stress detail',
+  body_battery_charged: 'Body battery charged',
+  body_battery_drained: 'Body battery drained',
+  body_battery_highest: 'Body battery highest',
+  body_battery_lowest: 'Body battery lowest',
+  pulse_ox: 'Pulse ox',
+  respiration: 'Breathing rate',
+  skin_temp: 'Skin temperature',
+  blood_pressure: 'Blood pressure',
+  diastolic: 'Diastolic pressure',
+  snapshot_heart: 'Health snapshot',
+  epoch_minutes: 'Epoch active minutes',
+  move_iq: 'Move IQ',
+  activity_detail: 'Activity length',
+  hrv: 'Garmin heart-rate variability',
+  hrv_sdnn: 'Apple heart-rate variability',
+  fitness_age: 'Fitness age',
+};
+
 export type AnalysisStat = {
   id: AnalysisStatId;
+  name: string;
+  /** Recent daily average, or the weekly total for minute guides. This is the rated figure. */
+  value: number | null;
   latest: number | null;
   average: number | null;
+  /** Today's still-open total, only when it is well below the recent days. */
+  today: number | null;
   trend: (typeof ANALYSIS_TRENDS)[number];
   rating: (typeof ANALYSIS_RATINGS)[number];
   range: string;
+  tip: string | null;
 };
 
 export type StatsAnalysisPayload = {
@@ -59,23 +98,36 @@ export type StatsAnalysisPayload = {
 };
 
 export const STATS_ANALYSIS_PROMPT = [
-  'Write a short overview of these summarised figures.',
-  'Open with one overall verdict against a healthy person of this age. If a sport goal is set, mention that aim.',
+  'Write a plain overview that considers every stat in the JSON. Do not skip one.',
+  'Open with one overall verdict against a healthy person of this age. If a sport goal is set, name that aim.',
+  'If most ratings are Poor, say so plainly. Do not soften it.',
   'If the picture is mixed, say the health looks reasonable for their age and that improvements could be made, as covered below and throughout the app.',
   'If the ratings are mostly Good or Excellent, say it looks strong and to keep up the good work.',
-  'Then name the two or three biggest levers, using the figures rated Fair or Poor.',
-  'Use only the JSON. Do not invent numbers.',
+  'Then name the genuine strengths: only stats rated Good or Excellent, each with its value. If none are Good or Excellent, do not invent a strength.',
+  'Usual and No rating yet are not strengths and not levers.',
+  'Then name the two or three biggest levers among Fair and Poor, each with its value and its one tip. Do not add a tip that is not in the JSON.',
+  'Quote value. That is the recent daily average, or a weekly total when the range is a week. Do not headline today. Mention today only when it is present, and say the day is still in progress.',
+  'Close with Looked at: and then every stat name in the list.',
+  'Use only the JSON. Do not invent numbers or praise.',
   'Do not diagnose. Do not predict how long the person will live. Do not mention location or women\'s health.',
-  'Do not write "Not medical advice". The app shows that line.',
-  'Four to seven sentences. Plain and honest.',
+  'Do not write a medical caveat. The app shows that line.',
 ].join(' ');
 
 const BANNED = /\b(diagnos\w*|obese|overweight|lifespan|you will die)\b/i;
 
 export function analysisTextOk(text: string): boolean {
   const trimmed = text.replace(/\s+/g, ' ').trim();
-  if (trimmed.length < 40 || trimmed.length > 1200) return false;
+  if (trimmed.length < 40 || trimmed.length > 2200) return false;
   return !BANNED.test(trimmed);
+}
+
+function statName(stat: AnalysisStat): string {
+  return stat.name || ANALYSIS_STAT_NAMES[stat.id] || stat.id.replace(/_/g, ' ');
+}
+
+function figureOf(stat: AnalysisStat): string {
+  const figure = stat.value ?? stat.average ?? stat.latest;
+  return figure == null ? '' : ` ${figure}`;
 }
 
 export function localStatsVerdict(payload: StatsAnalysisPayload): string {
@@ -83,15 +135,27 @@ export function localStatsVerdict(payload: StatsAnalysisPayload): string {
   const goal = payload.goal ? ` The saved aim is ${payload.goal}.` : '';
   const poor = payload.stats.filter((stat) => stat.rating === 'Fair' || stat.rating === 'Poor');
   const good = payload.stats.filter((stat) => stat.rating === 'Good' || stat.rating === 'Excellent');
-  const levers = poor.slice(0, 3).map((stat) => stat.id.replace(/_/g, ' ')).join(', ');
-  if (good.length >= 3 && poor.length === 0) {
-    return `Your overall health looks strong${age}.${goal} Keep up the good work.`;
-  }
+  const looked = payload.stats.map(statName).join(', ');
+  const lookedLine = looked ? ` Looked at: ${looked}.` : '';
+  const strengthLine = good.length
+    ? ` Strengths: ${good.map((stat) => `${statName(stat)}${figureOf(stat)}`).join(', ')}.`
+    : '';
+  const leverLine = poor.slice(0, 3).map((stat) => {
+    const tip = stat.tip ? ` ${stat.tip}` : '';
+    return `${statName(stat)}${figureOf(stat)} (${stat.rating}).${tip}`;
+  }).join(' ');
   if (good.length + poor.length === 0) {
-    return `There are not enough readings yet for an overall view${age}.${goal}`.replace(/\s+/g, ' ').trim();
+    return `There are not enough rated readings yet for an overall view${age}.${goal}${lookedLine}`.replace(/\s+/g, ' ').trim();
   }
-  const leverLine = levers ? ` The biggest levers are ${levers}.` : '';
-  return `Your overall health looks reasonable${age}, but improvements could be made, as covered below and throughout the app.${goal}${leverLine}`;
+  if (poor.length > good.length && poor.length >= 3) {
+    const levers = leverLine ? ` The biggest levers are ${leverLine}` : '';
+    return `Most of these ratings are Poor or Fair${age}.${goal}${strengthLine}${levers}${lookedLine}`.replace(/\s+/g, ' ').trim();
+  }
+  if (good.length >= 3 && poor.length === 0) {
+    return `Your overall health looks strong${age}.${goal}${strengthLine} Keep up the good work.${lookedLine}`.replace(/\s+/g, ' ').trim();
+  }
+  const levers = leverLine ? ` The biggest levers are ${leverLine}` : '';
+  return `Your overall health looks reasonable${age}, but improvements could be made, as covered below and throughout the app.${goal}${strengthLine}${levers}${lookedLine}`.replace(/\s+/g, ' ').trim();
 }
 
 function finite(value: unknown): number | null {
@@ -121,13 +185,21 @@ export function sanitizeStatsAnalysis(input: unknown): StatsAnalysisPayload | nu
     if (!ID_SET.has(id)) continue;
     const rating = ANALYSIS_RATINGS.find((label) => label === row.rating) ?? 'No rating yet';
     const trend = ANALYSIS_TRENDS.find((label) => label === row.trend) ?? 'none';
+    const statId = id as AnalysisStatId;
+    const latest = finite(row.latest);
+    const average = finite(row.average);
+    const lever = rating === 'Fair' || rating === 'Poor';
     stats.push({
-      id: id as AnalysisStatId,
-      latest: finite(row.latest),
-      average: finite(row.average),
+      id: statId,
+      name: ANALYSIS_STAT_NAMES[statId],
+      value: finite(row.value) ?? average ?? latest,
+      latest,
+      average,
+      today: finite(row.today),
       trend,
       rating,
       range: text(row.range, 220),
+      tip: lever ? text(row.tip, 180) || null : null,
     });
   }
   if (stats.length === 0) return null;

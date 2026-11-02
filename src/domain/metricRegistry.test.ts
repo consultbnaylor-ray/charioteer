@@ -209,6 +209,18 @@ describe('metric registry', () => {
     expect(cruiser.inputs?.find((line) => line.name === 'VO2 max')?.detail).toContain('42');
     expect(cruiser.inputs?.find((line) => line.name === 'VO2 max')?.detail).toContain('Typical for a cruiserweight boxer');
     expect(cruiser.inputs?.find((line) => line.name === 'Body fat')?.detail).toContain('18');
+    const resting = { ...EMPTY_METRIC_CONTEXT, age: 45, sex: 'male' as const, goal: 'elite_cruiser_boxer' as const };
+    expect(readingFor('resting_heart_rate', 49, resting).label).toBe('Good');
+    expect(readingFor('resting_heart_rate', 39, resting).label).toBe('Fair');
+    expect(readingFor('resting_heart_rate', 39, resting).where).toContain('unwell or dizzy');
+    expect(readingFor('resting_heart_rate', 110, resting).label).toBe('Poor');
+    expect(readingFor('vo2', 44, resting).label).toBe('Good');
+    expect(readingFor('vo2', 28, resting).label).toBe('Fair');
+    expect(readingFor('weight_kg', 85.1, { ...resting, heightCm: null }).label).toBe('Usual');
+    expect(readingFor('weight_kg', 85.1, { ...resting, heightCm: 180 }).label).toBe('Usual');
+    expect(readingFor('weight_kg', 85.1, { ...EMPTY_METRIC_CONTEXT, age: 45, sex: 'male', heightCm: 180 }).label).toBe('Fair');
+    expect(readingFor('hrv_sdnn', 120, EMPTY_METRIC_CONTEXT).label).toBe('Good');
+    expect(readingFor('hrv_sdnn', 20, EMPTY_METRIC_CONTEXT).label).toBe('Fair');
     const epochs = readingFor('epoch_minutes', 346, { ...EMPTY_METRIC_CONTEXT, ownUsual: 300 });
     expect(epochs.where).toContain('346');
     expect(epochs.where).not.toContain('No published healthy-person range for this figure');

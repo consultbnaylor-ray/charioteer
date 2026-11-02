@@ -297,7 +297,7 @@ function rateSteps(id: string, value: number | null, ctx: MetricContext): Metric
 function rateResting(id: string, value: number | null, ctx: MetricContext): MetricReading {
   if (value == null || value <= 0) {
     const sport = sportName(ctx.goal);
-    return blank(id, NHS_REST, `The usual adult range is 60–100 bpm. Good on this card is about 50–80. ${ageNote(ctx)}`, {
+    return blank(id, NHS_REST, `The usual adult range is 60–100 bpm. Good on this card is about 40–80. A rate under 40 is a check if you feel unwell or dizzy, not a poor fitness mark. ${ageNote(ctx)}`, {
       band: { low: 60, high: 100 },
       draw: true,
       goalLine: sport ? `${sport}: a typical trained resting rate is about 40–60 bpm. There is no reading to compare yet.` : null,
@@ -309,28 +309,35 @@ function rateResting(id: string, value: number | null, ctx: MetricContext): Metr
     });
   }
   const bpm = Math.round(value);
+  const sport = sportName(ctx.goal);
   let label: MetricRatingLabel = 'Good';
   if (bpm > 100) label = 'Poor';
-  else if (bpm >= 81 || bpm < 50) label = 'Fair';
-  else label = 'Good';
-  if (bpm >= 50 && bpm <= 60) label = 'Good';
-  const talk = bpm > 100 || bpm < 40 ? ' A rate that stays above 100, or under 40, is a reason to contact a GP or NHS 111. Call 999 if you have chest pain, shortness of breath, or feel faint.' : '';
-  const sport = sportName(ctx.goal);
+  else if (bpm >= 81 || bpm < 40) label = 'Fair';
+  const talk = bpm > 100
+    ? ' A rate that stays above 100 is a reason to contact a GP or NHS 111. Call 999 if you have chest pain, shortness of breath, or feel faint.'
+    : bpm < 40
+      ? ' Under 40 is a check, not a poor fitness mark. If you feel unwell or dizzy, contact a GP or NHS 111.'
+      : '';
   const goalLine = sport
     ? bpm >= 40 && bpm <= 60
       ? `${sport}: ${bpm} bpm sits inside the typical trained range of about 40–60 bpm.`
-      : `${sport}: ${bpm} bpm is above that typical trained range of about 40–60 bpm.`
+      : bpm < 40
+        ? `${sport}: ${bpm} bpm is under 40. That is a check if you feel unwell or dizzy, not a poor fitness mark.`
+        : `${sport}: ${bpm} bpm is above the typical trained range of about 40–60 bpm.`
     : null;
-  const where = `${bpm} bpm. Good on this card is about 50–80. The NHS usual adult range is 60–100, and a lower rate can come with training. ${ageNote(ctx)}${usualClause(bpm, ctx.ownUsual, 'bpm')}${talk}`;
+  const where = `${bpm} bpm. Good on this card is about 40–80. The NHS usual adult range is 60–100, and a lower rate can come with training. Only a rate under 40 is flagged on the low side. ${ageNote(ctx)}${usualClause(bpm, ctx.ownUsual, 'bpm')}${talk}`;
+  const tips = bpm < 40
+    ? ['Under 40 is a check, not a poor fitness mark. If you feel unwell or dizzy, contact a GP or NHS 111.']
+    : [
+      'Easy aerobic sessions and walks, most weeks, are what usually brings a high resting rate down.',
+      'Sleep and alcohol both move the next morning’s number.',
+      'Treat one odd day as a reading, and watch the month.',
+    ];
   return made(id, NHS_REST, label, where, {
     band: { low: 60, high: 100 },
     draw: false,
     goalLine,
-    tips: [
-      'Easy aerobic sessions and walks, most weeks, are what usually brings a high resting rate down.',
-      'Sleep and alcohol both move the next morning’s number.',
-      'Treat one odd day as a reading, and watch the month.',
-    ],
+    tips,
     more: where,
   });
 }
@@ -374,7 +381,7 @@ function rateVo2(id: string, value: number | null, ctx: MetricContext): MetricRe
       more: 'Cycling VO2 max is not used. The percentile table is Kaminsky, Arena, and Myers, 2015, ages 20–79.',
     });
   }
-  const label: MetricRatingLabel = value >= band.high ? 'Good' : value >= band.low ? 'Fair' : 'Poor';
+  const label: MetricRatingLabel = value >= band.low ? 'Good' : value >= band.low * 0.85 ? 'Fair' : 'Poor';
   const shortfall = vo2AthleticShortfall({ vo2: value, sex: ctx.sex, goal: ctx.goal });
   const sport = sportName(ctx.goal);
   const goalLine = shortfall
@@ -384,7 +391,7 @@ function rateVo2(id: string, value: number | null, ctx: MetricContext): MetricRe
         ? `${sport}: this sits at or above the 75th percentile for your age and sex, where trained people often land.`
         : `${sport}: this is under the upper half of the age and sex range. Trained people often sit at or above the 75th percentile.`
       : null;
-  const where = `${value} ml/kg/min. The published middle half for your age and sex is ${band.low}–${band.high}. At or above ${band.high} is Good on this card. A cycling estimate is not used.`;
+  const where = `${value} ml/kg/min. The published middle half for your age and sex is ${band.low}–${band.high}. Inside that span, or above it, is Good on this card. Below ${band.low} is under the range. A cycling estimate is not used.`;
   return made(id, KAMINSKY, label, where, {
     band,
     draw: false,
@@ -422,9 +429,9 @@ function rateMinutes(id: string, value: number | null, ctx: MetricContext, weekl
 function rateHrvSdnn(id: string, value: number | null, ctx: MetricContext): MetricReading {
   if (value == null || value <= 0) return blank(id, NUNAN_SDNN, 'No Apple Health SDNN in this window. This is not Garmin RMSSD.');
   const ms = Math.round(value);
-  const inside = ms >= NUNAN_SDNN_LOW && ms <= NUNAN_SDNN_HIGH;
-  const where = `${ms} ms SDNN. Study averages ran from ${NUNAN_SDNN_LOW} to ${NUNAN_SDNN_HIGH} ms, mean about ${NUNAN_SDNN_MEAN}. That spread is not a personal target and not an age table.${usualClause(ms, ctx.ownUsual, 'ms')} Apple Health HRV is SDNN. Garmin overnight HRV is RMSSD. They are not averaged together.`;
-  return made(id, NUNAN_SDNN, inside ? 'Good' : 'Fair', where, {
+  const label: MetricRatingLabel = ms >= NUNAN_SDNN_LOW ? 'Good' : 'Fair';
+  const where = `${ms} ms SDNN. Study averages ran from ${NUNAN_SDNN_LOW} to ${NUNAN_SDNN_HIGH} ms, mean about ${NUNAN_SDNN_MEAN}. A higher figure is not marked down. That spread is not a personal target and not an age table.${usualClause(ms, ctx.ownUsual, 'ms')} Apple Health HRV is SDNN. Garmin overnight HRV is RMSSD. They are not averaged together.`;
+  return made(id, NUNAN_SDNN, label, where, {
     tips: [
       'A steady bedtime and a full night move HRV more than one evening’s trick.',
       'A hard day or a drink can drop the next reading. Watch the week, not one night.',
@@ -463,10 +470,11 @@ function bmiOf(kg: number, heightCm: number | null | undefined): number | null {
 
 function rateBmiValue(id: string, bmi: number, ctx: MetricContext): MetricReading {
   const band = { low: NICE_BMI_HEALTHY_MIN, high: NICE_BMI_HEALTHY_MAX };
-  let label: MetricRatingLabel = 'Good';
-  if (bmi < 18.5 || bmi >= 30) label = 'Poor';
-  else if (bmi > NICE_BMI_HEALTHY_MAX) label = 'Fair';
   const sport = sportName(ctx.goal);
+  let label: MetricRatingLabel = 'Good';
+  if (bmi < 18.5) label = 'Poor';
+  else if (bmi >= 30) label = sport ? 'Fair' : 'Poor';
+  else if (bmi > NICE_BMI_HEALTHY_MAX) label = sport ? 'Usual' : 'Fair';
   const goalLine = sport && bmi > NICE_BMI_HEALTHY_MAX
     ? `${sport}: BMI ${bmi} is above the NHS healthy-weight range. A muscular build can sit there without extra fat, so this is not a failing on its own.`
     : sport
@@ -582,9 +590,14 @@ function rateBloodPressure(id: string, value: number | null, ctx: MetricContext,
   const reading = Math.round(value);
   const inside = reading >= band.low && reading <= band.high;
   const high = kind === 'systolic' ? reading >= 140 : reading >= 90;
+  const veryLow = kind === 'systolic' ? reading < 80 : reading < 50;
   const low = reading < band.low;
-  const label: MetricRatingLabel = inside ? 'Good' : high || low ? 'Poor' : 'Fair';
-  const talk = high || low ? ` ${reading} mmHg sits outside the NHS ideal. Contact a GP or NHS 111 to have it checked. This is not a diagnosis.` : '';
+  const label: MetricRatingLabel = inside ? 'Good' : high || veryLow ? 'Poor' : 'Fair';
+  const talk = high || veryLow
+    ? ` ${reading} mmHg sits well outside the NHS ideal. Contact a GP or NHS 111 to have it checked. This is not a diagnosis.`
+    : low
+      ? ' A little under the ideal band is a check if you feel unwell or dizzy, not a poor fitness mark.'
+      : '';
   const where = `${name} ${reading} mmHg. The NHS ideal band on this card is ${band.low}–${band.high}. The other number is kept on its own card.${talk}`;
   return made(id, NHS_BP, label, where, {
     band,
@@ -877,12 +890,15 @@ function fitnessPicture(ctx: MetricContext): {
   }
   const vo2Value = ctx.vo2 != null ? `${ctx.vo2} ml/kg/min` : 'not stored yet';
 
-  const hrTarget = sport ? 'about 40–60 bpm for trained people' : 'about 50–80 bpm, inside the NHS usual 60–100';
+  const hrTarget = sport ? 'about 40–60 bpm for trained people' : 'about 40–80 bpm, inside the wider NHS usual 60–100';
   let hrGap = 'Not stored yet.';
   if (ctx.restingHr != null && ctx.restingHr > 0) {
     const bpm = Math.round(ctx.restingHr);
     const ceiling = sport ? 60 : 80;
-    if (bpm > ceiling) {
+    if (bpm < 40) {
+      hrGap = `${40 - bpm} bpm under 40.`;
+      ranked.push({ name: 'Resting heart rate', gap: (40 - bpm) / 40, tip: 'Under 40 is a check if you feel unwell or dizzy, not a poor fitness mark.', gapText: hrGap });
+    } else if (bpm > ceiling) {
       hrGap = `${bpm - ceiling} bpm above ${ceiling}.`;
       ranked.push({ name: 'Resting heart rate', gap: (bpm - ceiling) / ceiling, tip: 'Easy aerobic sessions most weeks are what usually brings a high resting rate down.', gapText: hrGap });
     } else hrGap = 'Inside the range.';
@@ -1025,18 +1041,16 @@ function define(
   };
 }
 
-const cardioNow = 'Shared card rating against the Kaminsky 2015 age and sex percentile, plus a sport line when the goal is a boxer, runner, or body builder.';
-
 export const METRIC_REGISTRY: Record<string, MetricDefinition> = {
   steps: define('steps', 'steps', PALUCH, 'Health, Stats, Workouts, profile', 'Research band and a step chart. No Fair/Good line.', 'Paluch age band, label, tips when under the range, source once, caveat.', rateSteps),
   distance: define('distance', 'm', 'Garmin or Apple Health daily distance.', 'Stats, Health, Workouts charts', 'Own-average line and “no standard range”.', 'Same chart. Usual compared with your own days. Source once. Caveat.', (_id, value, ctx) => rateOwn('distance', 'Garmin or Apple Health daily distance.', value, ctx, 'm', true)),
   floors: define('floors', 'floors', 'Garmin daily floors climbed.', 'Stats, Health, Workouts charts', 'Own-average line and “no standard range”.', 'Same chart. Usual compared with your own days. Source once. Caveat.', (_id, value, ctx) => rateOwn('floors', 'Garmin daily floors climbed.', value, ctx, 'floors', true)),
-  resting_heart_rate: define('resting_heart_rate', 'bpm', NHS_REST, 'Health tiles, movement charts, Your fitness', 'NHS 60–100 band and a fitness comment.', 'Label against about 50–80 inside that NHS range, trained 40–60 when a sport goal is set, tips when under Good or above that trained range.', rateResting),
+  resting_heart_rate: define('resting_heart_rate', 'bpm', NHS_REST, 'Health tiles, movement charts, Your fitness', 'NHS 60–100 band and a fitness comment.', 'Good from about 40–80. A sport goal’s trained range is about 40–60. Under 40 is a check if unwell or dizzy, not a poor fitness mark.', rateResting),
   walking_heart_rate: define('walking_heart_rate', 'bpm', TANAKA, 'Health tiles', 'Approximate moderate zone when age is set.', 'Same zone, with a Good/Fair label. Age missing stays Usual and says so.', rateWalking),
   heart_rate_recovery: define('heart_rate_recovery', 'bpm', COLE, 'Health tiles', 'Cole 1999 referred-group note.', 'Good above 12 bpm, Fair at or under, with the study’s limit named as not a healthy-population cutoff.', rateRecovery),
   session_heart_rate: define('session_heart_rate', 'bpm', TANAKA, 'Health tiles', 'Training-zone sheet when age is set.', 'Good inside an effort zone. No single healthy bpm. Age missing says so.', rateSession),
-  vo2_max: define('vo2_max', 'ml/kg/min', KAMINSKY, 'Health tiles, Your fitness', 'Percentile band and level words.', cardioNow, rateVo2),
-  vo2: define('vo2', 'ml/kg/min', KAMINSKY, 'Garmin VO2 chart, Your fitness chart', 'Percentile band when age and sex exist, otherwise “no standard range”.', cardioNow, rateVo2),
+  vo2_max: define('vo2_max', 'ml/kg/min', KAMINSKY, 'Health tiles, Your fitness', 'Percentile band and level words.', 'Good inside or above the Kaminsky middle half. Fair or Poor only below that range. A sport line stays separate.', rateVo2),
+  vo2: define('vo2', 'ml/kg/min', KAMINSKY, 'Garmin VO2 chart, Your fitness chart', 'Percentile band when age and sex exist, otherwise “no standard range”.', 'Good inside or above the Kaminsky middle half. Fair or Poor only below that range. A sport line stays separate.', rateVo2),
   mix: define('mix', 'min', 'Workout minutes logged in this app.', 'Health tiles', 'No mix guideline, said on the card.', 'Usual against your own minutes. No invented national mix. Source once. Caveat.', (_id, value, ctx) => rateOwn('mix', 'Workout minutes logged in this app.', value, ctx, 'min', true, 'There is no published mix of strength, cardio, and other minutes, so this is compared with your own usual.')),
   sleep_hours: define('sleep_hours', 'h', NHS_SLEEP, 'Health tiles', 'NHS 7–9 hour status line.', 'Good inside 7–9 (7–8 from 65), tips when under Good, source once, caveat.', rateSleepHours),
   sleep_duration: define('sleep_duration', 'h', NHS_SLEEP, 'More Garmin Stats', '“No standard range” and no green band.', 'Green band 7–9 hours (7–8 from 65), NHS and National Sleep Foundation named once, tips when under Good.', rateSleepHours),

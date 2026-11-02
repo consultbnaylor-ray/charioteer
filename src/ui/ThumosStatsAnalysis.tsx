@@ -3,11 +3,8 @@ import { useState } from 'react';
 import { useRepository, useSnapshot } from '@/data';
 import { isoDay } from '@/domain/dates';
 import { emptyGarminReadings } from '@/domain/garminConnect';
-import { METRIC_CAVEAT } from '@/domain/metricRegistry';
-import { buildStatsAnalysis, THUMOS_ANALYSE, THUMOS_ANALYSE_CREDIT, THUMOS_ANALYSE_LOCAL } from '@/domain/statsAnalysis';
+import { buildStatsAnalysis, THUMOS_ANALYSE, THUMOS_ANALYSE_CREDIT, THUMOS_ANALYSE_LOCAL, THUMOS_ANALYSIS_CAVEAT } from '@/domain/statsAnalysis';
 import { THUMOS_ANALYSE_AGAIN } from '@/domain/thumosReading';
-import { OUTSIDE_CRISIS_LINE } from '@/domain/outdoorRoute';
-import { VISIBLE_SAFETY_LINE } from '@/domain/visibleSafety';
 import { useHealthSources } from '@/health/useHealthSources';
 import { Button, Card, T } from '@/ui/ui';
 
@@ -68,9 +65,7 @@ export function ThumosStatsAnalysis() {
       <T variant="label">Thumos</T>
       <T>{text}</T>
       {local ? <T variant="muted">{THUMOS_ANALYSE_LOCAL}</T> : null}
-      <T variant="muted">{METRIC_CAVEAT}</T>
-      <T variant="muted">{VISIBLE_SAFETY_LINE}</T>
-      <T variant="muted">{OUTSIDE_CRISIS_LINE}</T>
+      <T variant="muted">{THUMOS_ANALYSIS_CAVEAT}</T>
       <Button
         label={THUMOS_ANALYSE_AGAIN}
         pending={pending}
