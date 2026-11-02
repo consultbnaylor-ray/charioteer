@@ -1,7 +1,7 @@
 import { Image } from 'expo-image';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
-import { Keyboard, Platform, Pressable, ScrollView, Switch, View } from 'react-native';
+import { Keyboard, Platform, Pressable, Switch, View } from 'react-native';
 
 import { dismissKeyboard } from '@/ui/keyboard';
 import { weightChart } from '@/domain/chartSeries';
@@ -82,7 +82,7 @@ import { savingsFromTypicalWeek } from '@/domain/savings';
 import { soberElapsed } from '@/domain/sober';
 import { readAppleHealthBody } from '@/health/sync';
 import { writeDayToAppleHealth } from '@/health/writeNutrition';
-import { GoalChoices } from '@/ui/GoalChoices';
+import { GoalChoices, GoalDivision } from '@/ui/GoalChoices';
 import { DateField } from '@/ui/DateField';
 import { MealEstimateStatus } from '@/ui/MealEstimateStatus';
 import { ProcessedFoodList } from '@/ui/ProcessedFoodList';
@@ -1210,11 +1210,11 @@ export default function Nutrition() {
         {settings.goal === 'body_builder' ? (
           <>
             <T variant="muted">Choose a surplus or a cut. A suggestion uses a lean bulk until you pick a cut.</T>
-            <ScrollView horizontal nestedScrollEnabled showsHorizontalScrollIndicator keyboardShouldPersistTaps="handled" contentContainerStyle={{ gap: 8 }}>
+            <View style={{ gap: 8, alignSelf: 'stretch' }}>
               {BUILDER_PHASES.map((id) => (
-                <Choice key={id} label={PHASE_LABEL[id]} selected={settings.goalPhase === id} onPress={() => choosePhase(id)} />
+                <GoalDivision key={id} label={PHASE_LABEL[id]} selected={settings.goalPhase === id} onPress={() => choosePhase(id)} />
               ))}
-            </ScrollView>
+            </View>
           </>
         ) : null}
         {settings.goal === 'elite_heavy_boxer' ? (

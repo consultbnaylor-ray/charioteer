@@ -1396,7 +1396,7 @@ describe('meal edit', () => {
 describe('training nutrition goals', () => {
   const body = { weightKg: 80, heightCm: 180, age: 40, sex: 'male' as const, activeEnergyKcal: null };
 
-  it('names the training goals in plain words and keeps the chips scrollable', () => {
+  it('names the training goals in plain words and shows every class without an inner scroll', () => {
     expect(GOAL_LABEL.elite_runner).toBe('Elite Athlete (Lean Runner etc.)');
     expect(GOAL_LABEL.body_builder).toBe('Body Builder');
     expect(GOAL_LABEL.elite_heavy_boxer).toBe('Elite Athlete (Heavy Weight Boxer)');
@@ -1407,8 +1407,9 @@ describe('training nutrition goals', () => {
     expect(GOAL_PLAIN.elite_middle_boxer).toMatch(/middleweight limit/i);
     const screen = readFileSync('src/app/(main)/nutrition.tsx', 'utf8');
     const goals = readFileSync('src/ui/GoalChoices.tsx', 'utf8');
-    expect(screen).toContain('horizontal');
+    expect(screen).not.toContain('nestedScrollEnabled');
     expect(goals).toContain('GOAL_PLAIN[settings.goal]');
+    expect(goals).not.toContain('ScrollView');
     expect(goals).toContain("flexWrap: 'wrap'");
     expect(screen).toContain('label="Daily carbohydrate (g)"');
     expect(screen).toContain('label="Daily fat (g)"');
@@ -1654,7 +1655,10 @@ describe('training nutrition goals', () => {
     expect(chips).toContain('Boxing weight classes');
     expect(chips).toContain('accessibilityState={{ expanded: boxingOpen }}');
     expect(chips).toContain('boxingChipLabel(option.id)');
-    expect(chips).toContain('nestedScrollEnabled');
+    expect(chips).toContain("alignSelf: 'stretch'");
+    expect(chips).toContain('theme.colors.accent');
+    expect(chips).not.toContain('nestedScrollEnabled');
+    expect(chips).not.toContain('maxHeight: 280');
     const sql = readFileSync('supabase/migrations/20261017230000_boxing_class_goals.sql', 'utf8');
     expect(sql).toContain('nutrition_settings_goal_check');
     expect(sql).toContain("'elite_super_middle_boxer'");

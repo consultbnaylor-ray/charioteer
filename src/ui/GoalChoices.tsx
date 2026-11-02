@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Pressable, ScrollView, View } from 'react-native';
+import { Pressable, View } from 'react-native';
 
 import { useRepository, useSnapshot } from '@/data';
 import { shownError } from '@/domain/errors';
@@ -20,6 +20,40 @@ import { UpdateWeightLink } from '@/ui/UpdateWeightLink';
 import { Button, Card, Choice, ErrorNote, QuietNote, T, playSavedHaptic } from '@/ui/ui';
 
 export const GOAL_SAVED_LINE = 'Goal saved';
+
+/** One full-width goal row. The page scrolls. This row does not. */
+export function GoalDivision({
+  label,
+  selected,
+  onPress,
+}: {
+  label: string;
+  selected: boolean;
+  onPress: () => void;
+}) {
+  const theme = useAppTheme();
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      accessibilityState={{ selected }}
+      onPress={onPress}
+      style={{
+        minHeight: 48,
+        alignSelf: 'stretch',
+        justifyContent: 'center',
+        paddingHorizontal: 16,
+        paddingVertical: 12,
+        borderWidth: 1,
+        borderRadius: 12,
+        borderColor: selected ? theme.colors.accent : theme.colors.line,
+        backgroundColor: theme.colors.surface,
+      }}
+    >
+      <T style={{ fontFamily: theme.font.bodyStrong }}>{label}</T>
+    </Pressable>
+  );
+}
 
 /**
  * The same goal chips on Nutrition, Health Plan, and You.
@@ -137,18 +171,20 @@ export function GoalChoices({
         />
       ) : null}
       {boxingOpen ? (
-        <ScrollView style={{ maxHeight: 280 }} nestedScrollEnabled>
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-            {boxing.map((option) => (
-              <Choice
+        <View style={{ gap: 8, alignSelf: 'stretch' }}>
+          {boxing.map((option) => {
+            const label = boxingChipLabel(option.id) ?? option.label;
+            const selected = settings.goal === option.id && settings.targetWeightKg == null && !draftingTarget;
+            return (
+              <GoalDivision
                 key={option.id}
-                label={boxingChipLabel(option.id) ?? option.label}
-                selected={settings.goal === option.id && settings.targetWeightKg == null && !draftingTarget}
+                label={label}
+                selected={selected}
                 onPress={() => void choose(option.id)}
               />
-            ))}
-          </View>
-        </ScrollView>
+            );
+          })}
+        </View>
       ) : null}
       {saved ? (
         <View
