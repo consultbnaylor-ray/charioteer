@@ -26,7 +26,7 @@ import {
 } from './nutrition.ts';
 import { referenceBandsForCoach } from './healthBands.ts';
 import { dedupeAdviceLines } from './adviceDedupe.ts';
-import { assessCardioGap, buildFitnessSnapshot, fitnessFocusLines, type FitnessSnapshotInput } from './fitnessSnapshot.ts';
+import { activityTypeFromKind, assessCardioGap, buildFitnessSnapshot, fitnessFocusLines, workoutBucket, type FitnessSnapshotInput } from './fitnessSnapshot.ts';
 import { goalWeightRange } from './goalWeightRange.ts';
 import { goalFocusLine } from './goalLed.ts';
 import { healthChangeNoteFromReadings, londonDay, londonWeek } from './healthInsights.ts';
@@ -193,7 +193,11 @@ function take(salt: string, key: string, items: string[], count: number, done: s
 }
 
 function actions(prefix: string, texts: string[]): PlanAction[] {
-  return texts.map((text, index) => ({ id: `${prefix}-${index + 1}`, text: clip(text, 160), done: false }));
+  return texts.map((text, index) => {
+    const line = clip(text, 160);
+    const done = prefix === 'session' && / · Done: /.test(line);
+    return { id: `${prefix}-${index + 1}`, text: line, done };
+  });
 }
 
 function isoDay(date: Date): string {
@@ -955,6 +959,8 @@ function weekdaysMentioned(text: string): string[] {
 export function mentionsRegressiveSession(text: string, baseline: TrainingBaseline | null): boolean {
   if (!baseline) return false;
   const line = text.replace(/\s+/g, ' ').trim();
+  // A logged session is a record of what happened. It is not a plan to train less.
+  if (/· Done:/i.test(line)) return false;
   const named = weekdaysMentioned(line);
   const trainsNamed = named.some((day) => baseline.trainDays.includes(day));
   const callsRest = /\b(rest|day off|no workout|no structured|full rest)\b/i.test(line);
@@ -988,14 +994,140 @@ function sessionKind(facts: Derived): string {
   return 'session';
 }
 
-function trendSentence(trending: boolean, state: { used: boolean }): string {
-  if (!trending || state.used) return '';
-  state.used = true;
-  return ' Cardio fitness is trending down.';
-}
-
 function dayMinutesOf(baseline: TrainingBaseline, day: string): number {
   return Math.round(baseline.dayMinutes?.[day] ?? baseline.typicalMinutes);
+}
+
+type LoggedSession = {
+  minutes: number;
+  label: string;
+  /** Strength and conditioning fill a skill day. Cardio fills an aerobic day. */
+  bucket: 'strength' | 'cardio' | 'conditioning' | 'other' | 'session';
+};
+
+const BOXING_ACTIVITY_TYPES = new Set([8, 65, 73]);
+
+/**
+ * Sessions already recorded this London week, from Monday through today.
+ * Garmin and Apple rows arrive as workout types or bucket minutes. A diary
+ * completion arrives as the same kinds. Future days are left to the plan.
+ */
+function loggedThisWeek(input: PlanInput): Map<string, LoggedSession> {
+  const week = londonWeek(input.now);
+  const byDate = new Map<string, {
+    types: Map<number, number>;
+    buckets: Record<'strength' | 'cardio' | 'conditioning' | 'other', number>;
+    workout: number;
+  }>();
+  const slotFor = (day: string) => {
+    const existing = byDate.get(day);
+    if (existing) return existing;
+    const created = {
+      types: new Map<number, number>(),
+      buckets: { strength: 0, cardio: 0, conditioning: 0, other: 0 },
+      workout: 0,
+    };
+    byDate.set(day, created);
+    return created;
+  };
+  for (const row of input.health) {
+    const day = row.recordedOn.slice(0, 10);
+    if (day < week.start || day > week.today) continue;
+    if (!Number.isFinite(row.value) || row.value <= 0) continue;
+    const activityType = activityTypeFromKind(row.kind);
+    if (activityType != null) {
+      const slot = slotFor(day);
+      slot.types.set(activityType, (slot.types.get(activityType) ?? 0) + row.value);
+      continue;
+    }
+    if (
+      row.kind === 'strength_minutes'
+      || row.kind === 'cardio_minutes'
+      || row.kind === 'conditioning_minutes'
+      || row.kind === 'other_minutes'
+    ) {
+      const slot = slotFor(day);
+      const key = row.kind.replace('_minutes', '') as 'strength' | 'cardio' | 'conditioning' | 'other';
+      slot.buckets[key] += row.value;
+      continue;
+    }
+    if (row.kind === 'workout_minutes') slotFor(day).workout += row.value;
+  }
+  const logged = new Map<string, LoggedSession>();
+  for (const [day, slot] of byDate) {
+    const buckets = { strength: 0, cardio: 0, conditioning: 0, other: 0 };
+    let boxingMinutes = 0;
+    if (slot.types.size > 0) {
+      for (const [activityType, minutes] of slot.types) {
+        buckets[workoutBucket(activityType, input.workoutBuckets)] += minutes;
+        if (BOXING_ACTIVITY_TYPES.has(activityType)) boxingMinutes += minutes;
+      }
+    } else {
+      buckets.strength = slot.buckets.strength;
+      buckets.cardio = slot.buckets.cardio;
+      buckets.conditioning = slot.buckets.conditioning;
+      buckets.other = slot.buckets.other;
+    }
+    const ranked = (['cardio', 'conditioning', 'strength', 'other'] as const)
+      .map((bucket) => ({ bucket, minutes: Math.round(buckets[bucket]) }))
+      .sort((left, right) => right.minutes - left.minutes || left.bucket.localeCompare(right.bucket));
+    const top = ranked[0];
+    const name = weekdayName(day);
+    if (top && top.minutes > 0) {
+      const label = top.bucket === 'conditioning' && boxingMinutes >= top.minutes
+        ? 'boxing'
+        : top.bucket === 'other'
+          ? 'session'
+          : top.bucket;
+      logged.set(name, { minutes: top.minutes, label, bucket: top.bucket });
+    } else if (slot.workout > 0) {
+      logged.set(name, { minutes: Math.round(slot.workout), label: 'session', bucket: 'session' });
+    }
+  }
+  return logged;
+}
+
+function doneLine(day: string, work: LoggedSession): string {
+  return `${day} · Done: ${work.minutes} min ${work.label}.`;
+}
+
+/** One session, its minutes, and one reason. The kind is not repeated in the reason. */
+function prescribedStrength(facts: Derived, day: string, minutes: number): string {
+  const goal = facts.input.goal;
+  if (goal === 'elite_runner') return `${day} · A run, about ${minutes} min. Add a little distance, about 5 to 10 percent.`;
+  if (isAnyBoxer(goal)) return `${day} · Boxing, about ${minutes} min. Skill and strength stay on this day.`;
+  if (goal === 'body_builder') return `${day} · Lifting, about ${minutes} min. Add a little weight or one set.`;
+  return `${day} · Strength, about ${minutes} min. The resistance work stays on this day.`;
+}
+
+const DIARY_ACTIVITY: Record<string, number> = {
+  run: 37,
+  outdoor: 52,
+  cardio: 13,
+  strength: 50,
+  boxing: 8,
+  other: 3000,
+};
+
+/**
+ * A finished workout-diary row counts as that day's session.
+ * The same two kinds the phone writes, so the week can see the type.
+ */
+export function diaryDoneHealthSamples(
+  rows: readonly { sessionType: string; startsAt: string; durationMinutes: number; doneAt: string | null }[],
+): { kind: string; value: number; recordedOn: string; source: 'manual' }[] {
+  return rows.flatMap((row) => {
+    if (!row.doneAt) return [];
+    const activity = DIARY_ACTIVITY[row.sessionType];
+    const minutes = Math.round(Number(row.durationMinutes));
+    if (!activity || !Number.isFinite(minutes) || minutes <= 0 || !row.startsAt) return [];
+    const recordedOn = londonDay(row.startsAt);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(recordedOn)) return [];
+    return [
+      { kind: 'workout_minutes', value: minutes, recordedOn, source: 'manual' as const },
+      { kind: `workout_type_${activity}`, value: minutes, recordedOn, source: 'manual' as const },
+    ];
+  });
 }
 
 const ZONE_FOR_BOXING = [
@@ -1012,21 +1144,13 @@ const ZONE_FOR_OTHER = [
   'Easy Zone 2 as an easy jog',
 ];
 
-const STRENGTH_KEEP = [
-  'Keep this strength day.',
-  'The resistance work stays on this day.',
-  'This day stays with the sessions you already do.',
-];
-
-const BOXING_KEEP = [
-  'Keep this strength and skill day.',
-  'The pads and the bag stay on this day.',
-  'This day stays with the boxing you already do.',
-];
+type WeekSlot = 'strength' | 'zone' | 'interval';
 
 /**
  * Specific days when cardio is behind the goal, the age band, or the strength minutes.
- * Strength days stay. Minutes stay at that day's own floor. One interval only after a base is in place.
+ * A day that already has a session shows that session and is not given another one.
+ * The work it displaced moves to a later open day. Each line is one type, its minutes, and one reason.
+ * Minutes on a still-open day stay at that day's own floor. One interval only after a base is in place.
  */
 function goalLedWeek(facts: Derived, baseline: TrainingBaseline): string[] | null {
   const gap = assessCardioGap(fitnessInput(facts.input));
@@ -1039,38 +1163,111 @@ function goalLedWeek(facts: Derived, baseline: TrainingBaseline): string[] | nul
   const typicalCardio = cardioDays.filter((day) => dayMinutesOf(baseline, day) <= baseline.typicalMinutes);
   const intervalPool = typicalCardio.length ? typicalCardio : cardioDays;
   const intervalDay = base ? intervalPool[intervalPool.length - 1] ?? null : null;
-  const zoneDays = cardioDays.filter((day) => day !== intervalDay);
-  const longestZone = zoneDays.reduce<string | null>((best, day) => {
-    if (!best) return day;
-    return dayMinutesOf(baseline, day) > dayMinutesOf(baseline, best) ? day : best;
-  }, null);
-  const reason = gap.belowGoal && gap.reference
+  const original = new Map<string, WeekSlot>();
+  for (const day of train) {
+    if (day === intervalDay) original.set(day, 'interval');
+    else if (strengthDays.has(day)) original.set(day, 'strength');
+    else original.set(day, 'zone');
+  }
+  const logged = loggedThisWeek(facts.input);
+  const filled = new Set(train.filter((day) => logged.has(day)));
+  let strengthCredit = 0;
+  let cardioCredit = 0;
+  for (const work of logged.values()) {
+    if (work.bucket === 'strength' || work.bucket === 'conditioning') strengthCredit += 1;
+    else if (work.bucket === 'cardio') cardioCredit += 1;
+  }
+  let needStrength = Math.max(0, [...original.values()].filter((slot) => slot === 'strength').length - strengthCredit);
+  let needZone = Math.max(0, [...original.values()].filter((slot) => slot === 'zone').length - cardioCredit);
+  let needInterval = [...original.values()].filter((slot) => slot === 'interval').length;
+  if (cardioCredit > [...original.values()].filter((slot) => slot === 'zone').length) {
+    needInterval = Math.max(0, needInterval - (cardioCredit - [...original.values()].filter((slot) => slot === 'zone').length));
+  }
+  const open = train.filter((day) => !filled.has(day));
+  const assigned = new Map<(typeof WEEK_ORDER)[number], WeekSlot>();
+  const claim = (day: (typeof WEEK_ORDER)[number], slot: WeekSlot): boolean => {
+    if (filled.has(day) || assigned.has(day)) return false;
+    assigned.set(day, slot);
+    return true;
+  };
+  if (needInterval > 0 && intervalDay && claim(intervalDay, 'interval')) needInterval -= 1;
+  for (const day of open) {
+    if (needZone <= 0) break;
+    if (original.get(day) === 'zone' && claim(day, 'zone')) needZone -= 1;
+  }
+  for (const day of open) {
+    if (needStrength <= 0) break;
+    if (original.get(day) === 'strength' && claim(day, 'strength')) needStrength -= 1;
+  }
+  const remaining = () => open.filter((day) => !assigned.has(day));
+  if (needInterval > 0) {
+    const pool = remaining();
+    const typical = pool.filter((day) => dayMinutesOf(baseline, day) <= baseline.typicalMinutes);
+    const day = (typical.length ? typical : pool).at(-1);
+    if (day && claim(day, 'interval')) needInterval -= 1;
+  }
+  while (needZone > 0) {
+    const pool = remaining();
+    if (!pool.length) break;
+    const day = pool.reduce((best, candidate) => (
+      dayMinutesOf(baseline, candidate) > dayMinutesOf(baseline, best) ? candidate : best
+    ));
+    claim(day, 'zone');
+    needZone -= 1;
+  }
+  while (needStrength > 0) {
+    const pool = remaining();
+    if (!pool.length) break;
+    const day = pool[0];
+    if (!day || !claim(day, 'strength')) break;
+    needStrength -= 1;
+  }
+  for (const day of open) {
+    if (assigned.has(day)) continue;
+    const slot = original.get(day);
+    if (slot) assigned.set(day, slot);
+  }
+  const trendDay = gap.trendingDown
+    ? WEEK_ORDER.find((day) => assigned.get(day) === 'interval')
+      ?? WEEK_ORDER.find((day) => assigned.get(day) === 'zone')
+      ?? null
+    : null;
+  const aerobic = gap.belowGoal && gap.reference
     ? `Your VO2 max is below the ${gap.reference} reference, so this builds your aerobic base.`
     : gap.belowAge
       ? 'Your VO2 max is below the usual range for your age and sex, so this builds your aerobic base.'
       : 'Cardio is a small share of these minutes, so this builds your aerobic base.';
+  const zoneAssigned = WEEK_ORDER.filter((day) => assigned.get(day) === 'zone');
+  const longestZone = zoneAssigned.reduce<string | null>((best, day) => {
+    if (!best) return day;
+    return dayMinutesOf(baseline, day) > dayMinutesOf(baseline, best) ? day : best;
+  }, null);
   const modes = boxer ? ZONE_FOR_BOXING : ZONE_FOR_OTHER;
-  const keeps = boxer ? BOXING_KEEP : STRENGTH_KEEP;
   let zoneIndex = 0;
-  let strengthIndex = 0;
-  const trendState = { used: false };
   const lines: string[] = [];
   for (const day of WEEK_ORDER) {
+    const work = logged.get(day);
+    if (work) {
+      lines.push(doneLine(day, work));
+      continue;
+    }
     if (baseline.trainDays.includes(day)) {
       const minutes = dayMinutesOf(baseline, day);
-      if (day === intervalDay) {
-        lines.push(`${day} · A short interval session, about ${minutes} min. One short interval session this week, beside the work you already do.`);
-      } else if (!strengthDays.has(day)) {
+      const slot = assigned.get(day) ?? 'strength';
+      if (slot === 'interval') {
+        const reason = day === trendDay
+          ? 'Cardio fitness is trending down.'
+          : 'One short interval session this week, beside the work you already do.';
+        lines.push(`${day} · A short interval session, about ${minutes} min. ${reason}`);
+      } else if (slot === 'zone') {
         const mode = boxer && day === longestZone
           ? 'Easy Zone 2 with skipping or bag rounds'
           : modes[zoneIndex % modes.length];
         if (!(boxer && day === longestZone)) zoneIndex += 1;
+        const reason = day === trendDay ? 'Cardio fitness is trending down.' : aerobic;
         lines.push(`${day} · ${mode}, about ${minutes} min. ${reason}`);
       } else {
-        const kind = sessionKind(facts);
-        const keep = keeps[strengthIndex % keeps.length] ?? keeps[0];
-        strengthIndex += 1;
-        lines.push(`${day} · Keep this ${kind}, about ${minutes} min. ${keep}${trendSentence(gap.trendingDown, trendState)}`);
+        lines.push(prescribedStrength(facts, day, minutes));
       }
     } else if (baseline.walkDays?.includes(day)) lines.push(`${day} · A walk. Keep it easy.`);
     else if (baseline.restDays.includes(day)) lines.push(`${day} · Rest. You already leave this day free.`);
@@ -1083,8 +1280,14 @@ function routineWeek(facts: Derived, baseline: TrainingBaseline): string[] {
   if (led) return led;
   const kind = sessionKind(facts);
   const progress = progressionClause(facts);
+  const logged = loggedThisWeek(facts.input);
   const lines: string[] = [];
   for (const day of WEEK_ORDER) {
+    const work = logged.get(day);
+    if (work) {
+      lines.push(doneLine(day, work));
+      continue;
+    }
     if (baseline.trainDays.includes(day)) {
       const minutes = dayMinutesOf(baseline, day);
       lines.push(`${day} · Keep this ${kind}, about ${minutes} min. ${progress}`);
@@ -1391,9 +1594,10 @@ function written(facts: Derived, updatedAt: string): HealthPlan {
   const habits = nutritionHabits(facts);
   const swapLines = swaps(facts);
   const week = sessions(facts);
+  const upcoming = week.find((line) => !/ · Done: /.test(line)) ?? week[0] ?? 'A short walk, then rest.';
   const well = wellbeingHabits(facts);
   return {
-    focus: actions('focus', focusLines(facts, habits, week[0] ?? 'A short walk, then rest.', well[0] ?? 'An early night.')),
+    focus: actions('focus', focusLines(facts, habits, upcoming, well[0] ?? 'An early night.')),
     nutrition: {
       targets: targetLine(facts),
       habits: actions('habit', habits),
@@ -1528,7 +1732,9 @@ function mergeSessions(incoming: PlanAction[], fallback: PlanAction[], facts: De
     if (next.length >= 7) break;
   }
   if (!baseline) return next.length >= 3 ? next : fallback;
-  if (baseline.source === 'stated') return fallback;
+  // A saved week, or a week that already has a logged session, stays on the local lines.
+  // Those lines name what was done and move the remaining work. The model does not.
+  if (baseline.source === 'stated' || fallback.some((action) => action.done)) return fallback;
   const covered = baseline.trainDays.every((day) => seenDays.has(day));
   return covered && next.length >= 3 ? next : fallback;
 }

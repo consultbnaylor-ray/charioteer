@@ -95,7 +95,7 @@ import {
 } from '@/domain/nutrition';
 import { donePlanTexts, draftHealthPlan, normaliseTrainingSchedule, presentSharedHealthPlan, type HealthPlan, type TrainingSchedule } from '@/domain/healthPlan';
 import { localStatsVerdict, sanitizeStatsAnalysis } from '@/domain/statsAnalysis';
-import { isPlannedSessionType, plannedEffortFrom, type PlannedSession, type PlannedSessionDraft } from '@/domain/plannedSession';
+import { isPlannedSessionType, plannedEffortFrom, withPlannedMinutes, type PlannedSession, type PlannedSessionDraft } from '@/domain/plannedSession';
 import { PEOPLE, createDemoDb, type DemoAccount, type DemoDb } from '@/data/demo-seed';
 import { activityTypeFromKind } from '@/domain/fitnessSnapshot';
 import type {
@@ -1473,7 +1473,10 @@ export class DemoRepository implements Repository {
         note: row.note,
         createdAt: row.createdAt,
       })),
-      health: account.health.map((row) => ({ kind: row.kind, value: row.value, recordedOn: row.recordedOn, source: row.source })),
+      health: withPlannedMinutes(
+        account.health.map((row) => ({ kind: row.kind, value: row.value, recordedOn: row.recordedOn, source: row.source })),
+        account.plannedSessions,
+      ),
       workoutBuckets: nutrition.workoutBuckets,
       bodyFatPct: figures.bodyFatPct,
       leanMassKg: figures.leanMassKg,

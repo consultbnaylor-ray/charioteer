@@ -2,6 +2,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.117.3';
 
 import {
   HEALTH_PLAN_PROMPT,
+  diaryDoneHealthSamples,
   draftHealthPlan,
   guardHealthPlan,
   healthPlanModelContext,
@@ -135,7 +136,7 @@ Deno.serve(async (req) => {
   if (settingsRes.error) {
     settingsRes = await userClient.from('nutrition_settings').select('goal, goal_age, goal_sex, build, kcal_target, protein_target_g, hide_calories').eq('user_id', userId).maybeSingle();
   }
-  const [logsRes, checkRes, healthRes, bodyRes, reasonsRes, visionRes, interestRes, savedRes, scheduleRes] = await Promise.all([
+  const [logsRes, checkRes, healthRes, bodyRes, reasonsRes, visionRes, interestRes, savedRes, scheduleRes, plannedRes] = await Promise.all([
     userClient.from('food_logs').select('id, eaten_on, meal, items, estimated, created_at').eq('user_id', userId).order('eaten_on', { ascending: false }).limit(40),
     userClient.from('check_ins').select('mood, craving, sleep_hours, note, created_at').eq('user_id', userId).order('created_at', { ascending: false }).limit(14),
     userClient.from('health_samples').select('kind, value, recorded_on, source').eq('user_id', userId).order('recorded_on', { ascending: false }).limit(800),
@@ -145,6 +146,7 @@ Deno.serve(async (req) => {
     userClient.from('profile_interests').select('interest_id, interests(label)').eq('user_id', userId),
     userClient.from('health_plans').select('focus, nutrition, fitness, wellbeing, limits').eq('user_id', userId).maybeSingle(),
     userClient.from('training_schedules').select('monday, tuesday, wednesday, thursday, friday, saturday, sunday, typical_minutes, longer_day, longer_minutes, walk_day, note').eq('user_id', userId).maybeSingle(),
+    userClient.from('planned_sessions').select('session_type, starts_at, duration_minutes, done_at').eq('user_id', userId).not('done_at', 'is', null).limit(80),
   ]);
 
   const shareHealth = profileRes.data.consent_health === true;
@@ -222,12 +224,20 @@ Deno.serve(async (req) => {
       note: textOf(row.note).slice(0, 160),
       createdAt: textOf(row.created_at),
     })),
-    health: samplesWithGarminActivities(((healthRes.data ?? []) as Record<string, unknown>[]).map((row) => ({
-      kind: textOf(row.kind),
-      value: Number(row.value) || 0,
-      recordedOn: textOf(row.recorded_on),
-      source: row.source === 'healthkit' || row.source === 'manual' ? row.source : undefined,
-    })), garminActivities),
+    health: samplesWithGarminActivities([
+      ...((healthRes.data ?? []) as Record<string, unknown>[]).map((row) => ({
+        kind: textOf(row.kind),
+        value: Number(row.value) || 0,
+        recordedOn: textOf(row.recorded_on),
+        source: row.source === 'healthkit' || row.source === 'manual' ? row.source : undefined,
+      })),
+      ...diaryDoneHealthSamples(((plannedRes.error ? [] : plannedRes.data ?? []) as Record<string, unknown>[]).map((row) => ({
+        sessionType: textOf(row.session_type),
+        startsAt: textOf(row.starts_at),
+        durationMinutes: Number(row.duration_minutes),
+        doneAt: textOf(row.done_at) || null,
+      }))),
+    ], garminActivities),
     bodyFatPct: typeof latestFat?.body_fat_pct === 'number' ? latestFat.body_fat_pct : null,
     leanMassKg: typeof latestLean?.lean_mass_kg === 'number' ? latestLean.lean_mass_kg : null,
     waistCm: typeof latestWaist?.waist_cm === 'number' ? latestWaist.waist_cm : null,

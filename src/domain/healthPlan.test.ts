@@ -9,6 +9,7 @@ import {
   HEALTH_PLAN_PROMPT,
   SOBER_SWAP,
   SWAP_LOG_MORE,
+  diaryDoneHealthSamples,
   draftHealthPlan,
   guardHealthPlan,
   healthPlanFromStored,
@@ -524,7 +525,9 @@ describe('health plan writer', () => {
       expect(texts.filter((text) => text.startsWith(`${day} ·`))).toHaveLength(1);
     }
     expect(texts.join(' ')).not.toMatch(/\bRest\b|full rest|no structured|Walk for 30 minutes/i);
-    expect(texts[0]).toMatch(/Monday · Keep this session, about 30 min/);
+    expect(texts[0]).toBe('Monday · Done: 30 min session.');
+    expect(plan.fitness.sessions[0]?.done).toBe(true);
+    expect(texts.find((text) => text.startsWith('Friday ·'))).toMatch(/Friday · Keep this session, about 30 min/);
     expect(texts.join(' ')).toMatch(/Add a little weight or one set/);
     const context = healthPlanModelContext(person, plan);
     expect(context.training?.sessionsPerWeek).toBe(7);
@@ -635,7 +638,8 @@ describe('health plan writer', () => {
     expect(compared.fitness.intro).toContain(PLAN_DOCTOR);
     expect(compared.fitness.intro.length).toBeLessThanOrEqual(220);
     const comparedTexts = compared.fitness.sessions.map((item) => item.text);
-    expect(comparedTexts.find((text) => text.startsWith('Tuesday ·'))).toMatch(/about 30 min/);
+    expect(comparedTexts.find((text) => text.startsWith('Tuesday ·'))).toBe('Tuesday · Done: 30 min session.');
+    expect(compared.fitness.sessions.find((item) => item.text.startsWith('Tuesday ·'))?.done).toBe(true);
     expect(comparedTexts.find((text) => text.startsWith('Saturday ·'))).toMatch(/about 45 min/);
     expect(comparedTexts.find((text) => text.startsWith('Sunday ·'))).toMatch(/A walk/);
     expect(comparedTexts.join(' ')).not.toMatch(/Tuesday · Rest/);
@@ -654,7 +658,8 @@ describe('health plan writer', () => {
     expect(guarded.fitness.intro).toMatch(/You aim for 30 min on weekdays and a bit more on Saturday; you have done 4 of 6 this week/);
     expect(guarded.fitness.intro).toContain(PLAN_DOCTOR);
     const guardedTexts = guarded.fitness.sessions.map((item) => item.text);
-    expect(guardedTexts.find((text) => text.startsWith('Tuesday ·'))).toMatch(/about 30 min/);
+    expect(guardedTexts.find((text) => text.startsWith('Tuesday ·'))).toBe('Tuesday · Done: 30 min session.');
+    expect(guarded.fitness.sessions.find((item) => item.text.startsWith('Tuesday ·'))?.done).toBe(true);
     expect(guardedTexts.find((text) => text.startsWith('Saturday ·'))).toMatch(/about 45 min/);
     expect(guardedTexts.find((text) => text.startsWith('Sunday ·'))).toMatch(/A walk/);
     const stated = planBaseline(logged);
@@ -727,10 +732,18 @@ describe('health plan writer', () => {
     expect(texts.filter((text) => /interval/i.test(text))).toHaveLength(1);
     expect(texts.join(' ')).toMatch(/bike|rower|brisk walk|skipping or bag rounds/);
     expect(texts.join(' ')).toMatch(/cruiserweight/);
-    expect(texts.join(' ')).toMatch(/trending down/);
     expect(texts.join(' ')).not.toContain('…');
-    expect(texts.filter((text) => /Keep this boxing session/i.test(text)).length).toBeGreaterThan(0);
-    for (const day of ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday']) {
+    expect(texts.join(' ')).not.toMatch(/Keep this boxing session|Keep this strength and skill day/i);
+    expect(texts.find((text) => text.startsWith('Monday ·'))).toMatch(/Boxing, about 30 min/);
+    expect(texts.find((text) => text.startsWith('Tuesday ·'))).toBe('Tuesday · Done: 40 min strength.');
+    expect(texts.find((text) => text.startsWith('Wednesday ·'))).toMatch(/Boxing, about 30 min/);
+    expect(plan.fitness.sessions.find((item) => item.text.startsWith('Tuesday ·'))?.done).toBe(true);
+    expect(plan.fitness.sessions.find((item) => item.text.startsWith('Wednesday ·'))?.done).toBe(false);
+    const trend = texts.filter((text) => /trending down/i.test(text));
+    expect(trend).toHaveLength(1);
+    expect(trend[0]).toMatch(/Zone 2|interval/i);
+    expect(trend[0]).not.toMatch(/Boxing/);
+    for (const day of ['Monday', 'Thursday', 'Friday']) {
       expect(texts.find((text) => text.startsWith(`${day} ·`))).toMatch(/about 30 min/);
     }
     expect(texts.find((text) => text.startsWith('Saturday ·'))).toMatch(/about 45 min/);
@@ -752,6 +765,85 @@ describe('health plan writer', () => {
     expect(snapshot.contextLine).toMatch(/not a running plan/i);
     expect(snapshot.contextLine).toContain('Check with a doctor before big changes.');
     expect(snapshot.contextLine).not.toMatch(/runna|mileage|\b5k\b|progressive distance/i);
+  });
+
+  it('shows cardio already done today and moves boxing to a later day', () => {
+    const schedule = {
+      days: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'],
+      typicalMinutes: 30,
+      longerDay: 'Saturday',
+      longerMinutes: 45,
+      walkDay: 'Sunday',
+      note: '',
+    };
+    const person = input({
+      now: new Date('2026-10-12T08:00:00.000Z'),
+      salt: 'cardio-done-today',
+      goal: 'elite_cruiser_boxer',
+      goalSex: 'male',
+      goalAge: 34,
+      schedule,
+      health: [
+        { kind: 'weight_kg', value: 90, recordedOn: '2026-10-11' },
+        { kind: 'vo2_max', value: 44, recordedOn: '2026-08-01' },
+        { kind: 'vo2_max', value: 41.7, recordedOn: '2026-10-11' },
+        { kind: 'workout_type_50', value: 40, recordedOn: '2026-10-06' },
+        { kind: 'workout_type_50', value: 40, recordedOn: '2026-10-08' },
+        { kind: 'cardio_minutes', value: 45, recordedOn: '2026-10-12' },
+        { kind: 'workout_minutes', value: 45, recordedOn: '2026-10-12' },
+      ],
+    });
+    const plan = draftHealthPlan(person);
+    const monday = plan.fitness.sessions.find((item) => item.text.startsWith('Monday ·'));
+    expect(monday?.text).toBe('Monday · Done: 45 min cardio.');
+    expect(monday?.done).toBe(true);
+    expect(monday?.text).not.toMatch(/boxing|strength and skill|trending down/i);
+    const texts = plan.fitness.sessions.map((item) => item.text);
+    expect(texts).toHaveLength(7);
+    const boxing = texts.filter((text) => /Boxing, about \d+ min/.test(text));
+    expect(boxing.length).toBeGreaterThan(0);
+    expect(boxing.join(' ')).not.toMatch(/Monday/);
+    for (const text of texts) {
+      expect(text).not.toMatch(/Keep this boxing session|Keep this strength and skill day/i);
+      const sentences = text.split(/(?<=\.)\s+/).filter(Boolean);
+      expect(sentences.length).toBeLessThanOrEqual(2);
+    }
+    const trend = texts.filter((text) => /trending down/i.test(text));
+    expect(trend).toHaveLength(1);
+    expect(trend[0]).toMatch(/Zone 2|interval/i);
+    expect(trend[0]).not.toMatch(/Boxing/);
+    expect(texts.filter((text) => /interval/i.test(text))).toHaveLength(1);
+    expect(texts.filter((text) => /Zone 2/i.test(text)).length).toBeGreaterThan(0);
+    expect(texts.find((text) => text.startsWith('Sunday ·'))).toBe('Sunday · A walk. Keep it easy.');
+    expect(texts.join(' ')).not.toMatch(/\bRest\b/);
+    const stated = planBaseline(person);
+    expect(mentionsRegressiveSession('Monday · Done: 15 min cardio.', stated)).toBe(false);
+    expect(mentionsRegressiveSession('Monday · Easy Zone 2, about 15 min.', stated)).toBe(true);
+    for (const text of texts) expect(mentionsRegressiveSession(text, stated)).toBe(false);
+    const diary = diaryDoneHealthSamples([{
+      sessionType: 'cardio',
+      startsAt: '2026-10-12T08:00:00.000Z',
+      durationMinutes: 45,
+      doneAt: '2026-10-12T08:40:00.000Z',
+    }]);
+    expect(diary).toEqual([
+      { kind: 'workout_minutes', value: 45, recordedOn: '2026-10-12', source: 'manual' },
+      { kind: 'workout_type_13', value: 45, recordedOn: '2026-10-12', source: 'manual' },
+    ]);
+    expect(diaryDoneHealthSamples([{
+      sessionType: 'cardio',
+      startsAt: '2026-10-12T08:00:00.000Z',
+      durationMinutes: 45,
+      doneAt: null,
+    }])).toEqual([]);
+    const fromDiary = draftHealthPlan(input({
+      ...person,
+      health: person.health.filter((row) => row.recordedOn !== '2026-10-12').concat(diary),
+    }));
+    expect(fromDiary.fitness.sessions.find((item) => item.text.startsWith('Monday ·'))?.text).toBe('Monday · Done: 45 min cardio.');
+    const fn = readFileSync('supabase/functions/health-plan/index.ts', 'utf8');
+    expect(fn).toContain("from('planned_sessions')");
+    expect(fn).toContain('diaryDoneHealthSamples');
   });
 
   it('counts this week from Monday through Sunday in London, including the clock change', () => {
