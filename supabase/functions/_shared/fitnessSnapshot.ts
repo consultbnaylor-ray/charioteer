@@ -955,6 +955,13 @@ function boxerBand(goal: NutritionGoal | null, sex: NutritionSex | null): Fitnes
   return null;
 }
 
+/** The same boxing VO2 band the fitness-age card uses. Null when this goal has no class band. */
+export function athleticVo2Target(goal: NutritionGoal | null, sex: NutritionSex | null): { low: number; high: number } | null {
+  const band = boxerBand(goal, sex);
+  if (!band) return null;
+  return { low: band.low, high: band.high };
+}
+
 /** Plain line when VO2 max is under the published range for the saved sport. Null when it is not. */
 export function vo2AthleticShortfall(input: {
   vo2: number | null;

@@ -88,6 +88,10 @@ export type AnalysisStat = {
   rating: (typeof ANALYSIS_RATINGS)[number];
   range: string;
   tip: string | null;
+  /** App target for the saved goal, such as 56–62 ml/kg/min. Null when this stat has no goal band. */
+  goalTarget: string | null;
+  /** How far the figure sits past that target. Null when it meets the target or there is no band. */
+  goalGap: number | null;
 };
 
 export type StatsAnalysisPayload = {
@@ -102,11 +106,14 @@ export const STATS_ANALYSIS_PROMPT = [
   'Open with one overall verdict against a healthy person of this age. Name the sport goal when one is set.',
   'If most ratings are Poor, say so plainly. Do not soften it.',
   'If the picture is mixed, say it looks reasonable for their age and that improvements could be made.',
-  'If the ratings are mostly Good or Excellent, say it looks strong and to keep up the good work.',
-  'Then one short strengths line. Name at most three stats rated Good or Excellent, with their values. If none are, do not invent a strength.',
+  'If the ratings are mostly Good or Excellent and no stat has a goalGap, say it looks strong and to keep up the good work.',
+  'A stat with a goalGap is short of the saved goal. It is not a strength, even when the rating is Good or Excellent. Say it is fine for their age, but short of the goal by that gap, and name goalTarget.',
+  'Do not say keep up the good work when any stat has a goalGap. Say it is strong for their age, but some way off the goal.',
+  'Then one short strengths line. Name at most three stats that are Good or Excellent and have no goalGap. If none qualify, do not invent a strength.',
   'Usual and No rating yet are not strengths and not levers.',
-  'Then the things to improve, Fair and Poor first, ranked from the largest gap for health and the sport goal down to the smaller ones.',
+  'Then the things to improve. Lead with the largest goalGap, then the next, then Fair and Poor. Do not mention the same thing twice.',
   'For each, say why it matters and give one or two specific steps. Do not copy the range sentence, the rating word, or the tip already in the JSON.',
+  'When VO2 max has a goalGap, the steps are one or two sessions a week of four repeats of four minutes at about 85 to 95 percent of max heart rate, easy zone 2 on the other days, and a gain of a few ml/kg/min over months. VO2 max is the main input to fitness age.',
   'Say how the figures fit together and the order to work on them.',
   'Quote value. That is the recent average, or a total over the last 7 days when the range says so. Do not headline today.',
   'Do not list every stat at the end.',
@@ -135,25 +142,35 @@ export function localStatsVerdict(payload: StatsAnalysisPayload): string {
   const age = payload.age != null ? ` for someone aged ${Math.round(payload.age)}` : '';
   const goal = payload.goal ? ` The saved aim is ${payload.goal}.` : '';
   const poor = payload.stats.filter((stat) => stat.rating === 'Fair' || stat.rating === 'Poor');
-  const good = payload.stats.filter((stat) => stat.rating === 'Good' || stat.rating === 'Excellent');
+  const short = payload.stats.filter((stat) => stat.goalGap != null && stat.goalGap > 0)
+    .sort((left, right) => (right.goalGap ?? 0) - (left.goalGap ?? 0));
+  const shortIds = new Set(short.map((stat) => stat.id));
+  const good = payload.stats.filter((stat) => (stat.rating === 'Good' || stat.rating === 'Excellent') && !shortIds.has(stat.id));
   const strengthLine = good.length
     ? ` Strengths: ${good.slice(0, 3).map((stat) => `${statName(stat)}${figureOf(stat)}`).join(', ')}.`
     : '';
-  const leverLine = [...poor].sort((left, right) => (left.rating === right.rating ? 0 : left.rating === 'Poor' ? -1 : 1))
-    .slice(0, 3)
-    .map((stat) => `${statName(stat)}${figureOf(stat)}`)
-    .join(', ');
-  if (good.length + poor.length === 0) {
+  const work = [...short, ...poor.filter((stat) => !shortIds.has(stat.id))].slice(0, 3);
+  const workLine = work.map((stat) => (
+    stat.goalGap != null && stat.goalGap > 0 && stat.goalTarget
+      ? `${statName(stat)} ${stat.goalGap} short of ${stat.goalTarget}`
+      : `${statName(stat)}${figureOf(stat)}`
+  )).join(', ');
+  if (good.length + poor.length + short.length === 0) {
     return `There are not enough rated readings yet for an overall view${age}.${goal}`.replace(/\s+/g, ' ').trim();
   }
+  if (short.length > 0) {
+    const ageBit = good.length + short.length > poor.length ? 'Strong for your age' : 'Your overall health looks mixed for your age';
+    const gaps = workLine ? ` The biggest gaps are ${workLine}.` : '';
+    return `${ageBit}, but some way off the saved goal.${goal}${strengthLine}${gaps}`.replace(/\s+/g, ' ').trim();
+  }
   if (poor.length > good.length && poor.length >= 3) {
-    const levers = leverLine ? ` Work on ${leverLine}, in that order.` : '';
+    const levers = workLine ? ` Work on ${workLine}, in that order.` : '';
     return `Most of these ratings are Poor or Fair${age}.${goal}${strengthLine}${levers}`.replace(/\s+/g, ' ').trim();
   }
   if (good.length >= 3 && poor.length === 0) {
     return `Your overall health looks strong${age}.${goal}${strengthLine} Keep up the good work.`.replace(/\s+/g, ' ').trim();
   }
-  const levers = leverLine ? ` Work on ${leverLine}, in that order.` : '';
+  const levers = workLine ? ` Work on ${workLine}, in that order.` : '';
   return `Your overall health looks reasonable${age}, but improvements could be made.${goal}${strengthLine}${levers}`.replace(/\s+/g, ' ').trim();
 }
 
@@ -199,6 +216,8 @@ export function sanitizeStatsAnalysis(input: unknown): StatsAnalysisPayload | nu
       rating,
       range: text(row.range, 220),
       tip: lever ? text(row.tip, 180) || null : null,
+      goalTarget: text(row.goalTarget, 80) || null,
+      goalGap: finite(row.goalGap) != null && (finite(row.goalGap) ?? 0) > 0 ? finite(row.goalGap) : null,
     });
   }
   if (stats.length === 0) return null;

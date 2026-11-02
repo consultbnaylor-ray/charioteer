@@ -85,9 +85,9 @@ describe('stats analysis summaries', () => {
       sex: 'male',
       goal: 'Cruiser',
       stats: [
-        { id: 'steps', name: 'Steps', value: 9000, latest: 9000, average: 8000, today: null, trend: 'up', rating: 'Good', range: '', tip: null },
-        { id: 'sleep_score', name: 'Sleep score', value: 50, latest: 50, average: 50, today: null, trend: 'steady', rating: 'Poor', range: '', tip: 'Keep a steady wake time.' },
-        { id: 'stress', name: 'Stress', value: 80, latest: 80, average: 80, today: null, trend: 'up', rating: 'Poor', range: '', tip: null },
+        { id: 'steps', name: 'Steps', value: 9000, latest: 9000, average: 8000, today: null, trend: 'up', rating: 'Good', range: '', tip: null, goalTarget: null, goalGap: null },
+        { id: 'sleep_score', name: 'Sleep score', value: 50, latest: 50, average: 50, today: null, trend: 'steady', rating: 'Poor', range: '', tip: 'Keep a steady wake time.', goalTarget: null, goalGap: null },
+        { id: 'stress', name: 'Stress', value: 80, latest: 80, average: 80, today: null, trend: 'up', rating: 'Poor', range: '', tip: null, goalTarget: null, goalGap: null },
       ],
     });
     expect(mixed).toContain('reasonable');
@@ -99,9 +99,9 @@ describe('stats analysis summaries', () => {
       sex: 'male',
       goal: null,
       stats: [
-        { id: 'steps', name: 'Steps', value: 9000, latest: 9000, average: 9000, today: null, trend: 'steady', rating: 'Good', range: '', tip: null },
-        { id: 'sleep_hours', name: 'Sleep hours', value: 8, latest: 8, average: 8, today: null, trend: 'steady', rating: 'Good', range: '', tip: null },
-        { id: 'resting_heart_rate', name: 'Resting heart rate', value: 60, latest: 60, average: 60, today: null, trend: 'steady', rating: 'Good', range: '', tip: null },
+        { id: 'steps', name: 'Steps', value: 9000, latest: 9000, average: 9000, today: null, trend: 'steady', rating: 'Good', range: '', tip: null, goalTarget: null, goalGap: null },
+        { id: 'sleep_hours', name: 'Sleep hours', value: 8, latest: 8, average: 8, today: null, trend: 'steady', rating: 'Good', range: '', tip: null, goalTarget: null, goalGap: null },
+        { id: 'resting_heart_rate', name: 'Resting heart rate', value: 60, latest: 60, average: 60, today: null, trend: 'steady', rating: 'Good', range: '', tip: null, goalTarget: null, goalGap: null },
       ],
     });
     expect(strong).toContain('strong');
@@ -111,13 +111,65 @@ describe('stats analysis summaries', () => {
       sex: 'male',
       goal: null,
       stats: [
-        { id: 'steps', name: 'Steps', value: 2000, latest: 2000, average: 2000, today: null, trend: 'down', rating: 'Poor', range: '', tip: null },
-        { id: 'sleep_hours', name: 'Sleep hours', value: 4, latest: 4, average: 4, today: null, trend: 'down', rating: 'Poor', range: '', tip: null },
-        { id: 'stress', name: 'Stress', value: 90, latest: 90, average: 90, today: null, trend: 'up', rating: 'Poor', range: '', tip: null },
+        { id: 'steps', name: 'Steps', value: 2000, latest: 2000, average: 2000, today: null, trend: 'down', rating: 'Poor', range: '', tip: null, goalTarget: null, goalGap: null },
+        { id: 'sleep_hours', name: 'Sleep hours', value: 4, latest: 4, average: 4, today: null, trend: 'down', rating: 'Poor', range: '', tip: null, goalTarget: null, goalGap: null },
+        { id: 'stress', name: 'Stress', value: 90, latest: 90, average: 90, today: null, trend: 'up', rating: 'Poor', range: '', tip: null, goalTarget: null, goalGap: null },
       ],
     });
     expect(mostlyPoor).toContain('Most of these ratings are Poor or Fair');
     expect(mostlyPoor).not.toContain('Strengths:');
+    const short = localStatsVerdict({
+      age: 45,
+      sex: 'male',
+      goal: 'Elite Athlete (Cruiserweight Boxer)',
+      stats: [
+        { id: 'vo2', name: 'VO2 max', value: 43.2, latest: 43.2, average: 43.2, today: null, trend: 'steady', rating: 'Good', range: '', tip: null, goalTarget: '56–62 ml/kg/min', goalGap: 12.8 },
+        { id: 'steps', name: 'Steps', value: 9000, latest: 9000, average: 9000, today: null, trend: 'steady', rating: 'Good', range: '', tip: null, goalTarget: null, goalGap: null },
+      ],
+    });
+    expect(short).toContain('some way off');
+    expect(short).not.toContain('Keep up the good work');
+    expect(short).toContain('VO2 max 12.8 short of 56–62 ml/kg/min');
+    const shortStrengths = short.slice(short.indexOf('Strengths:'), short.indexOf('The biggest gaps'));
+    expect(shortStrengths).not.toContain('VO2');
+    expect(shortStrengths).toContain('Steps 9000');
+  });
+
+  it('keeps a VO2 that is good for age but short of a boxing target out of the strengths', () => {
+    const readings = emptyGarminReadings();
+    readings.userMetrics = [{ summaryId: 'u', calendarDate: '2026-11-01', vo2Max: 43.2, vo2MaxCycling: null, fitnessAge: null }];
+    readings.sleep = [{
+      summaryId: 's',
+      calendarDate: '2026-11-01',
+      durationSeconds: 8 * 3600,
+      deepSeconds: null,
+      lightSeconds: null,
+      remSeconds: null,
+      awakeSeconds: null,
+      sleepScore: 82,
+    }];
+    const payload = buildStatsAnalysis({
+      today: '2026-11-02',
+      age: 45,
+      sex: 'male',
+      goal: 'elite_cruiser_boxer',
+      heightCm: 180,
+      samples: [{ kind: 'sleep_hours', value: 7.4, recordedOn: '2026-11-01' }],
+      readings,
+    });
+    const vo2 = payload.stats.find((stat) => stat.id === 'vo2');
+    expect(vo2?.value).toBe(43.2);
+    expect(vo2?.rating).toBe('Good');
+    expect(vo2?.goalTarget).toBe('56–62 ml/kg/min');
+    expect(vo2?.goalGap).toBe(12.8);
+    expect(payload.stats.some((stat) => stat.id === 'sleep_hours')).toBe(true);
+    expect(payload.stats.some((stat) => stat.id === 'sleep_duration')).toBe(false);
+    const text = localStatsVerdict(payload);
+    expect(text).toContain('some way off');
+    expect(text).not.toContain('Keep up the good work');
+    expect(text).toContain('VO2 max 12.8 short of 56–62 ml/kg/min');
+    const strengths = text.slice(text.indexOf('Strengths:'), text.indexOf('The biggest gaps'));
+    expect(strengths).not.toContain('VO2');
   });
 
   it('calls the coach only from the button and meters it on health-plan', () => {
@@ -144,6 +196,9 @@ describe('stats analysis summaries', () => {
     const prompt = readFileSync('supabase/functions/_shared/statsAnalysis.ts', 'utf8');
     expect(prompt).toContain('Good or Excellent');
     expect(prompt).toContain('at most three');
+    expect(prompt).toContain('goalGap');
+    expect(prompt).toContain('85 to 95 percent');
+    expect(prompt).toContain('not a strength');
     expect(prompt).not.toContain('Looked at');
     expect(prompt).toContain('Do not list every stat');
     expect(ui).toContain('THUMOS_ANALYSIS_CAVEAT');

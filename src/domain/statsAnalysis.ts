@@ -1,7 +1,9 @@
 import type { GarminReadings } from '@/domain/garminConnect';
+import { athleticVo2Target, publishedCardioBand } from '@/domain/fitnessSnapshot';
+import { CMO_VIGOROUS_MINUTES_WEEK } from '@/domain/guidance';
 import { activeMinutesByDay } from '@/domain/healthSources';
 import { readingFor, type MetricContext } from '@/domain/metricRegistry';
-import { GOAL_LABEL, type NutritionGoal, type NutritionSex } from '@/domain/nutrition';
+import { GOAL_LABEL, isAnyBoxer, type NutritionGoal, type NutritionSex } from '@/domain/nutrition';
 import {
   ANALYSIS_STAT_NAMES,
   localStatsVerdict,
@@ -34,8 +36,83 @@ type BuildInput = {
   readings: GarminReadings;
 };
 
+const WHOLE_IDS = new Set<AnalysisStatId>([
+  'steps',
+  'sleep_score',
+  'stress',
+  'stress_detail',
+  'body_battery_charged',
+  'body_battery_drained',
+  'body_battery_highest',
+  'body_battery_lowest',
+  'resting_heart_rate',
+  'snapshot_heart',
+  'fitness_age',
+  'hrv',
+  'hrv_sdnn',
+  'vigorous',
+  'weekly_active_minutes',
+  'epoch_minutes',
+  'move_iq',
+  'activity_detail',
+  'blood_pressure',
+  'diastolic',
+  'pulse_ox',
+]);
+
 function round(value: number): number {
   return Math.round(value * 10) / 10;
+}
+
+function presentNumber(id: AnalysisStatId, value: number): number {
+  return WHOLE_IDS.has(id) ? Math.round(value) : round(value);
+}
+
+function sportGoal(goal: NutritionGoal | null): boolean {
+  return goal != null && (isAnyBoxer(goal) || goal === 'elite_runner' || goal === 'body_builder');
+}
+
+/** The same targets the fitness-age card uses. A gap is only set when the figure is short of that target. */
+function goalMark(id: AnalysisStatId, value: number, ctx: MetricContext): { goalTarget: string | null; goalGap: number | null } {
+  if (!sportGoal(ctx.goal)) return { goalTarget: null, goalGap: null };
+  if (id === 'vo2') {
+    const boxing = athleticVo2Target(ctx.goal, ctx.sex);
+    if (boxing) {
+      return {
+        goalTarget: `${boxing.low}–${boxing.high} ml/kg/min`,
+        goalGap: value < boxing.low ? round(boxing.low - value) : null,
+      };
+    }
+    const ageBand = publishedCardioBand(ctx.age, ctx.sex);
+    if (ageBand) {
+      return {
+        goalTarget: `at or above ${ageBand.high} ml/kg/min`,
+        goalGap: value < ageBand.high ? round(ageBand.high - value) : null,
+      };
+    }
+  }
+  if (id === 'resting_heart_rate') {
+    const bpm = Math.round(value);
+    return { goalTarget: '40–60 bpm', goalGap: bpm > 60 ? bpm - 60 : null };
+  }
+  if (id === 'body_fat' && ctx.sex) {
+    const high = ctx.sex === 'female' ? 20 : 13;
+    const low = ctx.sex === 'female' ? 14 : 6;
+    return { goalTarget: `${low}–${high}%`, goalGap: value > high ? round(value - high) : null };
+  }
+  if (id === 'vigorous') {
+    const minutes = Math.round(value);
+    return {
+      goalTarget: `${CMO_VIGOROUS_MINUTES_WEEK} min in the last 7 days`,
+      goalGap: minutes < CMO_VIGOROUS_MINUTES_WEEK ? CMO_VIGOROUS_MINUTES_WEEK - minutes : null,
+    };
+  }
+  if (id === 'fitness_age' && ctx.age != null) {
+    const age = Math.round(ctx.age);
+    const fitness = Math.round(value);
+    return { goalTarget: `at or under age ${age}`, goalGap: fitness > age + 1 ? fitness - age : null };
+  }
+  return { goalTarget: null, goalGap: null };
 }
 
 function trendOf(points: readonly Point[]): AnalysisStat['trend'] {
@@ -91,11 +168,13 @@ function statFrom(
       value: null,
       latest: null,
       average: null,
-      today: round(todayPoint.value),
+      today: presentNumber(id, todayPoint.value),
       trend: 'none',
       rating: 'No rating yet',
       range: 'Today is still in progress, so this figure is not rated.',
       tip: null,
+      goalTarget: null,
+      goalGap: null,
     };
   }
   const recent = mode === 'week'
@@ -115,18 +194,22 @@ function statFrom(
     windowDays: mode === 'week' ? 7 : ctx.windowDays,
   });
   const showToday = partial && todayPoint != null && dailyAverage != null && todayPoint.value < dailyAverage * 0.6;
-  const lever = reading.label === 'Fair' || reading.label === 'Poor';
+  const shown = presentNumber(id, rated);
+  const mark = goalMark(id, shown, ctx);
+  const lever = reading.label === 'Fair' || reading.label === 'Poor' || (mark.goalGap != null && mark.goalGap > 0);
   return {
     id,
     name,
-    value: round(rated),
-    latest: latest == null ? null : round(latest),
-    average: dailyAverage == null ? null : round(dailyAverage),
-    today: showToday && todayPoint ? round(todayPoint.value) : null,
+    value: shown,
+    latest: latest == null ? null : presentNumber(id, latest),
+    average: dailyAverage == null ? null : presentNumber(id, dailyAverage),
+    today: showToday && todayPoint ? presentNumber(id, todayPoint.value) : null,
     trend: trendOf(complete),
     rating: reading.pending ? 'No rating yet' : reading.label,
     range: reading.where.replace(/\s+/g, ' ').trim().slice(0, 220),
     tip: lever ? (reading.tips[0] ?? '').slice(0, 180) || null : null,
+    goalTarget: mark.goalTarget,
+    goalGap: mark.goalGap,
   };
 }
 
@@ -229,9 +312,15 @@ export function buildStatsAnalysis(input: BuildInput): StatsAnalysisPayload {
     ['hrv_sdnn', samplesOf(input.samples, 'hrv_sdnn'), 'day'],
     ['fitness_age', byDay((readings.userMetrics ?? []).map((row) => ({ day: row.calendarDate, value: row.fitnessAge }))), 'day'],
   ];
-  const stats = groups.flatMap(([id, points, mode]) => {
+  const built = groups.flatMap(([id, points, mode]) => {
     const stat = statFrom(id, points, ctx, input.today, mode);
     return stat ? [stat] : [];
+  });
+  const present = new Set(built.map((stat) => stat.id));
+  const stats = built.filter((stat) => {
+    if (stat.id === 'sleep_duration' && present.has('sleep_hours')) return false;
+    if (stat.id === 'stress_detail' && present.has('stress')) return false;
+    return true;
   });
   return sanitizeStatsAnalysis({
     age: input.age,

@@ -38,6 +38,7 @@ export {
   workoutTypeKind,
   workoutTypeLabel,
   workoutTypeMinutes,
+  athleticVo2Target,
   vo2AthleticShortfall,
   vo2JudgementLine,
   WORKOUT_MIX_TITLE,
