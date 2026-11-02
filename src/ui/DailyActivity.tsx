@@ -273,6 +273,7 @@ export function DailyActivityCharts({
         sex={sex}
         goal={goal}
         showIntensity={false}
+        showHealthStats={false}
       />
     </View>
   );
@@ -305,6 +306,7 @@ export function MovementCharts({
   framed = true,
   showVo2Chart = true,
   detailsOnly = false,
+  showHealthStats = true,
 }: {
   endDay: string;
   /** Set on Workouts, where that screen's 7 or 30 day control is the one the other charts use. */
@@ -336,6 +338,11 @@ export function MovementCharts({
   showVo2Chart?: boolean;
   /** The More Garmin Stats screen. The main charts stay on Stats. */
   detailsOnly?: boolean;
+  /**
+   * Workouts already has its own exercise charts. Steps, distance, resting heart rate,
+   * heart rate variability, fitness age, and the More Garmin Stats link stay on Health Stats.
+   */
+  showHealthStats?: boolean;
 }) {
   const theme = useAppTheme();
   const router = useRouter();
@@ -407,17 +414,17 @@ export function MovementCharts({
   const placeholders = missingGarmin.filter((chart) => chart.id !== 'hrv' && chart.id !== 'fitness_age');
   const foldDetails = details.filter((chart) => chart.id !== 'fitness_age');
   const sdnnPoints = hrvSdnnSeries(endDay, chartWindow.days, appleHrvSdnn);
-  const chosen = stepPoints.find((point) => point.day === selected)
-    ?? distance.find((point) => point.day === selected)
+  const chosen = (showHealthStats ? stepPoints.find((point) => point.day === selected) : null)
+    ?? (showHealthStats ? distance.find((point) => point.day === selected) : null)
     ?? floors.find((point) => point.day === selected)
-    ?? resting.find((point) => point.day === selected)
+    ?? (showHealthStats ? resting.find((point) => point.day === selected) : null)
     ?? intensityBars.find((point) => point.day === selected)
     ?? null;
   const dayLines = [
-    stepPoints.find((point) => point.day === selected),
-    seriesHasValue(distance) ? distance.find((point) => point.day === selected) : null,
+    showHealthStats ? stepPoints.find((point) => point.day === selected) : null,
+    showHealthStats && seriesHasValue(distance) ? distance.find((point) => point.day === selected) : null,
     seriesHasValue(floors) ? floors.find((point) => point.day === selected) : null,
-    seriesHasValue(resting) ? resting.find((point) => point.day === selected) : null,
+    showHealthStats && seriesHasValue(resting) ? resting.find((point) => point.day === selected) : null,
     seriesHasValue(intensityBars) ? intensityBars.find((point) => point.day === selected) : null,
   ].filter((point): point is DailyActivityPoint => point != null && point.value > 0 && !point.empty);
   const detailLines = details.flatMap((chart) => {
@@ -458,24 +465,26 @@ export function MovementCharts({
           <StatPeriodToggle />
         </Card>
       ) : null}
-      <ActivityBars
-        framed={framed}
-        title="Steps"
-        points={stepPoints}
-        span={chartWindow.days}
-        unit="steps"
-        selected={selected}
-        garminNote={[chartSourceCaption(stepPoints), stepPoints.at(-1)?.label === NO_STEPS_YET_TODAY ? NO_STEPS_YET_TODAY : null].filter((line): line is string => line != null).join('\n') || null}
-        guide={stepsChartGuide(
-          chartWindow.period,
-          stepGoalInPeriod(dailies, endDay, chartWindow.period),
-          age,
-          dailyAverage(stepPoints),
-          minuteCtx,
-        )}
-        onSelect={setSelected}
-      />
-      {seriesHasValue(distance) ? (
+      {showHealthStats ? (
+        <ActivityBars
+          framed={framed}
+          title="Steps"
+          points={stepPoints}
+          span={chartWindow.days}
+          unit="steps"
+          selected={selected}
+          garminNote={[chartSourceCaption(stepPoints), stepPoints.at(-1)?.label === NO_STEPS_YET_TODAY ? NO_STEPS_YET_TODAY : null].filter((line): line is string => line != null).join('\n') || null}
+          guide={stepsChartGuide(
+            chartWindow.period,
+            stepGoalInPeriod(dailies, endDay, chartWindow.period),
+            age,
+            dailyAverage(stepPoints),
+            minuteCtx,
+          )}
+          onSelect={setSelected}
+        />
+      ) : null}
+      {showHealthStats && seriesHasValue(distance) ? (
         <ActivityBars
           framed={framed}
           title="Distance"
@@ -503,7 +512,7 @@ export function MovementCharts({
           onSelect={setSelected}
         />
       ) : null}
-      {seriesHasValue(resting) ? (
+      {showHealthStats && seriesHasValue(resting) ? (
         <ActivityBars
           framed={framed}
           title="Resting heart rate"
@@ -586,7 +595,7 @@ export function MovementCharts({
           {detailLines.map((line) => <T key={line}>{line}</T>)}
         </View>
       ) : null}
-      {hrvChart ? (
+      {showHealthStats && hrvChart ? (
         <ActivityBars
           framed={framed}
           title="Heart rate variability"
@@ -598,7 +607,7 @@ export function MovementCharts({
           guide={hrvChart.guide}
           onSelect={setSelected}
         />
-      ) : hrvPlaceholder ? (
+      ) : showHealthStats && hrvPlaceholder ? (
         <ActivityBars
           framed={framed}
           title="Heart rate variability"
@@ -612,7 +621,7 @@ export function MovementCharts({
           onSelect={setSelected}
         />
       ) : null}
-      {seriesHasValue(sdnnPoints) ? (
+      {showHealthStats && seriesHasValue(sdnnPoints) ? (
         <ActivityBars
           framed={framed}
           title="Heart rate variability"
@@ -624,7 +633,7 @@ export function MovementCharts({
           guide={sdnnGuide(chartWindow.period, sdnnPoints, minuteCtx)}
           onSelect={setSelected}
         />
-      ) : appleHrvSdnn.length > 0 ? (
+      ) : showHealthStats && appleHrvSdnn.length > 0 ? (
         <ActivityBars
           framed={framed}
           title="Heart rate variability"
@@ -638,8 +647,8 @@ export function MovementCharts({
           onSelect={setSelected}
         />
       ) : null}
-      {fitnessChart ? garminCard(fitnessChart) : null}
-      {foldDetails.length > 0 || placeholders.length > 0 ? (
+      {showHealthStats && fitnessChart ? garminCard(fitnessChart) : null}
+      {showHealthStats && (foldDetails.length > 0 || placeholders.length > 0) ? (
         <Pressable
           accessibilityRole="link"
           accessibilityLabel={`Garmin. ${GARMIN_DETAILS_TITLE}`}
