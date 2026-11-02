@@ -539,6 +539,8 @@ export interface Repository {
   saveHealthPlan(plan: HealthPlan): Promise<void>;
   /** Asks Thumos for a new plan from this person's figures. Finished actions are left behind. */
   refreshHealthPlan(limits: string): Promise<void>;
+  /** Sends a sanitised stats summary for a verdict. Metered on the plan allowance. Nothing is sent until this is called. */
+  analyseStats(summary: unknown): Promise<{ text: string; source: 'model' | 'local' }>;
   /** Saves the usual gym week, or clears it when null. */
   saveTrainingSchedule(schedule: import('@/domain/healthPlan').TrainingSchedule | null): Promise<void>;
   /** Adds a planned workout. The row stays on this account. */

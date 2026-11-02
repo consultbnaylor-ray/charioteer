@@ -94,6 +94,7 @@ import {
   type NutritionSettings,
 } from '@/domain/nutrition';
 import { donePlanTexts, draftHealthPlan, normaliseTrainingSchedule, presentSharedHealthPlan, type HealthPlan, type TrainingSchedule } from '@/domain/healthPlan';
+import { localStatsVerdict, sanitizeStatsAnalysis } from '@/domain/statsAnalysis';
 import { isPlannedSessionType, plannedEffortFrom, type PlannedSession, type PlannedSessionDraft } from '@/domain/plannedSession';
 import { PEOPLE, createDemoDb, type DemoAccount, type DemoDb } from '@/data/demo-seed';
 import { activityTypeFromKind } from '@/domain/fitnessSnapshot';
@@ -1417,6 +1418,16 @@ export class DemoRepository implements Repository {
     const db = clone(this.db);
     db.accounts[account.profile.id].healthPlan = { ...plan, limits: plan.limits.slice(0, 280) };
     this.commit(db);
+  }
+
+  async analyseStats(summary: unknown): Promise<{ text: string; source: 'model' | 'local' }> {
+    const account = this.me();
+    if (!account.profile.consentAi || !account.profile.consentHealth) {
+      throw new UserFacingError('An analysis needs the coach and health data switches, because summarised figures are sent to the model.', 'generic');
+    }
+    const clean = sanitizeStatsAnalysis(summary);
+    if (!clean) throw new UserFacingError('There are no readings to analyse.', 'generic');
+    return { text: localStatsVerdict(clean), source: 'local' };
   }
 
   async refreshHealthPlan(limits: string): Promise<void> {

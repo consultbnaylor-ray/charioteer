@@ -228,9 +228,9 @@ describe('on-phone Thumos reading note', () => {
     expect(domain).not.toContain(VISIBLE_SAFETY_LINE);
     expect(readFileSync('src/app/(main)/weight-waist.tsx', 'utf8')).not.toContain('ThumosReadingComment');
     const plan = readFileSync('src/app/(main)/health-plan.tsx', 'utf8');
-    expect(plan).toContain('<ThumosReadingComment analyse />');
-    expect(plan.match(/<ThumosReadingComment/g)).toEqual(['<ThumosReadingComment']);
-    expect(plan.indexOf('<ThumosReadingComment analyse />')).toBeLessThan(plan.indexOf('<HealthRefreshBar'));
+    expect(plan).toContain('<ThumosStatsAnalysis />');
+    expect(plan).not.toContain('ThumosReadingComment');
+    expect(plan.indexOf('<ThumosStatsAnalysis />')).toBeLessThan(plan.indexOf('<HealthRefreshBar'));
     expect(readFileSync('src/ui/ThumosReadingComment.tsx', 'utf8')).toContain('useHealthSources');
     expect(readFileSync('src/ui/ThumosReadingComment.tsx', 'utf8')).toContain('authorize: false');
     expect(THUMOS_ANALYSE_AGAIN).toBe('Have Thumos analyse your data again');

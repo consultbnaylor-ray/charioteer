@@ -1,7 +1,8 @@
 /**
  * One registry for every number the app shows on a stat card.
- * Ratings are deterministic and client-side. They read stored figures plus the
- * tables below. They are not sent to Thumos, voice, or the health-plan writer.
+ * Ratings are computed on the phone. A stats analysis the person taps can send
+ * the label and a short range sentence with the summary numbers. Raw samples,
+ * routes, and women's health are not part of that send.
  * Women's health is not a metric here.
  *
  * Sources named in `source` are the citation shown once in More info.

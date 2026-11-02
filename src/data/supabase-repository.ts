@@ -3064,6 +3064,27 @@ export class SupabaseRepository implements Repository {
     }
   }
 
+  async analyseStats(summary: unknown): Promise<{ text: string; source: 'model' | 'local' }> {
+    if (!this.snapshot.profile?.consentAi || !this.snapshot.profile?.consentHealth) {
+      throw new UserFacingError('An analysis needs the coach and health data switches, because summarised figures are sent to the model.', 'generic');
+    }
+    let invoked: { status: number; data: unknown };
+    try {
+      invoked = await this.callEdge('health-plan', { mode: 'analyse', summary }, { ai: true });
+    } catch (error) {
+      if (error instanceof UserFacingError) throw error;
+      throw this.aiFailure('plan', 'health-plan', error);
+    }
+    const data = invoked.data as { ok?: boolean; code?: string; message?: string; analysis?: unknown; source?: unknown } | null;
+    if (data?.code === 'consent' || data?.code === 'personal_data' || data?.code === 'summary') {
+      throw new UserFacingError(data.message || 'Analysis was not sent.', 'generic');
+    }
+    if (invoked.status === 401 || invoked.status >= 500 || data?.ok !== true || typeof data.analysis !== 'string') {
+      throw this.aiFailure('plan', 'health-plan', new Error('Analysis did not answer.'), invoked.status);
+    }
+    return { text: data.analysis, source: data.source === 'model' ? 'model' : 'local' };
+  }
+
   async refreshHealthPlan(limits: string): Promise<void> {
     if (!this.snapshot.profile?.consentAi) {
       throw new UserFacingError('Writing a plan needs the coach consent, because your figures are sent to the model.', 'generic');

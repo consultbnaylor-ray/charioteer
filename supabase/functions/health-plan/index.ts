@@ -16,9 +16,10 @@ import { londonDay } from '../_shared/healthInsights.ts';
 import { json, preflight } from '../_shared/http.ts';
 import { isBodyBuild, isBuilderPhase, isMealSlot, isNutritionGoal, isNutritionSex, parseWorkoutBuckets, type FoodItem, type FoodLog, type NutritionGoal } from '../_shared/nutrition.ts';
 import { buildChatCompletionBody, THUMOS_CHAT } from '../_shared/thumos.ts';
-import { coachingPersonalDataAllowed, readInterimCoachOptIn } from '../_shared/xaiPersonal.ts';
+import { coachingPersonalDataAllowed, pausedCoachingMessage, readInterimCoachOptIn } from '../_shared/xaiPersonal.ts';
+import { STATS_ANALYSIS_PROMPT, analysisTextOk, localStatsVerdict, sanitizeStatsAnalysis } from '../_shared/statsAnalysis.ts';
 
-type Body = { limits?: string };
+type Body = { limits?: string; mode?: string; summary?: unknown };
 
 function textOf(value: unknown): string {
   return typeof value === 'string' ? value : '';
@@ -29,6 +30,62 @@ function completionText(payload: unknown): string {
   const choices = (payload as { choices?: { message?: { content?: unknown } }[] }).choices;
   const content = choices?.[0]?.message?.content;
   return typeof content === 'string' ? content : '';
+}
+
+async function analyseStats(input: {
+  userClient: ReturnType<typeof createClient>;
+  userId: string;
+  url: string;
+  service: string;
+  consentAi: boolean;
+  consentHealth: boolean;
+  summary: unknown;
+}): Promise<Response> {
+  if (!input.consentAi || !input.consentHealth) {
+    return json({
+      ok: false,
+      code: 'consent',
+      message: 'An analysis needs the coach and health data switches, because summarised figures are sent to the model.',
+    }, 403);
+  }
+  const summary = sanitizeStatsAnalysis(input.summary);
+  if (!summary) return json({ ok: false, code: 'summary', message: 'There are no readings to analyse.' }, 400);
+  const userOptIn = await readInterimCoachOptIn(input.userClient, input.userId);
+  const personalDataEnabled = coachingPersonalDataAllowed({
+    personalDataFlag: Deno.env.get('XAI_PERSONAL_DATA_ENABLED'),
+    interimFlag: Deno.env.get('XAI_INTERIM_OPT_IN_ALLOWED'),
+    userOptIn,
+  });
+  if (!personalDataEnabled) {
+    return json({ ok: false, code: 'personal_data', message: pausedCoachingMessage(userOptIn) }, 403);
+  }
+  const apiKey = Deno.env.get('XAI_API_KEY');
+  if (!apiKey) return json({ ok: true, analysis: localStatsVerdict(summary), source: 'local' });
+  const gate = await gateAiUse({
+    admin: createClient(input.url, input.service, { auth: { persistSession: false } }),
+    userId: input.userId,
+    kind: 'plan',
+    enforcedFlag: Deno.env.get('AI_ENTITLEMENT_ENFORCED'),
+  });
+  if (!gate.ok && 'body' in gate) return json(gate.body, gate.status);
+  try {
+    const response = await fetch(THUMOS_CHAT.completionsUrl, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(buildChatCompletionBody({
+        model: Deno.env.get('THUMOS_MODEL') || THUMOS_CHAT.model,
+        system: STATS_ANALYSIS_PROMPT,
+        history: [],
+        user: JSON.stringify(summary),
+        stream: false,
+      })),
+    });
+    const text = response.ok ? completionText(await response.json()) : '';
+    if (!analysisTextOk(text)) return json({ ok: true, analysis: localStatsVerdict(summary), source: 'local' });
+    return json({ ok: true, analysis: text.replace(/\s+/g, ' ').trim(), source: 'model' });
+  } catch {
+    return json({ ok: true, analysis: localStatsVerdict(summary), source: 'local' });
+  }
 }
 
 Deno.serve(async (req) => {
@@ -52,6 +109,18 @@ Deno.serve(async (req) => {
 
   const profileRes = await userClient.from('profiles').select('display_name, stage, sobriety_started_at, height_cm, vision_statement, consent_ai, consent_health, weekly_units').eq('id', userId).single();
   if (profileRes.error || !profileRes.data) return json({ ok: false, code: 'profile', message: 'Finish setting up your account first.' }, 400);
+  const body = (await req.json().catch(() => ({}))) as Body;
+  if (body.mode === 'analyse') {
+    return analyseStats({
+      userClient,
+      userId,
+      url,
+      service,
+      consentAi: profileRes.data.consent_ai === true,
+      consentHealth: profileRes.data.consent_health === true,
+      summary: body.summary,
+    });
+  }
   if (!profileRes.data.consent_ai) {
     return json({
       ok: false,
@@ -59,8 +128,6 @@ Deno.serve(async (req) => {
       message: 'Writing a plan needs the coach consent, because your figures are sent to the model.',
     }, 403);
   }
-
-  const body = (await req.json().catch(() => ({}))) as Body;
   const limits = textOf(body.limits).trim().slice(0, 280);
 
   const settingsSelect = 'goal, goal_age, goal_sex, build, kcal_target, protein_target_g, carb_target_g, fat_target_g, goal_phase, weight_class_kg, hide_calories, workout_buckets';
