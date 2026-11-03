@@ -15,6 +15,7 @@ export {
   goalForTargetDirection,
   isoDaysBetween,
   plannedWeeklyChangeKg,
+  nutritionAimChanged,
   reviewTargetWeight,
   roundKg,
   safeWeeklyChangeKg,

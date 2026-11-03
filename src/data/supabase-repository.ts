@@ -98,6 +98,7 @@ import {
   type NutritionSettings,
 } from '@/domain/nutrition';
 import { PLAN_DISCLAIMER, healthPlanFromStored, normaliseTrainingSchedule, parseSharedHealthPlan, trainingScheduleFromRow, type HealthPlan, type TrainingSchedule } from '@/domain/healthPlan';
+import { nutritionAimChanged } from '@/domain/targetWeight';
 import { plannedEffortToDb, plannedSessionFromDraft, plannedSessionFromRow, plannedSessionWrite, type PlannedSession, type PlannedSessionDraft } from '@/domain/plannedSession';
 import { parseBuddyLinkPass, parseBuddyList, parseBuddyPreview, parseBuddyShare, type BuddyLinkPass, type BuddyList, type BuddyScope, type BuddyShareView } from '@/domain/buddies';
 import { avatarPhotoIdFromPath, memberDisplayName } from '@/domain/connections';
@@ -2605,6 +2606,7 @@ export class SupabaseRepository implements Repository {
   }
 
   async setNutritionSettings(settings: NutritionSettings): Promise<void> {
+    const previous = this.snapshot.nutrition;
     const next = canonicalNutrition({ ...settings, updatedAt: new Date().toISOString() });
     const lane = this.saveLane('nutrition', this.snapshot.nutrition, (value) => this.persistNutrition(value));
     if (!lane.dirty) lane.seen(canonicalNutrition(this.snapshot.nutrition));
@@ -2614,6 +2616,12 @@ export class SupabaseRepository implements Repository {
     } catch (error) {
       if (!lane.dirty) this.emit({ ...this.snapshot, nutrition: lane.value });
       throw asUserFacing(error, 'general');
+    }
+    if (!nutritionAimChanged(previous, next)) return;
+    try {
+      await this.refreshHealthPlan(this.snapshot.healthPlan?.limits ?? '', { localOnly: true });
+    } catch {
+      // The goal is saved. Refresh plan can write it again.
     }
   }
 
@@ -3085,14 +3093,17 @@ export class SupabaseRepository implements Repository {
     return { text: data.analysis, source: data.source === 'model' ? 'model' : 'local' };
   }
 
-  async refreshHealthPlan(limits: string): Promise<void> {
-    if (!this.snapshot.profile?.consentAi) {
+  async refreshHealthPlan(limits: string, options?: { localOnly?: boolean }): Promise<void> {
+    const localOnly = options?.localOnly === true;
+    if (!localOnly && !this.snapshot.profile?.consentAi) {
       throw new UserFacingError('Writing a plan needs the coach consent, because your figures are sent to the model.', 'generic');
     }
     const userId = this.snapshot.session?.userId ?? await this.userId();
     let invoked: { status: number; data: unknown };
     try {
-      invoked = await this.callEdge('health-plan', { limits: limits.trim().slice(0, 280) }, { ai: true });
+      invoked = localOnly
+        ? await this.callEdge('health-plan', { limits: limits.trim().slice(0, 280), localOnly: true })
+        : await this.callEdge('health-plan', { limits: limits.trim().slice(0, 280) }, { ai: true });
     } catch (error) {
       if (error instanceof UserFacingError) throw error;
       throw this.aiFailure('plan', 'health-plan', error);

@@ -1153,7 +1153,10 @@ describe('health plan wiring', () => {
   it('places the page from Stats and You, and not on the tab bar', () => {
     const page = readFileSync('src/app/(main)/health-plan.tsx', 'utf8');
     expect(page).toContain("This week's focus");
-    expect(page).toContain('Refresh plan');
+    expect(page.indexOf('Refresh plan')).toBeLessThan(page.indexOf("This week's focus"));
+    expect(page.indexOf('<YourGoal place="plan" />')).toBeLessThan(page.indexOf('<DailyTargets />'));
+    expect(page.indexOf('<DailyTargets />')).toBeLessThan(page.indexOf("This week's focus"));
+    expect(readFileSync('supabase/functions/health-plan/index.ts', 'utf8')).toContain('localOnly');
     expect(page).toContain('Last updated');
     expect(page).toContain('buildStatsOverview');
     expect(page).toContain('StatTile');

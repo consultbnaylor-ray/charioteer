@@ -32,6 +32,9 @@ export function ThumosStatsAnalysis() {
         sex: snap.nutrition?.goalSex ?? null,
         goal: snap.nutrition?.goal ?? null,
         heightCm: profile?.heightCm ?? null,
+        targetWeightKg: snap.nutrition?.targetWeightKg ?? null,
+        targetOn: snap.nutrition?.targetOn ?? null,
+        activeEnergyKcal: snap.nutrition?.activityEnergyKcal ?? null,
         samples,
         readings: readings ?? emptyGarminReadings(),
       });

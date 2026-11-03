@@ -55,6 +55,7 @@ import { healthStatsOmittedTiles, SHOW_WEIGHT_SECTION } from '@/domain/weightSec
 import { buildStatsOverview, HEALTH_LIFE_TILE_IDS } from '@/domain/statsOverview';
 import { StatTile } from '@/ui/StatTile';
 import { YourFitness } from '@/ui/YourFitness';
+import { DailyTargets } from '@/ui/DailyTargets';
 import { YourGoal } from '@/ui/YourGoal';
 import { WorkoutsLink } from '@/ui/WorkoutsLink';
 import { MoreInfo } from '@/ui/MoreInfo';
@@ -396,6 +397,7 @@ export default function Health() {
         <GoalLine />
       </Card>
       <YourGoal place="stats" />
+      <DailyTargets />
       <YourFitness onPlanOutdoor={() => router.push(`/workouts?planOutdoor=${Date.now()}` as never)} />
       <WorkoutsLink workouts={workouts} />
       <Card accessibilityLabel="Open Health Plan" onPress={() => router.push('/health-plan' as never)}>

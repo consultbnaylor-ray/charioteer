@@ -16,10 +16,10 @@ export const TARGET_DATE_FAST_GAIN =
   "That date would need a faster gain than is safe, so we'll pace it at a safer rate and show the later date";
 
 export const TARGET_NOT_ENOUGH =
-  "There isn't enough weight data yet to estimate a date.";
+  "Not enough weigh-ins yet to estimate when you'll get there.";
 
 export const TARGET_TREND_FLAT =
-  "There isn't an estimated date. The recent weight trend is not moving toward this target.";
+  'The recent weigh-ins are not moving toward this target, so there is no trend date yet.';
 
 /** Gentle loss or gain used for the calorie suggestion. */
 export const GENTLE_WEEKLY_KG = 0.25;
@@ -192,6 +192,16 @@ export function targetProgressFill(startKg: number | null, currentKg: number | n
   const span = targetKg - startKg;
   if (Math.abs(span) < 0.05) return Math.abs(currentKg - targetKg) < 0.3 ? 1 : 0;
   return Math.min(1, Math.max(0, (currentKg - startKg) / span));
+}
+
+/** True when the saved aim, target weight, or target date changed. */
+export function nutritionAimChanged(
+  previous: { goal?: NutritionGoal | null; targetWeightKg?: number | null; targetOn?: string | null } | null | undefined,
+  next: { goal?: NutritionGoal | null; targetWeightKg?: number | null; targetOn?: string | null },
+): boolean {
+  return (previous?.goal ?? null) !== (next.goal ?? null)
+    || (previous?.targetWeightKg ?? null) !== (next.targetWeightKg ?? null)
+    || (previous?.targetOn ?? null) !== (next.targetOn ?? null);
 }
 
 export function settingsForPreset(current: NutritionSettings, goal: NutritionGoal): NutritionSettings {

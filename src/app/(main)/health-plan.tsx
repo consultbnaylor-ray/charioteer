@@ -16,6 +16,7 @@ import { ThumosStatsAnalysis } from '@/ui/ThumosStatsAnalysis';
 import { useHealthSources } from '@/health/useHealthSources';
 import { planDayFromSessionText } from '@/domain/plannedSession';
 import { WorkoutsLink } from '@/ui/WorkoutsLink';
+import { DailyTargets } from '@/ui/DailyTargets';
 import { YourGoal } from '@/ui/YourGoal';
 import { PlanTick } from '@/ui/PlanTick';
 import { MeasureBarsView, MeasureRingView } from '@/ui/MeasuredFigure';
@@ -132,6 +133,9 @@ export default function HealthPlanScreen() {
       <ThumosStatsAnalysis />
       <GoalChoices />
       <YourGoal place="plan" />
+      <DailyTargets />
+      <Button label="Refresh plan" pending={refreshing} pendingLabel="Writing..." onPress={refresh} />
+      <T variant="muted">This uses one AI credit and rewrites the plan from the current goal.</T>
       <ErrorNote>{error}</ErrorNote>
       {error ? <Button label="Try again" pending={refreshing} onPress={refresh} /> : null}
       {plan ? (
@@ -215,7 +219,6 @@ export default function HealthPlanScreen() {
         maxLength={280}
         multiline
       />
-      <Button label="Refresh plan" pending={refreshing} pendingLabel="Writing..." onPress={refresh} />
       {plan ? <T variant="muted">{`Last updated ${formatUkCompactWhen(plan.updatedAt)}`}</T> : null}
       <T variant="muted">{plan?.disclaimer || PLAN_DISCLAIMER}</T>
     </Screen>

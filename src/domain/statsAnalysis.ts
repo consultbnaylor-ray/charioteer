@@ -3,6 +3,7 @@ import { athleticVo2Target, publishedCardioBand } from '@/domain/fitnessSnapshot
 import { CMO_VIGOROUS_MINUTES_WEEK } from '@/domain/guidance';
 import { activeMinutesByDay } from '@/domain/healthSources';
 import { readingFor, type MetricContext } from '@/domain/metricRegistry';
+import { buildDailyTargets } from '@/domain/dailyTargets';
 import { GOAL_LABEL, isAnyBoxer, type NutritionGoal, type NutritionSex } from '@/domain/nutrition';
 import {
   ANALYSIS_STAT_NAMES,
@@ -34,6 +35,9 @@ type BuildInput = {
   heightCm: number | null;
   samples: readonly { kind: string; value: number; recordedOn: string }[];
   readings: GarminReadings;
+  targetWeightKg?: number | null;
+  targetOn?: string | null;
+  activeEnergyKcal?: number | null;
 };
 
 const WHOLE_IDS = new Set<AnalysisStatId>([
@@ -322,12 +326,35 @@ export function buildStatsAnalysis(input: BuildInput): StatsAnalysisPayload {
     if (stat.id === 'stress_detail' && present.has('stress')) return false;
     return true;
   });
+  const weightPoints = samplesOf(input.samples, 'weight_kg').sort((left, right) => left.day.localeCompare(right.day));
+  const currentKg = weightPoints.length ? weightPoints[weightPoints.length - 1]?.value ?? null : null;
+  const start = weightPoints[0];
+  const recentEnergy = samplesOf(input.samples, 'active_energy').filter((point) => point.day <= input.today && point.day >= shift(input.today, -6));
+  const activeEnergy = input.activeEnergyKcal ?? (recentEnergy.length
+    ? recentEnergy.reduce((sum, point) => sum + point.value, 0) / recentEnergy.length
+    : null);
+  const plan = input.targetWeightKg != null && input.targetOn && currentKg != null
+    ? buildDailyTargets({
+      currentKg,
+      targetKg: input.targetWeightKg,
+      targetOn: input.targetOn,
+      today: input.today,
+      heightCm: input.heightCm,
+      age: input.age,
+      sex: input.sex,
+      activeEnergyKcal: activeEnergy,
+      startKg: start?.value ?? null,
+      startDay: start?.day ?? null,
+    })
+    : null;
+  const goalLabel = input.goal ? GOAL_LABEL[input.goal] : null;
   return sanitizeStatsAnalysis({
     age: input.age,
     sex: input.sex,
-    goal: input.goal ? GOAL_LABEL[input.goal] : null,
+    goal: goalLabel,
+    weightPlan: plan?.analysisLine ?? null,
     stats,
-  }) ?? { age: input.age, sex: input.sex, goal: input.goal ? GOAL_LABEL[input.goal] : null, stats: [] };
+  }) ?? { age: input.age, sex: input.sex, goal: goalLabel, weightPlan: plan?.analysisLine ?? null, stats: [] };
 }
 
 function shift(day: string, delta: number): string {

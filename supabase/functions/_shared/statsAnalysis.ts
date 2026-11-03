@@ -99,6 +99,11 @@ export type StatsAnalysisPayload = {
   age: number | null;
   sex: 'female' | 'male' | null;
   goal: string | null;
+  /**
+   * App-derived calorie line for a saved target weight and date.
+   * Built on the phone from weight, target, date, and estimated burn. Not a new health measurement.
+   */
+  weightPlan?: string | null;
   stats: AnalysisStat[];
 };
 
@@ -115,6 +120,7 @@ export const STATS_ANALYSIS_PROMPT = [
   'Then the things to improve. Lead with the largest goalGap, then the next, then Fair and Poor. Do not mention the same thing twice.',
   'For each, say why it matters and give one or two specific steps. Do not copy the range sentence, the rating word, or the tip already in the JSON.',
   VO2_ANALYSIS_RULE,
+  'When weightPlan is set, state that daily calorie figure and the date in the overview. If it says the date is faster than 1 kg a week, say so and give the safer pace or later date in that sentence. Do not invent a different calorie number. This matches the Daily Targets card.',
   'A high resting heart rate is easy aerobic work and walks, not the VO2 intervals. Short sleep keeps a steady wake time. Low steps are a short walk. Do not swap those.',
   'Say how the figures fit together and the order to work on them.',
   'Quote value. That is the recent average, or a total over the last 7 days when the range says so. Do not headline today.',
@@ -160,20 +166,21 @@ export function localStatsVerdict(payload: StatsAnalysisPayload): string {
   if (good.length + poor.length + short.length === 0) {
     return `There are not enough rated readings yet for an overall view${age}.${goal}`.replace(/\s+/g, ' ').trim();
   }
+  const planLine = payload.weightPlan ? ` ${payload.weightPlan}` : '';
   if (short.length > 0) {
     const ageBit = good.length + short.length > poor.length ? 'Strong for your age' : 'Your overall health looks mixed for your age';
     const gaps = workLine ? ` The biggest gaps are ${workLine}.` : '';
-    return `${ageBit}, but some way off the saved goal.${goal}${strengthLine}${gaps}`.replace(/\s+/g, ' ').trim();
+    return `${ageBit}, but some way off the saved goal.${goal}${strengthLine}${gaps}${planLine}`.replace(/\s+/g, ' ').trim();
   }
   if (poor.length > good.length && poor.length >= 3) {
     const levers = workLine ? ` Work on ${workLine}, in that order.` : '';
-    return `Most of these ratings are Poor or Fair${age}.${goal}${strengthLine}${levers}`.replace(/\s+/g, ' ').trim();
+    return `Most of these ratings are Poor or Fair${age}.${goal}${strengthLine}${levers}${planLine}`.replace(/\s+/g, ' ').trim();
   }
   if (good.length >= 3 && poor.length === 0) {
-    return `Your overall health looks strong${age}.${goal}${strengthLine} Keep up the good work.`.replace(/\s+/g, ' ').trim();
+    return `Your overall health looks strong${age}.${goal}${strengthLine} Keep up the good work.${planLine}`.replace(/\s+/g, ' ').trim();
   }
   const levers = workLine ? ` Work on ${workLine}, in that order.` : '';
-  return `Your overall health looks reasonable${age}, but improvements could be made.${goal}${strengthLine}${levers}`.replace(/\s+/g, ' ').trim();
+  return `Your overall health looks reasonable${age}, but improvements could be made.${goal}${strengthLine}${levers}${planLine}`.replace(/\s+/g, ' ').trim();
 }
 
 function finite(value: unknown): number | null {
@@ -223,5 +230,6 @@ export function sanitizeStatsAnalysis(input: unknown): StatsAnalysisPayload | nu
     });
   }
   if (stats.length === 0) return null;
-  return { age: age != null && age >= 10 && age <= 110 ? age : null, sex, goal: goal || null, stats };
+  const weightPlan = text(record.weightPlan, 400);
+  return { age: age != null && age >= 10 && age <= 110 ? age : null, sex, goal: goal || null, weightPlan: weightPlan || null, stats };
 }

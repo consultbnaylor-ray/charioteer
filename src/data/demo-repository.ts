@@ -94,6 +94,7 @@ import {
   type NutritionSettings,
 } from '@/domain/nutrition';
 import { donePlanTexts, draftHealthPlan, normaliseTrainingSchedule, presentSharedHealthPlan, type HealthPlan, type TrainingSchedule } from '@/domain/healthPlan';
+import { nutritionAimChanged } from '@/domain/targetWeight';
 import { localStatsVerdict, sanitizeStatsAnalysis } from '@/domain/statsAnalysis';
 import { isPlannedSessionType, plannedEffortFrom, withPlannedMinutes, type PlannedSession, type PlannedSessionDraft } from '@/domain/plannedSession';
 import { PEOPLE, createDemoDb, type DemoAccount, type DemoDb } from '@/data/demo-seed';
@@ -1247,6 +1248,7 @@ export class DemoRepository implements Repository {
 
   async setNutritionSettings(settings: NutritionSettings): Promise<void> {
     const account = this.me();
+    const previous = account.nutrition;
     const db = clone(this.db);
     db.accounts[account.profile.id].nutrition = {
       ...defaultNutritionSettings(),
@@ -1256,6 +1258,8 @@ export class DemoRepository implements Repository {
       updatedAt: new Date().toISOString(),
     };
     this.commit(db);
+    if (!nutritionAimChanged(previous, settings) || !account.profile.consentAi) return;
+    await this.refreshHealthPlan(account.healthPlan?.limits ?? '', { localOnly: true });
   }
 
   async saveBodyComposition(input: {
@@ -1430,7 +1434,7 @@ export class DemoRepository implements Repository {
     return { text: localStatsVerdict(clean), source: 'local' };
   }
 
-  async refreshHealthPlan(limits: string): Promise<void> {
+  async refreshHealthPlan(limits: string, _options?: { localOnly?: boolean }): Promise<void> {
     const account = this.me();
     if (!account.profile.consentAi) {
       throw new UserFacingError('Writing a plan needs the coach consent, because your figures are sent to the model.', 'generic');

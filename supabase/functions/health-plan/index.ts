@@ -20,7 +20,7 @@ import { buildChatCompletionBody, THUMOS_CHAT } from '../_shared/thumos.ts';
 import { coachingPersonalDataAllowed, pausedCoachingMessage, readInterimCoachOptIn } from '../_shared/xaiPersonal.ts';
 import { STATS_ANALYSIS_PROMPT, analysisTextOk, localStatsVerdict, sanitizeStatsAnalysis } from '../_shared/statsAnalysis.ts';
 
-type Body = { limits?: string; mode?: string; summary?: unknown };
+type Body = { limits?: string; mode?: string; summary?: unknown; localOnly?: boolean };
 
 function textOf(value: unknown): string {
   return typeof value === 'string' ? value : '';
@@ -122,7 +122,8 @@ Deno.serve(async (req) => {
       summary: body.summary,
     });
   }
-  if (!profileRes.data.consent_ai) {
+  const localOnly = body.localOnly === true;
+  if (!localOnly && !profileRes.data.consent_ai) {
     return json({
       ok: false,
       code: 'consent',
@@ -261,6 +262,7 @@ Deno.serve(async (req) => {
 
   const local = draftHealthPlan(input);
   if (input.limits && local.limits !== input.limits) local.limits = input.limits;
+  if (localOnly) return json({ ok: true, plan: { ...local, limits: input.limits }, source: 'local' });
   const apiKey = Deno.env.get('XAI_API_KEY');
   const personalDataEnabled = coachingPersonalDataAllowed({
     personalDataFlag: Deno.env.get('XAI_PERSONAL_DATA_ENABLED'),

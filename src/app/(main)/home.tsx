@@ -29,6 +29,7 @@ import { InPlainWords, QuoteWords } from '@/ui/InPlainWords';
 import { usePendingPress } from '@/ui/pendingAction';
 import { Button, Card, EditMark, EditSheet, ErrorNote, Field, Screen, T } from '@/ui/ui';
 import { ScrollTarget } from '@/ui/ScrollTarget';
+import { DailyTargets } from '@/ui/DailyTargets';
 import { YourGoal } from '@/ui/YourGoal';
 import { OutingInProgressBanner } from '@/ui/OutingInProgressBanner';
 import { WalkThisOff } from '@/ui/WalkThisOff';
@@ -224,6 +225,7 @@ export default function Home() {
       )}
       </ScrollTarget>
       <YourGoal place="today" />
+      <DailyTargets />
       <WalkThisOff place="today" />
       <Card accessibilityLabel="Open Health Stats" onPress={() => router.push('/health' as never)}>
         <T variant="label">Health Stats</T>
