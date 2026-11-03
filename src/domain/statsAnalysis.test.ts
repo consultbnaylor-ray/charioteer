@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest';
 import { emptyGarminReadings } from '@/domain/garminConnect';
 import { buildStatsAnalysis } from '@/domain/statsAnalysis';
 import { NUTRITION_PROMPT_LINE } from '../../supabase/functions/_shared/nutrition.ts';
-import { STATS_ANALYSIS_PROMPT, analysisSectionsFromText, localStatsVerdict, nutritionReviewLines, sanitizeStatsAnalysis } from '../../supabase/functions/_shared/statsAnalysis.ts';
+import { STATS_ANALYSIS_PROMPT, analysisSectionsFromText, localStatsVerdict, nutritionReviewLines, sanitizeStatsAnalysis, withNutritionReview } from '../../supabase/functions/_shared/statsAnalysis.ts';
 import { VO2_ANALYSIS_RULE } from '../../supabase/functions/_shared/trainingGuidance.ts';
 
 describe('stats analysis summaries', () => {
@@ -351,5 +351,20 @@ describe('stats analysis summaries', () => {
     expect(readFileSync('supabase/functions/thumos-voice-token/index.ts', 'utf8')).toContain('loadNutritionLines');
     expect(readFileSync('src/voice/briefing.ts', 'utf8')).toContain('nutritionReviewLines');
     expect(readFileSync('supabase/functions/_shared/thumos.ts', 'utf8')).toContain('nutritionChars: 2400');
+    const card = withNutritionReview(
+      [{ title: 'Overview', body: 'Your overall health looks mixed for your age.' }],
+      payload.nutrition,
+    );
+    const nutrition = card.find((section) => section.title === 'Nutrition: calories & protein');
+    expect(card.map((section) => section.title)).toContain('Nutrition: calories & protein');
+    expect(nutrition?.body).toContain('Daily targets:');
+    expect(nutrition?.body).toContain('2,200 kcal');
+    expect(nutrition?.body).toContain('164 g protein');
+    expect(nutrition?.body).toContain('3 Nov 2026, Breakfast: Toast');
+    expect(nutrition?.body).toContain('Breakfast is low in protein, so add Greek yoghurt or eggs.');
+    expect(nutrition?.body.split(/\n\n/).length).toBeGreaterThanOrEqual(4);
+    expect(nutrition?.body.split(/\n\n/).length).toBeLessThanOrEqual(20);
+    expect(readFileSync('src/ui/ThumosStatsAnalysis.tsx', 'utf8')).toContain('withNutritionReview');
+    expect(readFileSync('src/app/(main)/health-plan.tsx', 'utf8')).toContain('<ThumosStatsAnalysis />');
   });
 });

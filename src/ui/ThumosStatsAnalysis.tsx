@@ -4,7 +4,7 @@ import { View } from 'react-native';
 import { useRepository, useSnapshot } from '@/data';
 import { isoDay } from '@/domain/dates';
 import { emptyGarminReadings } from '@/domain/garminConnect';
-import { analysisSectionsFromText, buildStatsAnalysis, THUMOS_ANALYSE, THUMOS_ANALYSE_CREDIT, THUMOS_ANALYSE_LOCAL, THUMOS_ANALYSIS_CAVEAT, type AnalysisSection } from '@/domain/statsAnalysis';
+import { analysisSectionsFromText, buildStatsAnalysis, THUMOS_ANALYSE, THUMOS_ANALYSE_CREDIT, THUMOS_ANALYSE_LOCAL, THUMOS_ANALYSIS_CAVEAT, withNutritionReview, type AnalysisSection } from '@/domain/statsAnalysis';
 import { THUMOS_ANALYSE_AGAIN } from '@/domain/thumosReading';
 import { useHealthSources } from '@/health/useHealthSources';
 import { useAppTheme } from '@/ui/theme';
@@ -55,7 +55,8 @@ export function ThumosStatsAnalysis() {
         readings: readings ?? emptyGarminReadings(),
       });
       const result = await repo.analyseStats(summary);
-      setSections(result.sections.length ? result.sections : analysisSectionsFromText(result.text));
+      const shown = result.sections.length ? result.sections : analysisSectionsFromText(result.text);
+      setSections(withNutritionReview(shown, summary.nutrition));
       setLocal(result.source === 'local');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Analysis did not answer.');
@@ -85,7 +86,9 @@ export function ThumosStatsAnalysis() {
       {sections.map((section, index) => (
         <View key={`${section.title}-${index}`} style={{ gap: 2 }}>
           <T variant="label" style={{ textTransform: 'none', letterSpacing: 0, color: theme.colors.ink, fontSize: 15 }}>{section.title}</T>
-          <T>{section.body}</T>
+          {section.body.split(/\n\s*\n/).map((paragraph) => paragraph.trim()).filter(Boolean).map((paragraph, paragraphIndex) => (
+            <T key={`${section.title}-${paragraphIndex}`}>{paragraph}</T>
+          ))}
         </View>
       ))}
       {local ? <T variant="muted">{THUMOS_ANALYSE_LOCAL}</T> : null}

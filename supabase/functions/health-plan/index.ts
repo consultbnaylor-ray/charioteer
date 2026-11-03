@@ -139,9 +139,9 @@ async function nutritionForAnalysis(
       today,
       logs,
       weightKg,
-      calorieTarget: kcalFromWeightPlan(summary.weightPlan) ?? (hide ? null : savedKcal),
-      proteinTargetG: savedProtein,
-      goalProteinG: goalProtein,
+      calorieTarget: kcalFromWeightPlan(summary.weightPlan) ?? (hide ? null : savedKcal ?? summary.nutrition?.calorieTarget ?? null),
+      proteinTargetG: savedProtein ?? (summary.nutrition?.proteinTargetSource === 'saved' ? summary.nutrition.proteinTargetG : null),
+      goalProteinG: goalProtein ?? (summary.nutrition?.proteinTargetSource === 'goal' ? summary.nutrition.proteinTargetG : null),
       hideCalories: hide,
     });
   } catch {

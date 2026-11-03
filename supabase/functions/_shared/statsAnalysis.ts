@@ -417,9 +417,25 @@ export function intakeContextLine(brief: NutritionBrief): string {
 
 export function sectionsToText(sections: readonly AnalysisSection[]): string {
   return sections
-    .map((section) => `${section.title}\n${tidy(section.body)}`)
+    .map((section) => `${section.title}\n${keepParagraphs(section.body)}`)
     .filter((block) => block.length > sectionTitleLength(block))
     .join('\n\n');
+}
+
+/** The card always shows this review under Nutrition, even if the model wrote something thinner. */
+export function withNutritionReview(
+  sections: readonly AnalysisSection[],
+  brief: NutritionBrief | null | undefined,
+): AnalysisSection[] {
+  if (!brief) return [...sections];
+  const nutrition: AnalysisSection = {
+    title: 'Nutrition: calories & protein',
+    body: nutritionReviewLines(brief).join('\n\n'),
+  };
+  const rest = sections.filter((section) => section.title !== nutrition.title);
+  const week = rest.findIndex((section) => section.title === 'This week');
+  if (week >= 0) return [...rest.slice(0, week), nutrition, ...rest.slice(week)];
+  return [...rest, nutrition];
 }
 
 export function resolvedAnalysisSections(
@@ -446,7 +462,7 @@ export function coerceAnalysisSections(value: unknown, fallbackText = ''): Analy
       if (!item || typeof item !== 'object') return [];
       const row = item as { title?: unknown; body?: unknown };
       const title = canonicalTitle(typeof row.title === 'string' ? row.title : '');
-      const body = tidy(typeof row.body === 'string' ? row.body : '');
+      const body = keepParagraphs(typeof row.body === 'string' ? row.body : '');
       if (!title || !body) return [];
       return [{ title, body }];
     });
@@ -495,7 +511,7 @@ function sectionForStat(id: AnalysisStatId): AnalysisSectionTitle {
 }
 
 function nutritionSection(payload: StatsAnalysisPayload): string {
-  return tidy(nutritionReviewLines(nutritionBriefOf(payload)).join(' '));
+  return nutritionReviewLines(nutritionBriefOf(payload)).join('\n\n');
 }
 
 /** The same review the health-plan card and Thumos chat both send. One line per point. */
@@ -564,14 +580,11 @@ function thisWeek(improvements: readonly string[]): string {
 }
 
 function ensureRequired(sections: readonly AnalysisSection[], payload: StatsAnalysisPayload): AnalysisSection[] {
-  const merged = mergeSections([...sections]);
-  if (!merged.some((section) => section.title === 'Nutrition: calories & protein')) {
-    merged.push({ title: 'Nutrition: calories & protein', body: nutritionSection(payload) });
-  }
+  const merged = mergeSections(sections.filter((section) => section.title !== 'Nutrition: calories & protein'));
   if (!merged.some((section) => section.title === 'This week')) {
     merged.push({ title: 'This week', body: thisWeek([]) });
   }
-  return mergeSections(merged);
+  return withNutritionReview(merged, nutritionBriefOf(payload));
 }
 
 function weightKgOf(payload: StatsAnalysisPayload): number | null {
@@ -654,7 +667,7 @@ function mergeSections(sections: readonly AnalysisSection[]): AnalysisSection[] 
     byTitle.set(section.title, list);
   }
   return ANALYSIS_SECTION_TITLES.flatMap((title) => {
-    const body = tidy((byTitle.get(title) ?? []).join(' '));
+    const body = keepParagraphs((byTitle.get(title) ?? []).join('\n\n'));
     return body ? [{ title, body }] : [];
   });
 }
@@ -670,6 +683,10 @@ function sectionTitleLength(block: string): number {
 
 function tidy(value: string): string {
   return value.replace(/\s+/g, ' ').trim();
+}
+
+function keepParagraphs(value: string): string {
+  return value.split(/\n\s*\n/).map((part) => part.replace(/[ \t]+/g, ' ').trim()).filter(Boolean).join('\n\n');
 }
 
 function countText(value: number): string {
