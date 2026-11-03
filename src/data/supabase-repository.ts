@@ -99,7 +99,7 @@ import {
 } from '@/domain/nutrition';
 import { PLAN_DISCLAIMER, healthPlanFromStored, normaliseTrainingSchedule, parseSharedHealthPlan, trainingScheduleFromRow, type HealthPlan, type TrainingSchedule } from '@/domain/healthPlan';
 import { nutritionAimChanged } from '@/domain/targetWeight';
-import { GOAL_PROGRESS_BUCKET, GOAL_PROGRESS_MAX_BYTES, goalProgressPhotosFromRows, goalProgressStoragePath } from '@/domain/goalProgress';
+import { GOAL_PROGRESS_BUCKET, GOAL_PROGRESS_MAX_BYTES, GOAL_PROGRESS_SIGNED_URL_SECONDS, goalProgressObjectPath, goalProgressPhotosFromRows, goalProgressStoragePath, withGoalProgressPreviews } from '@/domain/goalProgress';
 import { plannedEffortToDb, plannedSessionFromDraft, plannedSessionFromRow, plannedSessionWrite, type PlannedSession, type PlannedSessionDraft } from '@/domain/plannedSession';
 import { parseBuddyLinkPass, parseBuddyList, parseBuddyPreview, parseBuddyShare, type BuddyLinkPass, type BuddyList, type BuddyScope, type BuddyShareView } from '@/domain/buddies';
 import { avatarPhotoIdFromPath, memberDisplayName } from '@/domain/connections';
@@ -607,7 +607,11 @@ export class SupabaseRepository implements Repository {
     const mealPaths = currentPaths.foodLogs.flatMap((log) => (
       log.previewUrl ? [foodPhotoStoragePath(log.userId, log.id)] : []
     ));
-    const [progress, profile, gratitude, vision, meals] = await Promise.all([
+    const goalPaths = (currentPaths.goalProgressPhotos ?? []).flatMap((photo) => {
+      const path = goalProgressObjectPath(photo.storagePath);
+      return path ? [path] : [];
+    });
+    const [progress, profile, gratitude, vision, meals, goalProgress] = await Promise.all([
       this.signedUrlMap(PROGRESS_BUCKET, currentPaths.progressPhotos.map((photo) => photo.storagePath), PROGRESS_SIGNED_URL_SECONDS),
       this.signedUrlMap(PROFILE_PHOTO_BUCKET, profilePhotoSignPaths(currentPaths.profilePhotos), PROFILE_SIGNED_URL_SECONDS),
       this.signedUrlMap(
@@ -617,13 +621,15 @@ export class SupabaseRepository implements Repository {
       ),
       this.signedUrlMap(VISION_BUCKET, currentPaths.visionItems.map((item) => item.storagePath), VISION_SIGNED_URL_SECONDS),
       this.signedUrlMap(FOOD_BUCKET, mealPaths, OWNER_PHOTO_URL_SECONDS),
+      this.signedUrlMap(GOAL_PROGRESS_BUCKET, goalPaths, GOAL_PROGRESS_SIGNED_URL_SECONDS),
     ]);
     const wanted = currentPaths.progressPhotos.length
       + currentPaths.profilePhotos.length
       + currentPaths.gratitude.reduce((sum, entry) => sum + entry.photos.length, 0)
       + currentPaths.visionItems.length
-      + mealPaths.length;
-    const signedCount = progress.size + profile.size + gratitude.size + vision.size + meals.size;
+      + mealPaths.length
+      + goalPaths.length;
+    const signedCount = progress.size + profile.size + gratitude.size + vision.size + meals.size + goalProgress.size;
     if (wanted === 0 || signedCount > 0) this.ownerPhotosSignedAt = Date.now();
     const latest = this.snapshot;
     const progressPhotos = withSignedPreviewUrls(latest.progressPhotos, progress);
@@ -631,12 +637,14 @@ export class SupabaseRepository implements Repository {
     const gratitudeEntries = withSignedGratitudePhotos(latest.gratitude, gratitude);
     const visionItems = withSignedPreviewUrls(latest.visionItems, vision);
     const foodLogs = withSignedFoodPhotos(latest.foodLogs, meals);
+    const goalProgressPhotos = withGoalProgressPreviews(latest.goalProgressPhotos ?? [], goalProgress);
     if (
       progressPhotos === latest.progressPhotos
       && profilePhotos === latest.profilePhotos
       && gratitudeEntries === latest.gratitude
       && visionItems === latest.visionItems
       && foodLogs === latest.foodLogs
+      && goalProgressPhotos === (latest.goalProgressPhotos ?? [])
     ) return;
     this.emit({
       ...latest,
@@ -645,6 +653,7 @@ export class SupabaseRepository implements Repository {
       gratitude: gratitudeEntries,
       visionItems,
       foodLogs,
+      goalProgressPhotos,
     });
   }
 
@@ -669,9 +678,13 @@ export class SupabaseRepository implements Repository {
         return null;
       }
       const signedByPath = new Map<string, string>();
-      for (const item of signed.data ?? []) {
-        if (item.path && item.signedUrl) signedByPath.set(item.path, item.signedUrl);
-      }
+      (signed.data ?? []).forEach((item, index) => {
+        const url = item?.signedUrl;
+        if (!url) return;
+        if (item.path) signedByPath.set(item.path, url);
+        const asked = paths[index];
+        if (asked) signedByPath.set(asked, url);
+      });
       return signedByPath;
     } catch (error) {
       console.error(error);
@@ -706,6 +719,7 @@ export class SupabaseRepository implements Repository {
     if (bucket === GRATITUDE_BUCKET) return GRATITUDE_SIGNED_URL_SECONDS;
     if (bucket === VISION_BUCKET) return VISION_SIGNED_URL_SECONDS;
     if (bucket === FOOD_BUCKET) return OWNER_PHOTO_URL_SECONDS;
+    if (bucket === GOAL_PROGRESS_BUCKET) return GOAL_PROGRESS_SIGNED_URL_SECONDS;
     return null;
   }
 
@@ -749,6 +763,11 @@ export class SupabaseRepository implements Repository {
     if (bucket === FOOD_BUCKET) {
       const foodLogs = withSignedFoodPhotos(latest.foodLogs, map);
       if (foodLogs !== latest.foodLogs) this.emit({ ...latest, foodLogs });
+      return;
+    }
+    if (bucket === GOAL_PROGRESS_BUCKET) {
+      const goalProgressPhotos = withGoalProgressPreviews(latest.goalProgressPhotos ?? [], map);
+      if (goalProgressPhotos !== (latest.goalProgressPhotos ?? [])) this.emit({ ...latest, goalProgressPhotos });
     }
   }
 
@@ -2281,8 +2300,12 @@ export class SupabaseRepository implements Repository {
     const res = await this.client.from('goal_progress_photos').select('id, recorded_on, storage_path, created_at').eq('user_id', userId).order('recorded_on');
     if (res.error || !res.data) return [];
     const parsed = goalProgressPhotosFromRows(res.data);
-    const signed = await this.signedUrlMap(GOAL_PROGRESS_BUCKET, parsed.map((photo) => photo.storagePath), 3600);
-    return parsed.map((photo) => ({ ...photo, previewUrl: signed.get(photo.storagePath) ?? null }));
+    const paths = parsed.flatMap((photo) => {
+      const path = goalProgressObjectPath(photo.storagePath);
+      return path ? [path] : [];
+    });
+    const signed = await this.signedUrlMap(GOAL_PROGRESS_BUCKET, paths, GOAL_PROGRESS_SIGNED_URL_SECONDS);
+    return withGoalProgressPreviews(parsed, signed);
   }
 
   async addGoalProgressPhoto(bytes: Uint8Array, recordedOn: string): Promise<void> {

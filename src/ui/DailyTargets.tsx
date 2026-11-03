@@ -1,6 +1,6 @@
 import { Image } from 'expo-image';
-import { useState } from 'react';
-import { Modal, Pressable, View } from 'react-native';
+import { useEffect, useRef, useState } from 'react';
+import { ActivityIndicator, Modal, Pressable, View } from 'react-native';
 import Svg, { Circle, Line, Path, Text as SvgText } from 'react-native-svg';
 
 import { useRepository, useSnapshot } from '@/data';
@@ -9,7 +9,8 @@ import { formatUkCompactWhen, isoDay } from '@/domain/dates';
 import { formatAxisNumber, placeAxisLabels, progressDateTicks, yAxisTicks } from '@/domain/readingChart';
 import { shownError } from '@/domain/errors';
 import { athleticVo2Target } from '@/domain/fitnessSnapshot';
-import { goalProgressSeries, orderReadings, progressLinePath, type DatedValue, type GoalProgressPhoto } from '@/domain/goalProgress';
+import { goalProgressSeries, goalProgressSignStub, orderReadings, progressLinePath, type DatedValue, type GoalProgressPhoto } from '@/domain/goalProgress';
+import { PHOTO_RETRY, PHOTO_UNAVAILABLE } from '@/domain/ownerPhotos';
 import { londonDay } from '@/domain/healthInsights';
 import { weightPointsFrom } from '@/domain/nutrition';
 import { weightReadingKg, weightWaistWrite, type WeightUnitMode } from '@/domain/weightEntry';
@@ -178,7 +179,10 @@ function GoalProgressGraph({
   const weightTarget = series.weightPath?.[series.weightPath.length - 1];
   const vo2Target = series.vo2Path?.[series.vo2Path.length - 1];
   const nearest = (day: string, rows: DatedValue[]) => rows.find((row) => row.day === day)?.value ?? null;
-  const stamp = open ? formatUkCompactWhen(open.createdAt || `${open.recordedOn}T12:00:00.000Z`) : '';
+  const shown = open ? (photos.find((photo) => photo.id === open.id) ?? open) : null;
+  const stamp = shown ? formatUkCompactWhen(shown.createdAt || `${shown.recordedOn}T12:00:00.000Z`) : '';
+  const weightHere = shown ? nearest(shown.recordedOn, series.weightActual) : null;
+  const vo2Here = shown ? nearest(shown.recordedOn, series.vo2Actual) : null;
   return (
     <View style={{ gap: 14, alignSelf: 'stretch' }} onLayout={(event) => setWidth(event.nativeEvent.layout.width)}>
       <MiniSeries
@@ -214,20 +218,14 @@ function GoalProgressGraph({
         target={vo2Target ? targetCallout(vo2Target.value, 'ml/kg/min', vo2Target.day) : null}
       />
       <DateAxis start={series.start} end={series.end} photos={photos} width={width} accent={accent} surface={surface} muted={muted} onOpen={setOpen} />
-      <Modal visible={open != null} transparent animationType="fade" onRequestClose={() => setOpen(null)}>
+      <Modal visible={shown != null} transparent animationType="fade" onRequestClose={() => setOpen(null)}>
         <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.72)', justifyContent: 'center', padding: 16 }}>
-          {open ? (
-            <View style={{ gap: 8, backgroundColor: surface, padding: 12, borderRadius: 8 }}>
-              <T>{stamp}</T>
-              <T>{`Weight ${nearest(open.recordedOn, series.weightActual) ?? 'not logged'} kg`}</T>
-              <T>{`VO2 max ${nearest(open.recordedOn, series.vo2Actual) ?? 'not logged'} ml/kg/min`}</T>
-              {open.previewUrl ? (
-                <View>
-                  <Image source={{ uri: open.previewUrl }} style={{ width: '100%', height: 240 }} contentFit="contain" accessibilityLabel={`Progress photo, ${stamp}`} />
-                  <T>{stamp}</T>
-                </View>
-              ) : <T>Photo saved. The preview appears after it syncs.</T>}
-              <Button label="Delete photo" tone="quiet" onPress={() => { void repo.deleteGoalProgressPhoto(open.id).then(() => setOpen(null)); }} />
+          {shown ? (
+            <View style={{ gap: 8, alignSelf: 'stretch', backgroundColor: surface, padding: 12, borderRadius: 8 }}>
+              <T>{weightHere == null ? 'Weight: not logged' : `Weight ${formatAxisNumber(weightHere)} kg`}</T>
+              <T>{vo2Here == null ? 'VO2 max: not logged' : `VO2 max ${formatAxisNumber(vo2Here)} ml/kg/min`}</T>
+              <ProgressPhotoFrame photo={shown} stamp={stamp} />
+              <Button label="Delete photo" tone="quiet" onPress={() => { void repo.deleteGoalProgressPhoto(shown.id).then(() => setOpen(null)); }} />
               <Button label="Close" tone="quiet" onPress={() => setOpen(null)} />
             </View>
           ) : null}
@@ -319,6 +317,96 @@ function MiniSeries({
         </Svg>
       ) : <View style={{ height: PLOT_H }} />}
       {shortUnit ? null : <T variant="muted">{unit}</T>}
+    </View>
+  );
+}
+
+function ProgressPhotoFrame({ photo, stamp }: { photo: GoalProgressPhoto; stamp: string }) {
+  const repo = useRepository();
+  const [box, setBox] = useState(0);
+  const [uri, setUri] = useState<string | null>(photo.previewUrl);
+  const [ratio, setRatio] = useState<number | null>(null);
+  const [phase, setPhase] = useState<'loading' | 'ready' | 'failed'>('loading');
+  const [attempt, setAttempt] = useState(0);
+  const resigned = useRef(false);
+
+  useEffect(() => {
+    let live = true;
+    resigned.current = false;
+    setPhase('loading');
+    setRatio(null);
+    if (photo.previewUrl) setUri(photo.previewUrl);
+    const seed = photo.previewUrl && (photo.previewUrl.startsWith('http') || photo.previewUrl.startsWith('data:'))
+      ? photo.previewUrl
+      : goalProgressSignStub(photo.storagePath);
+    if (!seed) {
+      setPhase('failed');
+      return undefined;
+    }
+    void repo.refreshSignedPhoto(seed).then((next) => {
+      if (!live) return;
+      if (next) setUri(next);
+      else if (!photo.previewUrl) setPhase('failed');
+    });
+    return () => {
+      live = false;
+    };
+  }, [attempt, photo.id, photo.previewUrl, photo.storagePath, repo]);
+
+  const height = box > 0 ? Math.max(160, Math.round(box / (ratio ?? 0.75))) : 240;
+
+  return (
+    <View style={{ alignSelf: 'stretch', gap: 8 }} onLayout={(event) => setBox(event.nativeEvent.layout.width)}>
+      <View style={{ width: '100%', height, borderRadius: 8, overflow: 'hidden', backgroundColor: '#111111' }}>
+        {uri && box > 0 ? (
+          <Image
+            key={`${photo.id}:${attempt}:${uri}`}
+            source={{ uri }}
+            style={{ width: box, height }}
+            contentFit="contain"
+            accessibilityLabel={`Progress photo, ${stamp}`}
+            onLoad={(event) => {
+              const sourceWidth = event.source?.width ?? 0;
+              const sourceHeight = event.source?.height ?? 0;
+              if (sourceWidth > 0 && sourceHeight > 0) setRatio(sourceWidth / sourceHeight);
+              setPhase('ready');
+            }}
+            onError={() => {
+              if (resigned.current) {
+                setPhase('failed');
+                return;
+              }
+              resigned.current = true;
+              const stub = goalProgressSignStub(photo.storagePath);
+              if (!stub) {
+                setPhase('failed');
+                return;
+              }
+              void repo.refreshSignedPhoto(stub).then((next) => {
+                if (next && next !== uri) {
+                  setUri(next);
+                  setPhase('loading');
+                  return;
+                }
+                setPhase('failed');
+              });
+            }}
+          />
+        ) : null}
+        {phase === 'ready' ? null : (
+          <View style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, alignItems: 'center', justifyContent: 'center', padding: 12, gap: 8 }}>
+            {phase === 'failed' ? (
+              <Pressable accessibilityRole="button" accessibilityLabel={`${PHOTO_UNAVAILABLE}. ${PHOTO_RETRY}`} onPress={() => setAttempt((value) => value + 1)}>
+                <T style={{ color: '#F3F3EE', textAlign: 'center' }}>{PHOTO_UNAVAILABLE}</T>
+                <T style={{ color: '#F3F3EE', textAlign: 'center' }}>{PHOTO_RETRY}</T>
+              </Pressable>
+            ) : (
+              <ActivityIndicator accessibilityLabel="Loading photo" color="#F3F3EE" />
+            )}
+          </View>
+        )}
+      </View>
+      <T>{stamp}</T>
     </View>
   );
 }

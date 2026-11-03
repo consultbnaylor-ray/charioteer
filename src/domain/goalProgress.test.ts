@@ -2,7 +2,8 @@ import { readFileSync } from 'node:fs';
 
 import { describe, expect, it } from 'vitest';
 
-import { goalProgressPhotosFromRows, goalProgressSeries, progressLinePath } from '@/domain/goalProgress';
+import { GOAL_PROGRESS_BUCKET, goalProgressObjectPath, goalProgressPhotosFromRows, goalProgressSeries, goalProgressSignStub, progressLinePath, withGoalProgressPreviews } from '@/domain/goalProgress';
+import { signedStorageRef } from '@/domain/ownerPhotos';
 import { settingsForPreset } from '@/domain/targetWeight';
 import { defaultNutritionSettings } from '@/domain/nutrition';
 
@@ -133,5 +134,32 @@ describe('goal progress', () => {
     expect(readFileSync('src/ui/DailyTargets.tsx', 'utf8')).toContain('not sent to Thumos');
     expect(readFileSync('supabase/functions/account-delete/index.ts', 'utf8')).toContain('goal-progress-photos');
     expect(readFileSync('src/domain/sharedPhotos.ts', 'utf8')).toContain('NSCameraUsageDescription'.replace('NSCameraUsageDescription', 'progress photo'));
+  });
+
+  it('signs a goal progress photo from the object path inside the bucket', () => {
+    const objectPath = '11111111-1111-4111-8111-111111111111/22222222-2222-4222-8222-222222222222.jpg';
+    expect(goalProgressObjectPath(objectPath)).toBe(objectPath);
+    expect(goalProgressObjectPath(`/${GOAL_PROGRESS_BUCKET}/${objectPath}`)).toBe(objectPath);
+    expect(goalProgressObjectPath('../secret.jpg')).toBeNull();
+    expect(goalProgressObjectPath(`${GOAL_PROGRESS_BUCKET}/../secret.jpg`)).toBeNull();
+    expect(signedStorageRef(goalProgressSignStub(objectPath))).toEqual({ bucket: GOAL_PROGRESS_BUCKET, path: objectPath });
+    const signed = new Map([[objectPath, 'https://signed.example/progress.jpg']]);
+    expect(withGoalProgressPreviews([{ storagePath: `${GOAL_PROGRESS_BUCKET}/${objectPath}`, previewUrl: null }], signed)[0]?.previewUrl).toBe('https://signed.example/progress.jpg');
+    const repo = readFileSync('src/data/supabase-repository.ts', 'utf8');
+    const load = repo.slice(repo.indexOf('loadGoalProgressPhotos'), repo.indexOf('async addGoalProgressPhoto'));
+    expect(load).toContain('GOAL_PROGRESS_BUCKET');
+    expect(load).toContain('createSignedUrls');
+    expect(load).toContain('goalProgressObjectPath');
+    expect(load).toContain('GOAL_PROGRESS_SIGNED_URL_SECONDS');
+    expect(repo).toContain('bucket === GOAL_PROGRESS_BUCKET');
+    const screen = readFileSync('src/ui/DailyTargets.tsx', 'utf8');
+    expect(screen).toContain('ActivityIndicator');
+    expect(screen).toContain('accessibilityLabel="Loading photo"');
+    expect(screen).toContain('VO2 max: not logged');
+    expect(screen).toContain('`VO2 max ${formatAxisNumber(vo2Here)} ml/kg/min`');
+    expect(screen).toContain('PHOTO_RETRY');
+    expect(screen).toContain('goalProgressSignStub');
+    expect(screen).toContain('width: box');
+    expect(screen.match(/<T>\{stamp\}<\/T>/g)?.length).toBe(1);
   });
 });

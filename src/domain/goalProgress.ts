@@ -22,6 +22,44 @@ export function goalProgressStoragePath(userId: string, photoId: string): string
   return `${userId}/${photoId}.jpg`;
 }
 
+/** How long a private progress-photo link stays valid. */
+export const GOAL_PROGRESS_SIGNED_URL_SECONDS = 3600;
+
+/**
+ * Object path inside the bucket. A stored path that also starts with the bucket name
+ * is reduced to the object path. Traversal and an empty path are rejected.
+ */
+export function goalProgressObjectPath(storagePath: string): string | null {
+  const trimmed = storagePath.trim().replace(/^\/+/, '');
+  const prefix = `${GOAL_PROGRESS_BUCKET}/`;
+  const path = trimmed.startsWith(prefix) ? trimmed.slice(prefix.length) : trimmed;
+  if (!path || path.includes('..') || path.includes('\\') || path.startsWith('/')) return null;
+  return path;
+}
+
+/** A signable URL shape so an existing refresh can read the bucket and object path. */
+export function goalProgressSignStub(storagePath: string): string | null {
+  const path = goalProgressObjectPath(storagePath);
+  if (!path) return null;
+  return `https://storage.local/object/sign/${GOAL_PROGRESS_BUCKET}/${path}`;
+}
+
+/** Applies a signed link looked up by the object path, including a path that still names the bucket. */
+export function withGoalProgressPreviews<T extends { storagePath: string; previewUrl: string | null }>(
+  photos: readonly T[],
+  signed: ReadonlyMap<string, string>,
+): T[] {
+  let changed = false;
+  const next = photos.map((photo) => {
+    const path = goalProgressObjectPath(photo.storagePath);
+    const url = (path ? signed.get(path) : undefined) ?? signed.get(photo.storagePath);
+    if (!url || url === photo.previewUrl) return photo;
+    changed = true;
+    return { ...photo, previewUrl: url };
+  });
+  return changed ? next : (photos as T[]);
+}
+
 export function goalProgressPhotosFromRows(rows: unknown): GoalProgressPhoto[] {
   if (!Array.isArray(rows)) return [];
   return rows.flatMap((row) => {

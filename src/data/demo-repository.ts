@@ -1975,7 +1975,7 @@ export class DemoRepository implements Repository {
       recordedOn: day,
       storagePath: goalProgressStoragePath(account.profile.id, id),
       createdAt: new Date().toISOString(),
-      previewUrl: null,
+      previewUrl: bytesToDataUrl(bytes),
     }];
     this.commit(db);
   }
