@@ -7,6 +7,7 @@ import {
 } from '@/domain/activityMinutes';
 import type { GarminDaily } from '@/domain/garminConnect';
 import { weekdayShort } from '@/domain/healthInsights';
+import { EARLY_DAY_HOUR, londonHour } from '@/domain/statWindow';
 import { chartDayLabel, chartDays } from '@/domain/workoutDay';
 
 /** Garmin intensity minutes: one vigorous minute counts as two. Moderate stays one for one. */
@@ -255,6 +256,38 @@ export function calorieSeries(
     garmin.set(daily.calendarDate, kcal);
   }
   return dailyActivitySeries(endDay, span, apple, garmin, activeCaloriesLabel);
+}
+
+function groupedCount(value: number): string {
+  const rounded = Math.round(value * 10) / 10;
+  if (Number.isInteger(rounded)) return Math.round(rounded).toLocaleString('en-GB');
+  return rounded.toLocaleString('en-GB', { maximumFractionDigits: 1 });
+}
+
+/**
+ * Day range names today's figure. A running total before 5pm London is "Today so far".
+ * Longer ranges keep the highest day.
+ */
+export function rangeScaleLine(input: {
+  points: readonly { value: number; source?: ActivitySource | null }[];
+  unit: string;
+  days: number;
+  cumulative?: boolean;
+  now?: Date;
+  textFor?: (value: number) => string;
+}): string | null {
+  if (input.days !== 1) return mostInOneDay(input.points, input.unit);
+  let latest: { value: number; source: ActivitySource | null } | null = null;
+  for (const point of input.points) {
+    if (!(point.value > 0)) continue;
+    latest = { value: point.value, source: point.source ?? null };
+  }
+  if (!latest) return null;
+  const open = input.cumulative !== false && londonHour(input.now ?? new Date()) < EARLY_DAY_HOUR;
+  const head = open ? 'Today so far' : 'Today';
+  const amount = input.textFor ? input.textFor(latest.value) : `${groupedCount(latest.value)} ${input.unit}`.trim();
+  const named = latest.source === 'garmin' ? ` ${GARMIN_SOURCE}` : latest.source === 'apple' ? ` ${APPLE_SOURCE}` : '';
+  return `${head}: ${amount}${named}`;
 }
 
 export function mostInOneDay(points: readonly { value: number; source?: ActivitySource | null }[], unit: string): string | null {

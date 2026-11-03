@@ -28,6 +28,8 @@ import {
   VO2_CARD_TIPS,
   VO2_MAIN_TIP,
   VO2_VIGOROUS_TIP,
+  VO2_ZONE2_TIP,
+  vo2MainTip,
 } from '@/domain/trainingGuidance';
 import {
   CMO_MODERATE_MINUTES_WEEK,
@@ -60,6 +62,10 @@ export type MetricContext = {
   bodyFat?: number | null;
   vigorousWeek?: number | null;
   windowDays?: number | null;
+  /** Share of an open Day view, from openDayFraction. Running totals are rated against this share. */
+  dayFraction?: number | null;
+  /** Highest recorded max, or 220 minus age. Used to write interval targets in bpm. */
+  maxHeartRate?: { bpm: number; source: 'recorded' | 'estimate' } | null;
   calorieTarget?: number | null;
   proteinTarget?: number | null;
   drinkFreeGoal?: number | null;
@@ -279,8 +285,16 @@ function scaled(weekly: number, ctx: MetricContext): number {
   return Math.round(weekly * (days / 7));
 }
 
+function openShare(ctx: MetricContext): number | null {
+  if (ctx.windowDays != null && ctx.windowDays > 1) return null;
+  const fraction = ctx.dayFraction;
+  if (fraction == null || !(fraction > 0) || fraction >= 1) return null;
+  return fraction;
+}
+
 function rateSteps(id: string, value: number | null, ctx: MetricContext): MetricReading {
   const band = stepBand(ctx.age);
+  const share = openShare(ctx);
   if (value == null || value <= 0) {
     const sport = sportName(ctx.goal);
     return blank(id, PALUCH, `The research range is ${band.low.toLocaleString('en-GB')}–${band.high.toLocaleString('en-GB')} steps a day (${band.why}). ${ageNote(ctx)} The NHS does not set a daily step target.`, {
@@ -290,14 +304,22 @@ function rateSteps(id: string, value: number | null, ctx: MetricContext): Metric
       tips: STEP_TIPS,
     });
   }
-  const label: MetricRatingLabel = value >= band.high ? 'Excellent' : value >= band.low ? 'Good' : value >= 5000 ? 'Fair' : 'Poor';
+  const low = share == null ? band.low : band.low * share;
+  const high = share == null ? band.high : band.high * share;
+  const fairFloor = share == null ? 5000 : 5000 * share;
+  const label: MetricRatingLabel = value >= high ? 'Excellent' : value >= low ? 'Good' : value >= fairFloor ? 'Fair' : 'Poor';
   const sport = sportName(ctx.goal);
   const goalLine = sport
-    ? value >= band.low
-      ? `${sport}: you are inside the step research range. That range is not a sport test.`
-      : `${sport}: you are under the step research range. The range is the same one used for other adults.`
+    ? value >= low
+      ? `${sport}: you are inside the step research range${share == null ? '' : ' for this point in the day'}. That range is not a sport test.`
+      : share == null
+        ? `${sport}: you are under the step research range. The range is the same one used for other adults.`
+        : `${sport}: so far today this is under the pro-rata step range. The full-day range is the same one used for other adults.`
     : null;
-  const where = `${Math.round(value).toLocaleString('en-GB')} steps sits ${label === 'Excellent' || label === 'Good' ? 'in' : 'under'} ${band.low.toLocaleString('en-GB')}–${band.high.toLocaleString('en-GB')} a day (${band.why}). ${ageNote(ctx)} The NHS does not set a daily step target.`;
+  const counted = Math.round(value).toLocaleString('en-GB');
+  const where = share == null
+    ? `${counted} steps sits ${label === 'Excellent' || label === 'Good' ? 'in' : 'under'} ${band.low.toLocaleString('en-GB')}–${band.high.toLocaleString('en-GB')} a day (${band.why}). ${ageNote(ctx)} The NHS does not set a daily step target.`
+    : `${counted} steps so far today. By this time of day the research range is about ${Math.round(low).toLocaleString('en-GB')}–${Math.round(high).toLocaleString('en-GB')} steps (${band.why}). ${ageNote(ctx)} The NHS does not set a daily step target.`;
   return made(id, PALUCH, label, where, { band, draw: false, goalLine, tips: STEP_TIPS, more: `${where} Ding and colleagues, 2025, saw the association bend around 5,000–7,000 steps.` });
 }
 
@@ -375,7 +397,7 @@ function rateVo2(id: string, value: number | null, ctx: MetricContext): MetricRe
       band,
       draw: Boolean(band),
       goalLine: sport ? `${sport}: trained people often sit at or above the 75th percentile for their age and sex. There is no reading to compare yet.` : null,
-      tips: VO2_CARD_TIPS,
+      tips: ctx.maxHeartRate ? [vo2MainTip(ctx.maxHeartRate), VO2_VIGOROUS_TIP, VO2_ZONE2_TIP] : VO2_CARD_TIPS,
     });
   }
   if (!band) {
@@ -399,13 +421,14 @@ function rateVo2(id: string, value: number | null, ctx: MetricContext): MetricRe
     band,
     draw: false,
     goalLine,
-    tips: VO2_CARD_TIPS,
+    tips: ctx.maxHeartRate ? [vo2MainTip(ctx.maxHeartRate), VO2_VIGOROUS_TIP, VO2_ZONE2_TIP] : VO2_CARD_TIPS,
     more: where,
   });
 }
 
 function rateMinutes(id: string, value: number | null, ctx: MetricContext, weekly: number, noun: string): MetricReading {
-  const aim = scaled(weekly, ctx);
+  const share = openShare(ctx);
+  const aim = Math.max(1, Math.round(scaled(weekly, ctx) * (share ?? 1)));
   const days = ctx.windowDays != null && ctx.windowDays > 0 ? ctx.windowDays : 7;
   if (value == null || value <= 0) {
     const sport = sportName(ctx.goal);
@@ -421,7 +444,9 @@ function rateMinutes(id: string, value: number | null, ctx: MetricContext, weekl
       ? `${sport}: these minutes meet the general weekly guide. A sport plan can still ask for more.`
       : `${sport}: these minutes are under the general weekly guide of about ${aim} in this window.`
     : null;
-  const where = `${Math.round(value)} ${noun} ${spanPhrase(ctx)}. The guide for that span is about ${aim} minutes, from ${weekly} a week. ${ageNote(ctx)}`;
+  const where = share == null
+    ? `${Math.round(value)} ${noun} ${spanPhrase(ctx)}. The guide for that span is about ${aim} minutes, from ${weekly} a week. ${ageNote(ctx)}`
+    : `${Math.round(value)} ${noun} so far today. The guide by this time of day is about ${aim} minutes, from ${weekly} a week. ${ageNote(ctx)}`;
   return made(id, CMO, label, where, { goalLine, tips: MOVE_TIPS, more: where });
 }
 
@@ -881,10 +906,10 @@ function fitnessPicture(ctx: MetricContext): {
   if (ctx.vo2 != null) {
     if (boxing && ctx.vo2 < boxing.low) {
       vo2Gap = `${roundTenth(boxing.low - ctx.vo2)} below ${boxing.low}.`;
-      ranked.push({ name: 'VO2 max', gap: (boxing.low - ctx.vo2) / boxing.low, tip: VO2_MAIN_TIP, gapText: vo2Gap });
+      ranked.push({ name: 'VO2 max', gap: (boxing.low - ctx.vo2) / boxing.low, tip: vo2MainTip(ctx.maxHeartRate ?? null), gapText: vo2Gap });
     } else if (!boxing && cardio && ctx.vo2 < cardio.high) {
       vo2Gap = `${roundTenth(cardio.high - ctx.vo2)} below the 75th percentile.`;
-      ranked.push({ name: 'VO2 max', gap: (cardio.high - ctx.vo2) / cardio.high, tip: VO2_MAIN_TIP, gapText: vo2Gap });
+      ranked.push({ name: 'VO2 max', gap: (cardio.high - ctx.vo2) / cardio.high, tip: vo2MainTip(ctx.maxHeartRate ?? null), gapText: vo2Gap });
     } else vo2Gap = 'Inside the range.';
   }
   const vo2Value = ctx.vo2 != null ? `${ctx.vo2} ml/kg/min` : 'not stored yet';

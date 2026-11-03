@@ -35,6 +35,7 @@ import type { NutritionGoal, NutritionSex } from '@/domain/nutrition';
 import type { RestingFitnessComment, RestingInfoSection } from '@/domain/restingFitness';
 import { RESTING_CARE, RESTING_CARD_CARE } from '@/domain/restingFitness';
 import { periodDayCount, periodPhrase, scaledPeriodTarget, type StatPeriod } from '@/domain/statWindow';
+import { heartRateMaxFrom } from '@/domain/trainingGuidance';
 import { chartDays } from '@/domain/workoutDay';
 
 export const GARMIN_DETAILS_TITLE = 'More Garmin Stats';
@@ -253,6 +254,8 @@ function fillMetricContext(partial: Partial<MetricContext> | undefined, period?:
     bodyFat: partial?.bodyFat ?? null,
     vigorousWeek: partial?.vigorousWeek ?? null,
     windowDays: partial?.windowDays ?? (period ? periodDayCount(period) : null),
+    dayFraction: partial?.dayFraction ?? null,
+    maxHeartRate: partial?.maxHeartRate ?? null,
     calorieTarget: partial?.calorieTarget ?? null,
     proteinTarget: partial?.proteinTarget ?? null,
     drinkFreeGoal: partial?.drinkFreeGoal ?? null,
@@ -679,6 +682,10 @@ function detailContext(input: GarminChartInput, vo2: number | null): MetricConte
     bmi,
     vigorousWeek: sawVigorous ? vigorous : null,
     windowDays: periodDayCount(input.period),
+    maxHeartRate: heartRateMaxFrom({
+      age: input.age ?? null,
+      recorded: input.dailies.map((day) => day.maxHeartRateBpm),
+    }),
   });
 }
 

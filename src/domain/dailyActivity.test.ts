@@ -28,6 +28,7 @@ import {
   activityScaleLine,
   chartScalePeak,
   mostInOneDay,
+  rangeScaleLine,
 } from './dailyActivity';
 
 const end = '2026-10-22';
@@ -53,6 +54,32 @@ describe('daily activity', () => {
     expect(exercise.find((point) => point.day === '2026-10-20')?.label).toBe('No exercise minutes for Tue 20 Oct.');
     expect(activityDayName('2026-10-22')).toBe('Thu 22 Oct');
     expect(mostInOneDay(exercise, 'min')).toBe('Most in one day 40 min (Garmin)');
+    expect(rangeScaleLine({
+      points: [{ value: 4357, source: 'garmin' }],
+      unit: 'steps',
+      days: 1,
+      cumulative: true,
+      now: new Date('2026-11-03T10:14:00Z'),
+    })).toBe('Today so far: 4,357 steps (Garmin)');
+    expect(rangeScaleLine({
+      points: [{ value: 4357, source: 'garmin' }],
+      unit: 'steps',
+      days: 1,
+      cumulative: true,
+      now: new Date('2026-11-03T18:00:00Z'),
+    })).toBe('Today: 4,357 steps (Garmin)');
+    expect(rangeScaleLine({
+      points: [{ value: 40, source: 'garmin' }, { value: 20, source: 'garmin' }],
+      unit: 'min',
+      days: 7,
+    })).toBe('Most in one day 40 min (Garmin)');
+    expect(rangeScaleLine({
+      points: [{ value: 62, source: 'garmin' }],
+      unit: 'bpm',
+      days: 1,
+      cumulative: false,
+      now: new Date('2026-11-03T10:14:00Z'),
+    })).toBe('Today: 62 bpm (Garmin)');
 
     const zeroApple = exerciseSeries(end, 7, [{ day: '2026-10-22', value: 0 }], dailies);
     expect(zeroApple.find((point) => point.day === '2026-10-22')).toMatchObject({ value: 25, source: 'garmin' });

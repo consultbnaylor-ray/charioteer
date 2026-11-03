@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
 import {
+  GARMIN_BUSY,
   GARMIN_CHECK_AGAIN,
   GARMIN_CHECK_DEBOUNCE_MS,
   GARMIN_CHECK_FAILED,
@@ -19,6 +20,7 @@ import {
   garminConnectNudge,
   garminConnectOpenUrl,
   garminHintLine,
+  garminRefreshFace,
   garminNothingNewLine,
   garminPushIsStale,
   syncClock,
@@ -134,6 +136,21 @@ describe('manual health refresh', () => {
     expect(fromContext).toEqual({ ok: false, code: 'permission' });
     const broken = await readGarminRefreshBody(null, { context: { json: async () => { throw new Error('consumed'); } } });
     expect(broken).toBeNull();
+    const recent = '2026-11-03T10:14:00Z';
+    const now = Date.parse('2026-11-03T11:00:00Z');
+    expect(garminRefreshFace({ error: GARMIN_BUSY, receivedAt: recent, now })).toEqual({
+      error: null,
+      note: 'Garmin already sent your latest data at 10:14.',
+    });
+    expect(garminRefreshFace({ error: GARMIN_BUSY, receivedAt: null, now })).toEqual({
+      error: null,
+      note: 'Garmin is already sending data. There is nothing new to ask for yet.',
+    });
+    expect(garminRefreshFace({ error: 'Could not ask Garmin for new data.', receivedAt: recent, now }).error).toBeNull();
+    const stale = '2026-11-03T01:00:00Z';
+    expect(garminRefreshFace({ error: 'Could not ask Garmin for new data.', receivedAt: stale, now }).error).toBe('Could not ask Garmin for new data.');
+    expect(readFileSync('src/ui/HealthRefresh.tsx', 'utf8')).toContain('garminRefreshFace');
+    expect(readFileSync('src/data/supabase-repository.ts', 'utf8')).toContain(GARMIN_BUSY);
     expect(readFileSync('src/data/supabase-repository.ts', 'utf8')).toContain('readGarminRefreshBody');
     expect(readFileSync('src/ui/HealthRefresh.tsx', 'utf8')).not.toContain('GARMIN_HISTORY_NOTE');
     expect(readFileSync('src/ui/HealthRefresh.tsx', 'utf8')).toContain("garmin.code === 'history'");

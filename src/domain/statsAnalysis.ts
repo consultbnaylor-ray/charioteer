@@ -1,5 +1,6 @@
 import type { GarminReadings } from '@/domain/garminConnect';
 import { athleticVo2Target, publishedCardioBand } from '@/domain/fitnessSnapshot';
+import { heartRateMaxFrom } from '@/domain/trainingGuidance';
 import { CMO_VIGOROUS_MINUTES_WEEK } from '@/domain/guidance';
 import { activeMinutesByDay } from '@/domain/healthSources';
 import { readingFor, type MetricContext } from '@/domain/metricRegistry';
@@ -7,6 +8,7 @@ import { buildDailyTargets } from '@/domain/dailyTargets';
 import { GOAL_LABEL, isAnyBoxer, type NutritionGoal, type NutritionSex } from '@/domain/nutrition';
 import {
   ANALYSIS_STAT_NAMES,
+  analysisParagraphs,
   localStatsVerdict,
   sanitizeStatsAnalysis,
   type AnalysisStat,
@@ -14,7 +16,7 @@ import {
   type StatsAnalysisPayload,
 } from '../../supabase/functions/_shared/statsAnalysis.ts';
 
-export { localStatsVerdict, sanitizeStatsAnalysis, type AnalysisStat, type StatsAnalysisPayload };
+export { analysisParagraphs, localStatsVerdict, sanitizeStatsAnalysis, type AnalysisStat, type StatsAnalysisPayload };
 
 export const THUMOS_ANALYSE = 'Have Thumos Analyze your data';
 
@@ -348,13 +350,18 @@ export function buildStatsAnalysis(input: BuildInput): StatsAnalysisPayload {
     })
     : null;
   const goalLabel = input.goal ? GOAL_LABEL[input.goal] : null;
+  const maxHeartRate = heartRateMaxFrom({
+    age: input.age,
+    recorded: dailies.map((day) => day.maxHeartRateBpm),
+  });
   return sanitizeStatsAnalysis({
     age: input.age,
     sex: input.sex,
     goal: goalLabel,
     weightPlan: plan?.analysisLine ?? null,
+    maxHeartRate,
     stats,
-  }) ?? { age: input.age, sex: input.sex, goal: goalLabel, weightPlan: plan?.analysisLine ?? null, stats: [] };
+  }) ?? { age: input.age, sex: input.sex, goal: goalLabel, weightPlan: plan?.analysisLine ?? null, maxHeartRate, stats: [] };
 }
 
 function shift(day: string, delta: number): string {

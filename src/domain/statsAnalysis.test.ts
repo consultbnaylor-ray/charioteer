@@ -130,8 +130,9 @@ describe('stats analysis summaries', () => {
     });
     expect(short).toContain('some way off');
     expect(short).not.toContain('Keep up the good work');
-    expect(short).toContain('VO2 max 12.8 short of 56–62 ml/kg/min');
-    const shortStrengths = short.slice(short.indexOf('Strengths:'), short.indexOf('The biggest gaps'));
+    expect(short).toContain('VO2 max is 12.8 short of 56–62 ml/kg/min');
+    const shortParts = short.split(/\n\n/);
+    const shortStrengths = shortParts.find((part) => part.startsWith('Strengths:')) ?? '';
     expect(shortStrengths).not.toContain('VO2');
     expect(shortStrengths).toContain('Steps 9000');
   });
@@ -168,9 +169,12 @@ describe('stats analysis summaries', () => {
     const text = localStatsVerdict(payload);
     expect(text).toContain('some way off');
     expect(text).not.toContain('Keep up the good work');
-    expect(text).toContain('VO2 max 12.8 short of 56–62 ml/kg/min');
-    const strengths = text.slice(text.indexOf('Strengths:'), text.indexOf('The biggest gaps'));
+    expect(text).toContain('VO2 max is 12.8 short of 56–62 ml/kg/min');
+    const parts = text.split(/\n\n/);
+    expect(parts.length).toBeGreaterThan(1);
+    const strengths = parts.find((part) => part.startsWith('Strengths:')) ?? '';
     expect(strengths).not.toContain('VO2');
+    expect(parts.some((part) => part.includes('158–') || part.includes('85 to 95 percent'))).toBe(true);
   });
 
   it('calls the coach only from the button and meters it on health-plan', () => {
@@ -206,9 +210,44 @@ describe('stats analysis summaries', () => {
     expect(prompt).toContain('not a strength');
     expect(prompt).not.toContain('Looked at');
     expect(prompt).toContain('Do not list every stat');
+    expect(prompt).toContain('blank line');
+    expect(prompt).toContain('maxHeartRate');
     expect(ui).toContain('THUMOS_ANALYSIS_CAVEAT');
     expect(ui).not.toContain('VISIBLE_SAFETY_LINE');
     expect(ui).not.toContain('OUTSIDE_CRISIS_LINE');
     expect(ui).not.toContain('METRIC_CAVEAT');
+    expect(ui).toContain('analysisParagraphs');
+  });
+
+  it('turns a recorded max heart rate into bpm and keeps one paragraph per topic', () => {
+    const readings = emptyGarminReadings();
+    readings.dailies = [{
+      calendarDate: '2026-11-01',
+      restingHeartRateBpm: 58,
+      averageHeartRateBpm: 70,
+      moderateMinutes: 10,
+      vigorousMinutes: 0,
+      maxHeartRateBpm: 186,
+    }];
+    readings.userMetrics = [{ summaryId: 'u', calendarDate: '2026-11-01', vo2Max: 42, vo2MaxCycling: null, fitnessAge: null }];
+    const payload = buildStatsAnalysis({
+      today: '2026-11-03',
+      age: 40,
+      sex: 'male',
+      goal: 'elite_cruiser_boxer',
+      heightCm: 180,
+      samples: [],
+      readings,
+    });
+    expect(payload.maxHeartRate).toEqual({ bpm: 186, source: 'recorded' });
+    const text = localStatsVerdict(payload);
+    const parts = text.split(/\n\n/);
+    expect(parts[0]).toMatch(/some way off|mixed|reasonable|Poor or Fair|strong/i);
+    expect(parts.some((part) => part.includes('about 158–177 bpm from your highest recorded 186 bpm'))).toBe(true);
+    expect(parts.some((part) => part.includes('red zone') && part.includes('word or two') && part.includes('On Garmin'))).toBe(true);
+    expect(text).not.toMatch(/this goal|your goal/i);
+    const kept = sanitizeStatsAnalysis({ ...payload, latitude: 1, maxHeartRate: { bpm: 186, source: 'recorded' } });
+    expect(kept?.maxHeartRate).toEqual({ bpm: 186, source: 'recorded' });
+    expect(kept && 'latitude' in kept).toBe(false);
   });
 });

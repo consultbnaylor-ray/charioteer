@@ -2,6 +2,7 @@ export {
   EARLY_DAY_HOUR,
   londonHour,
   londonToday,
+  openDayFraction,
   minuteUnit,
   paceJudgement,
   parseStatPeriod,

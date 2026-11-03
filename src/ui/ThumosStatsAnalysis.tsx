@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { useRepository, useSnapshot } from '@/data';
 import { isoDay } from '@/domain/dates';
 import { emptyGarminReadings } from '@/domain/garminConnect';
-import { buildStatsAnalysis, THUMOS_ANALYSE, THUMOS_ANALYSE_CREDIT, THUMOS_ANALYSE_LOCAL, THUMOS_ANALYSIS_CAVEAT } from '@/domain/statsAnalysis';
+import { analysisParagraphs, buildStatsAnalysis, THUMOS_ANALYSE, THUMOS_ANALYSE_CREDIT, THUMOS_ANALYSE_LOCAL, THUMOS_ANALYSIS_CAVEAT } from '@/domain/statsAnalysis';
 import { THUMOS_ANALYSE_AGAIN } from '@/domain/thumosReading';
 import { useHealthSources } from '@/health/useHealthSources';
 import { Button, Card, T } from '@/ui/ui';
@@ -66,7 +66,7 @@ export function ThumosStatsAnalysis() {
   return (
     <Card>
       <T variant="label">Thumos</T>
-      <T>{text}</T>
+      {analysisParagraphs(text).map((paragraph) => <T key={paragraph}>{paragraph}</T>)}
       {local ? <T variant="muted">{THUMOS_ANALYSE_LOCAL}</T> : null}
       <T variant="muted">{THUMOS_ANALYSIS_CAVEAT}</T>
       <Button

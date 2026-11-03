@@ -97,6 +97,28 @@ export function londonHour(value: Date | string): number {
   return Number.isFinite(hour) ? hour : 0;
 }
 
+function londonPart(value: Date | string, type: 'hour' | 'minute'): number {
+  const date = value instanceof Date ? value : new Date(value);
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Europe/London',
+    hour: 'numeric',
+    minute: 'numeric',
+    hourCycle: 'h23',
+  }).formatToParts(date);
+  const part = Number(parts.find((item) => item.type === type)?.value ?? '0');
+  return Number.isFinite(part) ? part : 0;
+}
+
+/**
+ * Share of the clock day elapsed, while a Day view is still open (before 5pm London).
+ * Null once the day has had a fair chance, so a full-day rating can apply.
+ */
+export function openDayFraction(now: Date | string = new Date()): number | null {
+  if (londonHour(now) >= EARLY_DAY_HOUR) return null;
+  const elapsed = londonPart(now, 'hour') * 60 + londonPart(now, 'minute');
+  return Math.min(0.99, Math.max(1 / 24, elapsed / (24 * 60)));
+}
+
 export function londonToday(now: Date | string = new Date()): string {
   return typeof now === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(now) ? now : londonDay(now);
 }

@@ -2,7 +2,7 @@
  * Summaries the stats analysis may send to xAI.
  * Raw samples, epoch slices, activity files, routes, and women's health are not fields here.
  */
-import { VO2_ANALYSIS_RULE } from './trainingGuidance.ts';
+import { RESTING_AEROBIC_TIP, SLEEP_WAKE_TIP, STEP_WALK_TIP, VO2_ANALYSIS_RULE, vo2IntervalPhrase, type HeartRateMax } from './trainingGuidance.ts';
 
 export const ANALYSIS_STAT_IDS = [
   'steps',
@@ -104,6 +104,11 @@ export type StatsAnalysisPayload = {
    * Built on the phone from weight, target, date, and estimated burn. Not a new health measurement.
    */
   weightPlan?: string | null;
+  /**
+   * App-derived maximum heart rate from stored heart-rate readings, or 220 minus age.
+   * Not a new measurement. Sent so interval targets can be written in bpm.
+   */
+  maxHeartRate?: HeartRateMax | null;
   stats: AnalysisStat[];
 };
 
@@ -115,6 +120,7 @@ export const STATS_ANALYSIS_PROMPT = [
   'If the ratings are mostly Good or Excellent and no stat has a goalGap, say it looks strong and to keep up the good work.',
   'A stat with a goalGap is short of the saved goal. It is not a strength, even when the rating is Good or Excellent. Say it is fine for their age, but short of the goal by that gap, and name goalTarget.',
   'Do not say keep up the good work when any stat has a goalGap. Say it is strong for their age, but some way off the goal.',
+  'Write short paragraphs separated by a blank line. The first paragraph is the overall summary. Then one short strengths paragraph, if any qualify. Then one paragraph per improvement, in ranked order, with a blank line between them.',
   'Then one short strengths line. Name at most three stats that are Good or Excellent and have no goalGap. If none qualify, do not invent a strength.',
   'Usual and No rating yet are not strengths and not levers.',
   'Then the things to improve. Lead with the largest goalGap, then the next, then Fair and Poor. Do not mention the same thing twice.',
@@ -132,9 +138,16 @@ export const STATS_ANALYSIS_PROMPT = [
 const BANNED = /\b(diagnos\w*|obese|overweight|lifespan|you will die)\b/i;
 
 export function analysisTextOk(text: string): boolean {
-  const trimmed = text.replace(/\s+/g, ' ').trim();
-  if (trimmed.length < 40 || trimmed.length > 2200) return false;
-  return !BANNED.test(trimmed);
+  const trimmed = text.trim();
+  const flat = trimmed.replace(/\s+/g, ' ');
+  if (flat.length < 40 || flat.length > 3200) return false;
+  if (/\n{3,}/.test(trimmed)) return false;
+  return !BANNED.test(flat);
+}
+
+export function analysisParagraphs(text: string): string[] {
+  const parts = text.split(/\n\s*\n/).map((part) => part.replace(/[ \t]+/g, ' ').trim()).filter(Boolean);
+  return parts.length > 0 ? parts : [text.trim()];
 }
 
 function statName(stat: AnalysisStat): string {
@@ -158,29 +171,53 @@ export function localStatsVerdict(payload: StatsAnalysisPayload): string {
     ? ` Strengths: ${good.slice(0, 3).map((stat) => `${statName(stat)}${figureOf(stat)}`).join(', ')}.`
     : '';
   const work = [...short, ...poor.filter((stat) => !shortIds.has(stat.id))].slice(0, 3);
-  const workLine = work.map((stat) => (
-    stat.goalGap != null && stat.goalGap > 0 && stat.goalTarget
-      ? `${statName(stat)} ${stat.goalGap} short of ${stat.goalTarget}`
-      : `${statName(stat)}${figureOf(stat)}`
-  )).join(', ');
   if (good.length + poor.length + short.length === 0) {
     return `There are not enough rated readings yet for an overall view${age}.${goal}`.replace(/\s+/g, ' ').trim();
   }
   const planLine = payload.weightPlan ? ` ${payload.weightPlan}` : '';
+  const improvements = work.map((stat) => improvementParagraph(stat, payload.maxHeartRate ?? null));
   if (short.length > 0) {
     const ageBit = good.length + short.length > poor.length ? 'Strong for your age' : 'Your overall health looks mixed for your age';
-    const gaps = workLine ? ` The biggest gaps are ${workLine}.` : '';
-    return `${ageBit}, but some way off the saved goal.${goal}${strengthLine}${gaps}${planLine}`.replace(/\s+/g, ' ').trim();
+    return joinParagraphs([
+      `${ageBit}, but some way off the saved goal.${goal}${planLine}`,
+      strengthLine,
+      ...improvements,
+    ]);
   }
   if (poor.length > good.length && poor.length >= 3) {
-    const levers = workLine ? ` Work on ${workLine}, in that order.` : '';
-    return `Most of these ratings are Poor or Fair${age}.${goal}${strengthLine}${levers}${planLine}`.replace(/\s+/g, ' ').trim();
+    return joinParagraphs([
+      `Most of these ratings are Poor or Fair${age}.${goal}${planLine}`,
+      strengthLine,
+      ...improvements,
+    ]);
   }
   if (good.length >= 3 && poor.length === 0) {
-    return `Your overall health looks strong${age}.${goal}${strengthLine} Keep up the good work.${planLine}`.replace(/\s+/g, ' ').trim();
+    return joinParagraphs([
+      `Your overall health looks strong${age}.${goal} Keep up the good work.${planLine}`,
+      strengthLine,
+    ]);
   }
-  const levers = workLine ? ` Work on ${workLine}, in that order.` : '';
-  return `Your overall health looks reasonable${age}, but improvements could be made.${goal}${strengthLine}${levers}${planLine}`.replace(/\s+/g, ' ').trim();
+  return joinParagraphs([
+    `Your overall health looks reasonable${age}, but improvements could be made.${goal}${planLine}`,
+    strengthLine,
+    ...improvements,
+  ]);
+}
+
+function joinParagraphs(parts: readonly (string | null | undefined)[]): string {
+  return parts.map((part) => part?.replace(/[ \t]+/g, ' ').trim() ?? '').filter(Boolean).join('\n\n');
+}
+
+function improvementParagraph(stat: AnalysisStat, max: HeartRateMax | null): string {
+  const name = statName(stat);
+  const gap = stat.goalGap != null && stat.goalGap > 0 && stat.goalTarget
+    ? `${name} is ${stat.goalGap} short of ${stat.goalTarget}.`
+    : `${name} is ${stat.rating.toLowerCase()} at${figureOf(stat)}.`;
+  if (stat.id === 'vo2' || stat.id === 'fitness_age') return `${gap} ${vo2IntervalPhrase(max)}`;
+  if (stat.id === 'steps') return `${gap} ${STEP_WALK_TIP}`;
+  if (stat.id === 'sleep_hours' || stat.id === 'sleep_score' || stat.id === 'sleep_duration') return `${gap} ${SLEEP_WAKE_TIP}`;
+  if (stat.id === 'resting_heart_rate') return `${gap} ${RESTING_AEROBIC_TIP}`;
+  return gap;
 }
 
 function finite(value: unknown): number | null {
@@ -231,5 +268,22 @@ export function sanitizeStatsAnalysis(input: unknown): StatsAnalysisPayload | nu
   }
   if (stats.length === 0) return null;
   const weightPlan = text(record.weightPlan, 400);
-  return { age: age != null && age >= 10 && age <= 110 ? age : null, sex, goal: goal || null, weightPlan: weightPlan || null, stats };
+  const maxHeartRate = maxHeartField(record.maxHeartRate);
+  return {
+    age: age != null && age >= 10 && age <= 110 ? age : null,
+    sex,
+    goal: goal || null,
+    weightPlan: weightPlan || null,
+    maxHeartRate,
+    stats,
+  };
+}
+
+function maxHeartField(value: unknown): HeartRateMax | null {
+  if (!value || typeof value !== 'object') return null;
+  const row = value as { bpm?: unknown; source?: unknown };
+  const bpm = finite(row.bpm);
+  if (bpm == null || bpm < 100 || bpm > 230) return null;
+  if (row.source !== 'recorded' && row.source !== 'estimate') return null;
+  return { bpm: Math.round(bpm), source: row.source };
 }

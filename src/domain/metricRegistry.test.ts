@@ -161,6 +161,10 @@ describe('metric registry', () => {
     expect(good.tips).toEqual([]);
     const steps = readingFor('steps', 9000, { ...EMPTY_METRIC_CONTEXT, age: 40, sex: 'female' });
     expect(steps.label).toBe('Good');
+    const morning = readingFor('steps', 4357, { ...EMPTY_METRIC_CONTEXT, age: 40, sex: 'male', windowDays: 1, dayFraction: 10.25 / 24 });
+    expect(morning.label).not.toBe('Poor');
+    expect(morning.where).toContain('so far today');
+    expect(readingFor('steps', 4357, { ...EMPTY_METRIC_CONTEXT, age: 40, sex: 'male', windowDays: 1 }).label).toBe('Poor');
     expect(steps.tips).toEqual([]);
     expect(steps.where).toContain('8,000');
     const close = readingFor('fitness_age', 44, {

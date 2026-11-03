@@ -29,6 +29,7 @@ import {
   garminMinuteSeries,
   minuteTypeEmpty,
   mostInOneDay,
+  rangeScaleLine,
   hrvSdnnSeries,
   restingSeries,
   seriesHasValue,
@@ -72,6 +73,7 @@ import { weekdayShort } from '@/domain/healthInsights';
 import { CHART_DIRECTION_HINT } from '@/domain/readingChart';
 import type { WorkoutChartSpan } from '@/domain/workoutDay';
 import { useStatPeriod } from '@/health/useStatPeriod';
+import { openDayFraction } from '@/domain/statWindow';
 import { openAppSettings } from '@/health/link';
 import { MetricRatingLines } from '@/ui/MetricRating';
 import { MoreInfo } from '@/ui/MoreInfo';
@@ -378,7 +380,10 @@ export function MovementCharts({
     sex,
     goal,
   });
-  const minuteCtx = chartContext(age, sex, goal, chartWindow.days);
+  const minuteCtx = {
+    ...chartContext(age, sex, goal, chartWindow.days),
+    dayFraction: chartWindow.period === 'day' ? openDayFraction() : null,
+  };
   const hrvChart = detailCharts.find((chart) => chart.id === 'hrv') ?? null;
   const details = detailCharts.filter((chart) => (showVo2Chart || chart.id !== 'vo2') && chart.id !== 'hrv');
   const shownGarmin = new Set<string>(details.map((chart) => chart.id));
@@ -445,6 +450,7 @@ export function MovementCharts({
         garminNote="Garmin"
         guide={chart.guide}
         lead={chart.note}
+        cumulative={chart.id === 'epoch_minutes' || chart.id === 'move_iq' || chart.id === 'activity_detail' || chart.id === 'body_battery_charged' || chart.id === 'body_battery_drained'}
         onSelect={setSelected}
       />
     );
@@ -521,6 +527,7 @@ export function MovementCharts({
           unit="bpm"
           selected={selected}
           garminNote={chartSourceCaption(resting)}
+          cumulative={false}
           guide={restingChartGuide(chartWindow.period, resting, restingFitnessComment({
             today: endDay,
             resting: restingSeries(endDay, 30, restingHeart, dailies).flatMap((point) => (
@@ -605,6 +612,7 @@ export function MovementCharts({
           selected={selected}
           garminNote={GARMIN_HRV_SOURCE}
           guide={hrvChart.guide}
+          cumulative={false}
           onSelect={setSelected}
         />
       ) : showHealthStats && hrvPlaceholder ? (
@@ -618,6 +626,7 @@ export function MovementCharts({
           garminNote={GARMIN_HRV_SOURCE}
           guide={hrvPlaceholder.guide}
           lead={hrvPlaceholder.note ?? GARMIN_HRV_EMPTY}
+          cumulative={false}
           onSelect={setSelected}
         />
       ) : null}
@@ -631,6 +640,7 @@ export function MovementCharts({
           selected={selected}
           garminNote={APPLE_HRV_SOURCE}
           guide={sdnnGuide(chartWindow.period, sdnnPoints, minuteCtx)}
+          cumulative={false}
           onSelect={setSelected}
         />
       ) : showHealthStats && appleHrvSdnn.length > 0 ? (
@@ -644,6 +654,7 @@ export function MovementCharts({
           garminNote={APPLE_HRV_SOURCE}
           guide={sdnnGuide(chartWindow.period, sdnnPoints, minuteCtx)}
           lead={APPLE_HRV_EMPTY}
+          cumulative={false}
           onSelect={setSelected}
         />
       ) : null}
@@ -705,6 +716,7 @@ export function Vo2MaxChart({
       selected={selected}
       garminNote={garminSourceCaption(chart)}
       guide={chart.guide}
+      cumulative={false}
       onSelect={setSelected}
     />
   );
@@ -837,6 +849,7 @@ function ActivityBars({
   guide = null,
   framed = true,
   lead = null,
+  cumulative = true,
   onSelect,
 }: {
   title: string;
@@ -848,6 +861,8 @@ function ActivityBars({
   scale?: string | null;
   format?: (point: DailyActivityPoint) => string;
   guide?: ChartGuide | null;
+  /** A running total uses "Today so far" on an open Day. A rate uses "Today". */
+  cumulative?: boolean;
   /** False inside a card that already has the mint edge. */
   framed?: boolean;
   /** One sentence kept on the card when the chart has no readings. */
@@ -857,7 +872,15 @@ function ActivityBars({
   const theme = useAppTheme();
   const icon = activityTitleIcon(title);
   const most = chartPeak(points, guide);
-  const scaleLine = scale === undefined ? mostInOneDay(points, unit) : scale;
+  const scaleLine = span === 1
+    ? rangeScaleLine({
+      points,
+      unit,
+      days: 1,
+      cumulative,
+      textFor: format ? (value) => format({ day: points[0]?.day ?? '', value, source: null, empty: false, label: '' }) : undefined,
+    })
+    : (scale === undefined ? mostInOneDay(points, unit) : scale);
   const band = guide?.dailyTypical ?? null;
   const target = guide?.target?.value ?? null;
   const own = guide?.ownAverage?.value ?? null;
