@@ -180,7 +180,7 @@ export const STATS_ANALYSIS_PROMPT = [
   'Use these titles in this order: Overview, Cardio/VO2, Steps & movement, Sleep & recovery, Nutrition: calories & protein, This week.',
   'Each body is one short paragraph. Do not put a blank line inside a body. The app separates sections with a blank line.',
   'Overview is the overall summary, then one short strengths line if any qualify. Put each improvement in the matching section, largest goalGap first.',
-  'Always include Nutrition: calories & protein. State the daily calorie target and the daily protein target in grams. Review the meals: UK dates, names, and the kcal and protein already stored. Give 2 to 4 specific practical changes based on those meals, using improvements when they are present. Do not invent a meal that is not listed. Do not include a clock time. If loggedDays is under 2, or nutrition is missing, say there is not enough logged food to compare intake. If fuelNote is set, say that trade-off: do not cut calories so far that training fuel is lost. If fitnessGoal or vo2Goal is set, the Cardio section uses that VO2 target. Estimates are a general guide. Not medical advice.',
+  'Always include Nutrition: calories & protein. nutrition.meals is input only. Do not write that list out. Do not give a date, a meal with its kcal, or the word Estimate as a log line. The section is only: one line for the daily calorie target and the protein target, one line for the 7-day average against those targets, and 2 to 4 short reduce, add, or swap suggestions from improvements. Name a food only inside that advice, never as a logged meal. Do not invent a meal or a number. If loggedDays is under 2, or nutrition is missing, say there is not enough logged food to compare intake. If fuelNote is set, say that trade-off: do not cut calories so far that training fuel is lost. If fitnessGoal or vo2Goal is set, the Cardio section uses that VO2 target. The only caveat in this section is "Not medical advice."',
   'Always include This week, with one or two practical steps.',
   'Then one short strengths line. Name at most three stats that are Good or Excellent and have no goalGap. If none qualify, do not invent a strength.',
   'Usual and No rating yet are not strengths and not levers.',
@@ -386,7 +386,8 @@ export function mealImprovements(
   if (breakfasts.length) {
     const mean = breakfasts.reduce((sum, meal) => sum + (meal.proteinG ?? 0), 0) / breakfasts.length;
     if (mean < 20 || (brief.proteinTargetG != null && mean < brief.proteinTargetG * 0.2)) {
-      tips.push('Breakfast is low in protein, so add Greek yoghurt or eggs.');
+      const food = exampleFood([...breakfasts].sort((left, right) => (left.proteinG ?? 0) - (right.proteinG ?? 0))[0]?.name ?? '');
+      tips.push(food ? `Swap ${food} for eggs or Greek yoghurt at breakfast.` : 'Add eggs or Greek yoghurt at breakfast.');
     }
   }
   if (brief.calorieTarget != null) {
@@ -398,26 +399,34 @@ export function mealImprovements(
       byDay.set(meal.day, row);
     }
     const over = [...byDay.values()].some((day) => day.snack > 0 && day.total > (brief.calorieTarget ?? 0) && day.snack >= day.total * 0.15);
-    if (over) tips.push('Evening snacks push you over the calorie target.');
+    if (over) tips.push('Reduce evening snacks, or swap them for fruit or yoghurt.');
   }
   if (brief.proteinTargetG != null && brief.averageProteinG != null && brief.averageProteinG < brief.proteinTargetG * 0.9) {
     const light = meals
       .filter((meal) => meal.proteinG != null && meal.slot !== 'Snack' && meal.name !== 'Logged meal')
       .sort((left, right) => (left.proteinG ?? 0) - (right.proteinG ?? 0))[0];
-    if (light && !tips.some((tip) => tip.startsWith('Breakfast') && light.slot === 'Breakfast')) {
-      tips.push(`${light.slot} is light on protein (${light.name}). Add chicken, eggs, yoghurt, or fish.`);
-    } else if (!tips.some((tip) => tip.startsWith('Breakfast'))) {
-      tips.push('Protein is under the daily target. Add a protein food at the meal you usually rush.');
+    const breakfastAlready = tips.some((tip) => /breakfast/i.test(tip));
+    if (light && !(breakfastAlready && light.slot === 'Breakfast')) {
+      const food = exampleFood(light.name);
+      const slot = light.slot.toLowerCase();
+      tips.push(food ? `Swap ${food} for chicken, eggs, yoghurt, or fish at ${slot}.` : `Add chicken, eggs, yoghurt, or fish at ${slot}.`);
+    } else if (!breakfastAlready) {
+      tips.push('Add a protein food at the meal you usually rush.');
     }
   }
   if (brief.calorieTarget != null && brief.averageKcal != null && brief.averageKcal > brief.calorieTarget * 1.1) {
-    tips.push('Logged days sit above the calorie target. Trim the largest meal rather than skipping one.');
+    const largest = meals.filter((meal) => meal.kcal != null).sort((left, right) => (right.kcal ?? 0) - (left.kcal ?? 0))[0];
+    const food = largest ? exampleFood(largest.name) : null;
+    tips.push(food && largest ? `Reduce ${food} at ${largest.slot.toLowerCase()}, rather than skipping a meal.` : 'Reduce the largest meal a little, rather than skipping one.');
   }
-  if (meals.some((meal) => meal.estimated)) {
-    tips.push('Some meals are estimates from a photo or a description, so treat the grams as a guide.');
-  }
-  if (tips.length < 2 && meals.length) tips.push('Keep a protein food at breakfast, lunch, and dinner, and stay near the daily targets.');
+  if (tips.length < 2 && meals.length) tips.push('Add a protein food at breakfast, lunch, and dinner.');
   return [...new Set(tips)].slice(0, 4);
+}
+
+function exampleFood(name: string): string | null {
+  const clean = name.replace(/\s+/g, ' ').trim();
+  if (!clean || /^logged meal$/i.test(clean) || clean.length > 40) return null;
+  return clean.charAt(0).toLowerCase() + clean.slice(1);
 }
 
 export function intakeContextLine(brief: NutritionBrief): string {
@@ -528,27 +537,43 @@ function nutritionSection(payload: StatsAnalysisPayload): string {
   return nutritionReviewLines(nutritionBriefOf(payload)).join('\n\n');
 }
 
-/** The same review the health-plan card and Thumos chat both send. One line per point. */
+/**
+ * What the card, chat, and voice may show. Targets, the 7-day average, and 2 to 4 pieces of advice.
+ * The meal log stays out of this text.
+ */
 export function nutritionReviewLines(brief: NutritionBrief): string[] {
-  const lines = [dailyTargetSentence(brief)];
-  if (brief.loggedDays < 2) {
-    lines.push('There is not enough logged food yet to compare intake with the targets.');
-  } else if (brief.averageKcal != null) {
-    lines.push(`Logged meals on ${brief.loggedDays} days average about ${countText(brief.averageKcal)} kcal and ${countText(brief.averageProteinG ?? 0)} g protein.`);
-  } else {
-    lines.push(`Logged meals on ${brief.loggedDays} days average about ${countText(brief.averageProteinG ?? 0)} g protein. Calories stay hidden.`);
-  }
-  if (brief.averageKcal != null && brief.calorieTarget != null) {
-    lines.push(`Intake is ${compareWord(brief.averageKcal, brief.calorieTarget)} the daily calorie target of ${countText(brief.calorieTarget)} kcal.`);
-  }
-  if (brief.averageProteinG != null && brief.proteinTargetG != null && brief.loggedDays >= 2) {
-    lines.push(`Protein is ${compareWord(brief.averageProteinG, brief.proteinTargetG)} the daily protein target of ${countText(brief.proteinTargetG)} g.`);
-  }
-  for (const meal of brief.meals) lines.push(mealSentence(meal));
-  for (const tip of brief.improvements) lines.push(tip);
-  if (brief.proteinGuide) lines.push(brief.proteinGuide);
-  lines.push('Not medical advice.');
+  const lines = [
+    dailyTargetSentence(brief),
+    averageIntakeLine(brief),
+    ...brief.improvements.slice(0, 4),
+    'Not medical advice.',
+  ];
   return lines.map((line) => tidy(line)).filter(Boolean);
+}
+
+/** Meal rows for the model only. Callers must not render these on the card. */
+export function nutritionInputLines(brief: NutritionBrief): string[] {
+  if (!brief.meals.length) return [];
+  return [
+    'Meal log for reasoning only. Do not repeat this list, a date, or a per-meal kcal figure.',
+    ...brief.meals.map(mealSentence),
+  ];
+}
+
+function averageIntakeLine(brief: NutritionBrief): string {
+  if (brief.loggedDays < 2) return 'There is not enough logged food yet to compare a 7-day average with the targets.';
+  if (brief.averageKcal == null) {
+    const versus = brief.proteinTargetG != null && brief.averageProteinG != null
+      ? `, ${compareWord(brief.averageProteinG, brief.proteinTargetG)} the ${countText(brief.proteinTargetG)} g protein target`
+      : '';
+    return `Averaging about ${countText(brief.averageProteinG ?? 0)} g protein a day${versus}. Calories stay hidden.`;
+  }
+  const kcalVersus = brief.calorieTarget != null ? `${compareWord(brief.averageKcal, brief.calorieTarget)} the ${countText(brief.calorieTarget)} kcal target` : '';
+  const proteinVersus = brief.proteinTargetG != null && brief.averageProteinG != null
+    ? `${compareWord(brief.averageProteinG, brief.proteinTargetG)} the ${countText(brief.proteinTargetG)} g protein target`
+    : '';
+  const versus = [kcalVersus, proteinVersus].filter(Boolean).join(' and ');
+  return `Averaging about ${countText(brief.averageKcal)} kcal and ${countText(brief.averageProteinG ?? 0)} g protein a day${versus ? `, ${versus}` : ''}.`;
 }
 
 function nutritionBriefOf(payload: StatsAnalysisPayload): NutritionBrief {
@@ -568,10 +593,8 @@ function nutritionBriefOf(payload: StatsAnalysisPayload): NutritionBrief {
 function dailyTargetSentence(brief: Pick<NutritionBrief, 'calorieTarget' | 'proteinTargetG' | 'proteinTargetSource'>): string {
   const kcal = brief.calorieTarget != null ? `${countText(brief.calorieTarget)} kcal` : 'no calorie target saved yet';
   if (brief.proteinTargetG == null) return `Daily targets: ${kcal}, and no protein target in grams yet.`;
-  const grams = `${countText(brief.proteinTargetG)} g protein`;
-  if (brief.proteinTargetSource === 'goal') return `Daily targets: ${kcal} and about ${grams} for this training goal. That sits inside a general guide of 1.6 to 2.2 g per kg. Not a prescription.`;
-  if (brief.proteinTargetSource === 'guide') return `Daily targets: ${kcal} and about ${grams}, the middle of a general guide of 1.6 to 2.2 g per kg. Not a prescription.`;
-  return `Daily targets: ${kcal} and ${grams}.`;
+  const about = brief.proteinTargetSource === 'saved' ? '' : 'about ';
+  return `Daily targets: ${kcal} and ${about}${countText(brief.proteinTargetG)} g protein.`;
 }
 
 function mealSentence(meal: LoggedMeal): string {

@@ -32,7 +32,7 @@ import { buildDailyTargets } from './dailyTargets.ts';
 import { FITNESS_GOAL_LABEL, fuelTradeOffLine, isFitnessGoal, resolvedFitnessGoal } from './fitnessGoal.ts';
 import { COMPETITION_CUT_RULES, competitionCutActive } from './targetWeight.ts';
 import { vo2ForFitnessGoal } from './fitnessSnapshot.ts';
-import { nutritionBriefFromLogs, nutritionReviewLines } from './statsAnalysis.ts';
+import { nutritionBriefFromLogs, nutritionInputLines, nutritionReviewLines } from './statsAnalysis.ts';
 import { soberElapsed } from './sober.ts';
 
 type NutritionResult = { data: unknown; error: { message?: string } | null };
@@ -336,8 +336,8 @@ export async function loadNutritionLines(
     })
     : null;
   const weightKg = coach.health && latest && latest.kg >= 30 ? latest.kg : null;
-  const review = coach.ai
-    ? nutritionReviewLines(nutritionBriefFromLogs({
+  const brief = coach.ai
+    ? nutritionBriefFromLogs({
       today,
       logs: logs.map((log) => ({
         eatenOn: log.eatenOn,
@@ -352,13 +352,15 @@ export async function loadNutritionLines(
       proteinTargetG: settings.proteinTarget,
       goalProteinG: weightKg != null && settings.goal ? proteinGramsFor(settings.goal, weightKg, settings.build, settings.goalPhase) : null,
       hideCalories: settings.hideCalories,
-    }))
-    : [];
+    })
+    : null;
+  const review = brief ? nutritionReviewLines(brief) : [];
+  const mealInput = brief ? nutritionInputLines(brief) : [];
   const fitnessAim = coach.ai ? resolvedFitnessGoal(settings) : null;
   const vo2 = fitnessAim && coach.health ? vo2ForFitnessGoal(settings.goalAge, settings.goalSex, fitnessAim) : null;
   const losing = settings.goal === 'lose_weight' || settings.goal === 'lose_fat_build_muscle';
   const fitnessLines = fitnessAim
     ? [[`Fitness goal: ${FITNESS_GOAL_LABEL[fitnessAim]}.`, vo2 ? `VO2 max target ${vo2.label}.` : ''].filter(Boolean).join(' '), fuelTradeOffLine(losing, fitnessAim)].filter((line): line is string => Boolean(line))
     : [];
-  return [...review, ...fitnessLines, cutOn ? COMPETITION_CUT_RULES : null, progress, fitness, weightRange, ...lines].filter((line): line is string => Boolean(line));
+  return [...review, ...mealInput, ...fitnessLines, cutOn ? COMPETITION_CUT_RULES : null, progress, fitness, weightRange, ...lines].filter((line): line is string => Boolean(line));
 }

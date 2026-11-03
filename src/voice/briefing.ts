@@ -7,7 +7,7 @@ import { goalLedFromSnapshot, goalProgressLine } from '@/domain/goalLed';
 import { goalWeightRange } from '@/domain/goalWeightRange';
 import { buildDailyTargets } from '@/domain/dailyTargets';
 import { compositionForAssessment, defaultNutritionSettings, nutritionContextLines, proteinGramsFor, weightPointsFrom } from '@/domain/nutrition';
-import { nutritionBriefFromLogs, nutritionReviewLines } from '@/domain/statsAnalysis';
+import { nutritionBriefFromLogs, nutritionInputLines, nutritionReviewLines } from '@/domain/statsAnalysis';
 import { activityReadingsFromSamples } from '@/domain/targetActivity';
 import { savingsFromTypicalWeek } from '@/domain/savings';
 import { soberElapsed } from '@/domain/sober';
@@ -99,8 +99,8 @@ function nutritionLinesFrom(snap: AppSnapshot, now: Date): string[] {
       startDay: null,
     })
     : null;
-  const review = profile.consentAi
-    ? nutritionReviewLines(nutritionBriefFromLogs({
+  const brief = profile.consentAi
+    ? nutritionBriefFromLogs({
       today,
       logs: (snap.foodLogs ?? []).map((log) => ({
         eatenOn: log.eatenOn,
@@ -115,9 +115,11 @@ function nutritionLinesFrom(snap: AppSnapshot, now: Date): string[] {
       proteinTargetG: settings.proteinTarget,
       goalProteinG: weightKg != null && settings.goal ? proteinGramsFor(settings.goal, weightKg, settings.build, settings.goalPhase) : null,
       hideCalories: settings.hideCalories,
-    }))
-    : [];
-  return [...review, progress, fitness, weightRange, ...lines].filter((line): line is string => Boolean(line));
+    })
+    : null;
+  const review = brief ? nutritionReviewLines(brief) : [];
+  const mealInput = brief ? nutritionInputLines(brief) : [];
+  return [...review, ...mealInput, progress, fitness, weightRange, ...lines].filter((line): line is string => Boolean(line));
 }
 
 /** Client copy of the voice prompt, used when the token function has not been redeployed yet. */
