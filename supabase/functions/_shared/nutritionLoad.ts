@@ -30,6 +30,7 @@ import {
 import { savingsFromTypicalWeek } from './savings.ts';
 import { buildDailyTargets } from './dailyTargets.ts';
 import { FITNESS_GOAL_LABEL, fuelTradeOffLine, isFitnessGoal, resolvedFitnessGoal } from './fitnessGoal.ts';
+import { COMPETITION_CUT_RULES, competitionCutActive } from './targetWeight.ts';
 import { vo2ForFitnessGoal } from './fitnessSnapshot.ts';
 import { nutritionBriefFromLogs, nutritionReviewLines } from './statsAnalysis.ts';
 import { soberElapsed } from './sober.ts';
@@ -102,6 +103,9 @@ function settingsFromRow(row: unknown): NutritionSettings {
     shareProgress: record.share_progress === true,
     goal: typeof record.goal === 'string' && isNutritionGoal(record.goal) ? record.goal : null,
     fitnessGoal: typeof record.fitness_goal === 'string' && isFitnessGoal(record.fitness_goal) ? record.fitness_goal : null,
+    competitionCut: record.competition_cut === true,
+    competitionCutAt: typeof record.competition_cut_at === 'string' ? record.competition_cut_at : null,
+    competitionCutVersion: typeof record.competition_cut_version === 'string' ? record.competition_cut_version : null,
     goalAge: age == null ? null : Math.round(age),
     goalSex: typeof record.goal_sex === 'string' && isNutritionSex(record.goal_sex) ? record.goal_sex : null,
     proteinTarget: optionalNumber(record.protein_target_g, 0, 700),
@@ -169,7 +173,7 @@ export async function loadNutritionLines(
   const coach = coachConsentAllows(consent);
   const today = londonDay(now);
   const athlete = 'kcal_target, hide_calories, share_food_diary, share_calories, share_quality, share_progress, goal, goal_age, goal_sex, protein_target_g, carb_target_g, fat_target_g, goal_phase, weight_class_kg, activity_energy_kcal, share_goal, wagon_on, wagon_note, wagon_visible, build, workout_buckets, updated_at';
-  const withTarget = `target_weight_kg, target_on, target_start_kg, fitness_goal, ${athlete}`;
+  const withTarget = `target_weight_kg, target_on, target_start_kg, fitness_goal, competition_cut, competition_cut_at, competition_cut_version, ${athlete}`;
   const wide = 'kcal_target, hide_calories, share_food_diary, share_calories, share_quality, share_progress, goal, goal_age, goal_sex, protein_target_g, activity_energy_kcal, share_goal, wagon_on, wagon_note, wagon_visible, build, updated_at';
   const goals = 'kcal_target, hide_calories, share_food_diary, share_calories, share_quality, share_progress, goal, goal_age, goal_sex, protein_target_g, activity_energy_kcal, share_goal, wagon_on, wagon_note, wagon_visible, updated_at';
   const narrow = 'kcal_target, hide_calories, share_food_diary, wagon_on, wagon_note, wagon_visible, updated_at';
@@ -309,6 +313,13 @@ export async function loadNutritionLines(
   }).contextLine;
   const heightCm = height != null && Number.isFinite(height) ? height : null;
   const planSex = settings.goalSex;
+  const cutOn = coach.ai && competitionCutActive({
+    competitionCut: settings.competitionCut,
+    competitionCutAt: settings.competitionCutAt,
+    targetOn: settings.targetOn,
+    age: settings.goalAge,
+    today,
+  });
   const weightPlan = latest && settings.targetWeightKg != null && settings.targetOn
     ? buildDailyTargets({
       currentKg: latest.kg,
@@ -321,6 +332,7 @@ export async function loadNutritionLines(
       activeEnergyKcal: settings.activityEnergyKcal,
       startKg: null,
       startDay: null,
+      competitionCut: cutOn,
     })
     : null;
   const weightKg = coach.health && latest && latest.kg >= 30 ? latest.kg : null;
@@ -348,5 +360,5 @@ export async function loadNutritionLines(
   const fitnessLines = fitnessAim
     ? [[`Fitness goal: ${FITNESS_GOAL_LABEL[fitnessAim]}.`, vo2 ? `VO2 max target ${vo2.label}.` : ''].filter(Boolean).join(' '), fuelTradeOffLine(losing, fitnessAim)].filter((line): line is string => Boolean(line))
     : [];
-  return [...review, ...fitnessLines, progress, fitness, weightRange, ...lines].filter((line): line is string => Boolean(line));
+  return [...review, ...fitnessLines, cutOn ? COMPETITION_CUT_RULES : null, progress, fitness, weightRange, ...lines].filter((line): line is string => Boolean(line));
 }

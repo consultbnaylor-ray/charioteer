@@ -49,6 +49,68 @@ describe('daily targets', () => {
     expect(rushed?.pace).toMatch(/faster than 1 kg a week/);
     expect(rushed?.deficitKcal).toBeLessThanOrEqual(1000);
     expect(rushed?.targetKcal).toBeGreaterThanOrEqual(1500);
+
+    const cut = buildDailyTargets({
+      currentKg: 80,
+      targetKg: 77,
+      targetOn: '2026-11-17',
+      today: '2026-11-03',
+      heightCm: 180,
+      age: 30,
+      sex: 'male',
+      activeEnergyKcal: 2000,
+      startKg: 80,
+      startDay: '2026-11-03',
+      competitionCut: true,
+    });
+    const capped = buildDailyTargets({
+      currentKg: 80,
+      targetKg: 77,
+      targetOn: '2026-11-17',
+      today: '2026-11-03',
+      heightCm: 180,
+      age: 30,
+      sex: 'male',
+      activeEnergyKcal: 2000,
+      startKg: 80,
+      startDay: '2026-11-03',
+    });
+    expect(cut?.targetKcal).toBeGreaterThanOrEqual(1500);
+    expect(cut && capped && cut.targetKcal < capped.targetKcal).toBe(true);
+    expect(cut?.deficitKcal).toBeGreaterThan(1000);
+    expect(cut?.pace).toMatch(/will not suggest fluid restriction/);
+    expect(cut?.pace).not.toMatch(/try a sauna|use a sweat suit|take a diuretic|take a laxative/i);
+
+    const floored = buildDailyTargets({
+      currentKg: 80,
+      targetKg: 70,
+      targetOn: '2026-11-10',
+      today: '2026-11-03',
+      heightCm: 180,
+      age: 30,
+      sex: 'male',
+      activeEnergyKcal: 200,
+      startKg: 80,
+      startDay: '2026-11-03',
+      competitionCut: true,
+    });
+    expect(floored?.targetKcal).toBeGreaterThanOrEqual(1500);
+    expect(floored?.pace).toMatch(/stays at that floor/);
+
+    const woman = buildDailyTargets({
+      currentKg: 60,
+      targetKg: 55,
+      targetOn: '2026-11-10',
+      today: '2026-11-03',
+      heightCm: 165,
+      age: 28,
+      sex: 'female',
+      activeEnergyKcal: 200,
+      startKg: 60,
+      startDay: '2026-11-03',
+      competitionCut: true,
+    });
+    expect(woman?.targetKcal).toBeGreaterThanOrEqual(1200);
   });
 
   it('does not say there is no estimated date when a target date is set', () => {

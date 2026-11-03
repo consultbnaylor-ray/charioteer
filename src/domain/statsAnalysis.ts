@@ -1,5 +1,6 @@
 import type { GarminReadings } from '@/domain/garminConnect';
 import { FITNESS_GOAL_LABEL, fuelTradeOffLine } from '@/domain/fitnessGoal';
+import { COMPETITION_CUT_RULES, competitionCutActive } from '@/domain/targetWeight';
 import { athleticVo2Target, publishedCardioBand, vo2ForFitnessGoal } from '@/domain/fitnessSnapshot';
 import { heartRateMaxFrom } from '@/domain/trainingGuidance';
 import { CMO_VIGOROUS_MINUTES_WEEK } from '@/domain/guidance';
@@ -60,6 +61,7 @@ type BuildInput = {
   targetOn?: string | null;
   activeEnergyKcal?: number | null;
   fitnessGoal?: import('@/domain/fitnessGoal').FitnessGoal | null;
+  competitionCut?: boolean;
   kcalTarget?: number | null;
   proteinTarget?: number | null;
   hideCalories?: boolean;
@@ -390,12 +392,14 @@ export function buildStatsAnalysis(input: BuildInput): StatsAnalysisPayload {
       startKg: start?.value ?? null,
       startDay: start?.day ?? null,
       fitnessGoal: input.fitnessGoal ?? null,
+      competitionCut: input.competitionCut === true,
     })
     : null;
   const goalLabel = input.goal ? GOAL_LABEL[input.goal] : null;
   const fitnessLabel = input.fitnessGoal ? FITNESS_GOAL_LABEL[input.fitnessGoal] : null;
   const vo2Aim = input.fitnessGoal ? vo2ForFitnessGoal(input.age, input.sex, input.fitnessGoal) : null;
   const losing = input.goal === 'lose_weight' || input.goal === 'lose_fat_build_muscle';
+  const cutOn = input.competitionCut === true;
   const maxHeartRate = heartRateMaxFrom({
     age: input.age,
     recorded: dailies.map((day) => day.maxHeartRateBpm),
@@ -416,7 +420,8 @@ export function buildStatsAnalysis(input: BuildInput): StatsAnalysisPayload {
     weightPlan: plan?.analysisLine ?? null,
     fitnessGoal: fitnessLabel,
     vo2Goal: vo2Aim?.label ?? null,
-    fuelNote: fuelTradeOffLine(losing, input.fitnessGoal ?? 'normal'),
+    fuelNote: cutOn ? COMPETITION_CUT_RULES : fuelTradeOffLine(losing, input.fitnessGoal ?? 'normal'),
+    competitionCut: cutOn,
     maxHeartRate,
     nutrition,
     stats,

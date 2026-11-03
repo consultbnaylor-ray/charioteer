@@ -2754,6 +2754,9 @@ export class SupabaseRepository implements Repository {
       share_progress: settings.shareProgress,
       goal: settings.goal,
       fitness_goal: settings.fitnessGoal,
+      competition_cut: settings.competitionCut === true,
+      competition_cut_at: settings.competitionCutAt,
+      competition_cut_version: settings.competitionCutVersion,
       goal_age: settings.goalAge,
       goal_sex: settings.goalSex,
       protein_target_g: settings.proteinTarget,
@@ -2805,6 +2808,14 @@ export class SupabaseRepository implements Repository {
       const { target_weight_kg: _target, target_on: _on, target_start_kg: _start, ...withoutTarget } = payload;
       payload = withoutTarget;
       ({ error } = await this.client.from('nutrition_settings').upsert(payload));
+    }
+    if (error && /competition_cut/i.test(error.message)) {
+      const { competition_cut: _cut, competition_cut_at: _at, competition_cut_version: _version, ...withoutCut } = payload;
+      payload = withoutCut;
+      ({ error } = await this.client.from('nutrition_settings').upsert(payload));
+      if (!error && settings.competitionCut) {
+        throw new UserFacingError('That competition cut is not on the server yet.', 'generic');
+      }
     }
     if (error && /fitness_goal/i.test(error.message)) {
       if (settings.fitnessGoal && settings.fitnessGoal !== 'normal') {
@@ -4281,6 +4292,9 @@ function nutritionFromRow(row: Row | null): NutritionSettings {
     shareProgress: row.share_progress === true,
     goal,
     fitnessGoal: typeof row.fitness_goal === 'string' && isFitnessGoal(row.fitness_goal) ? row.fitness_goal : null,
+    competitionCut: row.competition_cut === true,
+    competitionCutAt: typeof row.competition_cut_at === 'string' ? row.competition_cut_at : null,
+    competitionCutVersion: typeof row.competition_cut_version === 'string' ? row.competition_cut_version : null,
     goalAge: age == null ? null : Math.round(age),
     goalSex: sex,
     proteinTarget: nutritionNumber(row.protein_target_g, 0, 700),

@@ -11,6 +11,7 @@ import { formatAxisNumber, placeAxisLabels, progressDateTicks, yAxisTicks } from
 import { shownError } from '@/domain/errors';
 import { athleticVo2Target } from '@/domain/fitnessSnapshot';
 import { resolvedFitnessGoal } from '@/domain/fitnessGoal';
+import { competitionCutActive } from '@/domain/targetWeight';
 import { goalProgressSeries, goalProgressSignStub, orderReadings, progressLinePath, type DatedValue, type GoalProgressPhoto } from '@/domain/goalProgress';
 import { PHOTO_RETRY, PHOTO_UNAVAILABLE } from '@/domain/ownerPhotos';
 import { saveJpegToLibrary } from '@/ui/saveSharedPhoto';
@@ -66,6 +67,13 @@ export function DailyTargets() {
       startKg: settings?.targetStartKg ?? readings[0]?.kg ?? null,
       startDay: readings[0]?.day ?? null,
       fitnessGoal,
+      competitionCut: competitionCutActive({
+        competitionCut: settings?.competitionCut,
+        competitionCutAt: settings?.competitionCutAt,
+        targetOn,
+        age: settings?.goalAge ?? null,
+        today,
+      }),
     })
     : null;
   if (!hasAim) return null;

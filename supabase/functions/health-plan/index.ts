@@ -16,6 +16,7 @@ import { garminActivitiesForUser, samplesWithGarminActivities } from '../_shared
 import { londonDay, shiftDay } from '../_shared/healthInsights.ts';
 import { json, preflight } from '../_shared/http.ts';
 import { isFitnessGoal, resolvedFitnessGoal } from '../_shared/fitnessGoal.ts';
+import { competitionCutActive } from '../_shared/targetWeight.ts';
 import { isBodyBuild, isBuilderPhase, isMealSlot, isNutritionGoal, isNutritionSex, parseWorkoutBuckets, proteinGramsFor, type FoodItem, type FoodLog, type NutritionGoal } from '../_shared/nutrition.ts';
 import { buildChatCompletionBody, THUMOS_CHAT } from '../_shared/thumos.ts';
 import { coachingPersonalDataAllowed, pausedCoachingMessage, readInterimCoachOptIn } from '../_shared/xaiPersonal.ts';
@@ -237,7 +238,7 @@ Deno.serve(async (req) => {
   }
   const limits = textOf(body.limits).trim().slice(0, 280);
 
-  const settingsSelect = 'goal, fitness_goal, goal_age, goal_sex, build, kcal_target, protein_target_g, carb_target_g, fat_target_g, goal_phase, weight_class_kg, hide_calories, workout_buckets';
+  const settingsSelect = 'goal, fitness_goal, goal_age, goal_sex, build, kcal_target, protein_target_g, carb_target_g, fat_target_g, goal_phase, weight_class_kg, hide_calories, workout_buckets, target_on, competition_cut, competition_cut_at';
   let settingsRes = await userClient.from('nutrition_settings').select(settingsSelect).eq('user_id', userId).maybeSingle();
   if (settingsRes.error) {
     settingsRes = await userClient.from('nutrition_settings').select('goal, goal_age, goal_sex, build, kcal_target, protein_target_g, hide_calories').eq('user_id', userId).maybeSingle();
@@ -315,6 +316,13 @@ Deno.serve(async (req) => {
     fitnessGoal: typeof settings.fitness_goal === 'string' && isFitnessGoal(settings.fitness_goal)
       ? settings.fitness_goal
       : resolvedFitnessGoal({ goal }),
+    competitionCut: competitionCutActive({
+      competitionCut: settings.competition_cut === true,
+      competitionCutAt: typeof settings.competition_cut_at === 'string' ? settings.competition_cut_at : null,
+      targetOn: typeof settings.target_on === 'string' ? settings.target_on.slice(0, 10) : null,
+      age: typeof settings.goal_age === 'number' ? settings.goal_age : null,
+      today: londonDay(new Date()),
+    }),
     goalSex: isNutritionSex(textOf(settings.goal_sex)) ? textOf(settings.goal_sex) as PlanInput['goalSex'] : null,
     goalAge: typeof settings.goal_age === 'number' ? settings.goal_age : null,
     build: isBodyBuild(textOf(settings.build)) ? textOf(settings.build) as PlanInput['build'] : null,

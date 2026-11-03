@@ -5,6 +5,8 @@ import { useRepository, useSnapshot } from '@/data';
 import { isoDay } from '@/domain/dates';
 import { emptyGarminReadings } from '@/domain/garminConnect';
 import { resolvedFitnessGoal } from '@/domain/fitnessGoal';
+import { competitionCutActive } from '@/domain/targetWeight';
+import { londonDay } from '@/domain/healthInsights';
 import { analysisSectionsFromText, buildStatsAnalysis, THUMOS_ANALYSE, THUMOS_ANALYSE_CREDIT, THUMOS_ANALYSE_LOCAL, THUMOS_ANALYSIS_CAVEAT, withNutritionReview, type AnalysisSection } from '@/domain/statsAnalysis';
 import { THUMOS_ANALYSE_AGAIN } from '@/domain/thumosReading';
 import { useHealthSources } from '@/health/useHealthSources';
@@ -44,6 +46,13 @@ export function ThumosStatsAnalysis() {
         build: snap.nutrition?.build ?? null,
         phase: snap.nutrition?.goalPhase ?? null,
         fitnessGoal: snap.nutrition ? resolvedFitnessGoal(snap.nutrition) : null,
+        competitionCut: snap.nutrition ? competitionCutActive({
+          competitionCut: snap.nutrition.competitionCut,
+          competitionCutAt: snap.nutrition.competitionCutAt,
+          targetOn: snap.nutrition.targetOn,
+          age: snap.nutrition.goalAge,
+          today: londonDay(new Date()),
+        }) : false,
         hideCalories: snap.nutrition?.hideCalories === true,
         logs: (snap.foodLogs ?? []).map((log) => ({
           eatenOn: log.eatenOn,

@@ -87,6 +87,7 @@ export function buildDailyTargets(input: {
   startKg: number | null;
   startDay: string | null;
   fitnessGoal?: FitnessGoal | null;
+  competitionCut?: boolean;
 }): DailyTargets | null {
   if (!(input.currentKg > 0) || !(input.targetKg >= 30) || !/^\d{4}-\d{2}-\d{2}$/.test(input.targetOn)) return null;
   if (!/^\d{4}-\d{2}-\d{2}$/.test(input.today) || input.targetOn <= input.today) return null;
@@ -103,8 +104,9 @@ export function buildDailyTargets(input: {
   const direction = targetDirection(input.currentKg, input.targetKg);
   const weekly = Math.abs(signedKg) / (days / 7);
   const rawChange = Math.abs(signedKg) * KCAL_PER_KG / days;
-  const unrealistic = direction !== 'hold' && (weekly > UNREALISTIC_WEEKLY_KG || rawChange > MAX_DEFICIT_KCAL);
-  const applied = direction === 'hold' ? 0 : Math.min(MAX_DEFICIT_KCAL, Math.round(rawChange));
+  const cut = input.competitionCut === true && direction === 'lose';
+  const unrealistic = !cut && direction !== 'hold' && (weekly > UNREALISTIC_WEEKLY_KG || rawChange > MAX_DEFICIT_KCAL);
+  const applied = direction === 'hold' ? 0 : Math.min(cut ? rawChange : MAX_DEFICIT_KCAL, Math.round(rawChange));
   let targetKcal = direction === 'gain' ? tdee + applied : direction === 'lose' ? tdee - applied : tdee;
   const floored = targetKcal < floor;
   if (floored) targetKcal = floor;
@@ -124,11 +126,13 @@ export function buildDailyTargets(input: {
   const saferWeeks = safeWeeklyChangeKg(input.currentKg);
   const saferDays = saferWeeks > 0 ? Math.ceil((Math.abs(signedKg) / saferWeeks) * 7) : days;
   const saferOn = addIsoDays(input.today, saferDays);
-  const pace = unrealistic
-    ? `That date needs about ${weekly.toFixed(1)} kg a week, faster than 1 kg a week. This app will not plan a deficit above 1,000 kcal a day. A safer pace of about ${saferWeeks} kg a week would land around ${formatIsoDay(saferOn)}.`
-    : floored
-      ? `The date would need an intake under ${floor.toLocaleString('en-GB')} kcal, so the suggestion stays at that floor.`
-      : null;
+  const pace = cut
+    ? `Competition weight cut: about ${weekly.toFixed(1)} kg a week until ${when}. ${floored ? `That pace would need an intake under ${floor.toLocaleString('en-GB')} kcal, so the suggestion stays at that floor. ` : `Intake stays at or above ${floor.toLocaleString('en-GB')} kcal. `}This app will not suggest fluid restriction, a sauna, a sweat suit, diuretics, or laxatives. Keep protein up. After weigh-in, eat and drink again. Dizziness, fainting, confusion, or a racing heart means stop and get urgent help. See a qualified coach, doctor, or dietitian.`
+    : unrealistic
+      ? `That date needs about ${weekly.toFixed(1)} kg a week, faster than 1 kg a week. This app will not plan a deficit above 1,000 kcal a day. A safer pace of about ${saferWeeks} kg a week would land around ${formatIsoDay(saferOn)}.`
+      : floored
+        ? `The date would need an intake under ${floor.toLocaleString('en-GB')} kcal, so the suggestion stays at that floor.`
+        : null;
   const burn = usedActive
     ? `Estimated burn is about ${tdee.toLocaleString('en-GB')} kcal, using recent activity.`
     : `Estimated burn is about ${tdee.toLocaleString('en-GB')} kcal, assuming a moderately active day.`;

@@ -70,6 +70,7 @@ export type PlanInput = {
   weeklyUnits?: number | null;
   goal: NutritionGoal | null;
   fitnessGoal?: import('./fitnessGoal.ts').FitnessGoal | null;
+  competitionCut?: boolean;
   goalSex: NutritionSex | null;
   goalAge: number | null;
   build: BodyBuild | null;
@@ -360,13 +361,16 @@ function targetLine(facts: Derived): string {
   if (facts.recentProtein != null) parts.push(`about ${Math.round(facts.recentProtein)} g protein`);
   const losing = facts.input.goal === 'lose_weight' || facts.input.goal === 'lose_fat_build_muscle';
   const fuel = fuelTradeOffLine(losing, facts.input.fitnessGoal ?? 'normal');
-  if (fuel) parts.push(fuel);
+  if (!facts.input.competitionCut && fuel) parts.push(fuel);
   const base = !parts.length
     ? 'No calorie or protein target is saved yet. Pick one on Nutrition, and keep meals regular until then.'
     : clip(parts.join(' · '), 220);
-  if (facts.input.build !== 'carrying_extra' || facts.blockedLoss || facts.underweight) return base;
+  const withCut = facts.input.competitionCut
+    ? `${base} Competition weight cut. Stay at or above the calorie floor, keep protein up, and plan to eat and drink again after weigh-in. Dizziness means stop and get help. See a qualified coach, doctor, or dietitian.`
+    : base;
+  if (facts.input.build !== 'carrying_extra' || facts.blockedLoss || facts.underweight) return withCut;
   const note = `Protein follows a healthy weight when you are above the band. This is not a crash diet. ${PLAN_DOCTOR}`;
-  return `${clip(base, 180)} ${note}`.trim();
+  return `${clip(withCut, 180)} ${note}`.trim();
 }
 
 function classLimitHabits(goal: ClassBoxerGoal): string[] {
@@ -465,8 +469,15 @@ function nutritionHabits(facts: Derived): string[] {
   };
   const habits = isClassBoxer(goal) ? classLimitHabits(goal) : (banks[goal ?? 'none'] ?? banks.none);
   const chosen = take(facts.input.salt, 'habits', habits, 3, facts.done);
-  if (facts.done.some((item) => item.toLowerCase() === LOG_IN_CHARIOTEER.toLowerCase())) return dedupeAdviceLines(chosen);
-  return dedupeAdviceLines([...chosen, LOG_IN_CHARIOTEER]);
+  const cutHabits = facts.input.competitionCut
+    ? [
+      'Keep protein at the daily target. Do not drop it to make the cut.',
+      'After weigh-in, eat a normal meal and drink again.',
+      'Dizziness, fainting, confusion, or a racing heart means stop and get urgent help. See a qualified coach, doctor, or dietitian.',
+    ]
+    : [];
+  if (facts.done.some((item) => item.toLowerCase() === LOG_IN_CHARIOTEER.toLowerCase())) return dedupeAdviceLines([...cutHabits, ...chosen]);
+  return dedupeAdviceLines([...cutHabits, ...chosen, LOG_IN_CHARIOTEER]);
 }
 
 export const SWAP_LOG_MORE = 'Log a few more meals and Thumos will suggest swaps based on what you actually eat.';
@@ -1620,7 +1631,10 @@ function focusLines(facts: Derived, habits: string[], session: string, well: str
   const fitnessAim = facts.input.fitnessGoal && facts.input.fitnessGoal !== 'normal'
     ? `Fitness goal: ${facts.input.fitnessGoal === 'elite' ? 'Elite Athlete' : facts.input.fitnessGoal === 'younger_10' ? '10 years younger' : facts.input.fitnessGoal === 'younger_5' ? '5 years younger' : '2 years younger'}.`
     : '';
-  const lines = [fitnessAim, ...fitnessFocusLines(fitnessInput(facts.input)), goalFocusLine(facts.input.goal) ?? '', habits[0] ?? '', session, well]
+  const cutLine = facts.input.competitionCut
+    ? 'Competition weight cut: keep protein up, stay at the calorie floor, and eat and drink again after weigh-in. Dizziness means stop and get help. See a qualified coach, doctor, or dietitian.'
+    : '';
+  const lines = [cutLine, fitnessAim, ...fitnessFocusLines(fitnessInput(facts.input)), goalFocusLine(facts.input.goal) ?? '', habits[0] ?? '', session, well]
     .flatMap((line) => {
       const text = standaloneFocus(line, facts.firstName);
       return text ? [text] : [];

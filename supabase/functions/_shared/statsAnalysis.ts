@@ -106,6 +106,8 @@ export type StatsAnalysisPayload = {
   vo2Goal?: string | null;
   /** Set when weight loss and a harder fitness aim need both fuel and a deficit. */
   fuelNote?: string | null;
+  /** True only after the person accepted the competition-cut notice. */
+  competitionCut?: boolean | null;
   /**
    * App-derived calorie line for a saved target weight and date.
    * Built on the phone from weight, target, date, and estimated burn. Not a new health measurement.
@@ -186,6 +188,7 @@ export const STATS_ANALYSIS_PROMPT = [
   'For each, say why it matters and give one or two specific steps. Do not copy the range sentence, the rating word, or the tip already in the JSON.',
   VO2_ANALYSIS_RULE,
   'When weightPlan is set, state that daily calorie figure and the date in the overview. If it says the date is faster than 1 kg a week, say so and give the safer pace or later date in that sentence. Do not invent a different calorie number. This matches the Daily Targets card.',
+  'If competitionCut is true, this is a short competition weight cut. Keep the calorie figure at or above the floor already in weightPlan, protect protein, and plan refeeding and rehydration after weigh-in. Dizziness, fainting, confusion, or a racing heart means stop and get urgent help. Never advise fluid restriction, a sauna, a sweat suit, diuretics, or laxatives. Say to see a qualified coach, doctor, or dietitian. General information, not medical advice.',
   'A high resting heart rate is easy aerobic work and walks, not the VO2 intervals. Short sleep keeps a steady wake time. Low steps are a short walk. Do not swap those.',
   'Say how the figures fit together and the order to work on them.',
   'Quote value. That is the recent average, or a total over the last 7 days when the range says so. Do not headline today.',
@@ -844,7 +847,8 @@ export function sanitizeStatsAnalysis(input: unknown): StatsAnalysisPayload | nu
     goal: goal || null,
     fitnessGoal: text(record.fitnessGoal, 40) || null,
     vo2Goal: text(record.vo2Goal, 180) || null,
-    fuelNote: text(record.fuelNote, 320) || null,
+    fuelNote: text(record.fuelNote, 400) || null,
+    competitionCut: record.competitionCut === true,
     weightPlan: weightPlan || null,
     maxHeartRate,
     nutrition: nutritionField(record.nutrition),
