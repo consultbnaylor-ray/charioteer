@@ -71,7 +71,6 @@ import { crisisHelplines } from '@/data/catalogue';
 import { restingFitnessComment } from '@/domain/restingFitness';
 import { weekdayShort } from '@/domain/healthInsights';
 import { CHART_DIRECTION_HINT } from '@/domain/readingChart';
-import type { WorkoutChartSpan } from '@/domain/workoutDay';
 import { useStatPeriod } from '@/health/useStatPeriod';
 import { openDayFraction } from '@/domain/statWindow';
 import { openAppSettings } from '@/health/link';
@@ -153,7 +152,7 @@ export function DailyActivityCharts({
   exercisePermissionMissing = false,
 }: {
   endDay: string;
-  span: WorkoutChartSpan;
+  span: number;
   consent: boolean;
   exerciseMinutes: readonly AppleDayValue[];
   activeKcal: readonly AppleDayValue[];

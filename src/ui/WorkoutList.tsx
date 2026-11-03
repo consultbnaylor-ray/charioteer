@@ -5,6 +5,7 @@ import { Pressable, View } from 'react-native';
 import type { AppleDayValue } from '@/domain/dailyActivity';
 import type { GarminActivityDetail, GarminBloodPressure, GarminBodyComp, GarminDaily, GarminEpoch, GarminHealthSnapshot, GarminHrvSummary, GarminMoveIq, GarminPulseOx, GarminRespiration, GarminSkinTemp, GarminSleep, GarminStressDetail, GarminUserMetric } from '@/domain/garminConnect';
 import type { NutritionGoal, NutritionSex } from '@/domain/nutrition';
+import { formatUkDate } from '@/domain/dates';
 import { formatUkCompactDay, londonDay, weekdayShort } from '@/domain/healthInsights';
 import { CHART_DIRECTION_HINT } from '@/domain/readingChart';
 import {
@@ -12,7 +13,6 @@ import {
   DIFFICULTY_NOTE,
   NO_WORKOUT_MARKER,
   ROUTE_MARK,
-  WORKOUT_CHART_SPANS,
   WORKOUT_LIST_FOLD,
   WORKOUT_OPEN_HINT,
   chartDayLabel,
@@ -44,15 +44,15 @@ import {
   type DifficultyEmptySlot,
   type DifficultyMark,
   type DurationBar,
-  type WorkoutChartSpan,
 } from '@/domain/workoutDay';
 import { routeSummaryLine, type DeviceWorkout } from '@/domain/workoutRoute';
 import { workoutTypeColor } from '@/domain/workoutTypeColor';
 import { DailyActivityCharts } from '@/ui/DailyActivity';
+import { HowItFelt } from '@/ui/HowItFelt';
 import { StatGlyph, workoutStatIcon, type StatIcon } from '@/ui/statIcons';
 import { TowardTargetActivity } from '@/ui/TowardTargetActivity';
 import { radius, stroke, useAppTheme } from '@/ui/theme';
-import { Card, Choice, T } from '@/ui/ui';
+import { Card, T } from '@/ui/ui';
 
 const BAR_HEIGHT = 88;
 const AXIS_WIDTH = 72;
@@ -170,7 +170,7 @@ function DurationChart({
   onSelect,
 }: {
   bars: readonly DurationBar[];
-  span: WorkoutChartSpan;
+  span: number;
   selected: string;
   onSelect: (day: string) => void;
 }) {
@@ -512,15 +512,14 @@ export function WorkoutList({
   const today = londonDay(new Date());
   const [day, setDay] = useState(today);
   const [historyDay, setHistoryDay] = useState<string | null>(null);
-  const [span, setSpan] = useState<WorkoutChartSpan>(7);
   const [rowsOpen, setRowsOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
   const rows = workoutsOnDay(workouts, day);
   const hiddenRows = foldedCount(rows.length, WORKOUT_LIST_FOLD);
   const shownRows = hiddenRows > 0 && !rowsOpen ? rows.slice(0, WORKOUT_LIST_FOLD) : rows;
   const dots = workoutActivityDays(workouts);
-  const bars = durationBars(workouts, today, span);
-  const marks = difficultyMarks(workouts, today, span, age);
+  const bars = durationBars(workouts, day, 7).filter((bar) => bar.day === day);
+  const marks = difficultyMarks(workouts, day, 7, age).filter((mark) => mark.day === day);
   const slots = difficultySlots(marks, today, workoutsOnDay(workouts, today).length);
 
   function choose(next: string) {
@@ -541,9 +540,9 @@ export function WorkoutList({
 
   return (
     <Card>
-      <T variant="label">Workouts</T>
+      <T variant="label">Workout History</T>
       <T variant="muted">A route stays on this iPhone. It is not uploaded or shared.</T>
-      <T style={{ fontFamily: theme.font.bodyStrong }}>{`${weekdayShort(day)} ${formatUkCompactDay(day)}`}</T>
+      <T style={{ fontFamily: theme.font.bodyStrong }}>{formatUkDate(day)}</T>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 2 }}>
         <Pressable
           accessibilityRole="button"
@@ -606,16 +605,12 @@ export function WorkoutList({
           onPress={() => setRowsOpen((value) => !value)}
         />
       ) : null}
-      <View accessibilityRole="radiogroup" accessibilityLabel="Chart days" style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-        {WORKOUT_CHART_SPANS.map((value) => (
-          <Choice key={value} label={`${value} days`} selected={span === value} onPress={() => setSpan(value)} />
-        ))}
-      </View>
-      <DurationChart bars={bars} span={span} selected={historyDay ?? ''} onSelect={selectBar} />
+      <DurationChart bars={bars} span={1} selected={day} onSelect={selectBar} />
+      <HowItFelt day={day} workouts={rows} sleep={sleep} />
       <TowardTargetActivity compact />
       <DailyActivityCharts
-        endDay={today}
-        span={span}
+        endDay={day}
+        span={1}
         consent={consent}
         exerciseMinutes={exerciseMinutes}
         activeKcal={activeKcal}

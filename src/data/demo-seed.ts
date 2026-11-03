@@ -67,6 +67,7 @@ export type DemoAccount = {
   outdoorRoutes?: import('@/domain/outdoorRoute').OutdoorRoute[];
   /** Absent until they save a goal progress photo. Private. */
   goalProgressPhotos?: import('@/domain/goalProgress').GoalProgressPhoto[];
+  workoutFeelings?: import('@/domain/workoutFeel').WorkoutFeeling[];
 };
 
 export type DemoDb = {

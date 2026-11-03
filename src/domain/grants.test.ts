@@ -457,6 +457,10 @@ describe('client upsert update grants', () => {
       withheld: ['created_at', 'updated_at'],
       insertOnly: true,
     },
+    workout_feelings: {
+      columns: ['recorded_on', 'workout_key', 'note', 'effort', 'mood', 'updated_at'],
+      withheld: ['id'],
+    },
   };
 
   it('covers every column a client upsert sends, and not the key columns it leaves out', () => {

@@ -48,7 +48,7 @@ export default function WorkoutsScreen() {
     <Screen
       eyebrow="Health"
       title="Workouts"
-      intro="Your workout calendar and history."
+      intro="Workout History. Tap a day to see that day."
       refreshing={manual.refreshing}
       onRefresh={() => void manual.run()}
     >

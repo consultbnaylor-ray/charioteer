@@ -425,6 +425,7 @@ export class DemoRepository implements Repository {
         : [],
       profile: account ? readyProfile(account.profile) : null,
       goalProgressPhotos: account?.goalProgressPhotos ?? [],
+      workoutFeelings: account?.workoutFeelings ?? [],
       gratitude: account ? sortGratitude((account.gratitude ?? []).map((entry) => ({
         ...entry,
         photos: (entry.photos ?? []).map((photo) => ({ ...photo, caption: photo.caption ?? '' })),
@@ -1976,6 +1977,25 @@ export class DemoRepository implements Repository {
       storagePath: goalProgressStoragePath(account.profile.id, id),
       createdAt: new Date().toISOString(),
       previewUrl: bytesToDataUrl(bytes),
+    }];
+    this.commit(db);
+  }
+
+  async saveWorkoutFeeling(input: { recordedOn: string; workoutKey: string; note: string; effort: number | null; mood: number | null }): Promise<void> {
+    const account = this.me();
+    const db = clone(this.db);
+    const next = db.accounts[account.profile.id];
+    const feelings = next.workoutFeelings ?? [];
+    const key = input.workoutKey.slice(0, 80);
+    const day = input.recordedOn.slice(0, 10);
+    const rest = feelings.filter((row) => !(row.recordedOn === day && row.workoutKey === key));
+    next.workoutFeelings = [...rest, {
+      id: rest.length === feelings.length ? randomId() : (feelings.find((row) => row.recordedOn === day && row.workoutKey === key)?.id ?? randomId()),
+      recordedOn: day,
+      workoutKey: key,
+      note: input.note.trim().slice(0, 500),
+      effort: input.effort,
+      mood: input.mood,
     }];
     this.commit(db);
   }

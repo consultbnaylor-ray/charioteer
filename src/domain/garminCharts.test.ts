@@ -53,6 +53,7 @@ describe('garmin charts follow the shared period', () => {
     expect(movementPeriod(undefined, '12m').days).toBe(periodDayCount('12m'));
     expect(movementPeriod(7, '12m')).toEqual({ period: '7', days: 7 });
     expect(movementPeriod(30, '7')).toEqual({ period: '30', days: 30 });
+    expect(movementPeriod(1, '7')).toEqual({ period: 'day', days: 1 });
 
     const screen = readFileSync('src/ui/DailyActivity.tsx', 'utf8');
     expect(screen).toContain('useStatPeriod');

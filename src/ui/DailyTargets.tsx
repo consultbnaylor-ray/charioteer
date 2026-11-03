@@ -1,5 +1,6 @@
 import { Image } from 'expo-image';
 import { useEffect, useRef, useState } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { ActivityIndicator, Modal, Pressable, View } from 'react-native';
 import Svg, { Circle, Line, Path, Text as SvgText } from 'react-native-svg';
 
@@ -11,6 +12,7 @@ import { shownError } from '@/domain/errors';
 import { athleticVo2Target } from '@/domain/fitnessSnapshot';
 import { goalProgressSeries, goalProgressSignStub, orderReadings, progressLinePath, type DatedValue, type GoalProgressPhoto } from '@/domain/goalProgress';
 import { PHOTO_RETRY, PHOTO_UNAVAILABLE } from '@/domain/ownerPhotos';
+import { saveJpegToLibrary } from '@/ui/saveSharedPhoto';
 import { londonDay } from '@/domain/healthInsights';
 import { weightPointsFrom } from '@/domain/nutrition';
 import { weightReadingKg, weightWaistWrite, type WeightUnitMode } from '@/domain/weightEntry';
@@ -19,6 +21,8 @@ import { pickProgressPhoto } from '@/ui/prepareProgressPhoto';
 import { statsToneColors } from '@/ui/statsPalette';
 import { useAppTheme } from '@/ui/theme';
 import { Button, Card, Choice, Field, T, playSavedHaptic } from '@/ui/ui';
+
+const PROGRESS_PHOTO_AUTOSAVE = 'progress-photo-auto-save';
 
 function shiftDay(day: string, delta: number): string {
   const [year, month, date] = day.split('-').map(Number);
@@ -328,7 +332,22 @@ function ProgressPhotoFrame({ photo, stamp }: { photo: GoalProgressPhoto; stamp:
   const [ratio, setRatio] = useState<number | null>(null);
   const [phase, setPhase] = useState<'loading' | 'ready' | 'failed'>('loading');
   const [attempt, setAttempt] = useState(0);
+  const [saveNote, setSaveNote] = useState<string | null>(null);
+  const [autoSave, setAutoSave] = useState(false);
   const resigned = useRef(false);
+  const savedToLibrary = useRef(false);
+
+  useEffect(() => {
+    if (!autoSave || phase !== 'ready' || !uri || savedToLibrary.current) return;
+    savedToLibrary.current = true;
+    void saveJpegToLibrary(uri).then((result) => {
+      if (result === 'saved') setSaveNote('Saved to your photo library');
+    }).catch(() => undefined);
+  }, [autoSave, phase, uri]);
+
+  useEffect(() => {
+    void AsyncStorage.getItem(PROGRESS_PHOTO_AUTOSAVE).then((value) => setAutoSave(value === '1')).catch(() => undefined);
+  }, []);
 
   useEffect(() => {
     let live = true;
@@ -407,8 +426,28 @@ function ProgressPhotoFrame({ photo, stamp }: { photo: GoalProgressPhoto; stamp:
         )}
       </View>
       <T>{stamp}</T>
+      <Button label="Save to Photos" tone="quiet" onPress={() => { void saveToPhotos(); }} />
+      <Choice
+        label="Also save new photos to your library"
+        selected={autoSave}
+        onPress={() => {
+          const next = !autoSave;
+          setAutoSave(next);
+          void AsyncStorage.setItem(PROGRESS_PHOTO_AUTOSAVE, next ? '1' : '0').catch(() => undefined);
+        }}
+      />
+      {saveNote ? <T variant="muted">{saveNote}</T> : null}
     </View>
   );
+
+  async function saveToPhotos() {
+    if (!uri) {
+      setSaveNote('The photo is not ready to save yet.');
+      return;
+    }
+    const result = await saveJpegToLibrary(uri);
+    setSaveNote(result === 'saved' ? 'Saved to your photo library' : result === 'denied' ? 'Photo library permission is off.' : 'Saving photos is not available on this phone.');
+  }
 }
 
 function axisTicks(ticks: readonly number[]): number[] {

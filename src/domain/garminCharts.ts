@@ -197,6 +197,7 @@ export const GARMIN_EXTRA_EMPTY: readonly { id: string; line: string }[] = [
  */
 export function movementPeriod(span: number | undefined, shared: StatPeriod): { period: StatPeriod; days: number } {
   if (span == null) return { period: shared, days: periodDayCount(shared) };
+  if (span <= 1) return { period: 'day', days: 1 };
   const period: StatPeriod = span >= 28 ? '30' : '7';
   return { period, days: Math.max(1, Math.floor(span)) };
 }

@@ -249,6 +249,8 @@ export type AppSnapshot = {
   gratitude: GratitudeEntry[];
   /** Private goal-progress photos. Never sent to the coach. Absent until one is saved. */
   goalProgressPhotos?: import('@/domain/goalProgress').GoalProgressPhoto[];
+  /** Private session notes. Never sent to the coach. */
+  workoutFeelings?: import('@/domain/workoutFeel').WorkoutFeeling[];
   /** Private vision board. Never included in the community directory. */
   visionItems: VisionItem[];
   /** Which sections this person has chosen to show. Name and interests stay on. */
@@ -489,6 +491,7 @@ export interface Repository {
   deleteGratitudePhoto(id: string): Promise<void>;
   /** Private progress photo for a calendar day. Not sent to the coach. */
   addGoalProgressPhoto(bytes: Uint8Array, recordedOn: string): Promise<void>;
+  saveWorkoutFeeling(input: { recordedOn: string; workoutKey: string; note: string; effort: number | null; mood: number | null }): Promise<void>;
   deleteGoalProgressPhoto(id: string): Promise<void>;
   reflectOnGratitude(body: string, category: string | null): Promise<GratitudeReflect>;
   saveVisionStatement(statement: string): Promise<void>;

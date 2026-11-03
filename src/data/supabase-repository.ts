@@ -9,6 +9,7 @@ import {
   CONFIRM_EMAIL_MESSAGE,
   EMAIL_TAKEN_MESSAGE,
   OFFLINE_MESSAGE,
+  noteServerReached,
   RESET_NEEDS_EMAIL,
   SIGN_IN_FIRST,
   UserFacingError,
@@ -100,6 +101,7 @@ import {
 import { PLAN_DISCLAIMER, healthPlanFromStored, normaliseTrainingSchedule, parseSharedHealthPlan, trainingScheduleFromRow, type HealthPlan, type TrainingSchedule } from '@/domain/healthPlan';
 import { nutritionAimChanged } from '@/domain/targetWeight';
 import { GOAL_PROGRESS_BUCKET, GOAL_PROGRESS_MAX_BYTES, GOAL_PROGRESS_SIGNED_URL_SECONDS, goalProgressObjectPath, goalProgressPhotosFromRows, goalProgressStoragePath, withGoalProgressPreviews } from '@/domain/goalProgress';
+import { workoutFeelingsFromRows, type WorkoutFeeling } from '@/domain/workoutFeel';
 import { plannedEffortToDb, plannedSessionFromDraft, plannedSessionFromRow, plannedSessionWrite, type PlannedSession, type PlannedSessionDraft } from '@/domain/plannedSession';
 import { parseBuddyLinkPass, parseBuddyList, parseBuddyPreview, parseBuddyShare, type BuddyLinkPass, type BuddyList, type BuddyScope, type BuddyShareView } from '@/domain/buddies';
 import { avatarPhotoIdFromPath, memberDisplayName } from '@/domain/connections';
@@ -245,6 +247,7 @@ function emptySnapshot(): AppSnapshot {
     profilePhotos: [],
     gratitude: [],
     goalProgressPhotos: [],
+    workoutFeelings: [],
     visionItems: [],
     sharing: defaultProfileSharing(),
     savedQuotes: [],
@@ -596,7 +599,9 @@ export class SupabaseRepository implements Repository {
         }),
       outdoorRoutes: await this.loadOutdoorRoutes(userId),
       goalProgressPhotos: await this.loadGoalProgressPhotos(userId),
+      workoutFeelings: await this.loadWorkoutFeelings(userId),
     });
+    noteServerReached();
   }
 
   /** Signs the paths already on the snapshot and writes only the new preview URLs. */
@@ -1694,21 +1699,29 @@ export class SupabaseRepository implements Repository {
    * "Sign in first" is only for a missing session, not a failed refresh.
    */
   private async signedIn(): Promise<{ userId: string; accessToken: string }> {
-    const resolved = await resolveSignedInSession({
-      read: async () => {
-        const { data, error } = await this.client.auth.getSession();
-        return { ticket: this.sessionTicket(data.session), error };
-      },
-      refresh: async () => {
-        const { data, error } = await this.client.auth.refreshSession();
-        return { ticket: this.sessionTicket(data.session), error };
-      },
+    const readSession = async () => {
+      const { data, error } = await this.client.auth.getSession();
+      return { ticket: this.sessionTicket(data.session), error };
+    };
+    const refreshSession = async () => {
+      const { data, error } = await this.client.auth.refreshSession();
+      return { ticket: this.sessionTicket(data.session), error };
+    };
+    const ask = () => resolveSignedInSession({
+      read: readSession,
+      refresh: refreshSession,
       knownUserId: this.snapshot.session?.userId ?? this.snapshot.profile?.id ?? null,
     });
+    let resolved = await ask();
+    if ('failure' in resolved && resolved.failure === 'connection') {
+      await new Promise((resolve) => setTimeout(resolve, 700));
+      resolved = await ask();
+    }
     if ('failure' in resolved) {
       if (resolved.failure === 'connection') throw new UserFacingError(OFFLINE_MESSAGE, 'offline');
       throw new Error(SIGN_IN_FIRST);
     }
+    noteServerReached();
     return resolved;
   }
 
@@ -2328,6 +2341,38 @@ export class SupabaseRepository implements Repository {
       await this.client.storage.from(GOAL_PROGRESS_BUCKET).remove([path]);
       throw asUserFacing(inserted.error, 'general');
     }
+    await this.refresh();
+  }
+
+  private async loadWorkoutFeelings(userId: string): Promise<WorkoutFeeling[]> {
+    const res = await this.client.from('workout_feelings').select('id, recorded_on, workout_key, note, effort, mood').eq('user_id', userId);
+    if (res.error) {
+      if (missingRelation(res.error.message)) return [];
+      console.error(res.error.message);
+      return this.snapshot.workoutFeelings ?? [];
+    }
+    return workoutFeelingsFromRows(res.data);
+  }
+
+  async saveWorkoutFeeling(input: { recordedOn: string; workoutKey: string; note: string; effort: number | null; mood: number | null }): Promise<void> {
+    const day = input.recordedOn.slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) throw new UserFacingError('Could not save that note.', 'generic');
+    const userId = await this.userId();
+    const row = {
+      user_id: userId,
+      recorded_on: day,
+      workout_key: input.workoutKey.slice(0, 80),
+      note: input.note.trim().slice(0, 500),
+      effort: input.effort,
+      mood: input.mood,
+      updated_at: new Date().toISOString(),
+    };
+    const saved = await this.client.from('workout_feelings').upsert(row, { onConflict: 'user_id,recorded_on,workout_key' });
+    if (saved.error) {
+      if (missingRelation(saved.error.message)) throw new UserFacingError('That diary is not on the server yet.', 'generic');
+      throw asUserFacing(saved.error, 'general');
+    }
+    noteServerReached();
     await this.refresh();
   }
 
