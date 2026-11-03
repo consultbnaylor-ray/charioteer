@@ -209,7 +209,6 @@ export function settingsForPreset(current: NutritionSettings, goal: NutritionGoa
     ...current,
     goal,
     targetWeightKg: null,
-    targetOn: null,
     targetStartKg: null,
   };
 }

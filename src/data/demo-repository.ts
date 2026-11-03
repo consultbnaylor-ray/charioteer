@@ -95,6 +95,7 @@ import {
 } from '@/domain/nutrition';
 import { donePlanTexts, draftHealthPlan, normaliseTrainingSchedule, presentSharedHealthPlan, type HealthPlan, type TrainingSchedule } from '@/domain/healthPlan';
 import { nutritionAimChanged } from '@/domain/targetWeight';
+import { GOAL_PROGRESS_MAX_BYTES, goalProgressStoragePath } from '@/domain/goalProgress';
 import { localStatsVerdict, sanitizeStatsAnalysis } from '@/domain/statsAnalysis';
 import { isPlannedSessionType, plannedEffortFrom, withPlannedMinutes, type PlannedSession, type PlannedSessionDraft } from '@/domain/plannedSession';
 import { PEOPLE, createDemoDb, type DemoAccount, type DemoDb } from '@/data/demo-seed';
@@ -423,6 +424,7 @@ export class DemoRepository implements Repository {
         ? sortProfilePhotos((account.profilePhotos ?? []).map((photo) => readyProfilePhoto(photo, account.profile.id)))
         : [],
       profile: account ? readyProfile(account.profile) : null,
+      goalProgressPhotos: account?.goalProgressPhotos ?? [],
       gratitude: account ? sortGratitude((account.gratitude ?? []).map((entry) => ({
         ...entry,
         photos: (entry.photos ?? []).map((photo) => ({ ...photo, caption: photo.caption ?? '' })),
@@ -1957,6 +1959,34 @@ export class DemoRepository implements Repository {
       removed = true;
     }
     if (!removed) throw new UserFacingError('Could not remove that photo.', 'generic');
+    this.commit(db);
+  }
+
+  async addGoalProgressPhoto(bytes: Uint8Array, recordedOn: string): Promise<void> {
+    if (bytes.byteLength > GOAL_PROGRESS_MAX_BYTES) throw new UserFacingError('That photo is still too large.', 'generic');
+    const day = recordedOn.slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) throw new UserFacingError('Could not save that photo.', 'generic');
+    const account = this.me();
+    const db = clone(this.db);
+    const id = randomId();
+    const next = db.accounts[account.profile.id];
+    next.goalProgressPhotos = [...(next.goalProgressPhotos ?? []), {
+      id,
+      recordedOn: day,
+      storagePath: goalProgressStoragePath(account.profile.id, id),
+      createdAt: new Date().toISOString(),
+      previewUrl: null,
+    }];
+    this.commit(db);
+  }
+
+  async deleteGoalProgressPhoto(id: string): Promise<void> {
+    const account = this.me();
+    const db = clone(this.db);
+    const next = db.accounts[account.profile.id];
+    const before = next.goalProgressPhotos ?? [];
+    if (!before.some((photo) => photo.id === id)) throw new UserFacingError('Could not remove that photo.', 'generic');
+    next.goalProgressPhotos = before.filter((photo) => photo.id !== id);
     this.commit(db);
   }
 

@@ -13,7 +13,7 @@ import {
 import { GOAL_PLAIN, boxingChipLabel, isAnyBoxer, type NutritionGoal } from '@/domain/nutrition';
 import { settingsForPreset } from '@/domain/targetWeight';
 import { PlanTick } from '@/ui/PlanTick';
-import { TargetWeightForm } from '@/ui/TargetWeightGoal';
+import { GoalTargetDate, TargetWeightForm } from '@/ui/TargetWeightGoal';
 import { statsToneColors } from '@/ui/statsPalette';
 import { useAppTheme } from '@/ui/theme';
 import { UpdateWeightLink } from '@/ui/UpdateWeightLink';
@@ -152,6 +152,7 @@ export function GoalChoices({
         />
       </View>
       {draftingTarget || settings.targetWeightKg != null ? <TargetWeightForm /> : null}
+      {settings.goal && settings.targetWeightKg == null && !draftingTarget ? <GoalTargetDate /> : null}
       <Pressable
         accessibilityRole="button"
         accessibilityLabel="Boxing weight classes"

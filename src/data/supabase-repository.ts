@@ -99,6 +99,7 @@ import {
 } from '@/domain/nutrition';
 import { PLAN_DISCLAIMER, healthPlanFromStored, normaliseTrainingSchedule, parseSharedHealthPlan, trainingScheduleFromRow, type HealthPlan, type TrainingSchedule } from '@/domain/healthPlan';
 import { nutritionAimChanged } from '@/domain/targetWeight';
+import { GOAL_PROGRESS_BUCKET, GOAL_PROGRESS_MAX_BYTES, goalProgressPhotosFromRows, goalProgressStoragePath } from '@/domain/goalProgress';
 import { plannedEffortToDb, plannedSessionFromDraft, plannedSessionFromRow, plannedSessionWrite, type PlannedSession, type PlannedSessionDraft } from '@/domain/plannedSession';
 import { parseBuddyLinkPass, parseBuddyList, parseBuddyPreview, parseBuddyShare, type BuddyLinkPass, type BuddyList, type BuddyScope, type BuddyShareView } from '@/domain/buddies';
 import { avatarPhotoIdFromPath, memberDisplayName } from '@/domain/connections';
@@ -243,6 +244,7 @@ function emptySnapshot(): AppSnapshot {
     communityPhotos: [],
     profilePhotos: [],
     gratitude: [],
+    goalProgressPhotos: [],
     visionItems: [],
     sharing: defaultProfileSharing(),
     savedQuotes: [],
@@ -593,6 +595,7 @@ export class SupabaseRepository implements Repository {
           return session ? [session] : [];
         }),
       outdoorRoutes: await this.loadOutdoorRoutes(userId),
+      goalProgressPhotos: await this.loadGoalProgressPhotos(userId),
     });
   }
 
@@ -2271,6 +2274,50 @@ export class SupabaseRepository implements Repository {
     const userId = await this.userId();
     const { error } = await this.client.from('gratitude_photos').update({ caption: planned.text }).eq('id', id).eq('user_id', userId);
     if (error) throw asUserFacing(error, 'general');
+    await this.refresh();
+  }
+
+  private async loadGoalProgressPhotos(userId: string) {
+    const res = await this.client.from('goal_progress_photos').select('id, recorded_on, storage_path, created_at').eq('user_id', userId).order('recorded_on');
+    if (res.error || !res.data) return [];
+    const parsed = goalProgressPhotosFromRows(res.data);
+    const signed = await this.signedUrlMap(GOAL_PROGRESS_BUCKET, parsed.map((photo) => photo.storagePath), 3600);
+    return parsed.map((photo) => ({ ...photo, previewUrl: signed.get(photo.storagePath) ?? null }));
+  }
+
+  async addGoalProgressPhoto(bytes: Uint8Array, recordedOn: string): Promise<void> {
+    if (bytes.byteLength > GOAL_PROGRESS_MAX_BYTES) throw new UserFacingError('That photo is still too large.', 'generic');
+    const day = recordedOn.slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) throw new UserFacingError('Could not save that photo.', 'generic');
+    const userId = await this.userId();
+    const photoId = randomId();
+    const path = goalProgressStoragePath(userId, photoId);
+    const body = stripJpegLocation(bytes);
+    const uploaded = await this.client.storage.from(GOAL_PROGRESS_BUCKET).upload(path, body, { contentType: 'image/jpeg', upsert: false });
+    if (uploaded.error) throw asUserFacing(uploaded.error, 'general');
+    const inserted = await this.client.from('goal_progress_photos').insert({
+      id: photoId,
+      user_id: userId,
+      recorded_on: day,
+      storage_path: path,
+    });
+    if (inserted.error) {
+      await this.client.storage.from(GOAL_PROGRESS_BUCKET).remove([path]);
+      throw asUserFacing(inserted.error, 'general');
+    }
+    await this.refresh();
+  }
+
+  async deleteGoalProgressPhoto(id: string): Promise<void> {
+    const userId = await this.userId();
+    const known = (this.snapshot.goalProgressPhotos ?? []).find((photo) => photo.id === id);
+    const path = known?.storagePath && known.storagePath.startsWith(`${userId}/`) && !known.storagePath.includes('..')
+      ? known.storagePath
+      : goalProgressStoragePath(userId, id);
+    const removed = await this.client.storage.from(GOAL_PROGRESS_BUCKET).remove([path]);
+    if (removed.error && !/not found|bucket not found/i.test(removed.error.message)) throw asUserFacing(removed.error, 'general');
+    const { error } = await this.client.from('goal_progress_photos').delete().eq('id', id).eq('user_id', userId);
+    if (error && !/goal_progress_photos/i.test(error.message)) throw asUserFacing(error, 'general');
     await this.refresh();
   }
 

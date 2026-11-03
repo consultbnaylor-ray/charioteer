@@ -65,6 +65,8 @@ export type DemoAccount = {
   plannedSessions?: import('@/domain/plannedSession').PlannedSession[];
   /** Absent until they save a walk. Owner only. */
   outdoorRoutes?: import('@/domain/outdoorRoute').OutdoorRoute[];
+  /** Absent until they save a goal progress photo. Private. */
+  goalProgressPhotos?: import('@/domain/goalProgress').GoalProgressPhoto[];
 };
 
 export type DemoDb = {

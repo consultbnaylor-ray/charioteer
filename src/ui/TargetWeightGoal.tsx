@@ -36,6 +36,44 @@ function splitStones(kg: number): { stones: string; pounds: string } {
   return { stones: String(stones), pounds: String(pounds) };
 }
 
+/** Optional date for any saved fitness goal. The same column as a target-weight date. */
+export function GoalTargetDate() {
+  const snap = useSnapshot();
+  const repo = useRepository();
+  const settings = snap.nutrition;
+  const [useDate, setUseDate] = useState(settings?.targetOn != null);
+  const [date, setDate] = useState(parseIsoDay(settings?.targetOn ?? isoDay(new Date())));
+  const [note, setNote] = useState<string | null>(null);
+  if (!settings?.goal) return null;
+
+  async function apply(nextOn: string | null) {
+    setNote(null);
+    try {
+      await repo.setNutritionSettings({ ...repo.getSnapshot().nutrition, targetOn: nextOn });
+      playSavedHaptic();
+    } catch (err) {
+      setNote(shownError(err, 'Could not save that date.'));
+    }
+  }
+
+  return (
+    <View style={{ gap: 8 }}>
+      <T variant="label">Target date</T>
+      <T variant="muted">Optional. Leave it unset if you do not want a date.</T>
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+        <Choice label="No date" selected={!useDate} onPress={() => { setUseDate(false); void apply(null); }} />
+        <Choice label="Set a date" selected={useDate} onPress={() => setUseDate(true)} />
+      </View>
+      {useDate ? (
+        <DateField label="Target date" value={date} onChange={setDate} earliestDate={parseIsoDay(isoDay(new Date()))} />
+      ) : null}
+      {useDate ? <Button label="Save target date" onPress={() => void apply(isoDay(date))} /> : null}
+      {settings.targetOn ? <T>{`Target date ${formatIsoDay(settings.targetOn)}`}</T> : null}
+      {note ? <T>{note}</T> : null}
+    </View>
+  );
+}
+
 export function TargetWeightProgress() {
   const snap = useSnapshot();
   const theme = useAppTheme();
