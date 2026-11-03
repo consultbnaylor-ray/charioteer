@@ -1,22 +1,25 @@
 import { useState } from 'react';
+import { View } from 'react-native';
 
 import { useRepository, useSnapshot } from '@/data';
 import { isoDay } from '@/domain/dates';
 import { emptyGarminReadings } from '@/domain/garminConnect';
-import { analysisParagraphs, buildStatsAnalysis, THUMOS_ANALYSE, THUMOS_ANALYSE_CREDIT, THUMOS_ANALYSE_LOCAL, THUMOS_ANALYSIS_CAVEAT } from '@/domain/statsAnalysis';
+import { analysisSectionsFromText, buildStatsAnalysis, THUMOS_ANALYSE, THUMOS_ANALYSE_CREDIT, THUMOS_ANALYSE_LOCAL, THUMOS_ANALYSIS_CAVEAT, type AnalysisSection } from '@/domain/statsAnalysis';
 import { THUMOS_ANALYSE_AGAIN } from '@/domain/thumosReading';
 import { useHealthSources } from '@/health/useHealthSources';
+import { useAppTheme } from '@/ui/theme';
 import { Button, Card, T } from '@/ui/ui';
 
 /**
  * Starts as one button. The coach is called only from the press, and that call is metered.
  */
 export function ThumosStatsAnalysis() {
+  const theme = useAppTheme();
   const repo = useRepository();
   const snap = useSnapshot();
   const { samples, readings } = useHealthSources();
   const [pending, setPending] = useState(false);
-  const [text, setText] = useState<string | null>(null);
+  const [sections, setSections] = useState<AnalysisSection[]>([]);
   const [local, setLocal] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const profile = snap.profile;
@@ -35,11 +38,19 @@ export function ThumosStatsAnalysis() {
         targetWeightKg: snap.nutrition?.targetWeightKg ?? null,
         targetOn: snap.nutrition?.targetOn ?? null,
         activeEnergyKcal: snap.nutrition?.activityEnergyKcal ?? null,
+        kcalTarget: snap.nutrition?.kcalTarget ?? null,
+        proteinTarget: snap.nutrition?.proteinTarget ?? null,
+        hideCalories: snap.nutrition?.hideCalories === true,
+        logs: (snap.foodLogs ?? []).map((log) => ({
+          eatenOn: log.eatenOn,
+          portion: log.portion,
+          items: log.items.map((item) => ({ kcal: item.kcal, proteinG: item.proteinG })),
+        })),
         samples,
         readings: readings ?? emptyGarminReadings(),
       });
       const result = await repo.analyseStats(summary);
-      setText(result.text);
+      setSections(result.sections.length ? result.sections : analysisSectionsFromText(result.text));
       setLocal(result.source === 'local');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Analysis did not answer.');
@@ -48,7 +59,7 @@ export function ThumosStatsAnalysis() {
     }
   }
 
-  if (!text) {
+  if (!sections.length) {
     return (
       <Card>
         <Button
@@ -66,7 +77,12 @@ export function ThumosStatsAnalysis() {
   return (
     <Card>
       <T variant="label">Thumos</T>
-      {analysisParagraphs(text).map((paragraph) => <T key={paragraph}>{paragraph}</T>)}
+      {sections.map((section, index) => (
+        <View key={`${section.title}-${index}`} style={{ gap: 2 }}>
+          <T variant="label" style={{ textTransform: 'none', letterSpacing: 0, color: theme.colors.ink, fontSize: 15 }}>{section.title}</T>
+          <T>{section.body}</T>
+        </View>
+      ))}
       {local ? <T variant="muted">{THUMOS_ANALYSE_LOCAL}</T> : null}
       <T variant="muted">{THUMOS_ANALYSIS_CAVEAT}</T>
       <Button

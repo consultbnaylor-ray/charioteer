@@ -96,7 +96,7 @@ import {
 import { donePlanTexts, draftHealthPlan, normaliseTrainingSchedule, presentSharedHealthPlan, type HealthPlan, type TrainingSchedule } from '@/domain/healthPlan';
 import { nutritionAimChanged } from '@/domain/targetWeight';
 import { GOAL_PROGRESS_MAX_BYTES, goalProgressStoragePath } from '@/domain/goalProgress';
-import { localStatsVerdict, sanitizeStatsAnalysis } from '@/domain/statsAnalysis';
+import { analysisSectionsFromText, localStatsVerdict, sanitizeStatsAnalysis } from '@/domain/statsAnalysis';
 import { isPlannedSessionType, plannedEffortFrom, withPlannedMinutes, type PlannedSession, type PlannedSessionDraft } from '@/domain/plannedSession';
 import { PEOPLE, createDemoDb, type DemoAccount, type DemoDb } from '@/data/demo-seed';
 import { activityTypeFromKind } from '@/domain/fitnessSnapshot';
@@ -1427,14 +1427,15 @@ export class DemoRepository implements Repository {
     this.commit(db);
   }
 
-  async analyseStats(summary: unknown): Promise<{ text: string; source: 'model' | 'local' }> {
+  async analyseStats(summary: unknown): Promise<{ text: string; sections: import('@/domain/statsAnalysis').AnalysisSection[]; source: 'model' | 'local' }> {
     const account = this.me();
     if (!account.profile.consentAi || !account.profile.consentHealth) {
       throw new UserFacingError('An analysis needs the coach and health data switches, because summarised figures are sent to the model.', 'generic');
     }
     const clean = sanitizeStatsAnalysis(summary);
     if (!clean) throw new UserFacingError('There are no readings to analyse.', 'generic');
-    return { text: localStatsVerdict(clean), source: 'local' };
+    const text = localStatsVerdict(clean);
+    return { text, sections: analysisSectionsFromText(text), source: 'local' };
   }
 
   async refreshHealthPlan(limits: string, _options?: { localOnly?: boolean }): Promise<void> {

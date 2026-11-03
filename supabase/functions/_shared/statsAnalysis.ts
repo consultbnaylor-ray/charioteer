@@ -109,8 +109,41 @@ export type StatsAnalysisPayload = {
    * Not a new measurement. Sent so interval targets can be written in bpm.
    */
   maxHeartRate?: HeartRateMax | null;
+  /**
+   * Logged meals and the targets already used on Nutrition and Daily Targets.
+   * Averages are totals already stored, not a new measurement.
+   */
+  nutrition?: NutritionBrief | null;
   stats: AnalysisStat[];
 };
+
+export type NutritionBrief = {
+  loggedDays: number;
+  averageKcal: number | null;
+  averageProteinG: number | null;
+  calorieTarget: number | null;
+  proteinTargetG: number | null;
+  proteinGuide: string;
+};
+
+export const ANALYSIS_SECTION_TITLES = [
+  'Overview',
+  'Cardio/VO2',
+  'Steps & movement',
+  'Sleep & recovery',
+  'Nutrition: calories & protein',
+  'This week',
+] as const;
+
+export type AnalysisSectionTitle = (typeof ANALYSIS_SECTION_TITLES)[number];
+
+export type AnalysisSection = {
+  title: AnalysisSectionTitle;
+  body: string;
+};
+
+export const PROTEIN_GUIDE_RANGE =
+  'About 1.6 to 2.2 g per kg of body weight is a general guide for someone who trains, including a boxer. It is not a prescription.';
 
 export const STATS_ANALYSIS_PROMPT = [
   'Write a plain overview from the JSON only. Do not invent numbers.',
@@ -120,7 +153,12 @@ export const STATS_ANALYSIS_PROMPT = [
   'If the ratings are mostly Good or Excellent and no stat has a goalGap, say it looks strong and to keep up the good work.',
   'A stat with a goalGap is short of the saved goal. It is not a strength, even when the rating is Good or Excellent. Say it is fine for their age, but short of the goal by that gap, and name goalTarget.',
   'Do not say keep up the good work when any stat has a goalGap. Say it is strong for their age, but some way off the goal.',
-  'Write short paragraphs separated by a blank line. The first paragraph is the overall summary. Then one short strengths paragraph, if any qualify. Then one paragraph per improvement, in ranked order, with a blank line between them.',
+  'Return a JSON array only, with no markdown. Each item is {"title":"...","body":"..."}.',
+  'Use these titles in this order: Overview, Cardio/VO2, Steps & movement, Sleep & recovery, Nutrition: calories & protein, This week.',
+  'Each body is one short paragraph. Do not put a blank line inside a body. The app separates sections with a blank line.',
+  'Overview is the overall summary, then one short strengths line if any qualify. Put each improvement in the matching section, largest goalGap first.',
+  'Always include Nutrition: calories & protein. Compare averageKcal with calorieTarget, and averageProteinG with proteinTargetG. Quote proteinGuide as a general guide. If loggedDays is under 2, or nutrition is missing, say there is not enough logged food to compare intake. Do not invent a calorie or a protein figure.',
+  'Always include This week, with one or two practical steps.',
   'Then one short strengths line. Name at most three stats that are Good or Excellent and have no goalGap. If none qualify, do not invent a strength.',
   'Usual and No rating yet are not strengths and not levers.',
   'Then the things to improve. Lead with the largest goalGap, then the next, then Fair and Poor. Do not mention the same thing twice.',
@@ -140,7 +178,7 @@ const BANNED = /\b(diagnos\w*|obese|overweight|lifespan|you will die)\b/i;
 export function analysisTextOk(text: string): boolean {
   const trimmed = text.trim();
   const flat = trimmed.replace(/\s+/g, ' ');
-  if (flat.length < 40 || flat.length > 3200) return false;
+  if (flat.length < 40 || flat.length > 5000) return false;
   if (/\n{3,}/.test(trimmed)) return false;
   return !BANNED.test(flat);
 }
@@ -160,6 +198,10 @@ function figureOf(stat: AnalysisStat): string {
 }
 
 export function localStatsVerdict(payload: StatsAnalysisPayload): string {
+  return sectionsToText(localAnalysisSections(payload));
+}
+
+export function localAnalysisSections(payload: StatsAnalysisPayload): AnalysisSection[] {
   const age = payload.age != null ? ` for someone aged ${Math.round(payload.age)}` : '';
   const goal = payload.goal ? ` The saved aim is ${payload.goal}.` : '';
   const poor = payload.stats.filter((stat) => stat.rating === 'Fair' || stat.rating === 'Poor');
@@ -168,44 +210,379 @@ export function localStatsVerdict(payload: StatsAnalysisPayload): string {
   const shortIds = new Set(short.map((stat) => stat.id));
   const good = payload.stats.filter((stat) => (stat.rating === 'Good' || stat.rating === 'Excellent') && !shortIds.has(stat.id));
   const strengthLine = good.length
-    ? ` Strengths: ${good.slice(0, 3).map((stat) => `${statName(stat)}${figureOf(stat)}`).join(', ')}.`
+    ? `Strengths: ${good.slice(0, 3).map((stat) => `${statName(stat)}${figureOf(stat)}`).join(', ')}.`
     : '';
-  const work = [...short, ...poor.filter((stat) => !shortIds.has(stat.id))].slice(0, 3);
-  if (good.length + poor.length + short.length === 0) {
-    return `There are not enough rated readings yet for an overall view${age}.${goal}`.replace(/\s+/g, ' ').trim();
-  }
+  const work = [...short, ...poor.filter((stat) => !shortIds.has(stat.id))].slice(0, 4);
   const planLine = payload.weightPlan ? ` ${payload.weightPlan}` : '';
-  const improvements = work.map((stat) => improvementParagraph(stat, payload.maxHeartRate ?? null));
-  if (short.length > 0) {
-    const ageBit = good.length + short.length > poor.length ? 'Strong for your age' : 'Your overall health looks mixed for your age';
-    return joinParagraphs([
-      `${ageBit}, but some way off the saved goal.${goal}${planLine}`,
-      strengthLine,
-      ...improvements,
-    ]);
+  let verdict = `There are not enough rated readings yet for an overall view${age}.${goal}`;
+  if (good.length + poor.length + short.length > 0) {
+    if (short.length > 0) {
+      const ageBit = good.length + short.length > poor.length ? 'Strong for your age' : 'Your overall health looks mixed for your age';
+      verdict = `${ageBit}, but some way off the saved goal.${goal}${planLine}`;
+    } else if (poor.length > good.length && poor.length >= 3) {
+      verdict = `Most of these ratings are Poor or Fair${age}.${goal}${planLine}`;
+    } else if (good.length >= 3 && poor.length === 0) {
+      verdict = `Your overall health looks strong${age}.${goal} Keep up the good work.${planLine}`;
+    } else {
+      verdict = `Your overall health looks reasonable${age}, but improvements could be made.${goal}${planLine}`;
+    }
   }
-  if (poor.length > good.length && poor.length >= 3) {
-    return joinParagraphs([
-      `Most of these ratings are Poor or Fair${age}.${goal}${planLine}`,
-      strengthLine,
-      ...improvements,
-    ]);
+  const grouped = new Map<AnalysisSectionTitle, string[]>();
+  for (const stat of work) {
+    const title = sectionForStat(stat.id);
+    const list = grouped.get(title) ?? [];
+    list.push(improvementParagraph(stat, payload.maxHeartRate ?? null));
+    grouped.set(title, list);
   }
-  if (good.length >= 3 && poor.length === 0) {
-    return joinParagraphs([
-      `Your overall health looks strong${age}.${goal} Keep up the good work.${planLine}`,
-      strengthLine,
-    ]);
+  const overviewExtra = grouped.get('Overview') ?? [];
+  grouped.delete('Overview');
+  const sections: AnalysisSection[] = [{
+    title: 'Overview',
+    body: tidy([verdict, strengthLine, ...overviewExtra].join(' ')),
+  }];
+  for (const title of ['Cardio/VO2', 'Steps & movement', 'Sleep & recovery'] as const) {
+    const body = tidy((grouped.get(title) ?? []).join(' '));
+    if (body) sections.push({ title, body });
   }
-  return joinParagraphs([
-    `Your overall health looks reasonable${age}, but improvements could be made.${goal}${planLine}`,
-    strengthLine,
-    ...improvements,
-  ]);
+  sections.push({ title: 'Nutrition: calories & protein', body: nutritionSection(payload) });
+  sections.push({ title: 'This week', body: thisWeek(work.map((stat) => improvementParagraph(stat, payload.maxHeartRate ?? null))) });
+  return sections;
 }
 
-function joinParagraphs(parts: readonly (string | null | undefined)[]): string {
-  return parts.map((part) => part?.replace(/[ \t]+/g, ' ').trim() ?? '').filter(Boolean).join('\n\n');
+const CARDIO_IDS = new Set<AnalysisStatId>(['vo2', 'fitness_age', 'resting_heart_rate']);
+const STEP_IDS = new Set<AnalysisStatId>(['steps', 'weekly_active_minutes', 'vigorous', 'epoch_minutes', 'move_iq', 'activity_detail']);
+const SLEEP_IDS = new Set<AnalysisStatId>(['sleep_hours', 'sleep_score', 'sleep_duration', 'hrv', 'hrv_sdnn', 'stress', 'stress_detail', 'body_battery_charged', 'body_battery_drained', 'body_battery_highest', 'body_battery_lowest']);
+
+export function proteinGuideFor(weightKg: number | null): string {
+  if (weightKg == null || !(weightKg >= 30 && weightKg <= 300)) return PROTEIN_GUIDE_RANGE;
+  const low = Math.round(weightKg * 1.6);
+  const high = Math.round(weightKg * 2.2);
+  return `${PROTEIN_GUIDE_RANGE} At ${Math.round(weightKg)} kg that is about ${low} to ${high} g a day.`;
+}
+
+export function kcalFromWeightPlan(line: string | null | undefined): number | null {
+  const match = /target ([\d,]+) kcal/i.exec(line ?? '');
+  if (!match) return null;
+  const value = Number(match[1].replace(/,/g, ''));
+  return value >= 800 && value <= 6000 ? Math.round(value) : null;
+}
+
+type MealRow = {
+  eatenOn: string;
+  portion?: number;
+  items: readonly { kcal?: number; proteinG?: number }[];
+};
+
+/** Recent days that have a meal. Empty days are not treated as zero. */
+export function nutritionBriefFromLogs(input: {
+  today: string;
+  logs: readonly MealRow[];
+  weightKg: number | null;
+  calorieTarget: number | null;
+  proteinTargetG: number | null;
+  hideCalories?: boolean;
+  days?: number;
+}): NutritionBrief {
+  const span = input.days ?? 7;
+  const start = shiftIso(input.today, -(span - 1));
+  const byDay = new Map<string, { kcal: number; protein: number }>();
+  for (const log of input.logs) {
+    const day = log.eatenOn.slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(day) || day < start || day > input.today) continue;
+    const portion = log.portion != null && log.portion > 0 ? log.portion : 1;
+    let kcal = 0;
+    let protein = 0;
+    for (const item of log.items) {
+      if (item.kcal != null && item.kcal > 0) kcal += item.kcal * portion;
+      if (item.proteinG != null && item.proteinG > 0) protein += item.proteinG * portion;
+    }
+    if (kcal <= 0 && protein <= 0) continue;
+    const current = byDay.get(day) ?? { kcal: 0, protein: 0 };
+    byDay.set(day, { kcal: current.kcal + kcal, protein: current.protein + protein });
+  }
+  const days = [...byDay.values()];
+  const hide = input.hideCalories === true;
+  const average = (pick: (row: { kcal: number; protein: number }) => number) =>
+    days.length ? Math.round(days.reduce((sum, row) => sum + pick(row), 0) / days.length) : null;
+  return {
+    loggedDays: days.length,
+    averageKcal: hide ? null : average((row) => row.kcal),
+    averageProteinG: average((row) => row.protein),
+    calorieTarget: hide ? null : boundedNumber(input.calorieTarget, 800, 6000),
+    proteinTargetG: boundedNumber(input.proteinTargetG, 1, 400),
+    proteinGuide: proteinGuideFor(input.weightKg),
+  };
+}
+
+export function intakeContextLine(brief: NutritionBrief): string {
+  const logged = brief.loggedDays < 2
+    ? 'Fewer than two days of meals are logged, so there is not enough food data to judge intake.'
+    : brief.averageKcal != null
+    ? `Recent logged days (${brief.loggedDays}) average about ${countText(brief.averageKcal)} kcal and ${countText(brief.averageProteinG ?? 0)} g protein.`
+    : `Recent logged days (${brief.loggedDays}) average about ${countText(brief.averageProteinG ?? 0)} g protein. Calories stay hidden.`;
+  const kcal = brief.calorieTarget != null ? ` Daily calorie target ${countText(brief.calorieTarget)} kcal.` : '';
+  const protein = brief.proteinTargetG != null ? ` Saved protein target ${countText(brief.proteinTargetG)} g.` : '';
+  return `Nutrition for a plan: ${logged}${kcal}${protein} ${brief.proteinGuide} Compare intake with these targets when they talk about food, training, or a plan. Not medical advice.`;
+}
+
+export function sectionsToText(sections: readonly AnalysisSection[]): string {
+  return sections
+    .map((section) => `${section.title}\n${tidy(section.body)}`)
+    .filter((block) => block.length > sectionTitleLength(block))
+    .join('\n\n');
+}
+
+export function resolvedAnalysisSections(
+  modelText: string,
+  payload: StatsAnalysisPayload,
+): { sections: AnalysisSection[]; source: 'model' | 'local' } {
+  const trimmed = modelText.trim();
+  if (trimmed) {
+    const parsed = parseModelSections(trimmed);
+    if (parsed && parsed.length >= 2 && sectionsOk(parsed)) {
+      return { sections: ensureRequired(parsed, payload), source: 'model' };
+    }
+    if (analysisTextOk(trimmed)) {
+      const split = analysisSectionsFromText(trimmed);
+      if (split.length) return { sections: ensureRequired(split, payload), source: 'model' };
+    }
+  }
+  return { sections: localAnalysisSections(payload), source: 'local' };
+}
+
+export function coerceAnalysisSections(value: unknown, fallbackText = ''): AnalysisSection[] {
+  if (Array.isArray(value)) {
+    const sections = value.flatMap((item) => {
+      if (!item || typeof item !== 'object') return [];
+      const row = item as { title?: unknown; body?: unknown };
+      const title = canonicalTitle(typeof row.title === 'string' ? row.title : '');
+      const body = tidy(typeof row.body === 'string' ? row.body : '');
+      if (!title || !body) return [];
+      return [{ title, body }];
+    });
+    const merged = mergeSections(sections);
+    if (merged.length) return merged;
+  }
+  return analysisSectionsFromText(fallbackText);
+}
+
+/** Blank lines first. A single block is split into sentences and grouped by topic. */
+export function analysisSectionsFromText(text: string): AnalysisSection[] {
+  const trimmed = text.trim();
+  if (!trimmed) return [];
+  const parsed = parseModelSections(trimmed);
+  if (parsed?.length) return parsed;
+  const blocks = trimmed.split(/\n\s*\n/).map((block) => block.trim()).filter(Boolean);
+  if (blocks.length > 1) {
+    const sections = blocks.flatMap((block) => {
+      const section = blockToSection(block);
+      return section ? [section] : [];
+    });
+    return mergeSections(sections);
+  }
+  const parts = sentencesOf(blocks[0] ?? trimmed);
+  if (parts.length <= 1) {
+    return [{ title: 'Overview', body: tidy(trimmed) }];
+  }
+  const groups = new Map<AnalysisSectionTitle, string[]>();
+  for (const sentence of parts) {
+    const title = bucketTitle(sentence);
+    const list = groups.get(title) ?? [];
+    list.push(sentence);
+    groups.set(title, list);
+  }
+  return ANALYSIS_SECTION_TITLES.flatMap((title) => {
+    const body = tidy((groups.get(title) ?? []).join(' '));
+    return body ? [{ title, body }] : [];
+  });
+}
+
+function sectionForStat(id: AnalysisStatId): AnalysisSectionTitle {
+  if (CARDIO_IDS.has(id)) return 'Cardio/VO2';
+  if (STEP_IDS.has(id)) return 'Steps & movement';
+  if (SLEEP_IDS.has(id)) return 'Sleep & recovery';
+  return 'Overview';
+}
+
+function nutritionSection(payload: StatsAnalysisPayload): string {
+  const brief = payload.nutrition ?? {
+    loggedDays: 0,
+    averageKcal: null,
+    averageProteinG: null,
+    calorieTarget: kcalFromWeightPlan(payload.weightPlan),
+    proteinTargetG: null,
+    proteinGuide: proteinGuideFor(weightKgOf(payload)),
+  };
+  const guide = brief.proteinGuide || proteinGuideFor(weightKgOf(payload));
+  const target = brief.calorieTarget != null ? ` The daily calorie target is ${countText(brief.calorieTarget)} kcal.` : ' No daily calorie target is saved yet.';
+  const saved = brief.proteinTargetG != null ? ` The saved protein target is ${countText(brief.proteinTargetG)} g.` : '';
+  if (brief.loggedDays < 2) {
+    return tidy(`There is not enough logged food yet to compare intake with the targets.${target}${saved} ${guide} Not medical advice.`);
+  }
+  const intake = brief.averageKcal != null
+    ? `Logged meals on ${brief.loggedDays} days average about ${countText(brief.averageKcal)} kcal and ${countText(brief.averageProteinG ?? 0)} g protein.`
+    : `Logged meals on ${brief.loggedDays} days average about ${countText(brief.averageProteinG ?? 0)} g protein. Calories stay hidden.`;
+  const kcalCompare = brief.averageKcal != null && brief.calorieTarget != null
+    ? ` Intake is ${compareWord(brief.averageKcal, brief.calorieTarget)} the daily calorie target of ${countText(brief.calorieTarget)} kcal.`
+    : target;
+  const proteinCompare = brief.averageProteinG != null && brief.proteinTargetG != null
+    ? ` Protein is ${compareWord(brief.averageProteinG, brief.proteinTargetG)} the saved protein target of ${countText(brief.proteinTargetG)} g.`
+    : saved;
+  return tidy(`${intake}${kcalCompare}${proteinCompare} ${guide} Not medical advice.`);
+}
+
+function thisWeek(improvements: readonly string[]): string {
+  const tips = improvements.slice(0, 2).map(firstSentence).filter(Boolean);
+  if (!tips.length) return 'Keep the sessions already in the week, and log meals on training days. Not medical advice.';
+  return tidy(`This week: ${tips.join(' ')} Not medical advice.`);
+}
+
+function ensureRequired(sections: readonly AnalysisSection[], payload: StatsAnalysisPayload): AnalysisSection[] {
+  const merged = mergeSections([...sections]);
+  if (!merged.some((section) => section.title === 'Nutrition: calories & protein')) {
+    merged.push({ title: 'Nutrition: calories & protein', body: nutritionSection(payload) });
+  }
+  if (!merged.some((section) => section.title === 'This week')) {
+    merged.push({ title: 'This week', body: thisWeek([]) });
+  }
+  return mergeSections(merged);
+}
+
+function weightKgOf(payload: StatsAnalysisPayload): number | null {
+  const stat = payload.stats.find((item) => item.id === 'weight_kg');
+  const value = stat?.value ?? stat?.latest ?? null;
+  return value != null && value >= 30 && value <= 300 ? value : null;
+}
+
+function compareWord(actual: number, target: number): string {
+  if (actual > target * 1.1) return 'above';
+  if (actual < target * 0.9) return 'under';
+  return 'close to';
+}
+
+function firstSentence(text: string): string {
+  const match = tidy(text).match(/^.*?[.!?](?:\s|$)/);
+  return match ? match[0].trim() : tidy(text);
+}
+
+function sentencesOf(text: string): string[] {
+  return tidy(text).split(/(?<=[.!?])\s+(?=[A-Z0-9])/).map((part) => part.trim()).filter(Boolean);
+}
+
+function bucketTitle(sentence: string): AnalysisSectionTitle {
+  if (/\b(protein|kcal|calorie|nutrition|meal)\b/i.test(sentence)) return 'Nutrition: calories & protein';
+  if (/\b(vo2|cardio|interval|bpm|heart rate|aerobic)\b/i.test(sentence)) return 'Cardio/VO2';
+  if (/\b(sleep|recover|hrv)\b/i.test(sentence)) return 'Sleep & recovery';
+  if (/\b(steps?|walk\w*|movement)\b/i.test(sentence)) return 'Steps & movement';
+  if (/\bthis week\b/i.test(sentence)) return 'This week';
+  return 'Overview';
+}
+
+function blockToSection(block: string): AnalysisSection | null {
+  const lines = block.split('\n').map((line) => line.trim()).filter(Boolean);
+  const title = canonicalTitle(lines[0] ?? '');
+  if (title && lines.length > 1) return { title, body: tidy(lines.slice(1).join(' ')) };
+  const body = tidy(block);
+  if (!body) return null;
+  return { title: bucketTitle(body), body };
+}
+
+function parseModelSections(text: string): AnalysisSection[] | null {
+  const cleaned = text.replace(/```json|```/gi, '').trim();
+  const start = cleaned.indexOf('[');
+  const end = cleaned.lastIndexOf(']');
+  if (start < 0 || end <= start) return null;
+  try {
+    const value = JSON.parse(cleaned.slice(start, end + 1)) as unknown;
+    if (!Array.isArray(value)) return null;
+    const sections = value.flatMap((item) => {
+      if (!item || typeof item !== 'object') return [];
+      const row = item as { title?: unknown; body?: unknown };
+      const title = canonicalTitle(typeof row.title === 'string' ? row.title : '');
+      const body = tidy(typeof row.body === 'string' ? row.body : '');
+      if (!title || body.length < 20 || body.length > 800 || BANNED.test(body)) return [];
+      return [{ title, body }];
+    });
+    return sections.length ? mergeSections(sections) : null;
+  } catch {
+    return null;
+  }
+}
+
+function canonicalTitle(value: string): AnalysisSectionTitle | null {
+  const key = value.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+  if (key === 'overview') return 'Overview';
+  if (key === 'cardio vo2' || key === 'cardio' || key === 'vo2') return 'Cardio/VO2';
+  if (key.startsWith('steps')) return 'Steps & movement';
+  if (key.startsWith('sleep')) return 'Sleep & recovery';
+  if (key.startsWith('nutrition')) return 'Nutrition: calories & protein';
+  if (key.startsWith('this week')) return 'This week';
+  return null;
+}
+
+function mergeSections(sections: readonly AnalysisSection[]): AnalysisSection[] {
+  const byTitle = new Map<AnalysisSectionTitle, string[]>();
+  for (const section of sections) {
+    const list = byTitle.get(section.title) ?? [];
+    if (section.body) list.push(section.body);
+    byTitle.set(section.title, list);
+  }
+  return ANALYSIS_SECTION_TITLES.flatMap((title) => {
+    const body = tidy((byTitle.get(title) ?? []).join(' '));
+    return body ? [{ title, body }] : [];
+  });
+}
+
+function sectionsOk(sections: readonly AnalysisSection[]): boolean {
+  const flat = sections.map((section) => section.body).join(' ');
+  return flat.length >= 40 && flat.length <= 5000 && !BANNED.test(flat);
+}
+
+function sectionTitleLength(block: string): number {
+  return block.indexOf('\n') + 1;
+}
+
+function tidy(value: string): string {
+  return value.replace(/\s+/g, ' ').trim();
+}
+
+function countText(value: number): string {
+  return Math.round(value).toLocaleString('en-GB');
+}
+
+function boundedNumber(value: number | null, min: number, max: number): number | null {
+  if (value == null || !Number.isFinite(value) || value < min || value > max) return null;
+  return Math.round(value);
+}
+
+function shiftIso(iso: string, days: number): string {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
+  if (!match) return iso;
+  const date = new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3])));
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString().slice(0, 10);
+}
+
+function nutritionField(value: unknown): NutritionBrief | null {
+  if (!value || typeof value !== 'object') return null;
+  const row = value as Record<string, unknown>;
+  const logged = finite(row.loggedDays);
+  const loggedDays = logged != null && logged >= 0 && logged <= 30 ? Math.round(logged) : 0;
+  const proteinGuide = text(row.proteinGuide, 320) || PROTEIN_GUIDE_RANGE;
+  return {
+    loggedDays,
+    averageKcal: bounded(row.averageKcal, 0, 8000),
+    averageProteinG: bounded(row.averageProteinG, 0, 400),
+    calorieTarget: bounded(row.calorieTarget, 800, 6000),
+    proteinTargetG: bounded(row.proteinTargetG, 1, 400),
+    proteinGuide,
+  };
+}
+
+function bounded(value: unknown, min: number, max: number): number | null {
+  const number = finite(value);
+  if (number == null || number < min || number > max) return null;
+  return Math.round(number);
 }
 
 function improvementParagraph(stat: AnalysisStat, max: HeartRateMax | null): string {
@@ -275,6 +652,7 @@ export function sanitizeStatsAnalysis(input: unknown): StatsAnalysisPayload | nu
     goal: goal || null,
     weightPlan: weightPlan || null,
     maxHeartRate,
+    nutrition: nutritionField(record.nutrition),
     stats,
   };
 }

@@ -99,6 +99,7 @@ import {
   type NutritionSettings,
 } from '@/domain/nutrition';
 import { PLAN_DISCLAIMER, healthPlanFromStored, normaliseTrainingSchedule, parseSharedHealthPlan, trainingScheduleFromRow, type HealthPlan, type TrainingSchedule } from '@/domain/healthPlan';
+import { coerceAnalysisSections } from '@/domain/statsAnalysis';
 import { nutritionAimChanged } from '@/domain/targetWeight';
 import { GOAL_PROGRESS_BUCKET, GOAL_PROGRESS_MAX_BYTES, GOAL_PROGRESS_SIGNED_URL_SECONDS, goalProgressObjectPath, goalProgressPhotosFromRows, goalProgressStoragePath, withGoalProgressPreviews } from '@/domain/goalProgress';
 import { workoutFeelingsFromRows, type WorkoutFeeling } from '@/domain/workoutFeel';
@@ -3187,7 +3188,7 @@ export class SupabaseRepository implements Repository {
     }
   }
 
-  async analyseStats(summary: unknown): Promise<{ text: string; source: 'model' | 'local' }> {
+  async analyseStats(summary: unknown): Promise<{ text: string; sections: import('@/domain/statsAnalysis').AnalysisSection[]; source: 'model' | 'local' }> {
     if (!this.snapshot.profile?.consentAi || !this.snapshot.profile?.consentHealth) {
       throw new UserFacingError('An analysis needs the coach and health data switches, because summarised figures are sent to the model.', 'generic');
     }
@@ -3198,14 +3199,16 @@ export class SupabaseRepository implements Repository {
       if (error instanceof UserFacingError) throw error;
       throw this.aiFailure('plan', 'health-plan', error);
     }
-    const data = invoked.data as { ok?: boolean; code?: string; message?: string; analysis?: unknown; source?: unknown } | null;
+    const data = invoked.data as { ok?: boolean; code?: string; message?: string; analysis?: unknown; sections?: unknown; source?: unknown } | null;
     if (data?.code === 'consent' || data?.code === 'personal_data' || data?.code === 'summary') {
       throw new UserFacingError(data.message || 'Analysis was not sent.', 'generic');
     }
-    if (invoked.status === 401 || invoked.status >= 500 || data?.ok !== true || typeof data.analysis !== 'string') {
+    const text = typeof data?.analysis === 'string' ? data.analysis : '';
+    const sections = coerceAnalysisSections(data?.sections, text);
+    if (invoked.status === 401 || invoked.status >= 500 || data?.ok !== true || sections.length === 0) {
       throw this.aiFailure('plan', 'health-plan', new Error('Analysis did not answer.'), invoked.status);
     }
-    return { text: data.analysis, source: data.source === 'model' ? 'model' : 'local' };
+    return { text: text || sections.map((section) => `${section.title}\n${section.body}`).join('\n\n'), sections, source: data.source === 'model' ? 'model' : 'local' };
   }
 
   async refreshHealthPlan(limits: string, options?: { localOnly?: boolean }): Promise<void> {

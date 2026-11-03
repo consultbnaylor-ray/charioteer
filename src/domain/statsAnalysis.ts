@@ -9,14 +9,27 @@ import { GOAL_LABEL, isAnyBoxer, type NutritionGoal, type NutritionSex } from '@
 import {
   ANALYSIS_STAT_NAMES,
   analysisParagraphs,
+  analysisSectionsFromText,
+  coerceAnalysisSections,
   localStatsVerdict,
+  nutritionBriefFromLogs,
   sanitizeStatsAnalysis,
+  type AnalysisSection,
   type AnalysisStat,
   type AnalysisStatId,
   type StatsAnalysisPayload,
 } from '../../supabase/functions/_shared/statsAnalysis.ts';
 
-export { analysisParagraphs, localStatsVerdict, sanitizeStatsAnalysis, type AnalysisStat, type StatsAnalysisPayload };
+export {
+  analysisParagraphs,
+  analysisSectionsFromText,
+  coerceAnalysisSections,
+  localStatsVerdict,
+  sanitizeStatsAnalysis,
+  type AnalysisSection,
+  type AnalysisStat,
+  type StatsAnalysisPayload,
+};
 
 export const THUMOS_ANALYSE = 'Have Thumos Analyze your data';
 
@@ -40,6 +53,10 @@ type BuildInput = {
   targetWeightKg?: number | null;
   targetOn?: string | null;
   activeEnergyKcal?: number | null;
+  kcalTarget?: number | null;
+  proteinTarget?: number | null;
+  hideCalories?: boolean;
+  logs?: readonly { eatenOn: string; portion?: number; items: readonly { kcal?: number; proteinG?: number }[] }[];
 };
 
 const WHOLE_IDS = new Set<AnalysisStatId>([
@@ -354,14 +371,23 @@ export function buildStatsAnalysis(input: BuildInput): StatsAnalysisPayload {
     age: input.age,
     recorded: dailies.map((day) => day.maxHeartRateBpm),
   });
+  const nutrition = nutritionBriefFromLogs({
+    today: input.today,
+    logs: input.logs ?? [],
+    weightKg: currentKg,
+    calorieTarget: input.hideCalories ? null : (plan?.targetKcal ?? input.kcalTarget ?? null),
+    proteinTargetG: input.proteinTarget ?? null,
+    hideCalories: input.hideCalories === true,
+  });
   return sanitizeStatsAnalysis({
     age: input.age,
     sex: input.sex,
     goal: goalLabel,
     weightPlan: plan?.analysisLine ?? null,
     maxHeartRate,
+    nutrition,
     stats,
-  }) ?? { age: input.age, sex: input.sex, goal: goalLabel, weightPlan: plan?.analysisLine ?? null, maxHeartRate, stats: [] };
+  }) ?? { age: input.age, sex: input.sex, goal: goalLabel, weightPlan: plan?.analysisLine ?? null, maxHeartRate, nutrition, stats: [] };
 }
 
 function shift(day: string, delta: number): string {

@@ -27,6 +27,8 @@ import {
   type NutritionSettings,
 } from './nutrition.ts';
 import { savingsFromTypicalWeek } from './savings.ts';
+import { buildDailyTargets } from './dailyTargets.ts';
+import { intakeContextLine, nutritionBriefFromLogs } from './statsAnalysis.ts';
 import { soberElapsed } from './sober.ts';
 
 type NutritionResult = { data: unknown; error: { message?: string } | null };
@@ -301,5 +303,33 @@ export async function loadNutritionLines(
     bodyFatPct: figures.bodyFatPct,
     waistCm: figures.waistCm,
   }).contextLine;
-  return [progress, fitness, weightRange, ...lines].filter((line): line is string => Boolean(line));
+  const heightCm = height != null && Number.isFinite(height) ? height : null;
+  const planSex = settings.goalSex;
+  const weightPlan = latest && settings.targetWeightKg != null && settings.targetOn
+    ? buildDailyTargets({
+      currentKg: latest.kg,
+      targetKg: settings.targetWeightKg,
+      targetOn: settings.targetOn,
+      today,
+      heightCm,
+      age: settings.goalAge,
+      sex: planSex,
+      activeEnergyKcal: settings.activityEnergyKcal,
+      startKg: null,
+      startDay: null,
+    })
+    : null;
+  const intake = intakeContextLine(nutritionBriefFromLogs({
+    today,
+    logs: logs.map((log) => ({
+      eatenOn: log.eatenOn,
+      portion: log.portion,
+      items: log.items.map((item) => ({ kcal: item.kcal, proteinG: item.proteinG })),
+    })),
+    weightKg: latest?.kg ?? null,
+    calorieTarget: settings.hideCalories ? null : (weightPlan?.targetKcal ?? settings.kcalTarget),
+    proteinTargetG: settings.proteinTarget,
+    hideCalories: settings.hideCalories,
+  }));
+  return [progress, fitness, weightRange, intake, ...lines].filter((line): line is string => Boolean(line));
 }

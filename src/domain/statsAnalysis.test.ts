@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 
 import { emptyGarminReadings } from '@/domain/garminConnect';
 import { buildStatsAnalysis } from '@/domain/statsAnalysis';
-import { STATS_ANALYSIS_PROMPT, localStatsVerdict, sanitizeStatsAnalysis } from '../../supabase/functions/_shared/statsAnalysis.ts';
+import { STATS_ANALYSIS_PROMPT, analysisSectionsFromText, localStatsVerdict, sanitizeStatsAnalysis } from '../../supabase/functions/_shared/statsAnalysis.ts';
 import { VO2_ANALYSIS_RULE } from '../../supabase/functions/_shared/trainingGuidance.ts';
 
 describe('stats analysis summaries', () => {
@@ -132,8 +132,8 @@ describe('stats analysis summaries', () => {
     expect(short).not.toContain('Keep up the good work');
     expect(short).toContain('VO2 max is 12.8 short of 56–62 ml/kg/min');
     const shortParts = short.split(/\n\n/);
-    const shortStrengths = shortParts.find((part) => part.startsWith('Strengths:')) ?? '';
-    expect(shortStrengths).not.toContain('VO2');
+    const shortStrengths = shortParts.find((part) => part.includes('Strengths:')) ?? '';
+    expect(shortStrengths).not.toContain('VO2 max is');
     expect(shortStrengths).toContain('Steps 9000');
   });
 
@@ -172,8 +172,11 @@ describe('stats analysis summaries', () => {
     expect(text).toContain('VO2 max is 12.8 short of 56–62 ml/kg/min');
     const parts = text.split(/\n\n/);
     expect(parts.length).toBeGreaterThan(1);
-    const strengths = parts.find((part) => part.startsWith('Strengths:')) ?? '';
-    expect(strengths).not.toContain('VO2');
+    const overview = parts.find((part) => part.startsWith('Overview')) ?? '';
+    expect(overview).toContain('Strengths:');
+    expect(overview).not.toContain('VO2 max is');
+    expect(text).toContain('Nutrition: calories & protein');
+    expect(text).toContain('not enough logged food');
     expect(parts.some((part) => part.includes('158–') || part.includes('85 to 95 percent'))).toBe(true);
   });
 
@@ -211,12 +214,18 @@ describe('stats analysis summaries', () => {
     expect(prompt).not.toContain('Looked at');
     expect(prompt).toContain('Do not list every stat');
     expect(prompt).toContain('blank line');
+    expect(prompt).toContain('Nutrition: calories & protein');
+    expect(prompt).toContain('not enough logged food');
+    expect(plan).not.toContain('text.replace(/\\s+/g, \' \')');
+    expect(plan).toContain('sections');
+    expect(plan).toContain('nutritionForAnalysis');
     expect(prompt).toContain('maxHeartRate');
     expect(ui).toContain('THUMOS_ANALYSIS_CAVEAT');
     expect(ui).not.toContain('VISIBLE_SAFETY_LINE');
     expect(ui).not.toContain('OUTSIDE_CRISIS_LINE');
     expect(ui).not.toContain('METRIC_CAVEAT');
-    expect(ui).toContain('analysisParagraphs');
+    expect(ui).toContain('section.title');
+    expect(ui).toContain('analysisSectionsFromText');
   });
 
   it('turns a recorded max heart rate into bpm and keeps one paragraph per topic', () => {
@@ -249,5 +258,44 @@ describe('stats analysis summaries', () => {
     const kept = sanitizeStatsAnalysis({ ...payload, latitude: 1, maxHeartRate: { bpm: 186, source: 'recorded' } });
     expect(kept?.maxHeartRate).toEqual({ bpm: 186, source: 'recorded' });
     expect(kept && 'latitude' in kept).toBe(false);
+  });
+
+  it('splits a single paragraph by topic and compares logged food with the targets', () => {
+    const blob = 'Your overall health looks mixed for your age. VO2 max needs 4x4 intervals. Steps average 7727. Sleep has been short.';
+    const sections = analysisSectionsFromText(blob);
+    expect(sections.map((section) => section.title)).toEqual(expect.arrayContaining([
+      'Overview',
+      'Cardio/VO2',
+      'Steps & movement',
+      'Sleep & recovery',
+    ]));
+    expect(sections.length).toBeGreaterThan(1);
+    const payload = buildStatsAnalysis({
+      today: '2026-11-03',
+      age: 40,
+      sex: 'male',
+      goal: 'elite_cruiser_boxer',
+      heightCm: 180,
+      kcalTarget: 2400,
+      proteinTarget: 150,
+      logs: [
+        { eatenOn: '2026-11-02', portion: 1, items: [{ kcal: 2000, proteinG: 120 }] },
+        { eatenOn: '2026-11-03', portion: 1, items: [{ kcal: 2200, proteinG: 140 }] },
+      ],
+      samples: [{ kind: 'weight_kg', value: 82, recordedOn: '2026-11-03' }],
+      readings: emptyGarminReadings(),
+    });
+    expect(payload.nutrition?.loggedDays).toBe(2);
+    expect(payload.nutrition?.averageKcal).toBe(2100);
+    expect(payload.nutrition?.averageProteinG).toBe(130);
+    expect(payload.nutrition?.calorieTarget).toBe(2400);
+    expect(payload.nutrition?.proteinGuide).toContain('1.6 to 2.2');
+    expect(payload.nutrition?.proteinGuide).toContain('82 kg');
+    const text = localStatsVerdict(payload);
+    expect(text).toContain('2,100 kcal');
+    expect(text).toContain('under the daily calorie target of 2,400 kcal');
+    expect(text).toContain('Not medical advice');
+    const hidden = sanitizeStatsAnalysis({ ...payload, nutrition: { ...payload.nutrition, latitude: 51 } });
+    expect(hidden?.nutrition && 'latitude' in hidden.nutrition).toBe(false);
   });
 });

@@ -13,12 +13,21 @@ import {
 import { gateAiUse } from '../_shared/aiAllowance.ts';
 import { exerciseReadingLines } from '../_shared/exerciseAnalysis.ts';
 import { garminActivitiesForUser, samplesWithGarminActivities } from '../_shared/fitnessSnapshot.ts';
-import { londonDay } from '../_shared/healthInsights.ts';
+import { londonDay, shiftDay } from '../_shared/healthInsights.ts';
 import { json, preflight } from '../_shared/http.ts';
 import { isBodyBuild, isBuilderPhase, isMealSlot, isNutritionGoal, isNutritionSex, parseWorkoutBuckets, type FoodItem, type FoodLog, type NutritionGoal } from '../_shared/nutrition.ts';
 import { buildChatCompletionBody, THUMOS_CHAT } from '../_shared/thumos.ts';
 import { coachingPersonalDataAllowed, pausedCoachingMessage, readInterimCoachOptIn } from '../_shared/xaiPersonal.ts';
-import { STATS_ANALYSIS_PROMPT, analysisTextOk, localStatsVerdict, sanitizeStatsAnalysis } from '../_shared/statsAnalysis.ts';
+import {
+  STATS_ANALYSIS_PROMPT,
+  kcalFromWeightPlan,
+  nutritionBriefFromLogs,
+  resolvedAnalysisSections,
+  sanitizeStatsAnalysis,
+  sectionsToText,
+  type NutritionBrief,
+  type StatsAnalysisPayload,
+} from '../_shared/statsAnalysis.ts';
 
 type Body = { limits?: string; mode?: string; summary?: unknown; localOnly?: boolean };
 
@@ -60,8 +69,9 @@ async function analyseStats(input: {
   if (!personalDataEnabled) {
     return json({ ok: false, code: 'personal_data', message: pausedCoachingMessage(userOptIn) }, 403);
   }
+  summary.nutrition = await nutritionForAnalysis(input.userClient, input.userId, summary);
   const apiKey = Deno.env.get('XAI_API_KEY');
-  if (!apiKey) return json({ ok: true, analysis: localStatsVerdict(summary), source: 'local' });
+  if (!apiKey) return analysisJson(summary, '');
   const gate = await gateAiUse({
     admin: createClient(input.url, input.service, { auth: { persistSession: false } }),
     userId: input.userId,
@@ -82,11 +92,83 @@ async function analyseStats(input: {
       })),
     });
     const text = response.ok ? completionText(await response.json()) : '';
-    if (!analysisTextOk(text)) return json({ ok: true, analysis: localStatsVerdict(summary), source: 'local' });
-    return json({ ok: true, analysis: text.replace(/\s+/g, ' ').trim(), source: 'model' });
+    return analysisJson(summary, text);
   } catch {
-    return json({ ok: true, analysis: localStatsVerdict(summary), source: 'local' });
+    return analysisJson(summary, '');
   }
+}
+
+async function nutritionForAnalysis(
+  userClient: ReturnType<typeof createClient>,
+  userId: string,
+  summary: StatsAnalysisPayload,
+): Promise<NutritionBrief> {
+  const today = londonDay(new Date());
+  const fallback = summary.nutrition ?? nutritionBriefFromLogs({
+    today,
+    logs: [],
+    weightKg: weightFrom(summary),
+    calorieTarget: kcalFromWeightPlan(summary.weightPlan),
+    proteinTargetG: null,
+  });
+  try {
+    let food = await userClient.from('food_logs').select('eaten_on, items, portion').eq('user_id', userId).gte('eaten_on', shiftDay(today, -6)).limit(80);
+    if (food.error) {
+      food = await userClient.from('food_logs').select('eaten_on, items').eq('user_id', userId).gte('eaten_on', shiftDay(today, -6)).limit(80);
+    }
+    if (food.error) return fallback;
+    const settings = await userClient.from('nutrition_settings').select('hide_calories, kcal_target, protein_target').eq('user_id', userId).limit(1);
+    const row = !settings.error && Array.isArray(settings.data) ? settings.data[0] as { hide_calories?: unknown; kcal_target?: unknown; protein_target?: unknown } : null;
+    const hide = row?.hide_calories === true;
+    const savedKcal = typeof row?.kcal_target === 'number' ? row.kcal_target : null;
+    const savedProtein = typeof row?.protein_target === 'number' ? row.protein_target : null;
+    const logs = Array.isArray(food.data) ? food.data.flatMap(mealFromRow) : [];
+    return nutritionBriefFromLogs({
+      today,
+      logs,
+      weightKg: weightFrom(summary),
+      calorieTarget: kcalFromWeightPlan(summary.weightPlan) ?? (hide ? null : savedKcal),
+      proteinTargetG: savedProtein,
+      hideCalories: hide,
+    });
+  } catch {
+    return fallback;
+  }
+}
+
+function weightFrom(summary: StatsAnalysisPayload): number | null {
+  const stat = summary.stats.find((item) => item.id === 'weight_kg');
+  const value = stat?.value ?? stat?.latest ?? null;
+  return value != null && value >= 30 && value <= 300 ? value : null;
+}
+
+function mealFromRow(row: unknown): { eatenOn: string; portion?: number; items: { kcal?: number; proteinG?: number }[] }[] {
+  if (!row || typeof row !== 'object') return [];
+  const record = row as Record<string, unknown>;
+  const eatenOn = typeof record.eaten_on === 'string' ? record.eaten_on.slice(0, 10) : '';
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(eatenOn)) return [];
+  const portion = typeof record.portion === 'number' && record.portion > 0 ? record.portion : 1;
+  const items = Array.isArray(record.items)
+    ? record.items.flatMap((item) => {
+      if (!item || typeof item !== 'object') return [];
+      const meal = item as { kcal?: unknown; proteinG?: unknown };
+      return [{
+        kcal: typeof meal.kcal === 'number' ? meal.kcal : undefined,
+        proteinG: typeof meal.proteinG === 'number' ? meal.proteinG : undefined,
+      }];
+    })
+    : [];
+  return [{ eatenOn, portion, items }];
+}
+
+function analysisJson(summary: StatsAnalysisPayload, modelText: string): Response {
+  const resolved = resolvedAnalysisSections(modelText, summary);
+  return json({
+    ok: true,
+    analysis: sectionsToText(resolved.sections),
+    sections: resolved.sections,
+    source: resolved.source,
+  });
 }
 
 Deno.serve(async (req) => {
