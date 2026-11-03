@@ -36,6 +36,7 @@ const PLAN_LABEL_COLOR: Record<string, string> = {
   'Run/Walk (outdoor)': WORKOUT_TYPE_COLOR.Walking,
   Cardio: FURTHER_TYPE_COLOR['Mixed cardio'] ?? WORKOUT_TYPE_OTHER_COLOR,
   Strength: WORKOUT_TYPE_COLOR['Traditional strength'],
+  HIIT: FURTHER_TYPE_COLOR.HIIT ?? WORKOUT_TYPE_OTHER_COLOR,
 };
 
 export type NamedWorkoutType = keyof typeof WORKOUT_TYPE_COLOR;

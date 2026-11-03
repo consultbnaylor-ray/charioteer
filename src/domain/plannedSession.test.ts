@@ -13,6 +13,8 @@ import {
   plannedEffortFrom,
   plannedEffortToDb,
   plannedSessionFromDraft,
+  SESSION_TYPE_LABEL,
+  isPlannedSessionType,
   plannedSessionFromRow,
   plannedSessionWrite,
   sessionClock,
@@ -100,6 +102,11 @@ describe('planned sessions', () => {
     const widened = readFileSync('supabase/migrations/20261020143000_outdoor_session_type.sql', 'utf8');
     expect(widened).toContain('Not applied from this repo');
     expect(widened).toContain("'outdoor'");
+    const hiit = readFileSync('supabase/migrations/20261103150000_hiit_session_type.sql', 'utf8');
+    expect(hiit).toContain('Not applied from this repo');
+    expect(hiit).toContain("'hiit'");
+    expect(hiit).toContain("session_type in ('run', 'outdoor', 'cardio', 'strength', 'boxing', 'hiit', 'other')");
+    expect(hiit.toLowerCase()).not.toMatch(/grant\s+(?:select|insert|update|delete)|latitude|longitude/);
     expect(widened.toLowerCase()).not.toMatch(/grant\s+(?:select|insert|update|delete)|latitude|longitude/);
     expect(sql).toContain('duration_minutes between 10 and 240');
     expect(sql).toContain('char_length(note) <= 280');
@@ -153,6 +160,23 @@ describe('planned sessions', () => {
       done_at: null,
     });
     expect(row?.plannedEffort).toBe('moderate');
+    expect(isPlannedSessionType('hiit')).toBe(true);
+    expect(SESSION_TYPE_LABEL.hiit).toBe('HIIT');
+    expect(plannedSessionFromRow({
+      id: '33333333-3333-4333-8333-333333333333',
+      session_type: 'hiit',
+      starts_at: '2026-11-02T18:00:00.000Z',
+      duration_minutes: 20,
+      note: '',
+      planned_effort: null,
+      done_at: null,
+    })?.sessionType).toBe('hiit');
+    expect(plannedDoneSamples([session({
+      sessionType: 'hiit',
+      startsAt: '2026-11-02T18:00:00.000Z',
+      doneAt: '2026-11-02T19:00:00.000Z',
+      note: '',
+    })]).some((row) => row.kind === 'workout_type_63')).toBe(true);
     expect(plannedSessionFromRow({
       id: '22222222-2222-2222-2222-222222222222',
       session_type: 'boxing',

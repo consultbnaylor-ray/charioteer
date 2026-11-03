@@ -22,6 +22,10 @@ export function noteServerReached(now = Date.now()): void {
   offlineStrikes = 0;
 }
 
+export function serverReachedRecently(now = Date.now()): boolean {
+  return serverReachedAt > 0 && now - serverReachedAt < OFFLINE_QUIET_MS;
+}
+
 /**
  * The first dropped call after a recent success stays quiet.
  * A second one, or a failure with no recent success, is shown.

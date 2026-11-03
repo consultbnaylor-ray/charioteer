@@ -33,6 +33,7 @@ describe('workout type colours', () => {
     expect(workoutTypeColor('Strength')).toBe(WORKOUT_TYPE_COLOR['Traditional strength']);
     expect(workoutTypeColor('Boxing')).toBe(WORKOUT_TYPE_COLOR.Boxing);
     expect(workoutTypeColor('Cardio')).toBe(workoutTypeColor('Mixed cardio'));
+    expect(workoutTypeColor('HIIT')).toBe('#44AA99');
     expect(workoutTypeColor('Walking')).toBe(workoutTypeColor('Walking'));
   });
 

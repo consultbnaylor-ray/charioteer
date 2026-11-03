@@ -3,7 +3,7 @@ import { workoutTypeKind } from '@/domain/fitnessSnapshot';
 import { isTransientNetworkError } from '@/domain/errors';
 import type { DeviceWorkout } from '@/domain/workoutRoute';
 
-export const PLANNED_SESSION_TYPES = ['run', 'outdoor', 'cardio', 'strength', 'boxing', 'other'] as const;
+export const PLANNED_SESSION_TYPES = ['run', 'outdoor', 'cardio', 'strength', 'boxing', 'hiit', 'other'] as const;
 
 export type PlannedSessionType = (typeof PLANNED_SESSION_TYPES)[number];
 
@@ -88,6 +88,8 @@ const SESSION_MATCH_TYPES: Record<PlannedSessionType, readonly number[]> = {
   cardio: [13, 16, 35, 44, 46],
   strength: [11, 20, 50, 59],
   boxing: [8],
+  /** Apple Health and Garmin both store HIIT as activity type 63. */
+  hiit: [63],
   other: [3000],
 };
 
@@ -97,6 +99,7 @@ export const SESSION_TYPE_LABEL: Record<PlannedSessionType, string> = {
   cardio: 'Cardio',
   strength: 'Strength',
   boxing: 'Boxing',
+  hiit: 'HIIT',
   other: 'Other',
 };
 
@@ -107,6 +110,7 @@ const SESSION_ACTIVITY: Record<PlannedSessionType, number> = {
   cardio: 13,
   strength: 50,
   boxing: 8,
+  hiit: 63,
   other: 3000,
 };
 

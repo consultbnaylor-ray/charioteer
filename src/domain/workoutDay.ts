@@ -202,6 +202,13 @@ export function durationScaleLabel(bars: readonly DurationBar[]): string | null 
   return `Most in one day ${most} min`;
 }
 
+/** One chosen day. Not "most in one day", which is for a longer chart. */
+export function durationDayCaption(bar: { day: string; totalMinutes: number } | undefined, today: string): string {
+  if (!bar || bar.totalMinutes <= 0) return 'No workout minutes on this day.';
+  const when = bar.day === today ? 'Today' : formatUkCompactDay(bar.day);
+  return `${when}: ${bar.totalMinutes} min`;
+}
+
 export function maxHeartRate(age: number | null | undefined): number | null {
   if (age == null || !Number.isFinite(age) || age < 10 || age > 100) return null;
   const max = 220 - Math.round(age);

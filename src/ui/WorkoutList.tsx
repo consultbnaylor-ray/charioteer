@@ -23,6 +23,7 @@ import {
   difficultyMarks,
   difficultySlots,
   durationBars,
+  durationDayCaption,
   durationScaleLabel,
   durationTypeOrder,
   foldedCount,
@@ -177,12 +178,12 @@ function DurationChart({
   const theme = useAppTheme();
   const order = durationTypeOrder(bars);
   const most = Math.max(1, ...bars.map((bar) => bar.totalMinutes));
-  const scale = durationScaleLabel(bars);
+  const scale = span === 1 ? durationDayCaption(bars[0], londonDay(new Date())) : durationScaleLabel(bars);
 
   return (
     <View style={{ gap: 8 }}>
       <T variant="label">Duration</T>
-      <T variant="muted">Minutes per day, stacked by workout type.</T>
+      <T variant="muted">{span === 1 ? 'Minutes on this day, stacked by workout type.' : 'Minutes per day, stacked by workout type.'}</T>
       {scale ? <T variant="muted">{scale}</T> : null}
       <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: span === 30 ? 1 : 4, minHeight: BAR_HEIGHT + 36 }}>
         {bars.map((bar) => {
