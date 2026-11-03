@@ -14,7 +14,7 @@ import { Button, Choice, Field, T, playSavedHaptic } from '@/ui/ui';
 
 const SCORES = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10] as const;
 
-/** Closed until someone opens it. Notes stay on the account and are not sent to the coach. */
+/** Closed until someone opens it. A short summary can go to Thumos when coaching and health consent are on. */
 export function HowItFelt({
   day,
   workouts,

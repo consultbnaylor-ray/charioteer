@@ -14,6 +14,7 @@ import { garminActivitiesForUser, samplesWithGarminActivities } from '../_shared
 import { buildHealthInsights, healthChangeNoteFromReadings, londonDay } from '../_shared/healthInsights.ts';
 import { coachConsentAllows } from '../_shared/coachConsent.ts';
 import { loadNutritionLines } from '../_shared/nutritionLoad.ts';
+import { loadWorkoutReflections } from '../_shared/workoutReflectionLoad.ts';
 import { moodOnTen } from '../_shared/mood.ts';
 import { pinnedStoicQuote } from '../_shared/stoicQuotes.ts';
 import {
@@ -225,6 +226,11 @@ Deno.serve(async (req) => {
         consentHealth: shareHealth,
         personalDataEnabled,
       }),
+      workoutReflections: await loadWorkoutReflections(userClient, userId, healthToday, garminAllowedForCoach({
+        consentAi: profile.consent_ai === true,
+        consentHealth: shareHealth,
+        personalDataEnabled,
+      })),
     },
   });
 

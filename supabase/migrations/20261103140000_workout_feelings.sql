@@ -1,5 +1,6 @@
 -- Not applied. Ben approves before this runs.
--- Private notes on how a workout day felt. Owner only. Not sent to Thumos or xAI.
+-- Private notes on how a workout day felt. Owner only.
+-- A short summary may be sent to Thumos when coaching and health consent are on.
 
 create table public.workout_feelings (
   id uuid primary key default gen_random_uuid(),

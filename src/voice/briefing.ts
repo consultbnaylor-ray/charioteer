@@ -14,6 +14,7 @@ import { drinkFreeThisWeek } from '@/domain/stage';
 import { quoteById } from '@/domain/stoicQuotes';
 import { buildVoiceBriefing, type VoiceBriefing } from '@/domain/voice';
 import type { HealthTrend, ThumosMode } from '@/domain/thumos';
+import { workoutReflectionsFromDiary } from '@/domain/workoutReflections';
 
 function healthTrends(samples: AppSnapshot['health'], today: string): HealthTrend[] {
   const ordered = [...samples].sort((left, right) => (left.recordedOn < right.recordedOn ? 1 : left.recordedOn > right.recordedOn ? -1 : 0));
@@ -141,6 +142,21 @@ export function briefingFromSnapshot(snap: AppSnapshot, requestedMode: ThumosMod
           })()
         : null,
       nutritionLines: profile.consentAi ? nutritionLinesFrom(snap, now) : [],
+      workoutReflections: shareHealth
+        ? workoutReflectionsFromDiary({
+            today: isoDay(now),
+            feelings: snap.workoutFeelings ?? [],
+            planned: snap.plannedSessions,
+            sleepSamples: snap.health
+              .filter((sample) => sample.kind === 'sleep_hours')
+              .map((sample) => ({ day: sample.recordedOn.slice(0, 10), value: sample.value })),
+            workoutSamples: snap.health
+              .filter((sample) => sample.kind.startsWith('workout_type_'))
+              .map((sample) => ({ kind: sample.kind, value: sample.value, recordedOn: sample.recordedOn })),
+            logs: snap.foodLogs ?? [],
+            hideCalories: snap.nutrition?.hideCalories === true,
+          })
+        : [],
       mode: requestedMode,
       safety: { selfHarm: false, withdrawal: false, reasons: [] },
     },

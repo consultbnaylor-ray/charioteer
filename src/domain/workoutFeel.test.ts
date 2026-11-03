@@ -39,18 +39,23 @@ describe('how a session felt', () => {
     expect(feelPatternLine([{ effort: 8, sleepHours: 7.5 }])).toBeNull();
   });
 
-  it('keeps the notes off the coach and behind owner-only security', () => {
+  it('keeps the diary owner-only, and sends Thumos a summary rather than the table', () => {
     const sql = readFileSync('supabase/migrations/20261103140000_workout_feelings.sql', 'utf8');
     expect(sql).toContain('create table public.workout_feelings');
     expect(sql).toContain('user_id = auth.uid()');
     expect(sql).toContain('Not applied');
     expect(sql).not.toMatch(/grant .+ to anon/i);
-    const coach = [
+    const untouched = [
       'supabase/functions/health-plan/index.ts',
-      'supabase/functions/thumos-chat/index.ts',
       'supabase/functions/_shared/statsAnalysis.ts',
     ].map((path) => readFileSync(path, 'utf8')).join('\n');
-    expect(coach).not.toContain('workout_feelings');
+    expect(untouched).not.toContain('workout_feelings');
+    const chat = readFileSync('supabase/functions/thumos-chat/index.ts', 'utf8');
+    const voice = readFileSync('supabase/functions/thumos-voice-token/index.ts', 'utf8');
+    expect(chat).toContain('loadWorkoutReflections');
+    expect(voice).toContain('loadWorkoutReflections');
+    expect(chat).not.toContain('workout_feelings');
+    expect(voice).not.toContain('workout_feelings');
     expect(readFileSync('src/ui/WorkoutList.tsx', 'utf8')).toContain('Workout History');
     expect(readFileSync('src/ui/WorkoutList.tsx', 'utf8')).toContain('endDay={day}');
     expect(readFileSync('src/ui/WorkoutList.tsx', 'utf8')).toContain('span={1}');
