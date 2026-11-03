@@ -5,7 +5,9 @@ import { buildFitnessSnapshot, fitnessFromSnapshot } from '@/domain/fitnessSnaps
 import { withPlannedMinutes } from '@/domain/plannedSession';
 import { goalLedFromSnapshot, goalProgressLine } from '@/domain/goalLed';
 import { goalWeightRange } from '@/domain/goalWeightRange';
-import { compositionForAssessment, defaultNutritionSettings, nutritionContextLines, weightPointsFrom } from '@/domain/nutrition';
+import { buildDailyTargets } from '@/domain/dailyTargets';
+import { compositionForAssessment, defaultNutritionSettings, nutritionContextLines, proteinGramsFor, weightPointsFrom } from '@/domain/nutrition';
+import { nutritionBriefFromLogs, nutritionReviewLines } from '@/domain/statsAnalysis';
 import { activityReadingsFromSamples } from '@/domain/targetActivity';
 import { savingsFromTypicalWeek } from '@/domain/savings';
 import { soberElapsed } from '@/domain/sober';
@@ -81,7 +83,41 @@ function nutritionLinesFrom(snap: AppSnapshot, now: Date): string[] {
     bodyFatPct: figures.bodyFatPct,
     waistCm: figures.waistCm,
   }).contextLine;
-  return [progress, fitness, weightRange, ...lines].filter((line): line is string => Boolean(line));
+  const shareHealth = profile.consentHealth === true;
+  const weightKg = shareHealth && latest && latest.kg >= 30 ? latest.kg : null;
+  const plan = weightKg != null && settings.targetWeightKg != null && settings.targetOn
+    ? buildDailyTargets({
+      currentKg: weightKg,
+      targetKg: settings.targetWeightKg,
+      targetOn: settings.targetOn,
+      today,
+      heightCm: profile.heightCm,
+      age: settings.goalAge,
+      sex: settings.goalSex,
+      activeEnergyKcal: settings.activityEnergyKcal,
+      startKg: null,
+      startDay: null,
+    })
+    : null;
+  const review = profile.consentAi
+    ? nutritionReviewLines(nutritionBriefFromLogs({
+      today,
+      logs: (snap.foodLogs ?? []).map((log) => ({
+        eatenOn: log.eatenOn,
+        meal: log.meal,
+        note: log.note,
+        estimated: log.estimated || log.source === 'photo' || log.source === 'text',
+        portion: log.portion,
+        items: log.items.map((item) => ({ name: item.name, kcal: item.kcal, proteinG: item.proteinG })),
+      })),
+      weightKg,
+      calorieTarget: settings.hideCalories ? null : (shareHealth ? plan?.targetKcal ?? settings.kcalTarget : settings.kcalTarget),
+      proteinTargetG: settings.proteinTarget,
+      goalProteinG: weightKg != null && settings.goal ? proteinGramsFor(settings.goal, weightKg, settings.build, settings.goalPhase) : null,
+      hideCalories: settings.hideCalories,
+    }))
+    : [];
+  return [...review, progress, fitness, weightRange, ...lines].filter((line): line is string => Boolean(line));
 }
 
 /** Client copy of the voice prompt, used when the token function has not been redeployed yet. */

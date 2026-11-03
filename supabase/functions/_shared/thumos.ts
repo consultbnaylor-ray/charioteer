@@ -462,7 +462,7 @@ export const THUMOS_CHAT = {
   /** Crisis and withdrawal skip the long wait. A scripted reply still follows if both models fail. */
   crisisTimeoutMs: 8_000,
   nutritionLineCap: 6,
-  nutritionChars: 700,
+  nutritionChars: 2400,
   workoutReflectionChars: 1400,
   motivationChars: 700,
 } as const;
@@ -922,7 +922,7 @@ export function buildThumosContext(input: ThumosContextInput): string {
     formatGratitudeContext(input.gratitude ?? []),
     formatVisionContext(input.vision),
     nutritionLines.length
-      ? `Nutrition, their own log. Estimates are estimates:\n${capContextBlock(nutritionLines.map((line) => `- ${line}`).join('\n'), THUMOS_CHAT.nutritionChars)}`
+      ? `Nutrition, their own log, with daily targets and recent meals. Estimates are estimates:\n${capContextBlock(nutritionLines.map((line) => `- ${line}`).join('\n'), THUMOS_CHAT.nutritionChars)}`
       : '',
     workoutReflections.length
       ? `Workout diary, last 30 days. Not medical advice. Not a diagnosis:\n${capContextBlock(workoutReflections.map((line) => `- ${line}`).join('\n'), THUMOS_CHAT.workoutReflectionChars)}`

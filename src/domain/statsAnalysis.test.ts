@@ -4,7 +4,8 @@ import { describe, expect, it } from 'vitest';
 
 import { emptyGarminReadings } from '@/domain/garminConnect';
 import { buildStatsAnalysis } from '@/domain/statsAnalysis';
-import { STATS_ANALYSIS_PROMPT, analysisSectionsFromText, localStatsVerdict, sanitizeStatsAnalysis } from '../../supabase/functions/_shared/statsAnalysis.ts';
+import { NUTRITION_PROMPT_LINE } from '../../supabase/functions/_shared/nutrition.ts';
+import { STATS_ANALYSIS_PROMPT, analysisSectionsFromText, localStatsVerdict, nutritionReviewLines, sanitizeStatsAnalysis } from '../../supabase/functions/_shared/statsAnalysis.ts';
 import { VO2_ANALYSIS_RULE } from '../../supabase/functions/_shared/trainingGuidance.ts';
 
 describe('stats analysis summaries', () => {
@@ -336,5 +337,19 @@ describe('stats analysis summaries', () => {
     expect(payload.nutrition?.improvements.length).toBeLessThanOrEqual(4);
     expect(readFileSync('supabase/functions/health-plan/index.ts', 'utf8')).not.toContain('eaten_at');
     expect(STATS_ANALYSIS_PROMPT).toContain('2 to 4');
+    const review = nutritionReviewLines(payload.nutrition!);
+    expect(review.some((line) => line.includes('3 Nov 2026, Breakfast: Toast'))).toBe(true);
+    expect(review.some((line) => line.startsWith('Daily targets:'))).toBe(true);
+    expect(localStatsVerdict(payload)).toContain(review[0]);
+    expect(NUTRITION_PROMPT_LINE).toContain('training fuel');
+    expect(NUTRITION_PROMPT_LINE).toContain('short paragraphs');
+    const load = readFileSync('supabase/functions/_shared/nutritionLoad.ts', 'utf8');
+    expect(load).toContain('nutritionReviewLines');
+    expect(load).toContain('item.name');
+    expect(load).toContain('coach.ai');
+    expect(readFileSync('supabase/functions/thumos-chat/index.ts', 'utf8')).toContain('loadNutritionLines');
+    expect(readFileSync('supabase/functions/thumos-voice-token/index.ts', 'utf8')).toContain('loadNutritionLines');
+    expect(readFileSync('src/voice/briefing.ts', 'utf8')).toContain('nutritionReviewLines');
+    expect(readFileSync('supabase/functions/_shared/thumos.ts', 'utf8')).toContain('nutritionChars: 2400');
   });
 });

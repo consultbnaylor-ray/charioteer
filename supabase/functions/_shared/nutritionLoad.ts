@@ -29,7 +29,7 @@ import {
 } from './nutrition.ts';
 import { savingsFromTypicalWeek } from './savings.ts';
 import { buildDailyTargets } from './dailyTargets.ts';
-import { intakeContextLine, nutritionBriefFromLogs } from './statsAnalysis.ts';
+import { nutritionBriefFromLogs, nutritionReviewLines } from './statsAnalysis.ts';
 import { soberElapsed } from './sober.ts';
 
 type NutritionResult = { data: unknown; error: { message?: string } | null };
@@ -320,18 +320,24 @@ export async function loadNutritionLines(
       startDay: null,
     })
     : null;
-  const intake = intakeContextLine(nutritionBriefFromLogs({
-    today,
-    logs: logs.map((log) => ({
-      eatenOn: log.eatenOn,
-      portion: log.portion,
-      items: log.items.map((item) => ({ kcal: item.kcal, proteinG: item.proteinG })),
-    })),
-    weightKg: latest?.kg ?? null,
-    calorieTarget: settings.hideCalories ? null : (weightPlan?.targetKcal ?? settings.kcalTarget),
-    proteinTargetG: settings.proteinTarget,
-    goalProteinG: settings.goal && latest && latest.kg >= 30 ? proteinGramsFor(settings.goal, latest.kg, settings.build, settings.goalPhase) : null,
-    hideCalories: settings.hideCalories,
-  }));
-  return [progress, fitness, weightRange, intake, ...lines].filter((line): line is string => Boolean(line));
+  const weightKg = coach.health && latest && latest.kg >= 30 ? latest.kg : null;
+  const review = coach.ai
+    ? nutritionReviewLines(nutritionBriefFromLogs({
+      today,
+      logs: logs.map((log) => ({
+        eatenOn: log.eatenOn,
+        meal: log.meal,
+        note: log.note,
+        estimated: log.estimated || log.source === 'photo' || log.source === 'text',
+        portion: log.portion,
+        items: log.items.map((item) => ({ name: item.name, kcal: item.kcal, proteinG: item.proteinG })),
+      })),
+      weightKg,
+      calorieTarget: settings.hideCalories ? null : (coach.health ? weightPlan?.targetKcal ?? settings.kcalTarget : settings.kcalTarget),
+      proteinTargetG: settings.proteinTarget,
+      goalProteinG: weightKg != null && settings.goal ? proteinGramsFor(settings.goal, weightKg, settings.build, settings.goalPhase) : null,
+      hideCalories: settings.hideCalories,
+    }))
+    : [];
+  return [...review, progress, fitness, weightRange, ...lines].filter((line): line is string => Boolean(line));
 }

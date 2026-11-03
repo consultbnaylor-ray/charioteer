@@ -412,14 +412,7 @@ export function mealImprovements(
 }
 
 export function intakeContextLine(brief: NutritionBrief): string {
-  const logged = brief.loggedDays < 2
-    ? 'Fewer than two days of meals are logged, so there is not enough food data to judge intake.'
-    : brief.averageKcal != null
-      ? `Recent logged days (${brief.loggedDays}) average about ${countText(brief.averageKcal)} kcal and ${countText(brief.averageProteinG ?? 0)} g protein.`
-      : `Recent logged days (${brief.loggedDays}) average about ${countText(brief.averageProteinG ?? 0)} g protein. Calories stay hidden.`;
-  const meals = brief.meals.slice(0, 4).map((meal) => mealSentence(meal)).join(' ');
-  const tips = brief.improvements.slice(0, 2).join(' ');
-  return `Nutrition for a plan: ${dailyTargetSentence(brief)} ${logged}${meals ? ` Recent meals: ${meals}` : ''} ${brief.proteinGuide}${tips ? ` ${tips}` : ''} Compare intake with these targets when they talk about food, training, or a plan. Not medical advice.`;
+  return nutritionReviewLines(brief).join(' ');
 }
 
 export function sectionsToText(sections: readonly AnalysisSection[]): string {
@@ -502,7 +495,34 @@ function sectionForStat(id: AnalysisStatId): AnalysisSectionTitle {
 }
 
 function nutritionSection(payload: StatsAnalysisPayload): string {
-  const brief = payload.nutrition ?? {
+  return tidy(nutritionReviewLines(nutritionBriefOf(payload)).join(' '));
+}
+
+/** The same review the health-plan card and Thumos chat both send. One line per point. */
+export function nutritionReviewLines(brief: NutritionBrief): string[] {
+  const lines = [dailyTargetSentence(brief)];
+  if (brief.loggedDays < 2) {
+    lines.push('There is not enough logged food yet to compare intake with the targets.');
+  } else if (brief.averageKcal != null) {
+    lines.push(`Logged meals on ${brief.loggedDays} days average about ${countText(brief.averageKcal)} kcal and ${countText(brief.averageProteinG ?? 0)} g protein.`);
+  } else {
+    lines.push(`Logged meals on ${brief.loggedDays} days average about ${countText(brief.averageProteinG ?? 0)} g protein. Calories stay hidden.`);
+  }
+  if (brief.averageKcal != null && brief.calorieTarget != null) {
+    lines.push(`Intake is ${compareWord(brief.averageKcal, brief.calorieTarget)} the daily calorie target of ${countText(brief.calorieTarget)} kcal.`);
+  }
+  if (brief.averageProteinG != null && brief.proteinTargetG != null && brief.loggedDays >= 2) {
+    lines.push(`Protein is ${compareWord(brief.averageProteinG, brief.proteinTargetG)} the daily protein target of ${countText(brief.proteinTargetG)} g.`);
+  }
+  for (const meal of brief.meals) lines.push(mealSentence(meal));
+  for (const tip of brief.improvements) lines.push(tip);
+  if (brief.proteinGuide) lines.push(brief.proteinGuide);
+  lines.push('Not medical advice.');
+  return lines.map((line) => tidy(line)).filter(Boolean);
+}
+
+function nutritionBriefOf(payload: StatsAnalysisPayload): NutritionBrief {
+  return payload.nutrition ?? {
     loggedDays: 0,
     averageKcal: null,
     averageProteinG: null,
@@ -513,22 +533,6 @@ function nutritionSection(payload: StatsAnalysisPayload): string {
     meals: [],
     improvements: [],
   };
-  const guide = brief.proteinGuide || proteinGuideFor(weightKgOf(payload));
-  const meals = (brief.meals ?? []).slice(0, 8).map((meal) => mealSentence(meal)).join(' ');
-  const tips = (brief.improvements ?? []).slice(0, 4).join(' ');
-  if (brief.loggedDays < 2) {
-    return tidy(`${dailyTargetSentence(brief)} There is not enough logged food yet to compare intake with the targets. ${guide} ${tips} Not medical advice.`);
-  }
-  const intake = brief.averageKcal != null
-    ? `Logged meals on ${brief.loggedDays} days average about ${countText(brief.averageKcal)} kcal and ${countText(brief.averageProteinG ?? 0)} g protein.`
-    : `Logged meals on ${brief.loggedDays} days average about ${countText(brief.averageProteinG ?? 0)} g protein. Calories stay hidden.`;
-  const kcalCompare = brief.averageKcal != null && brief.calorieTarget != null
-    ? ` Intake is ${compareWord(brief.averageKcal, brief.calorieTarget)} the daily calorie target of ${countText(brief.calorieTarget)} kcal.`
-    : '';
-  const proteinCompare = brief.averageProteinG != null && brief.proteinTargetG != null
-    ? ` Protein is ${compareWord(brief.averageProteinG, brief.proteinTargetG)} the daily protein target of ${countText(brief.proteinTargetG)} g.`
-    : '';
-  return tidy(`${dailyTargetSentence(brief)} ${intake}${kcalCompare}${proteinCompare} ${meals ? `Recent meals: ${meals}` : ''} ${guide} ${tips} Not medical advice.`);
 }
 
 function dailyTargetSentence(brief: Pick<NutritionBrief, 'calorieTarget' | 'proteinTargetG' | 'proteinTargetSource'>): string {
