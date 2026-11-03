@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 
 import { describe, expect, it } from 'vitest';
 
-import { goalProgressPhotosFromRows, goalProgressSeries } from '@/domain/goalProgress';
+import { goalProgressPhotosFromRows, goalProgressSeries, progressLinePath } from '@/domain/goalProgress';
 import { settingsForPreset } from '@/domain/targetWeight';
 import { defaultNutritionSettings } from '@/domain/nutrition';
 
@@ -54,6 +54,66 @@ describe('goal progress', () => {
     expect(one.vo2Path).toBeNull();
   });
 
+  it('builds one path per series in date order from unsorted weigh-ins', () => {
+    const series = goalProgressSeries({
+      today: '2026-11-03',
+      targetOn: '2026-12-31',
+      goal: 'elite_super_middle_boxer',
+      sex: 'male',
+      weight: [
+        { day: '2026-10-20', kg: 86 },
+        { day: '2026-09-02', kg: 90 },
+        { day: '2026-11-03', kg: 84.2 },
+        { day: '2026-09-18', kg: 88.4 },
+        { day: '2026-10-04', kg: 87.1 },
+        { day: '2026-09-02', kg: 89.6 },
+      ],
+      vo2: [
+        { day: '2026-10-15', value: 44 },
+        { day: '2026-09-10', value: 41.5 },
+        { day: '2026-11-01', value: 45.2 },
+      ],
+      weightTargetKg: 76.2,
+      weightStartKg: 89.6,
+    });
+    expect(series.weightActual.map((point) => point.day)).toEqual([
+      '2026-09-02',
+      '2026-09-18',
+      '2026-10-04',
+      '2026-10-20',
+      '2026-11-03',
+    ]);
+    expect(series.weightActual[0]?.value).toBe(89.6);
+    expect(series.weightActual.at(-1)?.value).toBe(84.2);
+    expect(series.vo2Actual.map((point) => point.day)).toEqual(['2026-09-10', '2026-10-15', '2026-11-01']);
+    const days = series.weightPath?.map((point) => point.day) ?? [];
+    expect(days).toEqual([...days].sort());
+    const xFor = (day: string) => Date.parse(`${day}T00:00:00Z`);
+    const yFor = (value: number) => value;
+    const weightPath = progressLinePath(
+      [series.weightActual[3], series.weightActual[0], series.weightActual[4], series.weightActual[1], series.weightActual[2]].filter((point) => point != null),
+      xFor,
+      yFor,
+    );
+    const vo2Path = progressLinePath([...series.vo2Actual].reverse(), xFor, yFor);
+    const dashed = progressLinePath(series.weightPath ?? [], xFor, yFor);
+    for (const path of [weightPath, vo2Path, dashed]) {
+      expect(path.startsWith('M ')).toBe(true);
+      expect(path.split(' M ').length).toBe(1);
+    }
+    expect(weightPath.match(/ C /g)?.length).toBe(series.weightActual.length - 1);
+    expect(vo2Path.match(/ C /g)?.length).toBe(series.vo2Actual.length - 1);
+    expect(dashed.match(/ C /g)?.length).toBe((series.weightPath?.length ?? 1) - 1);
+    expect(weightPath.startsWith(`M ${xFor('2026-09-02')} 89.6`)).toBe(true);
+    expect(weightPath.endsWith(`${xFor('2026-11-03')} 84.2`)).toBe(true);
+    expect(vo2Path.startsWith(`M ${xFor('2026-09-10')} 41.5`)).toBe(true);
+    const chart = readFileSync('src/ui/DailyTargets.tsx', 'utf8');
+    expect(chart.match(/progressLinePath\(/g)?.length).toBe(2);
+    expect(chart).toContain('No VO2 max readings yet');
+    expect(chart).toContain('Take a Time Stamped Photo to track Progress Visually');
+    expect(chart).not.toContain('SeriesLine');
+  });
+
   it('keeps progress photos private and off the coach', () => {
     const sql = readFileSync('supabase/migrations/20261103120000_goal_progress_photos.sql', 'utf8');
     expect(sql).toContain('create table public.goal_progress_photos');
@@ -69,7 +129,7 @@ describe('goal progress', () => {
     ].map((path) => readFileSync(path, 'utf8')).join('\n');
     expect(coach).not.toContain('goal_progress_photos');
     expect(coach).not.toContain('goal-progress-photos');
-    expect(readFileSync('src/ui/DailyTargets.tsx', 'utf8')).toContain('Take a photo to track progress visually');
+    expect(readFileSync('src/ui/DailyTargets.tsx', 'utf8')).toContain('Take a Time Stamped Photo to track Progress Visually');
     expect(readFileSync('src/ui/DailyTargets.tsx', 'utf8')).toContain('not sent to Thumos');
     expect(readFileSync('supabase/functions/account-delete/index.ts', 'utf8')).toContain('goal-progress-photos');
     expect(readFileSync('src/domain/sharedPhotos.ts', 'utf8')).toContain('NSCameraUsageDescription'.replace('NSCameraUsageDescription', 'progress photo'));

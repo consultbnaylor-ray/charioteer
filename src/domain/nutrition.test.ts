@@ -1653,7 +1653,11 @@ describe('training nutrition goals', () => {
     expect(lower).not.toMatch(/delete from/i);
     const chips = readFileSync('src/ui/GoalChoices.tsx', 'utf8');
     expect(chips).toContain('Boxing weight classes');
-    expect(chips).toContain('accessibilityState={{ expanded: boxingOpen }}');
+    expect(chips).toContain('Or choose a boxing weight class');
+    expect(chips).toContain('Boxing weight class (sets your target weight)');
+    expect(chips.indexOf('Or choose a boxing weight class')).toBeLessThan(chips.indexOf('<GoalTargetDate />'));
+    expect(chips.indexOf('accessibilityLabel="Boxing weight classes"')).toBeLessThan(chips.indexOf('<GoalTargetDate />'));
+    expect(chips).not.toContain('boxingOpen');
     expect(chips).toContain('boxingChipLabel(option.id)');
     expect(chips).toContain("alignSelf: 'stretch'");
     expect(chips).toContain('theme.colors.accent');

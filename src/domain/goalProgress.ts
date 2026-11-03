@@ -1,6 +1,8 @@
 export {
   chartScale,
   goalProgressSeries,
+  orderReadings,
+  progressLinePath,
   type DatedValue,
   type GoalProgressSeries,
 } from '../../supabase/functions/_shared/goalProgress.ts';

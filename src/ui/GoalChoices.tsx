@@ -76,7 +76,6 @@ export function GoalChoices({
   const [note, setNote] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
   const [attempt, setAttempt] = useState(0);
-  const [boxingOpen, setBoxingOpen] = useState(() => isAnyBoxer(settings.goal));
   const [draftingTarget, setDraftingTarget] = useState(false);
   const write = useRef(0);
   const green = statsToneColors(theme.scheme).good.ink;
@@ -100,11 +99,6 @@ export function GoalChoices({
       cancelled = true;
     };
   }, [attempt]);
-
-  const currentBoxing = isAnyBoxer(settings.goal) ? settings.goal : null;
-  useEffect(() => {
-    if (currentBoxing) setBoxingOpen(true);
-  }, [currentBoxing]);
 
   async function choose(id: NutritionGoal) {
     if (settings.goal === id && settings.targetWeightKg == null && !draftingTarget) return;
@@ -151,42 +145,25 @@ export function GoalChoices({
           onPress={() => setDraftingTarget(true)}
         />
       </View>
+      <T variant="label">Or choose a boxing weight class</T>
+      <T variant="muted">Boxing weight class (sets your target weight)</T>
+      <View accessibilityLabel="Boxing weight classes" style={{ gap: 8, alignSelf: 'stretch' }}>
+        {boxing.map((option) => {
+          const label = boxingChipLabel(option.id) ?? option.label;
+          const selected = settings.goal === option.id && settings.targetWeightKg == null && !draftingTarget;
+          return (
+            <GoalDivision
+              key={option.id}
+              label={label}
+              selected={selected}
+              onPress={() => void choose(option.id)}
+            />
+          );
+        })}
+      </View>
       {draftingTarget || settings.targetWeightKg != null ? <TargetWeightForm /> : null}
       {settings.goal && settings.targetWeightKg == null && !draftingTarget ? <GoalTargetDate /> : null}
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel="Boxing weight classes"
-        accessibilityState={{ expanded: boxingOpen }}
-        onPress={() => setBoxingOpen((value) => !value)}
-        style={{ minHeight: 44, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}
-      >
-        <T style={{ fontFamily: theme.font.bodyStrong, flex: 1 }}>Boxing weight classes</T>
-        <T variant="muted">{boxingOpen ? 'Hide' : 'Show'}</T>
-      </Pressable>
       <UpdateWeightLink />
-      {!boxingOpen && currentBoxing ? (
-        <Choice
-          label={boxingChipLabel(currentBoxing) ?? 'Boxing'}
-          selected={settings.targetWeightKg == null && !draftingTarget}
-          onPress={() => setBoxingOpen(true)}
-        />
-      ) : null}
-      {boxingOpen ? (
-        <View style={{ gap: 8, alignSelf: 'stretch' }}>
-          {boxing.map((option) => {
-            const label = boxingChipLabel(option.id) ?? option.label;
-            const selected = settings.goal === option.id && settings.targetWeightKg == null && !draftingTarget;
-            return (
-              <GoalDivision
-                key={option.id}
-                label={label}
-                selected={selected}
-                onPress={() => void choose(option.id)}
-              />
-            );
-          })}
-        </View>
-      ) : null}
       {saved ? (
         <View
           accessibilityRole="text"

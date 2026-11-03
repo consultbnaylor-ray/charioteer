@@ -1,14 +1,15 @@
 import { Image } from 'expo-image';
 import { useState } from 'react';
 import { Modal, Pressable, View } from 'react-native';
+import Svg, { Circle, Line, Path, Text as SvgText } from 'react-native-svg';
 
 import { useRepository, useSnapshot } from '@/data';
 import { buildDailyTargets, DAILY_TARGETS_CAVEAT } from '@/domain/dailyTargets';
-import { formatUkCompact } from '@/domain/dates';
-import { isoDay } from '@/domain/dates';
+import { formatUkCompactWhen, isoDay } from '@/domain/dates';
+import { formatAxisNumber, placeAxisLabels, progressDateTicks, yAxisTicks } from '@/domain/readingChart';
 import { shownError } from '@/domain/errors';
 import { athleticVo2Target } from '@/domain/fitnessSnapshot';
-import { chartScale, goalProgressSeries, type DatedValue, type GoalProgressPhoto } from '@/domain/goalProgress';
+import { goalProgressSeries, orderReadings, progressLinePath, type DatedValue, type GoalProgressPhoto } from '@/domain/goalProgress';
 import { londonDay } from '@/domain/healthInsights';
 import { weightPointsFrom } from '@/domain/nutrition';
 import { weightReadingKg, weightWaistWrite, type WeightUnitMode } from '@/domain/weightEntry';
@@ -91,7 +92,9 @@ export function DailyTargets() {
       <GoalProgressGraph
         series={series}
         photos={photos}
+        today={today}
         ink={theme.colors.ink}
+        muted={theme.colors.muted}
         line={theme.colors.line}
         accent={green}
         surface={theme.colors.surface}
@@ -121,77 +124,109 @@ function vo2Points(
   return [...map.entries()].map(([day, value]) => ({ day, value }));
 }
 
+const PLOT_H = 156;
+const GUTTER = 56;
+
+function ukDayMonth(iso: string): string {
+  const [year, month, day] = iso.split('-').map(Number);
+  const date = new Date(Date.UTC(year ?? 1970, (month ?? 1) - 1, day ?? 1));
+  return new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short', timeZone: 'UTC' }).format(date);
+}
+
+function readingCallout(value: number, unit: string, day: string, today: string): string {
+  const amount = `${formatAxisNumber(value)} ${unit}`;
+  return day === today ? `${amount} today` : `${amount} on ${ukDayMonth(day)}`;
+}
+
+function targetCallout(value: number, unit: string, day: string): string {
+  return `Target ${formatAxisNumber(value)} ${unit} by ${ukDayMonth(day)}`;
+}
+
+function xAt(day: string, start: string, end: string, plotW: number): number {
+  const span = Date.parse(`${end}T00:00:00Z`) - Date.parse(`${start}T00:00:00Z`);
+  if (!(span > 0)) return GUTTER + plotW / 2;
+  const offset = Date.parse(`${day}T00:00:00Z`) - Date.parse(`${start}T00:00:00Z`);
+  return GUTTER + Math.min(1, Math.max(0, offset / span)) * plotW;
+}
+
 function GoalProgressGraph({
   series,
   photos,
+  today,
   ink,
+  muted,
   line,
   accent,
   surface,
 }: {
   series: ReturnType<typeof goalProgressSeries>;
   photos: readonly GoalProgressPhoto[];
+  today: string;
   ink: string;
+  muted: string;
   line: string;
   accent: string;
   surface: string;
 }) {
   const [open, setOpen] = useState<GoalProgressPhoto | null>(null);
+  const [width, setWidth] = useState(0);
   const repo = useRepository();
-  const start = Date.parse(`${series.start}T00:00:00Z`);
-  const span = Math.max(1, Date.parse(`${series.end}T00:00:00Z`) - start);
-  const weightScale = chartScale([...series.weightActual, ...(series.weightPath ?? [])].map((point) => point.value));
-  const vo2Scale = chartScale([...series.vo2Actual, ...(series.vo2Path ?? [])].map((point) => point.value));
-  const xOf = (day: string) => Math.min(1, Math.max(0, (Date.parse(`${day}T00:00:00Z`) - start) / span));
-  const yOf = (value: number, scale: { low: number; high: number }) => 1 - Math.min(1, Math.max(0, (value - scale.low) / Math.max(0.01, scale.high - scale.low)));
-  const marks = [series.start, series.end].filter((day, index, all) => all.indexOf(day) === index);
-  const nearest = (day: string, rows: DatedValue[]) => {
-    const hit = rows.find((row) => row.day === day);
-    return hit ? hit.value : null;
-  };
+  const weight = orderReadings(series.weightActual);
+  const vo2 = orderReadings(series.vo2Actual);
+  const latestWeight = weight[weight.length - 1];
+  const latestVo2 = vo2[vo2.length - 1];
+  const weightTarget = series.weightPath?.[series.weightPath.length - 1];
+  const vo2Target = series.vo2Path?.[series.vo2Path.length - 1];
+  const nearest = (day: string, rows: DatedValue[]) => rows.find((row) => row.day === day)?.value ?? null;
+  const stamp = open ? formatUkCompactWhen(open.createdAt || `${open.recordedOn}T12:00:00.000Z`) : '';
   return (
-    <View style={{ gap: 8, alignSelf: 'stretch' }}>
-      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12 }}>
-        <T>Weight, kg</T>
-        <T style={{ color: accent }}>VO2 max, ml/kg/min</T>
-        <T variant="muted">Dashed lines are the path to the target date.</T>
-      </View>
-      <View
-        accessibilityLabel="Goal progress. Weight and VO2 max, with a dashed path when a target date is set."
-        style={{ height: 180, alignSelf: 'stretch', borderWidth: 1, borderColor: line, borderRadius: 8, backgroundColor: surface }}
-      >
-        {[0.25, 0.5, 0.75].map((fraction) => (
-          <View key={fraction} style={{ position: 'absolute', left: 36, right: 36, top: `${fraction * 100}%`, height: 1, backgroundColor: line }} />
-        ))}
-        <T style={{ position: 'absolute', left: 4, top: 4 }}>{Math.round(weightScale.high)}</T>
-        <T style={{ position: 'absolute', left: 4, bottom: 4 }}>{Math.round(weightScale.low)}</T>
-        <T style={{ position: 'absolute', right: 4, top: 4, color: accent }}>{Math.round(vo2Scale.high)}</T>
-        <T style={{ position: 'absolute', right: 4, bottom: 4, color: accent }}>{Math.round(vo2Scale.low)}</T>
-        <SeriesLine points={series.weightActual} xOf={xOf} yOf={(value) => yOf(value, weightScale)} color={ink} dashed={false} />
-        <SeriesLine points={series.weightPath ?? []} xOf={xOf} yOf={(value) => yOf(value, weightScale)} color={ink} dashed />
-        <SeriesLine points={series.vo2Actual} xOf={xOf} yOf={(value) => yOf(value, vo2Scale)} color={accent} dashed={false} />
-        <SeriesLine points={series.vo2Path ?? []} xOf={xOf} yOf={(value) => yOf(value, vo2Scale)} color={accent} dashed />
-        {photos.map((photo) => (
-          <Pressable
-            key={photo.id}
-            accessibilityRole="button"
-            accessibilityLabel={`Progress photo ${formatUkCompact(photo.recordedOn)}`}
-            onPress={() => setOpen(photo)}
-            style={{ position: 'absolute', left: `${xOf(photo.recordedOn) * 100}%`, top: '46%', width: 14, height: 14, marginLeft: -7, borderRadius: 7, borderWidth: 2, borderColor: accent, backgroundColor: surface }}
-          />
-        ))}
-      </View>
-      <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-        {marks.map((day) => <T key={day} variant="muted">{formatUkCompact(day)}</T>)}
-      </View>
+    <View style={{ gap: 14, alignSelf: 'stretch' }} onLayout={(event) => setWidth(event.nativeEvent.layout.width)}>
+      <MiniSeries
+        title="Weight"
+        unit="kg"
+        color={ink}
+        label={muted}
+        grid={line}
+        surface={surface}
+        actual={weight}
+        path={series.weightPath}
+        start={series.start}
+        end={series.end}
+        width={width}
+        empty="No weigh-ins yet"
+        latest={latestWeight ? readingCallout(latestWeight.value, 'kg', latestWeight.day, today) : null}
+        target={weightTarget ? targetCallout(weightTarget.value, 'kg', weightTarget.day) : null}
+      />
+      <MiniSeries
+        title="VO2 max"
+        unit="ml/kg/min"
+        color={accent}
+        label={muted}
+        grid={line}
+        surface={surface}
+        actual={vo2}
+        path={series.vo2Path}
+        start={series.start}
+        end={series.end}
+        width={width}
+        empty="No VO2 max readings yet"
+        latest={latestVo2 ? readingCallout(latestVo2.value, 'ml/kg/min', latestVo2.day, today) : null}
+        target={vo2Target ? targetCallout(vo2Target.value, 'ml/kg/min', vo2Target.day) : null}
+      />
+      <DateAxis start={series.start} end={series.end} photos={photos} width={width} accent={accent} surface={surface} muted={muted} onOpen={setOpen} />
       <Modal visible={open != null} transparent animationType="fade" onRequestClose={() => setOpen(null)}>
         <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.72)', justifyContent: 'center', padding: 16 }}>
           {open ? (
             <View style={{ gap: 8, backgroundColor: surface, padding: 12, borderRadius: 8 }}>
-              <T>{formatUkCompact(open.recordedOn)}</T>
+              <T>{stamp}</T>
               <T>{`Weight ${nearest(open.recordedOn, series.weightActual) ?? 'not logged'} kg`}</T>
               <T>{`VO2 max ${nearest(open.recordedOn, series.vo2Actual) ?? 'not logged'} ml/kg/min`}</T>
-              {open.previewUrl ? <Image source={{ uri: open.previewUrl }} style={{ width: '100%', height: 240 }} contentFit="contain" accessibilityLabel="Progress photo" /> : <T>Photo saved. The preview appears after it syncs.</T>}
+              {open.previewUrl ? (
+                <View>
+                  <Image source={{ uri: open.previewUrl }} style={{ width: '100%', height: 240 }} contentFit="contain" accessibilityLabel={`Progress photo, ${stamp}`} />
+                  <T>{stamp}</T>
+                </View>
+              ) : <T>Photo saved. The preview appears after it syncs.</T>}
               <Button label="Delete photo" tone="quiet" onPress={() => { void repo.deleteGoalProgressPhoto(open.id).then(() => setOpen(null)); }} />
               <Button label="Close" tone="quiet" onPress={() => setOpen(null)} />
             </View>
@@ -202,42 +237,154 @@ function GoalProgressGraph({
   );
 }
 
-function SeriesLine({
-  points,
-  xOf,
-  yOf,
+function MiniSeries({
+  title,
+  unit,
   color,
-  dashed,
+  label,
+  grid,
+  surface,
+  actual,
+  path,
+  start,
+  end,
+  width,
+  empty,
+  latest,
+  target,
 }: {
-  points: readonly DatedValue[];
-  xOf: (day: string) => number;
-  yOf: (value: number) => number;
+  title: string;
+  unit: string;
   color: string;
-  dashed: boolean;
+  label: string;
+  grid: string;
+  surface: string;
+  actual: readonly DatedValue[];
+  path: readonly DatedValue[] | null;
+  start: string;
+  end: string;
+  width: number;
+  empty: string;
+  latest: string | null;
+  target: string | null;
 }) {
+  if (actual.length === 0) {
+    return (
+      <View style={{ gap: 4, alignSelf: 'stretch' }}>
+        <T>{title}</T>
+        <T variant="muted">{empty}</T>
+      </View>
+    );
+  }
+  const ordered = orderReadings(actual);
+  const route = orderReadings(path ?? []);
+  const ticks = axisTicks(yAxisTicks([...ordered, ...route].map((point) => point.value)));
+  const low = ticks[0] ?? 0;
+  const high = ticks[ticks.length - 1] ?? 1;
+  const plotW = Math.max(1, width - GUTTER - 8);
+  const xFor = (day: string) => xAt(day, start, end, plotW);
+  function yFor(value: number): number {
+    const span = high - low || 1;
+    return 22 + (1 - (value - low) / span) * (PLOT_H - 36);
+  }
+  const actualPath = ordered.length > 1 ? progressLinePath(ordered, xFor, yFor) : '';
+  const targetPath = route.length > 1 ? progressLinePath(route, xFor, yFor) : '';
+  const targetEnd = route[route.length - 1];
+  const shortUnit = unit.length <= 4;
   return (
-    <>
-      {points.slice(1).map((point, index) => {
-        if (dashed && index % 2 === 1) return null;
-        const previous = points[index];
-        if (!previous) return null;
-        const left = xOf(previous.day) * 100;
-        const width = Math.max(2, (xOf(point.day) - xOf(previous.day)) * 100);
-        return (
-          <View
-            key={`${point.day}-${index}`}
-            style={{ position: 'absolute', left: `${left}%`, width: `${width}%`, top: `${yOf(point.value) * 100}%`, height: 3, backgroundColor: color }}
-          />
-        );
-      })}
-      {points.map((point) => (
-        <View
-          key={`dot-${point.day}-${point.value}`}
-          accessibilityLabel={`${point.day}, ${point.value}`}
-          style={{ position: 'absolute', left: `${xOf(point.day) * 100}%`, top: `${yOf(point.value) * 100}%`, width: 8, height: 8, marginLeft: -4, marginTop: -4, borderRadius: 4, backgroundColor: color }}
-        />
-      ))}
-    </>
+    <View accessibilityLabel={`${title}. ${latest ?? empty}. ${target ?? ''}`} style={{ gap: 4, alignSelf: 'stretch' }}>
+      <T>{title}</T>
+      {latest ? <T>{latest}</T> : null}
+      {target ? <T variant="muted">{target}</T> : null}
+      {width > 0 ? (
+        <Svg width={width} height={PLOT_H}>
+          {ticks.map((tick) => (
+            <Line key={tick} x1={GUTTER} x2={width - 8} y1={yFor(tick)} y2={yFor(tick)} stroke={grid} strokeWidth={1} />
+          ))}
+          {ticks.map((tick) => (
+            <SvgText key={`label-${tick}`} x={GUTTER - 8} y={yFor(tick) + 4} fill={label} fontSize={11} textAnchor="end">
+              {shortUnit ? `${formatAxisNumber(tick)} ${unit}` : formatAxisNumber(tick)}
+            </SvgText>
+          ))}
+          {targetPath ? (
+            <Path d={targetPath} stroke={color} strokeWidth={1.75} strokeDasharray="7 5" fill="none" strokeOpacity={0.45} />
+          ) : null}
+          {actualPath ? <Path d={actualPath} stroke={color} strokeWidth={2.5} fill="none" /> : null}
+          {ordered.map((point) => (
+            <Circle key={`${point.day}-${point.value}`} cx={xFor(point.day)} cy={yFor(point.value)} r={3.5} fill={color} />
+          ))}
+          {targetEnd ? (
+            <Circle cx={xFor(targetEnd.day)} cy={yFor(targetEnd.value)} r={5} fill={surface} stroke={color} strokeWidth={1.75} strokeOpacity={0.7} />
+          ) : null}
+        </Svg>
+      ) : <View style={{ height: PLOT_H }} />}
+      {shortUnit ? null : <T variant="muted">{unit}</T>}
+    </View>
+  );
+}
+
+function axisTicks(ticks: readonly number[]): number[] {
+  if (ticks.length <= 4) return [...ticks];
+  const last = ticks.length - 1;
+  const picked = [ticks[0], ticks[Math.round(last / 3)], ticks[Math.round((2 * last) / 3)], ticks[last]];
+  return [...new Set(picked.filter((tick): tick is number => tick != null))];
+}
+
+function DateAxis({
+  start,
+  end,
+  photos,
+  width,
+  accent,
+  surface,
+  muted,
+  onOpen,
+}: {
+  start: string;
+  end: string;
+  photos: readonly GoalProgressPhoto[];
+  width: number;
+  accent: string;
+  surface: string;
+  muted: string;
+  onOpen: (photo: GoalProgressPhoto) => void;
+}) {
+  const ticks = progressDateTicks(start, end);
+  const plotW = Math.max(1, width - GUTTER - 8);
+  const xFor = (day: string) => xAt(day, start, end, plotW);
+  const labels = width > 0
+    ? placeAxisLabels({ ticks, xs: ticks.map((tick) => xFor(tick.day)), rowWidth: width, scale: 0.8 })
+    : [];
+  return (
+    <View style={{ alignSelf: 'stretch', gap: 4 }}>
+      {photos.length > 0 ? (
+        <View style={{ height: 24 }}>
+          {photos.map((photo, index) => {
+            const stacked = photos.slice(0, index).filter((other) => other.recordedOn === photo.recordedOn).length;
+            const left = Math.min(Math.max(0, xFor(photo.recordedOn) - 11 + stacked * 24), Math.max(0, width - 22));
+            return (
+            <Pressable
+              key={photo.id}
+              accessibilityRole="button"
+              accessibilityLabel={`Progress photo ${formatUkCompactWhen(photo.createdAt || `${photo.recordedOn}T12:00:00.000Z`)}`}
+              onPress={() => onOpen(photo)}
+              style={{ position: 'absolute', left, top: 0, width: 22, height: 22, borderRadius: 11, borderWidth: 1, borderColor: accent, backgroundColor: surface, alignItems: 'center', justifyContent: 'center' }}
+            >
+              <Svg width={14} height={14} viewBox="0 0 24 24">
+                <Path d="M8 7h2l1-2h2l1 2h2a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2z" stroke={accent} strokeWidth={1.6} fill="none" />
+                <Circle cx={12} cy={13} r={2.4} stroke={accent} strokeWidth={1.6} fill="none" />
+            </Svg>
+            </Pressable>
+            );
+          })}
+        </View>
+      ) : null}
+      <View style={{ height: 22 }}>
+        {labels.map((tick) => (
+          <T key={`${tick.day}-${tick.label}`} variant="muted" numberOfLines={1} style={{ position: 'absolute', left: tick.left, width: tick.textWidth, textAlign: 'center', color: muted, fontSize: 12, lineHeight: 16 }}>{tick.label}</T>
+        ))}
+      </View>
+    </View>
   );
 }
 
@@ -261,7 +408,7 @@ function ProgressPhotoButton({ today }: { today: string }) {
   }
   return (
     <View style={{ gap: 8 }}>
-      <Button label="Take a photo to track progress visually" pending={pending} pendingLabel="Saving..." onPress={() => void take()} />
+      <Button label="Take a Time Stamped Photo to track Progress Visually" pending={pending} pendingLabel="Saving..." onPress={() => void take()} />
       {note ? <T variant="muted">{note}</T> : null}
     </View>
   );
