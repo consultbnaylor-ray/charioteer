@@ -2,6 +2,7 @@
  * Summaries the stats analysis may send to xAI.
  * Raw samples, epoch slices, activity files, routes, and women's health are not fields here.
  */
+import { formatUkCompactDay } from './healthInsights.ts';
 import { RESTING_AEROBIC_TIP, SLEEP_WAKE_TIP, STEP_WALK_TIP, VO2_ANALYSIS_RULE, vo2IntervalPhrase, type HeartRateMax } from './trainingGuidance.ts';
 
 export const ANALYSIS_STAT_IDS = [
@@ -117,13 +118,27 @@ export type StatsAnalysisPayload = {
   stats: AnalysisStat[];
 };
 
+export type LoggedMeal = {
+  /** UK calendar date, such as 3 Nov 2026. No clock time. */
+  day: string;
+  slot: string;
+  name: string;
+  kcal: number | null;
+  proteinG: number | null;
+  estimated: boolean;
+};
+
 export type NutritionBrief = {
   loggedDays: number;
   averageKcal: number | null;
   averageProteinG: number | null;
   calorieTarget: number | null;
   proteinTargetG: number | null;
+  /** Saved target, the training-goal figure, or the middle of the 1.6 to 2.2 g per kg guide. */
+  proteinTargetSource: 'saved' | 'goal' | 'guide' | null;
   proteinGuide: string;
+  meals: LoggedMeal[];
+  improvements: string[];
 };
 
 export const ANALYSIS_SECTION_TITLES = [
@@ -157,7 +172,7 @@ export const STATS_ANALYSIS_PROMPT = [
   'Use these titles in this order: Overview, Cardio/VO2, Steps & movement, Sleep & recovery, Nutrition: calories & protein, This week.',
   'Each body is one short paragraph. Do not put a blank line inside a body. The app separates sections with a blank line.',
   'Overview is the overall summary, then one short strengths line if any qualify. Put each improvement in the matching section, largest goalGap first.',
-  'Always include Nutrition: calories & protein. Compare averageKcal with calorieTarget, and averageProteinG with proteinTargetG. Quote proteinGuide as a general guide. If loggedDays is under 2, or nutrition is missing, say there is not enough logged food to compare intake. Do not invent a calorie or a protein figure.',
+  'Always include Nutrition: calories & protein. State the daily calorie target and the daily protein target in grams. Review the meals: UK dates, names, and the kcal and protein already stored. Give 2 to 4 specific practical changes based on those meals, using improvements when they are present. Do not invent a meal that is not listed. Do not include a clock time. If loggedDays is under 2, or nutrition is missing, say there is not enough logged food to compare intake. Estimates are a general guide. Not medical advice.',
   'Always include This week, with one or two practical steps.',
   'Then one short strengths line. Name at most three stats that are Good or Excellent and have no goalGap. If none qualify, do not invent a strength.',
   'Usual and No rating yet are not strengths and not levers.',
@@ -269,8 +284,18 @@ export function kcalFromWeightPlan(line: string | null | undefined): number | nu
 
 type MealRow = {
   eatenOn: string;
+  meal?: string;
+  note?: string;
+  estimated?: boolean;
   portion?: number;
-  items: readonly { kcal?: number; proteinG?: number }[];
+  items: readonly { name?: string; kcal?: number; proteinG?: number }[];
+};
+
+const SLOT_LABEL: Record<string, string> = {
+  breakfast: 'Breakfast',
+  lunch: 'Lunch',
+  dinner: 'Dinner',
+  snack: 'Snack',
 };
 
 /** Recent days that have a meal. Empty days are not treated as zero. */
@@ -280,49 +305,121 @@ export function nutritionBriefFromLogs(input: {
   weightKg: number | null;
   calorieTarget: number | null;
   proteinTargetG: number | null;
+  /** Goal-specific grams when no saved protein target is set. */
+  goalProteinG?: number | null;
   hideCalories?: boolean;
   days?: number;
 }): NutritionBrief {
   const span = input.days ?? 7;
   const start = shiftIso(input.today, -(span - 1));
+  const hide = input.hideCalories === true;
   const byDay = new Map<string, { kcal: number; protein: number }>();
+  const collected: (LoggedMeal & { iso: string })[] = [];
   for (const log of input.logs) {
     const day = log.eatenOn.slice(0, 10);
     if (!/^\d{4}-\d{2}-\d{2}$/.test(day) || day < start || day > input.today) continue;
     const portion = log.portion != null && log.portion > 0 ? log.portion : 1;
     let kcal = 0;
     let protein = 0;
+    const names: string[] = [];
     for (const item of log.items) {
       if (item.kcal != null && item.kcal > 0) kcal += item.kcal * portion;
       if (item.proteinG != null && item.proteinG > 0) protein += item.proteinG * portion;
+      const name = cleanMealName(item.name ?? '');
+      if (name) names.push(name);
     }
-    if (kcal <= 0 && protein <= 0) continue;
+    if (kcal <= 0 && protein <= 0 && names.length === 0 && !cleanMealName(log.note ?? '')) continue;
     const current = byDay.get(day) ?? { kcal: 0, protein: 0 };
     byDay.set(day, { kcal: current.kcal + kcal, protein: current.protein + protein });
+    collected.push({
+      iso: day,
+      day: formatUkCompactDay(day),
+      slot: SLOT_LABEL[log.meal ?? ''] ?? 'Meal',
+      name: (names.join(', ') || cleanMealName(log.note ?? '') || 'Logged meal').slice(0, 80),
+      kcal: hide ? null : Math.round(kcal),
+      proteinG: Math.round(protein),
+      estimated: log.estimated === true,
+    });
   }
+  collected.sort((left, right) => right.iso.localeCompare(left.iso) || (SLOT_RANK[right.slot] ?? '2').localeCompare(SLOT_RANK[left.slot] ?? '2'));
+  const shown = collected.slice(0, 12).map(({ iso: _iso, ...meal }) => meal);
   const days = [...byDay.values()];
-  const hide = input.hideCalories === true;
   const average = (pick: (row: { kcal: number; protein: number }) => number) =>
     days.length ? Math.round(days.reduce((sum, row) => sum + pick(row), 0) / days.length) : null;
-  return {
+  const savedProtein = boundedNumber(input.proteinTargetG, 1, 400);
+  const goalProtein = boundedNumber(input.goalProteinG ?? null, 1, 400);
+  const guideProtein = input.weightKg != null && input.weightKg >= 30 && input.weightKg <= 300 ? Math.round(input.weightKg * 1.9) : null;
+  const proteinTargetG = savedProtein ?? goalProtein ?? guideProtein;
+  const proteinTargetSource = savedProtein != null ? 'saved' : goalProtein != null ? 'goal' : guideProtein != null ? 'guide' : null;
+  const brief: NutritionBrief = {
     loggedDays: days.length,
     averageKcal: hide ? null : average((row) => row.kcal),
     averageProteinG: average((row) => row.protein),
     calorieTarget: hide ? null : boundedNumber(input.calorieTarget, 800, 6000),
-    proteinTargetG: boundedNumber(input.proteinTargetG, 1, 400),
+    proteinTargetG,
+    proteinTargetSource,
     proteinGuide: proteinGuideFor(input.weightKg),
+    meals: shown,
+    improvements: [],
   };
+  brief.improvements = mealImprovements(shown, brief);
+  return brief;
+}
+
+const SLOT_RANK: Record<string, string> = { Breakfast: '1', Lunch: '2', Dinner: '3', Snack: '4', Meal: '2' };
+
+export function mealImprovements(
+  meals: readonly LoggedMeal[],
+  brief: Pick<NutritionBrief, 'calorieTarget' | 'proteinTargetG' | 'averageKcal' | 'averageProteinG'>,
+): string[] {
+  const tips: string[] = [];
+  const breakfasts = meals.filter((meal) => meal.slot === 'Breakfast' && meal.proteinG != null);
+  if (breakfasts.length) {
+    const mean = breakfasts.reduce((sum, meal) => sum + (meal.proteinG ?? 0), 0) / breakfasts.length;
+    if (mean < 20 || (brief.proteinTargetG != null && mean < brief.proteinTargetG * 0.2)) {
+      tips.push('Breakfast is low in protein, so add Greek yoghurt or eggs.');
+    }
+  }
+  if (brief.calorieTarget != null) {
+    const byDay = new Map<string, { total: number; snack: number }>();
+    for (const meal of meals) {
+      const row = byDay.get(meal.day) ?? { total: 0, snack: 0 };
+      row.total += meal.kcal ?? 0;
+      if (meal.slot === 'Snack') row.snack += meal.kcal ?? 0;
+      byDay.set(meal.day, row);
+    }
+    const over = [...byDay.values()].some((day) => day.snack > 0 && day.total > (brief.calorieTarget ?? 0) && day.snack >= day.total * 0.15);
+    if (over) tips.push('Evening snacks push you over the calorie target.');
+  }
+  if (brief.proteinTargetG != null && brief.averageProteinG != null && brief.averageProteinG < brief.proteinTargetG * 0.9) {
+    const light = meals
+      .filter((meal) => meal.proteinG != null && meal.slot !== 'Snack' && meal.name !== 'Logged meal')
+      .sort((left, right) => (left.proteinG ?? 0) - (right.proteinG ?? 0))[0];
+    if (light && !tips.some((tip) => tip.startsWith('Breakfast') && light.slot === 'Breakfast')) {
+      tips.push(`${light.slot} is light on protein (${light.name}). Add chicken, eggs, yoghurt, or fish.`);
+    } else if (!tips.some((tip) => tip.startsWith('Breakfast'))) {
+      tips.push('Protein is under the daily target. Add a protein food at the meal you usually rush.');
+    }
+  }
+  if (brief.calorieTarget != null && brief.averageKcal != null && brief.averageKcal > brief.calorieTarget * 1.1) {
+    tips.push('Logged days sit above the calorie target. Trim the largest meal rather than skipping one.');
+  }
+  if (meals.some((meal) => meal.estimated)) {
+    tips.push('Some meals are estimates from a photo or a description, so treat the grams as a guide.');
+  }
+  if (tips.length < 2 && meals.length) tips.push('Keep a protein food at breakfast, lunch, and dinner, and stay near the daily targets.');
+  return [...new Set(tips)].slice(0, 4);
 }
 
 export function intakeContextLine(brief: NutritionBrief): string {
   const logged = brief.loggedDays < 2
     ? 'Fewer than two days of meals are logged, so there is not enough food data to judge intake.'
     : brief.averageKcal != null
-    ? `Recent logged days (${brief.loggedDays}) average about ${countText(brief.averageKcal)} kcal and ${countText(brief.averageProteinG ?? 0)} g protein.`
-    : `Recent logged days (${brief.loggedDays}) average about ${countText(brief.averageProteinG ?? 0)} g protein. Calories stay hidden.`;
-  const kcal = brief.calorieTarget != null ? ` Daily calorie target ${countText(brief.calorieTarget)} kcal.` : '';
-  const protein = brief.proteinTargetG != null ? ` Saved protein target ${countText(brief.proteinTargetG)} g.` : '';
-  return `Nutrition for a plan: ${logged}${kcal}${protein} ${brief.proteinGuide} Compare intake with these targets when they talk about food, training, or a plan. Not medical advice.`;
+      ? `Recent logged days (${brief.loggedDays}) average about ${countText(brief.averageKcal)} kcal and ${countText(brief.averageProteinG ?? 0)} g protein.`
+      : `Recent logged days (${brief.loggedDays}) average about ${countText(brief.averageProteinG ?? 0)} g protein. Calories stay hidden.`;
+  const meals = brief.meals.slice(0, 4).map((meal) => mealSentence(meal)).join(' ');
+  const tips = brief.improvements.slice(0, 2).join(' ');
+  return `Nutrition for a plan: ${dailyTargetSentence(brief)} ${logged}${meals ? ` Recent meals: ${meals}` : ''} ${brief.proteinGuide}${tips ? ` ${tips}` : ''} Compare intake with these targets when they talk about food, training, or a plan. Not medical advice.`;
 }
 
 export function sectionsToText(sections: readonly AnalysisSection[]): string {
@@ -411,24 +508,49 @@ function nutritionSection(payload: StatsAnalysisPayload): string {
     averageProteinG: null,
     calorieTarget: kcalFromWeightPlan(payload.weightPlan),
     proteinTargetG: null,
+    proteinTargetSource: null,
     proteinGuide: proteinGuideFor(weightKgOf(payload)),
+    meals: [],
+    improvements: [],
   };
   const guide = brief.proteinGuide || proteinGuideFor(weightKgOf(payload));
-  const target = brief.calorieTarget != null ? ` The daily calorie target is ${countText(brief.calorieTarget)} kcal.` : ' No daily calorie target is saved yet.';
-  const saved = brief.proteinTargetG != null ? ` The saved protein target is ${countText(brief.proteinTargetG)} g.` : '';
+  const meals = (brief.meals ?? []).slice(0, 8).map((meal) => mealSentence(meal)).join(' ');
+  const tips = (brief.improvements ?? []).slice(0, 4).join(' ');
   if (brief.loggedDays < 2) {
-    return tidy(`There is not enough logged food yet to compare intake with the targets.${target}${saved} ${guide} Not medical advice.`);
+    return tidy(`${dailyTargetSentence(brief)} There is not enough logged food yet to compare intake with the targets. ${guide} ${tips} Not medical advice.`);
   }
   const intake = brief.averageKcal != null
     ? `Logged meals on ${brief.loggedDays} days average about ${countText(brief.averageKcal)} kcal and ${countText(brief.averageProteinG ?? 0)} g protein.`
     : `Logged meals on ${brief.loggedDays} days average about ${countText(brief.averageProteinG ?? 0)} g protein. Calories stay hidden.`;
   const kcalCompare = brief.averageKcal != null && brief.calorieTarget != null
     ? ` Intake is ${compareWord(brief.averageKcal, brief.calorieTarget)} the daily calorie target of ${countText(brief.calorieTarget)} kcal.`
-    : target;
+    : '';
   const proteinCompare = brief.averageProteinG != null && brief.proteinTargetG != null
-    ? ` Protein is ${compareWord(brief.averageProteinG, brief.proteinTargetG)} the saved protein target of ${countText(brief.proteinTargetG)} g.`
-    : saved;
-  return tidy(`${intake}${kcalCompare}${proteinCompare} ${guide} Not medical advice.`);
+    ? ` Protein is ${compareWord(brief.averageProteinG, brief.proteinTargetG)} the daily protein target of ${countText(brief.proteinTargetG)} g.`
+    : '';
+  return tidy(`${dailyTargetSentence(brief)} ${intake}${kcalCompare}${proteinCompare} ${meals ? `Recent meals: ${meals}` : ''} ${guide} ${tips} Not medical advice.`);
+}
+
+function dailyTargetSentence(brief: Pick<NutritionBrief, 'calorieTarget' | 'proteinTargetG' | 'proteinTargetSource'>): string {
+  const kcal = brief.calorieTarget != null ? `${countText(brief.calorieTarget)} kcal` : 'no calorie target saved yet';
+  if (brief.proteinTargetG == null) return `Daily targets: ${kcal}, and no protein target in grams yet.`;
+  const grams = `${countText(brief.proteinTargetG)} g protein`;
+  if (brief.proteinTargetSource === 'goal') return `Daily targets: ${kcal} and about ${grams} for this training goal. That sits inside a general guide of 1.6 to 2.2 g per kg. Not a prescription.`;
+  if (brief.proteinTargetSource === 'guide') return `Daily targets: ${kcal} and about ${grams}, the middle of a general guide of 1.6 to 2.2 g per kg. Not a prescription.`;
+  return `Daily targets: ${kcal} and ${grams}.`;
+}
+
+function mealSentence(meal: LoggedMeal): string {
+  const macros = [
+    meal.kcal != null ? `${countText(meal.kcal)} kcal` : '',
+    meal.proteinG != null ? `${countText(meal.proteinG)} g protein` : '',
+  ].filter(Boolean).join(', ');
+  const estimate = meal.estimated ? ' Estimate.' : '';
+  return `${meal.day}, ${meal.slot}: ${meal.name}.${macros ? ` ${macros}.` : ''}${estimate}`;
+}
+
+function cleanMealName(value: string): string {
+  return value.replace(/[\u0000-\u001f]/g, '').replace(/\s+/g, ' ').trim().slice(0, 80);
 }
 
 function thisWeek(improvements: readonly string[]): string {
@@ -500,7 +622,7 @@ function parseModelSections(text: string): AnalysisSection[] | null {
       const row = item as { title?: unknown; body?: unknown };
       const title = canonicalTitle(typeof row.title === 'string' ? row.title : '');
       const body = tidy(typeof row.body === 'string' ? row.body : '');
-      if (!title || body.length < 20 || body.length > 800 || BANNED.test(body)) return [];
+      if (!title || body.length < 20 || body.length > 1600 || BANNED.test(body)) return [];
       return [{ title, body }];
     });
     return sections.length ? mergeSections(sections) : null;
@@ -569,14 +691,48 @@ function nutritionField(value: unknown): NutritionBrief | null {
   const logged = finite(row.loggedDays);
   const loggedDays = logged != null && logged >= 0 && logged <= 30 ? Math.round(logged) : 0;
   const proteinGuide = text(row.proteinGuide, 320) || PROTEIN_GUIDE_RANGE;
+  const source = row.proteinTargetSource === 'saved' || row.proteinTargetSource === 'goal' || row.proteinTargetSource === 'guide'
+    ? row.proteinTargetSource
+    : null;
   return {
     loggedDays,
     averageKcal: bounded(row.averageKcal, 0, 8000),
     averageProteinG: bounded(row.averageProteinG, 0, 400),
     calorieTarget: bounded(row.calorieTarget, 800, 6000),
     proteinTargetG: bounded(row.proteinTargetG, 1, 400),
+    proteinTargetSource: source,
     proteinGuide,
+    meals: mealField(row.meals),
+    improvements: improvementField(row.improvements),
   };
+}
+
+function mealField(value: unknown): LoggedMeal[] {
+  if (!Array.isArray(value)) return [];
+  return value.slice(0, 12).flatMap((item) => {
+    if (!item || typeof item !== 'object') return [];
+    const row = item as Record<string, unknown>;
+    const day = text(row.day, 40);
+    const name = text(row.name, 80);
+    if (!day || !name || /\d{4}-\d{2}-\d{2}T|T\d{2}:\d{2}/.test(`${day} ${name}`)) return [];
+    const slot = text(row.slot, 20) || 'Meal';
+    return [{
+      day,
+      slot,
+      name,
+      kcal: bounded(row.kcal, 0, 4000),
+      proteinG: bounded(row.proteinG, 0, 300),
+      estimated: row.estimated === true,
+    }];
+  });
+}
+
+function improvementField(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value.slice(0, 4).flatMap((item) => {
+    const line = text(item, 180);
+    return line ? [line] : [];
+  });
 }
 
 function bounded(value: unknown, min: number, max: number): number | null {

@@ -5,7 +5,7 @@ import { CMO_VIGOROUS_MINUTES_WEEK } from '@/domain/guidance';
 import { activeMinutesByDay } from '@/domain/healthSources';
 import { readingFor, type MetricContext } from '@/domain/metricRegistry';
 import { buildDailyTargets } from '@/domain/dailyTargets';
-import { GOAL_LABEL, isAnyBoxer, type NutritionGoal, type NutritionSex } from '@/domain/nutrition';
+import { GOAL_LABEL, isAnyBoxer, proteinGramsFor, type NutritionGoal, type NutritionSex } from '@/domain/nutrition';
 import {
   ANALYSIS_STAT_NAMES,
   analysisParagraphs,
@@ -56,7 +56,9 @@ type BuildInput = {
   kcalTarget?: number | null;
   proteinTarget?: number | null;
   hideCalories?: boolean;
-  logs?: readonly { eatenOn: string; portion?: number; items: readonly { kcal?: number; proteinG?: number }[] }[];
+  build?: import('@/domain/nutrition').BodyBuild | null;
+  phase?: import('@/domain/nutrition').BuilderPhase | null;
+  logs?: readonly { eatenOn: string; meal?: string; note?: string; estimated?: boolean; portion?: number; items: readonly { name?: string; kcal?: number; proteinG?: number }[] }[];
 };
 
 const WHOLE_IDS = new Set<AnalysisStatId>([
@@ -377,6 +379,7 @@ export function buildStatsAnalysis(input: BuildInput): StatsAnalysisPayload {
     weightKg: currentKg,
     calorieTarget: input.hideCalories ? null : (plan?.targetKcal ?? input.kcalTarget ?? null),
     proteinTargetG: input.proteinTarget ?? null,
+    goalProteinG: input.goal && currentKg != null ? proteinGramsFor(input.goal, currentKg, input.build ?? null, input.phase ?? null) : null,
     hideCalories: input.hideCalories === true,
   });
   return sanitizeStatsAnalysis({

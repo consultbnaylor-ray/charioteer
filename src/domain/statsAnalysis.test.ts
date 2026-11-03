@@ -291,11 +291,50 @@ describe('stats analysis summaries', () => {
     expect(payload.nutrition?.calorieTarget).toBe(2400);
     expect(payload.nutrition?.proteinGuide).toContain('1.6 to 2.2');
     expect(payload.nutrition?.proteinGuide).toContain('82 kg');
+    expect(payload.nutrition?.proteinTargetG).toBe(150);
+    expect(payload.nutrition?.proteinTargetSource).toBe('saved');
     const text = localStatsVerdict(payload);
+    expect(text).toContain('Daily targets:');
+    expect(text).toContain('150 g protein');
     expect(text).toContain('2,100 kcal');
     expect(text).toContain('under the daily calorie target of 2,400 kcal');
     expect(text).toContain('Not medical advice');
     const hidden = sanitizeStatsAnalysis({ ...payload, nutrition: { ...payload.nutrition, latitude: 51 } });
     expect(hidden?.nutrition && 'latitude' in hidden.nutrition).toBe(false);
+  });
+
+  it('reviews logged meals in UK dates and suggests practical changes', () => {
+    const payload = buildStatsAnalysis({
+      today: '2026-11-03',
+      age: 40,
+      sex: 'male',
+      goal: 'elite_cruiser_boxer',
+      heightCm: 180,
+      kcalTarget: 2200,
+      samples: [{ kind: 'weight_kg', value: 82, recordedOn: '2026-11-03' }],
+      readings: emptyGarminReadings(),
+      logs: [
+        { eatenOn: '2026-11-03T18:00:00.000Z', meal: 'breakfast', estimated: false, portion: 1, items: [{ name: 'Toast', kcal: 80, proteinG: 8 }] },
+        { eatenOn: '2026-11-03', meal: 'snack', estimated: true, portion: 1, note: 'crisps', items: [{ name: 'Crisps', kcal: 800, proteinG: 5 }] },
+        { eatenOn: '2026-11-03', meal: 'dinner', estimated: false, portion: 1, items: [{ name: 'Pasta', kcal: 1600, proteinG: 40 }] },
+        { eatenOn: '2026-11-02', meal: 'breakfast', estimated: false, portion: 1, items: [{ name: 'Toast', kcal: 90, proteinG: 6 }] },
+        { eatenOn: '2026-11-02', meal: 'dinner', estimated: false, portion: 1, items: [{ name: 'Chicken', kcal: 700, proteinG: 45 }] },
+      ],
+    });
+    const text = localStatsVerdict(payload);
+    expect(payload.nutrition?.proteinTargetSource).toBe('goal');
+    expect(payload.nutrition?.proteinTargetG).toBe(164);
+    expect(text).toContain('Daily targets:');
+    expect(text).toContain('2,200 kcal');
+    expect(text).toContain('164 g protein');
+    expect(text).toContain('3 Nov 2026, Breakfast: Toast');
+    expect(text).toContain('Estimate');
+    expect(text).not.toMatch(/\d{4}-\d{2}-\d{2}T/);
+    expect(text).toContain('Breakfast is low in protein, so add Greek yoghurt or eggs.');
+    expect(text).toContain('Evening snacks push you over the calorie target.');
+    expect(payload.nutrition?.improvements.length).toBeGreaterThanOrEqual(2);
+    expect(payload.nutrition?.improvements.length).toBeLessThanOrEqual(4);
+    expect(readFileSync('supabase/functions/health-plan/index.ts', 'utf8')).not.toContain('eaten_at');
+    expect(STATS_ANALYSIS_PROMPT).toContain('2 to 4');
   });
 });

@@ -15,7 +15,7 @@ import { exerciseReadingLines } from '../_shared/exerciseAnalysis.ts';
 import { garminActivitiesForUser, samplesWithGarminActivities } from '../_shared/fitnessSnapshot.ts';
 import { londonDay, shiftDay } from '../_shared/healthInsights.ts';
 import { json, preflight } from '../_shared/http.ts';
-import { isBodyBuild, isBuilderPhase, isMealSlot, isNutritionGoal, isNutritionSex, parseWorkoutBuckets, type FoodItem, type FoodLog, type NutritionGoal } from '../_shared/nutrition.ts';
+import { isBodyBuild, isBuilderPhase, isMealSlot, isNutritionGoal, isNutritionSex, parseWorkoutBuckets, proteinGramsFor, type FoodItem, type FoodLog, type NutritionGoal } from '../_shared/nutrition.ts';
 import { buildChatCompletionBody, THUMOS_CHAT } from '../_shared/thumos.ts';
 import { coachingPersonalDataAllowed, pausedCoachingMessage, readInterimCoachOptIn } from '../_shared/xaiPersonal.ts';
 import {
@@ -112,23 +112,36 @@ async function nutritionForAnalysis(
     proteinTargetG: null,
   });
   try {
-    let food = await userClient.from('food_logs').select('eaten_on, items, portion').eq('user_id', userId).gte('eaten_on', shiftDay(today, -6)).limit(80);
+    let food = await userClient.from('food_logs').select('eaten_on, meal, note, items, portion, estimated, source').eq('user_id', userId).gte('eaten_on', shiftDay(today, -6)).limit(80);
     if (food.error) {
-      food = await userClient.from('food_logs').select('eaten_on, items').eq('user_id', userId).gte('eaten_on', shiftDay(today, -6)).limit(80);
+      food = await userClient.from('food_logs').select('eaten_on, items, portion').eq('user_id', userId).gte('eaten_on', shiftDay(today, -6)).limit(80);
     }
     if (food.error) return fallback;
-    const settings = await userClient.from('nutrition_settings').select('hide_calories, kcal_target, protein_target').eq('user_id', userId).limit(1);
-    const row = !settings.error && Array.isArray(settings.data) ? settings.data[0] as { hide_calories?: unknown; kcal_target?: unknown; protein_target?: unknown } : null;
+    const settings = await userClient.from('nutrition_settings').select('hide_calories, kcal_target, protein_target, goal, build, goal_phase').eq('user_id', userId).limit(1);
+    const row = !settings.error && Array.isArray(settings.data) ? settings.data[0] as {
+      hide_calories?: unknown;
+      kcal_target?: unknown;
+      protein_target?: unknown;
+      goal?: unknown;
+      build?: unknown;
+      goal_phase?: unknown;
+    } : null;
     const hide = row?.hide_calories === true;
     const savedKcal = typeof row?.kcal_target === 'number' ? row.kcal_target : null;
     const savedProtein = typeof row?.protein_target === 'number' ? row.protein_target : null;
+    const weightKg = weightFrom(summary);
+    const goal = typeof row?.goal === 'string' && isNutritionGoal(row.goal) ? row.goal : null;
+    const goalProtein = goal && weightKg != null
+      ? proteinGramsFor(goal, weightKg, typeof row?.build === 'string' && isBodyBuild(row.build) ? row.build : null, typeof row?.goal_phase === 'string' && isBuilderPhase(row.goal_phase) ? row.goal_phase : null)
+      : null;
     const logs = Array.isArray(food.data) ? food.data.flatMap(mealFromRow) : [];
     return nutritionBriefFromLogs({
       today,
       logs,
-      weightKg: weightFrom(summary),
+      weightKg,
       calorieTarget: kcalFromWeightPlan(summary.weightPlan) ?? (hide ? null : savedKcal),
       proteinTargetG: savedProtein,
+      goalProteinG: goalProtein,
       hideCalories: hide,
     });
   } catch {
@@ -142,7 +155,7 @@ function weightFrom(summary: StatsAnalysisPayload): number | null {
   return value != null && value >= 30 && value <= 300 ? value : null;
 }
 
-function mealFromRow(row: unknown): { eatenOn: string; portion?: number; items: { kcal?: number; proteinG?: number }[] }[] {
+function mealFromRow(row: unknown): { eatenOn: string; meal?: string; note?: string; estimated?: boolean; portion?: number; items: { name?: string; kcal?: number; proteinG?: number }[] }[] {
   if (!row || typeof row !== 'object') return [];
   const record = row as Record<string, unknown>;
   const eatenOn = typeof record.eaten_on === 'string' ? record.eaten_on.slice(0, 10) : '';
@@ -151,14 +164,23 @@ function mealFromRow(row: unknown): { eatenOn: string; portion?: number; items: 
   const items = Array.isArray(record.items)
     ? record.items.flatMap((item) => {
       if (!item || typeof item !== 'object') return [];
-      const meal = item as { kcal?: unknown; proteinG?: unknown };
+      const meal = item as { name?: unknown; kcal?: unknown; proteinG?: unknown };
       return [{
+        name: typeof meal.name === 'string' ? meal.name : undefined,
         kcal: typeof meal.kcal === 'number' ? meal.kcal : undefined,
         proteinG: typeof meal.proteinG === 'number' ? meal.proteinG : undefined,
       }];
     })
     : [];
-  return [{ eatenOn, portion, items }];
+  const estimated = record.estimated === true || record.source === 'photo' || record.source === 'text';
+  return [{
+    eatenOn,
+    meal: typeof record.meal === 'string' ? record.meal : undefined,
+    note: typeof record.note === 'string' ? record.note : undefined,
+    estimated,
+    portion,
+    items,
+  }];
 }
 
 function analysisJson(summary: StatsAnalysisPayload, modelText: string): Response {

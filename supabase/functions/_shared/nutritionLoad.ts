@@ -16,6 +16,7 @@ import {
   isNutritionSex,
   lossBlocked,
   nutritionContextLines,
+  proteinGramsFor,
   parseBodyFatPct,
   parseLeanMassKg,
   parseWaistCm,
@@ -329,6 +330,7 @@ export async function loadNutritionLines(
     weightKg: latest?.kg ?? null,
     calorieTarget: settings.hideCalories ? null : (weightPlan?.targetKcal ?? settings.kcalTarget),
     proteinTargetG: settings.proteinTarget,
+    goalProteinG: settings.goal && latest && latest.kg >= 30 ? proteinGramsFor(settings.goal, latest.kg, settings.build, settings.goalPhase) : null,
     hideCalories: settings.hideCalories,
   }));
   return [progress, fitness, weightRange, intake, ...lines].filter((line): line is string => Boolean(line));
