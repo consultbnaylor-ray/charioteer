@@ -100,6 +100,12 @@ export type StatsAnalysisPayload = {
   age: number | null;
   sex: 'female' | 'male' | null;
   goal: string | null;
+  /** Fitness-age aim the person chose. A label, not a measurement. */
+  fitnessGoal?: string | null;
+  /** App-derived VO2 max target for that fitness age. */
+  vo2Goal?: string | null;
+  /** Set when weight loss and a harder fitness aim need both fuel and a deficit. */
+  fuelNote?: string | null;
   /**
    * App-derived calorie line for a saved target weight and date.
    * Built on the phone from weight, target, date, and estimated burn. Not a new health measurement.
@@ -172,7 +178,7 @@ export const STATS_ANALYSIS_PROMPT = [
   'Use these titles in this order: Overview, Cardio/VO2, Steps & movement, Sleep & recovery, Nutrition: calories & protein, This week.',
   'Each body is one short paragraph. Do not put a blank line inside a body. The app separates sections with a blank line.',
   'Overview is the overall summary, then one short strengths line if any qualify. Put each improvement in the matching section, largest goalGap first.',
-  'Always include Nutrition: calories & protein. State the daily calorie target and the daily protein target in grams. Review the meals: UK dates, names, and the kcal and protein already stored. Give 2 to 4 specific practical changes based on those meals, using improvements when they are present. Do not invent a meal that is not listed. Do not include a clock time. If loggedDays is under 2, or nutrition is missing, say there is not enough logged food to compare intake. Estimates are a general guide. Not medical advice.',
+  'Always include Nutrition: calories & protein. State the daily calorie target and the daily protein target in grams. Review the meals: UK dates, names, and the kcal and protein already stored. Give 2 to 4 specific practical changes based on those meals, using improvements when they are present. Do not invent a meal that is not listed. Do not include a clock time. If loggedDays is under 2, or nutrition is missing, say there is not enough logged food to compare intake. If fuelNote is set, say that trade-off: do not cut calories so far that training fuel is lost. If fitnessGoal or vo2Goal is set, the Cardio section uses that VO2 target. Estimates are a general guide. Not medical advice.',
   'Always include This week, with one or two practical steps.',
   'Then one short strengths line. Name at most three stats that are Good or Excellent and have no goalGap. If none qualify, do not invent a strength.',
   'Usual and No rating yet are not strengths and not levers.',
@@ -426,11 +432,16 @@ export function sectionsToText(sections: readonly AnalysisSection[]): string {
 export function withNutritionReview(
   sections: readonly AnalysisSection[],
   brief: NutritionBrief | null | undefined,
+  notes?: { fitnessGoal?: string | null; vo2Goal?: string | null; fuelNote?: string | null },
 ): AnalysisSection[] {
-  if (!brief) return [...sections];
+  const lines = brief ? [...nutritionReviewLines(brief)] : [];
+  const aim = [notes?.fitnessGoal ? `Fitness goal: ${notes.fitnessGoal}.` : '', notes?.vo2Goal ? `VO2 max target ${notes.vo2Goal}.` : ''].filter(Boolean).join(' ');
+  if (aim) lines.splice(Math.min(1, lines.length), 0, aim);
+  if (notes?.fuelNote) lines.splice(Math.max(lines.length - 1, 0), 0, notes.fuelNote);
+  if (!lines.length) return [...sections];
   const nutrition: AnalysisSection = {
     title: 'Nutrition: calories & protein',
-    body: nutritionReviewLines(brief).join('\n\n'),
+    body: lines.join('\n\n'),
   };
   const rest = sections.filter((section) => section.title !== nutrition.title);
   const week = rest.findIndex((section) => section.title === 'This week');
@@ -584,7 +595,11 @@ function ensureRequired(sections: readonly AnalysisSection[], payload: StatsAnal
   if (!merged.some((section) => section.title === 'This week')) {
     merged.push({ title: 'This week', body: thisWeek([]) });
   }
-  return withNutritionReview(merged, nutritionBriefOf(payload));
+  return withNutritionReview(merged, nutritionBriefOf(payload), {
+    fitnessGoal: payload.fitnessGoal,
+    vo2Goal: payload.vo2Goal,
+    fuelNote: payload.fuelNote,
+  });
 }
 
 function weightKgOf(payload: StatsAnalysisPayload): number | null {
@@ -827,6 +842,9 @@ export function sanitizeStatsAnalysis(input: unknown): StatsAnalysisPayload | nu
     age: age != null && age >= 10 && age <= 110 ? age : null,
     sex,
     goal: goal || null,
+    fitnessGoal: text(record.fitnessGoal, 40) || null,
+    vo2Goal: text(record.vo2Goal, 180) || null,
+    fuelNote: text(record.fuelNote, 320) || null,
     weightPlan: weightPlan || null,
     maxHeartRate,
     nutrition: nutritionField(record.nutrition),

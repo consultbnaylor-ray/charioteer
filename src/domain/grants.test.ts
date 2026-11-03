@@ -425,7 +425,7 @@ describe('client upsert update grants', () => {
         'share_quality', 'share_progress', 'goal', 'goal_age', 'goal_sex', 'protein_target_g',
         'carb_target_g', 'fat_target_g', 'goal_phase', 'weight_class_kg', 'target_weight_kg',
         'target_on', 'target_start_kg', 'activity_energy_kcal',
-        'share_goal', 'wagon_on', 'wagon_note', 'wagon_visible', 'build', 'updated_at',
+        'share_goal', 'wagon_on', 'wagon_note', 'wagon_visible', 'build', 'fitness_goal', 'updated_at',
       ],
       withheld: [],
     },

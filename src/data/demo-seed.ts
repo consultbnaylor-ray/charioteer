@@ -534,6 +534,7 @@ export function createDemoDb(now = new Date()): DemoDb {
     shareQuality: false,
     shareProgress: false,
     goal: 'maintain',
+    fitnessGoal: null,
     goalAge: null,
     goalSex: null,
     proteinTarget: null,

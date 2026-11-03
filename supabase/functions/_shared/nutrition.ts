@@ -1,4 +1,5 @@
 import { type CoachShare } from './coachConsent.ts';
+import { type FitnessGoal } from './fitnessGoal.ts';
 import { londonDay } from './healthInsights.ts';
 import { dedupeAdviceLines } from './adviceDedupe.ts';
 import { targetActivityPlan, targetCoachActivityLines, type ActivityReading } from './targetActivity.ts';
@@ -102,8 +103,10 @@ export type NutritionSettings = {
   shareQuality: boolean;
   /** Consecutive days with a meal logged. */
   shareProgress: boolean;
-  /** Null until they choose one. */
+  /** Null until they choose one. Weight or a boxing class. A fitness-age aim is separate. */
   goal: NutritionGoal | null;
+  /** Fitness-age aim. Null until saved. The app treats a blank value as Normal Fitness Age. */
+  fitnessGoal: FitnessGoal | null;
   goalAge: number | null;
   goalSex: NutritionSex | null;
   proteinTarget: number | null;
@@ -253,6 +256,7 @@ export function defaultNutritionSettings(): NutritionSettings {
     shareQuality: false,
     shareProgress: false,
     goal: null,
+    fitnessGoal: null,
     goalAge: null,
     goalSex: null,
     proteinTarget: null,

@@ -1,4 +1,5 @@
-import { athleticVo2Target } from './fitnessSnapshot.ts';
+import { type FitnessGoal } from './fitnessGoal.ts';
+import { athleticVo2Target, vo2ForFitnessGoal } from './fitnessSnapshot.ts';
 import type { NutritionGoal, NutritionSex } from './nutrition.ts';
 import { addIsoDays, isoDaysBetween, roundKg } from './targetWeight.ts';
 
@@ -86,6 +87,8 @@ export function goalProgressSeries(input: {
   targetOn: string | null;
   goal: NutritionGoal | null;
   sex: NutritionSex | null;
+  age?: number | null;
+  fitnessGoal?: FitnessGoal | null;
   weight: readonly { day: string; kg: number }[];
   vo2: readonly DatedValue[];
   weightTargetKg: number | null;
@@ -93,8 +96,9 @@ export function goalProgressSeries(input: {
 }): GoalProgressSeries {
   const weightActual = clean(input.weight.map((row) => ({ day: row.day, value: row.kg })));
   const vo2Actual = clean(input.vo2);
+  const fromAge = input.fitnessGoal ? vo2ForFitnessGoal(input.age ?? null, input.sex, input.fitnessGoal) : null;
   const vo2Band = athleticVo2Target(input.goal, input.sex);
-  const vo2Target = vo2Band ? vo2Band.low : null;
+  const vo2Target = fromAge?.target ?? (vo2Band ? vo2Band.low : null);
   const dated = input.targetOn != null && /^\d{4}-\d{2}-\d{2}$/.test(input.targetOn) && input.targetOn > input.today;
   const firstWeight = weightActual[0];
   const lastWeight = weightActual[weightActual.length - 1];
@@ -111,8 +115,14 @@ export function goalProgressSeries(input: {
       input.weightTargetKg,
     )
     : null;
-  const vo2Path = dated && vo2Target != null && lastVo2
-    ? pathFrom(firstVo2?.day ?? lastVo2.day, firstVo2?.value ?? lastVo2.value, input.targetOn as string, vo2Target)
+  const vo2End = dated ? input.targetOn as string : lastVo2?.day ?? null;
+  const vo2Path = vo2Target != null && lastVo2 && vo2End
+    ? dated
+      ? pathFrom(firstVo2?.day ?? lastVo2.day, firstVo2?.value ?? lastVo2.value, vo2End, vo2Target)
+      : [
+        { day: firstVo2?.day ?? lastVo2.day, value: vo2Target },
+        { day: lastVo2.day, value: vo2Target },
+      ]
     : null;
   return {
     start,

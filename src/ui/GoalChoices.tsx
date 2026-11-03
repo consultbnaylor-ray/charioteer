@@ -10,8 +10,9 @@ import {
   resolveGoalOptions,
   type GoalOption,
 } from '@/domain/goalOptions';
+import { FITNESS_GOAL_LABEL, FITNESS_GOALS, resolvedFitnessGoal, type FitnessGoal } from '@/domain/fitnessGoal';
 import { GOAL_PLAIN, boxingChipLabel, isAnyBoxer, type NutritionGoal } from '@/domain/nutrition';
-import { settingsForPreset } from '@/domain/targetWeight';
+import { settingsForFitnessGoal, settingsForPreset } from '@/domain/targetWeight';
 import { PlanTick } from '@/ui/PlanTick';
 import { GoalTargetDate, TargetWeightForm } from '@/ui/TargetWeightGoal';
 import { statsToneColors } from '@/ui/statsPalette';
@@ -117,8 +118,25 @@ export function GoalChoices({
     }
   }
 
+  async function chooseFitness(id: FitnessGoal) {
+    if (resolvedFitnessGoal(settings) === id && settings.fitnessGoal === id) return;
+    const ticket = ++write.current;
+    setNote(null);
+    setSaved(false);
+    try {
+      await repo.setNutritionSettings(settingsForFitnessGoal(repo.getSnapshot().nutrition, id));
+      if (ticket !== write.current) return;
+      setSaved(true);
+      playSavedHaptic();
+    } catch (err: unknown) {
+      if (ticket !== write.current) return;
+      setNote(shownError(err, 'Could not save that goal.'));
+    }
+  }
+
   const shown = options.length ? options : defaultGoalOptions();
-  const general = shown.filter((option) => !isAnyBoxer(option.id));
+  const general = shown.filter((option) => !isAnyBoxer(option.id) && option.id !== 'elite_runner' && option.id !== 'body_builder');
+  const fitnessNow = resolvedFitnessGoal(settings);
   const boxing = shown.filter((option) => isAnyBoxer(option.id));
   const body = (
     <View style={{ gap: 8 }}>
@@ -176,7 +194,20 @@ export function GoalChoices({
           <T style={{ color: green }}>{GOAL_SAVED_LINE}</T>
         </View>
       ) : null}
-      {settings.goal ? <T variant="muted">{GOAL_PLAIN[settings.goal]}</T> : null}
+      <T variant="label">Fitness goal</T>
+      <T variant="muted">This sits beside a weight goal. Both can be on.</T>
+      <View accessibilityLabel="Fitness goals" style={{ gap: 8, alignSelf: 'stretch' }}>
+        {FITNESS_GOALS.map((id) => (
+          <GoalDivision
+            key={id}
+            label={FITNESS_GOAL_LABEL[id]}
+            selected={fitnessNow === id}
+            onPress={() => void chooseFitness(id)}
+          />
+        ))}
+      </View>
+      {settings.goal && settings.goal !== 'elite_runner' && settings.goal !== 'body_builder' ? <T variant="muted">{GOAL_PLAIN[settings.goal]}</T> : null}
+      <T variant="muted">{FITNESS_GOAL_LABEL[fitnessNow]}</T>
       <QuietNote>{note}</QuietNote>
     </View>
   );

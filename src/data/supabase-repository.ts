@@ -100,6 +100,7 @@ import {
 } from '@/domain/nutrition';
 import { PLAN_DISCLAIMER, healthPlanFromStored, normaliseTrainingSchedule, parseSharedHealthPlan, trainingScheduleFromRow, type HealthPlan, type TrainingSchedule } from '@/domain/healthPlan';
 import { coerceAnalysisSections } from '@/domain/statsAnalysis';
+import { isFitnessGoal } from '@/domain/fitnessGoal';
 import { nutritionAimChanged } from '@/domain/targetWeight';
 import { GOAL_PROGRESS_BUCKET, GOAL_PROGRESS_MAX_BYTES, GOAL_PROGRESS_SIGNED_URL_SECONDS, goalProgressObjectPath, goalProgressPhotosFromRows, goalProgressStoragePath, withGoalProgressPreviews } from '@/domain/goalProgress';
 import { workoutFeelingsFromRows, type WorkoutFeeling } from '@/domain/workoutFeel';
@@ -2752,6 +2753,7 @@ export class SupabaseRepository implements Repository {
       share_quality: settings.shareQuality,
       share_progress: settings.shareProgress,
       goal: settings.goal,
+      fitness_goal: settings.fitnessGoal,
       goal_age: settings.goalAge,
       goal_sex: settings.goalSex,
       protein_target_g: settings.proteinTarget,
@@ -2802,6 +2804,14 @@ export class SupabaseRepository implements Repository {
     if (error && targetUnset && /target_weight_kg|target_on|target_start_kg/i.test(error.message)) {
       const { target_weight_kg: _target, target_on: _on, target_start_kg: _start, ...withoutTarget } = payload;
       payload = withoutTarget;
+      ({ error } = await this.client.from('nutrition_settings').upsert(payload));
+    }
+    if (error && /fitness_goal/i.test(error.message)) {
+      if (settings.fitnessGoal && settings.fitnessGoal !== 'normal') {
+        throw new UserFacingError('That fitness goal is not on the server yet.', 'generic');
+      }
+      const { fitness_goal: _fitness, ...withoutFitness } = payload;
+      payload = withoutFitness;
       ({ error } = await this.client.from('nutrition_settings').upsert(payload));
     }
     if (error && Object.keys(settings.workoutBuckets).length === 0 && /workout_buckets/i.test(error.message)) {
@@ -4270,6 +4280,7 @@ function nutritionFromRow(row: Row | null): NutritionSettings {
     shareQuality: row.share_quality === true,
     shareProgress: row.share_progress === true,
     goal,
+    fitnessGoal: typeof row.fitness_goal === 'string' && isFitnessGoal(row.fitness_goal) ? row.fitness_goal : null,
     goalAge: age == null ? null : Math.round(age),
     goalSex: sex,
     proteinTarget: nutritionNumber(row.protein_target_g, 0, 700),

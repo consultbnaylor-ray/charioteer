@@ -956,6 +956,56 @@ function boxerBand(goal: NutritionGoal | null, sex: NutritionSex | null): Fitnes
   return null;
 }
 
+const BAND_CENTRES = [25, 35, 45, 55, 65, 75] as const;
+
+function bandMidpoint(age: number, sex: NutritionSex): number | null {
+  const rows = sex === 'female' ? WOMEN : MEN;
+  const points = rows.map((row, index) => ({
+    age: BAND_CENTRES[index] ?? 25,
+    mid: (row.p25 + row.p75) / 2,
+  }));
+  const first = points[0];
+  const last = points[points.length - 1];
+  if (!first || !last) return null;
+  if (age <= first.age) return first.mid;
+  if (age >= last.age) return last.mid;
+  const next = points.findIndex((point) => point.age >= age);
+  const right = points[next];
+  const left = points[next - 1];
+  if (!left || !right || right.age === left.age) return right?.mid ?? left?.mid ?? null;
+  const mix = (age - left.age) / (right.age - left.age);
+  return left.mid + (right.mid - left.mid) * mix;
+}
+
+/**
+ * VO2 max that matches the fitness-age aim for this age and sex.
+ * Normal is the middle of the published band. Younger aims use that middle at the younger age.
+ * Elite is the upper published band for the real age.
+ */
+export function vo2ForFitnessGoal(
+  age: number | null,
+  sex: NutritionSex | null,
+  goal: import('./fitnessGoal.ts').FitnessGoal,
+): { target: number; fitnessAge: number; label: string } | null {
+  if (age == null || sex == null || age < 18 || age > 100) return null;
+  const real = Math.round(age);
+  if (goal === 'elite') {
+    const band = bandFor(real, sex);
+    if (!band) return null;
+    const target = Math.round(band.p75 * 10) / 10;
+    return { target, fitnessAge: real, label: `about ${target} ml/kg/min, the upper published band for age ${real}` };
+  }
+  const years = goal === 'younger_2' ? 2 : goal === 'younger_5' ? 5 : goal === 'younger_10' ? 10 : 0;
+  const fitnessAge = Math.max(20, Math.min(79, real - years));
+  const mid = bandMidpoint(fitnessAge, sex);
+  if (mid == null) return null;
+  const target = Math.round(mid * 10) / 10;
+  const which = years === 0
+    ? `a normal fitness age of ${fitnessAge}`
+    : `a fitness age of ${fitnessAge}, ${years} years under age ${real}`;
+  return { target, fitnessAge, label: `about ${target} ml/kg/min for ${which}` };
+}
+
 /** The same boxing VO2 band the fitness-age card uses. Null when this goal has no class band. */
 export function athleticVo2Target(goal: NutritionGoal | null, sex: NutritionSex | null): { low: number; high: number } | null {
   const band = boxerBand(goal, sex);

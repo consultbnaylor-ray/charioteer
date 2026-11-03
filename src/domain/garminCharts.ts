@@ -246,6 +246,7 @@ function fillMetricContext(partial: Partial<MetricContext> | undefined, period?:
     age: partial?.age ?? null,
     sex: partial?.sex ?? null,
     goal: partial?.goal ?? null,
+    fitnessGoal: partial?.fitnessGoal ?? null,
     ownUsual: partial?.ownUsual ?? null,
     heightCm: partial?.heightCm ?? null,
     realAge: partial?.realAge ?? partial?.age ?? null,

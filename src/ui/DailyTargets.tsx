@@ -10,6 +10,7 @@ import { formatUkCompactWhen, isoDay } from '@/domain/dates';
 import { formatAxisNumber, placeAxisLabels, progressDateTicks, yAxisTicks } from '@/domain/readingChart';
 import { shownError } from '@/domain/errors';
 import { athleticVo2Target } from '@/domain/fitnessSnapshot';
+import { resolvedFitnessGoal } from '@/domain/fitnessGoal';
 import { goalProgressSeries, goalProgressSignStub, orderReadings, progressLinePath, type DatedValue, type GoalProgressPhoto } from '@/domain/goalProgress';
 import { PHOTO_RETRY, PHOTO_UNAVAILABLE } from '@/domain/ownerPhotos';
 import { saveJpegToLibrary } from '@/ui/saveSharedPhoto';
@@ -49,7 +50,9 @@ export function DailyTargets() {
   const today = londonDay(new Date());
   const readings = weightPointsFrom(samples.length ? samples : snap.health ?? []);
   const current = readings.length ? readings[readings.length - 1] : undefined;
-  const hasAim = settings?.goal != null || targetKg != null;
+  const fitnessGoal = settings ? resolvedFitnessGoal(settings) : 'normal';
+  const hasFitness = settings?.fitnessGoal != null || settings?.goal === 'elite_runner' || settings?.goal === 'body_builder';
+  const hasAim = settings?.goal != null || targetKg != null || hasFitness;
   const plan = targetKg != null && targetOn && current
     ? buildDailyTargets({
       currentKg: current.kg,
@@ -62,6 +65,7 @@ export function DailyTargets() {
       activeEnergyKcal: settings?.activityEnergyKcal ?? averageRecentEnergy(samples, today),
       startKg: settings?.targetStartKg ?? readings[0]?.kg ?? null,
       startDay: readings[0]?.day ?? null,
+      fitnessGoal,
     })
     : null;
   if (!hasAim) return null;
@@ -71,8 +75,10 @@ export function DailyTargets() {
   const series = goalProgressSeries({
     today,
     targetOn,
-    goal: settings?.goal ?? null,
+    goal: settings?.goal === 'elite_runner' || settings?.goal === 'body_builder' ? null : settings?.goal ?? null,
     sex: settings?.goalSex ?? null,
+    age: settings?.goalAge ?? null,
+    fitnessGoal: hasFitness || settings?.goal != null ? fitnessGoal : null,
     weight: readings.map((row) => ({ day: row.day, kg: row.kg })),
     vo2,
     weightTargetKg: targetKg,
@@ -90,6 +96,7 @@ export function DailyTargets() {
           <T>{plan.activity}</T>
           <T>{plan.weigh}</T>
           {plan.pace ? <T>{plan.pace}</T> : null}
+          {plan.fuelNote ? <T>{plan.fuelNote}</T> : null}
         </>
       ) : (
         <T variant="muted">{targetOn ? `Target date ${targetOn}` : 'Set an optional target date on the goal if you want a path on the graph.'}</T>

@@ -7,6 +7,9 @@ import {
   isAnyBoxer,
   isClassBoxer,
   isTrainingGoal,
+} from './nutrition.ts';
+import { fuelTradeOffLine } from './fitnessGoal.ts';
+import {
   assessWeight,
   bmiValue,
   compositionForAssessment,
@@ -66,6 +69,7 @@ export type PlanInput = {
   /** Usual weekly units. For someone who has stopped, this is what they used to drink, not a current habit. */
   weeklyUnits?: number | null;
   goal: NutritionGoal | null;
+  fitnessGoal?: import('./fitnessGoal.ts').FitnessGoal | null;
   goalSex: NutritionSex | null;
   goalAge: number | null;
   build: BodyBuild | null;
@@ -354,6 +358,9 @@ function targetLine(facts: Derived): string {
     parts.push(`recent days averaged ${Math.round(facts.recentKcal).toLocaleString('en-GB')} kcal`);
   }
   if (facts.recentProtein != null) parts.push(`about ${Math.round(facts.recentProtein)} g protein`);
+  const losing = facts.input.goal === 'lose_weight' || facts.input.goal === 'lose_fat_build_muscle';
+  const fuel = fuelTradeOffLine(losing, facts.input.fitnessGoal ?? 'normal');
+  if (fuel) parts.push(fuel);
   const base = !parts.length
     ? 'No calorie or protein target is saved yet. Pick one on Nutrition, and keep meals regular until then.'
     : clip(parts.join(' · '), 220);
@@ -1610,7 +1617,10 @@ function fitnessSnapshotFor(input: PlanInput): string | null {
 }
 
 function focusLines(facts: Derived, habits: string[], session: string, well: string): string[] {
-  const lines = [...fitnessFocusLines(fitnessInput(facts.input)), goalFocusLine(facts.input.goal) ?? '', habits[0] ?? '', session, well]
+  const fitnessAim = facts.input.fitnessGoal && facts.input.fitnessGoal !== 'normal'
+    ? `Fitness goal: ${facts.input.fitnessGoal === 'elite' ? 'Elite Athlete' : facts.input.fitnessGoal === 'younger_10' ? '10 years younger' : facts.input.fitnessGoal === 'younger_5' ? '5 years younger' : '2 years younger'}.`
+    : '';
+  const lines = [fitnessAim, ...fitnessFocusLines(fitnessInput(facts.input)), goalFocusLine(facts.input.goal) ?? '', habits[0] ?? '', session, well]
     .flatMap((line) => {
       const text = standaloneFocus(line, facts.firstName);
       return text ? [text] : [];

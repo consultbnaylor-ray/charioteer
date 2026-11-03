@@ -1,3 +1,4 @@
+import { fuelTradeOffLine, type FitnessGoal } from './fitnessGoal.ts';
 import { kcalFloor, mifflinBmr, type NutritionSex } from './nutrition.ts';
 import {
   addIsoDays,
@@ -38,6 +39,8 @@ export type DailyTargets = {
   deficitKcal: number;
   /** One sentence for the analysis. App-derived. */
   analysisLine: string;
+  /** Set when a weight loss and a harder fitness aim would otherwise fight. */
+  fuelNote: string | null;
   path: DailyTargetPoint[];
   unrealistic: boolean;
 };
@@ -83,6 +86,7 @@ export function buildDailyTargets(input: {
   activeEnergyKcal: number | null;
   startKg: number | null;
   startDay: string | null;
+  fitnessGoal?: FitnessGoal | null;
 }): DailyTargets | null {
   if (!(input.currentKg > 0) || !(input.targetKg >= 30) || !/^\d{4}-\d{2}-\d{2}$/.test(input.targetOn)) return null;
   if (!/^\d{4}-\d{2}-\d{2}$/.test(input.today) || input.targetOn <= input.today) return null;
@@ -128,7 +132,8 @@ export function buildDailyTargets(input: {
   const burn = usedActive
     ? `Estimated burn is about ${tdee.toLocaleString('en-GB')} kcal, using recent activity.`
     : `Estimated burn is about ${tdee.toLocaleString('en-GB')} kcal, assuming a moderately active day.`;
-  const analysisLine = [headline, intake, activity, burn, pace].filter((line): line is string => Boolean(line)).join(' ');
+  const fuelNote = fuelTradeOffLine(direction === 'lose', input.fitnessGoal ?? 'normal');
+  const analysisLine = [headline, intake, activity, burn, pace, fuelNote].filter((line): line is string => Boolean(line)).join(' ');
   const startDay = input.startDay && /^\d{4}-\d{2}-\d{2}$/.test(input.startDay) ? input.startDay : input.today;
   const startKg = input.startKg != null && input.startKg > 0 ? input.startKg : input.currentKg;
   return {
@@ -140,7 +145,8 @@ export function buildDailyTargets(input: {
     caveat: DAILY_TARGETS_CAVEAT,
     targetKcal,
     deficitKcal,
-    analysisLine: analysisLine.slice(0, 400),
+    analysisLine: analysisLine.slice(0, 520),
+    fuelNote,
     path: pathBetween(startDay, startKg, input.targetOn, input.targetKg),
     unrealistic: unrealistic || floored,
   };

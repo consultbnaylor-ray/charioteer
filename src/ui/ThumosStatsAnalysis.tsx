@@ -4,6 +4,7 @@ import { View } from 'react-native';
 import { useRepository, useSnapshot } from '@/data';
 import { isoDay } from '@/domain/dates';
 import { emptyGarminReadings } from '@/domain/garminConnect';
+import { resolvedFitnessGoal } from '@/domain/fitnessGoal';
 import { analysisSectionsFromText, buildStatsAnalysis, THUMOS_ANALYSE, THUMOS_ANALYSE_CREDIT, THUMOS_ANALYSE_LOCAL, THUMOS_ANALYSIS_CAVEAT, withNutritionReview, type AnalysisSection } from '@/domain/statsAnalysis';
 import { THUMOS_ANALYSE_AGAIN } from '@/domain/thumosReading';
 import { useHealthSources } from '@/health/useHealthSources';
@@ -42,6 +43,7 @@ export function ThumosStatsAnalysis() {
         proteinTarget: snap.nutrition?.proteinTarget ?? null,
         build: snap.nutrition?.build ?? null,
         phase: snap.nutrition?.goalPhase ?? null,
+        fitnessGoal: snap.nutrition ? resolvedFitnessGoal(snap.nutrition) : null,
         hideCalories: snap.nutrition?.hideCalories === true,
         logs: (snap.foodLogs ?? []).map((log) => ({
           eatenOn: log.eatenOn,
@@ -56,7 +58,11 @@ export function ThumosStatsAnalysis() {
       });
       const result = await repo.analyseStats(summary);
       const shown = result.sections.length ? result.sections : analysisSectionsFromText(result.text);
-      setSections(withNutritionReview(shown, summary.nutrition));
+      setSections(withNutritionReview(shown, summary.nutrition, {
+        fitnessGoal: summary.fitnessGoal,
+        vo2Goal: summary.vo2Goal,
+        fuelNote: summary.fuelNote,
+      }));
       setLocal(result.source === 'local');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Analysis did not answer.');

@@ -15,6 +15,7 @@ import { exerciseReadingLines } from '../_shared/exerciseAnalysis.ts';
 import { garminActivitiesForUser, samplesWithGarminActivities } from '../_shared/fitnessSnapshot.ts';
 import { londonDay, shiftDay } from '../_shared/healthInsights.ts';
 import { json, preflight } from '../_shared/http.ts';
+import { isFitnessGoal, resolvedFitnessGoal } from '../_shared/fitnessGoal.ts';
 import { isBodyBuild, isBuilderPhase, isMealSlot, isNutritionGoal, isNutritionSex, parseWorkoutBuckets, proteinGramsFor, type FoodItem, type FoodLog, type NutritionGoal } from '../_shared/nutrition.ts';
 import { buildChatCompletionBody, THUMOS_CHAT } from '../_shared/thumos.ts';
 import { coachingPersonalDataAllowed, pausedCoachingMessage, readInterimCoachOptIn } from '../_shared/xaiPersonal.ts';
@@ -236,7 +237,7 @@ Deno.serve(async (req) => {
   }
   const limits = textOf(body.limits).trim().slice(0, 280);
 
-  const settingsSelect = 'goal, goal_age, goal_sex, build, kcal_target, protein_target_g, carb_target_g, fat_target_g, goal_phase, weight_class_kg, hide_calories, workout_buckets';
+  const settingsSelect = 'goal, fitness_goal, goal_age, goal_sex, build, kcal_target, protein_target_g, carb_target_g, fat_target_g, goal_phase, weight_class_kg, hide_calories, workout_buckets';
   let settingsRes = await userClient.from('nutrition_settings').select(settingsSelect).eq('user_id', userId).maybeSingle();
   if (settingsRes.error) {
     settingsRes = await userClient.from('nutrition_settings').select('goal, goal_age, goal_sex, build, kcal_target, protein_target_g, hide_calories').eq('user_id', userId).maybeSingle();
@@ -311,6 +312,9 @@ Deno.serve(async (req) => {
     limits: limits || textOf(saved?.limits).slice(0, 280),
     weeklyUnits: Number.isFinite(Number(profileRes.data.weekly_units)) ? Number(profileRes.data.weekly_units) : null,
     goal,
+    fitnessGoal: typeof settings.fitness_goal === 'string' && isFitnessGoal(settings.fitness_goal)
+      ? settings.fitness_goal
+      : resolvedFitnessGoal({ goal }),
     goalSex: isNutritionSex(textOf(settings.goal_sex)) ? textOf(settings.goal_sex) as PlanInput['goalSex'] : null,
     goalAge: typeof settings.goal_age === 'number' ? settings.goal_age : null,
     build: isBodyBuild(textOf(settings.build)) ? textOf(settings.build) as PlanInput['build'] : null,

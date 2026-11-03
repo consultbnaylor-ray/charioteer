@@ -53,6 +53,7 @@ export type MetricContext = {
   age: number | null;
   sex: NutritionSex | null;
   goal: NutritionGoal | null;
+  fitnessGoal?: import('@/domain/fitnessGoal').FitnessGoal | null;
   ownUsual: number | null;
   heightCm?: number | null;
   realAge?: number | null;

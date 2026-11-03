@@ -196,21 +196,34 @@ export function targetProgressFill(startKg: number | null, currentKg: number | n
 
 /** True when the saved aim, target weight, or target date changed. */
 export function nutritionAimChanged(
-  previous: { goal?: NutritionGoal | null; targetWeightKg?: number | null; targetOn?: string | null } | null | undefined,
-  next: { goal?: NutritionGoal | null; targetWeightKg?: number | null; targetOn?: string | null },
+  previous: { goal?: NutritionGoal | null; fitnessGoal?: string | null; targetWeightKg?: number | null; targetOn?: string | null } | null | undefined,
+  next: { goal?: NutritionGoal | null; fitnessGoal?: string | null; targetWeightKg?: number | null; targetOn?: string | null },
 ): boolean {
   return (previous?.goal ?? null) !== (next.goal ?? null)
+    || (previous?.fitnessGoal ?? null) !== (next.fitnessGoal ?? null)
     || (previous?.targetWeightKg ?? null) !== (next.targetWeightKg ?? null)
     || (previous?.targetOn ?? null) !== (next.targetOn ?? null);
+}
+
+function keptFitness(current: NutritionSettings): NutritionSettings['fitnessGoal'] {
+  if (current.fitnessGoal) return current.fitnessGoal;
+  if (current.goal === 'elite_runner' || current.goal === 'body_builder') return 'elite';
+  return 'normal';
 }
 
 export function settingsForPreset(current: NutritionSettings, goal: NutritionGoal): NutritionSettings {
   return {
     ...current,
     goal,
+    fitnessGoal: keptFitness(current),
     targetWeightKg: null,
     targetStartKg: null,
   };
+}
+
+export function settingsForFitnessGoal(current: NutritionSettings, fitnessGoal: NonNullable<NutritionSettings['fitnessGoal']>): NutritionSettings {
+  const goal = current.goal === 'elite_runner' || current.goal === 'body_builder' ? null : current.goal;
+  return { ...current, goal, fitnessGoal };
 }
 
 export function settingsForTarget(
@@ -221,6 +234,7 @@ export function settingsForTarget(
   return {
     ...current,
     goal: null,
+    fitnessGoal: keptFitness(current),
     goalPhase: null,
     weightClassKg: null,
     targetWeightKg: review.targetKg,

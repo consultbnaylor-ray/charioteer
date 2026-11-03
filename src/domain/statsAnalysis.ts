@@ -1,5 +1,6 @@
 import type { GarminReadings } from '@/domain/garminConnect';
-import { athleticVo2Target, publishedCardioBand } from '@/domain/fitnessSnapshot';
+import { FITNESS_GOAL_LABEL, fuelTradeOffLine } from '@/domain/fitnessGoal';
+import { athleticVo2Target, publishedCardioBand, vo2ForFitnessGoal } from '@/domain/fitnessSnapshot';
 import { heartRateMaxFrom } from '@/domain/trainingGuidance';
 import { CMO_VIGOROUS_MINUTES_WEEK } from '@/domain/guidance';
 import { activeMinutesByDay } from '@/domain/healthSources';
@@ -58,6 +59,7 @@ type BuildInput = {
   targetWeightKg?: number | null;
   targetOn?: string | null;
   activeEnergyKcal?: number | null;
+  fitnessGoal?: import('@/domain/fitnessGoal').FitnessGoal | null;
   kcalTarget?: number | null;
   proteinTarget?: number | null;
   hideCalories?: boolean;
@@ -104,6 +106,21 @@ function sportGoal(goal: NutritionGoal | null): boolean {
 
 /** The same targets the fitness-age card uses. A gap is only set when the figure is short of that target. */
 function goalMark(id: AnalysisStatId, value: number, ctx: MetricContext): { goalTarget: string | null; goalGap: number | null } {
+  if (ctx.fitnessGoal && id === 'vo2') {
+    const aim = vo2ForFitnessGoal(ctx.age, ctx.sex, ctx.fitnessGoal);
+    if (aim) {
+      return {
+        goalTarget: aim.label,
+        goalGap: value < aim.target ? round(aim.target - value) : null,
+      };
+    }
+  }
+  if (ctx.fitnessGoal && id === 'fitness_age' && ctx.age != null) {
+    const years = ctx.fitnessGoal === 'younger_2' ? 2 : ctx.fitnessGoal === 'younger_5' ? 5 : ctx.fitnessGoal === 'younger_10' ? 10 : 0;
+    const aim = Math.max(20, Math.round(ctx.age) - years);
+    const fitness = Math.round(value);
+    return { goalTarget: `at or under age ${aim}`, goalGap: fitness > aim + 1 ? fitness - aim : null };
+  }
   if (!sportGoal(ctx.goal)) return { goalTarget: null, goalGap: null };
   if (id === 'vo2') {
     const boxing = athleticVo2Target(ctx.goal, ctx.sex);
@@ -298,6 +315,7 @@ export function buildStatsAnalysis(input: BuildInput): StatsAnalysisPayload {
     age: input.age,
     sex: input.sex,
     goal: input.goal,
+    fitnessGoal: input.fitnessGoal ?? null,
     ownUsual: null,
     heightCm: input.heightCm,
     realAge: input.age,
@@ -371,9 +389,13 @@ export function buildStatsAnalysis(input: BuildInput): StatsAnalysisPayload {
       activeEnergyKcal: activeEnergy,
       startKg: start?.value ?? null,
       startDay: start?.day ?? null,
+      fitnessGoal: input.fitnessGoal ?? null,
     })
     : null;
   const goalLabel = input.goal ? GOAL_LABEL[input.goal] : null;
+  const fitnessLabel = input.fitnessGoal ? FITNESS_GOAL_LABEL[input.fitnessGoal] : null;
+  const vo2Aim = input.fitnessGoal ? vo2ForFitnessGoal(input.age, input.sex, input.fitnessGoal) : null;
+  const losing = input.goal === 'lose_weight' || input.goal === 'lose_fat_build_muscle';
   const maxHeartRate = heartRateMaxFrom({
     age: input.age,
     recorded: dailies.map((day) => day.maxHeartRateBpm),
@@ -390,8 +412,11 @@ export function buildStatsAnalysis(input: BuildInput): StatsAnalysisPayload {
   return sanitizeStatsAnalysis({
     age: input.age,
     sex: input.sex,
-    goal: goalLabel,
+    goal: [goalLabel, fitnessLabel ? `Fitness goal: ${fitnessLabel}` : null].filter(Boolean).join('. ') || null,
     weightPlan: plan?.analysisLine ?? null,
+    fitnessGoal: fitnessLabel,
+    vo2Goal: vo2Aim?.label ?? null,
+    fuelNote: fuelTradeOffLine(losing, input.fitnessGoal ?? 'normal'),
     maxHeartRate,
     nutrition,
     stats,

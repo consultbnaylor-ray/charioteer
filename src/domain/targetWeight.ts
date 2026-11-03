@@ -19,6 +19,7 @@ export {
   reviewTargetWeight,
   roundKg,
   safeWeeklyChangeKg,
+  settingsForFitnessGoal,
   settingsForPreset,
   settingsForTarget,
   targetBmi,
