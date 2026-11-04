@@ -44,6 +44,8 @@ describe('a weight goal and a fitness goal together', () => {
     expect(normal && younger && elite).toBeTruthy();
     expect(younger!.target).toBeGreaterThan(normal!.target);
     expect(elite!.target).toBeGreaterThan(normal!.target);
+    expect(elite!.target).toBe(52.1);
+    expect(elite!.label).toContain('90th percentile');
     expect(younger!.label).toContain('10 years under age 42');
     expect(fuelTradeOffLine(true, 'younger_5')).toMatch(/training still has fuel/);
     expect(fuelTradeOffLine(false, 'elite')).toBeNull();

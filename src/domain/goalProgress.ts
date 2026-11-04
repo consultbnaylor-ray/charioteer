@@ -1,10 +1,14 @@
 export {
   chartScale,
+  chartVo2Readings,
   goalProgressSeries,
   orderReadings,
+  pacedVo2Target,
   progressLinePath,
   type DatedValue,
   type GoalProgressSeries,
+  type Vo2ChartPoint,
+  type Vo2ChartSource,
 } from '../../supabase/functions/_shared/goalProgress.ts';
 
 export type GoalProgressPhoto = {

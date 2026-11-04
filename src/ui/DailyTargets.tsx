@@ -9,10 +9,9 @@ import { buildDailyTargets, DAILY_TARGETS_CAVEAT } from '@/domain/dailyTargets';
 import { formatUkCompactWhen, isoDay } from '@/domain/dates';
 import { formatAxisNumber, placeAxisLabels, progressDateTicks, yAxisTicks } from '@/domain/readingChart';
 import { shownError } from '@/domain/errors';
-import { athleticVo2Target } from '@/domain/fitnessSnapshot';
 import { resolvedFitnessGoal } from '@/domain/fitnessGoal';
 import { competitionCutActive } from '@/domain/targetWeight';
-import { goalProgressSeries, goalProgressSignStub, orderReadings, progressLinePath, type DatedValue, type GoalProgressPhoto } from '@/domain/goalProgress';
+import { chartVo2Readings, goalProgressSeries, goalProgressSignStub, orderReadings, progressLinePath, type DatedValue, type GoalProgressPhoto } from '@/domain/goalProgress';
 import { PHOTO_RETRY, PHOTO_UNAVAILABLE } from '@/domain/ownerPhotos';
 import { saveJpegToLibrary } from '@/ui/saveSharedPhoto';
 import { londonDay } from '@/domain/healthInsights';
@@ -77,9 +76,15 @@ export function DailyTargets() {
     })
     : null;
   if (!hasAim) return null;
-  const vo2 = vo2Points(samples, (watch.userMetrics ?? []).flatMap((row) => (
-    row.vo2Max != null && row.vo2Max > 0 ? [{ day: row.calendarDate, value: row.vo2Max }] : []
-  )));
+  const vo2Chart = chartVo2Readings({
+    apple: samples.filter((sample) => sample.kind === 'vo2_max').map((sample) => ({
+      recordedOn: sample.recordedOn,
+      value: sample.value,
+      id: sample.id,
+    })),
+    garmin: (watch.userMetrics ?? []).map((row) => ({ day: row.calendarDate, value: row.vo2Max })),
+  });
+  const vo2 = vo2Chart.points;
   const series = goalProgressSeries({
     today,
     targetOn,
@@ -122,26 +127,10 @@ export function DailyTargets() {
       <ProgressPhotoButton today={today} />
       {targetKg != null ? <WeightInline /> : null}
       <T variant="muted">{plan?.caveat ?? DAILY_TARGETS_CAVEAT}</T>
-      {athleticVo2Target(settings?.goal ?? null, settings?.goalSex ?? null) ? null : (
-        <T variant="muted">VO2 max is shown from the watch. A dashed VO2 path appears when the saved aim has a VO2 target.</T>
-      )}
+      {vo2Chart.sourceLabel ? <T variant="muted">{vo2Chart.sourceLabel}</T> : null}
+      {series.vo2Note ? <T variant="muted">{series.vo2Note}</T> : null}
     </Card>
   );
-}
-
-function vo2Points(
-  samples: readonly { kind: string; value: number; recordedOn: string }[],
-  watch: readonly { day: string; value: number }[],
-): DatedValue[] {
-  const map = new Map<string, number>();
-  for (const row of watch) {
-    if (row.value > 0 && /^\d{4}-\d{2}-\d{2}$/.test(row.day)) map.set(row.day, row.value);
-  }
-  for (const sample of samples) {
-    const day = sample.recordedOn.slice(0, 10);
-    if (sample.kind === 'vo2_max' && sample.value > 0 && /^\d{4}-\d{2}-\d{2}$/.test(day)) map.set(day, sample.value);
-  }
-  return [...map.entries()].map(([day, value]) => ({ day, value }));
 }
 
 const PLOT_H = 156;
@@ -229,6 +218,7 @@ function GoalProgressGraph({
         surface={surface}
         actual={vo2}
         path={series.vo2Path}
+        straight
         start={series.start}
         end={series.end}
         width={width}
@@ -263,6 +253,7 @@ function MiniSeries({
   surface,
   actual,
   path,
+  straight = false,
   start,
   end,
   width,
@@ -278,6 +269,7 @@ function MiniSeries({
   surface: string;
   actual: readonly DatedValue[];
   path: readonly DatedValue[] | null;
+  straight?: boolean;
   start: string;
   end: string;
   width: number;
@@ -304,7 +296,7 @@ function MiniSeries({
     const span = high - low || 1;
     return 22 + (1 - (value - low) / span) * (PLOT_H - 36);
   }
-  const actualPath = ordered.length > 1 ? progressLinePath(ordered, xFor, yFor) : '';
+  const actualPath = ordered.length > 1 ? progressLinePath(ordered, xFor, yFor, straight) : '';
   const targetPath = route.length > 1 ? progressLinePath(route, xFor, yFor) : '';
   const targetEnd = route[route.length - 1];
   const shortUnit = unit.length <= 4;

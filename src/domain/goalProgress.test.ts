@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 
 import { describe, expect, it } from 'vitest';
 
-import { GOAL_PROGRESS_BUCKET, goalProgressObjectPath, goalProgressPhotosFromRows, goalProgressSeries, goalProgressSignStub, progressLinePath, withGoalProgressPreviews } from '@/domain/goalProgress';
+import { GOAL_PROGRESS_BUCKET, chartVo2Readings, goalProgressObjectPath, goalProgressPhotosFromRows, goalProgressSeries, goalProgressSignStub, progressLinePath, withGoalProgressPreviews } from '@/domain/goalProgress';
 import { signedStorageRef } from '@/domain/ownerPhotos';
 import { settingsForPreset } from '@/domain/targetWeight';
 import { defaultNutritionSettings } from '@/domain/nutrition';
@@ -36,7 +36,8 @@ describe('goal progress', () => {
     expect(series.vo2Actual.map((point) => point.value)).toEqual([42, 43.2]);
     expect(series.weightPath).toBeNull();
     expect(series.vo2Target).toBe(56);
-    expect(series.vo2Path?.[0]?.value).toBe(42);
+    expect(series.vo2LongTerm).toBe(56);
+    expect(series.vo2Path?.[0]?.value).toBe(43.2);
     expect(series.vo2Path?.[series.vo2Path.length - 1]).toMatchObject({ day: '2027-06-01', value: 56 });
 
     const one = goalProgressSeries({
@@ -108,11 +109,60 @@ describe('goal progress', () => {
     expect(weightPath.startsWith(`M ${xFor('2026-09-02')} 89.6`)).toBe(true);
     expect(weightPath.endsWith(`${xFor('2026-11-03')} 84.2`)).toBe(true);
     expect(vo2Path.startsWith(`M ${xFor('2026-09-10')} 41.5`)).toBe(true);
+    const straight = progressLinePath(series.vo2Actual, xFor, yFor, true);
+    expect(straight.match(/ L /g)?.length).toBe(series.vo2Actual.length - 1);
+    expect(straight).not.toContain(' C ');
     const chart = readFileSync('src/ui/DailyTargets.tsx', 'utf8');
     expect(chart.match(/progressLinePath\(/g)?.length).toBe(2);
     expect(chart).toContain('No VO2 max readings yet');
     expect(chart).toContain('Take a Time Stamped Photo to track Progress Visually');
     expect(chart).not.toContain('SeriesLine');
+  });
+
+  it('plots one real VO2 max a day and caps an elite date short of the 90th percentile', () => {
+    const chart = chartVo2Readings({
+      apple: [
+        { id: 'apple-sep', recordedOn: '2026-09-12T08:00:00Z', value: 47 },
+        { id: 'apple-oct-early', recordedOn: '2026-10-20T07:00:00Z', value: 40 },
+        { id: 'apple-oct-late', recordedOn: '2026-10-20T18:00:00Z', value: 41 },
+        { id: 'apple-25', recordedOn: '2026-10-25T09:00:00Z', value: 47 },
+        { id: 'merged:vo2_max:2026-10-29', recordedOn: '2026-10-29', value: 44 },
+      ],
+      garmin: [
+        { day: '2026-10-25', value: 45 },
+        { day: '2026-10-29', value: 44 },
+      ],
+    });
+    expect(chart.points).toEqual([
+      { day: '2026-09-12', value: 47, source: 'apple' },
+      { day: '2026-10-20', value: 41, source: 'apple' },
+      { day: '2026-10-25', value: 45, source: 'garmin' },
+      { day: '2026-10-29', value: 44, source: 'garmin' },
+    ]);
+    expect(chart.sourceLabel).toContain('Garmin and Apple Health');
+    expect(chart.points).toHaveLength(4);
+
+    const series = goalProgressSeries({
+      today: '2026-11-04',
+      targetOn: '2026-12-31',
+      goal: null,
+      sex: 'male',
+      age: 45,
+      fitnessGoal: 'elite',
+      weight: [],
+      vo2: chart.points,
+      weightTargetKg: null,
+      weightStartKg: null,
+    });
+    expect(series.vo2Actual).toHaveLength(4);
+    expect(series.vo2LongTerm).toBe(52.1);
+    expect(series.vo2Target).toBe(48.1);
+    expect(series.vo2Note).toContain('52.1');
+    expect(series.vo2Note).toContain('48.1');
+    expect(series.vo2Path).toEqual([
+      { day: '2026-10-29', value: 44 },
+      { day: '2026-12-31', value: 48.1 },
+    ]);
   });
 
   it('keeps progress photos private and off the coach', () => {

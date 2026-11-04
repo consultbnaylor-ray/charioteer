@@ -2,6 +2,7 @@ import type { GarminReadings } from '@/domain/garminConnect';
 import { FITNESS_GOAL_LABEL, fuelTradeOffLine } from '@/domain/fitnessGoal';
 import { COMPETITION_CUT_RULES, competitionCutActive } from '@/domain/targetWeight';
 import { athleticVo2Target, publishedCardioBand, vo2ForFitnessGoal } from '@/domain/fitnessSnapshot';
+import { pacedVo2Target } from '@/domain/goalProgress';
 import { heartRateMaxFrom } from '@/domain/trainingGuidance';
 import { CMO_VIGOROUS_MINUTES_WEEK } from '@/domain/guidance';
 import { activeMinutesByDay } from '@/domain/healthSources';
@@ -114,7 +115,7 @@ function goalMark(id: AnalysisStatId, value: number, ctx: MetricContext): { goal
     const aim = vo2ForFitnessGoal(ctx.age, ctx.sex, ctx.fitnessGoal);
     if (aim) {
       return {
-        goalTarget: aim.label,
+        goalTarget: `${aim.target} ml/kg/min`,
         goalGap: value < aim.target ? round(aim.target - value) : null,
       };
     }
@@ -400,6 +401,19 @@ export function buildStatsAnalysis(input: BuildInput): StatsAnalysisPayload {
   const goalLabel = input.goal ? GOAL_LABEL[input.goal] : null;
   const fitnessLabel = input.fitnessGoal ? FITNESS_GOAL_LABEL[input.fitnessGoal] : null;
   const vo2Aim = input.fitnessGoal ? vo2ForFitnessGoal(input.age, input.sex, input.fitnessGoal) : null;
+  const vo2Pace = vo2Aim
+    ? pacedVo2Target({
+      longTerm: vo2Aim.target,
+      current: latestVo2,
+      today: input.today,
+      targetOn: input.targetOn,
+    })
+    : null;
+  const vo2Goal = vo2Aim == null
+    ? null
+    : vo2Pace?.limited
+      ? `${vo2Aim.label} By the target date, ${vo2Pace.byDate}.`
+      : vo2Aim.label;
   const losing = input.goal === 'lose_weight' || input.goal === 'lose_fat_build_muscle';
   const cutOn = input.competitionCut === true;
   const maxHeartRate = heartRateMaxFrom({
@@ -421,7 +435,7 @@ export function buildStatsAnalysis(input: BuildInput): StatsAnalysisPayload {
     goal: [goalLabel, fitnessLabel ? `Fitness goal: ${fitnessLabel}` : null].filter(Boolean).join('. ') || null,
     weightPlan: plan?.analysisLine ?? null,
     fitnessGoal: fitnessLabel,
-    vo2Goal: vo2Aim?.label ?? null,
+    vo2Goal,
     fuelNote: cutOn ? COMPETITION_CUT_RULES : fuelTradeOffLine(losing, input.fitnessGoal ?? 'normal'),
     competitionCut: cutOn,
     maxHeartRate,

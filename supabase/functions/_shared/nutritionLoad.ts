@@ -32,6 +32,7 @@ import { buildDailyTargets } from './dailyTargets.ts';
 import { FITNESS_GOAL_LABEL, fuelTradeOffLine, isFitnessGoal, resolvedFitnessGoal } from './fitnessGoal.ts';
 import { COMPETITION_CUT_RULES, competitionCutActive } from './targetWeight.ts';
 import { vo2ForFitnessGoal } from './fitnessSnapshot.ts';
+import { pacedVo2Target } from './goalProgress.ts';
 import { nutritionBriefFromLogs, nutritionInputLines, nutritionReviewLines } from './statsAnalysis.ts';
 import { soberElapsed } from './sober.ts';
 
@@ -358,9 +359,14 @@ export async function loadNutritionLines(
   const mealInput = brief ? nutritionInputLines(brief) : [];
   const fitnessAim = coach.ai ? resolvedFitnessGoal(settings) : null;
   const vo2 = fitnessAim && coach.health ? vo2ForFitnessGoal(settings.goalAge, settings.goalSex, fitnessAim) : null;
+  const latestVo2 = [...samples].filter((sample) => sample.kind === 'vo2_max' && sample.value > 0).sort((left, right) => left.recordedOn.localeCompare(right.recordedOn)).at(-1)?.value ?? null;
+  const vo2Pace = vo2 ? pacedVo2Target({ longTerm: vo2.target, current: latestVo2, today, targetOn: settings.targetOn }) : null;
+  const vo2Line = vo2
+    ? `VO2 max target ${vo2.label}${vo2Pace?.limited ? ` By the target date, ${vo2Pace.byDate}.` : ''}`
+    : '';
   const losing = settings.goal === 'lose_weight' || settings.goal === 'lose_fat_build_muscle';
   const fitnessLines = fitnessAim
-    ? [[`Fitness goal: ${FITNESS_GOAL_LABEL[fitnessAim]}.`, vo2 ? `VO2 max target ${vo2.label}.` : ''].filter(Boolean).join(' '), fuelTradeOffLine(losing, fitnessAim)].filter((line): line is string => Boolean(line))
+    ? [[`Fitness goal: ${FITNESS_GOAL_LABEL[fitnessAim]}.`, vo2Line].filter(Boolean).join(' '), fuelTradeOffLine(losing, fitnessAim)].filter((line): line is string => Boolean(line))
     : [];
   return [...review, ...mealInput, ...fitnessLines, cutOn ? COMPETITION_CUT_RULES : null, progress, fitness, weightRange, ...lines].filter((line): line is string => Boolean(line));
 }

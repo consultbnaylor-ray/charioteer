@@ -206,7 +206,7 @@ export function whyRestingMatters(): string {
 }
 
 const FRIEND_SOURCE =
-  'Age and sex: Kaminsky, Arena, and Myers, Mayo Clinic Proceedings, 2015. The shaded band is the 25th to the 75th percentile for treadmill cardio fitness.';
+  'Age and sex: Kaminsky, Arena, and Myers, Mayo Clinic Proceedings, 2015, Table 3 (FRIEND treadmill). The shaded band is the 25th to the 75th percentile. The same table reprints Cooper Clinic figures cited by ACSM\'s Guidelines for Exercise Testing and Prescription, 9th ed., 2014.';
 
 /**
  * Kim, Song, and Min, Exercise Science, 2016. Korean national amateur men.
@@ -222,22 +222,29 @@ const BOXER_SOURCE =
 const HEAVY_BOXER = { low: 56, high: 62 };
 const MIDDLE_BOXER = { low: 59, high: 65 };
 
+/**
+ * Kaminsky, Arena, and Myers, Mayo Clinic Proceedings, 2015, Table 3.
+ * Men and women from FRIEND, measured treadmill VO2max, ml/kg/min, free of known cardiovascular disease.
+ * p50 is the age-norm used here as the good level. p90 is the excellent level.
+ * The 95th percentile in that table is the superior cut (men 40–49: 55.6). Elite uses p90, not that extreme.
+ * Cooper Clinic predicted values sit in the same table and are the figures ACSM's 2014 guidelines cite.
+ */
 const MEN = [
-  { maxAge: 29, p25: 40.1, p75: 55.2 },
-  { maxAge: 39, p25: 35.9, p75: 49.2 },
-  { maxAge: 49, p25: 31.9, p75: 45.0 },
-  { maxAge: 59, p25: 27.1, p75: 39.7 },
-  { maxAge: 69, p25: 23.7, p75: 34.5 },
-  { maxAge: 79, p25: 20.4, p75: 30.4 },
+  { maxAge: 29, p25: 40.1, p50: 48.0, p75: 55.2, p90: 61.8 },
+  { maxAge: 39, p25: 35.9, p50: 42.4, p75: 49.2, p90: 56.5 },
+  { maxAge: 49, p25: 31.9, p50: 37.8, p75: 45.0, p90: 52.1 },
+  { maxAge: 59, p25: 27.1, p50: 32.6, p75: 39.7, p90: 45.6 },
+  { maxAge: 69, p25: 23.7, p50: 28.2, p75: 34.5, p90: 40.3 },
+  { maxAge: 79, p25: 20.4, p50: 24.4, p75: 30.4, p90: 36.6 },
 ] as const;
 
 const WOMEN = [
-  { maxAge: 29, p25: 30.5, p75: 44.7 },
-  { maxAge: 39, p25: 25.3, p75: 36.1 },
-  { maxAge: 49, p25: 22.1, p75: 32.4 },
-  { maxAge: 59, p25: 19.9, p75: 27.6 },
-  { maxAge: 69, p25: 17.2, p75: 23.8 },
-  { maxAge: 79, p25: 15.6, p75: 20.8 },
+  { maxAge: 29, p25: 30.5, p50: 37.6, p75: 44.7, p90: 51.3 },
+  { maxAge: 39, p25: 25.3, p50: 30.2, p75: 36.1, p90: 41.4 },
+  { maxAge: 49, p25: 22.1, p50: 26.7, p75: 32.4, p90: 38.4 },
+  { maxAge: 59, p25: 19.9, p50: 23.4, p75: 27.6, p90: 32.0 },
+  { maxAge: 69, p25: 17.2, p50: 20.0, p75: 23.8, p90: 27.0 },
+  { maxAge: 79, p25: 15.6, p50: 18.3, p75: 20.8, p90: 23.1 },
 ] as const;
 
 /**
@@ -958,29 +965,37 @@ function boxerBand(goal: NutritionGoal | null, sex: NutritionSex | null): Fitnes
 
 const BAND_CENTRES = [25, 35, 45, 55, 65, 75] as const;
 
-function bandMidpoint(age: number, sex: NutritionSex): number | null {
+/**
+ * A dated plan does not jump to the long-term level in a few weeks.
+ * Helgerud and colleagues, 2007, raised VO2 max by about 7% in 8 weeks of 4x4 intervals.
+ * From a reading near 44 that is about 0.4 ml/kg/min a week. The cap here is 0.5.
+ */
+export const VO2_WEEKLY_GAIN = 0.5;
+
+function percentileAt(age: number, sex: NutritionSex, key: 'p50' | 'p90'): number | null {
   const rows = sex === 'female' ? WOMEN : MEN;
   const points = rows.map((row, index) => ({
     age: BAND_CENTRES[index] ?? 25,
-    mid: (row.p25 + row.p75) / 2,
+    value: row[key],
   }));
   const first = points[0];
   const last = points[points.length - 1];
   if (!first || !last) return null;
-  if (age <= first.age) return first.mid;
-  if (age >= last.age) return last.mid;
+  if (age <= first.age) return first.value;
+  if (age >= last.age) return last.value;
   const next = points.findIndex((point) => point.age >= age);
   const right = points[next];
   const left = points[next - 1];
-  if (!left || !right || right.age === left.age) return right?.mid ?? left?.mid ?? null;
+  if (!left || !right || right.age === left.age) return right?.value ?? left?.value ?? null;
   const mix = (age - left.age) / (right.age - left.age);
-  return left.mid + (right.mid - left.mid) * mix;
+  return left.value + (right.value - left.value) * mix;
 }
 
 /**
- * VO2 max that matches the fitness-age aim for this age and sex.
- * Normal is the middle of the published band. Younger aims use that middle at the younger age.
- * Elite is the upper published band for the real age.
+ * Long-term VO2 max for the fitness-age aim.
+ * Normal, and a younger aim, use the 50th percentile (the good age-norm) at that age.
+ * Elite uses the 90th percentile of the real age band: the excellent level. The 95th is superior.
+ * A nearer date is capped separately at VO2_WEEKLY_GAIN.
  */
 export function vo2ForFitnessGoal(
   age: number | null,
@@ -992,18 +1007,22 @@ export function vo2ForFitnessGoal(
   if (goal === 'elite') {
     const band = bandFor(real, sex);
     if (!band) return null;
-    const target = Math.round(band.p75 * 10) / 10;
-    return { target, fitnessAge: real, label: `about ${target} ml/kg/min, the upper published band for age ${real}` };
+    const target = band.p90;
+    return {
+      target,
+      fitnessAge: real,
+      label: `${target} ml/kg/min, excellent for age ${real}, 90th percentile (Kaminsky 2015). At most ${VO2_WEEKLY_GAIN} ml/kg/min a week.`,
+    };
   }
   const years = goal === 'younger_2' ? 2 : goal === 'younger_5' ? 5 : goal === 'younger_10' ? 10 : 0;
   const fitnessAge = Math.max(20, Math.min(79, real - years));
-  const mid = bandMidpoint(fitnessAge, sex);
+  const mid = percentileAt(fitnessAge, sex, 'p50');
   if (mid == null) return null;
   const target = Math.round(mid * 10) / 10;
   const which = years === 0
-    ? `a normal fitness age of ${fitnessAge}`
-    : `a fitness age of ${fitnessAge}, ${years} years under age ${real}`;
-  return { target, fitnessAge, label: `about ${target} ml/kg/min for ${which}` };
+    ? `the good level for age ${fitnessAge}`
+    : `the good level for age ${fitnessAge}, ${years} years under age ${real}`;
+  return { target, fitnessAge, label: `${target} ml/kg/min, ${which} (50th percentile, Kaminsky 2015)` };
 }
 
 /** The same boxing VO2 band the fitness-age card uses. Null when this goal has no class band. */
