@@ -741,6 +741,7 @@ describe('nutrition charts', () => {
     expect(shown.caption).toBe('900 of 1,800 kcal logged today.');
     expect(shown.status).toBe('900 kcal left');
     expect(shown.fill).toBe(0.5);
+    expect(shown.overfill).toBe(0);
 
     const hidden = todayRing({
       hideCalories: true,
@@ -764,8 +765,46 @@ describe('nutrition charts', () => {
       logged: true,
     });
     expect(over.fill).toBe(1);
+    expect(over.overfill).toBeCloseTo(400 / 1800, 10);
     expect(over.caption).toBe('2,200 kcal logged, above 1,800 kcal.');
     expect(over.status).toBe('400 kcal over');
+    expect(over.target).toBe(1800);
+
+    const exact = todayRing({
+      hideCalories: false,
+      kcal: 2144,
+      kcalTarget: 2144,
+      proteinG: 0,
+      proteinTarget: null,
+      logged: true,
+    });
+    expect(exact.fill).toBe(1);
+    expect(exact.overfill).toBe(0);
+    expect(exact.status).toBe('On target');
+
+    const overrun = todayRing({
+      hideCalories: false,
+      kcal: 2765,
+      kcalTarget: 2144,
+      proteinG: 0,
+      proteinTarget: null,
+      logged: true,
+    });
+    expect(overrun.fill).toBe(1);
+    expect(overrun.overfill).toBeCloseTo(621 / 2144, 10);
+    expect(overrun.status).toBe('621 kcal over');
+    expect(overrun.target).toBe(2144);
+
+    const doubled = todayRing({
+      hideCalories: false,
+      kcal: 5000,
+      kcalTarget: 2144,
+      proteinG: 0,
+      proteinTarget: null,
+      logged: true,
+    });
+    expect(doubled.fill).toBe(1);
+    expect(doubled.overfill).toBe(1);
 
     const open = todayRing({
       hideCalories: false,
@@ -795,6 +834,19 @@ describe('nutrition charts', () => {
       proteinTarget: 100,
       logged: true,
     }).status).toBe('At your target');
+    const proteinOver = todayRing({
+      hideCalories: true,
+      kcal: 2765,
+      kcalTarget: 2144,
+      proteinG: 240,
+      proteinTarget: 160,
+      logged: true,
+    });
+    expect(proteinOver.fill).toBe(1);
+    expect(proteinOver.overfill).toBe(0);
+    expect(proteinOver.status).toBe('At your target');
+    expect(readFileSync('src/ui/NutritionCharts.tsx', 'utf8')).toContain("figureLabel('Calories', period)");
+    expect(readFileSync('src/ui/DistanceCharts.tsx', 'utf8')).toContain('overfill');
   });
 
   it('asks for a few meals before drawing an empty week or month', () => {

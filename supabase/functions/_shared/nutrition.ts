@@ -809,8 +809,10 @@ export type TodayRing = {
   kind: 'kcal' | 'protein';
   value: number;
   target: number | null;
-  /** Share of the ring to fill, from 0 to 1. */
+  /** First lap, from 0 to 1. Intake past the target stays at 1. */
   fill: number;
+  /** Second lap for calories over the target. Protein stays at 0. Capped at one extra lap. */
+  overfill: number;
   centre: string;
   unit: string;
   caption: string;
@@ -831,7 +833,9 @@ export function todayRing(input: {
   const value = kind === 'protein' ? input.proteinG : input.kcal;
   const target = kind === 'protein' ? input.proteinTarget : input.kcalTarget;
   const usableTarget = target != null && target > 0 ? target : null;
-  const fill = usableTarget == null ? 0 : Math.max(0, Math.min(1, value / usableTarget));
+  const ratio = usableTarget == null ? 0 : Math.max(0, value / usableTarget);
+  const fill = Math.min(1, ratio);
+  const overfill = kind === 'kcal' && ratio > 1 ? Math.min(1, ratio - 1) : 0;
   const unit = kind === 'protein' ? 'g protein' : 'kcal';
   const centre = kind === 'protein' ? String(round1(value)) : Math.round(value).toLocaleString('en-GB');
   let caption = 'Nothing logged today.';
@@ -857,7 +861,7 @@ export function todayRing(input: {
         : `${Math.round(left).toLocaleString('en-GB')} kcal left`;
     }
   }
-  return { kind, value, target: usableTarget, fill, centre, unit, caption, status };
+  return { kind, value, target: usableTarget, fill, overfill, centre, unit, caption, status };
 }
 
 export const PROTEIN_TARGET_MET = 'Protein target met';

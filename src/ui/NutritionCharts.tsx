@@ -121,7 +121,7 @@ export function NutritionBoard({
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12, justifyContent: 'space-around' }}>
           {picture.kcal ? (
             <RingFigure
-              label={figureLabel('Energy', period)}
+              label={figureLabel('Calories', period)}
               ring={picture.kcal}
               mark={energyMark(picture.kcal, period, picture.loggedCount)}
               period={period}
@@ -158,7 +158,7 @@ export function NutritionBoard({
         {loggedDays ? (
           <>
             {hideCalories ? null : (
-              <LoggedSeries title="Energy" today={today} period={period} days={trend.days} pick={(day) => day.kcal} target={kcalTarget} unit="kcal" />
+              <LoggedSeries title="Calories" today={today} period={period} days={trend.days} pick={(day) => day.kcal} target={kcalTarget} unit="kcal" />
             )}
             <LoggedSeries title="Protein" today={today} period={period} days={trend.days} pick={(day) => day.proteinG} target={proteinTarget} unit="g" />
             <T variant="muted">{trend.caption}</T>
@@ -231,8 +231,9 @@ function RingFigure({ label, ring, mark, period }: { label: string; ring: TodayR
         centre={ring.centre}
         unit={unit}
         fill={ring.fill}
+        overfill={ring.overfill}
         status={ring.status}
-        tone={mark.tone}
+        tone={ring.overfill > 0 ? 'good' : mark.tone}
         signal={mark.signal}
         monochrome={mark.monochrome}
         surface="card"

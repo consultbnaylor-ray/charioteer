@@ -108,6 +108,7 @@ export function ProgressRing({
   centre,
   unit,
   fill,
+  overfill = 0,
   status,
   tone,
   surface,
@@ -122,6 +123,8 @@ export function ProgressRing({
   centre: string;
   unit: string;
   fill: number;
+  /** Extra lap when calories pass the target. Capped at 1. Drawn in the Watch amber. */
+  overfill?: number;
   status: string;
   tone: StatsTone;
   surface: 'tile' | 'card';
@@ -144,7 +147,9 @@ export function ProgressRing({
   const radius = (ring - stroke) / 2;
   const circumference = 2 * Math.PI * radius;
   const shown = Math.max(0, Math.min(1, fill)) * motion;
+  const extra = Math.max(0, Math.min(1, overfill)) * motion;
   const closed = ringDrawsClosed(shown, ring);
+  const watchInk = statsToneColors(theme.scheme).watch.ink;
   const mid = ring / 2;
   const centreSize = (ring < 72 ? (centre.length > 3 ? 13 : 16) : ring < 100 ? 18 : 22) * theme.scale;
   return (
@@ -176,6 +181,19 @@ export function ProgressRing({
               fill="none"
               strokeLinecap="round"
               strokeDasharray={`${circumference * shown} ${circumference}`}
+              transform={`rotate(-90 ${mid} ${mid})`}
+            />
+          ) : null}
+          {extra > 0 ? (
+            <Circle
+              cx={mid}
+              cy={mid}
+              r={radius}
+              stroke={watchInk}
+              strokeWidth={stroke}
+              fill="none"
+              strokeLinecap="round"
+              strokeDasharray={`${circumference * extra} ${circumference}`}
               transform={`rotate(-90 ${mid} ${mid})`}
             />
           ) : null}
