@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
+import { ESTIMATE_CLIENT_TIMEOUT_MS, ESTIMATE_PROVIDER_TIMEOUT_MS } from './edgeRetry';
 import { londonDay } from './healthInsights';
 import { figuresForLondonWeek } from './goalLed';
 import { communitySharingOn } from './profileSharing';
@@ -935,7 +936,7 @@ describe('nutrition charts', () => {
     const status = readFileSync('src/ui/MealEstimateStatus.tsx', 'utf8');
     const log = screen.slice(screen.indexOf('variant="label">Log a meal'), screen.indexOf('variant="label">Logged today'));
     expect(status).toContain('Estimate ready - see below');
-    expect(status).toContain('Estimating...');
+    expect(status).toContain('Reading your meal…');
     expect(status).toContain('statsToneColors');
     expect(status).toContain('color: green');
     expect(status).toContain('<PlanTick done');
@@ -951,7 +952,7 @@ describe('nutrition charts', () => {
     expect(photoAt).toBeGreaterThan(statusAt);
     expect(log).toContain('ready={estimateReady && draft?.estimated === true}');
     expect(log).toContain('error={estimateError}');
-    expect(log).toContain('pendingLabel="Estimating..."');
+    expect(log).toContain('pendingLabel="Reading your meal…"');
     expect(log).toContain('nativeID="meal-estimate-confirm"');
     expect(log).toContain('{ESTIMATE_LABEL}');
     expect(log).toContain('label="Save meal"');
@@ -995,11 +996,12 @@ describe('nutrition charts', () => {
     const plan = repo.slice(repo.indexOf('async refreshHealthPlan'), repo.indexOf('async sharedNutrition'));
     const voice = repo.slice(repo.indexOf('async mintVoiceToken'), repo.indexOf('async reflectOnGratitude'));
     const logged = repo.slice(repo.indexOf('private rememberEdgeFailure'), repo.indexOf('private aiFailure'));
-    expect(estimate).toContain('const ESTIMATE_PROVIDER_TIMEOUT_MS = 28_000');
+    expect(estimate).toContain('const ESTIMATE_PROVIDER_TIMEOUT_MS = 90_000');
     expect(estimate).toContain('signal: AbortSignal.timeout(ESTIMATE_PROVIDER_TIMEOUT_MS)');
-    expect(estimate).toContain("const MEAL_VISION_MODEL = 'grok-4-fast-non-reasoning'");
-    expect(estimate).toContain("reasoning_effort: 'none'");
-    expect(estimate).toContain("detail: 'low'");
+    expect(estimate).toContain('model: THUMOS_CHAT.model');
+    expect(estimate).toContain("reasoning_effort: 'low'");
+    expect(estimate).toContain('max_tokens: 2000');
+    expect(estimate).toContain("detail: 'high'");
     expect(estimate).toContain('console.warn(`meal-estimate ${reason}`)');
     expect(estimate).toContain("warnMeal('no_key')");
     expect(estimate).toContain("warnMeal('gate')");
@@ -1011,7 +1013,8 @@ describe('nutrition charts', () => {
     expect(readFileSync('src/ui/pickMealPhoto.ts', 'utf8')).toContain('1024');
     expect(readFileSync('src/ui/pickMealPhoto.ts', 'utf8')).toContain('compress: 0.7');
     expect(estimate).toContain("source: 'local'");
-    expect(retry).toContain("ESTIMATE_WAIT_NOTE = 'This can take up to 20 seconds.'");
+    expect(retry).toContain("ESTIMATE_WAIT_NOTE = 'Reading your meal… this can take up to a minute.'");
+    expect(ESTIMATE_CLIENT_TIMEOUT_MS).toBeGreaterThan(ESTIMATE_PROVIDER_TIMEOUT_MS);
     expect(status).toContain('{ESTIMATE_WAIT_NOTE}');
     expect(method).toContain('ai: true');
     expect(method).toContain('timeoutMs: ESTIMATE_CLIENT_TIMEOUT_MS');

@@ -136,7 +136,7 @@ const HEALTH_STAT_GAPS: Record<string, { source: string; healthType: string | nu
     manual: false,
   },
   vo2_max: {
-    source: 'VO2 max comes from Apple Watch after outdoor walks or runs.',
+    source: 'VO2 max comes from an outdoor run with GPS and heart rate, or a cycle with a power meter. A walk does not update it.',
     healthType: 'HKQuantityTypeIdentifierVO2Max',
     manual: false,
   },

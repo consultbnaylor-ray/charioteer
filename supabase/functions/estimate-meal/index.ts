@@ -55,9 +55,11 @@ Deno.serve(async (req) => {
   const typed = text ? estimateFromText(text) : [];
   const unreadPhoto = () => json({ ok: false, code: 'unread', message: PHOTO_READ_FAIL }, 422);
   const warnMeal = (reason: string) => console.warn(`meal-estimate ${reason}`);
-  const ESTIMATE_PROVIDER_TIMEOUT_MS = 28_000;
-  /** Fast vision model. grok-4.3 keeps reasoning on and does not finish a photo inside the timeout. */
-  const MEAL_VISION_MODEL = 'grok-4-fast-non-reasoning';
+  /**
+   * Supabase stops an edge function at 150s on the Free plan and 400s on Pro.
+   * 90s leaves headroom for boot, auth, and sending the reply.
+   */
+  const ESTIMATE_PROVIDER_TIMEOUT_MS = 90_000;
   const apiKey = Deno.env.get('XAI_API_KEY');
   const personalDataEnabled = coachingPersonalDataAllowed({
     personalDataFlag: Deno.env.get('XAI_PERSONAL_DATA_ENABLED'),
@@ -87,7 +89,7 @@ Deno.serve(async (req) => {
   ];
   if (image) {
     const urlPart = image.startsWith('data:') ? image : `data:image/jpeg;base64,${image}`;
-    content.push({ type: 'image_url', image_url: { url: urlPart, detail: 'low' } });
+    content.push({ type: 'image_url', image_url: { url: urlPart, detail: 'high' } });
   }
 
   const textBody = buildChatCompletionBody({
@@ -98,10 +100,10 @@ Deno.serve(async (req) => {
     stream: false,
   });
   const photoBody = {
-    model: MEAL_VISION_MODEL,
-    reasoning_effort: 'none' as const,
+    model: THUMOS_CHAT.model,
+    reasoning_effort: 'low' as const,
     stream: false,
-    max_tokens: 400,
+    max_tokens: 2000,
     messages: [
       { role: 'system' as const, content: 'You estimate meals. Reply with JSON only.' },
       { role: 'user' as const, content },

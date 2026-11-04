@@ -152,7 +152,7 @@ describe('health stat tiles', () => {
     expect(boardLayout).not.toContain('minWidth: 148');
     expect(cardio.meaning).not.toMatch(/56 to 62|59 to 65/);
     expect(cardio.about).toContain('per kg of body weight per minute');
-    expect(gapForStat('vo2_max', 'VO2 max').source).toBe('VO2 max comes from Apple Watch after outdoor walks or runs.');
+    expect(gapForStat('vo2_max', 'VO2 max').source).toBe('VO2 max comes from an outdoor run with GPS and heart rate, or a cycle with a power meter. A walk does not update it.');
     const boardSource = readFileSync('src/ui/HealthStatBoard.tsx', 'utf8');
     expect(boardSource).toContain('{VO2_CARD_LINE}');
     expect(boardSource).toContain('<Vo2MeasureBanner />');

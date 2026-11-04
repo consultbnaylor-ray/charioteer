@@ -328,8 +328,9 @@ describe('Thumos reachability', () => {
     expect(classifyEdgeError(timed)).toBe('timeout');
     expect(edgeFailureLog(new Error('porridge with honey'), 401)).toBe('HTTP 401');
     expect(edgeFailureLog(new TypeError('Network request failed'))).not.toContain('porridge');
-    expect(ESTIMATE_CLIENT_TIMEOUT_MS).toBe(40_000);
-    expect(ESTIMATE_PROVIDER_TIMEOUT_MS).toBe(28_000);
+    expect(ESTIMATE_PROVIDER_TIMEOUT_MS).toBe(90_000);
+    expect(ESTIMATE_CLIENT_TIMEOUT_MS).toBe(110_000);
+    expect(ESTIMATE_CLIENT_TIMEOUT_MS).toBeGreaterThan(ESTIMATE_PROVIDER_TIMEOUT_MS);
   });
 
   it('does not send again after the caller has already given up', async () => {
