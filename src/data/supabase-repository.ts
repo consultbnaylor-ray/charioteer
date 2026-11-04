@@ -2540,8 +2540,11 @@ export class SupabaseRepository implements Repository {
 
   /** Older databases lack the later share and goal columns. A missing column stays off. */
   private async nutritionSettingsRow(userId: string) {
-    const athlete = 'kcal_target, hide_calories, share_food_diary, share_calories, share_quality, share_progress, goal, goal_age, goal_sex, protein_target_g, carb_target_g, fat_target_g, goal_phase, weight_class_kg, activity_energy_kcal, share_goal, wagon_on, wagon_note, wagon_visible, build, workout_buckets, updated_at';
+    const athlete = 'kcal_target, hide_calories, share_food_diary, share_calories, share_quality, share_progress, goal, fitness_goal, goal_age, goal_sex, protein_target_g, carb_target_g, fat_target_g, goal_phase, weight_class_kg, activity_energy_kcal, share_goal, wagon_on, wagon_note, wagon_visible, build, workout_buckets, updated_at';
     const withTarget = `target_weight_kg, target_on, target_start_kg, ${athlete}`;
+    const withCut = `competition_cut, competition_cut_at, competition_cut_version, ${withTarget}`;
+    const cut = await this.client.from('nutrition_settings').select(withCut).eq('user_id', userId).maybeSingle();
+    if (!cut.error) return cut;
     const targeted = await this.client.from('nutrition_settings').select(withTarget).eq('user_id', userId).maybeSingle();
     if (!targeted.error) return targeted;
     const widened = await this.client.from('nutrition_settings').select(athlete).eq('user_id', userId).maybeSingle();

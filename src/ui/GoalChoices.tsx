@@ -16,7 +16,7 @@ import { settingsForFitnessGoal, settingsForPreset } from '@/domain/targetWeight
 import { PlanTick } from '@/ui/PlanTick';
 import { GoalTargetDate, TargetWeightForm } from '@/ui/TargetWeightGoal';
 import { statsToneColors } from '@/ui/statsPalette';
-import { useAppTheme } from '@/ui/theme';
+import { stroke, useAppTheme } from '@/ui/theme';
 import { UpdateWeightLink } from '@/ui/UpdateWeightLink';
 import { Button, Card, Choice, ErrorNote, QuietNote, T, playSavedHaptic } from '@/ui/ui';
 
@@ -45,10 +45,10 @@ export function GoalDivision({
         justifyContent: 'center',
         paddingHorizontal: 16,
         paddingVertical: 12,
-        borderWidth: 1,
+        borderWidth: stroke.control,
         borderRadius: 12,
         borderColor: selected ? theme.colors.accent : theme.colors.line,
-        backgroundColor: theme.colors.surface,
+        backgroundColor: selected ? theme.colors.emphasisSoft : theme.colors.surface,
       }}
     >
       <T style={{ fontFamily: theme.font.bodyStrong }}>{label}</T>
