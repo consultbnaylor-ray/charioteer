@@ -5,9 +5,9 @@ import { loggedNutritionChart, loggingChart, overviewLineChart } from '@/domain/
 import type { ChartBar } from '@/domain/distance';
 import type { FoodLog, NutritionGoal, TodayRing, TrendDay } from '@/domain/nutrition';
 import {
-  dayItems,
   eatingInsights,
   fatBalance,
+  foodItemsInSpan,
   loggingCaption,
   loggingDots,
   macroSplit,
@@ -22,7 +22,7 @@ import {
 } from '@/domain/nutrition';
 import { chartBucketForPeriod } from '@/domain/readingChart';
 import type { StatsTone } from '@/domain/statsOverview';
-import { londonToday, paceJudgement, periodDayCount, periodHeading, periodPhrase, proteinPace, rollingWindow, type StatPeriod } from '@/domain/statWindow';
+import { chartFigureLabel, londonToday, NUTRITION_CHART_PERIODS, paceJudgement, periodDayCount, periodHeading, periodPhrase, proteinPace, rollingWindow, type StatPeriod } from '@/domain/statWindow';
 import { useStatPeriod } from '@/health/useStatPeriod';
 import { CompareBars, ProgressRing } from '@/ui/DistanceCharts';
 import { ProcessedFoodList } from '@/ui/ProcessedFoodList';
@@ -63,17 +63,16 @@ export function NutritionBoard({
   const picture = useMemo(() => {
     const days = nutritionTrendDays(logs, today, span);
     const logged = days.filter((day) => day.logged);
-    const items = logged.flatMap((day) => dayItems(logs, day.day));
+    const items = foodItemsInSpan(logs, today, span);
     const proteinDays = logged.map((day) => day.proteinG).filter((grams) => grams > 0);
     const proteinAvg = proteinDays.length ? proteinDays.reduce((sum, grams) => sum + grams, 0) / proteinDays.length : 0;
     const proteinHits = proteinTarget != null && proteinTarget > 0
       ? proteinDays.filter((grams) => grams >= proteinTarget).length
       : 0;
     const kcalAvg = logged.length ? logged.reduce((sum, day) => sum + day.kcal, 0) / logged.length : 0;
-    const qualityItems = days.flatMap((day) => dayItems(logs, day.day));
     const notes = processedFoodNotes(logs, days.map((day) => day.day));
     const processed = notes.length;
-    const whole = qualityItems.length - processed;
+    const whole = items.length - processed;
     const shared = {
       hideCalories,
       kcal: kcalAvg,
@@ -91,7 +90,7 @@ export function NutritionBoard({
       protein: todayRing({ ...shared, hideCalories: true }),
       macros: macroSplit(items),
       fats: fatBalance(items),
-      quality: qualityItems.length === 0 ? null : {
+      quality: items.length === 0 ? null : {
         heading: processedFoodHeading(whole, processed),
         period: periodHeading(period),
         meaning: processed === 0 ? 'On track' : processed === 1 ? '1 item looks highly processed' : `${processed} items look highly processed`,
@@ -117,18 +116,18 @@ export function NutritionBoard({
   return (
     <>
       <Card>
-        <StatPeriodToggle />
+        <StatPeriodToggle periods={NUTRITION_CHART_PERIODS} />
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12, justifyContent: 'space-around' }}>
           {picture.kcal ? (
             <RingFigure
-              label={figureLabel('Calories', period)}
+              label={chartFigureLabel('Calories', period)}
               ring={picture.kcal}
               mark={energyMark(picture.kcal, period, picture.loggedCount)}
               period={period}
             />
           ) : null}
           <RingFigure
-            label={figureLabel('Protein', period)}
+            label={chartFigureLabel('Protein', period)}
             ring={alignProteinCentre(picture.protein, picture.proteinAvg)}
             mark={proteinMark(picture.protein, period, picture.proteinDays, picture.proteinAvg, picture.proteinHits)}
             period={period}
@@ -181,11 +180,6 @@ export function NutritionBoard({
       ) : null}
     </>
   );
-}
-
-function figureLabel(name: string, period: StatPeriod): string {
-  if (period === 'day') return `${name} today`;
-  return `${name} in ${periodPhrase(period).replace(/^the /, '')}`;
 }
 
 function alignProteinCentre(ring: TodayRing, average: number): TodayRing {

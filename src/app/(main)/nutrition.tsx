@@ -36,6 +36,7 @@ import {
   goalBodyForSuggestion,
   goalDayLine,
   goalMealNote,
+  nutritionGoalLines,
   macroDayLine,
   kcalFloor,
   lossBlocked,
@@ -330,6 +331,7 @@ export default function Nutrition() {
   const [choiceNote, setChoiceNote] = useState<string | null>(null);
   const [suggestNote, setSuggestNote] = useState<string | null>(null);
   const [targetsSavedAt, setTargetsSavedAt] = useState<number | null>(null);
+  const [editingGoal, setEditingGoal] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editAnchor, setEditAnchor] = useState<'summary' | 'list'>('list');
   const [confirmId, setConfirmId] = useState<string | null>(null);
@@ -854,28 +856,6 @@ export default function Nutrition() {
     return `That sits under ${floor.toLocaleString('en-GB')} kcal, which is the floor for this screen. A higher target can be saved.`;
   }
 
-  function saveTarget() {
-    run('target', async () => {
-      setError(null);
-      const kcal = kcalFromField();
-      if (kcal === 'bad') {
-        setError('A target sits between 800 and 6,000 kcal, or leave it blank.');
-        return;
-      }
-      const current = repo.getSnapshot().nutrition;
-      const low = refuseLowKcal(kcal, current.goalAge, current.goalSex);
-      if (low) {
-        setError(low);
-        return;
-      }
-      try {
-        await repo.setNutritionSettings({ ...current, kcalTarget: kcal });
-      } catch (err) {
-        setError(shownError(err, 'Could not save that target.'));
-      }
-    });
-  }
-
   function saveTargets() {
     run('targets', async () => {
       setError(null);
@@ -1204,6 +1184,25 @@ export default function Nutrition() {
       </Card>
       <ScrollTarget id="goal">
       <Card>
+        <T variant="label">Goal</T>
+        {nutritionGoalLines({
+          goal: settings.goal,
+          fitnessGoal: settings.fitnessGoal,
+          targetWeightKg: settings.targetWeightKg,
+          targetOnLabel: settings.targetOn ? formatUkCompact(settings.targetOn) : null,
+          competitionCut: settings.competitionCut,
+          goalPhase: settings.goalPhase,
+        }).map((line) => <T key={line}>{line}</T>)}
+        {!editingGoal && (settings.competitionCut || settings.goal === 'elite_middle_boxer' || (settings.goal != null && isClassBoxer(settings.goal))) ? (
+          <T variant="muted">{COMPETITION_NOTE}</T>
+        ) : null}
+        <Button
+          label={editingGoal ? 'Done' : 'Edit your goal'}
+          tone="quiet"
+          onPress={() => setEditingGoal((open) => !open)}
+        />
+        {editingGoal ? (
+          <>
         <GoalChoices
           framed={false}
           detail="Pick one. A suggestion uses your weight, height, age, and sex if you add them. You can change the numbers."
@@ -1264,6 +1263,31 @@ export default function Nutrition() {
             <UpdateWeightLink />
           </View>
         ) : null}
+          </>
+        ) : null}
+        <NutritionShareSwitch
+          label="Share the goal and progress"
+          item="The goal and progress"
+          on={settings.shareGoal}
+          apply={(current, selected) => ({ ...current, shareGoal: selected })}
+        />
+      </Card>
+      </ScrollTarget>
+      <ScrollTarget id="calories">
+      <Card>
+        <T variant="label">Suggest targets</T>
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
+          <T style={{ flex: 1 }}>Hide calories</T>
+          <Switch
+            accessibilityLabel="Hide calories"
+            value={hide}
+            onValueChange={setHide}
+            trackColor={{ true: theme.colors.ink, false: theme.colors.line }}
+            thumbColor={theme.colors.surface}
+          />
+        </View>
+        <T variant="muted">{HIDE_CALORIES_LINE}</T>
+        <QuietNote>{choiceNote}</QuietNote>
         <Button label="Suggest targets" pending={isPending('suggest')} pendingLabel="Suggesting..." onPress={suggest} />
         {suggestNote ? <T>{suggestNote}</T> : null}
         {blocked ? <T>{LOW_BMI_NOTE}</T> : null}
@@ -1281,12 +1305,6 @@ export default function Nutrition() {
           onPress={saveTargets}
         />
         {settings.updatedAt ? <T>{`Last updated ${formatUkCompactWhen(settings.updatedAt)}`}</T> : null}
-        <NutritionShareSwitch
-          label="Share the goal and progress"
-          item="The goal and progress"
-          on={settings.shareGoal}
-          apply={(current, selected) => ({ ...current, shareGoal: selected })}
-        />
       </Card>
       </ScrollTarget>
       <ScrollTarget id="today">
@@ -1352,29 +1370,6 @@ export default function Nutrition() {
         <WaterMeter ml={water} />
         <Field label="Water today (ml)" value={waterText} onChangeText={setWaterText} keyboardType="number-pad" placeholder="350" />
         <Button label="Save water" pending={isPending('water')} pendingLabel="Saving..." onPress={saveWater} />
-      </Card>
-      </ScrollTarget>
-      <ScrollTarget id="calories">
-      <Card>
-        <T variant="label">Calories</T>
-        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
-          <T style={{ flex: 1 }}>Hide calories</T>
-          <Switch
-            accessibilityLabel="Hide calories"
-            value={hide}
-            onValueChange={setHide}
-            trackColor={{ true: theme.colors.ink, false: theme.colors.line }}
-            thumbColor={theme.colors.surface}
-          />
-        </View>
-        <T variant="muted">{HIDE_CALORIES_LINE}</T>
-        <QuietNote>{choiceNote}</QuietNote>
-        {hide ? null : (
-          <>
-            <Field label="Optional kcal target" value={target} onChangeText={setTarget} keyboardType="number-pad" placeholder="Leave blank for none" />
-            <Button label="Save target" pending={isPending('target')} pendingLabel="Saving..." onPress={saveTarget} />
-          </>
-        )}
       </Card>
       </ScrollTarget>
       <WagonFlag />

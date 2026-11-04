@@ -4,6 +4,12 @@ import { londonDay, shiftDay } from './healthInsights.ts';
 export const STAT_PERIODS = ['day', '7', '30', '60', '90', '6m', '12m'] as const;
 export type StatPeriod = (typeof STAT_PERIODS)[number];
 
+/**
+ * Chips on the nutrition charts card.
+ * Six months stays on Health. It is not offered here.
+ */
+export const NUTRITION_CHART_PERIODS = ['day', '7', '30', '60', '90', '12m'] as const satisfies readonly StatPeriod[];
+
 export const STAT_PERIOD_LABEL: Record<StatPeriod, string> = {
   day: 'Day',
   '7': '7 days',
@@ -77,6 +83,12 @@ export function minuteUnit(period: StatPeriod): string {
 /** "today", "the last 7 days", or "the last 6 months". */
 export function periodPhrase(period: StatPeriod): string {
   return PERIOD_PHRASE[period] ?? PERIOD_PHRASE['7'];
+}
+
+/** "Calories today", "Calories in last 7 days", or "Calories in last 12 months". */
+export function chartFigureLabel(name: string, period: StatPeriod): string {
+  if (period === 'day') return `${name} today`;
+  return `${name} in ${periodPhrase(period).replace(/^the /, '')}`;
 }
 
 /** Opening of a progress sentence: "Today", "Last 7 days", or "Last 12 months". */

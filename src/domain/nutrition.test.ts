@@ -105,6 +105,8 @@ import {
   loggingDots,
   macroSplit,
   nutritionTrendDays,
+  foodItemsInSpan,
+  nutritionGoalLines,
   smoothWeight,
   DUPLICATE_MEAL_PROMPT,
   RECENT_MEAL_WINDOW_MS,
@@ -846,12 +848,60 @@ describe('nutrition charts', () => {
     expect(proteinOver.overfill).toBe(0);
     expect(proteinOver.status).toBe('At your target');
     const charts = readFileSync('src/ui/NutritionCharts.tsx', 'utf8');
-    expect(charts).toContain("figureLabel('Calories', period)");
+    expect(charts).toContain("chartFigureLabel('Calories', period)");
     expect(charts).toContain('tone={mark.tone}');
     expect(charts).not.toContain("overfill > 0 ? 'good'");
     expect(charts).toContain("if (ring.value > ring.target) return { tone: 'watch' }");
     expect(charts).toContain('proteinMark(');
     expect(readFileSync('src/ui/DistanceCharts.tsx', 'utf8')).toContain('overfill');
+  });
+
+  it('keeps one kcal target on Suggest targets and summarises the goal', () => {
+    const screen = readFileSync('src/app/(main)/nutrition.tsx', 'utf8');
+    expect(screen).toContain('Edit your goal');
+    expect(screen).toContain('nutritionGoalLines(');
+    expect(screen).not.toContain('Optional kcal target');
+    expect(screen).not.toContain('label="Save target"');
+    expect(screen).not.toContain('function saveTarget(');
+    expect(screen).toContain('label="Daily kcal"');
+    expect(screen).toContain('kcalTarget: kcal');
+    const suggest = screen.slice(screen.indexOf('variant="label">Suggest targets'), screen.indexOf('variant="label">Today'));
+    expect(suggest).toContain('Hide calories');
+    expect(suggest).toContain('label="Suggest targets"');
+    expect(suggest).toContain('pending={isPending(\'suggest\')}');
+    expect(suggest).toContain('Save targets');
+    expect(suggest).not.toContain('<GoalChoices');
+    expect(nutritionGoalLines({
+      goal: 'lose_weight',
+      fitnessGoal: 'younger_5',
+      targetWeightKg: null,
+      targetOnLabel: null,
+      competitionCut: false,
+      goalPhase: null,
+    })).toEqual(['Lose Weight', '5 years younger']);
+    expect(nutritionGoalLines({
+      goal: 'maintain',
+      fitnessGoal: null,
+      targetWeightKg: 78,
+      targetOnLabel: '1 Jun 2026',
+      competitionCut: true,
+      goalPhase: null,
+    })).toEqual(['Target weight 78 kg by 1 Jun 2026', 'Normal Fitness Age', 'Competition cut on']);
+    const year = nutritionTrendDays([
+      log({ eatenOn: '2025-11-04', meal: 'breakfast', items: [food({ name: 'Oats', kcal: 400, proteinG: 10 })] }),
+      log({ eatenOn: '2026-10-14', meal: 'lunch', items: [food({ name: 'Rice', kcal: 500, proteinG: 12 })] }),
+      log({ eatenOn: '2024-01-01', meal: 'dinner', items: [food({ name: 'Old', kcal: 9000, proteinG: 1 })] }),
+    ], '2026-10-14', 365);
+    expect(year).toHaveLength(365);
+    expect(year[0]?.day).toBe('2025-10-15');
+    const logged = year.filter((day) => day.logged);
+    expect(logged).toHaveLength(2);
+    expect(logged.reduce((sum, day) => sum + day.kcal, 0) / logged.length).toBe(450);
+    expect(foodItemsInSpan([
+      log({ eatenOn: '2025-11-04', meal: 'breakfast', items: [food({ name: 'Oats', kcal: 400, proteinG: 10 })] }),
+      log({ eatenOn: '2026-10-14', meal: 'lunch', items: [food({ name: 'Rice', kcal: 500, proteinG: 12 })] }),
+      log({ eatenOn: '2024-01-01', meal: 'dinner', items: [food({ name: 'Old', kcal: 9000, proteinG: 1 })] }),
+    ], '2026-10-14', 365).map((item) => item.name)).toEqual(['Oats', 'Rice']);
   });
 
   it('asks for a few meals before drawing an empty week or month', () => {

@@ -125,6 +125,8 @@ export {
   mifflinBmr,
   nutritionContextLines,
   nutritionTrendDays,
+  foodItemsInSpan,
+  nutritionGoalLines,
   nutritionHealthQuantities,
   nutritionPatternLines,
   parsePortion,

@@ -1,5 +1,5 @@
 import { type CoachShare } from './coachConsent.ts';
-import { type FitnessGoal } from './fitnessGoal.ts';
+import { FITNESS_GOAL_LABEL, resolvedFitnessGoal, type FitnessGoal } from './fitnessGoal.ts';
 import { londonDay } from './healthInsights.ts';
 import { dedupeAdviceLines } from './adviceDedupe.ts';
 import { targetActivityPlan, targetCoachActivityLines, type ActivityReading } from './targetActivity.ts';
@@ -1390,15 +1390,40 @@ export function macroSplit(items: readonly FoodItem[]): { slices: MacroSlice[]; 
 
 export type TrendDay = { day: string; kcal: number; proteinG: number; logged: boolean };
 
+function itemsByEatenOn(logs: readonly FoodLog[]): Map<string, FoodItem[]> {
+  const byDay = new Map<string, FoodItem[]>();
+  for (const log of logs) {
+    if (!log.items.length) continue;
+    const list = byDay.get(log.eatenOn);
+    if (list) list.push(...log.items);
+    else byDay.set(log.eatenOn, [...log.items]);
+  }
+  return byDay;
+}
+
 export function nutritionTrendDays(logs: readonly FoodLog[], today: string, span: number): TrendDay[] {
+  const byDay = itemsByEatenOn(logs);
   const days: TrendDay[] = [];
   for (let ago = span - 1; ago >= 0; ago -= 1) {
     const day = shiftIsoDay(today, -ago);
-    const items = dayItems(logs, day);
+    const items = byDay.get(day) ?? [];
     const totals = sumItems(items);
     days.push({ day, kcal: totals.kcal, proteinG: totals.proteinG, logged: items.length > 0 });
   }
   return days;
+}
+
+/** Meals inside the rolling window. One pass, so a year of logs stays a single walk. */
+export function foodItemsInSpan(logs: readonly FoodLog[], today: string, span: number): FoodItem[] {
+  const count = Number.isFinite(span) ? Math.max(0, Math.floor(span)) : 0;
+  if (count <= 0) return [];
+  const start = shiftIsoDay(today, -(count - 1));
+  const items: FoodItem[] = [];
+  for (const log of logs) {
+    if (log.eatenOn < start || log.eatenOn > today) continue;
+    items.push(...log.items);
+  }
+  return items;
 }
 
 export function trendCaption(days: readonly TrendDay[], input: {
@@ -1754,6 +1779,30 @@ export const PHASE_LABEL: Record<BuilderPhase, string> = {
   surplus: 'Surplus / lean bulk',
   cut: 'Cut phase',
 };
+
+/** Compact lines for the nutrition goal card. The editor stays behind Edit your goal. */
+export function nutritionGoalLines(input: {
+  goal: NutritionGoal | null;
+  fitnessGoal: FitnessGoal | null;
+  targetWeightKg: number | null;
+  targetOnLabel: string | null;
+  competitionCut: boolean;
+  goalPhase: BuilderPhase | null;
+}): string[] {
+  const lines: string[] = [];
+  if (input.targetWeightKg != null) {
+    const kg = String(input.targetWeightKg);
+    lines.push(input.targetOnLabel ? `Target weight ${kg} kg by ${input.targetOnLabel}` : `Target weight ${kg} kg`);
+  } else if (input.goal) {
+    lines.push(GOAL_LABEL[input.goal]);
+  } else {
+    lines.push('No weight goal yet');
+  }
+  if (input.goal === 'body_builder' && input.goalPhase) lines.push(PHASE_LABEL[input.goalPhase]);
+  lines.push(FITNESS_GOAL_LABEL[resolvedFitnessGoal(input)]);
+  if (input.competitionCut) lines.push('Competition cut on');
+  return lines;
+}
 
 export const COMPETITION_NOTE =
   'A competition weigh-in is a decision for you, a coach, and a doctor. This app will not plan a rapid cut, skipped meals, or dehydration.';

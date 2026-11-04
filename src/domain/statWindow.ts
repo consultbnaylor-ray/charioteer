@@ -10,6 +10,8 @@ export {
   periodFairChance,
   periodHeading,
   periodPhrase,
+  chartFigureLabel,
+  NUTRITION_CHART_PERIODS,
   proteinPace,
   rollingWindow,
   scaledPeriodTarget,
