@@ -52,6 +52,7 @@ import {
   mealWeeksForDay,
   visibleMealDays,
   mealNutrientBars,
+  PHOTO_READ_FAIL,
   nutritionTrendDays,
   processedFoodHeading,
   processedFoodNotes,
@@ -619,7 +620,7 @@ export default function Nutrition() {
         }
         const estimate = await repo.estimateMeal({ imageBase64: photo.base64, text });
         if (!estimate.items.length) {
-          failEstimate('Could not read that photo. You can still type the meal in yourself.');
+          failEstimate(PHOTO_READ_FAIL);
           return;
         }
         showEstimate({
@@ -632,7 +633,7 @@ export default function Nutrition() {
           photoBase64: photo.base64,
         });
       } catch (err) {
-        failEstimate(shownError(err, 'Could not read that photo. You can still type the meal in yourself.'));
+        failEstimate(shownError(err, PHOTO_READ_FAIL));
       }
     });
   }
@@ -646,7 +647,7 @@ export default function Nutrition() {
       try {
         const estimate = await repo.estimateMeal({ imageBase64: SAMPLE_JPEG });
         if (!estimate.items.length) {
-          failEstimate('Could not read that photo. You can still type the meal in yourself.');
+          failEstimate(PHOTO_READ_FAIL);
           return;
         }
         showEstimate({
@@ -659,7 +660,7 @@ export default function Nutrition() {
           photoBase64: SAMPLE_JPEG,
         });
       } catch (err) {
-        failEstimate(shownError(err, 'Could not read that photo. You can still type the meal in yourself.'));
+        failEstimate(shownError(err, PHOTO_READ_FAIL));
       }
     });
   }

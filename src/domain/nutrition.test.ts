@@ -64,6 +64,7 @@ import {
   isBodyBuild,
   proteinBasisKg,
   proteinGramsFor,
+  PHOTO_READ_FAIL,
   samplePhotoMeal,
   sugarCravingNote,
   suggestedTargetsLine,
@@ -146,6 +147,19 @@ describe('meal estimates', () => {
     expect(items[0]?.proteinG).toBe(12.8);
     expect(samplePhotoMeal().map((item) => item.name)).toEqual(['Chicken', 'Avocado']);
     expect(ESTIMATE_LABEL).toBe('Estimate');
+    const live = readFileSync('supabase/functions/estimate-meal/index.ts', 'utf8');
+    const repo = readFileSync('src/data/supabase-repository.ts', 'utf8');
+    const method = repo.slice(repo.indexOf('async estimateMeal'), repo.indexOf('async saveFoodLog'));
+    const demo = readFileSync('src/data/demo-repository.ts', 'utf8');
+    expect(PHOTO_READ_FAIL).toBe("Couldn't read that photo, try again or type it");
+    expect(live).not.toContain('samplePhotoMeal');
+    expect(live).not.toContain('chicken and avocado');
+    expect(live).toContain('PHOTO_READ_FAIL');
+    expect(method).not.toContain('samplePhotoMeal');
+    expect(method).toContain('PHOTO_READ_FAIL');
+    expect(demo).toContain('samplePhotoMeal');
+    expect(readFileSync('src/app/(main)/nutrition.tsx', 'utf8')).toContain('PHOTO_READ_FAIL');
+    expect(readFileSync('supabase/functions/_shared/nutrition.ts', 'utf8')).toContain(PHOTO_READ_FAIL);
   });
 
   it('keeps calories out of the quality view and does not shame a day over target', () => {

@@ -507,7 +507,10 @@ export function estimateFromText(text: string): FoodItem[] {
   }];
 }
 
-/** Demo photo reading. The live function sends the picture to the vision model. */
+/** Demo mode only. A live photo estimate must never return this. */
+export const PHOTO_READ_FAIL = "Couldn't read that photo, try again or type it";
+
+/** Demo photo reading. Not used when a real account sends a photo. */
 export function samplePhotoMeal(): FoodItem[] {
   return estimateFromText('chicken and avocado');
 }

@@ -3,7 +3,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.117.3';
 import { gateAiUse } from '../_shared/aiAllowance.ts';
 import { json, preflight } from '../_shared/http.ts';
 import { stripJpegBase64 } from '../_shared/photoLocation.ts';
-import { MEAL_ESTIMATE_PROMPT, estimateFromText, parseMealEstimate, samplePhotoMeal } from '../_shared/nutrition.ts';
+import { MEAL_ESTIMATE_PROMPT, PHOTO_READ_FAIL, estimateFromText, parseMealEstimate } from '../_shared/nutrition.ts';
 import { buildChatCompletionBody, THUMOS_CHAT } from '../_shared/thumos.ts';
 import { coachingPersonalDataAllowed, readInterimCoachOptIn } from '../_shared/xaiPersonal.ts';
 
@@ -52,7 +52,8 @@ Deno.serve(async (req) => {
     }, 403);
   }
 
-  const local = text ? estimateFromText(text) : samplePhotoMeal();
+  const typed = text ? estimateFromText(text) : [];
+  const unreadPhoto = () => json({ ok: false, code: 'unread', message: PHOTO_READ_FAIL }, 422);
   const ESTIMATE_PROVIDER_TIMEOUT_MS = 28_000;
   const apiKey = Deno.env.get('XAI_API_KEY');
   const personalDataEnabled = coachingPersonalDataAllowed({
@@ -60,7 +61,7 @@ Deno.serve(async (req) => {
     interimFlag: Deno.env.get('XAI_INTERIM_OPT_IN_ALLOWED'),
     userOptIn: await readInterimCoachOptIn(userClient, userData.user.id),
   });
-  if (!apiKey || !personalDataEnabled) return json({ ok: true, items: local, source: 'local' });
+  if (!apiKey || !personalDataEnabled) return image ? unreadPhoto() : json({ ok: true, items: typed, source: 'local' });
 
   const admin = createClient(url, service, { auth: { persistSession: false } });
   const gate = await gateAiUse({
@@ -101,11 +102,11 @@ Deno.serve(async (req) => {
       }),
       signal: AbortSignal.timeout(ESTIMATE_PROVIDER_TIMEOUT_MS),
     });
-    if (!response.ok) return json({ ok: true, items: local, source: 'local' });
+    if (!response.ok) return image ? unreadPhoto() : json({ ok: true, items: typed, source: 'local' });
     const parsed = parseMealEstimate(completionText(await response.json()));
-    if (!parsed) return json({ ok: true, items: local, source: 'local' });
+    if (!parsed) return image ? unreadPhoto() : json({ ok: true, items: typed, source: 'local' });
     return json({ ok: true, items: parsed, source: 'model' });
   } catch {
-    return json({ ok: true, items: local, source: 'local' });
+    return image ? unreadPhoto() : json({ ok: true, items: typed, source: 'local' });
   }
 });

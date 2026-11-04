@@ -148,6 +148,7 @@ export {
   publicMealLines,
   suggestedTargetsLine,
   scaleFoodItems,
+  PHOTO_READ_FAIL,
   samplePhotoMeal,
   smoothWeight,
   sugarCravingNote,

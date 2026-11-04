@@ -86,11 +86,11 @@ import {
   isNutritionSex,
   parseBodyFatPct,
   parseLeanMassKg,
+  PHOTO_READ_FAIL,
   parseMealEstimate,
   parseSharedNutrition,
   parseWaistCm,
   parseWorkoutBuckets,
-  samplePhotoMeal,
   storedMealInstant,
   type BodyCompositionReading,
   type FoodItem,
@@ -2615,29 +2615,35 @@ export class SupabaseRepository implements Repository {
 
   async estimateMeal(input: { text?: string; imageBase64?: string }): Promise<MealEstimate> {
     const text = input.text?.trim() ?? '';
-    const local = (): MealEstimate => ({ items: text ? estimateFromText(text) : samplePhotoMeal(), source: 'local' });
+    const imageBase64 = input.imageBase64 ? stripJpegBase64(input.imageBase64) : '';
+    const photo = imageBase64.length > 0;
+    const unread = () => new UserFacingError(PHOTO_READ_FAIL, 'generic');
     try {
-      const imageBase64 = input.imageBase64 ? stripJpegBase64(input.imageBase64) : '';
       const invoked = await this.callEdge('estimate-meal', { text, imageBase64 }, {
         ai: true,
         timeoutMs: ESTIMATE_CLIENT_TIMEOUT_MS,
       });
       const data = invoked.data as { ok?: boolean; items?: unknown; source?: string; code?: string; message?: string } | null;
-      if (data?.code === 'consent') return local();
+      if (data?.code === 'consent') {
+        throw new UserFacingError(data.message || PHOTO_READ_FAIL, 'generic');
+      }
       if (invoked.status === 401 || invoked.status >= 500) {
-        throw this.aiFailure('meal', 'estimate-meal', new Error('Meal estimate did not answer.'), invoked.status);
+        throw photo ? unread() : this.aiFailure('meal', 'estimate-meal', new Error('Meal estimate did not answer.'), invoked.status);
       }
       const items = parseMealEstimate({ items: data?.items });
-      if (invoked.status < 400 && data?.ok === true && items) {
-        return { items, source: data.source === 'model' ? 'model' : 'local' };
+      const model = data?.source === 'model';
+      if (invoked.status < 400 && data?.ok === true && items && (!photo || model)) {
+        return { items, source: model ? 'model' : 'local' };
       }
+      if (photo) throw new UserFacingError(data?.message || PHOTO_READ_FAIL, 'generic');
     } catch (error) {
       if (error instanceof UserFacingError) throw error;
+      if (photo) throw unread();
       throw this.aiFailure('meal', 'estimate-meal', error);
     }
-    const fallback = local();
-    if (!fallback.items.length) throw new UserFacingError('Could not read that meal. You can still type it in yourself.', 'generic');
-    return fallback;
+    const typed = estimateFromText(text);
+    if (!photo && typed.length) return { items: typed, source: 'local' };
+    throw photo ? unread() : new UserFacingError('Could not read that meal. You can still type it in yourself.', 'generic');
   }
 
   async saveFoodLog(input: NewFoodLog): Promise<void> {
