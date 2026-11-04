@@ -233,7 +233,7 @@ function RingFigure({ label, ring, mark, period }: { label: string; ring: TodayR
         fill={ring.fill}
         overfill={ring.overfill}
         status={ring.status}
-        tone={ring.overfill > 0 ? 'good' : mark.tone}
+        tone={mark.tone}
         signal={mark.signal}
         monochrome={mark.monochrome}
         surface="card"

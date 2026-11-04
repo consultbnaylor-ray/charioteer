@@ -845,7 +845,12 @@ describe('nutrition charts', () => {
     expect(proteinOver.fill).toBe(1);
     expect(proteinOver.overfill).toBe(0);
     expect(proteinOver.status).toBe('At your target');
-    expect(readFileSync('src/ui/NutritionCharts.tsx', 'utf8')).toContain("figureLabel('Calories', period)");
+    const charts = readFileSync('src/ui/NutritionCharts.tsx', 'utf8');
+    expect(charts).toContain("figureLabel('Calories', period)");
+    expect(charts).toContain('tone={mark.tone}');
+    expect(charts).not.toContain("overfill > 0 ? 'good'");
+    expect(charts).toContain("if (ring.value > ring.target) return { tone: 'watch' }");
+    expect(charts).toContain('proteinMark(');
     expect(readFileSync('src/ui/DistanceCharts.tsx', 'utf8')).toContain('overfill');
   });
 
