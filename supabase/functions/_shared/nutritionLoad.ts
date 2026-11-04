@@ -31,11 +31,38 @@ import { savingsFromTypicalWeek } from './savings.ts';
 import { buildDailyTargets } from './dailyTargets.ts';
 import { FITNESS_GOAL_LABEL, fuelTradeOffLine, isFitnessGoal, resolvedFitnessGoal } from './fitnessGoal.ts';
 import { COMPETITION_CUT_RULES, competitionCutActive } from './targetWeight.ts';
+import { currentVo2Line, currentVo2Max } from './currentVo2.ts';
 import { vo2TargetReason } from './goalProgress.ts';
 import { nutritionBriefFromLogs, nutritionInputLines, nutritionReviewLines } from './statsAnalysis.ts';
 import { soberElapsed } from './sober.ts';
 
 type NutritionResult = { data: unknown; error: { message?: string } | null };
+
+/** Running VO2 max already stored from Garmin. A missing table leaves Apple Health as the only source. */
+async function loadGarminRunningVo2(
+  userClient: NutritionClient,
+  userId: string,
+): Promise<{ day: string; value: number | null }[]> {
+  try {
+    const res = await userClient
+      .from('garmin_user_metrics')
+      .select('calendar_date, vo2_max')
+      .eq('user_id', userId)
+      .order('calendar_date', { ascending: false })
+      .limit(120);
+    if (res.error || !Array.isArray(res.data)) return [];
+    return res.data.flatMap((row) => {
+      if (!row || typeof row !== 'object') return [];
+      const record = row as Record<string, unknown>;
+      const day = typeof record.calendar_date === 'string' ? record.calendar_date.slice(0, 10) : '';
+      const value = typeof record.vo2_max === 'number' ? record.vo2_max : Number(record.vo2_max);
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(day) || !Number.isFinite(value)) return [];
+      return [{ day, value }];
+    });
+  } catch {
+    return [];
+  }
+}
 
 type NutritionFilter = PromiseLike<NutritionResult> & {
   eq(column: string, value: string): NutritionFilter;
@@ -357,7 +384,9 @@ export async function loadNutritionLines(
   const review = brief ? nutritionReviewLines(brief) : [];
   const mealInput = brief ? nutritionInputLines(brief) : [];
   const fitnessAim = coach.ai ? resolvedFitnessGoal(settings) : null;
-  const latestVo2 = [...samples].filter((sample) => sample.kind === 'vo2_max' && sample.value > 0).sort((left, right) => left.recordedOn.localeCompare(right.recordedOn)).at(-1)?.value ?? null;
+  const garminVo2 = coach.health ? await loadGarminRunningVo2(userClient, profile.id) : [];
+  const currentVo2 = currentVo2Max({ today, garmin: garminVo2, samples: readSamples });
+  const latestVo2 = currentVo2?.value ?? null;
   const vo2Reason = fitnessAim && coach.health
     ? vo2TargetReason({
       age: settings.goalAge,
@@ -368,7 +397,9 @@ export async function loadNutritionLines(
       targetOn: settings.targetOn,
     })
     : null;
-  const vo2Line = vo2Reason ? `VO2 max target ${[...vo2Reason.lines, vo2Reason.caption].join(' ')}` : '';
+  const vo2Reading = currentVo2 ? currentVo2Line(currentVo2) : '';
+  const vo2TargetLine = vo2Reason ? `VO2 max target ${[...vo2Reason.lines, vo2Reason.caption].join(' ')}` : '';
+  const vo2Line = [vo2Reading, vo2TargetLine].filter(Boolean).join(' ');
   const losing = settings.goal === 'lose_weight' || settings.goal === 'lose_fat_build_muscle';
   const fitnessLines = fitnessAim
     ? [[`Fitness goal: ${FITNESS_GOAL_LABEL[fitnessAim]}.`, vo2Line].filter(Boolean).join(' '), fuelTradeOffLine(losing, fitnessAim)].filter((line): line is string => Boolean(line))

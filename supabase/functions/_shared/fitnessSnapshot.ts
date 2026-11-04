@@ -6,6 +6,7 @@
  * 75th and above is Strong. This is an estimate, not Apple's classification and
  * not a medical assessment.
  */
+import { currentVo2Line, currentVo2Max } from './currentVo2.ts';
 import { FITNESS_GOAL_LABEL, type FitnessGoal } from './fitnessGoal.ts';
 import { metricFallback, type FallbackCite } from './healthBands.ts';
 import { londonDay, mondayOf, shiftDay } from './healthInsights.ts';
@@ -35,6 +36,8 @@ export type FitnessSample = {
   recordedOn: string;
   /** healthkit wins over a same-day manual copy. Absent when the row did not say. */
   source?: string;
+  /** Merged Garmin VO2 rows use an id that starts with merged:vo2_max:. */
+  id?: string;
 };
 
 /** Minutes one app wrote for one workout type on one day. No route and no heart rate. */
@@ -1086,13 +1089,14 @@ function compareFor(input: {
   sex: NutritionSex | null;
   goal: NutritionGoal | null;
   band: { p25: number; p75: number } | null;
+  line?: string | null;
 }): FitnessCompare {
   const ageBand = input.band && input.age != null && input.sex
     ? { low: round1(input.band.p25), high: round1(input.band.p75), label: 'Typical for your age and sex' }
     : null;
   const goalBand = boxerBand(input.goal, input.sex);
   const goalNote = goalNoteFor(input.goal, input.sex, Boolean(goalBand), Boolean(ageBand));
-  const you = `You are at about ${round1(input.value)} ml/kg/min.`;
+  const you = input.line ? `${input.line}.` : `You are at about ${round1(input.value)} ml/kg/min.`;
   const ageWords = ageBand && input.sex && input.age != null
     ? ` Typical for ${sexWord(input.sex)} in their ${decade(input.age)} is about ${ageBand.low} to ${ageBand.high}.`
     : '';
@@ -1163,7 +1167,8 @@ export function buildFitnessSnapshot(input: FitnessSnapshotInput): FitnessSnapsh
   const sleepDown = sleepSplit.earlier != null && sleepSplit.recent != null && sleepSplit.earlier - sleepSplit.recent >= 0.5;
   const easier = rhrUp && sleepDown;
 
-  const latestVo2 = vo2.length ? vo2[vo2.length - 1]?.value ?? null : null;
+  const currentVo2 = currentVo2Max({ today, samples: input.health });
+  const latestVo2 = currentVo2?.value ?? null;
   const band = latestVo2 != null ? bandFor(input.goalAge, input.goalSex) : null;
   const vo2Level = latestVo2 != null && band ? rateVo2(latestVo2, band) : null;
   const weeklySchedule = input.scheduleWeekMinutes && input.scheduleWeekMinutes > 0 ? input.scheduleWeekMinutes : null;
@@ -1178,6 +1183,7 @@ export function buildFitnessSnapshot(input: FitnessSnapshotInput): FitnessSnapsh
     levelWordsFor({
       level,
       vo2: latestVo2,
+      line: currentVo2 ? currentVo2Line(currentVo2) : null,
       band: Boolean(band),
       age: input.goalAge,
       sex: input.goalSex,
@@ -1190,12 +1196,14 @@ export function buildFitnessSnapshot(input: FitnessSnapshotInput): FitnessSnapsh
     shortfall,
   ].filter(Boolean).join(' ');
 
+  const vo2Line = currentVo2 ? currentVo2Line(currentVo2) : null;
   const compare = latestVo2 == null ? null : compareFor({
     value: latestVo2,
     age: input.goalAge,
     sex: input.goalSex,
     goal: input.goal,
     band,
+    line: vo2Line,
   });
   if (input.build === 'carrying_extra' && compare) {
     compare.words = `${compare.words} ${CARRYING_FITNESS_NOTE}`.replace(/\s+/g, ' ').trim();
@@ -1358,6 +1366,7 @@ function fallbackLevel(
 function levelWordsFor(input: {
   level: FitnessLevel | null;
   vo2: number | null;
+  line?: string | null;
   band: boolean;
   age: number | null;
   sex: NutritionSex | null;
@@ -1373,10 +1382,12 @@ function levelWordsFor(input: {
       : input.level === 'Strong'
         ? 'above the middle of a published range'
         : 'in the middle of a published range';
-    return `VO2 max is about ${round1(input.vo2)} ml/kg/min. For ${sexWord(input.sex)} in their ${decade(input.age)}, that sits ${place}.`;
+    const lead = input.line ?? `VO2 max is about ${round1(input.vo2)} ml/kg/min`;
+    return `${lead}. For ${sexWord(input.sex)} in their ${decade(input.age)}, that sits ${place}.`;
   }
   if (input.vo2 != null && !input.band) {
-    return `VO2 max is about ${round1(input.vo2)} ml/kg/min. Add age and sex on Nutrition for a level.`;
+    const lead = input.line ?? `VO2 max is about ${round1(input.vo2)} ml/kg/min`;
+    return `${lead}. Add age and sex on Nutrition for a level.`;
   }
   if (!input.level) return 'Not enough readings yet for a level.';
   const phrase = input.phrase ?? 'this week';
@@ -1856,7 +1867,7 @@ export type CardioGap = {
 export function assessCardioGap(input: FitnessSnapshotInput): CardioGap {
   const today = input.today;
   const vo2 = dayValue(input.health, 'vo2_max', today, 365);
-  const latest = vo2.length ? vo2[vo2.length - 1]?.value ?? null : null;
+  const latest = currentVo2Max({ today, samples: input.health })?.value ?? null;
   const band = latest != null ? bandFor(input.goalAge, input.goalSex) : null;
   const compare = latest == null ? null : compareFor({
     value: latest,
@@ -1919,7 +1930,7 @@ function contextFrom(input: {
     input.recovery ? input.recovery.replace(/\s+/g, ' ').trim() : null,
   ].filter((item): item is string => Boolean(item));
   for (const extra of extras) {
-    if (line.length + 1 + extra.length <= 560) line = `${line} ${extra}`;
+    if (line.length + 1 + extra.length <= 700) line = `${line} ${extra}`;
   }
   return line;
 }

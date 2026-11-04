@@ -170,7 +170,7 @@ describe('stats analysis summaries', () => {
     const text = localStatsVerdict(payload);
     expect(text).toContain('some way off');
     expect(text).not.toContain('Keep up the good work');
-    expect(text).toContain('VO2 max is 12.8 short of 56–62 ml/kg/min');
+    expect(text).toContain('latest VO2 max 43.2 (Garmin, 1 Nov), short of the 56–62 goal by 12.8');
     const parts = text.split(/\n\n/);
     expect(parts.length).toBeGreaterThan(1);
     const overview = parts.find((part) => part.startsWith('Overview')) ?? '';

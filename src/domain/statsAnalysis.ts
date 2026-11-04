@@ -2,6 +2,7 @@ import type { GarminReadings } from '@/domain/garminConnect';
 import { FITNESS_GOAL_LABEL, fuelTradeOffLine } from '@/domain/fitnessGoal';
 import { COMPETITION_CUT_RULES, competitionCutActive } from '@/domain/targetWeight';
 import { athleticVo2Target, publishedCardioBand, vo2ForFitnessGoal } from '@/domain/fitnessSnapshot';
+import { currentVo2Line, currentVo2Max } from '@/domain/currentVo2';
 import { vo2TargetReason } from '@/domain/goalProgress';
 import { heartRateMaxFrom } from '@/domain/trainingGuidance';
 import { CMO_VIGOROUS_MINUTES_WEEK } from '@/domain/guidance';
@@ -313,7 +314,13 @@ export function buildStatsAnalysis(input: BuildInput): StatsAnalysisPayload {
   const vigorousWeek = dailies
     .filter((day) => day.calendarDate <= input.today && day.calendarDate >= shift(input.today, -6))
     .reduce((sum, day) => sum + (day.vigorousMinutes ?? 0), 0);
-  const latestVo2 = [...(readings.userMetrics ?? [])].filter((row) => row.vo2Max != null).sort((a, b) => a.calendarDate.localeCompare(b.calendarDate)).at(-1)?.vo2Max ?? null;
+  const currentVo2 = currentVo2Max({
+    today: input.today,
+    garmin: (readings.userMetrics ?? []).map((row) => ({ day: row.calendarDate, value: row.vo2Max })),
+    samples: input.samples,
+  });
+  const latestVo2 = currentVo2?.value ?? null;
+  const vo2Reading = currentVo2 ? currentVo2Line(currentVo2) : null;
   const latestRest = [...dailies].filter((row) => row.restingHeartRateBpm != null).sort((a, b) => a.calendarDate.localeCompare(b.calendarDate)).at(-1)?.restingHeartRateBpm ?? null;
   const latestComp = [...(readings.bodyComp ?? [])].sort((a, b) => a.calendarDate.localeCompare(b.calendarDate)).at(-1);
   const ctx: MetricContext = {
@@ -365,10 +372,29 @@ export function buildStatsAnalysis(input: BuildInput): StatsAnalysisPayload {
     ['hrv_sdnn', samplesOf(input.samples, 'hrv_sdnn'), 'day'],
     ['fitness_age', byDay((readings.userMetrics ?? []).map((row) => ({ day: row.calendarDate, value: row.fitnessAge }))), 'day'],
   ];
-  const built = groups.flatMap(([id, points, mode]) => {
-    const stat = statFrom(id, points, ctx, input.today, mode);
-    return stat ? [stat] : [];
-  });
+  const built: AnalysisStat[] = [];
+  for (const [id, points, mode] of groups) {
+    const made = statFrom(id, points, ctx, input.today, mode);
+    if (!made) continue;
+    if (id !== 'vo2' || currentVo2 == null) {
+      built.push(id === 'vo2' ? { ...made, value: null, goalTarget: null, goalGap: null } : made);
+      continue;
+    }
+    const shown = presentNumber(id, currentVo2.value);
+    const mark = goalMark(id, shown, ctx);
+    const reading = readingFor(id, shown, ctx);
+    const lever = reading.label === 'Fair' || reading.label === 'Poor' || (mark.goalGap != null && mark.goalGap > 0);
+    built.push({
+      ...made,
+      value: shown,
+      latest: shown,
+      rating: reading.pending ? 'No rating yet' as const : reading.label,
+      range: vo2Reading ?? made.range,
+      tip: lever ? (reading.tips[0] ?? '').slice(0, 180) || null : null,
+      goalTarget: mark.goalTarget,
+      goalGap: mark.goalGap,
+    });
+  }
   const present = new Set(built.map((stat) => stat.id));
   const stats = built.filter((stat) => {
     if (stat.id === 'sleep_duration' && present.has('sleep_hours')) return false;
@@ -434,6 +460,7 @@ export function buildStatsAnalysis(input: BuildInput): StatsAnalysisPayload {
     weightPlan: plan?.analysisLine ?? null,
     fitnessGoal: fitnessLabel,
     vo2Goal,
+    vo2Reading,
     fuelNote: cutOn ? COMPETITION_CUT_RULES : fuelTradeOffLine(losing, input.fitnessGoal ?? 'normal'),
     competitionCut: cutOn,
     maxHeartRate,

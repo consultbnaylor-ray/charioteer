@@ -1,3 +1,4 @@
+import { currentVo2Max } from './currentVo2.ts';
 import { type FitnessGoal } from './fitnessGoal.ts';
 import { VO2_NORM_CAPTION, VO2_WEEKLY_GAIN, athleticVo2Target, vo2ForFitnessGoal } from './fitnessSnapshot.ts';
 import type { NutritionGoal, NutritionSex } from './nutrition.ts';
@@ -197,7 +198,7 @@ export function goalProgressSeries(input: {
   age?: number | null;
   fitnessGoal?: FitnessGoal | null;
   weight: readonly { day: string; kg: number }[];
-  vo2: readonly DatedValue[];
+  vo2: readonly (DatedValue & { source?: Vo2ChartSource })[];
   weightTargetKg: number | null;
   weightStartKg: number | null;
 }): GoalProgressSeries {
@@ -211,6 +212,12 @@ export function goalProgressSeries(input: {
   const lastWeight = weightActual[weightActual.length - 1];
   const firstVo2 = vo2Actual[0];
   const lastVo2 = vo2Actual[vo2Actual.length - 1];
+  const picked = currentVo2Max({
+    today: input.today,
+    garmin: input.vo2.filter((point) => point.source === 'garmin').map((point) => ({ day: point.day, value: point.value })),
+    samples: input.vo2.filter((point) => point.source !== 'garmin').map((point) => ({ recordedOn: point.day, value: point.value })),
+  });
+  const currentVo2 = picked ?? (lastVo2 ? { value: lastVo2.value, day: lastVo2.day, source: 'apple' as const } : null);
   const days = [...weightActual, ...vo2Actual].map((row) => row.day).sort();
   const start = days[0] ?? input.today;
   const end = dated && input.targetOn ? input.targetOn : (days[days.length - 1] ?? input.today);
@@ -226,21 +233,21 @@ export function goalProgressSeries(input: {
     ? null
     : pacedVo2Target({
       longTerm: vo2LongTerm,
-      current: lastVo2?.value ?? null,
+      current: currentVo2?.value ?? null,
       today: input.today,
       targetOn: dated ? input.targetOn : null,
     });
   const vo2Target = pace?.byDate ?? null;
   const vo2End = dated ? input.targetOn as string : lastVo2?.day ?? null;
-  const vo2Path = vo2Target != null && lastVo2 && vo2End
+  const vo2Path = vo2Target != null && currentVo2 && vo2End
     ? dated
       ? [
-        { day: lastVo2.day, value: lastVo2.value },
+        { day: currentVo2.day, value: currentVo2.value },
         { day: vo2End, value: vo2Target },
       ]
       : [
-        { day: firstVo2?.day ?? lastVo2.day, value: vo2Target },
-        { day: lastVo2.day, value: vo2Target },
+        { day: firstVo2?.day ?? currentVo2.day, value: vo2Target },
+        { day: currentVo2.day, value: vo2Target },
       ]
     : null;
   const reason = input.fitnessGoal
@@ -248,7 +255,7 @@ export function goalProgressSeries(input: {
       age: input.age ?? null,
       sex: input.sex,
       goal: input.fitnessGoal,
-      current: lastVo2?.value ?? null,
+      current: currentVo2?.value ?? null,
       today: input.today,
       targetOn: input.targetOn,
     })

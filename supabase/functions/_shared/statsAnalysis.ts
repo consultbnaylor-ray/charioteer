@@ -104,6 +104,8 @@ export type StatsAnalysisPayload = {
   fitnessGoal?: string | null;
   /** App-derived VO2 max target for that fitness age. */
   vo2Goal?: string | null;
+  /** Latest VO2 max, such as "latest VO2 max 44.0 (Garmin, 29 Oct)". Not an average. */
+  vo2Reading?: string | null;
   /** Set when weight loss and a harder fitness aim need both fuel and a deficit. */
   fuelNote?: string | null;
   /** True only after the person accepted the competition-cut notice. */
@@ -191,7 +193,7 @@ export const STATS_ANALYSIS_PROMPT = [
   'If competitionCut is true, this is a short competition weight cut. Keep the calorie figure at or above the floor already in weightPlan, protect protein, and plan refeeding and rehydration after weigh-in. Dizziness, fainting, confusion, or a racing heart means stop and get urgent help. Never advise fluid restriction, a sauna, a sweat suit, diuretics, or laxatives. Say to see a qualified coach, doctor, or dietitian. General information, not medical advice.',
   'A high resting heart rate is easy aerobic work and walks, not the VO2 intervals. Short sleep keeps a steady wake time. Low steps are a short walk. Do not swap those.',
   'Say how the figures fit together and the order to work on them.',
-  'Quote value. That is the recent average, or a total over the last 7 days when the range says so. Do not headline today.',
+  'For VO2 max, value and goalGap come from vo2Reading, the latest reading, not from an average. Say that vo2Reading line, then how far goalGap sits short of goalTarget. Do not say VO2 max is the average. For every other stat, quote value. That is the recent average, or a total over the last 7 days when the range says so. Do not headline today.',
   'Do not list every stat at the end.',
   'Do not diagnose. Do not predict how long the person will live. Do not mention location or women\'s health.',
   'Do not write a medical caveat. The app shows that line.',
@@ -217,6 +219,7 @@ function statName(stat: AnalysisStat): string {
 }
 
 function figureOf(stat: AnalysisStat): string {
+  if (stat.id === 'vo2') return stat.value == null ? '' : ` ${stat.value}`;
   const figure = stat.value ?? stat.average ?? stat.latest;
   return figure == null ? '' : ` ${figure}`;
 }
@@ -255,7 +258,7 @@ export function localAnalysisSections(payload: StatsAnalysisPayload): AnalysisSe
   for (const stat of work) {
     const title = sectionForStat(stat.id);
     const list = grouped.get(title) ?? [];
-    list.push(improvementParagraph(stat, payload.maxHeartRate ?? null));
+    list.push(improvementParagraph(stat, payload.maxHeartRate ?? null, payload.vo2Reading ?? null));
     grouped.set(title, list);
   }
   const overviewExtra = grouped.get('Overview') ?? [];
@@ -269,7 +272,7 @@ export function localAnalysisSections(payload: StatsAnalysisPayload): AnalysisSe
     if (body) sections.push({ title, body });
   }
   sections.push({ title: 'Nutrition: calories & protein', body: nutritionSection(payload) });
-  sections.push({ title: 'This week', body: thisWeek(work.map((stat) => improvementParagraph(stat, payload.maxHeartRate ?? null))) });
+  sections.push({ title: 'This week', body: thisWeek(work.map((stat) => improvementParagraph(stat, payload.maxHeartRate ?? null, payload.vo2Reading ?? null))) });
   return sections;
 }
 
@@ -803,8 +806,14 @@ function bounded(value: unknown, min: number, max: number): number | null {
   return Math.round(number);
 }
 
-function improvementParagraph(stat: AnalysisStat, max: HeartRateMax | null): string {
+function improvementParagraph(stat: AnalysisStat, max: HeartRateMax | null, vo2Reading: string | null): string {
   const name = statName(stat);
+  if (stat.id === 'vo2' && vo2Reading) {
+    const short = stat.goalGap != null && stat.goalGap > 0 && stat.goalTarget
+      ? `, short of the ${stat.goalTarget.replace(/ ml\/kg\/min$/, '')} goal by ${stat.goalGap}`
+      : '';
+    return `${vo2Reading}${short}. ${vo2IntervalPhrase(max)}`;
+  }
   const gap = stat.goalGap != null && stat.goalGap > 0 && stat.goalTarget
     ? `${name} is ${stat.goalGap} short of ${stat.goalTarget}.`
     : `${name} is ${stat.rating.toLowerCase()} at${figureOf(stat)}.`;
@@ -849,7 +858,7 @@ export function sanitizeStatsAnalysis(input: unknown): StatsAnalysisPayload | nu
     stats.push({
       id: statId,
       name: ANALYSIS_STAT_NAMES[statId],
-      value: finite(row.value) ?? average ?? latest,
+      value: statId === 'vo2' ? finite(row.value) : (finite(row.value) ?? average ?? latest),
       latest,
       average,
       today: finite(row.today),
@@ -870,6 +879,7 @@ export function sanitizeStatsAnalysis(input: unknown): StatsAnalysisPayload | nu
     goal: goal || null,
     fitnessGoal: text(record.fitnessGoal, 40) || null,
     vo2Goal: text(record.vo2Goal, 360) || null,
+    vo2Reading: text(record.vo2Reading, 120) || null,
     fuelNote: text(record.fuelNote, 400) || null,
     competitionCut: record.competitionCut === true,
     weightPlan: weightPlan || null,

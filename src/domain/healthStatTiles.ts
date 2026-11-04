@@ -6,6 +6,7 @@
  * and keep a spark, not a fake NHS band.
  */
 
+import { currentVo2Max } from '@/domain/currentVo2';
 import { targetWeightStatusLine } from '@/domain/targetWeight';
 import {
   ACTIVE_MINUTES_ABOUT,
@@ -304,7 +305,7 @@ export const HEALTH_STAT_CATALOGUE: readonly { id: string; section: HealthStatSe
   { id: 'weekly_active_minutes', section: 'activity', title: 'Active minutes' },
 ];
 
-export type HealthStatSample = { kind: string; value: number; recordedOn: string; source?: string };
+export type HealthStatSample = { id?: string; kind: string; value: number; recordedOn: string; source?: string };
 
 export type HealthStatBody = {
   recordedOn: string;
@@ -816,12 +817,13 @@ function sleepTile(item: CatalogItem, input: HealthStatBoardInput, grown: boolea
 function vo2Tile(item: CatalogItem, input: HealthStatBoardInput, grown: boolean): HealthStatTile | null {
   const history = series(input.samples, 'vo2_max', input.today).filter((point) => point.value > 0);
   const latest = history.at(-1);
-  if (!latest) return null;
+  const chosen = currentVo2Max({ today: input.today, samples: input.samples });
+  if (!latest && !chosen) return null;
   const period = periodOf(input);
   const window = slicePeriod(history, input);
   const current = window === 'gap' || window === 'none' ? [] : window.current;
   const previous = window === 'gap' || window === 'none' ? [] : window.previous;
-  const value = Math.round(latest.value * 10) / 10;
+  const value = chosen?.value ?? Math.round((latest?.value ?? 0) * 10) / 10;
   const fitness = buildFitnessSnapshot({
     today: input.today,
     goal: grown ? input.goal : null,
@@ -850,7 +852,7 @@ function vo2Tile(item: CatalogItem, input: HealthStatBoardInput, grown: boolean)
       status,
       tone,
     }
-    : spark(current.length > 0 ? current : [{ day: latest.day, value: latest.value }], `${oneText(value)} ml/kg/min`);
+    : spark(current.length > 0 ? current : [{ day: chosen?.day ?? latest?.day ?? input.today, value }], `${oneText(value)} ml/kg/min`);
   const trend = current.length > 0
     ? movementTrend(current, previous, 'mean', 1, period)
     : noReadingsLine(period, false);
@@ -1341,15 +1343,7 @@ function restingMonthComment(input: HealthStatBoardInput): RestingFitnessComment
     : (input.activeMinutes ?? []).flatMap((day) => (
       day.day >= start && day.day <= input.today ? [{ day: day.day, moderateMinutes: day.value, vigorousMinutes: 0 }] : []
     ));
-  let vo2Max: number | null = null;
-  let vo2Day = '';
-  for (const sample of input.samples) {
-    if (sample.kind !== 'vo2_max' || !(sample.value > 0) || sample.recordedOn > input.today) continue;
-    if (sample.recordedOn >= vo2Day) {
-      vo2Day = sample.recordedOn;
-      vo2Max = sample.value;
-    }
-  }
+  const vo2Max = currentVo2Max({ today: input.today, samples: input.samples })?.value ?? null;
   return restingFitnessComment({
     today: input.today,
     resting,

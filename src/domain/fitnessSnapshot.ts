@@ -94,6 +94,7 @@ export function fitnessFromSnapshot(
       value: sample.value,
       recordedOn: sample.recordedOn,
       source: sample.source,
+      id: sample.id,
     })), snap.plannedSessions),
     workoutBuckets: snap.nutrition?.workoutBuckets ?? {},
     sleep,

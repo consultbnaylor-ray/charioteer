@@ -5,7 +5,8 @@ import Svg from 'react-native-svg';
 
 import { isoDay, startOfLocalDay } from '@/domain/dates';
 import { BAND_CAVEAT, WALKING_BELOW_ZONE_NOTE, walkingBelowModerateZone, type BandLink } from '@/domain/healthBands';
-import { latestVo2Reading, VO2_CARD_LINE, vo2MeasuredLine, type Vo2Source } from '@/domain/vo2Estimate';
+import { currentVo2Max } from '@/domain/currentVo2';
+import { VO2_CARD_LINE, vo2MeasuredLine, type Vo2Source } from '@/domain/vo2Estimate';
 import { OUTSIDE_CRISIS_LINE, OUTSIDE_SAFETY_LINE } from '@/domain/outdoorRoute';
 import { LowRestingFitNote } from '@/ui/LowRestingFitNote';
 import { chartBucketForPeriod } from '@/domain/readingChart';
@@ -65,7 +66,7 @@ export function HealthStatBoard(
 ) {
   const model = narrowHealthStatBoard(buildHealthStatBoard(input), { only: input.onlyTiles, omit: input.omitTiles });
   const period = parseStatPeriod(input.period);
-  const vo2 = latestVo2Reading(input.samples);
+  const vo2 = currentVo2Max({ today: input.today, samples: input.samples });
   const measuredOn = vo2?.day ?? null;
   const vo2Source = vo2?.source ?? null;
   const [openId, setOpenId] = useState<string | null>(null);
