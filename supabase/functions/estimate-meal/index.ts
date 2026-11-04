@@ -54,14 +54,24 @@ Deno.serve(async (req) => {
 
   const typed = text ? estimateFromText(text) : [];
   const unreadPhoto = () => json({ ok: false, code: 'unread', message: PHOTO_READ_FAIL }, 422);
+  const warnMeal = (reason: string) => console.warn(`meal-estimate ${reason}`);
   const ESTIMATE_PROVIDER_TIMEOUT_MS = 28_000;
+  /** Fast vision model. grok-4.3 keeps reasoning on and does not finish a photo inside the timeout. */
+  const MEAL_VISION_MODEL = 'grok-4-fast-non-reasoning';
   const apiKey = Deno.env.get('XAI_API_KEY');
   const personalDataEnabled = coachingPersonalDataAllowed({
     personalDataFlag: Deno.env.get('XAI_PERSONAL_DATA_ENABLED'),
     interimFlag: Deno.env.get('XAI_INTERIM_OPT_IN_ALLOWED'),
     userOptIn: await readInterimCoachOptIn(userClient, userData.user.id),
   });
-  if (!apiKey || !personalDataEnabled) return image ? unreadPhoto() : json({ ok: true, items: typed, source: 'local' });
+  if (!apiKey) {
+    if (image) warnMeal('no_key');
+    return image ? unreadPhoto() : json({ ok: true, items: typed, source: 'local' });
+  }
+  if (!personalDataEnabled) {
+    if (image) warnMeal('gate');
+    return image ? unreadPhoto() : json({ ok: true, items: typed, source: 'local' });
+  }
 
   const admin = createClient(url, service, { auth: { persistSession: false } });
   const gate = await gateAiUse({
@@ -72,13 +82,31 @@ Deno.serve(async (req) => {
   });
   if (!gate.ok && 'body' in gate) return json({ ...gate.body, usage: null }, gate.status);
 
-  const content: ({ type: 'text'; text: string } | { type: 'image_url'; image_url: { url: string } })[] = [
+  const content: ({ type: 'text'; text: string } | { type: 'image_url'; image_url: { url: string; detail?: 'low' } })[] = [
     { type: 'text', text: text ? `${MEAL_ESTIMATE_PROMPT}\n\nMeal: ${text}` : MEAL_ESTIMATE_PROMPT },
   ];
   if (image) {
     const urlPart = image.startsWith('data:') ? image : `data:image/jpeg;base64,${image}`;
-    content.push({ type: 'image_url', image_url: { url: urlPart } });
+    content.push({ type: 'image_url', image_url: { url: urlPart, detail: 'low' } });
   }
+
+  const textBody = buildChatCompletionBody({
+    model: Deno.env.get('THUMOS_MODEL') || THUMOS_CHAT.model,
+    system: 'You estimate meals. Reply with JSON only.',
+    history: [],
+    user: text || 'See the photo.',
+    stream: false,
+  });
+  const photoBody = {
+    model: MEAL_VISION_MODEL,
+    reasoning_effort: 'none' as const,
+    stream: false,
+    max_tokens: 400,
+    messages: [
+      { role: 'system' as const, content: 'You estimate meals. Reply with JSON only.' },
+      { role: 'user' as const, content },
+    ],
+  };
 
   try {
     const response = await fetch(THUMOS_CHAT.completionsUrl, {
@@ -87,26 +115,27 @@ Deno.serve(async (req) => {
         Authorization: `Bearer ${apiKey}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({
-        ...buildChatCompletionBody({
-          model: Deno.env.get('THUMOS_MODEL') || THUMOS_CHAT.model,
-          system: 'You estimate meals. Reply with JSON only.',
-          history: [],
-          user: text || 'See the photo.',
-          stream: false,
-        }),
-        messages: [
-          { role: 'system', content: 'You estimate meals. Reply with JSON only.' },
-          { role: 'user', content },
-        ],
-      }),
+      body: JSON.stringify(image ? photoBody : { ...textBody, messages: [
+        { role: 'system', content: 'You estimate meals. Reply with JSON only.' },
+        { role: 'user', content },
+      ] }),
       signal: AbortSignal.timeout(ESTIMATE_PROVIDER_TIMEOUT_MS),
     });
-    if (!response.ok) return image ? unreadPhoto() : json({ ok: true, items: typed, source: 'local' });
+    if (!response.ok) {
+      if (image) warnMeal(`http ${response.status}`);
+      return image ? unreadPhoto() : json({ ok: true, items: typed, source: 'local' });
+    }
     const parsed = parseMealEstimate(completionText(await response.json()));
-    if (!parsed) return image ? unreadPhoto() : json({ ok: true, items: typed, source: 'local' });
+    if (!parsed) {
+      if (image) warnMeal('parse');
+      return image ? unreadPhoto() : json({ ok: true, items: typed, source: 'local' });
+    }
     return json({ ok: true, items: parsed, source: 'model' });
-  } catch {
+  } catch (error) {
+    if (image) {
+      const name = error instanceof Error ? error.name : '';
+      warnMeal(name === 'TimeoutError' || name === 'AbortError' ? 'timeout' : 'http');
+    }
     return image ? unreadPhoto() : json({ ok: true, items: typed, source: 'local' });
   }
 });

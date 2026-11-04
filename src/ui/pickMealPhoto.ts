@@ -21,7 +21,7 @@ export async function pickMealPhoto(source: 'camera' | 'library'): Promise<{ bas
   const width = asset.width ?? 0;
   const height = asset.height ?? 0;
   const longest = Math.max(width, height);
-  const resize = longest > 1280 ? (width >= height ? { width: 1280 } : { height: 1280 }) : undefined;
+  const resize = longest > 1024 ? (width >= height ? { width: 1024 } : { height: 1024 }) : undefined;
   const prepared = await manipulateAsync(
     asset.uri,
     resize ? [{ resize }] : [],
