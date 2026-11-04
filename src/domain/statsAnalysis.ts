@@ -2,7 +2,7 @@ import type { GarminReadings } from '@/domain/garminConnect';
 import { FITNESS_GOAL_LABEL, fuelTradeOffLine } from '@/domain/fitnessGoal';
 import { COMPETITION_CUT_RULES, competitionCutActive } from '@/domain/targetWeight';
 import { athleticVo2Target, publishedCardioBand, vo2ForFitnessGoal } from '@/domain/fitnessSnapshot';
-import { pacedVo2Target } from '@/domain/goalProgress';
+import { vo2TargetReason } from '@/domain/goalProgress';
 import { heartRateMaxFrom } from '@/domain/trainingGuidance';
 import { CMO_VIGOROUS_MINUTES_WEEK } from '@/domain/guidance';
 import { activeMinutesByDay } from '@/domain/healthSources';
@@ -401,19 +401,17 @@ export function buildStatsAnalysis(input: BuildInput): StatsAnalysisPayload {
   const goalLabel = input.goal ? GOAL_LABEL[input.goal] : null;
   const fitnessLabel = input.fitnessGoal ? FITNESS_GOAL_LABEL[input.fitnessGoal] : null;
   const vo2Aim = input.fitnessGoal ? vo2ForFitnessGoal(input.age, input.sex, input.fitnessGoal) : null;
-  const vo2Pace = vo2Aim
-    ? pacedVo2Target({
-      longTerm: vo2Aim.target,
+  const vo2Reason = input.fitnessGoal
+    ? vo2TargetReason({
+      age: input.age,
+      sex: input.sex,
+      goal: input.fitnessGoal,
       current: latestVo2,
       today: input.today,
       targetOn: input.targetOn,
     })
     : null;
-  const vo2Goal = vo2Aim == null
-    ? null
-    : vo2Pace?.limited
-      ? `${vo2Aim.label} By the target date, ${vo2Pace.byDate}.`
-      : vo2Aim.label;
+  const vo2Goal = vo2Reason ? [...vo2Reason.lines, vo2Reason.caption].join(' ') : null;
   const losing = input.goal === 'lose_weight' || input.goal === 'lose_fat_build_muscle';
   const cutOn = input.competitionCut === true;
   const maxHeartRate = heartRateMaxFrom({

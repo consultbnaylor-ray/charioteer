@@ -6,6 +6,7 @@
  * 75th and above is Strong. This is an estimate, not Apple's classification and
  * not a medical assessment.
  */
+import { FITNESS_GOAL_LABEL, type FitnessGoal } from './fitnessGoal.ts';
 import { metricFallback, type FallbackCite } from './healthBands.ts';
 import { londonDay, mondayOf, shiftDay } from './healthInsights.ts';
 import { minuteUnit, paceJudgement, parseStatPeriod, periodPhrase, rollingWindow, scaledPeriodTarget, type StatPeriod } from './statWindow.ts';
@@ -949,6 +950,20 @@ function sexWord(sex: NutritionSex): string {
   return sex === 'female' ? 'women' : 'men';
 }
 
+/** Decade used by the 2015 table. Ages 20–79 only. */
+export function cardioAgeBand(age: number): { min: number; max: number } | null {
+  if (age < 20 || age > 79) return null;
+  const max = age <= 29 ? 29 : age <= 39 ? 39 : age <= 49 ? 49 : age <= 59 ? 59 : age <= 69 ? 69 : 79;
+  return { min: max - 9, max };
+}
+
+export const VO2_NORM_CAPTION = 'Mayo Clinic Proceedings 2015 fitness norms';
+
+function vo2Figure(value: number): string {
+  const rounded = Math.round(value * 10) / 10;
+  return Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1);
+}
+
 function levelTone(level: FitnessLevel): FitnessTone {
   return level === 'Developing' ? 'watch' : 'good';
 }
@@ -963,8 +978,6 @@ function boxerBand(goal: NutritionGoal | null, sex: NutritionSex | null): Fitnes
   return null;
 }
 
-const BAND_CENTRES = [25, 35, 45, 55, 65, 75] as const;
-
 /**
  * A dated plan does not jump to the long-term level in a few weeks.
  * Helgerud and colleagues, 2007, raised VO2 max by about 7% in 8 weeks of 4x4 intervals.
@@ -972,57 +985,36 @@ const BAND_CENTRES = [25, 35, 45, 55, 65, 75] as const;
  */
 export const VO2_WEEKLY_GAIN = 0.5;
 
-function percentileAt(age: number, sex: NutritionSex, key: 'p50' | 'p90'): number | null {
-  const rows = sex === 'female' ? WOMEN : MEN;
-  const points = rows.map((row, index) => ({
-    age: BAND_CENTRES[index] ?? 25,
-    value: row[key],
-  }));
-  const first = points[0];
-  const last = points[points.length - 1];
-  if (!first || !last) return null;
-  if (age <= first.age) return first.value;
-  if (age >= last.age) return last.value;
-  const next = points.findIndex((point) => point.age >= age);
-  const right = points[next];
-  const left = points[next - 1];
-  if (!left || !right || right.age === left.age) return right?.value ?? left?.value ?? null;
-  const mix = (age - left.age) / (right.age - left.age);
-  return left.value + (right.value - left.value) * mix;
+function aimAge(real: number, goal: FitnessGoal): number {
+  const years = goal === 'younger_2' ? 2 : goal === 'younger_5' ? 5 : goal === 'younger_10' ? 10 : 0;
+  return Math.max(20, Math.min(79, real - years));
 }
 
 /**
  * Long-term VO2 max for the fitness-age aim.
- * Normal, and a younger aim, use the 50th percentile (the good age-norm) at that age.
+ * Normal, and a younger aim, use the 50th percentile of the age band for that age.
  * Elite uses the 90th percentile of the real age band: the excellent level. The 95th is superior.
  * A nearer date is capped separately at VO2_WEEKLY_GAIN.
  */
 export function vo2ForFitnessGoal(
   age: number | null,
   sex: NutritionSex | null,
-  goal: import('./fitnessGoal.ts').FitnessGoal,
+  goal: FitnessGoal,
 ): { target: number; fitnessAge: number; label: string } | null {
   if (age == null || sex == null || age < 18 || age > 100) return null;
   const real = Math.round(age);
-  if (goal === 'elite') {
-    const band = bandFor(real, sex);
-    if (!band) return null;
-    const target = band.p90;
-    return {
-      target,
-      fitnessAge: real,
-      label: `${target} ml/kg/min, excellent for age ${real}, 90th percentile (Kaminsky 2015). At most ${VO2_WEEKLY_GAIN} ml/kg/min a week.`,
-    };
-  }
-  const years = goal === 'younger_2' ? 2 : goal === 'younger_5' ? 5 : goal === 'younger_10' ? 10 : 0;
-  const fitnessAge = Math.max(20, Math.min(79, real - years));
-  const mid = percentileAt(fitnessAge, sex, 'p50');
-  if (mid == null) return null;
-  const target = Math.round(mid * 10) / 10;
-  const which = years === 0
-    ? `the good level for age ${fitnessAge}`
-    : `the good level for age ${fitnessAge}, ${years} years under age ${real}`;
-  return { target, fitnessAge, label: `${target} ml/kg/min, ${which} (50th percentile, Kaminsky 2015)` };
+  const fitnessAge = goal === 'elite' ? real : aimAge(real, goal);
+  const band = bandFor(fitnessAge, sex);
+  const range = cardioAgeBand(fitnessAge);
+  if (!band || !range) return null;
+  const target = goal === 'elite' ? band.p90 : band.p50;
+  const level = goal === 'elite' ? 'excellent' : 'good';
+  const percentile = goal === 'elite' ? '90th' : '50th';
+  return {
+    target,
+    fitnessAge,
+    label: `${FITNESS_GOAL_LABEL[goal]} aims for the ${level} level for ${sexWord(sex)} aged ${range.min}\u2013${range.max} (${percentile} percentile, ${vo2Figure(target)}).`,
+  };
 }
 
 /** The same boxing VO2 band the fitness-age card uses. Null when this goal has no class band. */

@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 
 import { describe, expect, it } from 'vitest';
 
-import { GOAL_PROGRESS_BUCKET, chartVo2Readings, goalProgressObjectPath, goalProgressPhotosFromRows, goalProgressSeries, goalProgressSignStub, progressLinePath, withGoalProgressPreviews } from '@/domain/goalProgress';
+import { GOAL_PROGRESS_BUCKET, chartVo2Readings, goalProgressObjectPath, goalProgressPhotosFromRows, goalProgressSeries, goalProgressSignStub, progressLinePath, vo2TargetReason, withGoalProgressPreviews } from '@/domain/goalProgress';
 import { signedStorageRef } from '@/domain/ownerPhotos';
 import { settingsForPreset } from '@/domain/targetWeight';
 import { defaultNutritionSettings } from '@/domain/nutrition';
@@ -157,8 +157,31 @@ describe('goal progress', () => {
     expect(series.vo2Actual).toHaveLength(4);
     expect(series.vo2LongTerm).toBe(52.1);
     expect(series.vo2Target).toBe(48.1);
-    expect(series.vo2Note).toContain('52.1');
-    expect(series.vo2Note).toContain('48.1');
+    expect(series.vo2Lines[0]).toBe('Elite Athlete aims for the excellent level for men aged 40\u201349 (90th percentile, 52.1).');
+    expect(series.vo2Lines[1]).toBe('Rising about 0.5 a week from 44 gets you to 48.1 by 31 Dec 2026.');
+    expect(series.vo2Caption).toBe('Mayo Clinic Proceedings 2015 fitness norms');
+    const woman = vo2TargetReason({
+      age: 42,
+      sex: 'female',
+      goal: 'younger_10',
+      current: 30,
+      today: '2026-11-04',
+      targetOn: '2027-06-01',
+    });
+    expect(woman?.lines[0]).toContain('10 years younger aims for the good level for women aged 30\u201339');
+    expect(woman?.lines[0]).toContain('50th percentile, 30.2');
+    expect(woman?.caption).toBe(series.vo2Caption);
+    const older = vo2TargetReason({
+      age: 55,
+      sex: 'male',
+      goal: 'normal',
+      current: null,
+      today: '2026-11-04',
+      targetOn: null,
+    });
+    expect(older?.lines).toEqual(['Normal Fitness Age aims for the good level for men aged 50\u201359 (50th percentile, 32.6).']);
+    expect(readFileSync('src/ui/DailyTargets.tsx', 'utf8')).toContain('reason={series.vo2Lines}');
+    expect(readFileSync('supabase/functions/_shared/nutritionLoad.ts', 'utf8')).toContain('vo2TargetReason');
     expect(series.vo2Path).toEqual([
       { day: '2026-10-29', value: 44 },
       { day: '2026-12-31', value: 48.1 },

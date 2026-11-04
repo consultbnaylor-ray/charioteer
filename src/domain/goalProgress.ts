@@ -5,6 +5,7 @@ export {
   orderReadings,
   pacedVo2Target,
   progressLinePath,
+  vo2TargetReason,
   type DatedValue,
   type GoalProgressSeries,
   type Vo2ChartPoint,

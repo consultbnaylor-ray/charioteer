@@ -128,7 +128,6 @@ export function DailyTargets() {
       {targetKg != null ? <WeightInline /> : null}
       <T variant="muted">{plan?.caveat ?? DAILY_TARGETS_CAVEAT}</T>
       {vo2Chart.sourceLabel ? <T variant="muted">{vo2Chart.sourceLabel}</T> : null}
-      {series.vo2Note ? <T variant="muted">{series.vo2Note}</T> : null}
     </Card>
   );
 }
@@ -225,6 +224,8 @@ function GoalProgressGraph({
         empty="No VO2 max readings yet"
         latest={latestVo2 ? readingCallout(latestVo2.value, 'ml/kg/min', latestVo2.day, today) : null}
         target={vo2Target ? targetCallout(vo2Target.value, 'ml/kg/min', vo2Target.day) : null}
+        reason={series.vo2Lines}
+        caption={series.vo2Caption}
       />
       <DateAxis start={series.start} end={series.end} photos={photos} width={width} accent={accent} surface={surface} muted={muted} onOpen={setOpen} />
       <Modal visible={shown != null} transparent animationType="fade" onRequestClose={() => setOpen(null)}>
@@ -260,6 +261,8 @@ function MiniSeries({
   empty,
   latest,
   target,
+  reason = [],
+  caption = null,
 }: {
   title: string;
   unit: string;
@@ -276,12 +279,21 @@ function MiniSeries({
   empty: string;
   latest: string | null;
   target: string | null;
+  reason?: readonly string[];
+  caption?: string | null;
 }) {
+  const why = (
+    <>
+      {reason.map((line) => <T key={line} variant="muted">{line}</T>)}
+      {caption ? <T variant="muted">{caption}</T> : null}
+    </>
+  );
   if (actual.length === 0) {
     return (
       <View style={{ gap: 4, alignSelf: 'stretch' }}>
         <T>{title}</T>
         <T variant="muted">{empty}</T>
+        {why}
       </View>
     );
   }
@@ -305,6 +317,7 @@ function MiniSeries({
       <T>{title}</T>
       {latest ? <T>{latest}</T> : null}
       {target ? <T variant="muted">{target}</T> : null}
+      {why}
       {width > 0 ? (
         <Svg width={width} height={PLOT_H}>
           {ticks.map((tick) => (

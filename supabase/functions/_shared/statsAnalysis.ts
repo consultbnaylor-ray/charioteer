@@ -869,7 +869,7 @@ export function sanitizeStatsAnalysis(input: unknown): StatsAnalysisPayload | nu
     sex,
     goal: goal || null,
     fitnessGoal: text(record.fitnessGoal, 40) || null,
-    vo2Goal: text(record.vo2Goal, 180) || null,
+    vo2Goal: text(record.vo2Goal, 360) || null,
     fuelNote: text(record.fuelNote, 400) || null,
     competitionCut: record.competitionCut === true,
     weightPlan: weightPlan || null,

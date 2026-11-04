@@ -1,5 +1,5 @@
 import { type FitnessGoal } from './fitnessGoal.ts';
-import { VO2_WEEKLY_GAIN, athleticVo2Target, vo2ForFitnessGoal } from './fitnessSnapshot.ts';
+import { VO2_NORM_CAPTION, VO2_WEEKLY_GAIN, athleticVo2Target, vo2ForFitnessGoal } from './fitnessSnapshot.ts';
 import type { NutritionGoal, NutritionSex } from './nutrition.ts';
 import { addIsoDays, formatIsoDay, isoDaysBetween, roundKg } from './targetWeight.ts';
 
@@ -19,8 +19,10 @@ export type GoalProgressSeries = {
   vo2Target: number | null;
   /** The published long-term level. Same as vo2Target when the date can reach it. */
   vo2LongTerm: number | null;
-  /** Set when the date cannot reach the long-term level at the weekly cap. */
-  vo2Note: string | null;
+  /** One or two plain lines under the VO2 target. */
+  vo2Lines: string[];
+  /** Small source caption under those lines. */
+  vo2Caption: string | null;
 };
 
 /** One reading per day, oldest first. A later duplicate day replaces the earlier one. */
@@ -121,6 +123,35 @@ export function chartVo2Readings(input: {
   return { points, sourceLabel };
 }
 
+function vo2Figure(value: number): string {
+  const rounded = Math.round(value * 10) / 10;
+  return Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1);
+}
+
+/** The same words under the VO2 target and in the coach context. */
+export function vo2TargetReason(input: {
+  age: number | null;
+  sex: NutritionSex | null;
+  goal: FitnessGoal;
+  current: number | null;
+  today: string;
+  targetOn: string | null;
+}): { lines: string[]; caption: string } | null {
+  const aim = vo2ForFitnessGoal(input.age, input.sex, input.goal);
+  if (!aim) return null;
+  const lines = [aim.label];
+  const pace = pacedVo2Target({
+    longTerm: aim.target,
+    current: input.current,
+    today: input.today,
+    targetOn: input.targetOn,
+  });
+  if (pace.limited && input.current != null && input.targetOn && input.targetOn > input.today) {
+    lines.push(`Rising about ${vo2Figure(VO2_WEEKLY_GAIN)} a week from ${vo2Figure(input.current)} gets you to ${vo2Figure(pace.byDate)} by ${formatIsoDay(input.targetOn)}.`);
+  }
+  return { lines, caption: VO2_NORM_CAPTION };
+}
+
 /** The long-term level, or as far as VO2_WEEKLY_GAIN can go before the target date. */
 export function pacedVo2Target(input: {
   longTerm: number;
@@ -212,8 +243,15 @@ export function goalProgressSeries(input: {
         { day: lastVo2.day, value: vo2Target },
       ]
     : null;
-  const vo2Note = pace?.limited && input.targetOn
-    ? `By ${formatIsoDay(input.targetOn)}, about ${vo2Target} ml/kg/min. The long-term level is ${vo2LongTerm} ml/kg/min. The rise is capped at ${VO2_WEEKLY_GAIN} ml/kg/min a week.`
+  const reason = input.fitnessGoal
+    ? vo2TargetReason({
+      age: input.age ?? null,
+      sex: input.sex,
+      goal: input.fitnessGoal,
+      current: lastVo2?.value ?? null,
+      today: input.today,
+      targetOn: input.targetOn,
+    })
     : null;
   return {
     start,
@@ -225,7 +263,8 @@ export function goalProgressSeries(input: {
     weightTarget: input.weightTargetKg,
     vo2Target,
     vo2LongTerm,
-    vo2Note,
+    vo2Lines: reason?.lines ?? [],
+    vo2Caption: reason?.caption ?? null,
   };
 }
 
