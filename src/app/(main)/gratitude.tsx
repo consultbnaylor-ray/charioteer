@@ -4,6 +4,7 @@ import { useRef, useState } from 'react';
 import { ActivityIndicator, Modal, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 
 import { useRepository, useSnapshot } from '@/data';
+import { AiCreditLine } from '@/ui/AiCreditLine';
 import { isoDay, parseIsoDay, startOfLocalDay } from '@/domain/dates';
 import { londonDay } from '@/domain/healthInsights';
 import { shownError } from '@/domain/errors';
@@ -351,6 +352,7 @@ export default function GratitudeDiary() {
       intro="A list you can come back to. This diary is private. It is not shown to the community. Photos on a line stay private too, and are not sent to Thumos. Thumos sees a few lines of text only if you have allowed the coach."
     >
       <GratitudeSectionShare />
+      <AiCreditLine kind="coach" />
       <ShareOnProfile
         boxed
         label={SHARE_NEW_GRATITUDE}

@@ -10,6 +10,7 @@ import {
   METRIC_CAVEAT,
   METRIC_REGISTRY,
   metricAudit,
+  ratingTone,
   readingFor,
 } from '@/domain/metricRegistry';
 import { defaultNutritionSettings } from '@/domain/nutrition';
@@ -326,5 +327,17 @@ describe('metric registry', () => {
     const minuteChart = screen.slice(screen.indexOf('function MinuteTypeChart'), screen.indexOf('function ActivityBars'));
     expect(minuteChart).toContain('<ActivityBars');
     expect(minuteChart).not.toContain('variant="label"');
+  });
+
+  it('keeps a muscular BMI as a reference and colours Poor away from green', () => {
+    const bmi = readingFor('weight_kg', 95, { ...EMPTY_METRIC_CONTEXT, age: 40, sex: 'male', heightCm: 175, build: 'muscular' });
+    expect(bmi.label).toBe('Usual');
+    expect(bmi.where).toContain('reference only');
+    expect(bmi.where).toContain('misreads people who lift');
+    const fat = readingFor('body_fat', 28, { ...EMPTY_METRIC_CONTEXT, age: 40, sex: 'male' });
+    expect(fat.label).toBe('Poor');
+    expect(fat.where).toContain('Measured body fat');
+    expect(ratingTone(fat.label)).toBe('attention');
+    expect(ratingTone('Good')).toBe('good');
   });
 });

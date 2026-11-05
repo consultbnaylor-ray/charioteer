@@ -2194,6 +2194,10 @@ export class DemoRepository implements Repository {
     return { checked: false, needsPermissions: false, missing: [] };
   }
 
+  async loadAiUsageMonth(): Promise<{ coach: number; meal: number; plan: number }> {
+    return { coach: 0, meal: 0, plan: 0 };
+  }
+
   async loadOwnSubscription(): Promise<import('@/domain/subscription').SubscriptionRecord | null> {
     return null;
   }

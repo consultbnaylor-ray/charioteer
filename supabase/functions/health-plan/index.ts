@@ -79,6 +79,7 @@ async function analyseStats(input: {
     userId: input.userId,
     kind: 'plan',
     enforcedFlag: Deno.env.get('AI_ENTITLEMENT_ENFORCED'),
+    allowlist: Deno.env.get('AI_ENTITLEMENT_USERS'),
   });
   if (!gate.ok && 'body' in gate) return json(gate.body, gate.status);
   try {
@@ -394,6 +395,7 @@ Deno.serve(async (req) => {
     userId,
     kind: 'plan',
     enforcedFlag: Deno.env.get('AI_ENTITLEMENT_ENFORCED'),
+    allowlist: Deno.env.get('AI_ENTITLEMENT_USERS'),
   });
   if (!gate.ok && 'body' in gate) return json(gate.body, gate.status);
 

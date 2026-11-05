@@ -45,6 +45,14 @@ export const METRIC_CAVEAT = 'Not medical advice. Not a diagnosis.';
 
 export type MetricRatingLabel = 'Excellent' | 'Good' | 'Fair' | 'Poor' | 'Usual';
 
+/** Colour for a rating word. Poor is attention, Fair is watch, Good and Excellent are good. */
+export function ratingTone(label: string | null | undefined): 'good' | 'watch' | 'info' | 'attention' {
+  if (label === 'Excellent' || label === 'Good') return 'good';
+  if (label === 'Fair') return 'watch';
+  if (label === 'Poor') return 'attention';
+  return 'info';
+}
+
 export type MetricBasis = 'body_fat' | 'waist_ratio' | 'bmi';
 
 export type MetricScale = 'score' | 'streak' | 'share';
@@ -74,6 +82,10 @@ export type MetricContext = {
   wholeCount?: number | null;
   basis?: MetricBasis | null;
   scale?: MetricScale | null;
+  /** Muscular builds are not rated from BMI. */
+  build?: import('@/domain/nutrition').BodyBuild | null;
+  /** A one-day chart of a past day must not say today. */
+  viewedDay?: 'today' | 'past' | null;
 };
 
 export type MetricReading = {
@@ -276,7 +288,7 @@ function stepBand(age: number | null): { low: number; high: number; why: string 
 
 function spanPhrase(ctx: MetricContext): string {
   const days = ctx.windowDays != null && ctx.windowDays > 0 ? Math.round(ctx.windowDays) : 7;
-  if (days <= 1) return 'today';
+  if (days <= 1) return ctx.viewedDay === 'past' ? 'on that day' : 'today';
   if (days === 7) return 'in the last 7 days';
   return `in the last ${days} days`;
 }
@@ -445,8 +457,9 @@ function rateMinutes(id: string, value: number | null, ctx: MetricContext, weekl
       ? `${sport}: these minutes meet the general weekly guide. A sport plan can still ask for more.`
       : `${sport}: these minutes are under the general weekly guide of about ${aim} in this window.`
     : null;
+  const dayGuide = ctx.viewedDay === 'past' ? 'The guide for a day' : 'The guide for that span';
   const where = share == null
-    ? `${Math.round(value)} ${noun} ${spanPhrase(ctx)}. The guide for that span is about ${aim} minutes, from ${weekly} a week. ${ageNote(ctx)}`
+    ? `${Math.round(value)} ${noun} ${spanPhrase(ctx)}. ${dayGuide} is about ${aim} minutes, from ${weekly} a week. ${ageNote(ctx)}`
     : `${Math.round(value)} ${noun} so far today. The guide by this time of day is about ${aim} minutes, from ${weekly} a week. ${ageNote(ctx)}`;
   return made(id, CMO, label, where, { goalLine, tips: MOVE_TIPS, more: where });
 }
@@ -495,6 +508,14 @@ function bmiOf(kg: number, heightCm: number | null | undefined): number | null {
 
 function rateBmiValue(id: string, bmi: number, ctx: MetricContext): MetricReading {
   const band = { low: NICE_BMI_HEALTHY_MIN, high: NICE_BMI_HEALTHY_MAX };
+  if (ctx.build === 'muscular') {
+    return made(id, NHS_BMI, 'Usual', `BMI ${bmi} is a reference only. BMI misreads people who lift weights, so a muscular build is not given a Poor or Fair rating from BMI. A measured body fat % is used when there is one. The NHS healthy-weight range is ${band.low}–${band.high}, shown for reference. ${ageNote(ctx)}`, {
+      band,
+      draw: false,
+      tips: ['Waist and a measured body fat % tell a fairer story than BMI for someone who lifts.'],
+      more: 'BMI is a reference only for a muscular build. It is not a rating.',
+    });
+  }
   const sport = sportName(ctx.goal);
   let label: MetricRatingLabel = 'Good';
   if (bmi < 18.5) label = 'Poor';
@@ -566,7 +587,7 @@ function rateBodyFat(id: string, value: number | null, ctx: MetricContext): Metr
       ? `${sport}: ${pct}% sits in the ACE athlete range for ${who}.`
       : `${sport}: ${pct}% is outside the ACE athlete range for ${who} (${band.low}–${band.high}%).`
     : null;
-  const where = `${pct}% body fat. For ${who}, the green band is the ACE athlete-to-fitness span, ${band.low}–${band.high}%. Average runs up to about ${averageHigh}%. ${ageNote(ctx)} These categories are not split by age.`;
+  const where = `Measured body fat ${pct}%, from a saved scale, Garmin, or Apple Health reading. It is not estimated from BMI. For ${who}, ACE (American Council on Exercise) calls ${band.low}–${band.high}% the athlete-to-fitness span. Average runs up to about ${averageHigh}%. ${ageNote(ctx)} These categories are not split by age.`;
   return made(id, ACE_FAT, label, where, {
     band,
     draw: true,

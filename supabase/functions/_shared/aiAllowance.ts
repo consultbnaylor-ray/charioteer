@@ -4,7 +4,7 @@ import {
   CRISIS_STATIC_REPLY,
   TIER_LIMITS,
   decideAllowance,
-  entitlementEnforced,
+  entitlementEnforcedForUser,
   limitReachedMessage,
   londonDayKey,
   londonMonthStart,
@@ -44,9 +44,11 @@ export async function gateAiUse(input: {
   crisis?: boolean;
   now?: Date;
   enforcedFlag?: string;
+  /** Comma-separated user ids enforced while AI_ENTITLEMENT_ENFORCED is false. */
+  allowlist?: string;
 }): Promise<AiGate> {
   const now = input.now ?? new Date();
-  const enforced = entitlementEnforced(input.enforcedFlag);
+  const enforced = entitlementEnforcedForUser(input.enforcedFlag, input.userId, input.allowlist);
   if (!enforced) return { ok: true, tier: null, used: 0, limit: 0 };
 
   const sub = await input.admin.from('subscriptions').select('product_id, status, expires_at, is_trial, environment').eq('user_id', input.userId).maybeSingle();

@@ -635,6 +635,7 @@ export function WorkoutList({
         sex={sex}
         goal={goal}
         exercisePermissionMissing={exercisePermissionMissing}
+        onSelectDay={choose}
       />
       <WorkoutHistory workouts={workouts} historyDay={historyDay} open={historyOpen} onToggle={() => setHistoryOpen((value) => !value)} onClear={clearHistory} />
       <DifficultyChart slots={slots} workouts={workouts} age={age} day={day} onSelect={choose} />

@@ -17,6 +17,7 @@ import { quoteCredit, quoteOfTheDay } from '@/domain/stoicQuotes';
 import { VISION_EMPTY_STATEMENT } from '@/domain/visionBoard';
 import { countSplit, drinkFreeFigure, soberFigure } from '@/domain/measureFigures';
 import { daysUntil, drinkFreeThisWeek, showsSoberRecord, SUDDEN_STOP_WARNING, toggleDrinkFreeDay } from '@/domain/stage';
+import { AiCreditLine } from '@/ui/AiCreditLine';
 import { CheckInWeek } from '@/ui/CheckInWeek';
 import { MeasureRingView, MeasureSplitView } from '@/ui/MeasuredFigure';
 import { IconLabel } from '@/ui/statIcons';
@@ -225,6 +226,7 @@ export default function Home() {
       )}
       </ScrollTarget>
       <YourGoal place="today" />
+      <AiCreditLine />
       <DailyTargets />
       <WalkThisOff place="today" />
       <Card accessibilityLabel="Open Health Stats" onPress={() => router.push('/health' as never)}>

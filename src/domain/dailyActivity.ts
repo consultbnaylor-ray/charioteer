@@ -264,27 +264,48 @@ function groupedCount(value: number): string {
   return rounded.toLocaleString('en-GB', { maximumFractionDigits: 1 });
 }
 
+function previousIsoDay(day: string): string {
+  const date = new Date(`${day}T12:00:00Z`);
+  date.setUTCDate(date.getUTCDate() - 1);
+  return date.toISOString().slice(0, 10);
+}
+
+/** Today, yesterday, or a UK weekday date such as "On Tue 3 Nov". */
+export function viewedDayHeading(day: string, today: string, now?: Date): string {
+  if (day === today) {
+    const open = londonHour(now ?? new Date()) < EARLY_DAY_HOUR;
+    return open ? 'Today so far' : 'Today';
+  }
+  if (day === previousIsoDay(today)) return 'Yesterday';
+  return `On ${activityDayName(day)}`;
+}
+
 /**
- * Day range names today's figure. A running total before 5pm London is "Today so far".
+ * Day range names the chosen day. Today before 5pm London is "Today so far".
  * Longer ranges keep the highest day.
  */
 export function rangeScaleLine(input: {
-  points: readonly { value: number; source?: ActivitySource | null }[];
+  points: readonly { day?: string; value: number; source?: ActivitySource | null }[];
   unit: string;
   days: number;
   cumulative?: boolean;
   now?: Date;
+  today?: string;
   textFor?: (value: number) => string;
 }): string | null {
   if (input.days !== 1) return mostInOneDay(input.points, input.unit);
-  let latest: { value: number; source: ActivitySource | null } | null = null;
+  let latest: { day: string; value: number; source: ActivitySource | null } | null = null;
   for (const point of input.points) {
     if (!(point.value > 0)) continue;
-    latest = { value: point.value, source: point.source ?? null };
+    latest = { day: point.day ?? '', value: point.value, source: point.source ?? null };
   }
   if (!latest) return null;
-  const open = input.cumulative !== false && londonHour(input.now ?? new Date()) < EARLY_DAY_HOUR;
-  const head = open ? 'Today so far' : 'Today';
+  const today = input.today ?? latest.day;
+  const heading = latest.day ? viewedDayHeading(latest.day, today, input.now) : null;
+  const early = londonHour(input.now ?? new Date()) < EARLY_DAY_HOUR;
+  const head = heading == null
+    ? (input.cumulative && early ? 'Today so far' : 'Today')
+    : (!input.cumulative && heading === 'Today so far' ? 'Today' : heading);
   const amount = input.textFor ? input.textFor(latest.value) : `${groupedCount(latest.value)} ${input.unit}`.trim();
   const named = latest.source === 'garmin' ? ` ${GARMIN_SOURCE}` : latest.source === 'apple' ? ` ${APPLE_SOURCE}` : '';
   return `${head}: ${amount}${named}`;

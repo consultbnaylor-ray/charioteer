@@ -301,6 +301,7 @@ Deno.serve(async (req) => {
     kind: 'coach',
     crisis: safety.selfHarm || safety.withdrawal,
     enforcedFlag: Deno.env.get('AI_ENTITLEMENT_ENFORCED'),
+    allowlist: Deno.env.get('AI_ENTITLEMENT_USERS'),
   });
   if (!gate.ok && 'body' in gate) return json(gate.body, gate.status);
   const crisisStatic = !gate.ok && 'crisis' in gate ? gate.reply || CRISIS_STATIC_REPLY : null;

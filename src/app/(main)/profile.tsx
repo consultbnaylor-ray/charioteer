@@ -12,6 +12,7 @@ import { shownError } from '@/domain/errors';
 import { interestChipRemovable, interestChipVisible } from '@/domain/interests';
 import { planCustomInterest } from '@/domain/privacy';
 import { PRIVACY_POLICY_URL } from '@/domain/privacyPolicy';
+import { AiCreditLine } from '@/ui/AiCreditLine';
 import { SubscriptionRow } from '@/ui/SubscriptionRow';
 import { toggleShareId } from '@/domain/profileSharing';
 import { quoteById, quoteCredit } from '@/domain/stoicQuotes';
@@ -273,6 +274,7 @@ export default function Profile() {
     >
       <YouSectionShare />
       <SubscriptionRow />
+      <AiCreditLine />
       <Card
         accessibilityLabel="View my public profile"
         onPress={() => router.push('/public-profile' as never)}

@@ -3520,6 +3520,18 @@ export class SupabaseRepository implements Repository {
     return url;
   }
 
+  async loadAiUsageMonth(monthStart: string): Promise<{ coach: number; meal: number; plan: number }> {
+    const totals = { coach: 0, meal: 0, plan: 0 };
+    const { data, error } = await this.client.from('ai_usage').select('kind, count').gte('day', monthStart);
+    if (error || !Array.isArray(data)) return totals;
+    for (const row of data) {
+      const kind = (row as { kind?: unknown }).kind;
+      const count = Number((row as { count?: unknown }).count);
+      if ((kind === 'coach' || kind === 'meal' || kind === 'plan') && Number.isFinite(count)) totals[kind] += count;
+    }
+    return totals;
+  }
+
   async loadOwnSubscription(): Promise<import('@/domain/subscription').SubscriptionRecord | null> {
     const { data, error } = await this.client
       .from('subscriptions')

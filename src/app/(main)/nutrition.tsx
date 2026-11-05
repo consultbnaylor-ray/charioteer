@@ -86,6 +86,7 @@ import { readAppleHealthBody } from '@/health/sync';
 import { writeDayToAppleHealth } from '@/health/writeNutrition';
 import { GoalChoices, GoalDivision } from '@/ui/GoalChoices';
 import { DateField } from '@/ui/DateField';
+import { AiCreditLine } from '@/ui/AiCreditLine';
 import { MealEstimateStatus } from '@/ui/MealEstimateStatus';
 import { ProcessedFoodList } from '@/ui/ProcessedFoodList';
 import { PlanTick } from '@/ui/PlanTick';
@@ -1030,6 +1031,7 @@ export default function Nutrition() {
         {offersMealAi ? (
           <>
             <Button label="Estimate from text" pending={isPending('estimate')} pendingLabel="Reading your meal…" onPress={readText} />
+            <AiCreditLine kind="meal" />
             <MealEstimateStatus
               waiting={isPending('estimate') || isPending('photo') || isPending('sample')}
               ready={estimateReady && draft?.estimated === true}

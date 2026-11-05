@@ -22,7 +22,7 @@ import {
 } from '@/domain/nutrition';
 import { chartBucketForPeriod } from '@/domain/readingChart';
 import type { StatsTone } from '@/domain/statsOverview';
-import { chartFigureLabel, londonToday, NUTRITION_CHART_PERIODS, paceJudgement, periodDayCount, periodHeading, periodPhrase, proteinPace, rollingWindow, type StatPeriod } from '@/domain/statWindow';
+import { chartFigureLabel, completedDayStats, londonToday, NUTRITION_CHART_PERIODS, paceJudgement, periodDayCount, periodHeading, periodPhrase, proteinPace, rollingWindow, type StatPeriod } from '@/domain/statWindow';
 import { useStatPeriod } from '@/health/useStatPeriod';
 import { CompareBars, ProgressRing } from '@/ui/DistanceCharts';
 import { ProcessedFoodList } from '@/ui/ProcessedFoodList';
@@ -63,13 +63,17 @@ export function NutritionBoard({
   const picture = useMemo(() => {
     const days = nutritionTrendDays(logs, today, span);
     const logged = days.filter((day) => day.logged);
+    const loggedComplete = span > 1 ? logged.filter((day) => day.day < today) : logged;
+    const averaged = loggedComplete.length > 0 ? loggedComplete : (span === 1 ? logged : []);
     const items = foodItemsInSpan(logs, today, span);
-    const proteinDays = logged.map((day) => day.proteinG).filter((grams) => grams > 0);
-    const proteinAvg = proteinDays.length ? proteinDays.reduce((sum, grams) => sum + grams, 0) / proteinDays.length : 0;
+    const proteinDays = averaged.map((day) => day.proteinG).filter((grams) => grams > 0);
+    const proteinStats = completedDayStats(averaged.map((day) => ({ day: day.day, value: day.proteinG })), today);
+    const proteinAvg = span > 1 ? (proteinStats.average ?? 0) : (proteinDays.length ? proteinDays.reduce((sum, grams) => sum + grams, 0) / proteinDays.length : 0);
     const proteinHits = proteinTarget != null && proteinTarget > 0
       ? proteinDays.filter((grams) => grams >= proteinTarget).length
       : 0;
-    const kcalAvg = logged.length ? logged.reduce((sum, day) => sum + day.kcal, 0) / logged.length : 0;
+    const kcalStats = completedDayStats(averaged.map((day) => ({ day: day.day, value: day.kcal })), today);
+    const kcalAvg = span > 1 ? (kcalStats.average ?? 0) : (averaged.length ? averaged.reduce((sum, day) => sum + day.kcal, 0) / averaged.length : 0);
     const notes = processedFoodNotes(logs, days.map((day) => day.day));
     const processed = notes.length;
     const whole = items.length - processed;
@@ -79,10 +83,10 @@ export function NutritionBoard({
       kcalTarget,
       proteinG: proteinAvg,
       proteinTarget,
-      logged: logged.length > 0,
+      logged: averaged.length > 0,
     };
     return {
-      loggedCount: logged.length,
+      loggedCount: averaged.length,
       proteinDays: proteinDays.length,
       proteinHits,
       proteinAvg,

@@ -81,6 +81,7 @@ Deno.serve(async (req) => {
     userId: userData.user.id,
     kind: 'meal',
     enforcedFlag: Deno.env.get('AI_ENTITLEMENT_ENFORCED'),
+    allowlist: Deno.env.get('AI_ENTITLEMENT_USERS'),
   });
   if (!gate.ok && 'body' in gate) return json({ ...gate.body, usage: null }, gate.status);
 

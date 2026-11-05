@@ -6,6 +6,7 @@ import { buildFitnessSnapshot, periodActiveMinutes } from '@/domain/fitnessSnaps
 import { chartBucketForPeriod } from '@/domain/readingChart';
 import {
   chartFigureLabel,
+  completedDayStats,
   minuteUnit,
   NUTRITION_CHART_PERIODS,
   paceJudgement,
@@ -61,6 +62,24 @@ describe('period windows', () => {
     expect(charts).toContain("chartFigureLabel('Calories', period)");
     expect(toggle).toContain('horizontal');
     expect(toggle).toContain('periods.map');
+  });
+
+  it('leaves today out of an average and keeps today so far separate', () => {
+    const points = [
+      { day: '2026-10-29', value: 8000 },
+      { day: '2026-10-30', value: 9000 },
+      { day: '2026-10-31', value: 7000 },
+      { day: '2026-11-01', value: 8500 },
+      { day: '2026-11-02', value: 8200 },
+      { day: '2026-11-03', value: 7800 },
+      { day: '2026-11-04', value: 151 },
+    ];
+    const stats = completedDayStats(points, '2026-11-04');
+    expect(stats.days).toBe(6);
+    expect(stats.todayValue).toBe(151);
+    expect(stats.average).toBe((8000 + 9000 + 7000 + 8500 + 8200 + 7800) / 6);
+    expect(stats.complete.some((point) => point.day === '2026-11-04')).toBe(false);
+    expect(completedDayStats([{ day: '2026-11-04', value: 151 }], '2026-11-04').average).toBeNull();
   });
 
   it('scales a weekly target to the period', () => {

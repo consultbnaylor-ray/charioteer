@@ -38,6 +38,7 @@ export function ReadingChart({
   aggregate = 'mean',
   bucket,
   accessibilityLabel = 'Chart',
+  onSelectDay,
 }: {
   points: readonly ChartPoint[];
   start: string;
@@ -48,6 +49,8 @@ export function ReadingChart({
   aggregate?: ChartAggregate;
   bucket?: ChartBucket;
   accessibilityLabel?: string;
+  /** Choosing a point can open that day on the page. */
+  onSelectDay?: (day: string) => void;
 }) {
   const theme = useAppTheme();
   const [width, setWidth] = useState(0);
@@ -93,7 +96,10 @@ export function ReadingChart({
         bestDistance = distance;
       }
     }
-    if (best) setChosen(best.day);
+    if (best) {
+      setChosen(best.day);
+      onSelectDay?.(best.day);
+    }
   }
 
   if (!extent) {

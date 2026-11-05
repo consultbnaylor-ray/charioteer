@@ -91,6 +91,22 @@ export function chartFigureLabel(name: string, period: StatPeriod): string {
   return `${name} in ${periodPhrase(period).replace(/^the /, '')}`;
 }
 
+/**
+ * Averages use finished days only. Today is still in progress, so a 7-day
+ * window averages the previous complete days and leaves today out.
+ */
+export function completedDayStats(
+  points: readonly { day: string; value: number }[],
+  today: string,
+): { complete: { day: string; value: number }[]; todayValue: number | null; average: number | null; days: number } {
+  const complete = points.filter((point) => point.day < today && Number.isFinite(point.value) && point.value > 0);
+  const todayPoint = [...points].reverse().find((point) => point.day === today && Number.isFinite(point.value) && point.value > 0);
+  const average = complete.length
+    ? complete.reduce((sum, point) => sum + point.value, 0) / complete.length
+    : null;
+  return { complete, todayValue: todayPoint?.value ?? null, average, days: complete.length };
+}
+
 /** Opening of a progress sentence: "Today", "Last 7 days", or "Last 12 months". */
 export function periodHeading(period: StatPeriod): string {
   if (period === 'day') return 'Today';

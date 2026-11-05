@@ -255,7 +255,7 @@ describe('health plan writer', () => {
     const focusText = next.focus.map((item) => item.text).join(' ');
     expect(focusText).not.toMatch(/moves on|you marked|one focus is enough|Alex,/i);
     expect(focusText).not.toMatch(/…|\.{3}/);
-    expect(next.focus.every((item) => item.text.length > 0 && item.text.length <= 160)).toBe(true);
+    expect(next.focus.every((item) => item.text.length > 0 && item.text.length <= 320)).toBe(true);
     const ticked = togglePlanAction(first, first.focus[0]?.id ?? '');
     expect(ticked.updatedAt).toBe(first.updatedAt);
     expect(donePlanTexts(ticked)).toContain(first.focus[0]?.text);

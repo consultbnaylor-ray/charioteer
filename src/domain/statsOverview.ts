@@ -609,10 +609,15 @@ function calorieTile(input: StatsOverviewInput, today: string): StatTileModel {
     });
   }
   const window = rollingWindow(today, period);
-  const loggedDays = window.days.flatMap((day) => {
+  const completedDays = period === 'day' ? window.days : window.days.filter((day) => day < today);
+  const completedLogged = completedDays.flatMap((day) => {
     const items = dayItems(input.foodLogs, day);
     return items.length ? [sumItems(items).kcal] : [];
   });
+  const todayItems = dayItems(input.foodLogs, today);
+  const loggedDays = completedLogged.length
+    ? completedLogged
+    : (todayItems.length ? [sumItems(todayItems).kcal] : []);
   const kcal = loggedDays.length ? loggedDays.reduce((sum, value) => sum + value, 0) / loggedDays.length : 0;
   const target = input.nutrition.kcalTarget;
   const value = loggedDays.length ? `${Math.round(kcal).toLocaleString('en-GB')} kcal` : '0 kcal';
@@ -654,7 +659,10 @@ function proteinTile(input: StatsOverviewInput, today: string): StatTileModel {
   const period = chosenPeriod(input);
   const trend = nutritionTrendDays(input.foodLogs, today, periodDayCount(period)).map((day) => day.proteinG);
   const window = rollingWindow(today, period);
-  const days = proteinLoggedDays(input.foodLogs, window.days);
+  const completedDays = period === 'day' ? window.days : window.days.filter((day) => day < today);
+  const completedProtein = proteinLoggedDays(input.foodLogs, completedDays);
+  const todayProtein = proteinLoggedDays(input.foodLogs, [today]);
+  const days = completedProtein.length ? completedProtein : todayProtein;
   const protein = days.length ? days.reduce((sum, value) => sum + value, 0) / days.length : 0;
   const target = input.nutrition.proteinTarget;
   const value = days.length ? `${Math.round(protein)} g` : '—';

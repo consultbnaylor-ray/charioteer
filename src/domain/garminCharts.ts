@@ -34,7 +34,7 @@ import { GARMIN_EPOCH_EXPLAIN, readingFor, type MetricContext, type MetricReadin
 import type { NutritionGoal, NutritionSex } from '@/domain/nutrition';
 import type { RestingFitnessComment, RestingInfoSection } from '@/domain/restingFitness';
 import { RESTING_CARE, RESTING_CARD_CARE } from '@/domain/restingFitness';
-import { periodDayCount, periodPhrase, scaledPeriodTarget, type StatPeriod } from '@/domain/statWindow';
+import { completedDayStats, londonToday, periodDayCount, periodPhrase, scaledPeriodTarget, type StatPeriod } from '@/domain/statWindow';
 import { heartRateMaxFrom } from '@/domain/trainingGuidance';
 import { chartDays } from '@/domain/workoutDay';
 
@@ -265,6 +265,8 @@ function fillMetricContext(partial: Partial<MetricContext> | undefined, period?:
     wholeCount: partial?.wholeCount ?? null,
     basis: partial?.basis ?? null,
     scale: partial?.scale ?? null,
+    build: partial?.build ?? null,
+    viewedDay: partial?.viewedDay ?? null,
   };
 }
 
@@ -320,6 +322,27 @@ function oneDecimal(value: number): string {
 function averageOf(values: readonly number[]): number | null {
   if (values.length === 0) return null;
   return values.reduce((sum, value) => sum + value, 0) / values.length;
+}
+
+/**
+ * Mean of positive points. When a day is stamped and the window includes
+ * calendar today plus earlier days, today is left out of the average.
+ */
+function averageCompleted(
+  points: readonly { day?: string; value: number | null; empty?: boolean }[],
+  today?: string,
+): number | null {
+  const valued = points.flatMap((point) => (
+    point.empty || point.value == null || !(point.value > 0) ? [] : [{ day: point.day, value: point.value }]
+  ));
+  if (valued.length === 0) return null;
+  const stamped = valued.flatMap((point) => (point.day ? [{ day: point.day, value: point.value }] : []));
+  const mixedWithToday = today != null
+    && stamped.length === valued.length
+    && stamped.some((point) => point.day === today)
+    && stamped.some((point) => point.day < today);
+  if (mixedWithToday && today) return completedDayStats(stamped, today).average;
+  return averageOf(valued.map((point) => point.value));
 }
 
 function positiveValues(points: readonly { value: number }[]): number[] {
@@ -391,8 +414,8 @@ export function restingChartGuide(
   ), 'resting_heart_rate', stats.latest, fillMetricContext({ ...ctx, ownUsual: ctx.ownUsual ?? stats.usual }, period));
 }
 
-export function distanceChartGuide(period: StatPeriod, points: readonly { value: number; empty?: boolean }[], ctx: Partial<MetricContext> = {}): ChartGuide {
-  const mean = averageOf(positiveValues(points));
+export function distanceChartGuide(period: StatPeriod, points: readonly { day?: string; value: number; empty?: boolean }[], ctx: Partial<MetricContext> = {}, today?: string): ChartGuide {
+  const mean = averageCompleted(points, today);
   const own = mean == null ? null : { value: mean, label: `Your average distance ${grouped(period)}: ${distanceText(mean)}` };
   const stats = seriesStats(points);
   return withMetric(advised(
@@ -401,8 +424,8 @@ export function distanceChartGuide(period: StatPeriod, points: readonly { value:
   ), 'distance', stats.latest, fillMetricContext({ ...ctx, ownUsual: stats.usual }, period));
 }
 
-export function floorsChartGuide(period: StatPeriod, points: readonly { value: number; empty?: boolean }[], ctx: Partial<MetricContext> = {}): ChartGuide {
-  const mean = averageOf(positiveValues(points));
+export function floorsChartGuide(period: StatPeriod, points: readonly { day?: string; value: number; empty?: boolean }[], ctx: Partial<MetricContext> = {}, today?: string): ChartGuide {
+  const mean = averageCompleted(points, today);
   const own = mean == null ? null : { value: mean, label: `Your average floors ${grouped(period)}: ${oneDecimal(mean)} floors` };
   const stats = seriesStats(points);
   return withMetric(advised(
@@ -495,8 +518,8 @@ export const APPLE_HRV_SOURCE = 'Apple Health (SDNN)';
 
 export const APPLE_HRV_EMPTY = 'Apple Health HRV comes from Apple Watch.';
 
-function hrvGuide(period: StatPeriod, points: readonly GarminChartPoint[]): ChartGuide {
-  const mean = averageOf(points.flatMap((point) => (point.empty || point.value == null ? [] : [point.value])));
+function hrvGuide(period: StatPeriod, points: readonly GarminChartPoint[], today?: string): ChartGuide {
+  const mean = averageCompleted(points, today);
   const own = mean == null ? null : { value: mean, label: `Your average Garmin overnight HRV ${grouped(period)}: ${Math.round(mean)} ms` };
   return advised(
     `Garmin overnight HRV is last night's RMSSD. A 2010 review found short-term averages around 42 ms. It is not Apple's SDNN.`,
@@ -504,8 +527,8 @@ function hrvGuide(period: StatPeriod, points: readonly GarminChartPoint[]): Char
   );
 }
 
-export function sdnnGuide(period: StatPeriod, points: readonly { value: number; empty?: boolean }[], ctx: Partial<MetricContext> = {}): ChartGuide {
-  const mean = averageOf(points.flatMap((point) => (point.empty || !(point.value > 0) ? [] : [point.value])));
+export function sdnnGuide(period: StatPeriod, points: readonly { day?: string; value: number; empty?: boolean }[], ctx: Partial<MetricContext> = {}, today?: string): ChartGuide {
+  const mean = averageCompleted(points, today);
   const own = mean == null ? null : { value: mean, label: `Your average Apple Health SDNN ${grouped(period)}: ${Math.round(mean)} ms` };
   const stats = seriesStats(points);
   return withMetric(advised(
@@ -829,7 +852,7 @@ export function garminDetailCharts(input: GarminChartInput): GarminDetailChart[]
     unit: 'ms',
     points: hrvPoints,
     includeZero: false,
-    guide: hrvGuide(input.period, hrvPoints),
+    guide: hrvGuide(input.period, hrvPoints, londonToday()),
   });
   add({
     id: 'vo2',
@@ -847,8 +870,8 @@ export function garminDetailCharts(input: GarminChartInput): GarminDetailChart[]
   add(metricChart(input, 'skin_temp', 'Skin temperature', '°C', dailyNumber(input.skinTemp ?? [], (row) => row.deviationC, true), 'Skin temperature is how far Garmin\'s overnight reading sat from your usual skin temperature, in °C. The band is about 1 degree either side of usual. Not medical advice.', { low: -1, high: 1 }, true));
   add(metricChart(input, 'blood_pressure', 'Blood pressure', 'mmHg', dailyNumber(input.bloodPressure ?? [], (row) => row.systolic), 'Blood pressure here is the systolic reading Garmin stored, in mmHg. The band is a general adult reference of 90–120. Diastolic is a separate number and is not mixed into this bar. Not medical advice.', { low: 90, high: 120 }));
   add(metricChart(input, 'diastolic', 'Diastolic pressure', 'mmHg', dailyNumber(input.bloodPressure ?? [], (row) => row.diastolic), 'Diastolic pressure is the lower Garmin blood-pressure number, in mmHg. The band is a general adult reference of 60–80. It is not averaged with systolic. Not medical advice.', { low: 60, high: 80 }));
-  add(metricChart(input, 'body_fat', 'Body fat', '%', dailyNumber(input.bodyComp ?? [], (row) => row.bodyFatPct), 'Body fat is Garmin\'s estimate for that day. The lime band, when sex is set, is the ACE athlete-to-fitness span. It is a reference, not a diagnosis.'));
-  add(metricChart(input, 'bmi', 'BMI', 'BMI', dailyNumber(input.bodyComp ?? [], (row) => row.bmi), 'BMI is Garmin\'s stored body mass index. The band is the general adult reference of 18.5–24.9. It is not a diagnosis.', { low: 18.5, high: 24.9 }));
+  add(metricChart(input, 'body_fat', 'Body fat', '%', dailyNumber(input.bodyComp ?? [], (row) => row.bodyFatPct), 'Measured body fat % from Garmin\'s scale or watch. It is not estimated from BMI. The lime band, when sex is set, is the ACE athlete-to-fitness span. ACE categories are not split by age. It is a reference, not a diagnosis.'));
+  add(metricChart(input, 'bmi', 'BMI', 'BMI', dailyNumber(input.bodyComp ?? [], (row) => row.bmi), 'BMI is Garmin\'s stored body mass index. The band is the general adult reference of 18.5–24.9. BMI misreads people who lift weights. With a muscular build this is a reference only, not a rating. A measured body fat % is used when there is one. It is not a diagnosis.', { low: 18.5, high: 24.9 }));
   add(metricChart(input, 'snapshot_heart', 'Health snapshot heart rate', 'bpm', dailyNumber(input.healthSnapshot ?? [], (row) => row.restingHeartRateBpm ?? row.heartRateBpm), 'Health snapshot heart rate is the heart rate from Garmin\'s short check, in bpm. The band is a general adult resting range of 60–100. Not medical advice.', { low: 60, high: 100 }));
   const epochs = metricChart(input, 'epoch_minutes', 'Epoch active minutes', 'min', epochMinutes(input), GARMIN_EPOCH_EXPLAIN);
   epochs.note = GARMIN_EPOCH_EXPLAIN;

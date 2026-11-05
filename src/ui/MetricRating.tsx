@@ -1,6 +1,8 @@
 import { View } from 'react-native';
 
-import type { MetricReading } from '@/domain/metricRegistry';
+import { ratingTone, type MetricReading } from '@/domain/metricRegistry';
+import { statsToneColors } from '@/ui/statsPalette';
+import { useAppTheme } from '@/ui/theme';
 import { T } from '@/ui/ui';
 
 function faceLines(rating: MetricReading): string[] {
@@ -12,11 +14,16 @@ function faceLines(rating: MetricReading): string[] {
 
 /** The label, the comparison, the aim, and tips. The source stays in More info so it is named once. */
 export function MetricRatingLines({ rating }: { rating: MetricReading | null | undefined }) {
+  const theme = useAppTheme();
   if (!rating) return null;
+  const tone = ratingTone(rating.label);
+  const ink = statsToneColors(theme.scheme)[tone].ink;
   return (
     <View style={{ gap: 4 }}>
       {rating.pending ? <T>No rating yet</T> : null}
-      {faceLines(rating).map((line) => <T key={line}>{line}</T>)}
+      {faceLines(rating).map((line, index) => (
+        <T key={line} style={index === 0 && !rating.pending ? { color: ink } : undefined}>{line}</T>
+      ))}
       {rating.inputs?.map((line) => (
         <T key={line.name}>{`${line.name}: ${line.detail}`}</T>
       ))}

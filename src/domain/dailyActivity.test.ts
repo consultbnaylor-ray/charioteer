@@ -29,11 +29,24 @@ import {
   chartScalePeak,
   mostInOneDay,
   rangeScaleLine,
+  viewedDayHeading,
 } from './dailyActivity';
 
 const end = '2026-10-22';
 
 describe('daily activity', () => {
+  it('names today, yesterday, and an earlier UK date', () => {
+    expect(viewedDayHeading('2026-11-04', '2026-11-04', new Date('2026-11-04T06:00:00Z'))).toBe('Today so far');
+    expect(viewedDayHeading('2026-11-03', '2026-11-04')).toBe('Yesterday');
+    expect(viewedDayHeading('2026-11-03', '2026-11-05')).toBe('On Tue 3 Nov');
+    expect(rangeScaleLine({
+      points: [{ day: '2026-11-03', value: 8000, source: 'garmin' }],
+      unit: 'steps',
+      days: 1,
+      today: '2026-11-04',
+    })).toBe('Yesterday: 8,000 steps (Garmin)');
+  });
+
   it('counts Garmin vigorous minutes twice and keeps Apple when that day has movement', () => {
     expect(GARMIN_VIGOROUS_MINUTE_WEIGHT).toBe(2);
     expect(garminExerciseMinutes(20, 10)).toBe(40);
@@ -184,7 +197,7 @@ describe('daily activity', () => {
     expect(readFileSync('src/app/(main)/garmin-stats.tsx', 'utf8')).toContain('<MovementCharts');
     expect(charts).toContain('{DAILY_ACTIVITY_RINGS_HINT}');
     expect(charts).toContain('{DAILY_ACTIVITY_TAP_HINT}');
-    expect(charts).toContain('accessibilityLabel={`${point.label}. Select this day.`}');
+    expect(charts).toContain('accessibilityLabel={`${point.day === today ? \'Today so far. \' : \'\'}${point.label}. Select this day.`}');
     expect(charts).not.toContain('workoutTypeColor');
     expect(screen).toContain('consent={snap.profile.consentHealth}');
     const sources = readFileSync('src/health/useHealthSources.ts', 'utf8');

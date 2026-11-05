@@ -163,7 +163,7 @@ describe('health stat tiles', () => {
 
     const resting = tile(board, 'resting_heart_rate');
     expect(resting.unit).toBe('bpm');
-    expect(resting.valueText).toBe('62');
+    expect(resting.valueText).toBe('61');
     expect(resting.status).toBe('Within 60 to 100 bpm');
     expect(resting.mark).toBe('On track');
     expect(resting.hasGuideline).toBe(true);
@@ -207,11 +207,13 @@ describe('health stat tiles', () => {
 
     const fat = tile(board, 'body_fat');
     expect(fat.unit).toBe('%');
-    expect(fat.status).toBe('Within the screen band');
-    expect(fat.meaning).toContain('not an NHS category');
+    expect(fat.status).toBe('Good');
+    expect(fat.tone).toBe('good');
+    expect(fat.meaning).toContain('Measured body fat');
+    expect(fat.meaning).toContain('not estimated from BMI');
     if (fat.visual.kind === 'zone') {
       expect(fat.visual.zoneLow).toBe(6);
-      expect(fat.visual.zoneHigh).toBe(25);
+      expect(fat.visual.zoneHigh).toBe(17);
     }
 
     const waist = tile(board, 'waist');
@@ -302,7 +304,7 @@ describe('health stat tiles', () => {
 
     const hrv = tile(board, 'hrv_sdnn');
     expect(hrv.unit).toBe('ms');
-    expect(hrv.valueText).toBe('47');
+    expect(hrv.valueText).toBe('46');
     expect(hrv.hasGuideline).toBe(true);
     expect(hrv.tone).toBe('info');
     expect(hrv.status).toBe('Study averages ran from 32 to 93 ms. Overall mean 50 ms.');
@@ -559,7 +561,7 @@ describe('health stat tiles', () => {
       samples: [{ kind: 'weight_kg', value: 80, recordedOn: today }],
     }));
     const bar = tile(klass, 'weight_kg');
-    expect(bar.status).toBe(BMI_MUSCLE_NOTE);
+    expect(bar.status).toBe('BMI is a reference only. BMI misreads people who lift weights.');
     expect(bar.meaning).toContain('Over the class · 3.8 kg over the upper limit (over 72.6 kg up to 76.2 kg).');
     expect(bar.meaning).toContain('76.2 kg (168 lb)');
     expect(bar.meaning).toContain('for reference only');
@@ -823,8 +825,8 @@ describe('health stat tiles', () => {
         expect(item.weeklyLine).toBeNull();
       }
     }
-    expect(tile(board, 'sleep_hours').valueText).toBe('7.3');
-    expect(tile(board, 'resting_heart_rate').valueText).toBe('62');
+    expect(tile(board, 'sleep_hours').valueText).toBe('7.2');
+    expect(tile(board, 'resting_heart_rate').valueText).toBe('61');
     expect(tile(board, 'vo2_max').valueText).toBe('42');
     expect(tile(board, 'vo2_max').trend).toBe('Steady against the 7 days before.');
     expect(tile(board, 'workouts').valueText).toBe('97');
@@ -935,8 +937,8 @@ describe('health stat tiles', () => {
     expect(monthMinutes.meaning).not.toContain('321 minutes of vigorous activity');
     expect(tile(month, 'mix').valueText).toBe('90');
     expect(tile(month, 'mix').weeklyLine).toBe('About 21 min a week.');
-    expect(tile(month, 'sleep_hours').valueText).toBe('7.3');
-    expect(tile(month, 'weight_kg').valueText).toBe('74.4');
+    expect(tile(month, 'sleep_hours').valueText).toBe('7.2');
+    expect(tile(month, 'weight_kg').valueText).toBe('74.6');
     expect(tile(month, 'weight_kg').trend).toBe('Down from the earlier days in this period.');
     expect(tile(month, 'vo2_max').history).toEqual([41, 42]);
     expect(tile(month, 'vo2_max').trend).toBe('Steady against the earlier days in this period.');

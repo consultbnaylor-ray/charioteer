@@ -167,7 +167,9 @@ type Derived = {
 function clip(value: string, max: number): string {
   const text = value.replace(/\s+/g, ' ').trim();
   if (text.length <= max) return text;
-  return `${text.slice(0, max - 1).trim()}…`;
+  const window = text.slice(0, max);
+  const space = window.lastIndexOf(' ');
+  return (space > 24 ? window.slice(0, space) : window).trim();
 }
 
 function hash(salt: string, key: string): number {
@@ -198,12 +200,41 @@ function take(salt: string, key: string, items: string[], count: number, done: s
   return chosen;
 }
 
-function actions(prefix: string, texts: string[]): PlanAction[] {
+function actions(prefix: string, texts: string[], facts?: Derived): PlanAction[] {
+  const max = prefix === 'focus' ? 320 : 160;
   return texts.map((text, index) => {
-    const line = clip(text, 160);
-    const done = prefix === 'session' && / · Done: /.test(line);
+    const line = clip(text, max);
+    const done = (prefix === 'session' && / · Done: /.test(line))
+      || (prefix === 'focus' && facts != null && focusAutoDone(line, facts))
+      || (prefix === 'focus' && facts != null && facts.done.some((item) => item.toLowerCase() === line.toLowerCase()));
     return { id: `${prefix}-${index + 1}`, text: line, done };
   });
+}
+
+/** Ticks a focus line when this week's stored readings already show it. Manual ticks still stick. */
+function focusAutoDone(line: string, facts: Derived): boolean {
+  const text = line.toLowerCase();
+  const week = new Set(londonWeek(facts.input.now).days);
+  const inWeek = (day: string) => week.has(day.slice(0, 10));
+  if (/interval/.test(text) && /vo2|4\s*[x×]\s*4|85/.test(text)) {
+    const age = facts.input.goalAge;
+    const cut = age != null && age >= 15 && age <= 90 ? Math.round(0.85 * (220 - age)) : 150;
+    return facts.input.health.some((row) => inWeek(row.recordedOn) && row.kind === 'session_heart_rate' && row.value >= cut);
+  }
+  if (/zone 2|easy aerobic|conversational pace/.test(text)) {
+    return facts.input.health.some((row) => (
+      inWeek(row.recordedOn) && (row.kind === 'cardio_minutes' || row.kind === 'conditioning_minutes') && row.value >= 20
+    ));
+  }
+  if (/\bprotein\b/.test(text) && facts.input.proteinTarget != null && facts.input.proteinTarget > 0) {
+    return (facts.recentProtein ?? 0) >= facts.input.proteinTarget;
+  }
+  if (/\bsleep\b/.test(text)) {
+    const logged = facts.input.checkIns.some((row) => row.sleepHours >= 7 && inWeek(row.createdAt));
+    const sampled = facts.input.health.some((row) => inWeek(row.recordedOn) && row.kind === 'sleep_hours' && row.value >= 7);
+    return logged || sampled;
+  }
+  return false;
 }
 
 function isoDay(date: Date): string {
@@ -1593,7 +1624,7 @@ export function standaloneFocus(value: string, firstName = ''): string | null {
   }
   line = line.replace(/\s+/g, ' ').trim();
   if (!line || CARRY_OVER.test(line)) return null;
-  return trimSentence(line, 160);
+  return trimSentence(line, 320);
 }
 
 function fitnessInput(input: PlanInput): FitnessSnapshotInput {
@@ -1650,7 +1681,7 @@ function written(facts: Derived, updatedAt: string): HealthPlan {
   const upcoming = week.find((line) => !/ · Done: /.test(line)) ?? week[0] ?? 'A short walk, then rest.';
   const well = wellbeingHabits(facts);
   return {
-    focus: actions('focus', focusLines(facts, habits, upcoming, well[0] ?? 'An early night.')),
+    focus: actions('focus', focusLines(facts, habits, upcoming, well[0] ?? 'An early night.'), facts),
     nutrition: {
       targets: targetLine(facts),
       habits: actions('habit', habits),
@@ -1799,9 +1830,11 @@ function mergeActions(prefix: string, incoming: PlanAction[], fallback: PlanActi
     const cleaned = cleanLine(action.text, facts);
     const text = prefix === 'focus' ? (cleaned ? standaloneFocus(cleaned, facts.firstName) : null) : cleaned;
     if (!text || seen.has(text.toLowerCase())) continue;
-    if (facts.done.some((done) => done.toLowerCase() === text.toLowerCase())) continue;
+    const auto = prefix === 'focus' && focusAutoDone(text, facts);
+    const manual = facts.done.some((done) => done.toLowerCase() === text.toLowerCase());
+    if (manual && !auto) continue;
     seen.add(text.toLowerCase());
-    next.push({ id: `${prefix}-${next.length + 1}`, text, done: false });
+    next.push({ id: `${prefix}-${next.length + 1}`, text, done: action.done || auto || manual });
     if (next.length >= max) break;
   }
   return next.slice(0, Math.max(min, Math.min(max, next.length || min)));

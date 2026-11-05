@@ -22,6 +22,7 @@ import { PlanTick } from '@/ui/PlanTick';
 import { MeasureBarsView, MeasureRingView } from '@/ui/MeasuredFigure';
 import { StatTile } from '@/ui/StatTile';
 import { usePendingPress } from '@/ui/pendingAction';
+import { AiCreditLine } from '@/ui/AiCreditLine';
 import { Button, Card, ErrorNote, Field, Screen, T } from '@/ui/ui';
 
 const PROGRESS_IDS = ['sober', 'mood', 'calories', 'protein', 'body', 'weight'];
@@ -136,12 +137,14 @@ export default function HealthPlanScreen() {
       <DailyTargets />
       <Button label="Refresh plan" pending={refreshing} pendingLabel="Writing..." onPress={refresh} />
       <T variant="muted">This uses one AI credit and rewrites the plan from the current goal.</T>
+      <AiCreditLine kind="plan" />
       <ErrorNote>{error}</ErrorNote>
       {error ? <Button label="Try again" pending={refreshing} onPress={refresh} /> : null}
       {plan ? (
         <>
           <Card>
             <T variant="label">This week's focus</T>
+            <T variant="muted">Ticked automatically from your Garmin and Apple Health data where we can; tap to tick the rest.</T>
             {plan.focus.map((action) => (
               <ActionRow key={action.id} action={action} disabled={refreshing} onToggle={tick} />
             ))}

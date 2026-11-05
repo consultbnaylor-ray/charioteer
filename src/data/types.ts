@@ -591,6 +591,8 @@ export interface Repository {
   checkGarminPermissions(force?: boolean): Promise<{ checked: boolean; needsPermissions: boolean; missing: Array<'ACTIVITY_EXPORT' | 'HEALTH_EXPORT'> }>;
   /** The signed-in person's subscription row. Null when they have none. */
   loadOwnSubscription(): Promise<import('@/domain/subscription').SubscriptionRecord | null>;
+  /** AI credit counts for the London month that starts on monthStart (YYYY-MM-01). */
+  loadAiUsageMonth(monthStart: string): Promise<{ coach: number; meal: number; plan: number }>;
   /** Sends the StoreKit 2 signed transaction to the server and returns the stored row. */
   verifyOwnSubscription(jws: string): Promise<import('@/domain/subscription').SubscriptionRecord>;
 }

@@ -69,6 +69,7 @@ Deno.serve(async (req) => {
     userId,
     kind: 'coach',
     enforcedFlag: Deno.env.get('AI_ENTITLEMENT_ENFORCED'),
+    allowlist: Deno.env.get('AI_ENTITLEMENT_USERS'),
   });
   if (!gate.ok && 'body' in gate) return json(gate.body, gate.status);
   const [profileRes, reasonsRes, checkRes, healthRes, historyRes, interestRes] = await Promise.all([

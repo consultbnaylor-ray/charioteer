@@ -11,6 +11,7 @@ export {
   periodHeading,
   periodPhrase,
   chartFigureLabel,
+  completedDayStats,
   NUTRITION_CHART_PERIODS,
   proteinPace,
   rollingWindow,

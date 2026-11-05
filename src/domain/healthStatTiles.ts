@@ -7,6 +7,7 @@
  */
 
 import { currentVo2Max } from '@/domain/currentVo2';
+import { completedDayStats } from '@/domain/statWindow';
 import { targetWeightStatusLine } from '@/domain/targetWeight';
 import {
   ACTIVE_MINUTES_ABOUT,
@@ -34,7 +35,7 @@ import {
   type ReadingSheet,
 } from '@/domain/healthBands';
 import { stepsResearchMeaning } from '@/domain/garminCharts';
-import { leadingNumber, readingFor, type MetricReading } from '@/domain/metricRegistry';
+import { leadingNumber, ratingTone, readingFor, type MetricReading } from '@/domain/metricRegistry';
 import { restingFitnessComment, type RestingFitnessComment } from '@/domain/restingFitness';
 import { bodyFatRange } from '@/domain/distance';
 import {
@@ -536,6 +537,8 @@ function decorateHealthTile(tile: HealthStatTile, input: HealthStatBoardInput): 
       heightCm: input.heightCm,
       realAge: input.goalAge,
       windowDays: periodDayCount(periodOf(input)),
+      build: input.build,
+      viewedDay: periodOf(input) === 'day' ? 'today' : null,
     }),
   };
 }
@@ -642,7 +645,7 @@ function bpmBandTile(
   if (window === 'none') return null;
   if (window === 'gap') return olderReadingTile(item, input, all, (point) => `Latest ${Math.round(point.value)} bpm`);
   const period = periodOf(input);
-  const bpm = Math.round(averageOf(window.current));
+  const bpm = Math.round(averageOf(window.current, input.today));
   if (!grown) {
     return finish(item, {
       valueText: String(bpm),
@@ -672,7 +675,7 @@ function heartBandTile(item: CatalogItem, input: HealthStatBoardInput, grown: bo
   if (window === 'gap') return olderReadingTile(item, input, all, (point) => `Latest ${Math.round(point.value)} bpm`);
   const period = periodOf(input);
   const label = periodLabel(period);
-  const bpm = Math.round(averageOf(window.current));
+  const bpm = Math.round(averageOf(window.current, input.today));
   const trend = movementTrend(window.current, window.previous, 'mean', 2, period);
   const about = 'Resting heart rate: how many times your heart beats in a minute while you are at rest. The unit is bpm.';
   if (!grown) {
@@ -753,7 +756,7 @@ function sleepTile(item: CatalogItem, input: HealthStatBoardInput, grown: boolea
   }
   const period = periodOf(input);
   const label = periodLabel(period, period === 'day');
-  const hours = Math.round(averageOf(window.current) * 10) / 10;
+  const hours = Math.round(averageOf(window.current, input.today) * 10) / 10;
   const nights = nightCountLine(window.current.length);
   const trend = movementTrend(window.current, window.previous, 'mean', 0.3, period);
   const about = 'Sleep: hours asleep. The unit is hours. The figure is the average of the nights that have a reading.';
@@ -972,7 +975,7 @@ function hrvTile(item: CatalogItem, input: HealthStatBoardInput, grown: boolean)
     return { ...stale, trend: 'Apple Health HRV comes from Apple Watch.' };
   }
   const period = periodOf(input);
-  const ms = Math.round(averageOf(window.current));
+  const ms = Math.round(averageOf(window.current, input.today));
   const about = 'Heart rate variability, in milliseconds (SDNN). Devices measure it in different ways.';
   const trend = healthChangeNote('hrv_sdnn', all, input.today);
   if (!grown) {
@@ -1040,7 +1043,7 @@ function weightTile(
   const period = periodOf(input);
   const label = periodLabel(period);
   const history = window.current;
-  const kg = Math.round(averageOf(history) * 10) / 10;
+  const kg = Math.round(averageOf(history, input.today) * 10) / 10;
   const about = 'Weight, in kilograms.';
   const trend = movementTrend(history, window.previous, 'mean', 0.3, period);
   if (!grown) {
@@ -1056,8 +1059,8 @@ function weightTile(
   const under = kg < low;
   const fatWindow = slicePeriod(bodySeries(input.body, input.today, (row) => row.bodyFatPct), input);
   const waistWindow = slicePeriod(bodySeries(input.body, input.today, (row) => row.waistCm), input);
-  const fatPct = fatWindow === 'none' || fatWindow === 'gap' ? null : averageOf(fatWindow.current);
-  const waistCm = waistWindow === 'none' || waistWindow === 'gap' ? null : averageOf(waistWindow.current);
+  const fatPct = fatWindow === 'none' || fatWindow === 'gap' ? null : averageOf(fatWindow.current, input.today);
+  const waistCm = waistWindow === 'none' || waistWindow === 'gap' ? null : averageOf(waistWindow.current, input.today);
   const fatCount = fatPct == null ? 0 : 1;
   const waistCount = waistCm == null ? 0 : 1;
   const fatFine = fatPct != null && bodyFatRange(fatPct, input.goalSex).within;
@@ -1065,15 +1068,18 @@ function weightTile(
   const compositionFine = (fatPct != null || waistCm != null)
     && (fatPct == null || fatFine)
     && (waistCm == null || waistFine);
+  const muscularReference = input.build === 'muscular' && fatPct == null;
   const soften = !within && !under && (athleteGoal(input.goal) || compositionFine);
-  const tone: StatsTone = within ? 'good' : under ? 'watch' : soften ? 'info' : 'watch';
-  const status = within
-    ? 'Within the healthy BMI band'
-    : under
-      ? 'Under the healthy BMI band'
-      : soften
-        ? BMI_MUSCLE_NOTE
-        : 'Over the healthy BMI band';
+  const tone: StatsTone = muscularReference ? 'info' : within ? 'good' : under ? 'watch' : soften ? 'info' : 'watch';
+  const status = muscularReference
+    ? 'BMI is a reference only. BMI misreads people who lift weights.'
+    : within
+      ? 'Within the healthy BMI band'
+      : under
+        ? 'Under the healthy BMI band'
+        : soften
+          ? BMI_MUSCLE_NOTE
+          : 'Over the healthy BMI band';
   const ranged = input.goalSex && (input.goalAge != null || input.adult)
     ? goalWeightRange({
       goal: input.goal,
@@ -1165,19 +1171,24 @@ function bodyFatTile(item: CatalogItem, input: HealthStatBoardInput, grown: bool
   const period = periodOf(input);
   const label = periodLabel(period);
   const history = window.current;
-  const pct = Math.round(averageOf(history) * 10) / 10;
+  const pct = Math.round(averageOf(history, input.today) * 10) / 10;
   const trend = movementTrend(history, window.previous, 'mean', 0.5, period);
-  const about = 'Body fat, as a percentage of body weight.';
+  const about = 'Measured body fat % from a saved scale, Garmin, or Apple Health reading. It is not estimated from BMI.';
   if (!grown) {
     return finish(item, plainReading(pct, '%', ADULT_HIDDEN, trend, history, about, ADULT_HIDDEN, label));
   }
-  const range = bodyFatRange(pct, input.goalSex);
-  const tone: StatsTone = range.within ? 'good' : pct < range.zoneLow ? 'info' : 'watch';
-  const status = range.within
-    ? 'Within the screen band'
-    : pct < range.zoneLow
-      ? 'Under the screen band'
-      : 'Above the screen band';
+  const rated = readingFor('body_fat', pct, {
+    age: input.goalAge,
+    sex: input.goalSex,
+    goal: input.goal,
+    ownUsual: null,
+    build: input.build,
+  });
+  const range = rated.band
+    ? { zoneLow: rated.band.low, zoneHigh: rated.band.high, scaleMin: 0, scaleMax: Math.max(45, pct + 5, rated.band.high + 8) }
+    : bodyFatRange(pct, input.goalSex);
+  const tone: StatsTone = ratingTone(rated.label);
+  const status = rated.pending ? 'No rating yet' : rated.label;
   return finish(item, {
     valueText: oneText(pct),
     unit: '%',
@@ -1194,13 +1205,13 @@ function bodyFatTile(item: CatalogItem, input: HealthStatBoardInput, grown: bool
       scaleMin: range.scaleMin,
       scaleMax: range.scaleMax,
       status,
-      zoneCaption: `Screen band ${range.zoneLow}–${range.zoneHigh}%. Not an NHS category.`,
+      zoneCaption: `ACE span ${range.zoneLow}–${range.zoneHigh}%. Measured body fat, not a BMI estimate. Not an NHS category.`,
       tone,
     },
     history: nums(history),
     readings: [...history],
     about,
-    meaning: 'This is a descriptive band on this screen, not an NHS category.',
+    meaning: `${about} ${rated.where}`,
     rangeNote: 'Not an NHS category.',
     sourceName: null,
     sourceUrl: null,
@@ -1220,7 +1231,7 @@ function waistTile(
   const period = periodOf(input);
   const label = periodLabel(period);
   const history = window.current;
-  const cm = Math.round(averageOf(history) * 10) / 10;
+  const cm = Math.round(averageOf(history, input.today) * 10) / 10;
   const about = 'Waist measurement, in centimetres.';
   const trend = movementTrend(history, window.previous, 'mean', 1, period);
   if (!grown) {
@@ -1271,7 +1282,7 @@ function leanTile(item: CatalogItem, input: HealthStatBoardInput): HealthStatTil
   if (window === 'none') return null;
   if (window === 'gap') return olderReadingTile(item, input, all, (point) => `Latest ${oneText(point.value)} kg`);
   const period = periodOf(input);
-  const kg = Math.round(averageOf(window.current) * 10) / 10;
+  const kg = Math.round(averageOf(window.current, input.today) * 10) / 10;
   return finish(item, {
     valueText: oneText(kg),
     unit: 'kg',
@@ -1298,7 +1309,8 @@ function stepsTile(item: CatalogItem, input: HealthStatBoardInput): HealthStatTi
   if (window === 'gap') return olderReadingTile(item, input, all, (point) => `Latest ${whole(point.value)} steps`);
   const period = periodOf(input);
   const total = Math.round(window.current.reduce((sum, point) => sum + point.value, 0));
-  const daily = window.current.length ? Math.round(total / window.current.length) : null;
+  const dailyMean = averageOf(window.current, input.today);
+  const daily = window.current.length ? Math.round(dailyMean) : null;
   const status = 'Compared with published step research. Not an NHS step target.';
   return finish(item, {
     valueText: whole(total),
@@ -1520,7 +1532,7 @@ function plainSeriesTile(
   if (window === 'none') return null;
   if (window === 'gap') return olderReadingTile(item, input, all, (point) => `Latest ${digits === 0 ? String(Math.round(point.value)) : oneText(point.value)} ${unit}`);
   const period = periodOf(input);
-  const value = averageOf(window.current);
+  const value = averageOf(window.current, input.today);
   const shown = digits === 0 ? String(Math.round(value)) : oneText(value);
   return finish(item, {
     valueText: shown,
@@ -1716,8 +1728,21 @@ function olderReadingTile(
   });
 }
 
-function averageOf(points: readonly DayValue[]): number {
-  return points.reduce((sum, point) => sum + point.value, 0) / points.length;
+/**
+ * Mean of the days in the window. When the window includes today and at least
+ * one earlier day, today is left out. A window that is only today stays as
+ * today's figure. A past window that does not include today keeps every day.
+ */
+function averageOf(points: readonly DayValue[], today?: string): number {
+  const positive = points.filter((point) => point.value > 0);
+  const rows = positive.length > 0 ? positive : points;
+  if (!today || rows.length === 0) {
+    return rows.reduce((sum, point) => sum + point.value, 0) / Math.max(rows.length, 1);
+  }
+  const includesToday = rows.some((point) => point.day === today);
+  const stats = completedDayStats(rows.map((point) => ({ day: point.day, value: point.value })), today);
+  if (includesToday && stats.average != null) return stats.average;
+  return rows.reduce((sum, point) => sum + point.value, 0) / rows.length;
 }
 
 function movementTrend(
