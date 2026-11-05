@@ -46,7 +46,7 @@ import { shareInflight } from '@/domain/writes';
 import { isoDay } from '@/domain/dates';
 import { isGratitudeCategory, localGratitudeReflect, planGratitudeEntry, sortGratitude, type GratitudeEntry, type GratitudeReflect } from '@/domain/gratitude';
 import { GRATITUDE_MAX_BYTES, gratitudePhotoLimitMessage, gratitudeStoragePath } from '@/domain/gratitudePhotos';
-import { gratitudeLineFromSharedCaption } from '@/domain/sharedPhotos';
+import { buddyPhotoCaption, gratitudeLineFromSharedCaption } from '@/domain/sharedPhotos';
 import {
   VISION_CAPTION_LIMIT,
   VISION_MAX_BYTES,
@@ -2263,7 +2263,7 @@ export class DemoRepository implements Repository {
     rows.unshift({
       id: randomId(),
       mine: true,
-      caption: input.caption.trim(),
+      caption: buddyPhotoCaption(input.caption),
       createdAt: new Date().toISOString(),
       allowSave: input.allowSave,
       buddyNames: names,

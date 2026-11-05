@@ -25,7 +25,7 @@ import { chunkHealthRows } from '@/domain/healthUpload';
 import { rejectRouteCoordinates } from '@/domain/workoutRoute';
 import { assertRouteFindingAllowed } from '@/data/routeConsentStore';
 import { calmRouteMessage, explainRouteFailure, parseRoutePlaces, parseRoutePlan, retryRouteInvoke, routeCoordinate, routeInvokeHeaders, type RoutePlace, type RoutePlan, type RoutePlanInput } from '@/domain/findRoute';
-import { gratitudeLineFromSharedCaption, type SharedPhotoCard } from '@/domain/sharedPhotos';
+import { buddyPhotoCaption, gratitudeLineFromSharedCaption, type SharedPhotoCard } from '@/domain/sharedPhotos';
 import { liveOutdoorRouteInsert, outdoorRouteFromDraft, outdoorRouteFromRow, outdoorRouteInsert, outdoorRouteRename, outdoorRouteReplace, routeGeometryStillRequired, routeShapeRejected, routeTableMissing, routeTitleOf, type OutdoorRouteDraft } from '@/domain/outdoorRoute';
 import { ROUTE_NEEDS_NAME, ROUTE_UPDATE_GRANT_LINE } from '@/domain/savedRoute';
 import { GARMIN_PERMISSION, readGarminRefreshBody } from '@/domain/healthRefresh';
@@ -4023,7 +4023,7 @@ export class SupabaseRepository implements Repository {
     const photoId = randomId();
     const created = await this.client.rpc('create_buddy_photo', {
       photo: photoId,
-      caption: input.caption,
+      caption: buddyPhotoCaption(input.caption),
       recipients: input.buddyIds,
       allow_save: input.allowSave,
     });
