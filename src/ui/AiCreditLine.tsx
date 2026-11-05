@@ -34,10 +34,10 @@ export function AiCreditLine({ kind }: { kind?: UsageKind }) {
     };
   }, [repo]);
   const row = entitlement.row;
-  const tier = row && entitlementActive(row) ? tierForProduct(row.productId) : null;
+  const tier = entitlement.comp?.tier ?? (row && entitlementActive(row) ? tierForProduct(row.productId) : null);
   const line = kind ? aiCreditKindLine(tier, usage, kind) : aiCreditSummary(tier, usage);
-  const nudge = creditNudge(tier, usage, kind);
-  const upgrade = creditsExhausted(tier, usage, kind) ? creditUpgradeLabel(tier) : null;
+  const nudge = entitlement.comp ? null : creditNudge(tier, usage, kind);
+  const upgrade = entitlement.compLoading || entitlement.comp ? null : (creditsExhausted(tier, usage, kind) ? creditUpgradeLabel(tier) : null);
   return (
     <View style={{ gap: 8 }}>
       <T variant="muted">{line}</T>

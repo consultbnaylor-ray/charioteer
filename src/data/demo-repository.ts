@@ -2198,6 +2198,10 @@ export class DemoRepository implements Repository {
     return { coach: 0, meal: 0, plan: 0 };
   }
 
+  async loadEntitlementOverride(): Promise<import('@/domain/entitlementOverride').EntitlementOverride | null> {
+    return null;
+  }
+
   async loadOwnSubscription(): Promise<import('@/domain/subscription').SubscriptionRecord | null> {
     return null;
   }

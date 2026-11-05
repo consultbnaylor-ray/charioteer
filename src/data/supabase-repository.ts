@@ -18,6 +18,7 @@ import {
   isTransientNetworkError,
 } from '@/domain/errors';
 import { omitSharedLocation } from '@/domain/sharedPayload';
+import { parseEntitlementOverride } from '@/domain/entitlementOverride';
 import { subscriptionRecordFromDb } from '@/domain/subscription';
 import { stripJpegBase64, stripJpegLocation } from '@/domain/photoLocation';
 import { chunkHealthRows } from '@/domain/healthUpload';
@@ -3530,6 +3531,12 @@ export class SupabaseRepository implements Repository {
       if ((kind === 'coach' || kind === 'meal' || kind === 'plan') && Number.isFinite(count)) totals[kind] += count;
     }
     return totals;
+  }
+
+  async loadEntitlementOverride(): Promise<import('@/domain/entitlementOverride').EntitlementOverride | null> {
+    const { data, error } = await this.client.from('entitlement_overrides').select('tier, expires_at').maybeSingle();
+    if (error || !data) return null;
+    return parseEntitlementOverride(data as Record<string, unknown>);
   }
 
   async loadOwnSubscription(): Promise<import('@/domain/subscription').SubscriptionRecord | null> {
