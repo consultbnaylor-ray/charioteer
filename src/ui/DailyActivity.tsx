@@ -186,6 +186,7 @@ export function DailyActivityCharts({
 }) {
   const minuteCtx = chartContext(age, sex, goal, span, endDay);
   const [selected, setSelected] = useState<string | null>(null);
+  const [chartsOpen, setChartsOpen] = useState(false);
   const [trendPeriod, setTrendPeriod] = useState<(typeof WORKOUT_TREND_PERIODS)[number]>('7');
   const trendDays = periodDayCount(trendPeriod);
   const trendEnd = londonToday();
@@ -208,34 +209,52 @@ export function DailyActivityCharts({
       <T variant="label">{DAILY_ACTIVITY_TITLE}</T>
       <T variant="muted">{viewedDayHeading(endDay, londonToday())}</T>
       <T variant="muted">{DAILY_ACTIVITY_RINGS_HINT}</T>
-      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-        {WORKOUT_TREND_PERIODS.map((id) => (
-          <Choice key={id} label={STAT_PERIOD_LABEL[id]} selected={trendPeriod === id} onPress={() => setTrendPeriod(id)} />
-        ))}
-      </View>
-      {([
-        ['Steps', trendSteps, 'steps'],
-        ['Exercise minutes', trendExercise, 'min'],
-        ['Active calories', trendCalories, 'kcal'],
-        ['Distance', trendDistance, 'm'],
-        ['Moderate minutes', trendModerate, 'min'],
-        ['Resting heart rate', trendHeart, 'bpm'],
-      ] as const).map(([name, series, unit]) => series.some((point) => point.value > 0) ? (
-        <ReadingChart
-          key={name}
-          points={series.filter((point) => point.value > 0).map((point) => ({ day: point.day, value: point.value }))}
-          start={series[0]?.day ?? trendEnd}
-          end={trendEnd}
-          unit={unit}
-          aggregate="mean"
-          bucket={chartBucketForPeriod(trendPeriod)}
-          accessibilityLabel={`${name} chart`}
-          onSelectDay={(picked) => {
-            setSelected(picked);
-            onSelectDay?.(picked);
-          }}
-        />
-      ) : null)}
+      <Card>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Workout History Charts"
+          accessibilityState={{ expanded: chartsOpen }}
+          onPress={() => setChartsOpen((value) => !value)}
+          style={{ minHeight: 44, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}
+        >
+          <T variant="label" style={{ flex: 1 }}>Workout History Charts</T>
+          <T variant="muted">{chartsOpen ? 'Hide' : 'Show'}</T>
+        </Pressable>
+        {chartsOpen ? (
+          <View style={{ gap: 12, alignSelf: 'stretch' }}>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+              {WORKOUT_TREND_PERIODS.map((id) => (
+                <Choice key={id} label={STAT_PERIOD_LABEL[id]} selected={trendPeriod === id} onPress={() => setTrendPeriod(id)} />
+              ))}
+            </View>
+            {([
+              ['Steps', trendSteps, 'steps'],
+              ['Exercise minutes', trendExercise, 'min'],
+              ['Moderate minutes', trendModerate, 'min'],
+              ['Distance', trendDistance, 'm'],
+              ['Active calories', trendCalories, 'kcal'],
+              ['Resting heart rate', trendHeart, 'bpm'],
+            ] as const).map(([name, series, unit]) => series.some((point) => point.value > 0) ? (
+              <ReadingChart
+                key={name}
+                title={name}
+                points={series.filter((point) => point.value > 0).map((point) => ({ day: point.day, value: point.value }))}
+                start={series[0]?.day ?? trendEnd}
+                end={trendEnd}
+                unit={unit}
+                aggregate="mean"
+                bucket={chartBucketForPeriod(trendPeriod)}
+                accessibilityLabel={`${name} chart`}
+                onSelectDay={(picked) => {
+                  setSelected(picked);
+                  onSelectDay?.(picked);
+                }}
+              />
+            ) : null)}
+            <T variant="muted">Not medical advice. Not a diagnosis.</T>
+          </View>
+        ) : null}
+      </Card>
       {consent ? null : <T variant="muted">{DAILY_ACTIVITY_CONSENT}</T>}
       <ActivityBars
         framed={false}

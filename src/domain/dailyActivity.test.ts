@@ -188,6 +188,10 @@ describe('daily activity', () => {
     expect(healthCharts).not.toContain('showHealthStats');
     expect(healthCharts).toContain('steps=');
     expect(healthCharts).toContain('restingHeart=');
+    expect(charts).toContain('Workout History Charts');
+    expect(charts).toContain('const [chartsOpen, setChartsOpen] = useState(false)');
+    expect(charts).toContain('title={name}');
+    expect(charts).toContain('Not medical advice. Not a diagnosis.');
     expect(charts).toContain('title="Steps"');
     expect(charts).toContain('title="Distance"');
     expect(charts).toContain('title="Resting heart rate"');
