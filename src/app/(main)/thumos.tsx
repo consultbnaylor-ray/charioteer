@@ -376,7 +376,7 @@ export default function Thumos() {
         ) : (
           <Button label="Send" pending={pending} disabled={!profile.consentAi} disabledReason={profile.consentAi ? undefined : 'Allow the coach before sending.'} onPress={() => void send()} />
         )}
-        {VOICE_ENABLED && inCall ? null : <AiCreditLine kind="coach" />}
+        <AiCreditLine kind="coach" />
         <PinLatest token={pinToken} />
       </View>
       {showsSoberRecord(profile.stage) ? <T variant="muted">Milestones in view: {(profile.sobrietyStartedAt ? earnedMilestones(new Date(profile.sobrietyStartedAt), new Date()) : []).map((item) => item.badge).join(', ') || 'none yet'}.</T> : null}

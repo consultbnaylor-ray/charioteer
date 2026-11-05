@@ -11,6 +11,7 @@ import { analysisSectionsFromText, buildStatsAnalysis, THUMOS_ANALYSE, THUMOS_AN
 import { THUMOS_ANALYSE_AGAIN } from '@/domain/thumosReading';
 import { useHealthSources } from '@/health/useHealthSources';
 import { useAppTheme } from '@/ui/theme';
+import { AiCreditLine } from '@/ui/AiCreditLine';
 import { Button, Card, T } from '@/ui/ui';
 
 /**
@@ -90,6 +91,7 @@ export function ThumosStatsAnalysis() {
           onPress={() => void run()}
         />
         <T variant="muted">{THUMOS_ANALYSE_CREDIT}</T>
+        <AiCreditLine kind="plan" />
         {error ? <T>{error}</T> : null}
       </Card>
     );
@@ -115,6 +117,7 @@ export function ThumosStatsAnalysis() {
         onPress={() => void run()}
       />
       <T variant="muted">{THUMOS_ANALYSE_CREDIT}</T>
+      <AiCreditLine kind="plan" />
       {error ? <T>{error}</T> : null}
     </Card>
   );
