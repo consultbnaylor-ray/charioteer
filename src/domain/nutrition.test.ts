@@ -159,9 +159,10 @@ describe('meal estimates', () => {
     expect(live).not.toContain('chicken and avocado');
     expect(live).toContain('PHOTO_READ_FAIL');
     expect(method).not.toContain('samplePhotoMeal');
-    expect(method).toContain('PHOTO_READ_FAIL');
+    expect(method).toContain("new MealEstimateError(photo ? 'unreadable' : 'provider')");
+    expect(method).not.toContain('if (photo) throw unread()');
     expect(demo).toContain('samplePhotoMeal');
-    expect(readFileSync('src/app/(main)/nutrition.tsx', 'utf8')).toContain('PHOTO_READ_FAIL');
+    expect(readFileSync('src/app/(main)/nutrition.tsx', 'utf8')).toContain('isMealPickerCancel');
     expect(readFileSync('supabase/functions/_shared/nutrition.ts', 'utf8')).toContain(PHOTO_READ_FAIL);
   });
 

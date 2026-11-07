@@ -2,10 +2,21 @@ import { launchCameraAsync, launchImageLibraryAsync, requestCameraPermissionsAsy
 import { manipulateAsync, SaveFormat } from 'expo-image-manipulator';
 
 import { UserFacingError } from '@/domain/errors';
+import { isMealPickerCancel, MealEstimateError } from '@/domain/mealEstimate';
 import { stripJpegBase64 } from '@/domain/photoLocation';
 
 /** A JPEG the meal estimate can send. EXIF and location are dropped by the re-encode. */
 export async function pickMealPhoto(source: 'camera' | 'library'): Promise<{ base64: string; previewUri: string } | null> {
+  try {
+    return await prepareMealPhoto(source);
+  } catch (error) {
+    if (isMealPickerCancel(error)) return null;
+    if (error instanceof UserFacingError) throw error;
+    throw new MealEstimateError('preparation');
+  }
+}
+
+async function prepareMealPhoto(source: 'camera' | 'library'): Promise<{ base64: string; previewUri: string } | null> {
   if (source === 'camera') {
     const permission = await requestCameraPermissionsAsync();
     if (!permission.granted) throw new UserFacingError('Allow the camera in Settings, then try again.', 'generic');

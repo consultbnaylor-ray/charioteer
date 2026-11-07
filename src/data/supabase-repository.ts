@@ -87,7 +87,6 @@ import {
   isNutritionSex,
   parseBodyFatPct,
   parseLeanMassKg,
-  PHOTO_READ_FAIL,
   parseMealEstimate,
   parseSharedNutrition,
   parseWaistCm,
@@ -162,6 +161,7 @@ import {
   type SessionTicket,
 } from '@/domain/edgeRetry';
 import { clientAppBuild, clientErrorRecord } from '@/domain/clientError';
+import { MealEstimateError, mealEstimateCategoryFromStatus } from '@/domain/mealEstimate';
 import { resolveSignedInSession } from '@/domain/liveSession';
 import { aiGateFromBody, publishAiGate } from '@/domain/aiGate';
 import { rememberCoachUsage } from '@/domain/coachUsage';
@@ -1784,7 +1784,7 @@ export class SupabaseRepository implements Repository {
   private async callEdge(
     name: string,
     body: unknown,
-    options?: { ai?: boolean; timeoutMs?: number },
+    options?: { ai?: boolean; timeoutMs?: number; requestId?: string },
   ): Promise<{ status: number; data: unknown }> {
     rejectRouteCoordinates(body);
     const token = options?.ai ? await this.sessionForAiCall() : await this.accessToken();
@@ -1803,6 +1803,7 @@ export class SupabaseRepository implements Repository {
             apikey: this.anonKey,
             'Content-Type': 'application/json',
             Accept: 'application/json',
+            ...(options?.requestId ? { 'X-Request-Id': options.requestId } : {}),
           },
           body: JSON.stringify(body),
           signal: controller?.signal,
@@ -2614,37 +2615,57 @@ export class SupabaseRepository implements Repository {
     };
   }
 
+  private noteMeal(category: import('@/domain/mealEstimate').MealEstimateCategory): void {
+    void this.logClientError('estimate-meal', `meal: ${category}`, clientAppBuild({
+      buildNumber: Constants.expoConfig?.ios?.buildNumber,
+      version: Constants.expoConfig?.version,
+    }));
+  }
+
   async estimateMeal(input: { text?: string; imageBase64?: string }): Promise<MealEstimate> {
     const text = input.text?.trim() ?? '';
     const imageBase64 = input.imageBase64 ? stripJpegBase64(input.imageBase64) : '';
     const photo = imageBase64.length > 0;
-    const unread = () => new UserFacingError(PHOTO_READ_FAIL, 'generic');
+    const requestId = randomId();
     try {
       const invoked = await this.callEdge('estimate-meal', { text, imageBase64 }, {
         ai: true,
         timeoutMs: ESTIMATE_CLIENT_TIMEOUT_MS,
+        requestId,
       });
       const data = invoked.data as { ok?: boolean; items?: unknown; source?: string; code?: string; message?: string } | null;
-      if (data?.code === 'consent') {
-        throw new UserFacingError(data.message || PHOTO_READ_FAIL, 'generic');
+      const category = mealEstimateCategoryFromStatus(invoked.status, data?.code);
+      if (category === 'consent') {
+        throw new MealEstimateError('consent', typeof data?.message === 'string' ? data.message : undefined);
       }
-      if (invoked.status === 401 || invoked.status >= 500) {
-        throw photo ? unread() : this.aiFailure('meal', 'estimate-meal', new Error('Meal estimate did not answer.'), invoked.status);
+      if (category) {
+        this.noteMeal(category);
+        const offered = typeof data?.message === 'string' ? data.message.trim() : '';
+        const serverMessage = category === 'credits' && offered.length > 0 && offered.length < 180 && !/jpeg|base64|bearer|eyJ/i.test(offered)
+          ? offered
+          : undefined;
+        throw new MealEstimateError(category, serverMessage);
       }
       const items = parseMealEstimate({ items: data?.items });
       const model = data?.source === 'model';
       if (invoked.status < 400 && data?.ok === true && items && (!photo || model)) {
         return { items, source: model ? 'model' : 'local' };
       }
-      if (photo) throw new UserFacingError(data?.message || PHOTO_READ_FAIL, 'generic');
+      if (!photo) {
+        const typed = estimateFromText(text);
+        if (typed.length) return { items: typed, source: 'local' };
+      }
+      this.noteMeal(photo ? 'unreadable' : 'provider');
+      throw new MealEstimateError(photo ? 'unreadable' : 'provider');
     } catch (error) {
+      if (error instanceof MealEstimateError) throw error;
       if (error instanceof UserFacingError) throw error;
-      if (photo) throw unread();
-      throw this.aiFailure('meal', 'estimate-meal', error);
+      const kind = error instanceof EdgeSessionError
+        ? (error.kind === 'signed-out' ? 'auth' : 'network')
+        : classifyEdgeError(error) === 'timeout' ? 'timeout' : 'network';
+      this.noteMeal(kind);
+      throw new MealEstimateError(kind);
     }
-    const typed = estimateFromText(text);
-    if (!photo && typed.length) return { items: typed, source: 'local' };
-    throw photo ? unread() : new UserFacingError('Could not read that meal. You can still type it in yourself.', 'generic');
   }
 
   async saveFoodLog(input: NewFoodLog): Promise<void> {

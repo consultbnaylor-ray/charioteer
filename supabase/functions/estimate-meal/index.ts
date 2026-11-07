@@ -16,10 +16,21 @@ function completionText(payload: unknown): string {
   return typeof content === 'string' ? content : '';
 }
 
+function requestLabel(req: Request): string {
+  const raw = req.headers.get('X-Request-Id') ?? '';
+  return /^[0-9a-f-]{8,40}$/i.test(raw) ? raw : '';
+}
+
+/** Category only. The photo and the meal text are not logged. */
+function note(requestId: string, code: string): void {
+  console.error('estimate-meal', requestId || 'no-request', code);
+}
+
 Deno.serve(async (req) => {
   const early = preflight(req);
   if (early) return early;
   if (req.method !== 'POST') return json({ ok: false, code: 'method' }, 405);
+  const requestId = requestLabel(req);
 
   const url = Deno.env.get('SUPABASE_URL');
   const anon = Deno.env.get('SUPABASE_ANON_KEY');
@@ -32,13 +43,22 @@ Deno.serve(async (req) => {
     auth: { persistSession: false },
   });
   const { data: userData, error: userError } = await userClient.auth.getUser();
-  if (userError || !userData.user) return json({ ok: false, code: 'unauthorised' }, 401);
+  if (userError || !userData.user) {
+    note(requestId, 'auth');
+    return json({ ok: false, code: 'unauthorised', requestId: requestId || null }, 401);
+  }
 
   const body = (await req.json().catch(() => ({}))) as Body;
   const text = (body.text ?? '').trim().slice(0, 500);
   const image = typeof body.imageBase64 === 'string' ? stripJpegBase64(body.imageBase64.trim()) : '';
-  if (!text && !image) return json({ ok: false, code: 'content', message: 'Add a photo or describe the meal.' }, 400);
-  if (image.length > 6_000_000) return json({ ok: false, code: 'content', message: 'That photo is too large.' }, 400);
+  if (!text && !image) {
+    note(requestId, 'content');
+    return json({ ok: false, code: 'content', requestId: requestId || null, message: 'Add a photo or describe the meal.' }, 400);
+  }
+  if (image.length > 6_000_000) {
+    note(requestId, 'content');
+    return json({ ok: false, code: 'content', requestId: requestId || null, message: 'That photo is too large.' }, 400);
+  }
 
   const profileRes = await userClient.from('profiles').select('consent_ai').eq('id', userData.user.id).single();
   if (profileRes.error || !profileRes.data) {
@@ -53,8 +73,11 @@ Deno.serve(async (req) => {
   }
 
   const typed = text ? estimateFromText(text) : [];
-  const unreadPhoto = () => json({ ok: false, code: 'unread', message: PHOTO_READ_FAIL }, 422);
-  const warnMeal = (reason: string) => console.warn(`meal-estimate ${reason}`);
+  const unreadPhoto = () => json({ ok: false, code: 'unread', requestId: requestId || null, message: PHOTO_READ_FAIL }, 422);
+  const warnMeal = (reason: string) => {
+    console.warn(`meal-estimate ${reason}`);
+    note(requestId, reason);
+  };
   /**
    * Supabase stops an edge function at 150s on the Free plan and 400s on Pro.
    * 90s leaves headroom for boot, auth, and sending the reply.
@@ -133,7 +156,7 @@ Deno.serve(async (req) => {
       if (image) warnMeal('parse');
       return image ? unreadPhoto() : json({ ok: true, items: typed, source: 'local' });
     }
-    return json({ ok: true, items: parsed, source: 'model' });
+    return json({ ok: true, items: parsed, source: 'model', requestId: requestId || null });
   } catch (error) {
     if (image) {
       const name = error instanceof Error ? error.name : '';

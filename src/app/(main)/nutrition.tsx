@@ -10,6 +10,7 @@ import type { FoodLogUpdate, NewHealthSample } from '@/data/types';
 import { formatUkCompact, formatUkCompactWhen, formatUkLong, formatUkTime, isoDay, parseIsoDay } from '@/domain/dates';
 import { londonDay } from '@/domain/healthInsights';
 import { shownError } from '@/domain/errors';
+import { isMealPickerCancel, MealEstimateError, mealEstimateLog, mealEstimateMessage, mealPhotoFailure } from '@/domain/mealEstimate';
 import { randomId } from '@/domain/id';
 import {
   APPLE_HEALTH_MEAL_NOTE,
@@ -53,7 +54,6 @@ import {
   mealWeeksForDay,
   visibleMealDays,
   mealNutrientBars,
-  PHOTO_READ_FAIL,
   nutritionTrendDays,
   processedFoodHeading,
   processedFoodNotes,
@@ -342,6 +342,7 @@ export default function Nutrition() {
   const [revealDay, setRevealDay] = useState<string | null>(null);
   const [estimateReady, setEstimateReady] = useState(false);
   const [estimateError, setEstimateError] = useState<string | null>(null);
+  const [estimateErrorDay, setEstimateErrorDay] = useState<string | null>(null);
   const [estimateAttempt, setEstimateAttempt] = useState<'text' | 'camera' | 'library' | 'sample'>('text');
   const [estimateFlash, setEstimateFlash] = useState(false);
   const [mealWeeks, setMealWeeks] = useState(1);
@@ -355,6 +356,12 @@ export default function Nutrition() {
     const timer = setTimeout(() => setTargetsSavedAt(null), 2500);
     return () => clearTimeout(timer);
   }, [targetsSavedAt]);
+
+  useEffect(() => {
+    if (!estimateErrorDay || estimateErrorDay === logWindow.today) return;
+    setEstimateError(null);
+    setEstimateErrorDay(null);
+  }, [estimateErrorDay, logWindow.today]);
 
   useEffect(() => {
     if (mealSavedAt == null) return;
@@ -568,6 +575,7 @@ export default function Nutrition() {
   function failEstimate(message: string) {
     setEstimateReady(false);
     setEstimateError(message);
+    setEstimateErrorDay(logWindow.today);
   }
 
   function retryEstimate() {
@@ -603,27 +611,51 @@ export default function Nutrition() {
           photoBase64: null,
         });
       } catch (err) {
-        failEstimate(shownError(err, 'Could not read that meal. You can still type it in yourself.'));
+        const failure = mealPhotoFailure(err);
+        if (!(err instanceof MealEstimateError)) {
+          void repo.logClientError('estimate-meal', mealEstimateLog(failure.category), 'app').catch(() => undefined);
+        }
+        failEstimate(failure.category === 'preparation'
+          ? 'Could not read that meal. You can still type it in yourself.'
+          : failure.message);
       }
+    });
+  }
+
+  function keepCapturedMeal(photo: { previewUri: string; base64: string }) {
+    openDraft({
+      meal,
+      source: 'photo',
+      note: text.trim().slice(0, 500),
+      items: [blankItem()],
+      estimated: false,
+      previewUri: photo.previewUri,
+      photoBase64: photo.base64,
     });
   }
 
   function readPhoto(source: 'camera' | 'library') {
     const hadEstimate = draft?.estimated === true;
+    const previousError = estimateError;
     setEstimateAttempt(source);
     run('photo', async () => {
-      setEstimateError(null);
-      setEstimateReady(false);
       setError(null);
+      let captured: { previewUri: string; base64: string } | null = null;
       try {
         const photo = await pickMealPhoto(source);
         if (!photo) {
+          setEstimateError(previousError);
           if (hadEstimate) setEstimateReady(true);
           return;
         }
+        setEstimateError(null);
+        setEstimateReady(false);
+        captured = photo;
         const estimate = await repo.estimateMeal({ imageBase64: photo.base64, text });
         if (!estimate.items.length) {
-          failEstimate(PHOTO_READ_FAIL);
+          keepCapturedMeal(photo);
+          void repo.logClientError('estimate-meal', mealEstimateLog('unreadable'), 'app').catch(() => undefined);
+          failEstimate(mealEstimateMessage('unreadable'));
           return;
         }
         showEstimate({
@@ -636,7 +668,17 @@ export default function Nutrition() {
           photoBase64: photo.base64,
         });
       } catch (err) {
-        failEstimate(shownError(err, PHOTO_READ_FAIL));
+        if (isMealPickerCancel(err)) {
+          setEstimateError(previousError);
+          if (hadEstimate) setEstimateReady(true);
+          return;
+        }
+        if (captured) keepCapturedMeal(captured);
+        const failure = mealPhotoFailure(err);
+        if (!(err instanceof MealEstimateError) || failure.category === 'preparation') {
+          void repo.logClientError('estimate-meal', mealEstimateLog(failure.category), 'app').catch(() => undefined);
+        }
+        failEstimate(failure.message);
       }
     });
   }
@@ -650,7 +692,8 @@ export default function Nutrition() {
       try {
         const estimate = await repo.estimateMeal({ imageBase64: SAMPLE_JPEG });
         if (!estimate.items.length) {
-          failEstimate(PHOTO_READ_FAIL);
+          void repo.logClientError('estimate-meal', mealEstimateLog('unreadable'), 'app').catch(() => undefined);
+          failEstimate(mealEstimateMessage('unreadable'));
           return;
         }
         showEstimate({
@@ -663,7 +706,11 @@ export default function Nutrition() {
           photoBase64: SAMPLE_JPEG,
         });
       } catch (err) {
-        failEstimate(shownError(err, PHOTO_READ_FAIL));
+        const failure = mealPhotoFailure(err);
+        if (!(err instanceof MealEstimateError)) {
+          void repo.logClientError('estimate-meal', mealEstimateLog(failure.category), 'app').catch(() => undefined);
+        }
+        failEstimate(failure.message);
       }
     });
   }
