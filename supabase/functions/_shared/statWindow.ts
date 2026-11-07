@@ -4,6 +4,12 @@ import { londonDay, shiftDay } from './healthInsights.ts';
 export const STAT_PERIODS = ['day', '7', '30', '60', '90', '6m', '12m'] as const;
 export type StatPeriod = (typeof STAT_PERIODS)[number];
 
+/**
+ * Chips on the nutrition charts card.
+ * Six months stays on Health. It is not offered here.
+ */
+export const NUTRITION_CHART_PERIODS = ['day', '7', '30', '60', '90', '12m'] as const satisfies readonly StatPeriod[];
+
 export const STAT_PERIOD_LABEL: Record<StatPeriod, string> = {
   day: 'Day',
   '7': '7 days',
@@ -79,6 +85,28 @@ export function periodPhrase(period: StatPeriod): string {
   return PERIOD_PHRASE[period] ?? PERIOD_PHRASE['7'];
 }
 
+/** "Calories today", "Calories in last 7 days", or "Calories in last 12 months". */
+export function chartFigureLabel(name: string, period: StatPeriod): string {
+  if (period === 'day') return `${name} today`;
+  return `${name} in ${periodPhrase(period).replace(/^the /, '')}`;
+}
+
+/**
+ * Averages use finished days only. Today is still in progress, so a 7-day
+ * window averages the previous complete days and leaves today out.
+ */
+export function completedDayStats(
+  points: readonly { day: string; value: number }[],
+  today: string,
+): { complete: { day: string; value: number }[]; todayValue: number | null; average: number | null; days: number } {
+  const complete = points.filter((point) => point.day < today && Number.isFinite(point.value) && point.value > 0);
+  const todayPoint = [...points].reverse().find((point) => point.day === today && Number.isFinite(point.value) && point.value > 0);
+  const average = complete.length
+    ? complete.reduce((sum, point) => sum + point.value, 0) / complete.length
+    : null;
+  return { complete, todayValue: todayPoint?.value ?? null, average, days: complete.length };
+}
+
 /** Opening of a progress sentence: "Today", "Last 7 days", or "Last 12 months". */
 export function periodHeading(period: StatPeriod): string {
   if (period === 'day') return 'Today';
@@ -95,6 +123,28 @@ export function londonHour(value: Date | string): number {
   }).formatToParts(date);
   const hour = Number(parts.find((part) => part.type === 'hour')?.value ?? '0');
   return Number.isFinite(hour) ? hour : 0;
+}
+
+function londonPart(value: Date | string, type: 'hour' | 'minute'): number {
+  const date = value instanceof Date ? value : new Date(value);
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Europe/London',
+    hour: 'numeric',
+    minute: 'numeric',
+    hourCycle: 'h23',
+  }).formatToParts(date);
+  const part = Number(parts.find((item) => item.type === type)?.value ?? '0');
+  return Number.isFinite(part) ? part : 0;
+}
+
+/**
+ * Share of the clock day elapsed, while a Day view is still open (before 5pm London).
+ * Null once the day has had a fair chance, so a full-day rating can apply.
+ */
+export function openDayFraction(now: Date | string = new Date()): number | null {
+  if (londonHour(now) >= EARLY_DAY_HOUR) return null;
+  const elapsed = londonPart(now, 'hour') * 60 + londonPart(now, 'minute');
+  return Math.min(0.99, Math.max(1 / 24, elapsed / (24 * 60)));
 }
 
 export function londonToday(now: Date | string = new Date()): string {

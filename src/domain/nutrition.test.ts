@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
+import { ESTIMATE_CLIENT_TIMEOUT_MS, ESTIMATE_PROVIDER_TIMEOUT_MS } from './edgeRetry';
 import { londonDay } from './healthInsights';
 import { figuresForLondonWeek } from './goalLed';
 import { communitySharingOn } from './profileSharing';
@@ -64,6 +65,7 @@ import {
   isBodyBuild,
   proteinBasisKg,
   proteinGramsFor,
+  PHOTO_READ_FAIL,
   samplePhotoMeal,
   sugarCravingNote,
   suggestedTargetsLine,
@@ -103,6 +105,8 @@ import {
   loggingDots,
   macroSplit,
   nutritionTrendDays,
+  foodItemsInSpan,
+  nutritionGoalLines,
   smoothWeight,
   DUPLICATE_MEAL_PROMPT,
   RECENT_MEAL_WINDOW_MS,
@@ -146,6 +150,20 @@ describe('meal estimates', () => {
     expect(items[0]?.proteinG).toBe(12.8);
     expect(samplePhotoMeal().map((item) => item.name)).toEqual(['Chicken', 'Avocado']);
     expect(ESTIMATE_LABEL).toBe('Estimate');
+    const live = readFileSync('supabase/functions/estimate-meal/index.ts', 'utf8');
+    const repo = readFileSync('src/data/supabase-repository.ts', 'utf8');
+    const method = repo.slice(repo.indexOf('async estimateMeal'), repo.indexOf('async saveFoodLog'));
+    const demo = readFileSync('src/data/demo-repository.ts', 'utf8');
+    expect(PHOTO_READ_FAIL).toBe("Couldn't read that photo, try again or type it");
+    expect(live).not.toContain('samplePhotoMeal');
+    expect(live).not.toContain('chicken and avocado');
+    expect(live).toContain('PHOTO_READ_FAIL');
+    expect(method).not.toContain('samplePhotoMeal');
+    expect(method).toContain("new MealEstimateError(photo ? 'unreadable' : 'provider')");
+    expect(method).not.toContain('if (photo) throw unread()');
+    expect(demo).toContain('samplePhotoMeal');
+    expect(readFileSync('src/app/(main)/nutrition.tsx', 'utf8')).toContain('isMealPickerCancel');
+    expect(readFileSync('supabase/functions/_shared/nutrition.ts', 'utf8')).toContain(PHOTO_READ_FAIL);
   });
 
   it('keeps calories out of the quality view and does not shame a day over target', () => {
@@ -384,8 +402,8 @@ describe('nutrition storage and coach', () => {
     expect(APP_SECTIONS.filter((section) => section.tab).map((section) => section.label)).not.toContain('Nutrition');
     const labels = APP_SECTIONS.map((section) => section.label);
     expect(labels.indexOf('Nutrition')).toBe(labels.indexOf('Health Stats') + 1);
-    expect(labels.indexOf('Stats')).toBe(labels.indexOf('Health Stats') - 1);
-    expect(APP_SECTIONS.find((section) => section.id === 'stats')?.tab).toBeUndefined();
+    expect(labels).not.toContain('Stats');
+    expect(APP_SECTIONS.find((section) => section.id === 'stats')).toBeUndefined();
     expect(screen).toContain("Share today's meals");
     expect(screen).toContain('Share daily calories and macros');
     expect(screen).toContain('Share food quality');
@@ -726,6 +744,7 @@ describe('nutrition charts', () => {
     expect(shown.caption).toBe('900 of 1,800 kcal logged today.');
     expect(shown.status).toBe('900 kcal left');
     expect(shown.fill).toBe(0.5);
+    expect(shown.overfill).toBe(0);
 
     const hidden = todayRing({
       hideCalories: true,
@@ -749,8 +768,46 @@ describe('nutrition charts', () => {
       logged: true,
     });
     expect(over.fill).toBe(1);
+    expect(over.overfill).toBeCloseTo(400 / 1800, 10);
     expect(over.caption).toBe('2,200 kcal logged, above 1,800 kcal.');
     expect(over.status).toBe('400 kcal over');
+    expect(over.target).toBe(1800);
+
+    const exact = todayRing({
+      hideCalories: false,
+      kcal: 2144,
+      kcalTarget: 2144,
+      proteinG: 0,
+      proteinTarget: null,
+      logged: true,
+    });
+    expect(exact.fill).toBe(1);
+    expect(exact.overfill).toBe(0);
+    expect(exact.status).toBe('On target');
+
+    const overrun = todayRing({
+      hideCalories: false,
+      kcal: 2765,
+      kcalTarget: 2144,
+      proteinG: 0,
+      proteinTarget: null,
+      logged: true,
+    });
+    expect(overrun.fill).toBe(1);
+    expect(overrun.overfill).toBeCloseTo(621 / 2144, 10);
+    expect(overrun.status).toBe('621 kcal over');
+    expect(overrun.target).toBe(2144);
+
+    const doubled = todayRing({
+      hideCalories: false,
+      kcal: 5000,
+      kcalTarget: 2144,
+      proteinG: 0,
+      proteinTarget: null,
+      logged: true,
+    });
+    expect(doubled.fill).toBe(1);
+    expect(doubled.overfill).toBe(1);
 
     const open = todayRing({
       hideCalories: false,
@@ -780,6 +837,72 @@ describe('nutrition charts', () => {
       proteinTarget: 100,
       logged: true,
     }).status).toBe('At your target');
+    const proteinOver = todayRing({
+      hideCalories: true,
+      kcal: 2765,
+      kcalTarget: 2144,
+      proteinG: 240,
+      proteinTarget: 160,
+      logged: true,
+    });
+    expect(proteinOver.fill).toBe(1);
+    expect(proteinOver.overfill).toBe(0);
+    expect(proteinOver.status).toBe('At your target');
+    const charts = readFileSync('src/ui/NutritionCharts.tsx', 'utf8');
+    expect(charts).toContain("chartFigureLabel('Calories', period)");
+    expect(charts).toContain('tone={mark.tone}');
+    expect(charts).not.toContain("overfill > 0 ? 'good'");
+    expect(charts).toContain("if (ring.value > ring.target) return { tone: 'watch' }");
+    expect(charts).toContain('proteinMark(');
+    expect(readFileSync('src/ui/DistanceCharts.tsx', 'utf8')).toContain('overfill');
+  });
+
+  it('keeps one kcal target on Suggest targets and summarises the goal', () => {
+    const screen = readFileSync('src/app/(main)/nutrition.tsx', 'utf8');
+    expect(screen).toContain('Edit your goal');
+    expect(screen).toContain('nutritionGoalLines(');
+    expect(screen).not.toContain('Optional kcal target');
+    expect(screen).not.toContain('label="Save target"');
+    expect(screen).not.toContain('function saveTarget(');
+    expect(screen).toContain('label="Daily kcal"');
+    expect(screen).toContain('kcalTarget: kcal');
+    const suggest = screen.slice(screen.indexOf('variant="label">Suggest targets'), screen.indexOf('variant="label">Today'));
+    expect(suggest).toContain('Hide calories');
+    expect(suggest).toContain('label="Suggest targets"');
+    expect(suggest).toContain('pending={isPending(\'suggest\')}');
+    expect(suggest).toContain('Save targets');
+    expect(suggest).not.toContain('<GoalChoices');
+    expect(nutritionGoalLines({
+      goal: 'lose_weight',
+      fitnessGoal: 'younger_5',
+      targetWeightKg: null,
+      targetOnLabel: null,
+      competitionCut: false,
+      goalPhase: null,
+    })).toEqual(['Lose Weight', '5 years younger']);
+    expect(nutritionGoalLines({
+      goal: 'maintain',
+      fitnessGoal: null,
+      targetWeightKg: 78,
+      targetOnLabel: '1 Jun 2026',
+      competitionCut: true,
+      goalPhase: null,
+    })).toEqual(['Target weight 78 kg by 1 Jun 2026', 'Normal Fitness Age', 'Competition cut on']);
+    const year = nutritionTrendDays([
+      log({ eatenOn: '2025-11-04', meal: 'breakfast', items: [food({ name: 'Oats', kcal: 400, proteinG: 10 })] }),
+      log({ eatenOn: '2026-10-14', meal: 'lunch', items: [food({ name: 'Rice', kcal: 500, proteinG: 12 })] }),
+      log({ eatenOn: '2024-01-01', meal: 'dinner', items: [food({ name: 'Old', kcal: 9000, proteinG: 1 })] }),
+    ], '2026-10-14', 365);
+    expect(year).toHaveLength(365);
+    expect(year[0]?.day).toBe('2025-10-15');
+    const logged = year.filter((day) => day.logged);
+    expect(logged).toHaveLength(2);
+    expect(logged.reduce((sum, day) => sum + day.kcal, 0) / logged.length).toBe(450);
+    expect(foodItemsInSpan([
+      log({ eatenOn: '2025-11-04', meal: 'breakfast', items: [food({ name: 'Oats', kcal: 400, proteinG: 10 })] }),
+      log({ eatenOn: '2026-10-14', meal: 'lunch', items: [food({ name: 'Rice', kcal: 500, proteinG: 12 })] }),
+      log({ eatenOn: '2024-01-01', meal: 'dinner', items: [food({ name: 'Old', kcal: 9000, proteinG: 1 })] }),
+    ], '2026-10-14', 365).map((item) => item.name)).toEqual(['Oats', 'Rice']);
   });
 
   it('asks for a few meals before drawing an empty week or month', () => {
@@ -921,7 +1044,7 @@ describe('nutrition charts', () => {
     const status = readFileSync('src/ui/MealEstimateStatus.tsx', 'utf8');
     const log = screen.slice(screen.indexOf('variant="label">Log a meal'), screen.indexOf('variant="label">Logged today'));
     expect(status).toContain('Estimate ready - see below');
-    expect(status).toContain('Estimating...');
+    expect(status).toContain('Reading your meal…');
     expect(status).toContain('statsToneColors');
     expect(status).toContain('color: green');
     expect(status).toContain('<PlanTick done');
@@ -937,7 +1060,7 @@ describe('nutrition charts', () => {
     expect(photoAt).toBeGreaterThan(statusAt);
     expect(log).toContain('ready={estimateReady && draft?.estimated === true}');
     expect(log).toContain('error={estimateError}');
-    expect(log).toContain('pendingLabel="Estimating..."');
+    expect(log).toContain('pendingLabel="Reading your meal…"');
     expect(log).toContain('nativeID="meal-estimate-confirm"');
     expect(log).toContain('{ESTIMATE_LABEL}');
     expect(log).toContain('label="Save meal"');
@@ -981,10 +1104,25 @@ describe('nutrition charts', () => {
     const plan = repo.slice(repo.indexOf('async refreshHealthPlan'), repo.indexOf('async sharedNutrition'));
     const voice = repo.slice(repo.indexOf('async mintVoiceToken'), repo.indexOf('async reflectOnGratitude'));
     const logged = repo.slice(repo.indexOf('private rememberEdgeFailure'), repo.indexOf('private aiFailure'));
-    expect(estimate).toContain('const ESTIMATE_PROVIDER_TIMEOUT_MS = 28_000');
+    expect(estimate).toContain('const ESTIMATE_PROVIDER_TIMEOUT_MS = 90_000');
     expect(estimate).toContain('signal: AbortSignal.timeout(ESTIMATE_PROVIDER_TIMEOUT_MS)');
+    expect(estimate).toContain('model: THUMOS_CHAT.model');
+    expect(estimate).toContain("reasoning_effort: 'low'");
+    expect(estimate).toContain('max_tokens: 2000');
+    expect(estimate).toContain("detail: 'high'");
+    expect(estimate).toContain('console.warn(`meal-estimate ${reason}`)');
+    expect(estimate).toContain("warnMeal('no_key')");
+    expect(estimate).toContain("warnMeal('gate')");
+    expect(estimate).toContain("warnMeal('parse')");
+    expect(estimate).toContain("? 'timeout' : 'http'");
+    expect(estimate).toContain('warnMeal(`http ${response.status}`)');
+    expect(estimate).not.toContain('warnMeal(image');
+    expect(estimate).not.toContain('warnMeal(text');
+    expect(readFileSync('src/ui/pickMealPhoto.ts', 'utf8')).toContain('1024');
+    expect(readFileSync('src/ui/pickMealPhoto.ts', 'utf8')).toContain('compress: 0.7');
     expect(estimate).toContain("source: 'local'");
-    expect(retry).toContain("ESTIMATE_WAIT_NOTE = 'This can take up to 20 seconds.'");
+    expect(retry).toContain("ESTIMATE_WAIT_NOTE = 'Reading your meal… this can take up to a minute.'");
+    expect(ESTIMATE_CLIENT_TIMEOUT_MS).toBeGreaterThan(ESTIMATE_PROVIDER_TIMEOUT_MS);
     expect(status).toContain('{ESTIMATE_WAIT_NOTE}');
     expect(method).toContain('ai: true');
     expect(method).toContain('timeoutMs: ESTIMATE_CLIENT_TIMEOUT_MS');
@@ -1396,7 +1534,7 @@ describe('meal edit', () => {
 describe('training nutrition goals', () => {
   const body = { weightKg: 80, heightCm: 180, age: 40, sex: 'male' as const, activeEnergyKcal: null };
 
-  it('names the training goals in plain words and keeps the chips scrollable', () => {
+  it('names the training goals in plain words and shows every class without an inner scroll', () => {
     expect(GOAL_LABEL.elite_runner).toBe('Elite Athlete (Lean Runner etc.)');
     expect(GOAL_LABEL.body_builder).toBe('Body Builder');
     expect(GOAL_LABEL.elite_heavy_boxer).toBe('Elite Athlete (Heavy Weight Boxer)');
@@ -1407,8 +1545,9 @@ describe('training nutrition goals', () => {
     expect(GOAL_PLAIN.elite_middle_boxer).toMatch(/middleweight limit/i);
     const screen = readFileSync('src/app/(main)/nutrition.tsx', 'utf8');
     const goals = readFileSync('src/ui/GoalChoices.tsx', 'utf8');
-    expect(screen).toContain('horizontal');
+    expect(screen).not.toContain('nestedScrollEnabled');
     expect(goals).toContain('GOAL_PLAIN[settings.goal]');
+    expect(goals).not.toContain('ScrollView');
     expect(goals).toContain("flexWrap: 'wrap'");
     expect(screen).toContain('label="Daily carbohydrate (g)"');
     expect(screen).toContain('label="Daily fat (g)"');
@@ -1652,9 +1791,16 @@ describe('training nutrition goals', () => {
     expect(lower).not.toMatch(/delete from/i);
     const chips = readFileSync('src/ui/GoalChoices.tsx', 'utf8');
     expect(chips).toContain('Boxing weight classes');
-    expect(chips).toContain('accessibilityState={{ expanded: boxingOpen }}');
+    expect(chips).toContain('Or choose a boxing weight class');
+    expect(chips).toContain('Boxing weight class (sets your target weight)');
+    expect(chips.indexOf('Or choose a boxing weight class')).toBeLessThan(chips.indexOf('<GoalTargetDate />'));
+    expect(chips.indexOf('accessibilityLabel="Boxing weight classes"')).toBeLessThan(chips.indexOf('<GoalTargetDate />'));
+    expect(chips).not.toContain('boxingOpen');
     expect(chips).toContain('boxingChipLabel(option.id)');
-    expect(chips).toContain('nestedScrollEnabled');
+    expect(chips).toContain("alignSelf: 'stretch'");
+    expect(chips).toContain('theme.colors.accent');
+    expect(chips).not.toContain('nestedScrollEnabled');
+    expect(chips).not.toContain('maxHeight: 280');
     const sql = readFileSync('supabase/migrations/20261017230000_boxing_class_goals.sql', 'utf8');
     expect(sql).toContain('nutrition_settings_goal_check');
     expect(sql).toContain("'elite_super_middle_boxer'");

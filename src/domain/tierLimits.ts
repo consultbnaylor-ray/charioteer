@@ -11,6 +11,7 @@ export {
   decideAllowance,
   defaultPlanId,
   entitlementEnforced,
+  entitlementEnforcedForUser,
   isSubscriptionProduct,
   limitReachedMessage,
   londonDayKey,

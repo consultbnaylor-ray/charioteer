@@ -4,10 +4,13 @@ import { useRef, useState } from 'react';
 import { ActivityIndicator, Modal, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 
 import { useRepository, useSnapshot } from '@/data';
-import { formatUkLong, isoDay, parseIsoDay, startOfLocalDay } from '@/domain/dates';
+import { AiCreditLine } from '@/ui/AiCreditLine';
+import { isoDay, parseIsoDay, startOfLocalDay } from '@/domain/dates';
+import { londonDay } from '@/domain/healthInsights';
 import { shownError } from '@/domain/errors';
 import {
   filterGratitude,
+  formatGratitudeHeader,
   gratitudeCountLabel,
   GRATITUDE_CATEGORIES,
   groupGratitudeByDay,
@@ -51,7 +54,7 @@ export default function GratitudeDiary() {
   const router = useRouter();
   const theme = useAppTheme();
   const entries = snap.gratitude ?? [];
-  const today = isoDay(new Date());
+  const today = londonDay(new Date());
   const [view, setView] = useState<'all' | 'favourites'>('all');
   const [query, setQuery] = useState('');
   const [category, setCategory] = useState<GratitudeCategory | null>(null);
@@ -349,6 +352,7 @@ export default function GratitudeDiary() {
       intro="A list you can come back to. This diary is private. It is not shown to the community. Photos on a line stay private too, and are not sent to Thumos. Thumos sees a few lines of text only if you have allowed the coach."
     >
       <GratitudeSectionShare />
+      <AiCreditLine kind="coach" />
       <ShareOnProfile
         boxed
         label={SHARE_NEW_GRATITUDE}
@@ -412,16 +416,19 @@ export default function GratitudeDiary() {
         </Card>
       ) : null}
       {resurfaced ? (
-        <Card>
-          <T variant="label">{resurfaced.kind === 'on-this-day' ? 'On this day' : 'A while ago'}</T>
-          <T variant="muted">{formatUkLong(resurfaced.entry.entryDate)}</T>
-          <T>{resurfaced.entry.body}</T>
+        <Card featured>
+          <View accessibilityLabel={resurfaced.kind === 'on-this-day' ? 'On this day, above the diary' : 'From a while ago, above the diary'}>
+            <T variant="label">{resurfaced.kind === 'on-this-day' ? 'On this day' : 'From a while ago'}</T>
+            <T variant="muted">A memory from the diary. It is not the next day in the list.</T>
+            <T variant="muted">Written on {formatGratitudeHeader(resurfaced.entry.entryDate)}.</T>
+            <T>{resurfaced.entry.body}</T>
+          </View>
         </Card>
       ) : null}
       {listed.length > 0 && groups.length === 0 ? <T variant="muted">Nothing matches.</T> : null}
       {groups.map((group) => (
         <View key={group.entryDate} style={{ gap: 8 }}>
-          <T variant="label">{formatUkLong(group.entryDate)}</T>
+          <T variant="label">{formatGratitudeHeader(group.entryDate)}</T>
           {group.entries.map((entry) => {
             const cardUpload = upload && upload.entryId === entry.id && editing?.id !== entry.id ? upload : null;
             return (

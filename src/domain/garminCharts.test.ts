@@ -53,6 +53,7 @@ describe('garmin charts follow the shared period', () => {
     expect(movementPeriod(undefined, '12m').days).toBe(periodDayCount('12m'));
     expect(movementPeriod(7, '12m')).toEqual({ period: '7', days: 7 });
     expect(movementPeriod(30, '7')).toEqual({ period: '30', days: 30 });
+    expect(movementPeriod(1, '7')).toEqual({ period: 'day', days: 1 });
 
     const screen = readFileSync('src/ui/DailyActivity.tsx', 'utf8');
     expect(screen).toContain('useStatPeriod');
@@ -61,23 +62,24 @@ describe('garmin charts follow the shared period', () => {
     expect(screen).toContain('framed ? 22 : 12');
     expect(screen).toContain('garminDetailCharts');
     expect(GARMIN_DETAILS_TITLE).toBe('More Garmin Stats');
-    expect(screen).toContain('title={GARMIN_DETAILS_TITLE}');
+    expect(screen).toContain('GARMIN_DETAILS_TITLE');
+    expect(screen).toContain('→ ${GARMIN_DETAILS_TITLE}');
+    expect(screen).toContain("router.push('/garmin-stats'");
     expect(screen).toContain('Not medical advice.');
     expect(screen).toContain('from \'@/ui/MoreInfo\'');
     expect(screen).not.toContain('What is this?');
     expect(screen).not.toContain('seriesUsesGarmin');
     expect(screen).not.toContain('latitude');
     expect(screen).not.toContain('longitude');
-    for (const file of ['src/app/(main)/health.tsx', 'src/app/(main)/health-plan.tsx', 'src/app/(main)/stats.tsx']) {
+    for (const file of ['src/app/(main)/health.tsx']) {
       const source = readFileSync(file, 'utf8');
       const start = source.indexOf('<MovementCharts');
       const block = source.slice(start, source.indexOf('/>', start));
       expect(block).not.toContain('span=');
       expect(block).toContain('userMetrics={readings.userMetrics}');
     }
-    expect(readFileSync('src/app/(main)/stats.tsx', 'utf8')).toContain('showVo2Chart={false}');
-    expect(readFileSync('src/app/(main)/health-plan.tsx', 'utf8')).toContain('showVo2Chart={false}');
-    expect(readFileSync('src/app/(main)/health.tsx', 'utf8')).not.toContain('showVo2Chart');
+    expect(readFileSync('src/app/(main)/health.tsx', 'utf8')).toContain('showVo2Chart={false}');
+    expect(readFileSync('src/app/(main)/health-plan.tsx', 'utf8')).not.toContain('<MovementCharts');
     expect(readFileSync('src/ui/YourFitness.tsx', 'utf8')).toContain('<Vo2MaxChart');
     expect(readFileSync('src/ui/DailyActivity.tsx', 'utf8')).toContain("chart.id !== 'vo2'");
     expect(readFileSync('src/ui/DailyActivity.tsx', 'utf8')).toContain('span={span}');
@@ -222,7 +224,7 @@ describe('garmin chart bands', () => {
     });
     const byId = new Map(charts.map((chart) => [chart.id, chart]));
     const stress = byId.get('stress')?.guide;
-    expect(stress?.dailyTypical).toBeNull();
+    expect(stress?.dailyTypical).toEqual({ low: 0, high: 50 });
     expect(stress?.legend).toBe('');
     expect(stress?.about).toContain(STRESS_ZONES);
     expect(stress?.about.match(/0–25 resting/g)).toHaveLength(1);
@@ -266,10 +268,13 @@ describe('garmin chart bands', () => {
       expect(note.match(/Not medical advice/gi) ?? []).toHaveLength(0);
       expect(note.match(/Approximate general guidance/g) ?? []).toHaveLength(0);
     }
-    expect(byId.get('sleep_score')?.guide.about).toContain(NO_STANDARD_RANGE);
-    expect(byId.get('sleep_score')?.guide.dailyTypical).toBeNull();
+    expect(byId.get('sleep_score')?.guide.about).not.toContain(NO_STANDARD_RANGE);
+    expect(byId.get('sleep_score')?.guide.about).toContain('Excellent 90–100');
+    expect(byId.get('sleep_score')?.guide.dailyTypical).toEqual({ low: 80, high: 100 });
+    expect(byId.get('sleep_score')?.guide.rating?.label).toBe('Good');
+    expect(byId.get('sleep_score')?.guide.rating?.caveat).toBe('Not medical advice. Not a diagnosis.');
     expect(byId.get('sleep_duration')?.points.find((point) => point.day === end)?.label).toContain('7.5 hours');
-    expect(byId.get('sleep_duration')?.guide.dailyTypical).toBeNull();
+    expect(byId.get('sleep_duration')?.guide.dailyTypical).toEqual({ low: 7, high: 9 });
     expect(byId.get('respiration')?.guide.dailyTypical).toEqual({ low: BREATH_TYPICAL_LOW, high: BREATH_TYPICAL_HIGH });
     expect(byId.get('respiration')?.guide.outside).toBe(OUTSIDE_RANGE_NOTE);
     expect(byId.get('pulse_ox')?.guide.dailyTypical?.low).toBe(SPO2_TYPICAL_LOW);
@@ -278,8 +283,9 @@ describe('garmin chart bands', () => {
     expect(byId.get('hrv')?.guide.ownAverage?.value).toBe(50);
     expect(byId.get('hrv')?.guide.about).toContain('RMSSD');
     expect(byId.get('hrv')?.guide.about).toContain('SDNN');
-    expect(byId.get('hrv')?.guide.about).toContain('Nunan, Sandercock and Brodie, 2010');
-    expect(byId.get('hrv')?.guide.about).toContain('Not medical advice');
+    expect(byId.get('hrv')?.guide.about).toContain('42 ms');
+    expect(byId.get('hrv')?.guide.rating?.where).toContain('better recovery');
+    expect(byId.get('hrv')?.guide.rating?.source).toContain('Nunan, Sandercock and Brodie, 2010');
     expect(byId.get('hrv')?.title).toContain('Garmin overnight RMSSD');
     expect(byId.get('hrv')?.guide.legend).toBe('');
     const longer = garminDetailCharts({

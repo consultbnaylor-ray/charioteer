@@ -34,6 +34,24 @@ export function cardAccent(scheme: Scheme): string {
   return '#6EE7B7';
 }
 
+/**
+ * Saturated amber for the calorie second lap.
+ * Dark-mode watch ink is #FFEDD5 so small text stays readable.
+ * That peach disappears on the mint ring. The stroke uses one amber in both schemes.
+ */
+export function watchArcInk(scheme: Scheme): string {
+  return scheme === 'dark' ? '#F59E0B' : '#F59E0B';
+}
+
+/**
+ * Amber for the Watch word beside an over-target calorie ring.
+ * Dark cards can take the same amber as the second lap. Light cards need a
+ * darker amber so the word still clears the white surface.
+ */
+export function watchSignalInk(scheme: Scheme): string {
+  return scheme === 'dark' ? '#F59E0B' : '#C2410C';
+}
+
 /** Lime wash for a published good zone on a bar. Empty bars stay on the hairline colour. */
 export function goodZoneBand(scheme: Scheme): string {
   if (scheme === 'dark') return 'rgba(45, 224, 160, 0.45)';

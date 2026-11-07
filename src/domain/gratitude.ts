@@ -1,7 +1,9 @@
 export {
   formatGratitudeContext,
   filterGratitude,
+  formatGratitudeHeader,
   gratitudeCountLabel,
+  gratitudeDiaryDay,
   gratitudeForThumos,
   gratitudeReflectMessages,
   GRATITUDE_CATEGORIES,

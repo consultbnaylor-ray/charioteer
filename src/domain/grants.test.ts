@@ -425,7 +425,8 @@ describe('client upsert update grants', () => {
         'share_quality', 'share_progress', 'goal', 'goal_age', 'goal_sex', 'protein_target_g',
         'carb_target_g', 'fat_target_g', 'goal_phase', 'weight_class_kg', 'target_weight_kg',
         'target_on', 'target_start_kg', 'activity_energy_kcal',
-        'share_goal', 'wagon_on', 'wagon_note', 'wagon_visible', 'build', 'updated_at',
+        'share_goal', 'wagon_on', 'wagon_note', 'wagon_visible', 'build', 'fitness_goal',
+        'competition_cut', 'competition_cut_at', 'competition_cut_version', 'updated_at',
       ],
       withheld: [],
     },
@@ -456,6 +457,10 @@ describe('client upsert update grants', () => {
       columns: ['id', 'user_id', 'session_type', 'starts_at', 'duration_minutes', 'note', 'planned_effort', 'done_at'],
       withheld: ['created_at', 'updated_at'],
       insertOnly: true,
+    },
+    workout_feelings: {
+      columns: ['recorded_on', 'workout_key', 'note', 'effort', 'mood', 'updated_at'],
+      withheld: ['id'],
     },
   };
 

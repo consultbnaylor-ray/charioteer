@@ -6,7 +6,9 @@ import {
   GARMIN_ASKED,
   GARMIN_CHECK_AGAIN,
   GARMIN_RECENT,
+  garminAlreadySentLine,
   garminHintLine,
+  garminRefreshFace,
   REFRESH_FAILED,
   SYNC_REFRESH,
   appleCheckIsFresh,
@@ -139,6 +141,8 @@ export function HealthRefreshBar({
   const [nothingSince, setNothingSince] = useState<string | null>(null);
   const [seenPushAt, setSeenPushAt] = useState<string | null>(null);
   const receivedAt = laterSyncClock(garminReceivedAt, seenPushAt);
+  const face = garminRefreshFace({ error, receivedAt, now: Date.now() });
+  const shownGarminNote = garminNote === GARMIN_RECENT ? (garminAlreadySentLine(receivedAt) ?? garminNote) : garminNote;
 
   useEffect(() => {
     if (checkView !== 'nothing') return;
@@ -235,9 +239,10 @@ export function HealthRefreshBar({
           <T variant="muted">{garminHintLine(receivedAt, Date.now())}</T>
         </MoreInfo>
       ) : null}
-      {garminNote ? <T variant="muted">{garminNote}</T> : null}
+      {garminNote && garminNote !== face.note ? <T variant="muted">{shownGarminNote}</T> : null}
+      {face.note ? <T variant="muted">{face.note}</T> : null}
       {permission ? <GarminPermissionNotice force /> : null}
-      <ErrorNote>{error}</ErrorNote>
+      <ErrorNote>{face.error}</ErrorNote>
     </Card>
   );
 }

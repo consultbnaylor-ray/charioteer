@@ -60,7 +60,7 @@ describe('profile stat tiles', () => {
     });
     expect(board.tiles.find((tile) => tile.id === 'steps')).toMatchObject({
       value: '6,000 steps',
-      caption: 'This week',
+      caption: 'Last 7 days',
       chart: { kind: 'bars', values: [4000, 8000] },
     });
     expect(board.notShared).toContain('Sleep');

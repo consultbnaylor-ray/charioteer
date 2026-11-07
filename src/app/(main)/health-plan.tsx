@@ -8,28 +8,21 @@ import { PLAN_NOT_SAVED } from '@/domain/edgeRetry';
 import { UserFacingError, shownError } from '@/domain/errors';
 import { PLAN_DISCLAIMER, togglePlanAction, type PlanAction } from '@/domain/healthPlan';
 import { planProgressFigure } from '@/domain/measureFigures';
-import { applyWeightAndBodyShare, communitySharingOn } from '@/domain/profileSharing';
 import { buildStatsOverview } from '@/domain/statsOverview';
 import { useStatPeriod } from '@/health/useStatPeriod';
 import { StatPeriodToggle } from '@/ui/StatPeriodToggle';
 import { GoalChoices } from '@/ui/GoalChoices';
-import { GoalWeightRange } from '@/ui/GoalWeightRange';
-import { ThumosReadingComment } from '@/ui/ThumosReadingComment';
-import { YourFitness } from '@/ui/YourFitness';
+import { ThumosStatsAnalysis } from '@/ui/ThumosStatsAnalysis';
 import { useHealthSources } from '@/health/useHealthSources';
 import { planDayFromSessionText } from '@/domain/plannedSession';
 import { WorkoutsLink } from '@/ui/WorkoutsLink';
+import { DailyTargets } from '@/ui/DailyTargets';
 import { YourGoal } from '@/ui/YourGoal';
 import { PlanTick } from '@/ui/PlanTick';
-import { ShareOnProfile } from '@/ui/ShareOnProfile';
 import { MeasureBarsView, MeasureRingView } from '@/ui/MeasuredFigure';
 import { StatTile } from '@/ui/StatTile';
 import { usePendingPress } from '@/ui/pendingAction';
-import { appleDayValues } from '@/domain/dailyActivity';
-import { londonDay } from '@/domain/healthInsights';
-import { garminStoredMark } from '@/domain/healthRefresh';
-import { MovementCharts } from '@/ui/DailyActivity';
-import { HealthRefreshBar, useManualHealthRefresh } from '@/ui/HealthRefresh';
+import { AiCreditLine } from '@/ui/AiCreditLine';
 import { Button, Card, ErrorNote, Field, Screen, T } from '@/ui/ui';
 
 const PROGRESS_IDS = ['sober', 'mood', 'calories', 'protein', 'body', 'weight'];
@@ -61,8 +54,7 @@ export default function HealthPlanScreen() {
   const plan = snap.healthPlan;
   const [limits, setLimits] = useState(plan?.limits ?? '');
   const [error, setError] = useState<string | null>(null);
-  const { samples: mergedHealth, workouts, readings } = useHealthSources();
-  const manual = useManualHealthRefresh(readings.connected);
+  const { samples: mergedHealth, workouts } = useHealthSources();
   const limitsRef = useRef(limits);
   const planRef = useRef(plan);
   const queue = useRef(Promise.resolve());
@@ -75,7 +67,6 @@ export default function HealthPlanScreen() {
   }, [plan?.updatedAt]);
 
   if (!profile) return null;
-  const communityOn = communitySharingOn(profile);
 
   const tiles = buildStatsOverview({
     now: new Date(),
@@ -139,69 +130,21 @@ export default function HealthPlanScreen() {
       eyebrow="Thumos"
       title="Health Plan"
       intro="Thumos reads the figures you already keep and writes a short plan. It is not a diagnosis."
-      refreshing={manual.refreshing}
-      onRefresh={() => void manual.run()}
     >
-      <ThumosReadingComment analyse />
-      <HealthRefreshBar
-        refreshing={manual.refreshing}
-        appleCheckedAt={manual.appleCheckedAt}
-        garminConnected={readings.connected}
-        garminReceivedAt={readings.lastPushAt}
-        garminMark={garminStoredMark(readings)}
-        error={manual.error}
-        permission={manual.permission}
-        history={manual.history}
-        garminNote={manual.garminNote}
-        onPress={() => void manual.run()}
-      />
-      <MovementCharts
-        endDay={londonDay(new Date())}
-        steps={appleDayValues(snap.health, 'steps')}
-        restingHeart={appleDayValues(snap.health, 'resting_heart_rate')}
-        dailies={readings.dailies}
-        sleep={readings.sleep}
-        respiration={readings.respiration}
-        pulseOx={readings.pulseOx}
-        hrv={readings.hrv}
-        appleHrvSdnn={appleDayValues(snap.health, 'hrv_sdnn')}
-        userMetrics={readings.userMetrics}
-        age={snap.nutrition.goalAge}
-        sex={snap.nutrition.goalSex}
-        showVo2Chart={false}
-      />
+      <ThumosStatsAnalysis />
       <GoalChoices />
       <YourGoal place="plan" />
-      <YourFitness onPlanOutdoor={() => router.push(`/workouts?planOutdoor=${Date.now()}` as never)} />
-      <View style={{ gap: 8 }}>
-        <ShareOnProfile
-          boxed
-          label="Share on profile"
-          item="Health plan"
-          sensitive
-          on={snap.sharing.healthPlan}
-          apply={(sharing, selected) => ({ ...sharing, healthPlan: selected })}
-        />
-        <T variant="muted">Other members see the goal, this week's focus, and how many are ticked.</T>
-        <ShareOnProfile
-          boxed
-          label="Share weight and body figures"
-          item="Weight and body figures"
-          sensitive
-          on={snap.sharing.shareBodyFigures}
-          apply={applyWeightAndBodyShare}
-        />
-        <T variant="muted">Other members see the weight average, and body fat, waist, or lean mass. Height stays private.</T>
-        {communityOn ? null : (
-          <T>Community is off. Other members can see what you share here only when Community is on.</T>
-        )}
-      </View>
+      <DailyTargets />
+      <Button label="Refresh plan" pending={refreshing} pendingLabel="Writing..." onPress={refresh} />
+      <T variant="muted">This uses one AI credit and rewrites the plan from the current goal.</T>
+      <AiCreditLine kind="plan" />
       <ErrorNote>{error}</ErrorNote>
       {error ? <Button label="Try again" pending={refreshing} onPress={refresh} /> : null}
       {plan ? (
         <>
           <Card>
             <T variant="label">This week's focus</T>
+            <T variant="muted">Ticked automatically from your Garmin and Apple Health data where we can; tap to tick the rest.</T>
             {plan.focus.map((action) => (
               <ActionRow key={action.id} action={action} disabled={refreshing} onToggle={tick} />
             ))}
@@ -260,7 +203,6 @@ export default function HealthPlanScreen() {
           <MeasureBarsView label="By section" bars={progress.bars} />
         </Card>
       ) : null}
-      <GoalWeightRange />
       <Card>
         <T variant="label">Progress</T>
         <StatPeriodToggle />
@@ -280,7 +222,6 @@ export default function HealthPlanScreen() {
         maxLength={280}
         multiline
       />
-      <Button label="Refresh plan" pending={refreshing} pendingLabel="Writing..." onPress={refresh} />
       {plan ? <T variant="muted">{`Last updated ${formatUkCompactWhen(plan.updatedAt)}`}</T> : null}
       <T variant="muted">{plan?.disclaimer || PLAN_DISCLAIMER}</T>
     </Screen>

@@ -6,6 +6,8 @@
  * 75th and above is Strong. This is an estimate, not Apple's classification and
  * not a medical assessment.
  */
+import { currentVo2Line, currentVo2Max } from './currentVo2.ts';
+import { FITNESS_GOAL_LABEL, type FitnessGoal } from './fitnessGoal.ts';
 import { metricFallback, type FallbackCite } from './healthBands.ts';
 import { londonDay, mondayOf, shiftDay } from './healthInsights.ts';
 import { minuteUnit, paceJudgement, parseStatPeriod, periodPhrase, rollingWindow, scaledPeriodTarget, type StatPeriod } from './statWindow.ts';
@@ -22,6 +24,7 @@ import {
   type WorkoutBucket,
   type WorkoutBucketMap,
 } from './nutrition.ts';
+import { LOW_CARDIO_CONTEXT_LINE, VO2_CONTEXT_LINE, VO2_FOCUS_LINE, ZONE2_BESIDE_WORK } from './trainingGuidance.ts';
 
 export type FitnessLevel = 'Developing' | 'Steady' | 'Strong';
 
@@ -33,6 +36,8 @@ export type FitnessSample = {
   recordedOn: string;
   /** healthkit wins over a same-day manual copy. Absent when the row did not say. */
   source?: string;
+  /** Merged Garmin VO2 rows use an id that starts with merged:vo2_max:. */
+  id?: string;
 };
 
 /** Minutes one app wrote for one workout type on one day. No route and no heart rate. */
@@ -169,7 +174,7 @@ export const VO2_WHAT =
   'VO2 max: how much oxygen your body can use at full effort, per kg of body weight per minute. Apple Watch estimates it.';
 
 export const MINUTES_WHAT =
-  'These are the minutes of workouts logged this week. They are not moderate minutes and not vigorous minutes. The UK Chief Medical Officers recommend at least 150 minutes of moderate activity a week, or 75 minutes of vigorous activity. This app cannot tell how hard the logged minutes were. Not medical advice. Not a diagnosis.';
+  'These are the minutes of workouts logged in the days shown. They are not moderate minutes and not vigorous minutes. The UK Chief Medical Officers recommend at least 150 minutes of moderate activity a week, or 75 minutes of vigorous activity. This app cannot tell how hard the logged minutes were. Not medical advice. Not a diagnosis.';
 
 export const RESTING_WHAT =
   'Resting heart rate: how many times your heart beats in a minute while you are at rest. The unit is bpm.';
@@ -205,7 +210,7 @@ export function whyRestingMatters(): string {
 }
 
 const FRIEND_SOURCE =
-  'Age and sex: Kaminsky, Arena, and Myers, Mayo Clinic Proceedings, 2015. The shaded band is the 25th to the 75th percentile for treadmill cardio fitness.';
+  'Age and sex: Kaminsky, Arena, and Myers, Mayo Clinic Proceedings, 2015, Table 3 (FRIEND treadmill). The shaded band is the 25th to the 75th percentile. The same table reprints Cooper Clinic figures cited by ACSM\'s Guidelines for Exercise Testing and Prescription, 9th ed., 2014.';
 
 /**
  * Kim, Song, and Min, Exercise Science, 2016. Korean national amateur men.
@@ -221,22 +226,29 @@ const BOXER_SOURCE =
 const HEAVY_BOXER = { low: 56, high: 62 };
 const MIDDLE_BOXER = { low: 59, high: 65 };
 
+/**
+ * Kaminsky, Arena, and Myers, Mayo Clinic Proceedings, 2015, Table 3.
+ * Men and women from FRIEND, measured treadmill VO2max, ml/kg/min, free of known cardiovascular disease.
+ * p50 is the age-norm used here as the good level. p90 is the excellent level.
+ * The 95th percentile in that table is the superior cut (men 40–49: 55.6). Elite uses p90, not that extreme.
+ * Cooper Clinic predicted values sit in the same table and are the figures ACSM's 2014 guidelines cite.
+ */
 const MEN = [
-  { maxAge: 29, p25: 40.1, p75: 55.2 },
-  { maxAge: 39, p25: 35.9, p75: 49.2 },
-  { maxAge: 49, p25: 31.9, p75: 45.0 },
-  { maxAge: 59, p25: 27.1, p75: 39.7 },
-  { maxAge: 69, p25: 23.7, p75: 34.5 },
-  { maxAge: 79, p25: 20.4, p75: 30.4 },
+  { maxAge: 29, p25: 40.1, p50: 48.0, p75: 55.2, p90: 61.8 },
+  { maxAge: 39, p25: 35.9, p50: 42.4, p75: 49.2, p90: 56.5 },
+  { maxAge: 49, p25: 31.9, p50: 37.8, p75: 45.0, p90: 52.1 },
+  { maxAge: 59, p25: 27.1, p50: 32.6, p75: 39.7, p90: 45.6 },
+  { maxAge: 69, p25: 23.7, p50: 28.2, p75: 34.5, p90: 40.3 },
+  { maxAge: 79, p25: 20.4, p50: 24.4, p75: 30.4, p90: 36.6 },
 ] as const;
 
 const WOMEN = [
-  { maxAge: 29, p25: 30.5, p75: 44.7 },
-  { maxAge: 39, p25: 25.3, p75: 36.1 },
-  { maxAge: 49, p25: 22.1, p75: 32.4 },
-  { maxAge: 59, p25: 19.9, p75: 27.6 },
-  { maxAge: 69, p25: 17.2, p75: 23.8 },
-  { maxAge: 79, p25: 15.6, p75: 20.8 },
+  { maxAge: 29, p25: 30.5, p50: 37.6, p75: 44.7, p90: 51.3 },
+  { maxAge: 39, p25: 25.3, p50: 30.2, p75: 36.1, p90: 41.4 },
+  { maxAge: 49, p25: 22.1, p50: 26.7, p75: 32.4, p90: 38.4 },
+  { maxAge: 59, p25: 19.9, p50: 23.4, p75: 27.6, p90: 32.0 },
+  { maxAge: 69, p25: 17.2, p50: 20.0, p75: 23.8, p90: 27.0 },
+  { maxAge: 79, p25: 15.6, p50: 18.3, p75: 20.8, p90: 23.1 },
 ] as const;
 
 /**
@@ -941,6 +953,20 @@ function sexWord(sex: NutritionSex): string {
   return sex === 'female' ? 'women' : 'men';
 }
 
+/** Decade used by the 2015 table. Ages 20–79 only. */
+export function cardioAgeBand(age: number): { min: number; max: number } | null {
+  if (age < 20 || age > 79) return null;
+  const max = age <= 29 ? 29 : age <= 39 ? 39 : age <= 49 ? 49 : age <= 59 ? 59 : age <= 69 ? 69 : 79;
+  return { min: max - 9, max };
+}
+
+export const VO2_NORM_CAPTION = 'Mayo Clinic Proceedings 2015 fitness norms';
+
+function vo2Figure(value: number): string {
+  const rounded = Math.round(value * 10) / 10;
+  return Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1);
+}
+
 function levelTone(level: FitnessLevel): FitnessTone {
   return level === 'Developing' ? 'watch' : 'good';
 }
@@ -953,6 +979,52 @@ function boxerBand(goal: NutritionGoal | null, sex: NutritionSex | null): Fitnes
   }
   if (goal === 'elite_middle_boxer' || isClassBoxer(goal)) return { ...MIDDLE_BOXER, label };
   return null;
+}
+
+/**
+ * A dated plan does not jump to the long-term level in a few weeks.
+ * Helgerud and colleagues, 2007, raised VO2 max by about 7% in 8 weeks of 4x4 intervals.
+ * From a reading near 44 that is about 0.4 ml/kg/min a week. The cap here is 0.5.
+ */
+export const VO2_WEEKLY_GAIN = 0.5;
+
+function aimAge(real: number, goal: FitnessGoal): number {
+  const years = goal === 'younger_2' ? 2 : goal === 'younger_5' ? 5 : goal === 'younger_10' ? 10 : 0;
+  return Math.max(20, Math.min(79, real - years));
+}
+
+/**
+ * Long-term VO2 max for the fitness-age aim.
+ * Normal, and a younger aim, use the 50th percentile of the age band for that age.
+ * Elite uses the 90th percentile of the real age band: the excellent level. The 95th is superior.
+ * A nearer date is capped separately at VO2_WEEKLY_GAIN.
+ */
+export function vo2ForFitnessGoal(
+  age: number | null,
+  sex: NutritionSex | null,
+  goal: FitnessGoal,
+): { target: number; fitnessAge: number; label: string } | null {
+  if (age == null || sex == null || age < 18 || age > 100) return null;
+  const real = Math.round(age);
+  const fitnessAge = goal === 'elite' ? real : aimAge(real, goal);
+  const band = bandFor(fitnessAge, sex);
+  const range = cardioAgeBand(fitnessAge);
+  if (!band || !range) return null;
+  const target = goal === 'elite' ? band.p90 : band.p50;
+  const level = goal === 'elite' ? 'excellent' : 'good';
+  const percentile = goal === 'elite' ? '90th' : '50th';
+  return {
+    target,
+    fitnessAge,
+    label: `${FITNESS_GOAL_LABEL[goal]} aims for the ${level} level for ${sexWord(sex)} aged ${range.min}\u2013${range.max} (${percentile} percentile, ${vo2Figure(target)}).`,
+  };
+}
+
+/** The same boxing VO2 band the fitness-age card uses. Null when this goal has no class band. */
+export function athleticVo2Target(goal: NutritionGoal | null, sex: NutritionSex | null): { low: number; high: number } | null {
+  const band = boxerBand(goal, sex);
+  if (!band) return null;
+  return { low: band.low, high: band.high };
 }
 
 /** Plain line when VO2 max is under the published range for the saved sport. Null when it is not. */
@@ -1017,13 +1089,14 @@ function compareFor(input: {
   sex: NutritionSex | null;
   goal: NutritionGoal | null;
   band: { p25: number; p75: number } | null;
+  line?: string | null;
 }): FitnessCompare {
   const ageBand = input.band && input.age != null && input.sex
     ? { low: round1(input.band.p25), high: round1(input.band.p75), label: 'Typical for your age and sex' }
     : null;
   const goalBand = boxerBand(input.goal, input.sex);
   const goalNote = goalNoteFor(input.goal, input.sex, Boolean(goalBand), Boolean(ageBand));
-  const you = `You are at about ${round1(input.value)} ml/kg/min.`;
+  const you = input.line ? `${input.line}.` : `You are at about ${round1(input.value)} ml/kg/min.`;
   const ageWords = ageBand && input.sex && input.age != null
     ? ` Typical for ${sexWord(input.sex)} in their ${decade(input.age)} is about ${ageBand.low} to ${ageBand.high}.`
     : '';
@@ -1094,7 +1167,8 @@ export function buildFitnessSnapshot(input: FitnessSnapshotInput): FitnessSnapsh
   const sleepDown = sleepSplit.earlier != null && sleepSplit.recent != null && sleepSplit.earlier - sleepSplit.recent >= 0.5;
   const easier = rhrUp && sleepDown;
 
-  const latestVo2 = vo2.length ? vo2[vo2.length - 1]?.value ?? null : null;
+  const currentVo2 = currentVo2Max({ today, samples: input.health });
+  const latestVo2 = currentVo2?.value ?? null;
   const band = latestVo2 != null ? bandFor(input.goalAge, input.goalSex) : null;
   const vo2Level = latestVo2 != null && band ? rateVo2(latestVo2, band) : null;
   const weeklySchedule = input.scheduleWeekMinutes && input.scheduleWeekMinutes > 0 ? input.scheduleWeekMinutes : null;
@@ -1109,6 +1183,7 @@ export function buildFitnessSnapshot(input: FitnessSnapshotInput): FitnessSnapsh
     levelWordsFor({
       level,
       vo2: latestVo2,
+      line: currentVo2 ? currentVo2Line(currentVo2) : null,
       band: Boolean(band),
       age: input.goalAge,
       sex: input.goalSex,
@@ -1121,12 +1196,14 @@ export function buildFitnessSnapshot(input: FitnessSnapshotInput): FitnessSnapsh
     shortfall,
   ].filter(Boolean).join(' ');
 
+  const vo2Line = currentVo2 ? currentVo2Line(currentVo2) : null;
   const compare = latestVo2 == null ? null : compareFor({
     value: latestVo2,
     age: input.goalAge,
     sex: input.goalSex,
     goal: input.goal,
     band,
+    line: vo2Line,
   });
   if (input.build === 'carrying_extra' && compare) {
     compare.words = `${compare.words} ${CARRYING_FITNESS_NOTE}`.replace(/\s+/g, ' ').trim();
@@ -1222,6 +1299,7 @@ export function buildFitnessSnapshot(input: FitnessSnapshotInput): FitnessSnapsh
     guideline,
     hasWork: minutes > 0 || mixTotal > 0,
     belowGoal: gap.belowGoal,
+    belowAge: gap.belowAge,
   });
 
   const missing = missingLine({
@@ -1243,6 +1321,7 @@ export function buildFitnessSnapshot(input: FitnessSnapshotInput): FitnessSnapsh
     build: input.build ?? null,
     trendingDown: gap.trendingDown,
     cardioBehind: gap.behind,
+    vo2Short: gap.belowGoal || gap.belowAge,
   });
 
   return {
@@ -1287,6 +1366,7 @@ function fallbackLevel(
 function levelWordsFor(input: {
   level: FitnessLevel | null;
   vo2: number | null;
+  line?: string | null;
   band: boolean;
   age: number | null;
   sex: NutritionSex | null;
@@ -1302,10 +1382,12 @@ function levelWordsFor(input: {
       : input.level === 'Strong'
         ? 'above the middle of a published range'
         : 'in the middle of a published range';
-    return `VO2 max is about ${round1(input.vo2)} ml/kg/min. For ${sexWord(input.sex)} in their ${decade(input.age)}, that sits ${place}.`;
+    const lead = input.line ?? `VO2 max is about ${round1(input.vo2)} ml/kg/min`;
+    return `${lead}. For ${sexWord(input.sex)} in their ${decade(input.age)}, that sits ${place}.`;
   }
   if (input.vo2 != null && !input.band) {
-    return `VO2 max is about ${round1(input.vo2)} ml/kg/min. Add age and sex on Nutrition for a level.`;
+    const lead = input.line ?? `VO2 max is about ${round1(input.vo2)} ml/kg/min`;
+    return `${lead}. Add age and sex on Nutrition for a level.`;
   }
   if (!input.level) return 'Not enough readings yet for a level.';
   const phrase = input.phrase ?? 'this week';
@@ -1690,6 +1772,7 @@ function recommend(input: {
   guideline?: number;
   hasWork: boolean;
   belowGoal: boolean;
+  belowAge: boolean;
 }): FitnessRecommendation[] {
   const lines: FitnessRecommendation[] = [];
   const add = (text: string, forFocus: boolean) => {
@@ -1708,9 +1791,14 @@ function recommend(input: {
   const lowCardio = cardioShare != null && cardioShare < 0.2 && input.strength > aerobic && input.total >= 30;
   const goal = input.goal;
   const boxer = isAnyBoxer(goal);
-  if (boxer && (lowCardio || input.belowGoal)) {
+  const vo2Short = input.belowGoal || input.belowAge;
+  if (vo2Short) {
+    add(VO2_FOCUS_LINE, true);
+    add(ZONE2_BESIDE_WORK, true);
+    if (boxer || goal === 'lose_fat_build_muscle') add(SLEEP_PROTEIN, true);
+  } else if (boxer && lowCardio) {
     add(EASY_BESIDE_BOXING, true);
-    if (lowCardio) add(SHORT_INTERVAL, true);
+    add(SHORT_INTERVAL, true);
     add(SLEEP_PROTEIN, true);
   } else if (goal === 'lose_fat_build_muscle' && lowCardio) {
     add(EASY_BESIDE_STRENGTH, true);
@@ -1779,7 +1867,7 @@ export type CardioGap = {
 export function assessCardioGap(input: FitnessSnapshotInput): CardioGap {
   const today = input.today;
   const vo2 = dayValue(input.health, 'vo2_max', today, 365);
-  const latest = vo2.length ? vo2[vo2.length - 1]?.value ?? null : null;
+  const latest = currentVo2Max({ today, samples: input.health })?.value ?? null;
   const band = latest != null ? bandFor(input.goalAge, input.goalSex) : null;
   const compare = latest == null ? null : compareFor({
     value: latest,
@@ -1823,6 +1911,7 @@ function contextFrom(input: {
   build: BodyBuild | null;
   trendingDown?: boolean;
   cardioBehind?: boolean;
+  vo2Short?: boolean;
 }): string | null {
   if (!input.level && input.minutes <= 0 && !input.recovery && !input.compare && input.build !== 'carrying_extra' && !input.cardioBehind) return null;
   const bits = ['Fitness snapshot, an estimate, not a medical assessment.'];
@@ -1831,19 +1920,17 @@ function contextFrom(input: {
   }
   if (input.compare) bits.push(input.compare);
   else if (input.level) bits.push(`Level ${input.level}${input.vo2 != null ? `, cardio fitness about ${round1(input.vo2)} ml/kg/min` : ''}.`);
-  if (input.minutes > 0) bits.push(`${Math.round(input.minutes)} active minutes this week.`);
+  if (input.minutes > 0) bits.push(`${Math.round(input.minutes)} active minutes in the period shown.`);
   bits.push('Check with a doctor before big changes.');
   let line = bits.join(' ').replace(/\s+/g, ' ').trim();
   const extras = [
+    input.vo2Short ? VO2_CONTEXT_LINE : input.cardioBehind ? LOW_CARDIO_CONTEXT_LINE : null,
     input.trendingDown ? 'Cardio fitness is trending down.' : null,
-    input.cardioBehind
-      ? 'Add easy Zone 2 (bike, rower, brisk walk, or easy jog) and one short interval once a base is in place. Not a running plan.'
-      : null,
-    input.recommendation,
+    input.vo2Short ? null : input.recommendation,
     input.recovery ? input.recovery.replace(/\s+/g, ' ').trim() : null,
   ].filter((item): item is string => Boolean(item));
   for (const extra of extras) {
-    if (line.length + 1 + extra.length <= 560) line = `${line} ${extra}`;
+    if (line.length + 1 + extra.length <= 700) line = `${line} ${extra}`;
   }
   return line;
 }

@@ -59,26 +59,30 @@ function filesUnder(dir: string): string[] {
 
 describe('VO2 estimate note', () => {
   it('names the last reading and nudges only after three days', () => {
-    expect(VO2_ESTIMATE_NOTE).toContain('outdoor walk, run or hike');
+    expect(VO2_ESTIMATE_NOTE).toContain('outdoor run recorded as a workout with GPS and heart rate');
+    expect(VO2_ESTIMATE_NOTE).toContain('A walk does not update it');
     expect(VO2_ESTIMATE_NOTE).toContain('No new reading means no qualifying workout yet.');
     expect(VO2_APPLE_PART).toBe(`Apple Watch: ${VO2_ESTIMATE_NOTE.replace(/^Apple Watch /, '')}`);
-    expect(VO2_GARMIN_PART).toBe('Garmin: watches estimate VO2 max from heart rate and pace during outdoor walks or runs with GPS (and some other activities), with a minimum effort level. The reading updates after a qualifying activity. Your heart rate needs to reach 70% of maximum for a sustained period, so a walk may not be enough if you are fit. The exercise needs to last at least 15 minutes.');
-    expect(VO2_ESTIMATE_NOTE).toContain('Your heart rate needs to reach 70% of maximum for a sustained period, so a walk may not be enough if you are fit.');
+    expect(VO2_GARMIN_PART).toContain('outdoor run with GPS and heart rate');
+    expect(VO2_GARMIN_PART).toContain('cycling with a power meter');
+    expect(VO2_GARMIN_PART).toContain('A walk does not update it');
+    expect(VO2_GARMIN_PART).not.toMatch(/walks or runs/);
+    expect(VO2_ESTIMATE_NOTE).toContain('Your heart rate needs to reach 70% of maximum for a sustained period.');
     expect(VO2_ESTIMATE_NOTE).toContain('The exercise needs to last at least 15 minutes.');
-    expect(VO2_APPLE_PART).toContain('Your heart rate needs to reach 70% of maximum for a sustained period, so a walk may not be enough if you are fit.');
+    expect(VO2_APPLE_PART).toContain('Your heart rate needs to reach 70% of maximum for a sustained period.');
     expect(VO2_APPLE_PART).toContain('The exercise needs to last at least 15 minutes.');
     expect(vo2MeasuredLine('2026-10-18', 'apple')).toBe('Last measured 18 Oct (Apple Health)');
     expect(vo2MeasuredLine('2026-10-21', 'garmin')).toBe('Last measured 21 Oct (Garmin)');
     expect(vo2NoteParts('apple')).toEqual([VO2_APPLE_PART, VO2_GARMIN_PART]);
     expect(vo2Note('apple')).toBe(`${VO2_APPLE_PART}\n\n${VO2_GARMIN_PART}`);
     expect(vo2NoteParts('garmin')).toEqual([VO2_GARMIN_PART, VO2_APPLE_PART]);
-    expect(vo2Note('garmin').startsWith('Garmin:')).toBe(true);
+    expect(vo2Note('garmin').startsWith('Garmin')).toBe(true);
     expect(vo2NoteParts(null)).toEqual([VO2_APPLE_PART, VO2_GARMIN_PART]);
     expect(vo2Note(null)).not.toMatch(/sent no reading|no VO2|has no data|Forerunner|Fenix|Venu|Epix/i);
     expect(vo2ReadingIsStale('2026-10-17', '2026-10-20')).toBe(false);
     expect(vo2ReadingIsStale('2026-10-16', '2026-10-20')).toBe(true);
     expect(VO2_STALE_NUDGE).toContain('more than 3 days');
-    expect(VO2_PLAN_LABEL).toBe('Plan a walk or run to update it');
+    expect(VO2_PLAN_LABEL).toBe('Plan a run to update it');
     expect(latestVo2Day([
       { kind: 'vo2_max', recordedOn: '2026-10-01' },
       { kind: 'steps', recordedOn: '2026-10-20' },
@@ -128,8 +132,8 @@ describe('VO2 estimate note', () => {
     expect(bannerAt).toBeLessThan(fitness.indexOf('label="VO2 max"'));
     expect(bannerAt).toBeLessThan(fitness.indexOf('{OUTSIDE_SAFETY_LINE}', bannerAt));
     expect(bannerAt).toBeLessThan(fitness.indexOf('{OUTSIDE_CRISIS_LINE}'));
-    expect(VO2_MEASURE_LINE).toBe('To measure your VO2 max, track a walk, run, or cycle on your smartwatch. It is worked out over distance and therefore needs GPS.');
-    expect(VO2_HEART_RATE_LINE).toBe('Your heart rate needs to reach 70% of maximum for a sustained period, so a walk may not be enough if you are fit.');
+    expect(VO2_MEASURE_LINE).toBe('To measure your VO2 max, record an outdoor run with GPS and heart rate, or a cycle with a power meter. A walk does not update it.');
+    expect(VO2_HEART_RATE_LINE).toBe('Your heart rate needs to reach 70% of maximum for a sustained period.');
     expect(VO2_DURATION_LINE).toBe('The exercise needs to last at least 15 minutes.');
     expect([...VO2_MEASURE_LINES]).toEqual([VO2_MEASURE_LINE, VO2_HEART_RATE_LINE, VO2_DURATION_LINE]);
     const measure = readFileSync('src/ui/Vo2EstimateNote.tsx', 'utf8');
@@ -175,10 +179,9 @@ describe('VO2 estimate note', () => {
     expect(calendar).toContain("setDurationText('30')");
     expect(calendar).toContain('nextSessionClock(today)');
     expect(readFileSync('src/app/(main)/workouts.tsx', 'utf8')).toContain('planOutdoorNonce={planOutdoorNonce}');
-    expect(plan).toContain('/workouts?planOutdoor=');
-    const stats = readFileSync('src/app/(main)/stats.tsx', 'utf8');
+    expect(plan).toContain('/workouts?planDay=');
     const health = readFileSync('src/app/(main)/health.tsx', 'utf8');
-    expect(stats).toContain('onPlanOutdoor={() => router.push(`/workouts?planOutdoor=${Date.now()}`');
+    expect(health).toContain('onPlanOutdoor={() => router.push(`/workouts?planOutdoor=${Date.now()}`');
     expect(health).toContain('/workouts?planOutdoor=');
     expect(fitness).toContain('onPlanOutdoor: () => void');
     expect(fitness).toContain('onPlan={onPlanOutdoor}');
@@ -192,7 +195,6 @@ describe('VO2 estimate note', () => {
 
   it('wires every button beside a Stats More info control', () => {
     const files = [
-      'src/app/(main)/stats.tsx',
       'src/ui/Vo2EstimateNote.tsx',
       'src/ui/YourFitness.tsx',
       'src/ui/GarminTip.tsx',

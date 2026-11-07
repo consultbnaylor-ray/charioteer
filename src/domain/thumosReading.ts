@@ -1,5 +1,6 @@
 import { dedupeAdviceLines } from '@/domain/adviceDedupe';
 import { healthSampleChart } from '@/domain/chartSeries';
+import { currentVo2Line, currentVo2Max } from '@/domain/currentVo2';
 import { buildFitnessSnapshot, periodActiveMinutes, publishedCardioBand, vo2AthleticShortfall, vo2JudgementLine } from '@/domain/fitnessSnapshot';
 import { stepResearchBand } from '@/domain/garminCharts';
 import { bmiFrom, BHF_RESTING_MAX_BPM, BHF_RESTING_MIN_BPM, CMO_MODERATE_MINUTES_WEEK, NHS_ADULT_SLEEP_MAX_HOURS, NHS_ADULT_SLEEP_MIN_HOURS, NICE_BMI_HEALTHY_MAX } from '@/domain/guidance';
@@ -56,7 +57,7 @@ export const THUMOS_BODY_FAT_HIGH =
   'Body fat is above the band this app uses. Lifting does not cancel that. This is not a diagnosis.';
 
 export const THUMOS_BIA_PROTEIN_SHORT =
-  'Protein logged today is short of the target you set. Add a protein food to a meal you already eat. Do not skip drinks to chase a lower body-fat reading.';
+  'Protein logged today is short of the target you set. A small gap is not a reason for another shake. Do not skip drinks to chase a lower body-fat reading.';
 
 export const THUMOS_BIA_PROTEIN_MET =
   'Protein logged today meets the target you set. Keep that habit, and judge body fat from the trend rather than one reading.';
@@ -125,7 +126,7 @@ export const THUMOS_STRENGTH_NOT_RECORDED = 'Strength is not recorded for this p
 export const THUMOS_STRENGTH_SESSION = 'A strength session would match the aim you saved.';
 export const THUMOS_MORE_SLEEP = 'Aim for more sleep. The nights stored here are under the 7 to 9 hour range this app already uses.';
 export const THUMOS_MORE_STEPS = 'More steps on the days you already log would lift the average toward the research range this screen uses.';
-export const THUMOS_PROTEIN_SHORT = 'Protein logged today is short of the target you set. Another protein meal would close the gap.';
+export const THUMOS_PROTEIN_SHORT = 'Protein logged today is short of the target you set. A small gap is not a reason for another shake. The target is a goal, not a safety ceiling.';
 export const THUMOS_ANOTHER_SESSION = 'Another session in this period would bring the recorded workout minutes up toward what Your Fitness uses.';
 export const THUMOS_RESTING_HIGH = 'Resting heart rate is over the usual 60 to 100 bpm range for this period. Another reading on a quiet day would show whether it holds.';
 export const THUMOS_RESTING_LOW = 'Resting heart rate is under 60 bpm for this period. One reading is not a pattern.';
@@ -168,6 +169,8 @@ export type ThumosReadingInput = {
   goal: NutritionGoal | null;
   targetKg: number | null;
   vo2: number | null;
+  /** `latest VO2 max 44.0 (Garmin, 29 Oct)` when the selector has a reading. */
+  vo2Reading?: string | null;
   restingBpm: number | null;
   build: BodyBuild | null;
   /** Earlier stored reading, when a second one exists. Null when there is only one. */
@@ -286,7 +289,8 @@ function factSentences(input: ThumosReadingInput): string[] {
   else if ((input.workoutMinutes7 ?? 0) > 0) lines.push(`Logged workouts in the last 7 days are ${minutes(input.workoutMinutes7 ?? 0)} min.`);
   if (input.goal) lines.push(aimSentence(input.goal));
   if (input.targetKg != null && input.targetKg > 0) lines.push(`The target chosen is ${shown(input.targetKg)} kg.`);
-  if (input.vo2 != null) lines.push(`VO2 max is ${shown(input.vo2)} ml/kg/min.`);
+  if (input.vo2Reading) lines.push(`${input.vo2Reading}.`);
+  else if (input.vo2 != null) lines.push(`VO2 max is ${shown(input.vo2)} ml/kg/min.`);
   if (input.restingBpm != null) lines.push(`Resting heart rate is ${shown(input.restingBpm)} bpm.`);
   return lines;
 }
@@ -693,31 +697,6 @@ function windowMean(samples: readonly { kind: string; value: number; recordedOn:
   return { days: points.length, total, mean: points.length ? total / points.length : null };
 }
 
-function latestChartVo2(metrics: readonly { calendarDate: string; vo2Max: number | null }[]): { day: string; value: number } | null {
-  let day = '';
-  let value: number | null = null;
-  for (const row of metrics) {
-    if (row.vo2Max == null || !(row.vo2Max > 0)) continue;
-    if (row.calendarDate >= day) {
-      day = row.calendarDate;
-      value = Math.round(row.vo2Max * 10) / 10;
-    }
-  }
-  return value == null || !/^\d{4}-\d{2}-\d{2}$/.test(day) ? null : { day, value };
-}
-
-function latestMergedVo2(samples: readonly { kind: string; value: number; recordedOn: string }[]): { day: string; value: number } | null {
-  const byDay = new Map<string, number>();
-  for (const sample of samples) {
-    if (sample.kind !== 'vo2_max' || !(sample.value > 0)) continue;
-    const day = sample.recordedOn.slice(0, 10);
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) continue;
-    byDay.set(day, Math.round(sample.value * 10) / 10);
-  }
-  const last = [...byDay.entries()].sort((left, right) => left[0].localeCompare(right[0])).at(-1);
-  return last ? { day: last[0], value: last[1] } : null;
-}
-
 export type NoteFigures = {
   restingBpm: number | null;
   sleepHours: number | null;
@@ -733,6 +712,7 @@ export type NoteFigures = {
   proteinMet: boolean | null;
   caloriesStored: boolean;
   vo2: number | null;
+  vo2Reading: string | null;
   vo2Level: 'Developing' | 'Steady' | 'Strong' | null;
   windowLabel: string;
 };
@@ -780,9 +760,13 @@ export function figuresForNote(input: {
   const sleep = windowMean(input.samples, 'sleep_hours', input.today, period);
   const steps = windowMean(input.samples, 'steps', input.today, period);
   const stepsDaily = steps.days ? Math.round(steps.total / steps.days) : null;
-  const chart = latestChartVo2(input.userMetrics ?? []);
-  const merged = latestMergedVo2(prepared);
-  const vo2 = chart && (!merged || chart.day >= merged.day) ? chart.value : merged?.value ?? null;
+  const chosen = currentVo2Max({
+    today: input.today,
+    garmin: (input.userMetrics ?? []).map((row) => ({ day: row.calendarDate, value: row.vo2Max })),
+    samples: input.samples,
+  });
+  const vo2 = chosen?.value ?? null;
+  const vo2Reading = chosen ? currentVo2Line(chosen) : null;
   const band = vo2 != null ? publishedCardioBand(input.goalAge ?? null, input.goalSex ?? null) : null;
   const meals = todayMealTotals(input.logs ?? [], input.today, input.ownerId ?? '');
   const logged = (input.logs ?? []).some((log) => log.eatenOn.slice(0, 10) === input.today && log.userId === (input.ownerId ?? ''));
@@ -804,6 +788,7 @@ export function figuresForNote(input: {
     proteinMet: ring == null ? null : ring.met,
     caloriesStored: logged && meals.kcal > 0,
     vo2,
+    vo2Reading,
     vo2Level: vo2 == null || band == null ? null : vo2 < band.low ? 'Developing' : vo2 < band.high ? 'Steady' : 'Strong',
     windowLabel: periodPhrase(period),
   };

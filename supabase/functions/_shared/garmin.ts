@@ -6,6 +6,41 @@
  */
 
 import { exerciseReadingLines } from './exerciseAnalysis.ts';
+import {
+  parseGarminExtras,
+  storedActivityDetail,
+  storedActivityFile,
+  storedBloodPressure,
+  storedBodyComp,
+  storedEpoch,
+  storedMoveIq,
+  storedSkinTemp,
+  storedSnapshot,
+  storedStress,
+  summaryRows,
+  type GarminActivityDetail,
+  type GarminActivityFile,
+  type GarminBloodPressure,
+  type GarminBodyComp,
+  type GarminEpoch,
+  type GarminExtras,
+  type GarminHealthSnapshot,
+  type GarminMoveIq,
+  type GarminSkinTemp,
+  type GarminStressDetail,
+} from './garminSummaries.ts';
+
+export type {
+  GarminActivityDetail,
+  GarminActivityFile,
+  GarminBloodPressure,
+  GarminBodyComp,
+  GarminEpoch,
+  GarminHealthSnapshot,
+  GarminMoveIq,
+  GarminSkinTemp,
+  GarminStressDetail,
+} from './garminSummaries.ts';
 
 export const GARMIN_AUTHORIZE_URL = 'https://connect.garmin.com/oauth2Confirm';
 export const GARMIN_TOKEN_URL = 'https://diauth.garmin.com/di-oauth2-service/oauth/token';
@@ -20,7 +55,8 @@ export const PKCE_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwx
 export const GARMIN_PRIVACY =
   'Garmin readings stay on your account, the same way Apple Health readings do. They are not sold, not shared for ads, and not used to train AI. Thumos sees them only when health data and the coach are on, and personal data is allowed. A path is not stored.';
 
-export const GARMIN_DATA_TABLES = [
+/** Every stored Garmin summary. Disconnect, account deletion, and a lost export all use this list. */
+export const GARMIN_SUMMARY_TABLES = [
   'garmin_dailies',
   'garmin_activities',
   'garmin_sleep',
@@ -28,12 +64,46 @@ export const GARMIN_DATA_TABLES = [
   'garmin_respiration',
   'garmin_pulse_ox',
   'garmin_hrv',
+  'garmin_blood_pressure',
+  'garmin_body_comp',
+  'garmin_skin_temp',
+  'garmin_stress',
+  'garmin_epoch',
+  'garmin_health_snapshot',
+  'garmin_move_iq',
+  'garmin_activity_detail',
+  'garmin_activity_file',
+] as const;
+
+export const GARMIN_DATA_TABLES = [
+  ...GARMIN_SUMMARY_TABLES,
   'garmin_oauth_states',
   'garmin_connections',
 ] as const;
 
-/** Summaries a manual refresh may ask Garmin to send again. Activity details and files stay out. */
-export const GARMIN_BACKFILL_TYPES = ['dailies', 'activities', 'sleeps', 'userMetrics'] as const;
+/**
+ * Summaries Garmin's backfill endpoint accepts.
+ * Activity files and manual edits arrive as pushes. Women's health is never requested.
+ */
+export const GARMIN_BACKFILL_TYPES = [
+  'dailies',
+  'activities',
+  'activityDetails',
+  'epochs',
+  'sleeps',
+  'bodyComps',
+  'stressDetails',
+  'userMetrics',
+  'pulseox',
+  'respiration',
+  'healthSnapshot',
+  'hrv',
+  'bloodPressures',
+  'skinTemp',
+  'moveiq',
+] as const;
+
+const GARMIN_ACTIVITY_BACKFILL = new Set<string>(['activities', 'activityDetails', 'moveiq']);
 
 export const GARMIN_REFRESH_COOLDOWN_MS = 60_000;
 
@@ -132,6 +202,15 @@ export type GarminReadings = {
   respiration: GarminRespiration[];
   pulseOx: GarminPulseOx[];
   hrv: GarminHrvSummary[];
+  bloodPressure?: GarminBloodPressure[];
+  bodyComp?: GarminBodyComp[];
+  skinTemp?: GarminSkinTemp[];
+  stress?: GarminStressDetail[];
+  epochs?: GarminEpoch[];
+  healthSnapshot?: GarminHealthSnapshot[];
+  moveIq?: GarminMoveIq[];
+  activityDetails?: GarminActivityDetail[];
+  activityFiles?: GarminActivityFile[];
   /** True when this person is connected and Garmin is not sending the summaries Charioteer asked for. */
   needsPermissions: boolean;
   /** The export names that are missing. Never a token. */
@@ -171,6 +250,17 @@ export type GarminPushPlan = {
   respiration: (GarminRespiration & { garminUserId: string })[];
   pulseOx: (GarminPulseOx & { garminUserId: string })[];
   hrv: (GarminHrvSummary & { garminUserId: string })[];
+  bloodPressure: GarminExtras['bloodPressure'];
+  bodyComp: GarminExtras['bodyComp'];
+  skinTemp: GarminExtras['skinTemp'];
+  stress: GarminExtras['stress'];
+  epochs: GarminExtras['epochs'];
+  healthSnapshot: GarminExtras['healthSnapshot'];
+  moveIq: GarminExtras['moveIq'];
+  activityDetails: GarminExtras['activityDetails'];
+  activityFiles: GarminExtras['activityFiles'];
+  /** Women's health and unrecognised push keys. Names only. */
+  droppedTypes: string[];
   deregistered: string[];
   permissionChanges: { garminUserId: string; permissions: string }[];
 };
@@ -375,14 +465,25 @@ async function importGarminTokenKey(keyBase64: string): Promise<CryptoKey> {
 
 export function mapGarminPush(body: unknown): GarminPushPlan {
   const root = record(body) ?? {};
+  const extras = parseGarminExtras(body);
   return {
     dailies: list(root, 'dailies').map(mapDaily).filter((row): row is GarminPushPlan['dailies'][number] => row != null),
-    activities: list(root, 'activities').map(mapActivity).filter((row): row is GarminPushPlan['activities'][number] => row != null),
+    activities: [...list(root, 'activities'), ...list(root, 'manuallyUpdatedActivities')].map(mapActivity).filter((row): row is GarminPushPlan['activities'][number] => row != null),
     sleep: [...list(root, 'sleeps'), ...list(root, 'sleep')].map(mapSleep).filter((row): row is GarminPushPlan['sleep'][number] => row != null),
     userMetrics: list(root, 'userMetrics').map(mapUserMetric).filter((row): row is GarminPushPlan['userMetrics'][number] => row != null),
     respiration: [...list(root, 'respiration'), ...list(root, 'allDayRespiration')].map(mapRespiration).filter((row): row is GarminPushPlan['respiration'][number] => row != null),
     pulseOx: [...list(root, 'pulseox'), ...list(root, 'pulseOx')].map(mapPulseOx).filter((row): row is GarminPushPlan['pulseOx'][number] => row != null),
     hrv: list(root, 'hrv').map(mapHrv).filter((row): row is GarminPushPlan['hrv'][number] => row != null),
+    bloodPressure: extras.bloodPressure,
+    bodyComp: extras.bodyComp,
+    skinTemp: extras.skinTemp,
+    stress: extras.stress,
+    epochs: extras.epochs,
+    healthSnapshot: extras.healthSnapshot,
+    moveIq: extras.moveIq,
+    activityDetails: extras.activityDetails,
+    activityFiles: extras.activityFiles,
+    droppedTypes: extras.droppedTypes,
     deregistered: unique(deregisteredIds(root)),
     permissionChanges: permissionChanges(root),
   };
@@ -684,7 +785,7 @@ export function garminBackfillTypes(permissions: string | null): (typeof GARMIN_
   if (permissions == null) return [...GARMIN_BACKFILL_TYPES];
   const names = new Set(permissions.split(/\s+/).filter(Boolean));
   return GARMIN_BACKFILL_TYPES.filter((type) => (
-    type === 'activities' ? names.has('ACTIVITY_EXPORT') : names.has('HEALTH_EXPORT')
+    GARMIN_ACTIVITY_BACKFILL.has(type) ? names.has('ACTIVITY_EXPORT') : names.has('HEALTH_EXPORT')
   ));
 }
 
@@ -938,6 +1039,15 @@ export function readingsFromRows(input: {
   respiration?: unknown;
   pulseOx?: unknown;
   hrv?: unknown;
+  bloodPressure?: unknown;
+  bodyComp?: unknown;
+  skinTemp?: unknown;
+  stress?: unknown;
+  epochs?: unknown;
+  healthSnapshot?: unknown;
+  moveIq?: unknown;
+  activityDetails?: unknown;
+  activityFiles?: unknown;
   needsPermissions?: boolean;
   missingPermissions?: GarminExportPermission[];
   lastPushAt?: string | null;
@@ -953,6 +1063,15 @@ export function readingsFromRows(input: {
     respiration: mapRespirationRows(input.respiration),
     pulseOx: mapPulseOxRows(input.pulseOx),
     hrv: mapHrvRows(input.hrv),
+    bloodPressure: storedBloodPressure(input.bloodPressure),
+    bodyComp: storedBodyComp(input.bodyComp),
+    skinTemp: storedSkinTemp(input.skinTemp),
+    stress: storedStress(input.stress),
+    epochs: storedEpoch(input.epochs),
+    healthSnapshot: storedSnapshot(input.healthSnapshot),
+    moveIq: storedMoveIq(input.moveIq),
+    activityDetails: storedActivityDetail(input.activityDetails),
+    activityFiles: storedActivityFile(input.activityFiles),
     dailies: asList(input.dailies).flatMap((row) => {
       const calendarDate = day(row.calendar_date);
       if (!calendarDate) return [];
@@ -1208,11 +1327,25 @@ export async function bearerForGarminUser(
   return bearer;
 }
 
+/** Removes one person's summary rows. The connection row stays. */
+export async function deleteGarminSummaries(db: GarminDb, userId: string): Promise<void> {
+  await deleteGarminTables(db, userId, GARMIN_SUMMARY_TABLES, 'garmin-webhook: delete');
+}
+
 /** Removes tokens and summaries for one account. Does not call Garmin. */
 export async function deleteGarminRows(db: GarminDb, userId: string): Promise<void> {
-  for (const table of GARMIN_DATA_TABLES) {
+  await deleteGarminTables(db, userId, GARMIN_DATA_TABLES, 'garmin-webhook: delete');
+}
+
+async function deleteGarminTables(
+  db: GarminDb,
+  userId: string,
+  tables: readonly string[],
+  errorCode: string,
+): Promise<void> {
+  for (const table of tables) {
     const removed = await db.from(table).delete().eq('user_id', userId);
-    if (removed.error && !missingRelation(removed.error.message)) throw new Error('garmin-webhook: delete');
+    if (removed.error && !missingRelation(removed.error.message)) throw new Error(errorCode);
   }
 }
 
@@ -1277,10 +1410,7 @@ export async function forgetGarminAccount(
     const remote = await deregisterRemote(bearer, fetchImpl);
     if (remote === 'failed') console.error('garmin-disconnect: remote');
   }
-  for (const table of GARMIN_DATA_TABLES) {
-    const removed = await db.from(table).delete().eq('user_id', userId);
-    if (removed.error && !missingRelation(removed.error.message)) throw new Error('garmin-disconnect: delete');
-  }
+  await deleteGarminTables(db, userId, GARMIN_DATA_TABLES, 'garmin-disconnect: delete');
 }
 
 function sealedText(value: unknown): string {

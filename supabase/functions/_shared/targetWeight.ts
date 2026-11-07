@@ -16,10 +16,10 @@ export const TARGET_DATE_FAST_GAIN =
   "That date would need a faster gain than is safe, so we'll pace it at a safer rate and show the later date";
 
 export const TARGET_NOT_ENOUGH =
-  "There isn't enough weight data yet to estimate a date.";
+  "Not enough weigh-ins yet to estimate when you'll get there.";
 
 export const TARGET_TREND_FLAT =
-  "There isn't an estimated date. The recent weight trend is not moving toward this target.";
+  'The recent weigh-ins are not moving toward this target, so there is no trend date yet.';
 
 /** Gentle loss or gain used for the calorie suggestion. */
 export const GENTLE_WEEKLY_KG = 0.25;
@@ -31,6 +31,24 @@ export const MAX_WEEKLY_FRACTION = 0.01;
 
 /** Fewer than this many readings is not enough to estimate a date from the trend. */
 export const TARGET_READING_MIN = 3;
+
+/** A competition cut cannot run longer than this. */
+export const COMPETITION_CUT_MAX_DAYS = 28;
+
+export const COMPETITION_CUT_VERSION = '1';
+
+export const COMPETITION_CUT_DISCLAIMER =
+  "I'm doing a short competition weight cut. I understand rapid weight loss carries health risks, I'm responsible for my own decisions, and I'll get advice from a qualified coach, doctor or dietitian. Charioteer gives general information, not medical advice. This acknowledgement does not remove every duty or claim.";
+
+export const COMPETITION_CUT_RULES =
+  'Do not restrict fluids. Do not use a sauna, a sweat suit, diuretics, or laxatives. Stay at or above the calorie floor. Keep protein up. After weigh-in, eat and drink again on a plan. Dizziness, fainting, confusion, or a racing heart means stop and get urgent help. See a qualified coach, doctor, or dietitian. Not medical advice.';
+
+export const COMPETITION_CUT_UNDER_18 = 'Under 18s cannot use a competition weight cut.';
+
+export const COMPETITION_CUT_NEED_AGE =
+  'Set your age on Nutrition first. Under 18s cannot use a competition weight cut.';
+
+export const COMPETITION_CUT_TOO_LONG = 'A competition weight cut can only run for up to 4 weeks.';
 
 export const KCAL_PER_KG = 7700;
 
@@ -106,6 +124,8 @@ export type TargetReview =
     /** Set when the chosen date was replaced. */
     note: string | null;
     paced: boolean;
+    /** The chosen date is faster than the safe cap. */
+    fast: boolean;
   };
 
 /**
@@ -117,6 +137,9 @@ export function reviewTargetWeight(input: {
   targetKg: number;
   targetOn: string | null;
   today: string;
+  /** Keep a fast loss date only after the competition acknowledgement. */
+  competitionCut?: boolean;
+  age?: number | null;
 }): TargetReview {
   const targetKg = roundKg(input.targetKg);
   if (!(targetKg >= 30 && targetKg <= 300)) {
@@ -130,17 +153,25 @@ export function reviewTargetWeight(input: {
   }
   const currentKg = input.currentKg;
   if (currentKg == null || !(currentKg > 0)) {
-    return { ok: true, targetKg, direction: 'hold', targetOn: input.targetOn, note: null, paced: false };
+    return { ok: true, targetKg, direction: 'hold', targetOn: input.targetOn, note: null, paced: false, fast: false };
   }
   const direction = targetDirection(currentKg, targetKg);
   if (direction === 'hold' || input.targetOn == null) {
-    return { ok: true, targetKg, direction, targetOn: input.targetOn, note: null, paced: false };
+    return { ok: true, targetKg, direction, targetOn: input.targetOn, note: null, paced: false, fast: false };
   }
   const gap = Math.abs(targetKg - currentKg);
   const cap = safeWeeklyChangeKg(currentKg);
   const weeks = cap > 0 ? gap / cap : 0;
   const soonest = addIsoDays(input.today, Math.ceil(weeks * 7));
-  if (input.targetOn < soonest) {
+  const fast = input.targetOn < soonest;
+  if (fast && input.competitionCut && direction === 'lose') {
+    if (input.age == null) return { ok: false, note: COMPETITION_CUT_NEED_AGE };
+    if (input.age < 18) return { ok: false, note: COMPETITION_CUT_UNDER_18 };
+    const days = isoDaysBetween(input.today, input.targetOn);
+    if (days < 1 || days > COMPETITION_CUT_MAX_DAYS) return { ok: false, note: COMPETITION_CUT_TOO_LONG };
+    return { ok: true, targetKg, direction, targetOn: input.targetOn, note: COMPETITION_CUT_RULES, paced: false, fast: true };
+  }
+  if (fast) {
     return {
       ok: true,
       targetKg,
@@ -148,9 +179,26 @@ export function reviewTargetWeight(input: {
       targetOn: soonest,
       note: direction === 'lose' ? TARGET_DATE_FAST : TARGET_DATE_FAST_GAIN,
       paced: true,
+      fast: true,
     };
   }
-  return { ok: true, targetKg, direction, targetOn: input.targetOn, note: null, paced: false };
+  return { ok: true, targetKg, direction, targetOn: input.targetOn, note: null, paced: false, fast: false };
+}
+
+/** Off after the target date, or 4 weeks after it was accepted, whichever is sooner. */
+export function competitionCutActive(input: {
+  competitionCut?: boolean | null;
+  competitionCutAt?: string | null;
+  targetOn?: string | null;
+  age?: number | null;
+  today: string;
+}): boolean {
+  if (input.competitionCut !== true) return false;
+  if (input.age == null || input.age < 18) return false;
+  if (input.targetOn && input.targetOn < input.today) return false;
+  const accepted = input.competitionCutAt?.slice(0, 10);
+  if (accepted && /^\d{4}-\d{2}-\d{2}$/.test(accepted) && isoDaysBetween(accepted, input.today) > COMPETITION_CUT_MAX_DAYS) return false;
+  return true;
 }
 
 export type TargetEstimate = { text: string; date: string | null };
@@ -194,14 +242,36 @@ export function targetProgressFill(startKg: number | null, currentKg: number | n
   return Math.min(1, Math.max(0, (currentKg - startKg) / span));
 }
 
+/** True when the saved aim, target weight, or target date changed. */
+export function nutritionAimChanged(
+  previous: { goal?: NutritionGoal | null; fitnessGoal?: string | null; targetWeightKg?: number | null; targetOn?: string | null } | null | undefined,
+  next: { goal?: NutritionGoal | null; fitnessGoal?: string | null; targetWeightKg?: number | null; targetOn?: string | null },
+): boolean {
+  return (previous?.goal ?? null) !== (next.goal ?? null)
+    || (previous?.fitnessGoal ?? null) !== (next.fitnessGoal ?? null)
+    || (previous?.targetWeightKg ?? null) !== (next.targetWeightKg ?? null)
+    || (previous?.targetOn ?? null) !== (next.targetOn ?? null);
+}
+
+function keptFitness(current: NutritionSettings): NutritionSettings['fitnessGoal'] {
+  if (current.fitnessGoal) return current.fitnessGoal;
+  if (current.goal === 'elite_runner' || current.goal === 'body_builder') return 'elite';
+  return 'normal';
+}
+
 export function settingsForPreset(current: NutritionSettings, goal: NutritionGoal): NutritionSettings {
   return {
     ...current,
     goal,
+    fitnessGoal: keptFitness(current),
     targetWeightKg: null,
-    targetOn: null,
     targetStartKg: null,
   };
+}
+
+export function settingsForFitnessGoal(current: NutritionSettings, fitnessGoal: NonNullable<NutritionSettings['fitnessGoal']>): NutritionSettings {
+  const goal = current.goal === 'elite_runner' || current.goal === 'body_builder' ? null : current.goal;
+  return { ...current, goal, fitnessGoal };
 }
 
 export function settingsForTarget(
@@ -212,6 +282,7 @@ export function settingsForTarget(
   return {
     ...current,
     goal: null,
+    fitnessGoal: keptFitness(current),
     goalPhase: null,
     weightClassKg: null,
     targetWeightKg: review.targetKg,

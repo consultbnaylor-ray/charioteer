@@ -77,6 +77,9 @@ verify_jwt = true
 [functions.profile-photo-url]
 verify_jwt = true
 
+[functions.buddy-photo-url]
+verify_jwt = true
+
 [functions.gratitude-reflect]
 verify_jwt = true
 

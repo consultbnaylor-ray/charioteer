@@ -28,6 +28,7 @@ import {
   difficultyFor,
   difficultyMarks,
   durationBars,
+  durationDayCaption,
   durationScaleLabel,
   foldedCount,
   londonClock,
@@ -118,6 +119,9 @@ describe('workout day list', () => {
     expect(sunday?.label).toContain('Duration 109 min');
     expect(sunday?.label).toContain('Walking 109 min');
     expect(durationScaleLabel(bars)).toBe('Most in one day 109 min');
+    expect(durationDayCaption(bars.find((bar) => bar.day === '2026-10-18'), '2026-10-22')).toBe('18 Oct 2026: 109 min');
+    expect(durationDayCaption({ day: '2026-10-22', totalMinutes: 0 }, '2026-10-22')).toBe('No workout minutes on this day.');
+    expect(durationDayCaption({ day: '2026-10-22', totalMinutes: 20 }, '2026-10-22')).toBe('Today: 20 min');
     const month = durationBars([walk], '2026-10-21', 30);
     expect(month).toHaveLength(30);
     expect(month[0]?.day < month[29]?.day).toBe(true);

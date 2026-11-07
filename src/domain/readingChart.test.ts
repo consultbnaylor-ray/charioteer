@@ -11,6 +11,7 @@ import {
   formatAxisNumber,
   formatChartDate,
   placeAxisLabels,
+  progressDateTicks,
   xAxisTicks,
   yAxisTicks,
 } from '@/domain/readingChart';
@@ -30,6 +31,14 @@ describe('chart axes', () => {
     expect(year[0]?.label).toBe('Oct 25');
     expect(year.at(-1)?.label).toBe('Oct 26');
     expect(formatChartDate('2026-10-19')).toBe('19 Oct 2026');
+    const months = progressDateTicks('2026-09-02', '2026-12-31');
+    expect(months.map((tick) => tick.label)).toEqual(['Sep', 'Oct', 'Nov', 'Dec']);
+    expect(months.map((tick) => tick.day)).toEqual(['2026-09-02', '2026-10-01', '2026-11-01', '2026-12-31']);
+    const short = progressDateTicks('2026-10-01', '2026-10-20');
+    expect(short.length).toBeGreaterThanOrEqual(3);
+    expect(short.length).toBeLessThanOrEqual(4);
+    expect(short[0]?.day).toBe('2026-10-01');
+    expect(short.at(-1)?.day).toBe('2026-10-20');
   });
 
   it('draws three to five y ticks that cover the readings', () => {

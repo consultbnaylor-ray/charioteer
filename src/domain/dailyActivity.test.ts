@@ -24,12 +24,29 @@ import {
   restingSeries,
   stepsSeries,
   garminExerciseMinutes,
+  activityAxisPlan,
+  activityScaleLine,
+  chartScalePeak,
   mostInOneDay,
+  rangeScaleLine,
+  viewedDayHeading,
 } from './dailyActivity';
 
 const end = '2026-10-22';
 
 describe('daily activity', () => {
+  it('names today, yesterday, and an earlier UK date', () => {
+    expect(viewedDayHeading('2026-11-04', '2026-11-04', new Date('2026-11-04T06:00:00Z'))).toBe('Today so far');
+    expect(viewedDayHeading('2026-11-03', '2026-11-04')).toBe('Yesterday');
+    expect(viewedDayHeading('2026-11-03', '2026-11-05')).toBe('On Tue 3 Nov');
+    expect(rangeScaleLine({
+      points: [{ day: '2026-11-03', value: 8000, source: 'garmin' }],
+      unit: 'steps',
+      days: 1,
+      today: '2026-11-04',
+    })).toBe('Yesterday: 8,000 steps (Garmin)');
+  });
+
   it('counts Garmin vigorous minutes twice and keeps Apple when that day has movement', () => {
     expect(GARMIN_VIGOROUS_MINUTE_WEIGHT).toBe(2);
     expect(garminExerciseMinutes(20, 10)).toBe(40);
@@ -50,6 +67,32 @@ describe('daily activity', () => {
     expect(exercise.find((point) => point.day === '2026-10-20')?.label).toBe('No exercise minutes for Tue 20 Oct.');
     expect(activityDayName('2026-10-22')).toBe('Thu 22 Oct');
     expect(mostInOneDay(exercise, 'min')).toBe('Most in one day 40 min (Garmin)');
+    expect(rangeScaleLine({
+      points: [{ value: 4357, source: 'garmin' }],
+      unit: 'steps',
+      days: 1,
+      cumulative: true,
+      now: new Date('2026-11-03T10:14:00Z'),
+    })).toBe('Today so far: 4,357 steps (Garmin)');
+    expect(rangeScaleLine({
+      points: [{ value: 4357, source: 'garmin' }],
+      unit: 'steps',
+      days: 1,
+      cumulative: true,
+      now: new Date('2026-11-03T18:00:00Z'),
+    })).toBe('Today: 4,357 steps (Garmin)');
+    expect(rangeScaleLine({
+      points: [{ value: 40, source: 'garmin' }, { value: 20, source: 'garmin' }],
+      unit: 'min',
+      days: 7,
+    })).toBe('Most in one day 40 min (Garmin)');
+    expect(rangeScaleLine({
+      points: [{ value: 62, source: 'garmin' }],
+      unit: 'bpm',
+      days: 1,
+      cumulative: false,
+      now: new Date('2026-11-03T10:14:00Z'),
+    })).toBe('Today: 62 bpm (Garmin)');
 
     const zeroApple = exerciseSeries(end, 7, [{ day: '2026-10-22', value: 0 }], dailies);
     expect(zeroApple.find((point) => point.day === '2026-10-22')).toMatchObject({ value: 25, source: 'garmin' });
@@ -136,9 +179,29 @@ describe('daily activity', () => {
     const screen = readFileSync('src/app/(main)/workouts.tsx', 'utf8');
     expect(list.indexOf('<DurationChart')).toBeLessThan(list.indexOf('<DailyActivityCharts'));
     expect(list.indexOf('<DailyActivityCharts')).toBeLessThan(list.indexOf('<WorkoutHistory'));
+    const diaryStart = charts.indexOf('<MovementCharts');
+    const diary = charts.slice(diaryStart, charts.indexOf('/>', diaryStart));
+    expect(diary).toContain('showHealthStats={false}');
+    expect(diary).toContain('showIntensity={false}');
+    const health = readFileSync('src/app/(main)/health.tsx', 'utf8');
+    const healthCharts = health.slice(health.indexOf('<MovementCharts'), health.indexOf('/>', health.indexOf('<MovementCharts')));
+    expect(healthCharts).not.toContain('showHealthStats');
+    expect(healthCharts).toContain('steps=');
+    expect(healthCharts).toContain('restingHeart=');
+    expect(charts).toContain('Workout History Charts');
+    expect(charts).toContain('const [chartsOpen, setChartsOpen] = useState(false)');
+    expect(charts).toContain('title={name}');
+    expect(charts).toContain('Not medical advice. Not a diagnosis.');
+    expect(charts).toContain('title="Steps"');
+    expect(charts).toContain('title="Distance"');
+    expect(charts).toContain('title="Resting heart rate"');
+    expect(charts).toContain('title="Heart rate variability"');
+    expect(charts).toContain('showHealthStats && fitnessChart');
+    expect(charts).toContain('showHealthStats && (foldDetails.length > 0 || placeholders.length > 0)');
+    expect(readFileSync('src/app/(main)/garmin-stats.tsx', 'utf8')).toContain('<MovementCharts');
     expect(charts).toContain('{DAILY_ACTIVITY_RINGS_HINT}');
     expect(charts).toContain('{DAILY_ACTIVITY_TAP_HINT}');
-    expect(charts).toContain('accessibilityLabel={`${point.label}. Select this day.`}');
+    expect(charts).toContain('accessibilityLabel={`${point.day === today ? \'Today so far. \' : \'\'}${point.label}. Select this day.`}');
     expect(charts).not.toContain('workoutTypeColor');
     expect(screen).toContain('consent={snap.profile.consentHealth}');
     const sources = readFileSync('src/health/useHealthSources.ts', 'utf8');
@@ -353,7 +416,39 @@ describe('daily activity', () => {
     expect(charts).toContain('openAppSettings()');
     expect(readFileSync('src/app/(main)/workouts.tsx', 'utf8')).toContain('exercisePermissionMissing(visibility)');
     expect(readFileSync('src/app/(main)/health.tsx', 'utf8')).toContain('<MovementCharts');
-    expect(readFileSync('src/app/(main)/health-plan.tsx', 'utf8')).toContain('<MovementCharts');
-    expect(readFileSync('src/app/(main)/stats.tsx', 'utf8')).toContain('<MovementCharts');
+    expect(readFileSync('src/app/(main)/health-plan.tsx', 'utf8')).not.toContain('<MovementCharts');
+    expect(charts).toContain('Not medical advice. Not a diagnosis.');
+    expect(charts).toContain('numberOfLines={1}');
+    expect(charts).toContain('activityAxisPlan');
+    expect(charts).toContain('goodZoneBand');
+    expect(charts).not.toContain('barSourceName');
+  });
+
+  it('marks Mondays on a month chart and month names on a longer one', () => {
+    const month = daysEnding('2026-11-01', 30);
+    const monthMarks = activityAxisPlan(month).filter((mark) => mark.label);
+    expect(monthMarks.map((mark) => mark.label)).toEqual(['5 Oct', '12 Oct', '19 Oct', '26 Oct', '1 Nov']);
+    expect(monthMarks.filter((mark) => mark.divider).map((mark) => month[mark.index])).toEqual(['2026-10-05', '2026-10-12', '2026-10-19', '2026-10-26']);
+    expect(activityAxisPlan(daysEnding('2026-11-03', 30)).filter((mark) => mark.label).at(-1)?.label).toBe('3 Nov');
+    expect(activityAxisPlan(daysEnding('2026-11-03', 30)).some((mark) => mark.label === '2 Nov')).toBe(false);
+    const quarter = activityAxisPlan(daysEnding('2026-11-01', 90)).filter((mark) => mark.label);
+    expect(quarter.map((mark) => mark.label)).toEqual(['Sep', 'Oct', 'Nov']);
+    expect(activityAxisPlan(daysEnding('2026-10-22', 7))).toEqual([]);
+    expect(chartScalePeak([
+      { value: 0, source: null },
+      { value: 9000, empty: true, source: 'garmin' },
+      { value: 4200, source: 'apple' },
+    ], [8000])).toBe(8000);
+    expect(activityScaleLine('Most in one day 68 bpm (Apple Health)', '(Apple Health and Garmin)')).toBe('Most in one day 68 bpm (Apple Health and Garmin)');
+    expect(activityScaleLine('Most in one day 40 min (Garmin)', 'Garmin. Plain minutes, not doubled.')).toBe('Most in one day 40 min. Garmin. Plain minutes, not doubled.');
+    expect(activityScaleLine('Most in one day 4.2 km', '(Garmin)')).toBe('Most in one day 4.2 km (Garmin)');
   });
 });
+
+function daysEnding(end: string, count: number): string[] {
+  const [year, month, date] = end.split('-').map(Number);
+  return Array.from({ length: count }, (_, index) => {
+    const day = new Date(Date.UTC(year, month - 1, date - (count - 1 - index)));
+    return day.toISOString().slice(0, 10);
+  });
+}

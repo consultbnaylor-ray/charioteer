@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { View } from 'react-native';
+import { Pressable, View } from 'react-native';
 
 import { useRepository, useSnapshot } from '@/data';
 import { shownError } from '@/domain/errors';
@@ -7,8 +7,16 @@ import { isoDay, parseIsoDay } from '@/domain/dates';
 import { formatWeightAmount, type WeightUnitMode } from '@/domain/goalWeightRange';
 import { weightPointsFrom } from '@/domain/nutrition';
 import {
+  COMPETITION_CUT_DISCLAIMER,
+  COMPETITION_CUT_MAX_DAYS,
+  COMPETITION_CUT_NEED_AGE,
+  COMPETITION_CUT_TOO_LONG,
+  COMPETITION_CUT_UNDER_18,
+  COMPETITION_CUT_VERSION,
   TARGET_BELOW_HEALTHY,
+  competitionCutActive,
   formatIsoDay,
+  isoDaysBetween,
   reviewTargetWeight,
   settingsForTarget,
   targetProgressFill,
@@ -34,6 +42,44 @@ function splitStones(kg: number): { stones: string; pounds: string } {
     pounds = 0;
   }
   return { stones: String(stones), pounds: String(pounds) };
+}
+
+/** Optional date for any saved fitness goal. The same column as a target-weight date. */
+export function GoalTargetDate() {
+  const snap = useSnapshot();
+  const repo = useRepository();
+  const settings = snap.nutrition;
+  const [useDate, setUseDate] = useState(settings?.targetOn != null);
+  const [date, setDate] = useState(parseIsoDay(settings?.targetOn ?? isoDay(new Date())));
+  const [note, setNote] = useState<string | null>(null);
+  if (!settings?.goal) return null;
+
+  async function apply(nextOn: string | null) {
+    setNote(null);
+    try {
+      await repo.setNutritionSettings({ ...repo.getSnapshot().nutrition, targetOn: nextOn });
+      playSavedHaptic();
+    } catch (err) {
+      setNote(shownError(err, 'Could not save that date.'));
+    }
+  }
+
+  return (
+    <View style={{ gap: 8 }}>
+      <T variant="label">Target date</T>
+      <T variant="muted">Optional. Leave it unset if you do not want a date.</T>
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+        <Choice label="No date" selected={!useDate} onPress={() => { setUseDate(false); void apply(null); }} />
+        <Choice label="Set a date" selected={useDate} onPress={() => setUseDate(true)} />
+      </View>
+      {useDate ? (
+        <DateField label="Target date" value={date} onChange={setDate} earliestDate={parseIsoDay(isoDay(new Date()))} />
+      ) : null}
+      {useDate ? <Button label="Save target date" onPress={() => void apply(isoDay(date))} /> : null}
+      {settings.targetOn ? <T>{`Target date ${formatIsoDay(settings.targetOn)}`}</T> : null}
+      {note ? <T>{note}</T> : null}
+    </View>
+  );
 }
 
 export function TargetWeightProgress() {
@@ -91,10 +137,26 @@ export function TargetWeightForm() {
   const [note, setNote] = useState<string | null>(null);
   const [savedTick, setSavedTick] = useState(false);
   const [pending, setPending] = useState(false);
+  const [cutOpen, setCutOpen] = useState(settings?.competitionCut === true);
+  const [cutTick, setCutTick] = useState(settings?.competitionCut === true);
   const readings = weightPointsFrom(snap.health ?? []);
   const current = readings.length ? readings[readings.length - 1] : undefined;
   const green = statsToneColors(theme.scheme).good.ink;
   const parsed = weightReadingKg({ unit, kilograms: kgText, stones: stonesText, pounds: poundsText });
+  const today = isoDay(new Date());
+  const fastPreview = parsed.ok && parsed.kg != null
+    ? reviewTargetWeight({
+      currentKg: current?.kg ?? null,
+      heightCm: snap.profile?.heightCm ?? null,
+      targetKg: parsed.kg,
+      targetOn: useDate ? isoDay(date) : null,
+      today,
+    })
+    : null;
+  const showCut = fastPreview?.ok === true && fastPreview.fast && fastPreview.direction === 'lose';
+  const age = settings?.goalAge ?? null;
+  const under18 = age != null && age < 18;
+  const showNotice = !under18 && (cutOpen || showCut);
 
   async function save() {
     if (!parsed.ok || parsed.kg == null) {
@@ -103,12 +165,34 @@ export function TargetWeightForm() {
       return;
     }
     const today = isoDay(new Date());
+    const wantCut = cutTick && showNotice;
+    if (wantCut) {
+      if (age == null) {
+        setNote(COMPETITION_CUT_NEED_AGE);
+        setSavedTick(false);
+        return;
+      }
+      if (age < 18) {
+        setNote(COMPETITION_CUT_UNDER_18);
+        setSavedTick(false);
+        return;
+      }
+      const targetOn = useDate ? isoDay(date) : null;
+      const days = targetOn ? isoDaysBetween(today, targetOn) : 0;
+      if (targetOn == null || days < 1 || days > COMPETITION_CUT_MAX_DAYS) {
+        setNote(COMPETITION_CUT_TOO_LONG);
+        setSavedTick(false);
+        return;
+      }
+    }
     const review = reviewTargetWeight({
       currentKg: current?.kg ?? null,
       heightCm: snap.profile?.heightCm ?? null,
       targetKg: parsed.kg,
       targetOn: useDate ? isoDay(date) : null,
       today,
+      competitionCut: wantCut,
+      age,
     });
     if (!review.ok) {
       setNote(review.note);
@@ -119,7 +203,17 @@ export function TargetWeightForm() {
     setNote(review.note);
     try {
       const start = settings?.targetStartKg ?? current?.kg ?? null;
-      await repo.setNutritionSettings(settingsForTarget(repo.getSnapshot().nutrition, review, start));
+      const base = repo.getSnapshot().nutrition;
+      const keepStamp = wantCut
+        && base.competitionCut
+        && base.competitionCutAt
+        && base.competitionCutVersion === COMPETITION_CUT_VERSION;
+      await repo.setNutritionSettings(settingsForTarget({
+        ...base,
+        competitionCut: wantCut,
+        competitionCutAt: wantCut ? (keepStamp ? base.competitionCutAt : new Date().toISOString()) : null,
+        competitionCutVersion: wantCut ? COMPETITION_CUT_VERSION : null,
+      }, review, start));
       setSavedTick(true);
       if (review.targetOn) setDate(parseIsoDay(review.targetOn));
       playSavedHaptic();
@@ -157,7 +251,45 @@ export function TargetWeightForm() {
         <Choice label="Target date" selected={useDate} onPress={() => setUseDate(true)} />
       </View>
       {useDate ? (
-        <DateField label="Target date" value={date} onChange={setDate} earliestDate={parseIsoDay(isoDay(new Date()))} />
+        <DateField label="Target date" value={date} onChange={setDate} earliestDate={parseIsoDay(today)} />
+      ) : null}
+      {under18 ? <T variant="muted">{COMPETITION_CUT_UNDER_18}</T> : (
+        <Choice
+          label="Competition weight cut"
+          selected={cutOpen || showCut}
+          onPress={() => {
+            setCutOpen((open) => {
+              const next = !(open || showCut);
+              if (!next) setCutTick(false);
+              return next;
+            });
+          }}
+        />
+      )}
+      {showNotice ? (
+        <View style={{ gap: 8 }}>
+          <T variant="label">Competition weight cut</T>
+          <T>{COMPETITION_CUT_DISCLAIMER}</T>
+          <Pressable
+            accessibilityRole="checkbox"
+            accessibilityLabel="I accept the competition weight cut notice"
+            accessibilityState={{ checked: cutTick }}
+            onPress={() => setCutTick((value) => !value)}
+            style={{ minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 12 }}
+          >
+            <PlanTick done={cutTick} />
+            <T style={{ flex: 1 }}>I have read this and I accept it</T>
+          </Pressable>
+        </View>
+      ) : null}
+      {settings && competitionCutActive({
+        competitionCut: settings.competitionCut,
+        competitionCutAt: settings.competitionCutAt,
+        targetOn: settings.targetOn,
+        age: settings.goalAge,
+        today,
+      }) && settings.competitionCutAt ? (
+        <T variant="muted">{`Accepted ${formatIsoDay(settings.competitionCutAt.slice(0, 10))}. Version ${settings.competitionCutVersion ?? COMPETITION_CUT_VERSION}.`}</T>
       ) : null}
       <Button label={pending ? 'Saving...' : 'Save target weight'} pending={pending} pendingLabel="Saving..." onPress={() => void save()} />
       {savedTick ? (

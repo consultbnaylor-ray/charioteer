@@ -113,7 +113,7 @@ export function workoutWeekSummary(
   const rows = workouts.filter((workout) => days.has(londonDay(workout.startedAt)) && workout.durationMinutes > 0);
   const minutes = rows.reduce((sum, workout) => sum + workout.durationMinutes, 0);
   const noun = rows.length === 1 ? 'workout' : 'workouts';
-  return `This week: ${rows.length} ${noun}, ${minutes} min`;
+  return `This calendar week: ${rows.length} ${noun}, ${minutes} min`;
 }
 
 export function previousWorkoutDay(day: string): string {
@@ -200,6 +200,13 @@ export function durationScaleLabel(bars: readonly DurationBar[]): string | null 
   const most = bars.reduce((max, bar) => Math.max(max, bar.totalMinutes), 0);
   if (most <= 0) return null;
   return `Most in one day ${most} min`;
+}
+
+/** One chosen day. Not "most in one day", which is for a longer chart. */
+export function durationDayCaption(bar: { day: string; totalMinutes: number } | undefined, today: string): string {
+  if (!bar || bar.totalMinutes <= 0) return 'No workout minutes on this day.';
+  const when = bar.day === today ? 'Today' : formatUkCompactDay(bar.day);
+  return `${when}: ${bar.totalMinutes} min`;
 }
 
 export function maxHeartRate(age: number | null | undefined): number | null {

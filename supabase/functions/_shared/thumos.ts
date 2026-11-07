@@ -8,6 +8,7 @@ import { formatSoberElapsed, soberElapsed } from './sober.ts';
 import { hrvExplainerForCoach } from './healthInsights.ts';
 import { publishedBandGuide } from './healthBands.ts';
 import { NUTRITION_PROMPT_LINE } from './nutrition.ts';
+import { WORKOUT_REFLECTION_PROMPT } from './workoutReflections.ts';
 import { detectSafety, type SafetyHit } from './safety.ts';
 import { isFixedPausedCoachingText } from './xaiPersonal.ts';
 import {
@@ -76,6 +77,12 @@ export type ThumosContextInput = {
   nutritionLines?: string[];
   /** Garmin summaries. Empty unless health consent, coach consent, and the personal-data switch are all on. */
   garminLines?: string[];
+  /**
+   * Compact workout diary for the last 30 days. Empty unless health consent,
+   * coach consent, and the personal-data switch are all on. Withheld on a self-harm turn.
+   * Location, routes, raw activity files, and women's health are not included.
+   */
+  workoutReflections?: string[];
 };
 
 function pinnedQuoteSchool(quote: { author: string; school?: string }): 'Stoic' | 'Platonic' {
@@ -455,7 +462,8 @@ export const THUMOS_CHAT = {
   /** Crisis and withdrawal skip the long wait. A scripted reply still follows if both models fail. */
   crisisTimeoutMs: 8_000,
   nutritionLineCap: 6,
-  nutritionChars: 700,
+  nutritionChars: 2400,
+  workoutReflectionChars: 1400,
   motivationChars: 700,
 } as const;
 
@@ -871,11 +879,12 @@ export function buildThumosContext(input: ThumosContextInput): string {
   const insightLines = dedupeAdviceLines((input.healthInsights ?? []).map((line) => line.trim()).filter(Boolean)).slice(0, 3);
   const nutritionLines = dedupeAdviceLines((input.nutritionLines ?? []).map((line) => line.trim()).filter(Boolean)).slice(0, THUMOS_CHAT.nutritionLineCap);
   const garminLines = (input.garminLines ?? []).map((line) => line.trim()).filter(Boolean).slice(0, 12);
+  const workoutReflections = (input.workoutReflections ?? []).map((line) => line.trim()).filter(Boolean);
 
   if (input.safety.selfHarm) {
     return [
       `Name: ${input.displayName || 'Friend'}`,
-      'Sober time, personal reasons, savings, milestones, check-ins, health readings, health insights, Garmin readings, the gratitude diary, the vision board, the nutrition log, and the pinned Stoic quote or pinned Platonic quote are withheld on this turn. Do not mention them or invent them. Do not call Plato a Stoic.',
+      'Sober time, personal reasons, savings, milestones, check-ins, health readings, health insights, Garmin readings, the gratitude diary, the vision board, the nutrition log, the workout diary, and the pinned Stoic quote or pinned Platonic quote are withheld on this turn. Do not mention them or invent them. Do not call Plato a Stoic.',
       `Mode: ${input.mode}`,
       `Safety flags: self-harm YES, withdrawal ${input.safety.withdrawal ? 'YES' : 'no'}`,
     ].join('\n');
@@ -913,7 +922,10 @@ export function buildThumosContext(input: ThumosContextInput): string {
     formatGratitudeContext(input.gratitude ?? []),
     formatVisionContext(input.vision),
     nutritionLines.length
-      ? `Nutrition, their own log. Estimates are estimates:\n${capContextBlock(nutritionLines.map((line) => `- ${line}`).join('\n'), THUMOS_CHAT.nutritionChars)}`
+      ? `Nutrition, their own log, with daily targets and recent meals. Estimates are estimates:\n${capContextBlock(nutritionLines.map((line) => `- ${line}`).join('\n'), THUMOS_CHAT.nutritionChars)}`
+      : '',
+    workoutReflections.length
+      ? `Workout diary, last 30 days. Not medical advice. Not a diagnosis:\n${capContextBlock(workoutReflections.map((line) => `- ${line}`).join('\n'), THUMOS_CHAT.workoutReflectionChars)}`
       : '',
     `Mode: ${input.mode}`,
     `Safety flags: self-harm ${input.safety.selfHarm ? 'YES' : 'no'}, withdrawal ${input.safety.withdrawal ? 'YES' : 'no'}`,
@@ -943,11 +955,12 @@ export function buildSystemPrompt(
     styleLine(turn),
     'The messages after this system prompt are the conversation so far, oldest first, then their latest line. Use that history. Never repeat a sentence you have already sent. Vary your wording from turn to turn.',
     turn.selfHarm
-      ? 'Do not mention sober time, day counts, personal reasons, savings, health readings, health insights, Garmin readings, the gratitude diary, the vision board, the nutrition log, or a pinned Stoic quote or a pinned Platonic quote on this turn. Do not call Plato a Stoic.'
+      ? 'Do not mention sober time, day counts, personal reasons, savings, health readings, health insights, Garmin readings, the gratitude diary, the vision board, the nutrition log, the workout diary, or a pinned Stoic quote or a pinned Platonic quote on this turn. Do not call Plato a Stoic.'
       : 'When you mention sober time, a personal reason, a check-in, a health reading, a health insight, a gratitude line, a vision caption, or a pinned Stoic quote or a pinned Platonic quote, take it from CONTEXT. Do not invent those details. A health insight is a note from their own readings, not a diagnosis. If CONTEXT includes an HRV explainer, you may use that wording when they ask what heart rate variability means. Do not add ranges or citations that are not written there, and do not diagnose. If CONTEXT includes published comparison bands, you may quote those figures and name the source written there. They are not a target and not a reason to chase the top of a range. Do not add a band that is not written there. If CONTEXT includes a pinned Stoic quote or a pinned Platonic quote, you may use it once for motivation. Quote it faithfully. Plato is Platonic, not a Stoic. Do not call Plato a Stoic.',
     turn.selfHarm ? '' : GRATITUDE_PROMPT_LINE,
     turn.selfHarm ? '' : VISION_PROMPT_LINE,
     turn.selfHarm ? '' : NUTRITION_PROMPT_LINE,
+    turn.selfHarm ? '' : WORKOUT_REFLECTION_PROMPT,
     'Do not invent statistics, study names, or citations. If you share a number about alcohol harm, use only CURATED FACTS, quote it faithfully, and name the source. If you do not have a verified figure, say so.',
     repetitionLine(turn),
     conversationShape(turn),

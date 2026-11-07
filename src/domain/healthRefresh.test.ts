@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
 import {
+  GARMIN_BUSY,
   GARMIN_CHECK_AGAIN,
   GARMIN_CHECK_DEBOUNCE_MS,
   GARMIN_CHECK_FAILED,
@@ -19,6 +20,7 @@ import {
   garminConnectNudge,
   garminConnectOpenUrl,
   garminHintLine,
+  garminRefreshFace,
   garminNothingNewLine,
   garminPushIsStale,
   syncClock,
@@ -134,6 +136,21 @@ describe('manual health refresh', () => {
     expect(fromContext).toEqual({ ok: false, code: 'permission' });
     const broken = await readGarminRefreshBody(null, { context: { json: async () => { throw new Error('consumed'); } } });
     expect(broken).toBeNull();
+    const recent = '2026-11-03T10:14:00Z';
+    const now = Date.parse('2026-11-03T11:00:00Z');
+    expect(garminRefreshFace({ error: GARMIN_BUSY, receivedAt: recent, now })).toEqual({
+      error: null,
+      note: 'Garmin already sent your latest data at 10:14.',
+    });
+    expect(garminRefreshFace({ error: GARMIN_BUSY, receivedAt: null, now })).toEqual({
+      error: null,
+      note: 'Garmin is already sending data. There is nothing new to ask for yet.',
+    });
+    expect(garminRefreshFace({ error: 'Could not ask Garmin for new data.', receivedAt: recent, now }).error).toBeNull();
+    const stale = '2026-11-03T01:00:00Z';
+    expect(garminRefreshFace({ error: 'Could not ask Garmin for new data.', receivedAt: stale, now }).error).toBe('Could not ask Garmin for new data.');
+    expect(readFileSync('src/ui/HealthRefresh.tsx', 'utf8')).toContain('garminRefreshFace');
+    expect(readFileSync('src/data/supabase-repository.ts', 'utf8')).toContain(GARMIN_BUSY);
     expect(readFileSync('src/data/supabase-repository.ts', 'utf8')).toContain('readGarminRefreshBody');
     expect(readFileSync('src/ui/HealthRefresh.tsx', 'utf8')).not.toContain('GARMIN_HISTORY_NOTE');
     expect(readFileSync('src/ui/HealthRefresh.tsx', 'utf8')).toContain("garmin.code === 'history'");
@@ -143,9 +160,7 @@ describe('manual health refresh', () => {
   it('puts the control at the top of Health, Workouts, and Fitness', () => {
     for (const path of [
       'src/app/(main)/health.tsx',
-      'src/app/(main)/health-plan.tsx',
       'src/app/(main)/workouts.tsx',
-      'src/app/(main)/stats.tsx',
     ]) {
       const source = readFileSync(path, 'utf8');
       expect(source, path).toContain('<HealthRefreshBar');
@@ -153,14 +168,14 @@ describe('manual health refresh', () => {
       expect(source.indexOf('<HealthRefreshBar'), path).toBeLessThan(source.indexOf('<HealthRefreshBar') + 20);
     }
     const plan = readFileSync('src/app/(main)/health-plan.tsx', 'utf8');
-    expect(plan.indexOf('<HealthRefreshBar')).toBeLessThan(plan.indexOf('<GoalChoices'));
+    expect(plan).not.toContain('<HealthRefreshBar');
     expect(plan.indexOf('variant="label">Fitness')).toBeLessThan(plan.indexOf('<WorkoutsLink'));
     expect(plan.indexOf('<WorkoutsLink')).toBeLessThan(plan.indexOf('variant="label">Wellbeing'));
     expect(readFileSync('src/ui/WorkoutsLink.tsx', 'utf8')).toContain('Workouts: see your workout calendar and history');
     expect(workoutWeekSummary(
       [{ startedAt: '2026-10-21T07:00:00Z', durationMinutes: 30 }],
       '2026-10-23',
-    )).toBe('This week: 1 workout, 30 min');
+    )).toBe('This calendar week: 1 workout, 30 min');
     const bar = readFileSync('src/ui/HealthRefresh.tsx', 'utf8');
     expect(bar).toContain('refreshAppleHealth');
     expect(bar).toContain('consentHealth');
@@ -199,9 +214,7 @@ describe('manual health refresh', () => {
     expect(check).not.toContain('garmin-refresh');
     for (const path of [
       'src/app/(main)/health.tsx',
-      'src/app/(main)/health-plan.tsx',
       'src/app/(main)/workouts.tsx',
-      'src/app/(main)/stats.tsx',
     ]) {
       expect(readFileSync(path, 'utf8'), path).toContain('garminMark={garminStoredMark(readings)}');
     }
@@ -255,8 +268,6 @@ describe('manual health refresh', () => {
     expect(Number(buildNumber)).toBeGreaterThanOrEqual(71);
     for (const path of [
       'src/app/(main)/health.tsx',
-      'src/app/(main)/stats.tsx',
-      'src/app/(main)/health-plan.tsx',
       'src/app/(main)/workouts.tsx',
     ]) {
       const source = readFileSync(path, 'utf8');

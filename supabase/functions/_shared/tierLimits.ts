@@ -177,6 +177,17 @@ export function entitlementEnforced(flag: string | undefined): boolean {
   return flag !== 'false';
 }
 
+/**
+ * When AI_ENTITLEMENT_ENFORCED is false, only user ids in AI_ENTITLEMENT_USERS
+ * are enforced, so one account can be tested without turning the gate on for everyone.
+ * Any other flag value enforces every account.
+ */
+export function entitlementEnforcedForUser(flag: string | undefined, userId: string, allowlist: string | undefined): boolean {
+  if (entitlementEnforced(flag)) return true;
+  if (!userId || !allowlist) return false;
+  return allowlist.split(',').map((item) => item.trim()).filter(Boolean).includes(userId);
+}
+
 export function voiceEnabled(flag: string | undefined): boolean {
   return flag === 'true';
 }

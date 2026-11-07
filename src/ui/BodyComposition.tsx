@@ -5,6 +5,7 @@ import { useRepository, useSnapshot } from '@/data';
 import { formatUkLong, isoDay, startOfLocalDay } from '@/domain/dates';
 import { shownError } from '@/domain/errors';
 import { WAIST_ZONE_CAPTION, bodyFatRange, bodyFatZoneCaption, waistRange } from '@/domain/distance';
+import { ratingTone, readingFor } from '@/domain/metricRegistry';
 import {
   BMI_ONLY_NOTE,
   BODY_BUILDS,
@@ -110,6 +111,15 @@ export function BodyCompositionCard() {
   const ffmi = lean != null && profile?.heightCm != null ? ffmiValue(lean, profile.heightCm) : null;
   const ratio = figures.waistCm != null && profile?.heightCm != null ? waistToHeight(figures.waistCm, profile.heightCm) : null;
   const fatRange = figures.bodyFatPct != null ? bodyFatRange(figures.bodyFatPct, settings.goalSex) : null;
+  const fatRating = figures.bodyFatPct != null
+    ? readingFor('body_fat', figures.bodyFatPct, {
+      age: settings.goalAge,
+      sex: settings.goalSex,
+      goal: settings.goal,
+      ownUsual: null,
+      build: settings.build,
+    })
+    : null;
   const waistFigure = ratio != null ? waistRange(ratio) : null;
   const [fat, setFat] = useState('');
   const [leanText, setLeanText] = useState('');
@@ -193,7 +203,7 @@ export function BodyCompositionCard() {
         <T variant="muted">{BODY_FAT_SOURCE_NOTE}</T>
         <T variant="muted">A saved body-fat reading is used before waist-to-height, and waist-to-height before BMI. This is not a diagnosis, and body fat is not estimated from a photo.</T>
         {assessment.plain ? <T>{assessment.plain}</T> : null}
-        {fatRange ? <T variant="muted">{bodyFatZoneCaption(fatRange)}</T> : null}
+        {fatRange ? <T variant="muted">Measured body fat % from a saved scale, Garmin, or Apple Health reading. It is not estimated from BMI. {bodyFatZoneCaption(fatRange)}</T> : null}
         {waistFigure ? <T variant="muted">{WAIST_ZONE_CAPTION}</T> : null}
         {ratio != null && assessment.basis !== 'waist' ? (
           <T>{ratio < 0.5
@@ -220,10 +230,10 @@ export function BodyCompositionCard() {
               String(Math.round(figures.bodyFatPct * 10) / 10),
               '%',
               figures.bodyFatPct,
-              fatRange.zoneLow,
-              fatRange.zoneHigh,
-              fatRange.within,
-              fatRange.status,
+              fatRating?.band?.low ?? fatRange.zoneLow,
+              fatRating?.band?.high ?? fatRange.zoneHigh,
+              ratingTone(fatRating?.label) === 'good',
+              fatRating?.label ?? fatRange.status,
             )}
           />
           <RangeTrack
@@ -234,7 +244,7 @@ export function BodyCompositionCard() {
             scaleMax={fatRange.scaleMax}
             status={fatRange.status}
             zoneCaption={bodyFatZoneCaption(fatRange)}
-            tone={fatRange.within ? 'good' : 'watch'}
+            tone={ratingTone(fatRating?.label)}
             surface="card"
             showStatus={false}
             showCaptions={false}

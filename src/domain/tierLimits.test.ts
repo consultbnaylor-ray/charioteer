@@ -8,6 +8,7 @@ import {
   YEARLY_PRODUCT_ID,
   decideAllowance,
   entitlementEnforced,
+  entitlementEnforcedForUser,
   limitReachedMessage,
   londonDayKey,
   nextLondonMidnight,
@@ -146,6 +147,9 @@ describe('tier limits', () => {
     expect(entitlementEnforced(undefined)).toBe(true);
     expect(entitlementEnforced('true')).toBe(true);
     expect(entitlementEnforced('false')).toBe(false);
+    expect(entitlementEnforcedForUser('false', 'user-1', 'user-1, user-2')).toBe(true);
+    expect(entitlementEnforcedForUser('false', 'user-3', 'user-1, user-2')).toBe(false);
+    expect(entitlementEnforcedForUser(undefined, 'user-3', '')).toBe(true);
     expect(voiceEnabled(undefined)).toBe(false);
     expect(voiceEnabled('true')).toBe(true);
     expect(usageNearlyFull(18, 20)).toBe(true);

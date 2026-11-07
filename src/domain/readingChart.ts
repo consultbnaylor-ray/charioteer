@@ -156,6 +156,26 @@ export function xAxisTicks(start: string, end: string): { day: string; label: st
   return unique.map((day) => ({ day, label: xLabel(day, span, crossYear) }));
 }
 
+/**
+ * Three or four date ticks for a progress chart.
+ * A window of three months or more uses month names ('Sep', 'Oct', 'Nov', 'Dec').
+ * A shorter window keeps UK day-and-month labels, still including both ends.
+ */
+export function progressDateTicks(start: string, end: string): { day: string; label: string }[] {
+  const from = start <= end ? start : end;
+  const to = start <= end ? end : start;
+  const months = monthsInWindow(from, to);
+  if (months.length >= 3) {
+    const picked = pickSpan(months, Math.min(4, months.length));
+    const crossYear = from.slice(0, 4) !== to.slice(0, 4);
+    return picked.map((month, index) => ({
+      day: index === 0 ? from : index === picked.length - 1 ? to : month.first,
+      label: crossYear ? `${month.name} ${month.year.slice(2)}` : month.name,
+    }));
+  }
+  return pickSpan(datedAxisTicks(from, to), 4);
+}
+
 /** The same ticks, with the oldest and newest ends written as dates. */
 export function datedAxisTicks(start: string, end: string): { day: string; label: string }[] {
   const span = Math.max(1, daySpan(start, end));
@@ -174,6 +194,37 @@ export function daySpan(start: string, end: string): number {
   const from = Date.UTC(ay ?? 1970, (am ?? 1) - 1, ad ?? 1);
   const to = Date.UTC(by ?? 1970, (bm ?? 1) - 1, bd ?? 1);
   return Math.round((to - from) / 86_400_000) + 1;
+}
+
+function monthsInWindow(start: string, end: string): { first: string; name: string; year: string }[] {
+  const months: { first: string; name: string; year: string }[] = [];
+  let year = Number(start.slice(0, 4));
+  let month = Number(start.slice(5, 7));
+  const endYear = Number(end.slice(0, 4));
+  const endMonth = Number(end.slice(5, 7));
+  if (!year || !month || !endYear || !endMonth) return months;
+  while (year < endYear || (year === endYear && month <= endMonth)) {
+    const yearText = String(year);
+    const first = `${yearText}-${String(month).padStart(2, '0')}-01`;
+    months.push({ first, name: MONTHS[month - 1] ?? '', year: yearText });
+    month += 1;
+    if (month > 12) {
+      month = 1;
+      year += 1;
+    }
+  }
+  return months;
+}
+
+function pickSpan<T>(items: readonly T[], count: number): T[] {
+  if (items.length <= count) return [...items];
+  const picked: T[] = [];
+  for (let index = 0; index < count; index += 1) {
+    const at = Math.round((index * (items.length - 1)) / Math.max(1, count - 1));
+    const item = items[at];
+    if (item != null && picked[picked.length - 1] !== item) picked.push(item);
+  }
+  return picked;
 }
 
 function axisEndLabel(day: string, span: number, crossYear: boolean): string {

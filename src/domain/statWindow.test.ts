@@ -1,14 +1,21 @@
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
 import { buildGoalLed, figuresForLondonWeek } from '@/domain/goalLed';
 import { buildFitnessSnapshot, periodActiveMinutes } from '@/domain/fitnessSnapshot';
+import { chartBucketForPeriod } from '@/domain/readingChart';
 import {
+  chartFigureLabel,
+  completedDayStats,
   minuteUnit,
+  NUTRITION_CHART_PERIODS,
   paceJudgement,
+  periodDayCount,
   periodFairChance,
   proteinPace,
   rollingWindow,
   scaledPeriodTarget,
+  STAT_PERIODS,
 } from '@/domain/statWindow';
 
 describe('period windows', () => {
@@ -27,6 +34,52 @@ describe('period windows', () => {
     });
     expect(rollingWindow('2026-10-19', '30').days).toHaveLength(30);
     expect(rollingWindow('2026-10-19', '30').start).toBe('2026-09-20');
+  });
+
+  it('names the nutrition chart ranges and buckets a year by month', () => {
+    expect(NUTRITION_CHART_PERIODS).toEqual(['day', '7', '30', '60', '90', '12m']);
+    expect(STAT_PERIODS).toContain('6m');
+    expect(NUTRITION_CHART_PERIODS).not.toContain('6m');
+    expect(chartFigureLabel('Calories', 'day')).toBe('Calories today');
+    expect(chartFigureLabel('Calories', '7')).toBe('Calories in last 7 days');
+    expect(chartFigureLabel('Calories', '30')).toBe('Calories in last 30 days');
+    expect(chartFigureLabel('Calories', '60')).toBe('Calories in last 60 days');
+    expect(chartFigureLabel('Calories', '90')).toBe('Calories in last 90 days');
+    expect(chartFigureLabel('Calories', '12m')).toBe('Calories in last 12 months');
+    expect(chartFigureLabel('Protein', '60')).toBe('Protein in last 60 days');
+    expect(periodDayCount('60')).toBe(60);
+    expect(periodDayCount('90')).toBe(90);
+    expect(periodDayCount('12m')).toBe(365);
+    expect(rollingWindow('2026-10-14', '12m').days).toHaveLength(365);
+    expect(chartBucketForPeriod('60')).toBe('day');
+    expect(chartBucketForPeriod('90')).toBe('day');
+    expect(chartBucketForPeriod('12m')).toBe('month');
+    const charts = readFileSync('src/ui/NutritionCharts.tsx', 'utf8');
+    const toggle = readFileSync('src/ui/StatPeriodToggle.tsx', 'utf8');
+    expect(charts).toContain('periods={NUTRITION_CHART_PERIODS}');
+    expect(charts).toContain('aggregate="mean"');
+    expect(charts).toContain('bucket={chartBucketForPeriod(period)}');
+    expect(charts).toContain("chartFigureLabel('Calories', period)");
+    expect(toggle).toContain('horizontal');
+    expect(toggle).toContain('periods.map');
+  });
+
+  it('leaves today out of an average and keeps today so far separate', () => {
+    const points = [
+      { day: '2026-10-29', value: 8000 },
+      { day: '2026-10-30', value: 9000 },
+      { day: '2026-10-31', value: 7000 },
+      { day: '2026-11-01', value: 8500 },
+      { day: '2026-11-02', value: 8200 },
+      { day: '2026-11-03', value: 7800 },
+      { day: '2026-11-04', value: 151 },
+    ];
+    const stats = completedDayStats(points, '2026-11-04');
+    expect(stats.days).toBe(6);
+    expect(stats.todayValue).toBe(151);
+    expect(stats.average).toBe((8000 + 9000 + 7000 + 8500 + 8200 + 7800) / 6);
+    expect(stats.complete.some((point) => point.day === '2026-11-04')).toBe(false);
+    expect(completedDayStats([{ day: '2026-11-04', value: 151 }], '2026-11-04').average).toBeNull();
   });
 
   it('scales a weekly target to the period', () => {

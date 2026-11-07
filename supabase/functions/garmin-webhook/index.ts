@@ -5,6 +5,7 @@ import {
   dailyRowsFor,
   dedupeBy,
   deleteGarminRows,
+  deleteGarminSummaries,
   hrvRowsFor,
   mapGarminPush,
   missingRelation,
@@ -18,6 +19,7 @@ import {
   webhookPathSecret,
   type GarminDb,
 } from '../_shared/garmin.ts';
+import { summaryRows } from '../_shared/garminSummaries.ts';
 
 const DAILY_BASE = [
   'user_id',
@@ -66,6 +68,15 @@ Deno.serve(async (req) => {
     ...plan.respiration.map((row) => row.garminUserId),
     ...plan.pulseOx.map((row) => row.garminUserId),
     ...plan.hrv.map((row) => row.garminUserId),
+    ...plan.bloodPressure.map((row) => row.garminUserId),
+    ...plan.bodyComp.map((row) => row.garminUserId),
+    ...plan.skinTemp.map((row) => row.garminUserId),
+    ...plan.stress.map((row) => row.garminUserId),
+    ...plan.epochs.map((row) => row.garminUserId),
+    ...plan.healthSnapshot.map((row) => row.garminUserId),
+    ...plan.moveIq.map((row) => row.garminUserId),
+    ...plan.activityDetails.map((row) => row.garminUserId),
+    ...plan.activityFiles.map((row) => row.garminUserId),
     ...plan.deregistered,
     ...plan.permissionChanges.map((row) => row.garminUserId),
   ];
@@ -127,6 +138,9 @@ Deno.serve(async (req) => {
   if (!(await saveRows(admin, 'garmin_hrv', hrv, { onConflict: 'user_id,summary_id' }, true))) {
     return json({ ok: false, code: 'hrv' }, 500);
   }
+  for (const type of plan.droppedTypes) console.error(`garmin-webhook: dropped ${type}`);
+  const extraSaved = await saveExtraSummaries(admin, plan, userIdByGarmin);
+  if (!extraSaved) return json({ ok: false, code: 'summary' }, 500);
   await noteGarminPush(admin, [...dailies, ...activities, ...sleep, ...metrics, ...respiration, ...pulseOx, ...hrv]);
 
   for (const garminUserId of plan.deregistered) {
@@ -150,19 +164,33 @@ Deno.serve(async (req) => {
     }
     const named = change.permissions.split(' ').filter(Boolean);
     const keepsSummaries = named.includes('HEALTH_EXPORT') || named.includes('ACTIVITY_EXPORT');
-    if (!keepsSummaries) {
-      await admin.from('garmin_dailies').delete().eq('user_id', userId);
-      await admin.from('garmin_activities').delete().eq('user_id', userId);
-      await admin.from('garmin_sleep').delete().eq('user_id', userId);
-      await admin.from('garmin_user_metrics').delete().eq('user_id', userId);
-      await admin.from('garmin_respiration').delete().eq('user_id', userId);
-      await admin.from('garmin_pulse_ox').delete().eq('user_id', userId);
-      await admin.from('garmin_hrv').delete().eq('user_id', userId);
-    }
+    if (!keepsSummaries) await deleteGarminSummaries(admin, userId);
   }
 
   return json({ ok: true });
 });
+
+async function saveExtraSummaries(
+  admin: GarminDb,
+  plan: ReturnType<typeof mapGarminPush>,
+  userIdByGarmin: Map<string, string>,
+): Promise<boolean> {
+  const batches: [string, Record<string, unknown>[]][] = [
+    ['garmin_blood_pressure', summaryRows(plan.bloodPressure, userIdByGarmin, (row) => ({ systolic: row.systolic, diastolic: row.diastolic, pulse_bpm: row.pulseBpm }))],
+    ['garmin_body_comp', summaryRows(plan.bodyComp, userIdByGarmin, (row) => ({ weight_kg: row.weightKg, body_fat_pct: row.bodyFatPct, bmi: row.bmi, muscle_mass_kg: row.muscleMassKg }))],
+    ['garmin_skin_temp', summaryRows(plan.skinTemp, userIdByGarmin, (row) => ({ deviation_c: row.deviationC }))],
+    ['garmin_stress', summaryRows(plan.stress, userIdByGarmin, (row) => ({ average_stress: row.averageStress }))],
+    ['garmin_epoch', summaryRows(plan.epochs, userIdByGarmin, (row) => ({ active_seconds: row.activeSeconds, steps: row.steps, distance_metres: row.distanceMetres, mean_heart_rate_bpm: row.meanHeartRateBpm }))],
+    ['garmin_health_snapshot', summaryRows(plan.healthSnapshot, userIdByGarmin, (row) => ({ heart_rate_bpm: row.heartRateBpm, resting_heart_rate_bpm: row.restingHeartRateBpm, spo2: row.spo2, respiration: row.respiration, stress: row.stress }))],
+    ['garmin_move_iq', summaryRows(plan.moveIq, userIdByGarmin, (row) => ({ activity_type: row.activityType, duration_seconds: row.durationSeconds, distance_metres: row.distanceMetres }))],
+    ['garmin_activity_detail', summaryRows(plan.activityDetails, userIdByGarmin, (row) => ({ duration_seconds: row.durationSeconds, distance_metres: row.distanceMetres, average_heart_rate_bpm: row.averageHeartRateBpm, active_kilocalories: row.activeKilocalories }))],
+    ['garmin_activity_file', summaryRows(plan.activityFiles, userIdByGarmin, (row) => ({ file_type: row.fileType }))],
+  ];
+  for (const [table, rows] of batches) {
+    if (!(await saveRows(admin, table, rows, { onConflict: 'user_id,summary_id' }, true))) return false;
+  }
+  return true;
+}
 
 async function saveRows(
   admin: GarminDb,

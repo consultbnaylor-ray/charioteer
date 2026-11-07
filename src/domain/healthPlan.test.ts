@@ -9,6 +9,7 @@ import {
   HEALTH_PLAN_PROMPT,
   SOBER_SWAP,
   SWAP_LOG_MORE,
+  diaryDoneHealthSamples,
   draftHealthPlan,
   guardHealthPlan,
   healthPlanFromStored,
@@ -29,6 +30,7 @@ import {
 import type { FoodLog } from './nutrition';
 import { defaultNutritionSettings } from './nutrition';
 import { buildFitnessSnapshot } from './fitnessSnapshot';
+import { RESTING_AEROBIC_TIP, SLEEP_WAKE_TIP, STEP_WALK_TIP } from './trainingGuidance';
 import { defaultProfileSharing, projectPublicProfile, sharedReportItems, type ShareSource } from './profileSharing';
 
 function input(partial: Partial<PlanInput> = {}): PlanInput {
@@ -253,7 +255,7 @@ describe('health plan writer', () => {
     const focusText = next.focus.map((item) => item.text).join(' ');
     expect(focusText).not.toMatch(/moves on|you marked|one focus is enough|Alex,/i);
     expect(focusText).not.toMatch(/…|\.{3}/);
-    expect(next.focus.every((item) => item.text.length > 0 && item.text.length <= 160)).toBe(true);
+    expect(next.focus.every((item) => item.text.length > 0 && item.text.length <= 320)).toBe(true);
     const ticked = togglePlanAction(first, first.focus[0]?.id ?? '');
     expect(ticked.updatedAt).toBe(first.updatedAt);
     expect(donePlanTexts(ticked)).toContain(first.focus[0]?.text);
@@ -524,7 +526,9 @@ describe('health plan writer', () => {
       expect(texts.filter((text) => text.startsWith(`${day} ·`))).toHaveLength(1);
     }
     expect(texts.join(' ')).not.toMatch(/\bRest\b|full rest|no structured|Walk for 30 minutes/i);
-    expect(texts[0]).toMatch(/Monday · Keep this session, about 30 min/);
+    expect(texts[0]).toBe('Monday · Done: 30 min session.');
+    expect(plan.fitness.sessions[0]?.done).toBe(true);
+    expect(texts.find((text) => text.startsWith('Friday ·'))).toMatch(/Friday · Keep this session, about 30 min/);
     expect(texts.join(' ')).toMatch(/Add a little weight or one set/);
     const context = healthPlanModelContext(person, plan);
     expect(context.training?.sessionsPerWeek).toBe(7);
@@ -635,7 +639,8 @@ describe('health plan writer', () => {
     expect(compared.fitness.intro).toContain(PLAN_DOCTOR);
     expect(compared.fitness.intro.length).toBeLessThanOrEqual(220);
     const comparedTexts = compared.fitness.sessions.map((item) => item.text);
-    expect(comparedTexts.find((text) => text.startsWith('Tuesday ·'))).toMatch(/about 30 min/);
+    expect(comparedTexts.find((text) => text.startsWith('Tuesday ·'))).toBe('Tuesday · Done: 30 min session.');
+    expect(compared.fitness.sessions.find((item) => item.text.startsWith('Tuesday ·'))?.done).toBe(true);
     expect(comparedTexts.find((text) => text.startsWith('Saturday ·'))).toMatch(/about 45 min/);
     expect(comparedTexts.find((text) => text.startsWith('Sunday ·'))).toMatch(/A walk/);
     expect(comparedTexts.join(' ')).not.toMatch(/Tuesday · Rest/);
@@ -654,7 +659,8 @@ describe('health plan writer', () => {
     expect(guarded.fitness.intro).toMatch(/You aim for 30 min on weekdays and a bit more on Saturday; you have done 4 of 6 this week/);
     expect(guarded.fitness.intro).toContain(PLAN_DOCTOR);
     const guardedTexts = guarded.fitness.sessions.map((item) => item.text);
-    expect(guardedTexts.find((text) => text.startsWith('Tuesday ·'))).toMatch(/about 30 min/);
+    expect(guardedTexts.find((text) => text.startsWith('Tuesday ·'))).toBe('Tuesday · Done: 30 min session.');
+    expect(guarded.fitness.sessions.find((item) => item.text.startsWith('Tuesday ·'))?.done).toBe(true);
     expect(guardedTexts.find((text) => text.startsWith('Saturday ·'))).toMatch(/about 45 min/);
     expect(guardedTexts.find((text) => text.startsWith('Sunday ·'))).toMatch(/A walk/);
     const stated = planBaseline(logged);
@@ -723,14 +729,31 @@ describe('health plan writer', () => {
     expect(texts.join(' ')).not.toMatch(/\bRest\b|runna|mileage|progressive distance|\b5k\b/i);
     const bodies = texts.map((text) => text.replace(/^[A-Za-z]+ · /, ''));
     expect(new Set(bodies).size).toBeGreaterThan(3);
-    expect(texts.filter((text) => /Zone 2/i.test(text)).length).toBeGreaterThan(0);
-    expect(texts.filter((text) => /interval/i.test(text))).toHaveLength(1);
+    const zoneDays = texts.filter((text) => /Zone 2/i.test(text));
+    expect(zoneDays.length).toBeGreaterThan(0);
+    for (const text of zoneDays) {
+      expect(text).toMatch(/base|recovery/i);
+      expect(text).not.toMatch(/below the|below target|aerobic base so|builds your aerobic/i);
+    }
+    const intervals = texts.filter((text) => /Intervals for VO2 max/i.test(text));
+    expect(intervals.length).toBeGreaterThan(0);
+    expect(intervals.join(' ')).toMatch(/VO2/);
+    expect(texts.filter((text) => /interval/i.test(text))).toHaveLength(intervals.length);
     expect(texts.join(' ')).toMatch(/bike|rower|brisk walk|skipping or bag rounds/);
     expect(texts.join(' ')).toMatch(/cruiserweight/);
-    expect(texts.join(' ')).toMatch(/trending down/);
     expect(texts.join(' ')).not.toContain('…');
-    expect(texts.filter((text) => /Keep this boxing session/i.test(text)).length).toBeGreaterThan(0);
-    for (const day of ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday']) {
+    expect(texts.join(' ')).not.toMatch(/Keep this boxing session|Keep this strength and skill day/i);
+    expect(texts.find((text) => text.startsWith('Monday ·'))).toMatch(/Boxing, about 30 min/);
+    expect(texts.find((text) => text.startsWith('Tuesday ·'))).toBe('Tuesday · Done: 40 min strength.');
+    expect(texts.find((text) => text.startsWith('Wednesday ·'))).toMatch(/Boxing, about 30 min/);
+    expect(plan.fitness.sessions.find((item) => item.text.startsWith('Tuesday ·'))?.done).toBe(true);
+    expect(plan.fitness.sessions.find((item) => item.text.startsWith('Wednesday ·'))?.done).toBe(false);
+    const trend = texts.filter((text) => /trending down/i.test(text));
+    expect(trend).toHaveLength(1);
+    expect(trend[0]).toMatch(/Intervals for VO2 max/i);
+    expect(trend[0]).toMatch(/main lever/);
+    expect(trend[0]).not.toMatch(/Zone 2|Boxing/);
+    for (const day of ['Monday', 'Thursday', 'Friday']) {
       expect(texts.find((text) => text.startsWith(`${day} ·`))).toMatch(/about 30 min/);
     }
     expect(texts.find((text) => text.startsWith('Saturday ·'))).toMatch(/about 45 min/);
@@ -748,10 +771,139 @@ describe('health plan writer', () => {
     expect(snapshot.contextLine).toContain('41.7');
     expect(snapshot.contextLine).toContain('56 to 62');
     expect(snapshot.contextLine).toContain('trending down');
-    expect(snapshot.contextLine).toMatch(/Zone 2/);
+    expect(snapshot.contextLine).toMatch(/intervals/i);
+    expect(snapshot.contextLine).toMatch(/85 to 95 percent/);
+    expect(snapshot.contextLine).toMatch(/Zone 2 is the base and recovery, not the main lever/);
     expect(snapshot.contextLine).toMatch(/not a running plan/i);
     expect(snapshot.contextLine).toContain('Check with a doctor before big changes.');
     expect(snapshot.contextLine).not.toMatch(/runna|mileage|\b5k\b|progressive distance/i);
+  });
+
+  it('shows cardio already done today and moves boxing to a later day', () => {
+    const schedule = {
+      days: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'],
+      typicalMinutes: 30,
+      longerDay: 'Saturday',
+      longerMinutes: 45,
+      walkDay: 'Sunday',
+      note: '',
+    };
+    const person = input({
+      now: new Date('2026-10-12T08:00:00.000Z'),
+      salt: 'cardio-done-today',
+      goal: 'elite_cruiser_boxer',
+      goalSex: 'male',
+      goalAge: 34,
+      schedule,
+      health: [
+        { kind: 'weight_kg', value: 90, recordedOn: '2026-10-11' },
+        { kind: 'vo2_max', value: 44, recordedOn: '2026-08-01' },
+        { kind: 'vo2_max', value: 41.7, recordedOn: '2026-10-11' },
+        { kind: 'workout_type_50', value: 40, recordedOn: '2026-10-06' },
+        { kind: 'workout_type_50', value: 40, recordedOn: '2026-10-08' },
+        { kind: 'cardio_minutes', value: 45, recordedOn: '2026-10-12' },
+        { kind: 'workout_minutes', value: 45, recordedOn: '2026-10-12' },
+      ],
+    });
+    const plan = draftHealthPlan(person);
+    const monday = plan.fitness.sessions.find((item) => item.text.startsWith('Monday ·'));
+    expect(monday?.text).toBe('Monday · Done: 45 min cardio.');
+    expect(monday?.done).toBe(true);
+    expect(monday?.text).not.toMatch(/boxing|strength and skill|trending down/i);
+    const texts = plan.fitness.sessions.map((item) => item.text);
+    expect(texts).toHaveLength(7);
+    const boxing = texts.filter((text) => /Boxing, about \d+ min/.test(text));
+    expect(boxing.length).toBeGreaterThan(0);
+    expect(boxing.join(' ')).not.toMatch(/Monday/);
+    for (const text of texts) {
+      expect(text).not.toMatch(/Keep this boxing session|Keep this strength and skill day/i);
+      const sentences = text.split(/(?<=\.)\s+/).filter(Boolean);
+      expect(sentences.length).toBeLessThanOrEqual(2);
+    }
+    const trend = texts.filter((text) => /trending down/i.test(text));
+    expect(trend).toHaveLength(1);
+    expect(trend[0]).toMatch(/Intervals for VO2 max/i);
+    expect(trend[0]).not.toMatch(/Zone 2|Boxing/);
+    const intervals = texts.filter((text) => /Intervals for VO2 max/i.test(text));
+    expect(intervals.length).toBeGreaterThan(0);
+    for (const text of texts.filter((line) => /Zone 2/i.test(line))) {
+      expect(text).toMatch(/base|recovery/i);
+      expect(text).not.toMatch(/below the/);
+    }
+    expect(texts.find((text) => text.startsWith('Sunday ·'))).toBe('Sunday · A walk. Keep it easy.');
+    expect(texts.join(' ')).not.toMatch(/\bRest\b/);
+    const stated = planBaseline(person);
+    expect(mentionsRegressiveSession('Monday · Done: 15 min cardio.', stated)).toBe(false);
+    expect(mentionsRegressiveSession('Monday · Easy Zone 2, about 15 min.', stated)).toBe(true);
+    for (const text of texts) expect(mentionsRegressiveSession(text, stated)).toBe(false);
+    const diary = diaryDoneHealthSamples([{
+      sessionType: 'cardio',
+      startsAt: '2026-10-12T08:00:00.000Z',
+      durationMinutes: 45,
+      doneAt: '2026-10-12T08:40:00.000Z',
+    }]);
+    expect(diary).toEqual([
+      { kind: 'workout_minutes', value: 45, recordedOn: '2026-10-12', source: 'manual' },
+      { kind: 'workout_type_13', value: 45, recordedOn: '2026-10-12', source: 'manual' },
+    ]);
+    expect(diaryDoneHealthSamples([{
+      sessionType: 'cardio',
+      startsAt: '2026-10-12T08:00:00.000Z',
+      durationMinutes: 45,
+      doneAt: null,
+    }])).toEqual([]);
+    const fromDiary = draftHealthPlan(input({
+      ...person,
+      health: person.health.filter((row) => row.recordedOn !== '2026-10-12').concat(diary),
+    }));
+    expect(fromDiary.fitness.sessions.find((item) => item.text.startsWith('Monday ·'))?.text).toBe('Monday · Done: 45 min cardio.');
+    const fn = readFileSync('supabase/functions/health-plan/index.ts', 'utf8');
+    expect(fn).toContain("from('planned_sessions')");
+    expect(fn).toContain('diaryDoneHealthSamples');
+  });
+
+  it('keeps Zone 2, sleep, and steps on the same advice as the cards', () => {
+    const schedule = {
+      days: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'],
+      typicalMinutes: 30,
+      longerDay: 'Saturday',
+      longerMinutes: 45,
+      walkDay: 'Sunday',
+      note: '',
+    };
+    const plan = draftHealthPlan(input({
+      salt: 'align-cards',
+      goal: 'elite_cruiser_boxer',
+      goalSex: 'male',
+      goalAge: 34,
+      schedule,
+      health: [
+        { kind: 'weight_kg', value: 90, recordedOn: '2026-10-14' },
+        { kind: 'vo2_max', value: 41.7, recordedOn: '2026-10-14' },
+        { kind: 'resting_heart_rate', value: 72, recordedOn: '2026-10-14' },
+        { kind: 'steps', value: 3000, recordedOn: '2026-10-14' },
+        { kind: 'sleep_hours', value: 5.5, recordedOn: '2026-10-14' },
+      ],
+    }));
+    const texts = plan.fitness.sessions.map((item) => item.text);
+    const zone = texts.filter((text) => /Zone 2/i.test(text));
+    expect(zone.length).toBeGreaterThan(0);
+    for (const text of zone) {
+      expect(text).toContain(RESTING_AEROBIC_TIP);
+      expect(text).not.toMatch(/below the|VO2 max is/i);
+    }
+    expect(texts.find((text) => text.startsWith('Sunday ·'))).toBe(`Sunday · A walk. ${STEP_WALK_TIP}`);
+    expect(texts.join(' ')).toMatch(/Intervals for VO2 max/);
+    const quiet = draftHealthPlan(input({
+      salt: 'align-sleep',
+      goal: 'maintain',
+      goalAge: 45,
+      health: [
+        { kind: 'sleep_hours', value: 5.5, recordedOn: '2026-10-14' },
+        { kind: 'weight_kg', value: 80, recordedOn: '2026-10-14' },
+      ],
+    }));
+    expect(quiet.wellbeing.habits.map((item) => item.text).join(' ')).toContain(SLEEP_WAKE_TIP);
   });
 
   it('counts this week from Monday through Sunday in London, including the clock change', () => {
@@ -1001,24 +1153,25 @@ describe('health plan wiring', () => {
   it('places the page from Stats and You, and not on the tab bar', () => {
     const page = readFileSync('src/app/(main)/health-plan.tsx', 'utf8');
     expect(page).toContain("This week's focus");
-    expect(page).toContain('Refresh plan');
+    expect(page.indexOf('Refresh plan')).toBeLessThan(page.indexOf("This week's focus"));
+    expect(page.indexOf('<YourGoal place="plan" />')).toBeLessThan(page.indexOf('<DailyTargets />'));
+    expect(page.indexOf('<DailyTargets />')).toBeLessThan(page.indexOf("This week's focus"));
+    expect(readFileSync('supabase/functions/health-plan/index.ts', 'utf8')).toContain('localOnly');
     expect(page).toContain('Last updated');
     expect(page).toContain('buildStatsOverview');
     expect(page).toContain('StatTile');
-    expect(page).toContain('Share on profile');
-    expect(page).toContain('Share weight and body figures');
-    expect(page).toContain('Other members see the goal, this week\'s focus, and how many are ticked.');
-    expect(page).toContain('Other members see the weight average, and body fat, waist, or lean mass. Height stays private.');
-    expect(page).toContain('Community is off. Other members can see what you share here only when Community is on.');
-    expect(page.indexOf('Share on profile')).toBeLessThan(page.indexOf("This week's focus"));
+    expect(page).toContain('<ThumosStatsAnalysis />');
+    expect(page).toContain('<YourGoal place="plan" />');
+    expect(page).toContain('<WorkoutsLink');
+    expect(page).not.toContain('<MovementCharts');
+    expect(page).not.toContain('Share on profile');
     expect(page).not.toContain('pointerEvents');
     expect(page).not.toContain('accessibilityElementsHidden');
-    expect(page).toContain('applyWeightAndBodyShare');
     expect(page).not.toContain('Share Whole Section');
     expect(page).not.toContain('This stays on your account.');
     expect(TAB_SECTIONS.map((section) => section.label)).not.toContain('Health Plan');
     expect(TAB_SECTIONS).toHaveLength(6);
-    expect(readFileSync('src/app/(main)/stats.tsx', 'utf8')).toContain("'/health-plan'");
+    expect(readFileSync('src/app/(main)/health.tsx', 'utf8')).toContain("'/health-plan'");
     expect(readFileSync('src/app/(main)/profile.tsx', 'utf8')).toContain("'/health-plan'");
   });
 

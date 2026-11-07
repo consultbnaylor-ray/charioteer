@@ -2,6 +2,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.117.3';
 
 import {
   HEALTH_PLAN_PROMPT,
+  diaryDoneHealthSamples,
   draftHealthPlan,
   guardHealthPlan,
   healthPlanModelContext,
@@ -12,13 +13,25 @@ import {
 import { gateAiUse } from '../_shared/aiAllowance.ts';
 import { exerciseReadingLines } from '../_shared/exerciseAnalysis.ts';
 import { garminActivitiesForUser, samplesWithGarminActivities } from '../_shared/fitnessSnapshot.ts';
-import { londonDay } from '../_shared/healthInsights.ts';
+import { londonDay, shiftDay } from '../_shared/healthInsights.ts';
 import { json, preflight } from '../_shared/http.ts';
-import { isBodyBuild, isBuilderPhase, isMealSlot, isNutritionGoal, isNutritionSex, parseWorkoutBuckets, type FoodItem, type FoodLog, type NutritionGoal } from '../_shared/nutrition.ts';
+import { isFitnessGoal, resolvedFitnessGoal } from '../_shared/fitnessGoal.ts';
+import { competitionCutActive } from '../_shared/targetWeight.ts';
+import { isBodyBuild, isBuilderPhase, isMealSlot, isNutritionGoal, isNutritionSex, parseWorkoutBuckets, proteinGramsFor, type FoodItem, type FoodLog, type NutritionGoal } from '../_shared/nutrition.ts';
 import { buildChatCompletionBody, THUMOS_CHAT } from '../_shared/thumos.ts';
-import { coachingPersonalDataAllowed, readInterimCoachOptIn } from '../_shared/xaiPersonal.ts';
+import { coachingPersonalDataAllowed, pausedCoachingMessage, readInterimCoachOptIn } from '../_shared/xaiPersonal.ts';
+import {
+  STATS_ANALYSIS_PROMPT,
+  kcalFromWeightPlan,
+  nutritionBriefFromLogs,
+  resolvedAnalysisSections,
+  sanitizeStatsAnalysis,
+  sectionsToText,
+  type NutritionBrief,
+  type StatsAnalysisPayload,
+} from '../_shared/statsAnalysis.ts';
 
-type Body = { limits?: string };
+type Body = { limits?: string; mode?: string; summary?: unknown; localOnly?: boolean };
 
 function textOf(value: unknown): string {
   return typeof value === 'string' ? value : '';
@@ -29,6 +42,158 @@ function completionText(payload: unknown): string {
   const choices = (payload as { choices?: { message?: { content?: unknown } }[] }).choices;
   const content = choices?.[0]?.message?.content;
   return typeof content === 'string' ? content : '';
+}
+
+async function analyseStats(input: {
+  userClient: ReturnType<typeof createClient>;
+  userId: string;
+  url: string;
+  service: string;
+  consentAi: boolean;
+  consentHealth: boolean;
+  summary: unknown;
+}): Promise<Response> {
+  if (!input.consentAi || !input.consentHealth) {
+    return json({
+      ok: false,
+      code: 'consent',
+      message: 'An analysis needs the coach and health data switches, because summarised figures are sent to the model.',
+    }, 403);
+  }
+  const summary = sanitizeStatsAnalysis(input.summary);
+  if (!summary) return json({ ok: false, code: 'summary', message: 'There are no readings to analyse.' }, 400);
+  const userOptIn = await readInterimCoachOptIn(input.userClient, input.userId);
+  const personalDataEnabled = coachingPersonalDataAllowed({
+    personalDataFlag: Deno.env.get('XAI_PERSONAL_DATA_ENABLED'),
+    interimFlag: Deno.env.get('XAI_INTERIM_OPT_IN_ALLOWED'),
+    userOptIn,
+  });
+  if (!personalDataEnabled) {
+    return json({ ok: false, code: 'personal_data', message: pausedCoachingMessage(userOptIn) }, 403);
+  }
+  summary.nutrition = await nutritionForAnalysis(input.userClient, input.userId, summary);
+  const apiKey = Deno.env.get('XAI_API_KEY');
+  if (!apiKey) return analysisJson(summary, '');
+  const gate = await gateAiUse({
+    admin: createClient(input.url, input.service, { auth: { persistSession: false } }),
+    userId: input.userId,
+    kind: 'plan',
+    enforcedFlag: Deno.env.get('AI_ENTITLEMENT_ENFORCED'),
+    allowlist: Deno.env.get('AI_ENTITLEMENT_USERS'),
+  });
+  if (!gate.ok && 'body' in gate) return json(gate.body, gate.status);
+  try {
+    const response = await fetch(THUMOS_CHAT.completionsUrl, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(buildChatCompletionBody({
+        model: Deno.env.get('THUMOS_MODEL') || THUMOS_CHAT.model,
+        system: STATS_ANALYSIS_PROMPT,
+        history: [],
+        user: JSON.stringify(summary),
+        stream: false,
+      })),
+    });
+    const text = response.ok ? completionText(await response.json()) : '';
+    return analysisJson(summary, text);
+  } catch {
+    return analysisJson(summary, '');
+  }
+}
+
+async function nutritionForAnalysis(
+  userClient: ReturnType<typeof createClient>,
+  userId: string,
+  summary: StatsAnalysisPayload,
+): Promise<NutritionBrief> {
+  const today = londonDay(new Date());
+  const fallback = summary.nutrition ?? nutritionBriefFromLogs({
+    today,
+    logs: [],
+    weightKg: weightFrom(summary),
+    calorieTarget: kcalFromWeightPlan(summary.weightPlan),
+    proteinTargetG: null,
+  });
+  try {
+    let food = await userClient.from('food_logs').select('eaten_on, meal, note, items, portion, estimated, source').eq('user_id', userId).gte('eaten_on', shiftDay(today, -6)).limit(80);
+    if (food.error) {
+      food = await userClient.from('food_logs').select('eaten_on, items, portion').eq('user_id', userId).gte('eaten_on', shiftDay(today, -6)).limit(80);
+    }
+    if (food.error) return fallback;
+    const settings = await userClient.from('nutrition_settings').select('hide_calories, kcal_target, protein_target, goal, build, goal_phase').eq('user_id', userId).limit(1);
+    const row = !settings.error && Array.isArray(settings.data) ? settings.data[0] as {
+      hide_calories?: unknown;
+      kcal_target?: unknown;
+      protein_target?: unknown;
+      goal?: unknown;
+      build?: unknown;
+      goal_phase?: unknown;
+    } : null;
+    const hide = row?.hide_calories === true;
+    const savedKcal = typeof row?.kcal_target === 'number' ? row.kcal_target : null;
+    const savedProtein = typeof row?.protein_target === 'number' ? row.protein_target : null;
+    const weightKg = weightFrom(summary);
+    const goal = typeof row?.goal === 'string' && isNutritionGoal(row.goal) ? row.goal : null;
+    const goalProtein = goal && weightKg != null
+      ? proteinGramsFor(goal, weightKg, typeof row?.build === 'string' && isBodyBuild(row.build) ? row.build : null, typeof row?.goal_phase === 'string' && isBuilderPhase(row.goal_phase) ? row.goal_phase : null)
+      : null;
+    const logs = Array.isArray(food.data) ? food.data.flatMap(mealFromRow) : [];
+    return nutritionBriefFromLogs({
+      today,
+      logs,
+      weightKg,
+      calorieTarget: kcalFromWeightPlan(summary.weightPlan) ?? (hide ? null : savedKcal ?? summary.nutrition?.calorieTarget ?? null),
+      proteinTargetG: savedProtein ?? (summary.nutrition?.proteinTargetSource === 'saved' ? summary.nutrition.proteinTargetG : null),
+      goalProteinG: goalProtein ?? (summary.nutrition?.proteinTargetSource === 'goal' ? summary.nutrition.proteinTargetG : null),
+      hideCalories: hide,
+    });
+  } catch {
+    return fallback;
+  }
+}
+
+function weightFrom(summary: StatsAnalysisPayload): number | null {
+  const stat = summary.stats.find((item) => item.id === 'weight_kg');
+  const value = stat?.value ?? stat?.latest ?? null;
+  return value != null && value >= 30 && value <= 300 ? value : null;
+}
+
+function mealFromRow(row: unknown): { eatenOn: string; meal?: string; note?: string; estimated?: boolean; portion?: number; items: { name?: string; kcal?: number; proteinG?: number }[] }[] {
+  if (!row || typeof row !== 'object') return [];
+  const record = row as Record<string, unknown>;
+  const eatenOn = typeof record.eaten_on === 'string' ? record.eaten_on.slice(0, 10) : '';
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(eatenOn)) return [];
+  const portion = typeof record.portion === 'number' && record.portion > 0 ? record.portion : 1;
+  const items = Array.isArray(record.items)
+    ? record.items.flatMap((item) => {
+      if (!item || typeof item !== 'object') return [];
+      const meal = item as { name?: unknown; kcal?: unknown; proteinG?: unknown };
+      return [{
+        name: typeof meal.name === 'string' ? meal.name : undefined,
+        kcal: typeof meal.kcal === 'number' ? meal.kcal : undefined,
+        proteinG: typeof meal.proteinG === 'number' ? meal.proteinG : undefined,
+      }];
+    })
+    : [];
+  const estimated = record.estimated === true || record.source === 'photo' || record.source === 'text';
+  return [{
+    eatenOn,
+    meal: typeof record.meal === 'string' ? record.meal : undefined,
+    note: typeof record.note === 'string' ? record.note : undefined,
+    estimated,
+    portion,
+    items,
+  }];
+}
+
+function analysisJson(summary: StatsAnalysisPayload, modelText: string): Response {
+  const resolved = resolvedAnalysisSections(modelText, summary);
+  return json({
+    ok: true,
+    analysis: sectionsToText(resolved.sections),
+    sections: resolved.sections,
+    source: resolved.source,
+  });
 }
 
 Deno.serve(async (req) => {
@@ -52,23 +217,34 @@ Deno.serve(async (req) => {
 
   const profileRes = await userClient.from('profiles').select('display_name, stage, sobriety_started_at, height_cm, vision_statement, consent_ai, consent_health, weekly_units').eq('id', userId).single();
   if (profileRes.error || !profileRes.data) return json({ ok: false, code: 'profile', message: 'Finish setting up your account first.' }, 400);
-  if (!profileRes.data.consent_ai) {
+  const body = (await req.json().catch(() => ({}))) as Body;
+  if (body.mode === 'analyse') {
+    return analyseStats({
+      userClient,
+      userId,
+      url,
+      service,
+      consentAi: profileRes.data.consent_ai === true,
+      consentHealth: profileRes.data.consent_health === true,
+      summary: body.summary,
+    });
+  }
+  const localOnly = body.localOnly === true;
+  if (!localOnly && !profileRes.data.consent_ai) {
     return json({
       ok: false,
       code: 'consent',
       message: 'Writing a plan needs the coach consent, because your figures are sent to the model.',
     }, 403);
   }
-
-  const body = (await req.json().catch(() => ({}))) as Body;
   const limits = textOf(body.limits).trim().slice(0, 280);
 
-  const settingsSelect = 'goal, goal_age, goal_sex, build, kcal_target, protein_target_g, carb_target_g, fat_target_g, goal_phase, weight_class_kg, hide_calories, workout_buckets';
+  const settingsSelect = 'goal, fitness_goal, goal_age, goal_sex, build, kcal_target, protein_target_g, carb_target_g, fat_target_g, goal_phase, weight_class_kg, hide_calories, workout_buckets, target_on, competition_cut, competition_cut_at';
   let settingsRes = await userClient.from('nutrition_settings').select(settingsSelect).eq('user_id', userId).maybeSingle();
   if (settingsRes.error) {
     settingsRes = await userClient.from('nutrition_settings').select('goal, goal_age, goal_sex, build, kcal_target, protein_target_g, hide_calories').eq('user_id', userId).maybeSingle();
   }
-  const [logsRes, checkRes, healthRes, bodyRes, reasonsRes, visionRes, interestRes, savedRes, scheduleRes] = await Promise.all([
+  const [logsRes, checkRes, healthRes, bodyRes, reasonsRes, visionRes, interestRes, savedRes, scheduleRes, plannedRes] = await Promise.all([
     userClient.from('food_logs').select('id, eaten_on, meal, items, estimated, created_at').eq('user_id', userId).order('eaten_on', { ascending: false }).limit(40),
     userClient.from('check_ins').select('mood, craving, sleep_hours, note, created_at').eq('user_id', userId).order('created_at', { ascending: false }).limit(14),
     userClient.from('health_samples').select('kind, value, recorded_on, source').eq('user_id', userId).order('recorded_on', { ascending: false }).limit(800),
@@ -78,6 +254,7 @@ Deno.serve(async (req) => {
     userClient.from('profile_interests').select('interest_id, interests(label)').eq('user_id', userId),
     userClient.from('health_plans').select('focus, nutrition, fitness, wellbeing, limits').eq('user_id', userId).maybeSingle(),
     userClient.from('training_schedules').select('monday, tuesday, wednesday, thursday, friday, saturday, sunday, typical_minutes, longer_day, longer_minutes, walk_day, note').eq('user_id', userId).maybeSingle(),
+    userClient.from('planned_sessions').select('session_type, starts_at, duration_minutes, done_at').eq('user_id', userId).not('done_at', 'is', null).limit(80),
   ]);
 
   const shareHealth = profileRes.data.consent_health === true;
@@ -137,6 +314,16 @@ Deno.serve(async (req) => {
     limits: limits || textOf(saved?.limits).slice(0, 280),
     weeklyUnits: Number.isFinite(Number(profileRes.data.weekly_units)) ? Number(profileRes.data.weekly_units) : null,
     goal,
+    fitnessGoal: typeof settings.fitness_goal === 'string' && isFitnessGoal(settings.fitness_goal)
+      ? settings.fitness_goal
+      : resolvedFitnessGoal({ goal }),
+    competitionCut: competitionCutActive({
+      competitionCut: settings.competition_cut === true,
+      competitionCutAt: typeof settings.competition_cut_at === 'string' ? settings.competition_cut_at : null,
+      targetOn: typeof settings.target_on === 'string' ? settings.target_on.slice(0, 10) : null,
+      age: typeof settings.goal_age === 'number' ? settings.goal_age : null,
+      today: londonDay(new Date()),
+    }),
     goalSex: isNutritionSex(textOf(settings.goal_sex)) ? textOf(settings.goal_sex) as PlanInput['goalSex'] : null,
     goalAge: typeof settings.goal_age === 'number' ? settings.goal_age : null,
     build: isBodyBuild(textOf(settings.build)) ? textOf(settings.build) as PlanInput['build'] : null,
@@ -155,12 +342,20 @@ Deno.serve(async (req) => {
       note: textOf(row.note).slice(0, 160),
       createdAt: textOf(row.created_at),
     })),
-    health: samplesWithGarminActivities(((healthRes.data ?? []) as Record<string, unknown>[]).map((row) => ({
-      kind: textOf(row.kind),
-      value: Number(row.value) || 0,
-      recordedOn: textOf(row.recorded_on),
-      source: row.source === 'healthkit' || row.source === 'manual' ? row.source : undefined,
-    })), garminActivities),
+    health: samplesWithGarminActivities([
+      ...((healthRes.data ?? []) as Record<string, unknown>[]).map((row) => ({
+        kind: textOf(row.kind),
+        value: Number(row.value) || 0,
+        recordedOn: textOf(row.recorded_on),
+        source: row.source === 'healthkit' || row.source === 'manual' ? row.source : undefined,
+      })),
+      ...diaryDoneHealthSamples(((plannedRes.error ? [] : plannedRes.data ?? []) as Record<string, unknown>[]).map((row) => ({
+        sessionType: textOf(row.session_type),
+        startsAt: textOf(row.starts_at),
+        durationMinutes: Number(row.duration_minutes),
+        doneAt: textOf(row.done_at) || null,
+      }))),
+    ], garminActivities),
     bodyFatPct: typeof latestFat?.body_fat_pct === 'number' ? latestFat.body_fat_pct : null,
     leanMassKg: typeof latestLean?.lean_mass_kg === 'number' ? latestLean.lean_mass_kg : null,
     waistCm: typeof latestWaist?.waist_cm === 'number' ? latestWaist.waist_cm : null,
@@ -184,6 +379,7 @@ Deno.serve(async (req) => {
 
   const local = draftHealthPlan(input);
   if (input.limits && local.limits !== input.limits) local.limits = input.limits;
+  if (localOnly) return json({ ok: true, plan: { ...local, limits: input.limits }, source: 'local' });
   const apiKey = Deno.env.get('XAI_API_KEY');
   const personalDataEnabled = coachingPersonalDataAllowed({
     personalDataFlag: Deno.env.get('XAI_PERSONAL_DATA_ENABLED'),
@@ -199,6 +395,7 @@ Deno.serve(async (req) => {
     userId,
     kind: 'plan',
     enforcedFlag: Deno.env.get('AI_ENTITLEMENT_ENFORCED'),
+    allowlist: Deno.env.get('AI_ENTITLEMENT_USERS'),
   });
   if (!gate.ok && 'body' in gate) return json(gate.body, gate.status);
 

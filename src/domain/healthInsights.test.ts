@@ -83,8 +83,8 @@ describe('health insights', () => {
     ]);
     const report = buildHealthInsights({ today, samples, soberOn: null, stage: 'exploring' });
     const steps = report.kinds.find((kind) => kind.kind === 'steps');
-    expect(steps?.lines[0]).toBe('Steps up 18% on last week');
-    expect(report.headlines).toContain('Steps up 18% on last week');
+    expect(steps?.lines[0]).toBe('Steps up 18% on the previous 7 days');
+    expect(report.headlines).toContain('Steps up 18% on the previous 7 days');
   });
 
   it('says about the same when the change is under 5%, and skips a zero previous week', () => {
@@ -226,7 +226,7 @@ describe('health insights', () => {
     expect(high?.step).toContain('999');
     expect(high?.step).toContain('NHS 111');
     const rise = heart?.flags.find((flag) => flag.id === 'resting_rise');
-    expect(rise?.headline).toContain('higher than last week');
+    expect(rise?.headline).toContain('higher than the previous 7 days');
     expect(rise?.detail).toContain('your own readings');
 
     const sleep = buildHealthInsights({
@@ -343,7 +343,7 @@ describe('health insights', () => {
     });
     expect(report.headlines).toHaveLength(3);
     expect(report.headlines[0]).toContain('above 100');
-    expect(report.headlines[1]).toContain('higher than last week');
+    expect(report.headlines[1]).toContain('higher than the previous 7 days');
     expect(report.headlines.join(' ')).not.toContain('Steps up');
   });
 

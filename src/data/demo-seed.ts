@@ -65,6 +65,9 @@ export type DemoAccount = {
   plannedSessions?: import('@/domain/plannedSession').PlannedSession[];
   /** Absent until they save a walk. Owner only. */
   outdoorRoutes?: import('@/domain/outdoorRoute').OutdoorRoute[];
+  /** Absent until they save a goal progress photo. Private. */
+  goalProgressPhotos?: import('@/domain/goalProgress').GoalProgressPhoto[];
+  workoutFeelings?: import('@/domain/workoutFeel').WorkoutFeeling[];
 };
 
 export type DemoDb = {
@@ -531,6 +534,10 @@ export function createDemoDb(now = new Date()): DemoDb {
     shareQuality: false,
     shareProgress: false,
     goal: 'maintain',
+    fitnessGoal: null,
+    competitionCut: false,
+    competitionCutAt: null,
+    competitionCutVersion: null,
     goalAge: null,
     goalSex: null,
     proteinTarget: null,

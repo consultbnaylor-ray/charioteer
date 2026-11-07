@@ -6,6 +6,7 @@ export {
   SWAP_LOG_MORE,
   abstainsFromDrink,
   applyFitnessFocus,
+  diaryDoneHealthSamples,
   donePlanTexts,
   draftHealthPlan,
   guardHealthPlan,

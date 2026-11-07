@@ -5,11 +5,11 @@ export const VO2_CARD_LINE = 'VO2 max is how much oxygen your body can use at fu
 
 /** Approved by Ben on 27 October 2026. Shown at the top of the cardio section. */
 export const VO2_MEASURE_LINE =
-  'To measure your VO2 max, track a walk, run, or cycle on your smartwatch. It is worked out over distance and therefore needs GPS.';
+  'To measure your VO2 max, record an outdoor run with GPS and heart rate, or a cycle with a power meter. A walk does not update it.';
 
-/** Approved by Ben. What a walk or run has to do before a watch will store a VO2 max. */
+/** Heart rate has to stay up. A walk is not what stores a VO2 max reading. */
 export const VO2_HEART_RATE_LINE =
-  'Your heart rate needs to reach 70% of maximum for a sustained period, so a walk may not be enough if you are fit.';
+  'Your heart rate needs to reach 70% of maximum for a sustained period.';
 
 /** Approved by Ben. The session has to be long enough for the watch to estimate VO2 max. */
 export const VO2_DURATION_LINE = 'The exercise needs to last at least 15 minutes.';
@@ -25,7 +25,7 @@ const VO2_TRIGGER_TAIL = `${VO2_HEART_RATE_LINE} ${VO2_DURATION_LINE}`;
 
 /** How Apple Watch estimates VO2 max. Kept as its own sentence so the card can lead with it. */
 export const VO2_ESTIMATE_NOTE =
-  `Apple Watch estimates VO2 max after an outdoor walk, run or hike recorded as a workout with GPS and steady heart rate, usually every few days. No new reading means no qualifying workout yet. ${VO2_TRIGGER_TAIL}`;
+  `Apple Watch estimates VO2 max after an outdoor run recorded as a workout with GPS and heart rate. A walk does not update it. No new reading means no qualifying workout yet. ${VO2_TRIGGER_TAIL}`;
 
 /** Apple half of the card. The existing sentence, labelled so it sits beside the Garmin half. */
 export const VO2_APPLE_PART = `Apple Watch: ${VO2_ESTIMATE_NOTE.replace(/^Apple Watch /, '')}`;
@@ -35,7 +35,7 @@ export const VO2_APPLE_PART = `Apple Watch: ${VO2_ESTIMATE_NOTE.replace(/^Apple 
  * No watch model, and no claim that Garmin has or has not sent a number.
  */
 export const VO2_GARMIN_PART =
-  `Garmin: watches estimate VO2 max from heart rate and pace during outdoor walks or runs with GPS (and some other activities), with a minimum effort level. The reading updates after a qualifying activity. ${VO2_TRIGGER_TAIL}`;
+  `Garmin updates VO2 max from an outdoor run with GPS and heart rate, or from cycling with a power meter. A walk does not update it. ${VO2_TRIGGER_TAIL}`;
 
 export type Vo2Source = 'apple' | 'garmin';
 
@@ -51,7 +51,7 @@ export function vo2Note(source: Vo2Source | null): string {
 
 export const VO2_STALE_NUDGE = 'The last reading is more than 3 days old.';
 
-export const VO2_PLAN_LABEL = 'Plan a walk or run to update it';
+export const VO2_PLAN_LABEL = 'Plan a run to update it';
 
 /** One outdoor session. Not a distance programme. */
 export const VO2_PLAN_MINUTES = 30;

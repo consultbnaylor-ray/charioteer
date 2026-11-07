@@ -3,8 +3,11 @@ import { useState } from 'react';
 import { Modal, Pressable, View } from 'react-native';
 import Svg, { Circle, Polyline } from 'react-native-svg';
 
+import { METRIC_CAVEAT } from '@/domain/metricRegistry';
 import type { SharedMealPhoto } from '@/domain/nutrition';
 import { PROFILE_NOT_SHARED, type ProfileStatChart, type ProfileStatTile } from '@/domain/profileStatTiles';
+import { MetricRatingLines } from '@/ui/MetricRating';
+import { MoreInfo } from '@/ui/MoreInfo';
 import { useAppTheme } from '@/ui/theme';
 import { T } from '@/ui/ui';
 
@@ -108,6 +111,14 @@ function StatTile({ tile }: { tile: ProfileStatTile }) {
       <T numberOfLines={4} style={{ fontFamily: theme.font.bodyStrong }}>{tile.value}</T>
       <TileChart chart={tile.chart} />
       {caption ? <T variant="muted" numberOfLines={3}>{caption}</T> : null}
+      <MetricRatingLines rating={tile.rating} />
+      {tile.rating ? (
+        <MoreInfo about={tile.label} summary={METRIC_CAVEAT}>
+          <T variant="muted">{tile.rating.more}</T>
+          <T variant="label">Source</T>
+          <T variant="muted">{tile.rating.source}</T>
+        </MoreInfo>
+      ) : null}
     </View>
   );
 }

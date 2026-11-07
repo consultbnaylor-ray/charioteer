@@ -6,7 +6,7 @@ import { useRouter } from 'expo-router';
 import { useRepository, useSnapshot } from '@/data';
 import { randomId } from '@/domain/id';
 import { formatUkDate, isoDay, parseIsoDay } from '@/domain/dates';
-import { shownError } from '@/domain/errors';
+import { OFFLINE_MESSAGE, serverReachedRecently, shownError } from '@/domain/errors';
 import { londonDay, mondayOf, shiftDay, weekdayShort } from '@/domain/healthInsights';
 import {
   londonWallTime,
@@ -106,6 +106,7 @@ export function WorkoutCalendar({
   const sessions = snap.plannedSessions ?? [];
   const [setting, setSetting] = useState<WorkoutReminderSetting | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [sessionError, setSessionError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<PlannedSession | null>(null);
@@ -179,6 +180,12 @@ export function WorkoutCalendar({
     const timer = setTimeout(revealSessionFields, 300);
     return () => clearTimeout(timer);
   }, [planOutdoorNonce]);
+
+  function sessionFailure(err: unknown, fallback: string): string | null {
+    const message = shownError(err, fallback);
+    if (!message || (message === OFFLINE_MESSAGE && serverReachedRecently())) return null;
+    return message;
+  }
 
   function noteSaved() {
     setSaved(true);
@@ -294,7 +301,7 @@ export function WorkoutCalendar({
       setEditing(null);
       noteSaved();
     } catch (err) {
-      setError(shownError(err, 'Could not save that session.'));
+      setSessionError(sessionFailure(err, 'Could not save that session.'));
     } finally {
       setPending(false);
     }
@@ -329,7 +336,7 @@ export function WorkoutCalendar({
       });
       noteSaved();
     } catch (err) {
-      setError(shownError(err, 'Could not save that session.'));
+      setSessionError(sessionFailure(err, 'Could not save that session.'));
     } finally {
       setPending(false);
     }
@@ -346,7 +353,7 @@ export function WorkoutCalendar({
       }
       noteSaved();
     } catch (err) {
-      setError(shownError(err, 'Could not delete that session.'));
+      setSessionError(sessionFailure(err, 'Could not delete that session.'));
     } finally {
       setPending(false);
     }
@@ -396,7 +403,7 @@ export function WorkoutCalendar({
           <T style={{ color: green }}>Saved</T>
         </View>
       ) : null}
-      <ErrorNote>{error}</ErrorNote>
+      {error ? <T variant="muted">{error}</T> : null}
       <View style={{ flexDirection: 'row', alignItems: 'center' }}>
         <Pressable
           accessibilityRole="button"
@@ -539,6 +546,7 @@ export function WorkoutCalendar({
             </View>
             <Field label="Note" value={note} onChangeText={setNote} placeholder="Optional" maxLength={280} onFocus={revealSessionFields} />
             <Button label={editing ? 'Save session' : 'Save session'} pending={pending} onPress={() => { void saveSession(); }} />
+            <ErrorNote>{sessionError}</ErrorNote>
           </View>
         </View>
       ) : null}

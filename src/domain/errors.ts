@@ -9,6 +9,32 @@ export type UserFacingCode =
   | 'generic';
 
 export const OFFLINE_MESSAGE = "Couldn't reach Charioteer, check your connection and try again.";
+
+/** A successful load this recently means one blip is not a sustained outage. */
+export const OFFLINE_QUIET_MS = 15 * 60 * 1000;
+
+let serverReachedAt = 0;
+let offlineStrikes = 0;
+
+/** Call after a snapshot or auth call actually came back. */
+export function noteServerReached(now = Date.now()): void {
+  serverReachedAt = now;
+  offlineStrikes = 0;
+}
+
+export function serverReachedRecently(now = Date.now()): boolean {
+  return serverReachedAt > 0 && now - serverReachedAt < OFFLINE_QUIET_MS;
+}
+
+/**
+ * The first dropped call after a recent success stays quiet.
+ * A second one, or a failure with no recent success, is shown.
+ */
+export function offlineShouldShow(now = Date.now()): boolean {
+  offlineStrikes += 1;
+  const recent = serverReachedAt > 0 && now - serverReachedAt < OFFLINE_QUIET_MS;
+  return !recent || offlineStrikes >= 2;
+}
 /** Shown only when the auth client has no session at all. */
 export const SIGN_IN_FIRST = 'Sign in first.';
 export const EMAIL_TAKEN_MESSAGE = 'An account with this email already exists. Sign in instead?';
@@ -108,6 +134,7 @@ export function asUserFacing(error: unknown, context: ErrorContext): UserFacingE
 
 export function shownError(error: unknown, fallbackMessage: string, context: ErrorContext = 'general'): string {
   const faced = asUserFacing(error, context);
+  if (faced.code === 'offline' && !offlineShouldShow()) return '';
   if (faced.code === 'generic' && faced.message === fallback(context)) return fallbackMessage;
   return faced.message;
 }

@@ -5,9 +5,9 @@ import { loggedNutritionChart, loggingChart, overviewLineChart } from '@/domain/
 import type { ChartBar } from '@/domain/distance';
 import type { FoodLog, NutritionGoal, TodayRing, TrendDay } from '@/domain/nutrition';
 import {
-  dayItems,
   eatingInsights,
   fatBalance,
+  foodItemsInSpan,
   loggingCaption,
   loggingDots,
   macroSplit,
@@ -22,7 +22,7 @@ import {
 } from '@/domain/nutrition';
 import { chartBucketForPeriod } from '@/domain/readingChart';
 import type { StatsTone } from '@/domain/statsOverview';
-import { londonToday, paceJudgement, periodDayCount, periodHeading, periodPhrase, proteinPace, rollingWindow, type StatPeriod } from '@/domain/statWindow';
+import { chartFigureLabel, completedDayStats, londonToday, NUTRITION_CHART_PERIODS, paceJudgement, periodDayCount, periodHeading, periodPhrase, proteinPace, rollingWindow, type StatPeriod } from '@/domain/statWindow';
 import { useStatPeriod } from '@/health/useStatPeriod';
 import { CompareBars, ProgressRing } from '@/ui/DistanceCharts';
 import { ProcessedFoodList } from '@/ui/ProcessedFoodList';
@@ -63,27 +63,30 @@ export function NutritionBoard({
   const picture = useMemo(() => {
     const days = nutritionTrendDays(logs, today, span);
     const logged = days.filter((day) => day.logged);
-    const items = logged.flatMap((day) => dayItems(logs, day.day));
-    const proteinDays = logged.map((day) => day.proteinG).filter((grams) => grams > 0);
-    const proteinAvg = proteinDays.length ? proteinDays.reduce((sum, grams) => sum + grams, 0) / proteinDays.length : 0;
+    const loggedComplete = span > 1 ? logged.filter((day) => day.day < today) : logged;
+    const averaged = loggedComplete.length > 0 ? loggedComplete : (span === 1 ? logged : []);
+    const items = foodItemsInSpan(logs, today, span);
+    const proteinDays = averaged.map((day) => day.proteinG).filter((grams) => grams > 0);
+    const proteinStats = completedDayStats(averaged.map((day) => ({ day: day.day, value: day.proteinG })), today);
+    const proteinAvg = span > 1 ? (proteinStats.average ?? 0) : (proteinDays.length ? proteinDays.reduce((sum, grams) => sum + grams, 0) / proteinDays.length : 0);
     const proteinHits = proteinTarget != null && proteinTarget > 0
       ? proteinDays.filter((grams) => grams >= proteinTarget).length
       : 0;
-    const kcalAvg = logged.length ? logged.reduce((sum, day) => sum + day.kcal, 0) / logged.length : 0;
-    const qualityItems = days.flatMap((day) => dayItems(logs, day.day));
+    const kcalStats = completedDayStats(averaged.map((day) => ({ day: day.day, value: day.kcal })), today);
+    const kcalAvg = span > 1 ? (kcalStats.average ?? 0) : (averaged.length ? averaged.reduce((sum, day) => sum + day.kcal, 0) / averaged.length : 0);
     const notes = processedFoodNotes(logs, days.map((day) => day.day));
     const processed = notes.length;
-    const whole = qualityItems.length - processed;
+    const whole = items.length - processed;
     const shared = {
       hideCalories,
       kcal: kcalAvg,
       kcalTarget,
       proteinG: proteinAvg,
       proteinTarget,
-      logged: logged.length > 0,
+      logged: averaged.length > 0,
     };
     return {
-      loggedCount: logged.length,
+      loggedCount: averaged.length,
       proteinDays: proteinDays.length,
       proteinHits,
       proteinAvg,
@@ -91,7 +94,7 @@ export function NutritionBoard({
       protein: todayRing({ ...shared, hideCalories: true }),
       macros: macroSplit(items),
       fats: fatBalance(items),
-      quality: qualityItems.length === 0 ? null : {
+      quality: items.length === 0 ? null : {
         heading: processedFoodHeading(whole, processed),
         period: periodHeading(period),
         meaning: processed === 0 ? 'On track' : processed === 1 ? '1 item looks highly processed' : `${processed} items look highly processed`,
@@ -117,18 +120,18 @@ export function NutritionBoard({
   return (
     <>
       <Card>
-        <StatPeriodToggle />
+        <StatPeriodToggle periods={NUTRITION_CHART_PERIODS} />
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12, justifyContent: 'space-around' }}>
           {picture.kcal ? (
             <RingFigure
-              label={figureLabel('Energy', period)}
+              label={chartFigureLabel('Calories', period)}
               ring={picture.kcal}
               mark={energyMark(picture.kcal, period, picture.loggedCount)}
               period={period}
             />
           ) : null}
           <RingFigure
-            label={figureLabel('Protein', period)}
+            label={chartFigureLabel('Protein', period)}
             ring={alignProteinCentre(picture.protein, picture.proteinAvg)}
             mark={proteinMark(picture.protein, period, picture.proteinDays, picture.proteinAvg, picture.proteinHits)}
             period={period}
@@ -158,7 +161,7 @@ export function NutritionBoard({
         {loggedDays ? (
           <>
             {hideCalories ? null : (
-              <LoggedSeries title="Energy" today={today} period={period} days={trend.days} pick={(day) => day.kcal} target={kcalTarget} unit="kcal" />
+              <LoggedSeries title="Calories" today={today} period={period} days={trend.days} pick={(day) => day.kcal} target={kcalTarget} unit="kcal" />
             )}
             <LoggedSeries title="Protein" today={today} period={period} days={trend.days} pick={(day) => day.proteinG} target={proteinTarget} unit="g" />
             <T variant="muted">{trend.caption}</T>
@@ -181,11 +184,6 @@ export function NutritionBoard({
       ) : null}
     </>
   );
-}
-
-function figureLabel(name: string, period: StatPeriod): string {
-  if (period === 'day') return `${name} today`;
-  return `${name} in ${periodPhrase(period).replace(/^the /, '')}`;
 }
 
 function alignProteinCentre(ring: TodayRing, average: number): TodayRing {
@@ -231,6 +229,7 @@ function RingFigure({ label, ring, mark, period }: { label: string; ring: TodayR
         centre={ring.centre}
         unit={unit}
         fill={ring.fill}
+        overfill={ring.overfill}
         status={ring.status}
         tone={mark.tone}
         signal={mark.signal}

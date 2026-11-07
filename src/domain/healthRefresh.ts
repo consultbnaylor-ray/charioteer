@@ -20,6 +20,15 @@ export const GARMIN_ASKED =
 export const GARMIN_RECENT =
   'Garmin was asked recently. New data can take a minute or two to arrive.';
 
+/** The refresh call was throttled or duplicated. This is not a failed sync. */
+export const GARMIN_BUSY = 'Garmin is busy. Try again in a minute.';
+
+/** Shown when a refresh is throttled and there is no stored push clock. */
+export const GARMIN_THROTTLED_NOTE = 'Garmin is already sending data. There is nothing new to ask for yet.';
+
+/** A stored push inside this window means data is already coming through. */
+export const GARMIN_REFRESH_FRESH_MS = 6 * 60 * 60 * 1000;
+
 export const GARMIN_PERMISSION =
   "Garmin hasn't given Charioteer permission yet. In Garmin Connect, open Charioteer under connected apps, turn on Activities and Daily Health Stats, then disconnect and reconnect Garmin here. Automatic syncing still works once those are on.";
 
@@ -129,6 +138,42 @@ export function garminConnectOpenUrl(url: string = GARMIN_CONNECT_APP_URL): stri
   if (!match) return null;
   if (match[1].toLowerCase() !== 'gcm-ciq') return null;
   return 'gcm-ciq://';
+}
+
+/** True when Garmin has already delivered data within the last few hours. */
+export function garminDataIsRecent(receivedAt: string | null, now: number, windowMs = GARMIN_REFRESH_FRESH_MS): boolean {
+  if (!receivedAt) return false;
+  const at = Date.parse(receivedAt);
+  if (!Number.isFinite(at)) return false;
+  const age = now - at;
+  return age >= 0 && age <= windowMs;
+}
+
+export function garminAlreadySentLine(receivedAt: string | null): string | null {
+  const clock = syncClock(receivedAt);
+  if (!clock) return null;
+  return `Garmin already sent your latest data at ${clock}.`;
+}
+
+/**
+ * A throttled or duplicate refresh is a calm note.
+ * Any Garmin refresh failure is also a note when data arrived in the last few hours.
+ * A real failure with no recent data stays an error.
+ */
+export function garminRefreshFace(input: {
+  error: string | null;
+  receivedAt: string | null;
+  now: number;
+}): { error: string | null; note: string | null } {
+  const message = input.error?.trim() ?? '';
+  if (!message) return { error: null, note: null };
+  const throttled = message === GARMIN_BUSY;
+  const askFailed = message === 'Could not ask Garmin for new data.';
+  const recent = garminDataIsRecent(input.receivedAt, input.now);
+  if (throttled || (askFailed && recent)) {
+    return { error: null, note: garminAlreadySentLine(input.receivedAt) ?? GARMIN_THROTTLED_NOTE };
+  }
+  return { error: message, note: null };
 }
 
 export function syncGarminClause(garminReceivedAt: string | null): string {

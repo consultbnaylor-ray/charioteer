@@ -66,7 +66,7 @@ describe('goal options', () => {
     expect(you).toContain('<GoalChoices');
     const goalCard = nutrition.slice(nutrition.indexOf('<GoalChoices'), nutrition.indexOf('variant="label">Today'));
     expect(goalCard).toContain('Suggest targets');
-    expect(plan.indexOf('<GoalChoices')).toBeLessThan(plan.indexOf('Share on profile'));
+    expect(plan.indexOf('<GoalChoices')).toBeLessThan(plan.indexOf("This week's focus"));
     expect(plan.indexOf('<GoalChoices')).toBeGreaterThan(plan.indexOf('intro='));
     expect(you.indexOf('<BuildChoices')).toBeGreaterThan(0);
     expect(you.indexOf('<GoalChoices')).toBeGreaterThan(you.indexOf('<BuildChoices'));
@@ -116,9 +116,8 @@ describe('goal options', () => {
     expect(share).toContain('await repo.setProfileSharing(next)');
     expect(share).not.toContain('profileDetailsDirty');
     const plan = readFileSync('src/app/(main)/health-plan.tsx', 'utf8');
-    expect(plan).toContain('label="Share on profile"');
-    expect(plan).toContain('label="Share weight and body figures"');
-    expect(plan.indexOf('<ShareOnProfile')).toBeGreaterThan(plan.indexOf('<GoalChoices />'));
+    expect(plan).not.toContain('label="Share on profile"');
+    expect(plan).toContain('<YourGoal place="plan" />');
 
     const section = readFileSync('src/ui/SectionShare.tsx', 'utf8');
     expect(section).toContain('await onCommit(on)');

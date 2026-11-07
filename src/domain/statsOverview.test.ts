@@ -97,8 +97,9 @@ describe('stats overview', () => {
       expect(tile.href).toMatch(/section=/);
     }
     expect(TAB_SECTIONS).toHaveLength(6);
-    expect(APP_SECTIONS.find((section) => section.href === '/stats')?.tab).toBeUndefined();
-    expect(APP_SECTIONS.map((section) => section.label)).toContain('Stats');
+    expect(APP_SECTIONS.find((section) => section.href === '/stats')).toBeUndefined();
+    expect(APP_SECTIONS.map((section) => section.label)).toContain('Health Stats');
+    expect(APP_SECTIONS.map((section) => section.label)).not.toContain('Stats');
   });
 
   it('says slightly above for a small calorie overrun and does not use red', () => {
@@ -282,12 +283,13 @@ describe('stats overview', () => {
         expect(contrast(tone.ink, tone.bg)).toBeGreaterThanOrEqual(4.5);
       }
     }
-    const screen = readFileSync('src/app/(main)/stats.tsx', 'utf8');
+    const screen = readFileSync('src/app/(main)/health.tsx', 'utf8');
     const tile = readFileSync('src/ui/StatTile.tsx', 'utf8');
     const home = readFileSync('src/app/(main)/home.tsx', 'utf8');
     const you = readFileSync('src/app/(main)/profile.tsx', 'utf8');
-    expect(screen).toContain('statsToneColors');
-    expect(screen).not.toContain('tab: true');
+    expect(screen).toContain('<StatTile tile={item} plain />');
+    expect(screen).toContain('HEALTH_LIFE_TILE_IDS');
+    expect(readFileSync('src/app/(main)/stats.tsx', 'utf8')).toContain('Redirect href="/health"');
     expect(tile).toContain('tile.signal');
     expect(tile).toContain('<ToneMark');
     expect(tile).toContain('router.push(tile.href');
@@ -295,8 +297,8 @@ describe('stats overview', () => {
     expect(tile).toContain('<CompareBars');
     expect(tile).toContain('<TrendLine');
     expect(tile).toContain('<RangeTrack');
-    expect(home).toContain("router.push('/stats'");
-    expect(you).toContain("router.push('/stats'");
+    expect(home).toContain("router.push('/health'");
+    expect(you).toContain("router.push('/health'");
     expect(readFileSync('src/app/(main)/_layout.tsx', 'utf8')).toContain('TAB_SECTIONS');
     expect(readFileSync('src/app/(main)/weight-waist.tsx', 'utf8')).toContain('id="body"');
     expect(readFileSync('src/app/(main)/nutrition.tsx', 'utf8')).not.toContain('id="body"');

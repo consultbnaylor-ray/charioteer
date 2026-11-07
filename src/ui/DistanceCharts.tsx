@@ -4,9 +4,9 @@ import Svg, { Circle, Line, Path, Polyline } from 'react-native-svg';
 
 import type { ChartBar } from '@/domain/distance';
 import { STATS_SIGNAL, type StatsTone } from '@/domain/statsOverview';
-import { statsToneColors } from '@/ui/statsPalette';
+import { statsToneColors, watchArcInk, watchSignalInk } from '@/ui/statsPalette';
 import { useAppTheme } from '@/ui/theme';
-import { ringDrawsClosed, ringStroke } from '@/ui/ringClose';
+import { closedRingPath, ringArcPath, ringSeam, ringShown, ringStroke } from '@/ui/ringClose';
 import { T } from '@/ui/ui';
 
 const STEPS = 8;
@@ -47,12 +47,14 @@ export function useChartMotion(): number {
       frame = requestAnimationFrame(tick);
     };
     animate();
+    const timer = setTimeout(finish, MOTION_MS + 40);
     void AccessibilityInfo.isReduceMotionEnabled().then((value) => {
       if (value) finish();
     }).catch(() => undefined);
     return () => {
       cancelled = true;
       clearFrame();
+      clearTimeout(timer);
     };
   }, []);
   return progress;
@@ -76,14 +78,14 @@ export function ToneMark({ tone, color }: { tone: StatsTone; color: string }) {
   );
 }
 
-function SignalRow({ tone, signal, monochrome }: { tone: StatsTone; signal?: string; monochrome?: boolean }) {
+function SignalRow({ tone, signal, monochrome, ink: forced }: { tone: StatsTone; signal?: string; monochrome?: boolean; ink?: string }) {
   const theme = useAppTheme();
   const word = signal ?? STATS_SIGNAL[tone];
   const neutral = monochrome || word === 'Early days' || word === 'On pace';
   const iconTone: StatsTone = word === 'On pace' ? 'good' : word === 'Early days' ? 'info' : tone;
-  const ink = neutral ? theme.colors.ink : statsToneColors(theme.scheme)[tone].ink;
-  const mark = !neutral && iconTone === 'good' ? theme.colors.accent : ink;
-  const label = theme.scheme === 'light' ? ink : mark;
+  const ink = forced ?? (neutral ? theme.colors.ink : statsToneColors(theme.scheme)[tone].ink);
+  const mark = forced ?? (!neutral && iconTone === 'good' ? theme.colors.accent : ink);
+  const label = forced ?? (theme.scheme === 'light' ? ink : mark);
   return (
     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
       <Svg width={18} height={18} viewBox="0 0 24 24" fill="none" accessibilityElementsHidden>
@@ -108,6 +110,7 @@ export function ProgressRing({
   centre,
   unit,
   fill,
+  overfill = 0,
   status,
   tone,
   surface,
@@ -122,6 +125,8 @@ export function ProgressRing({
   centre: string;
   unit: string;
   fill: number;
+  /** Extra lap when calories pass the target. Capped at 1. Drawn in the Watch amber. */
+  overfill?: number;
   status: string;
   tone: StatsTone;
   surface: 'tile' | 'card';
@@ -136,16 +141,23 @@ export function ProgressRing({
 }) {
   const theme = useAppTheme();
   const motion = useChartMotion();
+  const extra = Math.max(0, Math.min(1, Number.isFinite(overfill) ? overfill : 0));
+  const lapTone: StatsTone = extra > 0 && !monochrome ? 'good' : tone;
   const colors = monochrome
     ? { stroke: theme.colors.ink, centre: theme.colors.ink, muted: theme.colors.muted, track: theme.colors.line }
-    : inkFor(tone, surface);
+    : inkFor(lapTone, surface);
   const ring = size ?? (surface === 'tile' ? 92 : 120);
   const stroke = ringStroke(ring);
   const radius = (ring - stroke) / 2;
   const circumference = 2 * Math.PI * radius;
-  const shown = Math.max(0, Math.min(1, fill)) * motion;
-  const closed = ringDrawsClosed(shown, ring);
+  const shown = ringShown(fill, motion, ring);
+  const closed = shown === 1;
   const mid = ring / 2;
+  const amber = watchArcInk(theme.scheme);
+  const overArc = extra > 0 ? ringArcPath(mid, mid, radius, extra) : null;
+  const seam = ringSeam(mid, mid, radius, stroke);
+  const seamInk = theme.scheme === 'dark' ? '#1A1400' : '#111111';
+  const signalInk = extra > 0 ? watchSignalInk(theme.scheme) : undefined;
   const centreSize = (ring < 72 ? (centre.length > 3 ? 13 : 16) : ring < 100 ? 18 : 22) * theme.scale;
   return (
     <View
@@ -165,7 +177,7 @@ export function ProgressRing({
             fill="none"
           />
           {closed ? (
-            <Circle cx={mid} cy={mid} r={radius} stroke={colors.stroke} strokeWidth={stroke} fill="none" />
+            <Path d={closedRingPath(mid, mid, radius)} stroke={colors.stroke} strokeWidth={stroke} fill="none" strokeLinecap="butt" />
           ) : shown > 0 ? (
             <Circle
               cx={mid}
@@ -178,6 +190,12 @@ export function ProgressRing({
               strokeDasharray={`${circumference * shown} ${circumference}`}
               transform={`rotate(-90 ${mid} ${mid})`}
             />
+          ) : null}
+          {overArc ? (
+            <Path d={overArc} stroke={amber} strokeWidth={stroke} fill="none" strokeLinecap="butt" />
+          ) : null}
+          {overArc ? (
+            <Line x1={seam.x1} y1={seam.y1} x2={seam.x2} y2={seam.y2} stroke={seamInk} strokeWidth={1.5} strokeLinecap="butt" />
           ) : null}
         </Svg>
         <View style={{ position: 'absolute', left: 8, right: 8, top: 0, bottom: 0, alignItems: 'center', justifyContent: 'center' }}>
@@ -197,8 +215,8 @@ export function ProgressRing({
           ) : null}
         </View>
       </View>
-      {mark ? <SignalRow tone={tone} signal={signal} monochrome={monochrome} /> : null}
-      {showStatus ? <T style={{ color: surface === 'tile' ? colors.centre : theme.colors.ink, textAlign: 'center' }}>{status}</T> : null}
+      {mark ? <SignalRow tone={tone} signal={signal} monochrome={monochrome} ink={signalInk} /> : null}
+      {showStatus ? <T style={{ color: signalInk ?? (surface === 'tile' ? colors.centre : theme.colors.ink), textAlign: 'center' }}>{status}</T> : null}
     </View>
   );
 }
