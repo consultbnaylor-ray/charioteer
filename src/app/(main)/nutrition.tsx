@@ -65,7 +65,13 @@ import {
   sumItems,
   targetLine,
   TODAY_MEALS_EMPTY,
+  foodFigureNote,
+  POWDER_NOT_PROTEIN,
   loggedProteinRing,
+  powderReadingNote,
+  proteinDaysFromLogs,
+  proteinFigureLines,
+  proteinIntakeAdvisory,
   todayMealRows,
   todayMealTotals,
   todayRing,
@@ -204,6 +210,14 @@ function draftedGrams(value: string, places: number): { value: number; known: bo
   const parsed = numberFrom(trimmed);
   const factor = 10 ** places;
   return { value: Math.round(parsed * factor) / factor, known: true };
+}
+
+function draftFigureNote(item: DraftItem): string | null {
+  if (!item.proteinG.trim()) return null;
+  return foodFigureNote({
+    kcal: Math.round(numberFrom(item.kcal)),
+    proteinG: numberFrom(item.proteinG),
+  });
 }
 
 function itemFromDraft(draft: DraftItem): FoodItem | null {
@@ -1029,6 +1043,14 @@ export default function Nutrition() {
   const proteinRing = mealRows.length > 0
     ? loggedProteinRing({ proteinG: mealTotals.proteinG, proteinTarget: settings.proteinTarget })
     : null;
+  const proteinReview = proteinIntakeAdvisory({
+    today,
+    days: proteinDaysFromLogs(snap.foodLogs, today, ownerId),
+    weights,
+    proteinTarget: settings.proteinTarget,
+    age: settings.goalAge,
+  });
+  const proteinNotes = proteinFigureLines(items);
   const summaryLog = editAnchor === 'summary'
     ? snap.foodLogs.find((log) => log.id === editingId || log.id === confirmId) ?? null
     : null;
@@ -1130,6 +1152,7 @@ export default function Nutrition() {
           {draft.estimated ? <T>{ESTIMATE_LABEL}</T> : null}
           {photoNote ? <T>{photoNote}</T> : null}
           <T>{ESTIMATE_HINT}</T>
+          {powderReadingNote(draft.note || text) ? <T variant="muted">{POWDER_NOT_PROTEIN}</T> : null}
           {draft.previewUri ? (
             <Image
               source={{ uri: draft.previewUri }}
@@ -1148,6 +1171,7 @@ export default function Nutrition() {
               <Field label="Food" value={item.name} onChangeText={(name) => updateItem(index, { name })} />
               {hide ? null : <Field label="kcal" value={item.kcal} onChangeText={(kcal) => updateItem(index, { kcal })} keyboardType="decimal-pad" />}
               <Field label="Protein (g)" value={item.proteinG} onChangeText={(proteinG) => updateItem(index, { proteinG })} keyboardType="decimal-pad" />
+              {draftFigureNote(item) ? <T variant="muted">{draftFigureNote(item)}</T> : null}
               <Field label="Carbohydrate (g)" value={item.carbsG} onChangeText={(carbsG) => updateItem(index, { carbsG })} keyboardType="decimal-pad" />
               <Field label="Sugar (g)" value={item.sugarG} onChangeText={(sugarG) => updateItem(index, { sugarG })} keyboardType="decimal-pad" />
               <Field label="Fibre (g)" value={item.fibreG} onChangeText={(fibreG) => updateItem(index, { fibreG })} keyboardType="decimal-pad" />
@@ -1363,6 +1387,13 @@ export default function Nutrition() {
         {!hide && settings.kcalTarget != null ? <T variant="muted">{`Target ${settings.kcalTarget.toLocaleString('en-GB')} kcal`}</T> : null}
         {!hide ? <T>{targetLine(totals.kcal, settings.kcalTarget, false)}</T> : null}
         <T>{`Protein ${totals.proteinG} g · carbohydrate ${totals.carbsG} g · sugar ${totals.sugarG} g`}</T>
+        {proteinReview.review || totals.proteinG > 0 ? (
+          <>
+            {proteinReview.review ? <T>{proteinReview.review}</T> : null}
+            <T variant="muted">{proteinReview.standing}</T>
+          </>
+        ) : null}
+        {proteinNotes.map((line) => <T key={line} variant="muted">{line}</T>)}
         <T>{`Fibre ${totals.fibreG} g · sodium ${totals.sodiumMg.toLocaleString('en-GB')} mg`}</T>
         <T variant="label">Fats</T>
         <FatShareBar unsaturated={fats.unsaturated} other={fats.other} />

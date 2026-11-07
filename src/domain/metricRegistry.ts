@@ -815,7 +815,7 @@ function rateTarget(
     goalLine: on && !over ? 'You are on your own target.' : `You are ${over ? 'above' : 'short of'} your own target of ${Math.round(target)} ${unit}.`,
     tips: lowerIsBetter
       ? ['A later meal can still land inside the day. One day over is not a failure.']
-      : ['Add a protein food at the next meal if you are short. There is no failing a day.'],
+      : ['If you are short, protein can go on a meal you already eat. A small gap is not a reason for another shake, and there is no failing a day.'],
     more: source,
   });
 }

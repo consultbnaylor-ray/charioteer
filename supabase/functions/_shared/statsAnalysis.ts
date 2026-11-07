@@ -168,7 +168,7 @@ export type AnalysisSection = {
 };
 
 export const PROTEIN_GUIDE_RANGE =
-  'About 1.6 to 2.2 g per kg of body weight is a general guide for someone who trains, including a boxer. It is not a prescription.';
+  'About 1.6 to 2.2 g per kg of body weight is a general guide for someone who trains, including a boxer. It is not a prescription, and it is not a safe upper limit. No safe upper limit is established.';
 
 export const STATS_ANALYSIS_PROMPT = [
   'Write a plain overview from the JSON only. Do not invent numbers.',
@@ -182,7 +182,7 @@ export const STATS_ANALYSIS_PROMPT = [
   'Use these titles in this order: Overview, Cardio/VO2, Steps & movement, Sleep & recovery, Nutrition: calories & protein, This week.',
   'Each body is one short paragraph. Do not put a blank line inside a body. The app separates sections with a blank line.',
   'Overview is the overall summary, then one short strengths line if any qualify. Put each improvement in the matching section, largest goalGap first.',
-  'Always include Nutrition: calories & protein. nutrition.meals is input only. Do not write that list out. Do not give a date, a meal with its kcal, or the word Estimate as a log line. The section is only: one line for the daily calorie target and the protein target, one line for the 7-day average against those targets, and 2 to 4 short reduce, add, or swap suggestions from improvements. Name a food only inside that advice, never as a logged meal. Do not invent a meal or a number. If loggedDays is under 2, or nutrition is missing, say there is not enough logged food to compare intake. If fuelNote is set, say that trade-off: do not cut calories so far that training fuel is lost. If fitnessGoal or vo2Goal is set, the Cardio section uses that VO2 target. The only caveat in this section is "Not medical advice."',
+  'Always include Nutrition: calories & protein. nutrition.meals is input only. Do not write that list out. Do not give a date, a meal with its kcal, or the word Estimate as a log line. The section is only: one line for the daily calorie target and the protein target, one line for the 7-day average against those targets, and 2 to 4 short reduce, add, or swap suggestions from improvements. Name a food only inside that advice, never as a logged meal. Do not invent a meal or a number. If loggedDays is under 2, or nutrition is missing, say there is not enough logged food to compare intake. If fuelNote is set, say that trade-off: do not cut calories so far that training fuel is lost. If fitnessGoal or vo2Goal is set, the Cardio section uses that VO2 target. The only caveat in this section is "Not medical advice." Do not suggest another shake or more protein powder because intake is a little under the protein target. A protein target is not a safety ceiling. There is no established safe upper limit for protein. Do not call a high intake dangerous.',
   'Always include This week, with one or two practical steps.',
   'Then one short strengths line. Name at most three stats that are Good or Excellent and have no goalGap. If none qualify, do not invent a strength.',
   'Usual and No rating yet are not strengths and not levers.',
@@ -385,8 +385,9 @@ export function mealImprovements(
   brief: Pick<NutritionBrief, 'calorieTarget' | 'proteinTargetG' | 'averageKcal' | 'averageProteinG'>,
 ): string[] {
   const tips: string[] = [];
+  const clearlyShort = brief.proteinTargetG != null && brief.averageProteinG != null && brief.averageProteinG < brief.proteinTargetG * 0.85;
   const breakfasts = meals.filter((meal) => meal.slot === 'Breakfast' && meal.proteinG != null);
-  if (breakfasts.length) {
+  if (breakfasts.length && clearlyShort) {
     const mean = breakfasts.reduce((sum, meal) => sum + (meal.proteinG ?? 0), 0) / breakfasts.length;
     if (mean < 20 || (brief.proteinTargetG != null && mean < brief.proteinTargetG * 0.2)) {
       const food = exampleFood([...breakfasts].sort((left, right) => (left.proteinG ?? 0) - (right.proteinG ?? 0))[0]?.name ?? '');
@@ -404,7 +405,7 @@ export function mealImprovements(
     const over = [...byDay.values()].some((day) => day.snack > 0 && day.total > (brief.calorieTarget ?? 0) && day.snack >= day.total * 0.15);
     if (over) tips.push('Reduce evening snacks, or swap them for fruit or yoghurt.');
   }
-  if (brief.proteinTargetG != null && brief.averageProteinG != null && brief.averageProteinG < brief.proteinTargetG * 0.9) {
+  if (clearlyShort) {
     const light = meals
       .filter((meal) => meal.proteinG != null && meal.slot !== 'Snack' && meal.name !== 'Logged meal')
       .sort((left, right) => (left.proteinG ?? 0) - (right.proteinG ?? 0))[0];
@@ -414,7 +415,7 @@ export function mealImprovements(
       const slot = light.slot.toLowerCase();
       tips.push(food ? `Swap ${food} for chicken, eggs, yoghurt, or fish at ${slot}.` : `Add chicken, eggs, yoghurt, or fish at ${slot}.`);
     } else if (!breakfastAlready) {
-      tips.push('Add a protein food at the meal you usually rush.');
+      tips.push('Put protein on a meal you already eat. A small gap is not a reason for another shake.');
     }
   }
   if (brief.calorieTarget != null && brief.averageKcal != null && brief.averageKcal > brief.calorieTarget * 1.1) {
@@ -422,7 +423,7 @@ export function mealImprovements(
     const food = largest ? exampleFood(largest.name) : null;
     tips.push(food && largest ? `Reduce ${food} at ${largest.slot.toLowerCase()}, rather than skipping a meal.` : 'Reduce the largest meal a little, rather than skipping one.');
   }
-  if (tips.length < 2 && meals.length) tips.push('Add a protein food at breakfast, lunch, and dinner.');
+  if (tips.length < 2 && meals.length && clearlyShort) tips.push('Put protein on meals you already eat. A small gap is not a reason for another shake.');
   return [...new Set(tips)].slice(0, 4);
 }
 

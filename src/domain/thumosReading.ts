@@ -57,7 +57,7 @@ export const THUMOS_BODY_FAT_HIGH =
   'Body fat is above the band this app uses. Lifting does not cancel that. This is not a diagnosis.';
 
 export const THUMOS_BIA_PROTEIN_SHORT =
-  'Protein logged today is short of the target you set. Add a protein food to a meal you already eat. Do not skip drinks to chase a lower body-fat reading.';
+  'Protein logged today is short of the target you set. A small gap is not a reason for another shake. Do not skip drinks to chase a lower body-fat reading.';
 
 export const THUMOS_BIA_PROTEIN_MET =
   'Protein logged today meets the target you set. Keep that habit, and judge body fat from the trend rather than one reading.';
@@ -126,7 +126,7 @@ export const THUMOS_STRENGTH_NOT_RECORDED = 'Strength is not recorded for this p
 export const THUMOS_STRENGTH_SESSION = 'A strength session would match the aim you saved.';
 export const THUMOS_MORE_SLEEP = 'Aim for more sleep. The nights stored here are under the 7 to 9 hour range this app already uses.';
 export const THUMOS_MORE_STEPS = 'More steps on the days you already log would lift the average toward the research range this screen uses.';
-export const THUMOS_PROTEIN_SHORT = 'Protein logged today is short of the target you set. Another protein meal would close the gap.';
+export const THUMOS_PROTEIN_SHORT = 'Protein logged today is short of the target you set. A small gap is not a reason for another shake. The target is a goal, not a safety ceiling.';
 export const THUMOS_ANOTHER_SESSION = 'Another session in this period would bring the recorded workout minutes up toward what Your Fitness uses.';
 export const THUMOS_RESTING_HIGH = 'Resting heart rate is over the usual 60 to 100 bpm range for this period. Another reading on a quiet day would show whether it holds.';
 export const THUMOS_RESTING_LOW = 'Resting heart rate is under 60 bpm for this period. One reading is not a pattern.';
