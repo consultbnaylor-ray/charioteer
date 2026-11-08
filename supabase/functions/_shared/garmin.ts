@@ -374,6 +374,18 @@ export function refreshLockBusy(message: string): boolean {
   return /duplicate key|unique constraint|23505/i.test(message);
 }
 
+const OAUTH_LOG_REASONS = new Set(['config', 'duplicate', 'expired', 'invalid', 'exchange', 'user', 'key', 'store']);
+
+/** A fixed category. Anything else, including a code or a token, is dropped. */
+export function garminOauthLog(reason: string): string {
+  const safe = OAUTH_LOG_REASONS.has(reason) ? reason : 'invalid';
+  return `garmin-oauth: ${safe}`;
+}
+
+export function isGarminRefreshLockState(state: string): boolean {
+  return state.startsWith('refresh-lock:');
+}
+
 export function garminReturnFromUrl(url: string): 'connected' | 'cancelled' | null {
   if (!url.startsWith(`${GARMIN_APP_SCHEME}://garmin`)) return null;
   if (/[?&]connected=1(?:&|$)/.test(url)) return 'connected';
@@ -1365,7 +1377,7 @@ export async function bearerForGarminUser(
  * refresh ciphertext is still the one we read, so a slower call cannot put an
  * older token back.
  */
-async function rotateGarminAccess(input: {
+export async function rotateGarminAccess(input: {
   db: GarminDb;
   userId: string;
   version: number;
