@@ -2,6 +2,8 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
 import { dedupeAdviceLines } from '@/domain/adviceDedupe';
+import { standaloneFocus } from '@/domain/healthPlan';
+import { VO2_FOCUS_LINE } from '@/domain/trainingGuidance';
 import type { HealthSample } from '@/data/types';
 import { APPLE_HEALTH_READ_TYPES } from '@/health/connection';
 import { emptyGarminReadings, type GarminActivity } from '@/domain/garminConnect';
@@ -228,9 +230,9 @@ describe('on-phone Thumos reading note', () => {
     expect(domain).not.toContain(VISIBLE_SAFETY_LINE);
     expect(readFileSync('src/app/(main)/weight-waist.tsx', 'utf8')).not.toContain('ThumosReadingComment');
     const plan = readFileSync('src/app/(main)/health-plan.tsx', 'utf8');
-    expect(plan).toContain('<ThumosReadingComment analyse />');
-    expect(plan.match(/<ThumosReadingComment/g)).toEqual(['<ThumosReadingComment']);
-    expect(plan.indexOf('<ThumosReadingComment analyse />')).toBeLessThan(plan.indexOf('<HealthRefreshBar'));
+    expect(plan).toContain('<ThumosStatsAnalysis />');
+    expect(plan).not.toContain('ThumosReadingComment');
+    expect(plan.indexOf('<ThumosStatsAnalysis />')).toBeLessThan(plan.indexOf('<GoalChoices'));
     expect(readFileSync('src/ui/ThumosReadingComment.tsx', 'utf8')).toContain('useHealthSources');
     expect(readFileSync('src/ui/ThumosReadingComment.tsx', 'utf8')).toContain('authorize: false');
     expect(THUMOS_ANALYSE_AGAIN).toBe('Have Thumos analyse your data again');
@@ -471,6 +473,10 @@ describe('on-phone Thumos reading note', () => {
       THUMOS_BIA_PROTEIN_SHORT,
     ]);
     expect(dedupeAdviceLines([THUMOS_PROTEIN_SHORT, THUMOS_PROTEIN_SHORT])).toEqual([THUMOS_PROTEIN_SHORT]);
+    const longer = `${VO2_FOCUS_LINE} Stay with that effort.`;
+    expect(dedupeAdviceLines([VO2_FOCUS_LINE, longer])).toEqual([longer]);
+    expect(standaloneFocus(VO2_FOCUS_LINE)).toBe(VO2_FOCUS_LINE);
+    expect(standaloneFocus(VO2_FOCUS_LINE)).not.toMatch(/…|hard enou$/);
     expect(readFileSync('supabase/functions/_shared/healthPlan.ts', 'utf8')).toContain('dedupeAdviceLines');
     expect(readFileSync('supabase/functions/_shared/thumos.ts', 'utf8')).toContain('dedupeAdviceLines');
     expect(readFileSync('supabase/functions/_shared/nutrition.ts', 'utf8')).toContain('dedupeAdviceLines(lines)');

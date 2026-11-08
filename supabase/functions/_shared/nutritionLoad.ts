@@ -16,6 +16,7 @@ import {
   isNutritionSex,
   lossBlocked,
   nutritionContextLines,
+  proteinGramsFor,
   parseBodyFatPct,
   parseLeanMassKg,
   parseWaistCm,
@@ -27,9 +28,41 @@ import {
   type NutritionSettings,
 } from './nutrition.ts';
 import { savingsFromTypicalWeek } from './savings.ts';
+import { buildDailyTargets } from './dailyTargets.ts';
+import { FITNESS_GOAL_LABEL, fuelTradeOffLine, isFitnessGoal, resolvedFitnessGoal } from './fitnessGoal.ts';
+import { COMPETITION_CUT_RULES, competitionCutActive } from './targetWeight.ts';
+import { currentVo2Line, currentVo2Max } from './currentVo2.ts';
+import { vo2TargetReason } from './goalProgress.ts';
+import { nutritionBriefFromLogs, nutritionInputLines, nutritionReviewLines } from './statsAnalysis.ts';
 import { soberElapsed } from './sober.ts';
 
 type NutritionResult = { data: unknown; error: { message?: string } | null };
+
+/** Running VO2 max already stored from Garmin. A missing table leaves Apple Health as the only source. */
+async function loadGarminRunningVo2(
+  userClient: NutritionClient,
+  userId: string,
+): Promise<{ day: string; value: number | null }[]> {
+  try {
+    const res = await userClient
+      .from('garmin_user_metrics')
+      .select('calendar_date, vo2_max')
+      .eq('user_id', userId)
+      .order('calendar_date', { ascending: false })
+      .limit(120);
+    if (res.error || !Array.isArray(res.data)) return [];
+    return res.data.flatMap((row) => {
+      if (!row || typeof row !== 'object') return [];
+      const record = row as Record<string, unknown>;
+      const day = typeof record.calendar_date === 'string' ? record.calendar_date.slice(0, 10) : '';
+      const value = typeof record.vo2_max === 'number' ? record.vo2_max : Number(record.vo2_max);
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(day) || !Number.isFinite(value)) return [];
+      return [{ day, value }];
+    });
+  } catch {
+    return [];
+  }
+}
 
 type NutritionFilter = PromiseLike<NutritionResult> & {
   eq(column: string, value: string): NutritionFilter;
@@ -96,6 +129,10 @@ function settingsFromRow(row: unknown): NutritionSettings {
     shareQuality: record.share_quality === true,
     shareProgress: record.share_progress === true,
     goal: typeof record.goal === 'string' && isNutritionGoal(record.goal) ? record.goal : null,
+    fitnessGoal: typeof record.fitness_goal === 'string' && isFitnessGoal(record.fitness_goal) ? record.fitness_goal : null,
+    competitionCut: record.competition_cut === true,
+    competitionCutAt: typeof record.competition_cut_at === 'string' ? record.competition_cut_at : null,
+    competitionCutVersion: typeof record.competition_cut_version === 'string' ? record.competition_cut_version : null,
     goalAge: age == null ? null : Math.round(age),
     goalSex: typeof record.goal_sex === 'string' && isNutritionSex(record.goal_sex) ? record.goal_sex : null,
     proteinTarget: optionalNumber(record.protein_target_g, 0, 700),
@@ -163,7 +200,7 @@ export async function loadNutritionLines(
   const coach = coachConsentAllows(consent);
   const today = londonDay(now);
   const athlete = 'kcal_target, hide_calories, share_food_diary, share_calories, share_quality, share_progress, goal, goal_age, goal_sex, protein_target_g, carb_target_g, fat_target_g, goal_phase, weight_class_kg, activity_energy_kcal, share_goal, wagon_on, wagon_note, wagon_visible, build, workout_buckets, updated_at';
-  const withTarget = `target_weight_kg, target_on, target_start_kg, ${athlete}`;
+  const withTarget = `target_weight_kg, target_on, target_start_kg, fitness_goal, competition_cut, competition_cut_at, competition_cut_version, ${athlete}`;
   const wide = 'kcal_target, hide_calories, share_food_diary, share_calories, share_quality, share_progress, goal, goal_age, goal_sex, protein_target_g, activity_energy_kcal, share_goal, wagon_on, wagon_note, wagon_visible, build, updated_at';
   const goals = 'kcal_target, hide_calories, share_food_diary, share_calories, share_quality, share_progress, goal, goal_age, goal_sex, protein_target_g, activity_energy_kcal, share_goal, wagon_on, wagon_note, wagon_visible, updated_at';
   const narrow = 'kcal_target, hide_calories, share_food_diary, wagon_on, wagon_note, wagon_visible, updated_at';
@@ -301,5 +338,71 @@ export async function loadNutritionLines(
     bodyFatPct: figures.bodyFatPct,
     waistCm: figures.waistCm,
   }).contextLine;
-  return [progress, fitness, weightRange, ...lines].filter((line): line is string => Boolean(line));
+  const heightCm = height != null && Number.isFinite(height) ? height : null;
+  const planSex = settings.goalSex;
+  const cutOn = coach.ai && competitionCutActive({
+    competitionCut: settings.competitionCut,
+    competitionCutAt: settings.competitionCutAt,
+    targetOn: settings.targetOn,
+    age: settings.goalAge,
+    today,
+  });
+  const weightPlan = latest && settings.targetWeightKg != null && settings.targetOn
+    ? buildDailyTargets({
+      currentKg: latest.kg,
+      targetKg: settings.targetWeightKg,
+      targetOn: settings.targetOn,
+      today,
+      heightCm,
+      age: settings.goalAge,
+      sex: planSex,
+      activeEnergyKcal: settings.activityEnergyKcal,
+      startKg: null,
+      startDay: null,
+      competitionCut: cutOn,
+    })
+    : null;
+  const weightKg = coach.health && latest && latest.kg >= 30 ? latest.kg : null;
+  const brief = coach.ai
+    ? nutritionBriefFromLogs({
+      today,
+      logs: logs.map((log) => ({
+        eatenOn: log.eatenOn,
+        meal: log.meal,
+        note: log.note,
+        estimated: log.estimated || log.source === 'photo' || log.source === 'text',
+        portion: log.portion,
+        items: log.items.map((item) => ({ name: item.name, kcal: item.kcal, proteinG: item.proteinG })),
+      })),
+      weightKg,
+      calorieTarget: settings.hideCalories ? null : (coach.health ? weightPlan?.targetKcal ?? settings.kcalTarget : settings.kcalTarget),
+      proteinTargetG: settings.proteinTarget,
+      goalProteinG: weightKg != null && settings.goal ? proteinGramsFor(settings.goal, weightKg, settings.build, settings.goalPhase) : null,
+      hideCalories: settings.hideCalories,
+    })
+    : null;
+  const review = brief ? nutritionReviewLines(brief) : [];
+  const mealInput = brief ? nutritionInputLines(brief) : [];
+  const fitnessAim = coach.ai ? resolvedFitnessGoal(settings) : null;
+  const garminVo2 = coach.health ? await loadGarminRunningVo2(userClient, profile.id) : [];
+  const currentVo2 = currentVo2Max({ today, garmin: garminVo2, samples: readSamples });
+  const latestVo2 = currentVo2?.value ?? null;
+  const vo2Reason = fitnessAim && coach.health
+    ? vo2TargetReason({
+      age: settings.goalAge,
+      sex: planSex,
+      goal: fitnessAim,
+      current: latestVo2,
+      today,
+      targetOn: settings.targetOn,
+    })
+    : null;
+  const vo2Reading = currentVo2 ? currentVo2Line(currentVo2) : '';
+  const vo2TargetLine = vo2Reason ? `VO2 max target ${[...vo2Reason.lines, vo2Reason.caption].join(' ')}` : '';
+  const vo2Line = [vo2Reading, vo2TargetLine].filter(Boolean).join(' ');
+  const losing = settings.goal === 'lose_weight' || settings.goal === 'lose_fat_build_muscle';
+  const fitnessLines = fitnessAim
+    ? [[`Fitness goal: ${FITNESS_GOAL_LABEL[fitnessAim]}.`, vo2Line].filter(Boolean).join(' '), fuelTradeOffLine(losing, fitnessAim)].filter((line): line is string => Boolean(line))
+    : [];
+  return [...review, ...mealInput, ...fitnessLines, cutOn ? COMPETITION_CUT_RULES : null, progress, fitness, weightRange, ...lines].filter((line): line is string => Boolean(line));
 }

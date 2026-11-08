@@ -5,6 +5,7 @@ import { forgetGarminAccount, type GarminDb } from '../_shared/garmin.ts';
 
 const PHOTO_BUCKET = 'progress-photos';
 const GRATITUDE_BUCKET = 'gratitude-photos';
+const GOAL_PROGRESS_BUCKET = 'goal-progress-photos';
 const VISION_BUCKET = 'vision-board';
 const PROFILE_BUCKET = 'profile-photos';
 const BUDDY_BUCKET = 'buddy-photos';
@@ -31,6 +32,8 @@ Deno.serve(async (req) => {
   if (storageError) return json({ ok: false, code: 'storage', message: storageError }, 500);
   const diaryPhotos = await removeGratitudePhotos(admin, userData.user.id);
   if (diaryPhotos) return json({ ok: false, code: 'storage', message: diaryPhotos }, 500);
+  const goalPhotos = await removeOwnerFolder(admin, GOAL_PROGRESS_BUCKET, userData.user.id);
+  if (goalPhotos) return json({ ok: false, code: 'storage', message: goalPhotos }, 500);
   const visionPhotos = await removeVisionPhotos(admin, userData.user.id);
   if (visionPhotos) return json({ ok: false, code: 'storage', message: visionPhotos }, 500);
   const profilePhotos = await removeProfilePhotos(admin, userData.user.id);

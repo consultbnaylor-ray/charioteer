@@ -1,11 +1,18 @@
+import { readFileSync } from 'node:fs';
+
 import { describe, expect, it } from 'vitest';
 
 import { defaultNutritionSettings, nutritionContextLines, suggestGoalTargets } from '@/domain/nutrition';
 import {
+  COMPETITION_CUT_NEED_AGE,
+  COMPETITION_CUT_RULES,
+  COMPETITION_CUT_TOO_LONG,
+  COMPETITION_CUT_UNDER_18,
   MAX_WEEKLY_KG,
   TARGET_BELOW_HEALTHY,
   TARGET_DATE_FAST,
   TARGET_NOT_ENOUGH,
+  competitionCutActive,
   plannedWeeklyChangeKg,
   reviewTargetWeight,
   safeWeeklyChangeKg,
@@ -25,6 +32,43 @@ describe('target weight', () => {
     expect(safeWeeklyChangeKg(70)).toBeLessThanOrEqual(MAX_WEEKLY_KG);
     expect(safeWeeklyChangeKg(40)).toBe(0.4);
     expect(plannedWeeklyChangeKg(90)).toBe(0.25);
+  });
+
+  it('rewrites a 3 kg loss in 14 days to the safe pace unless a competition cut is accepted', () => {
+    const today = '2026-11-03';
+    const soon = '2026-11-17';
+    const plain = reviewTargetWeight({ currentKg: 80, heightCm: 180, targetKg: 77, targetOn: soon, today });
+    expect(plain.ok).toBe(true);
+    if (!plain.ok) return;
+    expect(plain.fast).toBe(true);
+    expect(plain.paced).toBe(true);
+    expect(plain.targetOn).not.toBe(soon);
+    expect(plain.note).toBe(TARGET_DATE_FAST);
+    const missingAge = reviewTargetWeight({ currentKg: 80, heightCm: 180, targetKg: 77, targetOn: soon, today, competitionCut: true, age: null });
+    expect(missingAge.ok).toBe(false);
+    if (!missingAge.ok) expect(missingAge.note).toBe(COMPETITION_CUT_NEED_AGE);
+    const child = reviewTargetWeight({ currentKg: 80, heightCm: 180, targetKg: 77, targetOn: soon, today, competitionCut: true, age: 17 });
+    expect(child.ok).toBe(false);
+    if (!child.ok) expect(child.note).toBe(COMPETITION_CUT_UNDER_18);
+    const long = reviewTargetWeight({ currentKg: 80, heightCm: 180, targetKg: 74, targetOn: '2026-12-20', today, competitionCut: true, age: 28 });
+    expect(long.ok).toBe(false);
+    if (!long.ok) expect(long.note).toBe(COMPETITION_CUT_TOO_LONG);
+    const cut = reviewTargetWeight({ currentKg: 80, heightCm: 180, targetKg: 77, targetOn: soon, today, competitionCut: true, age: 28 });
+    expect(cut.ok).toBe(true);
+    if (!cut.ok) return;
+    expect(cut.paced).toBe(false);
+    expect(cut.targetOn).toBe(soon);
+    expect(cut.note).toBe(COMPETITION_CUT_RULES);
+    expect(readFileSync('src/ui/TargetWeightGoal.tsx', 'utf8')).toContain('Competition weight cut');
+    expect(readFileSync('supabase/migrations/20261103170000_competition_weight_cut.sql', 'utf8')).toContain('competition_cut_at');
+    expect(readFileSync('supabase/migrations/20261103170000_competition_weight_cut.sql', 'utf8')).not.toContain('create policy');
+    expect(competitionCutActive({ competitionCut: true, competitionCutAt: '2026-11-03T12:00:00.000Z', targetOn: soon, age: 28, today: soon })).toBe(true);
+    expect(competitionCutActive({ competitionCut: true, competitionCutAt: '2026-11-03T12:00:00.000Z', targetOn: soon, age: 28, today: '2026-11-18' })).toBe(false);
+    expect(competitionCutActive({ competitionCut: true, competitionCutAt: '2026-10-01T12:00:00.000Z', targetOn: '2026-11-20', age: 28, today })).toBe(false);
+    expect(competitionCutActive({ competitionCut: true, competitionCutAt: today, targetOn: soon, age: null, today })).toBe(false);
+    expect(competitionCutActive({ competitionCut: true, competitionCutAt: today, targetOn: soon, age: 17, today })).toBe(false);
+    expect(readFileSync('src/ui/TargetWeightGoal.tsx', 'utf8')).toContain('I have read this and I accept it');
+    expect(readFileSync('supabase/functions/_shared/healthPlan.ts', 'utf8')).toContain('eat and drink again after weigh-in');
   });
 
   it('moves a too-soon date out to the safe week and leaves a later date', () => {

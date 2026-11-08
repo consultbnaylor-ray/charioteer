@@ -17,6 +17,7 @@ import { quoteCredit, quoteOfTheDay } from '@/domain/stoicQuotes';
 import { VISION_EMPTY_STATEMENT } from '@/domain/visionBoard';
 import { countSplit, drinkFreeFigure, soberFigure } from '@/domain/measureFigures';
 import { daysUntil, drinkFreeThisWeek, showsSoberRecord, SUDDEN_STOP_WARNING, toggleDrinkFreeDay } from '@/domain/stage';
+import { AiCreditLine } from '@/ui/AiCreditLine';
 import { CheckInWeek } from '@/ui/CheckInWeek';
 import { MeasureRingView, MeasureSplitView } from '@/ui/MeasuredFigure';
 import { IconLabel } from '@/ui/statIcons';
@@ -29,6 +30,7 @@ import { InPlainWords, QuoteWords } from '@/ui/InPlainWords';
 import { usePendingPress } from '@/ui/pendingAction';
 import { Button, Card, EditMark, EditSheet, ErrorNote, Field, Screen, T } from '@/ui/ui';
 import { ScrollTarget } from '@/ui/ScrollTarget';
+import { DailyTargets } from '@/ui/DailyTargets';
 import { YourGoal } from '@/ui/YourGoal';
 import { OutingInProgressBanner } from '@/ui/OutingInProgressBanner';
 import { WalkThisOff } from '@/ui/WalkThisOff';
@@ -224,9 +226,11 @@ export default function Home() {
       )}
       </ScrollTarget>
       <YourGoal place="today" />
+      <AiCreditLine />
+      <DailyTargets />
       <WalkThisOff place="today" />
-      <Card accessibilityLabel="Open Stats" onPress={() => router.push('/stats' as never)}>
-        <T variant="label">Stats</T>
+      <Card accessibilityLabel="Open Health Stats" onPress={() => router.push('/health' as never)}>
+        <T variant="label">Health Stats</T>
         <T>A plain look at sober days, check-ins, food, and the rest.</T>
       </Card>
       <Card featured>
@@ -284,7 +288,7 @@ export default function Home() {
       <Card>
         <IconLabel name="pulse">Health Stats</IconLabel>
         {healthHeadlines.length === 0 ? (
-          <T variant="muted">Not enough readings yet to compare this week with the one before.</T>
+          <T variant="muted">Not enough readings yet to compare the last 7 days with the 7 before.</T>
         ) : (
           healthHeadlines.map((line) => <T key={line}>{line}</T>)
         )}

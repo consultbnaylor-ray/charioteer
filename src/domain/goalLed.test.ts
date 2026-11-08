@@ -315,10 +315,9 @@ describe('goal led summary', () => {
 
   it('puts the same check on Today and Stats, and ties the plan and Thumos to the goal', () => {
     expect(readFileSync('src/app/(main)/home.tsx', 'utf8')).toContain('<YourGoal place="today" />');
-    expect(readFileSync('src/app/(main)/stats.tsx', 'utf8')).toContain('<YourGoal place="stats" />');
+    expect(readFileSync('src/app/(main)/health.tsx', 'utf8')).toContain('<YourGoal place="stats" />');
     expect(readFileSync('src/app/(main)/health-plan.tsx', 'utf8')).toContain('<YourGoal place="plan" />');
     expect(readFileSync('src/ui/YourGoal.tsx', 'utf8')).toContain('towardGoal(view.name)');
-    expect(readFileSync('src/app/(main)/stats.tsx', 'utf8')).toContain('<GoalLine />');
     expect(readFileSync('src/app/(main)/health.tsx', 'utf8')).toContain('<GoalLine />');
     const goalCard = readFileSync('src/ui/YourGoal.tsx', 'utf8');
     expect(goalCard).toContain('<ProgressRing');

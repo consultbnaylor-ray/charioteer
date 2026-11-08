@@ -9,6 +9,7 @@ import {
   CONFIRM_EMAIL_MESSAGE,
   EMAIL_TAKEN_MESSAGE,
   OFFLINE_MESSAGE,
+  noteServerReached,
   RESET_NEEDS_EMAIL,
   SIGN_IN_FIRST,
   UserFacingError,
@@ -17,13 +18,14 @@ import {
   isTransientNetworkError,
 } from '@/domain/errors';
 import { omitSharedLocation } from '@/domain/sharedPayload';
+import { parseEntitlementOverride } from '@/domain/entitlementOverride';
 import { subscriptionRecordFromDb } from '@/domain/subscription';
 import { stripJpegBase64, stripJpegLocation } from '@/domain/photoLocation';
 import { chunkHealthRows } from '@/domain/healthUpload';
 import { rejectRouteCoordinates } from '@/domain/workoutRoute';
 import { assertRouteFindingAllowed } from '@/data/routeConsentStore';
 import { calmRouteMessage, explainRouteFailure, parseRoutePlaces, parseRoutePlan, retryRouteInvoke, routeCoordinate, routeInvokeHeaders, type RoutePlace, type RoutePlan, type RoutePlanInput } from '@/domain/findRoute';
-import { gratitudeLineFromSharedCaption, type SharedPhotoCard } from '@/domain/sharedPhotos';
+import { buddyPhotoCaption, gratitudeLineFromSharedCaption, type SharedPhotoCard } from '@/domain/sharedPhotos';
 import { liveOutdoorRouteInsert, outdoorRouteFromDraft, outdoorRouteFromRow, outdoorRouteInsert, outdoorRouteRename, outdoorRouteReplace, routeGeometryStillRequired, routeShapeRejected, routeTableMissing, routeTitleOf, type OutdoorRouteDraft } from '@/domain/outdoorRoute';
 import { ROUTE_NEEDS_NAME, ROUTE_UPDATE_GRANT_LINE } from '@/domain/savedRoute';
 import { GARMIN_PERMISSION, readGarminRefreshBody } from '@/domain/healthRefresh';
@@ -89,7 +91,6 @@ import {
   parseSharedNutrition,
   parseWaistCm,
   parseWorkoutBuckets,
-  samplePhotoMeal,
   storedMealInstant,
   type BodyCompositionReading,
   type FoodItem,
@@ -98,6 +99,11 @@ import {
   type NutritionSettings,
 } from '@/domain/nutrition';
 import { PLAN_DISCLAIMER, healthPlanFromStored, normaliseTrainingSchedule, parseSharedHealthPlan, trainingScheduleFromRow, type HealthPlan, type TrainingSchedule } from '@/domain/healthPlan';
+import { coerceAnalysisSections } from '@/domain/statsAnalysis';
+import { isFitnessGoal } from '@/domain/fitnessGoal';
+import { nutritionAimChanged } from '@/domain/targetWeight';
+import { GOAL_PROGRESS_BUCKET, GOAL_PROGRESS_MAX_BYTES, GOAL_PROGRESS_SIGNED_URL_SECONDS, goalProgressObjectPath, goalProgressPhotosFromRows, goalProgressStoragePath, withGoalProgressPreviews } from '@/domain/goalProgress';
+import { workoutFeelingsFromRows, type WorkoutFeeling } from '@/domain/workoutFeel';
 import { plannedEffortToDb, plannedSessionFromDraft, plannedSessionFromRow, plannedSessionWrite, type PlannedSession, type PlannedSessionDraft } from '@/domain/plannedSession';
 import { parseBuddyLinkPass, parseBuddyList, parseBuddyPreview, parseBuddyShare, type BuddyLinkPass, type BuddyList, type BuddyScope, type BuddyShareView } from '@/domain/buddies';
 import { avatarPhotoIdFromPath, memberDisplayName } from '@/domain/connections';
@@ -155,6 +161,7 @@ import {
   type SessionTicket,
 } from '@/domain/edgeRetry';
 import { clientAppBuild, clientErrorRecord } from '@/domain/clientError';
+import { MealEstimateError, mealEstimateCategoryFromStatus } from '@/domain/mealEstimate';
 import { resolveSignedInSession } from '@/domain/liveSession';
 import { aiGateFromBody, publishAiGate } from '@/domain/aiGate';
 import { rememberCoachUsage } from '@/domain/coachUsage';
@@ -242,6 +249,8 @@ function emptySnapshot(): AppSnapshot {
     communityPhotos: [],
     profilePhotos: [],
     gratitude: [],
+    goalProgressPhotos: [],
+    workoutFeelings: [],
     visionItems: [],
     sharing: defaultProfileSharing(),
     savedQuotes: [],
@@ -592,7 +601,10 @@ export class SupabaseRepository implements Repository {
           return session ? [session] : [];
         }),
       outdoorRoutes: await this.loadOutdoorRoutes(userId),
+      goalProgressPhotos: await this.loadGoalProgressPhotos(userId),
+      workoutFeelings: await this.loadWorkoutFeelings(userId),
     });
+    noteServerReached();
   }
 
   /** Signs the paths already on the snapshot and writes only the new preview URLs. */
@@ -603,7 +615,11 @@ export class SupabaseRepository implements Repository {
     const mealPaths = currentPaths.foodLogs.flatMap((log) => (
       log.previewUrl ? [foodPhotoStoragePath(log.userId, log.id)] : []
     ));
-    const [progress, profile, gratitude, vision, meals] = await Promise.all([
+    const goalPaths = (currentPaths.goalProgressPhotos ?? []).flatMap((photo) => {
+      const path = goalProgressObjectPath(photo.storagePath);
+      return path ? [path] : [];
+    });
+    const [progress, profile, gratitude, vision, meals, goalProgress] = await Promise.all([
       this.signedUrlMap(PROGRESS_BUCKET, currentPaths.progressPhotos.map((photo) => photo.storagePath), PROGRESS_SIGNED_URL_SECONDS),
       this.signedUrlMap(PROFILE_PHOTO_BUCKET, profilePhotoSignPaths(currentPaths.profilePhotos), PROFILE_SIGNED_URL_SECONDS),
       this.signedUrlMap(
@@ -613,13 +629,15 @@ export class SupabaseRepository implements Repository {
       ),
       this.signedUrlMap(VISION_BUCKET, currentPaths.visionItems.map((item) => item.storagePath), VISION_SIGNED_URL_SECONDS),
       this.signedUrlMap(FOOD_BUCKET, mealPaths, OWNER_PHOTO_URL_SECONDS),
+      this.signedUrlMap(GOAL_PROGRESS_BUCKET, goalPaths, GOAL_PROGRESS_SIGNED_URL_SECONDS),
     ]);
     const wanted = currentPaths.progressPhotos.length
       + currentPaths.profilePhotos.length
       + currentPaths.gratitude.reduce((sum, entry) => sum + entry.photos.length, 0)
       + currentPaths.visionItems.length
-      + mealPaths.length;
-    const signedCount = progress.size + profile.size + gratitude.size + vision.size + meals.size;
+      + mealPaths.length
+      + goalPaths.length;
+    const signedCount = progress.size + profile.size + gratitude.size + vision.size + meals.size + goalProgress.size;
     if (wanted === 0 || signedCount > 0) this.ownerPhotosSignedAt = Date.now();
     const latest = this.snapshot;
     const progressPhotos = withSignedPreviewUrls(latest.progressPhotos, progress);
@@ -627,12 +645,14 @@ export class SupabaseRepository implements Repository {
     const gratitudeEntries = withSignedGratitudePhotos(latest.gratitude, gratitude);
     const visionItems = withSignedPreviewUrls(latest.visionItems, vision);
     const foodLogs = withSignedFoodPhotos(latest.foodLogs, meals);
+    const goalProgressPhotos = withGoalProgressPreviews(latest.goalProgressPhotos ?? [], goalProgress);
     if (
       progressPhotos === latest.progressPhotos
       && profilePhotos === latest.profilePhotos
       && gratitudeEntries === latest.gratitude
       && visionItems === latest.visionItems
       && foodLogs === latest.foodLogs
+      && goalProgressPhotos === (latest.goalProgressPhotos ?? [])
     ) return;
     this.emit({
       ...latest,
@@ -641,6 +661,7 @@ export class SupabaseRepository implements Repository {
       gratitude: gratitudeEntries,
       visionItems,
       foodLogs,
+      goalProgressPhotos,
     });
   }
 
@@ -665,9 +686,13 @@ export class SupabaseRepository implements Repository {
         return null;
       }
       const signedByPath = new Map<string, string>();
-      for (const item of signed.data ?? []) {
-        if (item.path && item.signedUrl) signedByPath.set(item.path, item.signedUrl);
-      }
+      (signed.data ?? []).forEach((item, index) => {
+        const url = item?.signedUrl;
+        if (!url) return;
+        if (item.path) signedByPath.set(item.path, url);
+        const asked = paths[index];
+        if (asked) signedByPath.set(asked, url);
+      });
       return signedByPath;
     } catch (error) {
       console.error(error);
@@ -702,6 +727,7 @@ export class SupabaseRepository implements Repository {
     if (bucket === GRATITUDE_BUCKET) return GRATITUDE_SIGNED_URL_SECONDS;
     if (bucket === VISION_BUCKET) return VISION_SIGNED_URL_SECONDS;
     if (bucket === FOOD_BUCKET) return OWNER_PHOTO_URL_SECONDS;
+    if (bucket === GOAL_PROGRESS_BUCKET) return GOAL_PROGRESS_SIGNED_URL_SECONDS;
     return null;
   }
 
@@ -745,6 +771,11 @@ export class SupabaseRepository implements Repository {
     if (bucket === FOOD_BUCKET) {
       const foodLogs = withSignedFoodPhotos(latest.foodLogs, map);
       if (foodLogs !== latest.foodLogs) this.emit({ ...latest, foodLogs });
+      return;
+    }
+    if (bucket === GOAL_PROGRESS_BUCKET) {
+      const goalProgressPhotos = withGoalProgressPreviews(latest.goalProgressPhotos ?? [], map);
+      if (goalProgressPhotos !== (latest.goalProgressPhotos ?? [])) this.emit({ ...latest, goalProgressPhotos });
     }
   }
 
@@ -1671,21 +1702,29 @@ export class SupabaseRepository implements Repository {
    * "Sign in first" is only for a missing session, not a failed refresh.
    */
   private async signedIn(): Promise<{ userId: string; accessToken: string }> {
-    const resolved = await resolveSignedInSession({
-      read: async () => {
-        const { data, error } = await this.client.auth.getSession();
-        return { ticket: this.sessionTicket(data.session), error };
-      },
-      refresh: async () => {
-        const { data, error } = await this.client.auth.refreshSession();
-        return { ticket: this.sessionTicket(data.session), error };
-      },
+    const readSession = async () => {
+      const { data, error } = await this.client.auth.getSession();
+      return { ticket: this.sessionTicket(data.session), error };
+    };
+    const refreshSession = async () => {
+      const { data, error } = await this.client.auth.refreshSession();
+      return { ticket: this.sessionTicket(data.session), error };
+    };
+    const ask = () => resolveSignedInSession({
+      read: readSession,
+      refresh: refreshSession,
       knownUserId: this.snapshot.session?.userId ?? this.snapshot.profile?.id ?? null,
     });
+    let resolved = await ask();
+    if ('failure' in resolved && resolved.failure === 'connection') {
+      await new Promise((resolve) => setTimeout(resolve, 700));
+      resolved = await ask();
+    }
     if ('failure' in resolved) {
       if (resolved.failure === 'connection') throw new UserFacingError(OFFLINE_MESSAGE, 'offline');
       throw new Error(SIGN_IN_FIRST);
     }
+    noteServerReached();
     return resolved;
   }
 
@@ -1745,7 +1784,7 @@ export class SupabaseRepository implements Repository {
   private async callEdge(
     name: string,
     body: unknown,
-    options?: { ai?: boolean; timeoutMs?: number },
+    options?: { ai?: boolean; timeoutMs?: number; requestId?: string },
   ): Promise<{ status: number; data: unknown }> {
     rejectRouteCoordinates(body);
     const token = options?.ai ? await this.sessionForAiCall() : await this.accessToken();
@@ -1764,6 +1803,7 @@ export class SupabaseRepository implements Repository {
             apikey: this.anonKey,
             'Content-Type': 'application/json',
             Accept: 'application/json',
+            ...(options?.requestId ? { 'X-Request-Id': options.requestId } : {}),
           },
           body: JSON.stringify(body),
           signal: controller?.signal,
@@ -2273,6 +2313,86 @@ export class SupabaseRepository implements Repository {
     await this.refresh();
   }
 
+  private async loadGoalProgressPhotos(userId: string) {
+    const res = await this.client.from('goal_progress_photos').select('id, recorded_on, storage_path, created_at').eq('user_id', userId).order('recorded_on');
+    if (res.error || !res.data) return [];
+    const parsed = goalProgressPhotosFromRows(res.data);
+    const paths = parsed.flatMap((photo) => {
+      const path = goalProgressObjectPath(photo.storagePath);
+      return path ? [path] : [];
+    });
+    const signed = await this.signedUrlMap(GOAL_PROGRESS_BUCKET, paths, GOAL_PROGRESS_SIGNED_URL_SECONDS);
+    return withGoalProgressPreviews(parsed, signed);
+  }
+
+  async addGoalProgressPhoto(bytes: Uint8Array, recordedOn: string): Promise<void> {
+    if (bytes.byteLength > GOAL_PROGRESS_MAX_BYTES) throw new UserFacingError('That photo is still too large.', 'generic');
+    const day = recordedOn.slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) throw new UserFacingError('Could not save that photo.', 'generic');
+    const userId = await this.userId();
+    const photoId = randomId();
+    const path = goalProgressStoragePath(userId, photoId);
+    const body = stripJpegLocation(bytes);
+    const uploaded = await this.client.storage.from(GOAL_PROGRESS_BUCKET).upload(path, body, { contentType: 'image/jpeg', upsert: false });
+    if (uploaded.error) throw asUserFacing(uploaded.error, 'general');
+    const inserted = await this.client.from('goal_progress_photos').insert({
+      id: photoId,
+      user_id: userId,
+      recorded_on: day,
+      storage_path: path,
+    });
+    if (inserted.error) {
+      await this.client.storage.from(GOAL_PROGRESS_BUCKET).remove([path]);
+      throw asUserFacing(inserted.error, 'general');
+    }
+    await this.refresh();
+  }
+
+  private async loadWorkoutFeelings(userId: string): Promise<WorkoutFeeling[]> {
+    const res = await this.client.from('workout_feelings').select('id, recorded_on, workout_key, note, effort, mood').eq('user_id', userId);
+    if (res.error) {
+      if (missingRelation(res.error.message)) return [];
+      console.error(res.error.message);
+      return this.snapshot.workoutFeelings ?? [];
+    }
+    return workoutFeelingsFromRows(res.data);
+  }
+
+  async saveWorkoutFeeling(input: { recordedOn: string; workoutKey: string; note: string; effort: number | null; mood: number | null }): Promise<void> {
+    const day = input.recordedOn.slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) throw new UserFacingError('Could not save that note.', 'generic');
+    const userId = await this.userId();
+    const row = {
+      user_id: userId,
+      recorded_on: day,
+      workout_key: input.workoutKey.slice(0, 80),
+      note: input.note.trim().slice(0, 500),
+      effort: input.effort,
+      mood: input.mood,
+      updated_at: new Date().toISOString(),
+    };
+    const saved = await this.client.from('workout_feelings').upsert(row, { onConflict: 'user_id,recorded_on,workout_key' });
+    if (saved.error) {
+      if (missingRelation(saved.error.message)) throw new UserFacingError('That diary is not on the server yet.', 'generic');
+      throw asUserFacing(saved.error, 'general');
+    }
+    noteServerReached();
+    await this.refresh();
+  }
+
+  async deleteGoalProgressPhoto(id: string): Promise<void> {
+    const userId = await this.userId();
+    const known = (this.snapshot.goalProgressPhotos ?? []).find((photo) => photo.id === id);
+    const path = known?.storagePath && known.storagePath.startsWith(`${userId}/`) && !known.storagePath.includes('..')
+      ? known.storagePath
+      : goalProgressStoragePath(userId, id);
+    const removed = await this.client.storage.from(GOAL_PROGRESS_BUCKET).remove([path]);
+    if (removed.error && !/not found|bucket not found/i.test(removed.error.message)) throw asUserFacing(removed.error, 'general');
+    const { error } = await this.client.from('goal_progress_photos').delete().eq('id', id).eq('user_id', userId);
+    if (error && !/goal_progress_photos/i.test(error.message)) throw asUserFacing(error, 'general');
+    await this.refresh();
+  }
+
   async deleteGratitudePhoto(id: string): Promise<void> {
     const userId = await this.userId();
     const known = this.snapshot.gratitude.flatMap((entry) => entry.photos).find((photo) => photo.id === id);
@@ -2422,8 +2542,11 @@ export class SupabaseRepository implements Repository {
 
   /** Older databases lack the later share and goal columns. A missing column stays off. */
   private async nutritionSettingsRow(userId: string) {
-    const athlete = 'kcal_target, hide_calories, share_food_diary, share_calories, share_quality, share_progress, goal, goal_age, goal_sex, protein_target_g, carb_target_g, fat_target_g, goal_phase, weight_class_kg, activity_energy_kcal, share_goal, wagon_on, wagon_note, wagon_visible, build, workout_buckets, updated_at';
+    const athlete = 'kcal_target, hide_calories, share_food_diary, share_calories, share_quality, share_progress, goal, fitness_goal, goal_age, goal_sex, protein_target_g, carb_target_g, fat_target_g, goal_phase, weight_class_kg, activity_energy_kcal, share_goal, wagon_on, wagon_note, wagon_visible, build, workout_buckets, updated_at';
     const withTarget = `target_weight_kg, target_on, target_start_kg, ${athlete}`;
+    const withCut = `competition_cut, competition_cut_at, competition_cut_version, ${withTarget}`;
+    const cut = await this.client.from('nutrition_settings').select(withCut).eq('user_id', userId).maybeSingle();
+    if (!cut.error) return cut;
     const targeted = await this.client.from('nutrition_settings').select(withTarget).eq('user_id', userId).maybeSingle();
     if (!targeted.error) return targeted;
     const widened = await this.client.from('nutrition_settings').select(athlete).eq('user_id', userId).maybeSingle();
@@ -2492,31 +2615,57 @@ export class SupabaseRepository implements Repository {
     };
   }
 
+  private noteMeal(category: import('@/domain/mealEstimate').MealEstimateCategory): void {
+    void this.logClientError('estimate-meal', `meal: ${category}`, clientAppBuild({
+      buildNumber: Constants.expoConfig?.ios?.buildNumber,
+      version: Constants.expoConfig?.version,
+    }));
+  }
+
   async estimateMeal(input: { text?: string; imageBase64?: string }): Promise<MealEstimate> {
     const text = input.text?.trim() ?? '';
-    const local = (): MealEstimate => ({ items: text ? estimateFromText(text) : samplePhotoMeal(), source: 'local' });
+    const imageBase64 = input.imageBase64 ? stripJpegBase64(input.imageBase64) : '';
+    const photo = imageBase64.length > 0;
+    const requestId = randomId();
     try {
-      const imageBase64 = input.imageBase64 ? stripJpegBase64(input.imageBase64) : '';
       const invoked = await this.callEdge('estimate-meal', { text, imageBase64 }, {
         ai: true,
         timeoutMs: ESTIMATE_CLIENT_TIMEOUT_MS,
+        requestId,
       });
       const data = invoked.data as { ok?: boolean; items?: unknown; source?: string; code?: string; message?: string } | null;
-      if (data?.code === 'consent') return local();
-      if (invoked.status === 401 || invoked.status >= 500) {
-        throw this.aiFailure('meal', 'estimate-meal', new Error('Meal estimate did not answer.'), invoked.status);
+      const category = mealEstimateCategoryFromStatus(invoked.status, data?.code);
+      if (category === 'consent') {
+        throw new MealEstimateError('consent', typeof data?.message === 'string' ? data.message : undefined);
+      }
+      if (category) {
+        this.noteMeal(category);
+        const offered = typeof data?.message === 'string' ? data.message.trim() : '';
+        const serverMessage = category === 'credits' && offered.length > 0 && offered.length < 180 && !/jpeg|base64|bearer|eyJ/i.test(offered)
+          ? offered
+          : undefined;
+        throw new MealEstimateError(category, serverMessage);
       }
       const items = parseMealEstimate({ items: data?.items });
-      if (invoked.status < 400 && data?.ok === true && items) {
-        return { items, source: data.source === 'model' ? 'model' : 'local' };
+      const model = data?.source === 'model';
+      if (invoked.status < 400 && data?.ok === true && items && (!photo || model)) {
+        return { items, source: model ? 'model' : 'local' };
       }
+      if (!photo) {
+        const typed = estimateFromText(text);
+        if (typed.length) return { items: typed, source: 'local' };
+      }
+      this.noteMeal(photo ? 'unreadable' : 'provider');
+      throw new MealEstimateError(photo ? 'unreadable' : 'provider');
     } catch (error) {
+      if (error instanceof MealEstimateError) throw error;
       if (error instanceof UserFacingError) throw error;
-      throw this.aiFailure('meal', 'estimate-meal', error);
+      const kind = error instanceof EdgeSessionError
+        ? (error.kind === 'signed-out' ? 'auth' : 'network')
+        : classifyEdgeError(error) === 'timeout' ? 'timeout' : 'network';
+      this.noteMeal(kind);
+      throw new MealEstimateError(kind);
     }
-    const fallback = local();
-    if (!fallback.items.length) throw new UserFacingError('Could not read that meal. You can still type it in yourself.', 'generic');
-    return fallback;
   }
 
   async saveFoodLog(input: NewFoodLog): Promise<void> {
@@ -2605,6 +2754,7 @@ export class SupabaseRepository implements Repository {
   }
 
   async setNutritionSettings(settings: NutritionSettings): Promise<void> {
+    const previous = this.snapshot.nutrition;
     const next = canonicalNutrition({ ...settings, updatedAt: new Date().toISOString() });
     const lane = this.saveLane('nutrition', this.snapshot.nutrition, (value) => this.persistNutrition(value));
     if (!lane.dirty) lane.seen(canonicalNutrition(this.snapshot.nutrition));
@@ -2614,6 +2764,12 @@ export class SupabaseRepository implements Repository {
     } catch (error) {
       if (!lane.dirty) this.emit({ ...this.snapshot, nutrition: lane.value });
       throw asUserFacing(error, 'general');
+    }
+    if (!nutritionAimChanged(previous, next)) return;
+    try {
+      await this.refreshHealthPlan(this.snapshot.healthPlan?.limits ?? '', { localOnly: true });
+    } catch {
+      // The goal is saved. Refresh plan can write it again.
     }
   }
 
@@ -2628,6 +2784,10 @@ export class SupabaseRepository implements Repository {
       share_quality: settings.shareQuality,
       share_progress: settings.shareProgress,
       goal: settings.goal,
+      fitness_goal: settings.fitnessGoal,
+      competition_cut: settings.competitionCut === true,
+      competition_cut_at: settings.competitionCutAt,
+      competition_cut_version: settings.competitionCutVersion,
       goal_age: settings.goalAge,
       goal_sex: settings.goalSex,
       protein_target_g: settings.proteinTarget,
@@ -2678,6 +2838,22 @@ export class SupabaseRepository implements Repository {
     if (error && targetUnset && /target_weight_kg|target_on|target_start_kg/i.test(error.message)) {
       const { target_weight_kg: _target, target_on: _on, target_start_kg: _start, ...withoutTarget } = payload;
       payload = withoutTarget;
+      ({ error } = await this.client.from('nutrition_settings').upsert(payload));
+    }
+    if (error && /competition_cut/i.test(error.message)) {
+      const { competition_cut: _cut, competition_cut_at: _at, competition_cut_version: _version, ...withoutCut } = payload;
+      payload = withoutCut;
+      ({ error } = await this.client.from('nutrition_settings').upsert(payload));
+      if (!error && settings.competitionCut) {
+        throw new UserFacingError('That competition cut is not on the server yet.', 'generic');
+      }
+    }
+    if (error && /fitness_goal/i.test(error.message)) {
+      if (settings.fitnessGoal && settings.fitnessGoal !== 'normal') {
+        throw new UserFacingError('That fitness goal is not on the server yet.', 'generic');
+      }
+      const { fitness_goal: _fitness, ...withoutFitness } = payload;
+      payload = withoutFitness;
       ({ error } = await this.client.from('nutrition_settings').upsert(payload));
     }
     if (error && Object.keys(settings.workoutBuckets).length === 0 && /workout_buckets/i.test(error.message)) {
@@ -3064,14 +3240,40 @@ export class SupabaseRepository implements Repository {
     }
   }
 
-  async refreshHealthPlan(limits: string): Promise<void> {
-    if (!this.snapshot.profile?.consentAi) {
+  async analyseStats(summary: unknown): Promise<{ text: string; sections: import('@/domain/statsAnalysis').AnalysisSection[]; source: 'model' | 'local' }> {
+    if (!this.snapshot.profile?.consentAi || !this.snapshot.profile?.consentHealth) {
+      throw new UserFacingError('An analysis needs the coach and health data switches, because summarised figures are sent to the model.', 'generic');
+    }
+    let invoked: { status: number; data: unknown };
+    try {
+      invoked = await this.callEdge('health-plan', { mode: 'analyse', summary }, { ai: true });
+    } catch (error) {
+      if (error instanceof UserFacingError) throw error;
+      throw this.aiFailure('plan', 'health-plan', error);
+    }
+    const data = invoked.data as { ok?: boolean; code?: string; message?: string; analysis?: unknown; sections?: unknown; source?: unknown } | null;
+    if (data?.code === 'consent' || data?.code === 'personal_data' || data?.code === 'summary') {
+      throw new UserFacingError(data.message || 'Analysis was not sent.', 'generic');
+    }
+    const text = typeof data?.analysis === 'string' ? data.analysis : '';
+    const sections = coerceAnalysisSections(data?.sections, text);
+    if (invoked.status === 401 || invoked.status >= 500 || data?.ok !== true || sections.length === 0) {
+      throw this.aiFailure('plan', 'health-plan', new Error('Analysis did not answer.'), invoked.status);
+    }
+    return { text: text || sections.map((section) => `${section.title}\n${section.body}`).join('\n\n'), sections, source: data.source === 'model' ? 'model' : 'local' };
+  }
+
+  async refreshHealthPlan(limits: string, options?: { localOnly?: boolean }): Promise<void> {
+    const localOnly = options?.localOnly === true;
+    if (!localOnly && !this.snapshot.profile?.consentAi) {
       throw new UserFacingError('Writing a plan needs the coach consent, because your figures are sent to the model.', 'generic');
     }
     const userId = this.snapshot.session?.userId ?? await this.userId();
     let invoked: { status: number; data: unknown };
     try {
-      invoked = await this.callEdge('health-plan', { limits: limits.trim().slice(0, 280) }, { ai: true });
+      invoked = localOnly
+        ? await this.callEdge('health-plan', { limits: limits.trim().slice(0, 280), localOnly: true })
+        : await this.callEdge('health-plan', { limits: limits.trim().slice(0, 280) }, { ai: true });
     } catch (error) {
       if (error instanceof UserFacingError) throw error;
       throw this.aiFailure('plan', 'health-plan', error);
@@ -3219,7 +3421,7 @@ export class SupabaseRepository implements Repository {
       : statusFirst;
     const dailyFull = 'calendar_date, resting_heart_rate_bpm, average_heart_rate_bpm, min_heart_rate_bpm, max_heart_rate_bpm, moderate_minutes, vigorous_minutes, active_kilocalories, steps, distance_metres, floors_climbed, average_stress_level, body_battery_charged, body_battery_drained, body_battery_highest, body_battery_lowest, step_goal, duration_seconds';
     const dailyWithKcal = 'calendar_date, resting_heart_rate_bpm, average_heart_rate_bpm, moderate_minutes, vigorous_minutes, active_kilocalories';
-    const [dailiesFirst, activities, sleep, metrics, respiration, pulseOx, hrv] = await Promise.all([
+    const [dailiesFirst, activities, sleep, metrics, respiration, pulseOx, hrv, bloodPressure, bodyComp, skinTemp, stress, epochs, healthSnapshot, moveIq, activityDetails] = await Promise.all([
       this.client.from('garmin_dailies').select(dailyFull).order('calendar_date'),
       this.client.from('garmin_activities').select('summary_id, activity_type, activity_name, started_at, duration_seconds, average_heart_rate_bpm, training_effect, anaerobic_effect').order('started_at'),
       this.client.from('garmin_sleep').select('summary_id, calendar_date, duration_seconds, deep_seconds, light_seconds, rem_seconds, awake_seconds, sleep_score').order('calendar_date'),
@@ -3227,6 +3429,14 @@ export class SupabaseRepository implements Repository {
       this.client.from('garmin_respiration').select('summary_id, calendar_date, average_breaths_per_minute, highest_breaths_per_minute, lowest_breaths_per_minute').order('calendar_date'),
       this.client.from('garmin_pulse_ox').select('summary_id, calendar_date, average_spo2, lowest_spo2, highest_spo2').order('calendar_date'),
       this.client.from('garmin_hrv').select('summary_id, calendar_date, last_night_avg_ms, last_night_5min_high_ms').order('calendar_date'),
+      this.client.from('garmin_blood_pressure').select('summary_id, calendar_date, systolic, diastolic, pulse_bpm').order('calendar_date'),
+      this.client.from('garmin_body_comp').select('summary_id, calendar_date, weight_kg, body_fat_pct, bmi, muscle_mass_kg').order('calendar_date'),
+      this.client.from('garmin_skin_temp').select('summary_id, calendar_date, deviation_c').order('calendar_date'),
+      this.client.from('garmin_stress').select('summary_id, calendar_date, average_stress').order('calendar_date'),
+      this.client.from('garmin_epoch').select('summary_id, calendar_date, active_seconds, steps, distance_metres, mean_heart_rate_bpm').order('calendar_date'),
+      this.client.from('garmin_health_snapshot').select('summary_id, calendar_date, heart_rate_bpm, resting_heart_rate_bpm, spo2, respiration, stress').order('calendar_date'),
+      this.client.from('garmin_move_iq').select('summary_id, calendar_date, activity_type, duration_seconds, distance_metres').order('calendar_date'),
+      this.client.from('garmin_activity_detail').select('summary_id, calendar_date, duration_seconds, distance_metres, average_heart_rate_bpm, active_kilocalories').order('calendar_date'),
     ]);
     const dailyNewMissing = dailiesFirst.error && ['steps', 'distance_metres', 'floors_climbed', 'min_heart_rate_bpm', 'max_heart_rate_bpm', 'average_stress_level', 'body_battery_charged', 'body_battery_drained', 'body_battery_highest', 'body_battery_lowest', 'step_goal', 'duration_seconds'].some((column) => missingColumn(dailiesFirst.error?.message ?? '', column));
     const dailiesWithKnown = dailyNewMissing
@@ -3257,6 +3467,14 @@ export class SupabaseRepository implements Repository {
       respiration: respiration.error ? [] : respiration.data,
       pulseOx: pulseOx.error ? [] : pulseOx.data,
       hrv: hrv.error ? [] : hrv.data,
+      bloodPressure: bloodPressure.error ? [] : bloodPressure.data,
+      bodyComp: bodyComp.error ? [] : bodyComp.data,
+      skinTemp: skinTemp.error ? [] : skinTemp.data,
+      stress: stress.error ? [] : stress.data,
+      epochs: epochs.error ? [] : epochs.data,
+      healthSnapshot: healthSnapshot.error ? [] : healthSnapshot.data,
+      moveIq: moveIq.error ? [] : moveIq.data,
+      activityDetails: activityDetails.error ? [] : activityDetails.data,
     });
     const permission = garminPermissionStatus({
       connected: readings.connected,
@@ -3322,6 +3540,24 @@ export class SupabaseRepository implements Repository {
       throw new UserFacingError('Could not open Garmin Connect.', 'generic');
     }
     return url;
+  }
+
+  async loadAiUsageMonth(monthStart: string): Promise<{ coach: number; meal: number; plan: number }> {
+    const totals = { coach: 0, meal: 0, plan: 0 };
+    const { data, error } = await this.client.from('ai_usage').select('kind, count').gte('day', monthStart);
+    if (error || !Array.isArray(data)) return totals;
+    for (const row of data) {
+      const kind = (row as { kind?: unknown }).kind;
+      const count = Number((row as { count?: unknown }).count);
+      if ((kind === 'coach' || kind === 'meal' || kind === 'plan') && Number.isFinite(count)) totals[kind] += count;
+    }
+    return totals;
+  }
+
+  async loadEntitlementOverride(): Promise<import('@/domain/entitlementOverride').EntitlementOverride | null> {
+    const { data, error } = await this.client.from('entitlement_overrides').select('tier, expires_at').maybeSingle();
+    if (error || !data) return null;
+    return parseEntitlementOverride(data as Record<string, unknown>);
   }
 
   async loadOwnSubscription(): Promise<import('@/domain/subscription').SubscriptionRecord | null> {
@@ -3777,18 +4013,18 @@ export class SupabaseRepository implements Repository {
     }
     const rows = Array.isArray(data) ? data as Record<string, unknown>[] : [];
     const names = new Map(this.snapshot.directory.map((card) => [card.id, card.displayName]));
+    const signable = rows.flatMap((row) => {
+      const id = String(row.id ?? '');
+      return row.published !== false && id ? [id] : [];
+    });
+    const signedById = await this.signBuddyPhotos(signable);
     const photos: SharedPhotoCard[] = [];
     for (const row of rows) {
       const id = String(row.id ?? '');
-      const path = typeof row.storagePath === 'string' ? row.storagePath : '';
       const mine = row.mine === true;
       const recipientIds = Array.isArray(row.recipients) ? row.recipients.map((value) => String(value)) : [];
       const ownerId = String(row.ownerId ?? '');
-      let imageUrl: string | null = null;
-      if (path && !path.includes('..') && row.published !== false) {
-        const signed = await this.client.storage.from(BUDDY_PHOTO_BUCKET).createSignedUrl(path, BUDDY_PHOTO_SIGNED_SECONDS);
-        imageUrl = signed.data?.signedUrl ?? null;
-      }
+      const imageUrl = row.published === false ? null : signedById.get(id) ?? null;
       photos.push({
         id,
         mine,
@@ -3808,7 +4044,7 @@ export class SupabaseRepository implements Repository {
     const photoId = randomId();
     const created = await this.client.rpc('create_buddy_photo', {
       photo: photoId,
-      caption: input.caption,
+      caption: buddyPhotoCaption(input.caption),
       recipients: input.buddyIds,
       allow_save: input.allowSave,
     });
@@ -3864,10 +4100,29 @@ export class SupabaseRepository implements Repository {
       throw asUserFacing(error, 'general');
     }
   }
+
+  /**
+   * A short link for a photo this person sent or was sent.
+   * The function checks the share row. The phone does not sign the sender's file itself.
+   */
+  private async signBuddyPhotos(ids: string[]): Promise<Map<string, string>> {
+    const urls = new Map<string, string>();
+    const unique = [...new Set(ids.filter((id) => /^[0-9a-f-]{36}$/i.test(id)))];
+    for (let offset = 0; offset < unique.length; offset += 40) {
+      const invoked = await this.client.functions.invoke('buddy-photo-url', { body: { ids: unique.slice(offset, offset + 40) } });
+      const payload = invoked.data as { ok?: boolean; photos?: { id?: unknown; signed_url?: unknown }[] } | null;
+      if (invoked.error || !payload || payload.ok === false || !Array.isArray(payload.photos)) continue;
+      for (const photo of payload.photos) {
+        if (typeof photo?.id === 'string' && typeof photo.signed_url === 'string' && photo.signed_url.startsWith('https://')) {
+          urls.set(photo.id, photo.signed_url);
+        }
+      }
+    }
+    return urls;
+  }
 }
 
 const BUDDY_PHOTO_BUCKET = 'buddy-photos';
-const BUDDY_PHOTO_SIGNED_SECONDS = 900;
 const SHARED_PHOTOS_TABLE = 'Shared photos need the photo table. It has not been applied.';
 
 function buddyPhotoUnavailable(message: string): boolean {
@@ -4085,6 +4340,10 @@ function nutritionFromRow(row: Row | null): NutritionSettings {
     shareQuality: row.share_quality === true,
     shareProgress: row.share_progress === true,
     goal,
+    fitnessGoal: typeof row.fitness_goal === 'string' && isFitnessGoal(row.fitness_goal) ? row.fitness_goal : null,
+    competitionCut: row.competition_cut === true,
+    competitionCutAt: typeof row.competition_cut_at === 'string' ? row.competition_cut_at : null,
+    competitionCutVersion: typeof row.competition_cut_version === 'string' ? row.competition_cut_version : null,
     goalAge: age == null ? null : Math.round(age),
     goalSex: sex,
     proteinTarget: nutritionNumber(row.protein_target_g, 0, 700),

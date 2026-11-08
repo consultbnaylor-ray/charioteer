@@ -38,6 +38,8 @@ export function ReadingChart({
   aggregate = 'mean',
   bucket,
   accessibilityLabel = 'Chart',
+  title,
+  onSelectDay,
 }: {
   points: readonly ChartPoint[];
   start: string;
@@ -48,6 +50,10 @@ export function ReadingChart({
   aggregate?: ChartAggregate;
   bucket?: ChartBucket;
   accessibilityLabel?: string;
+  /** Name of the series, kept above the latest, minimum, and maximum line. */
+  title?: string;
+  /** Choosing a point can open that day on the page. */
+  onSelectDay?: (day: string) => void;
 }) {
   const theme = useAppTheme();
   const [width, setWidth] = useState(0);
@@ -93,7 +99,10 @@ export function ReadingChart({
         bestDistance = distance;
       }
     }
-    if (best) setChosen(best.day);
+    if (best) {
+      setChosen(best.day);
+      onSelectDay?.(best.day);
+    }
   }
 
   if (!extent) {
@@ -109,6 +118,7 @@ export function ReadingChart({
 
   return (
     <View accessibilityLabel={spoken} style={{ gap: 6, alignSelf: 'stretch' }}>
+      {title ? <T variant="label">{title}</T> : null}
       <T>{summary}</T>
       {yName ? (
         <T style={{ fontSize: 11 * label, lineHeight: 14 * label, color: theme.colors.muted }}>{yName}</T>

@@ -7,6 +7,7 @@ import {
 } from '@/domain/activityMinutes';
 import type { GarminDaily } from '@/domain/garminConnect';
 import { weekdayShort } from '@/domain/healthInsights';
+import { EARLY_DAY_HOUR, londonHour } from '@/domain/statWindow';
 import { chartDayLabel, chartDays } from '@/domain/workoutDay';
 
 /** Garmin intensity minutes: one vigorous minute counts as two. Moderate stays one for one. */
@@ -257,6 +258,59 @@ export function calorieSeries(
   return dailyActivitySeries(endDay, span, apple, garmin, activeCaloriesLabel);
 }
 
+function groupedCount(value: number): string {
+  const rounded = Math.round(value * 10) / 10;
+  if (Number.isInteger(rounded)) return Math.round(rounded).toLocaleString('en-GB');
+  return rounded.toLocaleString('en-GB', { maximumFractionDigits: 1 });
+}
+
+function previousIsoDay(day: string): string {
+  const date = new Date(`${day}T12:00:00Z`);
+  date.setUTCDate(date.getUTCDate() - 1);
+  return date.toISOString().slice(0, 10);
+}
+
+/** Today, yesterday, or a UK weekday date such as "On Tue 3 Nov". */
+export function viewedDayHeading(day: string, today: string, now?: Date): string {
+  if (day === today) {
+    const open = londonHour(now ?? new Date()) < EARLY_DAY_HOUR;
+    return open ? 'Today so far' : 'Today';
+  }
+  if (day === previousIsoDay(today)) return 'Yesterday';
+  return `On ${activityDayName(day)}`;
+}
+
+/**
+ * Day range names the chosen day. Today before 5pm London is "Today so far".
+ * Longer ranges keep the highest day.
+ */
+export function rangeScaleLine(input: {
+  points: readonly { day?: string; value: number; source?: ActivitySource | null }[];
+  unit: string;
+  days: number;
+  cumulative?: boolean;
+  now?: Date;
+  today?: string;
+  textFor?: (value: number) => string;
+}): string | null {
+  if (input.days !== 1) return mostInOneDay(input.points, input.unit);
+  let latest: { day: string; value: number; source: ActivitySource | null } | null = null;
+  for (const point of input.points) {
+    if (!(point.value > 0)) continue;
+    latest = { day: point.day ?? '', value: point.value, source: point.source ?? null };
+  }
+  if (!latest) return null;
+  const today = input.today ?? latest.day;
+  const heading = latest.day ? viewedDayHeading(latest.day, today, input.now) : null;
+  const early = londonHour(input.now ?? new Date()) < EARLY_DAY_HOUR;
+  const head = heading == null
+    ? (input.cumulative && early ? 'Today so far' : 'Today')
+    : (!input.cumulative && heading === 'Today so far' ? 'Today' : heading);
+  const amount = input.textFor ? input.textFor(latest.value) : `${groupedCount(latest.value)} ${input.unit}`.trim();
+  const named = latest.source === 'garmin' ? ` ${GARMIN_SOURCE}` : latest.source === 'apple' ? ` ${APPLE_SOURCE}` : '';
+  return `${head}: ${amount}${named}`;
+}
+
 export function mostInOneDay(points: readonly { value: number; source?: ActivitySource | null }[], unit: string): string | null {
   let best: { value: number; source: ActivitySource | null } | null = null;
   let mixed = false;
@@ -399,6 +453,115 @@ export function garminLatestLines(input: {
   const hrv = [...input.hrv].filter((row) => row.lastNightAvgMs != null).sort((left, right) => left.calendarDate.localeCompare(right.calendarDate)).at(-1);
   if (hrv?.lastNightAvgMs != null) push('Overnight HRV', hrv.calendarDate, String(hrv.lastNightAvgMs), 'ms');
   return lines;
+}
+
+const AXIS_MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'] as const;
+
+/** A phone-width chart, used only to keep neighbouring labels from sitting on each other. */
+const AXIS_CHART_PX = 340;
+const AXIS_CHAR_PX = 5.6;
+
+export type ActivityAxisMark = {
+  index: number;
+  /** Empty when the date is marked with a line but the words would overlap. */
+  label: string;
+  /** Monday on a month chart, or the 1st on a longer chart. */
+  divider: boolean;
+};
+
+/**
+ * Dates under the bars. A week is left to the weekday letters.
+ * Thirty days marks each Monday as `3 Nov`. Longer charts mark the 1st as `Nov`.
+ * The last day is always labelled. A label that would overlap the next one is dropped.
+ */
+export function activityAxisPlan(days: readonly string[]): ActivityAxisMark[] {
+  const count = days.length;
+  if (count <= 7) return [];
+  const byMonth = count > 31;
+  const marks: ActivityAxisMark[] = [];
+  days.forEach((day, index) => {
+    const parts = axisDayParts(day);
+    if (!parts) return;
+    const last = index === count - 1;
+    const start = byMonth ? parts.date === 1 : parts.weekday === 1;
+    if (!start && !last) return;
+    const label = byMonth && parts.date === 1
+      ? AXIS_MONTHS[parts.month - 1]
+      : `${parts.date} ${AXIS_MONTHS[parts.month - 1]}`;
+    marks.push({ index, label, divider: start });
+  });
+  const visible = new Set(dropOverlappingAxisMarks(marks, count).map((mark) => mark.index));
+  return marks.map((mark) => (visible.has(mark.index) ? mark : { ...mark, label: '' }));
+}
+
+function axisDayParts(day: string): { month: number; date: number; weekday: number } | null {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(day);
+  if (!match) return null;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const date = Number(match[3]);
+  if (month < 1 || month > 12 || date < 1 || date > 31) return null;
+  return { month, date, weekday: new Date(Date.UTC(year, month - 1, date)).getUTCDay() };
+}
+
+function dropOverlappingAxisMarks(marks: ActivityAxisMark[], count: number): ActivityAxisMark[] {
+  const lastIndex = count - 1;
+  const kept: ActivityAxisMark[] = [];
+  for (const mark of marks) {
+    if (mark.index === lastIndex) continue;
+    const previous = kept[kept.length - 1];
+    if (previous && axisMarksOverlap(previous, mark, count)) continue;
+    kept.push(mark);
+  }
+  const last = marks.find((mark) => mark.index === lastIndex);
+  if (!last) return kept;
+  while (kept.length > 0 && axisMarksOverlap(kept[kept.length - 1], last, count)) kept.pop();
+  return [...kept, last];
+}
+
+function axisMarksOverlap(left: ActivityAxisMark, right: ActivityAxisMark, count: number): boolean {
+  const leftBox = axisLabelBox(left, count);
+  const rightBox = axisLabelBox(right, count);
+  return leftBox.right + 4 > rightBox.left;
+}
+
+function axisLabelBox(mark: ActivityAxisMark, count: number): { left: number; right: number } {
+  const column = AXIS_CHART_PX / count;
+  const width = mark.label.length * AXIS_CHAR_PX + 4;
+  const start = mark.index * column;
+  const end = start + column;
+  if (mark.index <= 1) return { left: start, right: start + width };
+  if (mark.index >= count - 2) return { left: end - width, right: end };
+  const centre = start + column / 2;
+  return { left: centre - width / 2, right: centre + width / 2 };
+}
+
+/** One source. The peak line's own "(Apple Health)" is dropped when the chart caption already names a source. */
+export function activityScaleLine(scale: string | null, note: string | null): string | null {
+  const left = scale?.trim() ?? '';
+  const right = note?.trim() ?? '';
+  if (!left) return right || null;
+  if (!right) return left;
+  const bare = left.replace(/\s*\([^)]*\)\s*$/, '').trim();
+  if (right.startsWith('(')) return `${bare} ${right}`;
+  const stem = bare.endsWith('.') ? bare : `${bare}.`;
+  return `${stem} ${right}`;
+}
+
+/** Highest real reading. An empty day, or a missing day stored as zero, does not set the scale. */
+export function chartScalePeak(
+  points: readonly { value: number; empty?: boolean; source?: ActivitySource | null }[],
+  marks: readonly number[] = [],
+): number {
+  const values = [1];
+  for (const point of points) {
+    if (point.empty || (point.source == null && !(point.value > 0))) continue;
+    if (point.value > 0) values.push(point.value);
+  }
+  for (const mark of marks) {
+    if (mark > 0) values.push(mark);
+  }
+  return Math.max(...values);
 }
 
 export function seriesUsesGarmin(points: readonly { source: ActivitySource | null }[]): boolean {

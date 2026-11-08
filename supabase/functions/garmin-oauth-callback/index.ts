@@ -4,8 +4,12 @@ import {
   GARMIN_USER_ID_URL,
   GARMIN_TOKEN_KEY_VERSION,
   garminAppReturn,
+  garminDuplicateReturn,
+  garminOauthLog,
+  isGarminRefreshLockState,
   garminTokenAad,
   garminTokenForm,
+  readDeletedOauthState,
   readGarminPermissions,
   readTokenResponse,
   sealGarminToken,
@@ -24,22 +28,27 @@ Deno.serve(async (req) => {
   const clientSecret = (Deno.env.get('GARMIN_CLIENT_SECRET') ?? '').trim();
   const tokenKey = (Deno.env.get('GARMIN_TOKEN_KEY') ?? '').trim();
   if (!supabaseUrl || !service || !clientId || !clientSecret || !tokenKey) {
-    console.error('garmin-oauth: config');
+    console.error(garminOauthLog('config'));
     return redirect(false);
+  }
+  if (isGarminRefreshLockState(state)) {
+    console.error(garminOauthLog('duplicate'));
+    return redirect('duplicate');
   }
 
   const admin = createClient(supabaseUrl, service, { auth: { persistSession: false } });
-  const saved = await admin
-    .from('garmin_oauth_states')
-    .select('user_id, code_verifier, expires_at')
-    .eq('state', state)
-    .maybeSingle();
-  await admin.from('garmin_oauth_states').delete().eq('state', state);
-  const row = saved.data;
-  if (saved.error || !row?.user_id || !row.code_verifier) return redirect(false);
-  if (Date.parse(String(row.expires_at)) <= Date.now()) return redirect(false);
-
   const now = Date.now();
+  const claimed = await admin
+    .from('garmin_oauth_states')
+    .delete()
+    .eq('state', state)
+    .select('user_id, code_verifier, expires_at');
+  const claim = readDeletedOauthState(claimed.data, claimed.error, now);
+  if (!claim.ok) {
+    console.error(garminOauthLog(claim.reason));
+    return redirect(claim.reason === 'duplicate' ? 'duplicate' : false);
+  }
+  const row = { user_id: claim.userId, code_verifier: claim.codeVerifier };
   let tokens;
   try {
     const response = await fetch(GARMIN_TOKEN_URL, {
@@ -53,12 +62,12 @@ Deno.serve(async (req) => {
       }),
     });
     if (!response.ok) {
-      console.error('garmin-oauth: exchange');
+      console.error(garminOauthLog('exchange'));
       return redirect(false);
     }
     tokens = readTokenResponse(await response.json(), now);
   } catch {
-    console.error('garmin-oauth: exchange');
+    console.error(garminOauthLog('exchange'));
     return redirect(false);
   }
   if (!tokens) return redirect(false);
@@ -69,13 +78,13 @@ Deno.serve(async (req) => {
       headers: { Authorization: `Bearer ${tokens.accessToken}` },
     });
     if (!response.ok) {
-      console.error('garmin-oauth: user');
+      console.error(garminOauthLog('user'));
       return redirect(false);
     }
     const body = await response.json() as { userId?: unknown };
     garminUserId = typeof body.userId === 'string' ? body.userId : '';
   } catch {
-    console.error('garmin-oauth: user');
+    console.error(garminOauthLog('user'));
     return redirect(false);
   }
   if (!/^[A-Za-z0-9_-]{1,128}$/.test(garminUserId)) return redirect(false);
@@ -94,7 +103,7 @@ Deno.serve(async (req) => {
     accessSeal = await sealGarminToken(tokens.accessToken, tokenKey, garminTokenAad(String(row.user_id), 'access', GARMIN_TOKEN_KEY_VERSION));
     refreshSeal = await sealGarminToken(tokens.refreshToken, tokenKey, garminTokenAad(String(row.user_id), 'refresh', GARMIN_TOKEN_KEY_VERSION));
   } catch {
-    console.error('garmin-oauth: key');
+    console.error(garminOauthLog('key'));
     return redirect(false);
   }
   const stored = await admin.from('garmin_connections').upsert({
@@ -113,15 +122,16 @@ Deno.serve(async (req) => {
     revoked_at: null,
   }, { onConflict: 'user_id' });
   if (stored.error) {
-    console.error('garmin-oauth: store');
+    console.error(garminOauthLog('store'));
     return redirect(false);
   }
   return redirect(true);
 });
 
-function redirect(connected: boolean): Response {
+function redirect(connected: boolean | 'duplicate'): Response {
+  const location = connected === 'duplicate' ? garminDuplicateReturn() : garminAppReturn(connected);
   return new Response(null, {
     status: 302,
-    headers: { Location: garminAppReturn(connected) },
+    headers: { Location: location },
   });
 }

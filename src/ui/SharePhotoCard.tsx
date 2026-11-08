@@ -24,7 +24,9 @@ import {
   PUBLIC_PROFILE_TURN_ON,
   SCREENSHOT_NOTE,
   SENDER_SAVE_NOTE,
+  SENT_NOT_IN_LIBRARY,
   SHARED_PHOTOS_LABEL,
+  buddyPhotoCaption,
   quickShareNeedsDestination,
   sharePhotoButtonLabel,
 } from '@/domain/sharedPhotos';
@@ -208,25 +210,41 @@ function SharePhotoComposer({ onClose, maxHeight }: { onClose: () => void; maxHe
     setError(null);
     setNote(null);
     let sentNow = sent;
+    let justSent = false;
     let profileSaved = false;
+    let libraryMissed = false;
     try {
       if (selected.length > 0 && !sentNow) {
         await repo.sendSharedPhoto({
-          caption: caption.trim(),
+          caption: buddyPhotoCaption(caption),
           bytes: prepared.bytes,
           previewUri: prepared.previewUri,
           buddyIds: selected,
           allowSave,
         });
         sentNow = true;
+        justSent = true;
         setSent(true);
+      }
+    } catch (caught) {
+      setError(shownError(caught, 'Could not send that photo.'));
+      setPending(false);
+      return;
+    }
+    if (justSent) {
+      try {
         const auto = (await AsyncStorage.getItem(AUTO_SAVE_KEY)) === '1';
         if (auto && Platform.OS !== 'web') {
           const { saveJpegToLibrary } = await import('@/ui/saveSharedPhoto');
           const saved = await saveJpegToLibrary(prepared.previewUri);
-          if (saved !== 'saved') setNote('The buddy photo was sent. It was not added to the photo library.');
+          if (saved !== 'saved') libraryMissed = true;
         }
+      } catch {
+        libraryMissed = true;
       }
+    }
+    const libraryNote = libraryMissed ? SENT_NOT_IN_LIBRARY : null;
+    try {
       if (onProfile) {
         try {
           await repo.addProfilePhoto({
@@ -254,14 +272,29 @@ function SharePhotoComposer({ onClose, maxHeight }: { onClose: () => void; maxHe
         }
       }
       if (sentNow && !diary && !profileSaved) {
-        onClose();
-        router.push('/shared-photos' as never);
+        if (libraryNote) setNote(libraryNote);
+        try {
+          onClose();
+          router.push('/shared-photos' as never);
+        } catch {
+          setNote(libraryNote ?? 'Sent to your buddies.');
+        }
         return;
       }
-      if (sentNow && profileSaved) setNote(`Sent to your buddies. ${PUBLIC_PROFILE_SHOWN}`);
-      else if (sentNow) setNote('Sent to your buddies.');
+      if (sentNow && profileSaved) setNote(libraryNote ?? `Sent to your buddies. ${PUBLIC_PROFILE_SHOWN}`);
+      else if (sentNow) setNote(libraryNote ?? 'Sent to your buddies.');
       else if (profileSaved) setNote(PUBLIC_PROFILE_SHOWN);
     } catch (caught) {
+      if (sentNow) {
+        setNote(libraryNote ?? 'Sent to your buddies.');
+        try {
+          onClose();
+          router.push('/shared-photos' as never);
+        } catch {
+          setNote(libraryNote ?? 'Sent to your buddies.');
+        }
+        return;
+      }
       setError(shownError(caught, 'Could not send that photo.'));
     } finally {
       setPending(false);

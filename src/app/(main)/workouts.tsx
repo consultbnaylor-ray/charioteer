@@ -48,7 +48,7 @@ export default function WorkoutsScreen() {
     <Screen
       eyebrow="Health"
       title="Workouts"
-      intro="Your workout calendar and history."
+      intro="Workout History. Tap a day to see that day."
       refreshing={manual.refreshing}
       onRefresh={() => void manual.run()}
     >
@@ -81,7 +81,16 @@ export default function WorkoutsScreen() {
         pulseOx={readings.pulseOx}
         hrv={readings.hrv}
         userMetrics={readings.userMetrics}
+        bloodPressure={readings.bloodPressure}
+        bodyComp={readings.bodyComp}
+        skinTemp={readings.skinTemp}
+        stress={readings.stress}
+        epochs={readings.epochs}
+        healthSnapshot={readings.healthSnapshot}
+        moveIq={readings.moveIq}
+        activityDetails={readings.activityDetails}
         sex={snap.nutrition.goalSex}
+        goal={snap.nutrition.goal}
         exercisePermissionMissing={exercisePermissionMissing(visibility)}
       />
       <WorkoutCalendar

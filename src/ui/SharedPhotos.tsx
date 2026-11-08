@@ -16,7 +16,6 @@ import {
   type SharedPhotoCard,
 } from '@/domain/sharedPhotos';
 import { saveJpegToLibrary } from '@/ui/saveSharedPhoto';
-import { statsToneColors } from '@/ui/statsPalette';
 import { useAppTheme } from '@/ui/theme';
 import { AutoSaveSwitch } from '@/ui/SharePhotoCard';
 import { Button, Card, ErrorNote, T } from '@/ui/ui';
@@ -29,7 +28,6 @@ export function SharedPhotos() {
   const [error, setError] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
   const [pending, setPending] = useState<string | null>(null);
-  const green = statsToneColors(theme.scheme).good.ink;
 
   const load = useCallback(async () => {
     setError(null);
@@ -92,13 +90,7 @@ export function SharedPhotos() {
         {photos.length === 0 ? <T variant="muted">None yet.</T> : null}
         {photos.map((photo) => (
           <Card key={photo.id}>
-            {photo.imageUrl ? (
-              <Image source={{ uri: photo.imageUrl }} accessibilityLabel={photo.caption || `Photo from ${photo.buddyNames[0] ?? 'a buddy'}`} style={{ width: '100%', height: 180, backgroundColor: theme.colors.surface }} contentFit="cover" />
-            ) : (
-              <View accessibilityLabel={photo.caption || `Photo from ${photo.buddyNames[0] ?? 'a buddy'}`} style={{ height: 120, backgroundColor: '#143024', alignItems: 'center', justifyContent: 'center' }}>
-                <T style={{ color: green }}>{photo.caption || 'Photo'}</T>
-              </View>
-            )}
+            <SharedPhotoPicture uri={photo.imageUrl} label={photo.caption || `Photo from ${photo.buddyNames[0] ?? 'a buddy'}`} />
             <T>{photo.caption || (photo.mine ? 'Photo you sent' : `Photo from ${photo.buddyNames[0] ?? 'a buddy'}`)}</T>
             <T variant="muted">{sharedPhotoWhen(photo.createdAt)}</T>
             <T variant="muted">{photo.mine ? `To ${photo.buddyNames.join(', ') || 'a buddy'}` : `From ${photo.buddyNames[0] ?? 'a buddy'}`}</T>
@@ -133,6 +125,23 @@ export function SharedPhotos() {
       {group('Sent', split.sent)}
       {group('Received', split.received)}
     </View>
+  );
+}
+
+/** A failed or missing link stays a short line. It does not leave a tall empty box. */
+function SharedPhotoPicture({ uri, label }: { uri: string | null | undefined; label: string }) {
+  const [failed, setFailed] = useState(false);
+  if (!uri || failed) {
+    return <T variant="muted">Photo unavailable.</T>;
+  }
+  return (
+    <Image
+      source={{ uri }}
+      accessibilityLabel={label}
+      style={{ width: '100%', height: 180 }}
+      contentFit="cover"
+      onError={() => setFailed(true)}
+    />
   );
 }
 

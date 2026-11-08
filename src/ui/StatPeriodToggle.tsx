@@ -6,7 +6,7 @@ import { useStatPeriod } from '@/health/useStatPeriod';
 import { Choice } from '@/ui/ui';
 
 /** Day through 12 months. The row scrolls, and the selected period stays in view. */
-export function StatPeriodToggle() {
+export function StatPeriodToggle({ periods = HEALTH_STAT_PERIODS }: { periods?: readonly (typeof HEALTH_STAT_PERIODS)[number][] } = {}) {
   const [period, setPeriod] = useStatPeriod();
   const scroller = useRef<ScrollView>(null);
   const offsets = useRef<Partial<Record<string, number>>>({});
@@ -26,7 +26,7 @@ export function StatPeriodToggle() {
       accessibilityLabel="Period"
       contentContainerStyle={{ gap: 8, paddingVertical: 2 }}
     >
-      {HEALTH_STAT_PERIODS.map((id) => (
+      {periods.map((id) => (
         <View
           key={id}
           onLayout={(event) => {

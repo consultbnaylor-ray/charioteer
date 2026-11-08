@@ -5,7 +5,9 @@ import { buildFitnessSnapshot, fitnessFromSnapshot } from '@/domain/fitnessSnaps
 import { withPlannedMinutes } from '@/domain/plannedSession';
 import { goalLedFromSnapshot, goalProgressLine } from '@/domain/goalLed';
 import { goalWeightRange } from '@/domain/goalWeightRange';
-import { compositionForAssessment, defaultNutritionSettings, nutritionContextLines, weightPointsFrom } from '@/domain/nutrition';
+import { buildDailyTargets } from '@/domain/dailyTargets';
+import { compositionForAssessment, defaultNutritionSettings, nutritionContextLines, proteinGramsFor, weightPointsFrom } from '@/domain/nutrition';
+import { nutritionBriefFromLogs, nutritionInputLines, nutritionReviewLines } from '@/domain/statsAnalysis';
 import { activityReadingsFromSamples } from '@/domain/targetActivity';
 import { savingsFromTypicalWeek } from '@/domain/savings';
 import { soberElapsed } from '@/domain/sober';
@@ -14,6 +16,7 @@ import { drinkFreeThisWeek } from '@/domain/stage';
 import { quoteById } from '@/domain/stoicQuotes';
 import { buildVoiceBriefing, type VoiceBriefing } from '@/domain/voice';
 import type { HealthTrend, ThumosMode } from '@/domain/thumos';
+import { workoutReflectionsFromDiary } from '@/domain/workoutReflections';
 
 function healthTrends(samples: AppSnapshot['health'], today: string): HealthTrend[] {
   const ordered = [...samples].sort((left, right) => (left.recordedOn < right.recordedOn ? 1 : left.recordedOn > right.recordedOn ? -1 : 0));
@@ -80,7 +83,43 @@ function nutritionLinesFrom(snap: AppSnapshot, now: Date): string[] {
     bodyFatPct: figures.bodyFatPct,
     waistCm: figures.waistCm,
   }).contextLine;
-  return [progress, fitness, weightRange, ...lines].filter((line): line is string => Boolean(line));
+  const shareHealth = profile.consentHealth === true;
+  const weightKg = shareHealth && latest && latest.kg >= 30 ? latest.kg : null;
+  const plan = weightKg != null && settings.targetWeightKg != null && settings.targetOn
+    ? buildDailyTargets({
+      currentKg: weightKg,
+      targetKg: settings.targetWeightKg,
+      targetOn: settings.targetOn,
+      today,
+      heightCm: profile.heightCm,
+      age: settings.goalAge,
+      sex: settings.goalSex,
+      activeEnergyKcal: settings.activityEnergyKcal,
+      startKg: null,
+      startDay: null,
+    })
+    : null;
+  const brief = profile.consentAi
+    ? nutritionBriefFromLogs({
+      today,
+      logs: (snap.foodLogs ?? []).map((log) => ({
+        eatenOn: log.eatenOn,
+        meal: log.meal,
+        note: log.note,
+        estimated: log.estimated || log.source === 'photo' || log.source === 'text',
+        portion: log.portion,
+        items: log.items.map((item) => ({ name: item.name, kcal: item.kcal, proteinG: item.proteinG })),
+      })),
+      weightKg,
+      calorieTarget: settings.hideCalories ? null : (shareHealth ? plan?.targetKcal ?? settings.kcalTarget : settings.kcalTarget),
+      proteinTargetG: settings.proteinTarget,
+      goalProteinG: weightKg != null && settings.goal ? proteinGramsFor(settings.goal, weightKg, settings.build, settings.goalPhase) : null,
+      hideCalories: settings.hideCalories,
+    })
+    : null;
+  const review = brief ? nutritionReviewLines(brief) : [];
+  const mealInput = brief ? nutritionInputLines(brief) : [];
+  return [...review, ...mealInput, progress, fitness, weightRange, ...lines].filter((line): line is string => Boolean(line));
 }
 
 /** Client copy of the voice prompt, used when the token function has not been redeployed yet. */
@@ -141,6 +180,21 @@ export function briefingFromSnapshot(snap: AppSnapshot, requestedMode: ThumosMod
           })()
         : null,
       nutritionLines: profile.consentAi ? nutritionLinesFrom(snap, now) : [],
+      workoutReflections: shareHealth
+        ? workoutReflectionsFromDiary({
+            today: isoDay(now),
+            feelings: snap.workoutFeelings ?? [],
+            planned: snap.plannedSessions,
+            sleepSamples: snap.health
+              .filter((sample) => sample.kind === 'sleep_hours')
+              .map((sample) => ({ day: sample.recordedOn.slice(0, 10), value: sample.value })),
+            workoutSamples: snap.health
+              .filter((sample) => sample.kind.startsWith('workout_type_'))
+              .map((sample) => ({ kind: sample.kind, value: sample.value, recordedOn: sample.recordedOn })),
+            logs: snap.foodLogs ?? [],
+            hideCalories: snap.nutrition?.hideCalories === true,
+          })
+        : [],
       mode: requestedMode,
       safety: { selfHarm: false, withdrawal: false, reasons: [] },
     },

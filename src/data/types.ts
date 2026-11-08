@@ -247,6 +247,10 @@ export type AppSnapshot = {
   profilePhotos: ProfilePhoto[];
   /** Private diary. Never included in the community directory. */
   gratitude: GratitudeEntry[];
+  /** Private goal-progress photos. Never sent to the coach. Absent until one is saved. */
+  goalProgressPhotos?: import('@/domain/goalProgress').GoalProgressPhoto[];
+  /** Private session notes. Never sent to the coach. */
+  workoutFeelings?: import('@/domain/workoutFeel').WorkoutFeeling[];
   /** Private vision board. Never included in the community directory. */
   visionItems: VisionItem[];
   /** Which sections this person has chosen to show. Name and interests stay on. */
@@ -485,6 +489,10 @@ export interface Repository {
   saveSharedPhotoToGratitude(input: { caption: string; bytes: Uint8Array }): Promise<void>;
   updateGratitudePhoto(id: string, input: { caption: string }): Promise<void>;
   deleteGratitudePhoto(id: string): Promise<void>;
+  /** Private progress photo for a calendar day. Not sent to the coach. */
+  addGoalProgressPhoto(bytes: Uint8Array, recordedOn: string): Promise<void>;
+  saveWorkoutFeeling(input: { recordedOn: string; workoutKey: string; note: string; effort: number | null; mood: number | null }): Promise<void>;
+  deleteGoalProgressPhoto(id: string): Promise<void>;
   reflectOnGratitude(body: string, category: string | null): Promise<GratitudeReflect>;
   saveVisionStatement(statement: string): Promise<void>;
   addVisionItem(bytes: Uint8Array): Promise<void>;
@@ -538,7 +546,9 @@ export interface Repository {
   /** Writes the ticked actions and the limits. It does not call the model. */
   saveHealthPlan(plan: HealthPlan): Promise<void>;
   /** Asks Thumos for a new plan from this person's figures. Finished actions are left behind. */
-  refreshHealthPlan(limits: string): Promise<void>;
+  refreshHealthPlan(limits: string, options?: { localOnly?: boolean }): Promise<void>;
+  /** Sends a sanitised stats summary for a verdict. Metered on the plan allowance. Nothing is sent until this is called. */
+  analyseStats(summary: unknown): Promise<{ text: string; sections: import('@/domain/statsAnalysis').AnalysisSection[]; source: 'model' | 'local' }>;
   /** Saves the usual gym week, or clears it when null. */
   saveTrainingSchedule(schedule: import('@/domain/healthPlan').TrainingSchedule | null): Promise<void>;
   /** Adds a planned workout. The row stays on this account. */
@@ -581,6 +591,10 @@ export interface Repository {
   checkGarminPermissions(force?: boolean): Promise<{ checked: boolean; needsPermissions: boolean; missing: Array<'ACTIVITY_EXPORT' | 'HEALTH_EXPORT'> }>;
   /** The signed-in person's subscription row. Null when they have none. */
   loadOwnSubscription(): Promise<import('@/domain/subscription').SubscriptionRecord | null>;
+  /** A plan comp for this person. Null expiry means it does not run out. */
+  loadEntitlementOverride(): Promise<import('@/domain/entitlementOverride').EntitlementOverride | null>;
+  /** AI credit counts for the London month that starts on monthStart (YYYY-MM-01). */
+  loadAiUsageMonth(monthStart: string): Promise<{ coach: number; meal: number; plan: number }>;
   /** Sends the StoreKit 2 signed transaction to the server and returns the stored row. */
   verifyOwnSubscription(jws: string): Promise<import('@/domain/subscription').SubscriptionRecord>;
 }

@@ -36,6 +36,7 @@ import {
 import { soberElapsed } from '@/domain/sober';
 import { daysUntil, showsSoberRecord, type Stage } from '@/domain/stage';
 import { proteinLoggedDays } from '@/domain/goalLed';
+import { leadingNumber, readingFor, type MetricContext, type MetricReading } from '@/domain/metricRegistry';
 import { parseStatPeriod, periodDayCount, periodHeading, periodPhrase, proteinPace, rollingWindow, scaledPeriodTarget, type StatPeriod } from '@/domain/statWindow';
 
 export type StatsTone = 'good' | 'watch' | 'info' | 'attention';
@@ -62,6 +63,11 @@ export type StatTileModel = {
   periodLine?: string;
   /** Highly processed foods behind the count. Same length as that count. */
   processedNotes?: ProcessedFoodNote[];
+  /** Overrides the number parsed from `value`, when that text is not the rated figure. */
+  ratedValue?: number | null;
+  ratingContext?: Partial<MetricContext>;
+  /** Shared rating rendered on the card. */
+  rating?: MetricReading;
 };
 
 export type StatsOverviewInput = {
@@ -74,7 +80,7 @@ export type StatsOverviewInput = {
   checkIns: readonly { mood: number; craving: number; createdAt: string }[];
   health: readonly { kind: string; value: number; recordedOn: string }[];
   heightCm: number | null;
-  nutrition: Pick<NutritionSettings, 'goal' | 'goalSex' | 'build' | 'kcalTarget' | 'proteinTarget' | 'hideCalories'>;
+  nutrition: Pick<NutritionSettings, 'goal' | 'goalSex' | 'goalAge' | 'build' | 'kcalTarget' | 'proteinTarget' | 'hideCalories'>;
   foodLogs: readonly FoodLog[];
   waterDays: readonly NutritionDay[];
   bodyComposition: readonly BodyCompositionReading[];
@@ -489,6 +495,7 @@ function bodyTile(input: StatsOverviewInput): StatTileModel {
       value: `${round1(composition.bodyFatPct)}%`,
       meaning: range.within ? 'Within healthy range' : assessment.label === 'Low body fat' ? 'Low body fat. This is not a diagnosis' : 'Above the body-fat band. This is not a diagnosis',
       tone: range.within ? 'good' : 'watch',
+      ratingContext: { basis: 'body_fat' },
       series: fatSeries,
       chart: {
         kind: 'range',
@@ -513,6 +520,7 @@ function bodyTile(input: StatsOverviewInput): StatTileModel {
       value: ratio == null ? '—' : ratio.toFixed(2),
       meaning: healthy ? 'Within healthy range' : 'Outside the healthy band. This is not a diagnosis',
       tone: healthy ? 'good' : 'watch',
+      ratingContext: { basis: 'waist_ratio' },
       series: waistSeries,
       chart: range == null || ratio == null
         ? { kind: 'none' }
@@ -535,6 +543,7 @@ function bodyTile(input: StatsOverviewInput): StatTileModel {
       title: 'Body',
       value: 'Under 18.5',
       meaning: 'Below the healthy range',
+      ratingContext: { basis: 'bmi' },
       tone: 'attention',
       series: [],
       chart: { kind: 'none' },
@@ -600,10 +609,15 @@ function calorieTile(input: StatsOverviewInput, today: string): StatTileModel {
     });
   }
   const window = rollingWindow(today, period);
-  const loggedDays = window.days.flatMap((day) => {
+  const completedDays = period === 'day' ? window.days : window.days.filter((day) => day < today);
+  const completedLogged = completedDays.flatMap((day) => {
     const items = dayItems(input.foodLogs, day);
     return items.length ? [sumItems(items).kcal] : [];
   });
+  const todayItems = dayItems(input.foodLogs, today);
+  const loggedDays = completedLogged.length
+    ? completedLogged
+    : (todayItems.length ? [sumItems(todayItems).kcal] : []);
   const kcal = loggedDays.length ? loggedDays.reduce((sum, value) => sum + value, 0) / loggedDays.length : 0;
   const target = input.nutrition.kcalTarget;
   const value = loggedDays.length ? `${Math.round(kcal).toLocaleString('en-GB')} kcal` : '0 kcal';
@@ -645,7 +659,10 @@ function proteinTile(input: StatsOverviewInput, today: string): StatTileModel {
   const period = chosenPeriod(input);
   const trend = nutritionTrendDays(input.foodLogs, today, periodDayCount(period)).map((day) => day.proteinG);
   const window = rollingWindow(today, period);
-  const days = proteinLoggedDays(input.foodLogs, window.days);
+  const completedDays = period === 'day' ? window.days : window.days.filter((day) => day < today);
+  const completedProtein = proteinLoggedDays(input.foodLogs, completedDays);
+  const todayProtein = proteinLoggedDays(input.foodLogs, [today]);
+  const days = completedProtein.length ? completedProtein : todayProtein;
   const protein = days.length ? days.reduce((sum, value) => sum + value, 0) / days.length : 0;
   const target = input.nutrition.proteinTarget;
   const value = days.length ? `${Math.round(protein)} g` : '—';
@@ -700,6 +717,7 @@ function qualityTile(input: StatsOverviewInput, today: string): StatTileModel {
     periodLine: periodHeading(period),
     processedNotes: notes,
     meaning: processed === 0 ? 'On track' : processed === 1 ? '1 item looks highly processed' : `${processed} items look highly processed`,
+    ratingContext: { processedCount: processed, wholeCount: whole },
     tone: processed === 0 ? 'good' : 'watch',
     series,
     chart: {
@@ -770,6 +788,35 @@ function gratitudeTile(input: StatsOverviewInput, today: string): StatTileModel 
   });
 }
 
+function attachOverview(tile: StatTileModel, input: StatsOverviewInput): StatTileModel {
+  const period = chosenPeriod(input);
+  const series = tile.series.filter((value) => Number.isFinite(value));
+  const earlier = series.slice(0, -1);
+  const ownUsual = earlier.length ? earlier.reduce((sum, value) => sum + value, 0) / earlier.length : null;
+  return {
+    ...tile,
+    rating: readingFor(tile.id, tile.ratedValue !== undefined ? tile.ratedValue : leadingNumber(tile.value), {
+      age: input.nutrition.goalAge,
+      sex: input.nutrition.goalSex,
+      goal: input.nutrition.goal,
+      ownUsual,
+      heightCm: input.heightCm,
+      realAge: input.nutrition.goalAge,
+      windowDays: periodDayCount(period),
+      calorieTarget: input.nutrition.hideCalories ? null : input.nutrition.kcalTarget,
+      proteinTarget: input.nutrition.proteinTarget,
+      drinkFreeGoal: input.drinkFreeDaysGoal,
+      ...tile.ratingContext,
+    }),
+  };
+}
+
+/**
+ * Figures from the old Stats screen that Health Stats did not already show.
+ * Weight, body fat, and lean mass stay on the body page.
+ */
+export const HEALTH_LIFE_TILE_IDS = ['sober', 'mood', 'craving', 'check-ins', 'calories', 'protein', 'quality', 'water', 'gratitude'] as const;
+
 /** One tile per figure already kept in the app. Order is the grid order. The period is the shared Day / 7 days / 30 days choice. */
 export function buildStatsOverview(input: StatsOverviewInput): StatTileModel[] {
   const today = isoDay(input.now);
@@ -786,5 +833,5 @@ export function buildStatsOverview(input: StatsOverviewInput): StatTileModel[] {
     qualityTile(input, today),
     waterTile(input, today),
     gratitudeTile(input, today),
-  ];
+  ].map((tile) => attachOverview(tile, input));
 }

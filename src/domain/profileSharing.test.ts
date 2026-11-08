@@ -439,7 +439,7 @@ describe('public_profile database function', () => {
     const metricCard = health.slice(health.indexOf('function MetricCard'), health.indexOf('function Readings'));
     expect(metricCard).toContain('<ShareOnProfile');
     expect(metricCard).toContain('healthShareLabel(label)');
-    const weekSummary = health.slice(health.indexOf('Your health this week'), health.indexOf('metrics.map'));
+    const weekSummary = health.slice(health.indexOf('Your health in the last 7 days'), health.indexOf('metrics.map'));
     expect(weekSummary).not.toContain('<ShareOnProfile');
     expect(healthShareLabel('Steps')).toBe('Share steps average');
     expect(healthShareLabel('Sleep')).toBe('Share sleep average');
@@ -495,7 +495,6 @@ describe('public_profile database function', () => {
       'src/ui/VisionBoard.tsx',
       'src/app/(main)/profile.tsx',
       'src/ui/PublicProfileCard.tsx',
-      'src/app/(main)/health-plan.tsx',
     ];
     const found = filesUnder('src')
       .filter((path) => !/\.test\.tsx?$/.test(path))

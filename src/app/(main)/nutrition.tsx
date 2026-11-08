@@ -1,7 +1,7 @@
 import { Image } from 'expo-image';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
-import { Keyboard, Platform, Pressable, ScrollView, Switch, View } from 'react-native';
+import { Keyboard, Platform, Pressable, Switch, View } from 'react-native';
 
 import { dismissKeyboard } from '@/ui/keyboard';
 import { weightChart } from '@/domain/chartSeries';
@@ -10,6 +10,7 @@ import type { FoodLogUpdate, NewHealthSample } from '@/data/types';
 import { formatUkCompact, formatUkCompactWhen, formatUkLong, formatUkTime, isoDay, parseIsoDay } from '@/domain/dates';
 import { londonDay } from '@/domain/healthInsights';
 import { shownError } from '@/domain/errors';
+import { isMealPickerCancel, MealEstimateError, mealEstimateLog, mealEstimateMessage, mealPhotoFailure } from '@/domain/mealEstimate';
 import { randomId } from '@/domain/id';
 import {
   APPLE_HEALTH_MEAL_NOTE,
@@ -36,6 +37,7 @@ import {
   goalBodyForSuggestion,
   goalDayLine,
   goalMealNote,
+  nutritionGoalLines,
   macroDayLine,
   kcalFloor,
   lossBlocked,
@@ -63,7 +65,13 @@ import {
   sumItems,
   targetLine,
   TODAY_MEALS_EMPTY,
+  foodFigureNote,
+  POWDER_NOT_PROTEIN,
   loggedProteinRing,
+  powderReadingNote,
+  proteinDaysFromLogs,
+  proteinFigureLines,
+  proteinIntakeAdvisory,
   todayMealRows,
   todayMealTotals,
   todayRing,
@@ -82,8 +90,9 @@ import { savingsFromTypicalWeek } from '@/domain/savings';
 import { soberElapsed } from '@/domain/sober';
 import { readAppleHealthBody } from '@/health/sync';
 import { writeDayToAppleHealth } from '@/health/writeNutrition';
-import { GoalChoices } from '@/ui/GoalChoices';
+import { GoalChoices, GoalDivision } from '@/ui/GoalChoices';
 import { DateField } from '@/ui/DateField';
+import { AiCreditLine } from '@/ui/AiCreditLine';
 import { MealEstimateStatus } from '@/ui/MealEstimateStatus';
 import { ProcessedFoodList } from '@/ui/ProcessedFoodList';
 import { PlanTick } from '@/ui/PlanTick';
@@ -201,6 +210,14 @@ function draftedGrams(value: string, places: number): { value: number; known: bo
   const parsed = numberFrom(trimmed);
   const factor = 10 ** places;
   return { value: Math.round(parsed * factor) / factor, known: true };
+}
+
+function draftFigureNote(item: DraftItem): string | null {
+  if (!item.proteinG.trim()) return null;
+  return foodFigureNote({
+    kcal: Math.round(numberFrom(item.kcal)),
+    proteinG: numberFrom(item.proteinG),
+  });
 }
 
 function itemFromDraft(draft: DraftItem): FoodItem | null {
@@ -329,6 +346,7 @@ export default function Nutrition() {
   const [choiceNote, setChoiceNote] = useState<string | null>(null);
   const [suggestNote, setSuggestNote] = useState<string | null>(null);
   const [targetsSavedAt, setTargetsSavedAt] = useState<number | null>(null);
+  const [editingGoal, setEditingGoal] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editAnchor, setEditAnchor] = useState<'summary' | 'list'>('list');
   const [confirmId, setConfirmId] = useState<string | null>(null);
@@ -338,6 +356,7 @@ export default function Nutrition() {
   const [revealDay, setRevealDay] = useState<string | null>(null);
   const [estimateReady, setEstimateReady] = useState(false);
   const [estimateError, setEstimateError] = useState<string | null>(null);
+  const [estimateErrorDay, setEstimateErrorDay] = useState<string | null>(null);
   const [estimateAttempt, setEstimateAttempt] = useState<'text' | 'camera' | 'library' | 'sample'>('text');
   const [estimateFlash, setEstimateFlash] = useState(false);
   const [mealWeeks, setMealWeeks] = useState(1);
@@ -351,6 +370,12 @@ export default function Nutrition() {
     const timer = setTimeout(() => setTargetsSavedAt(null), 2500);
     return () => clearTimeout(timer);
   }, [targetsSavedAt]);
+
+  useEffect(() => {
+    if (!estimateErrorDay || estimateErrorDay === logWindow.today) return;
+    setEstimateError(null);
+    setEstimateErrorDay(null);
+  }, [estimateErrorDay, logWindow.today]);
 
   useEffect(() => {
     if (mealSavedAt == null) return;
@@ -564,6 +589,7 @@ export default function Nutrition() {
   function failEstimate(message: string) {
     setEstimateReady(false);
     setEstimateError(message);
+    setEstimateErrorDay(logWindow.today);
   }
 
   function retryEstimate() {
@@ -599,27 +625,51 @@ export default function Nutrition() {
           photoBase64: null,
         });
       } catch (err) {
-        failEstimate(shownError(err, 'Could not read that meal. You can still type it in yourself.'));
+        const failure = mealPhotoFailure(err);
+        if (!(err instanceof MealEstimateError)) {
+          void repo.logClientError('estimate-meal', mealEstimateLog(failure.category), 'app').catch(() => undefined);
+        }
+        failEstimate(failure.category === 'preparation'
+          ? 'Could not read that meal. You can still type it in yourself.'
+          : failure.message);
       }
+    });
+  }
+
+  function keepCapturedMeal(photo: { previewUri: string; base64: string }) {
+    openDraft({
+      meal,
+      source: 'photo',
+      note: text.trim().slice(0, 500),
+      items: [blankItem()],
+      estimated: false,
+      previewUri: photo.previewUri,
+      photoBase64: photo.base64,
     });
   }
 
   function readPhoto(source: 'camera' | 'library') {
     const hadEstimate = draft?.estimated === true;
+    const previousError = estimateError;
     setEstimateAttempt(source);
     run('photo', async () => {
-      setEstimateError(null);
-      setEstimateReady(false);
       setError(null);
+      let captured: { previewUri: string; base64: string } | null = null;
       try {
         const photo = await pickMealPhoto(source);
         if (!photo) {
+          setEstimateError(previousError);
           if (hadEstimate) setEstimateReady(true);
           return;
         }
+        setEstimateError(null);
+        setEstimateReady(false);
+        captured = photo;
         const estimate = await repo.estimateMeal({ imageBase64: photo.base64, text });
         if (!estimate.items.length) {
-          failEstimate('Could not read that photo. You can still type the meal in yourself.');
+          keepCapturedMeal(photo);
+          void repo.logClientError('estimate-meal', mealEstimateLog('unreadable'), 'app').catch(() => undefined);
+          failEstimate(mealEstimateMessage('unreadable'));
           return;
         }
         showEstimate({
@@ -632,7 +682,17 @@ export default function Nutrition() {
           photoBase64: photo.base64,
         });
       } catch (err) {
-        failEstimate(shownError(err, 'Could not read that photo. You can still type the meal in yourself.'));
+        if (isMealPickerCancel(err)) {
+          setEstimateError(previousError);
+          if (hadEstimate) setEstimateReady(true);
+          return;
+        }
+        if (captured) keepCapturedMeal(captured);
+        const failure = mealPhotoFailure(err);
+        if (!(err instanceof MealEstimateError) || failure.category === 'preparation') {
+          void repo.logClientError('estimate-meal', mealEstimateLog(failure.category), 'app').catch(() => undefined);
+        }
+        failEstimate(failure.message);
       }
     });
   }
@@ -646,7 +706,8 @@ export default function Nutrition() {
       try {
         const estimate = await repo.estimateMeal({ imageBase64: SAMPLE_JPEG });
         if (!estimate.items.length) {
-          failEstimate('Could not read that photo. You can still type the meal in yourself.');
+          void repo.logClientError('estimate-meal', mealEstimateLog('unreadable'), 'app').catch(() => undefined);
+          failEstimate(mealEstimateMessage('unreadable'));
           return;
         }
         showEstimate({
@@ -659,7 +720,11 @@ export default function Nutrition() {
           photoBase64: SAMPLE_JPEG,
         });
       } catch (err) {
-        failEstimate(shownError(err, 'Could not read that photo. You can still type the meal in yourself.'));
+        const failure = mealPhotoFailure(err);
+        if (!(err instanceof MealEstimateError)) {
+          void repo.logClientError('estimate-meal', mealEstimateLog(failure.category), 'app').catch(() => undefined);
+        }
+        failEstimate(failure.message);
       }
     });
   }
@@ -853,28 +918,6 @@ export default function Nutrition() {
     return `That sits under ${floor.toLocaleString('en-GB')} kcal, which is the floor for this screen. A higher target can be saved.`;
   }
 
-  function saveTarget() {
-    run('target', async () => {
-      setError(null);
-      const kcal = kcalFromField();
-      if (kcal === 'bad') {
-        setError('A target sits between 800 and 6,000 kcal, or leave it blank.');
-        return;
-      }
-      const current = repo.getSnapshot().nutrition;
-      const low = refuseLowKcal(kcal, current.goalAge, current.goalSex);
-      if (low) {
-        setError(low);
-        return;
-      }
-      try {
-        await repo.setNutritionSettings({ ...current, kcalTarget: kcal });
-      } catch (err) {
-        setError(shownError(err, 'Could not save that target.'));
-      }
-    });
-  }
-
   function saveTargets() {
     run('targets', async () => {
       setError(null);
@@ -1000,6 +1043,14 @@ export default function Nutrition() {
   const proteinRing = mealRows.length > 0
     ? loggedProteinRing({ proteinG: mealTotals.proteinG, proteinTarget: settings.proteinTarget })
     : null;
+  const proteinReview = proteinIntakeAdvisory({
+    today,
+    days: proteinDaysFromLogs(snap.foodLogs, today, ownerId),
+    weights,
+    proteinTarget: settings.proteinTarget,
+    age: settings.goalAge,
+  });
+  const proteinNotes = proteinFigureLines(items);
   const summaryLog = editAnchor === 'summary'
     ? snap.foodLogs.find((log) => log.id === editingId || log.id === confirmId) ?? null
     : null;
@@ -1048,7 +1099,8 @@ export default function Nutrition() {
         <Field label="Describe the meal" value={text} onChangeText={setText} placeholder="2 eggs on toast" />
         {offersMealAi ? (
           <>
-            <Button label="Estimate from text" pending={isPending('estimate')} pendingLabel="Estimating..." onPress={readText} />
+            <Button label="Estimate from text" pending={isPending('estimate')} pendingLabel="Reading your meal…" onPress={readText} />
+            <AiCreditLine kind="meal" />
             <MealEstimateStatus
               waiting={isPending('estimate') || isPending('photo') || isPending('sample')}
               ready={estimateReady && draft?.estimated === true}
@@ -1056,10 +1108,10 @@ export default function Nutrition() {
               onRetry={retryEstimate}
               onShow={estimateReady && draft?.estimated === true ? scrollToEstimate : undefined}
             />
-            <Button label="Take a photo" tone="quiet" pending={isPending('photo')} pendingLabel="Estimating..." onPress={() => readPhoto('camera')} />
-            <Button label="Choose a photo" tone="quiet" pending={isPending('photo')} pendingLabel="Estimating..." onPress={() => readPhoto('library')} />
+            <Button label="Take a photo" tone="quiet" pending={isPending('photo')} pendingLabel="Reading your meal…" onPress={() => readPhoto('camera')} />
+            <Button label="Choose a photo" tone="quiet" pending={isPending('photo')} pendingLabel="Reading your meal…" onPress={() => readPhoto('library')} />
             {snap.mode === 'demo' ? (
-              <Button label="Use a sample photo" tone="quiet" pending={isPending('sample')} pendingLabel="Estimating..." onPress={samplePhoto} />
+              <Button label="Use a sample photo" tone="quiet" pending={isPending('sample')} pendingLabel="Reading your meal…" onPress={samplePhoto} />
             ) : null}
           </>
         ) : null}
@@ -1100,6 +1152,7 @@ export default function Nutrition() {
           {draft.estimated ? <T>{ESTIMATE_LABEL}</T> : null}
           {photoNote ? <T>{photoNote}</T> : null}
           <T>{ESTIMATE_HINT}</T>
+          {powderReadingNote(draft.note || text) ? <T variant="muted">{POWDER_NOT_PROTEIN}</T> : null}
           {draft.previewUri ? (
             <Image
               source={{ uri: draft.previewUri }}
@@ -1118,6 +1171,7 @@ export default function Nutrition() {
               <Field label="Food" value={item.name} onChangeText={(name) => updateItem(index, { name })} />
               {hide ? null : <Field label="kcal" value={item.kcal} onChangeText={(kcal) => updateItem(index, { kcal })} keyboardType="decimal-pad" />}
               <Field label="Protein (g)" value={item.proteinG} onChangeText={(proteinG) => updateItem(index, { proteinG })} keyboardType="decimal-pad" />
+              {draftFigureNote(item) ? <T variant="muted">{draftFigureNote(item)}</T> : null}
               <Field label="Carbohydrate (g)" value={item.carbsG} onChangeText={(carbsG) => updateItem(index, { carbsG })} keyboardType="decimal-pad" />
               <Field label="Sugar (g)" value={item.sugarG} onChangeText={(sugarG) => updateItem(index, { sugarG })} keyboardType="decimal-pad" />
               <Field label="Fibre (g)" value={item.fibreG} onChangeText={(fibreG) => updateItem(index, { fibreG })} keyboardType="decimal-pad" />
@@ -1203,6 +1257,25 @@ export default function Nutrition() {
       </Card>
       <ScrollTarget id="goal">
       <Card>
+        <T variant="label">Goal</T>
+        {nutritionGoalLines({
+          goal: settings.goal,
+          fitnessGoal: settings.fitnessGoal,
+          targetWeightKg: settings.targetWeightKg,
+          targetOnLabel: settings.targetOn ? formatUkCompact(settings.targetOn) : null,
+          competitionCut: settings.competitionCut,
+          goalPhase: settings.goalPhase,
+        }).map((line) => <T key={line}>{line}</T>)}
+        {!editingGoal && (settings.competitionCut || settings.goal === 'elite_middle_boxer' || (settings.goal != null && isClassBoxer(settings.goal))) ? (
+          <T variant="muted">{COMPETITION_NOTE}</T>
+        ) : null}
+        <Button
+          label={editingGoal ? 'Done' : 'Edit your goal'}
+          tone="quiet"
+          onPress={() => setEditingGoal((open) => !open)}
+        />
+        {editingGoal ? (
+          <>
         <GoalChoices
           framed={false}
           detail="Pick one. A suggestion uses your weight, height, age, and sex if you add them. You can change the numbers."
@@ -1210,11 +1283,11 @@ export default function Nutrition() {
         {settings.goal === 'body_builder' ? (
           <>
             <T variant="muted">Choose a surplus or a cut. A suggestion uses a lean bulk until you pick a cut.</T>
-            <ScrollView horizontal nestedScrollEnabled showsHorizontalScrollIndicator keyboardShouldPersistTaps="handled" contentContainerStyle={{ gap: 8 }}>
+            <View style={{ gap: 8, alignSelf: 'stretch' }}>
               {BUILDER_PHASES.map((id) => (
-                <Choice key={id} label={PHASE_LABEL[id]} selected={settings.goalPhase === id} onPress={() => choosePhase(id)} />
+                <GoalDivision key={id} label={PHASE_LABEL[id]} selected={settings.goalPhase === id} onPress={() => choosePhase(id)} />
               ))}
-            </ScrollView>
+            </View>
           </>
         ) : null}
         {settings.goal === 'elite_heavy_boxer' ? (
@@ -1263,6 +1336,31 @@ export default function Nutrition() {
             <UpdateWeightLink />
           </View>
         ) : null}
+          </>
+        ) : null}
+        <NutritionShareSwitch
+          label="Share the goal and progress"
+          item="The goal and progress"
+          on={settings.shareGoal}
+          apply={(current, selected) => ({ ...current, shareGoal: selected })}
+        />
+      </Card>
+      </ScrollTarget>
+      <ScrollTarget id="calories">
+      <Card>
+        <T variant="label">Suggest targets</T>
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
+          <T style={{ flex: 1 }}>Hide calories</T>
+          <Switch
+            accessibilityLabel="Hide calories"
+            value={hide}
+            onValueChange={setHide}
+            trackColor={{ true: theme.colors.ink, false: theme.colors.line }}
+            thumbColor={theme.colors.surface}
+          />
+        </View>
+        <T variant="muted">{HIDE_CALORIES_LINE}</T>
+        <QuietNote>{choiceNote}</QuietNote>
         <Button label="Suggest targets" pending={isPending('suggest')} pendingLabel="Suggesting..." onPress={suggest} />
         {suggestNote ? <T>{suggestNote}</T> : null}
         {blocked ? <T>{LOW_BMI_NOTE}</T> : null}
@@ -1280,12 +1378,6 @@ export default function Nutrition() {
           onPress={saveTargets}
         />
         {settings.updatedAt ? <T>{`Last updated ${formatUkCompactWhen(settings.updatedAt)}`}</T> : null}
-        <NutritionShareSwitch
-          label="Share the goal and progress"
-          item="The goal and progress"
-          on={settings.shareGoal}
-          apply={(current, selected) => ({ ...current, shareGoal: selected })}
-        />
       </Card>
       </ScrollTarget>
       <ScrollTarget id="today">
@@ -1295,6 +1387,13 @@ export default function Nutrition() {
         {!hide && settings.kcalTarget != null ? <T variant="muted">{`Target ${settings.kcalTarget.toLocaleString('en-GB')} kcal`}</T> : null}
         {!hide ? <T>{targetLine(totals.kcal, settings.kcalTarget, false)}</T> : null}
         <T>{`Protein ${totals.proteinG} g · carbohydrate ${totals.carbsG} g · sugar ${totals.sugarG} g`}</T>
+        {proteinReview.review || totals.proteinG > 0 ? (
+          <>
+            {proteinReview.review ? <T>{proteinReview.review}</T> : null}
+            <T variant="muted">{proteinReview.standing}</T>
+          </>
+        ) : null}
+        {proteinNotes.map((line) => <T key={line} variant="muted">{line}</T>)}
         <T>{`Fibre ${totals.fibreG} g · sodium ${totals.sodiumMg.toLocaleString('en-GB')} mg`}</T>
         <T variant="label">Fats</T>
         <FatShareBar unsaturated={fats.unsaturated} other={fats.other} />
@@ -1351,29 +1450,6 @@ export default function Nutrition() {
         <WaterMeter ml={water} />
         <Field label="Water today (ml)" value={waterText} onChangeText={setWaterText} keyboardType="number-pad" placeholder="350" />
         <Button label="Save water" pending={isPending('water')} pendingLabel="Saving..." onPress={saveWater} />
-      </Card>
-      </ScrollTarget>
-      <ScrollTarget id="calories">
-      <Card>
-        <T variant="label">Calories</T>
-        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
-          <T style={{ flex: 1 }}>Hide calories</T>
-          <Switch
-            accessibilityLabel="Hide calories"
-            value={hide}
-            onValueChange={setHide}
-            trackColor={{ true: theme.colors.ink, false: theme.colors.line }}
-            thumbColor={theme.colors.surface}
-          />
-        </View>
-        <T variant="muted">{HIDE_CALORIES_LINE}</T>
-        <QuietNote>{choiceNote}</QuietNote>
-        {hide ? null : (
-          <>
-            <Field label="Optional kcal target" value={target} onChangeText={setTarget} keyboardType="number-pad" placeholder="Leave blank for none" />
-            <Button label="Save target" pending={isPending('target')} pendingLabel="Saving..." onPress={saveTarget} />
-          </>
-        )}
       </Card>
       </ScrollTarget>
       <WagonFlag />

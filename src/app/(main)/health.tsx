@@ -52,6 +52,13 @@ import { MovementCharts } from '@/ui/DailyActivity';
 import { HealthRefreshBar, useManualHealthRefresh } from '@/ui/HealthRefresh';
 import { WeightWaistLink } from '@/ui/WeightWaistLink';
 import { healthStatsOmittedTiles, SHOW_WEIGHT_SECTION } from '@/domain/weightSection';
+import { buildStatsOverview, HEALTH_LIFE_TILE_IDS } from '@/domain/statsOverview';
+import { StatTile } from '@/ui/StatTile';
+import { YourFitness } from '@/ui/YourFitness';
+import { DailyTargets } from '@/ui/DailyTargets';
+import { YourGoal } from '@/ui/YourGoal';
+import { WorkoutsLink } from '@/ui/WorkoutsLink';
+import { MoreInfo } from '@/ui/MoreInfo';
 import { Button, Card, Choice, ErrorNote, Field, playSavedHaptic, Screen, T } from '@/ui/ui';
 
 const KINDS: { id: HealthKind; unit: string; label: string }[] = [
@@ -83,7 +90,7 @@ export default function Health() {
   const [visibility, setVisibility] = useState<HealthVisibilityReport | null>(ios ? null : { kind: 'web' });
   const [visibilityPending, setVisibilityPending] = useState(false);
   const [period] = useStatPeriod();
-  const { readings, samples: mergedHealth } = useHealthSources();
+  const { readings, samples: mergedHealth, workouts } = useHealthSources();
   const manual = useManualHealthRefresh(readings.connected);
   const healthSamples = withPlannedMinutes(mergedHealth, snap.plannedSessions);
   const activeSeries = readings.activities.length > 0 || readings.dailies.some((day) => day.moderateMinutes != null || day.vigorousMinutes != null)
@@ -95,6 +102,24 @@ export default function Health() {
   const [turnOnNote, setTurnOnNote] = useState<string | null>(null);
   const [seeRequest, setSeeRequest] = useState(0);
   const chosen = KINDS.find((item) => item.id === kind) ?? KINDS[0];
+  const profile = snap.profile;
+  const lifeTiles = profile ? buildStatsOverview({
+    now: new Date(),
+    period,
+    stage: profile.stage,
+    sobrietyStartedAt: profile.sobrietyStartedAt,
+    plannedQuitAt: profile.plannedQuitAt,
+    drinkFreeOn: profile.drinkFreeOn,
+    drinkFreeDaysGoal: profile.drinkFreeDaysGoal,
+    checkIns: snap.checkIns,
+    health: healthSamples,
+    heightCm: profile.heightCm,
+    nutrition: snap.nutrition,
+    foodLogs: snap.foodLogs,
+    waterDays: snap.waterDays,
+    bodyComposition: snap.bodyComposition,
+    gratitude: snap.gratitude,
+  }).filter((tile) => (HEALTH_LIFE_TILE_IDS as readonly string[]).includes(tile.id)) : [];
 
   const refreshLink = useCallback(() => {
     if (!ios) return;
@@ -344,8 +369,18 @@ export default function Health() {
         hrv={readings.hrv}
         appleHrvSdnn={appleDayValues(snap.health, 'hrv_sdnn')}
         userMetrics={readings.userMetrics}
+        bloodPressure={readings.bloodPressure}
+        bodyComp={readings.bodyComp}
+        skinTemp={readings.skinTemp}
+        stress={readings.stress}
+        epochs={readings.epochs}
+        healthSnapshot={readings.healthSnapshot}
+        moveIq={readings.moveIq}
+        activityDetails={readings.activityDetails}
         age={snap.nutrition.goalAge}
         sex={snap.nutrition.goalSex}
+        goal={snap.nutrition.goal}
+        showVo2Chart={false}
       />
       <HealthVisibility
         report={visibility}
@@ -361,6 +396,24 @@ export default function Health() {
       <Card>
         <GoalLine />
       </Card>
+      <YourGoal place="stats" />
+      <DailyTargets />
+      <YourFitness onPlanOutdoor={() => router.push(`/workouts?planOutdoor=${Date.now()}` as never)} />
+      <WorkoutsLink workouts={workouts} />
+      <Card accessibilityLabel="Open Health Plan" onPress={() => router.push('/health-plan' as never)}>
+        <T style={{ fontFamily: theme.font.bodyStrong }}>Health Plan</T>
+        <T variant="muted">A short plan from the figures you already keep.</T>
+      </Card>
+      <MoreInfo about="these figures">
+        <T variant="muted">A plain look at the figures you already keep. The words say what the colour means.</T>
+      </MoreInfo>
+      <View style={{ gap: 10, alignSelf: 'stretch' }}>
+        {lifeTiles.map((item) => (
+          <View key={item.id} style={{ alignSelf: 'stretch' }}>
+            <StatTile tile={item} plain />
+          </View>
+        ))}
+      </View>
       <HealthSectionShare />
       {SHOW_WEIGHT_SECTION ? <WeightWaistLink samples={healthSamples} /> : null}
       <HealthStatBoard

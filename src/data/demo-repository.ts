@@ -46,7 +46,7 @@ import { shareInflight } from '@/domain/writes';
 import { isoDay } from '@/domain/dates';
 import { isGratitudeCategory, localGratitudeReflect, planGratitudeEntry, sortGratitude, type GratitudeEntry, type GratitudeReflect } from '@/domain/gratitude';
 import { GRATITUDE_MAX_BYTES, gratitudePhotoLimitMessage, gratitudeStoragePath } from '@/domain/gratitudePhotos';
-import { gratitudeLineFromSharedCaption } from '@/domain/sharedPhotos';
+import { buddyPhotoCaption, gratitudeLineFromSharedCaption } from '@/domain/sharedPhotos';
 import {
   VISION_CAPTION_LIMIT,
   VISION_MAX_BYTES,
@@ -94,7 +94,10 @@ import {
   type NutritionSettings,
 } from '@/domain/nutrition';
 import { donePlanTexts, draftHealthPlan, normaliseTrainingSchedule, presentSharedHealthPlan, type HealthPlan, type TrainingSchedule } from '@/domain/healthPlan';
-import { isPlannedSessionType, plannedEffortFrom, type PlannedSession, type PlannedSessionDraft } from '@/domain/plannedSession';
+import { nutritionAimChanged } from '@/domain/targetWeight';
+import { GOAL_PROGRESS_MAX_BYTES, goalProgressStoragePath } from '@/domain/goalProgress';
+import { analysisSectionsFromText, localStatsVerdict, sanitizeStatsAnalysis } from '@/domain/statsAnalysis';
+import { isPlannedSessionType, plannedEffortFrom, withPlannedMinutes, type PlannedSession, type PlannedSessionDraft } from '@/domain/plannedSession';
 import { PEOPLE, createDemoDb, type DemoAccount, type DemoDb } from '@/data/demo-seed';
 import { activityTypeFromKind } from '@/domain/fitnessSnapshot';
 import type {
@@ -421,6 +424,8 @@ export class DemoRepository implements Repository {
         ? sortProfilePhotos((account.profilePhotos ?? []).map((photo) => readyProfilePhoto(photo, account.profile.id)))
         : [],
       profile: account ? readyProfile(account.profile) : null,
+      goalProgressPhotos: account?.goalProgressPhotos ?? [],
+      workoutFeelings: account?.workoutFeelings ?? [],
       gratitude: account ? sortGratitude((account.gratitude ?? []).map((entry) => ({
         ...entry,
         photos: (entry.photos ?? []).map((photo) => ({ ...photo, caption: photo.caption ?? '' })),
@@ -1246,6 +1251,7 @@ export class DemoRepository implements Repository {
 
   async setNutritionSettings(settings: NutritionSettings): Promise<void> {
     const account = this.me();
+    const previous = account.nutrition;
     const db = clone(this.db);
     db.accounts[account.profile.id].nutrition = {
       ...defaultNutritionSettings(),
@@ -1255,6 +1261,8 @@ export class DemoRepository implements Repository {
       updatedAt: new Date().toISOString(),
     };
     this.commit(db);
+    if (!nutritionAimChanged(previous, settings) || !account.profile.consentAi) return;
+    await this.refreshHealthPlan(account.healthPlan?.limits ?? '', { localOnly: true });
   }
 
   async saveBodyComposition(input: {
@@ -1419,7 +1427,18 @@ export class DemoRepository implements Repository {
     this.commit(db);
   }
 
-  async refreshHealthPlan(limits: string): Promise<void> {
+  async analyseStats(summary: unknown): Promise<{ text: string; sections: import('@/domain/statsAnalysis').AnalysisSection[]; source: 'model' | 'local' }> {
+    const account = this.me();
+    if (!account.profile.consentAi || !account.profile.consentHealth) {
+      throw new UserFacingError('An analysis needs the coach and health data switches, because summarised figures are sent to the model.', 'generic');
+    }
+    const clean = sanitizeStatsAnalysis(summary);
+    if (!clean) throw new UserFacingError('There are no readings to analyse.', 'generic');
+    const text = localStatsVerdict(clean);
+    return { text, sections: analysisSectionsFromText(text), source: 'local' };
+  }
+
+  async refreshHealthPlan(limits: string, _options?: { localOnly?: boolean }): Promise<void> {
     const account = this.me();
     if (!account.profile.consentAi) {
       throw new UserFacingError('Writing a plan needs the coach consent, because your figures are sent to the model.', 'generic');
@@ -1462,7 +1481,10 @@ export class DemoRepository implements Repository {
         note: row.note,
         createdAt: row.createdAt,
       })),
-      health: account.health.map((row) => ({ kind: row.kind, value: row.value, recordedOn: row.recordedOn, source: row.source })),
+      health: withPlannedMinutes(
+        account.health.map((row) => ({ kind: row.kind, value: row.value, recordedOn: row.recordedOn, source: row.source })),
+        account.plannedSessions,
+      ),
       workoutBuckets: nutrition.workoutBuckets,
       bodyFatPct: figures.bodyFatPct,
       leanMassKg: figures.leanMassKg,
@@ -1942,6 +1964,53 @@ export class DemoRepository implements Repository {
     this.commit(db);
   }
 
+  async addGoalProgressPhoto(bytes: Uint8Array, recordedOn: string): Promise<void> {
+    if (bytes.byteLength > GOAL_PROGRESS_MAX_BYTES) throw new UserFacingError('That photo is still too large.', 'generic');
+    const day = recordedOn.slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) throw new UserFacingError('Could not save that photo.', 'generic');
+    const account = this.me();
+    const db = clone(this.db);
+    const id = randomId();
+    const next = db.accounts[account.profile.id];
+    next.goalProgressPhotos = [...(next.goalProgressPhotos ?? []), {
+      id,
+      recordedOn: day,
+      storagePath: goalProgressStoragePath(account.profile.id, id),
+      createdAt: new Date().toISOString(),
+      previewUrl: bytesToDataUrl(bytes),
+    }];
+    this.commit(db);
+  }
+
+  async saveWorkoutFeeling(input: { recordedOn: string; workoutKey: string; note: string; effort: number | null; mood: number | null }): Promise<void> {
+    const account = this.me();
+    const db = clone(this.db);
+    const next = db.accounts[account.profile.id];
+    const feelings = next.workoutFeelings ?? [];
+    const key = input.workoutKey.slice(0, 80);
+    const day = input.recordedOn.slice(0, 10);
+    const rest = feelings.filter((row) => !(row.recordedOn === day && row.workoutKey === key));
+    next.workoutFeelings = [...rest, {
+      id: rest.length === feelings.length ? randomId() : (feelings.find((row) => row.recordedOn === day && row.workoutKey === key)?.id ?? randomId()),
+      recordedOn: day,
+      workoutKey: key,
+      note: input.note.trim().slice(0, 500),
+      effort: input.effort,
+      mood: input.mood,
+    }];
+    this.commit(db);
+  }
+
+  async deleteGoalProgressPhoto(id: string): Promise<void> {
+    const account = this.me();
+    const db = clone(this.db);
+    const next = db.accounts[account.profile.id];
+    const before = next.goalProgressPhotos ?? [];
+    if (!before.some((photo) => photo.id === id)) throw new UserFacingError('Could not remove that photo.', 'generic');
+    next.goalProgressPhotos = before.filter((photo) => photo.id !== id);
+    this.commit(db);
+  }
+
   async saveVisionStatement(statement: string): Promise<void> {
     const plan = planVisionText(statement, VISION_STATEMENT_LIMIT);
     if (!plan.ok) throw new UserFacingError(plan.message, 'generic');
@@ -2125,6 +2194,14 @@ export class DemoRepository implements Repository {
     return { checked: false, needsPermissions: false, missing: [] };
   }
 
+  async loadAiUsageMonth(): Promise<{ coach: number; meal: number; plan: number }> {
+    return { coach: 0, meal: 0, plan: 0 };
+  }
+
+  async loadEntitlementOverride(): Promise<import('@/domain/entitlementOverride').EntitlementOverride | null> {
+    return null;
+  }
+
   async loadOwnSubscription(): Promise<import('@/domain/subscription').SubscriptionRecord | null> {
     return null;
   }
@@ -2186,7 +2263,7 @@ export class DemoRepository implements Repository {
     rows.unshift({
       id: randomId(),
       mine: true,
-      caption: input.caption.trim(),
+      caption: buddyPhotoCaption(input.caption),
       createdAt: new Date().toISOString(),
       allowSave: input.allowSave,
       buddyNames: names,

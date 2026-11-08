@@ -10,6 +10,7 @@ function adviceTopic(line: string): string {
   if (/^protein is still short of the target/.test(text)) return 'protein-short';
   if (/^protein logged today meets the target/.test(text)) return 'protein-met';
   if (/^protein today meets the target/.test(text)) return 'protein-met';
+  if (/interval/.test(text) && /vo2|4\s*[x×]\s*4|85/.test(text)) return 'vo2-interval';
   return `line:${text}`;
 }
 
@@ -34,7 +35,14 @@ export function dedupeAdviceLines(lines: readonly string[]): string[] {
       return;
     }
     const prior = kept[existing];
-    if (prior && rank > prior.rank) kept[existing] = { line, topic, rank, index };
+    if (prior) {
+      const incomingCut = /…|\.{3}/.test(line);
+      const priorCut = /…|\.{3}/.test(prior.line);
+      const longer = line.length > prior.line.length && !incomingCut;
+      if (rank > prior.rank || (rank === prior.rank && (longer || (priorCut && !incomingCut)))) {
+        kept[existing] = { line, topic, rank, index };
+      }
+    }
   });
   return kept.sort((left, right) => left.index - right.index).map((item) => item.line);
 }

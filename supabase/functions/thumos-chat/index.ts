@@ -43,6 +43,7 @@ import { garminActivitiesForUser, samplesWithGarminActivities } from '../_shared
 import { buildHealthInsights, healthChangeNoteFromReadings, londonDay } from '../_shared/healthInsights.ts';
 import { coachConsentAllows } from '../_shared/coachConsent.ts';
 import { loadNutritionLines } from '../_shared/nutritionLoad.ts';
+import { loadWorkoutReflections } from '../_shared/workoutReflectionLoad.ts';
 import { moodOnTen } from '../_shared/mood.ts';
 import { GOAL_LABEL, type NutritionGoal } from '../_shared/nutrition.ts';
 import { formatSoberElapsed, soberElapsed } from '../_shared/sober.ts';
@@ -255,11 +256,17 @@ Deno.serve(async (req) => {
     interimFlag: Deno.env.get('XAI_INTERIM_OPT_IN_ALLOWED'),
     userOptIn: profile.consent_xai_interim,
   });
+  const diaryAllowed = !safety.selfHarm && garminAllowedForCoach({
+    consentAi: profile.consent_ai === true,
+    consentHealth: shareHealth,
+    personalDataEnabled,
+  });
   const garminLines = await garminLinesFor(userClient, userId, {
     consentAi: profile.consent_ai === true,
     consentHealth: shareHealth,
     personalDataEnabled,
   });
+  const workoutReflections = await loadWorkoutReflections(userClient, userId, healthToday, diaryAllowed);
 
   const context = buildThumosContext({
     now: new Date(),
@@ -284,6 +291,7 @@ Deno.serve(async (req) => {
     pinnedQuote: pinnedStoicQuote(profile.pinned_quote_id),
     nutritionLines,
     garminLines,
+    workoutReflections,
   });
 
   const admin = createClient(url, service, { auth: { persistSession: false } });
@@ -293,6 +301,7 @@ Deno.serve(async (req) => {
     kind: 'coach',
     crisis: safety.selfHarm || safety.withdrawal,
     enforcedFlag: Deno.env.get('AI_ENTITLEMENT_ENFORCED'),
+    allowlist: Deno.env.get('AI_ENTITLEMENT_USERS'),
   });
   if (!gate.ok && 'body' in gate) return json(gate.body, gate.status);
   const crisisStatic = !gate.ok && 'crisis' in gate ? gate.reply || CRISIS_STATIC_REPLY : null;

@@ -1,10 +1,11 @@
+import { overrideActive, parseEntitlementOverride, tierForAllowance } from './entitlementOverride.ts';
 import { entitlementActive, type SubscriptionRecord } from './subscriptionRules.ts';
 import {
   AI_MAX_TOKENS,
   CRISIS_STATIC_REPLY,
   TIER_LIMITS,
   decideAllowance,
-  entitlementEnforced,
+  entitlementEnforcedForUser,
   limitReachedMessage,
   londonDayKey,
   londonMonthStart,
@@ -44,15 +45,21 @@ export async function gateAiUse(input: {
   crisis?: boolean;
   now?: Date;
   enforcedFlag?: string;
+  /** Comma-separated user ids enforced while AI_ENTITLEMENT_ENFORCED is false. */
+  allowlist?: string;
 }): Promise<AiGate> {
   const now = input.now ?? new Date();
-  const enforced = entitlementEnforced(input.enforcedFlag);
+  const enforced = entitlementEnforcedForUser(input.enforcedFlag, input.userId, input.allowlist);
   if (!enforced) return { ok: true, tier: null, used: 0, limit: 0 };
 
   const sub = await input.admin.from('subscriptions').select('product_id, status, expires_at, is_trial, environment').eq('user_id', input.userId).maybeSingle();
   if (sub.error) return { ok: false, status: 503, body: { ok: false, code: 'usage_unavailable', message: 'Could not check the subscription.' } };
+  const overrideRes = await input.admin.from('entitlement_overrides').select('tier, expires_at').eq('user_id', input.userId).maybeSingle();
+  const override = overrideRes.error ? null : parseEntitlementOverride(overrideRes.data);
+  const comp = overrideActive(override, now.getTime());
   const row = subscriptionFromGate(sub.data);
-  const tier = row && entitlementActive(row, now.getTime()) ? tierForProduct(row.productId) : null;
+  const storeTier = row && entitlementActive(row, now.getTime()) ? tierForProduct(row.productId) : null;
+  const tier = tierForAllowance(override, storeTier, now.getTime());
   if (!tier) {
     if (input.crisis) return { ok: false, status: 200, crisis: true, reply: CRISIS_STATIC_REPLY };
     return { ok: false, status: 402, body: { ok: false, code: 'subscription_required', message: subscriptionRequiredMessage() } };
@@ -97,7 +104,9 @@ export async function gateAiUse(input: {
         used: decision.used,
         window: decision.window,
         resets_at: decision.resetsAt,
-        message: limitReachedMessage(decision),
+        message: comp
+          ? `You've reached ${decision.window === 'day' ? "today's allowance" : "this month's allowance"}. It resets at ${decision.window === 'day' ? 'midnight' : 'the start of next month'}.`
+          : limitReachedMessage(decision),
       },
     };
   }

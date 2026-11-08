@@ -98,9 +98,9 @@ export function HealthBoard({
     <View style={{ gap: 14 }}>
       {showWeek ? (
         <Card>
-          <T variant="title">Your health this week</T>
+          <T variant="title">Your health in the last 7 days</T>
           {report.headlines.length === 0 ? (
-            <T variant="muted">Not enough readings yet to compare this week with the one before.</T>
+            <T variant="muted">Not enough readings yet to compare the last 7 days with the 7 before.</T>
           ) : (
             report.headlines.map((line) => <T key={line}>{line}</T>)
           )}

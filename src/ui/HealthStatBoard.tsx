@@ -5,7 +5,8 @@ import Svg from 'react-native-svg';
 
 import { isoDay, startOfLocalDay } from '@/domain/dates';
 import { BAND_CAVEAT, WALKING_BELOW_ZONE_NOTE, walkingBelowModerateZone, type BandLink } from '@/domain/healthBands';
-import { latestVo2Reading, VO2_CARD_LINE, vo2MeasuredLine, type Vo2Source } from '@/domain/vo2Estimate';
+import { currentVo2Max } from '@/domain/currentVo2';
+import { VO2_CARD_LINE, vo2MeasuredLine, type Vo2Source } from '@/domain/vo2Estimate';
 import { OUTSIDE_CRISIS_LINE, OUTSIDE_SAFETY_LINE } from '@/domain/outdoorRoute';
 import { LowRestingFitNote } from '@/ui/LowRestingFitNote';
 import { chartBucketForPeriod } from '@/domain/readingChart';
@@ -40,6 +41,7 @@ import { DateField } from '@/ui/DateField';
 import { GoalLine } from '@/ui/GoalLine';
 import { statsToneColors } from '@/ui/statsPalette';
 import { useAppTheme } from '@/ui/theme';
+import { MetricRatingLines } from '@/ui/MetricRating';
 import { MoreInfoButton } from '@/ui/MoreInfo';
 import { Vo2EstimateNote, Vo2MeasureBanner, Vo2MeasureCopy } from '@/ui/Vo2EstimateNote';
 import { healthTileIcon } from '@/domain/statIcons';
@@ -64,7 +66,7 @@ export function HealthStatBoard(
 ) {
   const model = narrowHealthStatBoard(buildHealthStatBoard(input), { only: input.onlyTiles, omit: input.omitTiles });
   const period = parseStatPeriod(input.period);
-  const vo2 = latestVo2Reading(input.samples);
+  const vo2 = currentVo2Max({ today: input.today, samples: input.samples });
   const measuredOn = vo2?.day ?? null;
   const vo2Source = vo2?.source ?? null;
   const [openId, setOpenId] = useState<string | null>(null);
@@ -305,6 +307,7 @@ function StatTile({
           </View>
         ) : null}
         <TileValue tile={tile} />
+        {tile.id === 'hrv_sdnn' ? <T variant="muted">Apple Health (SDNN)</T> : null}
         {tile.id === 'vo2_max' && measuredOn ? <T variant="muted">{vo2MeasuredLine(measuredOn, vo2Source)}</T> : null}
         {tile.id === 'vo2_max' ? <T>{VO2_CARD_LINE}</T> : null}
         {tile.empty ? null : <TileVisual visual={tile.visual} charted={charted} showCaptions={tile.visual.kind !== 'zone'} />}
@@ -315,9 +318,8 @@ function StatTile({
           </>
         ) : null}
         <LowRestingFitNote reading={restingTileShowsFitLine(tile) ? tile.valueText : null} />
-        {!tile.empty && tile.hasGuideline && tile.id !== 'vo2_max' ? (
-          <T variant="muted">{tile.id === 'weekly_active_minutes' ? 'Not medical advice. Not a diagnosis.' : 'Not medical advice.'}</T>
-        ) : null}
+        <MetricRatingLines rating={tile.rating} />
+        <T variant="muted">Not medical advice. Not a diagnosis.</T>
         {tile.empty || tile.visual.kind === 'ring' || tile.visual.kind === 'zone' ? null : (
           <StatusMark tone={tile.tone} status={tile.status} word={tile.mark} />
         )}
@@ -582,6 +584,9 @@ function StatDetail({
                 {tile.rangeNote && !tile.meaning.includes(tile.rangeNote) ? <T>{tile.rangeNote}</T> : null}
                 <WorkoutTypeChoices tile={tile} onSetWorkoutBucket={onSetWorkoutBucket} />
                 {!tile.empty && tile.readings.length === 0 && tile.history.length >= 2 ? <TrendLine points={tile.history} color={ink} /> : null}
+                {tile.rating?.goalLine ? <T>{tile.rating.goalLine}</T> : null}
+                {tile.rating?.tips.map((tip) => <T key={tip}>{tip}</T>)}
+                {tile.rating && !tile.sources?.length && !tile.sourceName ? <T variant="muted">{tile.rating.source}</T> : null}
                 {tile.trend ? <T variant="muted">{tile.trend}</T> : null}
                 {tile.sources && tile.sources.length > 0 ? tile.sources.map((source) => (
                   <Pressable

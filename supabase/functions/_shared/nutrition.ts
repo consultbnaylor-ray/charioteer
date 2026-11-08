@@ -1,4 +1,5 @@
 import { type CoachShare } from './coachConsent.ts';
+import { FITNESS_GOAL_LABEL, resolvedFitnessGoal, type FitnessGoal } from './fitnessGoal.ts';
 import { londonDay } from './healthInsights.ts';
 import { dedupeAdviceLines } from './adviceDedupe.ts';
 import { targetActivityPlan, targetCoachActivityLines, type ActivityReading } from './targetActivity.ts';
@@ -47,7 +48,7 @@ export const WAGON_SUPPORT = [
   'NHS 111 if you are worried about withdrawal',
 ] as const;
 export const NUTRITION_PROMPT_LINE =
-  'If CONTEXT includes a nutrition summary, you may mention it. Estimates are estimates. Do not shame anyone about calories, weight, or a day over a target. If calories are hidden, do not mention kcal. If CONTEXT includes a nutrition goal, or how they are doing toward it, tie one remark back to that goal. Do not recap the whole goal, and do not add a stock ending. If CONTEXT includes a fitness snapshot, tie one remark back to it. Do not recap the whole snapshot. It is an estimate, not a medical assessment. If CONTEXT includes a weight range, use those figures. Do not turn a class limit into a weight cut. Do not suggest a target below the healthy minimum. A loss, when one is mentioned, stays around 0.5 to 1 kg a week at most. Do not suggest fewer sessions than they already do, a crash week, or a running or mileage plan. Do not suggest eating less when CONTEXT says a lower intake is not being suggested. Do not suggest a crash diet. Check with a doctor before big changes. If the goal is an elite runner, talk about carbohydrate around training and moderate protein, and lean body composition rather than the scales. If the goal is body building, talk about a surplus or a cut phase, protein, and body fat and lean mass, and do not push an aggressive deficit. If the goal is a heavyweight boxer, talk about size and power, high protein, and food around training. Do not suggest a deficit. If the goal is a middleweight boxer, talk about staying near a professional middleweight limit of about 72.6 kg (160 lb) with a small change only. A class they type is the limit on this screen. If the goal is a featherweight, super featherweight, lightweight, super lightweight, welterweight, super welterweight, super middleweight, light heavyweight, or cruiserweight boxer, stay near that professional limit with a small change only. Those limits are about 57.2 kg, 59.0 kg, 61.2 kg, 63.5 kg, 66.7 kg, 69.9 kg, 76.2 kg, 79.4 kg, and 90.7 kg. Super lightweight is also called light welterweight. Super welterweight is also called light middleweight. Amateur IBA figures are a reference only. Muscular boxers can sit above the BMI band. Never suggest a rapid weight cut, skipping meals to make weight, a sauna, or dehydration. For someone sober, recovery tips stay alcohol-free: food, water, sleep, and a soft drink if they want one. If CONTEXT includes body composition, use body fat before waist-to-height, and waist-to-height before BMI. Do not call someone overweight or obese from BMI when CONTEXT says they lift weights, or when CONTEXT is using body fat or waist. If CONTEXT says they are carrying extra weight, BMI category labels stay on unless body fat or waist is the better figure, protein uses a healthy weight rather than total weight, and you do not suggest a crash diet. Check with a doctor before big changes. If CONTEXT says they have fallen off the wagon, treat that as a safety moment: be gentle, do not shame, and mention the Samaritans on 116 123 and Drinkline on 0300 123 1110. Sugar cravings in early recovery are common; you may say so only when CONTEXT includes that note.';
+  'When they ask about food, diet, weight, or training fuel, and CONTEXT includes daily targets and a meal log, use that log only to reason. Do not repeat the log. Do not list dates, meal-by-meal kcal, or the word Estimate. Answer with one line for the daily calorie target and protein target, one line for the 7-day average against those targets, then 2 to 4 short reduce, add, or swap suggestions. Name a food only inside that advice. A line that starts with "Meal log for reasoning only" must not be quoted back. Use only the meals and figures written there. Do not invent a meal or a number. Estimates are a general guide. Not medical advice. If CONTEXT includes a nutrition summary, you may mention it. Estimates are estimates. Do not shame anyone about calories, weight, or a day over a target. If calories are hidden, do not mention kcal. If CONTEXT includes a nutrition goal, or how they are doing toward it, tie one remark back to that goal. Do not recap the whole goal, and do not add a stock ending. If CONTEXT includes a fitness snapshot, tie one remark back to it. Do not recap the whole snapshot. It is an estimate, not a medical assessment. If CONTEXT includes a weight range, use those figures. Do not turn a class limit into a weight cut. Do not suggest a target below the healthy minimum. A loss, when one is mentioned, stays around 0.5 to 1 kg a week at most. Do not suggest fewer sessions than they already do, a crash week, or a running or mileage plan. Do not suggest eating less when CONTEXT says a lower intake is not being suggested. Do not suggest a crash diet. Check with a doctor before big changes. If the goal is an elite runner, talk about carbohydrate around training and moderate protein, and lean body composition rather than the scales. If the goal is body building, talk about a surplus or a cut phase, protein, and body fat and lean mass, and do not push an aggressive deficit. If the goal is a heavyweight boxer, talk about size and power, high protein, and food around training. Do not suggest a deficit. If the goal is a middleweight boxer, talk about staying near a professional middleweight limit of about 72.6 kg (160 lb) with a small change only. A class they type is the limit on this screen. If the goal is a featherweight, super featherweight, lightweight, super lightweight, welterweight, super welterweight, super middleweight, light heavyweight, or cruiserweight boxer, stay near that professional limit with a small change only. Those limits are about 57.2 kg, 59.0 kg, 61.2 kg, 63.5 kg, 66.7 kg, 69.9 kg, 76.2 kg, 79.4 kg, and 90.7 kg. Super lightweight is also called light welterweight. Super welterweight is also called light middleweight. Amateur IBA figures are a reference only. Muscular boxers can sit above the BMI band. Never suggest a rapid weight cut, skipping meals to make weight, a sauna, or dehydration. For someone sober, recovery tips stay alcohol-free: food, water, sleep, and a soft drink if they want one. If CONTEXT includes body composition, use body fat before waist-to-height, and waist-to-height before BMI. Do not call someone overweight or obese from BMI when CONTEXT says they lift weights, or when CONTEXT is using body fat or waist. If CONTEXT says they are carrying extra weight, BMI category labels stay on unless body fat or waist is the better figure, protein uses a healthy weight rather than total weight, and you do not suggest a crash diet. Check with a doctor before big changes. If CONTEXT says they have fallen off the wagon, treat that as a safety moment: be gentle, do not shame, and mention the Samaritans on 116 123 and Drinkline on 0300 123 1110. Sugar cravings in early recovery are common; you may say so only when CONTEXT includes that note. If CONTEXT says a competition weight cut is on, you may talk about that short date. Never advise intake under the calorie floor. Never advise fluid restriction, a sauna, a sweat suit, diuretics, or laxatives. Protect protein. After weigh-in, plan refeeding and rehydration. Dizziness, fainting, confusion, or a racing heart means stop and get urgent help. It is general information, not medical advice, and an acknowledgement does not remove every duty or claim. A protein target is a training goal, not a safety ceiling. There is no established safe upper limit for protein. Do not say an amount is safe because it is under the target or under a range. Do not call a high intake dangerous. Do not suggest another shake or more protein powder because a day is a little under the target. A powder weight or a scoop count is not protein grams. If several recent days sit above the usual sports range, say the log is worth reviewing and that estimates can be wrong. Kidney disease or a prescribed protein limit needs the figure a clinician has set. Do not ask for a diagnosis.';
 
 /** NHS: up to 222 kcal in a pint of 5.2% lager, about 3 units. */
 export const NHS_PINT_52_KCAL = 222;
@@ -102,8 +103,14 @@ export type NutritionSettings = {
   shareQuality: boolean;
   /** Consecutive days with a meal logged. */
   shareProgress: boolean;
-  /** Null until they choose one. */
+  /** Null until they choose one. Weight or a boxing class. A fitness-age aim is separate. */
   goal: NutritionGoal | null;
+  /** Fitness-age aim. Null until saved. The app treats a blank value as Normal Fitness Age. */
+  fitnessGoal: FitnessGoal | null;
+  /** Short competition cut. Off until the acknowledgement is stored. */
+  competitionCut: boolean;
+  competitionCutAt: string | null;
+  competitionCutVersion: string | null;
   goalAge: number | null;
   goalSex: NutritionSex | null;
   proteinTarget: number | null;
@@ -253,6 +260,10 @@ export function defaultNutritionSettings(): NutritionSettings {
     shareQuality: false,
     shareProgress: false,
     goal: null,
+    fitnessGoal: null,
+    competitionCut: false,
+    competitionCutAt: null,
+    competitionCutVersion: null,
     goalAge: null,
     goalSex: null,
     proteinTarget: null,
@@ -385,6 +396,7 @@ export const MEAL_ESTIMATE_PROMPT = [
   'Shape: {"items":[{"name":"","kcal":0,"proteinG":0,"carbsG":0,"sugarG":0,"fibreG":0,"unsaturatedG":0,"saturatedG":0,"transG":0,"sodiumMg":0,"processed":false}]}',
   'Use grams except kcal and sodium (milligrams). unsaturatedG is mono and poly together. Salt on a UK label is sodium times 2.5.',
   'Include every nutrient key. Use 0 when the food has none of it. Leave a key out only when it cannot be estimated.',
+  'A number of scoops, or a powder weight such as 65 g protein shake, is not protein grams. Do not copy that number into proteinG. If the text states the protein, such as 30 g protein, use that figure and leave kcal out when the calories are not stated. Do not invent a brand or a label. Protein is about 4 calories per gram, so do not set kcal lower than the protein grams times 4 when both are known.',
   'processed is true for ultra-processed foods such as crisps, biscuits, sweets, fizzy drinks, and reconstituted meat.',
   'These are estimates. Do not invent a medical claim. If the picture or text is not food, return {"items":[]}.',
 ].join(' ');
@@ -454,6 +466,57 @@ function fillEstimateGaps(item: FoodItem): FoodItem {
   return next;
 }
 
+function proteinNotedItem(name: string, proteinG: number): FoodItem {
+  return {
+    name,
+    kcal: 0,
+    proteinG: round1(proteinG),
+    carbsG: 0,
+    sugarG: 0,
+    fibreG: 0,
+    unsaturatedG: 0,
+    saturatedG: 0,
+    transG: 0,
+    sodiumMg: 0,
+    processed: false,
+    known: ['proteinG'],
+    processedKnown: false,
+  };
+}
+
+function unnamedPowderItem(name: string): FoodItem {
+  return {
+    name,
+    kcal: 0,
+    proteinG: 0,
+    carbsG: 0,
+    sugarG: 0,
+    fibreG: 0,
+    unsaturatedG: 0,
+    saturatedG: 0,
+    transG: 0,
+    sodiumMg: 0,
+    processed: false,
+    known: [],
+    processedKnown: false,
+  };
+}
+
+/** Keeps a stated protein amount. Does not turn powder grams or scoops into protein. */
+function applyPowderReading(text: string, found: FoodItem[]): FoodItem[] {
+  const reading = readPowderQuantity(text);
+  const name = text.trim().replace(/\s+/g, ' ').slice(0, 80);
+  if (reading.statedProteinG != null) {
+    const line = proteinNotedItem(found.length ? 'Protein' : (name || 'Protein'), reading.statedProteinG);
+    return found.length ? [...found, line] : [line];
+  }
+  if (reading.ambiguous) {
+    const line = unnamedPowderItem(name || 'Protein powder');
+    return found.length ? [...found, line] : [line];
+  }
+  return found;
+}
+
 function knownFoodForName(name: string): KnownFood | null {
   const plain = name.toLowerCase().replace(/^\d+\s*×\s*/, '').trim();
   for (const food of KNOWN) {
@@ -476,7 +539,8 @@ export function estimateFromText(text: string): FoodItem[] {
       break;
     }
   }
-  if (found.length) return found;
+  const withPowder = applyPowderReading(text, found);
+  if (withPowder.length) return withPowder;
   const name = text.trim().replace(/\s+/g, ' ').slice(0, 80);
   if (name.length < 2) return [];
   return [{
@@ -496,7 +560,10 @@ export function estimateFromText(text: string): FoodItem[] {
   }];
 }
 
-/** Demo photo reading. The live function sends the picture to the vision model. */
+/** Demo mode only. A live photo estimate must never return this. */
+export const PHOTO_READ_FAIL = "Couldn't read that photo, try again or type it";
+
+/** Demo photo reading. Not used when a real account sends a photo. */
 export function samplePhotoMeal(): FoodItem[] {
   return estimateFromText('chicken and avocado');
 }
@@ -795,8 +862,10 @@ export type TodayRing = {
   kind: 'kcal' | 'protein';
   value: number;
   target: number | null;
-  /** Share of the ring to fill, from 0 to 1. */
+  /** First lap, from 0 to 1. Intake past the target stays at 1. */
   fill: number;
+  /** Second lap for calories over the target. Protein stays at 0. Capped at one extra lap. */
+  overfill: number;
   centre: string;
   unit: string;
   caption: string;
@@ -817,7 +886,9 @@ export function todayRing(input: {
   const value = kind === 'protein' ? input.proteinG : input.kcal;
   const target = kind === 'protein' ? input.proteinTarget : input.kcalTarget;
   const usableTarget = target != null && target > 0 ? target : null;
-  const fill = usableTarget == null ? 0 : Math.max(0, Math.min(1, value / usableTarget));
+  const ratio = usableTarget == null ? 0 : Math.max(0, value / usableTarget);
+  const fill = Math.min(1, ratio);
+  const overfill = kind === 'kcal' && ratio > 1 ? Math.min(1, ratio - 1) : 0;
   const unit = kind === 'protein' ? 'g protein' : 'kcal';
   const centre = kind === 'protein' ? String(round1(value)) : Math.round(value).toLocaleString('en-GB');
   let caption = 'Nothing logged today.';
@@ -843,7 +914,7 @@ export function todayRing(input: {
         : `${Math.round(left).toLocaleString('en-GB')} kcal left`;
     }
   }
-  return { kind, value, target: usableTarget, fill, centre, unit, caption, status };
+  return { kind, value, target: usableTarget, fill, overfill, centre, unit, caption, status };
 }
 
 export const PROTEIN_TARGET_MET = 'Protein target met';
@@ -873,6 +944,273 @@ export function loggedProteinRing(input: {
     fill: Math.max(0, Math.min(1, eaten / target)),
     status: `${formatGrams(left)} g protein left`,
     met: false,
+  };
+}
+
+/**
+ * Protein review. Not a danger line, and not a claim that a lower day is safe.
+ *
+ * EFSA NDA Panel, 2012. Scientific Opinion on Dietary Reference Values for protein.
+ * EFSA Journal 2012;10(2):2557. https://doi.org/10.2903/j.efsa.2012.2557
+ * The average requirement is 0.66 g/kg/day and the PRI is 0.83 g/kg/day.
+ * Data were insufficient to set a Tolerable Upper Intake Level. Intakes up to
+ * twice the PRI (about 1.66 g/kg/day) were described as regularly consumed and
+ * considered safe for some healthy active adults. That is not an upper bound
+ * above which intake becomes unsafe.
+ *
+ * Institute of Medicine, 2005. Dietary Reference Intakes for Energy,
+ * Carbohydrate, Fiber, Fat, Fatty Acids, Cholesterol, Protein, and Amino Acids.
+ * https://nap.nationalacademies.org/catalog/10490
+ * There were insufficient data to set a UL for total protein. The report says
+ * the absence of a UL does not mean chronic high intakes are risk-free.
+ *
+ * Thomas, Erdman, and Burke, 2016. Nutrition and Athletic Performance.
+ * ACSM, Academy of Nutrition and Dietetics, and Dietitians of Canada.
+ * Medicine & Science in Sports & Exercise 48(3):543–568.
+ * About 1.2 to 2.0 g/kg/day for athletes. A training range, not a UL.
+ *
+ * Jäger et al., 2017. International Society of Sports Nutrition position stand:
+ * protein and exercise. JISSN 14:20. https://doi.org/10.1186/s12970-017-0177-8
+ * About 1.4 to 2.0 g/kg/day is sufficient for most exercising adults.
+ * About 2.3 to 3.1 g/kg/day is discussed for keeping lean mass in a calorie
+ * deficit, and higher intakes have been studied in resistance-trained adults.
+ * Those are training and body-composition ranges, not a toxicity threshold.
+ *
+ * Protein is about 4 kcal per gram (Atwater general factor). A calorie figure
+ * below the protein grams times 4 cannot both be right. A powder weight or a
+ * scoop count is not those protein grams. This app does not store a brand label.
+ *
+ * Kidney disease and any prescribed protein limit are individual. This note
+ * does not ask for a diagnosis. A figure a clinician has set replaces it.
+ * A saved daily target is a training goal. It is not a safety ceiling.
+ */
+export const PROTEIN_KCAL_PER_G = 4;
+/** Label rounding. A gap no bigger than this is not called a contradiction. */
+export const PROTEIN_KCAL_TOLERANCE = 10;
+/** Top of the range sports guidance calls enough for most adults who train. Not a UL. */
+export const SPORTS_PROTEIN_ENOUGH_G_PER_KG = 2;
+/**
+ * Review only when the day is more than 10% above the higher of the saved
+ * target and 2 g/kg. Meeting a target, or passing it by a little, is not the cue.
+ * The 10% is a log-review margin, not a clinical limit.
+ */
+export const PROTEIN_REVIEW_MARGIN = 1.1;
+export const PROTEIN_REVIEW_DAYS = 3;
+export const PROTEIN_REVIEW_WINDOW_DAYS = 7;
+/** A measured weight older than this is not turned into grams per kilo. */
+export const PROTEIN_WEIGHT_FRESH_DAYS = 28;
+export const PROTEIN_NO_UPPER_LIMIT =
+  'No established safe upper limit for protein. Your target is a goal, not a ceiling, and a lower day is not a safety clearance. Kidney disease, or a protein limit a clinician has set, needs their figure.';
+export const PROTEIN_WITHOUT_CALORIES =
+  'Protein is entered and calories are not, so this line is not a full nutrition figure.';
+export const PROTEIN_OVER_CALORIES =
+  'Protein alone is about 4 calories per gram, which is more than the calories entered. The numbers are kept as entered. A powder weight is not the same as protein grams.';
+export const POWDER_NOT_PROTEIN =
+  'A powder weight or a scoop count is not protein grams. Protein is left as entered, and no brand label is assumed.';
+
+export type FoodFigureKind = 'ok' | 'protein-without-calories' | 'protein-over-calories';
+
+/** Known protein with unknown calories is not the same as two figures that cannot both be right. */
+export function foodFigureKind(item: { kcal: number; proteinG: number }): FoodFigureKind {
+  if (!(item.proteinG > 0)) return 'ok';
+  if (!(item.kcal > 0)) return 'protein-without-calories';
+  if (item.proteinG * PROTEIN_KCAL_PER_G > item.kcal + PROTEIN_KCAL_TOLERANCE) return 'protein-over-calories';
+  return 'ok';
+}
+
+export function foodFigureNote(item: { kcal: number; proteinG: number }): string | null {
+  const kind = foodFigureKind(item);
+  if (kind === 'protein-without-calories') return PROTEIN_WITHOUT_CALORIES;
+  if (kind === 'protein-over-calories') return PROTEIN_OVER_CALORIES;
+  return null;
+}
+
+export function proteinFigureLines(items: readonly { kcal: number; proteinG: number }[]): string[] {
+  const kinds = new Set(items.map(foodFigureKind));
+  const lines: string[] = [];
+  if (kinds.has('protein-over-calories')) lines.push(PROTEIN_OVER_CALORIES);
+  if (kinds.has('protein-without-calories')) lines.push(PROTEIN_WITHOUT_CALORIES);
+  return lines;
+}
+
+export type PowderReading = {
+  statedProteinG: number | null;
+  powderGrams: number | null;
+  scoops: number | null;
+  ambiguous: boolean;
+};
+
+const SCOOP_WORDS: Readonly<Record<string, number>> = { one: 1, two: 2, three: 3, four: 4 };
+
+function numberInRange(value: number, min: number, max: number): number | null {
+  if (!Number.isFinite(value) || value < min || value > max) return null;
+  return Math.round(value * 10) / 10;
+}
+
+/** Powder grams and scoop counts stay out of the protein field. A stated protein amount is kept. */
+export function readPowderQuantity(text: string): PowderReading {
+  const source = text.toLowerCase();
+  const statedMatch = source.match(/(\d+(?:\.\d+)?)\s*g(?:rams)?\s+of\s+protein\b|(\d+(?:\.\d+)?)\s*g(?:rams)?\s+protein\b(?!\s+(?:shake|powder|whey|isolate))/i);
+  const statedProteinG = numberInRange(Number(statedMatch?.[1] ?? statedMatch?.[2]), 1, 700);
+  const powderMatch = source.match(/(\d+(?:\.\d+)?)\s*g(?:rams)?\s+(?:of\s+)?(?:protein\s+)?(?:shake|powder|whey|isolate)\b/i);
+  const powderGrams = numberInRange(Number(powderMatch?.[1]), 1, 500);
+  const scoopMatch = source.match(/(\d+(?:\.\d+)?|one|two|three|four)\s+scoops?\b/i);
+  const scoopRaw = scoopMatch?.[1] ?? '';
+  const scoops = numberInRange(SCOOP_WORDS[scoopRaw] ?? Number(scoopRaw), 1, 12);
+  const ambiguous = statedProteinG == null && (powderGrams != null || scoops != null);
+  return { statedProteinG, powderGrams, scoops, ambiguous };
+}
+
+export function powderReadingNote(text: string): string | null {
+  const reading = readPowderQuantity(text);
+  if (!reading.ambiguous) return null;
+  return POWDER_NOT_PROTEIN;
+}
+
+export type ProteinDay = {
+  day: string;
+  proteinG: number;
+  estimated: boolean;
+  uncertain: boolean;
+};
+
+export type ProteinAdvisoryKind = 'none' | 'one-day' | 'several-days' | 'needs-weight' | 'adults-only';
+
+export type ProteinAdvisory = {
+  standing: string;
+  review: string | null;
+  kind: ProteinAdvisoryKind;
+};
+
+function daysFrom(earlier: string, later: string): number {
+  const [ay, am, ad] = earlier.split('-').map(Number);
+  const [by, bm, bd] = later.split('-').map(Number);
+  const start = Date.UTC(ay ?? 1970, (am ?? 1) - 1, ad ?? 1);
+  const end = Date.UTC(by ?? 1970, (bm ?? 1) - 1, bd ?? 1);
+  return Math.round((end - start) / 86_400_000);
+}
+
+export function proteinDaysFromLogs(logs: readonly FoodLog[], today: string, ownerId = ''): ProteinDay[] {
+  const start = shiftIsoDay(today, 1 - PROTEIN_REVIEW_WINDOW_DAYS);
+  const byDay = new Map<string, FoodLog[]>();
+  for (const log of logs) {
+    if (ownerId && log.userId !== ownerId) continue;
+    const day = log.eatenOn.slice(0, 10);
+    if (day < start || day > today) continue;
+    const rows = byDay.get(day) ?? [];
+    rows.push(log);
+    byDay.set(day, rows);
+  }
+  const days: ProteinDay[] = [];
+  for (const [day, rows] of byDay) {
+    const items = rows.flatMap((row) => row.items);
+    const proteinG = sumItems(items).proteinG;
+    if (!(proteinG > 0)) continue;
+    days.push({
+      day,
+      proteinG,
+      estimated: rows.some((row) => row.estimated),
+      uncertain: items.some((item) => foodFigureKind(item) !== 'ok'),
+    });
+  }
+  days.sort((left, right) => left.day.localeCompare(right.day));
+  return days;
+}
+
+type WeightUse =
+  | { state: 'missing' }
+  | { state: 'stale'; day: string; kg: number }
+  | { state: 'fresh'; day: string; kg: number };
+
+function weightUse(today: string, weights: readonly { day: string; kg: number }[]): WeightUse {
+  const chosen = weights
+    .filter((point) => point.day <= today && point.kg >= 30 && point.kg <= 300)
+    .sort((left, right) => left.day.localeCompare(right.day))
+    .at(-1);
+  if (!chosen) return { state: 'missing' };
+  if (daysFrom(chosen.day, today) > PROTEIN_WEIGHT_FRESH_DAYS) return { state: 'stale', day: chosen.day, kg: chosen.kg };
+  return { state: 'fresh', day: chosen.day, kg: chosen.kg };
+}
+
+function reviewCueGrams(kg: number, proteinTarget: number | null): number {
+  const sports = SPORTS_PROTEIN_ENOUGH_G_PER_KG * kg;
+  const base = proteinTarget != null && proteinTarget > 0 ? Math.max(proteinTarget, sports) : sports;
+  return base * PROTEIN_REVIEW_MARGIN;
+}
+
+function aboveTarget(day: ProteinDay, proteinTarget: number | null): boolean {
+  if (proteinTarget == null || !(proteinTarget > 0)) return false;
+  return day.proteinG > proteinTarget * PROTEIN_REVIEW_MARGIN;
+}
+
+function estimateClause(days: readonly ProteinDay[]): string {
+  if (days.some((day) => day.estimated || day.uncertain)) {
+    return 'Those days include an estimate, or a line whose protein and calories cannot both be right, so the total may overstate the protein.';
+  }
+  return 'The figures are what was logged. They are still not a safety finding.';
+}
+
+/**
+ * A neutral review when recent days sit well above a training goal and the
+ * usual sports range. No branch calls the amount dangerous, and none says a
+ * lower amount is safe.
+ */
+export function proteinIntakeAdvisory(input: {
+  today: string;
+  days: readonly ProteinDay[];
+  weights: readonly { day: string; kg: number }[];
+  proteinTarget: number | null;
+  age: number | null;
+}): ProteinAdvisory {
+  const standing = PROTEIN_NO_UPPER_LIMIT;
+  const quiet = { standing, review: null, kind: 'none' as const };
+  if (input.age != null && input.age < 18) {
+    if (!input.days.length) return quiet;
+    return {
+      standing,
+      review: 'The range of about 1.4 to 2 g per kg is for healthy adults who train. It is not used here. There is no established safe upper limit.',
+      kind: 'adults-only',
+    };
+  }
+  const weight = weightUse(input.today, input.weights);
+  if (weight.state !== 'fresh') {
+    const overTarget = input.days.filter((day) => aboveTarget(day, input.proteinTarget));
+    if (overTarget.length < 1) return quiet;
+    if (weight.state === 'stale') {
+      return {
+        standing,
+        review: `Some recent days are above the target you set. A weight from ${processedFoodDate(weight.day)} is too old to turn that into grams per kilo. The target is not a safety limit, and there is no established safe upper limit. ${estimateClause(overTarget)}`,
+        kind: 'needs-weight',
+      };
+    }
+    return {
+      standing,
+      review: `Some recent days are above the target you set. That target is not a safety limit. A gram-per-kilo comparison needs a measured weight from the last ${PROTEIN_WEIGHT_FRESH_DAYS} days, and there is no established safe upper limit. ${estimateClause(overTarget)}`,
+      kind: 'needs-weight',
+    };
+  }
+  const cue = reviewCueGrams(weight.kg, input.proteinTarget);
+  const high = input.days.filter((day) => day.proteinG > cue);
+  if (!high.length) return quiet;
+  const latest = high[high.length - 1];
+  const perKg = latest ? Math.round((latest.proteinG / weight.kg) * 10) / 10 : 0;
+  const weighed = `${formatGrams(weight.kg)} kg from ${processedFoodDate(weight.day)}`;
+  const range = 'about 2 g per kg, the top of the range sports guidance calls enough for most adults who train';
+  const shared = `${estimateClause(high)} That range is not a safety limit, and there is no established safe upper limit.`;
+  if (high.length >= PROTEIN_REVIEW_DAYS) {
+    return {
+      standing,
+      review: `Several recent days are above ${range}, using ${weighed}. The latest of those days is about ${formatGrams(perKg)} g per kg. ${shared}`,
+      kind: 'several-days',
+    };
+  }
+  const opening = high.length === 1
+    ? `This day is about ${formatGrams(perKg)} g per kg, using ${weighed}. That is above ${range}.`
+    : `A couple of recent days are above ${range}, using ${weighed}. The latest is about ${formatGrams(perKg)} g per kg.`;
+  return {
+    standing,
+    review: `${opening} ${high.length === 1 ? 'One day is not a pattern.' : 'A couple of days are not the same as a longer run.'} ${shared}`,
+    kind: 'one-day',
   };
 }
 
@@ -1372,15 +1710,40 @@ export function macroSplit(items: readonly FoodItem[]): { slices: MacroSlice[]; 
 
 export type TrendDay = { day: string; kcal: number; proteinG: number; logged: boolean };
 
+function itemsByEatenOn(logs: readonly FoodLog[]): Map<string, FoodItem[]> {
+  const byDay = new Map<string, FoodItem[]>();
+  for (const log of logs) {
+    if (!log.items.length) continue;
+    const list = byDay.get(log.eatenOn);
+    if (list) list.push(...log.items);
+    else byDay.set(log.eatenOn, [...log.items]);
+  }
+  return byDay;
+}
+
 export function nutritionTrendDays(logs: readonly FoodLog[], today: string, span: number): TrendDay[] {
+  const byDay = itemsByEatenOn(logs);
   const days: TrendDay[] = [];
   for (let ago = span - 1; ago >= 0; ago -= 1) {
     const day = shiftIsoDay(today, -ago);
-    const items = dayItems(logs, day);
+    const items = byDay.get(day) ?? [];
     const totals = sumItems(items);
     days.push({ day, kcal: totals.kcal, proteinG: totals.proteinG, logged: items.length > 0 });
   }
   return days;
+}
+
+/** Meals inside the rolling window. One pass, so a year of logs stays a single walk. */
+export function foodItemsInSpan(logs: readonly FoodLog[], today: string, span: number): FoodItem[] {
+  const count = Number.isFinite(span) ? Math.max(0, Math.floor(span)) : 0;
+  if (count <= 0) return [];
+  const start = shiftIsoDay(today, -(count - 1));
+  const items: FoodItem[] = [];
+  for (const log of logs) {
+    if (log.eatenOn < start || log.eatenOn > today) continue;
+    items.push(...log.items);
+  }
+  return items;
 }
 
 export function trendCaption(days: readonly TrendDay[], input: {
@@ -1630,6 +1993,18 @@ export function nutritionContextLines(input: {
       lines.push(...targetCoachActivityLines(plan).filter((line) => !ACTIVITY_LINE_LEAK.test(line)));
     }
   }
+  const proteinDays = proteinDaysFromLogs(input.logs, input.today);
+  const proteinReview = proteinIntakeAdvisory({
+    today: input.today,
+    days: proteinDays,
+    weights: input.body?.weights ?? [],
+    proteinTarget: input.settings.proteinTarget,
+    age: input.settings.goalAge,
+  });
+  if (proteinDays.length > 0) {
+    lines.push(proteinReview.standing);
+    if (proteinReview.review) lines.push(proteinReview.review);
+  }
   return dedupeAdviceLines(lines);
 }
 
@@ -1736,6 +2111,30 @@ export const PHASE_LABEL: Record<BuilderPhase, string> = {
   surplus: 'Surplus / lean bulk',
   cut: 'Cut phase',
 };
+
+/** Compact lines for the nutrition goal card. The editor stays behind Edit your goal. */
+export function nutritionGoalLines(input: {
+  goal: NutritionGoal | null;
+  fitnessGoal: FitnessGoal | null;
+  targetWeightKg: number | null;
+  targetOnLabel: string | null;
+  competitionCut: boolean;
+  goalPhase: BuilderPhase | null;
+}): string[] {
+  const lines: string[] = [];
+  if (input.targetWeightKg != null) {
+    const kg = String(input.targetWeightKg);
+    lines.push(input.targetOnLabel ? `Target weight ${kg} kg by ${input.targetOnLabel}` : `Target weight ${kg} kg`);
+  } else if (input.goal) {
+    lines.push(GOAL_LABEL[input.goal]);
+  } else {
+    lines.push('No weight goal yet');
+  }
+  if (input.goal === 'body_builder' && input.goalPhase) lines.push(PHASE_LABEL[input.goalPhase]);
+  lines.push(FITNESS_GOAL_LABEL[resolvedFitnessGoal(input)]);
+  if (input.competitionCut) lines.push('Competition cut on');
+  return lines;
+}
 
 export const COMPETITION_NOTE =
   'A competition weigh-in is a decision for you, a coach, and a doctor. This app will not plan a rapid cut, skipped meals, or dehydration.';

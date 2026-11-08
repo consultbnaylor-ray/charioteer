@@ -17,11 +17,20 @@ export async function requestAddOnlyPhotoSave(): Promise<'granted' | 'denied' | 
   return result.granted ? 'granted' : 'denied';
 }
 
-/** Adds the JPEG to the library. Does not create a named album, because that needs a library read. */
+/** Adds the JPEG to the library. A signed https link is saved as a local file first. Does not create a named album, because that needs a library read. */
 export async function saveJpegToLibrary(uri: string): Promise<'saved' | 'denied' | 'unavailable'> {
   const permission = await requestAddOnlyPhotoSave();
   if (permission !== 'granted') return permission;
+  const local = await localJpeg(uri);
   const { saveToLibraryAsync } = await import('expo-media-library');
-  await saveToLibraryAsync(uri);
+  await saveToLibraryAsync(local);
   return 'saved';
+}
+
+async function localJpeg(uri: string): Promise<string> {
+  if (!/^https:\/\//i.test(uri)) return uri;
+  const FileSystem = await import('expo-file-system/legacy');
+  const dest = `${FileSystem.cacheDirectory}shared-photo-${Date.now()}.jpg`;
+  const downloaded = await FileSystem.downloadAsync(uri, dest);
+  return downloaded.uri;
 }

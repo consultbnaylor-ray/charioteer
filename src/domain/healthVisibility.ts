@@ -68,7 +68,7 @@ const MISSING_ACTION = {
   HKQuantityTypeIdentifierStepCount: 'Carry your iPhone or wear Apple Watch.',
   HKQuantityTypeIdentifierRestingHeartRate: 'Wear Apple Watch while you are still.',
   HKQuantityTypeIdentifierHeartRateVariabilitySDNN: 'Wear Apple Watch overnight.',
-  HKQuantityTypeIdentifierVO2Max: 'Record an outdoor walk or run on Apple Watch.',
+  HKQuantityTypeIdentifierVO2Max: 'Record an outdoor run with GPS and heart rate on Apple Watch.',
   HKQuantityTypeIdentifierWalkingHeartRateAverage: 'Take a walk with Apple Watch.',
   HKQuantityTypeIdentifierHeartRateRecoveryOneMinute: 'Needs a recent Apple Watch workout.',
   HKQuantityTypeIdentifierBodyMass: 'Use a scale in Health, or log weight on Weight and waist.',

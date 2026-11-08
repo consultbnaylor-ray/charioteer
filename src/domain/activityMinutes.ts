@@ -48,7 +48,7 @@ export const ACTIVE_MINUTES_MEANING =
 export const WORKOUT_MINUTES_LABEL = 'Workout minutes';
 
 export const WORKOUT_MINUTES_INFO =
-  'These are the minutes of workouts logged this week. They are not moderate minutes and not vigorous minutes. The UK Chief Medical Officers recommend at least 150 minutes of moderate activity a week, or 75 minutes of vigorous activity. This app cannot tell how hard the logged minutes were. Not medical advice. Not a diagnosis.';
+  'These are the minutes of workouts logged in the days shown. They are not moderate minutes and not vigorous minutes. The UK Chief Medical Officers recommend at least 150 minutes of moderate activity a week, or 75 minutes of vigorous activity. This app cannot tell how hard the logged minutes were. Not medical advice. Not a diagnosis.';
 
 export const MIXED_ACTIVITY_WEEK =
   'Apple days are exercise minutes, not doubled. Garmin days count each vigorous minute twice.';

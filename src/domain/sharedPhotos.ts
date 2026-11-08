@@ -56,6 +56,14 @@ export function quickShareNeedsDestination(input: { buddyCount: number; gratitud
 /** Shown once, after Save to Photos succeeds. Not a standing paragraph. */
 export const SAVED_TO_LIBRARY = 'Saved to your photo library.';
 
+/** The buddy send worked. Adding it to this phone's library did not. */
+export const SENT_NOT_IN_LIBRARY = 'Sent to your buddies. It was not added to the photo library.';
+
+/** A pasted object-replacement mark is not part of the caption. */
+export function buddyPhotoCaption(caption: string): string {
+  return caption.trim().replace(/\uFFFC+$/u, '').trim();
+}
+
 /** Shown once, after Save to Gratitude copies the file into this person's diary. */
 export const SAVED_TO_GRATITUDE = 'Saved to Gratitude.';
 

@@ -24,11 +24,11 @@ export const VOICE_UNREACHABLE = 'Couldn\'t reach voice. Text chat is still here
 export const SIGN_IN_AGAIN = 'Please sign in again.';
 /** Shown when the session refresh itself cannot reach the network. */
 export const CHECK_CONNECTION = 'Check your connection.';
-export const ESTIMATE_WAIT_NOTE = 'This can take up to 20 seconds.';
-/** The phone gives up on a meal estimate after this long. */
-export const ESTIMATE_CLIENT_TIMEOUT_MS = 40_000;
-/** The meal function gives up on the model and returns the on-device estimate. */
-export const ESTIMATE_PROVIDER_TIMEOUT_MS = 28_000;
+export const ESTIMATE_WAIT_NOTE = 'Reading your meal… this can take up to a minute.';
+/** The phone waits longer than the function, so the function can return its own error first. */
+export const ESTIMATE_CLIENT_TIMEOUT_MS = 110_000;
+/** The meal function gives up on the model. 90s stays inside the 150s Free wall clock, with room to reply. */
+export const ESTIMATE_PROVIDER_TIMEOUT_MS = 90_000;
 
 export type AiFeature = 'meal' | 'thumos' | 'plan' | 'reflect';
 export type EdgeFailureKind = 'signed-out' | 'connection' | 'network' | 'timeout' | 'auth' | 'server';

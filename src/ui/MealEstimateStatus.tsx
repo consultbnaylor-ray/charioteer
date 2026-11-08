@@ -7,7 +7,7 @@ import { statsToneColors } from '@/ui/statsPalette';
 import { useAppTheme } from '@/ui/theme';
 
 export const ESTIMATE_READY_LINE = 'Estimate ready - see below';
-export const ESTIMATE_WAITING_LINE = 'Estimating...';
+export const ESTIMATE_WAITING_LINE = 'Reading your meal…';
 
 /** Waiting, a green tick with the ready line, or a visible retry. Nothing here is saved. */
 export function MealEstimateStatus({
