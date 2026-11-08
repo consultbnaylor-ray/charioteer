@@ -15,6 +15,10 @@ import {
   garminAllowedForCoach,
   garminAppReturn,
   garminAuthorizeUrl,
+  garminDuplicateReturn,
+  garminRefreshLockState,
+  readDeletedOauthState,
+  refreshLockBusy,
   garminCoachLines,
   garminFigures,
   garminRefreshForm,
@@ -93,6 +97,34 @@ describe('Garmin PKCE state', () => {
     expect(garminAppReturn(true)).toBe('uk.co.quanticalabs.charioteer://garmin?connected=1');
     expect(garminReturnFromUrl('uk.co.quanticalabs.charioteer://garmin?connected=1')).toBe('connected');
     expect(garminReturnFromUrl('charioteer://garmin?connected=1')).toBeNull();
+    expect(garminReturnFromUrl(garminDuplicateReturn())).toBeNull();
+    const userId = '11111111-1111-4111-8111-111111111111';
+    const claimed = readDeletedOauthState([{
+      user_id: userId,
+      code_verifier: 'verifier-value',
+      expires_at: new Date(now + 60_000).toISOString(),
+    }], null, now);
+    expect(claimed).toEqual({ ok: true, userId, codeVerifier: 'verifier-value' });
+    expect(readDeletedOauthState([], null, now)).toEqual({ ok: false, reason: 'duplicate' });
+    expect(readDeletedOauthState([{
+      user_id: userId,
+      code_verifier: 'verifier-value',
+      expires_at: new Date(now - 1000).toISOString(),
+    }], null, now)).toEqual({ ok: false, reason: 'expired' });
+    expect(readDeletedOauthState(null, { message: 'db' }, now)).toEqual({ ok: false, reason: 'invalid' });
+    expect(garminRefreshLockState(userId)).toBe(`refresh-lock:${userId}`);
+    expect(garminRefreshLockState('not-a-user')).toBeNull();
+    expect(refreshLockBusy('duplicate key value violates unique constraint')).toBe(true);
+    const callback = readFileSync('supabase/functions/garmin-oauth-callback/index.ts', 'utf8');
+    expect(callback.indexOf(".delete()")).toBeLessThan(callback.indexOf('fetch(GARMIN_TOKEN_URL'));
+    expect(callback).toContain(".select('user_id, code_verifier, expires_at')");
+    expect(callback).toContain('garminDuplicateReturn');
+    expect(callback).not.toMatch(/console\.(log|error|info|debug)\([^)\n]*(req\.url|searchParams|code_verifier|access_token)/i);
+    const shared = readFileSync('supabase/functions/_shared/garmin.ts', 'utf8');
+    const rotate = shared.slice(shared.indexOf('async function rotateGarminAccess'), shared.indexOf('async function storedAccessToken'));
+    expect(rotate).toContain(".eq('refresh_token_ciphertext', input.refreshCipher)");
+    expect(rotate).toContain('garminRefreshLockState');
+    expect(rotate).not.toMatch(/console\.(log|error|info|debug)\([^)\n]*(ciphertext|refreshToken|accessToken)/);
   });
 });
 

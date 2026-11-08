@@ -337,6 +337,43 @@ export function garminAppReturn(connected: boolean): string {
   return `${GARMIN_APP_SCHEME}://garmin?connected=${connected ? '1' : '0'}`;
 }
 
+/**
+ * A second callback for a code that was already claimed. The app ignores this
+ * hand-back, so it cannot overwrite a connected result with a cancellation.
+ */
+export function garminDuplicateReturn(): string {
+  return `${GARMIN_APP_SCHEME}://garmin?duplicate=1`;
+}
+
+export type OauthClaim =
+  | { ok: true; userId: string; codeVerifier: string }
+  | { ok: false; reason: 'duplicate' | 'expired' | 'invalid' };
+
+/** One deleted PKCE row may be exchanged. An empty delete is a duplicate, not a new failure. */
+export function readDeletedOauthState(data: unknown, error: { message?: string } | null, now: number): OauthClaim {
+  if (error) return { ok: false, reason: 'invalid' };
+  const rows = Array.isArray(data) ? data : [];
+  const row = rows[0];
+  if (!row || typeof row !== 'object') return { ok: false, reason: 'duplicate' };
+  const record = row as Record<string, unknown>;
+  const userId = typeof record.user_id === 'string' ? record.user_id : '';
+  const codeVerifier = typeof record.code_verifier === 'string' ? record.code_verifier : '';
+  if (!userId || !codeVerifier || codeVerifier === 'refresh-lock') return { ok: false, reason: 'invalid' };
+  const expires = Date.parse(String(record.expires_at ?? ''));
+  if (!Number.isFinite(expires) || expires <= now) return { ok: false, reason: 'expired' };
+  return { ok: true, userId, codeVerifier };
+}
+
+/** Short row in the existing PKCE table so two refreshes cannot rotate one token. */
+export function garminRefreshLockState(userId: string): string | null {
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(userId)) return null;
+  return `refresh-lock:${userId}`;
+}
+
+export function refreshLockBusy(message: string): boolean {
+  return /duplicate key|unique constraint|23505/i.test(message);
+}
+
 export function garminReturnFromUrl(url: string): 'connected' | 'cancelled' | null {
   if (!url.startsWith(`${GARMIN_APP_SCHEME}://garmin`)) return null;
   if (/[?&]connected=1(?:&|$)/.test(url)) return 'connected';
@@ -1244,12 +1281,18 @@ type EqChain = {
   eq(column: string, value: string): Promise<QueryResult> & { maybeSingle(): Promise<QueryResult> };
 };
 
+type GarminWrite = Promise<QueryResult> & {
+  eq(column: string, value: string): GarminWrite;
+  lt(column: string, value: string): GarminWrite;
+  select(columns: string): GarminWrite;
+};
+
 export type GarminDb = {
   from(table: string): {
     select(columns: string): EqChain & { in(column: string, values: string[]): EqChain };
-    delete(): { eq(column: string, value: string): Promise<QueryResult> };
-    upsert(rows: Record<string, unknown>[], options: { onConflict: string }): Promise<QueryResult>;
-    update(values: Record<string, unknown>): { eq(column: string, value: string): Promise<QueryResult> };
+    delete(): GarminWrite;
+    upsert(rows: Record<string, unknown> | Record<string, unknown>[], options: { onConflict: string }): Promise<QueryResult>;
+    update(values: Record<string, unknown>): GarminWrite;
     insert(values: Record<string, unknown>): Promise<QueryResult>;
   };
 };
@@ -1302,29 +1345,97 @@ export async function bearerForGarminUser(
     keyVersion: version,
   }, credentials.tokenKey, garminTokenAad(userId, 'refresh', version));
   const expiresAt = text(row.access_expires_at, 40);
-  if (bearer && refreshToken && credentials.clientId && credentials.clientSecret && tokenNeedsRefresh(expiresAt || null, credentials.now)) {
-    const refreshed = await refreshAccessToken({
-      clientId: credentials.clientId,
-      clientSecret: credentials.clientSecret,
+  if (bearer && refreshToken && refreshCipher && credentials.clientId && credentials.clientSecret && tokenNeedsRefresh(expiresAt || null, credentials.now)) {
+    bearer = await rotateGarminAccess({
+      db,
+      userId,
+      version,
+      bearer,
       refreshToken,
-      now: credentials.now,
+      refreshCipher,
+      credentials,
       fetchImpl,
-    });
-    if (refreshed) {
-      bearer = refreshed.accessToken;
-      const access = await sealGarminToken(refreshed.accessToken, credentials.tokenKey, garminTokenAad(userId, 'access', version));
-      const refresh = await sealGarminToken(refreshed.refreshToken, credentials.tokenKey, garminTokenAad(userId, 'refresh', version));
-      await db.from('garmin_connections').update({
-        access_token_ciphertext: access.ciphertext,
-        access_token_nonce: access.nonce,
-        refresh_token_ciphertext: refresh.ciphertext,
-        refresh_token_nonce: refresh.nonce,
-        access_expires_at: refreshed.accessExpiresAt,
-        refresh_expires_at: refreshed.refreshExpiresAt,
-      }).eq('user_id', userId);
-    }
+    }) || bearer;
   }
   return bearer;
+}
+
+/**
+ * One refresh at a time for this account. The write lands only if the stored
+ * refresh ciphertext is still the one we read, so a slower call cannot put an
+ * older token back.
+ */
+async function rotateGarminAccess(input: {
+  db: GarminDb;
+  userId: string;
+  version: number;
+  bearer: string;
+  refreshToken: string;
+  refreshCipher: string;
+  credentials: { clientId: string; clientSecret: string; tokenKey: string; now: number };
+  fetchImpl: typeof fetch;
+}): Promise<string> {
+  const lock = garminRefreshLockState(input.userId);
+  let held = false;
+  if (lock) {
+    await input.db.from('garmin_oauth_states').delete().eq('state', lock).lt('expires_at', new Date(input.credentials.now).toISOString());
+    const inserted = await input.db.from('garmin_oauth_states').insert({
+      state: lock,
+      user_id: input.userId,
+      code_verifier: 'refresh-lock',
+      created_at: new Date(input.credentials.now).toISOString(),
+      expires_at: new Date(input.credentials.now + 30_000).toISOString(),
+    });
+    if (inserted.error && !refreshLockBusy(inserted.error.message) && !missingRelation(inserted.error.message)) {
+      console.error('garmin-refresh: lock');
+    }
+    held = !inserted.error;
+    if (!held && inserted.error && refreshLockBusy(inserted.error.message)) return input.bearer;
+  }
+  try {
+    const refreshed = await refreshAccessToken({
+      clientId: input.credentials.clientId,
+      clientSecret: input.credentials.clientSecret,
+      refreshToken: input.refreshToken,
+      now: input.credentials.now,
+      fetchImpl: input.fetchImpl,
+    });
+    if (!refreshed) return input.bearer;
+    const access = await sealGarminToken(refreshed.accessToken, input.credentials.tokenKey, garminTokenAad(input.userId, 'access', input.version));
+    const refresh = await sealGarminToken(refreshed.refreshToken, input.credentials.tokenKey, garminTokenAad(input.userId, 'refresh', input.version));
+    const written = await input.db.from('garmin_connections').update({
+      access_token_ciphertext: access.ciphertext,
+      access_token_nonce: access.nonce,
+      refresh_token_ciphertext: refresh.ciphertext,
+      refresh_token_nonce: refresh.nonce,
+      access_expires_at: refreshed.accessExpiresAt,
+      refresh_expires_at: refreshed.refreshExpiresAt,
+    }).eq('user_id', input.userId).eq('refresh_token_ciphertext', input.refreshCipher).select('user_id');
+    if (written.error) {
+      console.error('garmin-refresh: rotate');
+      return input.bearer;
+    }
+    const saved = Array.isArray(written.data) ? written.data.length > 0 : false;
+    if (!saved) return await storedAccessToken(input.db, input.userId, input.credentials.tokenKey, input.version) || input.bearer;
+    return refreshed.accessToken;
+  } finally {
+    if (held && lock) await input.db.from('garmin_oauth_states').delete().eq('state', lock);
+  }
+}
+
+async function storedAccessToken(db: GarminDb, userId: string, tokenKey: string, version: number): Promise<string> {
+  const selected = await db
+    .from('garmin_connections')
+    .select('access_token_ciphertext, access_token_nonce, token_key_version')
+    .eq('user_id', userId)
+    .maybeSingle();
+  const row = selected.data && typeof selected.data === 'object' ? selected.data as Record<string, unknown> : null;
+  if (!row || Number(row.token_key_version) !== version) return '';
+  return openGarminToken({
+    ciphertext: sealedText(row.access_token_ciphertext),
+    nonce: sealedText(row.access_token_nonce),
+    keyVersion: version,
+  }, tokenKey, garminTokenAad(userId, 'access', version));
 }
 
 /** Removes one person's summary rows. The connection row stays. */

@@ -4,8 +4,10 @@ import {
   GARMIN_USER_ID_URL,
   GARMIN_TOKEN_KEY_VERSION,
   garminAppReturn,
+  garminDuplicateReturn,
   garminTokenAad,
   garminTokenForm,
+  readDeletedOauthState,
   readGarminPermissions,
   readTokenResponse,
   sealGarminToken,
@@ -29,17 +31,18 @@ Deno.serve(async (req) => {
   }
 
   const admin = createClient(supabaseUrl, service, { auth: { persistSession: false } });
-  const saved = await admin
-    .from('garmin_oauth_states')
-    .select('user_id, code_verifier, expires_at')
-    .eq('state', state)
-    .maybeSingle();
-  await admin.from('garmin_oauth_states').delete().eq('state', state);
-  const row = saved.data;
-  if (saved.error || !row?.user_id || !row.code_verifier) return redirect(false);
-  if (Date.parse(String(row.expires_at)) <= Date.now()) return redirect(false);
-
   const now = Date.now();
+  const claimed = await admin
+    .from('garmin_oauth_states')
+    .delete()
+    .eq('state', state)
+    .select('user_id, code_verifier, expires_at');
+  const claim = readDeletedOauthState(claimed.data, claimed.error, now);
+  if (!claim.ok) {
+    console.error(`garmin-oauth: ${claim.reason}`);
+    return redirect(claim.reason === 'duplicate' ? 'duplicate' : false);
+  }
+  const row = { user_id: claim.userId, code_verifier: claim.codeVerifier };
   let tokens;
   try {
     const response = await fetch(GARMIN_TOKEN_URL, {
@@ -119,9 +122,10 @@ Deno.serve(async (req) => {
   return redirect(true);
 });
 
-function redirect(connected: boolean): Response {
+function redirect(connected: boolean | 'duplicate'): Response {
+  const location = connected === 'duplicate' ? garminDuplicateReturn() : garminAppReturn(connected);
   return new Response(null, {
     status: 302,
-    headers: { Location: garminAppReturn(connected) },
+    headers: { Location: location },
   });
 }
