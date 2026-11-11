@@ -34,7 +34,7 @@ import { useStatPeriod } from '@/health/useStatPeriod';
 import { loadLastSynced } from '@/health/syncedAt';
 import { AppleHealthCard } from '@/ui/AppleHealthCard';
 import { appleDayValues } from '@/domain/dailyActivity';
-import { garminStoredMark } from '@/domain/healthRefresh';
+import { garminStoredMark, latestGarminDailyDay } from '@/domain/healthRefresh';
 import { londonDay } from '@/domain/healthInsights';
 import { activeMinutesByDay } from '@/domain/healthSources';
 import { useHealthSources } from '@/health/useHealthSources';
@@ -330,6 +330,7 @@ export default function Health() {
         appleCheckedAt={manual.appleCheckedAt}
         garminConnected={readings.connected}
         garminReceivedAt={readings.lastPushAt}
+        latestDailyDay={latestGarminDailyDay(readings.dailies.map((day) => day.calendarDate))}
         garminMark={garminStoredMark(readings)}
         error={manual.error}
         permission={manual.permission}

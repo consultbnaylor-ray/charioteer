@@ -4,7 +4,7 @@ import { useCallback, useState } from 'react';
 import { useSnapshot } from '@/data';
 import { LIVE_SESSION_ENABLED } from '@/domain/liveSessionFlag';
 import { appleDayValues } from '@/domain/dailyActivity';
-import { garminStoredMark } from '@/domain/healthRefresh';
+import { garminStoredMark, latestGarminDailyDay } from '@/domain/healthRefresh';
 import { exercisePermissionMissing, type HealthVisibilityReport } from '@/domain/healthVisibility';
 import { readHealthVisibility } from '@/health/visibility';
 import { useHealthSources } from '@/health/useHealthSources';
@@ -57,6 +57,7 @@ export default function WorkoutsScreen() {
         appleCheckedAt={manual.appleCheckedAt}
         garminConnected={readings.connected}
         garminReceivedAt={readings.lastPushAt}
+        latestDailyDay={latestGarminDailyDay(readings.dailies.map((day) => day.calendarDate))}
         garminMark={garminStoredMark(readings)}
         error={manual.error}
         permission={manual.permission}

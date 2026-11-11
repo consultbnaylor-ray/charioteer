@@ -1,4 +1,5 @@
 import { formatUkTime } from '@/domain/dates';
+import { londonDay } from '@/domain/healthInsights';
 
 /** Ignore another press until this long after the last one started. */
 export const HEALTH_REFRESH_COOLDOWN_MS = 60_000;
@@ -69,6 +70,47 @@ export const GARMIN_DAY_END_HOUR = 22;
 export const GARMIN_CONNECT_NUDGE = 'Not updating? Open Garmin Connect so your watch can sync.';
 
 /**
+ * The watch may have charged overnight. Stay quiet until mid-morning London,
+ * and until the newest Garmin push or daily is at least 12 hours old.
+ * A reading dated today means the link is still delivering, so this stays off.
+ * A missing connection is the reconnect note, not this one.
+ */
+export const GARMIN_WATCH_LINK_HOUR = 10;
+export const GARMIN_WATCH_LINK_GAP_MS = 12 * 60 * 60 * 1000;
+export const GARMIN_WATCH_LINK_NOTE =
+  "Garmin data hasn't synced recently. Restart the Garmin Connect app and check it's connected to your watch (Garmin Connect > device icon). Then pull to refresh.";
+export const GARMIN_WATCH_LINK_HIDE = 'Hide for today';
+
+export function garminWatchLinkDismissed(raw: string | null, userId: string, today: string): boolean {
+  if (!raw || !userId) return false;
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (!parsed || typeof parsed !== 'object') return false;
+    return (parsed as Record<string, unknown>)[userId] === today;
+  } catch {
+    return false;
+  }
+}
+
+export function withGarminWatchLinkDismissed(raw: string | null, userId: string, today: string): string {
+  let current: Record<string, string> = {};
+  if (raw) {
+    try {
+      const parsed = JSON.parse(raw) as unknown;
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        for (const [key, value] of Object.entries(parsed)) {
+          if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value)) current[key] = value;
+        }
+      }
+    } catch {
+      current = {};
+    }
+  }
+  current[userId] = today;
+  return JSON.stringify(current);
+}
+
+/**
  * Garmin Connect Mobile’s documented iOS scheme.
  * Garmin’s Connect IQ guide names `gcm-ciq` so an app can ask whether Connect is installed.
  * Opening `gcm-ciq://` is the start page. Anything else is left as plain text.
@@ -120,6 +162,54 @@ export function garminPushIsStale(receivedAt: string | null, now: number, staleM
 export function garminHintLine(receivedAt: string | null, now: number): string {
   if (!garminPushIsStale(receivedAt, now)) return GARMIN_SEND_HINT;
   return `${GARMIN_SEND_HINT} ${GARMIN_STALE_PUSH_HINT}`;
+}
+
+/** London hour 0–23. Tests can pass `hour` instead of calling this. */
+export function londonHour(now: number): number {
+  const formatted = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Europe/London',
+    hour: '2-digit',
+    hourCycle: 'h23',
+  }).format(new Date(now));
+  const hour = Number(formatted);
+  return Number.isInteger(hour) && hour >= 0 && hour <= 23 ? hour : 0;
+}
+
+export function latestGarminDailyDay(days: readonly string[]): string | null {
+  let latest: string | null = null;
+  for (const day of days) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) continue;
+    if (!latest || day > latest) latest = day;
+  }
+  return latest;
+}
+
+/**
+ * Connected, a previous Garmin reading exists, nothing is dated today, it is
+ * 10:00 London or later, and the newest reading is at least 12 hours old.
+ */
+export function garminWatchLinkDue(input: {
+  connected: boolean;
+  lastPushAt: string | null;
+  latestDailyDay: string | null;
+  now: number;
+  today?: string;
+  hour?: number;
+}): boolean {
+  if (!input.connected) return false;
+  const today = input.today ?? londonDay(new Date(input.now));
+  const hour = input.hour ?? londonHour(input.now);
+  if (!Number.isInteger(hour) || hour < GARMIN_WATCH_LINK_HOUR) return false;
+  const pushAt = input.lastPushAt ? Date.parse(input.lastPushAt) : NaN;
+  const pushOk = Number.isFinite(pushAt);
+  const pushDay = pushOk ? londonDay(new Date(pushAt)) : null;
+  const daily = input.latestDailyDay && /^\d{4}-\d{2}-\d{2}$/.test(input.latestDailyDay) ? input.latestDailyDay : null;
+  if (!pushDay && !daily) return false;
+  if (pushDay === today || daily === today) return false;
+  const marks = [pushOk ? pushAt : null, daily ? Date.parse(`${daily}T12:00:00Z`) : null]
+    .filter((value): value is number => value != null && Number.isFinite(value));
+  const newest = marks.length ? Math.max(...marks) : NaN;
+  return Number.isFinite(newest) && input.now - newest >= GARMIN_WATCH_LINK_GAP_MS;
 }
 
 /**
