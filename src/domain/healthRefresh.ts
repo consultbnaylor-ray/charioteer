@@ -77,8 +77,14 @@ export const GARMIN_CONNECT_NUDGE = 'Not updating? Open Garmin Connect so your w
  */
 export const GARMIN_WATCH_LINK_HOUR = 10;
 export const GARMIN_WATCH_LINK_GAP_MS = 12 * 60 * 60 * 1000;
-export const GARMIN_WATCH_LINK_NOTE =
-  "Garmin data hasn't synced recently. Restart the Garmin Connect app and check it's connected to your watch (Garmin Connect > device icon). Then pull to refresh.";
+export const GARMIN_WATCH_LINK_NOTE = "Garmin data hasn't synced recently.";
+export const GARMIN_WATCH_LINK_HOW = 'How to fix';
+/** Short steps. Region lives in Garmin Connect's advanced settings; the exact menu is Garmin's. */
+export const GARMIN_WATCH_LINK_STEPS = [
+  "Restart the Garmin Connect app and check it's connected to your watch (device icon).",
+  "If you use a VPN, turn it off or make sure Garmin Connect's region (in its advanced settings) matches your country, e.g. UK.",
+  'Then pull to refresh.',
+] as const;
 export const GARMIN_WATCH_LINK_HIDE = 'Hide for today';
 
 export function garminWatchLinkDismissed(raw: string | null, userId: string, today: string): boolean {

@@ -5,7 +5,9 @@ import {
   GARMIN_WATCH_LINK_GAP_MS,
   GARMIN_WATCH_LINK_HIDE,
   GARMIN_WATCH_LINK_HOUR,
+  GARMIN_WATCH_LINK_HOW,
   GARMIN_WATCH_LINK_NOTE,
+  GARMIN_WATCH_LINK_STEPS,
   garminWatchLinkDismissed,
   garminWatchLinkDue,
   latestGarminDailyDay,
@@ -19,10 +21,16 @@ describe('Garmin watch link note', () => {
   it('waits until mid-morning and a 12 hour gap, and stays off when today has data', () => {
     expect(GARMIN_WATCH_LINK_HOUR).toBe(10);
     expect(GARMIN_WATCH_LINK_GAP_MS).toBe(12 * 60 * 60 * 1000);
-    expect(GARMIN_WATCH_LINK_NOTE).toBe(
-      "Garmin data hasn't synced recently. Restart the Garmin Connect app and check it's connected to your watch (Garmin Connect > device icon). Then pull to refresh.",
-    );
-    expect(GARMIN_WATCH_LINK_NOTE).not.toMatch(/diagnos|doctor|illness|reconnect Garmin/i);
+    expect(GARMIN_WATCH_LINK_NOTE).toBe("Garmin data hasn't synced recently.");
+    expect(GARMIN_WATCH_LINK_HOW).toBe('How to fix');
+    expect([...GARMIN_WATCH_LINK_STEPS]).toEqual([
+      "Restart the Garmin Connect app and check it's connected to your watch (device icon).",
+      "If you use a VPN, turn it off or make sure Garmin Connect's region (in its advanced settings) matches your country, e.g. UK.",
+      'Then pull to refresh.',
+    ]);
+    const copy = [GARMIN_WATCH_LINK_NOTE, ...GARMIN_WATCH_LINK_STEPS].join(' ');
+    expect(copy).not.toMatch(/diagnos|doctor|illness|reconnect Garmin/i);
+    expect(copy).not.toMatch(/>/);
     const lastNight = new Date(noon - GARMIN_WATCH_LINK_GAP_MS).toISOString();
     const base = {
       connected: true,
@@ -62,6 +70,8 @@ describe('Garmin watch link note', () => {
     expect(bar).toContain('<GarminWatchLinkNote');
     expect(row).toContain('<GarminWatchLinkNote');
     expect(note).toContain('GARMIN_WATCH_LINK_NOTE');
+    expect(note).toContain('title={GARMIN_WATCH_LINK_HOW}');
+    expect(note).toContain('GARMIN_WATCH_LINK_STEPS');
     expect(note).toContain('GARMIN_WATCH_LINK_HIDE');
     expect(note).not.toContain('ErrorNote');
     expect(readFileSync('src/app/(main)/health.tsx', 'utf8')).toContain('latestDailyDay={latestGarminDailyDay');
