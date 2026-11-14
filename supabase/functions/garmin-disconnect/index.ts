@@ -1,6 +1,6 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.117.3';
 import { json, preflight } from '../_shared/http.ts';
-import { forgetGarminAccount, type GarminDb } from '../_shared/garmin.ts';
+import { disconnectGarminAccount, type GarminDb } from '../_shared/garmin.ts';
 
 Deno.serve(async (req) => {
   const early = preflight(req);
@@ -22,7 +22,7 @@ Deno.serve(async (req) => {
 
   const admin = createClient(url, service, { auth: { persistSession: false } }) as unknown as GarminDb;
   try {
-    await forgetGarminAccount(admin, userData.user.id, {
+    await disconnectGarminAccount(admin, userData.user.id, {
       clientId: (Deno.env.get('GARMIN_CLIENT_ID') ?? '').trim(),
       clientSecret: (Deno.env.get('GARMIN_CLIENT_SECRET') ?? '').trim(),
       tokenKey: (Deno.env.get('GARMIN_TOKEN_KEY') ?? '').trim(),

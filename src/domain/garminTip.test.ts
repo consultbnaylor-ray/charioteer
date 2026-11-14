@@ -5,6 +5,7 @@ import {
   GARMIN_CONNECT_BUTTON,
   GARMIN_CONNECT_HINT,
   GARMIN_CONNECTED_LABEL,
+  GARMIN_DISCONNECT_NOTE,
   GARMIN_ONBOARDING_CARD,
   GARMIN_SKIP,
 } from './garminTip';
@@ -20,8 +21,12 @@ describe('Garmin connect card', () => {
     expect(GARMIN_CONNECTED_LABEL).toBe('Garmin connected ✓');
     expect(GARMIN_ONBOARDING_CARD).toBe('Using a Garmin? Connect it to bring in workouts, heart rate and sleep.');
     expect(GARMIN_SKIP).toBe('Skip for now');
-    expect(`${GARMIN_CONNECT_HINT} ${GARMIN_ONBOARDING_CARD}`).not.toMatch(/this goal|your goal/i);
-    expect(`${GARMIN_CONNECT_BUTTON} ${GARMIN_CONNECT_HINT} ${GARMIN_ONBOARDING_CARD}`).not.toMatch(OTHER_APPS);
+    expect(GARMIN_DISCONNECT_NOTE).toBe(
+      'Disconnecting stops new Garmin data. Workouts, sleep, and daily readings already saved stay on your account. Delete account and data, on You, removes them.',
+    );
+    expect(GARMIN_DISCONNECT_NOTE).not.toMatch(/will be deleted|deletes your|Garmin data will/i);
+    expect(`${GARMIN_CONNECT_HINT} ${GARMIN_ONBOARDING_CARD} ${GARMIN_DISCONNECT_NOTE}`).not.toMatch(/this goal|your goal/i);
+    expect(`${GARMIN_CONNECT_BUTTON} ${GARMIN_CONNECT_HINT} ${GARMIN_ONBOARDING_CARD} ${GARMIN_DISCONNECT_NOTE}`).not.toMatch(OTHER_APPS);
   });
 
   it('puts an obvious connect card on Health and Your fitness, with no dismiss', () => {
@@ -38,6 +43,9 @@ describe('Garmin connect card', () => {
     expect(tip).toContain('GARMIN_CONNECTED_LABEL');
     expect(tip).toContain('useGarminConnect');
     expect(tip).toContain('label="Disconnect"');
+    expect(tip).toContain('GARMIN_DISCONNECT_NOTE');
+    expect(readFileSync('src/ui/GarminConnectRow.tsx', 'utf8')).toContain('GARMIN_DISCONNECT_NOTE');
+    expect(readFileSync('src/app/onboarding.tsx', 'utf8')).toContain('GARMIN_DISCONNECT_NOTE');
     expect(tip).not.toMatch(/Hide|Dismiss|statsTone|danger|PlanTick/);
     expect(tip).not.toMatch(OTHER_APPS);
   });

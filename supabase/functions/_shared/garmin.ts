@@ -55,7 +55,7 @@ export const PKCE_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwx
 export const GARMIN_PRIVACY =
   'Garmin readings stay on your account, the same way Apple Health readings do. They are not sold, not shared for ads, and not used to train AI. Thumos sees them only when health data and the coach are on, and personal data is allowed. A path is not stored.';
 
-/** Every stored Garmin summary. Disconnect, account deletion, and a lost export all use this list. */
+/** Every stored Garmin summary. Account deletion removes these. Disconnect leaves them. */
 export const GARMIN_SUMMARY_TABLES = [
   'garmin_dailies',
   'garmin_activities',
@@ -75,10 +75,15 @@ export const GARMIN_SUMMARY_TABLES = [
   'garmin_activity_file',
 ] as const;
 
-export const GARMIN_DATA_TABLES = [
-  ...GARMIN_SUMMARY_TABLES,
+/** Tokens, the sign-in state, and the Garmin user id. Disconnect removes only these. */
+export const GARMIN_CREDENTIAL_TABLES = [
   'garmin_oauth_states',
   'garmin_connections',
+] as const;
+
+export const GARMIN_DATA_TABLES = [
+  ...GARMIN_SUMMARY_TABLES,
+  ...GARMIN_CREDENTIAL_TABLES,
 ] as const;
 
 /**
@@ -609,14 +614,41 @@ export type GarminStore = {
   states: { userId: string; state: string }[];
 };
 
-export function withoutGarminUser(store: GarminStore, userId: string): GarminStore {
+/** Drops tokens and the Garmin user id. Summaries keyed by the Charioteer user stay. */
+export function releaseGarminConnection(store: GarminStore, userId: string): GarminStore {
   return {
+    ...store,
     connections: store.connections.filter((row) => row.userId !== userId),
+    states: store.states.filter((row) => row.userId !== userId),
+  };
+}
+
+/**
+ * Puts the connection back for the same Charioteer user.
+ * A new Garmin user id replaces the old mapping and does not copy or drop summaries.
+ */
+export function reconnectGarminUser(
+  store: GarminStore,
+  connection: { userId: string; garminUserId: string; accessToken: string },
+): GarminStore {
+  return {
+    ...store,
+    connections: [
+      ...store.connections.filter((row) => row.userId !== connection.userId && row.garminUserId !== connection.garminUserId),
+      connection,
+    ],
+  };
+}
+
+/** Account deletion. Removes the connection and every summary for that Charioteer user. */
+export function withoutGarminUser(store: GarminStore, userId: string): GarminStore {
+  const released = releaseGarminConnection(store, userId);
+  return {
+    ...released,
     dailies: store.dailies.filter((row) => row.userId !== userId),
     activities: store.activities.filter((row) => row.userId !== userId),
     sleep: store.sleep.filter((row) => row.userId !== userId),
     userMetrics: store.userMetrics.filter((row) => row.userId !== userId),
-    states: store.states.filter((row) => row.userId !== userId),
   };
 }
 
@@ -668,7 +700,7 @@ export function applyGarminPush(
   );
   for (const garminUserId of plan.deregistered) {
     const userId = owned(garminUserId);
-    if (userId) next = withoutGarminUser(next, userId);
+    if (userId) next = releaseGarminConnection(next, userId);
   }
   return next;
 }
@@ -1450,14 +1482,24 @@ async function storedAccessToken(db: GarminDb, userId: string, tokenKey: string,
   }, tokenKey, garminTokenAad(userId, 'access', version));
 }
 
-/** Removes one person's summary rows. The connection row stays. */
+/** Removes one person's summary rows. The connection row stays. Account deletion uses this. */
 export async function deleteGarminSummaries(db: GarminDb, userId: string): Promise<void> {
-  await deleteGarminTables(db, userId, GARMIN_SUMMARY_TABLES, 'garmin-webhook: delete');
+  await deleteGarminTables(db, userId, GARMIN_SUMMARY_TABLES, 'garmin-disconnect: delete');
 }
 
-/** Removes tokens and summaries for one account. Does not call Garmin. */
+/** Removes tokens, the Garmin user id, and every summary. Does not call Garmin. */
 export async function deleteGarminRows(db: GarminDb, userId: string): Promise<void> {
-  await deleteGarminTables(db, userId, GARMIN_DATA_TABLES, 'garmin-webhook: delete');
+  await deleteGarminSummaries(db, userId);
+  await clearGarminCredentials(db, userId);
+}
+
+/** Removes tokens and the connection. Stored summaries stay, still keyed by the Charioteer user. */
+export async function clearGarminCredentials(
+  db: GarminDb,
+  userId: string,
+  errorCode = 'garmin-disconnect: delete',
+): Promise<void> {
+  await deleteGarminTables(db, userId, GARMIN_CREDENTIAL_TABLES, errorCode);
 }
 
 async function deleteGarminTables(
@@ -1472,12 +1514,36 @@ async function deleteGarminTables(
   }
 }
 
+/**
+ * Asks Garmin to drop the registration, then removes tokens and the connection.
+ * Daily summaries, sleep, activities, and the other stored readings stay.
+ */
+export async function disconnectGarminAccount(
+  db: GarminDb,
+  userId: string,
+  credentials: { clientId: string; clientSecret: string; tokenKey: string; now: number },
+  fetchImpl: typeof fetch = fetch,
+): Promise<void> {
+  await revokeStoredGarminRegistration(db, userId, credentials, fetchImpl);
+  await clearGarminCredentials(db, userId);
+}
+
 /** Calls Garmin, then removes this person's tokens and summaries. A missing table is ignored. */
 export async function forgetGarminAccount(
   db: GarminDb,
   userId: string,
   credentials: { clientId: string; clientSecret: string; tokenKey: string; now: number },
   fetchImpl: typeof fetch = fetch,
+): Promise<void> {
+  await revokeStoredGarminRegistration(db, userId, credentials, fetchImpl);
+  await deleteGarminRows(db, userId);
+}
+
+async function revokeStoredGarminRegistration(
+  db: GarminDb,
+  userId: string,
+  credentials: { clientId: string; clientSecret: string; tokenKey: string; now: number },
+  fetchImpl: typeof fetch,
 ): Promise<void> {
   const selected = await db
     .from('garmin_connections')
@@ -1533,7 +1599,6 @@ export async function forgetGarminAccount(
     const remote = await deregisterRemote(bearer, fetchImpl);
     if (remote === 'failed') console.error('garmin-disconnect: remote');
   }
-  await deleteGarminTables(db, userId, GARMIN_DATA_TABLES, 'garmin-disconnect: delete');
 }
 
 function sealedText(value: unknown): string {

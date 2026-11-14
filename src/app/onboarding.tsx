@@ -11,7 +11,7 @@ import { parseDrinkFreeGoal, parseUnitsGoal, STAGE_LABELS, STAGES, SUDDEN_STOP_W
 import { APP_FULL_NAME } from '@/domain/appName';
 import { CONSENT_INTRO, TERMS_REQUIRED } from '@/domain/consents';
 import { clearOnboardingGarminStep, onboardingResumesOnGarmin } from '@/domain/garminConnect';
-import { GARMIN_CONNECT_BUTTON, GARMIN_CONNECTED_LABEL, GARMIN_ONBOARDING_CARD, GARMIN_SKIP } from '@/domain/garminTip';
+import { GARMIN_CONNECT_BUTTON, GARMIN_CONNECTED_LABEL, GARMIN_DISCONNECT_NOTE, GARMIN_ONBOARDING_CARD, GARMIN_SKIP } from '@/domain/garminTip';
 import { offerMessageNotifications } from '@/notifications/register';
 import { ConsentChoices } from '@/ui/ConsentChoices';
 import { DateField } from '@/ui/DateField';
@@ -350,13 +350,16 @@ function GarminOnboardingCard() {
         />
       )}
       {connected ? (
-        <Button
-          label="Disconnect"
-          tone="quiet"
-          pending={pending === 'disconnect'}
-          disabled={pending != null}
-          onPress={() => void disconnect()}
-        />
+        <>
+          <T variant="muted">{GARMIN_DISCONNECT_NOTE}</T>
+          <Button
+            label="Disconnect"
+            tone="quiet"
+            pending={pending === 'disconnect'}
+            disabled={pending != null}
+            onPress={() => void disconnect()}
+          />
+        </>
       ) : null}
       <ErrorNote>{error}</ErrorNote>
     </Card>

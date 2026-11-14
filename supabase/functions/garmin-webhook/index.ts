@@ -2,10 +2,9 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.117.3';
 import { json, preflight } from '../_shared/http.ts';
 import {
   activityRowsFor,
+  clearGarminCredentials,
   dailyRowsFor,
   dedupeBy,
-  deleteGarminRows,
-  deleteGarminSummaries,
   hrvRowsFor,
   mapGarminPush,
   missingRelation,
@@ -145,7 +144,7 @@ Deno.serve(async (req) => {
 
   for (const garminUserId of plan.deregistered) {
     const userId = userIdByGarmin.get(garminUserId);
-    if (userId) await deleteGarminRows(admin, userId);
+    if (userId) await clearGarminCredentials(admin, userId, 'garmin-webhook: delete');
   }
 
   for (const change of plan.permissionChanges) {
@@ -162,9 +161,6 @@ Deno.serve(async (req) => {
       console.error('garmin-webhook: permissions');
       return json({ ok: false, code: 'permissions' }, 500);
     }
-    const named = change.permissions.split(' ').filter(Boolean);
-    const keepsSummaries = named.includes('HEALTH_EXPORT') || named.includes('ACTIVITY_EXPORT');
-    if (!keepsSummaries) await deleteGarminSummaries(admin, userId);
   }
 
   return json({ ok: true });

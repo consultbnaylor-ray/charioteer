@@ -2,7 +2,7 @@ import { View } from 'react-native';
 
 import { GARMIN_PRIVACY } from '@/domain/garminConnect';
 import { latestGarminDailyDay } from '@/domain/healthRefresh';
-import { GARMIN_CONNECT_BUTTON } from '@/domain/garminTip';
+import { GARMIN_CONNECT_BUTTON, GARMIN_DISCONNECT_NOTE } from '@/domain/garminTip';
 import { GarminWatchLinkNote } from '@/ui/GarminWatchLinkNote';
 import { PlanTick } from '@/ui/PlanTick';
 import { useGarminConnect } from '@/ui/useGarminConnect';
@@ -26,7 +26,10 @@ export function GarminConnectRow() {
         latestDailyDay={latestGarminDailyDay(readings.dailies.map((day) => day.calendarDate))}
       />
       {connected ? (
-        <Button label="Disconnect" tone="quiet" pending={pending === 'disconnect'} disabled={pending != null} onPress={() => void disconnect()} />
+        <>
+          <T variant="muted">{GARMIN_DISCONNECT_NOTE}</T>
+          <Button label="Disconnect" tone="quiet" pending={pending === 'disconnect'} disabled={pending != null} onPress={() => void disconnect()} />
+        </>
       ) : (
         <Button label={GARMIN_CONNECT_BUTTON} pending={pending === 'connect'} disabled={pending != null} onPress={() => void connect()} />
       )}
