@@ -583,7 +583,7 @@ export interface Repository {
   loadGarmin(): Promise<import('@/domain/garminConnect').GarminReadings>;
   /** Signed-in link to Garmin. Returns the authorise URL. */
   startGarminConnect(): Promise<string>;
-  /** Asks Garmin to drop the registration, then deletes the summaries. */
+  /** Asks Garmin to drop the registration and clears the connection. Saved readings stay until the account is deleted. */
   disconnectGarmin(): Promise<void>;
   /** Asks Garmin to resend recent summaries. The phone does not receive a route. */
   refreshGarmin(): Promise<{ ok: true; garmin: 'off' | 'asked' | 'recent'; code?: 'history' } | { ok: false; message: string; code?: 'permission' | 'rate' }>;

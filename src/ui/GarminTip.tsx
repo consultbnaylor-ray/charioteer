@@ -1,4 +1,4 @@
-import { GARMIN_CONNECT_BUTTON, GARMIN_CONNECT_HINT, GARMIN_CONNECTED_LABEL } from '@/domain/garminTip';
+import { GARMIN_CONNECT_BUTTON, GARMIN_CONNECT_HINT, GARMIN_CONNECTED_LABEL, GARMIN_DISCONNECT_NOTE } from '@/domain/garminTip';
 import { GarminPermissionNotice } from '@/ui/GarminPermissionNotice';
 import { useGarminConnect } from '@/ui/useGarminConnect';
 import { Button, Card, ErrorNote, T } from '@/ui/ui';
@@ -22,13 +22,16 @@ export function GarminTip() {
       <T variant="muted">{GARMIN_CONNECT_HINT}</T>
       <GarminPermissionNotice />
       {connected ? (
-        <Button
-          label="Disconnect"
-          tone="quiet"
-          pending={pending === 'disconnect'}
-          disabled={pending != null}
-          onPress={() => void disconnect()}
-        />
+        <>
+          <T variant="muted">{GARMIN_DISCONNECT_NOTE}</T>
+          <Button
+            label="Disconnect"
+            tone="quiet"
+            pending={pending === 'disconnect'}
+            disabled={pending != null}
+            onPress={() => void disconnect()}
+          />
+        </>
       ) : null}
       <ErrorNote>{error}</ErrorNote>
     </Card>

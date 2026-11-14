@@ -12,4 +12,8 @@ export const GARMIN_CONNECTED_LABEL = 'Garmin connected ✓';
 export const GARMIN_ONBOARDING_CARD =
   'Using a Garmin? Connect it to bring in workouts, heart rate and sleep.';
 
+/** Shown with Disconnect. History stays; the account delete on You is what removes it. */
+export const GARMIN_DISCONNECT_NOTE =
+  'Disconnecting stops new Garmin data. Workouts, sleep, and daily readings already saved stay on your account. Delete account and data, on You, removes them.';
+
 export const GARMIN_SKIP = 'Skip for now';
