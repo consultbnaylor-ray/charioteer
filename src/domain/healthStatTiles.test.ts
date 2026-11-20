@@ -163,7 +163,7 @@ describe('health stat tiles', () => {
 
     const resting = tile(board, 'resting_heart_rate');
     expect(resting.unit).toBe('bpm');
-    expect(resting.valueText).toBe('61');
+    expect(resting.valueText).toBe('62');
     expect(resting.status).toBe('Within 60 to 100 bpm');
     expect(resting.mark).toBe('On track');
     expect(resting.hasGuideline).toBe(true);
@@ -492,7 +492,7 @@ describe('health stat tiles', () => {
     ];
     const lowBoard = buildHealthStatBoard(input({ today: lowToday, samples: lowSamples, goalAge: 42, adult: true }));
     const lowRest = tile(lowBoard, 'resting_heart_rate');
-    expect(lowRest.valueText).toBe('58');
+    expect(lowRest.valueText).toBe('59');
     expect(lowRest.period).toBe(PERIOD_LAST_7);
     expect(lowRest.mark).toBe('Note');
     expect(lowRest.status).toBe('Seek professional guidance.');
@@ -500,13 +500,13 @@ describe('health stat tiles', () => {
     expect(restingTileShowsFitLine(lowRest)).toBe(true);
     expect(lowRest.visual.kind).toBe('zone');
     if (lowRest.visual.kind === 'zone') {
-      expect(lowRest.visual.value).toBe(58);
+      expect(lowRest.visual.value).toBe(59);
       expect(lowRest.visual.zoneLow).toBe(60);
       expect(lowRest.visual.zoneHigh).toBe(100);
       expect(lowRest.visual.scaleMin).toBe(40);
       expect(lowRest.visual.scaleMax).toBe(120);
       const span = lowRest.visual.scaleMax - lowRest.visual.scaleMin;
-      expect((lowRest.visual.value - lowRest.visual.scaleMin) / span).toBeCloseTo(18 / 80, 5);
+      expect((lowRest.visual.value - lowRest.visual.scaleMin) / span).toBeCloseTo(19 / 80, 5);
       expect((lowRest.visual.zoneLow - lowRest.visual.scaleMin) / span).toBeCloseTo(20 / 80, 5);
     }
     const shown = lowRest.readings.map((point) => point.value);
@@ -826,7 +826,7 @@ describe('health stat tiles', () => {
       }
     }
     expect(tile(board, 'sleep_hours').valueText).toBe('7.2');
-    expect(tile(board, 'resting_heart_rate').valueText).toBe('61');
+    expect(tile(board, 'resting_heart_rate').valueText).toBe('62');
     expect(tile(board, 'vo2_max').valueText).toBe('42');
     expect(tile(board, 'vo2_max').trend).toBe('Steady against the 7 days before.');
     expect(tile(board, 'workouts').valueText).toBe('97');

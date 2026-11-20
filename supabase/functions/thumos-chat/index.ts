@@ -48,6 +48,7 @@ import { moodOnTen } from '../_shared/mood.ts';
 import { GOAL_LABEL, type NutritionGoal } from '../_shared/nutrition.ts';
 import { formatSoberElapsed, soberElapsed } from '../_shared/sober.ts';
 import { coachingPersonalDataAllowed, pausedCoachingMessage } from '../_shared/xaiPersonal.ts';
+import { coachRestingNote, garminRestingDays, healthWithRestingNote } from '../_shared/currentResting.ts';
 import { garminAllowedForCoach, garminCoachLines, missingRelation, readingsFromRows } from '../_shared/garmin.ts';
 
 type Body = { content?: string; mode?: ThumosMode; request_id?: string };
@@ -109,8 +110,11 @@ async function garminLinesFor(
   userClient: SupabaseClient,
   userId: string,
   gate: { consentAi: boolean; consentHealth: boolean; personalDataEnabled: boolean },
-): Promise<string[]> {
-  if (!garminAllowedForCoach(gate)) return [];
+  today: string,
+  samples: readonly { kind: string; value: number; recordedOn: string }[],
+): Promise<{ lines: string[]; restingNote: string | null }> {
+  const appleOnly = () => coachRestingNote({ today, samples });
+  if (!garminAllowedForCoach(gate)) return { lines: [], restingNote: appleOnly() };
   const [dailies, activities, sleep] = await Promise.all([
     userClient.from('garmin_dailies').select('calendar_date, resting_heart_rate_bpm, average_heart_rate_bpm, moderate_minutes, vigorous_minutes').eq('user_id', userId).order('calendar_date'),
     userClient.from('garmin_activities').select('summary_id, activity_type, activity_name, started_at, duration_seconds, average_heart_rate_bpm, training_effect, anaerobic_effect').eq('user_id', userId).order('started_at'),
@@ -121,18 +125,21 @@ async function garminLinesFor(
     || (activities.error && !missingRelation(activities.error.message))
     || (sleep.error && !missingRelation(sleep.error.message))
   ) {
-    return [];
+    return { lines: [], restingNote: appleOnly() };
   }
-  return garminCoachLines({
-    ...gate,
-    readings: readingsFromRows({
-      connected: true,
-      connectedAt: null,
-      dailies: dailies.data,
-      activities: activities.data,
-      sleep: sleep.data,
+  return {
+    lines: garminCoachLines({
+      ...gate,
+      readings: readingsFromRows({
+        connected: true,
+        connectedAt: null,
+        dailies: dailies.data,
+        activities: activities.data,
+        sleep: sleep.data,
+      }),
     }),
-  });
+    restingNote: coachRestingNote({ today, samples, garmin: garminRestingDays(dailies.data) }),
+  };
 }
 
 Deno.serve(async (req) => {
@@ -261,11 +268,11 @@ Deno.serve(async (req) => {
     consentHealth: shareHealth,
     personalDataEnabled,
   });
-  const garminLines = await garminLinesFor(userClient, userId, {
+  const garmin = await garminLinesFor(userClient, userId, {
     consentAi: profile.consent_ai === true,
     consentHealth: shareHealth,
     personalDataEnabled,
-  });
+  }, healthToday, healthRows);
   const workoutReflections = await loadWorkoutReflections(userClient, userId, healthToday, diaryAllowed);
 
   const context = buildThumosContext({
@@ -276,7 +283,7 @@ Deno.serve(async (req) => {
     weeklySpendGbp: profile.weekly_spend_gbp == null ? null : Number(profile.weekly_spend_gbp),
     weeklyUnits: profile.weekly_units == null ? null : Number(profile.weekly_units),
     checkIns,
-    health,
+    health: healthWithRestingNote(health, garmin.restingNote),
     healthInsights,
     mode,
     safety,
@@ -290,7 +297,7 @@ Deno.serve(async (req) => {
     interests: interestRes.error ? [] : interestLabelsFromRows(interestRes.data),
     pinnedQuote: pinnedStoicQuote(profile.pinned_quote_id),
     nutritionLines,
-    garminLines,
+    garminLines: garmin.lines,
     workoutReflections,
   });
 

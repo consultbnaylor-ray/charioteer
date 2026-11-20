@@ -106,6 +106,8 @@ export type StatsAnalysisPayload = {
   vo2Goal?: string | null;
   /** Latest VO2 max, such as "latest VO2 max 44.0 (Garmin, 29 Oct)". Not an average. */
   vo2Reading?: string | null;
+  /** Latest resting heart rate, such as "latest resting heart rate 52 bpm (Garmin, 20 Nov)". Not an average. */
+  restingReading?: string | null;
   /** Set when weight loss and a harder fitness aim need both fuel and a deficit. */
   fuelNote?: string | null;
   /** True only after the person accepted the competition-cut notice. */
@@ -193,7 +195,7 @@ export const STATS_ANALYSIS_PROMPT = [
   'If competitionCut is true, this is a short competition weight cut. Keep the calorie figure at or above the floor already in weightPlan, protect protein, and plan refeeding and rehydration after weigh-in. Dizziness, fainting, confusion, or a racing heart means stop and get urgent help. Never advise fluid restriction, a sauna, a sweat suit, diuretics, or laxatives. Say to see a qualified coach, doctor, or dietitian. General information, not medical advice.',
   'A high resting heart rate is easy aerobic work and walks, not the VO2 intervals. Short sleep keeps a steady wake time. Low steps are a short walk. Do not swap those.',
   'Say how the figures fit together and the order to work on them.',
-  'For VO2 max, value and goalGap come from vo2Reading, the latest reading, not from an average. Say that vo2Reading line, then how far goalGap sits short of goalTarget. Do not say VO2 max is the average. For every other stat, quote value. That is the recent average, or a total over the last 7 days when the range says so. Do not headline today.',
+  'For VO2 max, value and goalGap come from vo2Reading, the latest reading, not from an average. Say that vo2Reading line, then how far goalGap sits short of goalTarget. Do not say VO2 max is the average. For resting heart rate, value comes from restingReading, the latest Garmin resting reading, or the latest Apple Health reading when Garmin has none in the last 60 days. Say that restingReading line, including the date. Do not average Garmin with Apple Health, and do not use average heart rate as resting heart rate. For every other stat, quote value. That is the recent average, or a total over the last 7 days when the range says so. Do not headline today.',
   'Do not list every stat at the end.',
   'Do not diagnose. Do not predict how long the person will live. Do not mention location or women\'s health.',
   'Do not write a medical caveat. The app shows that line.',
@@ -881,6 +883,7 @@ export function sanitizeStatsAnalysis(input: unknown): StatsAnalysisPayload | nu
     fitnessGoal: text(record.fitnessGoal, 40) || null,
     vo2Goal: text(record.vo2Goal, 360) || null,
     vo2Reading: text(record.vo2Reading, 120) || null,
+    restingReading: text(record.restingReading, 160) || null,
     fuelNote: text(record.fuelNote, 400) || null,
     competitionCut: record.competitionCut === true,
     weightPlan: weightPlan || null,

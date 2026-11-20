@@ -644,6 +644,16 @@ describe('Garmin coach gate', () => {
     expect(lines.join('\n')).not.toContain('51.5');
     const shown = garminFigures(readings);
     expect(shown.heartChart).toEqual([61, 58]);
+    const averageOnly = garminFigures({
+      ...readings,
+      dailies: [
+        { calendarDate: '2026-10-21', restingHeartRateBpm: 52, averageHeartRateBpm: 70, moderateMinutes: 0, vigorousMinutes: 0 },
+        { calendarDate: '2026-10-22', restingHeartRateBpm: null, averageHeartRateBpm: 69, moderateMinutes: 0, vigorousMinutes: 0 },
+      ],
+    });
+    expect(averageOnly.heartRate?.value).toBe('52');
+    expect(averageOnly.heartRate?.name).toBe('Resting heart rate');
+    expect(averageOnly.heartChart).toEqual([52]);
     expect(shown.sleepChart).toEqual([7.5]);
     expect(shown.effortChart).toEqual([3.2]);
     const context = buildThumosContext({

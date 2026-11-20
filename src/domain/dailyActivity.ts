@@ -92,6 +92,7 @@ export function garminActiveKcal(value: number | null | undefined): number | nul
 /**
  * One value per day, oldest first.
  * `apple` uses Apple Health when that day is above zero, and Garmin only when Apple is missing.
+ * `garmin` uses Garmin when that day has a reading, and Apple Health only when Garmin is missing.
  * `higher` uses the larger daily total. The two sources are never added.
  */
 export function dailyActivitySeries(
@@ -100,7 +101,7 @@ export function dailyActivitySeries(
   apple: readonly AppleDayValue[],
   garmin: ReadonlyMap<string, number>,
   labelFor: (day: string, value: number, source: ActivitySource | null) => string,
-  pick: 'apple' | 'higher' = 'apple',
+  pick: 'apple' | 'higher' | 'garmin' = 'apple',
 ): DailyActivityPoint[] {
   const appleByDay = new Map<string, number>();
   for (const row of apple) {
@@ -112,7 +113,7 @@ export function dailyActivitySeries(
     const garminRaw = garmin.get(day);
     const appleValue = appleRaw != null && appleRaw > 0 ? Math.round(appleRaw) : null;
     const garminValue = garminRaw != null && garminRaw > 0 ? Math.round(garminRaw) : null;
-    const useGarmin = garminValue != null && (appleValue == null || (pick === 'higher' && garminValue > appleValue));
+    const useGarmin = garminValue != null && (appleValue == null || pick === 'garmin' || (pick === 'higher' && garminValue > appleValue));
     if (useGarmin && garminValue != null) {
       return { day, value: garminValue, source: 'garmin' as const, label: labelFor(day, garminValue, 'garmin') };
     }
@@ -419,7 +420,7 @@ export function restingSeries(
 ): DailyActivityPoint[] {
   return dailyActivitySeries(endDay, span, apple, garminNumber(dailies, (daily) => daily.restingHeartRateBpm), (day, value, source) => (
     sourced('Resting heart rate', day, String(value), 'bpm', source)
-  ));
+  ), 'garmin');
 }
 
 export function seriesHasValue(points: readonly { value: number }[]): boolean {

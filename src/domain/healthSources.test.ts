@@ -124,6 +124,16 @@ describe('merged daily metrics', () => {
     const sleep = merged.filter((row) => row.kind === 'sleep_hours');
     expect(resting.find((row) => row.recordedOn === '2026-10-21')?.value).toBe(58);
     expect(resting.find((row) => row.recordedOn === '2026-10-20')?.value).toBe(62);
+    const averageOnly = mergeHealthSamples(
+      [sample({ kind: 'resting_heart_rate', value: 70, recordedOn: '2026-10-22' })],
+      readings({
+        dailies: [
+          { calendarDate: '2026-10-22', restingHeartRateBpm: null, averageHeartRateBpm: 72, moderateMinutes: null, vigorousMinutes: null },
+        ],
+      }),
+      [],
+    );
+    expect(averageOnly.find((row) => row.kind === 'resting_heart_rate')?.value).toBe(70);
     expect(resting.reduce((sum, row) => sum + row.value, 0)).toBe(120);
     expect(sleep.find((row) => row.recordedOn === '2026-10-21')?.value).toBe(7.5);
     expect(sleep.find((row) => row.recordedOn === '2026-10-20')?.value).toBe(8);

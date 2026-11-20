@@ -294,7 +294,19 @@ describe('on-phone Thumos reading note', () => {
     expect(figures.workoutMinutes7).toBe(40);
     expect(figures.cardioMinutes7).toBeNull();
     expect(figures.strengthRecorded).toBe(false);
-    expect(figures.restingBpm).not.toBe(59);
+    expect(figures.restingBpm).toBe(59);
+    expect(figures.restingLine).toBe('latest resting heart rate 59 bpm (Apple Health, 27 Oct)');
+    const garminLatest = figuresForNote({
+      samples: [
+        { id: 'merged:resting_heart_rate:2026-10-27', kind: 'resting_heart_rate', value: 52, recordedOn: today },
+        { kind: 'resting_heart_rate', value: 59, recordedOn: `${today}T08:00:00Z` },
+        { kind: 'resting_heart_rate', value: 64, recordedOn: '2026-10-26' },
+      ],
+      today,
+      period: '7',
+    });
+    expect(garminLatest.restingBpm).toBe(52);
+    expect(garminLatest.restingLine).toBe('latest resting heart rate 52 bpm (Garmin, 27 Oct)');
     const note = thumosReadingComment(sample({
       ...figures,
       storedDayCount: 7,
