@@ -13,6 +13,7 @@ export function DateField({
   hint,
   maximumDate,
   earliestDate,
+  unrestricted = false,
 }: {
   label: string;
   value: Date;
@@ -21,18 +22,20 @@ export function DateField({
   maximumDate?: Date;
   /** When set, the day cannot be earlier than this. Future days stay available. */
   earliestDate?: Date;
+  /** Past and future days both stay available. The workout week strip uses this. */
+  unrestricted?: boolean;
 }) {
   const theme = useAppTheme();
   const [open, setOpen] = useState(Platform.OS === 'ios');
-  const latest = maximumDate ? endOfLocalDay(maximumDate) : earliestDate ? null : endOfLocalDay(new Date());
-  const earliest = earliestDate ? startOfLocalDay(earliestDate) : null;
+  const latest = unrestricted ? null : maximumDate ? endOfLocalDay(maximumDate) : earliestDate ? null : endOfLocalDay(new Date());
+  const earliest = unrestricted ? null : earliestDate ? startOfLocalDay(earliestDate) : null;
   const shown = formatUkLong(value);
 
   function commit(next: Date) {
     let day = startOfLocalDay(next);
     if (latest && day.getTime() > startOfLocalDay(latest).getTime()) day = startOfLocalDay(latest);
     if (earliest && day.getTime() < earliest.getTime()) day = earliest;
-    if (!earliest && latest) day = clampToPast(day, latest);
+    if (!unrestricted && !earliest && latest) day = clampToPast(day, latest);
     onChange(day);
   }
 

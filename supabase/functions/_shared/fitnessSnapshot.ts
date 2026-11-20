@@ -6,6 +6,7 @@
  * 75th and above is Strong. This is an estimate, not Apple's classification and
  * not a medical assessment.
  */
+import { currentRestingHeartRate } from './currentResting.ts';
 import { currentVo2Line, currentVo2Max } from './currentVo2.ts';
 import { FITNESS_GOAL_LABEL, type FitnessGoal } from './fitnessGoal.ts';
 import { metricFallback, type FallbackCite } from './healthBands.ts';
@@ -1224,11 +1225,7 @@ export function buildFitnessSnapshot(input: FitnessSnapshotInput): FitnessSnapsh
   };
 
   const inPeriodResting = resting.filter((point) => point.day >= window.start && point.day <= today);
-  const restingShown = inPeriodResting.length
-    ? Math.round(inPeriodResting.reduce((sum, point) => sum + point.value, 0) / inPeriodResting.length)
-    : resting.length
-      ? Math.round(resting[resting.length - 1]?.value ?? 0)
-      : null;
+  const restingShown = currentRestingHeartRate({ today, samples: input.health })?.value ?? null;
   const restingPace = paceJudgement({
     period,
     loggedDays: inPeriodResting.length,

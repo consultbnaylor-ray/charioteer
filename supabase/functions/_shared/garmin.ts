@@ -5,6 +5,7 @@
  * the Health API push shape; the portal still hides the full field list.
  */
 
+import { currentRestingHeartRate } from './currentResting.ts';
 import { exerciseReadingLines } from './exerciseAnalysis.ts';
 import {
   parseGarminExtras,
@@ -1030,14 +1031,12 @@ export function garminFigures(readings: GarminReadings): {
   const dailies = [...readings.dailies].sort((left, right) => left.calendarDate.localeCompare(right.calendarDate));
   const sleepNights = sleepByNight(readings.sleep);
   const activities = [...readings.activities].sort((left, right) => left.startedAt.localeCompare(right.startedAt));
-  const latestDay = dailies.length ? dailies[dailies.length - 1] : null;
-  const heartRate = latestDay
-    ? figure(
-      latestDay.restingHeartRateBpm != null ? 'Resting heart rate' : 'Average heart rate',
-      latestDay.restingHeartRateBpm ?? latestDay.averageHeartRateBpm,
-      'bpm',
-      `on ${ukDay(latestDay.calendarDate)}`,
-    )
+  const restingReading = currentRestingHeartRate({
+    today: dailies.length ? dailies[dailies.length - 1].calendarDate : '1970-01-01',
+    garmin: dailies.map((day) => ({ day: day.calendarDate, value: day.restingHeartRateBpm })),
+  });
+  const heartRate = restingReading
+    ? figure('Resting heart rate', restingReading.value, 'bpm', `latest on ${ukDay(restingReading.day)}`)
     : null;
   const latestNight = sleepNights.length ? sleepNights[sleepNights.length - 1] : null;
   const sleep = latestNight
@@ -1072,7 +1071,7 @@ export function garminFigures(readings: GarminReadings): {
     anaerobic,
     workouts,
     heartChart: dailies
-      .map((day) => day.restingHeartRateBpm ?? day.averageHeartRateBpm)
+      .map((day) => day.restingHeartRateBpm)
       .filter((value): value is number => value != null)
       .slice(-14),
     sleepChart: sleepNights.map((night) => Math.round((night.seconds / 3600) * 10) / 10).slice(-14),

@@ -15,6 +15,7 @@ import { visionContextFrom } from '@/domain/visionBoard';
 import { drinkFreeThisWeek } from '@/domain/stage';
 import { quoteById } from '@/domain/stoicQuotes';
 import { buildVoiceBriefing, type VoiceBriefing } from '@/domain/voice';
+import { coachRestingNote, healthWithRestingNote } from '@/domain/currentResting';
 import type { HealthTrend, ThumosMode } from '@/domain/thumos';
 import { workoutReflectionsFromDiary } from '@/domain/workoutReflections';
 
@@ -26,13 +27,14 @@ function healthTrends(samples: AppSnapshot['health'], today: string): HealthTren
     list.push(sample);
     byKind.set(sample.kind, list);
   }
-  return [...byKind.entries()].map(([kind, rows]) => ({
+  const trends = [...byKind.entries()].map(([kind, rows]) => ({
     kind,
     latest: rows[0]?.value ?? null,
     previous: rows[1]?.value ?? null,
     unit: rows[0]?.unit ?? '',
     note: healthChangeNoteFromReadings(kind, rows, today),
   }));
+  return healthWithRestingNote(trends, coachRestingNote({ today, samples }));
 }
 
 function nutritionLinesFrom(snap: AppSnapshot, now: Date): string[] {

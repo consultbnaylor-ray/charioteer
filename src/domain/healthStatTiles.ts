@@ -675,7 +675,7 @@ function heartBandTile(item: CatalogItem, input: HealthStatBoardInput, grown: bo
   if (window === 'gap') return olderReadingTile(item, input, all, (point) => `Latest ${Math.round(point.value)} bpm`);
   const period = periodOf(input);
   const label = periodLabel(period);
-  const bpm = Math.round(averageOf(window.current, input.today));
+  const bpm = latestBpm(window.current) ?? Math.round(averageOf(window.current, input.today));
   const trend = movementTrend(window.current, window.previous, 'mean', 2, period);
   const about = 'Resting heart rate: how many times your heart beats in a minute while you are at rest. The unit is bpm.';
   if (!grown) {
@@ -1733,6 +1733,12 @@ function olderReadingTile(
  * one earlier day, today is left out. A window that is only today stays as
  * today's figure. A past window that does not include today keeps every day.
  */
+function latestBpm(points: readonly DayValue[]): number | null {
+  const ordered = points.filter((point) => point.value > 0).sort((left, right) => left.day.localeCompare(right.day));
+  const latest = ordered.at(-1);
+  return latest ? Math.round(latest.value) : null;
+}
+
 function averageOf(points: readonly DayValue[], today?: string): number {
   const positive = points.filter((point) => point.value > 0);
   const rows = positive.length > 0 ? positive : points;

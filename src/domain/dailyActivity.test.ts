@@ -243,6 +243,10 @@ describe('daily activity', () => {
     ]);
     expect(resting.find((point) => point.day === '2026-10-22')?.label).toContain('60 bpm (Apple Health)');
     expect(resting.find((point) => point.day === '2026-10-21')?.label).toContain('58 bpm (Garmin)');
+    const sameDay = restingSeries(end, 7, [{ day: '2026-10-21', value: 61 }], [
+      { calendarDate: '2026-10-21', restingHeartRateBpm: 52, averageHeartRateBpm: 70, moderateMinutes: null, vigorousMinutes: null },
+    ]);
+    expect(sameDay.find((point) => point.day === '2026-10-21')).toMatchObject({ value: 52, source: 'garmin' });
     const lines = garminLatestLines({
       dailies: [{
         calendarDate: '2026-10-22',

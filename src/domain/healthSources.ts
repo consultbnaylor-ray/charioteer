@@ -341,7 +341,7 @@ function garminHeartSamples(
 function garminHeartByDay(dailies: readonly GarminDaily[]): Map<string, number> {
   const days = new Map<string, number>();
   for (const daily of dailies) {
-    const value = daily.restingHeartRateBpm ?? daily.averageHeartRateBpm;
+    const value = daily.restingHeartRateBpm;
     if (value == null) continue;
     days.set(daily.calendarDate, Math.round(value));
   }
