@@ -7,7 +7,7 @@ import { distanceSeries, weekDistanceSummary } from '@/domain/dailyActivity';
 import { formatUkDate, formatUkLong } from '@/domain/dates';
 import { londonDay } from '@/domain/healthInsights';
 import { MILESTONES, milestoneReachedOn } from '@/domain/milestones';
-import { formatGbp, savingsFromTypicalWeek } from '@/domain/savings';
+import { savingsFromTypicalWeek } from '@/domain/savings';
 import { DAY_MS, soberElapsed } from '@/domain/sober';
 import { soberDaysThisMonth, soberRecord } from '@/domain/soberRecord';
 import { showsSoberRecord } from '@/domain/stage';
@@ -112,7 +112,7 @@ export default function Milestones() {
         <View style={{ flexDirection: 'row', gap: 8 }}>
           <Stat label="Longest" value={String(record.longestDays)} />
           <Stat label="Total sober" value={String(record.totalDays)} />
-          <Stat label="Saved" value={saved == null ? '—' : formatGbp(saved.moneyGbp)} />
+          <Stat label="Saved" value={saved == null ? '—' : formatWholePounds(saved.moneyGbp)} />
         </View>
         <T variant="muted">A slip resets the streak, never your total or your badges.</T>
         {saved ? <T variant="muted">Saved is an estimate from your usual week, across this stretch and earlier ones.</T> : null}
@@ -140,11 +140,28 @@ export default function Milestones() {
 function Stat({ label, value }: { label: string; value: string }) {
   const theme = useAppTheme();
   return (
-    <View style={{ flex: 1, borderWidth: 1, borderColor: theme.colors.line, borderRadius: 12, padding: 10, gap: 4 }}>
-      <T variant="label">{label}</T>
-      <T style={{ fontFamily: theme.font.display, fontSize: 22 * theme.scale, lineHeight: 26 * theme.scale }}>{value}</T>
+    <View style={{ flex: 1, minWidth: 0, borderWidth: 1, borderColor: theme.colors.line, borderRadius: 12, padding: 10, gap: 4 }}>
+      <View>
+        {label.split(' ').map((word) => (
+          <T key={word} variant="label" style={{ letterSpacing: 0.4, fontSize: 11 * theme.scale, lineHeight: 13 * theme.scale }}>{word}</T>
+        ))}
+      </View>
+      <T
+        numberOfLines={1}
+        adjustsFontSizeToFit
+        minimumFontScale={0.5}
+        style={{ width: '100%', fontFamily: theme.font.display, fontSize: 22 * theme.scale, lineHeight: 26 * theme.scale }}
+      >
+        {value}
+      </T>
     </View>
   );
+}
+
+/** Whole pounds. Pence are what pushed £324.08 onto a second line in a third-width tile. */
+function formatWholePounds(amount: number): string {
+  const pounds = Math.round(amount);
+  return `£${pounds.toLocaleString('en-GB')}`;
 }
 
 function badgeLabel(earned: ReadonlySet<string>, next: string | null): string {
@@ -178,7 +195,7 @@ function milestoneShare(input: {
   next: string;
   saved: { moneyGbp: number } | null;
 }): ShareCardModel {
-  const savedLine = input.saved ? formatGbp(input.saved.moneyGbp) : 'not estimated';
+  const savedLine = input.saved ? formatWholePounds(input.saved.moneyGbp) : 'not estimated';
   return {
     kicker: 'Charioteer',
     title: 'Milestone',
@@ -206,7 +223,7 @@ function monthShare(input: {
     `${input.checkIns} check-ins.`,
   ];
   if (input.distance) lines.push(`${input.distance} moved.`);
-  if (input.saved) lines.push(`Saved ${formatGbp(input.saved.moneyGbp)}, estimated from the usual week.`);
+  if (input.saved) lines.push(`Saved ${formatWholePounds(input.saved.moneyGbp)}, estimated from the usual week.`);
   if (input.resets > 0) lines.push(input.resets === 1 ? 'One reset is already in the history.' : `${input.resets} resets are already in the history.`);
   return {
     kicker: 'Month',

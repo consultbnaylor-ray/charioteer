@@ -54,7 +54,7 @@ export function HeartBodyGlance({
             </View>
             <View style={{ flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', gap: 8 }}>
               <View style={{ flexShrink: 1 }}>
-                <T variant="display" style={{ fontSize: 42 * theme.scale, lineHeight: 46 * theme.scale }}>{reading.value}</T>
+                <T numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.5} variant="display" style={{ fontSize: 42 * theme.scale, lineHeight: 46 * theme.scale }}>{reading.value}</T>
                 <T variant="muted">{reading.unit}</T>
               </View>
               <Sparkline values={values} color={color} width={120} height={42} />

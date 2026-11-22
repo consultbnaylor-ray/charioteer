@@ -269,14 +269,14 @@ export default function Home() {
       </Card>
       {sober ? (
         <View style={{ flexDirection: 'row', gap: 12 }}>
-          <Card style={{ flex: 1 }} onPress={openWeek} accessibilityLabel="Edit weekly spend">
+          <Card style={{ flex: 1, minWidth: 0 }} onPress={openWeek} accessibilityLabel="Edit weekly spend">
             <EditMark label="Saved" />
-            <T variant="title">{saved ? formatGbp(saved.moneyGbp) : '—'}</T>
+            <T variant="title" numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.5}>{saved ? formatGbp(saved.moneyGbp) : '—'}</T>
             <T variant="muted">{profile.weeklySpendGbp != null ? `from £${profile.weeklySpendGbp} a week` : 'Add your usual spend'}</T>
           </Card>
-          <Card style={{ flex: 1 }} onPress={openWeek} accessibilityLabel="Edit weekly units">
+          <Card style={{ flex: 1, minWidth: 0 }} onPress={openWeek} accessibilityLabel="Edit weekly units">
             <EditMark label="Units avoided" />
-            <T variant="title">{saved ? saved.units : '—'}</T>
+            <T variant="title" numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.5}>{saved ? saved.units : '—'}</T>
             <T variant="muted">{profile.weeklyUnits != null ? `from ${profile.weeklyUnits} a week` : 'Add your usual units'}</T>
           </Card>
         </View>

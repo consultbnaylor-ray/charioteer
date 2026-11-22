@@ -1,5 +1,5 @@
 import { useRouter } from 'expo-router';
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { Pressable, View } from 'react-native';
 
 import { useSnapshot } from '@/data';
@@ -33,6 +33,21 @@ function shortDay(iso: string): string {
 
 function sourceName(source: 'garmin' | 'apple'): string {
   return source === 'garmin' ? 'Garmin' : 'Apple Health';
+}
+
+/** One line. The figure shrinks instead of wrapping when the tile is narrow. */
+function TileFigure({ children, size = 34 }: { children: ReactNode; size?: number }) {
+  const theme = useAppTheme();
+  return (
+    <T
+      numberOfLines={1}
+      adjustsFontSizeToFit
+      minimumFontScale={0.5}
+      style={{ width: '100%', fontFamily: theme.font.display, fontSize: size * theme.scale, lineHeight: (size + 4) * theme.scale }}
+    >
+      {children}
+    </T>
+  );
 }
 
 function dateLine(now: Date): string {
@@ -135,22 +150,22 @@ export function TodayGlance({ now, onCorrectDate }: { now: Date; onCorrectDate: 
         </View>
       </Card>
       <View style={{ flexDirection: 'row', gap: 12 }}>
-        <View style={{ flex: 1 }}>
+        <View style={{ flex: 1, minWidth: 0 }}>
           <Card compact style={{ borderColor: theme.grid.heart }}>
             <Pressable accessibilityRole="button" accessibilityLabel="More about resting heart rate" onPress={() => setRestingOpen(true)} style={{ gap: 4, minHeight: 44 }}>
               <T variant="label" style={{ color: theme.grid.heart }}>Resting HR</T>
-              <T variant="display" style={{ fontSize: 34 * theme.scale, lineHeight: 38 * theme.scale }}>{resting ? resting.value : '—'}</T>
+              <TileFigure>{resting ? resting.value : '—'}</TileFigure>
               <T variant="muted">{resting ? 'bpm' : 'No reading yet'}</T>
               <Sparkline values={restingValues} color={theme.grid.heart} />
               <T variant="muted">{resting ? `${sourceName(resting.source)} · ${shortDay(resting.day)}` : 'Garmin or Apple Health'}</T>
             </Pressable>
           </Card>
         </View>
-        <View style={{ flex: 1 }}>
+        <View style={{ flex: 1, minWidth: 0 }}>
           <Card compact style={{ borderColor: theme.grid.activity }}>
             <Pressable accessibilityRole="button" accessibilityLabel="Open distance" onPress={() => router.push('/health' as never)} style={{ gap: 4, minHeight: 44 }}>
               <T variant="label" style={{ color: theme.grid.activity }}>Distance</T>
-              <T variant="display" style={{ fontSize: 34 * theme.scale, lineHeight: 38 * theme.scale }}>{distance ? distance.total.replace(' km', '') : '—'}</T>
+              <TileFigure>{distance ? distance.total.replace(' km', '') : '—'}</TileFigure>
               <T variant="muted">{distance ? 'km this week' : 'No distance yet'}</T>
               <MiniBars
                 values={distancePoints.map((point) => point.value)}
@@ -164,25 +179,25 @@ export function TodayGlance({ now, onCorrectDate }: { now: Date; onCorrectDate: 
         </View>
       </View>
       <View style={{ flexDirection: 'row', gap: 12 }}>
-        <View style={{ flex: 1 }}>
+        <View style={{ flex: 1, minWidth: 0 }}>
           <Card compact style={{ borderColor: theme.grid.food }}>
             <Pressable accessibilityRole="button" accessibilityLabel="Open nutrition" onPress={() => router.push('/nutrition' as never)} style={{ gap: 6, minHeight: 44 }}>
               <T variant="label" style={{ color: theme.grid.food }}>Protein</T>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                 <GlowRing size={54} strokeWidth={6} fill={proteinFill} color={theme.grid.food} track={theme.scheme === 'dark' ? '#2A2416' : theme.colors.line} />
-                <View>
-                  <T variant="title">{proteinItems.length ? protein : '—'}</T>
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <TileFigure size={24}>{proteinItems.length ? protein : '—'}</TileFigure>
                   <T variant="muted">{proteinTarget ? `of ${Math.round(proteinTarget)} g` : 'No target yet'}</T>
                 </View>
               </View>
             </Pressable>
           </Card>
         </View>
-        <View style={{ flex: 1 }}>
+        <View style={{ flex: 1, minWidth: 0 }}>
           <Card compact style={{ borderColor: theme.grid.mind }}>
             <Pressable accessibilityRole="button" accessibilityLabel="Open check-in" onPress={() => router.push('/check-in' as never)} style={{ gap: 4, minHeight: 44 }}>
               <T variant="label" style={{ color: theme.grid.mind }}>Check-ins</T>
-              <T variant="display" style={{ fontSize: 34 * theme.scale, lineHeight: 38 * theme.scale }}>{run}</T>
+              <TileFigure>{run}</TileFigure>
               <T variant="muted">{run === 1 ? 'day run' : 'day run'}</T>
               <MoodMarks values={week.map((day) => day.mood)} color={theme.grid.mind} />
               <T variant="muted">Mood this week</T>
