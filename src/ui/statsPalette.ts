@@ -57,3 +57,58 @@ export function goodZoneBand(scheme: Scheme): string {
   if (scheme === 'dark') return 'rgba(45, 224, 160, 0.45)';
   return 'rgba(132, 204, 22, 0.55)';
 }
+
+/**
+ * Grid Runner accents. Each colour means one thing.
+ * Dark values are the neon strokes. Light values are darker so small text
+ * still clears 4.5:1 on white. Heart stays a stroke, never an SOS fill.
+ */
+export type GridRole = 'sobriety' | 'activity' | 'heart' | 'food' | 'mind' | 'warning' | 'edge';
+
+export type GridAccents = Record<GridRole, string>;
+
+export function gridAccents(scheme: Scheme): GridAccents {
+  if (scheme === 'dark') {
+    return {
+      sobriety: '#2DE0A0',
+      activity: '#36D6FF',
+      heart: '#FF4D6D',
+      food: '#F59E0B',
+      mind: '#9B8CFF',
+      warning: '#FFE14A',
+      edge: '#D1FAE5',
+    };
+  }
+  return {
+    sobriety: '#047857',
+    activity: '#0369A1',
+    heart: '#BE123C',
+    food: '#C2410C',
+    mind: '#5B21B6',
+    warning: '#A16207',
+    edge: '#047857',
+  };
+}
+
+/** Faint mint grid. Light mode uses the darker sobriety ink at the same low opacity. */
+export function gridLine(scheme: Scheme): string {
+  return scheme === 'dark' ? 'rgba(45, 224, 160, 0.07)' : 'rgba(4, 120, 87, 0.08)';
+}
+
+/** Which accent a chart title uses. Unknown titles stay on the existing ink. */
+export function chartAccent(title: string, scheme: Scheme): string | null {
+  const accents = gridAccents(scheme);
+  if (title === 'Resting heart rate' || title === 'Walking heart rate') return accents.heart;
+  if (title === 'Heart rate variability') return accents.mind;
+  if (title === 'Active calories') return accents.food;
+  if (
+    title === 'Distance'
+    || title === 'Steps'
+    || title === 'Exercise minutes'
+    || title === 'Moderate minutes'
+    || title === 'Vigorous minutes'
+    || title === 'Intensity minutes'
+    || title === 'Floors'
+  ) return accents.activity;
+  return null;
+}

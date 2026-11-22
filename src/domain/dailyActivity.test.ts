@@ -16,6 +16,7 @@ import {
   calorieSeries,
   chartSourceCaption,
   distanceSeries,
+  weekDistanceSummary,
   exerciseChartCaption,
   exerciseSeries,
   garminMinuteSeries,
@@ -446,6 +447,23 @@ describe('daily activity', () => {
     expect(activityScaleLine('Most in one day 68 bpm (Apple Health)', '(Apple Health and Garmin)')).toBe('Most in one day 68 bpm (Apple Health and Garmin)');
     expect(activityScaleLine('Most in one day 40 min (Garmin)', 'Garmin. Plain minutes, not doubled.')).toBe('Most in one day 40 min. Garmin. Plain minutes, not doubled.');
     expect(activityScaleLine('Most in one day 4.2 km', '(Garmin)')).toBe('Most in one day 4.2 km (Garmin)');
+  });
+
+  it('averages full days only and says today so far only on an open today', () => {
+    const points = [
+      { day: '2026-11-14', value: 11600 },
+      { day: '2026-11-15', value: 4800 },
+      { day: '2026-11-20', value: 5200 },
+    ];
+    const open = weekDistanceSummary(points, '2026-11-20', new Date('2026-11-20T08:00:00Z'));
+    expect(open?.total).toBe('21.6 km');
+    expect(open?.average).toBe('8.2 km/day avg');
+    expect(open?.line).toContain('Today 5.2 km so far');
+    expect(open?.line).not.toMatch(/Today so far.*Today so far/);
+    const past = weekDistanceSummary(points, '2026-11-21', new Date('2026-11-21T08:00:00Z'));
+    expect(past?.line).not.toContain('Today so far');
+    expect(past?.line).not.toContain('so far');
+    expect(past?.average).toBe('7.2 km/day avg');
   });
 });
 

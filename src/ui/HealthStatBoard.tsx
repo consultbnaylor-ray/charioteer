@@ -40,6 +40,7 @@ import { ReadingChart } from '@/ui/ReadingChart';
 import { DateField } from '@/ui/DateField';
 import { GoalLine } from '@/ui/GoalLine';
 import { statsToneColors } from '@/ui/statsPalette';
+import { gridAccents } from '@/ui/statsPalette';
 import { useAppTheme } from '@/ui/theme';
 import { MetricRatingLines } from '@/ui/MetricRating';
 import { MoreInfoButton } from '@/ui/MoreInfo';
@@ -354,6 +355,7 @@ function TileValue({ tile }: { tile: HealthStatTile }) {
 const SUM_CHARTS = new Set(['steps', 'workouts', 'weekly_active_minutes']);
 
 function TileChart({ tile, today, period }: { tile: HealthStatTile; today: string; period: StatPeriod }) {
+  const theme = useAppTheme();
   const window = rollingWindow(today, period);
   const unit = tile.unit === 'h' ? 'hours' : tile.unit;
   return (
@@ -364,9 +366,19 @@ function TileChart({ tile, today, period }: { tile: HealthStatTile; today: strin
       unit={unit}
       aggregate={SUM_CHARTS.has(tile.id) ? 'sum' : 'mean'}
       bucket={chartBucketForPeriod(period)}
+      accent={tileAccent(tile.id, theme.scheme)}
       accessibilityLabel={`${tile.title} chart`}
     />
   );
+}
+
+function tileAccent(id: string, scheme: 'light' | 'dark'): string {
+  const accents = gridAccents(scheme);
+  if (id === 'resting_heart_rate' || id === 'walking_heart_rate') return accents.heart;
+  if (id === 'hrv_sdnn') return accents.mind;
+  if (id === 'vo2_max' || id === 'steps' || id === 'workouts' || id === 'weekly_active_minutes') return accents.activity;
+  if (id.includes('protein') || id.includes('calorie')) return accents.food;
+  return accents.sobriety;
 }
 
 function tileFaceMentionsWeight(tile: HealthStatTile): boolean {

@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useId, useState } from 'react';
 import { View } from 'react-native';
-import Svg, { Circle, Line } from 'react-native-svg';
+import Svg, { Circle, Defs, Line, LinearGradient, Path, Stop, Text as SvgText } from 'react-native-svg';
 
 import {
   chartBucketCaption,
@@ -18,6 +18,7 @@ import {
   type ChartBucket,
   type ChartPoint,
 } from '@/domain/readingChart';
+import { MoreInfo } from '@/ui/MoreInfo';
 import { useAppTheme } from '@/ui/theme';
 import { T } from '@/ui/ui';
 
@@ -40,6 +41,7 @@ export function ReadingChart({
   accessibilityLabel = 'Chart',
   title,
   onSelectDay,
+  accent,
 }: {
   points: readonly ChartPoint[];
   start: string;
@@ -54,8 +56,12 @@ export function ReadingChart({
   title?: string;
   /** Choosing a point can open that day on the page. */
   onSelectDay?: (day: string) => void;
+  /** Stroke colour for this metric. Omitted charts stay on the ink. */
+  accent?: string;
 }) {
   const theme = useAppTheme();
+  const rawId = useId();
+  const fillId = `chart-fill-${rawId.replace(/[^a-zA-Z0-9]/g, '')}`;
   const [width, setWidth] = useState(0);
   const [chosen, setChosen] = useState<string | null>(null);
   const windowStart = start <= end ? start : end;
@@ -120,6 +126,10 @@ export function ReadingChart({
     <View accessibilityLabel={spoken} style={{ gap: 6, alignSelf: 'stretch' }}>
       {title ? <T variant="label">{title}</T> : null}
       <T>{summary}</T>
+      <MoreInfo about={accessibilityLabel} title="What this means">
+        {grainCaption ? <T variant="muted">{grainCaption}</T> : null}
+        <T variant="muted">{CHART_DIRECTION_HINT}</T>
+      </MoreInfo>
       {yName ? (
         <T style={{ fontSize: 11 * label, lineHeight: 14 * label, color: theme.colors.muted }}>{yName}</T>
       ) : null}
@@ -138,6 +148,12 @@ export function ReadingChart({
         {width > 0 ? (
           <View style={{ height: PLOT_H }}>
             <Svg width={width} height={PLOT_H}>
+              <Defs>
+                <LinearGradient id={fillId} x1="0" y1="0" x2="0" y2="1">
+                  <Stop offset="0" stopColor={accent ?? theme.colors.ink} stopOpacity={0.32} />
+                  <Stop offset="1" stopColor={accent ?? theme.colors.ink} stopOpacity={0} />
+                </LinearGradient>
+              </Defs>
               {ticks.map((tick) => (
                 <Line
                   key={`grid-${tick}`}
@@ -149,6 +165,23 @@ export function ReadingChart({
                   strokeWidth={1}
                 />
               ))}
+              {shown.length > 1 ? (
+                <Path
+                  d={`${shown.map((point, index) => `${index === 0 ? 'M' : 'L'}${xFor(point.day).toFixed(1)} ${yFor(point.value).toFixed(1)}`).join(' ')} L${xFor(shown[shown.length - 1].day).toFixed(1)} ${PLOT_H - 12} L${xFor(shown[0].day).toFixed(1)} ${PLOT_H - 12} Z`}
+                  fill={`url(#${fillId})`}
+                />
+              ) : null}
+              {shown.length > 1 ? (
+                <Path
+                  d={shown.map((point, index) => `${index === 0 ? 'M' : 'L'}${xFor(point.day).toFixed(1)} ${yFor(point.value).toFixed(1)}`).join(' ')}
+                  stroke={accent ?? theme.colors.ink}
+                  strokeWidth={5}
+                  fill="none"
+                  opacity={0.22}
+                  strokeLinejoin="round"
+                  strokeLinecap="round"
+                />
+              ) : null}
               {shown.slice(1).map((point, index) => {
                 const previous = shown[index];
                 if (!previous) return null;
@@ -159,7 +192,7 @@ export function ReadingChart({
                     y1={yFor(previous.value)}
                     x2={xFor(point.day)}
                     y2={yFor(point.value)}
-                    stroke={theme.colors.ink}
+                    stroke={accent ?? theme.colors.ink}
                     strokeWidth={2}
                   />
                 );
@@ -174,19 +207,44 @@ export function ReadingChart({
                   strokeWidth={1}
                 />
               ) : null}
-              {shown.map((point) => {
+              {shown.map((point, index) => {
                 const active = point.day === selected?.day;
+                const latest = index === shown.length - 1;
+                const ink = accent ?? theme.colors.ink;
                 return (
                   <Circle
                     key={point.day}
                     cx={xFor(point.day)}
                     cy={yFor(point.value)}
-                    r={active ? 6 : 4}
-                    fill={theme.colors.ink}
-                    onPress={() => setChosen(point.day)}
+                    r={active || latest ? 5 : 3.5}
+                    fill={ink}
                   />
                 );
               })}
+              {shown.length <= 10 ? shown.map((point) => (
+                <SvgText
+                  key={`label-${point.day}`}
+                  x={xFor(point.day)}
+                  y={Math.max(12, yFor(point.value) - 8)}
+                  textAnchor="middle"
+                  fill={theme.colors.ink}
+                  fontSize={10}
+                  fontFamily={theme.font.bodyStrong}
+                >
+                  {formatAxisNumber(point.value)}
+                </SvgText>
+              )) : (
+                <SvgText
+                  x={xFor(shown[shown.length - 1].day)}
+                  y={Math.max(12, yFor(shown[shown.length - 1].value) - 8)}
+                  textAnchor="middle"
+                  fill={accent ?? theme.colors.ink}
+                  fontSize={11}
+                  fontFamily={theme.font.bodyStrong}
+                >
+                  {formatAxisNumber(shown[shown.length - 1].value)}
+                </SvgText>
+              )}
             </Svg>
             {ticks.map((tick) => (
               <T
@@ -232,8 +290,6 @@ export function ReadingChart({
       </View>
       <AxisLabels marks={marks} width={width} gutter={gutter} scale={label} xFor={xFor} />
       <T style={{ fontSize: 11 * label, lineHeight: 14 * label, color: theme.colors.muted, textAlign: 'center' }}>{xTitle}</T>
-      <T style={{ fontSize: 11 * label, lineHeight: 14 * label, color: theme.colors.muted, textAlign: 'center' }}>{CHART_DIRECTION_HINT}</T>
-      {grainCaption ? <T variant="muted">{grainCaption}</T> : null}
     </View>
   );
 }

@@ -390,6 +390,47 @@ export function distanceText(metres: number): string {
   return `${Math.round(metres)} m`;
 }
 
+export type WeekDistanceSummary = {
+  totalMetres: number;
+  total: string;
+  /** Null when every day in view is still an open part-day. */
+  average: string | null;
+  /** One line. "Today so far" appears only for an open today, never for a past day. */
+  line: string;
+};
+
+/**
+ * Week total uses every day that has a distance.
+ * The daily average uses full days only: a today that is still before 5pm London stays out.
+ */
+export function weekDistanceSummary(
+  points: readonly { day: string; value: number; empty?: boolean }[],
+  today: string,
+  now: Date = new Date(),
+): WeekDistanceSummary | null {
+  const valued = points.filter((point) => point.value > 0 && point.empty !== true);
+  if (!valued.length) return null;
+  const totalMetres = valued.reduce((sum, point) => sum + point.value, 0);
+  const full = valued.filter((point) => viewedDayHeading(point.day, today, now) !== 'Today so far');
+  const average = full.length
+    ? distanceText(full.reduce((sum, point) => sum + point.value, 0) / full.length)
+    : null;
+  const best = valued.reduce((top, point) => (point.value > top.value ? point : top));
+  const todayPoint = valued.find((point) => point.day === today) ?? null;
+  let line = `Best day ${distanceText(best.value)} on ${activityDayName(best.day)}.`;
+  if (todayPoint && todayPoint.day !== best.day) {
+    const heading = viewedDayHeading(todayPoint.day, today, now);
+    if (heading === 'Today so far') line += ` Today ${distanceText(todayPoint.value)} so far.`;
+    else if (heading === 'Today') line += ` Today ${distanceText(todayPoint.value)}.`;
+  }
+  return {
+    totalMetres,
+    total: distanceText(totalMetres),
+    average: average ? `${average}/day avg` : null,
+    line,
+  };
+}
+
 export function distanceSeries(
   endDay: string,
   span: number,

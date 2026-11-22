@@ -33,6 +33,7 @@ import { ScrollTarget } from '@/ui/ScrollTarget';
 import { DailyTargets } from '@/ui/DailyTargets';
 import { YourGoal } from '@/ui/YourGoal';
 import { OutingInProgressBanner } from '@/ui/OutingInProgressBanner';
+import { TodayGlance } from '@/ui/TodayGlance';
 import { WalkThisOff } from '@/ui/WalkThisOff';
 import { radius, useAppTheme } from '@/ui/theme';
 
@@ -62,6 +63,7 @@ export default function Home() {
   const saving = useRef(false);
   const { run: runRelapse, isPending: relapsePending } = usePendingPress();
   const [refreshing, setRefreshing] = useState(false);
+  const [moreOpen, setMoreOpen] = useState(false);
   const { samples: mergedHealth } = useHealthSources();
 
   useEffect(() => {
@@ -158,8 +160,33 @@ export default function Home() {
   }).headlines.slice(0, 3);
 
   return (
-    <Screen eyebrow={greeting(now)} title={profile.displayName || 'Friend'} refreshing={refreshing} onRefresh={() => void pullToRefresh()}>
+    <Screen eyebrow={sober ? undefined : greeting(now)} title={sober ? undefined : (profile.displayName || 'Friend')} refreshing={refreshing} onRefresh={() => void pullToRefresh()}>
       <OutingInProgressBanner />
+      {sober ? <TodayGlance now={now} onCorrectDate={openCorrection} /> : null}
+      {sober && !moreOpen ? (
+        <>
+          <AiCreditLine />
+          <Button
+            label="SOS"
+            tone="sos"
+            accessibilityLabel="SOS, open craving support with Thumos"
+            onPress={() => router.push('/thumos?mode=craving' as never)}
+          />
+        </>
+      ) : null}
+      {sober ? (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityState={{ expanded: moreOpen }}
+          accessibilityLabel={moreOpen ? 'Hide the rest of today' : 'More on today'}
+          onPress={() => setMoreOpen((open) => !open)}
+          style={{ minHeight: 44, justifyContent: 'center' }}
+        >
+          <T style={{ fontFamily: theme.font.bodyStrong }}>{moreOpen ? 'Hide the rest of today' : 'More on today'}</T>
+        </Pressable>
+      ) : null}
+      {!sober || moreOpen ? (
+      <>
       <ScrollTarget id="sober">
       {sober ? (
       <View style={{ gap: 8 }}>
@@ -372,6 +399,8 @@ export default function Home() {
         )}
         <ErrorNote>{error}</ErrorNote>
       </EditSheet>
+      </>
+      ) : null}
     </Screen>
   );
 }

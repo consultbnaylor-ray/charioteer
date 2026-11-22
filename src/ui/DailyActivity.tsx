@@ -23,6 +23,7 @@ import {
   activityScaleLine,
   chartScalePeak,
   distanceText,
+  weekDistanceSummary,
   exerciseChartCaption,
   exerciseSeries,
   floorsSeries,
@@ -81,6 +82,7 @@ import { goodZoneBand, statsToneColors } from '@/ui/statsPalette';
 import { chartBucketForPeriod } from '@/domain/readingChart';
 import { ReadingChart } from '@/ui/ReadingChart';
 import { StatPeriodToggle } from '@/ui/StatPeriodToggle';
+import { chartAccent } from '@/ui/statsPalette';
 import { useAppTheme } from '@/ui/theme';
 import { activityTitleIcon } from '@/domain/statIcons';
 import { IconLabel } from '@/ui/statIcons';
@@ -184,6 +186,7 @@ export function DailyActivityCharts({
   /** Choosing a chart point opens that day. */
   onSelectDay?: (day: string) => void;
 }) {
+  const theme = useAppTheme();
   const minuteCtx = chartContext(age, sex, goal, span, endDay);
   const [selected, setSelected] = useState<string | null>(null);
   const [chartsOpen, setChartsOpen] = useState(false);
@@ -244,6 +247,7 @@ export function DailyActivityCharts({
                 unit={unit}
                 aggregate="mean"
                 bucket={chartBucketForPeriod(trendPeriod)}
+                accent={chartAccent(name, theme.scheme) ?? undefined}
                 accessibilityLabel={`${name} chart`}
                 onSelectDay={(picked) => {
                   setSelected(picked);
@@ -553,7 +557,7 @@ export function MovementCharts({
           onSelect={setSelected}
         />
       ) : null}
-      {showHealthStats && seriesHasValue(distance) ? (
+      {showHealthStats ? (
         <ActivityBars
           framed={framed}
           title="Distance"
@@ -563,8 +567,9 @@ export function MovementCharts({
           selected={selected}
           scale={mostDistance(distance)}
           format={(point) => distanceText(point.value)}
-          garminNote={chartSourceCaption(distance)}
-          guide={distanceChartGuide(chartWindow.period, distance, minuteCtx, londonToday())}
+          garminNote={seriesHasValue(distance) ? chartSourceCaption(distance) : null}
+          guide={seriesHasValue(distance) ? distanceChartGuide(chartWindow.period, distance, minuteCtx, londonToday()) : null}
+          lead={seriesHasValue(distance) ? null : 'No distance yet.'}
           onSelect={setSelected}
         />
       ) : null}
@@ -934,8 +939,10 @@ function ActivityBars({
 }) {
   const theme = useAppTheme();
   const icon = activityTitleIcon(title);
+  const accent = chartAccent(title, theme.scheme);
   const most = chartPeak(points, guide);
   const today = londonToday();
+  const distanceSummary = title === 'Distance' ? weekDistanceSummary(points, today, new Date()) : null;
   const scaleLine = span === 1
     ? rangeScaleLine({
       points,
@@ -971,6 +978,13 @@ function ActivityBars({
   const body = (
     <>
       {icon ? <IconLabel name={icon}>{title}</IconLabel> : <T variant="label">{title}</T>}
+      {distanceSummary ? (
+        <View style={{ gap: 2 }}>
+          <T variant="display">{distanceSummary.total}</T>
+          {distanceSummary.average ? <T variant="muted">{distanceSummary.average}</T> : null}
+          <T>{distanceSummary.line}</T>
+        </View>
+      ) : null}
       {span > 1 && points.some((point) => point.value > 0) ? (
         <ReadingChart
           points={points.filter((point) => point.value > 0 && point.empty !== true).map((point) => ({ day: point.day, value: point.value }))}
@@ -1086,7 +1100,7 @@ function ActivityBars({
                     {missing ? null : point.value === 0 ? (
                       <View style={{ height: 2, backgroundColor: theme.colors.ink }} />
                     ) : (
-                      <View style={{ height: Math.max(2, (point.value / most) * BAR_HEIGHT), backgroundColor: point.day === today ? theme.colors.line : theme.colors.ink, opacity: point.day === today ? 0.55 : 1 }} />
+                      <View style={{ height: Math.max(2, (point.value / most) * BAR_HEIGHT), backgroundColor: accent ?? (point.day === today ? theme.colors.line : theme.colors.ink), opacity: accent && viewedDayHeading(point.day, today) === 'Today so far' ? 0.35 : point.day === today ? 0.55 : 1 }} />
                     )}
                   </View>
                 </Pressable>

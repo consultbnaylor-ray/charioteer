@@ -24,6 +24,7 @@ import { requestBadgeText } from '@/domain/connections';
 import { HELMET_ASPECT, HELMET_D, HELMET_VIEWBOX } from '@/ui/helmet';
 import { DismissKeyboard, dismissKeyboard, dismissKeyboardOnAction, inputScrollProps, KeyboardDoneBar, KeyboardForm, keyboardAccessoryId, useKeyboardField, useKeyboardOffset } from '@/ui/keyboard';
 import { topSafeInset } from '@/ui/safeArea';
+import { FaintGrid, HudCorners } from '@/ui/gridChrome';
 import { radius, stroke, useAppTheme, type Scheme } from '@/ui/theme';
 
 type Variant = 'hero' | 'display' | 'title' | 'body' | 'muted' | 'label';
@@ -165,7 +166,8 @@ export function Screen({
   const scrollHandle = useRef<ScreenScrollHandle>({ scrollRef, innerRef, height: 0, offset: 0 });
   scrollHandle.current.setScrollEnabled = setPageScroll;
   return (
-    <View ref={hostRef} style={{ flex: 1, backgroundColor: theme.colors.bg }} onLayout={onKeyboardLayout}>
+      <View ref={hostRef} style={{ flex: 1, backgroundColor: theme.colors.bg }} onLayout={onKeyboardLayout}>
+      <FaintGrid />
       <KeyboardAvoidingView
         style={{ flex: 1 }}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
@@ -224,7 +226,7 @@ export function Screen({
       </View>
       </ScreenScrollContext.Provider>
       </KeyboardAvoidingView>
-    </View>
+      </View>
   );
 }
 
@@ -256,6 +258,7 @@ export function accentFrame(theme: AccentTheme, borderWidth: number, lift = true
     body: {
       borderRadius: Math.max(0, radius.md - borderWidth),
       overflow: 'hidden',
+      position: 'relative',
     },
   };
 }
@@ -266,6 +269,7 @@ export function Card({
   onPress,
   accessibilityLabel,
   featured = false,
+  compact = false,
 }: {
   children: ReactNode;
   style?: StyleProp<ViewStyle>;
@@ -273,14 +277,29 @@ export function Card({
   accessibilityLabel?: string;
   /** A slightly heavier accent edge for a primary card, such as the sober card. */
   featured?: boolean;
+  /** Tighter padding for a tile that is mostly a number. */
+  compact?: boolean;
 }) {
   const theme = useAppTheme();
   const flat = StyleSheet.flatten(style) ?? {};
   const borderWidth = typeof flat.borderWidth === 'number' ? flat.borderWidth : featured ? stroke.featured : stroke.card;
+  const borderColor = typeof flat.borderColor === 'string' ? flat.borderColor : theme.colors.accent;
   const chrome = accentFrame(theme, borderWidth);
-  const box = [chrome.frame, style];
-  const inner = <View style={[styles.cardBody, chrome.body]}>{children}</View>;
-  if (!onPress) return <View style={box}>{inner}</View>;
+  const box = [chrome.frame, { position: 'relative' as const }, style];
+  const inner = (
+    <View style={[styles.cardBody, chrome.body, compact ? { padding: 12, gap: 6 } : null]}>
+      <FaintGrid />
+      {children}
+    </View>
+  );
+  if (!onPress) {
+    return (
+      <View style={box}>
+        <HudCorners color={borderColor} />
+        {inner}
+      </View>
+    );
+  }
   return (
     <Pressable
       accessibilityRole="button"
@@ -288,6 +307,7 @@ export function Card({
       onPress={onPress}
       style={({ pressed }) => [box, { opacity: pressed ? 0.86 : 1 }]}
     >
+      <HudCorners color={borderColor} />
       {inner}
     </Pressable>
   );

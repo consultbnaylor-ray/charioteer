@@ -31,6 +31,9 @@ import { useStatPeriod } from '@/health/useStatPeriod';
 import { fitnessSeriesChart } from '@/domain/chartSeries';
 import { chartBucketForPeriod, type ChartAggregate } from '@/domain/readingChart';
 import { londonDay } from '@/domain/healthInsights';
+import { currentRestingHeartRate } from '@/domain/currentResting';
+import { currentVo2Max } from '@/domain/currentVo2';
+import { appleDayValues } from '@/domain/dailyActivity';
 import { latestVo2Reading, VO2_CARD_LINE, vo2MeasuredLine } from '@/domain/vo2Estimate';
 import { OUTSIDE_CRISIS_LINE, OUTSIDE_SAFETY_LINE } from '@/domain/outdoorRoute';
 import { londonToday, periodDayCount, periodHeading, rollingWindow } from '@/domain/statWindow';
@@ -53,6 +56,8 @@ import { LowRestingFitNote } from '@/ui/LowRestingFitNote';
 import { Vo2EstimateNote, Vo2MeasureBanner, Vo2MeasureCopy } from '@/ui/Vo2EstimateNote';
 import { TowardTargetActivity } from '@/ui/TowardTargetActivity';
 import { MoreInfo as InfoDisclosure, MoreInfoButton } from '@/ui/MoreInfo';
+import { HeartBodyGlance, type GlanceReading } from '@/ui/HeartBodyGlance';
+import { numberRangeLine } from '@/ui/gridChrome';
 import { Button, Card, Choice, T, playSavedHaptic } from '@/ui/ui';
 
 /**
@@ -70,6 +75,7 @@ export function YourFitness({ onPlanOutdoor }: { onPlanOutdoor: () => void }) {
   const [info, setInfo] = useState<InfoFocus | null>(null);
   const [sourceApps, setSourceApps] = useState<WorkoutSourceMinute[]>([]);
   const [bucketNote, setBucketNote] = useState<string | null>(null);
+  const [detailOpen, setDetailOpen] = useState(false);
   useEffect(() => {
     if (Platform.OS !== 'ios') return;
     void readAppleHealthAccess().then(setAccess).catch(() => setAccess('prompt'));
@@ -117,10 +123,34 @@ export function YourFitness({ onPlanOutdoor }: { onPlanOutdoor: () => void }) {
     return { saved: Boolean(saved), done: Boolean(saved?.done) };
   };
 
+  const today = londonDay(new Date());
+  const restingNow = currentRestingHeartRate({
+    today,
+    garmin: readings.dailies.map((day) => ({ day: day.calendarDate, value: day.restingHeartRateBpm })),
+    samples: mergedHealth,
+  });
+  const vo2Now = currentVo2Max({
+    today,
+    garmin: readings.userMetrics.map((row) => ({ day: row.calendarDate, value: row.vo2Max })),
+    samples: mergedHealth,
+  });
+  const glance = fitnessGlance({
+    today,
+    resting: restingNow,
+    restingPoints: view.resting?.series ?? [],
+    vo2: vo2Now,
+    vo2Points: view.cardio?.series ?? [],
+    hrvRows: readings.hrv,
+    hrvSamples: appleDayValues(mergedHealth, 'hrv_sdnn'),
+  });
+
   return (
     <Card>
-      <StatPeriodToggle />
       <T variant="label">Your fitness</T>
+      <StatPeriodToggle />
+      <HeartBodyGlance readings={glance} onMonth={() => setDetailOpen(true)} />
+      {detailOpen ? (
+      <>
       <TowardTargetActivity />
       <GarminTip />
       <Vo2MaxChart
@@ -249,8 +279,94 @@ export function YourFitness({ onPlanOutdoor }: { onPlanOutdoor: () => void }) {
         onClose={() => setInfo(null)}
         onTick={(text) => void tick(text)}
       />
+      </>
+      ) : (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Full fitness detail"
+          onPress={() => setDetailOpen(true)}
+          style={{ minHeight: 44, justifyContent: 'center' }}
+        >
+          <T style={{ fontFamily: theme.font.bodyStrong }}>Full fitness detail</T>
+        </Pressable>
+      )}
     </Card>
   );
+}
+
+function daysBetween(from: string, to: string): number {
+  const start = Date.parse(`${from}T00:00:00Z`);
+  const end = Date.parse(`${to}T00:00:00Z`);
+  if (Number.isNaN(start) || Number.isNaN(end)) return 9999;
+  return Math.round((end - start) / 86_400_000);
+}
+
+function shortSource(day: string, source: string): string {
+  const [, month, date] = day.split('-').map(Number);
+  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  return `${source} · ${date ?? 1} ${months[(month ?? 1) - 1] ?? ''}`;
+}
+
+/**
+ * One source for each card. Garmin wins inside 60 days. Apple is the fallback.
+ * The two are never averaged into one number.
+ */
+function fitnessGlance(input: {
+  today: string;
+  resting: { value: number; day: string; source: 'garmin' | 'apple' } | null;
+  restingPoints: readonly { day: string; value: number }[];
+  vo2: { value: number; day: string; source: 'garmin' | 'apple' } | null;
+  vo2Points: readonly { day: string; value: number }[];
+  hrvRows: readonly { calendarDate: string; lastNightAvgMs: number | null }[];
+  hrvSamples: readonly { day: string; value: number }[];
+}): GlanceReading[] {
+  const restingValues = input.restingPoints.map((point) => point.value).filter((value) => value > 0);
+  const vo2Values = input.vo2Points.map((point) => point.value).filter((value) => value > 0);
+  const garmin = input.hrvRows
+    .filter((row) => row.lastNightAvgMs != null && row.lastNightAvgMs > 0 && row.calendarDate <= input.today)
+    .sort((left, right) => left.calendarDate.localeCompare(right.calendarDate));
+  const latestGarmin = garmin.at(-1) ?? null;
+  const garminFresh = latestGarmin != null && latestGarmin.lastNightAvgMs != null && daysBetween(latestGarmin.calendarDate, input.today) <= 60;
+  const apple = input.hrvSamples.filter((point) => point.day <= input.today && point.value > 0).sort((left, right) => left.day.localeCompare(right.day));
+  const latestApple = apple.at(-1) ?? null;
+  const hrvPoints = garminFresh
+    ? garmin.map((row) => ({ day: row.calendarDate, value: row.lastNightAvgMs ?? 0 }))
+    : apple.map((point) => ({ day: point.day, value: point.value }));
+  const hrvValue = garminFresh && latestGarmin?.lastNightAvgMs != null
+    ? String(Math.round(latestGarmin.lastNightAvgMs))
+    : latestApple ? String(Math.round(latestApple.value)) : '—';
+  const hrvSource = garminFresh && latestGarmin
+    ? shortSource(latestGarmin.calendarDate, 'Garmin')
+    : latestApple ? shortSource(latestApple.day, 'Apple Health') : null;
+  return [
+    {
+      id: 'resting',
+      title: 'Resting heart rate',
+      value: input.resting ? String(input.resting.value) : '—',
+      unit: 'bpm',
+      source: input.resting ? shortSource(input.resting.day, input.resting.source === 'garmin' ? 'Garmin' : 'Apple Health') : null,
+      points: input.restingPoints.filter((point) => point.value > 0),
+      line: numberRangeLine(restingValues, 'bpm'),
+    },
+    {
+      id: 'vo2',
+      title: 'VO2 max',
+      value: input.vo2 ? String(input.vo2.value) : '—',
+      unit: 'ml/kg/min',
+      source: input.vo2 ? shortSource(input.vo2.day, input.vo2.source === 'garmin' ? 'Garmin' : 'Apple Health') : null,
+      points: input.vo2Points.filter((point) => point.value > 0),
+      line: numberRangeLine(vo2Values, 'ml/kg/min') ?? 'Latest reading',
+    },
+    {
+      id: 'hrv',
+      title: 'HRV',
+      value: hrvValue,
+      unit: garminFresh ? 'ms' : 'ms',
+      source: hrvSource,
+      points: hrvPoints,
+      line: numberRangeLine(hrvPoints.map((point) => point.value), 'ms') ?? (hrvSource ? 'Latest reading' : null),
+    },
+  ];
 }
 
 type InfoFocus = 'card' | 'cardio' | 'minutes' | 'resting';

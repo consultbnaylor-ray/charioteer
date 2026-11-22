@@ -9,6 +9,8 @@ import { incomingRequestCount, peopleTabAccessibilityLabel, peopleTabBadgeCount,
 import { messageUnreadTotal } from '@/domain/liveChat';
 import { useChatRead } from '@/ui/chatRead';
 import { TAB_SECTIONS, type AppSection } from '@/domain/sections';
+import { useReduceMotion } from '@/ui/gridChrome';
+import { MenuGlyph } from '@/ui/menuIcons';
 import { tabLabelFontSize, tabSideInset } from '@/ui/tabBar';
 import { useAppTheme } from '@/ui/theme';
 import { topSafeInset } from '@/ui/safeArea';
@@ -25,7 +27,9 @@ function selected(pathname: string, href: string) {
 
 export default function MainLayout() {
   const theme = useAppTheme();
+  const reduceMotion = useReduceMotion();
   const { width } = useWindowDimensions();
+  const activeInk = theme.scheme === 'dark' ? theme.grid.edge : theme.grid.sobriety;
   const wide = width >= 980;
   const pathname = usePathname();
   const router = useRouter();
@@ -154,8 +158,9 @@ export default function MainLayout() {
               accessibilityLabel={tabName(tab)}
               accessibilityState={{ selected: selected(pathname, tab.href) }}
               onPress={() => go(tab.href)}
-              style={[styles.tab, { borderTopColor: selected(pathname, tab.href) ? theme.colors.ink : 'transparent' }]}
+              style={[styles.tab, { borderTopColor: 'transparent' }]}
             >
+              <MenuGlyph name={tab.icon} color={selected(pathname, tab.href) ? activeInk : theme.colors.muted} size={22} />
               <Text
                 numberOfLines={1}
                 adjustsFontSizeToFit
@@ -165,7 +170,7 @@ export default function MainLayout() {
                   width: '100%',
                   alignSelf: 'stretch',
                   textAlign: 'center',
-                  color: selected(pathname, tab.href) ? theme.colors.ink : theme.colors.muted,
+                  color: selected(pathname, tab.href) ? activeInk : theme.colors.muted,
                   fontFamily: theme.font.bodyStrong,
                   fontSize: labelSize,
                   lineHeight: Math.round(labelSize * 1.25),
@@ -173,6 +178,18 @@ export default function MainLayout() {
               >
                 {tab.tabLabel ?? tab.label}
               </Text>
+              <View
+                style={{
+                  width: selected(pathname, tab.href) ? 18 : 0,
+                  height: 2.5,
+                  borderRadius: 2,
+                  marginTop: 2,
+                  backgroundColor: theme.grid.sobriety,
+                  ...(selected(pathname, tab.href) && !reduceMotion
+                    ? { shadowColor: theme.grid.sobriety, shadowOpacity: 0.9, shadowRadius: 6, shadowOffset: { width: 0, height: 0 } }
+                    : null),
+                }}
+              />
               {tab.href === '/people' && peopleBadge ? <RequestBadge label={peopleBadge} /> : null}
             </Pressable>
           ))}

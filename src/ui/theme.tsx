@@ -2,7 +2,7 @@ import { createContext, useContext, useMemo, type ReactNode } from 'react';
 import { useColorScheme } from 'react-native';
 
 import type { TextScale, ThemePreference } from '@/data/types';
-import { cardAccent } from '@/ui/statsPalette';
+import { cardAccent, gridAccents, type GridAccents } from '@/ui/statsPalette';
 
 /**
  * Monochrome system, plus one accent. Near-black and off-white, grey for hierarchy.
@@ -71,6 +71,8 @@ const scales: Record<TextScale, number> = { default: 1, large: 1.15, extra: 1.32
 type ThemeValue = {
   scheme: Scheme;
   colors: Palette;
+  /** One colour per kind of data. See gridAccents. */
+  grid: GridAccents;
   scale: number;
   radius: typeof radius;
   font: typeof font;
@@ -93,6 +95,7 @@ export function ThemeProvider({
     () => ({
       scheme,
       colors: { ...(scheme === 'dark' ? dark : light), accent: cardAccent(scheme) },
+      grid: gridAccents(scheme),
       scale: scales[textScale],
       radius,
       font,

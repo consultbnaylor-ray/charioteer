@@ -5,9 +5,9 @@ import type { MenuIcon } from '@/domain/sections';
 const stroke = { strokeWidth: 1.6, strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const };
 
 /** Line icons for the menu. The row label is the accessible name. */
-export function MenuGlyph({ name, color }: { name: MenuIcon; color: string }) {
+export function MenuGlyph({ name, color, size = 18 }: { name: MenuIcon; color: string; size?: number }) {
   return (
-    <Svg width={18} height={18} viewBox="0 0 24 24" fill="none" accessibilityElementsHidden>
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" accessibilityElementsHidden>
       {name === 'sun' ? (
         <>
           <Circle cx={12} cy={12} r={3.2} stroke={color} strokeWidth={1.6} />
