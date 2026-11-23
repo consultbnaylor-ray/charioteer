@@ -7,7 +7,9 @@ import { T } from '@/ui/ui';
 
 function faceLines(rating: MetricReading): string[] {
   if (rating.pending) return rating.where ? [rating.where] : [];
-  const text = `${rating.label}: ${rating.where}`.replace(/\s+/g, ' ').trim();
+  // A sentence that already says "Rated Good" must not become "Good: Rated Good".
+  const named = rating.where.startsWith('Rated ');
+  const text = (named ? rating.where : `${rating.label}: ${rating.where}`).replace(/\s+/g, ' ').trim();
   const parts = text.split(/(?<=\.)\s+/).map((line) => line.trim()).filter(Boolean);
   return parts.length > 0 ? parts : [text];
 }

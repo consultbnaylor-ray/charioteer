@@ -36,6 +36,7 @@ import {
 } from '@/domain/healthBands';
 import { stepsResearchMeaning } from '@/domain/garminCharts';
 import { leadingNumber, ratingTone, readingFor, type MetricReading } from '@/domain/metricRegistry';
+import { collectWalkingContext } from '@/domain/walkingHeartRating';
 import { restingFitnessComment, type RestingFitnessComment } from '@/domain/restingFitness';
 import { bodyFatRange } from '@/domain/distance';
 import {
@@ -46,6 +47,7 @@ import {
   VO2_WHAT,
   workoutMixReport,
 } from '@/domain/fitnessSnapshot';
+import { chartBucketForPeriod, chartPlot } from '@/domain/readingChart';
 import { paceJudgement, parseStatPeriod, periodDayCount, periodPhrase as sharedPeriodPhrase, rollingWindow, scaledPeriodTarget, STAT_PERIOD_LABEL, STAT_PERIODS, type StatPeriod } from '@/domain/statWindow';
 import { goalBandLegend, goalWeightRange, IBA_RULES_URL, NO_CUT } from '@/domain/goalWeightRange';
 import {
@@ -344,6 +346,15 @@ export type HealthStatBoardInput = {
    * so the double count runs once, inside resting fitness.
    */
   garminActivity?: readonly { day: string; moderateMinutes: number | null; vigorousMinutes: number | null }[];
+  /**
+   * Garmin running VO2 max. A fresh Garmin reading wins over Apple Health,
+   * the same pick the VO2 analysis uses.
+   */
+  userMetrics?: readonly { calendarDate: string; vo2Max: number | null }[];
+  /** Garmin overnight HRV. Used ahead of Apple SDNN when a recent night exists. */
+  garminHrv?: readonly { calendarDate: string; lastNightAvgMs: number | null }[];
+  /** Garmin resting heart rate. A fresh Garmin reading wins over Apple Health. */
+  garminResting?: readonly { calendarDate: string; restingHeartRateBpm: number | null }[];
 };
 
 export type HealthStatVisual =
@@ -527,20 +538,66 @@ function decorateHealthTile(tile: HealthStatTile, input: HealthStatBoardInput): 
   const parsed = leadingNumber(tile.valueText);
   const earlier = readings.slice(0, -1);
   const ownUsual = earlier.length ? earlier.reduce((sum, value) => sum + value, 0) / earlier.length : null;
-  return {
-    ...tile,
-    rating: readingFor(tile.id, parsed ?? readings.at(-1) ?? null, {
+  const period = periodOf(input);
+  const base = {
+    age: input.goalAge,
+    sex: input.goalSex,
+    goal: input.goal,
+    ownUsual,
+    heightCm: input.heightCm,
+    realAge: input.goalAge,
+    windowDays: periodDayCount(period),
+    build: input.build,
+    viewedDay: period === 'day' ? 'today' as const : null,
+  };
+  const latest = readings.length ? readings[readings.length - 1] : null;
+  const walking = tile.id === 'walking_heart_rate' && !tile.empty;
+  const chartLatest = walking
+    ? chartPlot({
+      points: tile.readings,
+      start: windowStart(input.today, period),
+      end: input.today,
+      bucket: chartBucketForPeriod(period),
+      aggregate: 'mean',
+    }).points.at(-1)?.value ?? null
+    : null;
+  const walkingContext = walking
+    ? collectWalkingContext({
+      today: input.today,
+      windowStart: windowStart(input.today, period),
+      windowDays: periodDayCount(period),
       age: input.goalAge,
       sex: input.goalSex,
-      goal: input.goal,
-      ownUsual,
-      heightCm: input.heightCm,
-      realAge: input.goalAge,
-      windowDays: periodDayCount(periodOf(input)),
-      build: input.build,
-      viewedDay: periodOf(input) === 'day' ? 'today' : null,
-    }),
-  };
+      samples: input.samples,
+      userMetrics: input.userMetrics,
+      garminHrv: input.garminHrv,
+      garminResting: input.garminResting,
+      garminActivity: input.garminActivity,
+      activeMinutes: input.activeMinutes,
+    })
+    : null;
+  const rated = walking ? (chartLatest ?? latest ?? parsed) : (parsed ?? latest);
+  const rating = readingFor(tile.id, rated, walkingContext
+    ? {
+      ...base,
+      vo2: walkingContext.vo2,
+      restingHr: walkingContext.restingHr,
+      hrvRmssd: walkingContext.hrvRmssd,
+      hrvSdnn: walkingContext.hrvSdnn,
+      stepsPerDay: walkingContext.stepsPerDay,
+      workoutDays: walkingContext.workoutDays,
+      windowVigorousMinutes: walkingContext.vigorousMinutes,
+      windowActiveMinutes: walkingContext.activeMinutes,
+    }
+    : base);
+  const next: HealthStatTile = { ...tile, rating };
+  if (walking && tile.hasGuideline && rating && !rating.pending && tile.visual.kind === 'zone') {
+    const bpm = Math.round(rated ?? tile.visual.value);
+    next.status = rating.where;
+    next.valueText = String(bpm);
+    next.visual = { ...tile.visual, status: rating.where, value: bpm };
+  }
+  return next;
 }
 
 function goalLabel(input: HealthStatBoardInput): string | null {
@@ -625,7 +682,7 @@ function sessionTile(item: CatalogItem, input: HealthStatBoardInput, grown: bool
 
 function walkingTile(item: CatalogItem, input: HealthStatBoardInput, grown: boolean): HealthStatTile | null {
   const about = 'Walking heart rate: your heart rate while walking. The unit is bpm. Apple Watch can estimate it. Apple publishes no normal range.';
-  return bpmBandTile(item, input, grown, about, (bpm) => walkingHeartReading(bpm, input.goalAge, goalLabel(input)));
+  return bpmBandTile(item, input, grown, about, (bpm) => walkingHeartReading(bpm, input.goalAge, goalLabel(input)), 'latest');
 }
 
 function recoveryTile(item: CatalogItem, input: HealthStatBoardInput, grown: boolean): HealthStatTile | null {
@@ -639,13 +696,16 @@ function bpmBandTile(
   grown: boolean,
   about: string,
   read: (bpm: number) => ReturnType<typeof sessionHeartReading>,
+  figure: 'mean' | 'latest' = 'mean',
 ): HealthStatTile | null {
   const all = series(input.samples, item.id, input.today).filter((point) => point.value > 0);
   const window = slicePeriod(all, input);
   if (window === 'none') return null;
   if (window === 'gap') return olderReadingTile(item, input, all, (point) => `Latest ${Math.round(point.value)} bpm`);
   const period = periodOf(input);
-  const bpm = Math.round(averageOf(window.current, input.today));
+  const bpm = figure === 'latest'
+    ? (latestBpm(window.current) ?? Math.round(averageOf(window.current, input.today)))
+    : Math.round(averageOf(window.current, input.today));
   if (!grown) {
     return finish(item, {
       valueText: String(bpm),
