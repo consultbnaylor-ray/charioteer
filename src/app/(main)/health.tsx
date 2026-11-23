@@ -404,6 +404,9 @@ export default function Health() {
         samples={healthSamples}
         activeMinutes={activeMinutes}
         garminActivity={garminActivity}
+        userMetrics={readings.userMetrics}
+        garminHrv={readings.hrv}
+        garminResting={readings.dailies}
         body={snap.bodyComposition}
         activityEnergyKcal={snap.nutrition.activityEnergyKcal}
         heightCm={snap.profile?.heightCm ?? null}
