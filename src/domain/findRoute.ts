@@ -90,6 +90,50 @@ const PACE_M_PER_MIN: Record<RouteMode, number> = {
   cycle: 250,
 };
 
+/**
+ * The same window `routeLengthM` sends to OpenRouteService.
+ * A loop asks for a round trip of this length. A longer or shorter figure is clamped there.
+ * A time is turned into a length only inside the minute window, then clamped to the same length.
+ */
+export const ROUTE_DISTANCE_MIN_M = 500;
+export const ROUTE_DISTANCE_MAX_M = 50_000;
+export const ROUTE_MINUTES_MIN = 10;
+export const ROUTE_MINUTES_MAX = 180;
+
+/** One mile, matching the kilometres or miles setting on this phone. */
+const METRES_PER_MILE = 1609.344;
+
+export type RouteDistanceUnit = 'km' | 'mile';
+
+export const ROUTE_DISTANCE_CHOICES = [
+  { id: '3', label: '3 km', metres: 3000 },
+  { id: '5', label: '5 km', metres: 5000 },
+  { id: '8', label: '8 km', metres: 8000 },
+  { id: 'time', label: 'Use time', metres: null },
+  { id: 'custom', label: 'Custom', metres: null },
+] as const;
+
+export const ROUTE_TIME_CHOICES = [
+  { id: 'none', label: 'No set time', minutes: null },
+  { id: '30', label: '30 min', minutes: 30 },
+  { id: '45', label: '45 min', minutes: 45 },
+  { id: '60', label: '60 min', minutes: 60 },
+  { id: 'custom', label: 'Custom', minutes: null },
+] as const;
+
+export type RouteDistanceChoice = (typeof ROUTE_DISTANCE_CHOICES)[number]['id'];
+export type RouteTimeChoice = (typeof ROUTE_TIME_CHOICES)[number]['id'];
+
+export const DISTANCE_WINS_NOTE =
+  'When both distance and time are set, the distance is used. A time on its own is turned into a distance.';
+
+export const ROUTE_DISTANCE_NUMBER_MESSAGE: Record<RouteDistanceUnit, string> = {
+  km: 'Enter a distance in kilometres.',
+  mile: 'Enter a distance in miles.',
+};
+
+export const ROUTE_MINUTES_NUMBER_MESSAGE = 'Enter a whole number of minutes.';
+
 export function routeProfile(mode: RouteMode): RoutePlan['profile'] {
   if (mode === 'run') return 'foot-hiking';
   if (mode === 'cycle') return 'cycling-regular';
@@ -105,14 +149,157 @@ export function routeKind(shape: RouteShape, craving: boolean): OutdoorKind {
 export function targetLengthM(input: Pick<RoutePlanInput, 'mode' | 'distanceM' | 'minutes'>): number | null {
   const distance = input.distanceM;
   if (typeof distance === 'number' && Number.isFinite(distance)) {
-    return clamp(Math.round(distance), 500, 50_000);
+    return clamp(Math.round(distance), ROUTE_DISTANCE_MIN_M, ROUTE_DISTANCE_MAX_M);
   }
   const minutes = input.minutes;
   if (typeof minutes === 'number' && Number.isFinite(minutes)) {
-    const bounded = clamp(Math.round(minutes), 10, 180);
-    return clamp(bounded * PACE_M_PER_MIN[input.mode], 500, 50_000);
+    const bounded = clamp(Math.round(minutes), ROUTE_MINUTES_MIN, ROUTE_MINUTES_MAX);
+    return clamp(bounded * PACE_M_PER_MIN[input.mode], ROUTE_DISTANCE_MIN_M, ROUTE_DISTANCE_MAX_M);
   }
   return null;
+}
+
+function metresPerUnit(unit: RouteDistanceUnit): number {
+  return unit === 'mile' ? METRES_PER_MILE : 1000;
+}
+
+/** Shortest and longest custom distances that still fall inside the route-service window. */
+function distanceBoundAmount(unit: RouteDistanceUnit, edge: 'min' | 'max'): string {
+  if (unit === 'km') return edge === 'min' ? '0.5' : '50';
+  if (edge === 'min') {
+    let cents = Math.ceil((ROUTE_DISTANCE_MIN_M / METRES_PER_MILE) * 100);
+    while (Math.round((cents / 100) * METRES_PER_MILE) < ROUTE_DISTANCE_MIN_M) cents += 1;
+    return (cents / 100).toFixed(2);
+  }
+  let cents = Math.floor((ROUTE_DISTANCE_MAX_M / METRES_PER_MILE) * 100);
+  while (Math.round((cents / 100) * METRES_PER_MILE) > ROUTE_DISTANCE_MAX_M) cents -= 1;
+  return (cents / 100).toFixed(2);
+}
+
+export function routeDistanceSpan(unit: RouteDistanceUnit): string {
+  const word = unit === 'mile' ? 'miles' : 'km';
+  return `${distanceBoundAmount(unit, 'min')} and ${distanceBoundAmount(unit, 'max')} ${word}`;
+}
+
+export function routeDistanceRangeMessage(unit: RouteDistanceUnit): string {
+  return `Enter a distance between ${routeDistanceSpan(unit)}.`;
+}
+
+export function routeMinutesRangeMessage(): string {
+  return `Enter a time between ${ROUTE_MINUTES_MIN} and ${ROUTE_MINUTES_MAX} minutes.`;
+}
+
+export function routeDistanceFieldHint(unit: RouteDistanceUnit): string {
+  return `Between ${routeDistanceSpan(unit)}.`;
+}
+
+export function routeMinutesFieldHint(): string {
+  return `Between ${ROUTE_MINUTES_MIN} and ${ROUTE_MINUTES_MAX} minutes.`;
+}
+
+function parseDecimal(text: string): number | null {
+  const cleaned = text.trim().replace(',', '.');
+  if (!/^(\d+(\.\d+)?|\.\d+)$/.test(cleaned)) return null;
+  const value = Number(cleaned);
+  return Number.isFinite(value) ? value : null;
+}
+
+/** A typed distance in kilometres or miles. Outside the route-service window is refused. */
+export function parseCustomRouteDistance(
+  text: string,
+  unit: RouteDistanceUnit,
+): { ok: true; metres: number } | { ok: false; message: string } {
+  const amount = parseDecimal(text);
+  if (amount == null) return { ok: false, message: ROUTE_DISTANCE_NUMBER_MESSAGE[unit] };
+  const metres = Math.round(amount * metresPerUnit(unit));
+  if (metres < ROUTE_DISTANCE_MIN_M || metres > ROUTE_DISTANCE_MAX_M) {
+    return { ok: false, message: routeDistanceRangeMessage(unit) };
+  }
+  return { ok: true, metres };
+}
+
+/** Whole minutes. Outside the window the route service turns into a length is refused. */
+export function parseCustomRouteMinutes(
+  text: string,
+): { ok: true; minutes: number } | { ok: false; message: string } {
+  const cleaned = text.trim();
+  if (!/^\d+$/.test(cleaned)) return { ok: false, message: ROUTE_MINUTES_NUMBER_MESSAGE };
+  const minutes = Number(cleaned);
+  if (minutes < ROUTE_MINUTES_MIN || minutes > ROUTE_MINUTES_MAX) {
+    return { ok: false, message: routeMinutesRangeMessage() };
+  }
+  return { ok: true, minutes };
+}
+
+export type RouteAsk =
+  | { ok: true; distanceM: number | null; minutes: number | null; lengthM: number }
+  | { ok: false; message: string };
+
+/**
+ * The distance and time the route request should carry.
+ * A preset is used as it is. Custom text is parsed in the phone's distance unit.
+ * Distance wins when both are set. A time on its own becomes `lengthM` from the pace.
+ * The same `lengthM` is used for a loop and for A to B.
+ */
+export function routeAskFromChoices(input: {
+  mode: RouteMode;
+  distanceChoice: RouteDistanceChoice;
+  timeChoice: RouteTimeChoice;
+  customDistance: string;
+  customMinutes: string;
+  unit: RouteDistanceUnit;
+}): RouteAsk {
+  let distanceM: number | null = null;
+  if (input.distanceChoice === 'custom') {
+    const parsed = parseCustomRouteDistance(input.customDistance, input.unit);
+    if (!parsed.ok) return parsed;
+    distanceM = parsed.metres;
+  } else {
+    distanceM = ROUTE_DISTANCE_CHOICES.find((item) => item.id === input.distanceChoice)?.metres ?? null;
+  }
+
+  let minutes: number | null = null;
+  if (input.timeChoice === 'custom') {
+    const trimmed = input.customMinutes.trim();
+    if (trimmed.length === 0) {
+      if (distanceM == null) return { ok: false, message: ROUTE_MINUTES_NUMBER_MESSAGE };
+    } else {
+      const parsed = parseCustomRouteMinutes(trimmed);
+      if (!parsed.ok) return parsed;
+      minutes = parsed.minutes;
+    }
+  } else {
+    minutes = ROUTE_TIME_CHOICES.find((item) => item.id === input.timeChoice)?.minutes ?? null;
+  }
+
+  if (distanceM == null && minutes == null) {
+    return { ok: false, message: 'Choose a distance or a time.' };
+  }
+  const lengthM = targetLengthM({ mode: input.mode, distanceM, minutes });
+  if (lengthM == null) return { ok: false, message: 'Choose a distance or a time.' };
+  return { ok: true, distanceM, minutes, lengthM };
+}
+
+/** What the phone asks for. Loop and A to B both carry the custom distance or the time-converted length. */
+export function plannedRouteFields(input: {
+  mode: RouteMode;
+  shape: RouteShape;
+  distanceM: number | null;
+  minutes: number | null;
+}): {
+  mode: RouteMode;
+  shape: RouteShape;
+  distanceM: number | null;
+  minutes: number | null;
+  lengthM: number | null;
+} {
+  return {
+    mode: input.mode,
+    shape: input.shape,
+    distanceM: input.distanceM,
+    minutes: input.minutes,
+    lengthM: targetLengthM(input),
+  };
 }
 
 function clamp(value: number, low: number, high: number): number {

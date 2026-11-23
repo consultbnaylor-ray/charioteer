@@ -27,6 +27,13 @@ export function geocodeUrl(query: string): string {
 
 const PACE_M_PER_MIN = { walk: 80, run: 150, cycle: 250 } as const;
 
+/** Round-trip length this app sends, in metres. A loop uses this as `round_trip.length`. */
+export const ROUTE_DISTANCE_MIN_M = 500;
+export const ROUTE_DISTANCE_MAX_M = 50_000;
+/** A time becomes a length only inside this window, then that length is clamped to the distance window. */
+export const ROUTE_MINUTES_MIN = 10;
+export const ROUTE_MINUTES_MAX = 180;
+
 export function readMode(value: unknown): Mode | null {
   return value === 'walk' || value === 'run' || value === 'cycle' ? value : null;
 }
@@ -56,11 +63,15 @@ export function readPlace(value: unknown): { latitude: number; longitude: number
 export function routeLengthM(input: { mode: Mode; distanceM?: unknown; minutes?: unknown }): number | null {
   const distance = typeof input.distanceM === 'number' ? input.distanceM : Number(input.distanceM);
   if (Number.isFinite(distance) && input.distanceM != null && input.distanceM !== '') {
-    return clamp(Math.round(distance), 500, 50_000);
+    return clamp(Math.round(distance), ROUTE_DISTANCE_MIN_M, ROUTE_DISTANCE_MAX_M);
   }
   const minutes = typeof input.minutes === 'number' ? input.minutes : Number(input.minutes);
   if (Number.isFinite(minutes) && input.minutes != null && input.minutes !== '') {
-    return clamp(clamp(Math.round(minutes), 10, 180) * PACE_M_PER_MIN[input.mode], 500, 50_000);
+    return clamp(
+      clamp(Math.round(minutes), ROUTE_MINUTES_MIN, ROUTE_MINUTES_MAX) * PACE_M_PER_MIN[input.mode],
+      ROUTE_DISTANCE_MIN_M,
+      ROUTE_DISTANCE_MAX_M,
+    );
   }
   return null;
 }
