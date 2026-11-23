@@ -151,8 +151,8 @@ describe('VO2 estimate note', () => {
     expect(movedChart).toBeGreaterThan(fitness.indexOf('<GarminTip />'));
     expect(movedChart).toBeLessThan(fitness.indexOf('{view.levelWords}'));
     const restingGraph = fitness.slice(fitness.indexOf('name="heart">Resting heart rate'), fitness.indexOf('view.mix'));
-    expect(restingGraph.indexOf('label="Resting heart rate chart"')).toBeLessThan(restingGraph.indexOf('<LowRestingFitNote reading={view.resting.reading} />'));
-    expect(restingGraph.indexOf('<LowRestingFitNote reading={view.resting.reading} />')).toBeLessThan(restingGraph.indexOf('about="resting heart rate"'));
+    expect(restingGraph.indexOf('label="Resting heart rate chart"')).toBeLessThan(restingGraph.indexOf('<DataMeaning about="resting heart rate">'));
+    expect(restingGraph.indexOf('<DataMeaning about="resting heart rate">')).toBeLessThan(restingGraph.indexOf('<LowRestingFitNote reading={view.resting.reading} />'));
     expect(restingGraph).not.toContain('detail');
     const restingDetail = fitness.slice(fitness.indexOf('function RestingDetail'), fitness.indexOf('function FitnessSeries'));
     expect(restingDetail).toContain('<LowRestingFitNote reading={resting.reading} detail />');
@@ -161,7 +161,8 @@ describe('VO2 estimate note', () => {
     expect(restingCard.indexOf('TileVisual')).toBeLessThan(restingCard.indexOf('<LowRestingFitNote'));
     expect(restingCard.indexOf('<LowRestingFitNote')).toBeLessThan(restingCard.indexOf('Not medical advice.'));
     expect(restingCard).toContain('restingTileShowsFitLine(tile) ? tile.valueText : null');
-    expect(restingCard.match(/<MoreInfoButton/g)).toEqual(['<MoreInfoButton']);
+    expect(restingCard).toContain('<DataMeaning about={tile.title}>');
+    expect(restingCard).not.toContain('<MoreInfoButton');
     const restingSheet = board.slice(board.indexOf('function StatDetail'), board.indexOf('function ReadingSections'));
     expect(restingSheet).toContain('<LowRestingFitNote reading={restingTileShowsFitLine(tile) ? tile.valueText : null} detail />');
     expect(restingSheet).not.toContain('{LOW_RESTING_FIT_LINE}');

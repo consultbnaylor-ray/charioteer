@@ -12,7 +12,39 @@ function faceLines(rating: MetricReading): string[] {
   return parts.length > 0 ? parts : [text];
 }
 
-/** The label, the comparison, the aim, and tips. The source stays in More info so it is named once. */
+/** Hide the chip until there is a real rating. Pending copy stays in the toggle. */
+export function RatingChipFor({ rating, plain = false }: { rating: MetricReading | null | undefined; plain?: boolean }) {
+  if (!rating || rating.pending) return null;
+  return <RatingChip label={rating.label} plain={plain} />;
+}
+
+/** A short colour word beside the chart. The sentences stay in What this Data means. */
+export function RatingChip({ label, plain = false }: { label: string; plain?: boolean }) {
+  const theme = useAppTheme();
+  const tone = ratingTone(label);
+  const palette = statsToneColors(theme.scheme)[tone];
+  const ink = plain ? theme.colors.ink : palette.ink;
+  const fill = plain ? 'transparent' : palette.bg;
+  return (
+    <View
+      accessibilityRole="text"
+      accessibilityLabel={`Rating, ${label}`}
+      style={{
+        alignSelf: 'flex-start',
+        paddingHorizontal: 10,
+        paddingVertical: 4,
+        borderRadius: 999,
+        borderWidth: 1,
+        borderColor: ink,
+        backgroundColor: fill,
+      }}
+    >
+      <T style={{ color: ink, fontFamily: theme.font.bodyStrong }}>{label}</T>
+    </View>
+  );
+}
+
+/** The label, the comparison, the aim, and tips. The source stays in What this Data means so it is named once. */
 export function MetricRatingLines({ rating }: { rating: MetricReading | null | undefined }) {
   const theme = useAppTheme();
   if (!rating) return null;

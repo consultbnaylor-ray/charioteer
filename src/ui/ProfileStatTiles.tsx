@@ -6,8 +6,8 @@ import Svg, { Circle, Polyline } from 'react-native-svg';
 import { METRIC_CAVEAT } from '@/domain/metricRegistry';
 import type { SharedMealPhoto } from '@/domain/nutrition';
 import { PROFILE_NOT_SHARED, type ProfileStatChart, type ProfileStatTile } from '@/domain/profileStatTiles';
-import { MetricRatingLines } from '@/ui/MetricRating';
-import { MoreInfo } from '@/ui/MoreInfo';
+import { MetricRatingLines, RatingChip } from '@/ui/MetricRating';
+import { DataMeaning } from '@/ui/MoreInfo';
 import { useAppTheme } from '@/ui/theme';
 import { T } from '@/ui/ui';
 
@@ -110,14 +110,16 @@ function StatTile({ tile }: { tile: ProfileStatTile }) {
       <T variant="label">{tile.label}</T>
       <T numberOfLines={4} style={{ fontFamily: theme.font.bodyStrong }}>{tile.value}</T>
       <TileChart chart={tile.chart} />
-      {caption ? <T variant="muted" numberOfLines={3}>{caption}</T> : null}
-      <MetricRatingLines rating={tile.rating} />
-      {tile.rating ? (
-        <MoreInfo about={tile.label} summary={METRIC_CAVEAT}>
-          <T variant="muted">{tile.rating.more}</T>
-          <T variant="label">Source</T>
-          <T variant="muted">{tile.rating.source}</T>
-        </MoreInfo>
+      {tile.rating && !tile.rating.pending ? <RatingChip label={tile.rating.label} plain /> : null}
+      {caption || tile.rating ? (
+        <DataMeaning about={tile.label}>
+          {caption ? <T variant="muted">{caption}</T> : null}
+          <MetricRatingLines rating={tile.rating} />
+          {tile.rating ? <T variant="muted">{tile.rating.more}</T> : null}
+          {tile.rating ? <T variant="label">Source</T> : null}
+          {tile.rating ? <T variant="muted">{tile.rating.source}</T> : null}
+          <T variant="muted">{METRIC_CAVEAT}</T>
+        </DataMeaning>
       ) : null}
     </View>
   );

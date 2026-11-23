@@ -95,20 +95,50 @@ export function gridLine(scheme: Scheme): string {
   return scheme === 'dark' ? 'rgba(45, 224, 160, 0.07)' : 'rgba(4, 120, 87, 0.08)';
 }
 
-/** Which accent a chart title uses. Unknown titles stay on the existing ink. */
+const CHART_ROLE: Record<string, GridRole> = {
+  Steps: 'activity',
+  'Exercise minutes': 'activity',
+  'Moderate minutes': 'activity',
+  'Intensity minutes': 'activity',
+  'Workout minutes': 'activity',
+  Floors: 'activity',
+  'VO2 max': 'activity',
+  'Breathing rate': 'activity',
+  'Blood oxygen': 'activity',
+  'Pulse ox': 'activity',
+  Epochs: 'activity',
+  'Move IQ': 'activity',
+  'Activity detail': 'activity',
+  Distance: 'sobriety',
+  'Body battery charged': 'sobriety',
+  'Body battery highest': 'sobriety',
+  'Resting heart rate': 'heart',
+  'Walking heart rate': 'heart',
+  'Health snapshot': 'heart',
+  'Blood pressure': 'heart',
+  'Diastolic pressure': 'heart',
+  'Heart rate variability': 'mind',
+  'Heart rate variability (Garmin overnight RMSSD)': 'mind',
+  'Average stress': 'mind',
+  'Sleep score': 'mind',
+  'Sleep duration': 'mind',
+  'Fitness age': 'mind',
+  Mood: 'mind',
+  'Active calories': 'food',
+  Calories: 'food',
+  Protein: 'food',
+  'Body composition': 'food',
+  BMI: 'food',
+  Weight: 'food',
+  'Vigorous minutes': 'warning',
+  'Skin temperature': 'warning',
+  'Body battery drained': 'warning',
+  'Body battery lowest': 'warning',
+  Craving: 'warning',
+};
+
+/** Which accent a chart title uses. The line and the bars share it. Unknown titles stay on the ink. */
 export function chartAccent(title: string, scheme: Scheme): string | null {
-  const accents = gridAccents(scheme);
-  if (title === 'Resting heart rate' || title === 'Walking heart rate') return accents.heart;
-  if (title === 'Heart rate variability') return accents.mind;
-  if (title === 'Active calories') return accents.food;
-  if (
-    title === 'Distance'
-    || title === 'Steps'
-    || title === 'Exercise minutes'
-    || title === 'Moderate minutes'
-    || title === 'Vigorous minutes'
-    || title === 'Intensity minutes'
-    || title === 'Floors'
-  ) return accents.activity;
-  return null;
+  const role = CHART_ROLE[title];
+  return role ? gridAccents(scheme)[role] : null;
 }

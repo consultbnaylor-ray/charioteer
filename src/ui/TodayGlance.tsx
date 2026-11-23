@@ -11,16 +11,15 @@ import { buildHealthInsights } from '@/domain/healthInsights';
 import { londonDay } from '@/domain/healthInsights';
 import { dayItems, sumItems } from '@/domain/nutrition';
 import { withPlannedMinutes } from '@/domain/plannedSession';
-import { LOW_RESTING_FIT_LINE, LOW_RESTING_FIT_MORE } from '@/domain/restingFitness';
 import { moodStreakCount } from '@/domain/profileSharing';
-import { RESTING_WHAT } from '@/domain/fitnessSnapshot';
 import { formatUkDate } from '@/domain/dates';
 import { soberRecord } from '@/domain/soberRecord';
 import { showsSoberRecord } from '@/domain/stage';
 import { useHealthSources } from '@/health/useHealthSources';
-import { GlanceSheet, SheetSection, StatTrio } from '@/ui/GlanceSheet';
+import { GlanceSheet, RestingMeaningBody, StatTrio } from '@/ui/GlanceSheet';
 import { GlowRing, MiniBars, MoodMarks, Sparkline, numberRangeLine, useReduceMotion } from '@/ui/gridChrome';
-import { ReadingChart } from '@/ui/ReadingChart';
+import { DataMeaning } from '@/ui/MoreInfo';
+import { ChartMeaningCopy, chartWindowBucket, ReadingChart } from '@/ui/ReadingChart';
 import { useAppTheme } from '@/ui/theme';
 import { Card, T } from '@/ui/ui';
 
@@ -211,6 +210,10 @@ export function TodayGlance({ now, onCorrectDate }: { now: Date; onCorrectDate: 
         </Pressable>
       </Card>
       <GlanceSheet visible={restingOpen} title="Resting heart rate" onClose={() => setRestingOpen(false)}>
+        <DataMeaning about="resting heart rate">
+          <RestingMeaningBody />
+          <ChartMeaningCopy bucket={chartWindowBucket(restingPoints[0]?.day ?? london, london)} aggregate="mean" />
+        </DataMeaning>
         <T variant="display">{resting ? resting.value : '—'}</T>
         <T variant="muted">{resting ? `${sourceName(resting.source)} · ${shortDay(resting.day)}` : 'No reading in the last 60 days.'}</T>
         {restingPoints.length > 1 ? (
@@ -222,6 +225,7 @@ export function TodayGlance({ now, onCorrectDate }: { now: Date; onCorrectDate: 
             aggregate="mean"
             accent={theme.grid.heart}
             accessibilityLabel="Resting heart rate chart"
+            meaning="none"
           />
         ) : (
           <T variant="muted">Not enough days for a chart yet.</T>
@@ -230,14 +234,6 @@ export function TodayGlance({ now, onCorrectDate }: { now: Date; onCorrectDate: 
           <StatTrio low={String(restingLow)} average={String(restingAvg)} high={String(restingHigh)} unit="bpm" />
         ) : null}
         {restingLine ? <T>{restingLine}</T> : null}
-        <SheetSection title="What resting heart rate means">
-          <T>{RESTING_WHAT}</T>
-        </SheetSection>
-        <SheetSection title="When to get a reading checked">
-          <T>{LOW_RESTING_FIT_LINE}</T>
-          <T>{LOW_RESTING_FIT_MORE}</T>
-          <T variant="muted">Not medical advice. Not a diagnosis.</T>
-        </SheetSection>
         <Pressable accessibilityRole="button" accessibilityLabel="Month and year view" onPress={() => { setRestingOpen(false); router.push('/health' as never); }} style={{ minHeight: 44, justifyContent: 'center' }}>
           <T style={{ fontFamily: theme.font.bodyStrong }}>Month and year view</T>
         </Pressable>

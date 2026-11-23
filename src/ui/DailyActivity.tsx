@@ -1,7 +1,7 @@
 import { Linking, Pressable, View } from 'react-native';
 import { useRouter } from 'expo-router';
 
-import { useState } from 'react';
+import { memo, useState } from 'react';
 import {
   EXERCISE_GARMIN_CAPTION,
   INTENSITY_EMPTY,
@@ -72,15 +72,14 @@ import type { NutritionGoal, NutritionSex } from '@/domain/nutrition';
 import { crisisHelplines } from '@/data/catalogue';
 import { restingFitnessComment } from '@/domain/restingFitness';
 import { weekdayShort } from '@/domain/healthInsights';
-import { CHART_DIRECTION_HINT } from '@/domain/readingChart';
+import { CHART_DIRECTION_HINT, chartBucketForPeriod, type ChartBucket } from '@/domain/readingChart';
 import { useStatPeriod } from '@/health/useStatPeriod';
 import { completedDayStats, londonToday, openDayFraction, periodDayCount, STAT_PERIOD_LABEL, type StatPeriod } from '@/domain/statWindow';
 import { openAppSettings } from '@/health/link';
-import { MetricRatingLines } from '@/ui/MetricRating';
-import { MoreInfo } from '@/ui/MoreInfo';
+import { MetricRatingLines, RatingChip } from '@/ui/MetricRating';
+import { DataMeaning } from '@/ui/MoreInfo';
 import { goodZoneBand, statsToneColors } from '@/ui/statsPalette';
-import { chartBucketForPeriod } from '@/domain/readingChart';
-import { ReadingChart } from '@/ui/ReadingChart';
+import { ChartMeaningCopy, ReadingChart } from '@/ui/ReadingChart';
 import { StatPeriodToggle } from '@/ui/StatPeriodToggle';
 import { chartAccent } from '@/ui/statsPalette';
 import { useAppTheme } from '@/ui/theme';
@@ -348,7 +347,7 @@ export function DailyActivityCharts({
   );
 }
 
-export function MovementCharts({
+export const MovementCharts = memo(function MovementCharts({
   endDay,
   span,
   steps,
@@ -741,7 +740,7 @@ export function MovementCharts({
       {span == null ? <T variant="muted" style={{ textAlign: 'center' }}>{CHART_DIRECTION_HINT}</T> : null}
     </View>
   );
-}
+});
 
 /** Garmin's VO2 max bars. Shown inside Your fitness, under the connected card. */
 export function Vo2MaxChart({
@@ -853,6 +852,10 @@ function chartVerdict(guide: ChartGuide | null): string | null {
   const first = guide.outside.split(/(?<=\.)\s/)[0]?.trim() ?? '';
   if (!first || first.split(/\s+/).length > 22) return null;
   return first;
+}
+
+function lineChartBucket(span: number): ChartBucket {
+  return chartBucketForPeriod(span >= 365 ? '12m' : span >= 90 ? '90' : '7');
 }
 
 function mostDistance(points: readonly { value: number }[]): string | null {
@@ -969,6 +972,9 @@ function ActivityBars({
     };
   }
   const hasBars = points.some((point) => point.source != null && point.empty !== true);
+  const showLine = span > 1 && points.some((point) => point.value > 0);
+  const lineBucket = lineChartBucket(span);
+  const chip = guide?.rating && !guide.rating.pending ? guide.rating.label : null;
   const bandLow = band ? Math.max(0, Math.min(band.low, band.high)) : 0;
   const bandTop = band ? Math.min(Math.max(band.high, bandLow), most) : 0;
   const bandBottom = band ? Math.min(bandLow, bandTop) : 0;
@@ -978,45 +984,21 @@ function ActivityBars({
   const body = (
     <>
       {icon ? <IconLabel name={icon}>{title}</IconLabel> : <T variant="label">{title}</T>}
-      {distanceSummary ? (
-        <View style={{ gap: 2 }}>
-          <T variant="display">{distanceSummary.total}</T>
-          {distanceSummary.average ? <T variant="muted">{distanceSummary.average}</T> : null}
-          <T>{distanceSummary.line}</T>
-        </View>
-      ) : null}
-      {span > 1 && points.some((point) => point.value > 0) ? (
+      {distanceSummary ? <T variant="display">{distanceSummary.total}</T> : null}
+      {guide?.warning ? <RestingWarning text={guide.cardCare || 'Contact your GP or NHS 111.'} /> : null}
+      {showLine ? (
         <ReadingChart
           points={points.filter((point) => point.value > 0 && point.empty !== true).map((point) => ({ day: point.day, value: point.value }))}
           start={points[0]?.day ?? today}
           end={points[points.length - 1]?.day ?? today}
           unit={unit}
           aggregate="mean"
-          bucket={chartBucketForPeriod(span >= 365 ? '12m' : span >= 90 ? '90' : '7')}
+          bucket={lineBucket}
           accessibilityLabel={`${title} chart`}
+          accent={accent ?? undefined}
+          meaning="none"
           onSelectDay={onSelect}
         />
-      ) : null}
-      {readingLine(scaleLine, garminNote) ? <T variant="muted">{readingLine(scaleLine, garminNote)}</T> : null}
-      {guide?.target?.label ? <T variant="muted">{guide.target.label}</T> : null}
-      {guide?.ownAverage?.label ? <T variant="muted">{guide.ownAverage.label}</T> : null}
-      {guide?.warning ? <RestingWarning text={guide.cardCare || 'Contact your GP or NHS 111.'} /> : null}
-      {lead ? <T>{lead}</T> : null}
-      {chartVerdict(guide) ? <T>{chartVerdict(guide)}</T> : null}
-      <MetricRatingLines rating={guide?.rating} />
-      {explanation.length > 0 || (guide?.sections?.length ?? 0) > 0 || guide?.care || guide?.outside ? (
-        <MoreInfo about={title} summary="Not medical advice. Not a diagnosis.">
-          {(guide?.sections ?? []).map((section) => (
-            <View key={section.heading} style={{ gap: 4 }}>
-              <T variant="label">{section.heading}</T>
-              <T variant="muted">{section.body}</T>
-            </View>
-          ))}
-          {explanation.map((line) => <T key={line.slice(0, 48)} variant="muted">{line}</T>)}
-          {guide?.outside && guide.outside !== chartVerdict(guide) ? <T variant="muted">{guide.outside}</T> : null}
-          {guide?.care ? <CareLine text={guide.care} /> : null}
-          {title === 'Average stress' ? <StressActions /> : null}
-        </MoreInfo>
       ) : null}
       <View style={{ alignSelf: 'stretch', paddingHorizontal: 2, gap: 2 }}>
         {span <= 7 ? (
@@ -1140,6 +1122,29 @@ function ActivityBars({
           })}
         </View>
       </View>
+      {chip ? <RatingChip label={chip} /> : null}
+      <DataMeaning about={title}>
+        {showLine ? <ChartMeaningCopy bucket={lineBucket} aggregate="mean" /> : null}
+        {distanceSummary?.average ? <T variant="muted">{distanceSummary.average}</T> : null}
+        {distanceSummary ? <T>{distanceSummary.line}</T> : null}
+        {readingLine(scaleLine, garminNote) ? <T variant="muted">{readingLine(scaleLine, garminNote)}</T> : null}
+        {guide?.target?.label ? <T variant="muted">{guide.target.label}</T> : null}
+        {guide?.ownAverage?.label ? <T variant="muted">{guide.ownAverage.label}</T> : null}
+        {lead ? <T>{lead}</T> : null}
+        {chartVerdict(guide) ? <T>{chartVerdict(guide)}</T> : null}
+        <MetricRatingLines rating={guide?.rating} />
+        <T variant="muted">Not medical advice. Not a diagnosis.</T>
+        {(guide?.sections ?? []).map((section) => (
+          <View key={section.heading} style={{ gap: 4 }}>
+            <T variant="label">{section.heading}</T>
+            <T variant="muted">{section.body}</T>
+          </View>
+        ))}
+        {explanation.map((line) => <T key={line.slice(0, 48)} variant="muted">{line}</T>)}
+        {guide?.outside && guide.outside !== chartVerdict(guide) ? <T variant="muted">{guide.outside}</T> : null}
+        {guide?.care ? <CareLine text={guide.care} /> : null}
+        {title === 'Average stress' ? <StressActions /> : null}
+      </DataMeaning>
     </>
   );
   if (!framed) return <View style={{ gap: 8 }}>{body}</View>;

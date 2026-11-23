@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from 'react';
+import { memo, useEffect, useState, type ReactNode } from 'react';
 import { Modal, Platform, Pressable, ScrollView, useWindowDimensions, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -43,19 +43,19 @@ import { closerToGoal, whyGoalMatters, WORKOUT_BUCKET_LABEL, WORKOUT_BUCKETS, ty
 import { GoalLine } from '@/ui/GoalLine';
 import type { AppleHealthAccess } from '@/health/connection';
 import { readAppleHealthAccess } from '@/health/link';
-import { ReadingChart } from '@/ui/ReadingChart';
+import { ChartMeaningCopy, ReadingChart } from '@/ui/ReadingChart';
 import { MeasureRingView } from '@/ui/MeasuredFigure';
 import { IconLabel } from '@/ui/statIcons';
 import { PlanTick } from '@/ui/PlanTick';
-import { statsToneColors } from '@/ui/statsPalette';
+import { chartAccent, statsToneColors } from '@/ui/statsPalette';
 import { useAppTheme } from '@/ui/theme';
 import { Vo2MaxChart } from '@/ui/DailyActivity';
-import { MetricRatingLines } from '@/ui/MetricRating';
+import { MetricRatingLines, RatingChipFor } from '@/ui/MetricRating';
 import { GarminTip } from '@/ui/GarminTip';
 import { LowRestingFitNote } from '@/ui/LowRestingFitNote';
 import { Vo2EstimateNote, Vo2MeasureBanner, Vo2MeasureCopy } from '@/ui/Vo2EstimateNote';
 import { TowardTargetActivity } from '@/ui/TowardTargetActivity';
-import { MoreInfo as InfoDisclosure, MoreInfoButton } from '@/ui/MoreInfo';
+import { DataMeaning, MoreInfo as InfoDisclosure, MoreInfoButton } from '@/ui/MoreInfo';
 import { HeartBodyGlance, type GlanceReading } from '@/ui/HeartBodyGlance';
 import { numberRangeLine } from '@/ui/gridChrome';
 import { Button, Card, Choice, T, playSavedHaptic } from '@/ui/ui';
@@ -64,7 +64,7 @@ import { Button, Card, Choice, T, playSavedHaptic } from '@/ui/ui';
  * Fitness level, the measures that exist, and one to three goal-led lines.
  * A line can be ticked into this week's focus.
  */
-export function YourFitness({ onPlanOutdoor }: { onPlanOutdoor: () => void }) {
+export const YourFitness = memo(function YourFitness({ onPlanOutdoor }: { onPlanOutdoor: () => void }) {
   const snap = useSnapshot();
   const { samples: mergedHealth, readings } = useHealthSources();
   const repo = useRepository();
@@ -179,16 +179,23 @@ export function YourFitness({ onPlanOutdoor }: { onPlanOutdoor: () => void }) {
             }}
           />
           <T style={{ fontFamily: theme.font.bodyStrong }}>{`${view.cardio.centre} ${view.cardio.unit}`}</T>
-          <MetricRatingLines rating={readingFor('vo2_max', leadingNumber(view.cardio.centre), { age: snap.nutrition?.goalAge ?? null, sex: snap.nutrition?.goalSex ?? null, goal, ownUsual: null, realAge: snap.nutrition?.goalAge ?? null, windowDays: periodDayCount(period) })} />
-          {vo2Reading ? (
-            <T variant="muted">{vo2MeasuredLine(vo2Reading.day, vo2Reading.source)}</T>
-          ) : (
-            <T variant="muted">Latest reading</T>
-          )}
-          <T>{VO2_CARD_LINE}</T>
+          <RatingChipFor rating={readingFor('vo2_max', leadingNumber(view.cardio.centre), { age: snap.nutrition?.goalAge ?? null, sex: snap.nutrition?.goalSex ?? null, goal, ownUsual: null, realAge: snap.nutrition?.goalAge ?? null, windowDays: periodDayCount(period) })} />
           <T variant="muted">{OUTSIDE_SAFETY_LINE}</T>
           <T variant="muted">{OUTSIDE_CRISIS_LINE}</T>
           <FitnessSeries points={view.cardio.series} unit="ml/kg/min" aggregate="mean" label="VO2 max chart" />
+          <DataMeaning about="VO2 max">
+            <MetricRatingLines rating={readingFor('vo2_max', leadingNumber(view.cardio.centre), { age: snap.nutrition?.goalAge ?? null, sex: snap.nutrition?.goalSex ?? null, goal, ownUsual: null, realAge: snap.nutrition?.goalAge ?? null, windowDays: periodDayCount(period) })} />
+            {vo2Reading ? (
+              <T variant="muted">{vo2MeasuredLine(vo2Reading.day, vo2Reading.source)}</T>
+            ) : (
+              <T variant="muted">Latest reading</T>
+            )}
+            <T>{VO2_CARD_LINE}</T>
+            <T>{VO2_WHAT}</T>
+            <Vo2MeasureCopy />
+            <T variant="muted">Not medical advice. Not a diagnosis.</T>
+            <ChartMeaningCopy bucket={chartBucketForPeriod(period)} aggregate="mean" />
+          </DataMeaning>
           <Vo2EstimateNote
             measuredOn={vo2Reading?.day ?? null}
             source={vo2Reading?.source ?? null}
@@ -196,10 +203,6 @@ export function YourFitness({ onPlanOutdoor }: { onPlanOutdoor: () => void }) {
             onPlan={onPlanOutdoor}
             showMeasured={false}
           />
-          <InfoDisclosure about="VO2 max">
-            <T>{VO2_WHAT}</T>
-            <Vo2MeasureCopy />
-          </InfoDisclosure>
           <FitnessCompareBar compare={view.cardio.compare} tone={view.cardio.tone} />
         </View>
       ) : null}
@@ -219,10 +222,14 @@ export function YourFitness({ onPlanOutdoor }: { onPlanOutdoor: () => void }) {
             }}
             detail={view.minutes.words}
           />
+          <RatingChipFor rating={readingFor('weekly_active_minutes', leadingNumber(view.minutes.centre), { age: snap.nutrition?.goalAge ?? null, sex: snap.nutrition?.goalSex ?? null, goal, ownUsual: null, windowDays: periodDayCount(period) })} />
           <FitnessSeries points={view.minutes.series ?? []} unit="min" aggregate="sum" label="Workout minutes chart" />
-          <MoreInfo about="workout minutes" onPress={() => setInfo('minutes')} />
-          <MetricRatingLines rating={readingFor('weekly_active_minutes', leadingNumber(view.minutes.centre), { age: snap.nutrition?.goalAge ?? null, sex: snap.nutrition?.goalSex ?? null, goal, ownUsual: null, windowDays: periodDayCount(period) })} />
-          <T variant="muted">Not medical advice. Not a diagnosis.</T>
+          <DataMeaning about="workout minutes">
+            <MetricRatingLines rating={readingFor('weekly_active_minutes', leadingNumber(view.minutes.centre), { age: snap.nutrition?.goalAge ?? null, sex: snap.nutrition?.goalSex ?? null, goal, ownUsual: null, windowDays: periodDayCount(period) })} />
+            <T variant="muted">Not medical advice. Not a diagnosis.</T>
+            <ChartMeaningCopy bucket={chartBucketForPeriod(period)} aggregate="sum" />
+            <MoreInfo about="workout minutes" onPress={() => setInfo('minutes')} />
+          </DataMeaning>
         </View>
       ) : null}
       {view.resting ? (
@@ -231,11 +238,15 @@ export function YourFitness({ onPlanOutdoor }: { onPlanOutdoor: () => void }) {
           <T style={{ color: view.resting.neutral ? theme.colors.ink : ink(view.resting.tone), fontFamily: theme.font.bodyStrong }}>
             {view.resting.reading ? `${view.resting.reading} · ` : ''}{view.resting.period ? `${view.resting.period} · ` : ''}{view.resting.signal ?? (view.resting.tone === 'watch' ? 'Watch' : 'On track')}
           </T>
+          <RatingChipFor rating={readingFor('resting_heart_rate', leadingNumber(view.resting.reading), { age: snap.nutrition?.goalAge ?? null, sex: snap.nutrition?.goalSex ?? null, goal, ownUsual: null })} />
           <FitnessSeries points={view.resting.series ?? []} unit="bpm" aggregate="mean" label="Resting heart rate chart" />
-          <LowRestingFitNote reading={view.resting.reading} />
-          <MoreInfo about="resting heart rate" onPress={() => setInfo('resting')} />
-          <MetricRatingLines rating={readingFor('resting_heart_rate', leadingNumber(view.resting.reading), { age: snap.nutrition?.goalAge ?? null, sex: snap.nutrition?.goalSex ?? null, goal, ownUsual: null })} />
-          <T variant="muted">Not medical advice. Not a diagnosis.</T>
+          <DataMeaning about="resting heart rate">
+            <LowRestingFitNote reading={view.resting.reading} />
+            <MetricRatingLines rating={readingFor('resting_heart_rate', leadingNumber(view.resting.reading), { age: snap.nutrition?.goalAge ?? null, sex: snap.nutrition?.goalSex ?? null, goal, ownUsual: null })} />
+            <T variant="muted">Not medical advice. Not a diagnosis.</T>
+            <ChartMeaningCopy bucket={chartBucketForPeriod(period)} aggregate="mean" />
+            <MoreInfo about="resting heart rate" onPress={() => setInfo('resting')} />
+          </DataMeaning>
         </View>
       ) : null}
       {view.mix ? <MixBar view={view} note={bucketNote} onSetBucket={(activityType, bucket) => void saveBucket(activityType, bucket)} /> : null}
@@ -292,7 +303,7 @@ export function YourFitness({ onPlanOutdoor }: { onPlanOutdoor: () => void }) {
       )}
     </Card>
   );
-}
+});
 
 function daysBetween(from: string, to: string): number {
   const start = Date.parse(`${from}T00:00:00Z`);
@@ -486,12 +497,22 @@ function CardioDetail({
   view: FitnessSnapshot;
   goal: NutritionGoal | null;
 }) {
+  const [period] = useStatPeriod();
   const cardio = view.cardio;
   return (
     <View style={{ alignItems: 'center', gap: 8, alignSelf: 'stretch' }}>
-      <T variant="label">What this is</T>
-      <T>{VO2_WHAT}</T>
-      <Vo2MeasureCopy />
+      <DataMeaning about="VO2 max">
+        <T variant="label">What this is</T>
+        <T>{VO2_WHAT}</T>
+        <Vo2MeasureCopy />
+        <T variant="label">What your number means</T>
+        <T>{view.levelWords}</T>
+        {cardio ? <T>{cardio.compare.words}</T> : null}
+        <T variant="label">{whyGoalMatters(goal)}</T>
+        <T>{whyCardioMatters(goal)}</T>
+        <T variant="muted">Not medical advice. Not a diagnosis.</T>
+        <ChartMeaningCopy bucket={chartBucketForPeriod(period)} aggregate="mean" />
+      </DataMeaning>
       {cardio ? (
         <MeasureRingView
           icon="gauge"
@@ -506,23 +527,27 @@ function CardioDetail({
         />
       ) : view.missing ? <T variant="muted">{view.missing}</T> : null}
       {cardio ? <FitnessSeries points={cardio.series} unit="ml/kg/min" aggregate="mean" label="VO2 max chart" /> : null}
-      <T variant="label">What your number means</T>
-      <T>{view.levelWords}</T>
-      {cardio ? <T>{cardio.compare.words}</T> : null}
       {cardio ? <FitnessCompareBar compare={cardio.compare} tone={cardio.tone} /> : null}
-      <T variant="label">{whyGoalMatters(goal)}</T>
-      <T>{whyCardioMatters(goal)}</T>
     </View>
   );
 }
 
 function MinutesDetail({ view, goal }: { view: FitnessSnapshot; goal: NutritionGoal | null }) {
+  const [period] = useStatPeriod();
   const minutes = view.minutes;
   if (!minutes) return null;
   return (
     <View style={{ alignItems: 'center', gap: 8, alignSelf: 'stretch' }}>
-      <T variant="label">What this is</T>
-      <T>{MINUTES_WHAT}</T>
+      <DataMeaning about="workout minutes">
+        <T variant="label">What this is</T>
+        <T>{MINUTES_WHAT}</T>
+        <T variant="label">What your number means</T>
+        <T>{minutes.words}</T>
+        <T variant="label">{whyGoalMatters(goal)}</T>
+        <T>{whyMinutesMatter()}</T>
+        <T variant="muted">Not medical advice. Not a diagnosis.</T>
+        <ChartMeaningCopy bucket={chartBucketForPeriod(period)} aggregate="sum" />
+      </DataMeaning>
       <MeasureRingView
         icon="timer"
         label="Workout minutes"
@@ -536,27 +561,28 @@ function MinutesDetail({ view, goal }: { view: FitnessSnapshot; goal: NutritionG
         detail={minutes.words}
       />
       <FitnessSeries points={minutes.series ?? []} unit="min" aggregate="sum" label="Workout minutes chart" />
-      <T variant="label">What your number means</T>
-      <T>{minutes.words}</T>
-      <T variant="label">{whyGoalMatters(goal)}</T>
-      <T>{whyMinutesMatter()}</T>
     </View>
   );
 }
 
 function RestingDetail({ view, goal }: { view: FitnessSnapshot; goal: NutritionGoal | null }) {
+  const [period] = useStatPeriod();
   const resting = view.resting;
   if (!resting) return null;
   return (
     <View style={{ gap: 8, alignSelf: 'stretch' }}>
-      <T variant="label">What this is</T>
-      <T>{RESTING_WHAT}</T>
-      <T variant="label">What your number means</T>
-      <T>{resting.reading ? `${resting.reading}. ` : ''}{resting.words}</T>
-      <LowRestingFitNote reading={resting.reading} detail />
+      <DataMeaning about="resting heart rate">
+        <T variant="label">What this is</T>
+        <T>{RESTING_WHAT}</T>
+        <T variant="label">What your number means</T>
+        <T>{resting.reading ? `${resting.reading}. ` : ''}{resting.words}</T>
+        <LowRestingFitNote reading={resting.reading} detail />
+        <T variant="label">{whyGoalMatters(goal)}</T>
+        <T>{whyRestingMatters()}</T>
+        <T variant="muted">Not medical advice. Not a diagnosis.</T>
+        <ChartMeaningCopy bucket={chartBucketForPeriod(period)} aggregate="mean" />
+      </DataMeaning>
       <FitnessSeries points={resting.series ?? []} unit="bpm" aggregate="mean" label="Resting heart rate chart" />
-      <T variant="label">{whyGoalMatters(goal)}</T>
-      <T>{whyRestingMatters()}</T>
     </View>
   );
 }
@@ -572,6 +598,7 @@ function FitnessSeries({
   aggregate: ChartAggregate;
   label: string;
 }) {
+  const theme = useAppTheme();
   const [period] = useStatPeriod();
   const today = londonToday();
   const window = rollingWindow(today, period);
@@ -584,7 +611,9 @@ function FitnessSeries({
       unit={unit}
       aggregate={aggregate}
       bucket={chartBucketForPeriod(period)}
+      accent={chartAccent(label.replace(/ chart$/, ''), theme.scheme) ?? undefined}
       accessibilityLabel={label}
+      meaning="none"
     />
   );
 }

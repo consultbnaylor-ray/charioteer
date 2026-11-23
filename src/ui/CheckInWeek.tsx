@@ -5,6 +5,8 @@ import { formatMoodAverage, weeklyMoodAverage, type CheckInDay } from '@/domain/
 import { checkInWeekFigure, countSplit, moodCravingBars, moodFigure } from '@/domain/measureFigures';
 import { MeasureBarsView, MeasureRingView, MeasureSplitView } from '@/ui/MeasuredFigure';
 import { ReadingChart } from '@/ui/ReadingChart';
+import { chartAccent } from '@/ui/statsPalette';
+import { useAppTheme } from '@/ui/theme';
 import { T } from '@/ui/ui';
 
 export function CheckInWeek({ days }: { days: CheckInDay[] }) {
@@ -50,6 +52,7 @@ function Series({
   unit?: string;
   average?: string | null;
 }) {
+  const theme = useAppTheme();
   const points = checkInChart(days.map((day) => ({ day: day.day, value: pick(day) })));
   const start = days[0]?.day;
   const end = days[days.length - 1]?.day;
@@ -66,6 +69,7 @@ function Series({
           yTitle="Score"
           aggregate="mean"
           bucket="day"
+          accent={chartAccent(label, theme.scheme) ?? undefined}
           accessibilityLabel={`${label} chart`}
         />
       ) : null}

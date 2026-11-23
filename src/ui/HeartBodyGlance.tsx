@@ -1,15 +1,12 @@
 import { useState } from 'react';
 import { Pressable, View } from 'react-native';
 
-import { HRV_EXPLAINER_PARAGRAPHS } from '@/domain/healthInsights';
-import { RESTING_WHAT, VO2_WHAT } from '@/domain/fitnessSnapshot';
-import { LOW_RESTING_FIT_LINE, LOW_RESTING_FIT_MORE } from '@/domain/restingFitness';
-import { GlanceSheet, SheetSection, StatTrio } from '@/ui/GlanceSheet';
+import { GlanceSheet, HrvMeaningBody, RestingMeaningBody, StatTrio, Vo2MeaningBody } from '@/ui/GlanceSheet';
 import { Sparkline } from '@/ui/gridChrome';
-import { ReadingChart } from '@/ui/ReadingChart';
+import { DataMeaning } from '@/ui/MoreInfo';
+import { ChartMeaningCopy, chartWindowBucket, ReadingChart } from '@/ui/ReadingChart';
 import { useAppTheme } from '@/ui/theme';
 import { Card, T } from '@/ui/ui';
-import { Vo2MeasureCopy } from '@/ui/Vo2EstimateNote';
 
 export type GlanceReading = {
   id: 'resting' | 'vo2' | 'hrv';
@@ -86,8 +83,15 @@ function ReadingBody({ reading, color, onMonth }: { reading: GlanceReading; colo
   const average = values.length ? Math.round((values.reduce((sum, value) => sum + value, 0) / values.length) * 10) / 10 : null;
   const start = reading.points[0]?.day;
   const end = reading.points[reading.points.length - 1]?.day;
+  const bucket = start && end ? chartWindowBucket(start, end) : 'day';
   return (
     <View style={{ gap: 12 }}>
+      <DataMeaning about={reading.title}>
+        {reading.id === 'resting' ? <RestingMeaningBody /> : null}
+        {reading.id === 'vo2' ? <Vo2MeaningBody /> : null}
+        {reading.id === 'hrv' ? <HrvMeaningBody /> : null}
+        <ChartMeaningCopy bucket={bucket} aggregate="mean" />
+      </DataMeaning>
       <T variant="display">{reading.value}</T>
       <T variant="muted">{reading.source ?? 'No source yet'} · {reading.unit}</T>
       {reading.points.length > 1 && start && end ? (
@@ -99,6 +103,7 @@ function ReadingBody({ reading, color, onMonth }: { reading: GlanceReading; colo
           aggregate="mean"
           accent={color}
           accessibilityLabel={`${reading.title} chart`}
+          meaning="none"
         />
       ) : (
         <T variant="muted">Not enough days for a chart yet.</T>
@@ -107,30 +112,6 @@ function ReadingBody({ reading, color, onMonth }: { reading: GlanceReading; colo
         <StatTrio low={String(low)} average={String(average)} high={String(high)} unit={reading.unit} />
       ) : null}
       {reading.line ? <T>{reading.line}</T> : null}
-      {reading.id === 'resting' ? (
-        <>
-          <SheetSection title="What resting heart rate means">
-            <T>{RESTING_WHAT}</T>
-          </SheetSection>
-          <SheetSection title="When to get a reading checked">
-            <T>{LOW_RESTING_FIT_LINE}</T>
-            <T>{LOW_RESTING_FIT_MORE}</T>
-            <T variant="muted">Not medical advice. Not a diagnosis.</T>
-          </SheetSection>
-        </>
-      ) : null}
-      {reading.id === 'vo2' ? (
-        <SheetSection title="What VO2 max means">
-          <T>{VO2_WHAT}</T>
-          <Vo2MeasureCopy />
-        </SheetSection>
-      ) : null}
-      {reading.id === 'hrv' ? (
-        <SheetSection title="What heart rate variability means">
-          {HRV_EXPLAINER_PARAGRAPHS.map((paragraph) => <T key={paragraph.slice(0, 32)}>{paragraph}</T>)}
-          <T variant="muted">Not medical advice. Not a diagnosis.</T>
-        </SheetSection>
-      ) : null}
       <Pressable accessibilityRole="button" accessibilityLabel="Month and year view" onPress={onMonth} style={{ minHeight: 44, justifyContent: 'center' }}>
         <T style={{ fontFamily: theme.font.bodyStrong }}>Month and year view</T>
       </Pressable>
