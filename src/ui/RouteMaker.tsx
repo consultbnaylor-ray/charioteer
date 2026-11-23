@@ -10,19 +10,28 @@ import { OTHER_SESSION_LINE, startLabel, type ActivityKind } from '@/domain/acti
 import { UserFacingError, shownError } from '@/domain/errors';
 import {
   APPLE_MAPS_NOTE,
+  DISTANCE_WINS_NOTE,
   HIKE_PROFILE_NOTE,
+  ROUTE_DISTANCE_CHOICES,
   ROUTE_MOCK_LINE,
+  ROUTE_TIME_CHOICES,
   ROUTE_UNAVAILABLE,
   STARTER_NOTE,
   STARTER_PLACES,
   appleMapsUrl,
   formatClimb,
   nearestPathLine,
+  routeAskFromChoices,
+  routeDistanceFieldHint,
   routeKind,
+  routeMinutesFieldHint,
+  type RouteDistanceChoice,
+  type RouteDistanceUnit,
   type RouteMode,
   type RoutePlace,
   type RoutePlan,
   type RouteShape,
+  type RouteTimeChoice,
 } from '@/domain/findRoute';
 import {
   routeSummary,
@@ -53,26 +62,16 @@ import {
   withoutVia,
   type PointEdit,
 } from '@/domain/routeAdjust';
+import { loadDistanceUnit } from '@/health/distanceUnit';
 import { LOCATION_FIX_MESSAGE, LOCATION_FIX_PENDING, ROUGH_FIX_LINE, readWhileUsingFix } from '@/location/whileUsing';
 import { FootpathMap } from '@/ui/FootpathMap';
 import { dismissKeyboard } from '@/ui/keyboard';
 import { Button, Card, Choice, ErrorNote, Field, T } from '@/ui/ui';
 
-const DISTANCES = [
-  { id: '3', label: '3 km', metres: 3000 },
-  { id: '5', label: '5 km', metres: 5000 },
-  { id: '8', label: '8 km', metres: 8000 },
-  { id: 'time', label: 'Use time', metres: null },
-] as const;
-
-const TIMES = [
-  { id: 'none', label: 'No set time', minutes: null },
-  { id: '30', label: '30 min', minutes: 30 },
-  { id: '45', label: '45 min', minutes: 45 },
-  { id: '60', label: '60 min', minutes: 60 },
-] as const;
-
 const CRAVING_MINUTES = [10, 15, 20] as const;
+
+/** The typed custom distance and time stay for this visit, including after leaving the screen. */
+const customSession = { distance: '', minutes: '' };
 
 const phoneRequests = {
   getItem: (key: string) => AsyncStorage.getItem(key),
@@ -85,8 +84,11 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
   const craving = purpose === 'craving';
   const [mode, setMode] = useState<RouteMode>('walk');
   const [shape, setShape] = useState<RouteShape>('loop');
-  const [distanceId, setDistanceId] = useState<(typeof DISTANCES)[number]['id']>('5');
-  const [timeId, setTimeId] = useState<(typeof TIMES)[number]['id']>('none');
+  const [distanceId, setDistanceId] = useState<RouteDistanceChoice>('5');
+  const [timeId, setTimeId] = useState<RouteTimeChoice>('none');
+  const [customDistance, setCustomDistance] = useState(customSession.distance);
+  const [customMinutes, setCustomMinutes] = useState(customSession.minutes);
+  const [unit, setUnit] = useState<RouteDistanceUnit>('km');
   const [minutes, setMinutes] = useState<(typeof CRAVING_MINUTES)[number]>(15);
   const [start, setStart] = useState<OutdoorPoint | null>(null);
   const [startName, setStartName] = useState('');
@@ -130,16 +132,20 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
   useEffect(() => {
     const queue = queueRef.current;
     void readRouteRequests(phoneRequests).then(setRequestsToday).catch(() => undefined);
+    void loadDistanceUnit().then(setUnit).catch(() => undefined);
     return () => queue.dispose();
   }, []);
 
-  function askedRoute(): { distanceM: number | null; minutes: number | null } {
-    const distance = DISTANCES.find((item) => item.id === distanceId)?.metres ?? null;
-    const timed = TIMES.find((item) => item.id === timeId)?.minutes ?? null;
-    return {
-      distanceM: craving ? null : distance,
-      minutes: craving ? minutes : timed,
-    };
+  function askedRoute(): { ok: true; distanceM: number | null; minutes: number | null } | { ok: false; message: string } {
+    if (craving) return { ok: true, distanceM: null, minutes };
+    return routeAskFromChoices({
+      mode,
+      distanceChoice: distanceId,
+      timeChoice: timeId,
+      customDistance,
+      customMinutes,
+      unit,
+    });
   }
 
   function clearEdit() {
@@ -166,6 +172,11 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
     }
     const current = { plan: currentPlan, vias: acceptedRef.current };
     const asked = askedRoute();
+    if (!asked.ok) {
+      setRedrawing(false);
+      setError(asked.message);
+      return;
+    }
     const through = vias.length > 0;
     setRedrawing(true);
     try {
@@ -328,12 +339,9 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
       setError('Choose a start point.');
       return;
     }
-    const distance = DISTANCES.find((item) => item.id === distanceId)?.metres ?? null;
-    const timed = TIMES.find((item) => item.id === timeId)?.minutes ?? null;
-    const askedMinutes = craving ? minutes : distance == null ? timed : timed;
-    const askedDistance = craving ? null : distance;
-    if (!craving && askedDistance == null && askedMinutes == null) {
-      setError('Choose a distance or a time.');
+    const asked = askedRoute();
+    if (!asked.ok) {
+      setError(asked.message);
       return;
     }
     if (shape === 'a_to_b' && !end) {
@@ -347,8 +355,8 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
         shape: craving ? 'loop' : shape,
         start,
         end: !craving && shape === 'a_to_b' ? end : null,
-        distanceM: askedDistance,
-        minutes: askedMinutes,
+        distanceM: asked.distanceM,
+        minutes: asked.minutes,
       });
       setPlan(next);
       setOriginal(next);
@@ -468,14 +476,42 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
             <Choice label="Loop" selected={shape === 'loop'} onPress={() => setShape('loop')} />
             <Choice label="A to B" selected={shape === 'a_to_b'} onPress={() => setShape('a_to_b')} />
             <T variant="label">Distance</T>
-            {DISTANCES.map((item) => (
+            {ROUTE_DISTANCE_CHOICES.map((item) => (
               <Choice key={item.id} label={item.label} selected={distanceId === item.id} onPress={() => setDistanceId(item.id)} />
             ))}
-            <T variant="muted">When both are set, the distance is used.</T>
+            {distanceId === 'custom' ? (
+              <Field
+                label={unit === 'mile' ? 'Distance (miles)' : 'Distance (km)'}
+                value={customDistance}
+                onChangeText={(value) => {
+                  customSession.distance = value;
+                  setCustomDistance(value);
+                }}
+                keyboardType="decimal-pad"
+                placeholder={unit === 'mile' ? '3.1' : '6.5'}
+                hint={routeDistanceFieldHint(unit)}
+                maxLength={8}
+              />
+            ) : null}
+            <T variant="muted">{DISTANCE_WINS_NOTE}</T>
             <T variant="label">Time</T>
-            {TIMES.map((item) => (
+            {ROUTE_TIME_CHOICES.map((item) => (
               <Choice key={item.id} label={item.label} selected={timeId === item.id} onPress={() => setTimeId(item.id)} />
             ))}
+            {timeId === 'custom' ? (
+              <Field
+                label="Time (minutes)"
+                value={customMinutes}
+                onChangeText={(value) => {
+                  customSession.minutes = value;
+                  setCustomMinutes(value);
+                }}
+                keyboardType="number-pad"
+                placeholder="75"
+                hint={routeMinutesFieldHint()}
+                maxLength={4}
+              />
+            ) : null}
           </>
         )}
         <T variant="label">Start</T>
