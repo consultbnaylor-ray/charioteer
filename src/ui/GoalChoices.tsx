@@ -13,6 +13,7 @@ import {
 import { FITNESS_GOAL_LABEL, FITNESS_GOALS, resolvedFitnessGoal, type FitnessGoal } from '@/domain/fitnessGoal';
 import { GOAL_PLAIN, boxingChipLabel, isAnyBoxer, type NutritionGoal } from '@/domain/nutrition';
 import { settingsForFitnessGoal, settingsForPreset } from '@/domain/targetWeight';
+import { MoreInfo } from '@/ui/MoreInfo';
 import { PlanTick } from '@/ui/PlanTick';
 import { GoalTargetDate, TargetWeightForm } from '@/ui/TargetWeightGoal';
 import { statsToneColors } from '@/ui/statsPalette';
@@ -64,9 +65,12 @@ export function GoalDivision({
 export function GoalChoices({
   framed = true,
   detail = 'Pick one.',
+  plainCollapsed = false,
 }: {
   framed?: boolean;
   detail?: string;
+  /** The plain goal sentence starts behind a titled tab. */
+  plainCollapsed?: boolean;
 }) {
   const snap = useSnapshot();
   const repo = useRepository();
@@ -206,7 +210,15 @@ export function GoalChoices({
           />
         ))}
       </View>
-      {settings.goal && settings.goal !== 'elite_runner' && settings.goal !== 'body_builder' ? <T variant="muted">{GOAL_PLAIN[settings.goal]}</T> : null}
+      {settings.goal && settings.goal !== 'elite_runner' && settings.goal !== 'body_builder' ? (
+        plainCollapsed ? (
+          <MoreInfo about="the goal" title="About the goal">
+            <T variant="muted">{GOAL_PLAIN[settings.goal]}</T>
+          </MoreInfo>
+        ) : (
+          <T variant="muted">{GOAL_PLAIN[settings.goal]}</T>
+        )
+      ) : null}
       <T variant="muted">{FITNESS_GOAL_LABEL[fitnessNow]}</T>
       <QuietNote>{note}</QuietNote>
     </View>

@@ -327,6 +327,7 @@ export default function Nutrition() {
       fatTarget: settings.fatTarget,
     })
     : null;
+  const todayMeaning = [dayLine, sugar, saved].filter((line): line is string => Boolean(line));
 
   const [meal, setMeal] = useState<MealSlot>('breakfast');
   const [logDay, setLogDay] = useState(() => mealLogWindow(new Date()).today);
@@ -862,7 +863,11 @@ export default function Nutrition() {
         {active && confirmId === log.id ? (
           <View style={{ gap: 8 }}>
             <T>Delete this meal?</T>
-            {health ? <T variant="muted">{APPLE_HEALTH_MEAL_NOTE}</T> : null}
+            {health ? (
+              <MoreInfo about="Apple Health" title="About Apple Health">
+                <T variant="muted">{APPLE_HEALTH_MEAL_NOTE}</T>
+              </MoreInfo>
+            ) : null}
             <Button label="Delete this meal" tone="quiet" pending={isPending(`remove:${log.id}`)} pendingLabel="Deleting..." onPress={() => removeLog(log.id)} />
             <Button label="Keep it" tone="quiet" disabled={isPending(`remove:${log.id}`)} onPress={() => setConfirmId(null)} />
           </View>
@@ -1267,7 +1272,9 @@ export default function Nutrition() {
           goalPhase: settings.goalPhase,
         }).map((line) => <T key={line}>{line}</T>)}
         {!editingGoal && (settings.competitionCut || settings.goal === 'elite_middle_boxer' || (settings.goal != null && isClassBoxer(settings.goal))) ? (
-          <T variant="muted">{COMPETITION_NOTE}</T>
+          <MoreInfo about="competition cuts" title="About competition cuts">
+            <T variant="muted">{COMPETITION_NOTE}</T>
+          </MoreInfo>
         ) : null}
         <Button
           label={editingGoal ? 'Done' : 'Edit your goal'}
@@ -1278,6 +1285,7 @@ export default function Nutrition() {
           <>
         <GoalChoices
           framed={false}
+          plainCollapsed
           detail="Pick one. A suggestion uses your weight, height, age, and sex if you add them. You can change the numbers."
         />
         {settings.goal === 'body_builder' ? (
@@ -1291,15 +1299,15 @@ export default function Nutrition() {
           </>
         ) : null}
         {settings.goal === 'elite_heavy_boxer' ? (
-          <MoreInfo about="the heavyweight goal" summary="It will not plan a cut.">
+          <MoreInfo about="the heavyweight goal" title="About the heavyweight goal" summary="It will not plan a cut.">
             <T variant="muted">{`${GOAL_LABEL.elite_heavy_boxer} keeps size and power. The suggestion adds a little food. It will not plan a cut.`}</T>
           </MoreInfo>
         ) : null}
         {settings.goal === 'elite_middle_boxer' ? (
           <>
-            <T>{COMPETITION_NOTE}</T>
-            <MoreInfo about="the middleweight limit">
+            <MoreInfo about="the middleweight limit" title="About the middleweight limit">
               <T variant="muted">{`Leave this blank and the suggestion uses ${MIDDLEWEIGHT_LIMIT_KG} kg (160 lb), the professional middleweight limit. Type your own class if it is different. The change stays small. Amateur IBA figures are a reference only. Muscular boxers can sit above the BMI band.`}</T>
+              <T variant="muted">{COMPETITION_NOTE}</T>
             </MoreInfo>
             <Field label="Middleweight limit (kg)" value={weightClass} onChangeText={setWeightClass} keyboardType="decimal-pad" placeholder={String(MIDDLEWEIGHT_LIMIT_KG)} />
             <UpdateWeightLink />
@@ -1307,8 +1315,7 @@ export default function Nutrition() {
         ) : null}
         {isClassBoxer(settings.goal) ? (
           <>
-            <T>{COMPETITION_NOTE}</T>
-            <MoreInfo about="this weight class" summary="It will not plan a cut.">
+            <MoreInfo about="this weight class" title="About this weight class" summary="It will not plan a cut.">
               <T variant="muted">{`${GOAL_LABEL[settings.goal]} stays near about ${PRO_BOXING_CLASSES[settings.goal].limitKg} kg (${PRO_BOXING_CLASSES[settings.goal].limitLb} lb). Any change is small. It will not plan a cut. Muscular boxers can sit above the BMI band. ${COMPETITION_NOTE}`}</T>
             </MoreInfo>
             <UpdateWeightLink />
@@ -1359,12 +1366,15 @@ export default function Nutrition() {
             thumbColor={theme.colors.surface}
           />
         </View>
-        <T variant="muted">{HIDE_CALORIES_LINE}</T>
         <QuietNote>{choiceNote}</QuietNote>
         <Button label="Suggest targets" pending={isPending('suggest')} pendingLabel="Suggesting..." onPress={suggest} />
         {suggestNote ? <T>{suggestNote}</T> : null}
         {blocked ? <T>{LOW_BMI_NOTE}</T> : null}
-        {goalNote && !blocked ? <T variant="muted">{goalNote}</T> : null}
+        {goalNote && !blocked ? (
+          <MoreInfo about="this suggestion" title="About this suggestion">
+            <T variant="muted">{goalNote}</T>
+          </MoreInfo>
+        ) : null}
         {hide ? null : (
           <Field label="Daily kcal" value={target} onChangeText={setTarget} keyboardType="number-pad" placeholder="Leave blank for none" />
         )}
@@ -1383,34 +1393,40 @@ export default function Nutrition() {
       <ScrollTarget id="today">
       <Card>
         <T variant="label">Today</T>
-        {hide ? <T>{HIDE_CALORIES_LINE}</T> : <T>{`${totals.kcal.toLocaleString('en-GB')} kcal`}</T>}
+        {hide ? <T variant="muted">{HIDE_CALORIES_LINE}</T> : <T>{`${totals.kcal.toLocaleString('en-GB')} kcal`}</T>}
         {!hide && settings.kcalTarget != null ? <T variant="muted">{`Target ${settings.kcalTarget.toLocaleString('en-GB')} kcal`}</T> : null}
         {!hide ? <T>{targetLine(totals.kcal, settings.kcalTarget, false)}</T> : null}
         <T>{`Protein ${totals.proteinG} g · carbohydrate ${totals.carbsG} g · sugar ${totals.sugarG} g`}</T>
-        {proteinReview.review || totals.proteinG > 0 ? (
-          <>
-            {proteinReview.review ? <T>{proteinReview.review}</T> : null}
+        {proteinReview.review ? <T>{proteinReview.review}</T> : null}
+        {totals.proteinG > 0 || proteinReview.review || proteinNotes.length > 0 ? (
+          <MoreInfo about="protein limits" title="About protein limits">
             <T variant="muted">{proteinReview.standing}</T>
-          </>
+            {proteinNotes.map((line) => <T key={line} variant="muted">{line}</T>)}
+          </MoreInfo>
         ) : null}
-        {proteinNotes.map((line) => <T key={line} variant="muted">{line}</T>)}
         <T>{`Fibre ${totals.fibreG} g · sodium ${totals.sodiumMg.toLocaleString('en-GB')} mg`}</T>
         <T variant="label">Fats</T>
         <FatShareBar unsaturated={fats.unsaturated} other={fats.other} />
         <T variant="muted">{`Unsaturated ${fats.unsaturated} g · saturated and trans ${fats.other} g`}</T>
         <T>{fats.line}</T>
-        <T variant="muted">{FAT_SCIENCE}</T>
+        <MoreInfo about="fats" title="About fats">
+          <T variant="muted">{FAT_SCIENCE}</T>
+        </MoreInfo>
         {processedLine(items) ? <T>{processedLine(items)}</T> : null}
         <ProcessedFoodList
           notes={periodNotes}
           cue="more"
+          title="About processed food"
           heading={processedFoodHeading(periodWhole, periodNotes.length)}
           periodLine={periodHeading(period)}
         />
         {patterns.map((line) => <T key={line}>{line}</T>)}
-        {sugar ? <T>{sugar}</T> : null}
-        {saved ? <T>{saved}</T> : null}
-        {dayLine ? <T>{dayLine}</T> : macroLine ? <T>{macroLine}</T> : null}
+        {macroLine ? <T>{macroLine}</T> : null}
+        {todayMeaning.length > 0 ? (
+          <MoreInfo about="today" title="What this means">
+            {todayMeaning.map((line) => <T key={line} variant="muted">{line}</T>)}
+          </MoreInfo>
+        ) : null}
         <T variant="muted">{`Water ${water.toLocaleString('en-GB')} ml`}</T>
         <NutritionShareSwitch
           label="Share daily calories and macros"
@@ -1454,7 +1470,11 @@ export default function Nutrition() {
       </ScrollTarget>
       <WagonFlag />
       <NutritionShareSummary />
-      {healthNote ? <T variant="muted">{healthNote}</T> : null}
+      {healthNote === APPLE_HEALTH_MEAL_NOTE ? (
+        <MoreInfo about="Apple Health" title="About Apple Health">
+          <T variant="muted">{healthNote}</T>
+        </MoreInfo>
+      ) : healthNote ? <T variant="muted">{healthNote}</T> : null}
       {error ? <ErrorNote>{error}</ErrorNote> : null}
     </Screen>
   );

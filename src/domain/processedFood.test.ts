@@ -142,7 +142,7 @@ describe('highly processed foods', () => {
     expect(list).not.toMatch(/scrollTo|scrollIntoView|statsTone|danger/);
     expect(charts).toContain('id="quality"');
     expect(charts).toContain('processedFoodNotes');
-    expect(charts).toContain('<ProcessedFoodList notes={picture.quality.notes} cue="more" />');
+    expect(charts).toContain('<ProcessedFoodList notes={picture.quality.notes} cue="more" title="About processed food" />');
     expect(screen).toContain('cue="more"');
     expect(screen).toContain('processedFoodNotes');
     expect(PROCESSED_LIST_FOLD).toBe(5);

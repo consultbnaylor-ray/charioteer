@@ -16,11 +16,14 @@ export function ProcessedFoodList({
   cue = 'see',
   periodLine,
   heading,
+  title,
 }: {
   notes: readonly ProcessedFoodNote[];
   cue?: 'see' | 'more';
   periodLine?: string;
   heading?: string;
+  /** Fixed name, such as “About processed food”. It stays put when open. */
+  title?: string;
 }) {
   const theme = useAppTheme();
   const [open, setOpen] = useState(false);
@@ -30,6 +33,10 @@ export function ProcessedFoodList({
   const folded = notes.length > PROCESSED_LIST_FOLD;
   const shown = open && folded && !rest ? notes.slice(0, PROCESSED_LIST_FOLD) : notes;
   const hidden = notes.length - PROCESSED_LIST_FOLD;
+  const label = title ?? (open ? 'Less info' : 'More info');
+  const spoken = title
+    ? `${title}, ${open ? 'expanded' : 'collapsed'}`
+    : `${label} about processed foods`;
 
   return (
     <View
@@ -48,9 +55,9 @@ export function ProcessedFoodList({
       {periodLine ? <T variant="muted">{periodLine}</T> : null}
       {cue === 'more' ? (
         <MoreInfoButton
-          label={open ? 'Less info' : 'More info'}
+          label={label}
           expanded={open}
-          accessibilityLabel={`${open ? 'Less info' : 'More info'} about processed foods`}
+          accessibilityLabel={spoken}
           onPress={() => setOpen((value) => !value)}
         />
       ) : (

@@ -150,7 +150,7 @@ export function NutritionBoard({
               <CompareBars layout="row" max={picture.quality.max} bars={picture.quality.bars} />
             </View>
             <T>{picture.quality.meaning}</T>
-            <ProcessedFoodList notes={picture.quality.notes} cue="more" />
+            <ProcessedFoodList notes={picture.quality.notes} cue="more" title="About processed food" />
           </ScrollTarget>
         ) : null}
         {qualitySwitch}
