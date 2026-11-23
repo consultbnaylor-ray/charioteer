@@ -101,6 +101,7 @@ const CHART_ROLE: Record<string, GridRole> = {
   'Moderate minutes': 'activity',
   'Intensity minutes': 'activity',
   'Workout minutes': 'activity',
+  Workouts: 'mind',
   Floors: 'activity',
   'VO2 max': 'activity',
   'Breathing rate': 'activity',

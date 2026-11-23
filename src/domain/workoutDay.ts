@@ -10,7 +10,7 @@ export const WORKOUT_HISTORY_FOLD = 5;
 
 export const WORKOUT_HISTORY_EMPTY = "No workouts yet. They'll appear here from Apple Health.";
 
-export const WORKOUT_HISTORY_HINT = "Tap a bar to see that day's workouts.";
+export const WORKOUT_HISTORY_HINT = "Tap a point to see that day's workouts.";
 
 export const WORKOUT_HISTORY_SHOW_ALL = 'Show all workouts';
 

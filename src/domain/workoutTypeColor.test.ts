@@ -50,9 +50,10 @@ describe('workout type colours', () => {
     }
   });
 
-  it('uses the type colour on both charts and puts the word next to the swatch', () => {
+  it('uses the type colour on the history lines and the difficulty chart, and puts the word next to the swatch', () => {
     const list = readFileSync('src/ui/WorkoutList.tsx', 'utf8');
-    expect(list).toContain('workoutTypeColor(segment.label)');
+    const charts = readFileSync('src/ui/WorkoutHistoryCharts.tsx', 'utf8');
+    expect(charts).toContain('workoutTypeColor(type.label)');
     expect(list).toContain('workoutTypeColor(mark.typeLabel)');
     expect(list).toContain('workoutTypeColor(label)');
     expect(list).toContain('<T>{label}</T>');

@@ -1,7 +1,7 @@
 import { Linking, Pressable, View } from 'react-native';
 import { useRouter } from 'expo-router';
 
-import { memo, useState } from 'react';
+import { memo, useMemo, useState } from 'react';
 import {
   EXERCISE_GARMIN_CAPTION,
   INTENSITY_EMPTY,
@@ -74,7 +74,8 @@ import { restingFitnessComment } from '@/domain/restingFitness';
 import { weekdayShort } from '@/domain/healthInsights';
 import { CHART_DIRECTION_HINT, chartBucketForPeriod, type ChartBucket } from '@/domain/readingChart';
 import { useStatPeriod } from '@/health/useStatPeriod';
-import { completedDayStats, londonToday, openDayFraction, periodDayCount, STAT_PERIOD_LABEL, type StatPeriod } from '@/domain/statWindow';
+import { completedDayStats, londonToday, openDayFraction, periodDayCount } from '@/domain/statWindow';
+import { workoutHistoryPeriod, WORKOUT_HISTORY_PERIODS } from '@/domain/workoutHistoryCharts';
 import { openAppSettings } from '@/health/link';
 import { MetricRatingLines, RatingChip } from '@/ui/MetricRating';
 import { DataMeaning } from '@/ui/MoreInfo';
@@ -85,9 +86,7 @@ import { chartAccent } from '@/ui/statsPalette';
 import { useAppTheme } from '@/ui/theme';
 import { activityTitleIcon } from '@/domain/statIcons';
 import { IconLabel } from '@/ui/statIcons';
-import { Button, Card, Choice, T } from '@/ui/ui';
-
-const WORKOUT_TREND_PERIODS = ['7', '30', '60', '90', '12m'] as const satisfies readonly StatPeriod[];
+import { Button, Card, T } from '@/ui/ui';
 
 const BAR_HEIGHT = 88;
 
@@ -189,15 +188,28 @@ export function DailyActivityCharts({
   const minuteCtx = chartContext(age, sex, goal, span, endDay);
   const [selected, setSelected] = useState<string | null>(null);
   const [chartsOpen, setChartsOpen] = useState(false);
-  const [trendPeriod, setTrendPeriod] = useState<(typeof WORKOUT_TREND_PERIODS)[number]>('7');
+  const [sharedPeriod] = useStatPeriod();
+  const trendPeriod = workoutHistoryPeriod(sharedPeriod);
   const trendDays = periodDayCount(trendPeriod);
   const trendEnd = londonToday();
-  const trendSteps = stepsSeries(trendEnd, trendDays, steps, dailies);
-  const trendExercise = consent ? exerciseSeries(trendEnd, trendDays, exerciseMinutes, dailies) : [];
-  const trendCalories = consent ? calorieSeries(trendEnd, trendDays, activeKcal, dailies) : [];
-  const trendDistance = distanceSeries(trendEnd, trendDays, dailies);
-  const trendModerate = consent ? garminMinuteSeries(trendEnd, trendDays, dailies, 'moderate') : [];
-  const trendHeart = restingSeries(trendEnd, trendDays, restingHeart, dailies);
+  const trendSteps = useMemo(() => stepsSeries(trendEnd, trendDays, steps, dailies), [trendEnd, trendDays, steps, dailies]);
+  const trendExercise = useMemo(
+    () => (consent ? exerciseSeries(trendEnd, trendDays, exerciseMinutes, dailies) : []),
+    [consent, trendEnd, trendDays, exerciseMinutes, dailies],
+  );
+  const trendCalories = useMemo(
+    () => (consent ? calorieSeries(trendEnd, trendDays, activeKcal, dailies) : []),
+    [consent, trendEnd, trendDays, activeKcal, dailies],
+  );
+  const trendDistance = useMemo(() => distanceSeries(trendEnd, trendDays, dailies), [trendEnd, trendDays, dailies]);
+  const trendModerate = useMemo(
+    () => (consent ? garminMinuteSeries(trendEnd, trendDays, dailies, 'moderate') : []),
+    [consent, trendEnd, trendDays, dailies],
+  );
+  const trendHeart = useMemo(
+    () => restingSeries(trendEnd, trendDays, restingHeart, dailies),
+    [trendEnd, trendDays, restingHeart, dailies],
+  );
   const period = movementPeriod(span, '7').period;
   const exercise = consent ? exerciseSeries(endDay, span, exerciseMinutes, dailies) : [];
   const moderate = consent ? garminMinuteSeries(endDay, span, dailies, 'moderate') : [];
@@ -214,21 +226,17 @@ export function DailyActivityCharts({
       <Card>
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel="Workout History Charts"
+          accessibilityLabel="Activity charts"
           accessibilityState={{ expanded: chartsOpen }}
           onPress={() => setChartsOpen((value) => !value)}
           style={{ minHeight: 44, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}
         >
-          <T variant="label" style={{ flex: 1 }}>Workout History Charts</T>
+          <T variant="label" style={{ flex: 1 }}>Activity charts</T>
           <T variant="muted">{chartsOpen ? 'Hide' : 'Show'}</T>
         </Pressable>
         {chartsOpen ? (
           <View style={{ gap: 12, alignSelf: 'stretch' }}>
-            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-              {WORKOUT_TREND_PERIODS.map((id) => (
-                <Choice key={id} label={STAT_PERIOD_LABEL[id]} selected={trendPeriod === id} onPress={() => setTrendPeriod(id)} />
-              ))}
-            </View>
+            <StatPeriodToggle periods={WORKOUT_HISTORY_PERIODS} selected={trendPeriod} />
             {([
               ['Steps', trendSteps, 'steps'],
               ['Exercise minutes', trendExercise, 'min'],
