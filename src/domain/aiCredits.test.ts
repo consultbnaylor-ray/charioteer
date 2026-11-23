@@ -2,7 +2,12 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
 import {
+  AI_CREDITS_CHECKING,
+  AI_CREDITS_UNAVAILABLE,
+  AI_USAGE_UNAVAILABLE,
   LOW_CREDIT_LEFT,
+  aiCreditKindLine,
+  aiCreditStatusLine,
   creditNudge,
   creditUpgradeLabel,
   creditsExhausted,
@@ -32,7 +37,17 @@ describe('AI credit nudges', () => {
     const line = readFileSync('src/ui/AiCreditLine.tsx', 'utf8');
     const card = readFileSync('src/ui/AiLimitCard.tsx', 'utf8');
     expect(line).toContain("router.push('/paywall' as never)");
+    expect(line).toContain('aiCreditStatusLine');
+    expect(line).toContain('label="Try again"');
     expect(line).not.toContain('paywallEnabled');
+    const now = new Date('2026-11-23T12:00:00Z');
+    const counts = usage(0, 0, 0);
+    expect(aiCreditStatusLine({ tier: null, usage: counts, kind: 'meal', checking: true, planFailed: false, usageFailed: false, now })).toBe(AI_CREDITS_CHECKING);
+    expect(aiCreditStatusLine({ tier: null, usage: counts, kind: 'meal', checking: true, planFailed: false, usageFailed: false, now })).not.toContain('a plan sets this');
+    expect(aiCreditStatusLine({ tier: null, usage: counts, kind: 'meal', checking: false, planFailed: true, usageFailed: false, now })).toBe(AI_CREDITS_UNAVAILABLE);
+    expect(aiCreditStatusLine({ tier: 'standard', usage: counts, kind: 'meal', checking: false, planFailed: false, usageFailed: true, now })).toBe(AI_USAGE_UNAVAILABLE);
+    expect(aiCreditStatusLine({ tier: null, usage: counts, kind: 'meal', checking: false, planFailed: false, usageFailed: false, now })).toBe(aiCreditKindLine(null, counts, 'meal', now));
+    expect(aiCreditKindLine(null, counts, 'meal', now)).toContain('a plan sets this');
     expect(card).toContain("router.push('/paywall' as never)");
     expect(card).not.toContain('paywallEnabled');
     expect(card).not.toMatch(/Unlimited|unlimited/);

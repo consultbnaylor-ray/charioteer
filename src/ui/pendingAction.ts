@@ -1,5 +1,11 @@
 import { useCallback, useRef, useState } from 'react';
 
+/** Marks one action as waiting, then clears it when the work settles, including a timeout. */
+export function runPending<T>(work: () => Promise<T>, onWaiting: (waiting: boolean) => void): Promise<T> {
+  onWaiting(true);
+  return work().finally(() => onWaiting(false));
+}
+
 /** Disables one action at a time and ignores a second tap until it finishes. */
 export function usePendingPress() {
   const locks = useRef(new Set<string>());
@@ -7,10 +13,9 @@ export function usePendingPress() {
 
   const run = useCallback((key: string, work: () => Promise<void>) => {
     if (locks.current.has(key)) return;
-    locks.current.add(key);
-    setKeys(new Set(locks.current));
-    void work().finally(() => {
-      locks.current.delete(key);
+    void runPending(work, (waiting) => {
+      if (waiting) locks.current.add(key);
+      else locks.current.delete(key);
       setKeys(new Set(locks.current));
     });
   }, []);

@@ -74,6 +74,27 @@ export function creditNudge(tier: Tier | null, usage: AiUsageCounts, kind?: Usag
   return `Running low: ${low.join(', ')} left this month.`;
 }
 
+export const AI_CREDITS_CHECKING = 'AI credits: checking your plan…';
+export const AI_CREDITS_UNAVAILABLE = 'Couldn\'t check your plan. Try again.';
+export const AI_USAGE_UNAVAILABLE = 'Couldn\'t check your credits. Try again.';
+
+/** What to show beside a credit-using button while the plan or the usage lookup is in flight or has failed. */
+export function aiCreditStatusLine(input: {
+  tier: Tier | null;
+  usage: AiUsageCounts;
+  kind?: UsageKind;
+  checking: boolean;
+  planFailed: boolean;
+  usageFailed: boolean;
+  now?: Date;
+}): string {
+  if (!input.tier && input.checking) return AI_CREDITS_CHECKING;
+  if (!input.tier && input.planFailed) return AI_CREDITS_UNAVAILABLE;
+  if (input.usageFailed) return AI_USAGE_UNAVAILABLE;
+  if (input.kind) return aiCreditKindLine(input.tier, input.usage, input.kind, input.now);
+  return aiCreditSummary(input.tier, input.usage, input.now);
+}
+
 /** The bucket next to one credit-using button. */
 export function aiCreditKindLine(tier: Tier | null, usage: AiUsageCounts, kind: UsageKind, now = new Date()): string {
   const resets = formatUkCompactDay(londonDayKey(nextLondonMonth(now))).replace(/ \d{4}$/, '');
