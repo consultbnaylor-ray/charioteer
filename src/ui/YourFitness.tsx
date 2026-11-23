@@ -24,6 +24,7 @@ import {
   type FitnessTone,
   type WorkoutSourceMinute,
 } from '@/domain/fitnessSnapshot';
+import { matchingFocus } from '@/domain/adviceDedupe';
 import { applyFitnessFocus } from '@/domain/healthPlan';
 import { useHealthSources } from '@/health/useHealthSources';
 import { loadWorkoutSources } from '@/health/workoutSources';
@@ -119,7 +120,7 @@ export const YourFitness = memo(function YourFitness({ onPlanOutdoor }: { onPlan
   const vo2Reading = latestVo2Reading(mergedHealth);
   const goal = snap.nutrition?.goal ?? null;
   const focusState = (text: string) => {
-    const saved = snap.healthPlan?.focus.find((action) => action.text.toLowerCase() === text.toLowerCase());
+    const saved = matchingFocus(snap.healthPlan?.focus ?? [], text);
     return { saved: Boolean(saved), done: Boolean(saved?.done) };
   };
 
@@ -264,18 +265,17 @@ export const YourFitness = memo(function YourFitness({ onPlanOutdoor }: { onPlan
         </View>
       ) : null}
       {view.recommendations.map((item) => {
-        const saved = snap.healthPlan?.focus.find((action) => action.text.toLowerCase() === item.text.toLowerCase());
-        const done = Boolean(saved?.done);
+        const state = focusState(item.text);
         return (
           <Pressable
             key={item.id}
             accessibilityRole="checkbox"
-            accessibilityState={{ checked: done }}
-            accessibilityLabel={saved ? item.text : `${item.text}. Add to this week's focus`}
+            accessibilityState={{ checked: state.done }}
+            accessibilityLabel={state.saved ? item.text : `${item.text}. Add to this week's focus`}
             onPress={() => void tick(item.text)}
             style={{ minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 8 }}
           >
-            <PlanTick done={done} />
+            <PlanTick done={state.done} />
             <T style={{ flex: 1 }}>{item.text}</T>
           </Pressable>
         );

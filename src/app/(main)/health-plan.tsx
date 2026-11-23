@@ -6,6 +6,7 @@ import { useRepository, useSnapshot } from '@/data';
 import { formatUkCompactWhen } from '@/domain/dates';
 import { PLAN_NOT_SAVED } from '@/domain/edgeRetry';
 import { UserFacingError, shownError } from '@/domain/errors';
+import { dedupeFocusItems } from '@/domain/adviceDedupe';
 import { PLAN_DISCLAIMER, togglePlanAction, type PlanAction } from '@/domain/healthPlan';
 import { planProgressFigure } from '@/domain/measureFigures';
 import { buildStatsOverview } from '@/domain/statsOverview';
@@ -85,9 +86,10 @@ export default function HealthPlanScreen() {
     bodyComposition: snap.bodyComposition,
     gratitude: snap.gratitude,
   }).filter((tile) => PROGRESS_IDS.includes(tile.id));
+  const focus = plan ? dedupeFocusItems(plan.focus) : [];
   const progress = plan
     ? planProgressFigure([
-      { key: 'focus', label: 'Focus', done: plan.focus.filter((item) => item.done).length, total: plan.focus.length },
+      { key: 'focus', label: 'Focus', done: focus.filter((item) => item.done).length, total: focus.length },
       { key: 'habits', label: 'Habits', done: plan.nutrition.habits.filter((item) => item.done).length, total: plan.nutrition.habits.length },
       { key: 'swaps', label: 'Swaps', done: plan.nutrition.swaps.filter((item) => item.done).length, total: plan.nutrition.swaps.length },
       { key: 'fitness', label: 'Fitness', done: plan.fitness.sessions.filter((item) => item.done).length, total: plan.fitness.sessions.length },
@@ -101,7 +103,7 @@ export default function HealthPlanScreen() {
     queue.current = queue.current.then(async () => {
       const current = planRef.current;
       if (!current) return;
-      const next = togglePlanAction({ ...current, limits: limitsRef.current.slice(0, 280) }, id);
+      const next = togglePlanAction({ ...current, focus: dedupeFocusItems(current.focus), limits: limitsRef.current.slice(0, 280) }, id);
       planRef.current = next;
       await repo.saveHealthPlan(next);
     }).catch((err: unknown) => {
@@ -145,7 +147,7 @@ export default function HealthPlanScreen() {
           <Card>
             <T variant="label">This week's focus</T>
             <T variant="muted">Ticked automatically from your Garmin and Apple Health data where we can; tap to tick the rest.</T>
-            {plan.focus.map((action) => (
+            {focus.map((action) => (
               <ActionRow key={action.id} action={action} disabled={refreshing} onToggle={tick} />
             ))}
           </Card>
