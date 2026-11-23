@@ -36,6 +36,7 @@ export function T({
   numberOfLines,
   adjustsFontSizeToFit,
   minimumFontScale,
+  maxFontSizeMultiplier = 2,
 }: {
   variant?: Variant;
   style?: StyleProp<TextStyle>;
@@ -43,6 +44,8 @@ export function T({
   numberOfLines?: number;
   adjustsFontSizeToFit?: boolean;
   minimumFontScale?: number;
+  /** Caps the system text size. The sober ring passes 1 and applies Dynamic Type itself. */
+  maxFontSizeMultiplier?: number;
 }) {
   const theme = useAppTheme();
   const size = theme.scale;
@@ -62,7 +65,7 @@ export function T({
     },
   };
   return (
-    <Text maxFontSizeMultiplier={2} numberOfLines={numberOfLines} adjustsFontSizeToFit={adjustsFontSizeToFit} minimumFontScale={minimumFontScale} style={[styles[variant], style]}>
+    <Text maxFontSizeMultiplier={maxFontSizeMultiplier} numberOfLines={numberOfLines} adjustsFontSizeToFit={adjustsFontSizeToFit} minimumFontScale={minimumFontScale} style={[styles[variant], style]}>
       {children}
     </Text>
   );
