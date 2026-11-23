@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type ComponentType, type ReactNode, type R
 import { View } from 'react-native';
 
 import { mapPressPoint, viaPointCollection } from '@/domain/routeAdjust';
+import { DrawCapture } from '@/ui/DrawCapture';
 import {
   YOU_HERE_FILL,
   YOU_HERE_RING,
@@ -74,6 +75,10 @@ export function FootpathMap({
   adjust = null,
   bar = null,
   mapLabel,
+  pencil = [],
+  lookAt = null,
+  lookFocus = 0,
+  draw = null,
 }: {
   routes: readonly OutdoorRoute[];
   sketch: readonly OutdoorPoint[];
@@ -97,9 +102,19 @@ export function FootpathMap({
   bar?: ReactNode;
   /** Accessible name. Omitted maps keep "Map with footpaths". */
   mapLabel?: string;
+  /** The finger sketch, shown dashed until a snapped route replaces it. */
+  pencil?: readonly OutdoorPoint[];
+  /** A searched place. `lookFocus` increments when the map should move there. */
+  lookAt?: OutdoorPoint | null;
+  lookFocus?: number;
+  draw?: {
+    enabled: boolean;
+    onChange: (points: OutdoorPoint[]) => void;
+    onEnd: (points: OutdoorPoint[]) => void;
+  } | null;
 }) {
   const [scheme, choose] = useMapScheme();
-  const camera = useHeldCamera(routes, sketch, here, locationFocus, follow, track);
+  const camera = useHeldCamera(routes, sketch, here, locationFocus, follow, track, lookAt, lookFocus);
   const [maps, setMaps] = useState<Maps | null>(null);
   useEffect(() => {
     setMaps(loadMaps());
@@ -134,6 +149,8 @@ export function FootpathMap({
           onUserMove={onUserMove}
           adjust={adjust}
           expanded={expanded}
+          pencil={pencil}
+          draw={draw}
         />
       )}
     />
@@ -156,6 +173,8 @@ function NativeCanvas({
   onUserMove,
   adjust,
   expanded,
+  pencil,
+  draw,
 }: {
   maps: Maps | null;
   height: number;
@@ -172,8 +191,17 @@ function NativeCanvas({
   onUserMove?: () => void;
   adjust: MapAdjust | null;
   expanded: boolean;
+  pencil: readonly OutdoorPoint[];
+  draw: {
+    enabled: boolean;
+    onChange: (points: OutdoorPoint[]) => void;
+    onEnd: (points: OutdoorPoint[]) => void;
+  } | null;
 }) {
   const camera = useRef<CameraHandle>(null);
+  const size = useRef({ width: 0, height });
+  const drawRef = useRef(draw);
+  drawRef.current = draw;
   const moved = useRef(onUserMove);
   moved.current = onUserMove;
   const scroller = useScreenScroller();
@@ -211,13 +239,20 @@ function NativeCanvas({
     );
   }
   const selected = adjust?.selectedIndex != null ? adjust.vias[adjust.selectedIndex] ?? null : null;
+  const drawing = draw?.enabled === true;
   return (
+    <View
+      style={{ height }}
+      onLayout={(event) => {
+        size.current = { width: event.nativeEvent.layout.width, height: event.nativeEvent.layout.height };
+      }}
+    >
     <maps.Map
       mapStyle={openFreeMapStyle(scheme)}
       attribution
       attributionPosition={{ bottom: 8, right: 8 }}
-      dragPan
-      touchZoom
+      dragPan={!drawing}
+      touchZoom={!drawing}
       style={{ height }}
       onTouchStart={expanded ? undefined : () => holdPage(true)}
       onTouchEnd={expanded ? undefined : () => holdPage(false)}
@@ -231,6 +266,7 @@ function NativeCanvas({
         moved.current?.();
       }}
       onPress={(event: unknown) => {
+        if (drawRef.current?.enabled) return;
         if (!adjust?.enabled) return;
         const point = mapPressPoint(event);
         if (!point) return;
@@ -256,7 +292,7 @@ function NativeCanvas({
         source="start"
         paint={{ 'circle-radius': 6, 'circle-color': green, 'circle-stroke-width': 2, 'circle-stroke-color': '#F3F3EE' }}
       />
-      <maps.GeoJSONSource id="guide" data={sketchLineCollection([])} />
+      <maps.GeoJSONSource id="guide" data={sketchLineCollection(pencil)} />
       <maps.Layer
         id="guide-line"
         type="line"
@@ -285,5 +321,19 @@ function NativeCanvas({
         paint={{ 'circle-radius': 8, 'circle-color': YOU_HERE_FILL, 'circle-stroke-width': 3, 'circle-stroke-color': YOU_HERE_RING }}
       />
     </maps.Map>
+    {drawing ? (
+      <DrawCapture
+        readView={() => ({
+          centre: { latitude: held.current.latitude, longitude: held.current.longitude },
+          zoom: held.current.zoom,
+          width: size.current.width,
+          height: size.current.height || height,
+        })}
+        onChange={(points) => drawRef.current?.onChange(points)}
+        onEnd={(points) => drawRef.current?.onEnd(points)}
+        onFinger={holdPage}
+      />
+    ) : null}
+    </View>
   );
 }

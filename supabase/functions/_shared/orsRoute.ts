@@ -115,6 +115,21 @@ export function orsRequestHeaders(key: string, accept: string): Record<string, s
 
 export const VIA_POINT_CAP = 5;
 
+/** Hosted directions accepts this many coordinates. A sketch is refused above it. */
+export const ORS_WAYPOINT_LIMIT = 50;
+
+/** Walking and cycling weightings that prefer greener, quieter paths. */
+export const PREFER_PATH_WEIGHTINGS = { green: 1, quiet: 1 } as const;
+
+/**
+ * A walk that prefers footpaths uses the hiking profile, which prefers trails.
+ * Run already uses that profile. Cycling stays on the cycling profile.
+ */
+export function routingMode(mode: Mode, preferPaths: boolean): Mode {
+  if (preferPaths && mode === 'walk') return 'run';
+  return mode;
+}
+
 /** Missing means no via-points. More than five, or a bad point, is refused. The message must not echo a coordinate. */
 export function readViaPoints(value: unknown): { latitude: number; longitude: number }[] | null {
   if (value == null) return [];
@@ -128,38 +143,79 @@ export function readViaPoints(value: unknown): { latitude: number; longitude: nu
   return points;
 }
 
+type PlacePoint = { latitude: number; longitude: number };
+
+function routeOptions(
+  roundTrip: { length: number; points: number } | null,
+  preferPaths: boolean,
+): { options?: Record<string, unknown> } {
+  if (!roundTrip && !preferPaths) return {};
+  const options: Record<string, unknown> = {};
+  if (roundTrip) options.round_trip = roundTrip;
+  if (preferPaths) options.profile_params = { weightings: { ...PREFER_PATH_WEIGHTINGS } };
+  return { options };
+}
+
+function coordinateOf(point: PlacePoint): [number, number] {
+  return [round6(point.longitude), round6(point.latitude)];
+}
+
+/** Missing means no sketch. More than the waypoint limit, or a bad point, is refused. */
+export function readSketchPoints(value: unknown): PlacePoint[] | null {
+  if (value == null) return [];
+  if (!Array.isArray(value) || value.length > ORS_WAYPOINT_LIMIT || value.length === 1) return null;
+  const points: PlacePoint[] = [];
+  for (const item of value) {
+    const point = readPlace(item);
+    if (!point) return null;
+    points.push(point);
+  }
+  return points;
+}
+
 export function buildDirectionsBody(input: {
   mode: Mode;
   shape: 'loop' | 'a_to_b';
-  start: { latitude: number; longitude: number };
-  end?: { latitude: number; longitude: number } | null;
+  start: PlacePoint;
+  end?: PlacePoint | null;
   lengthM: number;
-  via?: readonly { latitude: number; longitude: number }[] | null;
+  via?: readonly PlacePoint[] | null;
+  preferPaths?: boolean;
+  sketch?: readonly PlacePoint[] | null;
 }): Record<string, unknown> | null {
-  const start = [round6(input.start.longitude), round6(input.start.latitude)];
-  const vias = (input.via ?? []).slice(0, VIA_POINT_CAP).map((point) => [round6(point.longitude), round6(point.latitude)]);
+  const preferPaths = input.preferPaths === true;
+  const sketch = (input.sketch ?? []).slice(0, ORS_WAYPOINT_LIMIT);
+  if (sketch.length >= 2) {
+    return {
+      coordinates: sketch.map(coordinateOf),
+      elevation: true,
+      instructions: false,
+      ...routeOptions(null, preferPaths),
+    };
+  }
+  const start = coordinateOf(input.start);
+  const vias = (input.via ?? []).slice(0, VIA_POINT_CAP).map(coordinateOf);
   if (vias.length > 0) {
     if (input.shape === 'loop') {
-      return { coordinates: [start, ...vias, start], elevation: true, instructions: false };
+      return { coordinates: [start, ...vias, start], elevation: true, instructions: false, ...routeOptions(null, preferPaths) };
     }
     if (!input.end) return null;
-    const end = [round6(input.end.longitude), round6(input.end.latitude)];
-    return { coordinates: [start, ...vias, end], elevation: true, instructions: false };
+    return { coordinates: [start, ...vias, coordinateOf(input.end)], elevation: true, instructions: false, ...routeOptions(null, preferPaths) };
   }
   if (input.shape === 'loop') {
     return {
       coordinates: [start],
       elevation: true,
       instructions: false,
-      options: { round_trip: { length: input.lengthM, points: 5 } },
+      ...routeOptions({ length: input.lengthM, points: 5 }, preferPaths),
     };
   }
   if (!input.end) return null;
-  const end = [round6(input.end.longitude), round6(input.end.latitude)];
   return {
-    coordinates: [start, end],
+    coordinates: [start, coordinateOf(input.end)],
     elevation: true,
     instructions: false,
+    ...routeOptions(null, preferPaths),
   };
 }
 

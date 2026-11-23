@@ -1,10 +1,11 @@
-import type { OutdoorKind, OutdoorPoint } from './outdoorRoute';
-import { OSM_CONTRIBUTORS, ORS_CREDIT } from './routeConsent';
+import { UserFacingError } from './errors';
+import { pathMetres, type OutdoorKind, type OutdoorPoint } from './outdoorRoute';
+import { OSM_CONTRIBUTORS, ORS_CREDIT, ROUTE_SKETCH_LINE } from './routeConsent';
 
 export { OSM_CONTRIBUTORS, ORS_CREDIT };
 
 export const ROUTE_SERVICE_LINE =
-  'The start point, the destination, and any points you add on the map are sent to our route service (OpenRouteService, built on OpenStreetMap data) to make the route. Nothing is shared with other people.';
+  `The start point, the destination, and any points you add on the map are sent to our route service (OpenRouteService, built on OpenStreetMap data) to make the route. ${ROUTE_SKETCH_LINE} Nothing is shared with other people.`;
 
 export { ROUTE_RETENTION_LINE, ROUTE_SEND_LINE } from './routeConsent';
 
@@ -22,6 +23,19 @@ export const ROUTE_BAD_REQUEST = 'That route request could not be used.';
 export const ROUTE_SIGN_IN = 'Please sign in again.';
 
 export const ROUTE_OFFLINE = 'Check your connection and try again.';
+
+export const SEARCH_SLOW = 'The place search took too long. Try again.';
+
+export const SEARCH_EMPTY = 'No place matched that search.';
+
+export const SEARCH_FAILED = 'The place search did not answer.';
+
+export const ROUTE_SLOW = 'The route took too long. Nothing was saved.';
+
+export const DRAW_TOO_SHORT = 'Draw a longer line.';
+
+/** One client wait for a route or a place search. The edge function stops at 12 seconds. */
+export const ROUTE_CLIENT_TIMEOUT_MS = 15_000;
 
 export const ROUTE_FINDING_OFF = 'Route finding is off.';
 
@@ -59,6 +73,10 @@ export type RoutePlanInput = {
   minutes?: number | null;
   /** Points the route is pulled through, between the start and the destination. At most five. */
   via?: OutdoorPoint[] | null;
+  /** Bias the route toward paths and trails, and away from main roads. */
+  preferPaths?: boolean;
+  /** A pencil sketch. The route follows these points instead of a chosen length. */
+  sketch?: OutdoorPoint[] | null;
 };
 
 export type RoutePlan = {
@@ -388,8 +406,31 @@ function shift(origin: OutdoorPoint, northM: number, eastM: number): OutdoorPoin
   return { latitude: lat, longitude: lng };
 }
 
+function profileFor(input: Pick<RoutePlanInput, 'mode' | 'preferPaths'>): RoutePlan['profile'] {
+  if (input.preferPaths === true && input.mode === 'walk') return 'foot-hiking';
+  return routeProfile(input.mode);
+}
+
 /** A bent sample line around the start. It is not a path from the route service. */
 export function mockRoute(input: RoutePlanInput): RoutePlan | null {
+  const sketch = (input.sketch ?? [])
+    .map((point) => routeCoordinate(point))
+    .filter((point): point is OutdoorPoint => point != null);
+  if (sketch.length >= 2) {
+    const distanceM = Math.max(1, pathMetres(sketch));
+    return {
+      mocked: true,
+      mode: input.mode,
+      shape: input.shape,
+      profile: profileFor(input),
+      distanceM,
+      durationMinutes: Math.max(1, Math.round(distanceM / PACE_M_PER_MIN[input.mode])),
+      ascentM: null,
+      points: sketch.slice(0, 2000),
+      snappedStart: null,
+      snapDistanceM: null,
+    };
+  }
   const length = targetLengthM(input);
   const start = routeCoordinate(input.start);
   if (!length || !start) return null;
@@ -405,7 +446,7 @@ export function mockRoute(input: RoutePlanInput): RoutePlan | null {
       mocked: true,
       mode: input.mode,
       shape: input.shape,
-      profile: routeProfile(input.mode),
+      profile: profileFor(input),
       distanceM: length + vias.length * 250,
       durationMinutes: minutes + vias.length * 4,
       ascentM: vias.length * 12,
@@ -429,7 +470,7 @@ export function mockRoute(input: RoutePlanInput): RoutePlan | null {
     mocked: true,
     mode: input.mode,
     shape: input.shape,
-    profile: routeProfile(input.mode),
+    profile: profileFor(input),
     distanceM: length,
     durationMinutes: minutes,
     ascentM: null,
@@ -592,6 +633,23 @@ export async function retryRouteInvoke<T>(
   if (!routeInvokeShouldRetry(first.error)) return first;
   await sleep(ROUTE_INVOKE_RETRY_MS);
   return send(1);
+}
+
+/** Stops a route or place search that never answers, so the spinner can finish. */
+export function withDeadline<T>(work: Promise<T>, ms: number, message: string): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new UserFacingError(message, 'generic')), ms);
+    work.then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (error) => {
+        clearTimeout(timer);
+        reject(error);
+      },
+    );
+  });
 }
 
 function pointFromPair(value: unknown): OutdoorPoint | null {

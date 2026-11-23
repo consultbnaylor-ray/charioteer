@@ -1,6 +1,7 @@
 import { isoDay } from '@/domain/dates';
-import type { OutdoorPoint } from '@/domain/outdoorRoute';
+import type { RoutePlace } from '@/domain/findRoute';
 import { ROUTE_OFFLINE, type RoutePlan, type RoutePlanInput } from '@/domain/findRoute';
+import { simplifyLine, simplifySketch, type OutdoorPoint } from '@/domain/outdoorRoute';
 
 export const VIA_POINT_CAP = 5;
 export const REDRAW_PAUSE_MS = 500;
@@ -24,6 +25,99 @@ export const ROUTE_REQUEST_LIMIT_LINE =
   'The account limit is 40 a day and 12 in 10 minutes, shared with place search.';
 
 export const ROUTE_REQUEST_DAY_KEY = 'charioteer.route-requests.day';
+
+export const PREFER_PATHS_KEY = 'charioteer.prefer-footpaths';
+
+export const PREFER_PATHS_LABEL = 'Prefer footpaths over roads';
+
+export const PREFER_PATHS_NOTE = 'Paths and trails are preferred. A main road is used when there is no path.';
+
+export const DRAW_ROUTE = 'Draw';
+
+export const EXIT_DRAW = 'Exit draw';
+
+export const CLEAR_DRAW = 'Clear';
+
+export const REDRAW_DRAW = 'Redraw';
+
+export const UNDO_DRAW = 'Undo';
+
+export const DRAW_HINT = 'Drag on the map to sketch a line. Lift your finger to follow paths.';
+
+export const PLACE_SEARCH_PAUSE_MS = 400;
+
+export function parsePreferPaths(value: unknown): boolean {
+  return value === 'on';
+}
+
+type PreferListener = (value: boolean) => void;
+const preferListeners = new Set<PreferListener>();
+
+export function subscribePreferPaths(listener: PreferListener): () => void {
+  preferListeners.add(listener);
+  return () => preferListeners.delete(listener);
+}
+
+export async function readPreferPaths(store: DayStore): Promise<boolean> {
+  return parsePreferPaths(await store.getItem(PREFER_PATHS_KEY));
+}
+
+export async function writePreferPaths(store: DayStore, on: boolean): Promise<void> {
+  await store.setItem(PREFER_PATHS_KEY, on ? 'on' : 'off');
+  preferListeners.forEach((listener) => listener(on));
+}
+
+let chosenPlace: { role: 'start' | 'end'; place: RoutePlace } | null = null;
+
+/** A place picked on the saved-route map, for the planner to use next. */
+export function holdChosenPlace(role: 'start' | 'end', place: RoutePlace): void {
+  chosenPlace = {
+    role,
+    place: { id: place.id, name: place.name, latitude: place.latitude, longitude: place.longitude },
+  };
+}
+
+export function takeChosenPlace(): { role: 'start' | 'end'; place: RoutePlace } | null {
+  const next = chosenPlace;
+  chosenPlace = null;
+  return next;
+}
+
+/**
+ * One lookup after the person pauses. A shorter query is not sent.
+ * A new pause replaces the one that is waiting.
+ */
+export function createPlaceSearch(
+  send: (query: string) => void,
+  pauseMs = PLACE_SEARCH_PAUSE_MS,
+): { type: (query: string) => void; now: () => void; dispose: () => void } {
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  let serial = 0;
+  return {
+    type(query: string) {
+      if (timer) clearTimeout(timer);
+      timer = null;
+      const trimmed = query.trim();
+      if (trimmed.length < 2) return;
+      const ticket = ++serial;
+      timer = setTimeout(() => {
+        timer = null;
+        if (ticket !== serial) return;
+        send(trimmed);
+      }, pauseMs);
+    },
+    now() {
+      if (timer) clearTimeout(timer);
+      timer = null;
+      serial += 1;
+    },
+    dispose() {
+      if (timer) clearTimeout(timer);
+      timer = null;
+      serial += 1;
+    },
+  };
+}
 
 export function viaCountLine(count: number): string {
   const shown = Math.max(0, Math.min(count, VIA_POINT_CAP));
@@ -81,6 +175,12 @@ export function placeSearchBody(query: string): { action: 'search'; query: strin
   return { action: 'search', query };
 }
 
+function capVia(points: readonly OutdoorPoint[]): OutdoorPoint[] {
+  const clean = points.map((point) => ({ latitude: point.latitude, longitude: point.longitude }));
+  if (clean.length <= VIA_POINT_CAP) return clean;
+  return simplifyLine(clean, VIA_POINT_CAP);
+}
+
 export function routePlanBody(input: RoutePlanInput): {
   action: 'route';
   mode: RoutePlanInput['mode'];
@@ -90,6 +190,8 @@ export function routePlanBody(input: RoutePlanInput): {
   distanceM: number | null;
   minutes: number | null;
   via: OutdoorPoint[];
+  preferPaths: boolean;
+  sketch: OutdoorPoint[];
 } {
   return {
     action: 'route',
@@ -99,7 +201,9 @@ export function routePlanBody(input: RoutePlanInput): {
     end: input.end ?? null,
     distanceM: input.distanceM ?? null,
     minutes: input.minutes ?? null,
-    via: (input.via ?? []).slice(0, VIA_POINT_CAP),
+    via: capVia(input.via ?? []),
+    preferPaths: input.preferPaths === true,
+    sketch: simplifySketch(input.sketch ?? []),
   };
 }
 

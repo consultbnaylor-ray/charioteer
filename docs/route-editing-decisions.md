@@ -91,6 +91,8 @@ Approved consent line. It replaces "The start point and the destination are sent
 
 "The start point, the destination, and any points you add on the map are sent to our route service (OpenRouteService, built on OpenStreetMap data) to make the route."
 
+A search sends the words you type, and a sketch sends its points, to the same service.
+
 Approved privacy and DPIA sentence:
 
 "A route sends the start, the destination, any points you add on the map, and the travel type. It does not send your name or account number. The outing path is not sent."

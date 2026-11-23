@@ -23,6 +23,8 @@ type AppleMaps = {
     showsUserLocation?: boolean;
     showsMyLocationButton?: boolean;
     showsCompass?: boolean;
+    scrollEnabled?: boolean;
+    zoomEnabled?: boolean;
     rotateEnabled?: boolean;
     onMapReady?: () => void;
     children?: ReactNode;
@@ -60,10 +62,13 @@ export function RouteMap({
   points,
   active,
   onProblem,
+  drawing = false,
 }: {
   points: readonly RoutePoint[];
   active: readonly RoutePoint[];
   onProblem?: (line: string) => void;
+  /** While a route is being sketched, the map stays still. */
+  drawing?: boolean;
 }) {
   const theme = useAppTheme();
   const [maps, setMaps] = useState<AppleMaps | null>(null);
@@ -123,6 +128,8 @@ export function RouteMap({
           showsUserLocation={false}
           showsMyLocationButton={false}
           showsCompass
+          scrollEnabled={!drawing}
+          zoomEnabled={!drawing}
           rotateEnabled={false}
           onMapReady={() => setMapReady(true)}
         >
