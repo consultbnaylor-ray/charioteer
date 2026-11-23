@@ -3,11 +3,12 @@ import { Modal, Pressable, View, useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Circle, Path } from 'react-native-svg';
 
-import { ORS_CREDIT, OSM_CONTRIBUTORS } from '@/domain/routeConsent';
+import { OSM_CONTRIBUTORS } from '@/domain/routeConsent';
+import { DRAW_FINGER_HINT } from '@/domain/routeAdjust';
 import { MAP_CREDIT, type MapScheme } from '@/domain/outdoorRoute';
 import { ShowMyLocationButton } from '@/ui/ShowMyLocation';
 import { radius, useAppTheme } from '@/ui/theme';
-import { T } from '@/ui/ui';
+import { Pencil, T } from '@/ui/ui';
 
 export const FULL_SCREEN_MAP = 'Full screen map';
 export const CLOSE_FULL_SCREEN_MAP = 'Close full screen map';
@@ -24,6 +25,7 @@ function CornerButton({
   left,
   bottom,
   right,
+  disabled = false,
   children,
 }: {
   label: string;
@@ -32,12 +34,15 @@ function CornerButton({
   left?: number;
   bottom?: number;
   right?: number;
+  disabled?: boolean;
   children: ReactNode;
 }) {
   return (
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={label}
+      accessibilityState={{ disabled }}
+      disabled={disabled}
       onPress={onPress}
       style={{
         position: 'absolute',
@@ -53,7 +58,8 @@ function CornerButton({
         backgroundColor: FILL,
         borderWidth: 1,
         borderColor: INK,
-        zIndex: 3,
+        opacity: disabled ? 0.4 : 1,
+        zIndex: 4,
       }}
     >
       {children}
@@ -91,6 +97,47 @@ function MoonIcon() {
     <Svg width={22} height={22} viewBox="0 0 24 24" fill="none" accessibilityElementsHidden>
       <Path d="M15.5 3.5a7.8 7.8 0 1 0 5 12.2A8.2 8.2 0 0 1 15.5 3.5Z" stroke={INK} strokeWidth={1.8} strokeLinejoin="round" />
     </Svg>
+  );
+}
+
+function UndoIcon() {
+  return (
+    <Svg width={22} height={22} viewBox="0 0 24 24" fill="none" accessibilityElementsHidden>
+      <Path d="M8 8H4v4M4.6 8.4A8 8 0 1 1 6 17.5" stroke={INK} strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" />
+    </Svg>
+  );
+}
+
+function ClearIcon() {
+  return (
+    <Svg width={22} height={22} viewBox="0 0 24 24" fill="none" accessibilityElementsHidden>
+      <Path d="M8 8l8 8M16 8l-8 8" stroke={INK} strokeWidth={1.8} strokeLinecap="round" />
+    </Svg>
+  );
+}
+
+function MapCredit({ scheme }: { scheme: MapScheme }) {
+  const onDark = scheme === 'dark';
+  return (
+    <View pointerEvents={'none'} style={{ position: 'absolute', left: 56, right: 8, bottom: 8, zIndex: 4 }}>
+      <T
+        variant="muted"
+        maxFontSizeMultiplier={1.4}
+        style={{
+          alignSelf: 'flex-start',
+          fontSize: 11,
+          lineHeight: 14,
+          color: onDark ? '#F3F3EE' : '#3A3A36',
+          backgroundColor: onDark ? 'rgba(20,20,20,0.86)' : 'rgba(255,255,255,0.92)',
+          paddingHorizontal: 6,
+          paddingVertical: 3,
+          borderRadius: 6,
+          overflow: 'hidden',
+        }}
+      >
+        {`${MAP_CREDIT} ${OSM_CONTRIBUTORS}`}
+      </T>
+    </View>
   );
 }
 
@@ -134,6 +181,12 @@ export function MapShell({
   onToggleStyle,
   problem,
   mapLabel,
+  drawing = false,
+  onToggleDraw,
+  onUndoDraw,
+  onClearDraw,
+  canUndoDraw = false,
+  canClearDraw = false,
   children,
 }: {
   here: boolean;
@@ -148,6 +201,12 @@ export function MapShell({
   onToggleStyle: () => void;
   problem?: string | null;
   mapLabel?: string;
+  drawing?: boolean;
+  onToggleDraw?: () => void;
+  onUndoDraw?: () => void;
+  onClearDraw?: () => void;
+  canUndoDraw?: boolean;
+  canClearDraw?: boolean;
   children: ReactNode;
 }) {
   const theme = useAppTheme();
@@ -180,15 +239,44 @@ export function MapShell({
         </CornerButton>
         {onRecentre ? <RecentreButton onPress={onRecentre} /> : null}
         {onRecentre || !onShowMyLocation ? null : <ShowMyLocationButton pending={locating} onPress={onShowMyLocation} />}
+        {onToggleDraw ? (
+          <CornerButton label={drawing ? 'Done' : 'Draw'} top={8} right={60} onPress={onToggleDraw}>
+            <Pencil color={drawing ? '#047857' : INK} />
+          </CornerButton>
+        ) : null}
+        {onToggleDraw && (drawing || canUndoDraw || canClearDraw) ? (
+          <>
+            <CornerButton label="Undo" top={60} right={8} disabled={!canUndoDraw} onPress={() => { if (canUndoDraw) onUndoDraw?.(); }}>
+              <UndoIcon />
+            </CornerButton>
+            <CornerButton label="Clear" top={60} right={60} disabled={!canClearDraw} onPress={() => { if (canClearDraw) onClearDraw?.(); }}>
+              <ClearIcon />
+            </CornerButton>
+          </>
+        ) : null}
+        {drawing ? (
+          <View pointerEvents={'none'} style={{ position: 'absolute', top: 58, left: 8, right: 112, zIndex: 4 }}>
+            <T
+              maxFontSizeMultiplier={1.5}
+              style={{
+                alignSelf: 'flex-start',
+                fontSize: 14,
+                lineHeight: 18,
+                color: INK,
+                backgroundColor: 'rgba(255,255,255,0.94)',
+                paddingHorizontal: 8,
+                paddingVertical: 4,
+                borderRadius: 8,
+                overflow: 'hidden',
+              }}
+            >
+              {DRAW_FINGER_HINT}
+            </T>
+          </View>
+        ) : null}
+        <MapCredit scheme={scheme} />
       </View>
       {problem ? <T variant="muted">{problem}</T> : null}
-      {expanded ? null : (
-        <>
-          <T variant="muted">{MAP_CREDIT}</T>
-          <T variant="muted">{ORS_CREDIT}</T>
-          <T variant="muted">{OSM_CONTRIBUTORS}</T>
-        </>
-      )}
     </View>
   );
 }
@@ -206,6 +294,12 @@ export function MapFrame({
   renderMap,
   bar,
   mapLabel,
+  drawing,
+  onToggleDraw,
+  onUndoDraw,
+  onClearDraw,
+  canUndoDraw,
+  canClearDraw,
 }: {
   here: boolean;
   height?: number;
@@ -221,6 +315,12 @@ export function MapFrame({
   mapLabel?: string;
   /** Figures and route buttons, shown under the map only while it is full screen. */
   bar?: ReactNode;
+  drawing?: boolean;
+  onToggleDraw?: () => void;
+  onUndoDraw?: () => void;
+  onClearDraw?: () => void;
+  canUndoDraw?: boolean;
+  canClearDraw?: boolean;
 }) {
   const insets = useSafeAreaInsets();
   const window = useWindowDimensions();
@@ -245,6 +345,12 @@ export function MapFrame({
       onToggleStyle={onToggleStyle}
       problem={expanded ? null : problem}
       mapLabel={mapLabel}
+      drawing={drawing}
+      onToggleDraw={onToggleDraw}
+      onUndoDraw={onUndoDraw}
+      onClearDraw={onClearDraw}
+      canUndoDraw={canUndoDraw}
+      canClearDraw={canClearDraw}
     >
       {renderMap({ height: viewHeight, expanded })}
     </MapShell>

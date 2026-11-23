@@ -47,14 +47,17 @@ describe('suggested place tap', () => {
     const maker = readFileSync('src/ui/RouteMaker.tsx', 'utf8');
     const results = maker.slice(maker.indexOf('{results.map'), maker.indexOf("label={craving ? 'Make this walk'"));
     expect(results).toContain('selectOnPressIn');
-    expect(results).toContain('pickResult(place)');
-    expect(results).toContain("selected={(picking === 'end' ? endName : startName) === place.name}");
+    expect(results).toContain('choosePlace(place)');
+    expect(results).toContain('selected={pin?.id === place.id}');
     expect(results).not.toContain('selected={false}');
     expect(maker.match(/selectOnPressIn/g)).toEqual(['selectOnPressIn']);
 
+    const picked = maker.slice(maker.indexOf('function choosePlace'), maker.indexOf('function usePin'));
+    expect(picked.indexOf('setPin(place)')).toBeLessThan(picked.indexOf('setLookAt(place)'));
+    expect(picked).toContain('dismissKeyboard()');
+
     const search = maker.slice(maker.indexOf('async function search'), maker.indexOf('async function make'));
-    expect(search.indexOf('setResults(await repo.searchRoutePlaces(query))')).toBeGreaterThan(-1);
-    expect(search.indexOf('setResults(await repo.searchRoutePlaces(query))')).toBeLessThan(search.indexOf('dismissKeyboard()'));
+    expect(search).toContain('setResults(await repo.searchRoutePlaces(query))');
     expect(search).toContain("shownError(err, 'The place search did not answer.')");
 
     const ui = readFileSync('src/ui/ui.tsx', 'utf8');

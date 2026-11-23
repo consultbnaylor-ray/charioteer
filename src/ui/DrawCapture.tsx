@@ -30,7 +30,7 @@ export function DrawCapture({
     const frame = readView();
     const point = viewToPoint({ ...frame, x, y });
     if (!point) return;
-    const next = appendSketchPoint(points.current, point);
+    const next = appendSketchPoint(points.current, point, 2);
     if (next.length === points.current.length) return;
     points.current = next;
     onChange(next);
@@ -48,7 +48,9 @@ export function DrawCapture({
       accessibilityLabel="Drawing a route"
       style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, zIndex: 2 }}
       onStartShouldSetResponder={() => true}
+      onStartShouldSetResponderCapture={() => true}
       onMoveShouldSetResponder={() => true}
+      onMoveShouldSetResponderCapture={() => true}
       onResponderTerminationRequest={() => false}
       onResponderGrant={(event) => {
         points.current = [];

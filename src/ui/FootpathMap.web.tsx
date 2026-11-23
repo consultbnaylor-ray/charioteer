@@ -8,6 +8,8 @@ import {
   YOU_HERE_RING,
   mapLineColour,
   openFreeMapStyle,
+  pencilColour,
+  pinCollection,
   savedLineCollection,
   sketchLineCollection,
   startCollection,
@@ -18,9 +20,10 @@ import {
   type OutdoorPoint,
   type OutdoorRoute,
 } from '@/domain/outdoorRoute';
-import { useHeldCamera, type HeldCamera } from '@/ui/mapCamera';
+import { holdMapGestures, useHeldCamera, type HeldCamera } from '@/ui/mapCamera';
 import { MapFrame } from '@/ui/MapChrome';
 import { useMapScheme } from '@/ui/mapStyle';
+import { useScreenScroller } from '@/ui/ui';
 
 type PaintInput = {
   scheme: MapScheme;
@@ -30,6 +33,7 @@ type PaintInput = {
   startJson: string;
   youJson: string;
   guideJson: string;
+  pinJson: string;
   viaJson: string;
   selectedJson: string;
 };
@@ -76,6 +80,12 @@ export function FootpathMap({
   lookAt = null,
   lookFocus = 0,
   draw = null,
+  pin = null,
+  onToggleDraw,
+  onUndoDraw,
+  onClearDraw,
+  canUndoDraw = false,
+  canClearDraw = false,
 }: {
   routes: readonly OutdoorRoute[];
   sketch: readonly OutdoorPoint[];
@@ -112,14 +122,30 @@ export function FootpathMap({
     onChange: (points: OutdoorPoint[]) => void;
     onEnd: (points: OutdoorPoint[]) => void;
   } | null;
+  pin?: OutdoorPoint | null;
+  onToggleDraw?: () => void;
+  onUndoDraw?: () => void;
+  onClearDraw?: () => void;
+  canUndoDraw?: boolean;
+  canClearDraw?: boolean;
 }) {
   const [scheme, choose] = useMapScheme();
+  const scroller = useScreenScroller();
+  const drawingOn = draw?.enabled === true;
+  useEffect(() => {
+    if (!drawingOn) return undefined;
+    scroller?.current?.setScrollEnabled?.(false);
+    return () => {
+      scroller?.current?.setScrollEnabled?.(true);
+    };
+  }, [drawingOn, scroller]);
   const camera = useHeldCamera(routes, sketch, here, locationFocus, follow, track, lookAt, lookFocus);
   const [problem, setProblem] = useState<string | null>(null);
   const frame = useRef({ width: 0, height: 0 });
   const savedJson = JSON.stringify(savedLineCollection(routes));
   const sketchJson = JSON.stringify(sketchLineCollection(sketch));
   const guideJson = JSON.stringify(sketchLineCollection(pencil));
+  const pinJson = JSON.stringify(pinCollection(pin));
   const viaJson = JSON.stringify(viaPointCollection(adjust?.vias ?? []));
   const selectedVia = adjust?.selectedIndex != null ? adjust.vias[adjust.selectedIndex] ?? null : null;
   const selectedJson = JSON.stringify(viaPointCollection(selectedVia ? [selectedVia] : []));
@@ -140,6 +166,12 @@ export function FootpathMap({
       problem={problem}
       bar={bar}
       mapLabel={mapLabel}
+      drawing={drawingOn}
+      onToggleDraw={onToggleDraw}
+      onUndoDraw={onUndoDraw}
+      onClearDraw={onClearDraw}
+      canUndoDraw={canUndoDraw}
+      canClearDraw={canClearDraw}
       renderMap={({ height: viewHeight }) => (
         <View
           style={{ height: viewHeight }}
@@ -157,10 +189,11 @@ export function FootpathMap({
             savedJson={savedJson}
             sketchJson={sketchJson}
             guideJson={guideJson}
+            pinJson={pinJson}
             viaJson={viaJson}
             selectedJson={selectedJson}
             adjust={adjust}
-            drawing={draw?.enabled === true}
+            drawing={drawingOn}
             trackJson={trackJson}
             startJson={startJson}
             youJson={youJson}
@@ -210,7 +243,7 @@ function paintMapLayers(map: LibreMap, input: PaintInput) {
         id: 'sketch-line',
         type: 'line',
         source: 'sketch',
-        paint: { 'line-color': green, 'line-width': 3, 'line-dasharray': [2, 1.4] },
+        paint: { 'line-color': green, 'line-width': 6 },
       },
     },
     {
@@ -220,7 +253,7 @@ function paintMapLayers(map: LibreMap, input: PaintInput) {
         id: 'guide-line',
         type: 'line',
         source: 'guide',
-        paint: { 'line-color': '#D1FAE5', 'line-width': 3, 'line-dasharray': [1.2, 1.2] },
+        paint: { 'line-color': pencilColour(input.scheme), 'line-width': 7 },
       },
     },
     {
@@ -259,6 +292,16 @@ function paintMapLayers(map: LibreMap, input: PaintInput) {
       },
     },
     {
+      id: 'pin',
+      data: input.pinJson,
+      layer: {
+        id: 'pin-dot',
+        type: 'circle',
+        source: 'pin',
+        paint: { 'circle-radius': 8, 'circle-color': pencilColour(input.scheme), 'circle-stroke-width': 3, 'circle-stroke-color': '#F3F3EE' },
+      },
+    },
+    {
       id: 'you',
       data: input.youJson,
       layer: {
@@ -293,6 +336,7 @@ function WebCanvas({
   savedJson,
   sketchJson,
   guideJson,
+  pinJson,
   viaJson,
   selectedJson,
   adjust,
@@ -312,6 +356,7 @@ function WebCanvas({
   savedJson: string;
   sketchJson: string;
   guideJson: string;
+  pinJson: string;
   viaJson: string;
   selectedJson: string;
   adjust: {
@@ -332,8 +377,8 @@ function WebCanvas({
   const [ready, setReady] = useState(0);
   const applied = useRef<string | null>(null);
   const styleListener = useRef<(() => void) | null>(null);
-  const paint = useRef<PaintInput>({ scheme, savedJson, sketchJson, trackJson, startJson, youJson, guideJson, viaJson, selectedJson });
-  paint.current = { scheme, savedJson, sketchJson, trackJson, startJson, youJson, guideJson, viaJson, selectedJson };
+  const paint = useRef<PaintInput>({ scheme, savedJson, sketchJson, trackJson, startJson, youJson, guideJson, pinJson, viaJson, selectedJson });
+  paint.current = { scheme, savedJson, sketchJson, trackJson, startJson, youJson, guideJson, pinJson, viaJson, selectedJson };
   const adjustRef = useRef(adjust);
   adjustRef.current = adjust;
   const drawingRef = useRef(drawing);
@@ -376,7 +421,7 @@ function WebCanvas({
           style: url,
           center: [start.longitude, start.latitude],
           zoom: start.zoom,
-          attributionControl: { compact: false },
+          attributionControl: false,
         });
         map = next as unknown as LibreMap;
         mapRef.current = map;
@@ -440,7 +485,11 @@ function WebCanvas({
       return;
     }
     paintMap(map, paint.current);
-  }, [scheme, savedJson, sketchJson, guideJson, viaJson, selectedJson, trackJson, startJson, youJson, ready, held]);
+  }, [scheme, savedJson, sketchJson, guideJson, pinJson, viaJson, selectedJson, trackJson, startJson, youJson, ready, held]);
+
+  useEffect(() => {
+    holdMapGestures(mapRef.current, drawing);
+  }, [drawing, ready]);
 
   useEffect(() => {
     const map = mapRef.current as (LibreMap & {

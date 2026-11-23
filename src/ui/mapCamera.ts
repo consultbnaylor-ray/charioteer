@@ -121,3 +121,22 @@ export function useHeldCamera(
   }, [pinTick]);
   return { held, frameTick, restoreTick, remember, restore };
 }
+
+type MapGestures = {
+  dragPan?: { enable: () => void; disable: () => void };
+  scrollZoom?: { enable: () => void; disable: () => void };
+  touchZoomRotate?: { enable: () => void; disable: () => void };
+  doubleClickZoom?: { enable: () => void; disable: () => void };
+  boxZoom?: { enable: () => void; disable: () => void };
+};
+
+/** Drawing needs the finger for the line. Pan and zoom wait until the pencil is off. */
+export function holdMapGestures(map: MapGestures | null, drawing: boolean): void {
+  if (!map) return;
+  const method = drawing ? 'disable' : 'enable';
+  map.dragPan?.[method]();
+  map.scrollZoom?.[method]();
+  map.touchZoomRotate?.[method]();
+  map.doubleClickZoom?.[method]();
+  map.boxZoom?.[method]();
+}
