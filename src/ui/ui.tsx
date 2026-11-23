@@ -25,6 +25,7 @@ import { HELMET_ASPECT, HELMET_D, HELMET_VIEWBOX } from '@/ui/helmet';
 import { DismissKeyboard, dismissKeyboard, dismissKeyboardOnAction, inputScrollProps, KeyboardDoneBar, KeyboardForm, keyboardAccessoryId, useKeyboardField, useKeyboardOffset } from '@/ui/keyboard';
 import { topSafeInset } from '@/ui/safeArea';
 import { FaintGrid, HudCorners } from '@/ui/gridChrome';
+import { statsToneColors } from '@/ui/statsPalette';
 import { radius, stroke, useAppTheme, type Scheme } from '@/ui/theme';
 
 type Variant = 'hero' | 'display' | 'title' | 'body' | 'muted' | 'label';
@@ -424,7 +425,7 @@ export function Button({
 }: {
   label: string;
   onPress: () => void;
-  tone?: 'primary' | 'quiet' | 'sos';
+  tone?: 'primary' | 'quiet' | 'sos' | 'success';
   disabled?: boolean;
   pending?: boolean;
   /** Shown beside the spinner while the press is in flight. */
@@ -436,13 +437,17 @@ export function Button({
   const theme = useAppTheme();
   const inactive = Boolean(disabled || pending);
   const reason = disabled && !pending ? disabledReason?.trim() : '';
+  const good = statsToneColors(theme.scheme).good;
   // Primary is a solid fill: light with dark text in the dark theme, dark with light text in the light theme.
   // Quiet is an outline on the card, so a secondary action is not mistaken for a switched-off control.
+  // Success stays full colour when it is holding a saved state, so it does not look switched off.
   const tones = {
     primary: { bg: theme.colors.ink, fg: theme.colors.bg, border: 'transparent' },
     quiet: { bg: 'transparent', fg: theme.colors.ink, border: theme.colors.ink },
     sos: { bg: theme.colors.dangerFill, fg: theme.colors.dangerInk, border: 'transparent' },
+    success: { bg: good.bg, fg: good.ink, border: 'transparent' },
   }[tone];
+  const lit = tone === 'success' && Boolean(disabled) && !pending;
   const textStyle = [styles.buttonText, { color: tones.fg, fontFamily: theme.font.bodyStrong, fontSize: 16 * theme.scale }];
   return (
     <View style={{ gap: 6 }}>
@@ -462,7 +467,7 @@ export function Button({
             backgroundColor: tones.bg,
             borderColor: tones.border,
             borderWidth: tone === 'quiet' ? stroke.control : 0,
-            opacity: inactive ? 0.45 : pressed ? 0.86 : 1,
+            opacity: lit ? 1 : inactive ? 0.45 : pressed ? 0.86 : 1,
           },
         ]}
       >

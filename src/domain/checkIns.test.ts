@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
-import { CHECK_IN_NOT_SAVED, checkInSaveError, convertStoredMoods, formatMoodAverage, gratefulForLine, moodOnTen, planCheckInGratitude, planCheckInGratitudeSync, recentCheckInDays, weeklyMoodAverage } from './checkIns';
+import { CHECK_IN_NOT_SAVED, CHECK_IN_RETRY, CHECK_IN_SAVE, CHECK_IN_SAVE_CHANGES, CHECK_IN_SAVED_BANNER, CHECK_IN_SAVED_FLASH, CHECK_IN_SAVED_SPOKEN, CHECK_IN_SAVED_TODAY, checkInSaveError, checkInSaveView, convertStoredMoods, formatMoodAverage, gratefulForLine, moodOnTen, planCheckInGratitude, planCheckInGratitudeSync, recentCheckInDays, weeklyMoodAverage } from './checkIns';
 import { OFFLINE_MESSAGE, UserFacingError } from './errors';
 import { moodStreakCount } from './profileSharing';
 
@@ -132,7 +132,7 @@ describe('check-in gratitude', () => {
   });
 
   it('keeps the note and the draft id when the save cannot reach the server', () => {
-    expect(CHECK_IN_NOT_SAVED).toBe('Not saved yet. Your note is still here, tap Save check-in to try again.');
+    expect(CHECK_IN_NOT_SAVED).toBe('Not saved yet. Your note is still here. Tap Try again.');
     expect(checkInSaveError(new Error('The network connection was lost'))).toBe(CHECK_IN_NOT_SAVED);
     expect(checkInSaveError(new UserFacingError(OFFLINE_MESSAGE, 'offline'))).toBe(CHECK_IN_NOT_SAVED);
     expect(checkInSaveError(new UserFacingError('Keep the note shorter.', 'generic'))).toBe('Keep the note shorter.');
@@ -150,9 +150,56 @@ describe('check-in gratitude', () => {
     expect(failure).not.toContain('setNote');
     expect(failure).not.toContain('setGrateful');
     expect(failure).not.toContain('setDirty');
-    expect(screen).toContain('label="Save check-in"');
+    expect(screen).toContain('checkInSaveView');
+    expect(screen).toContain('CHECK_IN_SAVED_BANNER');
+    expect(screen).toContain('pendingLabel="Saving..."');
+    expect(screen).toContain('playSavedHaptic');
+    expect(screen).not.toContain('Change the check-in to save.');
+    expect(screen).not.toContain('disabledReason');
+    expect(screen).not.toContain("setSavedNote('Saved')");
     expect(screen).toContain('value={note}');
     expect(screen).toContain('const draftId = useRef(randomId())');
+  });
+});
+
+describe('check-in save control', () => {
+  it('names each state, and a saved day is not a greyed-out save', () => {
+    expect(checkInSaveView({ dirty: true, pending: false, failed: false, savedToday: false, flashed: false })).toEqual({
+      label: CHECK_IN_SAVE,
+      success: false,
+      hold: false,
+    });
+    expect(checkInSaveView({ dirty: true, pending: false, failed: false, savedToday: true, flashed: false })).toEqual({
+      label: CHECK_IN_SAVE_CHANGES,
+      success: false,
+      hold: false,
+    });
+    expect(checkInSaveView({ dirty: false, pending: false, failed: false, savedToday: true, flashed: true })).toEqual({
+      label: CHECK_IN_SAVED_FLASH,
+      success: true,
+      hold: true,
+      spoken: CHECK_IN_SAVED_SPOKEN,
+    });
+    expect(checkInSaveView({ dirty: false, pending: false, failed: false, savedToday: true, flashed: false })).toEqual({
+      label: CHECK_IN_SAVED_TODAY,
+      success: true,
+      hold: true,
+    });
+    expect(checkInSaveView({ dirty: true, pending: false, failed: true, savedToday: true, flashed: false })).toEqual({
+      label: CHECK_IN_RETRY,
+      success: false,
+      hold: false,
+    });
+    expect(CHECK_IN_SAVED_BANNER).toBe('Check-in saved for today');
+    expect(CHECK_IN_SAVED_FLASH).toBe('Saved ✓');
+    expect(CHECK_IN_SAVED_TODAY).toBe('Saved today');
+    const screen = readFileSync('src/app/(main)/check-in.tsx', 'utf8');
+    expect(screen).toContain('setFlashed(true)');
+    expect(screen).toContain('setLoggedNow');
+    expect(screen).toContain('banner={flashed ? <SavedBanner /> : null}');
+    const failure = screen.slice(screen.indexOf('.catch'), screen.indexOf('.finally'));
+    expect(failure).toContain('setFailed(true)');
+    expect(failure).not.toContain('setDirty');
   });
 });
 
