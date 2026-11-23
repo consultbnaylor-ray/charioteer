@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { gridAccents, type GridRole } from './statsPalette';
+import { chartAccent, gridAccents, type GridRole } from './statsPalette';
 
 function channel(hex: string, index: number): number {
   const value = Number.parseInt(hex.slice(1 + index * 2, 3 + index * 2), 16) / 255;
@@ -33,6 +33,18 @@ describe('Grid Runner accents', () => {
     });
     expect(gridAccents('light').sobriety).toBe('#047857');
     expect(gridAccents('light').food).toBe('#C2410C');
+  });
+
+  it('gives each movement chart its own grid colour, shared by the line and the bars', () => {
+    const dark = gridAccents('dark');
+    expect(chartAccent('Steps', 'dark')).toBe(dark.activity);
+    expect(chartAccent('Distance', 'dark')).toBe(dark.sobriety);
+    expect(chartAccent('Resting heart rate', 'dark')).toBe(dark.heart);
+    expect(chartAccent('Vigorous minutes', 'dark')).toBe(dark.warning);
+    expect(chartAccent('Active calories', 'dark')).toBe(dark.food);
+    expect(chartAccent('Heart rate variability', 'dark')).toBe(dark.mind);
+    expect(chartAccent('Steps', 'dark')).not.toBe(chartAccent('Distance', 'dark'));
+    expect(chartAccent('Not a chart', 'dark')).toBeNull();
   });
 
   it('clears WCAG AA for small text on the screen background', () => {

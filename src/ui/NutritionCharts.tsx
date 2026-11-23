@@ -28,7 +28,7 @@ import { CompareBars, ProgressRing } from '@/ui/DistanceCharts';
 import { ProcessedFoodList } from '@/ui/ProcessedFoodList';
 import { ReadingChart } from '@/ui/ReadingChart';
 import { ScrollTarget } from '@/ui/ScrollTarget';
-import { statsToneColors } from '@/ui/statsPalette';
+import { chartAccent, statsToneColors } from '@/ui/statsPalette';
 import { StatPeriodToggle } from '@/ui/StatPeriodToggle';
 import { useAppTheme } from '@/ui/theme';
 import { Card, T } from '@/ui/ui';
@@ -251,6 +251,7 @@ export function WeightTrendChart({
   points: readonly { day: string; kg: number }[];
   goal: NutritionGoal | null;
 }) {
+  const theme = useAppTheme();
   const [period] = useStatPeriod();
   const today = londonToday();
   const window = rollingWindow(today, period);
@@ -267,6 +268,7 @@ export function WeightTrendChart({
         unit="kg"
         aggregate="mean"
         bucket={chartBucketForPeriod(period)}
+        accent={chartAccent('Weight', theme.scheme) ?? undefined}
         accessibilityLabel="Weight chart"
       />
       <T variant="muted">{caption}</T>
@@ -359,6 +361,7 @@ function LoggedSeries({
   target: number | null;
   unit: string;
 }) {
+  const theme = useAppTheme();
   const window = rollingWindow(today, period);
   const points = loggedNutritionChart(days, pick);
   return (
@@ -371,6 +374,7 @@ function LoggedSeries({
         unit={unit}
         aggregate="mean"
         bucket={chartBucketForPeriod(period)}
+        accent={chartAccent(title, theme.scheme) ?? undefined}
         accessibilityLabel={`${title} chart`}
       />
       {target != null && target > 0 ? (

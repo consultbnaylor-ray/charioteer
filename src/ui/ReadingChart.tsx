@@ -1,4 +1,4 @@
-import { useId, useState } from 'react';
+import { useId, useState, type ReactNode } from 'react';
 import { View } from 'react-native';
 import Svg, { Circle, Defs, Line, LinearGradient, Path, Stop, Text as SvgText } from 'react-native-svg';
 
@@ -18,9 +18,20 @@ import {
   type ChartBucket,
   type ChartPoint,
 } from '@/domain/readingChart';
-import { MoreInfo } from '@/ui/MoreInfo';
+import { DATA_MEANING_TITLE, MoreInfo } from '@/ui/MoreInfo';
 import { useAppTheme } from '@/ui/theme';
 import { T } from '@/ui/ui';
+
+/** The grain line and the direction line. A card can place this inside its own toggle. */
+export function ChartMeaningCopy({ bucket, aggregate }: { bucket: ChartBucket; aggregate: ChartAggregate }) {
+  const caption = chartBucketCaption(bucket, aggregate);
+  return (
+    <>
+      {caption ? <T variant="muted">{caption}</T> : null}
+      <T variant="muted">{CHART_DIRECTION_HINT}</T>
+    </>
+  );
+}
 
 /** Plot height stays put when text grows. Labels use the text scale. */
 const PLOT_H = 200;
@@ -42,6 +53,8 @@ export function ReadingChart({
   title,
   onSelectDay,
   accent,
+  meaning = 'chart',
+  meaningTitle,
 }: {
   points: readonly ChartPoint[];
   start: string;
@@ -58,6 +71,14 @@ export function ReadingChart({
   onSelectDay?: (day: string) => void;
   /** Stroke colour for this metric. Omitted charts stay on the ink. */
   accent?: string;
+  /**
+   * `chart` keeps the direction note in this chart.
+   * `none` leaves that note to the card, so the card has one toggle.
+   * A node is extra explanation, shown with the direction note.
+   */
+  meaning?: 'chart' | 'none' | ReactNode;
+  /** Toggle name when this chart draws one. A node defaults to What this Data means. */
+  meaningTitle?: string;
 }) {
   const theme = useAppTheme();
   const rawId = useId();
@@ -66,7 +87,7 @@ export function ReadingChart({
   const [chosen, setChosen] = useState<string | null>(null);
   const windowStart = start <= end ? start : end;
   const windowEnd = start <= end ? end : start;
-  const grain = bucket ?? bucketForSpan(windowStart, windowEnd);
+  const grain = bucket ?? chartWindowBucket(windowStart, windowEnd);
   const plot = chartPlot({ points, start: windowStart, end: windowEnd, bucket: grain, aggregate });
   const shown = plot.points;
   const axisStart = plot.start;
@@ -126,10 +147,16 @@ export function ReadingChart({
     <View accessibilityLabel={spoken} style={{ gap: 6, alignSelf: 'stretch' }}>
       {title ? <T variant="label">{title}</T> : null}
       <T>{summary}</T>
-      <MoreInfo about={accessibilityLabel} title="What this means">
-        {grainCaption ? <T variant="muted">{grainCaption}</T> : null}
-        <T variant="muted">{CHART_DIRECTION_HINT}</T>
-      </MoreInfo>
+      {meaning === 'none' ? null : (
+        <MoreInfo
+          about={accessibilityLabel}
+          title={meaningTitle ?? (meaning === 'chart' ? 'What this means' : DATA_MEANING_TITLE)}
+        >
+          {meaning === 'chart' ? null : meaning}
+          {grainCaption ? <T variant="muted">{grainCaption}</T> : null}
+          <T variant="muted">{CHART_DIRECTION_HINT}</T>
+        </MoreInfo>
+      )}
       {yName ? (
         <T style={{ fontSize: 11 * label, lineHeight: 14 * label, color: theme.colors.muted }}>{yName}</T>
       ) : null}
@@ -238,7 +265,7 @@ export function ReadingChart({
                   x={xFor(shown[shown.length - 1].day)}
                   y={Math.max(12, yFor(shown[shown.length - 1].value) - 8)}
                   textAnchor="middle"
-                  fill={accent ?? theme.colors.ink}
+                  fill={theme.colors.ink}
                   fontSize={11}
                   fontFamily={theme.font.bodyStrong}
                 >
@@ -346,7 +373,7 @@ function AxisLabels({
   );
 }
 
-function bucketForSpan(start: string, end: string): ChartBucket {
+export function chartWindowBucket(start: string, end: string): ChartBucket {
   const span = daySpan(start, end);
   if (span <= 90) return 'day';
   if (span <= 200) return 'week';

@@ -6,6 +6,9 @@ import { statsToneColors } from '@/ui/statsPalette';
 import { radius, stroke, useAppTheme } from '@/ui/theme';
 import { T } from '@/ui/ui';
 
+/** One name for the explanation on a stat card or a detail sheet. */
+export const DATA_MEANING_TITLE = 'What this Data means';
+
 /**
  * The shared More info control.
  * Outlined pill, bright green ink, 44pt target. It expands in place.
@@ -110,5 +113,14 @@ export function MoreInfo({
       <MoreInfoButton label={label} expanded={expanded} accessibilityLabel={spoken} onPress={toggle} />
       {expanded ? <View style={{ gap: 8, paddingBottom: 4 }}>{children}</View> : null}
     </View>
+  );
+}
+
+/** Collapsed explanation for a stat card or detail sheet. The title stays put when open. */
+export function DataMeaning({ about, children }: { about: string; children: ReactNode }) {
+  return (
+    <MoreInfo about={about} title={DATA_MEANING_TITLE}>
+      {children}
+    </MoreInfo>
   );
 }

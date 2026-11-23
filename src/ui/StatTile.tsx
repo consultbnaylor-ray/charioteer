@@ -7,8 +7,8 @@ import type { DistanceChart } from '@/domain/distance';
 import { METRIC_CAVEAT } from '@/domain/metricRegistry';
 import type { StatTileModel } from '@/domain/statsOverview';
 import { CompareBars, ProgressRing, RangeTrack, ToneMark, TrendLine } from '@/ui/DistanceCharts';
-import { MetricRatingLines } from '@/ui/MetricRating';
-import { MoreInfo } from '@/ui/MoreInfo';
+import { MetricRatingLines, RatingChip } from '@/ui/MetricRating';
+import { DataMeaning } from '@/ui/MoreInfo';
 import { ProcessedFoodList } from '@/ui/ProcessedFoodList';
 import { ReadingChart } from '@/ui/ReadingChart';
 import { statsToneColors } from '@/ui/statsPalette';
@@ -58,6 +58,8 @@ function TileChart({ chart, tone, signal, monochrome }: { chart: DistanceChart; 
           unit={chart.unit ?? ''}
           aggregate="mean"
           accessibilityLabel="Chart"
+          accent={ink}
+          meaning="none"
         />
       );
     }
@@ -112,15 +114,17 @@ export function StatTile({ tile, plain = false }: { tile: StatTileModel; plain?:
           </Svg>
           <T style={[ink, { fontFamily: theme.font.bodyStrong }]}>{tile.signal}</T>
         </View>
-        {meaning ? <T style={ink}>{meaning}</T> : null}
-        <MetricRatingLines rating={tile.rating} />
       </Pressable>
-      {tile.rating ? (
-        <MoreInfo about={tile.title} summary={METRIC_CAVEAT}>
-          <T variant="muted">{tile.rating.more}</T>
-          <T variant="label">Source</T>
-          <T variant="muted">{tile.rating.source}</T>
-        </MoreInfo>
+      {tile.rating && !tile.rating.pending ? <RatingChip label={tile.rating.label} /> : null}
+      {tile.rating || meaning ? (
+        <DataMeaning about={tile.title}>
+          {meaning ? <T style={ink}>{meaning}</T> : null}
+          <MetricRatingLines rating={tile.rating} />
+          {tile.rating ? <T variant="muted">{tile.rating.more}</T> : null}
+          {tile.rating ? <T variant="label">Source</T> : null}
+          {tile.rating ? <T variant="muted">{tile.rating.source}</T> : null}
+          <T variant="muted">{METRIC_CAVEAT}</T>
+        </DataMeaning>
       ) : null}
       <ProcessedFoodList notes={tile.processedNotes ?? []} />
     </Card>

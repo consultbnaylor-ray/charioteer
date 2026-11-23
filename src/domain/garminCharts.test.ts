@@ -356,7 +356,7 @@ describe('garmin chart bands', () => {
     }
     const activity = readFileSync('src/ui/DailyActivity.tsx', 'utf8');
     const careAt = activity.indexOf('<CareLine text={guide.care}');
-    const moreAt = activity.indexOf('<MoreInfo about={title}');
+    const moreAt = activity.indexOf('<DataMeaning about={title}');
     const warningAt = activity.indexOf('guide?.warning');
     expect(careAt).toBeGreaterThan(moreAt);
     expect(warningAt).toBeGreaterThan(-1);

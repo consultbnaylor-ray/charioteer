@@ -36,14 +36,14 @@ import {
   type AppleHealthTurnOn,
 } from '@/health/connection';
 import { CompareBars, ProgressRing, RangeTrack, ToneMark, TrendLine } from '@/ui/DistanceCharts';
-import { ReadingChart } from '@/ui/ReadingChart';
+import { ChartMeaningCopy, ReadingChart } from '@/ui/ReadingChart';
 import { DateField } from '@/ui/DateField';
 import { GoalLine } from '@/ui/GoalLine';
 import { statsToneColors } from '@/ui/statsPalette';
 import { gridAccents } from '@/ui/statsPalette';
 import { useAppTheme } from '@/ui/theme';
-import { MetricRatingLines } from '@/ui/MetricRating';
-import { MoreInfoButton } from '@/ui/MoreInfo';
+import { MetricRatingLines, RatingChip } from '@/ui/MetricRating';
+import { DataMeaning } from '@/ui/MoreInfo';
 import { Vo2EstimateNote, Vo2MeasureBanner, Vo2MeasureCopy } from '@/ui/Vo2EstimateNote';
 import { healthTileIcon } from '@/domain/statIcons';
 import { IconLabel } from '@/ui/statIcons';
@@ -308,9 +308,6 @@ function StatTile({
           </View>
         ) : null}
         <TileValue tile={tile} />
-        {tile.id === 'hrv_sdnn' ? <T variant="muted">Apple Health (SDNN)</T> : null}
-        {tile.id === 'vo2_max' && measuredOn ? <T variant="muted">{vo2MeasuredLine(measuredOn, vo2Source)}</T> : null}
-        {tile.id === 'vo2_max' ? <T>{VO2_CARD_LINE}</T> : null}
         {tile.empty ? null : <TileVisual visual={tile.visual} charted={charted} showCaptions={tile.visual.kind !== 'zone'} />}
         {tile.id === 'vo2_max' ? (
           <>
@@ -318,24 +315,35 @@ function StatTile({
             <T variant="muted">{OUTSIDE_CRISIS_LINE}</T>
           </>
         ) : null}
+        {tile.rating && !tile.rating.pending ? <RatingChip label={tile.rating.label} /> : null}
+      </Pressable>
+      {!charted && !tile.empty && tile.history.length >= 2 && tile.visual.kind !== 'line' ? (
+        <TrendLine points={tile.history} color={statsToneColors(theme.scheme)[tile.tone].ink} />
+      ) : null}
+      {charted ? <TileChart tile={tile} today={today} period={period} meaning="none" /> : null}
+      <DataMeaning about={tile.title}>
+        {tile.weeklyLine ? <T>{tile.weeklyLine}</T> : null}
+        {tile.id === 'hrv_sdnn' ? <T variant="muted">Apple Health (SDNN)</T> : null}
+        {tile.id === 'vo2_max' && measuredOn ? <T variant="muted">{vo2MeasuredLine(measuredOn, vo2Source)}</T> : null}
+        {tile.id === 'vo2_max' ? <T>{VO2_CARD_LINE}</T> : null}
         <LowRestingFitNote reading={restingTileShowsFitLine(tile) ? tile.valueText : null} />
         <MetricRatingLines rating={tile.rating} />
-        <T variant="muted">Not medical advice. Not a diagnosis.</T>
         {tile.empty || tile.visual.kind === 'ring' || tile.visual.kind === 'zone' ? null : (
           <StatusMark tone={tile.tone} status={tile.status} word={tile.mark} />
         )}
-        {!charted && !tile.empty && tile.history.length >= 2 && tile.visual.kind !== 'line' ? (
-          <TrendLine points={tile.history} color={statsToneColors(theme.scheme)[tile.tone].ink} />
-        ) : null}
         {tile.trend ? <T variant="muted">{tile.trend}</T> : null}
-      </Pressable>
-      <MoreInfoButton
-        label="More info"
-        accessibilityLabel={`More info about ${tile.title}`}
-        onPress={onOpen}
-      />
+        <T variant="muted">Not medical advice. Not a diagnosis.</T>
+        {charted ? <ChartMeaningCopy bucket={chartBucketForPeriod(period)} aggregate={SUM_CHARTS.has(tile.id) ? 'sum' : 'mean'} /> : null}
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={`More info about ${tile.title}`}
+          onPress={onOpen}
+          style={{ minHeight: 44, justifyContent: 'center' }}
+        >
+          <T style={{ textDecorationLine: 'underline' }}>Sources and how this is worked out</T>
+        </Pressable>
+      </DataMeaning>
       {tileFaceMentionsWeight(tile) ? <UpdateWeightLink /> : null}
-      {charted ? <TileChart tile={tile} today={today} period={period} /> : null}
       {tile.id === 'vo2_max' && onPlanOutdoor ? <Vo2EstimateNote measuredOn={measuredOn} source={vo2Source} today={today} onPlan={onPlanOutdoor} showMeasured={false} /> : null}
     </View>
   );
@@ -347,14 +355,23 @@ function TileValue({ tile }: { tile: HealthStatTile }) {
   return (
     <View style={{ gap: 2 }}>
       <T style={{ fontFamily: theme.font.bodyStrong }}>{valueWithPeriod(tile)}</T>
-      {tile.weeklyLine ? <T>{tile.weeklyLine}</T> : null}
     </View>
   );
 }
 
 const SUM_CHARTS = new Set(['steps', 'workouts', 'weekly_active_minutes']);
 
-function TileChart({ tile, today, period }: { tile: HealthStatTile; today: string; period: StatPeriod }) {
+function TileChart({
+  tile,
+  today,
+  period,
+  meaning = 'none',
+}: {
+  tile: HealthStatTile;
+  today: string;
+  period: StatPeriod;
+  meaning?: 'chart' | 'none';
+}) {
   const theme = useAppTheme();
   const window = rollingWindow(today, period);
   const unit = tile.unit === 'h' ? 'hours' : tile.unit;
@@ -368,6 +385,7 @@ function TileChart({ tile, today, period }: { tile: HealthStatTile; today: strin
       bucket={chartBucketForPeriod(period)}
       accent={tileAccent(tile.id, theme.scheme)}
       accessibilityLabel={`${tile.title} chart`}
+      meaning={meaning}
     />
   );
 }
@@ -588,7 +606,12 @@ function StatDetail({
                 {tile.empty ? null : <TileVisual visual={tile.visual} charted={tile.readings.length > 0} />}
                 {showWalkingBelowZone(tile) ? <T>{WALKING_BELOW_ZONE_NOTE}</T> : null}
                 <LowRestingFitNote reading={restingTileShowsFitLine(tile) ? tile.valueText : null} detail />
-                {tile.readings.length > 0 ? <TileChart tile={tile} today={today} period={period} /> : null}
+                {tile.readings.length > 0 ? (
+                  <>
+                    <TileChart tile={tile} today={today} period={period} meaning="none" />
+                    <ChartMeaningCopy bucket={chartBucketForPeriod(period)} aggregate={SUM_CHARTS.has(tile.id) ? 'sum' : 'mean'} />
+                  </>
+                ) : null}
                 {tile.id === 'vo2_max' && onPlanOutdoor ? <Vo2EstimateNote measuredOn={measuredOn} source={vo2Source} today={today} onPlan={() => { onClose(); onPlanOutdoor(); }} /> : null}
                 {!tile.empty && detailShowsStatusAgain(tile.visual.kind) ? <StatusMark tone={tile.tone} status={tile.status} word={tile.mark} /> : null}
                 <T style={{ fontFamily: theme.font.bodyStrong, fontSize: 16, lineHeight: 22 }}>What your number means</T>
