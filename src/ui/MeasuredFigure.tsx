@@ -68,8 +68,9 @@ export function MeasureSplitView({ label, split }: { label: string; split: Measu
   const total = split.left + split.right;
   const share = total > 0 ? split.left / total : 0;
   const rightTone = split.rightTone;
+  const spoken = split.caption || `${split.leftLabel}. ${split.rightLabel}`;
   return (
-    <View accessibilityLabel={split.caption} style={{ gap: 8, alignSelf: 'stretch' }}>
+    <View accessibilityLabel={spoken} style={{ gap: 8, alignSelf: 'stretch' }}>
       <T variant="label">{label}</T>
       <View style={{ height: 16, borderRadius: 8, backgroundColor: theme.colors.line, overflow: 'hidden', flexDirection: 'row' }}>
         {total > 0 ? (
@@ -83,7 +84,7 @@ export function MeasureSplitView({ label, split }: { label: string; split: Measu
         <T style={{ color: colors.good.ink, fontSize: 13 * theme.scale, lineHeight: 18 * theme.scale }}>{split.leftLabel}</T>
         <T style={{ color: colors[rightTone].ink, fontSize: 13 * theme.scale, lineHeight: 18 * theme.scale }}>{split.rightLabel}</T>
       </View>
-      <T variant="muted">{split.caption}</T>
+      {split.caption ? <T variant="muted">{split.caption}</T> : null}
     </View>
   );
 }

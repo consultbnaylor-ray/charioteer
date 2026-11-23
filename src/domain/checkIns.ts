@@ -8,7 +8,46 @@ export { moodOnTen };
 export const MOOD_SCORES = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10] as const;
 
 /** Shown when Save check-in never reaches the server. The form is still on screen. */
-export const CHECK_IN_NOT_SAVED = 'Not saved yet. Your note is still here, tap Save check-in to try again.';
+export const CHECK_IN_NOT_SAVED = 'Not saved yet. Your note is still here. Tap Try again.';
+
+export const CHECK_IN_SAVED_BANNER = 'Check-in saved for today';
+export const CHECK_IN_SAVED_FLASH = 'Saved ✓';
+export const CHECK_IN_SAVED_SPOKEN = 'Check-in saved';
+export const CHECK_IN_SAVED_TODAY = 'Saved today';
+export const CHECK_IN_SAVE = 'Save check-in';
+export const CHECK_IN_SAVE_CHANGES = 'Save changes';
+export const CHECK_IN_RETRY = 'Try again';
+
+export type CheckInSaveView = {
+  label: string;
+  /** Green confirmation. The words say it is saved, so the control is not greyed out. */
+  success: boolean;
+  /** Nothing new to send. The press does not start another save. */
+  hold: boolean;
+  spoken?: string;
+};
+
+/** The sticky save control. A saved day stays readable. An edit brings the save label back. */
+export function checkInSaveView(input: {
+  dirty: boolean;
+  pending: boolean;
+  failed: boolean;
+  savedToday: boolean;
+  flashed: boolean;
+}): CheckInSaveView {
+  if (input.failed && !input.pending) return { label: CHECK_IN_RETRY, success: false, hold: false };
+  if (input.flashed && !input.dirty) {
+    return { label: CHECK_IN_SAVED_FLASH, success: true, hold: true, spoken: CHECK_IN_SAVED_SPOKEN };
+  }
+  if (input.savedToday && !input.dirty) return { label: CHECK_IN_SAVED_TODAY, success: true, hold: true };
+  if (input.savedToday && input.dirty) return { label: CHECK_IN_SAVE_CHANGES, success: false, hold: false };
+  return { label: CHECK_IN_SAVE, success: false, hold: false };
+}
+
+/** True when one of these check-ins falls on the local day. */
+export function checkInCoversDay(checkIns: readonly { createdAt: string }[], day: string): boolean {
+  return checkIns.some((item) => isoDay(new Date(item.createdAt)) === day);
+}
 
 /** A dropped connection names the unsaved note. Any other failure keeps its own sentence. */
 export function checkInSaveError(error: unknown): string {

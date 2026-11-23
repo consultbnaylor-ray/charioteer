@@ -259,7 +259,7 @@ describe('weight entry', () => {
     expect(home).toContain('buildHealthInsights');
     expect(home).toContain("router.push('/health'");
     const checkIn = readFileSync('src/app/(main)/check-in.tsx', 'utf8');
-    expect(checkIn).toContain('label="Save check-in"');
+    expect(checkIn).toContain('checkInSaveView');
     expect(checkIn).toContain('repo.addCheckIn');
     expect(checkIn).not.toContain('weightWaistWrite');
     expect(readFileSync('supabase/functions/_shared/thumos.ts', 'utf8')).toContain('healthInsights');

@@ -88,9 +88,10 @@ describe('detail editors', () => {
     expect(profile).toContain("setSavedNote('Saved')");
     const checkIn = readFileSync('src/app/(main)/check-in.tsx', 'utf8');
     expect(checkIn).toContain('footer=');
-    expect(checkIn).toContain('Save check-in');
-    expect(checkIn).toContain('disabled={!dirty || pending}');
-    expect(checkIn).toContain("setSavedNote('Saved')");
+    expect(checkIn).toContain('checkInSaveView');
+    expect(checkIn).toContain('CHECK_IN_SAVED_BANNER');
+    expect(checkIn).toContain('disabled={saveView.hold || pending}');
+    expect(checkIn).not.toContain("setSavedNote('Saved')");
     expect(profile).toContain('correctedSoberStart');
     expect(profile).toContain('saveConsents');
     expect(profile).not.toContain('recordRelapse');

@@ -1,10 +1,18 @@
 import { useRouter } from 'expo-router';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { View } from 'react-native';
 
 import { useRepository, useSnapshot } from '@/data';
-import type { Mood } from '@/data/types';
-import { checkInSaveError, gratefulForLine, MOOD_SCORES, planCheckInGratitude, recentCheckInDays } from '@/domain/checkIns';
+import type { CheckIn, Mood } from '@/data/types';
+import {
+  CHECK_IN_SAVED_BANNER,
+  checkInCoversDay,
+  checkInSaveError,
+  checkInSaveView,
+  gratefulForLine,
+  MOOD_SCORES,
+  planCheckInGratitude,
+} from '@/domain/checkIns';
 import { formatUkWhen, isoDay } from '@/domain/dates';
 import { randomId } from '@/domain/id';
 import { moodStreakCount } from '@/domain/profileSharing';
@@ -12,12 +20,25 @@ import { CheckInWeek } from '@/ui/CheckInWeek';
 import { ScrollTarget } from '@/ui/ScrollTarget';
 import { CheckInSectionShare } from '@/ui/SectionShare';
 import { ShareOnProfile } from '@/ui/ShareOnProfile';
+import { statsToneColors } from '@/ui/statsPalette';
+import { useAppTheme } from '@/ui/theme';
 import { Button, Card, Choice, ErrorNote, Field, playSavedHaptic, Screen, T } from '@/ui/ui';
+
+function SavedBanner() {
+  const theme = useAppTheme();
+  const good = statsToneColors(theme.scheme).good;
+  return (
+    <Card style={{ backgroundColor: good.bg, borderColor: good.ink }}>
+      <T style={{ color: good.ink }}>{CHECK_IN_SAVED_BANNER}</T>
+    </Card>
+  );
+}
 
 export default function CheckIn() {
   const repo = useRepository();
   const snap = useSnapshot();
   const router = useRouter();
+  const todayKey = isoDay(new Date());
   const [mood, setMood] = useState<Mood>(5);
   const [sleep, setSleep] = useState('7');
   const [craving, setCraving] = useState(3);
@@ -25,35 +46,56 @@ export default function CheckIn() {
   const [grateful, setGrateful] = useState('');
   const draftId = useRef(randomId());
   const saving = useRef(false);
+  const touched = useRef(false);
   const [error, setError] = useState<string | null>(null);
+  const [failed, setFailed] = useState(false);
   const [savedCraving, setSavedCraving] = useState<number | null>(null);
-  const [savedNote, setSavedNote] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
-  const [dirty, setDirty] = useState(true);
+  const [dirty, setDirty] = useState(() => !checkInCoversDay(snap.checkIns, todayKey));
+  const [flashed, setFlashed] = useState(false);
+  const [loggedNow, setLoggedNow] = useState<CheckIn | null>(null);
+
+  const checkIns = useMemo(() => {
+    if (!loggedNow) return snap.checkIns;
+    if (snap.checkIns.some((item) => item.id === loggedNow.id)) return snap.checkIns;
+    return [loggedNow, ...snap.checkIns];
+  }, [loggedNow, snap.checkIns]);
+  const savedToday = checkInCoversDay(checkIns, todayKey);
+  const saveView = checkInSaveView({ dirty, pending, failed, savedToday, flashed });
 
   useEffect(() => {
-    if (!savedNote) return;
-    const timer = setTimeout(() => setSavedNote(null), 2500);
+    if (touched.current) return;
+    if (checkInCoversDay(checkIns, todayKey)) setDirty(false);
+  }, [checkIns, todayKey]);
+
+  useEffect(() => {
+    if (!flashed) return;
+    const timer = setTimeout(() => setFlashed(false), 2500);
     return () => clearTimeout(timer);
-  }, [savedNote]);
+  }, [flashed]);
 
   function touch<T>(set: (value: T) => void) {
     return (value: T) => {
+      touched.current = true;
       setDirty(true);
-      setSavedNote(null);
+      setFlashed(false);
+      setFailed(false);
+      setError(null);
       set(value);
     };
   }
 
   function save() {
-    if (saving.current) return;
+    if (saving.current || saveView.hold) return;
     const sleepHours = Number(sleep);
     if (!Number.isFinite(sleepHours) || sleepHours < 0 || sleepHours > 24) {
+      setFailed(false);
       setError('Sleep needs to be between 0 and 24 hours.');
       return;
     }
     const planned = planCheckInGratitude(grateful);
     if (!planned.ok) {
+      setFailed(false);
       setError(planned.message);
       return;
     }
@@ -61,15 +103,28 @@ export default function CheckIn() {
     saving.current = true;
     setPending(true);
     setError(null);
+    setFailed(false);
     void repo.addCheckIn({ id, mood, sleepHours, craving, note, gratitude: planned.body }).then(() => {
       draftId.current = randomId();
       setSavedCraving(craving);
       setNote('');
       setGrateful('');
       setDirty(false);
-      setSavedNote('Saved');
+      setFlashed(true);
+      setLoggedNow({
+        id,
+        mood,
+        sleepHours,
+        craving,
+        note: note.trim(),
+        createdAt: new Date().toISOString(),
+      });
       playSavedHaptic();
-    }).catch((err: unknown) => setError(checkInSaveError(err))).finally(() => {
+    }).catch((err: unknown) => {
+      setError(checkInSaveError(err));
+      setFailed(true);
+      setFlashed(false);
+    }).finally(() => {
       saving.current = false;
       setPending(false);
     });
@@ -80,10 +135,19 @@ export default function CheckIn() {
       eyebrow="Daily"
       title="How is today?"
       intro="Mood, sleep, and craving. Thumos reads this history. It is not a score."
+      banner={flashed ? <SavedBanner /> : null}
       footer={(
         <View style={{ gap: 8 }}>
-          {savedNote ? <T>{savedNote}</T> : null}
-          <Button label="Save check-in" pending={pending} disabled={!dirty || pending} disabledReason={dirty ? undefined : 'Change the check-in to save.'} onPress={save} />
+          <ErrorNote>{error}</ErrorNote>
+          <Button
+            label={saveView.label}
+            accessibilityLabel={saveView.spoken}
+            pending={pending}
+            pendingLabel="Saving..."
+            tone={saveView.success ? 'success' : 'primary'}
+            disabled={saveView.hold || pending}
+            onPress={save}
+          />
         </View>
       )}
     >
@@ -91,7 +155,7 @@ export default function CheckIn() {
       <View style={{ gap: 8 }}>
         <Card>
           <T variant="label">Mood streak</T>
-          <T variant="title">{moodStreakCount(snap.checkIns, isoDay(new Date()))}</T>
+          <T variant="title">{moodStreakCount(checkIns, todayKey)}</T>
           <T variant="muted">Check-in days in a row. Only this count can be shared.</T>
         </Card>
         <ShareOnProfile
@@ -134,7 +198,6 @@ export default function CheckIn() {
         placeholder="Up to three short lines"
         hint="Saved into your Gratitude Diary. Leave it empty and nothing is added."
       />
-      <ErrorNote>{error}</ErrorNote>
       {savedCraving != null && savedCraving >= 6 ? (
         <Card>
           <T variant="title">That craving is high.</T>
@@ -150,12 +213,12 @@ export default function CheckIn() {
         </Card>
       ) : null}
       <Card>
-        <CheckInWeek days={recentCheckInDays(snap.checkIns, new Date())} />
+        <CheckInWeek checkIns={checkIns} ranged />
       </Card>
       <ScrollTarget id="recent">
       <T variant="label">Recent</T>
-      {snap.checkIns.length === 0 ? <T variant="muted">No check-ins yet.</T> : null}
-      {snap.checkIns.slice(0, 8).map((item) => {
+      {checkIns.length === 0 ? <T variant="muted">No check-ins yet.</T> : null}
+      {checkIns.slice(0, 8).map((item) => {
         const gratefulLine = gratefulForLine(snap.gratitude.find((entry) => entry.checkInId === item.id)?.body ?? '');
         return (
           <Card key={item.id}>

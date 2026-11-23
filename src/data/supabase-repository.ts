@@ -139,6 +139,7 @@ import { planCustomInterest, validateTown } from '@/domain/privacy';
 import { combineAbortSignals, fetchWithOneRetry, isAuthRequest } from '@/domain/retryFetch';
 import { planReasons } from '@/domain/reasons';
 import { BIO_LIMIT, PHOTO_CAPTION_LIMIT, defaultProfileSharing, normalizeProfileSharing, parsePublicProfile, planProfileText, sensitiveTurnedOn, shareFreshGratitude, type ProfileSharing, type PublicProfileView } from '@/domain/profileSharing';
+import { CHECK_IN_PAGE_SIZE, checkInHistorySince, checkInPageContinues } from '@/domain/checkInCharts';
 import { moodOnTen, planCheckInGratitude } from '@/domain/checkIns';
 import { quoteById } from '@/domain/stoicQuotes';
 import { planRelapse } from '@/domain/sober';
@@ -454,6 +455,26 @@ export class SupabaseRepository implements Repository {
     this.emit({ ...this.snapshot, messages: [...next] });
   }
 
+  /** Newest first. Pages past the 1,000-row cap until a page is older than 12 months. */
+  private async loadCheckIns(userId: string): Promise<Row[]> {
+    const since = checkInHistorySince(new Date());
+    const rows: Row[] = [];
+    for (let from = 0; from < CHECK_IN_PAGE_SIZE * 20; from += CHECK_IN_PAGE_SIZE) {
+      const { data, error } = await this.client
+        .from('check_ins')
+        .select('*')
+        .eq('user_id', userId)
+        .order('created_at', { ascending: false })
+        .range(from, from + CHECK_IN_PAGE_SIZE - 1);
+      if (error) return rows;
+      const batch = (data ?? []) as Row[];
+      rows.push(...batch);
+      const stamped = batch.map((row) => ({ createdAt: String(row.created_at ?? '') }));
+      if (!checkInPageContinues({ batch: stamped, pageSize: CHECK_IN_PAGE_SIZE, sinceIso: since })) break;
+    }
+    return rows;
+  }
+
   private async refresh() {
     const { data: sessionData } = await this.client.auth.getSession();
     const session = sessionData.session;
@@ -472,11 +493,11 @@ export class SupabaseRepository implements Repository {
 
     const userId = session.user.id;
     const email = session.user.email ?? '';
-    const [profileRes, reasonsRes, checkRes, relapseRes, healthRes, mineRes, thumosRes, directoryRes, interestLinks, connectionsRes, reportsRes, consentsRes, photosRes, gratitudeRes, gratitudePhotoRes, visionRes, sharingRes, quotesRes, profilePhotoRes, healthPlanRes, scheduleRes, plannedRes] =
+    const [profileRes, reasonsRes, checkRows, relapseRes, healthRes, mineRes, thumosRes, directoryRes, interestLinks, connectionsRes, reportsRes, consentsRes, photosRes, gratitudeRes, gratitudePhotoRes, visionRes, sharingRes, quotesRes, profilePhotoRes, healthPlanRes, scheduleRes, plannedRes] =
       await Promise.all([
         this.client.from('profiles').select('*').eq('id', userId).maybeSingle(),
         this.client.from('reasons').select('*').eq('user_id', userId).order('sort_order'),
-        this.client.from('check_ins').select('*').eq('user_id', userId).order('created_at', { ascending: false }),
+        this.loadCheckIns(userId),
         this.client.from('relapses').select('*').eq('user_id', userId).order('occurred_at', { ascending: false }),
         this.client.from('health_samples').select('*').eq('user_id', userId).order('recorded_on', { ascending: false }),
         this.client.from('profile_interests').select('user_id, interest_id'),
@@ -577,7 +598,7 @@ export class SupabaseRepository implements Repository {
       session: { userId, email },
       profile,
       reasons: ((reasonsRes.data ?? []) as Row[]).map(mapReason),
-      checkIns: ((checkRes.data ?? []) as Row[]).map(mapCheckIn),
+      checkIns: checkRows.map(mapCheckIn),
       relapses: ((relapseRes.data ?? []) as Row[]).map(mapRelapse),
       health: ((healthRes.data ?? []) as Row[]).map(mapHealth),
       interests,
