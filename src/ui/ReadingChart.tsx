@@ -1,5 +1,5 @@
 import { useId, useState, type ReactNode } from 'react';
-import { View } from 'react-native';
+import { useWindowDimensions, View } from 'react-native';
 import Svg, { Circle, Defs, Line, LinearGradient, Path, Stop, Text as SvgText } from 'react-native-svg';
 
 import {
@@ -35,6 +35,13 @@ export function ChartMeaningCopy({ bucket, aggregate }: { bucket: ChartBucket; a
 
 /** Plot height stays put when text grows. Labels use the text scale. */
 const PLOT_H = 200;
+
+/** Last measured plot width. The next chart can draw on the first frame instead of flashing empty. */
+let measuredChartWidth = 0;
+
+function chartWidthGuess(screen: number): number {
+  return measuredChartWidth > 0 ? measuredChartWidth : Math.max(260, Math.min(screen, 760) - 80);
+}
 
 /**
  * One line chart for readings. Dots are real values only.
@@ -81,9 +88,10 @@ export function ReadingChart({
   meaningTitle?: string;
 }) {
   const theme = useAppTheme();
+  const screen = useWindowDimensions().width;
   const rawId = useId();
   const fillId = `chart-fill-${rawId.replace(/[^a-zA-Z0-9]/g, '')}`;
-  const [width, setWidth] = useState(0);
+  const [width, setWidth] = useState(() => chartWidthGuess(screen));
   const [chosen, setChosen] = useState<string | null>(null);
   const windowStart = start <= end ? start : end;
   const windowEnd = start <= end ? end : start;
@@ -161,7 +169,12 @@ export function ReadingChart({
         <T style={{ fontSize: 11 * label, lineHeight: 14 * label, color: theme.colors.muted }}>{yName}</T>
       ) : null}
       <View
-        onLayout={(event) => setWidth(event.nativeEvent.layout.width)}
+        onLayout={(event) => {
+          const next = event.nativeEvent.layout.width;
+          if (!(next > 0) || Math.abs(next - width) < 1) return;
+          measuredChartWidth = next;
+          setWidth(next);
+        }}
         onStartShouldSetResponder={() => true}
         onMoveShouldSetResponder={() => true}
         onResponderGrant={(event) => selectAt(event.nativeEvent.locationX)}

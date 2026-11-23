@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from 'react';
+import { memo, useEffect, useState, type ReactNode } from 'react';
 import { Modal, Platform, Pressable, ScrollView, useWindowDimensions, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -64,7 +64,7 @@ import { Button, Card, Choice, T, playSavedHaptic } from '@/ui/ui';
  * Fitness level, the measures that exist, and one to three goal-led lines.
  * A line can be ticked into this week's focus.
  */
-export function YourFitness({ onPlanOutdoor }: { onPlanOutdoor: () => void }) {
+export const YourFitness = memo(function YourFitness({ onPlanOutdoor }: { onPlanOutdoor: () => void }) {
   const snap = useSnapshot();
   const { samples: mergedHealth, readings } = useHealthSources();
   const repo = useRepository();
@@ -303,7 +303,7 @@ export function YourFitness({ onPlanOutdoor }: { onPlanOutdoor: () => void }) {
       )}
     </Card>
   );
-}
+});
 
 function daysBetween(from: string, to: string): number {
   const start = Date.parse(`${from}T00:00:00Z`);

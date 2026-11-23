@@ -1,7 +1,7 @@
 import { Linking, Pressable, View } from 'react-native';
 import { useRouter } from 'expo-router';
 
-import { useState } from 'react';
+import { memo, useState } from 'react';
 import {
   EXERCISE_GARMIN_CAPTION,
   INTENSITY_EMPTY,
@@ -347,7 +347,7 @@ export function DailyActivityCharts({
   );
 }
 
-export function MovementCharts({
+export const MovementCharts = memo(function MovementCharts({
   endDay,
   span,
   steps,
@@ -740,7 +740,7 @@ export function MovementCharts({
       {span == null ? <T variant="muted" style={{ textAlign: 'center' }}>{CHART_DIRECTION_HINT}</T> : null}
     </View>
   );
-}
+});
 
 /** Garmin's VO2 max bars. Shown inside Your fitness, under the connected card. */
 export function Vo2MaxChart({
