@@ -135,7 +135,7 @@ import { CoalescedSave, sameJson } from '@/domain/coalescedSave';
 import { interestSelectionUnchanged, nextInterestIds, rolledBackInterestIds, snapshotWithOwnInterests } from '@/domain/interests';
 import { profileWithColumn, profileWithPatch } from '@/domain/profilePatch';
 import { planCustomInterest, validateTown } from '@/domain/privacy';
-import { fetchWithOneRetry } from '@/domain/retryFetch';
+import { combineAbortSignals, fetchWithOneRetry, isAuthRequest } from '@/domain/retryFetch';
 import { planReasons } from '@/domain/reasons';
 import { BIO_LIMIT, PHOTO_CAPTION_LIMIT, defaultProfileSharing, normalizeProfileSharing, parsePublicProfile, planProfileText, sensitiveTurnedOn, shareFreshGratitude, type ProfileSharing, type PublicProfileView } from '@/domain/profileSharing';
 import { moodOnTen, planCheckInGratitude } from '@/domain/checkIns';
@@ -144,12 +144,15 @@ import { planRelapse } from '@/domain/sober';
 import { parseSseBuffer } from '@/domain/sse';
 import { detectSafety } from '@/domain/safety';
 import {
+  COULD_NOT_CONNECT,
   ESTIMATE_CLIENT_TIMEOUT_MS,
   PLAN_NOT_SAVED,
   PLAN_UNREACHABLE,
   VOICE_UNREACHABLE,
   EdgeSessionError,
   aiCallMessage,
+  bindAiSession,
+  callWithinDeadline,
   classifyEdgeError,
   classifyEdgeStatus,
   edgeFailureLog,
@@ -299,8 +302,11 @@ export class SupabaseRepository implements Repository {
   private ownerPhotoResignFollowUp: Promise<void> | null = null;
   /** One in-flight sign per object, so a second error does not sign that picture again. */
   private photoSignInflight = new Map<string, Promise<string | null>>();
-  /** One shared session refresh for AI calls that start together. */
-  private aiSession: Promise<string> | null = null;
+  /** One shared session refresh for AI calls that start together. Cleared when it fails or times out. */
+  private aiSessions = bindAiSession();
+  /** Aborts the auth request behind that refresh so a timed-out read does not keep running. */
+  private liveSession: { signal: AbortSignal | null } = { signal: null };
+  private net = fetchWithOneRetry();
 
   constructor(url: string, anonKey: string) {
     this.url = url;
@@ -313,7 +319,14 @@ export class SupabaseRepository implements Repository {
         detectSessionInUrl: Platform.OS === 'web' && !staticWebRender,
         flowType: 'implicit',
       },
-      global: { fetch: fetchWithOneRetry() },
+      global: {
+        fetch: (input, init) => {
+          const linked = isAuthRequest(input)
+            ? combineAbortSignals(init?.signal, this.liveSession.signal)
+            : init?.signal;
+          return this.net(input, linked ? { ...init, signal: linked } : init);
+        },
+      },
     });
     if (!staticWebRender) void this.start();
   }
@@ -1736,19 +1749,26 @@ export class SupabaseRepository implements Repository {
     };
   }
 
-  /** Refresh the session once, then once more if that refresh does not return a token. */
+  /** One refresh for AI calls that start together. It gives up after AI_SESSION_TIMEOUT_MS. */
   private sessionForAiCall(): Promise<string> {
-    if (this.aiSession) return this.aiSession;
-    this.aiSession = this.loadAiSession().finally(() => {
-      this.aiSession = null;
+    return this.aiSessions.session((signal) => {
+      this.liveSession.signal = signal;
+      return this.loadAiSession(signal).finally(() => {
+        if (this.liveSession.signal === signal) this.liveSession.signal = null;
+      });
     });
-    return this.aiSession;
   }
 
-  private async loadAiSession(): Promise<string> {
+  private async loadAiSession(signal: AbortSignal): Promise<string> {
     const ready = await prepareAiSession({
+      signal,
       read: async () => this.sessionTicket((await this.client.auth.getSession()).data.session),
       refresh: async () => {
+        if (signal.aborted) {
+          const error = new Error('The operation was aborted.');
+          error.name = 'AbortError';
+          throw error;
+        }
         const { data, error } = await this.client.auth.refreshSession();
         return { ticket: this.sessionTicket(data.session), error };
       },
@@ -1787,38 +1807,38 @@ export class SupabaseRepository implements Repository {
     options?: { ai?: boolean; timeoutMs?: number; requestId?: string },
   ): Promise<{ status: number; data: unknown }> {
     rejectRouteCoordinates(body);
-    const token = options?.ai ? await this.sessionForAiCall() : await this.accessToken();
-    const controller = options?.timeoutMs ? new AbortController() : null;
-    const timer = controller && options?.timeoutMs
-      ? setTimeout(() => controller.abort(), options.timeoutMs)
-      : null;
-    try {
-      const response = await postWithRetry({
-        fetchImpl: (url, init) => fetch(url, init),
-        url: `${this.url}/functions/v1/${name}`,
-        init: {
-          method: 'POST',
-          headers: {
-            Authorization: `Bearer ${token}`,
-            apikey: this.anonKey,
-            'Content-Type': 'application/json',
-            Accept: 'application/json',
-            ...(options?.requestId ? { 'X-Request-Id': options.requestId } : {}),
+    let token = '';
+    return callWithinDeadline({
+      timeoutMs: options?.timeoutMs,
+      prepare: async () => {
+        token = options?.ai ? await this.sessionForAiCall() : await this.accessToken();
+      },
+      send: async (signal) => {
+        const response = await postWithRetry({
+          fetchImpl: (url, init) => fetch(url, init),
+          url: `${this.url}/functions/v1/${name}`,
+          init: {
+            method: 'POST',
+            headers: {
+              Authorization: `Bearer ${token}`,
+              apikey: this.anonKey,
+              'Content-Type': 'application/json',
+              Accept: 'application/json',
+              ...(options?.requestId ? { 'X-Request-Id': options.requestId } : {}),
+            },
+            body: JSON.stringify(body),
+            signal,
           },
-          body: JSON.stringify(body),
-          signal: controller?.signal,
-        },
-      });
-      const data = await response.json().catch(() => null);
-      const gate = response.status === 402 || response.status === 429 ? aiGateFromBody(data) : null;
-      if (gate) {
-        publishAiGate(gate);
-        throw gate;
-      }
-      return { status: response.status, data };
-    } finally {
-      if (timer) clearTimeout(timer);
-    }
+        });
+        const data = await response.json().catch(() => null);
+        const gate = response.status === 402 || response.status === 429 ? aiGateFromBody(data) : null;
+        if (gate) {
+          publishAiGate(gate);
+          throw gate;
+        }
+        return { status: response.status, data };
+      },
+    });
   }
 
   async mintVoiceToken(mode?: ThumosMode): Promise<VoiceMint> {
@@ -2660,9 +2680,12 @@ export class SupabaseRepository implements Repository {
     } catch (error) {
       if (error instanceof MealEstimateError) throw error;
       if (error instanceof UserFacingError) throw error;
-      const kind = error instanceof EdgeSessionError
-        ? (error.kind === 'signed-out' ? 'auth' : 'network')
-        : classifyEdgeError(error) === 'timeout' ? 'timeout' : 'network';
+      if (error instanceof EdgeSessionError) {
+        const kind = error.kind === 'signed-out' ? 'auth' : 'network';
+        this.noteMeal(kind);
+        throw new MealEstimateError(kind, error.kind === 'connection' ? COULD_NOT_CONNECT : undefined);
+      }
+      const kind = classifyEdgeError(error) === 'timeout' ? 'timeout' : 'network';
       this.noteMeal(kind);
       throw new MealEstimateError(kind);
     }
@@ -3545,7 +3568,8 @@ export class SupabaseRepository implements Repository {
   async loadAiUsageMonth(monthStart: string): Promise<{ coach: number; meal: number; plan: number }> {
     const totals = { coach: 0, meal: 0, plan: 0 };
     const { data, error } = await this.client.from('ai_usage').select('kind, count').gte('day', monthStart);
-    if (error || !Array.isArray(data)) return totals;
+    if (error) throw new UserFacingError('Couldn\'t check your credits. Try again.', 'generic');
+    if (!Array.isArray(data)) return totals;
     for (const row of data) {
       const kind = (row as { kind?: unknown }).kind;
       const count = Number((row as { count?: unknown }).count);
@@ -3556,7 +3580,8 @@ export class SupabaseRepository implements Repository {
 
   async loadEntitlementOverride(): Promise<import('@/domain/entitlementOverride').EntitlementOverride | null> {
     const { data, error } = await this.client.from('entitlement_overrides').select('tier, expires_at').maybeSingle();
-    if (error || !data) return null;
+    if (error) throw new UserFacingError('Couldn\'t check your plan. Try again.', 'generic');
+    if (!data) return null;
     return parseEntitlementOverride(data as Record<string, unknown>);
   }
 

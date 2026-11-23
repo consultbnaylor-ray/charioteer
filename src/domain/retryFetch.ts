@@ -1,4 +1,10 @@
+import { ESTIMATE_CLIENT_TIMEOUT_MS } from './edgeRetry';
 import { isTransientNetworkError } from './errors';
+
+/** Auth and database calls. A stalled session refresh cannot sit here forever. */
+export const FETCH_TIMEOUT_MS = 30_000;
+/** Photo and file uploads. Longer than a database read, still bounded. */
+export const UPLOAD_FETCH_TIMEOUT_MS = 120_000;
 
 const IDEMPOTENT = new Set(['GET', 'HEAD', 'OPTIONS', 'PUT', 'PATCH', 'DELETE']);
 
@@ -69,23 +75,157 @@ export function isRetrySafeRequest(input: RequestInfo | URL, init?: RequestInit)
   return requestMethod(input, init) === 'POST' && retrySafeRpcName(input) != null;
 }
 
+/** Auth token refresh, database reads and writes, and anything else that is not an upload or a long edge call. */
+export function fetchTimeoutMs(input: RequestInfo | URL, init?: RequestInit): number {
+  const url = requestUrl(input);
+  const method = requestMethod(input, init);
+  if (/\/functions\/v1\/estimate-meal(?:\?|$)/.test(url)) return ESTIMATE_CLIENT_TIMEOUT_MS;
+  if (/\/functions\/v1\//.test(url)) return ESTIMATE_CLIENT_TIMEOUT_MS;
+  if (/\/storage\/v1\/object\//.test(url) && method !== 'GET' && method !== 'HEAD' && method !== 'OPTIONS') {
+    return UPLOAD_FETCH_TIMEOUT_MS;
+  }
+  return FETCH_TIMEOUT_MS;
+}
+
+export function isAuthRequest(input: RequestInfo | URL): boolean {
+  return /\/auth\/v1\//.test(requestUrl(input));
+}
+
+/** True for the GoTrue refresh call. Sign-in uses the same path with a different grant. */
+export function isRefreshTokenRequest(input: RequestInfo | URL, init?: RequestInit): boolean {
+  if (requestMethod(input, init) !== 'POST') return false;
+  const url = requestUrl(input);
+  return /\/auth\/v1\/token/.test(url) && /grant_type=refresh_token/.test(url);
+}
+
+export function combineAbortSignals(first?: AbortSignal | null, second?: AbortSignal | null): AbortSignal | undefined {
+  if (!first && !second) return undefined;
+  if (first && !second) return first;
+  if (second && !first) return second;
+  const controller = new AbortController();
+  const abort = () => controller.abort();
+  if (first?.aborted || second?.aborted) {
+    controller.abort();
+    return controller.signal;
+  }
+  first?.addEventListener('abort', abort, { once: true });
+  second?.addEventListener('abort', abort, { once: true });
+  return controller.signal;
+}
+
+function fetchTimeoutError(): Error {
+  const error = new Error('The request timed out.');
+  error.name = 'TimeoutError';
+  return error;
+}
+
+function copyResponse(response: Response, body: ArrayBuffer): Response {
+  return new Response(body.slice(0), {
+    status: response.status,
+    statusText: response.statusText,
+    headers: new Headers(response.headers),
+  });
+}
+
 /**
  * One extra attempt when a safe request dies on the network or a gateway.
  * A plain POST is not retried, so sign-up, sign-in, Thumos, and password-reset emails cannot double-submit.
  * A merge-duplicates upsert, save_check_in, and set_reasons are retried once.
+ * Auth and database calls stop after FETCH_TIMEOUT_MS. Uploads and edge calls keep a longer limit.
+ * Overlapping refresh-token posts share one request.
  */
 export function fetchWithOneRetry(base: FetchLike = globalThis.fetch.bind(globalThis)): FetchLike {
+  const refreshes = new Map<string, Promise<() => Response>>();
   return async (input, init) => {
-    const retry = isRetrySafeRequest(input, init);
+    if (isRefreshTokenRequest(input, init)) {
+      const existing = refreshes.get('refresh');
+      if (existing) return (await existing)();
+      let resolveRun: (value: () => Response) => void = () => undefined;
+      let rejectRun: (error: unknown) => void = () => undefined;
+      const run = new Promise<() => Response>((resolve, reject) => {
+        resolveRun = resolve;
+        rejectRun = reject;
+      });
+      refreshes.set('refresh', run);
+      void executeFetch(base, input, init).then(
+        async (response) => {
+          try {
+            const body = await response.arrayBuffer();
+            resolveRun(() => copyResponse(response, body));
+          } catch (error) {
+            rejectRun(error);
+          }
+        },
+        (error) => rejectRun(error),
+      );
+      try {
+        return (await run)();
+      } finally {
+        if (refreshes.get('refresh') === run) refreshes.delete('refresh');
+      }
+    }
+    return executeFetch(base, input, init);
+  };
+}
+
+async function executeFetch(base: FetchLike, input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+  const timeoutMs = fetchTimeoutMs(input, init);
+  const controller = new AbortController();
+  let timedOut = false;
+  let settled = false;
+  let rejectTimeout: (error: Error) => void = () => undefined;
+  const deadline = new Promise<never>((_resolve, reject) => {
+    rejectTimeout = reject;
+  });
+  deadline.catch(() => undefined);
+  const timer = setTimeout(() => {
+    if (settled) return;
+    timedOut = true;
+    controller.abort();
+    rejectTimeout(fetchTimeoutError());
+  }, timeoutMs);
+  const outer = init?.signal;
+  const onOuterAbort = () => controller.abort();
+  if (outer) {
+    if (outer.aborted) controller.abort();
+    else outer.addEventListener('abort', onOuterAbort, { once: true });
+  }
+  const nextInit: RequestInit = { ...init, signal: controller.signal };
+  const once = async (): Promise<Response> => {
+    const attempt = base(input, nextInit).catch((error: unknown) => {
+      if (timedOut) throw fetchTimeoutError();
+      throw error;
+    });
+    attempt.catch(() => undefined);
+    return Promise.race([attempt, deadline]);
+  };
+  try {
+    if (controller.signal.aborted && !timedOut) {
+      throw Object.assign(new Error('The operation was aborted.'), { name: 'AbortError' });
+    }
+    const retry = isRetrySafeRequest(input, nextInit);
     try {
-      const response = await base(input, init);
+      const response = await once();
+      if (timedOut) throw fetchTimeoutError();
       if (retry && (response.status === 502 || response.status === 503 || response.status === 504)) {
-        return await base(input, init);
+        const again = await once();
+        if (timedOut) throw fetchTimeoutError();
+        return again;
       }
       return response;
     } catch (error) {
-      if (retry && isTransientNetworkError(error)) return await base(input, init);
+      if (timedOut) throw fetchTimeoutError();
+      if (controller.signal.aborted) throw error;
+      if (retry && isTransientNetworkError(error)) {
+        const again = await once();
+        if (timedOut) throw fetchTimeoutError();
+        return again;
+      }
       throw error;
     }
-  };
+  } finally {
+    settled = true;
+    clearTimeout(timer);
+    outer?.removeEventListener?.('abort', onOuterAbort);
+  }
 }

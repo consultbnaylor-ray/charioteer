@@ -2,15 +2,33 @@ import { useEffect, useSyncExternalStore } from 'react';
 
 import { useRepository, useSnapshot } from '@/data';
 import { overrideActive, type EntitlementOverride } from '@/domain/entitlementOverride';
+import { FETCH_TIMEOUT_MS } from '@/domain/retryFetch';
 import { entitlementActive, paywallEnabled, type SubscriptionRecord } from '@/domain/subscription';
 
 type Cache = {
   userId: string | null;
   loading: boolean;
+  failed: boolean;
   row: SubscriptionRecord | null;
 };
 
-let cache: Cache = { userId: null, loading: false, row: null };
+let cache: Cache = { userId: null, loading: false, failed: false, row: null };
+
+function withLookupTimeout<T>(work: Promise<T>, ms = FETCH_TIMEOUT_MS): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error('The request timed out.')), ms);
+    work.then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (error) => {
+        clearTimeout(timer);
+        reject(error);
+      },
+    );
+  });
+}
 const listeners = new Set<() => void>();
 
 function emit() {
@@ -29,23 +47,24 @@ export function entitlementSnapshot(): Cache {
 }
 
 export function clearEntitlement() {
-  cache = { userId: null, loading: false, row: null };
+  cache = { userId: null, loading: false, failed: false, row: null };
   emit();
 }
 
 export function rememberEntitlement(userId: string, row: SubscriptionRecord | null) {
-  cache = { userId, loading: false, row };
+  cache = { userId, loading: false, failed: false, row };
   emit();
 }
 
 export async function refreshEntitlement(userId: string, load: () => Promise<SubscriptionRecord | null>) {
-  cache = { userId, loading: true, row: cache.userId === userId ? cache.row : null };
+  const kept = cache.userId === userId ? cache.row : null;
+  cache = { userId, loading: true, failed: false, row: kept };
   emit();
   try {
-    const row = await load();
-    cache = { userId, loading: false, row };
+    const row = await withLookupTimeout(load());
+    cache = { userId, loading: false, failed: false, row };
   } catch {
-    cache = { userId, loading: false, row: null };
+    cache = { userId, loading: false, failed: kept == null, row: kept };
   }
   emit();
 }
@@ -53,10 +72,11 @@ export async function refreshEntitlement(userId: string, load: () => Promise<Sub
 type OverrideCache = {
   userId: string | null;
   loading: boolean;
+  failed: boolean;
   row: EntitlementOverride | null;
 };
 
-let overrideCache: OverrideCache = { userId: null, loading: false, row: null };
+let overrideCache: OverrideCache = { userId: null, loading: false, failed: false, row: null };
 const overrideListeners = new Set<() => void>();
 
 function emitOverride() {
@@ -81,34 +101,34 @@ export function useEntitlementOverride() {
     if (!snap.ready) return;
     if (!userId) {
       if (overrideCache.userId !== null) {
-        overrideCache = { userId: null, loading: false, row: null };
+        overrideCache = { userId: null, loading: false, failed: false, row: null };
         emitOverride();
       }
       return;
     }
     if (overrideCache.userId === userId && !overrideCache.loading) return;
-    overrideCache = { userId, loading: true, row: null };
-    emitOverride();
-    let live = true;
-    void repo.loadEntitlementOverride().then((row) => {
-      if (!live) return;
-      overrideCache = { userId, loading: false, row };
-      emitOverride();
-    }).catch(() => {
-      if (!live) return;
-      overrideCache = { userId, loading: false, row: null };
-      emitOverride();
-    });
-    return () => {
-      live = false;
-    };
+    void refreshEntitlementOverride(userId, () => repo.loadEntitlementOverride());
   }, [repo, snap.ready, userId]);
 
   const row = current.userId === userId ? current.row : null;
   return {
     row: overrideActive(row) ? row : null,
     loading: Boolean(userId) && (current.userId !== userId || current.loading),
+    failed: Boolean(userId) && current.userId === userId && current.failed,
   };
+}
+
+export async function refreshEntitlementOverride(userId: string, load: () => Promise<EntitlementOverride | null>) {
+  const kept = overrideCache.userId === userId ? overrideCache.row : null;
+  overrideCache = { userId, loading: true, failed: false, row: kept };
+  emitOverride();
+  try {
+    const row = await withLookupTimeout(load());
+    overrideCache = { userId, loading: false, failed: false, row };
+  } catch {
+    overrideCache = { userId, loading: false, failed: kept == null, row: kept };
+  }
+  emitOverride();
 }
 
 export function useEntitlement() {
@@ -134,10 +154,19 @@ export function useEntitlement() {
   return {
     enabled,
     loading,
+    failed: enabled && Boolean(userId) && current.userId === userId && current.failed,
     entitled: enabled ? (entitlementActive(row) || comp.row != null) : false,
     comp: comp.row,
     compLoading: comp.loading,
+    compFailed: comp.failed,
     row,
-    refresh: () => (userId ? refreshEntitlement(userId, () => repo.loadOwnSubscription()) : Promise.resolve()),
+    refresh: () => {
+      if (!userId) return Promise.resolve();
+      const jobs = [
+        refreshEntitlement(userId, () => repo.loadOwnSubscription()),
+        refreshEntitlementOverride(userId, () => repo.loadEntitlementOverride()),
+      ];
+      return Promise.all(jobs).then(() => undefined);
+    },
   };
 }
