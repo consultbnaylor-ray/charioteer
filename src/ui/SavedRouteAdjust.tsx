@@ -37,6 +37,7 @@ import {
 } from '@/domain/savedRoute';
 import { LOCATION_FIX_MESSAGE, LOCATION_FIX_PENDING, readWhileUsingFix } from '@/location/whileUsing';
 import { FootpathMap } from '@/ui/FootpathMap';
+import { usePreferPaths } from '@/ui/preferPaths';
 import { RouteConsentCard } from '@/ui/RouteConsentCard';
 import { narrowScreen } from '@/ui/SavedRouteCard';
 import { useRouteConsent } from '@/ui/useRouteConsent';
@@ -49,6 +50,7 @@ const phoneRequests = {
 
 /** The saved line, redrawn through points the person adds. Save replaces the same row. */
 export function SavedRouteAdjust({ route, onClose }: { route: OutdoorRoute; onClose: () => void }) {
+  const [preferPaths] = usePreferPaths();
   const repo = useRepository();
   const consent = useRouteConsent();
   const { width } = useWindowDimensions();
@@ -73,6 +75,8 @@ export function SavedRouteAdjust({ route, onClose }: { route: OutdoorRoute; onCl
   const modeRef = useRef(mode);
   const routeRef = useRef(route);
   const editRef = useRef(edit);
+  const preferRef = useRef(preferPaths);
+  preferRef.current = preferPaths;
   acceptedRef.current = acceptedVias;
   shownRef.current = shownVias;
   planRef.current = plan;
@@ -105,7 +109,7 @@ export function SavedRouteAdjust({ route, onClose }: { route: OutdoorRoute; onCl
       try {
         const count = await noteRouteRequest(phoneRequests);
         setRequestsToday(count);
-        const next = await repo.planOutdoorRoute(input);
+        const next = await repo.planOutdoorRoute({ ...input, preferPaths: preferRef.current });
         setHistory((stack) => [...stack, previous]);
         setPlan(next);
         setAcceptedVias(vias.map((point) => ({ ...point })));

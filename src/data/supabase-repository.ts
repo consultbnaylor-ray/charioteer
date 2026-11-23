@@ -24,7 +24,8 @@ import { stripJpegBase64, stripJpegLocation } from '@/domain/photoLocation';
 import { chunkHealthRows } from '@/domain/healthUpload';
 import { rejectRouteCoordinates } from '@/domain/workoutRoute';
 import { assertRouteFindingAllowed } from '@/data/routeConsentStore';
-import { calmRouteMessage, explainRouteFailure, parseRoutePlaces, parseRoutePlan, retryRouteInvoke, routeCoordinate, routeInvokeHeaders, type RoutePlace, type RoutePlan, type RoutePlanInput } from '@/domain/findRoute';
+import { calmRouteMessage, explainRouteFailure, parseRoutePlaces, parseRoutePlan, retryRouteInvoke, ROUTE_CLIENT_TIMEOUT_MS, ROUTE_SLOW, routeCoordinate, routeInvokeHeaders, SEARCH_SLOW, withDeadline, type RoutePlace, type RoutePlan, type RoutePlanInput } from '@/domain/findRoute';
+import { routePlanBody } from '@/domain/routeAdjust';
 import { buddyPhotoCaption, gratitudeLineFromSharedCaption, type SharedPhotoCard } from '@/domain/sharedPhotos';
 import { liveOutdoorRouteInsert, outdoorRouteFromDraft, outdoorRouteFromRow, outdoorRouteInsert, outdoorRouteRename, outdoorRouteReplace, routeGeometryStillRequired, routeShapeRejected, routeTableMissing, routeTitleOf, type OutdoorRouteDraft } from '@/domain/outdoorRoute';
 import { ROUTE_NEEDS_NAME, ROUTE_UPDATE_GRANT_LINE } from '@/domain/savedRoute';
@@ -3123,19 +3124,10 @@ export class SupabaseRepository implements Repository {
       throw new UserFacingError('That place could not be used.', 'generic');
     }
     try {
-      const invoked = await retryRouteInvoke((attempt) => this.client.functions.invoke('outdoor-route', {
-        body: {
-          action: 'route',
-          mode: input.mode,
-          shape: input.shape,
-          start,
-          end,
-          distanceM: input.distanceM ?? null,
-          minutes: input.minutes ?? null,
-          via: input.via ?? [],
-        },
+      const invoked = await withDeadline(retryRouteInvoke((attempt) => this.client.functions.invoke('outdoor-route', {
+        body: routePlanBody({ ...input, start, end }),
         headers: routeInvokeHeaders(attempt),
-      }));
+      })), ROUTE_CLIENT_TIMEOUT_MS, ROUTE_SLOW);
       const plan = parseRoutePlan(invoked.data);
       if (plan) return plan;
       throw new UserFacingError(await explainRouteFailure(invoked.error), 'generic');
@@ -3148,10 +3140,10 @@ export class SupabaseRepository implements Repository {
   async searchRoutePlaces(query: string): Promise<RoutePlace[]> {
     await assertRouteFindingAllowed();
     try {
-      const invoked = await retryRouteInvoke((attempt) => this.client.functions.invoke('outdoor-route', {
+      const invoked = await withDeadline(retryRouteInvoke((attempt) => this.client.functions.invoke('outdoor-route', {
         body: { action: 'search', query },
         headers: routeInvokeHeaders(attempt),
-      }));
+      })), ROUTE_CLIENT_TIMEOUT_MS, SEARCH_SLOW);
       const places = parseRoutePlaces(invoked.data);
       if (places.length > 0 || (invoked.data && typeof invoked.data === 'object' && (invoked.data as { ok?: unknown }).ok === true)) {
         return places;

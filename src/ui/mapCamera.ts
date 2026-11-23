@@ -83,6 +83,8 @@ export function useHeldCamera(
   locationFocus: number,
   follow?: boolean,
   track: readonly OutdoorPoint[] = [],
+  pinned: OutdoorPoint | null = null,
+  pinTick = 0,
 ) {
   const next = frameOf(routes, sketch, here, locationFocus, track);
   const held = useRef<HeldCamera>(follow === true ? { ...next, zoom: 16 } : next);
@@ -109,5 +111,13 @@ export function useHeldCamera(
   const restore = useCallback(() => {
     setRestoreTick((value) => value + 1);
   }, []);
+  const pinnedRef = useRef(pinned);
+  pinnedRef.current = pinned;
+  useEffect(() => {
+    const place = pinnedRef.current;
+    if (!place || pinTick <= 0) return;
+    held.current = { longitude: place.longitude, latitude: place.latitude, zoom: 15 };
+    setFrameTick((value) => value + 1);
+  }, [pinTick]);
   return { held, frameTick, restoreTick, remember, restore };
 }

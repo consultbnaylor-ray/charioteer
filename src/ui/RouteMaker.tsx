@@ -1,5 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import { Linking, View, useWindowDimensions } from 'react-native';
 
@@ -12,10 +12,13 @@ import {
   APPLE_MAPS_NOTE,
   DISTANCE_WINS_NOTE,
   HIKE_PROFILE_NOTE,
+  DRAW_TOO_SHORT,
   ROUTE_DISTANCE_CHOICES,
   ROUTE_MOCK_LINE,
   ROUTE_TIME_CHOICES,
   ROUTE_UNAVAILABLE,
+  SEARCH_EMPTY,
+  SEARCH_FAILED,
   STARTER_NOTE,
   STARTER_PLACES,
   appleMapsUrl,
@@ -34,29 +37,42 @@ import {
   type RouteTimeChoice,
 } from '@/domain/findRoute';
 import {
+  closeSketchIfLoop,
   routeSummary,
+  simplifySketch,
+  sketchIsClosed,
   type OutdoorPoint,
 } from '@/domain/outdoorRoute';
 import {
   ADD_A_POINT,
   ADJUST_THE_ROUTE,
+  CLEAR_DRAW,
+  DRAW_HINT,
+  DRAW_ROUTE,
+  EXIT_DRAW,
+  PREFER_PATHS_LABEL,
+  PREFER_PATHS_NOTE,
+  REDRAW_DRAW,
+  UNDO_DRAW,
   adjustControlsOn,
   armPlacement,
   countsPhoneRouteRequest,
+  createPlaceSearch,
+  createRedrawScheduler,
   LAST_ROUTE_FIGURES,
+  noteRouteRequest,
+  readRouteRequests,
   REDRAWING_THE_ROUTE,
   REMOVE_POINT,
   RESET_ADJUST,
   ROUTE_REQUEST_LIMIT_LINE,
   ROUTE_UNCHANGED,
+  routeRequestsTodayLine,
+  takeChosenPlace,
   TAP_TO_MOVE,
   TAP_TO_PLACE,
   UNDO_ADJUST,
   VIA_POINT_CAP,
-  createRedrawScheduler,
-  noteRouteRequest,
-  readRouteRequests,
-  routeRequestsTodayLine,
   tapPoint,
   viaCountLine,
   withoutVia,
@@ -66,6 +82,7 @@ import { loadDistanceUnit } from '@/health/distanceUnit';
 import { LOCATION_FIX_MESSAGE, LOCATION_FIX_PENDING, ROUGH_FIX_LINE, readWhileUsingFix } from '@/location/whileUsing';
 import { FootpathMap } from '@/ui/FootpathMap';
 import { dismissKeyboard } from '@/ui/keyboard';
+import { usePreferPaths } from '@/ui/preferPaths';
 import { Button, Card, Choice, ErrorNote, Field, T } from '@/ui/ui';
 
 const CRAVING_MINUTES = [10, 15, 20] as const;
@@ -81,7 +98,10 @@ const phoneRequests = {
 export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
   const repo = useRepository();
   const router = useRouter();
+  const drawFlag = useLocalSearchParams<{ draw?: string | string[] }>().draw;
+  const openDraw = (Array.isArray(drawFlag) ? drawFlag[0] : drawFlag) === '1';
   const craving = purpose === 'craving';
+  const [preferPaths, setPreferPaths] = usePreferPaths();
   const [mode, setMode] = useState<RouteMode>('walk');
   const [shape, setShape] = useState<RouteShape>('loop');
   const [distanceId, setDistanceId] = useState<RouteDistanceChoice>('5');
@@ -116,6 +136,13 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
   const [you, setYou] = useState<OutdoorPoint | null>(null);
   const [focus, setFocus] = useState(0);
   const [rough, setRough] = useState(false);
+  const [drawing, setDrawing] = useState(false);
+  const [pencil, setPencil] = useState<OutdoorPoint[]>([]);
+  const [drawStack, setDrawStack] = useState<{ plan: RoutePlan | null }[]>([]);
+  const [fromDraw, setFromDraw] = useState(false);
+  const [lookAt, setLookAt] = useState<OutdoorPoint | null>(null);
+  const [lookFocus, setLookFocus] = useState(0);
+  const [searched, setSearched] = useState(false);
   const hereSelected = startName === 'Where I am' && start != null;
   const nearLine = plan ? nearestPathLine(plan.snapDistanceM) : null;
   const acceptedRef = useRef(acceptedVias);
@@ -128,12 +155,38 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
   editRef.current = edit;
   const sendRef = useRef<(vias: readonly OutdoorPoint[]) => Promise<void>>(async () => undefined);
   const queueRef = useRef(createRedrawScheduler((vias) => sendRef.current(vias)));
+  const queryRef = useRef(query);
+  const searchRef = useRef<() => void>(() => undefined);
+  const placeSearchRef = useRef(createPlaceSearch(() => searchRef.current()));
+  const preferRef = useRef(preferPaths);
+  const snapping = useRef(false);
+  queryRef.current = query;
+  preferRef.current = preferPaths;
 
   useEffect(() => {
     const queue = queueRef.current;
+    const places = placeSearchRef.current;
     void readRouteRequests(phoneRequests).then(setRequestsToday).catch(() => undefined);
     void loadDistanceUnit().then(setUnit).catch(() => undefined);
-    return () => queue.dispose();
+    const chosen = takeChosenPlace();
+    if (chosen?.role === 'end') {
+      setEnd(chosen.place);
+      setEndName(chosen.place.name);
+      setShape('a_to_b');
+      setPicking('end');
+      setLookAt(chosen.place);
+      setLookFocus(1);
+    } else if (chosen) {
+      setStart(chosen.place);
+      setStartName(chosen.place.name);
+      setLookAt(chosen.place);
+      setLookFocus(1);
+    }
+    if (!craving && openDraw) setDrawing(true);
+    return () => {
+      queue.dispose();
+      places.dispose();
+    };
   }, []);
 
   function askedRoute(): { ok: true; distanceM: number | null; minutes: number | null } | { ok: false; message: string } {
@@ -188,6 +241,7 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
         distanceM: through ? null : asked.distanceM,
         minutes: through ? null : asked.minutes,
         via: [...vias],
+        preferPaths: preferRef.current,
       });
       setHistory((stack) => [...stack, current].slice(-8));
       setPlan(next);
@@ -279,6 +333,19 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
   function pickResult(place: RoutePlace) {
     if (picking === 'end') pickEnd(place);
     else pickStart(place);
+    setLookAt(place);
+    setLookFocus((value) => value + 1);
+    setResults([]);
+  }
+
+  function onSearchText(value: string) {
+    setQuery(value);
+    queryRef.current = value;
+    if (value.trim().length < 2) {
+      setResults([]);
+      setSearched(false);
+    }
+    placeSearchRef.current.type(value);
   }
 
   async function whereIAm() {
@@ -320,17 +387,26 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
   }
 
   async function search() {
+    const query = queryRef.current.trim();
+    if (query.length < 2) {
+      setResults([]);
+      setSearched(false);
+      return;
+    }
     setError(null);
     setPending(true);
     try {
       setResults(await repo.searchRoutePlaces(query));
+      setSearched(true);
       dismissKeyboard();
     } catch (err) {
+      setSearched(false);
       setError(shownError(err, 'The place search did not answer.'));
     } finally {
       setPending(false);
     }
   }
+  searchRef.current = () => { void search(); };
 
   async function make() {
     setError(null);
@@ -357,8 +433,10 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
         end: !craving && shape === 'a_to_b' ? end : null,
         distanceM: asked.distanceM,
         minutes: asked.minutes,
+        preferPaths,
       });
       setPlan(next);
+      setFromDraw(false);
       setOriginal(next);
       setAcceptedVias([]);
       setShownVias([]);
@@ -415,6 +493,89 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
   }
 
   const mapsUrl = plan ? appleMapsUrl(plan.points, plan.mode) : null;
+
+  async function snapDrawn(points: OutdoorPoint[]) {
+    if (snapping.current) return;
+    const simplified = simplifySketch(points);
+    if (simplified.length < 2) {
+      setError(DRAW_TOO_SHORT);
+      return;
+    }
+    const closed = closeSketchIfLoop(simplified);
+    const origin = closed[0];
+    const finish = closed[closed.length - 1];
+    if (!origin || !finish) {
+      setError(DRAW_TOO_SHORT);
+      return;
+    }
+    const drawnShape = sketchIsClosed(closed) ? 'loop' : 'a_to_b';
+    const previous = planRef.current;
+    snapping.current = true;
+    setPending(true);
+    setError(null);
+    try {
+      const next = await repo.planOutdoorRoute({
+        mode: craving ? 'walk' : mode,
+        shape: craving ? 'loop' : drawnShape,
+        start: origin,
+        end: finish,
+        distanceM: null,
+        minutes: null,
+        via: closed.slice(1, -1),
+        sketch: closed,
+        preferPaths: preferRef.current,
+      });
+      setDrawStack((stack) => [...stack, { plan: previous }].slice(-8));
+      setPlan(next);
+      setOriginal(next);
+      setFromDraw(true);
+      setPencil([]);
+      setDrawing(false);
+      setAcceptedVias([]);
+      setShownVias([]);
+      setHistory([]);
+      clearEdit();
+      setAdjusting(false);
+      setStart(origin);
+      setStartName('Sketched line');
+      if (!craving && drawnShape === 'a_to_b') {
+        setShape('a_to_b');
+        setEnd(finish);
+        setEndName('Sketched end');
+      }
+      setLookAt(origin);
+      setLookFocus((value) => value + 1);
+      setRequestsToday(await noteRouteRequest(phoneRequests));
+    } catch (err) {
+      const message = err instanceof UserFacingError ? err.message : shownError(err, ROUTE_UNAVAILABLE);
+      if (countsPhoneRouteRequest(message)) setRequestsToday(await noteRouteRequest(phoneRequests));
+      setError(previous ? `${message} ${ROUTE_UNCHANGED}` : message);
+    } finally {
+      snapping.current = false;
+      setPending(false);
+    }
+  }
+
+  function undoDraw() {
+    setDrawStack((stack) => {
+      const previous = stack[stack.length - 1];
+      if (!previous) return stack;
+      setPlan(previous.plan);
+      setFromDraw(previous.plan != null);
+      setPencil([]);
+      return stack.slice(0, -1);
+    });
+  }
+
+  function clearDraw() {
+    setPencil([]);
+    setDrawStack([]);
+    if (fromDraw) {
+      setPlan(null);
+      setFromDraw(false);
+      forgetAdjust();
+    }
+  }
   const mapHeight = Math.max(180, narrow ? 220 : 360);
   const canRemove = edit.kind === 'move';
   const showAdjust = adjustControlsOn({ craving, adjusting, hasPlan: plan != null });
@@ -535,14 +696,51 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
             ))}
           </>
         ) : null}
-        <Field label="Search for a place" value={query} onChangeText={setQuery} maxLength={80} />
+        <View style={{ position: 'relative' }}>
+          <FootpathMap
+            routes={[]}
+            sketch={plan?.points ?? []}
+            pencil={pencil}
+            here={you}
+            startPoint={plan?.snappedStart ?? plan?.points[0] ?? start}
+            locationFocus={focus}
+            lookAt={lookAt}
+            lookFocus={lookFocus}
+            locating={locating}
+            height={Math.max(180, narrow ? 220 : 280)}
+            draw={drawing ? {
+              enabled: true,
+              onChange: setPencil,
+              onEnd: (points) => { void snapDrawn(points); },
+            } : null}
+            onShowMyLocation={() => { void showMyLocation(); }}
+          />
+          <View style={{ position: 'absolute', left: 8, right: 8, bottom: 60, zIndex: 6 }}>
+            <Field label="Search for a place" value={query} onChangeText={onSearchText} maxLength={80} />
+          </View>
+        </View>
+        {!craving ? (
+          <>
+            <Choice label={PREFER_PATHS_LABEL} selected={preferPaths} onPress={() => setPreferPaths(!preferPaths)} />
+            <T variant="muted">{PREFER_PATHS_NOTE}</T>
+          </>
+        ) : null}
         {!craving && shape === 'a_to_b' ? (
           <>
             <Choice label="Search sets the start" selected={picking === 'start'} onPress={() => setPicking('start')} />
             <Choice label="Search sets the destination" selected={picking === 'end'} onPress={() => setPicking('end')} />
           </>
         ) : null}
-        <Button label="Search" tone="quiet" disabled={query.trim().length < 2 || pending || locating} pending={pending} onPress={() => { void search(); }} />
+        <Button
+          label="Search"
+          tone="quiet"
+          disabled={query.trim().length < 2 || pending || locating}
+          pending={pending}
+          onPress={() => {
+            placeSearchRef.current.now();
+            void search();
+          }}
+        />
         {results.map((place) => (
           <Choice
             key={`found-${place.id}`}
@@ -552,6 +750,37 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
             onPress={() => pickResult(place)}
           />
         ))}
+        {searched && results.length === 0 ? <T>{SEARCH_EMPTY}</T> : null}
+        {!craving ? (
+          <>
+            {drawing ? <T>{DRAW_HINT}</T> : null}
+            <Button
+              label={drawing ? EXIT_DRAW : DRAW_ROUTE}
+              tone={drawing ? 'primary' : 'quiet'}
+              disabled={pending}
+              onPress={() => {
+                if (drawing) setPencil([]);
+                setDrawing((on) => !on);
+                if (!drawing) setAdjusting(false);
+              }}
+            />
+            <View style={narrow ? { gap: 8 } : { flexDirection: 'row', gap: 8 }}>
+              <View style={narrow ? undefined : { flex: 1 }}>
+                <Button label={UNDO_DRAW} tone="quiet" disabled={drawStack.length === 0 || pending} onPress={undoDraw} />
+              </View>
+              <View style={narrow ? undefined : { flex: 1 }}>
+                <Button label={CLEAR_DRAW} tone="quiet" disabled={pending || (pencil.length === 0 && !fromDraw)} onPress={clearDraw} />
+              </View>
+            </View>
+            <Button label={REDRAW_DRAW} tone="quiet" disabled={pending || drawing} onPress={() => { setPencil([]); setDrawing(true); setAdjusting(false); }} />
+            {fromDraw && plan ? (
+              <>
+                <T>{routeSummary({ distanceM: plan.distanceM, durationMinutes: plan.durationMinutes })}</T>
+                <T>{formatClimb(plan.ascentM)}</T>
+              </>
+            ) : null}
+          </>
+        ) : null}
         <Button
           label={craving ? 'Make this walk' : 'Make the route'}
           disabled={pending || locating}

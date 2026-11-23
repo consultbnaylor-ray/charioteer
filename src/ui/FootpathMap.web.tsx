@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { View } from 'react-native';
 
 import { viaPointCollection } from '@/domain/routeAdjust';
+import { DrawCapture } from '@/ui/DrawCapture';
 import {
   YOU_HERE_FILL,
   YOU_HERE_RING,
@@ -71,6 +72,10 @@ export function FootpathMap({
   adjust = null,
   bar = null,
   mapLabel,
+  pencil = [],
+  lookAt = null,
+  lookFocus = 0,
+  draw = null,
 }: {
   routes: readonly OutdoorRoute[];
   sketch: readonly OutdoorPoint[];
@@ -99,13 +104,22 @@ export function FootpathMap({
   bar?: ReactNode;
   /** Accessible name. Omitted maps keep "Map with footpaths". */
   mapLabel?: string;
+  pencil?: readonly OutdoorPoint[];
+  lookAt?: OutdoorPoint | null;
+  lookFocus?: number;
+  draw?: {
+    enabled: boolean;
+    onChange: (points: OutdoorPoint[]) => void;
+    onEnd: (points: OutdoorPoint[]) => void;
+  } | null;
 }) {
   const [scheme, choose] = useMapScheme();
-  const camera = useHeldCamera(routes, sketch, here, locationFocus, follow, track);
+  const camera = useHeldCamera(routes, sketch, here, locationFocus, follow, track, lookAt, lookFocus);
   const [problem, setProblem] = useState<string | null>(null);
+  const frame = useRef({ width: 0, height: 0 });
   const savedJson = JSON.stringify(savedLineCollection(routes));
   const sketchJson = JSON.stringify(sketchLineCollection(sketch));
-  const guideJson = JSON.stringify(sketchLineCollection([]));
+  const guideJson = JSON.stringify(sketchLineCollection(pencil));
   const viaJson = JSON.stringify(viaPointCollection(adjust?.vias ?? []));
   const selectedVia = adjust?.selectedIndex != null ? adjust.vias[adjust.selectedIndex] ?? null : null;
   const selectedJson = JSON.stringify(viaPointCollection(selectedVia ? [selectedVia] : []));
@@ -127,25 +141,45 @@ export function FootpathMap({
       bar={bar}
       mapLabel={mapLabel}
       renderMap={({ height: viewHeight }) => (
-        <WebCanvas
-          height={viewHeight}
-          scheme={scheme}
-          held={camera.held}
-          frameTick={camera.frameTick}
-          restoreTick={camera.restoreTick}
-          remember={camera.remember}
-          savedJson={savedJson}
-          sketchJson={sketchJson}
-          guideJson={guideJson}
-          viaJson={viaJson}
-          selectedJson={selectedJson}
-          adjust={adjust}
-          trackJson={trackJson}
-          startJson={startJson}
-          youJson={youJson}
-          onUserMove={onUserMove}
-          onProblem={() => setProblem('The map tiles did not load in this browser.')}
-        />
+        <View
+          style={{ height: viewHeight }}
+          onLayout={(event) => {
+            frame.current = { width: event.nativeEvent.layout.width, height: event.nativeEvent.layout.height };
+          }}
+        >
+          <WebCanvas
+            height={viewHeight}
+            scheme={scheme}
+            held={camera.held}
+            frameTick={camera.frameTick}
+            restoreTick={camera.restoreTick}
+            remember={camera.remember}
+            savedJson={savedJson}
+            sketchJson={sketchJson}
+            guideJson={guideJson}
+            viaJson={viaJson}
+            selectedJson={selectedJson}
+            adjust={adjust}
+            drawing={draw?.enabled === true}
+            trackJson={trackJson}
+            startJson={startJson}
+            youJson={youJson}
+            onUserMove={onUserMove}
+            onProblem={() => setProblem('The map tiles did not load in this browser.')}
+          />
+          {draw?.enabled ? (
+            <DrawCapture
+              readView={() => ({
+                centre: { latitude: camera.held.current.latitude, longitude: camera.held.current.longitude },
+                zoom: camera.held.current.zoom,
+                width: frame.current.width,
+                height: frame.current.height || viewHeight,
+              })}
+              onChange={draw.onChange}
+              onEnd={draw.onEnd}
+            />
+          ) : null}
+        </View>
       )}
     />
   );
@@ -262,6 +296,7 @@ function WebCanvas({
   viaJson,
   selectedJson,
   adjust,
+  drawing = false,
   trackJson,
   startJson,
   youJson,
@@ -285,6 +320,7 @@ function WebCanvas({
     selectedIndex: number | null;
     onTap: (point: OutdoorPoint) => void;
   } | null;
+  drawing?: boolean;
   trackJson: string;
   startJson: string;
   youJson: string;
@@ -300,6 +336,8 @@ function WebCanvas({
   paint.current = { scheme, savedJson, sketchJson, trackJson, startJson, youJson, guideJson, viaJson, selectedJson };
   const adjustRef = useRef(adjust);
   adjustRef.current = adjust;
+  const drawingRef = useRef(drawing);
+  drawingRef.current = drawing;
   const userMoveRef = useRef(onUserMove);
   userMoveRef.current = onUserMove;
   const heldRef = useRef(held);
@@ -415,6 +453,7 @@ function WebCanvas({
       return { latitude: event.lngLat.lat, longitude: event.lngLat.lng };
     };
     const tap = (event: { lngLat?: { lng: number; lat: number } }) => {
+      if (drawingRef.current) return;
       const current = adjustRef.current;
       const point = pointOf(event);
       if (!current?.enabled || !point) return;

@@ -50,6 +50,15 @@ const WALK_METRES_PER_MINUTE = 80;
 /** A line the app will hold. The live table still caps a row at LIVE_POINT_CAP until a later migration. */
 export const ROUTE_POINT_CAP = 2000;
 export const LIVE_POINT_CAP = 64;
+/**
+ * OpenRouteService directions accepts at most this many coordinates.
+ * A sketch is simplified down to this cap before it is sent.
+ */
+export const ORS_WAYPOINT_LIMIT = 50;
+/** A finger wobble smaller than this is dropped before the route is requested. */
+export const SKETCH_EPSILON_M = 30;
+const SKETCH_RAW_CAP = 500;
+const MERCATOR_TILE = 512;
 const MAX_POINTS = ROUTE_POINT_CAP;
 
 export type OutdoorKind = 'drawn' | 'craving_walk' | 'loop' | 'point_to_point';
@@ -322,6 +331,157 @@ export function simplifyLine(points: readonly OutdoorPoint[], cap = LIVE_POINT_C
     else picked.push(end);
   }
   return picked;
+}
+
+function copyPoint(point: OutdoorPoint): OutdoorPoint {
+  return { latitude: point.latitude, longitude: point.longitude };
+}
+
+/** Drops a point that has barely moved, and keeps the stroke short enough to simplify. */
+export function appendSketchPoint(points: readonly OutdoorPoint[], next: OutdoorPoint, minMetres = 12): OutdoorPoint[] {
+  const point = finitePoint(next);
+  if (!point) return points.map(copyPoint);
+  const last = points[points.length - 1];
+  if (last && metresBetween(last, point) < minMetres) return points.map(copyPoint);
+  const grown = [...points.map(copyPoint), point];
+  if (grown.length <= SKETCH_RAW_CAP) return grown;
+  return simplifyLine(grown, SKETCH_RAW_CAP);
+}
+
+function perpendicularMetres(point: OutdoorPoint, start: OutdoorPoint, end: OutdoorPoint): number {
+  const originLat = (start.latitude * Math.PI) / 180;
+  const east = (value: OutdoorPoint) => (value.longitude - start.longitude) * 111_320 * Math.cos(originLat);
+  const north = (value: OutdoorPoint) => (value.latitude - start.latitude) * 111_320;
+  const px = east(point);
+  const py = north(point);
+  const ex = east(end);
+  const ey = north(end);
+  const length = Math.hypot(ex, ey);
+  if (length < 1) return Math.hypot(px, py);
+  const along = Math.max(0, Math.min(1, (px * ex + py * ey) / (length * length)));
+  return Math.hypot(px - along * ex, py - along * ey);
+}
+
+function douglasPeucker(points: readonly OutdoorPoint[], epsilonM: number): OutdoorPoint[] {
+  if (points.length <= 2) return points.map(copyPoint);
+  let farthest = 0;
+  let index = 0;
+  const last = points.length - 1;
+  for (let cursor = 1; cursor < last; cursor += 1) {
+    const distance = perpendicularMetres(points[cursor], points[0], points[last]);
+    if (distance > farthest) {
+      farthest = distance;
+      index = cursor;
+    }
+  }
+  if (farthest <= epsilonM || index === 0) return [copyPoint(points[0]), copyPoint(points[last])];
+  const left = douglasPeucker(points.slice(0, index + 1), epsilonM);
+  const right = douglasPeucker(points.slice(index), epsilonM);
+  return [...left.slice(0, -1), ...right];
+}
+
+/**
+ * Douglas-Peucker, then a tighter tolerance until the line fits the waypoint cap.
+ * The first and last points stay.
+ */
+export function simplifySketch(
+  points: readonly OutdoorPoint[],
+  epsilonM = SKETCH_EPSILON_M,
+  cap = ORS_WAYPOINT_LIMIT,
+): OutdoorPoint[] {
+  const clean = cleanPoints(points);
+  const limit = Math.max(2, Math.round(cap));
+  if (clean.length <= 2) return clean.map(copyPoint);
+  const thinned = appendRuns(clean);
+  let simplified = douglasPeucker(thinned, Math.max(0, epsilonM));
+  if (simplified.length <= limit) return simplified;
+  let low = Math.max(0, epsilonM);
+  let high = Math.max(low + 1, pathMetres(thinned));
+  let best = douglasPeucker(thinned, high);
+  if (best.length > limit) return simplifyLine(thinned, limit);
+  for (let step = 0; step < 16 && simplified.length > limit; step += 1) {
+    const mid = (low + high) / 2;
+    const next = douglasPeucker(thinned, mid);
+    if (next.length > limit) low = mid;
+    else {
+      high = mid;
+      best = next;
+    }
+    simplified = next;
+  }
+  return best.length <= limit ? best : simplifyLine(thinned, limit);
+}
+
+function appendRuns(points: readonly OutdoorPoint[]): OutdoorPoint[] {
+  const kept: OutdoorPoint[] = [];
+  for (const point of points) {
+    const last = kept[kept.length - 1];
+    if (last && metresBetween(last, point) < 8) continue;
+    kept.push(point);
+  }
+  const end = points[points.length - 1];
+  if (!end) return kept;
+  const last = kept[kept.length - 1];
+  if (!last) return [end];
+  if (last.latitude === end.latitude && last.longitude === end.longitude) return kept;
+  if (metresBetween(last, end) < 8) kept[kept.length - 1] = end;
+  else kept.push(end);
+  return kept;
+}
+
+export function sketchIsClosed(points: readonly OutdoorPoint[], withinM = 40): boolean {
+  if (points.length < 3) return false;
+  const first = points[0];
+  const last = points[points.length - 1];
+  if (first.latitude === last.latitude && first.longitude === last.longitude) return true;
+  return metresBetween(first, last) <= withinM;
+}
+
+/** A loop sketch ends on its start so the route service can close the path. */
+export function closeSketchIfLoop(points: readonly OutdoorPoint[], withinM = 40): OutdoorPoint[] {
+  const copy = points.map(copyPoint);
+  if (!sketchIsClosed(copy, withinM)) return copy;
+  const first = copy[0];
+  const last = copy[copy.length - 1];
+  if (first.latitude === last.latitude && first.longitude === last.longitude) return copy;
+  return [...copy.slice(0, -1), copyPoint(first)];
+}
+
+function mercatorX(longitude: number): number {
+  return (longitude + 180) / 360;
+}
+
+function mercatorY(latitude: number): number {
+  const radians = (latitude * Math.PI) / 180;
+  const y = Math.log(Math.tan(Math.PI / 4 + radians / 2));
+  return (1 - y / Math.PI) / 2;
+}
+
+function unmercatorX(x: number): number {
+  return x * 360 - 180;
+}
+
+function unmercatorY(y: number): number {
+  const radians = Math.atan(Math.sinh(Math.PI * (1 - 2 * y)));
+  return (radians * 180) / Math.PI;
+}
+
+/** A screen point on an unrotated map, using the camera centre and zoom. */
+export function viewToPoint(input: {
+  centre: OutdoorPoint;
+  zoom: number;
+  width: number;
+  height: number;
+  x: number;
+  y: number;
+}): OutdoorPoint | null {
+  if (!(input.width > 0) || !(input.height > 0) || !Number.isFinite(input.zoom)) return null;
+  const centre = finitePoint(input.centre);
+  if (!centre || !Number.isFinite(input.x) || !Number.isFinite(input.y)) return null;
+  const scale = MERCATOR_TILE * 2 ** input.zoom;
+  const worldX = mercatorX(centre.longitude) * scale + (input.x - input.width / 2);
+  const worldY = mercatorY(centre.latitude) * scale + (input.y - input.height / 2);
+  return finitePoint({ latitude: unmercatorY(worldY / scale), longitude: unmercatorX(worldX / scale) });
 }
 
 export function liveOutdoorRouteInsert(userId: string, id: string, draft: OutdoorRouteDraft): Record<string, unknown> | null {

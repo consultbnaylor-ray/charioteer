@@ -21,8 +21,10 @@ import {
   readMode,
   readPlace,
   readShape,
+  readSketchPoints,
   readViaPoints,
   routeLengthM,
+  routingMode,
   snapUrl,
   withinGlobalRouteLimit,
   withinRouteLimit,
@@ -69,6 +71,8 @@ Deno.serve(async (req) => {
     minutes?: unknown;
     query?: unknown;
     via?: unknown;
+    preferPaths?: unknown;
+    sketch?: unknown;
   } | null;
   if (!body || (body.action !== 'route' && body.action !== 'search')) {
     return json({ ok: false, code: 'bad_request', message: 'Choose a route or a place.' }, 400);
@@ -101,19 +105,24 @@ Deno.serve(async (req) => {
     if (shape === 'a_to_b' && !end) return json({ ok: false, code: 'bad_request', message: 'Choose a destination.' }, 400);
     const vias = readViaPoints(body.via);
     if (!vias) return json({ ok: false, code: 'bad_request', message: 'Choose up to five points on the route.' }, 400);
+    const preferPaths = body.preferPaths === true;
+    const sketch = readSketchPoints(body.sketch);
+    if (!sketch) return json({ ok: false, code: 'bad_request', message: 'Choose fewer points on the sketch.' }, 400);
     const lengthM = routeLengthM({ mode, distanceM: body.distanceM, minutes: body.minutes });
-    if (!lengthM && vias.length === 0) return json({ ok: false, code: 'bad_request', message: 'Choose a distance or a time.' }, 400);
-    const directions = buildDirectionsBody({ mode, shape, start, end, lengthM: lengthM ?? 0, via: vias });
+    if (!lengthM && vias.length === 0 && sketch.length < 2) return json({ ok: false, code: 'bad_request', message: 'Choose a distance or a time.' }, 400);
+    const routed = routingMode(mode, preferPaths);
+    const directions = buildDirectionsBody({ mode, shape, start, end, lengthM: lengthM ?? 0, via: vias, preferPaths, sketch });
     if (!directions) return json({ ok: false, code: 'bad_request', message: 'Choose a destination.' }, 400);
-    const first = await postDirections(key, mode, shape, directions);
+    const first = await postDirections(key, routed, shape, directions);
     if (first.kind === 'plan') return json({ ok: true, mocked: false, mode, shape, ...first.plan });
     if (first.failure.body.code !== 'no_path') return json(first.failure.body, first.failure.status);
-    const snapped = await snapStart(key, mode, start);
+    const snapped = await snapStart(key, routed, sketch[0] ?? start);
     if (snapped.kind === 'failure') return json(snapped.failure.body, snapped.failure.status);
     if (snapped.kind === 'none') return json({ ok: false, code: 'no_path', message: NO_PATH_MESSAGE }, 422);
-    const retry = buildDirectionsBody({ mode, shape, start: snapped.point, end, lengthM: lengthM ?? 0, via: vias });
+    const retrySketch = sketch.length >= 2 ? [snapped.point, ...sketch.slice(1)] : sketch;
+    const retry = buildDirectionsBody({ mode, shape, start: snapped.point, end, lengthM: lengthM ?? 0, via: vias, preferPaths, sketch: retrySketch });
     if (!retry) return json({ ok: false, code: 'no_path', message: NO_PATH_MESSAGE }, 422);
-    const second = await postDirections(key, mode, shape, retry);
+    const second = await postDirections(key, routed, shape, retry);
     if (second.kind === 'failure') {
       if (second.failure.body.code === 'no_path') return json({ ok: false, code: 'no_path', message: NO_PATH_MESSAGE }, 422);
       return json(second.failure.body, second.failure.status);

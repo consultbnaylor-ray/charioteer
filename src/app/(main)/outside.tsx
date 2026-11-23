@@ -12,14 +12,17 @@ import {
 } from '@/domain/activitySession';
 import { shownError } from '@/domain/errors';
 import { OUTSIDE_SECTION_LABEL, SHOW_WALK_THIS_OFF } from '@/domain/outsideSection';
+import { PREFER_PATHS_LABEL, PREFER_PATHS_NOTE } from '@/domain/routeAdjust';
 import { OutsideFooter } from '@/ui/OutsideFooter';
+import { usePreferPaths } from '@/ui/preferPaths';
 import { OutingInProgressBanner } from '@/ui/OutingInProgressBanner';
 import { SavedRouteCard } from '@/ui/SavedRouteCard';
-import { Button, Card, ErrorNote, Screen, T } from '@/ui/ui';
+import { Button, Card, Choice, ErrorNote, Screen, T } from '@/ui/ui';
 
 export default function Outside() {
   const snap = useSnapshot();
   const router = useRouter();
+  const [preferPaths, setPreferPaths] = usePreferPaths();
   const [error, setError] = useState<string | null>(null);
   const [outings, setOutings] = useState<ActivitySummary[]>([]);
   const routes = snap.outdoorRoutes ?? [];
@@ -52,6 +55,8 @@ export default function Outside() {
           <Button label="Walk this off" tone="quiet" onPress={() => router.push('/craving-walk' as never)} />
         ) : null}
         <Button label="Open the map" tone="quiet" onPress={() => router.push('/outside-map' as never)} />
+        <Choice label={PREFER_PATHS_LABEL} selected={preferPaths} onPress={() => setPreferPaths(!preferPaths)} />
+        <T variant="muted">{PREFER_PATHS_NOTE}</T>
         <T variant="muted">Footpaths come from OpenStreetMap, drawn with OpenFreeMap. The credit stays on the map.</T>
       </Card>
       <ErrorNote>{error}</ErrorNote>
