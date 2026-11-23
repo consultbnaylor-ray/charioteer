@@ -46,6 +46,9 @@ export const DRAW_HINT = 'Drag on the map to sketch a line. Lift your finger to 
 
 export const DRAW_FINGER_HINT = 'Draw your route with one finger';
 
+export const DRAW_PEN_HINT =
+  'Use the pen symbol to draw where you want to go and the line will snap to the nearest paths';
+
 /** Shown when a lift does not come back as a path. The pencil line stays. */
 export const DRAW_NO_PATH = 'No path matched that line.';
 

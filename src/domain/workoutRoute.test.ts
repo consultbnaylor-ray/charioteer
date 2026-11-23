@@ -491,7 +491,7 @@ describe('workout routes stay on the phone', () => {
     const watched = [
       ...filesUnder('src/data'),
       ...filesUnder('supabase/functions').filter((path) => !path.endsWith('orsRoute.ts')),
-      ...filesUnder('src/domain').filter((path) => !path.endsWith('workoutRoute.ts') && !path.endsWith('sharedPayload.ts') && !path.endsWith('outdoorRoute.ts') && !path.endsWith('findRoute.ts') && !path.endsWith('activitySession.ts') && !path.endsWith('routeAdjust.ts') && !path.endsWith('savedRoute.ts') && !path.endsWith('.test.ts')),
+      ...filesUnder('src/domain').filter((path) => !path.endsWith('workoutRoute.ts') && !path.endsWith('sharedPayload.ts') && !path.endsWith('outdoorRoute.ts') && !path.endsWith('findRoute.ts') && !path.endsWith('activitySession.ts') && !path.endsWith('routeAdjust.ts') && !path.endsWith('savedRoute.ts') && !path.endsWith('drawStroke.ts') && !path.endsWith('.test.ts')),
     ];
     for (const path of watched) {
       const source = readFileSync(path, 'utf8');

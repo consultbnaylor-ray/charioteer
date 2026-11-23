@@ -37,6 +37,15 @@ import {
   type RouteTimeChoice,
 } from '@/domain/findRoute';
 import {
+  clearDrawStrokes,
+  combineDrawStrokes,
+  commitDrawStroke,
+  continuationEnd,
+  joinStroke,
+  undoDrawStroke,
+  visibleDrawLine,
+} from '@/domain/drawStroke';
+import {
   closeSketchIfLoop,
   routeSummary,
   simplifySketch,
@@ -47,6 +56,7 @@ import {
   ADD_A_POINT,
   ADJUST_THE_ROUTE,
   DRAW_NO_PATH,
+  DRAW_PEN_HINT,
   PREFER_PATHS_LABEL,
   PREFER_PATHS_NOTE,
   adjustControlsOn,
@@ -78,6 +88,8 @@ import { LOCATION_FIX_MESSAGE, LOCATION_FIX_PENDING, ROUGH_FIX_LINE, readWhileUs
 import { FootpathMap } from '@/ui/FootpathMap';
 import { dismissKeyboard } from '@/ui/keyboard';
 import { usePreferPaths } from '@/ui/preferPaths';
+import { RouteChoiceGroup } from '@/ui/RouteChoiceGroup';
+import { statsToneColors } from '@/ui/statsPalette';
 import { useAppTheme } from '@/ui/theme';
 import { Button, Card, Choice, ErrorNote, Field, T } from '@/ui/ui';
 
@@ -137,7 +149,9 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
   const [rough, setRough] = useState(false);
   const [drawing, setDrawing] = useState(false);
   const [pencil, setPencil] = useState<OutdoorPoint[]>([]);
-  const [drawStack, setDrawStack] = useState<{ plan: RoutePlan | null }[]>([]);
+  const [strokes, setStrokes] = useState<OutdoorPoint[][]>([]);
+  const [snappedCount, setSnappedCount] = useState(0);
+  const [drawStack, setDrawStack] = useState<{ plan: RoutePlan | null; snappedCount: number }[]>([]);
   const [fromDraw, setFromDraw] = useState(false);
   const [lookAt, setLookAt] = useState<OutdoorPoint | null>(null);
   const [lookFocus, setLookFocus] = useState(0);
@@ -152,13 +166,17 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
   shownRef.current = shownVias;
   planRef.current = plan;
   editRef.current = edit;
+  const strokesRef = useRef(strokes);
+  const snappedCountRef = useRef(snappedCount);
+  const drawGen = useRef(0);
+  strokesRef.current = strokes;
+  snappedCountRef.current = snappedCount;
   const sendRef = useRef<(vias: readonly OutdoorPoint[]) => Promise<void>>(async () => undefined);
   const queueRef = useRef(createRedrawScheduler((vias) => sendRef.current(vias)));
   const queryRef = useRef(query);
   const searchRef = useRef<() => void>(() => undefined);
   const placeSearchRef = useRef(createPlaceSearch(() => searchRef.current()));
   const preferRef = useRef(preferPaths);
-  const snapping = useRef(false);
   queryRef.current = query;
   preferRef.current = preferPaths;
 
@@ -432,6 +450,7 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
       setError('Choose a destination.');
       return;
     }
+    drawGen.current += 1;
     setPending(true);
     try {
       const next = await repo.planOutdoorRoute({
@@ -443,6 +462,14 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
         minutes: asked.minutes,
         preferPaths,
       });
+      const empty = clearDrawStrokes();
+      strokesRef.current = empty;
+      setStrokes(empty);
+      snappedCountRef.current = 0;
+      setSnappedCount(0);
+      setDrawStack([]);
+      setPencil([]);
+      setDrawing(false);
       setPlan(next);
       setFromDraw(false);
       setOriginal(next);
@@ -503,12 +530,28 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
   const mapsUrl = plan ? appleMapsUrl(plan.points, plan.mode) : null;
 
   async function snapDrawn(points: OutdoorPoint[]) {
-    if (snapping.current) return;
-    const simplified = simplifySketch(points);
+    const end = continuationEnd(strokesRef.current, planRef.current?.points ?? null, snappedCountRef.current);
+    const nextStrokes = commitDrawStroke(strokesRef.current, points, end);
+    if (nextStrokes.length === strokesRef.current.length) {
+      setDrawNote(DRAW_TOO_SHORT);
+      setError(DRAW_TOO_SHORT);
+      setPencil([]);
+      return;
+    }
+    const previous = planRef.current;
+    const previousCount = snappedCountRef.current;
+    const generation = drawGen.current + 1;
+    drawGen.current = generation;
+    strokesRef.current = nextStrokes;
+    setStrokes(nextStrokes);
+    setPencil([]);
+    setDrawStack((stack) => [...stack, { plan: previous, snappedCount: previousCount }].slice(-8));
+    setFromDraw(true);
+    const combined = combineDrawStrokes(nextStrokes);
+    const simplified = simplifySketch(combined);
     if (simplified.length < 2) {
       setDrawNote(DRAW_TOO_SHORT);
       setError(DRAW_TOO_SHORT);
-      setDrawing(false);
       return;
     }
     const closed = closeSketchIfLoop(simplified);
@@ -517,12 +560,9 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
     if (!origin || !finish) {
       setDrawNote(DRAW_TOO_SHORT);
       setError(DRAW_TOO_SHORT);
-      setDrawing(false);
       return;
     }
     const drawnShape = sketchIsClosed(closed) ? 'loop' : 'a_to_b';
-    const previous = planRef.current;
-    snapping.current = true;
     setPending(true);
     setError(null);
     try {
@@ -537,19 +577,18 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
         sketch: closed,
         preferPaths: preferRef.current,
       });
+      if (drawGen.current !== generation) return;
       if (next.points.length < 2) {
         setDrawNote(DRAW_NO_PATH);
         setError(DRAW_NO_PATH);
-        setDrawing(false);
         return;
       }
-      setDrawStack((stack) => [...stack, { plan: previous }].slice(-8));
       setPlan(next);
+      planRef.current = next;
+      setSnappedCount(nextStrokes.length);
+      snappedCountRef.current = nextStrokes.length;
       setOriginal(next);
-      setFromDraw(true);
-      setPencil([]);
       setDrawNote(null);
-      setDrawing(false);
       setAcceptedVias([]);
       setShownVias([]);
       setHistory([]);
@@ -564,15 +603,14 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
       }
       setRequestsToday(await noteRouteRequest(phoneRequests));
     } catch (err) {
+      if (drawGen.current !== generation) return;
       const message = err instanceof UserFacingError ? err.message : shownError(err, ROUTE_UNAVAILABLE);
       if (countsPhoneRouteRequest(message)) setRequestsToday(await noteRouteRequest(phoneRequests));
       const line = previous ? `${message} ${ROUTE_UNCHANGED}` : message;
       setDrawNote(line);
       setError(line);
-      setDrawing(false);
     } finally {
-      snapping.current = false;
-      setPending(false);
+      if (drawGen.current === generation) setPending(false);
     }
   }
 
@@ -582,11 +620,21 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
       setDrawNote(null);
       return;
     }
+    drawGen.current += 1;
+    setPending(false);
+    setStrokes((current) => {
+      const next = undoDrawStroke(current);
+      strokesRef.current = next;
+      return next;
+    });
     setDrawStack((stack) => {
       const previous = stack[stack.length - 1];
       if (!previous) return stack;
       setPlan(previous.plan);
+      planRef.current = previous.plan;
       setFromDraw(previous.plan != null);
+      setSnappedCount(previous.snappedCount);
+      snappedCountRef.current = previous.snappedCount;
       setPencil([]);
       setDrawNote(null);
       return stack.slice(0, -1);
@@ -594,11 +642,19 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
   }
 
   function clearDraw() {
+    drawGen.current += 1;
+    setPending(false);
     setPencil([]);
+    const empty = clearDrawStrokes();
+    strokesRef.current = empty;
+    setStrokes(empty);
+    snappedCountRef.current = 0;
+    setSnappedCount(0);
     setDrawStack([]);
     setDrawNote(null);
     if (fromDraw) {
       setPlan(null);
+      planRef.current = null;
       setFromDraw(false);
       forgetAdjust();
     }
@@ -611,6 +667,10 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
     });
   }
   const mapHeight = Math.max(180, narrow ? 220 : 360);
+  const drawnLine = visibleDrawLine(plan?.points ?? null, strokes, snappedCount);
+  const howChoice = mode === 'run' ? 'Run' : mode === 'cycle' ? 'Cycle' : 'Walk';
+  const shapeChoice = shape === 'a_to_b' ? 'A to B' : 'Loop';
+  const distanceChoice = ROUTE_DISTANCE_CHOICES.find((item) => item.id === distanceId)?.label ?? '5 km';
   const canRemove = edit.kind === 'move';
   const showAdjust = adjustControlsOn({ craving, adjusting, hasPlan: plan != null });
   const adjustActions = showAdjust ? (
@@ -662,51 +722,54 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
           </>
         ) : (
           <>
-            <T variant="label">How</T>
-            <Choice label="Walk" selected={mode === 'walk'} onPress={() => setMode('walk')} />
-            <Choice label="Run" selected={mode === 'run'} onPress={() => setMode('run')} />
-            <Choice label="Cycle" selected={mode === 'cycle'} onPress={() => setMode('cycle')} />
-            {mode === 'run' ? <T variant="muted">{HIKE_PROFILE_NOTE}</T> : null}
-            <T variant="label">Shape</T>
-            <Choice label="Loop" selected={shape === 'loop'} onPress={() => setShape('loop')} />
-            <Choice label="A to B" selected={shape === 'a_to_b'} onPress={() => setShape('a_to_b')} />
-            <T variant="label">Distance</T>
-            {ROUTE_DISTANCE_CHOICES.map((item) => (
-              <Choice key={item.id} label={item.label} selected={distanceId === item.id} onPress={() => setDistanceId(item.id)} />
-            ))}
-            {distanceId === 'custom' ? (
-              <Field
-                label={unit === 'mile' ? 'Distance (miles)' : 'Distance (km)'}
-                value={customDistance}
-                onChangeText={(value) => {
-                  customSession.distance = value;
-                  setCustomDistance(value);
-                }}
-                keyboardType="decimal-pad"
-                placeholder={unit === 'mile' ? '3.1' : '6.5'}
-                hint={routeDistanceFieldHint(unit)}
-                maxLength={8}
-              />
-            ) : null}
-            <T variant="muted">{DISTANCE_WINS_NOTE}</T>
-            <T variant="label">Time</T>
-            {ROUTE_TIME_CHOICES.map((item) => (
-              <Choice key={item.id} label={item.label} selected={timeId === item.id} onPress={() => setTimeId(item.id)} />
-            ))}
-            {timeId === 'custom' ? (
-              <Field
-                label="Time (minutes)"
-                value={customMinutes}
-                onChangeText={(value) => {
-                  customSession.minutes = value;
-                  setCustomMinutes(value);
-                }}
-                keyboardType="number-pad"
-                placeholder="75"
-                hint={routeMinutesFieldHint()}
-                maxLength={4}
-              />
-            ) : null}
+            <RouteChoiceGroup title="How (optional)" choice={howChoice}>
+              <Choice label="Walk" selected={mode === 'walk'} onPress={() => setMode('walk')} />
+              <Choice label="Run" selected={mode === 'run'} onPress={() => setMode('run')} />
+              <Choice label="Cycle" selected={mode === 'cycle'} onPress={() => setMode('cycle')} />
+              {mode === 'run' ? <T variant="muted">{HIKE_PROFILE_NOTE}</T> : null}
+            </RouteChoiceGroup>
+            <RouteChoiceGroup title="Shape (optional)" choice={shapeChoice}>
+              <Choice label="Loop" selected={shape === 'loop'} onPress={() => setShape('loop')} />
+              <Choice label="A to B" selected={shape === 'a_to_b'} onPress={() => setShape('a_to_b')} />
+            </RouteChoiceGroup>
+            <RouteChoiceGroup title="Distance (optional)" choice={distanceChoice}>
+              {ROUTE_DISTANCE_CHOICES.map((item) => (
+                <Choice key={item.id} label={item.label} selected={distanceId === item.id} onPress={() => setDistanceId(item.id)} />
+              ))}
+              {distanceId === 'custom' ? (
+                <Field
+                  label={unit === 'mile' ? 'Distance (miles)' : 'Distance (km)'}
+                  value={customDistance}
+                  onChangeText={(value) => {
+                    customSession.distance = value;
+                    setCustomDistance(value);
+                  }}
+                  keyboardType="decimal-pad"
+                  placeholder={unit === 'mile' ? '3.1' : '6.5'}
+                  hint={routeDistanceFieldHint(unit)}
+                  maxLength={8}
+                />
+              ) : null}
+              <T variant="muted">{DISTANCE_WINS_NOTE}</T>
+              <T variant="label">Time</T>
+              {ROUTE_TIME_CHOICES.map((item) => (
+                <Choice key={item.id} label={item.label} selected={timeId === item.id} onPress={() => setTimeId(item.id)} />
+              ))}
+              {timeId === 'custom' ? (
+                <Field
+                  label="Time (minutes)"
+                  value={customMinutes}
+                  onChangeText={(value) => {
+                    customSession.minutes = value;
+                    setCustomMinutes(value);
+                  }}
+                  keyboardType="number-pad"
+                  placeholder="75"
+                  hint={routeMinutesFieldHint()}
+                  maxLength={4}
+                />
+              ) : null}
+            </RouteChoiceGroup>
           </>
         )}
         <T variant="label">Start</T>
@@ -730,9 +793,14 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
             ))}
           </>
         ) : null}
+        {!craving ? (
+          <T style={{ color: statsToneColors(theme.scheme).good.ink, fontFamily: theme.font.bodyStrong }}>
+            {DRAW_PEN_HINT}
+          </T>
+        ) : null}
         <FootpathMap
           routes={[]}
-          sketch={plan?.points ?? []}
+          sketch={drawnLine}
           pencil={pencil}
           pin={pin}
           here={you}
@@ -744,14 +812,20 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
           height={Math.max(180, narrow ? 220 : 280)}
           draw={drawing ? {
             enabled: true,
-            onChange: setPencil,
+            onChange: (points) => {
+              const joined = joinStroke(
+                continuationEnd(strokesRef.current, planRef.current?.points ?? null, snappedCountRef.current),
+                points,
+              );
+              setPencil(joined);
+            },
             onEnd: (points) => { void snapDrawn(points); },
           } : null}
           onToggleDraw={craving ? undefined : toggleDraw}
           onUndoDraw={undoDraw}
           onClearDraw={clearDraw}
-          canUndoDraw={pencil.length > 0 || drawStack.length > 0}
-          canClearDraw={pencil.length > 0 || fromDraw}
+          canUndoDraw={pencil.length > 0 || strokes.length > 0 || drawStack.length > 0}
+          canClearDraw={pencil.length > 0 || strokes.length > 0 || fromDraw}
           onShowMyLocation={() => { void showMyLocation(); }}
         />
         {fromDraw && plan ? (
@@ -840,7 +914,7 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
           <View accessibilityLabel="Route line">
             <FootpathMap
               routes={[]}
-              sketch={plan.points}
+              sketch={drawnLine}
               here={you}
               startPoint={plan.snappedStart ?? plan.points[0] ?? null}
               locationFocus={focus}
