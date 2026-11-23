@@ -26,6 +26,7 @@ import {
 import { DateField } from '@/ui/DateField';
 import { dismissKeyboard } from '@/ui/keyboard';
 import { radius, stroke, useAppTheme } from '@/ui/theme';
+import { MoreInfo } from '@/ui/MoreInfo';
 import { Button, Choice, Field, T } from '@/ui/ui';
 
 type DraftItem = {
@@ -266,7 +267,11 @@ export function MealEdit({
           />
         </View>
       ) : null}
-      {showHealthNote ? <T variant="muted">{APPLE_HEALTH_MEAL_NOTE}</T> : null}
+      {showHealthNote ? (
+        <MoreInfo about="Apple Health" title="About Apple Health">
+          <T variant="muted">{APPLE_HEALTH_MEAL_NOTE}</T>
+        </MoreInfo>
+      ) : null}
       <Button
         label={saved && !saving ? 'Saved ✓' : 'Save meal'}
         pending={saving}
