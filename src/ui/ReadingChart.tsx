@@ -151,20 +151,20 @@ export function ReadingChart({
     ? `${accessibilityLabel}. ${tooltipWhen(selected.day, grain)}, ${formatChartValue(selected.value, unit)}.`
     : `${accessibilityLabel}. ${summary}. Older on the left, newer on the right.`;
 
+  const meaningToggle = meaning === 'none' ? null : (
+    <MoreInfo
+      about={accessibilityLabel}
+      title={meaningTitle ?? (meaning === 'chart' ? 'What this means' : DATA_MEANING_TITLE)}
+    >
+      {meaning === 'chart' ? null : meaning}
+      {grainCaption ? <T variant="muted">{grainCaption}</T> : null}
+      <T variant="muted">{CHART_DIRECTION_HINT}</T>
+    </MoreInfo>
+  );
+
   return (
     <View accessibilityLabel={spoken} style={{ gap: 6, alignSelf: 'stretch' }}>
       {title ? <T variant="label">{title}</T> : null}
-      <T>{summary}</T>
-      {meaning === 'none' ? null : (
-        <MoreInfo
-          about={accessibilityLabel}
-          title={meaningTitle ?? (meaning === 'chart' ? 'What this means' : DATA_MEANING_TITLE)}
-        >
-          {meaning === 'chart' ? null : meaning}
-          {grainCaption ? <T variant="muted">{grainCaption}</T> : null}
-          <T variant="muted">{CHART_DIRECTION_HINT}</T>
-        </MoreInfo>
-      )}
       {yName ? (
         <T style={{ fontSize: 11 * label, lineHeight: 14 * label, color: theme.colors.muted }}>{yName}</T>
       ) : null}
@@ -330,6 +330,8 @@ export function ReadingChart({
       </View>
       <AxisLabels marks={marks} width={width} gutter={gutter} scale={label} xFor={xFor} />
       <T style={{ fontSize: 11 * label, lineHeight: 14 * label, color: theme.colors.muted, textAlign: 'center' }}>{xTitle}</T>
+      <T>{summary}</T>
+      {meaningToggle}
     </View>
   );
 }

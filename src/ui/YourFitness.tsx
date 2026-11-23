@@ -766,14 +766,14 @@ function MixBar({
         ))}
       </View>
       <T variant="muted">{caption}</T>
-      {counts.length > 0 ? (
-        <View style={{ gap: 2 }}>
+      {counts.length > 0 || CONDITIONING_NOTE ? (
+        <InfoDisclosure about="session types" title="Session types">
           {counts.map((row, index) => (
             <T key={`${row.label}-${index}`} variant="muted">{`${row.label} · ${row.minutes} min`}</T>
           ))}
-        </View>
+          <T variant="muted">{CONDITIONING_NOTE}</T>
+        </InfoDisclosure>
       ) : null}
-      <T variant="muted">{CONDITIONING_NOTE}</T>
       <Fold title={WORKOUT_MIX_TITLE}>
         {(view.mix?.lines ?? []).map((line) => <T key={line}>{line}</T>)}
         {(view.mix?.types ?? []).map((row) => (

@@ -295,11 +295,15 @@ export function BodyCompositionCard() {
         <Button label="Read from Apple Health" tone="quiet" pending={isPending('body-health')} pendingLabel="Reading..." onPress={readHealth} />
       ) : null}
       <QuietNote>{note}</QuietNote>
-      {history.map((row) => (
-        <T key={row.id} variant="muted">
-          {`${formatUkLong(row.recordedOn)} · ${BODY_SOURCE_LABEL[row.source]}${row.bodyFatPct != null ? ` · ${row.bodyFatPct}% fat` : ''}${row.leanMassKg != null ? ` · ${row.leanMassKg} kg lean` : ''}${row.waistCm != null ? ` · waist ${row.waistCm} cm` : ''}`}
-        </T>
-      ))}
+      {history.length > 0 ? (
+        <MoreInfo about="body readings" title="Readings">
+          {history.map((row) => (
+            <T key={row.id} variant="muted">
+              {`${formatUkLong(row.recordedOn)} · ${BODY_SOURCE_LABEL[row.source]}${row.bodyFatPct != null ? ` · ${row.bodyFatPct}% fat` : ''}${row.leanMassKg != null ? ` · ${row.leanMassKg} kg lean` : ''}${row.waistCm != null ? ` · waist ${row.waistCm} cm` : ''}`}
+            </T>
+          ))}
+        </MoreInfo>
+      ) : null}
     </Card>
   );
 }

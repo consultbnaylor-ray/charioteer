@@ -653,7 +653,8 @@ describe('health stat tiles', () => {
     expect(screen).toContain('body={snap.bodyComposition}');
     expect(screen).toContain('activityEnergyKcal={snap.nutrition.activityEnergyKcal}');
     expect(screen).toContain('period={period}');
-    expect(screen).toContain('<StatPeriodToggle');
+    expect(screen).toContain('<MovementCharts');
+    expect(readFileSync('src/ui/DailyActivity.tsx', 'utf8')).toContain('<StatPeriodToggle />');
     const toggle = readFileSync('src/ui/StatPeriodToggle.tsx', 'utf8');
     const periodHook = readFileSync('src/health/useStatPeriod.ts', 'utf8');
     expect(toggle).toContain('HEALTH_STAT_PERIODS');

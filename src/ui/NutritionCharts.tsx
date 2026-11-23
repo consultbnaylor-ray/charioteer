@@ -270,8 +270,9 @@ export function WeightTrendChart({
         bucket={chartBucketForPeriod(period)}
         accent={chartAccent('Weight', theme.scheme) ?? undefined}
         accessibilityLabel="Weight chart"
+        meaning={caption ? <T variant="muted">{caption}</T> : 'chart'}
+        meaningTitle="What this means"
       />
-      <T variant="muted">{caption}</T>
     </View>
   );
 }
