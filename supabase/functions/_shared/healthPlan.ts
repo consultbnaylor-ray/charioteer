@@ -28,7 +28,7 @@ import {
   type WorkoutBucketMap,
 } from './nutrition.ts';
 import { referenceBandsForCoach } from './healthBands.ts';
-import { dedupeAdviceLines } from './adviceDedupe.ts';
+import { dedupeAdviceLines, dedupeFocusItems, finishAdviceText, keepsWatchZoneWording, sameAdvice } from './adviceDedupe.ts';
 import { activityTypeFromKind, assessCardioGap, buildFitnessSnapshot, fitnessFocusLines, workoutBucket, type FitnessSnapshotInput } from './fitnessSnapshot.ts';
 import { intervalDayReason, SLEEP_WAKE_TIP, STEP_WALK_TIP, stepsLookLow, zone2DayReason } from './trainingGuidance.ts';
 import { goalWeightRange } from './goalWeightRange.ts';
@@ -201,14 +201,37 @@ function take(salt: string, key: string, items: string[], count: number, done: s
 }
 
 function actions(prefix: string, texts: string[], facts?: Derived): PlanAction[] {
-  const max = prefix === 'focus' ? 320 : 160;
+  if (prefix === 'focus') {
+    const made: PlanAction[] = [];
+    for (const text of texts) {
+      const line = standaloneFocus(finishAdviceText(text, 'sentence'));
+      if (!line) continue;
+      const done = facts != null && (focusAutoDone(line, facts) || focusMarkedDone(line, facts));
+      made.push({ id: `focus-${made.length + 1}`, text: line, done });
+    }
+    return dedupeFocusItems(made);
+  }
   return texts.map((text, index) => {
-    const line = clip(text, max);
-    const done = (prefix === 'session' && / · Done: /.test(line))
-      || (prefix === 'focus' && facts != null && focusAutoDone(line, facts))
-      || (prefix === 'focus' && facts != null && facts.done.some((item) => item.toLowerCase() === line.toLowerCase()));
+    const line = clip(text, 160);
+    const done = prefix === 'session' && / · Done: /.test(line);
     return { id: `${prefix}-${index + 1}`, text: line, done };
   });
+}
+
+function focusMarkedDone(line: string, facts: Derived): boolean {
+  return facts.done.some((done) => done.toLowerCase() === line.toLowerCase() || sameAdvice(done, line));
+}
+
+/** A focus sentence stays whole. A watch zone colour is not a request to log somewhere else. */
+function focusLineText(text: string, facts: Derived): string | null {
+  const line = standaloneFocus(finishAdviceText(text, 'sentence'), facts.firstName);
+  if (!line || BANNED.test(line) || recommendsHarmfulCut(line)) return null;
+  if (mentionsOtherTracker(line) && !keepsWatchZoneWording(line)) return null;
+  if ((facts.underweight || facts.blockedLoss) && DEFICIT.test(line)) return null;
+  if (facts.belowFloor && facts.input.kcalTarget != null && line.includes(String(facts.input.kcalTarget)) && facts.floorKcal != null) {
+    return line.replaceAll(String(facts.input.kcalTarget), String(facts.floorKcal));
+  }
+  return line;
 }
 
 /** Ticks a focus line when this week's stored readings already show it. Manual ticks still stick. */
@@ -1823,18 +1846,30 @@ function mergeSessions(incoming: PlanAction[], fallback: PlanAction[], facts: De
   return covered && next.length >= 3 ? next : fallback;
 }
 
+function mergeFocus(incoming: PlanAction[], fallback: PlanAction[], facts: Derived, max: number): PlanAction[] {
+  const prepared: PlanAction[] = [];
+  for (const action of [...incoming, ...fallback]) {
+    const text = focusLineText(action.text, facts);
+    if (!text) continue;
+    const auto = focusAutoDone(text, facts);
+    const manual = focusMarkedDone(text, facts);
+    if (manual && !auto) continue;
+    prepared.push({ ...action, text, done: action.done || auto || manual });
+  }
+  return dedupeFocusItems(prepared).slice(0, max).map((action, index) => ({ ...action, id: `focus-${index + 1}` }));
+}
+
 function mergeActions(prefix: string, incoming: PlanAction[], fallback: PlanAction[], facts: Derived, min: number, max: number): PlanAction[] {
+  if (prefix === 'focus') return mergeFocus(incoming, fallback, facts, max);
   const seen = new Set<string>();
   const next: PlanAction[] = [];
   for (const action of [...incoming, ...fallback]) {
-    const cleaned = cleanLine(action.text, facts);
-    const text = prefix === 'focus' ? (cleaned ? standaloneFocus(cleaned, facts.firstName) : null) : cleaned;
+    const text = cleanLine(action.text, facts);
     if (!text || seen.has(text.toLowerCase())) continue;
-    const auto = prefix === 'focus' && focusAutoDone(text, facts);
     const manual = facts.done.some((done) => done.toLowerCase() === text.toLowerCase());
-    if (manual && !auto) continue;
+    if (manual) continue;
     seen.add(text.toLowerCase());
-    next.push({ id: `${prefix}-${next.length + 1}`, text, done: action.done || auto || manual });
+    next.push({ id: `${prefix}-${next.length + 1}`, text, done: action.done || manual });
     if (next.length >= max) break;
   }
   return next.slice(0, Math.max(min, Math.min(max, next.length || min)));
@@ -1890,23 +1925,31 @@ export function draftHealthPlan(input: PlanInput): HealthPlan {
 
 /** Adds a fitness line to this week's focus, or ticks it when it is already there. */
 export function applyFitnessFocus(plan: HealthPlan | null, text: string, updatedAt: string): HealthPlan {
-  const line = text.replace(/\s+/g, ' ').trim().slice(0, 160);
-  if (plan) {
-    const match = plan.focus.find((item) => item.text.toLowerCase() === line.toLowerCase());
-    if (match) return togglePlanAction(plan, match.id);
-    return {
-      ...plan,
-      focus: [...plan.focus, { id: `focus-fit-${plan.focus.length + 1}`, text: line, done: false }],
-      updatedAt,
-    };
-  }
-  return {
-    focus: [{ id: 'focus-fit-1', text: line, done: false }],
+  const line = standaloneFocus(finishAdviceText(text, 'sentence'));
+  const blank = (): HealthPlan => ({
+    focus: line ? [{ id: 'focus-fit-1', text: line, done: false }] : [],
     nutrition: { targets: 'Refresh the plan to fill this in from your figures.', habits: [], swaps: [] },
     fitness: { intro: 'Refresh the plan to fill this in from your figures.', sessions: [] },
     wellbeing: { habits: [] },
     limits: '',
     disclaimer: PLAN_DISCLAIMER,
+    updatedAt,
+  });
+  if (!line) return plan ?? blank();
+  if (!plan) return blank();
+  const focus = dedupeFocusItems(plan.focus);
+  const exact = focus.find((item) => item.text.toLowerCase() === line.toLowerCase());
+  if (exact) return { ...togglePlanAction({ ...plan, focus }, exact.id), updatedAt };
+  const kin = focus.find((item) => sameAdvice(item.text, line));
+  if (kin) {
+    const merged = dedupeFocusItems(focus.map((item) => (item.id === kin.id ? { ...item, text: line } : item)));
+    const kept = merged.find((item) => item.id === kin.id) ?? merged.find((item) => sameAdvice(item.text, line));
+    if (!kept) return { ...plan, focus: merged, updatedAt };
+    return { ...togglePlanAction({ ...plan, focus: merged }, kept.id), updatedAt };
+  }
+  return {
+    ...plan,
+    focus: dedupeFocusItems([...focus, { id: `focus-fit-${focus.length + 1}`, text: line, done: false }]),
     updatedAt,
   };
 }
@@ -1956,10 +1999,10 @@ export function healthPlanFromStored(row: unknown): HealthPlan | null {
   const fitness = (data.fitness ?? null) as { intro?: unknown; sessions?: unknown } | null;
   const wellbeing = (data.wellbeing ?? null) as { habits?: unknown } | null;
   const storedFocus = asActions(data.focus, 'focus', true);
-  const focus = storedFocus.flatMap((action) => {
+  const focus = dedupeFocusItems(storedFocus.flatMap((action) => {
     const text = standaloneFocus(action.text);
     return text ? [{ ...action, text }] : [];
-  });
+  }));
   const updatedAt = typeof data.updatedAt === 'string'
     ? data.updatedAt
     : typeof data.updated_at === 'string'
@@ -2080,10 +2123,11 @@ export function presentSharedHealthPlan(
   goal: NutritionGoal | null | undefined,
 ): SharedHealthPlan | null {
   if (!shared || !plan) return null;
-  const focus = plan.focus.flatMap((action) => {
+  const focus = dedupeFocusItems(plan.focus.flatMap((action) => {
     const standalone = standaloneFocus(action.text);
-    if (!standalone) return [];
-    const text = redactPlanLine(standalone);
+    return standalone ? [{ text: standalone, done: action.done }] : [];
+  })).flatMap((action) => {
+    const text = redactPlanLine(action.text);
     if (!text) return [];
     return [{ text, done: action.done }];
   });
@@ -2100,13 +2144,13 @@ export function parseSharedHealthPlan(value: unknown): SharedHealthPlan | null {
   if (!value || typeof value !== 'object') return null;
   const row = value as Record<string, unknown>;
   const headline = typeof row.headline === 'string' ? row.headline.trim() : '';
-  const focus = (Array.isArray(row.focus) ? row.focus : []).flatMap((item) => {
+  const focus = dedupeFocusItems((Array.isArray(row.focus) ? row.focus : []).flatMap((item) => {
     if (!item || typeof item !== 'object') return [];
     const action = item as Record<string, unknown>;
     const text = typeof action.text === 'string' ? action.text.trim() : '';
     if (!text) return [];
     return [{ text, done: action.done === true }];
-  });
+  }));
   if (!headline && focus.length === 0) return null;
   return {
     headline: headline || 'Health plan',
