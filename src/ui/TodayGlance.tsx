@@ -1,6 +1,6 @@
 import { useRouter } from 'expo-router';
 import { useState, type ReactNode } from 'react';
-import { Pressable, View } from 'react-native';
+import { Pressable, useWindowDimensions, View } from 'react-native';
 
 import { useSnapshot } from '@/data';
 import { recentCheckInDays } from '@/domain/checkIns';
@@ -18,6 +18,7 @@ import { showsSoberRecord } from '@/domain/stage';
 import { useHealthSources } from '@/health/useHealthSources';
 import { GlanceSheet, RestingMeaningBody, StatTrio } from '@/ui/GlanceSheet';
 import { GlowRing, MiniBars, MoodMarks, Sparkline, numberRangeLine, useReduceMotion } from '@/ui/gridChrome';
+import { SOBER_RING_SIZE, SOBER_RING_STROKE, soberRingFit } from '@/ui/soberRingFit';
 import { DataMeaning } from '@/ui/MoreInfo';
 import { ChartMeaningCopy, chartWindowBucket, ReadingChart } from '@/ui/ReadingChart';
 import { useAppTheme } from '@/ui/theme';
@@ -68,6 +69,7 @@ function dayPart(now: Date): string {
  */
 export function TodayGlance({ now, onCorrectDate }: { now: Date; onCorrectDate: () => void }) {
   const theme = useAppTheme();
+  const { fontScale } = useWindowDimensions();
   const reduce = useReduceMotion();
   const router = useRouter();
   const snap = useSnapshot();
@@ -113,6 +115,7 @@ export function TodayGlance({ now, onCorrectDate }: { now: Date; onCorrectDate: 
     textShadowRadius: 8,
     textShadowOffset: { width: 0, height: 0 },
   };
+  const ringFit = soberRingFit(theme.scale, fontScale);
   const restingValues = restingPoints.map((point) => point.value);
   const restingLow = restingValues.length ? Math.min(...restingValues) : null;
   const restingHigh = restingValues.length ? Math.max(...restingValues) : null;
@@ -126,9 +129,36 @@ export function TodayGlance({ now, onCorrectDate }: { now: Date; onCorrectDate: 
       </View>
       <Card compact style={{ borderColor: theme.grid.sobriety }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-          <GlowRing size={132} strokeWidth={10} fill={started ? record.nextFill : 0} color={theme.grid.sobriety} track={theme.scheme === 'dark' ? '#1E2624' : theme.colors.line}>
-            <T variant="display" style={[{ fontSize: 40 * theme.scale, lineHeight: 44 * theme.scale }, glow]}>{hero}</T>
-            <T variant="label" style={{ textAlign: 'center' }}>{heroLabel}</T>
+          <GlowRing size={SOBER_RING_SIZE} strokeWidth={SOBER_RING_STROKE} fill={started ? record.nextFill : 0} color={theme.grid.sobriety} track={theme.scheme === 'dark' ? '#1E2624' : theme.colors.line}>
+            <View style={{ width: ringFit.width, alignItems: 'center' }}>
+              <T
+                variant="display"
+                numberOfLines={1}
+                adjustsFontSizeToFit
+                minimumFontScale={0.3}
+                maxFontSizeMultiplier={1}
+                style={[{ width: '100%', textAlign: 'center', fontSize: 40 * ringFit.scale, lineHeight: 44 * ringFit.scale }, glow]}
+              >
+                {hero}
+              </T>
+              <T
+                variant="label"
+                numberOfLines={1}
+                adjustsFontSizeToFit
+                minimumFontScale={0.3}
+                maxFontSizeMultiplier={1}
+                style={{
+                  width: '100%',
+                  textAlign: 'center',
+                  marginTop: ringFit.labelLift,
+                  letterSpacing: ringFit.letterSpacing,
+                  fontSize: 12 * ringFit.scale,
+                  lineHeight: 16 * ringFit.scale,
+                }}
+              >
+                {heroLabel}
+              </T>
+            </View>
           </GlowRing>
           <View style={{ flex: 1, gap: 6 }}>
             <T variant="label" style={{ color: theme.grid.sobriety }}>Next milestone</T>
