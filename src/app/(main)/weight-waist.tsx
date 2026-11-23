@@ -19,6 +19,7 @@ import { turnOnAppleHealthReads } from '@/health/link';
 import { useHealthSources } from '@/health/useHealthSources';
 import { useStatPeriod } from '@/health/useStatPeriod';
 import { HealthBoard, HealthReadings } from '@/ui/HealthBoard';
+import { MoreInfo } from '@/ui/MoreInfo';
 import { HealthStatBoard, type HealthTurnOnResult } from '@/ui/HealthStatBoard';
 import { HealthFigureView } from '@/ui/MeasuredFigure';
 import { WeightTrendChart } from '@/ui/NutritionCharts';
@@ -140,6 +141,12 @@ export default function WeightWaistScreen() {
   const saveBar = weightDraft != null || savePending || savedNote != null;
   const today = isoDay(new Date());
   const weights = weightChart(snap.health).map((point) => ({ day: point.day, kg: point.value }));
+  const weightFigure = healthFigure(
+    'weight_kg',
+    weights.map((point) => ({ day: point.day, value: point.kg })),
+    today,
+    { classWindow: boxingClassWindow(snap.nutrition.goal, snap.nutrition.goalSex) },
+  );
 
   function goBack() {
     if (router.canGoBack()) router.back();
@@ -190,23 +197,6 @@ export default function WeightWaistScreen() {
       <Card>
         <StatPeriodToggle />
       </Card>
-      <HealthBoard
-        weightPart="charts"
-        samples={healthSamples.filter((sample) => sample.kind === 'weight_kg')}
-        today={isoDay(new Date())}
-        soberOn={snap.profile?.stage === 'stopped' && snap.profile.sobrietyStartedAt ? isoDay(new Date(snap.profile.sobrietyStartedAt)) : null}
-        stage={snap.profile?.stage ?? null}
-        heightCm={snap.profile?.heightCm ?? null}
-        adult={snap.profile?.ageConfirmed18 !== false}
-        canSaveHeight={consent}
-        showWeek={false}
-        kinds={['weight_kg']}
-        onSaveHeight={async (heightCm) => {
-          await repo.updateProfile({ heightCm });
-        }}
-        onWeightDraftChange={reportWeight}
-        weightReset={weightReset}
-      />
       <HealthStatBoard
         onlyTiles={['weight_kg', 'waist']}
         today={isoDay(new Date())}
@@ -224,6 +214,7 @@ export default function WeightWaistScreen() {
         workoutBuckets={snap.nutrition.workoutBuckets}
         period={period}
         onTurnOn={turnOnMissing}
+        skipChartIds={['weight_kg']}
       />
       <ScrollTarget id="body">
         <Card>
@@ -234,22 +225,21 @@ export default function WeightWaistScreen() {
       <ScrollTarget id="weight-chart">
         <Card>
           <IconLabel name="scale">Weight</IconLabel>
-          <HealthFigureView
-            figure={healthFigure(
-              'weight_kg',
-              weights.map((point) => ({ day: point.day, value: point.kg })),
-              today,
-              { classWindow: boxingClassWindow(snap.nutrition.goal, snap.nutrition.goalSex) },
-            )}
-          />
           {weights.length === 0 ? <T variant="muted">No weight logged yet.</T> : (
-            <>
+            <WeightTrendChart points={weights} goal={snap.nutrition.goal} />
+          )}
+          {weightFigure ? (
+            <MoreInfo about="weight" title={weightFigure.bars ? 'Earlier vs latest' : (weightFigure.ring?.label ?? 'Comparison')}>
+              <HealthFigureView figure={weightFigure} />
+            </MoreInfo>
+          ) : null}
+          {weights.length > 0 ? (
+            <MoreInfo about="weight readings" title="Readings">
               {weights.map((point) => (
                 <T key={point.day}>{`${formatUkLong(point.day)} · ${point.kg} kg`}</T>
               ))}
-              <WeightTrendChart points={weights} goal={snap.nutrition.goal} />
-            </>
-          )}
+            </MoreInfo>
+          ) : null}
         </Card>
       </ScrollTarget>
       <HealthReadings samples={healthSamples} kinds={['weight_kg']} />

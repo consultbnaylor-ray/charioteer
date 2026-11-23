@@ -1332,7 +1332,7 @@ describe('body composition', () => {
     expect(page).toContain('<PlanTick done');
     const entry = page.indexOf('weightPart="entry"');
     expect(entry).toBeGreaterThan(-1);
-    expect(entry).toBeLessThan(page.indexOf('weightPart="charts"'));
+    expect(page).not.toContain('weightPart="charts"');
     expect(entry).toBeLessThan(page.indexOf('<WeightTrendChart'));
     expect(entry).toBeLessThan(page.indexOf('<BodyCompositionCard'));
     expect(entry).toBeLessThan(page.indexOf('<StatPeriodToggle'));

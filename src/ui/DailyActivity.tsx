@@ -79,6 +79,7 @@ import { workoutHistoryPeriod, WORKOUT_HISTORY_PERIODS } from '@/domain/workoutH
 import { openAppSettings } from '@/health/link';
 import { MetricRatingLines, RatingChip } from '@/ui/MetricRating';
 import { DataMeaning } from '@/ui/MoreInfo';
+import { HrvExplainer } from '@/ui/HrvExplainer';
 import { goodZoneBand, statsToneColors } from '@/ui/statsPalette';
 import { ChartMeaningCopy, ReadingChart } from '@/ui/ReadingChart';
 import { StatPeriodToggle } from '@/ui/StatPeriodToggle';
@@ -710,6 +711,7 @@ export const MovementCharts = memo(function MovementCharts({
           onSelect={setSelected}
         />
       ) : null}
+      {showHealthStats && (hrvChart || hrvPlaceholder || seriesHasValue(sdnnPoints) || appleHrvSdnn.length > 0) ? <HrvExplainer /> : null}
       {showHealthStats && fitnessChart ? garminCard(fitnessChart) : null}
       {showHealthStats && (foldDetails.length > 0 || placeholders.length > 0) ? (
         <Pressable

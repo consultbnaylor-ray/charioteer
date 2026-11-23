@@ -62,7 +62,7 @@ describe('Health Stats weight section', () => {
 
   it('hides the section on Health Stats and Today, and leaves Profile, the body page, and Apple Health reads', () => {
     const health = readFileSync('src/app/(main)/health.tsx', 'utf8');
-    expect(health).toContain('omitTiles={healthStatsOmittedTiles()}');
+    expect(health).toContain('...healthStatsOmittedTiles()');
     expect(health).toContain('gaps={healthMissingReadings(visibility)}');
     expect(health).toContain('report={visibility}');
     expect(health).not.toContain('hideWeightHealthRows');
@@ -79,7 +79,8 @@ describe('Health Stats weight section', () => {
 
     const board = readFileSync('src/ui/HealthBoard.tsx', 'utf8');
     expect(board).toContain('buildHealthInsights({ today, samples, soberOn, stage })');
-    expect(board).toContain('report.headlines.some((line) => textMentionsWeight(line)) ? <UpdateWeightLink />');
+    expect(board).toContain('textMentionsWeight(line)');
+    expect(board).toContain('mentionsWeight ? <UpdateWeightLink />');
     expect(board).not.toContain('SHOW_WEIGHT_SECTION');
 
     const tiles = readFileSync('src/ui/HealthStatBoard.tsx', 'utf8');

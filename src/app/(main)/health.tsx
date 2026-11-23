@@ -40,8 +40,6 @@ import { activeMinutesByDay } from '@/domain/healthSources';
 import { useHealthSources } from '@/health/useHealthSources';
 import { GarminTip } from '@/ui/GarminTip';
 import { HealthVisibility } from '@/ui/HealthVisibility';
-import { GoalLine } from '@/ui/GoalLine';
-import { StatPeriodToggle } from '@/ui/StatPeriodToggle';
 import { HealthStatBoard } from '@/ui/HealthStatBoard';
 import { HealthSectionShare } from '@/ui/SectionShare';
 import { HealthBoard, HealthReadings } from '@/ui/HealthBoard';
@@ -52,11 +50,6 @@ import { MovementCharts } from '@/ui/DailyActivity';
 import { HealthRefreshBar, useManualHealthRefresh } from '@/ui/HealthRefresh';
 import { WeightWaistLink } from '@/ui/WeightWaistLink';
 import { healthStatsOmittedTiles, SHOW_WEIGHT_SECTION } from '@/domain/weightSection';
-import { buildStatsOverview, HEALTH_LIFE_TILE_IDS } from '@/domain/statsOverview';
-import { StatTile } from '@/ui/StatTile';
-import { YourFitness } from '@/ui/YourFitness';
-import { DailyTargets } from '@/ui/DailyTargets';
-import { YourGoal } from '@/ui/YourGoal';
 import { WorkoutsLink } from '@/ui/WorkoutsLink';
 import { MoreInfo } from '@/ui/MoreInfo';
 import { Button, Card, Choice, ErrorNote, Field, playSavedHaptic, Screen, T } from '@/ui/ui';
@@ -111,43 +104,11 @@ export default function Health() {
     vigorousMinutes: day.vigorousMinutes,
   })), [readings]);
   const chartDay = londonDay(new Date());
-  const planOutdoor = useCallback(() => {
-    router.push(`/workouts?planOutdoor=${Date.now()}` as never);
-  }, [router]);
   const [updatedAt, setUpdatedAt] = useState<string | null>(null);
   const [refreshError, setRefreshError] = useState<string | null>(null);
   const [turnOnNote, setTurnOnNote] = useState<string | null>(null);
   const [seeRequest, setSeeRequest] = useState(0);
   const chosen = KINDS.find((item) => item.id === kind) ?? KINDS[0];
-  const profile = snap.profile;
-  const lifeTiles = useMemo(() => profile ? buildStatsOverview({
-    now: new Date(),
-    period,
-    stage: profile.stage,
-    sobrietyStartedAt: profile.sobrietyStartedAt,
-    plannedQuitAt: profile.plannedQuitAt,
-    drinkFreeOn: profile.drinkFreeOn,
-    drinkFreeDaysGoal: profile.drinkFreeDaysGoal,
-    checkIns: snap.checkIns,
-    health: healthSamples,
-    heightCm: profile.heightCm,
-    nutrition: snap.nutrition,
-    foodLogs: snap.foodLogs,
-    waterDays: snap.waterDays,
-    bodyComposition: snap.bodyComposition,
-    gratitude: snap.gratitude,
-  }).filter((tile) => (HEALTH_LIFE_TILE_IDS as readonly string[]).includes(tile.id)) : [], [
-    profile,
-    period,
-    snap.checkIns,
-    healthSamples,
-    snap.nutrition,
-    snap.foodLogs,
-    snap.waterDays,
-    snap.bodyComposition,
-    snap.gratitude,
-  ]);
-
   const refreshLink = useCallback(() => {
     if (!ios) return;
     void readAppleHealthAccess().then(setAccess).catch(() => setAccess('prompt'));
@@ -409,6 +370,7 @@ export default function Health() {
         sex={snap.nutrition.goalSex}
         goal={snap.nutrition.goal}
         showVo2Chart={false}
+        showIntensity={false}
       />
       <HealthVisibility
         report={visibility}
@@ -418,15 +380,6 @@ export default function Health() {
         onCheck={loadVisibility}
         onAsk={askUnasked}
       />
-      <Card>
-        <StatPeriodToggle />
-      </Card>
-      <Card>
-        <GoalLine />
-      </Card>
-      <YourGoal place="stats" />
-      <DailyTargets />
-      <YourFitness onPlanOutdoor={planOutdoor} />
       <WorkoutsLink workouts={workouts} />
       <Card accessibilityLabel="Open Health Plan" onPress={() => router.push('/health-plan' as never)}>
         <T style={{ fontFamily: theme.font.bodyStrong }}>Health Plan</T>
@@ -435,17 +388,18 @@ export default function Health() {
       <MoreInfo about="these figures">
         <T variant="muted">A plain look at the figures you already keep. The words say what the colour means.</T>
       </MoreInfo>
-      <View style={{ gap: 10, alignSelf: 'stretch' }}>
-        {lifeTiles.map((item) => (
-          <View key={item.id} style={{ alignSelf: 'stretch' }}>
-            <StatTile tile={item} plain />
-          </View>
-        ))}
-      </View>
       <HealthSectionShare />
       {SHOW_WEIGHT_SECTION ? <WeightWaistLink samples={healthSamples} /> : null}
       <HealthStatBoard
-        omitTiles={healthStatsOmittedTiles()}
+        omitTiles={[
+          ...healthStatsOmittedTiles(),
+          'vo2_max',
+          'mix',
+          'workouts',
+          'weekly_active_minutes',
+          'active_energy',
+        ]}
+        skipChartIds={['steps', 'resting_heart_rate', 'hrv_sdnn']}
         today={isoDay(new Date())}
         samples={healthSamples}
         activeMinutes={activeMinutes}
@@ -462,7 +416,6 @@ export default function Health() {
         period={period}
         onTurnOn={turnOnMissing}
         onSaveBody={SHOW_WEIGHT_SECTION ? saveBodyGap : undefined}
-        onPlanOutdoor={planOutdoor}
         onSetWorkoutBucket={setWorkoutBucket}
       />
       <HealthBoard
@@ -474,6 +427,7 @@ export default function Health() {
         adult={snap.profile?.ageConfirmed18 !== false}
         canSaveHeight={consent}
         omitKinds={['weight_kg']}
+        showMetrics={false}
       />
       <Card>
         <T style={{ fontFamily: theme.font.bodyStrong }}>Or add a reading yourself</T>

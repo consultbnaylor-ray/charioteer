@@ -105,13 +105,14 @@ describe('Apple Health screen and entitlement', () => {
     expect(screen).not.toContain('Sync from Apple Health');
     const cardAt = screen.indexOf('<AppleHealthCard');
     const seeAt = screen.indexOf('<HealthVisibility\n');
-    const periodAt = screen.indexOf('<StatPeriodToggle');
+    const chartsAt = screen.indexOf('<MovementCharts');
     expect(readFileSync('src/ui/StatPeriodToggle.tsx', 'utf8')).toContain('accessibilityLabel="Period"');
+    expect(readFileSync('src/ui/DailyActivity.tsx', 'utf8')).toContain('<StatPeriodToggle />');
     const boardAt = screen.indexOf('<HealthStatBoard');
     expect(cardAt).toBeGreaterThan(-1);
-    expect(cardAt).toBeLessThan(seeAt);
-    expect(seeAt).toBeLessThan(periodAt);
-    expect(periodAt).toBeLessThan(boardAt);
+    expect(cardAt).toBeLessThan(chartsAt);
+    expect(chartsAt).toBeLessThan(seeAt);
+    expect(seeAt).toBeLessThan(boardAt);
     expect(screen).not.toContain('refreshNow');
     expect(screen).toContain('request={seeRequest}');
     expect(screen).toContain('healthMissingReadings');

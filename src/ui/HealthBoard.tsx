@@ -46,7 +46,6 @@ import { HrvExplainer } from '@/ui/HrvExplainer';
 import { ShareOnProfile } from '@/ui/ShareOnProfile';
 import { HealthChart } from '@/ui/HealthChart';
 import { ScrollTarget } from '@/ui/ScrollTarget';
-import { useAppTheme } from '@/ui/theme';
 import { IconLabel } from '@/ui/statIcons';
 import { textMentionsWeight, UpdateWeightLink } from '@/ui/UpdateWeightLink';
 import { Card, Choice, Field, playSavedHaptic, T } from '@/ui/ui';
@@ -66,6 +65,7 @@ export function HealthBoard({
   omitKinds,
   showWeek = true,
   weightPart = 'all',
+  showMetrics = true,
 }: {
   samples: HealthSample[];
   today: string;
@@ -83,6 +83,11 @@ export function HealthBoard({
   /** The week summary stays on Health stats. The weight page is only weight. */
   showWeek?: boolean;
   /**
+   * Health Stats already charts these metrics. The week notes stay.
+   * The weight page still draws its own cards.
+   */
+  showMetrics?: boolean;
+  /**
    * The body page shows the measurement fields first, then the charts.
    * `entry` is only height, weight, and waist. `charts` leaves those fields out.
    */
@@ -97,18 +102,9 @@ export function HealthBoard({
   return (
     <View style={{ gap: 14 }}>
       {showWeek ? (
-        <Card>
-          <T variant="title">Your health in the last 7 days</T>
-          {report.headlines.length === 0 ? (
-            <T variant="muted">Not enough readings yet to compare the last 7 days with the 7 before.</T>
-          ) : (
-            report.headlines.map((line) => <T key={line}>{line}</T>)
-          )}
-          <T variant="muted">These notes are not medical advice.</T>
-          {report.headlines.some((line) => textMentionsWeight(line)) ? <UpdateWeightLink /> : null}
-        </Card>
+        <WeekNotes report={report} includeKinds={!showMetrics} title="Your health in the last 7 days" />
       ) : null}
-      {metrics.map((metric) => {
+      {showMetrics ? metrics.map((metric) => {
         const kindReport = report.kinds.find((item) => item.kind === metric.kind);
         const card = (
           <MetricCard
@@ -134,7 +130,7 @@ export function HealthBoard({
             {card}
           </ScrollTarget>
         );
-      })}
+      }) : null}
     </View>
   );
 }
@@ -273,33 +269,44 @@ function MetricCard({
     return <Card>{measurements}</Card>;
   }
 
+  const figureTitle = figure?.bars?.label === 'Earlier and latest'
+    ? 'Earlier vs latest'
+    : (figure?.bars?.label ?? figure?.ring?.label ?? 'Comparison');
+
   return (
     <Card>
       {measurements}
       <T variant="label">{label}</T>
-      <HealthFigureView figure={figure} />
       {latest ? (
-        <T variant="title">
-          {formatHealthValue(kind, latest.value)}
+        <T>
+          {`Latest ${formatHealthValue(kind, latest.value)}`}
           {latest.day === today ? '' : ` · ${formatUkCompactDay(latest.day)}`}
         </T>
       ) : (
         <T variant="muted">No readings yet</T>
       )}
-      {latest?.day === today ? <T variant="muted">Today</T> : null}
+      <HealthChart kind={kind} shape={chart} today={today} windowDays={range} points={points} />
+      {figure ? (
+        <MoreInfo about={label} title={figureTitle}>
+          <HealthFigureView figure={figure} />
+        </MoreInfo>
+      ) : null}
       <GuidanceRange guidance={lead === guidance.lead ? guidance : { ...guidance, lead }} />
       {kind === 'hrv_sdnn' ? <HrvExplainer /> : null}
-      <HealthChart kind={kind} shape={chart} today={today} windowDays={range} points={points} />
       {kind === 'weight_kg' ? (
         <WaistHistory rows={snap.bodyComposition} today={today} windowDays={range} />
       ) : null}
-      {shownLines.map((line) => (
-        <T key={line}>{line}</T>
-      ))}
+      {shownLines.length > 0 ? (
+        <MoreInfo about={label} title="Notes">
+          {shownLines.map((line) => (
+            <T key={line}>{line}</T>
+          ))}
+        </MoreInfo>
+      ) : null}
       {shownFlags.length > 0 ? (
         <View style={{ gap: 8 }}>
           <T>{VISIBLE_SAFETY_LINE}</T>
-          <MoreInfo about={label}>
+          <MoreInfo about={label} title="Care notes">
             {shownFlags.map((flag) => {
               const care = selfCareStep(flag.step);
               return (
@@ -460,9 +467,11 @@ function WaistHistory({
             bucket={windowDays <= 90 ? 'day' : windowDays <= 200 ? 'week' : 'month'}
             accessibilityLabel="Waist chart"
           />
-          {history.points.map((point) => (
-            <T key={point.day}>{`${formatWaistCm(point.cm)} · ${formatUkCompactDay(point.day)}`}</T>
-          ))}
+          <MoreInfo about="waist readings" title="Readings">
+            {history.points.map((point) => (
+              <T key={point.day}>{`${formatWaistCm(point.cm)} · ${formatUkCompactDay(point.day)}`}</T>
+            ))}
+          </MoreInfo>
         </>
       )}
       {history.averageCm != null ? <T variant="muted">{`Average ${formatWaistCm(history.averageCm)}`}</T> : null}
@@ -471,36 +480,81 @@ function WaistHistory({
 }
 
 function Readings({ groups }: { groups: ReturnType<typeof groupedReadings> }) {
-  const theme = useAppTheme();
-  const [open, setOpen] = useState(false);
-  const count = groups.reduce((sum, group) => sum + group.rows.length, 0);
   return (
-    <View style={{ gap: 10 }}>
-      <Pressable
-        accessibilityRole="button"
-        accessibilityState={{ expanded: open }}
-        onPress={() => setOpen((value) => !value)}
-        style={{ minHeight: 44, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}
-      >
-        <T style={{ fontFamily: theme.font.bodyStrong }}>All readings</T>
-        <T variant="muted">{open ? 'Hide' : `Show ${count}`}</T>
-      </Pressable>
-      {open
-        ? groups.map((group) => {
-            const label = healthKindLabel(group.kind);
-            return (
-              <View key={group.kind} style={{ gap: 6 }}>
-                <T variant="label">{label}</T>
-                {group.rows.map((row, index) => (
-                  <T key={`${row.recordedOn}-${row.source ?? 'reading'}-${index}`} variant="muted">
-                    {formatReadingLine(row.kind, row.value, row.recordedOn, row.source)}
-                  </T>
-                ))}
-              </View>
-            );
-          })
-        : null}
-      {open && groups.length === 0 ? <T variant="muted">Nothing logged yet.</T> : null}
-    </View>
+    <MoreInfo about="all readings" title="Readings">
+      {groups.length === 0 ? <T variant="muted">Nothing logged yet.</T> : null}
+      {groups.map((group) => {
+        const label = healthKindLabel(group.kind);
+        return (
+          <View key={group.kind} style={{ gap: 6 }}>
+            <T variant="label">{label}</T>
+            {group.rows.map((row, index) => (
+              <T key={`${row.recordedOn}-${row.source ?? 'reading'}-${index}`} variant="muted">
+                {formatReadingLine(row.kind, row.value, row.recordedOn, row.source)}
+              </T>
+            ))}
+          </View>
+        );
+      })}
+    </MoreInfo>
+  );
+}
+
+function WeekNotes({
+  report,
+  includeKinds,
+  title,
+}: {
+  report: ReturnType<typeof buildHealthInsights>;
+  includeKinds: boolean;
+  title: string;
+}) {
+  const headlines = report.headlines;
+  const kindNotes = includeKinds
+    ? report.kinds.filter((kind) => kind.lines.length > 0 || kind.flags.length > 0)
+    : [];
+  const mentionsWeight = headlines.some((line) => textMentionsWeight(line))
+    || kindNotes.some((kind) => kind.lines.some((line) => textMentionsWeight(line)) || kind.flags.some((flag) => textMentionsWeight(flag.detail)));
+  return (
+    <Card>
+      <T variant="title">{title}</T>
+      {headlines.length === 0 ? (
+        <T variant="muted">Not enough readings yet to compare the last 7 days with the 7 before.</T>
+      ) : null}
+      {headlines.length > 0 || kindNotes.length > 0 ? (
+        <MoreInfo about="the last 7 days" title="Last 7 days">
+          {headlines.map((line) => <T key={line}>{line}</T>)}
+          {kindNotes.map((kind) => (
+            <View key={kind.kind} style={{ gap: 4 }}>
+              <T variant="label">{healthKindLabel(kind.kind)}</T>
+              {kind.lines.map((line) => <T key={line}>{line}</T>)}
+              {kind.flags.map((flag) => {
+                const care = selfCareStep(flag.step);
+                return (
+                  <View key={flag.id} style={{ gap: 4 }}>
+                    <T>{flag.detail}</T>
+                    {care ? <T>{care}</T> : null}
+                    {flag.sourceUrl ? (
+                      <Pressable
+                        accessibilityRole="link"
+                        accessibilityLabel={flag.sourceName}
+                        onPress={() => void Linking.openURL(flag.sourceUrl)}
+                        style={{ minHeight: 44, justifyContent: 'center' }}
+                      >
+                        <T variant="muted">{flag.sourceName}</T>
+                      </Pressable>
+                    ) : (
+                      <T variant="muted">{flag.sourceName}</T>
+                    )}
+                  </View>
+                );
+              })}
+            </View>
+          ))}
+        </MoreInfo>
+      ) : null}
+      <T variant="muted">These notes are not medical advice.</T>
+      {mentionsWeight ? <UpdateWeightLink /> : null}
+    </Card>
   );
 }

@@ -287,8 +287,10 @@ describe('stats overview', () => {
     const tile = readFileSync('src/ui/StatTile.tsx', 'utf8');
     const home = readFileSync('src/app/(main)/home.tsx', 'utf8');
     const you = readFileSync('src/app/(main)/profile.tsx', 'utf8');
-    expect(screen).toContain('<StatTile tile={item} plain />');
-    expect(screen).toContain('HEALTH_LIFE_TILE_IDS');
+    expect(screen).not.toContain('<StatTile');
+    expect(screen).not.toContain('HEALTH_LIFE_TILE_IDS');
+    expect(readFileSync('src/domain/statsOverview.ts', 'utf8')).toContain('HEALTH_LIFE_TILE_IDS');
+    expect(readFileSync('src/app/(main)/health-plan.tsx', 'utf8')).toContain('<StatTile');
     expect(readFileSync('src/app/(main)/stats.tsx', 'utf8')).toContain('Redirect href="/health"');
     expect(tile).toContain('tile.signal');
     expect(tile).toContain('<ToneMark');
