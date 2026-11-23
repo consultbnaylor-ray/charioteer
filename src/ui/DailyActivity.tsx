@@ -493,23 +493,6 @@ export const MovementCharts = memo(function MovementCharts({
   const placeholders = missingGarmin.filter((chart) => chart.id !== 'hrv' && chart.id !== 'fitness_age');
   const foldDetails = details.filter((chart) => chart.id !== 'fitness_age');
   const sdnnPoints = hrvSdnnSeries(endDay, chartWindow.days, appleHrvSdnn);
-  const chosen = (showHealthStats ? stepPoints.find((point) => point.day === selected) : null)
-    ?? (showHealthStats ? distance.find((point) => point.day === selected) : null)
-    ?? floors.find((point) => point.day === selected)
-    ?? (showHealthStats ? resting.find((point) => point.day === selected) : null)
-    ?? intensityBars.find((point) => point.day === selected)
-    ?? null;
-  const dayLines = [
-    showHealthStats ? stepPoints.find((point) => point.day === selected) : null,
-    showHealthStats && seriesHasValue(distance) ? distance.find((point) => point.day === selected) : null,
-    seriesHasValue(floors) ? floors.find((point) => point.day === selected) : null,
-    showHealthStats && seriesHasValue(resting) ? resting.find((point) => point.day === selected) : null,
-    seriesHasValue(intensityBars) ? intensityBars.find((point) => point.day === selected) : null,
-  ].filter((point): point is DailyActivityPoint => point != null && point.value > 0 && !point.empty);
-  const detailLines = details.flatMap((chart) => {
-    const point = chart.points.find((row) => row.day === selected && !row.empty);
-    return point ? [point.label] : [];
-  });
   const green = statsToneColors(theme.scheme).good.ink;
   function garminCard(chart: (typeof foldDetails)[number] | NonNullable<typeof fitnessChart>) {
     return (
@@ -670,12 +653,6 @@ export const MovementCharts = memo(function MovementCharts({
           framed={framed}
           onSelect={setSelected}
         />
-      ) : null}
-      {chosen && (dayLines.length > 0 || detailLines.length > 0) ? (
-        <View style={{ gap: 4 }}>
-          {dayLines.map((point) => <T key={point.label}>{point.label}</T>)}
-          {detailLines.map((line) => <T key={line}>{line}</T>)}
-        </View>
       ) : null}
       {showHealthStats && hrvChart ? (
         <ActivityBars
