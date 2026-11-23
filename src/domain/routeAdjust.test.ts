@@ -2,9 +2,11 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it, vi } from 'vitest';
 
 import { pageScrollForMapTouch } from '@/ui/mapCamera';
-import type { OutdoorPoint } from '@/domain/outdoorRoute';
+import { appendSketchPoint, type OutdoorPoint } from '@/domain/outdoorRoute';
 import { ROUTE_OFFLINE, type RoutePlan } from '@/domain/findRoute';
 import {
+  DRAW_FINGER_HINT,
+  DRAW_NO_PATH,
   VIA_POINT_CAP,
   REDRAW_PAUSE_MS,
   adjustControlsOn,
@@ -325,5 +327,54 @@ describe('route adjusting', () => {
     }
     expect(TAP_TO_PLACE).toBe('Tap the map to place this point.');
     expect(TAP_TO_MOVE).toBe('Tap the map to move this point.');
+  });
+
+  it('keeps a short finger step and draws it on the map in place', () => {
+    const step = { latitude: start.latitude + 5 / 111_320, longitude: start.longitude };
+    expect(metresBetween(start, step)).toBeGreaterThan(2);
+    expect(metresBetween(start, step)).toBeLessThan(12);
+    expect(appendSketchPoint([start], step, 2)).toHaveLength(2);
+    expect(appendSketchPoint([start], step, 12)).toHaveLength(1);
+    expect(DRAW_FINGER_HINT).toBe('Draw your route with one finger');
+    expect(DRAW_NO_PATH).toBe('No path matched that line.');
+
+    const maker = readFileSync('src/ui/RouteMaker.tsx', 'utf8');
+    expect(maker).toContain('label="Start here"');
+    expect(maker).toContain('label="Go here"');
+    expect(maker).toContain('onToggleDraw={craving ? undefined : toggleDraw}');
+    expect(maker).toContain('DRAW_NO_PATH');
+    expect(maker).not.toContain('Search sets the start');
+    expect(maker).not.toContain('label="Search"');
+    expect(maker).not.toContain("position: 'absolute'");
+
+    const map = readFileSync('src/app/(main)/outside-map.tsx', 'utf8');
+    expect(map).not.toContain('/find-route?draw=1');
+    expect(map).not.toContain("position: 'absolute'");
+    expect(map).toContain('label="Start here"');
+    expect(map).toContain('label="Go here"');
+    expect(map).not.toContain('planOutdoorRoute');
+
+    const native = readFileSync('src/ui/FootpathMap.tsx', 'utf8');
+    const web = readFileSync('src/ui/FootpathMap.web.tsx', 'utf8');
+    for (const source of [native, web]) {
+      expect(source).toContain('setScrollEnabled?.(false)');
+      expect(source).toContain('pencilColour');
+      expect(source).toContain("'line-width': 7");
+      expect(source).toContain("'line-width': 6");
+      expect(source).not.toContain('line-dasharray');
+    }
+    expect(native).toContain('attribution={false}');
+    expect(web).toContain('attributionControl: false');
+    expect(web).toContain('holdMapGestures');
+    const capture = readFileSync('src/ui/DrawCapture.tsx', 'utf8');
+    expect(capture).toContain('appendSketchPoint(points.current, point, 2)');
+    expect(capture).toContain('onStartShouldSetResponderCapture={() => true}');
+    expect(capture).toContain('onMoveShouldSetResponderCapture={() => true}');
+    const chrome = readFileSync('src/ui/MapChrome.tsx', 'utf8');
+    expect(chrome).toContain('MAP_CREDIT');
+    expect(chrome).toContain('OSM_CONTRIBUTORS');
+    expect(chrome).not.toContain('ORS_CREDIT');
+    expect(chrome).toContain('DRAW_FINGER_HINT');
+    expect(chrome.match(/<T[^>]*>\{MAP_CREDIT\}/g)).toBeNull();
   });
 });

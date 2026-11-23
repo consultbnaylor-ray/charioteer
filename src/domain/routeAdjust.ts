@@ -44,6 +44,11 @@ export const UNDO_DRAW = 'Undo';
 
 export const DRAW_HINT = 'Drag on the map to sketch a line. Lift your finger to follow paths.';
 
+export const DRAW_FINGER_HINT = 'Draw your route with one finger';
+
+/** Shown when a lift does not come back as a path. The pencil line stays. */
+export const DRAW_NO_PATH = 'No path matched that line.';
+
 export const PLACE_SEARCH_PAUSE_MS = 400;
 
 export function parsePreferPaths(value: unknown): boolean {

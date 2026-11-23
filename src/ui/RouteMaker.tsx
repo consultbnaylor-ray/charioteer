@@ -1,7 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
-import { Linking, View, useWindowDimensions } from 'react-native';
+import { Linking, Pressable, Switch, View, useWindowDimensions } from 'react-native';
 
 import { holdMadeRoute } from '@/activity/madeRouteGuide';
 import { currentLive } from '@/activity/oneSession';
@@ -46,14 +46,9 @@ import {
 import {
   ADD_A_POINT,
   ADJUST_THE_ROUTE,
-  CLEAR_DRAW,
-  DRAW_HINT,
-  DRAW_ROUTE,
-  EXIT_DRAW,
+  DRAW_NO_PATH,
   PREFER_PATHS_LABEL,
   PREFER_PATHS_NOTE,
-  REDRAW_DRAW,
-  UNDO_DRAW,
   adjustControlsOn,
   armPlacement,
   countsPhoneRouteRequest,
@@ -83,6 +78,7 @@ import { LOCATION_FIX_MESSAGE, LOCATION_FIX_PENDING, ROUGH_FIX_LINE, readWhileUs
 import { FootpathMap } from '@/ui/FootpathMap';
 import { dismissKeyboard } from '@/ui/keyboard';
 import { usePreferPaths } from '@/ui/preferPaths';
+import { useAppTheme } from '@/ui/theme';
 import { Button, Card, Choice, ErrorNote, Field, T } from '@/ui/ui';
 
 const CRAVING_MINUTES = [10, 15, 20] as const;
@@ -101,6 +97,7 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
   const drawFlag = useLocalSearchParams<{ draw?: string | string[] }>().draw;
   const openDraw = (Array.isArray(drawFlag) ? drawFlag[0] : drawFlag) === '1';
   const craving = purpose === 'craving';
+  const theme = useAppTheme();
   const [preferPaths, setPreferPaths] = usePreferPaths();
   const [mode, setMode] = useState<RouteMode>('walk');
   const [shape, setShape] = useState<RouteShape>('loop');
@@ -116,7 +113,9 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
   const [endName, setEndName] = useState('');
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<RoutePlace[]>([]);
-  const [picking, setPicking] = useState<'start' | 'end'>('start');
+  const [pin, setPin] = useState<RoutePlace | null>(null);
+  const [pathsNote, setPathsNote] = useState(false);
+  const [drawNote, setDrawNote] = useState<string | null>(null);
   const [plan, setPlan] = useState<RoutePlan | null>(null);
   const [title, setTitle] = useState(craving ? 'Craving walk' : 'My route');
   const [error, setError] = useState<string | null>(null);
@@ -173,12 +172,13 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
       setEnd(chosen.place);
       setEndName(chosen.place.name);
       setShape('a_to_b');
-      setPicking('end');
+      setPin(chosen.place);
       setLookAt(chosen.place);
       setLookFocus(1);
     } else if (chosen) {
       setStart(chosen.place);
       setStartName(chosen.place.name);
+      setPin(chosen.place);
       setLookAt(chosen.place);
       setLookFocus(1);
     }
@@ -330,12 +330,24 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
     forgetAdjust();
   }
 
-  function pickResult(place: RoutePlace) {
-    if (picking === 'end') pickEnd(place);
-    else pickStart(place);
+  function choosePlace(place: RoutePlace) {
+    setPin(place);
     setLookAt(place);
     setLookFocus((value) => value + 1);
     setResults([]);
+    setQuery(place.name);
+    queryRef.current = place.name;
+    dismissKeyboard();
+  }
+
+  function usePin(role: 'start' | 'end') {
+    if (!pin) return;
+    if (role === 'end') {
+      setShape('a_to_b');
+      pickEnd(pin);
+      return;
+    }
+    pickStart(pin);
   }
 
   function onSearchText(value: string) {
@@ -394,16 +406,12 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
       return;
     }
     setError(null);
-    setPending(true);
     try {
       setResults(await repo.searchRoutePlaces(query));
       setSearched(true);
-      dismissKeyboard();
     } catch (err) {
       setSearched(false);
       setError(shownError(err, 'The place search did not answer.'));
-    } finally {
-      setPending(false);
     }
   }
   searchRef.current = () => { void search(); };
@@ -498,14 +506,18 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
     if (snapping.current) return;
     const simplified = simplifySketch(points);
     if (simplified.length < 2) {
+      setDrawNote(DRAW_TOO_SHORT);
       setError(DRAW_TOO_SHORT);
+      setDrawing(false);
       return;
     }
     const closed = closeSketchIfLoop(simplified);
     const origin = closed[0];
     const finish = closed[closed.length - 1];
     if (!origin || !finish) {
+      setDrawNote(DRAW_TOO_SHORT);
       setError(DRAW_TOO_SHORT);
+      setDrawing(false);
       return;
     }
     const drawnShape = sketchIsClosed(closed) ? 'loop' : 'a_to_b';
@@ -525,11 +537,18 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
         sketch: closed,
         preferPaths: preferRef.current,
       });
+      if (next.points.length < 2) {
+        setDrawNote(DRAW_NO_PATH);
+        setError(DRAW_NO_PATH);
+        setDrawing(false);
+        return;
+      }
       setDrawStack((stack) => [...stack, { plan: previous }].slice(-8));
       setPlan(next);
       setOriginal(next);
       setFromDraw(true);
       setPencil([]);
+      setDrawNote(null);
       setDrawing(false);
       setAcceptedVias([]);
       setShownVias([]);
@@ -543,13 +562,14 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
         setEnd(finish);
         setEndName('Sketched end');
       }
-      setLookAt(origin);
-      setLookFocus((value) => value + 1);
       setRequestsToday(await noteRouteRequest(phoneRequests));
     } catch (err) {
       const message = err instanceof UserFacingError ? err.message : shownError(err, ROUTE_UNAVAILABLE);
       if (countsPhoneRouteRequest(message)) setRequestsToday(await noteRouteRequest(phoneRequests));
-      setError(previous ? `${message} ${ROUTE_UNCHANGED}` : message);
+      const line = previous ? `${message} ${ROUTE_UNCHANGED}` : message;
+      setDrawNote(line);
+      setError(line);
+      setDrawing(false);
     } finally {
       snapping.current = false;
       setPending(false);
@@ -557,12 +577,18 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
   }
 
   function undoDraw() {
+    if (pencil.length > 0) {
+      setPencil([]);
+      setDrawNote(null);
+      return;
+    }
     setDrawStack((stack) => {
       const previous = stack[stack.length - 1];
       if (!previous) return stack;
       setPlan(previous.plan);
       setFromDraw(previous.plan != null);
       setPencil([]);
+      setDrawNote(null);
       return stack.slice(0, -1);
     });
   }
@@ -570,11 +596,19 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
   function clearDraw() {
     setPencil([]);
     setDrawStack([]);
+    setDrawNote(null);
     if (fromDraw) {
       setPlan(null);
       setFromDraw(false);
       forgetAdjust();
     }
+  }
+
+  function toggleDraw() {
+    setDrawing((on) => {
+      if (!on) setAdjusting(false);
+      return !on;
+    });
   }
   const mapHeight = Math.max(180, narrow ? 220 : 360);
   const canRemove = edit.kind === 'move';
@@ -696,89 +730,75 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
             ))}
           </>
         ) : null}
-        <View style={{ position: 'relative' }}>
-          <FootpathMap
-            routes={[]}
-            sketch={plan?.points ?? []}
-            pencil={pencil}
-            here={you}
-            startPoint={plan?.snappedStart ?? plan?.points[0] ?? start}
-            locationFocus={focus}
-            lookAt={lookAt}
-            lookFocus={lookFocus}
-            locating={locating}
-            height={Math.max(180, narrow ? 220 : 280)}
-            draw={drawing ? {
-              enabled: true,
-              onChange: setPencil,
-              onEnd: (points) => { void snapDrawn(points); },
-            } : null}
-            onShowMyLocation={() => { void showMyLocation(); }}
-          />
-          <View style={{ position: 'absolute', left: 8, right: 8, bottom: 60, zIndex: 6 }}>
-            <Field label="Search for a place" value={query} onChangeText={onSearchText} maxLength={80} />
-          </View>
-        </View>
-        {!craving ? (
-          <>
-            <Choice label={PREFER_PATHS_LABEL} selected={preferPaths} onPress={() => setPreferPaths(!preferPaths)} />
-            <T variant="muted">{PREFER_PATHS_NOTE}</T>
-          </>
-        ) : null}
-        {!craving && shape === 'a_to_b' ? (
-          <>
-            <Choice label="Search sets the start" selected={picking === 'start'} onPress={() => setPicking('start')} />
-            <Choice label="Search sets the destination" selected={picking === 'end'} onPress={() => setPicking('end')} />
-          </>
-        ) : null}
-        <Button
-          label="Search"
-          tone="quiet"
-          disabled={query.trim().length < 2 || pending || locating}
-          pending={pending}
-          onPress={() => {
-            placeSearchRef.current.now();
-            void search();
-          }}
+        <FootpathMap
+          routes={[]}
+          sketch={plan?.points ?? []}
+          pencil={pencil}
+          pin={pin}
+          here={you}
+          startPoint={plan?.snappedStart ?? plan?.points[0] ?? start}
+          locationFocus={focus}
+          lookAt={lookAt}
+          lookFocus={lookFocus}
+          locating={locating}
+          height={Math.max(180, narrow ? 220 : 280)}
+          draw={drawing ? {
+            enabled: true,
+            onChange: setPencil,
+            onEnd: (points) => { void snapDrawn(points); },
+          } : null}
+          onToggleDraw={craving ? undefined : toggleDraw}
+          onUndoDraw={undoDraw}
+          onClearDraw={clearDraw}
+          canUndoDraw={pencil.length > 0 || drawStack.length > 0}
+          canClearDraw={pencil.length > 0 || fromDraw}
+          onShowMyLocation={() => { void showMyLocation(); }}
         />
+        {fromDraw && plan ? (
+          <T>{routeSummary({ distanceM: plan.distanceM, durationMinutes: plan.durationMinutes })}</T>
+        ) : null}
+        {drawNote ? <T>{drawNote}</T> : null}
+        <Field label="Search for a place" value={query} onChangeText={onSearchText} maxLength={80} />
         {results.map((place) => (
           <Choice
             key={`found-${place.id}`}
             label={place.name}
-            selected={(picking === 'end' ? endName : startName) === place.name}
+            selected={pin?.id === place.id}
             selectOnPressIn
-            onPress={() => pickResult(place)}
+            onPress={() => choosePlace(place)}
           />
         ))}
         {searched && results.length === 0 ? <T>{SEARCH_EMPTY}</T> : null}
+        {pin ? (
+          <>
+            <Choice label="Start here" selected={startName === pin.name} onPress={() => usePin('start')} />
+            {!craving && shape === 'a_to_b' && start ? (
+              <Choice label="Go here" selected={endName === pin.name} onPress={() => usePin('end')} />
+            ) : null}
+          </>
+        ) : null}
         {!craving ? (
           <>
-            {drawing ? <T>{DRAW_HINT}</T> : null}
-            <Button
-              label={drawing ? EXIT_DRAW : DRAW_ROUTE}
-              tone={drawing ? 'primary' : 'quiet'}
-              disabled={pending}
-              onPress={() => {
-                if (drawing) setPencil([]);
-                setDrawing((on) => !on);
-                if (!drawing) setAdjusting(false);
-              }}
-            />
-            <View style={narrow ? { gap: 8 } : { flexDirection: 'row', gap: 8 }}>
-              <View style={narrow ? undefined : { flex: 1 }}>
-                <Button label={UNDO_DRAW} tone="quiet" disabled={drawStack.length === 0 || pending} onPress={undoDraw} />
-              </View>
-              <View style={narrow ? undefined : { flex: 1 }}>
-                <Button label={CLEAR_DRAW} tone="quiet" disabled={pending || (pencil.length === 0 && !fromDraw)} onPress={clearDraw} />
-              </View>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              <T style={{ flex: 1 }}>{PREFER_PATHS_LABEL}</T>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="What this means"
+                accessibilityState={{ expanded: pathsNote }}
+                onPress={() => setPathsNote((open) => !open)}
+                style={{ width: 44, height: 44, alignItems: 'center', justifyContent: 'center' }}
+              >
+                <T>i</T>
+              </Pressable>
+              <Switch
+                accessibilityLabel={PREFER_PATHS_LABEL}
+                value={preferPaths}
+                onValueChange={setPreferPaths}
+                trackColor={{ true: theme.colors.ink, false: theme.colors.line }}
+                thumbColor={theme.colors.surface}
+              />
             </View>
-            <Button label={REDRAW_DRAW} tone="quiet" disabled={pending || drawing} onPress={() => { setPencil([]); setDrawing(true); setAdjusting(false); }} />
-            {fromDraw && plan ? (
-              <>
-                <T>{routeSummary({ distanceM: plan.distanceM, durationMinutes: plan.durationMinutes })}</T>
-                <T>{formatClimb(plan.ascentM)}</T>
-              </>
-            ) : null}
+            {pathsNote ? <T variant="muted">{PREFER_PATHS_NOTE}</T> : null}
           </>
         ) : null}
         <Button
@@ -811,6 +831,7 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
               disabled={redrawing}
               onPress={() => {
                 if (adjusting) clearEdit();
+                setDrawing(false);
                 setAdjusting((on) => !on);
               }}
             />

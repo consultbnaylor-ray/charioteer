@@ -115,6 +115,14 @@ export function mapLineColour(scheme: MapScheme): string {
   return scheme === 'dark' ? MAP_LINE_DARK : MAP_LINE_LIGHT;
 }
 
+/** High contrast on both map styles. The live finger stroke uses this, solid. */
+export const PENCIL_LIGHT = '#111111';
+export const PENCIL_DARK = '#F4F1E8';
+
+export function pencilColour(scheme: MapScheme): string {
+  return scheme === 'dark' ? PENCIL_DARK : PENCIL_LIGHT;
+}
+
 export function trackLineColour(scheme: MapScheme): string {
   return scheme === 'dark' ? TRACK_LINE_DARK : TRACK_LINE_LIGHT;
 }
@@ -588,6 +596,12 @@ export function startCollection(
   else if (sketch[0]) add(sketch[0]);
   for (const route of routes) add(route.points[0]);
   return pointCollection(points, 'start');
+}
+
+/** A searched place, before it is chosen as the start or the destination. */
+export function pinCollection(point: OutdoorPoint | null) {
+  const clean = point ? finitePoint(point) : null;
+  return pointCollection(clean ? [clean] : [], 'pin');
 }
 
 /** Shown only after the person asks to see where they are. */

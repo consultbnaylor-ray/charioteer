@@ -7,6 +7,8 @@ import {
   YOU_HERE_FILL,
   YOU_HERE_RING,
   mapLineColour,
+  pencilColour,
+  pinCollection,
   openFreeMapStyle,
   savedLineCollection,
   sketchLineCollection,
@@ -79,6 +81,12 @@ export function FootpathMap({
   lookAt = null,
   lookFocus = 0,
   draw = null,
+  pin = null,
+  onToggleDraw,
+  onUndoDraw,
+  onClearDraw,
+  canUndoDraw = false,
+  canClearDraw = false,
 }: {
   routes: readonly OutdoorRoute[];
   sketch: readonly OutdoorPoint[];
@@ -112,8 +120,24 @@ export function FootpathMap({
     onChange: (points: OutdoorPoint[]) => void;
     onEnd: (points: OutdoorPoint[]) => void;
   } | null;
+  /** A searched place. The map draws a pin. The camera moves only when `lookFocus` changes. */
+  pin?: OutdoorPoint | null;
+  onToggleDraw?: () => void;
+  onUndoDraw?: () => void;
+  onClearDraw?: () => void;
+  canUndoDraw?: boolean;
+  canClearDraw?: boolean;
 }) {
   const [scheme, choose] = useMapScheme();
+  const scroller = useScreenScroller();
+  const drawingOn = draw?.enabled === true;
+  useEffect(() => {
+    if (!drawingOn) return undefined;
+    scroller?.current?.setScrollEnabled?.(false);
+    return () => {
+      scroller?.current?.setScrollEnabled?.(true);
+    };
+  }, [drawingOn, scroller]);
   const camera = useHeldCamera(routes, sketch, here, locationFocus, follow, track, lookAt, lookFocus);
   const [maps, setMaps] = useState<Maps | null>(null);
   useEffect(() => {
@@ -132,6 +156,12 @@ export function FootpathMap({
       onRestore={camera.restore}
       bar={bar}
       mapLabel={mapLabel}
+      drawing={drawingOn}
+      onToggleDraw={onToggleDraw}
+      onUndoDraw={onUndoDraw}
+      onClearDraw={onClearDraw}
+      canUndoDraw={canUndoDraw}
+      canClearDraw={canClearDraw}
       renderMap={({ height: viewHeight, expanded }) => (
         <NativeCanvas
           maps={maps}
@@ -150,6 +180,7 @@ export function FootpathMap({
           adjust={adjust}
           expanded={expanded}
           pencil={pencil}
+          pin={pin}
           draw={draw}
         />
       )}
@@ -174,6 +205,7 @@ function NativeCanvas({
   adjust,
   expanded,
   pencil,
+  pin,
   draw,
 }: {
   maps: Maps | null;
@@ -192,6 +224,7 @@ function NativeCanvas({
   adjust: MapAdjust | null;
   expanded: boolean;
   pencil: readonly OutdoorPoint[];
+  pin: OutdoorPoint | null;
   draw: {
     enabled: boolean;
     onChange: (points: OutdoorPoint[]) => void;
@@ -249,8 +282,7 @@ function NativeCanvas({
     >
     <maps.Map
       mapStyle={openFreeMapStyle(scheme)}
-      attribution
-      attributionPosition={{ bottom: 8, right: 8 }}
+      attribution={false}
       dragPan={!drawing}
       touchZoom={!drawing}
       style={{ height }}
@@ -281,7 +313,7 @@ function NativeCanvas({
         id="sketch-line"
         type="line"
         source="sketch"
-        paint={{ 'line-color': green, 'line-width': 3, 'line-dasharray': [2, 1.4] }}
+        paint={{ 'line-color': green, 'line-width': 6 }}
       />
       <maps.GeoJSONSource id="track" data={trackLineCollection(track)} />
       <maps.Layer id="track-line" type="line" source="track" paint={{ 'line-color': walked, 'line-width': 5 }} />
@@ -297,7 +329,7 @@ function NativeCanvas({
         id="guide-line"
         type="line"
         source="guide"
-        paint={{ 'line-color': '#D1FAE5', 'line-width': 3, 'line-dasharray': [1.2, 1.2] }}
+        paint={{ 'line-color': pencilColour(scheme), 'line-width': 7 }}
       />
       <maps.GeoJSONSource id="vias" data={viaPointCollection(adjust?.vias ?? [])} />
       <maps.Layer
@@ -312,6 +344,13 @@ function NativeCanvas({
         type="circle"
         source="via-selected"
         paint={{ 'circle-radius': 16, 'circle-color': 'transparent', 'circle-stroke-width': 3, 'circle-stroke-color': '#F3F3EE' }}
+      />
+      <maps.GeoJSONSource id="pin" data={pinCollection(pin)} />
+      <maps.Layer
+        id="pin-dot"
+        type="circle"
+        source="pin"
+        paint={{ 'circle-radius': 8, 'circle-color': pencilColour(scheme), 'circle-stroke-width': 3, 'circle-stroke-color': '#F3F3EE' }}
       />
       <maps.GeoJSONSource id="you" data={youAreHereCollection(here)} />
       <maps.Layer
