@@ -178,8 +178,8 @@ describe('daily activity', () => {
     const list = readFileSync('src/ui/WorkoutList.tsx', 'utf8');
     const charts = readFileSync('src/ui/DailyActivity.tsx', 'utf8');
     const screen = readFileSync('src/app/(main)/workouts.tsx', 'utf8');
-    expect(list.indexOf('<DurationChart')).toBeLessThan(list.indexOf('<DailyActivityCharts'));
-    expect(list.indexOf('<DailyActivityCharts')).toBeLessThan(list.indexOf('<WorkoutHistory'));
+    expect(list.indexOf('<WorkoutHistoryCharts')).toBeLessThan(list.indexOf('<DailyActivityCharts'));
+    expect(list.indexOf('<DailyActivityCharts')).toBeLessThan(list.indexOf('<WorkoutHistory '));
     const diaryStart = charts.indexOf('<MovementCharts');
     const diary = charts.slice(diaryStart, charts.indexOf('/>', diaryStart));
     expect(diary).toContain('showHealthStats={false}');
@@ -189,7 +189,8 @@ describe('daily activity', () => {
     expect(healthCharts).not.toContain('showHealthStats');
     expect(healthCharts).toContain('steps=');
     expect(healthCharts).toContain('restingHeart=');
-    expect(charts).toContain('Workout History Charts');
+    expect(charts).toContain('Activity charts');
+    expect(readFileSync('src/ui/WorkoutHistoryCharts.tsx', 'utf8')).toContain('Workout History Charts');
     expect(charts).toContain('const [chartsOpen, setChartsOpen] = useState(false)');
     expect(charts).toContain('title={name}');
     expect(charts).toContain('Not medical advice. Not a diagnosis.');

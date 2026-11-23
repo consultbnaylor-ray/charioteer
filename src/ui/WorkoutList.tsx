@@ -1,5 +1,5 @@
 import { useRouter } from 'expo-router';
-import { useState, type ReactNode } from 'react';
+import { useCallback, useState, type ReactNode } from 'react';
 import { Pressable, View } from 'react-native';
 
 import type { AppleDayValue } from '@/domain/dailyActivity';
@@ -22,10 +22,6 @@ import {
   difficultyDetailLines,
   difficultyMarks,
   difficultySlots,
-  durationBars,
-  durationDayCaption,
-  durationScaleLabel,
-  durationTypeOrder,
   foldedCount,
   nextWorkoutDay,
   previousWorkoutDay,
@@ -40,15 +36,15 @@ import {
   workoutsOnDay,
   WORKOUT_HISTORY_EMPTY,
   WORKOUT_HISTORY_FOLD,
-  WORKOUT_HISTORY_HINT,
   WORKOUT_HISTORY_SHOW_ALL,
   type DifficultyEmptySlot,
   type DifficultyMark,
-  type DurationBar,
 } from '@/domain/workoutDay';
+import { workoutSelectedHeading } from '@/domain/workoutHistoryCharts';
 import { routeSummaryLine, type DeviceWorkout } from '@/domain/workoutRoute';
 import { workoutTypeColor } from '@/domain/workoutTypeColor';
 import { DailyActivityCharts } from '@/ui/DailyActivity';
+import { WorkoutHistoryCharts } from '@/ui/WorkoutHistoryCharts';
 import { HowItFelt } from '@/ui/HowItFelt';
 import { StatGlyph, workoutStatIcon, type StatIcon } from '@/ui/statIcons';
 import { TowardTargetActivity } from '@/ui/TowardTargetActivity';
@@ -161,78 +157,6 @@ function TapRow({
       </View>
       <T style={{ fontSize: 22, lineHeight: 26, flexShrink: 0 }}>{ROUTE_MARK}</T>
     </Pressable>
-  );
-}
-
-function DurationChart({
-  bars,
-  span,
-  selected,
-  onSelect,
-}: {
-  bars: readonly DurationBar[];
-  span: number;
-  selected: string;
-  onSelect: (day: string) => void;
-}) {
-  const theme = useAppTheme();
-  const order = durationTypeOrder(bars);
-  const most = Math.max(1, ...bars.map((bar) => bar.totalMinutes));
-  const scale = span === 1 ? durationDayCaption(bars[0], londonDay(new Date())) : durationScaleLabel(bars);
-
-  return (
-    <View style={{ gap: 8 }}>
-      <T variant="label">Duration</T>
-      <T variant="muted">{span === 1 ? 'Minutes on this day, stacked by workout type.' : 'Minutes per day, stacked by workout type.'}</T>
-      {scale ? <T variant="muted">{scale}</T> : null}
-      <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: span === 30 ? 1 : 4, minHeight: BAR_HEIGHT + 36 }}>
-        {bars.map((bar) => {
-          const chosen = bar.day === selected;
-          return (
-            <Pressable
-              key={bar.day}
-              accessibilityRole="button"
-              accessibilityLabel={`${bar.label}. Select this day.`}
-              accessibilityState={{ selected: chosen }}
-              onPress={() => onSelect(bar.day)}
-              style={{ flex: 1, minHeight: 44, alignItems: 'center', justifyContent: 'flex-end' }}
-            >
-              {span === 7 && bar.totalMinutes > 0 ? (
-                <T style={{ fontSize: 10, lineHeight: 12, textAlign: 'center' }}>{`${bar.totalMinutes} min`}</T>
-              ) : null}
-              <View
-                style={{
-                  height: BAR_HEIGHT,
-                  alignSelf: 'stretch',
-                  justifyContent: 'flex-end',
-                  borderWidth: chosen ? 1 : 0,
-                  borderColor: theme.colors.ink,
-                  backgroundColor: chosen ? theme.colors.emphasisSoft : 'transparent',
-                }}
-              >
-                {bar.totalMinutes === 0 ? (
-                  <View style={{ height: 2, backgroundColor: theme.colors.line }} />
-                ) : (
-                  [...bar.segments].reverse().map((segment) => (
-                    <View
-                      key={segment.label}
-                      style={{
-                        height: Math.max(2, (segment.minutes / most) * BAR_HEIGHT),
-                        backgroundColor: workoutTypeColor(segment.label),
-                      }}
-                    />
-                  ))
-                )}
-              </View>
-              <T style={{ fontSize: 10, lineHeight: 12, color: theme.colors.muted }}>{span === 7 ? weekdayShort(bar.day).slice(0, 1) : dayNumber(bar.day)}</T>
-            </Pressable>
-          );
-        })}
-      </View>
-      {order.length > 0 ? <SeriesLegend labels={order} /> : <T variant="muted">No workouts in these days.</T>}
-      <T variant="muted">{WORKOUT_HISTORY_HINT}</T>
-      <T variant="muted" style={{ textAlign: 'center' }}>{CHART_DIRECTION_HINT}</T>
-    </View>
   );
 }
 
@@ -519,31 +443,40 @@ export function WorkoutList({
   const hiddenRows = foldedCount(rows.length, WORKOUT_LIST_FOLD);
   const shownRows = hiddenRows > 0 && !rowsOpen ? rows.slice(0, WORKOUT_LIST_FOLD) : rows;
   const dots = workoutActivityDays(workouts);
-  const bars = durationBars(workouts, day, 7).filter((bar) => bar.day === day);
   const marks = difficultyMarks(workouts, day, 7, age).filter((mark) => mark.day === day);
   const slots = difficultySlots(marks, today, workoutsOnDay(workouts, today).length);
 
-  function choose(next: string) {
+  const choose = useCallback((next: string) => {
     setDay(next);
     setRowsOpen(false);
-  }
+  }, []);
 
-  function selectBar(next: string) {
+  const selectBar = useCallback((next: string) => {
     setHistoryDay(next);
     setHistoryOpen(false);
-    choose(next);
-  }
+    setDay(next);
+    setRowsOpen(false);
+  }, []);
 
-  function clearHistory() {
+  const clearHistory = useCallback(() => {
     setHistoryDay(null);
     setHistoryOpen(false);
-  }
+  }, []);
 
   return (
     <Card>
       <T variant="label">Workout History</T>
       <T variant="muted">A route stays on this iPhone. It is not uploaded or shared.</T>
-      <T style={{ fontFamily: theme.font.bodyStrong }}>{formatUkDate(day)}</T>
+      {day !== today ? (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={`Show ${formatUkDate(today)}`}
+          onPress={() => choose(today)}
+          style={{ minHeight: 44, justifyContent: 'center' }}
+        >
+          <T>{`Show ${formatUkDate(today)}`}</T>
+        </Pressable>
+      ) : null}
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 2 }}>
         <Pressable
           accessibilityRole="button"
@@ -591,11 +524,7 @@ export function WorkoutList({
           <T>›</T>
         </Pressable>
       </View>
-      {day !== today ? (
-        <Pressable accessibilityRole="button" accessibilityLabel="Today" onPress={() => choose(today)} style={{ minHeight: 44, justifyContent: 'center' }}>
-          <T>Today</T>
-        </Pressable>
-      ) : null}
+      <T style={{ fontFamily: theme.font.bodyStrong }}>{workoutSelectedHeading(day)}</T>
       {rows.length > 0 ? <T>{workoutDaySummary(rows)}</T> : <T>No workouts on this day.</T>}
       {shownRows.map((workout) => <WorkoutRow key={workout.id} workout={workout} />)}
       {hiddenRows > 0 ? (
@@ -606,7 +535,7 @@ export function WorkoutList({
           onPress={() => setRowsOpen((value) => !value)}
         />
       ) : null}
-      <DurationChart bars={bars} span={1} selected={day} onSelect={selectBar} />
+      <WorkoutHistoryCharts workouts={workouts} today={today} onSelectDay={selectBar} />
       <HowItFelt day={day} workouts={rows} sleep={sleep} />
       <TowardTargetActivity compact />
       <DailyActivityCharts

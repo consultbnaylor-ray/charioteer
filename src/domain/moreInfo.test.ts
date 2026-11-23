@@ -41,7 +41,7 @@ describe('more info disclosure', () => {
     expect(charts).not.toContain('summary="Not medical advice. Not a diagnosis."');
     expect(charts).toContain('guide?.outside');
     expect(charts).toContain('framed={framed}');
-    const history = charts.slice(charts.indexOf('Workout History Charts'), charts.indexOf('title="Exercise minutes"'));
+    const history = charts.slice(charts.indexOf('Activity charts'), charts.indexOf('title="Exercise minutes"'));
     expect(history).not.toContain('meaning="none"');
     expect(history).not.toContain('DataMeaning');
     expect(readFileSync('src/ui/MoreInfo.tsx', 'utf8')).toContain("export const DATA_MEANING_TITLE = 'What this Data means'");
