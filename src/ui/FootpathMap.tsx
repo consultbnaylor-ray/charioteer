@@ -22,7 +22,7 @@ import {
 } from '@/domain/outdoorRoute';
 import { flyWhenReady, pageScrollForMapTouch, useHeldCamera, type HeldCamera } from '@/ui/mapCamera';
 import { MapFrame } from '@/ui/MapChrome';
-import { useMapScheme } from '@/ui/mapStyle';
+import { useFootpathStyle, useMapScheme } from '@/ui/mapStyle';
 import { T, useScreenScroller } from '@/ui/ui';
 
 type CameraHandle = {
@@ -129,6 +129,8 @@ export function FootpathMap({
   canClearDraw?: boolean;
 }) {
   const [scheme, choose] = useMapScheme();
+  const styleUrl = openFreeMapStyle(scheme);
+  const mapStyle = useFootpathStyle(scheme, styleUrl);
   const scroller = useScreenScroller();
   const drawingOn = draw?.enabled === true;
   useEffect(() => {
@@ -182,6 +184,7 @@ export function FootpathMap({
           pencil={pencil}
           pin={pin}
           draw={draw}
+          mapStyle={mapStyle}
         />
       )}
     />
@@ -207,6 +210,7 @@ function NativeCanvas({
   pencil,
   pin,
   draw,
+  mapStyle,
 }: {
   maps: Maps | null;
   height: number;
@@ -230,6 +234,7 @@ function NativeCanvas({
     onChange: (points: OutdoorPoint[]) => void;
     onEnd: (points: OutdoorPoint[]) => void;
   } | null;
+  mapStyle: string | object;
 }) {
   const camera = useRef<CameraHandle>(null);
   const size = useRef({ width: 0, height });
@@ -281,7 +286,7 @@ function NativeCanvas({
       }}
     >
     <maps.Map
-      mapStyle={openFreeMapStyle(scheme)}
+      mapStyle={mapStyle}
       attribution={false}
       dragPan={!drawing}
       touchZoom={!drawing}

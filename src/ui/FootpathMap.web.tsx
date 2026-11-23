@@ -22,7 +22,7 @@ import {
 } from '@/domain/outdoorRoute';
 import { holdMapGestures, useHeldCamera, type HeldCamera } from '@/ui/mapCamera';
 import { MapFrame } from '@/ui/MapChrome';
-import { useMapScheme } from '@/ui/mapStyle';
+import { useFootpathStyle, useMapScheme } from '@/ui/mapStyle';
 import { useScreenScroller } from '@/ui/ui';
 
 type PaintInput = {
@@ -44,7 +44,7 @@ type LibreMap = {
   getZoom: () => number;
   jumpTo: (options: { center: [number, number]; zoom: number }) => void;
   resize: () => void;
-  setStyle: (url: string) => void;
+  setStyle: (style: string | object) => void;
   isStyleLoaded: () => boolean;
   getSource: (id: string) => { setData: (data: unknown) => void } | undefined;
   getLayer: (id: string) => unknown;
@@ -130,6 +130,8 @@ export function FootpathMap({
   canClearDraw?: boolean;
 }) {
   const [scheme, choose] = useMapScheme();
+  const styleUrl = openFreeMapStyle(scheme);
+  const mapStyle = useFootpathStyle(scheme, styleUrl);
   const scroller = useScreenScroller();
   const drawingOn = draw?.enabled === true;
   useEffect(() => {
@@ -197,6 +199,7 @@ export function FootpathMap({
             trackJson={trackJson}
             startJson={startJson}
             youJson={youJson}
+            basemap={mapStyle}
             onUserMove={onUserMove}
             onProblem={() => setProblem('The map tiles did not load in this browser.')}
           />
@@ -344,6 +347,7 @@ function WebCanvas({
   trackJson,
   startJson,
   youJson,
+  basemap,
   onUserMove,
   onProblem,
 }: {
@@ -369,6 +373,7 @@ function WebCanvas({
   trackJson: string;
   startJson: string;
   youJson: string;
+  basemap: string | object;
   onUserMove?: () => void;
   onProblem: () => void;
 }) {
@@ -391,6 +396,9 @@ function WebCanvas({
   rememberRef.current = remember;
   const problemRef = useRef(onProblem);
   problemRef.current = onProblem;
+  const basemapRef = useRef(basemap);
+  basemapRef.current = basemap;
+  const basemapKey = typeof basemap === 'string' ? basemap : `json:${scheme}`;
 
   useEffect(() => {
     const node = host.current as unknown as HTMLElement | null;
@@ -415,17 +423,17 @@ function WebCanvas({
         const maplibre = await import('maplibre-gl');
         if (cancelled) return;
         const start = heldRef.current.current;
-        const url = openFreeMapStyle(paint.current.scheme);
+        const initial = basemapRef.current;
         const next = new maplibre.Map({
           container: node,
-          style: url,
+          style: initial as string,
           center: [start.longitude, start.latitude],
           zoom: start.zoom,
           attributionControl: false,
         });
         map = next as unknown as LibreMap;
         mapRef.current = map;
-        applied.current = url;
+        applied.current = typeof initial === 'string' ? initial : `json:${paint.current.scheme}`;
         map.on('moveend', (event?: { originalEvent?: unknown }) => {
           if (!event?.originalEvent) return;
           const current = mapRef.current;
@@ -466,9 +474,8 @@ function WebCanvas({
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
-    const url = openFreeMapStyle(scheme);
-    if (applied.current !== url) {
-      applied.current = url;
+    if (applied.current !== basemapKey) {
+      applied.current = basemapKey;
       const place = held.current;
       if (styleListener.current) map.off('styledata', styleListener.current);
       const finish = () => {
@@ -480,12 +487,12 @@ function WebCanvas({
       };
       styleListener.current = finish;
       map.on('styledata', finish);
-      map.setStyle(url);
+      map.setStyle(basemap);
       map.once('idle', finish);
       return;
     }
     paintMap(map, paint.current);
-  }, [scheme, savedJson, sketchJson, guideJson, pinJson, viaJson, selectedJson, trackJson, startJson, youJson, ready, held]);
+  }, [scheme, basemap, basemapKey, savedJson, sketchJson, guideJson, pinJson, viaJson, selectedJson, trackJson, startJson, youJson, ready, held]);
 
   useEffect(() => {
     holdMapGestures(mapRef.current, drawing);

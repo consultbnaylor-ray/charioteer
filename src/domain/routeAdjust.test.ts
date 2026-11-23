@@ -7,6 +7,7 @@ import { ROUTE_OFFLINE, type RoutePlan } from '@/domain/findRoute';
 import {
   DRAW_FINGER_HINT,
   DRAW_NO_PATH,
+  DRAW_PEN_HINT,
   VIA_POINT_CAP,
   REDRAW_PAUSE_MS,
   adjustControlsOn,
@@ -376,5 +377,25 @@ describe('route adjusting', () => {
     expect(chrome).not.toContain('ORS_CREDIT');
     expect(chrome).toContain('DRAW_FINGER_HINT');
     expect(chrome.match(/<T[^>]*>\{MAP_CREDIT\}/g)).toBeNull();
+  });
+
+  it('appends the next stroke to the route and leaves drawing on until Done', () => {
+    expect(DRAW_PEN_HINT).toBe('Use the pen symbol to draw where you want to go and the line will snap to the nearest paths');
+    const maker = readFileSync('src/ui/RouteMaker.tsx', 'utf8');
+    const snap = maker.slice(maker.indexOf('async function snapDrawn'), maker.indexOf('function undoDraw'));
+    expect(snap).toContain('commitDrawStroke');
+    expect(snap).toContain('combineDrawStrokes');
+    expect(snap).not.toContain('setDrawing(false)');
+    expect(maker).toContain('undoDrawStroke');
+    expect(maker).toContain('clearDrawStrokes');
+    expect(maker).toContain('visibleDrawLine');
+    expect(maker).toContain('continuationEnd');
+    const native = readFileSync('src/ui/FootpathMap.tsx', 'utf8');
+    const web = readFileSync('src/ui/FootpathMap.web.tsx', 'utf8');
+    for (const source of [native, web]) {
+      expect(source).toContain('useFootpathStyle(scheme, styleUrl)');
+      expect(source).toContain('openFreeMapStyle(scheme)');
+      expect(source).not.toContain('line-dasharray');
+    }
   });
 });

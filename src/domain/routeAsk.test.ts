@@ -272,4 +272,24 @@ describe('custom route distance and time', () => {
     expect(maker).toContain('routeAskFromChoices');
     expect(maker).not.toMatch(/latitude|longitude/);
   });
+
+  it('keeps how, shape, and distance collapsed, with the current choice in the header', () => {
+    const maker = readFileSync('src/ui/RouteMaker.tsx', 'utf8');
+    const group = readFileSync('src/ui/RouteChoiceGroup.tsx', 'utf8');
+    expect(group).toContain('useState(false)');
+    expect(group).toContain('accessibilityState={{ expanded: open }}');
+    expect(group).toContain('`${title} · ${choice}`');
+    expect(maker).toContain('title="How (optional)"');
+    expect(maker).toContain('title="Shape (optional)"');
+    expect(maker).toContain('title="Distance (optional)"');
+    expect(maker).toContain('choice={howChoice}');
+    expect(maker).toContain('choice={shapeChoice}');
+    expect(maker).toContain('choice={distanceChoice}');
+    const distance = maker.slice(maker.indexOf('title="Distance (optional)"'), maker.indexOf('<T variant="label">Start</T>'));
+    expect(distance).toContain('{DISTANCE_WINS_NOTE}');
+    expect(distance).toContain('ROUTE_TIME_CHOICES.map');
+    expect(distance).toContain("distanceId === 'custom'");
+    expect(maker.indexOf('DRAW_PEN_HINT')).toBeLessThan(maker.indexOf('<FootpathMap'));
+    expect(maker).toContain('statsToneColors(theme.scheme).good.ink');
+  });
 });

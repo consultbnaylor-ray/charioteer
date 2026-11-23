@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
+import { loadEmphasizedFootpathStyle } from '@/domain/footpathStyle';
 import { MAP_STYLE_STORAGE_KEY, parseMapScheme, type MapScheme } from '@/domain/outdoorRoute';
 
 export async function loadMapScheme(): Promise<MapScheme> {
@@ -36,4 +37,20 @@ export function useMapScheme(): [MapScheme, (scheme: MapScheme) => void] {
     void saveMapScheme(next);
   }
   return [scheme, choose];
+}
+
+/** The OpenFreeMap style, then the same style with footpaths emphasized. The URL shows until that edit loads. */
+export function useFootpathStyle(scheme: MapScheme, url: string): string | object {
+  const [style, setStyle] = useState<string | object>(url);
+  useEffect(() => {
+    let live = true;
+    setStyle(url);
+    void loadEmphasizedFootpathStyle(url, scheme).then((next) => {
+      if (live && next && typeof next === 'object') setStyle(next);
+    }).catch(() => undefined);
+    return () => {
+      live = false;
+    };
+  }, [scheme, url]);
+  return style;
 }
