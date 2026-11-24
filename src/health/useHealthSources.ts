@@ -15,6 +15,7 @@ type SourceCache = {
   readings: GarminReadings;
   apple: DeviceWorkout[];
   activity: AppleDailyActivity;
+  ready: boolean;
 };
 
 type SourceRepo = {
@@ -25,6 +26,7 @@ let cache: SourceCache = {
   readings: emptyGarminReadings(),
   apple: [],
   activity: emptyAppleDailyActivity(),
+  ready: false,
 };
 let cacheSignature = sourceSignature(cache);
 const listeners = new Set<() => void>();
@@ -78,6 +80,7 @@ function sourceSignature(value: SourceCache): string {
     value.activity.activeKcal.length,
     energy?.day ?? '',
     energy?.value ?? '',
+    value.ready ? 1 : 0,
   ].join('|');
 }
 
@@ -95,7 +98,7 @@ function refreshHealthSources(repo: SourceRepo, consent: boolean, force = false)
     activityPromise,
   ]).then(([readings, apple, activity]) => {
     if (token !== flightToken) return;
-    const next = { readings, apple, activity };
+    const next = { readings, apple, activity, ready: true };
     const signature = sourceSignature(next);
     if (signature === cacheSignature) return;
     cache = next;
@@ -120,6 +123,9 @@ export function useHealthSources(): {
   workouts: DeviceWorkout[];
   samples: HealthSample[];
   activity: AppleDailyActivity;
+  /** Apple Health workouts before they are merged with Garmin. */
+  apple: DeviceWorkout[];
+  ready: boolean;
 } {
   const snap = useSnapshot();
   const repo = useRepository();
@@ -140,5 +146,12 @@ export function useHealthSources(): {
     rememberWorkouts(workouts);
   }, [workouts]);
 
-  return { readings: cached.readings, workouts, samples, activity: cached.activity };
+  return {
+    readings: cached.readings,
+    workouts,
+    samples,
+    activity: cached.activity,
+    apple: cached.apple,
+    ready: cached.ready,
+  };
 }

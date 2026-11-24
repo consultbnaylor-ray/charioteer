@@ -366,8 +366,13 @@ describe('route adjusting', () => {
     expect(DRAW_NO_PATH).toBe('No path matched that line.');
 
     const maker = readFileSync('src/ui/RouteMaker.tsx', 'utf8');
-    expect(maker).toContain('label="Start here"');
-    expect(maker).toContain('label="Go here"');
+    expect(maker).not.toContain('label="Start here"');
+    expect(maker).not.toContain('label="Go here"');
+    expect(maker).toContain("void whereIAm('start')");
+    expect(maker).toContain("void whereIAm('end')");
+    const placeSearch = maker.slice(maker.indexOf('async function search'), maker.indexOf('async function make'));
+    expect(placeSearch).toContain('repo.searchRoutePlaces(query)');
+    expect(placeSearch).not.toContain('noteRouteRequest');
     expect(maker).toContain('onToggleDraw={craving ? undefined : toggleDraw}');
     expect(maker).toContain('DRAW_NO_PATH');
     expect(maker).not.toContain('Search sets the start');

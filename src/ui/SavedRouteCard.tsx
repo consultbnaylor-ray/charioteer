@@ -5,6 +5,7 @@ import { Pressable, View, useWindowDimensions } from 'react-native';
 import { useRepository } from '@/data';
 import { shownError } from '@/domain/errors';
 import { routeKindLabel, routeSummary, routeTitleOf, type OutdoorRoute } from '@/domain/outdoorRoute';
+import type { RouteCompletion } from '@/domain/routeCompletions';
 import {
   CANCEL,
   DELETE_REMOVES,
@@ -15,6 +16,7 @@ import {
   SAVE_NAME,
   openLabel,
 } from '@/domain/savedRoute';
+import { RouteCompletionRows } from '@/ui/RouteHistory';
 import { Button, Card, ErrorNote, Field, T } from '@/ui/ui';
 
 export function narrowScreen(width: number): boolean {
@@ -99,7 +101,15 @@ export function RenameRouteFields({
 }
 
 /** The name opens the route. Rename and Delete stay their own buttons. */
-export function SavedRouteCard({ route }: { route: OutdoorRoute }) {
+export function SavedRouteCard({
+  route,
+  completions = [],
+  ready = false,
+}: {
+  route: OutdoorRoute;
+  completions?: readonly RouteCompletion[];
+  ready?: boolean;
+}) {
   const router = useRouter();
   const repo = useRepository();
   const { width } = useWindowDimensions();
@@ -160,6 +170,7 @@ export function SavedRouteCard({ route }: { route: OutdoorRoute }) {
         <T variant="title">{route.title}</T>
         <T variant="muted">{routeKindLabel(route.kind)} · {routeSummary(route)}</T>
       </Pressable>
+      <RouteCompletionRows completions={completions} ready={ready} />
       {renaming ? (
         <RenameRouteFields
           narrow={narrow}

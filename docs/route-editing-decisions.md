@@ -21,7 +21,7 @@ On the build 77 screen, Add a point shows the first line, and a selected point s
 ## What was approved
 
 1. A finger on the line adds or moves a via-point. The start and the destination stay where Find a route put them.
-2. The route is sent once, when the finger lifts, after a 500 millisecond pause. Five via-points is the cap. The phone shows how many route requests this phone has made today. The account limit stays 40 a day and 12 in 10 minutes, shared with place search. The phone does not show the shared remainder or the 1,500 app cap.
+2. The route is sent once, when the finger lifts, after a 500 millisecond pause. Five via-points is the cap. The phone shows how many route requests this phone has made today. The account limit stays 40 routes a day and 12 in 10 minutes. Place search has its own allowance. The phone does not show the shared remainder or the 1,500 app cap.
 3. The purpose string, the route-finding consent, the privacy note, and the DPIA use the sentences below. Ben approved them on 26 October 2026. The consent version is `2026-10-26-1`, so the question is asked again.
 4. If the redraw fails, the previous line, distance, climb, and time stay on the screen.
 5. Adjust, then Save, stores one line on the account, as Save does today. A saved route does not grow a second list of via-points. Adjusting again means Make the route again.
@@ -71,7 +71,7 @@ Dragging must not spend those calls one finger-move at a time.
 - One send happens when the finger lifts, after a 500 millisecond pause. A second lift during that pause replaces the first. One send leaves.
 - If a call is already in flight, the phone keeps only the latest lift and sends it when the first call ends. One call runs, and one waits.
 - At five via-points the line no longer grows. A drag moves or removes an existing point. The screen says: "5 of 5 points. Drag one to move it, or remove one."
-- The screen shows a count this phone knows: "4 route requests on this phone today." The account limit is 40 a day and 12 in 10 minutes, shared with place search. Another phone on the same account shares that 40. The phone does not pretend to know the shared remainder. The 1,500 app cap is not shown. If either cap is hit, the person sees the rate-limited message below.
+- The screen shows a count this phone knows: "4 route requests on this phone today." The account limit is 40 routes a day and 12 in 10 minutes. Place search has its own allowance. Another phone on the same account shares that 40. The phone does not pretend to know the shared remainder. The 1,500 app cap is not shown. If either cap is hit, the person sees the rate-limited message below.
 
 ## Privacy
 

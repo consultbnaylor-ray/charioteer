@@ -7,8 +7,10 @@ import { OUTSIDE_SECTION_LABEL } from '@/domain/outsideSection';
 import { type OutdoorPoint } from '@/domain/outdoorRoute';
 import { PLACE_SEARCH_MIN_CHARS, createPlaceSearch, holdChosenPlace, placeQueryKey, placeSearchOnce } from '@/domain/routeAdjust';
 import { LOCATION_FIX_MESSAGE, LOCATION_FIX_PENDING, readWhileUsingFix } from '@/location/whileUsing';
+import { useRouteCompletionHistory } from '@/health/useRouteCompletions';
 import { FootpathMap } from '@/ui/FootpathMap';
 import { OutsideFooter } from '@/ui/OutsideFooter';
+import { RouteHistorySummary } from '@/ui/RouteHistory';
 import { SavedRouteCard } from '@/ui/SavedRouteCard';
 import { Button, Card, Choice, ErrorNote, Field, Screen, T } from '@/ui/ui';
 
@@ -27,6 +29,7 @@ export default function OutsideMap() {
   const [lookFocus, setLookFocus] = useState(0);
   const [searched, setSearched] = useState(false);
   const routes = snap.outdoorRoutes ?? [];
+  const { history, ready } = useRouteCompletionHistory(routes);
   const queryRef = useRef('');
   const searchRef = useRef<() => void>(() => undefined);
   const placeSearchRef = useRef(createPlaceSearch(() => searchRef.current()));
@@ -138,7 +141,15 @@ export default function OutsideMap() {
         <T variant="muted">Where I am stays on this page. It does not ask the route service for a line.</T>
       </Card>
       <ErrorNote>{error}</ErrorNote>
-      {routes.map((route) => <SavedRouteCard key={route.id} route={route} />)}
+      {routes.length > 0 ? <RouteHistorySummary completions={history.all} ready={ready} /> : null}
+      {routes.map((route) => (
+        <SavedRouteCard
+          key={route.id}
+          route={route}
+          completions={history.byRoute[route.id] ?? []}
+          ready={ready}
+        />
+      ))}
       <OutsideFooter kind="full" />
     </Screen>
   );

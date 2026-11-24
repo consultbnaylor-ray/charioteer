@@ -22,7 +22,7 @@ export const REDRAWING_THE_ROUTE = 'Redrawing the route.';
 export const LAST_ROUTE_FIGURES = 'Last route. The figures change when the redraw finishes.';
 export const ROUTE_UNCHANGED = 'The route on the map is unchanged.';
 export const ROUTE_REQUEST_LIMIT_LINE =
-  'The account limit is 40 a day and 12 in 10 minutes, shared with place search.';
+  '40 route requests a day and 12 in 10 minutes. Place search has its own allowance.';
 
 export const ROUTE_REQUEST_DAY_KEY = 'charioteer.route-requests.day';
 

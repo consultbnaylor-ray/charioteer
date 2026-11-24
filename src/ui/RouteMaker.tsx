@@ -7,6 +7,7 @@ import { holdMadeRoute } from '@/activity/madeRouteGuide';
 import { currentLive } from '@/activity/oneSession';
 import { useRepository } from '@/data';
 import { OTHER_SESSION_LINE, startLabel, type ActivityKind } from '@/domain/activitySession';
+import { SHOW_IN_APP_OUTING } from '@/domain/outsideSection';
 import { UserFacingError, shownError } from '@/domain/errors';
 import {
   APPLE_MAPS_NOTE,
@@ -17,10 +18,8 @@ import {
   ROUTE_MOCK_LINE,
   ROUTE_TIME_CHOICES,
   ROUTE_UNAVAILABLE,
+  BOTH_HERE_HINT,
   SEARCH_EMPTY,
-  SEARCH_FAILED,
-  STARTER_NOTE,
-  STARTER_PLACES,
   appleMapsUrl,
   matchDrawnSketch,
   nearestPathLine,
@@ -123,7 +122,9 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
   const theme = useAppTheme();
   const [preferPaths, setPreferPaths] = usePreferPaths();
   const [mode, setMode] = useState<RouteMode>('walk');
+  const [modeTouched, setModeTouched] = useState(false);
   const [shape, setShape] = useState<RouteShape>('loop');
+  const [shapeTouched, setShapeTouched] = useState(false);
   const [distanceId, setDistanceId] = useState<RouteDistanceChoice>('5');
   const [timeId, setTimeId] = useState<RouteTimeChoice>('none');
   const [customDistance, setCustomDistance] = useState(customSession.distance);
@@ -144,7 +145,7 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
   const [title, setTitle] = useState(craving ? 'Craving walk' : 'My route');
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
-  const [locating, setLocating] = useState(false);
+  const [locatingRole, setLocatingRole] = useState<null | 'start' | 'end' | 'map'>(null);
   const [saved, setSaved] = useState(false);
   const [adjusting, setAdjusting] = useState(false);
   const [acceptedVias, setAcceptedVias] = useState<OutdoorPoint[]>([]);
@@ -168,7 +169,14 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
   const [lookAt, setLookAt] = useState<OutdoorPoint | null>(null);
   const [lookFocus, setLookFocus] = useState(0);
   const [searched, setSearched] = useState(false);
+  const [startPick, setStartPick] = useState<RoutePlace | null>(null);
+  const [endQuery, setEndQuery] = useState('');
+  const [endResults, setEndResults] = useState<RoutePlace[]>([]);
+  const [endSearched, setEndSearched] = useState(false);
+  const [endPick, setEndPick] = useState<RoutePlace | null>(null);
+  const locating = locatingRole != null;
   const hereSelected = startName === 'Where I am' && start != null;
+  const endHereSelected = endName === 'Where I am' && end != null;
   const nearLine = plan ? nearestPathLine(plan.snapDistanceM) : null;
   const acceptedRef = useRef(acceptedVias);
   const shownRef = useRef(shownVias);
@@ -191,26 +199,34 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
   const queryRef = useRef(query);
   const searchRef = useRef<() => void>(() => undefined);
   const placeSearchRef = useRef(createPlaceSearch(() => searchRef.current()));
+  const endQueryRef = useRef(endQuery);
+  const endSearchRef = useRef<() => void>(() => undefined);
+  const endPlaceSearchRef = useRef(createPlaceSearch(() => endSearchRef.current()));
   const preferRef = useRef(preferPaths);
   queryRef.current = query;
+  endQueryRef.current = endQuery;
   preferRef.current = preferPaths;
 
   useEffect(() => {
     const queue = queueRef.current;
     const places = placeSearchRef.current;
+    const endPlaces = endPlaceSearchRef.current;
     void readRouteRequests(phoneRequests).then(setRequestsToday).catch(() => undefined);
     void loadDistanceUnit().then(setUnit).catch(() => undefined);
     const chosen = takeChosenPlace();
     if (chosen?.role === 'end') {
       setEnd(chosen.place);
       setEndName(chosen.place.name);
+      setEndPick(chosen.place);
       setShape('a_to_b');
+      setShapeTouched(true);
       setPin(chosen.place);
       setLookAt(chosen.place);
       setLookFocus(1);
     } else if (chosen) {
       setStart(chosen.place);
       setStartName(chosen.place.name);
+      setStartPick(chosen.place);
       setPin(chosen.place);
       setLookAt(chosen.place);
       setLookFocus(1);
@@ -219,6 +235,7 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
     return () => {
       queue.dispose();
       places.dispose();
+      endPlaces.dispose();
     };
   }, []);
 
@@ -350,39 +367,20 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
     clearEdit();
   }
 
-  function pickStart(place: RoutePlace) {
+  function choosePlace(place: RoutePlace) {
     setStart(place);
     setStartName(place.name);
+    setStartPick(place);
     setRough(false);
-    setPlan(null);
-    forgetAdjust();
-  }
-
-  function pickEnd(place: RoutePlace) {
-    setEnd(place);
-    setEndName(place.name);
-    setPlan(null);
-    forgetAdjust();
-  }
-
-  function choosePlace(place: RoutePlace) {
     setPin(place);
     setLookAt(place);
     setLookFocus((value) => value + 1);
     setResults([]);
     setQuery(place.name);
     queryRef.current = place.name;
+    setPlan(null);
+    forgetAdjust();
     dismissKeyboard();
-  }
-
-  function usePin(role: 'start' | 'end') {
-    if (!pin) return;
-    if (role === 'end') {
-      setShape('a_to_b');
-      pickEnd(pin);
-      return;
-    }
-    pickStart(pin);
   }
 
   function onSearchText(value: string) {
@@ -395,17 +393,57 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
     placeSearchRef.current.type(value);
   }
 
-  async function whereIAm() {
+  function chooseEndPlace(place: RoutePlace) {
+    setEnd(place);
+    setEndName(place.name);
+    setEndPick(place);
+    setPin(place);
+    setLookAt(place);
+    setLookFocus((value) => value + 1);
+    setEndResults([]);
+    setEndQuery(place.name);
+    endQueryRef.current = place.name;
+    setPlan(null);
+    forgetAdjust();
+    dismissKeyboard();
+  }
+
+  function onEndSearchText(value: string) {
+    setEndQuery(value);
+    endQueryRef.current = value;
+    if (value.trim().length < PLACE_SEARCH_MIN_CHARS) {
+      setEndResults([]);
+      setEndSearched(false);
+    }
+    endPlaceSearchRef.current.type(value);
+  }
+
+  async function whereIAm(role: 'start' | 'end') {
     setError(null);
-    setLocating(true);
+    setLocatingRole(role);
     try {
       const fix = await readWhileUsingFix();
       if (!fix.ok) {
         setError(LOCATION_FIX_MESSAGE);
         return;
       }
-      setStart(fix.point);
-      setStartName('Where I am');
+      if (role === 'end') {
+        setEnd(fix.point);
+        setEndName('Where I am');
+        setEndPick(null);
+        setEndQuery('');
+        endQueryRef.current = '';
+        setEndResults([]);
+        setEndSearched(false);
+      } else {
+        setStart(fix.point);
+        setStartName('Where I am');
+        setStartPick(null);
+        setQuery('');
+        queryRef.current = '';
+        setResults([]);
+        setSearched(false);
+      }
       setYou(fix.point);
       setRough(fix.approximate);
       setPlan(null);
@@ -413,13 +451,13 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
       setFocus(0);
       setError(null);
     } finally {
-      setLocating(false);
+      setLocatingRole(null);
     }
   }
 
   async function showMyLocation() {
     setError(null);
-    setLocating(true);
+    setLocatingRole('map');
     try {
       const fix = await readWhileUsingFix();
       if (!fix.ok) {
@@ -429,30 +467,44 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
       setYou(fix.point);
       setFocus((value) => value + 1);
     } finally {
-      setLocating(false);
+      setLocatingRole(null);
     }
   }
 
-  async function search() {
-    const query = queryRef.current.trim();
+  async function search(role: 'start' | 'end' = 'start') {
+    const current = role === 'end' ? endQueryRef : queryRef;
+    const query = current.current.trim();
     if (query.length < PLACE_SEARCH_MIN_CHARS) {
-      setResults([]);
-      setSearched(false);
+      if (role === 'end') {
+        setEndResults([]);
+        setEndSearched(false);
+      } else {
+        setResults([]);
+        setSearched(false);
+      }
       return;
     }
     setError(null);
     try {
       const found = await placeSearchOnce(query, () => repo.searchRoutePlaces(query));
-      if (placeQueryKey(queryRef.current) !== placeQueryKey(query)) return;
-      setResults(found);
-      setSearched(true);
+      if (placeQueryKey(current.current) !== placeQueryKey(query)) return;
+      if (role === 'end') {
+        setEndResults(found);
+        setEndSearched(true);
+      } else {
+        setResults(found);
+        setSearched(true);
+      }
     } catch (err) {
-      placeSearchRef.current.missed();
-      setSearched(false);
+      if (role === 'end') endPlaceSearchRef.current.missed();
+      else placeSearchRef.current.missed();
+      if (role === 'end') setEndSearched(false);
+      else setSearched(false);
       setError(shownError(err, 'The place search did not answer.'));
     }
   }
-  searchRef.current = () => { void search(); };
+  searchRef.current = () => { void search('start'); };
+  endSearchRef.current = () => { void search('end'); };
 
   async function make() {
     if (routeFlight.current) return;
@@ -651,10 +703,16 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
       setAdjusting(false);
       setStart(origin);
       setStartName('Sketched line');
+      setStartPick(null);
+      setQuery('');
+      queryRef.current = '';
+      setResults([]);
       if (!craving && drawnShape === 'a_to_b') {
         setShape('a_to_b');
+        setShapeTouched(true);
         setEnd(finish);
         setEndName('Sketched end');
+        setEndPick(null);
       }
       setRequestsToday(await noteRouteRequest(phoneRequests));
       return true;
@@ -781,6 +839,16 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
   ) : null;
   const howChoice = mode === 'run' ? 'Run' : mode === 'cycle' ? 'Cycle' : 'Walk';
   const shapeChoice = shape === 'a_to_b' ? 'A to B' : 'Loop';
+
+  function chooseMode(next: RouteMode) {
+    setMode(next);
+    setModeTouched(true);
+  }
+
+  function chooseShape(next: RouteShape) {
+    setShape(next);
+    setShapeTouched(true);
+  }
   const distanceChoice = ROUTE_DISTANCE_CHOICES.find((item) => item.id === distanceId)?.label ?? '5 km';
   const canRemove = edit.kind === 'move';
   const showAdjust = adjustControlsOn({ craving, adjusting, hasPlan: plan != null });
@@ -832,15 +900,21 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
           </>
         ) : (
           <>
-            <RouteChoiceGroup title="How (optional)" choice={howChoice}>
-              <Choice label="Walk" selected={mode === 'walk'} onPress={() => setMode('walk')} />
-              <Choice label="Run" selected={mode === 'run'} onPress={() => setMode('run')} />
-              <Choice label="Cycle" selected={mode === 'cycle'} onPress={() => setMode('cycle')} />
-              {mode === 'run' ? <T variant="muted">{HIKE_PROFILE_NOTE}</T> : null}
+            <RouteChoiceGroup
+              title={modeTouched ? 'How' : 'How (optional)'}
+              choice={modeTouched ? howChoice : 'Walk / Run / Cycle'}
+            >
+              <Choice label="Walk" selected={modeTouched && mode === 'walk'} onPress={() => chooseMode('walk')} />
+              <Choice label="Run" selected={modeTouched && mode === 'run'} onPress={() => chooseMode('run')} />
+              <Choice label="Cycle" selected={modeTouched && mode === 'cycle'} onPress={() => chooseMode('cycle')} />
+              {modeTouched && mode === 'run' ? <T variant="muted">{HIKE_PROFILE_NOTE}</T> : null}
             </RouteChoiceGroup>
-            <RouteChoiceGroup title="Shape (optional)" choice={shapeChoice}>
-              <Choice label="Loop" selected={shape === 'loop'} onPress={() => setShape('loop')} />
-              <Choice label="A to B" selected={shape === 'a_to_b'} onPress={() => setShape('a_to_b')} />
+            <RouteChoiceGroup
+              title={shapeTouched ? 'Shape' : 'Shape (optional)'}
+              choice={shapeTouched ? shapeChoice : 'Loop or A to B'}
+            >
+              <Choice label="Loop" selected={shapeTouched && shape === 'loop'} onPress={() => chooseShape('loop')} />
+              <Choice label="A to B" selected={shapeTouched && shape === 'a_to_b'} onPress={() => chooseShape('a_to_b')} />
             </RouteChoiceGroup>
             <RouteChoiceGroup title="Distance (optional)" choice={distanceChoice}>
               {ROUTE_DISTANCE_CHOICES.map((item) => (
@@ -882,27 +956,6 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
             </RouteChoiceGroup>
           </>
         )}
-        <T variant="label">Start</T>
-        <T variant="muted">{STARTER_NOTE}</T>
-        <T>{startName ? `Start: ${startName}` : 'No start yet.'}</T>
-        {STARTER_PLACES.map((place) => (
-          <Choice key={place.id} label={place.name} selected={startName === place.name} onPress={() => pickStart(place)} />
-        ))}
-        {locating ? (
-          <Button label="Where I am" tone="quiet" pending pendingLabel={LOCATION_FIX_PENDING} onPress={() => {}} />
-        ) : (
-          <Choice label="Where I am" selected={hereSelected} onPress={() => { void whereIAm(); }} />
-        )}
-        {rough && hereSelected ? <T>{ROUGH_FIX_LINE}</T> : null}
-        {!craving && shape === 'a_to_b' ? (
-          <>
-            <T variant="label">Destination</T>
-            <T>{endName ? `Destination: ${endName}` : 'No destination yet.'}</T>
-            {STARTER_PLACES.map((place) => (
-              <Choice key={`end-${place.id}`} label={place.name} selected={endName === place.name} onPress={() => pickEnd(place)} />
-            ))}
-          </>
-        ) : null}
         {!craving ? (
           <T style={{ color: statsToneColors(theme.scheme).good.ink, fontFamily: theme.font.bodyStrong }}>
             {DRAW_PEN_HINT}
@@ -950,7 +1003,17 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
             {drawNote}
           </T>
         ) : null}
+        <T variant="label">Start</T>
+        {locatingRole === 'start' ? (
+          <Button label="Where I am" tone="quiet" pending pendingLabel={LOCATION_FIX_PENDING} onPress={() => {}} />
+        ) : (
+          <Choice label="Where I am" selected={hereSelected} onPress={() => { void whereIAm('start'); }} />
+        )}
+        <T variant="muted">or</T>
         <Field label="Search for a place" value={query} onChangeText={onSearchText} maxLength={80} />
+        {startName && !hereSelected ? (
+          <Choice key={startPick?.id ?? 'chosen-start'} label={startName} selected onPress={() => undefined} />
+        ) : null}
         {results.map((place) => (
           <Choice
             key={`found-${place.id}`}
@@ -961,12 +1024,31 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
           />
         ))}
         {searched && results.length === 0 ? <T>{SEARCH_EMPTY}</T> : null}
-        {pin ? (
+        {rough && hereSelected ? <T>{ROUGH_FIX_LINE}</T> : null}
+        {!craving && shapeTouched && shape === 'a_to_b' ? (
           <>
-            <Choice label="Start here" selected={startName === pin.name} onPress={() => usePin('start')} />
-            {!craving && shape === 'a_to_b' && start ? (
-              <Choice label="Go here" selected={endName === pin.name} onPress={() => usePin('end')} />
+            <T variant="label">Destination</T>
+            {locatingRole === 'end' ? (
+              <Button label="Where I am" tone="quiet" pending pendingLabel={LOCATION_FIX_PENDING} onPress={() => {}} />
+            ) : (
+              <Choice label="Where I am" selected={endHereSelected} onPress={() => { void whereIAm('end'); }} />
+            )}
+            <T variant="muted">or</T>
+            <Field label="Search for a destination" value={endQuery} onChangeText={onEndSearchText} maxLength={80} />
+            {endName && !endHereSelected ? (
+              <Choice key={endPick?.id ?? 'chosen-end'} label={endName} selected onPress={() => undefined} />
             ) : null}
+            {endResults.map((place) => (
+              <Choice
+                key={`end-found-${place.id}`}
+                label={place.name}
+                selected={endPick?.id === place.id}
+                selectOnPressIn
+                onPress={() => chooseEndPlace(place)}
+              />
+            ))}
+            {endSearched && endResults.length === 0 ? <T>{SEARCH_EMPTY}</T> : null}
+            {hereSelected && endHereSelected ? <T variant="muted">{BOTH_HERE_HINT}</T> : null}
           </>
         ) : null}
         {!craving ? (
@@ -1008,7 +1090,7 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
           {rough && hereSelected ? <T>{ROUGH_FIX_LINE}</T> : null}
           {plan.mocked ? <T>{ROUTE_MOCK_LINE}</T> : null}
           {plan.mode === 'run' ? <T variant="muted">{HIKE_PROFILE_NOTE}</T> : null}
-          {!craving && plan.points.length >= 2 ? (
+          {SHOW_IN_APP_OUTING && !craving && plan.points.length >= 2 ? (
             <>
               <Button label={startLabel('walk')} tone="quiet" onPress={() => beginOuting('walk')} />
               <Button label={startLabel('run')} tone="quiet" onPress={() => beginOuting('run')} />
