@@ -209,6 +209,12 @@ export function formatWalkDistance(metres: number): string {
   return `${km.toFixed(km >= 10 ? 0 : 1)} km`;
 }
 
+/** The length of a pencil sketch. Computed on the phone. No route request. */
+export function sketchDistanceLabel(metres: number): string | null {
+  if (!Number.isFinite(metres) || metres < 1) return null;
+  return `Sketch ${formatWalkDistance(metres)}`;
+}
+
 export function routeSummary(route: Pick<OutdoorRoute, 'distanceM' | 'durationMinutes'>): string {
   return `${formatWalkDistance(route.distanceM)} · ${route.durationMinutes} min`;
 }

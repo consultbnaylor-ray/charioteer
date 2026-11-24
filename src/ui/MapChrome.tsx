@@ -4,7 +4,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Circle, Path } from 'react-native-svg';
 
 import { OSM_CONTRIBUTORS } from '@/domain/routeConsent';
-import { CONFIRM_DRAW, DRAW_FINGER_HINT, DRAW_SNAPPED, DRAW_TICK_GREEN } from '@/domain/routeAdjust';
+import { CONFIRM_DRAW, DRAW_FINGER_HINT, DRAW_SNAP_FAILED, DRAW_SNAPPED, DRAW_TICK_GREEN } from '@/domain/routeAdjust';
 import { MAP_CREDIT, type MapScheme } from '@/domain/outdoorRoute';
 import {
   fullScreenModalVisible,
@@ -298,7 +298,7 @@ export function MapShell({
             </T>
           </View>
         ) : null}
-        {!drawing && statusNote ? (
+        {statusNote && (!drawing || statusNote === DRAW_SNAP_FAILED) ? (
           <View pointerEvents={'none'} style={{ position: 'absolute', top: 58, left: 8, right: 112, zIndex: 4 }}>
             <T
               maxFontSizeMultiplier={1.5}
@@ -306,8 +306,12 @@ export function MapShell({
                 alignSelf: 'flex-start',
                 fontSize: 14,
                 lineHeight: 18,
-                color: statusNote === DRAW_SNAPPED ? '#FFFFFF' : INK,
-                backgroundColor: statusNote === DRAW_SNAPPED ? DRAW_TICK_GREEN : 'rgba(255,255,255,0.94)',
+                color: statusNote === DRAW_SNAPPED || statusNote === DRAW_SNAP_FAILED ? '#FFFFFF' : INK,
+                backgroundColor: statusNote === DRAW_SNAPPED
+                  ? DRAW_TICK_GREEN
+                  : statusNote === DRAW_SNAP_FAILED
+                    ? theme.colors.danger
+                    : 'rgba(255,255,255,0.94)',
                 paddingHorizontal: 8,
                 paddingVertical: 4,
                 borderRadius: 8,

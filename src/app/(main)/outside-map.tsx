@@ -5,7 +5,7 @@ import { shownError } from '@/domain/errors';
 import { SEARCH_EMPTY, SEARCH_FAILED, type RoutePlace } from '@/domain/findRoute';
 import { OUTSIDE_SECTION_LABEL } from '@/domain/outsideSection';
 import { type OutdoorPoint } from '@/domain/outdoorRoute';
-import { createPlaceSearch, holdChosenPlace } from '@/domain/routeAdjust';
+import { PLACE_SEARCH_MIN_CHARS, createPlaceSearch, holdChosenPlace, placeQueryKey, placeSearchOnce } from '@/domain/routeAdjust';
 import { LOCATION_FIX_MESSAGE, LOCATION_FIX_PENDING, readWhileUsingFix } from '@/location/whileUsing';
 import { FootpathMap } from '@/ui/FootpathMap';
 import { OutsideFooter } from '@/ui/OutsideFooter';
@@ -55,18 +55,19 @@ export default function OutsideMap() {
 
   async function search() {
     const asked = queryRef.current.trim();
-    if (asked.length < 2) {
+    if (asked.length < PLACE_SEARCH_MIN_CHARS) {
       setResults([]);
       setSearched(false);
       return;
     }
     setError(null);
     try {
-      const found = await repo.searchRoutePlaces(asked);
-      if (queryRef.current.trim() !== asked) return;
+      const found = await placeSearchOnce(asked, () => repo.searchRoutePlaces(asked));
+      if (placeQueryKey(queryRef.current) !== placeQueryKey(asked)) return;
       setResults(found);
       setSearched(true);
     } catch (err) {
+      placeSearchRef.current.missed();
       setSearched(false);
       setError(shownError(err, SEARCH_FAILED));
     }
@@ -76,7 +77,7 @@ export default function OutsideMap() {
   function onSearchText(value: string) {
     setQuery(value);
     queryRef.current = value;
-    if (value.trim().length < 2) {
+    if (value.trim().length < PLACE_SEARCH_MIN_CHARS) {
       setResults([]);
       setSearched(false);
     }

@@ -64,7 +64,16 @@ export const DRAW_NO_PATH = 'No path matched that line.';
 /** Shown when a snap wanders off the pencil. The pencil line is the route. */
 export const DRAW_SNAP_PARTIAL = 'Couldn\'t match all of that to paths — showing your line';
 
-export const PLACE_SEARCH_PAUSE_MS = 400;
+/** The snap was refused. The pencil line stays a sketch. */
+export const DRAW_SNAP_FAILED = 'Couldn\'t snap to paths';
+
+export const DRAW_SNAP_TRY_AGAIN = 'Try again';
+
+/** Wait after the last keystroke before a place lookup. */
+export const PLACE_SEARCH_PAUSE_MS = 800;
+
+/** Shorter text is not sent. Two letters were enough to spend a route request. */
+export const PLACE_SEARCH_MIN_CHARS = 3;
 
 export function parsePreferPaths(value: unknown): boolean {
   return value === 'on';
@@ -103,26 +112,97 @@ export function takeChosenPlace(): { role: 'start' | 'end'; place: RoutePlace } 
   return next;
 }
 
+const placeResultCache = new Map<string, RoutePlace[]>();
+const placeSearchFlight = new Map<string, Promise<RoutePlace[]>>();
+
+export function placeQueryKey(query: string): string {
+  return query.trim().toLowerCase();
+}
+
+function copyPlaces(places: readonly RoutePlace[]): RoutePlace[] {
+  return places.map((place) => ({
+    id: place.id,
+    name: place.name,
+    latitude: place.latitude,
+    longitude: place.longitude,
+  }));
+}
+
+/** A result already fetched this session. A miss is null, so a failure is not reused. */
+export function cachedPlaceResults(query: string): RoutePlace[] | null {
+  const key = placeQueryKey(query);
+  if (key.length < PLACE_SEARCH_MIN_CHARS || !placeResultCache.has(key)) return null;
+  const found = placeResultCache.get(key);
+  return found ? copyPlaces(found) : null;
+}
+
+export function rememberPlaceResults(query: string, places: readonly RoutePlace[]): void {
+  const key = placeQueryKey(query);
+  if (key.length < PLACE_SEARCH_MIN_CHARS) return;
+  if (placeResultCache.size >= 40 && !placeResultCache.has(key)) {
+    const oldest = placeResultCache.keys().next().value;
+    if (oldest) placeResultCache.delete(oldest);
+  }
+  placeResultCache.set(key, copyPlaces(places));
+}
+
+export function clearPlaceResultCache(): void {
+  placeResultCache.clear();
+  placeSearchFlight.clear();
+}
+
 /**
- * One lookup after the person pauses. A shorter query is not sent.
- * A new pause replaces the one that is waiting.
+ * One lookup for a query in this session.
+ * A cached result is returned without another request. A request already in flight is shared.
+ */
+export function placeSearchOnce(
+  query: string,
+  load: (query: string) => Promise<RoutePlace[]>,
+): Promise<RoutePlace[]> {
+  const key = placeQueryKey(query);
+  if (key.length < PLACE_SEARCH_MIN_CHARS) return Promise.resolve([]);
+  const cached = cachedPlaceResults(query);
+  if (cached) return Promise.resolve(cached);
+  const pending = placeSearchFlight.get(key);
+  if (pending) return pending.then((places) => copyPlaces(places));
+  const next = load(query.trim()).then((places) => {
+    rememberPlaceResults(query, places);
+    return copyPlaces(places);
+  }).finally(() => {
+    if (placeSearchFlight.get(key) === next) placeSearchFlight.delete(key);
+  });
+  placeSearchFlight.set(key, next);
+  return next;
+}
+
+/**
+ * One lookup after the person pauses.
+ * Fewer than three letters are not sent. A repeat of the last lookup is not sent again.
+ * A new pause replaces the one that is waiting. `missed` lets that same text be sent after a refusal.
  */
 export function createPlaceSearch(
   send: (query: string) => void,
   pauseMs = PLACE_SEARCH_PAUSE_MS,
-): { type: (query: string) => void; now: () => void; dispose: () => void } {
+): { type: (query: string) => void; now: () => void; missed: () => void; dispose: () => void } {
   let timer: ReturnType<typeof setTimeout> | null = null;
   let serial = 0;
+  let lastSent = '';
   return {
     type(query: string) {
       if (timer) clearTimeout(timer);
       timer = null;
       const trimmed = query.trim();
-      if (trimmed.length < 2) return;
+      if (trimmed.length < PLACE_SEARCH_MIN_CHARS) {
+        lastSent = '';
+        return;
+      }
+      const key = trimmed.toLowerCase();
+      if (key === lastSent) return;
       const ticket = ++serial;
       timer = setTimeout(() => {
         timer = null;
         if (ticket !== serial) return;
+        lastSent = key;
         send(trimmed);
       }, pauseMs);
     },
@@ -130,6 +210,9 @@ export function createPlaceSearch(
       if (timer) clearTimeout(timer);
       timer = null;
       serial += 1;
+    },
+    missed() {
+      lastSent = '';
     },
     dispose() {
       if (timer) clearTimeout(timer);
