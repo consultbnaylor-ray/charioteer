@@ -13,7 +13,7 @@ import {
 import { FITNESS_GOAL_LABEL, FITNESS_GOALS, resolvedFitnessGoal, type FitnessGoal } from '@/domain/fitnessGoal';
 import { GOAL_PLAIN, boxingChipLabel, isAnyBoxer, type NutritionGoal } from '@/domain/nutrition';
 import { settingsForFitnessGoal, settingsForPreset } from '@/domain/targetWeight';
-import { MoreInfo } from '@/ui/MoreInfo';
+import { Explain, MoreInfo } from '@/ui/MoreInfo';
 import { PlanTick } from '@/ui/PlanTick';
 import { GoalTargetDate, TargetWeightForm } from '@/ui/TargetWeightGoal';
 import { statsToneColors } from '@/ui/statsPalette';
@@ -65,7 +65,7 @@ export function GoalDivision({
 export function GoalChoices({
   framed = true,
   detail = 'Pick one.',
-  plainCollapsed = false,
+  plainCollapsed = true,
 }: {
   framed?: boolean;
   detail?: string;
@@ -199,7 +199,7 @@ export function GoalChoices({
         </View>
       ) : null}
       <T variant="label">Fitness goal</T>
-      <T variant="muted">This sits beside a weight goal. Both can be on.</T>
+      <Explain title="About the fitness goal" about="the fitness goal" text="This sits beside a weight goal. Both can be on." />
       <View accessibilityLabel="Fitness goals" style={{ gap: 8, alignSelf: 'stretch' }}>
         {FITNESS_GOALS.map((id) => (
           <GoalDivision

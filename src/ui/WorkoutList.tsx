@@ -44,6 +44,7 @@ import { workoutSelectedHeading } from '@/domain/workoutHistoryCharts';
 import { routeSummaryLine, type DeviceWorkout } from '@/domain/workoutRoute';
 import { workoutTypeColor } from '@/domain/workoutTypeColor';
 import { DailyActivityCharts } from '@/ui/DailyActivity';
+import { MoreInfo } from '@/ui/MoreInfo';
 import { WorkoutHistoryCharts } from '@/ui/WorkoutHistoryCharts';
 import { HowItFelt } from '@/ui/HowItFelt';
 import { StatGlyph, workoutStatIcon, type StatIcon } from '@/ui/statIcons';
@@ -466,7 +467,9 @@ export function WorkoutList({
   return (
     <Card>
       <T variant="label">Workout History</T>
-      <T variant="muted">A route stays on this iPhone. It is not uploaded or shared.</T>
+      <MoreInfo title="About routes" about="workout routes">
+        <T variant="muted">A route stays on this iPhone. It is not uploaded or shared.</T>
+      </MoreInfo>
       {day !== today ? (
         <Pressable
           accessibilityRole="button"

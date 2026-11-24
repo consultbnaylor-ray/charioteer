@@ -36,6 +36,7 @@ import { UnitsGuide } from '@/ui/UnitsGuide';
 import { DateField } from '@/ui/DateField';
 import { InPlainWords, QuoteWords } from '@/ui/InPlainWords';
 import { usePendingPress } from '@/ui/pendingAction';
+import { Explain } from '@/ui/MoreInfo';
 import { Button, Card, Choice, ErrorNote, Field, playSavedHaptic, Screen, T } from '@/ui/ui';
 import { useAppTheme } from '@/ui/theme';
 import { offerMessageNotifications } from '@/notifications/register';
@@ -327,7 +328,7 @@ export default function Profile() {
       <GoalChoices />
       <WagonFlag />
       <T variant="label">Your details</T>
-      <T>Name, where you are, the sober date, your usual week, reasons, interests, town, and consents. A new sober date is a correction, not a relapse.</T>
+      <Explain title="About your details" about="your details" text="A new sober date is a correction, not a relapse. Name, where you are, the sober date, your usual week, reasons, interests, town, and consents." />
       <Card>
         <Field label="Name" value={name} onChangeText={setName} placeholder="What should we call you?" />
         <T variant="label">Where you are</T>
@@ -478,7 +479,7 @@ export default function Profile() {
             thumbColor={theme.colors.surface}
           />
         </View>
-        <T variant="muted">A private message can alert this phone. The alert does not include what they wrote. {PHOTO_ALERT_NOTE}</T>
+        <Explain title="About message alerts" about="message alerts" text={`A private message can alert this phone. The alert does not include what they wrote. ${PHOTO_ALERT_NOTE}`} />
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 12, alignItems: 'center' }}>
           <T style={{ flex: 1 }}>Show the sender's name</T>
           <Switch
@@ -491,7 +492,7 @@ export default function Profile() {
             thumbColor={theme.colors.surface}
           />
         </View>
-        <T variant="muted">Off, the alert says {GENERIC_MESSAGE_ALERT}. {PHOTO_NAME_NOTE}</T>
+        <Explain title="About the sender's name" about="the sender's name" text={`Off, the alert says ${GENERIC_MESSAGE_ALERT}. ${PHOTO_NAME_NOTE}`} />
         <IosNotificationOffRow />
       </Card>
       {profile.isModerator ? (
@@ -517,7 +518,7 @@ export default function Profile() {
       )}
       <Card>
         <T variant="label">Download</T>
-        <T>The file is the stored record. Dates on this screen stay in UK form.</T>
+        <Explain title="About the download" about="the download" text="The file is the stored record. Dates on this screen stay in UK form." />
         {showsSoberRecord(profile.stage) && profile.sobrietyStartedAt ? <T variant="muted">Sober since {formatUkDate(profile.sobrietyStartedAt)}.</T> : null}
         <Button label="Download my data" tone="quiet" onPress={() => void download()} />
       </Card>
@@ -549,7 +550,7 @@ export default function Profile() {
       <Button label="Sign out" tone="quiet" onPress={() => void repo.signOut().catch((err: unknown) => setError(shownError(err, 'Could not sign out.')))} />
       {message ? <T variant="muted">{message}</T> : null}
       <ErrorNote>{error}</ErrorNote>
-      <T variant="muted">{APP_FULL_NAME} is operated by Quantica Labs Ltd in the UK. Ben Naylor is the owner. Deleting the account removes the profile and the data tied to it.</T>
+      <Explain title="About this account" about="this account" text={`${APP_FULL_NAME} is operated by Quantica Labs Ltd in the UK. Ben Naylor is the owner. Deleting the account removes the profile and the data tied to it.`} />
     </Screen>
   );
 }

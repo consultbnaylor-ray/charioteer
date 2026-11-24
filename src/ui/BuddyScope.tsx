@@ -10,6 +10,7 @@ import {
   type BuddyScope,
   type BuddyScopeKey,
 } from '@/domain/buddies';
+import { Explain } from '@/ui/MoreInfo';
 import { useAppTheme } from '@/ui/theme';
 import { Card, Choice, T } from '@/ui/ui';
 
@@ -58,7 +59,7 @@ export function BuddyScopeEditor({
   return (
     <View style={{ gap: 12 }}>
       <T>{buddyOnlyShareLine(buddyName)}</T>
-      <T variant="muted">One switch per box. This is private to that person. It is separate from Community and from What I share, and it still works when Community is off.</T>
+      <Explain title="About these switches" about="these switches" text="One switch per box. This is private to that person. It is separate from Community and from What I share, and it still works when Community is off." />
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
         {BUDDY_PRESETS.map((preset) => (
           <Choice
@@ -75,13 +76,13 @@ export function BuddyScopeEditor({
         ))}
       </Card>
       <Card>
-        <T variant="muted">Off unless you turn it on. Weight, body composition, Apple Health readings, and health flags.</T>
+        <Explain title="About health data" about="health data" text="Off unless you turn it on. Weight, body composition, Apple Health readings, and health flags." />
         <ScopeSwitch label="Include health data" on={scope.healthData} onChange={(next) => set('healthData', next)} />
       </Card>
       <Card>
         <T variant="label">{heading}</T>
         {scopeSummary(scope).map((line) => <T key={line}>{line}</T>)}
-        <T variant="muted">They can reply only by private message. Either of you can stop this at any time.</T>
+        <Explain title="About replies" about="replies" text="They can reply only by private message. Either of you can stop this at any time." />
       </Card>
     </View>
   );
