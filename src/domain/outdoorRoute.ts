@@ -52,9 +52,22 @@ export const ROUTE_POINT_CAP = 2000;
 export const LIVE_POINT_CAP = 64;
 /**
  * OpenRouteService directions accepts at most this many coordinates.
- * A sketch is simplified down to this cap before it is sent.
+ * A drawn line is reduced to a handful of corners before it is sent.
+ * Fifty is only the service limit. Sending that many forces the route through
+ * points that are not real turns, which is what grows the side-street spurs.
  */
 export const ORS_WAYPOINT_LIMIT = 50;
+/** How many corners a sketch sends, scaled by its length. */
+export const SKETCH_WAYPOINT_MIN = 8;
+export const SKETCH_WAYPOINT_MAX = 25;
+/** A snap longer than this, compared with the pencil line, is rejected. */
+export const SNAP_LENGTH_RATIO = 1.6;
+/** A snap farther than this from the pencil line is rejected. Metres. */
+export const SNAP_DEVIATION_M = 120;
+/** A there-and-back that returns inside this distance is a spur. */
+export const SPUR_WITHIN_M = 35;
+/** An out-and-back longer than this is kept. It may be a loop the person drew. */
+export const SPUR_MAX_M = 350;
 /** A finger wobble smaller than this is dropped before the route is requested. */
 export const SKETCH_EPSILON_M = 30;
 const SKETCH_RAW_CAP = 500;
@@ -401,13 +414,14 @@ export function simplifySketch(
   const limit = Math.max(2, Math.round(cap));
   if (clean.length <= 2) return clean.map(copyPoint);
   const thinned = appendRuns(clean);
-  let simplified = douglasPeucker(thinned, Math.max(0, epsilonM));
+  const simplified = douglasPeucker(thinned, Math.max(0, epsilonM));
   if (simplified.length <= limit) return simplified;
   let low = Math.max(0, epsilonM);
   let high = Math.max(low + 1, pathMetres(thinned));
   let best = douglasPeucker(thinned, high);
   if (best.length > limit) return simplifyLine(thinned, limit);
-  for (let step = 0; step < 16 && simplified.length > limit; step += 1) {
+  // Smallest tolerance that still fits. The first coarse hit is not the one we keep.
+  for (let step = 0; step < 24 && high - low > 0.5; step += 1) {
     const mid = (low + high) / 2;
     const next = douglasPeucker(thinned, mid);
     if (next.length > limit) low = mid;
@@ -415,7 +429,6 @@ export function simplifySketch(
       high = mid;
       best = next;
     }
-    simplified = next;
   }
   return best.length <= limit ? best : simplifyLine(thinned, limit);
 }
@@ -455,6 +468,191 @@ export function closeSketchIfLoop(points: readonly OutdoorPoint[], withinM = 40)
   return [...copy.slice(0, -1), copyPoint(first)];
 }
 
+/**
+ * One corner about every 200 m, and never more than 25.
+ * A short line still keeps up to eight so a real bend is not dropped,
+ * but a straight line stays two points. The count is a cap, not a target.
+ */
+export function sketchWaypointBudget(lengthM: number): number {
+  if (!Number.isFinite(lengthM) || lengthM <= 0) return SKETCH_WAYPOINT_MIN;
+  return Math.min(SKETCH_WAYPOINT_MAX, Math.max(SKETCH_WAYPOINT_MIN, Math.round(lengthM / 200)));
+}
+
+/**
+ * Douglas-Peucker in metres. Only corners survive.
+ * The line is not resampled at even gaps. Even gaps are what land a point
+ * on the wrong side of a road and make the route run up that road and back.
+ */
+export function sketchWaypoints(points: readonly OutdoorPoint[], cap?: number): OutdoorPoint[] {
+  const clean = cleanPoints(points);
+  if (clean.length <= 2) return clean.map(copyPoint);
+  const budget = sketchWaypointBudget(pathMetres(clean));
+  const limit = Math.min(SKETCH_WAYPOINT_MAX, Math.max(2, Math.round(cap ?? budget)));
+  // Forty metres drops a finger wobble. A turn the person meant is much larger.
+  return simplifySketch(clean, 40, limit);
+}
+
+/** The first try uses the full corner budget. Later tries use fewer corners. */
+export function sketchWaypointSets(points: readonly OutdoorPoint[]): OutdoorPoint[][] {
+  const clean = cleanPoints(points);
+  if (clean.length < 2) return [];
+  const budget = sketchWaypointBudget(pathMetres(clean));
+  const caps = [budget, Math.max(4, Math.floor(budget / 2)), Math.max(3, Math.floor(budget / 4))];
+  const sets: OutdoorPoint[][] = [];
+  const seen = new Set<string>();
+  for (const nextCap of caps) {
+    const next = sketchWaypoints(clean, nextCap);
+    if (next.length < 2) continue;
+    const key = next.map((point) => `${point.latitude.toFixed(5)},${point.longitude.toFixed(5)}`).join('|');
+    if (seen.has(key)) continue;
+    seen.add(key);
+    sets.push(next);
+  }
+  return sets;
+}
+
+function pointSegmentMetres(point: OutdoorPoint, start: OutdoorPoint, end: OutdoorPoint): number {
+  return perpendicularMetres(point, start, end);
+}
+
+function directedHausdorff(from: readonly OutdoorPoint[], onto: readonly OutdoorPoint[]): number {
+  let worst = 0;
+  for (const point of from) {
+    let best = Number.POSITIVE_INFINITY;
+    if (onto.length === 1) best = metresBetween(point, onto[0]);
+    for (let index = 1; index < onto.length; index += 1) {
+      best = Math.min(best, pointSegmentMetres(point, onto[index - 1], onto[index]));
+    }
+    if (best > worst) worst = best;
+  }
+  return worst;
+}
+
+/** The farthest either line strays from the other, in metres. */
+export function hausdorffMetres(a: readonly OutdoorPoint[], b: readonly OutdoorPoint[]): number {
+  const left = cleanPoints(a);
+  const right = cleanPoints(b);
+  if (left.length === 0 || right.length === 0) return Number.POSITIVE_INFINITY;
+  return Math.max(directedHausdorff(left, right), directedHausdorff(right, left));
+}
+
+/** Discrete Fréchet distance in metres. Order matters, so a spur scores high. */
+export function discreteFrechetMetres(a: readonly OutdoorPoint[], b: readonly OutdoorPoint[]): number {
+  const left = cleanPoints(a);
+  const right = cleanPoints(b);
+  const rows = left.length;
+  const cols = right.length;
+  if (rows === 0 || cols === 0) return Number.POSITIVE_INFINITY;
+  let prev = new Array<number>(cols);
+  let curr = new Array<number>(cols);
+  for (let row = 0; row < rows; row += 1) {
+    for (let col = 0; col < cols; col += 1) {
+      const cost = metresBetween(left[row], right[col]);
+      if (row === 0 && col === 0) curr[col] = cost;
+      else if (row === 0) curr[col] = Math.max(curr[col - 1], cost);
+      else if (col === 0) curr[col] = Math.max(prev[0], cost);
+      else curr[col] = Math.max(Math.min(prev[col], curr[col - 1], prev[col - 1]), cost);
+    }
+    const swap = prev;
+    prev = curr;
+    curr = swap;
+  }
+  return prev[cols - 1];
+}
+
+function stripSpur(line: readonly OutdoorPoint[], withinM: number, maxSpurM: number): OutdoorPoint[] {
+  for (let start = 0; start < line.length - 2; start += 1) {
+    let walked = 0;
+    for (let end = start + 1; end < line.length; end += 1) {
+      walked += metresBetween(line[end - 1], line[end]);
+      if (end < start + 2) continue;
+      if (walked > maxSpurM) break;
+      if (metresBetween(line[start], line[end]) > withinM) continue;
+      if (start === 0 && end === line.length - 1) break;
+      return [...line.slice(0, start + 1).map(copyPoint), ...line.slice(end + 1).map(copyPoint)];
+    }
+  }
+  return line.map(copyPoint);
+}
+
+/**
+ * Drops a there-and-back: the line leaves a point and returns within `withinM`,
+ * then carries on. A ring that only meets itself at the finish is kept.
+ */
+export function removeRouteSpurs(
+  points: readonly OutdoorPoint[],
+  withinM = SPUR_WITHIN_M,
+  maxSpurM = SPUR_MAX_M,
+): OutdoorPoint[] {
+  let line = cleanPoints(points).map(copyPoint);
+  if (line.length < 3) return line;
+  for (let guard = 0; guard < 12; guard += 1) {
+    const next = stripSpur(line, withinM, maxSpurM);
+    if (next.length === line.length) return line;
+    if (next.length < 2) return line;
+    line = next;
+  }
+  return line;
+}
+
+/** Fills long gaps so a corner-only pencil can be compared with a detailed route. */
+function densifyLine(points: readonly OutdoorPoint[], stepM = 30): OutdoorPoint[] {
+  const line = cleanPoints(points);
+  if (line.length < 2) return line.map(copyPoint);
+  const step = Math.max(stepM, pathMetres(line) / 300);
+  const out: OutdoorPoint[] = [];
+  for (let index = 1; index < line.length; index += 1) {
+    const from = line[index - 1];
+    const to = line[index];
+    const pieces = Math.max(1, Math.ceil(metresBetween(from, to) / step));
+    for (let part = 0; part < pieces; part += 1) {
+      const t = part / pieces;
+      out.push({
+        latitude: from.latitude + (to.latitude - from.latitude) * t,
+        longitude: from.longitude + (to.longitude - from.longitude) * t,
+      });
+    }
+  }
+  const end = line[line.length - 1];
+  if (end) out.push(copyPoint(end));
+  return out;
+}
+
+/** True when the routed line still follows the pencil, after spurs are gone. */
+export function snapFollowsSketch(sketch: readonly OutdoorPoint[], routed: readonly OutdoorPoint[]): boolean {
+  const drawn = cleanPoints(sketch);
+  const line = cleanPoints(routed);
+  if (drawn.length < 2 || line.length < 2) return false;
+  const drawnLength = pathMetres(drawn);
+  const lineLength = pathMetres(line);
+  if (drawnLength > 0 && lineLength > drawnLength * SNAP_LENGTH_RATIO) return false;
+  const drawnFill = densifyLine(drawn);
+  const lineFill = densifyLine(line);
+  if (hausdorffMetres(drawnFill, lineFill) > SNAP_DEVIATION_M) return false;
+  if (discreteFrechetMetres(drawnFill, lineFill) > SNAP_DEVIATION_M) return false;
+  return true;
+}
+
+/**
+ * The line to keep after one routing answer.
+ * A match is the routed geometry with spurs removed.
+ * A miss is the pencil line itself.
+ */
+export function drawnLineAfterSnap(input: {
+  sketch: readonly OutdoorPoint[];
+  routed: readonly OutdoorPoint[] | null;
+}): { points: OutdoorPoint[]; matched: boolean } {
+  const sketch = cleanPoints(input.sketch).map(copyPoint);
+  if (sketch.length < 2) return { points: sketch, matched: false };
+  if (input.routed && input.routed.length >= 2) {
+    const cleaned = removeRouteSpurs(input.routed);
+    if (cleaned.length >= 2 && snapFollowsSketch(sketch, cleaned)) {
+      return { points: cleaned, matched: true };
+    }
+  }
+  return { points: sketch, matched: false };
+}
+
 function mercatorX(longitude: number): number {
   return (longitude + 180) / 360;
 }
@@ -489,6 +687,28 @@ export function viewToPoint(input: {
   const scale = MERCATOR_TILE * 2 ** input.zoom;
   const worldX = mercatorX(centre.longitude) * scale + (input.x - input.width / 2);
   const worldY = mercatorY(centre.latitude) * scale + (input.y - input.height / 2);
+  return finitePoint({ latitude: unmercatorY(worldY / scale), longitude: unmercatorX(worldX / scale) });
+}
+
+/**
+ * The camera centre that puts `point` at the screen position `x`, `y`.
+ * Pinch zoom uses this so the place under the fingers stays under the fingers.
+ * Bearing is not changed.
+ */
+export function centreKeepingPoint(input: {
+  point: OutdoorPoint;
+  zoom: number;
+  width: number;
+  height: number;
+  x: number;
+  y: number;
+}): OutdoorPoint | null {
+  if (!(input.width > 0) || !(input.height > 0) || !Number.isFinite(input.zoom)) return null;
+  const point = finitePoint(input.point);
+  if (!point || !Number.isFinite(input.x) || !Number.isFinite(input.y)) return null;
+  const scale = MERCATOR_TILE * 2 ** input.zoom;
+  const worldX = mercatorX(point.longitude) * scale - (input.x - input.width / 2);
+  const worldY = mercatorY(point.latitude) * scale - (input.y - input.height / 2);
   return finitePoint({ latitude: unmercatorY(worldY / scale), longitude: unmercatorX(worldX / scale) });
 }
 

@@ -22,6 +22,7 @@ import {
 import {
   ORS_WAYPOINT_LIMIT as SERVER_WAYPOINT_LIMIT,
   PREFER_PATH_WEIGHTINGS,
+  SKETCH_SNAP_RADIUS_M,
   buildDirectionsBody,
   directionsUrl,
   readSketchPoints,
@@ -134,6 +135,14 @@ describe('sketch routes', () => {
     });
     expect(sketched?.coordinates).toEqual([[-2.59, 51.45], [-2.588, 51.452], [-2.59, 51.45]]);
     expect(sketched?.options).toEqual({ profile_params: { weightings: { green: 1, quiet: 1 } } });
+    expect(sketched?.continue_straight).toBe(true);
+    expect(sketched?.radiuses).toEqual([
+      SKETCH_SNAP_RADIUS_M,
+      SKETCH_SNAP_RADIUS_M,
+      SKETCH_SNAP_RADIUS_M,
+    ]);
+    expect(loop?.radiuses).toBeUndefined();
+    expect(loop?.continue_straight).toBeUndefined();
     expect(JSON.stringify(sketched)).not.toContain('round_trip');
 
     expect(routingMode('walk', false)).toBe('walk');

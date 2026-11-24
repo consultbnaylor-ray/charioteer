@@ -368,7 +368,8 @@ describe('route adjusting', () => {
     expect(web).toContain('attributionControl: false');
     expect(web).toContain('holdMapGestures');
     const capture = readFileSync('src/ui/DrawCapture.tsx', 'utf8');
-    expect(capture).toContain('appendSketchPoint(points.current, point, 2)');
+    expect(capture).toContain('applyDrawPointers');
+    expect(capture).toContain('twoFingerView');
     expect(capture).toContain('onStartShouldSetResponderCapture={() => true}');
     expect(capture).toContain('onMoveShouldSetResponderCapture={() => true}');
     const chrome = readFileSync('src/ui/MapChrome.tsx', 'utf8');

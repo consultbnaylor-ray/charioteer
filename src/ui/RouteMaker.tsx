@@ -23,7 +23,9 @@ import {
   STARTER_PLACES,
   appleMapsUrl,
   formatClimb,
+  matchDrawnSketch,
   nearestPathLine,
+  unmatchedDrawnPlan,
   routeAskFromChoices,
   routeDistanceFieldHint,
   routeKind,
@@ -48,7 +50,6 @@ import {
 import {
   closeSketchIfLoop,
   routeSummary,
-  simplifySketch,
   sketchIsClosed,
   type OutdoorPoint,
 } from '@/domain/outdoorRoute';
@@ -57,6 +58,7 @@ import {
   ADJUST_THE_ROUTE,
   DRAW_NO_PATH,
   DRAW_PEN_HINT,
+  DRAW_SNAP_PARTIAL,
   PREFER_PATHS_LABEL,
   PREFER_PATHS_NOTE,
   adjustControlsOn,
@@ -530,6 +532,10 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
   const mapsUrl = plan ? appleMapsUrl(plan.points, plan.mode) : null;
 
   async function snapDrawn(points: OutdoorPoint[]) {
+    if (points.length === 0) {
+      setPencil([]);
+      return;
+    }
     const end = continuationEnd(strokesRef.current, planRef.current?.points ?? null, snappedCountRef.current);
     const nextStrokes = commitDrawStroke(strokesRef.current, points, end);
     if (nextStrokes.length === strokesRef.current.length) {
@@ -548,13 +554,12 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
     setDrawStack((stack) => [...stack, { plan: previous, snappedCount: previousCount }].slice(-8));
     setFromDraw(true);
     const combined = combineDrawStrokes(nextStrokes);
-    const simplified = simplifySketch(combined);
-    if (simplified.length < 2) {
+    const closed = closeSketchIfLoop(combined);
+    if (closed.length < 2) {
       setDrawNote(DRAW_TOO_SHORT);
       setError(DRAW_TOO_SHORT);
       return;
     }
-    const closed = closeSketchIfLoop(simplified);
     const origin = closed[0];
     const finish = closed[closed.length - 1];
     if (!origin || !finish) {
@@ -563,21 +568,36 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
       return;
     }
     const drawnShape = sketchIsClosed(closed) ? 'loop' : 'a_to_b';
+    const drawMode = craving ? 'walk' : mode;
     setPending(true);
     setError(null);
     try {
-      const next = await repo.planOutdoorRoute({
-        mode: craving ? 'walk' : mode,
-        shape: craving ? 'loop' : drawnShape,
-        start: origin,
-        end: finish,
-        distanceM: null,
-        minutes: null,
-        via: closed.slice(1, -1),
-        sketch: closed,
-        preferPaths: preferRef.current,
+      const result = await matchDrawnSketch({
+        sketch: combined,
+        send: (waypoints) => repo.planOutdoorRoute({
+          mode: drawMode,
+          shape: craving ? 'loop' : drawnShape,
+          start: waypoints[0] ?? origin,
+          end: waypoints[waypoints.length - 1] ?? finish,
+          distanceM: null,
+          minutes: null,
+          via: [],
+          sketch: closeSketchIfLoop(waypoints),
+          preferPaths: preferRef.current,
+        }),
       });
       if (drawGen.current !== generation) return;
+      if (!result.matched && !result.sawRoute) {
+        throw result.error instanceof Error ? result.error : new Error(DRAW_NO_PATH);
+      }
+      const next = result.matched
+        ? result.plan
+        : unmatchedDrawnPlan({
+          mode: drawMode,
+          shape: craving ? 'loop' : drawnShape,
+          preferPaths: preferRef.current,
+          points: combined,
+        });
       if (next.points.length < 2) {
         setDrawNote(DRAW_NO_PATH);
         setError(DRAW_NO_PATH);
@@ -588,7 +608,8 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
       setSnappedCount(nextStrokes.length);
       snappedCountRef.current = nextStrokes.length;
       setOriginal(next);
-      setDrawNote(null);
+      setDrawNote(result.matched ? null : DRAW_SNAP_PARTIAL);
+      setError(result.matched ? null : DRAW_SNAP_PARTIAL);
       setAcceptedVias([]);
       setShownVias([]);
       setHistory([]);

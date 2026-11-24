@@ -2,7 +2,8 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { View } from 'react-native';
 
 import { viaPointCollection } from '@/domain/routeAdjust';
-import { DrawCapture } from '@/ui/DrawCapture';
+import { clampDrawZoom } from '@/domain/drawStroke';
+import { DrawCapture, DrawZoomButtons } from '@/ui/DrawCapture';
 import {
   YOU_HERE_FILL,
   YOU_HERE_RING,
@@ -142,6 +143,23 @@ export function FootpathMap({
     };
   }, [drawingOn, scroller]);
   const camera = useHeldCamera(routes, sketch, here, locationFocus, follow, track, lookAt, lookFocus);
+  const applyView = useRef<(next: HeldCamera) => void>(() => {});
+  function showDrawnView(next: { centre: OutdoorPoint; zoom: number }) {
+    const place = {
+      longitude: next.centre.longitude,
+      latitude: next.centre.latitude,
+      zoom: clampDrawZoom(next.zoom),
+    };
+    camera.remember(place);
+    applyView.current(place);
+  }
+  function zoomBy(delta: number) {
+    const current = camera.held.current;
+    showDrawnView({
+      centre: { latitude: current.latitude, longitude: current.longitude },
+      zoom: current.zoom + delta,
+    });
+  }
   const [problem, setProblem] = useState<string | null>(null);
   const frame = useRef({ width: 0, height: 0 });
   const savedJson = JSON.stringify(savedLineCollection(routes));
@@ -202,6 +220,7 @@ export function FootpathMap({
             basemap={mapStyle}
             onUserMove={onUserMove}
             onProblem={() => setProblem('The map tiles did not load in this browser.')}
+            applyView={applyView}
           />
           {draw?.enabled ? (
             <DrawCapture
@@ -213,8 +232,10 @@ export function FootpathMap({
               })}
               onChange={draw.onChange}
               onEnd={draw.onEnd}
+              onView={showDrawnView}
             />
           ) : null}
+          {draw?.enabled ? <DrawZoomButtons onZoom={zoomBy} /> : null}
         </View>
       )}
     />
@@ -350,6 +371,7 @@ function WebCanvas({
   basemap,
   onUserMove,
   onProblem,
+  applyView,
 }: {
   height: number;
   scheme: MapScheme;
@@ -376,6 +398,7 @@ function WebCanvas({
   basemap: string | object;
   onUserMove?: () => void;
   onProblem: () => void;
+  applyView: { current: (next: HeldCamera) => void };
 }) {
   const host = useRef<View>(null);
   const mapRef = useRef<LibreMap | null>(null);
@@ -396,6 +419,8 @@ function WebCanvas({
   rememberRef.current = remember;
   const problemRef = useRef(onProblem);
   problemRef.current = onProblem;
+  const applyViewRef = useRef(applyView);
+  applyViewRef.current = applyView;
   const basemapRef = useRef(basemap);
   basemapRef.current = basemap;
   const basemapKey = typeof basemap === 'string' ? basemap : `json:${scheme}`;
@@ -496,6 +521,14 @@ function WebCanvas({
 
   useEffect(() => {
     holdMapGestures(mapRef.current, drawing);
+    const sink = applyViewRef.current;
+    sink.current = (next) => {
+      rememberRef.current(next);
+      mapRef.current?.jumpTo({ center: [next.longitude, next.latitude], zoom: next.zoom });
+    };
+    return () => {
+      sink.current = () => {};
+    };
   }, [drawing, ready]);
 
   useEffect(() => {

@@ -1,13 +1,18 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  applyDrawPointers,
   clearDrawStrokes,
   combineDrawStrokes,
   commitDrawStroke,
   continuationEnd,
   drawEnd,
+  finishDrawSession,
   joinStroke,
+  pinchZoom,
+  startDrawSession,
   stitchRoute,
+  twoFingerView,
   undoDrawStroke,
   visibleDrawLine,
 } from '@/domain/drawStroke';
@@ -64,5 +69,38 @@ describe('draw strokes', () => {
     expect(stitchRoute(routed, [snappedEnd, c])).toEqual([...routed, c]);
     expect(stitchRoute(routed, [])).toEqual(routed);
     expect(stitchRoute([], [a, b])).toEqual([a, b]);
+  });
+
+  it('a second finger adds no points and drops the stroke that was in progress', () => {
+    let session = startDrawSession();
+    session = applyDrawPointers(session, 1, a);
+    session = applyDrawPointers(session, 1, b);
+    expect(session.cancelled).toBe(false);
+    expect(session.points.length).toBeGreaterThanOrEqual(2);
+    session = applyDrawPointers(session, 2, c);
+    expect(session.cancelled).toBe(true);
+    expect(session.points).toEqual([]);
+    session = applyDrawPointers(session, 1, away);
+    expect(session.points).toEqual([]);
+    expect(finishDrawSession(session)).toEqual([]);
+
+    expect(finishDrawSession(applyDrawPointers(startDrawSession(), 2, a))).toEqual([]);
+    expect(pinchZoom(14, 2)).toBe(15);
+    expect(pinchZoom(14, 0.5)).toBe(13);
+    const wider = twoFingerView({
+      startZoom: 14,
+      startCentre: a,
+      width: 200,
+      height: 200,
+      startSpan: 40,
+      span: 80,
+      startMidX: 100,
+      startMidY: 100,
+      midX: 100,
+      midY: 100,
+    });
+    expect(wider?.zoom).toBe(15);
+    expect(wider?.centre.latitude).toBeCloseTo(a.latitude, 4);
+    expect(wider?.centre.longitude).toBeCloseTo(a.longitude, 4);
   });
 });
