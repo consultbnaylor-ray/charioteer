@@ -91,7 +91,7 @@ Add to Calendar opens Apple's add-event sheet for a planned workout. The iPhone 
 
 ## Location
 
-Outside is Good can use your location while the map is open, and during a walk, run, or cycle you start, and only if you allow it. The iPhone purpose sentence is: "Charioteer uses your location while you are on a walk, run or cycle to track distance and give you spoken updates, including when the screen is locked or you are using other apps. Your route stays on your phone and is not sent anywhere. The same permission shows where you are while the map is open. A route is sent to the route service only if you turn route finding on. That request is the start, the destination, and any points you add on the map. It is not the outing path."
+Map a Route can use your location while the map is open, and during a walk, run, or cycle you start, and only if you allow it. The iPhone purpose sentence is: "Charioteer uses your location while you are on a walk, run or cycle to track distance and give you spoken updates, including when the screen is locked or you are using other apps. Your route stays on your phone and is not sent anywhere. The same permission shows where you are while the map is open. A route is sent to the route service only if you turn route finding on. That request is the start, the destination, and any points you add on the map. It is not the outing path."
 
 ## Activity tracking
 
@@ -107,7 +107,7 @@ A gym session on the Workouts screen shows a clock you start, a heart-rate row, 
 
 Route finding stays separate. A route sends the start, the destination, any points you add on the map, and the travel type. It does not send your name or account number. The outing path is not sent.
 
-Route finding is off until you turn it on. The first time you open Find a route, the app asks. Not now leaves Outside is Good, saved routes, and the map working, and it does not call the route service. You can turn it off again from Profile. The choice is stored on this phone only, with the time and the wording version. It is not a database column. Another phone starts off.
+Route finding is off until you turn it on. The first time you open Find a route, the app asks. Not now leaves Map a Route, saved routes, and the map working, and it does not call the route service. You can turn it off again from Profile. The choice is stored on this phone only, with the time and the wording version. It is not a database column. Another phone starts off.
 
 Walk this off (the craving walk) is parked. It is not shown. The screen and the route engine stay in the app behind `SHOW_WALK_THIS_OFF`, which is off. Turning that constant on would show it again. It is not a live feature, and the consent screen and Profile do not offer it.
 
@@ -125,7 +125,7 @@ HeiGIT's terms (https://account.heigit.org/info/tos) say not to send personal da
 
 The page still opens if you say no to location. There is no Always location. Android asks for fine and coarse location in the foreground only, and it does not ask for all-the-time location. A walk, run, or cycle you start on iPhone can keep location on until you stop, discard it, close the app, or reach the time limit. A saved route is a line on your account. You can delete it. A live fix from the map is not stored. The outing path is not stored on the account. A copy of the line stays on this phone only after Save this route. It is not sent. Done without Save drops the line. Delete removes it. The first and last 200 m are left out unless you keep the whole line. Live routes can't be shared with anyone. That's to protect your safety. No live-tracking route is sent to HeiGIT.
 
-This is not medical advice. The Outside is Good screens say so, and they name a GP, NHS 111, 999, and Samaritans on 116 123. Walk this off is parked, so that naming is on the live Outside is Good screens, not on a craving-walk screen.
+This is not medical advice. The Map a Route screens say so, and they name a GP, NHS 111, 999, and Samaritans on 116 123. Walk this off is parked, so that naming is on the live Map a Route screens, not on a craving-walk screen.
 
 The iPhone app contains a motion purpose sentence only so Apple's upload check can see it. The sentence is: "Charioteer does not use your motion or fitness data. The map component in the app can reference motion sensors, so Apple requires this note." Charioteer does not read motion or fitness-activity data. Android motion activity stays off.
 

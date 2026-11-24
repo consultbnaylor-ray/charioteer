@@ -1042,7 +1042,7 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
           {!craving && !adjusting ? <T>{routeRequestsTodayLine(requestsToday)}</T> : null}
           <Field label="Route name" value={title} onChangeText={setTitle} maxLength={80} />
           <Button label="Save this route" tone="quiet" disabled={pending || title.trim().length === 0} pending={pending} onPress={() => { void save(); }} />
-          {saved ? <T>Saved on your account. You can delete it from Outside is Good.</T> : null}
+          {saved ? <T>Saved on your account. You can delete it from Map a Route.</T> : null}
           {mapsUrl ? (
             <Button label="Open in Apple Maps" tone="quiet" onPress={() => { void Linking.openURL(mapsUrl); }} />
           ) : null}
