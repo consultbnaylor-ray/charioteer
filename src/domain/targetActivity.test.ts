@@ -78,7 +78,6 @@ describe('activity toward a target weight', () => {
     });
     const lines = targetCoachActivityLines(plan);
     expect(lines.join(' ')).toContain('Do not turn these into a training programme');
-    expect(readFileSync('src/ui/YourFitness.tsx', 'utf8')).toContain('<TowardTargetActivity />');
     expect(readFileSync('src/ui/WorkoutList.tsx', 'utf8')).toContain('<TowardTargetActivity compact />');
     expect(readFileSync('src/ui/GoalChoices.tsx', 'utf8')).toContain('label="Target weight"');
     expect(readFileSync('src/voice/briefing.ts', 'utf8')).toContain('activity: activityReadingsFromSamples');

@@ -305,6 +305,6 @@ describe('published health bands', () => {
     expect(chartAt).toBeGreaterThan(noteAt);
     expect(detail).not.toContain("tile.id === 'session_heart_rate'");
     expect(readFileSync('src/domain/healthStatTiles.ts', 'utf8')).not.toContain('WALKING_BELOW_ZONE_NOTE');
-    expect(readFileSync('src/ui/YourFitness.tsx', 'utf8')).not.toContain('WALKING_BELOW_ZONE_NOTE');
+    expect(readFileSync('src/app/(main)/workouts.tsx', 'utf8')).not.toContain('WALKING_BELOW_ZONE_NOTE');
   });
 });

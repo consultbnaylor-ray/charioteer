@@ -1,4 +1,4 @@
-/** Button on Health, Your fitness, onboarding, and You. */
+/** Button on Health, onboarding, and You. */
 export const GARMIN_CONNECT_BUTTON = 'Connect Garmin';
 
 /** One line under the Health and fitness connect card. */

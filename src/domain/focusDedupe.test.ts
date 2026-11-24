@@ -175,10 +175,9 @@ describe('weekly focus dedupe', () => {
       `${VO2_FOCUS_LINE} Stay with that effort.`,
     ]);
     const page = readFileSync('src/app/(main)/health-plan.tsx', 'utf8');
-    const fitness = readFileSync('src/ui/YourFitness.tsx', 'utf8');
     expect(page).toContain('dedupeFocusItems(plan.focus)');
     expect(page).toContain('dedupeFocusItems(current.focus)');
-    expect(fitness).toContain('matchingFocus');
+    expect(readFileSync('src/app/(main)/workouts.tsx', 'utf8')).not.toContain('matchingFocus');
     expect(readFileSync('src/app/(main)/home.tsx', 'utf8')).not.toContain('plan.focus.map');
   });
 });

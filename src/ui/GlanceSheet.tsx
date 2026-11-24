@@ -2,13 +2,11 @@ import { useState, type ReactNode } from 'react';
 import { Modal, Pressable, ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { RESTING_WHAT, VO2_WHAT } from '@/domain/fitnessSnapshot';
-import { HRV_EXPLAINER_PARAGRAPHS } from '@/domain/healthInsights';
+import { RESTING_WHAT } from '@/domain/fitnessSnapshot';
 import { LOW_RESTING_FIT_LINE, LOW_RESTING_FIT_MORE } from '@/domain/restingFitness';
 import { ExpandableRow } from '@/ui/ExpandableRow';
 import { useAppTheme } from '@/ui/theme';
 import { T } from '@/ui/ui';
-import { Vo2MeasureCopy } from '@/ui/Vo2EstimateNote';
 
 /** One level of detail. The card stays a number and a line. This sheet holds the rest. */
 export function GlanceSheet({
@@ -82,26 +80,6 @@ export function RestingMeaningBody() {
       <T variant="label">When to get a reading checked</T>
       <T>{LOW_RESTING_FIT_LINE}</T>
       <T>{LOW_RESTING_FIT_MORE}</T>
-      <T variant="muted">Not medical advice. Not a diagnosis.</T>
-    </>
-  );
-}
-
-export function Vo2MeaningBody() {
-  return (
-    <>
-      <T variant="label">What VO2 max means</T>
-      <T>{VO2_WHAT}</T>
-      <Vo2MeasureCopy />
-    </>
-  );
-}
-
-export function HrvMeaningBody() {
-  return (
-    <>
-      <T variant="label">What heart rate variability means</T>
-      {HRV_EXPLAINER_PARAGRAPHS.map((paragraph) => <T key={paragraph.slice(0, 32)}>{paragraph}</T>)}
       <T variant="muted">Not medical advice. Not a diagnosis.</T>
     </>
   );

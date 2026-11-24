@@ -119,19 +119,12 @@ describe('VO2 estimate note', () => {
   });
 
   it('puts the note under the chart and opens one outdoor session', () => {
-    const fitness = readFileSync('src/ui/YourFitness.tsx', 'utf8');
     const board = readFileSync('src/ui/HealthStatBoard.tsx', 'utf8');
     const calendar = readFileSync('src/ui/WorkoutCalendar.tsx', 'utf8');
     const plan = readFileSync('src/app/(main)/health-plan.tsx', 'utf8');
-    expect(fitness).toContain('<Vo2EstimateNote');
-    expect(fitness.indexOf('VO2 max chart')).toBeLessThan(fitness.indexOf('<Vo2EstimateNote'));
-    expect(fitness).toContain('label="VO2 max"');
-    expect(fitness).toContain('{VO2_CARD_LINE}');
-    expect(fitness).toContain('<Vo2MeasureBanner />');
-    const bannerAt = fitness.indexOf('<Vo2MeasureBanner />');
-    expect(bannerAt).toBeLessThan(fitness.indexOf('label="VO2 max"'));
-    expect(bannerAt).toBeLessThan(fitness.indexOf('{OUTSIDE_SAFETY_LINE}', bannerAt));
-    expect(bannerAt).toBeLessThan(fitness.indexOf('{OUTSIDE_CRISIS_LINE}'));
+    const workouts = readFileSync('src/app/(main)/workouts.tsx', 'utf8');
+    expect(workouts).not.toContain('YourFitness');
+    expect(workouts).not.toContain('onPlanOutdoor');
     expect(VO2_MEASURE_LINE).toBe('To measure your VO2 max, record an outdoor run with GPS and heart rate, or a cycle with a power meter. A walk does not update it.');
     expect(VO2_HEART_RATE_LINE).toBe('Your heart rate needs to reach 70% of maximum for a sustained period.');
     expect(VO2_DURATION_LINE).toBe('The exercise needs to last at least 15 minutes.');
@@ -140,23 +133,11 @@ describe('VO2 estimate note', () => {
     expect(measure).toContain('VO2_MEASURE_LINES.map');
     expect(measure).toContain('<Vo2MeasureCopy />');
     expect(measure).not.toContain('{VO2_MEASURE_LINE}');
-    const fitnessCopy = fitness.match(/<Vo2MeasureCopy \/>/g) ?? [];
-    expect(fitnessCopy.length).toBeGreaterThanOrEqual(2);
     expect(board).toContain('<Vo2MeasureCopy />');
     expect(board).toContain("tile.id === 'vo2_max' ? <Vo2MeasureCopy />");
-    for (const surface of [measure, fitness, board]) {
+    for (const surface of [measure, board]) {
       expect(surface).toContain('Vo2MeasureCopy');
     }
-    const movedChart = fitness.indexOf('<Vo2MaxChart');
-    expect(movedChart).toBeGreaterThan(fitness.indexOf('<GarminTip />'));
-    expect(movedChart).toBeLessThan(fitness.indexOf('{view.levelWords}'));
-    const restingGraph = fitness.slice(fitness.indexOf('name="heart">Resting heart rate'), fitness.indexOf('view.mix'));
-    expect(restingGraph.indexOf('label="Resting heart rate chart"')).toBeLessThan(restingGraph.indexOf('<DataMeaning about="resting heart rate">'));
-    expect(restingGraph.indexOf('<DataMeaning about="resting heart rate">')).toBeLessThan(restingGraph.indexOf('<LowRestingFitNote reading={view.resting.reading} />'));
-    expect(restingGraph).not.toContain('detail');
-    const restingDetail = fitness.slice(fitness.indexOf('function RestingDetail'), fitness.indexOf('function FitnessSeries'));
-    expect(restingDetail).toContain('<LowRestingFitNote reading={resting.reading} detail />');
-    expect(restingDetail.match(/<LowRestingFitNote/g)).toEqual(['<LowRestingFitNote']);
     const restingCard = board.slice(board.indexOf('function StatTile'), board.indexOf('function TileValue'));
     expect(restingCard.indexOf('TileVisual')).toBeLessThan(restingCard.indexOf('<LowRestingFitNote'));
     expect(restingCard.indexOf('<LowRestingFitNote')).toBeLessThan(restingCard.indexOf('Not medical advice.'));
@@ -169,8 +150,8 @@ describe('VO2 estimate note', () => {
     expect(restingSheet).not.toContain('<MoreInfoButton');
     expect(LOW_RESTING_FIT_LINE).toBe('A low resting heart rate can be a sign you are very fit. Speak to a GP if you feel unwell, dizzy, or faint.');
     expect(LOW_RESTING_FIT_MORE).toBe('A resting heart rate under 60 beats a minute may come with regular training. It can also have other causes, so this is not a judgement on its own.');
-    expect(fitness).toContain('{OUTSIDE_SAFETY_LINE}');
-    expect(fitness).toContain('{OUTSIDE_CRISIS_LINE}');
+    expect(board).toContain('{OUTSIDE_SAFETY_LINE}');
+    expect(board).toContain('{OUTSIDE_CRISIS_LINE}');
     const note = readFileSync('src/ui/Vo2EstimateNote.tsx', 'utf8');
     expect(note).toContain('vo2NoteParts(source).map');
     expect(note).toContain('vo2MeasuredLine(measuredOn, source)');
@@ -179,14 +160,11 @@ describe('VO2 estimate note', () => {
     expect(calendar).toContain("setSessionType('outdoor')");
     expect(calendar).toContain("setDurationText('30')");
     expect(calendar).toContain('nextSessionClock(today)');
-    expect(readFileSync('src/app/(main)/workouts.tsx', 'utf8')).toContain('planOutdoorNonce={planOutdoorNonce}');
+    expect(workouts).toContain('planOutdoorNonce={planOutdoorNonce}');
     expect(plan).toContain('/workouts?planDay=');
     const health = readFileSync('src/app/(main)/health.tsx', 'utf8');
     expect(health).toContain('onPlanOutdoor={() => router.push(`/workouts?planOutdoor=${Date.now()}`');
     expect(health).toContain('/workouts?planOutdoor=');
-    expect(fitness).toContain('onPlanOutdoor: () => void');
-    expect(fitness).toContain('onPlan={onPlanOutdoor}');
-    expect(fitness).not.toContain('onPlanOutdoor?.()');
     expect(note).toContain('<Button label={VO2_PLAN_LABEL} onPress={onPlan} />');
     expect(note).not.toMatch(/onPlan\?:/);
     expect(board).toContain("tile.id === 'vo2_max' && onPlanOutdoor");
@@ -197,7 +175,6 @@ describe('VO2 estimate note', () => {
   it('wires every button beside a Stats More info control', () => {
     const files = [
       'src/ui/Vo2EstimateNote.tsx',
-      'src/ui/YourFitness.tsx',
       'src/ui/GarminTip.tsx',
       'src/ui/GarminPermissionNotice.tsx',
       'src/ui/DailyActivity.tsx',
