@@ -271,6 +271,27 @@ export type GarminPushPlan = {
   permissionChanges: { garminUserId: string; permissions: string }[];
 };
 
+function decodeBase64Url(value: string): string {
+  const padded = value.replace(/-/g, '+').replace(/_/g, '/');
+  const pad = padded.length % 4 === 0 ? '' : '='.repeat(4 - (padded.length % 4));
+  return atob(padded + pad);
+}
+
+/** True when Authorization carries a user access token, not the anon or publishable key. */
+export function hasUserJwt(authorization: string | null | undefined): boolean {
+  if (!authorization) return false;
+  const token = authorization.replace(/^Bearer\s+/i, '').trim();
+  if (!token || token.startsWith('sb_')) return false;
+  const parts = token.split('.');
+  if (parts.length !== 3 || parts.some((part) => !part)) return false;
+  try {
+    const payload = JSON.parse(decodeBase64Url(parts[1])) as { role?: unknown };
+    return payload.role === 'authenticated';
+  } catch {
+    return false;
+  }
+}
+
 export function emptyGarminReadings(): GarminReadings {
   return {
     connected: false,

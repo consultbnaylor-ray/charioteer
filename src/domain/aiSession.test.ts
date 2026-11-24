@@ -228,6 +228,48 @@ describe('fetch timeouts', () => {
     expect(await (await again).text()).toBe('{"access_token":"two"}');
   });
 
+  it('reads a 200 refresh once when native json() fails, and ignores an abort before 15 seconds', async () => {
+    vi.useFakeTimers();
+    const payload = '{"access_token":"kept","refresh_token":"next","expires_in":3600}';
+    let passed: AbortSignal | undefined;
+    let aborted = false;
+    const fetch = fetchWithOneRetry((_input, init) => new Promise((resolve, reject) => {
+      passed = init?.signal ?? undefined;
+      const fail = () => {
+        aborted = true;
+        const error = new Error('The operation was aborted.');
+        error.name = 'AbortError';
+        reject(error);
+      };
+      const timer = setTimeout(() => {
+        if (init?.signal?.aborted) {
+          fail();
+          return;
+        }
+        const response = new Response(payload, { status: 200 });
+        response.json = () => Promise.reject(new TypeError('Network request failed'));
+        response.arrayBuffer = () => Promise.reject(new TypeError('Network request failed'));
+        resolve(response);
+      }, 400);
+      init?.signal?.addEventListener('abort', () => {
+        clearTimeout(timer);
+        fail();
+      });
+    }));
+    const caller = new AbortController();
+    const pending = fetch(refreshUrl, { method: 'POST', signal: caller.signal });
+    const parsed = pending.then(async (response) => response.json(), (error: unknown) => error);
+    await vi.advanceTimersByTimeAsync(200);
+    caller.abort();
+    await vi.advanceTimersByTimeAsync(400);
+    expect(passed).toBeDefined();
+    expect(passed).not.toBe(caller.signal);
+    expect(caller.signal.aborted).toBe(true);
+    expect(aborted).toBe(false);
+    expect(passed?.aborted).toBe(false);
+    await expect(parsed).resolves.toEqual({ access_token: 'kept', refresh_token: 'next', expires_in: 3600 });
+  });
+
   it('does not read a single refresh body, so a broken arrayBuffer is not treated as a dropped connection', async () => {
     let calls = 0;
     const fetch = fetchWithOneRetry(async () => {

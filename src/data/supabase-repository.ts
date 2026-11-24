@@ -136,7 +136,14 @@ import { CoalescedSave, sameJson } from '@/domain/coalescedSave';
 import { interestSelectionUnchanged, nextInterestIds, rolledBackInterestIds, snapshotWithOwnInterests } from '@/domain/interests';
 import { profileWithColumn, profileWithPatch } from '@/domain/profilePatch';
 import { planCustomInterest, validateTown } from '@/domain/privacy';
-import { combineAbortSignals, fetchWithOneRetry, isRefreshTokenRequest } from '@/domain/retryFetch';
+import { fetchWithOneRetry, isAuthRequest, isRefreshTokenRequest } from '@/domain/retryFetch';
+import {
+  RECONNECTING_ACCOUNT,
+  authorizationHeader,
+  accountLinkForRefreshError,
+  shouldHoldAnonymousData,
+} from '@/domain/accountLink';
+import { rememberRefreshError, uploadStoredRefreshErrors } from '@/domain/refreshErrorLog';
 import { planReasons } from '@/domain/reasons';
 import { BIO_LIMIT, PHOTO_CAPTION_LIMIT, defaultProfileSharing, normalizeProfileSharing, parsePublicProfile, planProfileText, sensitiveTurnedOn, shareFreshGratitude, type ProfileSharing, type PublicProfileView } from '@/domain/profileSharing';
 import { CHECK_IN_PAGE_SIZE, checkInHistorySince, checkInPageContinues } from '@/domain/checkInCharts';
@@ -157,9 +164,11 @@ import {
   callWithinDeadline,
   classifyEdgeError,
   classifyEdgeStatus,
+  SIGN_IN_AGAIN,
   edgeFailureLog,
   postWithRetry,
   prepareAiSession,
+  tokenUsable,
   type AiFeature,
   type EdgeFailureKind,
   type EdgeSendState,
@@ -235,6 +244,7 @@ function emptySnapshot(): AppSnapshot {
     ready: false,
     mode: 'supabase',
     error: null,
+    accountGate: null,
     session: null,
     profile: null,
     reasons: [],
@@ -306,8 +316,6 @@ export class SupabaseRepository implements Repository {
   private photoSignInflight = new Map<string, Promise<string | null>>();
   /** One shared session refresh for AI calls that start together. Cleared when it fails or times out. */
   private aiSessions = bindAiSession();
-  /** Aborts the auth request behind an AI refresh so a timed-out read does not keep running. */
-  private liveSession: { signal: AbortSignal | null } = { signal: null };
   /** Session from the auth listener. Data loads use this instead of getSession(), which refreshes any token inside the expiry margin. */
   private authSession: Session | null = null;
   /** Bumps on every reload so a slower, older reload cannot wipe a newer sign-in. */
@@ -327,12 +335,17 @@ export class SupabaseRepository implements Repository {
       },
       global: {
         fetch: (input, init) => {
-          // Only an in-flight AI refresh may be aborted, and only while that abort is still live.
-          // A finished AI timeout must not cancel password sign-in or the next token refresh.
-          const aiAbort = this.liveSession.signal;
-          const extra = aiAbort && !aiAbort.aborted && isRefreshTokenRequest(input, init) ? aiAbort : null;
-          const linked = extra ? combineAbortSignals(init?.signal, extra) : init?.signal;
-          return this.net(input, linked ? { ...init, signal: linked } : init);
+          if (isAuthRequest(input)) {
+            return this.net(input, init).catch((error: unknown) => {
+              if (isRefreshTokenRequest(input, init)) void this.rememberAuthRefreshError(error);
+              throw error;
+            });
+          }
+          if (this.anonymousDataBlocked(init)) {
+            this.holdAccount('reconnecting');
+            return Promise.reject(new UserFacingError(RECONNECTING_ACCOUNT, 'generic'));
+          }
+          return this.net(input, init);
         },
       },
     });
@@ -429,7 +442,10 @@ export class SupabaseRepository implements Repository {
       this.listenForMessages(Boolean(session));
       // TOKEN_REFRESHED has already stored the new token. Reading it again here
       // would refresh it whenever that token is inside the 90 second margin.
-      if (event === 'TOKEN_REFRESHED') return;
+      if (event === 'TOKEN_REFRESHED') {
+        void this.flushAuthRefreshLog();
+        return;
+      }
       setTimeout(() => {
         void this.refresh();
       }, 0);
@@ -487,6 +503,15 @@ export class SupabaseRepository implements Repository {
     const epoch = ++this.refreshEpoch;
     const session = this.authSession;
     try {
+      if (session?.user?.id) {
+        void this.flushAuthRefreshLog();
+        const gate = await this.ensureFreshSession(session);
+        if (epoch !== this.refreshEpoch) return;
+        if (gate !== 'ok') {
+          this.holdAccount(gate);
+          return;
+        }
+      }
       const [interestsRes, resourcesRes] = await Promise.all([
         session?.access_token
           ? this.client.from('interests').select('id, slug, label, created_by').order('label')
@@ -609,6 +634,7 @@ export class SupabaseRepository implements Repository {
         ready: true,
         mode: 'supabase',
         error: profileRes.error?.message ?? null,
+        accountGate: null,
         session: { userId, email },
         profile,
         reasons: ((reasonsRes.data ?? []) as Row[]).map(mapReason),
@@ -1784,8 +1810,14 @@ export class SupabaseRepository implements Repository {
       return { ticket: this.sessionTicket(data.session), error };
     };
     const refreshSession = async () => {
-      const { data, error } = await this.client.auth.refreshSession();
-      return { ticket: this.sessionTicket(data.session), error };
+      try {
+        const { data, error } = await this.client.auth.refreshSession();
+        if (error) this.rememberAuthRefreshError(error);
+        return { ticket: this.sessionTicket(data.session), error };
+      } catch (error) {
+        this.rememberAuthRefreshError(error);
+        throw error;
+      }
     };
     const ask = () => resolveSignedInSession({
       read: readSession,
@@ -1798,11 +1830,94 @@ export class SupabaseRepository implements Repository {
       resolved = await ask();
     }
     if ('failure' in resolved) {
-      if (resolved.failure === 'connection') throw new UserFacingError(OFFLINE_MESSAGE, 'offline');
+      if (resolved.failure === 'connection') {
+        this.holdAccount('reconnecting');
+        throw new UserFacingError(RECONNECTING_ACCOUNT, 'generic');
+      }
+      if (this.snapshot.session?.userId || this.authSession?.user?.id) {
+        this.holdAccount('sign-in');
+        throw new UserFacingError(SIGN_IN_AGAIN, 'generic');
+      }
       throw new Error(SIGN_IN_FIRST);
     }
     noteServerReached();
     return resolved;
+  }
+
+  /**
+   * A usable access token is enough. An expired one is refreshed before any
+   * catalogue call, so a failed refresh cannot go out as the publishable key.
+   */
+  private async ensureFreshSession(session: Session): Promise<'ok' | 'reconnecting' | 'sign-in'> {
+    if (tokenUsable(this.sessionTicket(session), Date.now())) return 'ok';
+    let error: unknown = null;
+    try {
+      const refreshed = await this.client.auth.refreshSession();
+      error = refreshed.error;
+      const next = refreshed.data.session;
+      if (next?.access_token && tokenUsable(this.sessionTicket(next), Date.now())) {
+        this.authSession = next;
+        void this.flushAuthRefreshLog();
+        return 'ok';
+      }
+    } catch (caught) {
+      error = caught;
+    }
+    void this.rememberAuthRefreshError(error ?? new Error('Auth session missing'));
+    return accountLinkForRefreshError(error);
+  }
+
+  private anonymousDataBlocked(init?: RequestInit): boolean {
+    return shouldHoldAnonymousData({
+      hasUser: Boolean(this.authSession?.user?.id),
+      authorization: authorizationHeader(init?.headers),
+      anonKey: this.anonKey,
+    });
+  }
+
+  private holdAccount(gate: 'reconnecting' | 'sign-in') {
+    const session = this.authSession;
+    const userId = session?.user?.id ?? this.snapshot.session?.userId;
+    if (!userId) return;
+    const email = session?.user?.email ?? this.snapshot.session?.email ?? '';
+    if (this.snapshot.accountGate === gate && this.snapshot.ready && this.snapshot.session?.userId === userId) return;
+    this.emit({
+      ...this.snapshot,
+      ready: true,
+      mode: 'supabase',
+      accountGate: gate,
+      session: this.snapshot.session?.userId === userId ? this.snapshot.session : { userId, email },
+    });
+  }
+
+  private rememberAuthRefreshError(error: unknown) {
+    void rememberRefreshError(error);
+  }
+
+  async logAuthRefresh(line: string): Promise<boolean> {
+    const message = line.replace(/\s+/g, ' ').trim().slice(0, 300);
+    if (!message) return false;
+    try {
+      const userId = this.snapshot.session?.userId ?? this.authSession?.user?.id ?? null;
+      if (!userId) return false;
+      const { error } = await this.client.from('client_errors').insert({
+        user_id: userId,
+        screen: 'auth-refresh',
+        message,
+        app_build: clientAppBuild({
+          buildNumber: Constants.expoConfig?.ios?.buildNumber,
+          version: Constants.expoConfig?.version,
+        }) || 'unknown',
+      });
+      return !error;
+    } catch (error) {
+      console.error('auth refresh log', error);
+      return false;
+    }
+  }
+
+  async flushAuthRefreshLog(): Promise<void> {
+    await uploadStoredRefreshErrors(this);
   }
 
   private sessionTicket(session: { access_token?: string; expires_at?: number; user?: { id?: string } } | null): SessionTicket {
@@ -1813,14 +1928,9 @@ export class SupabaseRepository implements Repository {
     };
   }
 
-  /** One refresh for AI calls that start together. It gives up after AI_SESSION_TIMEOUT_MS. */
+  /** One refresh for AI calls that start together. It gives up after AI_SESSION_TIMEOUT_MS. The token request itself is not aborted. */
   private sessionForAiCall(): Promise<string> {
-    return this.aiSessions.session((signal) => {
-      this.liveSession.signal = signal;
-      return this.loadAiSession(signal).finally(() => {
-        if (this.liveSession.signal === signal) this.liveSession.signal = null;
-      });
-    });
+    return this.aiSessions.session((signal) => this.loadAiSession(signal));
   }
 
   private async loadAiSession(signal: AbortSignal): Promise<string> {
@@ -1833,8 +1943,14 @@ export class SupabaseRepository implements Repository {
           error.name = 'AbortError';
           throw error;
         }
-        const { data, error } = await this.client.auth.refreshSession();
-        return { ticket: this.sessionTicket(data.session), error };
+        try {
+          const { data, error } = await this.client.auth.refreshSession();
+          if (error) this.rememberAuthRefreshError(error);
+          return { ticket: this.sessionTicket(data.session), error };
+        } catch (error) {
+          this.rememberAuthRefreshError(error);
+          throw error;
+        }
       },
     });
     if ('failure' in ready) throw new EdgeSessionError(ready.failure);

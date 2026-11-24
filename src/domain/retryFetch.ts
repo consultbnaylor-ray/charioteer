@@ -3,6 +3,13 @@ import { isTransientNetworkError } from './errors';
 
 /** Auth and database calls. A stalled session refresh cannot sit here forever. */
 export const FETCH_TIMEOUT_MS = 30_000;
+/**
+ * A token refresh is not aborted before this.
+ * auth-js retries a 200 it cannot read at 0.2s, 0.4s, … 12.8s. Cutting the
+ * request in that window makes iOS drop the body after the server has already
+ * rotated the token.
+ */
+export const REFRESH_MIN_LIFE_MS = 15_000;
 /** Photo and file uploads. Longer than a database read, still bounded. */
 export const UPLOAD_FETCH_TIMEOUT_MS = 120_000;
 
@@ -120,7 +127,6 @@ function fetchTimeoutError(): Error {
 }
 
 type RefreshFlight = {
-  readers: number;
   ready: Promise<() => Response>;
   resolve: (value: () => Response) => void;
   reject: (error: unknown) => void;
@@ -138,47 +144,27 @@ function responseCopy(response: Response, body: string): Response {
  * One extra attempt when a safe request dies on the network or a gateway.
  * A plain POST is not retried, so sign-up, sign-in, Thumos, and password-reset emails cannot double-submit.
  * A merge-duplicates upsert, save_check_in, and set_reasons are retried once.
- * Auth and database calls stop after FETCH_TIMEOUT_MS. Uploads and edge calls keep a longer limit.
- * Overlapping refresh-token posts share one request.
- * A lone refresh is returned unread: reading the body here made iOS report a network
- * failure after the server had already accepted the refresh, and the client then retried it.
+ * Database calls stop after FETCH_TIMEOUT_MS. Uploads and edge calls keep a longer limit.
+ * Auth calls skip that wrapper. A refresh is aborted only after REFRESH_MIN_LIFE_MS,
+ * and the body is read once into a fresh Response so a later json() does not touch the native stream.
+ * Overlapping refresh-token posts share that one body.
  */
 export function fetchWithOneRetry(base: FetchLike = globalThis.fetch.bind(globalThis)): FetchLike {
   let refresh: RefreshFlight | null = null;
   return async (input, init) => {
-    if (isRefreshTokenRequest(input, init)) {
-      if (refresh) {
-        refresh.readers += 1;
-        return (await refresh.ready)();
-      }
+    if (isAuthRequest(input)) {
+      if (!isRefreshTokenRequest(input, init)) return base(input, init);
+      if (refresh) return (await refresh.ready)();
       let resolveFlight: (value: () => Response) => void = () => undefined;
       let rejectFlight: (error: unknown) => void = () => undefined;
       const ready = new Promise<() => Response>((resolve, reject) => {
         resolveFlight = resolve;
         rejectFlight = reject;
       });
-      const flight: RefreshFlight = { readers: 1, ready, resolve: resolveFlight, reject: rejectFlight };
+      const flight: RefreshFlight = { ready, resolve: resolveFlight, reject: rejectFlight };
       refresh = flight;
-      void executeFetch(base, input, init).then(
-        async (response) => {
-          try {
-            if (flight.readers === 1) {
-              let handed = false;
-              flight.resolve(() => {
-                if (!handed) {
-                  handed = true;
-                  return response;
-                }
-                return response.clone();
-              });
-              return;
-            }
-            const body = await response.text();
-            flight.resolve(() => responseCopy(response, body));
-          } catch (error) {
-            flight.reject(error);
-          }
-        },
+      void readRefresh(base, input, init).then(
+        (copy) => flight.resolve(copy),
         (error) => flight.reject(error),
       );
       try {
@@ -189,6 +175,25 @@ export function fetchWithOneRetry(base: FetchLike = globalThis.fetch.bind(global
     }
     return executeFetch(base, input, init);
   };
+}
+
+/**
+ * The caller signal is dropped. A 200ms abort, or the AI session abort, cancels the
+ * native body on iOS after GoTrue has already rotated the refresh token.
+ * The deadline is the database timeout, and never shorter than REFRESH_MIN_LIFE_MS.
+ */
+async function readRefresh(base: FetchLike, input: RequestInfo | URL, init?: RequestInit): Promise<() => Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), Math.max(REFRESH_MIN_LIFE_MS, FETCH_TIMEOUT_MS));
+  let response: Response;
+  try {
+    response = await base(input, { ...init, signal: controller.signal });
+  } finally {
+    // Headers are in. Aborting after this is what makes iOS fail text() on a 200.
+    clearTimeout(timer);
+  }
+  const body = await response.text();
+  return () => responseCopy(response, body);
 }
 
 async function executeFetch(base: FetchLike, input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
