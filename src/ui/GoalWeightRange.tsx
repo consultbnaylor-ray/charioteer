@@ -12,6 +12,7 @@ import {
   type WeightUnitMode,
 } from '@/domain/goalWeightRange';
 import { metricFallback } from '@/domain/healthBands';
+import { weightRangeChip } from '@/domain/compactLines';
 import { GOAL_LABEL } from '@/domain/nutrition';
 import { GoalLine } from '@/ui/GoalLine';
 import { PlanTick } from '@/ui/PlanTick';
@@ -61,8 +62,9 @@ function withoutProfessionalLimit(words: string): { headline: string; tail: stri
 }
 
 function Ready({ view, unit, goalName }: { view: GoalWeightView; unit: WeightUnitMode; goalName: string | null }) {
-  const { headline } = withoutProfessionalLimit(view.words);
+  const { headline, tail } = withoutProfessionalLimit(view.words);
   const withinWords = headline === 'Within range';
+  const chip = weightRangeChip(headline);
   return (
     <View style={{ gap: 8 }}>
       {view.healthy ? <RangeBar view={view} unit={unit} /> : null}
@@ -71,14 +73,14 @@ function Ready({ view, unit, goalName }: { view: GoalWeightView; unit: WeightUni
           <PlanTick done />
           <T>Within range</T>
         </View>
-      ) : view.gap && view.gap === headline ? (
-        <Outside text={view.gap} />
-      ) : headline ? (
-        <T>{headline}</T>
+      ) : chip ? (
+        <T numberOfLines={1}>{chip}</T>
       ) : null}
-      {view.floorNote ? <T>{view.floorNote}</T> : null}
-      <T variant="muted">{REFERENCE_LINE}</T>
-      <MoreInfo about="these ranges">
+      <MoreInfo about="these ranges" title="About the range">
+        {headline && headline !== chip ? <T>{headline}</T> : null}
+        {tail ? <T>{tail}</T> : null}
+        {view.floorNote ? <T>{view.floorNote}</T> : null}
+        <T variant="muted">{REFERENCE_LINE}</T>
         {view.healthy ? <BandLegend view={view} unit={unit} goalName={goalName} /> : null}
         {view.gap && view.gap !== view.words && view.gap !== headline ? <T>{view.gap}</T> : null}
         {view.goalNote ? <T variant="muted">{view.goalNote}</T> : null}
@@ -92,17 +94,6 @@ function Ready({ view, unit, goalName }: { view: GoalWeightView; unit: WeightUni
           <T key={source.url} variant="muted">{`${source.name}. ${source.url}`}</T>
         ))}
       </MoreInfo>
-    </View>
-  );
-}
-
-function Outside({ text }: { text: string }) {
-  const theme = useAppTheme();
-  const ink = statsToneColors(theme.scheme).watch.ink;
-  return (
-    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-      <View style={{ width: 12, height: 12, borderRadius: 6, backgroundColor: ink }} />
-      <T style={{ flex: 1, color: ink }}>{text}</T>
     </View>
   );
 }

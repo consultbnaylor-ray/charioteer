@@ -29,7 +29,8 @@ import { OwnerPhoto } from '@/ui/OwnerPhoto';
 import { InPlainWords, QuoteWords } from '@/ui/InPlainWords';
 import { usePendingPress } from '@/ui/pendingAction';
 import { ExpandableRow } from '@/ui/ExpandableRow';
-import { Explain } from '@/ui/MoreInfo';
+import { HealthInsightRow } from '@/ui/HealthInsightRow';
+import { Explain, MoreInfo } from '@/ui/MoreInfo';
 import { Button, Card, EditMark, EditSheet, ErrorNote, Field, Screen, T } from '@/ui/ui';
 import { ScrollTarget } from '@/ui/ScrollTarget';
 import { DailyTargets } from '@/ui/DailyTargets';
@@ -245,7 +246,9 @@ export default function Home() {
         {profile.stage === 'exploring' ? (
           <>
             <T variant="label">When you’re ready</T>
-            <T>You can look around, talk to Thumos, and decide what you want. Nothing here assumes you have stopped.</T>
+            <MoreInfo title="About looking around" about="looking around">
+              <T>You can look around, talk to Thumos, and decide what you want. Nothing here assumes you have stopped.</T>
+            </MoreInfo>
           </>
         ) : null}
       </Card>
@@ -255,15 +258,21 @@ export default function Home() {
       <AiCreditLine />
       <DailyTargets />
       <WalkThisOff place="today" />
-      <Card accessibilityLabel="Open Health Stats" onPress={() => router.push('/health' as never)}>
-        <T variant="label">Health Stats</T>
-        <T>A plain look at sober days, check-ins, food, and the rest.</T>
+      <Card>
+        <Pressable accessibilityRole="button" accessibilityLabel="Open Health Stats" onPress={() => router.push('/health' as never)} style={{ minHeight: 44, justifyContent: 'center' }}>
+          <T variant="label">Health Stats</T>
+        </Pressable>
+        <MoreInfo title="About Health Stats" about="Health Stats">
+          <T>A plain look at sober days, check-ins, food, and the rest.</T>
+        </MoreInfo>
       </Card>
       <Card featured>
         <T variant="label">Quote of the day</T>
-        <QuoteWords>{dailyQuote.text}</QuoteWords>
-        <T variant="muted">{quoteCredit(dailyQuote)}</T>
         <InPlainWords plain={dailyQuote.plain} />
+        <MoreInfo title="About this quote" about="this quote">
+          <QuoteWords>{dailyQuote.text}</QuoteWords>
+          <T variant="muted">{quoteCredit(dailyQuote)}</T>
+        </MoreInfo>
         <Button label="Stoic & classical wisdom" tone="quiet" onPress={() => router.push('/quotes' as never)} />
       </Card>
       {sober ? (
@@ -286,7 +295,9 @@ export default function Home() {
         accessibilityLabel="SOS, open craving support with Thumos"
         onPress={() => router.push('/thumos?mode=craving' as never)}
       />
-      <T variant="muted">One tap opens Thumos in craving support: a ten-minute timer, breathing, and your reasons.</T>
+      <MoreInfo title="About SOS" about="SOS">
+        <T>One tap opens Thumos in craving support: a ten-minute timer, breathing, and your reasons.</T>
+      </MoreInfo>
       {sober ? <Card>
         <T variant="label">Milestones</T>
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 8 }}>
@@ -308,16 +319,15 @@ export default function Home() {
       </Card>
       <Card>
         <IconLabel name="day">Today</IconLabel>
-        <T>{checkedToday ? `Mood ${today.mood}/10 · craving ${today.craving}/10. You can add another if the day changed shape.` : 'A check-in takes a few seconds: mood, sleep, craving.'}</T>
+        <T numberOfLines={1}>{checkedToday ? `Mood ${today.mood}/10 · craving ${today.craving}/10` : 'Not checked in'}</T>
+        <MoreInfo title="About the check-in" about="the check-in">
+          <T>{checkedToday ? `Mood ${today.mood}/10 · craving ${today.craving}/10. You can add another if the day changed shape.` : 'A check-in takes a few seconds: mood, sleep, craving.'}</T>
+        </MoreInfo>
         <Button label={checkedToday ? 'Update check-in' : 'Check in'} tone="quiet" onPress={() => router.push('/check-in' as never)} />
       </Card>
       <Card>
         <IconLabel name="pulse">Health Stats</IconLabel>
-        {healthHeadlines.length === 0 ? (
-          <T variant="muted">Not enough readings yet to compare the last 7 days with the 7 before.</T>
-        ) : (
-          healthHeadlines.map((line) => <T key={line}>{line}</T>)
-        )}
+        <HealthInsightRow headlines={healthHeadlines} />
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="See all health stats"
