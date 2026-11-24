@@ -22,7 +22,6 @@ import {
   STARTER_NOTE,
   STARTER_PLACES,
   appleMapsUrl,
-  formatClimb,
   matchDrawnSketch,
   nearestPathLine,
   unmatchedDrawnPlan,
@@ -52,7 +51,6 @@ import {
 import {
   closeSketchIfLoop,
   pathMetres,
-  routeSummary,
   sketchDistanceLabel,
   sketchIsClosed,
   type OutdoorPoint,
@@ -996,8 +994,7 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
       {plan ? (
         <Card>
           <T variant="title">{craving ? 'Craving walk' : title}</T>
-          <T>{routeSummary({ distanceM: plan.distanceM, durationMinutes: plan.durationMinutes })}</T>
-          <T>{formatClimb(plan.ascentM)}</T>
+          <RouteSnapSummary plan={plan} />
           {nearLine ? <T>{nearLine}</T> : null}
           {rough && hereSelected ? <T>{ROUGH_FIX_LINE}</T> : null}
           {plan.mocked ? <T>{ROUTE_MOCK_LINE}</T> : null}

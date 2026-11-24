@@ -72,6 +72,9 @@ import {
   parseSnap,
   snapUrl,
   orsRequestHeaders,
+  cleanPlaceQuery,
+  geocodeUrl,
+  isUkPostcode,
   parseDirections,
   parseGeocode,
   routeLengthM,
@@ -206,8 +209,9 @@ describe('route finding', () => {
         },
       }],
     }, 'walk', 'loop');
-    expect(parsed).toMatchObject({ distanceM: 4820, durationMinutes: 60, ascentM: 42, profile: 'foot-walking' });
+    expect(parsed).toMatchObject({ distanceM: 4820, durationMinutes: 60, ascentM: 42, descentM: null, profile: 'foot-walking' });
     expect(parsed?.points).toHaveLength(3);
+    expect(parsed?.elevationsM).toEqual([10, 12, 20]);
     const orsShape = parseDirections({
       type: 'FeatureCollection',
       features: [{
@@ -228,7 +232,7 @@ describe('route finding', () => {
         },
       }],
     }, 'walk', 'loop');
-    expect(orsShape).toMatchObject({ distanceM: 7600, durationMinutes: 45, ascentM: 18 });
+    expect(orsShape).toMatchObject({ distanceM: 7600, durationMinutes: 45, ascentM: 18, descentM: 17, elevationsM: null });
     expect(parseDirections({
       type: 'FeatureCollection',
       features: [{
@@ -236,7 +240,15 @@ describe('route finding', () => {
         properties: { summary: { distance: 1000, duration: 600 } },
         geometry: { coordinates: [[-2.59, 51.45], [-2.58, 51.451]] },
       }],
-    }, 'walk', 'loop')?.ascentM).toBeNull();
+    }, 'walk', 'loop')).toMatchObject({ ascentM: null, descentM: null, elevationsM: null });
+    expect(parseDirections({
+      type: 'FeatureCollection',
+      features: [{
+        type: 'Feature',
+        properties: { summary: { distance: 1000, duration: 600, descent: 9.6 } },
+        geometry: { coordinates: [[-2.59, 51.45, 10], [-2.58, 51.451]] },
+      }],
+    }, 'walk', 'loop')).toMatchObject({ descentM: 10, elevationsM: null });
     expect(parseGeocode({
       features: [{ geometry: { coordinates: [-2.59, 51.45] }, properties: { label: 'Queen Square', gid: 'qs' } }],
     })[0]).toMatchObject({ name: 'Queen Square', id: 'qs' });
@@ -279,6 +291,41 @@ describe('route finding', () => {
     const stamps = Array.from({ length: 12 }, (_, index) => now - index * 1000);
     expect(withinRouteLimit(stamps, now).ok).toBe(false);
     expect(withinRouteLimit([now - 86_400_000 - 1], now).ok).toBe(true);
+  });
+
+  it('normalises a UK postcode and only then asks the geocoder to stay in GB', () => {
+    expect(isUkPostcode('bs81ab')).toBe(true);
+    expect(isUkPostcode('Queen Square')).toBe(false);
+    expect(cleanPlaceQuery('  bs8   1ab ')).toBe('BS8 1AB');
+    expect(cleanPlaceQuery('sw1a1aa')).toBe('SW1A 1AA');
+    expect(cleanPlaceQuery('Queen Square')).toBe('Queen Square');
+    expect(geocodeUrl('BS8 1AB')).toContain('text=BS8%201AB');
+    expect(geocodeUrl('BS8 1AB')).toContain('boundary.country=GB');
+    expect(geocodeUrl('Queen Square')).not.toContain('boundary.country');
+  });
+
+  it('computes gradient from elevation samples and leaves it out when they are missing', () => {
+    expect(gradientFromElevations(null, 1000)).toBeNull();
+    expect(gradientFromElevations([10], 1000)).toBeNull();
+    expect(gradientFromElevations([0, 10, 0], 0)).toBeNull();
+    expect(gradientFromElevations([0, 10, 0], 200)).toEqual({ max: 10, average: 10 });
+    expect(gradientFromElevations([0, 5, 15], 1000)).toEqual({ max: 2, average: 1.5 });
+    expect(gradientFromElevations([0, 50], 20)).toBeNull();
+    const fromSamples = routeSnapLines({
+      distanceM: 200,
+      durationMinutes: 4,
+      mode: 'walk',
+      ascentM: 10,
+      elevationsM: [0, 10, 0],
+    });
+    expect(fromSamples).toContain('Max gradient 10% · average 10%');
+    expect(fromSamples.join(' ')).not.toContain('Descent');
+    expect(routeSnapLines({
+      distanceM: 200,
+      durationMinutes: 4,
+      mode: 'walk',
+      ascentM: null,
+    }).join(' ')).not.toMatch(/Descent|gradient/);
   });
 
   it('states the published retention and stays under the free daily quota', () => {
