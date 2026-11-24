@@ -1,7 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { clearWalkedLinesForSignOut } from '@/activity/walkedLine';
-import { createClient, type SupabaseClient } from '@supabase/supabase-js';
+import { createClient, type Session, type SupabaseClient } from '@supabase/supabase-js';
 import { Platform } from 'react-native';
 
 import { signInWithApple as nativeApple } from '@/auth/appleSignIn';
@@ -136,7 +136,7 @@ import { CoalescedSave, sameJson } from '@/domain/coalescedSave';
 import { interestSelectionUnchanged, nextInterestIds, rolledBackInterestIds, snapshotWithOwnInterests } from '@/domain/interests';
 import { profileWithColumn, profileWithPatch } from '@/domain/profilePatch';
 import { planCustomInterest, validateTown } from '@/domain/privacy';
-import { combineAbortSignals, fetchWithOneRetry, isAuthRequest } from '@/domain/retryFetch';
+import { combineAbortSignals, fetchWithOneRetry, isRefreshTokenRequest } from '@/domain/retryFetch';
 import { planReasons } from '@/domain/reasons';
 import { BIO_LIMIT, PHOTO_CAPTION_LIMIT, defaultProfileSharing, normalizeProfileSharing, parsePublicProfile, planProfileText, sensitiveTurnedOn, shareFreshGratitude, type ProfileSharing, type PublicProfileView } from '@/domain/profileSharing';
 import { CHECK_IN_PAGE_SIZE, checkInHistorySince, checkInPageContinues } from '@/domain/checkInCharts';
@@ -306,8 +306,12 @@ export class SupabaseRepository implements Repository {
   private photoSignInflight = new Map<string, Promise<string | null>>();
   /** One shared session refresh for AI calls that start together. Cleared when it fails or times out. */
   private aiSessions = bindAiSession();
-  /** Aborts the auth request behind that refresh so a timed-out read does not keep running. */
+  /** Aborts the auth request behind an AI refresh so a timed-out read does not keep running. */
   private liveSession: { signal: AbortSignal | null } = { signal: null };
+  /** Session from the auth listener. Data loads use this instead of getSession(), which refreshes any token inside the expiry margin. */
+  private authSession: Session | null = null;
+  /** Bumps on every reload so a slower, older reload cannot wipe a newer sign-in. */
+  private refreshEpoch = 0;
   private net = fetchWithOneRetry();
 
   constructor(url: string, anonKey: string) {
@@ -323,9 +327,11 @@ export class SupabaseRepository implements Repository {
       },
       global: {
         fetch: (input, init) => {
-          const linked = isAuthRequest(input)
-            ? combineAbortSignals(init?.signal, this.liveSession.signal)
-            : init?.signal;
+          // Only an in-flight AI refresh may be aborted, and only while that abort is still live.
+          // A finished AI timeout must not cancel password sign-in or the next token refresh.
+          const aiAbort = this.liveSession.signal;
+          const extra = aiAbort && !aiAbort.aborted && isRefreshTokenRequest(input, init) ? aiAbort : null;
+          const linked = extra ? combineAbortSignals(init?.signal, extra) : init?.signal;
           return this.net(input, linked ? { ...init, signal: linked } : init);
         },
       },
@@ -417,15 +423,17 @@ export class SupabaseRepository implements Repository {
     if (this.started) return;
     this.started = true;
     this.client.auth.onAuthStateChange((event, session) => {
+      this.authSession = session;
       if (event === 'SIGNED_OUT') void clearWalkedLinesForSignOut();
       void this.client.realtime.setAuth(session?.access_token ?? null);
       this.listenForMessages(Boolean(session));
-      void this.refresh();
+      // TOKEN_REFRESHED has already stored the new token. Reading it again here
+      // would refresh it whenever that token is inside the 90 second margin.
+      if (event === 'TOKEN_REFRESHED') return;
+      setTimeout(() => {
+        void this.refresh();
+      }, 0);
     });
-    const { data } = await this.client.auth.getSession();
-    await this.client.realtime.setAuth(data.session?.access_token ?? null);
-    this.listenForMessages(Boolean(data.session));
-    await this.refresh();
   }
 
   /** One insert stream for every chat this account can read. Realtime applies the select policy. */
@@ -476,170 +484,180 @@ export class SupabaseRepository implements Repository {
   }
 
   private async refresh() {
-    const { data: sessionData } = await this.client.auth.getSession();
-    const session = sessionData.session;
-    const [interestsRes, resourcesRes] = await Promise.all([
-      this.client.from('interests').select('id, slug, label, created_by').order('label'),
-      this.client.from('resources').select('*').order('sort_order'),
-    ]);
-    const interests = ((interestsRes.data ?? []) as Row[]).map(mapInterest);
-    const resources = ((resourcesRes.data ?? []) as Row[]).map(mapResource);
-
-    if (!session) {
-      this.ownerPhotosSignedAt = null;
-      this.emit({ ...emptySnapshot(), ready: true, interests, resources });
-      return;
-    }
-
-    const userId = session.user.id;
-    const email = session.user.email ?? '';
-    const [profileRes, reasonsRes, checkRows, relapseRes, healthRes, mineRes, thumosRes, directoryRes, interestLinks, connectionsRes, reportsRes, consentsRes, photosRes, gratitudeRes, gratitudePhotoRes, visionRes, sharingRes, quotesRes, profilePhotoRes, healthPlanRes, scheduleRes, plannedRes] =
-      await Promise.all([
-        this.client.from('profiles').select('*').eq('id', userId).maybeSingle(),
-        this.client.from('reasons').select('*').eq('user_id', userId).order('sort_order'),
-        this.loadCheckIns(userId),
-        this.client.from('relapses').select('*').eq('user_id', userId).order('occurred_at', { ascending: false }),
-        this.client.from('health_samples').select('*').eq('user_id', userId).order('recorded_on', { ascending: false }),
-        this.client.from('profile_interests').select('user_id, interest_id'),
-        this.client.from('thumos_messages').select('*').eq('user_id', userId).order('created_at'),
-        this.client.from('directory').select('*'),
-        this.client.from('profile_interests').select('user_id, interest_id'),
-        this.client.from('connections').select('*').order('created_at', { ascending: false }),
-        this.client.from('reports').select('*').order('created_at', { ascending: false }),
-        this.client.from('consents').select('kind, granted, version, created_at').eq('user_id', userId),
-        this.client.from('progress_photos').select('id, user_id, taken_on, month_index, note, caption, storage_path, created_at, visibility').eq('user_id', userId).order('month_index').order('taken_on'),
-        this.client.from('gratitude_entries').select('id, body, category, is_favourite, entry_date, created_at, updated_at, check_in_id').eq('user_id', userId).order('entry_date', { ascending: false }),
-        this.client.from('gratitude_photos').select('id, entry_id, user_id, storage_path, caption, created_at').eq('user_id', userId).order('created_at'),
-        this.client.from('vision_board_items').select('id, user_id, storage_path, caption, area, size, position, created_at, updated_at').eq('user_id', userId).order('position'),
-        this.client.from('profile_sharing').select('settings').eq('user_id', userId).maybeSingle(),
-        this.client.from('user_quotes').select('quote_id, created_at').eq('user_id', userId).order('created_at', { ascending: false }),
-        this.client.from('profile_photos').select('id, user_id, role, caption, position, storage_path, created_at').eq('user_id', userId).order('position').order('created_at'),
-        this.client.from('health_plans').select('focus, nutrition, fitness, wellbeing, limits, disclaimer, updated_at').eq('user_id', userId).maybeSingle(),
-        this.client.from('training_schedules').select('monday, tuesday, wednesday, thursday, friday, saturday, sunday, typical_minutes, longer_day, longer_minutes, walk_day, note').eq('user_id', userId).maybeSingle(),
-        this.client.from('planned_sessions').select('id, session_type, starts_at, duration_minutes, note, planned_effort, done_at').eq('user_id', userId).order('starts_at'),
+    const epoch = ++this.refreshEpoch;
+    const session = this.authSession;
+    try {
+      const [interestsRes, resourcesRes] = await Promise.all([
+        session?.access_token
+          ? this.client.from('interests').select('id, slug, label, created_by').order('label')
+          : Promise.resolve({ data: [], error: null }),
+        this.client.from('resources').select('*').order('sort_order'),
       ]);
+      if (interestsRes.error) console.error(interestsRes.error.message);
+      const interests = ((interestsRes.data ?? []) as Row[]).map(mapInterest);
+      const resources = ((resourcesRes.data ?? []) as Row[]).map(mapResource);
+      if (epoch !== this.refreshEpoch) return;
 
-    const profileRow = profileRes.data as Row | null;
-    const serverInterestIds = ((mineRes.data ?? []) as Row[])
-      .filter((row) => row.user_id === userId)
-      .map((row) => String(row.interest_id));
-    this.settleInterestLanes(serverInterestIds);
-    const myInterestIds = this.applyPendingInterests(serverInterestIds);
-    const profile = this.withPendingProfile(profileRow ? mapProfile(profileRow, email, myInterestIds) : null);
-    const links = (interestLinks.data ?? []) as Row[];
-    const byUser = new Map<string, string[]>();
-    for (const link of links) {
-      const owner = String(link.user_id);
-      const list = byUser.get(owner) ?? [];
-      list.push(String(link.interest_id));
-      byUser.set(owner, list);
-    }
-    const mine = new Set(myInterestIds);
-    const directoryRows = ((directoryRes.data ?? []) as Row[]).filter((row) => String(row.user_id) !== userId);
-    const avatarById = await this.profilePhotoUrlMap(
-      directoryRows.map((row) => (typeof row.avatar_photo_id === 'string' ? row.avatar_photo_id : '')).filter(Boolean),
-    );
-    const directory: DirectoryCard[] = directoryRows
-      .map((row) => {
-        const interestIds = byUser.get(String(row.user_id)) ?? [];
-        const avatarId = typeof row.avatar_photo_id === 'string' ? row.avatar_photo_id : '';
-        return {
-          id: String(row.user_id),
-          displayName: String(row.display_name ?? ''),
-          town: (row.town as string | null) ?? null,
-          interestIds,
-          sharedInterestIds: interestIds.filter((id) => mine.has(id)),
-          avatarUrl: avatarById.get(avatarId) ?? null,
-          avatarPhotoId: avatarId || null,
-        };
-      })
-      .sort((a, b) => b.sharedInterestIds.length - a.sharedInterestIds.length || a.displayName.localeCompare(b.displayName));
-
-    const connections = ((connectionsRes.data ?? []) as Row[]).map(mapConnection);
-    const connectionCards = await this.loadConnectionCards();
-    const connectionIds = connections.map((connection) => connection.id);
-    const allowedConnections = new Set(connectionIds);
-    const sameAccount = this.snapshot.session?.userId === userId;
-    let messages: AppSnapshot['messages'] = sameAccount
-      ? this.snapshot.messages.filter((message) => allowedConnections.has(message.connectionId))
-      : [];
-    if (connectionIds.length) {
-      const messageRes = await this.client
-        .from('direct_messages')
-        .select('*')
-        .in('connection_id', connectionIds)
-        .order('created_at');
-      if (!messageRes.error) {
-        messages = mergeFetchedMessages(
-          sameAccount ? this.snapshot.messages : [],
-          ((messageRes.data ?? []) as Row[]).map(mapDirectMessage),
-          allowedConnections,
-        );
+      if (!session) {
+        this.ownerPhotosSignedAt = null;
+        this.emit({ ...emptySnapshot(), ready: true, interests, resources });
+        return;
       }
-    }
 
-    let gratitudeRows: unknown = gratitudeRes.data;
-    let gratitudeMessage = gratitudeRes.error?.message ?? null;
-    if (gratitudeMessage && /check_in_id/i.test(gratitudeMessage)) {
-      const again = await this.client
-        .from('gratitude_entries')
-        .select('id, body, category, is_favourite, entry_date, created_at, updated_at')
-        .eq('user_id', userId)
-        .order('entry_date', { ascending: false });
-      gratitudeRows = again.data;
-      gratitudeMessage = again.error?.message ?? null;
-    }
+      const userId = session.user.id;
+      const email = session.user.email ?? '';
+      const [profileRes, reasonsRes, checkRows, relapseRes, healthRes, mineRes, thumosRes, directoryRes, interestLinks, connectionsRes, reportsRes, consentsRes, photosRes, gratitudeRes, gratitudePhotoRes, visionRes, sharingRes, quotesRes, profilePhotoRes, healthPlanRes, scheduleRes, plannedRes] =
+        await Promise.all([
+          this.client.from('profiles').select('*').eq('id', userId).maybeSingle(),
+          this.client.from('reasons').select('*').eq('user_id', userId).order('sort_order'),
+          this.loadCheckIns(userId),
+          this.client.from('relapses').select('*').eq('user_id', userId).order('occurred_at', { ascending: false }),
+          this.client.from('health_samples').select('*').eq('user_id', userId).order('recorded_on', { ascending: false }),
+          this.client.from('profile_interests').select('user_id, interest_id'),
+          this.client.from('thumos_messages').select('*').eq('user_id', userId).order('created_at'),
+          this.client.from('directory').select('*'),
+          this.client.from('profile_interests').select('user_id, interest_id'),
+          this.client.from('connections').select('*').order('created_at', { ascending: false }),
+          this.client.from('reports').select('*').order('created_at', { ascending: false }),
+          this.client.from('consents').select('kind, granted, version, created_at').eq('user_id', userId),
+          this.client.from('progress_photos').select('id, user_id, taken_on, month_index, note, caption, storage_path, created_at, visibility').eq('user_id', userId).order('month_index').order('taken_on'),
+          this.client.from('gratitude_entries').select('id, body, category, is_favourite, entry_date, created_at, updated_at, check_in_id').eq('user_id', userId).order('entry_date', { ascending: false }),
+          this.client.from('gratitude_photos').select('id, entry_id, user_id, storage_path, caption, created_at').eq('user_id', userId).order('created_at'),
+          this.client.from('vision_board_items').select('id, user_id, storage_path, caption, area, size, position, created_at, updated_at').eq('user_id', userId).order('position'),
+          this.client.from('profile_sharing').select('settings').eq('user_id', userId).maybeSingle(),
+          this.client.from('user_quotes').select('quote_id, created_at').eq('user_id', userId).order('created_at', { ascending: false }),
+          this.client.from('profile_photos').select('id, user_id, role, caption, position, storage_path, created_at').eq('user_id', userId).order('position').order('created_at'),
+          this.client.from('health_plans').select('focus, nutrition, fitness, wellbeing, limits, disclaimer, updated_at').eq('user_id', userId).maybeSingle(),
+          this.client.from('training_schedules').select('monday, tuesday, wednesday, thursday, friday, saturday, sunday, typical_minutes, longer_day, longer_minutes, walk_day, note').eq('user_id', userId).maybeSingle(),
+          this.client.from('planned_sessions').select('id, session_type, starts_at, duration_minutes, note, planned_effort, done_at').eq('user_id', userId).order('starts_at'),
+        ]);
 
-    this.ownerPhotosSignedAt = Date.now();
-    this.emit({
-      ready: true,
-      mode: 'supabase',
-      error: profileRes.error?.message ?? null,
-      session: { userId, email },
-      profile,
-      reasons: ((reasonsRes.data ?? []) as Row[]).map(mapReason),
-      checkIns: checkRows.map(mapCheckIn),
-      relapses: ((relapseRes.data ?? []) as Row[]).map(mapRelapse),
-      health: ((healthRes.data ?? []) as Row[]).map(mapHealth),
-      interests,
-      resources,
-      directory,
-      connectionCards,
-      connections,
-      messages,
-      reports: ((reportsRes.data ?? []) as Row[]).map(mapReport),
-      thumos: ((thumosRes.data ?? []) as Row[]).map(mapThumos),
-      consents: this.overlayConsentRows(((consentsRes.data ?? []) as Row[]).map(mapConsent)),
-      progressPhotos: this.overlayProgress(await this.signedProgressPhotos(photosRes.error ? null : ((photosRes.data ?? []) as Row[]), photosRes.error?.message, userId)),
-      communityPhotos: photosRes.error ? [] : await this.communityProgressPhotos(userId),
-      profilePhotos: await this.signedProfilePhotos(profilePhotoRes.error ? null : ((profilePhotoRes.data ?? []) as Row[]), profilePhotoRes.error?.message, userId),
-      gratitude: withGratitudePhotos(
-        gratitudeMessage ? loggedEmptyGratitude(gratitudeMessage) : gratitudeFromRows(gratitudeRows),
-        await this.signedGratitudePhotos(gratitudePhotoRes.error ? null : ((gratitudePhotoRes.data ?? []) as Row[]), gratitudePhotoRes.error?.message),
-      ),
-      visionItems: this.overlayVision(await this.signedVisionItems(visionRes.error ? null : visionRes.data, visionRes.error?.message)),
-      ...(await this.nutritionSnapshot(userId)),
-      sharing: this.prefer('sharing', sharingRes.error ? defaultProfileSharing() : normalizeProfileSharing((sharingRes.data as Row | null)?.settings)),
-      savedQuotes: quotesRes.error
-        ? []
-        : ((quotesRes.data ?? []) as Row[]).flatMap((row) => {
-            const quoteId = String(row.quote_id ?? '');
-            if (!quoteById(quoteId)) return [];
-            return [{ quoteId, createdAt: String(row.created_at ?? '') }];
+      const profileRow = profileRes.data as Row | null;
+      const serverInterestIds = ((mineRes.data ?? []) as Row[])
+        .filter((row) => row.user_id === userId)
+        .map((row) => String(row.interest_id));
+      this.settleInterestLanes(serverInterestIds);
+      const myInterestIds = this.applyPendingInterests(serverInterestIds);
+      const profile = this.withPendingProfile(profileRow ? mapProfile(profileRow, email, myInterestIds) : null);
+      const links = (interestLinks.data ?? []) as Row[];
+      const byUser = new Map<string, string[]>();
+      for (const link of links) {
+        const owner = String(link.user_id);
+        const list = byUser.get(owner) ?? [];
+        list.push(String(link.interest_id));
+        byUser.set(owner, list);
+      }
+      const mine = new Set(myInterestIds);
+      const directoryRows = ((directoryRes.data ?? []) as Row[]).filter((row) => String(row.user_id) !== userId);
+      const avatarById = await this.profilePhotoUrlMap(
+        directoryRows.map((row) => (typeof row.avatar_photo_id === 'string' ? row.avatar_photo_id : '')).filter(Boolean),
+      );
+      const directory: DirectoryCard[] = directoryRows
+        .map((row) => {
+          const interestIds = byUser.get(String(row.user_id)) ?? [];
+          const avatarId = typeof row.avatar_photo_id === 'string' ? row.avatar_photo_id : '';
+          return {
+            id: String(row.user_id),
+            displayName: String(row.display_name ?? ''),
+            town: (row.town as string | null) ?? null,
+            interestIds,
+            sharedInterestIds: interestIds.filter((id) => mine.has(id)),
+            avatarUrl: avatarById.get(avatarId) ?? null,
+            avatarPhotoId: avatarId || null,
+          };
+        })
+        .sort((a, b) => b.sharedInterestIds.length - a.sharedInterestIds.length || a.displayName.localeCompare(b.displayName));
+
+      const connections = ((connectionsRes.data ?? []) as Row[]).map(mapConnection);
+      const connectionCards = await this.loadConnectionCards();
+      const connectionIds = connections.map((connection) => connection.id);
+      const allowedConnections = new Set(connectionIds);
+      const sameAccount = this.snapshot.session?.userId === userId;
+      let messages: AppSnapshot['messages'] = sameAccount
+        ? this.snapshot.messages.filter((message) => allowedConnections.has(message.connectionId))
+        : [];
+      if (connectionIds.length) {
+        const messageRes = await this.client
+          .from('direct_messages')
+          .select('*')
+          .in('connection_id', connectionIds)
+          .order('created_at');
+        if (!messageRes.error) {
+          messages = mergeFetchedMessages(
+            sameAccount ? this.snapshot.messages : [],
+            ((messageRes.data ?? []) as Row[]).map(mapDirectMessage),
+            allowedConnections,
+          );
+        }
+      }
+
+      let gratitudeRows: unknown = gratitudeRes.data;
+      let gratitudeMessage = gratitudeRes.error?.message ?? null;
+      if (gratitudeMessage && /check_in_id/i.test(gratitudeMessage)) {
+        const again = await this.client
+          .from('gratitude_entries')
+          .select('id, body, category, is_favourite, entry_date, created_at, updated_at')
+          .eq('user_id', userId)
+          .order('entry_date', { ascending: false });
+        gratitudeRows = again.data;
+        gratitudeMessage = again.error?.message ?? null;
+      }
+
+      if (epoch !== this.refreshEpoch) return;
+      this.ownerPhotosSignedAt = Date.now();
+      this.emit({
+        ready: true,
+        mode: 'supabase',
+        error: profileRes.error?.message ?? null,
+        session: { userId, email },
+        profile,
+        reasons: ((reasonsRes.data ?? []) as Row[]).map(mapReason),
+        checkIns: checkRows.map(mapCheckIn),
+        relapses: ((relapseRes.data ?? []) as Row[]).map(mapRelapse),
+        health: ((healthRes.data ?? []) as Row[]).map(mapHealth),
+        interests,
+        resources,
+        directory,
+        connectionCards,
+        connections,
+        messages,
+        reports: ((reportsRes.data ?? []) as Row[]).map(mapReport),
+        thumos: ((thumosRes.data ?? []) as Row[]).map(mapThumos),
+        consents: this.overlayConsentRows(((consentsRes.data ?? []) as Row[]).map(mapConsent)),
+        progressPhotos: this.overlayProgress(await this.signedProgressPhotos(photosRes.error ? null : ((photosRes.data ?? []) as Row[]), photosRes.error?.message, userId)),
+        communityPhotos: photosRes.error ? [] : await this.communityProgressPhotos(userId),
+        profilePhotos: await this.signedProfilePhotos(profilePhotoRes.error ? null : ((profilePhotoRes.data ?? []) as Row[]), profilePhotoRes.error?.message, userId),
+        gratitude: withGratitudePhotos(
+          gratitudeMessage ? loggedEmptyGratitude(gratitudeMessage) : gratitudeFromRows(gratitudeRows),
+          await this.signedGratitudePhotos(gratitudePhotoRes.error ? null : ((gratitudePhotoRes.data ?? []) as Row[]), gratitudePhotoRes.error?.message),
+        ),
+        visionItems: this.overlayVision(await this.signedVisionItems(visionRes.error ? null : visionRes.data, visionRes.error?.message)),
+        ...(await this.nutritionSnapshot(userId)),
+        sharing: this.prefer('sharing', sharingRes.error ? defaultProfileSharing() : normalizeProfileSharing((sharingRes.data as Row | null)?.settings)),
+        savedQuotes: quotesRes.error
+          ? []
+          : ((quotesRes.data ?? []) as Row[]).flatMap((row) => {
+              const quoteId = String(row.quote_id ?? '');
+              if (!quoteById(quoteId)) return [];
+              return [{ quoteId, createdAt: String(row.created_at ?? '') }];
+            }),
+        healthPlan: healthPlanRes.error ? null : healthPlanFromStored(healthPlanRes.data),
+        trainingSchedule: scheduleRes.error ? null : trainingScheduleFromRow(scheduleRes.data),
+        plannedSessions: plannedRes.error
+          ? []
+          : ((plannedRes.data ?? []) as Row[]).flatMap((row) => {
+            const session = plannedSessionFromRow(row);
+            return session ? [session] : [];
           }),
-      healthPlan: healthPlanRes.error ? null : healthPlanFromStored(healthPlanRes.data),
-      trainingSchedule: scheduleRes.error ? null : trainingScheduleFromRow(scheduleRes.data),
-      plannedSessions: plannedRes.error
-        ? []
-        : ((plannedRes.data ?? []) as Row[]).flatMap((row) => {
-          const session = plannedSessionFromRow(row);
-          return session ? [session] : [];
-        }),
-      outdoorRoutes: await this.loadOutdoorRoutes(userId),
-      goalProgressPhotos: await this.loadGoalProgressPhotos(userId),
-      workoutFeelings: await this.loadWorkoutFeelings(userId),
-    });
-    noteServerReached();
+        outdoorRoutes: await this.loadOutdoorRoutes(userId),
+        goalProgressPhotos: await this.loadGoalProgressPhotos(userId),
+        workoutFeelings: await this.loadWorkoutFeelings(userId),
+      });
+      noteServerReached();
+    } catch (error) {
+      if (epoch === this.refreshEpoch && session?.user?.id) this.emitSignedIn(session);
+      throw error;
+    }
   }
 
   /** Signs the paths already on the snapshot and writes only the new preview URLs. */
@@ -996,13 +1014,37 @@ export class SupabaseRepository implements Repository {
   }
 
   async signIn(email: string, password: string): Promise<void> {
+    const { error } = await this.client.auth.signInWithPassword({ email: email.trim(), password });
+    if (error) throw asUserFacing(error, 'sign-in');
+    await this.finishSignIn();
+  }
+
+  /**
+   * The password grant already succeeded. A later catalogue or profile read
+   * must not be shown as a failed sign-in, and must not leave the session unpublished.
+   */
+  private async finishSignIn(): Promise<void> {
     try {
-      const { error } = await this.client.auth.signInWithPassword({ email: email.trim(), password });
-      if (error) throw error;
       await this.refresh();
     } catch (error) {
-      throw asUserFacing(error, 'sign-in');
+      console.error(error);
+      if (!this.authSession?.user?.id) throw asUserFacing(error, 'sign-in');
+      this.emitSignedIn(this.authSession);
     }
+  }
+
+  private emitSignedIn(session: Session) {
+    const userId = session.user.id;
+    if (!userId) return;
+    const email = session.user.email ?? '';
+    if (this.snapshot.session?.userId === userId && this.snapshot.session.email === email && this.snapshot.ready) return;
+    this.emit({
+      ...this.snapshot,
+      ready: true,
+      mode: 'supabase',
+      error: null,
+      session: { userId, email },
+    });
   }
 
   async signUp(email: string, password: string, displayName: string): Promise<void> {
@@ -1104,10 +1146,10 @@ export class SupabaseRepository implements Repository {
   async signInWithApple(): Promise<void> {
     try {
       await nativeApple(this.client);
-      await this.refresh();
     } catch (error) {
       throw asUserFacing(error, 'sign-in');
     }
+    await this.finishSignIn();
   }
 
   async signOut(): Promise<void> {

@@ -95,4 +95,24 @@ describe('health writes use the live session', () => {
     expect(logged).not.toContain('this.userId()');
     expect(logged).not.toContain('getUser(');
   });
+
+  it('reloads after sign-in without asking the auth client to refresh, and skips interests when signed out', () => {
+    const listener = repo.slice(repo.indexOf('onAuthStateChange'), repo.indexOf('private listenForMessages'));
+    expect(listener).toContain("event === 'TOKEN_REFRESHED'");
+    expect(listener).toContain('this.authSession = session');
+    expect(listener).not.toContain('getSession');
+    expect(listener).not.toContain('refreshSession');
+    const refresh = repo.slice(repo.indexOf('private async refresh'), repo.indexOf('private async resignOwnerPhotosNow'));
+    expect(refresh).toContain('session?.access_token');
+    expect(refresh).toContain("from('interests')");
+    expect(refresh).not.toContain('auth.getSession');
+    const signIn = repo.slice(repo.indexOf('async signIn('), repo.indexOf('private async finishSignIn'));
+    expect(signIn).toContain("throw asUserFacing(error, 'sign-in')");
+    expect(signIn).toContain('finishSignIn()');
+    expect(signIn).not.toContain('await this.refresh()');
+    const finish = repo.slice(repo.indexOf('private async finishSignIn'), repo.indexOf('private emitSignedIn'));
+    expect(finish).toContain('this.authSession');
+    expect(finish).toContain('emitSignedIn');
+    expect(finish).not.toContain('OFFLINE_MESSAGE');
+  });
 });

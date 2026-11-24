@@ -228,6 +228,19 @@ describe('fetch timeouts', () => {
     expect(await (await again).text()).toBe('{"access_token":"two"}');
   });
 
+  it('does not read a single refresh body, so a broken arrayBuffer is not treated as a dropped connection', async () => {
+    let calls = 0;
+    const fetch = fetchWithOneRetry(async () => {
+      calls += 1;
+      const response = new Response('{"access_token":"kept"}', { status: 200 });
+      response.arrayBuffer = () => Promise.reject(new TypeError('Network request failed'));
+      return response;
+    });
+    const response = await fetch(refreshUrl, { method: 'POST' });
+    expect(calls).toBe(1);
+    expect(await response.json()).toEqual({ access_token: 'kept' });
+  });
+
   it('does not share two password sign-ins', async () => {
     let calls = 0;
     const fetch = fetchWithOneRetry(async () => {

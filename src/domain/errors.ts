@@ -60,7 +60,26 @@ export class UserFacingError extends Error {
   }
 }
 
+function httpStatus(error: unknown): number | null {
+  if (!error || typeof error !== 'object' || !('status' in error)) return null;
+  const status = (error as { status?: unknown }).status;
+  return typeof status === 'number' && status >= 100 && status <= 599 ? status : null;
+}
+
+function isAbortError(error: unknown): boolean {
+  if (!error || typeof error !== 'object') return false;
+  return (error as { name?: unknown }).name === 'AbortError';
+}
+
+/**
+ * A dropped connection, a DNS failure, or a client timeout.
+ * An HTTP response — including 401 and a wrong password — is not a dropped connection.
+ * An abort is the client stopping the request, not a failure to reach the server.
+ */
 export function isTransientNetworkError(error: unknown): boolean {
+  const status = httpStatus(error);
+  if (status != null && status < 500) return false;
+  if (isAbortError(error)) return false;
   return NETWORK.test(errorText(error));
 }
 
