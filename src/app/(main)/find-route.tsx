@@ -12,7 +12,7 @@ export default function FindRoute() {
   const consent = useRouteConsent();
 
   return (
-    <Screen eyebrow={OUTSIDE_SECTION_LABEL} title="Find a route" intro="A loop or a point-to-point line.">
+    <Screen eyebrow={OUTSIDE_SECTION_LABEL} title="Find a route" intro="A loop or an A to B route.">
       {!consent.ready ? <Card><T>Checking route finding.</T></Card> : null}
       {consent.ready && !consent.allowed ? (
         <RouteConsentCard onNotNow={() => router.replace('/outside' as never)} />

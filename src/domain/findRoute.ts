@@ -35,6 +35,10 @@ export const SEARCH_SLOW = 'The place search took too long. Try again.';
 
 export const SEARCH_EMPTY = 'No place matched that search.';
 
+/** Same phone location at both ends of an A to B line. */
+export const BOTH_HERE_HINT =
+  'Start and destination are both where you are. Use Loop for a circuit from here.';
+
 export const SEARCH_FAILED = 'The place search did not answer.';
 
 export const ROUTE_SLOW = 'The route took too long. Nothing was saved.';

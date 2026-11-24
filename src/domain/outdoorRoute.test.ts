@@ -2,7 +2,7 @@ import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
-import { OUTSIDE_SECTION_LABEL, SHOW_WALK_THIS_OFF } from '@/domain/outsideSection';
+import { OUTSIDE_SECTION_LABEL, SHOW_IN_APP_OUTING, SHOW_WALK_THIS_OFF } from '@/domain/outsideSection';
 import { APP_SECTIONS, TAB_SECTIONS, menuSectionActive } from '@/domain/sections';
 import {
   LOCATION_WHEN_IN_USE,
@@ -190,7 +190,7 @@ describe('Map a Route phase 1', () => {
     expect(home).not.toContain('<OutsideFacts');
 
     const find = readFileSync('src/app/(main)/find-route.tsx', 'utf8');
-    expect(find).toContain('intro="A loop or a point-to-point line."');
+    expect(find).toContain('intro="A loop or an A to B route."');
     expect(find).not.toContain('Route finding stays off');
     expect(find.indexOf('<RouteConsentCard')).toBeLessThan(find.indexOf('<OutsideFooter'));
     expect(find.indexOf('<RouteMaker')).toBeLessThan(find.indexOf('<OutsideFooter'));
@@ -234,7 +234,14 @@ describe('Map a Route phase 1', () => {
 
   it('parks Walk this off behind one flag and renames the live section', () => {
     expect(SHOW_WALK_THIS_OFF).toBe(false);
+    expect(SHOW_IN_APP_OUTING).toBe(false);
     const outside = readFileSync('src/app/(main)/outside.tsx', 'utf8');
+    expect(outside).toContain('SHOW_IN_APP_OUTING ?');
+    expect(readFileSync('src/app/(main)/activity.tsx', 'utf8')).toContain('if (!SHOW_IN_APP_OUTING) return <ParkedOuting />');
+    expect(readFileSync('src/app/(main)/activity.tsx', 'utf8')).toContain('<Redirect href="/outside" />');
+    expect(readFileSync('src/ui/RouteMaker.tsx', 'utf8')).toContain('SHOW_IN_APP_OUTING && !craving && plan.points.length >= 2');
+    expect(readFileSync('src/app/(main)/saved-route.tsx', 'utf8')).toContain('SHOW_IN_APP_OUTING ?');
+    expect(readFileSync('src/ui/OutingInProgressBanner.tsx', 'utf8')).toContain('if (!SHOW_IN_APP_OUTING || !kind) return null');
     expect(outside).toContain('SHOW_WALK_THIS_OFF ?');
     expect(outside).toContain('label="Walk this off"');
     expect(outside).toContain('OUTSIDE_SECTION_LABEL');
