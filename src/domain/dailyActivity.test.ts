@@ -192,7 +192,7 @@ describe('daily activity', () => {
     expect(charts).toContain('Activity charts');
     expect(readFileSync('src/ui/WorkoutHistoryCharts.tsx', 'utf8')).toContain('Workout History Charts');
     expect(charts).toContain('const [chartsOpen, setChartsOpen] = useState(false)');
-    expect(charts).toContain('title={name}');
+    expect(charts).toContain('title={chart.title}');
     expect(charts).toContain('Not medical advice. Not a diagnosis.');
     expect(charts).toContain('title="Steps"');
     expect(charts).toContain('title="Distance"');

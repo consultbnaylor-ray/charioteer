@@ -294,10 +294,12 @@ export function WeightTrendChart({
           <T style={{ fontFamily: theme.font.bodyStrong }}>{headlines.highest}</T>
         </View>
       ) : null}
-      <MoreInfo about="weight chart" title="What this means">
-        {caption ? <T variant="muted">{caption}</T> : null}
-        <T variant="muted">{CHART_DIRECTION_HINT}</T>
-      </MoreInfo>
+      {caption.trim() ? (
+        <MoreInfo about="weight chart" title="What this means">
+          <T variant="muted">{caption}</T>
+          <T variant="muted">{CHART_DIRECTION_HINT}</T>
+        </MoreInfo>
+      ) : null}
     </View>
   );
 }
