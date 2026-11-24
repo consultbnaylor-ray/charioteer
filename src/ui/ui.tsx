@@ -690,7 +690,7 @@ export function Choice({
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={label}
-      accessibilityState={{ selected, checked: tone === 'good' ? selected : undefined }}
+      accessibilityState={tone === 'good' ? { selected, checked: selected } : { selected }}
       onPressIn={selectOnPressIn ? choose : undefined}
       onPress={() => {
         if (selectOnPressIn) {
@@ -711,7 +711,12 @@ export function Choice({
         },
       ]}
     >
-      <Text style={{ flex: 1, fontFamily: theme.font.bodyStrong, color: alert ? theme.colors.danger : goodOn ? '#FFFFFF' : theme.colors.ink, fontSize: 15 * theme.scale }}>{label}</Text>
+      {/*
+        The words stay at their own width. flex:1 sets flexBasis to 0, so a
+        shrink-wrapped pill clips the label and the row opens into a blank gap.
+      */}
+      <Text style={{ fontFamily: theme.font.bodyStrong, color: alert ? theme.colors.danger : goodOn ? '#FFFFFF' : theme.colors.ink, fontSize: 15 * theme.scale }}>{label}</Text>
+      {goodOn || badge > 0 ? <View style={styles.choiceSpacer} /> : null}
       {goodOn ? <GoodCheck /> : null}
       <CountBadge count={badge} />
     </Pressable>
@@ -764,6 +769,7 @@ const styles = StyleSheet.create({
   passwordRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 0, paddingRight: 4, paddingLeft: 0 },
   passwordInput: { flex: 1, borderWidth: 0, backgroundColor: 'transparent', paddingLeft: 16, paddingRight: 4, paddingVertical: 12 },
   passwordToggle: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
-  choice: { borderWidth: stroke.control, borderRadius: radius.md, paddingHorizontal: 16, paddingVertical: 10, minHeight: 44, justifyContent: 'center', overflow: 'hidden' },
+  choice: { borderWidth: stroke.control, borderRadius: radius.md, paddingHorizontal: 16, paddingVertical: 10, minHeight: 44, justifyContent: 'center', overflow: 'hidden', flexGrow: 0 },
+  choiceSpacer: { flexGrow: 1, flexShrink: 0 },
   note: { borderRadius: radius.sm, borderLeftWidth: 3, padding: 14 },
 });
