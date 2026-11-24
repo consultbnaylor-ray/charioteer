@@ -20,9 +20,24 @@ export function directionsUrl(mode: Mode): string {
   return `${ORS_HOST}/openrouteservice/v2/directions/${PROFILES[mode]}/geojson`;
 }
 
+/** A UK postcode, with or without the space. "bs81ab" and "BS8 1AB" both match. */
+export function isUkPostcode(query: string): boolean {
+  const compact = query.replace(/\s+/g, '').toUpperCase();
+  return /^[A-Z]{1,2}\d[A-Z\d]?\d[A-Z]{2}$/.test(compact);
+}
+
+/** Uppercase a postcode and put one space before the inward code. Other text is only trimmed. */
+export function normalisePlaceQuery(query: string): string {
+  const trimmed = query.trim().replace(/\s+/g, ' ');
+  const compact = trimmed.replace(/\s+/g, '').toUpperCase();
+  if (!/^[A-Z]{1,2}\d[A-Z\d]?\d[A-Z]{2}$/.test(compact)) return trimmed;
+  return `${compact.slice(0, -3)} ${compact.slice(-3)}`;
+}
+
 export function geocodeUrl(query: string): string {
   const text = encodeURIComponent(query.trim().slice(0, 80));
-  return `${ORS_HOST}/pelias/v1/search?text=${text}&size=5`;
+  const country = isUkPostcode(query) ? '&boundary.country=GB' : '';
+  return `${ORS_HOST}/pelias/v1/search?text=${text}&size=5${country}`;
 }
 
 const PACE_M_PER_MIN = { walk: 80, run: 150, cycle: 250 } as const;
@@ -44,7 +59,7 @@ export function readShape(value: unknown): 'loop' | 'a_to_b' | null {
 
 export function cleanPlaceQuery(value: unknown): string | null {
   if (typeof value !== 'string') return null;
-  const query = value.trim();
+  const query = normalisePlaceQuery(value);
   if (query.length < 2 || query.length > 80) return null;
   return query;
 }
@@ -343,26 +358,35 @@ function asErrorCode(value: unknown): number | null {
   return null;
 }
 
-type LngLat = [number, number];
+type LngLat = number[];
 
 export function parseDirections(payload: unknown, mode: Mode, shape: 'loop' | 'a_to_b'): {
   profile: string;
   distanceM: number;
   durationMinutes: number;
   ascentM: number | null;
+  descentM: number | null;
+  elevationsM: number[] | null;
   points: { latitude: number; longitude: number }[];
 } | null {
   const feature = firstFeature(payload);
   if (!feature) return null;
   const coords = feature.geometry?.coordinates;
   if (!Array.isArray(coords) || coords.length < 2) return null;
-  const points = coords.flatMap((pair) => {
-    if (!Array.isArray(pair) || pair.length < 2) return [];
+  const points: { latitude: number; longitude: number }[] = [];
+  const elevations: number[] = [];
+  let elevationsComplete = true;
+  for (const pair of coords) {
+    if (points.length >= 2000) break;
+    if (!Array.isArray(pair) || pair.length < 2) continue;
     const longitude = Number(pair[0]);
     const latitude = Number(pair[1]);
-    if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return [];
-    return [{ latitude, longitude }];
-  }).slice(0, 2000);
+    if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) continue;
+    points.push({ latitude, longitude });
+    const elevation = pair.length >= 3 ? Number(pair[2]) : Number.NaN;
+    if (Number.isFinite(elevation) && elevation > -500 && elevation < 9000) elevations.push(elevation);
+    else elevationsComplete = false;
+  }
   if (points.length < 2) return null;
   const summary = feature.properties?.summary ?? {};
   const distance = Number(summary.distance);
@@ -373,6 +397,8 @@ export function parseDirections(payload: unknown, mode: Mode, shape: 'loop' | 'a
     distanceM: Math.round(distance),
     durationMinutes: Math.max(1, Math.round(duration / 60)),
     ascentM: readAscent(feature.properties),
+    descentM: readDescent(feature.properties),
+    elevationsM: elevationsComplete && elevations.length === points.length ? elevations : null,
     points,
   };
 }
@@ -383,6 +409,15 @@ function readAscent(properties: { ascent?: unknown; summary?: { ascent?: unknown
   if (Number.isFinite(direct)) return Math.round(direct);
   const summary = Number(properties?.summary?.ascent);
   if (Number.isFinite(summary)) return Math.round(summary);
+  return null;
+}
+
+/** ORS puts descent on `properties.descent`, and sometimes on `properties.summary.descent`. A missing field stays null. */
+function readDescent(properties: { descent?: unknown; summary?: { descent?: unknown } } | undefined): number | null {
+  const direct = Number(properties?.descent);
+  if (Number.isFinite(direct) && direct >= 0 && direct <= 20_000) return Math.round(direct);
+  const summary = Number(properties?.summary?.descent);
+  if (Number.isFinite(summary) && summary >= 0 && summary <= 20_000) return Math.round(summary);
   return null;
 }
 

@@ -199,7 +199,7 @@ describe('saved routes in build 75', () => {
 
     const maker = readFileSync('src/ui/RouteMaker.tsx', 'utf8');
     const card = maker.slice(maker.indexOf("variant=\"title\">{craving"));
-    expect(card.indexOf('formatClimb(plan.ascentM)')).toBeLessThan(card.indexOf("startLabel('walk')"));
+    expect(card.indexOf('<RouteSnapSummary plan={plan} />')).toBeLessThan(card.indexOf("startLabel('walk')"));
     expect(card.indexOf("startLabel('walk')")).toBeLessThan(card.indexOf("startLabel('run')"));
     expect(card.indexOf("startLabel('run')")).toBeLessThan(card.indexOf("startLabel('cycle')"));
     expect(card.indexOf("startLabel('cycle')")).toBeLessThan(card.indexOf('{ADJUST_THE_ROUTE}'));
