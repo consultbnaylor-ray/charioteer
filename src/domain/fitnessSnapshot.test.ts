@@ -416,6 +416,7 @@ describe('fitness snapshot', () => {
     expect(workouts).not.toContain('YourFitness');
     expect(workouts).toContain('<WorkoutList');
     expect(workouts).toContain('<WorkoutCalendar');
+    expect(workouts.indexOf('<WorkoutCalendar')).toBeLessThan(workouts.indexOf('<WorkoutList'));
     expect(readFileSync('src/app/(main)/health.tsx', 'utf8')).not.toContain('<YourFitness');
     expect(readFileSync('src/app/(main)/health-plan.tsx', 'utf8')).not.toContain('<YourFitness');
     expect(sync).toContain('workoutTypeMinutes');
