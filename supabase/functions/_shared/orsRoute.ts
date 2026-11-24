@@ -95,11 +95,31 @@ function clamp(value: number, low: number, high: number): number {
   return Math.min(high, Math.max(low, value));
 }
 
-/** Twelve requests in ten minutes, or forty in a day, is enough for one person. */
+/** A route or snap. Twelve in ten minutes, or forty in a day. */
+export const ROUTE_TEN_MINUTE_CAP = 12;
+export const ROUTE_DAILY_CAP = 40;
+
+/** A place search. Thirty in ten minutes, or three hundred in a day. */
+export const SEARCH_TEN_MINUTE_CAP = 30;
+export const SEARCH_DAILY_CAP = 300;
+
 export function withinRouteLimit(stamps: readonly number[], now: number): { ok: boolean; next: number[] } {
+  return withinWindow(stamps, now, ROUTE_TEN_MINUTE_CAP, ROUTE_DAILY_CAP);
+}
+
+export function withinSearchLimit(stamps: readonly number[], now: number): { ok: boolean; next: number[] } {
+  return withinWindow(stamps, now, SEARCH_TEN_MINUTE_CAP, SEARCH_DAILY_CAP);
+}
+
+function withinWindow(
+  stamps: readonly number[],
+  now: number,
+  burst: number,
+  daily: number,
+): { ok: boolean; next: number[] } {
   const day = stamps.filter((stamp) => now - stamp < 86_400_000 && now >= stamp);
   const recent = day.filter((stamp) => now - stamp < 600_000);
-  if (recent.length >= 12 || day.length >= 40) return { ok: false, next: day };
+  if (recent.length >= burst || day.length >= daily) return { ok: false, next: day };
   return { ok: true, next: [...day, now] };
 }
 
@@ -107,11 +127,17 @@ export function withinRouteLimit(stamps: readonly number[], now: number): { ok: 
  * Free Standard plan, Directions V2: 2,000 a day and 40 a minute.
  * Geocoding on that plan is 3,000 a day.
  * https://account.heigit.org/info/plans
- * The whole app stays under the smaller of those daily figures.
+ * Directions stay under 2,000. Geocoding stays under 3,000.
+ * The two caps together stay under 3,000.
  */
 export const ORS_FREE_DIRECTIONS_PER_DAY = 2000;
 
+export const ORS_FREE_GEOCODING_PER_DAY = 3000;
+
 export const GLOBAL_ROUTE_DAILY_CAP = 1500;
+
+/** Place searches for the whole app. Kept apart from the directions cap. */
+export const GLOBAL_SEARCH_DAILY_CAP = 1200;
 
 export function withinGlobalRouteLimit(
   stamps: readonly number[],
