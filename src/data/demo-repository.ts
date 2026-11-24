@@ -1321,6 +1321,12 @@ export class DemoRepository implements Repository {
     return false;
   }
 
+  async logAuthRefresh(_line: string): Promise<boolean> {
+    return false;
+  }
+
+  async flushAuthRefreshLog(): Promise<void> {}
+
   async saveTrainingSchedule(schedule: TrainingSchedule | null): Promise<void> {
     const account = this.me();
     const next = schedule ? normaliseTrainingSchedule(schedule) : null;

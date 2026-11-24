@@ -85,7 +85,9 @@ describe('health writes use the live session', () => {
     expect(signed).toContain('auth.getSession()');
     expect(signed).toContain('auth.refreshSession()');
     expect(signed).toContain('SIGN_IN_FIRST');
-    expect(signed).toContain('OFFLINE_MESSAGE');
+    expect(signed).toContain('RECONNECTING_ACCOUNT');
+    expect(signed).toContain('SIGN_IN_AGAIN');
+    expect(signed).not.toContain('OFFLINE_MESSAGE');
     expect(signed).not.toContain('getUser(');
     const save = repo.slice(repo.indexOf('async saveHealth'), repo.indexOf('async setInterestSelected'));
     expect(save).toContain('this.userId()');

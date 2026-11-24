@@ -224,6 +224,8 @@ export type AppSnapshot = {
   ready: boolean;
   mode: 'demo' | 'supabase';
   error: string | null;
+  /** Set when a saved sign-in cannot be used yet. Catalogue calls wait. */
+  accountGate?: 'reconnecting' | 'sign-in' | null;
   session: Session | null;
   profile: Profile | null;
   reasons: Reason[];
@@ -543,6 +545,10 @@ export interface Repository {
   /** A caught screen error. Screen name, short message, and build only. */
   /** True when the row was stored. False leaves a local copy for a later launch. */
   logClientError(screen: string, message: string, appBuild: string): Promise<boolean>;
+  /** Stores one saved refresh failure. The line is already safe to keep. */
+  logAuthRefresh(line: string): Promise<boolean>;
+  /** Uploads refresh failures saved on this phone, once a user token works. */
+  flushAuthRefreshLog(): Promise<void>;
   /** Writes the ticked actions and the limits. It does not call the model. */
   saveHealthPlan(plan: HealthPlan): Promise<void>;
   /** Asks Thumos for a new plan from this person's figures. Finished actions are left behind. */

@@ -2,6 +2,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.117.3';
 import { json, preflight } from '../_shared/http.ts';
 import {
   garminAuthorizeUrl,
+  hasUserJwt,
   missingRelation,
   pkceChallenge,
   pkceRecord,
@@ -18,7 +19,8 @@ Deno.serve(async (req) => {
   const service = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
   const clientId = Deno.env.get('GARMIN_CLIENT_ID') ?? '';
   const authHeader = req.headers.get('Authorization');
-  if (!url || !anon || !service || !authHeader || !clientId.trim()) {
+  if (!hasUserJwt(authHeader)) return json({ ok: false, code: 'unauthorised' }, 401);
+  if (!url || !anon || !service || !clientId.trim()) {
     console.error('garmin-oauth: config');
     return json({ ok: false, code: 'config' }, 500);
   }

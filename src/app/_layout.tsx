@@ -5,7 +5,7 @@ import { useFonts } from 'expo-font';
 import { Stack, usePathname, useRouter } from 'expo-router';
 import * as Linking from 'expo-linking';
 import * as SplashScreen from 'expo-splash-screen';
-import { useCallback, useEffect, useRef, useSyncExternalStore } from 'react';
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { AppState, Platform, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
@@ -23,6 +23,8 @@ import { clientAppBuild } from '@/domain/clientError';
 import { hasCurrentConsents } from '@/domain/consents';
 import { paywallRequired, routeAllowedWithoutSubscription } from '@/domain/subscription';
 import { useEntitlement } from '@/ui/useEntitlement';
+import { RECONNECTING_ACCOUNT } from '@/domain/accountLink';
+import { SIGN_IN_AGAIN } from '@/domain/edgeRetry';
 import { installFatalHandler, uploadStoredFatal } from '@/domain/fatalError';
 import { font, ThemeProvider, useAppTheme } from '@/ui/theme';
 import { topSafeInset } from '@/ui/safeArea';
@@ -30,7 +32,7 @@ import { KeyboardDoneBar } from '@/ui/keyboard';
 import { RootErrorBoundary } from '@/ui/RootErrorBoundary';
 import { AiLimitCard } from '@/ui/AiLimitCard';
 import { aiGateSnapshot, publishAiGate, subscribeAiGate } from '@/domain/aiGate';
-import { Mark, T, Wordmark } from '@/ui/ui';
+import { Button, Mark, T, Wordmark } from '@/ui/ui';
 
 installFatalHandler();
 
@@ -138,6 +140,7 @@ function Chrome() {
       buildNumber: Constants.expoConfig?.ios?.buildNumber,
       version: Constants.expoConfig?.version,
     }));
+    void repo.flushAuthRefreshLog();
   }, [repo, snap.ready, snap.session]);
 
   useEffect(() => {
@@ -251,15 +254,40 @@ function Chrome() {
     return <OpeningDay background={theme.colors.bg} />;
   }
 
+  const accountGate = snap.accountGate === 'reconnecting' || snap.accountGate === 'sign-in' ? snap.accountGate : null;
+
   return (
     <>
       <StatusBar style={theme.scheme === 'dark' ? 'light' : 'dark'} />
       <AiLimitOverlay />
       <MessageIconBadge />
       <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: theme.colors.bg } }} />
+      {accountGate ? <AccountLinkNotice gate={accountGate} /> : null}
       <NoteStackMounted flag={stackMounted} />
       <KeyboardDoneBar />
     </>
+  );
+}
+
+function AccountLinkNotice({ gate }: { gate: 'reconnecting' | 'sign-in' }) {
+  const theme = useAppTheme();
+  const repo = useRepository();
+  const router = useRouter();
+  const [pending, setPending] = useState(false);
+  const signIn = gate === 'sign-in';
+  const onPress = () => {
+    if (signIn) {
+      void repo.signOut().finally(() => router.replace('/sign-in' as never));
+      return;
+    }
+    setPending(true);
+    void repo.reload().finally(() => setPending(false));
+  };
+  return (
+    <View style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, zIndex: 40, backgroundColor: theme.colors.bg, alignItems: 'center', justifyContent: 'center', padding: 24, gap: 16 }}>
+      <T>{signIn ? SIGN_IN_AGAIN : RECONNECTING_ACCOUNT}</T>
+      <Button label={signIn ? 'Sign in' : 'Try again'} pending={pending} onPress={onPress} />
+    </View>
   );
 }
 
