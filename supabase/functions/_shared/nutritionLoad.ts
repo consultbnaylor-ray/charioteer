@@ -123,7 +123,7 @@ function settingsFromRow(row: unknown): NutritionSettings {
   return {
     ...base,
     kcalTarget: target,
-    hideCalories: record.hide_calories === true,
+    hideCalories: false,
     shareFoodDiary: record.share_food_diary === true,
     shareCalories: record.share_calories === true,
     shareQuality: record.share_quality === true,
@@ -375,7 +375,7 @@ export async function loadNutritionLines(
         items: log.items.map((item) => ({ name: item.name, kcal: item.kcal, proteinG: item.proteinG })),
       })),
       weightKg,
-      calorieTarget: settings.hideCalories ? null : (coach.health ? weightPlan?.targetKcal ?? settings.kcalTarget : settings.kcalTarget),
+      calorieTarget: coach.health ? weightPlan?.targetKcal ?? settings.kcalTarget : settings.kcalTarget,
       proteinTargetG: settings.proteinTarget,
       goalProteinG: weightKg != null && settings.goal ? proteinGramsFor(settings.goal, weightKg, settings.build, settings.goalPhase) : null,
       hideCalories: settings.hideCalories,

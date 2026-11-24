@@ -4532,7 +4532,7 @@ function nutritionFromRow(row: Row | null): NutritionSettings {
   return {
     ...base,
     kcalTarget: target == null ? null : Math.round(target),
-    hideCalories: row.hide_calories === true,
+    hideCalories: false,
     shareFoodDiary: row.share_food_diary === true,
     shareCalories: row.share_calories === true,
     shareQuality: row.share_quality === true,

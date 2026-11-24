@@ -388,7 +388,7 @@ function targetLine(facts: Derived): string {
   }
   const parts: string[] = [];
   if (goal) parts.push(goal);
-  if (!facts.input.hideCalories && facts.input.kcalTarget != null) {
+  if (facts.input.kcalTarget != null) {
     parts.push(`${facts.input.kcalTarget.toLocaleString('en-GB')} kcal`);
   }
   if (facts.input.proteinTarget != null) parts.push(`${facts.input.proteinTarget} g protein`);
@@ -409,7 +409,7 @@ function targetLine(facts: Derived): string {
     const spec = PRO_BOXING_CLASSES[facts.input.goal];
     parts.push(`Professional ${spec.short} limit about ${spec.limitKg} kg is a note for a coach and a doctor`);
   }
-  if (facts.recentKcal != null && !facts.input.hideCalories) {
+  if (facts.recentKcal != null) {
     parts.push(`recent days averaged ${Math.round(facts.recentKcal).toLocaleString('en-GB')} kcal`);
   }
   if (facts.recentProtein != null) parts.push(`about ${Math.round(facts.recentProtein)} g protein`);

@@ -43,7 +43,7 @@ export function goalLedFromSnapshot(snap: AppSnapshot, now = new Date(), period:
   return {
     goal: settings?.goal ?? null,
     stage,
-    hideCalories: settings?.hideCalories === true,
+    hideCalories: false,
     kcalTarget: settings?.kcalTarget ?? null,
     proteinTarget: settings?.proteinTarget ?? null,
     weightClassKg: settings?.weightClassKg ?? null,

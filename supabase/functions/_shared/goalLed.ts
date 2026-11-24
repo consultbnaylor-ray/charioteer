@@ -330,7 +330,6 @@ function proteinMeasure(input: GoalLedInput): GoalMeasure {
 }
 
 function kcalMeasure(input: GoalLedInput, aim: 'match' | 'under-or-at' | 'at-or-over'): GoalMeasure | null {
-  if (input.hideCalories) return null;
   const target = num(input.kcalTarget);
   const kcal = Math.max(0, input.todayKcal ?? 0);
   if (!input.todayLogged || target == null || target <= 0) {
@@ -532,7 +531,7 @@ function measuresFor(input: GoalLedInput): GoalMeasure[] {
   if (goal === 'lose_weight') {
     picked.push(input.blockedLoss ? protein : kcalMeasure(input, 'under-or-at'), protein, weightMeasure(input, 'down'));
   } else if (goal === 'lose_fat_build_muscle') {
-    picked.push(protein, sessions, input.hideCalories || input.blockedLoss ? weightMeasure(input, 'down') : kcalMeasure(input, 'under-or-at'));
+    picked.push(protein, sessions, input.blockedLoss ? weightMeasure(input, 'down') : kcalMeasure(input, 'under-or-at'));
   } else if (goal === 'maintain') {
     picked.push(kcalMeasure(input, 'match'), weightMeasure(input, 'steady'), protein);
   } else if (goal === 'increase') {
@@ -561,10 +560,10 @@ function nudgesFor(input: GoalLedInput, measures: GoalMeasure[]): string[] {
   const weight = measures.find((item) => item.id === 'weight' && item.status.startsWith('Over the class'));
   if (weight) lines.push(weight.words);
   const kcal = measures.find((item) => item.id === 'kcal');
-  if (!input.hideCalories && kcal?.status === 'Above' && (input.goal === 'lose_weight' || input.goal === 'lose_fat_build_muscle') && !input.blockedLoss) {
+  if (kcal?.status === 'Above' && (input.goal === 'lose_weight' || input.goal === 'lose_fat_build_muscle') && !input.blockedLoss) {
     lines.push('Today\'s meals are above the calorie target you set. There is no failing a day.');
   }
-  if (!input.hideCalories && kcal?.status === 'Under' && (input.goal === 'increase' || input.goal === 'body_builder' || input.goal === 'elite_heavy_boxer')) {
+  if (kcal?.status === 'Under' && (input.goal === 'increase' || input.goal === 'body_builder' || input.goal === 'elite_heavy_boxer')) {
     lines.push('Today\'s meals are under the amount you set. A little more of a meal you already eat covers it.');
   }
   return lines.slice(0, 2);
@@ -672,12 +671,11 @@ export function buildGoalLed(input: GoalLedInput): GoalLed {
   };
 }
 
-/** One context line for Thumos. Calories stay out when they are hidden. */
+/** One context line for Thumos. Calories stay in the line. */
 export function goalProgressLine(input: GoalLedInput): string | null {
   const view = buildGoalLed(input);
   if (!view.name) return null;
   const nudge = view.nudges[0] ?? '';
   const detail = view.ticks.map((tick) => `${tick.label} (${tick.statusWord})`).join('. ');
-  const line = `How they're doing toward ${view.name}. ${view.progressWords}. ${detail}${nudge && !detail.includes(nudge) ? ` ${nudge}` : ''}`;
-  return input.hideCalories ? line.replace(/\d[\d,]*\s*kcal/gi, 'the amount they set').replace(/\bkcal\b/gi, 'food') : line;
+  return `How they're doing toward ${view.name}. ${view.progressWords}. ${detail}${nudge && !detail.includes(nudge) ? ` ${nudge}` : ''}`;
 }

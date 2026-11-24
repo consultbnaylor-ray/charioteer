@@ -54,7 +54,7 @@ export function ThumosStatsAnalysis() {
           age: snap.nutrition.goalAge,
           today: londonDay(new Date()),
         }) : false,
-        hideCalories: snap.nutrition?.hideCalories === true,
+        hideCalories: false,
         logs: (snap.foodLogs ?? []).map((log) => ({
           eatenOn: log.eatenOn,
           meal: log.meal,
