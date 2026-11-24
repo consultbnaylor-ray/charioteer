@@ -121,7 +121,7 @@ describe('workout diary sent to Thumos', () => {
     expect(lines[1].indexOf('3 Nov 2026')).toBeLessThan(lines.at(-1)?.indexOf('2026') ?? 0);
   });
 
-  it('hides calories when asked, and skips a trend from one short night', () => {
+  it('keeps meal calories on a session line, and skips a trend from one short night', () => {
     const lines = buildWorkoutReflections({
       today,
       feelings: [feeling({ recordedOn: '2026-11-01', workoutKey: 'garmin:a', effort: 6 })],
@@ -132,7 +132,7 @@ describe('workout diary sent to Thumos', () => {
     });
     expect(lines).toHaveLength(1);
     expect(lines[0]).toContain('Before the session: 1 meal');
-    expect(lines[0]).not.toContain('kcal');
+    expect(lines[0]).toContain('200 kcal');
     expect(lines[0]).not.toContain('Average effort');
   });
 

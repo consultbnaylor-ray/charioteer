@@ -596,18 +596,6 @@ function leanTile(input: StatsOverviewInput): StatTileModel | null {
 function calorieTile(input: StatsOverviewInput, today: string): StatTileModel {
   const period = chosenPeriod(input);
   const trend = nutritionTrendDays(input.foodLogs, today, periodDayCount(period)).map((day) => day.kcal);
-  if (input.nutrition.hideCalories) {
-    return tile({
-      id: 'calories',
-      title: 'Calories',
-      value: 'Hidden',
-      meaning: 'Calories are hidden',
-      tone: 'info',
-      series: [],
-      chart: { kind: 'none' },
-      href: '/nutrition?section=calories',
-    });
-  }
   const window = rollingWindow(today, period);
   const completedDays = period === 'day' ? window.days : window.days.filter((day) => day < today);
   const completedLogged = completedDays.flatMap((day) => {
@@ -803,7 +791,7 @@ function attachOverview(tile: StatTileModel, input: StatsOverviewInput): StatTil
       heightCm: input.heightCm,
       realAge: input.nutrition.goalAge,
       windowDays: periodDayCount(period),
-      calorieTarget: input.nutrition.hideCalories ? null : input.nutrition.kcalTarget,
+      calorieTarget: input.nutrition.kcalTarget,
       proteinTarget: input.nutrition.proteinTarget,
       drinkFreeGoal: input.drinkFreeDaysGoal,
       ...tile.ratingContext,

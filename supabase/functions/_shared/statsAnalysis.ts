@@ -326,7 +326,6 @@ export function nutritionBriefFromLogs(input: {
 }): NutritionBrief {
   const span = input.days ?? 7;
   const start = shiftIso(input.today, -(span - 1));
-  const hide = input.hideCalories === true;
   const byDay = new Map<string, { kcal: number; protein: number }>();
   const collected: (LoggedMeal & { iso: string })[] = [];
   for (const log of input.logs) {
@@ -350,7 +349,7 @@ export function nutritionBriefFromLogs(input: {
       day: formatUkCompactDay(day),
       slot: SLOT_LABEL[log.meal ?? ''] ?? 'Meal',
       name: (names.join(', ') || cleanMealName(log.note ?? '') || 'Logged meal').slice(0, 80),
-      kcal: hide ? null : Math.round(kcal),
+      kcal: Math.round(kcal),
       proteinG: Math.round(protein),
       estimated: log.estimated === true,
     });
@@ -367,9 +366,9 @@ export function nutritionBriefFromLogs(input: {
   const proteinTargetSource = savedProtein != null ? 'saved' : goalProtein != null ? 'goal' : guideProtein != null ? 'guide' : null;
   const brief: NutritionBrief = {
     loggedDays: days.length,
-    averageKcal: hide ? null : average((row) => row.kcal),
+    averageKcal: average((row) => row.kcal),
     averageProteinG: average((row) => row.protein),
-    calorieTarget: hide ? null : boundedNumber(input.calorieTarget, 800, 6000),
+    calorieTarget: boundedNumber(input.calorieTarget, 800, 6000),
     proteinTargetG,
     proteinTargetSource,
     proteinGuide: proteinGuideFor(input.weightKg),
@@ -572,7 +571,7 @@ function averageIntakeLine(brief: NutritionBrief): string {
     const versus = brief.proteinTargetG != null && brief.averageProteinG != null
       ? `, ${compareWord(brief.averageProteinG, brief.proteinTargetG)} the ${countText(brief.proteinTargetG)} g protein target`
       : '';
-    return `Averaging about ${countText(brief.averageProteinG ?? 0)} g protein a day${versus}. Calories stay hidden.`;
+    return `Averaging about ${countText(brief.averageProteinG ?? 0)} g protein a day${versus}.`;
   }
   const kcalVersus = brief.calorieTarget != null ? `${compareWord(brief.averageKcal, brief.calorieTarget)} the ${countText(brief.calorieTarget)} kcal target` : '';
   const proteinVersus = brief.proteinTargetG != null && brief.averageProteinG != null

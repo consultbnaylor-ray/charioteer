@@ -77,7 +77,6 @@ function RingLine({ fill, status, tick }: { fill: number; status: string; tick: 
 export function TodayMeals({
   rows,
   totals,
-  hideCalories,
   ring,
   protein = null,
   activeId,
@@ -89,7 +88,6 @@ export function TodayMeals({
 }: {
   rows: readonly TodayMealRow[];
   totals: TodayMealTotals;
-  hideCalories: boolean;
   ring: TodayRing | null;
   /** Protein still to eat, using the same target as the day bar. */
   protein?: LoggedProteinRing | null;
@@ -109,7 +107,7 @@ export function TodayMeals({
   useEffect(() => {
     if (pinned) setOpen(true);
   }, [pinned]);
-  const total = rows.length > 0 ? todayMealTotalLine(totals, hideCalories) : '';
+  const total = rows.length > 0 ? todayMealTotalLine(totals, false) : '';
   return (
     <View style={{ gap: 8 }}>
       {bare ? null : long ? (
@@ -131,7 +129,7 @@ export function TodayMeals({
         </View>
       ) : null}
       {shown ? rows.map((row, index) => {
-        const kcal = hideCalories ? '' : ` · ${row.kcal.toLocaleString('en-GB')} kcal`;
+        const kcal = ` · ${row.kcal.toLocaleString('en-GB')} kcal`;
         const justSaved = row.id === highlightId;
         return (
           <View

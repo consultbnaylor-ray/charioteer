@@ -730,8 +730,8 @@ export function processedFoodNotes(logs: readonly FoodLog[], days: readonly stri
   });
 }
 
-export function targetLine(kcal: number, target: number | null, hideCalories: boolean): string | null {
-  if (hideCalories || target == null) return null;
+export function targetLine(kcal: number, target: number | null, _hideCalories?: boolean): string | null {
+  if (target == null) return null;
   if (kcal > target) return NO_SHAME_OVER;
   return WITHIN_TARGET;
 }
@@ -741,8 +741,7 @@ export function alcoholKcalSaved(unitsAvoided: number): number {
   return Math.round(unitsAvoided * (NHS_PINT_52_KCAL / NHS_PINT_52_UNITS));
 }
 
-export function alcoholSavedLine(unitsAvoided: number, hideCalories: boolean): string | null {
-  if (hideCalories) return null;
+export function alcoholSavedLine(unitsAvoided: number, _hideCalories?: boolean): string | null {
   const kcal = alcoholKcalSaved(unitsAvoided);
   if (kcal <= 0) return null;
   return `About ${kcal.toLocaleString('en-GB')} kcal not drunk, from the units you have avoided. Based on the NHS pint of 5.2% lager: 222 kcal for about 3 units.`;
@@ -765,11 +764,11 @@ export function publicMealLines(logs: readonly FoodLog[], day: string): { meal: 
 }
 
 /** kcal plus protein, carbohydrate, sugar and fibre. The fat split stays on the quality share. */
-export function caloriesShareLine(items: readonly FoodItem[], hideCalories: boolean): string {
-  if (!items.length) return hideCalories ? 'No macros logged today.' : 'No calories or macros logged today.';
+export function caloriesShareLine(items: readonly FoodItem[], _hideCalories?: boolean): string {
+  if (!items.length) return 'No calories or macros logged today.';
   const totals = sumItems(items);
   const parts = [
-    hideCalories ? null : `${totals.kcal.toLocaleString('en-GB')} kcal`,
+    `${totals.kcal.toLocaleString('en-GB')} kcal`,
     `protein ${totals.proteinG} g`,
     `carbohydrate ${totals.carbsG} g`,
     `sugar ${totals.sugarG} g`,
@@ -1236,13 +1235,32 @@ export const MEAL_SALT_GUIDE_G = 1.8;
 /** UK label: salt grams = sodium milligrams × 2.5 / 1000. */
 const SALT_FROM_SODIUM_MG = 2.5 / 1000;
 
+export type MealBarTargets = {
+  /** Daily protein target, grams. */
+  proteinG?: number | null;
+  /** Daily carbohydrate target, grams. */
+  carbsG?: number | null;
+};
+
+/** Within a named limit, or past a limit or a daily target. These bars have no further "far over" step. */
+export type NutrientBarStatus = 'within' | 'above';
+
 export type MealNutrientBar = {
   key: string;
-  /** Name, grams, and a guideline word when one exists. */
+  /** Full sentence, including any status words. */
   label: string;
-  /** Share of this bar's track, from 0 to 1. */
+  /** Share of this bar's track, from 0 to 1. Full when the daily target or the named limit is met. */
   fill: number;
-  /** Share of the track that is the healthy zone. Omitted when no guideline applies. */
+  /**
+   * Excess past a full track, as a share of the same scale, capped at one extra length.
+   * Drawn in amber, the same idea as the calorie ring's second lap.
+   */
+  overfill?: number;
+  /** No track. Nothing on this screen is a scale for this amount. */
+  unscaled?: boolean;
+  /** Colours the status words. The track itself is the scale, so there is no second segment. */
+  status?: NutrientBarStatus;
+  /** Unused. A pale zone on a different scale was the unexplained ghost segment. */
   zone?: number;
 };
 
@@ -1299,8 +1317,73 @@ export function processedFoodLevel(items: readonly FoodItem[]): ProcessedFoodLev
   return 'Medium';
 }
 
+function positiveScale(value: number | null | undefined): number | null {
+  return value != null && Number.isFinite(value) && value > 0 ? value : null;
+}
+
+/**
+ * Map a logged amount onto one bar.
+ * `scale` is the number that fills the track: the daily target, or the limit named in the label.
+ * Fill clamps at 1. Overfill is the excess as a share of that same scale, capped at one extra length.
+ */
+export function barFraction(value: number, scale: number | null): { fill: number; overfill: number } {
+  const amount = Number.isFinite(value) && value > 0 ? value : 0;
+  if (scale == null || !(scale > 0) || !Number.isFinite(scale)) return { fill: 0, overfill: 0 };
+  const ratio = amount / scale;
+  return {
+    fill: Math.min(1, ratio),
+    overfill: ratio > 1 ? Math.min(1, ratio - 1) : 0,
+  };
+}
+
+function percentOfDaily(value: number, target: number): string {
+  const percent = Math.round((value / target) * 100);
+  const shown = percent === 0 && value > 0 ? '<1' : String(percent);
+  return `${shown}% of daily target`;
+}
+
+function excessClause(value: number, target: number, unit: 'g' | 'kcal'): string {
+  if (!(value > target)) return '';
+  if (unit === 'kcal') {
+    const over = Math.round(value - target);
+    return over > 0 ? ` · +${over.toLocaleString('en-GB')} kcal` : '';
+  }
+  const over = round1(value - target);
+  return over > 0 ? ` · +${formatGrams(over)} g` : '';
+}
+
+/** Share of the daily target. Without a target the grams stay as words, with no track that could look full. */
+function shareBar(key: string, name: string, grams: number, target: number | null): MealNutrientBar {
+  if (target == null) {
+    return { key, label: `${name} ${formatGrams(grams)} g`, fill: 0, overfill: 0, unscaled: true };
+  }
+  const fraction = barFraction(grams, target);
+  return {
+    key,
+    label: `${name} ${formatGrams(grams)} g · ${percentOfDaily(grams, target)}`,
+    fill: fraction.fill,
+    overfill: fraction.overfill,
+    ...(fraction.overfill > 0 ? { status: 'above' as const } : {}),
+  };
+}
+
+/**
+ * The track is the meal limit named in the label (27 g sugars, 21 g fat, and so on).
+ * Within fills toward that limit. Above fills the track and laps the excess in amber.
+ */
+function limitBar(key: string, name: string, grams: number, guide: number): MealNutrientBar {
+  const fraction = barFraction(grams, guide);
+  return {
+    key,
+    label: `${name} ${formatGrams(grams)} g · ${zoneWords(grams, guide)}`,
+    fill: fraction.fill,
+    overfill: fraction.overfill,
+    status: grams <= guide ? 'within' : 'above',
+  };
+}
+
 /** Bars for the nutrients this meal actually has. A missing figure is left out, including a stored zero. */
-export function mealNutrientBars(items: readonly FoodItem[]): MealNutrientBar[] {
+export function mealNutrientBars(items: readonly FoodItem[], targets: MealBarTargets = {}): MealNutrientBar[] {
   const protein = sumKnown(items, 'proteinG');
   const carbs = sumKnown(items, 'carbsG');
   const sugar = sumKnown(items, 'sugarG');
@@ -1312,34 +1395,23 @@ export function mealNutrientBars(items: readonly FoodItem[]): MealNutrientBar[] 
   const fatParts = [unsaturated, saturated, trans].filter((part): part is number => part != null);
   const fat = fatParts.length ? round1(fatParts.reduce((sum, part) => sum + part, 0)) : null;
   const salt = sodium == null ? null : round1(sodium * SALT_FROM_SODIUM_MG);
-  const specs: { key: string; name: string; grams: number | null; guide?: number }[] = [
-    { key: 'protein', name: 'Protein', grams: protein },
-    { key: 'carbs', name: 'Carbs', grams: carbs },
-    { key: 'sugar', name: 'Sugars', grams: sugar, guide: MEAL_SUGAR_GUIDE_G },
-    { key: 'fat', name: 'Total fat', grams: fat, guide: MEAL_FAT_GUIDE_G },
-    { key: 'saturated', name: 'Saturated fat', grams: saturated, guide: MEAL_SAT_FAT_GUIDE_G },
-    { key: 'fibre', name: 'Fibre', grams: fibre },
-    { key: 'salt', name: 'Salt', grams: salt, guide: MEAL_SALT_GUIDE_G },
-  ];
-  const visible = specs.filter((spec): spec is { key: string; name: string; grams: number; guide?: number } => spec.grams != null && spec.grams > 0);
-  const peak = visible.reduce((max, spec) => Math.max(max, spec.grams, spec.guide ?? 0), 0);
-  const bars: MealNutrientBar[] = visible.map((spec) => {
-    const label = spec.guide == null
-      ? `${spec.name} ${formatGrams(spec.grams)} g`
-      : `${spec.name} ${formatGrams(spec.grams)} g · ${zoneWords(spec.grams, spec.guide)}`;
-    return {
-      key: spec.key,
-      label,
-      fill: peak > 0 ? spec.grams / peak : 0,
-      ...(spec.guide == null ? {} : { zone: peak > 0 ? Math.min(1, spec.guide / peak) : 0 }),
-    };
-  });
+  const proteinTarget = positiveScale(targets.proteinG);
+  const carbTarget = positiveScale(targets.carbsG);
+  const bars: MealNutrientBar[] = [];
+  if (protein != null && protein > 0) bars.push(shareBar('protein', 'Protein', protein, proteinTarget));
+  if (carbs != null && carbs > 0) bars.push(shareBar('carbs', 'Carbs', carbs, carbTarget));
+  if (sugar != null && sugar > 0) bars.push(limitBar('sugar', 'Sugars', sugar, MEAL_SUGAR_GUIDE_G));
+  if (fat != null && fat > 0) bars.push(limitBar('fat', 'Total fat', fat, MEAL_FAT_GUIDE_G));
+  if (saturated != null && saturated > 0) bars.push(limitBar('saturated', 'Saturated fat', saturated, MEAL_SAT_FAT_GUIDE_G));
+  if (fibre != null && fibre > 0) bars.push({ key: 'fibre', label: `Fibre ${formatGrams(fibre)} g`, fill: 0, overfill: 0, unscaled: true });
+  if (salt != null && salt > 0) bars.push(limitBar('salt', 'Salt', salt, MEAL_SALT_GUIDE_G));
   const level = processedFoodLevel(items);
   if (level) {
     bars.push({
       key: 'processed',
       label: `Processed food level ${level}`,
       fill: level === 'Low' ? 1 / 3 : level === 'Medium' ? 2 / 3 : 1,
+      overfill: 0,
     });
   }
   return bars;
@@ -1363,7 +1435,12 @@ function mealWhen(log: FoodLog): string {
 }
 
 /** This person's meals for one day, earliest first. Another account's rows are left out. */
-export function todayMealRows(logs: readonly FoodLog[], day: string, ownerId: string): TodayMealRow[] {
+export function todayMealRows(
+  logs: readonly FoodLog[],
+  day: string,
+  ownerId: string,
+  targets: MealBarTargets = {},
+): TodayMealRow[] {
   return logs
     .filter((log) => log.eatenOn === day && log.userId === ownerId)
     .slice()
@@ -1377,7 +1454,7 @@ export function todayMealRows(logs: readonly FoodLog[], day: string, ownerId: st
         name: names || log.note.trim() || 'Meal',
         kcal: sumItems(log.items).kcal,
         previewUrl: log.previewUrl ?? null,
-        bars: mealNutrientBars(log.items),
+        bars: mealNutrientBars(log.items, targets),
       };
     });
 }
@@ -1431,13 +1508,12 @@ export function recentDuplicateMeal(
   });
 }
 
-/** kcal, then protein, carbohydrate, and fat when any of those was logged. */
-export function todayMealTotalLine(totals: TodayMealTotals, hideCalories: boolean): string {
+/** kcal, then protein, carbohydrate, and fat when any of those was logged. Calories stay in the line. */
+export function todayMealTotalLine(totals: TodayMealTotals, _hideCalories?: boolean): string {
   const hasMacros = totals.proteinG > 0 || totals.carbsG > 0 || totals.fatG > 0;
   const macros = hasMacros
     ? `Protein ${totals.proteinG} g · carbohydrate ${totals.carbsG} g · fat ${totals.fatG} g`
     : '';
-  if (hideCalories) return macros;
   const kcal = `${Math.round(totals.kcal).toLocaleString('en-GB')} kcal`;
   return macros ? `${kcal} · ${macros}` : kcal;
 }
@@ -1581,7 +1657,6 @@ export function mealDayHeading(input: {
 }): string {
   const count = input.mealCount === 1 ? '1 meal' : `${input.mealCount} meals`;
   const title = `${mealDayTitle(input.day, input.today)} - ${count}`;
-  if (input.hideCalories) return title;
   return `${title} - ${Math.round(input.kcal).toLocaleString('en-GB')} kcal`;
 }
 
@@ -1593,7 +1668,7 @@ export type MealDayGroup = {
   proteinG: number;
   /** Fri 16 Oct - 3 meals - 1,820 kcal */
   heading: string;
-  /** Calorie and protein tracks. A shaded zone is this person's own target, and only when one is set. */
+  /** Calorie and protein tracks. Each fills as value/daily target. Excess laps in amber. */
   bars: MealNutrientBar[];
 };
 
@@ -1608,7 +1683,6 @@ export function mealDayGroups(
   options: { hideCalories?: boolean; kcalTarget?: number | null; proteinTarget?: number | null } = {},
 ): MealDayGroup[] {
   if (!ownerId) return [];
-  const hide = options.hideCalories === true;
   const days = [...new Set(logs.filter((log) => log.userId === ownerId && log.eatenOn).map((log) => log.eatenOn))]
     .sort((a, b) => b.localeCompare(a));
   const drafts = days.flatMap((day) => {
@@ -1617,36 +1691,56 @@ export function mealDayGroups(
     if (mealCount === 0) return [];
     return [{ day, isToday: day === today, mealCount, kcal: totals.kcal, proteinG: totals.proteinG }];
   });
-  const kcalTarget = options.kcalTarget != null && options.kcalTarget > 0 ? options.kcalTarget : null;
-  const proteinTarget = options.proteinTarget != null && options.proteinTarget > 0 ? options.proteinTarget : null;
-  const kcalScale = Math.max(...drafts.map((group) => group.kcal), kcalTarget ?? 0, 1);
-  const proteinScale = Math.max(...drafts.map((group) => group.proteinG), proteinTarget ?? 0, 1);
-  return drafts.map((group) => {
-    const bars: MealNutrientBar[] = [];
-    if (!hide) {
-      bars.push({
-        key: 'kcal',
-        label: kcalTarget
-          ? `${Math.round(group.kcal).toLocaleString('en-GB')} of ${Math.round(kcalTarget).toLocaleString('en-GB')} kcal`
-          : `${Math.round(group.kcal).toLocaleString('en-GB')} kcal`,
-        fill: group.kcal / kcalScale,
-        ...(kcalTarget ? { zone: Math.min(1, kcalTarget / kcalScale) } : {}),
-      });
-    }
-    bars.push({
-      key: 'protein',
-      label: proteinTarget
-        ? `Protein ${formatGrams(group.proteinG)} of ${formatGrams(proteinTarget)} g`
-        : `Protein ${formatGrams(group.proteinG)} g`,
-      fill: proteinScale > 0 ? group.proteinG / proteinScale : 0,
-      ...(proteinTarget ? { zone: Math.min(1, proteinTarget / proteinScale) } : {}),
-    });
+  const kcalTarget = positiveScale(options.kcalTarget);
+  const proteinTarget = positiveScale(options.proteinTarget);
+  const kcalStretch = Math.max(...drafts.map((group) => group.kcal), 1);
+  const proteinStretch = Math.max(...drafts.map((group) => group.proteinG), 1);
+  return drafts.map((group) => ({
+    ...group,
+    heading: mealDayHeading({ ...group, today, hideCalories: false }),
+    bars: [
+      dayTrack({ key: 'kcal', value: group.kcal, target: kcalTarget, stretch: kcalStretch, unit: 'kcal' }),
+      dayTrack({ key: 'protein', name: 'Protein', value: group.proteinG, target: proteinTarget, stretch: proteinStretch, unit: 'g' }),
+    ],
+  }));
+}
+
+/**
+ * A day bar fills as value/daily target. Without a target it only compares days with each other,
+ * and the label does not say "of" a target. A met target is a full bar. Excess is the amber lap.
+ */
+function dayTrack(input: {
+  key: string;
+  name?: string;
+  value: number;
+  target: number | null;
+  stretch: number;
+  unit: 'g' | 'kcal';
+}): MealNutrientBar {
+  if (input.target != null) {
+    const fraction = barFraction(input.value, input.target);
+    const shownValue = input.unit === 'kcal'
+      ? Math.round(input.value).toLocaleString('en-GB')
+      : formatGrams(input.value);
+    const shownTarget = input.unit === 'kcal'
+      ? Math.round(input.target).toLocaleString('en-GB')
+      : formatGrams(input.target);
+    const head = input.unit === 'kcal'
+      ? `${shownValue} of ${shownTarget} kcal`
+      : `${input.name ?? 'Protein'} ${shownValue} of ${shownTarget} g`;
     return {
-      ...group,
-      heading: mealDayHeading({ ...group, today, hideCalories: hide }),
-      bars,
+      key: input.key,
+      label: `${head}${excessClause(input.value, input.target, input.unit)}`,
+      fill: fraction.fill,
+      overfill: fraction.overfill,
+      ...(fraction.overfill > 0 ? { status: 'above' as const } : {}),
     };
-  });
+  }
+  const fill = input.stretch > 0 ? Math.max(0, input.value / input.stretch) : 0;
+  const label = input.unit === 'kcal'
+    ? `${Math.round(input.value).toLocaleString('en-GB')} kcal`
+    : `${input.name ?? 'Protein'} ${formatGrams(input.value)} g`;
+  return { key: input.key, label, fill, overfill: 0 };
 }
 
 /** One Show more step is this many days, counting back from today. */
@@ -1756,7 +1850,6 @@ export function trendCaption(days: readonly TrendDay[], input: {
     return input.span <= 7 ? WEEK_CHART_EMPTY : 'Log a few meals to see the month.';
   }
   const protein = round1(logged.reduce((sum, day) => sum + day.proteinG, 0) / logged.length);
-  if (input.hideCalories) return `Logged days average ${protein} g protein.`;
   const kcal = Math.round(logged.reduce((sum, day) => sum + day.kcal, 0) / logged.length);
   return `Logged days average ${kcal.toLocaleString('en-GB')} kcal and ${protein} g protein.`;
 }
@@ -1913,7 +2006,6 @@ export function nutritionContextLines(input: {
 }): string[] {
   const items = dayItems(input.logs, input.today);
   const totals = sumItems(items);
-  const hide = input.settings.hideCalories;
   const lines: string[] = [];
   if (input.settings.wagonOn) {
     lines.push('They have flagged that they have fallen off the wagon. Treat this as a safety moment. Be gentle. Do not shame. Mention the Samaritans on 116 123 and Drinkline on 0300 123 1110.');
@@ -1929,10 +2021,8 @@ export function nutritionContextLines(input: {
     leanMassKg: input.body?.leanMassKg ?? null,
     waistCm: input.body?.waistCm ?? null,
   }));
-  if (!hide) {
-    const saved = alcoholSavedLine(input.unitsAvoided, false);
-    if (saved) lines.push(saved);
-  }
+  const saved = alcoholSavedLine(input.unitsAvoided, false);
+  if (saved) lines.push(saved);
   if (items.length) {
     const quality = [
       `protein ${totals.proteinG}g`,
@@ -1944,7 +2034,7 @@ export function nutritionContextLines(input: {
       `trans fat ${totals.transG}g`,
       `sodium ${totals.sodiumMg}mg`,
     ];
-    const energy = hide ? 'calories hidden' : `${totals.kcal} kcal, an estimate`;
+    const energy = `${totals.kcal} kcal, an estimate`;
     lines.push(`Today's food (${input.today}): ${energy}; ${quality.join(', ')}.`);
     const processed = processedLine(items);
     if (processed) lines.push(processed);
@@ -1964,10 +2054,9 @@ export function nutritionContextLines(input: {
     lines.push(`Their goal is ${GOAL_LABEL[goal]}.`);
     lines.push(...goalCoachLines(input.settings, input.soberDays != null));
     if (blocked) lines.push('A lower intake is not being suggested.');
-    else if (!hide && input.settings.kcalTarget != null) {
+    else if (input.settings.kcalTarget != null) {
       lines.push(`The calorie target they set is ${input.settings.kcalTarget} kcal. One gentle tip is enough. There is no failing a day.`);
-    } else if (hide) lines.push('Calories stay hidden. Speak about protein and food quality.');
-    else lines.push(`Offer one gentle tip that fits ${GOAL_LABEL[goal]}.`);
+    } else lines.push(`Offer one gentle tip that fits ${GOAL_LABEL[goal]}.`);
     if (input.settings.proteinTarget != null) {
       const mark = totals.proteinG >= input.settings.proteinTarget ? 'at' : 'short of';
       lines.push(`Protein today is ${totals.proteinG} g, ${mark} a target of ${input.settings.proteinTarget} g.`);
@@ -2685,7 +2774,6 @@ export function suggestedTargetsLine(input: {
   const macros = input.carbG != null && input.fatG != null
     ? `, ${input.carbG} g carbohydrate, and ${input.fatG} g fat`
     : '';
-  if (input.hideCalories) return `Suggested ${input.proteinG} g protein${macros}.`;
   return `Suggested ${input.kcal.toLocaleString('en-GB')} kcal and ${input.proteinG} g protein${macros}.`;
 }
 
@@ -2883,12 +2971,11 @@ export function goalDayLine(input: {
     fatTarget: input.fatTarget ?? null,
   });
   if (macros) parts.push(macros);
-  if (!input.hideCalories && input.kcalTarget != null && !input.blockedLoss) {
+  if (input.kcalTarget != null && !input.blockedLoss) {
     parts.push(input.kcal <= input.kcalTarget
       ? 'Energy is within the target you set.'
       : 'Energy is above the target you set. There is no failing a day.');
   }
-  if (input.hideCalories) parts.push('Calories stay hidden. Protein and food quality are the marks on this screen.');
   return parts.join(' ');
 }
 
@@ -3009,7 +3096,7 @@ export function goalMealNote(input: {
   if (input.blockedLoss) return 'This is an estimate. A lower intake is not being suggested.';
   const totals = sumItems(input.items);
   const protein = `About ${totals.proteinG} g protein.`;
-  const energy = input.hideCalories ? '' : `About ${totals.kcal.toLocaleString('en-GB')} kcal. `;
+  const energy = `About ${totals.kcal.toLocaleString('en-GB')} kcal. `;
   const fit = input.goal === 'lose_fat_build_muscle'
     ? ' Protein at this meal helps the muscle side of the goal.'
     : input.goal === 'elite_runner'
@@ -3043,13 +3130,11 @@ export function goalShareLine(input: {
   }
   if (isTrainingGoal(input.goal)) {
     parts.push(`Progress on ${GOAL_LABEL[input.goal]} is about training, recovery, and body composition.`);
-    if (input.hideCalories) parts.push('Calories are not part of this share.');
     return parts.join(' ');
   }
   if (input.direction === 'down') parts.push('Weight has eased down across recent readings.');
   else if (input.direction === 'up') parts.push('Weight has risen across recent readings.');
   else if (input.direction === 'steady') parts.push('Weight has stayed near the earlier reading.');
-  if (input.hideCalories) parts.push('Calories are not part of this share.');
   return parts.join(' ');
 }
 
@@ -3270,7 +3355,7 @@ function sharedGoal(value: unknown): SharedGoal | null {
       proteinG: typeof row.proteinG === 'number' ? row.proteinG : null,
       proteinTarget: typeof row.proteinTargetG === 'number' ? row.proteinTargetG : null,
       direction,
-      hideCalories: row.hideCalories === true,
+      hideCalories: false,
       blockedLoss: row.bmiLow === true,
     }),
   };

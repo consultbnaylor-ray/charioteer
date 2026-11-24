@@ -17,6 +17,7 @@ import {
   WAGON_SUPPORT,
   alcoholKcalSaved,
   alcoholSavedLine,
+  barFraction,
   caloriesShareLine,
   estimateFromText,
   foodItemFromUnknown,
@@ -168,9 +169,9 @@ describe('meal estimates', () => {
 
   it('keeps calories out of the quality view and does not shame a day over target', () => {
     expect(targetLine(2200, 2000, false)).toBe(NO_SHAME_OVER);
-    expect(targetLine(2200, 2000, true)).toBeNull();
+    expect(targetLine(2200, 2000, true)).toBe(NO_SHAME_OVER);
     expect(HIDE_CALORIES_LINE).toContain('food quality');
-    expect(alcoholSavedLine(3, true)).toBeNull();
+    expect(alcoholSavedLine(3, true)).toContain('222 kcal');
     expect(alcoholKcalSaved(3)).toBe(222);
     expect(alcoholSavedLine(3, false)).toContain('222 kcal');
   });
@@ -248,9 +249,8 @@ describe('meal estimates', () => {
     expect(text).toContain('fallen off the wagon');
     expect(text).toContain('116 123');
     expect(text).toContain('Rough night');
-    expect(text).toContain('calories hidden');
-    expect(text).not.toContain('165 kcal');
-    expect(text).not.toMatch(/\dkcal/);
+    expect(text).not.toContain('calories hidden');
+    expect(text).toContain('165 kcal');
     expect(text).toContain('350 ml');
   });
 
@@ -303,7 +303,7 @@ describe('meal estimates', () => {
       shareCalories: true,
       hideCalories: true,
     }, [meal], '2026-10-13');
-    expect(hiddenCalories.calories).not.toMatch(/kcal/i);
+    expect(hiddenCalories.calories).toContain('180 kcal');
     expect(hiddenCalories.calories).toContain('protein 6 g');
 
     const quality = presentSharedNutrition({ ...defaultNutritionSettings(), shareQuality: true }, [meal], '2026-10-13');
@@ -418,7 +418,7 @@ describe('nutrition storage and coach', () => {
     expect(wagon).toContain('wagonOn: value');
     expect(wagon).not.toContain('wagonVisible: value ? current.wagonVisible : false');
     expect(wagon).not.toContain('wagonVisible: false');
-    expect(screen).toContain('Hide calories');
+    expect(screen).not.toContain('Hide calories');
     expect(screen).toContain('{ESTIMATE_LABEL}');
     expect(screen).not.toContain('danger');
     expect(screen).not.toContain('xai');
@@ -599,7 +599,7 @@ describe('nutrition goals', () => {
     });
     expect(typed.weightFrom).toBe('typed');
     expect(typed.heightFrom).toBe('typed');
-    expect(suggestedTargetsLine({ kcal: 2343, proteinG: 144, hideCalories: true })).toBe('Suggested 144 g protein.');
+    expect(suggestedTargetsLine({ kcal: 2343, proteinG: 144, hideCalories: true })).toBe('Suggested 2,343 kcal and 144 g protein.');
   });
 
   it('does not suggest a deficit when BMI is under 18.5', () => {
@@ -640,8 +640,8 @@ describe('nutrition goals', () => {
       blockedLoss: false,
     });
     expect(hidden).toContain('Protein');
-    expect(hidden).toContain('Calories stay hidden');
-    expect(hidden).not.toMatch(/kcal/i);
+    expect(hidden).toContain('Energy is above the target you set');
+    expect(hidden).not.toContain('Calories stay hidden');
     const shared = presentSharedNutrition({
       ...defaultNutritionSettings(),
       goal: 'lose_weight',
@@ -699,7 +699,7 @@ describe('nutrition goals', () => {
       unitsAvoided: 0,
       today: '2026-10-14',
     });
-    expect(hidden.join('\n')).not.toMatch(/kcal/i);
+    expect(hidden.join('\n')).toContain('The calorie target they set is 2000 kcal.');
     const note = goalMealNote({
       goal: 'lose_weight',
       items: samplePhotoMeal(),
@@ -867,7 +867,7 @@ describe('nutrition charts', () => {
     expect(screen).toContain('label="Daily kcal"');
     expect(screen).toContain('kcalTarget: kcal');
     const suggest = screen.slice(screen.indexOf('variant="label">Suggest targets'), screen.indexOf('variant="label">Today'));
-    expect(suggest).toContain('Hide calories');
+    expect(suggest).not.toContain('Hide calories');
     expect(suggest).toContain('label="Suggest targets"');
     expect(suggest).toContain('pending={isPending(\'suggest\')}');
     expect(suggest).toContain('Save targets');
@@ -925,8 +925,7 @@ describe('nutrition charts', () => {
     expect(trendCaption(logged, { hideCalories: false, span: 7 }))
       .toBe('Logged days average 900 kcal and 40 g protein.');
     const quiet = trendCaption(logged, { hideCalories: true, span: 7 });
-    expect(quiet).toBe('Logged days average 40 g protein.');
-    expect(quiet).not.toMatch(/kcal/i);
+    expect(quiet).toBe('Logged days average 900 kcal and 40 g protein.');
   });
 
   it('splits protein, carbohydrate and fat, and smooths weight without inventing days', () => {
@@ -1886,7 +1885,7 @@ describe("today's meals on the log card", () => {
     const totals = todayMealTotals(logs, day, 'user');
     expect(totals).toEqual({ kcal: 700, proteinG: 40, carbsG: 50, fatG: 25 });
     expect(todayMealTotalLine(totals, false)).toBe('700 kcal · Protein 40 g · carbohydrate 50 g · fat 25 g');
-    expect(todayMealTotalLine(totals, true)).not.toContain('kcal');
+    expect(todayMealTotalLine(totals, true)).toBe('700 kcal · Protein 40 g · carbohydrate 50 g · fat 25 g');
     expect(todayMealsNeedCollapse(5)).toBe(false);
     expect(todayMealsNeedCollapse(6)).toBe(true);
     expect(TODAY_MEALS_EMPTY).toBe('No meals logged yet today');
@@ -1925,13 +1924,15 @@ describe("today's meals on the log card", () => {
       '1,820 of 2,000 kcal',
       'Protein 72 of 140 g',
     ]);
-    expect(friday?.bars[0]?.zone).toBeCloseTo(2000 / 2000, 5);
+    expect(friday?.bars[0]?.zone).toBeUndefined();
     expect(friday?.bars[0]?.fill).toBeCloseTo(1820 / 2000, 5);
+    expect(friday?.bars[0]?.overfill ?? 0).toBe(0);
+    expect(friday?.bars[1]?.fill).toBeCloseTo(72 / 140, 5);
     const hidden = mealDayGroups([
       log({ eatenOn: '2026-10-16', meal: 'lunch', items: [item({ name: 'Soup', kcal: 500, proteinG: 20 })] }),
     ], today, 'user', { hideCalories: true });
-    expect(hidden[0]?.heading).toBe('Fri 16 Oct - 1 meal');
-    expect(hidden[0]?.bars.map((bar) => bar.key)).toEqual(['protein']);
+    expect(hidden[0]?.heading).toBe('Fri 16 Oct - 1 meal - 500 kcal');
+    expect(hidden[0]?.bars.map((bar) => bar.key)).toEqual(['kcal', 'protein']);
     const plain = mealDayGroups([
       log({ eatenOn: '2026-10-16', meal: 'lunch', items: [item({ name: 'Soup', kcal: 500, proteinG: 20 })] }),
     ], today, 'user');
@@ -1941,6 +1942,95 @@ describe("today's meals on the log card", () => {
     expect(mealDayGroups([
       log({ eatenOn: today, meal: 'snack', items: [item({ name: 'Apple', kcal: 80 })] }),
     ], today, '')).toEqual([]);
+  });
+
+  it('fills a bar as value over its scale, and caps the amber lap at one extra length', () => {
+    expect(barFraction(196, 184).fill).toBe(1);
+    expect(barFraction(196, 184).overfill).toBeCloseTo(12 / 184, 10);
+    expect(barFraction(184, 184)).toEqual({ fill: 1, overfill: 0 });
+    expect(barFraction(49, 184)).toEqual({ fill: 49 / 184, overfill: 0 });
+    expect(barFraction(0, 184)).toEqual({ fill: 0, overfill: 0 });
+    expect(barFraction(400, 184)).toEqual({ fill: 1, overfill: 1 });
+    expect(barFraction(49, null)).toEqual({ fill: 0, overfill: 0 });
+    expect(barFraction(49, 0)).toEqual({ fill: 0, overfill: 0 });
+  });
+
+  it('fills a day bar to the daily target even when another day is higher', () => {
+    const today = '2026-11-24';
+    const groups = mealDayGroups([
+      log({ eatenOn: today, meal: 'dinner', items: [item({ name: 'Today', kcal: 2200, proteinG: 196 })] }),
+      log({ eatenOn: '2026-11-23', meal: 'dinner', items: [item({ name: 'High', kcal: 4000, proteinG: 400 })] }),
+    ], today, 'user', { kcalTarget: 1800, proteinTarget: 184 });
+    const todayBars = groups[0]?.bars ?? [];
+    const protein = todayBars.find((bar) => bar.key === 'protein');
+    expect(protein?.label).toBe('Protein 196 of 184 g · +12 g');
+    expect(protein?.fill).toBe(1);
+    expect(protein?.overfill).toBeCloseTo(12 / 184, 5);
+    expect(protein?.status).toBe('above');
+    expect(protein?.zone).toBeUndefined();
+    const kcal = todayBars.find((bar) => bar.key === 'kcal');
+    expect(kcal?.label).toBe('2,200 of 1,800 kcal · +400 kcal');
+    expect(kcal?.fill).toBe(1);
+    expect(kcal?.overfill).toBeCloseTo(400 / 1800, 5);
+    const high = groups[1]?.bars.find((bar) => bar.key === 'protein');
+    expect(high?.fill).toBe(1);
+    expect(high?.overfill).toBe(1);
+    expect(high?.label).toContain('+');
+    const exact = mealDayGroups([
+      log({ eatenOn: today, meal: 'lunch', items: [item({ name: 'Exact', kcal: 1800, proteinG: 184 })] }),
+    ], today, 'user', { kcalTarget: 1800, proteinTarget: 184 });
+    expect(exact[0]?.bars.find((bar) => bar.key === 'protein')).toMatchObject({
+      label: 'Protein 184 of 184 g',
+      fill: 1,
+      overfill: 0,
+    });
+  });
+
+  it('shows a meal as its share of the daily target, and a limit as the track named in the label', () => {
+    const meal = mealNutrientBars([
+      item({
+        name: 'Breakfast',
+        kcal: 420,
+        proteinG: 49,
+        carbsG: 5,
+        sugarG: 3,
+        unsaturatedG: 20,
+        saturatedG: 3,
+        transG: 0,
+      }),
+    ], { proteinG: 184, carbsG: 250 });
+    const protein = meal.find((bar) => bar.key === 'protein');
+    expect(protein?.label).toBe('Protein 49 g · 27% of daily target');
+    expect(protein?.fill).toBeCloseTo(49 / 184, 5);
+    expect(protein?.overfill ?? 0).toBe(0);
+    expect(protein?.zone).toBeUndefined();
+    const carbs = meal.find((bar) => bar.key === 'carbs');
+    expect(carbs?.label).toBe('Carbs 5 g · 2% of daily target');
+    expect(carbs?.fill).toBeCloseTo(5 / 250, 5);
+    const sugars = meal.find((bar) => bar.key === 'sugar');
+    expect(sugars?.label).toBe('Sugars 3 g · Within 27 g');
+    expect(sugars?.fill).toBeCloseTo(3 / 27, 5);
+    expect(sugars?.status).toBe('within');
+    expect(sugars?.overfill ?? 0).toBe(0);
+    expect(sugars?.zone).toBeUndefined();
+    const fat = meal.find((bar) => bar.key === 'fat');
+    expect(fat?.label).toBe('Total fat 23 g · Above 21 g');
+    expect(fat?.fill).toBe(1);
+    expect(fat?.overfill).toBeCloseTo(2 / 21, 5);
+    expect(fat?.status).toBe('above');
+    expect(fat?.zone).toBeUndefined();
+    const over = mealNutrientBars([
+      item({ name: 'Steak', kcal: 800, proteinG: 200 }),
+    ], { proteinG: 184 });
+    expect(over[0]?.label).toBe('Protein 200 g · 109% of daily target');
+    expect(over[0]?.fill).toBe(1);
+    expect(over[0]?.status).toBe('above');
+    const open = mealNutrientBars([item({ name: 'Egg', kcal: 80, proteinG: 7.2, fibreG: 0 })]);
+    expect(open.find((bar) => bar.key === 'protein')).toMatchObject({
+      label: 'Protein 7.2 g',
+      unscaled: true,
+      fill: 0,
+    });
   });
 
   it('puts protein left beside the calorie ring, and a tick once the target is met', () => {
@@ -2066,7 +2156,7 @@ describe("today's meals on the log card", () => {
     expect(screen.slice(logged, goal)).toContain('<TodayMeals');
     const renderLog = screen.slice(screen.indexOf('function renderLog'), screen.indexOf('function kcalFromField'));
     expect(renderLog).toContain('<MealBreakdown');
-    expect(renderLog).toContain('mealNutrientBars(log.items)');
+    expect(renderLog).toContain('mealNutrientBars(log.items,');
     expect(renderLog).toContain('startOpen={false}');
     expect(screen.slice(log, logged)).toContain('<PlanTick done />');
     expect(screen.slice(log, logged)).toContain('{savedDayNote}');
@@ -2121,9 +2211,12 @@ describe("today's meals on the log card", () => {
     expect(bars).toContain('NUTRITION_BREAKDOWN_LABEL');
     expect(bars).toContain('Hide nutrition breakdown');
     expect(bars).not.toContain('statsTone');
-    expect(bars).not.toContain('statsPalette');
+    expect(bars).toContain("from '@/ui/statsPalette'");
+    expect(bars).toContain('macroAccent');
+    expect(bars).toContain('limitStatusInk');
     expect(bars).toContain('theme.colors.ink');
     expect(bars).toContain('bar.label');
+    expect(bars).not.toContain('opacity: 0.15');
     expect(readFileSync('src/app/(main)/home.tsx', 'utf8')).not.toContain('NutritionToday');
   });
 
@@ -2170,7 +2263,17 @@ describe("today's meals on the log card", () => {
     expect(labels.join(' ')).not.toMatch(/\b0 g\b/);
     const crisps = mealNutrientBars(estimateFromText('crisps'));
     expect(crisps.map((bar) => bar.label)).toContain('Processed food level High');
-    expect(crisps.find((bar) => bar.key === 'saturated')?.zone).toBeGreaterThan(0);
+    const sat = crisps.find((bar) => bar.key === 'saturated');
+    expect(sat?.zone).toBeUndefined();
+    expect(sat?.label).toMatch(/Saturated fat .+ · (Within|Above) 6 g/);
+    expect(sat?.unscaled).toBeFalsy();
+    if (sat?.status === 'above') {
+      expect(sat.fill).toBe(1);
+      expect(sat.overfill ?? 0).toBeGreaterThan(0);
+    } else {
+      expect(sat?.status).toBe('within');
+      expect(sat?.overfill ?? 0).toBe(0);
+    }
     const mixed = mealNutrientBars([
       ...estimateFromText('chicken'),
       ...estimateFromText('crisps'),
@@ -2179,6 +2282,10 @@ describe("today's meals on the log card", () => {
     expect(mixed.map((bar) => bar.label)).toContain('Processed food level Medium');
     const chocolate = mealNutrientBars(estimateFromText('chocolate'));
     expect(chocolate.map((bar) => bar.label)).toContain('Saturated fat 7 g · Above 6 g');
+    const chocSat = chocolate.find((bar) => bar.key === 'saturated');
+    expect(chocSat).toMatchObject({ fill: 1, status: 'above' });
+    expect(chocSat?.overfill).toBeCloseTo(1 / 6, 5);
+    expect(chocSat?.zone).toBeUndefined();
     const partial = foodItemFromUnknown({ name: 'Soup', kcal: 200, proteinG: 8 });
     expect(partial).not.toBeNull();
     const partialBars = mealNutrientBars(partial ? [partial] : []);

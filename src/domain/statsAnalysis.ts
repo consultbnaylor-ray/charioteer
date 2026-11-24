@@ -472,10 +472,10 @@ export function buildStatsAnalysis(input: BuildInput): StatsAnalysisPayload {
     today: input.today,
     logs: input.logs ?? [],
     weightKg: currentKg,
-    calorieTarget: input.hideCalories ? null : (plan?.targetKcal ?? input.kcalTarget ?? null),
+    calorieTarget: plan?.targetKcal ?? input.kcalTarget ?? null,
     proteinTargetG: input.proteinTarget ?? null,
     goalProteinG: input.goal && currentKg != null ? proteinGramsFor(input.goal, currentKg, input.build ?? null, input.phase ?? null) : null,
-    hideCalories: input.hideCalories === true,
+    hideCalories: false,
   });
   return sanitizeStatsAnalysis({
     age: input.age,

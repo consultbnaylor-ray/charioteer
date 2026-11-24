@@ -221,7 +221,7 @@ describe('protein intake review', () => {
     expect(today).toContain('title="About processed food"');
     expect(today).toContain('title="What this means"');
     expect(today).toContain('processedLine(items)');
-    expect(today).toContain('variant="muted">{HIDE_CALORIES_LINE}');
+    expect(today).not.toContain('HIDE_CALORIES_LINE');
     expect(suggest).not.toContain('HIDE_CALORIES_LINE');
     expect(suggest).toContain('{LOW_BMI_NOTE}');
     expect(suggest).toContain('title="About this suggestion"');

@@ -45,7 +45,6 @@ type DraftItem = {
 
 export function MealEdit({
   log,
-  hideCalories,
   saved,
   saving,
   estimating,
@@ -56,7 +55,6 @@ export function MealEdit({
   onError,
 }: {
   log: FoodLog;
-  hideCalories: boolean;
   saved: boolean;
   saving: boolean;
   estimating: boolean;
@@ -224,9 +222,7 @@ export function MealEdit({
       {items.map((item, index) => (
         <View key={`${log.id}-${index}`} style={{ gap: 8 }}>
           <Field label="Food" value={item.name} onChangeText={(name) => updateItem(index, { name })} />
-          {hideCalories ? null : (
-            <Field label="kcal" value={item.kcal} onChangeText={(kcal) => updateItem(index, { kcal })} keyboardType="decimal-pad" />
-          )}
+          <Field label="kcal" value={item.kcal} onChangeText={(kcal) => updateItem(index, { kcal })} keyboardType="decimal-pad" />
           <Field label="Protein (g)" value={item.proteinG} onChangeText={(proteinG) => updateItem(index, { proteinG })} keyboardType="decimal-pad" />
           <Field label="Carbohydrate (g)" value={item.carbsG} onChangeText={(carbsG) => updateItem(index, { carbsG })} keyboardType="decimal-pad" />
           <Field label="Sugar (g)" value={item.sugarG} onChangeText={(sugarG) => updateItem(index, { sugarG })} keyboardType="decimal-pad" />

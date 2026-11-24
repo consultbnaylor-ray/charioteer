@@ -73,7 +73,7 @@ describe('goal led summary', () => {
     }
   });
 
-  it('says when protein is short, and leaves Save-style calorie talk out when calories are hidden', () => {
+  it('says when protein is short, and still shows calories when the old hide flag is set', () => {
     const short = buildGoalLed({ ...base, goal: 'lose_fat_build_muscle', todayProtein: 100, proteinTarget: 140 });
     expect(short.measures.find((item) => item.id === 'protein')).toMatchObject({
       centre: '100',
@@ -82,10 +82,10 @@ describe('goal led summary', () => {
       neutral: true,
     });
     expect(short.nudges.some((line) => line.includes('target hit'))).toBe(false);
-    const hidden = buildGoalLed({ ...base, goal: 'maintain', hideCalories: true, kcalTarget: 2000 });
-    const text = `${hidden.matters} ${hidden.progressWords} ${hidden.nudges.join(' ')} ${hidden.measures.map((item) => `${item.label} ${item.words} ${item.unit}`).join(' ')}`;
-    expect(text).not.toMatch(/kcal/i);
-    expect(goalProgressLine({ ...base, goal: 'maintain', hideCalories: true })).not.toMatch(/kcal/i);
+    const shown = buildGoalLed({ ...base, goal: 'maintain', hideCalories: true, kcalTarget: 2000 });
+    const text = `${shown.matters} ${shown.progressWords} ${shown.nudges.join(' ')} ${shown.measures.map((item) => `${item.label} ${item.words} ${item.unit}`).join(' ')}`;
+    expect(text).toMatch(/kcal/i);
+    expect(goalProgressLine({ ...base, goal: 'maintain', hideCalories: true })).toMatch(/kcal/i);
     const logged = buildGoalLed({
       ...base,
       goal: 'lose_fat_build_muscle',

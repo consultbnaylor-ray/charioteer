@@ -143,3 +143,47 @@ export function chartAccent(title: string, scheme: Scheme): string | null {
   const role = CHART_ROLE[title];
   return role ? gridAccents(scheme)[role] : null;
 }
+
+/**
+ * One colour per nutrition bar. Dark values sit on the card surface (#1A1A1A) at
+ * more than 4.5:1 so a value or chip can use them. Light values are the darker
+ * pair, for the same reason on white. They stay inside the neon palette:
+ * amber, mint, cyan, pink, gold, rose, lime, violet, teal.
+ */
+export type MacroKey = 'kcal' | 'protein' | 'carbs' | 'sugar' | 'fat' | 'saturated' | 'fibre' | 'salt' | 'processed';
+
+const MACRO_DARK: Record<MacroKey, string> = {
+  kcal: '#F59E0B',
+  protein: '#2DE0A0',
+  carbs: '#36D6FF',
+  sugar: '#F472B6',
+  fat: '#FDE047',
+  saturated: '#FB7185',
+  fibre: '#A3E635',
+  salt: '#C4B5FD',
+  processed: '#5EEAD4',
+};
+
+const MACRO_LIGHT: Record<MacroKey, string> = {
+  kcal: '#C2410C',
+  protein: '#047857',
+  carbs: '#0369A1',
+  sugar: '#BE185D',
+  fat: '#A16207',
+  saturated: '#BE123C',
+  fibre: '#4D7C0F',
+  salt: '#6D28D9',
+  processed: '#0F766E',
+};
+
+/** Macro identity colour. Null when this bar has no named macro. */
+export function macroAccent(key: string, scheme: Scheme): string | null {
+  const ink = scheme === 'dark' ? MACRO_DARK : MACRO_LIGHT;
+  return key in ink ? ink[key as MacroKey] : null;
+}
+
+/** Green while a limit holds, amber once it is passed. No red step: these guides have no far-over line. */
+export function limitStatusInk(status: 'within' | 'above', scheme: Scheme): string {
+  if (status === 'within') return scheme === 'dark' ? '#2DE0A0' : '#047857';
+  return watchSignalInk(scheme);
+}

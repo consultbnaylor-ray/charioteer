@@ -113,10 +113,10 @@ function nutritionLinesFrom(snap: AppSnapshot, now: Date): string[] {
         items: log.items.map((item) => ({ name: item.name, kcal: item.kcal, proteinG: item.proteinG })),
       })),
       weightKg,
-      calorieTarget: settings.hideCalories ? null : (shareHealth ? plan?.targetKcal ?? settings.kcalTarget : settings.kcalTarget),
+      calorieTarget: shareHealth ? plan?.targetKcal ?? settings.kcalTarget : settings.kcalTarget,
       proteinTargetG: settings.proteinTarget,
       goalProteinG: weightKg != null && settings.goal ? proteinGramsFor(settings.goal, weightKg, settings.build, settings.goalPhase) : null,
-      hideCalories: settings.hideCalories,
+      hideCalories: false,
     })
     : null;
   const review = brief ? nutritionReviewLines(brief) : [];
@@ -194,7 +194,7 @@ export function briefingFromSnapshot(snap: AppSnapshot, requestedMode: ThumosMod
               .filter((sample) => sample.kind.startsWith('workout_type_'))
               .map((sample) => ({ kind: sample.kind, value: sample.value, recordedOn: sample.recordedOn })),
             logs: snap.foodLogs ?? [],
-            hideCalories: snap.nutrition?.hideCalories === true,
+            hideCalories: false,
           })
         : [],
       mode: requestedMode,

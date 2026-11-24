@@ -129,7 +129,7 @@ async function nutritionForAnalysis(
       build?: unknown;
       goal_phase?: unknown;
     } : null;
-    const hide = row?.hide_calories === true;
+    const hide = false;
     const savedKcal = typeof row?.kcal_target === 'number' ? row.kcal_target : null;
     const savedProtein = typeof row?.protein_target === 'number' ? row.protein_target : null;
     const weightKg = weightFrom(summary);
@@ -333,7 +333,7 @@ Deno.serve(async (req) => {
     fatTarget: typeof settings.fat_target_g === 'number' ? settings.fat_target_g : null,
     goalPhase: isBuilderPhase(textOf(settings.goal_phase)) ? textOf(settings.goal_phase) as PlanInput['goalPhase'] : null,
     weightClassKg: typeof settings.weight_class_kg === 'number' ? settings.weight_class_kg : null,
-    hideCalories: Boolean(settings.hide_calories),
+    hideCalories: false,
     foodLogs: logs,
     checkIns: ((checkRes.data ?? []) as Record<string, unknown>[]).map((row) => ({
       mood: Number(row.mood) || 0,

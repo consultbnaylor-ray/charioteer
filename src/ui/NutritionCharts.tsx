@@ -43,7 +43,6 @@ import { Card, T } from '@/ui/ui';
 export function NutritionBoard({
   logs,
   today,
-  hideCalories,
   kcalTarget,
   proteinTarget,
   checkIns,
@@ -52,7 +51,6 @@ export function NutritionBoard({
 }: {
   logs: readonly FoodLog[];
   today: string;
-  hideCalories: boolean;
   kcalTarget: number | null;
   proteinTarget: number | null;
   checkIns: readonly { createdAt: string; mood: number; sleepHours: number }[];
@@ -80,7 +78,7 @@ export function NutritionBoard({
     const processed = notes.length;
     const whole = items.length - processed;
     const shared = {
-      hideCalories,
+      hideCalories: false,
       kcal: kcalAvg,
       kcalTarget,
       proteinG: proteinAvg,
@@ -92,7 +90,7 @@ export function NutritionBoard({
       proteinDays: proteinDays.length,
       proteinHits,
       proteinAvg,
-      kcal: hideCalories ? null : todayRing({ ...shared, hideCalories: false }),
+      kcal: todayRing({ ...shared, hideCalories: false }),
       protein: todayRing({ ...shared, hideCalories: true }),
       macros: macroSplit(items),
       fats: fatBalance(items),
@@ -112,11 +110,11 @@ export function NutritionBoard({
       dotsCaption: loggingCaption(logs, today),
       insights: eatingInsights(logs, checkIns),
     };
-  }, [logs, today, hideCalories, kcalTarget, proteinTarget, checkIns, span, period]);
+  }, [logs, today, kcalTarget, proteinTarget, checkIns, span, period]);
   const trend = useMemo(() => {
     const days = nutritionTrendDays(logs, today, span);
-    return { days, caption: trendCaption(days, { hideCalories, span }) };
-  }, [logs, today, span, hideCalories]);
+    return { days, caption: trendCaption(days, { hideCalories: false, span }) };
+  }, [logs, today, span]);
   const loggedDays = trend.days.some((day) => day.logged);
 
   return (
@@ -162,9 +160,7 @@ export function NutritionBoard({
         <T variant="label">{periodHeading(period)}</T>
         {loggedDays ? (
           <>
-            {hideCalories ? null : (
-              <LoggedSeries title="Calories" today={today} period={period} days={trend.days} pick={(day) => day.kcal} target={kcalTarget} unit="kcal" />
-            )}
+            <LoggedSeries title="Calories" today={today} period={period} days={trend.days} pick={(day) => day.kcal} target={kcalTarget} unit="kcal" />
             <LoggedSeries title="Protein" today={today} period={period} days={trend.days} pick={(day) => day.proteinG} target={proteinTarget} unit="g" />
             <T variant="muted">{trend.caption}</T>
           </>
