@@ -1,5 +1,11 @@
 import { UserFacingError } from './errors';
-import { pathMetres, type OutdoorKind, type OutdoorPoint } from './outdoorRoute';
+import {
+  drawnLineAfterSnap,
+  pathMetres,
+  sketchWaypointSets,
+  type OutdoorKind,
+  type OutdoorPoint,
+} from './outdoorRoute';
 import { OSM_CONTRIBUTORS, ORS_CREDIT, ROUTE_SKETCH_LINE } from './routeConsent';
 
 export { OSM_CONTRIBUTORS, ORS_CREDIT };
@@ -478,6 +484,76 @@ export function mockRoute(input: RoutePlanInput): RoutePlan | null {
     snappedStart: null,
     snapDistanceM: null,
   };
+}
+
+function copyPlanPoints(points: readonly OutdoorPoint[]): OutdoorPoint[] {
+  return points.map((point) => ({ latitude: point.latitude, longitude: point.longitude }));
+}
+
+/** Figures follow the cleaned geometry, at the pace the route service just used. */
+export function adoptSnappedLine(plan: RoutePlan, points: readonly OutdoorPoint[]): RoutePlan {
+  const line = copyPlanPoints(points);
+  const distanceM = Math.max(1, pathMetres(line));
+  const pace = plan.durationMinutes > 0 ? plan.distanceM / plan.durationMinutes : PACE_M_PER_MIN[plan.mode];
+  const durationMinutes = Math.max(1, Math.round(distanceM / Math.max(1, pace)));
+  const ascentM = plan.ascentM == null || plan.distanceM <= 0
+    ? plan.ascentM
+    : Math.max(0, Math.round(plan.ascentM * (distanceM / plan.distanceM)));
+  return { ...plan, points: line, distanceM, durationMinutes, ascentM };
+}
+
+/** The pencil line, when no snap stayed close to it. Climb is unknown. */
+export function unmatchedDrawnPlan(input: {
+  mode: RouteMode;
+  shape: RouteShape;
+  preferPaths: boolean;
+  points: readonly OutdoorPoint[];
+}): RoutePlan {
+  const line = copyPlanPoints(input.points);
+  const distanceM = Math.max(1, pathMetres(line));
+  const pace = PACE_M_PER_MIN[input.mode];
+  return {
+    mocked: false,
+    mode: input.mode,
+    shape: input.shape,
+    profile: input.preferPaths && input.mode === 'walk' ? 'foot-hiking' : routeProfile(input.mode),
+    distanceM,
+    durationMinutes: Math.max(1, Math.round(distanceM / pace)),
+    ascentM: null,
+    points: line,
+    snappedStart: null,
+    snapDistanceM: null,
+  };
+}
+
+/**
+ * Tries the corner sketch, then fewer corners.
+ * A line that comes back is kept only when it still follows the pencil.
+ * When every answer is a miss, `sawRoute` says whether the service answered at all.
+ */
+export async function matchDrawnSketch(input: {
+  sketch: readonly OutdoorPoint[];
+  send: (waypoints: readonly OutdoorPoint[]) => Promise<RoutePlan>;
+}): Promise<
+  | { matched: true; plan: RoutePlan }
+  | { matched: false; sawRoute: true }
+  | { matched: false; sawRoute: false; error: unknown }
+> {
+  const sets = sketchWaypointSets(input.sketch);
+  let sawRoute = false;
+  let lastError: unknown = null;
+  for (const waypoints of sets) {
+    try {
+      const plan = await input.send(waypoints);
+      sawRoute = true;
+      const choice = drawnLineAfterSnap({ sketch: input.sketch, routed: plan.points });
+      if (choice.matched) return { matched: true, plan: adoptSnappedLine(plan, choice.points) };
+    } catch (error) {
+      lastError = error;
+    }
+  }
+  if (sawRoute) return { matched: false, sawRoute: true };
+  return { matched: false, sawRoute: false, error: lastError };
 }
 
 /** A few points only. Apple draws its own line between them. */

@@ -2,9 +2,15 @@ import { describe, expect, it } from 'vitest';
 
 import {
   FOOTPATH_CASING_ID,
+  FOOTPATH_CASING_WIDTH,
+  FOOTPATH_LINE_OPACITY,
+  FOOTPATH_MAX_ZOOM,
+  FOOTPATH_MIN_ZOOM,
   FOOTPATH_STROKE_ID,
+  FOOTPATH_STROKE_WIDTH,
   emphasizeFootpaths,
   footpathPaint,
+  zoomExpressionAt,
 } from '@/domain/footpathStyle';
 
 const liberty = {
@@ -27,7 +33,13 @@ const dark = {
   ],
 };
 
-function layer(style: unknown, id: string): { paint?: Record<string, unknown>; filter?: unknown; type?: string } {
+function layer(style: unknown, id: string): {
+  paint?: Record<string, unknown>;
+  filter?: unknown;
+  type?: string;
+  minzoom?: number;
+  maxzoom?: number;
+} {
   const layers = (style as { layers: { id: string; paint?: Record<string, unknown>; filter?: unknown; type?: string }[] }).layers;
   const found = layers.find((item) => item.id === id);
   if (!found) throw new Error(`missing ${id}`);
@@ -47,7 +59,10 @@ describe('footpath emphasis', () => {
     const casing = layer(style, FOOTPATH_CASING_ID);
     expect(stroke.paint?.['line-color']).toBe('#4A3728');
     expect(stroke.paint?.['line-dasharray']).toEqual([1.6, 1.15]);
-    expect(stroke.paint?.['line-width']).toEqual(['interpolate', ['linear'], ['zoom'], 12, 1, 14, 2.2, 16, 3, 18, 4.2]);
+    expect(stroke.paint?.['line-width']).toEqual([...FOOTPATH_STROKE_WIDTH]);
+    expect(stroke.minzoom).toBe(FOOTPATH_MIN_ZOOM);
+    expect(stroke.maxzoom).toBe(FOOTPATH_MAX_ZOOM);
+    expect(stroke.maxzoom ?? 0).toBeGreaterThan(22);
     expect(casing.paint?.['line-color']).toBe('#F7F3EA');
     expect(JSON.stringify(stroke.filter)).toContain('footway');
     expect(JSON.stringify(stroke.filter)).toContain('bridleway');
@@ -76,5 +91,39 @@ describe('footpath emphasis', () => {
     expect(layer(style, FOOTPATH_STROKE_ID).paint?.['line-color']).toBe('#F0D7A8');
     expect(emphasizeFootpaths(null, 'light')).toBeNull();
     expect(emphasizeFootpaths('liberty', 'dark')).toBe('liberty');
+  });
+
+  it('keeps path width and opacity above zero from zoom 12 through 22', () => {
+    for (const scheme of ['light', 'dark'] as const) {
+      const paint = footpathPaint(scheme);
+      const style = emphasizeFootpaths(scheme === 'dark' ? dark : liberty, scheme);
+      for (const id of [FOOTPATH_STROKE_ID, FOOTPATH_CASING_ID]) {
+        expect(layer(style, id).minzoom).toBe(12);
+        expect(layer(style, id).maxzoom).toBeGreaterThan(22);
+      }
+      for (let zoom = 12; zoom <= 22; zoom += 0.5) {
+        const stroke = zoomExpressionAt(paint.stroke['line-width'], zoom);
+        const casing = zoomExpressionAt(paint.casing['line-width'], zoom);
+        const strokeOpacity = zoomExpressionAt(paint.stroke['line-opacity'], zoom);
+        const casingOpacity = zoomExpressionAt(paint.casing['line-opacity'], zoom);
+        expect(stroke).toBeGreaterThan(0);
+        expect(stroke).toBeGreaterThanOrEqual(0.8);
+        expect(casing).toBeGreaterThanOrEqual(0.8);
+        expect(casing).toBeGreaterThan(stroke);
+        expect(strokeOpacity).toBeGreaterThan(0);
+        expect(casingOpacity).toBeGreaterThan(0);
+      }
+    }
+    const stops = FOOTPATH_STROKE_WIDTH.filter((_, index) => index >= 3 && index % 2 === 1);
+    const widths = FOOTPATH_STROKE_WIDTH.filter((_, index) => index >= 3 && index % 2 === 0);
+    expect(stops[0]).toBe(12);
+    expect(stops[stops.length - 1]).toBe(22);
+    for (let index = 1; index < stops.length; index += 1) {
+      expect(Number(stops[index]) - Number(stops[index - 1])).toBe(1);
+    }
+    for (const width of widths) expect(Number(width)).toBeGreaterThanOrEqual(0.8);
+    expect(zoomExpressionAt(FOOTPATH_LINE_OPACITY, 12)).toBeGreaterThan(0);
+    expect(zoomExpressionAt(FOOTPATH_LINE_OPACITY, 22)).toBeGreaterThan(0);
+    expect(zoomExpressionAt([...FOOTPATH_CASING_WIDTH], 17.5)).toBeGreaterThan(0.8);
   });
 });

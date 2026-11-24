@@ -1,7 +1,7 @@
 import { isoDay } from '@/domain/dates';
 import type { RoutePlace } from '@/domain/findRoute';
 import { ROUTE_OFFLINE, type RoutePlan, type RoutePlanInput } from '@/domain/findRoute';
-import { simplifyLine, simplifySketch, type OutdoorPoint } from '@/domain/outdoorRoute';
+import { simplifyLine, sketchWaypoints, type OutdoorPoint } from '@/domain/outdoorRoute';
 
 export const VIA_POINT_CAP = 5;
 export const REDRAW_PAUSE_MS = 500;
@@ -51,6 +51,9 @@ export const DRAW_PEN_HINT =
 
 /** Shown when a lift does not come back as a path. The pencil line stays. */
 export const DRAW_NO_PATH = 'No path matched that line.';
+
+/** Shown when a snap wanders off the pencil. The pencil line is the route. */
+export const DRAW_SNAP_PARTIAL = 'Couldn\'t match all of that to paths — showing your line';
 
 export const PLACE_SEARCH_PAUSE_MS = 400;
 
@@ -211,7 +214,7 @@ export function routePlanBody(input: RoutePlanInput): {
     minutes: input.minutes ?? null,
     via: capVia(input.via ?? []),
     preferPaths: input.preferPaths === true,
-    sketch: simplifySketch(input.sketch ?? []),
+    sketch: sketchWaypoints(input.sketch ?? []),
   };
 }
 

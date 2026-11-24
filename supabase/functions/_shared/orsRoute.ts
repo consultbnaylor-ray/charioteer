@@ -118,6 +118,12 @@ export const VIA_POINT_CAP = 5;
 /** Hosted directions accepts this many coordinates. A sketch is refused above it. */
 export const ORS_WAYPOINT_LIMIT = 50;
 
+/**
+ * How far a sketch corner may snap to the path network, in metres.
+ * Wide enough for a finger that sits just off a path. Short of the next street.
+ */
+export const SKETCH_SNAP_RADIUS_M = 100;
+
 /** Walking and cycling weightings that prefer greener, quieter paths. */
 export const PREFER_PATH_WEIGHTINGS = { green: 1, quiet: 1 } as const;
 
@@ -188,6 +194,10 @@ export function buildDirectionsBody(input: {
   if (sketch.length >= 2) {
     return {
       coordinates: sketch.map(coordinateOf),
+      // One radius per corner. continue_straight refuses a u-turn at a corner,
+      // which is the out-and-back a point on the wrong side of a junction causes.
+      radiuses: sketch.map(() => SKETCH_SNAP_RADIUS_M),
+      continue_straight: true,
       elevation: true,
       instructions: false,
       ...routeOptions(null, preferPaths),

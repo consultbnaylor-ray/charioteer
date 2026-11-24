@@ -32,6 +32,21 @@ function frameOf(
  * A miss returns false so the caller can try again next frame. The map's
  * initial view already has this centre.
  */
+/** Pinch and the zoom buttons move the camera in place. A flight would lag behind the fingers. */
+export function jumpWhenReady(
+  camera: { flyTo: (options: { center: [number, number]; zoom?: number; duration?: number }) => void } | null,
+  place: HeldCamera,
+): boolean {
+  if (!camera) return false;
+  if (!Number.isFinite(place.longitude) || !Number.isFinite(place.latitude) || !Number.isFinite(place.zoom)) return false;
+  try {
+    camera.flyTo({ center: [place.longitude, place.latitude], zoom: place.zoom, duration: 0 });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export function flyWhenReady(
   camera: { flyTo: (options: { center: [number, number]; zoom?: number; duration?: number }) => void } | null,
   place: HeldCamera,

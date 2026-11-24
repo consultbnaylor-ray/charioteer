@@ -1,4 +1,11 @@
-import { cleanPoints, metresBetween, type OutdoorPoint } from '@/domain/outdoorRoute';
+import {
+  appendSketchPoint,
+  centreKeepingPoint,
+  viewToPoint,
+  type OutdoorPoint,
+  cleanPoints,
+  metresBetween,
+} from '@/domain/outdoorRoute';
 
 /**
  * A drawn route is a stack of finger strokes.
@@ -123,4 +130,86 @@ export function visibleDrawLine(
     : combineDrawStrokes(strokes.slice(0, count));
   if (pending.length === 0) return base;
   return stitchRoute(base, combineDrawStrokes(pending));
+}
+
+export const DRAW_ZOOM_MIN = 2;
+export const DRAW_ZOOM_MAX = 22;
+
+export type DrawSession = {
+  cancelled: boolean;
+  points: OutdoorPoint[];
+};
+
+export function startDrawSession(): DrawSession {
+  return { cancelled: false, points: [] };
+}
+
+/**
+ * One finger adds a point. Two or more fingers cancel the stroke and add nothing.
+ * After a cancel, a later one-finger move in the same gesture still adds nothing.
+ */
+export function applyDrawPointers(
+  session: DrawSession,
+  pointerCount: number,
+  point: OutdoorPoint | null,
+): DrawSession {
+  if (pointerCount >= 2 || session.cancelled) return { cancelled: true, points: [] };
+  if (pointerCount !== 1 || !point) return session;
+  return { cancelled: false, points: appendSketchPoint(session.points, point, 2) };
+}
+
+/** A cancelled gesture commits no stroke. */
+export function finishDrawSession(session: DrawSession): OutdoorPoint[] {
+  if (session.cancelled) return [];
+  return session.points.map((point) => ({ latitude: point.latitude, longitude: point.longitude }));
+}
+
+export function clampDrawZoom(zoom: number): number {
+  if (!Number.isFinite(zoom)) return 14;
+  return Math.min(DRAW_ZOOM_MAX, Math.max(DRAW_ZOOM_MIN, zoom));
+}
+
+/** Zoom change for a pinch. `spanRatio` is the new finger span divided by the span at the start. */
+export function pinchZoom(zoom: number, spanRatio: number): number {
+  if (!Number.isFinite(zoom) || !Number.isFinite(spanRatio) || spanRatio <= 0) return clampDrawZoom(zoom);
+  return clampDrawZoom(zoom + Math.log2(spanRatio));
+}
+
+/**
+ * Pinch and two-finger pan. The place under the fingers stays under the fingers.
+ * Rotation is not applied.
+ */
+export function twoFingerView(input: {
+  startZoom: number;
+  startCentre: OutdoorPoint;
+  width: number;
+  height: number;
+  startSpan: number;
+  span: number;
+  startMidX: number;
+  startMidY: number;
+  midX: number;
+  midY: number;
+}): { centre: OutdoorPoint; zoom: number } | null {
+  if (!(input.startSpan > 0) || !(input.span > 0)) return null;
+  const zoom = pinchZoom(input.startZoom, input.span / input.startSpan);
+  const anchor = viewToPoint({
+    centre: input.startCentre,
+    zoom: input.startZoom,
+    width: input.width,
+    height: input.height,
+    x: input.startMidX,
+    y: input.startMidY,
+  });
+  if (!anchor) return null;
+  const centre = centreKeepingPoint({
+    point: anchor,
+    zoom,
+    width: input.width,
+    height: input.height,
+    x: input.midX,
+    y: input.midY,
+  });
+  if (!centre) return null;
+  return { centre, zoom };
 }

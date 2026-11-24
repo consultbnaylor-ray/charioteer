@@ -2,7 +2,8 @@ import { useEffect, useRef, useState, type ComponentType, type ReactNode, type R
 import { View } from 'react-native';
 
 import { mapPressPoint, viaPointCollection } from '@/domain/routeAdjust';
-import { DrawCapture } from '@/ui/DrawCapture';
+import { clampDrawZoom } from '@/domain/drawStroke';
+import { DrawCapture, DrawZoomButtons } from '@/ui/DrawCapture';
 import {
   YOU_HERE_FILL,
   YOU_HERE_RING,
@@ -20,7 +21,7 @@ import {
   type OutdoorPoint,
   type OutdoorRoute,
 } from '@/domain/outdoorRoute';
-import { flyWhenReady, pageScrollForMapTouch, useHeldCamera, type HeldCamera } from '@/ui/mapCamera';
+import { flyWhenReady, jumpWhenReady, pageScrollForMapTouch, useHeldCamera, type HeldCamera } from '@/ui/mapCamera';
 import { MapFrame } from '@/ui/MapChrome';
 import { useFootpathStyle, useMapScheme } from '@/ui/mapStyle';
 import { T, useScreenScroller } from '@/ui/ui';
@@ -248,6 +249,10 @@ function NativeCanvas({
   const place = held.current;
 
   const holdPage = (fingerDown: boolean) => {
+    if (drawRef.current?.enabled) {
+      scroller?.current?.setScrollEnabled?.(false);
+      return;
+    }
     const scrolling = pageScrollForMapTouch(expanded, fingerDown);
     if (scrolling == null) return;
     scroller?.current?.setScrollEnabled?.(scrolling);
@@ -278,6 +283,25 @@ function NativeCanvas({
   }
   const selected = adjust?.selectedIndex != null ? adjust.vias[adjust.selectedIndex] ?? null : null;
   const drawing = draw?.enabled === true;
+
+  function showDrawnView(next: { centre: OutdoorPoint; zoom: number }) {
+    const place = {
+      longitude: next.centre.longitude,
+      latitude: next.centre.latitude,
+      zoom: clampDrawZoom(next.zoom),
+    };
+    remember(place);
+    jumpWhenReady(camera.current, place);
+  }
+
+  function zoomBy(delta: number) {
+    const current = held.current;
+    showDrawnView({
+      centre: { latitude: current.latitude, longitude: current.longitude },
+      zoom: current.zoom + delta,
+    });
+  }
+
   return (
     <View
       style={{ height }}
@@ -290,6 +314,8 @@ function NativeCanvas({
       attribution={false}
       dragPan={!drawing}
       touchZoom={!drawing}
+      rotateEnabled={!drawing}
+      pitchEnabled={!drawing}
       style={{ height }}
       onTouchStart={expanded ? undefined : () => holdPage(true)}
       onTouchEnd={expanded ? undefined : () => holdPage(false)}
@@ -375,9 +401,10 @@ function NativeCanvas({
         })}
         onChange={(points) => drawRef.current?.onChange(points)}
         onEnd={(points) => drawRef.current?.onEnd(points)}
-        onFinger={holdPage}
+        onView={showDrawnView}
       />
     ) : null}
+    {drawing ? <DrawZoomButtons onZoom={zoomBy} /> : null}
     </View>
   );
 }
