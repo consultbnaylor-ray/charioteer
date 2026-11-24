@@ -64,6 +64,7 @@ export function ReadingChart({
   accent,
   meaning = 'chart',
   meaningTitle,
+  explanation,
   markExtremes = false,
   hideSummary = false,
   spanWindow = false,
@@ -96,13 +97,16 @@ export function ReadingChart({
   /** Year reference for the summary dates. The range end is used when omitted. */
   today?: string;
   /**
-   * `chart` keeps the direction note in this chart.
+   * `chart` shows What this means when `explanation` is set.
    * `none` leaves that note to the card, so the card has one toggle.
    * A node is extra explanation, shown with the direction note.
+   * No explanation and no node means no button.
    */
   meaning?: 'chart' | 'none' | ReactNode;
   /** Toggle name when this chart draws one. A node defaults to What this Data means. */
   meaningTitle?: string;
+  /** Two or three sentences for What this means. Blank hides the button. */
+  explanation?: string;
   /**
    * Replaces “Latest · Min · Max” when a card has a clearer line.
    * Omitted charts keep that line, so other pages do not change.
@@ -193,11 +197,14 @@ export function ReadingChart({
     ? `${accessibilityLabel}. ${tooltipWhen(selected.day, grain)}, ${amount(selected.value)}.`
     : `${accessibilityLabel}. ${summary}. Older on the left, newer on the right.`;
 
-  const meaningToggle = meaning === 'none' ? null : (
+  const explanationText = explanation?.replace(/\s+/g, ' ').trim() ?? '';
+  const customMeaning = meaning !== 'none' && meaning !== 'chart';
+  const meaningToggle = meaning === 'none' || (!explanationText && !customMeaning) ? null : (
     <MoreInfo
       about={accessibilityLabel}
       title={meaningTitle ?? (meaning === 'chart' ? 'What this means' : DATA_MEANING_TITLE)}
     >
+      {explanationText ? <T variant="muted">{explanationText}</T> : null}
       {meaning === 'chart' ? null : meaning}
       {grainCaption ? <T variant="muted">{grainCaption}</T> : null}
       <T variant="muted">{CHART_DIRECTION_HINT}</T>

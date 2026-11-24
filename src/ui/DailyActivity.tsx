@@ -39,6 +39,7 @@ import {
   type AppleDayValue,
   type DailyActivityPoint,
 } from '@/domain/dailyActivity';
+import { ACTIVITY_CHART_DEFINITIONS, type ActivityChartId } from '@/domain/activityChartCopy';
 import {
   GARMIN_DETAILS_TITLE,
   activityChartGuide,
@@ -118,6 +119,13 @@ function latestRunningVo2(metrics: readonly GarminUserMetric[]): number | null {
     }
   }
   return value;
+}
+
+function trendByChart(
+  id: ActivityChartId,
+  series: Record<ActivityChartId, readonly DailyActivityPoint[]>,
+): readonly DailyActivityPoint[] {
+  return series[id];
 }
 
 function RestingWarning({ text }: { text: string }) {
@@ -235,31 +243,35 @@ export function DailyActivityCharts({
         {chartsOpen ? (
           <View style={{ gap: 12, alignSelf: 'stretch' }}>
             <StatPeriodToggle periods={WORKOUT_HISTORY_PERIODS} selected={trendPeriod} />
-            {([
-              ['Steps', trendSteps, 'steps'],
-              ['Exercise minutes', trendExercise, 'min'],
-              ['Moderate minutes', trendModerate, 'min'],
-              ['Distance', trendDistance, 'm'],
-              ['Active calories', trendCalories, 'kcal'],
-              ['Resting heart rate', trendHeart, 'bpm'],
-            ] as const).map(([name, series, unit]) => series.some((point) => point.value > 0) ? (
-              <ReadingChart
-                key={name}
-                title={name}
-                points={series.filter((point) => point.value > 0).map((point) => ({ day: point.day, value: point.value }))}
-                start={series[0]?.day ?? trendEnd}
-                end={trendEnd}
-                unit={unit}
-                aggregate="mean"
-                bucket={chartBucketForPeriod(trendPeriod)}
-                accent={chartAccent(name, theme.scheme) ?? undefined}
-                accessibilityLabel={`${name} chart`}
-                onSelectDay={(picked) => {
-                  setSelected(picked);
-                  onSelectDay?.(picked);
-                }}
-              />
-            ) : null)}
+            {ACTIVITY_CHART_DEFINITIONS.map((chart) => {
+              const series = trendByChart(chart.id, {
+                steps: trendSteps,
+                exercise: trendExercise,
+                moderate: trendModerate,
+                distance: trendDistance,
+                active_calories: trendCalories,
+                resting_heart_rate: trendHeart,
+              });
+              return series.some((point) => point.value > 0) ? (
+                <ReadingChart
+                  key={chart.id}
+                  title={chart.title}
+                  explanation={chart.explanation}
+                  points={series.filter((point) => point.value > 0).map((point) => ({ day: point.day, value: point.value }))}
+                  start={series[0]?.day ?? trendEnd}
+                  end={trendEnd}
+                  unit={chart.unit}
+                  aggregate="mean"
+                  bucket={chartBucketForPeriod(trendPeriod)}
+                  accent={chartAccent(chart.title, theme.scheme) ?? undefined}
+                  accessibilityLabel={`${chart.title} chart`}
+                  onSelectDay={(picked) => {
+                    setSelected(picked);
+                    onSelectDay?.(picked);
+                  }}
+                />
+              ) : null;
+            })}
             <T variant="muted">Not medical advice. Not a diagnosis.</T>
           </View>
         ) : null}

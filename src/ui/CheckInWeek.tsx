@@ -188,9 +188,11 @@ function Series({
           onSelectDay={onSelectDay}
         />
       ) : null}
-      <MoreInfo about={`${label} chart`} title="What this means">
-        {meaning.map((line, index) => <T key={`${index}-${line}`} variant="muted">{line}</T>)}
-      </MoreInfo>
+      {meaning.some((line) => line.trim()) ? (
+        <MoreInfo about={`${label} chart`} title="What this means">
+          {meaning.map((line, index) => <T key={`${index}-${line}`} variant="muted">{line}</T>)}
+        </MoreInfo>
+      ) : null}
     </View>
   );
 }

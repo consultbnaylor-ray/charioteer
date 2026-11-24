@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react';
+import { Children, isValidElement, useState, type ReactNode } from 'react';
 import { Pressable, View } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
 
@@ -9,6 +9,15 @@ import { T } from '@/ui/ui';
 
 /** One name for the explanation on a stat card or a detail sheet. */
 export const DATA_MEANING_TITLE = 'What this Data means';
+
+/** True when the opened panel would show a word or a control. Null and blank text do not count. */
+export function disclosureHasContent(children: ReactNode): boolean {
+  return Children.toArray(children).some((child) => {
+    if (typeof child === 'string') return child.trim().length > 0;
+    if (typeof child === 'number') return true;
+    return isValidElement(child);
+  });
+}
 
 /**
  * The shared More info control.
@@ -104,6 +113,9 @@ export function MoreInfo({
     else setLocalOpen((current) => !current);
   }
 
+  const body = disclosureHasContent(children);
+  if (!body && !summary) return null;
+
   return (
     <View style={{ alignSelf: 'stretch', gap: 8 }}>
       {summary ? (
@@ -111,8 +123,8 @@ export function MoreInfo({
           {typeof summary === 'string' ? <T variant="muted">{summary}</T> : summary}
         </View>
       ) : null}
-      <MoreInfoButton label={label} expanded={expanded} accessibilityLabel={spoken} onPress={toggle} />
-      {expanded ? <View style={{ gap: 8, paddingBottom: 4 }}>{children}</View> : null}
+      {body ? <MoreInfoButton label={label} expanded={expanded} accessibilityLabel={spoken} onPress={toggle} /> : null}
+      {body && expanded ? <View style={{ gap: 8, paddingBottom: 4 }}>{children}</View> : null}
     </View>
   );
 }
