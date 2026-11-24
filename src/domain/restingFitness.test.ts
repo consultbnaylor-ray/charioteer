@@ -64,7 +64,6 @@ describe('resting heart rate and fitness', () => {
     expect(lowRestingFitText('62 bpm')).toBeNull();
     expect(lowRestingFitText(null)).toBeNull();
     expect(readFileSync('src/ui/LowRestingFitNote.tsx', 'utf8')).toContain('lowRestingFitText(reading, detail)');
-    expect(readFileSync('src/ui/YourFitness.tsx', 'utf8')).toContain('<LowRestingFitNote reading={view.resting.reading} />');
     expect(readFileSync('src/ui/HealthStatBoard.tsx', 'utf8')).toContain('<LowRestingFitNote');
   });
 

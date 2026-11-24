@@ -76,10 +76,6 @@ describe('stat icons', () => {
     expect(list).toContain('<StatGlyph');
     expect(readFileSync('src/ui/HealthStatBoard.tsx', 'utf8')).toContain('healthTileIcon(tile.id)');
     expect(readFileSync('src/ui/DailyActivity.tsx', 'utf8')).toContain('activityTitleIcon(title)');
-    const fitness = readFileSync('src/ui/YourFitness.tsx', 'utf8');
-    expect(fitness).toContain('icon="gauge"');
-    expect(fitness).toContain('icon="timer"');
-    expect(fitness).toContain('<IconLabel name="heart">Resting heart rate</IconLabel>');
     const home = readFileSync('src/app/(main)/home.tsx', 'utf8');
     expect(home).toContain('icon="day" label="Sober days"');
     expect(home).toContain('<IconLabel name="day">Today</IconLabel>');

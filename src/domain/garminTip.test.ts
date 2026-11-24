@@ -29,15 +29,13 @@ describe('Garmin connect card', () => {
     expect(`${GARMIN_CONNECT_BUTTON} ${GARMIN_CONNECT_HINT} ${GARMIN_ONBOARDING_CARD} ${GARMIN_DISCONNECT_NOTE}`).not.toMatch(OTHER_APPS);
   });
 
-  it('puts an obvious connect card on Health and Your fitness, with no dismiss', () => {
+  it('puts an obvious connect card on Health, with no dismiss', () => {
     const health = readFileSync('src/app/(main)/health.tsx', 'utf8');
-    const fitness = readFileSync('src/ui/YourFitness.tsx', 'utf8');
     const tip = readFileSync('src/ui/GarminTip.tsx', 'utf8');
     expect(health).toContain('<GarminTip />');
     expect(health.indexOf('<AppleHealthCard')).toBeLessThan(health.indexOf('<GarminTip />'));
     expect(health.indexOf('<GarminTip />')).toBeLessThan(health.indexOf('<HealthVisibility\n'));
-    expect(fitness).toContain('<GarminTip />');
-    expect(fitness.indexOf('Your fitness')).toBeLessThan(fitness.indexOf('<GarminTip />'));
+    expect(readFileSync('src/app/(main)/workouts.tsx', 'utf8')).not.toContain('<GarminTip />');
     expect(tip).toContain('GARMIN_CONNECT_BUTTON');
     expect(tip).toContain('GARMIN_CONNECT_HINT');
     expect(tip).toContain('GARMIN_CONNECTED_LABEL');

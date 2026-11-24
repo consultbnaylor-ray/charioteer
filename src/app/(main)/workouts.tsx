@@ -12,7 +12,6 @@ import { HealthRefreshBar, useManualHealthRefresh } from '@/ui/HealthRefresh';
 import { GarminPermissionNotice } from '@/ui/GarminPermissionNotice';
 import { WorkoutCalendar } from '@/ui/WorkoutCalendar';
 import { WorkoutList } from '@/ui/WorkoutList';
-import { YourFitness } from '@/ui/YourFitness';
 import { Button, Screen } from '@/ui/ui';
 
 function one(value: string | string[] | undefined): string {
@@ -69,7 +68,13 @@ export default function WorkoutsScreen() {
       <GarminPermissionNotice />
       {LIVE_SESSION_ENABLED ? <Button label="Start live session" onPress={() => router.push('/gym-session' as never)} /> : null}
       <Button label="Back" tone="quiet" onPress={() => router.back()} />
-      <YourFitness onPlanOutdoor={() => router.push(`/workouts?planOutdoor=${Date.now()}` as never)} />
+      <WorkoutCalendar
+        planDay={planDay}
+        planNonce={planNonce}
+        planOutdoorNonce={planOutdoorNonce}
+        workouts={workouts}
+        age={snap.nutrition.goalAge}
+      />
       <WorkoutList
         workouts={workouts}
         age={snap.nutrition.goalAge}
@@ -95,13 +100,6 @@ export default function WorkoutsScreen() {
         sex={snap.nutrition.goalSex}
         goal={snap.nutrition.goal}
         exercisePermissionMissing={exercisePermissionMissing(visibility)}
-      />
-      <WorkoutCalendar
-        planDay={planDay}
-        planNonce={planNonce}
-        planOutdoorNonce={planOutdoorNonce}
-        workouts={workouts}
-        age={snap.nutrition.goalAge}
       />
     </Screen>
   );

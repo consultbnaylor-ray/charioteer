@@ -47,7 +47,6 @@ describe('goal name on comparisons', () => {
   it('names the goal on stats, health, the overview, and the detail sheets', () => {
     const health = readFileSync('src/app/(main)/health.tsx', 'utf8');
     const goal = readFileSync('src/ui/YourGoal.tsx', 'utf8');
-    const fitness = readFileSync('src/ui/YourFitness.tsx', 'utf8');
     const weight = readFileSync('src/ui/GoalWeightRange.tsx', 'utf8');
     const board = readFileSync('src/ui/HealthStatBoard.tsx', 'utf8');
     const line = readFileSync('src/ui/GoalLine.tsx', 'utf8');
@@ -55,7 +54,7 @@ describe('goal name on comparisons', () => {
     expect(readFileSync('src/app/(main)/home.tsx', 'utf8')).toContain('<YourGoal place="today" />');
     expect(goal).toContain('<GoalLine />');
     expect(goal).toContain('towardGoal(view.name)');
-    expect(fitness).toContain('<GoalLine note={false} />');
+    expect(readFileSync('src/app/(main)/workouts.tsx', 'utf8')).not.toContain('<GoalLine');
     expect(weight).toContain('<GoalLine note={false} />');
     expect(weight).toContain("metricId: 'weight_kg'");
     expect(board).toContain('<GoalLine note={false} />');

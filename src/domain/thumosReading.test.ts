@@ -237,7 +237,7 @@ describe('on-phone Thumos reading note', () => {
     expect(readFileSync('src/ui/ThumosReadingComment.tsx', 'utf8')).toContain('authorize: false');
     expect(THUMOS_ANALYSE_AGAIN).toBe('Have Thumos analyse your data again');
     expect(readFileSync('src/domain/scaleReading.ts', 'utf8')).toContain("export const SCALE_FROM_SCALES = 'From your smart scales';");
-    expect(readFileSync('src/ui/YourFitness.tsx', 'utf8')).not.toContain('ThumosReadingComment');
+    expect(readFileSync('src/app/(main)/workouts.tsx', 'utf8')).not.toContain('ThumosReadingComment');
     expect(APPLE_HEALTH_READ_TYPES).not.toContain('HKQuantityTypeIdentifierBodyMassIndex');
     expect(readFileSync('app.json', 'utf8')).not.toContain('metabolic age');
     expect(THUMOS_READING_LABEL).toBe('Thumos');

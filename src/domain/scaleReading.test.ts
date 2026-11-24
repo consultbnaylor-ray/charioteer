@@ -76,14 +76,14 @@ describe('scale reading beside BMI', () => {
     expect(app).not.toContain('HKQuantityTypeIdentifierBodyMassIndex');
   });
 
-  it('sits with the weight range and on the weight page, not on Your fitness', () => {
+  it('sits with the weight range and on the weight page, not on Workouts', () => {
     const range = readFileSync('src/ui/GoalWeightRange.tsx', 'utf8');
     const weight = readFileSync('src/app/(main)/weight-waist.tsx', 'utf8');
-    const fitness = readFileSync('src/ui/YourFitness.tsx', 'utf8');
+    const workouts = readFileSync('src/app/(main)/workouts.tsx', 'utf8');
     const note = readFileSync('src/ui/ScaleReading.tsx', 'utf8');
     expect(range).toContain('<ScaleReadingNote />');
     expect(weight).toContain('<ScaleReadingNote />');
-    expect(fitness).not.toContain('ScaleReadingNote');
+    expect(workouts).not.toContain('ScaleReadingNote');
     expect(note.indexOf('{SCALE_CORE_LINE}')).toBeLessThan(note.indexOf('<MoreInfo'));
     expect(note.indexOf('{SCALE_COMPARE_LINE}')).toBeLessThan(note.indexOf('<MoreInfo'));
     expect(note).toContain('VISIBLE_SAFETY_LINE');

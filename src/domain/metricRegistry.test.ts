@@ -269,7 +269,7 @@ describe('metric registry', () => {
       expect(ACTIVITY_BAR_TITLES[title], title).toBeTruthy();
       expect(METRIC_REGISTRY[ACTIVITY_BAR_TITLES[title] ?? ''], title).toBeTruthy();
     }
-    for (const file of ['src/ui/HealthStatBoard.tsx', 'src/ui/StatTile.tsx', 'src/ui/ProfileStatTiles.tsx', 'src/ui/DailyActivity.tsx', 'src/ui/YourFitness.tsx']) {
+    for (const file of ['src/ui/HealthStatBoard.tsx', 'src/ui/StatTile.tsx', 'src/ui/ProfileStatTiles.tsx', 'src/ui/DailyActivity.tsx']) {
       const source = readFileSync(file, 'utf8');
       expect(source, file).toContain('MetricRatingLines');
       expect(source.includes('Not medical advice. Not a diagnosis.') || source.includes('METRIC_CAVEAT'), file).toBe(true);

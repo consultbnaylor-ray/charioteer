@@ -48,7 +48,6 @@ import {
   floorsChartGuide,
   garminBarPoints,
   garminDetailCharts,
-  garminSourceCaption,
   intensitySeries,
   APPLE_HRV_EMPTY,
   APPLE_HRV_SOURCE,
@@ -420,7 +419,7 @@ export const MovementCharts = memo(function MovementCharts({
   showIntensity?: boolean;
   /** False when this block already sits inside a card, so the metrics do not gain a second edge. */
   framed?: boolean;
-  /** False on Stats and Health Plan, where the VO2 max chart sits inside Your fitness. */
+  /** False on Health Stats, which does not draw this chart. */
   showVo2Chart?: boolean;
   /** The More Garmin Stats screen. The main charts stay on Stats. */
   detailsOnly?: boolean;
@@ -737,53 +736,6 @@ export const MovementCharts = memo(function MovementCharts({
     </View>
   );
 });
-
-/** Garmin's VO2 max bars. Shown inside Your fitness, under the connected card. */
-export function Vo2MaxChart({
-  endDay,
-  userMetrics,
-  age,
-  sex,
-  goal = null,
-}: {
-  endDay: string;
-  userMetrics: readonly GarminUserMetric[];
-  age: number | null;
-  sex: NutritionSex | null;
-  goal?: NutritionGoal | null;
-}) {
-  const [sharedPeriod] = useStatPeriod();
-  const chartWindow = movementPeriod(undefined, sharedPeriod);
-  const [selected, setSelected] = useState<string | null>(null);
-  const chart = garminDetailCharts({
-    endDay,
-    period: chartWindow.period,
-    dailies: [],
-    sleep: [],
-    respiration: [],
-    pulseOx: [],
-    hrv: [],
-    userMetrics,
-    age,
-    sex,
-    goal,
-  }).find((item) => item.id === 'vo2');
-  if (!chart) return null;
-  return (
-    <ActivityBars
-      framed
-      title={chart.title}
-      points={garminBarPoints(chart.points)}
-      span={chartWindow.days}
-      unit={chart.unit}
-      selected={selected}
-      garminNote={garminSourceCaption(chart)}
-      guide={chart.guide}
-      cumulative={false}
-      onSelect={setSelected}
-    />
-  );
-}
 
 const CARE_LINES = new Set(['Samaritans', 'NHS 111', 'Emergency services']);
 

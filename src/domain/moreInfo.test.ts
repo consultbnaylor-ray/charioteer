@@ -47,7 +47,7 @@ describe('more info disclosure', () => {
     expect(readFileSync('src/ui/MoreInfo.tsx', 'utf8')).toContain("export const DATA_MEANING_TITLE = 'What this Data means'");
     const reading = readFileSync('src/ui/ReadingChart.tsx', 'utf8');
     expect(reading).toContain("meaning === 'chart' ? 'What this means'");
-    for (const file of ['src/ui/TodayGlance.tsx', 'src/ui/HeartBodyGlance.tsx', 'src/ui/YourFitness.tsx']) {
+    for (const file of ['src/ui/TodayGlance.tsx']) {
       const source = readFileSync(file, 'utf8');
       expect(source, file).toContain('<DataMeaning');
       expect(source, file).toContain('meaning="none"');
