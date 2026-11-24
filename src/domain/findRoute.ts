@@ -3,7 +3,7 @@ import {
   drawnLineAfterSnap,
   formatWalkDistance,
   pathMetres,
-  sketchWaypointSets,
+  sketchWaypoints,
   type OutdoorKind,
   type OutdoorPoint,
 } from './outdoorRoute';
@@ -84,6 +84,8 @@ export type RoutePlanInput = {
   preferPaths?: boolean;
   /** A pencil sketch. The route follows these points instead of a chosen length. */
   sketch?: OutdoorPoint[] | null;
+  /** One id for this tap, including a network retry of the same tap. */
+  requestId?: string;
 };
 
 export type RoutePlan = {
@@ -590,9 +592,9 @@ export function unmatchedDrawnPlan(input: {
 }
 
 /**
- * Tries the corner sketch, then fewer corners.
+ * One route call for the corner sketch.
  * A line that comes back is kept only when it still follows the pencil.
- * When every answer is a miss, `sawRoute` says whether the service answered at all.
+ * `sawRoute` says whether that one call answered.
  */
 export async function matchDrawnSketch(input: {
   sketch: readonly OutdoorPoint[];
@@ -602,21 +604,16 @@ export async function matchDrawnSketch(input: {
   | { matched: false; sawRoute: true }
   | { matched: false; sawRoute: false; error: unknown }
 > {
-  const sets = sketchWaypointSets(input.sketch);
-  let sawRoute = false;
-  let lastError: unknown = null;
-  for (const waypoints of sets) {
-    try {
-      const plan = await input.send(waypoints);
-      sawRoute = true;
-      const choice = drawnLineAfterSnap({ sketch: input.sketch, routed: plan.points });
-      if (choice.matched) return { matched: true, plan: adoptSnappedLine(plan, choice.points) };
-    } catch (error) {
-      lastError = error;
-    }
+  const waypoints = sketchWaypoints(input.sketch);
+  if (waypoints.length < 2) return { matched: false, sawRoute: false, error: new Error('short') };
+  try {
+    const plan = await input.send(waypoints);
+    const choice = drawnLineAfterSnap({ sketch: input.sketch, routed: plan.points });
+    if (choice.matched) return { matched: true, plan: adoptSnappedLine(plan, choice.points) };
+    return { matched: false, sawRoute: true };
+  } catch (error) {
+    return { matched: false, sawRoute: false, error };
   }
-  if (sawRoute) return { matched: false, sawRoute: true };
-  return { matched: false, sawRoute: false, error: lastError };
 }
 
 /** A few points only. Apple draws its own line between them. */

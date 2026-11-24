@@ -31,6 +31,7 @@ import {
   routeLengthM,
   routingMode,
   snapUrl,
+  listedUser,
   withinGlobalRouteLimit,
   withinRouteLimit,
   withinSearchLimit,
@@ -40,26 +41,65 @@ type RequestKind = 'route' | 'search';
 
 const recent = new Map<string, number[]>();
 const searchRecent = new Map<string, number[]>();
+const recordedIds = new Map<string, number>();
 let globalRecent: number[] = [];
 let globalSearchRecent: number[] = [];
 
-function memoryAllows(userId: string, kind: RequestKind, now = Date.now()): boolean {
+function routeLimitExempt(userId: string): boolean {
+  return listedUser(Deno.env.get('ROUTE_LIMIT_EXEMPT_USERS'), userId);
+}
+
+function readRequestId(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  const id = value.trim().toLowerCase();
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(id) ? id : null;
+}
+
+function seenRequest(userId: string, requestId: string | null, now: number): boolean {
+  if (!requestId) return false;
+  const until = recordedIds.get(`${userId}:${requestId}`);
+  if (!until) return false;
+  if (until <= now) {
+    recordedIds.delete(`${userId}:${requestId}`);
+    return false;
+  }
+  return true;
+}
+
+function rememberRequest(userId: string, requestId: string | null, now: number): void {
+  if (!requestId) return;
+  recordedIds.set(`${userId}:${requestId}`, now + 120_000);
+}
+
+function forgetRequest(userId: string, requestId: string | null): void {
+  if (!requestId) return;
+  recordedIds.delete(`${userId}:${requestId}`);
+}
+
+function memoryPeek(userId: string, kind: RequestKind, exempt: boolean, now: number): boolean {
+  const globalStamps = kind === 'search' ? globalSearchRecent : globalRecent;
+  const globalCap = kind === 'search' ? GLOBAL_SEARCH_DAILY_CAP : GLOBAL_ROUTE_DAILY_CAP;
+  if (!withinGlobalRouteLimit(globalStamps, now, globalCap).ok) return false;
+  if (exempt) return true;
+  const stamps = kind === 'search' ? searchRecent.get(userId) ?? [] : recent.get(userId) ?? [];
+  const person = kind === 'search' ? withinSearchLimit(stamps, now) : withinRouteLimit(stamps, now);
+  return person.ok;
+}
+
+function memoryCommit(userId: string, kind: RequestKind, exempt: boolean, now: number): void {
   if (kind === 'search') {
     const across = withinGlobalRouteLimit(globalSearchRecent, now, GLOBAL_SEARCH_DAILY_CAP);
-    if (!across.ok) return false;
+    if (across.ok) globalSearchRecent = across.next;
+    if (exempt) return;
     const person = withinSearchLimit(searchRecent.get(userId) ?? [], now);
-    if (!person.ok) return false;
-    globalSearchRecent = across.next;
-    searchRecent.set(userId, person.next);
-    return true;
+    if (person.ok) searchRecent.set(userId, person.next);
+    return;
   }
   const across = withinGlobalRouteLimit(globalRecent, now);
-  if (!across.ok) return false;
+  if (across.ok) globalRecent = across.next;
+  if (exempt) return;
   const person = withinRouteLimit(recent.get(userId) ?? [], now);
-  if (!person.ok) return false;
-  globalRecent = across.next;
-  recent.set(userId, person.next);
-  return true;
+  if (person.ok) recent.set(userId, person.next);
 }
 
 Deno.serve(async (req) => {
@@ -92,6 +132,7 @@ Deno.serve(async (req) => {
     via?: unknown;
     preferPaths?: unknown;
     sketch?: unknown;
+    requestId?: unknown;
   } | null;
   if (!body || (body.action !== 'route' && body.action !== 'search')) {
     return json({ ok: false, code: 'bad_request', message: 'Choose a route or a place.' }, 400);
@@ -100,9 +141,16 @@ Deno.serve(async (req) => {
   const key = Deno.env.get('ORS_API_KEY');
   if (!key) return json({ ok: false, code: 'unavailable', message: UNAVAILABLE_MESSAGE }, 503);
 
+  const requestId = readRequestId(body.requestId);
+  const exempt = routeLimitExempt(userId);
   const kind: RequestKind = body.action === 'search' ? 'search' : 'route';
-  const allowed = await requestAllowed(url, userId, kind);
+  const allowed = await requestAllowed(url, userId, kind, exempt, requestId);
   if (!allowed) return json({ ok: false, code: 'rate_limited', message: RATE_LIMITED_MESSAGE }, 429);
+
+  async function finish(payload: { ok: true } & Record<string, unknown>): Promise<Response> {
+    if (payload.ok === true) await recordRequest(url, userId, kind, requestId, exempt);
+    return json(payload);
+  }
 
   try {
     if (body.action === 'search') {
@@ -114,7 +162,7 @@ Deno.serve(async (req) => {
       });
       if (!response.ok) return json({ ok: false, code: 'unavailable', message: UNAVAILABLE_MESSAGE }, 503);
       const payload = await response.json().catch(() => null);
-      return json({ ok: true, places: parseGeocode(payload) });
+      return finish({ ok: true, places: parseGeocode(payload) });
     }
 
     const mode = readMode(body.mode);
@@ -134,7 +182,7 @@ Deno.serve(async (req) => {
     const directions = buildDirectionsBody({ mode, shape, start, end, lengthM: lengthM ?? 0, via: vias, preferPaths, sketch });
     if (!directions) return json({ ok: false, code: 'bad_request', message: 'Choose a destination.' }, 400);
     const first = await postDirections(key, routed, shape, directions);
-    if (first.kind === 'plan') return json({ ok: true, mocked: false, mode, shape, ...first.plan });
+    if (first.kind === 'plan') return finish({ ok: true, mocked: false, mode, shape, ...first.plan });
     if (first.failure.body.code !== 'no_path') return json(first.failure.body, first.failure.status);
     const snapped = await snapStart(key, routed, sketch[0] ?? start);
     if (snapped.kind === 'failure') return json(snapped.failure.body, snapped.failure.status);
@@ -148,7 +196,7 @@ Deno.serve(async (req) => {
       return json(second.failure.body, second.failure.status);
     }
     const moved = snapped.distanceM >= 1;
-    return json({
+    return finish({
       ok: true,
       mocked: false,
       mode,
@@ -228,25 +276,45 @@ async function snapStart(
   return { kind: 'point', point: { latitude: snapped.latitude, longitude: snapped.longitude }, distanceM };
 }
 
-async function requestAllowed(url: string, userId: string, kind: RequestKind): Promise<boolean> {
+/** Writes one row after a successful plan or place list. A refusal, a bad request, or a failed lookup writes nothing. */
+async function recordRequest(url: string, userId: string, kind: RequestKind, requestId: string | null, exempt: boolean): Promise<void> {
   const now = Date.now();
-  const across = kind === 'search'
-    ? withinGlobalRouteLimit(globalSearchRecent, now, GLOBAL_SEARCH_DAILY_CAP)
-    : withinGlobalRouteLimit(globalRecent, now);
-  const person = kind === 'search'
-    ? withinSearchLimit(searchRecent.get(userId) ?? [], now)
-    : withinRouteLimit(recent.get(userId) ?? [], now);
-  if (!across.ok || !person.ok) return false;
+  if (seenRequest(userId, requestId, now)) return;
+  rememberRequest(userId, requestId, now);
   const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
   if (serviceKey) {
-    const table = await tableAllows(url, serviceKey, userId, kind);
-    if (table === false) return false;
+    try {
+      const admin = createClient(url, serviceKey, { auth: { persistSession: false } });
+      const inserted = await admin.from('outdoor_route_requests').insert({ user_id: userId, kind });
+      if (inserted.error) {
+        forgetRequest(userId, requestId);
+        return;
+      }
+    } catch {
+      forgetRequest(userId, requestId);
+      return;
+    }
   }
-  return memoryAllows(userId, kind, now);
+  memoryCommit(userId, kind, exempt, now);
 }
 
-/** True when the count table accepted this kind of request. False when that kind is over its limit. Null when the table is not there yet. */
-async function tableAllows(url: string, serviceKey: string, userId: string, kind: RequestKind): Promise<boolean | null> {
+async function requestAllowed(url: string, userId: string, kind: RequestKind, exempt: boolean, requestId: string | null): Promise<boolean> {
+  const now = Date.now();
+  if (seenRequest(userId, requestId, now)) return true;
+  if (!memoryPeek(userId, kind, exempt, now)) return false;
+  const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+  if (serviceKey) {
+    const table = await tableAllows(url, serviceKey, userId, kind, exempt);
+    if (table === false) return false;
+  }
+  return true;
+}
+
+/**
+ * True when this kind is still under its cap. False when it is over.
+ * Null when the table cannot be read. An exempt account still counts toward the global cap.
+ */
+async function tableAllows(url: string, serviceKey: string, userId: string, kind: RequestKind, exempt: boolean): Promise<boolean | null> {
   const burst = kind === 'search' ? SEARCH_TEN_MINUTE_CAP : ROUTE_TEN_MINUTE_CAP;
   const daily = kind === 'search' ? SEARCH_DAILY_CAP : ROUTE_DAILY_CAP;
   const globalCap = kind === 'search' ? GLOBAL_SEARCH_DAILY_CAP : GLOBAL_ROUTE_DAILY_CAP;
@@ -257,14 +325,13 @@ async function tableAllows(url: string, serviceKey: string, userId: string, kind
     const across = await admin.from('outdoor_route_requests').select('id', { count: 'exact', head: true }).eq('kind', kind).gte('created_at', dayAgo);
     if (across.error) return null;
     if ((across.count ?? 0) >= globalCap) return false;
+    if (exempt) return true;
     const ten = await admin.from('outdoor_route_requests').select('id', { count: 'exact', head: true }).eq('user_id', userId).eq('kind', kind).gte('created_at', tenAgo);
     if (ten.error) return null;
     if ((ten.count ?? 0) >= burst) return false;
     const day = await admin.from('outdoor_route_requests').select('id', { count: 'exact', head: true }).eq('user_id', userId).eq('kind', kind).gte('created_at', dayAgo);
     if (day.error) return null;
     if ((day.count ?? 0) >= daily) return false;
-    const inserted = await admin.from('outdoor_route_requests').insert({ user_id: userId, kind });
-    if (inserted.error) return null;
     return true;
   } catch {
     return null;

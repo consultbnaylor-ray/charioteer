@@ -136,7 +136,7 @@ describe('sketch snapping', () => {
     expect(hand.distanceM).toBe(pathMetres(sketch));
   });
 
-  it('retries a bad snap with fewer corners, then keeps the first line that follows the pencil', async () => {
+  it('sends one snap and keeps that line only when it follows the pencil', async () => {
     let cursor = origin;
     const busy: OutdoorPoint[] = [origin];
     for (const [eastM, northM] of [
@@ -149,20 +149,25 @@ describe('sketch snapping', () => {
       busy.push(cursor);
     }
     const sent: number[] = [];
-    const result = await matchDrawnSketch({
+    const wandered = await matchDrawnSketch({
       sketch: busy,
       send: async (waypoints) => {
         sent.push(waypoints.length);
-        if (sent.length === 1) return planFrom(busy.map((point) => north(250, point)), pathMetres(busy) * 3);
-        return planFrom(waypoints);
+        return planFrom(busy.map((point) => north(250, point)), pathMetres(busy) * 3);
       },
     });
-    expect(sent.length).toBeGreaterThan(1);
-    expect(sent[1]).toBeLessThan(sent[0] ?? 0);
-    expect(result.matched).toBe(true);
-    if (result.matched) {
-      expect(hausdorffMetres(result.plan.points, busy)).toBeLessThan(SNAP_DEVIATION_M);
-      expect(result.plan.distanceM).toBeLessThan(pathMetres(busy) * SNAP_LENGTH_RATIO);
+    expect(sent).toHaveLength(1);
+    expect(wandered.matched).toBe(false);
+    if (!wandered.matched) expect(wandered.sawRoute).toBe(true);
+
+    const followed = await matchDrawnSketch({
+      sketch: busy,
+      send: async (waypoints) => planFrom(waypoints),
+    });
+    expect(followed.matched).toBe(true);
+    if (followed.matched) {
+      expect(hausdorffMetres(followed.plan.points, busy)).toBeLessThan(SNAP_DEVIATION_M);
+      expect(followed.plan.distanceM).toBeLessThan(pathMetres(busy) * SNAP_LENGTH_RATIO);
     }
 
     const failed = await matchDrawnSketch({

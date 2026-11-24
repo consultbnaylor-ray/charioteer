@@ -3303,8 +3303,9 @@ export class SupabaseRepository implements Repository {
       throw new UserFacingError('That place could not be used.', 'generic');
     }
     try {
+      const requestId = input.requestId ?? randomId();
       const invoked = await withDeadline(retryRouteInvoke((attempt) => this.client.functions.invoke('outdoor-route', {
-        body: routePlanBody({ ...input, start, end }),
+        body: routePlanBody({ ...input, start, end, requestId }),
         headers: routeInvokeHeaders(attempt),
       })), ROUTE_CLIENT_TIMEOUT_MS, ROUTE_SLOW);
       const plan = parseRoutePlan(invoked.data);
@@ -3319,8 +3320,9 @@ export class SupabaseRepository implements Repository {
   async searchRoutePlaces(query: string): Promise<RoutePlace[]> {
     await assertRouteFindingAllowed();
     try {
+      const requestId = randomId();
       const invoked = await withDeadline(retryRouteInvoke((attempt) => this.client.functions.invoke('outdoor-route', {
-        body: { action: 'search', query },
+        body: { action: 'search', query, requestId },
         headers: routeInvokeHeaders(attempt),
       })), ROUTE_CLIENT_TIMEOUT_MS, SEARCH_SLOW);
       const places = parseRoutePlaces(invoked.data);
