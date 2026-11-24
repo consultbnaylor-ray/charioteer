@@ -2104,7 +2104,8 @@ describe("today's meals on the log card", () => {
     expect(screen).toContain('TODAY_MEALS_EMPTY');
     expect(screen.slice(logged, goal)).toContain('renderLog(log, false)');
     expect(days).toContain('useState(group.isToday || pinned)');
-    expect(days).toContain('accessibilityState={{ expanded: open }}');
+    expect(days).toContain('<ExpandableRow');
+    expect(days).toContain('expanded={open}');
     expect(days).toContain("open ? 'Hide' : 'Show'");
     expect(days).toContain('group.heading');
     expect(days).toContain('<MealNutrientBars');

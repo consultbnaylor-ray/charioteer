@@ -28,6 +28,7 @@ import { DateField } from '@/ui/DateField';
 import { OwnerPhoto } from '@/ui/OwnerPhoto';
 import { InPlainWords, QuoteWords } from '@/ui/InPlainWords';
 import { usePendingPress } from '@/ui/pendingAction';
+import { ExpandableRow } from '@/ui/ExpandableRow';
 import { Explain } from '@/ui/MoreInfo';
 import { Button, Card, EditMark, EditSheet, ErrorNote, Field, Screen, T } from '@/ui/ui';
 import { ScrollTarget } from '@/ui/ScrollTarget';
@@ -176,15 +177,12 @@ export default function Home() {
         </>
       ) : null}
       {sober ? (
-        <Pressable
-          accessibilityRole="button"
-          accessibilityState={{ expanded: moreOpen }}
+        <ExpandableRow
+          label={moreOpen ? 'Hide the rest of today' : 'More on today'}
           accessibilityLabel={moreOpen ? 'Hide the rest of today' : 'More on today'}
+          expanded={moreOpen}
           onPress={() => setMoreOpen((open) => !open)}
-          style={{ minHeight: 44, justifyContent: 'center' }}
-        >
-          <T style={{ fontFamily: theme.font.bodyStrong }}>{moreOpen ? 'Hide the rest of today' : 'More on today'}</T>
-        </Pressable>
+        />
       ) : null}
       {!sober || moreOpen ? (
       <>

@@ -1,7 +1,8 @@
 import { useState } from 'react';
-import { Pressable, View } from 'react-native';
+import { View } from 'react-native';
 
 import { NUTRITION_BREAKDOWN_LABEL, type MealNutrientBar } from '@/domain/nutrition';
+import { ExpandableRow } from '@/ui/ExpandableRow';
 import { useAppTheme } from '@/ui/theme';
 import { T } from '@/ui/ui';
 
@@ -50,15 +51,12 @@ export function MealBreakdown({ bars, startOpen }: { bars: readonly MealNutrient
   if (startOpen) return <MealNutrientBars bars={bars} />;
   return (
     <View style={{ gap: 6 }}>
-      <Pressable
-        accessibilityRole="button"
+      <ExpandableRow
+        label={open ? 'Hide nutrition breakdown' : NUTRITION_BREAKDOWN_LABEL}
         accessibilityLabel={NUTRITION_BREAKDOWN_LABEL}
-        accessibilityState={{ expanded: open }}
+        expanded={open}
         onPress={() => setOpen((value) => !value)}
-        style={{ minHeight: 44, justifyContent: 'center' }}
-      >
-        <T variant="label">{open ? 'Hide nutrition breakdown' : NUTRITION_BREAKDOWN_LABEL}</T>
-      </Pressable>
+      />
       {open ? <MealNutrientBars bars={bars} /> : null}
     </View>
   );
