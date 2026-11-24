@@ -292,7 +292,10 @@ function StatTile({
   const theme = useAppTheme();
   const icon = healthTileIcon(tile.id);
   const charted = !skipChart && tile.readings.length > 0;
-  const spoken = `More info about ${tile.title}. ${valueWithPeriod(tile)}. ${tile.weeklyLine ?? ''} ${tile.mark}. ${tile.status}`;
+  const headline = tile.span
+    ? `${tile.span.latest}. ${tile.span.lowest}. ${tile.span.highest}`
+    : valueWithPeriod(tile);
+  const spoken = `More info about ${tile.title}. ${headline}. ${tile.weeklyLine ?? ''} ${tile.mark}. ${tile.status}`;
   return (
     <View
       style={{
@@ -322,10 +325,11 @@ function StatTile({
         ) : null}
         {tile.rating && !tile.rating.pending ? <RatingChip label={tile.rating.label} /> : null}
       </Pressable>
-      {!charted && !tile.empty && tile.history.length >= 2 && tile.visual.kind !== 'line' ? (
+      {!charted && !tile.span && !tile.empty && tile.history.length >= 2 && tile.visual.kind !== 'line' ? (
         <TrendLine points={tile.history} color={statsToneColors(theme.scheme)[tile.tone].ink} />
       ) : null}
-      {charted ? <TileChart tile={tile} today={today} period={period} meaning="none" /> : <TileValue tile={tile} />}
+      {charted ? <TileChart tile={tile} today={today} period={period} meaning="none" /> : null}
+      {!charted || tile.span ? <TileValue tile={tile} /> : null}
       {tile.empty || tile.visual.kind === 'bars' ? null : (
         <TileVisual visual={tile.visual} charted={charted} showCaptions={tile.visual.kind !== 'zone'} />
       )}
@@ -346,7 +350,7 @@ function StatTile({
         )}
         {tile.trend ? <T variant="muted">{tile.trend}</T> : null}
         <T variant="muted">Not medical advice. Not a diagnosis.</T>
-        {charted ? <ChartMeaningCopy bucket={chartBucketForPeriod(period)} aggregate={SUM_CHARTS.has(tile.id) ? 'sum' : 'mean'} /> : null}
+        {charted ? <ChartMeaningCopy bucket={tileChartBucket(tile, period)} aggregate={SUM_CHARTS.has(tile.id) ? 'sum' : 'mean'} /> : null}
         <Pressable
           accessibilityRole="button"
           accessibilityLabel={`More info about ${tile.title}`}
@@ -365,6 +369,16 @@ function StatTile({
 /** The window sits on the number, in the same weight, not as a grey caption under the chart. */
 function TileValue({ tile }: { tile: HealthStatTile }) {
   const theme = useAppTheme();
+  if (tile.span) {
+    const lines = [tile.span.latest, tile.span.lowest, tile.span.highest];
+    return (
+      <View style={{ gap: 2 }} accessibilityLabel={lines.join('. ')}>
+        {lines.map((line) => (
+          <T key={line} style={{ fontFamily: theme.font.bodyStrong }}>{line}</T>
+        ))}
+      </View>
+    );
+  }
   return (
     <View style={{ gap: 2 }}>
       <T style={{ fontFamily: theme.font.bodyStrong }}>{valueWithPeriod(tile)}</T>
@@ -388,19 +402,29 @@ function TileChart({
   const theme = useAppTheme();
   const window = rollingWindow(today, period);
   const unit = tile.unit === 'h' ? 'hours' : tile.unit;
+  const extremes = Boolean(tile.span);
   return (
     <ReadingChart
       points={tile.readings}
       start={window.start}
       end={window.end}
       unit={unit}
+      yTitle={unit}
       aggregate={SUM_CHARTS.has(tile.id) ? 'sum' : 'mean'}
-      bucket={chartBucketForPeriod(period)}
+      bucket={tileChartBucket(tile, period)}
       accent={tileAccent(tile.id, theme.scheme)}
       accessibilityLabel={`${tile.title} chart`}
       meaning={meaning}
+      markExtremes={extremes}
+      hideSummary={extremes}
+      spanWindow={extremes}
+      today={today}
     />
   );
+}
+
+function tileChartBucket(tile: HealthStatTile, period: StatPeriod) {
+  return tile.span ? 'day' as const : chartBucketForPeriod(period);
 }
 
 function tileAccent(id: string, scheme: 'light' | 'dark'): string {
@@ -622,7 +646,7 @@ function StatDetail({
                 {tile.readings.length > 0 ? (
                   <>
                     <TileChart tile={tile} today={today} period={period} meaning="none" />
-                    <ChartMeaningCopy bucket={chartBucketForPeriod(period)} aggregate={SUM_CHARTS.has(tile.id) ? 'sum' : 'mean'} />
+                    <ChartMeaningCopy bucket={tileChartBucket(tile, period)} aggregate={SUM_CHARTS.has(tile.id) ? 'sum' : 'mean'} />
                   </>
                 ) : null}
                 {tile.id === 'vo2_max' && onPlanOutdoor ? <Vo2EstimateNote measuredOn={measuredOn} source={vo2Source} today={today} onPlan={() => { onClose(); onPlanOutdoor(); }} /> : null}
