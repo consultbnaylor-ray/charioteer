@@ -59,6 +59,7 @@ export function ReadingChart({
   bucket,
   accessibilityLabel = 'Chart',
   title,
+  subtitle,
   onSelectDay,
   accent,
   meaning = 'chart',
@@ -67,6 +68,7 @@ export function ReadingChart({
   hideSummary = false,
   spanWindow = false,
   today,
+  rangeLine,
 }: {
   points: readonly ChartPoint[];
   start: string;
@@ -79,6 +81,8 @@ export function ReadingChart({
   accessibilityLabel?: string;
   /** Name of the series, kept above the latest, minimum, and maximum line. */
   title?: string;
+  /** One plain-English line under the title. Omitted charts stay as they were. */
+  subtitle?: string;
   /** Choosing a point can open that day on the page. */
   onSelectDay?: (day: string) => void;
   /** Stroke colour for this metric. Omitted charts stay on the ink. */
@@ -99,6 +103,11 @@ export function ReadingChart({
   meaning?: 'chart' | 'none' | ReactNode;
   /** Toggle name when this chart draws one. A node defaults to What this Data means. */
   meaningTitle?: string;
+  /**
+   * Replaces “Latest · Min · Max” when a card has a clearer line.
+   * Omitted charts keep that line, so other pages do not change.
+   */
+  rangeLine?: string;
 }) {
   const theme = useAppTheme();
   const screen = useWindowDimensions().width;
@@ -161,9 +170,10 @@ export function ReadingChart({
   const grainCaption = chartBucketCaption(grain, aggregate);
   const extremes = markExtremes ? readingSpan(shown) : null;
   const headlines = extremes ? formatReadingSpan(extremes, unit, today ?? windowEnd) : null;
-  const summary = headlines
-    ? `${headlines.latest}. ${headlines.lowest}. ${headlines.highest}`
-    : `Latest ${formatChartValue(extent.latest.value, unit)} · Min ${formatAxisNumber(extent.min)} · Max ${formatAxisNumber(extent.max)}`;
+  const summary = rangeLine
+    ?? (headlines
+      ? `${headlines.latest}. ${headlines.lowest}. ${headlines.highest}`
+      : `Latest ${formatChartValue(extent.latest.value, unit)} · Min ${formatAxisNumber(extent.min)} · Max ${formatAxisNumber(extent.max)}`);
   const lowDay = extremes?.lowest.day ?? null;
   const highDay = extremes?.highest.day ?? null;
   function amount(value: number): string {
@@ -197,6 +207,7 @@ export function ReadingChart({
   return (
     <View accessibilityLabel={spoken} style={{ gap: 6, alignSelf: 'stretch' }}>
       {title ? <T variant="label">{title}</T> : null}
+      {subtitle ? <T variant="muted">{subtitle}</T> : null}
       {yName ? (
         <T style={{ fontSize: 11 * label, lineHeight: 14 * label, color: theme.colors.muted }}>{yName}</T>
       ) : null}

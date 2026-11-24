@@ -4,11 +4,11 @@ import { Pressable, View } from 'react-native';
 import { CHART_DIRECTION_HINT, chartBucketCaption } from '@/domain/readingChart';
 import {
   buildWorkoutHistoryCharts,
-  workoutAverageLine,
   workoutDayForPoint,
   workoutHistoryPeriod,
   WORKOUT_HISTORY_PERIODS,
   type WorkoutHistorySample,
+  type WorkoutHistorySeries,
 } from '@/domain/workoutHistoryCharts';
 import { WORKOUT_HISTORY_HINT } from '@/domain/workoutDay';
 import { workoutTypeColor } from '@/domain/workoutTypeColor';
@@ -22,44 +22,69 @@ import { T } from '@/ui/ui';
 
 const MEANING = 'The average counts every finished day in the range, including days with no workout. The current day is left out because it is still open.';
 
-function ChartLine({
-  title,
-  points,
+const GROUPING = 'Each chart is one activity, such as walking or running, across every place. A Garmin name like South Derbyshire is the place on that workout, listed under Places, and those minutes are already in the activity. A line is drawn when the range has at least two points. One session is a short line instead.';
+
+function SeriesSummary({
+  line,
+  day,
+  onOpenDay,
+}: {
+  line: string;
+  day: string | null;
+  onOpenDay: (day: string) => void;
+}) {
+  if (!line) return null;
+  if (!day) return <T>{line}</T>;
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={line}
+      onPress={() => onOpenDay(day)}
+      style={{ minHeight: 44, justifyContent: 'center' }}
+    >
+      <T>{line}</T>
+    </Pressable>
+  );
+}
+
+function SeriesView({
+  series,
   start,
   end,
-  unit,
   bucket,
   accent,
-  average,
   onSelectDay,
+  onOpenDay,
 }: {
-  title: string;
-  points: readonly { day: string; value: number }[];
+  series: WorkoutHistorySeries;
   start: string;
   end: string;
-  unit: string;
   bucket: 'day' | 'week' | 'month';
   accent?: string;
-  average: string;
   onSelectDay: (day: string) => void;
+  onOpenDay: (day: string) => void;
 }) {
-  if (points.length === 0) return null;
+  if (!series.chartable) {
+    return <SeriesSummary line={series.summary} day={series.day} onOpenDay={onOpenDay} />;
+  }
   return (
     <View style={{ gap: 4 }}>
       <ReadingChart
-        title={title}
-        points={points}
+        title={series.title}
+        subtitle={series.subtitle}
+        rangeLine={series.rangeLine}
+        points={series.points}
         start={start}
         end={end}
-        unit={unit}
+        unit={series.unit}
         aggregate="sum"
         bucket={bucket}
         accent={accent}
-        accessibilityLabel={`${title} chart`}
+        accessibilityLabel={`${series.title} chart`}
         meaning="none"
         onSelectDay={onSelectDay}
       />
-      <T variant="muted">{average}</T>
+      <T variant="muted">{series.averageLine}</T>
     </View>
   );
 }
@@ -76,6 +101,7 @@ export const WorkoutHistoryCharts = memo(function WorkoutHistoryCharts({
 }) {
   const theme = useAppTheme();
   const [open, setOpen] = useState(true);
+  const [placesOpen, setPlacesOpen] = useState(false);
   const [period] = useStatPeriod();
   const shown = workoutHistoryPeriod(period);
   const model = useMemo(() => buildWorkoutHistoryCharts(workouts, today, shown), [workouts, today, shown]);
@@ -103,46 +129,78 @@ export const WorkoutHistoryCharts = memo(function WorkoutHistoryCharts({
           <StatPeriodToggle periods={WORKOUT_HISTORY_PERIODS} selected={shown} />
           {model.minutes.length === 0 ? <T variant="muted">No workouts in these days.</T> : (
             <>
-              <ChartLine
-                title="Workout minutes"
-                points={model.minutes}
-                start={model.start}
-                end={model.end}
-                unit="min"
-                bucket={model.bucket}
-                accent={minuteAccent}
-                average={workoutAverageLine('minutes', model.averageMinutes, model.fullDays)}
-                onSelectDay={pick}
-              />
-              <ChartLine
-                title="Workouts"
-                points={model.sessions}
-                start={model.start}
-                end={model.end}
-                unit="workouts"
-                bucket={model.bucket}
-                accent={sessionAccent}
-                average={workoutAverageLine('workouts', model.averageSessions, model.fullDays)}
-                onSelectDay={pick}
-              />
-              {model.types.map((type) => (
-                <ChartLine
+              {model.minuteSeries.chartable ? (
+                <>
+                  <SeriesView
+                    series={model.minuteSeries}
+                    start={model.start}
+                    end={model.end}
+                    bucket={model.bucket}
+                    accent={model.foldSingleType && model.types[0] ? workoutTypeColor(model.types[0].label) : minuteAccent}
+                    onSelectDay={pick}
+                    onOpenDay={onSelectDay}
+                  />
+                  <SeriesView
+                    series={model.sessionSeries}
+                    start={model.start}
+                    end={model.end}
+                    bucket={model.bucket}
+                    accent={sessionAccent}
+                    onSelectDay={pick}
+                    onOpenDay={onSelectDay}
+                  />
+                </>
+              ) : (
+                <SeriesSummary line={model.headline} day={model.minuteSeries.day} onOpenDay={onSelectDay} />
+              )}
+              {model.foldSingleType ? null : model.types.map((type) => (
+                <SeriesView
                   key={type.label}
-                  title={`${type.label} minutes`}
-                  points={type.points}
+                  series={type}
                   start={model.start}
                   end={model.end}
-                  unit="min"
                   bucket={model.bucket}
                   accent={workoutTypeColor(type.label)}
-                  average={workoutAverageLine('minutes', type.average, model.fullDays)}
                   onSelectDay={pick}
+                  onOpenDay={onSelectDay}
                 />
               ))}
+              {model.places.length > 0 ? (
+                <View style={{ gap: 8 }}>
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel="Places"
+                    accessibilityState={{ expanded: placesOpen }}
+                    onPress={() => setPlacesOpen((value) => !value)}
+                    style={{ minHeight: 44, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}
+                  >
+                    <T variant="label" style={{ flex: 1 }}>Places</T>
+                    <T variant="muted">{placesOpen ? 'Hide' : 'Show'}</T>
+                  </Pressable>
+                  {placesOpen ? (
+                    <View style={{ gap: 12 }}>
+                      <T variant="muted">Each line is the place named on the workout. Those minutes are already included in the activity above.</T>
+                      {model.places.map((place) => (
+                        <SeriesView
+                          key={`${place.activity}:${place.place}`}
+                          series={place}
+                          start={model.start}
+                          end={model.end}
+                          bucket={model.bucket}
+                          accent={workoutTypeColor(place.activity)}
+                          onSelectDay={pick}
+                          onOpenDay={onSelectDay}
+                        />
+                      ))}
+                    </View>
+                  ) : null}
+                </View>
+              ) : null}
             </>
           )}
           <DataMeaning about="Workout history charts">
             <T variant="muted">{MEANING}</T>
+            <T variant="muted">{GROUPING}</T>
             {caption ? <T variant="muted">{caption}</T> : null}
             <T variant="muted">{WORKOUT_HISTORY_HINT}</T>
             <T variant="muted">{CHART_DIRECTION_HINT}</T>

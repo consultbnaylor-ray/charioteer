@@ -13,7 +13,13 @@ import {
   workoutFullDayAverage,
   workoutHistoryBucket,
   workoutHistoryPeriod,
+  workoutPlaceName,
+  workoutPlaceTitle,
+  workoutRangeLine,
   workoutSelectedHeading,
+  workoutSeriesChartable,
+  workoutSeriesSubtitle,
+  workoutSparseSummary,
   WORKOUT_HISTORY_PERIODS,
   type WorkoutHistorySample,
 } from '@/domain/workoutHistoryCharts';
@@ -154,10 +160,163 @@ describe('workout history range', () => {
     expect(charts).toContain('CHART_DIRECTION_HINT');
     expect(charts).toContain('workoutTypeColor');
     expect(charts).toContain('chartAccent');
-    expect(charts).toContain('title="Workout minutes"');
-    expect(charts).toContain('title="Workouts"');
+    expect(charts).toContain('title={series.title}');
+    expect(charts).toContain('subtitle={series.subtitle}');
+    expect(charts).toContain('rangeLine={series.rangeLine}');
+    expect(charts).toContain('series.chartable');
+    expect(charts).toContain('series.summary');
+    expect(charts).toContain('>Places<');
+    expect(charts).toContain('useState(false)');
     expect(charts).toContain('memo(');
     expect(charts).not.toContain('Today so far');
     expect(charts).not.toContain('>Today<');
+    expect(charts).not.toContain('`${type.label} minutes`');
+  });
+});
+
+describe('workout history series', () => {
+  function named(
+    day: string,
+    minutes: number,
+    label: string,
+    activityType: number,
+    origin: 'garmin' | 'apple' = 'garmin',
+    hour = 8,
+  ): WorkoutHistorySample {
+    return {
+      startedAt: `${day}T${String(hour).padStart(2, '0')}:00:00.000Z`,
+      durationMinutes: minutes,
+      label,
+      activityType,
+      origin,
+    };
+  }
+
+  it('reads a place out of a Garmin activity name and leaves a plain type alone', () => {
+    expect(workoutPlaceName('SOUTH DERBYSHIRE WALKING', 'Walking')).toBe('South Derbyshire');
+    expect(workoutPlaceName('South Derbyshire Walking', 'Walking')).toBe('South Derbyshire');
+    expect(workoutPlaceName('South Derbyshire - Walking', 'Walking')).toBe('South Derbyshire');
+    expect(workoutPlaceName('Walking', 'Walking')).toBeNull();
+    expect(workoutPlaceName('Morning run', 'Running')).toBeNull();
+    expect(workoutPlaceName('Evening walk', 'Walking')).toBeNull();
+    expect(workoutPlaceName('Cardio', 'Mixed cardio')).toBeNull();
+    expect(workoutPlaceTitle('Walking', 'South Derbyshire')).toBe('Walks in South Derbyshire');
+    expect(workoutPlaceTitle('Running', 'Richmond Park')).toBe('Runs in Richmond Park');
+    expect(workoutPlaceTitle('Boxing', 'South Derbyshire')).toBe('Boxing in South Derbyshire');
+  });
+
+  it('keeps every day in range and groups place names into one activity', () => {
+    const model = buildWorkoutHistoryCharts([
+      named('2026-11-01', 40, 'SOUTH DERBYSHIRE WALKING', 52),
+      named('2026-11-15', 30, 'Derby Walking', 52),
+      named('2026-11-22', 56, 'South Derbyshire Walking', 52),
+      named('2026-10-01', 99, 'SOUTH DERBYSHIRE WALKING', 52),
+      named('2026-11-18', 20, 'Cardio', 73, 'apple', 18),
+      named('2026-11-20', 25, 'Cardio', 73, 'apple', 18),
+    ], TODAY, '30');
+
+    const walking = model.types.find((type) => type.label === 'Walking');
+    expect(walking?.points.map((point) => point.day)).toEqual(['2026-11-01', '2026-11-15', '2026-11-22']);
+    expect(walking?.points.find((point) => point.day === '2026-11-22')?.value).toBe(56);
+    expect(walking?.points.some((point) => point.day === '2026-10-01')).toBe(false);
+    expect(walking?.chartable).toBe(true);
+    expect(walking?.sessions).toBe(3);
+    expect(walking?.subtitle).toBe('Minutes of walking recorded by your Garmin each day.');
+    expect(walking?.rangeLine).toBe('Lowest 30 min (15 Nov) · Highest 56 min (22 Nov)');
+    expect(model.types.map((type) => type.label)).toEqual(['Walking', 'Mixed cardio']);
+    expect(model.places.map((place) => place.title)).toEqual([
+      'Walks in South Derbyshire',
+      'Walks in Derby',
+    ]);
+    const south = model.places.find((place) => place.place === 'South Derbyshire');
+    expect(south?.points.map((point) => point.day)).toEqual(['2026-11-01', '2026-11-22']);
+    expect(south?.chartable).toBe(true);
+    expect(south?.minutes).toBe(96);
+    expect(south?.subtitle).toBe('Minutes of walking in South Derbyshire, recorded by your Garmin each day. Already included in Walking.');
+    const derby = model.places.find((place) => place.place === 'Derby');
+    expect(derby?.chartable).toBe(false);
+    expect(derby?.summary).toBe('Walks in Derby: 1 session in the last 30 days, 30 min on 15 Nov.');
+    expect(model.minuteSeries.chartable).toBe(true);
+    expect(model.minuteSeries.title).toBe('Workout minutes');
+    expect(model.sessionSeries.title).toBe('Workouts');
+    expect(model.minuteSeries.subtitle).toBe('Total minutes from every workout, recorded by your Garmin and Apple Health each day.');
+    expect(model.headline).toBe('');
+  });
+
+  it('writes a short line when a series has fewer than two points', () => {
+    const model = buildWorkoutHistoryCharts([
+      named('2026-11-22', 40, 'SOUTH DERBYSHIRE WALKING', 52, 'garmin', 9),
+      named('2026-11-22', 16, 'South Derbyshire Walking', 52, 'garmin', 18),
+    ], TODAY, '30');
+
+    expect(workoutSeriesChartable([{ day: '2026-11-22', value: 56 }])).toBe(false);
+    expect(workoutSeriesChartable([
+      { day: '2026-11-17', value: 5 },
+      { day: '2026-11-21', value: 25 },
+    ])).toBe(true);
+    expect(model.minuteSeries.chartable).toBe(false);
+    expect(model.foldSingleType).toBe(true);
+    expect(model.headline).toBe('Walking: 2 sessions in the last 30 days, 56 min on 22 Nov.');
+    expect(model.types[0]?.summary).toBe('Walking: 2 sessions in the last 30 days, 56 min on 22 Nov.');
+    expect(model.places[0]?.summary).toBe('Walks in South Derbyshire: 2 sessions in the last 30 days, 56 min on 22 Nov.');
+    expect(model.places[0]?.chartable).toBe(false);
+    expect(model.headline).not.toMatch(/Today/);
+    expect(model.averageMinutes).toBe(56 / 29);
+    expect(model.fullDays).toBe(29);
+    expect(model.days.find((day) => day.day === TODAY)?.minutes).toBe(0);
+
+    const lone = buildWorkoutHistoryCharts([
+      named('2026-11-22', 56, 'SOUTH DERBYSHIRE WALKING', 52),
+    ], TODAY, '30');
+    expect(lone.headline).toBe('Walking: 1 session in the last 30 days, 56 min on 22 Nov.');
+    expect(workoutSparseSummary('Walking', 1, 56, ['2026-11-22'], '30')).toBe(lone.headline);
+  });
+
+  it('names the lowest and highest days and still leaves today out of the average', () => {
+    expect(workoutRangeLine([
+      { day: '2026-11-17', value: 5 },
+      { day: '2026-11-19', value: 12 },
+      { day: '2026-11-21', value: 25 },
+    ], 'min')).toBe('Lowest 5 min (17 Nov) · Highest 25 min (21 Nov)');
+    expect(workoutRangeLine([
+      { day: '2026-11-17', value: 20 },
+      { day: '2026-11-21', value: 20 },
+    ], 'min')).toBe('Lowest 20 min (17 Nov) · Highest 20 min (21 Nov)');
+    expect(workoutRangeLine([
+      { day: '2026-10-01', value: 40 },
+      { day: '2026-11-01', value: 15 },
+    ], 'min', 'month')).toBe('Lowest 15 min (Nov) · Highest 40 min (Oct)');
+    expect(workoutRangeLine([
+      { day: '2026-11-17', value: 1 },
+      { day: '2026-11-21', value: 2 },
+    ], 'workouts')).toBe('Lowest 1 workout (17 Nov) · Highest 2 workouts (21 Nov)');
+    expect(workoutSeriesSubtitle({
+      kind: 'activity',
+      label: 'Walking',
+      origins: ['apple'],
+      bucket: 'day',
+    })).toBe('Minutes of walking recorded in Apple Health each day.');
+    expect(workoutSeriesSubtitle({
+      kind: 'activity',
+      label: 'Walking',
+      origins: ['garmin'],
+      bucket: 'month',
+    })).toBe('Minutes of walking recorded by your Garmin each month.');
+
+    const model = buildWorkoutHistoryCharts([
+      named('2026-11-22', 56, 'Walking', 52),
+      named('2026-11-23', 10, 'Walking', 52),
+    ], TODAY, '30');
+    expect(model.foldSingleType).toBe(true);
+    expect(model.minuteSeries.title).toBe('Walking');
+    expect(model.minuteSeries.subtitle).toBe('Minutes of walking recorded by your Garmin each day.');
+    expect(model.types[0]?.chartable).toBe(true);
+    expect(model.types[0]?.points.map((point) => point.value)).toEqual([56, 10]);
+    expect(model.averageMinutes).toBe(56 / 29);
+    expect(model.averageMinutes).not.toBe(66 / 29);
+    expect(model.types[0]?.average).toBe(56 / 29);
+    expect(model.types[0]?.averageLine).toBe('Average 2 min a day over 29 full days.');
+    expect(model.types[0]?.averageLine).not.toMatch(/Today/);
+    expect(model.places).toEqual([]);
   });
 });
