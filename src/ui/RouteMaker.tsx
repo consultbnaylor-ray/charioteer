@@ -186,6 +186,7 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
   pencilRef.current = pencil;
   snappedCountRef.current = snappedCount;
   const sendRef = useRef<(vias: readonly OutdoorPoint[]) => Promise<void>>(async () => undefined);
+  const routeFlight = useRef(false);
   const queueRef = useRef(createRedrawScheduler((vias) => sendRef.current(vias)));
   const queryRef = useRef(query);
   const searchRef = useRef<() => void>(() => undefined);
@@ -251,7 +252,7 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
   sendRef.current = async (vias) => {
     const currentPlan = planRef.current;
     const here = start;
-    if (!currentPlan || !here) {
+    if (routeFlight.current || !currentPlan || !here) {
       setRedrawing(false);
       return;
     }
@@ -262,6 +263,7 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
       setError(asked.message);
       return;
     }
+    routeFlight.current = true;
     const through = vias.length > 0;
     setRedrawing(true);
     try {
@@ -289,6 +291,7 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
       if (countsPhoneRouteRequest(message)) setRequestsToday(await noteRouteRequest(phoneRequests));
       setError(`${message} ${ROUTE_UNCHANGED}`);
     } finally {
+      routeFlight.current = false;
       setRedrawing(false);
     }
   };
@@ -452,6 +455,7 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
   searchRef.current = () => { void search(); };
 
   async function make() {
+    if (routeFlight.current) return;
     setError(null);
     setSaved(false);
     if (!start) {
@@ -467,6 +471,7 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
       setError('Choose a destination.');
       return;
     }
+    routeFlight.current = true;
     drawGen.current += 1;
     setPending(true);
     try {
@@ -508,6 +513,7 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
       if (countsPhoneRouteRequest(message)) setRequestsToday(await noteRouteRequest(phoneRequests));
       setError(message);
     } finally {
+      routeFlight.current = false;
       setPending(false);
     }
   }
@@ -568,6 +574,7 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
   }
 
   async function snapDrawn(): Promise<boolean> {
+    if (routeFlight.current) return false;
     const nextStrokes = strokesRef.current;
     const previous = planRef.current;
     const previousCount = snappedCountRef.current;
@@ -592,6 +599,7 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
     }
     const drawnShape = sketchIsClosed(closed) ? 'loop' : 'a_to_b';
     const drawMode = craving ? 'walk' : mode;
+    routeFlight.current = true;
     setPending(true);
     setError(null);
     try {
@@ -660,6 +668,7 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
       setError(line);
       return false;
     } finally {
+      routeFlight.current = false;
       if (drawGen.current === generation) setPending(false);
     }
   }

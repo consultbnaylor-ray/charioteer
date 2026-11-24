@@ -295,6 +295,7 @@ export function routePlanBody(input: RoutePlanInput): {
   via: OutdoorPoint[];
   preferPaths: boolean;
   sketch: OutdoorPoint[];
+  requestId?: string;
 } {
   return {
     action: 'route',
@@ -307,6 +308,7 @@ export function routePlanBody(input: RoutePlanInput): {
     via: capVia(input.via ?? []),
     preferPaths: input.preferPaths === true,
     sketch: sketchWaypoints(input.sketch ?? []),
+    ...(input.requestId ? { requestId: input.requestId } : {}),
   };
 }
 

@@ -103,6 +103,14 @@ export const ROUTE_DAILY_CAP = 40;
 export const SEARCH_TEN_MINUTE_CAP = 30;
 export const SEARCH_DAILY_CAP = 300;
 
+/** True when this account is named in a comma-separated exemption list. */
+export function listedUser(allowlist: string | undefined, userId: string): boolean {
+  if (!userId || !allowlist) return false;
+  const wanted = userId.trim().toLowerCase();
+  if (!wanted) return false;
+  return allowlist.split(',').map((item) => item.trim().toLowerCase()).filter(Boolean).includes(wanted);
+}
+
 export function withinRouteLimit(stamps: readonly number[], now: number): { ok: boolean; next: number[] } {
   return withinWindow(stamps, now, ROUTE_TEN_MINUTE_CAP, ROUTE_DAILY_CAP);
 }

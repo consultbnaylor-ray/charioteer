@@ -171,7 +171,7 @@ describe('route adjusting', () => {
     expect(save).not.toContain('via');
     const repo = readFileSync('src/data/supabase-repository.ts', 'utf8');
     const places = repo.slice(repo.indexOf('async searchRoutePlaces'), repo.indexOf('async deleteOutdoorRoute'));
-    expect(places).toContain("body: { action: 'search', query }");
+    expect(places).toContain("body: { action: 'search', query, requestId }");
     expect(places).not.toMatch(/latitude|longitude|via/);
   });
 

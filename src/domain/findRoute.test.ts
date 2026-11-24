@@ -84,6 +84,7 @@ import {
   parseGeocode,
   routeLengthM,
   withinGlobalRouteLimit,
+  listedUser,
   withinRouteLimit,
   withinSearchLimit,
 } from '../../supabase/functions/_shared/orsRoute';
@@ -317,6 +318,16 @@ describe('route finding', () => {
     expect(fn).toContain("body.action === 'search' ? 'search' : 'route'");
     expect(fn).toContain(".eq('kind', kind)");
     expect(fn).toContain('insert({ user_id: userId, kind })');
+    expect(fn).toContain('ROUTE_LIMIT_EXEMPT_USERS');
+    expect(fn).toContain('payload.ok === true');
+    expect(fn.indexOf('payload.ok === true')).toBeLessThan(fn.indexOf('await recordRequest'));
+    expect(fn.indexOf('async function recordRequest')).toBeLessThan(fn.indexOf('async function requestAllowed'));
+    const gate = fn.slice(fn.indexOf('async function requestAllowed'), fn.indexOf('async function tableAllows'));
+    expect(gate).not.toContain('.insert(');
+    expect(fn.slice(fn.indexOf('async function tableAllows'))).toContain('if (exempt) return true');
+    expect(listedUser('11111111-1111-4111-8111-111111111111, other', '11111111-1111-4111-8111-111111111111')).toBe(true);
+    expect(listedUser('11111111-1111-4111-8111-111111111111', '22222222-2222-4222-8222-222222222222')).toBe(false);
+    expect(listedUser(undefined, '11111111-1111-4111-8111-111111111111')).toBe(false);
     expect(fn).toContain('searchRecent');
     expect(fn).toContain('GLOBAL_SEARCH_DAILY_CAP');
     const sql = readFileSync('supabase/migrations/20261124160054_outdoor_route_request_kind.sql', 'utf8');
