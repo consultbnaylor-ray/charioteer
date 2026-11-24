@@ -51,7 +51,9 @@ import {
 } from '@/domain/drawStroke';
 import {
   closeSketchIfLoop,
+  pathMetres,
   routeSummary,
+  sketchDistanceLabel,
   sketchIsClosed,
   type OutdoorPoint,
 } from '@/domain/outdoorRoute';
@@ -60,8 +62,11 @@ import {
   ADJUST_THE_ROUTE,
   DRAW_NO_PATH,
   DRAW_PEN_HINT,
+  DRAW_SNAP_FAILED,
   DRAW_SNAP_PARTIAL,
+  DRAW_SNAP_TRY_AGAIN,
   DRAW_SNAPPED,
+  PLACE_SEARCH_MIN_CHARS,
   PREFER_PATHS_LABEL,
   PREFER_PATHS_NOTE,
   adjustControlsOn,
@@ -69,6 +74,8 @@ import {
   countsPhoneRouteRequest,
   createPlaceSearch,
   createRedrawScheduler,
+  placeQueryKey,
+  placeSearchOnce,
   LAST_ROUTE_FIGURES,
   noteRouteRequest,
   readRouteRequests,
@@ -91,6 +98,7 @@ import {
 import { loadDistanceUnit } from '@/health/distanceUnit';
 import { LOCATION_FIX_MESSAGE, LOCATION_FIX_PENDING, ROUGH_FIX_LINE, readWhileUsingFix } from '@/location/whileUsing';
 import { FootpathMap } from '@/ui/FootpathMap';
+import { RouteSnapSummary } from '@/ui/RouteSnapSummary';
 import { dismissKeyboard } from '@/ui/keyboard';
 import { usePreferPaths } from '@/ui/preferPaths';
 import { RouteChoiceGroup } from '@/ui/RouteChoiceGroup';
@@ -133,6 +141,7 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
   const [pin, setPin] = useState<RoutePlace | null>(null);
   const [pathsNote, setPathsNote] = useState(false);
   const [drawNote, setDrawNote] = useState<string | null>(null);
+  const [snapMiss, setSnapMiss] = useState<string | null>(null);
   const [plan, setPlan] = useState<RoutePlan | null>(null);
   const [title, setTitle] = useState(craving ? 'Craving walk' : 'My route');
   const [error, setError] = useState<string | null>(null);
@@ -378,7 +387,7 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
   function onSearchText(value: string) {
     setQuery(value);
     queryRef.current = value;
-    if (value.trim().length < 2) {
+    if (value.trim().length < PLACE_SEARCH_MIN_CHARS) {
       setResults([]);
       setSearched(false);
     }
@@ -425,16 +434,19 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
 
   async function search() {
     const query = queryRef.current.trim();
-    if (query.length < 2) {
+    if (query.length < PLACE_SEARCH_MIN_CHARS) {
       setResults([]);
       setSearched(false);
       return;
     }
     setError(null);
     try {
-      setResults(await repo.searchRoutePlaces(query));
+      const found = await placeSearchOnce(query, () => repo.searchRoutePlaces(query));
+      if (placeQueryKey(queryRef.current) !== placeQueryKey(query)) return;
+      setResults(found);
       setSearched(true);
     } catch (err) {
+      placeSearchRef.current.missed();
       setSearched(false);
       setError(shownError(err, 'The place search did not answer.'));
     }
@@ -553,10 +565,11 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
     setStrokes(nextStrokes);
     setPencil([]);
     setDrawNote(null);
+    setSnapMiss(null);
     setError(null);
   }
 
-  async function snapDrawn() {
+  async function snapDrawn(): Promise<boolean> {
     const nextStrokes = strokesRef.current;
     const previous = planRef.current;
     const previousCount = snappedCountRef.current;
@@ -568,14 +581,16 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
     if (closed.length < 2) {
       setDrawNote(DRAW_TOO_SHORT);
       setError(DRAW_TOO_SHORT);
-      return;
+      setSnapMiss(null);
+      return false;
     }
     const origin = closed[0];
     const finish = closed[closed.length - 1];
     if (!origin || !finish) {
       setDrawNote(DRAW_TOO_SHORT);
       setError(DRAW_TOO_SHORT);
-      return;
+      setSnapMiss(null);
+      return false;
     }
     const drawnShape = sketchIsClosed(closed) ? 'loop' : 'a_to_b';
     const drawMode = craving ? 'walk' : mode;
@@ -596,7 +611,7 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
           preferPaths: preferRef.current,
         }),
       });
-      if (drawGen.current !== generation) return;
+      if (drawGen.current !== generation) return false;
       if (!result.matched && !result.sawRoute) {
         throw result.error instanceof Error ? result.error : new Error(DRAW_NO_PATH);
       }
@@ -611,8 +626,10 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
       if (next.points.length < 2) {
         setDrawNote(DRAW_NO_PATH);
         setError(DRAW_NO_PATH);
-        return;
+        setSnapMiss(null);
+        return false;
       }
+      setSnapMiss(null);
       setPlan(next);
       planRef.current = next;
       setDrawStack((stack) => [...stack, { plan: previous, snappedCount: previousCount, keptStrokes: previousCount }].slice(-8));
@@ -634,13 +651,16 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
         setEndName('Sketched end');
       }
       setRequestsToday(await noteRouteRequest(phoneRequests));
+      return true;
     } catch (err) {
-      if (drawGen.current !== generation) return;
+      if (drawGen.current !== generation) return false;
       const message = err instanceof UserFacingError ? err.message : shownError(err, ROUTE_UNAVAILABLE);
       if (countsPhoneRouteRequest(message)) setRequestsToday(await noteRouteRequest(phoneRequests));
       const line = previous ? `${message} ${ROUTE_UNCHANGED}` : message;
-      setDrawNote(line);
+      setSnapMiss(line);
+      setDrawNote(DRAW_SNAP_FAILED);
       setError(line);
+      return false;
     } finally {
       if (drawGen.current === generation) setPending(false);
     }
@@ -650,6 +670,7 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
     if (pencilRef.current.length > 0) {
       setPencil([]);
       setDrawNote(null);
+      setSnapMiss(null);
       setError(null);
       return;
     }
@@ -658,6 +679,7 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
       strokesRef.current = next;
       setStrokes(next);
       setDrawNote(null);
+      setSnapMiss(null);
       setError(null);
       return;
     }
@@ -681,6 +703,7 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
       snappedCountRef.current = previous.snappedCount;
       setPencil([]);
       setDrawNote(null);
+      setSnapMiss(null);
       setError(null);
       return stack.slice(0, -1);
     });
@@ -697,6 +720,7 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
     setSnappedCount(0);
     setDrawStack([]);
     setDrawNote(null);
+    setSnapMiss(null);
     if (fromDraw) {
       setPlan(null);
       planRef.current = null;
@@ -717,15 +741,37 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
     if (combineDrawStrokes(strokesRef.current).length < 2) {
       setDrawNote(DRAW_TOO_SHORT);
       setError(DRAW_TOO_SHORT);
+      setSnapMiss(null);
       return;
     }
-    await snapDrawn();
-    setDrawing(false);
+    const snapped = await snapDrawn();
+    if (snapped) setDrawing(false);
   }
 
   const mapHeight = Math.max(180, narrow ? 220 : 360);
   const snappedLine = snappedDrawLine(plan?.points ?? null, strokes, snappedCount);
   const rawLine = rawDrawLine(strokes, snappedCount, pencil);
+  const sketchLabel = sketchDistanceLabel(pathMetres(rawLine));
+  function snapFigures() {
+    if (snapMiss) {
+      return (
+        <View accessibilityLabel={DRAW_SNAP_FAILED} style={{ gap: 8, padding: 12, borderRadius: 12, borderWidth: 1, borderColor: theme.colors.danger }}>
+          <T style={{ color: theme.colors.danger, fontFamily: theme.font.bodyStrong }}>{DRAW_SNAP_FAILED}</T>
+          <T>{snapMiss}</T>
+          <Button label={DRAW_SNAP_TRY_AGAIN} disabled={pending} pending={pending} onPress={() => { void confirmDraw(); }} />
+        </View>
+      );
+    }
+    if (fromDraw && plan) return <RouteSnapSummary plan={plan} />;
+    return null;
+  }
+  const snapPanel = snapFigures();
+  const drawBar = sketchLabel || snapPanel ? (
+    <View style={{ gap: 8 }}>
+      {sketchLabel ? <T>{sketchLabel}</T> : null}
+      {snapFigures()}
+    </View>
+  ) : null;
   const howChoice = mode === 'run' ? 'Run' : mode === 'cycle' ? 'Cycle' : 'Walk';
   const shapeChoice = shape === 'a_to_b' ? 'A to B' : 'Loop';
   const distanceChoice = ROUTE_DISTANCE_CHOICES.find((item) => item.id === distanceId)?.label ?? '5 km';
@@ -762,8 +808,7 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
   ) : null;
   const fullScreenBar = adjustActions && plan ? (
     <View style={{ gap: 8 }}>
-      <T>{routeSummary({ distanceM: plan.distanceM, durationMinutes: plan.durationMinutes })}</T>
-      <T>{formatClimb(plan.ascentM)}</T>
+      <RouteSnapSummary plan={plan} />
       {adjustActions}
     </View>
   ) : null;
@@ -856,6 +901,7 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
             {DRAW_PEN_HINT}
           </T>
         ) : null}
+        {sketchLabel ? <T>{sketchLabel}</T> : null}
         <FootpathMap
           routes={[]}
           sketch={snappedLine}
@@ -887,13 +933,12 @@ export function RouteMaker({ purpose }: { purpose: 'find' | 'craving' }) {
           canClearDraw={pencil.length > 0 || strokes.length > 0 || fromDraw}
           canConfirmDraw={drawReadyToSnap(strokes, pencil)}
           confirmPending={pending}
-          statusNote={drawing ? null : drawNote}
+          bar={drawBar}
+          statusNote={snapMiss ? DRAW_SNAP_FAILED : drawing ? null : drawNote}
           onShowMyLocation={() => { void showMyLocation(); }}
         />
-        {fromDraw && plan ? (
-          <T>{routeSummary({ distanceM: plan.distanceM, durationMinutes: plan.durationMinutes })}</T>
-        ) : null}
-        {drawNote ? (
+        {snapPanel}
+        {drawNote && drawNote !== DRAW_SNAP_FAILED ? (
           <T style={drawNote === DRAW_SNAPPED ? { color: statsToneColors(theme.scheme).good.ink, fontFamily: theme.font.bodyStrong } : undefined}>
             {drawNote}
           </T>

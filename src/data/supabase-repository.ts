@@ -24,7 +24,7 @@ import { stripJpegBase64, stripJpegLocation } from '@/domain/photoLocation';
 import { chunkHealthRows } from '@/domain/healthUpload';
 import { rejectRouteCoordinates } from '@/domain/workoutRoute';
 import { assertRouteFindingAllowed } from '@/data/routeConsentStore';
-import { calmRouteMessage, explainRouteFailure, parseRoutePlaces, parseRoutePlan, retryRouteInvoke, ROUTE_CLIENT_TIMEOUT_MS, ROUTE_SLOW, routeCoordinate, routeInvokeHeaders, SEARCH_SLOW, withDeadline, type RoutePlace, type RoutePlan, type RoutePlanInput } from '@/domain/findRoute';
+import { explainRouteFailure, parseRoutePlaces, parseRoutePlan, retryRouteInvoke, ROUTE_CLIENT_TIMEOUT_MS, ROUTE_SLOW, routeCoordinate, routeInvokeHeaders, SEARCH_SLOW, withDeadline, type RoutePlace, type RoutePlan, type RoutePlanInput } from '@/domain/findRoute';
 import { routePlanBody } from '@/domain/routeAdjust';
 import { buddyPhotoCaption, gratitudeLineFromSharedCaption, type SharedPhotoCard } from '@/domain/sharedPhotos';
 import { liveOutdoorRouteInsert, outdoorRouteFromDraft, outdoorRouteFromRow, outdoorRouteInsert, outdoorRouteRename, outdoorRouteReplace, routeGeometryStillRequired, routeShapeRejected, routeTableMissing, routeTitleOf, type OutdoorRouteDraft } from '@/domain/outdoorRoute';
@@ -3211,10 +3211,10 @@ export class SupabaseRepository implements Repository {
       if (places.length > 0 || (invoked.data && typeof invoked.data === 'object' && (invoked.data as { ok?: unknown }).ok === true)) {
         return places;
       }
-      throw new UserFacingError(calmRouteMessage(invoked.data), 'generic');
+      throw new UserFacingError(await explainRouteFailure(invoked.error), 'generic');
     } catch (error) {
       if (error instanceof UserFacingError) throw error;
-      throw new UserFacingError(calmRouteMessage(null), 'generic');
+      throw new UserFacingError(await explainRouteFailure(error), 'generic');
     }
   }
 

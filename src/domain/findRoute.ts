@@ -1,6 +1,7 @@
 import { UserFacingError } from './errors';
 import {
   drawnLineAfterSnap,
+  formatWalkDistance,
   pathMetres,
   sketchWaypointSets,
   type OutdoorKind,
@@ -97,6 +98,14 @@ export type RoutePlan = {
   /** The green start when the route service moved off the GPS point. Null when the start was already on a path. */
   snappedStart: OutdoorPoint | null;
   snapDistanceM: number | null;
+  /** Metres down, when the route service sent a descent. Null when it did not. */
+  descentM?: number | null;
+  /** Steepest grade, percent, when the route service or the elevation samples provide it. */
+  maxGradientPct?: number | null;
+  /** Mean absolute grade, percent. Null when elevation was not returned. */
+  averageGradientPct?: number | null;
+  /** Elevation samples along the line, metres. Null when the snap response has none. */
+  elevationsM?: number[] | null;
 };
 
 /** Public places used as example starts. They are not surveyed routes. */
@@ -392,6 +401,7 @@ export function parseRoutePlan(value: unknown): RoutePlan | null {
   const snappedStart = routeCoordinate(row.snappedStart);
   const snapRaw = typeof row.snapDistanceM === 'number' ? row.snapDistanceM : null;
   const snapDistanceM = snapRaw != null && Number.isFinite(snapRaw) && snapRaw >= 0 ? Math.round(snapRaw) : null;
+  const elevationsM = readElevations(row.elevationsM) ?? elevationsFromPoints(row.points);
   return {
     mocked: row.mocked === true,
     mode,
@@ -403,7 +413,46 @@ export function parseRoutePlan(value: unknown): RoutePlan | null {
     points: points.slice(0, 2000),
     snappedStart,
     snapDistanceM,
+    descentM: readMetres(row.descentM),
+    maxGradientPct: readPercent(row.maxGradientPct),
+    averageGradientPct: readPercent(row.averageGradientPct),
+    elevationsM,
   };
+}
+
+function readMetres(value: unknown): number | null {
+  const number = typeof value === 'number' ? value : Number.NaN;
+  if (!Number.isFinite(number) || number < 0 || number > 20_000) return null;
+  return Math.round(number);
+}
+
+function readPercent(value: unknown): number | null {
+  const number = typeof value === 'number' ? value : Number.NaN;
+  if (!Number.isFinite(number) || number < 0 || number > 100) return null;
+  return Math.round(number * 10) / 10;
+}
+
+function readElevations(value: unknown): number[] | null {
+  if (!Array.isArray(value)) return null;
+  const metres = value
+    .map((item) => (typeof item === 'number' ? item : Number.NaN))
+    .filter((item) => Number.isFinite(item) && item > -500 && item < 9000)
+    .slice(0, 400);
+  return metres.length >= 2 ? metres : null;
+}
+
+/** Every point must carry an elevation. A partial list would draw a profile that does not match the line. */
+function elevationsFromPoints(value: unknown): number[] | null {
+  if (!Array.isArray(value) || value.length < 2) return null;
+  const metres: number[] = [];
+  for (const point of value.slice(0, 400)) {
+    if (!point || typeof point !== 'object') return null;
+    const raw = (point as { elevationM?: unknown; elevation?: unknown }).elevationM
+      ?? (point as { elevation?: unknown }).elevation;
+    if (typeof raw !== 'number' || !Number.isFinite(raw) || raw <= -500 || raw >= 9000) return null;
+    metres.push(raw);
+  }
+  return metres.length >= 2 ? metres : null;
 }
 
 function shift(origin: OutdoorPoint, northM: number, eastM: number): OutdoorPoint {
@@ -499,7 +548,21 @@ export function adoptSnappedLine(plan: RoutePlan, points: readonly OutdoorPoint[
   const ascentM = plan.ascentM == null || plan.distanceM <= 0
     ? plan.ascentM
     : Math.max(0, Math.round(plan.ascentM * (distanceM / plan.distanceM)));
-  return { ...plan, points: line, distanceM, durationMinutes, ascentM };
+  const descentM = plan.descentM == null || plan.distanceM <= 0
+    ? plan.descentM ?? null
+    : Math.max(0, Math.round(plan.descentM * (distanceM / plan.distanceM)));
+  const sameShape = line.length === plan.points.length;
+  return {
+    ...plan,
+    points: line,
+    distanceM,
+    durationMinutes,
+    ascentM,
+    descentM,
+    elevationsM: sameShape ? plan.elevationsM ?? null : null,
+    maxGradientPct: sameShape ? plan.maxGradientPct ?? null : null,
+    averageGradientPct: sameShape ? plan.averageGradientPct ?? null : null,
+  };
 }
 
 /** The pencil line, when no snap stayed close to it. Climb is unknown. */
@@ -606,12 +669,167 @@ function calmOr(value: unknown, fallback: string): string {
  * `functions.invoke` leaves a non-2xx body on `error.context`, with `data` null.
  * A 401 or a dropped connection never reaches the function, so those are not "the route service".
  */
-export async function explainRouteFailure(error: unknown): Promise<string> {
+export async function explainRouteFailure(error: unknown, now = Date.now()): Promise<string> {
   const status = statusOf(error);
   if (status === 401) return ROUTE_SIGN_IN;
   if (isRouteNetworkError(error)) return ROUTE_OFFLINE;
   const body = await readInvokeBody(error);
-  return messageForRouteBody(body, status);
+  const message = messageForRouteBody(body, status);
+  if (status === 429 || isRateLimitedBody(body)) {
+    const extra = rateLimitFreesLine(body, retryAfterHeader(error), now);
+    if (extra && !message.includes('You can try again in')) return `${message} ${extra}`;
+  }
+  return message;
+}
+
+function isRateLimitedBody(body: unknown): boolean {
+  if (!body || typeof body !== 'object') return false;
+  const code = (body as { code?: unknown }).code;
+  return code === 'rate_limited' || code === 'rate';
+}
+
+/**
+ * When the refusal says when the limit lifts.
+ * A missing time stays quiet. The phone does not guess from the 40-a-day rule.
+ */
+export function rateLimitFreesLine(body: unknown, retryAfterHeaderValue: string | null = null, now = Date.now()): string | null {
+  const seconds = retrySecondsFromBody(body, now) ?? retrySecondsFromHeader(retryAfterHeaderValue, now);
+  if (seconds == null || seconds > 86_400 * 2) return null;
+  return freesIn(seconds);
+}
+
+function freesIn(seconds: number): string {
+  const whole = Math.max(1, Math.round(seconds));
+  if (whole < 90) return `You can try again in ${whole} ${whole === 1 ? 'second' : 'seconds'}.`;
+  const minutes = Math.max(1, Math.round(whole / 60));
+  if (minutes < 90) return `You can try again in ${minutes} ${minutes === 1 ? 'minute' : 'minutes'}.`;
+  const hours = Math.max(1, Math.round(minutes / 60));
+  return `You can try again in ${hours} ${hours === 1 ? 'hour' : 'hours'}.`;
+}
+
+function retrySecondsFromBody(body: unknown, now: number): number | null {
+  if (!body || typeof body !== 'object') return null;
+  const row = body as Record<string, unknown>;
+  const direct = row.retryAfter ?? row.retry_after ?? row.retryAfterSeconds;
+  if (typeof direct === 'number' && Number.isFinite(direct) && direct > 0) return direct;
+  if (typeof direct === 'string' && /^\d+$/.test(direct.trim())) {
+    const seconds = Number(direct.trim());
+    return seconds > 0 ? seconds : null;
+  }
+  return secondsUntil(row.resetAt ?? row.freesAt ?? row.retryAt ?? row.availableAt, now);
+}
+
+function retrySecondsFromHeader(header: string | null, now: number): number | null {
+  if (!header) return null;
+  const trimmed = header.trim();
+  if (/^\d+$/.test(trimmed)) {
+    const seconds = Number(trimmed);
+    return seconds > 0 ? seconds : null;
+  }
+  return secondsUntil(trimmed, now);
+}
+
+function secondsUntil(value: unknown, now: number): number | null {
+  if (typeof value === 'number' && Number.isFinite(value) && value > 1_000_000_000_000) {
+    const seconds = Math.round((value - now) / 1000);
+    return seconds > 0 ? seconds : null;
+  }
+  if (typeof value !== 'string') return null;
+  const at = Date.parse(value);
+  if (!Number.isFinite(at)) return null;
+  const seconds = Math.round((at - now) / 1000);
+  return seconds > 0 ? seconds : null;
+}
+
+function retryAfterHeader(error: unknown): string | null {
+  if (!error || typeof error !== 'object') return null;
+  const context = (error as { context?: unknown }).context;
+  if (!context || typeof context !== 'object') return null;
+  const headers = (context as { headers?: { get?: (name: string) => string | null } }).headers;
+  if (!headers || typeof headers.get !== 'function') return null;
+  try {
+    const value = headers.get('Retry-After') ?? headers.get('retry-after');
+    return typeof value === 'string' && value.trim() ? value.trim() : null;
+  } catch {
+    return null;
+  }
+}
+
+function modeWord(mode: RouteMode): string {
+  if (mode === 'run') return 'Run';
+  if (mode === 'cycle') return 'Cycle';
+  return 'Walk';
+}
+
+function formatPercent(value: number): string {
+  const rounded = Math.round(value * 10) / 10;
+  return Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1);
+}
+
+/**
+ * Distance, time for the mode, and climb.
+ * Descent, gradient, and a profile are added only when the snap response carried them.
+ */
+export function routeSnapLines(plan: Pick<RoutePlan, 'distanceM' | 'durationMinutes' | 'mode' | 'ascentM'> & Partial<Pick<RoutePlan, 'descentM' | 'maxGradientPct' | 'averageGradientPct' | 'elevationsM'>>): string[] {
+  const lines = [
+    `${formatWalkDistance(plan.distanceM)} · ${modeWord(plan.mode)} · ${plan.durationMinutes} min`,
+    formatClimb(plan.ascentM ?? null),
+  ];
+  if (typeof plan.descentM === 'number' && Number.isFinite(plan.descentM)) {
+    lines.push(`Descent ${Math.max(0, Math.round(plan.descentM))} m`);
+  }
+  const derived = gradientFromElevations(plan.elevationsM, plan.distanceM);
+  const max = readPercent(plan.maxGradientPct) ?? derived?.max ?? null;
+  const average = readPercent(plan.averageGradientPct) ?? derived?.average ?? null;
+  if (max != null && average != null) lines.push(`Max gradient ${formatPercent(max)}% · average ${formatPercent(average)}%`);
+  else if (max != null) lines.push(`Max gradient ${formatPercent(max)}%`);
+  else if (average != null) lines.push(`Average gradient ${formatPercent(average)}%`);
+  return lines;
+}
+
+/** At least two samples. One number is not a profile. */
+export function routeElevations(plan: { elevationsM?: readonly number[] | null }): number[] | null {
+  const values = plan.elevationsM?.filter((value) => typeof value === 'number' && Number.isFinite(value));
+  if (!values || values.length < 2) return null;
+  return [...values];
+}
+
+/** A short list for the profile line. The samples are the route's own elevations, thinned for drawing. */
+export function elevationProfileSamples(metres: readonly number[], limit = 48): number[] {
+  if (metres.length <= limit) return [...metres];
+  const sampled: number[] = [];
+  const last = metres.length - 1;
+  for (let index = 0; index < limit; index += 1) {
+    const at = Math.round((index / (limit - 1)) * last);
+    sampled.push(metres[at] ?? metres[last] ?? 0);
+  }
+  return sampled;
+}
+
+/**
+ * Grade from elevation samples and the route length.
+ * No samples means no grade. The length is not turned into a made-up hill.
+ */
+export function gradientFromElevations(
+  elevationsM: readonly number[] | null | undefined,
+  distanceM: number,
+): { max: number; average: number } | null {
+  if (!elevationsM || elevationsM.length < 2 || !(distanceM > 0)) return null;
+  const step = distanceM / (elevationsM.length - 1);
+  if (!(step > 0)) return null;
+  let climb = 0;
+  let drop = 0;
+  let max = 0;
+  for (let index = 1; index < elevationsM.length; index += 1) {
+    const delta = (elevationsM[index] ?? 0) - (elevationsM[index - 1] ?? 0);
+    const grade = (Math.abs(delta) / step) * 100;
+    if (grade > max) max = grade;
+    if (delta > 0) climb += delta;
+    else drop += -delta;
+  }
+  const average = ((climb + drop) / distanceM) * 100;
+  if (!Number.isFinite(max) || !Number.isFinite(average) || max > 100) return null;
+  return { max: Math.round(max * 10) / 10, average: Math.round(average * 10) / 10 };
 }
 
 export function messageForRouteBody(body: unknown, status: number | null): string {

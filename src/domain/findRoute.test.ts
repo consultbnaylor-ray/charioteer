@@ -25,8 +25,12 @@ import {
   ROUTE_SIGN_IN,
   ROUTE_UNAVAILABLE,
   appleMapsUrl,
+  elevationProfileSamples,
   explainRouteFailure,
   formatClimb,
+  gradientFromElevations,
+  routeElevations,
+  routeSnapLines,
   mockRoute,
   nearestPathLine,
   parseRoutePlan,
@@ -454,6 +458,95 @@ describe('route finding', () => {
     expect(directions).not.toMatch(/console\./);
     expect(fn.match(/console\.error/g)).toEqual(['console.error']);
     expect(fn).toContain("console.error('outdoor-route request failed')");
+  });
+
+  it('explains a place-search refusal from the error, including when a limit says it lifts', async () => {
+    const repo = readFileSync('src/data/supabase-repository.ts', 'utf8');
+    const search = repo.slice(repo.indexOf('async searchRoutePlaces'), repo.indexOf('async deleteOutdoorRoute'));
+    expect(search).toContain('explainRouteFailure(invoked.error)');
+    expect(search).toContain('explainRouteFailure(error)');
+    expect(search).not.toContain('calmRouteMessage');
+    const http = (status: number, body: unknown, fail = false, retryAfter: string | null = null) => ({
+      name: 'FunctionsHttpError',
+      message: 'Edge Function returned a non-2xx status code',
+      context: {
+        status,
+        headers: { get: (name: string) => (name.toLowerCase() === 'retry-after' ? retryAfter : null) },
+        json: async () => {
+          if (fail) throw new Error('body already used');
+          return body;
+        },
+      },
+    });
+    expect(await explainRouteFailure(http(429, { ok: false, code: 'rate_limited', message: ROUTE_RATE_LIMITED }))).toBe(ROUTE_RATE_LIMITED);
+    expect(await explainRouteFailure(http(429, {
+      ok: false,
+      code: 'rate_limited',
+      message: ROUTE_RATE_LIMITED,
+      retryAfter: 2400,
+    }))).toBe(`${ROUTE_RATE_LIMITED} You can try again in 40 minutes.`);
+    const now = Date.parse('2026-11-24T14:00:00Z');
+    expect(await explainRouteFailure(http(429, {
+      ok: false,
+      code: 'rate_limited',
+      message: ROUTE_RATE_LIMITED,
+      resetAt: new Date(now + 40 * 60 * 1000).toISOString(),
+    }), now)).toBe(`${ROUTE_RATE_LIMITED} You can try again in 40 minutes.`);
+    expect(await explainRouteFailure(http(429, {
+      ok: false,
+      code: 'rate_limited',
+      message: ROUTE_RATE_LIMITED,
+    }, false, '120'))).toBe(`${ROUTE_RATE_LIMITED} You can try again in 2 minutes.`);
+    expect(await explainRouteFailure(http(401, { message: 'JWT expired' }))).toBe(ROUTE_SIGN_IN);
+    expect(await explainRouteFailure(http(401, { message: 'Invalid JWT' }))).toBe(ROUTE_SIGN_IN);
+    expect(await explainRouteFailure(http(500, { ok: false, code: 'unavailable', message: ROUTE_UNAVAILABLE }))).toBe(ROUTE_UNAVAILABLE);
+    expect(await explainRouteFailure(http(502, null, true))).toBe(ROUTE_UNAVAILABLE);
+    expect(await explainRouteFailure(http(503, { ok: false, message: 'no' }))).toBe(ROUTE_UNAVAILABLE);
+
+    const walked = {
+      mocked: false,
+      mode: 'walk' as const,
+      shape: 'loop' as const,
+      profile: 'foot-walking' as const,
+      distanceM: 3200,
+      durationMinutes: 40,
+      ascentM: 85,
+      points: [{ latitude: 51.45, longitude: -2.59 }, { latitude: 51.46, longitude: -2.58 }],
+      snappedStart: null,
+      snapDistanceM: null,
+    };
+    expect(routeSnapLines(walked)).toEqual(['3.2 km · Walk · 40 min', 'Climb 85 m']);
+    expect(routeSnapLines(walked).join(' ')).not.toMatch(/Descent|gradient|%/);
+    expect(routeElevations(walked)).toBeNull();
+    expect(gradientFromElevations(null, 3200)).toBeNull();
+    const climbed = parseRoutePlan({
+      ...walked,
+      ok: true,
+      descentM: 70,
+      maxGradientPct: 12,
+      averageGradientPct: 4.2,
+      elevationsM: [10, 30, 18],
+    });
+    expect(climbed?.descentM).toBe(70);
+    expect(climbed?.maxGradientPct).toBe(12);
+    expect(climbed?.averageGradientPct).toBe(4.2);
+    expect(routeElevations(climbed ?? {})).toEqual([10, 30, 18]);
+    expect(routeSnapLines(climbed ?? walked)).toEqual([
+      '3.2 km · Walk · 40 min',
+      'Climb 85 m',
+      'Descent 70 m',
+      'Max gradient 12% · average 4.2%',
+    ]);
+    expect(elevationProfileSamples([1, 2, 3, 4], 3)).toEqual([1, 3, 4]);
+    expect(parseRoutePlan({ ...walked, ok: true, elevationsM: [10] })?.elevationsM).toBeNull();
+    expect(parseRoutePlan({
+      ...walked,
+      ok: true,
+      points: [
+        { latitude: 51.45, longitude: -2.59, elevation: 12 },
+        { latitude: 51.46, longitude: -2.58 },
+      ],
+    })?.elevationsM).toBeNull();
   });
 
   it('starts from the nearest path inside the same route request', () => {

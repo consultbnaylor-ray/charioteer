@@ -57,7 +57,9 @@ describe('suggested place tap', () => {
     expect(picked).toContain('dismissKeyboard()');
 
     const search = maker.slice(maker.indexOf('async function search'), maker.indexOf('async function make'));
-    expect(search).toContain('setResults(await repo.searchRoutePlaces(query))');
+    expect(search).toContain('placeSearchOnce(query, () => repo.searchRoutePlaces(query))');
+    expect(search).toContain('setResults(found)');
+    expect(search).toContain('PLACE_SEARCH_MIN_CHARS');
     expect(search).toContain("shownError(err, 'The place search did not answer.')");
 
     const ui = readFileSync('src/ui/ui.tsx', 'utf8');

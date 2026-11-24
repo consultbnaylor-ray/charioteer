@@ -11,12 +11,16 @@ import {
   appendSketchPoint,
   closeSketchIfLoop,
   simplifySketch,
+  sketchDistanceLabel,
   viewToPoint,
   type OutdoorPoint,
 } from '@/domain/outdoorRoute';
 import {
+  PLACE_SEARCH_MIN_CHARS,
   PLACE_SEARCH_PAUSE_MS,
+  clearPlaceResultCache,
   createPlaceSearch,
+  placeSearchOnce,
   routePlanBody,
 } from '@/domain/routeAdjust';
 import {
@@ -182,16 +186,30 @@ describe('sketch routes', () => {
   it('waits before a place search and stops waiting if nothing answers', async () => {
     vi.useFakeTimers();
     try {
+      expect(PLACE_SEARCH_MIN_CHARS).toBe(3);
+      expect(PLACE_SEARCH_PAUSE_MS).toBeGreaterThanOrEqual(700);
+      expect(PLACE_SEARCH_PAUSE_MS).toBeLessThanOrEqual(900);
       const sent: string[] = [];
       const search = createPlaceSearch((query) => sent.push(query), PLACE_SEARCH_PAUSE_MS);
       search.type('a');
       search.type('qu');
       await vi.advanceTimersByTimeAsync(PLACE_SEARCH_PAUSE_MS);
-      expect(sent).toEqual(['qu']);
+      expect(sent).toEqual([]);
+      search.type('que');
       search.type('queen');
+      await vi.advanceTimersByTimeAsync(PLACE_SEARCH_PAUSE_MS);
+      expect(sent).toEqual(['queen']);
+      search.type('queen');
+      await vi.advanceTimersByTimeAsync(PLACE_SEARCH_PAUSE_MS);
+      expect(sent).toEqual(['queen']);
+      search.missed();
+      search.type('queen');
+      await vi.advanceTimersByTimeAsync(PLACE_SEARCH_PAUSE_MS);
+      expect(sent).toEqual(['queen', 'queen']);
+      search.type('queens');
       search.now();
       await vi.advanceTimersByTimeAsync(PLACE_SEARCH_PAUSE_MS);
-      expect(sent).toEqual(['qu']);
+      expect(sent).toEqual(['queen', 'queen']);
       search.dispose();
 
       const pending = withDeadline(new Promise(() => undefined), 40, SEARCH_SLOW);
@@ -202,6 +220,36 @@ describe('sketch routes', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it('reuses a place result for the session and does not keep a refusal', async () => {
+    clearPlaceResultCache();
+    const place = { id: 'square', name: 'Queen Square', latitude: 51.4504, longitude: -2.5945 };
+    let calls = 0;
+    const load = async () => {
+      calls += 1;
+      return [place];
+    };
+    expect(await placeSearchOnce('qu', load)).toEqual([]);
+    expect(calls).toBe(0);
+    await expect(placeSearchOnce('queen', async () => {
+      throw new Error('limited');
+    })).rejects.toThrow('limited');
+    expect(await placeSearchOnce('Queen', load)).toEqual([place]);
+    expect(await placeSearchOnce('queen', load)).toEqual([place]);
+    expect(calls).toBe(1);
+    let release: (places: typeof place[]) => void = () => undefined;
+    const first = placeSearchOnce('park', () => new Promise((resolve) => { release = resolve; }));
+    const second = placeSearchOnce('Park', async () => {
+      throw new Error('second');
+    });
+    release([place]);
+    await expect(first).resolves.toEqual([place]);
+    await expect(second).resolves.toEqual([place]);
+    expect(sketchDistanceLabel(0)).toBeNull();
+    expect(sketchDistanceLabel(850)).toBe('Sketch 850 m');
+    expect(sketchDistanceLabel(3200)).toBe('Sketch 3.2 km');
+    clearPlaceResultCache();
   });
 
   it('turns a map pixel back into the place under it', () => {
