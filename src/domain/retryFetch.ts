@@ -119,8 +119,15 @@ function fetchTimeoutError(): Error {
   return error;
 }
 
-function copyResponse(response: Response, body: ArrayBuffer): Response {
-  return new Response(body.slice(0), {
+type RefreshFlight = {
+  readers: number;
+  ready: Promise<() => Response>;
+  resolve: (value: () => Response) => void;
+  reject: (error: unknown) => void;
+};
+
+function responseCopy(response: Response, body: string): Response {
+  return new Response(body, {
     status: response.status,
     statusText: response.statusText,
     headers: new Headers(response.headers),
@@ -133,35 +140,51 @@ function copyResponse(response: Response, body: ArrayBuffer): Response {
  * A merge-duplicates upsert, save_check_in, and set_reasons are retried once.
  * Auth and database calls stop after FETCH_TIMEOUT_MS. Uploads and edge calls keep a longer limit.
  * Overlapping refresh-token posts share one request.
+ * A lone refresh is returned unread: reading the body here made iOS report a network
+ * failure after the server had already accepted the refresh, and the client then retried it.
  */
 export function fetchWithOneRetry(base: FetchLike = globalThis.fetch.bind(globalThis)): FetchLike {
-  const refreshes = new Map<string, Promise<() => Response>>();
+  let refresh: RefreshFlight | null = null;
   return async (input, init) => {
     if (isRefreshTokenRequest(input, init)) {
-      const existing = refreshes.get('refresh');
-      if (existing) return (await existing)();
-      let resolveRun: (value: () => Response) => void = () => undefined;
-      let rejectRun: (error: unknown) => void = () => undefined;
-      const run = new Promise<() => Response>((resolve, reject) => {
-        resolveRun = resolve;
-        rejectRun = reject;
+      if (refresh) {
+        refresh.readers += 1;
+        return (await refresh.ready)();
+      }
+      let resolveFlight: (value: () => Response) => void = () => undefined;
+      let rejectFlight: (error: unknown) => void = () => undefined;
+      const ready = new Promise<() => Response>((resolve, reject) => {
+        resolveFlight = resolve;
+        rejectFlight = reject;
       });
-      refreshes.set('refresh', run);
+      const flight: RefreshFlight = { readers: 1, ready, resolve: resolveFlight, reject: rejectFlight };
+      refresh = flight;
       void executeFetch(base, input, init).then(
         async (response) => {
           try {
-            const body = await response.arrayBuffer();
-            resolveRun(() => copyResponse(response, body));
+            if (flight.readers === 1) {
+              let handed = false;
+              flight.resolve(() => {
+                if (!handed) {
+                  handed = true;
+                  return response;
+                }
+                return response.clone();
+              });
+              return;
+            }
+            const body = await response.text();
+            flight.resolve(() => responseCopy(response, body));
           } catch (error) {
-            rejectRun(error);
+            flight.reject(error);
           }
         },
-        (error) => rejectRun(error),
+        (error) => flight.reject(error),
       );
       try {
-        return (await run)();
+        return (await ready)();
       } finally {
-        if (refreshes.get('refresh') === run) refreshes.delete('refresh');
+        if (refresh === flight) refresh = null;
       }
     }
     return executeFetch(base, input, init);
