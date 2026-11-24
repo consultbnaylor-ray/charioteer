@@ -161,7 +161,7 @@ describe('route adjusting', () => {
     const fn = readFileSync('supabase/functions/outdoor-route/index.ts', 'utf8');
     const search = fn.slice(fn.indexOf("body.action === 'search'"), fn.indexOf('const mode = readMode'));
     expect(search).not.toMatch(/latitude|longitude|via/);
-    expect(fn).toContain('.insert({ user_id: userId })');
+    expect(fn).toContain('.insert({ user_id: userId, kind })');
     expect(fn).not.toMatch(/insert\(\{[^}]*latitude/);
     expect(fn).toContain("console.error('outdoor-route request failed')");
     expect(fn).not.toMatch(/console\.(log|info|debug|warn|error)\([^)]*(latitude|longitude)/);

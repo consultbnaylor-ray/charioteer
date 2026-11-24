@@ -499,7 +499,7 @@ describe('workout routes stay on the phone', () => {
       if (path === 'supabase/functions/outdoor-route/index.ts') {
         expect(source).toContain('buildDirectionsBody({ mode, shape, start, end, lengthM: lengthM ?? 0, via: vias, preferPaths, sketch })');
         expect(source).toContain('buildSnapBody(start)');
-        expect(source).toContain('.insert({ user_id: userId })');
+        expect(source).toContain('.insert({ user_id: userId, kind })');
         expect(source).not.toMatch(/console\.(log|info|debug|warn|error)\([^)]*(latitude|longitude)/);
         expect(source).not.toMatch(/outdoor_routes/);
         continue;

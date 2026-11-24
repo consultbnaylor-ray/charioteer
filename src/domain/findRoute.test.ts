@@ -59,6 +59,11 @@ import { LOCATION_FIX_MESSAGE } from '@/location/whileUsing';
 import {
   BAD_REQUEST_MESSAGE,
   GLOBAL_ROUTE_DAILY_CAP,
+  GLOBAL_SEARCH_DAILY_CAP,
+  ORS_FREE_GEOCODING_PER_DAY,
+  ROUTE_DAILY_CAP,
+  SEARCH_DAILY_CAP,
+  SEARCH_TEN_MINUTE_CAP,
   NO_PATH_MESSAGE,
   ORS_FREE_DIRECTIONS_PER_DAY,
   RATE_LIMITED_MESSAGE,
@@ -80,6 +85,7 @@ import {
   routeLengthM,
   withinGlobalRouteLimit,
   withinRouteLimit,
+  withinSearchLimit,
 } from '../../supabase/functions/_shared/orsRoute';
 
 const start = { latitude: 51.4504, longitude: -2.5945 };
@@ -293,6 +299,33 @@ describe('route finding', () => {
     expect(withinRouteLimit([now - 86_400_000 - 1], now).ok).toBe(true);
   });
 
+  it('counts a place search apart from the route allowance', () => {
+    const now = 1_000_000_000_000;
+    const routeDay = Array.from({ length: ROUTE_DAILY_CAP }, (_, index) => now - (index + 1) * 60_000);
+    expect(withinRouteLimit(routeDay, now).ok).toBe(false);
+    expect(withinSearchLimit(routeDay, now).ok).toBe(true);
+    const searchBurst = Array.from({ length: SEARCH_TEN_MINUTE_CAP }, (_, index) => now - index * 1000);
+    expect(withinSearchLimit(searchBurst, now).ok).toBe(false);
+    expect(withinSearchLimit(searchBurst.slice(1), now).ok).toBe(true);
+    const searchDay = Array.from({ length: SEARCH_DAILY_CAP }, (_, index) => now - (index + 1) * 60_000);
+    expect(withinSearchLimit(searchDay, now).ok).toBe(false);
+    expect(withinSearchLimit(searchDay.slice(1), now).ok).toBe(true);
+    expect(withinRouteLimit([], now).ok).toBe(true);
+    expect(SEARCH_DAILY_CAP).toBe(300);
+    expect(SEARCH_TEN_MINUTE_CAP).toBe(30);
+    const fn = readFileSync('supabase/functions/outdoor-route/index.ts', 'utf8');
+    expect(fn).toContain("body.action === 'search' ? 'search' : 'route'");
+    expect(fn).toContain(".eq('kind', kind)");
+    expect(fn).toContain('insert({ user_id: userId, kind })');
+    expect(fn).toContain('searchRecent');
+    expect(fn).toContain('GLOBAL_SEARCH_DAILY_CAP');
+    const sql = readFileSync('supabase/migrations/20261124160054_outdoor_route_request_kind.sql', 'utf8');
+    expect(sql).toContain("add column if not exists kind text not null default 'route'");
+    expect(sql).toContain('(user_id, kind, created_at desc)');
+    expect(sql).toContain('(kind, created_at desc)');
+    expect(sql).toContain("kind in ('route', 'search')");
+  });
+
   it('normalises a UK postcode and only then asks the geocoder to stay in GB', () => {
     expect(isUkPostcode('bs81ab')).toBe(true);
     expect(isUkPostcode('Queen Square')).toBe(false);
@@ -352,8 +385,11 @@ describe('route finding', () => {
     expect(readFileSync('docs/dpia-location.md', 'utf8')).toContain('HeiGIT gGmbH');
     expect(readFileSync('docs/dpia-location.md', 'utf8')).toContain('self-host OpenRouteService in the EU');
     expect(GLOBAL_ROUTE_DAILY_CAP).toBe(1500);
+    expect(GLOBAL_SEARCH_DAILY_CAP).toBe(1200);
     expect(GLOBAL_ROUTE_DAILY_CAP).toBeLessThan(ORS_FREE_DIRECTIONS_PER_DAY);
+    expect(GLOBAL_ROUTE_DAILY_CAP + GLOBAL_SEARCH_DAILY_CAP).toBeLessThan(ORS_FREE_GEOCODING_PER_DAY);
     expect(ORS_FREE_DIRECTIONS_PER_DAY).toBe(2000);
+    expect(ORS_FREE_GEOCODING_PER_DAY).toBe(3000);
     const now = 1_000_000_000_000;
     const day = Array.from({ length: GLOBAL_ROUTE_DAILY_CAP }, (_, index) => now - index);
     expect(withinGlobalRouteLimit(day, now).ok).toBe(false);
