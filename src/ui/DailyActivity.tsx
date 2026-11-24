@@ -78,6 +78,7 @@ import { completedDayStats, londonToday, openDayFraction, periodDayCount } from 
 import { workoutHistoryPeriod, WORKOUT_HISTORY_PERIODS } from '@/domain/workoutHistoryCharts';
 import { openAppSettings } from '@/health/link';
 import { MetricRatingLines, RatingChip } from '@/ui/MetricRating';
+import { ExpandableRow } from '@/ui/ExpandableRow';
 import { DataMeaning } from '@/ui/MoreInfo';
 import { HrvExplainer } from '@/ui/HrvExplainer';
 import { goodZoneBand, statsToneColors } from '@/ui/statsPalette';
@@ -225,16 +226,12 @@ export function DailyActivityCharts({
       <T variant="muted">{viewedDayHeading(endDay, londonToday())}</T>
       <T variant="muted">{DAILY_ACTIVITY_RINGS_HINT}</T>
       <Card>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Activity charts"
-          accessibilityState={{ expanded: chartsOpen }}
+        <ExpandableRow
+          label="Activity charts"
+          expanded={chartsOpen}
           onPress={() => setChartsOpen((value) => !value)}
-          style={{ minHeight: 44, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}
-        >
-          <T variant="label" style={{ flex: 1 }}>Activity charts</T>
-          <T variant="muted">{chartsOpen ? 'Hide' : 'Show'}</T>
-        </Pressable>
+          hint={chartsOpen ? 'Hide' : 'Show'}
+        />
         {chartsOpen ? (
           <View style={{ gap: 12, alignSelf: 'stretch' }}>
             <StatPeriodToggle periods={WORKOUT_HISTORY_PERIODS} selected={trendPeriod} />

@@ -12,6 +12,7 @@ import {
   type TodayMealTotals,
   type TodayRing,
 } from '@/domain/nutrition';
+import { ExpandableRow } from '@/ui/ExpandableRow';
 import { MealBreakdown } from '@/ui/MealNutrientBars';
 import { OwnerPhoto } from '@/ui/OwnerPhoto';
 import { useAppTheme } from '@/ui/theme';
@@ -112,14 +113,12 @@ export function TodayMeals({
   return (
     <View style={{ gap: 8 }}>
       {bare ? null : long ? (
-        <Pressable
-          accessibilityRole="button"
+        <ExpandableRow
+          label={open ? "Hide today's meals" : `Today's meals · ${rows.length}`}
           accessibilityLabel={open ? "Hide today's meals" : "Show today's meals"}
+          expanded={open}
           onPress={() => setOpen((value) => !value)}
-          style={{ minHeight: 44, justifyContent: 'center' }}
-        >
-          <T variant="label">{open ? "Hide today's meals" : `Today's meals · ${rows.length}`}</T>
-        </Pressable>
+        />
       ) : (
         <T variant="label">Today's meals</T>
       )}

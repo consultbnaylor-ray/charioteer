@@ -277,7 +277,8 @@ describe('custom route distance and time', () => {
     const maker = readFileSync('src/ui/RouteMaker.tsx', 'utf8');
     const group = readFileSync('src/ui/RouteChoiceGroup.tsx', 'utf8');
     expect(group).toContain('useState(false)');
-    expect(group).toContain('accessibilityState={{ expanded: open }}');
+    expect(group).toContain('<ExpandableRow');
+    expect(group).toContain('expanded={open}');
     expect(group).toContain('`${title} · ${choice}`');
     expect(maker).toContain('title="How (optional)"');
     expect(maker).toContain('title="Shape (optional)"');

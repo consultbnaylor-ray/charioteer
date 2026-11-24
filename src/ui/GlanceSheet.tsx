@@ -5,6 +5,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { RESTING_WHAT, VO2_WHAT } from '@/domain/fitnessSnapshot';
 import { HRV_EXPLAINER_PARAGRAPHS } from '@/domain/healthInsights';
 import { LOW_RESTING_FIT_LINE, LOW_RESTING_FIT_MORE } from '@/domain/restingFitness';
+import { ExpandableRow } from '@/ui/ExpandableRow';
 import { useAppTheme } from '@/ui/theme';
 import { T } from '@/ui/ui';
 import { Vo2MeasureCopy } from '@/ui/Vo2EstimateNote';
@@ -60,17 +61,13 @@ export function SheetSection({ title, children }: { title: string; children: Rea
   const theme = useAppTheme();
   const [open, setOpen] = useState(false);
   return (
-    <View style={{ borderTopWidth: 1, borderTopColor: theme.colors.line }}>
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel={title}
-        accessibilityState={{ expanded: open }}
+    <View style={{ borderTopWidth: 1, borderTopColor: theme.colors.line, paddingTop: 8 }}>
+      <ExpandableRow
+        label={title}
+        expanded={open}
         onPress={() => setOpen((value) => !value)}
-        style={{ minHeight: 44, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}
-      >
-        <T style={{ flex: 1, fontFamily: theme.font.bodyStrong }}>{title}</T>
-        <T variant="muted">{open ? '–' : '>'}</T>
-      </Pressable>
+        variant="divider"
+      />
       {open ? <View style={{ gap: 8, paddingBottom: 12 }}>{children}</View> : null}
     </View>
   );
