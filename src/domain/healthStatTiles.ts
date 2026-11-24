@@ -48,6 +48,7 @@ import {
   workoutMixReport,
 } from '@/domain/fitnessSnapshot';
 import { chartBucketForPeriod, chartPlot } from '@/domain/readingChart';
+import { formatReadingSpan, readingSpan } from '@/domain/readingSpan';
 import { paceJudgement, parseStatPeriod, periodDayCount, periodPhrase as sharedPeriodPhrase, rollingWindow, scaledPeriodTarget, STAT_PERIOD_LABEL, STAT_PERIODS, type StatPeriod } from '@/domain/statWindow';
 import { goalBandLegend, goalWeightRange, IBA_RULES_URL, NO_CUT } from '@/domain/goalWeightRange';
 import {
@@ -433,6 +434,11 @@ export type HealthStatTile = {
   breakdown?: { activityType: number; label: string; minutes: number; bucket: WorkoutBucket }[];
   /** Shared rating. The face and More info render this, so the wording cannot drift. */
   rating?: MetricReading;
+  /**
+   * Latest, lowest, and highest reading in the selected range.
+   * The rating, the band, and valueText stay on the period mean.
+   */
+  span?: { latest: string; lowest: string; highest: string } | null;
 };
 
 export type HealthStatSection = {
@@ -533,6 +539,9 @@ function tileFor(
   return weeklyTile(item, input);
 }
 
+/** Weight, waist, body fat, and lean mass. The chart names each reading instead of one period mean. */
+const BODY_SPAN_TILES = new Set(['weight_kg', 'body_fat', 'waist', 'lean_mass']);
+
 function decorateHealthTile(tile: HealthStatTile, input: HealthStatBoardInput): HealthStatTile {
   const readings = tile.readings.map((point) => point.value).filter((value) => Number.isFinite(value) && value > 0);
   const parsed = leadingNumber(tile.valueText);
@@ -596,6 +605,18 @@ function decorateHealthTile(tile: HealthStatTile, input: HealthStatBoardInput): 
     next.status = rating.where;
     next.valueText = String(bpm);
     next.visual = { ...tile.visual, status: rating.where, value: bpm };
+  }
+  if (BODY_SPAN_TILES.has(next.id) && !next.empty && next.readings.length > 0) {
+    const bounds = rollingWindow(input.today, period);
+    const plotted = chartPlot({
+      points: next.readings,
+      start: bounds.start,
+      end: bounds.end,
+      bucket: 'day',
+      aggregate: 'mean',
+    }).points;
+    const span = readingSpan(plotted);
+    next.span = span ? formatReadingSpan(span, next.unit, input.today) : null;
   }
   return next;
 }

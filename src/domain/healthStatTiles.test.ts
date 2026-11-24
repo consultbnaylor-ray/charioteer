@@ -1025,4 +1025,80 @@ describe('health stat tiles', () => {
     expect(tile(month, 'sleep_hours').period).toBe('older than the last 30 days');
     expect(tile(month, 'sleep_hours').valueText).toBe('Latest night 5h 48m · 1 Sep');
   });
+
+  it('names the latest, lowest, and highest body reading in the selected range', () => {
+    const month = buildHealthStatBoard(alex({ period: '30' }));
+    const weight = tile(month, 'weight_kg');
+    expect(weight.valueText).toBe('74.6');
+    expect(weight.status).toBe('Within the healthy BMI band');
+    expect(weight.span).toEqual({
+      latest: 'Latest 74.2 kg on 17 Oct',
+      lowest: 'Lowest 74.2 kg on 17 Oct',
+      highest: 'Highest 74.6 kg on 10 Oct',
+    });
+    const fat = tile(month, 'body_fat');
+    expect(fat.valueText).toBe('15');
+    expect(fat.status).toBe('Good');
+    expect(fat.span).toEqual({
+      latest: 'Latest 15 % on 17 Oct',
+      lowest: 'Lowest 15 % on 17 Oct',
+      highest: 'Highest 15 % on 17 Oct',
+    });
+    const waist = tile(month, 'waist');
+    expect(waist.valueText).toBe('84');
+    expect(waist.status).toBe('Within the healthy range');
+    expect(waist.span).toEqual({
+      latest: 'Latest 84 cm on 17 Oct',
+      lowest: 'Lowest 84 cm on 17 Oct',
+      highest: 'Highest 84 cm on 17 Oct',
+    });
+    expect(tile(month, 'lean_mass').status).toBe('No published guideline.');
+    expect(tile(month, 'lean_mass').span?.latest).toBe('Latest 63.0 kg on 17 Oct');
+
+    const ranged = buildHealthStatBoard(input({
+      today: '2026-11-24',
+      period: '30',
+      samples: [
+        { kind: 'weight_kg', value: 90, recordedOn: '2026-08-01' },
+        { kind: 'weight_kg', value: 81.2, recordedOn: '2026-11-03' },
+        { kind: 'weight_kg', value: 81.2, recordedOn: '2026-11-10' },
+        { kind: 'weight_kg', value: 84.1, recordedOn: '2026-11-12' },
+        { kind: 'weight_kg', value: 84.1, recordedOn: '2026-11-15' },
+        { kind: 'weight_kg', value: 83, recordedOn: '2026-11-20' },
+      ],
+    }));
+    expect(tile(ranged, 'weight_kg').span).toEqual({
+      latest: 'Latest 83.0 kg on 20 Nov',
+      lowest: 'Lowest 81.2 kg on 3 Nov',
+      highest: 'Highest 84.1 kg on 12 Nov',
+    });
+
+    const year = buildHealthStatBoard(input({
+      today: '2026-11-24',
+      period: '12m',
+      samples: [
+        { kind: 'weight_kg', value: 90, recordedOn: '2026-08-01' },
+        { kind: 'weight_kg', value: 83, recordedOn: '2026-11-20' },
+      ],
+    }));
+    expect(tile(year, 'weight_kg').span?.highest).toBe('Highest 90.0 kg on 1 Aug');
+    expect(tile(year, 'weight_kg').span?.latest).toBe('Latest 83.0 kg on 20 Nov');
+
+    const once = buildHealthStatBoard(input({
+      samples: [{ kind: 'weight_kg', value: 84.1, recordedOn: today }],
+    }));
+    expect(tile(once, 'weight_kg').valueText).toBe('84.1');
+    expect(tile(once, 'weight_kg').span).toEqual({
+      latest: 'Latest 84.1 kg on 17 Oct',
+      lowest: 'Lowest 84.1 kg on 17 Oct',
+      highest: 'Highest 84.1 kg on 17 Oct',
+    });
+
+    const board = readFileSync('src/ui/HealthStatBoard.tsx', 'utf8');
+    expect(board).toContain('markExtremes');
+    expect(board).toContain('spanWindow');
+    expect(board).toContain('{valueWithPeriod(tile)}');
+    expect(readFileSync('src/ui/ReadingChart.tsx', 'utf8')).toContain('No readings in this period.');
+    expect(readFileSync('src/app/(main)/weight-waist.tsx', 'utf8')).not.toContain("skipChartIds={['weight_kg']}");
+  });
 });

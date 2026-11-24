@@ -214,7 +214,6 @@ export default function WeightWaistScreen() {
         workoutBuckets={snap.nutrition.workoutBuckets}
         period={period}
         onTurnOn={turnOnMissing}
-        skipChartIds={['weight_kg']}
       />
       <ScrollTarget id="body">
         <Card>

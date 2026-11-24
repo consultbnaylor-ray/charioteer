@@ -18,6 +18,7 @@ import {
   type ChartBucket,
   type ChartPoint,
 } from '@/domain/readingChart';
+import { formatReadingSpan, formatSpanAmount, readingSpan } from '@/domain/readingSpan';
 import { DATA_MEANING_TITLE, MoreInfo } from '@/ui/MoreInfo';
 import { useAppTheme } from '@/ui/theme';
 import { T } from '@/ui/ui';
@@ -62,6 +63,10 @@ export function ReadingChart({
   accent,
   meaning = 'chart',
   meaningTitle,
+  markExtremes = false,
+  hideSummary = false,
+  spanWindow = false,
+  today,
 }: {
   points: readonly ChartPoint[];
   start: string;
@@ -78,6 +83,14 @@ export function ReadingChart({
   onSelectDay?: (day: string) => void;
   /** Stroke colour for this metric. Omitted charts stay on the ink. */
   accent?: string;
+  /** Ring the lowest and highest points, and name them in the summary. */
+  markExtremes?: boolean;
+  /** The card already shows the latest, lowest, and highest lines. */
+  hideSummary?: boolean;
+  /** Keep the date axis on the selected range when readings are sparse. */
+  spanWindow?: boolean;
+  /** Year reference for the summary dates. The range end is used when omitted. */
+  today?: string;
   /**
    * `chart` keeps the direction note in this chart.
    * `none` leaves that note to the card, so the card has one toggle.
@@ -98,8 +111,8 @@ export function ReadingChart({
   const grain = bucket ?? chartWindowBucket(windowStart, windowEnd);
   const plot = chartPlot({ points, start: windowStart, end: windowEnd, bucket: grain, aggregate });
   const shown = plot.points;
-  const axisStart = plot.start;
-  const axisEnd = plot.end;
+  const axisStart = spanWindow ? windowStart : plot.start;
+  const axisEnd = spanWindow ? windowEnd : plot.end;
   const extent = chartExtent(shown);
   const ticks = yAxisTicks(shown.map((point) => point.value));
   const yName = yTitle ?? unit;
@@ -146,9 +159,28 @@ export function ReadingChart({
 
   const marks = datedAxisTicks(axisStart, axisEnd);
   const grainCaption = chartBucketCaption(grain, aggregate);
-  const summary = `Latest ${formatChartValue(extent.latest.value, unit)} · Min ${formatAxisNumber(extent.min)} · Max ${formatAxisNumber(extent.max)}`;
+  const extremes = markExtremes ? readingSpan(shown) : null;
+  const headlines = extremes ? formatReadingSpan(extremes, unit, today ?? windowEnd) : null;
+  const summary = headlines
+    ? `${headlines.latest}. ${headlines.lowest}. ${headlines.highest}`
+    : `Latest ${formatChartValue(extent.latest.value, unit)} · Min ${formatAxisNumber(extent.min)} · Max ${formatAxisNumber(extent.max)}`;
+  const lowDay = extremes?.lowest.day ?? null;
+  const highDay = extremes?.highest.day ?? null;
+  function amount(value: number): string {
+    return markExtremes ? formatSpanAmount(value, unit) : formatChartValue(value, unit);
+  }
+  function pointLabel(value: number): string {
+    if (!markExtremes || unit !== 'kg') return formatAxisNumber(value);
+    return (Math.round(value * 10) / 10).toFixed(1);
+  }
+  function extremeLabel(day: string): string | null {
+    if (day === lowDay && day === highDay) return 'Low and high';
+    if (day === lowDay) return 'Low';
+    if (day === highDay) return 'High';
+    return null;
+  }
   const spoken = selected
-    ? `${accessibilityLabel}. ${tooltipWhen(selected.day, grain)}, ${formatChartValue(selected.value, unit)}.`
+    ? `${accessibilityLabel}. ${tooltipWhen(selected.day, grain)}, ${amount(selected.value)}.`
     : `${accessibilityLabel}. ${summary}. Older on the left, newer on the right.`;
 
   const meaningToggle = meaning === 'none' ? null : (
@@ -250,14 +282,33 @@ export function ReadingChart({
               {shown.map((point, index) => {
                 const active = point.day === selected?.day;
                 const latest = index === shown.length - 1;
+                const marked = extremeLabel(point.day);
                 const ink = accent ?? theme.colors.ink;
                 return (
                   <Circle
                     key={point.day}
                     cx={xFor(point.day)}
                     cy={yFor(point.value)}
-                    r={active || latest ? 5 : 3.5}
+                    r={active || latest || marked ? 5 : 3.5}
                     fill={ink}
+                    stroke={marked ? theme.colors.surface : 'none'}
+                    strokeWidth={marked ? 2 : 0}
+                  />
+                );
+              })}
+              {shown.map((point) => {
+                const marked = extremeLabel(point.day);
+                if (!marked) return null;
+                const ink = accent ?? theme.colors.ink;
+                return (
+                  <Circle
+                    key={`ring-${point.day}`}
+                    cx={xFor(point.day)}
+                    cy={yFor(point.value)}
+                    r={9}
+                    fill="none"
+                    stroke={ink}
+                    strokeWidth={2}
                   />
                 );
               })}
@@ -271,7 +322,7 @@ export function ReadingChart({
                   fontSize={10}
                   fontFamily={theme.font.bodyStrong}
                 >
-                  {formatAxisNumber(point.value)}
+                  {pointLabel(point.value)}
                 </SvgText>
               )) : (
                 <SvgText
@@ -282,9 +333,26 @@ export function ReadingChart({
                   fontSize={11}
                   fontFamily={theme.font.bodyStrong}
                 >
-                  {formatAxisNumber(shown[shown.length - 1].value)}
+                  {pointLabel(shown[shown.length - 1].value)}
                 </SvgText>
               )}
+              {shown.map((point) => {
+                const marked = extremeLabel(point.day);
+                if (!marked) return null;
+                return (
+                  <SvgText
+                    key={`extreme-${point.day}`}
+                    x={xFor(point.day)}
+                    y={Math.min(PLOT_H - 2, yFor(point.value) + 18)}
+                    textAnchor="middle"
+                    fill={theme.colors.ink}
+                    fontSize={10}
+                    fontFamily={theme.font.bodyStrong}
+                  >
+                    {marked}
+                  </SvgText>
+                );
+              })}
             </Svg>
             {ticks.map((tick) => (
               <T
@@ -319,7 +387,7 @@ export function ReadingChart({
               >
                 <T style={{ fontSize: 12 * label, lineHeight: 16 * label }}>{tooltipWhen(selected.day, grain)}</T>
                 <T style={{ fontFamily: theme.font.bodyStrong, fontSize: 12 * label, lineHeight: 16 * label }}>
-                  {formatChartValue(selected.value, unit)}
+                  {amount(selected.value)}
                 </T>
               </View>
             ) : null}
@@ -330,7 +398,7 @@ export function ReadingChart({
       </View>
       <AxisLabels marks={marks} width={width} gutter={gutter} scale={label} xFor={xFor} />
       <T style={{ fontSize: 11 * label, lineHeight: 14 * label, color: theme.colors.muted, textAlign: 'center' }}>{xTitle}</T>
-      <T>{summary}</T>
+      {hideSummary ? null : <T>{summary}</T>}
       {meaningToggle}
     </View>
   );

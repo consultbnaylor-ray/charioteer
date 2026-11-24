@@ -20,12 +20,14 @@ import {
   waterProgress,
   weightTrendLine,
 } from '@/domain/nutrition';
-import { chartBucketForPeriod } from '@/domain/readingChart';
+import { CHART_DIRECTION_HINT, chartBucketForPeriod, chartPlot } from '@/domain/readingChart';
+import { formatReadingSpan, readingSpan } from '@/domain/readingSpan';
 import type { StatsTone } from '@/domain/statsOverview';
 import { chartFigureLabel, completedDayStats, londonToday, NUTRITION_CHART_PERIODS, paceJudgement, periodDayCount, periodHeading, periodPhrase, proteinPace, rollingWindow, type StatPeriod } from '@/domain/statWindow';
 import { useStatPeriod } from '@/health/useStatPeriod';
 import { CompareBars, ProgressRing } from '@/ui/DistanceCharts';
 import { ProcessedFoodList } from '@/ui/ProcessedFoodList';
+import { MoreInfo } from '@/ui/MoreInfo';
 import { ReadingChart } from '@/ui/ReadingChart';
 import { ScrollTarget } from '@/ui/ScrollTarget';
 import { chartAccent, statsToneColors } from '@/ui/statsPalette';
@@ -255,24 +257,47 @@ export function WeightTrendChart({
   const [period] = useStatPeriod();
   const today = londonToday();
   const window = rollingWindow(today, period);
-  const caption = weightTrendLine(points, goal);
-  const readings = overviewLineChart(points
-    .filter((point) => point.day >= window.start && point.day <= window.end)
-    .map((point) => ({ day: point.day, value: point.kg })));
+  const inRange = points.filter((point) => point.day >= window.start && point.day <= window.end);
+  const caption = weightTrendLine(inRange, goal);
+  const readings = overviewLineChart(inRange.map((point) => ({ day: point.day, value: point.kg })));
+  const plotted = chartPlot({
+    points: readings,
+    start: window.start,
+    end: window.end,
+    bucket: 'day',
+    aggregate: 'mean',
+  }).points;
+  const span = readingSpan(plotted);
+  const headlines = span ? formatReadingSpan(span, 'kg', today) : null;
   return (
-    <View accessibilityLabel={caption} style={{ gap: 8 }}>
+    <View accessibilityLabel={headlines ? `${headlines.latest}. ${headlines.lowest}. ${headlines.highest}` : caption} style={{ gap: 8 }}>
       <ReadingChart
         points={readings}
         start={window.start}
         end={window.end}
         unit="kg"
+        yTitle="kg"
         aggregate="mean"
-        bucket={chartBucketForPeriod(period)}
+        bucket="day"
         accent={chartAccent('Weight', theme.scheme) ?? undefined}
         accessibilityLabel="Weight chart"
-        meaning={caption ? <T variant="muted">{caption}</T> : 'chart'}
-        meaningTitle="What this means"
+        meaning="none"
+        markExtremes
+        hideSummary
+        spanWindow
+        today={today}
       />
+      {headlines ? (
+        <View style={{ gap: 2 }}>
+          <T style={{ fontFamily: theme.font.bodyStrong }}>{headlines.latest}</T>
+          <T style={{ fontFamily: theme.font.bodyStrong }}>{headlines.lowest}</T>
+          <T style={{ fontFamily: theme.font.bodyStrong }}>{headlines.highest}</T>
+        </View>
+      ) : null}
+      <MoreInfo about="weight chart" title="What this means">
+        {caption ? <T variant="muted">{caption}</T> : null}
+        <T variant="muted">{CHART_DIRECTION_HINT}</T>
+      </MoreInfo>
     </View>
   );
 }
