@@ -132,6 +132,47 @@ export function visibleDrawLine(
   return stitchRoute(base, combineDrawStrokes(pending));
 }
 
+/**
+ * The routed line only. A stroke that has not been confirmed stays off this line,
+ * so the pencil colour can show that it is not snapped yet.
+ * A route made without drawing (no strokes) still uses the plan.
+ */
+export function snappedDrawLine(
+  snapped: readonly OutdoorPoint[] | null,
+  strokes: readonly (readonly OutdoorPoint[])[],
+  snappedCount: number,
+): OutdoorPoint[] {
+  const snap = snapped ? copyPoints(snapped) : [];
+  if (strokes.length === 0) return snap.length >= 2 ? snap : [];
+  const count = strokeCount(snappedCount, strokes.length);
+  if (count <= 0) return [];
+  if (snap.length >= 2) return snap;
+  return combineDrawStrokes(strokes.slice(0, count));
+}
+
+/** Hand-drawn points that are not on a snapped route yet, plus the finger still down. */
+export function rawDrawLine(
+  strokes: readonly (readonly OutdoorPoint[])[],
+  snappedCount: number,
+  pencil: readonly OutdoorPoint[] = [],
+): OutdoorPoint[] {
+  const count = strokeCount(snappedCount, strokes.length);
+  const pending = combineDrawStrokes(strokes.slice(count));
+  const finger = copyPoints(pencil);
+  if (finger.length === 0) return pending;
+  if (pending.length === 0) return finger;
+  return stitchRoute(pending, finger);
+}
+
+/** The green tick waits until a stroke has actually moved. */
+export function drawReadyToSnap(
+  strokes: readonly (readonly OutdoorPoint[])[],
+  pencil: readonly OutdoorPoint[] = [],
+): boolean {
+  if (copyPoints(pencil).length >= 2) return true;
+  return strokes.some((stroke) => copyPoints(stroke).length >= 2);
+}
+
 export const DRAW_ZOOM_MIN = 2;
 export const DRAW_ZOOM_MAX = 22;
 

@@ -200,7 +200,10 @@ describe('activity session', () => {
     expect(outside.indexOf('label="Find a route"')).toBeLessThan(outside.indexOf('label="Start a walk"'));
     expect(outside.indexOf('label="Start a walk"')).toBeLessThan(outside.indexOf('label="Start a run"'));
     expect(outside.indexOf('label="Start a run"')).toBeLessThan(outside.indexOf('label="Start a cycle"'));
-    expect(outside.indexOf('label="Start a cycle"')).toBeLessThan(outside.indexOf('label="Open the map"'));
+    expect(outside.indexOf('PREFER_PATHS_LABEL')).toBeLessThan(outside.indexOf('label="Find a route"'));
+    expect(outside.indexOf('label="Start a cycle"')).toBeLessThan(outside.indexOf('label="See previous routes"'));
+    expect(outside).toContain('tone="good"');
+    expect(outside).not.toContain('Open the map');
     expect(outside).toContain('SUMMARIES_HINT');
     expect(outside).toContain('<OutingInProgressBanner />');
     expect(readFileSync('src/app/(main)/home.tsx', 'utf8')).toContain('<OutingInProgressBanner />');

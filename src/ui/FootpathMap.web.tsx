@@ -85,8 +85,12 @@ export function FootpathMap({
   onToggleDraw,
   onUndoDraw,
   onClearDraw,
+  onConfirmDraw,
   canUndoDraw = false,
   canClearDraw = false,
+  canConfirmDraw = false,
+  confirmPending = false,
+  statusNote = null,
 }: {
   routes: readonly OutdoorRoute[];
   sketch: readonly OutdoorPoint[];
@@ -127,8 +131,12 @@ export function FootpathMap({
   onToggleDraw?: () => void;
   onUndoDraw?: () => void;
   onClearDraw?: () => void;
+  onConfirmDraw?: () => void;
   canUndoDraw?: boolean;
   canClearDraw?: boolean;
+  canConfirmDraw?: boolean;
+  confirmPending?: boolean;
+  statusNote?: string | null;
 }) {
   const [scheme, choose] = useMapScheme();
   const styleUrl = openFreeMapStyle(scheme);
@@ -190,8 +198,12 @@ export function FootpathMap({
       onToggleDraw={onToggleDraw}
       onUndoDraw={onUndoDraw}
       onClearDraw={onClearDraw}
+      onConfirmDraw={onConfirmDraw}
       canUndoDraw={canUndoDraw}
       canClearDraw={canClearDraw}
+      canConfirmDraw={canConfirmDraw}
+      confirmPending={confirmPending}
+      statusNote={statusNote}
       renderMap={({ height: viewHeight }) => (
         <View
           style={{ height: viewHeight }}

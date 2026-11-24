@@ -86,8 +86,12 @@ export function FootpathMap({
   onToggleDraw,
   onUndoDraw,
   onClearDraw,
+  onConfirmDraw,
   canUndoDraw = false,
   canClearDraw = false,
+  canConfirmDraw = false,
+  confirmPending = false,
+  statusNote = null,
 }: {
   routes: readonly OutdoorRoute[];
   sketch: readonly OutdoorPoint[];
@@ -126,8 +130,13 @@ export function FootpathMap({
   onToggleDraw?: () => void;
   onUndoDraw?: () => void;
   onClearDraw?: () => void;
+  onConfirmDraw?: () => void;
   canUndoDraw?: boolean;
   canClearDraw?: boolean;
+  canConfirmDraw?: boolean;
+  confirmPending?: boolean;
+  /** Shown on the map after drawing finishes. A snap uses the green chip. */
+  statusNote?: string | null;
 }) {
   const [scheme, choose] = useMapScheme();
   const styleUrl = openFreeMapStyle(scheme);
@@ -163,8 +172,12 @@ export function FootpathMap({
       onToggleDraw={onToggleDraw}
       onUndoDraw={onUndoDraw}
       onClearDraw={onClearDraw}
+      onConfirmDraw={onConfirmDraw}
       canUndoDraw={canUndoDraw}
       canClearDraw={canClearDraw}
+      canConfirmDraw={canConfirmDraw}
+      confirmPending={confirmPending}
+      statusNote={statusNote}
       renderMap={({ height: viewHeight, expanded }) => (
         <NativeCanvas
           maps={maps}
@@ -268,11 +281,14 @@ function NativeCanvas({
   }, [held, frameTick, restoreTick]);
 
   useEffect(() => {
-    if (expanded) return undefined;
     return () => {
+      if (drawRef.current?.enabled) {
+        scroller?.current?.setScrollEnabled?.(false);
+        return;
+      }
       scroller?.current?.setScrollEnabled?.(true);
     };
-  }, [scroller, expanded]);
+  }, [scroller]);
 
   if (!maps) {
     return (

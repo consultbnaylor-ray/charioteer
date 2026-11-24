@@ -649,6 +649,14 @@ export function CountBadge({ count }: { count: number }) {
   );
 }
 
+function GoodCheck() {
+  return (
+    <Svg width={18} height={18} viewBox="0 0 24 24" fill="none" accessibilityElementsHidden>
+      <Path d="M5 12.5 9.2 16.7 19 7" stroke="#FFFFFF" strokeWidth={2.6} strokeLinecap="round" strokeLinejoin="round" />
+    </Svg>
+  );
+}
+
 export function Choice({
   label,
   selected,
@@ -660,8 +668,8 @@ export function Choice({
   label: string;
   selected: boolean;
   onPress: () => void;
-  /** `alert` is the danger red, used when something is waiting. The label or badge carries the number. */
-  tone?: 'default' | 'alert';
+  /** `alert` is the danger red, used when something is waiting. The label or badge carries the number. `good` is a filled green check when it is on. */
+  tone?: 'default' | 'alert' | 'good';
   /** Unread count drawn as a numbered danger pill beside the label. */
   badge?: number;
   /**
@@ -673,6 +681,7 @@ export function Choice({
 }) {
   const theme = useAppTheme();
   const alert = tone === 'alert';
+  const goodOn = tone === 'good' && selected;
   const choose = () => {
     onPress();
     dismissKeyboard();
@@ -681,7 +690,7 @@ export function Choice({
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={label}
-      accessibilityState={{ selected }}
+      accessibilityState={{ selected, checked: tone === 'good' ? selected : undefined }}
       onPressIn={selectOnPressIn ? choose : undefined}
       onPress={() => {
         if (selectOnPressIn) {
@@ -694,15 +703,16 @@ export function Choice({
       style={[
         styles.choice,
         {
-          borderColor: alert ? theme.colors.danger : selected ? theme.colors.ink : theme.colors.line,
-          backgroundColor: selected ? theme.colors.emphasisSoft : theme.colors.surface,
+          borderColor: alert ? theme.colors.danger : goodOn ? '#047857' : selected ? theme.colors.ink : theme.colors.line,
+          backgroundColor: goodOn ? '#047857' : selected ? theme.colors.emphasisSoft : theme.colors.surface,
           flexDirection: 'row',
           alignItems: 'center',
           gap: 8,
         },
       ]}
     >
-      <Text style={{ fontFamily: theme.font.bodyStrong, color: alert ? theme.colors.danger : theme.colors.ink, fontSize: 15 * theme.scale }}>{label}</Text>
+      <Text style={{ flex: 1, fontFamily: theme.font.bodyStrong, color: alert ? theme.colors.danger : goodOn ? '#FFFFFF' : theme.colors.ink, fontSize: 15 * theme.scale }}>{label}</Text>
+      {goodOn ? <GoodCheck /> : null}
       <CountBadge count={badge} />
     </Pressable>
   );
