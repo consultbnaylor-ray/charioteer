@@ -28,6 +28,7 @@ import { DateField } from '@/ui/DateField';
 import { PlanTick } from '@/ui/PlanTick';
 import { statsToneColors } from '@/ui/statsPalette';
 import { useAppTheme } from '@/ui/theme';
+import { MoreInfo } from '@/ui/MoreInfo';
 import { UpdateWeightLink } from '@/ui/UpdateWeightLink';
 import { Button, Choice, Field, T, playSavedHaptic } from '@/ui/ui';
 
@@ -82,7 +83,7 @@ export function GoalTargetDate() {
   );
 }
 
-export function TargetWeightProgress() {
+export function TargetWeightProgress({ brief = false }: { brief?: boolean }) {
   const snap = useSnapshot();
   const theme = useAppTheme();
   const settings = snap.nutrition;
@@ -104,17 +105,39 @@ export function TargetWeightProgress() {
     `Progress ${Math.round(fill * 100)}% of the way, from the start weight to the target`,
     direction === 'lose' ? 'Direction, lose' : direction === 'gain' ? 'Direction, gain' : 'Direction, hold',
   ].filter((line): line is string => line != null);
+  const short = currentKg == null
+    ? 'Current weight not logged'
+    : `Weight ${formatWeightAmount(currentKg, 'kg')} · target ${formatWeightAmount(targetKg, 'kg')}`;
+  const bar = (
+    <View
+      accessibilityLabel={`Progress ${Math.round(fill * 100)} percent of the way, from the start weight to the target`}
+      style={{ height: 8, borderRadius: 4, backgroundColor: theme.colors.line, overflow: 'hidden' }}
+    >
+      <View style={{ width: `${Math.round(fill * 100)}%`, height: 8, backgroundColor: theme.colors.ink }} />
+    </View>
+  );
+  if (brief) {
+    return (
+      <View style={{ gap: 8 }}>
+        <T variant="label">Target weight</T>
+        <T numberOfLines={1}>{short}</T>
+        {bar}
+        <UpdateWeightLink />
+        <MoreInfo title="About the target" about="the target weight">
+          {lines.map((line) => <T key={line}>{line}</T>)}
+          {settings?.targetOn ? <T>{`Target date ${formatIsoDay(settings.targetOn)}`}</T> : null}
+          <T>{estimate.text}</T>
+          {low ? <T>{TARGET_BELOW_HEALTHY}</T> : null}
+        </MoreInfo>
+      </View>
+    );
+  }
   return (
     <View style={{ gap: 8 }}>
       <T variant="label">Target weight</T>
       {lines.map((line) => <T key={line}>{line}</T>)}
       <UpdateWeightLink />
-      <View
-        accessibilityLabel={`Progress ${Math.round(fill * 100)} percent of the way, from the start weight to the target`}
-        style={{ height: 8, borderRadius: 4, backgroundColor: theme.colors.line, overflow: 'hidden' }}
-      >
-        <View style={{ width: `${Math.round(fill * 100)}%`, height: 8, backgroundColor: theme.colors.ink }} />
-      </View>
+      {bar}
       {settings?.targetOn ? <T>{`Target date ${formatIsoDay(settings.targetOn)}`}</T> : null}
       <T>{estimate.text}</T>
       {low ? <T>{TARGET_BELOW_HEALTHY}</T> : null}

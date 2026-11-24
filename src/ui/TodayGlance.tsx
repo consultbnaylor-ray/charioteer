@@ -19,6 +19,7 @@ import { useHealthSources } from '@/health/useHealthSources';
 import { GlanceSheet, RestingMeaningBody, StatTrio } from '@/ui/GlanceSheet';
 import { GlowRing, MiniBars, MoodMarks, Sparkline, numberRangeLine, useReduceMotion } from '@/ui/gridChrome';
 import { SOBER_RING_SIZE, SOBER_RING_STROKE, soberRingFit } from '@/ui/soberRingFit';
+import { TodayInsightRow } from '@/ui/HealthInsightRow';
 import { DataMeaning } from '@/ui/MoreInfo';
 import { ChartMeaningCopy, chartWindowBucket, ReadingChart } from '@/ui/ReadingChart';
 import { useAppTheme } from '@/ui/theme';
@@ -234,11 +235,7 @@ export function TodayGlance({ now, onCorrectDate }: { now: Date; onCorrectDate: 
           </Card>
         </View>
       </View>
-      <Card compact>
-        <Pressable accessibilityRole="button" accessibilityLabel="See the health line" onPress={() => router.push('/health' as never)} style={{ minHeight: 44, justifyContent: 'center' }}>
-          <T numberOfLines={3}>{insight}</T>
-        </Pressable>
-      </Card>
+      <TodayInsightRow headlines={[insight]} />
       <GlanceSheet visible={restingOpen} title="Resting heart rate" onClose={() => setRestingOpen(false)}>
         <DataMeaning about="resting heart rate">
           <RestingMeaningBody />

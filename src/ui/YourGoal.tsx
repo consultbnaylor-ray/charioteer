@@ -1,6 +1,7 @@
 import { View } from 'react-native';
 
 import { useSnapshot } from '@/data';
+import { goalRingLabel } from '@/domain/compactLines';
 import { buildGoalLed, goalLedFromSnapshot, type GoalTick } from '@/domain/goalLed';
 import { useHealthSources } from '@/health/useHealthSources';
 import { towardGoal } from '@/domain/nutrition';
@@ -30,13 +31,7 @@ export function YourGoal({ place }: { place: 'today' | 'stats' | 'plan' }) {
     <Card featured>
       <StatPeriodToggle />
       {place === 'stats' ? null : <GoalLine />}
-      {view.caution ? <T>{view.caution}</T> : null}
-      <MoreInfo about={view.name || 'the saved aim'}>
-        <T>{view.matters}</T>
-      </MoreInfo>
-      {showNudges ? view.nudges.map((line) => <T key={line}>{line}</T>) : null}
       <T variant="label">{towardGoal(view.name)}</T>
-      <TargetWeightProgress />
       {view.ticks.length ? (
         <View style={{ gap: 14, alignSelf: 'stretch' }}>
           <ProgressRow
@@ -46,23 +41,53 @@ export function YourGoal({ place }: { place: 'today' | 'stats' | 'plan' }) {
             label={view.progressWords}
             statusWord={`${met} of ${view.ticks.length} met`}
           />
-          {view.ticks.map((tick) => (
-            <ProgressRow
-              key={tick.id}
-              centre={tick.centre}
-              unit={tick.unit}
-              fill={tick.fill}
-              label={tick.label}
-              statusWord={tick.statusWord}
-            />
-          ))}
+          {view.ticks.map((tick) => {
+            const measure = view.measures.find((item) => item.id === tick.id);
+            return (
+              <ProgressRow
+                key={tick.id}
+                centre={tick.centre}
+                unit={tick.unit}
+                fill={tick.fill}
+                label={measure ? goalRingLabel(measure) : tick.label}
+                statusWord={tick.statusWord}
+              />
+            );
+          })}
         </View>
       ) : (
-        <T>{view.progressWords}</T>
+        <T numberOfLines={1}>Nothing logged yet</T>
       )}
+      <TargetWeightProgress brief />
       {place === 'plan' ? null : <GoalWeightRange embedded />}
+      <MoreInfo about={view.name || 'the saved aim'} title="About the goal">
+        {goalAboutLines(view, showNudges).map((line) => (
+          <T key={line}>{line}</T>
+        ))}
+      </MoreInfo>
     </Card>
   );
+}
+
+/** Safety caveats and the long sentences. Nothing here is dropped, only collapsed. */
+function goalAboutLines(
+  view: { caution: string | null; matters: string; nudges: string[]; measures: { words: string }[]; progressWords: string },
+  showNudges: boolean,
+): string[] {
+  const lines: string[] = [];
+  if (view.caution) lines.push(view.caution);
+  if (view.matters) lines.push(view.matters);
+  for (const measure of view.measures) {
+    if (measure.words && !lines.some((line) => line.includes(measure.words))) lines.push(measure.words);
+  }
+  if (showNudges) {
+    for (const nudge of view.nudges) {
+      const plain = nudge.replace(/\.$/, '');
+      if (!lines.some((line) => line.includes(plain))) lines.push(nudge);
+    }
+  }
+  if (!view.measures.length && view.progressWords && !lines.includes(view.progressWords)) lines.push(view.progressWords);
+  return lines;
 }
 
 function ProgressRow({
@@ -96,7 +121,7 @@ function ProgressRow({
         showStatus={false}
       />
       <View accessibilityElementsHidden importantForAccessibility="no-hide-descendants" style={{ flex: 1, gap: 2, minWidth: 0 }}>
-        <T>{label}</T>
+        <T numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>{label}</T>
         <T style={{ fontFamily: theme.font.bodyStrong }}>{statusWord}</T>
       </View>
     </View>
